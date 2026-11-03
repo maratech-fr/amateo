@@ -52,4 +52,44 @@ export const AUTH_TEXTS = {
   demoWrongPassword: "Mot de passe incorrect pour le compte de démonstration.",
   demoTeardownRefused: "Impossible de remplacer votre club de démonstration précédent. Réessayez, ou contactez le support.",
   demoAraTaken: "Ce code FFBB est déjà utilisé par un autre club : nous ne le remplaçons pas.",
+
+  // Page PUBLIQUE d'approbation (`ClubApprovalPage`) — ouverte par l'adresse officielle du club.
+  // Chantier Membre (PR 3) : création, reprise (club sans gestionnaire) ou promotion
+  // (gestionnaires sans réponse), selon le `kind` servi par le serveur.
+  clubApprovalCreateTitle: "Demande de création d'espace",
+  clubApprovalCreateDescription: (product: string) => `Un gestionnaire demande à créer l'espace ${product} de votre club.`,
+  clubApprovalCreateBody: "demande à créer et gérer l'espace de",
+  clubApprovalCreateHelp:
+    "Si cette personne est bien un gestionnaire de votre club, approuvez : l'espace sera créé et elle en deviendra gestionnaire. Sinon, refusez — elle en sera informée.",
+  clubApprovalRepriseTitle: "Demande de reprise d'espace",
+  clubApprovalRepriseDescription: (product: string) => `Un membre demande à reprendre l'espace ${product} de votre club.`,
+  clubApprovalRepriseBody: "demande à reprendre la gestion de l'espace de",
+  clubApprovalRepriseBodyEnd: ", qui n'a plus de gestionnaire.",
+  clubApprovalRepriseHelp:
+    "Si cette personne est bien un gestionnaire de votre club, approuvez : elle deviendra gestionnaire et la suppression de l'espace sera annulée. Sinon, refusez — elle gardera un accès en consultation.",
+  clubApprovalPromotionTitle: "Demande de gestionnaire",
+  clubApprovalPromotionDescription: (product: string) => `Un membre demande à devenir gestionnaire de l'espace ${product} de votre club.`,
+  clubApprovalPromotionBody: "demande à devenir gestionnaire de l'espace de",
+  clubApprovalPromotionBodyEnd: ". Les gestionnaires actuels n'ont pas répondu depuis 14 jours.",
+  clubApprovalPromotionHelp:
+    "Si vous approuvez, cette personne devient gestionnaire avec les gestionnaires actuels. Sinon, refusez — elle gardera un accès en consultation.",
+  clubApprovalExpiresOn: (date: string) => `Sans réponse, la demande expire le ${date}.`,
+  clubApprovalLoading: "Chargement…",
+  clubApprovalExpired: (product: string) => `Cette demande a expiré (7 jours sans réponse). Le demandeur peut se rapprocher du support ${product}.`,
+  clubApprovalInvalid: "Ce lien est invalide — ou la demande a déjà été traitée.",
+  clubApprovalDecisionError: "La décision n'a pas pu être enregistrée — réessayez.",
+  clubApprovalApprove: "Approuver",
+  clubApprovalRefuse: "Refuser",
+  clubApprovalClosePage: "Vous pouvez fermer cette page.",
+  clubApprovalCreatedTitle: "Espace créé",
+  clubApprovalCreatedBody: "Le demandeur est prévenu par email — l'espace de votre club est prêt.",
+  clubApprovalRepriseApprovedTitle: "Reprise approuvée",
+  clubApprovalRepriseApprovedBody: "Le demandeur est prévenu par email — il est gestionnaire de l'espace.",
+  clubApprovalPromotionApprovedTitle: "Gestionnaire nommé",
+  clubApprovalPromotionApprovedBody: "Le demandeur est prévenu par email.",
+  clubApprovalSupersededTitle: "Demande dépassée",
+  clubApprovalSupersededTakenOver: "Un gestionnaire a déjà repris cet espace ; le demandeur est prévenu.",
+  clubApprovalSupersededCreate: "Le club existe déjà : la demande est transmise à ses gestionnaires.",
+  clubApprovalRefusedTitle: "Demande refusée",
+  clubApprovalRefusedBody: "Le demandeur est prévenu par email.",
 } as const satisfies Record<string, string | ((...args: never[]) => string)>;

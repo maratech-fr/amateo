@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace App\Tests\Security;
 
+use App\Entity\Club;
 use App\Entity\ClubCreationRequest;
+use App\Entity\ClubUser;
 use App\Entity\SuperAdmin;
 use App\Entity\User;
 use App\Security\TotpService;
@@ -177,6 +179,42 @@ final class AdminClubRequestTest extends WebTestCase
         self::assertFalse((bool) $this->admin()->fetchOne('SELECT is_active FROM club_user WHERE id = :id', ['id' => $membershipId]), 'l\'adhésion reste en attente');
     }
 
+    /**
+     * Chantier Membre PR 3 (écart 8) : la console dit la NATURE de chaque demande — `create` (aucun
+     * club réel sous ce code), `reprise` (club réel sans gestionnaire actif), `promotion` (club
+     * géré, demandeur déjà membre actif : ses gestionnaires n'ont pas répondu). Aucun bouton
+     * nouveau : la lecture seule change.
+     */
+    public function testConsoleListsTheKindOfEachRequest(): void
+    {
+        [$secret] = $this->createSuperAdmin('kind@example.test', 'VeryStrongPassword!');
+        $this->authenticate('kind@example.test', 'VeryStrongPassword!', $secret);
+
+        $create = $this->seedRequest(status: ClubCreationRequest::STATUS_PENDING);
+
+        $managerless = $this->seedClubViaOrm('RPR');
+        $repreneur = $this->seedUser();
+        $this->seedMembershipViaOrm($managerless['clubId'], $repreneur->getId(), 'member');
+        $reprise = $this->seedRequestFor($repreneur->getId(), $managerless['ara']);
+
+        $managed = $this->seedClubViaOrm('PRM');
+        $this->seedMembershipViaOrm($managed['clubId'], $this->seedUser()->getId(), 'admin');
+        $member = $this->seedUser();
+        $this->seedMembershipViaOrm($managed['clubId'], $member->getId(), 'member');
+        $promotion = $this->seedRequestFor($member->getId(), $managed['ara']);
+
+        $this->client->request('GET', '/api/admin/club-requests', [], [], ['REMOTE_ADDR' => $this->requestIp]);
+        self::assertResponseIsSuccessful();
+        $items = array_column(json_decode((string) $this->client->getResponse()->getContent(), true)['items'], null, 'id');
+        foreach ([$create, $reprise, $promotion] as $request) {
+            self::assertArrayHasKey($request->getId(), $items, 'témoin : la console liste les trois demandes');
+        }
+        $kinds = array_map(static fn (array $item): mixed => $item['kind'] ?? null, $items);
+        self::assertSame('create', $kinds[$create->getId()] ?? null);
+        self::assertSame('reprise', $kinds[$reprise->getId()] ?? null);
+        self::assertSame('promotion', $kinds[$promotion->getId()] ?? null);
+    }
+
     protected function setUp(): void
     {
         $this->client = self::createClient();
@@ -202,6 +240,44 @@ final class AdminClubRequestTest extends WebTestCase
             $this->admin()->executeStatement('DELETE FROM super_admin WHERE id = :id', ['id' => $this->adminId]);
         }
         parent::tearDown();
+    }
+
+    /** @return array{clubId: string, ara: string} un club réel semé sur la connexion PAR DÉFAUT (celle que lit la console) */
+    private function seedClubViaOrm(string $prefix): array
+    {
+        $ara = $prefix . strtoupper(substr(md5(uniqid()), 0, 7));
+        $this->clubAras[] = $ara;
+        $club = (new Club)->setName('Club ' . $ara)->setSlug('club-' . strtolower($ara))->setTimezone('Europe/Paris')->setLocale('fr');
+        $club->setFfbbClubCode($ara);
+        $this->em->persist($club);
+        $this->em->flush();
+
+        return ['clubId' => $club->getId(), 'ara' => $ara];
+    }
+
+    private function seedMembershipViaOrm(string $clubId, string $userId, string $role): void
+    {
+        $this->scopeGucToClub($clubId);
+        $membership = new ClubUser;
+        $membership->setClubId($clubId);
+        $membership->setUserId($userId);
+        $membership->setRole($role);
+        $membership->setIsActive(true);
+        $this->em->persist($membership);
+        $this->em->flush();
+        $this->clearGuc();
+    }
+
+    private function seedRequestFor(string $userId, string $ara): ClubCreationRequest
+    {
+        $request = new ClubCreationRequest;
+        $request->setUserId($userId);
+        $request->setAra($ara);
+        $request->setClubName('Club ' . $ara);
+        $this->em->persist($request);
+        $this->em->flush();
+
+        return $request;
     }
 
     private function seedRequest(string $status): ClubCreationRequest

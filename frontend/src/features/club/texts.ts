@@ -94,4 +94,24 @@ export const CLUB_TEXTS = {
   sectionVenueStats: "Statistiques des gymnases",
   sectionExport: "Exporter les données",
   sectionReset: "Réinitialiser le club",
+
+  // Chantier Membre (PR 3) — carte « Mon rôle » d'un Membre (sa demande à devenir gestionnaire,
+  // dans l'état calculé par le serveur).
+  myRoleTitle: "Mon rôle",
+  requestManagerRole: "Demander à devenir gestionnaire",
+  cancelManagerRequest: "Annuler ma demande",
+  managerRequestPending: (date: string) =>
+    `Demande en cours depuis le ${date} — les gestionnaires du club décideront. Sans réponse sous 14 jours, elle sera transmise à l'adresse officielle du club.`,
+  managerRequestEscalated: (date: string) => `Sans réponse des gestionnaires, votre demande a été transmise le ${date} à l'adresse officielle du club.`,
+  managerRequestSentToOfficial: (date: string) => `Demande transmise le ${date} à l'adresse officielle du club.`,
+  managerRequestNoOfficialAddress: "Le club n'a pas d'adresse connue : le support validera.",
+  managerRequestExpired: (date: string) => `Le club n'a pas répondu à votre demande du ${date}. Vous pouvez la renvoyer.`,
+  managerRequestRefused: (date: string, until: string) => `Le club a refusé votre demande le ${date}. Vous pourrez la renouveler à partir du ${until}.`,
+
+  // MembersSection — la demande d'un Membre (pastille + gestes nommés).
+  managerRequestPill: (date: string, escalated: boolean) => `Demande gestionnaire · ${date}${escalated ? " · transmise au club" : ""}`,
+  acceptManagerRequest: "Accepter",
+  refuseManagerRequest: "Refuser",
+  acceptManagerRequestOf: (name: string) => `Accepter la demande de ${name}`,
+  refuseManagerRequestOf: (name: string) => `Refuser la demande de ${name}`,
 } as const satisfies Record<string, string | ((...args: never[]) => string)>;

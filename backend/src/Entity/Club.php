@@ -165,6 +165,12 @@ class Club
     #[ORM\Column(type: 'datetime_immutable', nullable: true)]
     private ?DateTimeImmutable $unsubscribedAt = null;
 
+    // Chantier Membre (PR 3) — une demande de reprise vivante retient la purge d'un club sans
+    // gestionnaire UNE fois, jusqu'à cette date (l'échéance de la demande). Remis à null quand la
+    // fermeture est annulée.
+    #[ORM\Column(type: 'datetimetz_immutable', nullable: true)]
+    private ?DateTimeImmutable $purgeHoldUntil = null;
+
     // Unicité PARTIELLE (`WHERE NOT is_demo`) portée par l'index de migration
     // `uniq_club_ffbb_club_code` — pas de `unique: true` ici (voir le commentaire
     // de l'attribut de classe).
@@ -585,6 +591,18 @@ class Club
     public function setUnsubscribedAt(?DateTimeImmutable $unsubscribedAt): self
     {
         $this->unsubscribedAt = $unsubscribedAt;
+
+        return $this;
+    }
+
+    public function getPurgeHoldUntil(): ?DateTimeImmutable
+    {
+        return $this->purgeHoldUntil;
+    }
+
+    public function setPurgeHoldUntil(?DateTimeImmutable $purgeHoldUntil): self
+    {
+        $this->purgeHoldUntil = $purgeHoldUntil;
 
         return $this;
     }

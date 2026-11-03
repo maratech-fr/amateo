@@ -18,6 +18,7 @@ use App\Repository\ClubUserRepository;
 use App\Security\JwtCookieFactory;
 use App\Service\EmailChangeVerifier;
 use App\Service\MailFrom;
+use App\Service\ManagerRoleRequestService;
 use App\Service\OrphanAccountNotifier;
 use App\Service\PasswordPolicy;
 use App\Service\PlanEntitlements;
@@ -76,6 +77,7 @@ final class AuthController extends AbstractController
         // vérification d'e-mail vivent désormais dans leurs services dédiés.
         private readonly RegisterService $registerService,
         private readonly EmailVerificationService $emailVerificationService,
+        private readonly ManagerRoleRequestService $managerRoleRequests,
     ) {}
 
     #[Route('/api/register', name: 'api_register', methods: ['POST'])]
@@ -194,8 +196,10 @@ final class AuthController extends AbstractController
                     // Chantier Membre — un club SANS gestionnaire ferme : la date (Y-m-d) de sa
                     // suppression, tant qu'aucun gestionnaire actif n'existe. Null dès qu'un
                     // gestionnaire est là, même si l'échéance est encore posée (la purge l'annulera).
+                    // PR 3 : une demande de reprise vivante peut retenir la purge — la date dite est
+                    // alors la plus tardive de l'échéance et de la retenue.
                     'closingOn' => $clubEntity->getErasureScheduledAt() instanceof DateTimeImmutable && !$this->clubUserRepository->hasActiveManager($clubEntity->getId())
-                        ? $clubEntity->getErasureScheduledAt()->format('Y-m-d')
+                        ? max($clubEntity->getErasureScheduledAt(), $clubEntity->getPurgeHoldUntil() ?? $clubEntity->getErasureScheduledAt())->format('Y-m-d')
                         : null,
                 ];
 
@@ -289,6 +293,13 @@ final class AuthController extends AbstractController
             // création en cours — le frontend affiche « demande transmise au club »
             // (et son issue) au lieu d'un état « aucun club » mensonger.
             'clubRequest' => $this->clubRequestState($user->getId(), $clubUser),
+            // Chantier Membre (PR 3) — la demande du Membre à devenir gestionnaire de son club
+            // courant (null sans demande, ou pour un gestionnaire) ; jamais « en attente des
+            // gestionnaires » sur un club qui n'en a plus.
+            'managerRequest' => null !== $clubUser && null !== $clubEntity ? $this->managerRoleRequests->meState($clubUser, $clubEntity) : null,
+            // Les clubs dont ce compte est le SEUL gestionnaire actif (ils fermeraient s'il partait) :
+            // le profil propose d'y nommer un successeur avant la suppression du compte.
+            'soleManagerClubs' => $this->clubUserRepository->clubsWhereSoleActiveManager($user->getId()),
             // P4-301 — échéance de suppression d'un compte sans club : la date (Y-m-d) où
             // le compte sera supprimé faute de nouvel accès = préavis + 30 j. Non-null
             // SEULEMENT quand le préavis est posé ET que l'utilisateur n'est pas actif —

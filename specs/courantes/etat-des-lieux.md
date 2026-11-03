@@ -402,8 +402,8 @@ cron `app:users:purge-orphaned`, `/api/me` expose `accountDeletionScheduledFor`.
   demandeur aussi (club créé, repris, transmis aux gestionnaires). La console superadmin refuse (409) d'activer
   une adhésion sur un club sans gestionnaire. Un compte déjà inscrit qui retente un code FFBB de club sans
   gestionnaire reçoit, dans le mail « compte existant », l'indication de contacter le support.
-- *Pas encore* : demande de devenir gestionnaire (PR suivante du chantier) ; console des purges retenues et
-  audit des changements de rôle → roadmap.
+- *Demande de devenir gestionnaire* : livrée en PR 3 (ci-dessous) ; console des purges retenues et audit de
+  la rétrogradation → roadmap.
 
 **Un Membre lit tout, ne modifie rien (chantier Membre, PR 2, livré le 2026-11-03)** — décision fondateur :
 le Membre voit chaque écran, aucun geste d'écriture n'est offert, et le serveur le refuse de toute façon.
@@ -422,7 +422,7 @@ le Membre voit chaque écran, aucun geste d'écriture n'est offert, et le serveu
 - *Côté écran* : gestes d'écriture masqués, champs en lecture, glisser-déposer inerte, bandeau
   « Consultation : réservé aux gestionnaires » sur chaque écran de saisie ; l'assistant reste navigable et
   dit « un gestionnaire doit la compléter » au lieu de guider ; l'écran Club masque Demandes, Invitations et
-  Membres. Bandeau daté sans bouton quand le club n'a plus de gestionnaire (`/api/me.club.closingOn`).
+  Membres. Bandeau daté quand le club n'a plus de gestionnaire (`/api/me.club.closingOn`) ; il porte depuis la PR 3 le geste « Demander à devenir gestionnaire ».
   Primitives : `frontend/src/shared/session/` et `.claude/rules/frontend.md`.
 - *Preuves* : NR `MemberWriteSweepTest` (routeur confronté à une table nominative, deux sens) et
   `MemberReadsAreSideEffectFreeTest`, spec e2e `frontend/tests/e2e/member-read-only.spec.ts` (aucun 403,
@@ -430,7 +430,41 @@ le Membre voit chaque écran, aucun geste d'écriture n'est offert, et le serveu
   [`blocking-tests.md`](../../docs/testing/blocking-tests.md).
 - *Reste ouvert* → roadmap : « Réessayer » de l'écran d'indisponibilité du moteur encore offert au Membre ;
   mémoire du job de couverture.
-→ [`rgpd.md`](../../docs/security/rgpd.md) §2 (purge différée, win-back, demandes d'adhésion) ·
+
+**Un Membre demande à devenir gestionnaire (chantier Membre, PR 3, livré le 2026-11-03)** — décision fondateur :
+l'acceptation est la responsabilité du club, l'application ne pose aucun garde-fou de plus contre une prise de
+contrôle (pas de condition de connexion pour l'escalade, pas de protection de 30 jours).
+- *Club avec gestionnaires* : `POST /api/memberships/me/manager-request` pose `club_user.manager_requested_at`
+  (une demande à la fois, annulable par `DELETE` au même chemin) et prévient les gestionnaires ACTIFS — budget
+  de mails propre (`manager_role_request_*`), jamais celui des adhésions. « Accepter » dans la liste des
+  membres EST le geste du sélecteur de rôle (`MembershipController::applyRole`, même verrou de gestion) :
+  rôle posé, demande effacée, mail « nommé gestionnaire » seulement si une demande était en cours, audit
+  `MEMBERSHIP_ROLE_GRANTED`. « Refuser » (`POST /api/memberships/{id}/manager-request/refuse`) efface la demande,
+  prévient le demandeur, et il peut redemander le jour même.
+- *Escalade à 14 jours* : sans réponse des gestionnaires, la passe quotidienne du digest
+  (`ClubApprovalDigestCommand` → `ManagerRoleRequestService::escalateDue`) transmet la demande UNE seule fois à
+  l'adresse officielle du club (seau club, refus officiel de moins de 30 jours respecté) ; son approbation
+  PROMEUT le demandeur **à côté** des gestionnaires en place, personne n'est retiré
+  (`ApprovalOutcome::Promoted`). Un refus, une désactivation ou une promotion dans l'application tuent le lien
+  officiel ; un lien vers un Membre déjà promu ne fait rien. Refus officiel : 30 jours avant une nouvelle
+  demande officielle ; silence 7 jours : « n'a pas répondu », il peut redemander (nouveau cycle).
+- *Club sans gestionnaire* : le bandeau de fermeture porte le geste ; la demande part à l'adresse officielle
+  (un seul appel FFBB, seau club) et la reprise passe par le même rail d'approbation. Une demande vivante
+  retient la purge UNE fois jusqu'à son échéance (`club.purge_hold_until`, `closingOn` suit la retenue) ; les
+  demandes concurrentes de Membres : le premier approuvé gagne, les autres sont « dépassées ». Club démo ou sans
+  code FFBB : refusé sans mail.
+- *Prévention* : le seul gestionnaire d'un club voit, avant de supprimer son compte, la liste des Membres actifs
+  avec « Nommer gestionnaire » (`SuccessorPicker`, avertissement servi par `/api/me.soleManagerClubs`) ; le
+  préavis d'inactivité de 23 mois l'invite à nommer un autre gestionnaire. Une invitation acceptée ne
+  rétrograde plus jamais un gestionnaire actif.
+- *Page publique et console* : la page d'approbation dit `kind` (`create`, `reprise`, `promotion`) et ses
+  textes vivent dans `features/auth/texts.ts` (un lien « dépassé » n'affiche plus « Demande refusée ») ; la
+  console étiquette chaque demande par sa nature.
+- *Preuves* : NR `ManagerRoleRequestTest`, cf. [`blocking-tests.md`](../../docs/testing/blocking-tests.md) ;
+  parcours e2e `frontend/tests/e2e/manager-request.spec.ts`.
+- *Reste ouvert* → roadmap : audit de la rétrogradation (P4-480), quatre finitions (carte « Mon rôle »,
+  rangée de la liste des membres, titre de la console, durcissement du WHERE de promotion).
+→ [`rgpd.md`](../../docs/security/rgpd.md) §2 (purge différée, win-back, demandes d'adhésion et de rôle) ·
 [`backend-controllers.md`](../../backend/docs/backend-controllers.md) (approbation de club, `/api/me`) ·
 [`commands.md`](../../backend/docs/commands.md) (`purge-erased`, `erasure-remind`) ·
 NR `MembershipRequestNotificationTest` ([`blocking-tests.md`](../../docs/testing/blocking-tests.md))

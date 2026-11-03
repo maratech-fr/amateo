@@ -4,6 +4,7 @@ import { Button } from "@/shared/components/ui/button";
 import { EmptyHint } from "@/shared/components/ui/empty-hint";
 import { Spinner } from "@/shared/components/ui/spinner";
 
+import type { AdminClubRequest } from "../api";
 import { useActivateAdminMembership, useAdminClubRequests, useAdminPendingMemberships, useDecideAdminClubRequest } from "../queries";
 import { ADMIN_SECTIONS_TEXTS } from "../texts/sections";
 
@@ -56,6 +57,7 @@ export function ClubRequestsSection() {
                 <div className="text-sm text-console-text-bright">
                   <span className="font-medium text-white">{item.clubName}</span>{" "}
                   <span className="text-console-text-dim">({item.ara})</span>
+                  <span className="ml-2 rounded bg-console-muted/20 px-1.5 py-0.5 text-xs font-semibold text-console-text">{clubRequestKindLabel(item.kind)}</span>
                   {"expired" === item.status ? <span className="ml-2 rounded bg-console-warning-surface/15 px-1.5 py-0.5 text-xs font-semibold uppercase text-console-warning">{ADMIN_SECTIONS_TEXTS.clubRequestsBadgeExpired}</span> : null}
                   {null === item.clubEmail ? <span className="ml-2 rounded bg-console-muted/20 px-1.5 py-0.5 text-xs font-semibold uppercase text-console-text">{ADMIN_SECTIONS_TEXTS.clubRequestsBadgeNoEmail}</span> : null}
                   <div className="text-xs text-console-text-dim">
@@ -130,4 +132,9 @@ export function ClubRequestsSection() {
       </div>
     </section>
   );
+}
+
+/** La nature d'une demande (servie par le serveur, jamais redérivée) → son étiquette. */
+function clubRequestKindLabel(kind: AdminClubRequest["kind"]): string {
+  return { create: ADMIN_SECTIONS_TEXTS.clubRequestKindCreate, reprise: ADMIN_SECTIONS_TEXTS.clubRequestKindReprise, promotion: ADMIN_SECTIONS_TEXTS.clubRequestKindPromotion }[kind];
 }

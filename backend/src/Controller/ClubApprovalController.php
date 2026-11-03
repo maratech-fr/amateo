@@ -67,12 +67,18 @@ final class ClubApprovalController extends AbstractController
         }
 
         $requester = $this->entityManager->getRepository(User::class)->find($creationRequest->getUserId());
+        // Chantier Membre (PR 3) — ce qu'on approuve : une création, une reprise (club sans
+        // gestionnaire) ou une promotion (gestionnaires sans réponse). Pour une reprise ou une
+        // promotion, l'adresse du demandeur est montrée pour qu'on le reconnaisse.
+        $kind = $this->approvalService->kindOf($creationRequest);
 
         return $this->json([
             'clubName' => $creationRequest->getClubName(),
             'ara' => $creationRequest->getAra(),
             'requesterName' => $requester instanceof User ? trim($requester->getFirstName() . ' ' . $requester->getLastName()) : '',
             'expiresAt' => $creationRequest->getExpiresAt()->format('Y-m-d'),
+            'kind' => $kind,
+            'requesterEmail' => 'create' !== $kind && $requester instanceof User ? $requester->getEmail() : null,
         ]);
     }
 
@@ -103,7 +109,7 @@ final class ClubApprovalController extends AbstractController
         if ('approve' === $decision) {
             return match ($this->approvalService->approve($creationRequest)) {
                 ApprovalOutcome::NoOp => $this->notFound(),
-                ApprovalOutcome::Created, ApprovalOutcome::Reprise => $this->json(['status' => 'approved']),
+                ApprovalOutcome::Created, ApprovalOutcome::Reprise, ApprovalOutcome::Promoted => $this->json(['status' => 'approved']),
                 ApprovalOutcome::Pending, ApprovalOutcome::Superseded => $this->json(['status' => 'superseded']),
             };
         }

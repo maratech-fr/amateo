@@ -89,7 +89,7 @@ final class RgpdExportService
         // amputé aux lignes du club courant.
         $memberships = $this->tenantContext->runWithoutTenant(
             fn (): array => $this->connection()->fetchAllAssociative(
-                'SELECT cu.club_id, c.name AS club_name, cu.role, cu.is_active, cu.joined_at, cu.created_at
+                'SELECT cu.club_id, c.name AS club_name, cu.role, cu.is_active, cu.joined_at, cu.created_at, cu.manager_requested_at, cu.manager_request_escalated_at
                  FROM club_user cu JOIN club c ON c.id = cu.club_id
                  WHERE cu.user_id = :uid',
                 ['uid' => $user->getId()],

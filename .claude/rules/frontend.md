@@ -452,7 +452,15 @@ Primitives dans `src/shared/session/` et `shared/components/ui/`, jamais réécr
 - `ReadOnlyFieldset` (`ui/read-only-fieldset.tsx`) — `<fieldset disabled>` pour les zones de saisie
   PURES, sans grisage ; filtres, onglets, tri, « voir » et export restent HORS du fieldset.
 - `ClubClosingBanner` (dans `AppLayout`) — date d'effacement d'un club sans gestionnaire
-  (`me.club.closingOn`), sans bouton.
+  (`me.club.closingOn`) ; porte le seul geste « Demander à devenir gestionnaire » et l'état de la
+  demande (`me.managerRequest`, textes `SESSION_TEXTS`). Sur `/club` la carte « Mon rôle » le porte
+  et le bandeau ne le répète pas. Pastille « Demande gestionnaire » de `MembersSection` :
+  Accepter = `useChangeMemberRole(id, "admin")` (le sélecteur), Refuser = `…/manager-request/refuse`.
+- `SuccessorPicker` (`features/profile/`) — le SEUL gestionnaire nomme un successeur depuis la Zone
+  danger du profil (avertissement = `me.soleManagerClubs`, jamais redérivé ; liste des Membres lue
+  seulement si `useCanManage()` : jamais de 403 pour un Membre sur `/profile`).
+- `ClubApprovalPage` (page publique d'approbation) : textes dans `features/auth/texts.ts`, variantes
+  par `kind` (`create` / `reprise` / `promotion`) ; un lien `superseded` n'y dit plus « refusée ».
 - ⚠ **Chaque écran lit `useCanManage` lui-même** : jamais d'état de rôle passé en prop depuis un
   parent, jamais un garde global — un écran oublié rend un 403 dans un toast, c'est le signal.
 - Un Membre ne déclenche aucun appel sortant : les requêtes FFBB, géocodage et contrôle de

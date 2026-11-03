@@ -1,7 +1,7 @@
 import { RotateCcw, UserX } from "lucide-react";
 
 import type { ActiveMember, DeactivatedMember } from "@/features/auth/api";
-import { useChangeMemberRole, useDeactivateMember, useMembers, useReactivateMember } from "@/features/auth/queries";
+import { useChangeMemberRole, useDeactivateMember, useMembers, useReactivateMember, useRefuseManagerRequest } from "@/features/auth/queries";
 import { StatusPill } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
 import { Card, CardContent } from "@/shared/components/ui/card";
@@ -9,8 +9,11 @@ import { EmptyHint } from "@/shared/components/ui/empty-hint";
 import { LoadErrorHint } from "@/shared/components/ui/load-error-hint";
 import { Select } from "@/shared/components/ui/select";
 import { Spinner } from "@/shared/components/ui/spinner";
+import { frDateSlashed } from "@/shared/lib/date";
 import { ASSIGNABLE_ROLES, isManagementRole, roleLabel, type AssignableRole } from "@/shared/lib/roles";
 import { readFailed, readLoading } from "@/shared/lib/readState";
+
+import { CLUB_TEXTS } from "./texts";
 
 const SELF_LAST_MANAGER_HINT = "Vous êtes le seul gestionnaire actif : désignez-en un autre avant de vous retirer.";
 
@@ -32,6 +35,7 @@ export function MembersSection() {
   const changeRole = useChangeMemberRole();
   const deactivate = useDeactivateMember();
   const reactivate = useReactivateMember();
+  const refuseRequest = useRefuseManagerRequest();
 
   if (readLoading(membersQuery)) {
     return (
@@ -51,7 +55,7 @@ export function MembersSection() {
   // (le geste sur soi comme dernier gestionnaire). Jamais utilisé pour prédire le
   // refus d'un geste sur AUTRUI — le serveur reste seul juge de l'invariant.
   const visibleManagers = active.filter((m) => isManagementRole(m.role)).length;
-  const busy = changeRole.isPending || deactivate.isPending || reactivate.isPending;
+  const busy = changeRole.isPending || deactivate.isPending || reactivate.isPending || refuseRequest.isPending;
 
   return (
     <div className="space-y-6">
@@ -74,8 +78,35 @@ export function MembersSection() {
                         {member.isSelf ? <StatusPill variant="accent-solid">vous</StatusPill> : null}
                       </p>
                       <p className="text-sm text-muted-foreground">{member.email}</p>
+                      {member.managerRequestedAt ? (
+                        <StatusPill variant="warning" className="mt-1">
+                          {CLUB_TEXTS.managerRequestPill(frDateSlashed(member.managerRequestedAt.slice(0, 10)), null !== member.managerRequestEscalatedAt)}
+                        </StatusPill>
+                      ) : null}
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
+                      {member.managerRequestedAt ? (
+                        <>
+                          {/* « Accepter » EST le geste du sélecteur de rôle (même route, même verrou). */}
+                          <Button
+                            size="sm"
+                            disabled={busy}
+                            aria-label={CLUB_TEXTS.acceptManagerRequestOf(`${member.firstName} ${member.lastName}`)}
+                            onClick={() => changeRole.mutate({ id: member.id, role: "admin" })}
+                          >
+                            {CLUB_TEXTS.acceptManagerRequest}
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={busy}
+                            aria-label={CLUB_TEXTS.refuseManagerRequestOf(`${member.firstName} ${member.lastName}`)}
+                            onClick={() => refuseRequest.mutate(member.id)}
+                          >
+                            {CLUB_TEXTS.refuseManagerRequest}
+                          </Button>
+                        </>
+                      ) : null}
                       <label htmlFor={roleFieldId} className="sr-only">
                         Rôle de {member.firstName} {member.lastName}
                       </label>

@@ -366,9 +366,10 @@ final class MembershipRequestNotificationTest extends WebTestCase
         self::assertSame(\sprintf('L\'espace %s du club %s n\'a plus de gestionnaire', $product, $clubName), $j0[0]->getSubject());
         $body = (string) $j0[0]->getTextBody();
         self::assertStringContainsString(\sprintf('Le dernier gestionnaire de l\'espace %s du club %s a quitté le service. Sans reprise par un gestionnaire, cet espace sera supprimé définitivement le %s.', $product, $clubName, $deadline->format('d/m/Y')), $body);
-        self::assertStringContainsString(\sprintf('Vous gardez un accès en consultation jusque-là. Pour conserver l\'espace, un gestionnaire du club doit s\'inscrire sur %s avec le code FFBB du club : sa demande sera validée par l\'adresse officielle du club.', $product), $body);
-        self::assertSame($this->base() . '/register', $j0[0]->getHeaders()->getHeaderBody(EmailTemplateRenderer::CTA_URL_HEADER));
-        self::assertSame('Inscrire un gestionnaire', $j0[0]->getHeaders()->getHeaderBody(EmailTemplateRenderer::CTA_LABEL_HEADER));
+        // PR 3 : le Membre demande lui-même depuis le bandeau (plus de renvoi à l'inscription).
+        self::assertStringContainsString('Vous gardez un accès en consultation jusque-là. Si vous êtes gestionnaire du club, cliquez « Demander à devenir gestionnaire » dans le bandeau de l\'application : l\'adresse officielle du club validera.', $body);
+        self::assertSame($this->base() . '/club', $j0[0]->getHeaders()->getHeaderBody(EmailTemplateRenderer::CTA_URL_HEADER));
+        self::assertSame('Ouvrir l\'application', $j0[0]->getHeaders()->getHeaderBody(EmailTemplateRenderer::CTA_LABEL_HEADER));
 
         // J-7 : l'échéance entre dans la fenêtre du rappel.
         $this->sql('UPDATE club SET erasure_scheduled_at = NOW() + INTERVAL \'5 days\', erasure_reminder_sent_at = NULL WHERE id = :id', ['id' => $club['clubId']]);

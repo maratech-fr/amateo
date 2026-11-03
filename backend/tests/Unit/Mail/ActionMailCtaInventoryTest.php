@@ -49,6 +49,8 @@ final class ActionMailCtaInventoryTest extends TestCase
      * @var array<string, array<string, array{0: string, 1: string}>>
      */
     private const array CTA_SITES = [
+        // Chantier Membre PR 3 — liste au support des demandes de reprise sans adresse officielle.
+        'src/Command/ClubApprovalDigestCommand.php' => ['sans-adresse' => ['{base}/admin', 'Ouvrir la console']],
         'src/Command/ClubErasureReminderCommand.php' => ['rappel' => ['{base}/register', 'Inscrire un gestionnaire']],
         'src/Command/DeploymentTickCommand.php' => ['transition' => ['{base}/admin', 'Ouvrir la console']],
         'src/Command/FeedbackDigestCommand.php' => ['digest' => ['{base}/admin?tab=incidents', 'Traiter les signalements']],
@@ -72,7 +74,7 @@ final class ActionMailCtaInventoryTest extends TestCase
         'src/Service/ClubApprovalService.php' => 'foyer demande (CTA {base}/club-approval/{token} « Examiner la demande ») + foyer décision bi-branche (approuvée : CTA {base}/login « Me connecter » ; refusée : EXEMPT)',
         'src/Service/CoachWishMailBuilder.php' => 'foyer unique email() servant buildCoachLink (DÉJÀ câblé /doleances) + buildDigest/buildFinalRecap (CTA {base}/ « Ouvrir le cockpit »)',
         'src/Service/FeedbackMailBuilder.php' => 'build() accusé (EXEMPT) + buildTreated() (CTA {base}/nouveautes « Voir les nouveautés »)',
-        'src/Service/MembershipRequestMailBuilder.php' => 'foyer unique email() : demandes + synthèse (CTA {base}/club « Voir les demandes »), accepté (CTA {base}/login « Me connecter »), fermeture J0/J-7 aux Membres (CTA {base}/register « Inscrire un gestionnaire ») ; refusé : EXEMPT',
+        'src/Service/MembershipRequestMailBuilder.php' => 'foyer unique email() : demandes + synthèse (CTA {base}/club « Voir les demandes »), accepté et nommé gestionnaire (CTA {base}/login « Me connecter »), demande de rôle aux gestionnaires (CTA {base}/club « Voir les membres »), fermeture J0/J-7 aux Membres (CTA {base}/club « Ouvrir l\'application ») ; refusé, rôle refusé, dépassée, adresse officielle muette : EXEMPT',
     ];
 
     /**
@@ -94,6 +96,8 @@ final class ActionMailCtaInventoryTest extends TestCase
      * @var array<string, int>
      */
     private const array EXPECTED_SITE_COUNT = [
+        // Chantier Membre (PR 3) — l'alerte support « demandes de reprise sans adresse officielle ».
+        'src/Command/ClubApprovalDigestCommand.php' => 1,
         'src/Command/ClubErasureReminderCommand.php' => 1,
         'src/Command/DeploymentTickCommand.php' => 1,
         'src/Command/FeedbackDigestCommand.php' => 1,

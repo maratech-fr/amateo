@@ -8,11 +8,14 @@ use App\Entity\Club;
 use App\Entity\ClubInvitation;
 use App\Entity\ClubUser;
 use App\Entity\User;
+use App\Enum\AuditAction;
 use App\Enum\ClubRole;
 use App\Repository\ClubUserRepository;
 use App\Security\JwtCookieFactory;
+use App\Service\AuditTrail;
 use App\Service\ClubInvitationManager;
 use App\Service\ClubProvisioner;
+use App\Service\ManagerRoleRequestService;
 use App\Service\OrphanAccountNotifier;
 use App\Service\PasswordPolicy;
 use App\Service\Registration\ClubWinBackService;
@@ -73,6 +76,8 @@ final class PublicInvitationController extends AbstractController
         private readonly ClockInterface $clock,
         private readonly RateLimiterFactory $invitationPublicLimiter,
         private readonly ClubWinBackService $clubWinBack,
+        private readonly ManagerRoleRequestService $managerRoleRequests,
+        private readonly AuditTrail $auditTrail,
     ) {}
 
     #[Route('/api/invitations/public/{token}', name: 'api_invitations_public_show', methods: ['GET'])]
@@ -245,7 +250,18 @@ final class PublicInvitationController extends AbstractController
     {
         $existing = $this->clubUserRepository->findOneBy(['clubId' => $clubId, 'userId' => $userId]);
         if ($existing instanceof ClubUser) {
-            $existing->setRole($role->value);
+            $wasActiveManager = $existing->getIsActive() && $this->clubUserRepository->isManagementRole($existing->getRole());
+            // Chantier Membre (PR 3) — une invitation ne RÉTROGRADE jamais : un gestionnaire actif
+            // qui accepte une vieille invitation « Membre » le reste (le club ne se vide pas).
+            if (!$wasActiveManager) {
+                $existing->setRole($role->value);
+            }
+            if (!$wasActiveManager && ClubRole::MANAGER === $role) {
+                // Une invitation gestionnaire PROMEUT : la demande de rôle meurt (lien officiel
+                // fermé) et la promotion se trace.
+                $this->managerRoleRequests->clearRequest($existing);
+                $this->auditTrail->record(AuditAction::MEMBERSHIP_ROLE_GRANTED, $userId, $clubId, 'ClubUser', $existing->getId(), ['source' => 'invitation']);
+            }
             $existing->setIsActive(true);
             $existing->setDeactivatedAt(null);
             // P4-301 — regagner une adhésion active annule le préavis « compte sans club ».

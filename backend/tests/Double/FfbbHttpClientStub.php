@@ -135,6 +135,13 @@ final class FfbbHttpClientStub implements HttpClientInterface
      */
     public static bool $failSearch = false;
 
+    /**
+     * Chantier Membre PR 3 — nombre de recherches d'ORGANISME (mail institutionnel du club)
+     * reçues, pannes simulées comprises : prouve qu'un geste n'émet qu'UN appel sortant (la seule
+     * exception sortante d'un Membre, la lecture de l'adresse officielle). Remis à zéro par le test.
+     */
+    public static int $organismeSearchCount = 0;
+
     private readonly MockHttpClient $inner;
 
     public function __construct()
@@ -143,12 +150,15 @@ final class FfbbHttpClientStub implements HttpClientInterface
             if (str_contains($url, 'api.ffbb.com')) {
                 return new MockResponse((string) json_encode(['data' => ['key_ms' => 'stub-token']]));
             }
+            $body = \is_string($options['body'] ?? null) ? $options['body'] : '';
+            if (str_contains($body, 'ffbbserver_organismes')) {
+                ++self::$organismeSearchCount;
+            }
             // P4-298 — panne transport SIMULÉE de la recherche (jamais du jeton de config
             // ci-dessus) : prouve le dégradé `unavailable` sans jamais toucher le vrai réseau.
             if (self::$failSearch) {
                 throw new TransportException('stub FFBB transport down');
             }
-            $body = \is_string($options['body'] ?? null) ? $options['body'] : '';
 
             // P3-4 : la recherche d'organisme (mail institutionnel du club) — SEUL
             // le code connu du stub rend un hit ; tout ARA de test aléatoire tombe

@@ -6,11 +6,15 @@ namespace App\Controller;
 
 use App\Entity\ClubUser;
 use App\Entity\User;
+use App\Enum\AuditAction;
 use App\Enum\ClubRole;
 use App\Repository\ClubUserRepository;
+use App\Service\AuditTrail;
+use App\Service\ManagerRoleRequestService;
 use App\Service\MembershipRequestNotifier;
 use App\Service\OrphanAccountNotifier;
 use DateTimeImmutable;
+use DateTimeInterface;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
@@ -41,6 +45,8 @@ final class MembershipController extends AbstractController
         private readonly RequestStack $requestStack,
         private readonly OrphanAccountNotifier $orphanAccountNotifier,
         private readonly MembershipRequestNotifier $membershipRequestNotifier,
+        private readonly ManagerRoleRequestService $managerRoleRequests,
+        private readonly AuditTrail $auditTrail,
     ) {}
 
     #[Route('/api/memberships', name: 'api_memberships_list', methods: ['GET'])]
@@ -190,17 +196,53 @@ final class MembershipController extends AbstractController
             return $role;
         }
 
-        // Rétrograder en Membre fait SORTIR la cible du management : le verrou du
-        // dernier gestionnaire s'applique. Promouvoir en Gestionnaire ne menace rien.
-        return $this->mutateUnderManagementLock(
-            $adminMembership,
-            $id,
-            removesManagement: ClubRole::MANAGER !== $role,
-            requireActive: false,
-            mutate: static function (ClubUser $target) use ($role): void {
-                $target->setRole($role->value);
-            },
-        );
+        return $this->applyRole($adminMembership, $id, $role, 'manager');
+    }
+
+    /**
+     * Chantier Membre (PR 3) — un Membre ACTIF demande à devenir gestionnaire de son club courant
+     * (club géré : ses gestionnaires décident ; club sans gestionnaire : l'adresse officielle).
+     */
+    #[Route('/api/memberships/me/manager-request', name: 'api_memberships_manager_request', methods: ['POST'])]
+    public function requestManagerRole(): JsonResponse
+    {
+        $own = $this->requireActiveOwnMembership();
+        if ($own instanceof JsonResponse) {
+            return $own;
+        }
+        [$membership, $user] = $own;
+        if ($this->clubUserRepository->isManagementRole($membership->getRole())) {
+            return $this->json(['error' => 'Vous êtes déjà gestionnaire.'], 409);
+        }
+        [$status, $body] = $this->managerRoleRequests->request($membership, $user);
+
+        return $this->json($body, $status);
+    }
+
+    /** Le Membre annule sa demande (stamp effacé, demandes officielles vivantes closes). */
+    #[Route('/api/memberships/me/manager-request', name: 'api_memberships_manager_request_cancel', methods: ['DELETE'])]
+    public function cancelManagerRequest(): JsonResponse
+    {
+        $own = $this->requireActiveOwnMembership();
+        if ($own instanceof JsonResponse) {
+            return $own;
+        }
+        [$status, $body] = $this->managerRoleRequests->cancel(...$own);
+
+        return 204 === $status ? new JsonResponse(null, 204) : $this->json($body, $status);
+    }
+
+    /** Un gestionnaire refuse la demande d'un Membre de SON club (« Accepter » = le sélecteur de rôle). */
+    #[Route('/api/memberships/{id}/manager-request/refuse', name: 'api_memberships_manager_request_refuse', methods: ['POST'])]
+    public function refuseManagerRequest(string $id): JsonResponse
+    {
+        $adminMembership = $this->requireActiveAdmin();
+        if ($adminMembership instanceof JsonResponse) {
+            return $adminMembership;
+        }
+        [$status, $body] = $this->managerRoleRequests->refuseByManager($adminMembership, $id);
+
+        return $this->json($body, $status);
     }
 
     #[Route('/api/memberships/{id}/deactivate', name: 'api_memberships_deactivate', methods: ['POST'])]
@@ -220,9 +262,12 @@ final class MembershipController extends AbstractController
             $id,
             removesManagement: true,
             requireActive: true,
-            mutate: static function (ClubUser $target): void {
+            mutate: function (ClubUser $target): void {
                 $target->setIsActive(false);
                 $target->setDeactivatedAt(new DateTimeImmutable);
+                // Chantier Membre (PR 3) — la désactivation efface la demande de rôle et clôt sa
+                // demande officielle vivante, dans la même transaction (lien mort).
+                $this->managerRoleRequests->clearRequest($target);
             },
         );
 
@@ -269,6 +314,49 @@ final class MembershipController extends AbstractController
         $this->entityManager->flush();
 
         return $this->json(['id' => $target->getId(), 'isActive' => true, 'role' => $target->getRole()]);
+    }
+
+    /**
+     * Chantier Membre (PR 3) — LE geste unique de changement de rôle : le sélecteur des membres ET
+     * « Accepter » une demande à devenir gestionnaire (même code, même verrou). Une PROMOTION efface
+     * la demande de rôle de la cible et clôt sa demande officielle vivante dans la même transaction,
+     * se trace (`GRANTED`, acteur = le gestionnaire), et prévient la cible — seulement si elle avait
+     * demandé (une promotion spontanée n'envoie rien). Un compte effacé n'est jamais promu.
+     */
+    private function applyRole(ClubUser $admin, string $targetId, ClubRole $role, string $source): JsonResponse
+    {
+        if (ClubRole::MANAGER === $role) {
+            $candidate = $this->clubUserRepository->find($targetId);
+            if ($candidate instanceof ClubUser && $candidate->getClubId() === $admin->getClubId() && $this->targetUserIsAnonymized($candidate)) {
+                return $this->json(['error' => 'Ce compte a été supprimé (RGPD) — il ne peut pas être promu.'], 409);
+            }
+        }
+
+        $promoted = null;
+        $requested = false;
+        $result = $this->mutateUnderManagementLock(
+            $admin,
+            $targetId,
+            removesManagement: ClubRole::MANAGER !== $role,
+            requireActive: false,
+            mutate: function (ClubUser $target) use ($role, $admin, $source, &$promoted, &$requested): void {
+                $wasManager = $target->getIsActive() && $this->clubUserRepository->isManagementRole($target->getRole());
+                $target->setRole($role->value);
+                if (ClubRole::MANAGER !== $role || $wasManager || !$target->getIsActive()) {
+                    return;
+                }
+                $requested = $target->getManagerRequestedAt() instanceof DateTimeImmutable;
+                $this->managerRoleRequests->clearRequest($target);
+                $this->auditTrail->record(AuditAction::MEMBERSHIP_ROLE_GRANTED, $admin->getUserId(), $target->getClubId(), 'ClubUser', $target->getId(), ['source' => $source]);
+                $promoted = $target;
+            },
+        );
+
+        if (200 === $result->getStatusCode() && $promoted instanceof ClubUser && $requested) {
+            $this->membershipRequestNotifier->notifyRoleGranted($promoted->getClubId(), $promoted->getUserId());
+        }
+
+        return $result;
     }
 
     /**
@@ -377,6 +465,27 @@ final class MembershipController extends AbstractController
     }
 
     /**
+     * L'adhésion ACTIVE de l'appelant au club courant (tout rôle) — 403 sans club résolu (adhésion
+     * désactivée ou en attente : `TenantFilterListener` ne pose aucun club).
+     *
+     * @return array{0: ClubUser, 1: User}|JsonResponse
+     */
+    private function requireActiveOwnMembership(): array|JsonResponse
+    {
+        $user = $this->getUser();
+        if (!$user instanceof User) {
+            return $this->json(['error' => 'Unauthorized'], 401);
+        }
+        $clubId = $this->resolveCurrentClubId($this->requestStack);
+        $membership = null !== $clubId ? $this->clubUserRepository->findActiveMembership($user->getId(), $clubId) : null;
+        if (!$membership instanceof ClubUser) {
+            return $this->json(['error' => 'Accès refusé.'], 403);
+        }
+
+        return [$membership, $user];
+    }
+
+    /**
      * P4-77 — le compte utilisateur de cette adhésion a-t-il été effacé (RGPD) ? Un compte
      * anonymisé (`User::anonymizedAt`) a vu son identité écrasée et ne peut plus s'authentifier :
      * ni approuver ni réactiver son adhésion. Un compte introuvable n'est pas anonymisé (false).
@@ -426,6 +535,10 @@ final class MembershipController extends AbstractController
                 'lastName' => $user->getLastName(),
                 'role' => $membership->getRole(),
                 'isSelf' => $membership->getId() === $adminMembership->getId(),
+                // Chantier Membre (PR 3) — la demande à devenir gestionnaire (pastille + gestes),
+                // et sa transmission à l'adresse officielle après 14 jours sans réponse.
+                'managerRequestedAt' => $membership->getManagerRequestedAt()?->format(DateTimeInterface::ATOM),
+                'managerRequestEscalatedAt' => $membership->getManagerRequestEscalatedAt()?->format(DateTimeInterface::ATOM),
             ];
         }
 

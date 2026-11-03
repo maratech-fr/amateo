@@ -43,6 +43,9 @@ final class MembershipRequestNotifier
         private readonly MailerInterface $mailer,
         private readonly RateLimiterFactory $membershipRequestNotifyLimiter,
         private readonly RateLimiterFactory $membershipRequestDigestLimiter,
+        // Chantier Membre (PR 3) — budget SÉPARÉ des demandes de rôle : jamais celui des adhésions.
+        private readonly RateLimiterFactory $managerRoleRequestNotifyLimiter,
+        private readonly RateLimiterFactory $managerRoleRequestDigestLimiter,
         private readonly LoggerInterface $logger,
     ) {}
 
@@ -121,6 +124,100 @@ final class MembershipRequestNotifier
             }
         } catch (Throwable $e) {
             $this->logger->warning('Membership refused notice failed', ['clubId' => $clubId, 'error' => $e->getMessage()]);
+        }
+    }
+
+    /**
+     * Chantier Membre (PR 3) — un Membre demande à devenir gestionnaire : chaque gestionnaire ACTIF
+     * reçoit un mail. Budget PROPRE par club (`manager_role_request_notify`, puis UNE synthèse
+     * `manager_role_request_digest`, puis silence) — le budget des adhésions n'est jamais touché.
+     * Aucun destinataire → rien n'est consommé.
+     */
+    public function notifyRoleRequest(string $clubId, string $requesterUserId): void
+    {
+        try {
+            $recipients = $this->clubUserRepository->findManagementEmails($clubId);
+            $club = $this->entityManager->getRepository(Club::class)->find($clubId);
+            $user = $this->entityManager->getRepository(User::class)->find($requesterUserId);
+            if ([] === $recipients || !$club instanceof Club || !$user instanceof User) {
+                return;
+            }
+            $name = MailSafeName::of($user->getFirstName(), $user->getLastName());
+            if ($this->managerRoleRequestNotifyLimiter->create($clubId)->consume(1)->isAccepted()) {
+                foreach ($recipients as $to) {
+                    $this->send($this->mailBuilder->buildRoleRequest($to, $club, $name, $user->getEmail()), $clubId);
+                }
+
+                return;
+            }
+            if ($this->managerRoleRequestDigestLimiter->create($clubId)->consume(1)->isAccepted()) {
+                foreach ($recipients as $to) {
+                    $this->send($this->mailBuilder->buildRoleDigest($to, $club), $clubId);
+                }
+            }
+        } catch (Throwable $e) {
+            $this->logger->warning('Manager role request notice failed', ['clubId' => $clubId, 'error' => $e->getMessage()]);
+        }
+    }
+
+    /** Le demandeur est nommé gestionnaire (sa demande était en cours). */
+    public function notifyRoleGranted(string $clubId, string $userId): void
+    {
+        $this->toRequester($clubId, $userId, fn (string $to, Club $club, User $user): Email => $this->mailBuilder->buildRoleGranted($to, $club, $user->getFirstName()));
+    }
+
+    /** La demande de rôle est refusée — `$renewFrom` quand l'adresse officielle refuse (30 jours). */
+    public function notifyRoleRefused(string $clubId, string $userId, ?DateTimeImmutable $renewFrom = null): void
+    {
+        $this->toRequester($clubId, $userId, fn (string $to, Club $club, User $user): Email => $this->mailBuilder->buildRoleRefused($to, $club, $user->getFirstName(), $renewFrom));
+    }
+
+    /** Un autre a repris le club avant que la demande ne soit examinée. */
+    public function notifySuperseded(string $clubId, string $userId): void
+    {
+        $this->toRequester($clubId, $userId, fn (string $to, Club $club, User $user): Email => $this->mailBuilder->buildSuperseded($to, $club, $user->getFirstName()));
+    }
+
+    /** L'adresse officielle n'a pas répondu dans les 7 jours. */
+    public function notifyOfficialExpired(string $clubId, string $userId, DateTimeImmutable $requestedAt): void
+    {
+        $this->toRequester($clubId, $userId, fn (string $to, Club $club, User $user): Email => $this->mailBuilder->buildOfficialExpired($to, $club, $user->getFirstName(), $requestedAt));
+    }
+
+    /**
+     * 14 jours sans réponse des gestionnaires : la demande part à l'adresse officielle — le
+     * demandeur et les gestionnaires actifs l'apprennent (un mail factuel chacun, hors seau).
+     */
+    public function notifyRoleEscalated(string $clubId, string $userId, DateTimeImmutable $requestedAt): void
+    {
+        $this->toRequester($clubId, $userId, fn (string $to, Club $club, User $user): Email => $this->mailBuilder->buildRoleEscalatedToRequester($to, $club, $user->getFirstName(), $requestedAt));
+        try {
+            $club = $this->entityManager->getRepository(Club::class)->find($clubId);
+            $user = $this->entityManager->getRepository(User::class)->find($userId);
+            if (!$club instanceof Club || !$user instanceof User) {
+                return;
+            }
+            $name = MailSafeName::of($user->getFirstName(), $user->getLastName());
+            foreach ($this->clubUserRepository->findManagementEmails($clubId) as $to) {
+                $this->send($this->mailBuilder->buildRoleEscalatedToManagers($to, $club, $name), $clubId);
+            }
+        } catch (Throwable $e) {
+            $this->logger->warning('Manager role escalation notice failed', ['clubId' => $clubId, 'error' => $e->getMessage()]);
+        }
+    }
+
+    /** @param callable(string, Club, User): Email $build */
+    private function toRequester(string $clubId, string $userId, callable $build): void
+    {
+        try {
+            $user = $this->entityManager->getRepository(User::class)->find($userId);
+            $club = $this->entityManager->getRepository(Club::class)->find($clubId);
+            if (!$user instanceof User || !$club instanceof Club || $user->getAnonymizedAt() instanceof DateTimeImmutable) {
+                return;
+            }
+            $this->mailer->send($build($user->getEmail(), $club, $user));
+        } catch (Throwable $e) {
+            $this->logger->warning('Manager role requester notice failed', ['clubId' => $clubId, 'error' => $e->getMessage()]);
         }
     }
 

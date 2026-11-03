@@ -98,6 +98,10 @@ export const ADMIN_SECTIONS_TEXTS = {
   clubRequestsCreationEmpty: "Aucune demande en attente.",
   clubRequestsBadgeExpired: "Expirée",
   clubRequestsBadgeNoEmail: "Sans mail FFBB",
+  // Chantier Membre (PR 3) — la nature de chaque demande, servie par le serveur (`kind`).
+  clubRequestKindCreate: "Création",
+  clubRequestKindReprise: "Reprise (club sans gestionnaire)",
+  clubRequestKindPromotion: "Promotion (gestionnaires sans réponse)",
   clubRequestsRequestedBy: (requester: string, email: string, createdAt: string, expiresAt: string) =>
     `Demandé par ${requester} (${email}) le ${createdAt} — expire le ${expiresAt}`,
   clubRequestsApprove: "Approuver",

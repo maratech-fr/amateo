@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace App\Service\Registration;
 
 use App\Entity\Club;
-use App\Entity\ClubUser;
 use App\Enum\AuditAction;
 use App\Enum\ClubRole;
 use App\Repository\ClubUserRepository;
@@ -15,6 +14,7 @@ use App\Service\OrphanAccountNotifier;
 use App\Service\TenantConnectionContext;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
+use LogicException;
 
 /**
  * Reprise d'un club existant sans GESTIONNAIRE actif (fermeture programmée, ou workspace purgé
@@ -66,6 +66,8 @@ final class ClubWinBackService
         $club->setUnsubscribedAt(null);
         $club->setErasureScheduledAt(null);
         $club->setErasureReminderSentAt(null);
+        // Chantier Membre (PR 3) — la retenue de purge d'une demande de reprise meurt avec la fermeture.
+        $club->setPurgeHoldUntil(null);
         if ($wasClosing) {
             $this->auditTrail->record(AuditAction::CLUB_CLOSURE_CANCELLED, $actorUserId, $club->getId(), 'Club', $club->getId(), ['source' => $source]);
         }
@@ -85,14 +87,28 @@ final class ClubWinBackService
     {
         $this->tenantConnectionContext->setClubId($existingClub->getId());
         // Le repreneur peut DÉJÀ porter une adhésion à ce club (ancien membre parti,
-        // ligne désactivée ou pending) : la contrainte unique (club_id, user_id) interdit
-        // un second `club_user`. On RÉACTIVE et PROMEUT la ligne existante en Gestionnaire
-        // actif plutôt que d'en insérer une seconde ; à défaut, on en crée une.
-        $existing = $this->clubUserRepository->findOneBy(['clubId' => $existingClub->getId(), 'userId' => $userId]);
-        if ($existing instanceof ClubUser) {
-            $existing->setRole(ClubRole::MANAGER->value);
-            $existing->setIsActive(true);
-            $existing->setDeactivatedAt(null);
+        // ligne désactivée ou pending, Membre resté) : la contrainte unique (club_id, user_id)
+        // interdit un second `club_user`. On RÉACTIVE et PROMEUT la ligne existante en
+        // Gestionnaire actif plutôt que d'en insérer une seconde ; à défaut, on en crée une.
+        //
+        // Chantier Membre (PR 3) — lecture et écriture en SQL BRUT sous le GUC du club repris :
+        // le lien d'approbation peut être ouvert par un visiteur CONNECTÉ à un autre club, dont le
+        // filtre tenant Doctrine masquerait la ligne (on en créerait alors une seconde). La demande
+        // de rôle éventuelle (stamps) meurt avec la promotion.
+        $connection = $this->entityManager->getConnection();
+        $existingId = $connection->fetchOne(
+            'SELECT id FROM club_user WHERE club_id = :cid AND user_id = :uid',
+            ['cid' => $existingClub->getId(), 'uid' => $userId],
+        );
+        if (\is_string($existingId)) {
+            $updated = $connection->executeStatement(
+                'UPDATE club_user SET role = :role, is_active = true, deactivated_at = NULL, manager_requested_at = NULL, '
+                . 'manager_request_escalated_at = NULL, updated_at = NOW() WHERE club_id = :cid AND user_id = :uid',
+                ['role' => ClubRole::MANAGER->value, 'cid' => $existingClub->getId(), 'uid' => $userId],
+            );
+            if (1 !== $updated) {
+                throw new LogicException('Reprise: exactly one membership row must be promoted.');
+            }
             // P4-301 — reprise d'une ligne existante : retour d'un accès actif → annule le
             // préavis « compte sans club » (la branche `else` passe par createMembership,
             // qui l'annule déjà). Flushé par la transaction de l'appelant.

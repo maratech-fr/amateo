@@ -119,6 +119,7 @@ services:
   scope) and `MemberReadsAreSideEffectFreeTest` proves the opened reads write and send nothing.
   A member never triggers an outbound call (FFBB, geocoding stay manager-only; an unstored opponent
   logo is not downloaded for them) and never receives a coach's personal wish link.
+  A member asks to become a manager through the member-open `POST|DELETE /api/memberships/me/manager-request`; the manager-only `POST …/{id}/manager-request/refuse` and the role selector decide (`ManagerRoleRequestTest`, blocking gate step). The official-address approval of an escalated request promotes the requester with a raw UPDATE **outside the tenant filter but under `setClubId(club)`** (RLS is `FORCE` on `club_user`; exactly one row must be touched, else it throws) — same pattern as the win-back `reprise`.
 - **Connection separation (wired):** runtime = `amateo_app` (`DATABASE_URL`), migrations/ops/fixtures = `amateo_owner` via the Doctrine `admin` connection (`DATABASE_ADMIN_URL`). `amateo_owner` bypasses RLS — that is the deliberate superadmin supervision door (see `docs/security/rls.md`).
 - ⚠ pgbouncer transaction-pooling is incompatible with the session-scoped GUC — redesign before introducing a pooler.
 

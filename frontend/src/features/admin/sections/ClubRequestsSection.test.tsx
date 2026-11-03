@@ -44,3 +44,31 @@ describe("ClubRequestsSection — états vides", () => {
     expect(hint.className).toContain("text-console-muted");
   });
 });
+
+/**
+ * Chantier Membre PR 3 (plan v5, écart 8) : chaque demande porte son ÉTIQUETTE, d'après le `kind`
+ * servi par le serveur (jamais redérivé) — Création, Reprise (club sans gestionnaire), Promotion
+ * (gestionnaires sans réponse). Lecture seule : aucun bouton nouveau.
+ */
+describe("ClubRequestsSection — nature de chaque demande", () => {
+  beforeEach(() => {
+    mockMemberships.mockReset().mockResolvedValue({ items: [] });
+    useAdminStore.getState().setSession({ id: "sa", email: "sa@x" }, "csrf-token");
+  });
+
+  it("étiquette Création, Reprise et Promotion, une par ligne", async () => {
+    const base = { clubEmail: "club@ffbb.fr", status: "pending" as const, requesterName: "Léa Martin", requesterEmail: "lea@club.fr", createdAt: "2026-11-01T09:00:00+01:00", expiresAt: "2026-11-08" };
+    mockRequests.mockReset().mockResolvedValue({
+      items: [
+        { ...base, id: "r-create", clubName: "Club Neuf", ara: "ARA0000010", kind: "create" },
+        { ...base, id: "r-reprise", clubName: "Club Fermant", ara: "ARA0000011", kind: "reprise" },
+        { ...base, id: "r-promotion", clubName: "Club Muet", ara: "ARA0000012", kind: "promotion" },
+      ],
+    });
+    renderWithProviders(<ClubRequestsSection />, { route: "/admin" });
+
+    expect(await screen.findByText(ADMIN_SECTIONS_TEXTS.clubRequestKindCreate)).toBeInTheDocument();
+    expect(screen.getByText(ADMIN_SECTIONS_TEXTS.clubRequestKindReprise)).toBeInTheDocument();
+    expect(screen.getByText(ADMIN_SECTIONS_TEXTS.clubRequestKindPromotion)).toBeInTheDocument();
+  });
+});

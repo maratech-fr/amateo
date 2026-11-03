@@ -460,6 +460,43 @@ final readonly class UncoveredCustomPaths implements CustomPathContributor
                 ],
                 summary: 'Reactivate a deactivated membership (management-only)',
             )),
+            '/api/memberships/me/manager-request' => new PathItem(
+                post: new Operation(
+                    operationId: 'postApiMembershipManagerRequest',
+                    tags: ['Memberships'],
+                    responses: [
+                        '201' => new Response('Request sent: `{"status":"pending","since"}` (club with managers — they decide) or `{"status":"club_pending","since","clubEmailKnown"}` (club without a manager — the club official address decides)'),
+                        '401' => $unauthorized,
+                        '403' => new Response('No active membership in the current club'),
+                        '409' => new Response('Already a manager, a request is already pending, demo club / club without FFBB code, or a recent refusal by the club official address'),
+                        '429' => new Response('Daily per-user or per-club request limit reached'),
+                    ],
+                    summary: 'An active Member asks to become a manager of the current club',
+                ),
+                delete: new Operation(
+                    operationId: 'deleteApiMembershipManagerRequest',
+                    tags: ['Memberships'],
+                    responses: [
+                        '204' => new Response('Request cancelled (any link sent to the club official address is dead)'),
+                        '401' => $unauthorized,
+                        '403' => new Response('No active membership in the current club'),
+                        '404' => new Response('No request to cancel'),
+                    ],
+                    summary: 'The Member cancels their request to become a manager',
+                ),
+            ),
+            '/api/memberships/{id}/manager-request/refuse' => new PathItem(post: new Operation(
+                operationId: 'postApiMembershipManagerRequestRefuse',
+                tags: ['Memberships'],
+                responses: [
+                    '200' => new Response('Request refused: `{id, role, isActive, isSelf}` — the Member keeps read-only access and may ask again'),
+                    '401' => $unauthorized,
+                    '403' => new Response('Member but not a management role'),
+                    '404' => $notFound,
+                    '409' => new Response('No pending request'),
+                ],
+                summary: 'Refuse a Member request to become a manager (accepting = the role change, body {"role":"admin"})',
+            )),
             '/api/memberships/{id}/reject' => new PathItem(post: new Operation(
                 operationId: 'postApiMembershipReject',
                 tags: ['Memberships'],

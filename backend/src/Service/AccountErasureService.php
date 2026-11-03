@@ -148,7 +148,8 @@ final class AccountErasureService
         foreach ($clubIds as $clubId) {
             $this->tenantConnectionContext->setClubId($clubId);
             $this->entityManager->getConnection()->executeStatement(
-                'UPDATE club_user SET is_active = false, deactivated_at = NOW(), updated_at = NOW() WHERE user_id = :uid AND club_id = :cid',
+                // Chantier Membre (PR 3) : la demande de rôle (stamps) meurt avec le compte.
+                'UPDATE club_user SET is_active = false, deactivated_at = NOW(), manager_requested_at = NULL, manager_request_escalated_at = NULL, updated_at = NOW() WHERE user_id = :uid AND club_id = :cid',
                 ['uid' => $user->getId(), 'cid' => $clubId],
             );
         }

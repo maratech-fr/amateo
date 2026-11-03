@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace App\Command;
 
 use App\Entity\Club;
+use App\Entity\ClubCreationRequest;
+use App\Repository\ClubCreationRequestRepository;
 use App\Repository\ClubUserRepository;
 use App\Service\ErasedClubPurger;
 use App\Service\Registration\ClubWinBackService;
@@ -48,6 +50,7 @@ final class PurgeErasedClubsCommand extends Command
         private readonly ClubWinBackService $clubWinBack,
         private readonly ClockInterface $clock,
         private readonly ManagerRegistry $managerRegistry,
+        private readonly ClubCreationRequestRepository $clubCreationRequests,
     ) {
         parent::__construct();
     }
@@ -159,6 +162,25 @@ final class PurgeErasedClubsCommand extends Command
             $freshClub->setErasureScheduledAt($now->modify(self::HOLD_DELAY));
             $freshClub->setErasureReminderSentAt(null);
             $io->warning(\sprintf('Club %s purge held: the J-7 reminder was never sent — rescheduled to %s', $clubId, $now->modify(self::HOLD_DELAY)->format('Y-m-d')));
+
+            return ['held', []];
+        }
+
+        // Chantier Membre (PR 3) — une demande de reprise VIVANTE sur le code retient la purge UNE
+        // fois, jusqu'à son échéance (jamais renouvelée) ; au-delà, la purge passe même si une
+        // demande vit encore.
+        $hold = $freshClub->getPurgeHoldUntil();
+        if (!$hold instanceof DateTimeImmutable && null !== $ffbbCode) {
+            $expiries = array_map(static fn (ClubCreationRequest $request): DateTimeImmutable => $request->getExpiresAt(), $this->clubCreationRequests->findPendingByAra($ffbbCode));
+            if ([] !== $expiries) {
+                $freshClub->setPurgeHoldUntil(max($expiries));
+                $io->warning(\sprintf('Club %s purge held: a takeover request is pending — held until %s', $clubId, max($expiries)->format('Y-m-d')));
+
+                return ['held', []];
+            }
+        }
+        if ($hold instanceof DateTimeImmutable && $now <= $hold) {
+            $io->warning(\sprintf('Club %s purge held until %s (pending takeover request)', $clubId, $hold->format('Y-m-d')));
 
             return ['held', []];
         }
