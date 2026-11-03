@@ -85,6 +85,15 @@ class ConstraintResource
     #[Groups(['read'])]
     public ?string $parentConstraintId = null;
 
+    /**
+     * Ce que l'enregistrement d'une fermeture de gymnase a retiré des plannings de période (verrous
+     * et réservations au gymnase fermé, ces jours-là) ; null hors de ce geste.
+     *
+     * @var array{locks: int, reservations: int}|null
+     */
+    #[Groups(['read'])]
+    public ?array $removed = null;
+
     public static function fromEntity(Constraint $entity): self
     {
         $dto = new self;

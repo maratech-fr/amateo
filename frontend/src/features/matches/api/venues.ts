@@ -1,7 +1,6 @@
 import { api } from "@/shared/api/client";
 import { collectionAll } from "@/shared/api/collection";
 import { sortByName } from "@/shared/lib/nameOrder";
-import type { FixtureStatus } from "./fixtures";
 
 export interface Venue {
   id: string;
@@ -118,16 +117,6 @@ export interface VenueMatchWindow {
   endTime: string;
 }
 
-/** All-circumstances venue closure — alerts, never blocks. */
-export interface VenueUnavailability {
-  id: string;
-  venueId: string;
-  /** Y-m-d, inclusive. */
-  startDate: string;
-  endDate: string;
-  label: string | null;
-}
-
 /**
  * P4-300 — une FERMETURE de gymnase du calendrier (`venue_closed`), lecture seule. Le serveur la
  * dérive comme FAIT brut (dates du `config`, repli legacy) via `PlanVenueClosures::closureIntervals` ;
@@ -141,25 +130,8 @@ export interface VenueClosure {
   /** Y-m-d, inclusive. */
   startDate: string;
   endDate: string;
-}
-
-export interface UnavailabilityImpactItem {
-  unavailabilityId: string;
-  venueId: string;
-  startDate: string;
-  endDate: string;
-  label: string | null;
-  affectedFixtures: { fixtureId: string; teamId: string; matchDate: string; kickoffTime: string | null; status: FixtureStatus }[];
-  /** Dated training sessions inside the range. */
-  trainingOccurrences: number;
-  /** Distinct weekly slots affected. */
-  trainingSlotCount: number;
-}
-
-export interface UnavailabilityImpactResponse {
-  clubId: string;
-  seasonId: string | null;
-  items: UnavailabilityImpactItem[];
+  /** L'entrée de calendrier qui porte la fermeture (la carte du cockpit l'apparie à ses fermetures). */
+  calendarEntryId?: string;
 }
 
 export const getVenueMatchWindows = (): Promise<VenueMatchWindow[]> => collectionAll<VenueMatchWindow>("venue_match_windows");
@@ -169,18 +141,6 @@ export const createVenueMatchWindow = (
 ): Promise<VenueMatchWindow> => api.post("venue_match_windows", { json: input }).json<VenueMatchWindow>();
 
 export const deleteVenueMatchWindow = (id: string): Promise<void> => api.delete(`venue_match_windows/${id}`).then(() => undefined);
-
-export const getVenueUnavailabilities = (): Promise<VenueUnavailability[]> =>
-  (async () => (await collectionAll<VenueUnavailability>("venue_unavailabilities")).map((u) => ({ ...u, label: u.label ?? null })))();
-
-export const createVenueUnavailability = (input: { venueId: string; startDate: string; endDate: string; label?: string }): Promise<VenueUnavailability> =>
-  api.post("venue_unavailabilities", { json: input }).json<VenueUnavailability>();
-
-export const deleteVenueUnavailability = (id: string): Promise<void> => api.delete(`venue_unavailabilities/${id}`).then(() => undefined);
-
-/** Alert-only impact feed (cockpit card): what each unavailability affects. */
-export const getUnavailabilityImpact = (): Promise<UnavailabilityImpactResponse> =>
-  api.get("venue-unavailability-impact").json<UnavailabilityImpactResponse>();
 
 /** P4-300 — les fermetures de gymnase du calendrier (`venue_closed`) du club+saison courants. */
 export const getVenueClosures = (): Promise<VenueClosure[]> => collectionAll<VenueClosure>("venue_closures");

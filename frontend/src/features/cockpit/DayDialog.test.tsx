@@ -56,6 +56,14 @@ let meData: { seasonPlan: { chosenScheduleId: string | null } } = { seasonPlan: 
 vi.mock("./queries", () => ({
   useCreateEvent: () => ({ mutate: vi.fn(), isPending: false }),
   useCreateVenueClosure: () => ({ mutate: closureMutate, isPending: false }),
+  // Fermetures PR 1 — la saisie unique lit l'aperçu avant d'enregistrer : ici, un aperçu LU (rien à retirer).
+  useClosureImpactPreview: () => ({
+    data: { venueIds: ["v1"], startDate: "2026-05-12", endDate: "2026-05-12", seasonPlanChosen: true, teams: [], trainingOccurrences: 0, trainingSlotCount: 0, matchesToMove: [], governingPlans: [], fullyGoverned: false, closedSessions: [] },
+    isPending: false,
+    isFetching: false,
+    isError: false,
+    isSuccess: true,
+  }),
   useCreateCutoff: () => ({ mutate: cutoffMutate, isPending: false }),
   useCreateHolidayPeriod: () => ({ mutate: vi.fn(), mutateAsync: holidayMutateAsync, isPending: false }),
   useCreateWeekChildren: () => ({ mutate: weekChildrenMutate, isPending: false }),

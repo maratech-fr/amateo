@@ -3,6 +3,10 @@
 // Convention : clé camelCase par intention ; interpolation par fonctions typées. Pas de lib i18n.
 // JAMAIS en valeur : jour (→ shared/lib/days), heure/durée (→ time/duration), marque (→ product),
 // identifiant interne.
+import { dayLabelLong } from "@/shared/lib/days";
+
+const plural = (n: number, one: string, many: string): string => (1 === n ? one : many);
+
 export const COCKPIT_TEXTS = {
   toHandle: "À traiter",
   resumePlanning: "Planning en cours — à finaliser",
@@ -104,4 +108,61 @@ export const COCKPIT_TEXTS = {
   fbiSinceLastVisit: "Depuis votre dernière visite :",
   fbiOpenList: "Ouvrir la liste FBI",
   fbiPlaceMatches: "Placer les matchs",
+  // Fermetures de gymnase (PR 1) — carte du cockpit, formulaire unique (carte ET jour du
+  // calendrier), aperçu « Enregistrer vaut geste », radar et suppression.
+  closureCardTitle: "Indisponibilités de gymnase",
+  closureCardEmpty: "Aucune indisponibilité à venir — déclarez ici un gymnase fermé (travaux, reprise mairie…) : elle vaut pour les matchs comme pour les entraînements.",
+  closureDialogTitle: "Déclarer une indisponibilité de gymnase",
+  declareCta: "Déclarer",
+  deleteCta: "Supprimer",
+  deleteClosureLabel: (title: string) => `Supprimer ${title}`,
+  closureNoVenue: "Aucun gymnase : sans effet sur le planning.",
+  closureImpactEvaluating: "Évaluation de l'impact…",
+  closureSaveNeedsPreview: "L'aperçu de ce que la fermeture retire doit d'abord être lu.",
+  dateFrom: "Du",
+  dateUntil: "Jusqu'au",
+  closureImpactFailed: "Impact non évalué — réessayez.",
+  closureImpactNone: "Aucune séance sur ces dates.",
+  closureImpactSeasonUnvalidated: "Planning de la saison non validé : impact sur les entraînements non évalué.",
+  closureImpactTeams: (n: number, team: string, tier: string) =>
+    1 === n ? `1 équipe à l'entraînement : ${team} (rang ${tier})` : `${n} équipes à l'entraînement, dont ${team} (rang ${tier})`,
+  closureMatchesHeading: "Matchs à déplacer :",
+  closureMatchLine: (team: string, opponent: string, weekday: string, date: string, time?: string) =>
+    `${team} contre ${opponent}, ${weekday} ${date}${undefined !== time ? ` à ${time}` : ""}`,
+  closureMatchesMore: (n: number) => `+ ${n} ${plural(n, "autre", "autres")}`,
+  closureNoMatches: "Aucun match placé à déplacer.",
+  closureLocksRemoval: (n: number, venue: string, plan: string) =>
+    1 === n
+      ? `1 séance verrouillée à ${venue} pendant « ${plan} » : son verrou sera retiré pour que le plan se régénère sans ${venue}.`
+      : `${n} séances verrouillées à ${venue} pendant « ${plan} » : leur verrou sera retiré pour que le plan se régénère sans ${venue}.`,
+  closureReservationsRemoval: (reservations: { teamName: string; dayOfWeek: number }[], venue: string) =>
+    1 === reservations.length
+      ? `1 réservation de ${reservations[0].teamName} le ${dayLabelLong(reservations[0].dayOfWeek)} à ${venue} sera retirée.`
+      : `${reservations.length} réservations seront retirées : ${reservations.map((r) => `${r.teamName} le ${dayLabelLong(r.dayOfWeek)}`).join(", ")}, à ${venue}.`,
+  planStaleByClosureFuture: (plan: string) => `Le plan « ${plan} » sera périmé : régénérez-le après l'enregistrement.`,
+  planInProgressClosedFuture: (plan: string) => `Le plan « ${plan} » est en cours : ouvrez-le et régénérez-le après l'enregistrement.`,
+  closureOutOfSeason: (start: string, end: string) => `Ces dates sortent de la saison (du ${start} au ${end}).`,
+  closureSeasonClipped: (start: string, seasonEnd: string) => `Seules les dates du ${start} au ${seasonEnd} comptent (fin de saison).`,
+  closureSavedToast: (locks: number, reservations: number, venue: string) => {
+    if (0 === locks && 0 === reservations) return "Indisponibilité enregistrée.";
+    const parts = [
+      ...(locks > 0 ? [`${locks} ${plural(locks, "verrou", "verrous")}`] : []),
+      ...(reservations > 0 ? [`${reservations} ${plural(reservations, "réservation", "réservations")}`] : []),
+    ];
+    return `Indisponibilité enregistrée — ${parts.join(" et ")} ${plural(locks + reservations, "retiré", "retirés")}${0 === locks && 1 === reservations ? "e" : ""} à ${venue}.`;
+  },
+  generationInProgress: "Une génération est en cours pour ce club : réessayez quand elle est terminée.",
+  openPlanCta: "Ouvrir le plan",
+  planStaleByClosureDetail: "Périmé : une fermeture de gymnase touche ses séances — ouvrez-le, puis régénérez.",
+  deleteClosureTitle: (title: string) => `Supprimer « ${title} » ?`,
+  deleteClosureWithPlan: (versions: number) => `Son planning de période (validé, ${versions} ${plural(versions, "version", "versions")}) sera supprimé aussi.`,
+  deleteClosureInProgress: (versions: number) => `Son planning de période (en cours, ${versions} ${plural(versions, "version", "versions")}) sera supprimé aussi.`,
+  deleteClosureSplit: (weeks: number) => `Ses ${weeks} semaines et leurs plannings seront supprimés aussi.`,
+  deleteClosureBare: "Cette indisponibilité sera retirée du calendrier.",
+  deleteClosureNothingRestored: "Les verrous et réservations retirés à sa déclaration ne sont pas remis.",
+  deleteClosureRegeneratedWithout: (plan: string, venue: string) => `Le plan « ${plan} » a été régénéré sans ${venue} : régénérez-le pour retrouver ses séances.`,
+  closureDeletedToast: (venue: string, regeneratedPlan?: string) =>
+    undefined !== regeneratedPlan
+      ? `Indisponibilité supprimée — les séances de ${venue} reprennent, sauf dans « ${regeneratedPlan} » (régénéré sans ${venue}).`
+      : `Indisponibilité supprimée — les séances de ${venue} reprennent le planning en vigueur.`,
 } as const satisfies Record<string, string | ((...args: never[]) => string)>;

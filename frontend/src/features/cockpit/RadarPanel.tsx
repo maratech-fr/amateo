@@ -3,7 +3,6 @@ import { Link, useNavigate } from "react-router";
 
 import { ManagerOnly } from "@/shared/session/ManagerOnly";
 import { useWorkingSeason } from "@/shared/session/queries";
-import { useUnavailabilityImpact, useVenueClosures, useVenues, useVenueUnavailabilities } from "@/features/matches/queries";
 import { useSchedules, useSlots } from "@/features/planning/queries";
 import { usePlanningStore } from "@/features/planning/store";
 import { useWizardStore } from "@/features/wizard/store";
@@ -13,12 +12,11 @@ import { NoticeBanner } from "@/shared/components/ui/notice-banner";
 import { readFailed, readLoading } from "@/shared/lib/readState";
 import { cn } from "@/shared/lib/utils";
 
-import type { CalendarEntry, CalendarEntryPeriodType, PublicHoliday, SchoolHoliday } from "./api";
-import { useCreateVenueClosure, useEntryConflicts, useEntryConflictsList, useSchedulePlans } from "./queries";
+import type { CalendarEntry, CalendarEntryPeriodType, ClosureGoverningPlan, ClosureImpact, PublicHoliday, SchoolHoliday } from "./api";
+import { useEntryConflicts, useEntryConflictsList, useEntryImpactList, useSchedulePlans } from "./queries";
 import { clampRangeToSeason, daysUntil, frDateShort, groupCoverageSlots, isActionableWeek, todayISO, weeksCovering, type WeekWindow } from "./lib/date";
 import { isHolidayAnchor } from "./lib/markers";
 import { seasonLockTitle, useSocleValidated } from "./lib/socle";
-import { unavailabilitiesToAlert } from "./lib/venueUnavailabilityRadar";
 import { useWeekAdapt } from "./lib/useWeekAdapt";
 import { WeekPickerDialog } from "./WeekPickerDialog";
 import { WindowAlreadyPlannedNotice } from "./WindowAlreadyPlannedNotice";
@@ -51,13 +49,6 @@ export const PUBLIC_HOLIDAY_HORIZON_DAYS = 30;
  * donc c'est un filet, pas un chemin.
  */
 export const SCHOOL_HOLIDAY_HORIZON_DAYS = 30;
-/**
- * P4-68 — au-delà, une fermeture de gymnase n'est pas encore un to-do (même
- * doctrine que les fériés). Une indispo DÉJÀ commencée reste affichée : son
- * `daysUntil` est négatif, donc sous l'horizon, et elle demande toujours un geste.
- */
-export const VENUE_UNAVAILABILITY_HORIZON_DAYS = 30;
-
 /** Une semaine d'une période mère découpée : son enfant (ou null si à créer/manquante) et, pour
  *  une fermeture chevauchant des vacances, les libellés des vacances qui la gouvernent (A3). */
 interface MotherWeekSlot {
@@ -326,6 +317,10 @@ export function RadarPanel({ entries, holidays, publicHolidays, publicHolidaysLo
   // le résultat sert aussi à garder `isEmpty` honnête (une carte qui s'efface toute
   // seule laisserait le panneau vide SANS son « Rien à l'horizon »).
   const closureImpacts = useEntryConflictsList(closures.map((e) => e.id));
+  // Fermetures de gymnase (C4/C5) — l'impact SERVI de chaque fermeture (`/impact`, même chiffre
+  // que l'aperçu du formulaire) : le chiffre de la carte, « Ouvrir le plan » quand un plan de
+  // période gouverne toute la fermeture, et les plans de période qu'elle rend périmés.
+  const closureEntryImpacts = useEntryImpactList(closures.map((e) => e.id));
   const visibleClosures = closures.filter((entry, i) => {
     if (childrenByParent.has(entry.id)) {
       return false; // mère découpée : sa carte de COUVERTURE prend le relais
@@ -378,30 +373,17 @@ export function RadarPanel({ entries, holidays, publicHolidays, publicHolidaysLo
   for (const slot of seasonSlotsQuery.data ?? []) {
     slotsPerIsoDay.set(slot.dayOfWeek, (slotsPerIsoDay.get(slot.dayOfWeek) ?? 0) + 1);
   }
-  // D-30 : le jour ISO vient de `shared/lib/days` (midi UTC — hors de portée des fuseaux).
-  // P4-68 (recadrage fondateur 2026-08-06) — l'indispo de gymnase entre au RADAR.
-  // Elle vivait dans une carte statique plus bas : le gestionnaire n'était donc pas
-  // alerté au moment d'agir, alors que tout le modèle repose sur lui (« il crée
-  // l'overlay quand il le faut »). Le geste offert est celui qui EXISTE déjà au
-  // DayDialog — créer la fermeture (période + contrainte datée « gymnase fermé »)
-  // — enchaîné sur l'adaptation : le plan naît du geste d'Adapter (ADR-0002).
-  const unavailabilitiesQuery = useVenueUnavailabilities();
-  const venuesQuery = useVenues();
-  const unavailabilityImpact = useUnavailabilityImpact();
-  const createClosureFromUnavailability = useCreateVenueClosure();
-  // Le gymnase d'une fermeture du calendrier (`CalendarEntry` n'en porte pas) : sans ce feed, une
-  // fermeture d'un AUTRE gymnase masquait à tort une indispo (bug fondateur 2026-10-28). Lecture
-  // soumise à readState : un échec ne doit jamais se lire « Rien à l'horizon ».
-  const venueClosuresQuery = useVenueClosures();
-  const venueNameOf = (id: string): string => (venuesQuery.data ?? []).find((v) => v.id === id)?.name ?? "Gymnase";
-  const impactByUnavailability = new Map((unavailabilityImpact.data?.items ?? []).map((i) => [i.unavailabilityId, i]));
-  const unavailabilityAlerts = unavailabilitiesToAlert(
-    unavailabilitiesQuery.data ?? [],
-    entries,
-    today,
-    VENUE_UNAVAILABILITY_HORIZON_DAYS,
-    (venueClosuresQuery.data ?? []).map((c) => ({ venueId: c.venueId, startDate: c.startDate, endDate: c.endDate })),
-  );
+  // Fermetures de gymnase (C5) — les plans de période qu'une fermeture visible rend PÉRIMÉS
+  // (ils gardent des séances au gymnase fermé ces jours-là) : une carte chacun, sans doublon.
+  const stalePlans = new Map<string, ClosureGoverningPlan>();
+  closures.forEach((entry, i) => {
+    if (!visibleClosures.includes(entry)) return;
+    for (const plan of closureEntryImpacts[i]?.data?.governingPlans ?? []) {
+      if (plan.hasVersions && plan.sessions.length > 0 && !stalePlans.has(plan.entryId)) {
+        stalePlans.set(plan.entryId, plan);
+      }
+    }
+  });
 
   const upcomingPublicHolidays = holidaysInHorizon
     .map((h) => ({ ...h, sessionCount: slotsPerIsoDay.get(isoDayOf(h.date)) ?? 0 }))
@@ -422,11 +404,11 @@ export function RadarPanel({ entries, holidays, publicHolidays, publicHolidaysLo
   // inconnu — squelette, jamais un « Tout roule » suivi d'une carte qui surgit.
   const holidayImpactLoading = holidaysInHorizon.length > 0 && null !== seasonChosenId && seasonSlotsQuery.isLoading;
   const stillLoading =
-    readLoading(plansQuery) || readLoading(schedulesQuery) || readLoading(campaignsQuery) || closureImpactsPending || zoneLoading || publicHolidaysLoading || holidayImpactLoading || readLoading(unavailabilitiesQuery) || readLoading(venueClosuresQuery) || entriesLoading;
+    readLoading(plansQuery) || readLoading(schedulesQuery) || readLoading(campaignsQuery) || closureImpactsPending || zoneLoading || publicHolidaysLoading || holidayImpactLoading || entriesLoading;
   // UXS-09 — l'échec de la lecture des entrées (ou des fériés) parvient au panneau par prop : une
   // liste `entries`/`publicHolidays` vide est alors un ÉCHEC, pas « rien à traiter ». Idem le feed
   // des fermetures : sans lui le masquage par gymnase est faux, donc l'échec se DIT.
-  const readsFailed = readFailed(plansQuery) || readFailed(schedulesQuery) || readFailed(campaignsQuery) || readFailed(venueClosuresQuery) || entriesFailed || publicHolidaysFailed;
+  const readsFailed = readFailed(plansQuery) || readFailed(schedulesQuery) || readFailed(campaignsQuery) || entriesFailed || publicHolidaysFailed;
 
   const isEmpty =
     // UXS-09 — « Tout roule » n'est JAMAIS vrai pendant un chargement ni sur un échec : une liste
@@ -450,12 +432,6 @@ export function RadarPanel({ entries, holidays, publicHolidays, publicHolidaysLo
     undefined !== campaignsQuery.data &&
     cutoffs.length === 0 &&
     upcomingPublicHolidays.length === 0 &&
-    // P4-68 — l'EXISTENCE d'une carte d'indispo dépend de cette lecture : sans la
-    // garde, « Tout roule » s'affichait pendant que la liste arrivait (doctrine
-    // readState : charger n'est pas « rien à signaler »).
-    unavailabilityAlerts.length === 0 &&
-    undefined !== unavailabilitiesQuery.data &&
-    undefined !== venueClosuresQuery.data &&
     !holidayImpactLoading &&
     zone !== null &&
     !zoneLoading &&
@@ -695,7 +671,21 @@ export function RadarPanel({ entries, holidays, publicHolidays, publicHolidaysLo
         ? null
         : visibleClosures.map((e) => {
             const activeId = activeByEntry.get(e.id) ?? null;
-            return <ClosureRadarItem key={e.id} entry={e} activeScheduleId={activeId} inProgress={startedEntryIds.has(e.id)} seasonUnvalidated={!socleValidated} adaptTitle={lockTitle} onAdapt={() => requestAdapt(e)} onView={() => null !== activeId && viewOverlay(activeId)} />;
+            return (
+              <ClosureRadarItem
+                key={e.id}
+                entry={e}
+                impact={closureEntryImpacts[closures.indexOf(e)]?.data}
+                activeScheduleId={activeId}
+                inProgress={startedEntryIds.has(e.id)}
+                seasonUnvalidated={!socleValidated}
+                adaptTitle={lockTitle}
+                onAdapt={() => requestAdapt(e)}
+                onView={() => null !== activeId && viewOverlay(activeId)}
+                onOpenPlan={viewOverlay}
+                onResumePlan={adapt}
+              />
+            );
           })}
 
       {cutoffs.map((e) => (
@@ -707,52 +697,21 @@ export function RadarPanel({ entries, holidays, publicHolidays, publicHolidaysLo
         />
       ))}
 
-      {/* P4-68 — indispos gymnase : alerter au bon moment, ouvrir le chemin, ne rien
-          décider à la place du gestionnaire (modèle fondateur 2026-08-06). */}
-      {unavailabilityAlerts.map((u) => {
-        const impact = impactByUnavailability.get(u.id);
-        const started = u.startDate <= today;
-        const when = started ? `En cours jusqu'au ${frDateShort(u.endDate)}` : `Dans ${daysUntil(today, u.startDate)} j`;
-        // « Impact non évalué » plutôt qu'un zéro rassurant : la lecture peut être en
-        // vol ou avoir échoué, et annoncer « aucun entraînement » serait un fait jamais
-        // vérifié (même doctrine que ClosureRadarItem).
-        const what = undefined === impact
-          ? "impact non évalué"
-          : impact.trainingSlotCount > 0
-            ? `${impact.trainingSlotCount} créneau${impact.trainingSlotCount > 1 ? "x" : ""} d'entraînement/sem. concerné${impact.trainingSlotCount > 1 ? "s" : ""}`
-            : "aucun entraînement concerné";
+      {[...stalePlans.values()].map((plan) => {
+        const versionId = plan.chosenScheduleId ?? plan.loadedScheduleId;
         return (
-          <RadarCard
-            key={`unavail-${u.id}`}
-            icon={<CalendarOff className="size-4 text-destructive" />}
-            title={`${venueNameOf(u.venueId)} indisponible${null !== u.label ? ` (${u.label})` : ""}`}
-            detail={`${when} · ${what}`}
-          >
-            <ManagerOnly>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={!socleValidated || createClosureFromUnavailability.isPending}
-              disabledReason={!socleValidated ? lockTitle : undefined}
-              onClick={() => {
-                const title = `${venueNameOf(u.venueId)} indisponible${null !== u.label ? ` (${u.label})` : ""}`;
-                const params = { title, venueId: u.venueId, startDate: u.startDate, endDate: u.endDate };
-                // P2-36 tranche 2 / P2-40 — l'indispo passe par la maison unique. On ouvre le choix
-                // SANS créer la fermeture (l'entrée n'est pas encore née) dès qu'elle couvre PLUSIEURS
-                // semaines OU qu'au moins une semaine est sous vacances (needsPicker) : le chemin
-                // « pending » partagé avec les vacances la matérialise à la confirmation, via
-                // createVenueClosure. Une seule semaine hors vacances → création + adaptBlock direct
-                // (comportement conservé), le plan naissant du geste d'Adapter.
-                if (needsPicker(u.startDate, u.endDate, "closure")) {
-                  openPendingPicker({ label: title, startDate: u.startDate, endDate: u.endDate, periodType: "closure", create: () => createClosureFromUnavailability.mutateAsync(params) });
-                  return;
-                }
-                createClosureFromUnavailability.mutate(params, { onSuccess: (entry) => void adaptBlock(entry.id) });
-              }}
-            >
-              {COCKPIT_TEXTS.adapt}
-            </Button>
-            </ManagerOnly>
+          <RadarCard key={`stale-${plan.entryId}`} icon={<AlertTriangle className="size-4 text-destructive" />} title={plan.title} detail={COCKPIT_TEXTS.planStaleByClosureDetail}>
+            {null !== plan.chosenScheduleId && null !== versionId ? (
+              <Button variant="outline" size="sm" onClick={() => viewOverlay(versionId)}>
+                {COCKPIT_TEXTS.openPlanCta}
+              </Button>
+            ) : (
+              <ManagerOnly>
+                <Button variant="outline" size="sm" onClick={() => adapt(plan.entryId)}>
+                  {COCKPIT_TEXTS.resume}
+                </Button>
+              </ManagerOnly>
+            )}
           </RadarCard>
         );
       })}
@@ -804,7 +763,7 @@ export function RadarPanel({ entries, holidays, publicHolidays, publicHolidaysLo
           excludedRanges={pendingOffer.excludedRanges}
           plannedRanges={pendingOffer.plannedRanges}
           state={pendingPickerState}
-          busy={createHoliday.isPending || createClosureFromUnavailability.isPending || createWeekChildren.isPending}
+          busy={createHoliday.isPending || createWeekChildren.isPending}
           onPickSegments={(segments) => pickWeeksPending(pendingMother, segments)}
           onAdaptWhole={() => adaptWholePending(pendingMother)}
           onRecordOnly={() => recordPendingOnly(pendingMother)}
@@ -858,9 +817,36 @@ export function RadarPanel({ entries, holidays, publicHolidays, publicHolidaysLo
   );
 }
 
-function ClosureRadarItem({ entry, activeScheduleId, inProgress = false, seasonUnvalidated = false, adaptTitle, onAdapt, onView }: { entry: CalendarEntry; activeScheduleId: string | null; inProgress?: boolean; seasonUnvalidated?: boolean; adaptTitle?: string; onAdapt: () => void; onView: () => void }) {
+function ClosureRadarItem({
+  entry,
+  impact,
+  activeScheduleId,
+  inProgress = false,
+  seasonUnvalidated = false,
+  adaptTitle,
+  onAdapt,
+  onView,
+  onOpenPlan,
+  onResumePlan,
+}: {
+  entry: CalendarEntry;
+  /** Fermetures de gymnase (C4) — l'impact SERVI (`/impact`) : son chiffre prime sur `/conflicts`. */
+  impact?: ClosureImpact;
+  activeScheduleId: string | null;
+  inProgress?: boolean;
+  seasonUnvalidated?: boolean;
+  adaptTitle?: string;
+  onAdapt: () => void;
+  onView: () => void;
+  onOpenPlan: (scheduleId: string) => void;
+  onResumePlan: (entryId: string) => void;
+}) {
   const { data } = useEntryConflicts(entry.id);
-  const count = data?.conflicts.reduce((sum, c) => sum + c.dates.length, 0) ?? 0;
+  const count = impact?.trainingOccurrences ?? data?.conflicts.reduce((sum, c) => sum + c.dates.length, 0) ?? 0;
+  // C5 — la fermeture tombe ENTIÈREMENT dans un plan de période qui la gouverne : « Adapter »
+  // créerait un plan concurrent (409) ; on mène au plan qui gouverne.
+  const governing = true === impact?.fullyGoverned ? (impact.governingPlans[0] ?? null) : null;
+  const governingVersion = null !== governing ? (governing.chosenScheduleId ?? governing.loadedScheduleId) : null;
   // ADR-0002 lot D-b : « a un overlay » = le plan de la période est VALIDÉ (chosenScheduleId).
   const hasOverlay = null !== activeScheduleId;
   // Le plan de la saison existe mais ne pointe aucune version : il est INCOMPLET,
@@ -910,11 +896,25 @@ function ClosureRadarItem({ entry, activeScheduleId, inProgress = false, seasonU
       ) : (
         // Gating seulement sur une fermeture À DÉMARRER (« Adapter ») ; « Reprendre »
         // (travail en cours) reste actif même si la saison est rouverte.
-        <ManagerOnly>
-          <Button variant="outline" size="sm" disabled={!inProgress && seasonUnvalidated} disabledReason={!inProgress && seasonUnvalidated ? adaptTitle : undefined} onClick={onAdapt}>
-            {inProgress ? "Reprendre" : "Adapter"}
-          </Button>
-        </ManagerOnly>
+        null !== governing ? (
+          null !== governingVersion ? (
+            <Button variant="outline" size="sm" onClick={() => onOpenPlan(governingVersion)}>
+              {COCKPIT_TEXTS.openPlanCta}
+            </Button>
+          ) : (
+            <ManagerOnly>
+              <Button variant="outline" size="sm" onClick={() => onResumePlan(governing.entryId)}>
+                {COCKPIT_TEXTS.resume}
+              </Button>
+            </ManagerOnly>
+          )
+        ) : (
+          <ManagerOnly>
+            <Button variant="outline" size="sm" disabled={!inProgress && seasonUnvalidated} disabledReason={!inProgress && seasonUnvalidated ? adaptTitle : undefined} onClick={onAdapt}>
+              {inProgress ? COCKPIT_TEXTS.resume : COCKPIT_TEXTS.adapt}
+            </Button>
+          </ManagerOnly>
+        )
       )}
     </RadarCard>
   );

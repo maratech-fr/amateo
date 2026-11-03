@@ -69,7 +69,6 @@ import {
   useVenueClosures,
   useVenueMatchWindows,
   useVenues,
-  useVenueUnavailabilities,
 } from "./queries";
 import { useMatchesStore } from "./store";
 import { MATCHES_EXPORT_TEXTS } from "./texts/export";
@@ -124,7 +123,6 @@ export function CalendarPage() {
   const categoryDurations = useSportCategoryDurations();
   const coaches = useCoaches();
   const matchWindows = useVenueMatchWindows();
-  const unavailabilities = useVenueUnavailabilities();
   const venueClosures = useVenueClosures();
   // PR2 — les jours fériés de la saison de travail : un match posé un jour férié se juge sur la
   // ligne « Jours fériés » du gymnase (feed GET /api/public-holidays), jamais la fenêtre du jour.
@@ -284,7 +282,7 @@ export function CalendarPage() {
   // D2 — les cinq lectures du club qui GARDENT le geste de placement (accès match,
   // indisponibilités, fermetures du calendrier, enveloppe ligue, jours fériés — PR2),
   // suspendues tant qu'elles ne sont pas prêtes.
-  const placementGuards = usePlacementGuards(matchWindows, unavailabilities, venueClosures, leagueWindows, holidaysRead);
+  const placementGuards = usePlacementGuards(matchWindows, venueClosures, leagueWindows, holidaysRead);
 
   // Chaîne de filtrage : PR-1 (équipe/coach/gymnase) → types → « Extérieurs ».
   const { filtered, coachTeamRoles, filterActive, filterLabel, effectiveKinds, effectiveFamilies, kindResult, visibleFixtures } = useMatchFilterChain(

@@ -90,7 +90,7 @@ final class OrphanPinGuard
      *
      * @param list<array{id: string, venueId: string, dayOfWeek: int, startTime: string}> $reservations
      * @param list<array{venueId: string, dayOfWeek: int, startTime: string}>             $slots
-     * @param list<string>                                                                $disabledVenueIds      gymnases hors service (désactivés OU fermés-total)
+     * @param list<string>                                                                $disabledVenueIds      gymnases hors service (désactivés, ou fermés-total par des jours décochés à la main)
      * @param array<string, list<int>>                                                    $closedWeekdaysByVenue venueId => jours ISO fermés (1..7)
      *
      * @return list<string> ids des réservations non servies, ordre d'entrée
@@ -162,11 +162,19 @@ final class OrphanPinGuard
         // qui s'y trouvent — les compter disponibles ici laisserait passer un verrou que le
         // solveur ne verrait jamais (revue #8, round 4).
         //
-        // P2-37 D4 — un gymnase EFFECTIVEMENT fermé-total (aucun jour servi après composition)
-        // rejoint le même skip : l'épinglage y est inerte (nulle part où aller), NON bloquant —
-        // même doctrine que P3-20. La fermeture PARTIELLE (un jour d'un gymnase par ailleurs
-        // ouvert), elle, reste bloquante plus bas : là, la séance SERAIT replacée en silence.
-        $disabledVenueIds = $state['disabledVenueIds'] + $state['fullyClosedVenueIds'];
+        // Fermetures de gymnase (« Enregistrer vaut geste », retourne P2-37 D4) — un gymnase fermé
+        // toute la période par une fermeture DÉCLARÉE n'est PLUS inerte : déclarer la fermeture a
+        // déjà retiré ses épingles (`ClosurePinRemover`) ; celle qui subsiste a été posée APRÈS, on
+        // la NOMME (motif fermeture, ci-dessous). Ses jours restent dans `$closedWeekdaysByVenue`.
+        // Correction A — fermé toute la période UNIQUEMENT par des jours décochés à la main (masque
+        // CLOSED sans fermeture dessous) reste inerte, comme un gymnase désactivé.
+        $disabledVenueIds = $state['disabledVenueIds'];
+        foreach (array_keys($state['fullyClosedVenueIds']) as $venueId) {
+            $closedDays = $closedWeekdaysByVenue[$venueId] ?? [];
+            if ([] === array_diff_key($closedDays, $state['manualClosedWeekdaysByVenue'][$venueId] ?? [])) {
+                $disabledVenueIds[$venueId] = true;
+            }
+        }
         $available = [];
         foreach ($this->entityManager->getRepository(VenueTrainingSlot::class)->findBy(['schedulePlanId' => $schedulePlanId]) as $slot) {
             if (isset($disabledVenueIds[$slot->getVenueId()]) || isset($closedWeekdaysByVenue[$slot->getVenueId()][$slot->getDayOfWeek()])) {

@@ -75,7 +75,6 @@ function renderPanel(envelope: EnvelopeResult, onPlace = vi.fn(), overrides: Ove
       guards={{
         state: overrides.guardState ?? "ready",
         matchWindows: overrides.matchWindows ?? [],
-        unavailabilities: [], // ⚠ champ de la garde retiré avec l'indisponibilité séparée : ligne à supprimer mécaniquement avec lui
         closures: overrides.closures ?? [],
         holidays: overrides.holidays ?? [],
         retry: overrides.retry ?? vi.fn(),

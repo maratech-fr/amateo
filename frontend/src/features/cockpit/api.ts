@@ -455,3 +455,55 @@ export const applyClosureWindow = async (planId: string, dates: { startDate: str
     throw error;
   }
 };
+
+/**
+ * Fermetures de gymnase (C3/C5) — un plan de période qui GOUVERNE les dates fermées (jamais le
+ * socle), tel que le serveur le calcule : ses séances au gymnase fermé, ce que l'enregistrement de la
+ * fermeture retirerait (`toRemove`, même calcul que le retrait), et s'il a été régénéré sans le gymnase.
+ */
+export interface ClosureGoverningPlan {
+  entryId: string;
+  title: string;
+  startDate: string;
+  endDate: string;
+  chosenScheduleId: string | null;
+  loadedScheduleId: string | null;
+  hasVersions: boolean;
+  sessions: { teamId: string; teamName: string; date: string; venueId: string }[];
+  toRemove: { locks: number; reservations: { teamId: string | null; teamName: string; dayOfWeek: number }[] };
+  regeneratedWithout: boolean;
+}
+
+/** Ce qu'une fermeture touche — l'aperçu AVANT « Enregistrer » et l'impact APRÈS disent le même chiffre. */
+export interface ClosureImpact {
+  venueIds: string[];
+  startDate: string;
+  endDate: string;
+  seasonPlanChosen: boolean;
+  teams: { teamId: string; teamName: string; tierLabel: string; tierWeight: number; occurrences: number }[];
+  trainingOccurrences: number;
+  trainingSlotCount: number;
+  matchesToMove: { fixtureId: string; teamId: string; teamName: string; opponentLabel: string; matchDate: string; kickoffTime: string | null }[];
+  governingPlans: ClosureGoverningPlan[];
+  fullyGoverned: boolean;
+  closedSessions: { constraintId: string; venueId: string; venueName: string; closureTitle: string; date: string; teamId: string; teamName: string }[];
+  /** Impact d'une fermeture ENREGISTRÉE : sa déclaration a-t-elle réellement retiré des épingles ? */
+  removedAtDeclaration?: boolean;
+}
+
+export interface ClosureImpactParams {
+  venueId: string;
+  startDate: string;
+  endDate: string;
+}
+
+/** Ce que l'enregistrement d'une fermeture a retiré (verrous, réservations). */
+export interface ClosureRemoved {
+  locks: number;
+  reservations: number;
+}
+
+export const getClosureImpactPreview = (params: ClosureImpactParams): Promise<ClosureImpact> =>
+  api.get("venue-closure-impact", { searchParams: { venueId: params.venueId, startDate: params.startDate, endDate: params.endDate } }).json<ClosureImpact>();
+
+export const getEntryImpact = (entryId: string): Promise<ClosureImpact> => api.get(`calendar-entries/${entryId}/impact`).json<ClosureImpact>();

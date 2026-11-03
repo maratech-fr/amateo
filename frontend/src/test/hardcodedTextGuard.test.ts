@@ -82,6 +82,12 @@ const MIGRATED_FILES = [
   "features/matches/ConflictsPage.tsx",
   "features/matches/ConflictRadar.tsx",
   "features/cockpit/FbiDeadlineCard.tsx",
+  // Fermetures de gymnase (PR 1) — la carte, la saisie unique, l'aperçu et le bandeau « périmé »,
+  // nés migrés (COCKPIT_TEXTS / PLANNING_TEXTS).
+  "features/cockpit/VenueClosureCard.tsx",
+  "features/cockpit/VenueClosureForm.tsx",
+  "features/cockpit/ClosureImpactPanel.tsx",
+  "features/planning/StalePlanBanner.tsx",
   "features/matches/OpponentsPage.tsx",
   "features/matches/FfbbEngagementsDialog.tsx",
   // P4-356 — l'en-tête + la navigation du module matchs, migrés en même temps que les deux props

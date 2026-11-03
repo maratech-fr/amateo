@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -9,7 +9,6 @@ import { setTodayOverride } from "@/shared/lib/clock";
 import { SESSION_TEXTS } from "@/shared/session/texts";
 
 import { addDays, frDateShort, frDateShortNoYear, mondayOf, todayISO } from "./lib/date";
-import { useToastStore } from "@/shared/stores/toastStore";
 import { usePlanningStore } from "@/features/planning/store";
 import { RadarPanel } from "./RadarPanel";
 import { COCKPIT_TEXTS } from "./texts";
@@ -94,12 +93,8 @@ vi.mock("./queries", () => ({
   useEntryImpact: () => ({ data: entryImpactData, isPending: false }),
   useEntryImpactList: (ids: string[]) => ids.map(() => ({ data: entryImpactData, isPending: false })),
 }));
-// L'indisponibilité séparée est retirée (plan fermetures C1) : ses deux lectures ne sont plus
-// que des souches VIDES, à supprimer mécaniquement quand le radar ne les importe plus.
 vi.mock("@/features/matches/queries", () => ({
-  useVenueUnavailabilities: () => ({ data: [] }),
   useVenues: () => ({ data: [{ id: "gym-1", name: "Armand" }] }),
-  useUnavailabilityImpact: () => ({ data: { clubId: "c", seasonId: "sn1", items: [] } }),
   // Promesse 5 — le feed des fermetures (gymnase d'une closure) consommé par RadarPanel ; vide par
   // défaut, aucun changement pour les cas existants.
   useVenueClosures: () => ({ data: venueClosuresData }),

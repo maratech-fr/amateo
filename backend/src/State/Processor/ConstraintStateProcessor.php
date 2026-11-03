@@ -14,8 +14,10 @@ use App\Entity\Venue;
 use App\Enum\ConstraintFamily;
 use App\Enum\ConstraintRuleType;
 use App\Enum\ConstraintScope;
+use App\Service\ClosurePinRemover;
 use App\Service\ConstraintConfigValidator;
 use App\Service\ManagementAccessGuard;
+use App\Service\SchedulePlanProvisioner;
 use App\Service\SeasonAccessGuard;
 use App\Service\SeasonResolver;
 use App\Service\TeamTagResolver;
@@ -36,6 +38,8 @@ class ConstraintStateProcessor extends AbstractStateProcessor
         ManagementAccessGuard $managementAccessGuard,
         private readonly ConstraintConfigValidator $configValidator,
         private readonly TeamTagResolver $tagResolver,
+        private readonly ClosurePinRemover $closurePinRemover,
+        private readonly SchedulePlanProvisioner $schedulePlanProvisioner,
     ) {
         parent::__construct($entityManager, $requestStack, $seasonResolver, $seasonAccessGuard, $managementAccessGuard);
     }
@@ -50,6 +54,37 @@ class ConstraintStateProcessor extends AbstractStateProcessor
     // vivait ici était INOPÉRANT (0 ligne touchée). Et il n'a plus d'objet : le nom du plan de
     // période naît désormais du TITRE de son entrée de calendrier (décision fondateur 2026-08-23),
     // il n'y a plus de nom générique à recaler quand le gymnase devient connu.
+
+    /**
+     * « Enregistrer une fermeture vaut geste » (chantier « Fermetures de gymnase », C3bis) — le POST
+     * de la contrainte `venue_closed` rattachée à une entrée de calendrier COMPLÈTE la fermeture
+     * (l'entrée seule ne ferme rien) : dans la MÊME transaction, sous le verrou des fenêtres du club,
+     * {@see ClosurePinRemover} retire des plans de période qui gouvernent les dates nouvellement
+     * fermées les verrous HARD et les réservations au gymnase fermé — et la réponse dit `removed`.
+     * Une génération en vol → 409 `generation_in_progress`, rien d'écrit (pas même la contrainte).
+     *
+     * @param ConstraintInput $input
+     */
+    protected function processPost(object $input, ?string $clubId, ?string $seasonId): object
+    {
+        $resolvedSeasonId = $this->resolveSeasonId($clubId, $seasonId);
+        if (null === $clubId || null === $resolvedSeasonId || null === $input->calendarEntryId
+            || ConstraintFamily::FACILITY->value !== $input->family || 'venue_closed' !== ($input->config['type'] ?? null)) {
+            return parent::processPost($input, $clubId, $seasonId);
+        }
+
+        return $this->entityManager->wrapInTransaction(function () use ($input, $clubId, $seasonId, $resolvedSeasonId): ConstraintResource {
+            $this->schedulePlanProvisioner->lockClubWindows($clubId, $resolvedSeasonId);
+            $before = $this->closurePinRemover->closedDatesSnapshot($clubId, $resolvedSeasonId);
+
+            $output = parent::processPost($input, $clubId, $seasonId);
+
+            $new = $this->closurePinRemover->newClosedDatesSince($clubId, $resolvedSeasonId, $before);
+            $output->removed = $this->closurePinRemover->applyAll($clubId, $resolvedSeasonId, $new, array_fill_keys(array_keys($new), $output->id));
+
+            return $output;
+        });
+    }
 
     /**
      * @param ConstraintInput $input
@@ -74,6 +109,7 @@ class ConstraintStateProcessor extends AbstractStateProcessor
         $entity->setIsActive($input->isActive ?? true);
         $entity->setSortOrder($input->sortOrder ?? 0);
         $this->assertPreferredVenueIsNotMandatory($entity);
+        $this->assertClosedVenueBelongsToTheClub($entity);
 
         return $entity;
     }
@@ -84,6 +120,11 @@ class ConstraintStateProcessor extends AbstractStateProcessor
      */
     protected function updateEntityFromInput(object $entity, object $input): void
     {
+        // Correction E2b — la porte DÉROBÉE : une fermeture rattachée à une entrée de calendrier ne
+        // change ni de gymnase ni de dates par ici (on fermerait sans rien retirer) ; elle se
+        // modifie depuis le calendrier, où le retrait s'annonce puis s'applique.
+        $attachedClosure = $this->isVenueClosed($entity) && null !== $entity->getCalendarEntryId();
+        $closureBefore = $attachedClosure ? $this->closureIdentity($entity) : null;
         if (null !== $input->name) {
             $entity->setName($input->name);
         }
@@ -142,6 +183,10 @@ class ConstraintStateProcessor extends AbstractStateProcessor
             $entity->setSortOrder($input->sortOrder);
         }
         $this->assertPreferredVenueIsNotMandatory($entity);
+        if (null !== $closureBefore && $closureBefore !== $this->closureIdentity($entity)) {
+            $this->refuse('Modifiez la fermeture depuis le calendrier.');
+        }
+        $this->assertClosedVenueBelongsToTheClub($entity);
     }
 
     /**
@@ -161,6 +206,34 @@ class ConstraintStateProcessor extends AbstractStateProcessor
         // toggles are keyed on constraintId and would orphan on a bare delete.
         foreach ($this->entityManager->getRepository(ConstraintPeriodOverride::class)->findBy(['constraintId' => $entity->getId()]) as $override) {
             $this->entityManager->remove($override);
+        }
+    }
+
+    private function isVenueClosed(Constraint $entity): bool
+    {
+        return 'venue_closed' === ($entity->getConfig()['type'] ?? null);
+    }
+
+    /** Ce qui fait l'identité d'une fermeture : son gymnase et ses dates. */
+    private function closureIdentity(Constraint $entity): string
+    {
+        $config = $entity->getConfig();
+
+        return \sprintf('%s|%s|%s|%s', $entity->getScopeTargetId() ?? '', \is_scalar($config['startDate'] ?? null) ? (string) $config['startDate'] : '', \is_scalar($config['endDate'] ?? null) ? (string) $config['endDate'] : '', $this->isVenueClosed($entity) ? 'closed' : 'other');
+    }
+
+    /**
+     * Une fermeture ne vise qu'un gymnase DU CLUB : le `TenantFilter` borne la lecture, un gymnase
+     * d'un autre club se signale inconnu (422), jamais une fermeture qui pendrait sur un tiers.
+     */
+    private function assertClosedVenueBelongsToTheClub(Constraint $entity): void
+    {
+        if (!$this->isVenueClosed($entity)) {
+            return;
+        }
+        $venueId = $entity->getScopeTargetId();
+        if (null !== $venueId && !$this->entityManager->getRepository(Venue::class)->findOneBy(['id' => $venueId]) instanceof Venue) {
+            $this->refuse('Le gymnase de cette fermeture est inconnu du club.');
         }
     }
 

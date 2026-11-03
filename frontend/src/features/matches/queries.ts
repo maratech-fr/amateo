@@ -887,7 +887,7 @@ export function useVenueMatchWindows() {
  * `lib/matchAccess.ts`). Sans la 2e clé, `useConflicts` (staleTime 10 s) servait son cache —
  * un accès perdu passait en FAUX VERT, un conflit résolu restait affiché — jusqu'au prochain
  * remontage. C'était la SEULE écriture nourrissant le radar à ne pas l'invalider ; ses quatre
- * frères (`invalidateTravel`, `invalidateUnavailabilities`, `invalidateHabits`,
+ * frères (`invalidateTravel`, `invalidateHabits`,
  * `invalidateTeamLinks`) le faisaient déjà (FRT-20, 2e tranche).
  */
 function invalidateMatchWindows(queryClient: ReturnType<typeof useQueryClient>): void {
@@ -913,43 +913,10 @@ export function useDeleteVenueMatchWindow() {
   });
 }
 
-export function useVenueUnavailabilities() {
-  return useQuery({ queryKey: ["venue_unavailabilities"], queryFn: matchesApi.getVenueUnavailabilities, staleTime: 60_000 });
-}
-
-/** P4-300 — les fermetures de gymnase du calendrier : 4ᵉ garde du geste de placement (une
- * fermeture refuse/grise la pose comme une indisponibilité). Miroir du refus serveur. */
-export function useVenueClosures() {
-  return useQuery({ queryKey: ["venue_closures"], queryFn: matchesApi.getVenueClosures, staleTime: 60_000 });
-}
-
-/** Any unavailability write moves both alert surfaces (impact card + radar). */
-function invalidateUnavailabilities(queryClient: ReturnType<typeof useQueryClient>): void {
-  void queryClient.invalidateQueries({ queryKey: ["venue_unavailabilities"] });
-  void queryClient.invalidateQueries({ queryKey: ["venue-unavailability-impact"] });
-  void queryClient.invalidateQueries({ queryKey: ["fixtures", "conflicts"] });
-}
-
-export function useCreateVenueUnavailability() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: matchesApi.createVenueUnavailability,
-    onSuccess: () => invalidateUnavailabilities(queryClient),
-    onError: (error) => void errorMessage(error).then((message) => toast.error(message)),
-  });
-}
-
-export function useDeleteVenueUnavailability() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: matchesApi.deleteVenueUnavailability,
-    onSuccess: () => invalidateUnavailabilities(queryClient),
-    onError: (error) => void errorMessage(error).then((message) => toast.error(message)),
-  });
-}
-
-export function useUnavailabilityImpact() {
-  return useQuery({ queryKey: ["venue-unavailability-impact"], queryFn: matchesApi.getUnavailabilityImpact, staleTime: 60_000 });
+/** P4-300 — les fermetures de gymnase du calendrier : garde du geste de placement (une fermeture
+ * refuse/grise la pose). Miroir du refus serveur. */
+export function useVenueClosures(enabled = true) {
+  return useQuery({ queryKey: ["venue_closures"], queryFn: matchesApi.getVenueClosures, staleTime: 60_000, enabled });
 }
 
 // ── Preferences layer (P1-4 PR C) ────────────────────────────────────────────

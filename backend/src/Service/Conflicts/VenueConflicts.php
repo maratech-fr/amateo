@@ -187,11 +187,12 @@ final class VenueConflicts
      * @param list<FixtureView>                                                                      $views
      * @param list<array{start: DateTimeImmutable, end: DateTimeImmutable, scheduleId: string|null}> $activePeriods
      * @param array<string, list<ScheduleSlotTemplate>>                                              $slotsBySchedule
-     * @param list<string>                                                                           $publicHolidays  dates fériées (Y-m-d)
+     * @param list<string>                                                                           $publicHolidays     dates fériées (Y-m-d)
+     * @param array<string, array<string, true>>                                                     $closedDatesByVenue fermetures de gymnase : venueId → dates fermées (C2)
      *
      * @return list<array<string, mixed>>
      */
-    public function venueTrainingOverlapConflicts(array $views, ?string $seasonScheduleId, array $activePeriods, array $slotsBySchedule, array $publicHolidays = []): array
+    public function venueTrainingOverlapConflicts(array $views, ?string $seasonScheduleId, array $activePeriods, array $slotsBySchedule, array $publicHolidays = [], array $closedDatesByVenue = []): array
     {
         $conflicts = [];
         foreach ($views as $view) {
@@ -207,8 +208,9 @@ final class VenueConflicts
             if (\in_array($date->format('Y-m-d'), $publicHolidays, true)) {
                 continue;
             }
-            $scheduleId = $this->effectiveScheduleResolver->resolve($date, $activePeriods, $seasonScheduleId);
-            if (null === $scheduleId) {
+            ['scheduleId' => $scheduleId, 'excludedVenueIds' => $excludedVenueIds] = $this->effectiveScheduleResolver->resolve($date, $activePeriods, $seasonScheduleId, $closedDatesByVenue);
+            // Fermetures de gymnase (C2) — le gymnase fermé ce jour-là n'accueille aucun entraînement.
+            if (null === $scheduleId || \in_array($venueId, $excludedVenueIds, true)) {
                 continue;
             }
 
@@ -250,8 +252,8 @@ final class VenueConflicts
      * math: the closure is all-circumstances, the DATE match suffices (a
      * kickoff-less home fixture with a venue is affected too).
      *
-     * P4-300 — les deux SOURCES d'indisponibilité (une `VenueUnavailability` déclarée ET une
-     * FERMETURE `venue_closed` du calendrier) arrivent fusionnées en UNE forme tableau commune
+     * P4-300 — la source d'indisponibilité (une FERMETURE `venue_closed` du calendrier, seul fait
+     * saisi depuis le chantier « Fermetures de gymnase ») arrive en UNE forme tableau commune
      * `{venueId, startDate, endDate, label, sourceId}`, montée par {@see ConflictRadarLoader}. Le
      * détecteur reste PUR : il ne distingue pas la source, le radar signale (sévérité 4), jamais de
      * dé-placement automatique d'un match déjà posé (décision fondateur D3). Le champ émis reste

@@ -12,7 +12,6 @@ use App\Entity\Competition;
 use App\Entity\Fixture;
 use App\Entity\Venue;
 use App\Entity\VenueMatchWindow;
-use App\Entity\VenueUnavailability;
 use App\Enum\FixtureHomeAway;
 use App\Enum\FixturePlacementSource;
 use App\Enum\FixtureStatus;
@@ -288,26 +287,6 @@ class FixtureStateProcessor extends AbstractStateProcessor
         }
         $matchDate = $entity->getMatchDate();
         $date = $matchDate->format('Y-m-d');
-
-        // (1) indisponibilité couvrante — TOUS les matchs, amical compris.
-        /** @var list<VenueUnavailability> $unavailabilities */
-        $unavailabilities = $this->entityManager->getRepository(VenueUnavailability::class)->findBy([]);
-        foreach ($unavailabilities as $unavailability) {
-            if ($unavailability->getVenueId() !== $venueId) {
-                continue;
-            }
-            if ($date >= $unavailability->getStartDate()->format('Y-m-d') && $date <= $unavailability->getEndDate()->format('Y-m-d')) {
-                $rawLabel = $unavailability->getLabel();
-                $label = null !== $rawLabel && '' !== $rawLabel ? ' — ' . $rawLabel : '';
-                $this->refuse(\sprintf(
-                    '%s est indisponible du %s au %s%s : le match ne peut pas y être placé. Choisissez un autre gymnase.',
-                    $this->venueName($venueId),
-                    $unavailability->getStartDate()->format('j/n'),
-                    $unavailability->getEndDate()->format('j/n'),
-                    $label,
-                ));
-            }
-        }
 
         // (1bis) FERMETURE du calendrier couvrante — TOUS les matchs, amical compris (P4-300 D4).
         $request = $this->requestStack->getCurrentRequest();

@@ -19,7 +19,6 @@ use App\Entity\TeamLink;
 use App\Entity\TeamMatchHabit;
 use App\Entity\Venue;
 use App\Entity\VenueMatchWindow;
-use App\Entity\VenueUnavailability;
 use App\Enum\ConflictPersonRole;
 use App\Enum\ConstraintRuleType;
 use App\Enum\ConstraintScope;
@@ -126,8 +125,6 @@ final class MatchPlacementPayloadBuilder
         $venues = $this->entityManager->getRepository(Venue::class)->findBy([]);
         /** @var list<VenueMatchWindow> $matchWindows */
         $matchWindows = $this->entityManager->getRepository(VenueMatchWindow::class)->findBy([]);
-        /** @var list<VenueUnavailability> $unavailabilities */
-        $unavailabilities = $this->entityManager->getRepository(VenueUnavailability::class)->findBy([]);
         /** @var list<TeamMatchHabit> $habits */
         $habits = $this->entityManager->getRepository(TeamMatchHabit::class)->findBy([]);
         /** @var list<TeamLink> $teamLinks */
@@ -251,12 +248,6 @@ final class MatchPlacementPayloadBuilder
             ];
         }
         $unavailabilitiesByVenue = [];
-        foreach ($unavailabilities as $unavailability) {
-            $unavailabilitiesByVenue[$unavailability->getVenueId()][] = [
-                'startDate' => $unavailability->getStartDate()->format('Y-m-d'),
-                'endDate' => $unavailability->getEndDate()->format('Y-m-d'),
-            ];
-        }
         // P4-300 — une FERMETURE de gymnase du calendrier (`venue_closed`) s'applique AUSSI aux
         // matchs (décision fondateur D1/D2) : on FUSIONNE son intervalle brut dans le MÊME bloc
         // `venues[].unavailabilities` que l'engine lit déjà — contrat 1.2 inchangé, zéro code
@@ -593,7 +584,7 @@ final class MatchPlacementPayloadBuilder
 
         $context = $this->trainingCalendarContext->load($seasonId);
         [$wizardBlocked, $groups] = $this->planHoldingInputs->load($clubId, $seasonId, array_keys($context['slotsBySchedule']));
-        $holdings = new DayHoldings($views, $roleByTeamPerson, $this->effectiveScheduleResolver, $context['seasonScheduleId'], $context['activePeriods'], $context['slotsBySchedule'], $unavailabilities, $publicHolidays, $wizardBlocked, $groups, $busyToPlaceByDate);
+        $holdings = new DayHoldings($views, $roleByTeamPerson, $this->effectiveScheduleResolver, $context['seasonScheduleId'], $context['activePeriods'], $context['slotsBySchedule'], $unavailabilities, $publicHolidays, $wizardBlocked, $groups, $busyToPlaceByDate, $context['closedDatesByVenue']);
 
         $occupancies = [];
         foreach (array_unique(array_column($toPlaceRows, 'date')) as $dateKey) {

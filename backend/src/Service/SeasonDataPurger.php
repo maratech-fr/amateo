@@ -46,7 +46,6 @@ use App\Entity\VenuePeriodOverride;
 use App\Entity\VenueTrainingSlot;
 use App\Entity\VenueTravelRuleSetting;
 use App\Entity\VenueTravelTime;
-use App\Entity\VenueUnavailability;
 use Doctrine\ORM\EntityManagerInterface;
 
 /**
@@ -200,7 +199,6 @@ final class SeasonDataPurger
         // P1-4 PR B — capacité matchs : les deux tables pointent venue_id,
         // purgées AVANT Venue (aucune FK en base, même règle que le reste).
         VenueMatchWindow::class,
-        VenueUnavailability::class,
         // P2-53 RMM-8 — la matrice de trajet (club_id+season_id, aucun enfant)
         // avant Venue (elle pointe venue_a_id/venue_b_id, aucune FK en base).
         VenueTravelTime::class,

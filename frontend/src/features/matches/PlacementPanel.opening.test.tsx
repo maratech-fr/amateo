@@ -77,7 +77,7 @@ function panel(o: Options = {}) {
     <PlacementPanel
       fixture={o.fixture ?? fixture()}
       venues={venues}
-      guards={{ state: "ready", matchWindows: o.matchWindows ?? [saturdayAlpha], unavailabilities: [], closures: (o.closures ?? []) as never, holidays: o.holidays ?? [HOLIDAY], retry: vi.fn() }}
+      guards={{ state: "ready", matchWindows: o.matchWindows ?? [saturdayAlpha], closures: (o.closures ?? []) as never, holidays: o.holidays ?? [HOLIDAY], retry: vi.fn() }}
       habits={[]}
       teamLabel="U13"
       categoryLabel="U13"

@@ -9,12 +9,11 @@ use App\Controller\GroupReservationController;
 use App\Dto\ReservationInput;
 use App\Dto\ReservationToleranceInput;
 use App\Entity\Reservation;
-use App\Entity\ScheduleSlotTemplate;
 use App\Entity\User;
 use App\Enum\AuditAction;
-use App\Enum\LockLevel;
 use App\Service\PlanVenueClosures;
 use App\Service\ReservationGroupOccupancy;
+use App\Service\ReservationRemoval;
 use DateTimeImmutable;
 use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
@@ -31,10 +30,18 @@ class ReservationStateProcessor extends AbstractStateProcessor
 
     private ReservationGroupOccupancy $reservationGroupOccupancy;
 
+    private ReservationRemoval $reservationRemoval;
+
     #[Required]
     public function setPlanVenueClosures(PlanVenueClosures $planVenueClosures): void
     {
         $this->planVenueClosures = $planVenueClosures;
+    }
+
+    #[Required]
+    public function setReservationRemoval(ReservationRemoval $reservationRemoval): void
+    {
+        $this->reservationRemoval = $reservationRemoval;
     }
 
     #[Required]
@@ -73,15 +80,9 @@ class ReservationStateProcessor extends AbstractStateProcessor
         // atomique existant. Une réservation individuelle se supprime seule (liste = [$reservation]).
         // Aucune route DELETE de groupe : une sœur déjà emportée répond 404, les boucles front le
         // tolèrent.
-        $toRemove = $this->reservationGroupOccupancy->blockCompleteCaseSiblings($reservation);
-        if ([] === $toRemove) {
-            $toRemove = [$reservation];
-        }
-
-        foreach ($toRemove as $target) {
-            $this->purgeMaterialisedHardTemplates($target);
-            $this->entityManager->remove($target);
-        }
+        // Case bloc-complète + purge des verrous matérialisés (bornée au plan de la réservation) :
+        // MAISON UNIQUE partagée avec le retrait d'une fermeture ({@see ReservationRemoval}).
+        $toRemove = $this->reservationRemoval->remove($reservation);
         $this->entityManager->flush();
 
         // Ce override court-circuite parent::processDelete → il doit émettre lui-même la trace RGPD
@@ -211,32 +212,6 @@ class ReservationStateProcessor extends AbstractStateProcessor
     protected function mapEntityToOutput(object $entity): ReservationResource
     {
         return ReservationResource::fromEntity($entity);
-    }
-
-    /**
-     * Deleting a reservation must UNDO its pin : purge the durable HARD ScheduleSlotTemplate(s)
-     * matérialisé(s) par ScheduleResultImporter sur la même case, sinon findBaseSlotTemplates
-     * réinjecte ce pin orphelin à chaque génération future.
-     */
-    private function purgeMaterialisedHardTemplates(Reservation $reservation): void
-    {
-        // Lot 4bis — un créneau LIBRE (teamId null) n'a jamais été matérialisé en verrou HARD (il
-        // n'entre pas dans `slotTemplates`) : rien à purger.
-        if (null === $reservation->getTeamId()) {
-            return;
-        }
-        $materialised = $this->entityManager->getRepository(ScheduleSlotTemplate::class)->findBy([
-            'clubId' => $reservation->getClubId(),
-            'seasonId' => $reservation->getSeasonId(),
-            'teamId' => $reservation->getTeamId(),
-            'venueId' => $reservation->getVenueId(),
-            'dayOfWeek' => $reservation->getDayOfWeek(),
-            'startTime' => $reservation->getStartTime(),
-            'lockLevel' => LockLevel::HARD,
-        ]);
-        foreach ($materialised as $template) {
-            $this->entityManager->remove($template);
-        }
     }
 
     /**

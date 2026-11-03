@@ -138,4 +138,10 @@ export const PLANNING_TEXTS = {
     `${frenchList(absence.coachNames)} ${1 === absence.coachNames.length ? "est indisponible" : "sont indisponibles"} le ${dayLabelLong(absence.dayOfWeek)} à ${absence.startTime} : personne pour tenir ${frenchList(absence.teamNames)} (${absence.venueName}).`,
   fillBlocked: (reason: string) => `Le comblement n'a pas été lancé : ${reason}`,
   seeRecap: "Voir le Récapitulatif",
+  // Fermetures de gymnase (C5) — le plan affiché garde des séances au gymnase qu'une fermeture
+  // DÉCLARÉE ferme ces jours-là : il est périmé (distinct de `stalenessMessage`).
+  staleByClosure: (venue: string, from: string, to: string, teams: string[], sessions: number) =>
+    `Ce planning est périmé : ${venue} est fermé ${from === to ? `le ${from}` : `du ${from} au ${to}`} (${
+      teams.length <= 2 ? `${frenchList(teams)} y ${1 === teams.length ? "a" : "ont"} une séance` : `${sessions} séances`
+    }). Rouvrez-le, puis régénérez.`,
 } as const satisfies Record<string, string | ((...args: never[]) => string)>;

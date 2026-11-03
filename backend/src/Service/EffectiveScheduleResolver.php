@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Service;
 
+use App\Enum\CalendarEntryPeriodType;
 use DateTimeImmutable;
 
 /**
@@ -27,19 +28,34 @@ use DateTimeImmutable;
  * to put a child before its root — the narrowest-wins rule is what makes the
  * result deterministic (P4-188).
  *
+ * Fermetures de gymnase (C2, capture INVERSÉE) — une FERMETURE (`closure`) sans version ne
+ * capture plus sa date : elle ne suspend jamais tout l'entraînement du club. Le planning en
+ * vigueur s'applique (période pointée qui gouverne, sinon le socle) et c'est le GYMNASE fermé qui
+ * sort (`excludedVenueIds`), date par date, depuis l'union de toutes les fermetures déclarées
+ * (`closedDatesByVenue`). La réouverture fait foi : un jour que le plan POINTÉ qui gouverne la date
+ * a rouvert (masque OPEN ou mode BLANK) n'exclut pas son gymnase ; sous le socle, la fermeture est
+ * un fait brut. Vacances et coupures sans version, elles, capturent toujours (aucun entraînement).
+ *
  * Pure/stateless — the caller loads the scoped context (see
  * TrainingCalendarContext) and passes it in.
  */
 final class EffectiveScheduleResolver
 {
     /**
-     * @param list<array{start: DateTimeImmutable, end: DateTimeImmutable, scheduleId: string|null}> $activePeriods
+     * @param list<array{start: DateTimeImmutable, end: DateTimeImmutable, scheduleId: string|null, periodType?: CalendarEntryPeriodType|null, reopenedWeekdaysByVenue?: array<string, array<int, true>>}> $activePeriods
+     * @param array<string, array<string, true>>                                                                                                                                                           $closedDatesByVenue venueId → dates fermées (Y-m-d)
+     *
+     * @return array{scheduleId: string|null, excludedVenueIds: list<string>}
      */
-    public function resolve(DateTimeImmutable $date, array $activePeriods, ?string $seasonScheduleId): ?string
+    public function resolve(DateTimeImmutable $date, array $activePeriods, ?string $seasonScheduleId, array $closedDatesByVenue): array
     {
         $narrowest = null;
         foreach ($activePeriods as $period) {
             if ($date < $period['start'] || $date > $period['end']) {
+                continue;
+            }
+            // Une fermeture sans version ne capture pas : le planning en vigueur s'applique.
+            if (null === $period['scheduleId'] && CalendarEntryPeriodType::CLOSURE === ($period['periodType'] ?? null)) {
                 continue;
             }
             if (null === $narrowest
@@ -50,6 +66,17 @@ final class EffectiveScheduleResolver
             }
         }
 
-        return null !== $narrowest ? $narrowest['scheduleId'] : $seasonScheduleId;
+        $scheduleId = null !== $narrowest ? $narrowest['scheduleId'] : $seasonScheduleId;
+        $day = $date->format('Y-m-d');
+        $weekday = (int) $date->format('N');
+        $reopened = null !== $narrowest && null !== $narrowest['scheduleId'] ? ($narrowest['reopenedWeekdaysByVenue'] ?? []) : [];
+        $excluded = [];
+        foreach ($closedDatesByVenue as $venueId => $dates) {
+            if (isset($dates[$day]) && !isset($reopened[$venueId][$weekday])) {
+                $excluded[] = (string) $venueId;
+            }
+        }
+
+        return ['scheduleId' => $scheduleId, 'excludedVenueIds' => $excluded];
     }
 }

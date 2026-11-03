@@ -44,8 +44,12 @@ class VenueClosureResource
     #[Groups(['read'])]
     public string $endDate = '';
 
+    /** L'entrée de calendrier qui porte la fermeture (la carte du cockpit l'apparie à ses fermetures). */
+    #[Groups(['read'])]
+    public string $calendarEntryId = '';
+
     /**
-     * @param array{constraintId: string, venueId: string, title: string, startDate: string, endDate: string} $closure
+     * @param array{constraintId: string, venueId: string, title: string, startDate: string, endDate: string, calendarEntryId: string} $closure
      */
     public static function from(array $closure): self
     {
@@ -55,6 +59,7 @@ class VenueClosureResource
         $dto->title = $closure['title'];
         $dto->startDate = $closure['startDate'];
         $dto->endDate = $closure['endDate'];
+        $dto->calendarEntryId = $closure['calendarEntryId'];
 
         return $dto;
     }

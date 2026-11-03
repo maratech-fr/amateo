@@ -1,4 +1,4 @@
-import type { VenueClosure, VenueMatchWindow, VenueUnavailability } from "../api";
+import type { VenueClosure, VenueMatchWindow } from "../api";
 
 // D-30 : cette implémentation (midi UTC) était la plus défensive des trois — elle est
 // devenue le foyer partagé.
@@ -123,16 +123,16 @@ export interface VenueAccessIssue {
  * the issue to show, or null when the placement is fully clean.
  *
  * Two severities since P4-193, driven by `isFriendly`:
- * - a venue UNAVAILABLE on the match date is ALWAYS an `error` (a friendly can no
- *   more sit in a closed gym than a competition match);
+ * - a venue CLOSED by the calendar on the match date is ALWAYS an `error` (a friendly
+ *   can no more sit in a closed gym than a competition match);
  * - « no window that day » and « kickoff outside every window » are an `error`
  *   for a COMPETITION match, but only a `warning` for a FRIENDLY — a friendly is
  *   free to be placed off any match slot (the solver no longer places it, the
  *   radar alerts). The warning carries a single neutral message.
  *
  * Rules, in order:
- * 1. venue unavailable on the match date (all-circumstances closure) → error;
- * 1bis. venue closed by the CALENDAR on the match date (P4-300) → error, friendly included;
+ * 1. venue closed by the CALENDAR on the match date (P4-300 — the only declared closure since
+ *    the separate unavailability left) → error, friendly included;
  * 2. the club declares match windows but this venue has none APPLICABLE on that date;
  * 3. a kickoff outside every applicable window.
  * A club with NO non-dated window has not adopted the data → nothing to enforce.
@@ -147,22 +147,10 @@ export function venueAccessError(
   matchDate: string,
   kickoff: string | null,
   windows: VenueMatchWindow[],
-  unavailabilities: VenueUnavailability[],
   isFriendly: boolean,
   closures: VenueClosure[] = [],
   holidays: string[] = [],
 ): VenueAccessIssue | null {
-  for (const unavailability of unavailabilities) {
-    if (unavailability.venueId === venueId && matchDate >= unavailability.startDate && matchDate <= unavailability.endDate) {
-      const label = null !== unavailability.label ? ` (${unavailability.label})` : "";
-      return {
-        level: "error",
-        reason: "unavailable",
-        message: `${venueName} est indisponible du ${frDateShortNoYear(unavailability.startDate)} au ${frDateShortNoYear(unavailability.endDate)}${label}.`,
-      };
-    }
-  }
-
   // P4-300 — une FERMETURE du calendrier à la date du match est un refus dur, amical compris
   // (miroir du refus serveur D4). `dateInsideClosure` est le prédicat-miroir déclaré.
   for (const closure of closures) {

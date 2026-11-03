@@ -6,8 +6,10 @@ namespace App\Service;
 
 use App\Entity\CalendarEntry;
 use App\Entity\ScheduleSlotTemplate;
+use App\Enum\CalendarEntryPeriodType;
 use App\Repository\CalendarEntryRepository;
 use DateTimeImmutable;
+use Doctrine\DBAL\ArrayParameterType;
 use Doctrine\ORM\EntityManagerInterface;
 
 /**
@@ -26,16 +28,23 @@ final class TrainingCalendarContext
         private readonly EntityManagerInterface $entityManager,
         private readonly CalendarEntryRepository $calendarEntryRepository,
         private readonly SchedulePlanProvisioner $schedulePlanProvisioner,
+        private readonly PlanVenueClosures $planVenueClosures,
     ) {}
 
     /**
+     * Fermetures de gymnase (C2) — chaque période porte aussi son TYPE (une fermeture sans version ne
+     * capture plus) et les jours que son plan ROUVRE ; `closedDatesByVenue` est l'union de toutes les
+     * fermetures déclarées du club (fait brut, chargé une fois). `$ignoredEntryId` écarte la FAMILLE
+     * de la fermeture interrogée (aperçu avant « Enregistrer » == impact relu après).
+     *
      * @return array{
      *     seasonScheduleId: string|null,
-     *     activePeriods: list<array{start: DateTimeImmutable, end: DateTimeImmutable, scheduleId: string|null}>,
+     *     activePeriods: list<array{start: DateTimeImmutable, end: DateTimeImmutable, scheduleId: string|null, periodType: CalendarEntryPeriodType|null, reopenedWeekdaysByVenue: array<string, array<int, true>>}>,
      *     slotsBySchedule: array<string, list<ScheduleSlotTemplate>>,
+     *     closedDatesByVenue: array<string, array<string, true>>,
      * }
      */
-    public function load(?string $seasonId): array
+    public function load(?string $seasonId, ?string $ignoredEntryId = null): array
     {
         // ADR-0002 : le calendrier de base = la version CHOISIE du plan SEASON.
         // null = espace de travail : rien n'est arrêté.
@@ -47,15 +56,31 @@ final class TrainingCalendarContext
         $activePeriods = [];
         $scheduleIds = null !== $seasonScheduleId ? [$seasonScheduleId] : [];
         $periods = $this->calendarEntryRepository->findActivePeriodsOrdered();
-        $overlayByEntry = $this->schedulePlanProvisioner->chosenByPeriodPlans(
-            array_map(static fn (CalendarEntry $p): string => $p->getId(), $periods),
-        );
+        $entryIds = array_map(static fn (CalendarEntry $p): string => $p->getId(), $periods);
+        $overlayByEntry = $this->schedulePlanProvisioner->chosenByPeriodPlans($entryIds);
+        // Les jours ROUVERTS ne comptent que pour un plan POINTÉ (c'est lui qui gouverne la date) :
+        // une seule requête `IN` pour les surcharges de tous ces plans.
+        $planIdByEntry = [];
+        $pointedEntryIds = array_keys($overlayByEntry);
+        if ([] !== $pointedEntryIds) {
+            foreach ($this->entityManager->getConnection()->fetchAllAssociative(
+                'SELECT id, calendar_entry_id FROM schedule_plan WHERE calendar_entry_id IN (:ids)',
+                ['ids' => array_map(strval(...), $pointedEntryIds)],
+                ['ids' => ArrayParameterType::STRING],
+            ) as $row) {
+                $planIdByEntry[(string) $row['calendar_entry_id']] = (string) $row['id'];
+            }
+        }
+        $reopenedByPlan = $this->planVenueClosures->reopenedWeekdaysByPlans(array_values($planIdByEntry));
         foreach ($periods as $period) {
             $overlayId = $overlayByEntry[$period->getId()] ?? null;
+            $planId = $planIdByEntry[$period->getId()] ?? null;
             $activePeriods[] = [
                 'start' => $period->getStartDate(),
                 'end' => $period->getEndDate(),
                 'scheduleId' => $overlayId,
+                'periodType' => $period->getPeriodType(),
+                'reopenedWeekdaysByVenue' => null !== $planId ? ($reopenedByPlan[$planId] ?? []) : [],
             ];
             if (null !== $overlayId) {
                 $scheduleIds[] = $overlayId;
@@ -73,10 +98,19 @@ final class TrainingCalendarContext
             }
         }
 
+        $closedDatesByVenue = [];
+        if (null !== $seasonId) {
+            $clubId = $this->entityManager->getConnection()->fetchOne('SELECT club_id FROM season WHERE id = :sid', ['sid' => $seasonId]);
+            if (\is_string($clubId)) {
+                $closedDatesByVenue = $this->planVenueClosures->closedDatesByVenue($clubId, $seasonId, $ignoredEntryId);
+            }
+        }
+
         return [
             'seasonScheduleId' => $seasonScheduleId,
             'activePeriods' => $activePeriods,
             'slotsBySchedule' => $slotsBySchedule,
+            'closedDatesByVenue' => $closedDatesByVenue,
         ];
     }
 }

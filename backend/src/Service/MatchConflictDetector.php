@@ -435,6 +435,8 @@ final class MatchConflictDetector
      *                                                                                                                                        coach d'une séance, jamais d'un match.
      * @param array<string, list<list<string>>>                                                                      $groupsBySchedule
      *                                                                                                                                        version → listes d'équipes : les groupes déclarés du plan de cette version
+     * @param array<string, array<string, true>>                                                                     $closedDatesByVenue
+     *                                                                                                                                        Fermetures de gymnase (C2) — venueId → dates fermées : un entraînement au gymnase fermé ce jour-là n'a pas lieu
      *
      * @return list<array<string, mixed>> conflict items ready to serialize, mixed with the held lines (those carrying `heldBy`)
      */
@@ -461,6 +463,7 @@ final class MatchConflictDetector
         array $publicHolidays = [],
         array $wizardBlockedBySchedule = [],
         array $groupsBySchedule = [],
+        array $closedDatesByVenue = [],
     ): array {
         // Two person maps by team. Coaches carry a role (MAIN/ASSISTANT, worst
         // engagement wins, cadrage §8); active players carry PLAYER. Kept apart
@@ -534,7 +537,7 @@ final class MatchConflictDetector
             }
         }
         $personViews = array_values(array_filter($views, static fn (array $view): bool => [] !== $view['personIds']));
-        $holdings = new DayHoldings($personViews, $roleByTeamPerson, $this->effectiveScheduleResolver, $seasonScheduleId, $activePeriods, $slotsBySchedule, $coachUnavailabilities, $publicHolidays, $wizardBlockedBySchedule, $groupsBySchedule);
+        $holdings = new DayHoldings($personViews, $roleByTeamPerson, $this->effectiveScheduleResolver, $seasonScheduleId, $activePeriods, $slotsBySchedule, $coachUnavailabilities, $publicHolidays, $wizardBlockedBySchedule, $groupsBySchedule, closedDatesByVenue: $closedDatesByVenue);
 
         return [
             ...$this->venueConflicts->venueOverlapConflicts($views),
@@ -542,14 +545,14 @@ final class MatchConflictDetector
             ...$this->ruleWindowConflicts->clubRuleViolations($activeFixtures, $clubRules),
             ...$this->venueConflicts->teamVenueForbiddenConflicts($activeFixtures, $forbiddenVenuesByTeam),
             ...$this->personConflicts->matchMatchConflicts($personViews, $roleByTeamPerson, $coachUnavailabilities, $holdings),
-            ...$this->personConflicts->matchTrainingConflicts($personViews, $coachesByTeam, $playersByTeam, $roleByTeamPerson, $seasonScheduleId, $activePeriods, $slotsBySchedule, $coachUnavailabilities, $publicHolidays, $holdings),
+            ...$this->personConflicts->matchTrainingConflicts($personViews, $coachesByTeam, $playersByTeam, $roleByTeamPerson, $seasonScheduleId, $activePeriods, $slotsBySchedule, $coachUnavailabilities, $publicHolidays, $holdings, $closedDatesByVenue),
             // Chantier H volet matchs (amendement b) — coup d'envoi dans l'indispo DÉCLARÉE d'un
             // coach principal → ROUGE (3), JAUNE (5) si l'indispo ne touche que la durée du match
             // à domicile, ORANGE (4) si un adjoint libre peut couvrir, ligne tenue si un autre principal tient.
             ...$this->personConflicts->coachUnavailableConflicts($personViews, $roleByTeamPerson, $coachUnavailabilities, $holdings),
             ...$this->venueConflicts->venueUnavailableConflicts($activeFixtures, $unavailabilities),
             ...$this->venueConflicts->accessWindowLostConflicts($activeFixtures, $matchWindows, $publicHolidays),
-            ...$this->venueConflicts->venueTrainingOverlapConflicts($views, $seasonScheduleId, $activePeriods, $slotsBySchedule, $publicHolidays),
+            ...$this->venueConflicts->venueTrainingOverlapConflicts($views, $seasonScheduleId, $activePeriods, $slotsBySchedule, $publicHolidays, $closedDatesByVenue),
             ...$this->competitionIncompleteItems($fixtures, $competitions, $deadlineByCompetition, $clubToday),
             ...$this->awayNoFootprintItems($activeFixtures, $habitByTeamDay, $levelByTeam),
             ...$this->friendlyOnMatchSlotConflicts($views, $fixtures, $matchWindows, $publicHolidays),

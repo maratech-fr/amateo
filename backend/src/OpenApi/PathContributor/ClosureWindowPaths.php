@@ -52,18 +52,27 @@ final readonly class ClosureWindowPaths implements CustomPathContributor
             ]),
         )));
 
+        $removed = [
+            'type' => 'object',
+            'description' => 'What the newly closed days removed from the period plans governing them: hard locks and reservations at the closed venue',
+            'properties' => ['locks' => ['type' => 'integer'], 'reservations' => ['type' => 'integer']],
+        ];
+
         $paths->addPath('/api/schedule_plans/{id}/window', new PathItem(post: new Operation(
             operationId: 'postSchedulePlanWindow',
             tags: ['SchedulePlan'],
             responses: [
                 '200' => $this->schemas->jsonResponse('The closure window was applied. The already-worked middle is kept (same version), each other run is born as a validated copy, the dated closure runs to the new end (its start frozen).', [
                     'type' => 'object',
-                    'properties' => ['id' => ['type' => 'string', 'format' => 'uuid']],
+                    'properties' => [
+                        'id' => ['type' => 'string', 'format' => 'uuid'],
+                        'removed' => $removed,
+                    ],
                 ]),
                 '401' => new Response('Unauthorized (missing/expired JWT)'),
                 '403' => new Response('Not a management member'),
                 '404' => new Response('Unknown plan, or a plan belonging to another club'),
-                '409' => new Response('Preview token stale/forged (the closure moved since the preview), or the season is archived'),
+                '409' => new Response('Preview token stale/forged (the closure moved since the preview), the season is archived, or a generation is running for the club (code generation_in_progress)'),
                 '422' => new Response('Missing preview token, not a closure plan, malformed dates, or a window below the "past does not move" floor'),
             ],
             summary: 'Apply a closure window change after a confirmed preview',
@@ -76,6 +85,76 @@ final readonly class ClosureWindowPaths implements CustomPathContributor
                     'previewToken' => ['type' => 'string', 'description' => 'The token returned by window-preview, recomputed under locks'],
                 ],
             ]),
+        )));
+
+        $plan = [
+            'type' => 'object',
+            'properties' => [
+                'entryId' => ['type' => 'string', 'format' => 'uuid'],
+                'title' => ['type' => 'string'],
+                'startDate' => ['type' => 'string', 'format' => 'date'],
+                'endDate' => ['type' => 'string', 'format' => 'date'],
+                'chosenScheduleId' => ['type' => 'string', 'nullable' => true],
+                'loadedScheduleId' => ['type' => 'string', 'nullable' => true],
+                'hasVersions' => ['type' => 'boolean'],
+                'sessions' => ['type' => 'array', 'items' => ['type' => 'object', 'properties' => [
+                    'teamId' => ['type' => 'string'], 'teamName' => ['type' => 'string'], 'date' => ['type' => 'string', 'format' => 'date'], 'venueId' => ['type' => 'string'],
+                ]]],
+                'toRemove' => ['type' => 'object', 'properties' => [
+                    'locks' => ['type' => 'integer'],
+                    'reservations' => ['type' => 'array', 'items' => ['type' => 'object', 'properties' => [
+                        'teamId' => ['type' => 'string', 'nullable' => true], 'teamName' => ['type' => 'string'], 'dayOfWeek' => ['type' => 'integer'],
+                    ]]],
+                ]],
+                'regeneratedWithout' => ['type' => 'boolean', 'description' => 'The pointed version, born after the closure, no longer trains at the closed venue on days the season calendar did'],
+            ],
+        ];
+        $impact = [
+            'type' => 'object',
+            'properties' => [
+                'venueIds' => ['type' => 'array', 'items' => ['type' => 'string']],
+                'startDate' => ['type' => 'string', 'format' => 'date'],
+                'endDate' => ['type' => 'string', 'format' => 'date'],
+                'seasonPlanChosen' => ['type' => 'boolean'],
+                'teams' => ['type' => 'array', 'items' => ['type' => 'object', 'properties' => [
+                    'teamId' => ['type' => 'string'], 'teamName' => ['type' => 'string'], 'tierLabel' => ['type' => 'string'], 'tierWeight' => ['type' => 'integer'], 'occurrences' => ['type' => 'integer'],
+                ]]],
+                'trainingOccurrences' => ['type' => 'integer'],
+                'trainingSlotCount' => ['type' => 'integer'],
+                'matchesToMove' => ['type' => 'array', 'items' => ['type' => 'object', 'properties' => [
+                    'fixtureId' => ['type' => 'string'], 'teamId' => ['type' => 'string'], 'teamName' => ['type' => 'string'], 'opponentLabel' => ['type' => 'string'],
+                    'matchDate' => ['type' => 'string', 'format' => 'date'], 'kickoffTime' => ['type' => 'string', 'nullable' => true],
+                ]]],
+                'governingPlans' => ['type' => 'array', 'items' => $plan],
+                'fullyGoverned' => ['type' => 'boolean'],
+                'closedSessions' => ['type' => 'array', 'items' => ['type' => 'object']],
+                'removedAtDeclaration' => ['type' => 'boolean'],
+            ],
+        ];
+
+        $paths->addPath('/api/venue-closure-impact', new PathItem(get: new Operation(
+            operationId: 'getVenueClosureImpact',
+            tags: ['CalendarEntry'],
+            responses: [
+                '200' => $this->schemas->jsonResponse('What closing this venue on these dates would touch: training sessions, home matches to move, and the hard locks and reservations its saving would remove from the period plans governing those dates', $impact),
+                '400' => new Response('Missing venue or dates'),
+                '401' => new Response('Unauthorized (missing/expired JWT)'),
+                '404' => new Response('Unknown venue, or a venue of another club'),
+                '422' => new Response('End date before start date'),
+            ],
+            summary: 'Preview of a venue closure before saving it (read-only)',
+        )));
+
+        $paths->addPath('/api/calendar-entries/{id}/impact', new PathItem(get: new Operation(
+            operationId: 'getCalendarEntryImpact',
+            tags: ['CalendarEntry'],
+            responses: [
+                '200' => $this->schemas->jsonResponse('What a saved venue closure touches — the same figures as its preview before saving', $impact),
+                '401' => new Response('Unauthorized (missing/expired JWT)'),
+                '403' => new Response('An entry of another club'),
+                '404' => new Response('Unknown entry'),
+            ],
+            summary: 'Impact of a saved venue closure (read-only)',
         )));
     }
 }

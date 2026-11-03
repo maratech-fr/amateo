@@ -18,6 +18,7 @@ vi.mock("@/shared/session/queries", () => ({ useCanManage: () => true,
 
 vi.mock("@/features/planning/queries", () => ({
   useSlots: () => ({ data: [], isLoading: false }),
+  useVenues: () => ({ data: [] }),
   useSchedules: () => ({ data: [{ id: "s1", name: "Planning A", status: "COMPLETED", score: 9011, createdAt: "", updatedAt: "", planType: "SEASON", schedulePlanId: "season-plan", isChosen: true }] }),
   useReopenSchedule: () => ({ mutate: vi.fn(), isPending: false }),
   // P2-36 — useWeekAdapt (dans RadarPanel) lit useDeleteSchedule pour la découpe destructive.
@@ -46,17 +47,17 @@ vi.mock("./queries", () => ({
   // P2-38 — useWeekAdapt (dans RadarPanel) lit les fenêtres déjà planifiées ; ici jamais de picker
   // ouvert, mais le hook doit exister dans le mock.
   usePlannedWindows: () => ({ data: [], isError: false }),
+  // Fermetures PR 1 — la carte des fermetures (réelle ici) et le radar lisent l'impact servi.
+  useDeleteEntry: () => ({ mutate: vi.fn(), isPending: false }),
+  useEntryImpact: () => ({ data: undefined }),
+  useEntryImpactList: (ids: string[]) => ids.map(() => ({ data: undefined, isPending: false })),
 }));
 // P4-68 — le radar lit les indispos gymnase (et la carte du cockpit les liste) :
 // rien à signaler dans ces cas d'état, la machine à états n'en dépend pas.
 vi.mock("@/features/matches/queries", () => ({
-  useVenueUnavailabilities: () => ({ data: [] }),
   useVenues: () => ({ data: [] }),
   // Promesse 5 — RadarPanel (réel ici) lit le feed des fermetures ; vide, aucun changement d'état.
   useVenueClosures: () => ({ data: [] }),
-  useUnavailabilityImpact: () => ({ data: { clubId: "c", seasonId: null, items: [] } }),
-  useCreateVenueUnavailability: () => ({ mutate: vi.fn(), isPending: false }),
-  useDeleteVenueUnavailability: () => ({ mutate: vi.fn(), isPending: false }),
   // RMM-6 PR-3 — la tuile échéances FBI consomme cet outlook ; muet dans ces états.
   useDeadlineOutlook: () => ({ data: undefined }),
   // Lot O — la tuile lit aussi « validé ligue » (gestionnaire) et ouvre la confirmation.

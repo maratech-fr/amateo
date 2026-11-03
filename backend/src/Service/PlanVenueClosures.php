@@ -156,7 +156,7 @@ final class PlanVenueClosures
      * et le refus serveur ({@see FixtureStateProcessor}), ainsi que l'endpoint
      * `GET /api/venue_closures` qui l'expose au front.
      *
-     * @return list<array{constraintId: string, venueId: string, title: string, startDate: string, endDate: string}>
+     * @return list<array{constraintId: string, venueId: string, title: string, startDate: string, endDate: string, calendarEntryId: string}>
      */
     public function closureIntervals(string $clubId, string $seasonId): array
     {
@@ -168,6 +168,83 @@ final class PlanVenueClosures
         }
 
         return $intervals;
+    }
+
+    /**
+     * Fermetures de gymnase (C2) — l'UNION de toutes les fermetures déclarées du club+saison, date
+     * par date et gymnase par gymnase, en FAIT BRUT (mêmes intervalles que {@see closureIntervals} :
+     * config, repli legacy = fenêtre de l'entrée porteuse ; aucune composition `VenuePeriodOverride`
+     * — la réouverture d'un plan se retranche chez le lecteur, {@see EffectiveScheduleResolver}).
+     *
+     * `$ignoredEntryId` écarte la FAMILLE de l'entrée interrogée — même prédicat que
+     * {@see PeriodWindowUniquenessGuard} (`COALESCE(parent_entry_id, id)`) : l'aperçu d'une fermeture
+     * avant « Enregistrer » et son impact relu après disent le même chiffre (correction finale 4).
+     *
+     * @return array<string, array<string, true>> venueId → dates fermées (Y-m-d)
+     */
+    public function closedDatesByVenue(string $clubId, string $seasonId, ?string $ignoredEntryId = null): array
+    {
+        $ignoredRoot = null !== $ignoredEntryId ? $this->rootEntryIdOf($ignoredEntryId) : null;
+        $closed = [];
+        foreach ($this->closuresByCarrier($clubId, $seasonId) as [$constraints, $carrierStart, $carrierEnd, $rootId]) {
+            if (null !== $ignoredRoot && $rootId === $ignoredRoot) {
+                continue;
+            }
+            foreach (VenueClosureDays::rawIntervals($constraints, $carrierStart, $carrierEnd) as $interval) {
+                $end = new DateTimeImmutable($interval['endDate'])->modify('+1 day');
+                foreach (new DatePeriod(new DateTimeImmutable($interval['startDate']), new DateInterval('P1D'), $end) as $day) {
+                    $closed[$interval['venueId']][$day->format('Y-m-d')] = true;
+                }
+            }
+        }
+
+        return $closed;
+    }
+
+    /** L'ancêtre racine d'une entrée (`COALESCE(parent_entry_id, id)`), ou null si introuvable. SQL brut, RLS scope le club. */
+    public function rootEntryIdOf(string $entryId): ?string
+    {
+        $root = $this->entityManager->getConnection()->fetchOne(
+            'SELECT COALESCE(parent_entry_id, id) FROM calendar_entry WHERE id = :id',
+            ['id' => $entryId],
+        );
+
+        return \is_string($root) ? $root : null;
+    }
+
+    /**
+     * Fermetures de gymnase (C2, « la réouverture fait foi ») — les jours qu'un plan de période
+     * ROUVRE gymnase par gymnase : masque OPEN, ou mode BLANK (grille ressaisie, l'incident devient
+     * informatif : les sept jours). Une seule requête pour tous les plans demandés.
+     *
+     * @param list<string> $planIds
+     *
+     * @return array<string, array<string, array<int, true>>> planId → venueId → jours ISO rouverts
+     */
+    public function reopenedWeekdaysByPlans(array $planIds): array
+    {
+        if ([] === $planIds) {
+            return [];
+        }
+        $reopened = [];
+        foreach ($this->entityManager->getRepository(VenuePeriodOverride::class)->findBy(['schedulePlanId' => array_values(array_unique($planIds))]) as $override) {
+            $planId = $override->getSchedulePlanId();
+            $venueId = $override->getVenueId();
+            if (VenuePeriodMode::BLANK === $override->getMode()) {
+                foreach (range(1, 7) as $day) {
+                    $reopened[$planId][$venueId][$day] = true;
+                }
+
+                continue;
+            }
+            foreach ($override->getDayOverrides() ?? [] as $day => $state) {
+                if (VenueDayState::OPEN->value === $state) {
+                    $reopened[$planId][$venueId][(int) $day] = true;
+                }
+            }
+        }
+
+        return $reopened;
     }
 
     /**
@@ -374,7 +451,7 @@ final class PlanVenueClosures
      * la fenêtre de cette entrée (pour le repli legacy). Ordre stable : le repo trie par
      * (createdAt, id) — d'où des résumés déterministes quand plusieurs fermetures se recoupent.
      *
-     * @return list<array{0: list<Constraint>, 1: DateTimeImmutable, 2: DateTimeImmutable}>
+     * @return list<array{0: list<Constraint>, 1: DateTimeImmutable, 2: DateTimeImmutable, 3: string}> [contraintes, début, fin de l'entrée porteuse, ancêtre racine de l'entrée]
      */
     private function closuresByCarrier(string $clubId, string $seasonId): array
     {
@@ -395,7 +472,7 @@ final class PlanVenueClosures
         // La fenêtre de CHAQUE entrée porteuse : elle borne le repli legacy à sa propre entrée.
         $windowById = [];
         foreach ($this->entityManager->getRepository(CalendarEntry::class)->findBy(['id' => array_keys($byCarrier)]) as $carrier) {
-            $windowById[$carrier->getId()] = [$carrier->getStartDate(), $carrier->getEndDate()];
+            $windowById[$carrier->getId()] = [$carrier->getStartDate(), $carrier->getEndDate(), $carrier->getParentEntryId() ?? $carrier->getId()];
         }
 
         $groups = [];
@@ -403,8 +480,8 @@ final class PlanVenueClosures
             if (!isset($windowById[$carrierId])) {
                 continue; // entrée porteuse disparue : aucune fenêtre pour la borner, on ignore
             }
-            [$carrierStart, $carrierEnd] = $windowById[$carrierId];
-            $groups[] = [$constraints, $carrierStart, $carrierEnd];
+            [$carrierStart, $carrierEnd, $rootId] = $windowById[$carrierId];
+            $groups[] = [$constraints, $carrierStart, $carrierEnd, $rootId];
         }
 
         return $groups;

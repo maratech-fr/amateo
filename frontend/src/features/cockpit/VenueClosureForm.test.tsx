@@ -42,7 +42,7 @@ const readyImpact = {
 const ready: PreviewState = { data: readyImpact, isPending: false, isFetching: false, isError: false, isSuccess: true };
 
 let previewState: PreviewState = inFlight;
-const previewHook = vi.fn((_params: unknown) => previewState);
+const previewHook = vi.fn<(params: unknown) => PreviewState>(() => previewState);
 const createMutate = vi.fn();
 
 vi.mock("./queries", () => ({

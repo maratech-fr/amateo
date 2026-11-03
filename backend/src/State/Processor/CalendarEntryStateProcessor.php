@@ -16,8 +16,10 @@ use App\Entity\PeriodReminderLog;
 use App\Enum\CalendarEntryKind;
 use App\Enum\CalendarEntryPeriodType;
 use App\Enum\CalendarEntryStatus;
+use App\Exception\ClosurePinsPreviewRequiredException;
 use App\Repository\SchoolHolidayPeriodRepository;
 use App\Service\CalendarEntryRedatability;
+use App\Service\ClosurePinRemover;
 use App\Service\ClosureSegmentation;
 use App\Service\HolidayWorkweekRule;
 use App\Service\ManagementAccessGuard;
@@ -57,6 +59,7 @@ class CalendarEntryStateProcessor extends AbstractStateProcessor
         private readonly CalendarEntryRedatability $redatability,
         private readonly ClosureSegmentation $closureSegmentation,
         private readonly SplitMotherRedatePlanner $splitMotherRedatePlanner,
+        private readonly ClosurePinRemover $closurePinRemover,
     ) {
         parent::__construct($entityManager, $requestStack, $seasonResolver, $seasonAccessGuard, $managementAccessGuard);
     }
@@ -228,6 +231,13 @@ class CalendarEntryStateProcessor extends AbstractStateProcessor
      */
     protected function processPost(object $input, ?string $clubId, ?string $seasonId): object
     {
+        // Fermetures de gymnase (C3, correction finale 3) — UNE règle hors saison : une fermeture
+        // RACINE dont la fenêtre ne touche AUCUN jour de la saison est refusée ; à cheval, seules ses
+        // dates en saison compteront (le formulaire le dit).
+        if (null === $input->parentEntryId && 'period' === $input->kind && CalendarEntryPeriodType::CLOSURE->value === $input->periodType) {
+            $this->assertClosureTouchesTheSeason($this->resolveSeasonId($clubId, $seasonId), $input);
+        }
+
         return $this->entityManager->wrapInTransaction(function () use ($input, $clubId, $seasonId): object {
             // Semaine enfant (P2-5 E1) : valider la MÈRE avant de créer quoi que ce
             // soit — sous le verrou de son plan-scope, pour sérialiser avec une
@@ -306,90 +316,161 @@ class CalendarEntryStateProcessor extends AbstractStateProcessor
                 $this->schedulePlanProvisioner->lockPlanScope($entryId);
             }
 
-            // D3 v1 — re-dater une racine CLOSURE à plan « d'un bloc ». Tout se fait SOUS le verrou
-            // ci-dessus, dans la même transaction. La garde d'unicité de fenêtre passe AVANT toute
-            // mutation (409 franc, jamais de re-datage à moitié fait) ; le reste (resync du plan,
-            // des contraintes appariées, du titre) une fois l'entrée re-datée par le parent.
-            $redate = $this->prepareClosureRootRedate($input, $entryId);
-            if (null !== $redate) {
-                // La nouvelle fenêtre reste DANS la saison : une période ne se re-date pas hors de
-                // la fenêtre de sa saison (refus PARLANT, jamais un 422 muet). Passe AVANT la garde
-                // d'unicité, aucune mutation encore faite.
-                $this->assertWindowWithinSeason($redate['seasonId'], $redate['newStart'], $redate['newEnd']);
-                // Racine = l'entrée elle-même : sa propre famille (COALESCE(parent, id)) est exclue,
-                // seuls les AUTRES plans de période qui recoupent la nouvelle fenêtre déclenchent le 409.
-                $this->windowUniquenessGuard->assertWindowFree(
-                    $redate['clubId'],
-                    $redate['seasonId'],
-                    $redate['entryId'],
-                    $redate['newStart']->format('Y-m-d'),
-                    $redate['newEnd']->format('Y-m-d'),
-                );
-                // Découpage début·milieu·fin (fondateur 2026-09-05) : re-dater une racine à plan
-                // « d'un bloc » vers une fenêtre à SEMAINE ENTAMÉE (décomposition > 1 segment)
-                // contournerait la règle par D3 — on refuse (422 parlant). Géométrie PLEINE : la
-                // FORME de la nouvelle fenêtre, indépendante de l'horloge (une fixture passée aussi).
-                $newStartIso = $redate['newStart']->format('Y-m-d');
-                $newEndIso = $redate['newEnd']->format('Y-m-d');
-                $seasonRow = $this->entityManager->getConnection()->fetchAssociative(
-                    'SELECT start_date, end_date FROM season WHERE id = :sid',
-                    ['sid' => $redate['seasonId']],
-                );
-                $newWindowSegments = $this->closureSegmentation->fullSegments(
-                    $redate['clubId'],
-                    $redate['seasonId'],
-                    $redate['entryId'],
-                    $newStartIso,
-                    $newEndIso,
-                    false === $seasonRow ? null : mb_substr((string) $seasonRow['start_date'], 0, 10),
-                    false === $seasonRow ? null : mb_substr((string) $seasonRow['end_date'], 0, 10),
-                );
-                if (\count($newWindowSegments) > 1) {
-                    $this->refuse('Cette indisponibilité aurait une semaine entamée : re-datez-la sur des semaines complètes, ou adaptez-la par début, milieu, fin.');
+            // « Enregistrer vaut geste » (fermetures C3bis / E2a) — une FERMETURE qui change de
+            // dates retire, pour les SEULS jours nouvellement fermés, les verrous et réservations
+            // des plans de période qui les gouvernent. Photo de l'union AVANT, diff APRÈS (tous les
+            // chemins : racine à plan, mère découpée, fermeture sans plan).
+            $closure = \is_string($entryId) ? $this->entityManager->getRepository(CalendarEntry::class)->find($entryId) : null;
+            $closureScope = $closure instanceof CalendarEntry && CalendarEntryPeriodType::CLOSURE === $closure->getPeriodType()
+                ? [$closure->getClubId(), $closure->getSeasonId(), $closure->getParentEntryId() ?? $closure->getId()]
+                : null;
+            $before = null !== $closureScope ? $this->closurePinRemover->closedDatesSnapshot($closureScope[0], $closureScope[1]) : [];
+
+            $output = $this->putUnderLocks($input, $uriVariables, $clubId, $seasonId, $entryId);
+
+            if (null !== $closureScope) {
+                [$closureClubId, $closureSeasonId, $rootId] = $closureScope;
+                $new = $this->closurePinRemover->newClosedDatesSince($closureClubId, $closureSeasonId, $before);
+                if ([] !== $new) {
+                    $toRemove = $this->closurePinRemover->previewTotals($closureClubId, $closureSeasonId, $new);
+                    if (($toRemove['locks'] > 0 || $toRemove['reservations'] > 0) && true !== $input->confirmPinRemoval) {
+                        // La transaction est annulée : rien n'est re-daté sans l'annonce lue.
+                        throw new ClosurePinsPreviewRequiredException($toRemove);
+                    }
+                    $output->removed = $this->closurePinRemover->applyAll($closureClubId, $closureSeasonId, $new, $this->closureConstraintIdByVenue($rootId));
                 }
             }
 
-            // Le parent applique l'update (dates comprises) et flushe — TOUJOURS d'abord, y
-            // compris pour le re-datage : applyClosureRootRedate resynchronise à partir de l'entrée
-            // déjà re-datée, puis re-map la sortie (le nom/titre a pu changer au passage).
-            if (null !== $redate) {
-                parent::processPut($input, $uriVariables, $clubId, $seasonId);
-
-                return $this->applyClosureRootRedate($redate);
-            }
-
-            // D3 v2 (P4-174) — re-dater une indisponibilité DÉCOUPÉE : aperçu servi + confirmation.
-            // Tout SOUS les verrous ci-dessus, dans la même transaction. Sans jeton d'aperçu → refus
-            // parlant ; jeton périmé (recalcul différent) → 409 ; sinon on applique exactement le plan.
-            $split = $this->prepareSplitMotherRedate($input, $entryId);
-            if (null !== $split) {
-                if (null === $input->previewToken) {
-                    $this->refuse('Cette indisponibilité est découpée en semaines : demandez d’abord l’aperçu des effets, puis confirmez le re-datage.');
-                }
-                // Mêmes gardes de forme que le re-datage « d'un bloc », AVANT toute mutation. Le
-                // conflit de fenêtre ne joue QU'ENTRE FERMETURES (closuresOnly) : « les vacances ont
-                // la main » — re-dater par-dessus des vacances leur cède les semaines (annoncé par
-                // l'aperçu), jamais un 409.
-                $this->assertWindowWithinSeason($split['seasonId'], $split['newStart'], $split['newEnd']);
-                $this->windowUniquenessGuard->assertWindowFree(
-                    $split['clubId'],
-                    $split['seasonId'],
-                    $split['entryId'],
-                    $split['newStart']->format('Y-m-d'),
-                    $split['newEnd']->format('Y-m-d'),
-                    closuresOnly: true,
-                );
-
-                return $this->applySplitMotherRedate($input, $uriVariables, $clubId, $seasonId, $split);
-            }
-
-            return parent::processPut($input, $uriVariables, $clubId, $seasonId);
+            return $output;
         });
     }
 
     protected function mapEntityToOutput(object $entity): CalendarEntryResource
     {
         return CalendarEntryResource::fromEntity($entity, $this->redatability->isRedatable($entity), $this->redatability->redateNeedsPreview($entity));
+    }
+
+    private function assertClosureTouchesTheSeason(?string $seasonId, CalendarEntryInput $input): void
+    {
+        if (null === $seasonId || null === $input->startDate || null === $input->endDate) {
+            return;
+        }
+        $seasonRow = $this->entityManager->getConnection()->fetchAssociative('SELECT start_date, end_date FROM season WHERE id = :sid', ['sid' => $seasonId]);
+        if (false === $seasonRow) {
+            return;
+        }
+        $start = $this->parseDate($input->startDate)->format('Y-m-d');
+        $end = $this->parseDate($input->endDate)->format('Y-m-d');
+        if ($end < substr((string) $seasonRow['start_date'], 0, 10) || $start > substr((string) $seasonRow['end_date'], 0, 10)) {
+            $this->refuse('Les dates doivent tenir dans la saison.');
+        }
+    }
+
+    /**
+     * Les contraintes `venue_closed` portées par la famille d'une fermeture, par gymnase (pour
+     * nommer la fermeture dans la trace d'un retrait).
+     *
+     * @return array<string, string>
+     */
+    private function closureConstraintIdByVenue(string $rootEntryId): array
+    {
+        $byVenue = [];
+        foreach ($this->entityManager->getConnection()->fetchAllAssociative(
+            'SELECT c.id, c.scope_target_id FROM "constraint" c JOIN calendar_entry e ON e.id = c.calendar_entry_id '
+            . 'WHERE COALESCE(e.parent_entry_id, e.id) = :root AND c.scope_target_id IS NOT NULL ORDER BY c.created_at, c.id',
+            ['root' => $rootEntryId],
+        ) as $row) {
+            $byVenue[(string) $row['scope_target_id']] ??= (string) $row['id'];
+        }
+
+        return $byVenue;
+    }
+
+    /**
+     * Le cœur du PUT, sous les verrous et dans la transaction de {@see processPut}.
+     *
+     * @param array<string, mixed> $uriVariables
+     */
+    private function putUnderLocks(CalendarEntryInput $input, array $uriVariables, ?string $clubId, ?string $seasonId, mixed $entryId): CalendarEntryResource
+    {
+        // D3 v1 — re-dater une racine CLOSURE à plan « d'un bloc ». Tout se fait SOUS le verrou
+        // ci-dessus, dans la même transaction. La garde d'unicité de fenêtre passe AVANT toute
+        // mutation (409 franc, jamais de re-datage à moitié fait) ; le reste (resync du plan,
+        // des contraintes appariées, du titre) une fois l'entrée re-datée par le parent.
+        $redate = $this->prepareClosureRootRedate($input, $entryId);
+        if (null !== $redate) {
+            // La nouvelle fenêtre reste DANS la saison : une période ne se re-date pas hors de
+            // la fenêtre de sa saison (refus PARLANT, jamais un 422 muet). Passe AVANT la garde
+            // d'unicité, aucune mutation encore faite.
+            $this->assertWindowWithinSeason($redate['seasonId'], $redate['newStart'], $redate['newEnd']);
+            // Racine = l'entrée elle-même : sa propre famille (COALESCE(parent, id)) est exclue,
+            // seuls les AUTRES plans de période qui recoupent la nouvelle fenêtre déclenchent le 409.
+            $this->windowUniquenessGuard->assertWindowFree(
+                $redate['clubId'],
+                $redate['seasonId'],
+                $redate['entryId'],
+                $redate['newStart']->format('Y-m-d'),
+                $redate['newEnd']->format('Y-m-d'),
+            );
+            // Découpage début·milieu·fin (fondateur 2026-09-05) : re-dater une racine à plan
+            // « d'un bloc » vers une fenêtre à SEMAINE ENTAMÉE (décomposition > 1 segment)
+            // contournerait la règle par D3 — on refuse (422 parlant). Géométrie PLEINE : la
+            // FORME de la nouvelle fenêtre, indépendante de l'horloge (une fixture passée aussi).
+            $newStartIso = $redate['newStart']->format('Y-m-d');
+            $newEndIso = $redate['newEnd']->format('Y-m-d');
+            $seasonRow = $this->entityManager->getConnection()->fetchAssociative(
+                'SELECT start_date, end_date FROM season WHERE id = :sid',
+                ['sid' => $redate['seasonId']],
+            );
+            $newWindowSegments = $this->closureSegmentation->fullSegments(
+                $redate['clubId'],
+                $redate['seasonId'],
+                $redate['entryId'],
+                $newStartIso,
+                $newEndIso,
+                false === $seasonRow ? null : mb_substr((string) $seasonRow['start_date'], 0, 10),
+                false === $seasonRow ? null : mb_substr((string) $seasonRow['end_date'], 0, 10),
+            );
+            if (\count($newWindowSegments) > 1) {
+                $this->refuse('Cette indisponibilité aurait une semaine entamée : re-datez-la sur des semaines complètes, ou adaptez-la par début, milieu, fin.');
+            }
+        }
+
+        // Le parent applique l'update (dates comprises) et flushe — TOUJOURS d'abord, y
+        // compris pour le re-datage : applyClosureRootRedate resynchronise à partir de l'entrée
+        // déjà re-datée, puis re-map la sortie (le nom/titre a pu changer au passage).
+        if (null !== $redate) {
+            parent::processPut($input, $uriVariables, $clubId, $seasonId);
+
+            return $this->applyClosureRootRedate($redate);
+        }
+
+        // D3 v2 (P4-174) — re-dater une indisponibilité DÉCOUPÉE : aperçu servi + confirmation.
+        // Tout SOUS les verrous ci-dessus, dans la même transaction. Sans jeton d'aperçu → refus
+        // parlant ; jeton périmé (recalcul différent) → 409 ; sinon on applique exactement le plan.
+        $split = $this->prepareSplitMotherRedate($input, $entryId);
+        if (null !== $split) {
+            if (null === $input->previewToken) {
+                $this->refuse('Cette indisponibilité est découpée en semaines : demandez d’abord l’aperçu des effets, puis confirmez le re-datage.');
+            }
+            // Mêmes gardes de forme que le re-datage « d'un bloc », AVANT toute mutation. Le
+            // conflit de fenêtre ne joue QU'ENTRE FERMETURES (closuresOnly) : « les vacances ont
+            // la main » — re-dater par-dessus des vacances leur cède les semaines (annoncé par
+            // l'aperçu), jamais un 409.
+            $this->assertWindowWithinSeason($split['seasonId'], $split['newStart'], $split['newEnd']);
+            $this->windowUniquenessGuard->assertWindowFree(
+                $split['clubId'],
+                $split['seasonId'],
+                $split['entryId'],
+                $split['newStart']->format('Y-m-d'),
+                $split['newEnd']->format('Y-m-d'),
+                closuresOnly: true,
+            );
+
+            return $this->applySplitMotherRedate($input, $uriVariables, $clubId, $seasonId, $split);
+        }
+
+        return parent::processPut($input, $uriVariables, $clubId, $seasonId);
     }
 
     /**
