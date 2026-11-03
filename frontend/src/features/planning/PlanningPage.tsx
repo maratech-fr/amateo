@@ -349,10 +349,13 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
   // Distinct de « lecture seule » : une version non chargée n'est pas le calendrier en vigueur, et
   // elle garde ses diagnostics. Le serveur décide ; capacité absente = aucun motif, il refusera seul.
   const notLoaded = false === selectedSchedule?.capabilities?.canEdit && "not_loaded_version" === selectedSchedule.capabilities.editBlockedReason;
-  const gesturesBlockedReason = notLoaded ? PLANNING_TEXTS.gesturesBlockedNotLoaded : null;
+  const loadBlockedReason = selectedSchedule?.capabilities?.regenerateFromBlockedReason ?? null;
+  // Impossible à charger : ne pas demander de la charger, dire le motif du serveur.
+  const gesturesBlockedReason = !notLoaded ? null : null !== loadBlockedReason ? PLANNING_TEXTS.cannotLoadLine(loadBlockedReason) : PLANNING_TEXTS.gesturesBlockedNotLoaded;
   const loadedVersion = loadedVersionOf(schedules, selectedSchedule);
   const loadedLabel = undefined === loadedVersion ? null : versionLabelOf(schedules, loadedVersion.id);
-  const showNotLoadedBanner = notLoaded && "COMPLETED" === selectedSchedule?.status && isSeasonPlanType(selectedSchedule.planType) && null !== loadedLabel;
+  // Bannière neutre de consultation, saison comme période (le mot suit le titre : « chargée », « source »).
+  const showNotLoadedBanner = notLoaded && "COMPLETED" === selectedSchedule?.status && null !== loadedLabel;
   // P4-98 — la version affichée n'est pas la dernière COMPLETED de SON plan (`pickLandingScheduleId`
   // atterrit sur celle en vigueur, qui peut être plus ancienne) → on PROPOSE d'ouvrir la dernière,
   // par une sélection LOCALE. Aucune écriture, aucune redirection : la version en vigueur (isChosen)
@@ -870,7 +873,7 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
           (aucune écriture, aucune redirection). Muet pendant une génération (showGenerationWaiting).
           role="status" : il apparaît de façon asynchrone au changement de version, annoncé poliment. */}
       {!showGenerationWaiting && showNotLoadedBanner && undefined !== loadedVersion && null !== loadedLabel && null !== selectedSchedule ? (
-        <NoticeBanner tone="muted" role="status" className="mb-4" message={PLANNING_TEXTS.notLoadedBanner(versionLabelOf(schedules, selectedSchedule.id) ?? selectedSchedule.name, loadedLabel, true === selectedSchedule.capabilities?.canRegenerateFrom)}>
+        <NoticeBanner tone="muted" role="status" className="mb-4" message={isSeasonPlanType(selectedSchedule.planType) ? PLANNING_TEXTS.notLoadedBanner(versionLabelOf(schedules, selectedSchedule.id) ?? selectedSchedule.name, loadedLabel, true === selectedSchedule.capabilities?.canRegenerateFrom, loadBlockedReason) : PLANNING_TEXTS.notSourceBanner(versionLabelOf(schedules, selectedSchedule.id) ?? selectedSchedule.name, loadedLabel, true === selectedSchedule.capabilities?.canLoadLocks)}>
           <Button
             size="sm"
             variant="outline"
@@ -879,7 +882,7 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
               setSelectedScheduleId(loadedVersion.id);
             }}
           >
-            {PLANNING_TEXTS.openLoadedVersion}
+            {isSeasonPlanType(selectedSchedule.planType) ? PLANNING_TEXTS.openLoadedVersion : PLANNING_TEXTS.openSourceVersion}
           </Button>
         </NoticeBanner>
       ) : null}

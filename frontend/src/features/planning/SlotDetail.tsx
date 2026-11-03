@@ -250,6 +250,8 @@ export function SlotDetail({ cell, slot, venues, categoryLabel, constraints, tag
           <p className="mt-3 border-t border-border pt-3 text-xs text-muted-foreground">{PLANNING_TEXTS.readOnlyPlanningSlot}</p>
         ) : (
         <div className="mt-3 flex flex-col gap-2 border-t border-border pt-3">
+          {/* Un geste grisé dit son motif en clair : une ligne pour tous les gestes de la fiche. */}
+          {gesturesBlocked ? <p className="text-xs text-muted-foreground">{gesturesBlockedReason}</p> : null}
           {/* P2-30 (D11) : plus de formulaire jour/heure/gymnase — « Déplacer » ARME le mode
               cible click-click, la cible se choisit sur la grille. Armé, le bouton bascule sur
               une consigne, et une aide « Échap pour annuler » apparaît.

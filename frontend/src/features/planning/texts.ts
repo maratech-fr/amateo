@@ -44,10 +44,16 @@ export const PLANNING_TEXTS = {
   loadVersionTitle: "Charger cette version ?",
   loadVersionDescriptionGeneric: "La structure actuelle sera remplacée par celle de cette version et son planning s'affichera. Vous pourrez ensuite « Régénérer » pour créer une nouvelle version.",
   // Version chargée : une version non chargée se consulte, ne se modifie pas.
-  notLoadedBanner: (viewed: string, loaded: string, canLoad: boolean): string =>
+  notLoadedBanner: (viewed: string, loaded: string, canLoad: boolean, reason?: string | null): string =>
     canLoad
       ? `Vous consultez la version ${viewed} en lecture seule. La version chargée est la version ${loaded} : chargez la version ${viewed} pour la modifier, ou régénérez à partir de la version ${loaded}.`
-      : `Vous consultez la version ${viewed} en lecture seule. Elle ne peut pas être chargée. La version chargée est la version ${loaded} : modifiez-la, ou régénérez à partir d'elle.`,
+      : `Vous consultez la version ${viewed} en lecture seule. Elle ne peut pas être chargée${null === reason || undefined === reason ? "." : ` : ${reason}`} La version chargée est la version ${loaded} : modifiez-la, ou régénérez à partir d'elle.`,
+  notSourceBanner: (viewed: string, source: string, canLoad: boolean): string =>
+    `Vous consultez la version ${viewed} en lecture seule. La version source est la version ${source}${canLoad ? ` : chargez la version ${viewed} pour la modifier, ou régénérez à partir de la version ${source}.` : ` : modifiez-la, ou régénérez à partir d'elle.`}`,
+  openSourceVersion: "Ouvrir la version source",
+  // Un geste grisé dit son motif en clair : une ligne par zone, seule dans son élément.
+  notLoadedToolbarLine: "Version en consultation : chargez-la pour la modifier ou la valider.",
+  cannotLoadLine: (reason: string): string => `Version en consultation, impossible à charger : ${reason}`,
   openLoadedVersion: "Ouvrir la version chargée",
   gesturesBlockedNotLoaded: "Chargez cette version pour la modifier.",
   validateNeedsLoad: "Chargez cette version pour la valider.",
@@ -66,6 +72,27 @@ export const PLANNING_TEXTS = {
   regenerateKeepsLoadedLocks: (label: string): string => `La régénération repart de la version ${label} : ses créneaux verrouillés sont conservés.`,
   deleteLoadedVersionNote: (next: string): string => `C'est la version chargée : la version ${next} prendra le relais.`,
   regenerateFromCurrentTitle: "Régénérer à partir des données en cours ?",
+  // PlanningToolbar
+  viewByVenue: "Par gymnase",
+  viewByCoach: "Par coach",
+  viewByTeam: "Par équipe",
+  viewByDay: "Par jour",
+  viewByClub: "Par club",
+  versionSelectLabel: "Version du planning",
+  versionInForceSuffix: " · en vigueur",
+  versionPeriodSuffix: " · période",
+  deleteVersion: "Supprimer cette version",
+  periodBadge: "Période",
+  validate: "Valider",
+  reopen: "Rouvrir",
+  planningViewLabel: "Vue du planning",
+  generating: "Génération…",
+  regenerate: "Régénérer",
+  regenerateKeepsLocks: "Vos créneaux verrouillés sont conservés à la régénération.",
+  loadVersion: "Charger cette version",
+  loadVersionAlreadyCurrent: "Déjà le contexte courant — rien à recharger (utilisez « Régénérer »)",
+  loadVersionHint: "Recharge la structure de cette version (sans régénérer) et affiche son planning",
+  loadLocksHint: "Fait des verrous de cette version les données en cours : la prochaine régénération repartira d'eux",
   // SlotDetail
   closeLabel: "Fermer",
   fixConstraintLink: "Corriger cette contrainte",
