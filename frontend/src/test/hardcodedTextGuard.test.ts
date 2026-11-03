@@ -55,6 +55,9 @@ const MIGRATED_FILES = [
   "shared/feedback/FeedbackDialog.tsx",
   // Améliorations légères #1 — l'écran d'inscription migré dans features/auth/texts.ts.
   "features/auth/RegisterPage.tsx",
+  // Chantier Membre PR 3 — la page publique d'approbation (création / reprise / promotion) migrée
+  // dans features/auth/texts.ts (plan v5 §4).
+  "features/auth/ClubApprovalPage.tsx",
   "features/cockpit/RadarPanel.tsx",
   "features/cockpit/DayDialog.tsx",
   "features/cockpit/WeekPickerDialog.tsx",

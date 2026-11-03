@@ -13,19 +13,14 @@ const api = vi.hoisted(() => ({
   changeMemberRole: vi.fn().mockResolvedValue({}),
   deactivateMember: vi.fn().mockResolvedValue(undefined),
   reactivateMember: vi.fn().mockResolvedValue(undefined),
+  // Chantier Membre PR 3 (plan v5, D2) : « Accepter » = `changeMemberRole(id, "admin")` (le geste
+  // du sélecteur, aucune route à part) ; « Refuser » = `POST /api/memberships/{id}/manager-request/refuse`.
+  refuseManagerRequest: vi.fn().mockResolvedValue({}),
 }));
 vi.mock("@/features/auth/api", () => api);
 
 const toast = vi.hoisted(() => ({ error: vi.fn(), success: vi.fn(), info: vi.fn() }));
 vi.mock("@/shared/stores/toastStore", () => ({ toast }));
-
-// Chantier Membre PR 3 — les gestes Accepter/Refuser une demande de rôle vivent dans l'API de la
-// feature club (le seul dossier front autorisé par le plan) ; le reste du module reste réel.
-const clubApi = vi.hoisted(() => ({
-  acceptManagerRequest: vi.fn().mockResolvedValue({}),
-  refuseManagerRequest: vi.fn().mockResolvedValue({}),
-}));
-vi.mock("./api", async (importOriginal) => ({ ...(await importOriginal<object>()), ...clubApi }));
 
 import { CLUB_TEXTS } from "./texts";
 import { MembersSection } from "./MembersSection";
@@ -101,38 +96,59 @@ describe("MembersSection", () => {
     expect(await screen.findByText(/Impossible de charger les membres/)).toBeInTheDocument();
   });
 
+  /**
+   * Chantier Membre PR 3 (plan v5) — la pastille « Demande gestionnaire » (datée, « transmise au
+   * club » quand le serveur l'a escaladée) et ses deux gestes nommés. « Accepter » EST le geste du
+   * sélecteur de rôle (D2 : `changeMemberRole(id, "admin")`, aucun second mécanisme) ; « Refuser »
+   * appelle la route de refus.
+   */
   describe("demande à devenir gestionnaire (chantier Membre PR 3)", () => {
-    const paul = { id: "m-paul", userId: "up", email: "paul@club.fr", firstName: "Paul", lastName: "Martin", role: "member", isSelf: false, managerRequestedAt: "2026-11-03T12:00:00+00:00" };
-    const kim = { id: "m-kim", userId: "uk", email: "kim@club.fr", firstName: "Kim", lastName: "Lee", role: "member", isSelf: false, managerRequestedAt: null };
+    const paul = { id: "m-paul", userId: "up", email: "paul@club.fr", firstName: "Paul", lastName: "Martin", role: "member", isSelf: false, managerRequestedAt: "2026-11-03T12:00:00+00:00", managerRequestEscalatedAt: null };
+    const kim = { id: "m-kim", userId: "uk", email: "kim@club.fr", firstName: "Kim", lastName: "Lee", role: "member", isSelf: false, managerRequestedAt: null, managerRequestEscalatedAt: null };
+    const me = { ...self, managerRequestedAt: null, managerRequestEscalatedAt: null };
 
     it("seul le Membre qui a demandé porte la pastille datée et les deux gestes nommés", async () => {
-      renderSection({ members: [{ ...self, managerRequestedAt: null }, paul, kim], deactivated: [] });
+      renderSection({ members: [me, paul, kim], deactivated: [] });
       await screen.findByText("Paul Martin");
 
-      expect(screen.getByText(CLUB_TEXTS.managerRequestPill("03/11/2026"))).toBeInTheDocument();
+      expect(screen.getByText(CLUB_TEXTS.managerRequestPill("03/11/2026", false))).toBeInTheDocument();
       expect(screen.getByRole("button", { name: CLUB_TEXTS.acceptManagerRequestOf("Paul Martin") })).toBeInTheDocument();
       expect(screen.getByRole("button", { name: CLUB_TEXTS.refuseManagerRequestOf("Paul Martin") })).toBeInTheDocument();
       expect(screen.queryByRole("button", { name: CLUB_TEXTS.acceptManagerRequestOf("Kim Lee") })).not.toBeInTheDocument();
       expect(screen.getAllByText(/Demande gestionnaire/)).toHaveLength(1);
     });
 
-    it("Accepter puis Refuser appellent l'API avec l'id de l'adhésion", async () => {
+    it("escaladée : la pastille dit « transmise au club »", async () => {
+      renderSection({ members: [me, { ...paul, managerRequestEscalatedAt: "2026-11-17T12:00:00+00:00" }], deactivated: [] });
+      expect(await screen.findByText(CLUB_TEXTS.managerRequestPill("03/11/2026", true))).toBeInTheDocument();
+    });
+
+    it("« Accepter » est le geste du sélecteur de rôle : changeMemberRole(id, admin)", async () => {
       const user = userEvent.setup();
-      renderSection({ members: [{ ...self, managerRequestedAt: null }, paul], deactivated: [] });
+      renderSection({ members: [me, paul], deactivated: [] });
       await screen.findByText("Paul Martin");
 
       await user.click(screen.getByRole("button", { name: CLUB_TEXTS.acceptManagerRequestOf("Paul Martin") }));
-      expect(clubApi.acceptManagerRequest).toHaveBeenCalledWith("m-paul");
+      expect(api.changeMemberRole).toHaveBeenCalledWith("m-paul", "admin");
+      expect(api.refuseManagerRequest).not.toHaveBeenCalled();
+    });
+
+    it("« Refuser » appelle la route de refus avec l'id de l'adhésion", async () => {
+      const user = userEvent.setup();
+      renderSection({ members: [me, paul], deactivated: [] });
+      await screen.findByText("Paul Martin");
+
       await user.click(screen.getByRole("button", { name: CLUB_TEXTS.refuseManagerRequestOf("Paul Martin") }));
-      expect(clubApi.refuseManagerRequest).toHaveBeenCalledWith("m-paul");
+      expect(api.refuseManagerRequest).toHaveBeenCalledWith("m-paul");
+      expect(api.changeMemberRole).not.toHaveBeenCalled();
     });
 
     it("un refus serveur (409 « Aucune demande en cours. ») est restitué en toast, jamais avalé", async () => {
       const user = userEvent.setup();
-      clubApi.acceptManagerRequest.mockRejectedValueOnce(new Error("409"));
-      renderSection({ members: [{ ...self, managerRequestedAt: null }, paul], deactivated: [] });
+      api.refuseManagerRequest.mockRejectedValueOnce(new Error("409"));
+      renderSection({ members: [me, paul], deactivated: [] });
       await screen.findByText("Paul Martin");
-      await user.click(screen.getByRole("button", { name: CLUB_TEXTS.acceptManagerRequestOf("Paul Martin") }));
+      await user.click(screen.getByRole("button", { name: CLUB_TEXTS.refuseManagerRequestOf("Paul Martin") }));
       await vi.waitFor(() => expect(toast.error).toHaveBeenCalled());
     });
   });

@@ -15,6 +15,7 @@ vi.mock("./api", () => ({
 }));
 
 import { ClubApprovalPage } from "./ClubApprovalPage";
+import { AUTH_TEXTS } from "./texts";
 
 function renderAt(token = "a".repeat(64)) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -69,44 +70,73 @@ describe("ClubApprovalPage (P3-4 PR C — page publique)", () => {
   });
 
   /**
-   * Chantier Membre PR 3 — la page dit ce qu'on approuve : une REPRISE (un Membre d'un club sans
-   * gestionnaire) n'est pas une création ; l'adresse du demandeur est montrée pour qu'on le
+   * Chantier Membre PR 3 (plan v5) — la page dit ce qu'on approuve, selon le `kind` servi par le
+   * serveur : `reprise` (club sans gestionnaire) ou `promotion` (gestionnaires sans réponse
+   * 14 jours) ne sont pas une création ; l'adresse du demandeur est montrée pour qu'on le
    * reconnaisse ; l'issue affichée est celle que le serveur rend (`approved` / `superseded` /
-   * `refused`), jamais « Espace créé » pour une demande dépassée. Page non migrée vers
-   * `auth/texts.ts` : libellés du plan recopiés (tolérés), le rôle discrimine les gestes.
+   * `refused`) — jamais « Demande refusée » pour une demande dépassée (bug PR 1, création comprise).
+   * Page migrée : le test vérifie les CLÉS d'`AUTH_TEXTS`, jamais la phrase recopiée.
    */
-  describe("reprise d'un espace sans gestionnaire (PR 3)", () => {
+  describe("reprise et promotion (PR 3)", () => {
     const reprise = { ...info, kind: "reprise", requesterEmail: "sonia@club.fr" };
+    const promotion = { ...info, kind: "promotion", requesterEmail: "sonia@club.fr" };
 
-    it("nomme la reprise, le demandeur ET son adresse", async () => {
+    it("reprise : titre de reprise, le demandeur ET son adresse, l'aide qui annonce l'annulation de la suppression", async () => {
       h.get.mockResolvedValueOnce(reprise);
       renderAt();
 
-      expect(await screen.findByText("Demande de reprise d'espace")).toBeInTheDocument();
+      expect(await screen.findByText(AUTH_TEXTS.clubApprovalRepriseTitle)).toBeInTheDocument();
       expect(screen.getByText(/sonia@club\.fr/)).toBeInTheDocument();
-      expect(screen.getByText(/demande à reprendre la gestion de l'espace de/)).toBeInTheDocument();
-      expect(screen.getByText(/elle deviendra gestionnaire et la suppression de l'espace sera annulée/)).toBeInTheDocument();
-      expect(screen.queryByText("Demande de création d'espace")).not.toBeInTheDocument();
-      expect(screen.getByRole("button", { name: "Approuver" })).toBeInTheDocument();
+      expect(screen.getByText(AUTH_TEXTS.clubApprovalRepriseHelp)).toBeInTheDocument();
+      expect(screen.queryByText(AUTH_TEXTS.clubApprovalCreateTitle)).not.toBeInTheDocument();
+      expect(screen.getByRole("button", { name: AUTH_TEXTS.clubApprovalApprove })).toBeInTheDocument();
     });
 
-    it("approuvée → « Reprise approuvée »", async () => {
+    it("promotion : titre de promotion, l'adresse, l'aide — sans promettre que « personne n'est retiré »", async () => {
+      h.get.mockResolvedValueOnce(promotion);
+      const { container } = renderAt();
+
+      expect(await screen.findByText(AUTH_TEXTS.clubApprovalPromotionTitle)).toBeInTheDocument();
+      expect(screen.getByText(/sonia@club\.fr/)).toBeInTheDocument();
+      expect(screen.getByText(AUTH_TEXTS.clubApprovalPromotionHelp)).toBeInTheDocument();
+      expect(container.textContent).not.toContain("personne n'est retiré");
+    });
+
+    it("reprise approuvée → « Reprise approuvée » ; promotion approuvée → « Gestionnaire nommé »", async () => {
       h.get.mockResolvedValueOnce(reprise);
       h.decide.mockResolvedValueOnce({ status: "approved" });
-      renderAt();
-      await userEvent.click(await screen.findByRole("button", { name: "Approuver" }));
-      expect(await screen.findByText("Reprise approuvée")).toBeInTheDocument();
-      expect(screen.queryByText("Espace créé")).not.toBeInTheDocument();
+      const { unmount } = renderAt();
+      await userEvent.click(await screen.findByRole("button", { name: AUTH_TEXTS.clubApprovalApprove }));
+      expect(await screen.findByText(AUTH_TEXTS.clubApprovalRepriseApprovedTitle)).toBeInTheDocument();
+      expect(screen.queryByText(AUTH_TEXTS.clubApprovalCreatedTitle)).not.toBeInTheDocument();
+      unmount();
+
+      h.get.mockResolvedValueOnce(promotion);
+      h.decide.mockResolvedValueOnce({ status: "approved" });
+      renderAt("c".repeat(64));
+      await userEvent.click(await screen.findByRole("button", { name: AUTH_TEXTS.clubApprovalApprove }));
+      expect(await screen.findByText(AUTH_TEXTS.clubApprovalPromotionApprovedTitle)).toBeInTheDocument();
     });
 
-    it("dépassée (un gestionnaire a déjà repris) → « Demande dépassée », jamais « refusée » ni « créé »", async () => {
+    it("dépassée (reprise) → « Demande dépassée », jamais « refusée » ni « créé »", async () => {
       h.get.mockResolvedValueOnce(reprise);
       h.decide.mockResolvedValueOnce({ status: "superseded" });
       renderAt();
-      await userEvent.click(await screen.findByRole("button", { name: "Approuver" }));
-      expect(await screen.findByText("Demande dépassée")).toBeInTheDocument();
-      expect(screen.queryByText("Demande refusée")).not.toBeInTheDocument();
-      expect(screen.queryByText("Espace créé")).not.toBeInTheDocument();
+      await userEvent.click(await screen.findByRole("button", { name: AUTH_TEXTS.clubApprovalApprove }));
+      expect(await screen.findByText(AUTH_TEXTS.clubApprovalSupersededTitle)).toBeInTheDocument();
+      expect(screen.getByText(AUTH_TEXTS.clubApprovalSupersededTakenOver)).toBeInTheDocument();
+      expect(screen.queryByText(AUTH_TEXTS.clubApprovalRefusedTitle)).not.toBeInTheDocument();
+      expect(screen.queryByText(AUTH_TEXTS.clubApprovalCreatedTitle)).not.toBeInTheDocument();
+    });
+
+    it("dépassée (création : le club existe déjà) → « Demande dépassée » + transmise aux gestionnaires, jamais « refusée »", async () => {
+      h.get.mockResolvedValueOnce({ ...info, kind: "create" });
+      h.decide.mockResolvedValueOnce({ status: "superseded" });
+      renderAt();
+      await userEvent.click(await screen.findByRole("button", { name: AUTH_TEXTS.clubApprovalApprove }));
+      expect(await screen.findByText(AUTH_TEXTS.clubApprovalSupersededTitle)).toBeInTheDocument();
+      expect(screen.getByText(AUTH_TEXTS.clubApprovalSupersededCreate)).toBeInTheDocument();
+      expect(screen.queryByText(AUTH_TEXTS.clubApprovalRefusedTitle)).not.toBeInTheDocument();
     });
   });
 

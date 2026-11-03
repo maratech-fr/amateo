@@ -115,7 +115,6 @@ vi.mock("@/shared/hooks/useGeocode", () => ({
 }));
 
 import { ClubPage } from "./ClubPage";
-import { CLUB_TEXTS } from "./texts";
 
 describe("ClubPage", () => {
   beforeEach(() => {
@@ -521,7 +520,7 @@ describe("ClubPage — carte « Mon rôle » (Membre)", () => {
   });
 
   it("en cours auprès des gestionnaires : la date, et l'annulation possible (plus de bouton de demande)", async () => {
-    asMember({ status: "pending", since: SINCE });
+    asMember({ status: "pending", since: SINCE, escalated: false });
     render(<ClubPage />);
     expect(screen.getByText(CLUB_TEXTS.managerRequestPending("03/11/2026"))).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: CLUB_TEXTS.requestManagerRole })).not.toBeInTheDocument();
@@ -530,20 +529,28 @@ describe("ClubPage — carte « Mon rôle » (Membre)", () => {
   });
 
   it("transmise à l'adresse officielle : la date ; sans adresse connue, « le support validera »", () => {
-    asMember({ status: "club_pending", since: SINCE, clubEmailKnown: true });
+    asMember({ status: "club_pending", since: SINCE, escalated: false, clubEmailKnown: true });
     const { unmount } = render(<ClubPage />);
     expect(screen.getByText(CLUB_TEXTS.managerRequestSentToOfficial("03/11/2026"))).toBeInTheDocument();
     expect(screen.queryByText(CLUB_TEXTS.managerRequestNoOfficialAddress)).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: CLUB_TEXTS.cancelManagerRequest })).toBeInTheDocument();
     unmount();
 
-    asMember({ status: "club_pending", since: SINCE, clubEmailKnown: false });
+    asMember({ status: "club_pending", since: SINCE, escalated: false, clubEmailKnown: false });
     render(<ClubPage />);
     expect(screen.getByText(CLUB_TEXTS.managerRequestNoOfficialAddress)).toBeInTheDocument();
   });
 
+  it("escaladée (gestionnaires sans réponse 14 jours) : transmise à l'adresse officielle, annulable", () => {
+    asMember({ status: "club_pending", since: SINCE, escalated: true, clubEmailKnown: true });
+    render(<ClubPage />);
+    expect(screen.getByText(CLUB_TEXTS.managerRequestEscalated("03/11/2026"))).toBeInTheDocument();
+    expect(screen.queryByText(CLUB_TEXTS.managerRequestSentToOfficial("03/11/2026"))).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: CLUB_TEXTS.cancelManagerRequest })).toBeInTheDocument();
+  });
+
   it("expirée : la date de la demande, et le bouton pour la renvoyer", async () => {
-    asMember({ status: "expired", since: SINCE });
+    asMember({ status: "expired", since: SINCE, escalated: false });
     render(<ClubPage />);
     expect(screen.getByText(CLUB_TEXTS.managerRequestExpired("03/11/2026"))).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: CLUB_TEXTS.requestManagerRole }));
@@ -551,7 +558,7 @@ describe("ClubPage — carte « Mon rôle » (Membre)", () => {
   });
 
   it("refusée par le club : les deux dates, et AUCUN bouton tant que le délai court", () => {
-    asMember({ status: "refused", since: SINCE, until: "2026-12-03" });
+    asMember({ status: "refused", since: SINCE, escalated: false, until: "2026-12-03" });
     render(<ClubPage />);
     expect(screen.getByText(CLUB_TEXTS.managerRequestRefused("03/11/2026", "03/12/2026"))).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: CLUB_TEXTS.requestManagerRole })).not.toBeInTheDocument();
