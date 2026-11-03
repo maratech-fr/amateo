@@ -1,0 +1,17 @@
+{
+  "baseUrl": "http://localhost:8181",
+  "outDir": "captures/mon-chantier",
+  "auth": {
+    "mode": "register",
+    "clubName": "Club Test Capture",
+    "mailpitUrl": "http://localhost:18025",
+    "saveStateTo": "captures/mon-chantier/.session.json"
+  },
+  "viewport": { "width": 1280, "height": 800 },
+  "theme": "light",
+  "screens": [
+    { "name": "01-club", "path": "/club", "waitFor": "h1" },
+    { "name": "02-club-sombre", "path": "/club", "theme": "dark", "waitFor": "h1" },
+    { "name": "03-profil-360", "path": "/profile", "viewport": { "width": 360, "height": 800 }, "fullPage": true }
+  ]
+}
