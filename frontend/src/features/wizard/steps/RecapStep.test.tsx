@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { renderWithProviders } from "@/test/utils";
 import { WIZARD_TEXTS } from "../texts";
+import { dayLabelLong } from "@/shared/lib/days";
 
 import type { SharedTrainingBlock } from "../api";
 
@@ -352,7 +353,7 @@ describe("RecapStep — read-only summary", () => {
       renderWithProviders(<RecapStep />);
 
       await user.click(screen.getByRole("button", { name: /Réservations/ }));
-      const removes = screen.getAllByRole("button", { name: "Retirer la réservation de SM1" });
+      const removes = screen.getAllByRole("button", { name: /^Retirer la réservation de SM1/ });
       expect(removes).toHaveLength(2);
 
       await user.click(removes[1]);
@@ -361,7 +362,7 @@ describe("RecapStep — read-only summary", () => {
       expect(deleteReservationMock.mock.calls[0][0]).toBe("r2");
     });
 
-    it("TÉMOIN : une ligne servie non désignée reste en lecture seule", async () => {
+    it("TÉMOIN : une ligne servie non désignée reste en lecture seule, sans motif", async () => {
       recapLayer.slots = tuesdayWindows;
       h.reservations = [at("r1", "t1", "18:00"), at("r2", "t2", "20:30")];
       validationState.value = { errors: [], warnings: [], notices: [], doubledReservationIds: ["r1"] };
@@ -369,8 +370,9 @@ describe("RecapStep — read-only summary", () => {
       renderWithProviders(<RecapStep />);
 
       await user.click(screen.getByRole("button", { name: /Réservations/ }));
-      expect(screen.getByRole("button", { name: "Retirer la réservation de SM1" })).toBeInTheDocument();
-      expect(screen.queryByRole("button", { name: "Retirer la réservation de Fanion" })).toBeNull();
+      expect(screen.getByRole("button", { name: /^Retirer la réservation de SM1/ })).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /^Retirer la réservation de Fanion/ })).toBeNull();
+      expect(screen.getAllByText(WIZARD_TEXTS.secondSessionSameDay(dayLabelLong(2)), { exact: false })).toHaveLength(1);
     });
 
     it("un groupe désigné se retire en lot, case par case : on ne casse jamais le groupe", async () => {
@@ -382,8 +384,73 @@ describe("RecapStep — read-only summary", () => {
       renderWithProviders(<RecapStep />);
 
       await user.click(screen.getByRole("button", { name: /Réservations/ }));
-      expect(screen.getAllByRole("button", { name: "Retirer l'entraînement mutualisé SM1 + Fanion" })).toHaveLength(2);
-      expect(screen.queryByRole("button", { name: "Retirer la réservation de SM1" })).toBeNull();
+      expect(screen.getAllByRole("button", { name: /^Retirer l'entraînement mutualisé SM1 \+ Fanion/ })).toHaveLength(2);
+      expect(screen.queryByRole("button", { name: /^Retirer la réservation de SM1/ })).toBeNull();
+    });
+
+    // Le gestionnaire doit savoir POURQUOI une ligne bien servie porte une poubelle, et laquelle il retire.
+    it("chaque ligne désignée dit son motif : la deuxième séance du jour", async () => {
+      recapLayer.slots = tuesdayWindows;
+      h.reservations = [at("r1", "t1", "18:00"), at("r2", "t1", "20:30")];
+      validationState.value = { errors: ["SM1 est réservée deux fois"], warnings: [], notices: [], doubledReservationIds: ["r1", "r2"] };
+      const user = userEvent.setup();
+      renderWithProviders(<RecapStep />);
+
+      await user.click(screen.getByRole("button", { name: /Réservations/ }));
+      expect(screen.getAllByText(WIZARD_TEXTS.secondSessionSameDay(dayLabelLong(2)), { exact: false })).toHaveLength(2);
+    });
+
+    it("chaque poubelle désignée a un nom accessible distinct : jour, gymnase, heure", async () => {
+      recapLayer.slots = tuesdayWindows;
+      h.reservations = [at("r1", "t1", "18:00"), at("r2", "t1", "20:30")];
+      validationState.value = { errors: ["SM1 est réservée deux fois"], warnings: [], notices: [], doubledReservationIds: ["r1", "r2"] };
+      const user = userEvent.setup();
+      renderWithProviders(<RecapStep />);
+
+      await user.click(screen.getByRole("button", { name: /Réservations/ }));
+      const names = screen.getAllByRole("button", { name: /^Retirer la réservation de SM1/ }).map((button) => button.getAttribute("aria-label") ?? button.textContent ?? "");
+      expect(new Set(names).size).toBe(2);
+      for (const [name, hour] of [[names[0], "18:00"], [names[1], "20:30"]]) {
+        expect(name).toMatch(/\bmar/i);
+        expect(name).toContain("Gymnase A");
+        expect(name).toContain(hour);
+      }
+    });
+
+    it("chaque ligne de groupe désignée dit son motif et a un nom accessible distinct", async () => {
+      recapLayer.slots = tuesdayWindows;
+      h.reservations = [at("a1", "t1", "18:00"), at("b1", "t2", "18:00"), at("a2", "t1", "20:30"), at("b2", "t2", "20:30")];
+      sharedBlocksState.data = [recapBlock(["t1", "t2"])];
+      validationState.value = { errors: ["réservées deux fois"], warnings: [], notices: [], doubledReservationIds: ["a1", "b1", "a2", "b2"] };
+      const user = userEvent.setup();
+      renderWithProviders(<RecapStep />);
+
+      await user.click(screen.getByRole("button", { name: /Réservations/ }));
+      expect(screen.getAllByText(WIZARD_TEXTS.secondSessionSameDay(dayLabelLong(2)), { exact: false })).toHaveLength(2);
+      const names = screen.getAllByRole("button", { name: /^Retirer l'entraînement mutualisé SM1 \+ Fanion/ }).map((button) => button.getAttribute("aria-label") ?? "");
+      expect(new Set(names).size).toBe(2);
+      expect(names.every((name) => /\bmar/i.test(name) && name.includes("Gymnase A"))).toBe(true);
+      expect(names.some((name) => name.includes("18:00")) && names.some((name) => name.includes("20:30"))).toBe(true);
+    });
+
+    // Réservation de SAISON : la confirmation nomme la séance retirée, et ne parle pas d'une période.
+    it.each([
+      ["une réservation", [at("r1", "t1", "18:00"), at("r2", "t1", "20:30")], ["r1", "r2"], [] as SharedTrainingBlock[], /^Retirer la réservation de SM1/],
+      ["un groupe", [at("a1", "t1", "18:00"), at("b1", "t2", "18:00"), at("a2", "t1", "20:30"), at("b2", "t2", "20:30")], ["a1", "b1", "a2", "b2"], [recapBlock(["t1", "t2"])], /^Retirer l'entraînement mutualisé SM1 \+ Fanion/],
+    ])("la confirmation du retrait d'%s nomme le jour et le gymnase, sans dire « période »", async (_, reservations, doubled, blocks, removeName) => {
+      recapLayer.slots = tuesdayWindows;
+      h.reservations = reservations;
+      sharedBlocksState.data = blocks;
+      validationState.value = { errors: ["deux fois le mardi"], warnings: [], notices: [], doubledReservationIds: doubled };
+      const user = userEvent.setup();
+      renderWithProviders(<RecapStep />);
+
+      await user.click(screen.getByRole("button", { name: /Réservations/ }));
+      await user.click(screen.getAllByRole("button", { name: removeName })[0]);
+      const dialog = screen.getByRole("dialog");
+      expect(dialog.textContent).toMatch(/\bmar/i);
+      expect(dialog.textContent).toContain("Gymnase A");
+      expect(dialog.textContent).not.toMatch(/période/i);
     });
   });
 
@@ -402,9 +469,9 @@ describe("RecapStep — read-only summary", () => {
     await user.click(screen.getByRole("button", { name: /Réservations/ }));
 
     // UNE ligne de lot (membres nommés), UN bouton — pas deux verrous individuels.
-    const remove = screen.getByRole("button", { name: "Retirer l'entraînement mutualisé SM1 + Fanion" });
-    expect(screen.queryByRole("button", { name: "Retirer la réservation de SM1" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "Retirer la réservation de Fanion" })).toBeNull();
+    const remove = screen.getByRole("button", { name: /^Retirer l'entraînement mutualisé SM1 \+ Fanion/ });
+    expect(screen.queryByRole("button", { name: /^Retirer la réservation de SM1/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Retirer la réservation de Fanion/ })).toBeNull();
 
     await user.click(remove);
 
@@ -432,8 +499,8 @@ describe("RecapStep — read-only summary", () => {
 
     await user.click(screen.getByRole("button", { name: /Réservations/ }));
 
-    expect(screen.getByRole("button", { name: "Retirer la réservation de SM1" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Retirer la réservation de Fanion" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^Retirer la réservation de SM1/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^Retirer la réservation de Fanion/ })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /entraînement mutualisé/ })).toBeNull();
   });
 

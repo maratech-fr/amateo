@@ -11,6 +11,7 @@ use App\Enum\LockLevel;
 use App\Enum\ScheduleStatus;
 use App\Tests\OneSessionPerDayDecorTrait;
 use App\Tests\Security\OneSessionPerDayGesturesTest;
+use App\Tests\Unit\Service\PreSolvePreventionWarningsTest;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
 use Lexik\Bundle\JWTAuthenticationBundle\Services\JWTTokenManagerInterface;
@@ -23,7 +24,8 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
  * NR (axes constraint semantics et generation pipeline) : réserver deux fois une équipe le même jour passe au geste, mais le Récap
  * bloque la génération de saison : la réservation gagne contre les règles, pas contre cette règle de base, humainement impossible.
  * Il faut au moins une réservation : deux verrous seuls ne bloquent pas, ni le comblement, ni une période. Le verrou compté est celui
- * de la version chargée, jamais un autre.
+ * de la version chargée, jamais un autre. Là où ce blocage couvre l'équipe et le jour, l'alerte de chevauchement se tait ; ailleurs
+ * elle reste telle que la prouve {@see PreSolvePreventionWarningsTest}.
  *
  * Jumeau VOULU (point sensible génération) : {@see OneSessionPerDayGesturesTest} (les gestes du planning, refusés à la source).
  *
@@ -265,6 +267,65 @@ final class RecapRefusesASecondSessionSameDayTest extends WebTestCase
         self::assertResponseStatusCodeSame(202);
     }
 
+    /**
+     * Réservation et verrou chargé qui se chevauchent le même jour : le blocage « une seule séance » dit déjà tout. L'alerte de
+     * chevauchement ne s'y ajoute pas, et elle n'appelle jamais « réservée » une séance verrouillée.
+     */
+    public function testAnOverlappingReservationAndLoadedLockGiveOnlyTheOneSessionBlocker(): void
+    {
+        $ctx = $this->seasonDecor();
+        $this->window($ctx, $ctx['jdr'], self::THURSDAY, '20:00');
+        $this->session($ctx, $ctx['u15'], $ctx['armand'], self::THURSDAY, '19:00', LockLevel::HARD);
+        $this->reservation($ctx, $ctx['u15'], $ctx['jdr'], self::THURSDAY, '20:00');
+
+        $body = $this->recap($ctx);
+
+        self::assertCount(1, $this->ruleBlockers($body));
+        self::assertSame([], $this->overlapWarnings($body));
+    }
+
+    /** Deux réservations qui se chevauchent le même jour : même recouvrement, le blocage seul parle. */
+    public function testTwoOverlappingReservationsGiveOnlyTheOneSessionBlocker(): void
+    {
+        $ctx = $this->seasonDecor();
+        $this->window($ctx, $ctx['jdr'], self::TUESDAY, '19:00');
+        $this->reservation($ctx, $ctx['u15'], $ctx['armand'], self::TUESDAY, '18:00');
+        $this->reservation($ctx, $ctx['u15'], $ctx['jdr'], self::TUESDAY, '19:00');
+
+        $body = $this->recap($ctx);
+
+        self::assertCount(1, $this->ruleBlockers($body));
+        self::assertSame([], $this->overlapWarnings($body));
+    }
+
+    /** Deux verrous qui se chevauchent, sans réservation : rien ne bloque, et aucune alerte ne les dit « réservée ». */
+    public function testOverlappingLocksAreNeverCalledReserved(): void
+    {
+        $ctx = $this->seasonDecor();
+        $this->window($ctx, $ctx['jdr'], self::THURSDAY, '20:00');
+        $this->session($ctx, $ctx['u15'], $ctx['armand'], self::THURSDAY, '19:00', LockLevel::HARD);
+        $this->session($ctx, $ctx['u15'], $ctx['jdr'], self::THURSDAY, '20:00', LockLevel::HARD);
+
+        $body = $this->recap($ctx);
+
+        self::assertSame([], $this->ruleBlockers($body));
+        self::assertSame([], array_values(array_filter($this->warnings($body), static fn (string $w): bool => str_contains($w, 'U15 est réservée'))));
+    }
+
+    /** TÉMOIN hors recouvrement : en période, rien ne bloque, et l'alerte de chevauchement reste, mot pour mot. */
+    public function testOutsideTheBlockerTheOverlapWarningStays(): void
+    {
+        $ctx = $this->periodDecor();
+        $this->window($ctx, $ctx['jdr'], self::TUESDAY, '19:00', $ctx['planId']);
+        $this->reservation($ctx, $ctx['u15'], $ctx['armand'], self::TUESDAY, '18:00');
+        $this->reservation($ctx, $ctx['u15'], $ctx['jdr'], self::TUESDAY, '19:00');
+
+        $body = $this->recap($ctx, $ctx['entryId']);
+
+        self::assertSame([], $this->ruleBlockers($body));
+        self::assertSame(['U15 est réservée deux fois le mardi sur des créneaux qui se chevauchent : 18:00-19:30 à Armand et 19:00-20:30 à JDR.'], $this->overlapWarnings($body));
+    }
+
     /** Variante période : les mêmes deux réservations ne bloquent pas le Récap de la période. */
     public function testAPeriodDoesNotBlock(): void
     {
@@ -339,6 +400,41 @@ final class RecapRefusesASecondSessionSameDayTest extends WebTestCase
     {
         self::assertIsArray($body['doubledReservationIds'] ?? null, 'le Récap désigne les lignes à retirer');
         self::assertEqualsCanonicalizing($expected, $body['doubledReservationIds']);
+    }
+
+    /**
+     * @param array<string, mixed> $body
+     *
+     * @return list<string>
+     */
+    private function warnings(array $body): array
+    {
+        self::assertIsArray($body['warnings'] ?? null, 'le Récap a bien répondu');
+
+        return array_values(array_filter($body['warnings'], is_string(...)));
+    }
+
+    /**
+     * @param array<string, mixed> $body
+     *
+     * @return list<string>
+     */
+    private function overlapWarnings(array $body): array
+    {
+        return array_values(array_filter($this->warnings($body), static fn (string $w): bool => str_contains($w, 'se chevauchent')));
+    }
+
+    /**
+     * Une case de plus à la grille : de saison, ou de la période quand `$planId` est donné.
+     *
+     * @param Decor $ctx
+     */
+    private function window(array $ctx, string $venueId, int $day, string $start, ?string $planId = null): void
+    {
+        $this->scopeGucToClub($ctx['clubId']);
+        $this->em->persist((new VenueTrainingSlot)->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])->setVenueId($venueId)->setSchedulePlanId($planId)
+            ->setDayOfWeek($day)->setStartTime(new DateTimeImmutable($start))->setDurationMinutes(90)->setCapacity(3));
+        $this->em->flush();
     }
 
     /** @param array<string, mixed> $body */
