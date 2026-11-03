@@ -258,6 +258,7 @@ final class MemberWriteSweepTest extends WebTestCase
         'POST /api/fixtures/review' => ['/api/fixtures/review', '{}', 403],
         'POST /api/fixtures/review/deviations' => ['/api/fixtures/review/deviations', '{}', 403],
         'POST /api/fixtures/league-validation' => ['/api/fixtures/league-validation', '{}', 403],
+        'POST /api/fixtures/conflicts/mail-coaches' => ['/api/fixtures/conflicts/mail-coaches', '{}', 403],
         'PUT /api/fixtures/conflicts/{fingerprint}/resolution' => ['/api/fixtures/conflicts/VENUE_OVERLAP:ab12/resolution', '{}', 403],
         'DELETE /api/fixtures/conflicts/{fingerprint}/resolution' => ['/api/fixtures/conflicts/VENUE_OVERLAP:ab12/resolution', null, 403],
         'POST /api/fixtures/fbi-corrections/{id}/close' => ['/api/fixtures/fbi-corrections/{fixture}/close', '{}', 403],

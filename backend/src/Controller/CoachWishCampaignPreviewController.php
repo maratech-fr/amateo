@@ -8,7 +8,6 @@ use App\Entity\Coach;
 use App\Entity\CoachWishCampaign;
 use App\Service\CoachWishFormPresenter;
 use App\Service\CoachWishPerimeter;
-use App\Service\ManagementAccessGuard;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
@@ -23,14 +22,15 @@ use Symfony\Component\Uid\Uuid;
  * voit la VRAIE page qu'un coach donné verra — son prénom, ses équipes, les partenaires
  * possibles — en LECTURE SEULE.
  *
- * Authentifié (firewall gestionnaire, SEC-07 `assertManager`), club résolu côté serveur depuis
- * le JWT (jamais du corps), JAMAIS de jeton forgé : on résout directement la campagne et le
+ * Authentifié, ouvert à tout membre actif du club (un Membre consulte ce que verront les coachs),
+ * club résolu côté serveur depuis le JWT (jamais du corps), JAMAIS de jeton forgé ni servi : on résout directement la campagne et le
  * coach, sans passer par un CoachWishToken. La réponse a la MÊME forme que le GET public pour
  * ce coach, mais vidée de ses données (`wishes=[]`, `mutualizations=[]`, `respondedAt=null`) —
  * c'est un aperçu, pas les réponses du coach.
  *
  * Défense :
- *  - non-gestionnaire → 403 (parité SEC-07, assertManager AVANT toute résolution) ;
+ *  - la réponse ne porte AUCUN lien personnel de coach (ni jeton, ni URL `/doleances/`) : c'est ce
+ *    qui permet de l'ouvrir au Membre (`MemberReadsAreSideEffectFreeTest::testMemberPreviewContainsNoToken`) ;
  *  - campagne d'un autre club → 404 (RLS scope le find au club courant) BYTE-IDENTIQUE au cas
  *    « coach hors campagne » (un gestionnaire ne distingue pas une campagne absente d'un coach
  *    hors périmètre).
@@ -42,7 +42,6 @@ final class CoachWishCampaignPreviewController extends AbstractController
 
     public function __construct(
         private readonly RequestStack $requestStack,
-        private readonly ManagementAccessGuard $managementAccessGuard,
         private readonly EntityManagerInterface $entityManager,
         private readonly CoachWishPerimeter $perimeter,
         private readonly CoachWishFormPresenter $formPresenter,
@@ -51,8 +50,6 @@ final class CoachWishCampaignPreviewController extends AbstractController
     #[Route('/api/coach_wish_campaigns/{id}/preview', name: 'preview_coach_wish_campaign', methods: ['GET'])]
     public function __invoke(string $id): JsonResponse
     {
-        $this->managementAccessGuard->assertManager(); // SEC-07 — AVANT toute résolution
-
         // Un identifiant malformé rend le même 404 qu'une collecte d'un autre club, jamais un 500.
         $campaign = Uuid::isValid($id) ? $this->entityManager->getRepository(CoachWishCampaign::class)->find($id) : null;
         // Le club vient de la LIGNE, jamais du corps : un id d'un autre club est déjà invisible

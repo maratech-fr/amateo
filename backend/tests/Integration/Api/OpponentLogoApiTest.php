@@ -147,7 +147,7 @@ final class OpponentLogoApiTest extends WebTestCase
         $cu = new ClubUser;
         $cu->setClubId($club->getId());
         $cu->setUserId($this->user->getId());
-        $cu->setRole('editor');
+        $cu->setRole('admin'); // gestionnaire : seul un gestionnaire déclenche le téléchargement d'un logo
         $cu->setIsActive(true);
         $this->em->persist($cu);
         $this->em->flush();

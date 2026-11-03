@@ -114,7 +114,7 @@ final class CoachWishCampaignActionController extends AbstractController
         }
         $this->entityManager->flush();
 
-        return $this->json(['sent' => $outcome, 'campaign' => $this->presenter->toResource($campaign)], Response::HTTP_OK);
+        return $this->json(['sent' => $outcome, 'campaign' => $this->presenter->toResource($campaign, includeTokens: true)], Response::HTTP_OK);
     }
 
     private function remind(CoachWishCampaign $campaign): JsonResponse
@@ -137,7 +137,7 @@ final class CoachWishCampaignActionController extends AbstractController
         }
         $this->entityManager->flush();
 
-        return $this->json(['sent' => $outcome, 'campaign' => $this->presenter->toResource($campaign)], Response::HTTP_OK);
+        return $this->json(['sent' => $outcome, 'campaign' => $this->presenter->toResource($campaign, includeTokens: true)], Response::HTTP_OK);
     }
 
     /**

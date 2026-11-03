@@ -16,8 +16,9 @@ use Symfony\Component\Routing\Attribute\Route;
 /**
  * P4-272 ② — les plages de match SUGGÉRÉES à un club : la tendance dominante de son
  * instance fédérale (comité / ligue / fédération) plus le repli fédéral, l'ensemble
- * MASQUÉ des combinaisons déjà identiques à sa copie. Lecture (GET) et application
- * (POST) réservées au gestionnaire ({@see ManagementAccessGuard}). Aucune plage n'est
+ * MASQUÉ des combinaisons déjà identiques à sa copie. La lecture (GET) est ouverte à tout
+ * membre actif (un Membre voit les propositions) ; l'application (POST) reste réservée au
+ * gestionnaire ({@see ManagementAccessGuard}). Aucune plage n'est
  * jamais fournie par le client : « Appliquer » RECALCULE la suggestion côté serveur.
  */
 final class LeagueWindowSuggestionsController extends AbstractController
@@ -33,8 +34,6 @@ final class LeagueWindowSuggestionsController extends AbstractController
     #[Route('/api/league-window-suggestions', name: 'api_league_window_suggestions', methods: ['GET'])]
     public function suggestions(): JsonResponse
     {
-        $this->managementGuard->assertManager();
-
         $clubId = $this->resolveCurrentClubId($this->requestStack);
         if (null === $clubId) {
             return $this->json(['error' => 'No club in context.'], Response::HTTP_BAD_REQUEST);

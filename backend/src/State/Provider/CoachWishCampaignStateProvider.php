@@ -13,6 +13,7 @@ use App\Service\ManagementAccessGuard;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\RequestStack;
+use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
 
 /**
  * @extends AbstractStateProvider<CoachWishCampaign, CoachWishCampaignResource>
@@ -31,17 +32,26 @@ class CoachWishCampaignStateProvider extends AbstractStateProvider
         parent::__construct($entityManager, $requestStack, $pagination);
     }
 
+    /** Rôle gestionnaire PROUVÉ pour la requête en cours — seule condition qui ajoute les liens. */
+    private bool $includeTokens = false;
+
     /**
-     * La ressource expose `coaches[].token` — le SECRET du lien public de chaque coach. La
-     * LECTURE est donc management-only (SEC-07), au même titre que l'écriture : sans cette
-     * garde, tout membre authentifié lirait les tokens et pourrait usurper les réponses.
+     * Lecture ouverte à tout membre actif du club (un Membre voit l'état de réponse et l'adresse
+     * de chaque coach). Le SECRET du lien public de chaque coach (`coaches[].token`) n'est AJOUTÉ
+     * que si le rôle gestionnaire est prouvé par la garde SEC-07 — jamais servi par défaut,
+     * jamais retiré après coup : sans lui, un Membre ne peut pas répondre à la place d'un coach.
      *
      * @param array<string, mixed> $uriVariables
      * @param array<string, mixed> $context
      */
     public function provide(Operation $operation, array $uriVariables = [], array $context = []): object|array|null
     {
-        $this->managementAccessGuard->assertManager();
+        try {
+            $this->managementAccessGuard->assertManager();
+            $this->includeTokens = true;
+        } catch (AccessDeniedHttpException) {
+            $this->includeTokens = false;
+        }
 
         return parent::provide($operation, $uriVariables, $context);
     }
@@ -56,7 +66,7 @@ class CoachWishCampaignStateProvider extends AbstractStateProvider
      */
     protected function mapEntityToOutput(object $entity): CoachWishCampaignResource
     {
-        return $this->presenter->toResource($entity);
+        return $this->presenter->toResource($entity, $this->includeTokens);
     }
 
     /**

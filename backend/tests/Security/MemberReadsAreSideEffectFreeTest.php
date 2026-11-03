@@ -66,7 +66,7 @@ final class MemberReadsAreSideEffectFreeTest extends WebTestCase
         ['GET', '/api/league-window-suggestions', null],
         ['GET', '/api/coach_wish_campaigns', null],
         ['GET', '/api/coach_wish_campaigns/{coach_wish_campaign}', null],
-        ['GET', '/api/coach_wish_campaigns/{coach_wish_campaign}/preview', null],
+        ['GET', '/api/coach_wish_campaigns/{coach_wish_campaign}/preview?coachId={coach}', null],
         ['GET', '/api/fixtures/conflicts', null],
         ['GET', '/api/fixtures/fbi-corrections', null],
         ['GET', '/api/opponents/travel', null],
@@ -149,7 +149,7 @@ final class MemberReadsAreSideEffectFreeTest extends WebTestCase
     {
         $this->seed();
 
-        $this->asMember('GET', '/api/coach_wish_campaigns/' . $this->ids['coach_wish_campaign'] . '/preview');
+        $this->asMember('GET', '/api/coach_wish_campaigns/' . $this->ids['coach_wish_campaign'] . '/preview?coachId=' . $this->ids['coach']);
         self::assertResponseIsSuccessful('un Membre ouvre l\'aperçu du formulaire coach');
         $content = (string) $this->client->getResponse()->getContent();
         self::assertDoesNotMatchRegularExpression('/[0-9a-f]{64}/i', $content, 'l\'aperçu sert une chaîne de 64 hexadécimaux (un jeton) à un Membre');

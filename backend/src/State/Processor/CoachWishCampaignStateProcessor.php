@@ -69,7 +69,7 @@ class CoachWishCampaignStateProcessor extends AbstractStateProcessor
 
                 // Les tokens viennent d'être synchronisés : re-projeter pour que la réponse
                 // expose déjà les liens (le presenter de parent:: a tourné avant la sync).
-                return $this->presenter->toResource($campaign);
+                return $this->presenter->toResource($campaign, includeTokens: true);
             }
 
             return $output;
@@ -89,7 +89,7 @@ class CoachWishCampaignStateProcessor extends AbstractStateProcessor
             if ($campaign instanceof CoachWishCampaign) {
                 $this->tokenSync->sync($campaign);
 
-                return $this->presenter->toResource($campaign);
+                return $this->presenter->toResource($campaign, includeTokens: true);
             }
 
             return $output;
@@ -132,7 +132,7 @@ class CoachWishCampaignStateProcessor extends AbstractStateProcessor
      */
     protected function mapEntityToOutput(object $entity): CoachWishCampaignResource
     {
-        return $this->presenter->toResource($entity);
+        return $this->presenter->toResource($entity, includeTokens: true);
     }
 
     private function applyEditableFields(CoachWishCampaign $entity, CoachWishCampaignInput $input): void
