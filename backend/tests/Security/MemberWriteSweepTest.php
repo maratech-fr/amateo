@@ -151,7 +151,7 @@ final class MemberWriteSweepTest extends WebTestCase
         'POST /api/teams' => ['/api/teams', '{"name":"Membre","sportCategoryId":"{category}","priorityTierId":1}', 403],
         'PUT /api/teams/{id}' => ['/api/teams/{team}', '{"name":"Membre","sportCategoryId":"{category}","priorityTierId":1}', 403],
         'DELETE /api/teams/{id}' => ['/api/teams/{team}', null, 403],
-        'POST /api/teams/reorder' => ['/api/teams/reorder', '{"teamIds":["{team2}","{team}"]}', 403],
+        'POST /api/teams/reorder' => ['/api/teams/reorder', '{"items":[{"id":"{team}","priorityTierId":2,"tierOrder":5}]}', 403],
         'POST /api/team_links' => ['/api/team_links', '{"teamAId":"{team}","teamBId":"{team3}","linkType":"NOT_SIMULTANEOUS"}', 403],
         'PUT /api/team_links/{id}' => ['/api/team_links/{team_link}', '@get', 403],
         'DELETE /api/team_links/{id}' => ['/api/team_links/{team_link}', null, 403],
