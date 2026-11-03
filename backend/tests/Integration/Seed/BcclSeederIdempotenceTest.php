@@ -402,7 +402,7 @@ final class BcclSeederIdempotenceTest extends KernelTestCase
      * Les plans de REPRISE du seed dev sont cohérents — un seul seed prouve deux facettes read-only
      * (P5-13) :
      *  1. chaque plan de reprise POINTE (chosen) une version COMPLETED transcrivant sa semaine au
-     *     bon nombre de créneaux (25 le 17 août, 40 le 24), et porte ses groupes de mutualisation
+     *     bon nombre de créneaux (25 le 17 août, 39 le 24), et porte ses groupes de mutualisation
      *     ANCRÉS au plan : {SM1,SM2}+{SF1,SF2} le 17 ; {SM1,SM2}+{U18F1,U18F2} le 24 (SF1/SF2 s'y
      *     entraînent séparément) ;
      *  2. post-modèle bloc (fondateur 2026-09-01) — les grilles comptent un groupe mutualisé pour UN
@@ -417,7 +417,7 @@ final class BcclSeederIdempotenceTest extends KernelTestCase
         $club = $this->seeder->run($this->em, BcclSeedProfile::dev());
 
         // ── Facette 1 — chaque plan de reprise pointe une version COMPLETED avec ses groupes. ──
-        foreach ([['Reprise du 17 août', 25, 2], ['Reprise du 24 août', 40, 2]] as [$planName, $expectedSlots, $expectedGroups]) {
+        foreach ([['Reprise du 17 août', 25, 2], ['Reprise du 24 août', 39, 2]] as [$planName, $expectedSlots, $expectedGroups]) {
             $row = $this->connection->fetchAssociative(
                 'SELECT s.status, (SELECT COUNT(*) FROM schedule_slot_template t WHERE t.schedule_id = s.id) AS slot_count '
                 . 'FROM schedule_plan sp JOIN schedule s ON s.id = sp.chosen_schedule_id '
@@ -478,8 +478,8 @@ final class BcclSeederIdempotenceTest extends KernelTestCase
         // cap 2) et la semaine du 17 décoche les indispos coach héritées que son réel contredit.
         // Falsifiable : remettre `++capacity` par séance, ou retirer un nom de `deactivatedConstraints`. ──
 
-        // 25 séances − 5 cases mutualisées = 20 créneaux le 17 ; 40 − 5 = 35 le 24.
-        foreach ([['Reprise du 17 août', 20], ['Reprise du 24 août', 35]] as [$planName, $expectedSlots]) {
+        // 25 séances − 5 cases mutualisées = 20 créneaux le 17 ; 39 − 5 = 34 le 24.
+        foreach ([['Reprise du 17 août', 20], ['Reprise du 24 août', 34]] as [$planName, $expectedSlots]) {
             $grid = $this->connection->fetchAssociative(
                 'SELECT COUNT(*) AS slots, MAX(s.capacity) AS max_capacity '
                 . 'FROM venue_training_slot s JOIN schedule_plan sp ON sp.id = s.schedule_plan_id '
