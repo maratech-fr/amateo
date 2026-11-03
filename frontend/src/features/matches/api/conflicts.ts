@@ -284,6 +284,8 @@ export interface ConflictCoachMailing {
   personConflictCount: number;
   /** Coachs informés lors d'un envoi précédent, sans conflit maintenant, à adresse valide. */
   pendingRecipientCount: number;
+  /** Coachs qui recevront réellement un e-mail (liste ou « plus aucun »), adresse valide seulement. */
+  recipientCount: number;
   last: ConflictMailingLast | null;
 }
 

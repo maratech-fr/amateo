@@ -285,7 +285,7 @@ final class FixtureConflictsController extends AbstractController
      * @param list<array<string, mixed>>        $conflicts
      * @param array<string, list<list<string>>> $groupsBySchedule
      *
-     * @return array{personConflictCount: int, pendingRecipientCount: int, last: array{sentAt: string, sentByFirstName: string|null, mailedCount: int, skippedCoachIds: list<string>}|null}
+     * @return array{personConflictCount: int, pendingRecipientCount: int, recipientCount: int, last: array{sentAt: string, sentByFirstName: string|null, mailedCount: int, skippedCoachIds: list<string>}|null}
      */
     private function coachMailingView(string $clubId, ?Season $season, array $conflicts, array $groupsBySchedule): array
     {
@@ -305,7 +305,7 @@ final class FixtureConflictsController extends AbstractController
             ];
         }
 
-        return ['personConflictCount' => $plan['personConflictCount'], 'pendingRecipientCount' => $plan['pendingRecipientCount'], 'last' => $last];
+        return ['personConflictCount' => $plan['personConflictCount'], 'pendingRecipientCount' => $plan['pendingRecipientCount'], 'recipientCount' => $plan['recipientCount'], 'last' => $last];
     }
 
     /**

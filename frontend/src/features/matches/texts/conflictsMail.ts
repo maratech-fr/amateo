@@ -19,6 +19,10 @@ export const MATCHES_CONFLICTS_MAIL_TEXTS = {
   confirmTitle: "Envoyer aux coachs ?",
   confirmBody: (seasonName: string): string =>
     `Saison ${seasonName}. Chaque coach concerné recevra par e-mail, à titre indicatif, les conflits de personnes sur un match, datés d'aujourd'hui ou à venir, qui le touchent. Un coach informé lors d'un envoi précédent et qui n'a plus de conflit recevra un e-mail le disant. Les autres familles de conflits ne sont pas envoyées.`,
+  /** « 4 coachs recevront un e-mail · 7 conflits de personnes. » — nombres servis par le serveur. */
+  confirmCounts: ({ coachCount, conflictCount }: { coachCount: number; conflictCount: number }): string =>
+    `${coachCount} ${1 === coachCount ? "coach recevra" : "coachs recevront"} un e-mail · ${conflictCount} ${conflictCount > 1 ? "conflits de personnes" : "conflit de personne"}.`,
+  confirmIgnoresFilters: "Tous les conflits de personnes partent, quels que soient les filtres de l'écran.",
   confirmAction: "Envoyer",
   confirmCancel: "Annuler",
   coachRemoved: "un coach retiré",

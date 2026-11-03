@@ -41,7 +41,7 @@ final class ConflictCoachMailing
      * @param list<string>                      $memory             les coachs qui détiennent encore une liste
      * @param array<string, Coach>              $coachesById        les coachs qui existent encore
      *
-     * @return array{byCoach: array<string, list<array<string, mixed>>>, cleared: list<string>, pendingRecipientCount: int, personConflictCount: int}
+     * @return array{byCoach: array<string, list<array<string, mixed>>>, cleared: list<string>, pendingRecipientCount: int, personConflictCount: int, recipientCount: int}
      */
     public function plan(array $conflicts, array $mainCoachIdsByTeam, array $groupsBySchedule, array $memory, array $coachesById): array
     {
@@ -82,7 +82,17 @@ final class ConflictCoachMailing
             }
         }
 
+        // Les coachs qui recevront réellement un e-mail (liste ou « plus aucun ») : ceux à adresse
+        // valide — ce que la confirmation annonce, jamais recompté par l'écran.
+        $listed = 0;
+        foreach (array_keys($byCoach) as $coachId) {
+            if (self::hasValidAddress($coachesById[$coachId])) {
+                ++$listed;
+            }
+        }
+
         return [
+            'recipientCount' => $listed + $pending,
             'byCoach' => $byCoach,
             'cleared' => $cleared,
             'pendingRecipientCount' => $pending,

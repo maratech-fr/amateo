@@ -15671,6 +15671,10 @@
                                                     "type": "integer",
                                                     "description": "Coaches told at an earlier send who no longer have a conflict and have a valid address \u2014 to be told \u00ab no conflict left \u00bb"
                                                 },
+                                                "recipientCount": {
+                                                    "type": "integer",
+                                                    "description": "Coaches who will actually receive an e-mail (a list or \u00ab no conflict left \u00bb), valid address only \u2014 what the confirmation announces"
+                                                },
                                                 "last": {
                                                     "type": "object",
                                                     "nullable": true,

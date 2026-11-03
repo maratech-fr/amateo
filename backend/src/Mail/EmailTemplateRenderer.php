@@ -124,11 +124,16 @@ final readonly class EmailTemplateRenderer
         // partie TEXTE, elle, garde le lien nu (inchangée, byte-identique, extraite par Behat).
         $bodyForHtml = '' !== $ctaHtml && null !== $ctaUrl ? $this->stripCtaUrlLine($bodyText, $ctaUrl) : $bodyText;
         $bodyHtml = $bodyHtmlFragment ?? nl2br(htmlspecialchars($bodyForHtml, $flags, 'UTF-8'));
+        // Une carte à FRAGMENT (tuiles) est fluide : 100 %, plafonnée à 600 px — lisible à 360 px.
+        // Sans fragment, la carte reste octet pour octet celle d'avant.
+        $cardOpen = null !== $bodyHtmlFragment
+            ? '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:600px;background-color:#ffffff;border-radius:12px;border:1px solid #e5e5e5;">'
+            : '<table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="width:600px;max-width:600px;background-color:#ffffff;border-radius:12px;border:1px solid #e5e5e5;">';
 
         return <<<HTML
             <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:{$pageBackground};background-image:{$pageGradient};margin:0;padding:24px 16px;">
             <tr><td align="center">
-            <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="width:600px;max-width:600px;background-color:#ffffff;border-radius:12px;border:1px solid #e5e5e5;">
+            {$cardOpen}
             <tr><td style="padding:28px 32px;font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:14px;line-height:1.5;color:#1a1a1a;">
             {$clubHeaderHtml}
             <div style="color:#1a1a1a;">{$bodyHtml}</div>

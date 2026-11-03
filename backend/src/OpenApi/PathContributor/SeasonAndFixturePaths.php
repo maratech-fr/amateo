@@ -205,6 +205,7 @@ final readonly class SeasonAndFixturePaths implements CustomPathContributor
                         'coachMailing' => ['type' => 'object', 'description' => 'Sending the conflicts to the coaches: the button counters (computed by the same service as the send) and the last send of the season', 'properties' => [
                             'personConflictCount' => ['type' => 'integer', 'description' => 'Person conflicts on a match that would be mailed (held lines excluded)'],
                             'pendingRecipientCount' => ['type' => 'integer', 'description' => 'Coaches told at an earlier send who no longer have a conflict and have a valid address — to be told « no conflict left »'],
+                            'recipientCount' => ['type' => 'integer', 'description' => 'Coaches who will actually receive an e-mail (a list or « no conflict left »), valid address only — what the confirmation announces'],
                             'last' => ['type' => 'object', 'nullable' => true, 'description' => 'The last send of the season, null when nothing was ever sent', 'properties' => [
                                 'sentAt' => ['type' => 'string', 'format' => 'date-time', 'description' => 'Club wall-clock time'],
                                 'sentByFirstName' => ['type' => 'string', 'nullable' => true, 'description' => 'null when the sender no longer exists'],

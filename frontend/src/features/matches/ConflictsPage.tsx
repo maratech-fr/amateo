@@ -1,5 +1,5 @@
 import { CalendarDays, CircleAlert, Download, type LucideIcon, RotateCcw, ShieldCheck, SlidersHorizontal } from "lucide-react";
-import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useEffect, useId, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
 
 import { AccordionSection } from "@/shared/components/ui/accordion";
@@ -76,6 +76,7 @@ const TREATMENT_META: Record<TreatmentKey, { label: string; icon: LucideIcon }> 
 function CoachMailBar({ mailing, canManage, isDemo, seasonReadonly, seasonName, coaches }: { mailing: ConflictCoachMailing | undefined; canManage: boolean; isDemo: boolean; seasonReadonly: boolean; seasonName: string; coaches: Map<string, Coach> }) {
   const send = useMailConflictsToCoaches();
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const reasonId = useId();
 
   const disabledReason = isDemo
     ? MAIL_TEXTS.disabledDemo
@@ -110,15 +111,30 @@ function CoachMailBar({ mailing, canManage, isDemo, seasonReadonly, seasonName, 
   return (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
       {canManage ? (
-        <Button type="button" variant="outline" size="sm" disabled={undefined !== disabledReason} disabledReason={disabledReason} onClick={() => setConfirmOpen(true)}>
-          {MAIL_TEXTS.sendButton}
-        </Button>
+        <>
+          {/* Le motif d'un bouton grisé se LIT en clair à côté (règle front : pas de doublon
+              `disabledReason`), et le bouton le désigne par `aria-describedby`. */}
+          <Button type="button" variant="outline" size="sm" disabled={undefined !== disabledReason} aria-describedby={undefined === disabledReason ? undefined : reasonId} onClick={() => setConfirmOpen(true)}>
+            {MAIL_TEXTS.sendButton}
+          </Button>
+          {undefined === disabledReason ? null : (
+            <span id={reasonId} className="text-sm text-muted-foreground">
+              {disabledReason}
+            </span>
+          )}
+        </>
       ) : null}
       {null === statusLine ? null : <p className="text-sm text-muted-foreground">{statusLine}</p>}
       <ConfirmDialog
         open={confirmOpen}
         title={MAIL_TEXTS.confirmTitle}
-        description={MAIL_TEXTS.confirmBody(seasonName)}
+        description={
+          <div className="flex flex-col gap-2">
+            <p>{MAIL_TEXTS.confirmBody(seasonName)}</p>
+            {undefined === mailing ? null : <p>{MAIL_TEXTS.confirmCounts({ coachCount: mailing.recipientCount, conflictCount: mailing.personConflictCount })}</p>}
+            <p>{MAIL_TEXTS.confirmIgnoresFilters}</p>
+          </div>
+        }
         confirmLabel={send.isPending ? MAIL_TEXTS.sending : MAIL_TEXTS.confirmAction}
         cancelLabel={MAIL_TEXTS.confirmCancel}
         destructive={false}
