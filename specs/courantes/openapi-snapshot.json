@@ -3607,6 +3607,49 @@
                                                 "null"
                                             ]
                                         },
+                                        "managerRequest": {
+                                            "type": [
+                                                "object",
+                                                "null"
+                                            ],
+                                            "properties": {
+                                                "status": {
+                                                    "type": "string",
+                                                    "enum": [
+                                                        "pending",
+                                                        "club_pending",
+                                                        "expired",
+                                                        "refused"
+                                                    ]
+                                                },
+                                                "since": {
+                                                    "type": "string"
+                                                },
+                                                "escalated": {
+                                                    "type": "boolean"
+                                                },
+                                                "until": {
+                                                    "type": "string"
+                                                },
+                                                "clubEmailKnown": {
+                                                    "type": "boolean"
+                                                }
+                                            }
+                                        },
+                                        "soleManagerClubs": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "id": {
+                                                        "type": "string"
+                                                    },
+                                                    "name": {
+                                                        "type": "string"
+                                                    }
+                                                }
+                                            }
+                                        },
                                         "club": {
                                             "type": "object",
                                             "nullable": true,
@@ -18147,6 +18190,53 @@
                 ]
             }
         },
+        "/api/memberships/me/manager-request": {
+            "post": {
+                "operationId": "postApiMembershipManagerRequest",
+                "tags": [
+                    "Memberships"
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Request sent: `{\"status\":\"pending\",\"since\"}` (club with managers \u2014 they decide) or `{\"status\":\"club_pending\",\"since\",\"clubEmailKnown\"}` (club without a manager \u2014 the club official address decides)"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    },
+                    "403": {
+                        "description": "No active membership in the current club"
+                    },
+                    "409": {
+                        "description": "Already a manager, a request is already pending, demo club / club without FFBB code, or a recent refusal by the club official address"
+                    },
+                    "429": {
+                        "description": "Daily per-user or per-club request limit reached"
+                    }
+                },
+                "summary": "An active Member asks to become a manager of the current club"
+            },
+            "delete": {
+                "operationId": "deleteApiMembershipManagerRequest",
+                "tags": [
+                    "Memberships"
+                ],
+                "responses": {
+                    "204": {
+                        "description": "Request cancelled (any link sent to the club official address is dead)"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    },
+                    "403": {
+                        "description": "No active membership in the current club"
+                    },
+                    "404": {
+                        "description": "No request to cancel"
+                    }
+                },
+                "summary": "The Member cancels their request to become a manager"
+            }
+        },
         "/api/memberships/pending": {
             "get": {
                 "operationId": "getApiMembershipsPending",
@@ -18220,6 +18310,32 @@
                     }
                 },
                 "summary": "Deactivate an active membership (management-only)"
+            }
+        },
+        "/api/memberships/{id}/manager-request/refuse": {
+            "post": {
+                "operationId": "postApiMembershipManagerRequestRefuse",
+                "tags": [
+                    "Memberships"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Request refused: `{id, role, isActive, isSelf}` \u2014 the Member keeps read-only access and may ask again"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    },
+                    "403": {
+                        "description": "Member but not a management role"
+                    },
+                    "404": {
+                        "description": "Resource not found"
+                    },
+                    "409": {
+                        "description": "No pending request"
+                    }
+                },
+                "summary": "Refuse a Member request to become a manager (accepting = the role change, body {\"role\":\"admin\"})"
             }
         },
         "/api/memberships/{id}/reactivate": {

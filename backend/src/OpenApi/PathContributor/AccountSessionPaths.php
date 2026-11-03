@@ -143,6 +143,19 @@ final readonly class AccountSessionPaths implements CustomPathContributor
                             // P4-301 — échéance (Y-m-d) de suppression d'un compte sans club
                             // (préavis + 30 j) ; null si aucun préavis en cours ou compte actif.
                             'accountDeletionScheduledFor' => ['type' => ['string', 'null']],
+                            // Chantier Membre (PR 3) — la demande du Membre à devenir gestionnaire.
+                            'managerRequest' => ['type' => ['object', 'null'], 'properties' => [
+                                'status' => ['type' => 'string', 'enum' => ['pending', 'club_pending', 'expired', 'refused']],
+                                'since' => ['type' => 'string'],
+                                'escalated' => ['type' => 'boolean'],
+                                'until' => ['type' => 'string'],
+                                'clubEmailKnown' => ['type' => 'boolean'],
+                            ]],
+                            // Les clubs dont ce compte est le SEUL gestionnaire actif.
+                            'soleManagerClubs' => ['type' => 'array', 'items' => ['type' => 'object', 'properties' => [
+                                'id' => ['type' => 'string'],
+                                'name' => ['type' => 'string'],
+                            ]]],
                             'club' => ['type' => 'object', 'nullable' => true, 'properties' => [
                                 'id' => ['type' => 'string'],
                                 'name' => ['type' => 'string'],

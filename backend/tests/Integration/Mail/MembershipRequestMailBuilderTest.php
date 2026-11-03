@@ -242,7 +242,7 @@ final class MembershipRequestMailBuilderTest extends KernelTestCase
 
         self::assertStringStartsWith("Bonjour Paul,\n\nLe club BC Testville n'a pas donné suite à votre demande de devenir gestionnaire. Vous gardez votre accès en consultation.", $body);
         self::assertSame(1, substr_count($body, 'Vous pourrez renouveler votre demande à partir du 03/12/2026.'));
-        self::assertStringContainsString("Si vous pensez qu'il s'agit d'une erreur, rapprochez-vous de votre club.", $body);
+        self::assertStringContainsString('Si vous pensez qu\'il s\'agit d\'une erreur, rapprochez-vous de votre club.', $body);
         self::assertStringEndsWith("\n\n{$p}", $body);
     }
 

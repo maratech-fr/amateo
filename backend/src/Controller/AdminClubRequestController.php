@@ -70,6 +70,8 @@ final readonly class AdminClubRequestController
                 'requesterEmail' => $requester instanceof User ? $requester->getEmail() : '',
                 'createdAt' => $request->getCreatedAt()->format('Y-m-d'),
                 'expiresAt' => $request->getExpiresAt()->format('Y-m-d'),
+                // Chantier Membre (PR 3) — la nature de la demande : create | reprise | promotion.
+                'kind' => $this->approvalService->kindOf($request),
             ];
         }
 
@@ -101,7 +103,7 @@ final readonly class AdminClubRequestController
 
         try {
             if ('approve' === $decision) {
-                if (ApprovalOutcome::NoOp === $this->approvalService->approve($creationRequest)) {
+                if (ApprovalOutcome::NoOp === $this->approvalService->approve($creationRequest, 'console')) {
                     return new JsonResponse(['error' => 'Request not found.'], 404);
                 }
                 $club = $this->clubs->findRealByFfbbCode($creationRequest->getAra());

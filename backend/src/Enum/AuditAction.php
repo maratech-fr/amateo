@@ -33,4 +33,12 @@ enum AuditAction: string
     // Chantier Membre — la fermeture programmée d'un club sans gestionnaire est ANNULÉE (reprise,
     // invitation gestionnaire acceptée, gestionnaire revenu à l'échéance). Ids seulement.
     case CLUB_CLOSURE_CANCELLED = 'club.closure_cancelled';
+    // Chantier Membre (PR 3) — un Membre demande à devenir gestionnaire : la demande, son
+    // annulation, sa transmission à l'adresse officielle (14 jours sans réponse), la promotion et le
+    // refus. Détails = ids + `source` (`manager`, `official_address`, `console`, `invitation`).
+    case MEMBERSHIP_ROLE_REQUESTED = 'membership.role_requested';
+    case MEMBERSHIP_ROLE_REQUEST_CANCELLED = 'membership.role_request_cancelled';
+    case MEMBERSHIP_ROLE_REQUEST_ESCALATED = 'membership.role_request_escalated';
+    case MEMBERSHIP_ROLE_GRANTED = 'membership.role_granted';
+    case MEMBERSHIP_ROLE_REFUSED = 'membership.role_refused';
 }

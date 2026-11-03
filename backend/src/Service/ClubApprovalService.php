@@ -7,6 +7,7 @@ namespace App\Service;
 use App\Entity\Club;
 use App\Entity\ClubCreationRequest;
 use App\Entity\User;
+use App\Enum\AuditAction;
 use App\Enum\ClubRole;
 use App\Mail\EmailTemplateRenderer;
 use App\Mail\MailSafeName;
@@ -60,7 +61,31 @@ final class ClubApprovalService
         private readonly ProductIdentity $productIdentity,
         private readonly OrphanAccountNotifier $orphanAccountNotifier,
         private readonly MembershipRequestNotifier $membershipRequestNotifier,
+        private readonly AuditTrail $auditTrail,
     ) {}
+
+    /**
+     * Chantier Membre (PR 3) — la NATURE d'une demande, pour la page publique et la console :
+     *  - `create`    : aucun club réel sous ce code ;
+     *  - `reprise`   : club réel SANS gestionnaire actif ;
+     *  - `promotion` : club réel géré, le demandeur en est Membre actif (ses gestionnaires n'ont
+     *    pas répondu à sa demande).
+     * Un club réel géré dont le demandeur n'est pas membre actif se lit `reprise` (la demande sera
+     * transmise ou dépassée à l'approbation).
+     */
+    public function kindOf(ClubCreationRequest $request): string
+    {
+        $club = $this->clubs->findRealByFfbbCode($request->getAra());
+        if (!$club instanceof Club) {
+            return 'create';
+        }
+        if ($this->clubWinBack->isManagerless($club->getId())) {
+            return 'reprise';
+        }
+        $row = $this->requesterRow($club->getId(), $request->getUserId());
+
+        return null !== $row && $row['is_active'] ? 'promotion' : 'reprise';
+    }
 
     /**
      * Ouvre (ou réutilise) la demande de création de l'utilisateur pour cet ARA.
@@ -102,32 +127,49 @@ final class ClubApprovalService
         // Chantier Membre : un club RÉEL existe déjà sous ce code (il n'a plus de gestionnaire —
         // sinon la demande serait une adhésion) → la demande est une REPRISE, pas une création.
         $existing = $this->clubs->findRealByFfbbCode($request->getAra());
+        // Chantier Membre (PR 3) — club réel GÉRÉ : la demande d'un Membre dont les gestionnaires
+        // n'ont pas répondu 14 jours (promotion, à côté des gestionnaires actuels).
+        $promotion = $existing instanceof Club && !$this->clubWinBack->isManagerless($existing->getId());
         try {
+            if ($promotion) {
+                $subject = \sprintf('%s demande à devenir gestionnaire de l\'espace %s de %s', $requesterName, $product, $existing->getName());
+                $text = \sprintf(
+                    "Bonjour,\n\n%s (%s), membre de l'espace {$product} du club %s (code FFBB %s), demande à en devenir gestionnaire. Les gestionnaires actuels n'ont pas répondu depuis 14 jours.\n\nSi cette personne est bien un gestionnaire de votre club, approuvez : elle deviendra gestionnaire avec les gestionnaires actuels :\n%s\n\nSinon, refusez — elle gardera un accès en consultation. Ce lien expire le %s.\n\n{$product}",
+                    $requesterName,
+                    $requester->getEmail(),
+                    $existing->getName(),
+                    $request->getAra(),
+                    $link,
+                    $request->getExpiresAt()->format('d/m/Y'),
+                );
+            } elseif ($existing instanceof Club) {
+                $subject = \sprintf('%s demande à reprendre l\'espace %s de %s', $requesterName, $product, $existing->getName());
+                $text = \sprintf(
+                    "Bonjour,\n\n%s (%s) demande à reprendre la gestion de l'espace {$product} du club %s (code FFBB %s), qui n'a plus de gestionnaire.\n\nSi cette personne est bien un gestionnaire de votre club, approuvez sa demande :\n%s\n\nSinon, refusez-la. Ce lien expire le %s.\n\n{$product}",
+                    $requesterName,
+                    $requester->getEmail(),
+                    $existing->getName(),
+                    $request->getAra(),
+                    $link,
+                    $request->getExpiresAt()->format('d/m/Y'),
+                );
+            } else {
+                $subject = \sprintf('%s demande à créer l\'espace %s de %s', $requesterName, $product, $request->getClubName());
+                $text = \sprintf(
+                    "Bonjour,\n\n%s (%s) demande à créer et gérer l'espace {$product} du club %s (code FFBB %s).\n\nSi cette personne est bien un gestionnaire de votre club, approuvez sa demande :\n%s\n\nSinon, refusez-la depuis la même page. Sans réponse, la demande expire le %s.\n\n{$product}",
+                    $requesterName,
+                    $requester->getEmail(),
+                    $request->getClubName(),
+                    $request->getAra(),
+                    $link,
+                    $request->getExpiresAt()->format('d/m/Y'),
+                );
+            }
             $email = (new Email)
                 ->from($this->mailFrom->address())
                 ->to($clubEmail)
-                ->subject(($reminder ? 'Rappel — ' : '') . ($existing instanceof Club
-                    ? \sprintf('%s demande à reprendre l\'espace %s de %s', $requesterName, $product, $existing->getName())
-                    : \sprintf('%s demande à créer l\'espace %s de %s', $requesterName, $product, $request->getClubName())))
-                ->text($existing instanceof Club
-                    ? \sprintf(
-                        "Bonjour,\n\n%s (%s) demande à reprendre la gestion de l'espace {$product} du club %s (code FFBB %s), qui n'a plus de gestionnaire.\n\nSi cette personne est bien un gestionnaire de votre club, approuvez sa demande :\n%s\n\nSinon, refusez-la. Ce lien expire le %s.\n\n{$product}",
-                        $requesterName,
-                        $requester->getEmail(),
-                        $existing->getName(),
-                        $request->getAra(),
-                        $link,
-                        $request->getExpiresAt()->format('d/m/Y'),
-                    )
-                    : \sprintf(
-                        "Bonjour,\n\n%s (%s) demande à créer et gérer l'espace {$product} du club %s (code FFBB %s).\n\nSi cette personne est bien un gestionnaire de votre club, approuvez sa demande :\n%s\n\nSinon, refusez-la depuis la même page. Sans réponse, la demande expire le %s.\n\n{$product}",
-                        $requesterName,
-                        $requester->getEmail(),
-                        $request->getClubName(),
-                        $request->getAra(),
-                        $link,
-                        $request->getExpiresAt()->format('d/m/Y'),
-                    ));
+                ->subject(($reminder ? 'Rappel — ' : '') . $subject)
+                ->text($text);
             // Bouton CTA du HTML (D1) : l'URL EST le lien d'examen de la demande.
             $headers = $email->getHeaders();
             $headers->addTextHeader(EmailTemplateRenderer::CTA_URL_HEADER, $link);
@@ -148,15 +190,17 @@ final class ClubApprovalService
      * ou annulée entre la lecture de l'appelant et ici (double clic, onglet concurrent) ne fait
      * rien (`NoOp`) ; un demandeur effacé (RGPD) n'est jamais approuvé — sa demande est annulée.
      */
-    public function approve(ClubCreationRequest $request): ApprovalOutcome
+    public function approve(ClubCreationRequest $request, string $source = 'official_address'): ApprovalOutcome
     {
         $newClubId = null;
+        /** @var list<string> $supersededUserIds Chantier Membre (PR 3) — demandeurs prévenus « dépassée » après commit */
+        $supersededUserIds = [];
         /** @var array{clubId: string, userIds: list<string>}|null $joined les adhésions pending nées ici */
         $joined = null;
         /** @var Club|null $decidedClub */
         $decidedClub = null;
         try {
-            $outcome = $this->entityManager->wrapInTransaction(function () use ($request, &$newClubId, &$joined, &$decidedClub): ApprovalOutcome {
+            $outcome = $this->entityManager->wrapInTransaction(function () use ($request, $source, &$newClubId, &$joined, &$decidedClub, &$supersededUserIds): ApprovalOutcome {
                 // Sérialise les approbations concurrentes du même ARA (deux onglets,
                 // club-mail + superadmin) — même patron que la bascule de saison.
                 $this->lockAra($request->getAra());
@@ -182,8 +226,45 @@ final class ClubApprovalService
                         // et le workspace re-seedé s'il avait été purgé. Jamais un 2e club.
                         $this->clubWinBack->reprise($existing, $request->getUserId());
                         $this->close($request, ClubCreationRequest::STATUS_APPROVED);
+                        $this->auditGranted($existing->getId(), $request->getUserId(), $source);
+                        // Chantier Membre (PR 3) — le premier approuvé gagne : les demandes sœurs du
+                        // code sont closes sous le même verrou (déjà une ligne au club → « dépassée » ;
+                        // extérieur → adhésion pending, le repreneur est prévenu).
+                        [$joinedIds, $supersededUserIds] = $this->closeSiblingsAfterReprise($request, $existing->getId());
+                        $joined = ['clubId' => $existing->getId(), 'userIds' => $joinedIds];
 
                         return ApprovalOutcome::Reprise;
+                    }
+                    // Chantier Membre (PR 3) — le demandeur porte DÉJÀ une ligne au club (lecture
+                    // SQL hors filtre tenant : le lien peut être ouvert par un visiteur connecté à
+                    // un autre club). Jamais une seconde ligne.
+                    $row = $this->requesterRow($existing->getId(), $request->getUserId());
+                    if (null !== $row) {
+                        if ($row['is_active'] && \in_array($row['role'], ['owner', 'admin'], true)) {
+                            return ApprovalOutcome::NoOp; // déjà gestionnaire : le lien ne décide rien
+                        }
+                        if ($row['is_active'] && $row['requested'] && $row['escalated']) {
+                            // Promotion À CÔTÉ des gestionnaires actuels : une ligne exactement,
+                            // écrite sous le GUC du club (RLS `FORCE` sur club_user).
+                            $this->tenantContext->setClubId($existing->getId());
+                            $updated = $this->entityManager->getConnection()->executeStatement(
+                                'UPDATE club_user SET role = :role, manager_requested_at = NULL, manager_request_escalated_at = NULL, updated_at = NOW() '
+                                . 'WHERE club_id = :cid AND user_id = :uid AND is_active = true',
+                                ['role' => ClubRole::MANAGER->value, 'cid' => $existing->getId(), 'uid' => $request->getUserId()],
+                            );
+                            if (1 !== $updated) {
+                                throw new LogicException('Official promotion: exactly one membership row must be promoted.');
+                            }
+                            $this->close($request, ClubCreationRequest::STATUS_APPROVED);
+                            $this->auditGranted($existing->getId(), $request->getUserId(), $source);
+
+                            return ApprovalOutcome::Promoted;
+                        }
+                        // Ligne inactive / en attente, ou Membre sans demande en cours : dépassée.
+                        $this->close($request, ClubCreationRequest::STATUS_SUPERSEDED);
+                        $supersededUserIds = [$request->getUserId()];
+
+                        return ApprovalOutcome::Superseded;
                     }
                     // Le club est né / encore géré : cette demande devient une
                     // adhésion pending — jamais un 2e club.
@@ -265,7 +346,19 @@ final class ClubApprovalService
             $this->membershipRequestNotifier->notifyManagers($joined['clubId'], $joined['userIds']);
         }
 
-        $this->notifyRequester($request, $outcome, $decidedClub);
+        // Chantier Membre (PR 3) — les demandeurs dépassés (déjà une ligne au club) l'apprennent.
+        $clubId = $decidedClub?->getId();
+        if (null !== $clubId) {
+            foreach ($supersededUserIds as $userId) {
+                $this->membershipRequestNotifier->notifySuperseded($clubId, $userId);
+            }
+        }
+
+        if (ApprovalOutcome::Promoted === $outcome && null !== $clubId) {
+            $this->membershipRequestNotifier->notifyRoleGranted($clubId, $request->getUserId());
+        } elseif (ApprovalOutcome::Superseded !== $outcome || [] === $supersededUserIds) {
+            $this->notifyRequester($request, $outcome, $decidedClub);
+        }
 
         return $outcome;
     }
@@ -279,17 +372,44 @@ final class ClubApprovalService
      */
     public function refuse(ClubCreationRequest $request): bool
     {
-        $refused = $this->entityManager->wrapInTransaction(function () use ($request): bool {
-            $this->lockAra($request->getAra());
-            if (!$this->isStillLive($request)) {
-                return false;
-            }
-            $this->close($request, ClubCreationRequest::STATUS_REFUSED);
+        /** @var string|null $memberClubId Chantier Membre (PR 3) — le club dont le demandeur est Membre actif */
+        $memberClubId = null;
+        try {
+            $refused = $this->entityManager->wrapInTransaction(function () use ($request, &$memberClubId): bool {
+                $this->lockAra($request->getAra());
+                if (!$this->isStillLive($request)) {
+                    return false;
+                }
+                $this->close($request, ClubCreationRequest::STATUS_REFUSED);
+                // Demande d'un Membre (reprise ou promotion) : sa demande de rôle meurt, le refus
+                // de l'adresse officielle se trace (il bloque une nouvelle demande 30 jours).
+                $club = $this->clubs->findRealByFfbbCode($request->getAra());
+                $row = $club instanceof Club ? $this->requesterRow($club->getId(), $request->getUserId()) : null;
+                if ($club instanceof Club && null !== $row && $row['is_active']) {
+                    $memberClubId = $club->getId();
+                    $this->tenantContext->setClubId($club->getId());
+                    $this->entityManager->getConnection()->executeStatement(
+                        'UPDATE club_user SET manager_requested_at = NULL, manager_request_escalated_at = NULL WHERE club_id = :cid AND user_id = :uid',
+                        ['cid' => $club->getId(), 'uid' => $request->getUserId()],
+                    );
+                    $this->auditTrail->record(AuditAction::MEMBERSHIP_ROLE_REFUSED, null, $club->getId(), 'ClubCreationRequest', $request->getId(), ['source' => 'official_address']);
+                }
 
-            return true;
-        });
+                return true;
+            });
+        } finally {
+            $this->tenantContext->clear();
+        }
         if (!$refused) {
             return false;
+        }
+
+        if (null !== $memberClubId) {
+            // Un Membre garde son accès : jamais orphelin, un seul mail avec la date de renouvellement.
+            $decidedAt = $request->getDecidedAt() ?? new DateTimeImmutable;
+            $this->membershipRequestNotifier->notifyRoleRefused($memberClubId, $request->getUserId(), $decidedAt->modify(ManagerRoleRequestService::OFFICIAL_REFUSAL_DELAY));
+
+            return true;
         }
 
         // P4-301 (décision fondateur Q1) — un refus de création peut laisser le demandeur
@@ -305,6 +425,80 @@ final class ClubApprovalService
         }
 
         return true;
+    }
+
+    /** Chantier Membre (PR 3) — le demandeur porte une adhésion ACTIVE à ce club réel (reprise ou promotion d'un Membre). */
+    public function isActiveMemberRequest(ClubCreationRequest $request, Club $club): bool
+    {
+        $row = $this->requesterRow($club->getId(), $request->getUserId());
+
+        return null !== $row && $row['is_active'];
+    }
+
+    /**
+     * Chantier Membre (PR 3) — la ligne `club_user` du demandeur sur ce club, lue en SQL brut HORS
+     * contexte tenant (ni filtre Doctrine du visiteur, ni GUC d'un autre club).
+     *
+     * @return array{id: string, role: string, is_active: bool, requested: bool, escalated: bool}|null
+     */
+    private function requesterRow(string $clubId, string $userId): ?array
+    {
+        /** @var array<string, mixed>|false $row */
+        $row = $this->tenantContext->runWithoutTenant(
+            fn (): array|false => $this->entityManager->getConnection()->fetchAssociative(
+                'SELECT id, role, is_active, manager_requested_at, manager_request_escalated_at FROM club_user WHERE club_id = :cid AND user_id = :uid',
+                ['cid' => $clubId, 'uid' => $userId],
+            ),
+        );
+        if (false === $row) {
+            return null;
+        }
+
+        return [
+            'id' => (string) $row['id'],
+            'role' => (string) $row['role'],
+            'is_active' => (bool) $row['is_active'],
+            'requested' => null !== $row['manager_requested_at'],
+            'escalated' => null !== $row['manager_request_escalated_at'],
+        ];
+    }
+
+    /**
+     * Chantier Membre (PR 3) — après une reprise, les demandes sœurs (en attente) du même code :
+     * un demandeur qui a DÉJÀ une ligne au club (Membre, désactivé, en attente) → `superseded`
+     * (lien mort, mail « dépassée ») ; un extérieur → adhésion pending (le repreneur est prévenu).
+     * Le GUC du club est posé par la reprise.
+     *
+     * @return array{0: list<string>, 1: list<string>} [adhésions pending nées, demandeurs dépassés]
+     */
+    private function closeSiblingsAfterReprise(ClubCreationRequest $request, string $clubId): array
+    {
+        $joined = [];
+        $superseded = [];
+        foreach ($this->requests->findPendingByAra($request->getAra()) as $sibling) {
+            if ($sibling->getId() === $request->getId()) {
+                continue;
+            }
+            if (null !== $this->requesterRow($clubId, $sibling->getUserId())) {
+                $this->close($sibling, ClubCreationRequest::STATUS_SUPERSEDED);
+                $superseded[] = $sibling->getUserId();
+
+                continue;
+            }
+            $this->tenantContext->setClubId($clubId);
+            $this->provisioner->createMembership($clubId, $sibling->getUserId(), false, ClubRole::MEMBER);
+            $this->close($sibling, ClubCreationRequest::STATUS_APPROVED);
+            $joined[] = $sibling->getUserId();
+        }
+
+        return [$joined, $superseded];
+    }
+
+    /** La promotion par l'adresse officielle (ou la console) se trace — ids seulement, sans acteur. */
+    private function auditGranted(string $clubId, string $userId, string $source): void
+    {
+        $this->tenantContext->setClubId($clubId);
+        $this->auditTrail->record(AuditAction::MEMBERSHIP_ROLE_GRANTED, null, $clubId, 'User', $userId, ['source' => $source]);
     }
 
     private function lockAra(string $ara): void
@@ -401,7 +595,7 @@ final class ClubApprovalService
                 \sprintf("Bonjour,\n\nVotre demande a été approuvée : l'espace {$product} de %s est créé et vous en êtes gestionnaire.\n\nConnectez-vous :\n%s\n\n{$product}", $request->getClubName(), $loginLink),
                 true,
             ],
-            ApprovalOutcome::Reprise => [
+            ApprovalOutcome::Reprise, ApprovalOutcome::Promoted => [
                 \sprintf('Votre espace %s est prêt', $clubName),
                 \sprintf("Bonjour,\n\nVotre demande a été approuvée : vous reprenez l'espace {$product} de %s et vous en êtes gestionnaire.\n\nConnectez-vous :\n%s\n\n{$product}", $clubName, $loginLink),
                 true,

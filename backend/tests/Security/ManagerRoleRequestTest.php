@@ -40,7 +40,7 @@ use Symfony\Component\Uid\Uuid;
 /**
  * NR d'axe *auth & memberships* (chantier « Demandes d'adhésion et rôle Membre », PR 3) — la
  * promesse fermée par le fondateur : **un Membre peut demander à devenir gestionnaire, et seul
- * quelqu'un qui en a le droit le fait gestionnaire.**
+ * quelqu'un qui en a le droit le fait gestionnaire.**.
  *
  *  - Club AVEC gestionnaire : la demande pose un stamp `manager_requested_at`, prévient les
  *    gestionnaires actifs (jamais un Membre) ; un gestionnaire accepte (promotion, mail, audit) ou
@@ -428,12 +428,15 @@ final class ManagerRoleRequestTest extends WebTestCase
         // Un gestionnaire d'un AUTRE club ne touche jamais la demande de Paul.
         $this->api('POST', self::ROUTE, $this->jwtFor($paul['userId']));
         self::assertResponseStatusCodeSame(201);
+        $paulMembershipId = $this->membershipId($club['clubId'], $paul['userId']);
         $other = $this->bareClub('AUTR');
         $zed = $this->insertMember($other['clubId'], 'Zed', 'admin');
-        $this->api('POST', '/api/memberships/' . $this->membershipId($club['clubId'], $paul['userId']) . '/role', $this->jwtFor($zed['userId']), ['role' => 'admin']);
+        $this->api('POST', '/api/memberships/' . $paulMembershipId . '/role', $this->jwtFor($zed['userId']), ['role' => 'admin']);
         self::assertResponseStatusCodeSame(404, 'cible d\'un autre club : introuvable, rien ne fuit');
-        $this->api('POST', '/api/memberships/' . $this->membershipId($club['clubId'], $paul['userId']) . '/manager-request/refuse', $this->jwtFor($zed['userId']));
+        $this->api('POST', '/api/memberships/' . $paulMembershipId . '/manager-request/refuse', $this->jwtFor($zed['userId']));
         self::assertResponseStatusCodeSame(404, 'refus depuis un autre club : introuvable');
+        // La requête de Zed a laissé la session sur SON club : relire sous le club de Paul.
+        $this->scopeGucToClub($club['clubId']);
         self::assertSame('member', $this->role($club['clubId'], $paul['userId']));
         self::assertNotNull($this->stamp($club['clubId'], $paul['userId']), 'la demande est intacte');
     }
@@ -803,7 +806,7 @@ final class ManagerRoleRequestTest extends WebTestCase
         self::assertTrue($this->clubHasSeason($closing['clubId']), 'workspace intact');
         $hold = $this->sql('SELECT purge_hold_until FROM club WHERE id = :id', ['id' => $closing['clubId']], fetch: true);
         self::assertIsString($hold);
-        self::assertSame((new DateTimeImmutable($request['expires_at']))->format('Y-m-d'), (new DateTimeImmutable($hold))->format('Y-m-d'), 'retenue jusqu\'à l\'échéance de la demande');
+        self::assertSame(new DateTimeImmutable($request['expires_at'])->format('Y-m-d'), new DateTimeImmutable($hold)->format('Y-m-d'), 'retenue jusqu\'à l\'échéance de la demande');
         self::assertStringContainsString($closing['clubId'], $tester->getDisplay(), 'la retenue est tracée en sortie');
 
         $this->runCommand('app:clubs:purge-erased');
@@ -825,6 +828,9 @@ final class ManagerRoleRequestTest extends WebTestCase
         $jwt = $this->jwtFor($paul['userId']);
 
         $this->sql('UPDATE club SET erasure_scheduled_at = NOW() + INTERVAL \'3 days\', purge_hold_until = NOW() + INTERVAL \'6 days\' WHERE id = :id', ['id' => $closing['clubId']]);
+        // Première requête du client (pas de reboot du noyau) : le club semé reste en mémoire,
+        // périmé par l'UPDATE SQL — l'oublier pour que `/api/me` relise la base.
+        $this->em()->clear();
         $hold = new DateTimeImmutable((string) $this->sql('SELECT purge_hold_until FROM club WHERE id = :id', ['id' => $closing['clubId']], fetch: true));
         self::assertSame($hold->format('Y-m-d'), $this->api('GET', '/api/me', $jwt)['club']['closingOn'], 'retenue plus tardive : c\'est elle qui dit la date');
 
@@ -1101,6 +1107,8 @@ final class ManagerRoleRequestTest extends WebTestCase
         self::assertSame(1, (int) $this->sql('SELECT COUNT(*) FROM club_user WHERE club_id = :c AND user_id = :u', ['c' => $club['clubId'], 'u' => $lea['userId']], fetch: true), 'sa ligne promue, jamais doublée');
         self::assertNull($this->stamp($club['clubId'], $lea['userId']));
         self::assertNull($this->escalatedStamp($club['clubId'], $lea['userId']));
+        // Lus AVANT la requête suivante (le reboot du noyau vide le transport mémoire).
+        $mails = $this->mailsTo($this->sentEmails(), $lea['email']);
         self::assertSame('admin', $this->api('GET', '/api/me', $this->jwtFor($lea['userId']))['role'] ?? null);
 
         $this->scopeGucToClub($club['clubId']);
@@ -1109,7 +1117,6 @@ final class ManagerRoleRequestTest extends WebTestCase
         self::assertIsArray($row, 'la promotion officielle est tracée');
         self::assertNull($row['actor_user_id']);
         self::assertStringContainsString('official_address', (string) $row['details']);
-        $mails = $this->mailsTo($this->sentEmails(), $lea['email']);
         self::assertCount(1, $mails);
         self::assertSame(\sprintf('%s vous a nommé gestionnaire', $this->clubName($club['clubId'])), $mails[0]->getSubject());
     }

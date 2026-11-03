@@ -215,6 +215,33 @@ final class AdminClubRequestTest extends WebTestCase
         self::assertSame('promotion', $kinds[$promotion->getId()] ?? null);
     }
 
+    protected function setUp(): void
+    {
+        $this->client = self::createClient();
+        $this->em = self::getContainer()->get(EntityManagerInterface::class);
+        // Throttle admin par IP (SA0) : une IP fraîche par test, sinon les suites
+        // se polluent entre elles (gotcha connu du rate-limiter Redis).
+        $this->requestIp = \sprintf('10.%d.%d.%d', random_int(1, 254), random_int(0, 254), random_int(1, 254));
+    }
+
+    protected function tearDown(): void
+    {
+        foreach ($this->clubAras as $ara) {
+            $clubId = $this->admin()->fetchOne('SELECT id FROM club WHERE ffbb_club_code = :ara', ['ara' => $ara]);
+            if (\is_string($clubId)) {
+                $this->admin()->executeStatement('DELETE FROM club WHERE id = :id', ['id' => $clubId]);
+            }
+        }
+        foreach ($this->userIds as $userId) {
+            $this->admin()->executeStatement('DELETE FROM app_user WHERE id = :id', ['id' => $userId]);
+        }
+        if (isset($this->adminId)) {
+            $this->admin()->executeStatement('DELETE FROM admin_audit_log WHERE super_admin_id = :id OR super_admin_id IS NULL', ['id' => $this->adminId]);
+            $this->admin()->executeStatement('DELETE FROM super_admin WHERE id = :id', ['id' => $this->adminId]);
+        }
+        parent::tearDown();
+    }
+
     /** @return array{clubId: string, ara: string} un club réel semé sur la connexion PAR DÉFAUT (celle que lit la console) */
     private function seedClubViaOrm(string $prefix): array
     {
@@ -251,33 +278,6 @@ final class AdminClubRequestTest extends WebTestCase
         $this->em->flush();
 
         return $request;
-    }
-
-    protected function setUp(): void
-    {
-        $this->client = self::createClient();
-        $this->em = self::getContainer()->get(EntityManagerInterface::class);
-        // Throttle admin par IP (SA0) : une IP fraîche par test, sinon les suites
-        // se polluent entre elles (gotcha connu du rate-limiter Redis).
-        $this->requestIp = \sprintf('10.%d.%d.%d', random_int(1, 254), random_int(0, 254), random_int(1, 254));
-    }
-
-    protected function tearDown(): void
-    {
-        foreach ($this->clubAras as $ara) {
-            $clubId = $this->admin()->fetchOne('SELECT id FROM club WHERE ffbb_club_code = :ara', ['ara' => $ara]);
-            if (\is_string($clubId)) {
-                $this->admin()->executeStatement('DELETE FROM club WHERE id = :id', ['id' => $clubId]);
-            }
-        }
-        foreach ($this->userIds as $userId) {
-            $this->admin()->executeStatement('DELETE FROM app_user WHERE id = :id', ['id' => $userId]);
-        }
-        if (isset($this->adminId)) {
-            $this->admin()->executeStatement('DELETE FROM admin_audit_log WHERE super_admin_id = :id OR super_admin_id IS NULL', ['id' => $this->adminId]);
-            $this->admin()->executeStatement('DELETE FROM super_admin WHERE id = :id', ['id' => $this->adminId]);
-        }
-        parent::tearDown();
     }
 
     private function seedRequest(string $status): ClubCreationRequest

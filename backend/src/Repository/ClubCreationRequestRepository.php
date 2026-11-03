@@ -34,4 +34,29 @@ final class ClubCreationRequestRepository extends ServiceEntityRepository
     {
         return $this->findBy(['ara' => $ara, 'status' => ClubCreationRequest::STATUS_PENDING]);
     }
+
+    /**
+     * Chantier Membre (PR 3) — les demandes VIVANTES (`pending` ou `expired`) d'un utilisateur sur
+     * CE code : une demande de club ouverte sur un autre code n'est jamais la demande de ce club.
+     *
+     * @return list<ClubCreationRequest>
+     */
+    public function findLiveByUserAndAra(string $userId, string $ara): array
+    {
+        return $this->findBy(['userId' => $userId, 'ara' => $ara, 'status' => [ClubCreationRequest::STATUS_PENDING, ClubCreationRequest::STATUS_EXPIRED]], ['createdAt' => 'ASC']);
+    }
+
+    public function findPendingByUserAndAra(string $userId, string $ara): ?ClubCreationRequest
+    {
+        return $this->findOneBy(['userId' => $userId, 'ara' => $ara, 'status' => ClubCreationRequest::STATUS_PENDING], ['createdAt' => 'DESC']);
+    }
+
+    /** La plus récente demande en attente, expirée ou refusée de cet utilisateur sur ce code (état servi par `/api/me`). */
+    public function findLatestShownByUserAndAra(string $userId, string $ara): ?ClubCreationRequest
+    {
+        return $this->findOneBy(
+            ['userId' => $userId, 'ara' => $ara, 'status' => [ClubCreationRequest::STATUS_PENDING, ClubCreationRequest::STATUS_EXPIRED, ClubCreationRequest::STATUS_REFUSED]],
+            ['createdAt' => 'DESC'],
+        );
+    }
 }

@@ -44,6 +44,8 @@ final class InactivityMailBuilder
             foreach ($clubsWhereLastManager as $clubName) {
                 $lines[] = \sprintf('Vous êtes le dernier gestionnaire de %s : sans reconnexion, cet espace sera ensuite supprimé.', $clubName);
             }
+            // Chantier Membre (prévention) : la sortie proposée — nommer un successeur, une fois.
+            $lines[] = 'Pour éviter cette fermeture, connectez-vous et nommez un autre gestionnaire dans l\'écran Club, section « Membres ».';
         }
         $lines[] = '';
         $lines[] = 'Un simple login suffit à conserver votre compte.';

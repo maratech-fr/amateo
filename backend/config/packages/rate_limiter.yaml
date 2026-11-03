@@ -151,6 +151,31 @@ framework:
             policy: 'sliding_window'
             limit: 1
             interval: '1 day'
+        # Chantier Membre (PR 3) — un Membre demande à devenir gestionnaire. Budgets SÉPARÉS de ceux
+        # des adhésions (jamais consommés par une demande de rôle, et réciproquement) :
+        #  - `manager_role_request_user` : 3 demandes par jour PAR UTILISATEUR (userId) ;
+        #  - `manager_role_request_official` : 5 mails par jour PAR CLUB (clubId) vers son adresse
+        #    officielle (demande de reprise, transmission à 14 jours) — la seule exception sortante
+        #    d'un Membre (lecture de l'adresse FFBB) ;
+        #  - `manager_role_request_notify` / `_digest` : les mails aux gestionnaires, PAR CLUB, puis
+        #    UNE synthèse par jour, puis silence.
+        # Consommés APRÈS les refus 409 : une demande refusée d'office ne mange aucun budget.
+        manager_role_request_user:
+            policy: 'sliding_window'
+            limit: 3
+            interval: '1 day'
+        manager_role_request_official:
+            policy: 'sliding_window'
+            limit: 5
+            interval: '1 day'
+        manager_role_request_notify:
+            policy: 'sliding_window'
+            limit: 5
+            interval: '1 day'
+        manager_role_request_digest:
+            policy: 'sliding_window'
+            limit: 1
+            interval: '1 day'
         # P4-298 — le lookup public du NOM de club à l'inscription (GET /api/register/club-lookup),
         # par IP : surface anonyme énumérable (on y jette un code FFBB), même famille que
         # coach_wish_public. 30/15min — large pour une saisie debouncée (le front ne déclenche
@@ -397,6 +422,21 @@ when@test:
             # atteigne la synthèse en trois demandes. Keyé par clubId : chaque test crée son club,
             # il ne fuit pas. Prod garde 5/jour.
             membership_request_notify:
+                policy: 'sliding_window'
+                limit: 2
+                interval: '1 day'
+            # Chantier Membre (PR 3) : petits plafonds pour que ManagerRoleRequestTest atteigne chaque
+            # seau en deux gestes. Keyés par utilisateur / club : chaque test crée les siens, ils ne
+            # fuient pas. Prod garde 3 (utilisateur) et 5 (club, mails aux gestionnaires).
+            manager_role_request_user:
+                policy: 'sliding_window'
+                limit: 2
+                interval: '1 day'
+            manager_role_request_official:
+                policy: 'sliding_window'
+                limit: 2
+                interval: '1 day'
+            manager_role_request_notify:
                 policy: 'sliding_window'
                 limit: 2
                 interval: '1 day'

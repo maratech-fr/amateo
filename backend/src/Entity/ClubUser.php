@@ -55,6 +55,21 @@ class ClubUser implements TenantOwnedInterface
     #[ORM\Column(type: 'datetimetz_immutable', nullable: true)]
     private ?DateTimeImmutable $deactivatedAt = null;
 
+    /**
+     * Chantier Membre (PR 3) — la demande en cours de ce Membre à devenir gestionnaire, auprès des
+     * gestionnaires du club (null = aucune). Effacée à la promotion, au refus, à l'annulation, à la
+     * désactivation et à l'effacement du compte.
+     */
+    #[ORM\Column(type: 'datetimetz_immutable', nullable: true)]
+    private ?DateTimeImmutable $managerRequestedAt = null;
+
+    /**
+     * La demande, sans réponse des gestionnaires 14 jours, a été transmise à l'adresse officielle du
+     * club (une seule transmission par demande). Effacée avec {@see $managerRequestedAt}.
+     */
+    #[ORM\Column(type: 'datetimetz_immutable', nullable: true)]
+    private ?DateTimeImmutable $managerRequestEscalatedAt = null;
+
     public function __construct()
     {
         $this->id = $this->newUuid();
@@ -184,6 +199,30 @@ class ClubUser implements TenantOwnedInterface
     public function setDeactivatedAt(?DateTimeImmutable $deactivatedAt): self
     {
         $this->deactivatedAt = $deactivatedAt;
+
+        return $this;
+    }
+
+    public function getManagerRequestedAt(): ?DateTimeImmutable
+    {
+        return $this->managerRequestedAt;
+    }
+
+    public function setManagerRequestedAt(?DateTimeImmutable $managerRequestedAt): self
+    {
+        $this->managerRequestedAt = $managerRequestedAt;
+
+        return $this;
+    }
+
+    public function getManagerRequestEscalatedAt(): ?DateTimeImmutable
+    {
+        return $this->managerRequestEscalatedAt;
+    }
+
+    public function setManagerRequestEscalatedAt(?DateTimeImmutable $managerRequestEscalatedAt): self
+    {
+        $this->managerRequestEscalatedAt = $managerRequestEscalatedAt;
 
         return $this;
     }
