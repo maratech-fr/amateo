@@ -26,6 +26,7 @@ use Doctrine\ORM\EntityManagerInterface;
 use PHPUnit\Framework\Attributes\Group;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 use Symfony\Component\Console\Tester\CommandTester;
+use Symfony\Component\Uid\Uuid;
 
 /**
  * Retention purge NR (transition-de-saison §3): keep current + N-1 + futures,
@@ -92,6 +93,30 @@ final class PurgeSeasonsCommandTest extends KernelTestCase
         self::assertNotNull($this->em->getRepository(Season::class)->find($past->getId()));
         self::assertNotNull($this->em->getRepository(Season::class)->find($current->getId()));
         self::assertNotNull($this->em->getRepository(Season::class)->find($draft->getId()));
+    }
+
+    /**
+     * Envoi des conflits aux coachs — la mémoire du dernier envoi (destinataires, sautés) est une
+     * donnée de SAISON : elle part avec la saison purgée, celle de la saison courante reste.
+     */
+    public function testTheCoachMailingMemoryDiesWithItsSeason(): void
+    {
+        [$club, $seasons] = $this->createClubWithSeasons();
+        [$old, , $current] = $seasons;
+        foreach ([$old, $current] as $season) {
+            $this->em->getConnection()->executeStatement(
+                'INSERT INTO conflict_mailing (id, club_id, season_id, sent_at, sent_by_user_id, recipient_coach_ids, skipped_coach_ids, mailed_count)
+                 VALUES (:id, :club, :season, now(), NULL, :recipients, :skipped, 1)',
+                ['id' => Uuid::v4()->toRfc4122(), 'club' => $club->getId(), 'season' => $season->getId(), 'recipients' => '["00000000-0000-4000-8000-0000000000c2"]', 'skipped' => '[]'],
+            );
+        }
+
+        $this->runPurge(['--club' => $club->getId(), '--date' => $this->purgeDate()])->assertCommandIsSuccessful();
+        $this->scopeGucToClub($club->getId());
+
+        $count = fn (Season $season): int => (int) $this->em->getConnection()->fetchOne('SELECT COUNT(*) FROM conflict_mailing WHERE season_id = :s', ['s' => $season->getId()]);
+        self::assertSame(0, $count($old), 'la mémoire de la saison purgée est partie');
+        self::assertSame(1, $count($current), 'celle de la saison courante reste');
     }
 
     protected function setUp(): void

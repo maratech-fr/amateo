@@ -13698,7 +13698,7 @@
                         "description": "Schedule is validated (read-only), or a generation is running for the club (body carries code=generation_in_progress)"
                     },
                     "422": {
-                        "description": "Refused with NOTHING moved (all-or-nothing): the solver refused the swap (broken rules named for display), OR a server pre-check refused before any engine call \u2014 the two slots are not in the same schedule (code=swap_cross_schedule), the same slot or a team shared between both sides (code=swap_with_self), the occupant is itself a group session (code=evict_target_is_group), the occupant is locked (code=target_locked), a window is missing at one case (code=slot_unavailable), or a moved side already sits at its destination case (code=team_already_at_case)",
+                        "description": "Refused with NOTHING moved (all-or-nothing): the solver refused the swap (broken rules named for display), OR a server pre-check refused before any engine call \u2014 the two slots are not in the same schedule (code=swap_cross_schedule), the same slot or a team shared between both sides (code=swap_with_self), the occupant is itself a group session (code=evict_target_is_group), the occupant is locked (code=target_locked), a window is missing at one case (code=slot_unavailable), a moved side already sits at its destination case (code=team_already_at_case), or a moved side already trains on its destination day (code=team_already_trains_that_day)",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -15658,6 +15658,52 @@
                                                     }
                                                 }
                                             }
+                                        },
+                                        "coachMailing": {
+                                            "type": "object",
+                                            "description": "Sending the conflicts to the coaches: the button counters (computed by the same service as the send) and the last send of the season",
+                                            "properties": {
+                                                "personConflictCount": {
+                                                    "type": "integer",
+                                                    "description": "Person conflicts on a match that would be mailed (held lines excluded)"
+                                                },
+                                                "pendingRecipientCount": {
+                                                    "type": "integer",
+                                                    "description": "Coaches told at an earlier send who no longer have a conflict and have a valid address \u2014 to be told \u00ab no conflict left \u00bb"
+                                                },
+                                                "recipientCount": {
+                                                    "type": "integer",
+                                                    "description": "Coaches who will actually receive an e-mail (a list or \u00ab no conflict left \u00bb), valid address only \u2014 what the confirmation announces"
+                                                },
+                                                "last": {
+                                                    "type": "object",
+                                                    "nullable": true,
+                                                    "description": "The last send of the season, null when nothing was ever sent",
+                                                    "properties": {
+                                                        "sentAt": {
+                                                            "type": "string",
+                                                            "format": "date-time",
+                                                            "description": "Club wall-clock time"
+                                                        },
+                                                        "sentByFirstName": {
+                                                            "type": "string",
+                                                            "nullable": true,
+                                                            "description": "null when the sender no longer exists"
+                                                        },
+                                                        "mailedCount": {
+                                                            "type": "integer",
+                                                            "description": "E-mails queued, \u00ab no conflict left \u00bb ones included"
+                                                        },
+                                                        "skippedCoachIds": {
+                                                            "type": "array",
+                                                            "items": {
+                                                                "type": "string"
+                                                            },
+                                                            "description": "Coaches without an address at that send"
+                                                        }
+                                                    }
+                                                }
+                                            }
                                         }
                                     }
                                 }
@@ -15672,6 +15718,138 @@
                     }
                 },
                 "summary": "Same-coach match/training conflict radar (read-only, computed on the fly)"
+            }
+        },
+        "/api/fixtures/conflicts/mail-coaches": {
+            "post": {
+                "operationId": "postFixtureConflictsMailCoaches",
+                "tags": [
+                    "Match"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Each concerned coach was mailed, as an indication, his own person conflicts on a match; a coach told at an earlier send who has none left was mailed \u00ab no conflict left \u00bb. Best-effort: coaches without an address are skipped, failed sends are named",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "sentAt": {
+                                            "type": "string",
+                                            "format": "date-time",
+                                            "nullable": true,
+                                            "description": "Club wall-clock time; null when no e-mail was queued (nothing stamped)"
+                                        },
+                                        "conflictCount": {
+                                            "type": "integer"
+                                        },
+                                        "recipients": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "coachId": {
+                                                        "type": "string"
+                                                    },
+                                                    "firstName": {
+                                                        "type": "string"
+                                                    },
+                                                    "lastName": {
+                                                        "type": "string"
+                                                    },
+                                                    "conflictCount": {
+                                                        "type": "integer"
+                                                    }
+                                                }
+                                            }
+                                        },
+                                        "cleared": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "coachId": {
+                                                        "type": "string"
+                                                    },
+                                                    "firstName": {
+                                                        "type": "string"
+                                                    },
+                                                    "lastName": {
+                                                        "type": "string"
+                                                    }
+                                                }
+                                            }
+                                        },
+                                        "skipped": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "coachId": {
+                                                        "type": "string"
+                                                    },
+                                                    "firstName": {
+                                                        "type": "string"
+                                                    },
+                                                    "lastName": {
+                                                        "type": "string"
+                                                    },
+                                                    "kind": {
+                                                        "type": "string",
+                                                        "enum": [
+                                                            "conflicts",
+                                                            "cleared"
+                                                        ]
+                                                    }
+                                                }
+                                            }
+                                        },
+                                        "failed": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "coachId": {
+                                                        "type": "string"
+                                                    },
+                                                    "firstName": {
+                                                        "type": "string"
+                                                    },
+                                                    "lastName": {
+                                                        "type": "string"
+                                                    },
+                                                    "kind": {
+                                                        "type": "string",
+                                                        "enum": [
+                                                            "conflicts",
+                                                            "cleared"
+                                                        ]
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "No club in context"
+                    },
+                    "403": {
+                        "description": "Not a management member, or a demonstration club"
+                    },
+                    "409": {
+                        "description": "Archived season, season plan not validated, or a send already in progress for the club"
+                    },
+                    "422": {
+                        "description": "No season, or nothing to send and no coach to tell"
+                    },
+                    "429": {
+                        "description": "Club e-mail cap reached (200 / 24 h) \u2014 the whole batch is refused"
+                    }
+                },
+                "summary": "Send the person conflicts on a match to the concerned coaches \u2014 management only"
             }
         },
         "/api/fixtures/conflicts/{fingerprint}/resolution": {
@@ -33522,6 +33700,21 @@
                     },
                     "overlaysDroppedOnValidate": {
                         "type": "integer"
+                    },
+                    "canEdit": {
+                        "type": "boolean"
+                    },
+                    "editBlockedReason": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "regenerateFromBlockedReason": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
                     }
                 }
             },
@@ -33545,6 +33738,21 @@
                     },
                     "overlaysDroppedOnValidate": {
                         "type": "integer"
+                    },
+                    "canEdit": {
+                        "type": "boolean"
+                    },
+                    "editBlockedReason": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "regenerateFromBlockedReason": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
                     }
                 }
             },
@@ -33568,6 +33776,21 @@
                     },
                     "overlaysDroppedOnValidate": {
                         "type": "integer"
+                    },
+                    "canEdit": {
+                        "type": "boolean"
+                    },
+                    "editBlockedReason": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "regenerateFromBlockedReason": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
                     }
                 }
             },

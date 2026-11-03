@@ -10,6 +10,7 @@ use App\Mail\EmailTemplateRenderer;
 use App\Service\BrandAssets;
 use App\Service\ProductIdentity;
 use App\Storage\LogoStorage;
+use App\Tests\Unit\Mail\EmailTemplateRendererTest;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\Mailer\Envelope;
@@ -33,6 +34,9 @@ final class EmailSignatureListenerTest extends TestCase
 
     // 1×1 PNG transparent valide (getimagesizefromstring le reconnaît → image/png).
     private const string PNG_1X1 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+
+    /** Le fragment HTML des tuiles tel qu'un builder le pose (déjà échappé à la source). */
+    private const string FRAGMENT = '<table role="presentation" width="100%" data-tile="1"><tr><td>Tuile</td></tr></table>';
 
     public function testSignsATextOnlyEmailWithBothPartsAndInlineLogo(): void
     {
@@ -198,6 +202,61 @@ final class EmailSignatureListenerTest extends TestCase
             (string) $email->getTextBody(),
             'un e-mail sans club ne doit jamais porter le pied d\'usurpation dans sa partie texte',
         );
+    }
+
+    /**
+     * Envoi des conflits aux coachs — un e-mail dont le builder a posé un fragment HTML (les tuiles)
+     * et l'en-tête qui le dit est enveloppé UNE fois par la carte de marque, à l'enfilage (clone vu
+     * par le collecteur) comme au worker (original parti par Redis) : fragment intact, pied
+     * anti-usurpation et logo une fois, texte signé, en-tête retiré. Rejoue la chaîne réelle de
+     * `Mailer::send()` (clone à l'enfilage, original au worker).
+     * Jumeau gabarit : {@see EmailTemplateRendererTest::testAnHtmlFragmentTakesThePlaceOfTheTextInsideTheBrandCard}.
+     */
+    public function testAFragmentMailIsWrappedOnceAcrossEnqueueAndWorker(): void
+    {
+        $original = $this->fragmentEmail();
+
+        $queuedClone = clone $original;
+        $this->listener()->onMessage($this->enqueueEvent($queuedClone));
+        $this->listener()->onMessage($this->workerEvent($original));
+
+        foreach (['enfilage' => $queuedClone, 'worker' => $original] as $phase => $email) {
+            $html = (string) $email->getHtmlBody();
+            self::assertSame(1, substr_count($html, self::FRAGMENT), $phase . ' : le fragment est posé tel quel, une fois');
+            self::assertSame(1, substr_count($html, 'Vous ne connaissez pas ce club ? Ignorez ce message.'), $phase . ' : pied anti-usurpation une fois');
+            self::assertSame(1, substr_count($html, 'cid:product-email-logo'), $phase . ' : carte de marque une fois');
+            self::assertStringStartsWith('Liste des conflits en texte.', (string) $email->getTextBody(), $phase . ' : la partie texte reste la liste');
+            self::assertSame(1, substr_count((string) $email->getTextBody(), 'Vous ne connaissez pas ce club ? Ignorez ce message.'), $phase . ' : pied texte une fois');
+            self::assertFalse($email->getHeaders()->has(EmailTemplateRenderer::HTML_FRAGMENT_HEADER), $phase . ' : l\'en-tête interne est retiré dès l\'enveloppement');
+        }
+    }
+
+    /**
+     * L'en-tête retiré dès l'enveloppement est ce qui empêche une double carte : le même objet
+     * repassé (enfilage puis worker) n'est enveloppé qu'une fois, son logo n'est embarqué qu'une fois.
+     */
+    public function testAFragmentMailPassedTwiceIsNeverWrappedTwice(): void
+    {
+        $email = $this->fragmentEmail();
+
+        $this->listener()->onMessage($this->enqueueEvent($email));
+        $this->listener()->onMessage($this->workerEvent($email));
+
+        $html = (string) $email->getHtmlBody();
+        self::assertSame(1, substr_count($html, 'cid:product-email-logo'));
+        self::assertSame(1, substr_count($html, self::FRAGMENT));
+        $logos = array_filter($email->getAttachments(), static fn (DataPart $part): bool => 'product-email-logo' === $part->getName());
+        self::assertCount(1, $logos, 'un seul logo embarqué');
+    }
+
+    private function fragmentEmail(): Email
+    {
+        $email = $this->emailWithText('Liste des conflits en texte.')->html(self::FRAGMENT);
+        $email->getHeaders()->addTextHeader(EmailTemplateRenderer::HTML_FRAGMENT_HEADER, '1');
+        $email->getHeaders()->addTextHeader(ClubMailMetadata::CLUB_ID_HEADER, 'club-123');
+        $email->getHeaders()->addTextHeader(ClubMailMetadata::CLUB_LABEL_HEADER, 'BC Lyon');
+
+        return $email;
     }
 
     /** @param array<string, string> $logos clubId => octets du logo */

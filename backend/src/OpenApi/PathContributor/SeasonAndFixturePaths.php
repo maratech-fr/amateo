@@ -202,12 +202,47 @@ final readonly class SeasonAndFixturePaths implements CustomPathContributor
                             'heldSide' => ['type' => 'string', 'enum' => ['training', 'match', 'left', 'right'], 'description' => 'The side that coach holds'],
                             'heldByTeamId' => ['type' => 'string', 'nullable' => true, 'description' => 'The team of that coach when it differs from the session\'s: a declared group'],
                         ]]],
+                        'coachMailing' => ['type' => 'object', 'description' => 'Sending the conflicts to the coaches: the button counters (computed by the same service as the send) and the last send of the season', 'properties' => [
+                            'personConflictCount' => ['type' => 'integer', 'description' => 'Person conflicts on a match that would be mailed (held lines excluded)'],
+                            'pendingRecipientCount' => ['type' => 'integer', 'description' => 'Coaches told at an earlier send who no longer have a conflict and have a valid address — to be told « no conflict left »'],
+                            'recipientCount' => ['type' => 'integer', 'description' => 'Coaches who will actually receive an e-mail (a list or « no conflict left »), valid address only — what the confirmation announces'],
+                            'last' => ['type' => 'object', 'nullable' => true, 'description' => 'The last send of the season, null when nothing was ever sent', 'properties' => [
+                                'sentAt' => ['type' => 'string', 'format' => 'date-time', 'description' => 'Club wall-clock time'],
+                                'sentByFirstName' => ['type' => 'string', 'nullable' => true, 'description' => 'null when the sender no longer exists'],
+                                'mailedCount' => ['type' => 'integer', 'description' => 'E-mails queued, « no conflict left » ones included'],
+                                'skippedCoachIds' => ['type' => 'array', 'items' => ['type' => 'string'], 'description' => 'Coaches without an address at that send'],
+                            ]],
+                        ]],
                     ],
                 ]),
                 '400' => new Response('No club in context'),
                 '401' => new Response('Unauthorized (missing/expired JWT)'),
             ],
             summary: 'Same-coach match/training conflict radar (read-only, computed on the fly)',
+        )));
+
+        $paths->addPath('/api/fixtures/conflicts/mail-coaches', new PathItem(post: new Operation(
+            operationId: 'postFixtureConflictsMailCoaches',
+            tags: ['Match'],
+            responses: [
+                '200' => $this->schemas->jsonResponse('Each concerned coach was mailed, as an indication, his own person conflicts on a match; a coach told at an earlier send who has none left was mailed « no conflict left ». Best-effort: coaches without an address are skipped, failed sends are named', [
+                    'type' => 'object',
+                    'properties' => [
+                        'sentAt' => ['type' => 'string', 'format' => 'date-time', 'nullable' => true, 'description' => 'Club wall-clock time; null when no e-mail was queued (nothing stamped)'],
+                        'conflictCount' => ['type' => 'integer'],
+                        'recipients' => ['type' => 'array', 'items' => ['type' => 'object', 'properties' => ['coachId' => ['type' => 'string'], 'firstName' => ['type' => 'string'], 'lastName' => ['type' => 'string'], 'conflictCount' => ['type' => 'integer']]]],
+                        'cleared' => ['type' => 'array', 'items' => ['type' => 'object', 'properties' => ['coachId' => ['type' => 'string'], 'firstName' => ['type' => 'string'], 'lastName' => ['type' => 'string']]]],
+                        'skipped' => ['type' => 'array', 'items' => ['type' => 'object', 'properties' => ['coachId' => ['type' => 'string'], 'firstName' => ['type' => 'string'], 'lastName' => ['type' => 'string'], 'kind' => ['type' => 'string', 'enum' => ['conflicts', 'cleared']]]]],
+                        'failed' => ['type' => 'array', 'items' => ['type' => 'object', 'properties' => ['coachId' => ['type' => 'string'], 'firstName' => ['type' => 'string'], 'lastName' => ['type' => 'string'], 'kind' => ['type' => 'string', 'enum' => ['conflicts', 'cleared']]]]],
+                    ],
+                ]),
+                '400' => new Response('No club in context'),
+                '403' => new Response('Not a management member, or a demonstration club'),
+                '409' => new Response('Archived season, season plan not validated, or a send already in progress for the club'),
+                '422' => new Response('No season, or nothing to send and no coach to tell'),
+                '429' => new Response('Club e-mail cap reached (200 / 24 h) — the whole batch is refused'),
+            ],
+            summary: 'Send the person conflicts on a match to the concerned coaches — management only',
         )));
 
         $paths->addPath('/api/fixtures/conflicts/{fingerprint}/resolution', new PathItem(

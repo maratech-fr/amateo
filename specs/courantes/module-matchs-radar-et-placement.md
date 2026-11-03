@@ -237,6 +237,63 @@ refusés ; indisponibilité et fermeture, elles, restent jugées à chaque PUT. 
 plage SALLE chevauche une séance d'une AUTRE équipe au même gymnase dans le planning effectif ce
 jour-là ; jamais un déplacement, muet un jour férié.
 
+### Envoyer les conflits aux coachs (M10)
+
+Sur l'onglet Conflits, un gestionnaire clique « Envoyer aux coachs » (confirmation nommant la saison).
+**Périmètre** : les trois familles de conflit de PERSONNE sur un match (`MATCH_MATCH`,
+`MATCH_TRAINING`, `MATCH_COACH_UNAVAILABLE`), traitées ou non (aucun statut ni note n'est envoyé),
+datées d'aujourd'hui ou à venir (le filtre du radar, pas un filtre propre au mail). Les lignes
+tenues par un autre coach et les autres familles ne partent pas. **Qui reçoit** : la personne en
+conflit ET les coachs PRINCIPAUX de chaque équipe d'un côté ; pour un côté entraînement, ceux de
+chaque équipe du groupe mutualisé du créneau dans sa version. Les adjoints ne reçoivent rien.
+Exemple : Karim (principal U15, joue en SM2) est en double un samedi → Karim reçoit une tuile
+« Personne en double » ; Emma (principale SM2) la reçoit aussi. Un mail par coach, avec SES conflits,
+« à titre indicatif ». Les matchs sans heure connue ne sont pas vérifiés (le mail le dit).
+
+**Mémoire du dernier envoi, par saison** (table `conflict_mailing`, une ligne par club et saison).
+Règle unique, lue et écrite sous un verrou Redis par club : nouvelle mémoire = ancienne mémoire
+∪ coachs à qui une liste a été mise en file − coachs à qui « plus aucun conflit » a été mis en file
+− coachs supprimés. Un coach qui détenait une liste et n'a plus de conflit reçoit un mail
+« plus aucun conflit » et ne sort de la mémoire qu'à ce moment. Exemple : Léa, qui avait reçu une
+liste lundi, est sautée (pas d'adresse) mardi, son conflit disparaît vendredi → elle reçoit
+« plus aucun conflit » dès qu'elle a une adresse ; une personne jamais prévenue dont le conflit
+disparaît ne reçoit rien. Un coach sans adresse valide est sauté et nommé ; il ne compte pas dans
+les coachs « à prévenir ». Le calcul (qui reçoit quoi, compteurs) est un service pur UNIQUE,
+`ConflictCoachMailing`, partagé par le GET et le POST.
+
+**API.** `GET /api/fixtures/conflicts` sert en plus `coachMailing` (`personConflictCount`,
+`pendingRecipientCount`, `recipientCount`, `last` = `{sentAt, sentByFirstName, mailedCount,
+skippedCoachIds}` ou `null`). `POST /api/fixtures/conflicts/mail-coaches` (synchrone, corps vide)
+répond `{sentAt, conflictCount, recipients, cleared, skipped, failed}` ; `sentAt` est `null` quand
+aucun mail n'est mis en file. Ordre des refus : 409 saison archivée (`{detail}`) → 403 non
+gestionnaire → 403 club de démonstration → 409 socle non choisi (`{detail}`) → 409 envoi déjà en
+cours (verrou club 60 s, relâché sur tout chemin) → 422 saison introuvable → 422 rien à envoyer
+(aucun conflit de personne et aucun coach à prévenir) → 429 plafond `conflict_mail_send` (200
+e-mails / 24 h par club, budget distinct de la collecte des doléances, consommé pour le nombre
+exact de mails, lot refusé en bloc). Les envois sont best-effort (un échec est nommé dans
+`failed`, avec son `kind` `conflicts` ou `cleared`, et le coach reste en mémoire). La ligne
+« Envoyé le … » et la mémoire ne sont écrites que si au moins un mail est mis en file ; « envoyé » =
+mis en file Messenger (un échec SMTP au worker est invisible, comme la collecte).
+
+**Écran.** Le bouton est rendu au-dessus du retour anticipé « aucun conflit » (il reste actif quand il
+n'y a plus de conflit mais des coachs à prévenir), visible des gestionnaires seuls ; un Membre voit
+la ligne « Envoyé le … ». Désactivé, avec son motif visible, quand rien n'est à envoyer, en
+démonstration, sur saison archivée ou si la réponse n'a pas `coachMailing`.
+
+**Mail.** Le builder pose un fragment HTML (tuiles, une par conflit, triées par date, couleur et
+mot de gravité propres au mail : Important / À regarder / À surveiller) que `EmailSignatureListener`
+enveloppe une fois dans la carte de marque, avec le texte brut équivalent ; le mail « plus aucun
+conflit » est du texte simple dans la même carte. Aucun lien, aucune réponse, aucune page publique,
+pas d'historique au-delà du dernier envoi.
+
+**Écarts déclarés.** (1) Le verrou ne protège que deux envois SIMULTANÉS : deux gestionnaires à
+quelques secondes d'écart envoient deux fois la liste à jour. (2) Mails mis en file puis échec de
+l'upsert : 500, coachs déjà prévenus, mémoire non écrite, un nouveau clic renvoie les listes.
+(3) Un onglet resté ouvert pendant une réouverture du socle lit le message approximatif du garde du
+socle. (4) Une période sans version choisie n'a aucun entraînement vu par le radar, donc par le
+mail. (5) **Renoncement** : le mail ne porte PAS les conflits entraînement × entraînement ni les
+matchs à l'extérieur envoyés au coach pour appeler l'adversaire (roadmap).
+
 ## 3. Solveur de placement (`POST /api/fixtures/place` → engine `/place-matches`)
 
 Second problème solveur ([ADR-0003](../../docs/architecture/adr-0003-match-placement-solve.md)),

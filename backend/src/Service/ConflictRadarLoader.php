@@ -65,7 +65,11 @@ final class ConflictRadarLoader
      * version pointée de la saison (null = pas de calendrier pointé → `MATCH_TRAINING` ne peut rien
      * détecter hors période).
      *
-     * @return array{conflicts: list<array<string, mixed>>, held: list<array<string, mixed>>, seasonScheduleId: string|null, fixtures: list<Fixture>}
+     * `groupsBySchedule` (envoi des conflits aux coachs) : les groupes mutualisés déclarés de CHAQUE
+     * version vue (version → liste de groupes d'équipes) — un conflit sur une séance de groupe
+     * touche le principal de chaque équipe du groupe de CETTE version, jamais d'une autre.
+     *
+     * @return array{conflicts: list<array<string, mixed>>, held: list<array<string, mixed>>, seasonScheduleId: string|null, fixtures: list<Fixture>, groupsBySchedule: array<string, list<list<string>>>}
      */
     public function conflicts(string $clubId, ?string $seasonId): array
     {
@@ -280,6 +284,7 @@ final class ConflictRadarLoader
             'held' => array_values(array_filter($lines, static fn (array $line): bool => isset($line['heldBy']))),
             'seasonScheduleId' => $context['seasonScheduleId'],
             'fixtures' => $fixtures,
+            'groupsBySchedule' => $groupsBySchedule,
         ];
     }
 }

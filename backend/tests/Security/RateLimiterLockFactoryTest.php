@@ -42,4 +42,21 @@ final class RateLimiterLockFactoryTest extends KernelTestCase
             . 'framework.lock pour que lock_factory: auto câble une fabrique de verrous.',
         );
     }
+
+    /**
+     * Envoi des conflits aux coachs — son plafond `conflict_mail_send` (budget distinct de la
+     * collecte) n'est une borne que s'il est atomique : dix clics simultanés ne doivent pas
+     * réserver dix fois le même budget.
+     */
+    public function testConflictMailSendLimiterIsBuiltWithALockFactorySoItsCapIsAtomic(): void
+    {
+        self::bootKernel();
+        $factory = self::getContainer()->get('limiter.conflict_mail_send');
+        self::assertInstanceOf(RateLimiterFactory::class, $factory);
+
+        self::assertNotNull(
+            new ReflectionProperty(RateLimiterFactory::class, 'lockFactory')->getValue($factory),
+            'Le limiteur conflict_mail_send est construit SANS lock factory : son plafond est contournable par concurrence.',
+        );
+    }
 }

@@ -22,6 +22,7 @@ use App\Entity\Season;
 use App\Entity\Sport;
 use App\Entity\SportCategory;
 use App\Entity\Team;
+use App\Entity\TeamCoach;
 use App\Entity\TeamLink;
 use App\Entity\TeamMatchHabit;
 use App\Entity\User;
@@ -39,12 +40,14 @@ use App\Enum\FixtureReviewState;
 use App\Enum\FixtureStatus;
 use App\Enum\OpponentVenueLinkSource;
 use App\Enum\SeasonStatus;
+use App\Enum\TeamCoachRole;
 use App\Enum\TeamLinkType;
 use App\Service\Basketball\VenueLabelNormalizer;
 use App\Service\Geo\IgnRoutingClient;
 use App\Service\Geo\TravelTimeCache;
 use App\Service\SeasonResolver;
 use App\Tests\ChoosesPlanVersionTrait;
+use App\Tests\Integration\Api\ConflictCoachMailApiTest;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -52,6 +55,7 @@ use Lexik\Bundle\JWTAuthenticationBundle\Services\JWTTokenManagerInterface;
 use PHPUnit\Framework\Attributes\Group;
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
+use Symfony\Component\Mime\RawMessage;
 
 /**
  * Tenant/season isolation NR for the new match entities (spec gestion-matchs,
@@ -924,6 +928,48 @@ final class MatchTenantIsolationTest extends WebTestCase
     }
 
     /**
+     * NR axe §7.1 tenant isolation — « Envoyer aux coachs » e-maille des adresses TIERCES et tient
+     * une mémoire par club (`conflict_mailing`). L'envoi de A n'atteint jamais un coach de B ; la
+     * ligne de A est invisible à B (son GET n'a pas de « Envoyé le … », la RLS ne lui rend aucune
+     * ligne de A) ; l'envoi de B ne part qu'à ses coachs et sa mémoire ne contient jamais ceux de A.
+     * Jumeau métier (envoi, mémoire, gardes) : {@see ConflictCoachMailApiTest}.
+     */
+    public function testConflictsMailedToCoachesNeverCrossClubs(): void
+    {
+        self::getContainer()->get(DevClockStore::class)->set(new DateTimeImmutable('2026-09-01 10:00:00'));
+        [$clubA, $userA, $seasonA] = $this->createClubUser('mca');
+        [$clubB, $userB, $seasonB] = $this->createClubUser('mcb');
+        $coachA = $this->soloCoachInConflict($clubA, $seasonA, 'coach.a@club-a.test');
+        $coachB = $this->soloCoachInConflict($clubB, $seasonB, 'coach.b@club-b.test');
+
+        $this->client->enableProfiler();
+        $this->client->request('POST', '/api/fixtures/conflicts/mail-coaches', [], [], $this->authHeaders($userA), '');
+        self::assertResponseStatusCodeSame(200);
+        $toA = array_map(static fn (RawMessage $m): string => $m->getTo()[0]->getAddress(), self::getMailerMessages());
+        self::assertSame(['coach.a@club-a.test'], $toA, 'l\'envoi de A ne part qu\'aux coachs de A');
+
+        $this->client->request('GET', '/api/fixtures/conflicts', [], [], $this->authHeaders($userB));
+        self::assertResponseStatusCodeSame(200);
+        $mailingB = $this->responseData()['coachMailing'] ?? null;
+        self::assertIsArray($mailingB, 'le GET de B sert coachMailing');
+        self::assertArrayHasKey('last', $mailingB);
+        self::assertNull($mailingB['last'], 'B ne voit jamais l\'envoi de A');
+        $this->scopeGucToClub($clubB->getId());
+        self::assertSame(0, (int) $this->em->getConnection()->fetchOne('SELECT COUNT(*) FROM conflict_mailing WHERE club_id = :a', ['a' => $clubA->getId()]), 'la RLS cache la ligne de A à B');
+
+        $this->client->enableProfiler();
+        $this->client->request('POST', '/api/fixtures/conflicts/mail-coaches', [], [], $this->authHeaders($userB), '');
+        self::assertResponseStatusCodeSame(200);
+        $toB = array_map(static fn (RawMessage $m): string => $m->getTo()[0]->getAddress(), self::getMailerMessages());
+        self::assertSame(['coach.b@club-b.test'], $toB);
+
+        $this->scopeGucToClub($clubB->getId());
+        $memoryB = (string) $this->em->getConnection()->fetchOne('SELECT recipient_coach_ids FROM conflict_mailing WHERE club_id = :b', ['b' => $clubB->getId()]);
+        self::assertStringContainsString($coachB->getId(), $memoryB);
+        self::assertStringNotContainsString($coachA->getId(), $memoryB);
+    }
+
+    /**
      * The conflict-resolution writes are management-gated (SEC-07): a non-management
      * member is refused on PUT and on DELETE (403 wins, before any flow check).
      */
@@ -1482,6 +1528,34 @@ final class MatchTenantIsolationTest extends WebTestCase
         $this->persistHomeFixtureAtVenue($club, $season, '22222222-2222-4222-8222-222222222222', '16:00', $venue->getId());
         $this->persistHomeFixtureAtVenue($club, $season, '33333333-3333-4333-8333-333333333333', '16:30', $venue->getId());
         $this->em->flush();
+    }
+
+    /**
+     * Un coach à adresse, principal de deux équipes qui reçoivent le 04/10 à 16:00 et 16:30 : un
+     * MATCH_MATCH dont il est le seul destinataire (un e-mail — sous le plafond de test par club).
+     */
+    private function soloCoachInConflict(Club $club, Season $season, string $email): Coach
+    {
+        $coach = $this->createCoach($club, $season, 'Solo');
+        $coach->setEmail($email);
+        $teams = [$this->createTeam($club, $season, 'U15'), $this->createTeam($club, $season, 'SM2')];
+        $this->scopeGucToClub($club->getId());
+        foreach ($teams as $i => $team) {
+            $this->em->persist((new TeamCoach)->setClubId($club->getId())->setSeasonId($season->getId())
+                ->setTeamId($team->getId())->setCoachId($coach->getId())->setRole(TeamCoachRole::MAIN));
+            $fixture = new Fixture;
+            $fixture->setClubId($club->getId());
+            $fixture->setSeasonId($season->getId());
+            $fixture->setTeamId($team->getId());
+            $fixture->setMatchDate(new DateTimeImmutable('2026-10-04'));
+            $fixture->setHomeAway(FixtureHomeAway::HOME);
+            $fixture->setOpponentLabel('Adversaire');
+            $fixture->setKickoffTime(DateTimeImmutable::createFromFormat('!H:i', 0 === $i ? '16:00' : '16:30') ?: null);
+            $this->em->persist($fixture);
+        }
+        $this->em->flush();
+
+        return $coach;
     }
 
     /** A standalone HOME fixture VISIBLE to the club but part of NO conflict (own venue, off-peak). */

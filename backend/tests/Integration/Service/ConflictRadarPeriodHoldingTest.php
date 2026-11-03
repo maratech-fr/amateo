@@ -30,6 +30,7 @@ use App\Service\ConflictRadarLoader;
 use App\Service\SeasonResolver;
 use App\Tests\ProvisionsPeriodPlanTrait;
 use App\Tests\TenantGucTrait;
+use App\Tests\Unit\Service\ConflictCoachMailingTest;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
 use PHPUnit\Framework\Attributes\Group;
@@ -127,6 +128,45 @@ final class ConflictRadarPeriodHoldingTest extends WebTestCase
         self::assertSame(self::COACH_D, $this->heldBy($radar, $ordinary));
     }
 
+    /**
+     * Envoi des conflits aux coachs — le radar rend les groupes mutualisés de CHAQUE version
+     * (`groupsBySchedule`), pour qu'un conflit sur une séance de groupe parte au principal de chaque
+     * équipe du groupe de cette version-là, jamais d'une autre. Règle d'envoi au plus bas :
+     * {@see ConflictCoachMailingTest::testAMutualisedSessionReachesTheMainCoachOfEveryTeamOfItsGroup}.
+     */
+    public function testTheRadarServesTheDeclaredGroupsOfEachVersion(): void
+    {
+        $this->groupedSessionsDecor();
+        $this->declareGroup($this->periodPlanId);
+
+        $groups = $this->radar()['groupsBySchedule'] ?? null;
+
+        self::assertIsArray($groups, 'le radar rend groupsBySchedule');
+        self::assertCount(1, $groups[$this->periodScheduleId] ?? []);
+        self::assertEqualsCanonicalizing([self::TEAM_SESSION, self::TEAM_PARTNER], $groups[$this->periodScheduleId][0]);
+        self::assertSame([], $groups[$this->seasonScheduleId] ?? [], 'le groupe de la période ne vaut pas pour le socle');
+    }
+
+    /**
+     * La vérité « entraînements » du radar — et donc du mail aux coachs — est la version CHOISIE du
+     * socle, jamais une autre version (plus récente, chargée pour retouche). Témoin positif : la même
+     * séance, une fois sa version pointée, fait naître le conflit.
+     */
+    public function testOnlyTheChosenVersionOfTheSocleCountsAsTraining(): void
+    {
+        $this->link(self::COACH_B, self::TEAM_MATCH);
+        $this->link(self::COACH_B, self::TEAM_SESSION);
+        $seasonPlanId = $this->seasonPlanIdOf($this->season);
+        $otherVersion = $this->completedVersion($seasonPlanId, versionNumber: 2);
+        $this->sessionOn($otherVersion, self::TEAM_SESSION, self::COACH_B);
+        $ordinary = $this->homeMatch($this->ordinaryFriday);
+
+        self::assertFalse($this->isConflict($this->radar(), $ordinary), 'une version non choisie ne fait naître aucun conflit');
+
+        $this->point($seasonPlanId, $otherVersion);
+        self::assertTrue($this->isConflict($this->radar(), $ordinary), 'témoin : pointée, la même séance est vue');
+    }
+
     protected function setUp(): void
     {
         self::createClient();
@@ -177,13 +217,16 @@ final class ConflictRadarPeriodHoldingTest extends WebTestCase
         $this->point($this->periodPlanId, $this->periodScheduleId);
     }
 
-    private function completedVersion(string $planId): string
+    private function completedVersion(string $planId, ?int $versionNumber = null): string
     {
         $schedule = new Schedule;
         $schedule->setClubId($this->club->getId());
         $schedule->setSeasonId($this->season->getId());
         $schedule->setSchedulePlanId($planId);
-        $schedule->setName('v1');
+        $schedule->setName('v' . ($versionNumber ?? 1));
+        if (null !== $versionNumber) {
+            $schedule->setVersionNumber($versionNumber);
+        }
         $schedule->setStatus(ScheduleStatus::COMPLETED);
         $this->em->persist($schedule);
         $this->em->flush();

@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Fixture, Venue, VenueLabelInventoryRow } from "./api";
-import { attachVenueLabel, deleteConflictResolution, detachVenueLabel, getFixtures, getVenueLabelInventory, getVenueSuggestions, getVenues, putConflictResolution, refreshOpponents, resolveOpponents } from "./api";
+import { attachVenueLabel, deleteConflictResolution, detachVenueLabel, getFixtures, getVenueLabelInventory, getVenueSuggestions, getVenues, mailConflictsToCoaches, putConflictResolution, refreshOpponents, resolveOpponents } from "./api";
 
 // On n'exerce QUE la coercition de `api.ts` : le voisin `@/shared/api/collection` est le
 // SEUL double. L'API Platform OMET les props nulles/vides du JSON — on prouve que les
@@ -135,6 +135,19 @@ describe("deleteConflictResolution — remet « à traiter » (P4-207)", () => {
   it("DELETE sur le chemin de l'empreinte", async () => {
     await deleteConflictResolution("fp-3");
     expect(del).toHaveBeenCalledWith("fixtures/conflicts/fp-3/resolution");
+  });
+});
+
+describe("mailConflictsToCoaches — envoie les conflits de personne aux coachs", () => {
+  it("POST fixtures/conflicts/mail-coaches sans corps et rend le résultat serveur tel quel (sentAt null si rien n'est parti)", async () => {
+    // Vérifié AVANT d'amorcer le double : sinon la réponse amorcée fuirait vers le test suivant.
+    expect(typeof mailConflictsToCoaches).toBe("function");
+    const body = { sentAt: null, conflictCount: 0, recipients: [], cleared: [], skipped: [{ coachId: "k", firstName: "Karim", lastName: "Benali", kind: "conflicts" }], failed: [] };
+    post.mockReturnValueOnce({ json: () => Promise.resolve(body) } as unknown as ReturnType<typeof post>);
+    const out = await mailConflictsToCoaches();
+    expect(post).toHaveBeenCalledTimes(1);
+    expect(post.mock.calls[0]).toEqual(["fixtures/conflicts/mail-coaches"]);
+    expect(out).toEqual(body);
   });
 });
 

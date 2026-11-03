@@ -92,6 +92,15 @@ final class RgpdExportCompletenessTest extends KernelTestCase
         ));
     }
 
+    /**
+     * Envoi des conflits aux coachs — la mémoire du dernier envoi (qui a été informé, qui a été
+     * sauté, quand, par qui) est une donnée du club : elle est EXPORTÉE, pas exclue.
+     */
+    public function testTheCoachMailingMemoryIsExportedAsClubData(): void
+    {
+        self::assertContains('conflict_mailing', $this->exportService()->clubScopedTables());
+    }
+
     private function exportService(): RgpdExportService
     {
         self::bootKernel();
