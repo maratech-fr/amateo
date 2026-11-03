@@ -229,6 +229,13 @@ maison unique, c'est l'agent qui l'exécute. Tout plan produit doit la remplir l
    `epreuve-down` après ; refus si occupée) · **unknown** : refusé. Une cible Docker hors liste en nu est
    refusée, jamais redirigée vers le principal. Détail : `backend/docs/commands.md` ; rôle des agents :
    `.claude/agents/neo.md` §Worktree.
+6. ⚠ **Agents : une commande simple par appel Bash, `rtk` sur les lectures longues.** L'isolement du
+   worktree refuse ce qu'il ne sait pas vérifier (~120 refus au lot du 2026-11-02) : jamais `git push`
+   et `make` dans la même ligne, ni variable (`W=$PWD`, `$C exec …`), `$(…)`, `cd` calculé, script écrit
+   dans la commande (`python3 - <<EOF` → Edit/Write), `sh`/`bash` chaîné. Chemin absolu en clair, un
+   seul geste, un filtre de sortie au plus ; un refus se corrige en simplifiant, jamais en contournant.
+   Lectures longues préfixées `rtk` (`rtk git diff`, `rtk git log`, `rtk grep`) : même résultat, moins
+   de tokens — les agents ne reçoivent pas le fichier d'instructions global qui le dit.
 
 **Pointers:** `docs/project-map.md` (**la carte** — zones, ops, sécurité, tout le reste) ·
 `docs/glossary.md` · `docs/testing/testing-strategy.md` · `docs/testing/tests-par-parcours.md` (charte des tests : ce que chaque niveau prouve, par parcours — maison de l'agent `tank`) · `specs/evolution/roadmap.md`
