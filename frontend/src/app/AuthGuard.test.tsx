@@ -9,12 +9,15 @@ import { useAuthStore } from "@/shared/stores/authStore";
 import { AuthGuard } from "./AuthGuard";
 
 const { meState, info, refetch } = vi.hoisted(() => ({
-  meState: { data: undefined as unknown, isError: false },
+  meState: { data: undefined as unknown, isError: false, canManage: true },
   info: vi.fn(),
   refetch: vi.fn(),
 }));
 
-vi.mock("@/shared/session/queries", () => ({ useMe: () => ({ data: meState.data, isLoading: false, isError: meState.isError, refetch }) }));
+vi.mock("@/shared/session/queries", () => ({
+  useMe: () => ({ data: meState.data, isLoading: false, isError: meState.isError, refetch }),
+  useCanManage: () => meState.canManage,
+}));
 vi.mock("@/shared/stores/toastStore", () => ({ toast: { info } }));
 
 // Onboarding lock is keyed on the baseline (main plan) existing, not the legacy
@@ -51,6 +54,7 @@ describe("AuthGuard — onboarding lock", () => {
   beforeEach(() => {
     info.mockClear();
     meState.isError = false;
+    meState.canManage = true;
     useAuthStore.setState({ isAuthenticated: true });
   });
 
@@ -100,6 +104,19 @@ describe("AuthGuard — onboarding lock", () => {
   it("redirects other locked routes to the wizard silently (no cockpit hint)", () => {
     meState.data = activeMember(false);
     renderAt("/matchs");
+    expect(screen.getByText("WIZARD")).toBeInTheDocument();
+    expect(info).not.toHaveBeenCalled();
+  });
+
+  /**
+   * Chantier Membre (PR 2) : un Membre d'un club SANS planning navigue en lecture vers /wizard
+   * comme un gestionnaire, mais SANS le toast « Lancez votre première génération » — il ne peut
+   * pas générer, l'inviter à le faire serait un mensonge (`AuthGuard.tsx:51`, toast ssi gestionnaire).
+   */
+  it("Membre : pas de toast « première génération » (il ne peut pas générer)", () => {
+    meState.data = { ...activeMember(false), role: "member" };
+    meState.canManage = false;
+    renderAt("/");
     expect(screen.getByText("WIZARD")).toBeInTheDocument();
     expect(info).not.toHaveBeenCalled();
   });

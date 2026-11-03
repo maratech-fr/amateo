@@ -18,6 +18,12 @@ vi.mock("@/features/matches/queries", () => ({
   useDeleteVenueUnavailability: () => ({ mutate: vi.fn(), isPending: false }),
   useCreateVenueUnavailability: () => ({ mutate: createMutate, isPending: false }),
 }));
+// Chantier Membre (PR 2) : `useCanManage` piloté par cas (gestionnaire par défaut) ; le reste de la session reste réel.
+const session = vi.hoisted(() => ({ canManage: true }));
+vi.mock("@/shared/session/queries", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/shared/session/queries")>()),
+  useCanManage: () => session.canManage,
+}));
 
 /**
  * ⚑ Ce test naît d'un BLOCAGE MESURÉ, pas d'une intuition : le parcours e2e « incident » (P4-122)
@@ -77,5 +83,16 @@ describe("VenueUnavailabilityCard — déclarer une indisponibilité", () => {
     await waitFor(() => expect(submit).toBeEnabled());
     await user.click(submit);
     expect(createMutate).toHaveBeenCalledWith(expect.objectContaining({ venueId: "v-adn", startDate: "2026-09-01", endDate: "2026-09-04" }), expect.anything());
+  });
+
+  /** Chantier Membre (PR 2) : un Membre lit les indisponibilités, n'en déclare aucune (témoin : cas ci-dessus). */
+  it("Membre : aucun bouton « Déclarer »", () => {
+    session.canManage = false;
+    try {
+      renderWithProviders(<VenueUnavailabilityCard />);
+      expect(screen.queryByRole("button", { name: "Déclarer" })).not.toBeInTheDocument();
+    } finally {
+      session.canManage = true;
+    }
   });
 });

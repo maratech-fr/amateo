@@ -19,8 +19,11 @@ import { MATCHES_TEXTS } from "./texts";
  * `appliesOnPublicHolidays`). Forme exacte laissée à NEO — ces assertions visent le RÔLE + le nom
  * accessible et le CONTRAT de création, pas la mise en page.
  */
+// Chantier Membre (PR 2) : `useCanManage` piloté par cas (gestionnaire par défaut).
+const session = vi.hoisted(() => ({ canManage: true }));
 vi.mock("@/shared/session/queries", () => ({
   useWorkingSeason: () => ({ id: "season-1", name: "2026-2027", startDate: "2026-09-01", endDate: "2027-06-30", isCurrent: true, isReadonly: false }),
+  useCanManage: () => session.canManage,
 }));
 
 const createWindow = vi.fn();
@@ -193,5 +196,25 @@ describe("MatchWindowsEditor — ouvertures exceptionnelles", () => {
     expect(screen.getByText(MATCHES_TEXTS.openingDeleteDescription("mer. 11 nov. 2026", "14:00 – 20:00"))).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: MATCHES_TEXTS.matchWindowDeleteConfirm }));
     expect(deleteWindow).toHaveBeenCalledWith("o1");
+  });
+});
+
+/**
+ * Chantier Membre (PR 2) : un Membre LIT les accès match d'un gymnase mais n'en ajoute ni n'en
+ * supprime aucun. Témoin gestionnaire : « Ajouter la fenêtre match » / « Supprimer la fenêtre
+ * Jours fériés » des cas ci-dessus.
+ */
+describe("MatchWindowsEditor — Membre (consultation)", () => {
+  it("lit les fenêtres sans ajout ni suppression", () => {
+    session.canManage = false;
+    try {
+      windowsState.data = [holidayWindow()];
+      renderWithProviders(<MatchWindowsEditor venueId="v1" />);
+      expect(screen.queryByRole("button", { name: "Ajouter la fenêtre match" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: MATCHES_TEXTS.openingAdd })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /Supprimer la fenêtre Jours fériés/ })).not.toBeInTheDocument();
+    } finally {
+      session.canManage = true;
+    }
   });
 });

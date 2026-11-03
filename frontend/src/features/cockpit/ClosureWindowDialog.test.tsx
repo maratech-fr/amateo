@@ -35,9 +35,12 @@ vi.mock("./queries", () => ({
   useClosureWindowPreview: () => ({ mutateAsync: previewMutateAsync, isPending: previewState.isPending }),
   useApplyClosureWindow: () => ({ mutateAsync: applyMutateAsync, isPending: applyState.isPending }),
 }));
+// Chantier Membre (PR 2) : `useCanManage` piloté par cas (gestionnaire par défaut).
+const session = vi.hoisted(() => ({ canManage: true }));
 vi.mock("@/shared/session/queries", () => ({
   // La fin de saison borne le `max` du champ « Jusqu'au ».
   useWorkingSeason: () => ({ id: "sn1", name: "2026-2027", startDate: "2026-08-01", endDate: "2027-07-31", isCurrent: true, isReadonly: false }),
+  useCanManage: () => session.canManage,
 }));
 vi.mock("@/shared/lib/clock", async (orig) => ({
   ...(await orig<typeof import("@/shared/lib/clock")>()),
@@ -298,5 +301,20 @@ describe("ClosureWindowDialog — « Confirmer » n'applique QUE l'aperçu vu", 
     await loadPreview(user, PREVIEW_VANISH, "2026-11-20");
     const confirm = screen.getByRole("button", { name: "Confirmer" });
     expect(confirm.className).toMatch(/destructive/);
+  });
+
+  /**
+   * Chantier Membre (PR 2) : un Membre ne re-date aucune fermeture — l'aperçu (`POST` réservé) n'est
+   * jamais proposé, les dates ne se saisissent pas (témoin : « Voir les effets » des cas ci-dessus).
+   */
+  it("Membre : ni « Voir les effets » ni date saisissable", () => {
+    session.canManage = false;
+    try {
+      open();
+      expect(screen.queryByRole("button", { name: "Voir les effets" })).not.toBeInTheDocument();
+      expect(screen.getByLabelText("Jusqu'au")).toBeDisabled();
+    } finally {
+      session.canManage = true;
+    }
   });
 });

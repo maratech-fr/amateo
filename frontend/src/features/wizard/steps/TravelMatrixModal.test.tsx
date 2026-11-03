@@ -33,6 +33,13 @@ vi.mock("@/shared/lib/travelStream", () => ({
   useTravelStream: () => ({ connected: true, latest: { scope: "VENUE_MATRIX" as const, done: 1, total: 1, terminal: true, verdict: autofillResultState.value } }),
 }));
 
+// Chantier Membre (PR 2) : `useCanManage` piloté par cas (gestionnaire par défaut) ; le reste de la session reste réel.
+const session = vi.hoisted(() => ({ canManage: true }));
+vi.mock("@/shared/session/queries", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/shared/session/queries")>()),
+  useCanManage: () => session.canManage,
+}));
+
 import { TravelMatrixModal } from "./TravelMatrixModal";
 
 const venue = (id: string, name: string, geo = true): Venue => ({
@@ -76,6 +83,24 @@ describe("TravelMatrixModal — première ouverture (consentement)", () => {
     expect(screen.getByRole("heading", { name: "Calculer les trajets entre vos gymnases ?" })).toBeInTheDocument();
     // Falsification : aucune requête d'autofill sans geste.
     expect(autofillMut).not.toHaveBeenCalled();
+  });
+
+  /**
+   * Chantier Membre (PR 2) : un Membre LIT la matrice des trajets mais ne lance jamais le calcul
+   * (appels sortants IGN côté serveur, `venue-travel-times/autofill` réservé). Témoin gestionnaire :
+   * le cas suivant (même décor, le bouton existe).
+   */
+  it("Membre : aucun « Calculer les trajets »", () => {
+    session.canManage = false;
+    try {
+      matrixState.data = [];
+      renderWithProviders(<TravelMatrixModal onClose={vi.fn()} />);
+      expect(screen.queryByRole("button", { name: "Calculer les trajets" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Recalculer les trajets" })).not.toBeInTheDocument();
+      expect(autofillMut).not.toHaveBeenCalled();
+    } finally {
+      session.canManage = true;
+    }
   });
 
   it("le clic « Calculer les trajets » lance l'autofill (une fois)", () => {

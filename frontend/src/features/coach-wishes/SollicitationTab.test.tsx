@@ -4,6 +4,14 @@ import { HTTPError } from "ky";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { setTodayOverride } from "@/shared/lib/clock";
+import { SESSION_TEXTS } from "@/shared/session/texts";
+
+// Chantier Membre (PR 2) : `useCanManage` piloté par cas (gestionnaire par défaut) ; le reste de la session reste réel.
+const session = vi.hoisted(() => ({ canManage: true }));
+vi.mock("@/shared/session/queries", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/shared/session/queries")>()),
+  useCanManage: () => session.canManage,
+}));
 
 import type { CampaignCoach, CampaignTeam, CoachWishCampaign } from "./campaignApi";
 import { COACH_WISHES_MANAGER_TEXTS } from "./texts/manager";
@@ -432,5 +440,42 @@ describe("SollicitationTab", () => {
     expect(screen.getByText(/aperçu n'a pas pu être chargé/i)).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Réessayer" }));
     expect(refetchPreview).toHaveBeenCalled();
+  });
+
+  /**
+   * Chantier Membre (PR 2, décision fondateur 6) : un Membre voit l'ÉTAT de la collecte (qui a
+   * répondu, qui attend) et l'adresse de chaque coach, JAMAIS le lien personnel — le serveur ne
+   * lui sert pas le `token` (`campaignApi.ts` : `token?: string`), et l'écran n'offre ni « Copier le
+   * lien », ni envoi, ni relance, sous la bannière de consultation. Témoins gestionnaire : « copie le
+   * lien personnel… » et « envoie les liens… » ci-dessus.
+   */
+  it("Membre : états et adresses visibles, aucun lien personnel, aucun envoi ni relance", () => {
+    session.canManage = false;
+    try {
+      const { container } = renderTab(
+        campaign({
+          totalCoachCount: 2,
+          teamIds: ["t1", "t2"],
+          coaches: [
+            coach({ coachId: "c1", firstName: "Maxime", lastName: "Durand", email: "max@test.fr", token: undefined as unknown as string }),
+            coach({ coachId: "c2", firstName: "Mara", lastName: "Petit", email: "mara@test.fr", token: undefined as unknown as string }),
+          ],
+        }),
+      );
+      expect(screen.getByText(SESSION_TEXTS.readOnlyNotice)).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "En attente" })).toBeInTheDocument();
+      expect(inList("Maxime Durand")).not.toBeNull();
+      // L'adresse se lit, ne se modifie pas.
+      const email = screen.getByRole("textbox", { name: COACH_WISHES_MANAGER_TEXTS.emailAria("Maxime Durand") });
+      expect(email).toHaveValue("max@test.fr");
+      expect(email).toBeDisabled();
+      expect(screen.queryByRole("button", { name: COACH_WISHES_MANAGER_TEXTS.send })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /Copier le lien/ })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /Envoyer les liens par email/ })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /Relancer les silencieux/ })).not.toBeInTheDocument();
+      expect(container.innerHTML).not.toContain("/doleances/");
+    } finally {
+      session.canManage = true;
+    }
   });
 });

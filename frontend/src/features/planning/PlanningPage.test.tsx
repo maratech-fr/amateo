@@ -4,6 +4,7 @@ import { HTTPError } from "ky";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { EntryConflictsResponse, SchedulePlan } from "@/features/cockpit/api";
+import { SESSION_TEXTS } from "@/shared/session/texts";
 import { useToastStore } from "@/shared/stores/toastStore";
 import { renderWithProviders, visibleTextOccurrences } from "@/test/utils";
 
@@ -195,7 +196,7 @@ vi.mock("@/features/planning/lib/scheduleStream", () => ({
 }));
 
 const { meState, renameSpy, plansState, conflictsState, reservationsState, teamOverridesState, capacityState, capacityGateEnabled } = vi.hoisted(() => ({
-  meState: { chosenScheduleId: null as string | null },
+  meState: { chosenScheduleId: null as string | null, canManage: true },
   renameSpy: vi.fn(),
   // Typé sur le VRAI contrat : un type inline recopié laisserait passer un champ ajouté à
   // `SchedulePlan` sans que ces fixtures soient recalées (revue #339 round 3).
@@ -279,6 +280,8 @@ vi.mock("@/shared/session/queries", () => ({
     },
   }),
   useWorkingSeason: () => ({ id: "sn1", name: "2025-2026", startDate: "2025-09-01", endDate: "2026-06-30", isCurrent: true, isReadonly: seasonState.isReadonly }),
+  // Chantier Membre (PR 2) : la question « peut-il modifier ? » pilotée par cas (gestionnaire par défaut).
+  useCanManage: () => meState.canManage,
 }));
 vi.mock("@/features/auth/queries", () => ({
   useRenamePlanning: () => ({ mutate: renameSpy, isPending: false }),
@@ -290,6 +293,7 @@ const workVersion: Schedule[] = [{ id: SID, name: "Planning A", status: "COMPLET
 
 beforeEach(() => {
   meState.chosenScheduleId = null;
+  meState.canManage = true;
   renameSpy.mockClear();
   plansState.plans = [];
   conflictsState.data = undefined;
@@ -529,6 +533,21 @@ describe("PlanningPage (integration)", () => {
     await userEvent.type(screen.getByRole("textbox", { name: /nom du planning/i }), "Saison 26-27{Enter}");
 
     expect(renameSpy).toHaveBeenCalledWith({ planId: "plan-1", name: "Saison 26-27" });
+  });
+
+  /**
+   * Chantier Membre (PR 2) : le Planning se LIT par un Membre (grille, nom du planning) sans bannière
+   * de consultation (plan §3.2 : pas sur Planning) et sans geste — le planning ne se renomme pas.
+   * Témoin gestionnaire : le cas précédent renomme sur le même décor.
+   */
+  it("Membre : lit la grille et le nom du planning, sans le renommer ni bannière", async () => {
+    meState.canManage = false;
+    renderWithProviders(<PlanningPage />);
+
+    expect(await screen.findByText("U11")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Planning A" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /renommer le planning/i })).not.toBeInTheDocument();
+    expect(screen.queryByText(SESSION_TEXTS.readOnlyNotice)).not.toBeInTheDocument();
   });
 
   // Retour fondateur : « quand l'écran charge pour le planning overlay il y a une

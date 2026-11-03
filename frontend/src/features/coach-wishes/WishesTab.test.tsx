@@ -6,6 +6,7 @@ import type { CalendarEntry } from "@/features/cockpit/api";
 import { toast } from "@/shared/stores/toastStore";
 
 import { dayLabelShort } from "@/shared/lib/days";
+import { SESSION_TEXTS } from "@/shared/session/texts";
 
 import { COACH_WISHES_MANAGER_TEXTS } from "./texts/manager";
 import { WishesTab, type WishTransferFooter } from "./WishesTab";
@@ -38,7 +39,12 @@ const tiersState = { data: [
   { id: 3, label: "B", name: "Moyenne", color: null },
 ] as { id: number; label: string; name: string; color: string | null }[] };
 
-vi.mock("@/shared/session/queries", () => ({ useWorkingSeason: () => ({ startDate: "2025-09-01", endDate: "2026-06-30" }) }));
+// Chantier Membre (PR 2) : `useCanManage` piloté par cas (gestionnaire par défaut).
+const session = vi.hoisted(() => ({ canManage: true }));
+vi.mock("@/shared/session/queries", () => ({
+  useWorkingSeason: () => ({ startDate: "2025-09-01", endDate: "2026-06-30" }),
+  useCanManage: () => session.canManage,
+}));
 vi.mock("@/features/wizard/queries", () => ({
   useWizardTeams: () => ({ data: teamsState.data }),
   useWizardCoaches: () => ({ data: coachesState.data }),
@@ -689,5 +695,25 @@ describe("WishesTab", () => {
     // U13 n'a pas de coach principal : le coach déduit est « aucun » → coachId null au payload.
     await user.click(screen.getByRole("button", { name: /Ajouter la doléance/ }));
     expect(createMut).toHaveBeenCalledWith(expect.objectContaining({ teamId: "t2", coachId: null }), expect.anything());
+  });
+
+  /**
+   * Chantier Membre (PR 2) : un Membre LIT les vœux des coachs mais n'en ajoute, n'en modifie ni
+   * n'en supprime aucun ; pas de bannière sur l'onglet Vœux (plan §3.2). Témoin gestionnaire :
+   * « marque « traité » via le crayon » ci-dessus, même décor.
+   */
+  it("Membre : lit les doléances sans aucun geste, sans bannière", () => {
+    session.canManage = false;
+    try {
+      wishesState.data = [wish({ id: "w1", done: false, teamId: "t1", weekStart: "2026-02-16" })];
+      render(<WishesTab mother={mother} weekFilter={null} />);
+      expect(screen.getAllByText("SM1", { exact: false }).length).toBeGreaterThan(0);
+      expect(screen.queryByRole("button", { name: /^Modifier la doléance/ })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /Ajouter la doléance/ })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /^Supprimer/ })).not.toBeInTheDocument();
+      expect(screen.queryByText(SESSION_TEXTS.readOnlyNotice)).not.toBeInTheDocument();
+    } finally {
+      session.canManage = true;
+    }
   });
 });

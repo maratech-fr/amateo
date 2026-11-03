@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { RouterProvider, createMemoryRouter, useSearchParams } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { SESSION_TEXTS } from "@/shared/session/texts";
 import { renderWithProviders } from "@/test/utils";
 
 import { ConfigurationPage } from "./ConfigurationPage";
@@ -63,6 +64,12 @@ vi.mock("./api", () => ({
   setOpponentTravelAuto: vi.fn(),
   setOpponentTravelManual: vi.fn(),
 }));
+// Chantier Membre (PR 2) : `useCanManage` piloté par cas (gestionnaire par défaut) ; le reste de la session reste réel.
+const session = vi.hoisted(() => ({ canManage: true }));
+vi.mock("@/shared/session/queries", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/shared/session/queries")>()),
+  useCanManage: () => session.canManage,
+}));
 
 // Sonde d'URL : lit `?section=` pour prouver ce que la page écrit.
 function SectionProbe() {
@@ -112,6 +119,22 @@ beforeEach(() => {
 });
 
 describe("ConfigurationPage (PR 2a — défaut tout replié, gabarit/créneaux partis)", () => {
+  /**
+   * Chantier Membre (PR 2) : Matchs › Configuration se LIT par un Membre — mêmes sections, sous la
+   * bannière de consultation (plan §3.2). Les gestes des sections sont prouvés par leurs éditeurs
+   * (`EntryDeadlinesEditor`, `MatchDurationsEditor`, `MatchWindowsEditor`, `VenueLabelsSection`).
+   */
+  it("Membre : les sections se lisent sous la bannière de consultation", async () => {
+    session.canManage = false;
+    try {
+      renderWithProviders(<Harness />);
+      expect(await screen.findByRole("button", { name: /^Échéances de saisie/ })).toBeInTheDocument();
+      expect(screen.getByText(SESSION_TEXTS.readOnlyNotice)).toBeInTheDocument();
+    } finally {
+      session.canManage = true;
+    }
+  });
+
   it("à l'arrivée : AUCUNE section ouverte (les en-têtes sont là, tous repliés)", async () => {
     renderWithProviders(<Harness />);
     const echeances = await screen.findByRole("button", { name: /^Échéances de saisie/ });

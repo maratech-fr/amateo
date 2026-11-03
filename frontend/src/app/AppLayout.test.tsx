@@ -200,3 +200,21 @@ describe("AppLayout — en-tête marque produit", () => {
     expect(span.className).toContain("min-w-0");
   });
 });
+
+/**
+ * Chantier Membre (PR 2, décision fondateur 3) : un club qui n'a plus de gestionnaire l'annonce sur
+ * CHAQUE écran — `ClubClosingBanner` est monté dans `AppLayout` (le shell de toutes les routes
+ * authentifiées) et dit la date d'effacement `me.club.closingOn` (JJ/MM/AAAA). Le cas « club avec
+ * gestionnaire » est prouvé au niveau du composant (`shared/session/ClubClosingBanner.test.tsx`).
+ */
+describe("AppLayout — bandeau « club sans gestionnaire »", () => {
+  beforeEach(() => {
+    meData = undefined;
+  });
+
+  it("annonce la date d'effacement sur tout écran quand le club ferme", () => {
+    meData = { role: "member", club: club({ name: "BCCL", closingOn: "2026-12-15" }) };
+    renderLayout();
+    expect(screen.getByText(/15\/12\/2026/)).toBeInTheDocument();
+  });
+});

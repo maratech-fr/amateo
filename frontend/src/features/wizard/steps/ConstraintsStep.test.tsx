@@ -176,6 +176,12 @@ vi.mock("@/features/cockpit/queries", () => ({
   useEntryConflicts: () => ({ data: entryConflictsState.data, isError: entryConflictsState.isError, refetch: vi.fn() }),
   useCalendarEntry: (id: string | null) => ({ data: null != id && id in calendarEntryById.map ? calendarEntryById.map[id] : calendarEntryState.data }),
 }));
+// Chantier Membre (PR 2) : `useCanManage` piloté par cas (gestionnaire par défaut) ; le reste de la session reste réel.
+const session = vi.hoisted(() => ({ canManage: true }));
+vi.mock("@/shared/session/queries", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/shared/session/queries")>()),
+  useCanManage: () => session.canManage,
+}));
 // Stub : le comportement interne de PeriodConstraints est couvert par
 // PeriodSteps.test — ici on ne teste que son PLACEMENT par onglet (#9).
 vi.mock("./PeriodConstraints", () => ({
@@ -693,6 +699,24 @@ describe("ConstraintsStep — PR A : structure du formulaire d'ajout (deux rang�
     expect(valueRow).toContainElement(valueInput);
     // La cible (rangée 1) ne descend JAMAIS dans la rangée du bouton d'action.
     expect(valueRow).not.toContainElement(target);
+  });
+
+  /**
+   * Chantier Membre (PR 2) : l'étape Contraintes d'un Membre se LIT (onglets de familles navigables)
+   * mais n'offre pas « Ajouter la contrainte » ; la saisie (cible, valeurs) est en lecture.
+   * Témoin gestionnaire : le cas précédent, même décor (le bouton existe).
+   */
+  it("Membre : onglets lisibles, aucun ajout, saisie en lecture", () => {
+    session.canManage = false;
+    try {
+      renderWithProviders(<ConstraintsStep />);
+      expect(screen.getByRole("button", { name: WIZARD_TEXTS.tabBase })).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: WIZARD_TEXTS.addConstraint })).not.toBeInTheDocument();
+      const target = screen.queryByRole("combobox", { name: WIZARD_TEXTS.targetLabel });
+      expect(null === target || target.matches(":disabled")).toBe(true);
+    } finally {
+      session.canManage = true;
+    }
   });
 });
 

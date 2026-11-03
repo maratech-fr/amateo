@@ -13,6 +13,12 @@ vi.mock("./queries", () => ({
   useSchedulePlanForEntry: (id: string | null) => ({ data: null !== id ? planData : undefined }),
 }));
 vi.mock("@/features/planning/queries", () => ({ useSchedules: () => ({ data: schedulesData }) }));
+// Chantier Membre (PR 2) : `useCanManage` piloté par cas (gestionnaire par défaut) ; le reste de la session reste réel.
+const session = vi.hoisted(() => ({ canManage: true }));
+vi.mock("@/shared/session/queries", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/shared/session/queries")>()),
+  useCanManage: () => session.canManage,
+}));
 
 beforeEach(() => {
   deleteMutate.mockReset();
@@ -56,5 +62,16 @@ describe("DeletePlanningButton", () => {
     await userEvent.click(screen.getByRole("button", { name: "Supprimer" }));
     expect(deleteMutate).toHaveBeenCalledWith("e1", expect.anything());
     expect(onDeleted).toHaveBeenCalled();
+  });
+
+  /** Chantier Membre (PR 2) : un Membre ne supprime aucun planning — le bouton n'existe pas pour lui (témoin : cas ci-dessus). */
+  it("Membre : aucun bouton de suppression", () => {
+    session.canManage = false;
+    try {
+      render(<DeletePlanningButton calendarEntryId="e1" title="Vacances Toussaint" />);
+      expect(screen.queryByRole("button", { name: "Supprimer Vacances Toussaint" })).not.toBeInTheDocument();
+    } finally {
+      session.canManage = true;
+    }
   });
 });

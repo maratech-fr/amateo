@@ -23,6 +23,12 @@ vi.mock("../queries", () => ({
   useUpdateSharedTrainingBlock: () => ({ mutateAsync: stbUpdate, isPending: false }),
   useDeleteSharedTrainingBlock: () => ({ mutate: stbDelete }),
 }));
+// Chantier Membre (PR 2) : `useCanManage` piloté par cas (gestionnaire par défaut) ; le reste de la session reste réel.
+const session = vi.hoisted(() => ({ canManage: true }));
+vi.mock("@/shared/session/queries", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/shared/session/queries")>()),
+  useCanManage: () => session.canManage,
+}));
 
 import { WIZARD_TEXTS as T } from "../texts";
 import { SharedTrainingBlockPanel } from "./SharedTrainingBlockPanel";
@@ -154,6 +160,25 @@ describe("SharedTrainingBlockPanel — créer / modifier / supprimer", () => {
     await renderOpenPanel(user);
     await user.click(screen.getByRole("checkbox", { name: "U9F1" }));
     expect(screen.getByRole("button", { name: "Créer le groupe" })).toBeDisabled();
+  });
+
+  /**
+   * Chantier Membre (PR 2) : un Membre LIT les entraînements mutualisés (le groupe est listé) sans
+   * créer, modifier ni supprimer un groupe. Témoin gestionnaire : le cas suivant (même décor,
+   * « Modifier le groupe » existe).
+   */
+  it("Membre : groupes lisibles, aucune création, modification ni suppression", () => {
+    session.canManage = false;
+    try {
+      blocksState.data = [block("b1", ["t1", "t2"], 2)];
+      renderPanel();
+      expect(groupRows().length).toBeGreaterThan(0);
+      expect(screen.queryByRole("button", { name: T.blockNewTitle })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /Modifier le groupe/ })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /Supprimer le groupe/ })).not.toBeInTheDocument();
+    } finally {
+      session.canManage = true;
+    }
   });
 
   it("modifie un bloc existant : préremplissage puis PUT { teamIds, commonSessions } sur le même id", async () => {

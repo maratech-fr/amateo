@@ -2,6 +2,7 @@ import { fireEvent, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { SESSION_TEXTS } from "@/shared/session/texts";
 import { renderWithProviders } from "@/test/utils";
 
 import type { ClubLeagueWindow, Coach, MatchConstraint, MatchConstraintCoherence, PriorityTier, Team, Venue } from "./api";
@@ -25,10 +26,12 @@ const coachesState: { data: Coach[] | undefined; isError: boolean } = { data: []
 // ALIGN-19 — liens équipe⇄coach (rôle) : sert à savoir si un coach n'est qu'adjoint.
 const teamCoachesState: { data: { id: string; teamId: string; coachId: string; role: "MAIN" | "ASSISTANT" }[] | undefined; isError: boolean } = { data: [], isError: false };
 // P4-271 — le réglage d'affichage A/B vient de la session (`me.club.weekendAlternates`).
-const meState: { weekendAlternates: boolean } = { weekendAlternates: true };
+// Chantier Membre (PR 2) : `role` piloté par cas (gestionnaire par défaut), `useCanManage` le suit.
+const meState: { weekendAlternates: boolean; role: string } = { weekendAlternates: true, role: "admin" };
 
 vi.mock("@/shared/session/queries", () => ({
-  useMe: () => ({ data: { role: "admin", club: { weekendAlternates: meState.weekendAlternates } } }),
+  useMe: () => ({ data: { role: meState.role, membershipStatus: "active", club: { weekendAlternates: meState.weekendAlternates } } }),
+  useCanManage: () => "admin" === meState.role,
 }));
 
 // On pilote les hooks (miroir de la copie stockée), jamais le réseau. Le badge et
@@ -294,6 +297,41 @@ describe("ConstraintsPage — section Équipes (P4-272 ④)", () => {
     await user.click(screen.getByRole("button", { name: "Lever l'interdiction" }));
 
     expect(deleteRule).toHaveBeenCalledWith("b1");
+  });
+});
+
+/**
+ * Chantier Membre (PR 2) : Matchs › Contraintes se LIT par un Membre, sous la bannière de
+ * consultation — fenêtres ligue et interdictions visibles, aucun ajout, aucune levée.
+ * Témoins gestionnaire : « ajoute une fenêtre via l'API » et « …la lève via l'API » ci-dessus.
+ */
+describe("ConstraintsPage — Membre (consultation)", () => {
+  it("lit les fenêtres ligue sous la bannière, sans « Ajouter »", () => {
+    meState.role = "member";
+    try {
+      windowsState.data = [window({ id: "w1", category: "Seniors" })];
+      openLigue();
+      expect(screen.getByText(SESSION_TEXTS.readOnlyNotice)).toBeInTheDocument();
+      expect(screen.getAllByText(/Seniors/).length).toBeGreaterThan(0);
+      expect(screen.queryByRole("button", { name: "Ajouter" })).not.toBeInTheDocument();
+    } finally {
+      meState.role = "admin";
+    }
+  });
+
+  it("lit une interdiction de gymnase sans pouvoir la lever", () => {
+    meState.role = "member";
+    try {
+      rulesState.data = [rule({ id: "b1", scope: "TEAM", scopeTargetId: "t1", venueId: "v1", daysOfWeek: [], kickoffMax: null })];
+      teamsState.data = [teamOf("t1", "SM1")];
+      venuesState.data = [venueOf("v1", "Gymnase A")];
+      openEquipes();
+      expect(screen.getByText((_, el) => "SPAN" === el?.tagName && "SM1 ne joue jamais à Gymnase A" === el.textContent)).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /^Supprimer la règle/ })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Interdire" })).not.toBeInTheDocument();
+    } finally {
+      meState.role = "admin";
+    }
   });
 });
 

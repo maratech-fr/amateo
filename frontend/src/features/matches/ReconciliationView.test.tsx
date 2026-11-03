@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { SESSION_TEXTS } from "@/shared/session/texts";
 import { pickListboxOption } from "@/test/pickListboxOption";
 
 import type { ReconciliationPayload } from "./store";
@@ -17,6 +18,12 @@ const { getTeams, getPriorityTiers, applyFfbbRencontres } = vi.hoisted(() => ({
 }));
 
 vi.mock("./api", () => ({ getTeams, getPriorityTiers, applyFfbbRencontres }));
+// Chantier Membre (PR 2) : `useCanManage` piloté par cas (gestionnaire par défaut) ; le reste de la session reste réel.
+const session = vi.hoisted(() => ({ canManage: true }));
+vi.mock("@/shared/session/queries", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/shared/session/queries")>()),
+  useCanManage: () => session.canManage,
+}));
 
 const creatableA = {
   rencontreId: "renc-a",
@@ -62,6 +69,22 @@ describe("ReconciliationView (PR-3b — intégration des rencontres FFBB)", () =
     renderView(null);
     expect(screen.getByText(/Rien à examiner/i)).toBeInTheDocument();
     expect(applyFfbbRencontres).not.toHaveBeenCalled();
+  });
+
+  /**
+   * Chantier Membre (PR 2) : Matchs › Réconciliation se LIT par un Membre (rencontres publiées),
+   * sous la bannière de consultation, sans « Intégrer ». Témoin : les cas « Intégrer » ci-dessous.
+   */
+  it("Membre : lit les rencontres publiées sous la bannière, sans « Intégrer »", () => {
+    session.canManage = false;
+    try {
+      renderView(apiPayload);
+      expect(screen.getByText(SESSION_TEXTS.readOnlyNotice)).toBeInTheDocument();
+      expect(screen.getAllByText(/BRON BASKET/).length).toBeGreaterThan(0);
+      expect(screen.queryByRole("button", { name: "Intégrer" })).not.toBeInTheDocument();
+    } finally {
+      session.canManage = true;
+    }
   });
 
   it("plus AUCUN panneau d'écarts — seuls le bandeau, la provenance et les rencontres à créer", () => {

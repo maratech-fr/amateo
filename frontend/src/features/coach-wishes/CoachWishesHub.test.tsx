@@ -65,7 +65,12 @@ vi.mock("./campaignQueries", () => ({
   useUpdateCoachWishCampaign: () => ({ mutate: updateMut, isPending: false, isError: false }),
 }));
 vi.mock("./queries", () => ({ useCoachWishes: () => ({ data: wishesState.data, isError: wishesState.isError }) }));
-vi.mock("@/shared/session/queries", () => ({ useWorkingSeason: () => ({ startDate: "2025-09-01", endDate: "2026-06-30" }) }));
+// Chantier Membre (PR 2) : `useCanManage` piloté par cas (gestionnaire par défaut).
+const session = vi.hoisted(() => ({ canManage: true }));
+vi.mock("@/shared/session/queries", () => ({
+  useWorkingSeason: () => ({ startDate: "2025-09-01", endDate: "2026-06-30" }),
+  useCanManage: () => session.canManage,
+}));
 
 // Les onglets Doléances et Sollicitation sont testés dans leurs propres fichiers
 // (`WishesTab.test.tsx`, `SollicitationTab.test.tsx`) : ici on neutralise leur contenu pour
@@ -771,5 +776,22 @@ describe("CoachWishesHub", () => {
     await userEvent.click(screen.getByRole("tab", { name: "Réglages" }));
     expect(screen.getByRole("button", { name: /Créer la collecte/ })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Transférer au planning/ })).toBeNull();
+  });
+
+  /**
+   * Chantier Membre (PR 2) : un Membre ouvre le hub des doléances en lecture — les onglets de
+   * consultation restent, mais ni « Créer la collecte » ni l'onglet « Réglages » (gestes réservés).
+   * Témoin gestionnaire : « crée une campagne avec les semaines et équipes choisies » ci-dessus.
+   */
+  it("Membre : ni création de collecte ni réglages", () => {
+    session.canManage = false;
+    try {
+      renderHub();
+      expect(screen.getByRole("tablist", { name: "Sections des doléances" })).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /Créer la collecte/ })).not.toBeInTheDocument();
+      expect(screen.queryByRole("tab", { name: "Réglages" })).not.toBeInTheDocument();
+    } finally {
+      session.canManage = true;
+    }
   });
 });

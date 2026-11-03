@@ -97,6 +97,12 @@ const validationState = vi.hoisted(() => ({ value: { errors: [], warnings: [], n
 vi.mock("../lib/useStepValidation", () => ({ useStepValidation: () => validationState.value }));
 vi.mock("../store", () => ({ useWizardStore: (sel: (s: { mode: string; calendarEntryId: string | null }) => unknown) => sel(storeState.value) }));
 vi.mock("@/shared/stores/toastStore", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+// Chantier Membre (PR 2) : `useCanManage` piloté par cas (gestionnaire par défaut) ; le reste de la session reste réel.
+const session = vi.hoisted(() => ({ canManage: true }));
+vi.mock("@/shared/session/queries", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/shared/session/queries")>()),
+  useCanManage: () => session.canManage,
+}));
 
 import { RecapStep } from "./RecapStep";
 import { toast } from "@/shared/stores/toastStore";
@@ -317,6 +323,27 @@ describe("RecapStep — read-only summary", () => {
     // Aucune suppression passive : la poubelle est là, mais rien n'a été retiré au rendu.
     expect(screen.getByRole("button", { name: /Retirer la réservation de SM1/ })).toBeInTheDocument();
     expect(deleteReservationMock).not.toHaveBeenCalled();
+  });
+
+  /**
+   * Chantier Membre (PR 2) : le Récap d'un Membre NOMME la réservation non servie et son motif
+   * (lecture) mais n'offre pas la poubelle. Témoin gestionnaire : le cas précédent, même décor.
+   */
+  it("Membre : lit la réservation non servie et son motif, sans « Retirer »", async () => {
+    session.canManage = false;
+    try {
+      recapLayer.slots = [{ id: "s1", venueId: "v1", dayOfWeek: 2, startTime: "18:00", durationMinutes: 90, capacity: 1 }];
+      h.reservations = [{ id: "rFermee", calendarEntryId: null, teamId: "t1", venueId: "v1", dayOfWeek: 2, startTime: "18:00", durationMinutes: 90 }];
+      conflictsState.data = { closures: [{ constraintId: "cc", venueId: "v1", title: "Travaux", startDate: "2026-05-01", endDate: "2026-05-10", weekdays: [2] }], fullyClosedVenueIds: [], effectiveClosedWeekdays: { v1: { "2": "default-incident" } }, disabledVenueIds: [] };
+      const user = userEvent.setup();
+      renderWithProviders(<RecapStep />);
+
+      await user.click(screen.getByRole("button", { name: /Réservations/ }));
+      expect(screen.getByText(/SM1 — gymnase fermé — Travaux/)).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /Retirer la réservation de SM1/ })).not.toBeInTheDocument();
+    } finally {
+      session.canManage = true;
+    }
   });
 
   // Indispo INFORMATIVE (2026-08-18) — item 7 : le récap lit l'ÉTAT EFFECTIF, pas les fermetures

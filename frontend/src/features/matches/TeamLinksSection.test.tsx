@@ -20,6 +20,12 @@ vi.mock("./queries", () => ({
   useUpdateTeamLink: () => ({ mutate: updateLink, isPending: false }),
   useDeleteTeamLink: () => ({ mutate: deleteLink, isPending: false }),
 }));
+// Chantier Membre (PR 2) : `useCanManage` piloté par cas (gestionnaire par défaut) ; le reste de la session reste réel.
+const session = vi.hoisted(() => ({ canManage: true }));
+vi.mock("@/shared/session/queries", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/shared/session/queries")>()),
+  useCanManage: () => session.canManage,
+}));
 
 const team = (id: string, name: string): Team => ({ id, name, sportCategoryId: "cat", level: null, gender: null, priorityTierId: 1, tierOrder: 0 });
 const TEAMS: Team[] = [team("t1", "SM1"), team("t2", "SM2"), team("t3", "SF1")];
@@ -156,6 +162,25 @@ describe("TeamLinksSection — lecture seule vs édition (P2-45, tranchage A)", 
     expect(screen.getByRole("button", { name: "Ajouter la passerelle" })).toBeInTheDocument();
     // Pas de phrase de lecture seule quand on peut éditer.
     expect(screen.queryByText(/se déclarent au niveau de la saison/)).toBeNull();
+  });
+
+  /**
+   * Chantier Membre (PR 2) : un Membre LIT les passerelles (intensité en texte) sans aucun contrôle
+   * d'édition — même sans `readOnly` passé par l'écran : la session suffit. Témoin : « éditable
+   * (défaut) : les contrôles SONT là » ci-dessus, même décor.
+   */
+  it("Membre : passerelles lisibles, aucun ajout, aucune suppression, intensité non modifiable", () => {
+    session.canManage = false;
+    try {
+      linksState.data = [teamLink({ trainingIntensity: "PREFERRED" })];
+      renderWithProviders(<TeamLinksSection teams={TEAMS} tiers={TIERS} filterTeamId="t1" />);
+      expect(screen.getAllByText(/SM2/).length).toBeGreaterThan(0);
+      expect(screen.queryByLabelText("Intensité d'entraînement, passerelle SM1 – SM2")).toBeNull();
+      expect(screen.queryByRole("button", { name: "Ajouter la passerelle" })).toBeNull();
+      expect(screen.queryByRole("button", { name: /Supprimer la passerelle/ })).toBeNull();
+    } finally {
+      session.canManage = true;
+    }
   });
 
   it("readOnly, aucune passerelle : le dit clairement pour l'équipe, sans contrôle", () => {

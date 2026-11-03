@@ -50,8 +50,12 @@ vi.mock("./api", () => ({ analyzeFbiFixtures, importFbiFixtures, placeMatches, g
 
 // useCredits lit useMe : `club` mutable pour piloter le solde (bouton de placement
 // de fin d'import — grisé à 0 AVEC le solde, jamais masqué).
-const meState = vi.hoisted(() => ({ club: undefined as Record<string, unknown> | undefined }));
-vi.mock("@/shared/session/queries", () => ({ useMe: () => ({ data: { club: meState.club } }) }));
+// Chantier Membre (PR 2) : `canManage` piloté par cas (gestionnaire par défaut).
+const meState = vi.hoisted(() => ({ club: undefined as Record<string, unknown> | undefined, canManage: true }));
+vi.mock("@/shared/session/queries", () => ({
+  useMe: () => ({ data: { club: meState.club } }),
+  useCanManage: () => meState.canManage,
+}));
 
 const teams: Team[] = [
   { id: "team-1", name: "SM1", sportCategoryId: "cat", level: null, gender: null, priorityTierId: 1, tierOrder: 0 },
@@ -103,6 +107,20 @@ describe("ImportFbiDialog", () => {
     renderWithProviders(<ImportFbiDialog teams={teams} tiers={tiers} onClose={vi.fn()} />);
     expect(screen.getByRole("button", { name: "Importer" })).toBeDisabled();
     expect(analyzeFbiFixtures).not.toHaveBeenCalled();
+  });
+
+  /**
+   * Chantier Membre (PR 2) : l'import FBI est un geste réservé — même monté par erreur pour un
+   * Membre, le dialogue n'offre pas « Importer » (témoin : cas précédent, le bouton existe).
+   */
+  it("Membre : aucun bouton « Importer »", () => {
+    meState.canManage = false;
+    try {
+      renderWithProviders(<ImportFbiDialog teams={teams} tiers={tiers} onClose={vi.fn()} />);
+      expect(screen.queryByRole("button", { name: "Importer" })).not.toBeInTheDocument();
+    } finally {
+      meState.canManage = true;
+    }
   });
 
   it("analyzes on file pick: known mappings shown as text, new ones as a select", async () => {
