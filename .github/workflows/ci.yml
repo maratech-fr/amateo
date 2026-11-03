@@ -669,6 +669,24 @@ jobs:
       - name: ClosureWindowExtendTest
         run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Security/ClosureWindowExtendTest.php --group phase1'
 
+      # Fermetures de gymnase, « Enregistrer vaut geste » (fondateur 2026-11-02, axe planning
+      # lifecycle) : déclarer / re-dater / élargir une fermeture retire, dans la même transaction et
+      # sous le verrou de génération du club, les verrous HARD (version chargée) et les réservations
+      # des plans de période qui gouvernent les jours fermés nouveaux — jamais le socle ni un autre
+      # jour/gymnase ; 409 si une génération est en vol ; un échec annule tout.
+      - name: ClosureRemovesPinsAtomicallyTest
+        run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Security/ClosureRemovesPinsAtomicallyTest.php --group phase1'
+
+      # Même chantier : un plan de période validé touché par une fermeture est périmé, se régénère
+      # une fois rouvert (202), sans épingle au gymnase fermé et avec celles des autres jours.
+      - name: StalePeriodPlanRegenerationTest
+        run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Security/StalePeriodPlanRegenerationTest.php --group phase1'
+
+      # Même chantier : l'aperçu du formulaire, l'impact de la fermeture enregistrée et le retrait
+      # disent le même chiffre (famille écartée, jamais le socle, tenant).
+      - name: ClosureImpactSaysTheSameEverywhereTest
+        run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Security/ClosureImpactSaysTheSameEverywhereTest.php --group phase1'
+
       # RMM-3 (axe constraint semantics — le radar de conflits) : le gardien à l'ouverture stampe une
       # référence de VISITE et sert le delta « depuis ta dernière visite ». L'empreinte d'un conflit est
       # son IDENTITÉ stable — une nature changée (autre paire, MATCH_MATCH→MATCH_TRAINING) est signalée,
