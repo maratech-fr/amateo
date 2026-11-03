@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Tests\Unit\Service;
 
 use App\Service\XlsxUploadGuard;
+use Generator;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 use PHPUnit\Framework\Attributes\Group;
@@ -55,12 +56,16 @@ final class XlsxUploadGuardTest extends TestCase
     public function testInflatedOverTwentyMegabytesIsRefused(): void
     {
         // ~25 Mo de remplissage SANS balise `<row` → c'est la borne décompressé
-        // (20 Mo) qui tombe, pas celle des lignes.
-        $path = $this->xlsxWithSheetXml(
-            '<?xml version="1.0" encoding="UTF-8"?><worksheet><sheetData></sheetData><pad>'
-            . str_repeat('x', 25 * 1024 * 1024)
-            . '</pad></worksheet>',
+        // (20 Mo) qui tombe, pas celle des lignes. Les 25 Mo sont ÉCRITS EN FLUX sur
+        // disque puis ajoutés par fichier : la suite couverte (pcov, 512 Mo) n'a pas
+        // la marge d'une chaîne de 25 Mo concaténée en mémoire (deux copies, ~50 Mo).
+        $sheet = $this->streamedTempFile(
+            '<?xml version="1.0" encoding="UTF-8"?><worksheet><sheetData></sheetData><pad>',
+            'x',
+            25 * 1024 * 1024,
+            '</pad></worksheet>',
         );
+        $path = $this->xlsxWithSheetFile($sheet);
 
         $result = $this->guard()->requireXlsxFile($this->requestWithFile($path, 'bomb.xlsx'));
         $this->assertRefused($result, 413, '20 Mo');
@@ -199,11 +204,7 @@ final class XlsxUploadGuardTest extends TestCase
         // Falsification : revenir à `getStream($name)` → ce test rougit (les octets
         // volumineux ne sont jamais lus). ZipArchive dédoublonne à l'écriture, d'où
         // le zip fabriqué à la main (en-têtes locaux + annuaire central).
-        $path = $this->zipWithDuplicateEntries(
-            'xl/worksheets/sheet1.xml',
-            '<x/>',
-            str_repeat('x', 25 * 1024 * 1024),
-        );
+        $path = $this->zipWithDuplicateEntries('xl/worksheets/sheet1.xml', '<x/>', 'x', 25 * 1024 * 1024);
         self::assertLessThan(
             2 * 1024 * 1024,
             (int) filesize($path),
@@ -252,6 +253,32 @@ final class XlsxUploadGuardTest extends TestCase
      */
     private function xlsxWithSheetXml(string $sheetXml): string
     {
+        $path = $this->xlsxWithoutSheet();
+        $zip = new ZipArchive;
+        $zip->open($path);
+        $zip->addFromString('xl/worksheets/sheet1.xml', $sheetXml);
+        $zip->close();
+
+        return $path;
+    }
+
+    /**
+     * Même technique, mais la feuille vient d'un FICHIER : libzip la lit et la
+     * compresse en flux à la fermeture, sans jamais la charger en chaîne PHP.
+     */
+    private function xlsxWithSheetFile(string $sheetFile): string
+    {
+        $path = $this->xlsxWithoutSheet();
+        $zip = new ZipArchive;
+        $zip->open($path);
+        $zip->addFile($sheetFile, 'xl/worksheets/sheet1.xml');
+        $zip->close();
+
+        return $path;
+    }
+
+    private function xlsxWithoutSheet(): string
+    {
         $spreadsheet = new Spreadsheet;
         $spreadsheet->getActiveSheet()->fromArray([['A']], null, 'A1');
         $path = $this->tempFile('sheet');
@@ -261,11 +288,40 @@ final class XlsxUploadGuardTest extends TestCase
         $zip->open($path);
         $zip->deleteName('xl/worksheets/sheet1.xml');
         $zip->close();
-        $zip->open($path);
-        $zip->addFromString('xl/worksheets/sheet1.xml', $sheetXml);
-        $zip->close();
 
         return $path;
+    }
+
+    /**
+     * Un fichier temporaire `$head . str_repeat($fill, $fillBytes) . $tail`, écrit
+     * par morceaux de 1 Mo : jamais plus d'un morceau en mémoire.
+     */
+    private function streamedTempFile(string $head, string $fill, int $fillBytes, string $tail): string
+    {
+        $path = $this->tempFile('stream');
+        $handle = fopen($path, 'w');
+        self::assertIsResource($handle);
+        fwrite($handle, $head);
+        foreach ($this->fillChunks($fill, $fillBytes) as $chunk) {
+            fwrite($handle, $chunk);
+        }
+        fwrite($handle, $tail);
+        fclose($handle);
+
+        return $path;
+    }
+
+    /**
+     * `str_repeat($fill, $bytes / strlen($fill))` débité en morceaux de 1 Mo au plus.
+     *
+     * @return Generator<int, string>
+     */
+    private function fillChunks(string $fill, int $bytes): Generator
+    {
+        $chunk = str_repeat($fill, intdiv(1024 * 1024, \strlen($fill)));
+        for ($left = $bytes; $left > 0; $left -= \strlen($chunk)) {
+            yield $left >= \strlen($chunk) ? $chunk : substr($chunk, 0, $left);
+        }
     }
 
     /**
@@ -294,31 +350,33 @@ final class XlsxUploadGuardTest extends TestCase
      * (méthode 8) pour que 25 Mo de remplissage tiennent sous la borne octets ;
      * l'annuaire central pointe deux en-têtes locaux distincts, si bien que
      * numFiles vaut 2 et getStreamIndex($i) rend chacune telle qu'elle est.
+     *
+     * La seconde entrée (`str_repeat($secondFill, …)` sur `$secondBytes` octets) est
+     * deflatée et sommée (CRC32) EN FLUX, morceau par morceau : seule sa forme
+     * compressée (quelques Ko) existe en mémoire, jamais les 25 Mo décompressés.
      */
-    private function zipWithDuplicateEntries(string $name, string $firstData, string $secondData): string
+    private function zipWithDuplicateEntries(string $name, string $firstData, string $secondFill, int $secondBytes): string
     {
-        $entries = [$firstData, $secondData];
+        $entries = [
+            $this->deflateEntry([$firstData], \strlen($firstData)),
+            $this->deflateEntry($this->fillChunks($secondFill, $secondBytes), $secondBytes),
+        ];
         $local = '';
         $central = '';
-        $offsets = [];
-        foreach ($entries as $data) {
-            $offsets[] = \strlen($local);
-            $compressed = (string) gzdeflate($data);
-            $local .= pack('V', 0x04034B50)
-                . pack('vvvvv', 20, 0, 8, 0, 0)
-                . pack('VVV', crc32($data), \strlen($compressed), \strlen($data))
-                . pack('vv', \strlen($name), 0)
-                . $name
-                . $compressed;
-        }
-        foreach ($entries as $idx => $data) {
-            $compressed = (string) gzdeflate($data);
+        foreach ($entries as $entry) {
+            $header = pack('VVV', $entry['crc'], \strlen($entry['compressed']), $entry['size']);
             $central .= pack('V', 0x02014B50)
                 . pack('vvvvvv', 20, 20, 0, 8, 0, 0)
-                . pack('VVV', crc32($data), \strlen($compressed), \strlen($data))
+                . $header
                 . pack('vvvvv', \strlen($name), 0, 0, 0, 0)
-                . pack('VV', 0, $offsets[$idx])
+                . pack('VV', 0, \strlen($local))
                 . $name;
+            $local .= pack('V', 0x04034B50)
+                . pack('vvvvv', 20, 0, 8, 0, 0)
+                . $header
+                . pack('vv', \strlen($name), 0)
+                . $name
+                . $entry['compressed'];
         }
         $eocd = pack('V', 0x06054B50)
             . pack('vvvv', 0, 0, \count($entries), \count($entries))
@@ -329,6 +387,29 @@ final class XlsxUploadGuardTest extends TestCase
         file_put_contents($path, $local . $central . $eocd);
 
         return $path;
+    }
+
+    /**
+     * Deflate brut (méthode 8 du zip, comme `gzdeflate`) et CRC32 calculés morceau
+     * par morceau.
+     *
+     * @param iterable<string> $chunks
+     *
+     * @return array{crc: int, size: int, compressed: string}
+     */
+    private function deflateEntry(iterable $chunks, int $size): array
+    {
+        $deflate = deflate_init(\ZLIB_ENCODING_RAW);
+        self::assertNotFalse($deflate);
+        $crc = hash_init('crc32b');
+        $compressed = '';
+        foreach ($chunks as $chunk) {
+            hash_update($crc, $chunk);
+            $compressed .= (string) deflate_add($deflate, $chunk, \ZLIB_NO_FLUSH);
+        }
+        $compressed .= (string) deflate_add($deflate, '', \ZLIB_FINISH);
+
+        return ['crc' => (int) hexdec(hash_final($crc)), 'size' => $size, 'compressed' => $compressed];
     }
 
     private function tempFile(string $prefix): string
