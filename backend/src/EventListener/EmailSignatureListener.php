@@ -71,10 +71,17 @@ final readonly class EmailSignatureListener implements EventSubscriberInterface
             return;
         }
 
-        // Un e-mail qui porte déjà du HTML est laissé intact (aucun aujourd'hui, et la garde
-        // évite une double signature si un jour il y en a) — mais on retire quand même les
-        // en-têtes internes à la phase worker avant livraison.
-        if (null !== $message->getHtmlBody()) {
+        // Un corps HTML posé par son builder comme FRAGMENT (en-tête interne qui le dit — les
+        // tuiles de l'envoi des conflits aux coachs) est enveloppé une fois dans la carte, à la
+        // place du texte ; l'en-tête est retiré aussitôt, à chaque phase, ce qui rend le même
+        // objet repassé « déjà HTML » (jamais une double carte).
+        $fragment = $message->getHeaders()->has(EmailTemplateRenderer::HTML_FRAGMENT_HEADER) ? $message->getHtmlBody() : null;
+        $message->getHeaders()->remove(EmailTemplateRenderer::HTML_FRAGMENT_HEADER);
+
+        // Un e-mail qui porte déjà du HTML est laissé intact (la garde évite une double
+        // signature) — mais on retire quand même les en-têtes internes à la phase worker
+        // avant livraison.
+        if (!\is_string($fragment) && null !== $message->getHtmlBody()) {
             $this->stripInternalHeadersAtWorker($event, $message);
 
             return;
@@ -124,7 +131,7 @@ final readonly class EmailSignatureListener implements EventSubscriberInterface
         $ctaLabel = $this->headerValue($message, EmailTemplateRenderer::CTA_LABEL_HEADER);
 
         $message->html(
-            $this->renderer->render($originalText, $name, $tagline, $siteUrl, $clubLabel, null !== $clubLogoBytes, $ctaUrl, $ctaLabel),
+            $this->renderer->render($originalText, $name, $tagline, $siteUrl, $clubLabel, null !== $clubLogoBytes, $ctaUrl, $ctaLabel, bodyHtmlFragment: \is_string($fragment) ? $fragment : null),
             $charset,
         );
 

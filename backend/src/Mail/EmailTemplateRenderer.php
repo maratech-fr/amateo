@@ -49,6 +49,13 @@ final readonly class EmailTemplateRenderer
     public const string CTA_LABEL_HEADER = 'X-Amateo-Cta-Label';
 
     /**
+     * En-tête INTERNE posé par un builder dont le corps HTML est un FRAGMENT déjà échappé (les
+     * tuiles de l'envoi des conflits aux coachs) : {@see App\EventListener\EmailSignatureListener}
+     * l'enveloppe une fois dans la carte (`$bodyHtmlFragment`) et retire l'en-tête aussitôt.
+     */
+    public const string HTML_FRAGMENT_HEADER = 'X-Amateo-Html-Fragment';
+
+    /**
      * Part de BLANC dans le mélange qui éclaircit chaque teinte du mark (0 = teinte pure, 1 =
      * blanc). 0.85 garde un fond pâle, lisible sous du texte sombre, qui laisse deviner la couleur
      * de marque. Le ratio est ici, nommé : le changer re-dérive le fond.
@@ -77,7 +84,9 @@ final readonly class EmailTemplateRenderer
      * `$ctaUrl`/`$ctaLabel` : bouton d'action optionnel (lien coach D1). `$productLogoSrc`/
      * `$clubLogoSrc` : la SOURCE des images — `cid:` pour le mail réel (défaut), un `data:` URI
      * pour un aperçu rendu en iframe (les `cid:` n'y résolvent pas). Le MÊME renderer sert les
-     * deux, seule la source des images change.
+     * deux, seule la source des images change. `$bodyHtmlFragment` : un corps DÉJÀ en HTML
+     * (échappé par son builder) qui prend la place du texte dans la carte, tel quel ; absent, la
+     * carte est octet pour octet celle d'avant.
      */
     public function render(
         string $bodyText,
@@ -90,6 +99,7 @@ final readonly class EmailTemplateRenderer
         ?string $ctaLabel = null,
         ?string $productLogoSrc = null,
         ?string $clubLogoSrc = null,
+        ?string $bodyHtmlFragment = null,
     ): string {
         $flags = \ENT_QUOTES | \ENT_SUBSTITUTE;
 
@@ -113,7 +123,7 @@ final readonly class EmailTemplateRenderer
         // doublon disgracieux (URL brute juste au-dessus du bouton). On la retire du HTML — la
         // partie TEXTE, elle, garde le lien nu (inchangée, byte-identique, extraite par Behat).
         $bodyForHtml = '' !== $ctaHtml && null !== $ctaUrl ? $this->stripCtaUrlLine($bodyText, $ctaUrl) : $bodyText;
-        $bodyHtml = nl2br(htmlspecialchars($bodyForHtml, $flags, 'UTF-8'));
+        $bodyHtml = $bodyHtmlFragment ?? nl2br(htmlspecialchars($bodyForHtml, $flags, 'UTF-8'));
 
         return <<<HTML
             <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:{$pageBackground};background-image:{$pageGradient};margin:0;padding:24px 16px;">

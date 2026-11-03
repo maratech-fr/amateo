@@ -4,18 +4,20 @@ declare(strict_types=1);
 
 namespace App\Controller;
 
+use App\Entity\Club;
+use App\Entity\ConflictMailing;
 use App\Entity\ConflictResolution;
 use App\Entity\Fixture;
 use App\Entity\Season;
 use App\Entity\User;
 use App\Enum\ConflictResolutionStatus;
 use App\Enum\FbiCorrectionField;
+use App\Repository\ConflictMailingRepository;
 use App\Repository\ConflictResolutionRepository;
-use App\Service\ConflictFingerprinter;
-use App\Service\ConflictRadarLoader;
+use App\Service\ConflictCoachMailing;
+use App\Service\ConflictFeedAssembler;
 use App\Service\FbiCorrectionLedger;
 use App\Service\ManagementAccessGuard;
-use App\Service\OpponentPlaceResolver;
 use App\Service\SeasonResolver;
 use DateTimeImmutable;
 use DateTimeInterface;
@@ -54,11 +56,11 @@ final class FixtureConflictsController extends AbstractController
         private readonly EntityManagerInterface $entityManager,
         private readonly RequestStack $requestStack,
         private readonly SeasonResolver $seasonResolver,
-        private readonly ConflictRadarLoader $radarLoader,
-        private readonly ConflictFingerprinter $fingerprinter,
+        private readonly ConflictFeedAssembler $feedAssembler,
         private readonly ManagementAccessGuard $managementAccessGuard,
         private readonly ConflictResolutionRepository $resolutionRepository,
-        private readonly OpponentPlaceResolver $opponentPlaceResolver,
+        private readonly ConflictMailingRepository $mailingRepository,
+        private readonly ConflictCoachMailing $coachMailing,
         private readonly FbiCorrectionLedger $fbiCorrectionLedger,
         private readonly ClockInterface $clock,
     ) {}
@@ -73,7 +75,7 @@ final class FixtureConflictsController extends AbstractController
             return $this->json(['error' => 'No club in context.'], Response::HTTP_BAD_REQUEST);
         }
 
-        [$season, $conflicts, $seasonPlanChosen, $held] = $this->computeConflicts($clubId);
+        [$season, $conflicts, $seasonPlanChosen, $held, $groupsBySchedule] = $this->computeConflicts($clubId);
 
         // P4-207 — champ ADDITIF `resolution` : le statut de traitement posé par le
         // gestionnaire, joint par empreinte sur les lignes du club+saison courants. La
@@ -103,6 +105,7 @@ final class FixtureConflictsController extends AbstractController
             // gestionnaire poserait un match sur un entraînement vivant. Un silence qui
             // ment est pire qu'un blanc.
             'seasonPlanChosen' => $seasonPlanChosen,
+            'coachMailing' => $this->coachMailingView($clubId, $season, $conflicts, $groupsBySchedule),
         ]);
     }
 
@@ -258,108 +261,49 @@ final class FixtureConflictsController extends AbstractController
     }
 
     /**
-     * The live conflict radar of a club: loaded by the single {@see ConflictRadarLoader}
-     * (shared with MatchModuleDeltaComputer), then stamped here with each item's stable
-     * fingerprint and the away-side place decoration. Shared by the GET feed and the
+     * The live conflict radar of a club, decorated (fingerprint + away-side place) by the single
+     * {@see ConflictFeedAssembler} — shared with the coach mailing. Shared by the GET feed and the
      * resolution writes (which need the CURRENT flow to reject a vanished conflict).
      *
-     * @return array{0: Season|null, 1: list<array<string, mixed>>, 2: bool, 3: list<array<string, mixed>>} season, conflicts (with fingerprint), seasonPlanChosen, held lines
+     * @return array{0: Season|null, 1: list<array<string, mixed>>, 2: bool, 3: list<array<string, mixed>>, 4: array<string, list<list<string>>>} season, conflicts (with fingerprint), seasonPlanChosen, held lines, groupsBySchedule
      */
     private function computeConflicts(string $clubId): array
     {
         $season = $this->seasonResolver->selectedOrCurrent($this->requestStack->getCurrentRequest(), $clubId);
+        $feed = $this->feedAssembler->assemble($clubId, $season);
 
-        $radar = $this->radarLoader->conflicts($clubId, $season?->getId());
-
-        // RMM-3 — champ ADDITIF : l'empreinte stable de chaque conflit, calculée EN
-        // AVAL par la maison unique (le détecteur reste intact). Le gardien s'en sert
-        // pour dire ce qui est « nouveau depuis ta dernière visite ».
-        $conflicts = array_map(
-            fn (array $conflict): array => $conflict + ['fingerprint' => $this->fingerprinter->fingerprint($conflict)],
-            $radar['conflicts'],
-        );
-
-        // P2-54 conflict side details — champ ADDITIF `opponentPlace` sur les côtés
-        // AWAY des familles PERSONNE (MATCH_MATCH left/right, MATCH_TRAINING fixture).
-        // Décoré EN AVAL (le détecteur ne le connaît pas), résolu en BATCH par
-        // OpponentPlaceResolver ; un côté HOME ne porte jamais la clé.
-        $held = $radar['held'];
-        if ($season instanceof Season) {
-            $conflicts = $this->decorateOpponentPlace($conflicts, $radar['fixtures'], $season->getId());
-            $held = $this->decorateOpponentPlace($held, $radar['fixtures'], $season->getId());
-        }
-
-        return [$season, $conflicts, null !== $radar['seasonScheduleId'], $held];
+        return [$season, $feed['conflicts'], $feed['seasonPlanChosen'], $feed['held'], $feed['groupsBySchedule']];
     }
 
     /**
-     * Decorate the AWAY sides of the person families with a resolved place label
-     * (`opponentPlace`, string|null). Two passes so the resolver batches once:
-     * gather the away fixtures those sides reference, resolve, then stamp each.
+     * Envoi des conflits aux coachs — le champ ADDITIF `coachMailing`, toujours servi : les
+     * compteurs du bouton calculés par le MÊME service que l'envoi ({@see ConflictCoachMailing}),
+     * et la ligne « Envoyé le … » du dernier envoi de la saison (auteur résolu à la lecture).
      *
-     * @param list<array<string, mixed>> $conflicts
-     * @param list<Fixture>              $fixtures
+     * @param list<array<string, mixed>>        $conflicts
+     * @param array<string, list<list<string>>> $groupsBySchedule
      *
-     * @return list<array<string, mixed>>
+     * @return array{personConflictCount: int, pendingRecipientCount: int, last: array{sentAt: string, sentByFirstName: string|null, mailedCount: int, skippedCoachIds: list<string>}|null}
      */
-    private function decorateOpponentPlace(array $conflicts, array $fixtures, string $seasonId): array
+    private function coachMailingView(string $clubId, ?Season $season, array $conflicts, array $groupsBySchedule): array
     {
-        $fixtureById = [];
-        foreach ($fixtures as $fixture) {
-            $fixtureById[$fixture->getId()] = $fixture;
+        $row = $season instanceof Season ? $this->mailingRepository->findOneBySeason($season->getId()) : null;
+        $inputs = $this->feedAssembler->mailingInputs();
+        $plan = $this->coachMailing->plan($conflicts, $inputs['mainCoachIdsByTeam'], $groupsBySchedule, $row?->getRecipientCoachIds() ?? [], $inputs['coachesById']);
+
+        $last = null;
+        if ($row instanceof ConflictMailing) {
+            $sender = null !== $row->getSentByUserId() ? $this->entityManager->getRepository(User::class)->find($row->getSentByUserId()) : null;
+            $club = $this->entityManager->getRepository(Club::class)->find($clubId);
+            $last = [
+                'sentAt' => ConflictCoachMailController::wallClock($row->getSentAt(), $club instanceof Club ? $club : null),
+                'sentByFirstName' => $sender instanceof User ? $sender->getFirstName() : null,
+                'mailedCount' => $row->getMailedCount(),
+                'skippedCoachIds' => $row->getSkippedCoachIds(),
+            ];
         }
 
-        /** @var array<string, Fixture> $awayFixtures */
-        $awayFixtures = [];
-        foreach ($conflicts as $conflict) {
-            foreach ($this->awaySideKeys($conflict) as $key) {
-                $side = $conflict[$key];
-                if (!\is_array($side) || 'AWAY' !== ($side['homeAway'] ?? null)) {
-                    continue;
-                }
-                $fixtureId = $side['fixtureId'] ?? null;
-                if (\is_string($fixtureId) && isset($fixtureById[$fixtureId])) {
-                    $awayFixtures[$fixtureId] = $fixtureById[$fixtureId];
-                }
-            }
-        }
-
-        $places = $this->opponentPlaceResolver->resolveByFixture($seasonId, array_values($awayFixtures));
-
-        return array_map(
-            function (array $conflict) use ($places): array {
-                foreach ($this->awaySideKeys($conflict) as $key) {
-                    $side = $conflict[$key];
-                    if (!\is_array($side) || 'AWAY' !== ($side['homeAway'] ?? null)) {
-                        continue;
-                    }
-                    $fixtureId = $side['fixtureId'] ?? null;
-                    $side['opponentPlace'] = \is_string($fixtureId) ? ($places[$fixtureId] ?? null) : null;
-                    $conflict[$key] = $side;
-                }
-
-                return $conflict;
-            },
-            $conflicts,
-        );
-    }
-
-    /**
-     * The side keys that carry an away MATCH fixture, per conflict type:
-     * MATCH_MATCH → left/right, MATCH_TRAINING → the match fixture. Every other
-     * family (gym/link/…) keeps its rendering untouched, so it decorates nothing.
-     *
-     * @param array<string, mixed> $conflict
-     *
-     * @return list<string>
-     */
-    private function awaySideKeys(array $conflict): array
-    {
-        return match ($conflict['type'] ?? null) {
-            'MATCH_MATCH' => ['left', 'right'],
-            'MATCH_TRAINING' => ['fixture'],
-            default => [],
-        };
+        return ['personConflictCount' => $plan['personConflictCount'], 'pendingRecipientCount' => $plan['pendingRecipientCount'], 'last' => $last];
     }
 
     /**

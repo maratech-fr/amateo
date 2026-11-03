@@ -264,6 +264,43 @@ export interface ConflictsResponse {
    * quand /api/me est périmé (staleTime 60 s) face à un planning rouvert ailleurs.
    */
   seasonPlanChosen: boolean;
+  /**
+   * Envoi des conflits aux coachs — compteurs du bouton et dernier envoi de la saison, calculés
+   * par le serveur (le même service que l'envoi). Optionnel côté TS : ABSENT ⇒ bouton désactivé.
+   */
+  coachMailing?: ConflictCoachMailing;
+}
+
+/** Le dernier envoi aux coachs de la saison (ligne « Envoyé le … »). `sentAt` à l'heure murale du club. */
+export interface ConflictMailingLast {
+  sentAt: string;
+  /** null quand l'auteur n'existe plus (ligne sans « par »). */
+  sentByFirstName: string | null;
+  mailedCount: number;
+  skippedCoachIds: string[];
+}
+
+export interface ConflictCoachMailing {
+  personConflictCount: number;
+  /** Coachs informés lors d'un envoi précédent, sans conflit maintenant, à adresse valide. */
+  pendingRecipientCount: number;
+  last: ConflictMailingLast | null;
+}
+
+export interface ConflictMailingCoach {
+  coachId: string;
+  firstName: string;
+  lastName: string;
+}
+
+/** Le résultat d'un envoi aux coachs ; `sentAt` null quand aucun e-mail n'a été enfilé. */
+export interface ConflictMailingResult {
+  sentAt: string | null;
+  conflictCount: number;
+  recipients: (ConflictMailingCoach & { conflictCount: number })[];
+  cleared: ConflictMailingCoach[];
+  skipped: (ConflictMailingCoach & { kind: "conflicts" | "cleared" })[];
+  failed: (ConflictMailingCoach & { kind: "conflicts" | "cleared" })[];
 }
 
 /** Same-coach conflict radar, recomputed server-side on every call. */
@@ -291,3 +328,10 @@ export const putConflictResolution = (
  */
 export const deleteConflictResolution = (fingerprint: string): Promise<void> =>
   api.delete(`fixtures/conflicts/${fingerprint}/resolution`).then(() => undefined);
+
+/**
+ * Envoie à chaque coach concerné ses conflits de personne sur un match (et « plus aucun conflit »
+ * à qui n'en a plus). Management-gated ; 403 démo, 409 archivée/socle/envoi en cours, 422 rien à
+ * envoyer, 429 plafond. Rend le résultat serveur tel quel.
+ */
+export const mailConflictsToCoaches = (): Promise<ConflictMailingResult> => api.post("fixtures/conflicts/mail-coaches").json<ConflictMailingResult>();

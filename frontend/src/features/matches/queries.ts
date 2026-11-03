@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { HTTPError, TimeoutError } from "ky";
 import { useState } from "react";
 
+import { coachShortName } from "@/shared/lib/coachName";
 import { downloadBlob } from "@/shared/lib/download";
 import { errorMessage } from "@/shared/lib/errorMessage";
 import { useMe } from "@/shared/session/queries";
@@ -9,6 +10,7 @@ import { toast } from "@/shared/stores/toastStore";
 
 import type { CreateFixtureInput, Fixture, PlaceFixtureInput } from "./api";
 import * as matchesApi from "./api";
+import { MATCHES_CONFLICTS_MAIL_TEXTS } from "./texts/conflictsMail";
 import { MATCHES_EXPORT_TEXTS } from "./texts/export";
 
 /**
@@ -208,6 +210,33 @@ export function useSetConflictResolution() {
         invalidateFbiCorrections(queryClient);
       }
       toast.success("Statut enregistré.");
+    },
+    onError: (error) => void errorMessage(error).then((message) => toast.error(message)),
+  });
+}
+
+/**
+ * Envoi des conflits aux coachs — un POST, puis le radar relu (la ligne « Envoyé le … » et les
+ * compteurs vivent sur `["fixtures","conflicts"]`). Toasts au niveau hook : le résultat compté
+ * (listes + « plus aucun conflit », sautés et non partis nommés) ; l'erreur serveur telle quelle.
+ */
+export function useMailConflictsToCoaches() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => matchesApi.mailConflictsToCoaches(),
+    onSuccess: (result) => {
+      void queryClient.invalidateQueries({ queryKey: ["fixtures", "conflicts"] });
+      const mailedCount = result.recipients.length + result.cleared.length;
+      const message = MATCHES_CONFLICTS_MAIL_TEXTS.toastResult({
+        mailedCount,
+        skippedNames: result.skipped.map(coachShortName),
+        failedNames: result.failed.map(coachShortName),
+      });
+      if (mailedCount > 0) {
+        toast.success(message);
+      } else {
+        toast.info(message);
+      }
     },
     onError: (error) => void errorMessage(error).then((message) => toast.error(message)),
   });

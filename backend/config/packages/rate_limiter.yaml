@@ -130,6 +130,14 @@ framework:
             policy: 'sliding_window'
             limit: 200
             interval: '1 day'
+        # Envoi des conflits aux coachs (POST /api/fixtures/conflicts/mail-coaches) — même surface
+        # d'hameçonnage que la collecte (adresses TIERCES), keyé PAR CLUB, consommé AVANT l'envoi pour
+        # le nombre EXACT de mails à enfiler (listes + « plus aucun conflit »). Budget DISTINCT de la
+        # collecte (choix écrit : un club peut atteindre 400 mails/jour tous canaux confondus).
+        conflict_mail_send:
+            policy: 'sliding_window'
+            limit: 200
+            interval: '1 day'
         # P4-298 — le lookup public du NOM de club à l'inscription (GET /api/register/club-lookup),
         # par IP : surface anonyme énumérable (on y jette un code FFBB), même famille que
         # coach_wish_public. 30/15min — large pour une saisie debouncée (le front ne déclenche
@@ -363,6 +371,12 @@ when@test:
             # crée son propre club, aucun n'e-maille 2 destinataires sous le même club hors ce
             # test). Prod garde 200/24 h.
             coach_wish_send:
+                policy: 'sliding_window'
+                limit: 2
+                interval: '1 day'
+            # Envoi des conflits aux coachs : même patron par club (2/jour) pour que
+            # ConflictCoachMailApiTest tripe le 429 ; chaque scénario crée son propre club.
+            conflict_mail_send:
                 policy: 'sliding_window'
                 limit: 2
                 interval: '1 day'

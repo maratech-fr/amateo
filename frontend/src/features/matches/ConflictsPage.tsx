@@ -4,19 +4,21 @@ import { useNavigate, useSearchParams } from "react-router";
 
 import { AccordionSection } from "@/shared/components/ui/accordion";
 import { Button } from "@/shared/components/ui/button";
+import { ConfirmDialog } from "@/shared/components/ui/confirm-dialog";
 import { EmptyHint, EmptyState } from "@/shared/components/ui/empty-hint";
 import { FilterChip } from "@/shared/components/ui/filter-chip";
 import { LoadErrorHint } from "@/shared/components/ui/load-error-hint";
 import { NoticeBanner } from "@/shared/components/ui/notice-banner";
 import { SegmentedControl } from "@/shared/components/ui/segmented-control";
 import { FullPageSpinner } from "@/shared/components/ui/spinner";
-import { coachFullName } from "@/shared/lib/coachName";
+import { coachFullName, coachShortName } from "@/shared/lib/coachName";
 import { readFailed, readLoading } from "@/shared/lib/readState";
 import { isManagementRole } from "@/shared/lib/roles";
+import { formatMinutes } from "@/shared/lib/time";
 import { cn } from "@/shared/lib/utils";
-import { useMe } from "@/shared/session/queries";
+import { useMe, useWorkingSeason } from "@/shared/session/queries";
 
-import type { Coach, Competition, Conflict, ConflictCore, HeldConflict, Team, Venue } from "./api";
+import type { Coach, Competition, Conflict, ConflictCoachMailing, ConflictCore, HeldConflict, Team, Venue } from "./api";
 import { ConflictResolutionControl } from "./ConflictResolutionControl";
 import { ConflictLine, ConflictSeverityGroups } from "./ConflictLine";
 import { CONFLICT_FAMILIES, CONFLICT_FAMILY_LABEL } from "./lib/conflictLabels";
@@ -26,9 +28,10 @@ import { conflictFixtureIds } from "./lib/conflictFocus";
 import { applyFamilyFilter, countByFamily, DEFAULT_KINDS, dateOf, familiesPresent, hasHomeSide, normalizeKinds, revealPlan } from "./lib/consultFilter";
 import { applyConflictFocusToParams, applyConflictsToParams, applyConsultToParams, applyFilterToParams, applyWeekendToParams, decodeConflictsParams, hasConflictsParams } from "./lib/urlState";
 import { weekendKeyOf, weekendShortLabel } from "./lib/weekendGrid";
-import { useCoaches, useCompetitions, useConflicts, useFixtures, useModuleVisit, useTeams, useVenues } from "./queries";
+import { useCoaches, useCompetitions, useConflicts, useFixtures, useMailConflictsToCoaches, useModuleVisit, useTeams, useVenues } from "./queries";
 import { useMatchesStore } from "./store";
 import { MATCHES_TEXTS } from "./texts";
+import { MATCHES_CONFLICTS_MAIL_TEXTS as MAIL_TEXTS } from "./texts/conflictsMail";
 
 function byId<T extends { id: string }>(rows: T[] | undefined): Map<string, T> {
   return new Map((rows ?? []).map((row) => [row.id, row]));
@@ -66,6 +69,68 @@ const TREATMENT_META: Record<TreatmentKey, { label: string; icon: LucideIcon }> 
 };
 
 /**
+ * « Envoyer aux coachs » + la ligne « Envoyé le … » : le serveur calcule TOUT (`coachMailing` du
+ * GET, résultat du POST) ; l'écran n'affiche que ça. Le bouton n'est rendu qu'au gestionnaire ;
+ * la ligne, à tous. Rendu AU-DESSUS du retour anticipé « aucun conflit ».
+ */
+function CoachMailBar({ mailing, canManage, isDemo, seasonReadonly, seasonName, coaches }: { mailing: ConflictCoachMailing | undefined; canManage: boolean; isDemo: boolean; seasonReadonly: boolean; seasonName: string; coaches: Map<string, Coach> }) {
+  const send = useMailConflictsToCoaches();
+  const [confirmOpen, setConfirmOpen] = useState(false);
+
+  const disabledReason = isDemo
+    ? MAIL_TEXTS.disabledDemo
+    : seasonReadonly
+      ? MAIL_TEXTS.disabledArchived
+      : undefined === mailing
+        ? MAIL_TEXTS.disabledUnavailable
+        : 0 === mailing.personConflictCount && 0 === mailing.pendingRecipientCount
+          ? MAIL_TEXTS.disabledNothingToSend
+          : undefined;
+
+  const last = mailing?.last ?? null;
+  // L'instant est servi à l'heure murale du club : on DÉCOUPE la chaîne, sans conversion de fuseau.
+  const statusLine =
+    null === last
+      ? null
+      : MAIL_TEXTS.statusLine({
+          date: `${last.sentAt.slice(8, 10)}/${last.sentAt.slice(5, 7)}/${last.sentAt.slice(0, 4)}`,
+          time: formatMinutes(Number(last.sentAt.slice(11, 13)) * 60 + Number(last.sentAt.slice(14, 16))),
+          sender: last.sentByFirstName,
+          mailedCount: last.mailedCount,
+          skippedNames: last.skippedCoachIds.map((id) => {
+            const coach = coaches.get(id);
+            return undefined === coach ? MAIL_TEXTS.coachRemoved : coachShortName(coach);
+          }),
+        });
+
+  if (!canManage && null === statusLine) {
+    return null;
+  }
+
+  return (
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+      {canManage ? (
+        <Button type="button" variant="outline" size="sm" disabled={undefined !== disabledReason} disabledReason={disabledReason} onClick={() => setConfirmOpen(true)}>
+          {MAIL_TEXTS.sendButton}
+        </Button>
+      ) : null}
+      {null === statusLine ? null : <p className="text-sm text-muted-foreground">{statusLine}</p>}
+      <ConfirmDialog
+        open={confirmOpen}
+        title={MAIL_TEXTS.confirmTitle}
+        description={MAIL_TEXTS.confirmBody(seasonName)}
+        confirmLabel={send.isPending ? MAIL_TEXTS.sending : MAIL_TEXTS.confirmAction}
+        cancelLabel={MAIL_TEXTS.confirmCancel}
+        destructive={false}
+        confirmDisabled={send.isPending}
+        onConfirm={() => send.mutate(undefined, { onSettled: () => setConfirmOpen(false) })}
+        onCancel={() => setConfirmOpen(false)}
+      />
+    </div>
+  );
+}
+
+/**
  * PR A — l'onglet « Conflits » du module matchs : TOUS les conflits de la saison (même
  * flux `useConflicts` que Consulter), pivotés par coach / équipe / gymnase / journée,
  * en LECTURE SEULE. Chaque entrée est un accordéon (une seule ouverte, `?ouvert`),
@@ -91,6 +156,7 @@ export function ConflictsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const { data: me } = useMe();
   const canManage = isManagementRole(me?.role);
+  const workingSeason = useWorkingSeason();
 
   // Les QUATRE filtres de l'onglet vivent dans le store (mémoire de session) : pivot + familles
   // y étaient déjà, « Traitement » et « domicile » les rejoignent (aliasés `treatments`/`homeOnly`
@@ -462,19 +528,26 @@ export function ConflictsPage() {
       </AccordionSection>
     ) : null;
 
+  const mailBar = (
+    <CoachMailBar
+      mailing={conflicts.data?.coachMailing}
+      canManage={canManage}
+      isDemo={true === me?.club?.isDemo}
+      seasonReadonly={true === workingSeason?.isReadonly}
+      seasonName={workingSeason?.name ?? ""}
+      coaches={coachesMap}
+    />
+  );
+
   if (0 === allConflicts.length) {
-    const empty = (
-      <EmptyState
-        icon={ShieldCheck}
-        title={MATCHES_TEXTS.noSeasonConflictsTitle}
-        description="Tous les matchs placés respectent les gymnases, les coachs et les fenêtres ligue."
-      />
-    );
-    return null === heldSection ? (
-      empty
-    ) : (
+    return (
       <div className="flex flex-col gap-4">
-        {empty}
+        {mailBar}
+        <EmptyState
+          icon={ShieldCheck}
+          title={MATCHES_TEXTS.noSeasonConflictsTitle}
+          description="Tous les matchs placés respectent les gymnases, les coachs et les fenêtres ligue."
+        />
         {heldSection}
       </div>
     );
@@ -507,6 +580,7 @@ export function ConflictsPage() {
 
   return (
     <div className="flex flex-col gap-4">
+      {mailBar}
       {/* Contrôle du pivot (« Regrouper par ») — visible même en mobile. Le `role="group"` nommé
           vit sur le SegmentedControl ; ce div n'est qu'une rangée de mise en page. */}
       <div className="flex flex-wrap items-center gap-2">
