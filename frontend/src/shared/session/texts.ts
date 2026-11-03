@@ -9,6 +9,7 @@ export const SESSION_TEXTS = {
   clubClosing: (date: string) => `Ce club n'a plus de gestionnaire : ses données seront effacées le ${date}, sauf reprise.`,
   requestManagerRole: "Demander à devenir gestionnaire",
   repriseRequestSent: (date: string) => `Votre demande de reprise a été transmise le ${date} à l'adresse officielle du club.`,
+  managerRequestNoOfficialAddress: "Le club n'a pas d'adresse connue : le support validera.",
   managerRequestExpired: (date: string) => `Le club n'a pas répondu à votre demande du ${date}. Vous pouvez la renvoyer.`,
   managerRequestRefused: (date: string, until: string) =>
     `Le club a refusé votre demande le ${date}. Vous pourrez la renouveler à partir du ${until}.`,

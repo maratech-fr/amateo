@@ -42,7 +42,8 @@ export function ClubClosingBanner() {
 
   let status: string | null = null;
   if ("club_pending" === managerRequest?.status) {
-    status = SESSION_TEXTS.repriseRequestSent(day(managerRequest.since));
+    // Adresse officielle inconnue : rien n'est parti au club — le bandeau ne l'affirme jamais.
+    status = false === managerRequest.clubEmailKnown ? SESSION_TEXTS.managerRequestNoOfficialAddress : SESSION_TEXTS.repriseRequestSent(day(managerRequest.since));
   } else if ("expired" === managerRequest?.status) {
     status = SESSION_TEXTS.managerRequestExpired(day(managerRequest.since));
   } else if ("refused" === managerRequest?.status) {

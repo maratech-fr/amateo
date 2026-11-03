@@ -781,6 +781,16 @@ function MyRoleCard({ me }: { me: MeResponse }) {
     lines.push(CLUB_TEXTS.managerRequestRefused(requestDay(managerRequest.since), requestDay(managerRequest.until ?? managerRequest.since)));
   }
 
+  // Club FERMÉ : le bandeau de fermeture (`ClubClosingBanner`) porte déjà le geste et la phrase
+  // d'état — la carte ne les répète pas ; seule l'annulation d'une demande en cours y reste.
+  if (me.club?.closingOn) {
+    lines.length = 0;
+    canAsk = false;
+    if (!canCancel) {
+      return null;
+    }
+  }
+
   return (
     <Card className="mb-3">
       <CardContent className="flex flex-col gap-3 py-4">

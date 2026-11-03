@@ -5,6 +5,7 @@ import { useParams } from "react-router";
 
 import { Button } from "@/shared/components/ui/button";
 import { Spinner } from "@/shared/components/ui/spinner";
+import { frDateSlashed } from "@/shared/lib/date";
 import { PRODUCT_NAME } from "@/shared/lib/product";
 
 import { AuthLayout } from "./AuthLayout";
@@ -126,7 +127,7 @@ export function ClubApprovalPage() {
               {info.data.requesterEmail ? ` (${info.data.requesterEmail})` : null} {copy.body}{" "}
               <span className="font-medium">{info.data.clubName}</span> ({info.data.ara}){copy.bodyEnd}
             </p>
-            <p className="mt-1 text-xs text-muted-foreground">{AUTH_TEXTS.clubApprovalExpiresOn(info.data.expiresAt)}</p>
+            <p className="mt-1 text-xs text-muted-foreground">{AUTH_TEXTS.clubApprovalExpiresOn(frDateSlashed(info.data.expiresAt))}</p>
           </div>
           <p className="text-sm text-muted-foreground">{copy.help}</p>
           {decide.isError ? <p className="text-sm text-destructive">{AUTH_TEXTS.clubApprovalDecisionError}</p> : null}
