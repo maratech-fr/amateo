@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { errorMessage } from "@/shared/lib/errorMessage";
 import { generateCreatedVersion } from "@/features/planning/lib/generateCreatedVersion";
 import { readState, type ReadState } from "@/shared/lib/readState";
+import { useCanManage } from "@/shared/session/queries";
 import { toast } from "@/shared/stores/toastStore";
 import { isScheduleStreamConnected, useScheduleStream } from "@/features/planning/lib/scheduleStream";
 
@@ -156,11 +157,12 @@ export function useVenueSlots() {
  * staleTime long : le référentiel des salles d'une commune ne bouge pas
  * pendant une session de saisie — une requête par commune consultée.
  */
-export function useFfbbSalles(postalCode: string) {
+export function useFfbbSalles(postalCode: string, enabled = true) {
   return useQuery({
     queryKey: ["wizard", "ffbb_salles", postalCode],
     queryFn: () => wizardApi.listFfbbSalles(postalCode),
-    enabled: /^\d{5}$/.test(postalCode),
+    // `enabled` faux = désarmé (un Membre ne déclenche jamais d'appel FFBB sortant).
+    enabled: enabled && /^\d{5}$/.test(postalCode),
     staleTime: 3_600_000,
     // Best-effort comme au register : la FFBB en panne ne doit ni retenter en
     // boucle ni faire du bruit — la saisie libre reste le chemin.
@@ -169,10 +171,11 @@ export function useFfbbSalles(postalCode: string) {
 }
 
 /** Salles proches du club (P2-21 lot D) — radius null = auto. Même profil best-effort que useFfbbSalles. */
-export function useFfbbSallesProches(radiusKm: number | null) {
+export function useFfbbSallesProches(radiusKm: number | null, enabled = true) {
   return useQuery({
     queryKey: ["wizard", "ffbb_salles_proches", radiusKm],
     queryFn: () => wizardApi.listFfbbSallesProches(radiusKm),
+    enabled,
     staleTime: 3_600_000,
     retry: false,
   });
@@ -217,7 +220,9 @@ const invalidateVenueGeoCheck = (queryClient: ReturnType<typeof useQueryClient>)
  * bouge pas pendant une saisie. Best-effort (`retry: false`) : management-only, un échec est muet.
  */
 export function useVenueGeoCheck() {
-  return useQuery({ queryKey: VENUE_GEO_CHECK_KEY, queryFn: wizardApi.geoCheckVenues, staleTime: Infinity, retry: false });
+  // Le contrôle interroge le géocodage (appel sortant serveur) : désarmé pour un Membre.
+  const canManage = useCanManage();
+  return useQuery({ queryKey: VENUE_GEO_CHECK_KEY, queryFn: wizardApi.geoCheckVenues, staleTime: Infinity, retry: false, enabled: canManage });
 }
 
 export function useCreateVenue() {

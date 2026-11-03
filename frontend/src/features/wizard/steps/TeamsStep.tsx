@@ -4,7 +4,8 @@ import { CSS } from "@dnd-kit/utilities";
 import { ArrowUpDown, ChevronDown, ChevronUp, FileUp, GripVertical, Link2, Lock, Plus, Sparkles, Trash2 } from "lucide-react";
 import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { useMe, useWorkingSeason } from "@/shared/session/queries";
+import { ManagerOnly } from "@/shared/session/ManagerOnly";
+import { useCanManage, useMe, useWorkingSeason } from "@/shared/session/queries";
 import { useTeamLinks } from "@/features/matches/queries";
 import { INTENSITY_LABEL } from "@/features/matches/lib/teamLinkLabel";
 import { Button } from "@/shared/components/ui/button";
@@ -13,6 +14,7 @@ import { DeleteConfirm } from "@/shared/components/ui/delete-confirm";
 import { EmptyHint } from "@/shared/components/ui/empty-hint";
 import { CtcMark } from "@/shared/components/ui/ctc-mark";
 import { Input } from "@/shared/components/ui/input";
+import { ReadOnlyFieldset } from "@/shared/components/ui/read-only-fieldset";
 import { Select } from "@/shared/components/ui/select";
 import { groupTeamsByTier, TIER_MEANING, tierGroupLabel } from "@/shared/lib/teamTiers";
 import { cn } from "@/shared/lib/utils";
@@ -108,6 +110,8 @@ function TeamRow({ team, number, categories, tiers, onField, onDelete, onOpenLin
   const bonusCompetitionWarning = isCompetitive(team.level) && isBonusTier(tiers, team.priorityTierId);
   // Le serveur le dit (TeamResource.isEngaged) — on ne le recalcule pas ici.
   const engaged = true === team.isEngaged;
+  // Un Membre lit la ligne : champs en lecture, ni flèches, ni suppression (« Liens » reste, en lecture).
+  const canManage = useCanManage();
 
   return (
     <div className="border-t border-border py-1.5">
@@ -122,7 +126,7 @@ function TeamRow({ team, number, categories, tiers, onField, onDelete, onOpenLin
         {/* Les flèches ne servent QUE dans l'ordre par rang : elles déplacent au sein d'un
             rang, notion qui n'a pas de sens dans une liste triée par catégorie. Absentes
             plutôt qu'inertes — un bouton désactivé sans raison lisible est pire. */}
-        {undefined !== onMove ? (
+        {undefined !== onMove && canManage ? (
           <span className="flex shrink-0">
             <Button size="icon" variant="ghost" className="size-7" aria-label={TEAMS_TEXTS.moveUpTeam(team.name)} disabled={true !== canUp} onClick={() => onMove(-1)}>
               <ChevronUp className="size-4" />
@@ -134,6 +138,7 @@ function TeamRow({ team, number, categories, tiers, onField, onDelete, onOpenLin
         ) : null}
         {/* Repère d'entente (CTC), DEVANT le nom — « d'un coup d'œil » (D4, décision fondateur). */}
         {true === team.isCtc ? <CtcMark partner={team.ctcPartner} /> : null}
+        <ReadOnlyFieldset readOnly={!canManage} className="flex flex-wrap items-center gap-2">
         <Input
           aria-label={TEAMS_TEXTS.colNameAria}
           compact
@@ -185,6 +190,7 @@ function TeamRow({ team, number, categories, tiers, onField, onDelete, onOpenLin
           onChange={(e) => setSessions(e.target.value)}
           onBlur={() => true !== sessionsLocked && Number(sessions) !== team.sessionsPerWeek && onField(team, { sessionsPerWeek: Number(sessions) })}
         />
+        </ReadOnlyFieldset>
         {/* Rang is not edited inline: changing a team's tier is done via the
             "Trier" mode (drag & drop between S/A/B/C/D zones). */}
         {/* P4-375 — le cadenas de l'équipe engagée : la raison est son nom accessible et son infobulle ;
@@ -203,9 +209,11 @@ function TeamRow({ team, number, categories, tiers, onField, onDelete, onOpenLin
         <Button size="icon" variant="ghost" className="size-8" aria-label={TEAMS_TEXTS.linksOfTeam(team.name)} onClick={() => onOpenLinks(team)}>
           <Link2 className="size-4" />
         </Button>
-        <Button size="icon" variant="ghost" className="size-8 text-destructive" aria-label={TEAMS_TEXTS.deleteTeam(team.name)} disabled={engaged} onClick={() => onDelete(team)}>
-          <Trash2 className="size-4" />
-        </Button>
+        <ManagerOnly>
+          <Button size="icon" variant="ghost" className="size-8 text-destructive" aria-label={TEAMS_TEXTS.deleteTeam(team.name)} disabled={engaged} onClick={() => onDelete(team)}>
+            <Trash2 className="size-4" />
+          </Button>
+        </ManagerOnly>
       </div>
       {linksLabel ? <p className="ml-8 mt-1 text-xs text-muted-foreground">{linksLabel}</p> : null}
       {bonusCompetitionWarning && (
@@ -308,7 +316,9 @@ interface SortRowProps {
 
 /** Compact sortable row: drag handle + name + up/down arrows (a11y fallback). No delete/edit. */
 function SortableTeamRow({ team, canUp, canDown, onArrow }: SortRowProps) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: team.id });
+  // Glisser-déposer inerte pour un Membre : il ne réordonne rien.
+  const canManage = useCanManage();
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: team.id, disabled: !canManage });
   const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : 1 };
   return (
     <div ref={setNodeRef} style={style} className="flex items-center gap-2 rounded-md border border-border bg-background px-2 py-2">
@@ -429,6 +439,7 @@ function TeamsEditor() {
   // bloquait chaque spec e2e (CI suspendue 30 min, 2026-08-04). Le flag
   // localStorage ne sert plus qu'à la rendre one-shot par club.
   const { data: me } = useMe();
+  const canManage = useCanManage();
   const clubId = me?.club?.id;
   const imported = true === me?.club?.ffbbTeamsImported;
   const onboarding = undefined !== me && !me.seasonPlan?.hasFinishedVersion;
@@ -439,7 +450,7 @@ function TeamsEditor() {
     () => (undefined === clubId ? true : null !== window.localStorage.getItem(`ffbb-teams-import-notice-${clubId}`)),
     [clubId],
   );
-  const importNotice = imported && onboarding && teams.length > 0 && !noticeSeen && !noticeDismissed;
+  const importNotice = canManage && imported && onboarding && teams.length > 0 && !noticeSeen && !noticeDismissed;
   const dismissImportNotice = () => {
     setNoticeDismissed(true);
     if (undefined !== clubId) {
@@ -653,7 +664,8 @@ function TeamsEditor() {
   // Register the "Trier" toggle in the wizard footer, left of "Suivant".
   useEffect(() => {
     setFooterExtra(
-      teams.length > 0 ? (
+      // « Trier » réordonne (écriture) : jamais offert à un Membre.
+      teams.length > 0 && canManage ? (
         <Button size="sm" variant={sortMode ? "default" : "outline"} onClick={toggleSort}>
           <ArrowUpDown className="size-4" />
           {sortMode ? TEAMS_TEXTS.sortFinish : TEAMS_TEXTS.sortTrier}
@@ -661,7 +673,7 @@ function TeamsEditor() {
       ) : null,
     );
     return () => setFooterExtra(null);
-  }, [sortMode, teams.length, toggleSort, setFooterExtra]);
+  }, [sortMode, teams.length, canManage, toggleSort, setFooterExtra]);
 
   // Hide the floating scroll-jump arrows during drag-reorder (they'd sit over
   // the drop zones and a mis-click would scroll-jump mid-sort).
@@ -794,6 +806,7 @@ function TeamsEditor() {
           {/* P3-7 — l'import FBI des équipes, au-dessus du formulaire d'ajout. Visible liste
               vide OU pleine ; hors mode « Trier ». Par construction absent en mode période
               (TeamsStep bascule alors sur PeriodTeams, qui ne rend jamais ce bouton). */}
+          <ManagerOnly>
           <div className="mb-4 flex flex-wrap gap-2">
             <Button variant="outline" size="sm" onClick={() => setImportOpen(true)}>
               <FileUp className="size-4" />
@@ -883,6 +896,7 @@ function TeamsEditor() {
               {TEAMS_TEXTS.addTeam}
             </Button>
           </form>
+          </ManagerOnly>
           {/* AUD-A11Y-13 — `aria-invalid` disait « ce champ est fautif » sans jamais dire
           POURQUOI : le message existait à côté, non relié. Un lecteur d'écran l'annonce
           une fois par `role="alert"` (interruption), puis le champ redevient muet — on
@@ -933,7 +947,9 @@ function TeamsEditor() {
                 <SortHeader column="level" sort={sort} onSort={setSort} className={TEAM_COLUMNS.level} label={TEAMS_TEXTS.colLevel} />
                 <SortHeader column="sessions" sort={sort} onSort={setSort} className={TEAM_COLUMNS.sessions} label={TEAMS_TEXTS.colSessions} />
                 <span aria-hidden="true" className="w-4 shrink-0" />
-                <span className="w-8 text-right">{TEAMS_TEXTS.colDelete}</span>
+                <ManagerOnly>
+                  <span className="w-8 text-right">{TEAMS_TEXTS.colDelete}</span>
+                </ManagerOnly>
               </div>
               {byRank ? (
                 // Le SENS s'applique aussi au rang (revue #347) : sans ça, un second clic

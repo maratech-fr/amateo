@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { HTTPError } from "ky";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 type StubSchedule = { id: string; status: string; createdAt: string; planType: string | null; schedulePlanId: string | null };
 
@@ -32,7 +32,11 @@ const h = {
   transcribe: vi.fn().mockResolvedValue({ id: "sched-t", versionNumber: 1, copiedCount: 5, toReplace: [{ teamId: "t1", dayOfWeek: 3, startTime: "18:00:00", venueId: "v1", reason: "venue_closed" }] }),
 };
 
-vi.mock("@/shared/session/queries", () => ({ useMe: () => ({ data: { club: { name: "BCCL" }, role: h.role } }) }));
+vi.mock("@/shared/session/queries", () => ({
+  useMe: () => ({ data: { club: { name: "BCCL" }, role: h.role } }),
+  // Chantier Membre (PR 2) : la question « peut-il modifier ? » suit le rôle mocké.
+  useCanManage: () => "admin" === h.role,
+}));
 vi.mock("@/features/cockpit/queries", () => ({
   useCalendarEntry: () => ({ data: null === h.entryId ? null : { id: h.entryId, periodType: h.entryPeriodType } }),
   usePeriodAnchor: () => ("period" === h.mode && null !== h.planId ? { state: "period", planId: h.planId } : { state: "base", planId: null }),
@@ -306,6 +310,48 @@ describe("GenerateStep — mode saison : rien ne change (NR)", () => {
     renderStep();
     expect(screen.getByRole("button", { name: /Lancer la génération/i })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Partir du planning de saison/i })).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * Chantier Membre (PR 2) : l'étape Génération d'un Membre est une LECTURE — aucun « Lancer la génération » / « Générer le planning de période » / « Partir du
+ * planning de saison » / « Réessayer » (les trois boutons du plan, `GenerateStep.tsx` sous
+ * `ManagerOnly`). Témoins gestionnaire : « le launcher s'affiche au repos » et « plan de période
+ * VIERGE : le bouton s'affiche… ».
+ */
+describe("GenerateStep — Membre (consultation)", () => {
+  beforeEach(() => {
+    h.role = "member";
+  });
+  afterEach(() => {
+    h.role = "admin";
+  });
+
+  // La bannière de consultation des étapes est portée UNE fois par `WizardLayout`
+  // (`WizardLayout.member.test.tsx`), pas par chaque étape.
+  it("saison : aucun lancement", () => {
+    h.mode = "season";
+    h.schedules = [];
+    renderStep();
+    expect(screen.queryByRole("button", { name: /Lancer la génération/i })).not.toBeInTheDocument();
+  });
+
+  it("période vierge : ni génération ni transcription", () => {
+    h.mode = "period";
+    h.entryId = "entry-1";
+    h.planId = "plan-p";
+    h.schedules = [];
+    renderStep();
+    expect(screen.queryByRole("button", { name: /Générer le planning de période/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Partir du planning de saison/i })).not.toBeInTheDocument();
+  });
+
+  it("après un échec : le motif se lit, pas de « Réessayer »", () => {
+    h.mode = "season";
+    h.schedules = [{ id: "s-fail", status: "FAILED", createdAt: "2026-02-01T00:00:00Z", planType: "SEASON", schedulePlanId: "season-plan" }];
+    renderStep();
+    expect(screen.getByText(/n'a pas abouti/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Réessayer/ })).not.toBeInTheDocument();
   });
 });
 

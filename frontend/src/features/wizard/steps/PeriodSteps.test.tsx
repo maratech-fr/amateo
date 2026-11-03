@@ -100,6 +100,8 @@ const sharedBlocksState: { data: SharedTrainingBlock[] } = { data: [] };
 const stbCreate = vi.fn();
 const teamLinksState: { data: TeamLink[] } = { data: [] };
 
+// Chantier Membre (PR 2) : les cas de ce fichier sont joués en gestionnaire (`useCanManage`).
+vi.mock("@/shared/session/queries", async (importOriginal) => ({ ...(await importOriginal<typeof import("@/shared/session/queries")>()), useCanManage: () => true }));
 vi.mock("../queries", () => ({
   useWizardTeams: () => ({ data: teamsState.data }),
   usePriorityTiers: () => ({ data: tiersState.data }),

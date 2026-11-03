@@ -21,7 +21,12 @@ vi.mock("./queries", () => ({ useSchedulePlans: () => ({ data: plansData }) }));
 let placedConflictsData: { conflicts: { personId: string }[]; relays?: { personId: string; personName: string; lateMinutes: number; adjointName: string }[] } | undefined = { conflicts: [] };
 vi.mock("@/features/planning/queries", () => ({ usePlacedConflicts: () => ({ data: placedConflictsData }) }));
 // Le bandeau lit le NOM du plan sur me.seasonPlan (retour fondateur 2026-07-18).
-vi.mock("@/shared/session/queries", () => ({ useMe: () => ({ data: { seasonPlan: { name: "Planning de la saison 2026-2027" } } }) }));
+// Chantier Membre (PR 2) : `useCanManage` piloté par cas (gestionnaire par défaut).
+const session = vi.hoisted(() => ({ canManage: true }));
+vi.mock("@/shared/session/queries", () => ({
+  useMe: () => ({ data: { seasonPlan: { name: "Planning de la saison 2026-2027" } } }),
+  useCanManage: () => session.canManage,
+}));
 
 const navigate = vi.fn();
 vi.mock("react-router", async (orig) => ({ ...(await orig<typeof import("react-router")>()), useNavigate: () => navigate }));
@@ -122,5 +127,20 @@ describe("SeasonPlanBanner", () => {
     expect(screen.queryByText(/à deux endroits/)).not.toBeInTheDocument();
     expect(screen.getByText(/relais/i)).toBeInTheDocument();
     placedConflictsData = { conflicts: [] };
+  });
+
+  /**
+   * Chantier Membre (PR 2) : un Membre OUVRE le planning de la saison (lecture) mais ne se voit
+   * jamais offrir « Modifier les données du club » (témoin : premier cas du fichier, socle validé).
+   */
+  it("Membre : « Ouvrir » reste, « Modifier les données du club » disparaît", () => {
+    session.canManage = false;
+    try {
+      renderBanner();
+      expect(screen.getByRole("button", { name: "Ouvrir" })).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Modifier les données du club" })).not.toBeInTheDocument();
+    } finally {
+      session.canManage = true;
+    }
   });
 });

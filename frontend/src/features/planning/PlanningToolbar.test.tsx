@@ -1,8 +1,16 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { SESSION_TEXTS } from "@/shared/session/texts";
 import { visibleTextOccurrences } from "@/test/utils";
+
+// Chantier Membre (PR 2) : `useCanManage` piloté par cas (gestionnaire par défaut) ; le reste de la session reste réel.
+const session = vi.hoisted(() => ({ canManage: true }));
+vi.mock("@/shared/session/queries", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/shared/session/queries")>()),
+  useCanManage: () => session.canManage,
+}));
 
 import type { Schedule, ScheduleCapabilities } from "./api";
 import { PlanningToolbar } from "./PlanningToolbar";
@@ -497,5 +505,29 @@ describe("PlanningToolbar — version chargée", () => {
       renderToolbar([older({ capabilities: null }), loaded()]);
       expect(visibleTextOccurrences(PLANNING_TEXTS.notLoadedToolbarLine)).toHaveLength(0);
     });
+  });
+});
+
+/**
+ * Chantier Membre (PR 2) : le Membre lit le Planning — il change de vue, choisit une version et
+ * exporte (emplacement `rightSlot`) — mais aucun geste de cycle de vie ne lui est offert :
+ * ni Régénérer, ni Valider, ni Supprimer, ni Charger. Témoin gestionnaire : le premier cas du
+ * fichier voit « Régénérer » sur le même décor ; « version chargée » voit « Valider ».
+ */
+describe("PlanningToolbar — Membre (consultation)", () => {
+  afterEach(() => {
+    session.canManage = true;
+  });
+
+  it("lit, change de vue et exporte, sans aucun geste de cycle de vie", () => {
+    session.canManage = false;
+    renderToolbar(schedule("COMPLETED", { capabilities: { canDelete: true, canValidate: true, canLoadLocks: true } }), { slots: true });
+    expect(screen.getByRole("button", { name: "Par gymnase" })).toBeInTheDocument();
+    expect(screen.getByText("EXPORT")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Régénérer/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Valider/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Supprimer cette version" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /charger cette version/i })).not.toBeInTheDocument();
+    expect(screen.queryByText(SESSION_TEXTS.readOnlyNotice)).not.toBeInTheDocument();
   });
 });

@@ -5,6 +5,7 @@ import { HTTPError } from "ky";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { SESSION_TEXTS } from "@/shared/session/texts";
 import { useToastStore } from "@/shared/stores/toastStore";
 
 import type { AttachVenueLabelResult, FbiIngestionLatest, Fixture, FixtureReviewState, LeagueValidationOutlook, PendingDeviation, ReviewFixturesResult, Venue, VenueLabelInventoryRow } from "./api";
@@ -43,6 +44,12 @@ const {
 }));
 
 vi.mock("./api", () => ({ getTeams, getPriorityTiers, getFixtures, getVenues, getLatestFbiIngestion, getFfbbRencontres, applyFfbbRencontres, reviewFixtures, resolveFixtureDeviation, attachVenueLabel, getVenueLabelInventory, getLeagueValidationOutlook, confirmLeagueValidatedFixtures, getCompetitions: () => Promise.resolve([]) }));
+// Chantier Membre (PR 2) : `useCanManage` piloté par cas (gestionnaire par défaut) ; le reste de la session reste réel.
+const session = vi.hoisted(() => ({ canManage: true }));
+vi.mock("@/shared/session/queries", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/shared/session/queries")>()),
+  useCanManage: () => session.canManage,
+}));
 
 /** ky 2.x expose le corps parsé sur `error.data` — on reproduit ce contrat pour le 422 nommé. */
 function httpError(status: number, body: unknown): HTTPError {
@@ -131,6 +138,26 @@ describe("ImportPage — les entrées de données", () => {
     expect(screen.getByRole("button", { name: /Vérifier via le Canal FFBB/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Engagements FFBB/ })).toBeInTheDocument();
     expect(screen.getByText(/Aucun dépôt FBI cette saison/i)).toBeInTheDocument();
+  });
+
+  /**
+   * Chantier Membre (PR 2) : Matchs › Importer se LIT par un Membre (fraîcheur du dernier dépôt),
+   * sous la bannière de consultation, sans aucune des trois entrées — dont deux appellent la FFBB
+   * (aucun appel sortant déclenché par un Membre). Témoin : le cas précédent, même décor.
+   */
+  it("Membre : fraîcheur lisible, aucune entrée d'import, aucun appel FFBB", async () => {
+    session.canManage = false;
+    try {
+      renderPage([]);
+      expect(await screen.findByText(/Aucun dépôt FBI cette saison/i)).toBeInTheDocument();
+      expect(screen.getByText(SESSION_TEXTS.readOnlyNotice)).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /Importer FBI/ })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /Vérifier via le Canal FFBB/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /Engagements FFBB/ })).not.toBeInTheDocument();
+      expect(getFfbbRencontres).not.toHaveBeenCalled();
+    } finally {
+      session.canManage = true;
+    }
   });
 
   it("un dépôt existe → fraîcheur en relatif", async () => {

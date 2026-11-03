@@ -16,6 +16,12 @@ vi.mock("./queries", () => ({
   useLeagueWindowSuggestions: () => suggestionsState,
   useApplyLeagueWindowSuggestions: () => ({ mutate: applyMutate, isPending: false }),
 }));
+// Chantier Membre (PR 2) : `useCanManage` piloté par cas (gestionnaire par défaut) ; le reste de la session reste réel.
+const session = vi.hoisted(() => ({ canManage: true }));
+vi.mock("@/shared/session/queries", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/shared/session/queries")>()),
+  useCanManage: () => session.canManage,
+}));
 
 const suggestions = (over: Partial<LeagueWindowSuggestions> = {}): LeagueWindowSuggestions => ({
   instance: { ligue: "ARA", comite: "0069" },
@@ -85,5 +91,25 @@ describe("LeagueSuggestions — bloc « Plages suggérées » (P4-272 ②)", () 
       { category: "U13", level: "DEPARTEMENTAL", gender: null, dayOfWeek: 6 },
       { category: "U15", level: "REGIONAL", gender: "M", dayOfWeek: 7 },
     ]);
+  });
+
+  /**
+   * Chantier Membre (PR 2) : la lecture des propositions de la ligue est OUVERTE au Membre
+   * (`GET /api/league-window-suggestions`), l'application (`…/apply`) reste réservée — il voit les
+   * plages, jamais « Appliquer » ni « Tout appliquer ». Témoin : les deux cas ci-dessus.
+   */
+  it("Membre : voit les plages suggérées, sans « Appliquer » ni « Tout appliquer »", () => {
+    session.canManage = false;
+    try {
+      suggestionsState.data = suggestions({
+        items: [{ category: "U13", level: "DEPARTEMENTAL", gender: null, dayOfWeek: 6, windows: [{ kickoffMin: "13:00", kickoffMax: "18:00" }], clubCount: 4, source: "clubs", scope: "comite" }],
+      });
+      renderWithProviders(<LeagueSuggestions />);
+      expect(screen.getByText(/U13 · Tous · samedi 13:00–18:00/)).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Appliquer" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Tout appliquer" })).not.toBeInTheDocument();
+    } finally {
+      session.canManage = true;
+    }
   });
 });

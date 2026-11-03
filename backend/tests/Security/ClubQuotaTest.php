@@ -234,7 +234,7 @@ final class ClubQuotaTest extends WebTestCase
         $membership = new ClubUser;
         $membership->setClubId($clubId);
         $membership->setUserId($user->getId());
-        $membership->setRole('president');
+        $membership->setRole('admin');
         $membership->setIsActive(true);
         $em->persist($membership);
         $em->flush();

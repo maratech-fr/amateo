@@ -13,6 +13,12 @@ const setDeadlinesMutate = vi.fn();
 vi.mock("./queries", () => ({
   useSetEntryDeadlines: () => ({ mutate: setDeadlinesMutate, isPending: false }),
 }));
+// Chantier Membre (PR 2) : `useCanManage` piloté par cas (gestionnaire par défaut) ; le reste de la session reste réel.
+const session = vi.hoisted(() => ({ canManage: true }));
+vi.mock("@/shared/session/queries", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/shared/session/queries")>()),
+  useCanManage: () => session.canManage,
+}));
 
 const team = (id: string, name: string): Team => ({ id, name, sportCategoryId: "cat", level: null, gender: null, priorityTierId: 1, tierOrder: 0 });
 const TEAMS: Team[] = [team("t1", "U13"), team("t2", "U15"), team("t3", "U11")];
@@ -198,5 +204,21 @@ describe("EntryDeadlinesEditor — les échéances de saisie (RMM-6 PR-2)", () =
     // Rien coché → le geste bulk est désactivé (ni date ni sélection).
     expect(screen.getByRole("button", { name: /Appliquer/ })).toBeDisabled();
     expect(screen.getByRole("button", { name: /Effacer l'échéance/ })).toBeDisabled();
+  });
+
+  /**
+   * Chantier Membre (PR 2) : un Membre LIT les échéances de saisie (compétition, date) mais n'en
+   * pose ni n'en efface aucune. Témoin gestionnaire : les cas « Appliquer » ci-dessus.
+   */
+  it("Membre : lit les échéances, sans « Appliquer » ni « Effacer »", () => {
+    session.canManage = false;
+    try {
+      renderWithProviders(<EntryDeadlinesEditor competitions={MIXED} teams={TEAMS} />);
+      expect(screen.getAllByText(/Départemental U13/).length).toBeGreaterThan(0);
+      expect(screen.queryByRole("button", { name: /Appliquer/ })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /Effacer l'échéance/ })).not.toBeInTheDocument();
+    } finally {
+      session.canManage = true;
+    }
   });
 });

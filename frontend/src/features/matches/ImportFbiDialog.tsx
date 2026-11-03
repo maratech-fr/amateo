@@ -7,6 +7,7 @@ import { ConfirmDialog } from "@/shared/components/ui/confirm-dialog";
 import { FilePicker } from "@/shared/components/ui/file-picker";
 import { Listbox, type ListboxOption } from "@/shared/components/ui/listbox";
 import { Modal } from "@/shared/components/ui/modal";
+import { useCanManage } from "@/shared/session/queries";
 import { snapshotFile } from "@/shared/lib/fileSnapshot";
 import { TabPanel, Tabs } from "@/shared/components/ui/tabs";
 import { TeamSelect } from "@/shared/components/ui/team-select";
@@ -51,6 +52,8 @@ const divisionKey = (d: { name: string; fbiTeamLabel: string | null }): string =
 export function ImportFbiDialog({ teams, tiers, venues = [], onClose }: ImportFbiDialogProps) {
   const analyzeFbi = useAnalyzeFbiFixtures();
   const importFbi = useImportFbiFixtures();
+  // L'import est un geste de gestionnaire : jamais offert à un Membre.
+  const canManage = useCanManage();
   const navigate = useNavigate();
   const [file, setFile] = useState<File | null>(null);
   const [analysis, setAnalysis] = useState<ImportFbiAnalysis | null>(null);
@@ -262,7 +265,7 @@ export function ImportFbiDialog({ teams, tiers, venues = [], onClose }: ImportFb
             <Button variant="outline" size="sm" onClick={onClose}>
               {M.importFbiClose}
             </Button>
-            {null === report ? (
+            {null === report && canManage ? (
               <Button
                 size="sm"
                 disabled={!canImport || venuesIncomplete}

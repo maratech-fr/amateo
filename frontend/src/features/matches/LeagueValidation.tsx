@@ -5,6 +5,7 @@ import { useNavigate } from "react-router";
 import { Button } from "@/shared/components/ui/button";
 import { ConfirmDialog } from "@/shared/components/ui/confirm-dialog";
 import { NoticeBanner } from "@/shared/components/ui/notice-banner";
+import { useCanManage } from "@/shared/session/queries";
 import { toast } from "@/shared/stores/toastStore";
 
 import type { LeagueToTreatFixture, LeagueValidationOutlook, MissingDeadlineCompetition } from "./api";
@@ -149,10 +150,13 @@ function MissingDeadlineNotice({ competitions }: { competitions: MissingDeadline
  * indépendants selon ce que le backend sert ; muet si rien.
  */
 export function LeagueValidationBanner() {
-  const outlook = useLeagueValidationOutlook();
+  // La lecture est réservée aux gestionnaires (403 sinon) : un Membre ne la déclenche jamais et ne
+  // voit ni le bandeau ni l'entrée du rapport.
+  const canManage = useCanManage();
+  const outlook = useLeagueValidationOutlook(canManage);
   const [open, setOpen] = useState(false);
   const data = outlook.data;
-  if (undefined === data) {
+  if (!canManage || undefined === data) {
     return null;
   }
   const { matured, toTreat, missingDeadline, totalValidatable } = data;
@@ -186,11 +190,14 @@ export function LeagueValidationBanner() {
  * invalidé par l'import, se recalcule). Ouvre la MÊME confirmation que le bandeau.
  */
 export function LeagueValidationReportEntry() {
-  const outlook = useLeagueValidationOutlook();
+  // La lecture est réservée aux gestionnaires (403 sinon) : un Membre ne la déclenche jamais et ne
+  // voit ni le bandeau ni l'entrée du rapport.
+  const canManage = useCanManage();
+  const outlook = useLeagueValidationOutlook(canManage);
   const [open, setOpen] = useState(false);
   const data = outlook.data;
   const total = data?.totalValidatable ?? 0;
-  if (undefined === data || total <= 0) {
+  if (!canManage || undefined === data || total <= 0) {
     return null;
   }
   return (

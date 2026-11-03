@@ -27,7 +27,13 @@ final class CoachWishCampaignPresenter
         private readonly CoachWishPerimeter $perimeter,
     ) {}
 
-    public function toResource(CoachWishCampaign $campaign): CoachWishCampaignResource
+    /**
+     * `$includeTokens` : le lien personnel de chaque coach (`token`) n'est AJOUTÉ que pour un
+     * appelant gestionnaire prouvé — jamais servi par défaut, jamais retiré après coup. Un Membre
+     * lit la campagne (états de réponse, adresses) sans le secret qui permettrait de répondre à la
+     * place du coach.
+     */
+    public function toResource(CoachWishCampaign $campaign, bool $includeTokens = false): CoachWishCampaignResource
     {
         $dto = new CoachWishCampaignResource;
         $dto->id = $campaign->getId();
@@ -70,16 +76,19 @@ final class CoachWishCampaignPresenter
             if (null !== $respondedAt) {
                 ++$responded;
             }
-            $coaches[] = [
+            $row = [
                 'coachId' => $coachId,
                 'firstName' => $coach->getFirstName(),
                 'lastName' => $coach->getLastName(),
                 'email' => $coach->getEmail(),
-                'token' => $token->getToken(),
                 'respondedAt' => $respondedAt?->format(DateTimeInterface::ATOM),
                 'sentAt' => $token->getSentAt()?->format(DateTimeInterface::ATOM),
                 'teamIds' => $token->getTeamIds(),
             ];
+            if ($includeTokens) {
+                $row['token'] = $token->getToken();
+            }
+            $coaches[] = $row;
         }
 
         $dto->coaches = $coaches;

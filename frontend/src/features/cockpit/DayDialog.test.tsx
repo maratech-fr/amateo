@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { pickListboxOption } from "@/test/pickListboxOption";
 
@@ -90,9 +90,12 @@ vi.mock("@/features/planning/store", () => ({ usePlanningStore: (sel: (s: unknow
 // Partiel : clampRangeToSeason (clamp saison des créations, revue #260) reste le vrai.
 vi.mock("./lib/date", async (orig) => ({ ...(await orig<typeof import("./lib/date")>()), todayISO: () => "2026-05-12" }));
 // Saison de travail couvrant les dates de test : le clamp laisse créer.
+// Chantier Membre (PR 2) : `useCanManage` piloté par cas (gestionnaire par défaut).
+let canManage = true;
 vi.mock("@/shared/session/queries", () => ({
   useWorkingSeason: () => ({ id: "sn1", name: "2025-2026", startDate: "2025-08-01", endDate: "2026-07-31", isCurrent: true, isReadonly: false }),
   useMe: () => ({ data: meData }),
+  useCanManage: () => canManage,
 }));
 
 const entry = (overrides: Partial<CalendarEntry>): CalendarEntry => ({
@@ -1330,5 +1333,33 @@ describe("DayDialog — indisponibilité de gymnase listée dans la modale (prom
     renderWithUnavailabilities([], []);
 
     expect(screen.queryByText(/indisponible/)).toBeNull();
+  });
+});
+
+/**
+ * Chantier Membre (PR 2) : la fiche d'un jour se LIT par un Membre (l'évènement est nommé) mais
+ * n'offre aucun geste — ni suppression, ni coupure, ni indisponibilité de gymnase. Témoin
+ * gestionnaire : « asks for confirmation before deleting… » et « creates a cutoff… » ci-dessus.
+ */
+describe("DayDialog — Membre (consultation)", () => {
+  beforeEach(() => {
+    meData = { seasonPlan: { chosenScheduleId: "s-season" } };
+    allPlansMock = [];
+    plansByEntry = {};
+    schedulesData = [];
+    queriesNoData = false;
+    childEntriesData = [];
+    canManage = false;
+  });
+  afterEach(() => {
+    canManage = true;
+  });
+
+  it("lit le jour sans aucun geste d'écriture", () => {
+    renderDialog([entry({})]);
+    expect(screen.getByText("AG du club")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Supprimer AG du club" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Coupure (pas d'entraînement)" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Signaler une indisponibilité" })).not.toBeInTheDocument();
   });
 });

@@ -9,7 +9,7 @@ import { renderWithProviders } from "@/test/utils";
  */
 const h = vi.hoisted(() => ({ blockers: [] as string[] }));
 
-vi.mock("@/shared/session/queries", () => ({
+vi.mock("@/shared/session/queries", () => ({ useCanManage: () => true,
   useMe: () => ({ data: { seasonPlan: null, club: { id: "c", name: "Club" } } }),
   useWorkingSeason: () => null,
 }));

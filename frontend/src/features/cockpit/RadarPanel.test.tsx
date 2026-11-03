@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { CalendarEntry, PlannedWindow, SchedulePlan, SchoolHoliday } from "./api";
 import { setTodayOverride } from "@/shared/lib/clock";
+import { SESSION_TEXTS } from "@/shared/session/texts";
 
 import { addDays, frDateShort, frDateShortNoYear, mondayOf, todayISO } from "./lib/date";
 import { useToastStore } from "@/shared/stores/toastStore";
@@ -106,9 +107,12 @@ vi.mock("@/features/planning/queries", () => ({
 vi.mock("@/features/coach-wishes/campaignQueries", () => ({ useCoachWishCampaigns: () => ({ data: campaignsData, isError: false }) }));
 // Saison de travail couvrant les fixtures FUTURE (2999) : le clamp saison des
 // créations de vacances (revue #260 round 1) laisse passer les dates de test.
+// Chantier Membre (PR 2) : `useCanManage` piloté par cas (gestionnaire par défaut).
+let canManage = true;
 vi.mock("@/shared/session/queries", () => ({
   useWorkingSeason: () => ({ id: "sn1", name: "2998-2999", startDate: "2998-08-01", endDate: "2999-07-31", isCurrent: true, isReadonly: false }),
   useMe: () => ({ data: meData }),
+  useCanManage: () => canManage,
 }));
 
 /** Un plan de période VALIDÉ (chosenScheduleId non-null) pour l'entrée donnée. */
@@ -1245,5 +1249,49 @@ describe("RadarPanel — échec de lecture jamais « Tout roule » (UXS-09)", ()
     expect(screen.getByText(COCKPIT_TEXTS.loadingItemsToHandle)).toBeInTheDocument();
     expect(screen.queryByText(COCKPIT_TEXTS.allClear)).not.toBeInTheDocument();
     expect(screen.queryByText(/Impossible de charger les éléments à traiter/)).not.toBeInTheDocument();
+  });
+
+  /**
+   * Chantier Membre (PR 2) : l'Accueil d'un Membre est SANS GESTES — le radar se lit (la vacance
+   * à venir est nommée) mais n'offre ni « Adapter » ni « Reprendre » ; pas de bannière de
+   * consultation sur l'Accueil (plan §3.2). Témoin gestionnaire : le cas « replie la carte de
+   * couverture… » ci-dessus voit « Adapter » sur le même décor.
+   */
+  describe("Membre (consultation)", () => {
+    beforeEach(() => {
+      meData = { seasonPlan: { chosenScheduleId: "s-season" } };
+      conflictsData = undefined;
+      conflictsPending = false;
+      plansData = [];
+      seasonSlotsData = [];
+      schedulesData = [];
+      campaignsData = [];
+      plansState.failed = false;
+      unavailabilitiesData = [];
+      impactItemsData = [];
+      venueClosuresData = [];
+      schoolHolidaysData = { zone: "A", items: [] };
+      calendarEntriesData = [];
+      plannedWindowsData = [];
+    });
+    afterEach(() => {
+      canManage = true;
+    });
+
+    it("lit le radar sans aucun geste, sans bannière de consultation", () => {
+      canManage = false;
+      const w1s = mondayOf("2999-01-15");
+      renderRadar({
+        holidays: [holiday],
+        entries: [
+          closure({ id: "m1", title: "Barros en travaux", startDate: addDays(w1s, 3), endDate: addDays(w1s, 8) }),
+          closure({ id: "w1", title: "S1", parentEntryId: "m1", startDate: w1s, endDate: addDays(w1s, 6) }),
+        ],
+      });
+      expect(screen.getByText(/semaines? à venir couverte/)).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Adapter" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Reprendre" })).not.toBeInTheDocument();
+      expect(screen.queryByText(SESSION_TEXTS.readOnlyNotice)).not.toBeInTheDocument();
+    });
   });
 });

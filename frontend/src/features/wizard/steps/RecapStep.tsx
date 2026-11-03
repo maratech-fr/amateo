@@ -35,6 +35,8 @@ import { useDeleteReservation } from "../queries";
 import { Button } from "@/shared/components/ui/button";
 import { AlertTriangle, Trash2 } from "lucide-react";
 
+import { ManagerOnly } from "@/shared/session/ManagerOnly";
+
 // Manager-facing labels for the FFBB play levels (mirrors the teams step).
 /**
  * P4-44 / P2-37 D5 — une ligne de réservation. NON SERVIE (créneau déplacé/supprimé, gymnase
@@ -74,9 +76,11 @@ function ReservationRow({
       meta={<span className={unserved ? "text-destructive" : undefined}>{where}</span>}
       action={
         unserved || removable ? (
-          <Button variant="ghost" size="icon" className="size-7" aria-label={WIZARD_TEXTS.removeReservationLabel(label, where)} disabled={busy} onClick={onRemove}>
-            <Trash2 className="size-4" />
-          </Button>
+          <ManagerOnly>
+            <Button variant="ghost" size="icon" className="size-7" aria-label={WIZARD_TEXTS.removeReservationLabel(label, where)} disabled={busy} onClick={onRemove}>
+              <Trash2 className="size-4" />
+            </Button>
+          </ManagerOnly>
         ) : undefined
       }
     />
@@ -97,9 +101,11 @@ function MutualisationRemovalRow({ label, where, reason, removable = false, dayO
       meta={<span className={unserved ? "text-destructive" : undefined}>{where}</span>}
       action={
         unserved || removable ? (
-          <Button variant="ghost" size="icon" className="size-7" aria-label={WIZARD_TEXTS.removeLotLabel(label, where)} disabled={busy} onClick={onRemove}>
-            <Trash2 className="size-4" />
-          </Button>
+          <ManagerOnly>
+            <Button variant="ghost" size="icon" className="size-7" aria-label={WIZARD_TEXTS.removeLotLabel(label, where)} disabled={busy} onClick={onRemove}>
+              <Trash2 className="size-4" />
+            </Button>
+          </ManagerOnly>
         ) : undefined
       }
     />
@@ -120,9 +126,11 @@ function FreeSlotRow({ label, where, reason, onRemove, busy }: { label: string; 
       meta={<span className={unserved ? "text-destructive" : undefined}>{where}</span>}
       action={
         unserved ? (
-          <Button variant="ghost" size="icon" className="size-7" aria-label={`Retirer le créneau libre ${label}`} disabled={busy} onClick={onRemove}>
-            <Trash2 className="size-4" />
-          </Button>
+          <ManagerOnly>
+            <Button variant="ghost" size="icon" className="size-7" aria-label={`Retirer le créneau libre ${label}`} disabled={busy} onClick={onRemove}>
+              <Trash2 className="size-4" />
+            </Button>
+          </ManagerOnly>
         ) : undefined
       }
     />

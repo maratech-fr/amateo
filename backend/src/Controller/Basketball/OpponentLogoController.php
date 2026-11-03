@@ -7,6 +7,7 @@ namespace App\Controller\Basketball;
 use App\Entity\User;
 use App\Repository\OpponentDirectoryEntryRepository;
 use App\Service\Basketball\FfbbLogoFetcherInterface;
+use App\Service\ManagementAccessGuard;
 use App\Storage\LogoStorage;
 use finfo;
 use Psr\Cache\CacheItemPoolInterface;
@@ -14,6 +15,7 @@ use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\DependencyInjection\Attribute\Autowire;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpKernel\Attribute\AsController;
+use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
 use Symfony\Component\RateLimiter\RateLimiterFactory;
 use Symfony\Component\Routing\Attribute\Route;
 
@@ -35,6 +37,10 @@ use Symfony\Component\Routing\Attribute\Route;
  *  - un **limiteur `opponent_logo`** PAR UTILISATEUR, consommé UNIQUEMENT quand un vrai
  *    téléchargement va partir (jamais un logo déjà stocké, ni un code sans `logo_id`, ni un code
  *    sous marqueur) → une rafale de premiers affichages est bornée, le reste passe librement.
+ *
+ * Un Membre (rôle de consultation) ne déclenche JAMAIS d'appel sortant : un logo déjà stocké lui
+ * est servi comme à tous, mais un cache miss lui répond 404 sans téléchargement ni marqueur
+ * (`MemberReadsAreSideEffectFreeTest`). Le logo arrivera au prochain affichage d'un gestionnaire.
  */
 #[AsController]
 final class OpponentLogoController extends AbstractController
@@ -49,6 +55,7 @@ final class OpponentLogoController extends AbstractController
         #[Autowire(service: 'cache.app')]
         private readonly CacheItemPoolInterface $cache,
         private readonly RateLimiterFactory $opponentLogoLimiter,
+        private readonly ManagementAccessGuard $managementAccessGuard,
     ) {}
 
     #[Route('/api/opponents/{code}/logo', name: 'opponent_logo_serve', requirements: ['code' => '[A-Za-z0-9]{1,24}'], methods: ['GET'])]
@@ -79,6 +86,13 @@ final class OpponentLogoController extends AbstractController
      */
     private function rehost(string $code): string|Response
     {
+        // Seul un gestionnaire déclenche un téléchargement : un Membre n'appelle jamais l'extérieur.
+        try {
+            $this->managementAccessGuard->assertManager();
+        } catch (AccessDeniedHttpException) {
+            return new Response('', Response::HTTP_NOT_FOUND);
+        }
+
         $logoId = $this->directory->findOneByFfbbOrganismeCode($code)?->getLogoId();
         if (null === $logoId) {
             return new Response('', Response::HTTP_NOT_FOUND);

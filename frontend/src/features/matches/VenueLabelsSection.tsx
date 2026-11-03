@@ -7,6 +7,8 @@ import { ConfirmDialog } from "@/shared/components/ui/confirm-dialog";
 import { EmptyHint } from "@/shared/components/ui/empty-hint";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/shared/components/ui/table";
 import { VenueSelect } from "@/shared/components/ui/venue-select";
+import { ManagerOnly } from "@/shared/session/ManagerOnly";
+import { useCanManage } from "@/shared/session/queries";
 import { toast } from "@/shared/stores/toastStore";
 
 import type { Venue, VenueLabelInventoryRow } from "./api";
@@ -45,6 +47,8 @@ type Pending =
  * (`readState`).
  */
 export function VenueLabelsSection({ venues }: { venues: Venue[] | undefined }) {
+  // Un Membre lit l'inventaire des libellés : aucun appariement.
+  const canManage = useCanManage();
   const inventory = useVenueLabelInventory();
   const attach = useAttachVenueLabel();
   const detach = useDetachVenueLabel();
@@ -145,7 +149,7 @@ export function VenueLabelsSection({ venues }: { venues: Venue[] | undefined }) 
                         venues={venueOptions}
                         value={selected}
                         placeholder="Non apparié"
-                        disabled={busy}
+                        disabled={busy || !canManage}
                         onValueChange={(value) => setSelection((prev) => ({ ...prev, [row.labelKey]: value }))}
                       />
                       {showsSuggestion ? (
@@ -156,6 +160,7 @@ export function VenueLabelsSection({ venues }: { venues: Venue[] | undefined }) 
                     </div>
                   </TableCell>
                   <TableCell>
+                    <ManagerOnly>
                     <div className="flex flex-wrap items-center justify-end gap-1.5">
                       <Button
                         size="sm"
@@ -181,6 +186,7 @@ export function VenueLabelsSection({ venues }: { venues: Venue[] | undefined }) 
                         </Button>
                       ) : null}
                     </div>
+                    </ManagerOnly>
                   </TableCell>
                 </TableRow>
               );

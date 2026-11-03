@@ -23,6 +23,12 @@ vi.mock("./queries", () => ({
   useDeleteTeamMatchHabit: () => ({ mutate: deleteHabit, isPending: false }),
   useMatchConstraintCoherence: () => ({ data: coherenceState.data }),
 }));
+// Chantier Membre (PR 2) : `useCanManage` piloté par cas (gestionnaire par défaut) ; le reste de la session reste réel.
+const session = vi.hoisted(() => ({ canManage: true }));
+vi.mock("@/shared/session/queries", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/shared/session/queries")>()),
+  useCanManage: () => session.canManage,
+}));
 
 const team = (id: string, name: string): Team => ({ id, name, sportCategoryId: "cat", level: null, gender: null, priorityTierId: 1, tierOrder: 0 });
 const TEAMS: Team[] = [team("t1", "SM1"), team("t2", "SM2")];
@@ -134,5 +140,23 @@ describe("IdealSlotsEditor (P4-271)", () => {
 
     expect(screen.getByText("Heurte la règle du club « pas après 21:00 ».")).toBeInTheDocument();
     expect(screen.getAllByText(/Heurte la règle du club/)).toHaveLength(1);
+  });
+
+  /**
+   * Chantier Membre (PR 2) : un Membre LIT les créneaux idéaux mais n'en ajoute, n'en modifie ni
+   * n'en supprime aucun. Témoin gestionnaire : « liste vide… le bouton Ajouter » ci-dessus.
+   */
+  it("Membre : lit les créneaux idéaux sans aucun geste", () => {
+    session.canManage = false;
+    try {
+      habitsState.data = [habit()];
+      renderWithProviders(<IdealSlotsEditor teams={TEAMS} venues={VENUES} weekendAlternates={true} />);
+      expect(screen.getByText("Semaine A · Samedi 15:30 · Alpha")).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Ajouter un créneau idéal" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Modifier le créneau idéal de SM1" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Supprimer le créneau idéal de SM1" })).not.toBeInTheDocument();
+    } finally {
+      session.canManage = true;
+    }
   });
 });

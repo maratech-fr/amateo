@@ -8,6 +8,7 @@ import { NoticeBanner } from "@/shared/components/ui/notice-banner";
 import { Select } from "@/shared/components/ui/select";
 import { frDateShort, frDateWeekdayNoYear } from "@/shared/lib/date";
 import { dayLabelLongCap } from "@/shared/lib/days";
+import { ManagerOnly } from "@/shared/session/ManagerOnly";
 import { useWorkingSeason } from "@/shared/session/queries";
 
 import type { VenueMatchWindow } from "./api/venues";
@@ -138,20 +139,24 @@ export function MatchWindowsEditor({ venueId, venueName, prefillOpening }: Match
             <span>
               {windowDayLabel(window)} {window.startTime} – {window.endTime}
             </span>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="size-8 text-destructive"
-              aria-label={MATCHES_TEXTS.matchWindowDelete(`${windowDayLabel(window)} ${window.startTime}`)}
-              disabled={remove.isPending}
-              onClick={() => setPendingDeleteId(window.id)}
-            >
-              <Trash2 className="size-4" />
-            </Button>
+            <ManagerOnly>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="size-8 text-destructive"
+                aria-label={MATCHES_TEXTS.matchWindowDelete(`${windowDayLabel(window)} ${window.startTime}`)}
+                disabled={remove.isPending}
+                onClick={() => setPendingDeleteId(window.id)}
+              >
+                <Trash2 className="size-4" />
+              </Button>
+            </ManagerOnly>
           </li>
         ))}
       </ul>
 
+      {/* Ajouts : gestes de gestionnaire, absents pour un Membre (il lit les fenêtres). */}
+      <ManagerOnly>
       <div className="flex items-end gap-2">
         <label className="flex flex-col gap-1 text-xs text-muted-foreground">
           {MATCHES_TEXTS.matchWindowDayLabel}
@@ -186,6 +191,7 @@ export function MatchWindowsEditor({ venueId, venueName, prefillOpening }: Match
           {MATCHES_TEXTS.matchWindowAdd}
         </Button>
       </div>
+      </ManagerOnly>
       {rangeInvalid && "" !== startTime && "" !== endTime ? (
         <p className="text-xs text-destructive">{MATCHES_TEXTS.matchWindowRangeInvalid}</p>
       ) : null}
@@ -200,16 +206,18 @@ export function MatchWindowsEditor({ venueId, venueName, prefillOpening }: Match
             return (
               <li key={opening.id} className="flex items-center justify-between gap-2 rounded-md border border-border bg-card px-2 py-1 text-sm">
                 <span>{`${day} · ${opening.startTime} – ${opening.endTime}${null != opening.label ? ` · ${opening.label}` : ""}`}</span>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="size-8 text-destructive"
-                  aria-label={MATCHES_TEXTS.openingDelete(`${day} ${opening.startTime}`)}
-                  disabled={remove.isPending}
-                  onClick={() => setPendingDeleteId(opening.id)}
-                >
-                  <Trash2 className="size-4" />
-                </Button>
+                <ManagerOnly>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="size-8 text-destructive"
+                    aria-label={MATCHES_TEXTS.openingDelete(`${day} ${opening.startTime}`)}
+                    disabled={remove.isPending}
+                    onClick={() => setPendingDeleteId(opening.id)}
+                  >
+                    <Trash2 className="size-4" />
+                  </Button>
+                </ManagerOnly>
               </li>
             );
           })}
@@ -217,6 +225,7 @@ export function MatchWindowsEditor({ venueId, venueName, prefillOpening }: Match
         {arrivedByLink && undefined !== venueName && undefined !== prefillOpening ? (
           <NoticeBanner tone="accent">{MATCHES_TEXTS.openVenueDialogTitle(venueName, frDateWeekdayNoYear(prefillOpening.date))}</NoticeBanner>
         ) : null}
+        <ManagerOnly>
         <div className="flex flex-wrap items-end gap-2">
           <label className="flex flex-col gap-1 text-xs text-muted-foreground">
             {MATCHES_TEXTS.openingDateLabel}
@@ -239,6 +248,7 @@ export function MatchWindowsEditor({ venueId, venueName, prefillOpening }: Match
             {MATCHES_TEXTS.openingAdd}
           </Button>
         </div>
+        </ManagerOnly>
         {openingRangeInvalid && "" !== openingStart && "" !== openingEnd ? <p className="text-xs text-destructive">{MATCHES_TEXTS.matchWindowRangeInvalid}</p> : null}
         {openingOutOfSeason ? <p className="text-xs text-warning">{MATCHES_TEXTS.openingOutOfSeason(frDateShort(season.startDate), frDateShort(season.endDate))}</p> : null}
       </section>

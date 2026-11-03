@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace App\EventListener;
 
+use App\Service\ManagementAccessGuard;
 use Symfony\Component\EventDispatcher\EventSubscriberInterface;
 use Symfony\Component\HttpKernel\Event\RequestEvent;
+use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
 use Symfony\Component\HttpKernel\Exception\TooManyRequestsHttpException;
 use Symfony\Component\HttpKernel\KernelEvents;
 use Symfony\Component\RateLimiter\RateLimiterFactory;
@@ -32,6 +34,11 @@ use Symfony\Component\RateLimiter\RateLimiterFactory;
  * mobilise Puppeteer. Le limiteur global suffit à borner un abus de XLSX ; lui coller un cap
  * horaire gênerait un usage légitime pour rien.
  *
+ * ⚠ Un solve n'est compté que pour un GESTIONNAIRE actif : le refus 403 d'un Membre (garde du
+ * contrôleur, en aval) ne doit jamais entamer le cap du club — sinon dix clics d'un Membre
+ * priveraient le club de génération (`MemberReadsAreSideEffectFreeTest`). Les exports, ouverts à
+ * tout membre, restent comptés pour tous.
+ *
  * Priorité 5 : APRÈS `TenantFilterListener` (7), qui résout le club et pose `_club_id` —
  * sans quoi il n'y aurait rien à compter.
  */
@@ -53,6 +60,7 @@ final class ClubQuotaSubscriber implements EventSubscriberInterface
         private readonly RateLimiterFactory $scheduleGenerationLimiter,
         private readonly RateLimiterFactory $schedulePdfExportLimiter,
         private readonly RateLimiterFactory $fixturesPdfExportLimiter,
+        private readonly ManagementAccessGuard $managementAccessGuard,
     ) {}
 
     /** @return array<string, array{0: string, 1: int}> */
@@ -88,11 +96,26 @@ final class ClubQuotaSubscriber implements EventSubscriberInterface
             return;
         }
 
+        if ($limiter === $this->scheduleGenerationLimiter && !$this->isManager()) {
+            return; // le contrôleur refusera (403) sans rien consommer du cap du club
+        }
+
         $limit = $limiter->create('club-' . $clubId)->consume(1);
         if (!$limit->isAccepted()) {
             $retryAfter = max(1, $limit->getRetryAfter()->getTimestamp() - time());
 
             throw new TooManyRequestsHttpException($retryAfter, \sprintf('Quota du club atteint pour cette opération. Réessayez dans %d minute(s).', (int) ceil($retryAfter / 60)));
+        }
+    }
+
+    private function isManager(): bool
+    {
+        try {
+            $this->managementAccessGuard->assertManager();
+
+            return true;
+        } catch (AccessDeniedHttpException) {
+            return false;
         }
     }
 }

@@ -35,6 +35,12 @@ const placedConflictsState: { data: { conflicts: unknown[] } | undefined } = { d
 vi.mock("@/features/planning/queries", () => ({
   usePlacedConflicts: () => ({ data: placedConflictsState.data }),
 }));
+// Chantier Membre (PR 2) : `useCanManage` piloté par cas (gestionnaire par défaut) ; le reste de la session reste réel.
+const session = vi.hoisted(() => ({ canManage: true }));
+vi.mock("@/shared/session/queries", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/shared/session/queries")>()),
+  useCanManage: () => session.canManage,
+}));
 
 import { CoachesStep } from "./CoachesStep";
 
@@ -194,6 +200,27 @@ describe("CoachesStep — la carte ne change pas de section pendant l'édition",
     // « Terminé » ⇒ reclassement en « Coachs-joueurs ».
     fireEvent.click(within(cardOf("c1")).getByRole("button", { name: "Terminer l'édition" }));
     expect(sectionLabelOf("c1")).toBe("Coachs-joueurs");
+  });
+});
+
+/**
+ * Chantier Membre (PR 2) : l'étape Coachs d'un Membre se LIT (les coachs sont nommés) sans aucun
+ * geste — ni « Ajouter le coach », ni « Éditer le coach ». Témoin gestionnaire : « créer un coach
+ * l'ouvre directement en édition » ci-dessous (le bouton d'ajout existe).
+ */
+describe("CoachesStep — Membre (consultation)", () => {
+  it("lit les coachs sans ajout ni édition", () => {
+    session.canManage = false;
+    try {
+      teamsState.data = [team({ id: "t1", name: "U13M1" })];
+      coachesState.data = [coach({ id: "c1", firstName: "Ana" })];
+      renderWithProviders(<CoachesStep />);
+      expect(screen.getAllByText(/Ana/).length).toBeGreaterThan(0);
+      expect(screen.queryByRole("button", { name: "Ajouter le coach" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Éditer le coach" })).not.toBeInTheDocument();
+    } finally {
+      session.canManage = true;
+    }
   });
 });
 

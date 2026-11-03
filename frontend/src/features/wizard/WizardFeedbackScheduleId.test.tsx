@@ -23,7 +23,7 @@ vi.mock("@/shared/feedback/FeedbackButton", () => ({
 vi.mock("./steps/GenerateStep", () => ({ GenerateStep: () => <div>Génération (stub)</div> }));
 
 // ── Harnais (club établi), calqué sur WizardPage.test.tsx ──
-vi.mock("@/shared/session/queries", () => ({
+vi.mock("@/shared/session/queries", () => ({ useCanManage: () => true,
   useMe: () => ({ data: { seasonPlan: { id: "p1", name: "Planning", chosenScheduleId: "b1", hasFinishedVersion: true }, club: { id: "c", name: "C", onboardingCompleted: true } } }),
   useWorkingSeason: () => null,
 }));

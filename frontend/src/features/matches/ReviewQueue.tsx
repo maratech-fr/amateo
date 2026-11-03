@@ -9,6 +9,7 @@ import { EmptyState } from "@/shared/components/ui/empty-hint";
 import { FilterToggle } from "@/shared/components/ui/filter-toggle";
 import { frDateWeekdayNoYear } from "@/shared/lib/date";
 import { compareTeamsByRank } from "@/shared/lib/teamTiers";
+import { useCanManage } from "@/shared/session/queries";
 import { toast } from "@/shared/stores/toastStore";
 
 import type { AttachVenueLabelInput, Competition, Fixture, ResolveDeviationInput, Team, Venue } from "./api";
@@ -43,6 +44,8 @@ interface ReviewQueueProps {
  * D'où le vocabulaire : « nouveautés à voir » / « écarts à trancher » / « Tout marquer comme vu ».
  */
 export function ReviewQueue({ fixtures, teams, venues }: ReviewQueueProps) {
+  // Un Membre lit la file : aucun « marquer comme vu », aucun arbitrage.
+  const canManage = useCanManage();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const setFilterMode = useMatchesStore((s) => s.setFilterMode);
@@ -238,7 +241,7 @@ export function ReviewQueue({ fixtures, teams, venues }: ReviewQueueProps) {
             onToggle={(next) => setParam("equipe", next ? queue.teamId : null)}
           >
             <div className="flex flex-col gap-3">
-              {queue.open.length > 0 ? (
+              {queue.open.length > 0 && canManage ? (
                 <Button variant="outline" size="sm" className="self-start" disabled={busy} onClick={() => onValidateTeam(queue.teamId)}>
                   <CheckCheck className="size-4" />
                   Tout marquer comme vu

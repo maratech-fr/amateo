@@ -401,15 +401,41 @@ cron `app:users:purge-orphaned`, `/api/me` expose `accountDeletionScheduledFor`.
   demandeur aussi (club créé, repris, transmis aux gestionnaires). La console superadmin refuse (409) d'activer
   une adhésion sur un club sans gestionnaire. Un compte déjà inscrit qui retente un code FFBB de club sans
   gestionnaire reçoit, dans le mail « compte existant », l'indication de contacter le support.
-- *Pas encore* : bandeau de fermeture côté front, lectures ouvertes au Membre, demande de devenir gestionnaire
-  (PR suivantes du chantier) ; console des purges retenues et audit des changements de rôle → roadmap.
+- *Pas encore* : demande de devenir gestionnaire (PR suivante du chantier) ; console des purges retenues et
+  audit des changements de rôle → roadmap.
+
+**Un Membre lit tout, ne modifie rien (chantier Membre, PR 2, livré le 2026-11-03)** — décision fondateur :
+le Membre voit chaque écran, aucun geste d'écriture n'est offert, et le serveur le refuse de toute façon.
+- *Côté serveur* : toute écriture `^/api/` est refusée (403) à un Membre, sauf une liste nommée qui reste
+  ouverte parce qu'elle est personnelle ou sans effet sur le club : export (PDF/XLSX, compté sur le club),
+  signalement, profil (mot de passe et adresse e-mail compris), nouveautés vues, visite du module matchs. Lectures rendues
+  accessibles au Membre : conflits placés (`/api/training/placed-conflicts`), contrôle des contraintes
+  (`POST /api/constraints/validate`, lecture pure), propositions de la ligue en lecture seule
+  (`GET /api/league-window-suggestions`, jamais `/apply`), campagnes de doléances et leur aperçu. Les
+  lectures qui appellent l'extérieur (FFBB, géocodage, contrôle de localisation) restent réservées aux
+  gestionnaires : **un Membre ne déclenche jamais d'appel sortant**. Un logo adverse non encore stocké n'est
+  pas téléchargé pour lui (404), un logo stocké lui est servi. « Générer » refusé à un Membre ne consomme
+  rien du quota du club.
+- *Doléances* : le Membre voit l'état de réponse et l'adresse de chaque coach, **jamais le lien personnel**
+  (ni dans la campagne, ni dans l'aperçu) — la clé `token` n'est ajoutée que pour un gestionnaire prouvé.
+- *Côté écran* : gestes d'écriture masqués, champs en lecture, glisser-déposer inerte, bandeau
+  « Consultation : réservé aux gestionnaires » sur chaque écran de saisie ; l'assistant reste navigable et
+  dit « un gestionnaire doit la compléter » au lieu de guider ; l'écran Club masque Demandes, Invitations et
+  Membres. Bandeau daté sans bouton quand le club n'a plus de gestionnaire (`/api/me.club.closingOn`).
+  Primitives : `frontend/src/shared/session/` et `.claude/rules/frontend.md`.
+- *Preuves* : NR `MemberWriteSweepTest` (routeur confronté à une table nominative, deux sens) et
+  `MemberReadsAreSideEffectFreeTest`, spec e2e `frontend/tests/e2e/member-read-only.spec.ts` (aucun 403,
+  aucune écriture ni appel sortant au montage, aucun lien personnel dans le DOM), cf.
+  [`blocking-tests.md`](../../docs/testing/blocking-tests.md).
+- *Reste ouvert* → roadmap : « Réessayer » de l'écran d'indisponibilité du moteur encore offert au Membre ;
+  mémoire du job de couverture.
 → [`rgpd.md`](../../docs/security/rgpd.md) §2 (purge différée, win-back, demandes d'adhésion) ·
 [`backend-controllers.md`](../../backend/docs/backend-controllers.md) (approbation de club, `/api/me`) ·
 [`commands.md`](../../backend/docs/commands.md) (`purge-erased`, `erasure-remind`) ·
 NR `MembershipRequestNotificationTest` ([`blocking-tests.md`](../../docs/testing/blocking-tests.md))
 
 → [`TENANT.md`](../../backend/docs/TENANT.md) (couche rôle) · [`superadmin-auth.md`](superadmin-auth.md)
-(porte d'activation) · roadmap : P4-76 (polish UX Membre), parking « invitations email »
+(porte d'activation) · roadmap : parking « invitations email »
 
 ### 1.13 Capacités de version exposées par le serveur
 
@@ -871,6 +897,7 @@ le front lit, il ne re-dérive plus les règles de refus, repli fail-closed si l
 
 | Date | Id | Sujet | Documenté dans |
 |------|----|-------|----------------|
+| 2026-11-03 | P4-76 | **Un Membre lit tout et ne modifie rien : écrans en consultation, lectures ouvertes côté serveur.** Exemple : Paul, Membre, ouvre le Planning, les Contraintes et les Doléances : il lit tout, voit les propositions de la ligue sans « Appliquer », l'état de réponse de chaque coach sans son lien personnel, et aucun bouton « Générer » ni « Enregistrer » ne lui est offert ; s'il forçait l'appel, le serveur répondrait 403. Absorbe la ligne roadmap « les boutons d'écriture restent visibles » ; reste ouvert : « Réessayer » de l'indisponibilité du moteur, mémoire du job de couverture | §1.12 ci-dessus ; `backend/docs/backend-controllers.md` ; `.claude/rules/frontend.md` |
 | 2026-11-03 | P4-379 | **Demandes d'adhésion : les gestionnaires actifs sont prévenus, un club sans gestionnaire ferme.** Exemple : une personne demande à rejoindre un club, ses deux gestionnaires reçoivent chacun un mail, son Membre aucun ; le dernier gestionnaire s'efface alors que deux Membres restent : le club ferme à 30 jours, les Membres sont prévenus à J0 et J-7. Absorbe la ligne roadmap « aucun mail aux gestionnaires » ; reste ouvert : console des purges retenues, audit des changements de rôle. Snapshot OpenAPI recalé (`closingOn`, champs de capacité de version, code `team_already_trains_that_day`) | §1.12 ci-dessus ; `docs/security/rgpd.md` ; `backend/docs/backend-controllers.md` |
 | 2026-11-03 | M10 (ex-P4-367, envoi aux coachs) | **Le gestionnaire envoie aux coachs les conflits de personne qui les concernent.** Bouton « Envoyer aux coachs » sur l'onglet Conflits (`POST /api/fixtures/conflicts/mail-coaches`, `ConflictCoachMailController`) : chaque coach reçoit, à titre indicatif, SES conflits de personne sur un match (`MATCH_MATCH`, `MATCH_TRAINING`, `MATCH_COACH_UNAVAILABLE`, datés d'aujourd'hui ou à venir), en tuiles HTML ; destinataires = la personne et les coachs principaux de chaque équipe du côté (groupe mutualisé compris), jamais les adjoints. Exemple : Karim, principal U15, joue en SM2 et est en double un samedi → lui et Emma (principale SM2) reçoivent la tuile ; Léa, qui avait reçu une liste lundi et dont le conflit disparaît vendredi, reçoit « plus aucun conflit » dès qu'elle a une adresse. Mémoire du dernier envoi par saison (`conflict_mailing`), règle unique sous verrou Redis par club ; coach sans adresse sauté et nommé ; plafond `conflict_mail_send` 200 e-mails / 24 h par club ; démo refusée 403 ; Membre voit la ligne « Envoyé le … » sans le bouton. Opt-out = le club retire l'adresse du coach (`docs/security/rgpd.md` §2). Moteur de calcul unique `ConflictCoachMailing` (GET et POST), fil radar partagé `ConflictFeedAssembler`, fragment HTML enveloppé par `EmailSignatureListener`. **Renoncements nommés** : pas de contact du club adverse ni de match extérieur « à appeler » envoyé au coach (repris en roadmap), pas de conflits entraînement × entraînement dans le mail, pas de suivi ni de réponse du coach. **Limites déclarées** : le verrou ne protège que deux envois simultanés (deux clics espacés envoient deux fois la liste à jour) ; mails en file puis échec de l'upsert = 500, un nouveau clic renvoie ; « envoyé » = mis en file. | [`module-matchs-radar-et-placement.md`](module-matchs-radar-et-placement.md) §2 · [`backend-controllers.md`](../../backend/docs/backend-controllers.md) · [`rgpd.md`](../../docs/security/rgpd.md) · [`test-coverage-map.md`](../../docs/testing/test-coverage-map.md) |
 | 2026-11-03 | P4-328, P4-423 (part gardes) | **Une séance par jour.** Les cinq gestes refusent une seconde séance le même jour (`team_already_trains_that_day`, `TeamAlreadyTrainsThatDayException`) ; le Récap de saison bloque (`SecondSessionSameDayDetector`, via `GenerationBlockersGuard::blockersFor`) ; `/api/constraints/validate` sert `doubledReservationIds`, le Récap nomme les lignes « Deux séances le {jour} » et se rafraîchit au retrait d'une réservation ; l'alerte de chevauchement (`PreSolvePreventionWarnings`) se tait sur un jour bloqué et dit « a deux séances » quand un verrou est en cause. Seed du club de test corrigé (SM2 sans séance solo le jeudi à la reprise du 24 août) : base de dev à recréer, `make -C backend db-empty && make -C backend seed-bccl`. | [`backend-controllers.md`](../../backend/docs/backend-controllers.md) · [`mutualisation.md`](mutualisation.md) · [`frontend-wizard.md`](../../frontend/docs/frontend-wizard.md) · [`blocking-tests.md`](../../docs/testing/blocking-tests.md) |

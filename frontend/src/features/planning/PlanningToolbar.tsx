@@ -7,6 +7,7 @@ import { DeleteConfirm } from "@/shared/components/ui/delete-confirm";
 import { SegmentedControl } from "@/shared/components/ui/segmented-control";
 import { Select } from "@/shared/components/ui/select";
 import { cn } from "@/shared/lib/utils";
+import { useCanManage } from "@/shared/session/queries";
 
 import { STATUS_LABELS, type Schedule } from "./api";
 import { isSeasonPlanType, liveContextScheduleId, loadedVersionOf, overlayVersionLabels, representativeVersion, versionLabelOf, versionLabels, visibleOverlayVersions, visibleSeasonPlans } from "./lib/versions";
@@ -91,6 +92,8 @@ export function PlanningToolbar({
   embedded = false,
   scopePlanId = null,
 }: PlanningToolbarProps) {
+  // Un Membre lit, change de vue, choisit une version et exporte — aucun geste de cycle de vie.
+  const canManage = useCanManage();
   const selected = schedules.find((s) => s.id === selectedScheduleId) ?? null;
   // ADR-0002 : « en vigueur » = le plan de CETTE version la pointe — vrai pour le
   // calendrier de la saison comme pour l'overlay d'une période, dont le pointeur vit
@@ -192,7 +195,7 @@ export function PlanningToolbar({
             ))}
           </Select>
         ) : null}
-        {embedded && canDelete ? (
+        {canManage && embedded && canDelete ? (
           <Button size="sm" variant="ghost" className="px-2 text-destructive" disabled={actionBusy} onClick={() => setConfirmDelete(true)} aria-label={PLANNING_TEXTS.deleteVersion} title={PLANNING_TEXTS.deleteVersion}>
             <Trash2 className="size-4" />
           </Button>
@@ -203,7 +206,7 @@ export function PlanningToolbar({
             {!isSeasonPlanType(selected.planType) ? <StatusPill variant="accent">{PLANNING_TEXTS.periodBadge}</StatusPill> : null}
           </span>
         ) : null}
-        {embedded && (canValidate || validateNeedsLoad) && !isChosen ? (
+        {canManage && embedded && (canValidate || validateNeedsLoad) && !isChosen ? (
           // Choosing a version the plan ALREADY points at is a no-op: the status
           // used to hide this (le statut « validé » n'était pas COMPLETED) ; seul le
           // pointeur dit « en vigueur » désormais, donc on le lui demande directement.
@@ -223,7 +226,7 @@ export function PlanningToolbar({
             `!embedded`. Valider (embedded) et Rouvrir (standalone) sont les deux sorties
             symétriques — Valider atterrit sur /planning, Rouvrir ramène au wizard étape
             Génération. Dans le wizard, une version en vigueur ne montre donc plus Rouvrir. */}
-        {!embedded && isChosen ? (
+        {canManage && !embedded && isChosen ? (
           <Button size="sm" variant="outline" disabled={actionBusy} onClick={onReopen}>
             <LockOpen className="size-4" />
             {PLANNING_TEXTS.reopen}
@@ -245,7 +248,7 @@ export function PlanningToolbar({
         {/* Régénérer est un geste de TRAVAIL : borné à `embedded` — /planning autonome est
             l'écran de la version en vigueur, il ne régénère pas (la génération vit dans
             l'étape Génération du wizard). */}
-        {!embedded || isChosen ? null : (
+        {!canManage || !embedded || isChosen ? null : (
           // Disabled during a "Charger" restore too (actionBusy) — but the busy
           // LABEL/spinner keys only on isGenerating, so a restore (no solve) does
           // not show a misleading "Génération…".
@@ -264,7 +267,7 @@ export function PlanningToolbar({
             <span className="text-xs text-muted-foreground">{null !== loadedLabel ? PLANNING_TEXTS.regenerateKeepsLoadedLocks(loadedLabel) : PLANNING_TEXTS.regenerateKeepsLocks}</span>
           </>
         )}
-        {canRegenerateFrom || null !== loadBlockedReason ? (
+        {canManage && (canRegenerateFrom || null !== loadBlockedReason) ? (
           <Button
             size="sm"
             variant="ghost"
@@ -282,7 +285,7 @@ export function PlanningToolbar({
             « Charger cette version » de la saison ci-dessus, mais il POSE les verrous de cette
             version comme données en cours (il ne restaure aucune structure). Mutuellement exclusif :
             canRegenerateFrom est socle-only, canLoadLocks est période-only. */}
-        {canLoadLocks ? (
+        {canManage && canLoadLocks ? (
           <Button
             size="sm"
             variant="ghost"

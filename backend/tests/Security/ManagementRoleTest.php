@@ -51,8 +51,9 @@ final class ManagementRoleTest extends WebTestCase
             // Lot B: FFBB club-info write (same management surface as appearance).
             // Lot C: FFBB import (fills institutional data — management-only).
             ['POST', '/api/club/ffbb-import'],
-            // SEC-12: the pre-solve constraint check is part of the cockpit flow.
-            ['POST', '/api/constraints/validate'],
+            // `POST /api/constraints/validate` n'est plus ici : le contrôle avant génération est une
+            // LECTURE ouverte au Membre (un Membre lit tout) — ValidateConstraintsTest::testAMemberGetsTheSameVerdict
+            // et MemberReadsAreSideEffectFreeTest (aucun effet de bord).
             // The manual-edit lock action carries its own guard call.
             ['POST', '/api/schedule-slots/' . self::DUMMY_ID . '/manual-edit/lock'],
             // Club branding writes (same surface as /club/appearance).

@@ -15,6 +15,12 @@ vi.mock("./queries", () => ({
   useAttachVenueLabel: () => ({ mutate: vi.fn(), isPending: false }),
   useCompetitions: () => ({ data: [] }),
 }));
+// Chantier Membre (PR 2) : `useCanManage` piloté par cas (gestionnaire par défaut) ; le reste de la session reste réel.
+const session = vi.hoisted(() => ({ canManage: true }));
+vi.mock("@/shared/session/queries", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/shared/session/queries")>()),
+  useCanManage: () => session.canManage,
+}));
 
 const team = { id: "team-1", name: "SM1", sportCategoryId: "c", level: null, gender: null, priorityTierId: 1, tierOrder: 0 } as unknown as Team;
 const venue = { id: "venue-1", name: "Alpha", color: null, externalLabels: [] } as unknown as Venue;
@@ -135,6 +141,22 @@ describe("ReviewQueue — file d'import = acquittement, pas validation (M3, BCCL
     await user.click(screen.getByRole("button", { name: /SM1/ }));
     expect(screen.getByRole("button", { name: "Tout marquer comme vu" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Tout valider" })).not.toBeInTheDocument();
+  });
+
+  /**
+   * Chantier Membre (PR 2) : la file d'import se LIT par un Membre (nouveautés, écarts) mais il
+   * n'acquitte rien — aucun « Tout marquer comme vu ». Témoin : le cas précédent, même décor.
+   */
+  it("Membre : lit la file, sans « Tout marquer comme vu »", async () => {
+    session.canManage = false;
+    try {
+      const user = userEvent.setup();
+      renderWith([newFixture, outOfSync]);
+      await user.click(screen.getByRole("button", { name: /SM1/ }));
+      expect(screen.queryByRole("button", { name: "Tout marquer comme vu" })).not.toBeInTheDocument();
+    } finally {
+      session.canManage = true;
+    }
   });
 });
 

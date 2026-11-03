@@ -4,7 +4,7 @@ import { AlertTriangle, CalendarRange, GitCompare, Lock, Pencil, Sparkles, Star,
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 
-import { useMe, useWorkingSeason } from "@/shared/session/queries";
+import { useCanManage, useMe, useWorkingSeason } from "@/shared/session/queries";
 import { FeedbackButton } from "@/shared/feedback/FeedbackButton";
 // Same ["priority_tiers"] query key as the matches/wizard hooks — one cache entry.
 import { usePriorityTiers } from "@/features/matches/queries";
@@ -346,6 +346,10 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
   const showGenerationWaiting = isGenerating || scopeInFlight;
   // Read-only = its plan points at it: this version IS the calendar in force.
   const isReadOnly = true === selectedSchedule?.isChosen;
+  // Un Membre lit le planning (grille, fiche, diagnostics, export) : aucun geste de retouche ni de
+  // gestion, quelle que soit la version affichée.
+  const canManage = useCanManage();
+  const gesturesReadOnly = isReadOnly || !canManage;
   // Distinct de « lecture seule » : une version non chargée n'est pas le calendrier en vigueur, et
   // elle garde ses diagnostics. Le serveur décide ; capacité absente = aucun motif, il refusera seul.
   const notLoaded = false === selectedSchedule?.capabilities?.canEdit && "not_loaded_version" === selectedSchedule.capabilities.editBlockedReason;
@@ -546,7 +550,7 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
     chooseTakePlace, chooseSwap, chooseMutualize, closeDropMenu, confirmSwap, retrySwapDryRun, setSwapDialog, doMutualizeAtCase, setMutualizeAtCaseDialog,
     swapMutation, mutualizeAtCaseMutation,
     moveMutation, dryRunMutation, placeMutation,
-  } = useRetouchGestures(slots, validScheduleId, selectedSlotId, viewMode, isReadOnly || notLoaded, isFailed, closuresResolved, closedWindows, gridSlots, driftEntries, teamNameOf, setSelectedSlotId, highlightViolations, clearHighlight);
+  } = useRetouchGestures(slots, validScheduleId, selectedSlotId, viewMode, gesturesReadOnly || notLoaded, isFailed, closuresResolved, closedWindows, gridSlots, driftEntries, teamNameOf, setSelectedSlotId, highlightViolations, clearHighlight);
   // `busy` DESCEND ici (P4-255 PR 2) : il lit les mutations retournées par le hook, plus le verrou.
   const busy = lockMutation.isPending || moveMutation.isPending || dryRunMutation.isPending || placeMutation.isPending || removePending || swapMutation.isPending;
 
@@ -818,7 +822,7 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
               {/* Pas de plan résolu = rien à renommer : proposer le geste enverrait
                   l'écriture sur un id qu'on n'a pas (c'est ce qui la faisait retomber
                   sur le plan de saison). */}
-              {null !== displayedPlan && workingSeason && !workingSeason.isReadonly ? (
+              {canManage && null !== displayedPlan && workingSeason && !workingSeason.isReadonly ? (
                 <Button size="sm" variant="ghost" className="px-2" aria-label={PLANNING_TEXTS.renamePlanning} title={PLANNING_TEXTS.renamePlanning} onClick={() => setEditingPlanningName(displayedPlan.name)}>
                   <Pencil className="size-4" />
                 </Button>
@@ -826,7 +830,7 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
               {/* PR2 — « Modifier les dates » d'une FERMETURE : jamais embarqué (le geste vit au
                   cockpit / page autonome), jamais en saison archivée ni pendant une génération en vol ;
                   texte complet (nom accessible = la fermeture). Piloté par `windowEditable`/`windowLockedReason`. */}
-              {!embedded && null !== displayedClosurePlan && workingSeason && !workingSeason.isReadonly && !showGenerationWaiting && (true === displayedClosurePlan.windowEditable || Boolean(displayedClosurePlan.windowLockedReason)) ? (
+              {canManage && !embedded && null !== displayedClosurePlan && workingSeason && !workingSeason.isReadonly && !showGenerationWaiting && (true === displayedClosurePlan.windowEditable || Boolean(displayedClosurePlan.windowLockedReason)) ? (
                 true === displayedClosurePlan.windowEditable ? (
                   <Button size="sm" variant="ghost" className="px-2" onClick={() => setDatesPlan(displayedClosurePlan)}>
                     <CalendarRange className="size-4" />
@@ -1052,7 +1056,7 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
 
           {/* P2-30 (geste 3) — les équipes à la dérive : un clic ARME le placement (mode cible).
               COMPLETED + modifiable seulement. */}
-          {!showGenerationWaiting && !isReadOnly ? (
+          {!showGenerationWaiting && !gesturesReadOnly ? (
             <DriftBanner
               entries={driftEntries}
               teamName={teamNameOf}
@@ -1066,7 +1070,7 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
               qui FIGE le placé et ne place que les trous. Outil d'appoint — « Régénérer » (solve
               complet) reste dans la barre d'outils. La V+1 est sélectionnée à la réussite ; les
               refus (409/422) sont servis et affichés par le hook. */}
-          {!showGenerationWaiting && !isReadOnly && null !== slotLayerId && driftEntries.length > 0 ? (
+          {!showGenerationWaiting && !gesturesReadOnly && null !== slotLayerId && driftEntries.length > 0 ? (
             <div className="mb-4 flex flex-wrap items-center gap-2">
               <Button
                 size="sm"
@@ -1280,7 +1284,7 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
                         </button>
                       ) : null}
                       {/* P2-30 (geste 4) — annuler le dernier geste (profondeur 1, session). */}
-                      {null !== undo && !isReadOnly && !notLoaded ? (
+                      {null !== undo && !gesturesReadOnly && !notLoaded ? (
                         <button
                           type="button"
                           onClick={runUndo}
@@ -1306,7 +1310,7 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
                             selectedSlotId={selectedSlotId}
                             onSelectSlot={setSelectedSlotId}
                             highlightSlotIds={highlightSlotIds}
-                            onToggleLock={isReadOnly || isFailed || notLoaded ? undefined : requestToggleLock}
+                            onToggleLock={gesturesReadOnly || isFailed || notLoaded ? undefined : requestToggleLock}
                             lockLens={lockLens}
                             targetMode={gridTargetMode}
                             onPickTarget={onPickTarget}
@@ -1320,7 +1324,7 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
                           highlightSlotIds={highlightSlotIds}
                           // Lecture seule (validé) ou FAILED (pseudo-créneaux sans existence
                           // serveur) → pas de bascule : le cadenas reste indicateur passif.
-                          onToggleLock={isReadOnly || isFailed || notLoaded ? undefined : requestToggleLock}
+                          onToggleLock={gesturesReadOnly || isFailed || notLoaded ? undefined : requestToggleLock}
                           lockLens={lockLens}
                           // P2-30 — mode cible click-click (jamais sur un planning lecture seule/FAILED).
                           targetMode={gridTargetMode}
@@ -1389,7 +1393,7 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
                           moveState={"blocked" === removeState.status ? removeState : null !== selectedSlotBlock ? moveGroupState : moveState}
                           // Un pseudo-créneau de réservation (planning FAILED) n'existe pas
                           // côté serveur : déplacer/verrouiller le viserait dans le vide.
-                          readOnly={isReadOnly || isFailed}
+                          readOnly={gesturesReadOnly || isFailed}
                           gesturesBlockedReason={gesturesBlockedReason}
                           // P2-30 · PR-6 : ce créneau est-il la source du mode cible armé (simple ou groupe) ?
                           armed={

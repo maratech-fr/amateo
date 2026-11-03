@@ -17,7 +17,9 @@ import { TeamSelect } from "@/shared/components/ui/team-select";
 import { VenueSelect } from "@/shared/components/ui/venue-select";
 import { DAYS, dayLabelLong } from "@/shared/lib/days";
 import { readFailed } from "@/shared/lib/readState";
+import { ManagerOnly } from "@/shared/session/ManagerOnly";
 import { useMe } from "@/shared/session/queries";
+import { ReadOnlyNotice } from "@/shared/session/ReadOnlyNotice";
 
 import type { ClubLeagueWindow, ClubLeagueWindowInput, Coach, LeagueWindowLevel, MatchConstraint, MatchConstraintInput, MatchRuleType, PriorityTier, Team, Venue } from "./api";
 import { clockLabel, clubRuleLabel } from "./lib/clubRuleLabel";
@@ -81,6 +83,8 @@ export function ConstraintsPage() {
 
   return (
     <div className="flex flex-col gap-3">
+      {/* Un Membre lit les règles de matchs ; aucun ajout, aucune modification. */}
+      <ReadOnlyNotice />
       <AccordionSection {...sectionProps("ligue")} title="Ligue">
         <LeagueSection />
       </AccordionSection>
@@ -159,7 +163,9 @@ function LeagueSection() {
         </div>
       )}
 
-      <AddLeagueWindowRow />
+      <ManagerOnly>
+        <AddLeagueWindowRow />
+      </ManagerOnly>
     </div>
   );
 }
@@ -273,12 +279,14 @@ function LeagueWindowRow({ window }: { window: ClubLeagueWindow }) {
           <span className="text-sm text-foreground">{leagueWindowSummary(window)}</span>
           <div className="ml-auto flex items-center gap-2">
             {badgePill(window.badge)}
+            <ManagerOnly>
             <Button variant="ghost" size="icon" className="size-8" aria-label={`Modifier la fenêtre d'accès : ${leagueWindowSummary(window)}`} title="Modifier" onClick={openEdit}>
               <Pencil className="size-3.5" />
             </Button>
             <Button variant="ghost" size="icon" className="size-8 text-destructive" aria-label={`Supprimer la fenêtre d'accès : ${leagueWindowSummary(window)}`} title="Supprimer" disabled={remove.isPending} onClick={() => setConfirmDelete(true)}>
               <Trash2 className="size-3.5" />
             </Button>
+            </ManagerOnly>
           </div>
         </>
       )}
@@ -401,7 +409,9 @@ function ClubSection({ weekendAlternates }: { weekendAlternates: boolean }) {
         </div>
       )}
 
-      <AddClubRuleRow />
+      <ManagerOnly>
+        <AddClubRuleRow />
+      </ManagerOnly>
     </div>
   );
 }
@@ -510,12 +520,14 @@ function ClubRuleRow({ rule, alerts, weekendAlternates }: { rule: MatchConstrain
         <>
           <span className="text-sm text-foreground">{clubRuleSummary(rule)}</span>
           <div className="ml-auto flex items-center gap-2">
+            <ManagerOnly>
             <Button variant="ghost" size="icon" className="size-8" aria-label={`Modifier la règle de club : ${clubRuleSummary(rule)}`} title="Modifier" onClick={openEdit}>
               <Pencil className="size-3.5" />
             </Button>
             <Button variant="ghost" size="icon" className="size-8 text-destructive" aria-label={`Supprimer la règle de club : ${clubRuleSummary(rule)}`} title="Supprimer" disabled={remove.isPending} onClick={() => setConfirmDelete(true)}>
               <Trash2 className="size-3.5" />
             </Button>
+            </ManagerOnly>
           </div>
         </>
       )}
@@ -621,7 +633,9 @@ function TeamsSection() {
         </div>
       )}
 
-      <AddTeamVenueBanRow teams={teams.data} venues={venues.data} tiers={tiers.data} />
+      <ManagerOnly>
+        <AddTeamVenueBanRow teams={teams.data} venues={venues.data} tiers={tiers.data} />
+      </ManagerOnly>
     </div>
   );
 }
@@ -636,9 +650,11 @@ function TeamVenueBanRow({ ban, teamName, venueName }: { ban: MatchConstraint; t
       <span className="text-sm text-foreground">
         <strong>{teamName}</strong> ne joue jamais à <strong>{venueName}</strong>
       </span>
-      <Button variant="outline" size="sm" aria-label={`Supprimer la règle : ${teamName} ne joue jamais à ${venueName}`} className="ml-auto" disabled={remove.isPending} onClick={() => setConfirmDelete(true)}>
-        <Trash2 className="size-3.5" />
-      </Button>
+      <ManagerOnly>
+        <Button variant="outline" size="sm" aria-label={`Supprimer la règle : ${teamName} ne joue jamais à ${venueName}`} className="ml-auto" disabled={remove.isPending} onClick={() => setConfirmDelete(true)}>
+          <Trash2 className="size-3.5" />
+        </Button>
+      </ManagerOnly>
       <ConfirmDialog
         open={confirmDelete}
         title="Lever cette interdiction ?"
@@ -782,7 +798,9 @@ function CoachsSection() {
         </div>
       )}
 
-      <AddCoachUnavailabilityRow coaches={coaches.data} />
+      <ManagerOnly>
+        <AddCoachUnavailabilityRow coaches={coaches.data} />
+      </ManagerOnly>
     </div>
   );
 }
@@ -890,12 +908,14 @@ function CoachUnavailabilityRow({ rule, coaches, coachName }: { rule: MatchConst
         <>
           <span className="text-sm text-foreground">{coachUnavailabilitySummary(rule, coachName)}</span>
           <div className="ml-auto flex items-center gap-2">
+            <ManagerOnly>
             <Button variant="ghost" size="icon" className="size-8" aria-label={`Modifier l'indisponibilité de coach : ${coachUnavailabilitySummary(rule, coachName)}`} title="Modifier" onClick={openEdit}>
               <Pencil className="size-3.5" />
             </Button>
             <Button variant="ghost" size="icon" className="size-8 text-destructive" aria-label={`Supprimer l'indisponibilité de coach : ${coachUnavailabilitySummary(rule, coachName)}`} title="Supprimer" disabled={remove.isPending} onClick={() => setConfirmDelete(true)}>
               <Trash2 className="size-3.5" />
             </Button>
+            </ManagerOnly>
           </div>
         </>
       )}

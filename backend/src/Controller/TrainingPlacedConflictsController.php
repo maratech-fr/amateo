@@ -6,7 +6,6 @@ namespace App\Controller;
 
 use App\Entity\Schedule;
 use App\Entity\Season;
-use App\Service\ManagementAccessGuard;
 use App\Service\PlacedSessionPersonConflictDetector;
 use App\Service\SeasonResolver;
 use Doctrine\ORM\EntityManagerInterface;
@@ -29,7 +28,8 @@ use Symfony\Component\Uid\Uuid;
  *
  * Tenant : tout est chargé via les repositories mappés, donc les filtres Doctrine
  * club+saison s'appliquent (+ RLS) — un club ne voit jamais que ses propres conflits
- * (gardé par TrainingPlacedConflictsApiTest). Réservé aux gestionnaires (SEC-07).
+ * (gardé par TrainingPlacedConflictsApiTest). Lecture pure, ouverte à tout membre actif du club :
+ * un Membre consulte le radar (MemberReadsAreSideEffectFreeTest).
  */
 final class TrainingPlacedConflictsController extends AbstractController
 {
@@ -39,15 +39,12 @@ final class TrainingPlacedConflictsController extends AbstractController
         private readonly RequestStack $requestStack,
         private readonly SeasonResolver $seasonResolver,
         private readonly PlacedSessionPersonConflictDetector $detector,
-        private readonly ManagementAccessGuard $managementAccessGuard,
         private readonly EntityManagerInterface $entityManager,
     ) {}
 
     #[Route('/api/training/placed-conflicts', name: 'api_training_placed_conflicts', methods: ['GET'])]
     public function conflicts(): JsonResponse
     {
-        $this->managementAccessGuard->assertManager(); // SEC-07 first, so 403 wins.
-
         $clubId = $this->resolveCurrentClubId($this->requestStack);
         if (null === $clubId) {
             return $this->json(['error' => 'No club in context.'], Response::HTTP_BAD_REQUEST);

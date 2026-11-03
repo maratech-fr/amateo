@@ -16,6 +16,7 @@ import { toast } from "@/shared/stores/toastStore";
 import type { CalendarEntry, PublicHoliday, RedateEffect, RedateEffectKind, SchedulePlan, SchoolHoliday } from "./api";
 import { PreviewTokenStaleError, WindowAlreadyPlannedError } from "./api";
 import { errorMessage } from "@/shared/lib/errorMessage";
+import { ManagerOnly } from "@/shared/session/ManagerOnly";
 import { useWorkingSeason } from "@/shared/session/queries";
 
 import { clampRangeToSeason, frDateShort, groupCoverageSlots, periodWeeksToAdjust, todayISO, weeksCovering } from "./lib/date";
@@ -267,19 +268,24 @@ function DayList({ entries, holiday, publicHoliday, venueUnavailabilities, onCre
                         {COCKPIT_TEXTS.consult}
                       </Button>
                     ) : (
-                      <Button variant="outline" size="sm" disabled={adjustLocked || createPeriodPlan.isPending} disabledReason={adjustLocked ? lockTitle : undefined} onClick={() => requestAdapt(planEntry)}>
-                        {COCKPIT_TEXTS.adjust}
-                      </Button>
+                      <ManagerOnly>
+                        <Button variant="outline" size="sm" disabled={adjustLocked || createPeriodPlan.isPending} disabledReason={adjustLocked ? lockTitle : undefined} onClick={() => requestAdapt(planEntry)}>
+                          {COCKPIT_TEXTS.adjust}
+                        </Button>
+                      </ManagerOnly>
                     )
                   ) : adaptable ? (
-                    <Button variant="outline" size="sm" disabled={!socleValidated || createPeriodPlan.isPending} disabledReason={!socleValidated ? lockTitle : undefined} onClick={() => requestAdapt(entry)}>
-                      {COCKPIT_TEXTS.adapt}
-                    </Button>
+                    <ManagerOnly>
+                      <Button variant="outline" size="sm" disabled={!socleValidated || createPeriodPlan.isPending} disabledReason={!socleValidated ? lockTitle : undefined} onClick={() => requestAdapt(entry)}>
+                        {COCKPIT_TEXTS.adapt}
+                      </Button>
+                    </ManagerOnly>
                   ) : null}
                   {/* « Modifier les dates » : rendu SEULEMENT si le serveur dit la période
                       re-datable — « d'un bloc » (`redatable`, D3 v1) OU découpée (`redateNeedsPreview`,
                       D3 v2 : le mode affichera alors l'aperçu des effets avant confirmation). Absent
                       sinon (jamais désactivé — aucun levier n'existe, Supprimer est à côté). */}
+                  <ManagerOnly>
                   {entry.redatable || entry.redateNeedsPreview ? (
                     <button
                       type="button"
@@ -299,6 +305,7 @@ function DayList({ entries, holiday, publicHoliday, venueUnavailabilities, onCre
                   >
                     <Trash2 className="size-4" />
                   </button>
+                  </ManagerOnly>
                 </span>
               </li>
             );
@@ -328,6 +335,7 @@ function DayList({ entries, holiday, publicHoliday, venueUnavailabilities, onCre
         onCancel={() => setToDelete(null)}
       />
 
+      <ManagerOnly>
       <div className="grid grid-cols-1 gap-2">
         <Button variant="outline" onClick={() => onCreate("event")}>
           {COCKPIT_TEXTS.eventCta}
@@ -342,6 +350,7 @@ function DayList({ entries, holiday, publicHoliday, venueUnavailabilities, onCre
           {COCKPIT_TEXTS.createPeriodCta}
         </Button>
       </div>
+      </ManagerOnly>
 
       <div className="flex justify-end">
         <Button variant="ghost" onClick={onClose}>
@@ -516,8 +525,8 @@ function HolidayBlock({ holiday, entries, onClose }: { holiday: SchoolHoliday; e
             const child = group.child;
             if (null === child) {
               return (
+                <ManagerOnly key={group.key}>
                 <Button
-                  key={group.key}
                   variant="outline"
                   size="sm"
                   disabled={createWeekChildren.isPending || !socleValidated}
@@ -526,6 +535,7 @@ function HolidayBlock({ holiday, entries, onClose }: { holiday: SchoolHoliday; e
                 >
                   {`+ sem. du ${frDateShort(group.startDate)}`}
                 </Button>
+                </ManagerOnly>
               );
             }
             const chosen = chosenOfChild(child.id);
@@ -549,6 +559,7 @@ function HolidayBlock({ holiday, entries, onClose }: { holiday: SchoolHoliday; e
                 </Button>
                 {/* Suppression de L'enfant (segment) — dans l'encart, le plan est attaché aux
                     vacances (fondateur 2026-07-24 ; la ligne séparée a disparu). */}
+                <ManagerOnly>
                 <button
                   type="button"
                   aria-label={`Supprimer la semaine du ${frDateShort(child.startDate)}`}
@@ -558,6 +569,7 @@ function HolidayBlock({ holiday, entries, onClose }: { holiday: SchoolHoliday; e
                 >
                   <Trash2 className="size-4" />
                 </button>
+                </ManagerOnly>
               </span>
             );
           })}
@@ -569,11 +581,13 @@ function HolidayBlock({ holiday, entries, onClose }: { holiday: SchoolHoliday; e
           </Button>
         </div>
       ) : entry ? (
+        <ManagerOnly>
         <div className="flex justify-end">
           <Button variant="outline" size="sm" disabled={!socleValidated} disabledReason={!socleValidated ? lockTitle : undefined} onClick={() => requestAdapt(entry)}>
             {COCKPIT_TEXTS.adapt}
           </Button>
         </div>
+        </ManagerOnly>
       ) : null !== workingSeason && null === clamped ? (
         // Fenêtre entièrement disjointe de la saison (fait VÉRIFIÉ — la saison est
         // chargée) : un bouton mort sans explication serait pire que l'ancien
@@ -581,6 +595,7 @@ function HolidayBlock({ holiday, entries, onClose }: { holiday: SchoolHoliday; e
         // bref, ci-dessous.
         <EmptyHint className="text-xs">{COCKPIT_TEXTS.outsideSeasonNothingToAdapt}</EmptyHint>
       ) : (
+        <ManagerOnly>
         <div className="flex justify-end">
           <Button
             variant="outline"
@@ -615,6 +630,7 @@ function HolidayBlock({ holiday, entries, onClose }: { holiday: SchoolHoliday; e
             {COCKPIT_TEXTS.adapt}
           </Button>
         </div>
+        </ManagerOnly>
       )}
 
       {/* Refus de chevauchement (P2-38) hors picker (adapter un bloc / créer une semaine) : la

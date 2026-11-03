@@ -16,7 +16,9 @@ vi.mock("../api", () => ({
 }));
 
 const workingSeason = vi.hoisted(() => ({ value: { isReadonly: false } as { isReadonly: boolean } | null }));
-vi.mock("@/shared/session/queries", () => ({ useWorkingSeason: () => workingSeason.value }));
+// Chantier Membre (PR 2) : `useCanManage` piloté par cas (gestionnaire par défaut).
+const session = vi.hoisted(() => ({ canManage: true }));
+vi.mock("@/shared/session/queries", () => ({ useWorkingSeason: () => workingSeason.value, useCanManage: () => session.canManage }));
 
 const RESOLVED = (over: Partial<Record<ImplicitRuleSetting["ruleKey"], Partial<ImplicitRuleSetting>>> = {}): ImplicitRuleSetting[] =>
   [
@@ -120,6 +122,27 @@ describe("ImplicitRulesPanel — règles de bien-être réglables", () => {
     expect(screen.getByRole("button", { name: `Objectif — ${REST_TITLE}` })).toBeDisabled();
     expect(screen.getByRole("combobox", { name: `Jours de repos minimum — ${REST_TITLE}` })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Réinitialiser" })).toBeDisabled();
+  });
+
+  /**
+   * Chantier Membre (PR 2) : un Membre LIT les règles de bien-être (intensité, réglage) sur une saison
+   * ouverte, mais rien ne se modifie — même verdict que la saison archivée (cas précédent, témoin),
+   * motif différent : le rôle, pas la saison.
+   */
+  it("Membre : règles lisibles, aucun réglage modifiable, aucun « Réinitialiser » actif", async () => {
+    session.canManage = false;
+    try {
+      vi.mocked(wizardApi.listImplicitRuleSettings).mockResolvedValue(RESOLVED({ coachRestDay: { isDefault: false } }));
+      renderPanel(<WellbeingRulesPanel />);
+      await screen.findByRole("group", { name: `Intensité — ${REST_TITLE}` });
+
+      expect(screen.getByRole("button", { name: `Objectif — ${REST_TITLE}` })).toBeDisabled();
+      expect(screen.getByRole("combobox", { name: `Jours de repos minimum — ${REST_TITLE}` })).toBeDisabled();
+      const reset = screen.queryByRole("button", { name: "Réinitialiser" });
+      expect(null === reset || reset.matches(":disabled")).toBe(true);
+    } finally {
+      session.canManage = true;
+    }
   });
 
   it("un échec de lecture le DIT (pas un panneau faussement vide)", async () => {

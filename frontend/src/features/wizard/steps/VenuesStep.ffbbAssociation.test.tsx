@@ -137,7 +137,7 @@ vi.mock("../queries", () => ({
 
 vi.mock("@/features/matches/queries", () => ({ useVenueMatchWindows: () => ({ data: [] }) }));
 vi.mock("@/features/matches/MatchWindowsEditor", () => ({ MatchWindowsEditor: () => null }));
-vi.mock("@/shared/session/queries", () => ({ useMe: () => ({ data: { club: { id: "club-1", postalCode: "69000" } } }), useWorkingSeason: () => undefined }));
+vi.mock("@/shared/session/queries", () => ({ useCanManage: () => true, useMe: () => ({ data: { club: { id: "club-1", postalCode: "69000" } } }), useWorkingSeason: () => undefined }));
 vi.mock("../parcImport/ParcImportModal", () => ({ ParcImportModal: () => null }));
 vi.mock("@/shared/lib/socle", () => ({ useSocleValidated: () => false }));
 vi.mock("@/shared/components/ui/venue-select", () => ({ VenueSelect: () => null }));

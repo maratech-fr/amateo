@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { Input } from "@/shared/components/ui/input";
+import { ReadOnlyFieldset } from "@/shared/components/ui/read-only-fieldset";
 import { Modal } from "@/shared/components/ui/modal";
 import { Spinner } from "@/shared/components/ui/spinner";
 import { Tabs, TabPanel } from "@/shared/components/ui/tabs";
+import { useCanManage } from "@/shared/session/queries";
 import { useTeamLinks } from "@/features/matches/queries";
 import { TeamLinksSection } from "@/features/matches/TeamLinksSection";
 
@@ -122,6 +124,8 @@ function TeamLinksTabs({
 function TeamCtcPanel({ teamId, teams }: { teamId: string; teams: Team[] }) {
   const fresh = teams.find((t) => t.id === teamId) ?? null;
   const update = useUpdateTeam();
+  // Un Membre lit l'entente, ne la modifie pas.
+  const canManage = useCanManage();
 
   const [checked, setChecked] = useState(() => true === fresh?.isCtc);
   const [partner, setPartner] = useState(() => fresh?.ctcPartner ?? "");
@@ -176,7 +180,7 @@ function TeamCtcPanel({ teamId, teams }: { teamId: string; teams: Team[] }) {
   };
 
   return (
-    <div className="flex flex-col gap-3">
+    <ReadOnlyFieldset readOnly={!canManage} className="flex flex-col gap-3">
       <p id="team-ctc-help" className="text-xs text-muted-foreground">
         {TEAMS_TEXTS.ctcHelp}
       </p>
@@ -202,6 +206,6 @@ function TeamCtcPanel({ teamId, teams }: { teamId: string; teams: Team[] }) {
           />
         </label>
       ) : null}
-    </div>
+    </ReadOnlyFieldset>
   );
 }

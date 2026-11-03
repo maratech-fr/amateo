@@ -15,7 +15,6 @@ use App\Repository\VenueRepository;
 use App\Service\CoachDoubleBookingDetector;
 use App\Service\ConstraintValidationService;
 use App\Service\GenerationBlockersGuard;
-use App\Service\ManagementAccessGuard;
 use App\Service\PayloadCapacityMirror;
 use App\Service\PeriodConstraintSelection;
 use App\Service\PeriodConstraintSelector;
@@ -49,7 +48,6 @@ final class ValidateConstraintsController extends AbstractController
         private readonly SeasonResolver $seasonResolver,
         private readonly ConstraintValidationService $validationService,
         private readonly RequestStack $requestStack,
-        private readonly ManagementAccessGuard $managementAccessGuard,
         private readonly TeamRepository $teamRepository,
         private readonly EntityManagerInterface $entityManager,
         private readonly SchedulePlanProvisioner $schedulePlanProvisioner,
@@ -67,10 +65,9 @@ final class ValidateConstraintsController extends AbstractController
     #[Route('/api/constraints/validate', name: 'api_constraints_validate', methods: ['POST'])]
     public function __invoke(): JsonResponse
     {
-        // SEC-12: the pre-solve gate is a management action (part of the cockpit /
-        // generation flow) — align it with the rest of the cockpit's role gate.
-        $this->managementAccessGuard->assertManager();
-
+        // Pure read (nothing is written, nothing is sent): open to every active member — a
+        // read-only Member sees the same pre-solve warnings as a manager
+        // (MemberReadsAreSideEffectFreeTest guards the "no side effect" claim).
         $request = $this->requestStack->getCurrentRequest();
         $clubId = $this->resolveCurrentClubId($this->requestStack);
         if (null === $clubId) {

@@ -158,3 +158,23 @@ describe("ReservationGrid — fermetures de gymnase", () => {
     expect(screen.queryByText(/Indispo/)).toBeNull();
   });
 });
+
+/**
+ * Chantier Membre (PR 2) : `ReservationGrid` gagne `readOnly` (patron `VenueAvailabilityGrid`) —
+ * un Membre VOIT les réservations (équipes, compteur) mais aucune case n'ouvre la réservation.
+ * Témoin : « laisse intact un créneau d'un jour ouvert » ci-dessus (la même case est un bouton actif).
+ */
+describe("ReservationGrid — lecture seule (Membre)", () => {
+  it("une case réservée se lit mais ne s'ouvre pas", async () => {
+    const onSelectSlot = vi.fn();
+    render(<ReservationGrid venue={venue} slots={[monday]} reservedTeams={new Map([["k", ["SM1"]]])} slotKeyOf={() => "k"} capacityOf={() => 2} onSelectSlot={onSelectSlot} readOnly />);
+
+    expect(screen.getAllByText(/SM1/).length).toBeGreaterThan(0);
+    const cell = screen.queryByRole("button", { name: /^Lun 20:00 · Gymnase A/ });
+    if (null !== cell) {
+      expect(cell).toBeDisabled();
+      await userEvent.click(cell);
+    }
+    expect(onSelectSlot).not.toHaveBeenCalled();
+  });
+});

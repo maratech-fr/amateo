@@ -17,6 +17,12 @@ vi.mock("./queries", () => ({
   useLeagueValidationOutlook: () => ({ data: outlookState.current }),
   useConfirmLeagueValidatedFixtures: () => ({ mutate: confirmMutate, isPending: false }),
 }));
+// Chantier Membre (PR 2) : `useCanManage` piloté par cas (gestionnaire par défaut) ; le reste de la session reste réel.
+const session = vi.hoisted(() => ({ canManage: true }));
+vi.mock("@/shared/session/queries", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/shared/session/queries")>()),
+  useCanManage: () => session.canManage,
+}));
 
 const EMPTY: LeagueValidationOutlook = { matured: [], toTreat: [], missingDeadline: [], totalValidatable: 0 };
 
@@ -84,5 +90,25 @@ describe("LeagueValidationBanner — trois états servis par l'échéance (lot O
     expect(screen.getByText(/sans échéance/)).toBeInTheDocument();
     expect(screen.getByText(/Régional U15/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Échéances de saisie/ })).toBeInTheDocument();
+  });
+
+  /**
+   * Chantier Membre (PR 2) : la validation ligue reste RÉSERVÉE côté serveur (`league-validation`
+   * balaie aussi les amicaux) — pour un Membre le bandeau n'existe pas, il ne propose jamais
+   * « Marquer « déjà dans FBI » » (témoin : le cas « championnats échus… » ci-dessus).
+   */
+  it("Membre : aucun bandeau de validation ligue", () => {
+    session.canManage = false;
+    try {
+      outlookState.current = {
+        ...EMPTY,
+        totalValidatable: 12,
+        matured: [{ competitionId: "c1", name: "PNM", deadline: "2026-11-10", deadlineSource: "club", maturedBy: "deadline", firstMatchDate: null, validatableCount: 12 }],
+      };
+      const { container } = renderWithProviders(<LeagueValidationBanner />);
+      expect(container).toBeEmptyDOMElement();
+    } finally {
+      session.canManage = true;
+    }
   });
 });

@@ -2,6 +2,10 @@ import { ArrowLeft, CalendarPlus, FileWarning, Info, Radar } from "lucide-react"
 import { useState } from "react";
 import { useNavigate } from "react-router";
 
+import { ReadOnlyFieldset } from "@/shared/components/ui/read-only-fieldset";
+import { ManagerOnly } from "@/shared/session/ManagerOnly";
+import { useCanManage } from "@/shared/session/queries";
+import { ReadOnlyNotice } from "@/shared/session/ReadOnlyNotice";
 import { StatusPill } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
 import { EmptyState } from "@/shared/components/ui/empty-hint";
@@ -33,6 +37,8 @@ export function ReconciliationView() {
   const teams = useTeams();
   const tiers = usePriorityTiers();
   const applyFfbb = useApplyFfbbRencontres();
+  // Un Membre lit les rencontres publiées : choix d'équipe en lecture, aucun « Intégrer ».
+  const canManage = useCanManage();
 
   // rencontreId → teamId chosen for creation (missing/"" = not created).
   const [creationTeam, setCreationTeam] = useState<Record<string, string>>({});
@@ -46,6 +52,7 @@ export function ReconciliationView() {
   if (null === payload) {
     return (
       <div className="flex flex-col gap-3">
+        <ReadOnlyNotice />
         <EmptyState
           icon={FileWarning}
           title="Rien à examiner"
@@ -89,6 +96,8 @@ export function ReconciliationView() {
 
   return (
     <div className="flex flex-col gap-4">
+      {/* Un Membre lit les rencontres publiées ; il n'intègre rien. */}
+      <ReadOnlyNotice />
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
         <h2 className="text-base font-semibold">Rencontres publiées par la FFBB</h2>
         {/* Provenance — le gestionnaire sait toujours d'où vient ce qu'il regarde. */}
@@ -111,6 +120,7 @@ export function ReconciliationView() {
       />
 
       {/* Présents à la FFBB, absents de l'app — proposés à la création (jamais imposés). */}
+      <ReadOnlyFieldset readOnly={!canManage}>
       <CreatableSection
         creatable={creatable}
         teams={teams.data ?? []}
@@ -118,15 +128,18 @@ export function ReconciliationView() {
         creationTeam={creationTeam}
         onPick={(rencontreId, teamId) => setCreationTeam((prev) => ({ ...prev, [rencontreId]: teamId }))}
       />
+      </ReadOnlyFieldset>
 
       {/* Barre sticky : l'ACTION d'écriture + l'abandon. */}
       <div className="sticky bottom-0 flex flex-wrap items-center justify-end gap-2 border-t border-border bg-card/95 py-3 backdrop-blur">
         <Button variant="ghost" size="sm" onClick={backToLoop}>
           Abandonner
         </Button>
-        <Button size="sm" disabled={applyFfbb.isPending || nothingToApply} onClick={integrate}>
-          {applyFfbb.isPending ? "Intégration…" : "Intégrer"}
-        </Button>
+        <ManagerOnly>
+          <Button size="sm" disabled={applyFfbb.isPending || nothingToApply} onClick={integrate}>
+            {applyFfbb.isPending ? "Intégration…" : "Intégrer"}
+          </Button>
+        </ManagerOnly>
       </div>
     </div>
   );

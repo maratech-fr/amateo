@@ -6,6 +6,7 @@ import { LoadErrorHint } from "@/shared/components/ui/load-error-hint";
 import { NoticeBanner } from "@/shared/components/ui/notice-banner";
 import { VenueSelect } from "@/shared/components/ui/venue-select";
 import { readFailed } from "@/shared/lib/readState";
+import { useCanManage } from "@/shared/session/queries";
 
 import type { PriorityTier, Team, Venue, VenueTrainingSlot } from "../api";
 import { completeBlockOnCase } from "../lib/blockOccupancy";
@@ -45,6 +46,8 @@ export function ReservationPanel({
   /** Gymnases désactivés pour la période : ATTEIGNABLES (pour retirer une réservation — le geste correctif) mais marqués, et fermés à l'ajout. */
   disabledVenueIds?: ReadonlySet<string>;
 }) {
+  // Consultation (Membre) : la grille se lit, aucune case ne s'ouvre.
+  const canManage = useCanManage();
   // La grille de la couche éditée — jamais celle de la saison depuis une période :
   // une réservation hors de la grille servie bloquerait la génération (#8).
   const { data: slots = [] } = useGridSlots(schedulePlanId);
@@ -171,6 +174,7 @@ export function ReservationPanel({
         onSelectSlot={setActiveSlot}
         closures={closuresOfVenue}
         blockCompleteSlots={blockCompleteSlots}
+        readOnly={!canManage}
       />
 
       {null !== activeSlot ? (

@@ -6,8 +6,11 @@ import { renderWithProviders, visibleTextOccurrences } from "@/test/utils";
 
 // P2-25 — SlotDetail porte désormais un lien « Corriger cette contrainte » (WizardStepLink →
 // useMe pour le verrou du mode guidé). Club établi (version finie) → lien actif, pas verrouillé.
+// Chantier Membre (PR 2) : `useCanManage` piloté par cas (gestionnaire par défaut).
+const session = vi.hoisted(() => ({ canManage: true }));
 vi.mock("@/shared/session/queries", () => ({
   useMe: () => ({ data: { seasonPlan: { hasFinishedVersion: true } } }),
+  useCanManage: () => session.canManage,
 }));
 
 import { buildTagTeamIds } from "./lib/applicableConstraints";
@@ -507,5 +510,25 @@ describe("SlotDetail — gestes bloqués", () => {
   it("sans motif, la fiche n'ajoute aucune ligne", () => {
     renderDetail({ gesturesBlockedReason: null });
     expect(visibleTextOccurrences(PLANNING_TEXTS.gesturesBlockedNotLoaded)).toHaveLength(0);
+  });
+});
+
+/**
+ * Chantier Membre (PR 2) : la fiche d'une séance se LIT par un Membre (équipe, gymnase, coach,
+ * contraintes applicables) mais n'offre aucun geste de retouche — ni Déplacer, ni Retirer, ni
+ * Mutualiser. Témoins gestionnaire : « un créneau ordinaire garde « Déplacer » » et « offre
+ * « Retirer » » ci-dessus, même décor.
+ */
+describe("SlotDetail — Membre (consultation)", () => {
+  it("lit la séance sans aucun geste de retouche", () => {
+    session.canManage = false;
+    try {
+      renderDetail({ slot: { lockLevel: "NONE", lockOrigin: null }, onArmMove: vi.fn(), onRemove: vi.fn() });
+      expect(screen.queryByRole("button", { name: /Déplacer/ })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /^Retirer/ })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /Mutualiser/ })).not.toBeInTheDocument();
+    } finally {
+      session.canManage = true;
+    }
   });
 });

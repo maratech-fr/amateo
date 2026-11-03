@@ -5,6 +5,7 @@ import { StatusPill } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
 import { NoticeBanner } from "@/shared/components/ui/notice-banner";
 import { VenueSelect } from "@/shared/components/ui/venue-select";
+import { ManagerOnly } from "@/shared/session/ManagerOnly";
 import { todayISO } from "@/shared/lib/clock";
 import { frDateWeekdayNoYear } from "@/shared/lib/date";
 
@@ -90,6 +91,7 @@ export function ReviewQueueRow({ fixture, venues, onValidateLine, onResolve, onP
         ) : null}
         <span className="text-xs text-muted-foreground">{treatmentLabel(fixture)}</span>
         <span className="ml-auto flex items-center gap-2">
+          <ManagerOnly>
           {canReplace ? (
             <Button variant="ghost" size="sm" onClick={() => onPlace(fixture)}>
               <MapPin className="size-3.5" />
@@ -109,6 +111,7 @@ export function ReviewQueueRow({ fixture, venues, onValidateLine, onResolve, onP
               Vu
             </Button>
           ) : null}
+          </ManagerOnly>
         </span>
       </div>
 
@@ -146,6 +149,8 @@ export function ReviewQueueRow({ fixture, venues, onValidateLine, onResolve, onP
               </div>
             </div>
             {isDeposited(fixture.status) ? <p className="text-xs text-warning">{DEPOSITED_WARNING}</p> : null}
+            {/* Arbitrer un écart : geste de gestionnaire, absent pour un Membre (il lit les deux valeurs). */}
+            <ManagerOnly>
             <div className="flex flex-col gap-2 sm:flex-row">
               <div className="flex flex-1 flex-col gap-1">
                 <Button variant="outline" size="sm" disabled={busy} onClick={() => onResolve({ fixtureId: fixture.id, field: d.field, choice: "keep_app" })}>
@@ -167,6 +172,7 @@ export function ReviewQueueRow({ fixture, venues, onValidateLine, onResolve, onP
                 </div>
               )}
             </div>
+            </ManagerOnly>
           </div>
         );
       })}
@@ -250,9 +256,11 @@ function AttachVenueBlock({ fixture, venues, onAttach, busy }: { fixture: Fixtur
         <div className="flex flex-wrap items-center gap-2">
           <MapPin className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
           <span className="text-muted-foreground">{label} · non rattaché</span>
-          <Button variant="outline" size="sm" className="ml-auto" onClick={open}>
-            {MATCHES_TEXTS.rowAttach}
-          </Button>
+          <ManagerOnly>
+            <Button variant="outline" size="sm" className="ml-auto" onClick={open}>
+              {MATCHES_TEXTS.rowAttach}
+            </Button>
+          </ManagerOnly>
         </div>
       ) : (
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center">

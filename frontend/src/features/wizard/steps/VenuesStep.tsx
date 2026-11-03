@@ -11,6 +11,7 @@ import { DeleteConfirm } from "@/shared/components/ui/delete-confirm";
 import { Input } from "@/shared/components/ui/input";
 import { Modal } from "@/shared/components/ui/modal";
 import { AccordionSection } from "@/shared/components/ui/accordion";
+import { ReadOnlyFieldset } from "@/shared/components/ui/read-only-fieldset";
 import { NoticeBanner } from "@/shared/components/ui/notice-banner";
 import { Select } from "@/shared/components/ui/select";
 import { StatusPill } from "@/shared/components/ui/badge";
@@ -25,7 +26,8 @@ import { MatchWindowsEditor } from "@/features/matches/MatchWindowsEditor";
 import { matchVenueIds } from "@/features/matches/lib/matchAccess";
 import { useVenueMatchWindows } from "@/features/matches/queries";
 
-import { useMe, useWorkingSeason } from "@/shared/session/queries";
+import { ManagerOnly } from "@/shared/session/ManagerOnly";
+import { useCanManage, useMe, useWorkingSeason } from "@/shared/session/queries";
 
 import type { FfbbSalle, Venue, VenueTrainingSlot } from "../api";
 import { DAYS, hhmm } from "../lib/days";
@@ -284,12 +286,14 @@ function VenuesEditor() {
   const nameRef = useRef<HTMLInputElement>(null);
   // --- Autocomplétion salles FFBB (P2-20) ---
   const { data: me } = useMe();
+  // Un Membre lit les gymnases : aucune saisie, aucune recherche FFBB (appel sortant) déclenchée.
+  const canManage = useCanManage();
   const parcClubId = me?.club?.id;
   // CP de recherche : celui du club par défaut, modifiable (une salle peut être
   // dans la commune voisine — l'index FFBB ne lie les salles qu'aux communes).
   const [salleCp, setSalleCp] = useState<string | null>(null);
   const cp = salleCp ?? me?.club?.postalCode ?? "";
-  const sallesQuery = useFfbbSalles(cp);
+  const sallesQuery = useFfbbSalles(cp, canManage);
   const [nameFocused, setNameFocused] = useState(false);
   // La salle choisie dans la liste : son ancrage FFBB (numéro fédéral + GPS)
   // part avec la création. TOUT changement manuel du nom l'efface — un gymnase
@@ -299,7 +303,7 @@ function VenuesEditor() {
   // P2-21 lot D — « cochez vos gymnases parmi ceux d'à côté » (§6.9, validé 9/9
   // sur BCCL). radius null = AUTO (3→20 km jusqu'à ~5 salles, côté serveur).
   const [nearbyRadius, setNearbyRadius] = useState<number | null>(null);
-  const nearbyQuery = useFfbbSallesProches(nearbyRadius);
+  const nearbyQuery = useFfbbSallesProches(nearbyRadius, canManage);
   // « Déjà ajouté » se reconnaît au NUMÉRO fédéral, pas au nom : le gestionnaire
   // renomme ses salles (« ADN », « JDR ») — un rapprochement par libellé échouerait.
   const importedRefs = new Set(venues.map((v) => v.externalRef).filter((r): r is string => null != r));
@@ -531,14 +535,16 @@ function VenuesEditor() {
       <p className="mb-4 text-sm text-muted-foreground">{WIZARD_TEXTS.venuesIntro}</p>
 
       {/* Chantier G — import du parc par IA (onboarding), même porte d'entrée que l'étape Équipes. */}
-      <div className="mb-4">
-        <Button variant="outline" size="sm" onClick={() => setParcOpen(true)}>
-          <Sparkles className="size-4" />
-          {WIZARD_TEXTS.importParcWithAi}
-        </Button>
-      </div>
+      <ManagerOnly>
+        <div className="mb-4">
+          <Button variant="outline" size="sm" onClick={() => setParcOpen(true)}>
+            <Sparkles className="size-4" />
+            {WIZARD_TEXTS.importParcWithAi}
+          </Button>
+        </div>
+      </ManagerOnly>
 
-      {venuesLoaded ? (
+      {venuesLoaded && canManage ? (
       <AccordionSection
         title={WIZARD_TEXTS.addVenuesSectionTitle}
         open={addOpen}
@@ -752,7 +758,7 @@ function VenuesEditor() {
           {/* Edit card — properties of the SELECTED gym (distinct block). */}
           <div className="mb-3 rounded-lg border border-border bg-card p-3">
             <div className="mb-2 text-xs font-medium text-muted-foreground">{WIZARD_TEXTS.venueEditHeading(selected.name)}</div>
-            <div className="flex flex-wrap items-center gap-3">
+            <ReadOnlyFieldset readOnly={!canManage} className="flex flex-wrap items-center gap-3">
               <ColorField key={`color-${selected.id}`} venue={selected} onApply={(color) => update.mutate({ id: selected.id, body: { name: selected.name, color, canSplit: selected.canSplit } })} />
               <Input
                 aria-label={WIZARD_TEXTS.renameVenueLabel}
@@ -783,10 +789,12 @@ function VenuesEditor() {
                 />
                 {WIZARD_TEXTS.splitVenueLabel}
               </label>
-              <Button size="icon" variant="ghost" className="ml-auto size-8 text-destructive" onClick={() => setPendingDeleteVenue(selected)} title={WIZARD_TEXTS.deleteVenueLabel} aria-label={WIZARD_TEXTS.deleteVenueLabel}>
-                <Trash2 className="size-4" />
-              </Button>
-            </div>
+              <ManagerOnly>
+                <Button size="icon" variant="ghost" className="ml-auto size-8 text-destructive" onClick={() => setPendingDeleteVenue(selected)} title={WIZARD_TEXTS.deleteVenueLabel} aria-label={WIZARD_TEXTS.deleteVenueLabel}>
+                  <Trash2 className="size-4" />
+                </Button>
+              </ManagerOnly>
+            </ReadOnlyFieldset>
             {/* P2-53 RMM-8 — adresse + géolocalisation. La géo alimente la matrice de trajet
                 (bouton « Trajets entre gymnases » du pied de page). PUT partiel : n'écrit que
                 address/lat/long, le reste du gymnase est préservé. */}
@@ -806,6 +814,7 @@ function VenuesEditor() {
               )}
               {/* La salle FFBB se gère ici, sur le gymnase lui-même. Associer pose numéro fédéral + GPS + adresse
                   (si le gymnase n'en a pas) sans jamais renommer (le nom d'usage reste roi) ; Dissocier ne laisse que le nom. */}
+              <ManagerOnly>
               {null != selected.externalRef ? (
                 <div className="mb-3">
                   <Button variant="outline" size="sm" onClick={() => setPendingDissociate(selected)}>
@@ -819,13 +828,16 @@ function VenuesEditor() {
                   </Button>
                 </div>
               )}
+              </ManagerOnly>
               {/* La clé porte aussi la salle : le champ garde son état local (repli, saisie) et doit
                   repartir de zéro après Associer, Dissocier ou leur « Annuler ». */}
-              <VenueGeocodeField
-                key={`geo-${selected.id}-${selected.externalRef ?? ""}`}
-                venue={selected}
-                onLocate={({ address, latitude, longitude }) => locate.mutate({ id: selected.id, body: { name: selected.name, address, latitude, longitude } })}
-              />
+              <ReadOnlyFieldset readOnly={!canManage}>
+                <VenueGeocodeField
+                  key={`geo-${selected.id}-${selected.externalRef ?? ""}`}
+                  venue={selected}
+                  onLocate={({ address, latitude, longitude }) => locate.mutate({ id: selected.id, body: { name: selected.name, address, latitude, longitude } })}
+                />
+              </ReadOnlyFieldset>
             </div>
           </div>
 
@@ -839,7 +851,7 @@ function VenuesEditor() {
               icon={<Lock className="size-4 text-muted-foreground" />}
               message={WIZARD_TEXTS.slotsReadOnlyNotice}
             />
-          ) : (
+          ) : !canManage ? null : (
           /* Slot-placement toolbar — only the duration of the next dropped slot.
               Capacity is set per-slot in the edit panel (a new slot is always 1). */
           <div className="mb-3 flex flex-wrap items-center gap-2">
@@ -874,7 +886,7 @@ function VenuesEditor() {
             slots={venueSlots}
             matchWindows={venueMatchWindows}
             selectedSlotId={editingSlot?.id ?? null}
-            readOnly={slotsReadOnly}
+            readOnly={slotsReadOnly || !canManage}
             onAdd={(dayOfWeek, startTime) => {
               const invalid = slotPlacementError(venueSlots, dayOfWeek, startTime, duration);
               if (null !== invalid) {
@@ -886,7 +898,7 @@ function VenuesEditor() {
             onSelect={(slot) => setEditingSlot(slot)}
           />
 
-          {null !== editingSlot && !slotsReadOnly ? (
+          {null !== editingSlot && !slotsReadOnly && canManage ? (
             <SlotEditor
               key={editingSlot.id}
               slot={editingSlot}

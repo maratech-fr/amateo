@@ -4,6 +4,9 @@ import { useState } from "react";
 import { errorMessage } from "@/shared/lib/errorMessage";
 import { Button } from "@/shared/components/ui/button";
 import { Input } from "@/shared/components/ui/input";
+import { ReadOnlyFieldset } from "@/shared/components/ui/read-only-fieldset";
+import { ManagerOnly } from "@/shared/session/ManagerOnly";
+import { useCanManage } from "@/shared/session/queries";
 import { EmptyHint } from "@/shared/components/ui/empty-hint";
 import { LoadErrorHint } from "@/shared/components/ui/load-error-hint";
 import { NoticeBanner } from "@/shared/components/ui/notice-banner";
@@ -246,10 +249,13 @@ function AutofillConsent({ onRun, onClose, running, error }: { onRun: () => void
       </p>
       {null !== error ? <NoticeBanner tone="warning" role="alert" icon={<AlertTriangle className="size-4 text-warning" />} message={error} /> : null}
       <div className="flex items-center gap-2">
-        <Button onClick={onRun} disabled={running}>
-          {running ? <Spinner className="size-4" /> : <Wand2 className="size-4" />}
-          Calculer les trajets
-        </Button>
+        {/* Le calcul appelle l'extérieur (côté serveur) : jamais lancé par un Membre. */}
+        <ManagerOnly>
+          <Button onClick={onRun} disabled={running}>
+            {running ? <Spinner className="size-4" /> : <Wand2 className="size-4" />}
+            Calculer les trajets
+          </Button>
+        </ManagerOnly>
         <Button variant="ghost" onClick={onClose} disabled={running}>
           {WIZARD_TEXTS.travelLater}
         </Button>
@@ -261,6 +267,8 @@ function AutofillConsent({ onRun, onClose, running, error }: { onRun: () => void
 export function TravelMatrixModal({ onClose, onLocateVenue }: { onClose: () => void; onLocateVenue?: (venueId: string) => void }) {
   const venuesQuery = useWizardVenues();
   const matrixQuery = useVenueTravelTimes();
+  // Un Membre lit la matrice : ni calcul, ni saisie d'un temps.
+  const canManage = useCanManage();
   const create = useCreateVenueTravelTime();
   const update = useUpdateVenueTravelTime();
   const autofill = useAutofillVenueTravelTimes();
@@ -337,10 +345,12 @@ export function TravelMatrixModal({ onClose, onLocateVenue }: { onClose: () => v
   const footer = showConsent ? undefined : (
     <>
       <div className="mr-auto flex flex-wrap items-center gap-2">
-        <Button variant="outline" onClick={runAutofill} disabled={busy}>
-          {busy ? <Spinner className="size-4" /> : <RefreshCw className="size-4" />}
-          Recalculer les trajets
-        </Button>
+        <ManagerOnly>
+          <Button variant="outline" onClick={runAutofill} disabled={busy}>
+            {busy ? <Spinner className="size-4" /> : <RefreshCw className="size-4" />}
+            Recalculer les trajets
+          </Button>
+        </ManagerOnly>
         {null !== progressLabel ? (
           <span role="status" aria-live="polite" className="text-xs text-muted-foreground">
             {progressLabel}
@@ -429,6 +439,7 @@ export function TravelMatrixModal({ onClose, onLocateVenue }: { onClose: () => v
             // Primitive partagée `Table` (lot 5 PR E) — `wrapperClassName` porte le corps défilant
             // borné à en-têtes figés ; neutralisation des défauts de la primitive (fond/arrondi/
             // largeur, casse/graisse/taille des en-têtes) pour un rendu IDENTIQUE à la matrice faite main.
+            <ReadOnlyFieldset readOnly={!canManage}>
             <Table wrapperClassName="max-h-[24rem] overflow-auto rounded-md bg-transparent" className="w-auto">
               <TableCaption className="sr-only">{WIZARD_TEXTS.travelMatrixCaption}</TableCaption>
               <TableHeader>
@@ -471,6 +482,7 @@ export function TravelMatrixModal({ onClose, onLocateVenue }: { onClose: () => v
                 ))}
               </TableBody>
             </Table>
+            </ReadOnlyFieldset>
           )}
         </div>
       )}

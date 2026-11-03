@@ -2,6 +2,7 @@ import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { SESSION_TEXTS } from "@/shared/session/texts";
 import { renderWithProviders } from "@/test/utils";
 
 import type { OpponentClub, OpponentTravelPayload, OpponentVenue } from "./api";
@@ -32,6 +33,12 @@ vi.mock("./queries", () => ({
 }));
 
 vi.mock("@/shared/lib/travelStream", () => ({ useTravelStream: () => ({ connected: false, latest: null }) }));
+// Chantier Membre (PR 2) : `useCanManage` piloté par cas (gestionnaire par défaut) ; le reste de la session reste réel.
+const session = vi.hoisted(() => ({ canManage: true }));
+vi.mock("@/shared/session/queries", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/shared/session/queries")>()),
+  useCanManage: () => session.canManage,
+}));
 
 const venue = (over: Partial<OpponentVenue> & { id: string; label: string }): OpponentVenue => ({
   externalRef: null,
@@ -430,5 +437,34 @@ describe("OpponentsPage — segment « Trajet indisponible » (P4-293)", () => {
     await user.click(screen.getByRole("button", { name: /indisponibles/ }));
     expect(screen.getByText("Gym Echec")).toBeInTheDocument();
     expect(screen.queryByRole("rowheader", { name: /Club Tout Bon/ })).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * Chantier Membre (PR 2) : Matchs › Adversaires se LIT par un Membre (clubs, gymnases, trajets),
+ * sous la bannière de consultation, sans aucun geste — ni « Mettre à jour » (recalcul, appels
+ * sortants), ni ajout/appariement de gymnase, ni menu d'actions. Témoins gestionnaire : les cas
+ * « un club avec un gymnase » et « un club SANS gymnase » ci-dessus.
+ */
+describe("OpponentsPage — Membre (consultation)", () => {
+  it("lit les adversaires et leurs trajets, sans aucun geste", () => {
+    session.canManage = false;
+    try {
+      travelState.data = {
+        clubGeolocated: true,
+        opponents: [
+          club({ code: "C1", name: "ASVEL", venues: [venue({ id: "l1", label: "Halle Astroballe", travelMinutes: 20 })], fixtureCount: 3 }),
+          club({ code: "C2", name: "BC Sans Gym", venues: [], fixtureCount: 4 }),
+        ],
+      };
+      renderWithProviders(<OpponentsPage />);
+      expect(screen.getByText(SESSION_TEXTS.readOnlyNotice)).toBeInTheDocument();
+      expect(screen.getByText("20 min")).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: MATCHES_TEXTS.opponentsUpdate })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Ajouter un gymnase" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /^Actions pour/ })).not.toBeInTheDocument();
+    } finally {
+      session.canManage = true;
+    }
   });
 });

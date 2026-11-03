@@ -4,8 +4,11 @@ import { useId, useMemo, useState } from "react";
 import { Button } from "@/shared/components/ui/button";
 import { EmptyHint } from "@/shared/components/ui/empty-hint";
 import { Input } from "@/shared/components/ui/input";
+import { ReadOnlyFieldset } from "@/shared/components/ui/read-only-fieldset";
 import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from "@/shared/components/ui/table";
 import { formatDuration } from "@/shared/lib/duration";
+import { ManagerOnly } from "@/shared/session/ManagerOnly";
+import { useCanManage } from "@/shared/session/queries";
 
 import type { SportCategoryDuration } from "./api";
 import { useUpdateSportCategoryDuration } from "./queries";
@@ -159,6 +162,7 @@ function CategoryRow({ category }: { category: SportCategoryDuration }) {
         />
       </TableCell>
       <TableCell>
+        <ManagerOnly>
         <Button
           variant="ghost"
           size="sm"
@@ -170,6 +174,7 @@ function CategoryRow({ category }: { category: SportCategoryDuration }) {
           <RotateCcw className="size-4" aria-hidden="true" />
           Revenir au défaut
         </Button>
+        </ManagerOnly>
       </TableCell>
     </TableRow>
   );
@@ -188,6 +193,8 @@ export function MatchDurationsEditor({ categories }: { categories: SportCategory
     }
     return [...byDefault.values()].sort((a, b) => a.match - b.match || a.warmup - b.warmup);
   }, [categories]);
+  // Un Membre lit les durées, ne les modifie pas.
+  const canManage = useCanManage();
 
   return (
     <section className="flex flex-col gap-3">
@@ -202,7 +209,7 @@ export function MatchDurationsEditor({ categories }: { categories: SportCategory
       {0 === categories.length ? (
         <EmptyHint>Aucune catégorie — elles se définissent à l'étape Équipes du wizard.</EmptyHint>
       ) : (
-        <div className="flex flex-col gap-4">
+        <ReadOnlyFieldset readOnly={!canManage} className="flex flex-col gap-4">
           {groups.map((group) => (
             <Table key={`${group.match}|${group.warmup}`}>
               <TableCaption>
@@ -223,7 +230,7 @@ export function MatchDurationsEditor({ categories }: { categories: SportCategory
               </TableBody>
             </Table>
           ))}
-        </div>
+        </ReadOnlyFieldset>
       )}
     </section>
   );

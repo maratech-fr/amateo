@@ -36,7 +36,7 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
  *      compte pas en REGIONAL, NATIONAL compte TOUS ;
  *  (f) demandeur exclu de son propre compte ;
  *  (g) saisons non actives exclues ;
- *  (h) 403 non-gestionnaire (GET et apply) ;
+ *  (h) un Membre lit les propositions (200), n'applique jamais (403) ;
  *  (i) code illisible → réponse neutre (instance null, zéro item) ;
  *  (j) pg_proc : SECURITY DEFINER, search_path figé, EXECUTE au seul rôle applicatif ;
  *  (k) repli fédéral servi pour ARA (→ AURA), RIEN pour GUY (ligue non cataloguée) ;
@@ -282,15 +282,23 @@ final class LeagueWindowSuggestionShareTest extends WebTestCase
         self::assertNull($this->itemFor($this->suggestions($reader), 'U15', 6), 'une copie sur saison non active ne compte pas');
     }
 
-    // ── (h) 403 non-gestionnaire ──────────────────────────────────────────────
+    // ── (h) Membre : lecture ouverte, application fermée ─────────────────────
 
-    public function testNonManagementMemberIsForbiddenOnBothEndpoints(): void
+    /** Un Membre LIT les propositions de créneaux ligue (un Membre voit tout). */
+    public function testNonManagementMemberReadsTheSuggestions(): void
     {
         [$club] = $this->makeClub($this->code($this->uniqueLigue(), '0069'));
-        $member = $this->addMember($club, 'coach');
+        $member = $this->addMember($club, 'member');
 
         $this->client->request('GET', '/api/league-window-suggestions', [], [], $this->authHeaders($member));
-        self::assertResponseStatusCodeSame(403, 'la lecture est réservée au gestionnaire');
+        self::assertResponseStatusCodeSame(200, 'la lecture est ouverte au Membre');
+    }
+
+    /** Un Membre n'APPLIQUE jamais une proposition : l'application reste au gestionnaire. */
+    public function testNonManagementMemberCannotApplyASuggestion(): void
+    {
+        [$club] = $this->makeClub($this->code($this->uniqueLigue(), '0069'));
+        $member = $this->addMember($club, 'member');
 
         $this->client->request('POST', '/api/league-window-suggestions/apply', [], [], $this->authHeaders($member) + ['CONTENT_TYPE' => 'application/json'], json_encode(['combinations' => []], \JSON_THROW_ON_ERROR));
         self::assertResponseStatusCodeSame(403, 'l\'application est réservée au gestionnaire');

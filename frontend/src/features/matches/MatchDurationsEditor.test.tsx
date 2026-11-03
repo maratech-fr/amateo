@@ -13,6 +13,12 @@ const updateMutate = vi.fn();
 vi.mock("./queries", () => ({
   useUpdateSportCategoryDuration: () => ({ mutate: updateMutate, isPending: false }),
 }));
+// Chantier Membre (PR 2) : `useCanManage` piloté par cas (gestionnaire par défaut) ; le reste de la session reste réel.
+const session = vi.hoisted(() => ({ canManage: true }));
+vi.mock("@/shared/session/queries", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/shared/session/queries")>()),
+  useCanManage: () => session.canManage,
+}));
 
 const cat = (over: Partial<SportCategoryDuration> & { id: string; name: string }): SportCategoryDuration => ({
   sportId: "sport-1",
@@ -131,5 +137,22 @@ describe("MatchDurationsEditor — la durée de match par catégorie (P2-54 RMM-
 
     expect(updateMutate).not.toHaveBeenCalled();
     expect(field.value).toBe("100");
+  });
+
+  /**
+   * Chantier Membre (PR 2) : un Membre LIT les durées de match (valeur affichée) mais ne les
+   * modifie pas — champs en lecture, aucun « Revenir au défaut ». Témoin : cas ci-dessus.
+   */
+  it("Membre : durées lisibles, non modifiables", () => {
+    session.canManage = false;
+    try {
+      renderWithProviders(<MatchDurationsEditor categories={CATEGORIES} />);
+      const field = screen.getByLabelText("Durée du match — Senior") as HTMLInputElement;
+      expect(field.value).toBe("100");
+      expect(field).toBeDisabled();
+      expect(screen.queryByRole("button", { name: "Revenir au défaut — Senior" })).not.toBeInTheDocument();
+    } finally {
+      session.canManage = true;
+    }
   });
 });

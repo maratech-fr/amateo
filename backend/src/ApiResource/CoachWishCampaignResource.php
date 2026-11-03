@@ -93,7 +93,7 @@ class CoachWishCampaignResource
     public ?string $lastReminderAt = null;
 
     /**
-     * @var list<array{coachId: string, firstName: string, lastName: string, email: string|null, token: string, respondedAt: string|null, sentAt: string|null, teamIds: list<string>}>
+     * @var list<array{coachId: string, firstName: string, lastName: string, email: string|null, token?: string, respondedAt: string|null, sentAt: string|null, teamIds: list<string>}>
      */
     #[Groups(['read'])]
     public array $coaches = [];

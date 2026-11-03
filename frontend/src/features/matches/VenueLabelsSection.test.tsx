@@ -21,6 +21,12 @@ vi.mock("./queries", () => ({
   useAttachVenueLabel: () => ({ mutate: h.mutateAttach, isPending: false }),
   useDetachVenueLabel: () => ({ mutate: h.mutateDetach, isPending: false }),
 }));
+// Chantier Membre (PR 2) : `useCanManage` piloté par cas (gestionnaire par défaut) ; le reste de la session reste réel.
+const session = vi.hoisted(() => ({ canManage: true }));
+vi.mock("@/shared/session/queries", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/shared/session/queries")>()),
+  useCanManage: () => session.canManage,
+}));
 
 const venues: Venue[] = [
   { id: "v-alpha", name: "Gymnase Alpha", color: null, externalLabels: [] },
@@ -150,5 +156,27 @@ describe("VenueLabelsSection — écran d'appariement (E2, P4-205)", () => {
     await user.click(within(dialog).getByRole("button", { name: "Retirer" }));
     expect(h.mutateDetach).toHaveBeenCalledTimes(1);
     expect(h.mutateDetach.mock.calls[0][0]).toEqual({ venueId: "v-alpha", label: "gymnase mateo" });
+  });
+
+  /**
+   * Chantier Membre (PR 2) : l'inventaire des libellés est une LECTURE ouverte au Membre
+   * (`venues/fbi-labels`), l'appariement un GESTE réservé — il voit le libellé, jamais « Confirmer »,
+   * « Réaffecter » ni « Retirer », et le sélecteur de gymnase ne s'ouvre pas. Témoin : cas ci-dessus.
+   */
+  it("Membre : lit l'inventaire, sans aucun geste d'appariement", () => {
+    session.canManage = false;
+    try {
+      h.inventory = [row({ venueId: "v-alpha", suggestedVenueId: null })];
+      render(<VenueLabelsSection venues={venues} />);
+      expect(screen.getByText("GYMNASE MATEO")).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Confirmer" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Réaffecter" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Retirer" })).not.toBeInTheDocument();
+      // Le sélecteur peut rester affiché en lecture (fieldset désactivé) — jamais actionnable.
+      const picker = screen.queryByRole("button", { name: /Gymnase pour le libellé GYMNASE MATEO/ });
+      expect(null === picker || picker.matches(":disabled")).toBe(true);
+    } finally {
+      session.canManage = true;
+    }
   });
 });

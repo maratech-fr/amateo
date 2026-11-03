@@ -421,9 +421,14 @@ final class CoachWishCampaignActionsTest extends WebTestCase
         self::assertSame($coachOutside404, (string) $this->client->getResponse()->getContent(), 'cross-club et coach hors campagne : 404 identique');
     }
 
-    public function testPreviewRefusesANonManagerWith403(): void
+    /**
+     * Un Membre (non gestionnaire) ouvre l'aperçu du formulaire coach — un Membre voit tout. Inversion
+     * de l'ancien « 403 non-gestionnaire ». L'angle jumeau, cité : `MemberReadsAreSideEffectFreeTest::
+     * testMemberPreviewContainsNoToken` prouve qu'aucun jeton ni lien personnel n'y figure (sécurité :
+     * les deux angles coexistent).
+     */
+    public function testPreviewIsReadableByANonManager(): void
     {
-        // Parité SEC-07 : un membre NON gestionnaire (rôle non management) est refusé en 403.
         $this->scopeGucToClub($this->club->getId());
         $hasher = self::getContainer()->get('security.user_password_hasher');
         $uid = uniqid('', true);
@@ -431,7 +436,7 @@ final class CoachWishCampaignActionsTest extends WebTestCase
         $user->setPasswordHash($hasher->hashPassword($user, 'Password123!'));
         $this->em->persist($user);
         $this->em->flush();
-        $this->em->persist((new ClubUser)->setClubId($this->club->getId())->setUserId($user->getId())->setRole('editor')->setIsActive(true));
+        $this->em->persist((new ClubUser)->setClubId($this->club->getId())->setUserId($user->getId())->setRole('member')->setIsActive(true));
         $this->em->flush();
         $jwt = self::getContainer()->get(JWTTokenManagerInterface::class)->create($user);
 
@@ -440,7 +445,7 @@ final class CoachWishCampaignActionsTest extends WebTestCase
             'HTTP_AUTHORIZATION' => 'Bearer ' . $jwt,
             'CONTENT_TYPE' => 'application/json',
         ]);
-        self::assertResponseStatusCodeSame(403);
+        self::assertResponseStatusCodeSame(200, 'un Membre ouvre l\'aperçu du formulaire coach');
     }
 
     protected function setUp(): void

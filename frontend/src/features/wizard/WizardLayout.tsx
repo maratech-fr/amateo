@@ -5,7 +5,8 @@ import { useBlocker, useNavigate, useSearchParams } from "react-router";
 
 import { useQueryClient } from "@tanstack/react-query";
 
-import { useMe } from "@/shared/session/queries";
+import { useCanManage, useMe } from "@/shared/session/queries";
+import { ReadOnlyNotice } from "@/shared/session/ReadOnlyNotice";
 import { useCalendarEntry, useDeleteEntry, usePeriodAnchor } from "@/features/cockpit/queries";
 import { frDateNumeric } from "@/features/cockpit/lib/date";
 import { CoachWishesHub } from "@/features/coach-wishes/CoachWishesHub";
@@ -101,6 +102,8 @@ function ScrollJumpButtons({ suppressed }: { suppressed: boolean }) {
 export function WizardPage() {
   const { stepId, maxIndex, mode, calendarEntryId, setStep, jumpTo, next, prev, exitPeriodMode, deepLinkOrigin, setDeepLinkOrigin, clearDeepLinkOrigin, displayedScheduleId } = useWizardStore();
   const { data: me } = useMe();
+  // Un Membre CONSULTE l'assistant : jamais guidé, jamais bloqué, aucune invitation à agir.
+  const canManage = useCanManage();
   const navigate = useNavigate();
   const periodMode = "period" === mode;
   const { data: periodEntry, error: periodEntryError } = useCalendarEntry(periodMode ? calendarEntryId : null);
@@ -186,7 +189,7 @@ export function WizardPage() {
   }, [periodMode, periodEntryError, exitPeriodMode, navigate]);
   const index = WIZARD_STEPS.findIndex((s) => s.id === stepId);
   const currentStep = WIZARD_STEPS[index];
-  const blocked = validation.errors.length > 0;
+  const blocked = canManage && validation.errors.length > 0;
   const isLast = index === WIZARD_STEPS.length - 1;
   const [navCollapsed, setNavCollapsed] = useState(false);
   const [footerExtra, setFooterExtra] = useState<ReactNode>(null);
@@ -195,7 +198,8 @@ export function WizardPage() {
   // Onboarding (the club has never generated) → guided: forward steps stay locked
   // until reached via "Suivant". Existing clubs edit freely. Period mode is never
   // guided (structure is inherited read-only; nav is open).
-  const guided = !periodMode && !me?.seasonPlan?.hasFinishedVersion;
+  // Un Membre ne complète pas la saisie : l'enfermer à l'étape 1 le bloquerait — jamais guidé.
+  const guided = canManage && !periodMode && !me?.seasonPlan?.hasFinishedVersion;
 
   // « Modifier les données du club » (décision fondateur 2026-09-28) : en mode SAISON avec socle
   // EN VIGUEUR, on complète le modèle (équipes, gymnases, coachs) sans rouvrir. Les Contraintes et la
@@ -203,7 +207,8 @@ export function WizardPage() {
   // verrou rail n'est que du confort qui dit POURQUOI. Sans socle validé (onboarding, ou après
   // « Rouvrir »), rien n'est verrouillé. Jamais en mode période (ses règles lui sont propres).
   const socleValidated = useSocleValidated();
-  const seasonEditLocked = !periodMode && socleValidated;
+  // Verrou et bandeau parlent d'une MODIFICATION : sans objet pour un Membre, qui lit toutes les étapes.
+  const seasonEditLocked = canManage && !periodMode && socleValidated;
 
   // ── P2-25 — porte d'entrée : l'URL décide l'étape (adressabilité) ──
   // On AJOUTE une lecture d'URL, on ne réécrit PAS la navigation interne (jumpTo/maxIndex/
@@ -314,7 +319,8 @@ export function WizardPage() {
     null !== periodPlanId
     && undefined !== wizardSchedules.data
     && wizardSchedules.data.some((s) => s.schedulePlanId === periodPlanId);
-  const periodMaybeEmpty = periodMode && !periodHasKnownVersion;
+  // « Retirer la période ? » est un geste de gestionnaire : un Membre quitte sans dialogue.
+  const periodMaybeEmpty = canManage && periodMode && !periodHasKnownVersion;
   const deleteEntry = useDeleteEntry();
   const queryClient = useQueryClient();
   const [quitAsked, setQuitAsked] = useState(false);
@@ -462,6 +468,8 @@ export function WizardPage() {
           </Button>
         </div>
       ) : null}
+      {/* Bannière de consultation d'un Membre : portée UNE fois ici, pour toutes les étapes. */}
+      <ReadOnlyNotice />
       {seasonEditLocked ? (
         // « Modifier les données du club » (décision fondateur 2026-09-28) : le socle reste en
         // vigueur pendant qu'on complète le modèle. Le bandeau dit l'état ET la porte de sortie —
@@ -616,7 +624,12 @@ export function WizardPage() {
         {/* Récap rend son PROPRE accordéon d'alertes groupées (D3) — erreurs ET warnings y
             vivent (revirement fondateur 2026-10-09). On saute donc les deux rendus génériques
             sur le récap ; partout ailleurs, erreurs puis warnings sous l'étape. */}
-        {"recap" === stepId
+        {/* Un Membre ne reçoit jamais un ORDRE qu'il ne peut exécuter : sur une étape incomplète, une
+            seule phrase neutre (ni alerte, ni rouge) dit qu'un gestionnaire doit la compléter. */}
+        {"recap" !== stepId && !canManage && validation.errors.length > 0 ? (
+          <p className="mt-3 text-sm text-muted-foreground">{WIZARD_TEXTS.readOnlyIncomplete}</p>
+        ) : null}
+        {"recap" === stepId || !canManage
           ? null
           : validation.errors.map((error) => (
               <p key={error} role="alert" className="mt-3 flex items-center gap-2 text-sm text-destructive">
@@ -658,7 +671,9 @@ export function WizardPage() {
           <div className="flex items-center gap-2">
             {footerExtra}
             {/* Raison EN CLAIR à côté du bouton grisé (doctrine A11Y-30). */}
-            {!isLast && "recap" === stepId && recapValidation.errors.length > 0 ? <p className="text-xs text-warning">{WIZARD_TEXTS.generationBlocked}</p> : null}
+            {!isLast && "recap" === stepId && recapValidation.errors.length > 0 ? (
+              <p className="text-xs text-warning">{canManage ? WIZARD_TEXTS.generationBlocked : WIZARD_TEXTS.readOnlyIncomplete}</p>
+            ) : null}
             {isLast ? null : (
               <Button
                 disabled={blocked}

@@ -11,6 +11,7 @@ import { ConfirmDialog } from "@/shared/components/ui/confirm-dialog";
 import { EmptyHint } from "@/shared/components/ui/empty-hint";
 import { FilterChip } from "@/shared/components/ui/filter-chip";
 import { Input } from "@/shared/components/ui/input";
+import { ReadOnlyFieldset } from "@/shared/components/ui/read-only-fieldset";
 import { LoadErrorHint } from "@/shared/components/ui/load-error-hint";
 import { Modal } from "@/shared/components/ui/modal";
 import { NoticeBanner } from "@/shared/components/ui/notice-banner";
@@ -18,6 +19,9 @@ import { Select } from "@/shared/components/ui/select";
 import { FullPageSpinner, Spinner } from "@/shared/components/ui/spinner";
 import { groupTeamsByTier, tierGroupLabel } from "@/shared/lib/teamTiers";
 import { copyToClipboard } from "@/shared/lib/clipboard";
+import { ManagerOnly } from "@/shared/session/ManagerOnly";
+import { useCanManage } from "@/shared/session/queries";
+import { ReadOnlyNotice } from "@/shared/session/ReadOnlyNotice";
 
 import { doleancesLink, type CampaignCoach, type CampaignTeam, type CoachWishCampaign } from "./campaignApi";
 import { useCoachWishEmailPreview, useRemindCampaignSilent, useSendCampaignLinks, useSetCampaignRecipient } from "./campaignQueries";
@@ -87,6 +91,7 @@ export function SollicitationTab({
   onEmailSaved: (coachId: string, email: string) => void;
   onCampaignRefreshed: (c: CoachWishCampaign) => void;
 }) {
+  const canManage = useCanManage();
   const sendLinks = useSendCampaignLinks();
   const remind = useRemindCampaignSilent();
   const teamsQuery = useWizardTeams();
@@ -156,12 +161,14 @@ export function SollicitationTab({
 
   return (
     <div className="mt-2">
+      {/* Un Membre lit l'état de la collecte et les adresses ; aucun lien, aucun envoi. */}
+      <ReadOnlyNotice />
       <p className="text-sm font-medium">{TEXTS.linksSummary(campaign.respondedCoachCount, campaign.totalCoachCount)}</p>
       {contested.length > 0 ? (
         <div className="mt-2 rounded-md border border-border p-2">
           <p className="text-sm font-medium">{TEXTS.recipientBlockTitle}</p>
           <p className="text-xs text-muted-foreground">{TEXTS.recipientBlockHelp}</p>
-          <div className="mt-2 flex flex-wrap gap-3">
+          <ReadOnlyFieldset readOnly={!canManage} className="mt-2 flex flex-wrap gap-3">
             {contested.map((team) => (
               <label key={team.teamId} className="text-xs text-muted-foreground">
                 {TEXTS.recipientSelectLabel(teamName.get(team.teamId) ?? TEXTS.teamFallback)}
@@ -180,7 +187,7 @@ export function SollicitationTab({
                 </Select>
               </label>
             ))}
-          </div>
+          </ReadOnlyFieldset>
         </div>
       ) : null}
       {withoutMain.length > 0 ? <NoticeBanner tone="warning" className="mt-2" message={TEXTS.noMainCoach(withoutMain.map((t) => teamName.get(t.teamId) ?? TEXTS.teamFallback))} /> : null}
@@ -210,6 +217,7 @@ export function SollicitationTab({
         }}
         onCancel={() => setPendingRecipient(null)}
       />
+      <ManagerOnly>
       <div className="mt-2 flex flex-wrap gap-2">
         <Button
           variant="outline"
@@ -237,6 +245,7 @@ export function SollicitationTab({
           {TEXTS.emailPreview}
         </Button>
       </div>
+      </ManagerOnly>
       {previewOpen ? <EmailPreviewModal campaignId={campaign.id} onClose={() => setPreviewOpen(false)} /> : null}
       {/* Aperçu coach par coach (D2) — zone distincte du reste des actions. */}
       {campaign.coaches.length > 0 ? (
@@ -346,9 +355,15 @@ function CoachRow({ coach, campaignId, onEmailSaved, onCampaignRefreshed }: { co
   const [email, setEmail] = useState(coach.email ?? "");
   const updateCoach = useUpdateCoach();
   const sendLinks = useSendCampaignLinks();
+  // Le lien personnel n'est servi qu'au gestionnaire (`token` absent pour un Membre).
+  const canManage = useCanManage();
+  const token = coach.token;
 
   const copy = async () => {
-    if (await copyToClipboard(doleancesLink(coach.token))) {
+    if (undefined === token) {
+      return;
+    }
+    if (await copyToClipboard(doleancesLink(token))) {
       setCopied(true);
       window.setTimeout(() => setCopied(false), 2000);
     }
@@ -377,7 +392,7 @@ function CoachRow({ coach, campaignId, onEmailSaved, onCampaignRefreshed }: { co
         ) : null}
         {hasEmail ? null : <StatusPill>{TEXTS.noEmailPill}</StatusPill>}
         {null !== coach.sentAt ? <StatusPill>{TEXTS.sentOn(frDate(coach.sentAt.slice(0, 10)))}</StatusPill> : null}
-        {hasEmail ? (
+        {hasEmail && canManage ? (
           // Envoi CIBLÉ (ajout tardif d'un email, ou renvoi volontaire à CE coach — D1).
           <Button variant="ghost" size="sm" disabled={sendLinks.isPending} onClick={() => sendLinks.mutate({ id: campaignId, coachIds: [coach.coachId] }, { onSuccess: (r) => onCampaignRefreshed(r.campaign) })}>
             <Send className="size-4" />
@@ -386,14 +401,16 @@ function CoachRow({ coach, campaignId, onEmailSaved, onCampaignRefreshed }: { co
         ) : null}
         {/* Bouton COMPACT « Lien » (décision fondateur 2026-10-09) : icône + « Lien » → « Copié »
             2 s ; le nom accessible CONTEXTUALISE (A11Y-28) pour distinguer les coachs à l'écoute. */}
-        <Button variant="outline" size="sm" className="ml-auto" aria-label={TEXTS.copyLinkAria(`${coach.firstName} ${coach.lastName}`)} onClick={copy}>
-          {copied ? <Check className="size-4" /> : <Copy className="size-4" />}
-          {copied ? TEXTS.copied : TEXTS.linkButton}
-        </Button>
+        {canManage && undefined !== token ? (
+          <Button variant="outline" size="sm" className="ml-auto" aria-label={TEXTS.copyLinkAria(`${coach.firstName} ${coach.lastName}`)} onClick={copy}>
+            {copied ? <Check className="size-4" /> : <Copy className="size-4" />}
+            {copied ? TEXTS.copied : TEXTS.linkButton}
+          </Button>
+        ) : null}
       </div>
-      <div className="mt-1.5 flex items-center gap-2">
+      <ReadOnlyFieldset readOnly={!canManage} className="mt-1.5 flex items-center gap-2">
         <Input type="email" placeholder={TEXTS.emailPlaceholder} className="flex-1 text-xs" value={email} onChange={(e) => setEmail(e.target.value)} onBlur={saveEmail} aria-label={TEXTS.emailAria(`${coach.firstName} ${coach.lastName}`)} />
-      </div>
+      </ReadOnlyFieldset>
     </li>
   );
 }

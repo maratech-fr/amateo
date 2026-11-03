@@ -6,7 +6,8 @@ import { useEffect, useRef, useState } from "react";
 
 import type { ToReplaceEntry } from "@/features/planning/lib/toReplaceReason";
 
-import { useMe } from "@/shared/session/queries";
+import { ManagerOnly } from "@/shared/session/ManagerOnly";
+import { useCanManage } from "@/shared/session/queries";
 import { anchorIsWritable, useCalendarEntry, usePeriodAnchor } from "@/features/cockpit/queries";
 import { isServiceDown } from "@/features/planning/lib/serviceFailure";
 import { isSeasonPlanType } from "@/features/planning/lib/versions";
@@ -20,7 +21,6 @@ import { scheduleIdToReuse } from "../lib/retryTarget";
 import { LoadErrorHint } from "@/shared/components/ui/load-error-hint";
 import { NoticeBanner } from "@/shared/components/ui/notice-banner";
 import { errorMessage } from "@/shared/lib/errorMessage";
-import { isManagementRole } from "@/shared/lib/roles";
 
 import { useStepValidation } from "../lib/useStepValidation";
 import { useLaunchGeneration, useScheduleStatus, useTranscribeFromSocle } from "../queries";
@@ -54,8 +54,7 @@ export function GenerateStep() {
   const isClosurePeriod = "closure" === periodEntry?.periodType;
   // Miroir d'AFFICHAGE (le serveur reste seul juge — SEC-07) : on ne déclenche pas une écriture
   // vouée au 403 chez un Membre. Parité tenue par `ManagementRolesMatchBackendTest`.
-  const { data: me } = useMe();
-  const canManage = isManagementRole(me?.role);
+  const canManage = useCanManage();
   // ADR-0002 C4 : une version se crée SOUS le plan de sa période — résolu depuis l'entrée.
   const periodAnchor = usePeriodAnchor(periodMode ? calendarEntryId : null);
   const periodPlanId = periodAnchor.planId;
@@ -333,10 +332,12 @@ export function GenerateStep() {
               </p>
             )}
           </div>
-          <Button size="lg" onClick={start} disabled={creditsBlocked}>
-            <Rocket className="size-4" />
-            Réessayer{creditSuffix}
-          </Button>
+          <ManagerOnly>
+            <Button size="lg" onClick={start} disabled={creditsBlocked}>
+              <Rocket className="size-4" />
+              Réessayer{creditSuffix}
+            </Button>
+          </ManagerOnly>
         </div>
         )
       ) : waiting ? (
@@ -369,6 +370,8 @@ export function GenerateStep() {
               Impossible de charger la période — la génération est bloquée.
             </LoadErrorHint>
           ) : null}
+          {/* Lancer / transcrire : gestes de gestionnaire, absents pour un Membre (il lit l'écran). */}
+          <ManagerOnly>
           <div className="flex flex-col items-center gap-3 sm:flex-row">
             <Button
               size="lg"
@@ -388,8 +391,9 @@ export function GenerateStep() {
               </Button>
             ) : null}
           </div>
+          </ManagerOnly>
           {/* Raison EN CLAIR sous le bouton grisé (doctrine A11Y-30). */}
-          {blockers.length > 0 ? <p className="text-xs text-warning">{WIZARD_TEXTS.generationBlocked}</p> : null}
+          {blockers.length > 0 ? <p className="text-xs text-warning">{canManage ? WIZARD_TEXTS.generationBlocked : WIZARD_TEXTS.readOnlyIncomplete}</p> : null}
           {null !== transcribeReason ? (
             <NoticeBanner tone="destructive" className="max-w-sm" message={transcribeReason} />
           ) : null}

@@ -2,7 +2,10 @@ import { Crop, ImagePlus, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { useNavigate } from "react-router";
 
-import { useMe } from "@/shared/session/queries";
+import { ManagerOnly } from "@/shared/session/ManagerOnly";
+import { useCanManage, useMe } from "@/shared/session/queries";
+import { ReadOnlyNotice } from "@/shared/session/ReadOnlyNotice";
+import { ReadOnlyFieldset } from "@/shared/components/ui/read-only-fieldset";
 import type { FfbbOrganisme, MeResponse } from "@/shared/session/api";
 import { PendingMembersSection } from "@/features/auth/PendingMembersSection";
 import { InvitationsSection } from "@/features/club/InvitationsSection";
@@ -32,7 +35,6 @@ import { LogoCropper } from "./LogoCropper";
 import { formatHours } from "./lib/venueStats";
 import { useDeleteLogo, useDownloadClubExport, useFfbbImport, useResetClub, useSubscriptionPlans, useUpdateAppearance, useUpdateShortName, useUpdateSiege, useUploadLogo, useVenueUsageStats } from "./queries";
 import { CLUB_TEXTS } from "./texts";
-import { isManagementRole } from "@/shared/lib/roles";
 
 const HEX = /^#[0-9a-fA-F]{6}$/;
 // Repli du sélecteur de couleur = l'accent PRODUIT (maison unique `product.ts`, jamais un hex ici).
@@ -81,6 +83,8 @@ function IdentitySection({
   const updateAppearance = useUpdateAppearance();
   const uploadLogo = useUploadLogo();
   const deleteLogo = useDeleteLogo();
+  // Un Membre voit le visuel du club, ne le modifie pas.
+  const canManage = useCanManage();
 
   const [color, setColor] = useState(accentColor ?? DEFAULT_ACCENT);
   // Dark-theme accent defaults to the light one until the manager picks a distinct one.
@@ -132,7 +136,7 @@ function IdentitySection({
   };
 
   return (
-    <div className="space-y-5">
+    <ReadOnlyFieldset readOnly={!canManage} className="space-y-5">
       <p className="text-sm text-muted-foreground">{CLUB_TEXTS.brandingIntro}</p>
       {/* Logo — cropper when a new file is being framed, else preview + actions */}
         {null !== cropFile ? (
@@ -148,6 +152,7 @@ function IdentitySection({
             >
               {null !== preview ? <img src={preview} alt="Logo" className="size-full object-cover" /> : clubName.trim().charAt(0).toUpperCase() || "C"}
             </button>
+            <ManagerOnly>
             <div className="flex flex-wrap items-center gap-2">
               <label className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-input bg-background px-3 py-1.5 text-sm hover:bg-muted">
                 <ImagePlus className="size-4" />
@@ -179,6 +184,7 @@ function IdentitySection({
               ) : null}
               <span className="text-xs text-muted-foreground">{CLUB_TEXTS.logoFormatHint}</span>
             </div>
+            </ManagerOnly>
           </div>
         )}
 
@@ -209,6 +215,7 @@ function IdentitySection({
           </div>
         </div>
 
+        <ManagerOnly>
         <div className="flex items-center gap-2">
           <Button onClick={save} disabled={!valid || busy}>
             {busy ? <Spinner className="size-4" /> : null}
@@ -230,7 +237,8 @@ function IdentitySection({
             </Button>
           ) : null}
         </div>
-    </div>
+        </ManagerOnly>
+    </ReadOnlyFieldset>
   );
 }
 
@@ -273,8 +281,11 @@ function ClubShortNameField({ shortName }: { shortName: string | null }) {
   const saved = shortName ?? "";
   const dirty = value.trim() !== saved;
 
+  // Un Membre lit le nom court, ne le modifie pas.
+  const canManage = useCanManage();
+
   return (
-    <div>
+    <ReadOnlyFieldset readOnly={!canManage}>
       <label htmlFor="club-short-name" className="mb-1 block text-xs text-muted-foreground">
         {CLUB_TEXTS.shortNameLabel}
       </label>
@@ -301,7 +312,7 @@ function ClubShortNameField({ shortName }: { shortName: string | null }) {
         ) : null}
       </div>
       <p className="mt-1 text-xs text-muted-foreground">{CLUB_TEXTS.shortNameHint}</p>
-    </div>
+    </ReadOnlyFieldset>
   );
 }
 
@@ -323,6 +334,20 @@ function ReadOnlyField({ label, value, mono }: { label: string; value: string | 
 function ClubSiegeSubsection({ club }: { club: NonNullable<MeResponse["club"]> }) {
   const updateSiege = useUpdateSiege();
   const located = null != club.latitude && null != club.longitude;
+  // Un Membre lit le siège en texte : aucune recherche d'adresse (appel sortant), aucune saisie.
+  const canManage = useCanManage();
+  if (!canManage) {
+    // Un Membre LIT le siège en texte : jamais un champ grisé ni un « Localiser » qu'il ne pourrait
+    // pas utiliser ; sans adresse, l'état non localisé suffit.
+    const hasAddress = null != club.address && "" !== club.address;
+    return (
+      <div>
+        <h3 className="mb-2 text-sm font-semibold">{CLUB_TEXTS.siegeTitle}</h3>
+        <p className="mb-2 text-xs text-muted-foreground">{CLUB_TEXTS.siegeHint}</p>
+        {hasAddress ? <p className="text-sm">{club.address}</p> : <p className="text-xs text-muted-foreground">{CLUB_TEXTS.siegeUnlocated}</p>}
+      </div>
+    );
+  }
   return (
     <div>
       <h3 className="mb-2 text-sm font-semibold">{CLUB_TEXTS.siegeTitle}</h3>
@@ -361,10 +386,12 @@ function ClubInfoSection({ club }: { club: NonNullable<MeResponse["club"]> }) {
       <div>
         <div className="mb-2 flex items-center justify-between gap-2">
           <h3 className="text-sm font-semibold">{CLUB_TEXTS.identityTitle}</h3>
-          <Button size="sm" variant="outline" onClick={() => ffbbImport.mutate()} disabled={ffbbImport.isPending}>
-            {ffbbImport.isPending ? <Spinner className="size-4" /> : null}
-            {CLUB_TEXTS.refreshFromFfbb}
-          </Button>
+          <ManagerOnly>
+            <Button size="sm" variant="outline" onClick={() => ffbbImport.mutate()} disabled={ffbbImport.isPending}>
+              {ffbbImport.isPending ? <Spinner className="size-4" /> : null}
+              {CLUB_TEXTS.refreshFromFfbb}
+            </Button>
+          </ManagerOnly>
         </div>
         <div className="space-y-3 text-sm">
           <ReadOnlyField label={CLUB_TEXTS.officialNameLabel} value={club.name} />
@@ -711,10 +738,11 @@ function OfferSection({ me }: { me: MeResponse }) {
 }
 
 function ClubHub({ me }: { me: MeResponse }) {
-  const isAdmin = me.role === "admin";
-  // Le gate backend management = owner|admin (SEC-07) — l'UI doit matcher,
-  // sinon un owner ne voit jamais l'export RGPD (revue PR-2).
-  const isManagement = isManagementRole(me.role);
+  // Une seule question : « peut-il modifier ? » (gestion = owner|admin, SEC-07). Un Membre LIT la
+  // fiche, le visuel, l'offre, les contacts et l'usage des gymnases, sous la bannière de
+  // consultation ; Demandes d'adhésion, Invitations, Membres, export RGPD et remise à zéro restent
+  // réservés.
+  const canManage = useCanManage();
   // Deep-link `?section=informations` (lien du bandeau « siège » de l'écran matchs) : ouvrir
   // d'emblée la section « Informations du club » (où vit le siège). Lu sur `window.location`
   // (ancrage au montage, non réactif) plutôt que `useSearchParams` — pas de dépendance Router.
@@ -722,26 +750,25 @@ function ClubHub({ me }: { me: MeResponse }) {
   return (
     <FichePage>
       <PageHeader className="mb-4" title={CLUB_TEXTS.clubManagementTitle} screen="/club" subtitle={me.club?.name ?? "—"} />
+      <ReadOnlyNotice />
       <div className="space-y-3">
-        {isManagement ? (
-          <AccordionSection title={CLUB_TEXTS.sectionOffer} defaultOpen>
-            <p className="mb-3 text-sm text-muted-foreground">{CLUB_TEXTS.offerSectionHint}</p>
-            <OfferSection me={me} />
-          </AccordionSection>
-        ) : null}
-        {isAdmin ? (
+        <AccordionSection title={CLUB_TEXTS.sectionOffer} defaultOpen>
+          <p className="mb-3 text-sm text-muted-foreground">{CLUB_TEXTS.offerSectionHint}</p>
+          <OfferSection me={me} />
+        </AccordionSection>
+        {canManage ? (
           <AccordionSection title={CLUB_TEXTS.sectionMembershipRequests} defaultOpen>
             <p className="mb-3 text-sm text-muted-foreground">{CLUB_TEXTS.membershipRequestsHint}</p>
             <PendingMembersSection />
           </AccordionSection>
         ) : null}
-        {isAdmin ? (
+        {canManage ? (
           <AccordionSection title={CLUB_TEXTS.sectionInvitations}>
             <p className="mb-3 text-sm text-muted-foreground">{CLUB_TEXTS.invitationsHint}</p>
             <InvitationsSection />
           </AccordionSection>
         ) : null}
-        {isManagement ? (
+        {canManage ? (
           <AccordionSection title={CLUB_TEXTS.sectionMembers}>
             <p className="mb-3 text-sm text-muted-foreground">{CLUB_TEXTS.membersHint}</p>
             <MembersSection />
@@ -756,29 +783,27 @@ function ClubHub({ me }: { me: MeResponse }) {
             clubName={me.club?.name ?? ""}
           />
         </AccordionSection>
-        {isAdmin && me.club ? (
+        {me.club ? (
           <AccordionSection title={CLUB_TEXTS.sectionClubInfo} defaultOpen={openInformations}>
             {/* Rendu pur des props (plus aucun formulaire) — pas de key de resync nécessaire. */}
             <ClubInfoSection club={me.club} />
           </AccordionSection>
         ) : null}
-        {isAdmin && me.club ? (
+        {me.club ? (
           <AccordionSection title={CLUB_TEXTS.sectionFfbbContacts}>
             <p className="mb-3 text-sm text-muted-foreground">{CLUB_TEXTS.ffbbContactsIntro}</p>
             <ContactsFfbbSection club={me.club} />
           </AccordionSection>
         ) : null}
-        {isAdmin ? (
-          <AccordionSection title={CLUB_TEXTS.sectionVenueStats}>
-            <VenueStatsSection me={me} />
-          </AccordionSection>
-        ) : null}
-        {isManagement ? (
+        <AccordionSection title={CLUB_TEXTS.sectionVenueStats}>
+          <VenueStatsSection me={me} />
+        </AccordionSection>
+        {canManage ? (
           <AccordionSection title={CLUB_TEXTS.sectionExport}>
             <ExportClubSection />
           </AccordionSection>
         ) : null}
-        {isAdmin ? (
+        {canManage ? (
           <AccordionSection title={CLUB_TEXTS.sectionReset}>
             <DangerSection />
           </AccordionSection>

@@ -832,6 +832,19 @@ jobs:
       - name: MemberRoleTest
         run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Security/MemberRoleTest.php --group phase1'
 
+      # Axe auth & memberships : « un Membre lit tout, ne modifie rien ». Le balayage confronte
+      # le ROUTEUR à une table nominative, dans les deux sens : toute écriture `^/api/` est décidée
+      # (403 / ouverte avec son test / hors club), et chaque 403 est joué par un Membre aux ids
+      # réels d'un club semé — empreinte des tables, mails et files inchangés.
+      - name: MemberWriteSweepTest
+        run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Security/MemberWriteSweepTest.php --group phase1'
+
+      # Axe auth & memberships : les lectures ouvertes au Membre répondent 200 sans rien écrire ;
+      # les lectures sortantes (FFBB, géocodage) restent fermées sans appel parti ; le lien
+      # personnel d'un coach n'est jamais servi au Membre ; « Générer » refusé ne coûte rien au club.
+      - name: MemberReadsAreSideEffectFreeTest
+        run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Security/MemberReadsAreSideEffectFreeTest.php --group phase1'
+
       # P2-8 PR A (axe planning lifecycle) : PARITÉ capacité affichée == verdict du refus.
       # Le bloc `capabilities` sérialisé sur chaque Schedule est calculé par le MÊME code que
       # les gardes d'écriture (ScheduleCapabilityResolver) — canDelete/canValidate/

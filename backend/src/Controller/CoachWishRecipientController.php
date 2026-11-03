@@ -83,6 +83,6 @@ final class CoachWishRecipientController extends AbstractController
             $this->tokenSync->syncSeason((string) $campaign->getClubId(), $campaign->getSeasonId());
         });
 
-        return $this->json(['campaign' => $this->presenter->toResource($campaign)]);
+        return $this->json(['campaign' => $this->presenter->toResource($campaign, includeTokens: true)]);
     }
 }

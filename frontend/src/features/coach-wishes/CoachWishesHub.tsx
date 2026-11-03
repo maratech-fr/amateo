@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import type { CalendarEntry } from "@/features/cockpit/api";
-import { useWorkingSeason } from "@/shared/session/queries";
+import { useCanManage, useWorkingSeason } from "@/shared/session/queries";
 import { Button } from "@/shared/components/ui/button";
 import { LoadErrorHint } from "@/shared/components/ui/load-error-hint";
 import { Modal } from "@/shared/components/ui/modal";
@@ -132,8 +132,13 @@ function CoachWishesHubReady({
   const focusTabAfterSwitch = useRef(false);
 
   const settings = useCampaignSettings({ entry: mother, season, existing, onCreated: handleCreated });
+  // Un Membre consulte : ni « Réglages » (création/paramétrage de la collecte), ni transfert.
+  const canManage = useCanManage();
   // Lectures déjà posées ici : l'onglet d'ouverture se calcule une fois, sans risque de cache vide.
-  const [activeTab, setActiveTab] = useState<string>(() => initialTab(source, existing, wishesCount, settings.weeksNeedAttention));
+  const [activeTab, setActiveTab] = useState<string>(() => {
+    const opening = initialTab(source, existing, wishesCount, settings.weeksNeedAttention);
+    return !canManage && "reglages" === opening ? "doleances" : opening;
+  });
   // Pied unique piloté par l'onglet (retour fondateur 2026-10-11) : l'onglet Doléances y pose son
   // geste « Transférer au planning ». Le DÉTAIL (compteur, attente, action) est remonté par WishesTab ;
   // `setTransferFooter` est stable, donc passé tel quel (pas de boucle de rapport). `null` = rien à transférer.
@@ -158,7 +163,7 @@ function CoachWishesHubReady({
   const tabs = [
     { id: "doleances", label: "Doléances" },
     ...(null !== campaign ? [{ id: "sollicitation", label: sollicitationLabel(campaign) }] : []),
-    { id: "reglages", label: "Réglages" },
+    ...(canManage ? [{ id: "reglages", label: "Réglages" }] : []),
   ];
 
   return (
@@ -173,7 +178,7 @@ function CoachWishesHubReady({
       //    + un compteur discret à gauche ; absent quand il n'y a rien à transférer.
       // L'onglet Sollicitation gère ses actions dans son contenu, pas de pied.
       footer={
-        "reglages" === activeTab ? (
+        "reglages" === activeTab && canManage ? (
           <>
             <Button variant="ghost" size="sm" onClick={onClose}>
               Fermer
@@ -183,7 +188,7 @@ function CoachWishesHubReady({
               {null === campaign ? "Créer la collecte" : "Enregistrer"}
             </Button>
           </>
-        ) : "doleances" === activeTab && null !== transferFooter ? (
+        ) : "doleances" === activeTab && null !== transferFooter && canManage ? (
           <>
             <span className="mr-auto self-center text-xs text-muted-foreground">
               {transferFooter.count} doléance{transferFooter.count > 1 ? "s" : ""} sélectionnée{transferFooter.count > 1 ? "s" : ""}
@@ -222,7 +227,7 @@ function CoachWishesHubReady({
         </TabPanel>
       ) : null}
 
-      {"reglages" === activeTab ? (
+      {"reglages" === activeTab && canManage ? (
         <TabPanel tabId="reglages" idPrefix="doleances" active className="pt-3">
           <CampaignSettingsTab settings={settings} onRequestPlanning={onRequestPlanning} />
         </TabPanel>

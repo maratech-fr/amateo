@@ -3,6 +3,9 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ClubEntitlements, MeResponse } from "@/shared/session/api";
+import { SESSION_TEXTS } from "@/shared/session/texts";
+
+import { CLUB_TEXTS } from "./texts";
 
 // FRT-42 — le fixture conforme au VRAI type `MeResponse["club"]` (plus un `Partial` qui laissait
 // passer un ajout/retrait de champ sans que le test le voie). Chaque littéral de club part de
@@ -42,6 +45,8 @@ const me: { data: MeData; isLoading: boolean } = {
 
 vi.mock("@/shared/session/queries", () => ({
   useMe: () => me,
+  // Chantier Membre (PR 2) : la question « peut-il modifier ? » suit le rôle du `me` mocké.
+  useCanManage: () => "admin" === me.data.role || "owner" === me.data.role,
 }));
 vi.mock("@/features/auth/queries", () => ({
   usePendingMembers: () => ({ data: { members: [] }, isLoading: false }),
@@ -264,10 +269,53 @@ describe("ClubPage", () => {
     expect(screen.queryByRole("textbox", { name: "Adresse du siège" })).toBeNull();
   });
 
-  it("hides the club-info section for a non-admin", () => {
-    me.data = { role: "member", club: { ...baseClub, name: "BC Test", accentColor: null, accentColorDark: null, accentPalette: null, logoUrl: null } };
+  /**
+   * INVERSÉ (chantier Membre, PR 2 — « un Membre lit tout, ne modifie rien ») : l'ancienne règle
+   * MASQUAIT la fiche au Membre ; il la LIT désormais (identité FFBB, nom court, siège), sous la
+   * bannière de consultation, sans aucun geste (ni ré-import FFBB, ni saisie active).
+   */
+  it("Membre : la fiche du club se lit, sous la bannière de consultation, sans aucun geste", async () => {
+    me.data = { role: "member", club: { ...baseClub, name: "BASKET CLUB DE LA VALLÉE", ffbbClubCode: "ARA0690001", shortName: "BC Vallée", address: "5 RUE EMILE DUNIERE", latitude: null, longitude: null } };
+    const user = userEvent.setup();
     render(<ClubPage />);
-    expect(screen.queryByRole("button", { name: /Informations du club/ })).toBeNull();
+    expect(screen.getByText(SESSION_TEXTS.readOnlyNotice)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /Informations du club/ }));
+    expect(screen.getByText("Nom officiel (FFBB)")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Actualiser depuis la FFBB" })).toBeNull();
+    // Les champs restent lisibles (valeur affichée) mais ne se modifient pas.
+    expect(screen.getByRole("textbox", { name: "Nom court" })).toHaveValue("BC Vallée");
+    expect(screen.getByRole("textbox", { name: "Nom court" })).toBeDisabled();
+    // Le siège : une adresse présente se LIT en texte — ni champ grisé, ni « Localiser ».
+    expect(screen.getByText("5 RUE EMILE DUNIERE")).toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: "Adresse du siège" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Localiser" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Enregistrer" })).toBeNull();
+    // Ni Visuel modifiable, ni remise à zéro.
+    expect(screen.queryByRole("button", { name: CLUB_TEXTS.resetClubButton })).toBeNull();
+  });
+
+  /**
+   * Un Membre ne voit pas de champ VIDE qu'il ne pourra jamais remplir : sans adresse de siège, ni
+   * champ grisé, ni bouton « Localiser » (constaté à l'écran, captures SWITCH `16-membre-club-
+   * informations.png`). Témoin gestionnaire : « siège NON localisé » plus haut (champ ouvert).
+   */
+  it("Membre, siège sans adresse : ni champ vide en lecture, ni « Localiser »", async () => {
+    me.data = { role: "member", club: { ...baseClub, name: "BC Vallée", address: null, latitude: null, longitude: null } };
+    const user = userEvent.setup();
+    render(<ClubPage />);
+    await user.click(screen.getByRole("button", { name: /Informations du club/ }));
+    expect(screen.getByRole("heading", { name: CLUB_TEXTS.siegeTitle })).toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: "Adresse du siège" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Localiser" })).toBeNull();
+  });
+
+  it("témoin gestionnaire, siège sans adresse : le champ et « Localiser » restent offerts", async () => {
+    me.data = { role: "admin", club: { ...baseClub, name: "BC Vallée", address: null, latitude: null, longitude: null } };
+    const user = userEvent.setup();
+    render(<ClubPage />);
+    await user.click(screen.getByRole("button", { name: /Informations du club/ }));
+    expect(screen.getByRole("textbox", { name: "Adresse du siège" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Localiser" })).toBeInTheDocument();
   });
 
   it("hides the Demandes section for a non-admin", () => {
@@ -343,10 +391,15 @@ describe("ClubPage", () => {
     expect(screen.queryByText(/n'ont pas pu être chargées/)).toBeNull();
   });
 
-  it("hides the Offre section for a non-management member", () => {
-    me.data = { role: "member", club: { ...baseClub, name: "BC Test", accentColor: null, accentColorDark: null, accentPalette: null, logoUrl: null } };
+  /**
+   * INVERSÉ (chantier Membre, PR 2) : l'Offre se LIT par un Membre (avant : masquée). Demandes
+   * d'adhésion, Invitations et Membres restent réservés (tests voisins, inchangés).
+   */
+  it("Membre : l'Offre du club se lit", () => {
+    me.data = { role: "member", club: withEntitlements({ planCode: "essentiel", planName: "Essentiel", maxTeams: 20, teamsUsed: 15, creditsMax: null, creditsUsed: 0, canGenerate: true, canPlaceMatches: true, canExportPdf: true, seasonTransition: true }) };
     render(<ClubPage />);
-    expect(screen.queryByRole("button", { name: /^Offre$/ })).toBeNull();
+    expect(screen.getByRole("button", { name: /^Offre$/ })).toBeInTheDocument();
+    expect(screen.getByText("15/20 équipes")).toBeInTheDocument();
   });
 
   // --- P3-22 — stats d'utilisation des gymnases -----------------------------
