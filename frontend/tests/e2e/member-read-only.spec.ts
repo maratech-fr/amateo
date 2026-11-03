@@ -136,11 +136,20 @@ test.describe("Membre — lecture seule de bout en bout", () => {
     test.setTimeout(240_000);
     const manager = await newPage(browser);
     const email = `membre-${uniqueAra("m").toLowerCase()}@test.fr`;
+    let locatedVenueId = "";
     try {
       await loginSeededClub(manager);
       const meRes = await manager.request.get("/api/me");
       const ara = ((await meRes.json()) as { club?: { ffbbClubCode?: string | null } }).club?.ffbbClubCode ?? "";
       expect(ara, "le club seedé porte un code FFBB").not.toBe("");
+      // Un gymnase LOCALISÉ SANS adresse (coordonnées seules) : l'écran Gymnases retrouverait son
+      // adresse par `GET /api/geocode/reverse` — un appel sortant qu'un Membre ne doit jamais
+      // déclencher. Créé ici par le gestionnaire (le seed n'en garantit pas), effacé en `finally`.
+      const venue = await manager.request.post("/api/venues", {
+        data: { name: `Gymnase coordonnées ${uniqueAra("g")}`, source: "manual", latitude: "45.76799", longitude: "4.88853" },
+      });
+      expect(venue.ok(), "le gestionnaire crée un gymnase localisé sans adresse").toBe(true);
+      locatedVenueId = ((await venue.json()) as { id: string }).id;
 
       await becomeMember(page, manager, ara, email);
       const watch = watchMember(page);
@@ -166,6 +175,9 @@ test.describe("Membre — lecture seule de bout en bout", () => {
       await visit(page, watch, "/nouveautes", false);
     } finally {
       await eraseAccount(page);
+      if ("" !== locatedVenueId) {
+        await manager.request.delete(`/api/venues/${locatedVenueId}`).catch(() => undefined);
+      }
       await manager.context().close();
     }
   });

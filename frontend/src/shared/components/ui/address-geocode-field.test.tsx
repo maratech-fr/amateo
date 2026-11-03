@@ -13,6 +13,14 @@ vi.mock("@/shared/api/geocode", async (importActual) => {
   return { ...actual, geocodeAddress: vi.fn(), reverseGeocode: vi.fn() };
 });
 
+// Chantier Membre (PR 2) : « peut-il modifier ? » piloté par cas ; gestionnaire par défaut, si bien
+// que les cas existants (reverse-geocoding compris) restent les TÉMOINS gestionnaire.
+const session = vi.hoisted(() => ({ canManage: true }));
+vi.mock("@/shared/session/queries", async (importActual) => ({
+  ...(await importActual<typeof import("@/shared/session/queries")>()),
+  useCanManage: () => session.canManage,
+}));
+
 const CANDIDATES: GeocodeCandidate[] = [
   { label: "12 Rue du Sport, 69100 Villeurbanne", latitude: 45.766, longitude: 4.88, score: 0.92, type: "housenumber" },
   { label: "12 Rue du Sport, 01000 Bourg", latitude: 46.2, longitude: 5.22, score: 0.31, type: "housenumber" },
@@ -26,6 +34,27 @@ const baseProps = { placeholder: "Adresse", label: "Adresse", statusWord: "Local
 beforeEach(() => {
   vi.mocked(geocodeApi.geocodeAddress).mockReset();
   vi.mocked(geocodeApi.reverseGeocode).mockReset();
+  session.canManage = true;
+});
+
+/**
+ * Un Membre ne déclenche JAMAIS d'appel sortant : des coordonnées posées sans adresse (gymnase,
+ * siège) ne lancent pas le reverse-geocoding (`GET /api/geocode/reverse`, 403 pour lui → toast
+ * rouge à l'écran, constaté sur l'étape Gymnases et le siège de `/club`). Le témoin gestionnaire
+ * est le cas « l'adresse RETROUVÉE s'affiche » plus bas (même décor, appel conservé).
+ */
+describe("AddressGeocodeField — Membre", () => {
+  it("coordonnées sans adresse : aucun reverse-geocoding pour un Membre", async () => {
+    session.canManage = false;
+    vi.mocked(geocodeApi.reverseGeocode).mockResolvedValue("5 Rue Émile Dunière, Villeurbanne");
+    renderWithProviders(<AddressGeocodeField {...baseProps} address={null} located={true} latitude={45.76799} longitude={4.88853} onPick={vi.fn()} />);
+
+    // Laisse passer un tour de rendu : un `useQuery` armé aurait tiré au montage.
+    await waitFor(() => expect(screen.getByText("Localisé")).toBeInTheDocument());
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(vi.mocked(geocodeApi.reverseGeocode)).not.toHaveBeenCalled();
+    expect(vi.mocked(geocodeApi.geocodeAddress)).not.toHaveBeenCalled();
+  });
 });
 
 describe("AddressGeocodeField — géocodage partagé", () => {

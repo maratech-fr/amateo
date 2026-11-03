@@ -285,10 +285,37 @@ describe("ClubPage", () => {
     // Les champs restent lisibles (valeur affichée) mais ne se modifient pas.
     expect(screen.getByRole("textbox", { name: "Nom court" })).toHaveValue("BC Vallée");
     expect(screen.getByRole("textbox", { name: "Nom court" })).toBeDisabled();
-    expect(screen.getByRole("textbox", { name: "Adresse du siège" })).toBeDisabled();
+    // Le siège : une adresse présente se LIT en texte — ni champ grisé, ni « Localiser ».
+    expect(screen.getByText("5 RUE EMILE DUNIERE")).toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: "Adresse du siège" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Localiser" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Enregistrer" })).toBeNull();
     // Ni Visuel modifiable, ni remise à zéro.
     expect(screen.queryByRole("button", { name: CLUB_TEXTS.resetClubButton })).toBeNull();
+  });
+
+  /**
+   * Un Membre ne voit pas de champ VIDE qu'il ne pourra jamais remplir : sans adresse de siège, ni
+   * champ grisé, ni bouton « Localiser » (constaté à l'écran, captures SWITCH `16-membre-club-
+   * informations.png`). Témoin gestionnaire : « siège NON localisé » plus haut (champ ouvert).
+   */
+  it("Membre, siège sans adresse : ni champ vide en lecture, ni « Localiser »", async () => {
+    me.data = { role: "member", club: { ...baseClub, name: "BC Vallée", address: null, latitude: null, longitude: null } };
+    const user = userEvent.setup();
+    render(<ClubPage />);
+    await user.click(screen.getByRole("button", { name: /Informations du club/ }));
+    expect(screen.getByRole("heading", { name: CLUB_TEXTS.siegeTitle })).toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: "Adresse du siège" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Localiser" })).toBeNull();
+  });
+
+  it("témoin gestionnaire, siège sans adresse : le champ et « Localiser » restent offerts", async () => {
+    me.data = { role: "admin", club: { ...baseClub, name: "BC Vallée", address: null, latitude: null, longitude: null } };
+    const user = userEvent.setup();
+    render(<ClubPage />);
+    await user.click(screen.getByRole("button", { name: /Informations du club/ }));
+    expect(screen.getByRole("textbox", { name: "Adresse du siège" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Localiser" })).toBeInTheDocument();
   });
 
   it("hides the Demandes section for a non-admin", () => {

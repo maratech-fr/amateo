@@ -26,6 +26,8 @@ vi.mock("./lib/useStepValidation", () => ({
   useStepValidation: () => ({ errors: h.blockers, warnings: [], pending: false }),
 }));
 vi.mock("./steps/RecapStep", () => ({ RecapStep: () => <div /> }));
+// L'étape Équipes est isolée : seul le rendu des erreurs d'étape par `WizardLayout` est en jeu.
+vi.mock("./steps/TeamsStep", () => ({ TeamsStep: () => <div /> }));
 
 import { useWizardStore } from "./store";
 import { WIZARD_TEXTS } from "./texts";
@@ -51,6 +53,33 @@ describe("WizardLayout — Membre (consultation)", () => {
     expect(screen.getByRole("button", { name: /Gymnases/ })).toBeEnabled();
     expect(screen.getByRole("button", { name: /Coachs/ })).toBeEnabled();
     expect(screen.getByRole("button", { name: /Contraintes/ })).toBeEnabled();
+  });
+
+  /**
+   * Un Membre ne reçoit jamais un ORDRE qu'il ne peut exécuter : sur une étape de saisie incomplète
+   * (« Ajoutez au moins une équipe. »), il lit `WIZARD_TEXTS.readOnlyIncomplete`, en neutre — ni
+   * alerte (`role="alert"`), ni rouge. Témoin : le gestionnaire garde l'erreur actionnable, en alerte.
+   */
+  it("Membre, étape incomplète : « un gestionnaire doit la compléter » en neutre, jamais l'ordre rouge", async () => {
+    h.canManage = false;
+    h.blockers = ["Ajoutez au moins une équipe."];
+    useWizardStore.setState({ stepId: "teams", maxIndex: 0, mode: "season", calendarEntryId: null });
+    renderWithProviders(<WizardPage />, { route: "/wizard?step=teams" });
+
+    const notice = await screen.findByText(WIZARD_TEXTS.readOnlyIncomplete);
+    expect(notice.closest("[role='alert']")).toBeNull();
+    expect(notice.closest(".text-destructive")).toBeNull();
+    expect(screen.queryByText("Ajoutez au moins une équipe.")).not.toBeInTheDocument();
+    expect(screen.queryAllByRole("alert")).toHaveLength(0);
+  });
+
+  it("témoin gestionnaire, étape incomplète : l'erreur actionnable reste, en alerte", async () => {
+    h.blockers = ["Ajoutez au moins une équipe."];
+    useWizardStore.setState({ stepId: "teams", maxIndex: 0, mode: "season", calendarEntryId: null });
+    renderWithProviders(<WizardPage />, { route: "/wizard?step=teams" });
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Ajoutez au moins une équipe.");
+    expect(screen.queryByText(WIZARD_TEXTS.readOnlyIncomplete)).not.toBeInTheDocument();
   });
 
   it("Membre, configuration incomplète : il lit « un gestionnaire doit la compléter », jamais la raison du gestionnaire", async () => {
