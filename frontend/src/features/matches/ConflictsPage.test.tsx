@@ -6,6 +6,7 @@ import { createMemoryRouter, RouterProvider, useLocation } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useToastStore } from "@/shared/stores/toastStore";
+import { visibleTextOccurrences } from "@/test/utils";
 
 import type { Conflict, ConflictMailingResult } from "./api";
 import * as matchesApi from "./api";
@@ -753,6 +754,10 @@ function httpError(status: number, data: unknown): HTTPError {
 
 const findSendButton = () => screen.findByRole("button", { name: MAIL.sendButton });
 const lastToast = () => useToastStore.getState().toasts.at(-1);
+/** Grisé : `disabled` natif (motif en clair à côté) ou `aria-disabled` (motif par `disabledReason`) — le motif, lui, est prouvé à part. */
+const expectGreyed = (button: HTMLElement): void => {
+  expect(button.hasAttribute("disabled") || "true" === button.getAttribute("aria-disabled")).toBe(true);
+};
 const statusPrefix = () => MAIL.statusLine({ date: "§", time: "§", sender: null, mailedCount: 1, skippedNames: [] }).split("§")[0];
 
 describe("ConflictsPage — envoyer les conflits aux coachs : qui voit le bouton", () => {
@@ -778,7 +783,7 @@ describe("ConflictsPage — envoyer les conflits aux coachs : qui voit le bouton
     const button = await findSendButton();
     expect(screen.getByText(MATCHES_TEXTS.noSeasonConflictsTitle)).toBeInTheDocument();
     expect(screen.getByText(MAIL.statusLine({ date: "03/11/2026", time: "14:32", sender: "Nadia", mailedCount: 2, skippedNames: [] }))).toBeInTheDocument();
-    expect(button).toHaveAttribute("aria-disabled", "true");
+    expectGreyed(button);
     expect(button).toHaveAccessibleDescription(MAIL.disabledNothingToSend);
   });
 
@@ -803,11 +808,39 @@ describe("ConflictsPage — envoyer aux coachs : désactivé, avec sa raison dé
     const user = userEvent.setup();
     renderAt();
     const button = await findSendButton();
-    expect(button).toHaveAttribute("aria-disabled", "true");
+    expectGreyed(button);
     expect(button).toHaveAccessibleDescription(reason());
     await user.click(button);
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(matchesApi.mailConflictsToCoaches).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["rien à envoyer ni personne à prévenir", (): void => { state.coachMailing = { personConflictCount: 0, pendingRecipientCount: 0, recipientCount: 0, last: null }; }, (): string => MAIL.disabledNothingToSend],
+    ["club de démonstration", (): void => { meState.isDemo = true; }, (): string => MAIL.disabledDemo],
+    ["saison archivée (saison de travail en lecture seule)", (): void => { meState.seasonReadonly = true; }, (): string => MAIL.disabledArchived],
+    ["réponse sans `coachMailing`", (): void => { state.coachMailing = undefined; }, (): string => MAIL.disabledUnavailable],
+  ])("%s : le motif se LIT à côté du bouton grisé (texte visible, pas un title ni un sr-only)", async (_label, arrange, reason) => {
+    arrange();
+    renderAt();
+    const button = await findSendButton();
+    expectGreyed(button);
+    const bar = button.closest("div");
+    const visible = visibleTextOccurrences(reason()).filter((element) => null !== bar && bar.contains(element) && !button.contains(element));
+    expect(visible.length, "le motif doit être un texte visible dans la rangée du bouton").toBeGreaterThan(0);
+  });
+});
+
+describe("ConflictsPage — envoyer aux coachs : la confirmation dit ce qui part", () => {
+  it("elle annonce le nombre de coachs et de conflits SERVIS par le serveur, et que tous les conflits de personnes partent, filtres ou non", async () => {
+    // Des nombres que l'écran ne peut pas recompter depuis sa liste : ils ne viennent que de `coachMailing`.
+    state.coachMailing = { personConflictCount: 7, pendingRecipientCount: 1, recipientCount: 4, last: null };
+    const user = userEvent.setup();
+    renderAt();
+    await user.click(await findSendButton());
+    const dialog = screen.getByRole("dialog", { name: MAIL.confirmTitle });
+    expect(within(dialog).getByText(MAIL.confirmCounts({ coachCount: 4, conflictCount: 7 }), { exact: false })).toBeInTheDocument();
+    expect(within(dialog).getByText(MAIL.confirmIgnoresFilters, { exact: false })).toBeInTheDocument();
   });
 });
 

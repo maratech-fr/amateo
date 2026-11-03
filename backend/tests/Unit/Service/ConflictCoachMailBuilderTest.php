@@ -6,19 +6,27 @@ namespace App\Tests\Unit\Service;
 
 use App\Entity\Club;
 use App\Entity\Coach;
+use App\Entity\Fixture;
 use App\Entity\Season;
 use App\Entity\Team;
 use App\Entity\Venue;
 use App\Enum\CoachGender;
+use App\Enum\ConflictPersonRole;
+use App\Enum\FixtureHomeAway;
 use App\EventListener\EmailSignatureListener;
 use App\Mail\ClubMailMetadata;
 use App\Mail\EmailTemplateRenderer;
 use App\Service\BrandAssets;
 use App\Service\ConflictCoachMailBuilder;
+use App\Service\Conflicts\ConflictMoments;
 use App\Service\ProductIdentity;
 use App\Storage\LogoStorage;
 use App\Tests\Integration\Api\ConflictCoachMailApiTest;
 use DateTimeImmutable;
+use DOMDocument;
+use DOMElement;
+use DOMNode;
+use DOMXPath;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\Mailer\Envelope;
@@ -155,8 +163,8 @@ final class ConflictCoachMailBuilderTest extends TestCase
         self::assertStringContainsString('Entraînement U13A · Gymnase Nord · 18:30 → 20:00', $text);
 
         $late = $this->matchMatch();
-        $late['start'] = '2026-03-14 23:30';
-        $late['end'] = '2026-03-15 00:45';
+        $late['start'] = '2026-03-14T23:30:00';
+        $late['end'] = '2026-03-15T00:45:00';
         self::assertStringContainsString('Chevauchement sam. 14/03 23:30 → dim. 15/03 00:45 (1h15)', (string) $this->conflicts([$late])->getTextBody());
     }
 
@@ -211,7 +219,7 @@ final class ConflictCoachMailBuilderTest extends TestCase
 
     // ── Mail « plus aucun conflit » ──
 
-    /** Sujet, salutation, phrase datée avec la saison, attribution au gestionnaire COURANT, sans tuile ni fragment. */
+    /** Sujet, salutation, phrase datée avec la saison, attribution au gestionnaire COURANT, sans tuile. */
     public function testTheClearedMailSaysNothingIsLeft(): void
     {
         $email = $this->builder()->buildCleared('karim@aiglons.test', $this->karim, $this->club, $this->season, 'Paul', new DateTimeImmutable('2026-11-03'));
@@ -222,8 +230,112 @@ final class ConflictCoachMailBuilderTest extends TestCase
         self::assertStringStartsWith('Bonjour Karim,', $text);
         self::assertStringContainsString('Les conflits qui vous avaient été signalés ne sont plus d\'actualité au 03/11/2026 : aucun conflit de personne sur un match, daté d\'aujourd\'hui ou à venir, ne vous concerne pour la saison 2025-2026. Paul (AIGLONS) vous en informe.', $text);
         self::assertStringContainsString('Le planning peut encore bouger. Les matchs sans heure connue ne sont pas vérifiés.', $text);
-        self::assertNull($email->getHtmlBody());
-        self::assertFalse($email->getHeaders()->has(EmailTemplateRenderer::HTML_FRAGMENT_HEADER));
+        self::assertStringNotContainsString('Personne en double', $text . (string) $email->getHtmlBody(), 'aucune tuile');
+    }
+
+    /**
+     * Le mail « plus aucun conflit » espace ses paragraphes COMME la liste : chacune de ses trois
+     * phrases est un paragraphe à part, du même style que les paragraphes du mail « conflits »
+     * (comparés une fois passés par la vraie chaîne de signature, là où le coach les lit).
+     */
+    public function testTheClearedMailSpacesItsParagraphsLikeTheList(): void
+    {
+        $list = $this->conflicts([$this->matchMatch()]);
+        $cleared = $this->builder()->buildCleared('karim@aiglons.test', $this->karim, $this->club, $this->season, 'Paul', new DateTimeImmutable('2026-11-03'));
+        foreach ([$list, $cleared] as $email) {
+            $this->signatureListener()->onMessage(new MessageEvent($email, Envelope::create($email), 'null://null', true));
+        }
+
+        $listGreeting = $this->paragraphStartingWith((string) $list->getHtmlBody(), 'Bonjour Karim,');
+        self::assertNotNull($listGreeting, 'témoin : la liste pose sa salutation en paragraphe');
+        foreach (['Bonjour Karim,', 'Les conflits qui vous avaient été signalés', 'Le planning peut encore bouger.'] as $start) {
+            $paragraph = $this->paragraphStartingWith((string) $cleared->getHtmlBody(), $start);
+            self::assertNotNull($paragraph, \sprintf('« %s… » doit être un paragraphe à part', $start));
+            self::assertSame($listGreeting->getAttribute('style'), $paragraph->getAttribute('style'), 'même espacement que la liste');
+        }
+    }
+
+    // ── Forme servie par le radar et structure de la tuile ──
+
+    /**
+     * Un conflit construit EXACTEMENT comme le radar le sert (côtés par `ConflictMoments::fixtureView`,
+     * bornes au format mural `ConflictMoments::WALL_CLOCK_FORMAT`) montre son chevauchement : la ligne
+     * « Chevauchement … » ne doit jamais disparaître faute de lire le format réel.
+     */
+    public function testAConflictAsTheRadarServesItShowsItsOverlap(): void
+    {
+        $home = $this->servedSide($this->u15, FixtureHomeAway::HOME, '15:30', '2026-03-14 15:00', '2026-03-14 17:25', ConflictPersonRole::MAIN);
+        $away = $this->servedSide($this->sm2, FixtureHomeAway::AWAY, '17:00', '2026-03-14 16:00', '2026-03-14 19:30', ConflictPersonRole::PLAYER);
+        $conflict = [
+            'type' => 'MATCH_MATCH',
+            'severity' => 3,
+            'coachId' => $this->karim->getId(),
+            'coachRole' => 'PLAYER',
+            'start' => new DateTimeImmutable('2026-03-14 16:00')->format(ConflictMoments::WALL_CLOCK_FORMAT),
+            'end' => new DateTimeImmutable('2026-03-14 17:25')->format(ConflictMoments::WALL_CLOCK_FORMAT),
+            'left' => $home,
+            'right' => $away,
+        ];
+
+        $email = $this->conflicts([$conflict]);
+
+        self::assertStringContainsString('Chevauchement 16:00 → 17:25 (1h25)', (string) $email->getTextBody());
+        self::assertStringContainsString('Chevauchement 16:00 → 17:25 (1h25)', (string) $email->getHtmlBody());
+    }
+
+    /**
+     * La tuile se lit comme la référence validée : titre de famille (gras), mot de gravité en
+     * PASTILLE à contour, sous-ligne « personne · jour date » à part, libellé d'équipe et heure
+     * estimée en gras, chevauchement en PIED de tuile. On teste les éléments et leur ordre, jamais
+     * les couleurs.
+     */
+    public function testATileReadsTitlePillSubLineSidesThenOverlap(): void
+    {
+        $estimated = $this->matchMatch(right: ['kickoffTime' => null, 'estimatedKickoff' => true, 'estimatedKickoffTime' => '17:00']);
+        $nodes = $this->tileNodes((string) $this->conflicts([$estimated])->getHtmlBody(), 'Personne en double');
+
+        self::assertSame('Personne en double', $nodes[0]['text']);
+        self::assertTrue($nodes[0]['bold'], 'le titre de famille est en gras');
+        self::assertFalse($nodes[0]['pill'], 'témoin : le titre n\'est pas une pastille');
+        self::assertSame('Important', $nodes[1]['text'], 'le mot de gravité suit le titre');
+        self::assertTrue($nodes[1]['pill'], 'le mot de gravité est une pastille à contour');
+        self::assertSame('Karim B. · samedi 14/03', $nodes[2]['text'], 'la personne et le jour forment une sous-ligne à part');
+        self::assertFalse($nodes[2]['bold']);
+        self::assertFalse($nodes[2]['pill']);
+        self::assertFalse($this->nodeNamed($nodes, '15:30 → 17:25')['bold'], 'témoin négatif : une heure réelle n\'est pas en gras');
+        self::assertTrue($this->nodeNamed($nodes, 'U15 (coach)')['bold'], 'le libellé d\'équipe est en gras');
+        self::assertTrue($this->nodeNamed($nodes, 'SM2 (joueur)')['bold']);
+        self::assertTrue($this->nodeNamed($nodes, '17:00 (heure estimée)')['bold'], 'l\'heure estimée est en gras');
+        self::assertStringStartsWith('Chevauchement 16:00 → 17:25', $nodes[\count($nodes) - 1]['text'], 'le chevauchement ferme la tuile');
+        foreach ($nodes as $node) {
+            self::assertStringNotContainsString('Personne en double —', $node['text'], 'titre et sous-ligne ne sont plus un seul bandeau');
+        }
+    }
+
+    /** Côté entraînement et indisponibilité : « Entraînement U13A » et l'heure estimée du match manqué en gras. */
+    public function testTrainingLabelAndEstimatedMissedKickoffAreBold(): void
+    {
+        $training = $this->tileNodes((string) $this->conflicts([$this->matchTraining()])->getHtmlBody(), 'Match × entraînement');
+        self::assertTrue($this->nodeNamed($training, 'Entraînement U13A')['bold']);
+
+        $unavailable = $this->coachUnavailable(5);
+        $unavailable['fixture']['kickoffTime'] = null;
+        $unavailable['fixture']['estimatedKickoff'] = true;
+        $unavailable['fixture']['estimatedKickoffTime'] = '15:30';
+        $nodes = $this->tileNodes((string) $this->conflicts([$unavailable])->getHtmlBody(), 'Coach principal indisponible');
+        self::assertSame('À surveiller', $nodes[1]['text']);
+        self::assertTrue($nodes[1]['pill']);
+        self::assertTrue($this->nodeNamed($nodes, '15:30 (heure estimée)')['bold']);
+    }
+
+    /** Genre non renseigné : « joueur », comme la référence — jamais l'écriture « joueur·euse ». */
+    public function testAnUnspecifiedGenderReadsJoueur(): void
+    {
+        $this->karim->setGender(CoachGender::UNSPECIFIED);
+        $email = $this->conflicts([$this->matchMatch()]);
+
+        self::assertStringContainsString('SM2 (joueur)', (string) $email->getTextBody());
+        self::assertStringNotContainsString('joueur·euse', (string) $email->getTextBody() . (string) $email->getHtmlBody());
     }
 
     /** Passé par la vraie chaîne de signature, le mail « plus aucun » porte le pied anti-usurpation (texte et HTML). */
@@ -286,8 +398,8 @@ final class ConflictCoachMailBuilderTest extends TestCase
             'severity' => 3,
             'coachId' => $this->karim->getId(),
             'coachRole' => 'PLAYER',
-            'start' => '2026-03-14 16:00',
-            'end' => '2026-03-14 17:25',
+            'start' => '2026-03-14T16:00:00',
+            'end' => '2026-03-14T17:25:00',
             'left' => $left + [
                 'fixtureId' => 'ffffffff-1111-4000-8000-000000000001',
                 'teamId' => $this->u15->getId(),
@@ -299,8 +411,8 @@ final class ConflictCoachMailBuilderTest extends TestCase
                 'travelOneWayMinutes' => null,
                 'matchDurationMinutes' => 115,
                 'opponentLabel' => 'Les Loups',
-                'windowStart' => '2026-03-14 15:00',
-                'windowEnd' => '2026-03-14 17:25',
+                'windowStart' => '2026-03-14T15:00:00',
+                'windowEnd' => '2026-03-14T17:25:00',
                 'role' => 'MAIN',
             ],
             'right' => $right + [
@@ -315,8 +427,8 @@ final class ConflictCoachMailBuilderTest extends TestCase
                 'matchDurationMinutes' => 90,
                 'opponentLabel' => 'Les Ours',
                 'opponentPlace' => 'Villeurbanne',
-                'windowStart' => '2026-03-14 16:00',
-                'windowEnd' => '2026-03-14 19:30',
+                'windowStart' => '2026-03-14T16:00:00',
+                'windowEnd' => '2026-03-14T19:30:00',
                 'role' => 'PLAYER',
             ],
             'fingerprint' => 'MATCH_MATCH:' . $this->karim->getId(),
@@ -336,8 +448,8 @@ final class ConflictCoachMailBuilderTest extends TestCase
             'severity' => 4,
             'coachId' => $this->karim->getId(),
             'coachRole' => 'MAIN',
-            'start' => '2026-03-13 18:30',
-            'end' => '2026-03-13 20:00',
+            'start' => '2026-03-13T18:30:00',
+            'end' => '2026-03-13T20:00:00',
             'fixture' => [
                 'fixtureId' => 'ffffffff-1111-4000-8000-000000000003',
                 'teamId' => $this->u15->getId(),
@@ -349,8 +461,8 @@ final class ConflictCoachMailBuilderTest extends TestCase
                 'travelOneWayMinutes' => null,
                 'matchDurationMinutes' => 115,
                 'opponentLabel' => 'Les Loups',
-                'windowStart' => '2026-03-13 18:00',
-                'windowEnd' => '2026-03-13 20:25',
+                'windowStart' => '2026-03-13T18:00:00',
+                'windowEnd' => '2026-03-13T20:25:00',
                 'role' => 'MAIN',
             ],
             'training' => [
@@ -362,8 +474,8 @@ final class ConflictCoachMailBuilderTest extends TestCase
                 'startTime' => '18:30',
                 'durationMinutes' => 90,
                 'role' => 'MAIN',
-                'windowStart' => '2026-03-13 18:30',
-                'windowEnd' => '2026-03-13 20:00',
+                'windowStart' => '2026-03-13T18:30:00',
+                'windowEnd' => '2026-03-13T20:00:00',
             ],
             'fingerprint' => 'MATCH_TRAINING:' . $this->karim->getId(),
         ];
@@ -388,12 +500,154 @@ final class ConflictCoachMailBuilderTest extends TestCase
                 'travelOneWayMinutes' => null,
                 'matchDurationMinutes' => 115,
                 'opponentLabel' => 'Les Loups',
-                'windowStart' => '2026-03-14 15:00',
-                'windowEnd' => '2026-03-14 17:25',
+                'windowStart' => '2026-03-14T15:00:00',
+                'windowEnd' => '2026-03-14T17:25:00',
                 'role' => 'MAIN',
             ],
             'fingerprint' => 'MATCH_COACH_UNAVAILABLE:' . $this->karim->getId() . ':' . $severity,
         ];
+    }
+
+    /**
+     * Un côté de match sérialisé par la VRAIE maison du radar ({@see ConflictMoments::fixtureView}),
+     * décoré du lieu adverse comme le fait le flux sur un côté extérieur.
+     *
+     * @return array<string, mixed>
+     */
+    private function servedSide(Team $team, FixtureHomeAway $homeAway, string $kickoff, string $windowStart, string $windowEnd, ConflictPersonRole $role): array
+    {
+        $away = FixtureHomeAway::AWAY === $homeAway;
+        $fixture = new Fixture;
+        $fixture->setClubId($this->club->getId());
+        $fixture->setSeasonId($this->season->getId());
+        $fixture->setTeamId($team->getId());
+        $fixture->setMatchDate(new DateTimeImmutable('2026-03-14'));
+        $fixture->setHomeAway($homeAway);
+        $fixture->setOpponentLabel($away ? 'Les Ours' : 'Les Loups');
+        $fixture->setKickoffTime(DateTimeImmutable::createFromFormat('!H:i', $kickoff) ?: null);
+        $window = ['start' => new DateTimeImmutable($windowStart), 'end' => new DateTimeImmutable($windowEnd)];
+
+        $side = ConflictMoments::fixtureView([
+            'fixture' => $fixture,
+            'window' => $window,
+            'venueWindow' => $window,
+            'conflictWindow' => $window,
+            'estimated' => false,
+            'estimatedKickoffTime' => null,
+            'travelOneWayMinutes' => $away ? 60 : null,
+            'matchDurationMinutes' => $away ? 90 : 115,
+            'personIds' => [$this->karim->getId()],
+        ], $role);
+
+        return $away ? $side + ['opponentPlace' => 'Villeurbanne'] : $side;
+    }
+
+    /**
+     * Les nœuds de texte d'UNE tuile (de son titre de famille jusqu'avant la tuile suivante ou la
+     * phrase de clôture), dans l'ordre de lecture, avec : en gras ? dans une pastille à contour ?
+     *
+     * @return list<array{text: string, bold: bool, pill: bool}>
+     */
+    private function tileNodes(string $fragment, string $familyTitle): array
+    {
+        $doc = new DOMDocument;
+        $previous = libxml_use_internal_errors(true);
+        $doc->loadHTML('<?xml encoding="utf-8"?><div id="tiles-root">' . $fragment . '</div>');
+        libxml_clear_errors();
+        libxml_use_internal_errors($previous);
+
+        $all = [];
+        foreach (new DOMXPath($doc)->query('//div[@id="tiles-root"]//text()[normalize-space()]') ?: [] as $node) {
+            // Les espaces insécables (filet de couleur `&nbsp;`) ne sont pas du texte lu.
+            $text = trim((string) preg_replace('/[\s\x{00A0}]+/u', ' ', (string) $node->nodeValue));
+            if ('' !== $text) {
+                $all[] = ['text' => $text, 'bold' => $this->isBold($node), 'pill' => $this->inPill($node)];
+            }
+        }
+
+        $start = null;
+        foreach ($all as $i => $node) {
+            if ($familyTitle === $node['text'] || str_starts_with($node['text'], $familyTitle . ' ')) {
+                $start = $i;
+                break;
+            }
+        }
+        self::assertNotNull($start, \sprintf('aucun titre de famille « %s » dans le fragment', $familyTitle));
+
+        $tile = [];
+        foreach (\array_slice($all, $start) as $i => $node) {
+            $isNextTitle = $i > 0 && \in_array($node['text'], ['Personne en double', 'Match × entraînement', 'Coach principal indisponible'], true);
+            if ($isNextTitle || str_starts_with($node['text'], 'Cette liste vaut')) {
+                break;
+            }
+            $tile[] = $node;
+        }
+
+        return $tile;
+    }
+
+    /**
+     * @param list<array{text: string, bold: bool, pill: bool}> $nodes
+     *
+     * @return array{text: string, bold: bool, pill: bool}
+     */
+    private function nodeNamed(array $nodes, string $text): array
+    {
+        foreach ($nodes as $node) {
+            if ($text === $node['text']) {
+                return $node;
+            }
+        }
+        self::fail(\sprintf('« %s » n\'est pas un élément de texte à part dans la tuile (lus : %s)', $text, implode(' | ', array_column($nodes, 'text'))));
+    }
+
+    /** Gras = le plus proche ancêtre qui décide du poids le met à 600 ou plus (ou `b`/`strong`). */
+    private function isBold(DOMNode $node): bool
+    {
+        for ($el = $node->parentNode; $el instanceof DOMElement; $el = $el->parentNode) {
+            if (\in_array(strtolower($el->tagName), ['b', 'strong'], true)) {
+                return true;
+            }
+            if (1 === preg_match('/font-weight\s*:\s*([a-z0-9]+)/i', $el->getAttribute('style'), $m)) {
+                return 'bold' === strtolower($m[1]) || (ctype_digit($m[1]) && (int) $m[1] >= 600);
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Pastille = un élément EN LIGNE (`span`, ou `display:inline-block`) à contour complet
+     * (`border:`) et coins arrondis — pas un bloc de carte ou de tuile, qui peut lui aussi être arrondi.
+     */
+    private function inPill(DOMNode $node): bool
+    {
+        for ($el = $node->parentNode; $el instanceof DOMElement && 'tiles-root' !== $el->getAttribute('id'); $el = $el->parentNode) {
+            $style = $el->getAttribute('style');
+            $inline = 'span' === strtolower($el->tagName) || 1 === preg_match('/display\s*:\s*inline-block/i', $style);
+            if ($inline && 1 === preg_match('/(^|;)\s*border\s*:/i', $style) && str_contains($style, 'border-radius')) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /** Le paragraphe (`<p>`) dont le texte commence par `$start`, dans un HTML signé. */
+    private function paragraphStartingWith(string $html, string $start): ?DOMElement
+    {
+        $doc = new DOMDocument;
+        $previous = libxml_use_internal_errors(true);
+        $doc->loadHTML('<?xml encoding="utf-8"?>' . $html);
+        libxml_clear_errors();
+        libxml_use_internal_errors($previous);
+        foreach ($doc->getElementsByTagName('p') as $p) {
+            if (str_starts_with(trim((string) preg_replace('/\s+/u', ' ', $p->textContent)), $start)) {
+                return $p;
+            }
+        }
+
+        return null;
     }
 
     private function signatureListener(): EmailSignatureListener

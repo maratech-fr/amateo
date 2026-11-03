@@ -23,6 +23,7 @@ use App\Service\ConflictMailingLock;
 use App\Service\SeasonResolver;
 use App\Tests\ChoosesPlanVersionTrait;
 use App\Tests\TenantGucTrait;
+use App\Tests\Unit\Service\ConflictCoachMailBuilderTest;
 use App\Tests\Unit\Service\ConflictCoachMailingTest;
 use DateTimeImmutable;
 use DateTimeInterface;
@@ -109,6 +110,24 @@ final class ConflictCoachMailApiTest extends WebTestCase
         self::assertSame([], $body['failed']);
     }
 
+    /**
+     * Le conflit réel du radar (bornes à l'heure murale servie) arrive dans le mail AVEC sa ligne de
+     * chevauchement : Karim est attendu à 15:30 avec U15 et à 16:00 avec SM2. Jumeau unitaire :
+     * {@see ConflictCoachMailBuilderTest::testAConflictAsTheRadarServesItShowsItsOverlap}.
+     */
+    public function testTheMailOfARealRadarConflictShowsItsOverlap(): void
+    {
+        $this->aiglons();
+
+        $this->client->enableProfiler();
+        $this->post();
+        self::assertResponseStatusCodeSame(200);
+
+        $toKarim = array_values(array_filter($this->queuedEmails(), static fn (Email $m): bool => 'karim@aiglons.test' === $m->getTo()[0]->getAddress()));
+        self::assertCount(1, $toKarim);
+        self::assertMatchesRegularExpression('/Chevauchement 16:00 → \d{2}:\d{2} \(\d/u', (string) $toKarim[0]->getTextBody());
+    }
+
     /** Le GET compte ce que le POST envoie (même service), puis sert la ligne « Envoyé le … par Nadia — 2 e-mails ». */
     public function testTheGetCountsWhatThePostSendsThenShowsTheStamp(): void
     {
@@ -117,12 +136,14 @@ final class ConflictCoachMailApiTest extends WebTestCase
         $before = $this->coachMailing();
         self::assertSame(1, $before['personConflictCount'], 'un seul conflit de personne : les niveaux manquants ne comptent pas');
         self::assertSame(0, $before['pendingRecipientCount']);
+        self::assertSame(2, $before['recipientCount'] ?? null, 'la confirmation annonce 2 coachs');
         self::assertNull($before['last'], 'aucun envoi : pas de ligne « Envoyé le … »');
 
         $this->post();
         self::assertResponseStatusCodeSame(200);
         $sent = $this->json();
         self::assertSame($before['personConflictCount'], $sent['conflictCount'], 'parité GET/POST');
+        self::assertSame($before['recipientCount'], \count($sent['recipients']) + \count($sent['cleared']), 'parité GET/POST : les coachs annoncés sont ceux qui reçoivent');
 
         $after = $this->coachMailing();
         self::assertSame($sent['sentAt'], $after['last']['sentAt'] ?? null);

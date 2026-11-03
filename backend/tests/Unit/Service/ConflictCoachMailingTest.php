@@ -143,6 +143,23 @@ final class ConflictCoachMailingTest extends TestCase
     }
 
     /**
+     * La confirmation dit combien de coachs recevront un e-mail : ceux à qui une liste partira (avec
+     * une adresse valide) plus ceux à prévenir « plus aucun conflit ». Calculé ici, une fois, pour le
+     * GET et le POST — jamais recompté par l'écran. Karim (adresse) et Emma (sans adresse) sont dans
+     * le conflit ; Léa, informée mardi, n'a plus rien.
+     */
+    public function testRecipientCountIsWhoWillActuallyReceiveAnEmail(): void
+    {
+        $this->emma->setEmail(null);
+        $conflict = $this->matchMatch($this->karim->getId(), self::U15, self::SM2);
+
+        $plan = $this->plan([$conflict], memory: [$this->lea->getId()]);
+
+        self::assertSame(2, $plan['recipientCount'] ?? null, 'Karim (liste) + Léa (plus aucun) ; Emma, sans adresse, ne recevra rien');
+        self::assertSame(1, $plan['personConflictCount']);
+    }
+
+    /**
      * Règle de mémoire unique : (ancienne ∪ listes enfilées) − « plus aucun » enfilés − supprimés.
      * Mardi Karim a reçu ; jeudi Emma reçoit la liste à jour et Karim « plus aucun » : il sort.
      */
@@ -251,8 +268,8 @@ final class ConflictCoachMailingTest extends TestCase
             'severity' => 3,
             'coachId' => $personId,
             'coachRole' => 'PLAYER',
-            'start' => '2026-03-14 16:00',
-            'end' => '2026-03-14 17:25',
+            'start' => '2026-03-14T16:00:00',
+            'end' => '2026-03-14T17:25:00',
             'left' => $this->side($leftTeam, 'HOME', 'MAIN'),
             'right' => $this->side($rightTeam, 'AWAY', 'PLAYER'),
             'fingerprint' => 'MATCH_MATCH:' . $personId,
@@ -267,8 +284,8 @@ final class ConflictCoachMailingTest extends TestCase
             'severity' => 4,
             'coachId' => $personId,
             'coachRole' => 'MAIN',
-            'start' => '2026-03-13 18:30',
-            'end' => '2026-03-13 19:00',
+            'start' => '2026-03-13T18:30:00',
+            'end' => '2026-03-13T19:00:00',
             'fixture' => $this->side($matchTeam, 'HOME', 'MAIN'),
             'training' => [
                 'slotTemplateId' => 'eeeeeeee-0000-4000-8000-000000000001',
@@ -279,8 +296,8 @@ final class ConflictCoachMailingTest extends TestCase
                 'startTime' => '18:30',
                 'durationMinutes' => 90,
                 'role' => 'MAIN',
-                'windowStart' => '2026-03-13 18:30',
-                'windowEnd' => '2026-03-13 20:00',
+                'windowStart' => '2026-03-13T18:30:00',
+                'windowEnd' => '2026-03-13T20:00:00',
             ],
             'fingerprint' => 'MATCH_TRAINING:' . $personId,
         ];
@@ -313,8 +330,8 @@ final class ConflictCoachMailingTest extends TestCase
             'travelOneWayMinutes' => null,
             'matchDurationMinutes' => 115,
             'opponentLabel' => 'Les Loups',
-            'windowStart' => '2026-03-14 15:00',
-            'windowEnd' => '2026-03-14 17:25',
+            'windowStart' => '2026-03-14T15:00:00',
+            'windowEnd' => '2026-03-14T17:25:00',
         ];
         if (null !== $role) {
             $side['role'] = $role;

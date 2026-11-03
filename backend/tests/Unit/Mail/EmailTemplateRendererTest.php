@@ -253,6 +253,21 @@ final class EmailTemplateRendererTest extends TestCase
         self::assertSame('9680bfcbaf4b66799b6dd90304de8308541013e14894904a15f9c3ee38ad984c', hash('sha256', $withCta));
     }
 
+    /**
+     * À 360 px, la carte d'un mail à tuiles est FLUIDE : largeur 100 %, plafonnée à 600 px — jamais
+     * une largeur fixe de 600 px qui déborde l'écran d'un téléphone. Les mails sans fragment restent
+     * octet pour octet (cf. {@see testWithoutAFragmentTheCardIsByteIdenticalToBefore}).
+     */
+    public function testAFragmentCardIsFluidUpToSixHundredPixels(): void
+    {
+        $html = $this->renderer()->render('Texte.', self::PRODUCT, self::TAGLINE, self::SITE, 'BC Lyon', false, bodyHtmlFragment: '<p>Tuile</p>');
+
+        self::assertStringContainsString('max-width:600px', $html);
+        self::assertSame(0, preg_match('/(?<!max-)width\s*:\s*600px/', $html), 'aucune largeur fixe de 600 px');
+        self::assertStringNotContainsString('width="600"', $html);
+        self::assertMatchesRegularExpression('/width="100%"[^>]*style="[^"]*(?<!max-)width\s*:\s*100%[^"]*max-width:600px/', $html, 'la carte elle-même prend 100 %, plafonnée à 600 px');
+    }
+
     private function renderer(): EmailTemplateRenderer
     {
         return new EmailTemplateRenderer;

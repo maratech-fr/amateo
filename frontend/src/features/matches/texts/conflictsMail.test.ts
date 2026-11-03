@@ -54,6 +54,20 @@ describe("MATCHES_CONFLICTS_MAIL_TEXTS — bouton, raisons, confirmation", () =>
     expect(MAIL.confirmCancel).toBe("Annuler");
   });
 
+  // Libellés PROPOSÉS par TANK (retour SWITCH, absents du plan §4) — à valider par le fondateur ;
+  // NEO pose ces valeurs, un changement de mot ne touche que ce fichier.
+  it.each([
+    [{ coachCount: 1, conflictCount: 1 }, "1 coach recevra un e-mail · 1 conflit de personne."],
+    [{ coachCount: 4, conflictCount: 7 }, "4 coachs recevront un e-mail · 7 conflits de personnes."],
+    [{ coachCount: 2, conflictCount: 0 }, "2 coachs recevront un e-mail · 0 conflit de personne."],
+  ])("la confirmation compte coachs et conflits, accord par segment : %o", (args, expected) => {
+    expect(MAIL.confirmCounts(args)).toBe(expected);
+  });
+
+  it("la confirmation dit que tous les conflits de personnes partent, quels que soient les filtres", () => {
+    expect(MAIL.confirmIgnoresFilters).toBe("Tous les conflits de personnes partent, quels que soient les filtres de l'écran.");
+  });
+
   it("le corps de la confirmation nomme la saison", () => {
     expect(MAIL.confirmBody("2026-2027")).toBe(
       "Saison 2026-2027. Chaque coach concerné recevra par e-mail, à titre indicatif, les conflits de personnes sur un match, datés d'aujourd'hui ou à venir, qui le touchent. Un coach informé lors d'un envoi précédent et qui n'a plus de conflit recevra un e-mail le disant. Les autres familles de conflits ne sont pas envoyées.",
