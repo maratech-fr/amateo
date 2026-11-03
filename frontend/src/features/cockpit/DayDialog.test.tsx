@@ -1071,6 +1071,43 @@ describe("DayDialog — re-datage d'une fermeture (« Modifier les dates », D3 
     expect(navigate).toHaveBeenCalledWith("/wizard");
   });
 
+  /**
+   * Fermetures PR 1, correction E2a — « on ne retire rien sans l'avoir annoncé ». Le serveur refuse
+   * le re-datage qui retirerait des épingles (409 `closure_pins_preview_required`, jumeau serveur
+   * `ClosureRemovesPinsAtomicallyTest`) : l'écran montre l'ANNONCE avec les nombres — les MÊMES
+   * textes que l'aperçu de création (`closureLocksRemoval`, `closureReservationsRemoval`) — et un
+   * bouton de confirmation qui renvoie le re-datage avec `confirmPinRemoval: true`. Jamais un toast
+   * d'erreur à la place, jamais une confirmation implicite.
+   */
+  it("re-datage qui retirerait des épingles : l'annonce s'affiche avec les nombres, et la confirmation renvoie le PUT confirmé", async () => {
+    const { ClosurePinsPreviewRequiredError } = await import("./api");
+    const { toast } = await import("@/shared/stores/toastStore");
+    const reservations = [{ teamId: "t-sm1", teamName: "SM1", dayOfWeek: 2 }];
+    const pinRemoval = { venueName: "Mistral", plans: [{ entryId: "mars", title: "Vacances de mars", locks: 2, reservations }] };
+    redateMutateAsync.mockRejectedValueOnce(new ClosurePinsPreviewRequiredError("Confirmez après avoir lu l’annonce.", pinRemoval));
+    const onClose = renderWith([incident()]);
+
+    await userEvent.click(screen.getByRole("button", { name: redateLabel }));
+    const endInput = screen.getByLabelText("Jusqu'au");
+    await userEvent.clear(endInput);
+    await userEvent.type(endInput, "2026-06-20");
+    await userEvent.click(screen.getByRole("button", { name: "Enregistrer" }));
+
+    expect(await screen.findByText(COCKPIT_TEXTS.closureLocksRemoval(2, "Mistral", "Vacances de mars"))).toBeInTheDocument();
+    expect(screen.getByText(COCKPIT_TEXTS.closureReservationsRemoval(reservations, "Mistral"))).toBeInTheDocument();
+    expect(toast.error).not.toHaveBeenCalled();
+    expect(onClose).not.toHaveBeenCalled();
+    expect(redateMutateAsync).toHaveBeenCalledTimes(1);
+    expect(redateMutateAsync).not.toHaveBeenCalledWith(expect.objectContaining({ confirmPinRemoval: true }));
+
+    await userEvent.click(screen.getByRole("button", { name: COCKPIT_TEXTS.confirmPinRemoval }));
+
+    await waitFor(() =>
+      expect(redateMutateAsync).toHaveBeenLastCalledWith(expect.objectContaining({ entry: expect.objectContaining({ id: "inc" }), startDate: "2026-05-12", endDate: "2026-06-20", confirmPinRemoval: true })),
+    );
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+  });
+
   it("le refus est RÉINITIALISÉ à la soumission suivante (une nouvelle tentative ne colle pas l'ancien refus)", async () => {
     const { WindowAlreadyPlannedError } = await import("./api");
     redateMutateAsync.mockRejectedValueOnce(new WindowAlreadyPlannedError("déjà planifié", "toussaint-entry"));

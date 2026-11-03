@@ -128,6 +128,58 @@ describe("updateCalendarEntry — re-datage d'une fermeture (PUT, D3 v1 PR-2)", 
   });
 });
 
+/**
+ * Fermetures PR 1, correction E2a — « on ne retire rien sans l'avoir annoncé » : un re-datage qui
+ * retirerait des verrous ou des réservations est refusé en 409 `closure_pins_preview_required` avec
+ * l'annonce détaillée (`pinRemoval`, gardé côté serveur par
+ * `ClosureRemovesPinsAtomicallyTest::testRedatingAClosureThatWouldRemovePinsNeedsTheAnnouncementFirst`).
+ * Le client le traduit en erreur TYPÉE portant l'annonce, le hook la TAIT (l'écran l'affiche avec
+ * son bouton de confirmation), et la confirmation renvoie le PUT avec `confirmPinRemoval: true`.
+ */
+describe("re-datage qui retire des épingles — annonce puis confirmation (E2a)", () => {
+  const pinRemoval = {
+    venueName: "Mistral",
+    plans: [{ entryId: "mars", title: "Vacances de mars", locks: 2, reservations: [{ teamId: "t-sm1", teamName: "SM1", dayOfWeek: 2 }] }],
+  };
+  const refusal = { code: "closure_pins_preview_required", error: "Ce re-datage retire des séances verrouillées ou des réservations : confirmez après avoir lu l’annonce.", toRemove: { locks: 2, reservations: 1 }, pinRemoval };
+
+  it("traduit le 409 closure_pins_preview_required en erreur typée PORTANT l'annonce servie", async () => {
+    mockPut.mockReturnValue({ json: () => Promise.reject(httpError(409, refusal)) } as never);
+    const { ClosurePinsPreviewRequiredError } = await import("./api");
+
+    const failure = updateCalendarEntry(closureEntry(), { startDate: "2026-05-12", endDate: "2026-06-20" });
+
+    await expect(failure).rejects.toBeInstanceOf(ClosurePinsPreviewRequiredError);
+    await expect(failure).rejects.toMatchObject({ pinRemoval });
+  });
+
+  it("la confirmation renvoie le PUT avec confirmPinRemoval: true (et seulement elle)", async () => {
+    mockPut.mockReturnValue({ json: () => Promise.resolve(closureEntry({ endDate: "2026-06-20" })) } as never);
+
+    await updateCalendarEntry(closureEntry(), { startDate: "2026-05-12", endDate: "2026-06-20", confirmPinRemoval: true } as never);
+
+    expect(mockPut).toHaveBeenCalledWith("calendar_entries/inc", {
+      json: expect.objectContaining({ startDate: "2026-05-12", endDate: "2026-06-20", confirmPinRemoval: true }) as unknown,
+    });
+  });
+
+  it("le hook TAIT ce refus (l'écran l'affiche avec son bouton) et relaie confirmPinRemoval", async () => {
+    mockPut.mockReturnValueOnce({ json: () => Promise.reject(httpError(409, refusal)) } as never);
+    const { ClosurePinsPreviewRequiredError } = await import("./api");
+    const { result } = renderHook(() => useRedateEntry(), { wrapper });
+
+    result.current.mutate({ entry: closureEntry(), startDate: "2026-05-12", endDate: "2026-06-20" });
+    await waitFor(() => expect(result.current.isError).toBe(true));
+    expect(result.current.error).toBeInstanceOf(ClosurePinsPreviewRequiredError);
+    expect(toast.error).not.toHaveBeenCalled();
+
+    mockPut.mockReturnValueOnce({ json: () => Promise.resolve(closureEntry({ endDate: "2026-06-20" })) } as never);
+    result.current.mutate({ entry: closureEntry(), startDate: "2026-05-12", endDate: "2026-06-20", confirmPinRemoval: true } as never);
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(mockPut).toHaveBeenLastCalledWith("calendar_entries/inc", { json: expect.objectContaining({ confirmPinRemoval: true }) as unknown });
+  });
+});
+
 describe("useRedateEntry — le hook POSSÈDE son feedback (D3 v1 PR-2)", () => {
   it("TAIT le refus de chevauchement (le mode re-datage l'affiche) — aucun toast générique", async () => {
     mockPut.mockReturnValue({ json: () => Promise.reject(httpError(409, { code: "window_already_planned", error: "déjà planifié", entryId: "e-conflit" })) } as never);

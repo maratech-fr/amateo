@@ -186,6 +186,14 @@ final class ClosureRemovesPinsAtomicallyTest extends WebTestCase
         $refusal = $this->json();
         self::assertSame('closure_pins_preview_required', $refusal['code'] ?? null);
         self::assertSame(['locks' => 1, 'reservations' => 0], $refusal['toRemove'] ?? null, 'le refus annonce les nombres');
+        // L'annonce DÉTAILLÉE que l'écran affiche avec les mêmes textes que l'aperçu de création
+        // (« … verrouillées à {gymnase} pendant « {plan} » … ») : le gymnase et chaque plan touché.
+        // Contrat choisi par TANK : `pinRemoval: {venueName, plans: [{entryId, title, locks, reservations: [{teamId, teamName, dayOfWeek}]}]}`.
+        self::assertSame(
+            ['venueName' => 'Mistral', 'plans' => [['entryId' => $entryId, 'title' => 'Mistral en travaux', 'locks' => 1, 'reservations' => []]]],
+            $refusal['pinRemoval'] ?? null,
+            'le refus porte l’annonce détaillée (gymnase, plan, nombres)',
+        );
         self::assertSame([$this->decorMonday(12), $this->decorDay(12, 7)], $this->entryWindow($clubId, $entryId), 'rien n’est re-daté sans l’annonce');
         self::assertSame(LockLevel::HARD->value, $this->decorLockLevel($clubId, $lockTueMistral));
 
@@ -246,12 +254,22 @@ final class ClosureRemovesPinsAtomicallyTest extends WebTestCase
 
         $this->client->request('POST', '/api/schedule_plans/' . $planId . '/window-preview', [], [], $this->decorHeaders($d['user']), json_encode(['startDate' => $this->decorMonday(12), 'endDate' => $this->decorDay(13, 7)], \JSON_THROW_ON_ERROR));
         self::assertResponseIsSuccessful();
-        $token = (string) ($this->json()['token'] ?? '');
+        $preview = $this->json();
+        $token = (string) ($preview['token'] ?? '');
+        // « On ne retire rien sans l'avoir annoncé » : l'aperçu du rail annonce les retraits des jours
+        // NOUVEAUX, avec le même contrat que le 409 du re-datage (`pinRemoval`), AVANT confirmation.
+        $announced = $preview['pinRemoval'] ?? null;
+        self::assertIsArray($announced, 'l’aperçu de l’élargissement annonce les retraits');
+        self::assertSame('Mistral', $announced['venueName'] ?? null);
+        self::assertIsArray($announced['plans'] ?? null);
+        self::assertSame(1, array_sum(array_column($announced['plans'], 'locks')), 'l’aperçu annonce le verrou du mardi des jours nouveaux');
+        self::assertSame(0, array_sum(array_map(static fn (array $p): int => \count($p['reservations']), $announced['plans'])));
+        self::assertSame(LockLevel::HARD->value, $this->decorLockLevel($clubId, $lockTueMistral), 'l’aperçu est une lecture pure : rien retiré');
 
         $this->client->request('POST', '/api/schedule_plans/' . $planId . '/window', [], [], $this->decorHeaders($d['user']), json_encode(['startDate' => $this->decorMonday(12), 'endDate' => $this->decorDay(13, 7), 'previewToken' => $token], \JSON_THROW_ON_ERROR));
 
         self::assertResponseIsSuccessful();
-        self::assertSame(['locks' => 1, 'reservations' => 0], $this->json()['removed'] ?? null);
+        self::assertSame(['locks' => 1, 'reservations' => 0], $this->json()['removed'] ?? null, 'appliqué == annoncé');
         self::assertSame(LockLevel::NONE->value, $this->decorLockLevel($clubId, $lockTueMistral));
         self::assertSame(LockLevel::HARD->value, $this->decorLockLevel($clubId, $lockTueBrel));
         self::assertSame(LockLevel::HARD->value, $this->decorLockLevel($clubId, $d['socleLockTueMistral']), 'le socle n’est jamais touché');
