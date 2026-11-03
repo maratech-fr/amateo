@@ -57,7 +57,7 @@ describe("ClubRequestsSection — nature de chaque demande", () => {
   });
 
   it("étiquette Création, Reprise et Promotion, une par ligne", async () => {
-    const base = { clubEmail: "club@ffbb.fr", status: "pending" as const, requesterName: "Léa Martin", requesterEmail: "lea@club.fr", createdAt: "2026-11-01", expiresAt: "2026-11-08" };
+    const base = { clubEmail: "club@ffbb.fr", status: "pending" as const, requesterName: "Léa Martin", requesterEmail: "lea@club.fr", createdAt: "2026-11-01T09:00:00+01:00", expiresAt: "2026-11-08" };
     mockRequests.mockReset().mockResolvedValue({
       items: [
         { ...base, id: "r-create", clubName: "Club Neuf", ara: "ARA0000010", kind: "create" },
