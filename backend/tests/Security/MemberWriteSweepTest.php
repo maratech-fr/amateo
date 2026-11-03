@@ -4,25 +4,14 @@ declare(strict_types=1);
 
 namespace App\Tests\Security;
 
-use App\Entity\ClubUser;
-use App\Entity\ScheduleSlotTemplate;
-use App\Entity\Season;
-use App\Enum\LockLevel;
 use App\Tests\ChoosesPlanVersionTrait;
-use App\Entity\User;
-use App\Service\TenantConnectionContext;
+use App\Tests\MemberReadOnlyDecorTrait;
 use App\Tests\StartsFreshBrowserSession;
 use App\Tests\VerifiesRegistration;
 use DateTimeImmutable;
-use Doctrine\DBAL\Connection;
-use Doctrine\ORM\EntityManagerInterface;
-use Lexik\Bundle\JWTAuthenticationBundle\Services\JWTTokenManagerInterface;
 use PHPUnit\Framework\Attributes\Group;
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
-use Symfony\Component\Messenger\Transport\InMemory\InMemoryTransport;
-use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
-use Symfony\Component\RateLimiter\RateLimiterFactory;
 use Symfony\Component\Routing\RouterInterface;
 
 /**
@@ -46,18 +35,21 @@ use Symfony\Component\Routing\RouterInterface;
  * mémoire, seaux `api` (Membre) et `schedule_generation` (club) remis à zéro AVANT chaque appel par
  * `reset()` ciblé — jamais FLUSHALL.
  *
- * Falsification : retirer `assertManager()` d'un contrôleur d'écriture (ex. `ReorderTeamsController`)
- * rougit le balayage sur sa ligne ; retirer une ligne de la table rougit le sens routeur→table.
+ * Falsification jouée (2026-11-03) : `assertManager()` retiré de `ReorderTeamsController` → la ligne
+ * `POST /api/teams/reorder` rend 200 ET l'empreinte de la table `team` bouge ; une ligne retirée de la
+ * table rougit le sens routeur→table, une ligne fantôme ajoutée rougit le sens table→routeur.
+ * Angle jumeau, cité : `ManagementRoleTest` (listes d'écritures NOMMÉES, sans balayage du routeur) et
+ * `MemberRoleTest` (pilotage des adhésions) — auth & memberships est un point sensible, les angles
+ * coexistent : ici l'exhaustivité, là le détail de chaque famille.
  */
 #[Group('phase1')]
 #[Group('integration')]
 final class MemberWriteSweepTest extends WebTestCase
 {
     use ChoosesPlanVersionTrait;
+    use MemberReadOnlyDecorTrait;
     use StartsFreshBrowserSession;
     use VerifiesRegistration;
-
-    private const string PASSWORD = 'Password123!';
 
     private const string DUMMY = '11111111-1111-4111-8111-111111111111';
 
@@ -288,19 +280,6 @@ final class MemberWriteSweepTest extends WebTestCase
 
     private KernelBrowser $client;
 
-    /** @var array<string, string> */
-    private array $ids = [];
-
-    private string $memberToken = '';
-
-    private string $memberUserId = '';
-
-    private string $clubId = '';
-
-    private string $managerUserId = '';
-
-    private string $managerToken = '';
-
     public function testEveryRouterWriteIsDecidedInTheTableAndEveryRowExists(): void
     {
         $router = $this->routerWrites();
@@ -317,10 +296,10 @@ final class MemberWriteSweepTest extends WebTestCase
     {
         $this->seedClubAndMember();
         $before = $this->fingerprint();
-        $sentBefore = $this->sentCounts();
 
         $router = $this->routerWrites();
         $wrong = [];
+        $sent = [];
         $played = 0;
         foreach (self::ROUTES as $key => [$path, $body, $decision]) {
             if (403 !== $decision || !\in_array($key, $router, true)) {
@@ -331,17 +310,16 @@ final class MemberWriteSweepTest extends WebTestCase
                 // PUT : le corps est la ressource telle que le gestionnaire la lit — valide par construction.
                 $body = json_encode($this->api($this->managerToken, 'GET', $this->fill($path)), \JSON_THROW_ON_ERROR);
             }
-            $this->resetBuckets();
-            $this->startFreshBrowserSession($this->client);
-            $this->client->request($method, $this->fill($path), [], [], [
-                'HTTP_AUTHORIZATION' => 'Bearer ' . $this->memberToken,
-                'CONTENT_TYPE' => 'PATCH' === $method && !str_starts_with($path, '/api/club/') && !str_starts_with($path, '/api/me')
-                    ? 'application/merge-patch+json' : 'application/json',
-            ], null === $body ? null : $this->fill($body));
+            // Le cap de génération du club ne doit jamais répondre à la place de la garde.
+            $this->resetBucket('limiter.schedule_generation', 'club-' . $this->clubId);
+            $this->asMember($method, $this->fill($path), null === $body ? null : $this->fill($body));
             ++$played;
             $status = $this->client->getResponse()->getStatusCode();
             if (403 !== $status) {
                 $wrong[] = \sprintf('%s → %d %s', $key, $status, mb_substr((string) $this->client->getResponse()->getContent(), 0, 700));
+            }
+            foreach ($this->messagesSentByLastRequest() as $message) {
+                $sent[] = $key . ' → ' . $message;
             }
         }
 
@@ -349,7 +327,7 @@ final class MemberWriteSweepTest extends WebTestCase
         self::assertGreaterThan(100, $played, 'le balayage n\'a presque rien joué');
         self::assertSame([], $wrong, "Écritures qu'un Membre n'a pas reçues en 403 EXACT :\n  - " . implode("\n  - ", $wrong));
         self::assertSame($before, $this->fingerprint(), 'les tables du club ont bougé sous un Membre');
-        self::assertSame($sentBefore, $this->sentCounts(), 'un Membre a fait partir un mail ou un message');
+        self::assertSame([], $sent, 'un Membre a fait partir un mail ou un message');
     }
 
     protected function setUp(): void
@@ -391,8 +369,7 @@ final class MemberWriteSweepTest extends WebTestCase
 
     private function seedClubAndMember(): void
     {
-        $managerToken = $this->registerManager();
-        $this->managerToken = $managerToken;
+        $managerToken = $this->registerManager('sw');
 
         $categoryId = $this->api($managerToken, 'GET', '/api/sport_categories')['member'][0]['id'];
         $this->ids['category'] = $categoryId;
@@ -407,13 +384,12 @@ final class MemberWriteSweepTest extends WebTestCase
         $this->ids['dummy'] = self::DUMMY;
         $this->ids['match_date'] = new DateTimeImmutable('+10 days')->format('Y-m-d');
         $this->ids['fixture'] = $this->create($managerToken, '/api/fixtures', [
-            'teamId' => $this->ids['team'], 'matchDate' => new DateTimeImmutable('+10 days')->format('Y-m-d'),
+            'teamId' => $this->ids['team'], 'matchDate' => $this->ids['match_date'],
             'homeAway' => 'HOME', 'opponentLabel' => 'Amical SW',
         ]);
 
         $this->seedEveryEditableResource($managerToken);
-
-        [$this->memberToken, $this->memberUserId, $this->ids['membership']] = $this->makeMember($this->clubId);
+        $this->addActiveMember();
     }
 
     /**
@@ -458,170 +434,5 @@ final class MemberWriteSweepTest extends WebTestCase
         $this->ids['coach_wish_campaign'] = $this->create($token, '/api/coach_wish_campaigns', ['calendarEntryId' => $this->ids['holiday'], 'deadline' => $monday->modify('+7 days')->format('Y-m-d'), 'weeks' => [$holidayMonday], 'teamIds' => [$this->ids['team']]]);
         $this->ids['rule_key'] = 'coachRestDay';
         $this->ids['season'] = $this->ids['season'] ?? self::DUMMY;
-    }
-
-    /**
-     * Pointage (SQL autorisé par la charte) : valider un plan de saison exige une génération moteur ;
-     * le décor pointe donc une version du plan SEASON (patron `ChoosesPlanVersionTrait`, comme les
-     * tests du module matchs) et y pose une séance — ce qui ouvre les rencontres et donne des ids
-     * réels aux retouches de planning.
-     */
-    private function pointValidatedSeasonPlan(): void
-    {
-        $em = self::getContainer()->get(EntityManagerInterface::class);
-        \assert($em instanceof EntityManagerInterface);
-        self::getContainer()->get(TenantConnectionContext::class)->setClubId($this->clubId);
-        $season = $em->getRepository(Season::class)->findOneBy(['clubId' => $this->clubId], ['startDate' => 'DESC']);
-        self::assertInstanceOf(Season::class, $season);
-        $this->ids['season'] = $season->getId();
-        $schedule = $this->settleSeasonPlan($season);
-        $this->ids['schedule'] = $schedule->getId();
-        $this->ids['schedule_plan'] = (string) $schedule->getSchedulePlanId();
-        $session = (new ScheduleSlotTemplate)->setClubId($this->clubId)->setSeasonId($season->getId())->setScheduleId($schedule->getId())
-            ->setTeamId($this->ids['team'])->setVenueId($this->ids['venue'])->setDayOfWeek(1)
-            ->setStartTime(new DateTimeImmutable('18:00'))->setDurationMinutes(90)->setLockLevel(LockLevel::NONE);
-        $em->persist($session);
-        $em->flush();
-        $this->ids['schedule_slot'] = $session->getId();
-    }
-
-    private function registerManager(): string
-    {
-        $ip = \sprintf('10.%d.%d.%d', random_int(1, 254), random_int(0, 254), random_int(1, 254));
-        $suffix = 'sw' . substr(md5(uniqid('', true)), 0, 6);
-        $this->client->request('POST', '/api/register', [], [], [
-            'CONTENT_TYPE' => 'application/json', 'REMOTE_ADDR' => $ip,
-        ], json_encode([
-            'email' => $suffix . '@test.fr', 'password' => self::PASSWORD,
-            'firstName' => 'M', 'lastName' => 'Sweep', 'ara' => strtoupper($suffix),
-            'club_name' => 'Club Sweep', 'consent' => true,
-        ], \JSON_THROW_ON_ERROR));
-        $token = $this->verifyRegistration($this->client, $suffix . '@test.fr');
-        self::assertNotSame('', $token);
-        $this->startFreshBrowserSession($this->client);
-        $me = $this->api($token, 'GET', '/api/me');
-        $this->clubId = (string) $me['club']['id'];
-        $this->managerUserId = (string) $me['id'];
-        $this->ids['club'] = $this->clubId;
-
-        return $token;
-    }
-
-    /** @return array{0: string, 1: string, 2: string} [token, userId, membershipId] */
-    private function makeMember(string $clubId): array
-    {
-        $container = self::getContainer();
-        $em = $container->get(EntityManagerInterface::class);
-        \assert($em instanceof EntityManagerInterface);
-        $hasher = $container->get(UserPasswordHasherInterface::class);
-        \assert($hasher instanceof UserPasswordHasherInterface);
-
-        $user = new User;
-        $user->setEmail('membre' . substr(md5(uniqid('', true)), 0, 8) . '@test.fr');
-        $user->setFirstName('Paul');
-        $user->setLastName('Membre');
-        $user->setPasswordHash($hasher->hashPassword($user, self::PASSWORD));
-        $em->persist($user);
-        $membership = new ClubUser;
-        $membership->setClubId($clubId);
-        $membership->setUserId($user->getId());
-        $membership->setRole('member');
-        $membership->setIsActive(true);
-        $em->persist($membership);
-        $em->flush();
-
-        return [$container->get(JWTTokenManagerInterface::class)->create($user), $user->getId(), $membership->getId()];
-    }
-
-    /** @param array<string, mixed> $payload */
-    private function create(string $token, string $url, array $payload): string
-    {
-        $body = $this->api($token, 'POST', $url, $payload);
-        self::assertResponseStatusCodeSame(201, 'décor : ' . $url . ' ' . mb_substr((string) $this->client->getResponse()->getContent(), 0, 300));
-
-        return (string) $body['id'];
-    }
-
-    /**
-     * @param array<string, mixed>|null $payload
-     *
-     * @return array<string, mixed>
-     */
-    private function api(string $token, string $method, string $url, ?array $payload = null): array
-    {
-        if ('' !== $this->managerUserId) {
-            // Le décor dépasse la borne `api` de test (30/min) : seau du gestionnaire remis à zéro.
-            $limiter = self::getContainer()->get('limiter.api');
-            \assert($limiter instanceof RateLimiterFactory);
-            $limiter->create('api-user-' . $this->managerUserId)->reset();
-        }
-        $this->startFreshBrowserSession($this->client);
-        $this->client->request($method, $url, [], [], [
-            'HTTP_AUTHORIZATION' => 'Bearer ' . $token,
-            'CONTENT_TYPE' => 'application/ld+json',
-        ], null === $payload ? null : json_encode($payload, \JSON_THROW_ON_ERROR));
-        $decoded = json_decode((string) $this->client->getResponse()->getContent(), true);
-
-        return \is_array($decoded) ? $decoded : [];
-    }
-
-    private function fill(string $path): string
-    {
-        return (string) preg_replace_callback('/\{(\w+)\}/', fn (array $m): string => $this->ids[$m[1]] ?? self::DUMMY, $path);
-    }
-
-    /** Remet à zéro les seaux que le balayage traverse : `api` du Membre, `schedule_generation` du club. */
-    private function resetBuckets(): void
-    {
-        $container = self::getContainer();
-        $api = $container->get('limiter.api');
-        \assert($api instanceof RateLimiterFactory);
-        $api->create('api-user-' . $this->memberUserId)->reset();
-        $gen = $container->get('limiter.schedule_generation');
-        \assert($gen instanceof RateLimiterFactory);
-        $gen->create('club-' . $this->clubId)->reset();
-    }
-
-    /**
-     * Empreinte des tables du club : pour chaque table portant `club_id`, `count(*)` et, si elle a
-     * `updated_at`, son max. Lue sous la GUC du club (RLS active).
-     *
-     * @return array<string, string>
-     */
-    private function fingerprint(): array
-    {
-        $container = self::getContainer();
-        $container->get(TenantConnectionContext::class)->setClubId($this->clubId);
-        $conn = $container->get(EntityManagerInterface::class)->getConnection();
-        \assert($conn instanceof Connection);
-        $tables = $conn->fetchAllAssociative(
-            "SELECT c.table_name, bool_or(u.column_name IS NOT NULL) AS has_updated
-               FROM information_schema.columns c
-               LEFT JOIN information_schema.columns u
-                 ON u.table_schema = c.table_schema AND u.table_name = c.table_name AND u.column_name = 'updated_at'
-              WHERE c.table_schema = 'public' AND c.column_name = 'club_id'
-              GROUP BY c.table_name ORDER BY c.table_name",
-        );
-        $print = [];
-        foreach ($tables as $t) {
-            $name = (string) $t['table_name'];
-            $select = $t['has_updated'] ? 'count(*)::text || \'@\' || coalesce(max(updated_at)::text, \'-\')' : 'count(*)::text';
-            $print[$name] = (string) $conn->fetchOne(\sprintf('SELECT %s FROM "%s" WHERE club_id = ?', $select, $name), [$this->clubId]);
-        }
-
-        return $print;
-    }
-
-    /** @return array<string, int> messages déjà passés par chaque transport mémoire (mails compris). */
-    private function sentCounts(): array
-    {
-        $counts = [];
-        foreach (['mailer_in_memory', 'travel_in_memory', 'placement_in_memory', 'ffbb_in_memory', 'reset_in_memory'] as $name) {
-            $transport = self::getContainer()->get('messenger.transport.' . $name);
-            \assert($transport instanceof InMemoryTransport);
-            $counts[$name] = \count($transport->getSent());
-        }
-
-        return $counts;
     }
 }
