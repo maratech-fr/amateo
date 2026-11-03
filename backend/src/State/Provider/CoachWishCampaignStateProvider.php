@@ -22,6 +22,9 @@ class CoachWishCampaignStateProvider extends AbstractStateProvider
 {
     use ReadsUuidQueryParamTrait;
 
+    /** Rôle gestionnaire PROUVÉ pour la requête en cours — seule condition qui ajoute les liens. */
+    private bool $includeTokens = false;
+
     public function __construct(
         EntityManagerInterface $entityManager,
         RequestStack $requestStack,
@@ -31,9 +34,6 @@ class CoachWishCampaignStateProvider extends AbstractStateProvider
     ) {
         parent::__construct($entityManager, $requestStack, $pagination);
     }
-
-    /** Rôle gestionnaire PROUVÉ pour la requête en cours — seule condition qui ajoute les liens. */
-    private bool $includeTokens = false;
 
     /**
      * Lecture ouverte à tout membre actif du club (un Membre voit l'état de réponse et l'adresse
