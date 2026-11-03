@@ -15,46 +15,47 @@ const closure: VenueClosure = { id: "c1", venueId: "v1", title: "Travaux", start
 
 describe("usePlacementGuards", () => {
   it("est prêt quand les quatre lectures ont une donnée, et fait transiter les tableaux", () => {
-    const { result } = renderHook(() => usePlacementGuards(read([win]), read([]), read([closure]), read([]), read([])));
+    const { result } = renderHook(() => usePlacementGuards(read([win]), read([closure]), read([]), read([])));
     expect(result.current.state).toBe("ready");
     expect(result.current.matchWindows).toEqual([win]);
     expect(result.current.closures).toEqual([closure]);
   });
 
   it("les données absentes retombent sur des tableaux vides", () => {
-    const { result } = renderHook(() => usePlacementGuards(read(undefined), read(undefined), read(undefined), read(undefined), read(undefined)));
+    const { result } = renderHook(() => usePlacementGuards(read(undefined), read(undefined), read(undefined), read(undefined)));
     expect(result.current.matchWindows).toEqual([]);
     expect(result.current.closures).toEqual([]);
   });
 
   it("charge tant qu'une lecture n'a ni donnée ni erreur", () => {
-    // Trois prêtes, une encore en vol → l'ensemble n'est pas encore prêt.
-    const { result } = renderHook(() => usePlacementGuards(read([win]), read(undefined), read([closure]), read([]), read([])));
+    // Trois prêtes, une encore en vol (les fermetures) → l'ensemble n'est pas encore prêt.
+    const { result } = renderHook(() => usePlacementGuards(read([win]), read(undefined), read([]), read([])));
     expect(result.current.state).toBe("loading");
   });
 
   it("échoue dès qu'une lecture échoue sans cache", () => {
-    const { result } = renderHook(() => usePlacementGuards(read(undefined, true), read([]), read([closure]), read([]), read([])));
+    const { result } = renderHook(() => usePlacementGuards(read(undefined, true), read([closure]), read([]), read([])));
     expect(result.current.state).toBe("failed");
   });
 
   it("l'échec PRIME le chargement (une échouée + une en vol ⇒ failed)", () => {
-    const { result } = renderHook(() => usePlacementGuards(read(undefined, true), read(undefined), read([closure]), read([]), read([])));
+    // Fenêtres d'accès en échec, fermetures encore en vol : l'échec l'emporte.
+    const { result } = renderHook(() => usePlacementGuards(read(undefined, true), read(undefined), read([]), read([])));
     expect(result.current.state).toBe("failed");
   });
 
   it("le chargement PRIME le prêt (une en vol + trois prêtes ⇒ loading)", () => {
-    const { result } = renderHook(() => usePlacementGuards(read([win]), read([]), read([closure]), read(undefined), read([])));
+    const { result } = renderHook(() => usePlacementGuards(read([win]), read([closure]), read(undefined), read([])));
     expect(result.current.state).toBe("loading");
   });
 
   it("l'échec de la seule lecture des fermetures suspend le geste (P4-300)", () => {
-    const { result } = renderHook(() => usePlacementGuards(read([win]), read([]), read(undefined, true), read([]), read([])));
+    const { result } = renderHook(() => usePlacementGuards(read([win]), read(undefined, true), read([]), read([])));
     expect(result.current.state).toBe("failed");
   });
 
   it("l'échec de la seule enveloppe ligue suffit à suspendre le geste", () => {
-    const { result } = renderHook(() => usePlacementGuards(read([win]), read([]), read([closure]), read(undefined, true), read([])));
+    const { result } = renderHook(() => usePlacementGuards(read([win]), read([closure]), read(undefined, true), read([])));
     expect(result.current.state).toBe("failed");
   });
 
@@ -63,26 +64,24 @@ describe("usePlacementGuards", () => {
   // jour : ces dates doivent donc TRAVERSER jusqu'à venueAccessError, et un ÉCHEC de leur
   // lecture doit suspendre la pose comme les quatre autres (jamais un vide pris pour « aucun férié »).
   it("expose les jours fériés du plan et les fait transiter (feed public-holidays)", () => {
-    const { result } = renderHook(() => usePlacementGuards(read([win]), read([]), read([closure]), read([]), read(["2026-11-11"])));
+    const { result } = renderHook(() => usePlacementGuards(read([win]), read([closure]), read([]), read(["2026-11-11"])));
     expect(result.current.state).toBe("ready");
     expect(result.current.holidays).toEqual(["2026-11-11"]);
   });
 
   it("l'échec de la seule lecture des jours fériés suspend le geste (readState — jamais « aucun férié »)", () => {
-    const { result } = renderHook(() => usePlacementGuards(read([win]), read([]), read([closure]), read([]), read(undefined, true)));
+    const { result } = renderHook(() => usePlacementGuards(read([win]), read([closure]), read([]), read(undefined, true)));
     expect(result.current.state).toBe("failed");
   });
 
   it("retry refetch les CINQ lectures (jours fériés comprise)", () => {
     const mw = read([win]);
-    const un = read([]);
     const cl = read([closure]);
     const lw = read([]);
     const ph = read(["2026-11-11"]);
-    const { result } = renderHook(() => usePlacementGuards(mw, un, cl, lw, ph));
+    const { result } = renderHook(() => usePlacementGuards(mw, cl, lw, ph));
     result.current.retry();
     expect(mw.refetch).toHaveBeenCalledTimes(1);
-    expect(un.refetch).toHaveBeenCalledTimes(1);
     expect(cl.refetch).toHaveBeenCalledTimes(1);
     expect(lw.refetch).toHaveBeenCalledTimes(1);
     expect(ph.refetch).toHaveBeenCalledTimes(1);
