@@ -37,6 +37,7 @@ final readonly class GenerationBlockersGuard
         private PayloadCapacityMirror $capacityMirror,
         private LoggerInterface $logger,
         private TeamRepository $teamRepository,
+        private SecondSessionSameDayDetector $secondSessionSameDayDetector,
     ) {}
 
     /**
@@ -114,6 +115,8 @@ final readonly class GenerationBlockersGuard
             // moteur PLACERAIT la séance à l'horaire mort et rendrait `completed` : on le nomme ici.
             ...$this->orphanReservationBlockers($reservations, $payload),
             ...$this->overBookedTeamBlockers($reservations, $payload),
+            // Une équipe ne s'entraîne qu'une fois par jour : la saison bloque, jamais une période ni le comblement.
+            ...($forPeriod ? [] : $this->secondSessionSameDayDetector->detect($reservations)['blockers']),
         ];
     }
 

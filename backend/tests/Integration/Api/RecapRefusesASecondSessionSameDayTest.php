@@ -9,7 +9,6 @@ use App\Entity\Schedule;
 use App\Entity\VenueTrainingSlot;
 use App\Enum\LockLevel;
 use App\Enum\ScheduleStatus;
-use App\Service\SchedulePlanProvisioner;
 use App\Tests\OneSessionPerDayDecorTrait;
 use App\Tests\Security\OneSessionPerDayGesturesTest;
 use DateTimeImmutable;
@@ -244,12 +243,11 @@ final class RecapRefusesASecondSessionSameDayTest extends WebTestCase
         $this->em->flush();
         $this->session($ctx, $ctx['u15'], $ctx['armand'], self::THURSDAY, '19:00', LockLevel::HARD, scheduleId: $other->getId());
         $this->reservation($ctx, $ctx['u15'], $ctx['jdr'], self::THURSDAY, '20:30');
-        $provisioner = self::getContainer()->get(SchedulePlanProvisioner::class);
 
-        $provisioner->pointLockSource($other->getSchedulePlanId(), $ctx['scheduleId']);
+        $this->loadVersion($ctx, $ctx['scheduleId']);
         $this->assertNotDoubled($this->recap($ctx));
 
-        $provisioner->pointLockSource($other->getSchedulePlanId(), $other->getId());
+        $this->loadVersion($ctx, $other->getId());
         $this->em->clear();
         self::assertCount(1, $this->ruleBlockers($this->recap($ctx)));
     }
@@ -349,6 +347,17 @@ final class RecapRefusesASecondSessionSameDayTest extends WebTestCase
         self::assertArrayHasKey('blockers', $body, 'le Récap a bien répondu');
         self::assertSame([], $this->ruleBlockers($body));
         self::assertSame([], $body['doubledReservationIds'] ?? []);
+    }
+
+    /**
+     * La version chargée d'une saison : le pointeur que lit `SchedulePlanProvisioner::loadedVersionIdOfSeason`.
+     *
+     * @param Decor $ctx
+     */
+    private function loadVersion(array $ctx, string $versionId): void
+    {
+        $this->scopeGucToClub($ctx['clubId']);
+        $this->em->getConnection()->executeStatement('UPDATE season SET live_context_schedule_id = ? WHERE id = ?', [$versionId, $ctx['seasonId']]);
     }
 
     /** @param Decor $ctx */

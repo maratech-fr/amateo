@@ -20,6 +20,7 @@ use App\Exception\SlotUnavailableException;
 use App\Exception\SwapCrossScheduleException;
 use App\Exception\SwapWithSelfException;
 use App\Exception\TeamAlreadyAtCaseException;
+use App\Exception\TeamAlreadyTrainsThatDayException;
 use App\Service\ClubGenerationLock;
 use App\Service\ManagementAccessGuard;
 use App\Service\ManualEditService;
@@ -208,6 +209,9 @@ final class ManualEditController extends AbstractController implements SeasonSco
             // Règle fondateur : l'équipe siège déjà à la cible et aucune éviction n'a été demandée —
             // 422 NOMMÉ (message humain, noms réels), rien n'est écrit. Le moteur n'a pas été appelé.
             return $this->json(['code' => 'team_already_at_case', 'error' => $e->getMessage()], Response::HTTP_UNPROCESSABLE_ENTITY);
+        } catch (TeamAlreadyTrainsThatDayException $e) {
+            // Une seule séance par jour : 422 NOMMÉ, rien n'est écrit, le moteur n'a pas été appelé.
+            return $this->json(['code' => 'team_already_trains_that_day', 'error' => $e->getMessage()], Response::HTTP_UNPROCESSABLE_ENTITY);
         } catch (EvictTargetMismatchException) {
             // La cible d'éviction est incohérente (introuvable, autre planning, ne siège pas là) :
             // rien n'est écrit, le moteur n'est pas appelé.
@@ -365,6 +369,9 @@ final class ManualEditController extends AbstractController implements SeasonSco
         } catch (TeamAlreadyAtCaseException $e) {
             // Règle fondateur : l'équipe siège déjà à cette case — 422 NOMMÉ, rien n'est créé.
             return $this->json(['code' => 'team_already_at_case', 'error' => $e->getMessage()], Response::HTTP_UNPROCESSABLE_ENTITY);
+        } catch (TeamAlreadyTrainsThatDayException $e) {
+            // Une seule séance par jour : 422 NOMMÉ, rien n'est écrit, le moteur n'a pas été appelé.
+            return $this->json(['code' => 'team_already_trains_that_day', 'error' => $e->getMessage()], Response::HTTP_UNPROCESSABLE_ENTITY);
         } catch (DurationMismatchException) {
             // La durée annoncée contredit la fenêtre : c'est la fenêtre qui fait foi.
             return $this->json(['code' => 'duration_mismatch', 'error' => 'La durée indiquée ne correspond pas au créneau de gymnase.'], Response::HTTP_UNPROCESSABLE_ENTITY);
@@ -496,6 +503,9 @@ final class ManualEditController extends AbstractController implements SeasonSco
             // l'éviction ne libère pas — 422 NOMMÉ (consigne « déplacez-la ou retirez-la d'abord »),
             // aucun des N créneaux ne bouge.
             return $this->json(['code' => 'team_already_at_case', 'error' => $e->getMessage()], Response::HTTP_UNPROCESSABLE_ENTITY);
+        } catch (TeamAlreadyTrainsThatDayException $e) {
+            // Une seule séance par jour : 422 NOMMÉ, rien n'est écrit, le moteur n'a pas été appelé.
+            return $this->json(['code' => 'team_already_trains_that_day', 'error' => $e->getMessage()], Response::HTTP_UNPROCESSABLE_ENTITY);
         } catch (EvictTargetMismatchException) {
             // La cible d'éviction est incohérente (introuvable, autre planning, une source du groupe,
             // ne siège pas là) : rien n'est écrit, le moteur n'est pas appelé.
@@ -632,6 +642,9 @@ final class ManualEditController extends AbstractController implements SeasonSco
             // Règle fondateur : un côté déplacé siège déjà à sa case d'arrivée par une AUTRE séance —
             // 422 NOMMÉ, rien n'est écrit, le moteur n'a pas été appelé.
             return $this->json(['code' => 'team_already_at_case', 'error' => $e->getMessage()], Response::HTTP_UNPROCESSABLE_ENTITY);
+        } catch (TeamAlreadyTrainsThatDayException $e) {
+            // Une seule séance par jour : 422 NOMMÉ, rien n'est écrit, le moteur n'a pas été appelé.
+            return $this->json(['code' => 'team_already_trains_that_day', 'error' => $e->getMessage()], Response::HTTP_UNPROCESSABLE_ENTITY);
         } catch (EngineTimeoutException $e) {
             $this->logger->error('Swap validation timed out on the engine.', ['exception' => $e]);
 

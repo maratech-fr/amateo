@@ -23,6 +23,7 @@ use App\Service\PreSolvePreventionWarnings;
 use App\Service\ScheduleConstraintBuilder;
 use App\Service\SchedulePlanProvisioner;
 use App\Service\SeasonResolver;
+use App\Service\SecondSessionSameDayDetector;
 use Doctrine\ORM\EntityManagerInterface;
 use Psr\Log\LoggerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
@@ -60,6 +61,7 @@ final class ValidateConstraintsController extends AbstractController
         private readonly LoggerInterface $logger,
         private readonly PreSolvePreventionWarnings $preventionWarnings,
         private readonly GenerationBlockersGuard $generationBlockersGuard,
+        private readonly SecondSessionSameDayDetector $secondSessionSameDayDetector,
     ) {}
 
     #[Route('/api/constraints/validate', name: 'api_constraints_validate', methods: ['POST'])]
@@ -208,11 +210,14 @@ final class ValidateConstraintsController extends AbstractController
         // en même temps. Le solveur ne peut PAS l'attraper (un verrou HARD est pré-placé
         // hors modèle, ALIGN-07), et ce n'est pas une préférence bafouée — le gestionnaire
         // n'a jamais choisi que son coach se dédouble. Décision fondateur : ça BLOQUE.
+        // Une seule séance par jour, en saison : le Récap désigne aussi les lignes à retirer.
+        $secondSession = null === $calendarEntryId ? $this->secondSessionSameDayDetector->detect($reservations) : ['blockers' => [], 'reservationIds' => []];
+
         $blockers = [
             // La même liste que les guichets `/generate`, `/regenerate` et `/fill` : une seule vérité.
             ...(null !== $capacityPayload
                 ? $this->generationBlockersGuard->blockersFor($capacityPayload, $reservations, $constraints, null !== $calendarEntryId)
-                : $this->generationBlockersGuard->overBookedOnEntities($reservations, $clubId, $seasonId)),
+                : [...$this->generationBlockersGuard->overBookedOnEntities($reservations, $clubId, $seasonId), ...$secondSession['blockers']]),
             ...array_map(
                 fn (array $conflict): string => $this->coachDoubleBookingDetector->describeForRecap($conflict),
                 // Chantier H — `$constraints` passés : une paire tolérée + adjoint disponible n'est
@@ -237,7 +242,7 @@ final class ValidateConstraintsController extends AbstractController
             : null;
 
         return $this->json(
-            ['valid' => $valid, 'errors' => $errors, 'conflicts' => $conflicts, 'warnings' => $warnings, 'blockers' => $blockers, 'notices' => $this->coachDoubleBookingDetector->detectHoldNotices($reservations, $constraints, $clubId, $seasonId), 'capacity' => $capacity],
+            ['valid' => $valid, 'errors' => $errors, 'conflicts' => $conflicts, 'warnings' => $warnings, 'blockers' => $blockers, 'doubledReservationIds' => $secondSession['reservationIds'], 'notices' => $this->coachDoubleBookingDetector->detectHoldNotices($reservations, $constraints, $clubId, $seasonId), 'capacity' => $capacity],
             $valid ? Response::HTTP_OK : Response::HTTP_UNPROCESSABLE_ENTITY,
         );
     }

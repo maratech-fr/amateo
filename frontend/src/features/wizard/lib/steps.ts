@@ -39,6 +39,8 @@ export interface StepValidation {
   /** Récap SEULEMENT (D2) : les créneaux partagés à signaler, typés (ton + texte). Absent
    *  ailleurs — les autres étapes n'en produisent pas. */
   notices?: RecapNotice[];
+  /** Récap SEULEMENT : les réservations que le serveur désigne pour une seconde séance le même jour. */
+  doubledReservationIds?: string[];
 }
 
 export const okValidation = (): StepValidation => ({ errors: [], warnings: [] });

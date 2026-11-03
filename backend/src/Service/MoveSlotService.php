@@ -26,6 +26,7 @@ use App\Exception\SlotUnavailableException;
 use App\Exception\SwapCrossScheduleException;
 use App\Exception\SwapWithSelfException;
 use App\Exception\TeamAlreadyAtCaseException;
+use App\Exception\TeamAlreadyTrainsThatDayException;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
 use InvalidArgumentException;
@@ -97,6 +98,7 @@ final class MoveSlotService
      * @throws SlotUnavailableException              aucune fenêtre de gymnase à la destination — cible
      *                                               inexistante ou jour fermé (→ 422 `slot_unavailable`)
      * @throws TeamAlreadyAtCaseException            l'équipe siège déjà à la cible, sans éviction (→ 422)
+     * @throws TeamAlreadyTrainsThatDayException     l'équipe s'entraîne déjà ce jour-là (→ 422)
      * @throws EvictTargetMismatchException          l'occupant à évincer ne siège pas à la cible (→ 422)
      * @throws EvictTargetLockedException            l'occupant à évincer est verrouillé, D3 (→ 422)
      * @throws EngineTimeoutException                le moteur a été trop lent (→ 504 `engine_timeout`)
@@ -180,6 +182,8 @@ final class MoveSlotService
             $startTime,
             $excludedSlotIds,
         );
+        // Deux séances le même jour sont impossibles : la case a parlé d'abord, le jour ensuite.
+        $this->teamCaseOccupancyGuard->assertTeamFreeOnDay($schedule->getId(), $slot->getTeamId(), $dayOfWeek, $excludedSlotIds);
 
         // (3) Le candidat : l'équipe posée dans l'emplacement de destination, à la durée de la
         //     FENÊTRE. Le solveur ne lit pas `candidate.durationMinutes` (il dérive tout de la
@@ -288,6 +292,7 @@ final class MoveSlotService
      * @throws ScheduleGenerationInProgressException une génération tourne pour ce club (→ 409)
      * @throws SlotUnavailableException              aucune fenêtre de gymnase à ce créneau (→ 422)
      * @throws TeamAlreadyAtCaseException            l'équipe siège déjà à cette case (→ 422)
+     * @throws TeamAlreadyTrainsThatDayException     l'équipe s'entraîne déjà ce jour-là (→ 422)
      * @throws DurationMismatchException             la durée du client contredit la fenêtre (→ 422)
      * @throws EngineTimeoutException                le moteur a été trop lent (→ 504 `engine_timeout`)
      * @throws TransportExceptionInterface           le moteur est injoignable/cassé (→ 502)
@@ -329,6 +334,8 @@ final class MoveSlotService
             $dayOfWeek,
             $startTime,
         );
+        // « Placer une séance surnuméraire reste permis », mais jamais un jour où l'équipe s'entraîne déjà.
+        $this->teamCaseOccupancyGuard->assertTeamFreeOnDay($schedule->getId(), $teamId, $dayOfWeek);
 
         // Contrat 2.18 : `candidates` est une LISTE (ici à UN élément — une création à la dérive) ;
         // aucune `references` (pas de source d'origine → « avant » = baseline nue).
@@ -410,6 +417,7 @@ final class MoveSlotService
      * @throws ScheduleGenerationInProgressException une génération tourne pour ce club (→ 409)
      * @throws SlotUnavailableException              aucune séance de bloc à la source, ou fenêtre cible absente (→ 422)
      * @throws TeamAlreadyAtCaseException            un membre déplacé siège déjà à la case cible (→ 422)
+     * @throws TeamAlreadyTrainsThatDayException     un membre déplacé s'entraîne déjà ce jour-là (→ 422)
      * @throws EvictTargetMismatchException          l'occupant à évincer ne siège pas à la cible, ou est une source du groupe (→ 422)
      * @throws EvictTargetIsGroupException           l'occupant à évincer est lui-même une séance de groupe (→ 422)
      * @throws EvictTargetLockedException            l'occupant à évincer (équipe) est verrouillé, D3 (→ 422)
@@ -489,6 +497,10 @@ final class MoveSlotService
                 $guardExcluded,
                 ' — déplacez-la ou retirez-la d\'abord.',
             );
+        }
+        // Un groupe vaut une équipe : aucun membre ne doit déjà s'entraîner ce jour-là hors du geste.
+        foreach ($sources as $source) {
+            $this->teamCaseOccupancyGuard->assertTeamFreeOnDay($schedule->getId(), $source->getTeamId(), $dayOfWeek, $guardExcluded);
         }
 
         // (4) UN verdict, N candidats : chaque membre posé à la case cible, chaque référence = sa
@@ -607,6 +619,7 @@ final class MoveSlotService
      * @throws EvictTargetLockedException            l'occupant ÉQUIPE est verrouillé, D4 (→ 422)
      * @throws SlotUnavailableException              aucune fenêtre de gymnase à l'une des deux cases (→ 422)
      * @throws TeamAlreadyAtCaseException            un côté déplacé siège déjà à la case d'arrivée (→ 422)
+     * @throws TeamAlreadyTrainsThatDayException     un côté déplacé s'entraîne déjà le jour d'arrivée (→ 422)
      * @throws EngineTimeoutException                le moteur a été trop lent (→ 504)
      * @throws TransportExceptionInterface           le moteur est injoignable/cassé (→ 502)
      * @throws InvalidArgumentException              un créneau source de groupe sans bloc résoluble (état incohérent)
@@ -697,6 +710,13 @@ final class MoveSlotService
                 $source->getStartTime(),
                 $guardExcluded,
             );
+        }
+        // Chacun arrive sur le jour de l'autre : ni l'un ni l'autre ne s'y entraîne déjà hors du geste.
+        foreach ($sources as $sourceSlot) {
+            $this->teamCaseOccupancyGuard->assertTeamFreeOnDay($schedule->getId(), $sourceSlot->getTeamId(), $target->getDayOfWeek(), $guardExcluded);
+        }
+        foreach ($targets as $targetSlot) {
+            $this->teamCaseOccupancyGuard->assertTeamFreeOnDay($schedule->getId(), $targetSlot->getTeamId(), $source->getDayOfWeek(), $guardExcluded);
         }
 
         // Les DEUX cases, CAPTURÉES avant toute mutation : la source EST l'un des `$sources`, donc

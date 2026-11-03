@@ -53,7 +53,8 @@ use InvalidArgumentException;
  * équipe inactive, équipe inconnue, ensemble déjà déclaré, case déjà occupée (capacité), Σ des
  * séances communes dépassant le volume d'une équipe, équipe déjà placée sans séance désignée, équipe
  * rejoignante siégeant déjà à la case d'ancrage par une AUTRE séance (une équipe ne siège jamais
- * deux fois à la même case).
+ * deux fois à la même case), équipe qui garderait une autre séance le jour de la case (une seule
+ * séance par jour).
  */
 final class MutualizeSlotService
 {
@@ -171,6 +172,12 @@ final class MutualizeSlotService
                 $conflict = $this->teamCaseOccupancyGuard->conflictSentence($schedule->getId(), $teamId, $venueId, $dayOfWeek, $startTime, [$replaced->getId()]);
                 if (null !== $conflict) {
                     throw new MutualizationRefusedException($conflict . '.');
+                }
+                // La séance désignée rejoint le jour de l'ancre : si l'équipe y garde une autre séance, elle en
+                // aurait deux. La fiche dit laquelle désigner à la place.
+                $sameDay = $this->teamCaseOccupancyGuard->otherSessionOnDay($schedule->getId(), $teamId, $dayOfWeek, [$replaced->getId()]);
+                if ($sameDay instanceof ScheduleSlotTemplate) {
+                    throw new MutualizationRefusedException($this->teamCaseOccupancyGuard->oneSessionPerDaySentence($teamId, $dayOfWeek) . ' ' . $this->teamCaseOccupancyGuard->designateThatSessionHint($sameDay));
                 }
                 $toMove[] = $replaced;
             }
@@ -382,6 +389,13 @@ final class MutualizeSlotService
             $conflict = $this->teamCaseOccupancyGuard->conflictSentence($schedule->getId(), $teamId, $venueId, $dayOfWeek, $startTime, $involvedIds);
             if (null !== $conflict) {
                 throw new MutualizationRefusedException($conflict . '.');
+            }
+        }
+
+        // Seul le côté SOURCE change de jour : aucun de ses membres ne doit déjà s'entraîner le jour de la cible.
+        foreach ($sourceTeamIds as $teamId) {
+            if ($this->teamCaseOccupancyGuard->otherSessionOnDay($schedule->getId(), $teamId, $dayOfWeek, $involvedIds) instanceof ScheduleSlotTemplate) {
+                throw new MutualizationRefusedException($this->teamCaseOccupancyGuard->oneSessionPerDaySentence($teamId, $dayOfWeek));
             }
         }
 
