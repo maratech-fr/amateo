@@ -2,6 +2,8 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
+import { visibleTextOccurrences } from "@/test/utils";
+
 import type { Schedule, ScheduleCapabilities } from "./api";
 import { PlanningToolbar } from "./PlanningToolbar";
 import { PLANNING_TEXTS } from "./texts";
@@ -441,5 +443,59 @@ describe("PlanningToolbar — version chargée", () => {
     const load = screen.getByRole("button", { name: /Charger cette version/ });
     expect(load).toHaveAttribute("aria-disabled", "true");
     expect(load).toHaveAttribute("title", reason);
+  });
+
+  // Règle du fondateur : un geste grisé dit son motif en clair, sans survol. `title` et `sr-only` ne
+  // comptent pas (visibleTextOccurrences). Une seule ligne pour toute la barre, pas un texte par bouton.
+  describe("le motif en clair", () => {
+    const REASON = "Cette version n'a pas de photo.";
+    const unloadable = () => older({ capabilities: { canValidate: false, canEdit: false, editBlockedReason: "not_loaded_version", canRegenerateFrom: false, regenerateFromBlockedReason: REASON } as Partial<ScheduleCapabilities> });
+
+    it("version non chargée : une ligne visible dit pourquoi la barre est grisée", () => {
+      renderToolbar([older(), loaded()]);
+      expect(visibleTextOccurrences(PLANNING_TEXTS.notLoadedToolbarLine)).toHaveLength(1);
+    });
+
+    it("version de période non source : la même ligne", () => {
+      const period = { planType: "HOLIDAY", schedulePlanId: "ete-plan", isLiveContext: false } as const;
+      renderToolbar(
+        [
+          schedule("COMPLETED", { id: "p1", createdAt: "2026-01-01T09:00:00+00:00", ...period, capabilities: { canValidate: false, canRegenerateFrom: false, canLoadLocks: true, canEdit: false, editBlockedReason: "not_loaded_version" } as Partial<ScheduleCapabilities> }),
+          schedule("COMPLETED", { id: "p2", createdAt: "2026-02-01T09:00:00+00:00", ...period, isLockSource: true, capabilities: { canEdit: true, editBlockedReason: null } as Partial<ScheduleCapabilities> }),
+        ],
+        { selectedScheduleId: "p1" },
+      );
+      expect(visibleTextOccurrences(PLANNING_TEXTS.notLoadedToolbarLine)).toHaveLength(1);
+    });
+
+    it("version impossible à charger : la ligne dit qu'elle ne peut pas l'être, avec le motif du serveur", () => {
+      renderToolbar([unloadable(), loaded()]);
+      expect(PLANNING_TEXTS.cannotLoadLine(REASON)).toContain(REASON);
+      expect(visibleTextOccurrences(PLANNING_TEXTS.cannotLoadLine(REASON))).toHaveLength(1);
+      expect(visibleTextOccurrences(PLANNING_TEXTS.notLoadedToolbarLine)).toHaveLength(0);
+    });
+
+    it("version impossible à charger : « Valider » ne demande plus de la charger, nulle part", () => {
+      renderToolbar([unloadable(), loaded()]);
+      const validate = screen.getByRole("button", { name: /Valider/ });
+      expect(validate).toHaveAttribute("aria-disabled", "true");
+      expect(validate).not.toHaveAttribute("title", PLANNING_TEXTS.validateNeedsLoad);
+      expect(screen.queryAllByText(PLANNING_TEXTS.validateNeedsLoad)).toHaveLength(0);
+    });
+
+    it("version chargée : aucune ligne", () => {
+      renderToolbar([older(), loaded()], { selectedScheduleId: "s2" });
+      expect(visibleTextOccurrences(PLANNING_TEXTS.notLoadedToolbarLine)).toHaveLength(0);
+    });
+
+    it("version non terminée : aucune ligne, il n'y a rien à charger", () => {
+      renderToolbar([schedule("FAILED", { id: "s3", createdAt: "2026-03-01T09:00:00+00:00", isLiveContext: false, capabilities: { canValidate: false, canRegenerateFrom: false, canEdit: false, editBlockedReason: "not_loaded_version" } as Partial<ScheduleCapabilities> }), loaded()], { selectedScheduleId: "s3" });
+      expect(visibleTextOccurrences(PLANNING_TEXTS.notLoadedToolbarLine)).toHaveLength(0);
+    });
+
+    it("capacité absente : aucun motif inventé", () => {
+      renderToolbar([older({ capabilities: null }), loaded()]);
+      expect(visibleTextOccurrences(PLANNING_TEXTS.notLoadedToolbarLine)).toHaveLength(0);
+    });
   });
 });

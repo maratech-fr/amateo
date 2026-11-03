@@ -2,7 +2,7 @@ import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
-import { renderWithProviders } from "@/test/utils";
+import { renderWithProviders, visibleTextOccurrences } from "@/test/utils";
 
 // P2-25 — SlotDetail porte désormais un lien « Corriger cette contrainte » (WizardStepLink →
 // useMe pour le verrou du mode guidé). Club établi (version finie) → lien actif, pas verrouillé.
@@ -490,5 +490,22 @@ describe("SlotDetail — gestes bloqués", () => {
   it("sans motif, les gestes restent offerts", () => {
     renderDetail({ gesturesBlockedReason: null });
     expect(screen.getByRole("button", { name: /Déplacer/ })).not.toHaveAttribute("aria-disabled");
+  });
+
+  it("un geste grisé dit son motif en clair : une seule ligne visible dans la fiche, pour ses quatre gestes", () => {
+    renderDetail({ gesturesBlockedReason: PLANNING_TEXTS.gesturesBlockedNotLoaded, onMutualize: vi.fn() });
+    expect(visibleTextOccurrences(PLANNING_TEXTS.gesturesBlockedNotLoaded)).toHaveLength(1);
+  });
+
+  it("la fiche dit le motif qu'on lui donne, pas une phrase à elle", () => {
+    const reason = PLANNING_TEXTS.cannotLoadLine("Pas de photo.");
+    renderDetail({ gesturesBlockedReason: reason });
+    expect(visibleTextOccurrences(reason)).toHaveLength(1);
+    expect(visibleTextOccurrences(PLANNING_TEXTS.gesturesBlockedNotLoaded)).toHaveLength(0);
+  });
+
+  it("sans motif, la fiche n'ajoute aucune ligne", () => {
+    renderDetail({ gesturesBlockedReason: null });
+    expect(visibleTextOccurrences(PLANNING_TEXTS.gesturesBlockedNotLoaded)).toHaveLength(0);
   });
 });

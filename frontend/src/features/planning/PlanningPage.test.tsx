@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { EntryConflictsResponse, SchedulePlan } from "@/features/cockpit/api";
 import { useToastStore } from "@/shared/stores/toastStore";
-import { renderWithProviders } from "@/test/utils";
+import { renderWithProviders, visibleTextOccurrences } from "@/test/utils";
 
 import { stalenessMessage } from "./lib/staleness";
 import { createOverlayVersion, EngineTimeoutError, EngineVerificationInterruptedError, fillSchedule, GenerationInProgressError, getDiagnostics, getPlacedConflicts, getSlots, getSocleDeviation, getStructureHash, getTeams, getTrainingSlots, getVenues, listSchedules, loadLocks, lockSlot, moveSlot, MoveRejectedError, OverlaysExistError, placeSlot, removeSlot, reopenSchedule, TargetLockedError, validateSchedule } from "./api";
@@ -3103,9 +3103,103 @@ describe("PlanningPage — version chargée", () => {
     expect(usePlanningStore.getState().selectedScheduleId).toBe("v2");
   });
 
-  it("la phrase de la bannière suit les gestes disponibles : version impossible à charger", async () => {
+  it("version impossible à charger : la bannière dit le motif réel servi par le serveur", async () => {
     await open([older({ capabilities: { ...NOT_LOADED_CAPS, canRegenerateFrom: false, regenerateFromBlockedReason: "Pas de photo." } } as Partial<Schedule>), loaded()], "v1");
-    expect(screen.getByText(PLANNING_TEXTS.notLoadedBanner("V1", "V2", false))).toBeInTheDocument();
+    const banner = PLANNING_TEXTS.notLoadedBanner("V1", "V2", false, "Pas de photo.");
+    expect(banner).toContain("Pas de photo.");
+    expect(screen.getByText(banner)).toBeInTheDocument();
+  });
+
+  // Règle du fondateur : un geste grisé dit son motif en clair, sans survol. `title` et `sr-only` ne
+  // comptent pas (visibleTextOccurrences). Une seule ligne par zone : la barre, puis la fiche.
+  describe("le motif en clair", () => {
+    const unloadable = () => older({ capabilities: { ...NOT_LOADED_CAPS, canRegenerateFrom: false, regenerateFromBlockedReason: "Pas de photo." } } as Partial<Schedule>);
+
+    it("version non chargée : la barre et la fiche disent chacune pourquoi leurs gestes sont grisés", async () => {
+      const user = userEvent.setup();
+      await open([older(), loaded()], "v1");
+      expect(visibleTextOccurrences(PLANNING_TEXTS.notLoadedToolbarLine)).toHaveLength(1);
+
+      await user.click(screen.getByText("U11"));
+      await screen.findByRole("button", { name: /Déplacer/ });
+      expect(visibleTextOccurrences(PLANNING_TEXTS.gesturesBlockedNotLoaded)).toHaveLength(1);
+      expect(visibleTextOccurrences(PLANNING_TEXTS.notLoadedToolbarLine)).toHaveLength(1);
+    });
+
+    it("version impossible à charger : la fiche ne demande pas de la charger, elle dit le motif", async () => {
+      const user = userEvent.setup();
+      await open([unloadable(), loaded()], "v1");
+      const line = PLANNING_TEXTS.cannotLoadLine("Pas de photo.");
+      expect(visibleTextOccurrences(line)).toHaveLength(1);
+
+      await user.click(screen.getByText("U11"));
+      const move = await screen.findByRole("button", { name: /Déplacer/ });
+      expect(move).toHaveAttribute("title", line);
+      expect(visibleTextOccurrences(line)).toHaveLength(2);
+      expect(screen.queryAllByText(PLANNING_TEXTS.gesturesBlockedNotLoaded)).toHaveLength(0);
+    });
+
+    it("« Combler » sur une période non source : la ligne de la barre le couvre, sans deuxième texte", async () => {
+      await open(periodAdrift(), "p1");
+      await screen.findByRole("button", { name: PLANNING_TEXTS.fillAutomatically });
+      expect(visibleTextOccurrences(PLANNING_TEXTS.notLoadedToolbarLine)).toHaveLength(1);
+      expect(visibleTextOccurrences(PLANNING_TEXTS.gesturesBlockedNotLoaded)).toHaveLength(0);
+    });
+
+    it("version chargée : aucune de ces lignes, ni dans la barre ni dans la fiche", async () => {
+      const user = userEvent.setup();
+      await open([older(), loaded()], "v2");
+      await user.click(screen.getByText("U11"));
+      await screen.findByRole("button", { name: /Déplacer/ });
+      expect(visibleTextOccurrences(PLANNING_TEXTS.notLoadedToolbarLine)).toHaveLength(0);
+      expect(visibleTextOccurrences(PLANNING_TEXTS.gesturesBlockedNotLoaded)).toHaveLength(0);
+    });
+  });
+
+  // Plan de période : même bannière neutre qu'en saison, plus de « version antérieure ». Le mot suit
+  // le titre de la page, « (V2 source) ».
+  describe("version non source d'une période", () => {
+    const NOT_SOURCE_CAPS = { ...NOT_LOADED_CAPS, canRegenerateFrom: false, canLoadLocks: true };
+    const period = (id: string, createdAt: string, extra: Record<string, unknown>) => version(id, createdAt, { planType: "CLOSURE", schedulePlanId: "ete-plan", ...extra } as Partial<Schedule>);
+    const openPeriod = async (selected: string) => {
+      vi.mocked(listSchedules).mockResolvedValue([
+        period("p1", "2026-01-01T00:00:00Z", { capabilities: NOT_SOURCE_CAPS }),
+        period("p2", "2026-02-01T00:00:00Z", { isLockSource: true, capabilities: LOADED_CAPS }),
+        period("p3", "2026-03-01T00:00:00Z", { capabilities: NOT_SOURCE_CAPS }),
+      ]);
+      usePlanningStore.setState({ selectedScheduleId: selected });
+      renderWithProviders(<PlanningPage embedded scopePlanId="ete-plan" />);
+      await screen.findByText("U11");
+    };
+
+    it("le vocabulaire est celui du titre : « source », jamais « chargée »", () => {
+      expect(PLANNING_TEXTS.notSourceBanner("V1", "V2", true)).toMatch(/source/);
+      expect(PLANNING_TEXTS.notSourceBanner("V1", "V2", true)).not.toMatch(/chargée/);
+      expect(PLANNING_TEXTS.openSourceVersion).toMatch(/source/);
+    });
+
+    it.each([
+      ["antérieure à la source", "p1", "V1"],
+      ["plus récente que la source", "p3", "V3"],
+    ])("version %s : la bannière de consultation, et l'action ouvre la source", async (_case, selected, label) => {
+      const user = userEvent.setup();
+      await openPeriod(selected);
+
+      expect(screen.getByText(PLANNING_TEXTS.notSourceBanner(label, "V2", true))).toBeInTheDocument();
+      expect(screen.queryByText(PLANNING_TEXTS.earlierVersionNotice)).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: PLANNING_TEXTS.openLatestVersion })).not.toBeInTheDocument();
+
+      await user.click(screen.getByRole("button", { name: PLANNING_TEXTS.openSourceVersion }));
+      expect(usePlanningStore.getState().selectedScheduleId).toBe("p2");
+    });
+
+    it("sur la version source : aucune bannière, même si une version plus récente existe", async () => {
+      await openPeriod("p2");
+      expect(screen.queryByRole("button", { name: PLANNING_TEXTS.openSourceVersion })).not.toBeInTheDocument();
+      expect(screen.queryByText(PLANNING_TEXTS.earlierVersionNotice)).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: PLANNING_TEXTS.openLatestVersion })).not.toBeInTheDocument();
+      expect(visibleTextOccurrences(PLANNING_TEXTS.notLoadedToolbarLine)).toHaveLength(0);
+    });
   });
 
   it("aucune bannière sur la version chargée", async () => {
