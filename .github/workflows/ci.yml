@@ -150,7 +150,7 @@ jobs:
       # Conditionnelle : sans les secrets (PR de fork) la CI tire en anonyme, comme avant.
       - name: Login to Docker Hub (anti-429)
         if: vars.DOCKERHUB_USERNAME != ''
-        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4
         with:
           username: ${{ vars.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
@@ -176,7 +176,7 @@ jobs:
       # Conditionnelle : sans les secrets (PR de fork) la CI tire en anonyme, comme avant.
       - name: Login to Docker Hub (anti-429)
         if: vars.DOCKERHUB_USERNAME != ''
-        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4
         with:
           username: ${{ vars.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
@@ -213,7 +213,7 @@ jobs:
       # fresh unpinned resolve. `pip freeze` omits pip/setuptools tooling by default, and
       # auditing the frozen list via an isolated pipx-run pip-audit means the tool never
       # perturbs (upgrades) the set it is meant to check. The local non-PyPI package is stripped.
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
         with:
           python-version: '3.14'
       - name: pip-audit
@@ -243,7 +243,7 @@ jobs:
       # Conditionnelle : sans les secrets (PR de fork) la CI tire en anonyme, comme avant.
       - name: Login to Docker Hub (anti-429)
         if: vars.DOCKERHUB_USERNAME != ''
-        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4
         with:
           username: ${{ vars.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
@@ -305,7 +305,7 @@ jobs:
       # Conditionnelle : sans les secrets (PR de fork) la CI tire en anonyme, comme avant.
       - name: Login to Docker Hub (anti-429)
         if: vars.DOCKERHUB_USERNAME != ''
-        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4
         with:
           username: ${{ vars.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
@@ -348,7 +348,7 @@ jobs:
       # Conditionnelle : sans les secrets (PR de fork) la CI tire en anonyme, comme avant.
       - name: Login to Docker Hub (anti-429)
         if: vars.DOCKERHUB_USERNAME != ''
-        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4
         with:
           username: ${{ vars.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
@@ -1322,7 +1322,7 @@ jobs:
       # Conditionnelle : sans les secrets (PR de fork) la CI tire en anonyme, comme avant.
       - name: Login to Docker Hub (anti-429)
         if: vars.DOCKERHUB_USERNAME != ''
-        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4
         with:
           username: ${{ vars.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
@@ -1379,7 +1379,7 @@ jobs:
       # Conditionnelle : sans les secrets (PR de fork) la CI tire en anonyme, comme avant.
       - name: Login to Docker Hub (anti-429)
         if: vars.DOCKERHUB_USERNAME != ''
-        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4
         with:
           username: ${{ vars.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
@@ -1463,7 +1463,7 @@ jobs:
       # Conditionnelle : sans les secrets (PR de fork) la CI tire en anonyme, comme avant.
       - name: Login to Docker Hub (anti-429)
         if: vars.DOCKERHUB_USERNAME != ''
-        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4
         with:
           username: ${{ vars.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
@@ -1509,7 +1509,7 @@ jobs:
       # Conditionnelle : sans les secrets (PR de fork) la CI tire en anonyme, comme avant.
       - name: Login to Docker Hub (anti-429)
         if: vars.DOCKERHUB_USERNAME != ''
-        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4
         with:
           username: ${{ vars.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
@@ -1584,7 +1584,7 @@ jobs:
       # Conditionnelle : sans les secrets (PR de fork) la CI tire en anonyme, comme avant.
       - name: Login to Docker Hub (anti-429)
         if: vars.DOCKERHUB_USERNAME != ''
-        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4
         with:
           username: ${{ vars.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
@@ -1850,7 +1850,7 @@ jobs:
       # Conditionnelle : sans les secrets (PR de fork) la CI tire en anonyme, comme avant.
       - name: Login to Docker Hub (anti-429)
         if: vars.DOCKERHUB_USERNAME != ''
-        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4
         with:
           username: ${{ vars.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
@@ -1914,7 +1914,7 @@ jobs:
       # Conditionnelle : sans les secrets (PR de fork) la CI tire en anonyme, comme avant.
       - name: Login to Docker Hub (anti-429)
         if: vars.DOCKERHUB_USERNAME != ''
-        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4
         with:
           username: ${{ vars.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
@@ -1986,7 +1986,7 @@ jobs:
       # Conditionnelle : sans les secrets (PR de fork) la CI tire en anonyme, comme avant.
       - name: Login to Docker Hub (anti-429)
         if: vars.DOCKERHUB_USERNAME != ''
-        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4
         with:
           username: ${{ vars.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
