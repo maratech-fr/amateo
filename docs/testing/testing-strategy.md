@@ -217,7 +217,7 @@ Groups (PHP attributes): `#[Group('phase1')]`, `#[Group('integration')]`, `#[Gro
 
 `ContractSchemaTest` is the **only** guardrail for the manually-synced backend↔engine contract (no codegen). Any change to engine Pydantic schemas or the backend payload must keep it green.
 
-### `CrossStack/` — backend↔frontend contract guards (group `contract`, not `phase1`)
+### `CrossStack/` — backend↔frontend contract guards (group `contract` but one, not `phase1`)
 
 The frontend has **no codegen**: its API types are hand-written interfaces in `features/*/api.ts`.
 Four `CrossStack/` tests guard that hand-sync from four distinct angles, each blind to what the
@@ -245,9 +245,12 @@ others catch:
   `Integration` suite, `backend-tests` job) asserts the backend side alone: every `*Date`/`*Deadline`
   property of an `ApiResource` is typed `string`, never a raw `DateTimeImmutable`.
 
-These four run in the `contract` group (`engine-semantics` CI job — a required check of `main`,
+The first three run in the `contract` group (`engine-semantics` CI job — a required check of `main`,
 **not** part of `blocking-tests`/`backend-tests`; see `docs/testing/blocking-tests.md` for what
-actually gates the merge).
+actually gates the merge). `FrontMockDateFormatMatchesContractTest` carries **no** group: it only
+reads `frontend/src` files and PHP reflection (no engine), so it runs in `make -C backend
+tests-complete` and the `backend-tests` job (`phpunit tests/ --exclude-group contract`) — a mock date
+mismatch is caught locally, not only in CI.
 
 ---
 
