@@ -1,4 +1,4 @@
-# Roadmap (86) — ce qui reste à faire
+# Roadmap (90) — ce qui reste à faire
 
 > **Ce fichier ne tient QUE l'ouvert.** Bugs, évolutions, dettes techniques : tout ce qu'on trace pour ne pas
 > l'oublier un jour. Rien de livré n'y figure — un item livré **quitte** ce fichier et laisse sa trace dans
@@ -176,6 +176,10 @@
 | P4-461 | **`scripts/prod-read.sh` : le port local 15432 est fixe, et se dispute avec une autre stack** | ⚪ | XS | `LOCAL_PORT=15432` est en dur (`scripts/prod-read.sh:58`) ; si une autre stack du poste (la stack d'épreuve, selon le constat du fondateur : non retrouvé dans les fichiers du dépôt) écoute déjà ce port, le tunnel ne s'ouvre pas. Vérifié à la lecture : le tunnel est lancé avec `ExitOnForwardFailure=yes` et `|| die`, donc le script s'arrête sur cet échec avant `psql` ; le constat « il continue vers psql » n'est PAS confirmé par le code, à reproduire avant de corriger. À faire : port configurable (ou libre), et message explicite si le port est pris. |
 | P4-462 | **Fiche de séance tronquée à l'état « armé »** | ⚪ | XS | Contrôle visuel du 2026-11-02 (`SlotDetail.tsx:249-272`) : à 1280 px, quand « Déplacer » est armé, le bouton « Verrouiller » devient « Verroui » et les flèches flottantes recouvrent le panneau. Exemple : armer le déplacement de U11. |
 | P4-463 | **La parité moteur du Récap se saute sans le dire quand le moteur n'est pas prêt** | 🟡 | XS | `SharedBlockPreSolveMirrorParityTest` répond 0 avec ses 15 tests ignorés juste après un redémarrage du moteur (constaté le 2026-11-02). Exemple : un run local vert qui n'a rien prouvé. À faire : échouer ou attendre le moteur, au moins en CI. |
+| P4-464 | **`ConflictHttpException` masque son motif en prod (`detail: Conflict`)** | 🟠 | S | Levée à `SocleGuard`, `GenerateScheduleController`, `StructureRestorer`, `ValidateScheduleController:227`, `FillPeriodPlanController:195` (anciennement cité `:186`) : en prod le corps ne porte que `Conflict`, et le gestionnaire lit « Conflit : l'action n'a pas pu être effectuée. » au lieu du motif. Piste : répondre en JSON codé comme les refus `not_loaded_version` (`VersionEditability`). |
+| P4-465 | **`useMutualizeAtCase` ne reconnaît pas le refus `not_loaded_version`** | ⚪ | XS | Cas rare à deux onglets (la version chargée a changé entre-temps) : le geste de mutualisation échoue 409 codé, et l'écran annonce une erreur générique au lieu de « Chargez cette version pour la modifier. ». |
+| P4-466 | **Annuler un déplacement avec éviction refusé par version non chargée : le toast ne dit que le motif** | ⚪ | XS | Cas rare à deux onglets : l'annulation (`useRetouchGestures`) est refusée 409 `not_loaded_version` ; le toast donne le motif sans dire que le déplacement reste en place ni quoi faire. |
+| P4-467 | **Un Membre demande à devenir gestionnaire (reprise d'un club en fermeture)** | 🟡 | M | Décision fondateur : les gestionnaires, ou l'adresse officielle du club s'il n'en reste aucun, acceptent ou refusent ; accepté, il change de rôle et la fermeture est annulée. PR à part, hors lot « version chargée ». |
 
 ---
 
