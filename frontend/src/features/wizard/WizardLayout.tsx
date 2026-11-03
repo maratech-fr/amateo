@@ -624,7 +624,12 @@ export function WizardPage() {
         {/* Récap rend son PROPRE accordéon d'alertes groupées (D3) — erreurs ET warnings y
             vivent (revirement fondateur 2026-10-09). On saute donc les deux rendus génériques
             sur le récap ; partout ailleurs, erreurs puis warnings sous l'étape. */}
-        {"recap" === stepId
+        {/* Un Membre ne reçoit jamais un ORDRE qu'il ne peut exécuter : sur une étape incomplète, une
+            seule phrase neutre (ni alerte, ni rouge) dit qu'un gestionnaire doit la compléter. */}
+        {"recap" !== stepId && !canManage && validation.errors.length > 0 ? (
+          <p className="mt-3 text-sm text-muted-foreground">{WIZARD_TEXTS.readOnlyIncomplete}</p>
+        ) : null}
+        {"recap" === stepId || !canManage
           ? null
           : validation.errors.map((error) => (
               <p key={error} role="alert" className="mt-3 flex items-center gap-2 text-sm text-destructive">

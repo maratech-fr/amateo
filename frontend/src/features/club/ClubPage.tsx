@@ -334,10 +334,22 @@ function ReadOnlyField({ label, value, mono }: { label: string; value: string | 
 function ClubSiegeSubsection({ club }: { club: NonNullable<MeResponse["club"]> }) {
   const updateSiege = useUpdateSiege();
   const located = null != club.latitude && null != club.longitude;
-  // Un Membre lit le siège : aucune recherche d'adresse (appel sortant), aucune saisie.
+  // Un Membre lit le siège en texte : aucune recherche d'adresse (appel sortant), aucune saisie.
   const canManage = useCanManage();
+  if (!canManage) {
+    // Un Membre LIT le siège en texte : jamais un champ grisé ni un « Localiser » qu'il ne pourrait
+    // pas utiliser ; sans adresse, l'état non localisé suffit.
+    const hasAddress = null != club.address && "" !== club.address;
+    return (
+      <div>
+        <h3 className="mb-2 text-sm font-semibold">{CLUB_TEXTS.siegeTitle}</h3>
+        <p className="mb-2 text-xs text-muted-foreground">{CLUB_TEXTS.siegeHint}</p>
+        {hasAddress ? <p className="text-sm">{club.address}</p> : <p className="text-xs text-muted-foreground">{CLUB_TEXTS.siegeUnlocated}</p>}
+      </div>
+    );
+  }
   return (
-    <ReadOnlyFieldset readOnly={!canManage}>
+    <div>
       <h3 className="mb-2 text-sm font-semibold">{CLUB_TEXTS.siegeTitle}</h3>
       <p className="mb-2 text-xs text-muted-foreground">{CLUB_TEXTS.siegeHint}</p>
       <AddressGeocodeField
@@ -351,7 +363,7 @@ function ClubSiegeSubsection({ club }: { club: NonNullable<MeResponse["club"]> }
         unlocatedStatus={CLUB_TEXTS.siegeUnlocated}
         onPick={(candidate) => updateSiege.mutate(candidate.label)}
       />
-    </ReadOnlyFieldset>
+    </div>
   );
 }
 

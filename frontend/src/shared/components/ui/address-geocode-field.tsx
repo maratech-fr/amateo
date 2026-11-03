@@ -5,6 +5,7 @@ import { errorMessage } from "@/shared/lib/errorMessage";
 import type { GeocodeCandidate } from "@/shared/api/geocode";
 import { parseCoordinates } from "@/shared/lib/parseCoordinates";
 import { useGeocode, useReverseGeocode } from "@/shared/hooks/useGeocode";
+import { useCanManage } from "@/shared/session/queries";
 import { StatusPill } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
 import { EmptyHint } from "@/shared/components/ui/empty-hint";
@@ -81,7 +82,9 @@ export function AddressGeocodeField({ address, located, latitude, longitude, onP
   const collapsed = located && !editing;
   // Aucune adresse saisie mais des coordonnées posées (seed/FFBB) → on RETROUVE une adresse
   // pour l'afficher (jamais stockée). `enabled` gouverne le tir : le hook est toujours appelé.
-  const reverse = useReverseGeocode(latitude, longitude, collapsed && !hasAddress && hasCoords);
+  // Un Membre ne déclenche jamais d'appel sortant (403 pour lui) : pas de reverse-geocoding.
+  const canManage = useCanManage();
+  const reverse = useReverseGeocode(latitude, longitude, canManage && collapsed && !hasAddress && hasCoords);
   const mapHref = hasCoords ? `https://www.openstreetmap.org/?mlat=${latitude}&mlon=${longitude}#map=18/${latitude}/${longitude}` : null;
 
   const runSearch = () => {
