@@ -19,6 +19,15 @@ vi.mock("@/features/auth/api", () => api);
 const toast = vi.hoisted(() => ({ error: vi.fn(), success: vi.fn(), info: vi.fn() }));
 vi.mock("@/shared/stores/toastStore", () => ({ toast }));
 
+// Chantier Membre PR 3 — les gestes Accepter/Refuser une demande de rôle vivent dans l'API de la
+// feature club (le seul dossier front autorisé par le plan) ; le reste du module reste réel.
+const clubApi = vi.hoisted(() => ({
+  acceptManagerRequest: vi.fn().mockResolvedValue({}),
+  refuseManagerRequest: vi.fn().mockResolvedValue({}),
+}));
+vi.mock("./api", async (importOriginal) => ({ ...(await importOriginal<object>()), ...clubApi }));
+
+import { CLUB_TEXTS } from "./texts";
 import { MembersSection } from "./MembersSection";
 
 const self = { id: "self", userId: "us", email: "boss@club.fr", firstName: "Grace", lastName: "Hopper", role: "admin", isSelf: true };
@@ -90,6 +99,42 @@ describe("MembersSection", () => {
       </QueryClientProvider>,
     );
     expect(await screen.findByText(/Impossible de charger les membres/)).toBeInTheDocument();
+  });
+
+  describe("demande à devenir gestionnaire (chantier Membre PR 3)", () => {
+    const paul = { id: "m-paul", userId: "up", email: "paul@club.fr", firstName: "Paul", lastName: "Martin", role: "member", isSelf: false, managerRequestedAt: "2026-11-03T12:00:00+00:00" };
+    const kim = { id: "m-kim", userId: "uk", email: "kim@club.fr", firstName: "Kim", lastName: "Lee", role: "member", isSelf: false, managerRequestedAt: null };
+
+    it("seul le Membre qui a demandé porte la pastille datée et les deux gestes nommés", async () => {
+      renderSection({ members: [{ ...self, managerRequestedAt: null }, paul, kim], deactivated: [] });
+      await screen.findByText("Paul Martin");
+
+      expect(screen.getByText(CLUB_TEXTS.managerRequestPill("03/11/2026"))).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: CLUB_TEXTS.acceptManagerRequestOf("Paul Martin") })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: CLUB_TEXTS.refuseManagerRequestOf("Paul Martin") })).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: CLUB_TEXTS.acceptManagerRequestOf("Kim Lee") })).not.toBeInTheDocument();
+      expect(screen.getAllByText(/Demande gestionnaire/)).toHaveLength(1);
+    });
+
+    it("Accepter puis Refuser appellent l'API avec l'id de l'adhésion", async () => {
+      const user = userEvent.setup();
+      renderSection({ members: [{ ...self, managerRequestedAt: null }, paul], deactivated: [] });
+      await screen.findByText("Paul Martin");
+
+      await user.click(screen.getByRole("button", { name: CLUB_TEXTS.acceptManagerRequestOf("Paul Martin") }));
+      expect(clubApi.acceptManagerRequest).toHaveBeenCalledWith("m-paul");
+      await user.click(screen.getByRole("button", { name: CLUB_TEXTS.refuseManagerRequestOf("Paul Martin") }));
+      expect(clubApi.refuseManagerRequest).toHaveBeenCalledWith("m-paul");
+    });
+
+    it("un refus serveur (409 « Aucune demande en cours. ») est restitué en toast, jamais avalé", async () => {
+      const user = userEvent.setup();
+      clubApi.acceptManagerRequest.mockRejectedValueOnce(new Error("409"));
+      renderSection({ members: [{ ...self, managerRequestedAt: null }, paul], deactivated: [] });
+      await screen.findByText("Paul Martin");
+      await user.click(screen.getByRole("button", { name: CLUB_TEXTS.acceptManagerRequestOf("Paul Martin") }));
+      await vi.waitFor(() => expect(toast.error).toHaveBeenCalled());
+    });
   });
 
   it("un geste refusé par le serveur est restitué (toast), jamais avalé", async () => {

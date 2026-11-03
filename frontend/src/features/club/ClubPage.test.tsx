@@ -11,7 +11,14 @@ import { CLUB_TEXTS } from "./texts";
 // passer un ajout/retrait de champ sans que le test le voie). Chaque littéral de club part de
 // `baseClub` (tous les champs requis) et ne surcharge que ce qui compte pour le cas.
 type Club = NonNullable<MeResponse["club"]>;
-type MeData = { role: MeResponse["role"]; club: Club | null; seasonPlan?: MeResponse["seasonPlan"]; seasons?: MeResponse["seasons"]; currentSeasonId?: string | null };
+type MeData = {
+  role: MeResponse["role"];
+  club: Club | null;
+  seasonPlan?: MeResponse["seasonPlan"];
+  seasons?: MeResponse["seasons"];
+  currentSeasonId?: string | null;
+  managerRequest?: MeResponse["managerRequest"];
+};
 const baseClub: Club = {
   id: "club-1",
   name: "BC Test",
@@ -43,10 +50,17 @@ const me: { data: MeData; isLoading: boolean } = {
   isLoading: false,
 };
 
+// Chantier Membre : `useCanManage` (PR 2) décide de ce qu'un Membre voit ; la demande de rôle
+// (PR 3) passe par deux mutations de la session — la carte « Mon rôle » et le bandeau de fermeture
+// partagent le même geste.
+const requestManagerRole = vi.fn();
+const cancelManagerRequest = vi.fn();
 vi.mock("@/shared/session/queries", () => ({
   useMe: () => me,
   // Chantier Membre (PR 2) : la question « peut-il modifier ? » suit le rôle du `me` mocké.
   useCanManage: () => "admin" === me.data.role || "owner" === me.data.role,
+  useRequestManagerRole: () => ({ mutate: requestManagerRole, isPending: false }),
+  useCancelManagerRequest: () => ({ mutate: cancelManagerRequest, isPending: false }),
 }));
 vi.mock("@/features/auth/queries", () => ({
   usePendingMembers: () => ({ data: { members: [] }, isLoading: false }),
@@ -101,6 +115,7 @@ vi.mock("@/shared/hooks/useGeocode", () => ({
 }));
 
 import { ClubPage } from "./ClubPage";
+import { CLUB_TEXTS } from "./texts";
 
 describe("ClubPage", () => {
   beforeEach(() => {
@@ -477,6 +492,76 @@ describe("ClubPage", () => {
     await user.click(screen.getByRole("button", { name: /Statistiques des gymnases/ }));
     expect(screen.getByText(/validez d'abord le planning de saison/)).toBeInTheDocument();
     expect(screen.queryByText("Par gymnase")).toBeNull();
+  });
+});
+
+/**
+ * Chantier Membre PR 3 — la carte « Mon rôle » d'un Membre dit OÙ en est sa demande à devenir
+ * gestionnaire, dans l'état que le SERVEUR a calculé (`/api/me.managerRequest`, jamais redérivé) :
+ * aucune demande → le bouton ; en cours auprès des gestionnaires ; transmise à l'adresse officielle
+ * (club sans gestionnaire, avec ou sans adresse connue) ; expirée → renvoyable ; refusée → date de
+ * renouvellement, sans bouton. Un gestionnaire n'a pas de carte.
+ */
+describe("ClubPage — carte « Mon rôle » (Membre)", () => {
+  const SINCE = "2026-11-03T12:00:00+00:00";
+  const asMember = (managerRequest: MeResponse["managerRequest"]) => {
+    me.data = { role: "member", club: { ...baseClub }, seasons: [], currentSeasonId: null, managerRequest };
+  };
+
+  beforeEach(() => {
+    requestManagerRole.mockClear();
+    cancelManagerRequest.mockClear();
+  });
+
+  it("aucune demande : le bouton « Demander à devenir gestionnaire » envoie la demande", async () => {
+    asMember(null);
+    render(<ClubPage />);
+    await userEvent.click(screen.getByRole("button", { name: CLUB_TEXTS.requestManagerRole }));
+    expect(requestManagerRole).toHaveBeenCalledTimes(1);
+  });
+
+  it("en cours auprès des gestionnaires : la date, et l'annulation possible (plus de bouton de demande)", async () => {
+    asMember({ status: "pending", since: SINCE });
+    render(<ClubPage />);
+    expect(screen.getByText(CLUB_TEXTS.managerRequestPending("03/11/2026"))).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: CLUB_TEXTS.requestManagerRole })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: CLUB_TEXTS.cancelManagerRequest }));
+    expect(cancelManagerRequest).toHaveBeenCalledTimes(1);
+  });
+
+  it("transmise à l'adresse officielle : la date ; sans adresse connue, « le support validera »", () => {
+    asMember({ status: "club_pending", since: SINCE, clubEmailKnown: true });
+    const { unmount } = render(<ClubPage />);
+    expect(screen.getByText(CLUB_TEXTS.managerRequestSentToOfficial("03/11/2026"))).toBeInTheDocument();
+    expect(screen.queryByText(CLUB_TEXTS.managerRequestNoOfficialAddress)).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: CLUB_TEXTS.cancelManagerRequest })).toBeInTheDocument();
+    unmount();
+
+    asMember({ status: "club_pending", since: SINCE, clubEmailKnown: false });
+    render(<ClubPage />);
+    expect(screen.getByText(CLUB_TEXTS.managerRequestNoOfficialAddress)).toBeInTheDocument();
+  });
+
+  it("expirée : la date de la demande, et le bouton pour la renvoyer", async () => {
+    asMember({ status: "expired", since: SINCE });
+    render(<ClubPage />);
+    expect(screen.getByText(CLUB_TEXTS.managerRequestExpired("03/11/2026"))).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: CLUB_TEXTS.requestManagerRole }));
+    expect(requestManagerRole).toHaveBeenCalledTimes(1);
+  });
+
+  it("refusée par le club : les deux dates, et AUCUN bouton tant que le délai court", () => {
+    asMember({ status: "refused", since: SINCE, until: "2026-12-03" });
+    render(<ClubPage />);
+    expect(screen.getByText(CLUB_TEXTS.managerRequestRefused("03/11/2026", "03/12/2026"))).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: CLUB_TEXTS.requestManagerRole })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: CLUB_TEXTS.cancelManagerRequest })).not.toBeInTheDocument();
+  });
+
+  it("un gestionnaire n'a pas de carte « Mon rôle »", () => {
+    me.data = { role: "admin", club: { ...baseClub }, seasons: [], currentSeasonId: null, managerRequest: null };
+    render(<ClubPage />);
+    expect(screen.queryByRole("button", { name: CLUB_TEXTS.requestManagerRole })).not.toBeInTheDocument();
   });
 });
 

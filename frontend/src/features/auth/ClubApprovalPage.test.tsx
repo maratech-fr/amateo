@@ -68,6 +68,48 @@ describe("ClubApprovalPage (P3-4 PR C — page publique)", () => {
     expect(await screen.findByText("Demande refusée")).toBeInTheDocument();
   });
 
+  /**
+   * Chantier Membre PR 3 — la page dit ce qu'on approuve : une REPRISE (un Membre d'un club sans
+   * gestionnaire) n'est pas une création ; l'adresse du demandeur est montrée pour qu'on le
+   * reconnaisse ; l'issue affichée est celle que le serveur rend (`approved` / `superseded` /
+   * `refused`), jamais « Espace créé » pour une demande dépassée. Page non migrée vers
+   * `auth/texts.ts` : libellés du plan recopiés (tolérés), le rôle discrimine les gestes.
+   */
+  describe("reprise d'un espace sans gestionnaire (PR 3)", () => {
+    const reprise = { ...info, kind: "reprise", requesterEmail: "sonia@club.fr" };
+
+    it("nomme la reprise, le demandeur ET son adresse", async () => {
+      h.get.mockResolvedValueOnce(reprise);
+      renderAt();
+
+      expect(await screen.findByText("Demande de reprise d'espace")).toBeInTheDocument();
+      expect(screen.getByText(/sonia@club\.fr/)).toBeInTheDocument();
+      expect(screen.getByText(/demande à reprendre la gestion de l'espace de/)).toBeInTheDocument();
+      expect(screen.getByText(/elle deviendra gestionnaire et la suppression de l'espace sera annulée/)).toBeInTheDocument();
+      expect(screen.queryByText("Demande de création d'espace")).not.toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Approuver" })).toBeInTheDocument();
+    });
+
+    it("approuvée → « Reprise approuvée »", async () => {
+      h.get.mockResolvedValueOnce(reprise);
+      h.decide.mockResolvedValueOnce({ status: "approved" });
+      renderAt();
+      await userEvent.click(await screen.findByRole("button", { name: "Approuver" }));
+      expect(await screen.findByText("Reprise approuvée")).toBeInTheDocument();
+      expect(screen.queryByText("Espace créé")).not.toBeInTheDocument();
+    });
+
+    it("dépassée (un gestionnaire a déjà repris) → « Demande dépassée », jamais « refusée » ni « créé »", async () => {
+      h.get.mockResolvedValueOnce(reprise);
+      h.decide.mockResolvedValueOnce({ status: "superseded" });
+      renderAt();
+      await userEvent.click(await screen.findByRole("button", { name: "Approuver" }));
+      expect(await screen.findByText("Demande dépassée")).toBeInTheDocument();
+      expect(screen.queryByText("Demande refusée")).not.toBeInTheDocument();
+      expect(screen.queryByText("Espace créé")).not.toBeInTheDocument();
+    });
+  });
+
   it("410 → « expirée », 404 → « lien invalide » (les deux états d'erreur se distinguent)", async () => {
     h.get.mockRejectedValueOnce(httpError(410));
     renderAt();
