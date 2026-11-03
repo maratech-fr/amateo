@@ -47,3 +47,14 @@ Fonctionnalité: Un plan de période se génère en overlay, sur sa propre grill
     Et une fermeture à venir découpée en trois semaines-segments, chacune avec son plan
     Quand je demande l'aperçu du re-datage qui la raccourcit d'une semaine, puis je confirme
     Alors l'aperçu annonçait plusieurs changements, la mère porte les nouvelles dates et ses semaines sont ré-appariées
+
+  Scénario: Une fermeture déclarée pendant un plan validé retire ses verrous, le signale périmé, et il se régénère sans le gymnase fermé
+    « Enregistrer une fermeture vaut geste » : déclarer la fermeture d'un gymnase un jour où un plan
+    de période validé y avait une séance verrouillée retire ce verrou, et seulement lui ; le plan se
+    signale périmé, et une fois rouvert il se régénère pour de vrai sans aucune séance à ce gymnase
+    ce jour-là, la séance verrouillée d'un autre jour revenant à sa case.
+    Étant donné un petit club réaliste avec un plan de période VALIDÉ dont deux séances sont verrouillées en dur sur deux jours différents
+    Quand je déclare la fermeture du gymnase de la première séance verrouillée, le jour de cette séance
+    Alors le verrou de ce jour-là est retiré, celui de l'autre jour est intact, et le plan de période est signalé périmé
+    Quand je rouvre puis régénère le plan de période
+    Alors la régénération aboutit sans aucune séance à ce gymnase ce jour-là, et la séance verrouillée de l'autre jour revient verrouillée à la même case

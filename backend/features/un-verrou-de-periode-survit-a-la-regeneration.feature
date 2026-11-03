@@ -36,3 +36,12 @@ Fonctionnalité: Un verrou de plan de période survit à la régénération, sur
     Et deux séances libres de cette version du petit club verrouillées en dur
     Quand je régénère le plan de période du petit club
     Alors la régénération aboutit et les deux séances reviennent verrouillées, aux mêmes cases
+
+  Scénario: Le verrou d'un autre jour survit à une fermeture
+    Une fermeture déclarée ne retire que les épingles qu'elle met hors de portée : le verrou au
+    gymnase fermé ce jour-là part, celui d'un autre jour reste, et la régénération le remet à la même
+    case, verrouillé, sans placer de séance au gymnase fermé ce jour-là.
+    Étant donné un petit club réaliste avec un plan de période dont deux séances sont verrouillées en dur sur deux jours différents
+    Quand je déclare la fermeture du gymnase de la première séance verrouillée, le jour de cette séance
+    Et je régénère le plan de période après la fermeture
+    Alors la régénération aboutit sans aucune séance à ce gymnase ce jour-là, et la séance verrouillée de l'autre jour revient verrouillée à la même case
