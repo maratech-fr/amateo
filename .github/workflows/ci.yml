@@ -1408,9 +1408,10 @@ jobs:
       # SEC-13 : le groupe `contract` reste EXCLU — il interroge le VRAI moteur (job dédié
       # « Engine semantics »), une autre question que « le code unitaire tient-il ? ». pcov
       # instrumente la suite ; le clover est écrit AVANT le gate pour que l'artefact parte même
-      # si le cliquet (ou un test) rougit (`if: always()` plus bas).
+      # si le cliquet (ou un test) rougit (`if: always()` plus bas). memory_limit=1G : pcov +
+      # suite entière débordent les 512 Mo de l'image (#1337) — même flag que `make coverage`.
       - name: Run full suite + coverage + cliquet
-        run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php -d pcov.enabled=1 vendor/bin/phpunit tests/ --exclude-group contract --coverage-text --coverage-clover coverage/backend.xml && php scripts/coverage-gate.php'
+        run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php -d pcov.enabled=1 -d memory_limit=1G vendor/bin/phpunit tests/ --exclude-group contract --coverage-text --coverage-clover coverage/backend.xml && php scripts/coverage-gate.php'
 
       - name: Upload coverage report (backend)
         if: always()
