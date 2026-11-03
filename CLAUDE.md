@@ -210,7 +210,7 @@ maison unique, c'est l'agent qui l'exécute. Tout plan produit doit la remplir l
 
 ## 10. Gotchas (top)
 
-1. ⚠ **`make phpunit` = `--group phase1` seul · `make test` = testsuite `Unit` seule** — or la CI
+1. ⚠ **`make phpunit` = `--group phase1` seul (un fichier : `make -C backend phpunit F=tests/… [FILTER=…]`) · `make test` = testsuite `Unit` seule** — or la CI
    `backend-tests` lance `phpunit tests/` ENTIER. **Avant de pousser :
    `make -C backend tests-complete`** (miroir CI — détail : `backend/docs/commands.md`). Chaque
    dossier de `tests/` est dans une testsuite (garde `TestsuitesCoverEveryTestDirectoryTest`).
