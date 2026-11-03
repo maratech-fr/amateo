@@ -10,6 +10,7 @@ import { SESSION_TEXTS } from "@/shared/session/texts";
 
 import { addDays, frDateShort, frDateShortNoYear, mondayOf, todayISO } from "./lib/date";
 import { useToastStore } from "@/shared/stores/toastStore";
+import { usePlanningStore } from "@/features/planning/store";
 import { RadarPanel } from "./RadarPanel";
 import { COCKPIT_TEXTS } from "./texts";
 
@@ -74,6 +75,8 @@ let calendarEntriesData: CalendarEntry[] | undefined = [];
 // leurs semaines de l'offre du picker et les NOMMER. Vide par défaut : les cas existants (aucune
 // fenêtre en conflit) restent inchangés. `data: []` = verdict RÉSOLU (pas de « chargement »).
 let plannedWindowsData: PlannedWindow[] = [];
+// Fermetures PR 1 (C4/C5) — impact servi d'une fermeture (governingPlans, fullyGoverned).
+let entryImpactData: Record<string, unknown> | undefined;
 
 vi.mock("./queries", () => ({
   useCreateHolidayPeriod: () => ({ mutate: createHolidayMutate, mutateAsync: createHolidayMutateAsync, isPending: false }),
@@ -88,6 +91,10 @@ vi.mock("./queries", () => ({
   useSchedulePlans: () => ({ data: plansState.failed ? undefined : plansData, isError: plansState.failed }),
   useCreateVenueClosure: () => ({ mutate: createVenueClosureMutate, mutateAsync: createVenueClosureMutateAsync, isPending: false }),
   usePlannedWindows: () => ({ data: plannedWindowsData, isError: false }),
+  // Fermetures PR 1 (C4/C5) — l'impact d'une fermeture SERVI par `/calendar-entries/{id}/impact`
+  // (même chiffre que l'aperçu). undefined par défaut : les cas existants ne voient rien de plus.
+  useEntryImpact: () => ({ data: entryImpactData, isPending: false }),
+  useEntryImpactList: (ids: string[]) => ids.map(() => ({ data: entryImpactData, isPending: false })),
 }));
 // P4-68 — les indispos gymnase alimentent une carte du radar. Les trois lectures sont
 // simulées ici : une liste VIDE par défaut, chaque cas qui en veut une la pose lui-même.
@@ -193,6 +200,7 @@ describe("RadarPanel", () => {
     schoolHolidaysData = { zone: "A", items: [] };
     calendarEntriesData = [];
     plannedWindowsData = [];
+    entryImpactData = undefined;
     deleteScheduleMutateAsync.mockClear();
   });
   afterEach(() => setTodayOverride(null));
@@ -1221,6 +1229,98 @@ describe("RadarPanel", () => {
       expect(messages.some((m) => /planning qui couvre ces dates/i.test(m))).toBe(true);
       expect(messages.some((m) => /planning des vacances/i.test(m))).toBe(false);
     });
+  });
+});
+
+/**
+ * Promesse (chantier « Fermetures de gymnase », PR 1, C4 + C5) : le radar dit le MÊME chiffre que
+ * l'aperçu de la fermeture (il lit `/impact`, gardé côté serveur par
+ * `ClosureImpactSaysTheSameEverywhereTest`) et, quand la fermeture tombe sur un plan de période qui
+ * la GOUVERNE entièrement (`fullyGoverned`), il n'offre plus « Adapter » (qui créerait un plan
+ * concurrent → 409) mais « Ouvrir le plan » ; un plan gouvernant rendu périmé a sa propre carte.
+ */
+describe("RadarPanel — fermeture gouvernée par un plan de période (C4/C5)", () => {
+  const marsPlan = {
+    entryId: "e-mars",
+    title: "Vacances de mars",
+    startDate: FUTURE,
+    endDate: FUTURE_END,
+    chosenScheduleId: "s-mars",
+    loadedScheduleId: "s-mars",
+    hasVersions: true,
+    sessions: [{ teamId: "t-sm1", teamName: "SM1", date: "2999-01-06", venueId: "v-mistral" }],
+    toRemove: { locks: 0, reservations: [] },
+    regeneratedWithout: false,
+  };
+  const impactOf = (over: Record<string, unknown> = {}) => ({
+    venueIds: ["v-mistral"],
+    startDate: "2999-01-06",
+    endDate: "2999-01-06",
+    seasonPlanChosen: true,
+    teams: [{ teamId: "t-sm1", teamName: "SM1", tierLabel: "S", tierWeight: 100, occurrences: 1 }],
+    trainingOccurrences: 1,
+    trainingSlotCount: 1,
+    matchesToMove: [],
+    governingPlans: [marsPlan],
+    fullyGoverned: true,
+    closedSessions: [],
+    ...over,
+  });
+
+  beforeEach(() => {
+    setTodayOverride("2998-12-15");
+    meData = { seasonPlan: { chosenScheduleId: "s-season" } };
+    plansData = [];
+    schedulesData = [];
+    campaignsData = [];
+    plansState.failed = false;
+    unavailabilitiesData = [];
+    impactItemsData = [];
+    venueClosuresData = [];
+    schoolHolidaysData = { zone: "A", items: [] };
+    calendarEntriesData = [];
+    plannedWindowsData = [];
+    // L'ancienne lecture (`/conflicts`) dit « 1 séance » aussi : la carte reste visible quel que
+    // soit le câblage — c'est le BOUTON et la carte de plan qui portent la promesse.
+    conflictsData = { conflicts: [{ dates: ["2999-01-06"] }], seasonPlanChosen: true };
+    conflictsPending = false;
+  });
+  afterEach(() => setTodayOverride(null));
+
+  it("fermeture entièrement gouvernée : « Ouvrir le plan » remplace « Adapter » et vise la version du plan", async () => {
+    const user = userEvent.setup();
+    entryImpactData = impactOf();
+    // Témoin : sans la clé, `{ name: undefined }` matcherait N'IMPORTE quel bouton (vert à tort).
+    expect(typeof COCKPIT_TEXTS.openPlanCta).toBe("string");
+    renderRadar({ entries: [closure({ title: "Mistral indisponible" })] });
+
+    expect(screen.getAllByRole("button", { name: COCKPIT_TEXTS.openPlanCta }).length).toBeGreaterThan(0);
+    expect(screen.queryByRole("button", { name: COCKPIT_TEXTS.adapt })).not.toBeInTheDocument();
+    await user.click(screen.getAllByRole("button", { name: COCKPIT_TEXTS.openPlanCta })[0]);
+    expect(usePlanningStore.getState().selectedScheduleId).toBe("s-mars");
+  });
+
+  it("fermeture à cheval (pas entièrement gouvernée) : « Adapter » reste offert", () => {
+    entryImpactData = impactOf({ fullyGoverned: false });
+    renderRadar({ entries: [closure({ title: "Mistral indisponible" })] });
+
+    expect(screen.getByRole("button", { name: COCKPIT_TEXTS.adapt })).toBeInTheDocument();
+  });
+
+  it("le plan gouvernant périmé a sa carte, nommée par son titre", () => {
+    entryImpactData = impactOf();
+    renderRadar({ entries: [closure({ title: "Mistral indisponible" })] });
+
+    expect(screen.getByText("Vacances de mars")).toBeInTheDocument();
+  });
+
+  it("le CHIFFRE de la carte vient de /impact (même chiffre que l'aperçu), pas de /conflicts", () => {
+    // /conflicts dit 1 séance ; /impact (la vérité de l'aperçu, jours rouverts et capture inversée
+    // compris) en dit 3. Le radar affiche 3.
+    entryImpactData = impactOf({ fullyGoverned: false, governingPlans: [], trainingOccurrences: 3 });
+    renderRadar({ entries: [closure({ title: "Mistral indisponible" })] });
+
+    expect(screen.getByText(/3 séances à replacer/)).toBeInTheDocument();
   });
 });
 

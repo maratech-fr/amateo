@@ -1,13 +1,16 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderHook, waitFor } from "@testing-library/react";
+import { HTTPError } from "ky";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createConstraint } from "@/features/wizard/api";
+import { useToastStore } from "@/shared/stores/toastStore";
 
 import * as cockpitApi from "./api";
 import { addDays, segmentsFromOffer, type WeekWindow } from "./lib/date";
-import { useCreateCutoff, useCreateHolidayPeriod, useCreateWeekChildren, usePlannedWindows, usePublicHolidays } from "./queries";
+import { useCreateCutoff, useCreateHolidayPeriod, useCreateVenueClosure, useCreateWeekChildren, usePlannedWindows, usePublicHolidays } from "./queries";
+import { COCKPIT_TEXTS } from "./texts";
 
 vi.mock("./api", () => ({
   getCalendarEntries: vi.fn(),
@@ -130,5 +133,54 @@ describe("cockpit queries — payload contracts", () => {
       endDate: "2026-09-27",
       parentEntryId: "m1",
     });
+  });
+});
+
+/**
+ * Promesse (chantier « Fermetures de gymnase », PR 1, C3bis) : une fermeture se crée en DEUX POST
+ * (entrée puis contrainte `venue_closed`) ; c'est le POST de la contrainte qui retire les épingles
+ * et rend `removed`. Si ce POST est refusé — notamment 409 `generation_in_progress` (jumeau serveur
+ * `backend/tests/Api/ClosureRemovesPinsAtomicallyTest.php`) — l'entrée est supprimée (rien ne reste
+ * fermé) et le gestionnaire lit le motif NOMMÉ ; si elle réussit, `removed` remonte au formulaire.
+ */
+describe("useCreateVenueClosure — Enregistrer vaut geste (C3bis)", () => {
+  const payload = { title: "Mistral — fermé", startDate: "2999-01-05", endDate: "2999-01-09", venueId: "v-mistral" };
+
+  function httpError(status: number, data: unknown): HTTPError {
+    const error = new HTTPError(new Response(JSON.stringify(data), { status }), new Request("http://localhost/api/constraints"), {} as never);
+    (error as unknown as { data: unknown }).data = data;
+    return error;
+  }
+
+  beforeEach(() => {
+    vi.mocked(cockpitApi.createCalendarEntry).mockReset();
+    vi.mocked(cockpitApi.createCalendarEntry).mockResolvedValue({ id: "e-new" } as never);
+    vi.mocked(cockpitApi.deleteCalendarEntry).mockReset();
+    vi.mocked(cockpitApi.deleteCalendarEntry).mockResolvedValue(undefined as never);
+    vi.mocked(createConstraint).mockReset();
+    useToastStore.setState({ toasts: [] });
+  });
+
+  it("rend `removed` du POST de la contrainte (ce que le toast confirmera)", async () => {
+    vi.mocked(createConstraint).mockResolvedValue({ id: "k1", removed: { locks: 10, reservations: 1 } } as never);
+    const { result } = renderHook(() => useCreateVenueClosure(), { wrapper });
+
+    result.current.mutate(payload);
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    // Contrat supposé (à trancher par NEO) : `{ entry, removed }`.
+    expect(result.current.data).toEqual(expect.objectContaining({ entry: expect.objectContaining({ id: "e-new" }), removed: { locks: 10, reservations: 1 } }));
+  });
+
+  it("409 generation_in_progress sur la contrainte : l'entrée est SUPPRIMÉE et le toast nomme la génération en cours", async () => {
+    // Corps SANS phrase serveur : le front doit nommer le motif par sa clé, pas recopier un texte reçu.
+    vi.mocked(createConstraint).mockRejectedValue(httpError(409, { code: "generation_in_progress" }));
+    const { result } = renderHook(() => useCreateVenueClosure(), { wrapper });
+
+    result.current.mutate(payload);
+
+    await waitFor(() => expect(result.current.isError).toBe(true));
+    expect(cockpitApi.deleteCalendarEntry).toHaveBeenCalledWith("e-new");
+    await waitFor(() => expect(useToastStore.getState().toasts.map((t) => t.message)).toContain(COCKPIT_TEXTS.generationInProgress));
   });
 });
