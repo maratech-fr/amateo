@@ -42,6 +42,12 @@ final class ConflictCoachMailBuilder
         5 => ['À surveiller', '#a16207', '#854d0e', '#fefce8'],
     ];
 
+    /**
+     * Pile COURTE redéclarée sur chaque cellule de tuile : Outlook de bureau n'hérite pas la police
+     * dans les tables imbriquées. Courte pour tenir 50 tuiles sous la coupe de Gmail (100 Ko).
+     */
+    private const string FONT = 'font-family:\'Segoe UI\',Arial,sans-serif;';
+
     private const array FAMILY = [
         'MATCH_MATCH' => 'Personne en double',
         'MATCH_TRAINING' => 'Match × entraînement',
@@ -341,8 +347,8 @@ final class ConflictCoachMailBuilder
 
     /**
      * La tuile HTML de la référence validée : filet de couleur, titre de famille en gras et pastille
-     * de gravité, sous-ligne, blocs de côté, pied de chevauchement. Styles inline, couleurs en dur ; la
-     * police est héritée de la carte (le poids d'un mail de 50 tuiles reste sous la coupe de Gmail).
+     * de gravité, sous-ligne, blocs de côté, pied de chevauchement. Styles inline, couleurs en dur ; police
+     * courte redéclarée par cellule (Outlook de bureau ne l'hérite pas des tables imbriquées).
      *
      * @param array{family: string, word: string, color: string, ink: string, wash: string, sub: string, blocks: list<array{label: string, detail: string, time: list<array{0: string, 1: bool}>}>, line: list<array{0: string, 1: bool}>, overlap: string} $tile
      */
@@ -351,24 +357,24 @@ final class ConflictCoachMailBuilder
         $rows = '';
         foreach ($tile['blocks'] as $block) {
             $detail = '' === $block['detail'] ? '' : '<span style="font-weight:400;color:#4b5563;"> · ' . $this->h($block['detail']) . '</span>';
-            $rows .= '<tr><td style="padding:8px 0 0 0;font-size:14px;line-height:1.45;color:#1a1a1a;">'
-                . '<div style="font-weight:700;color:#1a1a1a;">' . $this->h($block['label']) . $detail . '</div>'
-                . '<div style="color:#1a1a1a;">' . $this->html($block['time']) . '</div></td></tr>';
+            $rows .= '<tr><td style="' . self::FONT . 'padding:8px 0 0 0;font-size:14px;line-height:1.45;color:#1a1a1a;">'
+                . '<div style="font-weight:700;">' . $this->h($block['label']) . $detail . '</div>'
+                . '<div>' . $this->html($block['time']) . '</div></td></tr>';
         }
         if ([] !== $tile['line']) {
-            $rows .= '<tr><td style="padding:8px 0 0 0;font-size:14px;line-height:1.45;color:#1a1a1a;">' . $this->html($tile['line']) . '</td></tr>';
+            $rows .= '<tr><td style="' . self::FONT . 'padding:8px 0 0 0;font-size:14px;line-height:1.45;color:#1a1a1a;">' . $this->html($tile['line']) . '</td></tr>';
         }
         if ('' !== $tile['overlap']) {
-            $rows .= '<tr><td style="padding:8px 0 0 0;font-size:13px;font-weight:700;color:' . $tile['ink'] . ';">' . $this->h($tile['overlap']) . '</td></tr>';
+            $rows .= '<tr><td style="' . self::FONT . 'padding:8px 0 0 0;font-size:13px;font-weight:700;color:' . $tile['ink'] . ';">' . $this->h($tile['overlap']) . '</td></tr>';
         }
 
         return '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 12px 0;"><tr>'
             . '<td width="5" style="width:5px;background-color:' . $tile['color'] . ';font-size:0;line-height:0;">&nbsp;</td>'
-            . '<td style="padding:12px 16px;background-color:#ffffff;border-top:1px solid #e5e5e5;border-right:1px solid #e5e5e5;border-bottom:1px solid #e5e5e5;">'
+            . '<td style="' . self::FONT . 'padding:12px 16px;background-color:#ffffff;border-top:1px solid #e5e5e5;border-right:1px solid #e5e5e5;border-bottom:1px solid #e5e5e5;">'
             . '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>'
-            . '<td style="font-size:14px;font-weight:700;color:#1a1a1a;">' . $this->h($tile['family']) . '</td>'
-            . '<td align="right" style="padding-left:8px;"><span style="display:inline-block;white-space:nowrap;font-size:12px;font-weight:700;color:' . $tile['ink'] . ';background-color:' . $tile['wash'] . ';border:1px solid ' . $tile['color'] . ';border-radius:10px;padding:2px 8px;">' . $this->h($tile['word']) . '</span></td></tr></table>'
-            . '<div style="font-size:13px;color:#4b5563;margin-top:2px;">' . $this->h($tile['sub']) . '</div>'
+            . '<td style="' . self::FONT . 'font-size:14px;font-weight:700;color:#1a1a1a;">' . $this->h($tile['family']) . '</td>'
+            . '<td align="right" style="' . self::FONT . 'padding-left:8px;"><span style="display:inline-block;white-space:nowrap;font-size:12px;font-weight:700;color:' . $tile['ink'] . ';background-color:' . $tile['wash'] . ';border:1px solid ' . $tile['color'] . ';border-radius:10px;padding:2px 8px;">' . $this->h($tile['word']) . '</span></td></tr></table>'
+            . '<div style="' . self::FONT . 'font-size:13px;color:#4b5563;margin-top:2px;">' . $this->h($tile['sub']) . '</div>'
             . '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">' . $rows . '</table>'
             . '</td></tr></table>';
     }

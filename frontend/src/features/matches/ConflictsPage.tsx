@@ -109,11 +109,11 @@ function CoachMailBar({ mailing, canManage, isDemo, seasonReadonly, seasonName, 
   }
 
   return (
-    <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+    <div className="flex flex-col gap-1">
       {canManage ? (
-        <>
-          {/* Le motif d'un bouton grisé se LIT en clair à côté (règle front : pas de doublon
-              `disabledReason`), et le bouton le désigne par `aria-describedby`. */}
+        // Rangée 1 : le bouton et, s'il est grisé, son motif LU en clair à côté (règle front : pas
+        // de doublon `disabledReason`) ; le bouton le désigne par `aria-describedby`.
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
           <Button type="button" variant="outline" size="sm" disabled={undefined !== disabledReason} aria-describedby={undefined === disabledReason ? undefined : reasonId} onClick={() => setConfirmOpen(true)}>
             {MAIL_TEXTS.sendButton}
           </Button>
@@ -122,8 +122,9 @@ function CoachMailBar({ mailing, canManage, isDemo, seasonReadonly, seasonName, 
               {disabledReason}
             </span>
           )}
-        </>
+        </div>
       ) : null}
+      {/* Rangée 2 : la ligne « Envoyé le … », jamais collée au motif. */}
       {null === statusLine ? null : <p className="text-sm text-muted-foreground">{statusLine}</p>}
       <ConfirmDialog
         open={confirmOpen}
