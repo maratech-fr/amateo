@@ -240,17 +240,21 @@ final class MembershipRequestNotificationTest extends WebTestCase
         $club = $this->managedClub('SAFE');
         $clubName = $this->clubName($club['clubId']);
 
-        $spam = $this->joinerVerifies($club['ara'], 'Gagnez', 'www.arnaque.fr');
-        $mails = $this->mailsTo($spam['mails'], $club['email']);
-        self::assertCount(1, $mails);
-        self::assertSame(\sprintf('Demande d\'adhésion — Gagnez souhaite rejoindre %s', $clubName), $mails[0]->getSubject(), 'le domaine est retiré du nom');
-        self::assertStringNotContainsString('arnaque', (string) $mails[0]->getTextBody());
+        // Revue de sécurité : un domaine suivi d'une ponctuation, que Gmail/Outlook rendent en lien.
+        // Plafond de test = 2 mails individuels par club : deux demandeurs hostiles, deux mails.
+        foreach ([['Gagnez', 'amateo-verif.com.'], ['x.com,', 'EVIL.COM!']] as [$first, $last]) {
+            $spam = $this->joinerVerifies($club['ara'], $first, $last);
+            $mails = $this->mailsTo($spam['mails'], $club['email']);
+            self::assertCount(1, $mails);
+            self::assertSame(\sprintf('Demande d\'adhésion — Un demandeur souhaite rejoindre %s', $clubName), $mails[0]->getSubject(), 'nom hors liste blanche → « Un demandeur », jamais nettoyé mot à mot');
 
-        $empty = $this->joinerVerifies($club['ara'], 'http://arnaque.fr', 'www.arnaque.fr');
-        $mails = $this->mailsTo($empty['mails'], $club['email']);
-        self::assertCount(1, $mails);
-        self::assertSame(\sprintf('Demande d\'adhésion — Un demandeur souhaite rejoindre %s', $clubName), $mails[0]->getSubject(), 'un nom réduit à rien → « Un demandeur »');
-        self::assertStringNotContainsString('arnaque', (string) $mails[0]->getTextBody());
+            // Hors l'adresse du demandeur (légitime, entre parenthèses) et le lien de l'application,
+            // ni le sujet ni le corps ne portent de domaine.
+            $body = str_replace([$spam['email'], $this->base()], '', (string) $mails[0]->getTextBody());
+            foreach ([(string) $mails[0]->getSubject(), $body] as $text) {
+                self::assertDoesNotMatchRegularExpression('~[\p{L}\d-]+\.[a-z]{2,}~iu', $text, 'aucun domaine (« x.com », « EVIL.COM »…) dans le mail aux gestionnaires');
+            }
+        }
     }
 
     /**
