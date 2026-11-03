@@ -6,7 +6,6 @@ namespace App\Tests\CrossStack;
 
 use App\Tests\OpenApi\DateOnlyFieldsServeDateOnlyStringsTest;
 use FilesystemIterator;
-use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
 use RecursiveDirectoryIterator;
 use RecursiveIteratorIterator;
@@ -44,10 +43,12 @@ use Symfony\Component\Serializer\Attribute\Groups;
  * `campaignWeeks.test.ts` sert `startDate: "…T00:00:00+00:00"` → sens DATE-SEULE rougit (exempté
  * ci-dessous : input de ROBUSTESSE délibéré, pas un mock de forme d'API).
  *
- * Régime : groupe `contract` / job CI `engine-semantics` (required check), PAS un step
- * `blocking-tests` (aucun invariant runtime multi-tenant).
+ * Régime : HORS groupe `contract` — il ne lit que des fichiers (`frontend/src`) et de la
+ * réflexion PHP, sans moteur : il tourne donc dans `make -C backend tests-complete` et le job CI
+ * `backend-tests` (`phpunit tests/ --exclude-group contract`, required check) — `frontend/src`
+ * y est visible par le montage `./:/app` de php-fpm. PAS un step `blocking-tests` (aucun
+ * invariant runtime multi-tenant).
  */
-#[Group('contract')]
 final class FrontMockDateFormatMatchesContractTest extends TestCase
 {
     private const string REPO = __DIR__ . '/../../..';

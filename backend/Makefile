@@ -136,7 +136,8 @@ tests-complete: $(if $(filter nu,$(STACK_MODE)),test-prepare) purge-test-cache d
 .PHONY: coverage ## Mesure la couverture backend (pcov) + cliquet (coverage-floor.json)
 coverage: APP_ENV = test
 coverage: db-init-test
-	$(EXEC) php -d pcov.enabled=1 vendor/bin/phpunit tests/ --exclude-group contract --coverage-text --coverage-clover coverage/backend.xml
+	# memory_limit=1G : pcov + suite entière débordent les 512 Mo de l'image (#1337).
+	$(EXEC) php -d pcov.enabled=1 -d memory_limit=1G vendor/bin/phpunit tests/ --exclude-group contract --coverage-text --coverage-clover coverage/backend.xml
 	$(EXEC) php scripts/coverage-gate.php
 
 .PHONY: tests-engine-semantics ## Les tests qui interrogent le VRAI moteur (job CI « Engine semantics »)
@@ -173,10 +174,15 @@ behat:
 	$(FIG) restart messenger-worker cron-runner >/dev/null 2>&1 || true
 	$(EXEC) php vendor/bin/behat --format=pretty --no-interaction
 
-.PHONY: phpunit ## Run blocking PHPUnit group
+# Sans argument : `--group phase1` (inchangé). F=<fichier ou dossier, relatif à backend/>
+# lance ce chemin à la place ; FILTER=<motif> ajoute `--filter`. Ex. :
+#   make -C backend phpunit F=tests/Security/ManagerRoleRequestTest.php FILTER=testRefuse
+F ?=
+FILTER ?=
+.PHONY: phpunit ## Run blocking PHPUnit group (F=<chemin> pour un fichier/dossier, FILTER=<motif> → --filter)
 phpunit: APP_ENV = test
 phpunit:
-	$(EXEC) php vendor/bin/phpunit --group phase1
+	$(EXEC) php vendor/bin/phpunit $(if $(F),$(F),--group phase1)$(if $(FILTER), --filter '$(FILTER)')
 
 # RLS note: database create/drop and fixtures need the admin connection —
 # the runtime amateo_app has no CREATEDB and its DELETEs would be silently
