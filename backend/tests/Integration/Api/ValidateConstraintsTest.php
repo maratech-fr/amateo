@@ -79,6 +79,32 @@ final class ValidateConstraintsTest extends WebTestCase
         self::assertTrue(json_decode((string) $this->client->getResponse()->getContent(), true)['valid']);
     }
 
+    /**
+     * Le contrôle des contraintes avant génération est une LECTURE : un Membre (non gestionnaire)
+     * obtient le même verdict que le gestionnaire. Ancien angle « réservé au gestionnaire » inversé
+     * (`ManagementRoleTest`). Son absence d'effet de bord : `MemberReadsAreSideEffectFreeTest`.
+     */
+    public function testAMemberGetsTheSameVerdict(): void
+    {
+        $this->constraint(['maxStartTime' => '10:00']);
+        $this->constraint(['minStartTime' => '12:00']);
+        $member = new User;
+        $member->setEmail('membre' . uniqid('', true) . '@test.com');
+        $member->setFirstName('Paul');
+        $member->setLastName('Membre');
+        $member->setPasswordHash('x');
+        $this->em->persist($member);
+        $this->em->flush();
+        $this->scopeGucToClub($this->club->getId());
+        $this->em->persist((new ClubUser)->setClubId($this->club->getId())->setUserId($member->getId())->setRole('member')->setIsActive(true));
+        $this->em->flush();
+
+        $this->client->loginUser($member);
+        $this->client->request('POST', '/api/constraints/validate', [], [], []);
+        self::assertResponseStatusCodeSame(422, 'un Membre reçoit le verdict (contraintes contradictoires), jamais 403');
+        self::assertFalse(json_decode((string) $this->client->getResponse()->getContent(), true)['valid']);
+    }
+
     public function testContradictoryHardTimeConstraintsAreRejected(): void
     {
         // Two CLUB HARD TIME rules: "not after 10:00" vs "not before 12:00" — impossible.

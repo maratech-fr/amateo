@@ -36,7 +36,7 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 
 /**
  * P4-269 — le radar « une personne à deux endroits » sur le planning d'entraînement
- * EN VIGUEUR, servi en lecture. Réservé aux gestionnaires (SEC-07) et strictement
+ * EN VIGUEUR, servi en lecture. Ouvert à tout membre actif (un Membre lit tout) et strictement
  * scopé au club appelant (§7.1 tenant : un club ne voit jamais les conflits d'un autre).
  */
 #[Group('integration')]
@@ -65,13 +65,21 @@ final class TrainingPlacedConflictsApiTest extends WebTestCase
         self::assertArrayHasKey('second', $data['conflicts'][0]);
     }
 
-    public function testANonManagerIsRefused(): void
+    /**
+     * Un Membre (non gestionnaire) LIT le radar comme le gestionnaire : un Membre voit tout, ne
+     * modifie rien. Inversion de l'ancien « 403 non-gestionnaire ». L'absence d'effet de bord de
+     * cette lecture est prouvée par `MemberReadsAreSideEffectFreeTest`.
+     */
+    public function testANonManagerReadsTheLivePersonConflict(): void
     {
-        [$clubA] = $this->createClubWithConflict('perm');
-        $editor = $this->createMember($clubA, 'editor');
+        [$clubA, , $ctxA] = $this->createClubWithConflict('perm');
+        $member = $this->createMember($clubA, 'member');
 
-        $this->client->request('GET', '/api/training/placed-conflicts', [], [], $this->authHeaders($editor));
-        self::assertResponseStatusCodeSame(403);
+        $this->client->request('GET', '/api/training/placed-conflicts', [], [], $this->authHeaders($member));
+        self::assertResponseStatusCodeSame(200);
+        $data = $this->responseData();
+        self::assertCount(1, $data['conflicts'], 'le Membre voit le même conflit que le gestionnaire');
+        self::assertSame($ctxA['coach'], $data['conflicts'][0]['personId']);
     }
 
     public function testAnotherClubsConflictNeverLeaks(): void

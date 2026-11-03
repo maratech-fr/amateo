@@ -308,20 +308,26 @@ final class CoachWishCampaignApiTest extends WebTestCase
         self::assertCount(0, $this->em->getRepository(CoachWishToken::class)->findBy(['campaignId' => $created['id']]));
     }
 
-    public function testNonManagementMemberCannotReadCampaignsAndTheirTokens(): void
+    /**
+     * Un Membre LIT les campagnes (états de réponse, adresses des coachs) mais jamais
+     * `coaches[].token` : le jeton est le secret du lien public — le servir au Membre lui
+     * permettrait d'usurper un coach (revue #10 C2). Inversion de l'ancien « 403 à la lecture ».
+     * Angle jumeau, cité : `MemberReadsAreSideEffectFreeTest::testCoachPersonalLinkIsServedToManagersOnly`
+     * (item + collection, témoin gestionnaire) — sécurité, les deux angles coexistent.
+     */
+    public function testNonManagementMemberReadsCampaignsButNeverTheirTokens(): void
     {
-        // Revue #10 C2 : la ressource expose coaches[].token (secret du lien public). La
-        // LECTURE est management-only — sinon un simple membre lirait les tokens et usurperait.
         $this->post($this->payload(['teamIds' => [$this->teamA->getId()]]));
         self::assertResponseStatusCodeSame(201);
 
-        $jwt = $this->memberJwt('editor'); // rôle non-management
+        $jwt = $this->memberJwt('member');
         $this->client->request('GET', '/api/coach_wish_campaigns', [], [], [
             'HTTP_X-Season-Id' => $this->season->getId(),
             'HTTP_AUTHORIZATION' => 'Bearer ' . $jwt,
             'CONTENT_TYPE' => 'application/ld+json',
         ]);
-        self::assertResponseStatusCodeSame(403);
+        self::assertResponseStatusCodeSame(200, 'un Membre lit les campagnes');
+        self::assertStringNotContainsString('"token"', (string) $this->client->getResponse()->getContent(), 'le jeton d\'un coach est servi à un Membre');
     }
 
     public function testOpenWishCountIsScopedToTheCampaignTeams(): void
