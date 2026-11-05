@@ -9,9 +9,13 @@ name: Visual Baselines
 # Déclenché À LA DEMANDE uniquement (`workflow_dispatch`) — une fois ce workflow sur `main`,
 # `gh workflow run visual-baselines.yml --ref <branche> -f update=true` marche depuis N'IMPORTE
 # quelle branche. Deux modes selon l'entrée `update` :
-#   - update=true  (`--update-snapshots`) : (re)génère les PNG et les publie en artefact
+#   - update=true  (`--update-snapshots=all`) : RÉÉCRIT TOUS les PNG et les publie en artefact
 #     `visual-baselines` → on télécharge, on committe le dossier `-snapshots/`, on re-pousse.
-#   - update=false (défaut)                : compare aux PNG committés (vérification ad hoc).
+#     `=all`, jamais le mode par défaut (`changed`) : celui-ci ne réécrit que les captures en
+#     ÉCHEC, or le spec tolère `maxDiffPixelRatio: 0.01` — un changement de texte de quelques
+#     lettres passe sous la tolérance et la référence publiée garderait l'ancien texte, en
+#     silence. Une régénération réécrit donc toutes les références.
+#   - update=false (défaut)                    : compare aux PNG committés (vérification ad hoc).
 #
 # ⚠ Le GATE réel vit dans le job `e2e` de `ci.yml` (required check « E2E (Playwright) ») : il COMPARE
 # le spec aux références à chaque PR, il ne réécrit JAMAIS (aucun `--update-snapshots`). La
@@ -21,7 +25,7 @@ on:
   workflow_dispatch:
     inputs:
       update:
-        description: "Régénérer les PNG de référence (--update-snapshots) au lieu de comparer"
+        description: "Régénérer TOUS les PNG de référence (--update-snapshots=all) au lieu de comparer"
         type: boolean
         default: false
 
@@ -139,7 +143,7 @@ jobs:
         run: |
           set -o pipefail
           ARGS=""
-          if [ "$UPDATE" = "true" ]; then ARGS="--update-snapshots"; fi
+          if [ "$UPDATE" = "true" ]; then ARGS="--update-snapshots=all"; fi
           E2E_BASE_URL=http://localhost:5173 npx playwright test tests/e2e/visual-reference.spec.ts $ARGS
 
       # Les PNG de référence (après un run UPDATE) + les diffs d'un run COMPARE rouge. `always()` :

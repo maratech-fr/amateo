@@ -162,7 +162,10 @@ références. **Re-baseline — une procédure, un workflow dédié**
 (`.github/workflows/visual-baselines.yml`, `workflow_dispatch` seul, jamais en local — les PNG
 doivent naître dans l'environnement EXACT de la CI, même image/polices que le job `e2e`) :
 `gh workflow run visual-baselines.yml --ref <branche> -f update=true` → `gh run download <run-id>
--n visual-baselines` → committer le dossier `-snapshots/`, re-pousser. Déclenche une re-baseline :
+-n visual-baselines` → committer le dossier `-snapshots/`, re-pousser. Le mode `update=true`
+lance `--update-snapshots=all` : il réécrit TOUTES les références, pas seulement celles en échec
+— sinon un changement de texte sous la tolérance de 1 % garderait l'ancien texte en silence.
+Déclenche une re-baseline :
 un changement d'apparence VOULU, un changement d'image runner (épinglée `ubuntu-24.04` dans tous
 les workflows depuis la passe « versions figées » — un bump futur est un choix manuel, pas une
 dérive silencieuse), ou une dérive du seed BCCL. Hors périmètre, délibérément : la page publique des vœux (token non forgeable sans base
