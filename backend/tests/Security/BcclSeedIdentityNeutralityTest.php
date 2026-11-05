@@ -39,6 +39,8 @@ final class BcclSeedIdentityNeutralityTest extends TestCase
     private const array ENGINE_FIXTURES = [
         'engine/tests/fixtures/bccl_2026_08_15.json',
         'engine/tests/fixtures/overlap_shared_coach.json',
+        'engine/tests/fixtures/consecutive_single_coach.json',
+        'engine/tests/fixtures/no_rest_single_coach.json',
     ];
 
     /**
@@ -53,6 +55,8 @@ final class BcclSeedIdentityNeutralityTest extends TestCase
         'frontend/tests/e2e/matches.spec.ts',
         'engine/tests/fixtures/bccl_2026_08_15.json',
         'engine/tests/fixtures/overlap_shared_coach.json',
+        'engine/tests/fixtures/consecutive_single_coach.json',
+        'engine/tests/fixtures/no_rest_single_coach.json',
         'docs/archive/plannings-bccl-2026-08-31.md',
     ];
 
