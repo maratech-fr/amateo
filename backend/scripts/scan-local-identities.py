@@ -30,9 +30,11 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import pathlib
 import subprocess
 import sys
+import tempfile
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
 DEFAULT_IDENTITIES = "backend/config/seed/bccl.identities.local.json"
@@ -88,15 +90,22 @@ def main() -> int:
         print(f"Aucun jeton d'au moins {MIN_TOKEN_LENGTH} caractères dans {args.identities} : rien à balayer.")
         return 0
 
-    command = ["git", "-C", str(REPO_ROOT), "grep", "-z", "-o", "-I", "-n", "-i", "-w", "-F"]
-    for token in tokens:
-        command += ["-e", token]
-    # S603 : liste d'arguments fixe, aucun shell — les jetons ne sont jamais interprétés.
+    # Les jetons ne deviennent jamais des arguments de commande : ils passent par un fichier de
+    # motifs temporaire (0600, hors dépôt, supprimé en sortie) lu par ``git grep -f``.
+    with tempfile.NamedTemporaryFile("w", encoding="utf-8", suffix=".patterns", delete=False) as handle:
+        patterns_path = pathlib.Path(handle.name)
+        handle.write("".join(f"{token}\n" for token in tokens))
     try:
-        completed = subprocess.run(command, capture_output=True, check=False)  # noqa: S603
-    except OSError:
-        print("Balayage impossible : git introuvable.", file=sys.stderr)
-        return 2
+        os.chmod(patterns_path, 0o600)
+        command = ["git", "-C", str(REPO_ROOT), "grep", "-z", "-o", "-I", "-n", "-i", "-w", "-F", "-f", str(patterns_path)]
+        # S603 : liste d'arguments constante + chemin du fichier temporaire, aucun shell.
+        try:
+            completed = subprocess.run(command, capture_output=True, check=False)  # noqa: S603
+        except OSError:
+            print("Balayage impossible : git introuvable.", file=sys.stderr)
+            return 2
+    finally:
+        patterns_path.unlink(missing_ok=True)
     # git grep : 0 = trouvé, 1 = rien trouvé ; tout autre code = échec du balayage. Son stderr
     # n'est jamais relayé (il pourrait citer un jeton) — message générique seulement.
     if completed.returncode not in (0, 1):
