@@ -12,6 +12,65 @@
 > `.claude/skills/dependabot/SKILL.md` étape 4) — cette permanence-là ne dépend pas du bornage
 > d'ici.
 
+## 2026-11-05 — lot Dependabot (4 PRs mergées dont 1 réparée, 2 majeures en attente)
+
+### Paquets du backend (PR #1330 — réparée)
+
+**C'est quoi** : les briques PHP du serveur — Symfony (le cadre de l'application : routes, sécurité,
+envoi des mails, file de tâches), Doctrine (l'accès à la base), le module de réinitialisation de mot
+de passe, et l'outillage d'analyse du code.
+
+**Ça apporte** : **18 alertes de sécurité Symfony corrigées** (`composer audit` : plus aucune), toutes
+réglées par la série 7.4.23 — c'est la raison de traiter ce lot tout de suite plutôt que de le subir.
+
+**Adapté chez nous** : rien dans notre code. Deux réglages dans les dépendances :
+- Dependabot résout hors de notre conteneur, sans le plugin Flex : 13 paquets Symfony étaient partis
+  en 8.0.x. Ramenés sur la LTS 7.4 par `composer update --with-all-dependencies` dans le conteneur
+  (le piège habituel, décrit dans le skill `dependabot`).
+- PHPStan reste en 2.3.1 et Rector en 2.7 : PHPStan ≥ 2.3.4 empêche Rector 2.7 de lire les docblocks,
+  et Rector 2.8 réécrirait `TenantFilterListener` et des listeners de sécurité. Cette montée est un
+  chantier à part, qui touche l'isolation entre clubs (roadmap P4-80).
+
+### Paquets du moteur (PR #1333 — 9 montées mineures/patch)
+
+**C'est quoi** : FastAPI et Starlette (le serveur web du moteur), pandas (calculs sur tableaux),
+pydantic-settings (lecture de la configuration), sentry-sdk (remontée d'erreurs), et l'outillage de
+test et d'analyse (hypothesis, coverage, ruff, certifi).
+
+**Ça apporte** : correctifs de routine, rien de visible pour un club.
+
+**Adapté chez nous** : rien.
+
+### Images Docker (PR #1331)
+
+**C'est quoi** : Mercure, le canal temps réel qui pousse l'avancement d'une génération vers l'écran
+(dev ET prod, même version des deux côtés), et Mailpit, la boîte aux lettres de test (dev seulement).
+
+**Ça apporte** : correctifs de version patch (Mercure 1.1.2 → 1.1.5, Mailpit 1.31.6 → 1.32.0).
+
+**Adapté chez nous** : rien.
+
+### Paquets du frontend (PR #1329 — 8 montées mineures/patch)
+
+**C'est quoi** : `@sentry/react` (remontée d'erreurs), `@tanstack/react-query` (données serveur à
+l'écran), `lucide-react` (les icônes), `zustand` (état de l'écran), `vite` (la construction du site),
+et l'outillage (`typescript-eslint`, `knip`, plugin eslint de react-query).
+
+**Ça apporte** : correctifs de routine, rien de visible pour un club.
+
+**Adapté chez nous** : rien.
+
+### En attente : deux montées majeures (fiches présentées au fondateur)
+
+- **PHPUnit 11 → 13** (PR #1332) : l'outil qui fait tourner les tests PHP.
+- **python-dateutil 2 → 3** (PR #1334) : gestion des dates, que nous n'utilisons pas directement (il
+  vient avec pandas).
+
+### Alerte restante
+
+`minimatch` 10.2.5 (alerte GitHub n°16, modérée, déni de service sur des motifs de fichiers) :
+dépendance de l'outillage frontend seulement, rien en prod.
+
 ## 2026-10-31 — lot Dependabot (4 PRs mergées : frontend, puppeteer, umami, moteur)
 
 ### Paquets du frontend (PR #1284 — 5 montées mineures/patch)
@@ -151,35 +210,3 @@ dédiée (P4-345) ; Dependabot ignore désormais PHP ≥ 8.5.
 **Image Playwright** : son numéro doit être celui du paquet `@playwright/test` (sinon les tests
 navigateur ne trouvent plus leur navigateur en local). Elle monte désormais AVEC le paquet npm,
 jamais seule : Dependabot ne la propose plus.
-
-## 2026-10-16 — Mercure 0.19/0.24 → 1.0 (lot 4 PR C, hors Dependabot)
-
-**C'est quoi** : le hub **Mercure**, le canal temps réel qui pousse l'avancement d'une génération
-de planning, le calcul des trajets et le placement automatique des matchs vers le navigateur
-(SSE) — sans lui le front retombe sur du polling. Jusqu'ici dev/CI (`v0.24.2`) et prod (`v0.19`)
-tournaient sur deux versions 0.x différentes, épinglées d'urgence depuis la sortie cassante de la
-1.0 le 2026-09-16.
-
-**Ça apporte** : la **même version partout** (`dunglas/mercure:v1.1.2`, dev = prod, cutover direct
-sans mode compatibilité) et un protocole d'autorisation rebâti sur OAuth 2.0 / RFC 9068 — jeton
-d'abonnement en « access token » (`typ: at+jwt`, claims `iss`/`aud`/`sub`/`client_id`), topics
-matchés par URL Pattern au lieu de l'ancien URI Template.
-
-**Adapté chez nous** : trois pièces bougées ensemble (hub, émetteur de jetons, consommateur front) —
-jamais l'une sans les autres, sous peine de casser le temps réel en silence. Les topics passent de
-la forme URN `club:{clubId}:…` au chemin web `/clubs/{clubId}/…` (un topic à deux-points n'est pas
-une URLPattern valide pour le hub 1.0). Deux nouvelles variables d'environnement à synchroniser
-hub↔backend : `MERCURE_TRUSTED_ISSUERS` (émetteur de confiance, claim `iss`) et `MERCURE_PUBLIC_URL`
-désormais exigée sur **chaque service qui publie** (php-fpm, `messenger-worker`, `cron-runner`),
-qui porte aussi le claim `aud` — un service oublié perd ses publications sans erreur visible,
-gardé par `MercureHardeningTest`. Le cookie d'abonnement change de nom selon l'environnement
-(`__Secure-mercure_access_token` en prod HTTPS, `mercure_access_token` en dev HTTP/tests) puisqu'un
-préfixe `__Secure-` exige le flag `Secure`. NR bloquant ajouté :
-`Integration/Mercure/MercureEndToEndDeliveryTest`, le seul test qui boote le vrai hub et prouve la
-délivrance (et la frontière tenant) bout en bout plutôt que la seule forme d'un jeton ou d'un
-fichier compose. Dependabot n'ignore plus que la prochaine majeure (`>=2.0.0`). Détail :
-[`docs/security/mercure.md`](security/mercure.md).
-
-> Lots les plus anciens retirés par le bornage à 6 (§ en-tête) : Redis 8 (2026-10-16, image `redis:8-alpine`, licence AGPLv3 vérifiée, snapshot `redis_data` avant déploiement — `docs/ops/backup-restore.md` §7) ; lot Dependabot 5 PRs (2026-10-16,
-> `fastapi`/`pydantic` moteur, protobuf fermée, frontend Playwright 1.64.0, backend Symfony/Sentry,
-> Mercure 0.24 fermée) — détail dans `git log -p --follow docs/upgrades.md`.
