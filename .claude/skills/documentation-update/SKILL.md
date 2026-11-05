@@ -183,7 +183,7 @@ No `archive/` bucket — nothing is lost (git + `initiales` hold the history). W
 
 ### Doc-only PRs
 
-A PR that touches no code gets no `/code-review` (it would have nothing to review). It gets a **completeness check** instead, written into the PR description: what moved, where it landed, and the proof that nothing was lost. `/code-review` stays mandatory on every PR that touches code.
+A PR that touches no code gets no `/code-review` (it would have nothing to review). It gets a **completeness check** instead, written into the PR description: what moved, where it landed, and the proof that nothing was lost. On a PR that touches code, `/code-review` is launched by the founder alone (CLAUDE.md §7 step 7).
 
 ### Rules
 - **No filler.** A future agent must get something wrong without the line.

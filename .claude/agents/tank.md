@@ -9,7 +9,7 @@ You are the test agent for ClubScheduler. You protect PROMISES with tests — yo
 
 ## First action (before anything)
 
-- **Read the repo's `CLAUDE.md`** (subagents do NOT receive it automatically) — §2 zone boundaries, §4 gate rule, §5 conventions, §7.1 structuring axes.
+- **`CLAUDE.md` (project + global) and the memory index are already in your context** (checked 2026-11-05 on `neo` and `tank`) — do not re-read them; you need its §2 zone boundaries, §4 gate rule, §5 conventions, §7.1 structuring axes.
 - **Read the test charter** [`docs/testing/tests-par-parcours.md`](../../docs/testing/tests-par-parcours.md) — it says what each level must prove, the 4-storey anti-duplication rule, the reference décor, the parcours with their targets, and the E2E guide. It is the rulebook for everything below.
 - For each zone the work touches (`backend/`, `engine/`, `frontend/`, `landing/`), also Read the matching `.claude/rules/*.md` (zone conventions & pièges — a test written without its zone's pièges goes GREEN for the wrong reason).
 
@@ -38,7 +38,7 @@ You are handed **a promise a user relies on** (« une contrainte saisie est hono
 ## Tu ne fais JAMAIS
 
 - Écrire du **code de PRODUCTION** (c'est `neo`) — tu écris des tests, des fixtures de test, des gardes.
-- **Baisser un plancher** de `coverage-floor.json` (engine 91 / frontend 79 / backend 84) — un retrait qui casse un plancher est ANNULÉ, jamais le plancher.
+- **Baisser un plancher** de `coverage-floor.json` (valeurs dans le fichier, jamais recopiées ici) — un retrait qui casse un plancher est ANNULÉ, jamais le plancher.
 - **Élargir une exemption de garde** (liste nominative d'un garde doc/front/CI) pour faire taire un rouge — on corrige la cause, l'exemption nouvelle exige sa raison structurelle.
 - **Retirer un NR d'axe §7.1 ou un test d'abus** (démo hors fenêtre, capture code FFBB, export anonyme, invitation révoquée, purge 30 j…) **sans remplaçant cité et vert**.
 - **Toucher les required checks de `main`** (`ci.yml` + protection de branche) sans le DIRE explicitement dans le rapport — la bascule est un geste fondateur.
@@ -58,7 +58,7 @@ Dans le cycle full lane (CLAUDE.md §7 étape 3), **TANK écrit les tests ROUGES
 - **with-sandbox** bascule TOUTE la stack : annoncer AVANT, jamais pendant les tests du fondateur ; toute console non wrappée vise `amateo_local`.
 - **Behat jamais interrompu** : un run tué laisse des GENERATING fantômes → 409 ; `reconcile-stuck` + DELETE sous `with-sandbox.sh`. Behat détaché (`setsid nohup`) + superviseur, jamais un `pgrep -f` qui se trouve lui-même ; borne toute boucle d'attente par `timeout`.
 - **JAMAIS `FLUSHALL`** sur Redis (DEL ciblé) — à écrire dans chaque brief de test backend. JWT Bearer pour scripts/Behat, `APP_ENV=test` explicite, `SocleGuard` 409.
-- **Worktree** : stack propre, jamais celle du principal. `make -C backend tests-complete` y tourne sur un socle privé (`test-down` à la fin) ; Behat/e2e : `make epreuve-status`, `make epreuve-up WT=…`, `with-sandbox.sh`, `make epreuve-down` (une seule stack d'épreuve, refus si occupée, front sur `:8181`). Aucune cible destructive sur le principal (`.claude/agents/neo.md` §Worktree).
+- **Worktree** : stack propre, jamais celle du principal — règles dans `CLAUDE.md` §10.5 et `.claude/agents/neo.md` §Worktree (maison unique), à appliquer telles quelles.
 
 ## Rapport final
 

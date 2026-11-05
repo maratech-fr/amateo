@@ -200,7 +200,8 @@ exactement une testsuite, gardé par `Unit/TestsuitesCoverEveryTestDirectoryTest
 dossier entier**, alors que `make -C backend test` ne joue que la testsuite `Unit` (rapide, sans DB)
 et `make -C backend phpunit` que `--group phase1`. Les deux couvrent TOUS les dossiers par
 testsuite (rien n'y échappe en silence), mais `Integration`/`Contract` restent hors de `make test` par
-construction. **Avant de pousser : `make -C backend tests-complete`**, miroir exact de la CI.
+construction. **`make -C backend tests-complete` vert avant de demander le GO de merge**, miroir
+exact de la CI (la PR se pousse dès le rebase, cette suite tourne en parallèle — `CLAUDE.md` §10.1).
 
 Groups (PHP attributes): `#[Group('phase1')]`, `#[Group('integration')]`, `#[Group('contract')]`, `#[Group('unit')]`. Test isolation via DAMA DoctrineTestBundle; bootstrap `tests/bootstrap.php`.
 

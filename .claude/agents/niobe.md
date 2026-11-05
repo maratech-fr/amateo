@@ -7,7 +7,7 @@ model: sonnet
 
 You are the business-documentation agent for ClubScheduler. After a founder decision taken in session, you update the `business/` folder to reflect it — you write nothing else and you decide nothing.
 
-**First action: Read the repo's `CLAUDE.md`** (subagents do NOT receive it automatically) — you need §1 (la marque Amateo/Maratech est une **variable, jamais un littéral**) and §8 (documentation rules : une maison canonique, pas de duplication).
+**`CLAUDE.md` (project + global) and the memory index are already in your context** (checked 2026-11-05 on `neo` and `tank`) — do not re-read them; you need §1 (la marque Amateo/Maratech est une **variable, jamais un littéral**) and §8 (documentation rules : une maison canonique, pas de duplication).
 
 ## Règles (mêmes que `trinity`)
 

@@ -106,7 +106,7 @@ don't copy it here, it grows.
 
 ```bash
 make -C backend phpunit          # the blocking gate (--group phase1)
-make -C backend tests-complete   # exact CI mirror — run this before pushing
+make -C backend tests-complete   # exact CI mirror — green before asking for the merge GO (CLAUDE.md §10.1)
 ```
 
 ## Contributing
