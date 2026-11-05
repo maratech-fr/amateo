@@ -31,7 +31,8 @@ en dépend. Sur #342, la moitié des 10 défauts du round 2 étaient nés des co
    ne garde que le câblage : extraire la règle en fonction pure, ou monter le hook sur un vrai
    `QueryClient` en ne mockant que la couche API (module VOISIN — le mock ESM n'intercepte pas les
    appels intra-module).
-6. **Cadence** : round 1 automatique ; **tout round suivant exige le GO du fondateur** ; plafond
+6. **Cadence** : round 1 = `/code-review` lancé par le fondateur seul, `/security-review`
+   systématique sur la liste fermée (CLAUDE.md §7 étape 7) ; **tout round suivant exige le GO du fondateur** ; plafond
    4 rounds/PR. Un défaut réel hors périmètre ne se corrige pas ici — il devient une ligne de
    dette en roadmap.
 

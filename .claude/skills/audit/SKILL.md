@@ -132,6 +132,26 @@ Pour **chaque vecteur** ci-dessous : verdict **protégé / partiel / absent / no
 
 **Synthèse obligatoire** : produire le **tableau de posture par vecteur** (voir Étape 5) — c'est le livrable qui « informe sur la protection contre les attaques ». Un vecteur **critique absent sur un flux critique** (login sans throttle, SQLi, XSS stockée, IDOR inter-club) = `SEC-` **Élevé minimum**, contre-vérifié en Étape 3.
 
+## Étape 2 sexies — Outillage agentique (axe ADDITIF, introduit 2026-11-05)
+
+But : les agents travaillent sans se contredire. Périmètre : `CLAUDE.md`, `.claude/agents/*.md`,
+`.claude/skills/*/SKILL.md`, `.claude/rules/*.md`, l'index mémoire (`MEMORY.md` de l'auto-mémoire,
+s'il est lisible) et la fiche privée `~/.claude/agents/seraphin.md` (si présente). Proxys, chacun prouvé
+`fichier:ligne` **des deux côtés** :
+- **Contradictions** : deux règles qui prescrivent l'inverse sur le même geste (qui lance une revue,
+  quand pousser, qui code, qui merge). Chaque contradiction = un finding `AGT-`, **Élevé** si un agent
+  peut l'appliquer à tort sur un geste irréversible (merge, push, prod), **Moyen** sinon.
+- **Doublons** : une même règle écrite dans plusieurs maisons (`CLAUDE.md` §8 : une maison canonique).
+  Un doublon dont les copies divergent déjà = contradiction.
+- **Faits périmés** : une fiche qui affirme un fait faux aujourd'hui (date, valeur recopiée, chemin,
+  nom d'agent ancien) — vérifié contre le fichier cité, jamais de mémoire.
+- **Héritage du contexte** (exécuté, pas lu) : lancer un agent sonde sans outil sur au moins une fiche
+  du dépôt et lui faire citer ce qu'il voit de `CLAUDE.md` et de l'index mémoire. Une fiche qui dit
+  l'inverse du constat = `AGT-`.
+
+Pas de note `/100` : l'axe se rend en **registre `AGT-`** (IDs stables, comme les autres préfixes) et
+une ligne au tableau de couverture. Pas de rétro-notation : les éditions antérieures sont `non couvert`.
+
 ## Étape 3 — Vérification contradictoire (OBLIGATOIRE)
 
 Chaque finding **critique ou élevé** doit être contre-vérifié à la main avant publication : lire les fichiers/lignes cités, chercher la preuve inverse. Issues possibles : `confirmé` / `réfuté` / `non vérifié`. Un finding réfuté reste dans le rapport, barré, avec la preuve de réfutation — c'est ce qui rend l'audit digne de confiance. Ne publie JAMAIS un finding critique non vérifié sans le marquer `non vérifié`.
@@ -184,7 +204,7 @@ La référence de notation est **l'application commercialisable**, pas le stade 
 
 Écrire `specs/audit/AUDIT-<YYYY-MM-DD>-<model-id>.md` :
 
-1. **En-tête** : date, modèle exact, SHA HEAD, tableau de couverture des axes — **inclure les lignes `UX-Cohérence`, `UX-Simplicité/Intuitivité`, `Inclusivité-a11y`**, **`Cybersécurité — surface d'attaque`** et **`Coûts / scalabilité financière`** (chacune `couvert` / `partiel` / `non couvert (raison)`). La ligne coûts (coût par club/génération/stockage, projection à N clubs) reste **`non couvert (pas de données réelles)` tant qu'aucune donnée de facturation/infra prod n'existe** — jamais de chiffres fabriqués ; elle est là pour rester visible et redevable. Cette ligne est **permanente** : elle ne compte **pas** comme le « nouvel axe candidat » qu'exige l'Étape 2 bis (lequel doit être un angle réellement neuf chaque édition). Elle peut passer `partiel` si une estimation **fondée sur des ressources réelles** (limites compose, tailles de payload) est produite — jamais de projection chiffrée sans données.
+1. **En-tête** : date, modèle exact, SHA HEAD, tableau de couverture des axes — **inclure les lignes `UX-Cohérence`, `UX-Simplicité/Intuitivité`, `Inclusivité-a11y`**, **`Cybersécurité — surface d'attaque`**, **`Outillage agentique`** (Étape 2 sexies) et **`Coûts / scalabilité financière`** (chacune `couvert` / `partiel` / `non couvert (raison)`). La ligne coûts (coût par club/génération/stockage, projection à N clubs) reste **`non couvert (pas de données réelles)` tant qu'aucune donnée de facturation/infra prod n'existe** — jamais de chiffres fabriqués ; elle est là pour rester visible et redevable. Cette ligne est **permanente** : elle ne compte **pas** comme le « nouvel axe candidat » qu'exige l'Étape 2 bis (lequel doit être un angle réellement neuf chaque édition). Elle peut passer `partiel` si une estimation **fondée sur des ressources réelles** (limites compose, tailles de payload) est produite — jamais de projection chiffrée sans données.
 2. **Synthèse des notes** (/100, uniquement les axes couverts). Le **score UX** est présenté dans un **bloc séparé**, hors du `/100` des briques : les **3 sous-notes `/100`** (Cohérence · Simplicité-Intuitivité · Inclusivité-a11y) **et** le **Score UX général `/100` = le plus bas des sous-axes couverts** (voir Étape 4, notation extrêmement sévère).
 3. **Registre des findings** — LE cœur de la comparaison. Table : `ID | Titre court | Zone | Gravité | Statut vérif (confirmé/réfuté/non vérifié) | Statut vs édition précédente (nouveau/ouvert/corrigé/réfuté)`. Règles d'ID : préfixe zone (`SEC-`, `ENG-`, `BCK-`, `FRT-`, `DOC-`, `DEP-`, `INF-`, `ALIGN-` (scission/angle mort d'alignement contraintes 3 couches, Étape 2 quater), `UX-` (générique, hérité), `UXC-` (cohérence), `UXS-` (simplicité/intuitivité), `A11Y-` (inclusivité/accessibilité), `PERF-`, `RGPD-`) + numéro incrémental **jamais réutilisé**. Reprendre les IDs de l'édition précédente pour les findings ouverts ; marquer `corrigé` ceux qui ont disparu (avec preuve).
 4. **Tableau de posture cybersécurité** (Étape 2 quinquies) — **une ligne par attaque nommée `A1`…`A{n}`** de la liste « attaques les plus probables pour ClubScheduler » : `attaque | verdict (protégé / partiel / absent / non vérifié) | preuve fichier:ligne | SEC- associé s'il y a défaut`. La liste se parcourt **intégralement** (aucune attaque omise ; une non regardée = `non vérifié`, pas absente du tableau). C'est **le** livrable « suis-je protégé contre les attaques ? » ; il se compare d'une édition à l'autre par les IDs `A{n}`, exactement comme le registre par les `SEC-` (une édition antérieure sans cet axe = baseline `non couvert`, pas de rétro-notation).

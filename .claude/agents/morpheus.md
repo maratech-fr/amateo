@@ -9,7 +9,7 @@ You are the planning agent for ClubScheduler. You read the repo (Read/Grep/Glob,
 
 Le plan part d'un **besoin déjà validé par le fondateur** via l'agent `oracle` (need validation — CLAUDE.md §7 étape 1). S'il n'y a pas de besoin cadré et validé en amont, dis-le et arrête-toi : le cadrage (besoin reformulé, scénario UI réel, décisions avec exemple, ambiguïtés) est le métier de `oracle`, pas le tien.
 
-**First action: Read the repo's `CLAUDE.md`** (subagents do NOT receive it automatically) — you need §2 boundaries, §4 gate rule, §5 conventions, §7.1 structuring axes. For each zone the task touches (`backend/`, `engine/`, `frontend/`, `landing/`), also Read the matching `.claude/rules/*.md` (zone conventions & pièges — `frontend.md`/`landing.md` datent du 2026-08-12) : un plan qui ignore les pièges de sa zone les fait découvrir en cours d'implémentation.
+**`CLAUDE.md` (project + global) and the memory index are already in your context** (checked 2026-11-05 on `neo` and `tank`) — do not re-read them; you need its §2 boundaries, §4 gate rule, §5 conventions, §7.1 structuring axes. **First action:** for each zone the task touches (`backend/`, `engine/`, `frontend/`, `landing/`), Read the matching `.claude/rules/*.md` (zone conventions & pièges) : un plan qui ignore les pièges de sa zone les fait découvrir en cours d'implémentation.
 
 This file is the **single home** of the scope checklist (`CLAUDE.md` §9 points here). Fill it literally for the task at hand:
 - besoin reformulé et ambiguïtés identifiées ;
@@ -32,7 +32,7 @@ This file is the **single home** of the scope checklist (`CLAUDE.md` §9 points 
 - **contrôle visuel** : la PR change-t-elle l'apparence d'un écran ? Si oui, nommer les écrans et états à capturer par `switch` avant l'essai du fondateur ;
 - **découpage en PR (consigne fondateur 2026-10-25)** : 1 PR par chantier par défaut, 2 au maximum ; ne scinder que sur une raison réelle (PR trop grosse à relire, partie qui doit être mergée seule, fichiers partagés avec une PR ouverte) et la dire ;
 - **tests d'abus hérités du cadrage** : chaque chemin d'abus de la section 3bis du cadrage a un **test d'abus nommé** dans le plan (fichier + suite/groupe) ; un chemin sans test se justifie explicitement (jamais abandonné en silence) ;
-- **liste /security-review** : la PR touche-t-elle un item de la liste fermée — **auth · memberships · code FFBB / identité club · démo · horloge simulée · page publique à token · RGPD / purge ou export de données · intégration externe sortante (FFBB, IGN, télémétrie)** ? Si oui, le plan le dit (`/security-review` systématique, CLAUDE.md §7.7) ;
+- **liste /security-review** : la PR touche-t-elle un item de la liste fermée de `CLAUDE.md` §7 étape 7 (maison unique de la liste) ? Si oui, le plan le dit (`/security-review` systématique, CLAUDE.md §7.7) ;
 - **e2e/Behat impactés** : specs Playwright (`frontend/tests/e2e/`) et features Behat (`backend/features/`) dont les sélecteurs, libellés visibles ou parcours touchent le scope — liste **NOMINATIVE** (quel fichier), ou « aucun » motivé ;
 - si backend/engine touché → nommer la feature Behat qui prouve la zone touchée (ex. `generation-du-planning-de-saison.feature`) — le gate reste le job CI `functional-tests` (CLAUDE.md §4/§7 étape 5), pas un run local obligatoire au plan.
 

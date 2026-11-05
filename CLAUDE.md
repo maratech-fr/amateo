@@ -43,7 +43,7 @@ Backend, engine and frontend tooling run **inside Docker** (Makefiles wrap Docke
 make start | stop | install | test | lint     # root orchestration
 make bootstrap              # JWT keypair + create/migrate dev DB — re-run after a pull adds migrations
 cd backend && make test     # PHPStan(lvl8) + CS-Fixer + PHPUnit testsuite Unit SEULEMENT (§10.1)
-cd backend && make tests-complete             # miroir exact de la CI — à passer AVANT tout push backend
+cd backend && make tests-complete             # miroir exact de la CI — vert requis AVANT de demander le GO de merge (§10.1)
 cd backend && make behat    # tests fonctionnels Gherkin FR (API réelle) — `with-sandbox.sh` en mode play
 cd engine  && make test     # ruff (+format --check) + mypy + bandit + deptry + pytest  | make format
 make -C frontend dev        # Dockerized Vite :5173 (proxies /api, /.well-known/mercure)
@@ -124,9 +124,15 @@ quoi, par axe, et les angles morts : `docs/testing/test-coverage-map.md`.
 ## 7. Workflow rules (orchestrator)
 
 Agents/skills = **manuels, déclenchés par le user** (exception : `smith` sur les plans sensibles, étape 2).
-⚠ **Les subagents ne reçoivent PAS ce fichier** — leurs définitions leur ordonnent de le lire en
-première action. **Git (non négociable)** : **JAMAIS de commit sur `main`** (docs/specs compris) —
-branche puis PR ; **JAMAIS de merge sans le GO explicite du user** ; push libre, stop à « PR ready » ;
+**Les subagents reçoivent ce fichier, le `CLAUDE.md` global et l'index mémoire dans leur contexte**
+(vérifié 2026-11-05 sur `neo` et `tank`) — ils ne les relisent pas ; leur fiche ne porte que leur rôle
+et pointe ici pour le reste. **Un sujet à la fois à l'écran** : on ne parle au fondateur que quand la
+console est libre ; tant qu'il n'a pas clos le sujet en cours, les autres (résultats d'agents,
+questions, bilans) attendent avant de s'afficher.
+**Git (non négociable)** : **JAMAIS de commit sur `main`** (docs/specs compris) —
+branche puis PR ; **JAMAIS de merge sans le GO explicite du user** — **sauf dans un lot validé par
+le fondateur : merge autorisé dès que la CI est verte**, pour les PR du lot seulement (ni validation
+de plan, ni tag, ni déploiement, ni prod) ; push libre, stop à « PR ready » ;
 **une seule PR ouverte à la fois** — deux en simultané seulement si merger l'une n'affecte pas
 l'autre (roadmap, état des lieux, `ci.yml` partagés = dépendantes) ; **on n'ouvre JAMAIS une PR dont
 la branche modifie un fichier déjà modifié par une PR ouverte** — avant d'ouvrir, comparer
@@ -139,7 +145,9 @@ déployé) — **jamais de commit direct** ; correctif rapide = PR vers `release
 **Deux lanes — choisir AVANT de commencer et le dire** :
 - **Full** (défaut : feature, comportement/API/schéma, axe §7.1).
 - **Light** (TOUTES : ≤2 fichiers, zéro comportement/API/schéma, zéro axe) : implémenter →
-  tests verts → `documentation-update` → PR → GO user.
+  tests verts → `documentation-update` → PR → GO user. **Tout code applicatif passe par `neo`,
+  dans les deux lanes** — l'orchestrateur ne code jamais ; en Light, pas de `tank`
+  séparé (règle 2026-10-30).
 
 **Cycle full lane** :
 0. **Lire le CODE avant d'analyser** — tout constat vérifié (grep/read/test) et cité
@@ -211,8 +219,9 @@ maison unique, c'est l'agent qui l'exécute. Tout plan produit doit la remplir l
 ## 10. Gotchas (top)
 
 1. ⚠ **`make phpunit` = `--group phase1` seul (un fichier : `make -C backend phpunit F=tests/… [FILTER=…]`) · `make test` = testsuite `Unit` seule** — or la CI
-   `backend-tests` lance `phpunit tests/` ENTIER. **Avant de pousser :
-   `make -C backend tests-complete`** (miroir CI — détail : `backend/docs/commands.md`). Chaque
+   `backend-tests` lance `phpunit tests/` ENTIER. **`make -C backend tests-complete`
+   vert avant de demander le GO de merge** (miroir CI — détail : `backend/docs/commands.md`) ; la PR
+   se pousse dès le rebase, cette suite tourne en parallèle de la CI (décision fondateur 2026-10-11). Chaque
    dossier de `tests/` est dans une testsuite (garde `TestsuitesCoverEveryTestDirectoryTest`).
 2. Pas de `contracts/` ni `tests/` à la racine du dépôt — les tests cross-stack vivent dans
    `backend/tests/`.
@@ -235,7 +244,7 @@ maison unique, c'est l'agent qui l'exécute. Tout plan produit doit la remplir l
    dans la commande (`python3 - <<EOF` → Edit/Write), `sh`/`bash` chaîné. Chemin absolu en clair, un
    seul geste, un filtre de sortie au plus ; un refus se corrige en simplifiant, jamais en contournant.
    Lectures longues préfixées `rtk` (`rtk git diff`, `rtk git log`, `rtk grep`) : même résultat, moins
-   de tokens — les agents ne reçoivent pas le fichier d'instructions global qui le dit.
+   de tokens — écrit ici pour que la règle ne dépende pas du fichier d'instructions global, privé.
 
 **Pointers:** `docs/project-map.md` (**la carte** — zones, ops, sécurité, tout le reste) ·
 `docs/glossary.md` · `docs/testing/testing-strategy.md` · `docs/testing/tests-par-parcours.md` (charte des tests : ce que chaque niveau prouve, par parcours — maison de l'agent `tank`) · `specs/evolution/roadmap.md`
