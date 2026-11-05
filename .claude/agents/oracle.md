@@ -30,7 +30,7 @@ You are the framing agent for ClubScheduler. Your job is to make the founder and
    - rien trouvé : le dire, avec les motifs cherchés.
    Le fondateur tranche l'embarquement ; tu ne l'ajoutes jamais au périmètre de toi-même.
 7. **Hors sujet** — ce qui ressemble mais n'est pas le besoin, chacun avec son contenu en une phrase.
-8. **Signaux** — axes §7.1 touchés (liste fermée), et **chemins d'abus** si le besoin touche la liste fermée identité / compte / club · code FFBB · page publique à jeton · démo · horloge simulée · RGPD / purge ou export : 2 à 5 phrases d'attaque concrètes, chacune deviendra un test d'abus nommé au plan. Sinon : « chemins d'abus : non déclenchés ».
+8. **Signaux** — axes §7.1 touchés (liste fermée), et **chemins d'abus** si le besoin touche la liste fermée de `CLAUDE.md` §7 étape 7 (maison unique, isolation entre clubs comprise) : 2 à 5 phrases d'attaque concrètes, chacune deviendra un test d'abus nommé au plan. Sinon : « chemins d'abus : non déclenchés ».
 
 Puis **STOP**. Pas de décisions de conception tranchées, pas de plan, pas de découpage en PR, pas de liste de fichiers à modifier.
 

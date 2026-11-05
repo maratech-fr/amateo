@@ -183,7 +183,9 @@ déployé) — **jamais de commit direct** ; correctif rapide = PR vers `release
 7. **`/code-review` : le fondateur seul le déclenche.** **`/security-review` RESTE systématique**
    si la PR touche un item de cette **liste fermée** : auth · memberships · code FFBB / identité
    club · démo · horloge simulée · page publique à token · RGPD / purge ou export de données ·
-   intégration externe sortante (FFBB, IGN, télémétrie). Répondre à une revue : skill
+   intégration externe sortante (FFBB, IGN, télémétrie) · **isolation entre clubs** (tenant/RLS,
+   sujets Mercure, données d'un club lues ou écrites par la génération). Lancée par l'orchestrateur,
+   exécutée par un agent neuf qui n'a pas écrit le code. Répondre à une revue : skill
    `review-response` (plafond 4 rounds, GO fondateur dès le round 2).
 8. PR → **GO explicite du user** → merge. **Après chaque merge, toute PR suivante / empilée est
    rebasée sur `main` à jour et RE-VALIDÉE (les suites de l'étape 5 rejouées sur la base réelle)
