@@ -123,7 +123,10 @@ quoi, par axe, et les angles morts : `docs/testing/test-coverage-map.md`.
 
 ## 7. Workflow rules (orchestrator)
 
-Agents/skills = **manuels, déclenchés par le user** (exception : `smith` sur les plans sensibles, étape 2).
+**Qui lance les agents** : l'orchestrateur lance ceux du cycle, chacun à son étape, une fois
+l'étape précédente validée par le fondateur (`smith` d'office sur les plans sensibles, étape 2) ;
+les autres agents et skills, seulement quand le fondateur les demande — sauf ceux qu'une étape du
+cycle impose (`documentation-update`, `/validation-runner`, `/security-review`).
 **Les subagents reçoivent ce fichier, le `CLAUDE.md` global et l'index mémoire dans leur contexte**
 (vérifié 2026-11-05 sur `neo` et `tank`) — ils ne les relisent pas ; leur fiche ne porte que leur rôle
 et pointe ici pour le reste. **Un sujet à la fois à l'écran** : on ne parle au fondateur que quand la
