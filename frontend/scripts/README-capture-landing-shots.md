@@ -37,7 +37,17 @@ script avant **chaque** capture, même sans réglage :
 - `SCRUB_FILE` (optionnel, local, jamais commité) **complète/surcharge** cette table pour un nom
   supplémentaire repéré sur une capture.
 
-Coachs = surnoms fictifs du seed. Gymnases et clubs adverses = données publiques autorisées.
+- les **libellés neutres des coachs** du seed (« Coach » + numéro de clé, « Coach 07 ») sont
+  remplacés par des prénoms GÉNÉRIQUES (table `COACH_SCRUB` du script, propre à la vitrine,
+  aucun prénom du profil démo ni du club réel).
+
+**Refus d'une base non neutre** (avant toute écriture, import compris) : le script lit TOUS les
+coachs du club (`GET /api/coaches`, pagination suivie) et s'arrête — « Capture refusée : aucun
+coach lu… » si le club n'est pas seedé, « Capture refusée : N coachs hors libellé neutre… » si un
+seul porte une identité réelle (fichier d'identités local injecté) ou un ancien surnom. Le message
+donne un compte, jamais une valeur. Remède : [§ Base propre](#base-propre).
+
+Gymnases et clubs adverses = données publiques autorisées.
 
 ## Ce qu'il produit
 
@@ -78,6 +88,12 @@ Les commandes ci-dessous **écrivent en base**. En **mode play** (base de jeu du
 > ⚠ `with-sandbox.sh` **bascule toute la stack et redémarre les workers** — ne jamais le lancer
 > pendant que le fondateur teste ; l'annoncer avant.
 
+### Base propre
+
+Base vidée puis club BCCL dev resemé **SANS fichier d'identités local**
+(`backend/config/seed/bccl.identities.local.json` absent ou mis de côté le temps du seed) : les
+coachs portent alors les libellés neutres que le script exige.
+
 ```bash
 # (a) Repartir d'une base propre, puis (re)semer le club BCCL dev (create-only).
 #     db-empty AVANT seed-bccl : avertir, c'est destructif pour la base dev.
@@ -85,7 +101,7 @@ backend/scripts/with-sandbox.sh make -C backend CONFIRM=yes db-empty
 backend/scripts/with-sandbox.sh make -C backend CONFIRM=yes seed-bccl
 ```
 
-Le seed pose le club, les équipes, les coachs (surnoms fictifs), le logo club, le **planning de
+Le seed pose le club, les équipes, les coachs (libellés neutres), le logo club, le **planning de
 saison validé** et la répartition WE des matchs — mais **aucune rencontre** (`app:bccl:seed` ne
 sème que des créneaux idéaux). Les rencontres arrivent de l'**import FBI** ci-dessous.
 

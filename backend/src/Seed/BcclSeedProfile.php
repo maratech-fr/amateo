@@ -14,10 +14,11 @@ use InvalidArgumentException;
  *
  * AUD-SEC-29 — le dépôt est PUBLIC, il ne porte donc QUE du fictif : par défaut,
  * `dev()`/`prod()` posent un gestionnaire fictif (`dev-bccl@amateo.local`, mot de
- * passe évidemment fictif commité) et des coachs aux SURNOMS (« Coach … »). Les
- * VRAIES identités du club du fondateur vivent hors dépôt, dans un fichier local
- * gitignoré ({@see BcclSeedIdentities}) : présent → injecté (gestionnaires réels +
- * remplacement positionnel des coachs), absent (CI, autre dev) → le fictif.
+ * passe évidemment fictif commité) et des coachs aux libellés NEUTRES (« Coach » suivi
+ * du numéro de la clé interne du seed : c07 → « Coach 07 »). Les VRAIES identités du
+ * club du fondateur vivent hors dépôt, dans un fichier local gitignoré
+ * ({@see BcclSeedIdentities}) : présent → injecté (gestionnaires réels + remplacement
+ * positionnel des coachs), absent (CI, autre dev) → le neutre.
  *
  * - `dev([identities])` : le club dev de `make seed-bccl`.
  * - `prod(email, password, firstName, lastName[, identities])` : le même club en PROD.
@@ -32,9 +33,9 @@ final readonly class BcclSeedProfile
     /**
      * Identités fictives « réalistes » pour le club de DÉMONSTRATION et les clubs de CHARGE,
      * une par coach du seed, DANS L'ORDRE de sa liste — remplacement positionnel, déterministe.
-     * Depuis AUD-SEC-29 le seed par défaut est DÉJÀ fictif (surnoms « Coach … ») : cette liste
-     * n'est plus l'anonymisation RGPD du dépôt, elle donne juste à la démo des noms plus crédibles
-     * que les surnoms. La garde « liste au moins aussi longue que le seed » reste (le seeder lève
+     * Depuis AUD-SEC-29 le seed par défaut est DÉJÀ neutre (« Coach » + numéro de clé) : cette
+     * liste n'est plus l'anonymisation RGPD du dépôt, elle donne juste à la démo des noms plus
+     * crédibles que les libellés neutres. La garde « liste au moins aussi longue que le seed » reste (le seeder lève
      * sinon). Les libellés qui citent un coach (« %s · indispo %s ») suivent automatiquement :
      * l'entité est renommée AVANT que les contraintes ne lisent son prénom.
      */
@@ -144,7 +145,7 @@ final readonly class BcclSeedProfile
             managerPassword: $manager['password'],
             seedLogo: true,
             isDemo: false,
-            // null → surnoms fictifs par défaut ; une liste (fichier local) → remplacement positionnel.
+            // null → libellés neutres par défaut ; une liste (fichier local) → remplacement positionnel.
             coachNames: self::coachNamesFrom($identities),
             transcribeRealSchedule: true,
             // P5-13 — le club dev porte, EN PLUS du planning de saison, deux plans de reprise
@@ -264,7 +265,7 @@ final readonly class BcclSeedProfile
             // La démo reste « avant première génération » : l'écran de démonstration part
             // sur le wizard/Récap, sans planning pré-pointé.
             transcribeRealSchedule: false,
-            // La démo ne porte ni plan de période ni compte Nicolas (dev SEULEMENT).
+            // La démo ne porte ni plan de période ni compte co-gestionnaire (dev SEULEMENT).
             seedReprisePeriods: false,
             // La démo ne porte pas l'incident Matéo (dev SEULEMENT — elle reste vierge de calendrier).
             seedMateoIncident: false,
@@ -278,7 +279,7 @@ final readonly class BcclSeedProfile
 
     /**
      * Les noms de coachs à injecter positionnellement, depuis le fichier local : `null` quand il
-     * est absent ou n'en porte pas (le seed garde alors ses surnoms fictifs par défaut).
+     * est absent ou n'en porte pas (le seed garde alors ses libellés neutres par défaut).
      *
      * @return list<array{firstName: string, lastName: string}>|null
      */

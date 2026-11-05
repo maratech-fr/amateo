@@ -266,7 +266,7 @@ bloquant `Integration/Command/DemoPurgeStaleCommandTest` + `Security/DemoRetaine
 
 Distinct du club de démonstration : `app:bccl:seed` (`src/Command/BcclSeedCommand.php`) seede le
 club **dev BCCL** (identités FICTIVES par défaut — gestionnaire `dev-bccl@amateo.local`, coachs aux
-surnoms ; vraies identités via le fichier local gitignoré `config/seed/bccl.identities.local.json`,
+libellés neutres « Coach » + numéro de clé, c07 → « Coach 07 » ; vraies identités via le fichier local gitignoré `config/seed/bccl.identities.local.json`,
 code FFBB ARA0069036) via le même `BcclSeeder` + `BcclSeedProfile::dev()`. **CREATE-ONLY** — à l'inverse d'`app:demo:seed` (créer OU
 RESET, purge le workspace à chaque appel sauf `--if-absent`) : cette commande ne fait RIEN
 (SUCCESS, aucune écriture) si le club existe déjà ; le reset délibéré passe par `make db-empty`

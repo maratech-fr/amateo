@@ -31,8 +31,14 @@
  *    à ne pas confondre avec le logo FÉDÉRAL d'un adversaire (`/api/opponents/{code}/logo`,
  *    donnée publique autorisée, conservée). L'app retombe alors sur le monogramme produit
  *    neutre qu'elle affiche quand un club n'a pas de logo (patron P5-26 : blason retiré du
- *    DOM). Coachs déjà fictifs (surnoms du seed) ; gymnases et clubs adverses = données
+ *    DOM), (c) remplace les libellés neutres des coachs du seed (« Coach » + numéro de
+ *    clé) par des prénoms GÉNÉRIQUES (`COACH_SCRUB`). Gymnases et clubs adverses = données
  *    publiques autorisées.
+ *
+ * ── Refus d'une base NON NEUTRE (avant toute écriture, import compris) : le script lit
+ *    TOUS les coachs du club (`GET /api/coaches`, pagination suivie) et s'arrête si le
+ *    club n'en a aucun (non seedé) ou si un seul porte autre chose qu'un libellé neutre
+ *    (identités réelles injectées, anciens surnoms) — sans jamais afficher la valeur.
  *
  * Il s'appuie sur du câblage DÉJÀ en place, rien de neuf côté app :
  *  - le thème de l'app est persisté sous `localStorage["cs-theme"]`, forme
@@ -126,6 +132,46 @@ const DEFAULT_SCRUB = {
   ARA0069036: "ARA9999999",
 };
 
+// Prénoms GÉNÉRIQUES posés à la place des libellés neutres du seed BCCL (« Coach » + numéro
+// de clé) : la vitrine montre des personnes plausibles, jamais un libellé technique. Table
+// PROPRE au script — aucun prénom du profil démo (`BcclSeedProfile::FICTIONAL_COACHES`),
+// ordre arbitraire, sans rapport avec les identités réelles du club. Fusionnée à DEFAULT_SCRUB.
+const COACH_SCRUB = {
+  "Coach 01": "Solène",
+  "Coach 02": "Hugo",
+  "Coach 03": "Romain",
+  "Coach 04": "Garance",
+  "Coach 05": "Yann",
+  "Coach 06": "Olivia",
+  "Coach 07": "Benoît",
+  "Coach 08": "Diane",
+  "Coach 09": "Gaël",
+  "Coach 10": "Roxane",
+  "Coach 11": "Oscar",
+  "Coach 12": "Héloïse",
+  "Coach 13": "Valentin",
+  "Coach 14": "Bérénice",
+  "Coach 15": "Sacha",
+  "Coach 16": "Delphine",
+  "Coach 17": "Dorian",
+  "Coach 18": "Yasmine",
+  "Coach 19": "Hadrien",
+  "Coach 20": "Rose",
+  "Coach 21": "Gabin",
+  "Coach 22": "Océane",
+  "Coach 23": "Vincent",
+  "Coach 24": "Brune",
+  "Coach 25": "Raphaël",
+  "Coach 26": "Violette",
+  "Coach 27": "Basile",
+  "Coach 28": "Sarah",
+  "Coach 29": "Yaël",
+  "Coach 30": "Gwenaëlle",
+};
+
+/** Libellé neutre du seed BCCL : « Coach » suivi de deux chiffres, rien d'autre. */
+const NEUTRAL_COACH_LABEL = /^Coach \d{2}$/;
+
 if ("" === DEMO_EMAIL || "" === DEMO_PASSWORD) {
   console.error(
     "DEMO_EMAIL et DEMO_PASSWORD sont requis (gestionnaire du club BCCL de développement).\n" +
@@ -185,8 +231,9 @@ function escapeRegExp(s) {
 }
 
 async function loadScrubMap() {
-  // Toujours au moins la table par défaut ; le fichier la complète/surcharge.
-  const map = { ...DEFAULT_SCRUB };
+  // Toujours au moins la table par défaut (club + prénoms génériques des coachs) ; le fichier
+  // la complète/surcharge.
+  const map = { ...DEFAULT_SCRUB, ...COACH_SCRUB };
   if ("" !== SCRUB_FILE) {
     const path = isAbsolute(SCRUB_FILE) ? SCRUB_FILE : resolve(REPO_ROOT, SCRUB_FILE);
     const raw = await readFile(path, "utf8");
@@ -312,6 +359,62 @@ async function login(page) {
     page.getByRole("button", { name: /se connecter/i }).click(),
   ]);
   await waitForStability(page);
+}
+
+/**
+ * Lit TOUS les coachs du club connecté : `GET /api/coaches` en JSON-LD, pages suivies par
+ * `view.next` (l'API pagine — 30 par page) jusqu'à la dernière. Une page illisible arrête net
+ * (mieux vaut ne rien capturer que capturer sur une lecture partielle).
+ */
+async function fetchAllCoaches(page) {
+  const coaches = [];
+  let next = "/api/coaches";
+  const visited = new Set();
+  while ("string" === typeof next && "" !== next && !visited.has(next)) {
+    visited.add(next);
+    const resp = await page.request.get(`${BASE_URL}${next}`, { headers: { Accept: "application/ld+json" } });
+    if (!resp.ok()) {
+      throw new Error(`Capture refusée : lecture de /api/coaches impossible (HTTP ${resp.status()}).`);
+    }
+    const body = await resp.json();
+    const members = Array.isArray(body?.member) ? body.member : Array.isArray(body) ? body : [];
+    coaches.push(...members);
+    next = body?.view?.next ?? null;
+  }
+  return coaches;
+}
+
+/**
+ * Refuse une base NON NEUTRE : aucun coach (club non seedé) ou un coach hors libellé neutre
+ * (« Coach » + deux chiffres — identités réelles injectées, anciens surnoms). Le message donne
+ * un COMPTE, jamais une valeur : une identité réelle n'entre ni dans le terminal ni dans un log.
+ */
+function assertNeutralCoachNames(coaches) {
+  if (0 === coaches.length) {
+    throw new Error("Capture refusée : aucun coach lu sur /api/coaches — le club n'est pas seedé (README § Base propre).");
+  }
+  const offenders = coaches.filter((coach) => !NEUTRAL_COACH_LABEL.test(String(coach?.firstName ?? "")) || "" !== String(coach?.lastName ?? "")).length;
+  if (0 !== offenders) {
+    const head = 1 === offenders ? "1 coach hors libellé neutre" : `${offenders} coachs hors libellé neutre`;
+    throw new Error(
+      `Capture refusée : ${head} (« Coach NN ») — le bac à sable porte des identités réelles ou d'anciens surnoms. Reseeder SANS fichier d'identités (README § Base propre).`,
+    );
+  }
+}
+
+/** Se connecte dans un contexte jetable et vérifie la neutralité des coachs AVANT toute écriture. */
+async function assertNeutralBase(browser) {
+  const context = await browser.newContext({ baseURL: BASE_URL });
+  try {
+    const page = await context.newPage();
+    page.setDefaultTimeout(NAV_TIMEOUT);
+    await login(page);
+    const coaches = await fetchAllCoaches(page);
+    assertNeutralCoachNames(coaches);
+    console.log(`• base neutre : ${coaches.length} coach(s), tous au libellé neutre.`);
+  } finally {
+    await context.close();
+  }
 }
 
 /**
@@ -954,6 +1057,8 @@ async function main() {
 
   const browser = await chromium.launch();
   try {
+    // Refus d'une base non neutre AVANT tout le reste (l'import FBI écrit en base).
+    await assertNeutralBase(browser);
     if ("" !== IMPORT_FBI) {
       await runImport(browser, divisionMap);
     }

@@ -224,8 +224,8 @@ final class ConflictTruthContext extends BaseContext
         $this->teamCoachId = $this->idOf($teamCoach, 'affectation coach↔équipe');
 
         // Équipe SŒUR du MÊME coach : la règle 2 de D1 tait l'entraînement de la
-        // PROPRE équipe du match ; le conflit vit sur la séance de la sœur (le cas
-        // Coach Max SM1 + U18M1). Utilisée par le scénario « enfant milieu ».
+        // PROPRE équipe du match ; le conflit vit sur la séance de la sœur (Coach 01
+        // SM1 + U18M1). Utilisée par le scénario « enfant milieu ».
         $sister = $this->apiPost('teams', [
             'name' => 'Équipe sœur jetable (vérité conflits)',
             'sportCategoryId' => $sportCategoryId,

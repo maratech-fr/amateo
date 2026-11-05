@@ -29,7 +29,7 @@ Le champ `scope` (enum `ConstraintScope`) définit la cible de la contrainte.
 |--------|-------|--------------|
 | `CLUB` | Toutes les équipes du club (filtrables par tag via `targetTag`) | "Toutes les équipes jeunes finissent avant 19h30" |
 | `TEAM` | Une équipe spécifique (via `scopeTargetId` = UUID de l'équipe) | "SM3 ne s'entraîne que le mercredi" |
-| `COACH` | Un entraîneur spécifique (via `scopeTargetId` = UUID du coach) | "Enzo n'est pas disponible le vendredi" |
+| `COACH` | Un entraîneur spécifique (via `scopeTargetId` = UUID du coach) | "Coach 05 n'est pas disponible le vendredi" |
 | `FACILITY` | Une salle spécifique (via `scopeTargetId` = UUID du lieu) | "Le gymnase ADN est fermé du 20 au 27 octobre" (fermeture datée, cf. §3.3) |
 
 ### 2.2 Family — Quel type de règle ?
@@ -82,7 +82,7 @@ Déclare les jours où un entraîneur est indisponible (ou, à l'inverse, les se
 
 Clés : `unavailableDays`/`availableDays` (whitelist), et `fromTime`/`untilTime` optionnels pour borner l'indisponibilité dans la journée (absents = journée entière). Lecture : la pose libre du moteur et le candidat d'un déplacement testent le chevauchement demi-ouvert, sans marge, avec la séance ; l'existant (verrous, base figée, miroirs PHP/TS, garde, radar, modale) reste jugé à l'heure de début. Le Récap suit la pose libre.
 
-> Exemple : `scopeTargetId: "uuid-enzo"` avec `config: {unavailableDays: [5]}` signifie que l'entraîneur n'est jamais disponible le vendredi. Avec `fromTime: "18:00"` et `untilTime: "20:00"`, l'indisponibilité ne couvre que ce créneau.
+> Exemple : `scopeTargetId: "uuid-coach-05"` avec `config: {unavailableDays: [5]}` signifie que l'entraîneur n'est jamais disponible le vendredi. Avec `fromTime: "18:00"` et `untilTime: "20:00"`, l'indisponibilité ne couvre que ce créneau.
 
 ### 2.3 Rule Type — Quelle sévérité ?
 
@@ -129,7 +129,7 @@ Voici huit contraintes réelles ou plausibles pour le BCCL, présentées sous fo
 | SM3 — mercredi seulement | `TEAM` | `DAY` | `HARD` | `{allowedDays:[3]}` | SM3 ne s'entraîne que le mercredi |
 | SM3 — à partir de 20h | `TEAM` | `TIME` | `HARD` | `{minStartTime:"20:00"}` | SM3 commence au plus tôt à 20h |
 | ADN — fermé (période datée) | — (cockpit) | — (aucune contrainte) | — | — | Fermeture saisie dans le cockpit (`venue_closed`) : le backend **retire les créneaux d'ADN du payload** sur ses jours fermés, sans produire aucune contrainte (§3.3) |
-| Coach Enzo — indisponible vendredi | `COACH` (`scopeTargetId:"uuid-enzo"`) | `COACH_AVAILABILITY` | `HARD` | `{unavailableDays:[5]}` | Enzo n'est disponible aucun vendredi |
+| Coach 05 — indisponible vendredi | `COACH` (`scopeTargetId:"uuid-coach-05"`) | `COACH_AVAILABILITY` | `HARD` | `{unavailableDays:[5]}` | Coach 05 n'est disponible aucun vendredi |
 
 ### 3.1 Exemple détaillé : "Jeunes — fin à 19h30"
 
@@ -234,7 +234,7 @@ Le solveur CP-SAT (OR-Tools) raisonne sur des variables binaires du type "l'équ
 | **Visibilité API** | Aucune route — fait partie du solveur, consommé via `resolve_implicit_rules`/`implicitRules` du payload `/generate` | Endpoint `/api/constraints` (CRUD complet) |
 | **Impact sur le score** | `HARD` par défaut ; les règles de bien-être peuvent être assouplies en `PREFERRED` (pénalité au lieu d'invalidité), et `maxConsecutiveDays` naît OFF | Variable (`HARD`, `PREFERRED`) |
 
-Les contraintes implicites sont les fondations du système. Sans elles, le solveur pourrait placer le coach Enzo sur deux terrains simultanément, ou assigner SM1 et SF3 dans la même salle à la même heure. Les contraintes utilisateur viennent affiner ce comportement de base pour refléter les réalités du BCCL : horaires des bus scolaires, disponibilités des salles municipales, préférences des entraîneurs bénévoles.
+Les contraintes implicites sont les fondations du système. Sans elles, le solveur pourrait placer Coach 05 sur deux terrains simultanément, ou assigner SM1 et SF3 dans la même salle à la même heure. Les contraintes utilisateur viennent affiner ce comportement de base pour refléter les réalités du BCCL : horaires des bus scolaires, disponibilités des salles municipales, préférences des entraîneurs bénévoles.
 
 ---
 
@@ -255,7 +255,7 @@ Toutes les combinaisons scope + family ne sont pas logiques. Voici les combinais
 | `COACH` | `TIME` | Non | Pas de sens (c'est l'équipe qui a un horaire, pas le coach seul) |
 | `COACH` | `DAY` | Non | Pas de sens |
 | `COACH` | `FACILITY` | Non | Pas de sens |
-| `COACH` | `COACH_AVAILABILITY` | Oui | Enzo indisponible vendredi |
+| `COACH` | `COACH_AVAILABILITY` | Oui | Coach 05 indisponible vendredi |
 | `FACILITY` | `TIME` | Non | Pas de sens |
 | `FACILITY` | `DAY` | Non | Pas de sens |
 | `FACILITY` | `FACILITY` | Oui | ADN fermé le lundi |

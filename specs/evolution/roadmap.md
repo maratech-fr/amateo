@@ -1,4 +1,4 @@
-# Roadmap (113) — ce qui reste à faire
+# Roadmap (116) — ce qui reste à faire
 
 > **Ce fichier ne tient QUE l'ouvert.** Bugs, évolutions, dettes techniques : tout ce qu'on trace pour ne pas
 > l'oublier un jour. Rien de livré n'y figure — un item livré **quitte** ce fichier et laisse sa trace dans
@@ -203,6 +203,9 @@
 | P4-496 | **Liste des membres : deux tailles de rangée selon la pastille** | ⚪ | XS | `MembersSection` : une rangée porteuse de la pastille « Demande gestionnaire » (Accepter / Refuser) est plus haute que les autres. Uniformiser. Non cadré |
 | P4-497 | **Console : titre « Demandes de création de club » alors qu'elle liste aussi reprises et promotions** | ⚪ | XS | `ClubRequestsSection` : chaque ligne porte son étiquette (`kind` : création, reprise, promotion), mais le titre de la section ne parle que de création. Renommer. Non cadré |
 | P4-498 | **Durcissement : l'UPDATE de promotion par l'adresse officielle pourrait revérifier les deux stamps dans son WHERE** | ⚪ | XS | `ClubApprovalService::approve` (branche `Promoted`) : l'écriture SQL du rôle ne relit pas `manager_requested_at` et `manager_request_escalated_at` dans sa clause WHERE ; la garde vit avant, sous le verrou. Ceinture supplémentaire, sans bug connu. Non cadré |
+| P4-499 | **Purge de l'historique git des identités du club pilote** | ⚪ | S | Geste fondateur, hors PR : les diffs du chantier « noms réels hors du dépôt public » (seed, fixtures, tests) lient les anciens libellés de coach et leurs numéros neutres ; seule une réécriture de l'historique les retire du dépôt public. Non cadré |
+| P4-500 | **Balayage des provenances sans nom de personne** | ⚪ | M | Mentions « cas réel BCCL », « BCCL 2026-10-27 », « founder case », « BCCL case » (sans nom de personne ; les dates de décision ne sont pas visées) — règle `CLAUDE.md` §8 du 2026-11-05 ; ex. `engine/app/solver/constraints/structural/overlap.py:230` « le CAS RÉEL (BCCL) : « Mara » (coach-joueuse) coache… » → « « Mara » (coach-joueuse) coache… » ; ≈ 60 fichiers (`git grep -i "cas réel\|founder case\|BCCL case\|BCCL 2026-10-27"`), à embarquer PR par PR, jamais en PR dédiée |
+| P4-501 | **e2e instable : « Mutualiser… » sur un plan de période non validé** | ⚪ | S | `frontend/tests/e2e/mutualize.spec.ts:139` rouge 3/3 sur la CI de #1346, vert au rerun du 2026-11-05, CI `main` verte sur le même code — flaky à diagnostiquer, pas un bug produit connu. Non cadré |
 
 ---
 

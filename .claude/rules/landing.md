@@ -168,6 +168,9 @@ paths:
   sœurs `-dark`) suivent la seconde voie, sur le club BCCL de DÉVELOPPEMENT du bac à sable — pour
   en reprendre une, rejouer `frontend/scripts/capture-landing-shots.mjs`
   (`frontend/scripts/README-capture-landing-shots.md`), qui anonymise le DOM à chaque capture (nom/
-  code club remplacés, blasons retirés, chrome de dev masqué). La vue **Conflits** (qui liste des
+  code club remplacés, blasons retirés, chrome de dev masqué, libellés neutres des coachs — « Coach »
+  + numéro de clé — remplacés par des prénoms génériques propres au script) et **refuse de capturer**
+  sur une base non neutre (aucun coach, ou un coach hors libellé neutre : identités réelles injectées
+  ou anciens surnoms — le message donne un compte, jamais une valeur). La vue **Conflits** (qui liste des
   coachs) est admise sous cette condition — un nom de démo fictif suffit, elle n'est plus écartée
   par principe — décision fermée, `specs/courantes/etat-des-lieux.md` §2.

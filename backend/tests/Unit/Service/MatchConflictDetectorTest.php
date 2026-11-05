@@ -1522,7 +1522,7 @@ final class MatchConflictDetectorTest extends TestCase
 
     public function testMatchOnTheCoachsOtherTeamTrainingConflictsWhileTheOwnTeamIsSilent(): void
     {
-        // The real case (Coach Max SM1 + U18M1): coach A holds team-1's match AND
+        // Coach 01 (SM1 + U18M1): coach A holds team-1's match AND
         // team-2's overlapping training. His OWN team's (team-1) session is silent,
         // the SISTER team's (team-2) is the double-booking. Both slots overlap the
         // match window; exactly ONE conflict comes out, on the sister slot.
@@ -1681,7 +1681,7 @@ final class MatchConflictDetectorTest extends TestCase
 
     public function testACoachWhoAlsoPlaysElsewhereIsDoubleBookedWithPerSideRolesAndChronologicalOrder(): void
     {
-        // The founder case (Mara): she is the MAIN coach of team-1 and a PLAYER of
+        // Mara is the MAIN coach of team-1 and a PLAYER of
         // team-2, both playing overlapping matches → a MATCH_MATCH. Severity 3
         // (MAIN×PLAYER is a hard clash), coachRole PLAYER (not all MAIN, no
         // assistant). Sides are chronological: the earlier window is on the left,
