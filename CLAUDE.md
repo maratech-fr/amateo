@@ -129,7 +129,8 @@ les autres agents et skills, seulement quand le fondateur les demande — sauf c
 cycle impose (`documentation-update`, `/validation-runner`, `/security-review`).
 **Les subagents reçoivent ce fichier, le `CLAUDE.md` global et l'index mémoire dans leur contexte**
 (vérifié 2026-11-05 sur `neo` et `tank`) — ils ne les relisent pas ; leur fiche ne porte que leur rôle
-et pointe ici pour le reste. **Un sujet à la fois à l'écran** : on ne parle au fondateur que quand la
+et pointe ici pour le reste. **L'index mémoire s'adresse à l'orchestrateur** : pour un agent, en
+cas de conflit, sa fiche et ce fichier passent avant la mémoire. **Un sujet à la fois à l'écran** : on ne parle au fondateur que quand la
 console est libre ; tant qu'il n'a pas clos le sujet en cours, les autres (résultats d'agents,
 questions, bilans) attendent avant de s'afficher.
 **Git (non négociable)** : **JAMAIS de commit sur `main`** (docs/specs compris) —
