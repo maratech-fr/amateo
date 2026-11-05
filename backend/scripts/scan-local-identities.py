@@ -14,7 +14,10 @@ en porte un, mot entier, insensible à la casse :
 
     fichier:ligne<TAB>jeton
 
-Jamais le contenu de la ligne, aucun verdict, code retour 0 dans tous les cas.
+Jamais le contenu de la ligne, aucun verdict, code retour 0 — sauf si ``git grep``
+lui-même échoue (pas un dépôt git, git absent) : message générique sur stderr,
+sans aucune valeur ni jeton, et code retour non nul, pour que l'échec ne passe
+jamais pour « rien trouvé ».
 Ne voit ni les images ni l'historique git. Hors suite de tests, hors CI.
 
 LANCÉ PAR LE FONDATEUR SEUL : un agent ne le lance JAMAIS sur le chemin
@@ -89,7 +92,16 @@ def main() -> int:
     for token in tokens:
         command += ["-e", token]
     # S603 : liste d'arguments fixe, aucun shell — les jetons ne sont jamais interprétés.
-    completed = subprocess.run(command, capture_output=True, check=False)  # noqa: S603
+    try:
+        completed = subprocess.run(command, capture_output=True, check=False)  # noqa: S603
+    except OSError:
+        print("Balayage impossible : git introuvable.", file=sys.stderr)
+        return 2
+    # git grep : 0 = trouvé, 1 = rien trouvé ; tout autre code = échec du balayage. Son stderr
+    # n'est jamais relayé (il pourrait citer un jeton) — message générique seulement.
+    if completed.returncode not in (0, 1):
+        print(f"Balayage impossible : git grep a échoué (code {completed.returncode}).", file=sys.stderr)
+        return 2
 
     by_folded = {token.casefold(): token for token in tokens}
     seen: set[tuple[str, str, str]] = set()
