@@ -77,7 +77,7 @@ final class BcclSeedIdentityNeutralityTest extends TestCase
         }
         self::assertNotNull($start, 'bloc $newCoachesData introuvable dans ' . self::SEEDER . ' (renommé ? la garde ne lit plus rien)');
 
-        $entryPattern = "/\\[\\s*'key'\\s*=>\\s*'((?:[^'\\\\]|\\\\.)*)'\\s*,\\s*'firstName'\\s*=>\\s*'((?:[^'\\\\]|\\\\.)*)'\\s*,\\s*'lastName'\\s*=>\\s*'((?:[^'\\\\]|\\\\.)*)'\\s*\\]/";
+        $entryPattern = '/\\[\\s*\'key\'\\s*=>\\s*\'((?:[^\'\\\\]|\\\\.)*)\'\\s*,\\s*\'firstName\'\\s*=>\\s*\'((?:[^\'\\\\]|\\\\.)*)\'\\s*,\\s*\'lastName\'\\s*=>\\s*\'((?:[^\'\\\\]|\\\\.)*)\'\\s*\\]/';
 
         $keys = [];
         $offenders = [];
@@ -99,10 +99,10 @@ final class BcclSeedIdentityNeutralityTest extends TestCase
 
                 continue;
             }
-            $key = self::unquote($m[1]);
+            $key = $this->unquote($m[1]);
             $keys[] = $key;
             $expected = 1 === preg_match('/^c(\d{2})$/', $key, $k) ? 'Coach ' . $k[1] : null;
-            if (null === $expected || self::unquote($m[2]) !== $expected || '' !== self::unquote($m[3])) {
+            if (null === $expected || $this->unquote($m[2]) !== $expected || '' !== $this->unquote($m[3])) {
                 $offenders[] = $location;
             }
         }
@@ -215,8 +215,8 @@ final class BcclSeedIdentityNeutralityTest extends TestCase
     }
 
     /** Déséchappe une chaîne PHP entre apostrophes (seuls \' et \\ y sont des échappements). */
-    private static function unquote(string $raw): string
+    private function unquote(string $raw): string
     {
-        return strtr($raw, ['\\\\' => '\\', "\\'" => "'"]);
+        return strtr($raw, ['\\\\' => '\\', '\\\'' => '\'']);
     }
 }
