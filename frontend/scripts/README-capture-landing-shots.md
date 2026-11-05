@@ -184,7 +184,10 @@ Le nom à droite est le **libellé d'équipe du club** tel qu'il s'affiche dans 
 « Associer à… » (c.-à-d. `team.name` du seed). Pour chaque division visible : dans la table ⇒
 l'équipe est sélectionnée (le script déplie chaque onglet de famille — Départemental / Régional /
 Brassage… — et ouvre le sélecteur) ; hors table ⇒ laissée non associée (ses rencontres sont
-ignorées, avec la confirmation « Importer quand même » gérée). Le script journalise les divisions
+ignorées, avec la confirmation « Importer quand même » gérée). Puis, dans l'onglet **« Salles »**
+de la modale (« Importer » reste grisé tant qu'une salle à domicile n'a pas de gymnase), chaque
+sélecteur encore sur « Associer à un gymnase… » reçoit le **premier gymnase** du club proposé
+(jamais « Terrain neutre ») ; les choix pré-remplis par l'analyse sont laissés tels quels. Le script journalise les divisions
 associées / ignorées / sans équipe correspondante, et **avertit (`⚠`)** si le rapport d'import ne
 fait état d'**aucune rencontre créée**. **Idempotent sur la PRÉSENCE de rencontres** (plus sur la
 date du dernier dépôt FBI) : si la saison a déjà des rencontres (l'état vide « Aucun match

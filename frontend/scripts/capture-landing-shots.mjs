@@ -557,6 +557,42 @@ async function pairVenueLabels(page) {
 }
 
 /**
+ * Onglet « Salles » de la modale d'import : chaque sélecteur encore sur « Associer à un gymnase… »
+ * (salle à domicile du fichier, ou domiciles d'une division sans salle) reçoit le PREMIER gymnase
+ * du club proposé — jamais « Terrain neutre », qui laisserait ces domiciles hors de la grille.
+ * Les choix pré-remplis par l'analyse (suggestion serveur, appariement déjà confirmé) sont
+ * laissés tels quels. Sans onglet « Salles » (fichier sans salle à domicile), ne fait rien.
+ */
+async function pairImportVenues(page) {
+  const sallesTab = page.getByRole("tab", { name: /^Salles/ });
+  if (0 === (await sallesTab.count())) {
+    return;
+  }
+  await sallesTab.click();
+  const unpaired = () => page.getByRole("button", { name: /^Gymnase pour / }).filter({ hasText: "Associer à un gymnase…" });
+  const total = await unpaired().count();
+  const chosen = [];
+  for (let i = 0; i < total; i++) {
+    const trigger = unpaired().first();
+    if (0 === (await trigger.count())) {
+      break;
+    }
+    await trigger.click();
+    const option = page.getByRole("option").filter({ hasNotText: /^Terrain neutre/ }).first();
+    await option.waitFor({ state: "visible" });
+    chosen.push((await option.innerText()).trim());
+    await option.click();
+  }
+  const left = await unpaired().count();
+  if (chosen.length > 0) {
+    console.log(`✓ salles de l'import : ${chosen.length} sélecteur(s) associé(s) (${[...new Set(chosen)].join(", ")})`);
+  }
+  if (left > 0) {
+    console.warn(`⚠ salles de l'import : ${left} sélecteur(s) encore sans gymnase — « Importer » restera grisé.`);
+  }
+}
+
+/**
  * Import FBI OPTIONNEL via l'UI réelle (`/matchs/importer` → modale « Importer FBI »).
  * La modale analyse le fichier puis AFFICHE les appariements Division↔équipe : le bac à sable
  * n'ayant pas les engagements FFBB, aucune suggestion n'est proposée (`suggestedTeamId: null`),
@@ -607,14 +643,20 @@ async function runImport(browser, divisionMap) {
     await page.getByRole("button", { name: "Importer FBI" }).click();
     await page.locator('input[aria-label="Fichier FBI"]').setInputFiles(filePath);
 
-    // L'analyse (dry-run) part toute seule au dépôt du fichier ; le bouton « Importer »
-    // du pied de modale s'active quand elle aboutit.
+    // L'analyse (dry-run) part toute seule au dépôt du fichier ; elle aboutit quand la barre
+    // d'onglets « Divisions et salles à domicile » s'affiche. Le bouton « Importer » reste grisé
+    // tant qu'une salle à domicile n'a pas de gymnase : on ne l'attend donc PAS actif ici.
+    await page.getByRole("tablist", { name: "Divisions et salles à domicile" }).waitFor({ state: "visible", timeout: NAV_TIMEOUT });
     const importBtn = page.getByRole("button", { name: "Importer", exact: true });
-    await expect(importBtn).toBeEnabled({ timeout: NAV_TIMEOUT });
 
     // Appariement explicite AVANT l'import : sans lui, aucune division n'est associée et l'import
     // ne crée AUCUNE rencontre (le bac à sable n'a pas les engagements FFBB qui suggèrent l'équipe).
     await applyDivisionMap(page, divisionMap);
+
+    // Chaque salle à domicile encore sans gymnase reçoit un gymnase du club (onglet « Salles »),
+    // sinon « Importer » ne s'active jamais.
+    await pairImportVenues(page);
+    await expect(importBtn).toBeEnabled({ timeout: 5_000 });
 
     // La réponse HTTP de l'import est la SEULE preuve fiable. Le texte « mis à jour » figure DÉJÀ
     // dans la description de la modale (« …les matchs connus sont mis à jour, jamais dupliqués. »),
