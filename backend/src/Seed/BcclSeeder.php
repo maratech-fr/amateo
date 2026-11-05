@@ -725,55 +725,72 @@ final class BcclSeeder
         // ============================================================
         // SECTION 5 — NEW COACHES
         // ============================================================
-        // DÉPÔT PUBLIC — identités FICTIVES par défaut (surnoms « Coach … », nom de famille vide,
-        // validés fondateur) : le dépôt ne porte QUE du fictif (AUD-SEC-29). Les vraies identités du
-        // club du fondateur vivent dans un fichier local gitignoré, injecté POSITIONNELLEMENT via
-        // {@see BcclSeedProfile::$coachNames} (absent en CI / chez un autre dev → ces surnoms). La
+        // DÉPÔT PUBLIC — libellés NEUTRES par défaut : « Coach » suivi du numéro de la clé interne
+        // (c07 → « Coach 07 »), nom de famille vide. Le dépôt ne porte QUE du neutre (AUD-SEC-29),
+        // gardé par BcclSeedIdentityNeutralityTest (bloquant). Les vraies identités du club du
+        // fondateur vivent dans un fichier local gitignoré, injecté POSITIONNELLEMENT via
+        // {@see BcclSeedProfile::$coachNames} (absent en CI / chez un autre dev → ces libellés). La
         // `key` est un index INTERNE stable (jamais affiché, jamais sérialisé) : il découple
-        // l'indexation de `$coaches` du libellé affiché — deux coachs peuvent partager un surnom
-        // (« Coach Flo », « Coach Amb ») sans collision de clé.
+        // l'indexation de `$coaches` du libellé affiché — deux identités injectées peuvent partager
+        // un prénom sans collision de clé.
         $newCoachesData = [
-            ['key' => 'c01', 'firstName' => 'Coach Max', 'lastName' => ''],
-            ['key' => 'c02', 'firstName' => 'Coach Mara', 'lastName' => ''],
-            ['key' => 'c03', 'firstName' => 'Coach Eme', 'lastName' => ''],
-            ['key' => 'c04', 'firstName' => 'Coach Nic', 'lastName' => ''],
-            ['key' => 'c05', 'firstName' => 'Coach Enz', 'lastName' => ''],
-            ['key' => 'c06', 'firstName' => 'Coach Tho', 'lastName' => ''],
-            ['key' => 'c07', 'firstName' => 'Coach Flo', 'lastName' => ''],
-            ['key' => 'c08', 'firstName' => 'Coach Chr', 'lastName' => ''],
-            ['key' => 'c09', 'firstName' => 'Coach Marl', 'lastName' => ''],
-            ['key' => 'c10', 'firstName' => 'Coach Lio', 'lastName' => ''],
-            ['key' => 'c11', 'firstName' => 'Coach PoivreSel', 'lastName' => ''],
-            ['key' => 'c12', 'firstName' => 'Coach Ine', 'lastName' => ''],
-            ['key' => 'c13', 'firstName' => 'Coach Flo', 'lastName' => ''],
-            ['key' => 'c14', 'firstName' => 'Coach Luc', 'lastName' => ''],
-            ['key' => 'c15', 'firstName' => 'Coach Tha', 'lastName' => ''],
-            ['key' => 'c16', 'firstName' => 'Coach Cyr', 'lastName' => ''],
-            ['key' => 'c17', 'firstName' => 'Coach Mat', 'lastName' => ''],
-            ['key' => 'c18', 'firstName' => 'Coach Ann', 'lastName' => ''],
-            ['key' => 'c19', 'firstName' => 'Coach Pie', 'lastName' => ''],
-            ['key' => 'c20', 'firstName' => 'Coach Mae', 'lastName' => ''],
-            ['key' => 'c21', 'firstName' => 'Coach Jor', 'lastName' => ''],
-            ['key' => 'c22', 'firstName' => 'Coach Eth', 'lastName' => ''],
-            ['key' => 'c23', 'firstName' => 'Coach Amb', 'lastName' => ''],
-            ['key' => 'c24', 'firstName' => 'Coach Ael', 'lastName' => ''],
-            ['key' => 'c25', 'firstName' => 'Coach Charl', 'lastName' => ''],
-            ['key' => 'c26', 'firstName' => 'Coach Jul', 'lastName' => ''],
+            ['key' => 'c01', 'firstName' => 'Coach 01', 'lastName' => ''],
+            ['key' => 'c02', 'firstName' => 'Coach 02', 'lastName' => ''],
+            ['key' => 'c03', 'firstName' => 'Coach 03', 'lastName' => ''],
+            ['key' => 'c04', 'firstName' => 'Coach 04', 'lastName' => ''],
+            ['key' => 'c05', 'firstName' => 'Coach 05', 'lastName' => ''],
+            ['key' => 'c06', 'firstName' => 'Coach 06', 'lastName' => ''],
+            ['key' => 'c07', 'firstName' => 'Coach 07', 'lastName' => ''],
+            ['key' => 'c08', 'firstName' => 'Coach 08', 'lastName' => ''],
+            ['key' => 'c09', 'firstName' => 'Coach 09', 'lastName' => ''],
+            ['key' => 'c10', 'firstName' => 'Coach 10', 'lastName' => ''],
+            ['key' => 'c11', 'firstName' => 'Coach 11', 'lastName' => ''],
+            ['key' => 'c12', 'firstName' => 'Coach 12', 'lastName' => ''],
+            ['key' => 'c13', 'firstName' => 'Coach 13', 'lastName' => ''],
+            ['key' => 'c14', 'firstName' => 'Coach 14', 'lastName' => ''],
+            ['key' => 'c15', 'firstName' => 'Coach 15', 'lastName' => ''],
+            ['key' => 'c16', 'firstName' => 'Coach 16', 'lastName' => ''],
+            ['key' => 'c17', 'firstName' => 'Coach 17', 'lastName' => ''],
+            ['key' => 'c18', 'firstName' => 'Coach 18', 'lastName' => ''],
+            ['key' => 'c19', 'firstName' => 'Coach 19', 'lastName' => ''],
+            ['key' => 'c20', 'firstName' => 'Coach 20', 'lastName' => ''],
+            ['key' => 'c21', 'firstName' => 'Coach 21', 'lastName' => ''],
+            ['key' => 'c22', 'firstName' => 'Coach 22', 'lastName' => ''],
+            ['key' => 'c23', 'firstName' => 'Coach 23', 'lastName' => ''],
+            ['key' => 'c24', 'firstName' => 'Coach 24', 'lastName' => ''],
+            ['key' => 'c25', 'firstName' => 'Coach 25', 'lastName' => ''],
+            ['key' => 'c26', 'firstName' => 'Coach 26', 'lastName' => ''],
             // Quatre coachs de plus (le seed a gagné quatre entrées le 2026-08-18) : la liste doit
             // rester AU MOINS aussi longue que le remplacement positionnel, sinon la garde lève.
-            ['key' => 'c27', 'firstName' => 'Coach Ale', 'lastName' => ''],
-            ['key' => 'c28', 'firstName' => 'Coach Amb', 'lastName' => ''],
-            ['key' => 'c29', 'firstName' => 'Coach Chaim', 'lastName' => ''],
-            ['key' => 'c30', 'firstName' => 'Coach Jos', 'lastName' => ''],
+            ['key' => 'c27', 'firstName' => 'Coach 27', 'lastName' => ''],
+            ['key' => 'c28', 'firstName' => 'Coach 28', 'lastName' => ''],
+            ['key' => 'c29', 'firstName' => 'Coach 29', 'lastName' => ''],
+            ['key' => 'c30', 'firstName' => 'Coach 30', 'lastName' => ''],
         ];
 
+        // Une ligne déjà seedée se retrouve par le libellé EFFECTIVEMENT écrit : l'identité injectée
+        // à cette position quand le profil en porte, sinon le libellé neutre. Chercher le libellé
+        // neutre sur un club aux identités injectées ne trouverait rien et recréerait les 30 coachs
+        // à chaque re-run (les genèses COACH, clé scopeTargetId, se dédoubleraient). Une ligne déjà
+        // retenue pour une clé n'est jamais reprise pour une autre (prénoms homonymes).
+        $claimedCoachIds = [];
+        $position = 0;
         foreach ($newCoachesData as $coachData) {
             $key = $coachData['key'];
-            $existing = $manager->getRepository(Coach::class)->findOneBy([
-                'clubId' => $club->getId(),
-                'firstName' => $coachData['firstName'],
-            ]);
+            $writtenFirstName = $profile->coachNames[$position]['firstName'] ?? $coachData['firstName'];
+            $writtenLastName = $profile->coachNames[$position]['lastName'] ?? $coachData['lastName'];
+            ++$position;
+            $existing = null;
+            foreach ($manager->getRepository(Coach::class)->findBy(['clubId' => $club->getId(), 'firstName' => $writtenFirstName]) as $candidate) {
+                if (isset($claimedCoachIds[$candidate->getId()])) {
+                    continue;
+                }
+                if (!$existing instanceof Coach || $candidate->getLastName() === $writtenLastName) {
+                    $existing = $candidate;
+                }
+            }
             if ($existing instanceof Coach) {
+                $claimedCoachIds[$existing->getId()] = true;
                 // Keep an already-seeded coach in sync with the data (e.g. a
                 // last name added later) — append mode reuses the row, so
                 // without this the rename would never reach the DB.
@@ -795,8 +812,8 @@ final class BcclSeeder
         // REMPLACEMENT POSITIONNEL des identités de coachs, ICI et pas en post-passe. Deux usages,
         // même mécanisme : (1) injecter les VRAIES identités du club du fondateur depuis le fichier
         // local gitignoré (profils dev/prod avec identités fournies) ; (2) donner au club de
-        // démonstration / de charge un jeu d'identités fictives DISTINCT des surnoms par défaut.
-        // Tout ce qui se construit plus bas lit l'ENTITÉ (« %s · indispo %s » via getFirstName())
+        // démonstration / de charge un jeu d'identités fictives DISTINCT des libellés neutres par défaut.
+        // Tout ce qui se construit plus bas lit l'ENTITÉ (coachUnavailabilityName())
         // et suit donc automatiquement — aucun libellé à réécrire après coup. Les clés de $coaches
         // sont un index INTERNE stable (« c07 »…), il ne sort jamais de cette méthode.
         if (null !== $profile->coachNames) {
@@ -820,87 +837,87 @@ final class BcclSeeder
 
         // Extract typed coach references for PHPStan level 8 — indexés par la clé INTERNE du seed.
         /** @var array<string, Coach> $coaches */
-        $coachMax = $coaches['c01'];
-        $coachMara = $coaches['c02'];
-        $coachEme = $coaches['c03'];
-        $coachNic = $coaches['c04'];
-        $coachEnz = $coaches['c05'];
-        $coachTho = $coaches['c06'];
-        $coachFloSm3 = $coaches['c07'];
-        $coachChr = $coaches['c08'];
-        $coachMarl = $coaches['c09'];
-        $coachLio = $coaches['c10'];
-        $coachPoivreSel = $coaches['c11'];
-        $coachIne = $coaches['c12'];
-        $coachFloU18f3 = $coaches['c13'];
-        $coachLuc = $coaches['c14'];
-        $coachTha = $coaches['c15'];
-        $coachCyr = $coaches['c16'];
-        $coachMat = $coaches['c17'];
-        $coachAnn = $coaches['c18'];
-        $coachPie = $coaches['c19'];
-        $coachMae = $coaches['c20'];
-        $coachJor = $coaches['c21'];
-        $coachEth = $coaches['c22'];
-        $coachAmbU9m2 = $coaches['c23'];
-        $coachAel = $coaches['c24'];
-        $coachCharl = $coaches['c25'];
-        $coachJul = $coaches['c26'];
-        $coachAle = $coaches['c27'];
-        $coachAmbBaby1 = $coaches['c28'];
-        $coachChaim = $coaches['c29'];
-        $coachJos = $coaches['c30'];
+        $coach01 = $coaches['c01'];
+        $coach02 = $coaches['c02'];
+        $coach03 = $coaches['c03'];
+        $coach04 = $coaches['c04'];
+        $coach05 = $coaches['c05'];
+        $coach06 = $coaches['c06'];
+        $coach07 = $coaches['c07'];
+        $coach08 = $coaches['c08'];
+        $coach09 = $coaches['c09'];
+        $coach10 = $coaches['c10'];
+        $coach11 = $coaches['c11'];
+        $coach12 = $coaches['c12'];
+        $coach13 = $coaches['c13'];
+        $coach14 = $coaches['c14'];
+        $coach15 = $coaches['c15'];
+        $coach16 = $coaches['c16'];
+        $coach17 = $coaches['c17'];
+        $coach18 = $coaches['c18'];
+        $coach19 = $coaches['c19'];
+        $coach20 = $coaches['c20'];
+        $coach21 = $coaches['c21'];
+        $coach22 = $coaches['c22'];
+        $coach23 = $coaches['c23'];
+        $coach24 = $coaches['c24'];
+        $coach25 = $coaches['c25'];
+        $coach26 = $coaches['c26'];
+        $coach27 = $coaches['c27'];
+        $coach28 = $coaches['c28'];
+        $coach29 = $coaches['c29'];
+        $coach30 = $coaches['c30'];
 
-        $coachPoivreSel->setIsEmployee(true);
-        $coachNic->setIsEmployee(true);
-        $coachEnz->setIsEmployee(true);
-        $coachEme->setIsEmployee(true);
-        $coachTho->setIsEmployee(true);
-        $coachJor->setIsEmployee(true);
+        $coach11->setIsEmployee(true);
+        $coach04->setIsEmployee(true);
+        $coach05->setIsEmployee(true);
+        $coach03->setIsEmployee(true);
+        $coach06->setIsEmployee(true);
+        $coach21->setIsEmployee(true);
 
         // ============================================================
         // SECTION 6 — NEW TEAM-COACH LINKS
         // ============================================================
         $newTeamCoachLinks = [
-            ['coach' => $coachEme, 'team' => $sf1, 'role' => TeamCoachRole::MAIN],
-            ['coach' => $coachMara, 'team' => $sf2, 'role' => TeamCoachRole::MAIN],
-            ['coach' => $coachLio, 'team' => $sf3, 'role' => TeamCoachRole::MAIN],
-            ['coach' => $coachMax, 'team' => $sm1, 'role' => TeamCoachRole::MAIN],
-            ['coach' => $coachTho, 'team' => $sm1, 'role' => TeamCoachRole::ASSISTANT],
-            ['coach' => $coachNic, 'team' => $sm2, 'role' => TeamCoachRole::MAIN],
-            ['coach' => $coachFloSm3, 'team' => $sm3, 'role' => TeamCoachRole::MAIN],
-            ['coach' => $coachChr, 'team' => $sm4, 'role' => TeamCoachRole::MAIN],
-            ['coach' => $coachTho, 'team' => $u21m1, 'role' => TeamCoachRole::MAIN],
-            ['coach' => $coachMarl, 'team' => $u21m2, 'role' => TeamCoachRole::MAIN],
-            ['coach' => $coachPoivreSel, 'team' => $u18m1, 'role' => TeamCoachRole::MAIN],
-            ['coach' => $coachIne, 'team' => $u18f2, 'role' => TeamCoachRole::MAIN],
-            ['coach' => $coachEnz, 'team' => $u18f1, 'role' => TeamCoachRole::MAIN],
-            ['coach' => $coachFloU18f3, 'team' => $u18f3, 'role' => TeamCoachRole::MAIN],
-            ['coach' => $coachTho, 'team' => $u15m1, 'role' => TeamCoachRole::MAIN],
-            ['coach' => $coachLuc, 'team' => $u15m2, 'role' => TeamCoachRole::MAIN],
-            ['coach' => $coachEme, 'team' => $teams['U15F1'], 'role' => TeamCoachRole::MAIN],
-            //            ['coach' => $coachTha, 'team' => $u15f2, 'role' => TeamCoachRole::MAIN],
-            ['coach' => $coachTha, 'team' => $u15f3, 'role' => TeamCoachRole::MAIN],
-            ['coach' => $coachCyr, 'team' => $teams['U13M1'], 'role' => TeamCoachRole::MAIN],
-            ['coach' => $coachMat, 'team' => $teams['U13M2'], 'role' => TeamCoachRole::MAIN],
-            ['coach' => $coachEnz, 'team' => $u13f1, 'role' => TeamCoachRole::MAIN],
-            ['coach' => $coachJor, 'team' => $teams['U13F2'], 'role' => TeamCoachRole::MAIN],
-            ['coach' => $coachEth, 'team' => $teams['U13F3'], 'role' => TeamCoachRole::MAIN],
-            //            ['coach' => $coachEnz, 'team' => $teams['U11M1'], 'role' => TeamCoachRole::MAIN],
+            ['coach' => $coach03, 'team' => $sf1, 'role' => TeamCoachRole::MAIN],
+            ['coach' => $coach02, 'team' => $sf2, 'role' => TeamCoachRole::MAIN],
+            ['coach' => $coach10, 'team' => $sf3, 'role' => TeamCoachRole::MAIN],
+            ['coach' => $coach01, 'team' => $sm1, 'role' => TeamCoachRole::MAIN],
+            ['coach' => $coach06, 'team' => $sm1, 'role' => TeamCoachRole::ASSISTANT],
+            ['coach' => $coach04, 'team' => $sm2, 'role' => TeamCoachRole::MAIN],
+            ['coach' => $coach07, 'team' => $sm3, 'role' => TeamCoachRole::MAIN],
+            ['coach' => $coach08, 'team' => $sm4, 'role' => TeamCoachRole::MAIN],
+            ['coach' => $coach06, 'team' => $u21m1, 'role' => TeamCoachRole::MAIN],
+            ['coach' => $coach09, 'team' => $u21m2, 'role' => TeamCoachRole::MAIN],
+            ['coach' => $coach11, 'team' => $u18m1, 'role' => TeamCoachRole::MAIN],
+            ['coach' => $coach12, 'team' => $u18f2, 'role' => TeamCoachRole::MAIN],
+            ['coach' => $coach05, 'team' => $u18f1, 'role' => TeamCoachRole::MAIN],
+            ['coach' => $coach13, 'team' => $u18f3, 'role' => TeamCoachRole::MAIN],
+            ['coach' => $coach06, 'team' => $u15m1, 'role' => TeamCoachRole::MAIN],
+            ['coach' => $coach14, 'team' => $u15m2, 'role' => TeamCoachRole::MAIN],
+            ['coach' => $coach03, 'team' => $teams['U15F1'], 'role' => TeamCoachRole::MAIN],
+            //            ['coach' => $coach15, 'team' => $u15f2, 'role' => TeamCoachRole::MAIN],
+            ['coach' => $coach15, 'team' => $u15f3, 'role' => TeamCoachRole::MAIN],
+            ['coach' => $coach16, 'team' => $teams['U13M1'], 'role' => TeamCoachRole::MAIN],
+            ['coach' => $coach17, 'team' => $teams['U13M2'], 'role' => TeamCoachRole::MAIN],
+            ['coach' => $coach05, 'team' => $u13f1, 'role' => TeamCoachRole::MAIN],
+            ['coach' => $coach21, 'team' => $teams['U13F2'], 'role' => TeamCoachRole::MAIN],
+            ['coach' => $coach22, 'team' => $teams['U13F3'], 'role' => TeamCoachRole::MAIN],
+            //            ['coach' => $coach05, 'team' => $teams['U11M1'], 'role' => TeamCoachRole::MAIN],
             // Correction 2026-08-18 (fondateur) : Anna est sur U11M1, pas U11M2 — l'erreur
             // venait du seed lui-même, d'où deux coachs principaux sur U11M2 et U11M1 sans coach.
-            ['coach' => $coachAnn, 'team' => $teams['U11M1'], 'role' => TeamCoachRole::MAIN],
-            ['coach' => $coachJos, 'team' => $teams['U11M2'], 'role' => TeamCoachRole::MAIN],
-            ['coach' => $coachAle, 'team' => $teams['U18M2'], 'role' => TeamCoachRole::MAIN],
-            ['coach' => $coachAmbBaby1, 'team' => $teams['Baby 1'], 'role' => TeamCoachRole::MAIN],
-            ['coach' => $coachChaim, 'team' => $teams['Baby 2'], 'role' => TeamCoachRole::MAIN],
-            ['coach' => $coachPie, 'team' => $teams['U11F1'], 'role' => TeamCoachRole::MAIN],
-            ['coach' => $coachMae, 'team' => $teams['U11F2'], 'role' => TeamCoachRole::MAIN],
-            ['coach' => $coachJor, 'team' => $teams['U9M1'], 'role' => TeamCoachRole::MAIN],
-            ['coach' => $coachAmbU9m2, 'team' => $teams['U9M2'], 'role' => TeamCoachRole::MAIN],
-            ['coach' => $coachAel, 'team' => $teams['U9F1'], 'role' => TeamCoachRole::MAIN],
-            ['coach' => $coachJul, 'team' => $teams['U9F2'], 'role' => TeamCoachRole::MAIN],
-            ['coach' => $coachCharl, 'team' => $teams['U9F2'], 'role' => TeamCoachRole::MAIN],
+            ['coach' => $coach18, 'team' => $teams['U11M1'], 'role' => TeamCoachRole::MAIN],
+            ['coach' => $coach30, 'team' => $teams['U11M2'], 'role' => TeamCoachRole::MAIN],
+            ['coach' => $coach27, 'team' => $teams['U18M2'], 'role' => TeamCoachRole::MAIN],
+            ['coach' => $coach28, 'team' => $teams['Baby 1'], 'role' => TeamCoachRole::MAIN],
+            ['coach' => $coach29, 'team' => $teams['Baby 2'], 'role' => TeamCoachRole::MAIN],
+            ['coach' => $coach19, 'team' => $teams['U11F1'], 'role' => TeamCoachRole::MAIN],
+            ['coach' => $coach20, 'team' => $teams['U11F2'], 'role' => TeamCoachRole::MAIN],
+            ['coach' => $coach21, 'team' => $teams['U9M1'], 'role' => TeamCoachRole::MAIN],
+            ['coach' => $coach23, 'team' => $teams['U9M2'], 'role' => TeamCoachRole::MAIN],
+            ['coach' => $coach24, 'team' => $teams['U9F1'], 'role' => TeamCoachRole::MAIN],
+            ['coach' => $coach26, 'team' => $teams['U9F2'], 'role' => TeamCoachRole::MAIN],
+            ['coach' => $coach25, 'team' => $teams['U9F2'], 'role' => TeamCoachRole::MAIN],
         ];
 
         // Purge existing team-coach links (club/season) before recreating, so an
@@ -937,32 +954,32 @@ final class BcclSeeder
         // SECTION 7 — NEW COACH-PLAYER MEMBERSHIPS
         // ============================================================
         // Doctrine fondateur (2026-09-01, définitive) : un lien coach-joueur ne se coupe JAMAIS —
-        // ni globalement, ni par plan. Quand le réel le contredit (reprises : Coach Enz, Coach Eme, Coach Mara,
-        // Coach Tho), le gestionnaire IMPOSE le créneau par RÉSERVATION : le verrou est souverain,
+        // ni globalement, ni par plan. Quand le réel le contredit (reprises : Coach 05, Coach 03, Coach 02,
+        // Coach 06), le gestionnaire IMPOSE le créneau par RÉSERVATION : le verrou est souverain,
         // le moteur crie en diagnostic, et ce cri est pleinement assumé — « si ça crie, c'est que
         // j'ai fait une réservation, donc un geste volontaire ». Le planning transcrit pointé
         // s'affiche tel quel ; une régénération libre, elle, respecte les liens.
         /** @var list<array{coach: Coach, team: Team, active?: bool}> $newPlayerLinks */
         $newPlayerLinks = [
-            ['coach' => $coachEnz, 'team' => $sm1],
-            ['coach' => $coachLuc, 'team' => $sm1],
-            ['coach' => $coachPoivreSel, 'team' => $sm2],
-            ['coach' => $coachMax, 'team' => $sm2],
-            ['coach' => $coachMara, 'team' => $sm2],
-            ['coach' => $coachEme, 'team' => $sm2],
-            ['coach' => $coachTho, 'team' => $sm3],
-            ['coach' => $coachIne, 'team' => $sf2],
-            ['coach' => $coachTha, 'team' => $sf3],
-            ['coach' => $coachAel, 'team' => $sf3],
-            ['coach' => $coachJor, 'team' => $sm2],
-            ['coach' => $coachAnn, 'team' => $u18f1],
-            ['coach' => $coachCharl, 'team' => $u15f1],
-            ['coach' => $coachJul, 'team' => $u15f1],
+            ['coach' => $coach05, 'team' => $sm1],
+            ['coach' => $coach14, 'team' => $sm1],
+            ['coach' => $coach11, 'team' => $sm2],
+            ['coach' => $coach01, 'team' => $sm2],
+            ['coach' => $coach02, 'team' => $sm2],
+            ['coach' => $coach03, 'team' => $sm2],
+            ['coach' => $coach06, 'team' => $sm3],
+            ['coach' => $coach12, 'team' => $sf2],
+            ['coach' => $coach15, 'team' => $sf3],
+            ['coach' => $coach24, 'team' => $sf3],
+            ['coach' => $coach21, 'team' => $sm2],
+            ['coach' => $coach18, 'team' => $u18f1],
+            ['coach' => $coach25, 'team' => $u15f1],
+            ['coach' => $coach26, 'team' => $u15f1],
             // Mathis entraîne U13M2 mais joue aussi en U21M1 ; Florian entraîne
             // U18F3 et joue en Loisir 3 — le solveur en tire un conflit coach
             // (impossible d'être aux deux séances en même temps).
-            ['coach' => $coachMat, 'team' => $u21m1],
-            ['coach' => $coachFloU18f3, 'team' => $teams['Loisir 3']],
+            ['coach' => $coach17, 'team' => $u21m1],
+            ['coach' => $coach13, 'team' => $teams['Loisir 3']],
         ];
 
         foreach ($newPlayerLinks as $link) {
@@ -1019,9 +1036,9 @@ final class BcclSeeder
 
         // Libellés EXACTEMENT comme le wizard les écrit (décision fondateur 2026-08-15 :
         // « on doit croire que la donnée vient de l'app »). Jours en toutes lettres
-        // (`dayLabelLong`, front) ; nom de coach = « prénom nom » comme `coachName` du wizard.
-        $dayLong = static fn (int $iso): string => ['', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi', 'dimanche'][$iso];
-        $coachDisplay = static fn (Coach $coach): string => trim($coach->getFirstName() . ' ' . $coach->getLastName());
+        // (`dayLabelLong`, front) ; nom de coach = « prénom nom » comme `coachName` du wizard
+        // ({@see self::coachUnavailabilityName()}, partagé avec les reprises).
+        $dayLong = $this->dayLong(...);
 
         // Purge des contraintes renommées/retirées OU dont la config a changé à nom
         // constant (utile en mode append ; un rechargement complet truncate d'abord).
@@ -1077,15 +1094,15 @@ final class BcclSeeder
         // + Tonkin mercredi, zéro Armand — la préférence contredisait le réel). Nom au format
         // wizard, à purger pour qu'un reseed en append ne garde pas la ligne d'avant.
         $staleNames[] = 'U18F2 · préfère ' . $venues['vArmand']->getName();
-        foreach ([$coachLio, $coachTho, $coachEnz, $coachJor] as $coach) {
+        foreach ([$coach10, $coach06, $coach05, $coach21] as $coach) {
             $staleNames[] = \sprintf('%s - Indisponible le vendredi', $coach->getFirstName());
         }
-        foreach ([$coachEme, $coachPoivreSel] as $coach) {
+        foreach ([$coach03, $coach11] as $coach) {
             $staleNames[] = \sprintf('%s - Indisponible le jeudi', $coach->getFirstName());
         }
-        // Ancienne indispo coach du jeudi retirée de la base (Coach Nic) — nom dérivé
+        // Ancienne indispo coach du jeudi retirée de la base (Coach 04) — nom dérivé
         // de l'entité pour suivre l'anonymisation du profil démo.
-        $staleNames[] = \sprintf('%s - Indisponible le jeudi', $coachNic->getFirstName());
+        $staleNames[] = \sprintf('%s - Indisponible le jeudi', $coach04->getFirstName());
         // « <équipe> - Pas d'entraînement le mercredi » : la base réelle n'en a aucune
         // (le CEC du mercredi a disparu, les jeunes s'entraînent ce jour-là).
         foreach (['U11F1', 'U11F2', 'U11M2', 'U9M1', 'U9M2', 'U9F1', 'U9F2'] as $teamName) {
@@ -1219,12 +1236,12 @@ final class BcclSeeder
 
         // --- COACH_AVAILABILITY (indisponibilités ; 5 = vendredi, 4 = jeudi) ---
         // Variables coach déjà résolues (l.618+) : un coach manquant lève une erreur PHP au lieu de disparaître en silence.
-        foreach ([[$coachLio, 5], [$coachTho, 5], [$coachEnz, 5], [$coachJor, 5], [$coachEme, 4], [$coachPoivreSel, 4]] as [$coach, $day]) {
+        foreach ([[$coach10, 5], [$coach06, 5], [$coach05, 5], [$coach21, 5], [$coach03, 4], [$coach11, 4]] as [$coach, $day]) {
             // SEC-13 : la cible du coach est le SCOPE (3e argument), plus une clé du config —
             // `coachId` en doublon est refusé depuis la validation stricte, et un club seedé
             // qui le porte ferme le gate du récap (bouton « Continuer » gris, e2e bloquée).
             // Nom auto-généré par le wizard : « <coach> · indispo <jour> » (indisponibilité).
-            $addConstraint(\sprintf('%s · indispo %s', $coachDisplay($coach), $dayLong($day)), ConstraintScope::COACH, $coach->getId(), ConstraintFamily::COACH_AVAILABILITY, ConstraintRuleType::HARD, ['unavailableDays' => [$day]]);
+            $addConstraint($this->coachUnavailabilityName($coach, [$day]), ConstraintScope::COACH, $coach->getId(), ConstraintFamily::COACH_AVAILABILITY, ConstraintRuleType::HARD, ['unavailableDays' => [$day]]);
         }
 
         $manager->flush();
@@ -1966,7 +1983,7 @@ final class BcclSeeder
      *
      * @param array<string, Team>  $teams
      * @param array<string, Venue> $venues
-     * @param array<string, Coach> $coaches index « prénom nom » → coach (cible d'une genèse COACH)
+     * @param array<string, Coach> $coaches clé interne du seed (« c11 ») → coach (cible d'une genèse ou d'un décochage COACH)
      */
     private function seedReprisePeriods(EntityManagerInterface $manager, Club $club, Season $season, string $clubId, array $teams, array $venues, array $coaches): void
     {
@@ -2038,10 +2055,10 @@ final class BcclSeeder
      * overrides gymnase/équipe/contrainte, groupes de mutualisation, réservations, puis la
      * version transcrite pointée (validée). Tout idempotent.
      *
-     * @param array<string, Team>                                                                                                                                                                                                                                                                                                                                                                                                                                                $teams
-     * @param array<string, Venue>                                                                                                                                                                                                                                                                                                                                                                                                                                               $venues
-     * @param array<string, Coach>                                                                                                                                                                                                                                                                                                                                                                                                                                               $coaches
-     * @param array{title: string, monday: string, sunday: string, activeVenues: list<string>, sessions: list<array{string, string, int, string, int}>, reservations?: list<array{string, string, int, string, int}>, groups: list<array{teams: list<string>, k: int}>, deactivatedConstraints: list<string>, constraints?: list<array{name: string, scope: ConstraintScope, target: string, family: ConstraintFamily, rule: ConstraintRuleType, config: array<string, mixed>}>} $week
+     * @param array<string, Team>                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  $teams
+     * @param array<string, Venue>                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 $venues
+     * @param array<string, Coach>                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 $coaches
+     * @param array{title: string, monday: string, sunday: string, activeVenues: list<string>, sessions: list<array{string, string, int, string, int}>, reservations?: list<array{string, string, int, string, int}>, groups: list<array{teams: list<string>, k: int}>, deactivatedConstraints: list<string|array{coach: string, day: int}>, constraints?: list<array{name: ?string, coach?: string, days?: list<int>, scope: ConstraintScope, target: string, family: ConstraintFamily, rule: ConstraintRuleType, config: array<string, mixed>}>} $week
      */
     private function seedRepriseWeek(EntityManagerInterface $manager, Season $season, string $clubId, array $teams, array $venues, array $coaches, string $motherId, array $week): void
     {
@@ -2202,8 +2219,13 @@ final class BcclSeeder
 
         // --- Contraintes de saison contredites par le réel de la semaine : décochées PAR PLAN
         // (ConstraintPeriodOverride isActive=false ; la saison reste intacte). Le nom fait la
-        // clé — une contrainte introuvable LÈVE (un décochage qui ne vise rien serait muet). ---
-        foreach ($week['deactivatedConstraints'] as $constraintName) {
+        // clé — une contrainte introuvable LÈVE (un décochage qui ne vise rien serait muet). Une
+        // indisponibilité COACH se désigne par sa clé + son jour, jamais par un libellé littéral :
+        // son nom se dérive de l'entité (libellé neutre ou identité injectée). ---
+        foreach ($week['deactivatedConstraints'] as $deactivated) {
+            $constraintName = \is_string($deactivated)
+                ? $deactivated
+                : $this->coachUnavailabilityName($coaches[$deactivated['coach']] ?? throw new RuntimeException(\sprintf('Reprise « %s » : coach « %s » introuvable.', $week['title'], $deactivated['coach'])), [$deactivated['day']]);
             $constraint = $manager->getRepository(Constraint::class)->findOneBy(['clubId' => $clubId, 'name' => $constraintName]);
             if (!$constraint instanceof Constraint) {
                 throw new RuntimeException(\sprintf('Reprise « %s » : contrainte de saison « %s » introuvable (renommée ?) — le décochage ne vise rien.', $week['title'], $constraintName));
@@ -2229,9 +2251,14 @@ final class BcclSeeder
         // genèses ∪ les faits de sa mère). Find-or-create idempotent — clé clubId +
         // calendarEntryId + name + scopeTargetId (deux genèses homonymes se distinguent par leur
         // cible, ex. le bloc SM mutualisé posé sur SM1 ET SM2). La cible dépend du scope : TEAM →
-        // équipe nommée, COACH → coach indexé « prénom nom ». Un membre introuvable LÈVE (une
-        // genèse qui ne vise rien serait muette). Libellé au format wizard « <cible> · <prédicat> ». ---
+        // équipe nommée, COACH → coach indexé par sa clé interne (« c11 »). Un membre introuvable LÈVE (une
+        // genèse qui ne vise rien serait muette). Libellé au format wizard « <cible> · <prédicat> » ;
+        // une indisponibilité COACH (`name` null) le dérive de l'entité (`coach` + `days`). ---
         foreach ($week['constraints'] ?? [] as $genesis) {
+            if (null === $genesis['name']) {
+                $genesisCoach = $coaches[$genesis['coach'] ?? ''] ?? throw new RuntimeException(\sprintf('Genèse sans nom de « %s » : coach introuvable.', $week['title']));
+                $genesis['name'] = $this->coachUnavailabilityName($genesisCoach, $genesis['days'] ?? []);
+            }
             $targetId = match ($genesis['scope']) {
                 ConstraintScope::TEAM => ($teams[$genesis['target']] ?? throw new RuntimeException(\sprintf('Genèse « %s » : équipe « %s » introuvable.', $genesis['name'], $genesis['target'])))->getId(),
                 ConstraintScope::COACH => ($coaches[$genesis['target']] ?? throw new RuntimeException(\sprintf('Genèse « %s » : coach « %s » introuvable.', $genesis['name'], $genesis['target'])))->getId(),
@@ -2864,7 +2891,7 @@ final class BcclSeeder
      * future = une entrée de plus ici, pas du code. Séances : [équipe, gymnase, jour ISO,
      * 'HH:MM', durée]. capacity de grille et sessionsPerWeek se DÉRIVENT des séances.
      *
-     * @return list<array{title: string, monday: string, sunday: string, activeVenues: list<string>, sessions: list<array{string, string, int, string, int}>, reservations?: list<array{string, string, int, string, int}>, groups: list<array{teams: list<string>, k: int}>, deactivatedConstraints: list<string>, constraints?: list<array{name: string, scope: ConstraintScope, target: string, family: ConstraintFamily, rule: ConstraintRuleType, config: array<string, mixed>}>}>
+     * @return list<array{title: string, monday: string, sunday: string, activeVenues: list<string>, sessions: list<array{string, string, int, string, int}>, reservations?: list<array{string, string, int, string, int}>, groups: list<array{teams: list<string>, k: int}>, deactivatedConstraints: list<string|array{coach: string, day: int}>, constraints?: list<array{name: ?string, coach?: string, days?: list<int>, scope: ConstraintScope, target: string, family: ConstraintFamily, rule: ConstraintRuleType, config: array<string, mixed>}>}>
      */
     private function repriseWeeks(): array
     {
@@ -2915,12 +2942,13 @@ final class BcclSeeder
                 // Contraintes de GENÈSE de CETTE semaine (P2-59, construites pendant l'exercice
                 // solveur du 2026-09-01, validées fondateur) : elles pendent à l'entrée-enfant du
                 // 17, invisibles de la semaine du 24. Le bloc SM mutualisé ne démarre pas avant
-                // 20:30 (la transcription le pose à 20:45 ≥ 20:30, honorée), Coach PoivreSel est
-                // indispo lundi + vendredi (U18M1, son équipe, ne s'entraîne que mardi/jeudi).
+                // 20:30 (la transcription le pose à 20:45 ≥ 20:30, honorée), Coach 11 est
+                // indispo lundi + vendredi (U18M1, son équipe, ne s'entraîne que mardi/jeudi) — nom
+                // dérivé de l'entité (`name` null, `coach` + `days`).
                 'constraints' => [
                     ['name' => 'Séniors masculins mutualisés · pas avant 20:30', 'scope' => ConstraintScope::TEAM, 'target' => 'SM1', 'family' => ConstraintFamily::TIME, 'rule' => ConstraintRuleType::HARD, 'config' => ['minStartTime' => '20:30']],
                     ['name' => 'Séniors masculins mutualisés · pas avant 20:30', 'scope' => ConstraintScope::TEAM, 'target' => 'SM2', 'family' => ConstraintFamily::TIME, 'rule' => ConstraintRuleType::HARD, 'config' => ['minStartTime' => '20:30']],
-                    ['name' => 'Coach PoivreSel · indispo lundi, vendredi', 'scope' => ConstraintScope::COACH, 'target' => 'c11', 'family' => ConstraintFamily::COACH_AVAILABILITY, 'rule' => ConstraintRuleType::HARD, 'config' => ['unavailableDays' => [1, 5]]],
+                    ['name' => null, 'coach' => 'c11', 'days' => [1, 5], 'scope' => ConstraintScope::COACH, 'target' => 'c11', 'family' => ConstraintFamily::COACH_AVAILABILITY, 'rule' => ConstraintRuleType::HARD, 'config' => ['unavailableDays' => [1, 5]]],
                 ],
                 // Seuls les créneaux CHOISIS sont figés (équipes fanion — « on les impose au
                 // modèle car ça nous arrange », exercice solveur du 2026-09-01) : les deux blocs
@@ -2943,8 +2971,8 @@ final class BcclSeeder
                 //  - Senior +22 Compétition ≥ 20:00 : SM3/SF1/SF2 à 19:30.
                 //  - SF2 · pas vendredi : SF2 s'entraîne le vendredi.
                 //  - SM2 · au moins 1 à Matéo : Matéo est fermé (0 séance possible à Matéo).
-                //  - Coach PoivreSel · indispo jeudi : U18M1 (son équipe) s'entraîne le JEUDI 18:15.
-                //  - Coach Tho · indispo vendredi : U15M1 (son équipe) s'entraîne le VENDREDI 17:00.
+                //  - indispo jeudi de Coach 11 : U18M1 (son équipe) s'entraîne le JEUDI 18:15.
+                //  - indispo vendredi de Coach 06 : U15M1 (son équipe) s'entraîne le VENDREDI 17:00.
                 //    (Les deux indispos sont des faits de SAISON hérités, pas de la semaine de reprise —
                 //    arbitrage fondateur 2026-09-01, révélé par l'exercice solveur : sans décochage la
                 //    génération ne peut pas atteindre le planning réel.)
@@ -2953,8 +2981,8 @@ final class BcclSeeder
                     'Groupe Senior (+ de 22) + Compétition (hors loisir) · pas avant 20:00',
                     'SF2 · pas vendredi',
                     'SM2 · au moins 1 à Matéo',
-                    'Coach PoivreSel · indispo jeudi',
-                    'Coach Tho · indispo vendredi',
+                    ['coach' => 'c11', 'day' => 4],
+                    ['coach' => 'c06', 'day' => 5],
                     // Le bloc SM1+SM2 est figé lun/mar/jeu par réservation — la règle héritée
                     // « pas vendredi » n'a plus d'objet et gênerait le solveur pour rien.
                     'SM2 · pas vendredi',
@@ -3071,21 +3099,43 @@ final class BcclSeeder
                 //  - Groupe Jeune (U13-U18) · pas après 19:50 : remplacée par la genèse « Mineurs ».
                 //  - SM2 · au moins 1 à Matéo : Matéo est fermé.
                 //  - Indisponibilités coach de SAISON que le réel contredit (arbitrage fondateur
-                //    2026-09-01) : Coach PoivreSel indispo jeudi (U18M1 s'entraîne jeudi), Coach
-                //    Enz indispo vendredi (U13F1/U18F1 vendredi), Coach Tho indispo
-                //    vendredi (U15M1/U21M1 vendredi).
+                //    2026-09-01) : Coach 11 indispo jeudi (U18M1 s'entraîne jeudi), Coach 05
+                //    indispo vendredi (U13F1/U18F1 vendredi), Coach 06 indispo vendredi
+                //    (U15M1/U21M1 vendredi) — désignées par clé + jour, nom dérivé de l'entité.
                 'deactivatedConstraints' => [
                     'SM1 · uniquement mardi, jeudi',
                     'Groupe Senior (+ de 22) + Compétition (hors loisir) · pas avant 20:00',
                     'Groupe U15 · pas après 19:00',
                     'Groupe Jeune (U13-U18) · pas après 19:50',
                     'SM2 · au moins 1 à Matéo',
-                    'Coach PoivreSel · indispo jeudi',
-                    'Coach Enz · indispo vendredi',
-                    'Coach Tho · indispo vendredi',
+                    ['coach' => 'c11', 'day' => 4],
+                    ['coach' => 'c05', 'day' => 5],
+                    ['coach' => 'c06', 'day' => 5],
                 ],
             ],
         ];
+    }
+
+    /** Jour ISO en toutes lettres, comme `dayLabelLong` du front. */
+    private function dayLong(int $iso): string
+    {
+        return ['', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi', 'dimanche'][$iso];
+    }
+
+    /**
+     * Libellé d'une indisponibilité coach EXACTEMENT comme le wizard l'écrit (« <prénom nom> ·
+     * indispo <jours> »), lu sur l'ENTITÉ : il suit le libellé neutre comme une identité injectée.
+     * Seule maison de ce format dans le seed (saison, décochages et genèses des reprises).
+     *
+     * @param list<int> $days
+     */
+    private function coachUnavailabilityName(Coach $coach, array $days): string
+    {
+        return \sprintf(
+            '%s · indispo %s',
+            trim($coach->getFirstName() . ' ' . $coach->getLastName()),
+            implode(', ', array_map($this->dayLong(...), $days)),
+        );
     }
 
     /**

@@ -8,6 +8,7 @@ use App\Entity\OpponentVenueLink;
 use App\Enum\OpponentVenueLinkSource;
 use App\Repository\SchoolHolidayPeriodRepository;
 use App\Seed\BcclSeeder;
+use App\Seed\BcclSeedIdentities;
 use App\Seed\BcclSeedProfile;
 use App\Service\Basketball\CategoryCatalog;
 use App\Service\ClosureSegmentation;
@@ -407,7 +408,7 @@ final class BcclSeederIdempotenceTest extends KernelTestCase
      *     entraînent séparément) ;
      *  2. post-modèle bloc (fondateur 2026-09-01) — les grilles comptent un groupe mutualisé pour UN
      *     occupant (plus aucune case cap 2), et la semaine du 17 décoche les indispos coach héritées
-     *     que son réel contredit (U18M1 jeudi de Coach PoivreSel, U15M1 vendredi de Coach Tho) ainsi
+     *     que son réel contredit (U18M1 jeudi de Coach 11, U15M1 vendredi de Coach 06) ainsi
      *     que « SM2 · pas vendredi » (le bloc est figé lun/mar/jeu par réservation).
      */
     #[RunInSeparateProcess]
@@ -496,12 +497,12 @@ final class BcclSeederIdempotenceTest extends KernelTestCase
             . 'JOIN "constraint" c ON c.id = o.constraint_id '
             . 'JOIN schedule_plan sp ON sp.id = o.schedule_plan_id '
             . 'WHERE sp.club_id = ? AND sp.name = ? AND o.is_active = false '
-            . 'AND c.name IN (\'Coach PoivreSel · indispo jeudi\', \'Coach Tho · indispo vendredi\', \'SM2 · pas vendredi\') '
+            . 'AND c.name IN (\'Coach 11 · indispo jeudi\', \'Coach 06 · indispo vendredi\', \'SM2 · pas vendredi\') '
             . 'ORDER BY c.name',
             [$club->getId(), 'Reprise du 17 août'],
         );
         self::assertSame(
-            ['Coach PoivreSel · indispo jeudi', 'Coach Tho · indispo vendredi', 'SM2 · pas vendredi'],
+            ['Coach 06 · indispo vendredi', 'Coach 11 · indispo jeudi', 'SM2 · pas vendredi'],
             array_map('strval', $deactivated),
             'la semaine du 17 décoche les deux indisponibilités coach héritées ET « SM2 · pas vendredi » (le bloc est figé lun/mar/jeu par réservation)',
         );
@@ -735,7 +736,7 @@ final class BcclSeederIdempotenceTest extends KernelTestCase
      *
      * Le modèle FAIT/GENÈSE : une contrainte de genèse vit sur l'entrée-ENFANT (la semaine), pas
      * sur la mère. Les 3 genèses du 17 (le bloc SM mutualisé ≥ 20:30 sur SM1 ET SM2, l'indispo
-     * lun/ven de Coach PoivreSel) portent calendar_entry_id = l'entrée du 17, avec leurs configs
+     * lun/ven de Coach 11) portent calendar_entry_id = l'entrée du 17, avec leurs configs
      * exactes. La semaine du 24 (exercice solveur CLOS le 2026-09-01) porte SES 16 genèses sur SON
      * entrée-enfant — « Mineurs · pas après 19:50 » (10 équipes), « U15M · pas après 18:15 » (2),
      * « U18F{1,2} · préfère JDR » (FACILITY PREFERRED), « SF1 · pas vendredi », « SM3 · préfère
@@ -769,9 +770,9 @@ final class BcclSeederIdempotenceTest extends KernelTestCase
 
         $sm1 = (string) $this->connection->fetchOne('SELECT id FROM team WHERE club_id = ? AND name = ?', [$clubId, 'SM1']);
         $sm2 = (string) $this->connection->fetchOne('SELECT id FROM team WHERE club_id = ? AND name = ?', [$clubId, 'SM2']);
-        $nico = (string) $this->connection->fetchOne(
+        $coach11 = (string) $this->connection->fetchOne(
             'SELECT id FROM coach WHERE club_id = ? AND first_name = ? AND last_name = ?',
-            [$clubId, 'Coach PoivreSel', ''],
+            [$clubId, 'Coach 11', ''],
         );
         $jdrId = (string) $this->connection->fetchOne('SELECT id FROM venue WHERE club_id = ? AND name = ?', [$clubId, 'JDR']);
         $armandId = (string) $this->connection->fetchOne('SELECT id FROM venue WHERE club_id = ? AND name = ?', [$clubId, 'Armand']);
@@ -784,9 +785,9 @@ final class BcclSeederIdempotenceTest extends KernelTestCase
 
         $expected17 = [
             [
-                'name' => 'Coach PoivreSel · indispo lundi, vendredi',
+                'name' => 'Coach 11 · indispo lundi, vendredi',
                 'scope' => 'COACH', 'family' => 'COACH_AVAILABILITY', 'rule_type' => 'HARD',
-                'scope_target_id' => $nico, 'config' => ['unavailableDays' => [1, 5]],
+                'scope_target_id' => $coach11, 'config' => ['unavailableDays' => [1, 5]],
             ],
             [
                 'name' => 'Séniors masculins mutualisés · pas avant 20:30',
@@ -852,6 +853,63 @@ final class BcclSeederIdempotenceTest extends KernelTestCase
         $this->seeder->run($this->em, BcclSeedProfile::dev());
         $assertMatches($genesisRows($child17));
         $assertWeek24($genesisRows($child24));
+    }
+
+    /**
+     * Un seed dev avec identités INJECTÉES (le chemin du fondateur : fichier local + reprises) ne
+     * lève plus et dérive de l'ENTITÉ chaque libellé de contrainte coach — saison, décochages des
+     * reprises, genèse — deux passes de suite. Jeu SYNTHÉTIQUE (« Synth NN Nom ») : aucun nom
+     * réel au dépôt. Avant : les décochages et la genèse portaient des libellés de coach
+     * LITTÉRAUX, introuvables dès que les noms étaient remplacés → `RuntimeException`.
+     *
+     * Falsifiable : remettre un libellé de coach littéral dans `deactivatedConstraints` ou dans la
+     * genèse du 17 rend ce test ROUGE (exception ou ligne absente).
+     */
+    #[RunInSeparateProcess]
+    #[PreserveGlobalState(false)]
+    public function testDevSeedWithInjectedIdentitiesDerivesEveryCoachLabelFromTheEntity(): void
+    {
+        $synthetic = [];
+        for ($n = 1; $n <= 30; ++$n) {
+            $synthetic[] = ['firstName' => \sprintf('Synth %02d', $n), 'lastName' => 'Nom'];
+        }
+        $profile = BcclSeedProfile::dev(new BcclSeedIdentities(null, [], $synthetic));
+
+        foreach (['premier', 'second'] as $pass) {
+            try {
+                $club = $this->seeder->run($this->em, $profile);
+            } catch (RuntimeException) {
+                self::fail(\sprintf('%s passage : le seed dev avec identités injectées lève (un libellé de coach littéral ne vise plus rien)', $pass));
+            }
+            $clubId = $club->getId();
+
+            $seasonCoachConstraints = array_map('strval', $this->connection->fetchFirstColumn(
+                'SELECT name FROM "constraint" WHERE club_id = ? AND scope = \'COACH\' AND calendar_entry_id IS NULL ORDER BY name',
+                [$clubId],
+            ));
+            self::assertCount(6, $seasonCoachConstraints, \sprintf('%s passage : exactement 6 contraintes coach de saison', $pass));
+            foreach ($seasonCoachConstraints as $name) {
+                self::assertMatchesRegularExpression('/^Synth \d{2} Nom · indispo /u', $name, \sprintf('%s passage : contrainte coach de saison nommée depuis l\'entité', $pass));
+                self::assertStringStartsNotWith('Coach', $name, \sprintf('%s passage : aucun libellé par défaut ne survit au remplacement', $pass));
+            }
+
+            $deactivated17 = array_map('strval', $this->connection->fetchFirstColumn(
+                'SELECT c.name FROM constraint_period_override o '
+                . 'JOIN "constraint" c ON c.id = o.constraint_id '
+                . 'JOIN schedule_plan sp ON sp.id = o.schedule_plan_id '
+                . 'WHERE sp.club_id = ? AND sp.name = ? AND o.is_active = false',
+                [$clubId, 'Reprise du 17 août'],
+            ));
+            foreach (['Synth 11 Nom · indispo jeudi', 'Synth 06 Nom · indispo vendredi'] as $expected) {
+                self::assertContains($expected, $deactivated17, \sprintf('%s passage : la semaine du 17 décoche « %s »', $pass, $expected));
+            }
+
+            $genesis = (int) $this->connection->fetchOne(
+                'SELECT COUNT(*) FROM "constraint" WHERE club_id = ? AND scope = \'COACH\' AND calendar_entry_id IS NOT NULL AND name = ?',
+                [$clubId, 'Synth 11 Nom · indispo lundi, vendredi'],
+            );
+            self::assertSame(1, $genesis, \sprintf('%s passage : la genèse coach du 17 est nommée depuis l\'entité, en une seule ligne', $pass));
+        }
     }
 
     /**

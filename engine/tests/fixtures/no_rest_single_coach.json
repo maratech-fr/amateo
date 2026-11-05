@@ -6,8 +6,8 @@
   "solverTimeoutSeconds": 10,
   "venues": [
     {
-      "id": "gym-enzo",
-      "name": "Gymnase Enzo",
+      "id": "gym-a",
+      "name": "Gymnase A",
       "trainingSlots": [
         {
           "dayOfWeek": 1,
@@ -81,8 +81,8 @@
   ],
   "coaches": [
     {
-      "id": "coach-enzo",
-      "firstName": "Enzo",
+      "id": "coach-solo",
+      "firstName": "Coach 05",
       "lastName": "Test",
       "isEmployee": false
     }
@@ -91,8 +91,8 @@
     {
       "id": "tpl-mon",
       "teamId": "team-mon",
-      "venueId": "gym-enzo",
-      "coachId": "coach-enzo",
+      "venueId": "gym-a",
+      "coachId": "coach-solo",
       "dayOfWeek": 1,
       "startTime": "19:00",
       "durationMinutes": 60,
@@ -101,8 +101,8 @@
     {
       "id": "tpl-tue",
       "teamId": "team-tue",
-      "venueId": "gym-enzo",
-      "coachId": "coach-enzo",
+      "venueId": "gym-a",
+      "coachId": "coach-solo",
       "dayOfWeek": 2,
       "startTime": "19:00",
       "durationMinutes": 60,
@@ -111,8 +111,8 @@
     {
       "id": "tpl-wed",
       "teamId": "team-wed",
-      "venueId": "gym-enzo",
-      "coachId": "coach-enzo",
+      "venueId": "gym-a",
+      "coachId": "coach-solo",
       "dayOfWeek": 3,
       "startTime": "19:00",
       "durationMinutes": 60,
@@ -121,8 +121,8 @@
     {
       "id": "tpl-thu",
       "teamId": "team-thu",
-      "venueId": "gym-enzo",
-      "coachId": "coach-enzo",
+      "venueId": "gym-a",
+      "coachId": "coach-solo",
       "dayOfWeek": 4,
       "startTime": "19:00",
       "durationMinutes": 60,
@@ -131,8 +131,8 @@
     {
       "id": "tpl-fri",
       "teamId": "team-fri",
-      "venueId": "gym-enzo",
-      "coachId": "coach-enzo",
+      "venueId": "gym-a",
+      "coachId": "coach-solo",
       "dayOfWeek": 5,
       "startTime": "19:00",
       "durationMinutes": 60,
@@ -145,7 +145,7 @@
       "type": "TEAM_COACH",
       "teamId": "team-mon",
       "metadata": {
-        "coachId": "coach-enzo"
+        "coachId": "coach-solo"
       },
       "isActive": true
     },
@@ -154,7 +154,7 @@
       "type": "TEAM_COACH",
       "teamId": "team-tue",
       "metadata": {
-        "coachId": "coach-enzo"
+        "coachId": "coach-solo"
       },
       "isActive": true
     },
@@ -163,7 +163,7 @@
       "type": "TEAM_COACH",
       "teamId": "team-wed",
       "metadata": {
-        "coachId": "coach-enzo"
+        "coachId": "coach-solo"
       },
       "isActive": true
     },
@@ -172,7 +172,7 @@
       "type": "TEAM_COACH",
       "teamId": "team-thu",
       "metadata": {
-        "coachId": "coach-enzo"
+        "coachId": "coach-solo"
       },
       "isActive": true
     },
@@ -181,7 +181,7 @@
       "type": "TEAM_COACH",
       "teamId": "team-fri",
       "metadata": {
-        "coachId": "coach-enzo"
+        "coachId": "coach-solo"
       },
       "isActive": true
     },

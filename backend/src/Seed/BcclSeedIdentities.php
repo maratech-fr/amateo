@@ -11,7 +11,8 @@ use RuntimeException;
  * AUD-SEC-29 — identités RÉELLES du club du fondateur, lues depuis un fichier LOCAL gitignoré
  * (jamais au dépôt : le dépôt public ne porte QUE du fictif). Absent (CI, autre dev, prod sans
  * fichier) → {@see loadFromFile()} rend `null`, et les seeds repartent sur leurs identités
- * fictives déterministes (surnoms « Coach … », gestionnaire `dev-bccl@amateo.local`).
+ * fictives déterministes (libellés neutres « Coach » + numéro de clé, gestionnaire
+ * `dev-bccl@amateo.local`).
  *
  * Format attendu (`config/seed/bccl.identities.local.json`) — AUCUNE valeur réelle n'est
  * documentée ici, seulement la forme :
@@ -28,6 +29,12 @@ use RuntimeException;
  * - `additionalManagers` (optionnel) : co-gestionnaires EN PLUS — find-or-create par e-mail.
  * - `coaches` (optionnel) : remplacement POSITIONNEL des coachs du seed, DANS L'ORDRE ; la liste
  *   doit être AU MOINS aussi longue que celle du seed, sinon le seeder lève (jamais « en partie »).
+ *
+ * Balayage local : `python3 -I backend/scripts/scan-local-identities.py` (depuis la racine) liste
+ * les `fichier:ligne` du dépôt suivi qui portent un jeton de ce fichier (prénom, nom, e-mail) —
+ * jamais le contenu de la ligne. **Lancé par le FONDATEUR SEUL** : un agent ne le lance JAMAIS sur
+ * ce fichier (sa sortie entrerait dans une transcription, puis peut-être dans une PR) ; une preuve
+ * de fonctionnement passe par `--identities <fichier synthétique hors dépôt>`.
  */
 final readonly class BcclSeedIdentities
 {

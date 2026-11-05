@@ -540,6 +540,6 @@ mécanismes non reliés) : `travel_feasibility_stub`, `required_bridge_stub`
 
 ## 7. Tests & Fixtures
 
-- **Fixtures golden** (`engine/tests/fixtures/`) : scénarios JSON (liste : `ls engine/tests/fixtures/`) — dont `simple_club`, `medium_club`, `dense_club`, `bccl_regression`, `impossible`, `age_order_club`, `consecutive_emerick`, `no_rest_enzo`, `overlap_anna`, `overlap_nicolas`, `score_hard_only_teams`, `vacation_week`.
+- **Fixtures golden** (`engine/tests/fixtures/`) : scénarios JSON (liste : `ls engine/tests/fixtures/`) — dont `simple_club`, `medium_club`, `dense_club`, `bccl_regression`, `impossible`, `age_order_club`, `consecutive_single_coach`, `no_rest_single_coach`, `overlap_anna`, `overlap_shared_coach`, `score_hard_only_teams`, `vacation_week`.
 - **Suites** (emplacements — liste vivante via `ls engine/tests/`) : `tests/golden/`, `tests/invariants/`, `tests/perf/`, **`tests/semantic/`** (matrice de contraintes audit P0.1 — `constraint_matrix.py` = source unique UI↔engine, `test_constraint_matrix.py`, `test_diagnostics.py`, `test_features.py`, `test_semantic_smoke.py`, `test_hard_lock_divisible_slot.py` = ALIGN-07, `test_hard_lock_announces_violations.py` = P2-9 volet 1), `tests/test_result_builder.py`, plus tests spécialisés (age order, chaining bonus, coach rest day, salarié distribution, max consecutive sessions, adaptive timeout, capacity slots, time/day constraints, objective, generate contract…).
 - **Toolchain tests** : `pytest` + `pytest-timeout` + `hypothesis`.

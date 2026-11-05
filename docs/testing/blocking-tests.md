@@ -25,6 +25,13 @@ club ; `/api/register/config` hors debug n'expose le raccourci que fenêtre ouve
 retirant la garde `UserChecker`. **SEC-28** : un compte démo (`is_demo`) reçoit 403 sur les quatre
 gestes de profil [PATCH `/api/me`, POST `/api/me/password`, POST `/api/me/email`, DELETE
 `/api/me`] ; un compte ORDINAIRE les garde tous — jamais de 403 sur ce drapeau) ·
+`Security/BcclSeedIdentityNeutralityTest` (dépôt PUBLIC, club pilote : le seeder BCCL définit
+exactement 30 coachs, 30 clés distinctes, chacun libellé « Coach » + numéro de sa clé, nom vide ;
+les fixtures moteur du club pilote ne portent que des `firstName` neutres, au moins un chacune ; une
+liste NOMINATIVE de fichiers liés au seed [chacun doit exister] ne porte aucun « Coach » suivi d'un
+nom à majuscule ; sans fichier d'identités local, `BcclSeedProfile::dev()` n'injecte ni noms de
+coachs ni co-gestionnaires. Statique, sans DB ; un rouge nomme `fichier:ligne`, jamais la valeur ;
+falsifié — un surnom recollé rougit, un numéro hors plage reste vert, 29 entrées rougissent) ·
 `Integration/Admin/AdminDemoResetTest` (axes *auth & memberships* + *tenant isolation*, Démos PR B,
 console `/api/admin/demos` : un JWT club ne franchit jamais le firewall admin [401] et toute écriture
 exige le CSRF [403] ; `activate` ouvre une fenêtre de 4 h à l'horloge RÉELLE et un re-clic la

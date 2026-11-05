@@ -1,6 +1,6 @@
 """TDD golden test for cross-venue consecutive sessions (BUG-3).
 
-Reproduces Emerick's BCCL case: 3 back-to-back sessions on Tuesday across
+Three back-to-back sessions on Tuesday across
 two venues (Gymnase Armand -> Debarros -> Debarros).  The old
 ``add_max_consecutive_sessions_constraints`` grouped by ``(venue_id, day)``
 so each venue only had <= 2 sessions and no consecutive triple was detected.
@@ -90,16 +90,16 @@ def _find_consecutive_triples(intervals: list[tuple[int, int, int]], day: int) -
 
 
 class TestConsecutiveConstraints:
-    def test_emerick_max_2_consecutive(self) -> None:
-        """Emerick must not have 3 consecutive back-to-back sessions on Tuesday.
+    def test_single_coach_max_2_consecutive(self) -> None:
+        """A single coach must not have 3 consecutive back-to-back sessions on Tuesday.
 
-        BCCL case: Emerick coaches U15F1 at Gymnase Armand Tuesday 17:30-19:00,
+        Coach 03 coaches U15F1 at Gymnase Armand Tuesday 17:30-19:00,
         plays SM2 at Debarros Tuesday 19:00-20:30, and coaches SF1 at Debarros
         Tuesday 20:30-22:30.  These form a cross-venue chain that the old
         ``(venue_id, day)`` grouping missed because no single venue has 3
         sessions.
         """
-        data = _load_fixture("consecutive_emerick")
+        data = _load_fixture("consecutive_single_coach")
         result = _run_build_schedule(data)
 
         # If status=failed, no slots to check — acceptable (constraints too tight).
@@ -108,14 +108,14 @@ class TestConsecutiveConstraints:
 
         person_intervals = _extract_person_slots(result, data)
 
-        # Emerick is the key person in this scenario.
-        emerick_slots = person_intervals.get("emerick", [])
-        assert len(emerick_slots) > 0, (
-            f"Expected Emerick to have placed slots, got 0. Person intervals: {person_intervals}"
+        # Coach 03 is the key person in this scenario.
+        coach_slots = person_intervals.get("coach-03", [])
+        assert len(coach_slots) > 0, (
+            f"Expected Coach 03 to have placed slots, got 0. Person intervals: {person_intervals}"
         )
 
-        triples = _find_consecutive_triples(emerick_slots, day=2)
+        triples = _find_consecutive_triples(coach_slots, day=2)
         assert triples == [], (
-            f"Expected 0 consecutive triples for Emerick on Tuesday, got {len(triples)}: "
-            f"{triples}. Emerick slots: {emerick_slots}"
+            f"Expected 0 consecutive triples for Coach 03 on Tuesday, got {len(triples)}: "
+            f"{triples}. Coach 03 slots: {coach_slots}"
         )

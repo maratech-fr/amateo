@@ -1,5 +1,5 @@
 {
-  "clubId": "club-consecutive-emerick",
+  "clubId": "club-consecutive-single-coach",
   "seasonId": "season-2026",
   "version": "1.3",
   "solverSeed": 42,
@@ -73,45 +73,45 @@
   ],
   "coaches": [
     {
-      "id": "emerick",
-      "firstName": "Emerick",
+      "id": "coach-03",
+      "firstName": "Coach 03",
       "lastName": "Test"
     }
   ],
   "slotTemplates": [],
   "constraints": [
     {
-      "id": "tc-u15f1-emerick",
+      "id": "tc-u15f1-coach-03",
       "type": "TEAM_COACH",
       "teamId": "u15f1",
       "severity": "HARD",
-      "value": "emerick",
+      "value": "coach-03",
       "metadata": {
-        "coachId": "emerick",
+        "coachId": "coach-03",
         "role": "MAIN",
         "isRequired": true
       }
     },
     {
-      "id": "tc-sf1-emerick",
+      "id": "tc-sf1-coach-03",
       "type": "TEAM_COACH",
       "teamId": "sf1",
       "severity": "HARD",
-      "value": "emerick",
+      "value": "coach-03",
       "metadata": {
-        "coachId": "emerick",
+        "coachId": "coach-03",
         "role": "MAIN",
         "isRequired": true
       }
     },
     {
-      "id": "cpu-sm2-emerick",
+      "id": "cpu-sm2-coach-03",
       "type": "COACH_PLAYER_UNAVAILABILITY",
       "teamId": "sm2",
       "severity": "HARD",
-      "value": "emerick",
+      "value": "coach-03",
       "metadata": {
-        "coachId": "emerick",
+        "coachId": "coach-03",
         "teamId": "sm2",
         "position": null,
         "isActive": true

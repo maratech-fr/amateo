@@ -397,6 +397,15 @@ jobs:
       - name: DemoWindowTest
         run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Security/DemoWindowTest.php --group phase1'
 
+      # Dépôt PUBLIC — les coachs du club pilote (seed BCCL) ne portent que des
+      # libellés NEUTRES (« Coach » + numéro de clé) dans le seeder, les fixtures
+      # moteur et les fichiers liés ; sans fichier local, le profil dev n'injecte
+      # rien. Garde statique par liste autorisée, sans DB : un rouge nomme
+      # fichier:ligne, jamais la valeur. Sans ce gate, un vrai surnom recollé au
+      # seed passerait les checks requis.
+      - name: BcclSeedIdentityNeutralityTest
+        run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Security/BcclSeedIdentityNeutralityTest.php --group phase1'
+
       # Axes auth & memberships + tenant isolation — la console démo (PR B du lot Démos) : un JWT
       # club ne franchit pas /api/admin/demos, toute écriture exige le CSRF, activate ouvre une
       # fenêtre de 4 h à l'horloge RÉELLE (re-clic = redémarrage, jamais addition), le reset remet

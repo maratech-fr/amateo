@@ -215,6 +215,14 @@ jamais exigé en CI ; ce qui doit être opposable au code est recopié en substa
 Un item livré **quitte** la roadmap (jamais en ✅). « Est-ce que X est fait ? » se répond dans
 l'état des lieux.
 
+**Provenance : jamais le nom d'une personne ni d'un club réel** — on ne dit pas de qui ni de quel
+club vient une règle ou un exemple (« cas réel de <club> », « retours <prénom> », « founder case »)
+dans le code, les tests, les specs ou les docs : on écrit la règle et l'exemple chiffré. Ne sont pas
+visés : les identifiants techniques (`BcclSeeder`, `seed-bccl`, fixtures `bccl_*`), les données
+publiques (clubs FFBB des imports), les tiers des fichiers de dépendances, et les repères « décision
+fondateur JJ/MM » qui datent une règle active ; le récit daté vit dans
+`specs/courantes/etat-des-lieux.md` (fondateur, 2026-11-05).
+
 ## 9. Scope checklist
 
 La checklist de cadrage (zone, dossiers autorisés/interdits, fichiers probables, doc à mettre à

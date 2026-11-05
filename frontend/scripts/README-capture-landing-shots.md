@@ -37,7 +37,17 @@ script avant **chaque** capture, même sans réglage :
 - `SCRUB_FILE` (optionnel, local, jamais commité) **complète/surcharge** cette table pour un nom
   supplémentaire repéré sur une capture.
 
-Coachs = surnoms fictifs du seed. Gymnases et clubs adverses = données publiques autorisées.
+- les **libellés neutres des coachs** du seed (« Coach » + numéro de clé, « Coach 07 ») sont
+  remplacés par des prénoms GÉNÉRIQUES (table `COACH_SCRUB` du script, propre à la vitrine,
+  aucun prénom du profil démo ni du club réel).
+
+**Refus d'une base non neutre** (avant toute écriture, import compris) : le script lit TOUS les
+coachs du club (`GET /api/coaches`, pagination suivie) et s'arrête — « Capture refusée : aucun
+coach lu… » si le club n'est pas seedé, « Capture refusée : N coachs hors libellé neutre… » si un
+seul porte une identité réelle (fichier d'identités local injecté) ou un ancien surnom. Le message
+donne un compte, jamais une valeur. Remède : [§ Base propre](#base-propre).
+
+Gymnases et clubs adverses = données publiques autorisées.
 
 ## Ce qu'il produit
 
@@ -78,6 +88,12 @@ Les commandes ci-dessous **écrivent en base**. En **mode play** (base de jeu du
 > ⚠ `with-sandbox.sh` **bascule toute la stack et redémarre les workers** — ne jamais le lancer
 > pendant que le fondateur teste ; l'annoncer avant.
 
+### Base propre
+
+Base vidée puis club BCCL dev resemé **SANS fichier d'identités local**
+(`backend/config/seed/bccl.identities.local.json` absent ou mis de côté le temps du seed) : les
+coachs portent alors les libellés neutres que le script exige.
+
 ```bash
 # (a) Repartir d'une base propre, puis (re)semer le club BCCL dev (create-only).
 #     db-empty AVANT seed-bccl : avertir, c'est destructif pour la base dev.
@@ -85,7 +101,7 @@ backend/scripts/with-sandbox.sh make -C backend CONFIRM=yes db-empty
 backend/scripts/with-sandbox.sh make -C backend CONFIRM=yes seed-bccl
 ```
 
-Le seed pose le club, les équipes, les coachs (surnoms fictifs), le logo club, le **planning de
+Le seed pose le club, les équipes, les coachs (libellés neutres), le logo club, le **planning de
 saison validé** et la répartition WE des matchs — mais **aucune rencontre** (`app:bccl:seed` ne
 sème que des créneaux idéaux). Les rencontres arrivent de l'**import FBI** ci-dessous.
 
@@ -168,7 +184,10 @@ Le nom à droite est le **libellé d'équipe du club** tel qu'il s'affiche dans 
 « Associer à… » (c.-à-d. `team.name` du seed). Pour chaque division visible : dans la table ⇒
 l'équipe est sélectionnée (le script déplie chaque onglet de famille — Départemental / Régional /
 Brassage… — et ouvre le sélecteur) ; hors table ⇒ laissée non associée (ses rencontres sont
-ignorées, avec la confirmation « Importer quand même » gérée). Le script journalise les divisions
+ignorées, avec la confirmation « Importer quand même » gérée). Puis, dans l'onglet **« Salles »**
+de la modale (« Importer » reste grisé tant qu'une salle à domicile n'a pas de gymnase), chaque
+sélecteur encore sur « Associer à un gymnase… » reçoit le **premier gymnase** du club proposé
+(jamais « Terrain neutre ») ; les choix pré-remplis par l'analyse sont laissés tels quels. Le script journalise les divisions
 associées / ignorées / sans équipe correspondante, et **avertit (`⚠`)** si le rapport d'import ne
 fait état d'**aucune rencontre créée**. **Idempotent sur la PRÉSENCE de rencontres** (plus sur la
 date du dernier dépôt FBI) : si la saison a déjà des rencontres (l'état vide « Aucun match

@@ -32,7 +32,8 @@ use Symfony\Component\HttpKernel\KernelInterface;
  * et `services_test.yaml` (jamais dans le conteneur de prod, ni dans
  * `bin/console list` là-bas), ET un garde runtime refuse tout autre environnement.
  * AUD-SEC-29 — par défaut le club porte des identités FICTIVES (gestionnaire
- * `dev-bccl@amateo.local`, coachs aux surnoms). Les vraies identités du fondateur
+ * `dev-bccl@amateo.local`, coachs aux libellés neutres « Coach » + numéro de clé,
+ * c07 → « Coach 07 »). Les vraies identités du fondateur
  * arrivent du fichier local gitignoré {@see BcclSeedIdentities} s'il est présent.
  *
  * ⚠ Comme `app:demo:seed`, le seeder traverse la RLS et exige la connexion ADMIN :

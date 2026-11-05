@@ -19,6 +19,8 @@ Thumbs.db
 # RTK : stats de tracking locales — on garde uniquement filters.toml (config projet)
 /.rtk/*
 !/.rtk/filters.toml
+# captures d'écran pour le fondateur (preuves visuelles) — locales, jamais poussées
+/captures/
 
 # --- PHP / Symfony ---
 /vendor/

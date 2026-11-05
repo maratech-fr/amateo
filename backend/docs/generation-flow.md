@@ -132,7 +132,7 @@ Voici ce que fait la branche de base, dans l'ordre :
 
 3. **Entraîneurs actifs** (`coaches[]`) : récupère tous les entraîneurs, sérialisés avec leur **identité et métadonnées seules** (nom, email, `isEmployee`, `maxDaysOverride`, etc.). Leurs indisponibilités ne sont **pas** portées par l'objet coach : ce sont des contraintes `COACH_AVAILABILITY` dans `constraints[]`. Les liens d'encadrement (`TeamCoach`) sont eux aussi sérialisés en contraintes dédiées.
 
-   > Exemple : l'objet coach d'Enzo ne contient que son identité. Son indisponibilité du vendredi voyage dans `constraints[]` (`COACH_AVAILABILITY`, `scopeTargetId` = Enzo, `config: {unavailableDays: [5]}` — la cible est le scope, SEC-13), et ses encadrements SM1 (MAIN) / SM2 (ASSISTANT) en contraintes issues de `TeamCoach`.
+   > Exemple : l'objet coach de Coach 05 ne contient que son identité. Son indisponibilité du vendredi voyage dans `constraints[]` (`COACH_AVAILABILITY`, `scopeTargetId` = Coach 05, `config: {unavailableDays: [5]}` — la cible est le scope, SEC-13), et ses encadrements SM1 (MAIN) / SM2 (ASSISTANT) en contraintes issues de `TeamCoach`.
 
 4. **Contraintes utilisateur** (`constraints[]`) : `ConstraintRepository::findPermanentByClubSeason` — **uniquement les contraintes permanentes** (`calendarEntryId IS NULL`), jamais `findByClubSeason`. Une contrainte **datée** appartient à une période du cockpit et ne doit JAMAIS alimenter la génération du plan de base. Résout ensuite les tags `CLUB` en contraintes `TEAM` individuelles (voir [constraints.md](./constraints.md) section 4). Sérialise au format v2.
 
@@ -197,8 +197,8 @@ Content-Type: application/json
   ],
   "coaches": [
     {
-      "id": "uuid-enzo",
-      "firstName": "Enzo",
+      "id": "uuid-coach-05",
+      "firstName": "Coach 05",
       "lastName": "Martin",
       "isActive": true,
       "isEmployee": false
@@ -221,17 +221,17 @@ Content-Type: application/json
     },
     {
       "scope": "COACH",
-      "scopeTargetId": "uuid-enzo",
+      "scopeTargetId": "uuid-coach-05",
       "family": "COACH_AVAILABILITY",
       "ruleType": "HARD",
-      "config": {"coachId": "uuid-enzo", "unavailableDays": [5]}
+      "config": {"coachId": "uuid-coach-05", "unavailableDays": [5]}
     }
   ],
   "slotTemplates": [
     {
       "teamId": "uuid-sm1",
       "venueId": "uuid-mateo",
-      "coachId": "uuid-enzo",
+      "coachId": "uuid-coach-05",
       "dayOfWeek": 2,
       "startTime": "20:00",
       "durationMinutes": 120,
