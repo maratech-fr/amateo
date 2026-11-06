@@ -24,8 +24,11 @@ else
 fi
 docker ps -aq --filter "label=com.docker.compose.project=$project" 2>/dev/null | xargs -r docker rm -f >/dev/null 2>&1 || true
 
-# Tags de scan du run (job build-docker).
-docker images --format '{{.Repository}}:{{.Tag}}' 2>/dev/null | grep "^scan-${GITHUB_RUN_ID:-none}-${GITHUB_RUN_ATTEMPT:-none}/" | xargs -r docker rmi -f >/dev/null 2>&1 || true
+# Tags de scan du run : posés par `build-docker` seul — un autre job du même run qui finit
+# pendant son scan Trivy ne doit pas les lui retirer.
+if [ "${GITHUB_JOB:-}" = "build-docker" ]; then
+  docker images --format '{{.Repository}}:{{.Tag}}' 2>/dev/null | grep "^scan-${GITHUB_RUN_ID:-none}-${GITHUB_RUN_ATTEMPT:-none}/" | xargs -r docker rmi -f >/dev/null 2>&1 || true
+fi
 
 # Fichiers root rendus à l'uid du service via un conteneur — le hook tourne sous l'uid non
 # root du runner, un chown direct échouerait en silence.
