@@ -127,6 +127,92 @@ describe("buildSentryOptions — masquage du jeton des pages publiques", () => {
     expect(crumb({ category: "console", message: "rendu terminé" }).message).toBe("rendu terminé");
   });
 
+  it("beforeBreadcrumb masque le jeton dans data.arguments d'un breadcrumb console (chaîne, objet, Error)", () => {
+    const kyMessage = `Request failed with status code 404 Not Found: GET https://exemple.test/api/club-approvals/${TOK}`;
+    const realError = new Error(kyMessage);
+    const out = crumb({
+      category: "console",
+      level: "error",
+      message: `Route error: ${kyMessage}`,
+      data: { logger: "console", arguments: ["Route error:", kyMessage, { message: `https://exemple.test/club-approval/${TOK}` }, realError] },
+    });
+    const args = (out.data as { arguments: unknown[] }).arguments;
+    expect(args.slice(0, 3)).toEqual([
+      "Route error:",
+      "Request failed with status code 404 Not Found: GET https://exemple.test/api/club-approvals/:token",
+      { message: "https://exemple.test/club-approval/:token" },
+    ]);
+    expect((args[3] as Error).message).toBe("Request failed with status code 404 Not Found: GET https://exemple.test/api/club-approvals/:token");
+    expect((args[3] as Error).stack ?? "").not.toContain(TOK);
+    expect((out.data as { logger: string }).logger).toBe("console");
+    expect(JSON.stringify(out)).not.toContain(TOK);
+  });
+
+  it("beforeBreadcrumb survit à un objet à cycle et masque quand même le jeton", () => {
+    const loop: Record<string, unknown> = { url: `/api/coach-wishes/public/${TOK}` };
+    loop.self = loop;
+    const out = crumb({ category: "console", data: { arguments: [loop] } });
+    expect(out).toBeDefined();
+    expect(loop.url).toBe("/api/coach-wishes/public/:token");
+    expect(loop.self).toBe(loop);
+  });
+
+  it("beforeSend survit à un événement à cycle et le retourne", () => {
+    const extra: Record<string, unknown> = { note: `/invitation/${TOK}` };
+    extra.again = extra;
+    const event = { extra };
+    expect(send(event)).toBe(event);
+    expect(extra.note).toBe("/invitation/:token");
+  });
+
+  it("beforeSend masque le jeton de event.message et de logentry (message + params)", () => {
+    const out = send({
+      message: `Échec sur /doleances/${TOK}`,
+      logentry: { message: `GET %s`, params: [`/api/invitations/public/${TOK}`, 3] },
+    });
+    expect(out.message).toBe("Échec sur /doleances/:token");
+    expect(out.logentry).toEqual({ message: "GET %s", params: ["/api/invitations/public/:token", 3] });
+  });
+
+  it("beforeSend masque le jeton dans extra (__serialized__, objets imbriqués), contexts et tags", () => {
+    const out = send({
+      extra: { __serialized__: { error: { url: `https://exemple.test/api/club-approvals/${TOK}` } }, deep: [{ a: { b: `/verify-email/${TOK}` } }] },
+      contexts: { react: { componentStack: `at /reset-password/${TOK}` } },
+      tags: { route: `/confirm-email/${TOK}` },
+    });
+    expect(out.extra).toEqual({
+      __serialized__: { error: { url: "https://exemple.test/api/club-approvals/:token" } },
+      deep: [{ a: { b: "/verify-email/:token" } }],
+    });
+    expect(out.contexts).toEqual({ react: { componentStack: "at /reset-password/:token" } });
+    expect(out.tags).toEqual({ route: "/confirm-email/:token" });
+  });
+
+  it("beforeSend masque le jeton des breadcrumbs déjà embarqués dans l'événement", () => {
+    const out = send({
+      breadcrumbs: [
+        { category: "navigation", data: { from: "/login", to: `/invitation/${TOK}` } },
+        { category: "console", message: `GET /api/club-approvals/${TOK}`, data: { arguments: [`/api/club-approvals/${TOK}`] } },
+      ],
+    });
+    expect(out.breadcrumbs).toEqual([
+      { category: "navigation", data: { from: "/login", to: "/invitation/:token" } },
+      { category: "console", message: "GET /api/club-approvals/:token", data: { arguments: ["/api/club-approvals/:token"] } },
+    ]);
+  });
+
+  it("laisse inchangées les valeurs non chaînes (nombre, null, booléen, undefined)", () => {
+    const data = { n: 42, z: null, b: true, u: undefined, list: [0, false, null] };
+    expect(crumb({ category: "console", data: { ...data, list: [...data.list] } }).data).toEqual(data);
+    expect(send({ extra: { ...data, list: [...data.list] } }).extra).toEqual(data);
+  });
+
+  it("le nettoyage récursif est idempotent", () => {
+    const once = send({ extra: { a: [`/api/invitations/${TOK}/accept`, { b: `/doleances/${TOK}` }] } });
+    const snapshot = JSON.parse(JSON.stringify(once)) as unknown;
+    expect(send(once)).toEqual(snapshot);
+  });
+
   it("scrubTokenUrl est idempotent (un événement repassé ne s'abîme pas)", () => {
     const once = scrubTokenUrl(`/api/invitations/${TOK}/accept`);
     expect(scrubTokenUrl(once)).toBe(once);

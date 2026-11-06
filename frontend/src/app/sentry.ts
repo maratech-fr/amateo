@@ -36,14 +36,60 @@ export function scrubTokenUrl(url: string): string {
   return TOKEN_PATTERNS.reduce((acc, pattern) => acc.replace(pattern, `$1${TOKEN_PLACEHOLDER}`), url);
 }
 
+// Profondeur maximale du parcours récursif (au-delà, la valeur part telle quelle).
+const MAX_SCRUB_DEPTH = 6;
+
+/**
+ * Parcours RÉCURSIF d'une valeur quelconque : une chaîne revient nettoyée ; un tableau ou un
+ * objet est nettoyé EN PLACE (propriétés énumérables, plus `message`/`stack` d'une `Error`,
+ * non énumérables) et revient tel quel. Profondeur bornée, cycles ignorés (WeakSet), ne lève
+ * jamais : une propriété non inscriptible ou un getter qui lève est sauté, l'envoi continue.
+ */
+function scrubDeep(value: unknown, depth = 0, seen = new WeakSet<object>()): unknown {
+  if (typeof value === "string") return scrubTokenUrl(value);
+  if (value === null || typeof value !== "object" || depth >= MAX_SCRUB_DEPTH || seen.has(value)) return value;
+  seen.add(value);
+  try {
+    const target = value as Record<string, unknown>;
+    const keys = new Set(Object.keys(target));
+    for (const key of ["message", "stack"]) {
+      if (typeof target[key] === "string") keys.add(key);
+    }
+    for (const key of keys) {
+      try {
+        const current = target[key];
+        const next = scrubDeep(current, depth + 1, seen);
+        if (next !== current) target[key] = next;
+      } catch {
+        // propriété non inscriptible ou getter qui lève : on la saute, sans casser l'envoi
+      }
+    }
+  } catch {
+    // objet exotique (proxy…) dont l'énumération lève : laissé tel quel
+  }
+  return value;
+}
+
 type SentryEvent = {
   request?: { url?: string; query_string?: unknown };
   transaction?: string;
+  message?: string;
   exception?: { values?: { value?: string }[] };
+  logentry?: unknown;
+  extra?: unknown;
+  contexts?: unknown;
+  tags?: unknown;
+  breadcrumbs?: unknown;
 };
 type SentryBreadcrumb = { message?: string; data?: Record<string, unknown> };
 
 function scrubEvent<T extends SentryEvent>(event: T): T {
+  if (typeof event.message === "string") event.message = scrubTokenUrl(event.message);
+  // Nettoyés en place : `logentry.message`/`.params`, `extra` (dont `__serialized__`),
+  // `contexts`, `tags`, et les breadcrumbs déjà embarqués dans l'événement.
+  for (const part of [event.logentry, event.extra, event.contexts, event.tags, event.breadcrumbs]) {
+    scrubDeep(part);
+  }
   if (event.request) {
     if (typeof event.request.url === "string") event.request.url = scrubTokenUrl(event.request.url);
     if (typeof event.request.query_string === "string") {
@@ -60,13 +106,9 @@ function scrubEvent<T extends SentryEvent>(event: T): T {
 
 function scrubBreadcrumb<T extends SentryBreadcrumb>(breadcrumb: T): T {
   if (typeof breadcrumb.message === "string") breadcrumb.message = scrubTokenUrl(breadcrumb.message);
-  const data = breadcrumb.data;
-  if (data) {
-    for (const key of ["from", "to", "url"] as const) {
-      const value = data[key];
-      if (typeof value === "string") data[key] = scrubTokenUrl(value);
-    }
-  }
+  // TOUT `data` : `from`/`to`/`url` des navigations et fetch/xhr, mais aussi `arguments` d'un
+  // breadcrumb console (`console.error("Route error:", error)` y range l'erreur ky et son URL).
+  scrubDeep(breadcrumb.data);
   return breadcrumb;
 }
 
@@ -85,8 +127,9 @@ function scrubBreadcrumb<T extends SentryBreadcrumb>(breadcrumb: T): T {
  *
  * Jeton des pages publiques (FRT-43) : il vit DANS LE CHEMIN, que `dataCollection` ne filtre
  * pas — `beforeSend` le masque dans `request.url`/`transaction` et le message des exceptions
- * (`exception.values[].value`, une erreur ky y cite son URL), `beforeBreadcrumb` dans le
- * `message` et les navigations et fetch/xhr (`data.from`/`to`/`url`). Pas de `beforeSendTransaction` : le
+ * (`exception.values[].value`, une erreur ky y cite son URL), ainsi que, par parcours récursif,
+ * `message`, `logentry`, `extra`, `contexts`, `tags` et les breadcrumbs embarqués ;
+ * `beforeBreadcrumb` dans le `message` et TOUT `data` (navigations, fetch/xhr, `arguments` console). Pas de `beforeSendTransaction` : le
  * tracing n'est pas branché (`tracesSampleRate: 0`, aucune intégration de tracing).
  */
 export function buildSentryOptions(dsn: string, environment: string): SentryInitOptions {
