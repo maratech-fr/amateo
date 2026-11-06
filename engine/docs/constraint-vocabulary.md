@@ -105,7 +105,7 @@
 |---|---|---|
 | `unavailableDays` (`[int]`) | **indisponible** ces jours | jours interdits pour toute équipe du coach. **UNION** si plusieurs contraintes sur le même coach |
 | `availableDays` (`[int]`) | **disponible uniquement** ces jours | whitelist. **INTERSECTION** si plusieurs contraintes |
-| `fromTime` / `untilTime` (`"HH:MM"`, optionnels) | **fenêtre horaire** sur ces jours (Lot C) | absent = journée entière (comportement legacy). Bloque un créneau dont le **début** ∈ `[from, until)` sur le jour visé. En interne : la disponibilité est un ensemble d'**intervalles bloqués `(jour, from, to)`** avec sémantique UNION (par De Morgan, couvre à la fois l'UNION des indispos et l'INTERSECTION des whitelists) |
+| `fromTime` / `untilTime` (`"HH:MM"`, optionnels) | **fenêtre horaire** sur ces jours (Lot C) | absent = journée entière (comportement legacy). Ferme toute séance qui **chevauche** `[from, until)` sur le jour visé (`de < fin et début < à` : une plage qui ne fait que toucher la séance ne la ferme pas ; `interval_bites`, `app/solver/constraints/availability.py`) — ex. `fromTime` 19:00 ferme une séance 18:00-19:30. Seul l'existant déjà posé (rail sans heure de fin) est jugé à l'heure de **début**, `de <= début < à`. En interne : la disponibilité est un ensemble d'**intervalles bloqués `(jour, from, to)`** avec sémantique UNION (par De Morgan, couvre à la fois l'UNION des indispos et l'INTERSECTION des whitelists) |
 
 > Une dispo coach reçue en non-HARD est **appliquée dur quand même** + diagnostic INFO (une personne
 > ne peut pas être à deux endroits).
@@ -177,12 +177,12 @@
 > refusé en **422** à l'écriture.
 
 **Exemple BCCL**
-- `Lionel - Indisponible le vendredi` → `{ COACH_AVAILABILITY, HARD, scope:"COACH", scopeTargetId:<Lionel>, config:{ unavailableDays:[5] } }`
+- `Coach 01 - Indisponible le vendredi` → `{ COACH_AVAILABILITY, HARD, scope:"COACH", scopeTargetId:<Coach 01>, config:{ unavailableDays:[5] } }`
 
 > **À NE PAS confondre avec l'indisponibilité de coach du placement de MATCHS (P4-272 ⑤)** : cette
 > famille gouverne **uniquement** le solveur d'ENTRAÎNEMENT (`/generate`, toujours dure). Le rail
 > matchs (`/place-matches`) reçoit un bloc top-level SÉPARÉ, `coachUnavailabilities`
-> (`match_input_schema.py::CoachUnavailabilitySchema`) — TOUJOURS SOFT (`W_COACH_UNAVAILABLE=60`,
+> (`match_input_schema.py::CoachUnavailabilitySchema`) — TOUJOURS SOFT (`W_COACH_UNAVAILABLE`,
 > `engine/app/solver/match_placement/weights.py`, constante que le calcul ne lit plus : un principal
 > indisponible compte comme « pris », −60 une fois si tous les principaux le sont), jamais un élagage de domaine ni un HARD. Les deux
 > mécanismes ne partagent ni schéma ni mécanisme — voir
@@ -223,13 +223,13 @@ supérieur l'emporte dans l'objectif. Le **minimum de séances** du rang est une
 | `VENUE_AT_MOST_ONE` / capacité | jamais 2 équipes sur le même créneau d'un gymnase non divisible |
 | `TEAM_NO_OVERLAP` | une équipe jamais 2 séances en même temps |
 | `COACH_NO_OVERLAP` | un coach jamais sur 2 séances simultanées |
-| `COACH_PLAYER_NO_OVERLAP` | un coach qui **joue** aussi n'est jamais convoqué à 2 séances simultanées (ex. Mathis coach U13M2 + joueur U21M1). **Exemption séance de bloc** : sur une case où une séance de bloc est ACTIVE, les deux équipes s'entraînent physiquement ENSEMBLE — la personne double-rôle n'y tient qu'un rôle à la fois, l'anti-chevauchement s'y efface (borne `≤ 1 + Σb`). L'exemption exige la MÊME case (même gymnase + même heure de début) ET une séance de bloc active : une coïncidence solo (case sans séance de bloc), un chevauchement à débuts différents ou un autre gymnase restent des conflits |
+| `COACH_PLAYER_NO_OVERLAP` | un coach qui **joue** aussi n'est jamais convoqué à 2 séances simultanées (ex. Coach 02 coach U13M2 + joueur U21M1). **Exemption séance de bloc** : sur une case où une séance de bloc est ACTIVE, les deux équipes s'entraînent physiquement ENSEMBLE — la personne double-rôle n'y tient qu'un rôle à la fois, l'anti-chevauchement s'y efface (borne `≤ 1 + Σb`). L'exemption exige la MÊME case (même gymnase + même heure de début) ET une séance de bloc active : une coïncidence solo (case sans séance de bloc), un chevauchement à débuts différents ou un autre gymnase restent des conflits |
 | `MIN_SESSIONS` | chaque équipe vise son nombre de séances/semaine (**cible soft**, cf. ENG-18) |
-| `COACH_REST_DAY` | **dur** : chaque coach a ≥ 1 jour de repos du lundi au vendredi (≤ 4 jours travaillés). Ignoré pour un coach dont le `maxDaysOverride` est déjà ≤ 4 |
+| `COACH_REST_DAY` | **dur par défaut, réglable** (le cran PREFERRED en fait un objectif, avec alerte si non tenu) : chaque coach a ≥ 1 jour de repos du lundi au vendredi (≤ 4 jours travaillés). Ignoré pour un coach dont le `maxDaysOverride` est déjà ≤ 4 |
 | `SALARIE_DISTRIBUTION` | **objectif, jamais un blocage** (quel que soit le cran stocké, décision 2026-10-31) : le solveur vise au moins un coach salarié (`isEmployee`) présent chaque jour lun-ven où le club a un créneau ; un jour sans salarié donne une alerte factuelle (`implicit_rule_not_honored`, WARNING). L'alerte distingue un jour où un salarié pouvait venir d'un jour où aucun n'était disponible (indisponibilités de coach lues au début du créneau). Inactif si le club compte moins de 2 salariés |
-| `MAX_CONSECUTIVE_SESSIONS` | **dur** : une même personne n'est jamais sur les 3 créneaux d'un enchaînement A→B→C le même jour, **tous gymnases confondus** |
+| `MAX_CONSECUTIVE_SESSIONS` | **dur par défaut, réglable** (le cran PREFERRED en fait un objectif, avec alerte si non tenu) : une même personne n'est jamais sur les 3 créneaux d'un enchaînement A→B→C le même jour, **tous gymnases confondus** |
 | `ONE_SESSION_PER_DAY` | **dur** : ≤ 1 séance par jour et par équipe, sans exception (le drapeau `allowMultipleSessionsPerDay` est retiré du contrat, P4-79) |
-| `AGE_ASCENDING` | **dur** : à gymnase et jour égaux, une équipe plus jeune ne passe pas après une plus âgée. Exempt si `ageMin` est absent (Loisir, Baby) ou si l'équipe est verrouillée en HARD |
+| `AGE_ASCENDING` | **dur par défaut, réglable** (le cran PREFERRED en fait un objectif, avec alerte si non tenu) : à gymnase et jour égaux, une équipe plus jeune ne passe pas après une plus âgée. Exempt si `ageMin` est absent (Loisir, Baby) ou si l'équipe est verrouillée en HARD |
 | `MAX_CONSECUTIVE_DAYS` | **dur ou soft, au choix du club** : une ÉQUIPE ne s'entraîne pas `maxConsecutiveDays` jours de suite (défaut 3, bornes 2-5). ⚠ À ne pas confondre avec `MAX_CONSECUTIVE_SESSIONS`, presque homonyme : celle-là vise une PERSONNE sur des créneaux dos-à-dos DANS UNE JOURNÉE. **Seule règle dont l'absence du payload signifie NON APPLIQUÉE** — les autres retombent sur HARD (P2-42). Le solveur ne voit pas les séances verrouillées dans sa fenêtre : un diagnostic post-solve `implicit_rule_not_honored` (`ruleKey` `maxConsecutiveDays`, WARNING) lit les séances POSÉES, verrous compris, et nomme une équipe (ou un groupe mutualisé) qui atteint `maxConsecutiveDays` jours de suite, un message par suite, la semaine ne bouclant pas |
 | jour de repos après match | bonus soft (`add_match_day_rest_bonus`) : préfère laisser le lendemain d'un match libre |
 | espacement des jours (`spacing`) | **bonus soft** (`add_spacing_penalty`, poids `−2`) : malus sur deux séances d'une même équipe sur des jours consécutifs (jour, jour+1) — préfère espacer, ne bloque jamais (ALIGN-06) |
