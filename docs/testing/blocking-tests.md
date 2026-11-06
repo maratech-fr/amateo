@@ -9,6 +9,9 @@
 
 **blocking-tests** (must pass first — steps du job, un par ligne, tag = ce qui est gardé) :
 `Unit/Entity/UserInterfaceContractTest` (boot conteneur : `eraseCredentials`) ·
+`Unit/Documentation/CiWorkflowRegimeTest` (NR de tous les axes : régime de la CI sur le runner
+auto-hébergé — routage par variable, garde fork, gate complet sur chaque PR, étanchéité des jobs
+sur le démon partagé, bloquants en deux processus) ·
 `Security/LoginFailureCopyTest` (axe *auth & memberships*, P4-263 : le refus de `/api/login` parle
 français — « Identifiants invalides. » via le socle `symfony/translation` + `default_locale: fr` —
 ET reste BYTE-IDENTIQUE entre mauvais mot de passe et compte non vérifié [anti-énumération de

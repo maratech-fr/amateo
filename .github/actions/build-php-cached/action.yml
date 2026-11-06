@@ -1,9 +1,15 @@
-# P4-90 — pré-construit l'image php UNE fois avec le cache GitHub Actions, puis la
-# charge dans le démon local sous les trois noms que docker compose attend
-# (scheduler-php-fpm / -messenger-worker / -cron-runner : même Dockerfile, même
-# étage `base`). `docker compose up -d --wait …` trouve alors les images déjà
-# présentes et NE REBUILDE PAS : la couche chère (apt + 8 extensions + pecl
-# redis) survit d'un run à l'autre au lieu d'être recompilée ~7 fois par run.
+# P4-90 — pré-construit l'image php UNE fois, sous les trois noms que docker compose attend
+# (`<projet>-php-fpm` / `-messenger-worker` / `-cron-runner` : même Dockerfile, même étage
+# `base`). `docker compose up -d --wait …` trouve alors les images déjà présentes et NE REBUILDE
+# PAS : la couche chère (apt + 8 extensions + pecl redis) n'est pas recompilée ~7 fois par run.
+#
+# Deux chemins selon l'exécutant (`runner.environment`) :
+#   - github-hosted : buildx + cache GitHub Actions (type=gha), chargé dans le démon sous les
+#     noms du projet compose du job (COMPOSE_PROJECT_NAME, `ci-<run>-<tentative>-<job>`) — sans
+#     quoi compose chercherait `<projet>-php-fpm` et rebâtirait (retour arrière = variables de
+#     routage supprimées : ce chemin doit rester juste).
+#   - self-hosted   : `docker compose build` — le cache de couches du démon PERSISTANT du runner
+#     tient lieu de cache, sans aller-retour vers le cache GHA.
 #
 # ⚠ Les build-args UID/GID doivent matcher ceux que compose résout depuis .env
 # (les jobs y écrivent USER_ID/GROUP_ID = id du runner) — sinon compose verrait
@@ -11,10 +17,10 @@
 # usermod du Dockerfile poserait le mauvais propriétaire sur les bind-mounts.
 #
 # ⚠ Le job build-docker n'utilise PAS cette action, à dessein : son rôle est de
-# prouver que les VRAIS builds (dev + prod targets) passent de zéro — le mettre
-# en cache rendrait sa garantie creuse.
+# prouver que les VRAIS builds (dev + prod targets) passent — le mettre en cache GHA rendrait sa
+# garantie creuse.
 name: Build php image (GHA cache)
-description: Pre-build docker/php/Dockerfile with type=gha cache and load it under the compose image names.
+description: Pre-build docker/php/Dockerfile (type=gha cache on GitHub-hosted, daemon cache on self-hosted) under the compose image names.
 runs:
   using: composite
   steps:
@@ -25,9 +31,11 @@ runs:
         echo "uid=$(id -u)" >> "$GITHUB_OUTPUT"
         echo "gid=$(id -g)" >> "$GITHUB_OUTPUT"
 
-    - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
+    - if: runner.environment == 'github-hosted'
+      uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
 
-    - uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
+    - if: runner.environment == 'github-hosted'
+      uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
       with:
         context: .
         file: docker/php/Dockerfile
@@ -44,8 +52,14 @@ runs:
           GID=${{ steps.ids.outputs.gid }}
           WITH_PCOV=1
         tags: |
-          scheduler-php-fpm:latest
-          scheduler-messenger-worker:latest
-          scheduler-cron-runner:latest
+          ${{ env.COMPOSE_PROJECT_NAME || 'scheduler' }}-php-fpm:latest
+          ${{ env.COMPOSE_PROJECT_NAME || 'scheduler' }}-messenger-worker:latest
+          ${{ env.COMPOSE_PROJECT_NAME || 'scheduler' }}-cron-runner:latest
         cache-from: type=gha,scope=ci-php
         cache-to: type=gha,scope=ci-php,mode=max
+
+    # Args de docker-compose.yml (UID/GID depuis .env, WITH_PCOV=1 sur php-fpm) : c'est compose
+    # lui-même qui bâtit, sous les noms qu'il cherchera ensuite.
+    - if: runner.environment == 'self-hosted'
+      shell: bash
+      run: .github/scripts/retry.sh 2 docker compose build php-fpm messenger-worker cron-runner

@@ -19,7 +19,8 @@ use Symfony\Component\Yaml\Yaml;
  * un agent : quand elle ment sur ce qui garde le dépôt, tout ce qui en découle est faux.
  *
  * ⚠ Ce que ce test défend, au-delà de la liste : **`#[Group('phase1')]` ne fait pas un gate.**
- * 143 fichiers portent l'annotation, ~24 sont des steps. Un NR d'axe structurant (§7.1) annoté
+ * Bien plus de fichiers portent l'annotation que le gate n'en lance (2 steps, ~133 chemins : le
+ * step « Blocking suite » + le NR tenant filtré). Un NR d'axe structurant (§7.1) annoté
  * mais non ajouté au job tourne dans `backend-tests` — après le gate, sans bloquer `build-docker`.
  * Le piège a mordu deux fois (P2-9ter, puis DOC-26) ; ce garde est ce qui l'empêche de mordre
  * une troisième.
@@ -73,6 +74,21 @@ final class BlockingTestsListMatchesCiTest extends TestCase
     }
 
     /**
+     * Promesse : un chemin de test cité dans un COMMENTAIRE shell du `run:` (la raison d'être de
+     * chaque fichier, conservée au-dessus de son chemin dans le step unique « Blocking suite »)
+     * ne compte pas comme bloquant — seul un chemin réellement passé à PHPUnit gate.
+     */
+    public function testACommentedPathInAGatingRunIsNotCountedAsGating(): void
+    {
+        $run = "# Gardait aussi tests/Unit/Legacy/RetiredGuardTest.php avant sa fusion.\n"
+            . "  # tests/Security/IndentedCommentTest.php\n"
+            . "FILES=\"\$FILES tests/Unit/Entity/UserInterfaceContractTest.php\"\n"
+            . 'php -d memory_limit=1G vendor/bin/phpunit --group phase1 $FILES';
+
+        self::assertSame(['UserInterfaceContractTest'], $this->classesLaunchedBy($run));
+    }
+
+    /**
      * Les classes réellement lancées par les steps du job, lues dans le YAML.
      *
      * @return list<string>
@@ -94,8 +110,7 @@ final class BlockingTestsListMatchesCiTest extends TestCase
             if (!\is_array($step) || !\is_string($step['run'] ?? null)) {
                 continue;
             }
-            preg_match_all('#tests/\S*?/?(\w+Test)\.php#', $step['run'], $found);
-            foreach ($found[1] as $class) {
+            foreach ($this->classesLaunchedBy($step['run']) as $class) {
                 $classes[$class] = true;
             }
         }
@@ -103,6 +118,20 @@ final class BlockingTestsListMatchesCiTest extends TestCase
         self::assertNotEmpty($classes, \sprintf('Aucun test lancé par « %s » — le parsing du workflow a-t-il cassé ?', self::JOB));
 
         return $this->sorted($classes);
+    }
+
+    /**
+     * Les classes de test qu'un `run:` passe réellement à PHPUnit — lignes de commentaire shell
+     * (`^\s*#`) ignorées.
+     *
+     * @return list<string>
+     */
+    private function classesLaunchedBy(string $run): array
+    {
+        $commands = (string) preg_replace('/^\s*#.*$/m', '', $run);
+        preg_match_all('#tests/\S*?/?(\w+Test)\.php#', $commands, $found);
+
+        return array_values(array_unique($found[1]));
     }
 
     /**

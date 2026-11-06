@@ -1,0 +1,27 @@
+# Démonte la stack compose du JOB (projet `ci-<run>-<tentative>-<job>`, porté par l'env
+# COMPOSE_PROJECT_NAME / COMPOSE_FILE du job) et retire les tags de scan du run.
+#
+# Sur le runner auto-hébergé, le démon Docker est PERSISTANT et partagé par plusieurs runners :
+# sans ce démontage, conteneurs, volumes (base, node_modules), réseaux et images du projet
+# s'accumuleraient d'un job à l'autre. Appelé en DERNIER step, `if: always()`. Doublé côté
+# runner par le hook `.github/runner/job-completed.sh` (job annulé avant ce step).
+#
+# Ne rougit JAMAIS : un démontage raté ne doit pas changer le verdict d'un job — le hook du
+# runner rattrape. Sans entrée ni sortie.
+name: Tear down the compose stack
+description: docker compose down -v --rmi local --remove-orphans on the job's project, plus the run's scan tags. Never fails.
+runs:
+  using: composite
+  steps:
+    - name: Tear down the compose stack
+      shell: bash
+      run: |
+        set -u
+        # Profils dev + tools : `frontend-dev` et `e2e` font partie du projet quand le job les a lancés.
+        docker compose --profile dev --profile tools down -v --rmi local --remove-orphans || true
+        # Tags de scan : posés par `build-docker` seul. Un autre job du même run qui finit pendant
+        # son scan Trivy ne doit pas les lui retirer.
+        if [ "${GITHUB_JOB}" = "build-docker" ]; then
+          docker images --format '{{.Repository}}:{{.Tag}}' | grep "^scan-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}/" | xargs -r docker rmi -f || true
+        fi
+        exit 0
