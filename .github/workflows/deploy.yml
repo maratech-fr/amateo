@@ -482,16 +482,34 @@ jobs:
     # (`contents: read`) ; `packages:` est donc absent ici — inutile pour ce job.
     permissions:
       contents: write
+    # Le GITHUB_TOKEN est refusé dès que le commit poussé change un fichier de
+    # `.github/workflows/` : le push part avec RELEASE_BRANCH_TOKEN (PAT fine-grained,
+    # dépôt seul, Contents + Workflows en écriture), secret CONFINÉ à l'environnement
+    # GitHub `release` — politique de branches : `main` seule (deploy.yml est toujours
+    # dispatché sur la branche par défaut, hotfix compris). docs/ops/deploy.md §release.
+    environment: release
     steps:
+      # Jeton absent : on rougit AVANT tout geste (la prod, déjà déployée, reste saine).
+      # Seule la PRÉSENCE du secret est lue (booléen), jamais sa valeur.
+      - name: Check RELEASE_BRANCH_TOKEN
+        env:
+          HAS_TOKEN: ${{ secrets.RELEASE_BRANCH_TOKEN != '' }}
+        run: |
+          if [ "$HAS_TOKEN" != "true" ]; then
+            echo "::error::secret RELEASE_BRANCH_TOKEN absent — release ne peut pas être recalée (docs/ops/deploy.md)"
+            exit 1
+          fi
+
       # On checkoute le commit déployé lui-même (fetch-depth 0 : tout l'historique
       # + les tags, pour que ce commit soit présent localement quel que soit le
-      # déclencheur). persist-credentials (défaut d'actions/checkout) enregistre le
-      # GITHUB_TOKEN du job — porté au scope `contents: write` ci-dessus — comme
-      # credential git : le push s'authentifie SANS secret dans `env:` (convention).
+      # déclencheur). persist-credentials (défaut d'actions/checkout) enregistre
+      # RELEASE_BRANCH_TOKEN comme credential git : le push s'authentifie SANS secret
+      # dans `env:` (convention).
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: ${{ needs.build-push.outputs.deployed_sha }}
           fetch-depth: 0
+          token: ${{ secrets.RELEASE_BRANCH_TOKEN }}
 
       - name: Point `release` at the deployed commit
         env:

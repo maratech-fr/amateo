@@ -118,6 +118,65 @@ final class DeployWorkflowDispatchContractTest extends TestCase
     }
 
     /**
+     * Promesse : `release` se recale même quand le déploiement embarque un changement de workflow
+     * — le push part avec le jeton confiné à l'environnement GitHub `release` (le GITHUB_TOKEN
+     * est refusé dès qu'un fichier de `.github/workflows/` change), et un jeton absent rougit
+     * AVANT tout checkout, la prod restant saine.
+     *
+     * Lecture statique ; preuve réelle = le premier déploiement qui embarque ce changement.
+     */
+    public function testUpdateReleaseBranchPushesWithTheTokenOfTheReleaseEnvironment(): void
+    {
+        $workflow = Yaml::parseFile(self::WORKFLOW);
+        self::assertIsArray($workflow, 'deploy.yml ne parse pas en mapping YAML.');
+
+        $job = $workflow['jobs']['update-release-branch'] ?? null;
+        self::assertIsArray($job, 'deploy.yml doit déclarer le job `update-release-branch`.');
+
+        $environment = $job['environment'] ?? null;
+        $environmentName = \is_array($environment) ? ($environment['name'] ?? null) : $environment;
+        self::assertSame('release', $environmentName, '`update-release-branch` porte `environment: release` : le secret RELEASE_BRANCH_TOKEN ne vit que là.');
+
+        $steps = $job['steps'] ?? null;
+        self::assertIsArray($steps, '`update-release-branch` doit déclarer ses `steps`.');
+
+        $check = null;
+        $checkout = null;
+        foreach (array_values($steps) as $i => $step) {
+            if (!\is_array($step)) {
+                continue;
+            }
+            if ('Check RELEASE_BRANCH_TOKEN' === ($step['name'] ?? null)) {
+                $check = $i;
+            }
+            if (\is_string($step['uses'] ?? null) && str_starts_with($step['uses'], 'actions/checkout@') && null === $checkout) {
+                $checkout = $i;
+            }
+        }
+        self::assertIsInt($check, '`update-release-branch` doit porter le step « Check RELEASE_BRANCH_TOKEN ».');
+        self::assertIsInt($checkout, '`update-release-branch` doit checkouter le commit déployé.');
+        self::assertLessThan($checkout, $check, '« Check RELEASE_BRANCH_TOKEN » vient AVANT le checkout : un jeton absent rougit avant tout geste.');
+
+        $steps = array_values($steps);
+        $checkStep = $steps[$check];
+        self::assertIsArray($checkStep);
+        self::assertSame(
+            '${{secrets.RELEASE_BRANCH_TOKEN!=\'\'}}',
+            $this->normalizeExpression(\is_string($checkStep['env']['HAS_TOKEN'] ?? null) ? $checkStep['env']['HAS_TOKEN'] : ''),
+            'Le contrôle lit la PRÉSENCE du secret par env (HAS_TOKEN = secrets.RELEASE_BRANCH_TOKEN != \'\'), jamais sa valeur.',
+        );
+        self::assertStringContainsString('exit 1', \is_string($checkStep['run'] ?? null) ? $checkStep['run'] : '', 'Jeton absent : le step ÉCHOUE (`exit 1`).');
+
+        $checkoutStep = $steps[$checkout];
+        self::assertIsArray($checkoutStep);
+        self::assertSame(
+            '${{secrets.RELEASE_BRANCH_TOKEN}}',
+            $this->normalizeExpression(\is_string($checkoutStep['with']['token'] ?? null) ? $checkoutStep['with']['token'] : ''),
+            'Le checkout persiste RELEASE_BRANCH_TOKEN comme credential git : le `git push` de `release` s\'authentifie avec lui, pas avec le GITHUB_TOKEN.',
+        );
+    }
+
+    /**
      * Promesse (CLIQUET déjà VERT — Q1 fondateur) : un tag v* CONSTRUIT toujours.
      *
      * Ce test est vert aujourd'hui et le reste : il garde le fait que le push d'un tag `v*`
