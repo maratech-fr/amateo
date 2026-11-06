@@ -96,7 +96,7 @@ gardée par le NR bloquant `Security/LeagueWindowSuggestionShareTest`
 ⑤ dans la section Coachs ci-après). Chaque règle est une **ligne compacte** (résumé + ✎ + 🗑 au
 repos, dépliée en champs à l'édition, P4-271) : un ou
 plusieurs jours (`DayToggles`, bascule multi-sélection), un type — **Obligatoire** (HARD, honorée
-par le placement) ou **Préférée** (PREFERRED, une préférence, `W_CLUB_RULE=30`, §3) — et une
+par le placement) ou **Préférée** (PREFERRED, une préférence, `W_CLUB_RULE`, §3 ; valeur dans `match_placement/weights.py`) — et une
 fourchette de coup d'envoi « pas avant »/« pas après » (chaque borne facultative, au moins une
 exigée par le serveur). Une ligne pointillée en bas ajoute une règle (POST) ; chaque règle existante
 s'édite en place (PUT, bouton Enregistrer actif seulement si modifiée et complète) et se supprime

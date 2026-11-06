@@ -88,6 +88,14 @@ pas une donnée de l'utilisateur (`docs/security/rgpd.md` §5). Activation = DOU
 (poser `VITE_SENTRY_DSN` au build **et** autoriser l'hôte d'ingestion dans `connect-src` —
 `docker/frontend/csp.conf`, garde `frontend/tooling/sentryCspGuard.ts`) ; sans DSN le SDK est inerte.
 
+**Le jeton des pages publiques (CLAUDE.md §6) vit dans le CHEMIN**, que `dataCollection` ne filtre
+pas (`urlQueryParams` ne couvre que la query string) : `scrubTokenUrl` (`frontend/src/app/sentry.ts`)
+le remplace par `:token`. `beforeSend` l'applique à l'URL de l'événement (`request.url`,
+`query_string`), au nom de transaction et aux valeurs d'exception (une erreur ky y cite son URL) ;
+`beforeBreadcrumb` au message et aux URL des navigations et appels fetch/xhr (`data.from`/`to`/`url`).
+**Toute nouvelle route publique à jeton — page ou API — s'ajoute à `TOKEN_PATTERNS`** (maison unique
+de la liste) et à `sentryOptions.test.ts`, sinon son jeton part chez Sentry.
+
 ## Se servir de la corrélation (support)
 
 1. Le club donne la « réf. incident » affichée (8 chars) — ou le canal signalement la joint.

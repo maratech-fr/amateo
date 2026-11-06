@@ -46,11 +46,14 @@
 
 | Besoin | Mécanisme | Statut | Exemple BCCL |
 |---|---|---|---|
-| « Coach indisponible tel jour » | COACH_AVAILABILITY `unavailableDays` (UNION, dur) | ✅ | Lionel indispo vendredi. ⚠ **ALIGN-19** : honoré seulement pour un entraîneur **PRINCIPAL** d'au moins une équipe (`parsing.py`, rôle absent traité comme principal) — un coach **adjoint partout** dont l'indisponibilité est saisie ne ferme AUCUN créneau ; elle est **Indicative** (`PreSolvePreventionWarnings::adjointOnlyUnavailabilityIsIndicative`, récap + écran Contraintes des matchs), jamais bloquante |
+| « Coach indisponible tel jour » | COACH_AVAILABILITY `unavailableDays` (UNION, dur) | ✅ | Coach 01 indispo vendredi. ⚠ **ALIGN-19** : honoré seulement pour un entraîneur **PRINCIPAL** d'au moins une équipe (`parsing.py`, rôle absent traité comme principal) — un coach **adjoint partout** dont l'indisponibilité est saisie ne ferme AUCUN créneau ; elle est **Indicative** (`PreSolvePreventionWarnings::adjointOnlyUnavailabilityIsIndicative`, récap + écran Contraintes des matchs), jamais bloquante |
 | « Coach disponible uniquement tel jour » | COACH_AVAILABILITY `availableDays` (INTERSECTION, dur) — mode « disponible uniquement » du wizard | ✅ *(le wizard l'expose)* | coach dispo seulement le mardi |
 | « Coach indispo/dispo sur une **plage horaire** tel jour » | COACH_AVAILABILITY `fromTime`/`untilTime` (Lot C, dur) | ✅ (pose libre et déplacement : chevauchement de la séance ; existant : heure de début) | dispo le mardi qu'à partir de 20h |
 | « Un coach ne peut pas être sur 2 séances à la fois » | `COACH_NO_OVERLAP` (implicite) | ✅ | — |
-| « Un coach qui joue aussi n'est pas convoqué en double » | `COACH_PLAYER_NO_OVERLAP` (implicite) | ✅ | Mathis coach U13M2 + joueur U21M1 ; Florian coach U18F3 + joueur Loisir 3 |
+| « Un coach qui joue aussi n'est pas convoqué en double » | `COACH_PLAYER_NO_OVERLAP` (implicite) | ✅ | Coach 02 coach U13M2 + joueur U21M1 ; Coach 03 coach U18F3 + joueur Loisir 3 |
+| « Mutualiser des équipes : une séance de groupe » | `sharedBlocks` émis par `ScheduleConstraintBuilder` — un coach disponible du groupe suffit (`engine/docs/constraint-vocabulary.md` § Bloc de mutualisation) | ✅ | séance commune de deux équipes |
+| « Deux équipes jamais en même temps » | passerelle `teamLinks`, intensité `MANDATORY` (dur) ou `PREFERRED` (soft) — l'entraînement seulement, le rail matchs a sa pénalité propre | ✅ | deux équipes qui partagent des joueurs |
+| « Garder ses créneaux de saison » | contrainte `SEASON_SLOTS` (née de « Transférer au planning », jamais saisie) → placements de socle `keep` (`withSeasonSlotKeepReferences`) | 🟡 génération pleine d'un plan de période seulement ; en comblement, régime socle commun (ALIGN-23) | équipe qui garde son jour+heure du socle |
 
 ## Axe PRIORITÉ / RÉPARTITION
 

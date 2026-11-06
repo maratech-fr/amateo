@@ -314,7 +314,7 @@ match sans candidat licite sort NOMMÉ (`no_access_window` · `no_league_interse
 sept valeurs). `club_rule_no_slot` (P4-272 ③) : un créneau était licite (accès + ligue) mais TOUTES
 les règles CLUB HARD couvrant le jour l'ont refusé (sémantique ET — chaque règle HARD du jour doit
 accepter le coup d'envoi) ; une règle PREFERRED ne vide jamais un domaine, elle pénalise seulement
-le candidat retenu (`W_CLUB_RULE=30`, §3 SOFT ci-dessous). `team_venue_forbidden` (P4-272 ④) : un
+le candidat retenu (`W_CLUB_RULE`, §3 SOFT ci-dessous). `team_venue_forbidden` (P4-272 ④) : un
 gymnase interdit à l'équipe (scope TEAM HARD) ne rejoint JAMAIS son domaine — un créneau y aurait
 été légal (accès ∩ ligue ∩ règles CLUB) mais uniquement sur un gymnase banni ; **cette raison est
 testée AVANT `club_rule_no_slot`** dans la même passe de résolution (un slot déjà refusé par une
@@ -428,7 +428,7 @@ personne du solveur ne provient plus JAMAIS d'un trajet ni d'un échauffement �
 fenêtre salle `[kickoff, kickoff+matchMinutes]` (lot M + décision B).
 
 **SOFT (golden-épinglés)** : conflit personne (joueuse active, ou coach MAIN : voir le terme coach
-ci-dessous) −60 · indisponibilité de coach violée −60 (`W_COACH_UNAVAILABLE=60`, P4-272 ⑤,
+ci-dessous) −60 · indisponibilité de coach violée −60 (`W_COACH_UNAVAILABLE`, P4-272 ⑤,
 `match_placement/weights.py` — constante qui n'est plus lue par le calcul, roadmap P4-446 ; même poids qu'un
 conflit personne ; le coup d'envoi du candidat retenu tombe dans une plage d'un coach de l'équipe,
 sur un jour couvert par cette plage ; jamais d'élagage de domaine, jamais de raison `unplaced` — le
@@ -443,7 +443,7 @@ coup d'envoi ; tous les principaux pris = −60 une seule fois, −10 s'il reste
 principal libre = 0 (équipe sans principal ou à adjoint seul : inchangée) · passerelle `NOT_SIMULTANEOUS` violée −40 (⚠ **asymétrie
 délibérée** : le radar §2 ne signale jamais cette famille, le solveur GARDE cette préférence
 souple — sens sûr, une pénalité SOFT ne bloque jamais rien, à ne pas « aligner » en la retirant) ·
-règle de match CLUB PREFERRED violée −30 (`W_CLUB_RULE=30`, P4-272 ③, `match_placement/weights.py` —
+règle de match CLUB PREFERRED violée −30 (`W_CLUB_RULE`, P4-272 ③, `match_placement/weights.py` —
 arbitrage fondateur : plus qu'une habitude +15+5, moins qu'une passerelle `NOT_SIMULTANEOUS` −40 ou
 qu'un conflit coach −60 ; une règle HARD n'entre jamais dans l'objectif, elle élague le domaine, §3
 ci-dessus) · habitude heure +15/gymnase +5 · fenêtre

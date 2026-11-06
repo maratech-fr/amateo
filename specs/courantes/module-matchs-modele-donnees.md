@@ -73,7 +73,7 @@ vigueur, il n'a rien à comparer.
   formes :
   - **CLUB** (③) : `scopeTargetId`/`venueId` nuls, `daysOfWeek` + fourchette portent la règle
     (« pas après 21h le samedi ») — HARD (honorée par le solveur, le coup d'envoi doit tomber dans
-    la fourchette les jours couverts) ou PREFERRED (pénalité `W_CLUB_RULE=30`, le solveur l'évite
+    la fourchette les jours couverts) ou PREFERRED (pénalité `W_CLUB_RULE` (valeur dans `match_placement/weights.py`), le solveur l'évite
     sans jamais bloquer). Le serveur refuse une règle sans AUCUNE des deux bornes ni sans AUCUN jour
     (`MatchConstraintStateProcessor::applyClubRule`).
   - **TEAM** (④, interdiction de gymnase) : `scopeTargetId` = l'équipe, `venueId` = le gymnase
@@ -101,7 +101,7 @@ vigueur, il n'a rien à comparer.
   seules règles CLUB HARD ressort `club_rule_no_slot`, un domaine vidé par un gymnase interdit
   alors qu'un créneau licite y existait ressort `team_venue_forbidden` (précédence sur
   `club_rule_no_slot`, §3) ; une indisponibilité COACH ne vide JAMAIS de domaine — elle pénalise
-  seulement le candidat retenu (`W_COACH_UNAVAILABLE=60`, §3 SOFT) ; les amicaux (`competitionId`
+  seulement le candidat retenu (`W_COACH_UNAVAILABLE`, §3 SOFT ; valeur dans `match_placement/weights.py`) ; les amicaux (`competitionId`
   nul) en sont exemptés structurellement, comme l'enveloppe ligue. Une pose MANUELLE hors d'une
   règle CLUB HARD ou dans un gymnase interdit à l'équipe reste PERMISE — le radar la SIGNALE
   (`CLUB_RULE_VIOLATION`/`TEAM_VENUE_FORBIDDEN`, §2), il ne la bloque pas ; **une indisponibilité
