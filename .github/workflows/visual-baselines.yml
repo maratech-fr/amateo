@@ -113,11 +113,11 @@ jobs:
         run: docker compose up -d --wait messenger-worker
 
       # Même mécanique que le job e2e de ci.yml : Vite dans `frontend-dev` (busybox : `wget`,
-      # jamais `curl`), attente bornée.
+      # jamais `curl`), attente bornée à 300 essais (~5 min, `npm ci` sur volume neuf).
       - name: Start Vite dev server
         run: |
           docker compose --profile dev up -d frontend-dev
-          for i in $(seq 1 180); do
+          for i in $(seq 1 300); do
             docker compose --profile dev exec -T frontend-dev wget -qO- http://localhost:5173 >/dev/null 2>&1 && exit 0
             sleep 1
           done
