@@ -1,5 +1,6 @@
 # Dependabot — scan automatisé des dépendances (audit supply-chain, le -10).
-# Couvre les 4 écosystèmes du monorepo. MAJ hebdomadaires, groupées par
+# Couvre les 4 écosystèmes du monorepo. MAJ MENSUELLES (chaque PR coûte un run
+# complet de la CI sur le runner auto-hébergé), groupées par
 # écosystème pour limiter le bruit de PRs ; les alertes de sécurité (GHSA)
 # ouvrent des PRs même hors fenêtre grâce à Dependabot security-updates
 # (activé au niveau du repo : Settings → Code security → Dependabot).
@@ -11,7 +12,7 @@ updates:
   - package-ecosystem: "pip"
     directory: "/engine"
     schedule:
-      interval: "weekly"
+      interval: "monthly"
     # SEC-14 : 7 jours de refroidissement — un paquet publié il y a une heure
     # peut être un hijack de mainteneur ; on laisse la communauté le voir
     # d'abord. Les security-updates GHSA passent outre (voulu).
@@ -28,7 +29,7 @@ updates:
   - package-ecosystem: "npm"
     directory: "/frontend"
     schedule:
-      interval: "weekly"
+      interval: "monthly"
     # SEC-14 : 7 jours de refroidissement — un paquet publié il y a une heure
     # peut être un hijack de mainteneur ; on laisse la communauté le voir
     # d'abord. Les security-updates GHSA passent outre (voulu).
@@ -45,7 +46,7 @@ updates:
   - package-ecosystem: "composer"
     directory: "/backend"
     schedule:
-      interval: "weekly"
+      interval: "monthly"
     # SEC-14 : 7 jours de refroidissement — un paquet publié il y a une heure
     # peut être un hijack de mainteneur ; on laisse la communauté le voir
     # d'abord. Les security-updates GHSA passent outre (voulu).
@@ -70,7 +71,7 @@ updates:
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
-      interval: "weekly"
+      interval: "monthly"
     # SEC-14 : 7 jours de refroidissement — un paquet publié il y a une heure
     # peut être un hijack de mainteneur ; on laisse la communauté le voir
     # d'abord. Les security-updates GHSA passent outre (voulu).
@@ -82,87 +83,38 @@ updates:
         patterns: ["*"]
     labels: ["dependencies", "ci"]
 
-  # Docker — images de base des Dockerfiles (lit les `FROM`). Une entrée par
-  # DOSSIER contenant un Dockerfile : Dependabot docker ne scanne qu'un dossier
-  # à la fois et détecte tout fichier dont le nom contient « dockerfile »
-  # (docker/postgres/Dockerfile.prod inclus). Même cadence/refroidissement/
-  # regroupement/labels que les écosystèmes ci-dessus.
+  # Docker — images de base des Dockerfiles (lit les `FROM`). Une seule entrée sur les
+  # cinq DOSSIERS qui portent un Dockerfile (`directories`) et un seul groupe : une PR mensuelle
+  # au lieu de cinq. Dependabot docker détecte tout fichier dont le nom contient « dockerfile »
+  # (docker/postgres/Dockerfile.prod inclus). Les `ignore` sont l'union de ceux des anciennes
+  # entrées par dossier (chacun ne vise qu'une image).
   - package-ecosystem: "docker"
-    directory: "/docker/php"
+    directories:
+      - "/docker/php"
+      - "/docker/engine"
+      - "/docker/frontend"
+      - "/docker/pdf-worker"
+      - "/docker/postgres"
     schedule:
-      interval: "weekly"
+      interval: "monthly"
     cooldown:
       default-days: 7
     open-pull-requests-limit: 5
     groups:
-      docker-php:
+      docker-images:
         patterns: ["*"]
         update-types: ["minor", "patch"]
-    # PHP 8.5 : décision fondateur 2026-10-16 — on reste en 8.4 pour le moment (#1207 fermée ;
-    # la montée est une PR dédiée, ligne de roadmap). Les correctifs 8.4.x passent toujours.
     ignore:
+      # PHP 8.5 : décision fondateur 2026-10-16 — on reste en 8.4 pour le moment (#1207 fermée ;
+      # la montée est une PR dédiée, ligne de roadmap). Les correctifs 8.4.x passent toujours.
       - dependency-name: "php"
         versions: [">=8.5"]
-    labels: ["dependencies", "docker"]
-
-  - package-ecosystem: "docker"
-    directory: "/docker/engine"
-    schedule:
-      interval: "weekly"
-    cooldown:
-      default-days: 7
-    open-pull-requests-limit: 5
-    groups:
-      docker-engine:
-        patterns: ["*"]
-        update-types: ["minor", "patch"]
-    labels: ["dependencies", "docker"]
-
-  - package-ecosystem: "docker"
-    directory: "/docker/frontend"
-    schedule:
-      interval: "weekly"
-    cooldown:
-      default-days: 7
-    open-pull-requests-limit: 5
-    groups:
-      docker-frontend:
-        patterns: ["*"]
-        update-types: ["minor", "patch"]
-    # Node est épinglé à une MAJEURE choisie (LTS) : un saut de majeure est une
-    # décision, pas un bump automatique (#1055 Node 26 fermée, fondateur 2026-10-02).
-    ignore:
+      # Node est épinglé à une MAJEURE choisie (LTS) : un saut de majeure est une
+      # décision, pas un bump automatique (#1055 Node 26 fermée, fondateur 2026-10-02).
       - dependency-name: "node"
         update-types: ["version-update:semver-major"]
-    labels: ["dependencies", "docker"]
-
-  - package-ecosystem: "docker"
-    directory: "/docker/pdf-worker"
-    schedule:
-      interval: "weekly"
-    cooldown:
-      default-days: 7
-    open-pull-requests-limit: 5
-    groups:
-      docker-pdf-worker:
-        patterns: ["*"]
-        update-types: ["minor", "patch"]
-    labels: ["dependencies", "docker"]
-
-  - package-ecosystem: "docker"
-    directory: "/docker/postgres"
-    schedule:
-      interval: "weekly"
-    cooldown:
-      default-days: 7
-    open-pull-requests-limit: 5
-    groups:
-      docker-postgres:
-        patterns: ["*"]
-        update-types: ["minor", "patch"]
-    # PostgreSQL est épinglé à une MAJEURE : un saut de majeure impose une
-    # migration de données, c'est une décision (#1052 PG 18 fermée, fondateur 2026-10-02).
-    ignore:
+      # PostgreSQL est épinglé à une MAJEURE : un saut de majeure impose une
+      # migration de données, c'est une décision (#1052 PG 18 fermée, fondateur 2026-10-02).
       - dependency-name: "postgres"
         update-types: ["version-update:semver-major"]
     labels: ["dependencies", "docker"]
@@ -176,7 +128,7 @@ updates:
   - package-ecosystem: "docker-compose"
     directory: "/"
     schedule:
-      interval: "weekly"
+      interval: "monthly"
     cooldown:
       default-days: 7
     open-pull-requests-limit: 5
