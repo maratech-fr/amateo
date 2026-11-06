@@ -952,6 +952,17 @@ git push -u origin hotfix/<sujet>
 workflow et par les merges de PR de hotfix. Un commit poussé à la main y serait
 écrasé au prochain déploiement (force-push sur le commit déployé).
 
+**Droits du push (environnement `release`).** Le job `update-release-branch` porte
+`environment: release` (politique de branche : **`main` seule**, hotfix compris — `deploy.yml` est
+toujours dispatché sur `main`, qui checkoute le tag) et pousse avec le secret d'environnement
+`RELEASE_BRANCH_TOKEN`, un PAT fine-grained limité au dépôt (`Contents` et `Workflows` en
+lecture/écriture) : le jeton du workflow n'a pas la permission `workflows`, et GitHub refuse sans elle
+un push dont le commit modifie `.github/workflows/`. Le step `Check RELEASE_BRANCH_TOKEN` rougit
+AVANT le push si le secret est vide — la prod est alors saine, seule `release` n'est pas recalée.
+**Expiration : 1 an après la création du jeton** — à renouveler avant, sinon le recalage échoue ;
+date de création et d'expiration : à noter ici par le fondateur à la pose (procédure :
+`docs/ops/ci-runner.md`, geste 15). Date notée : _non renseignée à ce jour_.
+
 Le job qui met `release` à jour suit le commit **réellement déployé** (résolu
 depuis la version : tag, `sha-…` ou commit courant), pas le `github.sha` du
 dispatch. Un **rollback** `make deploy VERSION=<ancien tag>` recale donc
@@ -1053,6 +1064,16 @@ précédent>`, § *Revenir en arrière*) ou retrait manuel (`ssh … rm -f .../m
 le problème compris.
 
 ### Mise en prod programmée (console superadmin)
+
+**Sens de « CI verte ».** `GitHubDeployClient::isCiGreen` lit la conclusion du dernier run `ci.yml`
+du commit du tag. Depuis que le run de `main` est allégé (`docs/testing/testing-strategy.md` §1),
+« verte » veut dire : **sur ce commit, les images de prod se construisent (Trivy CRITICAL), la perf
+tient, lint, secrets, semgrep et audit des dépendances sont verts** — les suites de tests ont, elles,
+été prouvées par la PR. La CI tourne dans la VM du fondateur (`docs/ops/ci-runner.md`) : le run de
+`main` non conclu (VM éteinte) rend `isCiGreen` faux et la console refuse (422) ; la bascule à l'heure H
+re-vérifie. **Règle : après le dernier merge de la journée, attendre la fin du run de `main` avant
+d'éteindre la VM.** Un déploiement programmé la nuit VM éteinte fonctionne si ce run est déjà conclu
+(`deploy.yml` s'exécute chez GitHub).
 
 Depuis qu'un tag ne fait plus que construire (« tag ≠ déploiement »), cette console est le chemin
 **normal** pour programmer la mise en prod d'une nouvelle version — `make deploy VERSION=<tag>`

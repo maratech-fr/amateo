@@ -6,26 +6,39 @@ Scope: backend + engine. The rebuilt frontend has its own tests (Vitest + RTL un
 
 ## 1. CI pipeline (`.github/workflows/ci.yml`)
 
-Order and dependencies:
+Order and dependencies (tout `needs` ci-dessous s'ajoute à `needs: preflight`, que **tous** les jobs portent) :
 
 ```
+preflight ─► (tous les jobs) — « Preflight » : refuse une PR de fork, sans checkout, required check
 lint ──┐
        ├─► blocking-tests ──┐
 phpstan┘                    ├─► build-docker
 engine-tests ───────────────┘
-backend-tests       (suite PHPUnit COMPLÈTE + pcov + cliquet, un seul passage) — parallel, no needs, BLOCKS the merge (required check), does NOT gate build-docker
-e2e                 (Playwright, full stack + Vite)        — parallel, no needs, BLOCKS the merge (required check)
-frontend            (lint + tsc -b + vite build + vitest --coverage + cliquet) — parallel, no needs, does NOT gate build-docker
-dependency-audit    (composer/npm/pip audit, A18)          — parallel, no needs, does NOT gate build-docker
-rector              (dry-run, style gate P4-24)            — parallel, no needs, gates NOTHING… but BLOCKS the merge
-secrets-scan        (gitleaks)                             — parallel, no needs, BLOCKS the merge
-semgrep             (security gate)                        — parallel, no needs, BLOCKS the merge
-engine-semantics    (groupe `contract`, cross-stack)       — parallel, no needs, BLOCKS the merge
-functional-tests    (Behat, Gherkin FR, API-only, one feature per promise) — parallel, no needs, BLOCKS the merge (required check of `main`)
-engine-tests        (pytest --cov + cliquet, ruff, mypy, bandit, deptry) — parallel, no needs ; GATES build-docker — donc le cliquet engine gate build-docker
+backend-tests       (suite PHPUnit COMPLÈTE + pcov + cliquet, un seul passage) — PR only, BLOCKS the merge (required check), does NOT gate build-docker
+e2e                 (Playwright dans le conteneur `e2e`, full stack + Vite) — PR only, BLOCKS the merge (required check)
+frontend            (lint + tsc -b + vite build + vitest --coverage + cliquet) — PR only, does NOT gate build-docker
+dependency-audit    (composer/npm/pip audit, A18)          — no other needs ; runs on main too ; BLOCKS the merge, does NOT gate build-docker
+rector              (dry-run, style gate P4-24)            — PR only, gates NOTHING… but BLOCKS the merge
+secrets-scan        (gitleaks)                             — no other needs ; runs on main too ; BLOCKS the merge
+semgrep             (security gate)                        — no other needs ; runs on main too ; BLOCKS the merge
+engine-semantics    (groupe `contract`, cross-stack)       — PR only, BLOCKS the merge
+functional-tests    (Behat, Gherkin FR, API-only, one feature per promise) — PR only, BLOCKS the merge (required check of `main`)
+engine-tests        (pytest --cov + cliquet, ruff, mypy, bandit, deptry) — runs on main too ; GATES build-docker — donc le cliquet engine gate build-docker
 engine-perf         (dense + BCCL solve + place-matches build < 60 s) — needs engine-tests ; main only
 engine-perf-pr      (dense solve, PR budget = 60 s)         — needs engine-tests ; PR only, skipped when engine/ untouched
 ```
+
+**Où tourne la CI, et `main` allégé.** Tous les jobs de `ci.yml` tournent sur le runner
+auto-hébergé du fondateur (VM `amateo-ci`, routage par variable de dépôt, retour arrière,
+VM éteinte = file de 24 h : [`../ops/ci-runner.md`](../ops/ci-runner.md)). **Sur `push main`** ne
+tournent que `preflight`, `lint`, `secrets-scan`, `semgrep`, `dependency-audit`, `engine-tests`,
+`engine-perf` et `build-docker` (dont les `needs` sont relâchés : il tourne même quand les jobs
+PR-only sont sautés, sauf échec ou annulation d'un `needs`) ; le reste est PR-only. Avec les
+required checks (15, **Preflight** compris) et `strict` (branche à jour obligatoire), l'arbre mergé
+est celui que la PR a prouvé. **Ce que `build-docker` prouve** : que les cinq images de PROD se
+construisent (`--pull`, tags `scan-<run>-<attempt>/…`) et passent Trivy CRITICAL ; sur le runner il
+profite du cache de couches du démon, donc **il ne prouve plus un build de zéro** — `deploy.yml`, chez
+GitHub, le prouve à chaque release.
 
 **Fusion « un seul passage couvert par suite » (2026-10-14).** Chaque suite tournait DEUX fois en
 CI (un job sans couverture + un job de couverture). Les trois ex-jobs de couverture
@@ -133,7 +146,7 @@ dans un job EXISTANT (pas de job dédié) :
 Les trois sont des gardes d'**hygiène**, pas de sécurité : elles bloquent sur un paquet mort, pas
 sur une faille (`dependency-audit`, ci-dessus, reste le seul gate de vulnérabilités).
 
-**SEPT jobs isolés sans `needs`** — `frontend`, `dependency-audit`, `rector`, `secrets-scan`, `semgrep`, `engine-semantics`, `functional-tests` (Behat — remplace les anciens smokes bash, tous supprimés) : un signal qui peut
+**SEPT jobs isolés du gate bloquant** — `frontend`, `dependency-audit`, `rector`, `secrets-scan`, `semgrep`, `engine-semantics`, `functional-tests` (Behat — remplace les anciens smokes bash, tous supprimés) : ils ne dépendent que de `preflight` (jamais de `blocking-tests` ni de `build-docker`). Un signal qui peut
 rougir sur un commit qui n'a rien changé (une règle Rector élargie par un bump, une advisory publiée
 ce matin) ne doit pas prendre en otage `blocking-tests` — donc l'isolation tenant/RLS — ni
 `build-docker`, donc la livraison d'un correctif de sécurité. **Rougir ≠ ne rien bloquer** : les sept
@@ -160,15 +173,16 @@ canonique des features Behat et relâchées en `finally`, widget `DevClock` masq
 (`frontend/tests/e2e/visual-reference.spec.ts-snapshots/`), il ne réécrit **jamais** les
 références. **Re-baseline — une procédure, un workflow dédié**
 (`.github/workflows/visual-baselines.yml`, `workflow_dispatch` seul, jamais en local — les PNG
-doivent naître dans l'environnement EXACT de la CI, même image/polices que le job `e2e`) :
+doivent naître dans l'environnement EXACT de la CI — le **conteneur Playwright** du service compose `e2e`, le même que celui du job `e2e`, où que le job tourne) :
 `gh workflow run visual-baselines.yml --ref <branche> -f update=true` → `gh run download <run-id>
 -n visual-baselines` → committer le dossier `-snapshots/`, re-pousser. Le mode `update=true`
 lance `--update-snapshots=all` : il réécrit TOUTES les références, pas seulement celles en échec
 — sinon un changement de texte sous la tolérance de 1 % garderait l'ancien texte en silence.
 Déclenche une re-baseline :
-un changement d'apparence VOULU, un changement d'image runner (épinglée `ubuntu-24.04` dans tous
-les workflows depuis la passe « versions figées » — un bump futur est un choix manuel, pas une
-dérive silencieuse), ou une dérive du seed BCCL. Hors périmètre, délibérément : la page publique des vœux (token non forgeable sans base
+un changement d'apparence VOULU, un changement de l'image Playwright (épinglée, parité avec
+`package-lock.json` gardée par `PlaywrightImageMatchesLockTest`), ou une dérive du seed BCCL. Les PNG
+dépendent de cette image, plus de l'hôte : passer la CI du runner auto-hébergé à GitHub (retour
+arrière) ne demande aucune re-baseline. Hors périmètre, délibérément : la page publique des vœux (token non forgeable sans base
 réelle) et le thème sombre.
 
 All PHP test jobs first **create + migrate the test DB** (`doctrine:database:create --if-not-exists` + `migrations:migrate`, `--env=test`) and run phpunit with `-e APP_ENV=test` on the `docker compose exec` — the containers default to `APP_ENV=dev` (root `.env` env_file) and `phpunit.xml.dist`'s `<server APP_ENV=test>` is not `force`d, so the real env var must be set explicitly.
@@ -178,14 +192,14 @@ All PHP test jobs first **create + migrate the test DB** (`doctrine:database:cre
 | `lint` | `docker compose config` + `make -n help` |
 | `phpstan` (job name: **PHPStan & CS-Fixer**) | `composer phpstan` (level 8) **+ `composer cs-fix -- --dry-run --diff`** **+ `composer composer-unused`** — needs postgres + redis. CS-Fixer vit ici, et non dans `lint`, parce que ce job a déjà le conteneur PHP que `lint` n'a pas (jusqu'au 2026-07-17 CS-Fixer ne tournait **nulle part** en CI, et `main` a été mergée rouge dessus deux fois) |
 | `rector` (**Rector (style gate)**) | `composer rector -- --dry-run` (P4-24). Job **dédié, sans `needs`**, dépendance d'aucun autre — mais le contexte « Rector (style gate) » fait partie des **required status checks de `main`**, donc **il bloque le merge**. Corriger en local : `docker compose exec php-fpm sh -c 'cd /app/backend && composer rector'` (`make -C backend rector` est un dry-run : il montre, il ne fixe pas) |
-| `blocking-tests` | les tests sécurité/queue/contrat lancés en **steps nommés**, chacun avec `--group phase1` — **gate du reste de la suite PHP** et de `build-docker`. ⚠ **La liste vit dans [`blocking-tests.md`](blocking-tests.md), et NULLE PART AILLEURS** : elle était recopiée ici et les deux copies ont dérivé l'une de l'autre (audit DOC-16 puis DOC-26, 3 éditions). Deux endroits pour une même vérité finissent par diverger — la copie est supprimée, pas resynchronisée. ⚠ **`--group phase1` ≠ le gate** : bien plus de fichiers `backend/tests/` portent l'annotation que le job n'a de steps nommés ; un fichier `phase1` non listé tourne dans `backend-tests`, donc après le gate et sans bloquer `build-docker`. La vérité exécutable est `.github/workflows/ci.yml` |
+| `blocking-tests` | les tests sécurité/queue/contrat lancés en **UNE invocation PHPUnit** (step `Blocking suite (phase1, one PHPUnit process)` : `--group phase1` + la liste des chemins, un par ligne, chacun précédé de son commentaire de raison) **plus un step filtré** (`ParcImportCorrectionTenantNR`, classe `integration` hors `phase1`) — **gate du reste de la suite PHP** et de `build-docker`. ⚠ **La liste vit dans [`blocking-tests.md`](blocking-tests.md), et NULLE PART AILLEURS** : elle était recopiée ici et les deux copies ont dérivé l'une de l'autre (audit DOC-16 puis DOC-26, 3 éditions). Deux endroits pour une même vérité finissent par diverger — la copie est supprimée, pas resynchronisée. ⚠ **`--group phase1` ≠ le gate** : bien plus de fichiers `backend/tests/` portent l'annotation que le step `Blocking suite` n'en liste ; un fichier `phase1` non listé tourne dans `backend-tests`, donc après le gate et sans bloquer `build-docker`. La vérité exécutable est `.github/workflows/ci.yml` |
 | `backend-tests` (job name: **Backend Tests (suite + couverture)**) | full PHPUnit `tests/ --exclude-group contract` en UN passage, instrumenté par `pcov` (`-d pcov.enabled=1`), + `scripts/coverage-gate.php` (cliquet, plancher `backend` de `coverage-floor.json`). **Sans `needs`** (démarre à t=0). Remplace les ex-`unit-tests` + `backend-coverage` (fusion 2026-10-14). Required check de `main` → **bloque le merge** ; does **NOT** gate `build-docker` (P4-166) |
-| `e2e` | Playwright (full stack + Vite), **sans `needs`** (2026-10-14 — ne consommait aucun artefact, le `needs: blocking-tests` n'était que de l'ordonnancement). ⚠ **Deux cibles, pas une** : la suite tourne contre le **dev server** (:5173), puis un step dédié rejoue `security-headers.spec.ts` contre l'**image nginx** (:8081) avec `E2E_A17_REQUIRED=1`. Sans ce second passage, les tests A17 (CSP, HSTS, X-Frame-Options, nosniff) se **skippaient à chaque run** — les en-têtes n'existent que sur le build nginx — et le contrôle n'a jamais tourné en CI (audit D-04). La variable interdit au skip de revenir en silence : viser un dev server là devient un échec. **Fiabilité infra (2026-09-15)** : `COMPOSE_BAKE=false` (env du job) écarte le builder bake qui se figeait « waiting for BuildKit » ; un step **Pre-pull third-party images** (`docker compose pull --ignore-buildable`, enveloppé de `.github/scripts/retry.sh`) tire nginx/mercure/redis/postgres à part, l'image `engine` est bâtie dans son propre step relançable, et les steps d'infra (pull, build, `up --wait`) passent par `retry.sh` — un aléa de Docker Hub/BuildKit ne rougit plus une PR saine. Un step `if: failure()` écrit dans le résumé de job si l'échec est **AVANT Playwright (infra)** ou **Playwright**. **Un job vert peut cacher un flaky** (Playwright sort 0 dès qu'un retry passe, P4-256, toujours ouvert) : un step `always()` (`.github/scripts/flaky-summary.sh`) annonce dans le résumé de job les tests perdus-puis-rejoués, sans jamais faire rougir le job ni le gater. L'artefact `playwright-results` (traces `retain-on-failure`, conservées sur tout essai en échec, y compris l'essai perdu puis rejoué) est lui aussi uploadé en `always()` — la trace de l'essai perdu survit donc même sur un run vert, récupérable 7 jours |
+| `e2e` | Playwright (full stack + Vite), **sans `needs` autre que `preflight`** (2026-10-14 — ne consommait aucun artefact, le `needs: blocking-tests` n'était que de l'ordonnancement). **La suite tourne DANS le conteneur Playwright** du service compose `e2e` (image épinglée, `shm_size`), Vite dans le service `frontend-dev` (attente bornée par `wget`, l'image est busybox), mailpit dans le projet ; aucun Node, Chromium ni port hôte : le projet compose est propre au job (`ci-<run>-<tentative>-<job>`). Le volume `node_modules` du conteneur est chowné par l'HÔTE (guillemets doubles : `$(id -u)` évalué hors du conteneur root), la clé TOTP du superadmin jetable vit dans `RUNNER_TEMP`, jamais dans `GITHUB_ENV`. ⚠ **Deux cibles, pas une** : la suite tourne contre le **dev server** (`frontend-dev:5173`), puis un step dédié rejoue `security-headers.spec.ts` contre l'**image nginx** (service `frontend`, `E2E_BASE_URL=http://frontend`) avec `E2E_A17_REQUIRED=1`. Sans ce second passage, les tests A17 (CSP, HSTS, X-Frame-Options, nosniff) se **skippaient à chaque run** — les en-têtes n'existent que sur le build nginx — et le contrôle n'a jamais tourné en CI (audit D-04). La variable interdit au skip de revenir en silence : viser un dev server là devient un échec. **Fiabilité infra (2026-09-15)** : `COMPOSE_BAKE=false` (env du job) écarte le builder bake qui se figeait « waiting for BuildKit » ; un step **Pre-pull third-party images** (`docker compose pull --ignore-buildable`, enveloppé de `.github/scripts/retry.sh`) tire nginx/mercure/redis/postgres à part, l'image `engine` est bâtie dans son propre step relançable, et les steps d'infra (pull, build, `up --wait`) passent par `retry.sh` — un aléa de Docker Hub/BuildKit ne rougit plus une PR saine. Un step `if: failure()` écrit dans le résumé de job si l'échec est **AVANT Playwright (infra)** ou **Playwright**. **Un job vert peut cacher un flaky** (Playwright sort 0 dès qu'un retry passe, P4-256, toujours ouvert) : un step `always()` (`.github/scripts/flaky-summary.sh`) annonce dans le résumé de job les tests perdus-puis-rejoués, sans jamais faire rougir le job ni le gater. L'artefact `playwright-results` (traces `retain-on-failure`, conservées sur tout essai en échec, y compris l'essai perdu puis rejoué) est lui aussi uploadé en `always()` — la trace de l'essai perdu survit donc même sur un run vert, récupérable 7 jours |
 | `functional-tests` | **Behat, Gherkin français, API seule** (`backend/features/`, contexts `backend/tests/Behat/`) — scénarios métier relus par le fondateur, joués contre la stack RÉELLE (nginx→php-fpm, vrai `messenger-worker`, vrai engine, **`pdf-worker`** compris — `l-export-du-planning.feature` attend un PDF Puppeteer réel, sans lui le worker d'export répond `failed`), sans navigateur ni noyau in-process. **Aucun `needs`** — ils répondent « la fonctionnalité marche-t-elle ? », indépendamment des suites unitaires, et n'installent ni npm ni Chromium : le verdict tombe plus tôt. Chaque feature est autosuffisante (JWT auto, données créées/nettoyées, pointeur socle rouvert PUIS restauré) : jouable seule et dans n'importe quel ordre. **Remplace intégralement les 5 smokes bash** (`smoke-solver.sh`, `onboarding-smoke.sh`, `smoke-place-matches.sh`, `smoke-overlay.sh`, `smoke-coach-wishes.sh`, tous SUPPRIMÉS de `backend/scripts/`) — parité prouvée assertion par assertion, même verdicts. Table feature ↔ ce qu'elle prouve : [`test-coverage-map.md`](test-coverage-map.md) §5 |
 | `engine-tests` | `pytest --cov=app --cov-fail-under=$FLOOR` (`$FLOOR` lu de `coverage-floor.json`, clé `engine` — cliquet fondu ici 2026-10-14) + `ruff check .` (+ `ruff format --check`) + `mypy` + `bandit -r app/` (ENG-46, lot correctif de l'audit 0918 — bandit était déjà en local via `make test`, il ne gatait pas la CI) + `deptry .` (in the engine container). **GATE `build-docker`** → le cliquet engine gate donc aussi `build-docker` (décision fondateur 2026-10-14) |
 | `frontend` | `npm run lint` (dont `eslint-plugin-jsx-a11y`, §4bis) + `npm run lint:deps` (knip) + `tsc -b` + `vite build` + `npm run test:coverage` (`vitest run --coverage`, `thresholds.lines` lu de `coverage-floor.json`, clé `frontend` — cliquet fondu ici 2026-10-14) (parallel, no needs). Required check de `main` → **bloque le merge** ; does **NOT** gate `build-docker` (P4-166) |
 | `dependency-audit` | `composer audit` / `npm audit --audit-level=high` / `pip-audit` (A18, blocking, parallel, no needs). Les trois passent par `.github/scripts/audit-retry.sh` (P4-171) : 3 tentatives (10 s, 30 s) **seulement** quand la sortie porte une signature réseau (timeout, 5xx, DNS, `curl error`) — un `exit 1` d'audit sans cette signature est rendu tel quel, le gate ne s'aveugle pas |
-| `build-docker` | `docker compose build` (needs **blocking + engine** tests only) |
+| `build-docker` | build des cinq images de PROD (`--pull`, tags `scan-<run>-<tentative>/…`) + scan Trivy CRITICAL (needs **blocking + engine** tests, plus `preflight`) ; sur `push main` ses `needs` sont relâchés (voir plus haut) |
 
 All PHP jobs invoke `vendor/bin/phpunit` (PHPUnit 11, the direct `phpunit/phpunit` dep) — same binary as `Makefile` and `composer test`.
 
@@ -376,7 +390,7 @@ cd backend && make tests-complete            # phpstan + cs + phpunit tests/ (mi
 cd engine  && make test                      # pytest + ruff + mypy
 ```
 
-**Depuis un worktree** : même commandes, sur la stack PRIVÉE de la copie (`make -C backend tests-complete` monte un socle de test `amateo-test-<hash>` ; `make -C backend test-down` à la fin). Behat et e2e : `make epreuve-up WT=<worktree>` (une seule stack d'épreuve, front `:8181` — fenêtre privée, le cookie `localhost` est partagé avec `:8081`), puis `backend/scripts/with-sandbox.sh …`, puis `make epreuve-down`. Détail : `backend/docs/commands.md` §Worktrees.
+**Depuis un worktree** : même commandes, sur la stack PRIVÉE de la copie (`make -C backend tests-complete` monte un socle de test `amateo-test-<hash>` ; `make -C backend test-destroy` à la fin du worktree, `test-down` = pause). Behat et e2e : `make epreuve-up WT=<worktree>` (une seule stack d'épreuve, front `:8181` — fenêtre privée, le cookie `localhost` est partagé avec `:8081`), puis `backend/scripts/with-sandbox.sh …`, puis `make epreuve-down`. Détail : `backend/docs/commands.md` §Worktrees.
 
 Backend & engine tests run **inside Docker** — running `phpunit`/`pytest` on the host will fail. If the stack is down, `ContractSchemaTest` and other integration tests skip or fail rather than silently passing.
 
@@ -415,7 +429,7 @@ qui ouvre UNE session par run et la fige ; le projet `superadmin` la réutilise 
 `retries: 0` — un retry ne rejouerait aucun login). Sans préflight, le setup écrit un état VIDE et
 les specs se skippent via leur garde. **Le limiteur backend n'est pas touché.**
 
-**Dockerized run (P4-33, 2026-08-04)** : `make -C frontend e2e` exécute la suite DANS le service compose `e2e` (image officielle Playwright **épinglée sur la version de `@playwright/test`** du lock — une dérive = « browser not found ») : l'hôte n'a plus besoin de Node, dernier maillon qui l'exigeait. Cibles internes au réseau (`E2E_BASE_URL=http://frontend-dev:5173`, `MAILPIT_WEB_URL=http://mailpit:8025`), donc stack + `make -C frontend dev` doivent tourner ; Vite doit autoriser le host interne (`server.allowedHosts: ['frontend-dev']` — sans quoi 403 « Blocked request »). La CI, elle, garde son chemin Node natif (elle installe déjà Node pour Vite) : elle installe SON PROPRE chromium (`npx playwright install chromium`, step « Install Playwright chromium » du job `e2e`, caché par un hash du lock), donc une montée de version de `@playwright/test` qui n'a pas suivi le tag `mcr.microsoft.com/playwright` de l'image `e2e` casse la suite e2e **locale en silence** sans jamais rougir la CI — le navigateur manque uniquement chez qui essaie `make -C frontend e2e`. Constaté le 2026-09-21 (image restée en `1.62.0-noble` pendant que le lock montait en `1.63.0`), corrigé par `b7959d98`, désormais gardé par `PlaywrightImageMatchesLockTest` (`backend/tests/Unit/Dependency/`, compare le tag `image` du service `e2e` à la version RÉSOLUE de `@playwright/test` dans le lock — non bloquant, `phase1`, `backend-tests` seul).
+**Dockerized run (P4-33, 2026-08-04)** : `make -C frontend e2e` exécute la suite DANS le service compose `e2e` (image officielle Playwright **épinglée sur la version de `@playwright/test`** du lock — une dérive = « browser not found ») : l'hôte n'a plus besoin de Node, dernier maillon qui l'exigeait. Cibles internes au réseau (`E2E_BASE_URL=http://frontend-dev:5173`, `MAILPIT_WEB_URL=http://mailpit:8025`), donc stack + `make -C frontend dev` doivent tourner ; Vite doit autoriser le host interne (`server.allowedHosts: ['frontend-dev']` — sans quoi 403 « Blocked request »). La CI utilise désormais LE MÊME service `e2e` (plus de Node ni de chromium installés sur l'hôte du job), donc une montée de version de `@playwright/test` qui n'a pas suivi le tag `mcr.microsoft.com/playwright` de l'image `e2e` casse la suite e2e — en local comme en CI. Constaté le 2026-09-21 (image restée en `1.62.0-noble` pendant que le lock montait en `1.63.0`), corrigé par `b7959d98`, désormais gardé par `PlaywrightImageMatchesLockTest` (`backend/tests/Unit/Dependency/`, compare le tag `image` du service `e2e` à la version RÉSOLUE de `@playwright/test` dans le lock — non bloquant, `phase1`, `backend-tests` seul : c'est lui, et non l'e2e, qui attrape une dérive avant qu'elle ne rougisse la suite).
 
 ---
 

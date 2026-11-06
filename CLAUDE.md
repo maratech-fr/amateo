@@ -56,10 +56,14 @@ make epreuve-up WT=<worktree> | epreuve-status | epreuve-down   # worktree : Beh
 Graphe des jobs, rôles et pièges : **`docs/testing/testing-strategy.md` §1** (canonique). Qui teste
 quoi, par axe, et les angles morts : `docs/testing/test-coverage-map.md`.
 
-- **Bloquant = step NOMMÉ du job `blocking-tests` dans `.github/workflows/ci.yml`** — jamais
-  l'annotation `#[Group('phase1')]` (bien plus de fichiers la portent que le job n'a de steps).
-  Un test annoté mais non listé tourne dans `backend-tests` : après le gate, sans bloquer
-  `build-docker`. « X est bloquant » se vérifie dans `ci.yml`.
+- **La CI tourne dans la VM du fondateur** (runner auto-hébergé, `docs/ops/ci-runner.md`) :
+  **VM éteinte = checks « Queued », file de 24 h**. Required checks de `main` : 15, dont
+  **Preflight** (refuse les PR de fork), avec `strict` (branche à jour) et `enforce_admins`.
+- **Bloquant = chemin listé dans le step `Blocking suite` (ou le step filtré) du job
+  `blocking-tests` dans `.github/workflows/ci.yml`** — jamais l'annotation `#[Group('phase1')]`
+  (bien plus de fichiers la portent que le step n'en liste). Un test annoté mais non listé tourne
+  dans `backend-tests` : après le gate, sans bloquer `build-docker`. « X est bloquant » se vérifie
+  dans `ci.yml`.
 - La liste de « quels tests gatent » vit dans **`docs/testing/blocking-tests.md`** — maison
   unique, gardée par `BlockingTestsListMatchesCiTest` (⇄ `ci.yml`, les deux sens). Ce que chaque
   test garde en détail : **son propre docblock**.
@@ -137,6 +141,8 @@ questions, bilans) attendent avant de s'afficher.
 branche puis PR ; **JAMAIS de merge sans le GO explicite du user** — **sauf dans un lot validé par
 le fondateur : merge autorisé dès que la CI est verte**, pour les PR du lot seulement (ni validation
 de plan, ni tag, ni déploiement, ni prod) ; push libre, stop à « PR ready » ;
+**jamais de merge par contournement des checks** (bouton admin, VM éteinte comprise) : on allume la
+VM, on attend le vert (`docs/ops/ci-runner.md`) ;
 **une seule PR ouverte à la fois** — deux en simultané seulement si merger l'une n'affecte pas
 l'autre (roadmap, état des lieux, `ci.yml` partagés = dépendantes) ; **on n'ouvre JAMAIS une PR dont
 la branche modifie un fichier déjà modifié par une PR ouverte** — avant d'ouvrir, comparer
@@ -247,7 +253,8 @@ maison unique, c'est l'agent qui l'exécute. Tout plan produit doit la remplir l
 5. ⚠ **Worktree = sa propre stack Docker, jamais celle du fondateur** — `backend/scripts/lib/stack-resolve.sh`
    classe chaque copie : **principal** (stack du fondateur, CI) · **nu** (worktree par défaut : socle de
    test privé `amateo-test-<hash>`, sans port publié, liste FERMÉE de cibles `make -C backend` —
-   `tests-complete`, `test`, `phpunit`, `phpstan`, `cs`… ; `test-down` à la fin) · **épreuve** (UNE stack
+   `tests-complete`, `test`, `phpunit`, `phpstan`, `cs`… ; **`make -C backend test-destroy` à la fin
+   du worktree**, `test-down` = simple pause) · **épreuve** (UNE stack
    complète et seedée, `make epreuve-up WT=<worktree>`, pour Behat et e2e ; `epreuve-status` avant,
    `epreuve-down` après ; refus si occupée) · **unknown** : refusé. Une cible Docker hors liste en nu est
    refusée, jamais redirigée vers le principal. Détail : `backend/docs/commands.md` ; rôle des agents :

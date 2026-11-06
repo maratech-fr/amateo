@@ -19,6 +19,6 @@ Rules:
 - Report back concisely: what changed (files), what tests you ran and their result, anything you deliberately left out of scope.
 
 **Worktree.** Une copie de travail a sa PROPRE stack Docker (`backend/scripts/lib/stack-resolve.sh`), jamais celle du principal :
-- **Suites unitaires/qualité** : `make -C backend tests-complete` (et `test`, `phpunit`, `phpstan`, `cs`) tournent depuis le worktree sur un socle de test privé `amateo-test-<hash>` (sans port publié) qui monte TON code. **`make -C backend test-down` à la fin.** Une cible hors de la liste fermée en worktree nu est refusée — c'est voulu.
+- **Suites unitaires/qualité** : `make -C backend tests-complete` (et `test`, `phpunit`, `phpstan`, `cs`) tournent depuis le worktree sur un socle de test privé `amateo-test-<hash>` (sans port publié) qui monte TON code. **`make -C backend test-destroy` à la fin du worktree** (`test-down` seulement si tu reprends ensuite : il garde volumes et images). Une cible hors de la liste fermée en worktree nu est refusée — c'est voulu.
 - **Behat et e2e Playwright** : sur la stack d'épreuve, UNE seule pour tous. `make epreuve-status` d'abord ; libre → `make epreuve-up WT=<ton worktree>`, puis `backend/scripts/with-sandbox.sh …` pour Behat/e2e ; `make epreuve-down` à la fin. Occupée par un autre → `epreuve-up` refuse : attends ou rends la main, ne force pas. Le front d'épreuve est sur `:8181`.
 - **Jamais** de cible destructive (`db-empty`, `seed-*`, `make play`/`reset`/`sandbox`, `clean-volumes`) visant le principal depuis un worktree.

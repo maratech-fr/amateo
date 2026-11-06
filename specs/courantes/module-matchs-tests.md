@@ -8,7 +8,7 @@
 
 NR tenant isolation bloquant : `MatchTenantIsolationTest` (Competition/Fixture/fenêtres/indispos/
 habitudes/passerelles/`opponent_venue_link`/`club_travel_cache`/`ConflictResolution` — étendu à chaque
-table tenant du module). **NR tenant GATANT (step nommé `blocking-tests` de `ci.yml` +
+table tenant du module). **NR tenant GATANT (chemin du step `Blocking suite` de `ci.yml` +
 `docs/testing/blocking-tests.md`)** : `MessageHandler/ComputeTravelTimesHandlerTest` (GUC posé/
 clear, verrou, jamais la ligne d'un autre club). Cache de trajets : `TravelTimeCacheTest` (clé
 arrondie, jamais recalculé, profils séparés), `ClubTravelCacheSeedTest` (rejoue le seed de la
@@ -45,7 +45,7 @@ appariement + backfill via `venueMappings`/`venueChoices` ; terrain neutre exclu
 « validé ligue » ; mémoire dérivée d'un libellé déjà neutre) et `Security/ImportVenueMappingAbuseTest`
 (le canal multipart ne peut jamais écrire un gymnase d'un autre club, un corps forgé, ou un neutre
 sur un alias déjà confirmé — zéro écriture sur refus). « Validé ligue », auto au dépôt (chantier A) +
-rattrapage en lot : **NR gatant** (step nommé `blocking-tests` de `ci.yml` +
+rattrapage en lot : **NR gatant** (chemin du step `Blocking suite` de `ci.yml` +
 `docs/testing/blocking-tests.md`, axe *constraint semantics*) `Integration/Service/
 ImportLeagueAutoValidationTest` (domicile validable d'un championnat commencé basculé au dépôt,
 byte-identique à l'ancre du geste manuel ; championnat non commencé/sans heure/dévié jamais validé ;
