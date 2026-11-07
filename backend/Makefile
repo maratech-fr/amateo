@@ -119,7 +119,7 @@ purge-test-cache:
 
 .PHONY: tests-complete ## Run the FULL suite, exactly like CI (phpstan + cs + tous les tests)
 tests-complete: APP_ENV = test
-tests-complete: $(if $(filter nu,$(STACK_MODE)),test-prepare) purge-test-cache db-init-test
+tests-complete: test-sweep $(if $(filter nu,$(STACK_MODE)),test-prepare) purge-test-cache db-init-test
 	# phpstan-symfony exige var/cache/dev/App_KernelDevDebugContainer.xml : présent en
 	# CI (auto-scripts composer), pas garanti sur un clone frais → warmup dev SI absent.
 	@test -f var/cache/dev/App_KernelDevDebugContainer.xml || $(EXEC) php bin/console cache:warmup -e dev
@@ -344,24 +344,14 @@ test-check:
 	$(FIG) ps
 	@bash scripts/lib/stack-check.sh check $(STACK_ROOT)
 
-# Un worktree supprimé laisse sa stack amateo-test-<hash> : on retire tout projet dont le hash ne
-# correspond à aucun worktree vivant. Jamais par compose (le fichier n'existe plus), par label.
-.PHONY: test-sweep ## Retire les projets amateo-test-* dont le worktree n'existe plus
+# Un worktree supprimé laisse sa stack : scripts/lib/stack-sweep.sh retire, par label, les projets
+# amateo-test-*/agent-* qu'aucun worktree vivant ne réclame, puis le cache de build plus vieux que
+# SWEEP_CACHE_AGE. DRY_RUN=1 montre sans retirer. Ne fait jamais échouer : tests-complete l'ouvre.
+DRY_RUN ?=
+SWEEP_CACHE_AGE ?= 168h
+.PHONY: test-sweep ## Retire les stacks amateo-test-*/agent-* dont le worktree n'existe plus (DRY_RUN=1 : simulation)
 test-sweep:
-	@keep=$$(env -u GIT_DIR -u GIT_WORK_TREE git -C $(STACK_ROOT) worktree list --porcelain | sed -n 's/^worktree //p' \
-		| while read -r w; do printf 'amateo-test-%s\n' "$$(printf '%s' "$$w" | sha1sum | cut -c1-12)"; done); \
-	[ -n "$$keep" ] || { echo "test-sweep : liste des worktrees vide, rien retiré" >&2; exit 1; }; \
-	label='{{.Label "com.docker.compose.project"}}'; \
-	projects=$$({ docker ps -a --format "$$label"; docker volume ls --format "$$label"; docker network ls --format "$$label"; } \
-		| grep -E '^amateo-test-[0-9a-f]{12}$$' | sort -u); \
-	for p in $$projects; do \
-		printf '%s\n' "$$keep" | grep -qxF "$$p" && continue; \
-		echo "test-sweep : retrait de $$p"; f="label=com.docker.compose.project=$$p"; \
-		docker ps -aq --filter "$$f" | xargs -r docker rm -f; \
-		docker volume ls -q --filter "$$f" | xargs -r docker volume rm; \
-		docker network ls -q --filter "$$f" | xargs -r docker network rm; \
-		docker images -q --filter "reference=$$p-*" | xargs -r docker rmi; \
-	done
+	@DRY_RUN=$(DRY_RUN) SWEEP_CACHE_AGE=$(SWEEP_CACHE_AGE) sh scripts/lib/stack-sweep.sh $(STACK_ROOT) $(TEST_PROJECT)
 
 .PHONY: phpstan ## Run PHPStan
 phpstan:
