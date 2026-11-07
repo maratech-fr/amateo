@@ -68,7 +68,14 @@ final class GitHubDeployClient
         return $names;
     }
 
-    /** La CI est verte quand le dernier run `ci.yml` du head_sha du tag a conclu `success`. */
+    /**
+     * La CI est verte quand le dernier run `ci.yml` du head_sha du tag a conclu `success`.
+     *
+     * Sur un commit de `main`, ce run est ALLÉGÉ : il dit « les images prod se construisent
+     * (Trivy CRITICAL), la perf tient, lint/secrets/semgrep/audit sont verts » — les suites
+     * (bloquants, complète, e2e, Behat, sémantique moteur) ont été prouvées par la PR sur l'arbre
+     * mergé (branche à jour obligatoire + squash). Un run non conclu (runner éteint) n'est pas vert.
+     */
     public function isCiGreen(string $version): bool
     {
         if (!$this->isConfigured()) {

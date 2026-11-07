@@ -18,12 +18,11 @@ use Symfony\Component\Yaml\Yaml;
  * `@playwright/test` en `1.63.0` — les navigateurs préinstallés dans l'image ne
  * correspondaient plus au client qui les lance.
  *
- * Le point vicieux, et la raison d'être de ce garde : la CI ne l'attrape
- * JAMAIS. Le job e2e n'utilise pas cette image — il fait `npx playwright
- * install chromium` avec un cache keyé sur le hash du lock (`ci.yml`). Une
- * montée de version reste donc VERTE en CI et ne casse que la suite LOCALE, en
- * silence, au pire moment : quand on essaie de jouer les tests chez soi. Rien
- * ne couplait les deux versions ; ce test est ce couplage.
+ * Le job e2e de la CI (et `visual-baselines.yml`) tourne désormais DANS cette
+ * image : une dérive rougirait aussi la CI, mais seulement au lancement de la
+ * suite, après le démarrage de toute la stack, avec une erreur de navigateur
+ * absent qui ressemble à une panne d'infra. Ce test rougit avant, et nomme la
+ * cause : rien d'autre ne couple les deux versions ; ce test est ce couplage.
  *
  * Source de vérité du verrou : la version RÉSOLUE réellement installée,
  * `packages['node_modules/@playwright/test'].version`, PAS la contrainte de

@@ -197,7 +197,11 @@ final class ComposeStackParametrizationTest extends TestCase
         self::assertSame([], array_values(array_intersect($epreuve, $founder + ['VITE_PORT' => '5173'])));
     }
 
-    /** CI et stack du fondateur s'appuient sur le projet par défaut (`ci.yml:36`) et les noms `amateo-*`. */
+    /**
+     * La stack du fondateur s'appuie sur le projet par défaut et les noms `amateo-*` ; la CI pose
+     * son propre projet par job (`COMPOSE_PROJECT_NAME`/`AMATEO_STACK` en `env` de job, ci.yml),
+     * jamais dans `.env.dist`.
+     */
     public function testDevEnvStaysUnparameterized(): void
     {
         $env = $this->env('.env.dist');

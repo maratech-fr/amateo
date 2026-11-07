@@ -1,0 +1,81 @@
+name: CI runner isolation probe
+
+# Sonde d'étanchéité réseau du runner auto-hébergé (VM `amateo-ci`, procédure :
+# docs/ops/ci-runner.md). Jouée À LA MAIN, depuis `main`, stack de dev du poste ALLUMÉE :
+#   gh workflow run ci-runner-isolation.yml -f host_ip=<passerelle NAT> -f lan_ip=<IP LAN> -f wsl_ip=<IP WSL>
+# Rejouable après tout changement réseau du poste ou de la VM.
+#
+# Ce qui DOIT échouer depuis la VM : joindre le poste hôte (Vite, nginx, SMB 445, RPC 135),
+# le poste par son IP LAN, la VM WSL, et voir le disque Windows. Ce qui DOIT réussir : GitHub,
+# ghcr, Docker Hub. Un rouge nomme la cible jointe à tort.
+#
+# `workflow_dispatch` SEUL : un `pull_request` n'accepte pas d'inputs, et les IP du poste ne vont
+# jamais dans le dépôt (lan_ip / wsl_ip sans défaut). `runs-on: vars.CI_RUNS_ON` NU, sans repli :
+# chez GitHub cette sonde ne prouverait rien — son premier step le refuse.
+
+on:
+  workflow_dispatch:
+    inputs:
+      host_ip:
+        description: "IP de l'hôte Windows vue depuis la VM (passerelle du NAT interne)"
+        type: string
+        default: "10.250.0.1"
+      lan_ip:
+        description: "IP LAN du poste Windows"
+        type: string
+        required: true
+      wsl_ip:
+        description: "IP de la VM WSL (ip -4 addr show eth0, dans WSL)"
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    name: Runner isolation probe
+    runs-on: ${{ vars.CI_RUNS_ON }}
+    timeout-minutes: 10
+    steps:
+      - name: Runner must be self-hosted
+        if: runner.environment != 'self-hosted'
+        run: |
+          echo "::error::Cette sonde n'a de sens que dans la VM amateo-ci."
+          exit 1
+
+      # Les IP passent par l'ENV, jamais interpolées dans le shell (semgrep run-shell-injection).
+      - name: The host, the LAN and WSL must be unreachable
+        env:
+          HOST_IP: ${{ inputs.host_ip }}
+          LAN_IP: ${{ inputs.lan_ip }}
+          WSL_IP: ${{ inputs.wsl_ip }}
+        run: |
+          set -u
+          leaks=0
+          must_fail() {
+            local label="$1"; shift
+            if "$@" >/dev/null 2>&1; then
+              echo "::error::JOINT À TORT — $label"
+              leaks=$((leaks + 1))
+            else
+              echo "ok (injoignable) — $label"
+            fi
+          }
+          must_fail "hôte :5173 (Vite)" curl -sS -m5 "http://$HOST_IP:5173"
+          must_fail "hôte :8080" curl -sS -m5 "http://$HOST_IP:8080"
+          must_fail "IP LAN :8080" curl -sS -m5 "http://$LAN_IP:8080"
+          must_fail "IP WSL :8080" curl -sS -m5 "http://$WSL_IP:8080"
+          must_fail "hôte :445 (SMB)" nc -zvw3 "$HOST_IP" 445
+          must_fail "hôte :135 (RPC)" nc -zvw3 "$HOST_IP" 135
+          must_fail "disque Windows (/mnt/c)" test -d /mnt/c
+          [ "$leaks" -eq 0 ] || exit 1
+
+      - name: GitHub, ghcr and Docker Hub must be reachable
+        run: |
+          set -eu
+          curl -sSI -m10 https://github.com >/dev/null
+          # ghcr répond 401 sans jeton : joignable.
+          code=$(curl -sS -o /dev/null -w '%{http_code}' -m10 https://ghcr.io/v2/)
+          case "$code" in 200|401) echo "ghcr joignable ($code)" ;; *) echo "::error::ghcr injoignable ($code)"; exit 1 ;; esac
+          docker pull alpine:3

@@ -2,9 +2,10 @@ name: Visual Baselines
 
 # Génération / vérification des CAPTURES DE RÉFÉRENCE de `tests/e2e/visual-reference.spec.ts`
 # (PR 8/8 série « uniformité des écrans »). Les PNG de référence doivent être produits dans
-# l'environnement EXACT de la CI (runner `ubuntu-24.04` + `npx playwright install chromium`
-# épinglé par le lock) — mêmes polices que le job `e2e` de `ci.yml` qui les COMPARE. On ne les
-# génère donc jamais en local.
+# l'environnement EXACT de la CI : le conteneur Playwright (service compose `e2e`, image épinglée
+# sur le lock) contre le Vite du conteneur `frontend-dev` — mêmes polices que le job `e2e` de
+# `ci.yml` qui les COMPARE, que le job tourne chez GitHub ou sur le runner auto-hébergé. On ne
+# les génère donc jamais en local.
 #
 # Déclenché À LA DEMANDE uniquement (`workflow_dispatch`) — une fois ce workflow sur `main`,
 # `gh workflow run visual-baselines.yml --ref <branche> -f update=true` marche depuis N'IMPORTE
@@ -36,15 +37,28 @@ permissions:
 jobs:
   visual-baselines:
     name: Visual Baselines
-    runs-on: ubuntu-24.04
+    runs-on: ${{ vars.CI_RUNS_ON_HEAVY || 'ubuntu-24.04' }}
     # Un step bloqué (verrou apt, téléchargement figé) consommerait sinon le défaut
     # GitHub de 6 h : il occupe un exécutant, bloque la file, et ne dit RIEN.
     timeout-minutes: 40
     env:
+      # Même régime que le job e2e de ci.yml : un projet compose par job et par tentative,
+      # overlay sans port hôte, chemins ABSOLUS (un step en `working-directory: frontend` ne
+      # résoudrait pas un chemin relatif).
+      COMPOSE_PROJECT_NAME: ci-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}
+      AMATEO_STACK: ci-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}
+      COMPOSE_FILE: ${{ github.workspace }}/docker-compose.yml:${{ github.workspace }}/docker-compose.test.yml
       # Même raison que le job e2e : couper la délégation bake évite « waiting for BuildKit ».
       COMPOSE_BAKE: "false"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      # Runner auto-hébergé PERSISTANT et partagé : les identifiants Docker de ce job vont dans
+      # un DOCKER_CONFIG propre au job, jamais dans celui du runner (même step que ci.yml).
+      - name: Isolate the Docker credentials of this job
+        run: |
+          echo "DOCKER_CONFIG=$RUNNER_TEMP/docker-config" >> "$GITHUB_ENV"
+          echo "HOME=$HOME"
 
       # Connexion Docker Hub avant tout tirage (build-php-cached, compose pull/build) : les
       # runners partagés épuisent le quota ANONYME (429 Too Many Requests — incident 2026-10-09).
@@ -65,13 +79,13 @@ jobs:
         uses: ./.github/actions/build-php-cached
 
       - name: Pre-pull third-party images
-        run: .github/scripts/retry.sh 3 docker compose pull --ignore-buildable nginx mercure redis postgres
+        run: .github/scripts/retry.sh 3 docker compose --profile tools pull --ignore-buildable nginx mercure redis postgres mailpit e2e
 
       - name: Build the engine image
         run: .github/scripts/retry.sh 2 docker compose build engine
 
       - name: Start services
-        run: .github/scripts/retry.sh 3 docker compose up -d --wait php-fpm nginx engine mercure redis postgres
+        run: .github/scripts/retry.sh 3 docker compose up -d --wait php-fpm nginx engine mercure redis postgres mailpit
 
       - name: Install PHP deps (cached + retried)
         uses: ./.github/actions/composer-install-cached
@@ -98,38 +112,23 @@ jobs:
       - name: Start messenger worker
         run: docker compose up -d --wait messenger-worker
 
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
-        with:
-          node-version: 24
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
-
-      - name: Install frontend deps
-        working-directory: frontend
-        run: npm ci
-
-      - name: Cache Playwright browsers
-        id: playwright-cache
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ hashFiles('frontend/package-lock.json') }}
-
-      - name: Install Playwright chromium
-        if: steps.playwright-cache.outputs.cache-hit != 'true'
-        working-directory: frontend
-        timeout-minutes: 10
-        run: npx playwright install chromium
-
+      # Même mécanique que le job e2e de ci.yml : Vite dans `frontend-dev` (busybox : `wget`,
+      # jamais `curl`), attente bornée à 300 essais (~5 min, `npm ci` sur volume neuf), sonde sur
+      # `127.0.0.1` : sous Alpine `localhost` → `::1` (IPv6), Vite n'écoute qu'en IPv4.
       - name: Start Vite dev server
-        working-directory: frontend
         run: |
-          npm run dev &
-          for i in $(seq 1 60); do
-            curl -sf http://localhost:5173 >/dev/null && exit 0
+          docker compose --profile dev up -d frontend-dev
+          for i in $(seq 1 300); do
+            docker compose --profile dev exec -T frontend-dev wget -qO- http://127.0.0.1:5173 >/dev/null 2>&1 && exit 0
             sleep 1
           done
+          docker compose --profile dev logs --tail 80 frontend-dev
           echo "Vite dev server did not come up" && exit 1
+
+      # Volume `e2e_node_modules` neuf (possédé par root) rendu à l'uid du runner. Guillemets
+      # DOUBLES : l'HÔTE expanse `$(id -u)` (sous apostrophes il vaudrait 0, dans ce conteneur root).
+      - name: Hand the e2e node_modules volume to the runner uid
+        run: docker compose --profile tools run --rm --no-deps --user root e2e sh -lc "chown -R $(id -u):$(id -g) /app/frontend/node_modules"
 
       # Génère OU compare, selon le mode. `set -o pipefail` explicite (le shell `run` par défaut
       # est `bash -e {0}` SANS pipefail). En COMPARE une référence manquante fait ÉCHOUER (CI=true,
@@ -140,11 +139,13 @@ jobs:
         # run-shell-injection) — même discipline que `ci.yml` pour toute valeur variable.
         env:
           UPDATE: ${{ inputs.update }}
+        # Dans le conteneur Playwright (cible par défaut du service : http://frontend-dev:5173) ;
+        # `CI=true` passé explicitement — l'env du runner n'entre pas dans le conteneur.
         run: |
           set -o pipefail
           ARGS=""
           if [ "$UPDATE" = "true" ]; then ARGS="--update-snapshots=all"; fi
-          E2E_BASE_URL=http://localhost:5173 npx playwright test tests/e2e/visual-reference.spec.ts $ARGS
+          docker compose --profile tools run --rm --no-deps -e CI=true e2e sh -lc "PUPPETEER_SKIP_DOWNLOAD=1 npm ci --legacy-peer-deps && npx playwright test tests/e2e/visual-reference.spec.ts $ARGS"
 
       # Les PNG de référence (après un run UPDATE) + les diffs d'un run COMPARE rouge. `always()` :
       # en UPDATE le run est vert et on veut quand même les PNG ; en COMPARE rouge on veut les diffs.
@@ -158,3 +159,8 @@ jobs:
             frontend/test-results/
           if-no-files-found: warn
           retention-days: 7
+
+      # Démonte TOUJOURS la stack du job — même job rouge : démon partagé et persistant.
+      - name: Tear down the compose stack (always)
+        if: always()
+        uses: ./.github/actions/ci-stack-down

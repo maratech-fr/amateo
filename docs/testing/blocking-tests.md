@@ -3,12 +3,16 @@
 > **Maison unique** de « quels tests gatent » — sortie de `CLAUDE.md` §4 pour
 > alléger l'index (la copie de testing-strategy avait déjà été supprimée après dérive, DOC-26 :
 > deux endroits pour une même vérité finissent par diverger). `BlockingTestsListMatchesCiTest`
-> compare cette liste aux steps du job `blocking-tests` de `.github/workflows/ci.yml` **dans les
-> deux sens**. Ce que chaque test garde en détail : **son propre docblock**.
+> compare cette liste aux chemins du step `Blocking suite` du job `blocking-tests` de
+> `.github/workflows/ci.yml` (un chemin par ligne, chacun avec son commentaire de raison) **plus** le
+> step filtré, **dans les deux sens**. Ce que chaque test garde en détail : **son propre docblock**.
 > Graphe des jobs, rôles et pièges : [`testing-strategy.md`](testing-strategy.md) §1.
 
-**blocking-tests** (must pass first — steps du job, un par ligne, tag = ce qui est gardé) :
+**blocking-tests** (must pass first — chemins du step `Blocking suite`, un par ligne, + le step filtré ; tag = ce qui est gardé) :
 `Unit/Entity/UserInterfaceContractTest` (boot conteneur : `eraseCredentials`) ·
+`Unit/Documentation/CiWorkflowRegimeTest` (NR de tous les axes : régime de la CI sur le runner
+auto-hébergé — routage par variable, garde fork, gate complet sur chaque PR, étanchéité des jobs
+sur le démon partagé, bloquants en deux processus) ·
 `Security/LoginFailureCopyTest` (axe *auth & memberships*, P4-263 : le refus de `/api/login` parle
 français — « Identifiants invalides. » via le socle `symfony/translation` + `default_locale: fr` —
 ET reste BYTE-IDENTIQUE entre mauvais mot de passe et compte non vérifié [anti-énumération de
