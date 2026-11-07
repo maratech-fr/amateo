@@ -1742,12 +1742,14 @@ jobs:
       # conteneur Playwright à `http://frontend-dev:5173` sur le réseau du projet — aucun Node ni
       # navigateur sur l'hôte : mêmes polices, mêmes PNG chez GitHub et sur le runner
       # auto-hébergé. Attente bornée à 300 essais (~5 min) : sur volume neuf, `npm ci` seul prend
-      # plus de 3 min ; `frontend-dev` est busybox : `wget`, jamais `curl`.
+      # plus de 3 min ; `frontend-dev` est busybox : `wget`, jamais `curl`. Sonde sur
+      # `127.0.0.1`, jamais `localhost` : sous Alpine `localhost` se résout en `::1` (IPv6) alors
+      # que Vite écoute `--host 0.0.0.0` (IPv4 seul) — « Connection refused » même Vite prêt.
       - name: Start Vite dev server
         run: |
           docker compose --profile dev up -d frontend-dev
           for i in $(seq 1 300); do
-            docker compose --profile dev exec -T frontend-dev wget -qO- http://localhost:5173 >/dev/null 2>&1 && exit 0
+            docker compose --profile dev exec -T frontend-dev wget -qO- http://127.0.0.1:5173 >/dev/null 2>&1 && exit 0
             sleep 1
           done
           docker compose --profile dev logs --tail 80 frontend-dev

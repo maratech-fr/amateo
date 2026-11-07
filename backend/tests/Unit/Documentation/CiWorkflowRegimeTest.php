@@ -448,9 +448,12 @@ final class CiWorkflowRegimeTest extends TestCase
                 if (preg_match('/\bdocker compose\b.*\bup\b/', $line) && str_contains($line, 'mailpit')) {
                     $mailpit = true;
                 }
-                if (str_contains($line, 'wget -qO- http://localhost:5173')) {
+                if (str_contains($line, 'wget -qO- http://127.0.0.1:5173')) {
                     $wget = true;
                 }
+                // Sous Alpine (frontend-dev), `localhost` se résout en `::1` (IPv6) alors que Vite
+                // écoute `--host 0.0.0.0` (IPv4 seul) : une sonde sur localhost échoue toujours.
+                self::assertFalse(str_contains($line, 'localhost:5173'), \sprintf('`%s` : attente Vite sur `127.0.0.1`, jamais `localhost` (→ ::1 sous Alpine, Vite en IPv4 seul). Ligne : %s', $id, $line));
                 self::assertFalse(str_contains($line, 'curl') && str_contains($line, '5173'), \sprintf('`%s` : frontend-dev est busybox — attente Vite par wget, jamais curl. Ligne : %s', $id, $line));
                 if (str_contains($line, '--user root') && str_contains($line, 'sh -lc "chown -R $(id -u):$(id -g) /app/frontend/node_modules"')) {
                     $chown = true;
@@ -463,7 +466,7 @@ final class CiWorkflowRegimeTest extends TestCase
             }
             self::assertGreaterThan(0, $playwright, \sprintf('`%s` : aucune invocation Playwright trouvée.', $id));
             self::assertTrue($mailpit, \sprintf('`%s` : le `up` nomme mailpit (vérification d\'e-mail à l\'inscription).', $id));
-            self::assertTrue($wget, \sprintf('`%s` : attente Vite par `wget -qO- http://localhost:5173` dans frontend-dev.', $id));
+            self::assertTrue($wget, \sprintf('`%s` : attente Vite par `wget -qO- http://127.0.0.1:5173` dans frontend-dev.', $id));
             self::assertTrue($chown, \sprintf('`%s` : chown du volume e2e_node_modules en `--user root` avec `sh -lc "chown -R $(id -u):$(id -g) /app/frontend/node_modules"`.', $id));
         }
 
