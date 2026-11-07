@@ -109,7 +109,9 @@ final class WorktreeTestRoutingTest extends TestCase
      */
     public function testTestsCompleteSweepsFirst(): void
     {
-        self::assertMatchesRegularExpression('/^tests-complete: test-sweep /m', $this->read('backend/Makefile'));
+        preg_match('/^tests-complete:(?!\s*APP_ENV)(.*)$/m', $this->read('backend/Makefile'), $prerequisites);
+
+        self::assertMatchesRegularExpression('/^ test-sweep /', $prerequisites[1] ?? '', 'Premier prérequis de tests-complete.');
     }
 
     /** La purge des transactions zombies et la cible amateo_test restent le rail de la base de test. */
