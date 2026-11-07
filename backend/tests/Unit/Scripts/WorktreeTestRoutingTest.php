@@ -85,21 +85,33 @@ final class WorktreeTestRoutingTest extends TestCase
         self::assertStringNotContainsString('$(DOCKER_COMPOSE)', $recipes);
     }
 
+    /**
+     * `test-sweep` délègue à `stack-sweep.sh`, qui balaie les deux familles (amateo-test-*, agent-*)
+     * contre la liste des worktrees, chemin physique compris. Angle nommé : le texte ; le
+     * comportement (qui est retiré, qui survit) est prouvé par la section F de
+     * `backend/scripts/lib/stack-resolve-test.sh`.
+     */
     public function testSweepTargetRetiresProjectsWithoutAWorktree(): void
     {
-        $contents = $this->read('backend/Makefile');
-        $found = false;
-        foreach ($this->targets($contents) as $target) {
-            if (str_starts_with($target, 'test-') && \in_array($target, ['test-up', 'test-down', 'test-destroy', 'test-check'], true)) {
-                continue;
-            }
-            $recipe = $this->extractRecipe($contents, $target);
-            if (str_contains($recipe, 'amateo-test-') && str_contains($recipe, 'worktree')) {
-                $found = true;
-            }
-        }
+        self::assertStringContainsString('stack-sweep.sh', $this->recipe('backend/Makefile', 'test-sweep'));
 
-        self::assertTrue($found, 'Aucune cible de backend/Makefile ne balaie les projets amateo-test-* sans worktree.');
+        $script = $this->read('backend/scripts/lib/stack-sweep.sh');
+        self::assertStringContainsString('amateo-test-', $script);
+        self::assertStringContainsString('agent-', $script);
+        self::assertStringContainsString('worktree list', $script);
+        self::assertStringContainsString('pwd -P', $script);
+    }
+
+    /**
+     * Le balayage est le PREMIER prérequis de `tests-complete`, dans toute copie : un oubli de
+     * `test-destroy` se rattrape au prochain run. Exécution réelle dans les trois modes : section
+     * F11 de `backend/scripts/lib/stack-resolve-test.sh`.
+     */
+    public function testTestsCompleteSweepsFirst(): void
+    {
+        preg_match('/^tests-complete:(?!\s*APP_ENV)(.*)$/m', $this->read('backend/Makefile'), $prerequisites);
+
+        self::assertMatchesRegularExpression('/^ test-sweep /', $prerequisites[1] ?? '', 'Premier prérequis de tests-complete.');
     }
 
     /** La purge des transactions zombies et la cible amateo_test restent le rail de la base de test. */

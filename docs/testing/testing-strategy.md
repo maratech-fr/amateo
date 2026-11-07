@@ -390,7 +390,7 @@ cd backend && make tests-complete            # phpstan + cs + phpunit tests/ (mi
 cd engine  && make test                      # pytest + ruff + mypy
 ```
 
-**Depuis un worktree** : même commandes, sur la stack PRIVÉE de la copie (`make -C backend tests-complete` monte un socle de test `amateo-test-<hash>` ; `make -C backend test-destroy` à la fin du worktree, `test-down` = pause). Behat et e2e : `make epreuve-up WT=<worktree>` (une seule stack d'épreuve, front `:8181` — fenêtre privée, le cookie `localhost` est partagé avec `:8081`), puis `backend/scripts/with-sandbox.sh …`, puis `make epreuve-down`. Détail : `backend/docs/commands.md` §Worktrees.
+**Depuis un worktree** : même commandes, sur la stack PRIVÉE de la copie (`make -C backend tests-complete` monte un socle de test `amateo-test-<hash>` ; `make -C backend test-destroy` à la fin du worktree, `test-down` = pause ; `tests-complete` balaie d'abord les stacks orphelines). Behat et e2e : `make epreuve-up WT=<worktree>` (une seule stack d'épreuve, front `:8181` — fenêtre privée, le cookie `localhost` est partagé avec `:8081`), puis `backend/scripts/with-sandbox.sh …`, puis `make epreuve-down`. Détail : `backend/docs/commands.md` §Worktrees.
 
 Backend & engine tests run **inside Docker** — running `phpunit`/`pytest` on the host will fail. If the stack is down, `ContractSchemaTest` and other integration tests skip or fail rather than silently passing.
 
