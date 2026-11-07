@@ -959,9 +959,8 @@ toujours dispatché sur `main`, qui checkoute le tag) et pousse avec le secret d
 lecture/écriture) : le jeton du workflow n'a pas la permission `workflows`, et GitHub refuse sans elle
 un push dont le commit modifie `.github/workflows/`. Le step `Check RELEASE_BRANCH_TOKEN` rougit
 AVANT le push si le secret est vide — la prod est alors saine, seule `release` n'est pas recalée.
-**Expiration : 1 an après la création du jeton** — à renouveler avant, sinon le recalage échoue ;
-date de création et d'expiration : à noter ici par le fondateur à la pose (procédure :
-`docs/ops/ci-runner.md`, geste 15). Date notée : _non renseignée à ce jour_.
+**Expiration : 7 novembre 2027** (jeton posé le 7 novembre 2026, validité 1 an) — à renouveler avant,
+sinon le recalage échoue (procédure : `docs/ops/ci-runner.md`, geste 15).
 
 Le job qui met `release` à jour suit le commit **réellement déployé** (résolu
 depuis la version : tag, `sha-…` ou commit courant), pas le `github.sha` du
