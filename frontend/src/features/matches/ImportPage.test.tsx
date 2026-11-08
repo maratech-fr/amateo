@@ -323,12 +323,14 @@ describe("ImportPage — la file de traitement", () => {
 
   it("Replacer pose le filtre équipe + week-end + la rencontre sélectionnée, et renvoie vers le Calendrier", async () => {
     const user = userEvent.setup();
-    renderPage([fx("team-1", "NEW", "2026-11-07")], "/matchs/importer?equipe=team-1");
+    // Rencontre À VENIR quel que soit le jour du run : « Replacer » n'est offert qu'avant le match.
+    const upcoming = "2099-11-07";
+    renderPage([fx("team-1", "NEW", upcoming)], "/matchs/importer?equipe=team-1");
     await user.click(await screen.findByRole("button", { name: "Replacer" }));
     const state = useMatchesStore.getState();
     expect(state.filterMode).toBe("equipe");
     expect(state.filterIds).toContain("team-1");
-    expect(state.selectedWeekend).toBe(weekendKeyOf("2026-11-07"));
+    expect(state.selectedWeekend).toBe(weekendKeyOf(upcoming));
     // PR 3b — le panneau de placement du Calendrier est PERMANENT : la rencontre pointée
     // suffit à l'ouvrir (plus de vue de rail à poser).
     expect(state.selectedFixtureId).toBe("fx-1");
