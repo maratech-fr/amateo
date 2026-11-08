@@ -49,22 +49,85 @@ cat >"$bin/docker" <<'EOF'
 #!/usr/bin/env bash
 # Faux docker : journalise, rend le label working_dir du projet amateo-epreuve, et imite juste
 # assez `up`/`down` pour que l'occupation de la stack d'épreuve évolue comme en vrai.
+#
+# Balayage (section F) : FAKE_DOCKER_PROJECTS nomme un fichier « <type> <projet> [<nom>] » (type :
+# container, volume, network, image). `ps -a` / `volume ls` / `network ls` au format
+# '{{.Label "com.docker.compose.project"}}' rendent un projet par objet ; filtrés par
+# `label=com.docker.compose.project=<p>` en `-q`, ils rendent les objets de <p> (ctr-<p>-<nom>,
+# <p>_<nom>) ; `images -q --filter reference=<p>-*` rend <p>-<nom>. Les retraits (rm, volume rm,
+# network rm, rmi, builder prune…) sont seulement journalisés : rien n'est jamais retiré.
 printf '%s\n' "$*" >>"${FAKE_DOCKER_LOG:?}"
 all="$*"
 if [[ -n "${FAKE_DOCKER_FAIL_ON:-}" && "$all" == *"$FAKE_DOCKER_FAIL_ON"* ]]; then
   exit 1
 fi
+objects() { # objects <type> [<projet>] : lignes « projet nom » du fichier d'état
+  [[ -n "${FAKE_DOCKER_PROJECTS:-}" && -s "$FAKE_DOCKER_PROJECTS" ]] || return 0
+  awk -v t="$1" -v p="${2:-}" '$1 == t && (p == "" || $2 == p) { print $2, ($3 == "" ? "x" : $3) }' "$FAKE_DOCKER_PROJECTS"
+}
+label_filter() { # projet d'un --filter label=com.docker.compose.project=<p>, vide sinon
+  local prev="" a
+  for a in "$@"; do
+    case "$a" in --filter=label=com.docker.compose.project=*)
+      printf '%s' "${a#--filter=label=com.docker.compose.project=}"
+      return
+      ;;
+    esac
+    if [[ "$prev" == "--filter" || "$prev" == "-f" ]]; then
+      case "$a" in label=com.docker.compose.project=*)
+        printf '%s' "${a#label=com.docker.compose.project=}"
+        return
+        ;;
+      esac
+    fi
+    prev=$a
+  done
+}
+quiet() { [[ " $all " == *" -q "* || " $all " == *" -aq "* || " $all " == *" -qa "* || " $all " == *" --quiet "* ]]; }
+lists_projects() { [[ "$all" == *'"com.docker.compose.project"'* ]]; }
+listing() { # listing <type> <préfixe d'id> <séparateur> : réponse d'un ps -a / volume ls / network ls
+  local type=$1 pre=$2 sep=$3 p
+  p=$(label_filter "$@")
+  if [[ -n "$p" ]] && quiet; then
+    objects "$type" "$p" | while read -r proj name; do printf '%s%s%s%s\n' "$pre" "$proj" "$sep" "$name"; done
+  elif [[ -z "$p" ]] && lists_projects; then
+    objects "$type" | while read -r proj _; do printf '%s\n' "$proj"; done
+  fi
+}
 case "${1:-}" in
   ps)
     [[ "${FAKE_DOCKER_PS_FAIL:-0}" == "1" ]] && exit 1
-    if [[ "$all" == *amateo-epreuve* && -s "${FAKE_DOCKER_STATE:?}" ]]; then
-      cat "$FAKE_DOCKER_STATE"
+    if [[ "$all" == *amateo-epreuve* ]] && ! quiet; then
+      if [[ -s "${FAKE_DOCKER_STATE:?}" ]]; then cat "$FAKE_DOCKER_STATE"; fi
+      exit 0
     fi
+    listing container ctr- - "$@"
+    exit 0
+    ;;
+  volume)
+    [[ "${2:-}" == ls ]] && listing volume '' _ "$@"
     exit 0
     ;;
   network)
+    if [[ "${2:-}" == ls ]]; then
+      listing network '' _ "$@"
+      exit 0
+    fi
     # Le réseau du fondateur : seuls SES conteneurs y sont.
     printf 'amateo-postgres amateo-php-fpm\n'
+    exit 0
+    ;;
+  images | image)
+    if [[ "${1}" == images || "${2:-}" == ls ]]; then
+      for a in "$@"; do
+        case "$a" in reference=*-\* | --filter=reference=*-\*)
+          ref=${a#--filter=}
+          ref=${ref#reference=}
+          objects image "${ref%-\*}" | while read -r proj name; do printf '%s-%s\n' "$proj" "$name"; done
+          ;;
+        esac
+      done
+    fi
     exit 0
     ;;
   inspect)
@@ -644,6 +707,253 @@ for tool in "lib/sandbox-guard.sh" "lib/mutation-confirm.sh etiquette" "with-san
   FAKE_DOCKER_PS_FAIL=1 run_tool bash "$WT_E/backend/scripts/$script" $arg
   assert_refused "unknown : $script" ""
 done
+
+# ============================================================================== F. balayage
+# Promesse : `stack-sweep.sh` retire les stacks amateo-test-*/agent-* dont le worktree a disparu,
+# jamais celle d'un worktree vivant (chemin brut ET physique, basename), ni `scheduler`, ni
+# `amateo-epreuve`, ni la copie courante ; il ne prune que le cache de build, et ne fait jamais
+# échouer `tests-complete`, qu'il ouvre dans les trois modes. Volet statique (recette, prérequis) :
+# Unit/Scripts/WorktreeTestRoutingTest::testSweepTargetRetiresProjectsWithoutAWorktree et
+# ::testTestsCompleteSweepsFirst.
+section "F. stack-sweep : balayage des stacks orphelines (exécution réelle sous faux docker)"
+
+SWEEP_REL=backend/scripts/lib/stack-sweep.sh
+export FAKE_DOCKER_PROJECTS="$tmp/docker-projects"
+ORPH=amateo-test-0123456789ab
+check "stack-sweep.sh doit exister" test -f "$SRC/$SWEEP_REL"
+
+projects() { printf '%s\n' "$@" >"$FAKE_DOCKER_PROJECTS"; } # projects "<type> <projet> [<nom>]"…
+full() { printf 'container %s php-fpm\nvolume %s pgdata\nnetwork %s default\nimage %s php-fpm\n' "$1" "$1" "$1" "$1"; }
+paused() { printf 'volume %s pgdata\nimage %s php-fpm\n' "$1" "$1"; } # après test-down : volumes et images
+sweep_out=""
+sweep_err=""
+sweep_rc=0
+sweep() { # sweep <racine> [<projet de test>] ; SWEEP_PATH remplace le PATH (git absent)
+  reset_log
+  sweep_out=$(PATH="${SWEEP_PATH:-$bin:$PATH}" sh "$MAIN/$SWEEP_REL" "$@" 2>"$tmp/sweep.err")
+  sweep_rc=$?
+  sweep_err=$(cat "$tmp/sweep.err")
+}
+REMOVAL='^(rm|container rm|volume rm|network rm|rmi|image rm) |^compose .* down'
+touched() { grep -E -- "$REMOVAL" "$FAKE_DOCKER_LOG" | grep -qF -- "$1"; }
+assert_sweep_ran() { # assert_sweep_ran <libellé> : exit 0 et au moins un message du balayage
+  if [[ "$sweep_rc" -ne 0 ]]; then
+    fail "$1 : stack-sweep doit sortir 0, a rendu $sweep_rc : $(printf '%s' "$sweep_err" | tail -n 2)"
+  elif ! printf '%s\n' "$sweep_err" | grep -q '^test-sweep : '; then
+    fail "$1 : aucun message « test-sweep : » sur stderr (témoin vide)"
+  else
+    pass
+  fi
+}
+assert_err_line() { # assert_err_line <libellé> <ligne exacte attendue sur stderr>
+  if printf '%s\n' "$sweep_err" | grep -qxF -- "$2"; then pass; else fail "$1 : ligne attendue « $2 », stderr : $(printf '%s' "$sweep_err" | tail -n 3)"; fi
+}
+assert_removed() { # assert_removed <libellé> <projet> : conteneurs, volumes, réseau, images, par label
+  local label=$1 p=$2 kind
+  for kind in "^(rm|container rm) (-f|--force) .*ctr-$p-" "^volume rm .*${p}_" "^network rm .*${p}_" "^(rmi|image rm) .*$p-"; do
+    if ! grep -qE -- "$kind" "$FAKE_DOCKER_LOG"; then
+      fail "$label : $p non retiré (attendu une ligne $kind)"
+      return
+    fi
+  done
+  if ! log_has "label=com.docker.compose.project=$p"; then
+    fail "$label : objets de $p non cherchés par leur label compose"
+    return
+  fi
+  if ! log_has "reference=$p-*"; then
+    fail "$label : images de $p non cherchées par reference=$p-*"
+    return
+  fi
+  assert_err_line "$label" "test-sweep : retrait de $p (worktree disparu)"
+}
+assert_kept() { # assert_kept <libellé> <projet>
+  if touched "$2"; then
+    fail "$1 : $2 retiré alors qu'il doit survivre : $(grep -E -- "$REMOVAL" "$FAKE_DOCKER_LOG" | grep -F -- "$2" | head -n 1)"
+  elif printf '%s\n' "$sweep_err" | grep -qF -- "retrait de $2 "; then
+    fail "$1 : $2 annoncé retiré"
+  else
+    pass
+  fi
+}
+assert_nothing_removed() { # assert_nothing_removed <libellé> : aucun retrait, aucun prune
+  if grep -qE -- "$REMOVAL|prune" "$FAKE_DOCKER_LOG"; then
+    fail "$1 : retrait ou prune inattendu : $(grep -E -- "$REMOVAL|prune" "$FAKE_DOCKER_LOG" | head -n 1)"
+  else
+    pass
+  fi
+}
+
+# F1 — un orphelin (hash d'aucun worktree) est retiré en entier, par label.
+projects "$(full "$ORPH")"
+sweep "$MAIN"
+assert_sweep_ran "F1"
+assert_removed "F1 orphelin" "$ORPH"
+assert_err_line "F1 compte" "test-sweep : 1 stack orpheline retirée"
+
+# F2 — la stack d'un worktree vivant (pausée par test-down ou epreuve-up) survit ; témoin : l'orphelin part.
+projects "$(paused "amateo-test-$H_A")" "$(full "$ORPH")"
+sweep "$MAIN"
+assert_sweep_ran "F2"
+assert_kept "F2 worktree vivant" "amateo-test-$H_A"
+assert_removed "F2 témoin" "$ORPH"
+projects "$(paused "amateo-test-$H_A")"
+sweep "$MAIN"
+assert_sweep_ran "F2 sans orphelin"
+if grep -qE -- "$REMOVAL" "$FAKE_DOCKER_LOG"; then fail "F2 sans orphelin : retrait inattendu"; else pass; fi
+assert_err_line "F2 sans orphelin" "test-sweep : aucune stack orpheline"
+
+# F3a — worktree ajouté via un lien symbolique : la stack née de son chemin physique survit.
+mkdir -p "$tmp/reel-s"
+ln -s "$tmp/reel-s" "$tmp/lien"
+add_wt "$tmp/lien/wt-s"
+H_S=$(hash_of "$tmp/reel-s/wt-s")
+projects "$(full "amateo-test-$H_S")" "$(full "$ORPH")"
+sweep "$MAIN"
+assert_sweep_ran "F3a"
+assert_kept "F3a worktree ajouté via un lien" "amateo-test-$H_S"
+assert_removed "F3a témoin" "$ORPH"
+
+# F3b — parent déplacé derrière un lien APRÈS l'ajout : git rend le chemin brut, stack-resolve le
+# physique ; les deux stacks survivent. Une version ne gardant que le hash brut rend F3b rouge.
+mkdir -p "$tmp/real"
+add_wt "$tmp/real/wt-m"
+mv "$tmp/real" "$tmp/real2"
+ln -s "$tmp/real2" "$tmp/real"
+H_RAW=$(hash_of "$tmp/real/wt-m")
+H_PHYS=$(hash_of "$tmp/real2/wt-m")
+if [[ "$H_RAW" != "$H_PHYS" ]] && git -C "$MAIN" worktree list --porcelain | grep -qxF "worktree $tmp/real/wt-m"; then
+  pass
+else
+  fail "F3b banc : git doit lister le chemin brut $tmp/real/wt-m, de hash distinct du physique"
+fi
+projects "$(full "amateo-test-$H_RAW")" "$(full "amateo-test-$H_PHYS")" "$(full "$ORPH")"
+sweep "$MAIN"
+assert_sweep_ran "F3b"
+assert_kept "F3b hash du chemin brut" "amateo-test-$H_RAW"
+assert_kept "F3b hash du chemin physique" "amateo-test-$H_PHYS"
+assert_removed "F3b témoin" "$ORPH"
+
+# F4 — la stack du fondateur et l'épreuve (4 volumes sans conteneur) ne sont jamais touchées.
+projects "$(full scheduler)" "volume amateo-epreuve pgdata" "volume amateo-epreuve redis" \
+  "volume amateo-epreuve mercure_data" "volume amateo-epreuve mercure_config" "image amateo-epreuve php-fpm" "$(full "$ORPH")"
+sweep "$MAIN"
+assert_sweep_ran "F4"
+assert_kept "F4 stack du fondateur" scheduler
+assert_kept "F4 stack d'épreuve" amateo-epreuve
+assert_removed "F4 témoin" "$ORPH"
+
+# F5 — la copie courante (TEST_PROJECT) est gardée même si git ne la liste pas.
+projects "$(full amateo-test-fedcba987654)" "$(full "$ORPH")"
+sweep "$MAIN" amateo-test-fedcba987654
+assert_sweep_ran "F5"
+assert_kept "F5 copie courante" amateo-test-fedcba987654
+assert_removed "F5 témoin" "$ORPH"
+
+# F6 — agent-* : retiré sans worktree, gardé si le basename d'un worktree vivant répond.
+add_wt "$tmp/agent-keep"
+projects "$(full agent-zz)" "$(full agent-keep)"
+sweep "$MAIN"
+assert_sweep_ran "F6"
+assert_removed "F6 agent-* sans worktree" agent-zz
+assert_kept "F6 agent-* au basename vivant" agent-keep
+
+# F7 — liste des worktrees indisponible : message, aucun retrait, aucun prune, exit 0.
+UNAVAILABLE='test-sweep : liste des worktrees indisponible, aucun retrait'
+projects "$(full "$ORPH")"
+SWEEP_PATH=$nogit sweep "$MAIN"
+assert_sweep_ran "F7 git absent"
+assert_err_line "F7 git absent" "$UNAVAILABLE"
+assert_nothing_removed "F7 git absent"
+sweep "$NOT_REPO"
+assert_sweep_ran "F7 dossier hors dépôt"
+assert_err_line "F7 dossier hors dépôt" "$UNAVAILABLE"
+assert_nothing_removed "F7 dossier hors dépôt"
+FAKE_DOCKER_PS_FAIL=1 sweep "$MAIN"
+assert_sweep_ran "F7 docker ps en échec"
+assert_err_line "F7 docker ps en échec" "$UNAVAILABLE"
+assert_nothing_removed "F7 docker ps en échec"
+
+# F9 — seul le cache de build se prune : --force, --filter until=, jamais --all ; aucun autre prune.
+projects "$(full "$ORPH")"
+sweep "$MAIN"
+prune_line=$(grep -E '^builder prune' "$FAKE_DOCKER_LOG" | head -n 1)
+if [[ "$prune_line" == *--force* && "$prune_line" == *"--filter until=168h"* && "$prune_line" != *--all* && "$prune_line" != *" -a"* ]]; then
+  pass
+else
+  fail "F9 : builder prune --force --filter until=168h sans --all attendu, obtenu « $prune_line »"
+fi
+other_prune=$(grep -E 'prune' "$FAKE_DOCKER_LOG" | grep -vE '^builder prune' | head -n 1)
+if [[ -z "$other_prune" ]]; then pass; else fail "F9 : prune interdit : $other_prune"; fi
+assert_err_line "F9 annonce" "test-sweep : cache de build — docker builder prune (until=168h)"
+SWEEP_CACHE_AGE=24h sweep "$MAIN"
+check "F9 SWEEP_CACHE_AGE surcharge l'âge" grep -qE '^builder prune .*--filter until=24h' "$FAKE_DOCKER_LOG"
+
+# F10 — DRY_RUN=1 : rien retiré, rien pruné, lignes [simulation].
+projects "$(full "$ORPH")"
+DRY_RUN=1 sweep "$MAIN"
+assert_sweep_ran "F10"
+assert_nothing_removed "F10"
+assert_err_line "F10 retrait simulé" "test-sweep : [simulation] retirerait $ORPH"
+assert_err_line "F10 prune simulé" "test-sweep : [simulation] docker builder prune (until=168h) non lancé"
+
+# F12 — un retrait en échec est dit, n'arrête ni le balayage (projet suivant, prune) ni la suite.
+projects "$(full agent-zz)" "$(full "$ORPH")"
+FAKE_DOCKER_FAIL_ON='volume rm' sweep "$MAIN"
+assert_sweep_ran "F12"
+assert_err_line "F12 retrait incomplet" "test-sweep : $ORPH : retrait incomplet, à reprendre à la main (make -C backend test-sweep)"
+check "F12 projet suivant traité (agent-zz)" grep -qE '^network rm .*agent-zz_' "$FAKE_DOCKER_LOG"
+check "F12 projet suivant traité ($ORPH)" grep -qE "^network rm .*${ORPH}_" "$FAKE_DOCKER_LOG"
+check "F12 prune lancé malgré l'échec" grep -qE '^builder prune' "$FAKE_DOCKER_LOG"
+
+# F11 — tests-complete commence par le balayage, dans les trois modes.
+first_recipe_line() { printf '%s\n' "$mk_out" | grep -vE '^[[:space:]]*#' | grep -vE '^make(\[[0-9]+\])?: ' | sed -n 1p; }
+assert_sweeps_first() { # assert_sweeps_first <libellé>
+  local first
+  first=$(first_recipe_line)
+  if [[ "$mk_rc" -eq 0 && "$first" == *stack-sweep.sh* ]]; then
+    pass
+  else
+    fail "$1 : première ligne de tests-complete attendue stack-sweep.sh, obtenue « $first » (rc=$mk_rc)"
+  fi
+}
+projects ""
+clear_label
+mkn -C "$MAIN/backend" tests-complete
+assert_sweeps_first "F11 principal"
+write_nu_env "$WT_A"
+mkn -C "$WT_A/backend" tests-complete
+assert_sweeps_first "F11 nu"
+set_label "$WT_A"
+mkn -C "$WT_A/backend" tests-complete
+assert_sweeps_first "F11 épreuve"
+clear_label
+# Exécution réelle en nu : le listage du balayage (`volume ls`, que lui seul fait) précède le premier up.
+write_nu_env "$WT_A"
+mk -C "$WT_A/backend" tests-complete
+sweep_at=$(grep -nE '^volume ls' "$FAKE_DOCKER_LOG" | head -n 1 | cut -d: -f1)
+up_at=$(grep -nE '^compose .* up( |$)' "$FAKE_DOCKER_LOG" | head -n 1 | cut -d: -f1)
+if [[ "$mk_rc" -eq 0 && -n "$sweep_at" && -n "$up_at" && "$sweep_at" -lt "$up_at" ]]; then
+  pass
+else
+  fail "F11 nu réel : balayage (ligne ${sweep_at:-absente}) avant le premier up (ligne ${up_at:-absente}), rc=$mk_rc"
+fi
+# F12 (suite) — un retrait en échec ne fait pas échouer tests-complete.
+projects "$(full "$ORPH")"
+FAKE_DOCKER_FAIL_ON='volume rm' mk -C "$WT_A/backend" tests-complete
+if [[ "$mk_rc" -eq 0 ]] && log_has "volume rm" && log_has "phpunit tests/"; then
+  pass
+else
+  fail "F12 : tests-complete doit aller au bout malgré un retrait en échec (rc=$mk_rc)"
+fi
+
+# F8 — entrée prunable (dossier supprimé sans `git worktree remove`) : sa stack est retirée. En
+# dernier : WT_E disparaît. Les trois orphelins disent le pluriel.
+rm -rf "$WT_E"
+projects "$(full "amateo-test-$H_E")" "$(full "$ORPH")" "$(full agent-zz)"
+sweep "$MAIN"
+assert_sweep_ran "F8"
+assert_removed "F8 worktree supprimé à la main" "amateo-test-$H_E"
+assert_err_line "F8 compte" "test-sweep : 3 stacks orphelines retirées"
 
 # ==============================================================================
 printf '%d vérifications passées, %d échouées\n' "$passes" "$failures"
