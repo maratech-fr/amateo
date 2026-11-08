@@ -80,7 +80,7 @@ final class SocleDeviationController extends AbstractController
 
         $context = $this->schedulePlanProvisioner->fetchPlanContext($schedule->getSchedulePlanId());
         if (null === $context || SchedulePlanType::SEASON === $context['type'] || null === $context['calendarEntryId']) {
-            return $this->json(['error' => 'Les écarts avec le planning de saison ne concernent qu\'un plan de période.'], Response::HTTP_UNPROCESSABLE_ENTITY);
+            return $this->json(['error' => 'Les écarts avec le planning de saison ne concernent qu\'un planning de période.'], Response::HTTP_UNPROCESSABLE_ENTITY);
         }
         $entryId = $context['calendarEntryId'];
 

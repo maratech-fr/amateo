@@ -14,7 +14,9 @@ vi.mock("./SeasonSchedulesModal", () => ({
     </div>
   ),
 }));
-vi.mock("./seasonPlannings", () => ({ seasonPlanCounts: () => ({ total: 2, overlays: 1, openOverlays: 0 }) }));
+// Compte des plannings pilotable par cas (D4 « nom unique ») ; 2 plannings dont 1 de période par défaut.
+const counts = vi.hoisted(() => ({ value: { total: 2, overlays: 1, openOverlays: 0 } }));
+vi.mock("./seasonPlannings", () => ({ seasonPlanCounts: () => counts.value }));
 let plansData: unknown[] = [];
 vi.mock("./queries", () => ({ useSchedulePlans: () => ({ data: plansData }) }));
 // P4-269 — le bandeau résume le radar « personne à deux endroits » du planning en vigueur.
@@ -34,6 +36,7 @@ vi.mock("react-router", async (orig) => ({ ...(await orig<typeof import("react-r
 const chosen: Schedule = { id: "b1", name: "Socle", status: "COMPLETED", score: 9011, createdAt: "", updatedAt: "", planType: "SEASON", schedulePlanId: "season-plan", isChosen: true };
 
 import { SeasonPlanBanner } from "./SeasonPlanBanner";
+import { COCKPIT_TEXTS } from "./texts";
 import { useWizardStore } from "@/features/wizard/store";
 
 function renderBanner(socleValidated = true) {
@@ -86,6 +89,32 @@ describe("SeasonPlanBanner", () => {
     renderBanner();
     expect(screen.getByText("Planning de la saison 2026-2027")).toBeInTheDocument();
     expect(screen.queryByText("Planning de saison")).not.toBeInTheDocument();
+  });
+
+  /**
+   * D4 « nom unique » : le sous-titre compte les « plannings de période » (pluriel et « en cours »
+   * portés par la clé), jamais des « plannings secondaires » ; à zéro, il n'en dit rien.
+   */
+  it("compte les plannings de période dans le sous-titre, sous leur seul nom", () => {
+    try {
+      counts.value = { total: 3, overlays: 2, openOverlays: 1 };
+      const { unmount } = renderBanner();
+      expect(document.body).toHaveTextContent(COCKPIT_TEXTS.periodPlanCount(2, 1));
+      expect(document.body).not.toHaveTextContent(/secondaire/i);
+      unmount();
+
+      counts.value = { total: 1, overlays: 0, openOverlays: 0 };
+      renderBanner();
+      expect(document.body).not.toHaveTextContent(/planning de période|plannings de période/);
+    } finally {
+      counts.value = { total: 2, overlays: 1, openOverlays: 0 };
+    }
+  });
+
+  it("la clé du compte accorde le pluriel et nomme les plannings « de période »", () => {
+    expect(COCKPIT_TEXTS.periodPlanCount(1, 0)).toMatch(/\b1 planning de période\b/);
+    expect(COCKPIT_TEXTS.periodPlanCount(1, 0)).not.toMatch(/en cours/);
+    expect(COCKPIT_TEXTS.periodPlanCount(2, 1)).toMatch(/\b2 plannings de période \(1 en cours\)/);
   });
 
   it("« Ouvrir » navigates to the planning (validated socle)", async () => {

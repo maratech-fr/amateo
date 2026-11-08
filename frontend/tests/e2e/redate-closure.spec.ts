@@ -333,12 +333,12 @@ test("re-dater une indisponibilité découpée : aperçu (contraste clair ET som
     await openSplitPreview(page, win);
     await expectNoPreviewContrastViolations(page, "cockpit · aperçu de re-datage (thème clair)");
 
-    // --- Confirmer : la semaine 3 tombe → effet destructif → toast « plans de période ajustés ».
+    // --- Confirmer : la semaine 3 tombe → effet destructif → toast « plannings de période ajustés ».
     // P4-266 — plus de pastille « à régénérer » au cockpit (signal déplacé sur /planning) : le succès
     // de la confirmation suffit comme témoin.
     await page.getByRole("button", { name: "Confirmer" }).click();
     await expect(
-      page.getByText(/plans de période ajustés\./),
+      page.getByText(/plannings de période ajustés\./),
       `la confirmation doit réussir et l'annoncer${failed.length ? ` — échecs API: ${failed.join(", ")}` : ""}`,
     ).toBeVisible({ timeout: 30_000 });
   } finally {

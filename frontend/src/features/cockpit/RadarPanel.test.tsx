@@ -13,6 +13,15 @@ import { usePlanningStore } from "@/features/planning/store";
 import { RadarPanel } from "./RadarPanel";
 import { COCKPIT_TEXTS } from "./texts";
 
+/**
+ * Le texte (élément feuille) qui CONTIENT `fragment` — la ligne d'impact d'une carte de fermeture est
+ * composée de plusieurs clés (D2 « nom unique » : « N séances à replacer · <suite> »), on la retrouve
+ * par sa première clé puis on vérifie la suite par la sienne, sans recopier le séparateur.
+ */
+function textContaining(fragment: string): HTMLElement {
+  return screen.getByText((_, el) => null !== el && 0 === el.children.length && (el.textContent ?? "").includes(fragment));
+}
+
 const createHolidayMutate = vi.fn();
 const createHolidayMutateAsync = vi.fn();
 const createWeekChildrenMutate = vi.fn();
@@ -256,7 +265,7 @@ describe("RadarPanel", () => {
     schedulesData = [{ schedulePlanId: "pl-c1" }];
     conflictsData = { conflicts: [{ dates: ["2999-01-06", "2999-01-07"] }], seasonPlanChosen: true };
     renderRadar({ entries: [closure({})] });
-    expect(screen.getByText(/2 séances à replacer · planning en cours — à finaliser/)).toBeInTheDocument();
+    expect(textContaining(COCKPIT_TEXTS.sessionsToReplace(2))).toHaveTextContent(COCKPIT_TEXTS.planningInProgressTail);
     expect(screen.getByRole("button", { name: "Reprendre" })).toBeInTheDocument();
     expect(screen.queryByText(COCKPIT_TEXTS.resumePlanning)).not.toBeInTheDocument();
   });
@@ -812,7 +821,8 @@ describe("RadarPanel", () => {
     conflictsData = { conflicts: [{ dates: [FUTURE, "2999-01-12"] }, { dates: ["2999-01-06"] }], seasonPlanChosen: true };
     renderRadar({ entries: [closure({})] });
 
-    expect(screen.getByText(/3 séances à replacer · planning secondaire absent/)).toBeInTheDocument();
+    // D2 « nom unique » : la carte dit « planning de période absent », jamais « secondaire ».
+    expect(textContaining(COCKPIT_TEXTS.sessionsToReplace(3))).toHaveTextContent(COCKPIT_TEXTS.periodPlanAbsentTail);
     expect(screen.getByRole("button", { name: "Adapter" })).toBeInTheDocument();
   });
 
@@ -823,7 +833,7 @@ describe("RadarPanel", () => {
     conflictsData = { conflicts: [], seasonPlanChosen: false };
     renderRadar({ entries: [closure({})] });
 
-    expect(screen.getByText(/Planning de la saison incomplet · impact non évalué/)).toBeInTheDocument();
+    expect(screen.getByText(COCKPIT_TEXTS.seasonPlanIncompleteImpact)).toBeInTheDocument();
     expect(screen.queryByText(COCKPIT_TEXTS.nothingToReport)).not.toBeInTheDocument();
   });
 
@@ -894,7 +904,7 @@ describe("RadarPanel", () => {
     plansData = [validatedPlan("c1", "ov1")];
     renderRadar({ entries: [closure({})] });
 
-    expect(screen.getByText(COCKPIT_TEXTS.secondaryPlanValidated)).toBeInTheDocument();
+    expect(screen.getByText(COCKPIT_TEXTS.periodPlanValidated)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Voir le planning" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Ajuster" })).toBeInTheDocument();
   });
@@ -1123,15 +1133,15 @@ describe("RadarPanel — fermeture gouvernée par un plan de période (C4/C5)", 
 
   /**
    * Défaut relevé par SWITCH (`fermetures/11a-radar-adapter-ouvrir-le-plan-cockpit-complet.png`) : la
-   * carte d'une fermeture GOUVERNÉE par un plan de période disait « planning secondaire absent » —
-   * faux, un plan existe et c'est lui qu'on ouvre. Elle nomme ce plan.
+   * carte d'une fermeture GOUVERNÉE par un plan de période disait « planning … absent » — faux, un
+   * plan existe et c'est lui qu'on ouvre. Elle nomme ce plan.
    */
-  it("fermeture gouvernée : la carte ne dit jamais « planning secondaire absent », elle nomme le plan qui gouverne", () => {
+  it("fermeture gouvernée : la carte ne dit jamais « planning de période absent », elle nomme le plan qui gouverne", () => {
     entryImpactData = impactOf();
     renderRadar({ entries: [closure({ title: "Mistral indisponible" })] });
 
     const card = screen.getByText("Mistral indisponible").parentElement as HTMLElement;
-    expect(card).not.toHaveTextContent(/planning secondaire absent/);
+    expect(card).not.toHaveTextContent(COCKPIT_TEXTS.periodPlanAbsentTail);
     expect(card).toHaveTextContent(/Vacances de mars/);
   });
 

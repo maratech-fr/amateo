@@ -8,6 +8,7 @@ import { ManagerOnly } from "@/shared/session/ManagerOnly";
 import { toast } from "@/shared/stores/toastStore";
 
 import { useDeleteEntry, useSchedulePlanForEntry } from "./queries";
+import { COCKPIT_TEXTS } from "./texts";
 
 interface DeletePlanningButtonProps {
   /** Entrée de calendrier du planning secondaire à supprimer (closure / holiday). */
@@ -52,7 +53,7 @@ export function DeletePlanningButton({ calendarEntryId, schedulePlanId, title, o
   const confirmDelete = () => {
     deleteEntry.mutate(calendarEntryId, {
       onSuccess: () => {
-        toast.success("Planning supprimé");
+        toast.success(COCKPIT_TEXTS.planningDeleted);
         onDeleted?.();
       },
     });
@@ -63,25 +64,21 @@ export function DeletePlanningButton({ calendarEntryId, schedulePlanId, title, o
   return (
     <ManagerOnly>
       {iconOnly ? (
-        <Button variant="ghost" size="icon" className={className ?? "size-8 text-muted-foreground hover:text-destructive"} aria-label={`Supprimer ${title}`} title="Supprimer" disabled={deleteEntry.isPending} onClick={() => setConfirming(true)}>
+        <Button variant="ghost" size="icon" className={className ?? "size-8 text-muted-foreground hover:text-destructive"} aria-label={COCKPIT_TEXTS.deletePlanningAria(title)} title={COCKPIT_TEXTS.delete} disabled={deleteEntry.isPending} onClick={() => setConfirming(true)}>
           <Trash2 className="size-4" />
         </Button>
       ) : (
-        <Button variant="ghost" size="sm" className={className} aria-label={`Supprimer ${title}`} disabled={deleteEntry.isPending} onClick={() => setConfirming(true)}>
+        <Button variant="ghost" size="sm" className={className} aria-label={COCKPIT_TEXTS.deletePlanningAria(title)} disabled={deleteEntry.isPending} onClick={() => setConfirming(true)}>
           <Trash2 className="size-4" />
-          Supprimer
+          {COCKPIT_TEXTS.delete}
         </Button>
       )}
 
       <ConfirmDialog
         open={confirming}
-        title={`Supprimer « ${title} » ?`}
-        description={
-          hasVersions
-            ? "Supprimer ce planning supprime aussi son plan et toutes ses versions générées. Une vacance, elle, reste au calendrier (recréable via « Adapter »)."
-            : "Ce planning secondaire sera retiré. Une vacance, elle, reste au calendrier."
-        }
-        confirmLabel="Supprimer"
+        title={COCKPIT_TEXTS.deletePlanningTitle(title)}
+        description={hasVersions ? COCKPIT_TEXTS.deletePlanningWithVersions : COCKPIT_TEXTS.deletePeriodPlanning}
+        confirmLabel={COCKPIT_TEXTS.delete}
         destructive={hasVersions}
         onConfirm={confirmDelete}
         onCancel={() => setConfirming(false)}

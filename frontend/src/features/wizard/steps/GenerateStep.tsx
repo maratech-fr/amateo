@@ -290,9 +290,7 @@ export function GenerateStep() {
   return (
     <div>
       <p className="mb-4 text-sm text-muted-foreground">
-        {periodMode
-          ? "Générez le planning de cette période. Il s'applique par-dessus le planning de saison sur la fenêtre, sans le modifier."
-          : "Le système place vos équipes dans les créneaux selon vos règles. Lancez, puis laissez tourner."}
+        {periodMode ? WIZARD_TEXTS.periodGenerateIntro : WIZARD_TEXTS.seasonGenerateIntro}
       </p>
 
       {failed ? (
@@ -305,7 +303,7 @@ export function GenerateStep() {
         <div className="flex flex-col items-center gap-4 py-12 text-center">
           <AlertTriangle className="size-14 text-destructive" />
           <div className="space-y-2">
-            <p className="text-lg font-medium">La génération n'a pas abouti.</p>
+            <p className="text-lg font-medium">{WIZARD_TEXTS.generationFailedTitle}</p>
             {failureExplanations.length > 0 ? (
               <div className="max-w-xl space-y-2 text-left">
                 {failureExplanations.map((d) => (
@@ -327,15 +325,15 @@ export function GenerateStep() {
                   // vouvoyé CETTE branche mais laissé sa voisine juste en dessous au tutoiement :
                   // le lecteur changeait d'interlocuteur selon le type d'échec. C'était le dernier
                   // tutoiement visible du produit (hors console fondateur).
-                  ? "La génération met trop de temps à répondre. Réessayez dans un instant."
-                  : (launchReason ?? ("FAILED" === status && failedDiagnostics.isLoading ? "Lecture du motif de l'échec…" : (launchReason ?? "Une erreur est survenue. Vous pouvez réessayer.")))}
+                  ? WIZARD_TEXTS.generationTimedOut
+                  : (launchReason ?? ("FAILED" === status && failedDiagnostics.isLoading ? WIZARD_TEXTS.readingFailureReason : (launchReason ?? WIZARD_TEXTS.genericErrorRetry)))}
               </p>
             )}
           </div>
           <ManagerOnly>
             <Button size="lg" onClick={start} disabled={creditsBlocked}>
               <Rocket className="size-4" />
-              Réessayer{creditSuffix}
+              {WIZARD_TEXTS.retry}{creditSuffix}
             </Button>
           </ManagerOnly>
         </div>
@@ -349,13 +347,13 @@ export function GenerateStep() {
             {/* AUD-UXC-11 — « le plan » était le seul écart : les deux autres phrases de
                 l'écran disent « le planning » (:173, :236). Un mot par concept, sinon le
                 gestionnaire se demande si « plan » et « planning » désignent deux choses. */}
-            {periodMode ? "Tout est prêt. Générez le planning de la période." : "Tout est prêt. Lancez la génération de votre planning."}
+            {periodMode ? WIZARD_TEXTS.readyPeriod : WIZARD_TEXTS.readySeason}
           </p>
           {isFirstOverlay ? (
             <NoticeBanner
               tone="accent"
               className="max-w-sm"
-              message="Premier planning secondaire : il s'appuie sur votre planning de saison, qui devient la référence — le modifier ensuite supprimera les plannings secondaires (après confirmation)."
+              message={WIZARD_TEXTS.firstPeriodPlanNotice}
             />
           ) : null}
           <BlockerList blockers={blockers} className="max-w-md text-left" />
@@ -367,7 +365,7 @@ export function GenerateStep() {
               cliquable que lorsque l'ancre est réellement là. */}
           {"failed" === periodAnchor.state ? (
             <LoadErrorHint onRetry={periodAnchor.retry} className="justify-center">
-              Impossible de charger la période — la génération est bloquée.
+              {WIZARD_TEXTS.periodLoadFailedBlocked}
             </LoadErrorHint>
           ) : null}
           {/* Lancer / transcrire : gestes de gestionnaire, absents pour un Membre (il lit l'écran). */}
@@ -379,7 +377,7 @@ export function GenerateStep() {
               disabled={creditsBlocked || gateClosed || (periodMode && (!periodEntry || !periodAnchorReady))}
             >
               <Rocket className="size-4" />
-              {periodMode ? "Générer le planning de période" : "Lancer la génération"}{creditSuffix}
+              {periodMode ? WIZARD_TEXTS.generatePeriodPlanning : WIZARD_TEXTS.launchGeneration}{creditSuffix}
             </Button>
             {/* P2-44 — plan de période VIERGE (zéro version) : la V1 peut naître comme une COPIE du
                 socle, sans solveur (ADR-0004). Absent d'un plan déjà versionné (la garde `length`)
@@ -387,7 +385,7 @@ export function GenerateStep() {
             {periodMode && 0 === periodPlanVersions.length ? (
               <Button size="lg" variant="outline" onClick={startTranscription} disabled={!periodEntry || !periodAnchorReady || transcribe.isPending}>
                 <CopyPlus className="size-4" />
-                Partir du planning de saison
+                {WIZARD_TEXTS.startFromSeasonPlan}
               </Button>
             ) : null}
           </div>

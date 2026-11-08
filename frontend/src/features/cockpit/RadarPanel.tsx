@@ -877,14 +877,14 @@ function ClosureRadarItem({
   // générique qui gommait le détail des séances touchées est réservée aux
   // périodes sans carte riche (revue #260 round 1).
   const detail = hasOverlay
-    ? "Planning secondaire validé"
+    ? COCKPIT_TEXTS.periodPlanValidated
     : impactUnknown
-      ? "Impact non évalué · réessayez"
+      ? COCKPIT_TEXTS.impactNotAssessedRetry
       : planIncomplete
-        ? "Planning de la saison incomplet · impact non évalué"
+        ? COCKPIT_TEXTS.seasonPlanIncompleteImpact
         : null !== governing
           ? COCKPIT_TEXTS.closureGovernedBy(count, governing.title)
-          : `${count} séance${count > 1 ? "s" : ""} à replacer · ${inProgress ? "planning en cours — à finaliser" : "planning secondaire absent"}`;
+          : `${COCKPIT_TEXTS.sessionsToReplace(count)} · ${inProgress ? COCKPIT_TEXTS.planningInProgressTail : COCKPIT_TEXTS.periodPlanAbsentTail}`;
 
   return (
     <RadarCard

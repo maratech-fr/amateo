@@ -1285,12 +1285,13 @@ describe("DayDialog — re-datage d'une indisponibilité découpée (« aperçu 
     expect(onClose).toHaveBeenCalled();
   });
 
-  it("succès AVEC suppression : le toast dit « plans de période ajustés »", async () => {
+  it("succès AVEC suppression : le toast dit « plannings de période ajustés » (nom unique)", async () => {
     const { toast } = await import("@/shared/stores/toastStore");
     renderWith([split()]);
     await openAndPreview([{ kind: "vanish", label: "Le plan de la semaine du 15 au 21 juin est supprimé." }], "tok-9");
     await userEvent.click(await screen.findByRole("button", { name: "Confirmer" }));
-    await waitFor(() => expect(toast.success).toHaveBeenCalledWith("Dates modifiées — plans de période ajustés."));
+    // Toast littéral non extrait (ses frères `Fermeture re-datée…` non plus) : la phrase reste recopiée.
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith("Dates modifiées — plannings de période ajustés."));
   });
 
   it("422 à l'aperçu : le message serveur s'affiche DANS le panneau, aucune confirmation possible", async () => {

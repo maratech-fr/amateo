@@ -881,7 +881,8 @@ describe("ConflictsPage — envoyer aux coachs : confirmation puis envoi", () =>
   });
 
   it("un refus serveur `{detail}` (409 socle rouvert) s'affiche tel quel en toast d'erreur", async () => {
-    const detail = "Validez le planning principal avant de créer un match ou un planning secondaire.";
+    // Le `detail` que sert vraiment `SocleGuard::SEASON_PLAN_REQUIRED_MESSAGE` (un mock envoie ce que l'API envoie).
+    const detail = "Validez le planning de saison avant de créer un match ou un planning de période.";
     vi.mocked(matchesApi.mailConflictsToCoaches).mockRejectedValueOnce(httpError(409, { detail }));
     const user = userEvent.setup();
     renderAt();
