@@ -257,7 +257,7 @@ paths:
   interne — ni une DONNÉE (titre d'entrée, label servi) qui vient du serveur. Pas de lib i18n (une
   typo de clé = erreur `tsc`). Gardé par `frontend/src/test/hardcodedTextGuard.test.ts` (liste
   nominative `MIGRATED_FILES` : dans un écran listé, un nœud texte JSX littéral ≥ 3 lettres, ou un
-  littéral FR dans `title=`/`aria-label=`/`placeholder=`/`message=`/`label=`, rougit ; largeur
+  littéral FR dans `title=`/`aria-label=`/`placeholder=`/`message=`/`label=`/`legend=`/`description=`/`confirmLabel=`/`confirmPhrase=`, rougit ; largeur
   documentée, exemptions ≤ 5 motivées ; `texts.ts` hors portée). **Chaque PR qui touche un écran le
   MIGRE et l'ajoute à `MIGRATED_FILES`** — la migration ne recule jamais. Côté test : un test vérifie
   la CLÉ (`getByText(PLANNING_TEXTS.evictTitle)`), jamais la phrase recopiée ; nouvelle assertion →

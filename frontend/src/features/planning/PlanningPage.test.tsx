@@ -351,11 +351,13 @@ describe("PlanningPage (integration)", () => {
     // ne distinguait plus rien (elle serait restée verte même si le standalone se mettait
     // à tout afficher). Le score est gardé là où il vivait, dans PlanningToolbar.test.
     expect(screen.queryByRole("combobox", { name: /version du planning/i })).not.toBeInTheDocument();
-    // « principal » qualifie LE planning de la saison — il s'affiche donc aussi sur une
+    // La pastille qualifie LE planning de la saison — elle s'affiche donc aussi sur une
     // version de travail. Nouveau contrat (2026-08-20) : sur /planning autonome, les gestes
     // de TRAVAIL (Valider/Régénérer/Supprimer/sélecteur) vivent au wizard ; cette version
     // n'est pas en vigueur, donc pas de Rouvrir non plus — d'où l'absence de Valider ici.
-    expect(screen.getByText(PLANNING_TEXTS.seasonPlanBadge)).toBeInTheDocument();
+    // Nom unique (décision fondateur a) : la pastille dit « saison », plus « principal » — le seul
+    // mot recopié ici, car la décision PORTE sur ce mot (le garde de nommage interdit « principal »).
+    expect(screen.getByText(PLANNING_TEXTS.seasonPlanBadge)).toHaveTextContent(/^saison$/);
     expect(screen.queryByRole("button", { name: /valider/i })).not.toBeInTheDocument();
   });
 
@@ -1187,7 +1189,10 @@ describe("PlanningPage (integration)", () => {
 
       await user.click(screen.getByRole("button", { name: /rouvrir/i }));
       // First reopen (no flag) → 409 → proportional confirm dialog.
-      expect(await screen.findByText(/supprimera 2 plannings secondaires/i)).toBeInTheDocument();
+      // D5 « nom unique » : le dialogue compte des « plannings de période » (clé), jamais « secondaires ».
+      const reopenDialog = await screen.findByRole("dialog");
+      expect(reopenDialog).toHaveTextContent(PLANNING_TEXTS.reopenDeletesPeriodPlans("Planning A", 2));
+      expect(reopenDialog).not.toHaveTextContent(/secondaire/i);
 
       // P2-7 : le geste lourd exige de taper la phrase — le bouton reste grisé sans elle.
       const confirmButton = screen.getByRole("button", { name: "Rouvrir et supprimer" });
@@ -2117,7 +2122,7 @@ describe("PlanningPage — portée période (embedded + scopePlanId)", () => {
   const overlayV = (id: string, createdAt: string, over: Partial<Schedule> = {}): Schedule => ({ id, name: "Ajustement", status: "COMPLETED", score: null, createdAt, updatedAt: createdAt, planType: "CLOSURE", schedulePlanId: "ete-plan", ...over });
   const etePlan: SchedulePlan = { id: "ete-plan", type: "CLOSURE", name: "Ajustement gymnase", startDate: "2026-09-07", calendarEntryId: "e-ete", chosenScheduleId: null, teamSelectionInitialized: true };
 
-  it("une sélection de SAISON périmée dans le planningStore ne survit PAS — atterrit dans la période, titre = période, sans badge « principal »", async () => {
+  it("une sélection de SAISON périmée dans le planningStore ne survit PAS — atterrit dans la période, titre = période, sans badge « saison »", async () => {
     vi.mocked(listSchedules).mockResolvedValue([
       seasonV("season-v1"),
       overlayV("ov-1", "2026-09-10T00:00:00Z"),
@@ -2131,7 +2136,7 @@ describe("PlanningPage — portée période (embedded + scopePlanId)", () => {
     // Le titre est celui de la PÉRIODE, jamais « Planning A » (la saison)…
     expect(await screen.findByRole("heading", { name: "Ajustement gymnase" })).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Planning A" })).not.toBeInTheDocument();
-    // …le badge « principal » (réservé au socle) ne peut pas apparaître…
+    // …le badge « saison » (réservé au socle) ne peut pas apparaître…
     expect(screen.queryByText(PLANNING_TEXTS.seasonPlanBadge)).not.toBeInTheDocument();
     // …et la sélection périmée a bien été remplacée par une version DE LA PÉRIODE.
     await waitFor(() => expect(["ov-1", "ov-2"]).toContain(usePlanningStore.getState().selectedScheduleId));

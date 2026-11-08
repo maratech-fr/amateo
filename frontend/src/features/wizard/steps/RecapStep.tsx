@@ -625,7 +625,7 @@ export function RecapStep() {
         open={null !== pendingRemoval}
         title={null !== pendingRemoval && "lot" === pendingRemoval.kind ? "Retirer cet entraînement mutualisé ?" : "Retirer cette réservation ?"}
         description={null !== pendingRemoval ? WIZARD_TEXTS.removeConfirmDescription(pendingRemoval.name, pendingRemoval.where, null !== periodEntryId) : undefined}
-        confirmLabel="Retirer"
+        confirmLabel={WIZARD_TEXTS.removeConfirmLabel}
         destructive
         onConfirm={() => {
           if (null !== pendingRemoval) {

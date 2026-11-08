@@ -21,6 +21,7 @@ use App\Enum\SeasonStatus;
 use App\Enum\TeamCoachRole;
 use App\Service\ConflictMailingLock;
 use App\Service\SeasonResolver;
+use App\Service\SocleGuard;
 use App\Tests\ChoosesPlanVersionTrait;
 use App\Tests\TenantGucTrait;
 use App\Tests\Unit\Service\ConflictCoachMailBuilderTest;
@@ -371,7 +372,7 @@ final class ConflictCoachMailApiTest extends WebTestCase
         self::assertQueuedEmailCount(0);
     }
 
-    /** Sans planning principal choisi, rien ne part : 409 du garde du socle, lu en `detail`. */
+    /** Sans planning de saison choisi, rien ne part : 409 du garde du socle, lu en `detail`. */
     public function testNoSocleIsRefused(): void
     {
         $this->aiglons(withSocle: false);
@@ -379,7 +380,7 @@ final class ConflictCoachMailApiTest extends WebTestCase
         $this->client->enableProfiler();
         $this->post();
         self::assertResponseStatusCodeSame(409);
-        self::assertStringContainsString('Validez le planning principal', (string) ($this->json()['detail'] ?? ''));
+        self::assertSame(SocleGuard::SEASON_PLAN_REQUIRED_MESSAGE, $this->json()['detail'] ?? null);
         self::assertQueuedEmailCount(0);
     }
 

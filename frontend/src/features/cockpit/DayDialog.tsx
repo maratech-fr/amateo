@@ -305,7 +305,7 @@ function DayList({ entries, holiday, publicHoliday, onCreate, onRedate, onClose 
             ? "Supprimer cette période supprime aussi son plan et toutes ses versions générées. À refaire si besoin."
             : "Cette entrée sera retirée du calendrier."
         }
-        confirmLabel="Supprimer"
+        confirmLabel={COCKPIT_TEXTS.deleteCta}
         destructive={toDeleteHasVersions}
         onConfirm={confirmDelete}
         onCancel={() => setToDelete(null)}
@@ -623,7 +623,7 @@ function HolidayBlock({ holiday, entries, onClose }: { holiday: SchoolHoliday; e
             ? "Supprimer cette semaine supprime aussi son plan et toutes ses versions générées. À refaire si besoin."
             : "Cette semaine sera retirée du calendrier."
         }
-        confirmLabel="Supprimer"
+        confirmLabel={COCKPIT_TEXTS.deleteCta}
         destructive={weekToDeleteHasVersions}
         onConfirm={confirmWeekDelete}
         onCancel={() => setWeekToDelete(null)}
@@ -1024,7 +1024,7 @@ function RedateWithPreviewForm({ entry, onBack, onDone }: { entry: CalendarEntry
     setPinRemoval(null);
     try {
       await redate.mutateAsync(confirmPinRemoval ? { entry, startDate, endDate, previewToken: token, confirmPinRemoval: true } : { entry, startDate, endDate, previewToken: token });
-      toast.success(hasDeletion ? "Dates modifiées — plans de période ajustés." : `Fermeture re-datée du ${frDateShort(startDate)} au ${frDateShort(endDate)}`);
+      toast.success(hasDeletion ? "Dates modifiées — plannings de période ajustés." : `Fermeture re-datée du ${frDateShort(startDate)} au ${frDateShort(endDate)}`);
       onDone();
     } catch (error) {
       if (error instanceof WindowAlreadyPlannedError) {

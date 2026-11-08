@@ -31,7 +31,8 @@ final class PeriodReminderEmailTest extends TestCase
     {
         $email = new PeriodReminderMailBuilder('http://localhost:5173')->build('admin@club.fr', 'BCCL', $this->period(), 14);
 
-        self::assertSame('⏳ Gym Barros fermé dans 14 j — pas de plan de période', $email->getSubject());
+        // Nom unique (D6) : sujet et corps disent « planning de période », sans « (calendrier secondaire) ».
+        self::assertSame('⏳ Gym Barros fermé dans 14 j — pas de planning de période', $email->getSubject());
         self::assertSame('admin@club.fr', $email->getTo()[0]->getAddress());
         self::assertSame('no-reply@amateo.app', $email->getFrom()[0]->getAddress());
         self::assertSame('Amateo', $email->getFrom()[0]->getName());
@@ -40,6 +41,8 @@ final class PeriodReminderEmailTest extends TestCase
         self::assertStringContainsString('Gym Barros fermé', $body);
         self::assertStringContainsString('Du 04/05/2026 au 10/05/2026', $body);
         self::assertStringContainsString('http://localhost:5173/', $body);
+        self::assertStringContainsString('n\'a pas encore de planning de période.', $body);
+        self::assertStringNotContainsString('secondaire', $body);
     }
 
     public function testRedSubjectAtJ3(): void

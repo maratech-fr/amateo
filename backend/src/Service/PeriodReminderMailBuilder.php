@@ -28,14 +28,14 @@ final class PeriodReminderMailBuilder
     public function build(string $to, string $clubName, CalendarEntry $entry, int $days, ?Club $club = null): Email
     {
         $red = $days <= 3; // J-3 = the "red" alert (v3 §8.2).
-        $subject = \sprintf('%s %s dans %d j — pas de plan de période', $red ? '🔴' : '⏳', $entry->getTitle(), $days);
+        $subject = \sprintf('%s %s dans %d j — pas de planning de période', $red ? '🔴' : '⏳', $entry->getTitle(), $days);
 
         $lines = [
             \sprintf('Club : %s', $clubName),
             \sprintf('Période : %s', $entry->getTitle()),
             \sprintf('Du %s au %s', $entry->getStartDate()->format('d/m/Y'), $entry->getEndDate()->format('d/m/Y')),
             '',
-            \sprintf('Elle commence dans %d jour%s et n\'a pas encore de plan de période (calendrier secondaire).', $days, $days > 1 ? 's' : ''),
+            \sprintf('Elle commence dans %d jour%s et n\'a pas encore de planning de période.', $days, $days > 1 ? 's' : ''),
             'Rien ne se fait tout seul — ouvre le cockpit pour l\'adapter.',
         ];
         $link = '' !== $this->frontendBaseUrl ? rtrim($this->frontendBaseUrl, '/') . '/' : null;

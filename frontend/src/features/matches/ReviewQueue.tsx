@@ -196,7 +196,7 @@ export function ReviewQueue({ fixtures, teams, venues }: ReviewQueueProps) {
             {MATCHES_TEXTS.reviewHideAway}
           </FilterToggle>
         </div>
-        <EmptyState icon={Inbox} title={MATCHES_TEXTS.reviewNothingToTreatTitle} description="Toutes les rencontres importées sont à jour. Déposez un export FBI ou vérifiez via le Canal FFBB pour en apporter de nouvelles." />
+        <EmptyState icon={Inbox} title={MATCHES_TEXTS.reviewNothingToTreatTitle} description={MATCHES_TEXTS.reviewNothingToTreatDescription} />
       </div>
     );
   }
