@@ -134,7 +134,8 @@ cycle impose (`documentation-update`, `/validation-runner`, `/security-review`).
 **Les subagents reçoivent ce fichier, le `CLAUDE.md` global et l'index mémoire dans leur contexte**
 (vérifié 2026-11-05 sur `neo` et `tank`) — ils ne les relisent pas ; leur fiche ne porte que leur rôle
 et pointe ici pour le reste. **L'index mémoire s'adresse à l'orchestrateur** : pour un agent, en
-cas de conflit, sa fiche et ce fichier passent avant la mémoire. **Un sujet à la fois à l'écran** : on ne parle au fondateur que quand la
+cas de conflit, sa fiche et ce fichier passent avant la mémoire ; une note de mémoire sur une décision
+ou un état est une PISTE à vérifier à la source, jamais un fait. **Un sujet à la fois à l'écran** : on ne parle au fondateur que quand la
 console est libre ; tant qu'il n'a pas clos le sujet en cours, les autres (résultats d'agents,
 questions, bilans) attendent avant de s'afficher.
 **Git (non négociable)** : **JAMAIS de commit sur `main`** (docs/specs compris) —
@@ -227,7 +228,10 @@ dans le code, les tests, les specs ou les docs : on écrit la règle et l'exempl
 visés : les identifiants techniques (`BcclSeeder`, `seed-bccl`, fixtures `bccl_*`), les données
 publiques (clubs FFBB des imports), les tiers des fichiers de dépendances, et les repères « décision
 fondateur JJ/MM » qui datent une règle active ; le récit daté vit dans
-`specs/courantes/etat-des-lieux.md` (fondateur, 2026-11-05).
+`specs/courantes/etat-des-lieux.md` (fondateur, 2026-11-05). **Même discipline, plus large : aucune
+information sans valeur** — un commentaire ou une doc ne porte que ce qui aide à lire, tester ou
+exploiter (la règle, l'exemple chiffré, le piège) ; sans réponse à « à qui sert-elle dans six mois ? »,
+on ne l'écrit pas (fondateur, 2026-11-07).
 
 ## 9. Scope checklist
 
@@ -254,7 +258,9 @@ maison unique, c'est l'agent qui l'exécute. Tout plan produit doit la remplir l
    classe chaque copie : **principal** (stack du fondateur, CI) · **nu** (worktree par défaut : socle de
    test privé `amateo-test-<hash>`, sans port publié, liste FERMÉE de cibles `make -C backend` —
    `tests-complete`, `test`, `phpunit`, `phpstan`, `cs`… ; **`make -C backend test-destroy` à la fin
-   du worktree**, `test-down` = simple pause) · **épreuve** (UNE stack
+   du worktree**, `test-down` = simple pause ; **`tests-complete` balaie d'abord, dans toute copie, les
+   stacks `amateo-test-*`/`agent-*` dont le worktree n'existe plus et le cache de build de plus de 7
+   jours** (`stack-sweep.sh`, filet — pas une dispense)) · **épreuve** (UNE stack
    complète et seedée, `make epreuve-up WT=<worktree>`, pour Behat et e2e ; `epreuve-status` avant,
    `epreuve-down` après ; refus si occupée) · **unknown** : refusé. Une cible Docker hors liste en nu est
    refusée, jamais redirigée vers le principal. Détail : `backend/docs/commands.md` ; rôle des agents :
