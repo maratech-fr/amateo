@@ -1033,7 +1033,7 @@ export function ConstraintsStep() {
       {/* UXS-19 — une dispo coach saisie ici ne vaut que pour les entraînements ; lisible aussi par
           un Membre (hors de la saisie réservée). Sans lien : l'onglet Matchs reste verrouillé tant
           que le planning de saison n'est pas validé. */}
-      {"COACH_AVAILABILITY" === family ? <p className="text-xs text-muted-foreground">{WIZARD_TEXTS.coachAvailabilityTrainingOnlyHint}</p> : null}
+      {"COACH_AVAILABILITY" === family ? <p className="mb-4 text-xs text-muted-foreground">{WIZARD_TEXTS.coachAvailabilityTrainingOnlyHint}</p> : null}
 
       {/* List for the active family — grouped by group (tag) then team (ranked). */}
       {0 === list.length ? (

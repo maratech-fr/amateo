@@ -97,7 +97,7 @@ export const WIZARD_TEXTS = {
   venueDisabledForPeriod: "désactivé pour cette période",
   // UXS-19 — une dispo coach saisie au Wizard ne vaut que pour les entraînements.
   coachAvailabilityTrainingOnlyHint:
-    "Valable pour les entraînements. Pour les matchs, l'indisponibilité d'un coach se règle dans Matchs › Contraintes › Coachs, une fois le planning de saison validé.",
+    "Valable pour les entraînements. Pour les matchs, les disponibilités d'un coach se règlent dans Matchs › Contraintes › Coachs, une fois le planning de saison validé.",
 
   // GenerateStep
   periodGenerateIntro: "Générez le planning de cette période. Il s'applique par-dessus le planning de saison sur la fenêtre, sans le modifier.",
