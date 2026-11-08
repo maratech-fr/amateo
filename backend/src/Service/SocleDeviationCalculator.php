@@ -47,8 +47,9 @@ use Doctrine\ORM\EntityManagerInterface;
  * `reducedByChoice` = non replacées `team_reduced` ; `lost` = les autres non replacées (raison
  * fermeture, gymnase désactivé ou NULL) ; `newSessions` = le reliquat côté période ; l'override de
  * séances n'est lu que pour le TEXTE (`chosenSessions`), jamais pour compter. Une équipe en pause est
- * dans le bilan (`paused`, jamais `changed`), lue AVANT l'exclusion. `daysKept` = le multiensemble
- * des jours des séances tenues ou déplacées ⊆ celui du socle (les nouvelles n'y entrent pas). Rangs :
+ * dans le bilan (`paused`, jamais `changed`), lue AVANT l'exclusion. `daysKept` = FALSE dès
+ * qu'une séance déplacée change de jour, TRUE sinon, NULL en pause ou sans séance tenue ni déplacée
+ * (nouvelles et non replacées n'y entrent pas). Rangs :
  * sommes HORS pauses, triés poids décroissant puis libellé ; équipes triées rang, tierOrder, nom, id.
  *
  * ── « Commune avec » : la règle du radar/doléances, jamais `sharedTrainingBlockId` ─────────────────
@@ -141,8 +142,11 @@ final readonly class SocleDeviationCalculator
             usort($periodRemaining, $this->chronological(...));
 
             $pairs = min(\count($socleRemaining), \count($periodRemaining));
+            /** @var list<array{0: ScheduleSlotTemplate, 1: ScheduleSlotTemplate}> $movedPairs (socle, période) */
+            $movedPairs = [];
             for ($i = 0; $i < $pairs; ++$i) {
                 $to = $periodRemaining[$i];
+                $movedPairs[] = [$socleRemaining[$i], $to];
                 $moved[] = [
                     'teamId' => $teamId,
                     // `from` = le socle, non affiché par la grille (pas de slotId). `to` = la
@@ -201,7 +205,7 @@ final readonly class SocleDeviationCalculator
                 'reduced' => $reduced,
                 'moved' => $pairs,
                 'new' => \count($newSlots),
-                'daysKept' => $this->daysKept($keptPeriodSlots, $socleForTeam),
+                'daysKept' => $this->daysKept($keptPeriodSlots, $movedPairs),
                 'sharedKept' => $sharedKept,
                 'sharedWith' => $sharedWith,
             ];
@@ -327,27 +331,22 @@ final readonly class SocleDeviationCalculator
     }
 
     /**
-     * Le multiensemble des jours des séances tenues ou déplacées est-il contenu dans celui du socle ?
-     * NULL si l'équipe n'a aucune séance tenue ni déplacée.
+     * L'équipe garde-t-elle ses jours ? FALSE dès qu'une séance DÉPLACÉE change de jour (`from` et
+     * `to` sur deux jours différents), TRUE sinon. NULL si l'équipe n'a aucune séance tenue ni
+     * déplacée. Les nouvelles et les non replacées n'entrent pas dans le calcul.
      *
-     * @param list<ScheduleSlotTemplate> $keptPeriodSlots
-     * @param list<ScheduleSlotTemplate> $socleSlots
+     * @param list<ScheduleSlotTemplate>                                    $keptPeriodSlots
+     * @param list<array{0: ScheduleSlotTemplate, 1: ScheduleSlotTemplate}> $movedPairs      (socle, période)
      */
-    private function daysKept(array $keptPeriodSlots, array $socleSlots): ?bool
+    private function daysKept(array $keptPeriodSlots, array $movedPairs): ?bool
     {
         if ([] === $keptPeriodSlots) {
             return null;
         }
-        $socleDays = [];
-        foreach ($socleSlots as $slot) {
-            $socleDays[$slot->getDayOfWeek()] = ($socleDays[$slot->getDayOfWeek()] ?? 0) + 1;
-        }
-        foreach ($keptPeriodSlots as $slot) {
-            $day = $slot->getDayOfWeek();
-            if (($socleDays[$day] ?? 0) < 1) {
+        foreach ($movedPairs as [$from, $to]) {
+            if ($from->getDayOfWeek() !== $to->getDayOfWeek()) {
                 return false;
             }
-            --$socleDays[$day];
         }
 
         return true;

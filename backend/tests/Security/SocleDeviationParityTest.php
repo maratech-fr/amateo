@@ -389,6 +389,61 @@ final class SocleDeviationParityTest extends WebTestCase
     }
 
     /**
+     * « Jour gardé / jour changé » (décision fondateur 2026-11-09, après contrôle visuel) : `daysKept`
+     * est FAUX dès qu'une séance DÉPLACÉE change de jour (from.day ≠ to.day), même vers un jour que
+     * le socle avait déjà ; vrai sinon (heure ou salle seule, nouvelle, perdue n'y entrent pas) ;
+     * null sans séance tenue ni déplacée. Remplace l'inclusion des jours dans ceux du socle.
+     */
+    public function testDayChangedOnlyWhenAMovedSessionChangesDay(): void
+    {
+        [$user, $club, $season] = $this->seedClub('DAYS');
+        $vHealthy = $this->venue($club, $season, 'Armand');
+        $vAlt = $this->venue($club, $season, 'Debarros');
+
+        $ontoSocleDay = $this->team($club, $season, 'OntoSocleDay');
+        $timeOnly = $this->team($club, $season, 'TimeOrVenueOnly');
+        $withNew = $this->team($club, $season, 'KeptPlusNew');
+        $withLost = $this->team($club, $season, 'KeptPlusLost');
+        $allLost = $this->team($club, $season, 'AllLost');
+
+        $socle = $this->socleVersion($club, $season);
+        // Cas de la capture : Lun 17:30 Armand + Ven 20:00 Armand ; en période Lun part au Ven 17:30
+        // Debarros et le Ven d'origine est perdu → les jours de la période ({Ven}) tiennent dans ceux
+        // du socle, mais la séance a CHANGÉ de jour.
+        $this->slot($socle, $ontoSocleDay, $vHealthy, 1, '17:30');
+        $this->slot($socle, $ontoSocleDay, $vHealthy, 5, '20:00');
+        $this->slot($socle, $timeOnly, $vHealthy, 2, '18:00');
+        $this->slot($socle, $withNew, $vHealthy, 1, '18:00');
+        $this->slot($socle, $withLost, $vHealthy, 3, '18:00');
+        $this->slot($socle, $withLost, $vHealthy, 4, '18:00');
+        $this->slot($socle, $allLost, $vHealthy, 6, '10:00');
+        $this->em->flush();
+        $this->choosePlanVersion($socle);
+
+        $planId = $this->planIdOf($this->period($club, $season, CalendarEntryPeriodType::CLOSURE));
+        $period = $this->periodVersion($club, $season, $planId, ScheduleStatus::COMPLETED);
+        $this->slot($period, $ontoSocleDay, $vAlt, 5, '17:30');
+        $this->slot($period, $timeOnly, $vAlt, 2, '20:00');   // même jour, autre heure et salle
+        $this->slot($period, $withNew, $vHealthy, 1, '18:00');
+        $this->slot($period, $withNew, $vHealthy, 6, '11:00'); // nouvelle, un autre jour
+        $this->slot($period, $withLost, $vHealthy, 3, '18:00'); // le jeudi est perdu
+        $this->em->flush();
+
+        $body = $this->deviation($user, $club, $season, $period->getId());
+
+        // Décor : la séance du lundi est bien appariée au vendredi (déplacée), celle du vendredi perdue.
+        $movedOnto = $this->movedRow($body, $ontoSocleDay);
+        self::assertSame(1, $movedOnto['from']['dayOfWeek']);
+        self::assertSame(5, $movedOnto['to']['dayOfWeek']);
+
+        $this->assertTeamCounts($body, $ontoSocleDay, socle: 2, kept: 1, lost: 1, reduced: 0, moved: 1, new: 0, daysKept: false, changed: true);
+        $this->assertTeamCounts($body, $timeOnly, socle: 1, kept: 1, lost: 0, reduced: 0, moved: 1, new: 0, daysKept: true, changed: true);
+        $this->assertTeamCounts($body, $withNew, socle: 1, kept: 1, lost: 0, reduced: 0, moved: 0, new: 1, daysKept: true, changed: true);
+        $this->assertTeamCounts($body, $withLost, socle: 2, kept: 1, lost: 1, reduced: 0, moved: 0, new: 0, daysKept: true, changed: true);
+        $this->assertTeamCounts($body, $allLost, socle: 1, kept: 0, lost: 1, reduced: 0, moved: 0, new: 0, daysKept: null, changed: true);
+    }
+
+    /**
      * Majeur 1 (v3) — une réduction CHOISIE sans autre écart est un changement : l'équipe est
      * touchée, sa séance retirée n'est pas « perdue ».
      */

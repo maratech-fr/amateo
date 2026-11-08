@@ -66,7 +66,7 @@ export function SocleDeviationPanel({ deviation, teamOf, venueName, onSelectSlot
 
   return (
     <section className="mb-4 rounded-md border border-border bg-card px-3 py-2 text-sm" aria-labelledby={headingId}>
-      <h2 id={headingId} className="font-medium text-foreground">
+      <h2 id={headingId} className="text-base font-semibold text-foreground">
         {title}
       </h2>
       <p className="mt-0.5 text-xs text-muted-foreground">{PLANNING_TEXTS.rankReportSubtitle}</p>
@@ -98,7 +98,7 @@ function RankItem({
   const shown = deviation.teams.filter((t) => t.tierLabel === rank.tierLabel && t.tierWeight === rank.tierWeight && (t.changed || t.paused));
   return (
     <li>
-      <p className="font-medium text-foreground">{PLANNING_TEXTS.rankReportLine(rank)}</p>
+      <p className="font-semibold text-foreground">{PLANNING_TEXTS.rankReportLine(rank)}</p>
       {shown.length > 0 ? (
         <ul className="mt-1 flex flex-col gap-1 ps-3">
           {shown.map((team) => (
@@ -140,7 +140,7 @@ function TeamItem({
   const hasDetail = !team.paused && (moved.length > 0 || unplaced.length > 0);
   return (
     <li>
-      <p className="flex items-center text-foreground">
+      <p className="flex items-center font-normal text-foreground">
         {info.isCtc ? <CtcMark partner={info.ctcPartner} /> : null}
         <span>{PLANNING_TEXTS.teamReportLine(info.name, team, partnerNames(team.sharedWith))}</span>
       </p>

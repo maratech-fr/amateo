@@ -18,7 +18,7 @@ export const PLANNING_TEXTS = {
   emptyPlanningTitle: "Planning vide",
   emptyPlanningDescription: "Ce planning ne contient aucun créneau placé pour le moment.",
   noPlanning: "Aucun planning",
-  noPlanningDescription: "Passez par l'assistant pour saisir vos données et générer un premier planning.",
+  noPlanningDescription: "Passez par le Wizard pour saisir vos données et générer un premier planning.",
   noPeriodVersionTitle: "Aucune version pour cette période",
   noPeriodVersionDescription: "Générez le planning de cette période pour le voir apparaître ici.",
   generationFailed: "Génération en échec",

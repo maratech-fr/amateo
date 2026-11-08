@@ -3552,3 +3552,11 @@ describe("PlanningPage — version chargée", () => {
     expect(await screen.findByText(PLANNING_TEXTS.loadVersionDescriptionGeneric)).toBeInTheDocument();
   });
 });
+
+/** Un club sans planning est renvoyé vers le Wizard, nommé « Wizard », jamais « assistant » (décision fondateur 2026-11-07). */
+describe("PlanningPage — l'état « aucun planning » renvoie au Wizard", () => {
+  it("le libellé dit « Passez par le Wizard… », sans le mot « assistant »", () => {
+    expect(PLANNING_TEXTS.noPlanningDescription).toBe("Passez par le Wizard pour saisir vos données et générer un premier planning.");
+    expect(PLANNING_TEXTS.noPlanningDescription).not.toMatch(/assistant/i);
+  });
+});
