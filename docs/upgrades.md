@@ -12,6 +12,49 @@
 > `.claude/skills/dependabot/SKILL.md` étape 4) — cette permanence-là ne dépend pas du bornage
 > d'ici.
 
+## 2026-11-08 — lot Dependabot (3 PRs mergées dont 1 réparée, aucune majeure)
+
+### Paquets du backend (PR #1351 — réparée)
+
+**C'est quoi** : Doctrine (bundle 3.3.4 et ORM 3.7.6, l'accès à la base), `sentry-symfony` 5.15
+(avec `sentry` 4.36, la remontée d'erreurs), le module de réinitialisation de mot de passe (1.26.1) et
+`phpstan-doctrine` 2.1.2 (règles d'analyse du code autour de Doctrine).
+
+**Ça apporte** : correctifs de routine, rien de visible pour un club.
+
+**Adapté chez nous** : rien dans notre code. Deux réglages dans les dépendances :
+- Même piège Flex que d'habitude : dix paquets Symfony étaient partis en 8.0.x dans le verrou de
+  Dependabot (le test `SymfonyStackAlignmentTest` virait au rouge). Ramenés sur la 7.4 par
+  `composer update … --with-all-dependencies` dans le conteneur, sans pin.
+- Rector 2.8 est sorti du lot : il convertit 14 écouteurs d'événements en attributs (dont le
+  listener de tenant, priorité 7) et exige un PHPStan plus récent. Rector reste en 2.7.0, PHPStan en
+  2.3.1, `phpdoc-parser` en 2.3.6 — chantier à part (roadmap P4-80).
+
+### Paquets du moteur (PR #1353 — 8 montées mineures/patch)
+
+**C'est quoi** : `pydantic` et `pydantic-core` (validation des données reçues), `pydantic-settings`
+(configuration), `pytest` 9.2.0 et `hypothesis` (tests), `mypy` (vérification des types),
+`opentelemetry-api` et `websockets` 17.4.
+
+**Ça apporte** : correctifs de routine.
+
+**Adapté chez nous** : rien.
+
+### Paquets du frontend (PR #1352 — 6 montées mineures/patch)
+
+**C'est quoi** : `@sentry/react` 11.10 (remontée d'erreurs), `lucide-react` 1.66 (icônes),
+`react-router` 8.5.1 (navigation) et l'outillage (`@types/node`, `eslint`, `knip`).
+
+**Ça apporte** : correctifs de routine, rien de visible pour un club.
+
+**Adapté chez nous** : rien dans les dépendances. Cette PR était rouge à cause d'un test frontend à
+date en dur (une rencontre « à venir » devenue passée) : corrigé à part par la PR #1356.
+
+### Faux rouges rencontrés
+
+Le job « Engine Tests » (mesure mémoire `rss_before_mb` revenue à `None` sur le runner) a été relancé
+une fois sur #1352 et #1353, vert ensuite ; un scénario Behat d'export relancé sur #1353, vert aussi.
+
 ## 2026-11-05 — lot Dependabot (4 PRs mergées dont 1 réparée, 2 majeures en attente)
 
 ### Paquets du backend (PR #1330 — réparée)
@@ -181,32 +224,3 @@ parenthèses qu'exigeait la 3.12) s'applique sur 21 fichiers, mécaniquement. Va
 même score sur le cas `dense_club` multi-worker), et 5 payloads invalides rendent le même 422
 byte-identique des deux côtés. Seul écart mesuré : l'empreinte mémoire du conteneur monte
 d'environ 6 % (≈147 Mo contre ≈138 Mo) — surveillé, non bloquant.
-
-## 2026-10-16 (soir) — lot Dependabot (3 PRs mergées dont 1 réparée, 2 fermées)
-
-### Doctrine ORM 3.7.4 → 3.7.5 (backend, PR #1208, réparée)
-
-**C'est quoi** : Doctrine ORM, la couche qui lit et écrit nos données en base (entités ⇄ tables).
-
-**Ça apporte** : correctifs de routine.
-
-**Adapté chez nous** : comme à chaque lot backend, Dependabot avait tiré des composants Symfony en
-8.0 (il résout hors de notre conteneur, sans la règle « rester sur la 7.4 ») : verrou de dépendances
-régénéré dans le conteneur, seule Doctrine monte.
-
-### Paquets du frontend (PR #1210) et du moteur (PR #1211)
-
-`ky` 2.2 (appels HTTP du front), `lucide-react` 1.54 (icônes), `knip` 6.41 (outil qui repère le
-code et les dépendances inutilisés) ; `absl-py` 2.5.1 côté moteur (utilitaire tiré par le solveur).
-Correctifs de routine, rien à adapter.
-
-### Fermées : PHP 8.5 (#1207), image Playwright 1.64.1 (#1215)
-
-**PHP 8.4 → 8.5** : le fondateur a décidé de rester en 8.4 pour le moment (sécurité assurée
-jusqu'à fin 2028). La montée telle que proposée ne construisait même pas l'image : OPcache est
-intégré d'office en 8.5, notre Dockerfile essayait encore de l'installer. Elle se fera en PR
-dédiée (P4-345) ; Dependabot ignore désormais PHP ≥ 8.5.
-
-**Image Playwright** : son numéro doit être celui du paquet `@playwright/test` (sinon les tests
-navigateur ne trouvent plus leur navigateur en local). Elle monte désormais AVEC le paquet npm,
-jamais seule : Dependabot ne la propose plus.
