@@ -379,23 +379,40 @@ complet pour le cas courant (un gymnase a fermé, une équipe a repris son volum
 
 **Blocages du Récap et alerte d'absence (2026-11-02).** Le serveur refuse `generate`/`regenerate`/`fill` en 422 `blocker: true` pour ce que le Récap dit voué à l'échec ; le wizard (`GenerateStep`, `WizardLayout`) désactive déjà le bouton avec `WIZARD_TEXTS.generationBlocked` quand le Récap a des blocages. Une version créée par le geste (`generateCreatedVersion`, `planning/lib/`) puis refusée en 4xx est supprimée (`DELETE /api/schedules/{id}`) avant que l'erreur remonte ; une version préexistante (`existingScheduleId`) n'est jamais supprimée. `PlacedAbsencesNotice` (« Une séance sans coach ») s'affiche dès qu'une version est affichée : `usePlacedConflicts(validScheduleId)` interroge `placed-conflicts?scheduleId=`, et un déplacement invalide le préfixe `["training","placed-conflicts"]`.
 
-**Les écarts NOMMÉS — panneau « Écarts avec le planning de saison » (P2-44 PR-5, ADR-0004,
-2026-08-20)** : sur l'écran embarqué (`transcriptionSurface`, donc `embedded && scoped`) d'une
-période de type **FERMETURE** portant une version `COMPLETED`, `SocleDeviationPanel.tsx` affiche
-l'agrégat (« N séances déplacées, M à replacer ») puis le détail ligne à ligne — une déplacée se lit
-`U13F1 · Mar 18h30 Matéo → Jeu 19h00 JDR`. La donnée est **SERVIE** par `GET
-/api/schedules/{id}/socle-deviation` (`useSocleDeviation`, `queries.ts`) : le front ne compare
-**rien** — il ne redérive ni l'appariement ni la raison, il met en forme. Une raison `null` (la
-sélection de période n'explique pas l'absence) se rend **sans étiquette**, jamais avec une cause
-inventée. Le hook est invalidé aux **trois** sites qui invalident déjà `["slots"]` (`useLockSlot`,
-`useMoveSlot`, `usePlaceSlot`) pour que le diff suive un déplacement.
+**Le bilan par rang et les écarts NOMMÉS — `SocleDeviationPanel` (P2-44 PR-5, ADR-0004)** :
+sur une version `COMPLETED` d'un plan de **FERMETURE**, le panneau « **Bilan par rang** — semaine du
+{date} » (ou « chaque semaine du … au … » si la fenêtre dépasse 7 jours) liste rang par rang (ordre
+servi) l'agrégat du rang (« C — 3 équipes : 5 séances sur 7, dont 1 perdue »), puis sous chaque rang
+les équipes TOUCHÉES ou EN PAUSE — une ligne par équipe, jamais par groupe mutualisé : « U13M : jour
+gardé, 3 séances sur 4, dont 1 perdue, 1 déplacée, 1 nouvelle (réduction choisie à 2) — 2 communes
+avec U11B et U11C » — et sous chaque équipe le détail ligne à ligne (une déplacée se lit
+`Mar 18h30 Matéo → Jeu 19h00 JDR`, cliquable vers sa carte ; une non replacée porte sa raison en
+pastille, sans étiquette si elle est nulle). Les équipes inchangées ne sont comptées qu'au pied ; les
+séances nouvelles sont comptées, jamais listées. Tout est **SERVI** par `GET
+/api/schedules/{id}/socle-deviation` (`useSocleDeviation`, `queries.ts`) : le front ne compare ni ne
+recompte **rien** ; seul le nom des partenaires « commune avec » (servis en ids) est résolu et trié
+ici. Un échec de lecture se dit dans l'écran (`SocleDeviationLoadError`, la query porte
+`meta.ownsError`), jamais en toast ; un 409 reprend le message serveur sans « Réessayer ».
 
-Contrairement à `ToReplaceList`, ce panneau **survit à la navigation** (route de lecture
+**Où il se lit.** Embarqué : l'écran porté d'une période de fermeture. **`/planning` autonome**
+(radar, calendrier) : la version affichée est de type CLOSURE — Membre compris (lecture). Une
+vacance ou une version de saison n'appellent JAMAIS la route (le comportement vacances reste intact à
+l'octet). Le hook est invalidé aux **trois** sites qui invalident déjà `["slots"]` (`useLockSlot`,
+`useMoveSlot`, `usePlaceSlot`) pour que le bilan suive un déplacement.
+
+**« Seulement les séances qui ont changé ».** Un `FilterToggle` sous le bilan, offert quand une équipe
+a changé : la grille ne montre plus que les séances de période déplacées ou nouvelles
+(`changedSlotIds`, servis), sans fenêtres vides. État LOCAL attaché à la version affichée (changer
+de version le remet à faux) ; cocher efface une sélection que le filtre cache, armer un geste de
+placement le décoche ; le filtre agit en amont de `buildGrid`/`buildClubView` SEULEMENT — gestes, détail,
+diagnostics et export lisent toujours la version entière. Filtre vide : un indice dit que les
+changements sont des séances perdues, listées dans le bilan.
+
+Contrairement à `ToReplaceList`, le panneau **survit à la navigation** (route de lecture
 re-appelable, pas une réponse de POST). Il **s'ajoute** à `ToReplaceList` sans le remplacer —
 arbitrage fondateur « les deux affichés pour le moment » — d'où deux titres délibérément
-distincts : « **Écarts avec le planning de saison** » (le neuf, qui porte en plus les **déplacées**)
-vs « Séances non reprises du planning de saison » (l'existant, session d'écran). Sur une **vacance**
-la route n'est **jamais appelée** : le comportement PR-2 reste intact à l'octet.
+distincts : « **Bilan par rang** » (le neuf) vs « Séances non reprises du planning de saison »
+(l'existant, session d'écran).
 
 **Le symbole ⇄ dans la grille, panneau cliquable, compteur de carence (P2-44 PR-4, lot « overlay =
 la saison au moindre effort », 2026-09-02)** :

@@ -61,7 +61,7 @@ reconstruire le planning de la saison.
 - Comblement automatique des trous restants (le reste du planning est épinglé, seul le vide est
   reproposé au solveur) — `etat-des-lieux.md` §1.2.
 - Les écarts avec le planning de saison sont nommés (séance déplacée, séance non replacée et
-  pourquoi) — `etat-des-lieux.md` §1.2.
+  pourquoi) et résumés équipe par équipe, rang par rang — `etat-des-lieux.md` §1.2.
 - `/planning` dit « à régénérer » dès que la structure a bougé depuis, sur une version de
   TRAVAIL seulement — muet sur un planning validé — `etat-des-lieux.md` §1.2/§2 (P4-266).
 

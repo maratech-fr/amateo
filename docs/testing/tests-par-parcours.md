@@ -196,7 +196,9 @@ B ≥ 80 % des séances ; aucune prioritaire ne perd.
   (feature `une-indisponibilite-se-decoupe` retirée, PR4a).
 - 3→2 / mutualiser / diviser : overrides de période, gates `SharedBlock*`, capacité
   `VenueTrainingSlot`.
-- Bilan par rang : **manque produit** (ligne de roadmap P4-337). Aperçu « qui est touché » dès la
+- Bilan par rang après adaptation : **LIVRÉ** (fermetures de gymnase, PR 2) — `Security/SocleDeviationParityTest`
+  (comptes servis, « commune avec »), `SocleDeviationPanel.test.tsx` / `PlanningPage.test.tsx` (lecture
+  depuis `/planning`, filtre « Seulement les séances qui ont changé »). Aperçu « qui est touché » dès la
   déclaration : **LIVRÉ** (fermetures de gymnase PR 1) — `Security/ClosureImpactSaysTheSameEverywhereTest`
   (l'aperçu et l'impact enregistré disent le même chiffre), retrait des épingles à l'enregistrement
   `Security/ClosureRemovesPinsAtomicallyTest`.
@@ -210,7 +212,8 @@ B ≥ 80 % des séances ; aucune prioritaire ne perd.
   séances, le couple gymnase/jour fermé sauté en « à replacer ») puis remplit. Assertions : la
   version aboutit (`COMPLETED`) ; zéro séance au gymnase fermé ; au moins une séance ailleurs
   (anti-vide — sinon « zéro au fermé » serait vrai d'un planning entièrement vide) ; aucune équipe de
-  rang S (SM1, SF1) ne perd de séance (compte de séances socle vs adapté jamais inférieur).
+  rang S (SM1, SF1) ne perd de séance (compte de séances socle vs adapté jamais inférieur) ; le bilan
+  par rang servi (`socle-deviation`) dit la même chose : aucune équipe de rang S avec une séance perdue.
   **Substitution assumée** : le critère founder « les équipes majeures gardent leurs JOURS » a été
   mesuré INSTABLE sur ce scénario (~1 run sur 6 rouge — le jour exact d'une séance DÉPLACÉE du
   gymnase fermé n'est qu'un objectif souple du moteur, jamais une garantie dure) et remplacé par
