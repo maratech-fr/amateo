@@ -63,6 +63,8 @@ const CTC_SURFACES = [
   "features/planning/ClubViewTable.tsx",
   "features/planning/SlotDetail.tsx",
   "features/planning/LocksPanel.tsx",
+  // Fermetures de gymnase (PR A) — le bilan par rang nomme chaque équipe touchée sur sa ligne.
+  "features/planning/SocleDeviationPanel.tsx",
   // Matchs — grilles, listes et files d'équipes.
   "features/matches/TypicalWeekendGrid.tsx",
   "features/matches/WeekendGrid.tsx",

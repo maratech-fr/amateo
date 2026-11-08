@@ -5,13 +5,19 @@ import { deviatedSlots, placementLabel } from "./socleDeviationCells";
 
 const venueName = (id: string) => ({ vX: "Matéo", vY: "JDR", vZ: "Salle Bleue" })[id] ?? id;
 
+// Mock = ce que l'API envoie : `sharedWith` est REQUIS sur from/to/unplaced (ids d'équipes), et la
+// réponse porte aussi window/changedSlotIds/teams/ranks (bilan par rang) — vides ici, hors sujet.
 const deviation: SocleDeviation = {
   socleScheduleId: "socle-1",
+  window: { startDate: "2026-03-09", endDate: "2026-03-15" },
   moved: [
-    { teamId: "t1", from: { dayOfWeek: 2, startTime: "18:30", venueId: "vX" }, to: { dayOfWeek: 4, startTime: "19:00", venueId: "vY", slotId: "slot-A" } },
-    { teamId: "t2", from: { dayOfWeek: 1, startTime: "20:00", venueId: "vZ" }, to: { dayOfWeek: 3, startTime: "17:00", venueId: "vX", slotId: "slot-B" } },
+    { teamId: "t1", from: { dayOfWeek: 2, startTime: "18:30", venueId: "vX", sharedWith: [] }, to: { dayOfWeek: 4, startTime: "19:00", venueId: "vY", slotId: "slot-A", sharedWith: [] } },
+    { teamId: "t2", from: { dayOfWeek: 1, startTime: "20:00", venueId: "vZ", sharedWith: [] }, to: { dayOfWeek: 3, startTime: "17:00", venueId: "vX", slotId: "slot-B", sharedWith: [] } },
   ],
-  unplaced: [{ teamId: "t3", dayOfWeek: 5, startTime: "20:00", venueId: "vZ", reason: "venue_closed" }],
+  unplaced: [{ teamId: "t3", dayOfWeek: 5, startTime: "20:00", venueId: "vZ", reason: "venue_closed", sharedWith: [] }],
+  changedSlotIds: ["slot-A", "slot-B"],
+  teams: [],
+  ranks: [],
 };
 
 describe("deviatedSlots", () => {

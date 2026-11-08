@@ -92,6 +92,9 @@ const MIGRATED_FILES = [
   "features/cockpit/VenueClosureForm.tsx",
   "features/cockpit/ClosureImpactPanel.tsx",
   "features/planning/StalePlanBanner.tsx",
+  // Fermetures de gymnase (PR A) — le panneau devient le « Bilan par rang », réécrit et né migré
+  // (PLANNING_TEXTS) ; la migration ne recule jamais.
+  "features/planning/SocleDeviationPanel.tsx",
   "features/matches/OpponentsPage.tsx",
   "features/matches/FfbbEngagementsDialog.tsx",
   // P4-356 — l'en-tête + la navigation du module matchs, migrés en même temps que les deux props

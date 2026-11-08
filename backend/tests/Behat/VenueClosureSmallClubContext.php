@@ -147,6 +147,38 @@ final class VenueClosureSmallClubContext extends BaseContext
         }
     }
 
+    /**
+     * Le bilan par rang SERVI (GET /schedules/{id}/socle-deviation) dit au gestionnaire la même
+     * vérité que le pointage ci-dessus : le rang S n'a perdu aucune séance. Lu par l'API, comme
+     * l'écran le lit. Anti-vide : le rang S est présent et porte des séances au socle (sinon
+     * « 0 perdue » serait vrai d'un rang absent). Aucune assertion « commune avec » ici (décor
+     * mutualisé sur le rang S, mais le jour/la case d'une séance déplacée n'est pas garanti).
+     */
+    #[Then('le bilan par rang dit qu\'aucune équipe de rang S n\'a perdu de séance')]
+    public function leBilanParRangDitQueLeRangSNaRienPerdu(): void
+    {
+        $response = $this->apiGet(\sprintf('schedules/%s/socle-deviation', $this->overlayId), $this->smallClubToken);
+        if (200 !== $response['status']) {
+            throw new RuntimeException(\sprintf('le bilan par rang a répondu %d (200 attendu) — %s', $response['status'], json_encode($response['json'], \JSON_UNESCAPED_UNICODE | \JSON_UNESCAPED_SLASHES)));
+        }
+        $ranks = \is_array($response['json']) && \is_array($response['json']['ranks'] ?? null) ? $response['json']['ranks'] : [];
+        $rankS = null;
+        foreach ($ranks as $rank) {
+            if (\is_array($rank) && 'S' === ($rank['tierLabel'] ?? null)) {
+                $rankS = $rank;
+            }
+        }
+        if (null === $rankS) {
+            throw new RuntimeException('le bilan par rang ne porte pas de rang S — le décor en compte deux équipes (SM1, SF1)');
+        }
+        if (!\is_int($rankS['socleSessions'] ?? null) || $rankS['socleSessions'] < 1) {
+            throw new RuntimeException('le rang S du bilan ne porte aucune séance au socle — « 0 perdue » ne prouverait rien');
+        }
+        if (0 !== ($rankS['lost'] ?? null)) {
+            throw new RuntimeException(\sprintf('le bilan par rang dit que le rang S a perdu %s séance(s) — une prioritaire serait déclassée', var_export($rankS['lost'] ?? null, true)));
+        }
+    }
+
     #[AfterScenario]
     public function nettoyer(): void
     {

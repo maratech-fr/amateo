@@ -19,7 +19,8 @@ export const placementLabel = (day: number, time: string, venue: string): string
  * dans le panneau (pas de carte à viser), elles n'entrent pas dans cette table.
  *
  * La clé est `moved[].to.slotId` (le créneau de PÉRIODE que la grille affiche). Vide si `deviation`
- * est nul (route non armée : vacance, `/planning` autonome, version non COMPLETED).
+ * est nul (route non armée : vacance, version de saison, version non COMPLETED, ou bilan pas encore
+ * lu / en échec).
  */
 export function deviatedSlots(deviation: SocleDeviation | null, venueName: (venueId: string) => string): Map<string, string> {
   const map = new Map<string, string>();

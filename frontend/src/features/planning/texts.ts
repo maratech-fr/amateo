@@ -5,9 +5,12 @@
 // marque (→ product), identifiant interne.
 import { dayLabelLong } from "@/shared/lib/days";
 
-import type { PlacedAbsence } from "./api";
+import type { PlacedAbsence, SocleDeviationRank, SocleDeviationTeam } from "./api";
 
 const frenchList = (items: string[]): string => (items.length < 2 ? (items[0] ?? "") : `${items.slice(0, -1).join(", ")} et ${items.at(-1)}`);
+const plural = (n: number, one: string, many: string): string => `${n} ${1 === n ? one : many}`;
+// « 2 séances sur 3 », « 1 séance sur 1 », « aucune séance sur 2 » (bilan par rang).
+const sessionsOf = (kept: number, socle: number): string => `${0 === kept ? "aucune séance" : plural(kept, "séance", "séances")} sur ${socle}`;
 
 export const PLANNING_TEXTS = {
   heldBy: (coach: string) => `tenue par ${coach}`,
@@ -153,4 +156,67 @@ export const PLANNING_TEXTS = {
     `Ce planning est périmé : ${venue} est fermé ${from === to ? `le ${from}` : `du ${from} au ${to}`} (${
       teams.length <= 2 ? `${frenchList(teams)} y ${1 === teams.length ? "a" : "ont"} une séance` : `${sessions} séances`
     }). Rouvrez-le, puis régénérez.`,
+  // Fermetures de gymnase (PR A) — le BILAN PAR RANG d'une version de fermeture vs le planning de
+  // saison : comptes SERVIS (`teams[]`, `ranks[]`), le texte ne recompte rien.
+  rankReportTitleWeek: (start: string) => `Bilan par rang — semaine du ${start}`,
+  rankReportTitleWeeks: (start: string, end: string) => `Bilan par rang — chaque semaine du ${start} au ${end}`,
+  rankReportSubtitle: "Semaine type, comparée au planning de saison.",
+  rankReportLine: (rank: SocleDeviationRank): string => {
+    const head = `${rank.tierLabel} — ${plural(rank.teams, "équipe", "équipes")} : `;
+    if (rank.teams > 0 && rank.paused === rank.teams) {
+      return `${head}${1 === rank.teams ? "en pause" : "toutes en pause"}`;
+    }
+    let line = `${head}${sessionsOf(rank.keptSessions, rank.socleSessions)}`;
+    if (rank.lost > 0) {
+      line += `, dont ${plural(rank.lost, "perdue", "perdues")}`;
+    }
+    if (rank.chosenReductions > 0) {
+      line += ` (${plural(rank.chosenReductions, "séance retirée", "séances retirées")} par choix)`;
+    }
+    if (rank.newSessions > 0) {
+      line += `, ${plural(rank.newSessions, "nouvelle", "nouvelles")}`;
+    }
+    if (rank.paused > 0) {
+      line += `, ${rank.paused} en pause`;
+    }
+    return line;
+  },
+  teamReportLine: (name: string, team: SocleDeviationTeam, partnerNames: string[]): string => {
+    if (team.paused) {
+      return `${name} : en pause`;
+    }
+    if (0 === team.socleSessions) {
+      return `${name} : ${1 === team.newSessions ? "1 nouvelle séance (absente du planning de saison)" : `${team.newSessions} nouvelles séances (absentes du planning de saison)`}`;
+    }
+    const parts: string[] = [];
+    if (null !== team.daysKept) {
+      parts.push(team.daysKept ? "jour gardé" : "jour changé");
+    }
+    parts.push(sessionsOf(team.keptSessions, team.socleSessions));
+    if (team.lost > 0) {
+      parts.push(`dont ${plural(team.lost, "perdue", "perdues")}`);
+    }
+    if (team.movedSessions > 0) {
+      parts.push(plural(team.movedSessions, "déplacée", "déplacées"));
+    }
+    if (team.newSessions > 0) {
+      parts.push(plural(team.newSessions, "nouvelle", "nouvelles"));
+    }
+    let line = `${name} : ${parts.join(", ")}`;
+    if (team.reducedByChoice > 0 && null !== team.chosenSessions) {
+      line += ` (réduction choisie à ${team.chosenSessions})`;
+    }
+    if (team.sharedKept > 0 && partnerNames.length > 0) {
+      line += ` — ${plural(team.sharedKept, "commune", "communes")} avec ${frenchList(partnerNames)}`;
+    }
+    return line;
+  },
+  rankReportFooter: (touched: number, unchanged: number, paused: number): string =>
+    [touched > 0 ? plural(touched, "équipe touchée", "équipes touchées") : null, unchanged > 0 ? `${unchanged} sans changement` : null, paused > 0 ? `${paused} en pause` : null]
+      .filter((part): part is string => null !== part)
+      .join(" · "),
+  sharedWithDetail: (partnerNames: string[]) => `— commune avec ${frenchList(partnerNames)}`,
+  changesOnly: "Seulement les séances qui ont changé",
+  changesOnlyEmpty: "Aucune séance déplacée ni nouvelle : les changements sont des séances perdues, listées dans le bilan.",
+  rankReportFailed: "Le bilan n'a pas pu être lu.",
 } as const satisfies Record<string, string | ((...args: never[]) => string)>;

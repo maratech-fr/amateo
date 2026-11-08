@@ -394,6 +394,23 @@ final class CoachDoubleBookingDetector
     }
 
     /**
+     * @param list<list<string>> $groups
+     */
+    public static function sameGroup(string $teamA, string $teamB, array $groups): bool
+    {
+        if ($teamA === $teamB) {
+            return true;
+        }
+        foreach ($groups as $group) {
+            if (\in_array($teamA, $group, true) && \in_array($teamB, $group, true)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
      * Les coachs de l'équipe, puis ceux des autres équipes de son groupe DÉCLARÉ sur la MÊME case.
      * Même case sans groupe = chacun ses coachs (décision fondateur 2026-10-30).
      *
@@ -414,23 +431,6 @@ final class CoachDoubleBookingDetector
         }
 
         return array_values(array_unique($candidates));
-    }
-
-    /**
-     * @param list<list<string>> $groups
-     */
-    private static function sameGroup(string $teamA, string $teamB, array $groups): bool
-    {
-        if ($teamA === $teamB) {
-            return true;
-        }
-        foreach ($groups as $group) {
-            if (\in_array($teamA, $group, true) && \in_array($teamB, $group, true)) {
-                return true;
-            }
-        }
-
-        return false;
     }
 
     /**

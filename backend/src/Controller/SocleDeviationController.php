@@ -21,11 +21,11 @@ use Symfony\Component\Routing\Attribute\Route;
 use Throwable;
 
 /**
- * P2-44 PR-5 (ADR-0004) — LES ÉCARTS NOMMÉS : sur l'écran embarqué de génération d'un plan de
- * PÉRIODE de type FERMETURE, une fois qu'une version existe (transcrite, comblée, ou solvée), cette
- * route de LECTURE re-appelable NOMME ce qui a changé vs le socle — séances déplacées et séances non
- * replacées. Le front est présentation pure (il ne redérive rien) ; l'agrégat « N déplacées, M à
- * replacer » est une longueur de liste côté écran, pas une règle servie.
+ * P2-44 PR-5 (ADR-0004) — LES ÉCARTS NOMMÉS : pour une version COMPLETED d'un plan de PÉRIODE de
+ * type FERMETURE — lue sur l'écran embarqué de génération comme sur `/planning` —, cette route de
+ * LECTURE re-appelable NOMME ce qui a changé vs le socle (séances déplacées et non replacées) et sert
+ * le BILAN par équipe et par rang tiré de ces mêmes lignes ({@see SocleDeviationCalculator}). Le
+ * front est présentation pure (il ne redérive rien, il ne recompte rien).
  *
  * Cible = la VERSION (`Schedule`), pas le plan : l'écran affiche une version précise (une V1
  * transcrite ≠ une V+1 comblée), miroir de `/api/schedules/{id}/fill`, et « plan sans version »
@@ -105,8 +105,12 @@ final class SocleDeviationController extends AbstractController
 
         return $this->json([
             'socleScheduleId' => $result->socleScheduleId,
+            'window' => $result->window,
             'moved' => $result->moved,
             'unplaced' => $result->unplaced,
+            'changedSlotIds' => $result->changedSlotIds,
+            'teams' => $result->teams,
+            'ranks' => $result->ranks,
         ]);
     }
 }

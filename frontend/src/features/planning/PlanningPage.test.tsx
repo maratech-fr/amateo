@@ -4,6 +4,8 @@ import { HTTPError } from "ky";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { EntryConflictsResponse, SchedulePlan } from "@/features/cockpit/api";
+import { frDateNumericNoYear } from "@/shared/lib/date";
+import { errorMessage } from "@/shared/lib/errorMessage";
 import { SESSION_TEXTS } from "@/shared/session/texts";
 import { useToastStore } from "@/shared/stores/toastStore";
 import { renderWithProviders, visibleTextOccurrences } from "@/test/utils";
@@ -125,7 +127,7 @@ vi.mock("./api", () => {
   ),
   getConstraints: vi.fn(() => Promise.resolve([])),
   // P2-44 PR-5 : par défaut aucun écart (le panneau ne rend rien) — les cas dédiés surchargent.
-  getSocleDeviation: vi.fn(() => Promise.resolve({ socleScheduleId: "socle", moved: [], unplaced: [] })),
+  getSocleDeviation: vi.fn(() => Promise.resolve({ socleScheduleId: "socle", window: { startDate: "2026-09-07", endDate: "2026-09-13" }, moved: [], unplaced: [], changedSlotIds: [], teams: [], ranks: [] })),
   // P4-266 — l'empreinte de structure servie par plan. Par défaut `null` : aucune cause de
   // péremption dérivée, « Régénérer » non grisé. Les cas dédiés surchargent.
   getStructureHash: vi.fn(() => Promise.resolve({ currentStructureHash: null })),
@@ -325,7 +327,7 @@ beforeEach(() => {
     { id: "diag-unused-slot-venue-1-2-19:00", scheduleId: SID, type: "unused_slot", severity: "WARNING", teamId: null, venueId: "venue-1", coachId: null, dayOfWeek: null, startTime: null, ruleKey: null, message: "Créneau disponible non utilisé : Gymnase Alpha (mardi de 19:00 à 20:30).", suggestions: [], causes: [], openCandidates: null },
   ]);
   // P2-44 PR-5 : ré-armement (mockResolvedValue survit) — défaut « aucun écart », les cas surchargent.
-  vi.mocked(getSocleDeviation).mockResolvedValue({ socleScheduleId: "socle", moved: [], unplaced: [] });
+  vi.mocked(getSocleDeviation).mockResolvedValue({ socleScheduleId: "socle", window: { startDate: "2026-09-07", endDate: "2026-09-13" }, moved: [], unplaced: [], changedSlotIds: [], teams: [], ranks: [] });
   // P4-269 : ré-armement — défaut « aucun conflit de personne », le cas dédié surcharge.
   vi.mocked(getPlacedConflicts).mockResolvedValue({ clubId: "club-1", seasonId: "s1", seasonPlanChosen: true, absences: [], conflicts: [] });
   navigate.mockClear();
@@ -2260,52 +2262,219 @@ describe("PlanningPage — transcription depuis le socle (P2-44)", () => {
   });
 });
 
-describe("PlanningPage — écarts NOMMÉS vs le socle (P2-44 PR-5)", () => {
+describe("PlanningPage — le bilan par rang vs le socle (P2-44 PR-5, fermetures PR A)", () => {
   const seasonV: Schedule = { id: "season-v1", name: "Planning A", status: "COMPLETED", score: null, createdAt: "2026-01-01T00:00:00Z", updatedAt: "2026-01-01T00:00:00Z", planType: "SEASON", schedulePlanId: "season-plan", isChosen: true };
   const closureV: Schedule = { id: "ov-1", name: "Toussaint", status: "COMPLETED", score: null, createdAt: "2026-09-10T00:00:00Z", updatedAt: "2026-09-10T00:00:00Z", planType: "CLOSURE", schedulePlanId: "ete-plan" };
   const toReplace = [{ teamId: "team-1", dayOfWeek: 3, startTime: "18:00:00", venueId: "venue-1", reason: "venue_closed" }];
+  const WINDOW = { startDate: "2026-09-07", endDate: "2026-09-13" };
+  // Évalué DANS chaque test (jamais à la collecte) : une clé absente rougit le test, pas le fichier.
+  const title = (): string => PLANNING_TEXTS.rankReportTitleWeek(frDateNumericNoYear(WINDOW.startDate));
+  const u11 = { teamId: "team-1", tierLabel: "S", tierWeight: 100, tierOrder: 0, paused: false, socleSessions: 3, keptSessions: 2, lost: 0, reducedByChoice: 1, movedSessions: 1, newSessions: 0, chosenSessions: 2, daysKept: false, changed: true, sharedKept: 0, sharedWith: [] as string[] };
+  const rankS = { tierLabel: "S", tierWeight: 100, teams: 1, socleSessions: 3, keptSessions: 2, lost: 0, chosenReductions: 1, newSessions: 0, paused: 0, unchanged: 0 };
+  // U11 : sa séance du mardi est passée au mercredi (slot-2, la seule séance qui a changé) ; celle du
+  // lundi (slot-1) est restée ; celle du vendredi est retirée par choix.
   const deviation = {
     socleScheduleId: "socle",
-    moved: [{ teamId: "team-1", from: { dayOfWeek: 2, startTime: "18:30", venueId: "venue-1" }, to: { dayOfWeek: 4, startTime: "19:00", venueId: "venue-1", slotId: "slot-1" } }],
-    unplaced: [{ teamId: "team-1", dayOfWeek: 5, startTime: "20:00", venueId: "venue-1", reason: "team_reduced" }],
+    window: WINDOW,
+    moved: [{ teamId: "team-1", from: { dayOfWeek: 2, startTime: "18:30", venueId: "venue-1", sharedWith: [] as string[] }, to: { dayOfWeek: 3, startTime: "18:00", venueId: "venue-1", slotId: "slot-2", sharedWith: [] as string[] } }],
+    unplaced: [{ teamId: "team-1", dayOfWeek: 5, startTime: "20:00", venueId: "venue-1", reason: "team_reduced", sharedWith: [] as string[] }],
+    changedSlotIds: ["slot-2"],
+    teams: [u11],
+    ranks: [rankS],
+  };
+  const twoSlots = [
+    { id: "slot-1", scheduleId: "ov-1", teamId: "team-1", venueId: "venue-1", coachId: null, dayOfWeek: 1, startTime: "18:00:00", durationMinutes: 90, lockLevel: "NONE" as const, lockOrigin: null, sharedTrainingBlockId: null },
+    { id: "slot-2", scheduleId: "ov-1", teamId: "team-1", venueId: "venue-1", coachId: null, dayOfWeek: 3, startTime: "18:00:00", durationMinutes: 90, lockLevel: "NONE" as const, lockOrigin: null, sharedTrainingBlockId: null },
+  ];
+  const shownSlotIds = (container: HTMLElement): string[] => [...container.querySelectorAll("[data-slot-id]")].map((el) => el.getAttribute("data-slot-id") ?? "").sort();
+  const card = (container: HTMLElement, slotId: string): HTMLElement => {
+    const button = container.querySelector(`[data-slot-id="${slotId}"] > button`);
+    expect(button, `la carte ${slotId} est affichée`).not.toBeNull();
+    return button as HTMLElement;
+  };
+  const httpError = (status: number, data: unknown): HTTPError => {
+    const error = new HTTPError(new Response(JSON.stringify(data), { status }), new Request("http://localhost/api/schedules/ov-1/socle-deviation"), {} as never);
+    (error as unknown as { data: unknown }).data = data;
+    return error;
   };
 
   beforeEach(() => {
     vi.mocked(listSchedules).mockResolvedValue([seasonV, closureV]);
     vi.mocked(getSocleDeviation).mockClear();
+    vi.mocked(getSocleDeviation).mockResolvedValue(deviation);
   });
 
-  it("sur une FERMETURE embarquée + COMPLETED : les DEUX panneaux coexistent (décision fondateur)", async () => {
-    vi.mocked(getSocleDeviation).mockResolvedValue(deviation);
+  it("sur une FERMETURE embarquée + COMPLETED : le bilan par rang et le panneau « à replacer » coexistent", async () => {
     renderWithProviders(<PlanningPage embedded scopePlanId="ete-plan" isClosurePeriod toReplace={toReplace} />);
 
-    // Le NOUVEAU panneau (déplacées + non replacées), SERVI par la route.
-    const ecarts = await screen.findByRole("region", { name: /écarts avec le planning de saison/i });
-    expect(within(ecarts).getByText(/1 séance déplacée/i)).toBeInTheDocument();
-    expect(within(ecarts).getByText(/1 à replacer/i)).toBeInTheDocument();
+    // Le bilan (rang, puis équipe), SERVI par la route.
+    const bilan = await screen.findByRole("region", { name: title() });
+    expect(within(bilan).getByText(PLANNING_TEXTS.rankReportLine(rankS))).toBeInTheDocument();
+    expect(within(bilan).getByText(PLANNING_TEXTS.teamReportLine("U11", u11, []))).toBeInTheDocument();
     // L'ANCIEN panneau « à replacer » reste rendu, distinct (les deux affichés).
     expect(screen.getByRole("region", { name: /non reprises/i })).toBeInTheDocument();
     expect(vi.mocked(getSocleDeviation)).toHaveBeenCalledWith("ov-1");
   });
 
   it("sur une VACANCE (isClosurePeriod faux) : la route socle-deviation n'est JAMAIS appelée", async () => {
-    vi.mocked(getSocleDeviation).mockResolvedValue(deviation);
     renderWithProviders(<PlanningPage embedded scopePlanId="ete-plan" toReplace={toReplace} />);
 
     // Le panneau « à replacer » (PR-2) reste, PR-2 inchangée à l'octet.
     await screen.findByRole("region", { name: /non reprises/i });
-    expect(screen.queryByRole("region", { name: /écarts avec le planning de saison/i })).not.toBeInTheDocument();
+    // Sans appel, aucune donnée de bilan : le panneau ne peut pas naître.
     expect(vi.mocked(getSocleDeviation)).not.toHaveBeenCalled();
   });
 
-  it("sur /planning autonome (non embarqué) : ni panneau d'écarts ni appel de la route", async () => {
-    vi.mocked(getSocleDeviation).mockResolvedValue(deviation);
+  it("sur /planning autonome, une version de SAISON : ni bilan ni appel de la route (frontière gardée)", async () => {
     vi.mocked(listSchedules).mockResolvedValue([seasonV]);
     renderWithProviders(<PlanningPage />);
 
     await screen.findByText("Planning A");
-    expect(screen.queryByRole("region", { name: /écarts avec le planning de saison/i })).not.toBeInTheDocument();
     expect(vi.mocked(getSocleDeviation)).not.toHaveBeenCalled();
+  });
+
+  // D11 (P4-490) — une version de FERMETURE terminée se lit aussi depuis `/planning` (DayDialog,
+  // RadarPanel y mènent) : le bilan y est armé par le TYPE de la version affichée.
+  it("sur /planning autonome, une version de FERMETURE terminée : le bilan est lu et affiché", async () => {
+    usePlanningStore.setState({ selectedScheduleId: "ov-1" });
+    renderWithProviders(<PlanningPage />);
+
+    expect(await screen.findByRole("region", { name: title() })).toBeInTheDocument();
+    expect(vi.mocked(getSocleDeviation)).toHaveBeenCalledWith("ov-1");
+  });
+
+  it("sur /planning autonome, un MEMBRE lit le bilan d'une version de fermeture (lecture ouverte)", async () => {
+    meState.canManage = false;
+    usePlanningStore.setState({ selectedScheduleId: "ov-1" });
+    renderWithProviders(<PlanningPage />);
+
+    expect(await screen.findByRole("region", { name: title() })).toBeInTheDocument();
+    expect(vi.mocked(getSocleDeviation)).toHaveBeenCalledWith("ov-1");
+  });
+
+  it.each([
+    ["une version de VACANCES terminée", { ...closureV, id: "hol-1", planType: "HOLIDAY" as const }],
+    ["une version de FERMETURE en échec", { ...closureV, id: "ov-failed", status: "FAILED" as const }],
+  ])("sur /planning autonome, %s : la route n'est JAMAIS appelée", async (_label, version) => {
+    vi.mocked(listSchedules).mockResolvedValue([seasonV, version]);
+    usePlanningStore.setState({ selectedScheduleId: version.id });
+    renderWithProviders(<PlanningPage />);
+
+    // L'écran affiche CETTE version (son nom en titre, pas « Planning A ») : l'armement a été évalué
+    // sur elle.
+    expect(await screen.findByRole("heading", { level: 1, name: version.name })).toBeInTheDocument();
+    expect(usePlanningStore.getState().selectedScheduleId).toBe(version.id);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(vi.mocked(getSocleDeviation)).not.toHaveBeenCalled();
+  });
+
+  // D8 — l'échec se dit DANS le panneau, jamais en toast (le toast générique est désarmé par
+  // `meta.ownsError`, prouvé sur le vrai client dans useSocleDeviation.test.tsx).
+  it("un 409 dit le message SERVEUR dans le panneau, sans « Réessayer » (le geste est ailleurs)", async () => {
+    const error = httpError(409, { error: "Message serveur de test." });
+    vi.mocked(getSocleDeviation).mockRejectedValue(error);
+    usePlanningStore.setState({ selectedScheduleId: "ov-1" });
+    renderWithProviders(<PlanningPage />);
+
+    const alert = (await screen.findByText(await errorMessage(error))).closest("[role='alert']");
+    expect(alert).not.toBeNull();
+    expect(within(alert as HTMLElement).queryByRole("button", { name: "Réessayer" })).not.toBeInTheDocument();
+    expect(screen.queryByText(PLANNING_TEXTS.rankReportFailed)).not.toBeInTheDocument();
+  });
+
+  it("une autre panne dit « Le bilan n'a pas pu être lu. » AVEC « Réessayer », qui relit la route", async () => {
+    vi.mocked(getSocleDeviation).mockRejectedValue(httpError(500, {}));
+    usePlanningStore.setState({ selectedScheduleId: "ov-1" });
+    renderWithProviders(<PlanningPage />);
+
+    const alert = (await screen.findByText(PLANNING_TEXTS.rankReportFailed)).closest("[role='alert']");
+    expect(alert).not.toBeNull();
+    const before = vi.mocked(getSocleDeviation).mock.calls.length;
+    vi.mocked(getSocleDeviation).mockResolvedValue(deviation);
+    await userEvent.click(within(alert as HTMLElement).getByRole("button", { name: "Réessayer" }));
+    await waitFor(() => expect(vi.mocked(getSocleDeviation).mock.calls.length).toBeGreaterThan(before));
+    expect(await screen.findByRole("region", { name: title() })).toBeInTheDocument();
+  });
+
+  describe("D10 — « Seulement les séances qui ont changé »", () => {
+    beforeEach(() => {
+      vi.mocked(getSlots).mockResolvedValue(twoSlots);
+    });
+
+    it("n'apparaît que si le bilan est lu ET qu'au moins une équipe a changé", async () => {
+      vi.mocked(getSocleDeviation).mockResolvedValue({ ...deviation, teams: [{ ...u11, changed: false, movedSessions: 0, reducedByChoice: 0, keptSessions: 3 }], changedSlotIds: [], moved: [], unplaced: [] });
+      const { unmount } = renderWithProviders(<PlanningPage embedded scopePlanId="ete-plan" isClosurePeriod />);
+      await screen.findByRole("region", { name: title() });
+      expect(screen.queryByRole("checkbox", { name: PLANNING_TEXTS.changesOnly })).not.toBeInTheDocument();
+      unmount();
+
+      vi.mocked(getSocleDeviation).mockResolvedValue(deviation);
+      renderWithProviders(<PlanningPage embedded scopePlanId="ete-plan" isClosurePeriod />);
+      expect(await screen.findByRole("checkbox", { name: PLANNING_TEXTS.changesOnly })).not.toBeChecked();
+    });
+
+    it("cochée : la grille ne montre que les séances déplacées ou nouvelles, sans fenêtres vides ; décochée : tout revient", async () => {
+      const user = userEvent.setup();
+      const { container } = renderWithProviders(<PlanningPage embedded scopePlanId="ete-plan" isClosurePeriod />);
+      const toggle = await screen.findByRole("checkbox", { name: PLANNING_TEXTS.changesOnly });
+      await waitFor(() => expect(shownSlotIds(container)).toEqual(["slot-1", "slot-2"]));
+      expect(screen.getAllByTitle(/^Créneau vide/).length).toBeGreaterThan(0);
+
+      await user.click(toggle);
+      await waitFor(() => expect(shownSlotIds(container)).toEqual(["slot-2"]));
+      expect(screen.queryAllByTitle(/^Créneau vide/)).toHaveLength(0);
+
+      await user.click(toggle);
+      await waitFor(() => expect(shownSlotIds(container)).toEqual(["slot-1", "slot-2"]));
+    });
+
+    it("cochée alors que rien n'est déplacé ni nouveau (seulement des perdues) : l'état vide le DIT", async () => {
+      const user = userEvent.setup();
+      vi.mocked(getSocleDeviation).mockResolvedValue({ ...deviation, moved: [], changedSlotIds: [], teams: [{ ...u11, movedSessions: 0, lost: 1, keptSessions: 1 }] });
+      const { container } = renderWithProviders(<PlanningPage embedded scopePlanId="ete-plan" isClosurePeriod />);
+      await user.click(await screen.findByRole("checkbox", { name: PLANNING_TEXTS.changesOnly }));
+
+      expect(await screen.findByText(PLANNING_TEXTS.changesOnlyEmpty)).toBeInTheDocument();
+      expect(shownSlotIds(container)).toEqual([]);
+    });
+
+    it("cocher efface une sélection que le filtre cache", async () => {
+      const user = userEvent.setup();
+      const { container } = renderWithProviders(<PlanningPage embedded scopePlanId="ete-plan" isClosurePeriod />);
+      const toggle = await screen.findByRole("checkbox", { name: PLANNING_TEXTS.changesOnly });
+      await waitFor(() => expect(shownSlotIds(container)).toContain("slot-1"));
+      await user.click(card(container, "slot-1"));
+      await waitFor(() => expect(usePlanningStore.getState().selectedSlotId).toBe("slot-1"));
+
+      await user.click(toggle);
+      await waitFor(() => expect(usePlanningStore.getState().selectedSlotId).toBeNull());
+    });
+
+    it("armer un geste (Déplacer) remet le filtre à faux — la cible se choisit sur la grille entière", async () => {
+      const user = userEvent.setup();
+      const { container } = renderWithProviders(<PlanningPage embedded scopePlanId="ete-plan" isClosurePeriod />);
+      const toggle = await screen.findByRole("checkbox", { name: PLANNING_TEXTS.changesOnly });
+      await user.click(toggle);
+      await waitFor(() => expect(shownSlotIds(container)).toEqual(["slot-2"]));
+
+      await user.click(card(container, "slot-2"));
+      await user.click(await screen.findByRole("button", { name: /Déplacer/ }));
+      await waitFor(() => expect(screen.getByRole("checkbox", { name: PLANNING_TEXTS.changesOnly })).not.toBeChecked());
+      await waitFor(() => expect(shownSlotIds(container)).toEqual(["slot-1", "slot-2"]));
+    });
+
+    it("changer de version remet le filtre à faux", async () => {
+      const user = userEvent.setup();
+      const closureV2: Schedule = { ...closureV, id: "ov-2", createdAt: "2026-09-11T00:00:00Z", updatedAt: "2026-09-11T00:00:00Z" };
+      vi.mocked(listSchedules).mockResolvedValue([seasonV, closureV, closureV2]);
+      renderWithProviders(<PlanningPage embedded scopePlanId="ete-plan" isClosurePeriod />);
+      await user.click(await screen.findByRole("checkbox", { name: PLANNING_TEXTS.changesOnly }));
+      expect(screen.getByRole("checkbox", { name: PLANNING_TEXTS.changesOnly })).toBeChecked();
+
+      await user.selectOptions(screen.getByRole("combobox", { name: /version du planning/i }), "ov-1");
+      await waitFor(() => expect(usePlanningStore.getState().selectedScheduleId).toBe("ov-1"));
+      expect(await screen.findByRole("checkbox", { name: PLANNING_TEXTS.changesOnly })).not.toBeChecked();
+    });
   });
 });
 
