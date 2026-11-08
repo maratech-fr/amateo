@@ -22,7 +22,9 @@ function fx(extra: Partial<Fixture> = {}): Fixture {
     teamId: "t1",
     seasonId: "s1",
     competitionId: null,
-    matchDate: "2026-11-07",
+    // Rencontre À VENIR quel que soit le jour du run (« Replacer » n'est offert qu'avant le match,
+    // `matchDate < todayISO()`) : une date proche en dur devenait « déjà jouée » en passant.
+    matchDate: "2099-11-07",
     homeAway: "HOME",
     opponentLabel: "BRON",
     status: "PLACED",
