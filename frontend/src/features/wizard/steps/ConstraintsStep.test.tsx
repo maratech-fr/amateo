@@ -721,6 +721,70 @@ describe("ConstraintsStep — PR A : structure du formulaire d'ajout (deux rang�
 });
 
 /**
+ * UXS-19 (D8) : une indisponibilité de coach saisie au Wizard ne vaut que pour les ENTRAÎNEMENTS ;
+ * la famille « Dispo coach » le dit, dans ses deux modes, et renvoie vers Matchs › Contraintes ›
+ * Coachs pour les matchs — sans lien (l'onglet Matchs est verrouillé tant que le socle n'est pas
+ * validé). La phrase se lit aussi par un Membre (elle n'est pas dans la saisie réservée) et n'apparaît
+ * dans aucune autre famille.
+ */
+describe("ConstraintsStep — UXS-19 : la dispo coach du Wizard vaut pour les entraînements", () => {
+  beforeEach(() => {
+    h.createMut.mockClear();
+    h.list = [];
+    h.teamCoaches = [];
+    h.tags = [];
+    h.tagAssignments = [];
+    h.implicitRules = RESOLVED_IMPLICIT_RULES;
+    activeVenuesState.venues = [{ id: "v1", name: "Gymnase A", isActive: true }, { id: "v2", name: "Gymnase B", isActive: true }];
+    activeVenuesState.disabledIds = new Set();
+    activeVenuesState.layerRead = "ready";
+    activeTeamsState.pausedIds = new Set();
+    activeTeamsState.layerRead = "ready";
+    h.reservations = [];
+  });
+
+  it("mode « indisponible » : la phrase est là, sans lien", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<ConstraintsStep />);
+
+    await user.click(screen.getByRole("button", { name: "Dispo coach" }));
+    const hint = screen.getByText(WIZARD_TEXTS.coachAvailabilityTrainingOnlyHint);
+    expect(within(hint).queryByRole("link")).toBeNull();
+  });
+
+  it("mode « disponible uniquement » : la phrase reste", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<ConstraintsStep />);
+
+    await user.click(screen.getByRole("button", { name: "Dispo coach" }));
+    await user.selectOptions(screen.getByLabelText("Coach"), "co1");
+    await user.selectOptions(screen.getByLabelText("Disponibilité"), "available");
+    expect(screen.getByText(WIZARD_TEXTS.coachAvailabilityTrainingOnlyHint)).toBeInTheDocument();
+  });
+
+  it("Membre : la phrase se lit aussi (hors de la saisie réservée aux gestionnaires)", async () => {
+    session.canManage = false;
+    try {
+      const user = userEvent.setup();
+      renderWithProviders(<ConstraintsStep />);
+      await user.click(screen.getByRole("button", { name: "Dispo coach" }));
+      expect(screen.getByText(WIZARD_TEXTS.coachAvailabilityTrainingOnlyHint)).toBeInTheDocument();
+    } finally {
+      session.canManage = true;
+    }
+  });
+
+  it("absente hors de la famille Dispo coach (horaires par défaut, gymnase)", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<ConstraintsStep />);
+
+    expect(screen.queryByText(WIZARD_TEXTS.coachAvailabilityTrainingOnlyHint)).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Gymnase" }));
+    expect(screen.queryByText(WIZARD_TEXTS.coachAvailabilityTrainingOnlyHint)).not.toBeInTheDocument();
+  });
+});
+
+/**
  * Editing an EXISTING constraint reuses the same form (PUT). The critical
  * guard: loading a forced-venue/day rule back into the form and saving must
  * NOT downgrade forcedVenueId→preferredVenueId (a silent §7.1 semantics break).

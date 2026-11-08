@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Tests\Behat;
 
+use App\Service\SocleGuard;
 use Behat\Hook\AfterScenario;
 use Behat\Step\Given;
 use Behat\Step\Then;
@@ -316,8 +317,8 @@ final class SoclePlansContext extends BaseContext
         if (409 !== $this->refusedStatus) {
             throw new RuntimeException(\sprintf('l\'ouverture aurait dû être refusée (409), obtenu %d', $this->refusedStatus));
         }
-        if (!str_contains($this->refusedError, 'planning principal')) {
-            throw new RuntimeException(\sprintf('le refus aurait dû renvoyer au planning principal, message obtenu « %s »', $this->refusedError));
+        if (SocleGuard::SEASON_PLAN_REQUIRED_MESSAGE !== $this->refusedError) {
+            throw new RuntimeException(\sprintf('le refus aurait dû être celui du socle (« %s »), message obtenu « %s »', SocleGuard::SEASON_PLAN_REQUIRED_MESSAGE, $this->refusedError));
         }
     }
 

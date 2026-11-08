@@ -99,7 +99,7 @@ final class PeriodPlanTranscriber
             }
             $entryId = $context['calendarEntryId'];
             if (SchedulePlanType::SEASON === $context['type'] || null === $entryId) {
-                throw new UnprocessableEntityHttpException('La transcription depuis le socle ne s\'applique qu\'à un plan de période.');
+                throw new UnprocessableEntityHttpException('La transcription depuis le socle ne s\'applique qu\'à un planning de période.');
             }
 
             // TOUT ce qui décide vit sous le verrou de portée du plan (même clé que linkSchedule /

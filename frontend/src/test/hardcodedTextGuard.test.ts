@@ -23,7 +23,8 @@ import { describe, expect, it } from "vitest";
  *         `=>`). Le garde-fou « balise ouvrante avant » écarte le code (`return allMain`, `icon,`,
  *         `? null`) qu'une simple prose attraperait et que NEO ne pourrait jamais blanchir.
  *   (b) un littéral FR dans un attribut `title=` · `aria-label=` · `placeholder=` · `message=` ·
- *       `label=` (forme JSX `attr="…"`).
+ *       `label=` · `legend=` · `description=` · `confirmLabel=` · `confirmPhrase=` (forme JSX
+ *       `attr="…"`).
  *
  * Un texte est « FR » ici = contient un mot d'au moins 3 lettres ET au moins une minuscule (épargne
  * les enums/identifiants tout en capitales rendus tels quels, p.ex. « PDF »).
@@ -162,6 +163,12 @@ const MIGRATED_FILES = [
   "features/admin/Journaux/AuditSubtab.tsx",
   "features/admin/Journaux/MessengerFailedSubtab.tsx",
   "features/admin/Journaux/SystemErrorsSubtab.tsx",
+  // Nom unique « planning de période » (PR 2 « Moyennes ») — les quatre écrans qui portaient
+  // « secondaire » / « principal » sont migrés en entier dans le même lot (aucune dérogation).
+  "features/wizard/steps/GenerateStep.tsx",
+  "features/cockpit/CockpitPage.tsx",
+  "features/cockpit/SeasonPlanBanner.tsx",
+  "features/cockpit/DeletePlanningButton.tsx",
 ];
 
 // Exemptions nominatives — un fichier migré autorisé à garder un littéral en dur, AVEC sa raison.
@@ -169,7 +176,20 @@ const MIGRATED_FILES = [
 // pas (raison STRUCTURELLE, jamais « pour faire taire un rouge »).
 const EXEMPTIONS: { file: string; reason: string }[] = [];
 
-const POLICED_ATTRS = ["title", "aria-label", "placeholder", "message", "label"];
+// `legend` · `description` · `confirmLabel` · `confirmPhrase` (PR 2 « Moyennes », D9) : props de
+// texte des primitives partagées (`DayMultiPicker`, `ConfirmDialog`) qui échappaient à la garde alors
+// qu'elles portent une phrase lue à l'écran. `aria-description=` n'est pas visé (précédé de `-`).
+const POLICED_ATTRS = [
+  "title",
+  "aria-label",
+  "placeholder",
+  "message",
+  "label",
+  "legend",
+  "description",
+  "confirmLabel",
+  "confirmPhrase",
+];
 
 /** Un texte « FR » : un mot d'au moins 3 lettres ET au moins une minuscule. */
 function looksFrench(text: string): boolean {
@@ -238,6 +258,10 @@ describe("Textes centralisés — garde statique", () => {
       '  <IconButton aria-label="Supprimer la semaine" />', // (b) aria-label
       '<Dialog message="Cette entrée sera retirée du calendrier." />', // (b) message
       "<Button>\n  Adapter\n</Button>", // (a bis) prose sur sa ligne après une balise ouvrante
+      '  <DayMultiPicker legend="Jours où le coach est indisponible" />', // (b) legend
+      '  <ConfirmDialog description="Ce planning sera retiré du calendrier." />', // (b) description
+      '  <ConfirmDialog confirmLabel="Rouvrir et supprimer" />', // (b) confirmLabel
+      '  <ConfirmDialog confirmPhrase="ROUVRIR le planning" />', // (b) confirmPhrase
     ];
     for (const sample of bad) {
       expect(scan("x.tsx", sample).length, `devrait mordre : ${sample}`).toBeGreaterThan(0);
@@ -253,6 +277,9 @@ describe("Textes centralisés — garde statique", () => {
       "const venues: Map<string, Venue> = new Map();", // générique TS, pas un `</`
       '<div className="rounded border px-2 py-1">{value}</div>', // utilitaires + expression
       "<Button aria-label={`Déplier ${title}`}>", // template dynamique
+      "<DayMultiPicker legend={WIZARD_TEXTS.dayPreferredLegend} />", // legend extrait
+      "<ConfirmDialog description={COCKPIT_TEXTS.deletePeriodPlanning} confirmLabel={COCKPIT_TEXTS.delete} />",
+      '<span aria-description="Indice de survol" />', // `aria-description` ≠ `description` policé
     ];
     for (const sample of good) {
       expect(scan("x.tsx", sample), `ne devrait PAS mordre : ${sample}`).toEqual([]);

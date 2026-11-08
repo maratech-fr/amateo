@@ -16,6 +16,7 @@ import { MonthCalendar } from "./MonthCalendar";
 import { PUBLIC_HOLIDAY_HORIZON_DAYS, RadarPanel } from "./RadarPanel";
 import { VenueClosureCard } from "./VenueClosureCard";
 import { useCalendarEntries, usePublicHolidays, useSchoolHolidays } from "./queries";
+import { COCKPIT_TEXTS } from "./texts";
 import { addDays, monthWindow, todayISO } from "./lib/date";
 import { useSocleValidated } from "@/shared/lib/socle";
 
@@ -83,7 +84,7 @@ export function CockpitPage() {
     <div className="space-y-4">
       {/* En-tête d'accueil : le tableau de bord n'avait aucun titre ni porte « Signaler » —
           désormais le même en-tête que les autres écrans, pour remonter une erreur dès l'accueil. */}
-      <PageHeader title="Accueil" screen="/" />
+      <PageHeader title={COCKPIT_TEXTS.homeTitle} screen="/" />
       {!socleValidated ? (
         <NoticeBanner
           tone="accent"
@@ -91,7 +92,7 @@ export function CockpitPage() {
           icon={<Lock className="size-4 text-accent" />}
           message={
             <span className="text-muted-foreground">
-              Planning de saison <strong className="text-foreground">non validé</strong> — validez-le pour débloquer les <strong className="text-foreground">matchs</strong> et les <strong className="text-foreground">plannings secondaires</strong>.
+              {COCKPIT_TEXTS.socleNotValidatedLead} <strong className="text-foreground">{COCKPIT_TEXTS.socleNotValidatedStatus}</strong> {COCKPIT_TEXTS.socleNotValidatedHint}
             </span>
           }
         />
@@ -100,7 +101,7 @@ export function CockpitPage() {
           bandeau calculé sur zéro plan). S'il a lu (donnée, même périmée), le bandeau reste. */}
       {readFailed(schedulesQuery) ? (
         <div className="rounded-lg border border-border bg-card p-4">
-          <LoadErrorHint onRetry={() => void schedulesQuery.refetch()}>Le planning de saison n'a pas pu être chargé.</LoadErrorHint>
+          <LoadErrorHint onRetry={() => void schedulesQuery.refetch()}>{COCKPIT_TEXTS.seasonPlanLoadFailed}</LoadErrorHint>
         </div>
       ) : (
         <SeasonPlanBanner schedules={schedules} socleValidated={socleValidated} loading={schedulesLoading} entries={radarEntries} />
@@ -133,7 +134,7 @@ export function CockpitPage() {
             onRetry={() => void entriesQuery.refetch()}
           />
           {!readFailed(entriesQuery) && !readLoading(entriesQuery) && (readFailed(monthHolidaysQuery) || readFailed(monthPublicHolidaysQuery)) ? (
-            <NoticeBanner tone="warning" role="status" message="Les vacances scolaires ou les jours fériés du mois n'ont pas pu être chargés — réessayez." />
+            <NoticeBanner tone="warning" role="status" message={COCKPIT_TEXTS.monthHolidaysLoadFailed} />
           ) : null}
         </div>
         <div className="flex flex-col gap-4">

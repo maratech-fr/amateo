@@ -974,7 +974,7 @@ export function ConstraintsStep() {
               )}
 
               {"DAY" === family && (
-                <DayMultiPicker value={daySelection} onChange={setDaySelection} legend={"preferred" === dayMode ? "Jours à privilégier" : "only" === dayMode ? "Seuls jours autorisés" : "atLeast" === dayMode ? "Au moins une séance l'un de ces jours" : "Jours à éviter"} />
+                <DayMultiPicker value={daySelection} onChange={setDaySelection} legend={"preferred" === dayMode ? WIZARD_TEXTS.dayPreferredLegend : "only" === dayMode ? WIZARD_TEXTS.dayOnlyLegend : "atLeast" === dayMode ? WIZARD_TEXTS.dayAtLeastLegend : WIZARD_TEXTS.dayAvoidLegend} />
               )}
 
               {"FACILITY" === family && (
@@ -989,7 +989,7 @@ export function ConstraintsStep() {
                     aria-label={WIZARD_TEXTS.venueSelectLabel}
                     wrapperClassName="w-48"
                     placeholder={WIZARD_TEXTS.venuePlaceholder}
-                    venues={sortByName(editVenues).map((v) => ({ id: v.id, name: v.name, color: v.color, sub: disabledIds.has(v.id) ? "désactivé pour cette période" : undefined }))}
+                    venues={sortByName(editVenues).map((v) => ({ id: v.id, name: v.name, color: v.color, sub: disabledIds.has(v.id) ? WIZARD_TEXTS.venueDisabledForPeriod : undefined }))}
                     value={venueId}
                     onValueChange={setVenueId}
                   />
@@ -998,7 +998,7 @@ export function ConstraintsStep() {
 
               {"COACH_AVAILABILITY" === family && (
                 <>
-                  <DayMultiPicker value={daySelection} onChange={setDaySelection} legend={"available" === coachMode ? "Jours de disponibilité exclusive" : "Jours d'indisponibilité"} />
+                  <DayMultiPicker value={daySelection} onChange={setDaySelection} legend={"available" === coachMode ? WIZARD_TEXTS.coachDaysAvailableOnlyLegend : WIZARD_TEXTS.coachDaysUnavailableLegend} />
                   {/* Lot C: optional time window on the selected days (empty = whole day). */}
                   <label className="flex items-center gap-1 text-sm text-muted-foreground">
                     de
@@ -1029,6 +1029,11 @@ export function ConstraintsStep() {
             </div>
           </div>
           </ManagerOnly>
+
+      {/* UXS-19 — une dispo coach saisie ici ne vaut que pour les entraînements ; lisible aussi par
+          un Membre (hors de la saisie réservée). Sans lien : l'onglet Matchs reste verrouillé tant
+          que le planning de saison n'est pas validé. */}
+      {"COACH_AVAILABILITY" === family ? <p className="text-xs text-muted-foreground">{WIZARD_TEXTS.coachAvailabilityTrainingOnlyHint}</p> : null}
 
       {/* List for the active family — grouped by group (tag) then team (ranked). */}
       {0 === list.length ? (
@@ -1148,7 +1153,7 @@ export function ConstraintsStep() {
         open={pendingDelete !== null}
         title={WIZARD_TEXTS.deleteConstraintTitle}
         description={pendingDelete ? <>« {pendingDelete.name} » sera définitivement supprimée.</> : null}
-        confirmLabel="Supprimer"
+        confirmLabel={WIZARD_TEXTS.deleteLabel}
         onCancel={() => setPendingDelete(null)}
         onConfirm={() => {
           if (pendingDelete) {

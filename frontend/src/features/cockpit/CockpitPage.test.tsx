@@ -8,6 +8,7 @@ import { setTodayOverride } from "@/shared/lib/clock";
 import { CockpitPage } from "./CockpitPage";
 import { addDays, monthWindow, todayISO } from "./lib/date";
 import { PUBLIC_HOLIDAY_HORIZON_DAYS } from "./RadarPanel";
+import { COCKPIT_TEXTS } from "./texts";
 
 let meData: { seasonPlan: { id: string; name: string; chosenScheduleId: string | null; hasFinishedVersion: boolean } } | null = null;
 
@@ -109,7 +110,15 @@ describe("CockpitPage state machine", () => {
     meData = { seasonPlan: { id: "p1", name: "Planning", chosenScheduleId: null, hasFinishedVersion: true } };
     renderCockpit();
     expect(screen.getByText("Planning")).toBeInTheDocument(); // le bandeau affiche le NOM du plan (me.seasonPlan.name)
-    expect(screen.getByText(/validez-le pour débloquer/i)).toBeInTheDocument();
+    // D3 « nom unique » : le bandeau se compose de trois clés, UN seul gras (« non validé »), et
+    // nomme les « plannings de période » — jamais « secondaires ».
+    const status = screen.getByText(COCKPIT_TEXTS.socleNotValidatedStatus);
+    expect(status.tagName).toBe("STRONG");
+    const banner = status.closest('[role="status"]') as HTMLElement;
+    expect(banner).toHaveTextContent(COCKPIT_TEXTS.socleNotValidatedLead);
+    expect(banner).toHaveTextContent(COCKPIT_TEXTS.socleNotValidatedHint);
+    expect(banner).not.toHaveTextContent(/secondaire/i);
+    expect(banner.querySelectorAll("strong")).toHaveLength(1);
     expect(screen.queryByText("WIZARD SCREEN")).not.toBeInTheDocument();
   });
 
@@ -118,7 +127,7 @@ describe("CockpitPage state machine", () => {
     renderCockpit();
     expect(screen.getByText("Planning")).toBeInTheDocument(); // le bandeau affiche le NOM du plan (me.seasonPlan.name)
     expect(screen.getByText("À traiter")).toBeInTheDocument();
-    expect(screen.queryByText(/validez-le pour débloquer/i)).not.toBeInTheDocument();
+    expect(document.body).not.toHaveTextContent(COCKPIT_TEXTS.socleNotValidatedHint);
   });
 
   it("fetches public holidays on two explicit windows: visible month grid + radar horizon", () => {

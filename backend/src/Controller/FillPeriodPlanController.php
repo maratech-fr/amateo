@@ -109,7 +109,7 @@ final class FillPeriodPlanController extends AbstractController implements Seaso
         // lui, se régénère via /regenerate. ADR-0002 C4 : « socle ? » = plan.type === SEASON.
         $entryId = $this->schedulePlanProvisioner->periodEntryIdOf($source);
         if ($this->schedulePlanProvisioner->isSeasonSchedule($source) || null === $entryId) {
-            return $this->json(['error' => 'Le comblement ne s\'applique qu\'à un plan de période.'], Response::HTTP_CONFLICT);
+            return $this->json(['error' => 'Le comblement ne s\'applique qu\'à un planning de période.'], Response::HTTP_CONFLICT);
         }
 
         // On n'épingle qu'une version terminée : un DRAFT/FAILED/en vol n'a pas de placement stable

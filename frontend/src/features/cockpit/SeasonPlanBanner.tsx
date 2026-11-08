@@ -94,14 +94,14 @@ export function SeasonPlanBanner({ schedules, socleValidated, loading = false, e
         {/* Le plan porte un NOM (ADR-0002 inv. 12) — l'afficher, pas un libellé générique
             (retour fondateur 2026-07-18 : « Planning de la saison » ici, « Planning
             principal » là = pas UX friendly). */}
-        <p className="text-sm font-semibold">{me?.seasonPlan?.name ?? "Planning de saison"}</p>
+        <p className="text-sm font-semibold">{me?.seasonPlan?.name ?? COCKPIT_TEXTS.seasonPlanDefaultName}</p>
         <p className="inline-flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
           {chosen ? (
             <>
               <span>{STATUS_LABELS[chosen.status]}</span>
               {conflictedPeople > 0 ? (
                 <StatusPill variant="warning" icon={<AlertTriangle className="size-3.5 shrink-0 text-warning" aria-hidden="true" />}>
-                  {`${conflictedPeople} personne${conflictedPeople > 1 ? "s" : ""} à deux endroits`}
+                  {COCKPIT_TEXTS.conflictedPeoplePill(conflictedPeople)}
                 </StatusPill>
               ) : null}
               {relayCount > 0 ? (
@@ -109,12 +109,12 @@ export function SeasonPlanBanner({ schedules, socleValidated, loading = false, e
                   {COCKPIT_TEXTS.relayPill(relayCount)}
                 </StatusPill>
               ) : null}
-              {overlayCount > 0 ? <span>{` · ${overlayCount} planning${overlayCount > 1 ? "s" : ""} secondaire${overlayCount > 1 ? "s" : ""}${openOverlayCount > 0 ? ` (${openOverlayCount} en cours)` : ""}`}</span> : null}
+              {overlayCount > 0 ? <span>{` · ${COCKPIT_TEXTS.periodPlanCount(overlayCount, openOverlayCount)}`}</span> : null}
             </>
           ) : loading ? (
-            "Chargement…"
+            COCKPIT_TEXTS.loading
           ) : (
-            "Aucun planning de saison désigné"
+            COCKPIT_TEXTS.noSeasonPlanDesignated
           )}
         </p>
       </div>
@@ -124,17 +124,17 @@ export function SeasonPlanBanner({ schedules, socleValidated, loading = false, e
             offert UNIQUEMENT quand le socle est validé — avant, on complète encore dans le wizard,
             et « Ouvrir » y ramène déjà (décision fondateur 2026-09-28). */}
         <Button variant="outline" size="sm" onClick={open}>
-          Ouvrir
+          {COCKPIT_TEXTS.open}
         </Button>
         {socleValidated ? (
           <ManagerOnly>
             <Button variant="ghost" size="sm" onClick={editClubData}>
-              Modifier les données du club
+              {COCKPIT_TEXTS.editClubData}
             </Button>
           </ManagerOnly>
         ) : null}
         <Button variant="ghost" size="sm" onClick={() => setListOpen(true)}>
-          Tous les plannings ({planCount})
+          {COCKPIT_TEXTS.allPlannings(planCount)}
         </Button>
       </div>
 
