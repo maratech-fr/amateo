@@ -563,7 +563,7 @@ export function ConflictsPage() {
         <EmptyState
           icon={ShieldCheck}
           title={MATCHES_TEXTS.noSeasonConflictsTitle}
-          description="Tous les matchs placés respectent les gymnases, les coachs et les fenêtres ligue."
+          description={MATCHES_TEXTS.noSeasonConflictsDescription}
         />
         {heldSection}
       </div>

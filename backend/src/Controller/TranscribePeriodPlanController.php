@@ -69,7 +69,7 @@ final class TranscribePeriodPlanController extends AbstractController implements
         }
 
         if (SchedulePlanType::SEASON === $context['type'] || null === $context['calendarEntryId']) {
-            return $this->json(['error' => 'La transcription depuis le socle ne s\'applique qu\'à un plan de période.'], Response::HTTP_UNPROCESSABLE_ENTITY);
+            return $this->json(['error' => 'La transcription depuis le socle ne s\'applique qu\'à un planning de période.'], Response::HTTP_UNPROCESSABLE_ENTITY);
         }
 
         // Bâtir SUR le socle exige qu'il soit pointé (409 nommé sinon) — on en copie la version choisie.

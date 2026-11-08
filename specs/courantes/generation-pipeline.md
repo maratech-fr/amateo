@@ -69,7 +69,7 @@ via `POST /generate` ; backend → frontend via Mercure SSE `/clubs/{clubId}/sch
   saison**, `scopePlanId` est `null` : l'embarqué se pose sur la version chargée (règle ci-dessus),
   l'autonome sur celle que le plan SEASON pointe (sinon la dernière terminée). **En mode
   période**, `scopePlanId` porte l'id du plan de période : l'écran embarqué ne connaît QUE les
-  versions de CE plan (atterrissage sur la plus récente, titre, toolbar, badge « principal »
+  versions de CE plan (atterrissage sur la plus récente, titre, toolbar, badge « saison »
   impossible), et une période sans version affiche un état vide **explicite** — jamais un repli
   sur une version de saison. Le **verdict d'échec** de l'étape Génération se dérive du dernier
   run FAILED du plan lu de la LISTE (pas d'un state local) : il survit au retour sur l'étape au

@@ -230,6 +230,7 @@ export const MATCHES_TEXTS = {
   reviewShowTreated: "Afficher les traitées",
   reviewHideAway: "Masquer les extérieurs",
   reviewNothingToTreatTitle: "Rien à traiter",
+  reviewNothingToTreatDescription: "Toutes les rencontres importées sont à jour. Déposez un export FBI ou vérifiez via le Canal FFBB pour en apporter de nouvelles.",
   // ReviewQueueRow
   rowKickoffNotPublished: "heure non publiée",
   rowNeutralGround: "Terrain neutre",
@@ -242,6 +243,7 @@ export const MATCHES_TEXTS = {
   // ConflictsPage / ConflictRadar
   conflictsImportMissingTitle: "Importer les matchs manquants",
   noSeasonConflictsTitle: "Aucun conflit sur la saison",
+  noSeasonConflictsDescription: "Tous les matchs placés respectent les gymnases, les coachs et les fenêtres ligue.",
   homeFilterGroupLabel: "Conflits à afficher",
   groupByLabel: "Regrouper par",
   familiesGroupLabel: "Familles",

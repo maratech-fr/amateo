@@ -811,8 +811,8 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
           leading={me?.club?.logoUrl ? <img src={me.club.logoUrl} alt="" className="size-8 shrink-0 rounded object-contain" /> : null}
           beside={
             <>
-              {/* « principal » qualifie LE planning de la saison (le plan SEASON), par
-                  opposition aux plannings secondaires de période — pas la version choisie.
+              {/* La pastille « saison » qualifie LE planning de la saison (le plan SEASON), par
+                  opposition aux plannings de période — pas la version choisie.
                   En portée période, il ne peut jamais apparaître (la portée n'expose aucune
                   version de saison — bug fondateur 2026-08-19). */}
               {!scoped && null !== selectedSchedule && isSeasonPlanType(selectedSchedule.planType) ? (
@@ -1476,10 +1476,10 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
       <ConfirmDialog
         open={reopenOverlayCount !== null}
         destructive
-        title={`Rouvrir « ${displayedPlanName ?? "ce planning"} » ?`}
-        description={`Rouvrir « ${displayedPlanName ?? "ce planning"} » supprimera ${reopenOverlayCount ?? 0} planning${(reopenOverlayCount ?? 0) > 1 ? "s" : ""} secondaire${(reopenOverlayCount ?? 0) > 1 ? "s" : ""} (à refaire ensuite).${coachWishPurgeClause(reopenWishCount)}`}
-        confirmLabel="Rouvrir et supprimer"
-        confirmPhrase="modifier mon planning de saison"
+        title={PLANNING_TEXTS.reopenTitle(displayedPlanName ?? PLANNING_TEXTS.thisPlanningFallback)}
+        description={`${PLANNING_TEXTS.reopenDeletesPeriodPlans(displayedPlanName ?? PLANNING_TEXTS.thisPlanningFallback, reopenOverlayCount ?? 0)}${coachWishPurgeClause(reopenWishCount)}`}
+        confirmLabel={PLANNING_TEXTS.reopenAndDelete}
+        confirmPhrase={PLANNING_TEXTS.reopenConfirmPhrase}
         onConfirm={() => reopen(true)}
         onCancel={() => setReopenOverlayCount(null)}
       />
@@ -1488,7 +1488,7 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
         open={null !== pendingUnlockSlotId}
         title={PLANNING_TEXTS.unlockReservedTitle}
         description={PLANNING_TEXTS.unlockReservedDescription}
-        confirmLabel="Déverrouiller"
+        confirmLabel={PLANNING_TEXTS.unlock}
         onConfirm={() => {
           if (null !== pendingUnlockSlotId) {
             lockMutation.mutate({ id: pendingUnlockSlotId, lockLevel: "NONE" });
@@ -1600,7 +1600,7 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
         open={validateOverlayCount !== null}
         title={`Valider « ${displayedPlanName ?? "cette version"} » et remplacer le planning de saison ?`}
         description={`Cette version deviendra le planning de saison ; ${validateOverlayCount ?? 0} planning${(validateOverlayCount ?? 0) > 1 ? "s" : ""} de période bâti${(validateOverlayCount ?? 0) > 1 ? "s" : ""} sur l'ancien planning de saison ser${(validateOverlayCount ?? 0) > 1 ? "ont" : "a"} supprimé${(validateOverlayCount ?? 0) > 1 ? "s" : ""} (à refaire ensuite).${coachWishPurgeClause(validateWishCount)}`}
-        confirmLabel="Valider et remplacer"
+        confirmLabel={PLANNING_TEXTS.validateAndReplace}
         destructive
         onConfirm={() => validate(true)}
         onCancel={() => setValidateOverlayCount(null)}
@@ -1618,7 +1618,7 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
             PLANNING_TEXTS.loadVersionDescriptionGeneric
           )
         }
-        confirmLabel="Charger"
+        confirmLabel={PLANNING_TEXTS.load}
         destructive
         onConfirm={() => {
           if (null !== validScheduleId) {
@@ -1695,7 +1695,7 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
             </>
           )
         }
-        confirmLabel="Charger"
+        confirmLabel={PLANNING_TEXTS.load}
         onConfirm={() => {
           if (null === loadLocksConfirm) {
             return;

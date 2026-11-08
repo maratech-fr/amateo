@@ -18,6 +18,9 @@ use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
  */
 final class SocleGuard
 {
+    /** Le refus 409 tant que le plan de saison n'a pas de version choisie — lu tel quel dans un toast. */
+    public const string SEASON_PLAN_REQUIRED_MESSAGE = 'Validez le planning de saison avant de créer un match ou un planning de période.';
+
     public function __construct(
         private readonly SchedulePlanProvisioner $schedulePlanProvisioner,
     ) {}
@@ -30,7 +33,7 @@ final class SocleGuard
         }
 
         if (null === $this->schedulePlanProvisioner->chosenOfSeasonPlan($seasonId)) {
-            throw new ConflictHttpException('Validez le planning principal avant de créer un match ou un planning secondaire.');
+            throw new ConflictHttpException(self::SEASON_PLAN_REQUIRED_MESSAGE);
         }
     }
 

@@ -30,6 +30,7 @@ export const WIZARD_TEXTS = {
   removeLotLabel: (teams: string, where: string) => `Retirer l'entraînement mutualisé ${teams} · ${where}`,
   /** Confirmation de retrait : nomme la séance, et la période seulement quand c'en est une. */
   removeConfirmDescription: (name: string, where: string, inPeriod: boolean) => `« ${name} » (${where}) sera retiré${inPeriod ? " de la période" : ""}.`,
+  removeConfirmLabel: "Retirer",
   retry: "Réessayer",
   groupOccupiesSlotNotice: "Un entraînement mutualisé occupe seul ce créneau. Retirez-le pour ajouter des équipes.",
   addTeamLabel: "Ajouter une équipe",
@@ -87,6 +88,32 @@ export const WIZARD_TEXTS = {
   colLevel: "Niveau",
   colActions: "Actions",
   deleteConstraintTitle: "Supprimer cette contrainte ?",
+  coachDaysUnavailableLegend: "Jours d'indisponibilité",
+  coachDaysAvailableOnlyLegend: "Jours de disponibilité exclusive",
+  dayPreferredLegend: "Jours à privilégier",
+  dayOnlyLegend: "Seuls jours autorisés",
+  dayAtLeastLegend: "Au moins une séance l'un de ces jours",
+  dayAvoidLegend: "Jours à éviter",
+  venueDisabledForPeriod: "désactivé pour cette période",
+  // UXS-19 — une dispo coach saisie au Wizard ne vaut que pour les entraînements.
+  coachAvailabilityTrainingOnlyHint:
+    "Valable pour les entraînements. Pour les matchs, les disponibilités d'un coach se règlent dans Matchs › Contraintes › Coachs, une fois le planning de saison validé.",
+
+  // GenerateStep
+  periodGenerateIntro: "Générez le planning de cette période. Il s'applique par-dessus le planning de saison sur la fenêtre, sans le modifier.",
+  seasonGenerateIntro: "Le système place vos équipes dans les créneaux selon vos règles. Lancez, puis laissez tourner.",
+  generationFailedTitle: "La génération n'a pas abouti.",
+  generationTimedOut: "La génération met trop de temps à répondre. Réessayez dans un instant.",
+  readingFailureReason: "Lecture du motif de l'échec…",
+  genericErrorRetry: "Une erreur est survenue. Vous pouvez réessayer.",
+  readyPeriod: "Tout est prêt. Générez le planning de la période.",
+  readySeason: "Tout est prêt. Lancez la génération de votre planning.",
+  firstPeriodPlanNotice:
+    "Premier planning de période : il s'appuie sur votre planning de saison, qui devient la référence — le modifier ensuite supprimera les plannings de période (après confirmation).",
+  periodLoadFailedBlocked: "Impossible de charger la période — la génération est bloquée.",
+  generatePeriodPlanning: "Générer le planning de période",
+  launchGeneration: "Lancer la génération",
+  startFromSeasonPlan: "Partir du planning de saison",
 
   // RecapStep
   venues: "Gymnases",
