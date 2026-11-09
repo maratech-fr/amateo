@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Tests\Unit\Documentation;
 
+use App\Service\DeployRunOutcome;
+use App\Tests\Unit\Service\DeployRunOutcomeTest;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\Yaml\Yaml;
@@ -253,6 +255,56 @@ final class DeployWorkflowDispatchContractTest extends TestCase
             . "\$GITHUB_STEP_SUMMARY un message « aucun déploiement » citant `make deploy VERSION=`.\n"
             . "Sans lui, l'opérateur qui pousse un tag ne voit nulle part que le tag n'a fait que CONSTRUIRE\n"
             . '(cadrage « tag ≠ déploiement » ; déploiement = console SuperAdmin ou make deploy VERSION=).',
+        );
+    }
+
+    /**
+     * Promesse : le tick lit le verdict d'un run dans les NOMS de ses jobs et steps — les seuls
+     * identifiants que l'API GitHub expose. Renommer l'un d'eux dans `deploy.yml` sans toucher
+     * {@see DeployRunOutcome} ferait mentir l'e-mail de fin (ex. « restée en service » alors que la
+     * maintenance est posée) : ce test rougit d'abord.
+     *
+     * Le job de bascule a un nom ÉVALUÉ (`Roll the VM to v1.3.3`) : seul son préfixe est un contrat.
+     * Les trois steps qui décident de l'état de la maintenance existent dans le job `deploy` et dans
+     * l'ordre Raise < SSH deploy < Clear (le classifieur en déduit « posée », « bascule faite »,
+     * « retirée »). Les verdicts eux-mêmes : {@see DeployRunOutcomeTest}.
+     */
+    public function testJobAndStepNamesMatchTheTickClassifier(): void
+    {
+        $workflow = Yaml::parseFile(self::WORKFLOW);
+        self::assertIsArray($workflow, 'deploy.yml ne parse pas en mapping YAML.');
+        $jobs = $workflow['jobs'] ?? null;
+        self::assertIsArray($jobs, 'deploy.yml doit déclarer `jobs:`.');
+
+        self::assertSame(DeployRunOutcome::JOB_BUILD, $jobs['build-push']['name'] ?? null, 'nom du job `build-push` ≠ DeployRunOutcome::JOB_BUILD.');
+        self::assertSame(DeployRunOutcome::JOB_RELEASE, $jobs['update-release-branch']['name'] ?? null, 'nom du job `update-release-branch` ≠ DeployRunOutcome::JOB_RELEASE.');
+        $deployName = $jobs['deploy']['name'] ?? null;
+        self::assertIsString($deployName, 'le job `deploy` doit porter un `name:`.');
+        self::assertStringStartsWith(DeployRunOutcome::JOB_DEPLOY_PREFIX, $deployName, 'le nom du job `deploy` doit commencer par DeployRunOutcome::JOB_DEPLOY_PREFIX.');
+
+        $steps = $jobs['deploy']['steps'] ?? null;
+        self::assertIsArray($steps, 'le job `deploy` doit déclarer ses `steps`.');
+        $names = [];
+        foreach ($steps as $step) {
+            if (\is_array($step) && \is_string($step['name'] ?? null)) {
+                $names[] = $step['name'];
+            }
+        }
+
+        $positions = [];
+        foreach ([DeployRunOutcome::STEP_RAISE_MAINTENANCE, DeployRunOutcome::STEP_SSH_DEPLOY, DeployRunOutcome::STEP_CLEAR_MAINTENANCE] as $expected) {
+            $position = array_search($expected, $names, true);
+            self::assertIsInt($position, \sprintf('le job `deploy` n\'a plus de step « %s » (lu par le tick, DeployRunOutcome).', $expected));
+            $positions[] = $position;
+        }
+        self::assertSame(
+            $positions,
+            array_values(array_unique($positions)),
+            'trois steps distincts attendus.',
+        );
+        self::assertTrue(
+            $positions[0] < $positions[1] && $positions[1] < $positions[2],
+            'ordre attendu dans le job `deploy` : Raise the maintenance window < SSH deploy < Clear the maintenance window.',
         );
     }
 
