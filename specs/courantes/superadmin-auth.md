@@ -602,22 +602,40 @@ patron que `release_note`/`public_holiday`), écrite par la connexion `admin`.
 1. à H, s'il reste une **génération** (`schedule` en `GENERATING`) ou un **placement de matchs**
    (`match_placement_run` en `RUNNING`) en cours — tous clubs confondus, comptés par la connexion
    `admin` en LECTURE SEULE — le départ est **retardé** : statut `scheduled` inchangé, une note
-   (`dispatch_note`, texte libre FR, affichée en console et reportée dans l'e-mail final) dit le
-   retard. Plafonné à `scheduledAt` **+ 10 minutes** (`WAIT_CAP_MINUTES`) : au-delà, le départ est
+   (`dispatch_note`, « note du tick », texte libre FR, affichée en console et reportée dans
+   l'e-mail final ; les notes s'ajoutent à la suite, séparées par « · ») dit le retard. Plafonné à `scheduledAt` **+ 10 minutes** (`WAIT_CAP_MINUTES`) : au-delà, le départ est
    **forcé malgré l'activité** (note dédiée) ;
 2. les préconditions tag/CI sont **re-vérifiées** (sans activité restante, ou plafond atteint) —
    l'une a changé → échec **sans dispatch** ; une lecture qui **échoue** (GitHub injoignable) est un
    cas distinct, réessayé (point 4) ;
-3. préconditions au vert → `expectedReturnAt` **re-daté** sur l'instant réel du dispatch (now + la
-   fenêtre d'origine), puis `GitHubDeployClient::dispatchDeploy()` déclenche `deploy.yml` avec ce
+3. préconditions au vert → le tick lit le dernier run `workflow_dispatch` de `deploy.yml`
+   (`GitHubDeployClient::latestDeployRun()`, même bloc : une erreur GitHub y est réessayée) et
+   persiste sa date de création dans `scheduled_deployment.run_lookup_after` (interne, jamais
+   servie par la console) ; `expectedReturnAt` est **re-daté** sur l'instant réel du dispatch (now +
+   la fenêtre d'origine), puis `GitHubDeployClient::dispatchDeploy()` déclenche `deploy.yml` avec ce
    `maintenance_until` re-daté ;
 4. un dispatch qui échoue (GitHub injoignable, lectures du point 2 ou dispatch lui-même) est
    **réessayé** jusqu'à `scheduledAt` **+ 10 (point 1) + 10 minutes** (`DISPATCH_RETRY_MINUTES`),
    puis **abandonné** : statut `failed`, e-mail « GitHub est resté injoignable. La maintenance n'a
    pas été posée. » ;
-5. le run GitHub est ensuite **suivi** jusqu'à conclusion. Chaque transition de statut envoie un
-   e-mail aux superadmins **actifs** (même patron de destinataires que `HealthAlertCommand`),
-   reportant la note de départ (point 1) le cas échéant.
+5. le run créé par le dispatch est **retrouvé** : le plus ancien des runs `workflow_dispatch` de
+   `main` créés après `run_lookup_after` (`dispatchRunsAfter`) — jamais le run d'avant ; plusieurs
+   candidats → le premier, et la note le dit. Toute lecture GitHub de cette phase qui échoue est
+   réessayée en silence (statut inchangé, aucun e-mail), dans deux bornes : **recherche** —
+   introuvable 10 minutes (`RUN_LOOKUP_MINUTES`) après le dispatch → `failed` ; **suivi** —
+   `expectedReturnAt` + 30 minutes (`POLL_GRACE_MINUTES`) : conclusion jamais lue ou run figé →
+   `failed`, jobs illisibles sur un run `success` → `PROD_UPDATED_UNVERIFIED` (`succeeded`), sur un
+   autre run → `UNDETERMINED`. Le gel des guichets de solve est **levé** à chaque `failed` ;
+6. run terminé → verdict (`DeployRunOutcome`, enum `DeployRunVerdict`) lu dans les **jobs et steps**
+   (`Raise the maintenance window`, `SSH deploy`, `Clear the maintenance window` du job de bascule),
+   pas dans la seule conclusion. `PROD_UPDATED`, `PROD_UPDATED_RELEASE_NOT_MOVED`,
+   `PROD_UPDATED_MAINTENANCE_LEFT`, `PROD_UPDATED_UNVERIFIED` → statut `succeeded` (les réserves
+   s'ajoutent à la note du tick ; maintenance restée affichée : retirer `maintenance.on`, jamais un
+   rollback) ; `BUILD_ONLY`, `FAILED_APP_IN_SERVICE`, `FAILED_UNDER_MAINTENANCE`, `UNDETERMINED` →
+   `failed` (l'e-mail dit si la maintenance reste posée ; pas de rollback automatique, décision
+   fondateur v1). Table des cas : `docs/ops/deploy.md` § Mise en prod programmée. Chaque transition
+   de statut envoie un e-mail aux superadmins **actifs** (même patron de destinataires que
+   `HealthAlertCommand`), reportant la note du tick (point 1) le cas échéant.
 
 `App\Service\GitHubDeployClient` (`backend/src/Service/GitHubDeployClient.php`) porte la COUTURE
 sortante : hôte `api.github.com` en constante (jamais dérivé d'une entrée), jeton en en-tête

@@ -118,7 +118,7 @@ Trois gestes, par ordre de préférence :
 
 ```bash
 # 1. Sur la VM, rien à tunneler — le plus sûr pour un geste ponctuel.
-ssh <hôte> 'docker compose exec postgres psql -U <rôle> -d amateo'
+ssh <hôte> 'docker exec -it amateo-postgres psql -U <rôle> -d amateo'
 
 # 2. Depuis un poste, lecture seule SCRIPTÉE (le geste courant d'enquête).
 #    scripts/prod-read.sh ouvre le tunnel sur 127.0.0.1:5432 via la clé dédiée

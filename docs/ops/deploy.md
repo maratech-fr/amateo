@@ -5,6 +5,10 @@
 > Partie 2 = le quotidien (déployer, vérifier, revenir en arrière).
 > La stack elle-même est décrite dans [`prod-stack.md`](prod-stack.md) ;
 > les backups dans [`backup-restore.md`](backup-restore.md).
+>
+> Commandes dans un conteneur, sur la VM : le fichier compose y est `docker-compose.prod.yml`, donc
+> `docker compose` exige `-f docker-compose.prod.yml --env-file .env.prod` ; pour une commande
+> ponctuelle, `docker exec amateo-<service>` suffit (c'est la forme de tout ce runbook).
 
 ## Comment ça marche (2 minutes de lecture)
 
@@ -231,7 +235,7 @@ domaine), sinon l'envoi part en spam ou est refusé.
   `BACKUP_SYNC_COMMAND`), puis `app:db:backup --force` et vérifier le fichier
   dans le bucket ;
 - Sentry : poser les 3 DSN (backup-restore.md §5) ;
-- superadmin : `docker compose ... exec php-fpm php bin/console app:superadmin:create <email>`.
+- superadmin : `docker exec amateo-php-fpm php bin/console app:superadmin:create <email>`.
 
 ### 1.8 Rôle de lecture seule (`amateo_read`) — poser son mot de passe
 
@@ -255,10 +259,10 @@ dans l'historique shell) :
 ```bash
 # Sonde préalable (rare) : si l'owner n'est PAS superuser sur ton hébergeur, il lui faut CREATEROLE
 # pour que la migration ait pu créer le rôle — sinon elle aurait échoué franchement au déploiement.
-ssh <hôte> "docker compose exec postgres psql -U amateo_owner -d amateo -c '\du amateo_read'"
+ssh <hôte> "docker exec amateo-postgres psql -U amateo_owner -d amateo -c '\du amateo_read'"
 
 # Pose le mot de passe — \password invite en saisie masquée, rien n'atterrit dans l'historique ni les logs.
-ssh -t <hôte> "docker compose exec postgres psql -U amateo_owner -d amateo -c '\\password amateo_read'"
+ssh -t <hôte> "docker exec -it amateo-postgres psql -U amateo_owner -d amateo -c '\\password amateo_read'"
 ```
 
 #### Clé SSH dédiée au tunnel de lecture seule — à poser **une fois**
@@ -497,7 +501,7 @@ le `DROP ROLE`. (Le rôle est cluster-level : `DROP OWNED BY` ne touche qu'une b
 été créé dans plusieurs.)
 
 ```bash
-ssh <hôte> "docker compose exec postgres psql -U amateo_owner -d amateo -c 'DROP OWNED BY amateo_read; DROP ROLE amateo_read;'"
+ssh <hôte> "docker exec amateo-postgres psql -U amateo_owner -d amateo -c 'DROP OWNED BY amateo_read; DROP ROLE amateo_read;'"
 ```
 
 ### 1.9 Réparer une donnée en prod — le geste sûr
@@ -518,9 +522,9 @@ correction frappe TOUS les clubs.
    ```bash
    ssh <hôte>
    # dump ciblé d'une table (rejouable) :
-   docker compose exec postgres pg_dump -U amateo_owner -d amateo -t public.<table> -Fc -f /tmp/repair-<table>-$(date +%F).dump
+   docker exec amateo-postgres pg_dump -U amateo_owner -d amateo -t public.<table> -Fc -f /tmp/repair-<table>-$(date +%F).dump
    # ou un backup complet applicatif (cf. backup-restore.md) :
-   docker compose exec php-fpm php bin/console app:db:backup --force
+   docker exec amateo-php-fpm php bin/console app:db:backup --force
    ```
 2. **PENDANT — transaction explicite, jamais d'autocommit** : contrôler, agir avec un `WHERE` explicite
    (`club_id` COMPRIS), vérifier le nombre de lignes touchées, puis committer — ou tout annuler au moindre doute.
@@ -550,7 +554,7 @@ et exigent la **connexion ADMIN** : on lance chaque commande avec `DATABASE_URL`
 un rôle superuser (il ne peut alors pas traverser la RLS) :
 
 ```bash
-docker compose exec php-fpm sh -c 'DATABASE_URL="$DATABASE_ADMIN_URL" php bin/console dbal:run-sql "SELECT usesuper FROM pg_user WHERE usename = current_user"'
+docker exec amateo-php-fpm sh -c 'DATABASE_URL="$DATABASE_ADMIN_URL" php bin/console dbal:run-sql "SELECT usesuper FROM pg_user WHERE usename = current_user"'
 ```
 
 Si la réponse n'est **pas** `t` (true) : **STOP** — ne rien seeder, remonter la décision (le rôle
@@ -560,9 +564,9 @@ admin de prod doit être superuser pour le seed, comme `amateo_owner` en local).
 le BCCL (le club en dépend) :
 
 ```bash
-docker compose exec php-fpm php bin/console app:school-holidays:seed
-docker compose exec php-fpm php bin/console app:public-holidays:seed
-docker compose exec php-fpm php bin/console app:league-windows:seed
+docker exec amateo-php-fpm php bin/console app:school-holidays:seed
+docker exec amateo-php-fpm php bin/console app:public-holidays:seed
+docker exec amateo-php-fpm php bin/console app:league-windows:seed
 ```
 
 ⬜ **Le club BCCL réel** (`app:bccl:seed-prod`) — CREATE-ONLY (no-op si déjà là). Les mots de passe
@@ -575,7 +579,7 @@ déjà pour l'un d'eux (garde anti-usurpation — un compte créé entre-temps v
 e-mail ne doit jamais être adopté par le seed).
 
 ```bash
-docker compose exec php-fpm sh -c 'DATABASE_URL="$DATABASE_ADMIN_URL" php bin/console app:bccl:seed-prod --email=TON-EMAIL --first-name=TON-PRENOM --last-name=TON-NOM'
+docker exec amateo-php-fpm sh -c 'DATABASE_URL="$DATABASE_ADMIN_URL" php bin/console app:bccl:seed-prod --email=TON-EMAIL --first-name=TON-PRENOM --last-name=TON-NOM'
 # → un prompt masqué : mot de passe gestionnaire (min 12 caractères).
 ```
 
@@ -592,7 +596,7 @@ en clair dans l'historique, préfixer la ligne d'un espace (avec `HISTCONTROL=ig
 passer par une variable non historisée :
 
 ```bash
- docker compose exec php-fpm sh -c 'DATABASE_URL="$DATABASE_ADMIN_URL" php bin/console app:demo:seed --password=MOT-DE-PASSE-DEMO'
+ docker exec amateo-php-fpm sh -c 'DATABASE_URL="$DATABASE_ADMIN_URL" php bin/console app:demo:seed --password=MOT-DE-PASSE-DEMO'
 ```
 
 ⬜ **Rôle PostgreSQL lecture seule** — poser le mot de passe de `amateo_read` (créé par la
@@ -610,7 +614,7 @@ les gymnases sans re-résoudre.
 - non-fuite entre clubs (chaque club voit SES catégories, jamais celles d'un autre) :
 
 ```bash
-docker compose exec php-fpm sh -c 'DATABASE_URL="$DATABASE_ADMIN_URL" php bin/console dbal:run-sql "SELECT t.name, t.club_id, sc.club_id FROM team t JOIN sport_category sc ON sc.id = t.sport_category_id WHERE sc.club_id <> t.club_id"'
+docker exec amateo-php-fpm sh -c 'DATABASE_URL="$DATABASE_ADMIN_URL" php bin/console dbal:run-sql "SELECT t.name, t.club_id, sc.club_id FROM team t JOIN sport_category sc ON sc.id = t.sport_category_id WHERE sc.club_id <> t.club_id"'
 # → 0 ligne attendue.
 ```
 
@@ -796,8 +800,8 @@ gestionnaires régénérer : sans elle, les plannings déjà générés paraisse
 déjà doublées en base repartent deux fois au solveur.
 
 ```bash
-docker compose exec php-fpm php bin/console app:schedule:dedupe-snapshot-pins --dry-run   # compte, n'écrit rien
-docker compose exec php-fpm php bin/console app:schedule:dedupe-snapshot-pins             # applique (idempotente)
+docker exec amateo-php-fpm php bin/console app:schedule:dedupe-snapshot-pins --dry-run   # compte, n'écrit rien
+docker exec amateo-php-fpm php bin/console app:schedule:dedupe-snapshot-pins             # applique (idempotente)
 ```
 
 Détail et limite connue : [`backend/docs/commands.md`](../../backend/docs/commands.md).
@@ -807,7 +811,7 @@ Détail et limite connue : [`backend/docs/commands.md`](../../backend/docs/comma
 À lancer **juste après** le déploiement de la version qui retire « coach obligatoire » (le lien coach du
 payload moteur perd `severity` et `metadata.isRequired`), y compris après une **mise en prod
 programmée** : la fenêtre entre le déploiement et la commande peut alors couvrir toute une nuit. Sur la
-VM, la forme qui fonctionne est `docker exec` (voir P4-443 dans la roadmap pour `docker compose exec`) :
+VM, la forme est `docker exec` (voir l'en-tête de ce runbook) :
 
 ```bash
 docker exec amateo-php-fpm php bin/console app:schedule:normalize-team-coach-snapshots --dry-run   # compte, n'écrit rien
@@ -969,6 +973,12 @@ AVANT le push si le secret est vide — la prod est alors saine, seule `release`
 **Expiration : 7 novembre 2027** (jeton posé le 7 novembre 2026, validité 1 an) — à renouveler avant,
 sinon le recalage échoue (procédure : `docs/ops/ci-runner.md`, geste 15).
 
+Le recalage avec ce jeton est **exécuté pour la première fois au prochain déploiement** : s'il
+échoue, la prod est saine et la mise en prod programmée le dit (verdict
+`PROD_UPDATED_RELEASE_NOT_MOVED`, § *Mise en prod programmée* : « 🟢 … une étape annexe a échoué ») ;
+`release` se recale alors à la main, sur le commit déployé (rejouer le job `update-release-branch`
+du run dans l'onglet Actions).
+
 Le job qui met `release` à jour suit le commit **réellement déployé** (résolu
 depuis la version : tag, `sha-…` ou commit courant), pas le `github.sha` du
 dispatch. Un **rollback** `make deploy VERSION=<ancien tag>` recale donc
@@ -1068,6 +1078,9 @@ déploiement réussit** (sondes `/health`/`/api/health` comprises). **Sur échec
 la maintenance affichée continue, à l'opérateur de décider : rollback (`make deploy VERSION=<tag
 précédent>`, § *Revenir en arrière*) ou retrait manuel (`ssh … rm -f .../maintenance.on`) une fois
 le problème compris.
+Cas particulier : si `SSH deploy` a réussi et que seul le retrait du témoin a échoué, la version
+déployée est saine et la page de maintenance reste affichée — le geste est de supprimer
+`maintenance.on`, **jamais un rollback** (le tick le détecte, § *Mise en prod programmée*).
 
 ### Mise en prod programmée (console superadmin)
 
@@ -1118,16 +1131,50 @@ déploiement actif :
    la fenêtre de maintenance d'origine, pour que l'heure de retour annoncée reste juste même si le
    départ a été retardé par le point 2), puis `GitHubDeployClient::dispatchDeploy()` déclenche le
    `workflow_dispatch` de `deploy.yml` avec `version` et ce `maintenance_until` re-daté (c'est le
-   workflow qui pose/retire ensuite lui-même le témoin, § *Maintenance planifiée*) ;
+   workflow qui pose/retire ensuite lui-même le témoin, § *Maintenance planifiée*). **Juste avant**
+   ce dispatch, le tick lit le dernier run `workflow_dispatch` de `deploy.yml` (dans le même bloc
+   que les préconditions : une erreur GitHub y est réessayée comme elles) et persiste sa date de
+   création GitHub dans `scheduled_deployment.run_lookup_after` (borne interne au tick, jamais
+   exposée par la console ; sans run précédent : une minute avant le dispatch) ;
 5. un dispatch qui échoue (GitHub injoignable au moment des lectures du point 3 ou du dispatch
    lui-même) est **réessayé** sur les ticks suivants jusqu'à **scheduledAt + 10 min (point 2) + 10
    min** (`DISPATCH_RETRY_MINUTES`), puis **abandonné** : statut `failed`, e-mail « GitHub est resté
    injoignable. La maintenance n'a pas été posée. » ;
-6. le run GitHub est ensuite **suivi** (ticks suivants) jusqu'à sa conclusion : `success` →
-   statut `succeeded` + e-mail aux superadmins actifs ; `failure` → statut `failed` + e-mail —
-   **la maintenance reste posée** (décision fondateur v1 : pas de rollback automatique, un humain
-   décide). Les e-mails de succès et d'échec reportent, en plus, la note de départ posée au point 2
-   le cas échéant.
+6. le run créé par le dispatch est **retrouvé** aux ticks suivants : c'est le plus ancien des runs
+   `workflow_dispatch` de `main` créés **après** la borne `run_lookup_after` (jamais celui d'avant :
+   un tick qui lisait « le dernier run » prenait celui de la veille). Plusieurs candidats → le
+   premier est retenu et la note le dit. Toute lecture GitHub de cette phase qui échoue est
+   réessayée en silence au tick suivant (statut inchangé, aucun e-mail), dans deux bornes :
+   - **recherche** : run introuvable (absent ou GitHub en erreur) **10 minutes**
+     (`RUN_LOOKUP_MINUTES`) après le dispatch → `failed` + e-mail « vérifiez l'onglet Actions avant
+     toute reprogrammation », état de la maintenance dit inconnu ;
+   - **suivi** : conclusion ou jobs illisibles, ou run figé `in_progress`, jusqu'à
+     `expectedReturnAt` **+ 30 minutes** (`POLL_GRACE_MINUTES`). Passé la borne : conclusion jamais
+     lue ou run figé → `failed` ; conclusion `success` mais jobs illisibles →
+     `PROD_UPDATED_UNVERIFIED` (`succeeded`, ne dit jamais « a échoué ») ; conclusion autre et jobs
+     illisibles → `UNDETERMINED`.
+
+   Le **gel** des guichets de solve (P4-350) reste posé tant que le déploiement est actif, et est
+   **levé** à chaque passage en `failed` (run introuvable, figé, illisible compris) ;
+7. le run terminé est jugé sur ses **jobs et steps** (`DeployRunOutcome`, enum `DeployRunVerdict`),
+   jamais sur la seule conclusion du run : un run `failure` peut avoir mis la prod à jour, un run
+   `success` peut n'avoir rien déployé. Steps lus dans le job `Roll the VM to …` : `Raise the
+   maintenance window`, `SSH deploy`, `Clear the maintenance window` (noms verrouillés par
+   `DeployWorkflowDispatchContractTest`). Pas de rollback automatique (décision fondateur v1) :
+
+   | Verdict | Cas | Statut | E-mail |
+   |---|---|---|---|
+   | `PROD_UPDATED` | bascule et recalage de `release` réussis | `succeeded` | 🟢 Mise en production réussie |
+   | `PROD_UPDATED_RELEASE_NOT_MOVED` | bascule réussie, job de recalage de `release` en échec | `succeeded` | 🟢 … une étape annexe a échoué ; note de réserve ajoutée à `dispatch_note` : recaler `release` à la main (§ *Branche `release` et correctif rapide (hotfix)*) |
+   | `PROD_UPDATED_MAINTENANCE_LEFT` | `SSH deploy` réussi mais `Clear the maintenance window` en échec : la version est en service, `maintenance.on` reste | `succeeded` | 🟢 … la page de maintenance est restée affichée ; **geste = supprimer `maintenance.on`, jamais un rollback** |
+   | `PROD_UPDATED_UNVERIFIED` | run `success`, jobs illisibles après la borne de suivi | `succeeded` | 🟢 … détail non vérifié : vérifier dans Actions que `release` a été recalée |
+   | `BUILD_ONLY` | run `success`, job de bascule sauté (déploiement automatique non armé) | `failed` | images publiées, VM non déployée, application restée en service |
+   | `FAILED_APP_IN_SERVICE` | échec avant la pose de la maintenance (build raté, run annulé avant tout job) | `failed` | 🔴 l'application est restée en service sur la version précédente |
+   | `FAILED_UNDER_MAINTENANCE` | maintenance posée, `SSH deploy` en échec | `failed` | 🔴 la maintenance reste posée ; rollback manuel (§ *Revenir en arrière*) |
+   | `UNDETERMINED` | `Raise the maintenance window` en échec (fichier peut-être écrit), ou jobs illisibles sur un run non réussi | `failed` | 🔴 état de la maintenance non déterminé : vérifier Actions avant tout geste |
+
+   Les e-mails reportent, en plus, la note du tick (`dispatch_note` : retard/plafond du point 2,
+   réserve de fin, « plusieurs exécutions »), les segments étant séparés par « · ».
 
 ⚠ **Filet absent côté placement** : si le worker meurt pendant un placement (`match_placement_run`
 `RUNNING`), rien ne le reconcilie jamais — à l'inverse de `app:schedules:reconcile-stuck`
@@ -1148,7 +1195,7 @@ inline sous le formulaire, en plus du toast générique. Tant qu'un déploiement
 un bouton « Annuler la mise en production » (confirmation modale) visible seulement au stade
 `scheduled`. Si le tick a posé une `dispatch_note` (retard d'attente ou plafond forcé, point 2
 ci-dessus), elle s'affiche sous la carte. Un bloc « Historique récent » liste en dessous les
-déploiements terminés (version, statut, heure de dispatch, raison d'échec puis note de départ le
+déploiements terminés (version, statut, heure de dispatch, raison d'échec puis note du tick le
 cas échéant) depuis `GET /api/admin/deployments` (20 derniers, actifs et terminés, rafraîchi toutes
 les 30 s).
 
@@ -1260,9 +1307,9 @@ Au premier déploiement qui embarque ce changement :
 1. vérifier qu'aucun `.env.prod` ne surcharge `MESSENGER_FAILURE_TRANSPORT_DSN` avec
    l'ancien DSN — sinon la mine reste armée ;
 2. vérifier qu'aucun message n'attend dans l'ancien groupe :
-   `docker compose exec php-fpm php bin/console messenger:failed:show` (avant bascule) ;
+   `docker exec amateo-php-fpm php bin/console messenger:failed:show` (avant bascule) ;
 3. détruire le groupe hérité s'il existe — sans lui l'incident reste possible :
-   `docker compose exec redis redis-cli XGROUP DESTROY messages failed`.
+   `docker exec amateo-redis redis-cli XGROUP DESTROY messages failed`.
 
 NR : `MessengerTransportSeparationTest` (phase1) refuse tout retour à un stream partagé.
 
