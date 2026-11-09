@@ -8,17 +8,12 @@ doctrine:
             default:
                 url: '%env(resolve:DATABASE_URL)%'
                 profiling_collect_backtrace: '%kernel.debug%'
-                # Fermetures de gymnase (PR 1) — `venue_unavailability` reste ORPHELINE en base
-                # jusqu'à la release suivante qui la DROP (retour arrière possible, docs/ops/deploy.md) :
-                # aucun diff/validate ne doit la voir d'ici là. Table EXACTE, jamais un préfixe.
-                schema_filter: '~^(?!venue_unavailability$)~'
             # Admin connection — amateo_owner (superuser, bypasses RLS).
             # Used ONLY by migrations, database create/drop and ops/debug
             # (--connection admin). This is the superadmin supervision door.
             admin:
                 url: '%env(resolve:DATABASE_ADMIN_URL)%'
                 profiling_collect_backtrace: '%kernel.debug%'
-                schema_filter: '~^(?!venue_unavailability$)~'
     orm:
         # doctrine-bundle 3 (DBAL 4, ORM 3.4+): native PHP 8.4 lazy objects are
         # ALWAYS on (LazyGhost/proxy generation removed — no option left), and the
