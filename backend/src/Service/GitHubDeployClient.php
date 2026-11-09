@@ -6,6 +6,8 @@ namespace App\Service;
 
 use DateTimeImmutable;
 use DateTimeInterface;
+use DateTimeZone;
+use Exception;
 use Symfony\Contracts\HttpClient\Exception\TransportExceptionInterface;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
 use Symfony\Contracts\HttpClient\ResponseInterface;
@@ -13,7 +15,8 @@ use Symfony\Contracts\HttpClient\ResponseInterface;
 /**
  * La COUTURE sortante de la « mise en prod programmée » : tout ce qui part vers l'API GitHub
  * (console superadmin). Un geste et un seul — déclencher `deploy.yml` à l'heure dite — plus les
- * lectures qui le préparent (tags déployables, CI verte) et le suivent (statut du run).
+ * lectures qui le préparent (tags déployables, CI verte, dernier run connu) et le suivent (run
+ * retrouvé par date de création, conclusion, jobs).
  *
  * Durcissement (même posture que {@see Basketball\FfbbApiClient}) :
  *  - l'HÔTE est une CONSTANTE ({@see self::API_HOST}), jamais dérivé d'une entrée utilisateur ;
@@ -33,6 +36,12 @@ final class GitHubDeployClient
     private const string API_VERSION = '2022-11-28';
 
     private const float TIMEOUT = 10.0;
+
+    /** Runs lus par recherche : notre run et, au pire, quelques dispatches tiers de la même fenêtre. */
+    private const int RUN_LOOKUP_PAGE = 10;
+
+    /** Jobs lus par run : `deploy.yml` en compte trois. */
+    private const int JOBS_PAGE = 50;
 
     public function __construct(
         private readonly HttpClientInterface $httpClient,
@@ -113,23 +122,114 @@ final class GitHubDeployClient
         ]);
     }
 
-    /** L'id du dernier run `deploy.yml` (celui que le dispatch vient de créer), ou null. */
-    public function latestDeployRunId(string $version): ?int
+    /**
+     * Le dernier run `workflow_dispatch` de `deploy.yml` sur `main` — le SNAPSHOT pris AVANT le
+     * dispatch : son `created_at` (horloge GitHub) devient la borne basse de la recherche du run
+     * que le dispatch va créer. Null si aucun run n'est connu.
+     *
+     * @return array{id: int, createdAt: DateTimeImmutable}|null
+     */
+    public function latestDeployRun(): ?array
     {
         if (!$this->isConfigured()) {
             return null;
         }
 
-        // `$version` ne sert pas à construire l'URL (aucune dérivation) : le run le plus récent
-        // du workflow de déploiement EST celui qu'on vient de dispatcher.
-        unset($version);
         $response = $this->request('GET', $this->repoPath('/actions/workflows/deploy.yml/runs'), [
-            'query' => ['event' => 'workflow_dispatch', 'per_page' => 1],
+            'query' => ['event' => 'workflow_dispatch', 'branch' => 'main', 'per_page' => 1],
         ]);
         $latest = $this->firstWorkflowRun($response);
-        $id = null === $latest ? null : ($latest['id'] ?? null);
 
-        return \is_int($id) ? $id : (is_numeric($id) ? (int) $id : null);
+        return null === $latest ? null : $this->runIdentity($latest);
+    }
+
+    /**
+     * Le run créé par NOTRE dispatch : le plus ANCIEN des runs `workflow_dispatch` de `main` créés
+     * STRICTEMENT après `$createdAfter`, `$excludeRunId` écarté. Null si aucun n'est encore listé
+     * — jamais un repli sur le run d'avant.
+     */
+    public function findDispatchRunAfter(DateTimeImmutable $createdAfter, ?int $excludeRunId): ?int
+    {
+        return $this->dispatchRunsAfter($createdAfter, $excludeRunId)[0] ?? null;
+    }
+
+    /**
+     * Tous les candidats de {@see self::findDispatchRunAfter()}, du plus ancien au plus récent :
+     * plus d'un candidat veut dire qu'un autre dispatch a démarré dans la même fenêtre.
+     *
+     * La borne est formatée ICI (UTC, `…Z`), jamais reprise d'une entrée : la requête GitHub
+     * (`created=>=…`) l'inclut, le filtre strict côté client exclut le run qui l'a posée.
+     *
+     * @return list<int>
+     */
+    public function dispatchRunsAfter(DateTimeImmutable $createdAfter, ?int $excludeRunId): array
+    {
+        if (!$this->isConfigured()) {
+            return [];
+        }
+
+        $bound = $createdAfter->setTimezone(new DateTimeZone('UTC'));
+        $response = $this->request('GET', $this->repoPath('/actions/workflows/deploy.yml/runs'), [
+            'query' => [
+                'event' => 'workflow_dispatch',
+                'branch' => 'main',
+                'created' => '>=' . $bound->format('Y-m-d\TH:i:s\Z'),
+                'per_page' => self::RUN_LOOKUP_PAGE,
+            ],
+        ]);
+        $runs = $response->toArray()['workflow_runs'] ?? null;
+        if (!\is_array($runs)) {
+            return [];
+        }
+
+        $candidates = [];
+        foreach ($runs as $run) {
+            $identity = \is_array($run) ? $this->runIdentity($run) : null;
+            if (null === $identity || $identity['id'] === $excludeRunId || $identity['createdAt'] <= $createdAfter) {
+                continue;
+            }
+            $candidates[] = $identity;
+        }
+        usort($candidates, static fn (array $a, array $b): int => $a['createdAt'] <=> $b['createdAt'] ?: $a['id'] <=> $b['id']);
+
+        return array_map(static fn (array $candidate): int => $candidate['id'], $candidates);
+    }
+
+    /**
+     * Les jobs d'un run, réduits à ce que lit le verdict ({@see DeployRunOutcome}) : nom, conclusion
+     * et, pour chaque step, nom et conclusion.
+     *
+     * @return list<array{name: string, conclusion: ?string, steps: list<array{name: string, conclusion: ?string}>}>
+     */
+    public function runJobs(int $runId): array
+    {
+        if (!$this->isConfigured()) {
+            return [];
+        }
+
+        $response = $this->request('GET', $this->repoPath('/actions/runs/' . $runId . '/jobs'), [
+            'query' => ['per_page' => self::JOBS_PAGE],
+        ]);
+        $jobs = $response->toArray()['jobs'] ?? null;
+        if (!\is_array($jobs)) {
+            return [];
+        }
+
+        $read = [];
+        foreach ($jobs as $job) {
+            if (!\is_array($job) || !\is_string($job['name'] ?? null)) {
+                continue;
+            }
+            $steps = [];
+            foreach (\is_array($job['steps'] ?? null) ? $job['steps'] : [] as $step) {
+                if (\is_array($step) && \is_string($step['name'] ?? null)) {
+                    $steps[] = ['name' => $step['name'], 'conclusion' => $this->conclusionOf($step)];
+                }
+            }
+            $read[] = ['name' => $job['name'], 'conclusion' => $this->conclusionOf($job), 'steps' => $steps];
+        }
+
+        return $read;
     }
 
     /** La conclusion d'un run (`success`/`failure`/…), ou null tant qu'il n'est pas terminé. */
@@ -178,6 +278,37 @@ final class GitHubDeployClient
         $first = $runs[0] ?? null;
 
         return \is_array($first) ? $first : null;
+    }
+
+    /**
+     * Id et date de création d'un run tel que GitHub le rend, ou null s'il est illisible.
+     *
+     * @param array<mixed> $run
+     *
+     * @return array{id: int, createdAt: DateTimeImmutable}|null
+     */
+    private function runIdentity(array $run): ?array
+    {
+        $id = $run['id'] ?? null;
+        $id = \is_int($id) ? $id : (is_numeric($id) ? (int) $id : null);
+        $createdAt = $run['created_at'] ?? null;
+        if (null === $id || !\is_string($createdAt)) {
+            return null;
+        }
+
+        try {
+            return ['id' => $id, 'createdAt' => new DateTimeImmutable($createdAt)];
+        } catch (Exception) {
+            return null;
+        }
+    }
+
+    /** @param array<mixed> $item un job ou un step */
+    private function conclusionOf(array $item): ?string
+    {
+        $conclusion = $item['conclusion'] ?? null;
+
+        return \is_string($conclusion) ? $conclusion : null;
     }
 
     private function repoPath(string $suffix): string

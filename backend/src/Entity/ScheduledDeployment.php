@@ -57,12 +57,21 @@ class ScheduledDeployment
     private ?string $failureReason = null;
 
     /**
-     * Note de DÉPART posée par le tick (retard d'attente, plafond forcé) — rendue en console
-     * (carte active + historique) et reportée dans les e-mails de succès/échec. Jamais servie au
-     * club (le bandeau d'annonce l'ignore).
+     * Note du TICK : au départ (retard d'attente, plafond forcé), puis les réserves de fin (release
+     * non recalée, page de maintenance restée, plusieurs runs candidats), cumulées par « · » —
+     * rendue en console (carte active + historique) et reportée dans les e-mails de succès/échec.
+     * Jamais servie au club (le bandeau d'annonce l'ignore).
      */
     #[ORM\Column(name: 'dispatch_note', type: 'text', nullable: true)]
     private ?string $dispatchNote = null;
+
+    /**
+     * Borne basse de la recherche du run créé par le dispatch : la date de création GitHub du
+     * dernier run connu AVANT le dispatch (horloge GitHub, pas celle du serveur). Le run suivi est
+     * le plus ancien créé STRICTEMENT après. Interne au tick : ni lue par la console, ni sérialisée.
+     */
+    #[ORM\Column(name: 'run_lookup_after', type: 'datetimetz_immutable', nullable: true)]
+    private ?DateTimeImmutable $runLookupAfter = null;
 
     #[ORM\Column(name: 'created_at', type: 'datetimetz_immutable')]
     private DateTimeImmutable $createdAt;
@@ -148,6 +157,24 @@ class ScheduledDeployment
         $this->dispatchNote = $dispatchNote;
     }
 
+    /** Ajoute une note à la suite de l'existante, sur la même ligne (le `<p>` console ignore `\n`). */
+    public function appendNote(string $note): void
+    {
+        $this->dispatchNote = null === $this->dispatchNote || '' === $this->dispatchNote
+            ? $note
+            : $this->dispatchNote . ' · ' . $note;
+    }
+
+    public function getRunLookupAfter(): ?DateTimeImmutable
+    {
+        return $this->runLookupAfter;
+    }
+
+    public function setRunLookupAfter(DateTimeImmutable $runLookupAfter): void
+    {
+        $this->runLookupAfter = $runLookupAfter;
+    }
+
     /**
      * Re-date l'heure de retour sur le dispatch RÉEL : `expectedReturnAt ← now + fenêtre d'origine`
      * (fenêtre = `expectedReturnAt − scheduledAt`, calculée AVANT l'écrasement). Le tick la passe
@@ -175,10 +202,16 @@ class ScheduledDeployment
         $this->status = DeploymentStatus::CANCELLED;
     }
 
-    public function markDispatched(int $githubRunId, DateTimeImmutable $dispatchedAt): void
+    /** Le run GitHub peut être encore inconnu au dispatch (null) : {@see self::attachRun()} le rattache plus tard. */
+    public function markDispatched(?int $githubRunId, DateTimeImmutable $dispatchedAt): void
     {
         $this->status = DeploymentStatus::DISPATCHED;
         $this->dispatchedAt = $dispatchedAt;
+        $this->githubRunId = $githubRunId;
+    }
+
+    public function attachRun(int $githubRunId): void
+    {
         $this->githubRunId = $githubRunId;
     }
 
