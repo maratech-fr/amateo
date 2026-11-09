@@ -1,4 +1,5 @@
 import { render, screen, within } from "@testing-library/react";
+import type { Matcher } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { axe } from "vitest-axe";
@@ -114,18 +115,22 @@ const teamItem = (line: string): HTMLElement => {
   return item as HTMLElement;
 };
 
-const escapeRe = (text: string): RegExp => new RegExp(text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+/** Matcher Testing Library « contient ce texte » — sans RegExp construite (règle Semgrep detect-non-literal-regexp). */
+const contains =
+  (text: string) =>
+  (content: string): boolean =>
+    content.includes(text);
 
 /**
  * Q7 = b (fondateur) — le bilan est REPLIÉ par défaut : une ligne de RANG est un bouton
  * `aria-expanded` (nom = sa ligne de synthèse, toujours visible), une ligne d'ÉQUIPE qui a du
  * détail aussi (nom = sa ligne, repère CTC éventuel compris : on cherche par inclusion).
  */
-const rankButton = (r: SocleDeviationRank): HTMLElement => screen.getByRole("button", { name: escapeRe(PLANNING_TEXTS.rankReportLine(r)) });
-const teamButton = (line: string): HTMLElement => screen.getByRole("button", { name: escapeRe(line) });
+const rankButton = (r: SocleDeviationRank): HTMLElement => screen.getByRole("button", { name: contains(PLANNING_TEXTS.rankReportLine(r)) });
+const teamButton = (line: string): HTMLElement => screen.getByRole("button", { name: contains(line) });
 
 /** Absente du DOM ou masquée : une ligne repliée ne se voit pas (les deux mises en œuvre passent). */
-const expectNotShown = (text: string | RegExp): void => {
+const expectNotShown = (text: Matcher): void => {
   for (const el of screen.queryAllByText(text)) {
     expect(el).not.toBeVisible();
   }
@@ -220,11 +225,11 @@ describe("SocleDeviationPanel — le bilan par rang", () => {
     const from = placementLabel(1, "18:00", "Matéo");
     const to = placementLabel(4, "19:00", "Brel");
     // Repliée par défaut : la ligne de détail ne se voit pas.
-    expectNotShown(new RegExp(`${from} → `));
+    expectNotShown(contains(`${from} → `));
     await userEvent.click(teamButton(lineOf("tA", ["U11B", "U11C"])));
     const item = teamItem(lineOf("tA", ["U11B", "U11C"]));
 
-    const movedButton = within(item).getByRole("button", { name: new RegExp(`${from} → ${to}`) });
+    const movedButton = within(item).getByRole("button", { name: contains(`${from} → ${to}`) });
     expect(movedButton).toHaveTextContent(PLANNING_TEXTS.sharedWithDetail(["U11B"]));
     await userEvent.click(movedButton);
     expect(onSelectSlot).toHaveBeenCalledTimes(1);
@@ -240,15 +245,15 @@ describe("SocleDeviationPanel — le bilan par rang", () => {
     await userEvent.click(teamButton(lineOf("tL")));
     const reducedItem = teamItem(lineOf("tR"));
     expect(within(reducedItem).getByText(toReplaceReasonLabel("team_reduced"))).toBeInTheDocument();
-    expect(within(reducedItem).getByText(new RegExp(placementLabel(5, "20:00", "Matéo")))).toBeInTheDocument();
+    expect(within(reducedItem).getByText(contains(placementLabel(5, "20:00", "Matéo")))).toBeInTheDocument();
 
     const lostItem = teamItem(lineOf("tL"));
     expect(within(lostItem).getByText(toReplaceReasonLabel("venue_closed"))).toBeInTheDocument();
     expect(within(lostItem).queryByText("venue_closed")).not.toBeInTheDocument();
-    const sharedLost = within(lostItem).getByText(new RegExp(placementLabel(3, "18:00", "Salle Bleue"))).closest("li");
+    const sharedLost = within(lostItem).getByText(contains(placementLabel(3, "18:00", "Salle Bleue"))).closest("li");
     expect(sharedLost).toHaveTextContent(PLANNING_TEXTS.sharedWithDetail(["U11B"]));
     // La ligne à raison NULLE n'a ni étiquette ni mention commune.
-    const nullLost = within(lostItem).getByText(new RegExp(placementLabel(2, "17:00", "Salle Bleue"))).closest("li");
+    const nullLost = within(lostItem).getByText(contains(placementLabel(2, "17:00", "Salle Bleue"))).closest("li");
     expect(nullLost).not.toBeNull();
     for (const reason of ["team_reduced", "venue_closed", "venue_disabled", "unknown"]) {
       expect(nullLost).not.toHaveTextContent(toReplaceReasonLabel(reason));
@@ -312,7 +317,7 @@ describe("SocleDeviationPanel — le bilan par rang", () => {
     for (const id of ["tP", "tN"]) {
       expect(screen.getByText(lineOf(id)).closest("button"), `${TEAMS[id].name} n'a pas de bouton`).toBeNull();
     }
-    expect(screen.queryByRole("button", { name: escapeRe(lineOf("tP")) })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: contains(lineOf("tP")) })).not.toBeInTheDocument();
   });
 
   it("la ligne la plus longue reste lisible, rendue en entier (plan v6 f)", () => {
