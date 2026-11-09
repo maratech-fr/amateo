@@ -303,6 +303,40 @@ final class ClubApprovalFlowTest extends WebTestCase
         self::assertSame(ClubCreationRequest::STATUS_CANCELLED, $this->em->getConnection()->fetchOne('SELECT status FROM club_creation_request WHERE id = :id', ['id' => $request->getId()]));
     }
 
+    /**
+     * En PRODUCTION (`debug: false`) l'anti-énumération tient toujours : lien inconnu, malformé et
+     * consommé (demandeur anonymisé) répondent le MÊME 404, octet pour octet — le relais des refus
+     * 4xx en prod (`ErrorDetailSurvivesProdModeTest`) ne doit jamais créer d'oracle sur une page à
+     * jeton. Variante prod de {@see testUnknownAndMalformedTokensAreByteIdentical} et
+     * {@see testAnonymizedRequesterIsNeverApproved} (qui tournent en debug).
+     */
+    public function testUnknownAndConsumedTokensStayByteIdenticalWhenDebugIsOff(): void
+    {
+        self::ensureKernelShutdown();
+        $this->client = self::createClient(['debug' => false]);
+        $this->em = self::getContainer()->get(EntityManagerInterface::class);
+
+        $ara = 'PRD' . strtoupper(substr(md5(uniqid()), 0, 7));
+        [, $body] = $this->registerAndVerify('prod-' . uniqid() . '@t.fr', $ara, 'Club Prod');
+        $consumed = $this->pendingRequestFor($body['user']['id'])->getToken();
+        self::getContainer()->get(EntityManagerInterface::class)->getConnection()->executeStatement('UPDATE app_user SET anonymized_at = NOW() WHERE id = :id', ['id' => $body['user']['id']]);
+
+        $responses = [];
+        foreach (['inconnu' => str_repeat('e', 64), 'malformé' => 'not-a-token', 'consommé' => $consumed] as $case => $token) {
+            // POST d'abord : sur un demandeur anonymisé, c'est la décision qui clôt la demande.
+            $this->decide($token, 'approve');
+            self::assertResponseStatusCodeSame(404, $case);
+            $responses['POST ' . $case] = (string) $this->client->getResponse()->getContent();
+
+            $this->client->getCookieJar()->clear();
+            $this->client->request('GET', '/api/club-approvals/' . $token, [], [], ['REMOTE_ADDR' => $this->ip(), 'HTTP_ACCEPT' => 'application/json']);
+            self::assertResponseStatusCodeSame(404, $case);
+            $responses['GET ' . $case] = (string) $this->client->getResponse()->getContent();
+        }
+
+        self::assertCount(1, array_unique($responses), 'inconnu, malformé et consommé : 404 BYTE-IDENTIQUE en prod (anti-énumération) — ' . json_encode($responses));
+    }
+
     /** Une approbation qui n'a fait qu'ouvrir une adhésion (club déjà géré) ne répond pas « approved » mais « superseded », et prévient les gestionnaires. */
     public function testSupersededDecisionDoesNotAnswerApproved(): void
     {
