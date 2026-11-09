@@ -30,6 +30,22 @@ métier), auquel cas le filet l'ignore et retombe sur le repli français par sta
     dédiée ci-dessous) — seuls ses deux chemins API-only (`/me`, `/logout`) et les autres
     contrôleurs `Admin*` (CSRF/`Unauthorized.` génériques, non touchés) restent en anglais.
 
+## Le chemin en production (`APP_DEBUG=0`)
+
+Sans debug, Symfony rend `detail` = la reason-phrase (« Conflict ») pour toute erreur 4xx d'une route
+simple (hors API Platform, qui garde déjà le message). `HttpExceptionDetailListener`
+(`kernel.exception`, priorité -32) relaie donc le **message écrit par notre code** pour les refus
+voulus — et seulement si TOUT tient : exception `HttpExceptionInterface` 4xx **instanciée sous
+`src/`** (jamais une exception du framework : « Access Denied. », « Full authentication is
+required… », « No route found… », 405 d'une page à token, dont le message contient le jeton),
+message non vide et différent de la reason-phrase, requête non prise par API Platform, chemin
+`/api/`, format préféré autre que `html`. **Jamais un 5xx.** Réponse en
+`application/problem+json`. Un appel `/api` sans en-tête `Accept` reçoit du JSON.
+
+⚠ **Ligne de revue** : un message 4xx instancié dans `src/` est lu en prod — il ne contient jamais
+d'identifiant, de chemin, de SQL ni de donnée d'un autre club. (Le 429 de `ApiRateLimitSubscriber`
+est en français : « Trop de requêtes d'affilée. Patientez quelques instants avant de réessayer. »)
+
 ## Socle de traduction (`symfony/translation`, P4-263)
 
 - Actif depuis P4-263 : `symfony/translation` 7.4 (`backend/composer.json`), `default_locale: fr`
