@@ -299,7 +299,7 @@ distincte du fond vacances — pas seulement une pastille colorée (color-not-on
 et ce qui manque (plan de période non généré, planning modifié non régénéré). **Chaque item
 a un CTA.** C'est la version généralisée des alertes J-14 de la vision d'origine (§8.2). Les
 vacances y sont **proposées** comme période à adapter (CTA « Générer le plan »/« Adapter »),
-**jamais auto-appliquées** — c'est le gestionnaire qui déclenche.
+**jamais auto-appliquées** — c'est le gestionnaire qui déclenche (rappel e-mail J-30/J-14/J-7, `app:periods:remind`).
 
 **Une indisponibilité de gymnase est UN SEUL fait, saisi une fois** (fermetures de gymnase,
 fondateur 2026-11-02 ; remplace l'entité `VenueUnavailability` et amende la décision fermée P4-68
