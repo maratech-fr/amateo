@@ -239,6 +239,28 @@ final class ErrorDetailSurvivesProdModeTest extends WebTestCase
         self::assertStringNotContainsString('Validez le planning de saison', (string) $this->client->getResponse()->getContent());
     }
 
+    /**
+     * Un appel qui ne demande PAS de JSON explicitement — sans Accept (fetch nu) ou `Accept: *\/*`
+     * (ky sans `.json()`), sans corps JSON — reçoit quand même le motif en problem+json : le format
+     * préféré par défaut est json, seule une navigation qui demande du HTML garde la page Symfony.
+     * BrowserKit injecte par défaut l'Accept HTML d'un navigateur (`Request::create`) : il est
+     * écrasé ici pour que l'absence d'Accept soit réelle.
+     */
+    public function testAConflictIsRelayedWithoutAJsonAcceptWhenDebugIsOff(): void
+    {
+        [$manager, $season] = $this->clubWithoutSocle();
+        $authenticated = $this->jsonHeaders($manager, $season);
+        unset($authenticated['CONTENT_TYPE']);
+
+        foreach (['sans Accept' => '', 'Accept */*' => '*/*'] as $case => $accept) {
+            $this->client->request('POST', '/api/fixtures/review', [], [], ['HTTP_ACCEPT' => $accept] + $authenticated);
+
+            self::assertSame(409, $this->statusCode(), $case);
+            self::assertSame('application/problem+json', $this->client->getResponse()->headers->get('Content-Type'), $case);
+            self::assertSame(SocleGuard::SEASON_PLAN_REQUIRED_MESSAGE, $this->body()['detail'] ?? null, $case);
+        }
+    }
+
     protected function setUp(): void
     {
         $this->client = self::createClient(['debug' => false]);
