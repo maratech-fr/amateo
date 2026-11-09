@@ -58,7 +58,7 @@ final class ApiRateLimitSubscriber implements EventSubscriberInterface
         if (!$limit->isAccepted()) {
             $retryAfter = max(1, $limit->getRetryAfter()->getTimestamp() - time());
 
-            throw new TooManyRequestsHttpException($retryAfter, 'API rate limit exceeded.');
+            throw new TooManyRequestsHttpException($retryAfter, 'Trop de requêtes d\'affilée. Patientez quelques instants avant de réessayer.');
         }
     }
 }

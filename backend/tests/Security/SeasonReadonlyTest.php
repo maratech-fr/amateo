@@ -208,10 +208,9 @@ final class SeasonReadonlyTest extends WebTestCase
             'CONTENT_TYPE' => 'application/json',
         ], '{}');
         self::assertResponseStatusCodeSame(409);
-        // Message EXACT du garde saison, pas juste « archived » : la page d'erreur
-        // HTML de test cite du code source (noms de méthodes en « ...Archived »), donc
-        // seul le libellé complet distingue CE garde du 409 de SocleGuard.
-        self::assertStringContainsString('Cette saison est archivée — elle est en lecture seule.', (string) $this->client->getResponse()->getContent());
+        // Message EXACT du garde saison, lu dans `detail` (le refus de src/ est relayé en
+        // problem+json) : seul le libellé complet distingue CE garde du 409 de SocleGuard.
+        self::assertSame('Cette saison est archivée — elle est en lecture seule.', json_decode((string) $this->client->getResponse()->getContent(), true)['detail'] ?? null);
     }
 
     /**
@@ -280,7 +279,7 @@ final class SeasonReadonlyTest extends WebTestCase
             'CONTENT_TYPE' => 'application/json',
         ], '{}');
         self::assertResponseStatusCodeSame(409);
-        self::assertStringContainsString('Cette saison est archivée — elle est en lecture seule.', (string) $this->client->getResponse()->getContent());
+        self::assertSame('Cette saison est archivée — elle est en lecture seule.', json_decode((string) $this->client->getResponse()->getContent(), true)['detail'] ?? null);
     }
 
     /**

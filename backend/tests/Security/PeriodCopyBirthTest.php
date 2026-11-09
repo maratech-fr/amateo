@@ -204,7 +204,10 @@ final class PeriodCopyBirthTest extends WebTestCase
         // 2de : le plan a désormais une version → refus 409 nommé.
         $this->client->request('POST', '/api/schedule_plans/' . $planId . '/transcribe-from-socle', [], [], $this->headers($user, $club, $season));
         self::assertSame(409, $this->client->getResponse()->getStatusCode());
-        self::assertStringContainsString('déjà une version', (string) $this->client->getResponse()->getContent());
+        self::assertSame(
+            'Cette période porte déjà une version : la transcription ne s\'applique qu\'à un plan sans version.',
+            json_decode((string) $this->client->getResponse()->getContent(), true)['detail'] ?? null,
+        );
     }
 
     /** (v) La route est sous les gardes : rôle (non-management) et tenant (autre club). */
