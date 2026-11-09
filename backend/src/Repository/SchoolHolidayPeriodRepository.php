@@ -46,4 +46,25 @@ final class SchoolHolidayPeriodRepository extends ServiceEntityRepository
             ->getQuery()
             ->getResult();
     }
+
+    /**
+     * Holidays of a zone STARTING within [$today, $today + $horizonDays], chronological — the
+     * school-holiday reminder's horizon (a window, so a missed daily run still catches up).
+     *
+     * @return list<SchoolHolidayPeriod>
+     */
+    public function findStartingInWindow(string $zone, DateTimeImmutable $today, int $horizonDays): array
+    {
+        return $this->createQueryBuilder('h')
+            ->andWhere('h.zone = :zone')
+            ->andWhere('h.startDate >= :from')
+            ->andWhere('h.startDate <= :to')
+            ->setParameter('zone', $zone)
+            ->setParameter('from', $today->format('Y-m-d'))
+            ->setParameter('to', $today->modify(\sprintf('+%d days', $horizonDays))->format('Y-m-d'))
+            ->orderBy('h.startDate', 'ASC')
+            ->addOrderBy('h.id', 'ASC')
+            ->getQuery()
+            ->getResult();
+    }
 }

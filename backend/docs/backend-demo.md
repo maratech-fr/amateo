@@ -341,6 +341,7 @@ e-mail est rangé dans sa « boîte » plutôt que parti.
   hors `SeasonDataPurger` (club-scoped sans saison, comme `opponent_venue_link`) ; exclue de
   l'export RGPD (`RgpdExportService` — artefact interne de démo, jamais de la donnée d'un
   workspace réel, les adresses y figurant sont déjà exportées via `club_user`/`app_user`).
+- **Rappel de vacances scolaires** (`app:periods:remind`) : un club démo SANS horloge simulée en est exclu (il n'a pas de boîte, le mail partirait réellement) ; avec horloge, le mail va en boîte. Poser ou reculer la date simulée ne ré-arme ni la boîte ni les paliers déjà journalisés (`holiday_reminder_log`) ; le reset de la démo (purge du workspace par saison) vide le journal, les paliers repartent.
 - **Front** : entrée de nav « Boîte aux lettres » dans la barre du haut
   (`frontend/src/features/mailbox/MailboxNavItem.tsx`, compteur serveur), visible seulement si
   `me.club.simulatedToday` est posé ; écran `/boite-aux-lettres`

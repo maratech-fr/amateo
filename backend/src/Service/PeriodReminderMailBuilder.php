@@ -6,14 +6,18 @@ namespace App\Service;
 
 use App\Entity\CalendarEntry;
 use App\Entity\Club;
+use App\Entity\SchoolHolidayPeriod;
+use App\Enum\SeasonPlanState;
 use App\Mail\ClubBusinessMail;
 use App\Mail\ClubMailMetadata;
 use App\Mail\EmailTemplateRenderer;
+use DateTimeImmutable;
 use Symfony\Component\DependencyInjection\Attribute\Autowire;
 use Symfony\Component\Mime\Email;
 
 /**
- * Builds the "period without an overlay plan" reminder email (cockpit palier C).
+ * Builds the "period without an overlay plan" reminder email (cockpit palier C) and its
+ * school-holiday sibling (a holiday of the club's zone not yet adapted).
  * Isolated from the cron walker so the rendering is unit-testable on its own.
  */
 final class PeriodReminderMailBuilder
@@ -27,16 +31,66 @@ final class PeriodReminderMailBuilder
 
     public function build(string $to, string $clubName, CalendarEntry $entry, int $days, ?Club $club = null): Email
     {
-        $red = $days <= 3; // J-3 = the "red" alert (v3 §8.2).
-        $subject = \sprintf('%s %s dans %d j — pas de planning de période', $red ? '🔴' : '⏳', $entry->getTitle(), $days);
+        // J-3 = the "red" alert (v3 §8.2).
+        return $this->email($to, $clubName, $entry->getTitle(), $entry->getStartDate(), $entry->getEndDate(), $days, $days <= 3, 'pas de planning de période', [
+            $this->startsIn($days) . ' et n\'a pas encore de planning de période.',
+            'Rien ne se fait tout seul — ouvre le cockpit pour l\'adapter.',
+        ], $club);
+    }
+
+    /**
+     * Rappel d'une vacance scolaire sans planning de période. Rouge à son dernier palier (J-7) ;
+     * le texte suit l'état du planning de saison qui la contient : validé → adapter la vacance ;
+     * sinon → générer puis valider (ou seulement valider) le planning de saison d'abord.
+     */
+    public function buildForHoliday(string $to, string $clubName, SchoolHolidayPeriod $holiday, int $days, SeasonPlanState $seasonPlan, ?Club $club = null): Email
+    {
+        if (SeasonPlanState::CHOSEN === $seasonPlan) {
+            $suffix = 'pas de planning de période';
+            $body = [
+                $this->startsIn($days) . ' et n\'a pas encore de planning de période.',
+                'Rien ne se fait tout seul — ouvre le cockpit pour l\'adapter.',
+            ];
+        } else {
+            $suffix = 'planning de saison à valider';
+            $body = [
+                \sprintf(
+                    '%s. Pour préparer son planning de période, %s d\'abord ton planning de saison (page Planning).',
+                    $this->startsIn($days),
+                    SeasonPlanState::FINISHED_NOT_CHOSEN === $seasonPlan ? 'valide' : 'génère puis valide',
+                ),
+                'Rien ne se fait tout seul — ouvre le cockpit pour t\'y mettre.',
+            ];
+        }
+
+        return $this->email($to, $clubName, $holiday->getLabel(), $holiday->getStartDate(), $holiday->getEndDate(), $days, $days <= 7, $suffix, $body, $club);
+    }
+
+    /** « Elle commence aujourd'hui » au jour J, sinon « Elle commence dans N jour(s) ». */
+    private function startsIn(int $days): string
+    {
+        return 0 === $days
+            ? 'Elle commence aujourd\'hui'
+            : \sprintf('Elle commence dans %d jour%s', $days, $days > 1 ? 's' : '');
+    }
+
+    /**
+     * Le foyer unique des rappels (fermetures/périodes et vacances scolaires).
+     *
+     * @param list<string> $body
+     */
+    private function email(string $to, string $clubName, string $title, DateTimeImmutable $start, DateTimeImmutable $end, int $days, bool $red, string $suffix, array $body, ?Club $club): Email
+    {
+        $subject = 0 === $days
+            ? \sprintf('🔴 %s aujourd\'hui — %s', $title, $suffix)
+            : \sprintf('%s %s dans %d j — %s', $red ? '🔴' : '⏳', $title, $days, $suffix);
 
         $lines = [
             \sprintf('Club : %s', $clubName),
-            \sprintf('Période : %s', $entry->getTitle()),
-            \sprintf('Du %s au %s', $entry->getStartDate()->format('d/m/Y'), $entry->getEndDate()->format('d/m/Y')),
+            \sprintf('Période : %s', $title),
+            \sprintf('Du %s au %s', $start->format('d/m/Y'), $end->format('d/m/Y')),
             '',
-            \sprintf('Elle commence dans %d jour%s et n\'a pas encore de planning de période.', $days, $days > 1 ? 's' : ''),
-            'Rien ne se fait tout seul — ouvre le cockpit pour l\'adapter.',
+            ...$body,
         ];
         $link = '' !== $this->frontendBaseUrl ? rtrim($this->frontendBaseUrl, '/') . '/' : null;
         if (null !== $link) {

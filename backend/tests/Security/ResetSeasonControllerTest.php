@@ -112,6 +112,12 @@ final class ResetSeasonControllerTest extends WebTestCase
         $em->flush();
         $em->persist((new PeriodReminderLog)->setCalendarEntryId($entry->getId())->setThreshold(14));
         $em->flush();
+        // Rappel des vacances scolaires : le journal des paliers envoyés est clé par SAISON — le
+        // reset le vide, sinon une saison réinitialisée resterait muette sur ses vacances.
+        $em->getConnection()->executeStatement(
+            'INSERT INTO holiday_reminder_log (id, season_id, school_holiday_id, threshold, sent_at) VALUES (gen_random_uuid(), :sid, gen_random_uuid(), 30, now())',
+            ['sid' => $season->getId()],
+        );
         $slotId = $slot->getId();
         $entryId = $entry->getId();
         $seasonId = $season->getId();
@@ -124,6 +130,10 @@ final class ResetSeasonControllerTest extends WebTestCase
         self::assertNull($em->getRepository(VenueTrainingSlot::class)->find($slotId), 'training slots must be wiped (no FK to venue)');
         self::assertNull($em->getRepository(CalendarEntry::class)->find($entryId), 'calendar entries must be wiped');
         self::assertSame([], $em->getRepository(PeriodReminderLog::class)->findBy(['calendarEntryId' => $entryId]), 'reminder logs must be wiped');
+        self::assertSame(0, (int) $em->getConnection()->fetchOne(
+            'SELECT COUNT(*) FROM holiday_reminder_log WHERE season_id = :sid',
+            ['sid' => $seasonId],
+        ), 'the holiday reminder ledger of the season must be wiped');
         $freshSeason = $em->getRepository(Season::class)->find($seasonId);
         self::assertInstanceOf(Season::class, $freshSeason);
         // Le pointeur ne survit pas au reset : sa version est supprimée, et un plan

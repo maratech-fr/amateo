@@ -149,6 +149,16 @@ club via une policy `readonly_tenant` portant le prédicat canonique, aucune éc
 privilège, aucun GRANT DML], aucune porte `admin_all` ni `USING(true)` qui l'ouvrirait cross-club, et
 une garde du futur : toute table portant `club_id` doit porter EXACTEMENT une policy `readonly_tenant`
 pour `amateo_read` — sinon l'opérateur la verrait à 0 ligne, ou cross-club si posée à la main) ·
+`Security/HolidayReminderStateIsolationTest` (axe *tenant isolation*, rappel des vacances scolaires :
+ce qui FERME le rappel d'une vacance pour un club — vacance ignorée, coupure/fermeture couvrante,
+racine HOLIDAY versionnée — ne se lit jamais dans les données d'un autre club. Chaque requête du
+résolveur porte UNE ceinture `club_id` sur `calendar_entry`, prouvée seule sous un rôle propriétaire
+non-superuser que la RLS ne filtre pas ; falsifié ceinture par ceinture) ·
+`Command/PeriodReminderCommandTest` (le cron des rappels : périodes J-14/J-7/J-3 et vacances scolaires
+J-30/J-14/J-7 de la zone du club — jointure d'un référentiel GLOBAL aux données de chaque club ; un
+palier envoyé à un club n'en marque jamais un autre, la fermeture d'un club ne tait jamais un autre,
+seuls les gestionnaires actifs reçoivent, chaque club suit son horloge, une démo à horloge range ses
+mails en boîte) ·
 `Security/LeagueWindowSuggestionShareTest` (P4-272 ② : la suggestion de plages de ligue lit à travers la frontière tenant via une fonction SQL SECURITY DEFINER — seuil ≥ 3 ET majorité, groupement d'instance comité/ligue/fédération, demandeur exclu, saisons non actives exclues, aucune donnée club-identifiante, repli fédéral ARA/rien pour GUY, apply recalculé serveur) ·
 `Security/ClubAccessTest` + `Security/UserSelfOnlyTest` + `Security/ImportAuthorizationTest` (lockdown API tenant) ·
 `Security/MercureHardeningTest` (Mercure durci ; depuis lot 4 PR C : hub épinglé à une 1.x

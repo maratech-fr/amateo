@@ -92,6 +92,7 @@ final class ReadOnlyRoleTest extends KernelTestCase
         'email_verification_token',
         'period_reminder_log',
         'transition_reminder_log',
+        'holiday_reminder_log',
         'doctrine_migration_versions',
         'constraint_conflict',
     ];

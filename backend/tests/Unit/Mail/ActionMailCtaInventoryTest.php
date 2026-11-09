@@ -59,7 +59,13 @@ final class ActionMailCtaInventoryTest extends TestCase
         'src/Service/ClubInvitationMailer.php' => ['invitation' => ['{base}/invitation/{token}', 'Accepter l\'invitation']],
         'src/Service/InactivityMailBuilder.php' => ['inactivite' => ['{base}/login', 'Me connecter']],
         'src/Service/OrphanAccountMailBuilder.php' => ['sans-club' => ['{base}/login', 'Me connecter']],
-        'src/Service/PeriodReminderMailBuilder.php' => ['periode' => ['{base}/', 'Ouvrir le cockpit']],
+        // Rappel des vacances scolaires : même `new Email` (helper commun à build/buildForHoliday),
+        // deux branches de plus — planning de saison validé, ou à générer/valider.
+        'src/Service/PeriodReminderMailBuilder.php' => [
+            'periode' => ['{base}/', 'Ouvrir le cockpit'],
+            'vacances' => ['{base}/', 'Ouvrir le cockpit'],
+            'vacances-socle' => ['{base}/', 'Ouvrir le cockpit'],
+        ],
         'src/Service/PlacementRunEmailBuilder.php' => ['placement' => ['{base}/matchs', 'Ouvrir le calendrier des matchs']],
         'src/Service/TransitionReminderMailBuilder.php' => ['transition' => ['{base}/', 'Ouvrir l\'application']],
     ];

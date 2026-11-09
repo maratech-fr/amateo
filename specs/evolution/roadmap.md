@@ -1,4 +1,4 @@
-# Roadmap (123) — ce qui reste à faire
+# Roadmap (125) — ce qui reste à faire
 
 > **Ce fichier ne tient QUE l'ouvert.** Bugs, évolutions, dettes techniques : tout ce qu'on trace pour ne pas
 > l'oublier un jour. Rien de livré n'y figure — un item livré **quitte** ce fichier et laisse sa trace dans
@@ -217,6 +217,8 @@
 | P4-514 | **Citations `fichier:ligne` sans garde hors `main.py`** | ⚪ | S | Seul `EngineMainCitationsAnchorOnSymbolTest` vérifie qu'une citation `fichier:ligne` tombe sur le symbole nommé, et seulement pour `engine/app/main.py` ; partout ailleurs (docs, specs, docblocks) une citation périme en silence au premier décalage de ligne. Décision par défaut contestable : étendre la garde à d'autres fichiers cités, ou citer par symbole |
 | P4-515 | **Test e2e `season-transition.spec.ts` à dates figées** | ⚪ | XS | `frontend/tests/e2e/season-transition.spec.ts:58` crée un événement au 2026-10-03 et `:104` attend « 2027-10-02 » après reconduction : le spec rougira dès juillet 2027 (changement de saison courante). À rendre relatif à la saison courante avant cette échéance |
 | P4-516 | **Tests backend à date proche écrite en dur ou lue sur l'horloge réelle** | ⚪ | M | Environ 110 fichiers de `backend/tests/` portent une date proche en dur, dont quatre lisent l'horloge réelle (`new DateTimeImmutable('today')` dans `FixtureReviewApiTest`, `PlaceMatchesControllerTest`, `FixtureApiTest`, `LeagueValidatedFixturesControllerTest`). Non prouvé : lesquels rougissent au changement de saison ; il faut une campagne à date simulée (horloge de test avancée) pour les trier avant de les corriger |
+| P4-517 | **Variante du rappel de vacances pour les FERMETURES quand le planning de saison n'est pas validé** | ⚪ | S | Le rappel e-mail d'une vacance scolaire change de texte selon l'état du planning de saison (à valider d'abord, ou à générer puis valider). Celui d'une fermeture de gymnase (J-14/J-7/J-3, `PeriodReminderMailBuilder::build`) reste le même qu'il y ait ou non un planning de saison validé : il dit « adapter » alors que le bouton du cockpit est grisé tant que le socle n'est pas en vigueur. Reprendre le patron `SeasonPlanState` / `buildForHoliday` pour les fermetures |
+| P4-518 | **La carte « Adapter » du radar reste affichée sous une coupure qui couvre toute la vacance alors que le rappel se tait** | ⚪ | S | Une coupure ou une fermeture qui couvre les jours ouvrés de chaque semaine de vacances arrête le rappel e-mail (`HolidayReminderStateResolver::isCovered`, `HolidayWorkweekRule`), mais le radar (`RadarPanel.tsx`) propose toujours la carte « Adapter » pour cette vacance. Exemple : Noël couvert du lundi au vendredi par une coupure : plus de mail, la carte reste. Aligner le radar sur le même prédicat (ou assumer l'écart) |
 
 ---
 

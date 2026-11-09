@@ -647,6 +647,14 @@ jobs:
           # aveugle en silence, ou une policy USING(true) posée à la main lui ouvrirait
           # le cross-club — invisible aux autres checks.
           FILES="$FILES tests/Security/ReadOnlyRoleTest.php"
+          # Axe tenant isolation — rappel e-mail des vacances scolaires : le cron joint un
+          # référentiel GLOBAL (school_holiday_period, sans RLS) aux données de CHAQUE club.
+          # Ce qui ferme le rappel d'un club (vacance ignorée, coupure couvrante, version)
+          # ne se lit jamais chez un autre — chaque requête du résolveur porte sa ceinture
+          # club_id, falsifiée une à une — et le palier envoyé à un club n'en marque jamais
+          # un autre. Sans ce gate, un club recevrait (ou perdrait) les rappels d'un autre.
+          FILES="$FILES tests/Security/HolidayReminderStateIsolationTest.php"
+          FILES="$FILES tests/Command/PeriodReminderCommandTest.php"
           # P4-272 ② — la suggestion de plages de ligue LIT à travers la frontière tenant
           # (fonction SQL SECURITY DEFINER). Sans ce gate BLOQUANT, une régression du seuil,
           # de la majorité, du groupement d'instance, de l'exclusion du demandeur, ou une
