@@ -286,6 +286,32 @@ describe("SocleDeviationPanel — le bilan par rang", () => {
     expect(screen.getByText(PLANNING_TEXTS.rankReportFooter(4, 2, 3))).toBeVisible();
   });
 
+  it("Q7 — un rang sans AUCUNE équipe à lister (toutes inchangées) n'est pas un bouton ; un rang qui n'a qu'une équipe en pause en est un", () => {
+    const calm = rank({ tierLabel: "S", tierWeight: 100, teams: 2, socleSessions: 4, keptSessions: 4, unchanged: 2 });
+    const pausedOnly = rank({ tierLabel: "C", teams: 1, socleSessions: 0, keptSessions: 0, paused: 1, unchanged: 0 });
+    renderPanel({
+      ...DEVIATION,
+      moved: [],
+      unplaced: [],
+      changedSlotIds: [],
+      teams: [
+        team({ teamId: "tS1", tierLabel: "S", tierWeight: 100, socleSessions: 2, keptSessions: 2 }),
+        team({ teamId: "tS2", tierLabel: "S", tierWeight: 100, tierOrder: 1, socleSessions: 2, keptSessions: 2 }),
+        team({ teamId: "tP", paused: true, daysKept: null, keptSessions: 0 }),
+      ],
+      ranks: [calm, pausedOnly],
+    });
+
+    // Rang tout inchangé : sa synthèse se lit, en simple texte — ni bouton ni chevron à déplier pour rien.
+    const calmLine = screen.getByText(PLANNING_TEXTS.rankReportLine(calm));
+    expect(calmLine).toBeVisible();
+    expect(calmLine.closest("button"), "un rang sans équipe à lister n'est pas un bouton").toBeNull();
+    expect(screen.queryByRole("button", { name: contains(PLANNING_TEXTS.rankReportLine(calm)) })).not.toBeInTheDocument();
+
+    // Rang avec une seule équipe en pause : il a quelque chose à montrer, il reste un bouton.
+    expect(rankButton(pausedOnly)).toHaveAttribute("aria-expanded");
+  });
+
   it("Q7 — cliquer (ou Entrée / Espace au clavier) sur une ligne de rang la déplie puis la replie", async () => {
     const user = userEvent.setup();
     renderPanel();

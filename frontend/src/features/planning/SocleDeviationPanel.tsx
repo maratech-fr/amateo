@@ -36,7 +36,10 @@ interface SocleDeviationPanelProps {
 const DAY_MS = 86_400_000;
 
 /** Ligne qui déplie (rang, équipe à détail) : bouton nu pleine largeur, mêmes états que les lignes cliquables du panneau. */
-const TOGGLE_CLASS = "flex w-full items-center justify-between gap-2 rounded-md px-1 py-0.5 text-left transition hover:bg-muted focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent";
+const TOGGLE_CLASS = "flex w-full items-center justify-between gap-2 rounded-md px-1 py-0.5 text-left transition hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
+
+/** Ligne de texte sans bouton : même padding horizontal que `TOGGLE_CLASS`, pour que son texte s'aligne sur celui des lignes-boutons. */
+const PLAIN_LINE_CLASS = "px-1 py-0.5";
 
 function ToggleChevron({ open }: { open: boolean }) {
   return <ChevronDown aria-hidden className={cn("size-4 shrink-0 text-muted-foreground transition-transform motion-reduce:transition-none", open ? "rotate-180" : "")} />;
@@ -108,16 +111,22 @@ function RankItem({
   onSelectSlot?: (slotId: string) => void;
 }) {
   const shown = deviation.teams.filter((t) => t.tierLabel === rank.tierLabel && t.tierWeight === rank.tierWeight && (t.changed || t.paused));
-  // Q7 — replié par défaut, ouvert d'emblée seulement quand le rang PERD des séances.
+  // Q7 — replié par défaut, ouvert d'emblée seulement quand le rang PERD des séances. Un rang sans
+  // équipe à lister (toutes inchangées) n'a rien à déplier : simple ligne de texte, sans bouton.
   const [open, setOpen] = useState(rank.lost > 0);
   const bodyId = useId();
+  const expandable = shown.length > 0;
   return (
     <li>
-      <button type="button" aria-expanded={open} aria-controls={open && shown.length > 0 ? bodyId : undefined} onClick={() => setOpen((o) => !o)} className={TOGGLE_CLASS}>
-        <span className="font-semibold text-foreground">{PLANNING_TEXTS.rankReportLine(rank)}</span>
-        <ToggleChevron open={open} />
-      </button>
-      {open && shown.length > 0 ? (
+      {expandable ? (
+        <button type="button" aria-expanded={open} aria-controls={open ? bodyId : undefined} onClick={() => setOpen((o) => !o)} className={TOGGLE_CLASS}>
+          <span className="font-semibold text-foreground">{PLANNING_TEXTS.rankReportLine(rank)}</span>
+          <ToggleChevron open={open} />
+        </button>
+      ) : (
+        <p className={cn(PLAIN_LINE_CLASS, "font-semibold text-foreground")}>{PLANNING_TEXTS.rankReportLine(rank)}</p>
+      )}
+      {expandable && open ? (
         <ul id={bodyId} className="mt-1 flex flex-col gap-1 ps-3">
           {shown.map((team) => (
             <TeamItem
@@ -173,7 +182,7 @@ function TeamItem({
           <ToggleChevron open={open} />
         </button>
       ) : (
-        <p className="flex items-center font-normal text-foreground">{line}</p>
+        <p className={cn(PLAIN_LINE_CLASS, "flex items-center font-normal text-foreground")}>{line}</p>
       )}
       {hasDetail && open ? (
         <ul id={bodyId} className="mt-0.5 flex flex-col gap-0.5 ps-3 text-muted-foreground">
@@ -195,7 +204,7 @@ function TeamItem({
                   <button
                     type="button"
                     onClick={() => onSelectSlot(entry.to.slotId)}
-                    className={cn("flex w-full flex-wrap items-center gap-y-0.5 rounded-md px-1 py-0.5 text-left transition hover:bg-muted focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent")}
+                    className={cn("flex w-full flex-wrap items-center gap-y-0.5 rounded-md px-1 py-0.5 text-left transition hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring")}
                   >
                     {content}
                   </button>
