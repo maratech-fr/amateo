@@ -43,10 +43,16 @@ COPY frontend/worker-heartbeat.js ./worker-heartbeat.js
 # NOMMÉS — jamais --auto-remove, qui emporterait des bibliothèques d'exécution. Les .so
 # que Chrome charge (libbrotlidec, libfreetype6, polices…) restent en place. Si l'export
 # PDF casse, retirer de la liste la chaîne -dev, jamais plus.
+#
+# CVE-2026-111497 (libbrotli1) et CVE-2026-98432 (linux-libc-dev) — 2 CRITICAL sur des
+# paquets qu'on ne peut PAS purger (Chrome lie libbrotlidec ; libc6-dev dépend de
+# linux-libc-dev), corrigés dans apt (1.0.9-2+deb12u1, 6.1.190-1) mais pas encore dans la
+# base puppeteer : on les monte sur place, comme perl.
 USER root
 RUN apt-get update \
     && apt-get install -y --no-install-recommends --only-upgrade \
         perl perl-base libperl5.36 perl-modules-5.36 \
+        libbrotli1 linux-libc-dev \
     && apt-get purge -y \
         imagemagick imagemagick-6.q16 imagemagick-6-common \
         libmagickcore-6.q16-6 libmagickcore-6.q16-6-extra libmagickwand-6.q16-6 \
