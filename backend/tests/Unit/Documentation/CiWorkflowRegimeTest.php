@@ -397,6 +397,60 @@ final class CiWorkflowRegimeTest extends TestCase
     }
 
     /**
+     * D5 (lot « déploiement fiable ») — Promesse : aucune image que la release POUSSE n'échappe au
+     * gate Trivy CRITICAL du build. Pour chaque image de la boucle de `deploy.yml` (step « Check
+     * registry for existing images », `for IMG in …`), le step Trivy de `build-docker` scanne
+     * `"$SCAN/<IMG>-prod"` ou `"$SCAN/<IMG>"`, ET « Build prod images » construit ce même tag
+     * (`docker build --pull … -t scan-<run>-<tentative>/<même suffixe>`). Une image ajoutée à la
+     * release sans scan rougit ici — c'est le trou qui a laissé passer 16 CRITICAL dans pdf-worker.
+     */
+    public function testTheBuildTrivyGateScansEveryImageDeployPushes(): void
+    {
+        $deploy = $this->job('.github/workflows/deploy.yml', 'build-push');
+        $registryCheck = '';
+        foreach ($this->steps($deploy, 'build-push') as $step) {
+            if ('Check registry for existing images' === $this->str($step['name'] ?? null)) {
+                $registryCheck = $this->str($step['run'] ?? null);
+            }
+        }
+        self::assertSame(1, preg_match('/\bfor IMG in ([^;\n]+);/', $registryCheck, $loop), 'deploy.yml : la boucle `for IMG in …;` du step « Check registry for existing images » est la liste des images poussées.');
+        $images = preg_split('/\s+/', trim($loop[1])) ?: [];
+        self::assertNotEmpty($images);
+
+        $build = $this->steps($this->job(self::CI, 'build-docker'), 'build-docker');
+        $trivy = '';
+        $prodBuild = '';
+        foreach ($build as $step) {
+            $name = $this->str($step['name'] ?? null);
+            if (str_starts_with($name, 'Trivy scan')) {
+                $trivy = $this->str($step['run'] ?? null);
+            }
+            if ('Build prod images' === $name) {
+                $prodBuild = $this->str($step['run'] ?? null);
+            }
+        }
+        self::assertNotSame('', $trivy, '`build-docker` doit garder son step « Trivy scan … ».');
+        self::assertNotSame('', $prodBuild, '`build-docker` doit garder son step « Build prod images ».');
+        $buildLines = $this->logicalLines($prodBuild);
+
+        foreach ($images as $image) {
+            $suffix = null;
+            foreach ([$image . '-prod', $image] as $candidate) {
+                if (str_contains($trivy, '"$SCAN/' . $candidate . '"')) {
+                    $suffix = $candidate;
+                    break;
+                }
+            }
+            self::assertNotNull($suffix, \sprintf('Le gate Trivy du build ne scanne pas l\'image « %s » que deploy.yml pousse (attendu "$SCAN/%s-prod" ou "$SCAN/%s").', $image, $image, $image));
+
+            $built = array_filter($buildLines, static fn (string $line): bool => 1 === preg_match('/\bdocker build\b/', $line)
+                && str_contains($line, '--pull')
+                && 1 === preg_match('~-t scan-\$\{\{ github\.run_id \}\}-\$\{\{ github\.run_attempt \}\}/' . preg_quote($suffix, '~') . '(\s|$)~', $line));
+            self::assertNotEmpty($built, \sprintf('« Build prod images » ne construit pas `scan-…/%s` (avec --pull) : le scan de « %s » viserait une image absente.', $suffix, $image));
+        }
+    }
+
+    /**
      * R7 — Promesse : l'e2e (et la régénération des captures) tourne dans le conteneur
      * Playwright — mêmes PNG chez GitHub et dans la VM — avec mailpit, un volume node_modules
      * rendu à l'uid du runner par l'HÔTE, et la clé TOTP du superadmin jamais exportée au job.

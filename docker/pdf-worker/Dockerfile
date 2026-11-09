@@ -1,6 +1,6 @@
 # Épinglé (tag semver + digest) — `latest` rendait l'image non reproductible : un
 # rebuild pouvait embarquer une paire puppeteer↔Chrome différente de celle qui tourne,
-# sans qu'aucun diff ne le montre. 25.12.0 = la version déjà en service (Node 24).
+# sans qu'aucun diff ne le montre. 25.16.0 = la version déjà en service (Node 24).
 # Mise à jour : Dependabot (écosystème `docker`, dossier docker/pdf-worker) propose
 # désormais les bumps — relever le tag ET le digest ensemble, jamais l'un sans l'autre
 # (le digest est la vérité immuable, le tag n'est qu'un libellé lisible).
@@ -35,10 +35,31 @@ COPY frontend/worker-heartbeat.js ./worker-heartbeat.js
 # paquets sur place. L'image puppeteer tourne en pptruser (non-root), apt exige root
 # → USER root le temps du RUN, puis on redescend en pptruser juste après.
 # ⚠ À RETIRER quand Dependabot montera une base puppeteer embarquant deb12u4 (le FROM).
+#
+# CVE-2026-25971 (famille ImageMagick) et CVE-2026-111497 (libbrotli-dev) — 16 CRITICAL
+# hérités de la base puppeteer. Ni Chrome ni Node ne dépendent d'ImageMagick, et
+# libbrotli-dev n'arrive que par la chaîne des paquets -dev (libfreetype-dev ←
+# libfontconfig-dev, libcairo2-dev, librsvg2-dev, libwmf-dev) : on PURGE ces paquets
+# NOMMÉS — jamais --auto-remove, qui emporterait des bibliothèques d'exécution. Les .so
+# que Chrome charge (libbrotlidec, libfreetype6, polices…) restent en place. Si l'export
+# PDF casse, retirer de la liste la chaîne -dev, jamais plus.
+#
+# CVE-2026-111497 (libbrotli1) et CVE-2026-98432 (linux-libc-dev) — 2 CRITICAL sur des
+# paquets qu'on ne peut PAS purger (Chrome lie libbrotlidec ; libc6-dev dépend de
+# linux-libc-dev), corrigés dans apt (1.0.9-2+deb12u1, 6.1.190-1) mais pas encore dans la
+# base puppeteer : on les monte sur place, comme perl.
 USER root
 RUN apt-get update \
     && apt-get install -y --no-install-recommends --only-upgrade \
         perl perl-base libperl5.36 perl-modules-5.36 \
+        libbrotli1 linux-libc-dev \
+    && apt-get purge -y \
+        imagemagick imagemagick-6.q16 imagemagick-6-common \
+        libmagickcore-6.q16-6 libmagickcore-6.q16-6-extra libmagickwand-6.q16-6 \
+        libmagickcore-6-arch-config libmagickcore-6-headers libmagickwand-6-headers \
+        libmagickcore-6.q16-dev libmagickcore-dev libmagickwand-6.q16-dev libmagickwand-dev \
+        libbrotli-dev libfreetype-dev libfreetype6-dev libfontconfig-dev \
+        libcairo2-dev librsvg2-dev libwmf-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # SEC-15 — défaut NON-ROOT : pptruser est l'utilisateur prévu par l'image

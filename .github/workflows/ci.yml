@@ -2161,6 +2161,7 @@ jobs:
           docker build --pull --target prod -f docker/frontend/Dockerfile -t scan-${{ github.run_id }}-${{ github.run_attempt }}/frontend-prod .
           docker build --pull --target prod -f docker/engine/Dockerfile -t scan-${{ github.run_id }}-${{ github.run_attempt }}/engine-prod .
           docker build --pull -f docker/postgres/Dockerfile.prod -t scan-${{ github.run_id }}-${{ github.run_attempt }}/postgres-prod .
+          docker build --pull -f docker/pdf-worker/Dockerfile -t scan-${{ github.run_id }}-${{ github.run_attempt }}/pdf-worker .
 
       # SEC A19 — Trivy sur les images PROD fraîchement construites : les paquets
       # OS (openssl, libc, nginx…) sont l'angle mort de dependency-audit, qui ne
@@ -2190,7 +2191,7 @@ jobs:
       - name: Trivy scan (prod images, CRITICAL gate)
         run: |
           SCAN="scan-${{ github.run_id }}-${{ github.run_attempt }}"
-          for img in "$SCAN/php-prod" "$SCAN/nginx-prod" "$SCAN/frontend-prod" "$SCAN/postgres-prod"; do
+          for img in "$SCAN/php-prod" "$SCAN/nginx-prod" "$SCAN/frontend-prod" "$SCAN/postgres-prod" "$SCAN/engine-prod" "$SCAN/pdf-worker"; do
             echo "--- $img"
             docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
               -v "$PWD/.trivyignore:/.trivyignore" \

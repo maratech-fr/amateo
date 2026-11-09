@@ -6,10 +6,12 @@ namespace App\Command;
 
 use App\Entity\ScheduledDeployment;
 use App\Enum\DeploymentStatus;
+use App\Enum\DeployRunVerdict;
 use App\Enum\MatchPlacementRunStatus;
 use App\Enum\ScheduleStatus;
 use App\Mail\EmailTemplateRenderer;
 use App\Repository\ScheduledDeploymentRepository;
+use App\Service\DeployRunOutcome;
 use App\Service\GitHubDeployClient;
 use App\Service\GitHubDeployException;
 use App\Service\MailFrom;
@@ -35,10 +37,14 @@ use Symfony\Component\Mime\Email;
  *  - AVANT l'heure H : rien ne bouge ;
  *  - à H, préconditions re-vérifiées — tag disparu OU CI redevenue rouge → FAILED + e-mail, SANS
  *    dispatch (programmer n'engageait rien) ;
- *  - préconditions OK → dispatch de `deploy.yml`, statut DISPATCHED (run résolu) ; un dispatch qui
- *    échoue est RÉESSAYÉ jusqu'à H +10 min, puis FAILED + e-mail ;
- *  - run GitHub `success` → SUCCEEDED + e-mail ; `failure` → FAILED + e-mail disant que la
- *    MAINTENANCE RESTE POSÉE (décision fondateur : pas de rollback auto en v1).
+ *  - préconditions OK → snapshot du dernier run connu, dispatch de `deploy.yml`, statut DISPATCHED
+ *    (run encore inconnu) ; un dispatch qui échoue est RÉESSAYÉ jusqu'à H +20 min, puis FAILED + e-mail ;
+ *  - le run créé par le dispatch est retrouvé aux ticks suivants par sa date de création GitHub
+ *    (jamais le run d'avant) ; introuvable après RUN_LOOKUP_MINUTES → FAILED + e-mail ;
+ *  - run terminé → verdict lu dans ses jobs et steps ({@see DeployRunOutcome}) : SUCCEEDED (avec
+ *    réserve éventuelle dans la note) ou FAILED, l'e-mail disant si la maintenance est restée posée
+ *    (décision fondateur : pas de rollback auto en v1) ; GitHub illisible ou run figé au-delà de
+ *    l'heure de retour + POLL_GRACE_MINUTES → FAILED sans rien affirmer de la maintenance.
  *
  * L'e-mail suit le patron {@see HealthAlertCommand} : destinataires = superadmins ACTIFS, lus par
  * la connexion `admin` (cross-tenant). Le déploiement lui-même est lu/écrit via l'ORM (connexion
@@ -54,6 +60,38 @@ final class DeploymentTickCommand extends Command
     private const int WAIT_CAP_MINUTES = 10;
 
     private const int DISPATCH_RETRY_MINUTES = 10;
+
+    /** Délai, depuis le dispatch, au-delà duquel un run jamais retrouvé chez GitHub est un échec. */
+    private const int RUN_LOOKUP_MINUTES = 10;
+
+    /** Délai, après l'heure de retour annoncée, au-delà duquel un run sans verdict lisible est un échec. */
+    private const int POLL_GRACE_MINUTES = 30;
+
+    private const string TEXT_SUCCESS = 'La mise en production programmée a réussi : l’application est de nouveau en service.';
+
+    private const string TEXT_MAINTENANCE_LEFT = 'La mise en production programmée a réussi : la nouvelle version est en service sur le serveur, mais la page de maintenance n’a pas pu être retirée. Retirez-la à la main (supprimer le fichier maintenance.on, doc de déploiement, § « Maintenance planifiée »). Ne faites pas de rollback : la version déployée est saine.';
+
+    private const string TEXT_UNVERIFIED = 'La mise en production programmée a réussi d’après GitHub, mais le détail des étapes n’a pas pu être lu : vérifiez dans l’onglet Actions que la branche release a bien été recalée.';
+
+    private const string TEXT_BUILD_ONLY = 'La mise en production programmée a publié les images mais la VM n’a pas été déployée (le déploiement automatique n’est pas armé) : l’application est restée en service sur la version précédente.';
+
+    private const string TEXT_APP_IN_SERVICE = 'La mise en production programmée a échoué avant la bascule : la maintenance n’a pas été posée, l’application est restée en service sur la version précédente.';
+
+    private const string TEXT_UNDER_MAINTENANCE = 'La mise en production programmée a échoué pendant la bascule : la maintenance reste posée, l’application est hors service tant qu’un rollback manuel n’a pas été fait.';
+
+    private const string TEXT_UNDETERMINED = 'La mise en production programmée a échoué. L’état de la maintenance n’a pas pu être déterminé : vérifiez l’onglet Actions de GitHub avant tout geste.';
+
+    private const string TEXT_NOT_FOLLOWED = 'La mise en production programmée n’a pas pu être suivie : GitHub n’a pas répondu dans le délai prévu. L’état de la maintenance est inconnu : vérifiez l’onglet Actions de GitHub avant toute reprogrammation.';
+
+    private const string TEXT_NO_VERDICT = 'Le déploiement n’a pas rendu de verdict dans le délai prévu : son exécution GitHub est toujours en cours ou bloquée. L’état de la maintenance est inconnu : vérifiez l’onglet Actions de GitHub avant toute reprogrammation.';
+
+    private const string TEXT_RUN_NOT_FOUND = 'Le déploiement a été déclenché, mais son exécution GitHub n’a pas été retrouvée après 10 minutes : vérifiez l’onglet Actions de GitHub avant toute reprogrammation. L’état de la maintenance est inconnu.';
+
+    private const string NOTE_RELEASE_NOT_MOVED = 'Étape annexe en échec : la branche release n’a pas été recalée sur la version déployée. Recalez-la à la main (doc de déploiement, § « Branche `release` et correctif rapide (hotfix) »).';
+
+    private const string NOTE_MAINTENANCE_LEFT = 'La page de maintenance est restée affichée après un déploiement réussi : retirez le fichier maintenance.on.';
+
+    private const string NOTE_SEVERAL_RUNS = 'Plusieurs exécutions GitHub ont démarré après le déclenchement : la première a été retenue. Vérifiez l’onglet Actions.';
 
     /** Fuseau d'affichage de l'heure de plafond dans la note de retard (audience superadmin FR). */
     private const string DISPLAY_TIMEZONE = 'Europe/Paris';
@@ -140,6 +178,11 @@ final class DeploymentTickCommand extends Command
                 return;
             }
 
+            // Snapshot du dernier run connu AVANT le dispatch : sa date de création (horloge GitHub)
+            // borne la recherche du run que le dispatch va créer. Lu ICI, dans le bloc des
+            // préconditions : une erreur GitHub sur cette lecture est réessayée comme les autres.
+            $previousRun = $this->client->latestDeployRun();
+
             // Re-datage de l'heure de retour sur le dispatch RÉEL (now + fenêtre d'origine) ; c'est
             // cette valeur qui part en `maintenance_until` (le workflow pose le témoin « de retour à … »).
             $deployment->redateExpectedReturn($now);
@@ -159,49 +202,136 @@ final class DeploymentTickCommand extends Command
             return;
         }
 
-        $runId = $this->client->latestDeployRunId($version) ?? 0;
-        $deployment->markDispatched($runId, $now);
+        // Le run créé par le dispatch n'est pas encore listé : il est recherché aux ticks suivants,
+        // créé STRICTEMENT après cette borne (sans run précédent : une minute avant le dispatch).
+        $deployment->setRunLookupAfter($previousRun['createdAt'] ?? $now->modify('-60 seconds'));
+        $deployment->markDispatched(null, $now);
         $this->flush();
-        $io->writeln(\sprintf('Deployment dispatched (run %d).', $runId));
+        $io->writeln('Deployment dispatched; its GitHub run is looked up on the next ticks.');
     }
 
+    /**
+     * Toute lecture GitHub de cette phase qui échoue est RÉESSAYÉE en silence au tick suivant
+     * (statut inchangé, aucun e-mail), dans deux bornes : la recherche du run vit
+     * RUN_LOOKUP_MINUTES après le dispatch, le suivi du run rattaché jusqu'à `expected_return_at` +
+     * POLL_GRACE_MINUTES. Passé la borne, l'échec est dit sans rien affirmer de la maintenance.
+     */
     private function pollDispatched(ScheduledDeployment $deployment, SymfonyStyle $io): void
     {
         $runId = $deployment->getGithubRunId();
         if (null === $runId) {
+            $this->lookForRun($deployment, $io);
+
             return;
         }
 
-        $conclusion = $this->client->runConclusion($runId);
+        $pastGrace = $this->clock->now() > $deployment->getExpectedReturnAt()->modify(\sprintf('+%d minutes', self::POLL_GRACE_MINUTES));
+
+        try {
+            $conclusion = $this->client->runConclusion($runId);
+        } catch (GitHubDeployException) {
+            if ($pastGrace) {
+                $this->fail($deployment, self::TEXT_NOT_FOLLOWED, $io);
+
+                return;
+            }
+            $io->writeln('GitHub unreadable while polling the run; will retry on the next tick.');
+
+            return;
+        }
+
         if (null === $conclusion) {
+            if ($pastGrace) {
+                $this->fail($deployment, self::TEXT_NO_VERDICT, $io);
+
+                return;
+            }
             $io->writeln('Deployment run still in progress.');
 
             return;
         }
 
-        if ('success' === $conclusion) {
-            $deployment->markSucceeded();
-            $this->flush();
-            $this->notify(
-                '🟢 Mise en production réussie',
-                'La mise en production programmée a réussi : l’application est de nouveau en service.',
-                $io,
-                $deployment->getDispatchNote(),
-            );
+        try {
+            $verdict = DeployRunOutcome::fromJobs($this->client->runJobs($runId), $conclusion)->verdict;
+        } catch (GitHubDeployException) {
+            if (!$pastGrace) {
+                $io->writeln('Jobs of the run unreadable; will retry on the next tick.');
+
+                return;
+            }
+            $verdict = 'success' === $conclusion ? DeployRunVerdict::PROD_UPDATED_UNVERIFIED : DeployRunVerdict::UNDETERMINED;
+        }
+
+        $this->conclude($deployment, $verdict, $io);
+    }
+
+    /**
+     * Le run créé par le dispatch = le plus ANCIEN des runs créés strictement après la borne
+     * persistée ; plusieurs candidats → le premier, et la note le dit. Introuvable (absent ou
+     * GitHub en erreur) RUN_LOOKUP_MINUTES après le dispatch → FAILED.
+     */
+    private function lookForRun(ScheduledDeployment $deployment, SymfonyStyle $io): void
+    {
+        $now = $this->clock->now();
+        $dispatchedAt = $deployment->getDispatchedAt() ?? $deployment->getScheduledAt();
+        $after = $deployment->getRunLookupAfter() ?? $dispatchedAt->modify('-60 seconds');
+
+        try {
+            $candidates = $this->client->dispatchRunsAfter($after, null);
+        } catch (GitHubDeployException) {
+            $candidates = [];
+        }
+
+        if ([] === $candidates) {
+            if ($now > $dispatchedAt->modify(\sprintf('+%d minutes', self::RUN_LOOKUP_MINUTES))) {
+                $this->fail($deployment, self::TEXT_RUN_NOT_FOUND, $io);
+
+                return;
+            }
+            $io->writeln('Deployment run not listed yet; will look again on the next tick.');
 
             return;
         }
 
-        $deployment->markFailed(\sprintf('Run GitHub conclu : %s.', $conclusion));
+        $deployment->attachRun($candidates[0]);
+        if (\count($candidates) > 1) {
+            $deployment->appendNote(self::NOTE_SEVERAL_RUNS);
+        }
         $this->flush();
-        // ⚠ Décision fondateur v1 : pas de rollback automatique. Le workflow a posé la maintenance
-        // avant de déployer ; sur échec, elle RESTE posée — un humain décide (rollback manuel).
-        $this->notify(
-            '🔴 Mise en production en échec',
-            'La mise en production programmée a échoué. La maintenance reste posée : l’application est hors service tant qu’un rollback manuel n’a pas été fait.',
-            $io,
-            $deployment->getDispatchNote(),
-        );
+        $io->writeln(\sprintf('Deployment run %d attached.', $candidates[0]));
+    }
+
+    /**
+     * Statut final et e-mail selon ce que le run a fait à la prod. Pas de rollback automatique
+     * (décision fondateur v1) : quand la bascule a échoué sous maintenance, un humain décide.
+     */
+    private function conclude(ScheduledDeployment $deployment, DeployRunVerdict $verdict, SymfonyStyle $io): void
+    {
+        $failure = match ($verdict) {
+            DeployRunVerdict::BUILD_ONLY => self::TEXT_BUILD_ONLY,
+            DeployRunVerdict::FAILED_APP_IN_SERVICE => self::TEXT_APP_IN_SERVICE,
+            DeployRunVerdict::FAILED_UNDER_MAINTENANCE => self::TEXT_UNDER_MAINTENANCE,
+            DeployRunVerdict::UNDETERMINED => self::TEXT_UNDETERMINED,
+            default => null,
+        };
+        if (null !== $failure) {
+            $this->fail($deployment, $failure, $io);
+
+            return;
+        }
+
+        [$subject, $body, $reserve] = match ($verdict) {
+            DeployRunVerdict::PROD_UPDATED_RELEASE_NOT_MOVED => ['🟢 Mise en production réussie — une étape annexe a échoué', self::TEXT_SUCCESS, self::NOTE_RELEASE_NOT_MOVED],
+            DeployRunVerdict::PROD_UPDATED_MAINTENANCE_LEFT => ['🟢 Mise en production réussie — la page de maintenance est restée affichée', self::TEXT_MAINTENANCE_LEFT, self::NOTE_MAINTENANCE_LEFT],
+            DeployRunVerdict::PROD_UPDATED_UNVERIFIED => ['🟢 Mise en production réussie — détail non vérifié', self::TEXT_UNVERIFIED, null],
+            default => ['🟢 Mise en production réussie', self::TEXT_SUCCESS, null],
+        };
+        if (null !== $reserve) {
+            $deployment->appendNote($reserve);
+        }
+        $deployment->markSucceeded();
+        $this->flush();
+        $this->notify($subject, $body, $io, $deployment->getDispatchNote());
     }
 
     /**
@@ -240,7 +370,7 @@ final class DeploymentTickCommand extends Command
             return;
         }
 
-        // La note de DÉPART (retard/plafond) est reportée dans l'e-mail (succès comme échec).
+        // La note du tick (départ retardé/forcé, réserves de fin) est reportée dans l'e-mail.
         $text = $body;
         if (null !== $note && '' !== $note) {
             $text .= "\n\n" . $note;

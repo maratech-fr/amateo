@@ -9,6 +9,7 @@ use App\Command\HealthAlertCommand;
 use App\Enum\MatchPlacementRunStatus;
 use App\Enum\ScheduleStatus;
 use App\Mail\EmailTemplateRenderer;
+use App\Service\DeploymentGate;
 use App\Service\GitHubDeployClient;
 use App\Service\MailFrom;
 use App\Service\ProductIdentity;
@@ -41,8 +42,13 @@ use Symfony\Component\Uid\Uuid;
  *  - GitHub INJOIGNABLE à H (tags en 4xx, ou panne de transport) → traité comme un échec de
  *    dispatch : RÉESSAYÉ (jamais confondu avec un tag disparu), puis FAILED « GitHub est resté
  *    injoignable » après la deadline (= scheduledAt + WAIT_CAP + DISPATCH_RETRY), zéro dispatch ;
- *  - run GitHub `success` → SUCCEEDED + e-mail ; run `failure` → FAILED + e-mail disant la
- *    MAINTENANCE LAISSÉE (décision fondateur : pas de rollback auto v1) ;
+ *  - le run suivi est SON run : retrouvé par date de création GitHub après la borne persistée
+ *    `run_lookup_after` (= création du run précédent), jamais le run d'avant ; introuvable après
+ *    10 min → FAILED ; une lecture GitHub en erreur pendant le suivi est réessayée en silence,
+ *    bornée (10 min pour la recherche, expected_return_at + 30 min pour le suivi) ;
+ *  - le VERDICT du run se lit dans ses jobs et steps (`DeployRunOutcome`) : l'e-mail dit
+ *    « hors service » SEULEMENT quand la maintenance a été posée et la bascule a échoué ; prod à jour
+ *    avec `release` non recalée ou page de maintenance restée = SUCCEEDED avec réserve ;
  *  - un dispatch qui échoue est RÉESSAYÉ jusqu'à scheduledAt + WAIT_CAP + DISPATCH_RETRY, puis FAILED ;
  *  - la NOTE de départ (attente/plafond) est reportée dans les e-mails de succès/échec.
  *
@@ -66,7 +72,27 @@ final class DeploymentTickCommandTest extends KernelTestCase
 {
     private const string NOW = '2026-10-19T01:00:00+02:00';
 
+    /** Heure H des cas de recherche du run (rejoue l'incident du 2026-11-04, 03:00 Paris). */
+    private const string H = '2026-11-04T03:00:00+01:00';
+
+    /** Le run `workflow_dispatch` PRÉCÉDENT (créé la veille, conclu en échec) : listé au snapshot. */
+    private const int R0 = 41549603515;
+
+    private const string R0_CREATED = '2026-11-03T02:00:03Z';
+
+    /** Le run créé PAR notre dispatch, 3 s après H (horloge GitHub). */
+    private const int R1 = 41764290102;
+
+    private const string TEXT_APP_IN_SERVICE = 'La mise en production programmée a échoué avant la bascule : la maintenance n’a pas été posée, l’application est restée en service sur la version précédente.';
+
+    private const string TEXT_RUN_NOT_FOUND = 'Le déploiement a été déclenché, mais son exécution GitHub n’a pas été retrouvée après 10 minutes : vérifiez l’onglet Actions de GitHub avant toute reprogrammation. L’état de la maintenance est inconnu.';
+
+    private const string NOTE_RELEASE_NOT_MOVED = 'Étape annexe en échec : la branche release n’a pas été recalée sur la version déployée. Recalez-la à la main (doc de déploiement, § « Branche `release` et correctif rapide (hotfix) »).';
+
     private Connection $db;
+
+    /** @var list<string> */
+    private array $sentSubjects = [];
 
     /** @var list<string> */
     private array $sentTo = [];
@@ -141,11 +167,14 @@ final class DeploymentTickCommandTest extends KernelTestCase
         self::assertSame(0, GitHubDeployHttpClientStub::$dispatchCount);
     }
 
+    /**
+     * Préconditions OK → dispatch unique, statut DISPATCHED horodaté. Quel run est rattaché (et
+     * quand) est la promesse de {@see self::testADispatchWhoseRunIsNotListedYetStaysDispatchedThenAttachesItOnTheNextTick}.
+     */
     public function testPreconditionsMetDispatchesTheWorkflowAndMovesToDispatched(): void
     {
         GitHubDeployHttpClientStub::$tags = [['name' => 'v1.0.0', 'sha' => 'head0000']];
         GitHubDeployHttpClientStub::$ciConclusion = 'success';
-        GitHubDeployHttpClientStub::$runId = 555000111;
         $id = $this->seedDeployment('scheduled', scheduledAt: '2026-10-19T00:59:00+02:00');
 
         $this->tickAt(self::NOW);
@@ -154,7 +183,6 @@ final class DeploymentTickCommandTest extends KernelTestCase
         self::assertSame(1, GitHubDeployHttpClientStub::$dispatchCount, 'le workflow a été dispatché une fois');
         $row = $this->rowOf($id);
         self::assertNotNull($row['dispatched_at'], 'dispatched_at est horodaté');
-        self::assertSame(555000111, (int) $row['github_run_id'], 'le run resolu est mémorisé');
     }
 
     public function testADispatchedRunThatSucceedsIsMarkedSucceededAndMails(): void
@@ -190,17 +218,355 @@ final class DeploymentTickCommandTest extends KernelTestCase
         self::assertMatchesRegularExpression('~^https?://\S+/admin$~', (string) $headers->getHeaderBody(EmailTemplateRenderer::CTA_URL_HEADER), 'la console en URL ABSOLUE');
     }
 
-    public function testADispatchedRunThatFailsIsMarkedFailedAndMailsThatMaintenanceIsLeftOn(): void
+    /**
+     * D2 règle 5 — la bascule a échoué APRÈS la pose de la maintenance (Raise success · SSH deploy
+     * failure · Clear skipped) : FAILED, et l'e-mail dit que la maintenance RESTE posée (pas de
+     * rollback auto). Seul cas où « hors service » est vrai.
+     */
+    public function testAFailedRollUnderMaintenanceSaysMaintenanceStays(): void
     {
         GitHubDeployHttpClientStub::$runConclusion = 'failure';
+        GitHubDeployHttpClientStub::$jobs = $this->jobs(
+            build: 'success',
+            roll: 'failure',
+            steps: ['Raise the maintenance window' => 'success', 'SSH deploy' => 'failure', 'Clear the maintenance window' => 'skipped'],
+            release: 'skipped',
+        );
         $id = $this->seedDeployment('dispatched', scheduledAt: '2026-10-19T00:55:00+02:00', githubRunId: 555000111);
 
         $this->tickAt(self::NOW);
 
-        self::assertSame('failed', $this->statusOf($id), 'run failure → FAILED');
-        self::assertContains($this->adminEmail, $this->sentTo);
-        $body = strtolower(implode("\n", $this->sentBodies));
-        self::assertStringContainsString('maintenance', $body, 'l\'e-mail d\'échec dit que la maintenance reste posée (pas de rollback auto v1)');
+        self::assertSame('failed', $this->statusOf($id), 'bascule ratée → FAILED');
+        self::assertContains('🔴 Mise en production en échec', $this->subjectsWithoutProduct());
+        self::assertStringContainsString(
+            'La mise en production programmée a échoué pendant la bascule : la maintenance reste posée, l’application est hors service tant qu’un rollback manuel n’a pas été fait.',
+            implode("\n", $this->sentBodies),
+        );
+    }
+
+    /**
+     * D2 règle 6 — le build a échoué : le job de bascule est `skipped`, la maintenance n'a jamais été
+     * posée. FAILED, et l'e-mail dit que l'application est RESTÉE en service (jamais « hors service »).
+     */
+    public function testABuildFailureSaysTheAppStayedInService(): void
+    {
+        GitHubDeployHttpClientStub::$runConclusion = 'failure';
+        GitHubDeployHttpClientStub::$jobs = $this->jobs(build: 'failure', roll: 'skipped', steps: [], release: 'skipped');
+        $id = $this->seedDeployment('dispatched', scheduledAt: '2026-10-19T00:55:00+02:00', githubRunId: 555000111);
+
+        $this->tickAt(self::NOW);
+
+        self::assertSame('failed', $this->statusOf($id));
+        self::assertContains('🔴 Mise en production en échec', $this->subjectsWithoutProduct());
+        $bodies = implode("\n", $this->sentBodies);
+        self::assertStringContainsString(self::TEXT_APP_IN_SERVICE, $bodies);
+        self::assertStringNotContainsString('hors service', $bodies, 'un build raté n\'a jamais posé la maintenance');
+    }
+
+    /** D2 règle 7 — run annulé avant tout job (jobs vides) : FAILED « restée en service ». */
+    public function testARunCancelledBeforeAnyJobSaysTheAppStayedInService(): void
+    {
+        GitHubDeployHttpClientStub::$runConclusion = 'cancelled';
+        GitHubDeployHttpClientStub::$jobs = [];
+        $id = $this->seedDeployment('dispatched', scheduledAt: '2026-10-19T00:55:00+02:00', githubRunId: 555000111);
+
+        $this->tickAt(self::NOW);
+
+        self::assertSame('failed', $this->statusOf($id));
+        $bodies = implode("\n", $this->sentBodies);
+        self::assertStringContainsString(self::TEXT_APP_IN_SERVICE, $bodies);
+        self::assertStringNotContainsString('hors service', $bodies);
+    }
+
+    /**
+     * D2 règle 3 + Q1=a — la prod est à jour mais `release` n'a pas été recalée (job release en
+     * échec, cas du run du 2026-11-03) : SUCCEEDED, e-mail 🟢 « une étape annexe a échoué », la
+     * réserve est AJOUTÉE à la note existante avec le séparateur « · » (le <p> console ignore \n),
+     * et rien ne dit « hors service ».
+     */
+    public function testAReleaseJobFailureIsASuccessWithAReserve(): void
+    {
+        GitHubDeployHttpClientStub::$runConclusion = 'failure';
+        GitHubDeployHttpClientStub::$jobs = $this->jobs(
+            build: 'success',
+            roll: 'success',
+            steps: ['Raise the maintenance window' => 'success', 'SSH deploy' => 'success', 'Clear the maintenance window' => 'success'],
+            release: 'failure',
+        );
+        $departure = 'Plafond d’attente atteint : déploiement déclenché malgré une activité encore en cours.';
+        $id = $this->seedDeployment('dispatched', scheduledAt: '2026-10-19T00:55:00+02:00', githubRunId: 555000111, dispatchNote: $departure);
+
+        $this->tickAt(self::NOW);
+
+        self::assertSame('succeeded', $this->statusOf($id), 'la prod est à jour : le déploiement a RÉUSSI');
+        self::assertContains('🟢 Mise en production réussie — une étape annexe a échoué', $this->subjectsWithoutProduct());
+        self::assertSame($departure . ' · ' . self::NOTE_RELEASE_NOT_MOVED, $this->noteOf($id), 'la réserve s\'ajoute à la note de départ, séparée par « · »');
+        $bodies = implode("\n", $this->sentBodies);
+        self::assertStringContainsString('La mise en production programmée a réussi : l’application est de nouveau en service.', $bodies);
+        self::assertStringContainsString(self::NOTE_RELEASE_NOT_MOVED, $bodies, 'la réserve est reportée dans l\'e-mail');
+        self::assertStringNotContainsString('hors service', $bodies);
+    }
+
+    /**
+     * D2 règle 4 — SSH deploy a réussi mais « Clear the maintenance window » a échoué : la nouvelle
+     * version tourne, seule la page de maintenance est restée. SUCCEEDED, e-mail 🟢 dédié qui dit de
+     * retirer maintenance.on et de NE PAS faire de rollback ; jamais « hors service ».
+     */
+    public function testAFailedClearAfterASuccessfulSshDeployIsASuccessThatSaysToRemoveTheMaintenancePage(): void
+    {
+        GitHubDeployHttpClientStub::$runConclusion = 'failure';
+        GitHubDeployHttpClientStub::$jobs = $this->jobs(
+            build: 'success',
+            roll: 'failure',
+            steps: ['Raise the maintenance window' => 'success', 'SSH deploy' => 'success', 'Clear the maintenance window' => 'failure'],
+            release: 'skipped',
+        );
+        $id = $this->seedDeployment('dispatched', scheduledAt: '2026-10-19T00:55:00+02:00', githubRunId: 555000111);
+
+        $this->tickAt(self::NOW);
+
+        self::assertSame('succeeded', $this->statusOf($id), 'la version déployée est saine : SUCCEEDED');
+        self::assertContains('🟢 Mise en production réussie — la page de maintenance est restée affichée', $this->subjectsWithoutProduct());
+        $bodies = implode("\n", $this->sentBodies);
+        self::assertStringContainsString(
+            'La mise en production programmée a réussi : la nouvelle version est en service sur le serveur, mais la page de maintenance n’a pas pu être retirée. Retirez-la à la main (supprimer le fichier maintenance.on, doc de déploiement, § « Maintenance planifiée »). Ne faites pas de rollback : la version déployée est saine.',
+            $bodies,
+        );
+        self::assertStringNotContainsString('hors service', $bodies);
+        self::assertStringContainsString(
+            'La page de maintenance est restée affichée après un déploiement réussi : retirez le fichier maintenance.on.',
+            (string) $this->noteOf($id),
+        );
+    }
+
+    /**
+     * D1 — le run n'est pas encore listé au tick du dispatch : DISPATCHED sans run (jamais le run
+     * d'avant), la borne `run_lookup_after` = `created_at` du dernier run AVANT dispatch (horloge
+     * GitHub) est persistée ; au tick suivant, le run créé après la borne est rattaché. Zéro e-mail.
+     */
+    public function testADispatchWhoseRunIsNotListedYetStaysDispatchedThenAttachesItOnTheNextTick(): void
+    {
+        $id = $this->dispatchAtH();
+
+        $row = $this->rowOf($id);
+        self::assertSame('dispatched', $row['status']);
+        self::assertNull($row['github_run_id'], 'le run d\'avant n\'est JAMAIS rattaché au nouveau dispatch');
+        self::assertArrayHasKey('run_lookup_after', $row, 'colonne run_lookup_after (borne de recherche persistée)');
+        self::assertNotNull($row['run_lookup_after']);
+        self::assertSame(
+            new DateTimeImmutable(self::R0_CREATED)->getTimestamp(),
+            new DateTimeImmutable((string) $row['run_lookup_after'])->getTimestamp(),
+            'la borne est la date de création du run précédent, lue chez GitHub',
+        );
+
+        GitHubDeployHttpClientStub::$deployRuns = [$this->r1(), $this->r0()];
+        $this->tickAt('2026-11-04T03:01:00+01:00');
+
+        self::assertSame('dispatched', $this->statusOf($id), 'run rattaché, encore en cours');
+        self::assertSame(self::R1, (int) $this->rowOf($id)['github_run_id'], 'le run créé après la borne est rattaché');
+        self::assertSame([], $this->sentTo, 'aucun e-mail pendant la recherche du run');
+    }
+
+    /**
+     * D1 — incident du 2026-11-04 : seul le run PRÉCÉDENT (en échec) est listé pendant plusieurs
+     * ticks. Sa conclusion ne décide JAMAIS de l'e-mail : le déploiement reste DISPATCHED, silencieux.
+     */
+    public function testTheConclusionOfAnOlderRunNeverDecidesTheMail(): void
+    {
+        GitHubDeployHttpClientStub::$runConclusion = 'failure'; // toute lecture de conclusion dirait « échec »
+        $id = $this->dispatchAtH();
+
+        $this->tickAt('2026-11-04T03:01:00+01:00');
+        $this->tickAt('2026-11-04T03:02:00+01:00');
+
+        self::assertSame('dispatched', $this->statusOf($id));
+        self::assertNull($this->rowOf($id)['github_run_id']);
+        self::assertSame([], $this->sentTo, 'la conclusion du run d\'avant ne produit aucun e-mail');
+    }
+
+    /** D1-bis — deux runs créés après la borne : le plus ANCIEN est retenu, et la note le dit. */
+    public function testTwoRunsAfterTheDispatchKeepTheEarliestAndSayIt(): void
+    {
+        $id = $this->dispatchAtH();
+
+        GitHubDeployHttpClientStub::$deployRuns = [
+            ['id' => 41764299999, 'created_at' => '2026-11-04T02:00:20Z', 'conclusion' => null],
+            $this->r1(),
+            $this->r0(),
+        ];
+        $this->tickAt('2026-11-04T03:01:00+01:00');
+
+        self::assertSame(self::R1, (int) $this->rowOf($id)['github_run_id'], 'le premier run après la borne est retenu');
+        self::assertStringContainsString(
+            'Plusieurs exécutions GitHub ont démarré après le déclenchement : la première a été retenue. Vérifiez l’onglet Actions.',
+            (string) $this->noteOf($id),
+        );
+    }
+
+    /**
+     * D1 — le snapshot du run précédent vit dans le bloc des préconditions : une erreur GitHub
+     * sur cette lecture est RÉESSAYÉE comme une précondition illisible — reste `scheduled`, zéro
+     * dispatch, zéro e-mail, la commande ne plante pas.
+     */
+    public function testAGitHubErrorOnTheRunSnapshotIsRetriedLikeAnyPreconditionRead(): void
+    {
+        GitHubDeployHttpClientStub::$tags = [['name' => 'v1.0.0', 'sha' => 'head0000']];
+        GitHubDeployHttpClientStub::$deployRunsFailStatus = 502;
+        $id = $this->seedDeployment('scheduled', scheduledAt: self::H);
+
+        $exit = $this->tickAt(self::H);
+
+        self::assertSame(0, $exit, 'le tick ne plante pas');
+        self::assertSame('scheduled', $this->statusOf($id), 'snapshot illisible → réessai au tick suivant');
+        self::assertSame(0, GitHubDeployHttpClientStub::$dispatchCount, 'aucun dispatch sans snapshot du run précédent');
+        self::assertSame([], $this->sentTo);
+    }
+
+    /**
+     * D1-ter + Q4=a — run toujours introuvable 10 min après le dispatch : FAILED, e-mail « n’a pas
+     * été retrouvée après 10 minutes », rien sur « hors service » ; avant la borne le gel reste
+     * posé, après il est LEVÉ.
+     */
+    public function testARunStillUnknownTenMinutesAfterDispatchFails(): void
+    {
+        $id = $this->dispatchAtH();
+
+        $this->tickAt('2026-11-04T03:09:00+01:00');
+        self::assertSame('dispatched', $this->statusOf($id), 'avant 10 min, on cherche encore');
+        self::assertSame([], $this->sentTo);
+        self::assertTrue($this->gateAt('2026-11-04T03:09:00+01:00')->isFrozen(), 'tant qu\'on cherche, les guichets restent gelés');
+
+        $this->tickAt('2026-11-04T03:11:00+01:00');
+        self::assertSame('failed', $this->statusOf($id));
+        $bodies = implode("\n", $this->sentBodies);
+        self::assertStringContainsString(self::TEXT_RUN_NOT_FOUND, $bodies);
+        self::assertStringNotContainsString('hors service', $bodies);
+        self::assertFalse($this->gateAt('2026-11-04T03:11:00+01:00')->isFrozen(), 'Q4=a : le gel est levé à l\'échec « introuvable »');
+    }
+
+    /**
+     * D8 — une ERREUR GitHub pendant la recherche du run est réessayée en silence ; la borne de cette
+     * phase reste RUN_LOOKUP_MINUTES (10) depuis le dispatch : passé ce délai, FAILED « introuvable ».
+     */
+    public function testAGitHubErrorWhileLookingForTheRunIsRetriedThenFailsAtTenMinutes(): void
+    {
+        $id = $this->dispatchAtH();
+        GitHubDeployHttpClientStub::$deployRunsFailStatus = 503;
+
+        $exit = $this->tickAt('2026-11-04T03:05:00+01:00');
+        self::assertSame(0, $exit, 'le tick ne plante pas');
+        self::assertSame('dispatched', $this->statusOf($id), 'erreur de lecture → réessai silencieux');
+        self::assertSame([], $this->sentTo);
+
+        $this->tickAt('2026-11-04T03:11:00+01:00');
+        self::assertSame('failed', $this->statusOf($id));
+        self::assertStringContainsString(self::TEXT_RUN_NOT_FOUND, implode("\n", $this->sentBodies));
+    }
+
+    /**
+     * D8 — run conclu `success` mais jobs illisibles : silence jusqu'à expected_return_at + 30 min,
+     * puis SUCCEEDED « détail non vérifié » — jamais « a échoué ».
+     */
+    public function testUnreadableJobsOnASuccessfulRunEndAsASuccessNotVerifiedAfterTheGrace(): void
+    {
+        GitHubDeployHttpClientStub::$runConclusion = 'success';
+        GitHubDeployHttpClientStub::$jobsFailStatus = 500;
+        // expected_return_at = 01:55 (scheduledAt + 60) → borne 02:25.
+        $id = $this->seedDeployment('dispatched', scheduledAt: '2026-10-19T00:55:00+02:00', githubRunId: 555000111);
+
+        $this->tickAt('2026-10-19T02:00:00+02:00');
+        self::assertSame('dispatched', $this->statusOf($id), 'avant la borne, jobs illisibles → réessai silencieux');
+        self::assertSame([], $this->sentTo);
+
+        $this->tickAt('2026-10-19T02:26:00+02:00');
+        self::assertSame('succeeded', $this->statusOf($id));
+        self::assertContains('🟢 Mise en production réussie — détail non vérifié', $this->subjectsWithoutProduct());
+        $bodies = implode("\n", $this->sentBodies);
+        self::assertStringContainsString(
+            'La mise en production programmée a réussi d’après GitHub, mais le détail des étapes n’a pas pu être lu : vérifiez dans l’onglet Actions que la branche release a bien été recalée.',
+            $bodies,
+        );
+        self::assertStringNotContainsString('a échoué', $bodies);
+    }
+
+    /** D8 — run conclu en échec mais jobs illisibles : silence jusqu'à la borne, puis FAILED indéterminé. */
+    public function testUnreadableJobsOnAFailedRunEndUndeterminedAfterTheGrace(): void
+    {
+        GitHubDeployHttpClientStub::$runConclusion = 'failure';
+        GitHubDeployHttpClientStub::$jobsFailStatus = 500;
+        $id = $this->seedDeployment('dispatched', scheduledAt: '2026-10-19T00:55:00+02:00', githubRunId: 555000111);
+
+        $this->tickAt('2026-10-19T02:00:00+02:00');
+        self::assertSame('dispatched', $this->statusOf($id));
+        self::assertSame([], $this->sentTo);
+
+        $this->tickAt('2026-10-19T02:26:00+02:00');
+        self::assertSame('failed', $this->statusOf($id));
+        $bodies = implode("\n", $this->sentBodies);
+        self::assertStringContainsString(
+            'La mise en production programmée a échoué. L’état de la maintenance n’a pas pu être déterminé : vérifiez l’onglet Actions de GitHub avant tout geste.',
+            $bodies,
+        );
+        self::assertStringNotContainsString('hors service', $bodies);
+    }
+
+    /**
+     * D8 + Q4=a — run figé `in_progress` (conclusion nulle) : avant expected_return_at + 30 il reste
+     * DISPATCHED et les guichets gelés ; après, FAILED « n’a pas rendu de verdict » et gel LEVÉ.
+     */
+    public function testARunStillInProgressPastTheGraceIsUndeterminedAndSaysSo(): void
+    {
+        GitHubDeployHttpClientStub::$runStatus = 'in_progress';
+        $id = $this->seedDeployment('dispatched', scheduledAt: '2026-10-19T00:55:00+02:00', githubRunId: 555000111);
+
+        $this->tickAt('2026-10-19T02:20:00+02:00');
+        self::assertSame('dispatched', $this->statusOf($id));
+        self::assertSame([], $this->sentTo);
+        self::assertTrue($this->gateAt('2026-10-19T02:20:00+02:00')->isFrozen(), 'avant la borne, le gel reste posé');
+
+        $this->tickAt('2026-10-19T02:26:00+02:00');
+        self::assertSame('failed', $this->statusOf($id));
+        self::assertStringContainsString(
+            'Le déploiement n’a pas rendu de verdict dans le délai prévu : son exécution GitHub est toujours en cours ou bloquée. L’état de la maintenance est inconnu : vérifiez l’onglet Actions de GitHub avant toute reprogrammation.',
+            implode("\n", $this->sentBodies),
+        );
+        self::assertFalse($this->gateAt('2026-10-19T02:26:00+02:00')->isFrozen(), 'Q4=a : gel levé');
+    }
+
+    /**
+     * D8 — GitHub injoignable pendant le suivi d'un run rattaché : le tick ne plante pas, le
+     * déploiement reste DISPATCHED, aucun e-mail (réessai au tick suivant).
+     */
+    public function testAGitHubOutageWhilePollingLeavesTheDeploymentDispatchedAndSilent(): void
+    {
+        GitHubDeployHttpClientStub::$transportFails = true;
+        $id = $this->seedDeployment('dispatched', scheduledAt: '2026-10-19T00:55:00+02:00', githubRunId: 555000111);
+
+        $exit = $this->tickAt(self::NOW);
+
+        self::assertSame(0, $exit, 'le tick ne plante pas (avant : GitHubDeployException non rattrapée)');
+        self::assertSame('dispatched', $this->statusOf($id));
+        self::assertSame([], $this->sentTo);
+    }
+
+    /**
+     * D8 — la conclusion n'a jamais pu être lue (GitHub injoignable) jusqu'à expected_return_at +
+     * 30 min : FAILED indéterminé, l'e-mail renvoie à l'onglet Actions sans rien affirmer de la
+     * maintenance. Décision du plan sans test nommé au tableau v3 : ajoutée.
+     */
+    public function testAConclusionNeverReadPastTheGraceIsUndetermined(): void
+    {
+        GitHubDeployHttpClientStub::$transportFails = true;
+        $id = $this->seedDeployment('dispatched', scheduledAt: '2026-10-19T00:55:00+02:00', githubRunId: 555000111);
+
+        $exit = $this->tickAt('2026-10-19T02:26:00+02:00');
+
+        self::assertSame(0, $exit);
+        self::assertSame('failed', $this->statusOf($id));
+        $bodies = implode("\n", $this->sentBodies);
+        self::assertStringContainsString('L’état de la maintenance', $bodies);
+        self::assertStringContainsString('vérifiez l’onglet Actions de GitHub avant', $bodies);
+        self::assertStringNotContainsString('hors service', $bodies);
     }
 
     /**
@@ -398,6 +764,7 @@ final class DeploymentTickCommandTest extends KernelTestCase
         GitHubDeployHttpClientStub::reset();
         $this->sentTo = [];
         $this->sentBodies = [];
+        $this->sentSubjects = [];
         $this->sentEmails = [];
         $this->seededScheduleIds = [];
         $this->seededRunIds = [];
@@ -428,7 +795,87 @@ final class DeploymentTickCommandTest extends KernelTestCase
         parent::tearDown();
     }
 
-    private function tickAt(string $now): void
+    /**
+     * À H, préconditions vertes, seul le run PRÉCÉDENT R0 est listé : le tick dispatche. Rend l'id
+     * du déploiement, DISPATCHED.
+     */
+    private function dispatchAtH(): string
+    {
+        GitHubDeployHttpClientStub::$tags = [['name' => 'v1.0.0', 'sha' => 'head0000']];
+        GitHubDeployHttpClientStub::$ciConclusion = 'success';
+        GitHubDeployHttpClientStub::$deployRuns = [$this->r0()];
+        $id = $this->seedDeployment('scheduled', scheduledAt: self::H);
+
+        $this->tickAt(self::H);
+
+        self::assertSame(1, GitHubDeployHttpClientStub::$dispatchCount, 'le workflow a été dispatché à H');
+        self::assertSame('dispatched', $this->statusOf($id));
+        self::assertSame([], $this->sentTo, 'un dispatch ne mail pas');
+
+        return $id;
+    }
+
+    /** @return array{id: int, created_at: string, conclusion: ?string} */
+    private function r0(): array
+    {
+        return ['id' => self::R0, 'created_at' => self::R0_CREATED, 'conclusion' => 'failure'];
+    }
+
+    /** @return array{id: int, created_at: string, conclusion: ?string} */
+    private function r1(): array
+    {
+        return ['id' => self::R1, 'created_at' => '2026-11-04T02:00:03Z', 'conclusion' => null];
+    }
+
+    /**
+     * Les jobs d'un run tels que GitHub les rend : build, bascule (nom évalué) avec ses steps,
+     * recalage de `release`.
+     *
+     * @param array<string, string> $steps nom du step => conclusion
+     *
+     * @return list<array{name: string, conclusion: ?string, steps: list<array{name: string, conclusion: ?string}>}>
+     */
+    private function jobs(string $build, string $roll, array $steps, string $release): array
+    {
+        $rollSteps = [];
+        foreach ($steps as $name => $conclusion) {
+            $rollSteps[] = ['name' => $name, 'conclusion' => $conclusion];
+        }
+
+        return [
+            ['name' => 'Build & push prod images', 'conclusion' => $build, 'steps' => []],
+            ['name' => 'Roll the VM to v1.0.0', 'conclusion' => $roll, 'steps' => $rollSteps],
+            ['name' => 'Fast-forward `release` to the deployed commit', 'conclusion' => $release, 'steps' => []],
+        ];
+    }
+
+    /** Le gel des guichets vu à l'instant donné (horloge figée). */
+    private function gateAt(string $now): DeploymentGate
+    {
+        $registry = self::getContainer()->get(ManagerRegistry::class);
+        \assert($registry instanceof ManagerRegistry);
+
+        return new DeploymentGate($registry, new MockClock(new DateTimeImmutable($now)));
+    }
+
+    /**
+     * Les sujets des e-mails captés, préfixe « {Produit} — » retiré.
+     *
+     * @return list<string>
+     */
+    private function subjectsWithoutProduct(): array
+    {
+        $productIdentity = self::getContainer()->get(ProductIdentity::class);
+        \assert($productIdentity instanceof ProductIdentity);
+        $prefix = $productIdentity->name() . ' — ';
+
+        return array_map(
+            static fn (string $subject): string => str_starts_with($subject, $prefix) ? substr($subject, \strlen($prefix)) : $subject,
+            $this->sentSubjects,
+        );
+    }
+
+    private function tickAt(string $now): int
     {
         $registry = self::getContainer()->get(ManagerRegistry::class);
         \assert($registry instanceof ManagerRegistry);
@@ -445,7 +892,7 @@ final class DeploymentTickCommandTest extends KernelTestCase
             'https://app.example.test',
         );
 
-        new CommandTester($command)->execute([]);
+        return new CommandTester($command)->execute([]);
     }
 
     private function seedDeployment(string $status, string $scheduledAt, ?int $githubRunId = null, ?string $dispatchNote = null): string
@@ -561,6 +1008,7 @@ final class DeploymentTickCommandTest extends KernelTestCase
                     $this->sentTo[] = $address->getAddress();
                 }
                 $this->sentBodies[] = (string) $message->getTextBody();
+                $this->sentSubjects[] = (string) $message->getSubject();
                 $this->sentEmails[] = $message;
             }
         });

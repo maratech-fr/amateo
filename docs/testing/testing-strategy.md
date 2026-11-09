@@ -35,7 +35,7 @@ tournent que `preflight`, `lint`, `secrets-scan`, `semgrep`, `dependency-audit`,
 `engine-perf` et `build-docker` (dont les `needs` sont relâchés : il tourne même quand les jobs
 PR-only sont sautés, sauf échec ou annulation d'un `needs`) ; le reste est PR-only. Avec les
 required checks (15, **Preflight** compris) et `strict` (branche à jour obligatoire), l'arbre mergé
-est celui que la PR a prouvé. **Ce que `build-docker` prouve** : que les cinq images de PROD se
+est celui que la PR a prouvé. **Ce que `build-docker` prouve** : que les six images de PROD se
 construisent (`--pull`, tags `scan-<run>-<attempt>/…`) et passent Trivy CRITICAL ; sur le runner il
 profite du cache de couches du démon, donc **il ne prouve plus un build de zéro** — `deploy.yml`, chez
 GitHub, le prouve à chaque release.
@@ -199,7 +199,7 @@ All PHP test jobs first **create + migrate the test DB** (`doctrine:database:cre
 | `engine-tests` | `pytest --cov=app --cov-fail-under=$FLOOR` (`$FLOOR` lu de `coverage-floor.json`, clé `engine` — cliquet fondu ici 2026-10-14) + `ruff check .` (+ `ruff format --check`) + `mypy` + `bandit -r app/` (ENG-46, lot correctif de l'audit 0918 — bandit était déjà en local via `make test`, il ne gatait pas la CI) + `deptry .` (in the engine container). **GATE `build-docker`** → le cliquet engine gate donc aussi `build-docker` (décision fondateur 2026-10-14) |
 | `frontend` | `npm run lint` (dont `eslint-plugin-jsx-a11y`, §4bis) + `npm run lint:deps` (knip) + `tsc -b` + `vite build` + `npm run test:coverage` (`vitest run --coverage`, `thresholds.lines` lu de `coverage-floor.json`, clé `frontend` — cliquet fondu ici 2026-10-14) (parallel, no needs). Required check de `main` → **bloque le merge** ; does **NOT** gate `build-docker` (P4-166) |
 | `dependency-audit` | `composer audit` / `npm audit --audit-level=high` / `pip-audit` (A18, blocking, parallel, no needs). Les trois passent par `.github/scripts/audit-retry.sh` (P4-171) : 3 tentatives (10 s, 30 s) **seulement** quand la sortie porte une signature réseau (timeout, 5xx, DNS, `curl error`) — un `exit 1` d'audit sans cette signature est rendu tel quel, le gate ne s'aveugle pas |
-| `build-docker` | build des cinq images de PROD (`--pull`, tags `scan-<run>-<tentative>/…`) + scan Trivy CRITICAL (needs **blocking + engine** tests, plus `preflight`) ; sur `push main` ses `needs` sont relâchés (voir plus haut) |
+| `build-docker` | build des six images de PROD (dont `pdf-worker`) (`--pull`, tags `scan-<run>-<tentative>/…`) + scan Trivy CRITICAL (needs **blocking + engine** tests, plus `preflight`) ; sur `push main` ses `needs` sont relâchés (voir plus haut) |
 
 All PHP jobs invoke `vendor/bin/phpunit` (PHPUnit 11, the direct `phpunit/phpunit` dep) — same binary as `Makefile` and `composer test`.
 

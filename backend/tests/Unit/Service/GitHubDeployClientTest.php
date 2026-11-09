@@ -31,7 +31,9 @@ use Symfony\Component\HttpClient\Response\MockResponse;
  * constructeur `(HttpClientInterface $httpClient, string $deployToken, string $deployRepository)`,
  * méthodes `isConfigured()`, `tags()`, `isCiGreen(string $version)`,
  * `dispatchDeploy(string $version, DateTimeImmutable $maintenanceUntil)`,
- * `latestDeployRunId(string $version)`, `runConclusion(int $runId)`, exception
+ * `latestDeployRun()` (snapshot avant dispatch : `array{id: int, createdAt: DateTimeImmutable}|null`),
+ * `findDispatchRunAfter(DateTimeImmutable $createdAfter, ?int $excludeRunId)`, `runJobs(int $runId)`,
+ * `runConclusion(int $runId)`, exception
  * `App\Service\GitHubDeployException` sur réponse non-2xx (message EXPURGÉ du jeton).
  */
 #[Group('unit')]
@@ -153,11 +155,104 @@ final class GitHubDeployClientTest extends TestCase
     }
 
     /**
+     * D1 — retrouver SON run : la recherche demande à GitHub les runs `workflow_dispatch` de `main`
+     * créés à partir de la borne (formatée par le CLIENT en UTC `…Z`), écarte le run précédent
+     * (rendu par GitHub puisque créé À la borne) et retient le plus ANCIEN des autres. Aucune
+     * trace de la version dans l'URL.
+     */
+    public function testFindDispatchRunAfterFiltersByCreationAndExcludesThePreviousRun(): void
+    {
+        $client = $this->client($recorded, ['deployRuns' => $this->runsResponse([
+            ['id' => 41764299999, 'created_at' => '2026-11-04T02:00:20Z'],
+            ['id' => 41764290102, 'created_at' => '2026-11-04T02:00:03Z'],
+            ['id' => 41549603515, 'created_at' => '2026-11-03T02:00:03Z'],
+        ])]);
+
+        // Borne passée en heure de Paris : le client la convertit en UTC.
+        $found = $client->findDispatchRunAfter(new DateTimeImmutable('2026-11-03T03:00:03+01:00'), 41549603515);
+
+        self::assertSame(41764290102, $found, 'le run précédent est exclu, le plus ancien des suivants retenu');
+        $call = $this->firstCallMatching($recorded, '/workflows/deploy.yml/runs');
+        self::assertSame('GET', $call['method']);
+        self::assertSame(GitHubDeployClient::API_HOST . '/repos/' . self::REPOSITORY . '/actions/workflows/deploy.yml/runs', $this->stripQuery($call['url']));
+        parse_str((string) parse_url($call['url'], \PHP_URL_QUERY), $query);
+        self::assertSame('workflow_dispatch', $query['event'] ?? null);
+        self::assertSame('main', $query['branch'] ?? null);
+        self::assertSame('>=2026-11-03T02:00:03Z', $query['created'] ?? null, 'borne en UTC, format `…Z`, opérateur >=');
+        self::assertStringNotContainsString('v1.', $call['url'], 'aucune trace de version dans l\'URL');
+    }
+
+    /** D1 — aucun run après la borne (hors le run exclu) : null, jamais un repli sur le run d'avant. */
+    public function testFindDispatchRunAfterReturnsNullWhenOnlyThePreviousRunIsListed(): void
+    {
+        $client = $this->client($unused, ['deployRuns' => $this->runsResponse([
+            ['id' => 41549603515, 'created_at' => '2026-11-03T02:00:03Z'],
+        ])]);
+
+        self::assertNull($client->findDispatchRunAfter(new DateTimeImmutable('2026-11-03T02:00:03Z'), 41549603515));
+    }
+
+    /** D1 — snapshot AVANT dispatch : le dernier run `workflow_dispatch` de deploy.yml, id + date de création GitHub. */
+    public function testLatestDeployRunIsTheNewestDispatchRunWithItsCreationTime(): void
+    {
+        $client = $this->client($recorded, ['deployRuns' => $this->runsResponse([
+            ['id' => 41549603515, 'created_at' => '2026-11-03T02:00:03Z'],
+        ])]);
+
+        $latest = $client->latestDeployRun();
+
+        self::assertIsArray($latest);
+        self::assertSame(41549603515, $latest['id']);
+        self::assertSame(new DateTimeImmutable('2026-11-03T02:00:03Z')->getTimestamp(), $latest['createdAt']->getTimestamp());
+        parse_str((string) parse_url($this->firstCallMatching($recorded, '/workflows/deploy.yml/runs')['url'], \PHP_URL_QUERY), $query);
+        self::assertSame('workflow_dispatch', $query['event'] ?? null);
+    }
+
+    /** D2 — les jobs d'un run, avec la conclusion de chaque step, lus sur `GET /actions/runs/{id}/jobs`. */
+    public function testRunJobsReadsJobAndStepConclusionsOfTheRun(): void
+    {
+        $client = $this->client($recorded, ['jobs' => new MockResponse((string) json_encode(['total_count' => 1, 'jobs' => [[
+            'id' => 1,
+            'name' => 'Roll the VM to v1.3.3',
+            'status' => 'completed',
+            'conclusion' => 'failure',
+            'steps' => [
+                ['name' => 'Raise the maintenance window', 'status' => 'completed', 'conclusion' => 'success', 'number' => 5],
+                ['name' => 'SSH deploy', 'status' => 'completed', 'conclusion' => 'failure', 'number' => 6],
+            ],
+        ]]]))]);
+
+        $jobs = $client->runJobs(41549603515);
+
+        self::assertSame([[
+            'name' => 'Roll the VM to v1.3.3',
+            'conclusion' => 'failure',
+            'steps' => [
+                ['name' => 'Raise the maintenance window', 'conclusion' => 'success'],
+                ['name' => 'SSH deploy', 'conclusion' => 'failure'],
+            ],
+        ]], $jobs);
+        self::assertSame(
+            GitHubDeployClient::API_HOST . '/repos/' . self::REPOSITORY . '/actions/runs/41549603515/jobs',
+            $this->stripQuery($this->firstCallMatching($recorded, '/jobs')['url']),
+        );
+    }
+
+    /** D8 — jobs illisibles (réponse d'erreur) : exception expurgée, que le tick rattrape. */
+    public function testUnreadableRunJobsRaiseTheRedactedException(): void
+    {
+        $client = $this->client($unused, ['jobs' => new MockResponse('', ['http_code' => 502])]);
+
+        $this->expectException(GitHubDeployException::class);
+        $client->runJobs(41549603515);
+    }
+
+    /**
      * Construit le client réel sur un MockHttpClient qui ROUTE par URL (robuste à l'ordre et au
      * nombre d'appels) et ENREGISTRE chaque requête dans $recorded.
      *
-     * @param array<int, array{method: string, url: string, body: ?string, authorization: string}>|null                             $recorded
-     * @param array{tags?: MockResponse, ci?: MockResponse, dispatch?: MockResponse, deployRuns?: MockResponse, run?: MockResponse} $responses
+     * @param array<int, array{method: string, url: string, body: ?string, authorization: string}>|null                                                  $recorded
+     * @param array{tags?: MockResponse, ci?: MockResponse, dispatch?: MockResponse, deployRuns?: MockResponse, run?: MockResponse, jobs?: MockResponse} $responses
      */
     private function client(?array &$recorded, array $responses): GitHubDeployClient
     {
@@ -179,6 +274,9 @@ final class GitHubDeployClientTest extends TestCase
             if (str_contains($url, '/workflows/deploy.yml/runs')) {
                 return $responses['deployRuns'] ?? new MockResponse((string) json_encode(['workflow_runs' => [['id' => 42, 'status' => 'in_progress', 'conclusion' => null]]]));
             }
+            if (1 === preg_match('~/actions/runs/\d+/jobs~', $url)) {
+                return $responses['jobs'] ?? new MockResponse((string) json_encode(['total_count' => 0, 'jobs' => []]));
+            }
             if (str_contains($url, '/actions/runs/')) {
                 return $responses['run'] ?? new MockResponse((string) json_encode(['id' => 42, 'status' => 'in_progress', 'conclusion' => null]));
             }
@@ -190,6 +288,19 @@ final class GitHubDeployClientTest extends TestCase
         });
 
         return new GitHubDeployClient($http, self::TOKEN, self::REPOSITORY);
+    }
+
+    /**
+     * Une page `workflow_runs` telle que GitHub la rend (plus récent d'abord).
+     *
+     * @param list<array{id: int, created_at: string}> $runs
+     */
+    private function runsResponse(array $runs): MockResponse
+    {
+        return new MockResponse((string) json_encode(['total_count' => \count($runs), 'workflow_runs' => array_map(
+            static fn (array $run): array => $run + ['event' => 'workflow_dispatch', 'head_branch' => 'main', 'status' => 'completed', 'conclusion' => 'success'],
+            $runs,
+        )]));
     }
 
     /** @param list<array{name: string, sha: string}> $tags */
