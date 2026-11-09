@@ -20,6 +20,7 @@ use App\Entity\ConstraintPeriodOverride;
 use App\Entity\FbiCorrection;
 use App\Entity\FbiIngestion;
 use App\Entity\Fixture;
+use App\Entity\HolidayReminderLog;
 use App\Entity\ImplicitRuleSetting;
 use App\Entity\MatchConstraint;
 use App\Entity\MatchModuleVisit;
@@ -241,6 +242,15 @@ final class SeasonDataPurger
         // (c'est son périmètre), et RLS borne la requête au club courant.
         $deleted += (int) $this->entityManager->createQueryBuilder()
             ->delete(TeamTagAssignment::class, 'e')
+            ->where('e.seasonId = :seasonId')
+            ->setParameter('seasonId', $seasonId)
+            ->getQuery()
+            ->execute();
+
+        // Journal des rappels de vacances scolaires : sans club_id ni RLS, clé par saison (uuid
+        // propre au club) — vidé par saison, le palier repart après un reset.
+        $deleted += (int) $this->entityManager->createQueryBuilder()
+            ->delete(HolidayReminderLog::class, 'e')
             ->where('e.seasonId = :seasonId')
             ->setParameter('seasonId', $seasonId)
             ->getQuery()
