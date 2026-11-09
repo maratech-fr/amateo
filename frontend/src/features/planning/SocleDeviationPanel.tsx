@@ -1,4 +1,5 @@
 import { HTTPError } from "ky";
+import { ChevronDown } from "lucide-react";
 import { useEffect, useId, useState } from "react";
 
 import { StatusPill } from "@/shared/components/ui/badge";
@@ -34,12 +35,23 @@ interface SocleDeviationPanelProps {
 
 const DAY_MS = 86_400_000;
 
+/** Ligne qui déplie (rang, équipe à détail) : bouton nu pleine largeur, mêmes états que les lignes cliquables du panneau. */
+const TOGGLE_CLASS = "flex w-full items-center justify-between gap-2 rounded-md px-1 py-0.5 text-left transition hover:bg-muted focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent";
+
+function ToggleChevron({ open }: { open: boolean }) {
+  return <ChevronDown aria-hidden className={cn("size-4 shrink-0 text-muted-foreground transition-transform motion-reduce:transition-none", open ? "rotate-180" : "")} />;
+}
+
 /**
  * Fermetures de gymnase (PR A) — le BILAN PAR RANG d'une version de FERMETURE vs le planning de
  * saison (ADR-0004) : rang par rang (ordre SERVI), puis sous chaque rang les équipes TOUCHÉES ou EN
  * PAUSE (jamais les inchangées, comptées au pied), puis sous chaque équipe ses lignes de détail —
  * déplacées (cliquables vers leur carte) et non replacées (pastille de RAISON servie ; raison nulle =
  * aucune étiquette, jamais inventée). Les nouvelles sont comptées, jamais listées.
+ *
+ * Replié par défaut (Q7) : chaque ligne de rang déplie ses équipes — ouverte d'emblée seulement si le
+ * rang perd des séances (`lost > 0`) — et chaque équipe à détail déplie ses lignes (fermée au départ).
+ * État local, remis à zéro par la page (`key` = version affichée).
  *
  * Tout vient du backend (`SocleDeviation` : comptes `teams[]`/`ranks[]`, lignes `moved`/`unplaced`,
  * partenaires `sharedWith` en ids) : le panneau PRÉSENTE, il ne recompte ni ne retrie rien — seul le
@@ -96,11 +108,17 @@ function RankItem({
   onSelectSlot?: (slotId: string) => void;
 }) {
   const shown = deviation.teams.filter((t) => t.tierLabel === rank.tierLabel && t.tierWeight === rank.tierWeight && (t.changed || t.paused));
+  // Q7 — replié par défaut, ouvert d'emblée seulement quand le rang PERD des séances.
+  const [open, setOpen] = useState(rank.lost > 0);
+  const bodyId = useId();
   return (
     <li>
-      <p className="font-semibold text-foreground">{PLANNING_TEXTS.rankReportLine(rank)}</p>
-      {shown.length > 0 ? (
-        <ul className="mt-1 flex flex-col gap-1 ps-3">
+      <button type="button" aria-expanded={open} aria-controls={open && shown.length > 0 ? bodyId : undefined} onClick={() => setOpen((o) => !o)} className={TOGGLE_CLASS}>
+        <span className="font-semibold text-foreground">{PLANNING_TEXTS.rankReportLine(rank)}</span>
+        <ToggleChevron open={open} />
+      </button>
+      {open && shown.length > 0 ? (
+        <ul id={bodyId} className="mt-1 flex flex-col gap-1 ps-3">
           {shown.map((team) => (
             <TeamItem
               key={team.teamId}
@@ -138,14 +156,27 @@ function TeamItem({
 }) {
   const info = teamOf(team.teamId);
   const hasDetail = !team.paused && (moved.length > 0 || unplaced.length > 0);
+  // Q7 — une équipe à détail se replie (fermée au départ) ; sans détail, simple ligne.
+  const [open, setOpen] = useState(false);
+  const bodyId = useId();
+  const line = (
+    <>
+      {info.isCtc ? <CtcMark partner={info.ctcPartner} /> : null}
+      <span>{PLANNING_TEXTS.teamReportLine(info.name, team, partnerNames(team.sharedWith))}</span>
+    </>
+  );
   return (
     <li>
-      <p className="flex items-center font-normal text-foreground">
-        {info.isCtc ? <CtcMark partner={info.ctcPartner} /> : null}
-        <span>{PLANNING_TEXTS.teamReportLine(info.name, team, partnerNames(team.sharedWith))}</span>
-      </p>
       {hasDetail ? (
-        <ul className="mt-0.5 flex flex-col gap-0.5 ps-3 text-muted-foreground">
+        <button type="button" aria-expanded={open} aria-controls={open ? bodyId : undefined} onClick={() => setOpen((o) => !o)} className={cn(TOGGLE_CLASS, "font-normal text-foreground")}>
+          <span className="flex items-center">{line}</span>
+          <ToggleChevron open={open} />
+        </button>
+      ) : (
+        <p className="flex items-center font-normal text-foreground">{line}</p>
+      )}
+      {hasDetail && open ? (
+        <ul id={bodyId} className="mt-0.5 flex flex-col gap-0.5 ps-3 text-muted-foreground">
           {moved.map((entry, i) => {
             const shared = entry.to.sharedWith.length > 0 ? ` ${PLANNING_TEXTS.sharedWithDetail(partnerNames(entry.to.sharedWith))}` : "";
             const content = (

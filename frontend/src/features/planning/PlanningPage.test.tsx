@@ -2310,10 +2310,29 @@ describe("PlanningPage — le bilan par rang vs le socle (P2-44 PR-5, fermetures
     // Le bilan (rang, puis équipe), SERVI par la route.
     const bilan = await screen.findByRole("region", { name: title() });
     expect(within(bilan).getByText(PLANNING_TEXTS.rankReportLine(rankS))).toBeInTheDocument();
-    expect(within(bilan).getByText(PLANNING_TEXTS.teamReportLine("U11", u11, []))).toBeInTheDocument();
+    // Rang sans perte : replié par défaut (Q7) — on le déplie pour lire la ligne d'équipe.
+    await userEvent.click(within(bilan).getByRole("button", { name: PLANNING_TEXTS.rankReportLine(rankS) }));
+    expect(within(bilan).getByText(PLANNING_TEXTS.teamReportLine("U11", u11, []))).toBeVisible();
     // L'ANCIEN panneau « à replacer » reste rendu, distinct (les deux affichés).
     expect(screen.getByRole("region", { name: /non reprises/i })).toBeInTheDocument();
     expect(vi.mocked(getSocleDeviation)).toHaveBeenCalledWith("ov-1");
+  });
+
+  it("Q7 — l'état déplié est remis à zéro quand on change de version affichée", async () => {
+    const user = userEvent.setup();
+    const closureV2: Schedule = { ...closureV, id: "ov-2", createdAt: "2026-09-11T00:00:00Z", updatedAt: "2026-09-11T00:00:00Z" };
+    vi.mocked(listSchedules).mockResolvedValue([seasonV, closureV, closureV2]);
+    renderWithProviders(<PlanningPage embedded scopePlanId="ete-plan" isClosurePeriod />);
+
+    const rankToggle = await screen.findByRole("button", { name: PLANNING_TEXTS.rankReportLine(rankS) });
+    expect(rankToggle).toHaveAttribute("aria-expanded", "false");
+    await user.click(rankToggle);
+    expect(screen.getByRole("button", { name: PLANNING_TEXTS.rankReportLine(rankS) })).toHaveAttribute("aria-expanded", "true");
+
+    await user.selectOptions(screen.getByRole("combobox", { name: /version du planning/i }), "ov-1");
+    await waitFor(() => expect(usePlanningStore.getState().selectedScheduleId).toBe("ov-1"));
+    await waitFor(() => expect(vi.mocked(getSocleDeviation)).toHaveBeenCalledWith("ov-1"));
+    expect(await screen.findByRole("button", { name: PLANNING_TEXTS.rankReportLine(rankS) })).toHaveAttribute("aria-expanded", "false");
   });
 
   it("sur une VACANCE (isClosurePeriod faux) : la route socle-deviation n'est JAMAIS appelée", async () => {

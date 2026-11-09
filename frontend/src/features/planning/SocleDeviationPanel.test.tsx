@@ -1,4 +1,5 @@
 import { render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { axe } from "vitest-axe";
 
@@ -113,6 +114,26 @@ const teamItem = (line: string): HTMLElement => {
   return item as HTMLElement;
 };
 
+const escapeRe = (text: string): RegExp => new RegExp(text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+
+/**
+ * Q7 = b (fondateur) — le bilan est REPLIÉ par défaut : une ligne de RANG est un bouton
+ * `aria-expanded` (nom = sa ligne de synthèse, toujours visible), une ligne d'ÉQUIPE qui a du
+ * détail aussi (nom = sa ligne, repère CTC éventuel compris : on cherche par inclusion).
+ */
+const rankButton = (r: SocleDeviationRank): HTMLElement => screen.getByRole("button", { name: escapeRe(PLANNING_TEXTS.rankReportLine(r)) });
+const teamButton = (line: string): HTMLElement => screen.getByRole("button", { name: escapeRe(line) });
+
+/** Absente du DOM ou masquée : une ligne repliée ne se voit pas (les deux mises en œuvre passent). */
+const expectNotShown = (text: string | RegExp): void => {
+  for (const el of screen.queryAllByText(text)) {
+    expect(el).not.toBeVisible();
+  }
+};
+
+const RANK_S = DEVIATION.ranks[0]; // lost 0 → replié par défaut
+const RANK_C = DEVIATION.ranks[1]; // lost 2 → ouvert par défaut
+
 describe("SocleDeviationPanel — le bilan par rang", () => {
   it("les libellés sont ceux validés, mot pour mot (ligne d'équipe, de rang, pied, détail, titres)", () => {
     // Ligne d'équipe (v3 §B, v4 m1/m2, v5 §3) — singulier, pluriel, « aucune », pause, absente du socle.
@@ -159,14 +180,15 @@ describe("SocleDeviationPanel — le bilan par rang", () => {
     expect(screen.getByRole("heading", { name: weeks })).toBeInTheDocument();
   });
 
-  it("une ligne par RANG, dans l'ordre servi, puis sous chaque rang ses équipes touchées ou en pause — jamais les inchangées", () => {
+  it("une ligne par RANG, dans l'ordre servi, puis sous chaque rang ses équipes touchées ou en pause — jamais les inchangées", async () => {
     renderPanel();
     const rankS = screen.getByText(PLANNING_TEXTS.rankReportLine(DEVIATION.ranks[0]));
     const rankC = screen.getByText(PLANNING_TEXTS.rankReportLine(DEVIATION.ranks[1]));
     // Ordre servi (le serveur trie : poids décroissant) — le front ne retrie pas.
     expect(rankS.compareDocumentPosition(rankC) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 
-    // Les équipes en pause du rang S sont sous le rang S (avant la ligne du rang C).
+    // Les équipes en pause du rang S sont sous le rang S (avant la ligne du rang C) — rang déplié.
+    await userEvent.click(rankButton(RANK_S));
     const sm1 = screen.getByText(lineOf("tS1"));
     expect(rankS.compareDocumentPosition(sm1) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(sm1.compareDocumentPosition(rankC) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
@@ -192,24 +214,30 @@ describe("SocleDeviationPanel — le bilan par rang", () => {
     expect(within(item).queryByRole("img", { name: "Entente (CTC) avec Autre club" })).not.toBeInTheDocument();
   });
 
-  it("D4/D6-d — la déplacée est détaillée SOUS son équipe, cliquable vers sa carte, et dit « commune avec » quand elle l'est encore", () => {
+  it("D4/D6-d — la déplacée est détaillée SOUS son équipe (une fois dépliée), cliquable vers sa carte, et dit « commune avec » quand elle l'est encore", async () => {
     const onSelectSlot = vi.fn();
     renderPanel(DEVIATION, onSelectSlot);
-    const item = teamItem(lineOf("tA", ["U11B", "U11C"]));
-
     const from = placementLabel(1, "18:00", "Matéo");
     const to = placementLabel(4, "19:00", "Brel");
+    // Repliée par défaut : la ligne de détail ne se voit pas.
+    expectNotShown(new RegExp(`${from} → `));
+    await userEvent.click(teamButton(lineOf("tA", ["U11B", "U11C"])));
+    const item = teamItem(lineOf("tA", ["U11B", "U11C"]));
+
     const movedButton = within(item).getByRole("button", { name: new RegExp(`${from} → ${to}`) });
     expect(movedButton).toHaveTextContent(PLANNING_TEXTS.sharedWithDetail(["U11B"]));
-    movedButton.click();
+    await userEvent.click(movedButton);
+    expect(onSelectSlot).toHaveBeenCalledTimes(1);
     expect(onSelectSlot).toHaveBeenCalledWith("slot-A");
 
     // Aucune mention « plus commune » n'existe (v6 majeur 2).
     expect(screen.queryByText(/plus commune/i)).not.toBeInTheDocument();
   });
 
-  it("les non replacées sont détaillées sous leur équipe : RAISON en clair (« Séances réduites » comprise), raison nulle sans étiquette, « commune avec » si servie", () => {
+  it("les non replacées sont détaillées sous leur équipe : RAISON en clair (« Séances réduites » comprise), raison nulle sans étiquette, « commune avec » si servie", async () => {
     renderPanel();
+    await userEvent.click(teamButton(lineOf("tR")));
+    await userEvent.click(teamButton(lineOf("tL")));
     const reducedItem = teamItem(lineOf("tR"));
     expect(within(reducedItem).getByText(toReplaceReasonLabel("team_reduced"))).toBeInTheDocument();
     expect(within(reducedItem).getByText(new RegExp(placementLabel(5, "20:00", "Matéo")))).toBeInTheDocument();
@@ -226,13 +254,65 @@ describe("SocleDeviationPanel — le bilan par rang", () => {
       expect(nullLost).not.toHaveTextContent(toReplaceReasonLabel(reason));
     }
     expect(nullLost?.textContent ?? "").not.toMatch(/commune/);
-    // Les lignes « à replacer » restent du texte.
-    expect(within(lostItem).queryByRole("button")).not.toBeInTheDocument();
+    // Les lignes « à replacer » restent du texte (seule la ligne d'équipe, qui déplie, est un bouton).
+    expect(within(sharedLost as HTMLElement).queryByRole("button")).not.toBeInTheDocument();
+    expect(within(nullLost as HTMLElement).queryByRole("button")).not.toBeInTheDocument();
   });
 
-  it("sans onSelectSlot, aucune ligne n'est un bouton", () => {
+  it("sans onSelectSlot, aucune ligne de DÉTAIL n'est un bouton (seuls les boutons de dépliage restent)", async () => {
     renderPanel();
-    expect(within(screen.getByRole("region", { name: titleOneWeek() })).queryByRole("button")).not.toBeInTheDocument();
+    await userEvent.click(rankButton(RANK_S));
+    await userEvent.click(teamButton(lineOf("tA", ["U11B", "U11C"])));
+    const buttons = within(screen.getByRole("region", { name: titleOneWeek() })).getAllByRole("button");
+    for (const button of buttons) {
+      expect(button, `« ${button.textContent} » n'est qu'un bouton de dépliage`).toHaveAttribute("aria-expanded");
+    }
+  });
+
+  it("Q7 — un rang qui PERD des séances est ouvert, un rang sans perte est replié ; les synthèses et le pied restent visibles", () => {
+    renderPanel();
+    expect(rankButton(RANK_C)).toHaveAttribute("aria-expanded", "true");
+    expect(rankButton(RANK_S)).toHaveAttribute("aria-expanded", "false");
+    // Rang C ouvert : ses lignes d'équipe se voient ; rang S replié : les siennes non.
+    expect(screen.getByText(lineOf("tR"))).toBeVisible();
+    expectNotShown(lineOf("tS1"));
+    expectNotShown(lineOf("tS2"));
+    expect(screen.getByText(PLANNING_TEXTS.rankReportLine(RANK_S))).toBeVisible();
+    expect(screen.getByText(PLANNING_TEXTS.rankReportFooter(4, 2, 3))).toBeVisible();
+  });
+
+  it("Q7 — cliquer (ou Entrée / Espace au clavier) sur une ligne de rang la déplie puis la replie", async () => {
+    const user = userEvent.setup();
+    renderPanel();
+    await user.click(rankButton(RANK_S));
+    expect(rankButton(RANK_S)).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByText(lineOf("tS1"))).toBeVisible();
+    await user.click(rankButton(RANK_S));
+    expect(rankButton(RANK_S)).toHaveAttribute("aria-expanded", "false");
+    expectNotShown(lineOf("tS1"));
+
+    rankButton(RANK_S).focus();
+    await user.keyboard("{Enter}");
+    expect(rankButton(RANK_S)).toHaveAttribute("aria-expanded", "true");
+    await user.keyboard(" ");
+    expect(rankButton(RANK_S)).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("Q7 — une équipe à détail est un bouton REPLIÉ par défaut qui déplie ses lignes ; sans détail (pause, seulement des nouvelles), pas de bouton", async () => {
+    const user = userEvent.setup();
+    renderPanel();
+    const reduced = teamButton(lineOf("tR"));
+    expect(reduced).toHaveAttribute("aria-expanded", "false");
+    expectNotShown(toReplaceReasonLabel("team_reduced"));
+    await user.click(reduced);
+    expect(teamButton(lineOf("tR"))).toHaveAttribute("aria-expanded", "true");
+    expect(within(teamItem(lineOf("tR"))).getByText(toReplaceReasonLabel("team_reduced"))).toBeVisible();
+
+    // U15F (en pause) et U9B (rien que des nouvelles) : de simples lignes.
+    for (const id of ["tP", "tN"]) {
+      expect(screen.getByText(lineOf(id)).closest("button"), `${TEAMS[id].name} n'a pas de bouton`).toBeNull();
+    }
+    expect(screen.queryByRole("button", { name: escapeRe(lineOf("tP")) })).not.toBeInTheDocument();
   });
 
   it("la ligne la plus longue reste lisible, rendue en entier (plan v6 f)", () => {

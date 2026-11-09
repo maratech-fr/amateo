@@ -1096,7 +1096,7 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
               s'AJOUTE à « à replacer » (décision fondateur : les deux affichés). Un échec de lecture
               se dit ici (jamais en toast) ; le filtre de la grille vit sous le bilan. */}
           {socleDeviationArmed && readFailed(socleDeviationQuery) ? <SocleDeviationLoadError error={socleDeviationQuery.error} onRetry={() => void socleDeviationQuery.refetch()} /> : null}
-          {null !== socleDeviation ? <SocleDeviationPanel deviation={socleDeviation} teamOf={teamInfoOf} venueName={venueNameOf} onSelectSlot={openSlot} /> : null}
+          {null !== socleDeviation ? <SocleDeviationPanel key={validScheduleId} deviation={socleDeviation} teamOf={teamInfoOf} venueName={venueNameOf} onSelectSlot={openSlot} /> : null}
           {changesOnlyOffered ? (
             <div className="mb-4 flex flex-col gap-1">
               <FilterToggle checked={changesOnly} onChange={toggleChangesOnly}>
