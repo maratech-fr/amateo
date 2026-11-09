@@ -31,6 +31,9 @@ final class Version20261108120000 extends AbstractMigration
 
     public function up(Schema $schema): void
     {
+        // Exécuté tout de suite (pas addSql) dans la transaction de la migration : aucune ligne ne
+        // peut naître entre le comptage et le DROP.
+        $this->connection->executeStatement('LOCK TABLE venue_unavailability IN ACCESS EXCLUSIVE MODE');
         $remaining = (int) $this->connection->fetchOne('SELECT count(*) FROM venue_unavailability u LEFT JOIN club c ON c.id = u.club_id WHERE c.id IS NULL OR NOT c.is_demo');
 
         $this->abortIf(
@@ -49,6 +52,11 @@ final class Version20261108120000 extends AbstractMigration
         $appRole = $this->connection->fetchOne('SELECT rolname FROM pg_roles WHERE rolname IN (\'app_user\', \'amateo_app\') ORDER BY (rolname = \'amateo_app\') DESC LIMIT 1');
         $hasOwner = (bool) $this->connection->fetchOne('SELECT 1 FROM pg_roles WHERE rolname = \'amateo_owner\'');
         $hasRead = (bool) $this->connection->fetchOne('SELECT 1 FROM pg_roles WHERE rolname = \'amateo_read\'');
+        $this->abortIf(
+            !\is_string($appRole),
+            'Aucun rôle applicatif trouvé : impossible de recréer venue_unavailability sous RLS.',
+        );
+        \assert(\is_string($appRole));
 
         $predicate = $this->connection->fetchOne('SELECT pg_get_expr(polqual, polrelid) FROM pg_policy WHERE polname = \'tenant_isolation\' AND polrelid = \'public.team_tag\'::regclass');
         $this->abortIf(
@@ -61,16 +69,14 @@ final class Version20261108120000 extends AbstractMigration
         $this->addSql('CREATE INDEX idx_venue_unavailability_club_season ON venue_unavailability (club_id, season_id)');
         $this->addSql('CREATE INDEX idx_venue_unavailability_venue ON venue_unavailability (venue_id)');
 
-        if (\is_string($appRole)) {
-            $this->addSql('GRANT SELECT, INSERT, UPDATE, DELETE ON venue_unavailability TO ' . $appRole);
-            $this->addSql('ALTER TABLE public.venue_unavailability ENABLE ROW LEVEL SECURITY');
-            $this->addSql('ALTER TABLE public.venue_unavailability FORCE ROW LEVEL SECURITY');
-            $this->addSql(\sprintf(
-                'CREATE POLICY tenant_isolation ON public.venue_unavailability FOR ALL TO ' . $appRole . ' USING (%s) WITH CHECK (%s)',
-                $predicate,
-                $predicate,
-            ));
-        }
+        $this->addSql('GRANT SELECT, INSERT, UPDATE, DELETE ON venue_unavailability TO ' . $appRole);
+        $this->addSql('ALTER TABLE public.venue_unavailability ENABLE ROW LEVEL SECURITY');
+        $this->addSql('ALTER TABLE public.venue_unavailability FORCE ROW LEVEL SECURITY');
+        $this->addSql(\sprintf(
+            'CREATE POLICY tenant_isolation ON public.venue_unavailability FOR ALL TO ' . $appRole . ' USING (%s) WITH CHECK (%s)',
+            $predicate,
+            $predicate,
+        ));
 
         if ($hasOwner) {
             $this->addSql('CREATE POLICY admin_all ON public.venue_unavailability FOR ALL TO amateo_owner USING (true) WITH CHECK (true)');
