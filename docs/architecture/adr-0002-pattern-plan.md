@@ -122,8 +122,8 @@ Schedule (= Version)                    ← existant, recentré
    INVERSÉE, et « Enregistrer vaut geste ».**
    - *Un seul fait.* Un gymnase qui ferme = une `CalendarEntry` `period/closure` + sa contrainte
      `venue_closed`, saisie une fois (carte du cockpit ou jour du calendrier, même formulaire).
-     `VenueUnavailability` n'existe plus dans le code ; sa table reste orpheline en base
-     jusqu'à la release suivante (`docs/ops/deploy.md`).
+     `VenueUnavailability` n'existe plus dans le code ; sa table est supprimée par
+     `Version20261108120000` (`docs/ops/deploy.md`).
    - *Capture inversée* (`EffectiveScheduleResolver::resolve`). Une fermeture SANS version ne
      capture plus sa date : le planning en vigueur s'applique (période pointée qui gouverne, sinon
      socle) et c'est le **gymnase** fermé qui sort (`excludedVenueIds`), date par date, depuis

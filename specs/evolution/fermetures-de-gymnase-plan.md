@@ -1,10 +1,9 @@
-# Fermetures de gymnase — plan en 3 PR (PR 1 et PR 2 livrées, PR 3 à faire) + coupe d'un plan multi-semaines
+# Fermetures de gymnase — plan en 3 PR (PR 1, PR 2 et PR 3 livrées) + coupe d'un plan multi-semaines
 
 > **Statut.** Plan validé par le fondateur (v4, quatre passes de SMITH). **PR 1 livrée** (saisie unique, aperçu, retrait des
 > épingles, alertes : #1340). **PR 2 livrée** (bilan par rang par semaine, lisible aussi depuis `/planning`, mention « commune
-> avec » : C6 et C7 ci-dessous décrivent ce qui est livré ; comportement dans ADR-0004 et `etat-des-lieux.md`). **Reste à
-> faire** : PR 3 (DROP de la table `venue_unavailability` à la release suivante : P4-483, re-mesurer en prod avant) et
-> « Découper autour de la fermeture » (P4-484, chantier à part ; décision : plan multi-semaines coupé en trois, avant /
+> avec » : C6 et C7 ci-dessous décrivent ce qui est livré ; comportement dans ADR-0004 et `etat-des-lieux.md`). **PR 3 livrée** (DROP de la table `venue_unavailability` : `Version20261108120000`, mode opératoire dans `docs/ops/deploy.md`). **Reste à
+> faire** : « Découper autour de la fermeture » (P4-484, chantier à part ; décision : plan multi-semaines coupé en trois, avant /
 > semaine touchée / après). Les blocs « Corrections » en tête **priment** sur le corps. Les sections PR 1 sont gardées pour
 > l'historique des décisions ; relire chaque `fichier:ligne` avant de coder.
 
@@ -107,7 +106,7 @@ Autoportant, recalé sur `origin/main` `3ec1cb43f`, chaque ligne relue par `grep
 
 - **PR 1** (`neo` ; backend + frontend ; interdits `engine/`, migrations, `GenerationBlockersGuard`, `VersionEditability`) : C1–C5, C8, OpenAPI, `schema_filter`, `ClosurePinRemover`, `OrphanPinGuard`. NR gatés : `MatchTenantIsolationTest` (`:511-512`), `VenueClosureSemanticsGateTest` (`:1054`), `HardLockSurvivesPayloadTest` (vert : les verrous des autres jours survivent), nouveaux steps `ClosureImpactSaysTheSameEverywhereTest`, `StalePeriodPlanRegenerationTest`, **`ClosureRemovesPinsAtomicallyTest`** (+ `blocking-tests.md`).
 - **PR 2** (livrée) : C6, C7 ; `SocleDeviationParityTest` étendu.
-- **PR 3** (XS, release suivante) : re-mesure → DROP + retrait du `schema_filter`.
+- **PR 3** (XS, livrée) : re-mesure → DROP + retrait du `schema_filter`.
 - `/security-review` PR 1 (RGPD/purge, retrait d'API, **écriture système sur des données du gestionnaire + audit**) et PR 3 ; contre-revue `smith` : oui. Contrôle visuel `switch` : cockpit (3 états de carte), formulaire (8 états : idle, évaluation, prêt sans retrait, prêt avec retraits et matchs nommés, hors saison, échec, génération en cours, bouton inactif), radar (Adapter / Reprendre / Ouvrir le plan / carte plan périmé), écran du plan validé et rouvert, confirmations (5 variantes), toasts (3), génération (bilan, bouton).
 
 ## F. Carte des conséquences
