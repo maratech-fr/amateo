@@ -21429,7 +21429,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Named deviations of a CLOSURE period version vs the pointed season plan: `moved` sessions (paired chronologically, season placement \u2192 period placement) and `unplaced` sessions (the season remainder, each with a `reason` SERVED from the period selection \u2014 team_reduced/venue_disabled/venue_closed, or null when the selection does not explain it). New and unchanged sessions are never reported. Read-only, re-callable."
+                        "description": "Named deviations of a CLOSURE period version vs the pointed season plan: `moved` sessions (paired chronologically, season placement \u2192 period placement) and `unplaced` sessions (the season remainder, each with a `reason` SERVED from the period selection \u2014 team_reduced/venue_disabled/venue_closed, or null when the selection does not explain it), plus the period `window`, `changedSlotIds` (period sessions moved or new), and `teams[]` / `ranks[]` carrying the per-team / per-tier counts (kept, lost, chosen reductions, moved, new); unchanged sessions are counted, never listed; `sharedWith` lists the ids of the teams a session is shared with, and `sharedKept` counts kept sessions shared with another team. Read-only, re-callable."
                     },
                     "401": {
                         "description": "Unauthorized"

@@ -205,11 +205,16 @@ export interface Slot {
   sharedTrainingBlockId: string | null;
 }
 
-/** Un placement (où, quand) — l'identité d'un écart (P2-44 PR-5) ; ni durée ni coach. */
+/**
+ * Un placement (où, quand) — l'identité d'un écart (P2-44 PR-5) ; ni durée ni coach. `sharedWith` =
+ * ids des équipes avec qui la séance est COMMUNE sur cette case (bloc déclaré du périmètre), servis
+ * par le backend ; vide si elle ne l'est pas. Le nom se lit côté écran (`teamOf(id).name`).
+ */
 export interface SocleDeviationPlacement {
   dayOfWeek: number;
   startTime: string;
   venueId: string;
+  sharedWith: string[];
 }
 
 /**
@@ -234,17 +239,66 @@ export interface SocleDeviationUnplaced {
   startTime: string;
   venueId: string;
   reason: string | null;
+  /** Ids des équipes avec qui la séance était commune au socle (vide sinon). */
+  sharedWith: string[];
+}
+
+/**
+ * Le bilan d'UNE équipe (fermetures de gymnase, bilan par rang) — comptes SERVIS, tirés des seules
+ * lignes `moved`/`unplaced` : `keptSessions + lost + reducedByChoice = socleSessions`. Le nom n'est
+ * pas servi (il se lit par `teamId`). `daysKept` NUL en pause ou sans séance tenue/déplacée ;
+ * `chosenSessions` = la réduction choisie (texte seulement), NUL sans réduction. `sharedWith` = ids
+ * des partenaires des séances tenues COMMUNES (`sharedKept`).
+ */
+export interface SocleDeviationTeam {
+  teamId: string;
+  tierLabel: string;
+  tierWeight: number;
+  tierOrder: number;
+  paused: boolean;
+  socleSessions: number;
+  keptSessions: number;
+  lost: number;
+  reducedByChoice: number;
+  movedSessions: number;
+  newSessions: number;
+  chosenSessions: number | null;
+  daysKept: boolean | null;
+  changed: boolean;
+  sharedKept: number;
+  sharedWith: string[];
+}
+
+/** Le bilan d'UN rang — sommes servies HORS équipes en pause ; `keptSessions + lost + chosenReductions = socleSessions`. */
+export interface SocleDeviationRank {
+  tierLabel: string;
+  tierWeight: number;
+  teams: number;
+  socleSessions: number;
+  keptSessions: number;
+  lost: number;
+  chosenReductions: number;
+  newSessions: number;
+  paused: number;
+  unchanged: number;
 }
 
 /**
  * P2-44 PR-5 (ADR-0004) — les ÉCARTS NOMMÉS d'une version de plan de FERMETURE vs la version pointée
- * du socle, SERVIS par `GET /schedules/{id}/socle-deviation`. Deux catégories seulement (déplacée /
- * non replacée) ; le front NOMME (agrégat + ligne à ligne), il ne redérive RIEN.
+ * du socle, SERVIS par `GET /schedules/{id}/socle-deviation` : le détail ligne à ligne (`moved`,
+ * `unplaced`), la fenêtre de la période, les séances de période qui ont changé (`changedSlotIds`,
+ * déplacées ou nouvelles — le filtre de la grille) et le bilan par équipe et par rang (`teams`,
+ * `ranks`, triés par le serveur). Le front PRÉSENTE, il ne redérive RIEN. Type tenu À LA MAIN en
+ * miroir de la réponse (pas de schéma OpenAPI typé pour cette route).
  */
 export interface SocleDeviation {
   socleScheduleId: string;
+  window: { startDate: string; endDate: string };
   moved: SocleDeviationMoved[];
   unplaced: SocleDeviationUnplaced[];
+  changedSlotIds: string[];
+  teams: SocleDeviationTeam[];
+  ranks: SocleDeviationRank[];
 }
 
 /** Les familles de cause qu'une séance manquante (`session_below_effective_min`) ou la carte

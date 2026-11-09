@@ -171,11 +171,13 @@ export function useDiagnostics(scheduleId: string | null) {
 }
 
 /**
- * P2-44 PR-5 — les écarts NOMMÉS d'une version de plan de FERMETURE vs le socle pointé
- * (`GET /schedules/{id}/socle-deviation`). `scheduleId` NUL désarme la query : l'appelant (la
- * PlanningPage embarquée) ne l'arme QUE sur une fermeture, version COMPLETED — sur une vacance ou
- * `/planning` autonome la route n'est JAMAIS appelée. Réinvalidée après move/lock/place (le diff se
- * relit une fois le placement changé).
+ * P2-44 PR-5 — les écarts NOMMÉS et le bilan par rang d'une version de plan de FERMETURE vs le socle
+ * pointé (`GET /schedules/{id}/socle-deviation`). `scheduleId` NUL désarme la query : l'appelant (la
+ * PlanningPage) ne l'arme QUE sur une version COMPLETED d'une fermeture — embarquée sur une période
+ * de fermeture, ou sur `/planning` quand la version affichée est de type CLOSURE ; une vacance ou une
+ * version de saison n'appellent JAMAIS la route. `meta.ownsError` : l'échec se dit dans l'écran
+ * (`SocleDeviationLoadError`), jamais par le toast générique. Réinvalidée après move/lock/place (le
+ * diff se relit une fois le placement changé).
  */
 export function useSocleDeviation(scheduleId: string | null) {
   return useQuery({
@@ -183,6 +185,7 @@ export function useSocleDeviation(scheduleId: string | null) {
     queryFn: () => planningApi.getSocleDeviation(scheduleId as string),
     enabled: null !== scheduleId,
     staleTime: 30_000,
+    meta: { ownsError: true },
   });
 }
 

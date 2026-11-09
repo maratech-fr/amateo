@@ -167,7 +167,7 @@ final readonly class UncoveredCustomPaths implements CustomPathContributor
                 operationId: 'getApiScheduleSocleDeviation',
                 tags: ['Schedules'],
                 responses: [
-                    '200' => new Response('Named deviations of a CLOSURE period version vs the pointed season plan: `moved` sessions (paired chronologically, season placement → period placement) and `unplaced` sessions (the season remainder, each with a `reason` SERVED from the period selection — team_reduced/venue_disabled/venue_closed, or null when the selection does not explain it). New and unchanged sessions are never reported. Read-only, re-callable.'),
+                    '200' => new Response('Named deviations of a CLOSURE period version vs the pointed season plan: `moved` sessions (paired chronologically, season placement → period placement) and `unplaced` sessions (the season remainder, each with a `reason` SERVED from the period selection — team_reduced/venue_disabled/venue_closed, or null when the selection does not explain it), plus the period `window`, `changedSlotIds` (period sessions moved or new), and `teams[]` / `ranks[]` carrying the per-team / per-tier counts (kept, lost, chosen reductions, moved, new); unchanged sessions are counted, never listed; `sharedWith` lists the ids of the teams a session is shared with, and `sharedKept` counts kept sessions shared with another team. Read-only, re-callable.'),
                     '401' => $unauthorized,
                     '403' => new Response('Version belongs to another club'),
                     '404' => $notFound,

@@ -125,36 +125,55 @@ volontaire ultérieur émet ses placements en `previousAssignments`), sans méca
 les deux sens : ni la séance « à replacer » filtrée à la transcription ni un créneau du socle ne
 fuient.
 
-### Les écarts nommés vis-à-vis du socle (`GET /api/schedules/{id}/socle-deviation`)
+### Les écarts nommés et le bilan par rang vis-à-vis du socle (`GET /api/schedules/{id}/socle-deviation`)
 
-Après génération (transcrite, comblée ou solvée), l'écran embarqué d'une période de type
-**FERMETURE** ne se contente pas de laisser comparer deux grilles à l'œil : il **nomme** les
-écarts vs le socle. Route de **LECTURE** (`SocleDeviationController` → `SocleDeviationCalculator`
-→ `SocleDeviationResult`), donc **re-appelable** — ce qui manquait à la liste « à replacer », qui
-n'existe que dans la réponse du POST de transcription et meurt à la navigation.
+Après génération (transcrite, comblée ou solvée), une version `COMPLETED` d'un plan de période de
+type **FERMETURE** ne se contente pas de laisser comparer deux grilles à l'œil : elle **nomme** les
+écarts vs le socle et en tire un **bilan par rang**. Route de **LECTURE** (`SocleDeviationController`
+→ `SocleDeviationCalculator` → `SocleDeviationResult`), donc **re-appelable** — ce qui manquait à la
+liste « à replacer », qui n'existe que dans la réponse du POST de transcription et meurt à la
+navigation. Elle se lit sur l'écran embarqué de génération **comme sur `/planning` autonome** (un
+plan de fermeture ouvert depuis le radar ou le calendrier), Membre compris.
 
 1. **La cible est la VERSION, pas le plan** — un plan sans version est un cas IMPOSSIBLE (sans
    version, pas d'id à appeler) ; une V1 transcrite n'a pas le même diff qu'une V+1 comblée.
-2. **Deux catégories, pas quatre** : **déplacée** (même équipe, placement différent) et **non
-   replacée** (présente au socle, absente de la période). Les séances nouvelles et inchangées ne
-   sont pas rapportées — le gestionnaire veut savoir ce qu'il a perdu et ce qui a bougé.
+2. **Deux catégories de DÉTAIL, pas quatre** : **déplacée** (même équipe, placement différent) et
+   **non replacée** (présente au socle, absente de la période). Les séances inchangées ne sont
+   jamais listées ; les **nouvelles** (présentes en période seulement) sont **comptées, jamais
+   listées**.
 3. **L'appariement est chronologique et déterministe** — par équipe, les clés de placement
    identiques (`team:venue:day:HH:MM`) sortent inchangées ; le reste est trié (jour, heure,
    gymnase) croissant des deux côtés et apparié **positionnellement** ; le reliquat du socle est
-   « non replacé » — une équipe réduite laisse donc ses dernières séances de la semaine non
-   replacées, le même déterminisme que la réduction du transcriber. Le serveur n'invente pas « qui
-   est allée où ».
+   « non replacé », le reliquat de la période « nouvelle » — une équipe réduite laisse donc ses
+   dernières séances de la semaine non replacées, le même déterminisme que la réduction du
+   transcriber. Le serveur n'invente pas « qui est allée où ».
 4. **La raison est DÉRIVÉE, jamais fabriquée** — précédence `team_reduced` > `venue_disabled` >
    `venue_closed`, **`null`** quand la sélection de période n'explique pas l'absence (suppression
    manuelle, solve qui n'a pas replacé) : le front rend alors la ligne sans étiquette.
-5. **FERMETURES seulement** — une vacance réécrit sa grille de reprise, comparer dirait « tout a
+5. **Le bilan est SERVI, d'une seule source** : `teams[]` (une ligne par équipe, jamais par
+   groupe mutualisé) et `ranks[]` (une ligne par rang) comptent à partir des seules lignes de l'item
+   2, jamais d'un second calcul — par équipe `keptSessions + lost + reducedByChoice =
+   socleSessions`, où **« perdue »** = une non replacée dont la raison n'est pas `team_reduced`. La
+   réduction **choisie** (override de séances) n'est lue que pour son TEXTE, jamais pour compter. Une
+   équipe en pause figure au bilan (jamais « changée »), les sommes par rang l'excluent. Le front
+   présente, il ne recompte rien.
+6. **Comparaison au socle EN VIGUEUR à la lecture**, assumée : aucune photo du socle n'est gardée à
+   la naissance du plan, le diff se recalcule contre la version pointée du moment (aucune colonne
+   neuve). Une période déjà commencée face à un socle rouvert puis re-validé se compare donc au
+   nouveau socle.
+7. **« Commune avec » = la règle du radar et des doléances**, jamais `sharedTrainingBlockId` : une
+   séance est commune avec une autre équipe quand les deux tiennent la même clé de placement ET
+   sont dans un bloc de mutualisation DÉCLARÉ du périmètre (`CoachDoubleBookingDetector`). Servie en
+   **ids d'équipes** (`sharedWith`), le nom se lit côté écran. Aucune mention « plus commune » :
+   l'appariement positionnel la rendrait arbitraire.
+8. **FERMETURES seulement** — une vacance réécrit sa grille de reprise, comparer dirait « tout a
    bougé ». Refus **422** nommé sur tout autre type de période et sur un plan SEASON ; **409** sur
    une version non `COMPLETED` ou un socle non pointé (route atteignable même là : une période déjà
    commencée peut se retrouver face à un socle rouvert, qui ne détruit que les plans futurs).
-6. **Lecture ouverte au Membre** — pas de gate management, aucune écriture.
+9. **Lecture ouverte au Membre** — pas de gate management, aucune écriture.
 
-Le panneau front (`SocleDeviationPanel`) **s'ajoute** au panneau « à replacer » sans le remplacer
-(décision fondateur « les deux affichés pour le moment »). NR bloquant
+Le panneau front (`SocleDeviationPanel`, titré « Bilan par rang ») **s'ajoute** au panneau « à
+replacer » sans le remplacer (décision fondateur « les deux affichés pour le moment »). NR bloquant
 `Security/SocleDeviationParityTest`.
 
 ## Conséquences

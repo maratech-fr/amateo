@@ -21,7 +21,8 @@ import { armNavTransition } from "@/shared/stores/navTransitionStore";
 import { useCredits } from "@/shared/credits/useCredits";
 import { StatusPill } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
-import { EmptyState } from "@/shared/components/ui/empty-hint";
+import { EmptyHint, EmptyState } from "@/shared/components/ui/empty-hint";
+import { FilterToggle } from "@/shared/components/ui/filter-toggle";
 import { LoadErrorHint } from "@/shared/components/ui/load-error-hint";
 import { ConfirmDialog } from "@/shared/components/ui/confirm-dialog";
 import { Input } from "@/shared/components/ui/input";
@@ -77,7 +78,7 @@ import { ValidateDialog } from "./ValidateDialog";
 import { capacityShortfallSentence } from "./lib/capacityShortfall";
 import { deviatedSlots } from "./lib/socleDeviationCells";
 import { usePlanningStore } from "./store";
-import { SocleDeviationPanel } from "./SocleDeviationPanel";
+import { SocleDeviationLoadError, SocleDeviationPanel } from "./SocleDeviationPanel";
 import { ToReplaceList } from "./ToReplaceList";
 import { WeekGrid } from "./WeekGrid";
 
@@ -105,9 +106,9 @@ const DAY_ABBR = new Map(DAYS.map((d) => [d.n, d.label]));
  *  mise en évidence des vides. Null (page autonome, ou pas de transcription) ⇒ rien de tout ça.
  *
  *  `isClosurePeriod` (P2-44 PR-5) — la période affichée est une FERMETURE (`GenerateStep` lit déjà
- *  `periodEntry.periodType`, le serveur reste seul juge — la route refuse 422 sinon). SEUL déclencheur
- *  du panneau « Écarts avec le planning de saison » : sur une vacance ou `/planning` autonome, la route
- *  n'est JAMAIS appelée. */
+ *  `periodEntry.periodType`, le serveur reste seul juge — la route refuse 422 sinon). En embarqué,
+ *  SEUL déclencheur du « Bilan par rang » ; sur `/planning` autonome, c'est le TYPE de la version
+ *  affichée (CLOSURE) qui l'arme. Une vacance ou une version de saison n'appellent JAMAIS la route. */
 /**
  * Q8bis (P2-63) — clause annoncée au confirm de validation/réouverture du socle : les
  * doléances déjà reçues pour les vacances à venir partent avec la collecte. Vide si 0.
@@ -162,12 +163,22 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
     return () => onDisplayedScheduleChange?.(null);
   }, [embedded, onDisplayedScheduleChange, validScheduleId]);
 
-  // P2-44 PR-5 — les écarts NOMMÉS vs le socle. Armés UNIQUEMENT sur l'écran embarqué et porté
-  // (`transcriptionSurface`), d'une FERMETURE (le serveur reste seul juge — 422 sinon), et d'une
-  // version TERMINÉE. Sur une vacance ou `/planning` autonome, `scheduleId` reste nul → la route
-  // n'est JAMAIS appelée. Le calcul est SERVI ; le front NOMME (agrégat + lignes), il ne redérive rien.
-  const socleDeviationArmed = embedded && scoped && isClosurePeriod && null !== displayed && "COMPLETED" === displayed.status;
-  const { data: socleDeviation = null } = useSocleDeviation(socleDeviationArmed ? validScheduleId : null);
+  // P2-44 PR-5 / P4-490 — le bilan par rang vs le socle, armé sur une version TERMINÉE d'une
+  // FERMETURE : en embarqué, l'écran porté d'une période de fermeture ; sur `/planning` autonome
+  // (DayDialog, RadarPanel y mènent), le TYPE de la version affichée. Une vacance ou une version de
+  // saison laissent `scheduleId` nul → la route n'est JAMAIS appelée. Le calcul est SERVI ; le front
+  // PRÉSENTE, il ne redérive rien. Membre compris (lecture).
+  const socleDeviationArmed = null !== displayed && "COMPLETED" === displayed.status && (embedded ? scoped && isClosurePeriod : "CLOSURE" === displayed.planType);
+  const socleDeviationQuery = useSocleDeviation(socleDeviationArmed ? validScheduleId : null);
+  const socleDeviation = socleDeviationArmed ? (socleDeviationQuery.data ?? null) : null;
+  // D10 — « Seulement les séances qui ont changé » : état LOCAL, attaché à la version (changer de
+  // version le remet à faux par construction). Visible si le bilan est lu et qu'une équipe a changé.
+  const [changesOnlyFor, setChangesOnlyFor] = useState<string | null>(null);
+  const changesOnlyOffered = null !== socleDeviation && socleDeviation.teams.some((t) => t.changed);
+  const changesOnly = changesOnlyOffered && null !== changesOnlyFor && changesOnlyFor === validScheduleId;
+  if (null !== changesOnlyFor && changesOnlyFor !== validScheduleId) {
+    setChangesOnlyFor(null);
+  }
 
   // P2-44 PR-4 — le compteur de carence : la capacité chiffrée du récap, sur la surface de
   // FERMETURE seulement (HOLIDAY : jamais appelée). Le gate serveur reste la source unique du
@@ -515,7 +526,7 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
   );
 
   // Résolveur de nom d'équipe (lookups) — utilisé par le sujet retouche (paramètre du hook) ET par
-  // le JSX (DriftBanner, ToReplaceList, SocleDeviationPanel, modale d'éviction) : il reste en page.
+  // le JSX (DriftBanner, ToReplaceList, bilan par rang, modale d'éviction) : il reste en page.
   const teamNameOf = (teamId: string): string => lookups.teams.get(teamId)?.name ?? "une équipe";
 
   // Séances à la dérive (geste 3) : COMPLETED seulement, hors génération. Seuil = backend
@@ -572,10 +583,24 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
   // P3-20 — la vue « club » a son propre rendu (matrice équipes × jours) : on ne paie pas un
   // layout temporel que personne n'affiche (d'où les créneaux vidés en entrée de `buildGrid`).
   const isClubView = "club" === viewMode;
-  const model = useMemo(() => buildGrid(isClubView ? [] : gridSlots, viewMode, lookups, new Set(resourceFilter)), [isClubView, gridSlots, viewMode, lookups, resourceFilter]);
+  // D10 — armer un geste remet le filtre à faux : la cible se choisit sur la grille entière.
+  if (changesOnly && undefined !== gridTargetMode) {
+    setChangesOnlyFor(null);
+  }
+  // D10 — filtre « Seulement les séances qui ont changé » : les séances de période déplacées ou
+  // nouvelles (`changedSlotIds`, SERVIS), SANS fenêtres vides, en amont de buildGrid/buildClubView
+  // SEULEMENT — les gestes, le détail, les diagnostics et l'export lisent toujours la version entière.
+  const shownGridSlots = useMemo(() => {
+    if (!changesOnly || null === socleDeviation) {
+      return gridSlots;
+    }
+    const changed = new Set(socleDeviation.changedSlotIds);
+    return slots.filter((s) => changed.has(s.id));
+  }, [changesOnly, socleDeviation, gridSlots, slots]);
+  const model = useMemo(() => buildGrid(isClubView ? [] : shownGridSlots, viewMode, lookups, new Set(resourceFilter)), [isClubView, shownGridSlots, viewMode, lookups, resourceFilter]);
   const clubModel = useMemo(
-    () => (isClubView ? buildClubView(gridSlots, lookups, new Set(resourceFilter), tiers) : null),
-    [isClubView, gridSlots, lookups, resourceFilter, tiers],
+    () => (isClubView ? buildClubView(shownGridSlots, lookups, new Set(resourceFilter), tiers) : null),
+    [isClubView, shownGridSlots, lookups, resourceFilter, tiers],
   );
 
   // Un diagnostic qui NOMME une colonne absente de l'écran proposerait un focus vers rien —
@@ -747,6 +772,18 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
   // P2-44 PR-4 — la table `slotId → origine de saison` des créneaux déviés, pour marquer la grille.
   // Présentation pure : le backend a déjà décidé l'écart (`socleDeviation.moved`).
   const socleDeviatedSlots = deviatedSlots(socleDeviation, venueNameOf);
+  // Le bilan nomme chaque équipe avec son repère d'entente (CTC), lus des lookups (patron LocksPanel).
+  const teamInfoOf = (teamId: string) => {
+    const team = lookups.teams.get(teamId);
+    return { name: teamNameOf(teamId), isCtc: true === team?.isCtc, ctcPartner: team?.ctcPartner ?? null };
+  };
+  // D10 — cocher efface une sélection que le filtre cache.
+  const toggleChangesOnly = (next: boolean): void => {
+    setChangesOnlyFor(next ? validScheduleId : null);
+    if (next && null !== selectedSlotId && null !== socleDeviation && !socleDeviation.changedSlotIds.includes(selectedSlotId)) {
+      setSelectedSlotId(null);
+    }
+  };
 
   // Dans l'espace de travail, le titre nomme la version chargée : celle qui se modifie et d'où repart
   // la régénération, même si on en regarde une autre.
@@ -1055,11 +1092,18 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
             <ToReplaceList entries={toReplace} teamName={teamNameOf} venueName={venueNameOf} />
           ) : null}
 
-          {/* P2-44 PR-5 — les écarts NOMMÉS vs le socle (déplacées + non replacées), SERVIS par la
-              route ; le panneau s'AJOUTE à « à replacer » (décision fondateur : les deux affichés).
-              Ne rend rien tant qu'il n'y a aucun écart. */}
-          {null !== socleDeviation ? (
-            <SocleDeviationPanel moved={socleDeviation.moved} unplaced={socleDeviation.unplaced} teamName={teamNameOf} venueName={venueNameOf} onSelectSlot={openSlot} />
+          {/* P2-44 PR-5 / fermetures PR A — le BILAN PAR RANG vs le socle, SERVI par la route ; il
+              s'AJOUTE à « à replacer » (décision fondateur : les deux affichés). Un échec de lecture
+              se dit ici (jamais en toast) ; le filtre de la grille vit sous le bilan. */}
+          {socleDeviationArmed && readFailed(socleDeviationQuery) ? <SocleDeviationLoadError error={socleDeviationQuery.error} onRetry={() => void socleDeviationQuery.refetch()} /> : null}
+          {null !== socleDeviation ? <SocleDeviationPanel key={validScheduleId} deviation={socleDeviation} teamOf={teamInfoOf} venueName={venueNameOf} onSelectSlot={openSlot} /> : null}
+          {changesOnlyOffered ? (
+            <div className="mb-4 flex flex-col gap-1">
+              <FilterToggle checked={changesOnly} onChange={toggleChangesOnly}>
+                {PLANNING_TEXTS.changesOnly}
+              </FilterToggle>
+              {changesOnly && 0 === shownGridSlots.length ? <EmptyHint>{PLANNING_TEXTS.changesOnlyEmpty}</EmptyHint> : null}
+            </div>
           ) : null}
 
           {/* P2-30 (geste 3) — les équipes à la dérive : un clic ARME le placement (mode cible).

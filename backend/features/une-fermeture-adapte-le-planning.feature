@@ -11,8 +11,10 @@ Fonctionnalité: Une fermeture de gymnase adapte le planning de période, sur le
   Scénario: La fermeture du gymnase le plus occupé replace ses séances ailleurs sans déclasser le rang S
     Le planning s'adapte : aucune séance ne se tient au gymnase fermé pendant la période, d'autres se
     tiennent bien sur les gymnases restants (le planning n'est pas vide), et les équipes de rang S
-    (SM1, SF1) gardent toutes leurs séances — aucune prioritaire n'est déclassée.
+    (SM1, SF1) gardent toutes leurs séances — aucune prioritaire n'est déclassée ; le bilan par rang
+    que lit le gestionnaire dit la même chose.
     Étant donné un petit club réaliste dont les deux équipes de Camille sont mutualisées, avec son planning de saison en vigueur
     Et une fermeture de deux semaines du gymnase le plus occupé du socle, déclarée comme dans l'application
     Quand j'ouvre le plan de période et je génère une version
     Alors la génération aboutit, aucune séance ne se tient au gymnase fermé, d'autres se tiennent ailleurs, et aucune équipe de rang S ne perd de séance
+    Et le bilan par rang dit qu'aucune équipe de rang S n'a perdu de séance

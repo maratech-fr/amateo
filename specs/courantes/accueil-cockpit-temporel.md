@@ -313,8 +313,8 @@ retirera** des plans de période concernés (« Enregistrer vaut geste », ADR-0
 reste inactif tant que l'aperçu n'a pas été lu. Le radar et la carte lisent le MÊME chiffre
 (`/impact`, `useEntryImpact`) ; un plan de période touché montre « Ouvrir le plan » (radar) et une
 bannière « périmé » sur son écran (`StalePlanBanner`) ; supprimer la fermeture dit que rien n'est
-remis. Le calendrier affiche l'entrée sur ses jours ; le bilan par rang après adaptation et le bouton
-« seulement les séances qui ont changé » ne sont PAS livrés (`roadmap.md`).
+remis. Le calendrier affiche l'entrée sur ses jours ; « Consulter » (jour) et « Ouvrir le plan » (radar)
+mènent à `/planning`, où le **bilan par rang** d'une fermeture se lit (`frontend-workloop.md`).
 
 ### 5.1 Le radar ne montre que l'AVENIR ACTIONNABLE
 
