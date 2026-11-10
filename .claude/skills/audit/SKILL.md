@@ -214,6 +214,31 @@ La référence de notation est **l'application commercialisable**, pas le stade 
 7. **Features intéressantes à développer** (ratio valeur/effort, tenant compte de l'état réel).
 8. **Annexe méthodologie** : ce qui a été exécuté vs statique, findings contre-vérifiés, limites, **confiance par axe** — clé = **degré d'exécution**, pas la présence de preuve (quasi toujours `fichier:ligne`) : **élevée** = axe **exécuté** (outils/tests lancés — tsc/vitest/pip-audit/behat…) ou preuve directe recoupée · **moyenne** = **lecture de code seule** (statique, non exécuté) · **faible** = indices indirects/inférence — une note `/100` à confiance faible se lit comme provisoire, et **auto-question de biais** : « quels biais ai-je introduits (sur-poids de ce qui est facile à grepper, sous-poids de ce qui demande l'exécution) et quelles données m'ont manqué ? » — 3-5 lignes honnêtes, pas un exercice de style.
 
+## Étape 6 — Miroir roadmap (OBLIGATOIRE, automatique)
+
+L'édition constate, la roadmap engage : APRÈS l'écriture de `specs/audit/AUDIT-<date>-<model-id>.md`,
+mettre à jour la section **« Findings d'audit ouverts (registre `/audit`) »** de
+`specs/evolution/roadmap.md` — c'est ce que le fondateur **lit** pour définir un lot. Sans cette étape
+l'audit n'est pas fini.
+
+1. **Ajouter** une ligne `AUD-<ID>` (ex. `AUD-BCK-44`, l'ID du registre précédé du préfixe `AUD-`, qui
+   évite toute collision avec les `SEC-n`/`DOC-n` du backlog) pour chaque finding **ouvert et nouveau** de
+   l'édition. Colonnes `ID | Sujet | Gravité | Zone | Depuis | Note` : Sujet en une phrase, **Gravité = celle
+   du registre de l'édition, seul critère** (jamais l'impact business), « Depuis » = première édition où l'ID
+   apparaît, Note courte (`fichier:ligne`, voisin dans le backlog, « non vérifié à l'édition » pour un
+   finding `non vérifié`/`non prouvé`).
+2. **Retirer** les lignes que l'édition marque `corrigé` ou fermé par décision (preuve citée dans
+   l'édition). La roadmap ne garde pas d'historique : la trace du correctif vit dans
+   `specs/courantes/etat-des-lieux.md`.
+3. **Ne pas dupliquer** un finding déjà porté par une ligne du backlog (`P4-…`) ou par la section Dette :
+   le renvoyer dans la ligne « Portés par une ligne du backlog » sous le tableau, ou en Note de la ligne
+   voisine.
+4. **Mettre à jour le compteur** du titre de la section (`— N`) : c'est un compteur propre, distinct du
+   titre `Roadmap (N)` du fichier (que seul le tableau principal alimente — ne pas y ajouter de ligne
+   `AUD-`). Contrôle : `backend/tests/Unit/Documentation/RoadmapIdentityTest.php`.
+5. **Citer dans le rapport final** de l'audit : le nombre de lignes `AUD-` ajoutées et retirées, et le
+   total ouvert.
+
 ## Règles
 
 - Ne **jamais commiter** le résultat — le fichier reste en working tree, l'utilisateur décide (mémo projet : jamais de merge sans go explicite).
