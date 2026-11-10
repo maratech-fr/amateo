@@ -10,6 +10,7 @@ const notice = vi.hoisted(() => ({ current: null as DeploymentNotice | null }));
 vi.mock("./queries", () => ({ useDeploymentNotice: () => ({ data: notice.current }) }));
 
 import { DeploymentNoticeBanner } from "./DeploymentNoticeBanner";
+import { DEPLOYMENT_TEXTS } from "./texts";
 
 const SCHEDULED: DeploymentNotice = {
   scheduledAt: "2026-12-01T02:00:00+00:00",
@@ -42,12 +43,44 @@ describe("DeploymentNoticeBanner", () => {
   });
 
   it("annonce l'heure de début et l'heure de retour prévue (format FR, fuseau local)", () => {
-    notice.current = SCHEDULED;
+    // Fenêtre construite en heure LOCALE (02:00 → 02:30 le même jour) : « même jour » quel que soit
+    // le fuseau de l'hôte — un instant UTC fixe peut enjamber minuit sous un autre fuseau.
+    const sameDay: DeploymentNotice = {
+      scheduledAt: new Date(2026, 11, 1, 2, 0).toISOString(),
+      expectedReturnAt: new Date(2026, 11, 1, 2, 30).toISOString(),
+    };
+    notice.current = sameDay;
     render(<DeploymentNoticeBanner />);
 
     const banner = screen.getByRole("status");
-    expect(banner).toHaveTextContent(startFmt.format(new Date(SCHEDULED.scheduledAt)));
-    expect(banner).toHaveTextContent(timeFmt.format(new Date(SCHEDULED.expectedReturnAt)));
+    expect(banner).toHaveTextContent(
+      DEPLOYMENT_TEXTS.noticeSameDay(startFmt.format(new Date(sameDay.scheduledAt)), timeFmt.format(new Date(sameDay.expectedReturnAt))),
+    );
+  });
+
+  /**
+   * Promesse (FRT-51) : **une maintenance qui enjambe minuit annonce la DATE du retour**, pas
+   * seulement l'heure — « jusqu'à 00:30 » le 1ᵉʳ décembre au soir laisserait croire au retour le
+   * soir même. Même jour = même date CALENDAIRE locale, sinon date longue + heure.
+   */
+  it("annonce la date ET l'heure du retour quand la fenêtre enjambe minuit (fuseau local)", () => {
+    const overnight: DeploymentNotice = {
+      scheduledAt: new Date(2026, 11, 1, 23, 30).toISOString(),
+      expectedReturnAt: new Date(2026, 11, 2, 0, 30).toISOString(),
+    };
+    notice.current = overnight;
+    render(<DeploymentNoticeBanner />);
+
+    expect(screen.getByRole("status")).toHaveTextContent(
+      DEPLOYMENT_TEXTS.noticeOtherDay(startFmt.format(new Date(overnight.scheduledAt)), startFmt.format(new Date(overnight.expectedReturnAt))),
+    );
+  });
+
+  it("le bouton de fermeture tient son nom accessible de la clé de textes", () => {
+    notice.current = SCHEDULED;
+    render(<DeploymentNoticeBanner />);
+
+    expect(screen.getByRole("button", { name: DEPLOYMENT_TEXTS.dismiss })).toBeInTheDocument();
   });
 
   it("fermable : reste masqué pour la même programmation, REVIENT pour une nouvelle (clé liée à scheduledAt)", async () => {

@@ -55,6 +55,8 @@ final readonly class ReleaseNoteAndFeedbackPaths implements CustomPathContributo
                                 'body' => ['type' => 'string'],
                                 // Publication instant — drives the "what's new" modal (publishedAt > seenUpTo).
                                 'publishedAt' => ['type' => 'string', 'format' => 'date-time'],
+                                // Announced product version (« 1.3.5 »), null when the note carries none.
+                                'version' => ['type' => ['string', 'null'], 'maxLength' => 40],
                             ]]],
                         ],
                     ]),

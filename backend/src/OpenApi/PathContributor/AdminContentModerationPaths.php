@@ -46,6 +46,8 @@ final readonly class AdminContentModerationPaths implements CustomPathContributo
                 'date' => ['type' => 'string', 'format' => 'date'],
                 'publishedAt' => ['type' => ['string', 'null'], 'format' => 'date-time'],
                 'createdAt' => ['type' => 'string', 'format' => 'date-time'],
+                // Announced product version (« 1.3.5 »), null when the note carries none.
+                'version' => ['type' => ['string', 'null'], 'maxLength' => 40],
             ],
         ];
         $writeBody = $this->schemas->jsonBody([
@@ -55,6 +57,7 @@ final readonly class AdminContentModerationPaths implements CustomPathContributo
                 'title' => ['type' => 'string', 'maxLength' => 160],
                 'body' => ['type' => 'string'],
                 'noteDate' => ['type' => 'string', 'format' => 'date', 'description' => 'Editorial date (YYYY-MM-DD), antedatable'],
+                'version' => ['type' => ['string', 'null'], 'description' => 'Optional product version: surrounding spaces and a leading "v" are removed, empty means none; otherwise 2 to 4 numeric segments (1.3.5)'],
             ],
         ]);
         $idParameter = ['name' => 'id', 'in' => 'path', 'required' => true, 'schema' => ['type' => 'string', 'format' => 'uuid']];
@@ -78,7 +81,7 @@ final readonly class AdminContentModerationPaths implements CustomPathContributo
                     tags: ['AdminReleaseNotes'],
                     responses: [
                         '201' => $this->schemas->jsonResponse('Release note created (as a draft — publishedAt null)', $noteSchema),
-                        '400' => new Response('Validation error (title required ≤160, body required, invalid date)'),
+                        '400' => new Response('Validation error (title required ≤160, body required, invalid date, invalid version)'),
                         '401' => new Response('No authenticated super-admin session'),
                         '403' => new Response('Invalid CSRF token'),
                     ],

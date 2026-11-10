@@ -25,9 +25,14 @@ import { cn } from "@/shared/lib/utils";
  * ⚑ La borne ne vit PAS dans `AccordionSection` : il a quatre autres consommateurs (écrans du
  * wizard, pleine largeur par conception) qu'elle aurait reflowés en silence.
  *
+ * `prose={false}` : une page dont les paragraphes SONT le contenu, posés dans des cartes
+ * (Nouveautés), renonce à la borne — la règle n'est alors PAS émise. Jamais un `max-w-none` en
+ * surcharge : Tailwind 4 émet `[&_p]:max-w-none` AVANT `[&_p]:max-w-prose`, et à spécificité
+ * égale la borne gagnerait.
+ *
  * Ce que ce cadre n'est pas : la réponse aux écrans DENSES (grille de planning, wizard
  * contraintes, module matchs). Leur inventaire reste ouvert — `specs/evolution/roadmap.md`, P4-107.
  */
-export function FichePage({ className, children }: { className?: string; children: ReactNode }) {
-  return <div className={cn("mx-auto max-w-fiche [&_p]:max-w-prose", className)}>{children}</div>;
+export function FichePage({ className, children, prose = true }: { className?: string; children: ReactNode; prose?: boolean }) {
+  return <div className={cn("mx-auto max-w-fiche", prose && "[&_p]:max-w-prose", className)}>{children}</div>;
 }

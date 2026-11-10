@@ -337,4 +337,6 @@ export const ADMIN_SECTIONS_TEXTS = {
   releaseNotesPublish: "Publier",
   releaseNotesDelete: "Supprimer",
   releaseNotesToastSaved: "Note enregistrée (brouillon).",
+  releaseNotesVersionLabel: "Version",
+  releaseNotesVersionHint: "Numéro de la version en service, ex. 1.3.5 (facultatif). Pré-rempli quand l'application connaît sa version.",
 } as const satisfies Record<string, string | ((...args: never[]) => string)>;

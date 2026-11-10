@@ -17,8 +17,9 @@ use Doctrine\ORM\Mapping as ORM;
  *
  * `publishedAt` null = draft (invisible to members). `noteDate` is EDITORIAL:
  * it is the date shown in the list and can be antedated — it never drives the
- * "what's new" gate (that reads `publishedAt`). Credit/version details, if any,
- * live free-form in `body`; there is no structured credit column.
+ * "what's new" gate (that reads `publishedAt`). The announced product version
+ * lives in `productVersion` (nullable); credit details, if any, live free-form in
+ * `body`.
  */
 #[ORM\Entity(repositoryClass: ReleaseNoteRepository::class)]
 #[ORM\Table(name: 'release_note')]
@@ -51,6 +52,13 @@ class ReleaseNote
 
     #[ORM\Column(type: 'datetimetz_immutable', nullable: true)]
     private ?DateTimeImmutable $publishedAt = null;
+
+    /**
+     * Version du produit annoncée par la note (« 1.3.5 »), null = note sans version. Distincte
+     * de `$version` (compteur de verrou optimiste Doctrine) ; exposée en JSON sous la clé `version`.
+     */
+    #[ORM\Column(name: 'product_version', type: 'string', length: 40, nullable: true)]
+    private ?string $productVersion = null;
 
     public function __construct()
     {
@@ -130,6 +138,18 @@ class ReleaseNote
     public function setPublishedAt(?DateTimeImmutable $publishedAt): self
     {
         $this->publishedAt = $publishedAt;
+
+        return $this;
+    }
+
+    public function getProductVersion(): ?string
+    {
+        return $this->productVersion;
+    }
+
+    public function setProductVersion(?string $productVersion): self
+    {
+        $this->productVersion = $productVersion;
 
         return $this;
     }

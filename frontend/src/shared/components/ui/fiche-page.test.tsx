@@ -45,6 +45,24 @@ describe("FichePage — le cadre des pages fiche", () => {
     expect(classesOf(render(<FichePage>contenu</FichePage>))).toContain("[&_p]:max-w-prose");
   });
 
+  /**
+   * ⚑ DÉPEND D'A4 (capture SWITCH de `/nouveautes` attendue avant le code).
+   *
+   * Promesse : **une page dont les paragraphes sont le contenu lui-même (Nouveautés) peut renoncer
+   * à la borne — et la règle n'est alors PAS émise du tout**. Pas de `max-w-none` en surcharge :
+   * Tailwind 4 trie `[&_p]:max-w-none` AVANT `[&_p]:max-w-prose`, la borne gagnerait à spécificité
+   * égale. Le défaut (test ci-dessus) reste la borne : Club et Profil n'y touchent pas.
+   * Jumeau page : `ReleaseNotesPage.test.tsx` (« n'émet pas la borne… ») ; effet calculé :
+   * `tests/e2e/release-notes.spec.ts`.
+   */
+  it("n'émet pas la borne de lisibilité quand la page y renonce (prose={false}), sans perdre le cadre", () => {
+    const classes = classesOf(render(<FichePage prose={false}>contenu</FichePage>));
+
+    expect(classes).not.toContain("[&_p]:max-w-prose");
+    expect(classes.filter((token) => token.includes("max-w-"))).toEqual(["max-w-fiche"]);
+    expect(classes).toContain("mx-auto");
+  });
+
   it("laisse la page ajouter son espacement sans perdre le cadre", () => {
     // Les trois fiches ont leur propre rythme vertical (`space-y-*`) : le wrapper doit
     // l'accepter, sinon chacune se remettrait à bricoler son conteneur — la dérive d'origine.
