@@ -31,7 +31,7 @@ puis en suivant son pointeur.
 - **§2-§4 — Détecteur de conflits, solveur de placement, gardien à l'ouverture** (delta de visite,
   échéances de saisie) → [`module-matchs-radar-et-placement.md`](module-matchs-radar-et-placement.md)
 - **§5-§6 — Écran Calendrier, Écran Conflits** → [`module-matchs-consultation.md`](module-matchs-consultation.md)
-- **§7 — Écran Importer** (dépôt FBI, canal API FFBB, terrain neutre, « validé ligue », workflow
+- **§7 — Écran Importer** (dépôt FBI, canal API FFBB, terrain neutre, « Déjà dans FBI », workflow
   de traitement) → [`module-matchs-import-fbi.md`](module-matchs-import-fbi.md)
 - **§8, §8bis, §10 — Écrans Configuration, Contraintes, Semaine type** → [`module-matchs-reglages.md`](module-matchs-reglages.md)
 - **§9 — Écran Adversaires** → [`module-matchs-adversaires.md`](module-matchs-adversaires.md)
