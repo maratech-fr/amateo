@@ -12,6 +12,7 @@ import { renderWithProviders } from "@/test/utils";
 import * as matchesApi from "./api";
 import { CalendarPage } from "./CalendarPage";
 import { useMatchesStore } from "./store";
+import { MATCHES_TEXTS } from "./texts";
 import { MATCHES_EXPORT_TEXTS as EXPORT_TEXTS } from "./texts/export";
 
 // Sonde d'URL : le Calendrier re-synchronise l'URL depuis le store (effet d'écriture,
@@ -168,7 +169,7 @@ vi.mock("./api", () => ({
   getFbiCorrections: vi.fn(() => Promise.resolve([])),
   closeFbiCorrection: vi.fn(() => Promise.resolve({})),
   reopenFbiCorrection: vi.fn(() => Promise.resolve({})),
-  getLeagueValidationOutlook: vi.fn(() => Promise.resolve({ matured: [], toTreat: [], missingDeadline: [], totalValidatable: 0 })),
+  getLeagueValidationOutlook: vi.fn(() => Promise.resolve({ matured: [], toTreat: [], missingDeadline: [], totalValidatable: 0, swept: 0 })),
   confirmLeagueValidatedFixtures: vi.fn(() => Promise.resolve({ confirmed: 0 })),
 }));
 
@@ -224,29 +225,35 @@ describe("CalendarPage — la Semaine (ex-boucle, fusion PR 3b)", () => {
     expect(screen.getByLabelText("Chargement")).toHaveClass("size-8");
   });
 
-  it("gestionnaire → le bandeau « déjà dans FBI » (championnats commencés) est monté", async () => {
+  // Un championnat commencé passe SEUL « Déjà dans FBI » à la lecture du gestionnaire : le bandeau
+  // ne garde que ce qui reste à traiter (sans heure ni gymnase, écart) — jamais un geste de
+  // confirmation, même quand la lecture sert encore des validables.
+  it("gestionnaire → le bandeau « à traiter » est monté, sans aucun geste « déjà dans FBI »", async () => {
     meState.role = "admin";
     vi.mocked(matchesApi.getLeagueValidationOutlook).mockResolvedValueOnce({
       matured: [{ competitionId: "c1", name: "PNM", deadline: "2020-09-10", deadlineSource: "club", maturedBy: "deadline", firstMatchDate: null, validatableCount: 3 }],
-      toTreat: [],
+      toTreat: [{ fixtureId: "f9", teamId: "t1", competitionName: "PNM", matchDate: "2026-10-04", opponentLabel: "ASVEL", reason: "NO_KICKOFF" }],
       missingDeadline: [],
       totalValidatable: 3,
+      swept: 0,
     });
     renderWithProviders(<CalendarPage />, { route: EXPLICIT });
-    expect(await screen.findByText(/à confirmer « déjà dans FBI »/)).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: MATCHES_TEXTS.leagueTreatInQueue })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /déjà dans FBI/i })).not.toBeInTheDocument();
   });
 
-  it("Membre → le bandeau « déjà dans FBI » n'est jamais monté", async () => {
+  it("Membre → le bandeau « à traiter » n'est jamais monté", async () => {
     meState.role = "member";
     vi.mocked(matchesApi.getLeagueValidationOutlook).mockResolvedValueOnce({
-      matured: [{ competitionId: "c1", name: "PNM", deadline: "2020-09-10", deadlineSource: "club", maturedBy: "deadline", firstMatchDate: null, validatableCount: 3 }],
-      toTreat: [],
+      matured: [],
+      toTreat: [{ fixtureId: "f9", teamId: "t1", competitionName: "PNM", matchDate: "2026-10-04", opponentLabel: "ASVEL", reason: "NO_KICKOFF" }],
       missingDeadline: [],
-      totalValidatable: 3,
+      totalValidatable: 0,
+      swept: 0,
     });
     renderWithProviders(<CalendarPage />, { route: EXPLICIT });
     await screen.findByRole("group", { name: "Semaine affichée" });
-    expect(screen.queryByText(/à confirmer « déjà dans FBI »/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: MATCHES_TEXTS.leagueTreatInQueue })).not.toBeInTheDocument();
   });
 
   it("rend la barre « Semaine affichée » (3 compteurs) ET l'établi (grille + radar) SANS rail", async () => {

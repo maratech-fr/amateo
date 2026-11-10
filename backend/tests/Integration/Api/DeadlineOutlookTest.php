@@ -16,9 +16,11 @@ use App\Entity\User;
 use App\Entity\Venue;
 use App\Enum\CompetitionType;
 use App\Enum\FixtureHomeAway;
+use App\Enum\FixturePlacementSource;
 use App\Enum\FixtureStatus;
 use App\Enum\SeasonStatus;
 use App\Service\SeasonResolver;
+use App\Tests\ChoosesPlanVersionTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -28,24 +30,33 @@ use Symfony\Bundle\FrameworkBundle\KernelBrowser;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 
 /**
- * GET /api/matches/deadline-outlook — le cockpit gagne (lot O) : un compte GLOBAL
- * `toConfirmCount` (domiciles « validé ligue » prêts) et une SOUSTRACTION des validables du
- * `toPlaceCount` par fenêtre (un validable est UNPLACED, donc compté à tort « à placer » —
- * il est « à confirmer »). Et le balayage des amicaux passés n'est déclenché QUE si
- * l'utilisateur courant est GESTIONNAIRE (la route est ouverte au Membre).
+ * GET /api/matches/deadline-outlook — l'accueil : un compte GLOBAL `toConfirmCount` (domiciles
+ * validables d'un championnat commencé), une SOUSTRACTION des validables du `toPlaceCount` par
+ * fenêtre (un validable est UNPLACED, il n'est jamais « à placer »), et `swept`, le nombre de
+ * rencontres que CETTE lecture a fait passer « Déjà dans FBI ». Le balayage (amicaux passés PUIS
+ * championnats commencés) n'est déclenché QUE si l'utilisateur courant est GESTIONNAIRE (la route
+ * est ouverte au Membre). Les gardes saison archivée / socle et la version périmée sont prouvées
+ * dans `LeagueReadAutoValidationTest` (angle bloquant) ; ici, les compteurs servis.
  */
 #[Group('integration')]
 final class DeadlineOutlookTest extends WebTestCase
 {
+    use ChoosesPlanVersionTrait;
     use TenantGucTrait;
 
     private KernelBrowser $client;
 
     private EntityManagerInterface $em;
 
-    public function testToConfirmCountAndToPlaceSubtractsTheValidatableHomeFixtures(): void
+    /**
+     * La lecture de l'accueil par un MEMBRE n'écrit rien et compte le domicile validable « à
+     * confirmer » (jamais « à placer ») ; celle d'un GESTIONNAIRE le fait passer « Déjà dans FBI »
+     * et le dit (`swept`), sans jamais toucher le domicile sans heure, qui reste seul « à placer ».
+     */
+    public function testAMemberReadCountsTheValidatableHomeButOnlyAManagerReadSweepsIt(): void
     {
-        [$token, $clubId, $seasonId] = $this->createClub();
+        [$managerToken, $clubId, $seasonId] = $this->createClub();
+        $memberToken = $this->addMember($clubId, 'member');
         $this->scopeGucToClub($clubId);
         $team = $this->createTeam($clubId, $seasonId);
         $venue = $this->createVenue($clubId, $seasonId);
@@ -53,19 +64,39 @@ final class DeadlineOutlookTest extends WebTestCase
         // Un championnat échu (échéance 2020-09-10) avec DEUX domiciles UNPLACED : l'un
         // validable (heure + gymnase), l'autre non (rien) — donc « à placer ».
         $competition = $this->createMaturedCompetition($clubId, $seasonId, $team->getId());
-        $this->homeFixture($clubId, $seasonId, $team->getId(), $competition->getId(), '2099-03-14', $venue->getId(), '15:30');
+        $validatableId = $this->homeFixture($clubId, $seasonId, $team->getId(), $competition->getId(), '2099-03-14', $venue->getId(), '15:30');
         $this->homeFixture($clubId, $seasonId, $team->getId(), $competition->getId(), '2099-03-15', null, null);
 
-        $this->client->request('GET', '/api/matches/deadline-outlook', [], [], ['HTTP_AUTHORIZATION' => 'Bearer ' . $token]);
+        // (1) Le Membre lit : 1 à confirmer, 0 balayé, 1 à placer (2 UNPLACED − 1 validable).
+        $this->client->request('GET', '/api/matches/deadline-outlook', [], [], ['HTTP_AUTHORIZATION' => 'Bearer ' . $memberToken]);
         self::assertResponseStatusCodeSame(200);
-        $data = json_decode((string) $this->client->getResponse()->getContent(), true, 512, \JSON_THROW_ON_ERROR);
+        $member = json_decode((string) $this->client->getResponse()->getContent(), true, 512, \JSON_THROW_ON_ERROR);
+        self::assertSame(1, $member['toConfirmCount'], 'un domicile validable, compté « à confirmer » pour le Membre');
+        self::assertSame(0, $member['swept'] ?? -1, 'la lecture d\'un Membre ne balaie rien');
+        self::assertCount(1, $member['windows']);
+        self::assertSame(1, $member['windows'][0]['toPlaceCount']);
+        self::assertSame(0, $member['windows'][0]['toEnterCount']);
+        $this->em->clear();
+        $this->scopeGucToClub($clubId);
+        $afterMember = $this->em->find(Fixture::class, $validatableId);
+        self::assertInstanceOf(Fixture::class, $afterMember);
+        self::assertSame(FixtureStatus::UNPLACED, $afterMember->getStatus(), 'un Membre ne fait jamais écrire la base');
 
-        self::assertSame(1, $data['toConfirmCount'], 'un domicile validable « validé ligue »');
-        $windows = $data['windows'];
-        self::assertCount(1, $windows);
-        // 2 domiciles UNPLACED, moins 1 validable soustrait → 1 « à placer ».
-        self::assertSame(1, $windows[0]['toPlaceCount']);
-        self::assertSame(0, $windows[0]['toEnterCount']);
+        // (2) Le gestionnaire lit : le domicile passe « Déjà dans FBI », plus rien à confirmer,
+        // le sans-heure reste seul « à placer ».
+        $this->client->request('GET', '/api/matches/deadline-outlook', [], [], ['HTTP_AUTHORIZATION' => 'Bearer ' . $managerToken]);
+        self::assertResponseStatusCodeSame(200);
+        $manager = json_decode((string) $this->client->getResponse()->getContent(), true, 512, \JSON_THROW_ON_ERROR);
+        self::assertSame(1, $manager['swept'] ?? -1, 'la lecture du gestionnaire a fait passer 1 domicile « Déjà dans FBI »');
+        self::assertSame(0, $manager['toConfirmCount'], 'plus rien à confirmer après le balayage');
+        self::assertCount(1, $manager['windows']);
+        self::assertSame(1, $manager['windows'][0]['toPlaceCount'], 'le domicile sans heure reste « à placer »');
+        $this->em->clear();
+        $this->scopeGucToClub($clubId);
+        $afterManager = $this->em->find(Fixture::class, $validatableId);
+        self::assertInstanceOf(Fixture::class, $afterManager);
+        self::assertSame(FixtureStatus::VALIDATED, $afterManager->getStatus());
+        self::assertSame(FixturePlacementSource::MANUAL, $afterManager->getPlacementSource());
     }
 
     public function testAManagerReadSweepsPastFriendliesButAMemberDoesNot(): void
@@ -84,10 +115,12 @@ final class DeadlineOutlookTest extends WebTestCase
         self::assertInstanceOf(Fixture::class, $afterMember);
         self::assertSame(FixtureStatus::UNPLACED, $afterMember->getStatus(), 'un Membre ne fait jamais écrire la base');
 
-        // (2) Un gestionnaire lit : l'amical passé bascule VALIDATED.
+        // (2) Un gestionnaire lit : l'amical passé bascule VALIDATED, et la réponse le compte.
         $this->scopeGucToClub($clubId);
         $this->client->request('GET', '/api/matches/deadline-outlook', [], [], ['HTTP_AUTHORIZATION' => 'Bearer ' . $managerToken]);
         self::assertResponseStatusCodeSame(200);
+        $manager = json_decode((string) $this->client->getResponse()->getContent(), true, 512, \JSON_THROW_ON_ERROR);
+        self::assertSame(1, $manager['swept'] ?? -1, '`swept` compte aussi les amicaux passés');
         $this->em->clear();
         $afterManager = $this->em->find(Fixture::class, $memberFixtureId);
         self::assertInstanceOf(Fixture::class, $afterManager);
@@ -116,7 +149,7 @@ final class DeadlineOutlookTest extends WebTestCase
         return $competition;
     }
 
-    private function homeFixture(string $clubId, string $seasonId, string $teamId, string $competitionId, string $date, ?string $venueId, ?string $kickoff): void
+    private function homeFixture(string $clubId, string $seasonId, string $teamId, string $competitionId, string $date, ?string $venueId, ?string $kickoff): string
     {
         $fixture = new Fixture;
         $fixture->setClubId($clubId);
@@ -134,6 +167,8 @@ final class DeadlineOutlookTest extends WebTestCase
         }
         $this->em->persist($fixture);
         $this->em->flush();
+
+        return $fixture->getId();
     }
 
     /** Un amical HOME (sans compétition) à une date donnée — cible du balayage. */
@@ -196,6 +231,9 @@ final class DeadlineOutlookTest extends WebTestCase
         $season->setTransitionData([]);
         $this->em->persist($season);
         $this->em->flush();
+        // Le balayage d'une lecture gestionnaire exige le socle en vigueur (comme le geste
+        // « Déjà dans FBI » qu'elle remplace) : sans lui, rien ne s'écrit.
+        $this->settleSeasonPlan($season);
 
         $token = self::getContainer()->get(JWTTokenManagerInterface::class)->create($user);
 

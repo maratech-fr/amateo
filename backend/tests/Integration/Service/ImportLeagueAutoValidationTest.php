@@ -39,26 +39,26 @@ use Symfony\Bundle\FrameworkBundle\KernelBrowser;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 
 /**
- * NR d'axe « constraint semantics » (§7.1) — LA promesse du chantier A PR 1 : AU DÉPÔT d'un
- * fichier FBI, tout championnat COMMENCÉ voit ses domiciles validables passer tout seuls
- * « validé ligue ». Le geste chiffré en lot ({@see LeagueValidatedFixturesController})
- * reste le RATTRAPAGE (l'échéance qui tombe APRÈS le dépôt) ; l'auto-validation ferme le cas
- * courant « un club démarre en cours de saison et importe des domiciles déjà joués ».
+ * NR d'axe « constraint semantics » (§7.1) — AU DÉPÔT d'un fichier FBI, tout championnat
+ * COMMENCÉ voit ses domiciles validables passer tout seuls « Déjà dans FBI » (« validé ligue »
+ * dans les steps Behat). La lecture d'un gestionnaire ({@see LeagueValidatedFixturesController},
+ * l'accueil) RATTRAPE ensuite ce qui mûrit entre deux dépôts — angle bloquant à part :
+ * {@see LeagueReadAutoValidationTest}.
  *
- * La MAISON UNIQUE du prédicat et de l'écriture est partagée avec le geste manuel :
+ * La MAISON UNIQUE du prédicat et de l'écriture est partagée avec la lecture gestionnaire :
  * {@see LeagueValidationOutlook::fixturesToConfirm} (matured + heure + gymnase + sans
  * écart), puis source MANUAL + statut VALIDATED. Ce test prouve que le DÉPÔT emprunte EXACTEMENT
  * ce chemin — jamais une seconde copie du prédicat.
  *
  * ⚠ Doublon ASSUMÉ, point sensible (matchs / constraint semantics), angle NOMMÉ : le prédicat
- * « validable » (matured, heure, gymnase, pas d'écart) est déjà prouvé au MÊME endroit par le geste
- * MANUEL dans {@see LeagueValidatedFixturesControllerTest}
- * (testOutlookCountsOnlyMaturedValidatableHomeFixtures, testConfirmSwitchesEligibleToValidatedManualAndIsReplayable,
+ * « validable » (matured, heure, gymnase, pas d'écart) est déjà prouvé au MÊME endroit par la
+ * lecture gestionnaire dans {@see LeagueValidatedFixturesControllerTest}
+ * (testAManagerReadSweepsOnlyTheValidatableHomeAndNamesTheOthers, testAManagerReadSwitchesEligibleToValidatedManualAndIsReplayable,
  * testAConfirmedFixtureBecomesAFixedAnchorForTheSolver). ICI l'angle est le CANAL DU DÉPÔT : que
- * l'import honore ce prédicat sans le re-dériver, et que son résultat soit BYTE-IDENTIQUE au POST
- * manuel (jumeau cité ci-dessus). Les cas « sans heure / sans gymnase / avec écart » rejouent le
- * prédicat par ce canal, non pour le re-prouver mais pour épingler que le DÉPÔT ne le court-circuite
- * pas.
+ * l'import honore ce prédicat sans le re-dériver, et que son résultat soit BYTE-IDENTIQUE à celui
+ * de la lecture (jumeau cité ci-dessus). Les cas « sans heure / sans gymnase / avec écart » rejouent
+ * le prédicat par ce canal, non pour le re-prouver mais pour épingler que le DÉPÔT ne le
+ * court-circuite pas.
  */
 #[Group('integration')]
 #[Group('phase1')]
@@ -82,28 +82,31 @@ final class ImportLeagueAutoValidationTest extends WebTestCase
     /**
      * (a) Un domicile daté (heure + gymnase) d'un championnat COMMENCÉ passe VALIDATED + MANUAL
      * AU DÉPÔT, et son entrée dans la charge utile de placement (ancre FIXED) est BYTE-IDENTIQUE
-     * à celle du même match validé par le POST manuel — l'id de la rencontre mis à part (seule chose
-     * qui diffère entre deux domiciles identiques sur team/gymnase/date/heure). Jumeau du POST manuel :
+     * à celle du même match passé « Déjà dans FBI » par la lecture d'un gestionnaire — l'id de la
+     * rencontre mis à part (seule chose qui diffère entre deux domiciles identiques sur
+     * team/gymnase/date/heure). Jumeau de la lecture :
      * {@see LeagueValidatedFixturesControllerTest::testAConfirmedFixtureBecomesAFixedAnchorForTheSolver}.
      */
-    public function testDepositAutoValidatesAStartedChampionshipHomeIdenticallyToTheManualPost(): void
+    public function testDepositAutoValidatesAStartedChampionshipHomeIdenticallyToTheManagerRead(): void
     {
         [$token, $clubId, $seasonId, $needle] = $this->createClub();
         $this->scopeGucToClub($clubId);
         $team = $this->createTeam($clubId, $seasonId);
         $venue = $this->createVenueWithAlias($clubId, $seasonId, 'Gymnase Auto', 'gymnase auto');
 
-        // Témoin MANUEL : un domicile identique (même équipe, même gymnase, même date, même heure)
-        // validé par le POST en lot — la référence byte-identique.
+        // Témoin LECTURE : un domicile identique (même équipe, même gymnase, même date, même heure)
+        // passé « Déjà dans FBI » par la lecture d'un gestionnaire — la référence byte-identique.
         $manual = $this->seedHomeFixture($clubId, $seasonId, $team->getId(), self::PAST_DATE, '15:30', $venue->getId(), '2020-09-10');
         $manualId = $manual->getId();
-        $this->client->request('POST', '/api/fixtures/league-validation', [], [], ['HTTP_AUTHORIZATION' => 'Bearer ' . $token]);
+        $this->client->request('GET', '/api/fixtures/league-validation', [], [], ['HTTP_AUTHORIZATION' => 'Bearer ' . $token]);
         self::assertResponseStatusCodeSame(200);
+        $read = json_decode((string) $this->client->getResponse()->getContent(), true, 512, \JSON_THROW_ON_ERROR);
+        self::assertSame(1, $read['swept'] ?? -1, 'la lecture du gestionnaire balaie le témoin');
         $this->scopeGucToClub($clubId);
         $this->em->clear();
         $manualAfter = $this->em->find(Fixture::class, $manualId);
         self::assertInstanceOf(Fixture::class, $manualAfter);
-        self::assertSame(FixtureStatus::VALIDATED, $manualAfter->getStatus(), 'le POST manuel valide le témoin');
+        self::assertSame(FixtureStatus::VALIDATED, $manualAfter->getStatus(), 'la lecture du gestionnaire valide le témoin');
         self::assertSame(FixturePlacementSource::MANUAL, $manualAfter->getPlacementSource());
 
         // DÉPÔT : un domicile de championnat daté dans le passé (premier match joué), heure + salle
@@ -131,7 +134,7 @@ final class ImportLeagueAutoValidationTest extends WebTestCase
         $manualRow = $rows[$manualId];
         $autoRow = $rows[$autoId];
         unset($manualRow['id'], $autoRow['id']);
-        self::assertSame($manualRow, $autoRow, 'l\'ancre du dépôt est byte-identique à celle du POST manuel');
+        self::assertSame($manualRow, $autoRow, 'l\'ancre du dépôt est byte-identique à celle de la lecture gestionnaire');
     }
 
     /**
@@ -189,7 +192,7 @@ final class ImportLeagueAutoValidationTest extends WebTestCase
     /**
      * (d) Un domicile d'un championnat commencé portant un ÉCART EN ATTENTE n'est jamais validé au
      * dépôt — le prédicat l'exclut (`!hasPendingDeviations`). Doublon ASSUMÉ de l'angle manuel
-     * {@see LeagueValidatedFixturesControllerTest::testOutlookCountsOnlyMaturedValidatableHomeFixtures}
+     * {@see LeagueValidatedFixturesControllerTest::testAManagerReadSweepsOnlyTheValidatableHomeAndNamesTheOthers}
      * ($withDeviation) : ici le témoin est que le CANAL DU DÉPÔT ne contourne pas l'exclusion.
      */
     public function testAHomeWithAPendingDeviationIsNeverValidated(): void

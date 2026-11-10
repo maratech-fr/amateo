@@ -16,11 +16,12 @@ use Symfony\Component\HttpKernel\Attribute\AsController;
 use Symfony\Component\Routing\Attribute\Route;
 
 /**
- * The entry-deadline cockpit outlook (RMM-6) — read-only, open to any member
- * (patron MatchModuleVisitController : le Membre ouvre le module aussi). Serves
- * the J-7 windows and, when one is open, the current user's guardian delta,
- * WITHOUT stamping the visit. All the semantics live in {@see EntryDeadlineOutlook};
- * this controller only resolves the club/season/user context.
+ * The entry-deadline cockpit outlook (RMM-6) — open to any member (patron
+ * MatchModuleVisitController : le Membre ouvre le module aussi). Serves the J-7 windows
+ * and, when one is open, the current user's guardian delta, WITHOUT stamping the visit.
+ * A manager read on a writable season sweeps « Déjà dans FBI » (`swept`). All the
+ * semantics live in {@see EntryDeadlineOutlook}; this controller only resolves the
+ * club/season/user context and whether the season is writable.
  */
 #[AsController]
 final class EntryDeadlineOutlookController extends AbstractController
@@ -46,9 +47,12 @@ final class EntryDeadlineOutlookController extends AbstractController
             return $this->json(['error' => 'No club in context.'], Response::HTTP_BAD_REQUEST);
         }
 
-        $season = $this->seasonResolver->selectedOrCurrent($this->requestStack->getCurrentRequest(), $clubId);
+        $request = $this->requestStack->getCurrentRequest();
+        $season = $this->seasonResolver->selectedOrCurrent($request, $clubId);
         $seasonId = $season instanceof Season ? $season->getId() : null;
+        // Saison archivée (posé par TenantFilterListener) : la lecture répond, mais n'écrit rien.
+        $seasonWritable = true !== $request?->attributes->get('_season_readonly');
 
-        return $this->json($this->outlook->compute($clubId, $seasonId, $user->getId()));
+        return $this->json($this->outlook->compute($clubId, $seasonId, $user->getId(), $seasonWritable));
     }
 }

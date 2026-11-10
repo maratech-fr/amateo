@@ -26,6 +26,7 @@ use App\Enum\SeasonStatus;
 use App\Message\PlaceMatchesMessage;
 use App\MessageHandler\PlaceMatchesHandler;
 use App\Service\MatchPlacementLock;
+use App\Service\MatchPlacementPayloadBuilder;
 use App\Service\SeasonResolver;
 use App\Tests\ChoosesPlanVersionTrait;
 use App\Tests\TenantGucTrait;
@@ -261,6 +262,56 @@ final class PlaceMatchesControllerTest extends WebTestCase
         $kickoff = $other->getKickoffTime()?->format('H:i');
         self::assertNotNull($kickoff);
         self::assertLessThanOrEqual('19:00', $kickoff);
+    }
+
+    /**
+     * « Placer automatiquement » sans aucune lecture préalable (page montée avant que le championnat
+     * ne commence) : le guichet fait passer « Déjà dans FBI » le domicile daté d'un championnat
+     * commencé AVANT de décider s'il y a quelque chose à placer — heure inchangée, ancre FIXED au
+     * solveur, et rien n'est enfilé (« Aucun match à placer. »). Jumeau côté lecture :
+     * `LeagueReadAutoValidationTest` ; ici, le guichet de placement.
+     */
+    public function testPlacementSweepsAStartedChampionshipHomeBeforeDecidingWhatToPlace(): void
+    {
+        [$token, $clubId, $seasonId] = $this->createClub();
+        $this->scopeGucToClub($clubId);
+        $team = $this->createTeam($clubId, $seasonId);
+        $venue = $this->createVenue($clubId, $seasonId);
+        $this->createWindow($clubId, $seasonId, $venue->getId(), 6, '14:00', '22:30');
+        $home = $this->createFixture($clubId, $seasonId, $team->getId(), '2099-03-14');
+        $competition = $this->em->find(Competition::class, (string) $home->getCompetitionId());
+        self::assertInstanceOf(Competition::class, $competition);
+        $competition->setEntryDeadline(new DateTimeImmutable('2020-09-10'));
+        $home->setVenueId($venue->getId());
+        $home->setKickoffTime(new DateTimeImmutable('20:30'));
+        $this->em->flush();
+        $homeId = $home->getId();
+        $queuedBefore = $this->queuedCount();
+
+        $this->client->request('POST', '/api/fixtures/place', [], [], ['HTTP_AUTHORIZATION' => 'Bearer ' . $token]);
+
+        $this->em->clear();
+        $this->scopeGucToClub($clubId);
+        $fresh = $this->em->find(Fixture::class, $homeId);
+        self::assertInstanceOf(Fixture::class, $fresh);
+        self::assertSame(FixtureStatus::VALIDATED, $fresh->getStatus(), 'le guichet de placement balaie avant de placer');
+        self::assertSame(FixturePlacementSource::MANUAL, $fresh->getPlacementSource());
+        self::assertSame('20:30', $fresh->getKickoffTime()?->format('H:i'), 'l\'heure fédérale est conservée');
+
+        self::assertResponseStatusCodeSame(200);
+        self::assertStringContainsString('Aucun match', (string) $this->client->getResponse()->getContent());
+        self::assertSame($queuedBefore, $this->queuedCount(), 'rien à placer : aucun run enfilé');
+
+        $club = $this->em->find(Club::class, $clubId);
+        self::assertInstanceOf(Club::class, $club);
+        $builder = self::getContainer()->get(MatchPlacementPayloadBuilder::class);
+        self::assertInstanceOf(MatchPlacementPayloadBuilder::class, $builder);
+        $built = $builder->build($club, $seasonId);
+        self::assertSame(0, $built['toPlaceCount']);
+        $matches = $built['payload']['matches'];
+        self::assertIsArray($matches);
+        $kinds = array_column($matches, 'kind', 'id');
+        self::assertSame('FIXED', $kinds[$homeId] ?? null, 'le domicile balayé part en ancre fixe');
     }
 
     protected function setUp(): void

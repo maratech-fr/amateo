@@ -83,6 +83,9 @@ final class TsFieldsMatchOpenApiSchemaTest extends TestCase
         // P4-154 (P2-51) — le bloc de mutualisation, type miroir écrit à la main côté wizard.
         'wizard/SharedTrainingBlock' => ['ts' => 'wizard/api.ts', 'interface' => 'SharedTrainingBlock', 'schema' => 'SharedTrainingBlock'],
         'matches/DeadlineOutlook' => ['ts' => 'matches/api/competitions.ts', 'interface' => 'DeadlineOutlook', 'response' => ['GET', '/api/matches/deadline-outlook']],
+        // La vue « Déjà dans FBI » : `swept` (combien cette lecture a fait passer) est lu par le front
+        // pour rafraîchir les rencontres — un renommage serveur le rendrait muet sans bruit.
+        'matches/LeagueValidationOutlook' => ['ts' => 'matches/api/competitions.ts', 'interface' => 'LeagueValidationOutlook', 'response' => ['GET', '/api/fixtures/league-validation']],
         'planning/ValidateImpact' => ['ts' => 'planning/api.ts', 'interface' => 'ValidateImpact', 'response' => ['GET', '/api/schedules/{id}/validate-impact']],
         'matches/FfbbRencontresResult' => ['ts' => 'matches/api/ffbb.ts', 'interface' => 'FfbbRencontresResult', 'response' => ['GET', '/api/ffbb/rencontres']],
         // Une ligne d'engagement vit dans le tableau `engagements` du corps 200 : `items` descend

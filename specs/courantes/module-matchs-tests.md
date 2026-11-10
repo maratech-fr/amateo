@@ -44,25 +44,30 @@ AVANT écriture si un domicile créé reste sans gymnase/neutre, nommant les lib
 appariement + backfill via `venueMappings`/`venueChoices` ; terrain neutre exclu du solveur et de
 « validé ligue » ; mémoire dérivée d'un libellé déjà neutre) et `Security/ImportVenueMappingAbuseTest`
 (le canal multipart ne peut jamais écrire un gymnase d'un autre club, un corps forgé, ou un neutre
-sur un alias déjà confirmé — zéro écriture sur refus). « Validé ligue », auto au dépôt (chantier A) +
-rattrapage en lot : **NR gatant** (chemin du step `Blocking suite` de `ci.yml` +
-`docs/testing/blocking-tests.md`, axe *constraint semantics*) `Integration/Service/
-ImportLeagueAutoValidationTest` (domicile validable d'un championnat commencé basculé au dépôt,
-byte-identique à l'ancre du geste manuel ; championnat non commencé/sans heure/dévié jamais validé ;
-un terrain neutre (seul chemin restant « sans gymnase » depuis « pas de salles appariées, pas
-d'import », chantier A PR 2) n'est jamais validé non plus ; `leagueValidated` exact ; re-dépôt
-idempotent). Rattrapage :
-`LeagueValidatedFixturesControllerTest` (prédicat, idempotence, guards, verrou
-optimiste, `testAnOutOfAccessWindowHomeFixtureStaysEligibleAndTheRadarSignalsIt` — la divergence
-ASSUMÉE avec le contrôle d'accès unitaire, figée — et
-`testAFutureDeadlineCompetitionIsProposedNowhere`/`testConfirmSkipsAFutureDeadlineCompetition`
-(un championnat à échéance future n'apparaît ni au GET ni au POST) et
-`testACompetitionWithoutDeadlineIsNamedNotValidated`), `MatchTenantIsolationTest` (étendu — club B
-éligible, club A lit 0 et bascule 0) + feature Behat
-`un-club-en-cours-de-saison-valide-ses-matchs-en-lot.feature` (`LeagueValidationContext`, cinq
-scénarios — échéance passée bascule au `POST` de rattrapage, **championnat déjà commencé validé
-PAR LE DÉPÔT seul** [chantier A, sans aucun geste en lot], échéance non passée, premier match joué
-sans échéance, amical passé auto-validé). Registre « à corriger dans FBI » :
+sur un alias déjà confirmé — zéro écriture sur refus). « Déjà dans FBI » (« validé ligue »), au
+dépôt et à la lecture gestionnaire : **NR gatants** (chemin du step `Blocking suite` de `ci.yml` +
+`docs/testing/blocking-tests.md`) `Integration/Service/ImportLeagueAutoValidationTest` (axe
+*constraint semantics* — domicile validable d'un championnat commencé basculé au dépôt,
+byte-identique à l'ancre posée par la lecture gestionnaire ; championnat non commencé/sans
+heure/dévié jamais validé ; un terrain neutre (seul chemin restant « sans gymnase » depuis « pas de
+salles appariées, pas d'import », chantier A PR 2) n'est jamais validé non plus ; `leagueValidated`
+exact ; re-dépôt idempotent) et `Integration/Service/LeagueReadAutoValidationTest` (axes
+*constraint semantics* + *auth & memberships* — la lecture de l'accueil par un gestionnaire bascule
+les domiciles datés d'un championnat commencé entre deux dépôts, `swept` exact ; verrou périmé →
+200 et rattrapage à la lecture suivante ; rien ne s'écrit sur une saison archivée ni sans socle
+choisi). Lecture : `LeagueValidatedFixturesControllerTest` (prédicat, idempotence, guards,
+`testAnOutOfAccessWindowHomeFixtureStaysEligibleAndTheRadarSignalsIt` — la divergence ASSUMÉE avec
+le contrôle d'accès unitaire, figée — et
+`testAFutureDeadlineCompetitionIsProposedNowhere`/`testAManagerReadSkipsAFutureDeadlineCompetition`
+(un championnat à échéance future n'est ni proposé ni balayé) et
+`testACompetitionWithoutDeadlineIsNamedNotValidated`), `PlaceMatchesControllerTest` (le guichet
+« Placer automatiquement » balaie avant de décider quoi placer), `DeadlineOutlookTest` (Membre :
+compte sans écrire ; gestionnaire : balaie et dit `swept`), `MatchTenantIsolationTest` (étendu —
+club B éligible, la lecture de A ne balaie rien de B) + feature Behat
+`un-championnat-commence-valide-seul-ses-matchs-a-domicile.feature` (`LeagueValidationContext`, cinq
+scénarios — championnat commencé basculé par la lecture du gestionnaire, **championnat déjà
+commencé validé PAR LE DÉPÔT seul**, échéance non passée, premier match joué sans échéance, amical
+passé auto-validé). Registre « à corriger dans FBI » :
 `FbiCorrectionApiTest` (lecture/close/reopen, 404 cross-club, 403 membre sur close),
 `MatchTenantIsolationTest` (étendu) + feature Behat `ce-que-fbi-doit-refleter.feature`
 (`FbiCorrectionContext`, suite `fbi-a-corriger`). Front : suites Vitest sous

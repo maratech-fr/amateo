@@ -15,6 +15,7 @@ import {
   useCompetitions,
   useConflicts,
   useCreateTeamMatchHabit,
+  useDeadlineOutlook,
   useCreateVenueMatchWindow,
   useDeleteFixture,
   useDeleteVenueMatchWindow,
@@ -23,6 +24,7 @@ import {
   useFixtures,
   useImportFbiFixtures,
   useLatestFbiIngestion,
+  useLeagueValidationOutlook,
   useOpponentTravel,
   usePlaceFixture,
   usePlaceMatches,
@@ -65,6 +67,8 @@ vi.mock("./api", () => ({
   getVenues: vi.fn().mockResolvedValue([]),
   listFfbbSalles: vi.fn().mockResolvedValue({ postalCode: null, salles: [] }),
   getVenueSuggestions: vi.fn().mockResolvedValue([]),
+  getLeagueValidationOutlook: vi.fn().mockResolvedValue({ matured: [], toTreat: [], missingDeadline: [], totalValidatable: 0, swept: 0 }),
+  getDeadlineOutlook: vi.fn().mockResolvedValue({ windows: [], fbiTodo: { toEnter: 0, toCorrect: 0 }, toConfirmCount: 0, swept: 0 }),
 
   deleteFixture: vi.fn().mockResolvedValue(undefined),
   placeFixture: vi.fn().mockResolvedValue({}),
@@ -773,5 +777,82 @@ describe("matches queries — le refus serveur 422 est RESTITUÉ (le message meu
 
     await waitFor(() => expect(result.current.isError).toBe(true));
     await waitFor(() => expect(toastMock.error).toHaveBeenCalledWith(message));
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// EFFET RÉEL — une LECTURE qui a fait passer des rencontres « Déjà dans FBI » (`swept` > 0)
+// rafraîchit les rencontres et sa lecture sœur, sinon le Calendrier monté en parallèle garde
+// « N à placer » jusqu'à 30 s. Une lecture qui n'a rien basculé (`swept` 0) ne rafraîchit rien —
+// et la relecture, qui rend `swept` 0, ne boucle pas.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Laisse retomber les refetchs éventuels avant d'asserter une ABSENCE d'appel. */
+async function settle(): Promise<void> {
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  });
+}
+
+describe("matches queries — une lecture qui a basculé « Déjà dans FBI » rafraîchit les rencontres", () => {
+  it("la vue « Déjà dans FBI » rend swept > 0 → les rencontres ET l'accueil refetchent, une seule fois", async () => {
+    vi.mocked(matchesApi.getLeagueValidationOutlook).mockResolvedValueOnce({ matured: [], toTreat: [], missingDeadline: [], totalValidatable: 0, swept: 3 });
+    const client = makeClient();
+    const { result } = renderHook(
+      () => ({ league: useLeagueValidationOutlook(), fixtures: useFixtures(), home: useDeadlineOutlook() }),
+      { wrapper: wrapperFor(client) },
+    );
+
+    await waitFor(() => expect(result.current.league.isSuccess).toBe(true));
+    await waitFor(() => expect(matchesApi.getFixtures).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(matchesApi.getDeadlineOutlook).toHaveBeenCalledTimes(2));
+    await settle();
+    // Pas de boucle : la relecture (sous ['fixtures']) rend swept 0 et s'arrête là.
+    expect(matchesApi.getLeagueValidationOutlook).toHaveBeenCalledTimes(2);
+    expect(matchesApi.getFixtures).toHaveBeenCalledTimes(2);
+  });
+
+  it("la vue « Déjà dans FBI » rend swept 0 → rien n'est rafraîchi", async () => {
+    const client = makeClient();
+    const { result } = renderHook(
+      () => ({ league: useLeagueValidationOutlook(), fixtures: useFixtures(), home: useDeadlineOutlook() }),
+      { wrapper: wrapperFor(client) },
+    );
+
+    await waitFor(() => expect(result.current.league.isSuccess).toBe(true));
+    await waitFor(() => expect(result.current.fixtures.isSuccess).toBe(true));
+    await settle();
+    expect(matchesApi.getFixtures).toHaveBeenCalledTimes(1);
+    expect(matchesApi.getDeadlineOutlook).toHaveBeenCalledTimes(1);
+  });
+
+  it("l'accueil rend swept > 0 → les rencontres ET la vue « Déjà dans FBI » refetchent, une seule fois", async () => {
+    vi.mocked(matchesApi.getDeadlineOutlook).mockResolvedValueOnce({ windows: [], fbiTodo: { toEnter: 0, toCorrect: 0 }, toConfirmCount: 0, swept: 12 });
+    const client = makeClient();
+    const { result } = renderHook(
+      () => ({ home: useDeadlineOutlook(), fixtures: useFixtures(), league: useLeagueValidationOutlook() }),
+      { wrapper: wrapperFor(client) },
+    );
+
+    await waitFor(() => expect(result.current.home.isSuccess).toBe(true));
+    await waitFor(() => expect(matchesApi.getFixtures).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(matchesApi.getLeagueValidationOutlook).toHaveBeenCalledTimes(2));
+    await settle();
+    expect(matchesApi.getDeadlineOutlook).toHaveBeenCalledTimes(1);
+    expect(matchesApi.getFixtures).toHaveBeenCalledTimes(2);
+  });
+
+  it("l'accueil rend swept 0 → rien n'est rafraîchi", async () => {
+    const client = makeClient();
+    const { result } = renderHook(
+      () => ({ home: useDeadlineOutlook(), fixtures: useFixtures(), league: useLeagueValidationOutlook() }),
+      { wrapper: wrapperFor(client) },
+    );
+
+    await waitFor(() => expect(result.current.home.isSuccess).toBe(true));
+    await waitFor(() => expect(result.current.fixtures.isSuccess).toBe(true));
+    await settle();
+    expect(matchesApi.getFixtures).toHaveBeenCalledTimes(1);
+    expect(matchesApi.getLeagueValidationOutlook).toHaveBeenCalledTimes(1);
   });
 });

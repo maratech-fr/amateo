@@ -10,9 +10,8 @@ import type { ImportAnalysisDivision, ImportFbiAnalysis, ImportFbiResult, Import
 import { ImportFbiDialog } from "./ImportFbiDialog";
 import { MATCHES_TEXTS } from "./texts";
 
-const { analyzeFbiFixtures, importFbiFixtures, placeMatches, getVenueLabelInventory, getLeagueValidationOutlook, confirmLeagueValidatedFixtures } = vi.hoisted(() => ({
-  getLeagueValidationOutlook: vi.fn(() => Promise.resolve<LeagueValidationOutlook>({ matured: [], toTreat: [], missingDeadline: [], totalValidatable: 0 })),
-  confirmLeagueValidatedFixtures: vi.fn(() => Promise.resolve({ confirmed: 0 })),
+const { analyzeFbiFixtures, importFbiFixtures, placeMatches, getVenueLabelInventory, getLeagueValidationOutlook } = vi.hoisted(() => ({
+  getLeagueValidationOutlook: vi.fn(() => Promise.resolve<LeagueValidationOutlook>({ matured: [], toTreat: [], missingDeadline: [], totalValidatable: 0, swept: 0 })),
   analyzeFbiFixtures: vi.fn(() =>
     Promise.resolve({
       divisions: [
@@ -46,7 +45,7 @@ const { analyzeFbiFixtures, importFbiFixtures, placeMatches, getVenueLabelInvent
   getVenueLabelInventory: vi.fn((): Promise<VenueLabelInventoryRow[]> => Promise.resolve([])),
 }));
 
-vi.mock("./api", () => ({ analyzeFbiFixtures, importFbiFixtures, placeMatches, getVenueLabelInventory, getLeagueValidationOutlook, confirmLeagueValidatedFixtures }));
+vi.mock("./api", () => ({ analyzeFbiFixtures, importFbiFixtures, placeMatches, getVenueLabelInventory, getLeagueValidationOutlook }));
 
 // useCredits lit useMe : `club` mutable pour piloter le solde (bouton de placement
 // de fin d'import — grisé à 0 AVEC le solde, jamais masqué).
@@ -96,9 +95,7 @@ beforeEach(() => {
   importFbiFixtures.mockClear();
   placeMatches.mockClear();
   getLeagueValidationOutlook.mockReset();
-  getLeagueValidationOutlook.mockResolvedValue({ matured: [], toTreat: [], missingDeadline: [], totalValidatable: 0 });
-  confirmLeagueValidatedFixtures.mockReset();
-  confirmLeagueValidatedFixtures.mockResolvedValue({ confirmed: 0 });
+  getLeagueValidationOutlook.mockResolvedValue({ matured: [], toTreat: [], missingDeadline: [], totalValidatable: 0, swept: 0 });
   meState.club = undefined;
 });
 

@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { HTTPError, TimeoutError } from "ky";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { coachShortName } from "@/shared/lib/coachName";
 import { downloadBlob } from "@/shared/lib/download";
@@ -53,9 +53,10 @@ export function useCompetitions() {
  * RMM-6 — l'écriture bulk des échéances de saisie. Invalide `competitions` : les
  * champs lus (`entryDeadline`/`effectiveEntryDeadline`/`deadlineSource`) y vivent.
  *
- * ⚠ Lot O — l'échéance est DEVENUE le déclencheur de « validé ligue » : recaler une
- * échéance doit rafraîchir la lecture du bandeau, sinon le gestionnaire pose son échéance,
- * revient, et ne voit rien. On invalide donc AUSSI `["fixtures","league-validation"]`.
+ * ⚠ Lot O — l'échéance fait COMMENCER un championnat : sa relecture fait alors passer ses
+ * domiciles datés « Déjà dans FBI » côté serveur. On invalide donc AUSSI
+ * `["fixtures","league-validation"]`, sinon le gestionnaire pose son échéance, revient, et ne
+ * voit rien.
  * 422/409 remontent par `onError` (toast) ; l'éditeur ajoute son alerte de formulaire.
  */
 export function useSetEntryDeadlines() {
@@ -296,15 +297,23 @@ export function useModuleVisit(enabled = true) {
   });
 }
 
+const DEADLINE_OUTLOOK_KEY = ["matches", "deadline-outlook"] as const;
+const LEAGUE_VALIDATION_KEY = ["fixtures", "league-validation"] as const;
+
 /**
  * RMM-6 PR-3 — l'outlook J-7 des échéances de saisie, consommé par la tuile
- * cockpit (`FbiDeadlineCard`). Lecture seule, ouvert au Membre. La règle J-7
- * (`withinWindow`) et le bloc gardien sont calculés BACKEND — le front n'invente
- * rien. Frais court : une échéance approche et le compte de matchs à saisir bouge
- * à chaque saisie FBI marquée.
+ * cockpit (`FbiDeadlineCard`). Ouvert au Membre. La règle J-7 (`withinWindow`) et le
+ * bloc gardien sont calculés BACKEND — le front n'invente rien. Frais court : une
+ * échéance approche et le compte de matchs à saisir bouge à chaque saisie FBI marquée.
+ * La lecture d'un gestionnaire fait passer seuls les domiciles datés « Déjà dans FBI »
+ * côté serveur : `swept` > 0 rafraîchit les rencontres et la vue « Déjà dans FBI ».
  */
 export function useDeadlineOutlook() {
-  return useQuery({ queryKey: ["matches", "deadline-outlook"], queryFn: matchesApi.getDeadlineOutlook, staleTime: 30_000 });
+  const query = useQuery({ queryKey: DEADLINE_OUTLOOK_KEY, queryFn: matchesApi.getDeadlineOutlook, staleTime: 30_000 });
+  // La lecture sœur (`["fixtures","league-validation"]`) vit sous `["fixtures"]` : `invalidateFixtures`
+  // la recale déjà — l'invalider une seconde fois annulerait sa relecture pour en relancer une autre.
+  useRefreshAfterSweep(query.data, null);
+  return query;
 }
 
 /** Le registre « à corriger dans FBI » (entrées ouvertes du club+saison). */
@@ -815,36 +824,35 @@ export function useResolveFixtureDeviation() {
 }
 
 /**
- * Lot O — la LECTURE « validé ligue » (par championnat échu + rencontres à traiter +
+ * Lot O — la LECTURE « Déjà dans FBI » (par championnat commencé + rencontres à traiter +
  * championnats sans échéance). La clé vit sous `["fixtures"]`, donc tout
- * `invalidateFixtures` (import, confirmation, placement…) la recale ; l'écriture des
- * échéances l'invalide aussi (voir `useSetEntryDeadlines`). Le front n'a AUCUNE règle —
- * il affiche la lecture servie.
+ * `invalidateFixtures` (import, placement…) la recale ; l'écriture des échéances
+ * l'invalide aussi (voir `useSetEntryDeadlines`). Le front n'a AUCUNE règle — il affiche
+ * la lecture servie. Cette lecture fait passer seule les domiciles datés « Déjà dans FBI »
+ * côté serveur : `swept` > 0 rafraîchit les rencontres et l'accueil (`useRefreshAfterSweep`).
  */
 export function useLeagueValidationOutlook(enabled = true) {
   // `enabled` : la route est réservée aux GESTIONNAIRES (403 sinon) — un Membre ne doit
-  // jamais la déclencher (la carte du cockpit passe `false` pour un non-gestionnaire).
-  return useQuery({ queryKey: ["fixtures", "league-validation"], queryFn: matchesApi.getLeagueValidationOutlook, staleTime: 30_000, enabled });
+  // jamais la déclencher.
+  const query = useQuery({ queryKey: LEAGUE_VALIDATION_KEY, queryFn: matchesApi.getLeagueValidationOutlook, staleTime: 30_000, enabled });
+  useRefreshAfterSweep(query.data, DEADLINE_OUTLOOK_KEY);
+  return query;
 }
 
 /**
- * Lot L — le geste confirmé. Bascule les rencontres éligibles en VALIDATED + MANUAL et
- * invalide `["fixtures"]` (statut/source/verrou de grille, radar) — la clé du compte
- * en fait partie, donc le bandeau disparaît de lui-même. On invalide AUSSI
- * `["matches","deadline-outlook"]` : le cockpit y lit `toConfirmCount` et le `toPlaceCount`
- * (validables soustraits), qui viennent de changer. Le toast de succès (« N validées »)
- * est composé par l'appelant.
+ * Une LECTURE qui a fait passer des rencontres « Déjà dans FBI » (`swept` > 0) a écrit côté
+ * serveur : on rafraîchit les rencontres (statut, verrou de grille, radar) et la lecture sœur
+ * qui en compte. La relecture rend `swept` 0 : pas de boucle.
  */
-export function useConfirmLeagueValidatedFixtures() {
+function useRefreshAfterSweep(data: { swept: number } | undefined, sisterKey: readonly string[] | null): void {
   const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: () => matchesApi.confirmLeagueValidatedFixtures(),
-    onSuccess: () => {
-      invalidateFixtures(queryClient);
-      void queryClient.invalidateQueries({ queryKey: ["matches", "deadline-outlook"] });
-    },
-    onError: (error) => void errorMessage(error).then((message) => toast.error(message)),
-  });
+  useEffect(() => {
+    if (data === undefined || data.swept <= 0) return;
+    invalidateFixtures(queryClient);
+    if (null !== sisterKey) {
+      void queryClient.invalidateQueries({ queryKey: sisterKey });
+    }
+  }, [data, sisterKey, queryClient]);
 }
 
 /**

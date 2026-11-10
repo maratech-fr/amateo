@@ -16869,7 +16869,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "The batch \u00ab valid\u00e9 ligue \u00bb outlook, driven by each competition having STARTED. A championship has started when its entry deadline has passed (inclusive) OR its first match is already played (min match date strictly in the past) \u2014 so only STARTED competitions are proposed; a future-deadline championship with no match yet played (e.g. a new October youth wave with provisional dates) is deliberately left untouched. Per started competition: its name, deadline (null when it started by first match played), source, how it matured (deadline | firstMatchPlayed), the first match date (when that is what started it), and the count of validatable home fixtures (UNPLACED, kickoff + identified venue, no pending deviation). Plus the NAMED fixtures still to treat (no kickoff, no venue, or a pending deviation), the no-deadline competitions NOT YET started that nonetheless have ready fixtures (deadline to be entered), and the grand total to validate. Friendly competitions (label \u00ab Amical \u2026 \u00bb) are never proposed.",
+                        "description": "The \u00ab D\u00e9j\u00e0 dans FBI \u00bb outlook, driven by each competition having STARTED. Before answering, the read switches by itself every validatable home fixture of a started championship to \u00ab D\u00e9j\u00e0 dans FBI \u00bb (status VALIDATED + placement source MANUAL \u2014 the anchor the grid lock and the placement solver both require), past friendlies included, and says how many (swept). A championship has started when its entry deadline has passed (inclusive) OR its first match is already played (min match date strictly in the past) \u2014 so only STARTED competitions are proposed; a future-deadline championship with no match yet played (e.g. a new October youth wave with provisional dates) is deliberately left untouched. Per started competition: its name, deadline (null when it started by first match played), source, how it matured (deadline | firstMatchPlayed), the first match date (when that is what started it), and the count of validatable home fixtures (UNPLACED, kickoff + identified venue, no pending deviation). Plus the NAMED fixtures still to treat (no kickoff, no venue, or a pending deviation), the no-deadline competitions NOT YET started that nonetheless have ready fixtures (deadline to be entered), and the grand total to validate. Friendly competitions (label \u00ab Amical \u2026 \u00bb) are never proposed.",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -16970,6 +16970,10 @@
                                         },
                                         "totalValidatable": {
                                             "type": "integer"
+                                        },
+                                        "swept": {
+                                            "type": "integer",
+                                            "description": "How many fixtures THIS read switched to \u00ab D\u00e9j\u00e0 dans FBI \u00bb before answering (past friendlies, then the validatable home fixtures of started championships); 0 when nothing was left, or when a concurrent modification won the race (the next read retries)"
                                         }
                                     }
                                 }
@@ -16986,41 +16990,7 @@
                         "description": "No active season, season plan not chosen, or archived season"
                     }
                 },
-                "summary": "The batch \u00ab valid\u00e9 ligue \u00bb outlook by matured competition (read-only, management only)"
-            },
-            "post": {
-                "operationId": "confirmLeagueValidatedFixtures",
-                "tags": [
-                    "Match"
-                ],
-                "responses": {
-                    "200": {
-                        "description": "Mark every eligible home fixture \u00ab valid\u00e9 ligue \u00bb (status VALIDATED + placement source MANUAL \u2014 the anchor the grid lock and the placement solver both require). Idempotent: a second call finds nothing (the predicate excludes VALIDATED).",
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "type": "object",
-                                    "properties": {
-                                        "confirmed": {
-                                            "type": "integer",
-                                            "description": "How many fixtures were switched to \u00ab valid\u00e9 ligue \u00bb"
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized (missing/expired JWT)"
-                    },
-                    "403": {
-                        "description": "Not a management member"
-                    },
-                    "409": {
-                        "description": "No active season, season plan not chosen, archived season, or a concurrent modification (another tab / double-click)"
-                    }
-                },
-                "summary": "Mark the eligible home fixtures \u00ab valid\u00e9 ligue \u00bb in one confirmed gesture (management only)"
+                "summary": "The \u00ab D\u00e9j\u00e0 dans FBI \u00bb outlook by started competition \u2014 the read first switches the validatable home fixtures by itself (management only)"
             }
         },
         "/api/fixtures/place": {
@@ -17605,7 +17575,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "The entry-deadline cockpit outlook: each still-owed effective deadline (club value, else community default) with its competitions, how many home fixtures remain to enter, and whether the seven-day reminder window is open. When at least one window is open, the current user's guardian delta is joined (read-only, the visit is not stamped).",
+                        "description": "The entry-deadline cockpit outlook: each still-owed effective deadline (club value, else community default) with its competitions, how many home fixtures remain to enter, and whether the seven-day reminder window is open. When at least one window is open, the current user's guardian delta is joined (the visit is not stamped). A manager read on a writable season whose season plan is chosen first switches past friendlies and the dated home fixtures of started championships to \u00ab D\u00e9j\u00e0 dans FBI \u00bb (swept).",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -17665,7 +17635,11 @@
                                         },
                                         "toConfirmCount": {
                                             "type": "integer",
-                                            "description": "Home fixtures ready to be marked \u00ab valid\u00e9 ligue \u00bb in one gesture (matured championships, kickoff + identified venue, no pending deviation) \u2014 the grand total of the batch outlook"
+                                            "description": "Home fixtures of started championships ready to become \u00ab D\u00e9j\u00e0 dans FBI \u00bb (kickoff + identified venue, no pending deviation) and not switched by this read \u2014 a manager read on a writable season switches them (0 left), a member read never writes"
+                                        },
+                                        "swept": {
+                                            "type": "integer",
+                                            "description": "How many fixtures THIS read switched to \u00ab D\u00e9j\u00e0 dans FBI \u00bb (past friendlies, then started championships). 0 for a member, an archived season, a season plan not chosen, or when a concurrent modification won the race (the next read retries)"
                                         },
                                         "guardianDelta": {
                                             "type": "object",
@@ -17698,7 +17672,7 @@
                         "description": "Unauthorized (missing/expired JWT)"
                     }
                 },
-                "summary": "League/committee entry-deadline outlook for the cockpit (read-only, open to any member)"
+                "summary": "League/committee entry-deadline outlook for the cockpit (open to any member; a manager read sweeps \u00ab D\u00e9j\u00e0 dans FBI \u00bb)"
             }
         },
         "/api/matches/module-visit": {

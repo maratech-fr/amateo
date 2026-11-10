@@ -32,9 +32,18 @@ final class SocleGuard
             return; // aucune saison résolue → d'autres gardes s'en chargent
         }
 
-        if (null === $this->schedulePlanProvisioner->chosenOfSeasonPlan($seasonId)) {
+        if (!$this->isSeasonPlanChosen($seasonId)) {
             throw new ConflictHttpException(self::SEASON_PLAN_REQUIRED_MESSAGE);
         }
+    }
+
+    /**
+     * La même question, sans jeter : pour une LECTURE qui n'écrit qu'avec le socle en vigueur
+     * (le balayage « Déjà dans FBI » de l'accueil) et répond quand même sans lui.
+     */
+    public function isSeasonPlanChosen(string $seasonId): bool
+    {
+        return null !== $this->schedulePlanProvisioner->chosenOfSeasonPlan($seasonId);
     }
 
     /**

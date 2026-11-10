@@ -13,8 +13,9 @@ import { describe, expect, it } from "vitest";
  * eux, sont pinés par leurs tests JUMEAUX (point sensible « matchs », doublon VOULU — §1 de
  * la charte) : `features/matches/lib/fixtureStatusLabel.test.ts` (la table d'états :
  * VALIDATED = « Déjà dans FBI », aucun « Attesté ») et
- * `features/matches/lib/leagueValidation.test.ts` (`LEAGUE_VALIDATION_CONFIRM_LABEL` +
- * l'intro). Cette garde est le FILET DE COMPLÉTUDE qui attrape les occurrences dispersées
+ * `features/matches/lib/leagueValidation.test.ts` (les mots de ce qui reste à traiter — le
+ * geste de confirmation a disparu : un championnat commencé passe seul « Déjà dans FBI »).
+ * Cette garde est le FILET DE COMPLÉTUDE qui attrape les occurrences dispersées
  * NON testées une à une (`LeagueValidation.tsx`, `FbiDeadlineCard.tsx`, …).
  *
  * jsdom n'a pas de moteur de rendu : comme ses sœurs, la garde MORD dans Vitest, hors de tout

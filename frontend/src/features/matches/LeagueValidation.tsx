@@ -1,35 +1,25 @@
-import { ArrowRight, BadgeCheck, CalendarClock, ListTodo } from "lucide-react";
-import { useState } from "react";
+import { ArrowRight, CalendarClock, ListTodo } from "lucide-react";
 import { useNavigate } from "react-router";
 
 import { Button } from "@/shared/components/ui/button";
-import { ConfirmDialog } from "@/shared/components/ui/confirm-dialog";
 import { NoticeBanner } from "@/shared/components/ui/notice-banner";
 import { useCanManage } from "@/shared/session/queries";
-import { toast } from "@/shared/stores/toastStore";
 
-import type { LeagueToTreatFixture, LeagueValidationOutlook, MissingDeadlineCompetition } from "./api";
-import {
-  ENTRY_DEADLINES_PATH,
-  LEAGUE_VALIDATION_CONFIRM_LABEL,
-  REVIEW_QUEUE_ANCHOR,
-  leagueValidationIntro,
-  maturedLabel,
-  toTreatLabel,
-} from "./lib/leagueValidation";
-import { useConfirmLeagueValidatedFixtures, useLeagueValidationOutlook } from "./queries";
+import type { LeagueToTreatFixture, MissingDeadlineCompetition } from "./api";
+import { ENTRY_DEADLINES_PATH, REVIEW_QUEUE_ANCHOR, toTreatLabel } from "./lib/leagueValidation";
+import { useLeagueValidationOutlook } from "./queries";
 import { MATCHES_TEXTS } from "./texts";
 
 /**
- * Lot O — « validé ligue » en lot, PILOTÉ PAR L'ÉCHÉANCE du championnat. Un club qui
- * démarre EN COURS de saison confirme d'un geste les domiciles des championnats DONT
- * L'ÉCHÉANCE EST PASSÉE (jour inclus). Un championnat dont l'échéance n'est pas passée
- * (nouvelle vague d'octobre, dates provisoires) n'est proposé nulle part.
+ * Lot O — « Déjà dans FBI », PILOTÉ PAR LE DÉMARRAGE du championnat. Un championnat COMMENCÉ
+ * (échéance passée, jour inclus, ou premier match joué) n'a plus rien à confirmer : la lecture
+ * d'un gestionnaire fait passer seuls ses domiciles datés « Déjà dans FBI » côté serveur. Un
+ * championnat qui n'a pas commencé (nouvelle vague d'octobre, dates provisoires) n'est proposé
+ * nulle part.
  *
- * 🔴 Le front n'a AUCUNE règle : le backend décide QUOI est proposé (échéance passée), le
- * front AFFICHE la lecture (`useLeagueValidationOutlook`), maison unique
- * (`.claude/rules/frontend.md`). Trois signaux, tous servis par le backend : des
- * championnats échus PRÊTS (à confirmer), des rencontres échues À TRAITER (nommées, avec
+ * 🔴 Le front n'a AUCUNE règle : le backend décide, le front AFFICHE la lecture
+ * (`useLeagueValidationOutlook`), maison unique (`.claude/rules/frontend.md`). Deux signaux,
+ * servis par le backend : des rencontres de championnats commencés À TRAITER (nommées, avec
  * renvoi vers la file), et des championnats SANS échéance (à renseigner).
  */
 
@@ -38,50 +28,6 @@ const NAMED_LIMIT = 6;
 
 function plural(count: number): string {
   return `rencontre${count > 1 ? "s" : ""}`;
-}
-
-/**
- * La confirmation : liste CHAQUE championnat échu avec son compte (décision fondateur),
- * puis UN SEUL oui. Elle nomme aussi les rencontres qui ne seront PAS validées (à traiter),
- * jamais écartées en silence. Refuser n'écrit rien ; confirmer bascule et affiche le nombre
- * RÉELLEMENT basculé (renvoyé par le serveur, source de vérité), puis se ferme.
- */
-export function LeagueValidationConfirmDialog({ open, outlook, onClose }: { open: boolean; outlook: LeagueValidationOutlook; onClose: () => void }) {
-  const confirm = useConfirmLeagueValidatedFixtures();
-  const handleConfirm = (): void => {
-    confirm.mutate(undefined, {
-      onSuccess: ({ confirmed }) => {
-        toast.success(`${confirmed} ${plural(confirmed)} marquée${confirmed > 1 ? "s" : ""} « déjà dans FBI ».`);
-        onClose();
-      },
-    });
-  };
-  return (
-    <ConfirmDialog
-      open={open}
-      title={LEAGUE_VALIDATION_CONFIRM_LABEL}
-      description={
-        <div className="flex flex-col gap-2 text-left">
-          <p>{leagueValidationIntro(outlook.totalValidatable)}</p>
-          <ul className="flex flex-col gap-0.5 text-sm tabular-nums">
-            {outlook.matured.map((competition) => (
-              <li key={competition.competitionId}>{maturedLabel(competition)}</li>
-            ))}
-          </ul>
-          {outlook.toTreat.length > 0 ? (
-            <p className="text-sm text-muted-foreground">
-              {outlook.toTreat.length} {plural(outlook.toTreat.length)} de championnats commencés ne {outlook.toTreat.length > 1 ? "seront" : "sera"} pas validée{outlook.toTreat.length > 1 ? "s" : ""} (ni heure ni gymnase, ou écart) — à traiter dans la file.
-            </p>
-          ) : null}
-        </div>
-      }
-      confirmLabel={LEAGUE_VALIDATION_CONFIRM_LABEL}
-      destructive={false}
-      confirmDisabled={confirm.isPending || outlook.totalValidatable <= 0}
-      onConfirm={handleConfirm}
-      onCancel={onClose}
-    />
-  );
 }
 
 /**
@@ -145,71 +91,29 @@ function MissingDeadlineNotice({ competitions }: { competitions: MissingDeadline
 }
 
 /**
- * Le bandeau de RATTRAPAGE sur l'écran Importer (sous la carte des données de match).
- * `undefined` (chargement/échec) ⇒ rendu NUL (jamais un faux calme fabriqué). Trois blocs
- * indépendants selon ce que le backend sert ; muet si rien.
+ * Le bandeau sur l'écran Importer et le Calendrier (sous la carte des données de match) :
+ * ce qui reste À TRAITER et les championnats SANS échéance. `undefined` (chargement/échec) ⇒
+ * rendu NUL (jamais un faux calme fabriqué). Muet si rien. Des validables encore servis (lecture
+ * dont le balayage a perdu une course) ne font naître ni bandeau ni geste : la lecture suivante
+ * les bascule.
  */
 export function LeagueValidationBanner() {
   // La lecture est réservée aux gestionnaires (403 sinon) : un Membre ne la déclenche jamais et ne
-  // voit ni le bandeau ni l'entrée du rapport.
+  // voit pas le bandeau.
   const canManage = useCanManage();
   const outlook = useLeagueValidationOutlook(canManage);
-  const [open, setOpen] = useState(false);
   const data = outlook.data;
   if (!canManage || undefined === data) {
     return null;
   }
-  const { matured, toTreat, missingDeadline, totalValidatable } = data;
-  if (totalValidatable <= 0 && 0 === toTreat.length && 0 === missingDeadline.length) {
+  const { toTreat, missingDeadline } = data;
+  if (0 === toTreat.length && 0 === missingDeadline.length) {
     return null;
   }
   return (
     <div className="flex flex-col gap-2">
-      {totalValidatable > 0 ? (
-        <NoticeBanner tone="muted" role="status">
-          <div className="flex flex-wrap items-center gap-2">
-            <BadgeCheck className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-            <span className="grow tabular-nums">
-              {totalValidatable} {plural(totalValidatable)} de {matured.length} championnat{matured.length > 1 ? "s" : ""} commencé{matured.length > 1 ? "s" : ""} (échéance dépassée ou premier match joué) {totalValidatable > 1 ? "sont prêtes" : "est prête"} — à confirmer « déjà dans FBI ».
-            </span>
-            <Button size="sm" className="shrink-0" onClick={() => setOpen(true)}>
-              {LEAGUE_VALIDATION_CONFIRM_LABEL}
-            </Button>
-          </div>
-        </NoticeBanner>
-      ) : null}
       {toTreat.length > 0 ? <LeagueToTreatNotice fixtures={toTreat} /> : null}
       {missingDeadline.length > 0 ? <MissingDeadlineNotice competitions={missingDeadline} /> : null}
-      <LeagueValidationConfirmDialog open={open} outlook={data} onClose={() => setOpen(false)} />
-    </div>
-  );
-}
-
-/**
- * La section du RAPPORT de fin d'import : muette tant que rien n'est validable (le compte,
- * invalidé par l'import, se recalcule). Ouvre la MÊME confirmation que le bandeau.
- */
-export function LeagueValidationReportEntry() {
-  // La lecture est réservée aux gestionnaires (403 sinon) : un Membre ne la déclenche jamais et ne
-  // voit ni le bandeau ni l'entrée du rapport.
-  const canManage = useCanManage();
-  const outlook = useLeagueValidationOutlook(canManage);
-  const [open, setOpen] = useState(false);
-  const data = outlook.data;
-  const total = data?.totalValidatable ?? 0;
-  if (!canManage || undefined === data || total <= 0) {
-    return null;
-  }
-  return (
-    <div className="mt-1 flex flex-col items-start gap-1 border-t border-border pt-2">
-      <p className="text-xs text-muted-foreground">
-        {total} {plural(total)} de championnats commencés (échéance dépassée ou premier match joué) {total > 1 ? "portent" : "porte"} déjà date, heure et gymnase dans FBI — à confirmer « déjà dans FBI ».
-      </p>
-      <Button variant="outline" size="sm" onClick={() => setOpen(true)}>
-        <BadgeCheck className="size-4" />
-        {LEAGUE_VALIDATION_CONFIRM_LABEL}
-      </Button>
-      <LeagueValidationConfirmDialog open={open} outlook={data} onClose={() => setOpen(false)} />
     </div>
   );
 }

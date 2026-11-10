@@ -37,13 +37,16 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 use Symfony\Component\Messenger\Transport\InMemory\InMemoryTransport;
 
 /**
- * GET/POST /api/fixtures/league-validation — le geste « validé ligue » en lot (lot L).
+ * GET /api/fixtures/league-validation — la vue « Déjà dans FBI » : sa lecture par un gestionnaire
+ * fait passer seuls les domiciles validables d'un championnat COMMENCÉ (le geste en lot POST a
+ * disparu) et dit combien (`swept`), puis nomme ce qui reste à traiter.
  *
- * Le compte et l'application partagent le MÊME prédicat : un domicile UNPLACED
- * portant heure + gymnase identifié, sans écart en attente. L'application pose
- * VALIDATED + source MANUAL, et cette rencontre ressort alors en ANCRE FIXE dans la
- * charge utile envoyée au solveur de placement (la preuve passe par l'engine réel du
- * docker-compose ; il se skippe s'il est indisponible, même rituel que le placement).
+ * Le balayage et le compte partagent le MÊME prédicat : un domicile UNPLACED portant heure +
+ * gymnase identifié, sans écart en attente. Le balayage pose VALIDATED + source MANUAL, et
+ * cette rencontre ressort alors en ANCRE FIXE dans la charge utile envoyée au solveur de
+ * placement (la preuve passe par l'engine réel du docker-compose ; il se skippe s'il est
+ * indisponible, même rituel que le placement). Les gardes (saison archivée, socle, Membre) et
+ * la version périmée de l'écriture-à-la-lecture : `LeagueReadAutoValidationTest` (bloquant).
  */
 #[Group('integration')]
 final class LeagueValidatedFixturesControllerTest extends WebTestCase
@@ -55,30 +58,31 @@ final class LeagueValidatedFixturesControllerTest extends WebTestCase
 
     private EntityManagerInterface $em;
 
-    public function testNonManagementMemberIs403OnBothRoutes(): void
+    /** La vue « Déjà dans FBI » (qui écrit) est fermée à un non-gestionnaire : 403. */
+    public function testNonManagementMemberIs403(): void
     {
         [, $clubId] = $this->createClub();
         $editorToken = $this->addMember($clubId, 'editor');
 
         $this->client->request('GET', '/api/fixtures/league-validation', [], [], ['HTTP_AUTHORIZATION' => 'Bearer ' . $editorToken]);
         self::assertResponseStatusCodeSame(403);
-
-        $this->client->request('POST', '/api/fixtures/league-validation', [], [], ['HTTP_AUTHORIZATION' => 'Bearer ' . $editorToken]);
-        self::assertResponseStatusCodeSame(403);
     }
 
-    public function testSocleNotChosenIs409OnBothRoutes(): void
+    public function testSocleNotChosenIs409(): void
     {
         [$token] = $this->createClub(settleSocle: false);
 
         $this->client->request('GET', '/api/fixtures/league-validation', [], [], ['HTTP_AUTHORIZATION' => 'Bearer ' . $token]);
         self::assertResponseStatusCodeSame(409);
-
-        $this->client->request('POST', '/api/fixtures/league-validation', [], [], ['HTTP_AUTHORIZATION' => 'Bearer ' . $token]);
-        self::assertResponseStatusCodeSame(409);
     }
 
-    public function testOutlookCountsOnlyMaturedValidatableHomeFixtures(): void
+    /**
+     * La lecture d'un gestionnaire fait passer « Déjà dans FBI » le SEUL domicile validable
+     * (`swept` 1, plus rien à valider), et NOMME les trois domiciles d'un championnat commencé
+     * qu'elle ne peut pas trancher (sans heure, sans gymnase, écart en attente) — jamais
+     * l'extérieur.
+     */
+    public function testAManagerReadSweepsOnlyTheValidatableHomeAndNamesTheOthers(): void
     {
         [$token, $clubId, $seasonId] = $this->createClub();
         $this->scopeGucToClub($clubId);
@@ -88,7 +92,7 @@ final class LeagueValidatedFixturesControllerTest extends WebTestCase
         // Validable : domicile UNPLACED, heure + gymnase, sans écart, championnat ÉCHU
         // (échéance passée par défaut). Une date de match FUTURE reste validable — c'est
         // l'ÉCHÉANCE du championnat, pas la date du match, qui ouvre la validation.
-        $this->eligible($clubId, $seasonId, $team->getId(), $venue->getId(), '2099-03-14');
+        $eligibleId = $this->eligible($clubId, $seasonId, $team->getId(), $venue->getId(), '2099-03-14')->getId();
 
         // Inéligibles au prédicat, championnat échu — un par raison, donc À TRAITER (nommés).
         $noKickoff = $this->createFixture($clubId, $seasonId, $team->getId(), '2099-03-15', '2020-09-10');
@@ -110,11 +114,9 @@ final class LeagueValidatedFixturesControllerTest extends WebTestCase
         self::assertResponseStatusCodeSame(200);
         $data = json_decode((string) $this->client->getResponse()->getContent(), true, 512, \JSON_THROW_ON_ERROR);
 
-        self::assertSame(1, $data['totalValidatable']);
-        self::assertCount(1, $data['matured']);
-        self::assertSame(1, $data['matured'][0]['validatableCount']);
-        self::assertSame('2020-09-10', $data['matured'][0]['deadline']);
-        self::assertSame('club', $data['matured'][0]['deadlineSource']);
+        self::assertSame(1, $data['swept'] ?? -1, 'la lecture du gestionnaire a fait passer le validable « Déjà dans FBI »');
+        self::assertSame(0, $data['totalValidatable'], 'plus rien à valider après le balayage');
+        $this->assertLeagueValidated($eligibleId);
 
         // Les trois candidats domicile non validables sont NOMMÉS (l'extérieur, non).
         $reasons = array_column($data['toTreat'], 'reason');
@@ -126,8 +128,8 @@ final class LeagueValidatedFixturesControllerTest extends WebTestCase
     /**
      * NR — LE cœur du lot O : l'échéance du championnat est le déclencheur. Une rencontre
      * qui passerait le prédicat (heure + gymnase) mais dont le championnat n'est PAS encore
-     * échu (nouvelle vague d'octobre, dates provisoires) n'est proposée NULLE PART — ni
-     * comptée, ni nommée à traiter, ni signalée sans échéance. La verrouiller en ancre fixe
+     * échu (nouvelle vague d'octobre, dates provisoires) n'est touchée NULLE PART — ni
+     * balayée, ni nommée à traiter, ni signalée sans échéance. La verrouiller en ancre fixe
      * au moment où il faut pouvoir la bouger serait le piège que ce lot ferme.
      */
     public function testAFutureDeadlineCompetitionIsProposedNowhere(): void
@@ -137,18 +139,23 @@ final class LeagueValidatedFixturesControllerTest extends WebTestCase
         $team = $this->createTeam($clubId, $seasonId);
         $venue = $this->createVenue($clubId, $seasonId);
 
-        // Échu → compté. Échéance FUTURE → invisible bien que parfaitement daté.
+        // Échu → balayé. Échéance FUTURE → intact bien que parfaitement daté.
         $this->eligible($clubId, $seasonId, $team->getId(), $venue->getId(), '2099-03-14', '15:30', '2020-09-10');
         $future = $this->eligible($clubId, $seasonId, $team->getId(), $venue->getId(), '2099-03-15', '15:30', '2099-12-31');
+        $futureId = $future->getId();
 
         $this->client->request('GET', '/api/fixtures/league-validation', [], [], ['HTTP_AUTHORIZATION' => 'Bearer ' . $token]);
         self::assertResponseStatusCodeSame(200);
         $data = json_decode((string) $this->client->getResponse()->getContent(), true, 512, \JSON_THROW_ON_ERROR);
 
-        self::assertSame(1, $data['totalValidatable']);
-        self::assertCount(1, $data['matured']);
-        self::assertNotContains($future->getId(), array_column($data['toTreat'], 'fixtureId'));
+        self::assertSame(1, $data['swept'] ?? -1, 'seul le championnat échu est balayé');
+        self::assertNotContains($futureId, array_column($data['toTreat'], 'fixtureId'));
         self::assertSame([], $data['missingDeadline']);
+        $this->em->clear();
+        $this->scopeGucToClub($clubId);
+        $freshFuture = $this->em->find(Fixture::class, $futureId);
+        self::assertInstanceOf(Fixture::class, $freshFuture);
+        self::assertSame(FixtureStatus::UNPLACED, $freshFuture->getStatus(), 'un championnat non commencé reste mobile');
     }
 
     /**
@@ -172,6 +179,7 @@ final class LeagueValidatedFixturesControllerTest extends WebTestCase
         self::assertResponseStatusCodeSame(200);
         $data = json_decode((string) $this->client->getResponse()->getContent(), true, 512, \JSON_THROW_ON_ERROR);
 
+        self::assertSame(0, $data['swept'] ?? -1, 'un championnat sans échéance et pas commencé n\'est jamais balayé');
         self::assertSame(0, $data['totalValidatable']);
         self::assertSame([], $data['matured']);
         self::assertCount(1, $data['missingDeadline']);
@@ -181,12 +189,11 @@ final class LeagueValidatedFixturesControllerTest extends WebTestCase
 
     /**
      * NR (D2) — un championnat SANS échéance dont le PREMIER match est déjà joué a DÉMARRÉ :
-     * il est proposé, non pas comme « sans échéance » mais comme échu « par premier match
-     * joué ». Le libellé porte la date du premier match (`firstMatchDate`), l'échéance reste
-     * nulle. Sans ce critère élargi, un championnat commencé sans échéance renseignée serait
-     * bloqué en « à traiter/à renseigner » alors qu'il faut pouvoir le valider.
+     * la lecture d'un gestionnaire fait passer son domicile daté « Déjà dans FBI », sans le
+     * signaler « sans échéance ». Sans ce critère élargi, un championnat commencé sans échéance
+     * renseignée serait bloqué en « à renseigner » alors qu'il n'a plus rien à confirmer.
      */
-    public function testAFirstMatchPlayedCompetitionWithoutDeadlineIsProposed(): void
+    public function testAFirstMatchPlayedCompetitionWithoutDeadlineIsSwept(): void
     {
         [$token, $clubId, $seasonId] = $this->createClub();
         $this->scopeGucToClub($clubId);
@@ -194,26 +201,23 @@ final class LeagueValidatedFixturesControllerTest extends WebTestCase
         $venue = $this->createVenue($clubId, $seasonId);
 
         // Domicile prêt (heure + gymnase), AUCUNE échéance, mais son 1er match est PASSÉ.
-        $this->eligible($clubId, $seasonId, $team->getId(), $venue->getId(), '2020-09-19', '15:30', competitionDeadline: null);
+        $fixtureId = $this->eligible($clubId, $seasonId, $team->getId(), $venue->getId(), '2020-09-19', '15:30', competitionDeadline: null)->getId();
 
         $this->client->request('GET', '/api/fixtures/league-validation', [], [], ['HTTP_AUTHORIZATION' => 'Bearer ' . $token]);
         self::assertResponseStatusCodeSame(200);
         $data = json_decode((string) $this->client->getResponse()->getContent(), true, 512, \JSON_THROW_ON_ERROR);
 
-        self::assertSame(1, $data['totalValidatable']);
-        self::assertCount(1, $data['matured']);
-        self::assertNull($data['matured'][0]['deadline']);
-        self::assertSame('firstMatchPlayed', $data['matured'][0]['maturedBy']);
-        self::assertSame('2020-09-19', $data['matured'][0]['firstMatchDate']);
+        self::assertSame(1, $data['swept'] ?? -1);
         self::assertSame([], $data['missingDeadline']);
+        $this->assertLeagueValidated($fixtureId);
     }
 
     /**
      * NR (D2) — l'échéance est dans le FUTUR, mais le premier match est déjà joué : le
-     * championnat a démarré, il est proposé (le premier match joué l'emporte sur une échéance
-     * provisoire non passée).
+     * championnat a démarré, la lecture d'un gestionnaire balaie son domicile (le premier match
+     * joué l'emporte sur une échéance provisoire non passée).
      */
-    public function testAFutureDeadlineButFirstMatchPlayedCompetitionIsProposed(): void
+    public function testAFutureDeadlineButFirstMatchPlayedCompetitionIsSwept(): void
     {
         [$token, $clubId, $seasonId] = $this->createClub();
         $this->scopeGucToClub($clubId);
@@ -221,22 +225,21 @@ final class LeagueValidatedFixturesControllerTest extends WebTestCase
         $venue = $this->createVenue($clubId, $seasonId);
 
         // Échéance FUTURE, mais 1er match PASSÉ.
-        $this->eligible($clubId, $seasonId, $team->getId(), $venue->getId(), '2020-09-19', '15:30', '2099-12-31');
+        $fixtureId = $this->eligible($clubId, $seasonId, $team->getId(), $venue->getId(), '2020-09-19', '15:30', '2099-12-31')->getId();
 
         $this->client->request('GET', '/api/fixtures/league-validation', [], [], ['HTTP_AUTHORIZATION' => 'Bearer ' . $token]);
         self::assertResponseStatusCodeSame(200);
         $data = json_decode((string) $this->client->getResponse()->getContent(), true, 512, \JSON_THROW_ON_ERROR);
 
-        self::assertSame(1, $data['totalValidatable']);
-        self::assertCount(1, $data['matured']);
-        self::assertSame('firstMatchPlayed', $data['matured'][0]['maturedBy']);
+        self::assertSame(1, $data['swept'] ?? -1);
+        $this->assertLeagueValidated($fixtureId);
     }
 
     /**
      * NR (D3) — une compétition dont le LIBELLÉ est un amical (« Amical PNF ») typée
      * CHAMPIONSHIP côté import n'est JAMAIS candidate : ni comptée, ni nommée à traiter, ni
-     * signalée sans échéance, et le POST ne la bascule pas. « Validé ligue » n'a pas de sens
-     * pour un amical.
+     * signalée sans échéance, et la lecture du gestionnaire ne la bascule pas. « Déjà dans FBI »
+     * par championnat n'a pas de sens pour un amical.
      */
     public function testAFriendlyLabelledChampionshipIsNeverCandidate(): void
     {
@@ -262,11 +265,8 @@ final class LeagueValidatedFixturesControllerTest extends WebTestCase
         self::assertSame([], $data['missingDeadline']);
         self::assertNotContains($friendlyId, array_column($data['toTreat'], 'fixtureId'));
 
-        // Et le POST ne le bascule pas : il reste UNPLACED (jamais « validé ligue »).
-        $this->client->request('POST', '/api/fixtures/league-validation', [], [], ['HTTP_AUTHORIZATION' => 'Bearer ' . $token]);
-        self::assertResponseStatusCodeSame(200);
-        $confirmed = json_decode((string) $this->client->getResponse()->getContent(), true, 512, \JSON_THROW_ON_ERROR);
-        self::assertSame(0, $confirmed['confirmed']);
+        // Et la lecture ne le bascule pas : il reste UNPLACED (jamais « Déjà dans FBI »).
+        self::assertSame(0, $data['swept'] ?? -1);
         $this->em->clear();
         $fresh = $this->em->find(Fixture::class, $friendlyId);
         self::assertInstanceOf(Fixture::class, $fresh);
@@ -295,8 +295,9 @@ final class LeagueValidatedFixturesControllerTest extends WebTestCase
         $this->client->request('GET', '/api/fixtures/league-validation', [], [], ['HTTP_AUTHORIZATION' => 'Bearer ' . $token]);
         self::assertResponseStatusCodeSame(200);
         $data = json_decode((string) $this->client->getResponse()->getContent(), true, 512, \JSON_THROW_ON_ERROR);
-        // Aucun amical n'est jamais proposé au lot.
+        // Aucun amical n'est jamais proposé au lot ; `swept` compte les deux amicaux balayés.
         self::assertSame(0, $data['totalValidatable']);
+        self::assertSame(2, $data['swept'] ?? -1);
 
         $this->em->clear();
         $freshHome = $this->em->find(Fixture::class, $homeId);
@@ -338,7 +339,12 @@ final class LeagueValidatedFixturesControllerTest extends WebTestCase
         self::assertSame(FixtureStatus::UNPLACED, $freshDeviated->getStatus());
     }
 
-    public function testConfirmSwitchesEligibleToValidatedManualAndIsReplayable(): void
+    /**
+     * La lecture d'un gestionnaire pose VALIDATED + MANUAL sur le validable, laisse intact le
+     * domicile sans heure ni gymnase, et se rejoue sans rien réécrire (`swept` 0 : le prédicat
+     * exclut VALIDATED, on ne dévalide jamais).
+     */
+    public function testAManagerReadSwitchesEligibleToValidatedManualAndIsReplayable(): void
     {
         [$token, $clubId, $seasonId] = $this->createClub();
         $this->scopeGucToClub($clubId);
@@ -347,10 +353,10 @@ final class LeagueValidatedFixturesControllerTest extends WebTestCase
         $eligible = $this->eligible($clubId, $seasonId, $team->getId(), $venue->getId(), '2099-03-14');
         $untouched = $this->createFixture($clubId, $seasonId, $team->getId(), '2099-03-15'); // no venue/kickoff → skipped
 
-        $this->client->request('POST', '/api/fixtures/league-validation', [], [], ['HTTP_AUTHORIZATION' => 'Bearer ' . $token]);
+        $this->client->request('GET', '/api/fixtures/league-validation', [], [], ['HTTP_AUTHORIZATION' => 'Bearer ' . $token]);
         self::assertResponseStatusCodeSame(200);
         $data = json_decode((string) $this->client->getResponse()->getContent(), true, 512, \JSON_THROW_ON_ERROR);
-        self::assertSame(1, $data['confirmed']);
+        self::assertSame(1, $data['swept'] ?? -1);
 
         $this->em->refresh($eligible);
         self::assertSame(FixtureStatus::VALIDATED, $eligible->getStatus());
@@ -359,19 +365,19 @@ final class LeagueValidatedFixturesControllerTest extends WebTestCase
         $this->em->refresh($untouched);
         self::assertSame(FixtureStatus::UNPLACED, $untouched->getStatus());
 
-        // Rejouable : le prédicat exclut VALIDATED, une seconde application ne trouve rien.
-        $this->client->request('POST', '/api/fixtures/league-validation', [], [], ['HTTP_AUTHORIZATION' => 'Bearer ' . $token]);
+        // Rejouable : le prédicat exclut VALIDATED, une seconde lecture ne trouve rien.
+        $this->client->request('GET', '/api/fixtures/league-validation', [], [], ['HTTP_AUTHORIZATION' => 'Bearer ' . $token]);
         self::assertResponseStatusCodeSame(200);
         $again = json_decode((string) $this->client->getResponse()->getContent(), true, 512, \JSON_THROW_ON_ERROR);
-        self::assertSame(0, $again['confirmed']);
+        self::assertSame(0, $again['swept'] ?? -1);
     }
 
     /**
-     * NR — l'application RECALCULE la maturité au moment du POST : un domicile prêt dont le
-     * championnat n'est pas encore échu N'EST PAS basculé (il reste UNPLACED, donc mobile),
-     * seul l'échu l'est. Sans corps envoyé : le client ne choisit aucun championnat.
+     * NR — la lecture RECALCULE la maturité à l'instant (horloge + échéances du moment) : un
+     * domicile prêt dont le championnat n'est pas encore échu N'EST PAS basculé (il reste
+     * UNPLACED, donc mobile), seul l'échu l'est.
      */
-    public function testConfirmSkipsAFutureDeadlineCompetition(): void
+    public function testAManagerReadSkipsAFutureDeadlineCompetition(): void
     {
         [$token, $clubId, $seasonId] = $this->createClub();
         $this->scopeGucToClub($clubId);
@@ -381,10 +387,10 @@ final class LeagueValidatedFixturesControllerTest extends WebTestCase
         $future = $this->eligible($clubId, $seasonId, $team->getId(), $venue->getId(), '2099-03-15', '15:30', '2099-12-31');
         [$maturedId, $futureId] = [$matured->getId(), $future->getId()];
 
-        $this->client->request('POST', '/api/fixtures/league-validation', [], [], ['HTTP_AUTHORIZATION' => 'Bearer ' . $token]);
+        $this->client->request('GET', '/api/fixtures/league-validation', [], [], ['HTTP_AUTHORIZATION' => 'Bearer ' . $token]);
         self::assertResponseStatusCodeSame(200);
         $data = json_decode((string) $this->client->getResponse()->getContent(), true, 512, \JSON_THROW_ON_ERROR);
-        self::assertSame(1, $data['confirmed']);
+        self::assertSame(1, $data['swept'] ?? -1);
 
         $this->em->clear();
         $freshMatured = $this->em->find(Fixture::class, $maturedId);
@@ -412,7 +418,7 @@ final class LeagueValidatedFixturesControllerTest extends WebTestCase
         $anchor = $this->eligible($clubId, $seasonId, $team->getId(), $venue->getId(), '2026-10-03', '20:30');
         $other = $this->createFixture($clubId, $seasonId, $team->getId(), '2026-10-03');
 
-        $this->client->request('POST', '/api/fixtures/league-validation', [], [], ['HTTP_AUTHORIZATION' => 'Bearer ' . $token]);
+        $this->client->request('GET', '/api/fixtures/league-validation', [], [], ['HTTP_AUTHORIZATION' => 'Bearer ' . $token]);
         self::assertResponseStatusCodeSame(200);
         $this->em->refresh($anchor);
         self::assertSame(FixtureStatus::VALIDATED, $anchor->getStatus());
@@ -476,16 +482,12 @@ final class LeagueValidatedFixturesControllerTest extends WebTestCase
         $this->createWindow($clubId, $seasonId, $venue->getId(), $day, '14:00', '18:00');
         $fixtureId = $this->eligible($clubId, $seasonId, $team->getId(), $venue->getId(), $date, '20:30')->getId();
 
-        // (1) Le prédicat ne fait PAS le contrôle d'accès : la rencontre reste validable.
+        // (1)+(2) Le prédicat ne fait PAS le contrôle d'accès : la lecture du gestionnaire la
+        // bascule malgré tout (la réalité fédérale fait foi). On RELIT par id.
         $this->client->request('GET', '/api/fixtures/league-validation', [], [], ['HTTP_AUTHORIZATION' => 'Bearer ' . $token]);
         self::assertResponseStatusCodeSame(200);
         $count = json_decode((string) $this->client->getResponse()->getContent(), true, 512, \JSON_THROW_ON_ERROR);
-        self::assertSame(1, $count['totalValidatable'], 'hors créneau d\'accès mais enregistrée côté fédération → validable');
-
-        // (2) Elle bascule malgré tout (la réalité fédérale fait foi). L'EM a été vidé par
-        // le GET intermédiaire : on RELIT par id plutôt que refresh sur une entité détachée.
-        $this->client->request('POST', '/api/fixtures/league-validation', [], [], ['HTTP_AUTHORIZATION' => 'Bearer ' . $token]);
-        self::assertResponseStatusCodeSame(200);
+        self::assertSame(1, $count['swept'] ?? -1, 'hors créneau d\'accès mais enregistrée côté fédération → balayée');
         $this->em->clear();
         $fixture = $this->em->find(Fixture::class, $fixtureId);
         self::assertInstanceOf(Fixture::class, $fixture);
@@ -558,6 +560,16 @@ final class LeagueValidatedFixturesControllerTest extends WebTestCase
         $this->em->flush();
 
         return $fixture;
+    }
+
+    /** Relu en base : la rencontre est « Déjà dans FBI » (VALIDATED) avec l'ancre MANUAL. */
+    private function assertLeagueValidated(string $fixtureId): void
+    {
+        $this->em->clear();
+        $fresh = $this->em->find(Fixture::class, $fixtureId);
+        self::assertInstanceOf(Fixture::class, $fresh);
+        self::assertSame(FixtureStatus::VALIDATED, $fresh->getStatus());
+        self::assertSame(FixturePlacementSource::MANUAL, $fresh->getPlacementSource());
     }
 
     /** The competition a fixture belongs to (to assert on its outlook entry). */

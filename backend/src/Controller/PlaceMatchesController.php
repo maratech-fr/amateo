@@ -11,6 +11,8 @@ use App\Entity\User;
 use App\Message\PlaceMatchesMessage;
 use App\MessageHandler\PlaceMatchesHandler;
 use App\Service\DeploymentGate;
+use App\Service\FriendlyAutoValidator;
+use App\Service\LeagueValidationOutlook;
 use App\Service\ManagementAccessGuard;
 use App\Service\MatchPlacementLock;
 use App\Service\MatchPlacementPayloadBuilder;
@@ -36,7 +38,9 @@ use Throwable;
 /**
  * POST /api/fixtures/place — « Placer automatiquement » (P1-4 PR D, ADR-0003).
  * Rail ASYNCHRONE (patron de la génération) : le contrôleur garde toutes ses gardes
- * (SEC-07 → socle 409 → saison archivée 409 → fenêtre Découverte 403), prend le verrou
+ * (SEC-07 → socle 409 → saison archivée 409 → fenêtre Découverte 403), balaie « Déjà dans
+ * FBI » les domiciles datés des championnats commencés (après les gardes de saison et de
+ * socle, avant de décider quoi placer), prend le verrou
  * anti-double-demande, ENFILE un {@see PlaceMatchesMessage} et répond 202 avec l'id du
  * run. Le worker ({@see PlaceMatchesHandler}) solve, applique, décompte
  * le crédit au SUCCÈS et pousse la bascule terminale sur `/clubs/{clubId}/placement`.
@@ -71,6 +75,8 @@ final class PlaceMatchesController extends AbstractController
         private readonly DeploymentGate $deploymentGate,
         private readonly SeasonAccessGuard $seasonAccessGuard,
         private readonly SocleGuard $socleGuard,
+        private readonly FriendlyAutoValidator $friendlyAutoValidator,
+        private readonly LeagueValidationOutlook $leagueValidationOutlook,
         private readonly MatchPlacementLock $lock,
         private readonly MatchPlacementPayloadBuilder $payloadBuilder,
         private readonly PlanEntitlements $planEntitlements,
@@ -97,6 +103,16 @@ final class PlaceMatchesController extends AbstractController
         }
         $this->seasonAccessGuard->assertWritable($request);
         $this->socleGuard->assertSeasonPlanChosen($request->attributes->get('_season_id') ?? $request->headers->get('X-Season-Id'));
+
+        // Balayage « Déjà dans FBI » AVANT de décider quoi placer (gardes passées : gestionnaire,
+        // hors gel, saison écrivable, socle en vigueur) : une page montée avant que le
+        // championnat ne commence n'a peut-être rien relu — un domicile daté d'un championnat
+        // commencé ne doit jamais partir TO_PLACE. Amicaux passés PUIS championnats.
+        $sweepSeasonId = $request->attributes->get('_season_id');
+        if (\is_string($sweepSeasonId) && '' !== $sweepSeasonId) {
+            $this->friendlyAutoValidator->sweep($clubId, $sweepSeasonId);
+            $this->leagueValidationOutlook->sweepStartedChampionships($sweepSeasonId, DateTimeImmutable::createFromInterface($this->clock->now()));
+        }
 
         $user = $this->getUser();
         if (!$user instanceof User) {
