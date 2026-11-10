@@ -20,8 +20,25 @@ use Symfony\Component\Yaml\Yaml;
  * garde que le YAML ne s'en écarte pas après coup. Une méthode par décision du plan (R1…R9),
  * chacune nomme sa promesse.
  *
- * Listes FERMÉES à dessein (jobs, classes de runner, PR seulement / main seulement) : un job
- * ajouté demain rougit ici tant que son auteur ne l'a pas rangé — c'est le geste voulu.
+ * Listes FERMÉES à dessein (jobs, classes de runner, 5 régimes ALWAYS / PR_ANY / PR_MAIN /
+ * MAIN_TARGET / MAIN_PUSH) : un job ajouté demain rougit ici tant que son auteur ne l'a pas
+ * rangé — c'est le geste voulu. Branche de lot (D1…D15) : une PR vers `lot/<sujet>` joue le
+ * régime léger, une PR vers `main` (dont la PR finale du lot) le gate complet, le push `main`
+ * ses 8 jobs (`isCiGreen`) ; les `if` réels sont ÉVALUÉS par événement (`jobsThatRun`).
+ *
+ * Ce que ce test NE prouve PAS (preuve ailleurs, ou aucune) :
+ *  - la sémantique GitHub « un job sauté compte comme réussi pour un required check » — le test
+ *    la suppose, il ne l'exécute pas ;
+ *  - B1 (changement de base lot→main relance 16 jobs) et M1 (deux PR d'une même tête, rerun
+ *    d'un run léger) : prouvés sur la branche d'essai `lot/essai` (gestes 4 et 5) ;
+ *  - les rulesets `lot-gate` / `lot-no-delete` (hors dépôt), ni la concordance de
+ *    LOT_REQUIRED_CHECKS avec le ruleset réellement posé ;
+ *  - la concordance des 15 MAIN_REQUIRED_CHECKS avec la protection réelle de `main` : la
+ *    constante est une COPIE, relue par `gh api …/branches/main/protection/required_status_checks` ;
+ *  - qu'un check requis de `main` soit satisfait par un run LÉGER (même tête partagée, run
+ *    annulé) : aucun test ne le voit — la garde est la lecture obligatoire de `gh pr checks <n>`
+ *    (une seule ligne « skipping » admise, « Engine Perf Gate (main only) ») avant tout GO ou
+ *    merge vers `main`.
  *
  * NR d'axe (tous les axes §7.1 : ce chantier décide QUAND tournent leurs NR) — il gate : step
  * `Blocking suite` du job `blocking-tests` + ligne de `docs/testing/blocking-tests.md`
@@ -76,18 +93,93 @@ final class CiWorkflowRegimeTest extends TestCase
         '.github/workflows/mirror-images.yml',
     ];
 
-    /** Sautés sur `push main` : la PR les a prouvés sur l'arbre mergé (`strict` + squash). */
-    private const array PR_ONLY = [
-        'phpstan', 'rector', 'blocking-tests', 'backend-tests', 'frontend', 'e2e', 'engine-semantics',
-        'functional-tests', 'engine-perf-pr',
+    /**
+     * Les 5 régimes : chaque job de ci.yml est dans UN seul (D2), et chaque régime a son `if`
+     * EXACT (D3). Un job sauté compte comme RÉUSSI pour un required check : une coquille d'`if`
+     * viderait le gate de `main` en silence — d'où listes fermées et conditions exactes.
+     *
+     * ALWAYS : aucun `if` — PR→main, PR→lot/**, push main.
+     */
+    private const array ALWAYS = ['preflight', 'lint', 'secrets-scan', 'semgrep', 'engine-tests'];
+
+    /** PR_ANY : toute PR (vers `main` ou `lot/**`), jamais sur push main. */
+    private const array PR_ANY = ['phpstan', 'rector', 'blocking-tests', 'frontend', 'engine-semantics', 'engine-perf-pr'];
+
+    /** PR_MAIN : PR vers `main` seulement — les lourds du gate, rejoués à la PR finale d'un lot. */
+    private const array PR_MAIN = ['backend-tests', 'e2e', 'functional-tests'];
+
+    /** MAIN_TARGET : PR vers `main` ET push main (le run de `main` fait `isCiGreen`), jamais PR→lot. */
+    private const array MAIN_TARGET = ['dependency-audit', 'build-docker'];
+
+    /** MAIN_PUSH : push main seulement (budget de perf BCCL). */
+    private const array MAIN_PUSH = ['engine-perf'];
+
+    private const string IF_PR_ANY = 'github.event_name==\'pull_request\'';
+
+    private const string IF_PR_MAIN = 'github.event_name==\'pull_request\'&&github.base_ref==\'main\'';
+
+    private const string IF_MAIN_TARGET = 'github.event_name!=\'pull_request\'||github.base_ref==\'main\'';
+
+    private const string IF_MAIN_PUSH = 'github.ref==\'refs/heads/main\'';
+
+    /** `if` de build-docker, chaîne ENTIÈRE squashée (sans espaces ni `${{ }}`), parenthèses comprises. */
+    private const string IF_BUILD_DOCKER = '!cancelled()&&needs.preflight.result==\'success\'&&!contains(needs.*.result,\'failure\')'
+        . '&&!contains(needs.*.result,\'cancelled\')&&(github.event_name!=\'pull_request\'||github.base_ref==\'main\')';
+
+    private const array BUILD_DOCKER_NEEDS = ['preflight', 'blocking-tests', 'engine-tests'];
+
+    /**
+     * COPIE des 15 contextes requis de `main` (tous `app_id 15368`), relue par
+     * `gh api repos/{owner}/{repo}/branches/main/protection/required_status_checks` le 2026-11-10.
+     * Aucun test ne relit la protection réelle : une divergence se voit à cette relecture-là.
+     * Ni « Engine Perf Gate (main only) » ni « Engine Perf (PR, dense only) » n'y figurent.
+     */
+    private const array MAIN_REQUIRED_CHECKS = [
+        'Preflight', 'Lint', 'Secrets Scan (gitleaks)', 'Semgrep (security gate)', 'Dependency Audit',
+        'Engine Tests', 'PHPStan & CS-Fixer', 'Rector (style gate)', 'Blocking Tests', 'Frontend (build + unit)',
+        'Engine semantics', 'Backend Tests (suite + couverture)', 'E2E (Playwright)', 'Functional Tests (Behat)',
+        'Build Docker Images',
     ];
 
-    private const array MAIN_ONLY = ['engine-perf'];
-
-    /** Jouent sur la PR ET sur `main` (le run de `main` fait `isCiGreen`). */
-    private const array PR_AND_MAIN = [
-        'preflight', 'lint', 'secrets-scan', 'semgrep', 'dependency-audit', 'engine-tests', 'build-docker',
+    /** Nom de check (`name:` du job) → id de job dans ci.yml. */
+    private const array CHECK_NAME_TO_JOB = [
+        'Preflight' => 'preflight',
+        'Lint' => 'lint',
+        'Secrets Scan (gitleaks)' => 'secrets-scan',
+        'Semgrep (security gate)' => 'semgrep',
+        'Dependency Audit' => 'dependency-audit',
+        'Engine Tests' => 'engine-tests',
+        'PHPStan & CS-Fixer' => 'phpstan',
+        'Rector (style gate)' => 'rector',
+        'Blocking Tests' => 'blocking-tests',
+        'Frontend (build + unit)' => 'frontend',
+        'Engine semantics' => 'engine-semantics',
+        'Backend Tests (suite + couverture)' => 'backend-tests',
+        'E2E (Playwright)' => 'e2e',
+        'Functional Tests (Behat)' => 'functional-tests',
+        'Build Docker Images' => 'build-docker',
     ];
+
+    /**
+     * Les 10 checks à poser dans le ruleset `lot-gate` (hors dépôt) : les 15 de `main` moins les 5
+     * lourds. « Engine Perf (PR, dense only) » tourne sur PR→lot sans être requis (miroir de main).
+     */
+    private const array LOT_REQUIRED_CHECKS = [
+        'Preflight', 'Lint', 'Secrets Scan (gitleaks)', 'Semgrep (security gate)', 'Engine Tests',
+        'PHPStan & CS-Fixer', 'Rector (style gate)', 'Blocking Tests', 'Frontend (build + unit)', 'Engine semantics',
+    ];
+
+    /** Les 6 jobs SAUTÉS sur une PR→lot : les 5 lourds du gate de `main` + le budget de perf de main. */
+    private const array SKIPPED_ON_LOT = ['backend-tests', 'e2e', 'functional-tests', 'dependency-audit', 'build-docker', 'engine-perf'];
+
+    /** Run de push main (`isCiGreen` lit ce run) : inchangé par la branche de lot. */
+    private const array MAIN_PUSH_RUN = [
+        'preflight', 'lint', 'secrets-scan', 'semgrep', 'dependency-audit', 'engine-tests', 'engine-perf', 'build-docker',
+    ];
+
+    private const string CONCURRENCY_GROUP = 'ci-${{ github.ref }}';
+
+    private const string CONCURRENCY_CANCEL = '${{ github.ref != \'refs/heads/main\' }}';
 
     private const string FILTERED_NR = 'testAMutualisationCorrectionWithATeamFromAnotherClubIsRefusedWritingNothing';
 
@@ -107,7 +199,7 @@ final class CiWorkflowRegimeTest extends TestCase
         $expected = self::JOBS;
         sort($expected);
         self::assertSame($expected, $ids, "ci.yml doit porter EXACTEMENT ces jobs (16 historiques + `preflight`).\n"
-            . 'Un job ajouté ou retiré se range ici, dans sa classe de runner et sa liste PR/main.');
+            . 'Un job ajouté ou retiré se range ici, dans sa classe de runner et son régime (ALWAYS/PR_ANY/PR_MAIN/MAIN_TARGET/MAIN_PUSH).');
 
         $wrong = [];
         foreach ($jobs as $id => $job) {
@@ -191,48 +283,208 @@ final class CiWorkflowRegimeTest extends TestCase
     }
 
     /**
-     * R3 — Promesse : chaque PR joue TOUT le gate (bloquants, suite complète, sémantique moteur,
-     * Behat…) sans condition cachée, et le run de `main` garde ce qui fait `isCiGreen` (images
-     * prod, perf, lint/secrets/semgrep/audit).
+     * D1 — Promesse : ci.yml ne se déclenche QUE sur un push vers `main` et sur une PR vers
+     * `main` ou `lot/**`, et un changement de base (type `edited`) relance le run — un squash
+     * dans `lot/<sujet>` ne lance rien, aucun autre déclencheur ne contourne les régimes.
      */
-    public function testEveryPullRequestRunsTheWholeGateAndMainKeepsWhatMakesItGreen(): void
+    public function testTriggersAreExactlyPushMainAndPullRequestToMainOrLot(): void
+    {
+        $on = $this->workflow(self::CI)['on'] ?? null;
+        self::assertIsArray($on, 'ci.yml déclare `on:` en mapping.');
+        $events = array_keys($on);
+        sort($events);
+        self::assertSame(['pull_request', 'push'], $events, "ci.yml : `on` = EXACTEMENT {push, pull_request} — aucun pull_request_target,\n"
+            . 'workflow_dispatch ni merge_group (un déclencheur hors régime jouerait un run sans gate prévu).');
+
+        self::assertIsArray($on['push'] ?? null, '`on.push` est un mapping.');
+        self::assertSame(['main'], $on['push']['branches'] ?? null, '`on.push.branches` = [main] seul : un squash dans lot/<sujet> ne déclenche aucun run.');
+
+        self::assertIsArray($on['pull_request'] ?? null, '`on.pull_request` est un mapping.');
+        self::assertSame(['main', 'lot/**'], $on['pull_request']['branches'] ?? null, '`on.pull_request.branches` = [main, \'lot/**\'] (ordre compris).');
+        self::assertSame(['opened', 'synchronize', 'reopened', 'edited'], $on['pull_request']['types'] ?? null, "`on.pull_request.types` = [opened, synchronize, reopened, edited] (ordre compris) :\n"
+            . '`edited` relance le gate COMPLET quand la base d\'une PR passe de lot/<sujet> à main.');
+    }
+
+    /**
+     * D2 — Promesse : chaque job de ci.yml est rangé dans UN seul des 5 régimes (ALWAYS, PR_ANY,
+     * PR_MAIN, MAIN_TARGET, MAIN_PUSH) — un job ajouté demain rougit ici tant qu'il n'est pas rangé.
+     */
+    public function testEveryJobBelongsToExactlyOneRegime(): void
+    {
+        $ids = array_keys($this->jobs(self::CI));
+        sort($ids);
+
+        $classified = array_merge(self::ALWAYS, self::PR_ANY, self::PR_MAIN, self::MAIN_TARGET, self::MAIN_PUSH);
+        self::assertSame(array_values(array_unique($classified)), $classified, 'Un job figure dans DEUX régimes.');
+        sort($classified);
+        self::assertSame($ids, $classified, "Les 5 régimes doivent couvrir EXACTEMENT les jobs de ci.yml.\n"
+            . 'Job manquant = non rangé (son `if` n\'est gardé par rien) ; job en trop = disparu de ci.yml.');
+    }
+
+    /**
+     * D3 — Promesse : chaque job porte l'`if` EXACT de son régime, rien de plus — aucune condition
+     * cachée (chemins, doc seule, action de PR…) ne peut sauter un job du gate de `main`, et
+     * `build-docker` garde sa chaîne entière et ses `needs`.
+     */
+    public function testEveryRegimeConditionIsExact(): void
     {
         $jobs = $this->jobs(self::CI);
-        $classified = array_merge(self::PR_ONLY, self::MAIN_ONLY, self::PR_AND_MAIN);
-        sort($classified);
-        $all = self::JOBS;
-        sort($all);
-        self::assertSame($all, $classified, 'Chaque job est rangé dans UNE liste (PR seulement / main seulement / les deux).');
-
-        foreach (self::PR_ONLY as $id) {
-            self::assertSame('github.event_name==\'pull_request\'', $this->condition($jobs[$id]['if'] ?? null), \sprintf(
-                "`%s` : `if:` doit être EXACTEMENT github.event_name == 'pull_request' — aucune autre condition (filtre de chemins,\n"
-                . 'doc seule…) ne doit pouvoir le sauter sur une PR, sinon le gate se vide en silence.',
-                $id,
-            ));
-        }
-
-        self::assertStringContainsString('github.ref==\'refs/heads/main\'', $this->condition($jobs['engine-perf']['if'] ?? null), '`engine-perf` (budget BCCL) reste main seulement.');
-
-        foreach (self::PR_AND_MAIN as $id) {
-            if ('build-docker' === $id) {
-                continue;
+        $wrong = [];
+        $expect = function (string $id, ?string $want, array $job) use (&$wrong): void {
+            $got = \array_key_exists('if', $job) ? $this->condition($job['if']) : null;
+            if ($got !== $want) {
+                $wrong[] = \sprintf('%s : if « %s », attendu « %s »', $id, $got ?? '(aucun)', $want ?? '(aucun)');
             }
-            self::assertArrayNotHasKey('if', $jobs[$id], \sprintf('`%s` joue sur la PR ET sur `main` : aucune condition de job.', $id));
+        };
+
+        foreach (self::ALWAYS as $id) {
+            $expect($id, null, $jobs[$id] ?? []);
+        }
+        foreach (self::PR_ANY as $id) {
+            $expect($id, self::IF_PR_ANY, $jobs[$id] ?? []);
+        }
+        foreach (self::PR_MAIN as $id) {
+            $expect($id, self::IF_PR_MAIN, $jobs[$id] ?? []);
+        }
+        $expect('dependency-audit', self::IF_MAIN_TARGET, $jobs['dependency-audit'] ?? []);
+        $expect('build-docker', self::IF_BUILD_DOCKER, $jobs['build-docker'] ?? []);
+        foreach (self::MAIN_PUSH as $id) {
+            $expect($id, self::IF_MAIN_PUSH, $jobs[$id] ?? []);
         }
 
-        $build = $this->condition($jobs['build-docker']['if'] ?? null);
-        foreach (['!cancelled()', 'needs.preflight.result==\'success\'', '!contains(needs.*.result,\'failure\')', '!contains(needs.*.result,\'cancelled\')'] as $term) {
-            self::assertStringContainsString($term, $build, \sprintf(
-                "`build-docker` doit tourner sur `main` alors que ses `needs` PR-only y sont sautés : son `if:` porte « %s ».\n"
-                . 'Les 4 termes : !cancelled(), preflight success, aucun needs en failure, aucun en cancelled.',
-                $term,
-            ));
-        }
+        self::assertSame([], $wrong, "`if` hors régime dans ci.yml (comparaison sans espaces ni `\${{ }}`) :\n  - " . implode("\n  - ", $wrong)
+            . "\nUn job sauté vaut SUCCÈS pour un required check : l'`if` d'un régime est exact, jamais « contient ».");
 
+        self::assertSame(self::BUILD_DOCKER_NEEDS, $this->needs($jobs['build-docker'] ?? []), '`build-docker` : needs EXACTS [preflight, blocking-tests, engine-tests].');
+    }
+
+    /**
+     * D4 — Promesse : une PR vers `main` (dont la PR finale d'un lot) joue TOUT le gate — les 16
+     * jobs, seul `engine-perf` (push main) est sauté. Évaluation des `if` réels de ci.yml.
+     */
+    public function testAPullRequestToMainRunsTheWholeGate(): void
+    {
+        $expected = array_values(array_diff(self::JOBS, self::MAIN_PUSH));
+        sort($expected);
+        self::assertCount(16, $expected);
+        self::assertSame($expected, $this->jobsThatRun($this->pullRequestTo('main')), 'PR→main doit exécuter les 16 jobs (tout sauf engine-perf).');
+    }
+
+    /**
+     * D5 — Promesse : chacun des 15 required checks de `main` est le `name:` d'un job qui TOURNE
+     * sur une PR→main — aucun n'y est satisfait par un job sauté (sauté = succès pour GitHub).
+     */
+    public function testEveryRequiredCheckOfMainIsProducedOnAPullRequestToMain(): void
+    {
+        self::assertCount(15, self::MAIN_REQUIRED_CHECKS);
+        self::assertSame(self::MAIN_REQUIRED_CHECKS, array_values(array_unique(self::MAIN_REQUIRED_CHECKS)));
+        self::assertNotContains('Engine Perf Gate (main only)', self::MAIN_REQUIRED_CHECKS);
+        self::assertNotContains('Engine Perf (PR, dense only)', self::MAIN_REQUIRED_CHECKS);
+        $names = array_keys(self::CHECK_NAME_TO_JOB);
+        sort($names);
+        $required = self::MAIN_REQUIRED_CHECKS;
+        sort($required);
+        self::assertSame($required, $names, 'CHECK_NAME_TO_JOB nomme exactement les 15 checks requis de main.');
+
+        $jobs = $this->jobs(self::CI);
+        $running = $this->jobsThatRun($this->pullRequestTo('main'));
+        $wrong = [];
+        foreach (self::CHECK_NAME_TO_JOB as $check => $id) {
+            if (($jobs[$id]['name'] ?? null) !== $check) {
+                $wrong[] = \sprintf('« %s » : le job `%s` s\'appelle « %s »', $check, $id, $this->str($jobs[$id]['name'] ?? null));
+            } elseif (!\in_array($id, $running, true)) {
+                $wrong[] = \sprintf('« %s » : le job `%s` est SAUTÉ sur une PR→main', $check, $id);
+            }
+        }
+        self::assertSame([], $wrong, "Required check de main non produit par un job exécuté sur PR→main :\n  - " . implode("\n  - ", $wrong));
+    }
+
+    /**
+     * D6 — Promesse : une PR vers `lot/<sujet>` joue le régime LÉGER — ALWAYS ∪ PR_ANY (11 jobs),
+     * dont les 10 checks du ruleset `lot-gate` ; les 6 autres (5 lourds + engine-perf) sont sautés.
+     */
+    public function testAPullRequestToALotBranchRunsOnlyTheLightRegime(): void
+    {
+        $light = array_merge(self::ALWAYS, self::PR_ANY);
+        sort($light);
+        self::assertCount(11, $light);
+        $running = $this->jobsThatRun($this->pullRequestTo('lot/essai'));
+        self::assertSame($light, $running, 'PR→lot/** doit exécuter EXACTEMENT ALWAYS ∪ PR_ANY (11 jobs).');
+
+        $skipped = array_values(array_diff(self::JOBS, $running));
+        sort($skipped);
+        $expectedSkipped = self::SKIPPED_ON_LOT;
+        sort($expectedSkipped);
+        self::assertSame($expectedSkipped, $skipped, 'PR→lot/** saute EXACTEMENT les 6 : backend-tests, e2e, functional-tests, dependency-audit, build-docker, engine-perf.');
+
+        self::assertCount(10, self::LOT_REQUIRED_CHECKS);
+        foreach (self::LOT_REQUIRED_CHECKS as $check) {
+            self::assertContains($check, self::MAIN_REQUIRED_CHECKS, \sprintf('« %s » (lot-gate) est un check de main.', $check));
+            self::assertContains(self::CHECK_NAME_TO_JOB[$check], $running, \sprintf('« %s » (requis par lot-gate) doit TOURNER sur PR→lot.', $check));
+        }
+    }
+
+    /**
+     * D7 — Promesse : le run de push `main` (celui que lit `isCiGreen` avant un déploiement) garde
+     * exactement ses 8 jobs : preflight, lint, secrets-scan, semgrep, dependency-audit,
+     * engine-tests, engine-perf, build-docker.
+     */
+    public function testMainPushKeepsWhatMakesItGreen(): void
+    {
+        $expected = self::MAIN_PUSH_RUN;
+        sort($expected);
+        self::assertSame($expected, $this->jobsThatRun(['event_name' => 'push', 'base_ref' => '', 'ref' => 'refs/heads/main']), 'push main doit exécuter EXACTEMENT les 8 jobs de isCiGreen.');
+    }
+
+    /**
+     * D8 — Promesse : aucun job n'est sauté selon le CONTENU d'une PR — ni `paths`/`paths-ignore`
+     * sur les déclencheurs, ni filtre « doc seule » (décision 2026-11-06, maintenue).
+     */
+    public function testNoTriggerOrJobFiltersOnTheChangedPaths(): void
+    {
+        $on = $this->workflow(self::CI)['on'] ?? [];
+        self::assertIsArray($on);
+        foreach ($on as $event => $config) {
+            if (\is_array($config)) {
+                self::assertArrayNotHasKey('paths', $config, \sprintf('`on.%s` : aucun filtre `paths`.', (string) $event));
+                self::assertArrayNotHasKey('paths-ignore', $config, \sprintf('`on.%s` : aucun filtre `paths-ignore`.', (string) $event));
+            }
+        }
         $raw = file_get_contents(self::ROOT . '/' . self::CI);
         self::assertIsString($raw);
-        self::assertSame(0, preg_match('/docs[_-]only/i', $raw), 'Aucun filtre « doc seule » : le levier n\'est pas retenu, chaque PR joue tout.');
+        self::assertSame(0, preg_match('/docs[_-]only/i', $raw), 'Aucun filtre « doc seule » : chaque PR joue tout son régime.');
+    }
+
+    /**
+     * D9 — Promesse : la concurrence ne change pas — un groupe par ref, le run en cours annulé
+     * partout sauf sur `main`.
+     */
+    public function testConcurrencyIsUnchanged(): void
+    {
+        $concurrency = $this->workflow(self::CI)['concurrency'] ?? null;
+        self::assertIsArray($concurrency, 'ci.yml déclare `concurrency:` en mapping.');
+        self::assertSame($this->squash(self::CONCURRENCY_GROUP), $this->squash($concurrency['group'] ?? null), 'concurrency.group = ci-${{ github.ref }}.');
+        self::assertSame($this->squash(self::CONCURRENCY_CANCEL), $this->squash($concurrency['cancel-in-progress'] ?? null), 'concurrency.cancel-in-progress = ${{ github.ref != \'refs/heads/main\' }}.');
+    }
+
+    /**
+     * D15 — Promesse : aucun `if` (job ou step) ne lit `github.event.action` — un `edited` (titre,
+     * corps, base) rejoue le régime COMPLET de la base courante, jamais un run aux jobs sautés.
+     */
+    public function testNoJobFiltersOnThePullRequestAction(): void
+    {
+        $offenders = [];
+        foreach ($this->jobs(self::CI) as $id => $job) {
+            if (str_contains($this->squash($job['if'] ?? null), 'github.event.action')) {
+                $offenders[] = $id;
+            }
+            foreach (\is_array($job['steps'] ?? null) ? $job['steps'] : [] as $i => $step) {
+                if (\is_array($step) && str_contains($this->squash($step['if'] ?? null), 'github.event.action')) {
+                    $offenders[] = \sprintf('%s / step %s', $id, (string) ($step['name'] ?? $i));
+                }
+            }
+        }
+        self::assertSame([], $offenders, "Ces `if` lisent github.event.action — un `edited` produirait un run aux jobs sautés (= succès) :\n  - " . implode("\n  - ", $offenders));
     }
 
     /**
@@ -628,6 +880,128 @@ final class CiWorkflowRegimeTest extends TestCase
             self::assertStringContainsString('self-hosted', $whole);
             self::assertStringContainsString('exit1', $this->squash($first['run'] ?? null), 'Hors self-hosted, la sonde ROUGIT (une sonde verte chez GitHub ne prouverait rien).');
         }
+    }
+
+    // --- évaluation des `if` de ci.yml --------------------------------------------------------
+
+    /** @return array{event_name: string, base_ref: string, ref: string} */
+    private function pullRequestTo(string $base): array
+    {
+        return ['event_name' => 'pull_request', 'base_ref' => $base, 'ref' => 'refs/pull/1/merge'];
+    }
+
+    /**
+     * Les jobs de ci.yml qui S'EXÉCUTENT pour cet événement, triés — tous les jobs exécutés
+     * supposés verts. Règle GitHub reproduite : un `if` sans fonction de statut porte un
+     * `success()` implicite (un `needs` sauté saute le job) ; avec `!cancelled()`/`always()`, il
+     * tourne malgré un `needs` sauté. Un terme que l'évaluateur ne connaît pas fait ÉCHOUER le
+     * test (une condition nouvelle se range ici, jamais en silence).
+     *
+     * @param array{event_name: string, base_ref: string, ref: string} $event
+     *
+     * @return list<string>
+     */
+    private function jobsThatRun(array $event): array
+    {
+        $jobs = $this->jobs(self::CI);
+        $memo = [];
+        $runs = function (string $id, array $trail = []) use (&$runs, &$memo, $jobs, $event): bool {
+            if (isset($memo[$id])) {
+                return $memo[$id];
+            }
+            self::assertArrayHasKey($id, $jobs, \sprintf('needs vers un job inconnu : « %s ».', $id));
+            self::assertNotContains($id, $trail, 'Cycle de needs : ' . implode(' → ', [...$trail, $id]));
+            $job = $jobs[$id];
+            $if = \array_key_exists('if', $job) ? $this->condition($job['if']) : '';
+            $needsRan = true;
+            foreach ($this->needs($job) as $need) {
+                $needsRan = $runs($need, [...$trail, $id]) && $needsRan;
+            }
+            $statusAware = 1 === preg_match('/\b(cancelled|always|success|failure)\(\)/', $if);
+            $result = ('' === $if || $this->evaluate($if, $event, $id)) && ($statusAware || $needsRan);
+
+            return $memo[$id] = $result;
+        };
+
+        $running = [];
+        foreach (array_keys($jobs) as $id) {
+            if ($runs($id)) {
+                $running[] = $id;
+            }
+        }
+        sort($running);
+
+        return $running;
+    }
+
+    /**
+     * Évalue une condition squashée : `||`, `&&`, parenthèses, comparaisons `==`/`!=` sur
+     * github.event_name / base_ref / ref, et les termes de statut de `build-docker` (vrais : le
+     * run n'est pas annulé, aucun needs en échec).
+     *
+     * @param array{event_name: string, base_ref: string, ref: string} $event
+     */
+    private function evaluate(string $condition, array $event, string $id): bool
+    {
+        $pos = 0;
+        $value = $this->parseOr($condition, $pos, $event, $id);
+        self::assertSame(\strlen($condition), $pos, \sprintf('`%s` : condition non évaluable par le test à partir de « %s ».', $id, substr($condition, $pos)));
+
+        return $value;
+    }
+
+    /** @param array{event_name: string, base_ref: string, ref: string} $event */
+    private function parseOr(string $c, int &$pos, array $event, string $id): bool
+    {
+        $value = $this->parseAnd($c, $pos, $event, $id);
+        while (str_starts_with(substr($c, $pos), '||')) {
+            $pos += 2;
+            $right = $this->parseAnd($c, $pos, $event, $id);
+            $value = $value || $right;
+        }
+
+        return $value;
+    }
+
+    /** @param array{event_name: string, base_ref: string, ref: string} $event */
+    private function parseAnd(string $c, int &$pos, array $event, string $id): bool
+    {
+        $value = $this->parseTerm($c, $pos, $event, $id);
+        while (str_starts_with(substr($c, $pos), '&&')) {
+            $pos += 2;
+            $right = $this->parseTerm($c, $pos, $event, $id);
+            $value = $value && $right;
+        }
+
+        return $value;
+    }
+
+    /** @param array{event_name: string, base_ref: string, ref: string} $event */
+    private function parseTerm(string $c, int &$pos, array $event, string $id): bool
+    {
+        $rest = substr($c, $pos);
+        if (str_starts_with($rest, '(')) {
+            ++$pos;
+            $value = $this->parseOr($c, $pos, $event, $id);
+            self::assertSame(')', substr($c, $pos, 1), \sprintf('`%s` : parenthèse non fermée dans « %s ».', $id, $c));
+            ++$pos;
+
+            return $value;
+        }
+        foreach (['!cancelled()', 'always()', 'needs.preflight.result==\'success\'', '!contains(needs.*.result,\'failure\')', '!contains(needs.*.result,\'cancelled\')'] as $status) {
+            if (str_starts_with($rest, $status)) {
+                $pos += \strlen($status);
+
+                return true;
+            }
+        }
+        if (1 === preg_match('/^github\.(event_name|base_ref|ref)(==|!=)\'([^\']*)\'/', $rest, $m)) {
+            $pos += \strlen($m[0]);
+            $equal = $event[$m[1]] === $m[3];
+
+            return '==' === $m[2] ? $equal : !$equal;
+        }
+        self::fail(\sprintf('`%s` : terme non évaluable par le test : « %s ».', $id, $rest));
     }
 
     // --- lecture des workflows ---------------------------------------------------------------
