@@ -9,6 +9,31 @@ STACK_COMPOSE := $(call stack_field,COMPOSE)
 TEST_PROJECT := $(call stack_field,TEST_PROJECT)
 STACK_GOALS := $(or $(MAKECMDGOALS),help)
 FIG := $(STACK_COMPOSE)
+# Arguments de `make e2e` : SPEC (chemins relatifs à /app/frontend), GREP (regex Playwright),
+# REPEAT, RETRIES, IGNORE_SNAPSHOTS=1. REPEAT et RETRIES sont bornés AU CHARGEMENT, avant la
+# garde des worktrees et toute recette : une valeur refusée n'allume rien. Contrôle dès que la
+# variable a une origine (ligne de commande, environnement, fichier) — `REPEAT=11 make e2e` par
+# l'environnement ne contourne pas le plafond ; une valeur vide explicite est refusée. Liste
+# blanche : un seul mot, PUIS la liste en motifs et la valeur en texte (la forme inverse
+# `$(filter $(REPEAT),1 …)` laisserait passer `1 2` et `%`).
+E2E_REPEAT_REFUSED = REPEAT=$(REPEAT) : valeur refusée — un entier de 1 à 10 attendu (plafond de 10 répétitions par spec en local, décision fondateur 2026-11-10 ; au-delà, mesurer sur la CI)
+E2E_RETRIES_REFUSED = RETRIES=$(RETRIES) : valeur refusée — 0, 1 ou 2 attendu (la CI joue 2)
+ifneq ($(origin REPEAT),undefined)
+ifneq ($(words $(REPEAT)),1)
+$(error $(E2E_REPEAT_REFUSED))
+endif
+ifeq ($(filter 1 2 3 4 5 6 7 8 9 10,$(REPEAT)),)
+$(error $(E2E_REPEAT_REFUSED))
+endif
+endif
+ifneq ($(origin RETRIES),undefined)
+ifneq ($(words $(RETRIES)),1)
+$(error $(E2E_RETRIES_REFUSED))
+endif
+ifeq ($(filter 0 1 2,$(RETRIES)),)
+$(error $(E2E_RETRIES_REFUSED))
+endif
+endif
 # Refus AVANT toute recette : un `make -n` les prouve aussi, et rien ne démarre à moitié.
 ifeq ($(filter principal epreuve nu,$(STACK_MODE)),)
 ifneq ($(filter-out help,$(STACK_GOALS)),)
@@ -96,7 +121,15 @@ coverage: install ## Couverture de code + cliquet (plancher lu de ../coverage-fl
 # E2E_BASE_URL est posé — or le run dockerisé le pose toujours. Il vit donc ICI,
 # côté hôte (le conteneur e2e n'a pas de socket docker) : un messenger-worker
 # mort (time-limit horaire) laissait sinon toute génération en PENDING.
-e2e: $(ROOT_ENV) ## Run Playwright e2e tests fully inside Docker (stack + `make dev` required)
+# Les arguments voyagent EXPORTÉS par make et passés au conteneur par `-e NOM` sans valeur :
+# jamais `-e E2E_GREP='$(GREP)'`, qu'une apostrophe dans le motif casserait côté hôte. Le sh
+# du conteneur les développe ; vide ou absent, rien n'est ajouté à `npx playwright test`.
+e2e: export E2E_SPEC := $(SPEC)
+e2e: export E2E_GREP := $(GREP)
+e2e: export E2E_REPEAT := $(REPEAT)
+e2e: export E2E_RETRIES := $(RETRIES)
+e2e: export E2E_IGNORE_SNAPSHOTS := $(IGNORE_SNAPSHOTS)
+e2e: $(ROOT_ENV) ## Run Playwright e2e tests fully inside Docker (stack + make dev required) — SPEC=… GREP=… REPEAT=1..10 RETRIES=0..2 IGNORE_SNAPSHOTS=1
 	$(FIG) up -d --wait
 	# Fail-closed sandbox guard (P4-141) — the e2e suite mutates the live dev DB
 	# (superadmin reset + fixtures + clubs). Refuse to run against anything but the
@@ -104,8 +137,11 @@ e2e: $(ROOT_ENV) ## Run Playwright e2e tests fully inside Docker (stack + `make 
 	# never wiped. Exit 1 aborts the target before any mutation.
 	@bash ../backend/scripts/lib/sandbox-guard.sh || exit 1
 	# Un volume nommé neuf naît possédé par root : la pré-étape le rend à l'UID
-	# hôte, sans quoi npm ci (exécuté en $${USER_ID:-1000}) refuse d'écrire.
-	$(FIG) --profile tools run --rm --no-deps --user root e2e sh -lc 'chown -R $${USER_ID:-1000}:$${GROUP_ID:-1000} /app/frontend/node_modules'
+	# hôte, sans quoi npm ci refuse d'écrire. L'UID/GID est développé CÔTÉ HÔTE (guillemets
+	# doubles), miroir du job CI : sous apostrophes, `$${USER_ID:-1000}` était développé dans
+	# le conteneur root, où USER_ID n'existe pas (toujours 1000) ; et `id -u` sous apostrophes
+	# y vaudrait 0.
+	$(FIG) --profile tools run --rm --no-deps --user root e2e sh -lc "chown -R $$(id -u):$$(id -g) /app/frontend/node_modules"
 	# Préflight SUPERADMIN — le seul parcours e2e qui franchit /admin (modale d'actions,
 	# `modal-reachability.spec.ts`). Il vit ICI, côté hôte, pour la même raison que le
 	# `up -d --wait` ci-dessus : le conteneur e2e n'a pas de socket docker.
@@ -134,7 +170,8 @@ e2e: $(ROOT_ENV) ## Run Playwright e2e tests fully inside Docker (stack + `make 
 		-e E2E_SUPERADMIN_EMAIL='$(E2E_SA_EMAIL)' \
 		-e E2E_SUPERADMIN_PASSWORD='$(E2E_SA_PASSWORD)' \
 		-e E2E_SUPERADMIN_TOTP_SECRET="$$(sed -n 's/.*setup key: *//p' "$$sa_file" | tr -d '\r\n')" \
-		e2e sh -lc 'PUPPETEER_SKIP_DOWNLOAD=1 npm ci --legacy-peer-deps && npx playwright test'
+		-e E2E_SPEC -e E2E_GREP -e E2E_REPEAT -e E2E_RETRIES -e E2E_IGNORE_SNAPSHOTS \
+		e2e sh -lc 'PUPPETEER_SKIP_DOWNLOAD=1 npm ci --legacy-peer-deps && npx playwright test $$E2E_SPEC $${E2E_GREP:+-g "$$E2E_GREP"} $${E2E_REPEAT:+--repeat-each "$$E2E_REPEAT"} $${E2E_RETRIES:+--retries "$$E2E_RETRIES"} $${E2E_IGNORE_SNAPSHOTS:+--ignore-snapshots}'
 
 help: ## Display this help
-	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
+	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z0-9_-]+:.*?## / {printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
