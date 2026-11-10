@@ -479,7 +479,7 @@ assumée et commentée) mais **lisent `MODAL_WIDTH.sm`** : deux copies du markup
 terminent sur une largeur fixe (`DON'T Full-width text on large screens`) : une modale qui
 suivrait indéfiniment le viewport rejouerait sur 1920 px l'anti-pattern qu'on corrige sur 448.
 
-**Pourquoi une borne de lisibilité dans les fiches.** `FichePage` porte `[&_p]:max-w-prose` :
+**Pourquoi une borne de lisibilité dans les fiches.** `FichePage` porte `[&_p]:max-w-prose` (sauf `prose={false}`, page dont les paragraphes sont le contenu : Nouveautés) :
 la seule mesure chiffrée du corpus de design est 65-75 caractères par ligne, et elle vaut à
 l'INTÉRIEUR d'un conteneur plus large — élargir le cadre sans borner les paragraphes
 échangerait un défaut contre un autre. La borne ne vit pas dans `AccordionSection` : il a

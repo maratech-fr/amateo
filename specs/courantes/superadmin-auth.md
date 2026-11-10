@@ -451,6 +451,13 @@ capacité, mesure d'audience de la vitrine) · **Santé** (services, conteneurs,
 leur nouvel onglet par `LEGACY_TAB_MAP` — un lien ou un `localStorage` mémorisé avant la
 réorganisation continue d'ouvrir le bon onglet.
 
+Les **notes de nouveautés** (`/api/admin/release-notes`, `AdminReleaseNoteController`) portent une
+**version produit facultative** (`release_note.product_version`, exposée sous la clé JSON `version`, `null`
+pour une note sans version) : le serveur retire les espaces et un « v » de tête (« v1.3.5 » → « 1.3.5 »),
+un vide vaut « sans version », sinon 2 à 4 segments numériques ou 400. Le formulaire de la console
+pré-remplit la version du bundle quand elle est un numéro. Il n'existe pas de route de modification
+d'une note (roadmap P4-535).
+
 Santé et Incidents portent une **pastille d'alerte** (« à vérifier » — un point décoratif +
 texte `sr-only` sur l'onglet, primitive `Tabs`/`TabItem.badge`,
 `frontend/src/shared/components/ui/tabs.tsx`) calculée **au niveau de la page**
