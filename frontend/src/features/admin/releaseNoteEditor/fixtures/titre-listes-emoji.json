@@ -1,0 +1,30 @@
+{
+  "type": "doc",
+  "content": [
+    { "type": "heading", "attrs": { "level": 3 }, "content": [{ "type": "text", "text": "Nouveautés" }] },
+    {
+      "type": "bulletList",
+      "content": [
+        {
+          "type": "listItem",
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "Export PDF" }] },
+            {
+              "type": "bulletList",
+              "content": [
+                { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Détail 🏀" }] }] }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "orderedList",
+      "attrs": { "start": 1, "type": null },
+      "content": [
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Première étape" }] }] }
+      ]
+    }
+  ]
+}

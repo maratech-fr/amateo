@@ -64,6 +64,10 @@
      theme already passes at high L, so its values live below unchanged. */
   --warning: oklch(0.55 0.16 62);
   --success: oklch(0.52 0.14 160);
+  /* --info : le BLEU des notes riches du journal (`RICH_COLOR_CLASS.app.bleu`), jeton de TEXTE
+     seulement. Formule WCAG (oklch → sRGB linéaire) : 5,80:1 sur background · 6,10:1 sur card ·
+     5,51:1 sur muted. Gardé AA par `a11y-contrast.spec.ts` (bg + card, deux thèmes). */
+  --info: oklch(0.5 0.17 255);
 
   /* --surface-* (P4-265) — fonds OPAQUES teintés des bandeaux/tuiles posés sur le fond à MOTIFS du
      body : `bg-card bg-warning/10` NE compose PAS (Tailwind n'empile pas deux background-color),
@@ -126,6 +130,8 @@
 
   --warning: oklch(0.83 0.15 78);
   --success: oklch(0.76 0.16 163);
+  /* --info sombre : 9,33:1 sur background · 8,53:1 sur card · 7,61:1 sur muted (même formule). */
+  --info: oklch(0.78 0.12 245);
 
   /* --surface-* en SOMBRE (P4-265) — mêmes rôles, pourcentages ARRÊTÉS À LA MESURE. Sur
      l'anthracite (`--card` ≈ #1f1d1a) les teintes de rôle sont CLAIRES (warning/accent/destructive
@@ -233,6 +239,7 @@
   --color-destructive-foreground: var(--destructive-foreground);
   --color-warning: var(--warning);
   --color-success: var(--success);
+  --color-info: var(--info);
   /* Surfaces opaques teintées (P4-265) : engendrent `bg-surface-warning|accent|destructive|muted`.
      Le texte posé dessus est TOUJOURS `text-foreground` (surface-accent suit la couleur du club). */
   --color-surface-warning: var(--surface-warning);

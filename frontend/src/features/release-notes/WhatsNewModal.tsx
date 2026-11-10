@@ -3,6 +3,7 @@ import { Link } from "react-router";
 
 import { Button } from "@/shared/components/ui/button";
 import { Modal } from "@/shared/components/ui/modal";
+import { RichText } from "@/shared/components/ui/rich-text";
 
 import { useMarkReleaseNotesSeen, useReleaseNotes } from "./queries";
 import { ReleaseNoteHeading } from "./ReleaseNoteHeading";
@@ -24,7 +25,8 @@ import { RELEASE_NOTES_TEXTS } from "./texts";
  * « J'ai compris ») enregistre la lecture et ferme aussitôt — un échec du POST est
  * toasté par le filet global et la modale revient au prochain chargement.
  *
- * Le corps est du TEXTE BRUT (`whitespace-pre-line`), jamais de markdown/html.
+ * Corps : `RichText` (éléments React, titres au niveau 4 sous le `<h3>` de la note) pour une note
+ * riche ; texte brut `whitespace-pre-line` pour une note texte (`bodyRich` null). Jamais de HTML.
  */
 export function WhatsNewModal() {
   const { data } = useReleaseNotes();
@@ -81,7 +83,11 @@ export function WhatsNewModal() {
       <article className="mt-4">
         <ReleaseNoteHeading date={note.date} version={note.version} />
         <h3 className="mt-0.5 text-sm font-semibold">{note.title}</h3>
-        <p className="mt-2 whitespace-pre-line text-sm text-foreground">{note.body}</p>
+        {null !== note.bodyRich ? (
+          <RichText doc={note.bodyRich} headingLevel={4} className="mt-2 text-sm text-foreground" />
+        ) : (
+          <p className="mt-2 whitespace-pre-line text-sm text-foreground">{note.body}</p>
+        )}
       </article>
     </Modal>
   );

@@ -458,6 +458,17 @@ un vide vaut « sans version », sinon 2 à 4 segments numériques ou 400. Le fo
 pré-remplit la version du bundle quand elle est un numéro. Il n'existe pas de route de modification
 d'une note (roadmap P4-535).
 
+Le **corps d'une note** se saisit dans un éditeur riche (`features/admin/releaseNoteEditor/`, TipTap confiné à
+ce dossier) : gras, italique, un niveau de titre, listes à puces et numérotées (3 niveaux au plus), 5 couleurs
+(rouge, orange, vert, bleu, gris), sauts de ligne, emoji par un sélecteur de la barre d'outils ; ni lien, ni
+image, ni tableau. Le payload porte `bodyRich` (JSON, `release_note.body_rich`) ; le serveur le valide contre
+une liste blanche fermée (`ReleaseNoteRichDoc`) et dérive `body` en texte brut ; sans `bodyRich`, `body` brut
+reste accepté. Un collage garde titres et listes, perd les liens (texte brut) et les couleurs externes.
+Limites : la liste collée depuis Word pour Windows arrive en paragraphes « · texte » (à remettre en liste
+d'un clic) ; un collage de texte brut « a. … » peut produire une liste numérotée de type « a » refusée en 400
+à l'enregistrement (non testé). L'aperçu est rendu en peau console. Règles, bornes et gardes :
+[`docs/security/rich-content.md`](../../docs/security/rich-content.md).
+
 Santé et Incidents portent une **pastille d'alerte** (« à vérifier » — un point décoratif +
 texte `sr-only` sur l'onglet, primitive `Tabs`/`TabItem.badge`,
 `frontend/src/shared/components/ui/tabs.tsx`) calculée **au niveau de la page**

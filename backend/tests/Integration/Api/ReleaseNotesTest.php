@@ -78,6 +78,56 @@ final class ReleaseNotesTest extends WebTestCase
         yield 'nombre JSON' => [135];
     }
 
+    /**
+     * Promesse (B2, ancien bundle) : **`bodyRich` absent ou null = note TEXTE** — le `body` brut est
+     * requis et la note se relit avec `bodyRich: null` (comme toute note d'avant l'éditeur riche).
+     *
+     * @return iterable<string, array{0: array<string, mixed>}>
+     */
+    public static function plainBodyPayloads(): iterable
+    {
+        yield 'bodyRich absent (ancien bundle)' => [[]];
+        yield 'bodyRich null' => [['bodyRich' => null]];
+    }
+
+    /**
+     * Payloads forgés (`curl`) hors liste blanche — A8, XSS stockée.
+     *
+     * @return iterable<string, array{0: mixed}>
+     */
+    public static function forgedRichBodies(): iterable
+    {
+        $doc = static fn (array ...$blocks): array => ['type' => 'doc', 'content' => $blocks];
+        $p = static fn (array ...$inline): array => ['type' => 'paragraph', 'content' => $inline];
+
+        yield 'nœud image' => [$doc(['type' => 'image', 'attrs' => ['src' => 'x', 'onerror' => 'alert(1)']])];
+        yield 'marque lien' => [$doc($p(['type' => 'text', 'text' => 'clic', 'marks' => [['type' => 'link', 'attrs' => ['href' => 'javascript:alert(1)']]]]))];
+        yield 'attribut style' => [$doc(['type' => 'paragraph', 'attrs' => ['style' => 'background:url(x)'], 'content' => [['type' => 'text', 'text' => 'x']]])];
+        yield 'titre dans une puce' => [$doc(['type' => 'bulletList', 'content' => [['type' => 'listItem', 'content' => [
+            ['type' => 'paragraph', 'content' => [['type' => 'text', 'text' => 'a']]],
+            ['type' => 'heading', 'attrs' => ['level' => 3], 'content' => [['type' => 'text', 'text' => 'b']]],
+        ]]]])];
+        yield 'couleur violet' => [$doc($p(['type' => 'text', 'text' => 'x', 'marks' => [['type' => 'noteColor', 'attrs' => ['name' => 'violet']]]]))];
+        yield 'couleur __proto__' => [$doc($p(['type' => 'text', 'text' => 'x', 'marks' => [['type' => 'noteColor', 'attrs' => ['name' => '__proto__']]]]))];
+        yield 'JSON chaîne' => ['{"type":"doc","content":[{"type":"paragraph"}]}'];
+    }
+
+    /**
+     * Promesse (m3) : **titre, corps brut et texte riche refusent les caractères de contrôle et bidi**
+     * (U+202E retourne l'affichage d'un texte chez tous les clubs), chacun avec son message.
+     *
+     * @return iterable<string, array{0: array<string, mixed>, 1: string}>
+     */
+    public static function forbiddenCharPayloads(): iterable
+    {
+        $rich = static fn (string $text): array => ['type' => 'doc', 'content' => [['type' => 'paragraph', 'content' => [['type' => 'text', 'text' => $text]]]]];
+
+        yield 'U+202E dans un texte riche' => [['title' => 'Note', 'bodyRich' => $rich("facture\u{202E}fdp.exe")], 'Le contenu contient des caractères non autorisés.'];
+        yield 'U+202E dans le titre' => [['title' => "Note\u{202E}etoN", 'body' => 'corps'], 'Le titre contient des caractères non autorisés.'];
+        yield 'U+0000 dans le corps brut' => [['title' => 'Note', 'body' => "a\u{0000}b"], 'Le contenu contient des caractères non autorisés.'];
+        yield 'U+2066 dans le corps brut' => [['title' => 'Note', 'body' => "a\u{2066}b"], 'Le contenu contient des caractères non autorisés.'];
+    }
+
     public function testAnonymousCannotReadTheJournal(): void
     {
         $this->client->request('GET', '/api/release-notes');
@@ -221,6 +271,148 @@ final class ReleaseNotesTest extends WebTestCase
 
         $this->client->request('GET', '/api/admin/release-notes');
         self::assertNotContains($title, array_column($this->responseBody()['items'], 'title'), 'un 400 n\'écrit rien');
+    }
+
+    /**
+     * Promesse (PR B, B1/B2) : **un corps riche valide est STOCKÉ reconstruit et relu tel quel par
+     * la console ET par le membre ; le texte brut `body` en est DÉRIVÉ par le serveur** (un `body`
+     * envoyé en même temps est ignoré) — un ancien bundle qui ne lit que `body` garde une note lisible.
+     * Une balise saisie comme TEXTE reste du texte (le rendu, lui, est prouvé par `rich-text.test.tsx`).
+     */
+    public function testRichBodyIsStoredRebuiltAndPlainBodyIsDerived(): void
+    {
+        $token = $this->registerVerified('RN4');
+        $csrf = $this->authenticateSuperAdmin('release-notes-rich@example.test');
+        $doc = [
+            'type' => 'doc',
+            'content' => [
+                ['type' => 'heading', 'attrs' => ['level' => 3], 'content' => [['type' => 'text', 'text' => 'Titre']]],
+                ['type' => 'bulletList', 'content' => [
+                    ['type' => 'listItem', 'content' => [
+                        ['type' => 'paragraph', 'content' => [['type' => 'text', 'text' => '<img src=x onerror=alert(1)>', 'marks' => [['type' => 'bold'], ['type' => 'noteColor', 'attrs' => ['name' => 'bleu']]]]]],
+                    ]],
+                ]],
+            ],
+        ];
+
+        $this->json('POST', '/api/admin/release-notes', ['title' => 'Note riche', 'body' => 'autre chose', 'bodyRich' => $doc, 'noteDate' => '2026-11-10'], ['HTTP_X_CSRF_TOKEN' => $csrf]);
+        self::assertResponseStatusCodeSame(201);
+        $created = $this->responseBody();
+        self::assertEquals($doc, $created['bodyRich'] ?? 'clé `bodyRich` absente', 'le 201 rend le corps riche reconstruit');
+        self::assertSame("Titre\n- <img src=x onerror=alert(1)>", $created['body'], '`body` est DÉRIVÉ du corps riche, le `body` envoyé est ignoré');
+        $id = $created['id'];
+        self::assertIsString($id);
+        $this->publishNote($csrf, $id);
+
+        $this->client->request('GET', '/api/admin/release-notes');
+        self::assertEquals($doc, $this->itemWithId($this->responseBody()['items'], $id)['bodyRich'] ?? null, 'la liste console relit le corps riche');
+
+        $this->startFreshBrowserSession($this->client);
+        $memberItem = $this->itemWithId($this->memberGet($token)['items'], $id);
+        self::assertEquals($doc, $memberItem['bodyRich'] ?? null, 'le GET membre relit le corps riche');
+        self::assertSame("Titre\n- <img src=x onerror=alert(1)>", $memberItem['body']);
+    }
+
+    /** @param array<string, mixed> $extra */
+    #[DataProvider('plainBodyPayloads')]
+    public function testWithoutRichBodyThePlainBodyIsRequiredAndRichBodyStaysNull(array $extra): void
+    {
+        $csrf = $this->authenticateSuperAdmin('release-notes-plain-' . substr(md5(uniqid('', true)), 0, 6) . '@example.test');
+
+        $this->json('POST', '/api/admin/release-notes', ['title' => 'Note texte', 'body' => "Ligne 1\nLigne 2", 'noteDate' => '2026-11-10', ...$extra], ['HTTP_X_CSRF_TOKEN' => $csrf]);
+        self::assertResponseStatusCodeSame(201);
+        $created = $this->responseBody();
+        self::assertArrayHasKey('bodyRich', $created, 'la clé `bodyRich` est toujours présente');
+        self::assertNull($created['bodyRich']);
+        self::assertSame("Ligne 1\nLigne 2", $created['body']);
+    }
+
+    public function testNeitherBodyNorRichBodyIsRefused(): void
+    {
+        $csrf = $this->authenticateSuperAdmin('release-notes-empty@example.test');
+
+        $this->json('POST', '/api/admin/release-notes', ['title' => 'Note vide', 'noteDate' => '2026-11-10', 'bodyRich' => null], ['HTTP_X_CSRF_TOKEN' => $csrf]);
+        self::assertResponseStatusCodeSame(400);
+        self::assertSame('Le contenu est requis.', $this->responseBody()['error'] ?? null);
+    }
+
+    /**
+     * Promesse (A8) : **un corps riche forgé hors liste blanche est refusé en 400 au message lisible,
+     * RIEN n'est écrit, et la tentative est tracée dans l'audit SA0** (un `body` valide joint ne le
+     * fait pas passer : `bodyRich` présent prime).
+     */
+    #[DataProvider('forgedRichBodies')]
+    public function testForgedRichBodyIsRefusedNothingWrittenAndAudited(mixed $bodyRich): void
+    {
+        $csrf = $this->authenticateSuperAdmin('release-notes-forged-' . substr(md5(uniqid('', true)), 0, 6) . '@example.test');
+        $title = 'Note forgée ' . substr(md5(uniqid('', true)), 0, 8);
+
+        $this->json('POST', '/api/admin/release-notes', ['title' => $title, 'body' => 'corps valide', 'bodyRich' => $bodyRich, 'noteDate' => '2026-11-10'], ['HTTP_X_CSRF_TOKEN' => $csrf]);
+        self::assertResponseStatusCodeSame(400);
+        self::assertSame('Le contenu mis en forme est invalide.', $this->responseBody()['error'] ?? null);
+
+        $this->client->request('GET', '/api/admin/release-notes');
+        self::assertNotContains($title, array_column($this->responseBody()['items'], 'title'), 'un 400 n\'écrit rien');
+
+        // AdminAuditSubscriber écrit toujours `action = 'admin.http_access'` et range l'action du
+        // contrôleur (`_admin_audit_context`) dans `details` (JSONB).
+        $audited = $this->admin()->fetchOne(
+            'SELECT COUNT(*) FROM admin_audit_log WHERE super_admin_id = :id AND action = \'admin.http_access\' AND details->>\'action\' = :action AND status_code = 400',
+            ['id' => $this->adminId, 'action' => 'release-note.create'],
+        );
+        self::assertSame(1, (int) $audited, 'la tentative refusée est tracée dans l\'audit SA0');
+    }
+
+    public function testFourListLevelsAreRefusedWithTheDepthMessage(): void
+    {
+        $csrf = $this->authenticateSuperAdmin('release-notes-depth@example.test');
+        $item = static fn (string $text, array ...$sub): array => ['type' => 'listItem', 'content' => [['type' => 'paragraph', 'content' => [['type' => 'text', 'text' => $text]]], ...$sub]];
+        $list = static fn (array $item): array => ['type' => 'bulletList', 'content' => [$item]];
+        $doc = ['type' => 'doc', 'content' => [$list($item('1', $list($item('2', $list($item('3', $list($item('4'))))))))]];
+
+        $this->json('POST', '/api/admin/release-notes', ['title' => 'Quatre niveaux', 'bodyRich' => $doc, 'noteDate' => '2026-11-10'], ['HTTP_X_CSRF_TOKEN' => $csrf]);
+        self::assertResponseStatusCodeSame(400);
+        self::assertSame('Les listes ne peuvent pas dépasser 3 niveaux.', $this->responseBody()['error'] ?? null);
+    }
+
+    /**
+     * Promesse (m2) : **un corps HTTP de plus de 64 Kio est refusé AVANT tout décodage JSON** — le
+     * corps envoyé ici n'est PAS du JSON valide : s'il était décodé d'abord, le message serait
+     * « Corps de requête invalide. ».
+     */
+    public function testRawBodyOver64KiBIsRefusedBeforeJsonDecoding(): void
+    {
+        $csrf = $this->authenticateSuperAdmin('release-notes-raw@example.test');
+        $raw = '{"title":"x","body":"' . str_repeat('a', 65537) . '"';
+        self::assertGreaterThan(65536, \strlen($raw));
+
+        $this->client->request('POST', '/api/admin/release-notes', [], [], ['CONTENT_TYPE' => 'application/json', 'REMOTE_ADDR' => $this->requestIp, 'HTTP_X_CSRF_TOKEN' => $csrf], $raw);
+        self::assertResponseStatusCodeSame(400);
+        self::assertSame('Corps de requête trop volumineux.', $this->responseBody()['error'] ?? null);
+    }
+
+    /** @param array<string, mixed> $payload */
+    #[DataProvider('forbiddenCharPayloads')]
+    public function testControlAndBidiCharactersAreRefusedWithTheirMessage(array $payload, string $message): void
+    {
+        $csrf = $this->authenticateSuperAdmin('release-notes-chars-' . substr(md5(uniqid('', true)), 0, 6) . '@example.test');
+
+        $this->json('POST', '/api/admin/release-notes', [...$payload, 'noteDate' => '2026-11-10'], ['HTTP_X_CSRF_TOKEN' => $csrf]);
+        self::assertResponseStatusCodeSame(400);
+        self::assertSame($message, $this->responseBody()['error'] ?? null);
+    }
+
+    /** Promesse (m3) : **le corps BRUT a la même borne de 10 000 caractères que le corps riche.** */
+    public function testPlainBodyIsBoundedAt10000Characters(): void
+    {
+        $csrf = $this->authenticateSuperAdmin('release-notes-long@example.test');
+
+        $this->json('POST', '/api/admin/release-notes', ['title' => 'Note longue', 'body' => str_repeat('é', 10001), 'noteDate' => '2026-11-10'], ['HTTP_X_CSRF_TOKEN' => $csrf]);
+        self::assertResponseStatusCodeSame(400);
+        self::assertSame('Le contenu dépasse 10 000 caractères.', $this->responseBody()['error'] ?? null);
+
+        $this->json('POST', '/api/admin/release-notes', ['title' => 'Note pile', 'body' => str_repeat('é', 10000), 'noteDate' => '2026-11-10'], ['HTTP_X_CSRF_TOKEN' => $csrf]);
+        self::assertResponseStatusCodeSame(201);
     }
 
     public function testWritesRequireCsrf(): void

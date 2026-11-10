@@ -3,6 +3,7 @@ import { FichePage } from "@/shared/components/ui/fiche-page";
 import { EmptyHint } from "@/shared/components/ui/empty-hint";
 import { LoadErrorHint } from "@/shared/components/ui/load-error-hint";
 import { PageHeader } from "@/shared/components/ui/page-header";
+import { RichText } from "@/shared/components/ui/rich-text";
 
 import { useReleaseNotes } from "./queries";
 import { ReleaseNoteHeading } from "./ReleaseNoteHeading";
@@ -10,8 +11,8 @@ import { RELEASE_NOTES_TEXTS } from "./texts";
 
 /**
  * P5-12 — la page « Nouveautés » (/nouveautes) : le journal complet des notes
- * publiées, les plus récentes d'abord. Corps en TEXTE BRUT (`whitespace-pre-line`),
- * aucun rendu markdown/html.
+ * publiées, les plus récentes d'abord. Corps riche par `RichText` (titres au niveau 3 sous le
+ * `<h2>` de carte), ou TEXTE BRUT (`whitespace-pre-line`) pour une note texte ; jamais de HTML.
  *
  * `prose={false}` : le corps d'une note occupe toute la largeur de sa carte — la borne de
  * lisibilité de `FichePage` laissait un vide à droite de chaque carte.
@@ -37,7 +38,11 @@ export function ReleaseNotesPage() {
             <li key={item.id} className="rounded-lg border border-border bg-card p-4">
               <ReleaseNoteHeading date={item.date} version={item.version} />
               <h2 className="mt-0.5 text-base font-semibold">{item.title}</h2>
-              <p className="mt-3 whitespace-pre-line text-sm text-foreground">{item.body}</p>
+              {null !== item.bodyRich ? (
+                <RichText doc={item.bodyRich} headingLevel={3} className="mt-3 text-sm text-foreground" />
+              ) : (
+                <p className="mt-3 whitespace-pre-line text-sm text-foreground">{item.body}</p>
+              )}
             </li>
           ))}
         </ul>

@@ -1,0 +1,23 @@
+{
+  "type": "doc",
+  "content": [
+    {
+      "type": "paragraph",
+      "content": [
+        { "type": "text", "marks": [{ "type": "bold" }], "text": "gras" },
+        { "type": "text", "text": " " },
+        { "type": "text", "marks": [{ "type": "italic" }], "text": "italique" },
+        { "type": "text", "text": " " },
+        { "type": "text", "marks": [{ "type": "noteColor", "attrs": { "name": "rouge" } }], "text": "rouge" },
+        { "type": "text", "text": " " },
+        { "type": "text", "marks": [{ "type": "noteColor", "attrs": { "name": "orange" } }], "text": "orange" },
+        { "type": "text", "text": " " },
+        { "type": "text", "marks": [{ "type": "noteColor", "attrs": { "name": "vert" } }], "text": "vert" },
+        { "type": "text", "text": " " },
+        { "type": "text", "marks": [{ "type": "bold" }, { "type": "noteColor", "attrs": { "name": "bleu" } }], "text": "bleu" },
+        { "type": "text", "text": " " },
+        { "type": "text", "marks": [{ "type": "italic" }, { "type": "noteColor", "attrs": { "name": "gris" } }], "text": "gris" }
+      ]
+    }
+  ]
+}

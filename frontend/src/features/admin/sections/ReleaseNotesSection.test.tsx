@@ -39,8 +39,29 @@ vi.mock("@/shared/lib/appVersion", () => ({
   },
 }));
 
-const DRAFT: AdminReleaseNote = { id: "d1", title: "Refonte du planning", body: "…", date: "2026-08-10", publishedAt: null, createdAt: "2026-08-10T10:00:00+00:00", version: "1.3.5" };
-const PUBLISHED: AdminReleaseNote = { id: "p1", title: "Export PDF amélioré", body: "…", date: "2026-08-12", publishedAt: "2026-08-12T09:00:00+00:00", createdAt: "2026-08-12T08:00:00+00:00", version: null };
+/**
+ * L'éditeur riche est remplacé ici par un DOUBLE (une zone de texte qui rend un paragraphe) : ce
+ * fichier garde le CÂBLAGE de la section (payload `bodyRich`, aperçu, lignes) ; l'éditeur réel est
+ * prouvé par `releaseNoteEditor/ReleaseNoteEditor.test.tsx` et `editorOutput.test.ts`.
+ */
+vi.mock("../releaseNoteEditor/ReleaseNoteEditor", () => ({
+  ReleaseNoteEditor: ({ id, onChange }: { id: string; onChange: (doc: unknown) => void }) => (
+    <textarea
+      id={id}
+      onChange={(event) =>
+        onChange({ type: "doc", content: [event.target.value === "" ? { type: "paragraph" } : { type: "paragraph", content: [{ type: "text", text: event.target.value }] }] })
+      }
+    />
+  ),
+}));
+
+/** Le document que le double d'éditeur rend pour un texte tapé. */
+function docOf(text: string) {
+  return { type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text }] }] };
+}
+
+const DRAFT: AdminReleaseNote = { id: "d1", title: "Refonte du planning", body: "…", date: "2026-08-10", publishedAt: null, createdAt: "2026-08-10T10:00:00+00:00", version: "1.3.5", bodyRich: null };
+const PUBLISHED: AdminReleaseNote = { id: "p1", title: "Export PDF amélioré", body: "…", date: "2026-08-12", publishedAt: "2026-08-12T09:00:00+00:00", createdAt: "2026-08-12T08:00:00+00:00", version: null, bodyRich: null };
 
 /** Une erreur HTTP telle que ky la lève (patron `shared/lib/errorMessage.test.ts`). */
 function httpError(status: number, body: unknown): HTTPError {
@@ -87,9 +108,11 @@ describe("ReleaseNotesSection", () => {
     await user.type(screen.getByLabelText(/contenu/i), "Le corps");
     await user.click(screen.getByRole("button", { name: /enregistrer/i }));
 
-    await waitFor(() =>
-      expect(mockCreate).toHaveBeenCalledWith({ title: "Ma note", body: "Le corps", noteDate: "2026-08-13" }, "csrf-token"),
-    );
+    await waitFor(() => expect(mockCreate).toHaveBeenCalledTimes(1));
+    const [payload, csrf] = mockCreate.mock.calls[0] ?? [];
+    expect(csrf).toBe("csrf-token");
+    expect(payload).toMatchObject({ title: "Ma note", noteDate: "2026-08-13", bodyRich: docOf("Le corps") });
+    expect((payload as { version?: unknown }).version).toBeUndefined();
   });
 
   // P4-149 (option 1) — le vide « Aucune note » passe par EmptyHint variant="console"
@@ -171,7 +194,7 @@ describe("ReleaseNotesSection — champ Version", () => {
     await fillAndSubmit(user);
 
     await waitFor(() =>
-      expect(mockCreate).toHaveBeenCalledWith({ title: "Ma note", body: "Le corps", noteDate: "2026-08-13", version: "1.3.5" }, "csrf-token"),
+      expect(mockCreate).toHaveBeenCalledWith(expect.objectContaining({ title: "Ma note", bodyRich: docOf("Le corps"), noteDate: "2026-08-13", version: "1.3.5" }), "csrf-token"),
     );
   });
 
@@ -188,7 +211,7 @@ describe("ReleaseNotesSection — champ Version", () => {
 
     await waitFor(() => expect(mockCreate).toHaveBeenCalledTimes(1));
     const payload = mockCreate.mock.calls[0]?.[0];
-    expect({ title: payload?.title, body: payload?.body, noteDate: payload?.noteDate }).toEqual({ title: "Ma note", body: "Le corps", noteDate: "2026-08-13" });
+    expect(payload).toMatchObject({ title: "Ma note", bodyRich: docOf("Le corps"), noteDate: "2026-08-13" });
     // Sans version = clé absente OU null (le serveur normalise les deux) ; jamais une chaîne.
     expect(payload?.version ?? null).toBeNull();
   });
@@ -211,7 +234,7 @@ describe("ReleaseNotesSection — champ Version", () => {
     await fillAndSubmit(user);
 
     await waitFor(() =>
-      expect(mockCreate).toHaveBeenCalledWith({ title: "Ma note", body: "Le corps", noteDate: "2026-08-13", version: "1.4" }, "csrf-token"),
+      expect(mockCreate).toHaveBeenCalledWith(expect.objectContaining({ title: "Ma note", bodyRich: docOf("Le corps"), noteDate: "2026-08-13", version: "1.4" }), "csrf-token"),
     );
   });
 
@@ -233,5 +256,48 @@ describe("ReleaseNotesSection — champ Version", () => {
     await fillAndSubmit(user);
 
     await waitFor(() => expect(useToastStore.getState().toasts.map((toast) => toast.message).join(" | ")).toContain(reason));
+  });
+});
+
+/**
+ * Promesse (PR B, B3/B4) : **dans la console, une note riche se relit dans la peau CONSOLE — sur
+ * chaque ligne ET dans l'aperçu de saisie** (jetons `text-console-*`, jamais un jeton adaptatif de
+ * l'app, illisible sur le fond sombre). Un refus du serveur (profondeur, forme) remonte par le même
+ * `toastWithReason` que le test « 400 » ci-dessus. Rendu des deux peaux : `rich-text.test.tsx`.
+ */
+describe("ReleaseNotesSection — corps riche en peau console", () => {
+  const BLUE_DOC = {
+    type: "doc",
+    content: [{ type: "paragraph", content: [{ type: "text", text: "Export PDF", marks: [{ type: "bold" }, { type: "noteColor", attrs: { name: "bleu" } }] }] }],
+  };
+
+  beforeEach(() => {
+    mockList.mockReset();
+    mockCreate.mockReset();
+    useToastStore.setState({ toasts: [] });
+    useAdminStore.getState().setSession({ id: "sa", email: "sa@x" }, "csrf-token");
+  });
+
+  it("une ligne de note riche rend son gras bleu en text-console-info, sans jeton de l'app", async () => {
+    mockList.mockResolvedValue({ items: [{ ...PUBLISHED, body: "Export PDF", bodyRich: BLUE_DOC } as AdminReleaseNote] });
+    renderWithProviders(<ReleaseNotesSection />);
+
+    const row = (await screen.findByText(PUBLISHED.title)).closest("li") as HTMLElement;
+    const word = within(row).getByText("Export PDF");
+    expect(word.closest("strong")).not.toBeNull();
+    expect(word.closest(".text-console-info")).not.toBeNull();
+    expect(row.querySelector(".text-info")).toBeNull();
+  });
+
+  it("l'aperçu rend ce que l'éditeur produit, en peau console", async () => {
+    const user = userEvent.setup();
+    mockList.mockResolvedValue({ items: [] });
+    renderWithProviders(<ReleaseNotesSection />);
+
+    await user.type(await screen.findByLabelText(ADMIN_SECTIONS_TEXTS.releaseNotesBodyLabel), "Texte de l'aperçu");
+
+    const preview = screen.getByRole("region", { name: ADMIN_SECTIONS_TEXTS.releaseNotesPreview });
+    expect(within(preview).getByText("Texte de l'aperçu")).toBeInTheDocument();
+    expect(preview.querySelector(".text-foreground, .text-muted-foreground")).toBeNull();
   });
 });

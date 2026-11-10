@@ -31,13 +31,14 @@ const NOTE: ReleaseNoteItem = {
   body: "Un récapitulatif plus lisible.",
   publishedAt: "2026-08-13T09:00:00+00:00",
   version: "1.3.5",
+  bodyRich: null,
 };
 
 // Trois notes fraîches dont l'ordre de l'API (date éditoriale) N'EST PAS l'ordre de publication :
 // la plus récemment PUBLIÉE est `n2`, au milieu de la liste — un affichage de `items[0]` se trompe.
-const OLDEST: ReleaseNoteItem = { id: "n1", date: "2026-11-20", title: "Export PDF des matchs", body: "Corps 1", publishedAt: "2026-11-01T09:00:00+00:00", version: "1.3.3" };
-const NEWEST: ReleaseNoteItem = { id: "n2", date: "2026-11-15", title: "Nouvelle vue planning", body: "Corps 2", publishedAt: "2026-11-15T09:00:00+00:00", version: "1.3.5" };
-const MIDDLE: ReleaseNoteItem = { id: "n3", date: "2026-11-08", title: "Gymnases fermés", body: "Corps 3", publishedAt: "2026-11-08T09:00:00+00:00", version: null };
+const OLDEST: ReleaseNoteItem = { id: "n1", date: "2026-11-20", title: "Export PDF des matchs", body: "Corps 1", publishedAt: "2026-11-01T09:00:00+00:00", version: "1.3.3", bodyRich: null };
+const NEWEST: ReleaseNoteItem = { id: "n2", date: "2026-11-15", title: "Nouvelle vue planning", body: "Corps 2", publishedAt: "2026-11-15T09:00:00+00:00", version: "1.3.5", bodyRich: null };
+const MIDDLE: ReleaseNoteItem = { id: "n3", date: "2026-11-08", title: "Gymnases fermés", body: "Corps 3", publishedAt: "2026-11-08T09:00:00+00:00", version: null, bodyRich: null };
 
 function response(overrides: Partial<ReleaseNotesResponse> = {}): ReleaseNotesResponse {
   return { seenUpTo: "2026-08-01T00:00:00+00:00", items: [NOTE], ...overrides };
@@ -204,6 +205,53 @@ describe("WhatsNewModal — en-tête date-version, titre, corps", () => {
 
     const dialog = await screen.findByRole("dialog", { name: RELEASE_NOTES_TEXTS.modalLabel });
     expect(within(dialog).getByText(RELEASE_NOTES_TEXTS.heading(frDateSlashed(MIDDLE.date), null))).toBeInTheDocument();
+  });
+});
+
+/**
+ * Promesse (PR B, B3) : **dans la modale, une note riche se lit mise en forme — ses titres au niveau
+ * 4 (sous le `<h3>` du titre de note), son gras en `<strong>`, une balise saisie en TEXTE** ; une note
+ * texte (`bodyRich: null`, note d'avant l'éditeur) garde son rendu brut `whitespace-pre-line`.
+ * Rendu unitaire : `shared/components/ui/rich-text.test.tsx` ; jumeau page : `ReleaseNotesPage.test.tsx`.
+ */
+describe("WhatsNewModal — corps riche", () => {
+  beforeEach(() => {
+    mockGet.mockReset();
+    mockSeen.mockReset();
+    mockSeen.mockResolvedValue(undefined);
+  });
+
+  it("note riche : titre du corps en <h4>, gras en <strong>, balise affichée littéralement", async () => {
+    const rich = {
+      ...NEWEST,
+      body: "Export PDF\n<img src=x onerror=alert(1)>",
+      bodyRich: {
+        type: "doc",
+        content: [
+          { type: "heading", attrs: { level: 3 }, content: [{ type: "text", text: "Export PDF" }] },
+          { type: "paragraph", content: [{ type: "text", text: "<img src=x onerror=alert(1)>", marks: [{ type: "bold" }] }] },
+        ],
+      },
+    } as ReleaseNoteItem;
+    mockGet.mockResolvedValue(response({ items: [rich] }));
+    renderWithProviders(<WhatsNewModal />);
+
+    const dialog = await screen.findByRole("dialog", { name: RELEASE_NOTES_TEXTS.modalLabel });
+    expect(within(dialog).getByRole("heading", { level: 3, name: NEWEST.title })).toBeInTheDocument();
+    expect(within(dialog).getByRole("heading", { level: 4, name: "Export PDF" })).toBeInTheDocument();
+    const strong = within(dialog).getByText("<img src=x onerror=alert(1)>");
+    expect(strong.closest("strong")).not.toBeNull();
+    expect(dialog.querySelector("img")).toBeNull();
+    // Le miroir texte n'est pas affiché EN PLUS du corps riche.
+    expect(dialog.querySelector(".whitespace-pre-line")).toBeNull();
+  });
+
+  it("note texte (bodyRich null) : corps brut en whitespace-pre-line", async () => {
+    mockGet.mockResolvedValue(response({ items: [{ ...NEWEST, bodyRich: null } as ReleaseNoteItem] }));
+    renderWithProviders(<WhatsNewModal />);
+
+    const dialog = await screen.findByRole("dialog", { name: RELEASE_NOTES_TEXTS.modalLabel });
+    expect(within(dialog).getByText(NEWEST.body)).toHaveClass("whitespace-pre-line");
   });
 });
 

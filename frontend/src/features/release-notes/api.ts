@@ -1,10 +1,12 @@
 import { api } from "@/shared/api/client";
+import type { RichDoc } from "@/shared/lib/richDoc";
 
 /**
  * Une note du journal de nouveautés, telle que servie au membre. `date` est la
  * date ÉDITORIALE (affichée, antidatable) ; `publishedAt` est l'instant de
- * publication — c'est LUI qui décide de la modale « quoi de neuf ». `body` est
- * du TEXTE BRUT : aucun rendu markdown/html (affiché `whitespace-pre-line`).
+ * publication — c'est LUI qui décide de la modale « quoi de neuf ». `bodyRich` est
+ * le corps mis en forme (liste blanche serveur, rendu par `RichText`, jamais en
+ * HTML) ; null = note TEXTE, dont `body` (texte brut, `whitespace-pre-line`) fait foi.
  */
 export interface ReleaseNoteItem {
   id: string;
@@ -14,6 +16,8 @@ export interface ReleaseNoteItem {
   publishedAt: string;
   /** Version du produit annoncée par la note (« 1.3.5 »), ou null si la note n'en porte pas. */
   version: string | null;
+  /** Corps mis en forme, ou null pour une note texte (`body` seul). */
+  bodyRich: RichDoc | null;
 }
 
 export interface ReleaseNotesResponse {

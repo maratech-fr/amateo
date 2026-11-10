@@ -178,6 +178,10 @@ const MIGRATED_FILES = [
   "features/release-notes/WhatsNewModal.tsx",
   "features/release-notes/ReleaseNotesPage.tsx",
   "shared/deployment/DeploymentNoticeBanner.tsx",
+  // Actualités PR B — l'éditeur riche de la console naît migré (features/admin/texts/sections.ts),
+  // comme toute la console superadmin.
+  "features/admin/releaseNoteEditor/ReleaseNoteEditor.tsx",
+  "features/admin/releaseNoteEditor/EmojiPicker.tsx",
 ];
 
 // Exemptions nominatives — un fichier migré autorisé à garder un littéral en dur, AVEC sa raison.

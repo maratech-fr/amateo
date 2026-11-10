@@ -6,8 +6,11 @@ namespace App\Controller;
 
 use App\Entity\ReleaseNote;
 use App\Entity\SuperAdmin;
+use App\Exception\InvalidRichDocException;
 use App\Repository\ReleaseNoteRepository;
 use App\Security\AdminSessionCsrf;
+use App\Service\ReleaseNoteRichDoc;
+use App\Service\TextSanity;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\Clock\ClockInterface;
@@ -41,6 +44,8 @@ final readonly class AdminReleaseNoteController
         private AdminSessionCsrf $csrf,
         private TokenStorageInterface $tokens,
         private ClockInterface $clock,
+        private ReleaseNoteRichDoc $richDoc,
+        private TextSanity $sanity,
     ) {}
 
     #[Route('', methods: ['GET'])]
@@ -61,6 +66,10 @@ final readonly class AdminReleaseNoteController
             return $guard;
         }
 
+        // Borne AVANT tout décodage : nginx accepte 20 Mo, une note n'en demande jamais autant.
+        if (\strlen($request->getContent()) > ReleaseNoteRichDoc::MAX_RAW_BYTES) {
+            return new JsonResponse(['error' => 'Corps de requête trop volumineux.'], 400);
+        }
         $payload = $this->decode($request);
         if (!\is_array($payload)) {
             return new JsonResponse(['error' => 'Corps de requête invalide.'], 400);
@@ -69,10 +78,15 @@ final readonly class AdminReleaseNoteController
         if (null !== $error) {
             return new JsonResponse(['error' => $error], 400);
         }
+        $content = $this->content($payload);
+        if (\is_string($content)) {
+            return new JsonResponse(['error' => $content], 400);
+        }
 
         $note = new ReleaseNote;
         $note->setTitle(trim((string) $payload['title']));
-        $note->setBody(trim((string) $payload['body']));
+        $note->setBody($content['body']);
+        $note->setBodyRich($content['bodyRich']);
         $note->setNoteDate($this->parseDate((string) $payload['noteDate']));
         $note->setProductVersion($this->normalizeVersion($payload['version'] ?? null));
         $this->entityManager->persist($note);
@@ -133,6 +147,7 @@ final readonly class AdminReleaseNoteController
             'publishedAt' => $note->getPublishedAt()?->format(DateTimeImmutable::ATOM),
             'createdAt' => $note->getCreatedAt()->format(DateTimeImmutable::ATOM),
             'version' => $note->getProductVersion(),
+            'bodyRich' => $note->getBodyRich(),
         ];
     }
 
@@ -155,9 +170,8 @@ final readonly class AdminReleaseNoteController
         if (mb_strlen($title) > 160) {
             return 'Le titre ne doit pas dépasser 160 caractères.';
         }
-        $body = \is_string($payload['body'] ?? null) ? trim($payload['body']) : '';
-        if ('' === $body) {
-            return 'Le contenu est requis.';
+        if ($this->sanity->hasForbiddenChars($title)) {
+            return 'Le titre contient des caractères non autorisés.';
         }
         if (!\is_string($payload['noteDate'] ?? null) || !$this->isValidDate($payload['noteDate'])) {
             return 'La date est invalide (format attendu : AAAA-MM-JJ).';
@@ -167,6 +181,43 @@ final readonly class AdminReleaseNoteController
         }
 
         return null;
+    }
+
+    /**
+     * Le corps de la note. `bodyRich` présent et non null → validé par la liste blanche, `body` en
+     * est DÉRIVÉ (un `body` envoyé avec lui est ignoré) ; sinon (ancien bundle, note texte) `body`
+     * est requis, borné à 10 000 caractères, sans caractère de contrôle ni bidi — ses sauts de ligne
+     * (`\n`, `\r\n`) restent permis : un corps brut est multi-ligne par nature.
+     *
+     * @param array<array-key, mixed> $payload
+     *
+     * @return array{body: string, bodyRich: array<string, mixed>|null}|string le corps, ou le message du 400
+     */
+    private function content(array $payload): array|string
+    {
+        if (null !== ($payload['bodyRich'] ?? null)) {
+            try {
+                $bodyRich = $this->richDoc->validate($payload['bodyRich']);
+            } catch (InvalidRichDocException $refused) {
+                return $refused->getMessage();
+            }
+            $body = trim($this->richDoc->toPlainText($bodyRich));
+
+            return '' === $body ? 'Le contenu est requis.' : ['body' => $body, 'bodyRich' => $bodyRich];
+        }
+
+        $body = \is_string($payload['body'] ?? null) ? trim($payload['body']) : '';
+        if ('' === $body) {
+            return 'Le contenu est requis.';
+        }
+        if (mb_strlen($body) > ReleaseNoteRichDoc::MAX_TEXT) {
+            return 'Le contenu dépasse 10 000 caractères.';
+        }
+        if ($this->sanity->hasForbiddenChars(str_replace(["\r\n", "\n"], '', $body))) {
+            return 'Le contenu contient des caractères non autorisés.';
+        }
+
+        return ['body' => $body, 'bodyRich' => null];
     }
 
     /**
