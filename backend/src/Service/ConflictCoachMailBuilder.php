@@ -54,6 +54,9 @@ final class ConflictCoachMailBuilder
         'MATCH_COACH_UNAVAILABLE' => 'Coach principal indisponible',
     ];
 
+    /** Marque d'une tuile depuis l'envoi précédent — un mot, en fin de ligne-titre et en pastille. */
+    private const array MARK = ['new' => 'Nouveau', 'changed' => 'Modifié'];
+
     private const array DAYS = [1 => 'lundi', 2 => 'mardi', 3 => 'mercredi', 4 => 'jeudi', 5 => 'vendredi', 6 => 'samedi', 7 => 'dimanche'];
 
     private const array DAYS_SHORT = [1 => 'lun.', 2 => 'mar.', 3 => 'mer.', 4 => 'jeu.', 5 => 'ven.', 6 => 'sam.', 7 => 'dim.'];
@@ -67,12 +70,17 @@ final class ConflictCoachMailBuilder
     ) {}
 
     /**
-     * @param list<array<string, mixed>> $conflicts les conflits de CE coach (déjà choisis par {@see ConflictCoachMailing})
-     * @param array<string, Team>        $teams
-     * @param array<string, Venue>       $venues
-     * @param array<string, Coach>       $coaches
+     * `$marks` marque une tuile « Nouveau » ou « Modifié » depuis l'envoi précédent ; `$previousSentAt`
+     * (heure murale du club) est cet envoi — null quand le coach n'a aucun envoi détaillé connu :
+     * alors ni marque ni phrase (on ne prétend pas savoir ce qu'il a reçu).
+     *
+     * @param list<array<string, mixed>>     $conflicts les conflits de CE coach (déjà choisis par {@see ConflictCoachMailing})
+     * @param array<string, Team>            $teams
+     * @param array<string, Venue>           $venues
+     * @param array<string, Coach>           $coaches
+     * @param array<string, 'new'|'changed'> $marks     empreinte → marque
      */
-    public function buildConflicts(string $to, Coach $coach, Club $club, Season $season, string $senderFirstName, DateTimeImmutable $clubToday, array $conflicts, array $teams, array $venues, array $coaches): Email
+    public function buildConflicts(string $to, Coach $coach, Club $club, Season $season, string $senderFirstName, DateTimeImmutable $clubToday, array $conflicts, array $teams, array $venues, array $coaches, array $marks = [], ?DateTimeImmutable $previousSentAt = null): Email
     {
         $label = $club->emailLabel();
         $count = \count($conflicts);
@@ -93,14 +101,30 @@ final class ConflictCoachMailBuilder
 
         $textTiles = [];
         $htmlTiles = [];
+        $marked = 0;
         foreach ($conflicts as $conflict) {
-            $tile = $this->tile($conflict, $teams, $venues, $coaches);
+            $fingerprint = \is_string($conflict['fingerprint'] ?? null) ? $conflict['fingerprint'] : '';
+            $mark = $previousSentAt instanceof DateTimeImmutable ? (self::MARK[$marks[$fingerprint] ?? ''] ?? '') : '';
+            if ('' !== $mark) {
+                ++$marked;
+            }
+            $tile = $this->tile($conflict, $teams, $venues, $coaches) + ['mark' => $mark];
             $textTiles[] = $this->textTile($tile);
             $htmlTiles[] = $this->htmlTile($tile);
         }
 
-        $text = implode("\n\n", [$greeting, $intro, ...$textTiles, self::CLOSING]);
-        $fragment = $this->paragraph($greeting) . $this->paragraph($intro)
+        $since = [];
+        if ($previousSentAt instanceof DateTimeImmutable) {
+            $date = $previousSentAt->format('d/m/Y');
+            $since[] = match (true) {
+                0 === $marked => \sprintf('Cette liste vous est renvoyée : aucun conflit de cette liste n\'est nouveau ou modifié depuis l\'envoi du %s.', $date),
+                1 === $marked => \sprintf('Depuis le dernier envoi du %s, 1 conflit est nouveau ou modifié : il est marqué.', $date),
+                default => \sprintf('Depuis le dernier envoi du %s, %d conflits sont nouveaux ou modifiés : ils sont marqués.', $date, $marked),
+            };
+        }
+
+        $text = implode("\n\n", [$greeting, $intro, ...$since, ...$textTiles, self::CLOSING]);
+        $fragment = $this->paragraph($greeting) . $this->paragraph($intro) . implode('', array_map($this->paragraph(...), $since))
             . '<div style="margin-top:16px;">' . implode('', $htmlTiles) . '</div>'
             . '<p style="margin:12px 0 0 0;color:#4b5563;font-size:13px;">' . $this->h(self::CLOSING) . '</p>';
 
@@ -327,11 +351,12 @@ final class ConflictCoachMailBuilder
     }
 
     /**
-     * @param array{family: string, word: string, color: string, ink: string, wash: string, sub: string, blocks: list<array{label: string, detail: string, time: list<array{0: string, 1: bool}>}>, line: list<array{0: string, 1: bool}>, overlap: string} $tile
+     * @param array{family: string, word: string, color: string, ink: string, wash: string, sub: string, blocks: list<array{label: string, detail: string, time: list<array{0: string, 1: bool}>}>, line: list<array{0: string, 1: bool}>, overlap: string, mark: string} $tile
      */
     private function textTile(array $tile): string
     {
-        $lines = [\sprintf('%s — %s · %s', $tile['family'], $tile['sub'], $tile['word'])];
+        // La marque (« Nouveau » / « Modifié ») FINIT la ligne-titre : son début reste intact.
+        $lines = [\sprintf('%s — %s · %s', $tile['family'], $tile['sub'], $tile['word']) . ('' === $tile['mark'] ? '' : ' · ' . $tile['mark'])];
         foreach ($tile['blocks'] as $block) {
             $lines[] = implode(' · ', array_filter([$block['label'], $block['detail'], $this->plain($block['time'])], static fn (string $part): bool => '' !== $part));
         }
@@ -350,10 +375,14 @@ final class ConflictCoachMailBuilder
      * de gravité, sous-ligne, blocs de côté, pied de chevauchement. Styles inline, couleurs en dur ; police
      * courte redéclarée par cellule (Outlook de bureau ne l'hérite pas des tables imbriquées).
      *
-     * @param array{family: string, word: string, color: string, ink: string, wash: string, sub: string, blocks: list<array{label: string, detail: string, time: list<array{0: string, 1: bool}>}>, line: list<array{0: string, 1: bool}>, overlap: string} $tile
+     * @param array{family: string, word: string, color: string, ink: string, wash: string, sub: string, blocks: list<array{label: string, detail: string, time: list<array{0: string, 1: bool}>}>, line: list<array{0: string, 1: bool}>, overlap: string, mark: string} $tile
      */
     private function htmlTile(array $tile): string
     {
+        // Seconde pastille, neutre, à côté de la gravité : « Nouveau » / « Modifié ».
+        $mark = '' === $tile['mark']
+            ? ''
+            : '<span style="display:inline-block;white-space:nowrap;margin-left:4px;font-size:12px;font-weight:700;color:#1a1a1a;background-color:#f3f4f6;border:1px solid #d1d5db;border-radius:10px;padding:2px 8px;">' . $this->h($tile['mark']) . '</span>';
         $rows = '';
         foreach ($tile['blocks'] as $block) {
             $detail = '' === $block['detail'] ? '' : '<span style="font-weight:400;color:#4b5563;"> · ' . $this->h($block['detail']) . '</span>';
@@ -373,7 +402,7 @@ final class ConflictCoachMailBuilder
             . '<td style="' . self::FONT . 'padding:12px 16px;background-color:#ffffff;border-top:1px solid #e5e5e5;border-right:1px solid #e5e5e5;border-bottom:1px solid #e5e5e5;">'
             . '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>'
             . '<td style="' . self::FONT . 'font-size:14px;font-weight:700;color:#1a1a1a;">' . $this->h($tile['family']) . '</td>'
-            . '<td align="right" style="' . self::FONT . 'padding-left:8px;"><span style="display:inline-block;white-space:nowrap;font-size:12px;font-weight:700;color:' . $tile['ink'] . ';background-color:' . $tile['wash'] . ';border:1px solid ' . $tile['color'] . ';border-radius:10px;padding:2px 8px;">' . $this->h($tile['word']) . '</span></td></tr></table>'
+            . '<td align="right" style="' . self::FONT . 'padding-left:8px;"><span style="display:inline-block;white-space:nowrap;font-size:12px;font-weight:700;color:' . $tile['ink'] . ';background-color:' . $tile['wash'] . ';border:1px solid ' . $tile['color'] . ';border-radius:10px;padding:2px 8px;">' . $this->h($tile['word']) . '</span>' . $mark . '</td></tr></table>'
             . '<div style="' . self::FONT . 'font-size:13px;color:#4b5563;margin-top:2px;">' . $this->h($tile['sub']) . '</div>'
             . '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">' . $rows . '</table>'
             . '</td></tr></table>';

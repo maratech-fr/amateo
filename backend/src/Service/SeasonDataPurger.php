@@ -13,6 +13,7 @@ use App\Entity\CoachWishCampaign;
 use App\Entity\CoachWishMutualization;
 use App\Entity\Competition;
 use App\Entity\ConflictMailing;
+use App\Entity\ConflictMailReceipt;
 use App\Entity\ConflictResolution;
 use App\Entity\Constraint;
 use App\Entity\ConstraintConflict;
@@ -167,6 +168,9 @@ final class SeasonDataPurger
         // enfant) : purgé avec la saison. C'est la SEULE porte de sortie d'une
         // ligne orpheline (empreinte disparue du flux) — jamais nettoyée à la volée.
         ConflictResolution::class,
+        // Envoi des conflits aux coachs — reçus par conflit (club_id+season_id, aucun enfant ; FK
+        // vers coach en CASCADE) : une donnée de SAISON, purgée avec elle.
+        ConflictMailReceipt::class,
         // Envoi des conflits aux coachs — mémoire du dernier envoi (club_id+season_id, aucun
         // enfant) : une donnée de SAISON, purgée avec elle.
         ConflictMailing::class,

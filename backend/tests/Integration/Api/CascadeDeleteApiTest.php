@@ -47,6 +47,7 @@ use Lexik\Bundle\JWTAuthenticationBundle\Services\JWTTokenManagerInterface;
 use PHPUnit\Framework\Attributes\Group;
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
+use Symfony\Component\Uid\Uuid;
 
 /**
  * §7.1 non-regression: deleting an interlinked entity must purge every logical
@@ -141,6 +142,29 @@ final class CascadeDeleteApiTest extends WebTestCase
 
         $this->em->clear();
         self::assertSame([], $this->em->getRepository(CoachWish::class)->find($wishId)?->getStaffUnavailability());
+    }
+
+    /**
+     * Un coach supprimé emporte ses reçus d'envoi de conflits (`conflict_mail_receipt`) — par la FK
+     * SQL `ON DELETE CASCADE`, sans étape de `CascadePlan` (patron `coach_wish_token`) ; le reçu d'un
+     * AUTRE coach reste. Sans ça, « tout coach ayant un reçu est en mémoire » serait faux et un
+     * identifiant de coach supprimé survivrait dans une table de la saison.
+     */
+    public function testDeletingACoachDropsHisConflictMailReceiptsThroughTheApi(): void
+    {
+        $gone = $this->persistCoach();
+        $kept = $this->persistCoach();
+        $this->insertConflictMailReceipt($gone->getId(), 'MATCH_MATCH:' . $gone->getId());
+        $this->insertConflictMailReceipt($gone->getId(), 'MATCH_COACH_UNAVAILABLE:' . $gone->getId());
+        $this->insertConflictMailReceipt($kept->getId(), 'MATCH_MATCH:' . $kept->getId());
+        self::assertSame(2, $this->conflictMailReceiptCount($gone->getId()), 'témoin : les deux reçus du coach sont posés');
+
+        $this->client->request('DELETE', '/api/coaches/' . $gone->getId(), [], [], $this->headers());
+        self::assertResponseStatusCodeSame(204);
+
+        $this->em->clear();
+        self::assertSame(0, $this->conflictMailReceiptCount($gone->getId()), 'les reçus du coach supprimé partent avec lui');
+        self::assertSame(1, $this->conflictMailReceiptCount($kept->getId()), 'le reçu d\'un autre coach reste');
     }
 
     public function testDeletingAvailabilitySlotPurgesItsReservations(): void
@@ -394,6 +418,31 @@ final class CascadeDeleteApiTest extends WebTestCase
         $this->em->flush();
 
         return $coach;
+    }
+
+    /** Pointage : un reçu d'envoi de conflits posé en SQL (colonnes du contrat de la table, plan D1). */
+    private function insertConflictMailReceipt(string $coachId, string $fingerprint): void
+    {
+        $this->scopeGucToClub($this->club->getId());
+        $this->em->getConnection()->executeStatement(
+            'INSERT INTO conflict_mail_receipt (id, club_id, season_id, fingerprint, coach_id, content_digest, sent_at)
+             VALUES (:id, :club, :season, :fingerprint, :coach, :digest, now())',
+            [
+                'id' => Uuid::v4()->toRfc4122(),
+                'club' => $this->club->getId(),
+                'season' => $this->season->getId(),
+                'fingerprint' => $fingerprint,
+                'coach' => $coachId,
+                'digest' => sha1($fingerprint),
+            ],
+        );
+    }
+
+    private function conflictMailReceiptCount(string $coachId): int
+    {
+        $this->scopeGucToClub($this->club->getId());
+
+        return (int) $this->em->getConnection()->fetchOne('SELECT COUNT(*) FROM conflict_mail_receipt WHERE coach_id = :c', ['c' => $coachId]);
     }
 
     private function persistReservation(string $teamId, string $venueId, int $day, string $start): string

@@ -65,12 +65,12 @@ describe("MATCHES_CONFLICTS_MAIL_TEXTS — bouton, raisons, confirmation", () =>
   });
 
   it("la confirmation dit que tous les conflits de personnes partent, quels que soient les filtres", () => {
-    expect(MAIL.confirmIgnoresFilters).toBe("Tous les conflits de personnes partent, quels que soient les filtres de l'écran.");
+    expect(MAIL.confirmIgnoresFilters).toBe("Les filtres de l'écran ne comptent pas : la liste ci-dessous est ce qui partira.");
   });
 
   it("le corps de la confirmation nomme la saison", () => {
     expect(MAIL.confirmBody("2026-2027")).toBe(
-      "Saison 2026-2027. Chaque coach concerné recevra par e-mail, à titre indicatif, les conflits de personnes sur un match, datés d'aujourd'hui ou à venir, qui le touchent. Un coach informé lors d'un envoi précédent et qui n'a plus de conflit recevra un e-mail le disant. Les autres familles de conflits ne sont pas envoyées.",
+      "Saison 2026-2027. Chaque coach concerné recevra par e-mail, à titre indicatif, les conflits de personnes sur un match, datés d'aujourd'hui ou à venir, qui le touchent. Par défaut, seuls les coachs qui ont un conflit nouveau ou modifié depuis le dernier envoi reçoivent leur liste complète, nouveautés marquées ; un coach informé précédemment et qui n'a plus de conflit reçoit un e-mail le disant. Les autres familles de conflits ne sont pas envoyées.",
     );
   });
 });

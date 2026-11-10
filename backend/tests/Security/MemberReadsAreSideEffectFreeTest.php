@@ -39,6 +39,7 @@ use Symfony\Component\RateLimiter\RateLimiterFactory;
  *  - les SEPT lectures qui appellent l'extérieur (FFBB, géocodage, vérification géographique) →
  *    403, aucun appel parti — un Membre ne déclenche jamais d'appel sortant ;
  *  - l'aperçu du MAIL de doléances (`email-preview`) → 403 ;
+ *  - l'aperçu de l'envoi des conflits aux coachs (`mail-coaches/preview`, noms et adresses) → 403 ;
  *  - le lien personnel d'un coach (`token`) n'est JAMAIS servi au Membre : ni dans la campagne,
  *    ni dans l'aperçu du formulaire — il reste servi au gestionnaire ;
  *  - un logo adverse absent du stockage n'est PAS téléchargé pour un Membre (404, aucun appel,
@@ -162,6 +163,24 @@ final class MemberReadsAreSideEffectFreeTest extends WebTestCase
 
         $this->asMember('GET', '/api/coach_wish_campaigns/' . $this->ids['coach_wish_campaign'] . '/email-preview');
         self::assertResponseStatusCodeSame(403, 'l\'aperçu du mail aux coachs reste réservé au gestionnaire');
+    }
+
+    /**
+     * L'aperçu de l'envoi des conflits aux coachs sert NOMS ET ADRESSES des coachs : il reste
+     * réservé au gestionnaire (403 au Membre). Témoin : le gestionnaire l'obtient (200) — un 403
+     * pour tous, ou une route absente, ne passerait pas pour une garde. Angle jumeau :
+     * `ConflictCoachMailApiTest::testMemberIsRefused` (le POST et le GET d'aperçu, décor d'envoi).
+     */
+    public function testConflictMailPreviewStaysManagerOnly(): void
+    {
+        $this->seed();
+        $preview = '/api/fixtures/conflicts/mail-coaches/preview';
+
+        $this->api($this->managerToken, 'GET', $preview);
+        self::assertResponseStatusCodeSame(200, 'témoin : le gestionnaire ouvre l\'aperçu de l\'envoi aux coachs');
+
+        $this->asMember('GET', $preview);
+        self::assertResponseStatusCodeSame(403, 'l\'aperçu de l\'envoi aux coachs (adresses comprises) reste réservé au gestionnaire');
     }
 
     public function testOpponentLogoMissIsNotDownloadedForAMemberButAStoredLogoIsServed(): void

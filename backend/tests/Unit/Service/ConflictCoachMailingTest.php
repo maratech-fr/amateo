@@ -7,6 +7,8 @@ namespace App\Tests\Unit\Service;
 use App\Entity\Coach;
 use App\Service\ConflictCoachMailing;
 use App\Tests\Integration\Api\ConflictCoachMailApiTest;
+use DateTimeImmutable;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
 
@@ -40,6 +42,91 @@ final class ConflictCoachMailingTest extends TestCase
     private Coach $lea;
 
     private Coach $paul;
+
+    /** @return iterable<string, array{callable(array<string, mixed>): array<string, mixed>}> */
+    public static function displayedChanges(): iterable
+    {
+        yield 'heure du match (15:30 → 17:00)' => [static function (array $c): array {
+            $c['left']['kickoffTime'] = '17:00';
+
+            return $c;
+        }];
+        yield 'date du match' => [static function (array $c): array {
+            $c['left']['matchDate'] = '2026-03-21';
+
+            return $c;
+        }];
+        yield 'gravité' => [static function (array $c): array {
+            $c['severity'] = 4;
+
+            return $c;
+        }];
+        yield 'lieu adverse à l\'extérieur' => [static function (array $c): array {
+            $c['right']['opponentPlace'] = 'Bron';
+
+            return $c;
+        }];
+        yield 'trajet à l\'extérieur' => [static function (array $c): array {
+            $c['right']['travelOneWayMinutes'] = 45;
+
+            return $c;
+        }];
+        yield 'début du chevauchement' => [static function (array $c): array {
+            $c['start'] = '2026-03-14T16:30:00';
+
+            return $c;
+        }];
+        yield 'fin du chevauchement' => [static function (array $c): array {
+            $c['end'] = '2026-03-14T17:00:00';
+
+            return $c;
+        }];
+        yield 'rôle affiché joueur → coach (PLAYER → MAIN)' => [static function (array $c): array {
+            $c['right']['role'] = 'MAIN';
+
+            return $c;
+        }];
+    }
+
+    /** @return iterable<string, array{callable(array<string, mixed>): array<string, mixed>}> */
+    public static function hiddenChanges(): iterable
+    {
+        yield 'fixtureId' => [static function (array $c): array {
+            $c['left']['fixtureId'] = 'ffffffff-9999-4000-8000-000000000009';
+
+            return $c;
+        }];
+        yield 'windowStart' => [static function (array $c): array {
+            $c['left']['windowStart'] = '2026-03-14T14:30:00';
+
+            return $c;
+        }];
+        yield 'coachRole' => [static function (array $c): array {
+            $c['coachRole'] = 'MAIN';
+
+            return $c;
+        }];
+        yield 'relief' => [static function (array $c): array {
+            $c['relief'] = 'SHARED_GROUP';
+
+            return $c;
+        }];
+        yield 'resolution' => [static function (array $c): array {
+            $c['resolution'] = ['status' => 'RESOLVED_INTERNALLY', 'note' => 'réglé', 'updatedAt' => '2026-11-01T10:00:00+00:00'];
+
+            return $c;
+        }];
+        yield 'fingerprint' => [static function (array $c): array {
+            $c['fingerprint'] = 'MATCH_MATCH:autre';
+
+            return $c;
+        }];
+        yield 'rôle MAIN → ASSISTANT (tuile « coach » identique)' => [static function (array $c): array {
+            $c['left']['role'] = 'ASSISTANT';
+
+            return $c;
+        }];
+    }
 
     /** Un conflit de personne part à la personne ET aux coachs principaux de chaque côté — une liste par coach. */
     public function testThePersonAndTheMainCoachOfEachSideReceiveTheConflict(): void
@@ -205,6 +292,212 @@ final class ConflictCoachMailingTest extends TestCase
 
         self::assertEqualsCanonicalizing([$this->karim->getId(), $this->emma->getId()], $next);
         self::assertSame($next, array_values(array_unique($next)));
+    }
+
+    // ── Mémoire par conflit : l'empreinte du CONTENU affiché (digest) ──
+
+    /**
+     * Ce que la tuile du mail AFFICHE change → le conflit est « modifié » : le digest bouge. Chaque
+     * mutation porte sur une valeur affichée (heure, date, gravité, lieu et trajet à l'extérieur,
+     * séance, bornes du chevauchement).
+     *
+     * @param callable(array<string, mixed>): array<string, mixed> $mutate
+     */
+    #[DataProvider('displayedChanges')]
+    public function testTheDigestMovesWhenWhatTheTileShowsChanges(callable $mutate): void
+    {
+        $base = $this->matchMatch($this->karim->getId(), self::U15, self::SM2);
+        $base['right']['opponentPlace'] = 'Villeurbanne';
+        $base['right']['travelOneWayMinutes'] = 60;
+
+        self::assertNotSame(ConflictCoachMailing::digest($base), ConflictCoachMailing::digest($mutate($base)));
+    }
+
+    /** L'heure de la séance d'un `MATCH_TRAINING` est affichée : la déplacer marque le conflit « modifié ». */
+    public function testTheDigestMovesWhenTheTrainingSessionMoves(): void
+    {
+        $base = $this->matchTraining($this->karim->getId(), self::U15, self::U13A, self::SOCLE);
+        $moved = $base;
+        $moved['training']['startTime'] = '19:00';
+
+        self::assertNotSame(ConflictCoachMailing::digest($base), ConflictCoachMailing::digest($moved));
+    }
+
+    /**
+     * Ce que la tuile n'affiche PAS ne marque jamais « modifié » : identifiants internes, fenêtres de
+     * calcul, rôle de la personne au niveau du conflit, relief (déjà dans la gravité), traitement,
+     * empreinte — et un passage MAIN → ASSISTANT, que la tuile lit « coach » dans les deux cas.
+     *
+     * @param callable(array<string, mixed>): array<string, mixed> $mutate
+     */
+    #[DataProvider('hiddenChanges')]
+    public function testTheDigestIgnoresWhatTheTileDoesNotShow(callable $mutate): void
+    {
+        $base = $this->matchMatch($this->karim->getId(), self::U15, self::SM2);
+
+        self::assertSame(ConflictCoachMailing::digest($base), ConflictCoachMailing::digest($mutate($base)));
+    }
+
+    /**
+     * Deux rencontres au même début peuvent permuter gauche/droite d'un calcul à l'autre (ordre
+     * d'itération) : la permutation seule ne marque jamais « modifié ».
+     */
+    public function testSwappingTheTwoSidesOfAMatchMatchKeepsTheDigest(): void
+    {
+        $base = $this->matchMatch($this->karim->getId(), self::U15, self::SM2);
+        $swapped = $base;
+        $swapped['left'] = $base['right'];
+        $swapped['right'] = $base['left'];
+
+        self::assertNotSame($base['left'], $base['right'], 'témoin : les deux côtés diffèrent vraiment');
+        self::assertSame(ConflictCoachMailing::digest($base), ConflictCoachMailing::digest($swapped));
+    }
+
+    /**
+     * La tuile « Coach principal indisponible » n'affiche ni domicile/extérieur ni lieu : ils ne
+     * marquent pas « modifié » ; l'heure du match manqué et la gravité, si.
+     */
+    public function testTheUnavailabilityDigestFollowsItsOwnTile(): void
+    {
+        $base = $this->coachUnavailable($this->emma->getId(), self::SM2);
+
+        $away = $base;
+        $away['fixture']['homeAway'] = 'AWAY';
+        $away['fixture']['opponentPlace'] = 'Bron';
+        self::assertSame(ConflictCoachMailing::digest($base), ConflictCoachMailing::digest($away), 'domicile/extérieur et lieu ne sont pas affichés');
+
+        $later = $base;
+        $later['fixture']['kickoffTime'] = '17:00';
+        self::assertNotSame(ConflictCoachMailing::digest($base), ConflictCoachMailing::digest($later), 'l\'heure du match manqué est affichée');
+
+        $graver = $base;
+        $graver['severity'] = 3;
+        self::assertNotSame(ConflictCoachMailing::digest($base), ConflictCoachMailing::digest($graver), 'la gravité est affichée');
+    }
+
+    /** Une empreinte servie deux fois (deux lignes identiques du flux) ne fait qu'UN reçu. */
+    public function testReceiptRowsHoldOneDigestPerFingerprint(): void
+    {
+        $conflict = $this->matchMatch($this->karim->getId(), self::U15, self::SM2);
+        $other = $this->coachUnavailable($this->emma->getId(), self::SM2);
+
+        $rows = ConflictCoachMailing::receiptRows([$conflict, $conflict, $other]);
+
+        self::assertSame(
+            [
+                $conflict['fingerprint'] => ConflictCoachMailing::digest($conflict),
+                $other['fingerprint'] => ConflictCoachMailing::digest($other),
+            ],
+            $rows,
+        );
+    }
+
+    // ── Mémoire par conflit : nouveau / modifié / déjà envoyé ──
+
+    /**
+     * Karim a reçu le 03/11 deux conflits ; depuis, l'un est inchangé, l'autre a vu son match déplacé
+     * (même empreinte, contenu différent) et un troisième est apparu.
+     */
+    public function testClassifySaysNewChangedAndUnchangedPerCoach(): void
+    {
+        $same = $this->matchMatch($this->karim->getId(), self::U15, self::SM2);
+        $moved = $this->matchTraining($this->karim->getId(), self::U15, self::U13A, self::SOCLE);
+        $fresh = $this->coachUnavailable($this->karim->getId(), self::U15);
+        $before = $moved;
+        $before['training']['startTime'] = '17:00';
+        $sentAt = new DateTimeImmutable('2026-11-03 14:32:00');
+
+        $verdict = $this->service()->classify(
+            [$this->karim->getId() => [$same, $moved, $fresh]],
+            [$this->karim->getId() => [
+                $same['fingerprint'] => ['digest' => ConflictCoachMailing::digest($same), 'sentAt' => $sentAt],
+                $moved['fingerprint'] => ['digest' => ConflictCoachMailing::digest($before), 'sentAt' => $sentAt],
+            ]],
+        )[$this->karim->getId()];
+
+        self::assertTrue($verdict['receiptKnown']);
+        self::assertSame([$fresh['fingerprint']], $verdict['new']);
+        self::assertSame([$moved['fingerprint']], $verdict['changed']);
+        self::assertSame([$same['fingerprint']], $verdict['unchanged']);
+        self::assertEquals($sentAt, $verdict['lastSentAt']);
+    }
+
+    /** Le même conflit est nouveau pour Karim (jamais reçu) et déjà envoyé à Emma : un verdict par coach. */
+    public function testClassifyGivesEachCoachHisOwnVerdict(): void
+    {
+        $conflict = $this->matchMatch($this->karim->getId(), self::U15, self::SM2);
+        $other = $this->coachUnavailable($this->karim->getId(), self::U15);
+        $sentAt = new DateTimeImmutable('2026-11-03 14:32:00');
+
+        $verdicts = $this->service()->classify(
+            [$this->karim->getId() => [$conflict], $this->emma->getId() => [$conflict]],
+            [
+                $this->karim->getId() => [$other['fingerprint'] => ['digest' => ConflictCoachMailing::digest($other), 'sentAt' => $sentAt]],
+                $this->emma->getId() => [$conflict['fingerprint'] => ['digest' => ConflictCoachMailing::digest($conflict), 'sentAt' => $sentAt]],
+            ],
+        );
+
+        self::assertSame([$conflict['fingerprint']], $verdicts[$this->karim->getId()]['new']);
+        self::assertSame([], $verdicts[$this->emma->getId()]['new']);
+        self::assertSame([$conflict['fingerprint']], $verdicts[$this->emma->getId()]['unchanged']);
+    }
+
+    /**
+     * Un coach sans AUCUN reçu (mémoire d'avant le déploiement) : rien n'est marqué — `receiptKnown`
+     * faux, ni nouveau ni modifié, tout dans « inchangé », aucune date.
+     */
+    public function testACoachWithoutAnyReceiptHasNoMark(): void
+    {
+        $a = $this->matchMatch($this->karim->getId(), self::U15, self::SM2);
+        $b = $this->coachUnavailable($this->karim->getId(), self::U15);
+
+        $verdict = $this->service()->classify([$this->karim->getId() => [$a, $b]], [])[$this->karim->getId()];
+
+        self::assertFalse($verdict['receiptKnown']);
+        self::assertSame([], $verdict['new']);
+        self::assertSame([], $verdict['changed']);
+        self::assertEqualsCanonicalizing([$a['fingerprint'], $b['fingerprint']], $verdict['unchanged']);
+        self::assertNull($verdict['lastSentAt']);
+    }
+
+    /**
+     * Sam avait reçu deux conflits ; l'un a disparu. Un conflit disparu n'est RIEN : ni nouveau ni
+     * modifié — le restant, identique, est « déjà envoyé ».
+     */
+    public function testADisappearedConflictIsNeitherNewNorChanged(): void
+    {
+        $kept = $this->matchMatch($this->karim->getId(), self::U15, self::SM2);
+        $gone = $this->coachUnavailable($this->karim->getId(), self::U15);
+        $sentAt = new DateTimeImmutable('2026-11-03 14:32:00');
+
+        $verdict = $this->service()->classify(
+            [$this->karim->getId() => [$kept]],
+            [$this->karim->getId() => [
+                $kept['fingerprint'] => ['digest' => ConflictCoachMailing::digest($kept), 'sentAt' => $sentAt],
+                $gone['fingerprint'] => ['digest' => ConflictCoachMailing::digest($gone), 'sentAt' => $sentAt],
+            ]],
+        )[$this->karim->getId()];
+
+        self::assertSame([], $verdict['new']);
+        self::assertSame([], $verdict['changed']);
+        self::assertSame([$kept['fingerprint']], $verdict['unchanged']);
+    }
+
+    /** « Déjà envoyé le … » dit le DERNIER envoi : le plus récent des reçus du coach. */
+    public function testLastSentAtIsTheMostRecentReceipt(): void
+    {
+        $a = $this->matchMatch($this->karim->getId(), self::U15, self::SM2);
+        $b = $this->coachUnavailable($this->karim->getId(), self::U15);
+
+        $verdict = $this->service()->classify(
+            [$this->karim->getId() => [$a, $b]],
+            [$this->karim->getId() => [
+                $a['fingerprint'] => ['digest' => ConflictCoachMailing::digest($a), 'sentAt' => new DateTimeImmutable('2026-11-03 14:32:00')],
+                $b['fingerprint'] => ['digest' => ConflictCoachMailing::digest($b), 'sentAt' => new DateTimeImmutable('2026-11-07 09:00:00')],
+            ]],
+        )[$this->karim->getId()];
+
+        self::assertEquals(new DateTimeImmutable('2026-11-07 09:00:00'), $verdict['lastSentAt']);
     }
 
     protected function setUp(): void

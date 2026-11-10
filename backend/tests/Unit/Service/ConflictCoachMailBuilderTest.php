@@ -255,6 +255,99 @@ final class ConflictCoachMailBuilderTest extends TestCase
         }
     }
 
+    // ── Mémoire par conflit : marques « Nouveau » / « Modifié » et phrase d'envoi précédent ──
+
+    /**
+     * Le coach repère ce qui a bougé depuis le dernier envoi : la ligne-titre de la tuile finit par
+     * « · Nouveau » ou « · Modifié » APRÈS le mot de gravité — le début « Personne en double — »,
+     * que l'envoi réel compte, reste intact.
+     */
+    public function testANewOrChangedConflictIsMarkedAtTheEndOfItsTitleLine(): void
+    {
+        $double = $this->matchMatch();
+        $unavailable = $this->coachUnavailable(5);
+        $text = (string) $this->conflicts(
+            [$double, $unavailable],
+            [$double['fingerprint'] => 'new', $unavailable['fingerprint'] => 'changed'],
+            new DateTimeImmutable('2026-11-03 14:32'),
+        )->getTextBody();
+
+        self::assertStringContainsString("Personne en double — Karim B. · samedi 14/03 · Important · Nouveau\n", $text);
+        self::assertStringContainsString("Coach principal indisponible — Karim B. · samedi 14/03 · À surveiller · Modifié\n", $text);
+        self::assertSame(1, substr_count($text, 'Personne en double — '), 'le début de ligne compté par l\'envoi réel est intact');
+    }
+
+    /** Dans le HTML, la marque est une seconde PASTILLE à côté de la gravité ; une tuile non marquée n'en a pas. */
+    public function testTheHtmlMarkIsASecondPillNextToTheSeverity(): void
+    {
+        $double = $this->matchMatch();
+        $html = (string) $this->conflicts(
+            [$double, $this->coachUnavailable(5)],
+            [$double['fingerprint'] => 'new'],
+            new DateTimeImmutable('2026-11-03 14:32'),
+        )->getHtmlBody();
+
+        $marked = $this->tileNodes($html, 'Personne en double');
+        self::assertSame('Important', $marked[1]['text']);
+        self::assertSame('Nouveau', $marked[2]['text'], 'la marque suit le mot de gravité');
+        self::assertTrue($marked[2]['pill'], 'la marque est une pastille');
+
+        $plain = $this->tileNodes($html, 'Coach principal indisponible');
+        self::assertNotContains('Nouveau', array_column($plain, 'text'), 'témoin : la tuile non marquée n\'a pas de pastille de marque');
+        self::assertNotContains('Modifié', array_column($plain, 'text'));
+    }
+
+    /** La phrase qui suit l'intro dit combien de conflits ont bougé depuis l'envoi précédent — singulier et pluriel. */
+    public function testTheIntroSaysHowManyConflictsAreNewOrChangedSinceTheLastSend(): void
+    {
+        $double = $this->matchMatch();
+        $unavailable = $this->coachUnavailable(5);
+        $training = $this->matchTraining();
+        $since = new DateTimeImmutable('2026-11-03 14:32');
+
+        $one = (string) $this->conflicts([$double, $unavailable], [$double['fingerprint'] => 'new'], $since)->getTextBody();
+        $two = (string) $this->conflicts([$double, $unavailable, $training], [$double['fingerprint'] => 'new', $training['fingerprint'] => 'changed'], $since)->getTextBody();
+
+        $sentence = 'Depuis le dernier envoi du 03/11/2026, 1 conflit est nouveau ou modifié : il est marqué.';
+        self::assertStringContainsString($sentence, $one);
+        self::assertLessThan(strpos($one, 'Personne en double'), strpos($one, $sentence), 'la phrase précède les tuiles');
+        self::assertGreaterThan(strpos($one, 'vous informe, à titre indicatif'), strpos($one, $sentence), 'la phrase suit l\'intro');
+        self::assertStringContainsString('Depuis le dernier envoi du 03/11/2026, 2 conflits sont nouveaux ou modifiés : ils sont marqués.', $two);
+    }
+
+    /**
+     * « Tout renvoyer » sans nouveauté : la liste dit qu'AUCUN conflit de cette liste n'est nouveau ou
+     * modifié — vrai même si un autre conflit a disparu ou si une équipe a été renommée. Jamais
+     * « rien n'a changé », qui serait faux dans ces cas.
+     */
+    public function testAResentListSaysNoneOfItsConflictsIsNewOrChanged(): void
+    {
+        $email = $this->conflicts([$this->matchMatch(), $this->coachUnavailable(5)], [], new DateTimeImmutable('2026-11-10 09:15'));
+        $text = (string) $email->getTextBody();
+        $all = $text . (string) $email->getHtmlBody();
+
+        self::assertStringContainsString('Cette liste vous est renvoyée : aucun conflit de cette liste n\'est nouveau ou modifié depuis l\'envoi du 10/11/2026.', $text);
+        self::assertStringContainsString('Cette liste vous est renvoyée', (string) $email->getHtmlBody(), 'le fragment porte la même phrase');
+        self::assertStringNotContainsString('rien n\'a changé', $all);
+        self::assertStringNotContainsString('Depuis le dernier envoi', $all, 'aucun conflit marqué : pas de phrase de décompte');
+        self::assertStringNotContainsString('· Nouveau', $text);
+        self::assertStringNotContainsString('· Modifié', $text);
+    }
+
+    /**
+     * Un coach sans AUCUN envoi détaillé connu (mémoire d'avant cette fonction) : ni marque ni
+     * phrase — on ne prétend pas savoir ce qu'il a déjà reçu.
+     */
+    public function testWithoutAPreviousSendThereIsNeitherMarkNorSentence(): void
+    {
+        $email = $this->conflicts([$this->matchMatch(), $this->coachUnavailable(5)]);
+        $all = (string) $email->getTextBody() . (string) $email->getHtmlBody();
+
+        foreach (['Nouveau', 'Modifié', 'Depuis le dernier envoi', 'Cette liste vous est renvoyée'] as $absent) {
+            self::assertStringNotContainsString($absent, $all);
+        }
+    }
+
     // ── Forme servie par le radar et structure de la tuile ──
 
     /**
@@ -365,8 +458,12 @@ final class ConflictCoachMailBuilderTest extends TestCase
         return new ConflictCoachMailBuilder;
     }
 
-    /** @param list<array<string, mixed>> $conflicts */
-    private function conflicts(array $conflicts): Email
+    /**
+     * @param list<array<string, mixed>>     $conflicts
+     * @param array<string, 'new'|'changed'> $marks          empreinte → marque
+     * @param DateTimeImmutable|null         $previousSentAt le dernier envoi au coach (null : aucun reçu connu)
+     */
+    private function conflicts(array $conflicts, array $marks = [], ?DateTimeImmutable $previousSentAt = null): Email
     {
         return $this->builder()->buildConflicts(
             'karim@aiglons.test',
@@ -379,6 +476,8 @@ final class ConflictCoachMailBuilderTest extends TestCase
             [$this->u15->getId() => $this->u15, $this->sm2->getId() => $this->sm2, $this->u13a->getId() => $this->u13a],
             [$this->nord->getId() => $this->nord],
             [$this->karim->getId() => $this->karim],
+            $marks,
+            $previousSentAt,
         );
     }
 

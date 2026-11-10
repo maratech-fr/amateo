@@ -177,6 +177,82 @@ final class ConflictsToCoachesContext extends BaseContext
         }
     }
 
+    #[Then('Karim reçoit un e-mail qui liste son conflit, sans marque de nouveauté')]
+    public function karimRecoitSonConflitSansMarque(): void
+    {
+        $this->assertSent();
+        $mail = $this->nextMailForKarim();
+        if (!str_starts_with($mail['subject'], 'Un conflit vous concerne — ') || 1 !== substr_count($mail['text'], 'Personne en double — ')) {
+            throw new RuntimeException(\sprintf('Karim devrait recevoir UN conflit, obtenu « %s » :' . "\n" . '%s', $mail['subject'], $mail['text']));
+        }
+        foreach ([' · Nouveau', ' · Modifié', 'Depuis le dernier envoi', 'Cette liste vous est renvoyée'] as $absent) {
+            if (str_contains($mail['text'], $absent)) {
+                throw new RuntimeException(\sprintf('premier envoi : aucune marque attendue, trouvé « %s »', $absent));
+            }
+        }
+    }
+
+    #[When('U11M1, aussi coachée par Karim, joue à l\'extérieur ce samedi à 15h30')]
+    public function u11m1AussiCoacheeParKarimJoue(): void
+    {
+        $this->mainCoach('U11M1', $this->karimId);
+        $this->awayMatch('U11M1', $this->saturday, '15:30');
+
+        // Témoin du décor : Karim est désormais en double trois fois (U11M1 × U15F1, U11M1 × U13F1,
+        // U15F1 × U13F1) — sinon « 2 marqués nouveaux » ne prouverait rien.
+        $karimDoubles = $this->doublesOf($this->karimId);
+        if (3 !== $karimDoubles) {
+            throw new RuntimeException(\sprintf('le décor devrait mettre Karim en double 3 fois, le radar en voit %d', $karimDoubles));
+        }
+    }
+
+    #[Then('Karim reçoit un e-mail qui liste ses 3 conflits, dont 2 marqués nouveaux')]
+    public function karimRecoitSesTroisConflitsDontDeuxNouveaux(): void
+    {
+        $this->assertSent();
+        $mail = $this->nextMailForKarim();
+        if (3 !== substr_count($mail['text'], 'Personne en double — ')) {
+            throw new RuntimeException('la liste COMPLÈTE de Karim devrait porter 3 tuiles :' . "\n" . $mail['text']);
+        }
+        if (2 !== substr_count($mail['text'], ' · Nouveau')) {
+            throw new RuntimeException('2 conflits devraient être marqués « Nouveau » :' . "\n" . $mail['text']);
+        }
+        if (!str_contains($mail['text'], '2 conflits sont nouveaux ou modifiés : ils sont marqués.')) {
+            throw new RuntimeException('la phrase « Depuis le dernier envoi… » manque :' . "\n" . $mail['text']);
+        }
+    }
+
+    #[Then('un nouvel envoi sans changement est refusé : rien de nouveau depuis le dernier envoi')]
+    public function unNouvelEnvoiSansChangementEstRefuse(): void
+    {
+        $again = $this->apiPost('fixtures/conflicts/mail-coaches', [], $this->smallClubToken);
+        if (422 !== $again['status'] || 'Rien de nouveau depuis le dernier envoi : cochez « Tout renvoyer » pour renvoyer les listes.' !== ($again['json']['error'] ?? null)) {
+            throw new RuntimeException(\sprintf('un envoi sans nouveauté devrait être un 422 nommé, obtenu %d %s', $again['status'], json_encode($again['json'])));
+        }
+    }
+
+    #[When('le gestionnaire renvoie tout aux coachs')]
+    public function leGestionnaireRenvoieTout(): void
+    {
+        $this->lastSend = $this->apiPost('fixtures/conflicts/mail-coaches', ['resendAll' => true], $this->smallClubToken);
+    }
+
+    #[Then('Karim reçoit sa liste complète, qui dit qu\'aucun conflit n\'est nouveau ou modifié depuis l\'envoi précédent')]
+    public function karimRecoitSaListeRenvoyee(): void
+    {
+        $this->assertSent();
+        $mail = $this->nextMailForKarim();
+        if (3 !== substr_count($mail['text'], 'Personne en double — ')) {
+            throw new RuntimeException('la liste renvoyée devrait porter les 3 tuiles :' . "\n" . $mail['text']);
+        }
+        if (!str_contains($mail['text'], 'Cette liste vous est renvoyée : aucun conflit de cette liste n\'est nouveau ou modifié depuis l\'envoi du ')) {
+            throw new RuntimeException('la phrase de renvoi manque :' . "\n" . $mail['text']);
+        }
+        if (str_contains($mail['text'], ' · Nouveau') || str_contains($mail['text'], ' · Modifié')) {
+            throw new RuntimeException('une liste renvoyée sans nouveauté ne porte aucune marque :' . "\n" . $mail['text']);
+        }
+    }
+
     #[AfterScenario]
     public function nettoyer(): void
     {
@@ -195,6 +271,20 @@ final class ConflictsToCoachesContext extends BaseContext
         }
 
         return array_values(array_unique($persons));
+    }
+
+    /** Combien de conflits « personne en double » (MATCH_MATCH, non tenus) le radar voit pour cette personne. */
+    private function doublesOf(string $personId): int
+    {
+        $conflicts = $this->apiGet('fixtures/conflicts', $this->smallClubToken)['json']['conflicts'] ?? [];
+        $count = 0;
+        foreach (\is_array($conflicts) ? $conflicts : [] as $conflict) {
+            if (\is_array($conflict) && 'MATCH_MATCH' === ($conflict['type'] ?? null) && $personId === ($conflict['coachId'] ?? null) && !isset($conflict['heldBy'])) {
+                ++$count;
+            }
+        }
+
+        return $count;
     }
 
     private function newCoach(string $first, string $last, ?string $email): string

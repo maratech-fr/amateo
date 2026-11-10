@@ -223,8 +223,9 @@ export function useSetConflictResolution() {
 export function useMailConflictsToCoaches() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: () => matchesApi.mailConflictsToCoaches(),
+    mutationFn: (input: { resendAll: boolean }) => matchesApi.mailConflictsToCoaches(input),
     onSuccess: (result) => {
+      // Préfixe : l'aperçu avant envoi (`["fixtures","conflicts","mail-preview"]`) suit.
       void queryClient.invalidateQueries({ queryKey: ["fixtures", "conflicts"] });
       const mailedCount = result.recipients.length + result.cleared.length;
       const message = MATCHES_CONFLICTS_MAIL_TEXTS.toastResult({
@@ -239,6 +240,24 @@ export function useMailConflictsToCoaches() {
       }
     },
     onError: (error) => void errorMessage(error).then((message) => toast.error(message)),
+  });
+}
+
+/**
+ * L'aperçu avant envoi aux coachs (qui recevra quoi), lu à l'ouverture de la modale : toujours
+ * relu (`staleTime: 0`, `refetchOnMount: "always"`) — un aperçu périmé annoncerait un envoi faux.
+ * La modale DIT l'échec elle-même (`LoadErrorHint` + Réessayer) : pas de toast générique.
+ */
+export const CONFLICT_MAIL_PREVIEW_KEY = ["fixtures", "conflicts", "mail-preview"] as const;
+
+export function useConflictMailPreview(enabled: boolean) {
+  return useQuery({
+    queryKey: CONFLICT_MAIL_PREVIEW_KEY,
+    queryFn: matchesApi.getConflictMailPreview,
+    enabled,
+    staleTime: 0,
+    refetchOnMount: "always",
+    meta: { ownsError: true },
   });
 }
 
