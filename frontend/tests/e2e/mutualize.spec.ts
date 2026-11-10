@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "./fixtures";
-import { firstHolidayFreeMonday, forceTheme, frMonthLabel, isoLocal, loginSeededClub, settleVeil, watchFailedApiCalls } from "./support";
+import { calendarDayCell, dayDialog, firstHolidayFreeMonday, forceTheme, frMonthLabel, isoLocal, loginSeededClub, settleVeil, watchFailedApiCalls } from "./support";
 
 /** Une fenêtre de calendrier FUTURE (lun→ven), hors vacances, calculée depuis aujourd'hui. */
 interface DatedWindow {
@@ -159,10 +159,10 @@ test("lot 9 F3 — « Mutualiser… » est atteignable et actif sur un plan de p
     await expect(page.getByRole("button", { name: /Tous les plannings/ })).toBeVisible({ timeout: 30_000 });
     await settleVeil(page);
     await goToMonth(page, win.monthLabel);
-    const dayCell = page.getByRole("button", { name: new RegExp(TITLE) }).filter({ hasNotText: "passé" });
-    await expect(dayCell.first(), "une case-jour couverte par la fermeture doit être cliquable").toBeVisible({ timeout: 30_000 });
-    await dayCell.first().click();
-    const dialog = page.getByRole("dialog");
+    const dayCell = calendarDayCell(page, TITLE).first();
+    await expect(dayCell, "une case-jour couverte par la fermeture doit être cliquable").toBeVisible({ timeout: 30_000 });
+    await dayCell.click();
+    const dialog = dayDialog(page);
     await expect(dialog).toBeVisible({ timeout: 15_000 });
     // Plan NON validé (pas de chosenScheduleId) → le geste proposé est « Ajuster », pas « Consulter ».
     const ajuster = dialog.getByRole("button", { name: "Ajuster" });

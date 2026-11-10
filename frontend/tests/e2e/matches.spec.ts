@@ -1,5 +1,5 @@
 import { expect, test, type Locator } from "./fixtures";
-import { ensureValidated, landOnMatchesCalendar, loginSeededClub } from "./support";
+import { ensureValidated, escapeRegExp, landOnMatchesCalendar, loginSeededClub } from "./support";
 
 // ── Le login + la validation du socle du club seedé vivent dans support.ts (maison unique) : ce
 //    fichier (et les ex-specs matches-consulter / matches-fbi-todo / matches-importer, fusionnés
@@ -46,11 +46,6 @@ function futureSaturday(weeksAhead: number): string {
     d.setDate(d.getDate() + 1); // 6 = samedi
   }
   return ymd(d);
-}
-
-/** Un nom d'équipe devient un motif littéral (« U11M1 (bis) » ne doit pas casser la RegExp). */
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 /** Lit une collection API Platform quelle que soit sa forme (tableau nu, `member`, `hydra:member`). */
