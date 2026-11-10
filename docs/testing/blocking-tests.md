@@ -320,12 +320,12 @@ rendrait indéconnectable et illisible une page publique — invisible aux autre
 d'un fichier FBI, tout championnat COMMENCÉ [échéance passée OU premier match joué, règle inchangée
 `LeagueValidationOutlook`] voit ses domiciles VALIDABLES [heure + gymnase identifié, sans écart en
 attente] passer tout seuls « validé ligue » [source MANUAL + statut VALIDATED], par la MAISON UNIQUE du
-prédicat partagée avec le geste manuel en lot — jamais une seconde copie. Sept angles, le DÉPÔT étant le
-canal [doublon ASSUMÉ, point sensible matchs/constraint semantics, du prédicat déjà prouvé par le geste
-MANUEL dont ce test porte la citation croisée dans son docblock] : (a) un domicile daté [heure + gymnase]
+prédicat partagée avec la lecture gestionnaire — jamais une seconde copie. Sept angles, le DÉPÔT étant le
+canal [doublon ASSUMÉ, point sensible matchs/constraint semantics, du prédicat déjà prouvé par la lecture
+gestionnaire dont ce test porte la citation croisée dans son docblock] : (a) un domicile daté [heure + gymnase]
 d'un championnat commencé est VALIDATED + MANUAL à l'issue du dépôt, et son entrée dans la charge utile de
-placement [ancre FIXED] est BYTE-IDENTIQUE à celle du même match validé par le POST manuel [l'id mis à
-part] ; (b) un championnat NON commencé reste UNPLACED / TO_PLACE [on ne verrouille jamais en ancre fixe
+placement [ancre FIXED] est BYTE-IDENTIQUE à celle du même match passé « Déjà dans FBI » par la lecture
+d'un gestionnaire [l'id mis à part] ; (b) un championnat NON commencé reste UNPLACED / TO_PLACE [on ne verrouille jamais en ancre fixe
 une vague provisoire qu'il faut pouvoir bouger] ; (c) un domicile sans heure n'est jamais validé
 [NO_KICKOFF] ; (d) un domicile portant un écart en attente n'est jamais validé ; (e) un domicile en
 TERRAIN NEUTRE [`unplacedReason=NEUTRAL_GROUND`, chantier A PR 2 — « pas de salles appariées, pas
@@ -333,10 +333,21 @@ d'import » : depuis cette PR, un domicile importable créé par le dépôt sans
 fait REFUSER tout le dépôt (422), donc le terrain neutre est devenu le SEUL chemin par lequel un domicile
 d'un championnat commencé peut rester sans gymnase du club] n'est jamais validé ; (f) le compteur
 `leagueValidated` du rapport d'import est exact ; (g) un re-dépôt ne revalide pas [VALIDATED exclu,
-idempotent, on ne dévalide jamais]. Le geste chiffré en
-lot reste le RATTRAPAGE [l'échéance qui tombe APRÈS le dépôt]. Sans ce gate, une régression qui cesserait
+idempotent, on ne dévalide jamais]. La lecture gestionnaire
+rattrape ce qui mûrit APRÈS le dépôt [`LeagueReadAutoValidationTest` ci-dessous]. Sans ce gate, une régression qui cesserait
 de valider au dépôt, ou qui validerait à tort un championnat non commencé / un domicile sans heure / en
 terrain neutre / dévié, passerait tous les checks requis).
+`Integration/Service/LeagueReadAutoValidationTest` (axes *constraint semantics* + *auth & memberships* —
+un championnat COMMENCÉ passe SEUL ses domiciles datés « Déjà dans FBI » [VALIDATED + MANUAL] dès qu'un
+GESTIONNAIRE lit l'accueil, entre deux dépôts : déposé avant son premier match, il ne valide rien au dépôt,
+puis la lecture du gestionnaire bascule ses 12 domiciles datés [1 passé, 11 futurs], heures inchangées,
+ancres FIXED au solveur et `swept` 12 ; le sans-heure reste à placer et nommé NO_KICKOFF, l'écart en
+attente intact et nommé, le terrain neutre ni validé ni nommé ni envoyé ; relire n'écrit rien. Une version
+périmée PENDANT le balayage [championnats comme amicaux] : la lecture répond 200, `swept` 0, rien écrit, la
+suivante rattrape. Rien ne se modifie dans une saison ARCHIVÉE ni sans socle choisi, même par une lecture de
+gestionnaire [amicaux compris]. Falsifié dans les deux sens [rattrapage du verrou retiré → 500 ; garde
+saison écrivable / socle retirée → écriture]. Sans ce gate, une lecture qui cesserait de basculer — ou qui
+écrirait dans une saison archivée — passerait tous les checks requis).
 `CrossStack/ParcImportReservationSemanticsGateTest` (axes *constraint semantics* + *generation pipeline*,
 lot correctif import IA « G2 » PR1 — une RÉSERVATION DÉRIVÉE d'une CASE parc-v2 par l'IMPORT DE PARC est
 HONORÉE par le solveur, de bout en bout : texte parc-v2 → dérivation + import réel (`ParcImportExecutor`)

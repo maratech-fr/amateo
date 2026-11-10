@@ -11,9 +11,17 @@ use App\Controller\PlaceMatchesController;
 use App\Controller\RegenerateController;
 use App\Entity\Club;
 use App\Entity\ClubUser;
+use App\Entity\Competition;
+use App\Entity\Fixture;
 use App\Entity\Schedule;
 use App\Entity\Season;
+use App\Entity\Sport;
+use App\Entity\SportCategory;
+use App\Entity\Team;
 use App\Entity\User;
+use App\Entity\Venue;
+use App\Enum\CompetitionType;
+use App\Enum\FixtureHomeAway;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
 use App\Service\SeasonResolver;
@@ -126,10 +134,16 @@ final class DeploymentImminentFreezeTest extends WebTestCase
         self::assertSame($before, $this->countSeasonVersions(), 'le gel refuse AVANT la V+1 de comblement');
     }
 
-    /** Placer des matchs pendant le gel → 409 message exact, et AUCUN run de placement n'est créé. */
+    /**
+     * Placer des matchs pendant le gel → 409 message exact, AUCUN run de placement n'est créé, et
+     * le balayage « Déjà dans FBI » que ce guichet fait avant d'enfiler n'a PAS lieu (le gel le
+     * précède : un domicile validable d'un championnat commencé reste UNPLACED, socle pourtant choisi).
+     */
     public function testAnImminentDeploymentFreezesMatchPlacement(): void
     {
         $this->seedDeployment('scheduled', '-2 minutes');
+        $this->settleSeasonPlan($this->season);
+        $validatableId = $this->seedValidatableHomeOfAStartedChampionship();
 
         $this->request('POST', '/api/fixtures/place');
 
@@ -139,6 +153,11 @@ final class DeploymentImminentFreezeTest extends WebTestCase
             0,
             (int) $this->em->getConnection()->fetchOne('SELECT COUNT(*) FROM match_placement_run WHERE club_id = :club', ['club' => $this->club->getId()]),
             'le gel refuse AVANT l\'enfilage : aucun run de placement',
+        );
+        self::assertSame(
+            'UNPLACED',
+            $this->em->getConnection()->fetchOne('SELECT status FROM fixture WHERE id = :id', ['id' => $validatableId]),
+            'le gel refuse AVANT le balayage : rien ne passe « Déjà dans FBI »',
         );
     }
 
@@ -271,6 +290,40 @@ final class DeploymentImminentFreezeTest extends WebTestCase
             $this->em->getConnection()->executeStatement('DELETE FROM scheduled_deployment');
         }
         parent::tearDown();
+    }
+
+    /**
+     * Un domicile UNPLACED daté (heure + gymnase) d'un championnat dont l'échéance est passée :
+     * ce que le balayage du guichet de placement ferait passer « Déjà dans FBI ».
+     */
+    private function seedValidatableHomeOfAStartedChampionship(): string
+    {
+        $this->scopeGucToClub($this->club->getId());
+        $sport = $this->em->getRepository(Sport::class)->findOneBy(['isActive' => true]);
+        if (null === $sport) {
+            $uid = uniqid('', true);
+            $sport = (new Sport)->setName('Basket ' . $uid)->setSlug('basket-' . $uid)->setIsActive(true);
+            $this->em->persist($sport);
+        }
+        $category = (new SportCategory)->setClubId($this->club->getId())->setSportId($sport->getId())->setName('U15-' . uniqid('', true));
+        $this->em->persist($category);
+        $team = (new Team)->setClubId($this->club->getId())->setSeasonId($this->season->getId())->setSportCategoryId($category->getId())
+            ->setPriorityTierId(3)->setName('U15')->setSessionsPerWeek(2)->setIsActive(true);
+        $this->em->persist($team);
+        $venue = (new Venue)->setClubId($this->club->getId())->setSeasonId($this->season->getId())->setName('Gymnase gel')->setSource('manual');
+        $this->em->persist($venue);
+        $competition = (new Competition)->setClubId($this->club->getId())->setSeasonId($this->season->getId())->setTeamId($team->getId())
+            ->setName('Championnat gel')->setCompetitionType(CompetitionType::CHAMPIONSHIP)->setEntryDeadline(new DateTimeImmutable('2020-09-10'));
+        $this->em->persist($competition);
+        $this->em->flush();
+
+        $fixture = (new Fixture)->setClubId($this->club->getId())->setSeasonId($this->season->getId())->setTeamId($team->getId())
+            ->setCompetitionId($competition->getId())->setMatchDate(new DateTimeImmutable('2099-03-14'))->setHomeAway(FixtureHomeAway::HOME)
+            ->setOpponentLabel('Adv')->setVenueId($venue->getId())->setKickoffTime(new DateTimeImmutable('15:30'));
+        $this->em->persist($fixture);
+        $this->em->flush();
+
+        return $fixture->getId();
     }
 
     /** Un déploiement GLOBAL seedé par SQL direct (table sans RLS) : statut + heure H relative à maintenant. */

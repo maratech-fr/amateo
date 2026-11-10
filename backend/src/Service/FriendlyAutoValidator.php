@@ -12,6 +12,8 @@ use App\Enum\FixtureStatus;
 use App\Service\Basketball\FbiDivisionSignature;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
+use Doctrine\ORM\OptimisticLockException;
+use Psr\Log\LoggerInterface;
 use Symfony\Component\Clock\ClockInterface;
 
 /**
@@ -23,16 +25,17 @@ use Symfony\Component\Clock\ClockInterface;
  * Un amical se reconnaît de deux façons : un domicile SANS compétition (competitionId null),
  * ou une compétition dont le LIBELLÉ est un amical (« Amical PNF » typé CHAMPIONSHIP côté
  * import) — maison unique {@see FbiDivisionSignature::isFriendlyCode}. Domicile ET extérieur
- * sont balayés ; seul un HOME reçoit l'ancre `MANUAL` (même invariant que le POST « validé
- * ligue » — la grille et le solveur l'exigent), un AWAY garde sa source intacte.
+ * sont balayés ; seul un HOME reçoit l'ancre `MANUAL` (même invariant que le balayage des
+ * championnats — la grille et le solveur l'exigent), un AWAY garde sa source intacte.
  *
  * Balaie uniquement les amicaux STRICTEMENT passés, non déjà saisis (statut ≠ SUBMITTED/
  * VALIDATED) et sans écart en attente. Idempotent (VALIDATED est exclu, rejouer ne trouve
- * rien) ; ne flushe QUE si quelque chose a changé.
+ * rien) ; ne flushe QUE si quelque chose a changé ; un verrou optimiste périmé rend 0
+ * (la lecture suivante rattrape).
  *
- * ⚠ Effet de bord d'une LECTURE : invoqué par un appelant GESTIONNAIRE (le cockpit
- * {@see EntryDeadlineOutlook} n'appelle que si le membre courant est gestionnaire, le
- * contrôleur « validé ligue » l'est déjà) — un Membre ne fait jamais écrire la base.
+ * ⚠ Effet de bord d'une LECTURE : invoqué par un appelant GESTIONNAIRE, saison écrivable et
+ * socle choisi (l'accueil {@see EntryDeadlineOutlook}, la vue « Déjà dans FBI » et le guichet
+ * de placement) — un Membre ne fait jamais écrire la base.
  */
 final class FriendlyAutoValidator
 {
@@ -40,6 +43,8 @@ final class FriendlyAutoValidator
         private readonly EntityManagerInterface $entityManager,
         private readonly FbiDivisionSignature $divisionSignature,
         private readonly ClockInterface $clock,
+        private readonly TenantDoctrineScope $tenantDoctrineScope,
+        private readonly LoggerInterface $logger,
     ) {}
 
     /** @return int combien d'amicaux passés ont basculé VALIDATED (0 si rien n'a changé) */
@@ -80,8 +85,20 @@ final class FriendlyAutoValidator
             ++$swept;
         }
 
-        if ($swept > 0) {
+        if (0 === $swept) {
+            return 0;
+        }
+
+        try {
             $this->entityManager->flush();
+        } catch (OptimisticLockException $exception) {
+            // Même rattrapage que {@see LeagueValidationOutlook::sweepStartedChampionships} :
+            // l'EntityManager fermé est réinitialisé, filtres tenant + saison et GUC RLS
+            // reposés ; la lecture répond, la suivante rattrape.
+            $this->tenantDoctrineScope->resetManager();
+            $this->logger->info('Friendly sweep lost a concurrent modification; the next read will retry.', ['seasonId' => $seasonId, 'exception' => $exception]);
+
+            return 0;
         }
 
         return $swept;

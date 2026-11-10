@@ -3,31 +3,22 @@ import { MemoryRouter } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { setTodayOverride } from "@/shared/lib/clock";
-import type { DeadlineOutlook, FbiTodo, LeagueValidationOutlook } from "@/features/matches/api";
+import type { DeadlineOutlook, FbiTodo } from "@/features/matches/api";
 
 import { FbiDeadlineCard } from "./FbiDeadlineCard";
 
-// La tuile ne consomme QUE l'outlook (règle J-7 + `fbiTodo` + `toConfirmCount` + gardien =
-// BACKEND) et le rôle (le bouton « validé ligue » est réservé au gestionnaire).
+// La tuile ne consomme QUE l'outlook (règle J-7 + `fbiTodo` + gardien = BACKEND). Plus aucun
+// geste « Déjà dans FBI » : la lecture du gestionnaire bascule seule.
 let outlook: DeadlineOutlook | undefined;
-let leagueOutlook: LeagueValidationOutlook | undefined;
 let meRole: string | undefined;
 vi.mock("@/features/matches/queries", () => ({
   useDeadlineOutlook: () => ({ data: outlook }),
-  useLeagueValidationOutlook: () => ({ data: leagueOutlook }),
-  useConfirmLeagueValidatedFixtures: () => ({ mutate: vi.fn(), isPending: false }),
 }));
 vi.mock("@/shared/session/queries", () => ({
   useMe: () => ({ data: { role: meRole } }),
 }));
 
 const NONE: FbiTodo = { toEnter: 0, toCorrect: 0 };
-const LEAGUE: LeagueValidationOutlook = {
-  matured: [{ competitionId: "c1", name: "PNM", deadline: "2026-11-10", deadlineSource: "club", maturedBy: "deadline", firstMatchDate: null, validatableCount: 5 }],
-  toTreat: [],
-  missingDeadline: [],
-  totalValidatable: 5,
-};
 
 function renderCard() {
   return render(
@@ -40,21 +31,20 @@ function renderCard() {
 describe("FbiDeadlineCard — la carte « Saisie FBI » du cockpit", () => {
   afterEach(() => {
     outlook = undefined;
-    leagueOutlook = undefined;
     meRole = undefined;
     setTodayOverride(null);
   });
 
   it("aucune fenêtre ET rien à faire → AUCUN rendu (le cockpit reste muet)", () => {
     setTodayOverride("2026-09-01");
-    outlook = { windows: [{ deadline: "2026-10-20", source: "club", competitionNames: ["DF2"], toPlaceCount: 0, toEnterCount: 3, withinWindow: false }], fbiTodo: NONE };
+    outlook = { windows: [{ deadline: "2026-10-20", source: "club", competitionNames: ["DF2"], toPlaceCount: 0, toEnterCount: 3, withinWindow: false }], fbiTodo: NONE, swept: 0 };
     const { container } = renderCard();
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
     expect(container).toBeEmptyDOMElement();
   });
 
   it("réponse sans fenêtre et fbiTodo vide → AUCUN rendu", () => {
-    outlook = { windows: [], fbiTodo: NONE };
+    outlook = { windows: [], fbiTodo: NONE, swept: 0 };
     expect(renderCard().container).toBeEmptyDOMElement();
   });
 
@@ -65,7 +55,7 @@ describe("FbiDeadlineCard — la carte « Saisie FBI » du cockpit", () => {
 
   it("hors fenêtre mais du travail → carte NEUTRE, ligne globale, lien → /matchs?fbi=1", () => {
     setTodayOverride("2026-09-01");
-    outlook = { windows: [], fbiTodo: { toEnter: 5, toCorrect: 2 } };
+    outlook = { windows: [], fbiTodo: { toEnter: 5, toCorrect: 2 }, swept: 0 };
     renderCard();
 
     const card = screen.getByRole("status");
@@ -79,7 +69,7 @@ describe("FbiDeadlineCard — la carte « Saisie FBI » du cockpit", () => {
 
   it("hors fenêtre, rien à corriger → la ligne globale SANS « dont »", () => {
     setTodayOverride("2026-09-01");
-    outlook = { windows: [], fbiTodo: { toEnter: 4, toCorrect: 0 } };
+    outlook = { windows: [], fbiTodo: { toEnter: 4, toCorrect: 0 }, swept: 0 };
     renderCard();
     const card = screen.getByRole("status");
     expect(card).toHaveTextContent("4 FBI à faire");
@@ -91,6 +81,7 @@ describe("FbiDeadlineCard — la carte « Saisie FBI » du cockpit", () => {
     outlook = {
       windows: [{ deadline: "2026-09-10", source: "club", competitionNames: ["Départemental F2", "Régional M18"], toPlaceCount: 0, toEnterCount: 6, withinWindow: true }],
       fbiTodo: { toEnter: 6, toCorrect: 0 },
+      swept: 0,
     };
     renderCard();
 
@@ -107,14 +98,14 @@ describe("FbiDeadlineCard — la carte « Saisie FBI » du cockpit", () => {
 
   it("source communautaire → « · proposée »", () => {
     setTodayOverride("2026-09-07");
-    outlook = { windows: [{ deadline: "2026-09-10", source: "community", competitionNames: ["DF2"], toPlaceCount: 0, toEnterCount: 2, withinWindow: true }], fbiTodo: { toEnter: 2, toCorrect: 0 } };
+    outlook = { windows: [{ deadline: "2026-09-10", source: "community", competitionNames: ["DF2"], toPlaceCount: 0, toEnterCount: 2, withinWindow: true }], fbiTodo: { toEnter: 2, toCorrect: 0 }, swept: 0 };
     renderCard();
     expect(screen.getByRole("status")).toHaveTextContent("proposée");
   });
 
   it("dépassée avec du reste → la carte RESTE, ton warning (jamais destructive)", () => {
     setTodayOverride("2026-09-12");
-    outlook = { windows: [{ deadline: "2026-09-10", source: "club", competitionNames: ["DF2"], toPlaceCount: 0, toEnterCount: 2, withinWindow: true }], fbiTodo: { toEnter: 2, toCorrect: 0 } };
+    outlook = { windows: [{ deadline: "2026-09-10", source: "club", competitionNames: ["DF2"], toPlaceCount: 0, toEnterCount: 2, withinWindow: true }], fbiTodo: { toEnter: 2, toCorrect: 0 }, swept: 0 };
     renderCard();
 
     const card = screen.getByRole("status");
@@ -131,6 +122,7 @@ describe("FbiDeadlineCard — la carte « Saisie FBI » du cockpit", () => {
     outlook = {
       windows: [{ deadline: "2026-09-10", source: "club", competitionNames: ["DF2"], toPlaceCount: 106, toEnterCount: 0, withinWindow: true }],
       fbiTodo: { toEnter: 0, toCorrect: 0 },
+      swept: 0,
     };
     renderCard();
 
@@ -150,6 +142,7 @@ describe("FbiDeadlineCard — la carte « Saisie FBI » du cockpit", () => {
     outlook = {
       windows: [{ deadline: "2026-10-15", source: "club", competitionNames: ["DF2"], toPlaceCount: 12, toEnterCount: 3, withinWindow: true }],
       fbiTodo: { toEnter: 3, toCorrect: 0 },
+      swept: 0,
     };
     renderCard();
 
@@ -159,33 +152,31 @@ describe("FbiDeadlineCard — la carte « Saisie FBI » du cockpit", () => {
     expect(screen.getByRole("link")).toHaveAttribute("href", "/matchs?fbi=1");
   });
 
-  // Retours Nico (BCCL, 2026-10-27), M3 — la ligne cockpit dit « N matchs déjà dans FBI à
-  // confirmer » (plus « à confirmer « validé ligue » »), et le bouton « Marquer « déjà dans FBI » ».
-  it("gestionnaire + des matchs à confirmer → ligne « N matchs déjà dans FBI à confirmer » + bouton « déjà dans FBI »", () => {
+  // Un championnat commencé passe SEUL « Déjà dans FBI » à la lecture du gestionnaire : il n'y a
+  // plus rien à confirmer. Un `toConfirmCount` > 0 (lu par un Membre, ou une lecture dont le
+  // balayage n'a pas pu écrire) n'ouvre plus aucune ligne ni aucun geste.
+  it.each(["admin", "member"])("rôle %s, 0 fenêtre et 0 à faire → carte MUETTE, même avec toConfirmCount > 0", (role) => {
+    meRole = role;
+    outlook = { windows: [], fbiTodo: NONE, toConfirmCount: 5, swept: 0 };
+    const { container } = renderCard();
+    expect(container).toBeEmptyDOMElement();
+  });
+
+  it("gestionnaire, une fenêtre ouverte et toConfirmCount > 0 → jamais de ligne « à confirmer » ni de bouton", () => {
+    setTodayOverride("2026-09-07");
     meRole = "admin";
-    outlook = { windows: [], fbiTodo: NONE, toConfirmCount: 5 };
-    leagueOutlook = LEAGUE;
+    outlook = {
+      windows: [{ deadline: "2026-09-10", source: "club", competitionNames: ["DF2"], toPlaceCount: 0, toEnterCount: 2, withinWindow: true }],
+      fbiTodo: { toEnter: 2, toCorrect: 0 },
+      toConfirmCount: 5,
+      swept: 0,
+    };
     renderCard();
 
     const card = screen.getByRole("status");
-    expect(card).toHaveTextContent("5 matchs déjà dans FBI à confirmer");
-    expect(card).not.toHaveTextContent("validé ligue");
-    expect(screen.getByRole("button", { name: /Marquer « déjà dans FBI »/ })).toBeInTheDocument();
-  });
-
-  it("Membre → jamais la ligne « à confirmer », même avec toConfirmCount > 0 (aucune écriture proposée)", () => {
-    meRole = "member";
-    outlook = { windows: [], fbiTodo: NONE, toConfirmCount: 5 };
-    const { container } = renderCard();
-    // Aucune fenêtre, rien à faire, et le Membre ne peut pas confirmer → carte muette.
-    expect(container).toBeEmptyDOMElement();
-  });
-
-  it("gestionnaire mais 0 à confirmer → pas de ligne « à confirmer »", () => {
-    meRole = "admin";
-    outlook = { windows: [], fbiTodo: NONE, toConfirmCount: 0 };
-    const { container } = renderCard();
-    expect(container).toBeEmptyDOMElement();
+    expect(card).not.toHaveTextContent("à confirmer");
+    // Le seul geste restant est le lien de la carte ; aucun bouton d'écriture.
+    expect(screen.queryByRole("button")).not.toBeInTheDocument();
   });
 
   it("guardianDelta joint → les segments s'affichent dans la carte", () => {
@@ -193,6 +184,7 @@ describe("FbiDeadlineCard — la carte « Saisie FBI » du cockpit", () => {
     outlook = {
       windows: [{ deadline: "2026-09-10", source: "club", competitionNames: ["DF2"], toPlaceCount: 0, toEnterCount: 6, withinWindow: true }],
       fbiTodo: { toEnter: 6, toCorrect: 0 },
+      swept: 0,
       guardianDelta: { newFixturesCount: 12, newConflictFingerprints: ["a", "b", "c"], planningChanged: true },
     };
     renderCard();

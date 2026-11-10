@@ -33,6 +33,11 @@ use Symfony\Component\Clock\ClockInterface;
  * rotating the reference (the visit is not stamped: the guardian's own rotation
  * stays the only writer). No MatchModuleVisit reference yet → the block is
  * omitted. Outside the window the delta is not even computed.
+ *
+ * A MANAGER read on a writable season with a chosen base plan first sweeps past friendlies
+ * and started championships « Déjà dans FBI » ({@see FriendlyAutoValidator},
+ * {@see LeagueValidationOutlook::sweepStartedChampionships}) and serves how many it switched
+ * (`swept`) so the front refreshes the fixtures.
  */
 final class EntryDeadlineOutlook
 {
@@ -48,6 +53,7 @@ final class EntryDeadlineOutlook
         private readonly LeagueValidationOutlook $leagueValidationOutlook,
         private readonly FriendlyAutoValidator $friendlyAutoValidator,
         private readonly ClubUserRepository $clubUserRepository,
+        private readonly SocleGuard $socleGuard,
         private readonly ClockInterface $clock,
     ) {}
 
@@ -56,17 +62,24 @@ final class EntryDeadlineOutlook
      *     windows: list<array{deadline: string, source: string, competitionNames: list<string>, toPlaceCount: int, toEnterCount: int, withinWindow: bool}>,
      *     fbiTodo: array{toEnter: int, toCorrect: int},
      *     toConfirmCount: int,
+     *     swept: int,
      *     guardianDelta?: array{newFixturesCount: int, newConflictFingerprints: list<string>, planningChanged: bool}
      * }
      */
-    public function compute(string $clubId, ?string $seasonId, string $userId): array
+    public function compute(string $clubId, ?string $seasonId, string $userId, bool $seasonWritable): array
     {
-        // Le balayage des amicaux passés (une ÉCRITURE) n'est déclenché que si l'utilisateur
-        // courant est GESTIONNAIRE : la route du cockpit est ouverte au Membre, qui ne doit
-        // jamais faire écrire la base. Le « validé ligue » chiffré, lui, ne touche que les
-        // championnats — les amicaux se valident seuls, ici, à date passée.
-        if (null !== $seasonId && $this->isManager($userId, $clubId)) {
-            $this->friendlyAutoValidator->sweep($clubId, $seasonId);
+        // Les balayages (amicaux passés PUIS championnats commencés) sont des ÉCRITURES : ils
+        // n'ont lieu que sous la même garde que la vue « Déjà dans FBI » — saison écrivable
+        // (rien ne se modifie dans une saison archivée, même par une lecture), utilisateur
+        // GESTIONNAIRE (la route est ouverte au Membre, qui ne fait jamais écrire la base) et
+        // socle en vigueur. `swept` dit combien de rencontres CETTE lecture a fait basculer.
+        $swept = 0;
+        if (null !== $seasonId
+            && $seasonWritable
+            && $this->isManager($userId, $clubId)
+            && $this->socleGuard->isSeasonPlanChosen($seasonId)) {
+            $swept += $this->friendlyAutoValidator->sweep($clubId, $seasonId);
+            $swept += $this->leagueValidationOutlook->sweepStartedChampionships($seasonId, DateTimeImmutable::createFromInterface($this->clock->now()));
         }
 
         // Le compte GLOBAL de domiciles « validé ligue » à confirmer, et le compte par
@@ -155,6 +168,7 @@ final class EntryDeadlineOutlook
                 'toCorrect' => \count($this->correctionRepository->findBy(['closedAt' => null])),
             ],
             'toConfirmCount' => $toConfirmCount,
+            'swept' => $swept,
         ];
 
         // Le bloc gardien n'est joint QUE si une fenêtre J-7 est ouverte ET que

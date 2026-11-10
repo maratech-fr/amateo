@@ -213,11 +213,14 @@ export interface DeadlineOutlook {
    */
   fbiTodo?: FbiTodo;
   /**
-   * Le compte GLOBAL de domiciles prêts à être marqués « validé ligue » en un geste
-   * (championnats commencés, heure + gymnase identifié, sans écart) — calcul BACKEND, la
-   * carte l'AFFICHE. Optionnel côté TS (le backend le sert toujours ; l'absence retombe sur 0).
+   * Le compte GLOBAL de domiciles prêts à passer « Déjà dans FBI » que CETTE lecture n'a pas
+   * basculés (championnats commencés, heure + gymnase identifié, sans écart) — 0 après une
+   * lecture gestionnaire, le compte tel quel pour un Membre. Calcul BACKEND. Optionnel côté TS
+   * (le backend le sert toujours ; l'absence retombe sur 0).
    */
   toConfirmCount?: number;
+  /** Nombre de rencontres que CETTE lecture a fait passer « Déjà dans FBI » (0 pour un Membre). */
+  swept: number;
   /** Absent quand aucune fenêtre n'est ouverte OU sans référence de visite. */
   guardianDelta?: DeadlineGuardianDelta;
 }
@@ -231,13 +234,12 @@ export interface FbiTodo {
 export const getDeadlineOutlook = (): Promise<DeadlineOutlook> => api.get("matches/deadline-outlook").json<DeadlineOutlook>();
 
 /**
- * Lot O — « validé ligue » en lot, PILOTÉ PAR L'ÉCHÉANCE du championnat. Un club qui
- * démarre EN COURS de saison confirme d'un geste les domiciles des championnats DONT
- * L'ÉCHÉANCE EST PASSÉE (jour inclus) : `confirmed` = combien ont basculé (VALIDATED +
- * source MANUAL). Un championnat dont l'échéance n'est pas passée (nouvelle vague, dates
- * provisoires) n'est proposé nulle part. Rejouable : un second appel rend 0.
- */
-/**
+ * Lot O — « Déjà dans FBI », PILOTÉ PAR LE DÉMARRAGE du championnat. La lecture d'un
+ * gestionnaire fait passer seuls (VALIDATED + source MANUAL) les domiciles datés des
+ * championnats COMMENCÉS et dit combien (`swept`). Un championnat qui n'a pas commencé
+ * (nouvelle vague, dates provisoires) n'est proposé nulle part.
+ *
+ *
  * Comment un championnat a « commencé » : son échéance est passée, ou son premier match
  * est déjà joué (une compétition sans échéance mais dont les dates sont tombées).
  */
@@ -287,14 +289,9 @@ export interface LeagueValidationOutlook {
   toTreat: LeagueToTreatFixture[];
   missingDeadline: MissingDeadlineCompetition[];
   totalValidatable: number;
-}
-
-export interface LeagueValidationResult {
-  confirmed: number;
+  /** Nombre de rencontres que CETTE lecture a fait passer « Déjà dans FBI ». */
+  swept: number;
 }
 
 export const getLeagueValidationOutlook = (): Promise<LeagueValidationOutlook> =>
   api.get("fixtures/league-validation").json<LeagueValidationOutlook>();
-
-export const confirmLeagueValidatedFixtures = (): Promise<LeagueValidationResult> =>
-  api.post("fixtures/league-validation").json<LeagueValidationResult>();

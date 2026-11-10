@@ -1255,13 +1255,21 @@ jobs:
           # NR d'axe CONSTRAINT SEMANTICS (chantier A) — AU DÉPÔT d'un fichier FBI, tout championnat
           # COMMENCÉ (échéance passée OU premier match joué) voit ses domiciles validables (heure +
           # gymnase, sans écart) passer tout seuls « validé ligue » (source MANUAL + statut VALIDATED),
-          # BYTE-IDENTIQUE au POST manuel en lot ; un championnat non commencé reste UNPLACED/TO_PLACE,
+          # BYTE-IDENTIQUE à la lecture gestionnaire ; un championnat non commencé reste UNPLACED/TO_PLACE,
           # un sans heure / sans gymnase / avec écart n'est jamais validé, le compteur leagueValidated
           # est exact et un re-dépôt ne revalide pas. Le DÉPÔT emprunte la MAISON UNIQUE du prédicat
           # (LeagueValidationOutlook), jamais une seconde copie. Sans ce gate, une régression qui
           # cesserait de valider au dépôt — ou qui verrouillerait en ancre fixe une vague non commencée
           # qu'il faut pouvoir bouger — passerait tous les checks requis.
           FILES="$FILES tests/Integration/Service/ImportLeagueAutoValidationTest.php"
+          # NR d'axes CONSTRAINT SEMANTICS + AUTH & MEMBERSHIPS — un championnat COMMENCÉ passe SEUL ses
+          # domiciles datés « Déjà dans FBI » (VALIDATED + MANUAL) à la LECTURE de l'accueil par un
+          # gestionnaire, entre deux dépôts : passés et futurs, heures inchangées, ancres FIXED, `swept`
+          # exact ; sans heure / écart / terrain neutre jamais touchés ; relire n'écrit rien ; une version
+          # périmée pendant le balayage répond 200 et la lecture suivante rattrape. Rien ne s'écrit dans
+          # une saison archivée ni sans socle choisi. Sans ce gate, une lecture qui écrirait dans une
+          # saison archivée — ou cesserait de basculer — passerait tous les checks requis.
+          FILES="$FILES tests/Integration/Service/LeagueReadAutoValidationTest.php"
           # NR d'axe CONSTRAINT SEMANTICS + GENERATION PIPELINE (lot correctif import IA « G2 » PR1) —
           # une RÉSERVATION DÉRIVÉE d'une CASE parc-v2 par l'IMPORT DE PARC est HONORÉE par le solveur, de
           # bout en bout : texte parc-v2 → dérivation + import réel (ParcImportExecutor) → vrai builder → vrai moteur /generate. Une

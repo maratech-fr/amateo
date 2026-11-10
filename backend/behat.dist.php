@@ -191,7 +191,7 @@ return (new Config)
             )
             ->withSuite(
                 new Suite('validation-ligue')
-                    ->withPaths('%paths.base%/features/un-club-en-cours-de-saison-valide-ses-matchs-en-lot.feature')
+                    ->withPaths('%paths.base%/features/un-championnat-commence-valide-seul-ses-matchs-a-domicile.feature')
                     ->withContexts(LeagueValidationContext::class),
             )
             ->withSuite(

@@ -455,7 +455,7 @@ final readonly class SeasonAndFixturePaths implements CustomPathContributor
             operationId: 'getMatchDeadlineOutlook',
             tags: ['Match'],
             responses: [
-                '200' => $this->schemas->jsonResponse('The entry-deadline cockpit outlook: each still-owed effective deadline (club value, else community default) with its competitions, how many home fixtures remain to enter, and whether the seven-day reminder window is open. When at least one window is open, the current user\'s guardian delta is joined (read-only, the visit is not stamped).', [
+                '200' => $this->schemas->jsonResponse('The entry-deadline cockpit outlook: each still-owed effective deadline (club value, else community default) with its competitions, how many home fixtures remain to enter, and whether the seven-day reminder window is open. When at least one window is open, the current user\'s guardian delta is joined (the visit is not stamped). A manager read on a writable season whose season plan is chosen first switches past friendlies and the dated home fixtures of started championships to « Déjà dans FBI » (swept).', [
                     'type' => 'object',
                     'properties' => [
                         'windows' => ['type' => 'array', 'items' => ['type' => 'object', 'properties' => [
@@ -470,7 +470,8 @@ final readonly class SeasonAndFixturePaths implements CustomPathContributor
                             'toEnter' => ['type' => 'integer', 'description' => 'Home fixtures PLACED but not yet entered in FBI (UNPLACED and already-submitted excluded)'],
                             'toCorrect' => ['type' => 'integer', 'description' => 'Open « to correct in FBI » ledger entries (kept-app divergences FBI is still behind on)'],
                         ]],
-                        'toConfirmCount' => ['type' => 'integer', 'description' => 'Home fixtures ready to be marked « validé ligue » in one gesture (matured championships, kickoff + identified venue, no pending deviation) — the grand total of the batch outlook'],
+                        'toConfirmCount' => ['type' => 'integer', 'description' => 'Home fixtures of started championships ready to become « Déjà dans FBI » (kickoff + identified venue, no pending deviation) and not switched by this read — a manager read on a writable season switches them (0 left), a member read never writes'],
+                        'swept' => ['type' => 'integer', 'description' => 'How many fixtures THIS read switched to « Déjà dans FBI » (past friendlies, then started championships). 0 for a member, an archived season, a season plan not chosen, or when a concurrent modification won the race (the next read retries)'],
                         'guardianDelta' => ['type' => 'object', 'nullable' => true, 'description' => 'Present only when a reminder window is open AND the user already has a visit reference', 'properties' => [
                             'newFixturesCount' => ['type' => 'integer'],
                             'newConflictFingerprints' => ['type' => 'array', 'items' => ['type' => 'string']],
@@ -481,7 +482,7 @@ final readonly class SeasonAndFixturePaths implements CustomPathContributor
                 '400' => new Response('No club in context'),
                 '401' => new Response('Unauthorized (missing/expired JWT)'),
             ],
-            summary: 'League/committee entry-deadline outlook for the cockpit (read-only, open to any member)',
+            summary: 'League/committee entry-deadline outlook for the cockpit (open to any member; a manager read sweeps « Déjà dans FBI »)',
         )));
 
         $placementRunResult = [
@@ -660,7 +661,7 @@ final readonly class SeasonAndFixturePaths implements CustomPathContributor
                 operationId: 'leagueValidationOutlook',
                 tags: ['Match'],
                 responses: [
-                    '200' => $this->schemas->jsonResponse('The batch « validé ligue » outlook, driven by each competition having STARTED. A championship has started when its entry deadline has passed (inclusive) OR its first match is already played (min match date strictly in the past) — so only STARTED competitions are proposed; a future-deadline championship with no match yet played (e.g. a new October youth wave with provisional dates) is deliberately left untouched. Per started competition: its name, deadline (null when it started by first match played), source, how it matured (deadline | firstMatchPlayed), the first match date (when that is what started it), and the count of validatable home fixtures (UNPLACED, kickoff + identified venue, no pending deviation). Plus the NAMED fixtures still to treat (no kickoff, no venue, or a pending deviation), the no-deadline competitions NOT YET started that nonetheless have ready fixtures (deadline to be entered), and the grand total to validate. Friendly competitions (label « Amical … ») are never proposed.', [
+                    '200' => $this->schemas->jsonResponse('The « Déjà dans FBI » outlook, driven by each competition having STARTED. Before answering, the read switches by itself every validatable home fixture of a started championship to « Déjà dans FBI » (status VALIDATED + placement source MANUAL — the anchor the grid lock and the placement solver both require), past friendlies included, and says how many (swept). A championship has started when its entry deadline has passed (inclusive) OR its first match is already played (min match date strictly in the past) — so only STARTED competitions are proposed; a future-deadline championship with no match yet played (e.g. a new October youth wave with provisional dates) is deliberately left untouched. Per started competition: its name, deadline (null when it started by first match played), source, how it matured (deadline | firstMatchPlayed), the first match date (when that is what started it), and the count of validatable home fixtures (UNPLACED, kickoff + identified venue, no pending deviation). Plus the NAMED fixtures still to treat (no kickoff, no venue, or a pending deviation), the no-deadline competitions NOT YET started that nonetheless have ready fixtures (deadline to be entered), and the grand total to validate. Friendly competitions (label « Amical … ») are never proposed.', [
                         'type' => 'object',
                         'properties' => [
                             'matured' => [
@@ -704,29 +705,14 @@ final readonly class SeasonAndFixturePaths implements CustomPathContributor
                                 ],
                             ],
                             'totalValidatable' => ['type' => 'integer'],
+                            'swept' => ['type' => 'integer', 'description' => 'How many fixtures THIS read switched to « Déjà dans FBI » before answering (past friendlies, then the validatable home fixtures of started championships); 0 when nothing was left, or when a concurrent modification won the race (the next read retries)'],
                         ],
                     ]),
                     '401' => new Response('Unauthorized (missing/expired JWT)'),
                     '403' => new Response('Not a management member'),
                     '409' => new Response('No active season, season plan not chosen, or archived season'),
                 ],
-                summary: 'The batch « validé ligue » outlook by matured competition (read-only, management only)',
-            ),
-            post: new Operation(
-                operationId: 'confirmLeagueValidatedFixtures',
-                tags: ['Match'],
-                responses: [
-                    '200' => $this->schemas->jsonResponse('Mark every eligible home fixture « validé ligue » (status VALIDATED + placement source MANUAL — the anchor the grid lock and the placement solver both require). Idempotent: a second call finds nothing (the predicate excludes VALIDATED).', [
-                        'type' => 'object',
-                        'properties' => [
-                            'confirmed' => ['type' => 'integer', 'description' => 'How many fixtures were switched to « validé ligue »'],
-                        ],
-                    ]),
-                    '401' => new Response('Unauthorized (missing/expired JWT)'),
-                    '403' => new Response('Not a management member'),
-                    '409' => new Response('No active season, season plan not chosen, archived season, or a concurrent modification (another tab / double-click)'),
-                ],
-                summary: 'Mark the eligible home fixtures « validé ligue » in one confirmed gesture (management only)',
+                summary: 'The « Déjà dans FBI » outlook by started competition — the read first switches the validatable home fixtures by itself (management only)',
             ),
         ));
     }

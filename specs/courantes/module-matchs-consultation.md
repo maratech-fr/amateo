@@ -12,7 +12,7 @@ Importer garde sa maison propre (§6).
 
 **Décision fondateur (2026-10-04) : tout le monde VOIT, seul le gestionnaire AGIT.** Tous les
 boutons d'action de l'écran des matchs (placement automatique, édition/suppression d'un extérieur,
-panneau de placement, validation en lot « Validé ligue ») sont masqués pour un non-gestionnaire —
+panneau de placement) sont masqués pour un non-gestionnaire —
 un membre lit la grille, les todo, les filtres, sans aucun geste disponible ; l'état « en vide »
 reste visible même sans bouton. `canManage`/`isManager` propagé en prop (`WeekWorkbench.tsx`,
 `FbiEntryList.tsx`, `PhaseTable.tsx`), le backend reste seul juge (403 sur chaque écriture,

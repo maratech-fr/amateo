@@ -41,8 +41,10 @@ vigueur, il n'a rien à comparer.
   neutre » ci-dessous), `keptVenueLabel` (idempotence d'arbitrage salle),
   `reviewState`/`reviewedAt`/`pendingDeviations` (workflow de traitement, §5). L'import FBI crée
   **tout** en `UNPLACED` à la CRÉATION, domicile et extérieur — mais le MÊME dépôt enchaîne, après le
-  flush, une passe séparée qui bascule « validé ligue » les domiciles validables des championnats
-  déjà COMMENCÉS (chantier A, décision fondateur 2026-10-22, § « Validé ligue » en lot ci-dessous) ;
+  flush, une passe séparée qui bascule « Déjà dans FBI » (`VALIDATED`, « validé ligue » en code) les
+  domiciles validables des championnats déjà COMMENCÉS — passe rejouée à chaque lecture d'un
+  gestionnaire (chantier A, décisions fondateur 2026-10-22 et 2026-11-10,
+  [`module-matchs-import-fbi.md`](module-matchs-import-fbi.md) § « Déjà dans FBI ») ;
   hors ce cas, seul un geste du gestionnaire pose un autre statut (`FixtureStatus` docblock).
   `neutralGround` (champ additif en LECTURE seulement, `FixtureResource`, dérivé de
   `unplacedReason === NEUTRAL_GROUND`) : le front l'affiche, jamais une seconde copie de la règle.

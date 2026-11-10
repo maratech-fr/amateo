@@ -561,12 +561,14 @@ toCorrect}` — le compte GLOBAL « à faire dans FBI » toutes semaines confond
 domiciles PLACED, à corriger = entrées OUVERTES du registre ci-dessus), pour que le cockpit ET la
 barre de compteurs (§5) n'aient jamais à charger les fixtures —, et joint `guardianDelta` (réutilise
 `MatchModuleDeltaComputer` **sans stamper**) si une référence de visite existe déjà. Il sert aussi
-`toConfirmCount` — le compte GLOBAL de domiciles « validé ligue » validables
-(`LeagueValidationOutlook::compute`, § « Validé ligue » en lot) : un domicile validable est
-`UNPLACED`, donc `toPlaceCount` (ci-dessous) le SOUSTRAIT pour ne jamais le compter deux fois (« à
-confirmer », pas « à placer »). Cette route est aussi le point où le balayage des amicaux passés
-(`FriendlyAutoValidator::sweep`, § « Validé ligue » en lot) se déclenche — SEULEMENT si l'appelant
-est GESTIONNAIRE, jamais pour un Membre qui ouvre le même cockpit. Chaque fenêtre sert en plus DEUX
+`toConfirmCount` — le compte GLOBAL de domiciles « Déjà dans FBI » validables restant APRÈS la
+lecture (`LeagueValidationOutlook::compute`) : un domicile validable est `UNPLACED`, donc
+`toPlaceCount` (ci-dessous) le SOUSTRAIT pour ne jamais le compter deux fois. Cette route est aussi
+le point où les balayages « Déjà dans FBI » se déclenchent (amicaux passés `FriendlyAutoValidator::sweep`
+PUIS championnats commencés `LeagueValidationOutlook::sweepStartedChampionships`, détail et garde
+unique : [`module-matchs-import-fbi.md`](module-matchs-import-fbi.md) § « Déjà dans FBI ») — SEULEMENT
+si l'appelant est GESTIONNAIRE, la saison écrivable et le socle choisi, jamais pour un Membre qui
+ouvre le même cockpit ; `swept` dit combien cette lecture en a basculé. Chaque fenêtre sert en plus DEUX
 compteurs distincts (`EntryDeadlineOutlook::countHomeByCompetition`) : `toPlaceCount`
 (domiciles UNPLACED restants — un geste de placement) et `toEnterCount` (domiciles PLACED, prêts à copier
 dans FBI — aligné sur `fbiTodo.toEnter` et la liste FBI). La carte cockpit `FbiDeadlineCard` (`/`,
@@ -574,12 +576,9 @@ sous `SeasonPlanBanner`) fusionne le résumé du gardien dans la même carte (ja
 distingue trois régimes : une échéance en fenêtre J-7 → ton accent (warning si dépassée) avec la
 ligne globale au-dessus des échéances, chaque échéance segmentant « N match(s) à placer » et « N à
 saisir dans FBI » ; hors fenêtre mais `fbiTodo` > 0 → ton NEUTRE, la seule ligne globale (« N FBI à
-faire, dont M à corriger ») ; rien à faire, aucune fenêtre ET rien à confirmer « déjà dans FBI » →
-muette. Le bouton n'ouvre « Ouvrir la liste FBI » (`/matchs?fbi=1`) **que si** cette liste a du
+faire, dont M à corriger ») ; rien à faire et aucune fenêtre → muette. Le bouton n'ouvre « Ouvrir la liste FBI » (`/matchs?fbi=1`) **que si** cette liste a du
 contenu (`fbiTodo.toEnter + fbiTodo.toCorrect > 0`) ; sinon (tout reste à placer) il renvoie au
-Calendrier (`/matchs`, « Placer les matchs ») — la liste FBI serait sinon une modale vide. Quand
-`toConfirmCount > 0` ET l'utilisateur est gestionnaire, la carte ajoute une ligne dédiée « N matchs
-déjà dans FBI à confirmer » (plus « N à confirmer « validé ligue » », retours Nico BCCL 2026-10-27
-M3) + un bouton qui ouvre la confirmation chiffrée partagée (§ « Validé ligue » en lot) — jamais
-affichée à un Membre.
+Calendrier (`/matchs`, « Placer les matchs ») — la liste FBI serait sinon une modale vide. La carte
+n'a plus de ligne « à confirmer » ni de bouton : plus aucun geste de confirmation (décision fondateur
+2026-11-10).
 

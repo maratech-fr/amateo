@@ -320,7 +320,7 @@ d'invitation ; replier le reste sur `ClubInvitationTest`, `RegisterClubLookupTes
   retirée, PR4a) ; l'enchaînement démo → conservation → reprise reste porté par
   `le-club-demo-d-un-prospect-se-conserve` (à étoffer en PR4b si besoin).
 - **Transition de saison** : E2E `season-transition.spec.ts`, fusionné en 1 parcours.
-- **Démarrage en cours de saison** : `un-club-en-cours-de-saison-valide-ses-matchs-en-lot`, en
+- **Démarrage en cours de saison** : `un-championnat-commence-valide-seul-ses-matchs-a-domicile`, en
   l'état.
 
 ### Chemins d'abus — toujours gardés, nommés
