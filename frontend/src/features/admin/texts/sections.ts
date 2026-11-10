@@ -331,6 +331,14 @@ export const ADMIN_SECTIONS_TEXTS = {
   releaseNotesDateLabel: "Date",
   releaseNotesBodyLabel: "Contenu",
   releaseNotesSubmit: "Enregistrer",
+  // Raison du bouton « Enregistrer » désactivé (A11Y-30) : ce qui manque, dans l'ordre du formulaire.
+  releaseNotesSubmitMissing: (missing: { title: boolean; date: boolean; content: boolean }): string => {
+    const parts = [missing.title ? "un titre" : null, missing.date ? "une date" : null, missing.content ? "un contenu" : null].filter(
+      (part): part is string => null !== part,
+    );
+    const list = parts.length > 1 ? `${parts.slice(0, -1).join(", ")} et ${parts[parts.length - 1]}` : (parts[0] ?? "");
+    return `Pour enregistrer, ajoutez ${list}.`;
+  },
   releaseNotesEmpty: "Aucune note pour le moment.",
   releaseNotesBadgeDraft: "Brouillon",
   releaseNotesBadgePublished: "Publiée",
@@ -339,4 +347,29 @@ export const ADMIN_SECTIONS_TEXTS = {
   releaseNotesToastSaved: "Note enregistrée (brouillon).",
   releaseNotesVersionLabel: "Version",
   releaseNotesVersionHint: "Numéro de la version en service, ex. 1.3.5 (facultatif). Pré-rempli quand l'application connaît sa version.",
+  // Éditeur riche (PR B Actualités) — barre « Mise en forme », couleurs, emoji, aperçu.
+  releaseNotesToolbarLabel: "Mise en forme",
+  releaseNotesToolBold: "Gras",
+  releaseNotesToolItalic: "Italique",
+  releaseNotesToolHeading: "Intertitre",
+  releaseNotesToolBulletList: "Liste à puces",
+  releaseNotesToolOrderedList: "Liste numérotée",
+  releaseNotesColorLabel: "Couleur du texte",
+  releaseNotesColorDefault: "Couleur par défaut",
+  releaseNotesColorRouge: "Rouge",
+  releaseNotesColorOrange: "Orange",
+  releaseNotesColorVert: "Vert",
+  releaseNotesColorBleu: "Bleu",
+  releaseNotesColorGris: "Gris",
+  releaseNotesEmoji: "Emoji",
+  releaseNotesEmojiDialog: "Insérer un emoji",
+  releaseNotesEmojiThemeSport: "Sport",
+  releaseNotesEmojiThemeFaces: "Visages",
+  releaseNotesEmojiThemeGestures: "Gestes",
+  releaseNotesEmojiThemeObjects: "Objets",
+  releaseNotesEmojiThemeSymbols: "Symboles",
+  releaseNotesEmojiThemeParty: "Fêtes",
+  releaseNotesPreview: "Aperçu",
+  releaseNotesUndo: "Annuler",
+  releaseNotesRedo: "Rétablir",
 } as const satisfies Record<string, string | ((...args: never[]) => string)>;

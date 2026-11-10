@@ -1,0 +1,13 @@
+{
+  "type": "doc",
+  "content": [
+    {
+      "type": "paragraph",
+      "content": [
+        { "type": "text", "marks": [{ "type": "bold" }], "text": "avant" },
+        { "type": "hardBreak", "marks": [{ "type": "bold" }] },
+        { "type": "text", "marks": [{ "type": "bold" }], "text": "après" }
+      ]
+    }
+  ]
+}

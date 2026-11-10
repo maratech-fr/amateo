@@ -1,9 +1,10 @@
-import { screen } from "@testing-library/react";
+import { screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { frDateSlashed } from "@/shared/lib/date";
 import { renderWithProviders } from "@/test/utils";
 
+import type { ReleaseNoteItem } from "./api";
 import { getReleaseNotes } from "./api";
 import { ReleaseNotesPage } from "./ReleaseNotesPage";
 import { RELEASE_NOTES_TEXTS } from "./texts";
@@ -22,7 +23,7 @@ describe("ReleaseNotesPage", () => {
     mockGet.mockResolvedValue({
       seenUpTo: null,
       items: [
-        { id: "n1", date: "2026-08-13", title: "Vue planning", body: "Ligne 1\nLigne 2", publishedAt: "2026-08-13T09:00:00+00:00", version: null },
+        { id: "n1", date: "2026-08-13", title: "Vue planning", body: "Ligne 1\nLigne 2", publishedAt: "2026-08-13T09:00:00+00:00", version: null, bodyRich: null },
       ],
     });
     renderWithProviders(<ReleaseNotesPage />);
@@ -79,6 +80,50 @@ describe("largeur de la page Nouveautés", () => {
 });
 
 /**
+ * Promesse (PR B, B3) : **sur la page, une note riche se lit mise en forme — titres du corps au niveau
+ * 3 (sous le `<h2>` du titre de carte), puces réelles, gras en `<strong>`** ; une note texte
+ * (`bodyRich: null`) garde son rendu brut. Jumeau modale : `WhatsNewModal.test.tsx` (niveau 4).
+ */
+describe("ReleaseNotesPage — corps riche", () => {
+  beforeEach(() => mockGet.mockReset());
+
+  it("note riche : <h3> sous le <h2> de la carte, puce réelle, gras ; note texte : brut", async () => {
+    mockGet.mockResolvedValue({
+      seenUpTo: null,
+      items: [
+        {
+          id: "r1",
+          date: "2026-11-15",
+          title: "Nouveautés de la rentrée",
+          body: "Matchs\n- Export PDF",
+          publishedAt: "2026-11-15T09:00:00+00:00",
+          version: "1.3.5",
+          bodyRich: {
+            type: "doc",
+            content: [
+              { type: "heading", attrs: { level: 3 }, content: [{ type: "text", text: "Matchs" }] },
+              { type: "bulletList", content: [{ type: "listItem", content: [{ type: "paragraph", content: [{ type: "text", text: "Export PDF", marks: [{ type: "bold" }] }] }] }] },
+            ],
+          },
+        },
+        { id: "t1", date: "2026-10-13", title: "Gymnases fermés", body: "Ligne A\nLigne B", publishedAt: "2026-10-13T09:00:00+00:00", version: null, bodyRich: null },
+      ] as ReleaseNoteItem[],
+    });
+    renderWithProviders(<ReleaseNotesPage />);
+
+    const cardTitle = await screen.findByRole("heading", { level: 2, name: "Nouveautés de la rentrée" });
+    const card = cardTitle.closest("li") as HTMLElement;
+    expect(within(card).getByRole("heading", { level: 3, name: "Matchs" })).toBeInTheDocument();
+    const bullet = within(card).getByRole("list");
+    expect(bullet.className).toContain("list-disc");
+    expect(within(bullet).getByText("Export PDF").closest("strong")).not.toBeNull();
+    expect(card.querySelector(".whitespace-pre-line")).toBeNull();
+
+    expect(screen.getByText(/Ligne A/)).toHaveClass("whitespace-pre-line");
+  });
+});
+
+/**
  * Promesse (A3) : **sur la page, chaque note s'annonce « date - version », puis son TITRE — un vrai
  * titre `<h2>` sous le `<h1>` de la page — puis son corps.** Jumeau modale : `WhatsNewModal.test.tsx`
  * (même ordre, titre `<h3>` sous le `<h2>` de la modale).
@@ -90,8 +135,8 @@ describe("ReleaseNotesPage — en-tête date-version, titre, corps", () => {
     mockGet.mockResolvedValue({
       seenUpTo: null,
       items: [
-        { id: "n2", date: "2026-11-15", title: "Nouvelle vue planning", body: "Corps versionné", publishedAt: "2026-11-15T09:00:00+00:00", version: "1.3.5" },
-        { id: "n1", date: "2026-10-13", title: "Gymnases fermés", body: "Corps sans version", publishedAt: "2026-10-13T09:00:00+00:00", version: null },
+        { id: "n2", date: "2026-11-15", title: "Nouvelle vue planning", body: "Corps versionné", publishedAt: "2026-11-15T09:00:00+00:00", version: "1.3.5", bodyRich: null },
+        { id: "n1", date: "2026-10-13", title: "Gymnases fermés", body: "Corps sans version", publishedAt: "2026-10-13T09:00:00+00:00", version: null, bodyRich: null },
       ],
     });
     renderWithProviders(<ReleaseNotesPage />);

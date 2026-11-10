@@ -263,7 +263,14 @@ for (const mode of MODES) {
       // portent maintenant en PLEIN — l'ancien `/50` tombait à 2,1:1 / 2,5:1 (opacité sur du texte,
       // sous AA, y compris derrière le voile d'une modale). Le calendrier n'est pas visité par axe
       // sur les écrans publics → on verrouille sa paire ici. (Règle : jamais d'opacité sur du texte.)
-      for (const token of ["text-warning", "text-success", "text-accent", "text-foreground", "text-muted-foreground"]) {
+      // `text-info` (Actualités PR B) : le BLEU des notes riches (`RICH_COLOR_CLASS.app.bleu`), posé sur
+      // le fond de page (`/nouveautes`) et sur la carte/la modale. Jeton NEUF `--info` : un jeton absent
+      // laisserait la sonde HÉRITER la couleur du texte (AA par construction, faux vert) — d'où le témoin
+      // « text-info is a token » qui vaut 0 (rouge) tant que la classe ne change pas la couleur héritée.
+      probe.className = "";
+      const inherited = getComputedStyle(probe).color;
+      out["text-info is a token (witness)"] = of("text-info", "color").join() === toRgb(inherited).join() ? 0 : 99;
+      for (const token of ["text-warning", "text-success", "text-accent", "text-foreground", "text-muted-foreground", "text-info"]) {
         const fg = of(token, "color");
         out[`${token} on background`] = ratio(fg, bg);
         out[`${token} on card`] = ratio(fg, card);

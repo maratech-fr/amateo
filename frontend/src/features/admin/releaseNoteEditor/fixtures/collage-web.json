@@ -1,0 +1,50 @@
+{
+  "type": "doc",
+  "content": [
+    { "type": "heading", "attrs": { "level": 3 }, "content": [{ "type": "text", "text": "T" }] },
+    { "type": "heading", "attrs": { "level": 3 }, "content": [{ "type": "text", "text": "S" }] },
+    {
+      "type": "bulletList",
+      "content": [
+        {
+          "type": "listItem",
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "a" }] },
+            {
+              "type": "bulletList",
+              "content": [
+                {
+                  "type": "listItem",
+                  "content": [
+                    { "type": "paragraph", "content": [{ "type": "text", "text": "b" }] },
+                    {
+                      "type": "orderedList",
+                      "attrs": { "start": 1, "type": null },
+                      "content": [
+                        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "c" }] }] }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "orderedList",
+      "attrs": { "start": 3, "type": null },
+      "content": [
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "lien" }] }] }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "content": [
+        { "type": "text", "text": "u " },
+        { "type": "text", "marks": [{ "type": "bold" }], "text": "g" }
+      ]
+    }
+  ]
+}

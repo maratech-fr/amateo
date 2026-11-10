@@ -399,6 +399,12 @@ paths:
   `/matchs`, 2026-09-18). `destructive` (`bg-destructive`) et l'avatar de `ClubPage` (`bg-muted`)
   restent sur `opacity-90`, délibérément hors scope (ex-P4-244, fermé sans correctif au triage
   roadmap 2026-09-25) — même piège à surveiller si un futur fond plein en hérite.
+- 🔴 **Aucune chaîne n'est injectée comme HTML, et `@tiptap/*` ne sort pas de
+  `features/admin/releaseNoteEditor/`** — le corps riche d'une note est rendu chez tous les clubs :
+  `shared/components/ui/rich-text.tsx` construit des éléments React, jamais `dangerouslySetInnerHTML`,
+  `.innerHTML =`, `getHTML(`, `srcDoc` hors `sandbox=""` (gardé par `src/test/noInnerHtmlGuard.test.ts`,
+  zéro exemption). Le bleu des notes est le jeton de texte `text-info` (`--info`), gardé AA par
+  `a11y-contrast.spec.ts`. → `docs/security/rich-content.md`.
 - **TDD obligatoire**, RED prouvé avant l'implémentation
   ([`../../frontend/docs/frontend-strategy.md`](../../frontend/docs/frontend-strategy.md) §1).
 - **Passe de design `ui-ux-pro-max`** (dans un agent — elle ne MESURE rien, mais elle TRANCHE une
