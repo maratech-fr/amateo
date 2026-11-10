@@ -3,7 +3,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { setTodayOverride, toISODate, todayISO, useTodayISO } from "@/shared/lib/clock";
+import { applyServerToday, setTodayOverride, toISODate, todayISO, useTodayISO } from "@/shared/lib/clock";
 
 import { useApplySimulatedClock } from "./useApplySimulatedClock";
 
@@ -64,6 +64,22 @@ describe("useApplySimulatedClock — cale todayISO sur le serveur et invalide re
   // d'override les RE-REND. Falsifiable : sans le notify de setTodayOverride, la 2ᵉ assertion
   // reste sur la date réelle. (On pilote l'override DANS act() — le re-rendu du store externe doit
   // y être capturé, sinon un avertissement « not wrapped in act » fuirait, cliquet FRT-34.)
+  // D12 (console PR 1) — aller-retour console : sous /admin, AdminShell relâche l'horloge simulée
+  // (AdminShell.test.tsx) ; revenir dans l'app REMONTE AppLayout, dont ce hook ré-applique la date du
+  // club démo. Testé ici, au plus bas : AppLayout.test.tsx neutralise ce hook pour isoler l'en-tête.
+  it("après un relâchement (passage par la console), un remontage ré-applique la date simulée du club", () => {
+    simulatedToday = "2026-12-15";
+    const first = mount();
+    expect(todayISO()).toBe("2026-12-15");
+    first.view.unmount();
+
+    applyServerToday(null); // ce que fait la console en entrant
+    expect(todayISO()).toBe(toISODate(new Date()));
+
+    mount();
+    expect(todayISO()).toBe("2026-12-15");
+  });
+
   it("un consommateur abonné via useTodayISO se re-rend quand l'override serveur change", () => {
     function Probe() {
       return <span data-testid="today">{useTodayISO()}</span>;

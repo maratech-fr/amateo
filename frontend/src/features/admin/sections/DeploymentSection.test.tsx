@@ -1,8 +1,13 @@
-import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { QueryClientProvider } from "@tanstack/react-query";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { HTTPError } from "ky";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { ReactElement } from "react";
+import { createMemoryRouter, RouterProvider } from "react-router";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { queryClient } from "@/shared/lib/queryClient";
+import { toast } from "@/shared/stores/toastStore";
 import { renderWithProviders } from "@/test/utils";
 
 import type { AdminDeployment } from "../api";
@@ -201,4 +206,55 @@ describe("DeploymentSection", () => {
     expect(await screen.findByText(/Départ retardé/)).toBeInTheDocument();
     expect(screen.getByText(/Plafond d'attente atteint/)).toBeInTheDocument();
   });
+
+  // Les deux cas ci-dessous sont rendus sous le VRAI queryClient de l'app : c'est son filet global
+  // (queryCache/mutationCache onError) qui toaste ; un QueryClient nu de test serait vert par
+  // construction sur « zéro toast ».
+  describe("échecs dits une seule fois, à l'écran (console PR 1)", () => {
+    afterEach(() => {
+      queryClient.clear();
+      vi.restoreAllMocks();
+    });
+
+    // D6 — le message serveur précis (409 « déjà programmée ») s'affiche INLINE, et c'est tout :
+    // pas un second message générique en toast par-dessus.
+    it("un 409 à la programmation s'affiche inline et ne toaste pas", async () => {
+      const toastError = vi.spyOn(toast, "error");
+      const user = userEvent.setup();
+      mockSchedule.mockRejectedValue(httpError(409, { error: "Une mise en production est déjà programmée." }));
+      renderWithAppQueryClient(<DeploymentSection />);
+
+      await user.selectOptions(await screen.findByRole("combobox", { name: /version/i }), "v1.4.0");
+      fireEvent.change(screen.getByLabelText(/date et heure/i), { target: { value: "2026-12-01T03:00" } });
+      fireEvent.change(screen.getByLabelText(/durée de la maintenance/i), { target: { value: "30" } });
+      await user.click(screen.getByRole("button", { name: /programmer/i }));
+
+      expect(await screen.findByText("Une mise en production est déjà programmée.")).toBeInTheDocument();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(toastError).not.toHaveBeenCalled();
+    });
+
+    // D8 — la lecture des tags ÉCHOUE (réseau, 5xx) : l'écran le dit (bandeau + Réessayer), ne
+    // propose pas « Programmer » sur une liste vide, et ne double pas d'un toast générique.
+    it("une lecture des tags en échec : bandeau + Réessayer, Programmer désactivé, zéro toast", async () => {
+      const toastError = vi.spyOn(toast, "error");
+      mockTags.mockRejectedValue(httpError(500, {}));
+      renderWithAppQueryClient(<DeploymentSection />);
+
+      expect(await screen.findByText(ADMIN_SECTIONS_TEXTS.deploymentTagsReadError, {}, { timeout: 4000 })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: ADMIN_SECTIONS_TEXTS.deploymentTagsRetry })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /programmer/i })).toBeDisabled();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(toastError).not.toHaveBeenCalled();
+    });
+  });
 });
+
+function renderWithAppQueryClient(ui: ReactElement) {
+  const router = createMemoryRouter([{ path: "*", element: ui }], { initialEntries: ["/admin"] });
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <RouterProvider router={router} />
+    </QueryClientProvider>,
+  );
+}

@@ -91,10 +91,10 @@ export const ADMIN_SECTIONS_TEXTS = {
 
   // ── ClubRequestsSection ──────────────────────────────────────────────────────────────────────
   clubRequestsEyebrow: "Arbitrages",
-  clubRequestsHeading: "Demandes de création & adhésions en attente",
-  clubRequestsCreationHeading: "Demandes de création de club",
+  clubRequestsHeading: "Demandes de club & adhésions en attente",
+  clubRequestsCreationHeading: "Demandes de club : création, reprise, promotion",
   clubRequestsCreationHint:
-    "Sans mail FFBB (aucun lien envoyé) ou expirées : la console est la seule voie. Approuver crée l'espace du club.",
+    "Un contact officiel FFBB approuve ou refuse ; sans mail FFBB (aucun lien envoyé) ou lien expiré, la console est la seule voie. La liste couvre les créations, les reprises d'un club sans gestionnaire et les promotions de Membre.",
   clubRequestsCreationEmpty: "Aucune demande en attente.",
   clubRequestsBadgeExpired: "Expirée",
   clubRequestsBadgeNoEmail: "Sans mail FFBB",
@@ -177,6 +177,8 @@ export const ADMIN_SECTIONS_TEXTS = {
     "La mise en production programmée n'est pas configurée : un jeton GitHub (et le dépôt cible) doit être posé côté serveur avant de pouvoir programmer un déploiement.",
   deploymentGithubUnreachableTags: "GitHub est injoignable — la liste des versions n'a pas pu être chargée.",
   deploymentGithubUnreachableSchedule: "GitHub est injoignable — réessayez dans un instant.",
+  deploymentTagsReadError: "La liste des versions déployables n'a pas pu être lue.",
+  deploymentTagsRetry: "Réessayer",
   deploymentActiveLabel: "Déploiement en attente",
   deploymentCancel: "Annuler la mise en production",
   deploymentVersionLabel: "Version",
@@ -268,6 +270,7 @@ export const ADMIN_SECTIONS_TEXTS = {
   feedbackBlockLastAction: "Dernier geste",
   feedbackBlockModalState: "État de la modale",
   feedbackModalStateTruncated: "tronqué",
+  feedbackModalStateRegionLabel: "État de la fenêtre signalée (zone défilante)",
   feedbackBlockTechnical: "Technique",
   feedbackScreenshot: "Capture d'écran",
   feedbackScreenshotAlt: "Capture d'écran jointe au signalement",

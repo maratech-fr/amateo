@@ -2,6 +2,7 @@ import { LogOut, ShieldCheck } from "lucide-react";
 import { useState } from "react";
 import { Outlet, useNavigate } from "react-router";
 
+import { useReleaseSimulatedClock } from "@/shared/hooks/useApplySimulatedClock";
 import { errorMessage } from "@/shared/lib/errorMessage";
 import { Button } from "@/shared/components/ui/button";
 import { Spinner } from "@/shared/components/ui/spinner";
@@ -17,6 +18,7 @@ export function AdminShell() {
   const clear = useAdminStore((state) => state.clear);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  useReleaseSimulatedClock();
 
   async function logout() {
     if (!csrfToken) {

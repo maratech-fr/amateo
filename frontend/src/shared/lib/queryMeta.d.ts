@@ -10,10 +10,12 @@ import "@tanstack/react-query";
  *    de retouche move/place/dry-run) : voile non relâchable au chrono, avec bouton d'abandon.
  *  - `silent404` : la query gère elle-même un 404 (préexistant, cf. `shared/lib/queryClient.ts`).
  *  - `ownsError` : la query DIT elle-même son échec (avec une relance) — aucun toast générique.
+ *  - `silentFailure` : lecture de FOND dont l'échec se TAIT (rien à dire, rien à relancer —
+ *    l'annonce de mise en production) — aucun toast générique.
  */
 declare module "@tanstack/react-query" {
   interface Register {
     mutationMeta: { veil?: false | "long" };
-    queryMeta: { veil?: false; silent404?: boolean; ownsError?: boolean };
+    queryMeta: { veil?: false; silent404?: boolean; ownsError?: boolean; silentFailure?: boolean };
   }
 }

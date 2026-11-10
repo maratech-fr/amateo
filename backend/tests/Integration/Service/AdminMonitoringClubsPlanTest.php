@@ -9,6 +9,7 @@ use App\Service\AdminMonitoringService;
 use App\Service\PlanEntitlements;
 use App\Service\SeasonResolver;
 use DateTimeImmutable;
+use DateTimeZone;
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\ParameterType;
 use Doctrine\Persistence\ManagerRegistry;
@@ -241,6 +242,26 @@ final class AdminMonitoringClubsPlanTest extends KernelTestCase
         $unsub = $byName[$this->tag . ' unsub'];
         self::assertArrayHasKey('stuck', $unsub);
         self::assertNull($unsub['stuck'], 'un club désabonné n\'est jamais signalé');
+    }
+
+    /**
+     * La liste des clubs sert `createdAt` et `lastActivityAt` en RFC 3339 (`2026-11-10T23:30:00+00:00`),
+     * comme l'annonce l'OpenAPI (`date-time`) et comme le lit la console (jour Europe/Paris de
+     * l'instant) — jamais la forme brute PostgreSQL `2026-11-10 23:30:00+00`.
+     */
+    public function testClubDatesAreServedAsRfc3339(): void
+    {
+        $now = new DateTimeImmutable('2026-11-11 12:00:00');
+        $this->seedMonitoredClub('rfc', new DateTimeImmutable('2026-10-01 08:15:00'), new DateTimeImmutable('2026-11-10 23:30:00'), 0, true, null, 0, false, null);
+
+        $item = $this->service($now)->clubs(1, 100, $this->tag)['items'][0];
+
+        $rfc3339 = '/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}$/';
+        self::assertIsString($item['createdAt']);
+        self::assertMatchesRegularExpression($rfc3339, $item['createdAt'], 'createdAt en RFC 3339');
+        self::assertIsString($item['lastActivityAt']);
+        self::assertMatchesRegularExpression($rfc3339, $item['lastActivityAt'], 'lastActivityAt en RFC 3339');
+        self::assertSame('2026-11-10T23:30:00+00:00', new DateTimeImmutable($item['lastActivityAt'])->setTimezone(new DateTimeZone('UTC'))->format(\DATE_ATOM), 'le même instant, pas un autre');
     }
 
     protected function setUp(): void

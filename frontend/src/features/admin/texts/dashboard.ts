@@ -188,9 +188,11 @@ export const ADMIN_DASHBOARD_TEXTS = {
 
   // Onglet Clubs — table (ClubsTable)
   clubsEmpty: "Aucun club à afficher.",
-  clubsCaption: "Liste des comptes clubs et de leurs métriques",
+  clubsCaption:
+    "Liste des comptes clubs et de leurs métriques — dernière activité : ouverture de l'app par un utilisateur du club ou génération lancée, au jour près",
   clubColClub: "Club",
-  clubColActivity: "Activité",
+  clubColActivity: "Dernière activité",
+  clubActivityMeaning: "Ouverture de l'app par un utilisateur du club ou génération lancée, au jour près",
   clubColOffer: "Offre",
   clubColSeasonVolume: "Saison / volume",
   clubColSolver: "Solveur · 30 j",
@@ -205,6 +207,9 @@ export const ADMIN_DASHBOARD_TEXTS = {
   clubDemo: "Démo",
   clubUnsubscribed: "Désabonné",
   clubNeverActive: "Jamais",
+  clubNeverActiveTitle: "Aucune ouverture de l'app par un utilisateur du club ni génération lancée",
+  clubLastActivity: (days: number) => (0 === days ? "Aujourd'hui" : 1 === days ? "Hier" : `Il y a ${days} jours`),
+  clubLastActivityTitle: (date: string) => `Le ${date} · ouverture de l'app par un utilisateur du club ou génération lancée, au jour près`,
   clubNoSeason: "Aucune saison",
   clubRowActions: "Actions",
   clubToggleDetail: (expanded: boolean, name: string) => `${expanded ? "Masquer" : "Afficher"} le détail de ${name}`,
@@ -276,6 +281,8 @@ export const ADMIN_DASHBOARD_TEXTS = {
   toastDemoClockClearError: "Impossible de revenir à aujourd’hui.",
   toastDemoClockSetError: "Impossible d’appliquer la date simulée.",
   toastDemoRetainError: "Impossible de conserver le club de démonstration.",
-  toastDeploymentScheduleError: "Impossible de programmer la mise en production.",
   toastDeploymentCancelError: "Impossible d’annuler la mise en production.",
+  // Contexte + raison servie par l'API (errorMessage) : « Impossible de … : <raison> » — le point
+  // final du contexte tombe, la phrase continue.
+  toastWithReason: (context: string, reason: string) => `${context.replace(/\.$/, "")} : ${reason}`,
 } as const satisfies Record<string, string | ((...args: never[]) => string)>;

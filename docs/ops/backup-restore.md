@@ -23,8 +23,12 @@ sauvegarde. Elle vit dans le même cluster postgres (volume `postgres_data`).
 ## 2. Les dumps
 
 - **Cadence** : tick nocturne (01:00) qui **skippe sans activité** — zéro club = zéro dump,
-  saison pleine = quotidien de fait. Signal : `club.last_activity_at` + `solver_metrics` +
-  `audit_log`.
+  saison pleine = quotidien de fait. Signal (`BackupCoverage::latestActivity`) :
+  `club.last_activity_at` + `solver_metrics` + `audit_log` + `app_user.last_login_at`. La
+  connexion compte : une nuit où seul le compte exclu de la « Dernière activité » des clubs
+  (`APP_ACTIVITY_EXCLUDED_EMAILS`) a travaillé est sauvegardée. Effet assumé : un compte SANS
+  adhésion active (en attente d'approbation, Membre désactivé) qui se connecte déclenche lui
+  aussi un dump — bénin, le coût d'une nuit de pure lecture.
 - **Emplacement** : `backend/var/backups/amateo-YYYYmmdd-His-u.dump` (format custom
   `pg_dump -Fc`), **rétention 14 dumps**.
 - **Off-site (optionnel mais recommandé dès la prod)** : poser `BACKUP_SYNC_COMMAND` dans

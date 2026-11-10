@@ -1,9 +1,25 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
+import { errorMessage } from "@/shared/lib/errorMessage";
 import { toast } from "@/shared/stores/toastStore";
 import { activateAdminDemo, activateAdminMembership, type AdminDemoTarget, type AdminFeedbackStatus, cancelAdminDeployment, createAdminReleaseNote, deactivateAdminDemo, decideAdminClubRequest, deleteAdminReleaseNote, getAdminActions, getAdminAudience, getAdminAuditLog, getAdminCapacity, getAdminClubRequests, getAdminClubs, getAdminDemos, getAdminDeployments, getAdminDeploymentTags, getAdminFeedback, getAdminFeedbackDetail, getAdminFreshness, getAdminHealth, getAdminJobs, getAdminMessengerFailed, getAdminOverview, getAdminPendingMemberships, getAdminReleaseNotes, getAdminSession, getAdminSystemErrors, publishAdminReleaseNote, type ReleaseNoteWritePayload, resetAdminDemoBccl, retainAdminDemoProspect, runAdminClubAction, runAdminJob, scheduleAdminDeployment, type ScheduleDeploymentPayload, setAdminDemoClock, treatAdminFeedback, untreatAdminFeedback } from "./api";
 import { useAdminStore } from "./store";
 import { ADMIN_DASHBOARD_TEXTS } from "./texts/dashboard";
+
+/**
+ * Toast d'échec d'un geste de console : l'action ET la raison servie par l'API
+ * (« Impossible d'activer… : Démo déjà active. ») — le superadmin sait quoi faire sans les journaux.
+ */
+async function toastWithReason(context: string, error: unknown): Promise<void> {
+  toast.error(ADMIN_DASHBOARD_TEXTS.toastWithReason(context, await errorMessage(error)));
+}
+
+/**
+ * Hook dont l'écran DIT l'échec inline (message serveur précis) : ce `onError` de niveau hook
+ * désarme le filet global (`MutationCache.onError`), qui sinon doublerait d'un toast générique.
+ * Écran démonté avant la réponse → l'échec n'est pas affiché (accepté : le geste se relit à l'état).
+ */
+const ERROR_SHOWN_INLINE = (): void => {};
 
 /** Lit le jeton CSRF de la session admin, ou rejette — patron des mutations admin. */
 function requireCsrf(): string | null {
@@ -239,7 +255,7 @@ export function useCreateAdminReleaseNote() {
     onSettled: () => void queryClient.invalidateQueries({ queryKey: ["admin-release-notes"] }),
     // FRT-38 — le toast d'erreur vit au niveau HOOK (un onError de niveau mutate() que le filet
     // global ne désarme pas en ferait deux). L'appelant ne re-toaste pas.
-    onError: () => toast.error(ADMIN_DASHBOARD_TEXTS.toastReleaseNoteSaveError),
+    onError: (error) => void toastWithReason(ADMIN_DASHBOARD_TEXTS.toastReleaseNoteSaveError, error),
   });
 }
 
@@ -256,7 +272,7 @@ export function usePublishAdminReleaseNote() {
       return publishAdminReleaseNote(id, csrfToken);
     },
     onSettled: () => void queryClient.invalidateQueries({ queryKey: ["admin-release-notes"] }),
-    onError: () => toast.error(ADMIN_DASHBOARD_TEXTS.toastReleaseNotePublishError),
+    onError: (error) => void toastWithReason(ADMIN_DASHBOARD_TEXTS.toastReleaseNotePublishError, error),
   });
 }
 
@@ -273,7 +289,7 @@ export function useDeleteAdminReleaseNote() {
       return deleteAdminReleaseNote(id, csrfToken);
     },
     onSettled: () => void queryClient.invalidateQueries({ queryKey: ["admin-release-notes"] }),
-    onError: () => toast.error(ADMIN_DASHBOARD_TEXTS.toastReleaseNoteDeleteError),
+    onError: (error) => void toastWithReason(ADMIN_DASHBOARD_TEXTS.toastReleaseNoteDeleteError, error),
   });
 }
 
@@ -313,6 +329,8 @@ export function useTreatAdminFeedback() {
       void queryClient.invalidateQueries({ queryKey: ["admin-feedback"] });
       void queryClient.invalidateQueries({ queryKey: ["admin-feedback-detail"] });
     },
+    // FeedbackSection dit l'échec inline, dans la fenêtre (cf. ERROR_SHOWN_INLINE).
+    onError: ERROR_SHOWN_INLINE,
   });
 }
 
@@ -332,6 +350,8 @@ export function useUntreatAdminFeedback() {
       void queryClient.invalidateQueries({ queryKey: ["admin-feedback"] });
       void queryClient.invalidateQueries({ queryKey: ["admin-feedback-detail"] });
     },
+    // FeedbackSection dit l'échec inline, dans la fenêtre (cf. ERROR_SHOWN_INLINE).
+    onError: ERROR_SHOWN_INLINE,
   });
 }
 
@@ -360,7 +380,7 @@ export function useActivateAdminDemo() {
       return activateAdminDemo(target, csrfToken);
     },
     onSettled: () => void queryClient.invalidateQueries({ queryKey: ["admin-demos"] }),
-    onError: () => toast.error(ADMIN_DASHBOARD_TEXTS.toastDemoActivateError),
+    onError: (error) => void toastWithReason(ADMIN_DASHBOARD_TEXTS.toastDemoActivateError, error),
   });
 }
 
@@ -377,7 +397,7 @@ export function useDeactivateAdminDemo() {
       return deactivateAdminDemo(target, csrfToken);
     },
     onSettled: () => void queryClient.invalidateQueries({ queryKey: ["admin-demos"] }),
-    onError: () => toast.error(ADMIN_DASHBOARD_TEXTS.toastDemoDeactivateError),
+    onError: (error) => void toastWithReason(ADMIN_DASHBOARD_TEXTS.toastDemoDeactivateError, error),
   });
 }
 
@@ -394,7 +414,7 @@ export function useResetAdminDemoBccl() {
       return resetAdminDemoBccl(csrfToken);
     },
     onSettled: () => void queryClient.invalidateQueries({ queryKey: ["admin-demos"] }),
-    onError: () => toast.error(ADMIN_DASHBOARD_TEXTS.toastDemoResetError),
+    onError: (error) => void toastWithReason(ADMIN_DASHBOARD_TEXTS.toastDemoResetError, error),
   });
 }
 
@@ -412,8 +432,8 @@ export function useSetAdminDemoClock() {
     },
     onSettled: () => void queryClient.invalidateQueries({ queryKey: ["admin-demos"] }),
     // Deux gestes partagent ce hook : appliquer une date vs revenir à aujourd'hui (body.clear).
-    onError: (_error, variables) =>
-      toast.error("clear" in variables.body ? ADMIN_DASHBOARD_TEXTS.toastDemoClockClearError : ADMIN_DASHBOARD_TEXTS.toastDemoClockSetError),
+    onError: (error, variables) =>
+      void toastWithReason("clear" in variables.body ? ADMIN_DASHBOARD_TEXTS.toastDemoClockClearError : ADMIN_DASHBOARD_TEXTS.toastDemoClockSetError, error),
   });
 }
 
@@ -430,7 +450,7 @@ export function useRetainAdminDemoProspect() {
       return retainAdminDemoProspect(csrfToken);
     },
     onSettled: () => void queryClient.invalidateQueries({ queryKey: ["admin-demos"] }),
-    onError: () => toast.error(ADMIN_DASHBOARD_TEXTS.toastDemoRetainError),
+    onError: (error) => void toastWithReason(ADMIN_DASHBOARD_TEXTS.toastDemoRetainError, error),
   });
 }
 
@@ -452,6 +472,8 @@ export function useAdminDeploymentTags() {
     queryKey: ["admin-deployment-tags"],
     queryFn: getAdminDeploymentTags,
     staleTime: 5 * 60_000,
+    // DeploymentSection dit l'échec de lecture (bandeau + « Réessayer ») : aucun toast générique.
+    meta: { ownsError: true },
   });
 }
 
@@ -468,10 +490,9 @@ export function useScheduleAdminDeployment() {
       return scheduleAdminDeployment(body, csrfToken);
     },
     onSettled: () => void queryClient.invalidateQueries({ queryKey: ["admin-deployments"] }),
-    // FRT-38 — le toast d'erreur vit au niveau HOOK (un onError de niveau mutate() que le filet
-    // global ne désarme pas en ferait deux). La section AFFICHE en plus le message serveur PRÉCIS
-    // inline (422/409), le toast reste le repli générique — même partage que FeedbackSection.
-    onError: () => toast.error(ADMIN_DASHBOARD_TEXTS.toastDeploymentScheduleError),
+    // DeploymentSection AFFICHE le message serveur précis inline (422/409) : l'inline gagne, pas
+    // de toast générique par-dessus (cf. ERROR_SHOWN_INLINE).
+    onError: ERROR_SHOWN_INLINE,
   });
 }
 
@@ -488,6 +509,6 @@ export function useCancelAdminDeployment() {
       return cancelAdminDeployment(id, csrfToken);
     },
     onSettled: () => void queryClient.invalidateQueries({ queryKey: ["admin-deployments"] }),
-    onError: () => toast.error(ADMIN_DASHBOARD_TEXTS.toastDeploymentCancelError),
+    onError: (error) => void toastWithReason(ADMIN_DASHBOARD_TEXTS.toastDeploymentCancelError, error),
   });
 }

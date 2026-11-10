@@ -8,7 +8,8 @@ import { getDeploymentNotice } from "./api";
  * L'annonce de mise en production, lue par le bandeau global. Enabled sur l'auth (pas d'appel
  * sur les écrans publics). `retry: false` : une lecture en échec laisse `data` indéfini → le
  * bandeau ne rend rien plutôt que de clignoter sur un réseau instable. Sondé toutes les 5 min :
- * une programmation peut naître ou être annulée pendant qu'un club travaille.
+ * une programmation peut naître ou être annulée pendant qu'un club travaille. Lecture de FOND :
+ * son échec ne toaste jamais (`meta.silentFailure`), le bandeau se tait.
  */
 export function useDeploymentNotice() {
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
@@ -18,5 +19,6 @@ export function useDeploymentNotice() {
     enabled: isAuthenticated,
     retry: false,
     refetchInterval: 5 * 60_000,
+    meta: { silentFailure: true },
   });
 }
