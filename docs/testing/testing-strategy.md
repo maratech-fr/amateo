@@ -14,26 +14,42 @@ lint ──┐
        ├─► blocking-tests ──┐
 phpstan┘                    ├─► build-docker
 engine-tests ───────────────┘
-backend-tests       (suite PHPUnit COMPLÈTE + pcov + cliquet, un seul passage) — PR only, BLOCKS the merge (required check), does NOT gate build-docker
-e2e                 (Playwright dans le conteneur `e2e`, full stack + Vite) — PR only, BLOCKS the merge (required check)
+backend-tests       (suite PHPUnit COMPLÈTE + pcov + cliquet, un seul passage) — PR→main only, BLOCKS the merge (required check), does NOT gate build-docker
+e2e                 (Playwright dans le conteneur `e2e`, full stack + Vite) — PR→main only, BLOCKS the merge (required check)
 frontend            (lint + tsc -b + vite build + vitest --coverage + cliquet) — PR only, does NOT gate build-docker
-dependency-audit    (composer/npm/pip audit, A18)          — no other needs ; runs on main too ; BLOCKS the merge, does NOT gate build-docker
+dependency-audit    (composer/npm/pip audit, A18)          — no other needs ; runs on main and on PR→main (not on PR→lot) ; BLOCKS the merge, does NOT gate build-docker
 rector              (dry-run, style gate P4-24)            — PR only, gates NOTHING… but BLOCKS the merge
 secrets-scan        (gitleaks)                             — no other needs ; runs on main too ; BLOCKS the merge
 semgrep             (security gate)                        — no other needs ; runs on main too ; BLOCKS the merge
 engine-semantics    (groupe `contract`, cross-stack)       — PR only, BLOCKS the merge
-functional-tests    (Behat, Gherkin FR, API-only, one feature per promise) — PR only, BLOCKS the merge (required check of `main`)
+functional-tests    (Behat, Gherkin FR, API-only, one feature per promise) — PR→main only, BLOCKS the merge (required check of `main`)
 engine-tests        (pytest --cov + cliquet, ruff, mypy, bandit, deptry) — runs on main too ; GATES build-docker — donc le cliquet engine gate build-docker
 engine-perf         (dense + BCCL solve + place-matches build < 60 s) — needs engine-tests ; main only
 engine-perf-pr      (dense solve, PR budget = 60 s)         — needs engine-tests ; PR only, skipped when engine/ untouched
 ```
 
-**Où tourne la CI, et `main` allégé.** Tous les jobs de `ci.yml` tournent sur le runner
-auto-hébergé du fondateur (VM `amateo-ci`, routage par variable de dépôt, retour arrière,
-VM éteinte = file de 24 h : [`../ops/ci-runner.md`](../ops/ci-runner.md)). **Sur `push main`** ne
+**Régime par branche cible (2026-11-10).** `ci.yml` se déclenche sur `push main` et sur
+`pull_request` (types `opened`, `synchronize`, `reopened`, `edited`) vers `main` ou `lot/**` ; un
+push sur `lot/**` ne lance rien. Le tri se fait par la **branche cible** de la PR, jamais par
+dossier touché (aucun `paths`) : une PR vers `main` joue tout sauf `engine-perf` ; une PR vers
+`lot/<sujet>` joue les jobs sans `if` et les jobs « PR only » (`preflight`, `lint`, `secrets-scan`,
+`semgrep`, `engine-tests`, `phpstan`, `rector`, `blocking-tests`, `frontend`, `engine-semantics`,
+`engine-perf-pr`) — **sauf** `backend-tests`, `e2e`, `functional-tests`, `dependency-audit` et
+`build-docker`, qui attendent la PR finale `lot/<sujet>` → `main`. Ci-dessus, « PR only » vaut donc
+« PR vers `main` ou `lot/**` » et « PR→main only » exclut les PR vers un lot. Garde : `CiWorkflowRegimeTest`
+(listes de régimes fermées, `if` exacts) ; ce qu'il ne prouve pas, les gestes et les pièges :
+[`../ops/ci-runner.md`](../ops/ci-runner.md) § Branche de lot. **Les features Behat et les specs
+e2e ne changent pas de contenu : seul leur MOMENT d'exécution change** (PR finale du lot au lieu de
+chaque PR du lot ; la preuve locale avant merge d'une PR→lot : `CLAUDE.md` §7 étape 5).
+
+**Où tourne la CI, et `main` allégé.** Les jobs de `ci.yml` tournent sur les runners GitHub tant que
+le dépôt est public, sur la VM auto-hébergée du fondateur au passage en privé (routage par variable
+de dépôt, retour arrière, VM éteinte = file de 24 h seulement tant que les variables pointent vers
+elle : [`../ops/ci-runner.md`](../ops/ci-runner.md)). **Sur `push main`** ne
 tournent que `preflight`, `lint`, `secrets-scan`, `semgrep`, `dependency-audit`, `engine-tests`,
 `engine-perf` et `build-docker` (dont les `needs` sont relâchés : il tourne même quand les jobs
-PR-only sont sautés, sauf échec ou annulation d'un `needs`) ; le reste est PR-only. Avec les
+PR-only sont sautés, sauf échec ou annulation d'un `needs` ; il tourne sur PR→main
+et sur `push main`, pas sur une PR vers `lot/**`) ; le reste est PR-only. Avec les
 required checks (15, **Preflight** compris) et `strict` (branche à jour obligatoire), l'arbre mergé
 est celui que la PR a prouvé. **Ce que `build-docker` prouve** : que les six images de PROD se
 construisent (`--pull`, tags `scan-<run>-<attempt>/…`) et passent Trivy CRITICAL ; sur le runner il

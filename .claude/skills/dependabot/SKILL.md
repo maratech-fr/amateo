@@ -27,7 +27,8 @@ version MAJEURE** attend la décision du fondateur sur sa fiche (étape 1, point
    Conflit de lockfile → régénérer le lockfile (`npm install` / `composer update <paquet>` /
    pip selon la zone) plutôt que résoudre à la main — **toujours DANS le container de la zone**,
    jamais sur l'hôte (voir l'encart Flex ci-dessous : c'est le container qui porte les plugins qui
-   contraignent la résolution).
+   contraignent la résolution). Les PR Dependabot visent `main` et jouent le gate complet ; une
+   branche de lot ouverte les récupère à son rebase final (`docs/ops/ci-runner.md` § Branche de lot).
 2. **Majeur ?** Lire le changelog/notes de migration du paquet (WebFetch sur le repo GitHub du
    paquet) AVANT de lancer les tests — savoir quoi surveiller. **Si le paquet collecte ou émet des
    données** (télémétrie, monitoring, analytics, crash-reporting) : vérifier dans le changelog les

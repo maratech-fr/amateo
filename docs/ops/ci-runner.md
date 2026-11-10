@@ -8,13 +8,16 @@
 
 ## 1. Ce que c'est
 
-Les jobs de `.github/workflows/ci.yml` (et `visual-baselines.yml`) tournent sur **trois runners
-GitHub Actions non éphémères**, installés dans une VM Hyper-V `amateo-ci` (Ubuntu Server 24.04) du
-poste du fondateur, allumée à la demande. Restent chez GitHub : `deploy.yml`, `security-weekly.yml`
+Les jobs de `.github/workflows/ci.yml` (et `visual-baselines.yml`) tournent sur le pool que
+désignent les variables de dépôt `CI_RUNS_ON` / `CI_RUNS_ON_HEAVY` (§2) : **runners GitHub tant que
+le dépôt est public ; VM auto-hébergée au passage en privé**. La VM, c'est **trois runners GitHub
+Actions non éphémères**, installés dans une VM Hyper-V `amateo-ci` (Ubuntu Server 24.04) du poste du
+fondateur, allumée à la demande. Restent toujours chez GitHub : `deploy.yml`, `security-weekly.yml`
 et `mirror-images.yml` (runner littéral `ubuntu-24.04`).
 
-**La CI tourne dans la VM du fondateur : VM éteinte = les checks restent « Queued », et GitHub
-échoue un job non acquis après 24 h** (voir §6).
+**VM éteinte = les checks restent « Queued », et GitHub échoue un job non acquis après 24 h
+(voir §6) — seulement tant que les variables pointent vers la VM.** Les §3, §5 (gestes de mise en
+place), §6 et §8 décrivent la VM.
 
 Le dépôt étant public, le runner ne sert que les PR du dépôt lui-même (§7). La VM est la borne
 de ressources (mémoire, vCPU) ; il n'y a ni cgroup ni limite mémoire par conteneur côté dépôt.
@@ -57,23 +60,28 @@ le reste dans la VM).
   step filtré `ParcImportCorrectionTenantNR` — détail : `docs/testing/blocking-tests.md`.
 - **Dependabot** : mensuel (`.github/dependabot.yml`), les cinq dossiers Dockerfile en une entrée
   `docker` groupée.
-- **Garde** : `backend/tests/Unit/Documentation/CiWorkflowRegimeTest.php` (routage, `preflight`,
-  `main` allégé, isolation, bloquants, e2e en conteneur, hooks, sonde).
+- **Garde** : `backend/tests/Unit/Documentation/CiWorkflowRegimeTest.php` (routage, `preflight` —
+  sa garde fork couvre aussi les PR vers `lot/**` —, régime par branche cible, `main` allégé,
+  isolation, bloquants, e2e en conteneur, hooks, sonde).
 
 ## 4. Protection de `main` : `strict`, Preflight, `enforce_admins`
 
 - **15 required checks** : les 14 historiques plus **Preflight** (job sans checkout, qui rougit sur
   une PR dont `head.repo.full_name` n'est pas le dépôt ; tout autre job `needs: preflight`, sans quoi
   un job sauté vaudrait succès).
-- **`strict: true`** (branche à jour obligatoire) : avec le squash, l'arbre mergé est celui que la PR
-  a prouvé. Une PR en retard se met à jour (« Update branch ») et rejoue le run complet.
+- **`strict: true`** (branche à jour obligatoire) : l'arbre mergé est celui que la PR a prouvé. Une
+  PR en retard se met à jour (« Update branch ») et rejoue le run complet — sauf la branche d'un
+  lot, qui se rebase (§9). Régime par branche cible : une PR vers `main` joue le gate complet, une
+  PR vers `lot/<sujet>` le régime léger (§9).
 - **`enforce_admins: true`** tant que le dépôt est public.
 - **`main` allégé** : sur `push main` ne tournent que `preflight`, `lint`, `secrets-scan`,
   `semgrep`, `dependency-audit`, `engine-tests`, `engine-perf` et `build-docker` ; le reste est
-  PR-only (`if: github.event_name == 'pull_request'`). Sens de « CI verte » pour un déploiement :
+  PR-only (`if` sur l'événement `pull_request`, plus la base `main` pour `backend-tests`, `e2e` et
+  `functional-tests` ; régimes complets : §9). Sens de « CI verte » pour un déploiement :
   `docs/ops/deploy.md`.
-- **Règle de merge** : jamais de merge par contournement des checks (bouton admin, VM éteinte
-  comprise) — on allume la VM et on attend le vert (`CLAUDE.md` §7 Git).
+- **Règle de merge** : jamais de merge par contournement des checks (bouton admin, `--admin`,
+  runner indisponible compris) — on attend le vert, en rallumant la VM si les variables de runner
+  pointent vers elle (`CLAUDE.md` §7 Git).
 
 ## 5. Les gestes, dans l'ordre
 
@@ -113,7 +121,7 @@ le reste dans la VM).
 
 ## 6. VM éteinte
 
-Les checks restent « Queued — Waiting for a runner… » ; à l'allumage la file se vide. Au-delà de
+Vaut tant que `CI_RUNS_ON` / `CI_RUNS_ON_HEAVY` pointent vers la VM. Les checks restent « Queued — Waiting for a runner… » ; à l'allumage la file se vide. Au-delà de
 24 h, GitHub rougit le job (« not acquired within 24 hours ») : « Re-run failed jobs ».
 
 Le run de `main` non conclu rend `isCiGreen` faux : programmer un déploiement depuis la console est
@@ -157,3 +165,118 @@ sur les autres, à enchaîner VM allumée.
 
 Après tout changement du `.env` d'un runner : relancer son service. Après une modification des hooks
 dans le dépôt : les recopier dans la VM (le runner ne lit pas le dépôt pour eux).
+
+## 9. Branche de lot
+
+> **Maison unique** du régime de CI par branche cible et des gestes d'une branche de lot. Un lot se
+> merge PR après PR (squash) dans `lot/<sujet>` ; à la fin, UNE PR `lot/<sujet>` → `main` rejoue le
+> gate complet. Décision et raison : `specs/courantes/etat-des-lieux.md` §2 (CI : branche de lot).
+
+### Les régimes (`ci.yml`, tri par `github.base_ref`, jamais par dossier)
+
+| Régime | Condition | Jobs |
+|---|---|---|
+| toujours | aucune | `preflight`, `lint`, `secrets-scan`, `semgrep`, `engine-tests` |
+| toute PR | `pull_request` | `phpstan`, `rector`, `blocking-tests`, `frontend`, `engine-semantics`, `engine-perf-pr` |
+| PR vers `main` | `pull_request` ET base `main` | `backend-tests`, `e2e`, `functional-tests` |
+| cible `main` | pas une PR, OU base `main` | `dependency-audit`, `build-docker` |
+| push `main` | réf `main` | `engine-perf` |
+
+- **PR vers `main`** : tout sauf `engine-perf`. **PR vers `lot/**`** : « toujours » + « toute PR » ;
+  les cinq jobs lourds (`backend-tests`, `e2e`, `functional-tests`, `dependency-audit`,
+  `build-docker`) et `engine-perf` sont sautés. **Push `main`** : inchangé (`isCiGreen`). **Push
+  `lot/**`** : aucun run.
+- **Un job sauté compte comme RÉUSSI pour un required check.** D'où des listes fermées et des `if`
+  exacts, gardés par `CiWorkflowRegimeTest` ; d'où aussi la règle N2 ci-dessous.
+- **`edited`** fait partie des types de `pull_request` : changer la base d'une PR (`lot/<sujet>` →
+  `main`) relance un run sous le régime de la base COURANTE. Aucun `if` ne lit `github.event.action`.
+  Coût : éditer titre ou corps relance le run, et la concurrence annule le run en cours ; un run
+  annulé ne compte pas comme réussi. **Titre et corps se posent à `gh pr create`, pas d'édition
+  pendant un run** (Dependabot réédite le corps de ses PR : coût en runs, pas de risque).
+- **Preflight** : sa garde fork couvre les PR vers `lot/**` comme vers `main`.
+- **Ce que le test ne prouve pas** (docblock de `CiWorkflowRegimeTest`) : la sémantique GitHub
+  « sauté = réussi » ; le changement de base et les deux PR d'une même tête (gestes ci-dessous) ;
+  les rulesets ; la concordance des constantes de checks avec la protection et les rulesets réels ;
+  qu'un check requis de `main` soit satisfait par un run léger.
+
+### Règle N2 — avant tout GO ou merge d'une PR vers `main`
+
+Les 15 contextes requis de `main` portent tous l'`app_id` de GitHub Actions : un run **léger** les
+satisfait donc tous (les lourds « skipped » comptent comme réussis), et `strict` ne protège pas (une
+branche issue d'un lot fraîchement rebasé est à jour). Règle : on **lit la sortie complète de
+`gh pr checks <n>`** ; **une seule ligne « skipping » est admise, « Engine Perf Gate (main only) »**
+(pas un contexte requis, pas plus que « Engine Perf (PR, dense only) ») ; toute autre bloque le GO.
+Le **code retour ne compte pas** : `gh pr checks` sort à 0 avec des « skipping ». Variante mécanique :
+`gh pr checks <n> --required --json name,bucket`, zéro entrée `skipping`. La commande figure dans le
+résumé de GO de l'orchestrateur. Remède si un « skipping » apparaît : fermer ou recibler toute autre
+PR partie de la même tête, puis `gh run rerun` CIBLÉ du run PR→`main` ; un commit vide n'est admis
+que si la tête ne porte qu'UNE PR (sinon il relance les deux et recrée la course).
+
+### Rulesets de `lot/**` (hors dépôt)
+
+À poser après le merge de la PR qui introduit ce régime, par l'orchestrateur (`gh api -X POST
+repos/{owner}/{repo}/rulesets`, `integration_id` de l'app GitHub Actions relu dans la protection de
+`main`) ; relire l'état réel avec `gh api repos/{owner}/{repo}/rulesets`.
+
+- **`lot-gate`** : cible `refs/heads/lot/**` ; règle `required_status_checks` sur les checks légers
+  (`LOT_REQUIRED_CHECKS` de `CiWorkflowRegimeTest` : copie, à relire contre le ruleset),
+  `strict_required_status_checks_policy`, `do_not_enforce_on_create` ; **pas** de règle
+  `non_fast_forward` (le force-push du rebase final est voulu). « Engine Perf (PR, dense only) »
+  n'est pas requis, miroir de `main`.
+- **`lot-no-delete`** : règle `deletion`, bypass admin. Sans elle la branche d'un lot serait
+  indestructible ; avec elle, `delete_branch_on_merge` échoue sur `lot/<sujet>` au merge final :
+  **la suppression de la branche de lot est un geste manuel admin** (`git push origin --delete
+  lot/<sujet>`, puis `git branch -D`).
+
+### Ordre des gestes d'exploitation (après le merge, sur une branche `lot/essai`)
+
+1. **B2 en premier** : `lot-gate` SANS bypass ; `lot/essai` depuis `main` ; commit trivial, rebase,
+   `git push --force-with-lease` — un refus est possible (un `required_status_checks` de ruleset
+   peut s'appliquer aux push directs : les commits rebasés, nouveaux SHA sans run, seraient
+   refusés). Si refus : ajouter le bypass admin à `lot-gate` et rejouer.
+2. **Héritage du bypass** : si `lot-gate` porte un bypass admin, les agents poussent et mergent avec
+   l'identité GitHub du fondateur et en héritent. **Jamais `--admin`, jamais le bouton bypass ;
+   `gh pr checks <n> --watch` vert AVANT `gh pr merge --squash`.** À prouver sur `lot/essai` : un
+   check en attente bloque-t-il `gh pr merge --squash` sans `--admin` pour un acteur bypass ? Sinon
+   la discipline porte seule le gate du lot.
+3. `lot-no-delete` ; vérifier que `git push origin --delete lot/essai` est refusé sans bypass.
+4. PR d'essai vers `lot/essai` : régime léger (cinq lourds sautés, checks requis de `lot-gate`
+   présents) ; un check en attente bloque le merge.
+5. **B1** : PR d'essai vers `lot/essai`, run léger, changer sa base vers `main` (« Edit ») ; un nouveau
+   run du gate complet, lourds exécutés, est attendu ; fermer sans merger.
+6. **M1** (ci-dessous) : à rejouer et consigner.
+7. Merge (squash) d'une PR d'essai dans `lot/essai` (aucun run sur ce push) ; rebase +
+   `--force-with-lease` ; PR `lot/essai` → `main` : gate complet ; **la fermer sans merger**
+   (décision fondateur 2026-11-10).
+8. Mesure du critère de durée (ci-dessous). Suppression de `lot/essai` (bypass admin). Première
+   vraie branche de lot : worktrees des agents depuis `origin/lot/<sujet>`, PR ouvertes avec
+   `--base lot/<sujet>`.
+
+### Critère de durée (décision fondateur 2026-11-10 ; mesure APRÈS le merge, pas encore faite)
+
+Une PR de lot doit durer **≤ 10 min murales ET ≤ 50 % du run PR→`main`**, les deux mesurés sur **LE
+MÊME pool de runners** (la mesure nomme la valeur de `CI_RUNS_ON` du moment) : 5 runs PR→lot, et un
+run PR→`main` de référence (geste 7). Au-dessus, retour au fondateur avant la première vraie branche
+de lot. Un run mesuré sur un autre pool (VM ou runners GitHub) ne vaut pas pour celui-ci.
+
+### Règles de geste
+
+- **M1 — jamais deux PR ouvertes depuis la même tête** (une PR→lot et une PR→`main`), **jamais
+  « Re-run all jobs » sur un run PR→lot dont la tête porte une PR→`main`** : le run léger le plus
+  récent pourrait remplacer les check runs lourds de la PR→`main`. La règle N2 en est le filet.
+- **Faute de frappe de base** (`lots/x` au lieu de `lot/x`) : aucun run, bouton de merge vert. Non
+  testable. L'orchestrateur ouvre avec `--base lot/<sujet>` et **vérifie que les checks
+  apparaissent**.
+- **Worktree parti de `main`** au lieu de `origin/lot/<sujet>` : la PR→lot reste saine (`strict`),
+  mais on repart du lot. **Branche du lot ouverte vers `main` par erreur** : la refuser ou la
+  recibler (`edited` rejoue alors le régime de la base courante).
+- **Rebase final** : `lot/<sujet>` rebasée sur `main` à jour, `git push --force-with-lease`, quand
+  aucune PR vers le lot n'est ouverte. **Jamais « Update branch »** (il crée un merge commit dans le
+  lot). Si `main` avance, re-rebase. Les PR Dependabot visent `main` : le rebase final les ramène.
+- **Merge de la PR finale** : merge commit (jamais squash), titre posé par `gh pr merge --merge
+  --subject "(IA Claude) <titre> (#N)"`. On tague ensuite le merge commit ou un commit de `main`
+  (`docs/ops/deploy.md`).
+- **Fin de lot** : `RoadmapIdentityTest` (dans `backend-tests`) ne tourne plus qu'à la PR finale ;
+  un rouge de fin de lot se diagnostique par `git bisect` entre `merge-base lot main` et la tête du
+  lot (`CLAUDE.md` §7 étape 5). Un correctif urgent passe par une PR vers `release`
+  (`docs/ops/deploy.md`) puis report sur `main` ; le rebase final le ramène dans le lot.
