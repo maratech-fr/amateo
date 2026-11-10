@@ -7,6 +7,7 @@ namespace App\Controller;
 use App\Entity\Schedule;
 use App\Enum\ScheduleStatus;
 use App\Message\GenerateScheduleMessage;
+use App\Service\ClubActivityTrace;
 use App\Service\CoachInTwoPlacesGuard;
 use App\Service\DeploymentGate;
 use App\Service\GenerationBlockersGuard;
@@ -70,6 +71,7 @@ final class FillPeriodPlanController extends AbstractController implements Seaso
         private readonly WriteTargetSeasonResolver $writeTargetSeasonResolver,
         private readonly DeploymentGate $deploymentGate,
         private readonly VersionEditability $versionEditability,
+        private readonly ClubActivityTrace $clubActivityTrace,
     ) {}
 
     // SEC-13 — la cible est le Schedule (version) nommé dans l'URL.
@@ -201,6 +203,8 @@ final class FillPeriodPlanController extends AbstractController implements Seaso
             }
             $this->entityManager->persist($newSchedule);
             $this->schedulePlanProvisioner->linkSchedule($newSchedule);
+            // « Dernière activité » de la console : horloge RÉELLE, après les re-vérifications.
+            $this->clubActivityTrace->markGeneration($newSchedule->getClubId());
             $this->entityManager->flush();
 
             return null;

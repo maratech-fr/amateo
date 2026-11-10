@@ -762,6 +762,29 @@ annoncé par `landing/robots.txt`). Rien à coder, rien à committer.
 Attentes réalistes : la recherche sur **le nom** aboutit en jours à semaines ; les recherches
 **génériques** (« planning basket »…) en mois, et seulement avec des liens entrants.
 
+### 1.13 Compte interne exclu de la « Dernière activité » des clubs
+
+La colonne « Dernière activité » de la console ne doit pas compter le compte Membre du fondateur
+sur le club pilote. Geste **hors dépôt** (le `backend/.env` du dépôt la laisse VIDE) : dans le
+`.env.prod` de la VM, poser l'adresse **telle qu'elle est en base** (`app_user.email`), puis
+redéployer (ou redémarrer `php-fpm` puis `nginx`, dans cet ordre) :
+
+```
+APP_ACTIVITY_EXCLUDED_EMAILS=adresse-du-compte@exemple.fr
+```
+
+- **Une seule adresse** aujourd'hui (le mécanisme accepte une liste CSV, casse et espaces
+  ignorés) : toute autre adresse est une décision fondateur.
+- Ce que l'exclusion fait : une **connexion** de ce compte ne marque pas ses clubs. Ce qu'elle
+  ne fait pas : sa trace RGPD (`app_user.last_login_at`) avance toujours, une **génération**
+  qu'il lance (« Générer », « Régénérer », « Combler ») marque le club, et la sauvegarde
+  nocturne voit sa connexion.
+- **Changer l'adresse du compte** (changement d'e-mail confirmé) rompt l'exclusion **en
+  silence** : mettre à jour `APP_ACTIVITY_EXCLUDED_EMAILS` dans la foulée, même geste.
+- La console n'affiche pas la liste : pour la vérifier, lire le `.env.prod` de la VM.
+- Conseil : que ce compte reste **Membre** partout (jamais gestionnaire d'un club réel), pour
+  qu'aucun geste d'écriture n'échappe au signal d'activité des clubs.
+
 ---
 
 ## Partie 2 — Au quotidien

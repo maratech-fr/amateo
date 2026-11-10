@@ -97,6 +97,12 @@ parameters:
     # La clé ne se COMMITE jamais, n'est jamais sérialisée, loguée ni mise dans une exception.
     env(UMAMI_API_KEY): ''
     env(UMAMI_WEBSITE_ID): ''
+    # « Dernière activité » des clubs (console) — adresses dont la connexion ne marque PAS les
+    # clubs (compte interne). Liste CSV, normalisée par LoginSuccessListener (trim + minuscules).
+    # VIDE par défaut ; la valeur de prod vit hors dépôt (docs/ops/deploy.md). Sa trace RGPD
+    # (`app_user.last_login_at`) avance toujours, et une génération qu'elle lance compte.
+    env(APP_ACTIVITY_EXCLUDED_EMAILS): ''
+    app.activity_excluded_emails: '%env(csv:APP_ACTIVITY_EXCLUDED_EMAILS)%'
 
 services:
     App\AdminJob\AdminJobExecutorInterface: '@App\AdminJob\ConsoleAdminJobExecutor'

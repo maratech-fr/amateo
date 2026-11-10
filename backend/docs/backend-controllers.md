@@ -58,8 +58,10 @@ est éclatée **par domaine** :
 `status`, `wallTimeMs`, `nbVariables`/`nbConstraints`/`nbConflicts`, `score`, `solverVersion`,
 `planType`, `nbTeams`/`nbVenues`, `createdAt` — `src/Entity/SolverMetric.php`). La table est
 sous RLS `FORCE` et le rôle runtime ne voit que le club courant. `Club.lastActivityAt` est mis
-à jour **à la mise en file d'une génération** seulement (`GenerateScheduleController::__invoke`,
-`src/Controller/GenerateScheduleController.php:125`) — pas au login. La rétention et le
+à jour par `LoginSuccessListener` (jour calendaire Europe/Paris, par utilisateur, sauf adresse
+de `APP_ACTIVITY_EXCLUDED_EMAILS`) et par `ClubActivityTrace::markGeneration`, appelé dans la
+transaction des trois guichets qui mettent une génération en file (`/generate`, `/regenerate`,
+`/fill`) — règle complète : `specs/courantes/superadmin-auth.md` (SA1). La rétention et le
 partitionnement sont différés aux jobs SA3.
 
 ### Authentification superadmin (`AdminAuthController.php`)

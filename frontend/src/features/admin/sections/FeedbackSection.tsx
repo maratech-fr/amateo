@@ -409,7 +409,8 @@ function ContextBlocks({ context, onCopy, copied }: { context: AdminFeedbackCont
               {T.feedbackBlockModalState}
               {true === context.modalStateTruncated ? <span className="ml-2 font-normal normal-case text-console-warning">{T.feedbackModalStateTruncated}</span> : null}
             </summary>
-            <pre className="mt-2 max-h-72 overflow-auto whitespace-pre-wrap break-words rounded border border-border bg-muted px-2 py-1 text-foreground">{context.modalState}</pre>
+            {/* eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- région défilante nommée, atteignable au clavier (WCAG 2.1.1) */}
+            <pre tabIndex={0} role="region" aria-label={T.feedbackModalStateRegionLabel} className="mt-2 max-h-72 overflow-auto whitespace-pre-wrap break-words rounded border border-border bg-muted px-2 py-1 text-foreground">{context.modalState}</pre>
           </details>
         </div>
       ) : null}

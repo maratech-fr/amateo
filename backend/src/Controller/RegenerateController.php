@@ -7,6 +7,7 @@ namespace App\Controller;
 use App\Entity\Schedule;
 use App\Enum\ScheduleStatus;
 use App\Message\GenerateScheduleMessage;
+use App\Service\ClubActivityTrace;
 use App\Service\CoachInTwoPlacesGuard;
 use App\Service\DeploymentGate;
 use App\Service\GenerationBlockersGuard;
@@ -55,6 +56,7 @@ final class RegenerateController extends AbstractController implements SeasonSco
         private readonly SocleGuard $socleGuard,
         private readonly WriteTargetSeasonResolver $writeTargetSeasonResolver,
         private readonly DeploymentGate $deploymentGate,
+        private readonly ClubActivityTrace $clubActivityTrace,
     ) {}
 
     // SEC-13 — la cible est le Schedule nommé dans l'URL (id de version).
@@ -170,6 +172,8 @@ final class RegenerateController extends AbstractController implements SeasonSco
             $loadedId = $this->schedulePlanProvisioner->lockSourceScheduleIdOfPlan((string) $source->getSchedulePlanId());
             $this->entityManager->persist($newSchedule);
             $this->schedulePlanProvisioner->linkSchedule($newSchedule);
+            // « Dernière activité » de la console : horloge RÉELLE, après les gardes.
+            $this->clubActivityTrace->markGeneration($newSchedule->getClubId());
             $this->entityManager->flush();
         });
 

@@ -1,8 +1,13 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { QueryClientProvider } from "@tanstack/react-query";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { HTTPError } from "ky";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { ReactElement } from "react";
+import { createMemoryRouter, RouterProvider } from "react-router";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { queryClient } from "@/shared/lib/queryClient";
+import { toast } from "@/shared/stores/toastStore";
 import { renderWithProviders } from "@/test/utils";
 
 import type { AdminFeedbackAuto, AdminFeedbackDetail, AdminFeedbackItem, AdminFeedbackQos, AdminFeedbackResponse } from "../api";
@@ -424,4 +429,59 @@ describe("FeedbackSection", () => {
     // Le JSON brut de l'état est lisible (texte pur dans un <pre>).
     expect(within(dialog).getByText(/"step":"equipes"/)).toBeInTheDocument();
   });
+
+  // D10 (console PR 1) — la zone défilante de l'état de la modale se fait défiler AU CLAVIER : elle
+  // reçoit le focus (tabindex 0) et porte un nom accessible qui dit ce qu'elle contient.
+  it("rend la zone de l'état de la modale focalisable au clavier, avec un nom accessible", async () => {
+    mockList.mockResolvedValue(listResponse());
+    mockDetail.mockResolvedValue({
+      ...detailBase,
+      context: { screen: "/wizard", url: "http://app/wizard", userAgent: "UA", modalState: '{"step":"equipes"}', modalStateTruncated: false },
+    });
+    renderWithProviders(<FeedbackSection />, { route: "/admin" });
+
+    await userEvent.click(await screen.findByRole("button", { name: /voir le signalement de basket club lyon/i }));
+    const dialog = await screen.findByRole("dialog");
+    const region = within(dialog).getByText(/"step":"equipes"/);
+
+    expect(region.tagName).toBe("PRE");
+    expect(region).toHaveAttribute("tabindex", "0");
+    expect(region).toHaveAccessibleName(ADMIN_SECTIONS_TEXTS.feedbackModalStateRegionLabel);
+  });
+
+  // D6 (console PR 1) — rendu sous le VRAI queryClient (son filet global de mutations toastait) :
+  // un 409 sur « Traiter » se dit INLINE dans la fenêtre, et c'est tout — pas de toast générique
+  // par-dessus. Le cas « écran démonté avant la réponse » est déclaré sans test (docblock des hooks).
+  describe("échec dit une seule fois, à l'écran", () => {
+    afterEach(() => {
+      queryClient.clear();
+      vi.restoreAllMocks();
+    });
+
+    it("un 409 sur Traiter s'affiche inline et ne toaste pas", async () => {
+      const toastError = vi.spyOn(toast, "error");
+      mockList.mockResolvedValue(listResponse());
+      mockDetail.mockResolvedValue(detailBase);
+      mockTreat.mockRejectedValue(httpError(409, { error: "Ce signalement est déjà traité." }));
+      renderWithAppQueryClient(<FeedbackSection />);
+
+      await userEvent.click(await screen.findByRole("button", { name: /voir le signalement de basket club lyon/i }));
+      await screen.findByRole("dialog");
+      await userEvent.click(screen.getByRole("button", { name: ADMIN_SECTIONS_TEXTS.feedbackTreat }));
+      await userEvent.click(screen.getByRole("button", { name: /confirmer/i }));
+
+      expect(await screen.findByText("Ce signalement est déjà traité.")).toBeInTheDocument();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(toastError).not.toHaveBeenCalled();
+    });
+  });
 });
+
+function renderWithAppQueryClient(ui: ReactElement) {
+  const router = createMemoryRouter([{ path: "*", element: ui }], { initialEntries: ["/admin"] });
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <RouterProvider router={router} />
+    </QueryClientProvider>,
+  );
+}

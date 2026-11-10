@@ -8,6 +8,7 @@ use App\Entity\Club;
 use App\Entity\Schedule;
 use App\Enum\ScheduleStatus;
 use App\Message\GenerateScheduleMessage;
+use App\Service\ClubActivityTrace;
 use App\Service\CoachInTwoPlacesGuard;
 use App\Service\DeploymentGate;
 use App\Service\GenerationBlockersGuard;
@@ -49,6 +50,7 @@ final class GenerateScheduleController extends AbstractController implements Sea
         private readonly ClockInterface $clock,
         private readonly WriteTargetSeasonResolver $writeTargetSeasonResolver,
         private readonly DeploymentGate $deploymentGate,
+        private readonly ClubActivityTrace $clubActivityTrace,
     ) {}
 
     // SEC-13 — la cible est le Schedule nommé dans l'URL (id de version).
@@ -166,8 +168,9 @@ final class GenerateScheduleController extends AbstractController implements Sea
             $schedule->setStatus(ScheduleStatus::PENDING);
             // P5-10 — instant de mise en file (attente queue → generating mesurable).
             $schedule->setQueuedAt(DateTimeImmutable::createFromInterface($this->clock->now()));
+            // « Dernière activité » de la console : horloge RÉELLE, après les gardes.
+            $this->clubActivityTrace->markGeneration($schedule->getClubId());
             if ($club instanceof Club) {
-                $club->setLastActivityAt(DateTimeImmutable::createFromInterface($this->clock->now()));
                 if (!$club->getOnboardingCompleted()) {
                     $club->setOnboardingCompleted(true);
                 }

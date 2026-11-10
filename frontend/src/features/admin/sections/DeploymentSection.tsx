@@ -37,8 +37,10 @@ export function DeploymentSection() {
   const configured = deployments.data?.configured ?? false;
   const tagOptions = tags.data?.items ?? [];
   // GitHub injoignable : la liste des tags revient `available:false` (jamais une 500). On DIT
-  // l'indisponibilité au lieu de proposer « Programmer » sur une liste vide et muette.
-  const tagsAvailable = tags.data?.available ?? true;
+  // l'indisponibilité au lieu de proposer « Programmer » sur une liste vide et muette. Une lecture
+  // en ÉCHEC (réseau, 5xx) n'est pas une liste disponible non plus : bandeau + « Réessayer »
+  // (la query porte `ownsError`, aucun toast générique en plus).
+  const tagsAvailable = !tags.isError && (tags.data?.available ?? true);
 
   // Une seule mise en production vit à la fois : la première non terminale est « active ».
   const active = items.find((d) => "scheduled" === d.status || "dispatched" === d.status) ?? null;
@@ -71,8 +73,8 @@ export function DeploymentSection() {
           setScheduledAtLocal("");
           setWindowMinutes("30");
         },
-        // Message serveur PRÉCIS inline (422 version refusée, 409 déjà programmée) — le toast
-        // générique reste au niveau HOOK (FRT-38). `setScheduleError` n'arme pas le garde.
+        // Message serveur PRÉCIS inline (422 version refusée, 409 déjà programmée) — seul retour :
+        // le hook se tait (onError silencieux, FRT-38). `setScheduleError` n'arme pas le garde.
         // SEC-08 : un 5xx ne doit PAS afficher son corps (errorMessage le tait → « Erreur serveur »
         // générique) ; pour le 502 « GitHub injoignable » de la programmation, on AUTEUR nous-mêmes
         // un message d'attente CLAIR côté client (constante, keyée sur le 5xx).
@@ -103,7 +105,12 @@ export function DeploymentSection() {
         </p>
       ) : null}
 
-      {configured && !tagsAvailable ? (
+      {tags.isError ? (
+        <div className="space-y-2 rounded-xl border border-console-destructive-edge/40 bg-console-destructive-surface/10 p-4 text-sm text-console-text">
+          <p>{ADMIN_SECTIONS_TEXTS.deploymentTagsReadError}</p>
+          <button type="button" className="underline" onClick={() => void tags.refetch()}>{ADMIN_SECTIONS_TEXTS.deploymentTagsRetry}</button>
+        </div>
+      ) : configured && !tagsAvailable ? (
         <div className="space-y-2 rounded-xl border border-console-destructive-edge/40 bg-console-destructive-surface/10 p-4 text-sm text-console-text">
           <p>{ADMIN_SECTIONS_TEXTS.deploymentGithubUnreachableTags}</p>
           <button type="button" className="underline" onClick={() => void tags.refetch()}>{ADMIN_SECTIONS_TEXTS.retry}</button>
