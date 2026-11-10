@@ -83,7 +83,8 @@ final class GitHubDeployClient
      * Sur un commit de `main`, ce run est ALLÉGÉ : il dit « les images prod se construisent
      * (Trivy CRITICAL), la perf tient, lint/secrets/semgrep/audit sont verts » — les suites
      * (bloquants, complète, e2e, Behat, sémantique moteur) ont été prouvées par la PR sur l'arbre
-     * mergé (branche à jour obligatoire + squash). Un run non conclu (runner éteint) n'est pas vert.
+     * mergé (branche à jour obligatoire ; squash d'une PR, ou merge commit d'une branche de lot
+     * dont la PR finale a rejoué le gate complet). Un run non conclu (runner éteint) n'est pas vert.
      */
     public function isCiGreen(string $version): bool
     {

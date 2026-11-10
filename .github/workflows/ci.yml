@@ -4,11 +4,21 @@ on:
   push:
     branches: [main]
   pull_request:
-    branches: [main]
+    # `edited` : un changement de base (lot/<sujet> → main) relance le run sous le régime de
+    # la base COURANTE. Aucun `if` ne lit `github.event.action` : une édition rejoue tout le
+    # régime, jamais un sous-ensemble.
+    types: [opened, synchronize, reopened, edited]
+    branches: [main, 'lot/**']
 
 permissions:
   contents: read
 
+# Régime par branche cible (jamais par dossier touché) : une PR vers `main` joue le gate
+# COMPLET (tout sauf engine-perf) ; une PR vers `lot/<sujet>` joue le régime LÉGER (jobs sans
+# `if` + jobs `if: pull_request`) — les lourds (backend-tests, e2e, functional-tests,
+# dependency-audit, build-docker) attendent la PR finale `lot/<sujet>` → `main`. Le push sur
+# `main` garde son run (isCiGreen) ; un push sur `lot/**` ne lance aucun run.
+#
 # Un push qui remplace un autre sur la MÊME réf annule le run précédent — sauf sur `main`, où
 # chaque commit mérite son verdict complet (file de merge, historique du gate). Économise des
 # exécutants sur les PR qui repoussent vite, sans jamais couper un run de `main`.
@@ -19,9 +29,9 @@ concurrency:
 
 jobs:
   # Garde fork (ceinture YAML ; le garde réel est le réglage « Require approval for all
-  # external contributors » du dépôt) : une PR venue d'un AUTRE dépôt n'exécute rien sur le
-  # runner auto-hébergé. Aucun checkout ici — le code d'un fork n'atterrit jamais sur le
-  # runner. Tous les autres jobs `needs: preflight` ; « Preflight » est un required check (un
+  # external contributors » du dépôt) : une PR venue d'un AUTRE dépôt — vers `main` comme vers
+  # `lot/**` — n'exécute rien sur le runner auto-hébergé. Aucun checkout ici — le code d'un
+  # fork n'atterrit jamais sur le runner. Tous les autres jobs `needs: preflight` ; « Preflight » est un required check (un
   # job sauté vaudrait succès). Sur `push main` le step se saute et le job est vert.
   preflight:
     name: Preflight
@@ -218,6 +228,8 @@ jobs:
   dependency-audit:
     name: Dependency Audit
     runs-on: ${{ vars.CI_RUNS_ON || 'ubuntu-24.04' }}
+    # PR vers `main` et push main ; jamais sur une PR vers `lot/**` (vue à la PR finale du lot).
+    if: github.event_name != 'pull_request' || github.base_ref == 'main'
     needs: preflight
     env:
       # Un projet compose PAR JOB et par tentative : deux jobs sur le même démon (runner
@@ -526,8 +538,9 @@ jobs:
         run: |
           FILES=""
           # Régime de la CI sur le runner auto-hébergé (NR de tous les axes : il décide QUAND
-          # tournent leurs NR) — routage par variable, garde fork, gate complet sur chaque PR,
-          # étanchéité des jobs sur le démon partagé, bloquants en deux processus.
+          # tournent leurs NR) — routage par variable, garde fork, régime par branche cible (gate
+          # complet sur chaque PR vers main, léger vers lot/**), étanchéité des jobs sur le démon
+          # partagé, bloquants en deux processus.
           FILES="$FILES tests/Unit/Documentation/CiWorkflowRegimeTest.php"
           # L'axe auth/memberships : sans ce test dans le gate BLOQUANT, une
           # re-suppression de `eraseCredentials` (bump Rector + `make rector` pour
@@ -1283,7 +1296,8 @@ jobs:
   backend-tests:
     name: Backend Tests (suite + couverture)
     runs-on: ${{ vars.CI_RUNS_ON_HEAVY || 'ubuntu-24.04' }}
-    if: github.event_name == 'pull_request'
+    # PR vers `main` seulement (une PR vers `lot/**` le rejoue à la PR finale du lot).
+    if: github.event_name == 'pull_request' && github.base_ref == 'main'
     needs: preflight
     env:
       # Un projet compose PAR JOB et par tentative : deux jobs sur le même démon (runner
@@ -1533,7 +1547,8 @@ jobs:
     # Un step bloqué (verrou apt, téléchargement figé) consommerait sinon le défaut
     # GitHub de 6 h : il occupe un exécutant, bloque la file, et ne dit RIEN.
     timeout-minutes: 15
-    # Earlier, cheaper perf signal ON PRS (main keeps the full gate above).
+    # Earlier, cheaper perf signal ON PRS — vers `main` comme vers `lot/**` (main keeps the
+    # full gate above).
     # Only the dense tier (BCCL stays on main), and only when engine/ moved
     # (a backend-only PR does not pay it) — P4-167, decisions C1-C3.
     if: github.event_name == 'pull_request'
@@ -1632,7 +1647,8 @@ jobs:
   e2e:
     name: E2E (Playwright)
     runs-on: ${{ vars.CI_RUNS_ON_HEAVY || 'ubuntu-24.04' }}
-    if: github.event_name == 'pull_request'
+    # PR vers `main` seulement (une PR vers `lot/**` le rejoue à la PR finale du lot).
+    if: github.event_name == 'pull_request' && github.base_ref == 'main'
     needs: preflight
     # Un step bloqué (verrou apt, téléchargement figé) consommerait sinon le défaut
     # GitHub de 6 h : il occupe un exécutant, bloque la file, et ne dit RIEN.
@@ -2003,7 +2019,8 @@ jobs:
   functional-tests:
     name: Functional Tests (Behat)
     runs-on: ${{ vars.CI_RUNS_ON_HEAVY || 'ubuntu-24.04' }}
-    if: github.event_name == 'pull_request'
+    # PR vers `main` seulement (une PR vers `lot/**` le rejoue à la PR finale du lot).
+    if: github.event_name == 'pull_request' && github.base_ref == 'main'
     needs: preflight
     env:
       # Un projet compose PAR JOB et par tentative : deux jobs sur le même démon (runner
@@ -2098,8 +2115,9 @@ jobs:
     name: Build Docker Images
     runs-on: ${{ vars.CI_RUNS_ON_HEAVY || 'ubuntu-24.04' }}
     # Sur `push main` ses `needs` PR seulement (blocking-tests) sont SAUTÉS : il tourne quand même,
-    # tant que rien n'a échoué ni été annulé et que la garde fork est passée.
-    if: ${{ !cancelled() && needs.preflight.result == 'success' && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') }}
+    # tant que rien n'a échoué ni été annulé et que la garde fork est passée. Dernier terme :
+    # PR vers `main` et push main seulement, jamais sur une PR vers `lot/**`.
+    if: ${{ !cancelled() && needs.preflight.result == 'success' && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') && (github.event_name != 'pull_request' || github.base_ref == 'main') }}
     env:
       # Un projet compose PAR JOB et par tentative : deux jobs sur le même démon (runner
       # auto-hébergé) ne se voient jamais — conteneurs, volumes, réseaux et images au nom du
