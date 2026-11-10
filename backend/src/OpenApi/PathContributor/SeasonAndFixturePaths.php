@@ -205,7 +205,7 @@ final readonly class SeasonAndFixturePaths implements CustomPathContributor
                         'coachMailing' => ['type' => 'object', 'description' => 'Sending the conflicts to the coaches: the button counters (computed by the same service as the send) and the last send of the season', 'properties' => [
                             'personConflictCount' => ['type' => 'integer', 'description' => 'Person conflicts on a match that would be mailed (held lines excluded)'],
                             'pendingRecipientCount' => ['type' => 'integer', 'description' => 'Coaches told at an earlier send who no longer have a conflict and have a valid address — to be told « no conflict left »'],
-                            'recipientCount' => ['type' => 'integer', 'description' => 'Coaches who will actually receive an e-mail (a list or « no conflict left »), valid address only — what the confirmation announces'],
+                            'recipientCount' => ['type' => 'integer', 'description' => 'Coaches with a valid address who hold a list or are to be told « no conflict left » (what a « resend all » would mail); what a default send mails is told by the preview'],
                             'last' => ['type' => 'object', 'nullable' => true, 'description' => 'The last send of the season, null when nothing was ever sent', 'properties' => [
                                 'sentAt' => ['type' => 'string', 'format' => 'date-time', 'description' => 'Club wall-clock time'],
                                 'sentByFirstName' => ['type' => 'string', 'nullable' => true, 'description' => 'null when the sender no longer exists'],
@@ -225,12 +225,21 @@ final readonly class SeasonAndFixturePaths implements CustomPathContributor
             operationId: 'postFixtureConflictsMailCoaches',
             tags: ['Match'],
             responses: [
-                '200' => $this->schemas->jsonResponse('Each concerned coach was mailed, as an indication, his own person conflicts on a match; a coach told at an earlier send who has none left was mailed « no conflict left ». Best-effort: coaches without an address are skipped, failed sends are named', [
+                '200' => $this->schemas->jsonResponse('Each concerned coach was mailed, as an indication, his full list of person conflicts on a match, new or changed ones marked; by default only coaches with a conflict new or changed since the last send are mailed (resendAll mails every list); a coach told at an earlier send who has none left was mailed « no conflict left ». Best-effort: coaches without an address are skipped, failed sends are named', [
                     'type' => 'object',
                     'properties' => [
                         'sentAt' => ['type' => 'string', 'format' => 'date-time', 'nullable' => true, 'description' => 'Club wall-clock time; null when no e-mail was queued (nothing stamped)'],
+                        'resendAll' => ['type' => 'boolean', 'description' => 'The option the send ran with'],
                         'conflictCount' => ['type' => 'integer'],
-                        'recipients' => ['type' => 'array', 'items' => ['type' => 'object', 'properties' => ['coachId' => ['type' => 'string'], 'firstName' => ['type' => 'string'], 'lastName' => ['type' => 'string'], 'conflictCount' => ['type' => 'integer']]]],
+                        'recipients' => ['type' => 'array', 'items' => ['type' => 'object', 'properties' => [
+                            'coachId' => ['type' => 'string'],
+                            'firstName' => ['type' => 'string'],
+                            'lastName' => ['type' => 'string'],
+                            'conflictCount' => ['type' => 'integer'],
+                            'newCount' => ['type' => 'integer', 'description' => 'Conflicts of the list never sent to this coach'],
+                            'changedCount' => ['type' => 'integer', 'description' => 'Conflicts of the list whose displayed content changed since they were sent to this coach'],
+                            'receiptKnown' => ['type' => 'boolean', 'description' => 'false when nothing detailed was ever recorded for this coach: no mark'],
+                        ]]],
                         'cleared' => ['type' => 'array', 'items' => ['type' => 'object', 'properties' => ['coachId' => ['type' => 'string'], 'firstName' => ['type' => 'string'], 'lastName' => ['type' => 'string']]]],
                         'skipped' => ['type' => 'array', 'items' => ['type' => 'object', 'properties' => ['coachId' => ['type' => 'string'], 'firstName' => ['type' => 'string'], 'lastName' => ['type' => 'string'], 'kind' => ['type' => 'string', 'enum' => ['conflicts', 'cleared']]]]],
                         'failed' => ['type' => 'array', 'items' => ['type' => 'object', 'properties' => ['coachId' => ['type' => 'string'], 'firstName' => ['type' => 'string'], 'lastName' => ['type' => 'string'], 'kind' => ['type' => 'string', 'enum' => ['conflicts', 'cleared']]]]],
@@ -239,10 +248,55 @@ final readonly class SeasonAndFixturePaths implements CustomPathContributor
                 '400' => new Response('No club in context'),
                 '403' => new Response('Not a management member, or a demonstration club'),
                 '409' => new Response('Archived season, season plan not validated, or a send already in progress for the club'),
-                '422' => new Response('No season, or nothing to send and no coach to tell'),
+                '422' => new Response('No season, invalid « resend all » option, nothing to send and no coach to tell, or nothing new since the last send'),
                 '429' => new Response('Club e-mail cap reached (200 / 24 h) — the whole batch is refused'),
             ],
             summary: 'Send the person conflicts on a match to the concerned coaches — management only',
+            requestBody: $this->schemas->jsonBody([
+                'type' => 'object',
+                'properties' => [
+                    'resendAll' => ['type' => 'boolean', 'description' => 'Mail every concerned coach his full list, even with nothing new (default false; an empty body means false)'],
+                ],
+            ]),
+        )));
+
+        $paths->addPath('/api/fixtures/conflicts/mail-coaches/preview', new PathItem(get: new Operation(
+            operationId: 'getFixtureConflictsMailCoachesPreview',
+            tags: ['Match'],
+            responses: [
+                '200' => $this->schemas->jsonResponse('Before the send, coach by coach, what the send would do — computed exactly as the send does; read-only (no lock, no cap, no write)', [
+                    'type' => 'object',
+                    'properties' => [
+                        'seasonId' => ['type' => 'string'],
+                        'personConflictCount' => ['type' => 'integer'],
+                        'defaultMailCount' => ['type' => 'integer', 'description' => 'E-mails a default send would queue'],
+                        'resendAllMailCount' => ['type' => 'integer', 'description' => 'E-mails a « resend all » send would queue'],
+                        'blockedByDefault' => ['type' => 'string', 'nullable' => true, 'enum' => ['nothing', 'no_address', 'nothing_new', 'mixed'], 'description' => 'Why a default send would mail nothing (null when it would mail someone)'],
+                        'blockedOnResendAll' => ['type' => 'string', 'nullable' => true, 'enum' => ['nothing', 'no_address'], 'description' => 'Why a « resend all » send would mail nothing (null when it would mail someone)'],
+                        'recipients' => ['type' => 'array', 'description' => 'Sorted: mailed by default first, then without a valid address, then nothing new; alphabetical next', 'items' => ['type' => 'object', 'properties' => [
+                            'coachId' => ['type' => 'string'],
+                            'firstName' => ['type' => 'string'],
+                            'lastName' => ['type' => 'string'],
+                            'email' => ['type' => 'string', 'nullable' => true, 'description' => 'As entered — may be invalid'],
+                            'hasValidAddress' => ['type' => 'boolean'],
+                            'kind' => ['type' => 'string', 'enum' => ['conflicts', 'cleared']],
+                            'receiptKnown' => ['type' => 'boolean', 'description' => 'false when nothing detailed was ever recorded for this coach'],
+                            'conflictCount' => ['type' => 'integer'],
+                            'newCount' => ['type' => 'integer'],
+                            'changedCount' => ['type' => 'integer'],
+                            'alreadySentCount' => ['type' => 'integer'],
+                            'lastSentAt' => ['type' => 'string', 'format' => 'date-time', 'nullable' => true, 'description' => 'Club wall-clock time of the latest send of a current conflict to this coach'],
+                            'sendsByDefault' => ['type' => 'boolean'],
+                            'sendsOnResendAll' => ['type' => 'boolean'],
+                        ]]],
+                    ],
+                ]),
+                '400' => new Response('No club in context'),
+                '403' => new Response('Not a management member, or a demonstration club'),
+                '409' => new Response('Archived season, or season plan not validated'),
+                '422' => new Response('No season'),
+            ],
+            summary: 'Preview the send of the person conflicts to the coaches (who would receive what) — management only',
         )));
 
         $paths->addPath('/api/fixtures/conflicts/{fingerprint}/resolution', new PathItem(

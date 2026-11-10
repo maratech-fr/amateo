@@ -284,7 +284,7 @@ export interface ConflictCoachMailing {
   personConflictCount: number;
   /** Coachs informés lors d'un envoi précédent, sans conflit maintenant, à adresse valide. */
   pendingRecipientCount: number;
-  /** Coachs qui recevront réellement un e-mail (liste ou « plus aucun »), adresse valide seulement. */
+  /** Coachs à adresse valide qui détiennent une liste ou sont à prévenir (plus lu par l'écran : l'aperçu avant envoi compte ce qui partira). */
   recipientCount: number;
   last: ConflictMailingLast | null;
 }
@@ -295,11 +295,16 @@ export interface ConflictMailingCoach {
   lastName: string;
 }
 
-/** Le résultat d'un envoi aux coachs ; `sentAt` null quand aucun e-mail n'a été enfilé. */
+/**
+ * Le résultat d'un envoi aux coachs ; `sentAt` null quand aucun e-mail n'a été enfilé. Les champs
+ * de la mémoire par conflit (`resendAll`, `newCount`/`changedCount`/`receiptKnown`) sont servis
+ * mais l'écran ne les lit pas (le toast compte les listes) : optionnels ici.
+ */
 export interface ConflictMailingResult {
   sentAt: string | null;
+  resendAll?: boolean;
   conflictCount: number;
-  recipients: (ConflictMailingCoach & { conflictCount: number })[];
+  recipients: (ConflictMailingCoach & { conflictCount: number; newCount?: number; changedCount?: number; receiptKnown?: boolean })[];
   cleared: ConflictMailingCoach[];
   skipped: (ConflictMailingCoach & { kind: "conflicts" | "cleared" })[];
   failed: (ConflictMailingCoach & { kind: "conflicts" | "cleared" })[];
@@ -332,8 +337,42 @@ export const deleteConflictResolution = (fingerprint: string): Promise<void> =>
   api.delete(`fixtures/conflicts/${fingerprint}/resolution`).then(() => undefined);
 
 /**
- * Envoie à chaque coach concerné ses conflits de personne sur un match (et « plus aucun conflit »
- * à qui n'en a plus). Management-gated ; 403 démo, 409 archivée/socle/envoi en cours, 422 rien à
- * envoyer, 429 plafond. Rend le résultat serveur tel quel.
+ * Envoie à chaque coach concerné sa liste de conflits de personne sur un match (et « plus aucun
+ * conflit » à qui n'en a plus) — par défaut aux seuls coachs qui ont du nouveau ou du modifié,
+ * `resendAll` renvoie tout. Management-gated ; 403 démo, 409 archivée/socle/envoi en cours, 422
+ * option invalide / rien à envoyer / rien de nouveau, 429 plafond. Rend le résultat serveur tel quel.
  */
-export const mailConflictsToCoaches = (): Promise<ConflictMailingResult> => api.post("fixtures/conflicts/mail-coaches").json<ConflictMailingResult>();
+export const mailConflictsToCoaches = (input: { resendAll: boolean }): Promise<ConflictMailingResult> => api.post("fixtures/conflicts/mail-coaches", { json: input }).json<ConflictMailingResult>();
+
+/** Une ligne de l'aperçu avant envoi — servie par le serveur, jamais recalculée. */
+export interface ConflictMailPreviewRecipient {
+  coachId: string;
+  firstName: string;
+  lastName: string;
+  email: string | null;
+  hasValidAddress: boolean;
+  kind: "conflicts" | "cleared";
+  receiptKnown: boolean;
+  conflictCount: number;
+  newCount: number;
+  changedCount: number;
+  alreadySentCount: number;
+  /** ATOM, heure murale du club. */
+  lastSentAt: string | null;
+  sendsByDefault: boolean;
+  sendsOnResendAll: boolean;
+}
+
+/** L'aperçu avant envoi : qui recevra quoi, par défaut et en « Tout renvoyer ». */
+export interface ConflictMailPreview {
+  seasonId: string;
+  personConflictCount: number;
+  defaultMailCount: number;
+  resendAllMailCount: number;
+  blockedByDefault: null | "nothing" | "no_address" | "nothing_new" | "mixed";
+  blockedOnResendAll: null | "nothing" | "no_address";
+  recipients: ConflictMailPreviewRecipient[];
+}
+
+/** Ce que l'envoi fera, coach par coach (même calcul serveur que le POST). Management-gated. */
+export const getConflictMailPreview = (): Promise<ConflictMailPreview> => api.get("fixtures/conflicts/mail-coaches/preview").json<ConflictMailPreview>();

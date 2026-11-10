@@ -15,6 +15,8 @@ use Symfony\Component\HttpKernel\KernelEvents;
  * SeasonScopedWriteInterface — the counterpart of the SeasonAccessGuard call
  * in AbstractStateProcessor, which only covers API Platform mutations. Runs on
  * kernel.controller (after TenantFilterListener has stamped _season_readonly).
+ * Every HTTP method of a marked controller is refused, GET included (e.g. the preview of the
+ * conflicts mailing to coaches, ConflictCoachMailController::preview).
  */
 final class SeasonReadonlyGuardListener implements EventSubscriberInterface
 {

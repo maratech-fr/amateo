@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Fixture, Venue, VenueLabelInventoryRow } from "./api";
-import { attachVenueLabel, deleteConflictResolution, detachVenueLabel, getFixtures, getVenueLabelInventory, getVenueSuggestions, getVenues, mailConflictsToCoaches, putConflictResolution, refreshOpponents, resolveOpponents } from "./api";
+import { attachVenueLabel, deleteConflictResolution, detachVenueLabel, getConflictMailPreview, getFixtures, getVenueLabelInventory, getVenueSuggestions, getVenues, mailConflictsToCoaches, putConflictResolution, refreshOpponents, resolveOpponents } from "./api";
 
 // On n'exerce QUE la coercition de `api.ts` : le voisin `@/shared/api/collection` est le
 // SEUL double. L'API Platform OMET les props nulles/vides du JSON — on prouve que les
@@ -139,14 +139,30 @@ describe("deleteConflictResolution — remet « à traiter » (P4-207)", () => {
 });
 
 describe("mailConflictsToCoaches — envoie les conflits de personne aux coachs", () => {
-  it("POST fixtures/conflicts/mail-coaches sans corps et rend le résultat serveur tel quel (sentAt null si rien n'est parti)", async () => {
+  it("POST fixtures/conflicts/mail-coaches avec `{ resendAll: false }` et rend le résultat serveur tel quel (sentAt null si rien n'est parti)", async () => {
     // Vérifié AVANT d'amorcer le double : sinon la réponse amorcée fuirait vers le test suivant.
     expect(typeof mailConflictsToCoaches).toBe("function");
-    const body = { sentAt: null, conflictCount: 0, recipients: [], cleared: [], skipped: [{ coachId: "k", firstName: "Karim", lastName: "Benali", kind: "conflicts" }], failed: [] };
+    const body = { sentAt: null, conflictCount: 0, resendAll: false, recipients: [], cleared: [], skipped: [{ coachId: "k", firstName: "Karim", lastName: "Benali", kind: "conflicts" }], failed: [] };
     post.mockReturnValueOnce({ json: () => Promise.resolve(body) } as unknown as ReturnType<typeof post>);
-    const out = await mailConflictsToCoaches();
+    const out = await mailConflictsToCoaches({ resendAll: false });
     expect(post).toHaveBeenCalledTimes(1);
-    expect(post.mock.calls[0]).toEqual(["fixtures/conflicts/mail-coaches"]);
+    expect(post.mock.calls[0]).toEqual(["fixtures/conflicts/mail-coaches", { json: { resendAll: false } }]);
+    expect(out).toEqual(body);
+  });
+
+  it("« Tout renvoyer » part dans le corps : `{ resendAll: true }`", async () => {
+    post.mockReturnValueOnce({ json: () => Promise.resolve({ sentAt: null, conflictCount: 0, resendAll: true, recipients: [], cleared: [], skipped: [], failed: [] }) } as unknown as ReturnType<typeof post>);
+    await mailConflictsToCoaches({ resendAll: true });
+    expect(post.mock.calls[0]).toEqual(["fixtures/conflicts/mail-coaches", { json: { resendAll: true } }]);
+  });
+});
+
+describe("getConflictMailPreview — l'aperçu avant envoi (qui recevra quoi)", () => {
+  it("GET fixtures/conflicts/mail-coaches/preview et rend l'aperçu serveur tel quel", async () => {
+    const body = { seasonId: "s", personConflictCount: 1, defaultMailCount: 0, resendAllMailCount: 1, blockedByDefault: "nothing_new", blockedOnResendAll: null, recipients: [] };
+    get.mockReturnValueOnce({ json: () => Promise.resolve(body) } as unknown as ReturnType<typeof get>);
+    const out = await getConflictMailPreview();
+    expect(get).toHaveBeenCalledWith("fixtures/conflicts/mail-coaches/preview");
     expect(out).toEqual(body);
   });
 });

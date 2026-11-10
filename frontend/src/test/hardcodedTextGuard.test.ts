@@ -84,6 +84,7 @@ const MIGRATED_FILES = [
   "features/matches/ReviewQueue.tsx",
   "features/matches/ReviewQueueRow.tsx",
   "features/matches/ConflictsPage.tsx",
+  "features/matches/CoachMailBar.tsx",
   "features/matches/ConflictRadar.tsx",
   "features/cockpit/FbiDeadlineCard.tsx",
   // Fermetures de gymnase (PR 1) — la carte, la saisie unique, l'aperçu et le bandeau « périmé »,

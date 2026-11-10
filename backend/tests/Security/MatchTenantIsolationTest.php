@@ -940,7 +940,9 @@ final class MatchTenantIsolationTest extends WebTestCase
      * NR axe §7.1 tenant isolation — « Envoyer aux coachs » e-maille des adresses TIERCES et tient
      * une mémoire par club (`conflict_mailing`). L'envoi de A n'atteint jamais un coach de B ; la
      * ligne de A est invisible à B (son GET n'a pas de « Envoyé le … », la RLS ne lui rend aucune
-     * ligne de A) ; l'envoi de B ne part qu'à ses coachs et sa mémoire ne contient jamais ceux de A.
+     * ligne de A, ni aucun reçu par conflit `conflict_mail_receipt`) ; l'aperçu de B (noms et
+     * adresses, `mail-coaches/preview`) ne liste jamais un coach de A ; l'envoi de B ne part qu'à ses
+     * coachs et sa mémoire ne contient jamais ceux de A.
      * Jumeau métier (envoi, mémoire, gardes) : {@see ConflictCoachMailApiTest}.
      */
     public function testConflictsMailedToCoachesNeverCrossClubs(): void
@@ -966,6 +968,21 @@ final class MatchTenantIsolationTest extends WebTestCase
         $this->scopeGucToClub($clubB->getId());
         self::assertSame(0, (int) $this->em->getConnection()->fetchOne('SELECT COUNT(*) FROM conflict_mailing WHERE club_id = :a', ['a' => $clubA->getId()]), 'la RLS cache la ligne de A à B');
 
+        // Reçus par conflit (quel conflit est parti à quel coach) : écrits pour A, invisibles à B.
+        $this->scopeGucToClub($clubA->getId());
+        self::assertGreaterThan(0, (int) $this->em->getConnection()->fetchOne('SELECT COUNT(*) FROM conflict_mail_receipt WHERE club_id = :a', ['a' => $clubA->getId()]), 'témoin : l\'envoi de A a écrit ses reçus');
+        $this->scopeGucToClub($clubB->getId());
+        self::assertSame(0, (int) $this->em->getConnection()->fetchOne('SELECT COUNT(*) FROM conflict_mail_receipt WHERE club_id = :a', ['a' => $clubA->getId()]), 'la RLS cache les reçus de A à B');
+
+        // L'aperçu de B (noms et adresses) ne liste que les coachs de B.
+        $this->client->request('GET', '/api/fixtures/conflicts/mail-coaches/preview', [], [], $this->authHeaders($userB));
+        self::assertResponseStatusCodeSame(200);
+        $previewB = $this->responseData();
+        self::assertSame([$coachB->getId()], array_column($previewB['recipients'] ?? [], 'coachId'), 'l\'aperçu de B ne liste que le coach de B');
+        $rawPreviewB = (string) $this->client->getResponse()->getContent();
+        self::assertStringNotContainsString($coachA->getId(), $rawPreviewB);
+        self::assertStringNotContainsString('coach.a@club-a.test', $rawPreviewB, 'l\'adresse d\'un coach de A n\'est jamais servie à B');
+
         $this->client->enableProfiler();
         $this->client->request('POST', '/api/fixtures/conflicts/mail-coaches', [], [], $this->authHeaders($userB), '');
         self::assertResponseStatusCodeSame(200);
@@ -976,6 +993,7 @@ final class MatchTenantIsolationTest extends WebTestCase
         $memoryB = (string) $this->em->getConnection()->fetchOne('SELECT recipient_coach_ids FROM conflict_mailing WHERE club_id = :b', ['b' => $clubB->getId()]);
         self::assertStringContainsString($coachB->getId(), $memoryB);
         self::assertStringNotContainsString($coachA->getId(), $memoryB);
+        self::assertSame(0, (int) $this->em->getConnection()->fetchOne('SELECT COUNT(*) FROM conflict_mail_receipt WHERE coach_id = :a', ['a' => $coachA->getId()]), 'B ne lit ni n\'écrit jamais un reçu d\'un coach de A');
     }
 
     /**

@@ -119,6 +119,31 @@ final class PurgeSeasonsCommandTest extends KernelTestCase
         self::assertSame(1, $count($current), 'celle de la saison courante reste');
     }
 
+    /**
+     * Les reçus d'envoi de conflits (quel conflit, à quel coach, quel contenu, quand) sont une donnée
+     * de SAISON : ils partent avec la saison purgée, ceux de la saison courante restent.
+     */
+    public function testTheConflictMailReceiptsDieWithTheirSeason(): void
+    {
+        [$club, $seasons] = $this->createClubWithSeasons();
+        [$old, , $current] = $seasons;
+        $coachId = $this->receiptCoachId($club, $current);
+        foreach ([$old, $current] as $season) {
+            $this->em->getConnection()->executeStatement(
+                'INSERT INTO conflict_mail_receipt (id, club_id, season_id, fingerprint, coach_id, content_digest, sent_at)
+                 VALUES (:id, :club, :season, :fingerprint, :coach, :digest, now())',
+                ['id' => Uuid::v4()->toRfc4122(), 'club' => $club->getId(), 'season' => $season->getId(), 'fingerprint' => 'MATCH_MATCH:c2', 'coach' => $coachId, 'digest' => sha1('c2')],
+            );
+        }
+
+        $this->runPurge(['--club' => $club->getId(), '--date' => $this->purgeDate()])->assertCommandIsSuccessful();
+        $this->scopeGucToClub($club->getId());
+
+        $count = fn (Season $season): int => (int) $this->em->getConnection()->fetchOne('SELECT COUNT(*) FROM conflict_mail_receipt WHERE season_id = :s', ['s' => $season->getId()]);
+        self::assertSame(0, $count($old), 'les reçus de la saison purgée sont partis');
+        self::assertSame(1, $count($current), 'ceux de la saison courante restent');
+    }
+
     protected function setUp(): void
     {
         self::bootKernel();
@@ -247,6 +272,25 @@ final class PurgeSeasonsCommandTest extends KernelTestCase
         $this->oldTokenId = $token->getId();
 
         return [$club, [$old, $past, $current, $draft]];
+    }
+
+    /**
+     * Le coach des reçus vit dans la saison COURANTE (il survit à la purge) : sans ça, la FK
+     * `ON DELETE CASCADE` vers `coach` emporterait les reçus N-2 avec le coach N-2 et le test ne
+     * prouverait plus l'étape de purge de saison elle-même.
+     */
+    private function receiptCoachId(Club $club, Season $season): string
+    {
+        $this->scopeGucToClub($club->getId());
+        $coach = new Coach;
+        $coach->setClubId($club->getId());
+        $coach->setSeasonId($season->getId());
+        $coach->setFirstName('Reçu');
+        $coach->setLastName('Coach');
+        $this->em->persist($coach);
+        $this->em->flush();
+
+        return $coach->getId();
     }
 
     private function season(Club $club, int $startYear): Season
