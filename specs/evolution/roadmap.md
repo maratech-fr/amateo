@@ -237,7 +237,7 @@
 | P5-4b | **Mesure de charge en prod — à reprendre quand le volume de clubs le justifie** | ⚪ | S | Le harnais et deux runs locaux INDICATIFS existent (`docs/ops/load-test.md` §Mesures). Le harnais ne peut PAS viser la prod tel quel, et c'est voulu : garde `sandbox-guard.sh` fail-closed, commande de seed dev-only (`services_dev.yaml`), stack dev câblée — ne jamais affaiblir ces gardes. La mémoire tient sur le papier (somme des limites ~5,1 Go, serveur PRO2-XXS à 7,8 Go). Décision fondateur 2026-10-08 : avec quelques clubs bêta la charge n'est pas observable, le sujet revient avec du volume. **Déclencheurs** (console superadmin § Capacité, `AdminCapacityService`) : pic `peakRssMb` du moteur au-delà de ~80 % de sa limite, p95 de durée qui dérape, attente en file, plaintes → PRO2-XS. **Trou connu** : le placement de matchs ne s'auto-mesure pas (aucun relevé RSS dans `match_output_schema.py`) — seul `docker stats` le voit ; l'ajouter touche le contrat. Si un tir redevient nécessaire : VM jetable de même gabarit, POST direct sur `engine:8000` depuis le réseau interne, jamais sur la prod. |
 ---
 
-## Findings d'audit ouverts (registre `/audit`) — 0
+## Findings d'audit ouverts (registre `/audit`) — 70
 
 > **À quoi sert cette section.** Le skill `/audit` tient un **registre à IDs stables** : un finding garde son
 > identifiant d'une édition à l'autre, ce qui rend la comparaison inter-éditions possible (« ce défaut est-il
@@ -256,6 +256,84 @@
 
 | ID | Sujet | Gravité | Zone | Depuis | Note |
 |---|-------|:---:|:---:|:---:|---|
+| AUD-ENG-67 | Le processus uvicorn du moteur pèse ~1,5 Gio au repos, au-dessus du `mem_limit: 1g` de prod : OOM-kill possible avec une génération en vol | Moyenne | engine | 2026-11-06 | Mesuré (repos et charge). Cause non isolée (arène OR-Tools ou fuite), croissance non prouvée, compteur de redémarrages de la prod non lu. Voisin de P5-4b (déclencheur `peakRssMb`), de AUD-ENG-63 |
+| AUD-SEC-33 | Le blob chiffré `.env.prod.gpg` reste dans l'historique public (`.gitleaks.toml` en épingle la signature) | Moyenne (conditionnelle) | cyber | 2026-11-06 | Moyenne si les secrets n'ont pas été rotés, Info sinon (non vérifiable au code). Purge + passage en privé décidés, à faire en présence du fondateur. Voisin de AUD-DOC-63 |
+| AUD-AGT-03 | Dependabot : ce qui fait foi pour merger diverge (`dependabot/SKILL.md` §3 « le verdict local fait foi » ; l'exception n'est pas écrite en `CLAUDE.md` §7) | Moyenne | agentique | 2026-11-06 | Gravité bornée par les required checks de `main`. La mémoire citée par l'audit n'existe plus ; la divergence skill ↔ `CLAUDE.md` reste |
+| AUD-AGT-04 | Trailers de commit : `dependabot/SKILL.md:93` « trailers habituels » et la mémoire `commit-message-format` (« still append the repo's required trailers ») contre « aucun trailer » | Moyenne | agentique | 2026-11-06 | Squash sur `main` non réécrivable |
+| AUD-AGT-05 | Étape doc (`CLAUDE.md` §7 étape 6) : trois exécutants possibles (skill `documentation-update`, agent `trinity` `:3`, orchestrateur) | Moyenne | agentique | 2026-11-06 | La mémoire « Moi : … documenter » citée par l'audit n'existe plus ; reste skill ↔ agent |
+| AUD-AGT-06 | `switch` : « club de test du bac à sable » (`CLAUDE.md:208`, description `switch.md:3`) contre « stack d'épreuve, jamais `with-sandbox.sh` » (`switch.md:15,26`) ; `validation-runner/SKILL.md` dit les deux | Moyenne | agentique | 2026-11-06 | — |
+| AUD-AGT-08 | SMITH « optionnel sinon » (`CLAUDE.md` §7 étape 2) contre la mémoire `validation-plan-explicite` (« relu par SMITH en version finale ») | Moyenne | agentique | 2026-11-06 | — |
+| AUD-AGT-09 | Cadence : mémoire `workflow-prefs-pr-cadence:13` « ne jamais commencer la PR suivante » contre `coder-jamais-a-l-arret` et `CLAUDE.md` §7 | Moyenne | agentique | 2026-11-06 | `CLAUDE.md` tranche ; les deux mémoires restent à recaler |
+| AUD-AGT-10 | « push libre » (`CLAUDE.md` §7) contre « rector avant tout push backend » (`rules/backend.md:12`, mémoire `rector-before-push`) | Moyenne | agentique | 2026-11-06 | — |
+| AUD-AGT-11 | Lane Light : « pas de `tank` séparé » + `neo` « ne crée aucun test » = aucun auteur de test possible | Moyenne | agentique | 2026-11-06 | — |
+| AUD-AGT-12 | Skill `audit` : `npm audit` « host » (`SKILL.md:28`), Behat sans wrapper (`:33`), « jamais de merge sans go » sans l'exception lot (`:219`) contre `CLAUDE.md` | Moyenne | agentique | 2026-11-06 | Se traite avec l'étape 6 du même skill |
+| AUD-AGT-13 | `validation-runner/SKILL.md` périmé : `make test` décrit comme « lint + phpunit phase1 » (`:16`), `make phpunit` (`:50`) | Moyenne | agentique | 2026-11-06 | — |
+| AUD-AGT-14 | `.ai/mcp/mcp.json:3-8` (tracké) déclare encore `code-review-graph`, retiré du dépôt | Moyenne | agentique | 2026-11-06 | — |
+| AUD-AGT-15 | Agents « lecture seule » (`oracle`, `morpheus`, `smith`, `switch`, `link`) dotés de `Bash` (`tools:` ligne 4) : la lecture seule n'est qu'une consigne | Moyenne | agentique | 2026-11-06 | — |
+| AUD-AGT-16 | `rules/backend.md:21-23` : `make migration-diff` « inopérant tant que `doctrine/dbal` reste en 4.4.4 » — le lock est en 4.5.0 | Faible | agentique | 2026-11-06 | Une note à retirer |
+| AUD-AGT-17 | Le nombre de cibles de `frontend/Makefile` est écrit en dur (`dependabot/SKILL.md:141`, `rules/frontend.md:416`) et faux | Faible | agentique | 2026-11-06 | Retirer le nombre |
+| AUD-AGT-18 | `documentation-update/SKILL.md:27,175` borne `CLAUDE.md` à ~200 lignes ; il est plus long | Faible | agentique | 2026-11-06 | — |
+| AUD-AGT-19 | « CLAUDE.md core principles » / « principle 4 » (`neo.md:8`, `smith.md:63`) : aucune section de ce nom | Faible | agentique | 2026-11-06 | — |
+| AUD-AGT-20 | `niobe.md:32` : deux amorçages « à ne pas exécuter » déjà livrés | Faible | agentique | 2026-11-06 | — |
+| AUD-AGT-21 | Des fichiers mémoire citent encore les anciens noms d'agents (coder, cadreur, planner, docs-writer, test-keeper) | Faible | agentique | 2026-11-06 | Hors dépôt |
+| AUD-AGT-22 | Doublons à plusieurs copies : « déjà en contexte » dans les fiches, Option A, worktree avec deux « maisons uniques » déclarées (`CLAUDE.md` → `neo.md`, `tank.md:61` → les deux) | Faible | agentique | 2026-11-06 | Non revérifié depuis l'édition |
+| AUD-AGT-23 | Stack d'épreuve unique : `neo.md`, `switch.md`, `validation-runner` peuvent chacun la prendre, aucun ordre d'arbitrage écrit | Faible | agentique | 2026-11-06 | Non revérifié depuis l'édition |
+| AUD-BCK-42 | Tests d'abus récents non bloquants : `AdminRequestBoundaryTest`, `FeedbackScreenshotTest`, `ScheduledDeploymentTest`, `MembershipApprovalTest` (aucun dans `ci.yml`) | Mineure | backend | 2026-11-06 | Bloquant = step `ci.yml` ET ligne `docs/testing/blocking-tests.md`, même PR |
+| AUD-BCK-43 | `DevClockController` : horloge globale de dev gardée par `kernel.debug` seul (`:33`) sur une stack exposable par le tunnel démo | Faible | backend | 2026-11-06 | Résidu du retrait des identités réelles |
+| AUD-BCK-44 | N+1 : un `find(User)` par adhésion en attente (`MembershipController.php:95-96,495,526`, `MembershipRequestNotifier.php`), `ConflictCoachMailController.php:240-244` charge toutes les équipes et tous les gymnases par envoi | Info | backend | 2026-11-06 | Borné par la taille du club |
+| AUD-SEC-32 | OpenAPI complet servi anonymement en prod (`security.yaml:65` `^/api/docs`), chemins admin inclus | Faible | cyber | 2026-11-06 | Reconnaissance |
+| AUD-SEC-34 | Pages système Caddy sans XFO/CSP (`docs/ops/Caddyfile.example`) | Mineure | cyber | 2026-11-06 | Impact nul (statiques sans script) |
+| AUD-SEC-35 | Un Membre lit e-mail et téléphone de tous les coachs (`CoachResource.php:52-56`) | Info (assumé) | cyber/RGPD | 2026-11-06 | Décision « un Membre lit tout » ; reste à nommer dans la politique RGPD |
+| AUD-SEC-36 | `_season_id` posé depuis `X-Season-Id` sur une requête sans club (`TenantFilterListener.php:272`) | Mineure | cyber | 2026-11-06 | Effet non prouvé (la RLS masquerait une saison étrangère) |
+| AUD-SEC-38 | `ffbbClubCode` toujours inscriptible dans `ClubInput.php:53` (OpenAPI) ; garde dans le seul processeur | Mineure | cyber | 2026-11-06 | Résidu de l'immuabilité du code FFBB |
+| AUD-ENG-58 | Une heure malformée dans `trainingSlots[].startTime` (`str` libre, `input_schema.py:49`) fait un 500 moteur, pas un 422 | Faible | engine | 2026-11-06 | `slotTemplates[].startTime` est typé `time` et refuse |
+| AUD-ENG-59 | `main.py` est le plus gros fichier du moteur (`_solve` + orchestration de la réservation souveraine dans le module HTTP) ; des `__init__` ré-exportent des noms privés pour le monkeypatch des tests | Faible | engine | 2026-11-06 | Voisin de la ligne Dette « Fichiers > 400 l. » (cette ligne n'inclut pas le moteur) |
+| AUD-ENG-60 | Champs acceptés par les schémas d'entrée et jamais lus (`VenueSchema`, `TeamSchema`, `CoachSchema`, `sortOrder`, `scheduleName`, `seasonId`, `warmupMinutes`…), persistés dans chaque `snapshot_data` | Faible | engine | 2026-11-06 | Reliquat de l'allègement du contrat. Touche le contrat |
+| AUD-ENG-61 | Pire chemin budgétaire : deux sondes de 15 s + `_settle_holds` ; `GenerationLockOutlivesTheSolveTest` n'en modélise qu'une ; ADR-0001 et `GenerateScheduleHandler` disent « 700 s » | Faible | engine | 2026-11-06 | Marge de 20 s sur le message |
+| AUD-ENG-62 | Commentaires contradictoires : `main.py:155` « `mem_limit 512m`, à NE PAS augmenter » contre `docker-compose.prod.yml:317` `mem_limit: 1g` | Info | engine | 2026-11-06 | À trancher avec AUD-ENG-67 |
+| AUD-ENG-63 | Aucun `oom_score_adj` sur le fils jetable ; sous `mem_limit` le noyau tue la plus grosse tâche (uvicorn avec une génération en vol) | Faible | engine | 2026-11-06 | Non mesuré. Voisin de AUD-ENG-67 |
+| AUD-ENG-66 | Aucun test moteur ne traverse HTTP (`TestClient`/`httpx` absents) : 422 Pydantic et `X-Request-Id` ne sont prouvés que par les gates backend | Info | engine | 2026-11-06 | — |
+| AUD-ALIGN-21 | Indisponibilité de coach ciblée par tag (API seule) : sans effet, sans avertissement | Faible | align | 2026-10-03 | `ConstraintValidationService.php`, `ScheduleConstraintBuilder.php`, `parsing.py` |
+| AUD-ALIGN-22 | Cran « Obligatoire » de la règle des salariés sans effet : le panneau Bien-être offre les deux crans, le moteur en fait un objectif quel que soit le cran | Faible | align | 2026-11-06 | `ImplicitRulesPanel.tsx`, `wizard/lib/implicitRules.ts:62`. Cran mort, aucune contrainte perdue |
+| AUD-ALIGN-23 | « Garder ses créneaux de saison » (`SEASON_SLOTS`) ne voyage pas en comblement (`/fill`) ; pastille affichée sans distinction (`PeriodTeams.tsx`) | Faible | align | 2026-11-06 | Limite déjà écrite (🟡) dans `backend/docs/constraint-coverage.md` |
+| AUD-ALIGN-24 | `minAtVenueCount` prouvé avec sa valeur par défaut (`ConstraintKeysAreHonouredByEngineTest.php:133`, count=1) : un moteur qui cesserait de lire le compte resterait vert | Faible | align | 2026-11-06 | Trou de garde ; sonde manuelle : compte lu |
+| AUD-ALIGN-25 | `metadata.isRequired` survit dans plusieurs tests cross-stack après le retrait de « coach obligatoire » | Mineure | align | 2026-11-06 | — |
+| AUD-DOC-62 | Résidus de docs moteur contredites : matrice sémantique `offered_by_ui=True` pour `FACILITY HARD preferredVenueId` (refusée 422), message `GenerationBlockersGuard.php:157` « la génération échouera » | Faible | doc/align | 2026-11-06 | `engine/tests/semantic/constraint_matrix.py:156-166` ; le reste du finding est recalé |
+| AUD-DOC-63 | Prénoms de coachs du club pilote : il reste un commentaire du seed (`BcclSeeder.php:978`) | Faible | doc/RGPD | 2026-11-06 | Dépôt public ; `BcclSeedIdentityNeutralityTest` ne couvre que le seed. À joindre à la purge de l'historique (AUD-SEC-33) |
+| AUD-DOC-66 | `BlockingTestsListMatchesCiTest` n'est pas lui-même un step de `blocking-tests` (`ci.yml:539` n'en parle qu'en commentaire) : la garde « liste ⇄ ci.yml » tourne après le gate | Faible | doc | 2026-11-06 | Step `ci.yml` ET ligne `blocking-tests.md`, même PR |
+| AUD-DOC-69 | Poids 60/30 de la pénalité de placement écrits en littéral hors registre (`module-matchs-radar-et-placement.md`) | Mineure | doc | 2026-11-06 | Voisin de P4-446 |
+| AUD-DOC-70 | Doublons de maison : RLS dans `backend/docs/RLS.md` ET `docs/security/rls.md` ; « 3 couches » (`CLAUDE.md` §6) contre « two layers » (`TENANT.md:5`) ; `deptry` documenté en plusieurs maisons | Info | doc | 2026-11-06 | — |
+| AUD-INF-07 | `with-sandbox` ne neutralise que `.env.local`, pas `.env.dev.local` : un drapeau de poste fait échouer des scénarios Behat sans message qui pointe la cause | Faible | infra | 2026-11-06 | Même motif qu'INF-06. CI verte |
+| AUD-INF-08 | Le drill de rollback (`migration-rollback-drill.sh`) conclut FAIL à chaque run : seules les lignes de jetons `\restrict`/`\unrestrict` de `pg_dump` diffèrent | Faible | infra | 2026-11-06 | Un garde qui crie au loup n'est plus joué |
+| AUD-FRT-20 | Tests qui mockent leurs propres hooks : le patron s'étend | Faible | frontend | 2026-08-19 | Non revérifié depuis l'édition. Décision de ne pas convertir l'existant : `etat-des-lieux.md` §2 |
+| AUD-FRT-21 | Cycles inter-features : paires bidirectionnelles, seule la règle ESLint `shared ↛ features` existe | Faible | frontend | 2026-08-27 | Non revérifié depuis l'édition |
+| AUD-FRT-22 | Type `Team` défini dans trois modules, aucun codegen | Faible | frontend | 2026-08-27 | Non revérifié depuis l'édition |
+| AUD-FRT-28 | Types manuels sans filet : peu de paires gardées sur beaucoup d'interfaces exportées | Faible | frontend | 2026-08-27 | Non revérifié depuis l'édition |
+| AUD-FRT-44 | L'annonce de maintenance toaste tous les clubs connectés toutes les 5 min tant que `/api/deployment-notice` échoue (`shared/deployment/queries.ts:12-21`, pas de `meta.ownsError`) | Faible | frontend | 2026-11-06 | Le docblock promet l'inverse |
+| AUD-FRT-45 | Double retour d'erreur (toast global + message inline) sur Exploitation et Signalements de la console admin | Faible | frontend | 2026-11-06 | `DeploymentSection.tsx`, `FeedbackSection.tsx`, `admin/queries.ts` |
+| AUD-FRT-46 | Mutations de la console admin : `onError: () => toast.error(…)` sans `errorMessage()` (un 409 sort en « X impossible ») | Faible | frontend | 2026-11-06 | `admin/queries.ts`, motif déjà soldé côté club |
+| AUD-FRT-47 | Exploitation : liste des tags en échec réseau → formulaire muet, « Programmer » gris sans raison (`DeploymentSection.tsx:41`, `?? true`) | Faible | frontend | 2026-11-06 | — |
+| AUD-FRT-49 | Casts `as unknown as` / `as never` nombreux, surtout dans les tests : les fixtures contournent les types de l'API | Info | frontend | 2026-11-06 | — |
+| AUD-FRT-50 | `localStorage.getItem` non protégé au montage de la console admin (`AdminDashboardPage.tsx:121,125`) | Mineure | frontend | 2026-11-06 | Partout ailleurs en try/catch (`themeStore.ts`) |
+| AUD-FRT-51 | Bandeau de maintenance : texte FR en dur dans `shared/` (`DeploymentNoticeBanner.tsx`), heure de retour sans date, faux pour une fenêtre qui enjambe minuit | Mineure | frontend | 2026-11-06 | — |
+| AUD-RGPD-04 | Signalement : capture d'écran jointe par défaut (`FeedbackDialog.tsx:82,194`) | Info | RGPD | 2026-11-06 | Choix produit assumé ; à nommer dans la politique de confidentialité |
+| AUD-UXS-16 | « socle » dans un libellé affiché (`cockpit/texts.ts:131`) alors que l'objet s'appelle « planning de saison » | Faible | ux | 2026-11-06 | — |
+| AUD-UXS-17 | « moteur » dans les messages du flux de retouche (`planning/texts.ts:117`, `EvictConfirmDialog.tsx`, `ActionVeil.tsx`, `useRetouchGestures.ts`, `planning/api.ts`) | Faible | ux | 2026-11-06 | Successeur d'UXS-12 |
+| AUD-UXS-18 | « solveur » (`matches/lib/leagueValidation.ts:33`) et aria-label « (hexadécimal) » (`ClubPage.tsx:62`) | Info | ux | 2026-11-06 | — |
+| AUD-UXS-20 | Demande de rôle gestionnaire et son refus sans confirmation (`MembersSection.tsx:95,104`) | Info | ux | 2026-11-06 | `deleteConfirmGuard` ne vise que les suppressions |
+| AUD-UXC-33 | Contrôles segmentés recodés hors signature du garde (`ImplicitRulesPanel.tsx:165,331`, `SeasonSchedulesModal.tsx`) : boutons sous la norme 36 px | Faible | ux | 2026-11-06 | — |
+| AUD-A11Y-33 | Cibles de ~24 px sur des gestes fréquents : fermeture de toute modale (`modal.tsx:115`), navigation mois de l'accueil, fermeture des panneaux planning/placement | Faible | ux | 2026-11-06 | WCAG 2.5.8 tenu, norme maison de 36 px non |
+| AUD-A11Y-34 | `text-[10px]` / `text-[9px]` hors grilles aussi (`AwayTravelChip.tsx`, `WeekendGrid.tsx`) ; aucun garde | Faible | ux | 2026-11-06 | Les grilles sont un keep de la section Dette |
+| AUD-A11Y-35 | Paires « même teinte » hors AA en clair, gardées seulement par le e2e (`a11y-contrast.spec.ts`) ; `surfaceOpacityGuard` ne lit que `ui/` | Info | ux | 2026-11-06 | Aucun site fautif aujourd'hui |
+| AUD-A11Y-36 | Région défilante sans descendant focalisable (`admin/sections/FeedbackSection.tsx:412`) | Info | ux | 2026-11-06 | — |
+
+> **Portés par une ligne du backlog (pas dupliqués ici)** : `BCK-40`, `BCK-41`, `SEC-24`, `ENG-64` (et les
+> trous voisins du rail) → **P4-512** · `DOC-64` → **P4-513** · `DOC-65` → **P4-514**. **Portés par la
+> section Dette** (fichiers volumineux, keep délibéré) : `BCK-19`, `FRT-33`, `FRT-48`.
+> **Observation sans geste** (non reprise) : `ENG-65` (déterminisme best-effort assumé), `ENG-34`.
+>
+> **Alimentation** : la section est mise à jour par l'étape 6 du skill `/audit`
+> ([`SKILL.md`](../../.claude/skills/audit/SKILL.md)), à chaque édition. Elle se **lit** pour définir un lot.
 
 > Reste ouvert, hors ce registre : **`features/admin/`** (persona fondateur, hors gestionnaire,
 > `UXC-12` — console hors design system).
