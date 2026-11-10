@@ -11,17 +11,17 @@ STACK_GOALS := $(or $(MAKECMDGOALS),help)
 DOCKER_COMPOSE := $(STACK_COMPOSE)
 # Refus AVANT toute recette : un `make -n` les prouve aussi, et rien ne démarre à moitié.
 ifeq ($(filter principal epreuve nu,$(STACK_MODE)),)
-ifneq ($(filter-out help deploy,$(STACK_GOALS)),)
+ifneq ($(filter-out help deploy ci-releve,$(STACK_GOALS)),)
 $(error $(or $(call stack_field,STACK_REASON),stack-resolve : dépôt non identifié (git absent ou dossier hors dépôt) — aucune cible Docker))
 endif
 endif
 ifeq ($(STACK_MODE),nu)
-STACK_REFUSED := $(filter-out install test lint help deploy epreuve-up epreuve-dev epreuve-status epreuve-down epreuve-destroy epreuve-check,$(STACK_GOALS))
+STACK_REFUSED := $(filter-out install test lint help deploy ci-releve epreuve-up epreuve-dev epreuve-status epreuve-down epreuve-destroy epreuve-check,$(STACK_GOALS))
 ifneq ($(STACK_REFUSED),)
 $(error $(firstword $(STACK_REFUSED)) : indisponible en worktree nu — stack d'épreuve (make epreuve-up WT=…) ou dépôt principal)
 endif
 ifneq ($(call stack_field,STACK_ENV_OK),1)
-ifneq ($(filter-out help deploy epreuve-up epreuve-dev epreuve-status epreuve-down epreuve-destroy epreuve-check,$(STACK_GOALS)),)
+ifneq ($(filter-out help deploy ci-releve epreuve-up epreuve-dev epreuve-status epreuve-down epreuve-destroy epreuve-check,$(STACK_GOALS)),)
 $(error .env sans AMATEO_STACK=$(TEST_PROJECT) exact : make -C backend test-up)
 endif
 endif
@@ -177,6 +177,10 @@ services: .env ## List Docker Compose services
 # follows the run it just created (fails red if the run fails).
 deploy: ## Deploy VERSION=vX.Y.Z (or origin/main HEAD if omitted) via the deploy workflow
 	bash scripts/deploy.sh $(VERSION)
+
+# Lecture seule de l'API GitHub par le `gh` du poste : jamais dans un conteneur.
+ci-releve: ## Relevé des jobs CI rouges (DAYS=14, ARGS="--since … --until … --branch … --json …")
+	python3 -I scripts/ci-releve.py --days $(or $(DAYS),14) $(ARGS)
 
 # --- Stack d'épreuve : UNE stack complète et seedée pour un worktree, à côté de celle du fondateur.
 # Toujours `-p amateo-epreuve` en toutes lettres, jamais la compose de la copie appelante, qui peut
