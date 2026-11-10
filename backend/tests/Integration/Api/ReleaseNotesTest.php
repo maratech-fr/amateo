@@ -10,6 +10,7 @@ use App\Tests\StartsFreshBrowserSession;
 use App\Tests\VerifiesRegistration;
 use Doctrine\DBAL\Connection;
 use Doctrine\Persistence\ManagerRegistry;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
@@ -35,6 +36,47 @@ final class ReleaseNotesTest extends WebTestCase
     private string $requestIp;
 
     private ?string $adminId = null;
+
+    /**
+     * Promesse : une note sans version (champ absent, vide, ou null) s'écrit SANS version — jamais
+     * une chaîne vide — et la clé `version` reste présente, à null, dans la réponse.
+     *
+     * @return iterable<string, array{0: array<string, mixed>}>
+     */
+    public static function absentVersionPayloads(): iterable
+    {
+        yield 'champ absent' => [[]];
+        yield 'chaîne vide' => [['version' => '']];
+        yield 'espaces seuls' => [['version' => '   ']];
+        yield 'null' => [['version' => null]];
+    }
+
+    /**
+     * Promesse : le motif accepte 2 à 4 segments numériques (`1.3`, `1.3.5`, `1.3.5.6`).
+     *
+     * @return iterable<string, array{0: string}>
+     */
+    public static function acceptedVersions(): iterable
+    {
+        yield 'deux segments' => ['1.3'];
+        yield 'trois segments' => ['1.3.5'];
+        yield 'quatre segments' => ['1.3.5.6'];
+    }
+
+    /**
+     * Promesse : une version hors motif (balise, 5 segments, lettres, 41 caractères, type non
+     * chaîne) est REFUSÉE en 400 avec le message lisible — et rien n'est écrit.
+     *
+     * @return iterable<string, array{0: mixed}>
+     */
+    public static function rejectedVersions(): iterable
+    {
+        yield 'balise html' => ['<b>1</b>'];
+        yield 'cinq segments' => ['1.3.5.6.7'];
+        yield 'lettres' => ['abc'];
+        yield '41 caractères' => [str_repeat('1', 41)];
+        yield 'nombre JSON' => [135];
+    }
 
     public function testAnonymousCannotReadTheJournal(): void
     {
@@ -114,6 +156,73 @@ final class ReleaseNotesTest extends WebTestCase
         self::assertNotContains($id, array_column($this->responseBody()['items'], 'id'));
     }
 
+    /**
+     * Promesse : la version saisie par la SA est NORMALISÉE avant d'être écrite (espaces, `v` de
+     * tête retirés ; vide → sans version) et relue telle quelle par la console ET par le membre.
+     */
+    public function testVersionIsNormalisedAndExposedToMemberAndAdmin(): void
+    {
+        $token = $this->registerVerified('RN3');
+        $csrf = $this->authenticateSuperAdmin('release-notes-version@example.test');
+
+        $this->json('POST', '/api/admin/release-notes', ['title' => 'Note versionnée', 'body' => 'Corps', 'noteDate' => '2026-10-13', 'version' => ' v1.3.5 '], ['HTTP_X_CSRF_TOKEN' => $csrf]);
+        self::assertResponseStatusCodeSame(201);
+        $created = $this->responseBody();
+        self::assertArrayHasKey('version', $created, 'le 201 expose la version');
+        self::assertSame('1.3.5', $created['version'], '« v1.3.5 » entouré d\'espaces → « 1.3.5 »');
+        $id = $created['id'];
+        self::assertIsString($id);
+        $this->publishNote($csrf, $id);
+
+        $this->client->request('GET', '/api/admin/release-notes');
+        self::assertResponseIsSuccessful();
+        $adminItem = $this->itemWithId($this->responseBody()['items'], $id);
+        self::assertArrayHasKey('version', $adminItem, 'la liste console expose la version');
+        self::assertSame('1.3.5', $adminItem['version']);
+
+        $this->startFreshBrowserSession($this->client);
+        $memberItem = $this->itemWithId($this->memberGet($token)['items'], $id);
+        self::assertArrayHasKey('version', $memberItem, 'le GET membre expose la version');
+        self::assertSame('1.3.5', $memberItem['version']);
+    }
+
+    /** @param array<string, mixed> $extra */
+    #[DataProvider('absentVersionPayloads')]
+    public function testMissingVersionIsStoredAsNull(array $extra): void
+    {
+        $csrf = $this->authenticateSuperAdmin('release-notes-noversion-' . substr(md5(uniqid('', true)), 0, 6) . '@example.test');
+
+        $this->json('POST', '/api/admin/release-notes', ['title' => 'Note sans version', 'body' => 'Corps', 'noteDate' => '2026-10-13', ...$extra], ['HTTP_X_CSRF_TOKEN' => $csrf]);
+        self::assertResponseStatusCodeSame(201);
+        $created = $this->responseBody();
+        self::assertArrayHasKey('version', $created, 'la clé `version` est toujours présente');
+        self::assertNull($created['version']);
+    }
+
+    #[DataProvider('acceptedVersions')]
+    public function testVersionPatternAcceptsTwoToFourNumericSegments(string $version): void
+    {
+        $csrf = $this->authenticateSuperAdmin('release-notes-okversion-' . substr(md5(uniqid('', true)), 0, 6) . '@example.test');
+
+        $this->json('POST', '/api/admin/release-notes', ['title' => 'Note', 'body' => 'Corps', 'noteDate' => '2026-10-13', 'version' => $version], ['HTTP_X_CSRF_TOKEN' => $csrf]);
+        self::assertResponseStatusCodeSame(201);
+        self::assertSame($version, $this->responseBody()['version'] ?? 'clé `version` absente');
+    }
+
+    #[DataProvider('rejectedVersions')]
+    public function testVersionOutsideThePatternIsRefusedWithAReadableMessage(mixed $version): void
+    {
+        $csrf = $this->authenticateSuperAdmin('release-notes-badversion-' . substr(md5(uniqid('', true)), 0, 6) . '@example.test');
+        $title = 'Note refusée ' . substr(md5(uniqid('', true)), 0, 8);
+
+        $this->json('POST', '/api/admin/release-notes', ['title' => $title, 'body' => 'Corps', 'noteDate' => '2026-10-13', 'version' => $version], ['HTTP_X_CSRF_TOKEN' => $csrf]);
+        self::assertResponseStatusCodeSame(400);
+        self::assertSame('La version est invalide (format attendu : 1.3.5).', $this->responseBody()['error'] ?? null);
+
+        $this->client->request('GET', '/api/admin/release-notes');
+        self::assertNotContains($title, array_column($this->responseBody()['items'], 'title'), 'un 400 n\'écrit rien');
+    }
+
     public function testWritesRequireCsrf(): void
     {
         $this->authenticateSuperAdmin('release-notes-csrf@example.test');
@@ -152,6 +261,18 @@ final class ReleaseNotesTest extends WebTestCase
         self::assertResponseIsSuccessful();
 
         return $this->responseBody();
+    }
+
+    /** @return array<array-key, mixed> */
+    private function itemWithId(mixed $items, string $id): array
+    {
+        self::assertIsArray($items);
+        foreach ($items as $item) {
+            if (\is_array($item) && ($item['id'] ?? null) === $id) {
+                return $item;
+            }
+        }
+        self::fail(\sprintf('La note %s est absente de la liste.', $id));
     }
 
     /** @return array{HTTP_AUTHORIZATION: string, REMOTE_ADDR: string} */

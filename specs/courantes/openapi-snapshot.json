@@ -2335,6 +2335,13 @@
                                                     "createdAt": {
                                                         "type": "string",
                                                         "format": "date-time"
+                                                    },
+                                                    "version": {
+                                                        "type": [
+                                                            "string",
+                                                            "null"
+                                                        ],
+                                                        "maxLength": 40
                                                     }
                                                 }
                                             }
@@ -2387,6 +2394,13 @@
                                         "createdAt": {
                                             "type": "string",
                                             "format": "date-time"
+                                        },
+                                        "version": {
+                                            "type": [
+                                                "string",
+                                                "null"
+                                            ],
+                                            "maxLength": 40
                                         }
                                     }
                                 }
@@ -2394,7 +2408,7 @@
                         }
                     },
                     "400": {
-                        "description": "Validation error (title required \u2264160, body required, invalid date)"
+                        "description": "Validation error (title required \u2264160, body required, invalid date, invalid version)"
                     },
                     "401": {
                         "description": "No authenticated super-admin session"
@@ -2436,6 +2450,13 @@
                                         "type": "string",
                                         "format": "date",
                                         "description": "Editorial date (YYYY-MM-DD), antedatable"
+                                    },
+                                    "version": {
+                                        "type": [
+                                            "string",
+                                            "null"
+                                        ],
+                                        "description": "Optional product version: surrounding spaces and a leading \"v\" are removed, empty means none; otherwise 2 to 4 numeric segments (1.3.5)"
                                     }
                                 }
                             }
@@ -2525,6 +2546,13 @@
                                         "createdAt": {
                                             "type": "string",
                                             "format": "date-time"
+                                        },
+                                        "version": {
+                                            "type": [
+                                                "string",
+                                                "null"
+                                            ],
+                                            "maxLength": 40
                                         }
                                     }
                                 }
@@ -19350,6 +19378,13 @@
                                                     "publishedAt": {
                                                         "type": "string",
                                                         "format": "date-time"
+                                                    },
+                                                    "version": {
+                                                        "type": [
+                                                            "string",
+                                                            "null"
+                                                        ],
+                                                        "maxLength": 40
                                                     }
                                                 }
                                             }

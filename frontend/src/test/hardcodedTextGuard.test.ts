@@ -173,6 +173,11 @@ const MIGRATED_FILES = [
   "features/cockpit/CockpitPage.tsx",
   "features/cockpit/SeasonPlanBanner.tsx",
   "features/cockpit/DeletePlanningButton.tsx",
+  // Actualités PR A — la modale « Quoi de neuf ? » et la page Nouveautés migrées dans
+  // features/release-notes/texts.ts ; le bandeau de maintenance (FRT-51) dans shared/deployment/texts.ts.
+  "features/release-notes/WhatsNewModal.tsx",
+  "features/release-notes/ReleaseNotesPage.tsx",
+  "shared/deployment/DeploymentNoticeBanner.tsx",
 ];
 
 // Exemptions nominatives — un fichier migré autorisé à garder un littéral en dur, AVEC sa raison.

@@ -32,6 +32,9 @@ final readonly class AdminReleaseNoteController
 {
     private const UUID_PATTERN = '/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/';
 
+    /** 2 à 4 segments numériques (« 1.3 », « 1.3.5 », « 1.3.5.6 ») : au plus 39 caractères, colonne 40. */
+    private const VERSION_PATTERN = '/^\d{1,9}(?:\.\d{1,9}){1,3}$/D';
+
     public function __construct(
         private ReleaseNoteRepository $releaseNotes,
         private EntityManagerInterface $entityManager,
@@ -71,6 +74,7 @@ final readonly class AdminReleaseNoteController
         $note->setTitle(trim((string) $payload['title']));
         $note->setBody(trim((string) $payload['body']));
         $note->setNoteDate($this->parseDate((string) $payload['noteDate']));
+        $note->setProductVersion($this->normalizeVersion($payload['version'] ?? null));
         $this->entityManager->persist($note);
         $this->entityManager->flush();
 
@@ -128,6 +132,7 @@ final readonly class AdminReleaseNoteController
             'date' => $note->getNoteDate()->format('Y-m-d'),
             'publishedAt' => $note->getPublishedAt()?->format(DateTimeImmutable::ATOM),
             'createdAt' => $note->getCreatedAt()->format(DateTimeImmutable::ATOM),
+            'version' => $note->getProductVersion(),
         ];
     }
 
@@ -157,8 +162,42 @@ final readonly class AdminReleaseNoteController
         if (!\is_string($payload['noteDate'] ?? null) || !$this->isValidDate($payload['noteDate'])) {
             return 'La date est invalide (format attendu : AAAA-MM-JJ).';
         }
+        if (!$this->isValidVersion($payload['version'] ?? null)) {
+            return 'La version est invalide (format attendu : 1.3.5).';
+        }
 
         return null;
+    }
+
+    /**
+     * Version facultative : absente, null ou vide = note sans version ; sinon une chaîne au motif
+     * VERSION_PATTERN une fois normalisée (tout autre type JSON est refusé).
+     */
+    private function isValidVersion(mixed $raw): bool
+    {
+        if (null === $raw) {
+            return true;
+        }
+        if (!\is_string($raw)) {
+            return false;
+        }
+        $version = $this->normalizeVersion($raw);
+
+        return null === $version || 1 === preg_match(self::VERSION_PATTERN, $version);
+    }
+
+    /** Espaces et « v »/« V » de tête retirés (« v1.3.5 » → « 1.3.5 ») ; vide ou non-chaîne → null. */
+    private function normalizeVersion(mixed $raw): ?string
+    {
+        if (!\is_string($raw)) {
+            return null;
+        }
+        $version = trim($raw);
+        if (str_starts_with($version, 'v') || str_starts_with($version, 'V')) {
+            $version = substr($version, 1);
+        }
+
+        return '' === $version ? null : $version;
     }
 
     private function isValidDate(string $value): bool

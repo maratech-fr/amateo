@@ -12,6 +12,8 @@ export interface ReleaseNoteItem {
   title: string;
   body: string;
   publishedAt: string;
+  /** Version du produit annoncée par la note (« 1.3.5 »), ou null si la note n'en porte pas. */
+  version: string | null;
 }
 
 export interface ReleaseNotesResponse {

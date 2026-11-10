@@ -390,6 +390,8 @@ export interface AdminReleaseNote {
   date: string;
   publishedAt: string | null;
   createdAt: string;
+  /** Version du produit annoncée (« 1.3.5 »), ou null. */
+  version: string | null;
 }
 
 export interface AdminReleaseNotesResponse {
@@ -401,6 +403,8 @@ export interface ReleaseNoteWritePayload {
   title: string;
   body: string;
   noteDate: string;
+  /** Version annoncée ; absente ou null = note sans version (le serveur normalise). */
+  version?: string | null;
 }
 
 // P5-6 — l'inbox des signalements (rail SA mergé) : liste + QoS + détail + verdicts.

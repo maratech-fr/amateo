@@ -91,6 +91,10 @@ final class TsFieldsMatchOpenApiSchemaTest extends TestCase
         // Une ligne d'engagement vit dans le tableau `engagements` du corps 200 : `items` descend
         // dans le schéma d'UN élément (deducedLevel/alignment gardés contre une dérive de champ).
         'matches/FfbbEngagement' => ['ts' => 'matches/api/ffbb.ts', 'interface' => 'FfbbEngagement', 'response' => ['GET', '/api/ffbb/engagements'], 'items' => 'engagements'],
+        // Journal de nouveautés : une note vue du membre et de la console, éléments du tableau
+        // `items` des deux GET (schémas inline écrits à la main — le champ `version` y entre).
+        'release-notes/ReleaseNoteItem' => ['ts' => 'release-notes/api.ts', 'interface' => 'ReleaseNoteItem', 'response' => ['GET', '/api/release-notes'], 'items' => 'items'],
+        'admin/AdminReleaseNote' => ['ts' => 'admin/api.ts', 'interface' => 'AdminReleaseNote', 'response' => ['GET', '/api/admin/release-notes'], 'items' => 'items'],
     ];
     private const string SNAPSHOT = __DIR__ . '/../../../specs/courantes/openapi-snapshot.json';
     private const string FRONT = __DIR__ . '/../../../frontend/src/features';

@@ -1,15 +1,15 @@
 import { type FormEvent, useState } from "react";
 
+import { ReleaseNoteHeading } from "@/features/release-notes/ReleaseNoteHeading";
 import { Button } from "@/shared/components/ui/button";
 import { EmptyHint } from "@/shared/components/ui/empty-hint";
 import { Spinner } from "@/shared/components/ui/spinner";
+import { APP_VERSION } from "@/shared/lib/appVersion";
 import { toast } from "@/shared/stores/toastStore";
 
 import type { AdminReleaseNote } from "../api";
 import { useAdminReleaseNotes, useCreateAdminReleaseNote, useDeleteAdminReleaseNote, usePublishAdminReleaseNote } from "../queries";
 import { ADMIN_SECTIONS_TEXTS } from "../texts/sections";
-
-const dateFormatter = new Intl.DateTimeFormat("fr-FR", { day: "2-digit", month: "short", year: "numeric" });
 
 /** Date du jour au format AAAA-MM-JJ, valeur par défaut du champ éditorial. */
 function today(): string {
@@ -17,8 +17,17 @@ function today(): string {
 }
 
 /**
+ * La version en service, si le bundle la connaît sous forme de numéro (« v1.3.5 » → « 1.3.5 ») ;
+ * vide sinon (« dev », un sha de commit). Le serveur normalise et valide de toute façon.
+ */
+function defaultVersion(): string {
+  const match = /^v?(\d+(?:\.\d+){1,3})$/.exec(APP_VERSION);
+  return match?.[1] ?? "";
+}
+
+/**
  * P5-12 — l'atelier du journal de nouveautés (onglet Référentiels). Liste les
- * notes (brouillons + publiées), un formulaire titre/date/corps pour en créer,
+ * notes (brouillons + publiées), un formulaire titre/date/version/corps pour en créer,
  * et par ligne : Publier (brouillon) + Supprimer.
  */
 export function ReleaseNotesSection() {
@@ -30,20 +39,24 @@ export function ReleaseNotesSection() {
   const [title, setTitle] = useState("");
   const [noteDate, setNoteDate] = useState(today());
   const [body, setBody] = useState("");
+  const [version, setVersion] = useState(defaultVersion);
 
   const canSubmit = "" !== title.trim() && "" !== body.trim() && "" !== noteDate && !create.isPending;
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!canSubmit) return;
+    const trimmedVersion = version.trim();
     create.mutate(
-      { title: title.trim(), body: body.trim(), noteDate },
+      // Champ vide = note sans version : la clé n'est pas envoyée.
+      { title: title.trim(), body: body.trim(), noteDate, ...("" !== trimmedVersion ? { version: trimmedVersion } : {}) },
       {
         onSuccess: () => {
           toast.success(ADMIN_SECTIONS_TEXTS.releaseNotesToastSaved);
           setTitle("");
           setBody("");
           setNoteDate(today());
+          setVersion(defaultVersion());
         },
       },
     );
@@ -82,6 +95,19 @@ export function ReleaseNotesSection() {
               className="h-10 rounded-md border border-white/15 bg-white/[0.04] px-3 text-sm text-white outline-none focus:border-console-accent/70 focus:ring-2 focus:ring-console-accent/20"
             />
           </div>
+        </div>
+        <div className="space-y-1">
+          <label htmlFor="release-note-version" className="block text-xs text-console-text-dim">{ADMIN_SECTIONS_TEXTS.releaseNotesVersionLabel}</label>
+          <input
+            id="release-note-version"
+            type="text"
+            maxLength={40}
+            value={version}
+            onChange={(event) => setVersion(event.target.value)}
+            aria-describedby="release-note-version-hint"
+            className="h-10 w-full max-w-48 rounded-md border border-white/15 bg-white/[0.04] px-3 text-sm text-white outline-none placeholder:text-console-text-faint focus:border-console-accent/70 focus:ring-2 focus:ring-console-accent/20"
+          />
+          <p id="release-note-version-hint" className="text-xs text-console-text-dim">{ADMIN_SECTIONS_TEXTS.releaseNotesVersionHint}</p>
         </div>
         <div className="space-y-1">
           <label htmlFor="release-note-body" className="block text-xs text-console-text-dim">{ADMIN_SECTIONS_TEXTS.releaseNotesBodyLabel}</label>
@@ -138,7 +164,8 @@ function ReleaseNoteRow({ note, publishing, removing, onPublish, onRemove }: {
   return (
     <li className="flex flex-col gap-2 p-4 md:flex-row md:items-start md:justify-between">
       <div className="min-w-0">
-        <p className="flex items-center gap-2 text-sm font-medium text-white">
+        <ReleaseNoteHeading date={note.date} version={note.version} variant="console" />
+        <p className="mt-0.5 flex items-center gap-2 text-sm font-medium text-white">
           {note.title}
           {null === note.publishedAt ? (
             <span className="rounded bg-console-muted/20 px-1.5 py-0.5 text-xs font-semibold uppercase text-console-text">{ADMIN_SECTIONS_TEXTS.releaseNotesBadgeDraft}</span>
@@ -146,7 +173,6 @@ function ReleaseNoteRow({ note, publishing, removing, onPublish, onRemove }: {
             <span className="rounded bg-console-success-tint/15 px-1.5 py-0.5 text-xs font-semibold uppercase text-console-success">{ADMIN_SECTIONS_TEXTS.releaseNotesBadgePublished}</span>
           )}
         </p>
-        <p className="mt-0.5 text-xs text-console-muted">{formatDate(note.date)}</p>
         <p className="mt-2 whitespace-pre-line text-sm text-console-text">{note.body}</p>
       </div>
       <div className="flex shrink-0 gap-2">
@@ -162,9 +188,4 @@ function ReleaseNoteRow({ note, publishing, removing, onPublish, onRemove }: {
       </div>
     </li>
   );
-}
-
-function formatDate(value: string): string {
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? value : dateFormatter.format(date);
 }
