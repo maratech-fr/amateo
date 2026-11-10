@@ -389,6 +389,9 @@ survive is naturally bounded by a modal's lifetime.
 13. **`make -C frontend e2e` carries the superadmin preflight** (compose profile `tools`, service
     `e2e` — it needs the stack **and** `make -C frontend dev` running): it seeds the account and
     exports its TOTP secret. Without it the `/admin` specs **SKIP** explicitly rather than fail.
+    Optional arguments: `SPEC=` (paths relative to `/app/frontend`), `GREP=` (Playwright regex),
+    `REPEAT=1..10`, `RETRIES=0..2`, `IGNORE_SNAPSHOTS=1` — hard caps checked when the Makefile
+    loads; details in `docs/testing/testing-strategy.md`.
 
 ---
 

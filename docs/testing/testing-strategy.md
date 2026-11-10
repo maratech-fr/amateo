@@ -447,6 +447,22 @@ les specs se skippent via leur garde. **Le limiteur backend n'est pas touché.**
 
 **Dockerized run (P4-33, 2026-08-04)** : `make -C frontend e2e` exécute la suite DANS le service compose `e2e` (image officielle Playwright **épinglée sur la version de `@playwright/test`** du lock — une dérive = « browser not found ») : l'hôte n'a plus besoin de Node, dernier maillon qui l'exigeait. Cibles internes au réseau (`E2E_BASE_URL=http://frontend-dev:5173`, `MAILPIT_WEB_URL=http://mailpit:8025`), donc stack + `make -C frontend dev` doivent tourner ; Vite doit autoriser le host interne (`server.allowedHosts: ['frontend-dev']` — sans quoi 403 « Blocked request »). La CI utilise désormais LE MÊME service `e2e` (plus de Node ni de chromium installés sur l'hôte du job), donc une montée de version de `@playwright/test` qui n'a pas suivi le tag `mcr.microsoft.com/playwright` de l'image `e2e` casse la suite e2e — en local comme en CI. Constaté le 2026-09-21 (image restée en `1.62.0-noble` pendant que le lock montait en `1.63.0`), corrigé par `b7959d98`, désormais gardé par `PlaywrightImageMatchesLockTest` (`backend/tests/Unit/Dependency/`, compare le tag `image` du service `e2e` à la version RÉSOLUE de `@playwright/test` dans le lock — non bloquant, `phase1`, `backend-tests` seul : c'est lui, et non l'e2e, qui attrape une dérive avant qu'elle ne rougisse la suite).
 
+**Arguments de la cible `e2e`** (`frontend/Makefile`) — sans argument, la cible lance `npx playwright test` tel quel. Variables :
+
+| Variable | Effet | Exemple |
+|---|---|---|
+| `SPEC` | fichiers à jouer, chemins **relatifs à `/app/frontend`** (le dossier du conteneur), pas à l'hôte | `SPEC=tests/e2e/mutualize.spec.ts` |
+| `GREP` | motif passé à `-g` : c'est une **regex Playwright**, pas un sous-texte | `GREP='mutualis(e|ation)'` |
+| `REPEAT` | `--repeat-each`, entier de 1 à 10 | `REPEAT=5` |
+| `RETRIES` | `--retries`, 0, 1 ou 2 (la CI joue 2 ; en local le défaut est 0, `playwright.config.ts:12`) | `RETRIES=2` |
+| `IGNORE_SNAPSHOTS` | `1` ajoute `--ignore-snapshots` | `IGNORE_SNAPSHOTS=1` |
+
+Les plafonds sont **durs** et contrôlés au chargement du Makefile, avant toute recette : une valeur refusée n'allume rien, quelle que soit la cible (`make help REPEAT=11` est refusé aussi), et la variable d'environnement (`REPEAT=11 make …`) ne les contourne pas. Liste blanche stricte : `1 2`, `%` et une valeur vide explicite sont refusés. Le plafond de 10 répétitions par spec en local est une décision fondateur du 2026-11-10 ; il se joue hors heures de travail, et au-delà on mesure sur la CI. Les arguments voyagent par variables exportées puis `-e VAR` sans valeur (une apostrophe dans le motif ne casse pas la ligne côté hôte). La cible reste refusée en worktree nu : elle se joue sur la stack d'épreuve (`make epreuve-up WT=<worktree>`, puis `with-sandbox.sh`). Le `chown` du volume `node_modules` est évalué côté hôte (UID/GID de l'utilisateur, comme le job CI `e2e`).
+
+⚠ Non prouvé à ce jour par un vrai run Playwright : le développement des variables par le shell de l'image `e2e` et l'effet du `chown` sur un volume neuf (contrôlés seulement par `make -n`).
+
+**Lecture d'une trace** (une trace est retenue sur échec, `trace: 'retain-on-failure'`) : ouvrir d'abord `error-context.md` du dossier du test (état de la page à l'échec), puis la chronologie réseau de la trace. Visualiseur : `docker compose --profile tools run --rm --no-deps -p 9323:9323 -v <dossier>:/traces:ro e2e npx playwright show-trace …` (chemin du `trace.zip` sous `/traces`). **Jamais `trace.playwright.dev`** : la trace porte le nom d'un club et des cookies de session, elle ne quitte pas le poste.
+
 ---
 
 ## 4bis. Frontend accessibility guardrail (WCAG 2.2 AA)
