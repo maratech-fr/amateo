@@ -1,5 +1,5 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, type Page } from "@playwright/test";
+import { expect, type Locator, type Page } from "@playwright/test";
 
 import { THEME_STORAGE_KEY } from "../../src/shared/stores/themeStore";
 
@@ -478,4 +478,28 @@ export async function firstHolidayFreeMonday(page: Page, weeks: number, sameMont
     base.setDate(base.getDate() + 7);
   }
   throw new Error(`P4-353 : aucune fenêtre de ${weeks} semaine(s) future hors vacances trouvée dans la saison`);
+}
+
+// ── Ciblage du calendrier cockpit (case-jour, dialogue du jour) ───────────────────────────────────
+
+/** Un texte libre (nom d'équipe, titre d'entrée) devient un motif littéral : « U11M1 (bis) » ne casse pas la RegExp. */
+export function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/**
+ * La case-jour CLIQUABLE du calendrier cockpit qui porte l'entrée `title`. Son nom accessible
+ * (`MonthCalendar.tsx`) est « 3 Décembre[, aujourd'hui][, vacances — …], <titre> » : l'ancre `^\d`
+ * écarte tout autre bouton qui contiendrait le titre (« Supprimer <titre> » du dialogue du jour, qui
+ * reste dans l'arbre a11y derrière la modale) ; la lookbehind finale écarte une case PASSÉE
+ * (« …, passé (non modifiable) », mot présent seulement dans l'aria-label, jamais dans le texte).
+ * Une fermeture de plusieurs jours a une case par jour : l'appelant prend `.first()`.
+ */
+export function calendarDayCell(page: Page, title: string): Locator {
+  return page.getByRole("button", { name: new RegExp(`^\\d{1,2} [^,]+, .*${escapeRegExp(title)}.*(?<!passé \\(non modifiable\\))$`) });
+}
+
+/** Le dialogue d'UN jour du cockpit (`DayDialog` → `Modal label="Jour <ISO>"`), jamais la confirmation qu'il ouvre par-dessus. */
+export function dayDialog(page: Page): Locator {
+  return page.getByRole("dialog", { name: /^Jour \d{4}-\d{2}-\d{2}$/ });
 }
