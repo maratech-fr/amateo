@@ -162,6 +162,29 @@ sur les autres, à enchaîner VM allumée.
 - **Arrêt de la VM** : manuel par raccourci (règle du geste 24).
 - **Horloge** : une dérive se voit en jobs « Queued » ; un job en cours pendant une veille est perdu.
 - **Docker Hub** : quota anonyme par IP — le login conditionnel est conservé, par job.
+- **Relevé des jobs rouges** : `make ci-releve` (`DAYS=14` par défaut ; `ARGS="--since AAAA-MM-JJ
+  --until AAAA-MM-JJ --branch B --json CHEMIN --no-cache"`) dit POURQUOI chaque job rouge de `ci.yml`
+  l'a été, sans ouvrir un log. Il lit l'API GitHub par le `gh` du poste (lecture seule, jamais Docker,
+  donc lançable depuis toute copie, worktree nu compris) ; code retour 0, 2 si `gh` est absent ou non
+  authentifié ou si Python < 3.10. Six causes : vrai bug, instable, infra, externe-CVE, Dependabot,
+  inconnu. **Les règles de classement, leurs précédences, la découpe de la section du step échoué et
+  l'assainissement des lignes : docstring de `classify` et de `step_section` dans
+  `scripts/ci-releve.py` — maison unique, rien n'est recopié ici.** Il ne lit jamais que la section du
+  step échoué (ni le step voisin, ni le corps recopié du `run:`) ; toute ligne portant un mot sensible
+  est supprimée ; le cache `~/.cache/amateo/ci-releve/jobs/<id>.json` ne garde que le verdict, jamais
+  le log. Rétention : logs GitHub 90 jours (au-delà, classement par la famille du step, « log
+  expiré »), traces Playwright 7 jours. Qui le lance : l'orchestrateur à chaque bilan de lot et avant
+  toute phrase « ce job est flaky » ; le fondateur à la demande. Auto-test : step `ci-releve self-test`,
+  dernier du job `lint`. **Limites** : (a) « instable » = même `head_sha` : un commit vide ou un rebase
+  change le sha et laisse « vrai bug » (relancer le job : `gh run rerun`) ; sur une PR le `head_sha` est
+  celui de la branche alors que le run teste le commit de fusion, donc « instable » peut être faux si
+  `main` a bougé ; (b) un step INFRA cassé par un bug du YAML de CI reste « infra » ; (c) la colonne PR
+  reste « — » pour une PR fermée ou mergée (l'API renvoie `pull_requests: []`) ; (d) les signatures
+  RUNNER et réseau/disque ne sont prouvées que par des cas synthétiques (aucun log réel) ; (e) un job
+  tué par délai n'a jamais été observé : on ignore si son step en cours passe en `cancelled` ; (f) un
+  Rector qui plante (`[ERROR] Could not process … file`) tombe en « step … exit code 1 (identifiant non
+  lu) » : repli conforme, pas d'extracteur ; (g) la sortie peut être recopiée dans la roadmap ou l'état
+  des lieux (publics) : l'assainissement vaut aussi pour cela.
 
 Après tout changement du `.env` d'un runner : relancer son service. Après une modification des hooks
 dans le dépôt : les recopier dans la VM (le runner ne lit pas le dépôt pour eux).
@@ -195,7 +218,7 @@ dans le dépôt : les recopier dans la VM (le runner ne lit pas le dépôt pour 
   pendant un run** (Dependabot réédite le corps de ses PR : coût en runs, pas de risque).
 - **Preflight** : sa garde fork couvre les PR vers `lot/**` comme vers `main`.
 - **Ce que le test ne prouve pas** (docblock de `CiWorkflowRegimeTest`) : la sémantique GitHub
-  « sauté = réussi » ; le changement de base et les deux PR d'une même tête (gestes ci-dessous) ;
+  « sauté = réussi » ; le changement de base et les deux PR d'une même tête (preuves faites ci-dessous, à la main) ;
   les rulesets ; la concordance des constantes de checks avec la protection et les rulesets réels ;
   qu'un check requis de `main` soit satisfait par un run léger.
 
@@ -212,52 +235,61 @@ résumé de GO de l'orchestrateur. Remède si un « skipping » apparaît : ferm
 PR partie de la même tête, puis `gh run rerun` CIBLÉ du run PR→`main` ; un commit vide n'est admis
 que si la tête ne porte qu'UNE PR (sinon il relance les deux et recrée la course).
 
-### Rulesets de `lot/**` (hors dépôt)
+### Rulesets de `lot/**` (hors dépôt, POSÉS)
 
-À poser après le merge de la PR qui introduit ce régime, par l'orchestrateur (`gh api -X POST
-repos/{owner}/{repo}/rulesets`, `integration_id` de l'app GitHub Actions relu dans la protection de
-`main`) ; relire l'état réel avec `gh api repos/{owner}/{repo}/rulesets`.
+Posés par l'orchestrateur (`gh api -X POST repos/{owner}/{repo}/rulesets`, `integration_id` de l'app
+GitHub Actions relu dans la protection de `main`) ; relire l'état réel avec `gh api
+repos/{owner}/{repo}/rulesets`.
 
 - **`lot-gate`** : cible `refs/heads/lot/**` ; règle `required_status_checks` sur les checks légers
   (`LOT_REQUIRED_CHECKS` de `CiWorkflowRegimeTest` : copie, à relire contre le ruleset),
   `strict_required_status_checks_policy`, `do_not_enforce_on_create` ; **pas** de règle
-  `non_fast_forward` (le force-push du rebase final est voulu). « Engine Perf (PR, dense only) »
-  n'est pas requis, miroir de `main`.
+  `non_fast_forward` (le force-push du rebase final est voulu). **Bypass : rôle admin du dépôt, mode
+  `always`** — nécessaire (voir B2 ci-dessous). « Engine Perf (PR, dense only) » n'est pas requis,
+  miroir de `main`.
 - **`lot-no-delete`** : règle `deletion`, bypass admin. Sans elle la branche d'un lot serait
-  indestructible ; avec elle, `delete_branch_on_merge` échoue sur `lot/<sujet>` au merge final :
-  **la suppression de la branche de lot est un geste manuel admin** (`git push origin --delete
-  lot/<sujet>`, puis `git branch -D`).
+  indestructible. **La suppression de la branche de lot est un geste admin** (`git push origin
+  --delete lot/<sujet>`, puis `git branch -D`) ; elle fonctionne via le bypass. L'auto-suppression
+  par GitHub au merge final (`delete_branch_on_merge`) n'a pas été testée : à vérifier à la première
+  vraie branche de lot, sinon geste manuel.
 
-### Ordre des gestes d'exploitation (après le merge, sur une branche `lot/essai`)
+### Preuves faites (2026-11-10, sur une branche et des PR d'essai, supprimées ensuite)
 
-1. **B2 en premier** : `lot-gate` SANS bypass ; `lot/essai` depuis `main` ; commit trivial, rebase,
-   `git push --force-with-lease` — un refus est possible (un `required_status_checks` de ruleset
-   peut s'appliquer aux push directs : les commits rebasés, nouveaux SHA sans run, seraient
-   refusés). Si refus : ajouter le bypass admin à `lot-gate` et rejouer.
-2. **Héritage du bypass** : si `lot-gate` porte un bypass admin, les agents poussent et mergent avec
-   l'identité GitHub du fondateur et en héritent. **Jamais `--admin`, jamais le bouton bypass ;
-   `gh pr checks <n> --watch` vert AVANT `gh pr merge --squash`.** À prouver sur `lot/essai` : un
-   check en attente bloque-t-il `gh pr merge --squash` sans `--admin` pour un acteur bypass ? Sinon
-   la discipline porte seule le gate du lot.
-3. `lot-no-delete` ; vérifier que `git push origin --delete lot/essai` est refusé sans bypass.
-4. PR d'essai vers `lot/essai` : régime léger (cinq lourds sautés, checks requis de `lot-gate`
-   présents) ; un check en attente bloque le merge.
-5. **B1** : PR d'essai vers `lot/essai`, run léger, changer sa base vers `main` (« Edit ») ; un nouveau
-   run du gate complet, lourds exécutés, est attendu ; fermer sans merger.
-6. **M1** (ci-dessous) : à rejouer et consigner.
-7. Merge (squash) d'une PR d'essai dans `lot/essai` (aucun run sur ce push) ; rebase +
-   `--force-with-lease` ; PR `lot/essai` → `main` : gate complet ; **la fermer sans merger**
-   (décision fondateur 2026-11-10).
-8. Mesure du critère de durée (ci-dessous). Suppression de `lot/essai` (bypass admin). Première
-   vraie branche de lot : worktrees des agents depuis `origin/lot/<sujet>`, PR ouvertes avec
-   `--base lot/<sujet>`.
+Chiffres et détail : `specs/courantes/etat-des-lieux.md` §3 (2026-11-10).
 
-### Critère de durée (décision fondateur 2026-11-10 ; mesure APRÈS le merge, pas encore faite)
+- **B2** : un push direct d'un commit sur `lot/**` est refusé (« repository rule violations »). Un
+  force-push d'un commit à l'arbre identique à celui de `main` passe, mais un rebase qui change le
+  contenu est refusé sans bypass : le bypass admin est nécessaire et posé. Un rebase demande
+  `git rebase --continue` si un commit devient vide.
+- **Héritage du bypass** : les agents poussent et mergent avec l'identité GitHub du fondateur et
+  héritent du bypass. Mais `gh pr merge --squash` SANS `--admin` reste refusé tant que les checks sont
+  en attente (« the base branch policy prohibits the merge ») : **le gate du lot tient tant que
+  `--admin` n'est jamais utilisé. Jamais `--admin`, jamais le bouton bypass ;
+  `gh pr checks <n> --watch` vert AVANT `gh pr merge --squash`.**
+- **Régime léger** : les checks requis de `lot-gate` passent, les lourds sont sautés, l'état est
+  « CLEAN » ; un squash dans la branche de lot ne lance aucun run.
+- **B1** : changer la base d'une PR de `lot/<sujet>` vers `main` relance le gate complet, lourds
+  exécutés, et la concurrence annule l'ancien run léger (aucun « skipped » résiduel). **Se fait par
+  l'API REST** (`gh api -X PATCH repos/{owner}/{repo}/pulls/<n> -f base=main`) : `gh pr edit --base`
+  échoue sur l'avertissement GraphQL « Projects (classic) ».
+- **M1** : deux PR depuis la même tête (une vers `main`, une vers le lot) : le run léger de la seconde
+  fait passer les 5 contextes lourds requis de la première de « pass » à « skipping ». Règle M1 et N2
+  ci-dessous en sont la garde.
+- **PR `lot/<sujet>` → `main`** : gate complet, tout passe, une seule ligne « skipping » (Engine Perf
+  Gate).
 
-Une PR de lot doit durer **≤ 10 min murales ET ≤ 50 % du run PR→`main`**, les deux mesurés sur **LE
-MÊME pool de runners** (la mesure nomme la valeur de `CI_RUNS_ON` du moment) : 5 runs PR→lot, et un
-run PR→`main` de référence (geste 7). Au-dessus, retour au fondateur avant la première vraie branche
-de lot. Un run mesuré sur un autre pool (VM ou runners GitHub) ne vaut pas pour celui-ci.
+**À vérifier à la première vraie branche de lot** : l'auto-suppression au merge final (ci-dessus) et le
+comportement avec plusieurs agents en parallèle. Mode d'emploi d'une première branche : worktrees des
+agents depuis `origin/lot/<sujet>`, PR ouvertes avec `--base lot/<sujet>`.
+
+### Critère de durée (décision fondateur 2026-11-10 : accepté tel que mesuré)
+
+Cible initiale : PR de lot **≤ 10 min murales ET ≤ 50 % du run PR→`main`**, sur le MÊME pool de
+runners. Mesuré le 2026-11-10 sur le pool des runners GitHub (`ubuntu-24.04`) : le plafond de 10 min
+est tenu ; le 50 % ne l'est pas à chaque mesure. **Le fondateur accepte le critère tel que mesuré** :
+son besoin réel (de 5 à 10 min) est tenu, le 50 % n'était qu'une approximation. Valable pour CE pool :
+**une mesure sur un autre pool (VM ou autres runners) ne vaut pas**, on remesure si `CI_RUNS_ON`
+change. Les jobs les plus longs de la PR légère : Frontend (build + unit) puis Blocking Tests.
 
 ### Règles de geste
 
