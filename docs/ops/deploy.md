@@ -949,7 +949,8 @@ git push -u origin hotfix/<sujet>
    ```
    ⚠ **La console superadmin refuse ce tag** : elle exige une CI verte
    (`GitHubDeployClient::isCiGreen`, `GET …/actions/workflows/ci.yml/runs?head_sha=…`),
-   et `ci.yml` ne se déclenche que sur `push`/`pull_request` vers `main` — un
+   et `ci.yml` ne se déclenche que sur `push` vers `main` et `pull_request` vers `main` (ou
+   `lot/**`) — un
    commit qui n'existe que sur `release` n'a **aucun** run `ci.yml`, donc
    aucune CI verte à trouver. `make deploy VERSION=<tag>` reste le seul chemin
    pour un hotfix tagué sur `release` (`make deploy` **sans** `VERSION` vise
@@ -1088,11 +1089,15 @@ déployée est saine et la page de maintenance reste affichée — le geste est 
 du commit du tag. Depuis que le run de `main` est allégé (`docs/testing/testing-strategy.md` §1),
 « verte » veut dire : **sur ce commit, les images de prod se construisent (Trivy CRITICAL), la perf
 tient, lint, secrets, semgrep et audit des dépendances sont verts** — les suites de tests ont, elles,
-été prouvées par la PR. La CI tourne dans la VM du fondateur (`docs/ops/ci-runner.md`) : le run de
-`main` non conclu (VM éteinte) rend `isCiGreen` faux et la console refuse (422) ; la bascule à l'heure H
-re-vérifie. **Règle : après le dernier merge de la journée, attendre la fin du run de `main` avant
-d'éteindre la VM.** Un déploiement programmé la nuit VM éteinte fonctionne si ce run est déjà conclu
-(`deploy.yml` s'exécute chez GitHub).
+été prouvées par la PR. Tant que les variables de runner pointent vers la VM du fondateur
+(`docs/ops/ci-runner.md`), le run de `main` non conclu (VM éteinte) rend `isCiGreen` faux et la
+console refuse (422) ; la bascule à l'heure H re-vérifie. **Règle : après le dernier merge de la
+journée, attendre la fin du run de `main` avant d'éteindre la VM.** Un déploiement programmé la nuit
+VM éteinte fonctionne si ce run est déjà conclu (`deploy.yml` s'exécute chez GitHub).
+
+**Tag et branche de lot.** Un commit intermédiaire d'un lot (squash dans `lot/<sujet>`) n'a aucun run
+`ci.yml` : un tag posé dessus est refusé par `isCiGreen`. On tague le merge commit de la PR finale
+`lot/<sujet>` → `main`, ou un commit de `main`.
 
 Depuis qu'un tag ne fait plus que construire (« tag ≠ déploiement »), cette console est le chemin
 **normal** pour programmer la mise en prod d'une nouvelle version — `make deploy VERSION=<tag>`

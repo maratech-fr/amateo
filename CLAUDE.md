@@ -56,9 +56,16 @@ make epreuve-up WT=<worktree> | epreuve-status | epreuve-down   # worktree : Beh
 Graphe des jobs, rôles et pièges : **`docs/testing/testing-strategy.md` §1** (canonique). Qui teste
 quoi, par axe, et les angles morts : `docs/testing/test-coverage-map.md`.
 
-- **La CI tourne dans la VM du fondateur** (runner auto-hébergé, `docs/ops/ci-runner.md`) :
-  **VM éteinte = checks « Queued », file de 24 h**. Required checks de `main` : 15, dont
-  **Preflight** (refuse les PR de fork), avec `strict` (branche à jour) et `enforce_admins`.
+- **Où tourne la CI** : runners GitHub tant que le dépôt est public (variables `CI_RUNS_ON` /
+  `CI_RUNS_ON_HEAVY`) ; VM auto-hébergée du fondateur au passage en privé (`docs/ops/ci-runner.md`) —
+  VM éteinte = checks « Queued », file de 24 h, seulement tant que les variables pointent vers elle.
+  Required checks de `main` : 15, dont **Preflight** (refuse les PR de fork), avec `strict`
+  (branche à jour) et `enforce_admins`.
+- **Deux régimes, triés par la branche CIBLE de la PR** (jamais par dossier touché) : PR vers `main` =
+  gate **complet** (tout `ci.yml` sauf `engine-perf`) ; PR vers `lot/<sujet>` = régime **léger**
+  (`backend-tests`, `e2e`, `functional-tests`, `dependency-audit`, `build-docker` sautés). Types
+  d'événement et branches fermés, gardés par `CiWorkflowRegimeTest`. Les rulesets `lot/**` vivent
+  hors dépôt ; leur cible, l'ordre des gestes et les pièges : **`docs/ops/ci-runner.md` § Branche de lot**.
 - **Bloquant = chemin listé dans le step `Blocking suite` (ou le step filtré) du job
   `blocking-tests` dans `.github/workflows/ci.yml`** — jamais l'annotation `#[Group('phase1')]`
   (bien plus de fichiers la portent que le step n'en liste). Un test annoté mais non listé tourne
@@ -140,14 +147,21 @@ console est libre ; tant qu'il n'a pas clos le sujet en cours, les autres (résu
 questions, bilans) attendent avant de s'afficher.
 **Git (non négociable)** : **JAMAIS de commit sur `main`** (docs/specs compris) —
 branche puis PR ; **JAMAIS de merge sans le GO explicite du user** — **sauf dans un lot validé par
-le fondateur : merge autorisé dès que la CI est verte**, pour les PR du lot seulement (ni validation
+le fondateur : merge autorisé dès que la CI est verte**, pour les PR **vers `lot/<sujet>`**
+seulement — **la PR finale `lot/<sujet>` → `main` exige TOUJOURS le GO du fondateur** (ni validation
 de plan, ni tag, ni déploiement, ni prod) ; push libre, stop à « PR ready » ;
-**jamais de merge par contournement des checks** (bouton admin, VM éteinte comprise) : on allume la
-VM, on attend le vert (`docs/ops/ci-runner.md`) ;
+**jamais de merge par contournement des checks** (bouton admin, `--admin`, runner indisponible
+compris) : on attend le vert, en rallumant la VM si les variables de runner pointent vers elle
+(`docs/ops/ci-runner.md`) ;
+**avant tout GO ou merge d'une PR vers `main`** (la PR finale d'un lot comme toute autre) : lire la
+sortie COMPLÈTE de `gh pr checks <n>` — une seule ligne « skipping » est admise, « Engine Perf Gate
+(main only) » ; toute autre bloque le GO. ⚠ Le code retour ne compte pas ici (0 même avec des
+« skipping »). Variante mécanique : `gh pr checks <n> --required --json name,bucket` sans aucune
+entrée `skipping`. Pourquoi, remède : `docs/ops/ci-runner.md` § Branche de lot ;
 **une seule PR ouverte à la fois** — deux en simultané seulement si merger l'une n'affecte pas
 l'autre (roadmap, état des lieux, `ci.yml` partagés = dépendantes) ; **on n'ouvre JAMAIS une PR dont
 la branche modifie un fichier déjà modifié par une PR ouverte** — avant d'ouvrir, comparer
-`git diff --name-only origin/main...HEAD` aux fichiers des PR ouvertes (`gh pr diff <n> --name-only`),
+`git diff --name-only origin/<base>...HEAD` (base = branche cible de la PR) aux fichiers des PR ouvertes (`gh pr diff <n> --name-only`),
 intersection non vide = la branche attend le merge ; les autres branches attendent.
 **Branche `release`** = iso-prod, pilotée par le workflow de déploiement (recalée sur le commit
 déployé) — **jamais de commit direct** ; correctif rapide = PR vers `release` puis report sur `main`
@@ -182,6 +196,13 @@ déployé) — **jamais de commit direct** ; correctif rapide = PR vers `release
    en local (toujours sous `with-sandbox.sh`) seulement si la CI est bloquée ou pour diagnostiquer
    un Behat rouge en CI — table feature↔zone pour ce diagnostic :
    `.claude/skills/validation-runner/SKILL.md`.
+   **Dans un lot, avant le merge d'une PR vers `lot/<sujet>`** (`backend-tests`, `functional-tests`
+   et `e2e` n'y tournent pas, §4) : `/validation-runner` ET `make -C backend tests-complete` verts en
+   local ; ET si le diff touche une zone couverte par un Behat ou un e2e (table feature↔zone du
+   skill `validation-runner`), ces features / specs se jouent sur la stack d'épreuve avant le merge
+   (décision fondateur 2026-11-10). Behat et e2e gatent ensuite à la PR finale → `main`. Un rouge à
+   la PR finale s'impute à l'un des squashs du lot : `git bisect` entre `merge-base lot main` et la
+   tête du lot ; le squash coupable nomme sa PR.
    **Contrôle visuel** (agent `switch`) si le plan nomme des écrans dont l'apparence change :
    captures sur un club de test du bac à sable + passe de design, AVANT de dire au user « prêt ».
 6. Résumé (liste des détails tranchés par l'orchestrateur, pour que le fondateur puisse en contester un) +
@@ -194,8 +215,8 @@ déployé) — **jamais de commit direct** ; correctif rapide = PR vers `release
    sujets Mercure, données d'un club lues ou écrites par la génération). Lancée par l'orchestrateur,
    exécutée par un agent neuf qui n'a pas écrit le code. Répondre à une revue : skill
    `review-response` (plafond 4 rounds, GO fondateur dès le round 2).
-8. PR → **GO explicite du user** → merge. **Après chaque merge, toute PR suivante / empilée est
-   rebasée sur `main` à jour et RE-VALIDÉE (les suites de l'étape 5 rejouées sur la base réelle)
+8. PR → **GO explicite du user** (vers `main` : lecture de `gh pr checks` d'abord, règle §7 Git) → merge. **Après chaque merge, toute PR suivante / empilée est
+   rebasée sur sa base à jour (`main`, ou `lot/<sujet>`) et RE-VALIDÉE (les suites de l'étape 5 rejouées sur la base réelle)
    AVANT de proposer le GO suivant** — une PR empilée n'hérite jamais du vert d'avant le merge.
 
 ### 7.1 Structuring axes (liste fermée — NR requis si touché ; l'étendre = décision user)
@@ -244,7 +265,7 @@ maison unique, c'est l'agent qui l'exécute. Tout plan produit doit la remplir l
 
 1. ⚠ **`make phpunit` = `--group phase1` seul (un fichier : `make -C backend phpunit F=tests/… [FILTER=…]`) · `make test` = testsuite `Unit` seule** — or la CI
    `backend-tests` lance `phpunit tests/` ENTIER. **`make -C backend tests-complete`
-   vert avant de demander le GO de merge** (miroir CI — détail : `backend/docs/commands.md`) ; la PR
+   vert avant tout merge — PR vers `lot/<sujet>` comprise, où `backend-tests` ne tourne pas** (miroir CI — détail : `backend/docs/commands.md`) ; la PR
    se pousse dès le rebase, cette suite tourne en parallèle de la CI (décision fondateur 2026-10-11). Chaque
    dossier de `tests/` est dans une testsuite (garde `TestsuitesCoverEveryTestDirectoryTest`).
 2. Pas de `contracts/` ni `tests/` à la racine du dépôt — les tests cross-stack vivent dans
