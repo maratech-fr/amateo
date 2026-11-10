@@ -48,6 +48,7 @@ cd backend && make behat    # tests fonctionnels Gherkin FR (API réelle) — `w
 cd engine  && make test     # ruff (+format --check) + mypy + bandit + deptry + pytest  | make format
 make -C frontend dev        # Dockerized Vite :5173 (proxies /api, /.well-known/mercure)
 make -C frontend e2e        # Playwright entièrement dockerisé — exige stack + dev lancés
+make ci-releve [DAYS=14]    # POURQUOI chaque job CI rouge l'a été (API GitHub par `gh`, sans Docker) — avant de dire « flaky » (docs/ops/ci-runner.md §8)
 make epreuve-up WT=<worktree> | epreuve-status | epreuve-down   # worktree : Behat/e2e sur la stack d'épreuve (:8181, §10.5)
 ```
 

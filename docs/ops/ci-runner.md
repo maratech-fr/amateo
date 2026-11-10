@@ -162,6 +162,29 @@ sur les autres, à enchaîner VM allumée.
 - **Arrêt de la VM** : manuel par raccourci (règle du geste 24).
 - **Horloge** : une dérive se voit en jobs « Queued » ; un job en cours pendant une veille est perdu.
 - **Docker Hub** : quota anonyme par IP — le login conditionnel est conservé, par job.
+- **Relevé des jobs rouges** : `make ci-releve` (`DAYS=14` par défaut ; `ARGS="--since AAAA-MM-JJ
+  --until AAAA-MM-JJ --branch B --json CHEMIN --no-cache"`) dit POURQUOI chaque job rouge de `ci.yml`
+  l'a été, sans ouvrir un log. Il lit l'API GitHub par le `gh` du poste (lecture seule, jamais Docker,
+  donc lançable depuis toute copie, worktree nu compris) ; code retour 0, 2 si `gh` est absent ou non
+  authentifié ou si Python < 3.10. Six causes : vrai bug, instable, infra, externe-CVE, Dependabot,
+  inconnu. **Les règles de classement, leurs précédences, la découpe de la section du step échoué et
+  l'assainissement des lignes : docstring de `classify` et de `step_section` dans
+  `scripts/ci-releve.py` — maison unique, rien n'est recopié ici.** Il ne lit jamais que la section du
+  step échoué (ni le step voisin, ni le corps recopié du `run:`) ; toute ligne portant un mot sensible
+  est supprimée ; le cache `~/.cache/amateo/ci-releve/jobs/<id>.json` ne garde que le verdict, jamais
+  le log. Rétention : logs GitHub 90 jours (au-delà, classement par la famille du step, « log
+  expiré »), traces Playwright 7 jours. Qui le lance : l'orchestrateur à chaque bilan de lot et avant
+  toute phrase « ce job est flaky » ; le fondateur à la demande. Auto-test : step `ci-releve self-test`,
+  dernier du job `lint`. **Limites** : (a) « instable » = même `head_sha` : un commit vide ou un rebase
+  change le sha et laisse « vrai bug » (relancer le job : `gh run rerun`) ; sur une PR le `head_sha` est
+  celui de la branche alors que le run teste le commit de fusion, donc « instable » peut être faux si
+  `main` a bougé ; (b) un step INFRA cassé par un bug du YAML de CI reste « infra » ; (c) la colonne PR
+  reste « — » pour une PR fermée ou mergée (l'API renvoie `pull_requests: []`) ; (d) les signatures
+  RUNNER et réseau/disque ne sont prouvées que par des cas synthétiques (aucun log réel) ; (e) un job
+  tué par délai n'a jamais été observé : on ignore si son step en cours passe en `cancelled` ; (f) un
+  Rector qui plante (`[ERROR] Could not process … file`) tombe en « step … exit code 1 (identifiant non
+  lu) » : repli conforme, pas d'extracteur ; (g) la sortie peut être recopiée dans la roadmap ou l'état
+  des lieux (publics) : l'assainissement vaut aussi pour cela.
 
 Après tout changement du `.env` d'un runner : relancer son service. Après une modification des hooks
 dans le dépôt : les recopier dans la VM (le runner ne lit pas le dépôt pour eux).
