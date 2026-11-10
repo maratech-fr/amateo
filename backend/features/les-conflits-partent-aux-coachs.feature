@@ -26,9 +26,9 @@ Fonctionnalité: Les conflits partent aux coachs
     Et Karim, avec une adresse, coache U15F1 et U13F1, qui jouent à l'extérieur le même samedi à 15h30 et à 16h
     Quand le gestionnaire envoie les conflits aux coachs
     Alors Karim reçoit un e-mail qui liste son conflit, sans marque de nouveauté
-    Quand U11M1, aussi coachée par Karim, joue à l'extérieur ce samedi à 15h30
+    Quand U11M1, aussi coachée par Karim, joue à l'extérieur ce samedi à 16h
     Et le gestionnaire envoie de nouveau les conflits aux coachs
-    Alors Karim reçoit un e-mail qui liste ses 3 conflits, dont 2 marqués nouveaux
+    Alors Karim reçoit un e-mail qui liste ses 2 conflits, dont 1 marqué nouveau
     Et un nouvel envoi sans changement est refusé : rien de nouveau depuis le dernier envoi
     Quand le gestionnaire renvoie tout aux coachs
     Alors Karim reçoit sa liste complète, qui dit qu'aucun conflit n'est nouveau ou modifié depuis l'envoi précédent

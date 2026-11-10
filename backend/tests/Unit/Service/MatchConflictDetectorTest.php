@@ -1999,6 +1999,34 @@ final class MatchConflictDetectorTest extends TestCase
         }
     }
 
+    /**
+     * Un coach seul principal de trois matchs qui se chevauchent tient le premier coup d'envoi : il a
+     * DEUX conflits, tous deux par ce match ; la paire des deux matchs sans tenant ne fait aucune ligne
+     * (il n'y est retenu nulle part). Angle nommé : c'est le décor de l'envoi aux coachs
+     * (`ConflictsToCoachesContext::u11m1AussiCoacheeParKarimJoue`, features/les-conflits-partent-aux-coachs.feature,
+     * scénario 2) — il compte sur ce nombre et sur la paire ancienne restée identique.
+     */
+    public function testASoleMainOfThreeOverlappingMatchesHoldsTheFirstKickoffAndHasTwoConflicts(): void
+    {
+        $fixtures = [
+            $this->fixture('fx-u15', self::U15, self::HOLDING_FRIDAY, '15:30'),
+            $this->fixture('fx-u18', self::U18, self::HOLDING_FRIDAY, '16:00'),
+            $this->fixture('fx-u20', self::U20, self::HOLDING_FRIDAY, '16:00'),
+        ];
+        $links = [$this->link(self::COACH_B, self::U15), $this->link(self::COACH_B, self::U18), $this->link(self::COACH_B, self::U20)];
+
+        foreach ([$fixtures, array_reverse($fixtures)] as $order) {
+            $radar = $this->holdingRadar($order, $links, []);
+
+            self::assertSame([], $radar['held']);
+            self::assertCount(2, $radar['conflicts'], 'trois matchs, un seul tenant : deux conflits, pas trois');
+            foreach ($radar['conflicts'] as $conflict) {
+                self::assertSame(self::COACH_B, $conflict['coachId']);
+                self::assertContains('fx-u15', [$conflict['left']['fixtureId'], $conflict['right']['fixtureId']], 'chaque conflit passe par le match qu\'il tient');
+            }
+        }
+    }
+
     /** Un principal qui joue ailleurs et l'autre pris par un match : personne ne tient, deux rouges, aucun adjoint annoncé. */
     public function testACoachPlayingElsewhereCannotHoldAndTheSessionStaysRed(): void
     {

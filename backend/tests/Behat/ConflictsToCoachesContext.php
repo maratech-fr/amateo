@@ -192,32 +192,38 @@ final class ConflictsToCoachesContext extends BaseContext
         }
     }
 
-    #[When('U11M1, aussi coachée par Karim, joue à l\'extérieur ce samedi à 15h30')]
+    #[When('U11M1, aussi coachée par Karim, joue à l\'extérieur ce samedi à 16h')]
     public function u11m1AussiCoacheeParKarimJoue(): void
     {
         $this->mainCoach('U11M1', $this->karimId);
-        $this->awayMatch('U11M1', $this->saturday, '15:30');
+        $this->awayMatch('U11M1', $this->saturday, '16:00');
 
-        // Témoin du décor : Karim est désormais en double trois fois (U11M1 × U15F1, U11M1 × U13F1,
-        // U15F1 × U13F1) — sinon « 2 marqués nouveaux » ne prouverait rien.
-        $karimDoubles = $this->doublesOf($this->karimId);
-        if (3 !== $karimDoubles) {
-            throw new RuntimeException(\sprintf('le décor devrait mettre Karim en double 3 fois, le radar en voit %d', $karimDoubles));
+        // Témoin du décor : Karim tient U15F1, le premier coup d'envoi (15h30) ; ses conflits sont
+        // U15F1 × U13F1, l'ancien, inchangé, et U15F1 × U11M1, le nouveau. U13F1 × U11M1 ne fait
+        // aucune ligne : il n'y est retenu nulle part (règle prouvée au plus bas par
+        // MatchConflictDetectorTest::testASoleMainOfThreeOverlappingMatchesHoldsTheFirstKickoffAndHasTwoConflicts).
+        // U11M1 joue APRÈS U15F1 : à coup d'envoi égal, l'id — aléatoire — déciderait qui Karim
+        // tient, et l'ancien conflit disparaîtrait une fois sur deux.
+        $expected = [$this->teamPair('U15F1', 'U13F1'), $this->teamPair('U15F1', 'U11M1')];
+        sort($expected);
+        $seen = $this->doublePairsOf($this->karimId);
+        if ($expected !== $seen) {
+            throw new RuntimeException(\sprintf('le décor devrait mettre Karim en double sur U15F1 × U13F1 et U15F1 × U11M1, le radar voit : %s', json_encode($seen)));
         }
     }
 
-    #[Then('Karim reçoit un e-mail qui liste ses 3 conflits, dont 2 marqués nouveaux')]
-    public function karimRecoitSesTroisConflitsDontDeuxNouveaux(): void
+    #[Then('Karim reçoit un e-mail qui liste ses 2 conflits, dont 1 marqué nouveau')]
+    public function karimRecoitSesDeuxConflitsDontUnNouveau(): void
     {
         $this->assertSent();
         $mail = $this->nextMailForKarim();
-        if (3 !== substr_count($mail['text'], 'Personne en double — ')) {
-            throw new RuntimeException('la liste COMPLÈTE de Karim devrait porter 3 tuiles :' . "\n" . $mail['text']);
+        if (2 !== substr_count($mail['text'], 'Personne en double — ')) {
+            throw new RuntimeException('la liste COMPLÈTE de Karim devrait porter 2 tuiles, l\'ancienne comprise :' . "\n" . $mail['text']);
         }
-        if (2 !== substr_count($mail['text'], ' · Nouveau')) {
-            throw new RuntimeException('2 conflits devraient être marqués « Nouveau » :' . "\n" . $mail['text']);
+        if (1 !== substr_count($mail['text'], ' · Nouveau') || str_contains($mail['text'], ' · Modifié')) {
+            throw new RuntimeException('seul le nouveau conflit devrait être marqué, l\'ancien inchangé ne l\'est pas :' . "\n" . $mail['text']);
         }
-        if (!str_contains($mail['text'], '2 conflits sont nouveaux ou modifiés : ils sont marqués.')) {
+        if (!str_contains($mail['text'], '1 conflit est nouveau ou modifié : il est marqué.')) {
             throw new RuntimeException('la phrase « Depuis le dernier envoi… » manque :' . "\n" . $mail['text']);
         }
     }
@@ -242,8 +248,8 @@ final class ConflictsToCoachesContext extends BaseContext
     {
         $this->assertSent();
         $mail = $this->nextMailForKarim();
-        if (3 !== substr_count($mail['text'], 'Personne en double — ')) {
-            throw new RuntimeException('la liste renvoyée devrait porter les 3 tuiles :' . "\n" . $mail['text']);
+        if (2 !== substr_count($mail['text'], 'Personne en double — ')) {
+            throw new RuntimeException('la liste renvoyée devrait porter les 2 tuiles :' . "\n" . $mail['text']);
         }
         if (!str_contains($mail['text'], 'Cette liste vous est renvoyée : aucun conflit de cette liste n\'est nouveau ou modifié depuis l\'envoi du ')) {
             throw new RuntimeException('la phrase de renvoi manque :' . "\n" . $mail['text']);
@@ -273,18 +279,38 @@ final class ConflictsToCoachesContext extends BaseContext
         return array_values(array_unique($persons));
     }
 
-    /** Combien de conflits « personne en double » (MATCH_MATCH, non tenus) le radar voit pour cette personne. */
-    private function doublesOf(string $personId): int
+    /**
+     * Les paires d'équipes des conflits « personne en double » (MATCH_MATCH, non tenus) que le radar
+     * voit pour cette personne, triées.
+     *
+     * @return list<string>
+     */
+    private function doublePairsOf(string $personId): array
     {
         $conflicts = $this->apiGet('fixtures/conflicts', $this->smallClubToken)['json']['conflicts'] ?? [];
-        $count = 0;
+        $pairs = [];
         foreach (\is_array($conflicts) ? $conflicts : [] as $conflict) {
-            if (\is_array($conflict) && 'MATCH_MATCH' === ($conflict['type'] ?? null) && $personId === ($conflict['coachId'] ?? null) && !isset($conflict['heldBy'])) {
-                ++$count;
+            if (!\is_array($conflict) || 'MATCH_MATCH' !== ($conflict['type'] ?? null) || $personId !== ($conflict['coachId'] ?? null) || isset($conflict['heldBy'])) {
+                continue;
             }
+            $left = \is_array($conflict['left'] ?? null) ? (string) ($conflict['left']['teamId'] ?? '') : '';
+            $right = \is_array($conflict['right'] ?? null) ? (string) ($conflict['right']['teamId'] ?? '') : '';
+            $sides = [$left, $right];
+            sort($sides);
+            $pairs[] = implode('|', $sides);
         }
+        sort($pairs);
 
-        return $count;
+        return $pairs;
+    }
+
+    /** La paire de deux équipes du décor, au format de {@see doublePairsOf}. */
+    private function teamPair(string $teamA, string $teamB): string
+    {
+        $sides = [$this->smallClubTeamIds[$teamA], $this->smallClubTeamIds[$teamB]];
+        sort($sides);
+
+        return implode('|', $sides);
     }
 
     private function newCoach(string $first, string $last, ?string $email): string
