@@ -31,10 +31,11 @@ const TITLE_PREFIX = "[e2e nouveautés] ";
 
 const credentials = superAdminFromEnv();
 
+/** Le jeton CSRF de la session SA figée : `GET /api/admin/auth/me` le relit (ou l'émet) — `AdminAuthController::me`. */
 async function adminCsrf(request: APIRequestContext): Promise<string> {
-  const session = await request.get("/api/admin/session");
-  expect(session.ok(), `GET /api/admin/session (${session.status()})`).toBeTruthy();
-  const token = (await session.json()).csrfToken as unknown;
+  const me = await request.get("/api/admin/auth/me");
+  expect(me.ok(), `GET /api/admin/auth/me (${me.status()})`).toBeTruthy();
+  const token = (await me.json()).csrfToken as unknown;
   expect(typeof token, "la session admin porte un jeton CSRF").toBe("string");
   return token as string;
 }
@@ -96,6 +97,16 @@ test.describe("journal de nouveautés — de la console au membre", () => {
       await loginSeededClub(member);
       const seen = await member.request.post("/api/release-notes/seen");
       expect(seen.status(), "POST /api/release-notes/seen (filigrane du membre)").toBe(204);
+
+      // Filigrane et publication sont stockés À LA SECONDE (`TIMESTAMP(0)`) et la modale compare
+      // `publishedAt > seenUpTo` strictement : une note publiée dans la même seconde que le filigrane
+      // ne s'ouvrirait pas. On attend donc que l'horloge (la même que celle du serveur, conteneurs
+      // sur un seul hôte) ait passé la seconde du filigrane avant de publier.
+      const journal = await member.request.get("/api/release-notes");
+      expect(journal.ok(), "GET /api/release-notes (relecture du filigrane)").toBeTruthy();
+      const seenUpTo = Date.parse((await journal.json()).seenUpTo as string);
+      expect(Number.isNaN(seenUpTo), "le filigrane du membre est posé").toBe(false);
+      await expect.poll(() => Date.now(), { message: "l'horloge a passé la seconde du filigrane", timeout: 5_000 }).toBeGreaterThanOrEqual(seenUpTo + 1_000);
 
       // (2) La SA publie une note versionnée par l'API, depuis sa session figée.
       const today = new Date();
