@@ -152,6 +152,9 @@ export function RadarPanel({ entries, holidays, publicHolidays, publicHolidaysLo
   const alertPlans = (plans ?? []).filter((p) => null !== p.calendarEntryId && null != p.alert);
   const dismissedEntryIds = new Set((plans ?? []).filter((p) => null !== p.calendarEntryId && true === p.radarDismissed).map((p) => p.calendarEntryId as string));
   const alertEntryIds = new Set(alertPlans.map((p) => p.calendarEntryId as string));
+  // Une fermeture validée automatiquement (alerte non vue) n'a QUE sa carte d'alerte ; une fermeture
+  // commencée sans planning garde, elle, sa carte d'impact en plus de l'alerte.
+  const autoValidatedAlertEntryIds = new Set(alertPlans.filter((p) => "auto_validated" === p.alert?.kind).map((p) => p.calendarEntryId as string));
   const outOfGenericCards = (entryId: string): boolean => alertEntryIds.has(entryId) || dismissedEntryIds.has(entryId);
 
   // The radar is a TO-DO list: entries the manager explicitly dismissed
@@ -342,6 +345,9 @@ export function RadarPanel({ entries, holidays, publicHolidays, publicHolidaysLo
     }
     if (dismissedEntryIds.has(entry.id)) {
       return false; // « J'ai vu » : la période sort du radar jusqu'à sa fin (le calendrier la garde)
+    }
+    if (autoValidatedAlertEntryIds.has(entry.id)) {
+      return false; // validée automatiquement : sa carte d'alerte suffit (la carte revient une fois l'alerte vue)
     }
     if (activeByEntry.has(entry.id)) {
       return true; // un planning secondaire VALIDÉ existe : cette semaine EST différente
