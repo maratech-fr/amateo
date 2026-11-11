@@ -162,7 +162,7 @@ entrée `skipping`. Pourquoi, remède : `docs/ops/ci-runner.md` § Branche de lo
 **une seule PR ouverte à la fois** — deux en simultané seulement si merger l'une n'affecte pas
 l'autre (roadmap, état des lieux, `ci.yml` partagés = dépendantes) ; **on n'ouvre JAMAIS une PR dont
 la branche modifie un fichier déjà modifié par une PR ouverte** — avant d'ouvrir, comparer
-`git diff --name-only origin/<base>...HEAD` (base = branche cible de la PR) aux fichiers des PR ouvertes (`gh pr diff <n> --name-only`),
+`git diff --name-only origin/<base>...HEAD` (base = branche cible de la PR) aux fichiers des PR ouvertes **de même branche cible** (`gh pr diff <n> --name-only` ; une PR vers `lot/<a>` et la PR finale `lot/<b>` → `main` ne se bloquent pas, le recouvrement se règle au rebase de la seconde),
 intersection non vide = la branche attend le merge ; les autres branches attendent.
 **Branche `release`** = iso-prod, pilotée par le workflow de déploiement (recalée sur le commit
 déployé) — **jamais de commit direct** ; correctif rapide = PR vers `release` puis report sur `main`
