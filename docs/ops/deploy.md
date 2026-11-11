@@ -463,7 +463,9 @@ ssh amateo-prod-read
 ```
 
 ⬜ **Utiliser** — `scripts/prod-read.sh` fait tout : tunnel `127.0.0.1:15432` → `127.0.0.1:5432`
-via l'alias, `amateo_read` en transaction **read-only** (requêtes bornées à 60 s côté rôle, migration `Version20261010150000`),
+via l'alias (port local fixe, celui du `~/.pgpass-amateo` ; déjà occupé sur le poste = arrêt net
+AVANT le tunnel, avec ce qui l'occupe — la stack d'épreuve publie son Postgres sur `25432`, jamais
+sur ce port), `amateo_read` en transaction **read-only** (requêtes bornées à 60 s côté rôle, migration `Version20261010150000`),
 fermeture du tunnel en sortant. `--club` pose `SET app.club_id` (une AIDE pour ne pas mélanger les
 clubs, **PAS une frontière** — l'opérateur peut poser n'importe quel club) :
 

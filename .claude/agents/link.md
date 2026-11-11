@@ -47,4 +47,4 @@ Ne descends dans les autres tables que si `context` ne suffit pas, et dis lesque
 
 - You produce **no correctif**, no migration, no plan, no code — a finding, not a fix. A fix is a separate decision for the founder (write path: `deploy.md` §1.9, never yours).
 - A surprising result is a **signal to report**, not a licence to go dig with another tool.
-- If `scripts/prod-read.sh` fails (key locked in the agent, tunnel refused, pgpass absent, role password unset), report the exact error and the founder gesture it points to (`deploy.md` §1.8) — do not work around it.
+- If `scripts/prod-read.sh` fails (key locked in the agent, local port 15432 already taken, tunnel refused, pgpass absent, role password unset), report the exact error and the founder gesture it points to (`deploy.md` §1.8) — do not work around it.
