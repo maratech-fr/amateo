@@ -305,6 +305,36 @@ final class ImportFixturesApiTest extends WebTestCase
         self::assertSame(1, $this->responseData()['leagueValidated'] ?? null, 'la réponse d\'import porte le compte des domiciles auto-validés');
     }
 
+    /**
+     * La réponse de POST /api/fixtures/import porte le compteur `restored` et l'avertissement
+     * `OPPONENT_RESTORED` : la réponse est un JSON écrit À LA MAIN par le contrôleur (correction
+     * SMITH 3), un compteur du service non relayé n'atteint jamais l'écran. La mécanique du
+     * rétablissement vit dans Integration/Service/FbiFixtureImporterTest (famille « Restor ») ;
+     * ICI seule la surface exposée par l'API est en jeu.
+     */
+    public function testImportResponseCarriesTheRestoredCountAndWarning(): void
+    {
+        [$token, $clubName, $teamId] = $this->registerWithTeam();
+        $needle = strtoupper($clubName);
+
+        $venueX = $this->createClubVenue($token, 'Gymnase X');
+        $this->upload('/api/fixtures/import', $token, $this->xlsx([
+            ['D2', 'A9700', $needle . ' - 1', 'AS Voisins', '10/10/2026', '15:30', 'Gymnase X'],
+        ]), ['mappings' => json_encode([['division' => 'D2', 'teamId' => $teamId]], \JSON_THROW_ON_ERROR), 'venueMappings' => json_encode([['label' => 'Gymnase X', 'venueId' => $venueX]], \JSON_THROW_ON_ERROR)]);
+        self::assertResponseStatusCodeSame(200);
+        self::assertSame(0, $this->responseData()['restored'] ?? null, 'une création n\'est jamais un rétablissement');
+
+        // Même division, même numéro, AUTRE adversaire : la ligne de l'application est fausse.
+        $this->upload('/api/fixtures/import', $token, $this->xlsx([
+            ['D2', 'A9700', $needle . ' - 1', 'AS Autres', '10/10/2026', '15:30', 'Gymnase X'],
+        ]));
+        self::assertResponseStatusCodeSame(200);
+        $report = $this->responseData();
+        self::assertSame(1, $report['restored'] ?? null, 'la réponse d\'import porte le compte des rencontres rétablies');
+        self::assertSame(['OPPONENT_RESTORED'], array_column($report['warnings'], 'type'));
+        self::assertSame('A9700', $report['warnings'][0]['externalRef'] ?? null);
+    }
+
     public function testImportRefusedWhileSocleNotValidated(): void
     {
         // SocleGuard path on BOTH import endpoints: without a validated main

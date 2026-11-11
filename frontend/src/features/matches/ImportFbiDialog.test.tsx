@@ -31,6 +31,7 @@ const { analyzeFbiFixtures, importFbiFixtures, placeMatches, getVenueLabelInvent
       created: 22,
       updated: 1,
       unchanged: 9,
+      restored: 0,
       exempted: 2,
       errors: ["Ligne 4 : aucune équipe ne correspond au club « BC Test »."],
       warnings: [{ type: "RESCHEDULED", division: "PNM", externalRef: "101137", message: "PNM n°101137 : re-programmé du 28/11/2026 au 05/12/2026." }],
@@ -270,6 +271,7 @@ describe("ImportFbiDialog", () => {
       created: 9,
       updated: 0,
       unchanged: 0,
+      restored: 0,
       exempted: 0,
       errors: [],
       warnings: [],
@@ -314,6 +316,7 @@ describe("ImportFbiDialog", () => {
       created: 0,
       updated: 1,
       unchanged: 9,
+      restored: 0,
       exempted: 0,
       errors: [],
       warnings: [],
@@ -339,6 +342,61 @@ describe("ImportFbiDialog", () => {
     await waitFor(() => expect(screen.getByText(/1 écart consigné dans Importer/i)).toBeInTheDocument());
     await user.click(screen.getByRole("button", { name: "Ouvrir la file" }));
     expect(onClose).toHaveBeenCalled();
+  });
+
+  // ── PR 3 (lot matchs prod) — le rapport dit les rencontres rétablies d'après FBI ─────────
+  // Un adversaire différent sous le même numéro = la ligne de l'application était fausse,
+  // le serveur l'a rétablie (`restored`). Le rapport le résume en une phrase (clé
+  // MATCHES_TEXTS.importFbiRestored, pluriel compris) ; sans rétablissement, il se tait.
+  const R = MATCHES_TEXTS as unknown as Record<string, unknown> & { importFbiRestored: (n: number) => string };
+  const reportWithRestored = (restored: number): ImportFbiResult => ({
+    message: "Import terminé.",
+    created: 0,
+    updated: 0,
+    unchanged: 3,
+    restored,
+    exempted: 0,
+    errors: [],
+    warnings: [{ type: "OPPONENT_RESTORED", division: "PNM", externalRef: "101137", message: "PNM n°101137 : rencontre rétablie d'après FBI." }],
+    unmappedDivisions: [],
+    completeness: [],
+    unresolvedDeviations: [],
+    leagueValidated: 0,
+    depositedAt: "2026-11-11T10:00:00+00:00",
+  });
+  const importAllPaired = async (user: ReturnType<typeof userEvent.setup>): Promise<void> => {
+    analyzeFbiFixtures.mockResolvedValueOnce(analysisOf([matchedDiv("PNM", "team-1")])); // tout apparié → import direct
+    renderWithProviders(<ImportFbiDialog teams={teams} tiers={tiers} onClose={vi.fn()} />);
+    await pickFile(user);
+    await user.click(await screen.findByRole("button", { name: "Importer" }));
+    await waitFor(() => expect(importFbiFixtures).toHaveBeenCalledOnce());
+  };
+
+  it("les libellés du résumé de rétablissement sont ceux validés (singulier / pluriel)", () => {
+    expect(typeof R.importFbiRestored, "clé MATCHES_TEXTS.importFbiRestored").toBe("function");
+    expect(R.importFbiRestored(1)).toBe("1 rencontre rétablie d'après FBI : l'adversaire de l'application ne correspondait pas.");
+    expect(R.importFbiRestored(3)).toBe("3 rencontres rétablies d'après FBI : l'adversaire de l'application ne correspondait pas.");
+  });
+
+  it.each([1, 4])("le rapport résume %i rencontre(s) rétablie(s) d'après FBI", async (restored) => {
+    expect(typeof R.importFbiRestored, "clé MATCHES_TEXTS.importFbiRestored").toBe("function");
+    const user = userEvent.setup();
+    importFbiFixtures.mockResolvedValueOnce(reportWithRestored(restored));
+    await importAllPaired(user);
+
+    expect(await screen.findByText(R.importFbiRestored(restored))).toBeInTheDocument();
+  });
+
+  it("sans rétablissement, le rapport ne dit rien des rencontres rétablies", async () => {
+    expect(typeof R.importFbiRestored, "clé MATCHES_TEXTS.importFbiRestored").toBe("function");
+    const user = userEvent.setup();
+    importFbiFixtures.mockResolvedValueOnce({ ...reportWithRestored(0), warnings: [] });
+    await importAllPaired(user);
+
+    // Témoin positif : le rapport est bien affiché (sinon « rien » serait vrai d'un écran vide).
+    expect(await screen.findByText(MATCHES_TEXTS.importFbiReportSummary(0, 0, 3, 0))).toBeInTheDocument();
+    expect(screen.queryByText(R.importFbiRestored(0))).not.toBeInTheDocument();
+    expect(screen.queryByText(R.importFbiRestored(1))).not.toBeInTheDocument();
   });
 
   it("aucun écart → rapport sans « Ouvrir la file »", async () => {

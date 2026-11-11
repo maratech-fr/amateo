@@ -259,6 +259,7 @@ final class FbiFixtureImporter
      *     created: int,
      *     updated: int,
      *     unchanged: int,
+     *     restored: int,
      *     exempted: int,
      *     errors: list<string>,
      *     warnings: list<array{type: string, division: string, externalRef: string, message: string}>,
@@ -331,6 +332,7 @@ final class FbiFixtureImporter
         $created = 0;
         $updated = 0;
         $unchanged = 0;
+        $restored = 0;
         $warnings = [];
         $unmapped = [];
         /** @var array<string, true> $seenInFile intra-file duplicate guard, team|ref */
@@ -385,6 +387,17 @@ final class FbiFixtureImporter
                 $seenInFile[$key] = true;
 
                 $existing = $existingByTeamRef[$key] ?? null;
+                if ($existing instanceof Fixture && $this->normalizeLabel($existing->getOpponentLabel()) !== $this->normalizeLabel($row['opponentLabel'])) {
+                    // Décision fondateur 2026-11-11 (remplace celle du 27/10 « anomalie
+                    // ignorée ») : un match = numéro + championnat + adversaire. Un adversaire
+                    // DIFFÉRENT sous la même clé dit que la ligne de l'application est fausse :
+                    // le fichier fait foi, la rencontre est RÉTABLIE en place comme à la
+                    // création. Comparaison normalisée, indépendante du côté : une graphie ne
+                    // rétablit pas, une inversion de côté avec le même adversaire suit SWITCHED.
+                    $warnings[] = $this->restoreFromRow($existing, $row, $competition, $group['name'], $neutralLabels, $neutralDivisions, $venueChoiceVenues, $now, $club);
+                    ++$restored;
+                    continue;
+                }
                 if ($existing instanceof Fixture) {
                     $outcome = $this->applyDiff($existing, $row, $group['name'], $warnings, $decisionMap, $venueNames, $deviationRecords, $persistingSet, $now, $weekEnd);
                     if ('updated' === $outcome) {
@@ -403,36 +416,11 @@ final class FbiFixtureImporter
                 $fixture->setClubId($club->getId());
                 $fixture->setSeasonId($competition->getSeasonId());
                 $fixture->setTeamId($teamId);
-                $fixture->setCompetitionId($competition->getId());
-                $fixture->setMatchDate($row['matchDate']);
-                $fixture->setHomeAway($row['homeAway']);
-                $fixture->setOpponentLabel($row['opponentLabel']);
-                $fixture->setKickoffTime($row['kickoffTime']);
                 $fixture->setExternalRef($row['numero']);
                 // D1 (M15) — la division du fichier est gravée à côté du numéro : elle
                 // identifie la rencontre et distingue les deux phases d'une même équipe.
                 $fixture->setExternalDivision($group['name']);
-                $fixture->setFbiVenueLabel($row['venueLabel']);
-                if (FixtureHomeAway::HOME === $row['homeAway'] && $this->isNeutralHome($row, $group['name'], $neutralLabels, $neutralDivisions)) {
-                    // Chantier A PR 2 (D-c) — terrain neutre (« pas chez nous ») : HOME sans
-                    // gymnase du club PAR CHOIX, naît UNPLACED + TRAITÉ, garde son
-                    // `fbiVenueLabel` (porte de sortie D-e : apparier le libellé plus tard
-                    // le re-rattache). Jamais placé, jamais confié au solveur comme à placer.
-                    $fixture->setUnplacedReason(FixtureUnplacedReason::NEUTRAL_GROUND);
-                    $this->treatOnArrival($fixture, $now, $club);
-                    $fixture->markReviewed($now);
-                } else {
-                    // P4-187a — un domicile dont le libellé égale un alias confirmé naît AVEC
-                    // son gymnase (mais UNPLACED : jamais placé d'office). Un domicile SANS
-                    // salle dans le fichier prend le gymnase choisi dans la modale
-                    // (venueChoices), toujours sans le placer.
-                    $this->attachConfirmedVenue($fixture, $row['venueLabel']);
-                    if (null === $fixture->getVenueId() && null === $row['venueLabel'] && isset($venueChoiceVenues[$group['name']])) {
-                        $fixture->setVenueId($venueChoiceVenues[$group['name']]);
-                    }
-                    // P4-199 — extérieur / passé / semaine ISO en cours → naît traité.
-                    $this->treatOnArrival($fixture, $now, $club);
-                }
+                $this->hydrateFromRow($fixture, $row, $competition, $group['name'], $neutralLabels, $neutralDivisions, $venueChoiceVenues, $now, $club);
                 $this->entityManager->persist($fixture);
                 ++$created;
             }
@@ -503,6 +491,9 @@ final class FbiFixtureImporter
             'created' => $created,
             'updated' => $updated,
             'unchanged' => $unchanged,
+            // Rencontres rétablies d'après le fichier (adversaire différent sous la même clé) ;
+            // jamais comptées dans l'ingestion, le rapport suffit.
+            'restored' => $restored,
             'exempted' => $parsed['exempted'],
             'errors' => $errors,
             'warnings' => $warnings,
@@ -1186,8 +1177,8 @@ final class FbiFixtureImporter
     /**
      * Chantier A PR 2 — « pas de salles appariées, pas d'import » : refuse le dépôt (422
      * nommant les libellés manquants) si un domicile IMPORTABLE CRÉÉ par ce dépôt reste sans
-     * gymnase et n'est pas neutre. Ne concerne QUE les créations (un domicile EXISTANT
-     * dé-placé n'y est pas soumis) et mirroite les sauts de la boucle de création (division
+     * gymnase et n'est pas neutre. Ne concerne QUE les créations et les rétablissements (un
+     * domicile EXISTANT de même adversaire, même dé-placé, n'y est pas soumis) et mirroite les sauts de la boucle de création (division
      * non mappée, mapping refusé, poule bloquante). Lecture seule.
      *
      * @param list<array{name: string, divisionKey: string, label: string, labelKey: string, multiLabel: bool, rowCount: int, rows: list<array{numero: string, matchDate: DateTimeImmutable, homeAway: FixtureHomeAway, opponentLabel: string, kickoffTime: DateTimeImmutable|null, venueLabel: string|null}>}> $groups
@@ -1226,8 +1217,12 @@ final class FbiFixtureImporter
                     continue;
                 }
                 $seen[$key] = true;
-                if (isset($existingByTeamRef[$key])) {
-                    continue; // domicile EXISTANT : la couverture ne concerne que les créés
+                $existing = $existingByTeamRef[$key] ?? null;
+                if ($existing instanceof Fixture && $this->normalizeLabel($existing->getOpponentLabel()) === $this->normalizeLabel($row['opponentLabel'])) {
+                    // Domicile EXISTANT : la couverture ne concerne que les créés. Une ligne à
+                    // RÉTABLIR (adversaire différent) est ré-hydratée comme une création : elle
+                    // compte comme telle.
+                    continue;
                 }
                 if ($this->isNeutralHome($row, $group['name'], $neutralLabels, $neutralDivisions)) {
                     continue; // neutre : sans gymnase par choix, couvert
@@ -1269,6 +1264,108 @@ final class FbiFixtureImporter
     }
 
     /**
+     * Hydrate une rencontre d'après une ligne du fichier, partagé par la CRÉATION et le
+     * RÉTABLISSEMENT : championnat de la division, date, côté, adversaire, heure, salle du
+     * fichier, puis gymnase (terrain neutre, alias confirmé ou choix de division) et
+     * traitement à l'arrivée. Le statut n'est jamais touché ici (UNPLACED) : l'auto-
+     * validation des championnats commencés reste la passe post-flush.
+     *
+     * @param array{numero: string, matchDate: DateTimeImmutable, homeAway: FixtureHomeAway, opponentLabel: string, kickoffTime: DateTimeImmutable|null, venueLabel: string|null} $row
+     * @param array<string, true>                                                                                                                                                 $neutralLabels
+     * @param array<string, true>                                                                                                                                                 $neutralDivisions
+     * @param array<string, string>                                                                                                                                               $venueChoiceVenues
+     */
+    private function hydrateFromRow(Fixture $fixture, array $row, Competition $competition, string $divisionName, array $neutralLabels, array $neutralDivisions, array $venueChoiceVenues, DateTimeImmutable $now, Club $club): void
+    {
+        $fixture->setCompetitionId($competition->getId());
+        $fixture->setMatchDate($row['matchDate']);
+        $fixture->setHomeAway($row['homeAway']);
+        $fixture->setOpponentLabel($row['opponentLabel']);
+        $fixture->setKickoffTime($row['kickoffTime']);
+        $fixture->setFbiVenueLabel($row['venueLabel']);
+        if (FixtureHomeAway::HOME === $row['homeAway'] && $this->isNeutralHome($row, $divisionName, $neutralLabels, $neutralDivisions)) {
+            // Chantier A PR 2 (D-c) — terrain neutre (« pas chez nous ») : HOME sans
+            // gymnase du club PAR CHOIX, naît UNPLACED + TRAITÉ, garde son
+            // `fbiVenueLabel` (porte de sortie D-e : apparier le libellé plus tard
+            // le re-rattache). Jamais placé, jamais confié au solveur comme à placer.
+            $fixture->setUnplacedReason(FixtureUnplacedReason::NEUTRAL_GROUND);
+            $this->treatOnArrival($fixture, $now, $club);
+            $fixture->markReviewed($now);
+
+            return;
+        }
+        // P4-187a — un domicile dont le libellé égale un alias confirmé naît AVEC
+        // son gymnase (mais UNPLACED : jamais placé d'office). Un domicile SANS
+        // salle dans le fichier prend le gymnase choisi dans la modale
+        // (venueChoices), toujours sans le placer.
+        $this->attachConfirmedVenue($fixture, $row['venueLabel']);
+        if (null === $fixture->getVenueId() && null === $row['venueLabel'] && isset($venueChoiceVenues[$divisionName])) {
+            $fixture->setVenueId($venueChoiceVenues[$divisionName]);
+        }
+        // P4-199 — extérieur / passé / semaine ISO en cours → naît traité.
+        $this->treatOnArrival($fixture, $now, $club);
+    }
+
+    /**
+     * Rétablit une rencontre EXISTANTE dont l'adversaire ne correspond pas au fichier (même
+     * clé équipe|division|numéro) : la ligne de l'application est fausse, le fichier fait
+     * foi. Tout ce que l'ancienne ligne portait tombe (placement, gymnase, raison de
+     * dépointage, écarts, mémos, code de l'ancien adversaire, traitement, corrections FBI
+     * ouvertes), puis elle est ré-hydratée comme à la création. Conservés : identifiant,
+     * club, saison, équipe, numéro, division du fichier, date de création, `ffbbRencontreId`.
+     * L'ancien adversaire ne survit que dans l'avertissement rendu.
+     *
+     * @param array{numero: string, matchDate: DateTimeImmutable, homeAway: FixtureHomeAway, opponentLabel: string, kickoffTime: DateTimeImmutable|null, venueLabel: string|null} $row
+     * @param array<string, true>                                                                                                                                                 $neutralLabels
+     * @param array<string, true>                                                                                                                                                 $neutralDivisions
+     * @param array<string, string>                                                                                                                                               $venueChoiceVenues
+     *
+     * @return array{type: string, division: string, externalRef: string, message: string}
+     */
+    private function restoreFromRow(Fixture $existing, array $row, Competition $competition, string $divisionName, array $neutralLabels, array $neutralDivisions, array $venueChoiceVenues, DateTimeImmutable $now, Club $club): array
+    {
+        $oldOpponent = $existing->getOpponentLabel();
+        $wasPlaced = FixtureStatus::UNPLACED !== $existing->getStatus();
+        $sideChanged = $existing->getHomeAway() !== $row['homeAway'];
+
+        foreach ($this->ledger->findOpenByFixture($existing) as $entry) {
+            $this->ledger->closeBySource($entry, $now);
+        }
+        $existing->setStatus(FixtureStatus::UNPLACED, $now);
+        $existing->setPlacementSource(null);
+        $existing->setVenueId(null);
+        $existing->setUnplacedReason(null);
+        $existing->clearPendingDeviations();
+        $existing->setKeptVenueLabel(null);
+        $existing->setFbiEcho(null);
+        $existing->setOpponentOrganismeCode(null);
+        $existing->resetReview();
+        $this->hydrateFromRow($existing, $row, $competition, $divisionName, $neutralLabels, $neutralDivisions, $venueChoiceVenues, $now, $club);
+
+        $side = '';
+        if ($sideChanged) {
+            $side = FixtureHomeAway::HOME === $row['homeAway'] ? ', à domicile' : ', à l\'extérieur';
+        }
+
+        return [
+            'type' => 'OPPONENT_RESTORED',
+            'division' => $divisionName,
+            'externalRef' => $row['numero'],
+            'message' => \sprintf(
+                '%s n°%s : rencontre rétablie d\'après FBI — l\'adversaire de l\'application (%s) ne correspondait pas ; FBI annonce %s le %s%s%s%s.',
+                $divisionName,
+                $row['numero'],
+                $oldOpponent,
+                $row['opponentLabel'],
+                $row['matchDate']->format('d/m/Y'),
+                $row['kickoffTime'] instanceof DateTimeImmutable ? ' à ' . $row['kickoffTime']->format('H:i') : '',
+                $side,
+                $wasPlaced ? ' — placement annulé' : '',
+            ),
+        ];
+    }
+
+    /**
      * Diff an existing fixture against a file row.
      *
      * Reconciliation perimeter (RMM-4 D1): a date/heure/salle divergence on a
@@ -1288,30 +1385,9 @@ final class FbiFixtureImporter
      */
     private function applyDiff(Fixture $existing, array $row, string $divisionName, array &$warnings, array $decisions, array $venueNames, array &$records, array &$persistingSet, DateTimeImmutable $now, DateTimeImmutable $weekEnd): string
     {
-        // Décision fondateur 2026-10-27 (M15) — « un match ne change pas d'adversaire,
-        // même forfait/repêchage : si ça arrive c'est un bug FFBB ». Même équipe, même
-        // division, même numéro mais un adversaire DIFFÉRENT dans le fichier = ANOMALIE :
-        // la rencontre existante n'est touchée en RIEN (ni adversaire, ni date, ni statut,
-        // ni traitement), la ligne est écartée et SIGNALÉE au rapport. Comparaison
-        // NORMALISÉE (foyer {@see VenueLabelNormalizer}) : une simple dérive de graphie
-        // n'est pas une anomalie (et n'écrase plus rien non plus — l'écrasement silencieux
-        // de `opponentLabel` est supprimé des deux chemins ci-dessous).
-        if ($this->normalizeLabel($existing->getOpponentLabel()) !== $this->normalizeLabel($row['opponentLabel'])) {
-            $warnings[] = [
-                'type' => 'OPPONENT_CHANGED',
-                'division' => $divisionName,
-                'externalRef' => $row['numero'],
-                'message' => \sprintf(
-                    '%s n°%s : le fichier annonce un autre adversaire (%s au lieu de %s) — ligne ignorée, vérifiez dans FBI.',
-                    $divisionName,
-                    $row['numero'],
-                    $row['opponentLabel'],
-                    $existing->getOpponentLabel(),
-                ),
-            ];
-
-            return 'unchanged';
-        }
+        // L'adversaire est ici le même à la graphie près (comparaison normalisée, foyer
+        // {@see VenueLabelNormalizer}) : un adversaire DIFFÉRENT a déjà été rétabli par
+        // l'appelant ({@see restoreFromRow}), une graphie ne réécrit jamais le libellé.
 
         // D2 (rattrapage) — un existant matché resté « à traiter » (NEW) d'un dépôt
         // antérieur à la naissance-traitée est rattrapé ici, avant tout diff. Son
@@ -1326,8 +1402,8 @@ final class FbiFixtureImporter
 
             // xlsx-only silent update (D3): the raw fbiVenueLabel, only when the venue
             // is not itself a divergence (a venue decision owns the label write). Le
-            // libellé adverse n'est JAMAIS réécrit (un adversaire différent = anomalie,
-            // traitée en tête de méthode ; identique à la graphie près = rien à faire).
+            // libellé adverse n'est JAMAIS réécrit ici (un adversaire différent est rétabli
+            // par l'appelant ; identique à la graphie près = rien à faire).
             if (!isset($fields['venue']) && null !== $row['venueLabel'] && $existing->getFbiVenueLabel() !== $row['venueLabel']) {
                 $existing->setFbiVenueLabel($row['venueLabel']);
                 $changed = true;
@@ -1404,8 +1480,8 @@ final class FbiFixtureImporter
             }
         }
 
-        // Le libellé adverse n'est jamais réécrit en silence (anomalie traitée en tête
-        // de méthode) — on passe directement à l'écart salle d'un non placé.
+        // Le libellé adverse n'est jamais réécrit en silence (un adversaire différent est
+        // rétabli par l'appelant) — on passe directement à l'écart salle d'un non placé.
 
         // Un domicile UNPLACED rattaché à un gymnase dont la source nomme une AUTRE
         // salle est un écart à ARBITRER, jamais un libellé réécrit en silence (les 20

@@ -141,7 +141,7 @@ export interface ImportVenueChoice {
 }
 
 export interface ImportFbiWarning {
-  type: "RESCHEDULED" | "SWITCHED" | "POULE_MISMATCH";
+  type: "RESCHEDULED" | "SWITCHED" | "POULE_MISMATCH" | "OPPONENT_RESTORED";
   division: string;
   externalRef: string;
   message: string;
@@ -152,6 +152,9 @@ export interface ImportFbiResult {
   created: number;
   updated: number;
   unchanged: number;
+  /** Rencontres rétablies d'après FBI : l'adversaire de l'application ne correspondait
+   * pas (même division, même numéro). */
+  restored: number;
   exempted: number;
   errors: string[];
   warnings: ImportFbiWarning[];

@@ -398,6 +398,7 @@ export function ImportFbiDialog({ teams, tiers, venues = [], onClose }: ImportFb
           {null !== report ? (
             <div className="flex flex-col gap-1 rounded-md border border-border bg-muted/40 px-3 py-2 text-sm">
               <p className="font-medium">{M.importFbiReportSummary(report.created, report.updated, report.unchanged, report.exempted)}</p>
+              {report.restored > 0 ? <p>{M.importFbiRestored(report.restored)}</p> : null}
               {report.warnings.length > 0 ? (
                 // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- liste défilante nommée, atteignable au clavier (WCAG 2.1.1, A11Y-26)
                 <ul aria-label={M.importFbiWarningsAria} tabIndex={0} className="max-h-40 list-inside list-disc overflow-y-auto text-xs text-warning">

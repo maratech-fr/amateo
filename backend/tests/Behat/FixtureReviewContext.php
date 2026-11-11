@@ -64,6 +64,12 @@ final class FixtureReviewContext extends BaseContext
 
     private string $rescheduledDate = '';
 
+    /** Le samedi révolu du « match à domicile déjà passé » (championnat commencé). */
+    private string $pastDate = '';
+
+    /** @var array<mixed> le rapport du dernier dépôt FBI (réponse de POST fixtures/import) */
+    private array $lastReport = [];
+
     #[Given('le club de démonstration, connecté, dont le planning de saison est en vigueur')]
     public function leClubConnecte(): void
     {
@@ -278,6 +284,7 @@ final class FixtureReviewContext extends BaseContext
         // Compté depuis le jour du club (Europe/Paris), même raison que `matchDate`.
         $clubToday = new DateTimeImmutable('today', new DateTimeZone('Europe/Paris'));
         $past = $clubToday->modify(\sprintf('-%d days', (int) $clubToday->format('N') - 1))->modify('-2 days')->format('Y-m-d');
+        $this->pastDate = $past;
         $this->depositMatch($past, 'HOME', 'Adversaire Behat', self::VENUE_NAME, [['division' => self::DIVISION, 'teamId' => $this->teamId]]);
         $this->captureImportedFixture();
     }
@@ -381,6 +388,71 @@ final class FixtureReviewContext extends BaseContext
         }
     }
 
+    // ── PR 3 (lot matchs prod) : un adversaire différent = la ligne de l'application est fausse ──
+    // Bout en bout de la promesse « l'importeur rétablit d'après FBI » : un domicile d'un
+    // championnat commencé, avec heure et salle appariée, est « Déjà dans FBI » ; le fichier
+    // annonce sous le MÊME numéro un AUTRE adversaire → la rencontre est rétablie en place,
+    // le rapport le compte et le dit, et la passe d'auto-validation du même dépôt la remet
+    // « Déjà dans FBI » ; un second dépôt du même fichier ne rétablit plus rien. Les règles une
+    // à une (champs, traitement, côté, neutre, 422 de couverture) : FbiFixtureImporterTest.
+
+    #[Then('la rencontre est « Déjà dans FBI »')]
+    public function laRencontreEstDejaDansFbi(): void
+    {
+        $this->assertStatus('VALIDATED');
+        $source = $this->apiGet(\sprintf('fixtures/%s', $this->fixtureId), $this->token)['json']['placementSource'] ?? null;
+        if ('MANUAL' !== $source) {
+            throw new RuntimeException(\sprintf('« Déjà dans FBI » attend une ancre MANUAL (source « %s »)', \is_string($source) ? $source : 'absente'));
+        }
+    }
+
+    #[When('je re-dépose ce match passé contre un autre adversaire')]
+    #[When('je re-dépose le même fichier rétabli')]
+    public function jeReDeposeCeMatchPasseContreUnAutreAdversaire(): void
+    {
+        // Même division, même numéro, même date, même heure, même salle (appariée au premier
+        // dépôt : aucun appariement à refournir) — seul l'adversaire diffère.
+        $this->depositMatch($this->pastDate, 'HOME', 'Autre Adversaire', self::VENUE_NAME, null);
+    }
+
+    #[Then('le rapport d\'import annonce 1 rencontre rétablie d\'après FBI')]
+    public function leRapportAnnonceUneRencontreRetablie(): void
+    {
+        $restored = $this->lastReport['restored'] ?? null;
+        if (1 !== $restored) {
+            throw new RuntimeException(\sprintf('le rapport aurait dû compter 1 rencontre rétablie (restored = %s)', json_encode($restored)));
+        }
+        if ([self::EXTERNAL_REF] !== $this->restoredWarningRefs()) {
+            throw new RuntimeException(\sprintf('le rapport aurait dû porter un avertissement OPPONENT_RESTORED pour %s : %s', self::EXTERNAL_REF, json_encode($this->lastReport['warnings'] ?? null)));
+        }
+    }
+
+    #[Then('la rencontre porte l\'adversaire du fichier et est de nouveau « Déjà dans FBI »')]
+    public function laRencontrePorteLAdversaireDuFichier(): void
+    {
+        $count = $this->dbalScalar(
+            \sprintf('SELECT count(*) AS behatval FROM fixture WHERE club_id=\'%s\' AND external_ref=\'%s\'', $this->clubId, self::EXTERNAL_REF),
+            admin: true,
+        );
+        if ('1' !== $count) {
+            throw new RuntimeException(\sprintf('la rencontre aurait dû être rétablie EN PLACE : %s ligne(s) portent le numéro', $count));
+        }
+        $label = $this->apiGet(\sprintf('fixtures/%s', $this->fixtureId), $this->token)['json']['opponentLabel'] ?? null;
+        if ('Autre Adversaire' !== $label) {
+            throw new RuntimeException(\sprintf('l\'adversaire du fichier n\'a pas été rétabli : « %s »', \is_string($label) ? $label : 'inconnu'));
+        }
+        $this->laRencontreEstDejaDansFbi();
+    }
+
+    #[Then('le rapport d\'import n\'annonce aucune rencontre rétablie')]
+    public function leRapportNAnnonceAucuneRencontreRetablie(): void
+    {
+        $restored = $this->lastReport['restored'] ?? null;
+        if (0 !== $restored || [] !== $this->restoredWarningRefs()) {
+            throw new RuntimeException(\sprintf('un second dépôt du même fichier ne rétablit rien (restored = %s, avertissements %s)', json_encode($restored), json_encode($this->lastReport['warnings'] ?? null)));
+        }
+    }
+
     #[AfterScenario]
     public function nettoyer(): void
     {
@@ -409,6 +481,20 @@ final class FixtureReviewContext extends BaseContext
                 admin: true,
             );
         }
+    }
+
+    /** @return list<string> les numéros portant un avertissement OPPONENT_RESTORED dans le dernier rapport */
+    private function restoredWarningRefs(): array
+    {
+        $warnings = $this->lastReport['warnings'] ?? [];
+        $refs = [];
+        foreach (\is_array($warnings) ? $warnings : [] as $warning) {
+            if (\is_array($warning) && 'OPPONENT_RESTORED' === ($warning['type'] ?? null) && \is_string($warning['externalRef'] ?? null)) {
+                $refs[] = $warning['externalRef'];
+            }
+        }
+
+        return $refs;
     }
 
     /** Un écart AUTO-APPLIQUÉ (bandeau) subsiste-t-il sur la rencontre suivie ? */
@@ -499,6 +585,8 @@ final class FixtureReviewContext extends BaseContext
         if (200 !== $status) {
             throw new RuntimeException(\sprintf('le dépôt FBI a répondu %d (200 attendu) : %s', $status, $response->getContent(false)));
         }
+        $report = json_decode($response->getContent(false), true);
+        $this->lastReport = \is_array($report) ? $report : [];
     }
 
     /**
