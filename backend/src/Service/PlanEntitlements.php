@@ -13,7 +13,8 @@ use Doctrine\ORM\EntityManagerInterface;
 
 /**
  * P1-3 PR A — l'offre EFFECTIVE d'un club, calculée à la LECTURE (pas de cron, pas
- * d'état stocké). Règles (spec docs/archive/bridage-freemium-decouverte §4-5) :
+ * d'état stocké). Grille des offres : specs/courantes/etat-des-lieux.md §1.11 (décision
+ * fermée 2026-11-11 : Essentiel ≤ 20, Club ≤ 34, Grand club illimité). Règles :
  *   - `planId` null → Découverte (le défaut de tout compte) ;
  *   - offre payante/bêta dont `paidSeasonYear` < année-pivot de la saison courante
  *     → retombe sur Découverte (expiration) ;
@@ -28,7 +29,7 @@ final readonly class PlanEntitlements
     private const string DECOUVERTE_CODE = 'decouverte';
 
     /** L'échelle des offres PAYANTES, par cap d'équipes croissant — pour nommer le palier supérieur. */
-    private const array PAID_LADDER = ['essentiel', 'club', 'grand-club', 'sans-limite'];
+    private const array PAID_LADDER = ['essentiel', 'club', 'grand-club'];
 
     public function __construct(
         private SubscriptionPlanRepository $plans,
@@ -128,7 +129,7 @@ final readonly class PlanEntitlements
 
     /**
      * Le cap d'ÉQUIPES de l'offre effective — null si aucun cap ne s'applique (Découverte,
-     * Bêta, Sans limite, ou club démo). Centralise la règle des caps payants (spec §2/§4).
+     * Bêta, Grand club, ou club démo). Centralise la règle des caps payants.
      */
     public function teamCap(Club $club, Season $season): ?int
     {

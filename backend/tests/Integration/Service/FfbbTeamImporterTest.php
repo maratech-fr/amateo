@@ -9,6 +9,7 @@ use App\Entity\PriorityTier;
 use App\Entity\Season;
 use App\Entity\Sport;
 use App\Entity\SportCategory;
+use App\Entity\SubscriptionPlan;
 use App\Entity\Team;
 use App\Enum\Gender;
 use App\Enum\SeasonStatus;
@@ -123,6 +124,28 @@ final class FfbbTeamImporterTest extends KernelTestCase
         self::assertSame(0, $this->buildImporter()->importEngagedTeams($this->club));
         self::assertCount(1, $this->em->getRepository(Team::class)->findBy(['clubId' => $this->club->getId()]));
         self::assertNull($this->club->getFfbbTeamsImportedAt(), 'aucun import → le marqueur ne ment jamais');
+    }
+
+    /**
+     * Grille 20 / 34 / 35+ : un club VIDE en offre Club qui importe 36 engagements n'en crée que 34
+     * (le cap Club) — le reste est sauté en silence (décision fondateur : comportement inchangé).
+     */
+    public function testAClubOfferImportsUpToItsCapOf34(): void
+    {
+        $this->seedPriorityTiers();
+        $plan = $this->em->getRepository(SubscriptionPlan::class)->findOneBy(['code' => 'club']);
+        self::assertInstanceOf(SubscriptionPlan::class, $plan);
+        $this->club->setPlanId($plan->getId())->setPaidSeasonYear(SeasonResolver::seasonYear(new DateTimeImmutable));
+        $this->em->flush();
+
+        $engagements = [];
+        for ($i = 1; $i <= 36; ++$i) {
+            $engagements[] = ['codeClub' => self::CLUB_CODE, 'sexe' => 'Masculin', 'categorie' => ['libelle' => 'Seniors'],
+                'idCompetition' => ['id' => 'C-DMS', 'code' => 'DMS', 'nom' => 'Départementale masculine seniors'], 'idPoule' => ['id' => 'P-DMS', 'nom' => 'Poule A']];
+        }
+
+        self::assertSame(34, $this->buildImporter($engagements)->importEngagedTeams($this->club), 'l\'offre Club importe jusqu\'à 34 équipes');
+        self::assertCount(34, $this->em->getRepository(Team::class)->findBy(['clubId' => $this->club->getId()]));
     }
 
     protected function setUp(): void

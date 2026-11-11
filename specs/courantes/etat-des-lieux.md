@@ -334,8 +334,8 @@ socle↔plans, les contraintes honorées, le périmètre engagé, l'isolation te
 
 ### 1.11 Offres & monétisation (P1-3, livré le 2026-08-10)
 
-Modèle d'offres par statut : 6 offres seedées par migration (`decouverte` · `essentiel` ≤ 20 éq. ·
-`club` ≤ 30 · `grand-club` ≤ 50 · `sans-limite` · `beta`), FK `Club.planId` réparée (uuid, null = Découverte),
+Modèle d'offres par statut : 5 offres seedées par migration (`decouverte` · `essentiel` ≤ 20 éq. ·
+`club` ≤ 34 · `grand-club` illimité · `beta`), FK `Club.planId` réparée (uuid, null = Découverte),
 **offre effective calculée à la lecture** (`PlanEntitlements`, exposée dans `/api/me` — expiration = retour
 Découverte, pas de cron, pas de read-only), **attribution superadmin seule en DEUX gestes** (`set-plan` +
 saison réglée — Bêta comprise). **Découverte** : périmètre et configuration illimités, **pool CLUB de
@@ -350,6 +350,11 @@ UX de conversion frontend : pastille d'en-tête « Découverte · N crédits » 
 `/club` — §2 « pastilles d'offre » ci-dessous, 2026-09-29), solde sur chaque bouton de sortie,
 bandeau rouge fermable ≤ 3, bandeau permanent à 0, section « Offre » sans montants (« sur demande »).
 NR bloquant : `PlanEntitlementsTest`, step du gate CI.
+
+**Décision fermée 2026-11-11 : grille 20 / 34 / 35+.** `sans-limite` est retiré et ses clubs sont déplacés
+en Grand club (migration `Version20261111120000`, qui s'arrête si Grand club est absent — sinon la FK
+`ON DELETE SET NULL` renverrait ces clubs en Découverte ; `paid_season_year` conservé). Un club de 35
+équipes pile relève de Grand club ; aucun prix n'est affiché.
 
 → [`docs/archive/bridage-freemium-decouverte.md`](../../docs/archive/bridage-freemium-decouverte.md) (le modèle et l'historique
 des 4 itérations de cadrage) · [`superadmin-auth.md`](superadmin-auth.md) (attribution) ·

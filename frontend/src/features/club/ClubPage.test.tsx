@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -80,8 +80,8 @@ const plans: { data: unknown[] | undefined; isError: boolean } = {
   data: [
     { id: "p-dec", code: "decouverte", name: "Découverte", maxTeams: 0, maxVenues: 0, maxGenerations: 10 },
     { id: "p-ess", code: "essentiel", name: "Essentiel", maxTeams: 20, maxVenues: 0, maxGenerations: 0 },
-    { id: "p-club", code: "club", name: "Club", maxTeams: 30, maxVenues: 0, maxGenerations: 0 },
-    { id: "p-sl", code: "sans-limite", name: "Sans limite", maxTeams: 0, maxVenues: 0, maxGenerations: 0 },
+    { id: "p-club", code: "club", name: "Club", maxTeams: 34, maxVenues: 0, maxGenerations: 0 },
+    { id: "p-gc", code: "grand-club", name: "Grand club", maxTeams: 0, maxVenues: 0, maxGenerations: 0 },
   ],
   isError: false,
 };
@@ -123,11 +123,12 @@ describe("ClubPage", () => {
     venueStats.data = undefined;
     venueStats.isLoading = false;
     venueStats.isError = false;
+    // Le catalogue tel que l'API le sert (grille 20 / 34 / 35+) : Grand club illimité (0), plus de « sans-limite ».
     plans.data = [
       { id: "p-dec", code: "decouverte", name: "Découverte", maxTeams: 0, maxVenues: 0, maxGenerations: 10 },
       { id: "p-ess", code: "essentiel", name: "Essentiel", maxTeams: 20, maxVenues: 0, maxGenerations: 0 },
-      { id: "p-club", code: "club", name: "Club", maxTeams: 30, maxVenues: 0, maxGenerations: 0 },
-      { id: "p-sl", code: "sans-limite", name: "Sans limite", maxTeams: 0, maxVenues: 0, maxGenerations: 0 },
+      { id: "p-club", code: "club", name: "Club", maxTeams: 34, maxVenues: 0, maxGenerations: 0 },
+      { id: "p-gc", code: "grand-club", name: "Grand club", maxTeams: 0, maxVenues: 0, maxGenerations: 0 },
     ];
     plans.isError = false;
     updateShortName.mockClear();
@@ -395,6 +396,15 @@ describe("ClubPage", () => {
     expect(screen.queryByText(/Crédits gratuits/)).toBeNull();
     // Le palier courant est mis en avant.
     expect(screen.getAllByText("Votre offre").length).toBeGreaterThanOrEqual(1);
+  });
+
+  /** Grand club (illimité, maxTeams servi à null) : aucun compteur « X/Y équipes », sa carte est l'offre courante. */
+  it("Offre (Grand club) : aucun compteur d'équipes, carte « Équipes illimitées » marquée comme l'offre du club", () => {
+    me.data = { role: "admin", club: withEntitlements({ planCode: "grand-club", planName: "Grand club", maxTeams: null, teamsUsed: 51, creditsMax: null, creditsUsed: 0, canGenerate: true, canPlaceMatches: true, canExportPdf: true, seasonTransition: true }) };
+    render(<ClubPage />);
+    expect(screen.queryByText(/\d+\/\d* équipes/)).toBeNull();
+    const grandClubCard = screen.getByText("Équipes illimitées").parentElement as HTMLElement;
+    expect(within(grandClubCard).getByText(CLUB_TEXTS.yourOffer)).toBeInTheDocument();
   });
 
   it("Offre : le chargement ne crie pas « échec » (readState à trois états)", () => {
