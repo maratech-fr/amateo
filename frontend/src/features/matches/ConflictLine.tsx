@@ -357,8 +357,9 @@ function ConflictVenueRow({ side }: { side: ConflictSideLine }) {
   return (
     <TableRow>
       {/* Identité : équipe et « vs adversaire » CÔTE À CÔTE (`flex`, une seule ligne au bureau) ;
-          `flex-wrap` les empile en largeur téléphone (repli assumé). Plus de `w-full` : la colonne
-          d'identité ne capte plus tout le vide — l'espace se répartit sur Gymnase · Date · Créneau. */}
+          `flex-wrap` les empile en largeur téléphone (repli assumé). Pas de `w-full` : identité et
+          Gymnase se partagent la largeur libre et se replient ; seuls Date et Créneau sont insécables
+          (`whitespace-nowrap`) — un nom de gymnase de 78 caractères insécable écrasait l'identité. */}
       <th scope="row" className="px-1.5 py-0.5 text-left align-top font-normal">
         <span className="flex flex-wrap items-baseline gap-x-1.5">
           <span className="inline-flex items-baseline font-medium text-foreground">
@@ -406,8 +407,8 @@ function ConflictVenueDetail({ model }: { model: ConflictSideModel }) {
         <TableCaption className="sr-only">{MATCHES_TEXTS.sideDetailCaption}</TableCaption>
         <TableHeader>
           <TableRow>
-            {/* Colonne d'identité SANS en-tête nommé (ni `w-full` : le vide se répartit sur les
-                3 colonnes plutôt que de gonfler l'identité) — les 3 en-têtes suivent les 3 colonnes. */}
+            {/* Colonne d'identité SANS en-tête nommé (identité et Gymnase se partagent la largeur
+                libre ; Date et Créneau restent insécables) — les 3 en-têtes suivent les 3 colonnes. */}
             <td className="px-1.5 py-0.5" />
             <TableHead className="px-1.5 py-0.5 normal-case">{MATCHES_TEXTS.venueHeader}</TableHead>
             <TableHead className="px-1.5 py-0.5 normal-case">{MATCHES_TEXTS.dateHeader}</TableHead>
@@ -493,7 +494,7 @@ export function ConflictLine({ conflict, teams, coaches, venues, tone, isNew, tr
         {/* La pastille GLOBALE « heure estimée » disparaît pour les familles à détail par côté. */}
         {null === sideModel && estimatedTag(conflict) ? <span className="ml-1 rounded bg-muted px-1 text-xs uppercase tracking-wide">{MATCHES_TEXTS.estimatedTimeTag}</span> : null}
       </p>
-      {/* M11 (retours Nico, BCCL 2026-10-27) — « Hors accès match » offre un deep-link vers l'éditeur
+      {/* M11 — « Hors accès match » offre un deep-link vers l'éditeur
           d'accès du GYMNASE touché, ligne d'ouverture préremplie (état dans l'URL, partageable). */}
       {"ACCESS_WINDOW_LOST" === conflict.type && undefined !== conflict.venueId ? (
         <Button variant="outline" size="sm" className="mt-1.5" asChild>
