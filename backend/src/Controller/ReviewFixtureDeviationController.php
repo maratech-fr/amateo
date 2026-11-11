@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Controller;
 
+use App\Entity\FbiCorrection;
 use App\Entity\Fixture;
 use App\Enum\FbiCorrectionField;
 use App\Enum\FixtureHomeAway;
@@ -121,6 +122,12 @@ final class ReviewFixtureDeviationController extends AbstractController
             }
             if (!$applied) {
                 return $this->json(['error' => 'Cette salle n\'est rattachée à aucun gymnase du club. Choisissez un gymnase, ou « terrain neutre » si le match ne se joue pas chez vous.'], Response::HTTP_UNPROCESSABLE_ENTITY);
+            }
+            // L'appli s'aligne sur FBI : une entrée « à corriger dans FBI » de ce champ n'a
+            // plus d'objet, elle se ferme.
+            $openCorrection = $this->ledger->findOpen($fixture, FbiCorrectionField::from($field));
+            if ($openCorrection instanceof FbiCorrection) {
+                $this->ledger->closeBySource($openCorrection, $now);
             }
         } else {
             // « Garder l'appli » : l'appli fait foi, FBI est en retard → une entrée

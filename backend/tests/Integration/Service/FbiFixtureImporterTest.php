@@ -20,6 +20,7 @@ use App\Enum\FbiCorrectionCloseSource;
 use App\Enum\FbiCorrectionField;
 use App\Enum\FbiIngestionSource;
 use App\Enum\FixtureHomeAway;
+use App\Enum\FixturePlacementSource;
 use App\Enum\FixtureReviewState;
 use App\Enum\FixtureStatus;
 use App\Enum\FixtureUnplacedReason;
@@ -365,12 +366,16 @@ final class FbiFixtureImporterTest extends KernelTestCase
 
     // ── Diff/update semantics ──────────────────────────────────────────────
 
-    public function testRescheduledDateUnplacesAndWarns(): void
+    /**
+     * « Prendre le fichier » sur la DATE d'un match seulement PLACÉ : la date de FBI est écrite,
+     * le match reste Placé dans son gymnase et le rapport dit « date du fichier retenue ».
+     * Angle de statut jumeau de {@see testTakeFileOnADateKeepsStatusAndVenueAndResolvesTheEcart}
+     * (même geste sur un « Déjà dans FBI ») — doublon voulu, point sensible : matchs.
+     */
+    public function testTakeFileOnTheDateOfAPlacedHomeKeepsItPlacedAndSaysIt(): void
     {
-        // RMM-4: a date écart on a PLACED home is now a CHOICE — « take_file »
-        // keeps the pre-RMM-4 reschedule (la ligue a re-décidé → un-place).
         $this->importMapped([['D2', 'R3001', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '15:30', '']]);
-        $this->place('R3001');
+        $venueId = $this->place('R3001');
         $id = $this->fixtureId('R3001');
 
         $result = $this->importMapped(
@@ -383,12 +388,13 @@ final class FbiFixtureImporterTest extends KernelTestCase
         self::assertSame(1, $result['updated']);
         self::assertSame([], $result['unresolvedDeviations']);
         self::assertSame('RESCHEDULED', $result['warnings'][0]['type']);
-        self::assertStringContainsString('placement annulé', $result['warnings'][0]['message']);
+        self::assertSame('D2 n°R3001 : date du fichier retenue (10/10/2026).', $result['warnings'][0]['message']);
 
+        $this->em->clear();
         $fixture = $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'R3001']);
         self::assertSame('2026-10-10', $fixture?->getMatchDate()->format('Y-m-d'));
-        self::assertSame(FixtureStatus::UNPLACED, $fixture?->getStatus());
-        self::assertNull($fixture?->getVenueId());
+        self::assertSame(FixtureStatus::PLACED, $fixture?->getStatus(), 'le match reste Placé');
+        self::assertSame($venueId, $fixture?->getVenueId(), 'il garde son gymnase');
     }
 
     public function testHomeAwaySwitchUnplacesAndWarns(): void
@@ -562,32 +568,392 @@ final class FbiFixtureImporterTest extends KernelTestCase
         $this->em->flush();
     }
 
-    // ── Adversaire différent = ANOMALIE, jamais un écrasement (décision fondateur) ──
+    // ── Adversaire différent = la ligne de l'application est FAUSSE : le fichier la RÉTABLIT ──
+    // Décision fondateur 2026-11-11 (remplace celle du 27/10 « anomalie ignorée ») : un match =
+    // numéro + championnat + adversaire. Date, heure, salle et côté peuvent changer, l'adversaire
+    // jamais : un adversaire différent sous la même clé (équipe|division|numéro) dit que la ligne
+    // de l'application est fausse, et l'import la ré-hydrate d'après le fichier comme à la
+    // création. Une inversion de côté avec le même adversaire, ou une simple graphie, n'est
+    // JAMAIS un rétablissement.
 
-    public function testSameDivisionAndNumberWithADifferentOpponentIsAnAnomalyLeftIntactAndWarned(): void
+    /** Un adversaire différent sous la même clé rétablit la rencontre d'après le fichier (tous les champs, compteur `restored`, avertissement nommé). */
+    public function testADifferentOpponentUnderTheSameDivisionAndNumberRestoresTheMatchFromTheFile(): void
     {
-        // Décision fondateur 2026-10-27 : « un match ne change pas d'adversaire ; si ça arrive
-        // c'est un bug FFBB ». Même division + même numéro mais adversaire différent dans le
-        // fichier = ANOMALIE — la rencontre existante n'est PAS modifiée (ni adversaire, ni
-        // date, ni statut) ; la ligne est écartée et SIGNALÉE au rapport. Aujourd'hui
-        // `opponentLabel` est écrasé en silence (FbiFixtureImporter l.1280-1283 / 1360-1363).
         $this->importMapped([['D2', '5', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '15:30', 'Gymnase X']]);
         $this->place('5');
+        $before = $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => '5']);
+        self::assertNotNull($before);
+        $id = $before->getId();
+        $createdAt = $before->getCreatedAt()->format(DateTimeImmutable::ATOM);
 
-        $result = $this->importMapped([['D2', '5', 'BC TESTVILLE - 1', 'AS Autres', '03/10/2026', '15:30', 'Gymnase X']]);
+        $result = $this->importMapped([['D2', '5', 'BC TESTVILLE - 1', 'AS Autres', '10/10/2026', '17:00', 'Gymnase X']]);
 
-        self::assertSame(0, $result['created']);
-        self::assertSame(0, $result['updated'], 'une anomalie n\'écrit RIEN');
-        $warning = array_values(array_filter($result['warnings'], static fn (array $w): bool => 'OPPONENT_CHANGED' === $w['type']));
-        self::assertCount(1, $warning, 'l\'anomalie est signalée au rapport');
-        self::assertStringContainsString('AS Autres', $warning[0]['message']);
-        self::assertStringContainsString('AS Voisins', $warning[0]['message']);
+        self::assertSame(1, $result['restored'], 'la rencontre est comptée « rétablie »');
+        self::assertSame(0, $result['created'], 'un rétablissement ne crée jamais de seconde ligne');
+        self::assertSame(0, $result['updated'], 'un rétablissement ne compte pas dans « mis à jour »');
+        self::assertSame(0, $result['unchanged']);
+        $warnings = $this->warningsFor($result['warnings'], '5');
+        self::assertCount(1, $warnings, 'un seul avertissement pour la ligne rétablie (jamais un RESCHEDULED en plus)');
+        self::assertSame('OPPONENT_RESTORED', $warnings[0]['type']);
+        self::assertSame('D2', $warnings[0]['division']);
+        self::assertSame(
+            'D2 n°5 : rencontre rétablie d\'après FBI — l\'adversaire de l\'application (AS Voisins) ne correspondait pas ; FBI annonce AS Autres le 10/10/2026 à 17:00 — placement annulé.',
+            $warnings[0]['message'],
+        );
 
         $this->em->clear();
-        $fixture = $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => '5']);
-        self::assertSame('AS Voisins', $fixture?->getOpponentLabel(), 'l\'adversaire d\'origine est intact');
+        self::assertCount(1, $this->em->getRepository(Fixture::class)->findBy(['teamId' => $this->team->getId(), 'externalRef' => '5']), 'la même ligne, rétablie en place');
+        $fixture = $this->em->find(Fixture::class, $id);
+        self::assertInstanceOf(Fixture::class, $fixture, 'la rencontre garde son identifiant');
+        self::assertSame('AS Autres', $fixture->getOpponentLabel());
+        self::assertSame('2026-10-10', $fixture->getMatchDate()->format('Y-m-d'));
+        self::assertSame('17:00', $fixture->getKickoffTime()?->format('H:i'));
+        self::assertSame(FixtureHomeAway::HOME, $fixture->getHomeAway());
+        self::assertSame('Gymnase X', $fixture->getFbiVenueLabel());
+        self::assertSame(FixtureStatus::UNPLACED, $fixture->getStatus(), 'le placement est annulé');
+        self::assertNull($fixture->getPlacementSource());
+        self::assertSame($this->defaultVenueId, $fixture->getVenueId(), 'le gymnase vient de l\'alias confirmé de la salle du fichier, jamais de l\'ancien placement');
+        self::assertNull($fixture->getUnplacedReason());
+        self::assertSame([], $fixture->getPendingDeviations());
+        self::assertSame('D2', $fixture->getExternalDivision(), 'la clé est conservée');
+        self::assertSame('5', $fixture->getExternalRef());
+        self::assertSame($createdAt, $fixture->getCreatedAt()->format(DateTimeImmutable::ATOM), 'la date de création est conservée');
+    }
+
+    /**
+     * Correction SMITH 2 — le traitement est REMIS À ZÉRO avant `treatOnArrival` : un domicile
+     * PLACÉ (donc REVIEWED) rétabli sur une date FUTURE hors de la semaine en cours redevient
+     * « à traiter » (NEW, horodatage effacé). Seul l'adversaire change ici : le NEW ne peut venir
+     * d'aucun autre écart.
+     */
+    public function testARestoredPlacedReviewedHomeOnAFutureDateGoesBackToNew(): void
+    {
+        $this->importMapped([['D2', 'RN0', 'BC TESTVILLE - 1', 'AS Voisins', '10/10/2026', '15:30', 'Gymnase X']]);
+        $this->place('RN0');
+        self::assertSame(FixtureReviewState::REVIEWED, $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'RN0'])?->getReviewState(), 'décor : placer = traiter');
+
+        $result = $this->importMapped([['D2', 'RN0', 'BC TESTVILLE - 1', 'AS Autres', '10/10/2026', '15:30', 'Gymnase X']]);
+
+        self::assertSame(1, $result['restored']);
+        $this->em->clear();
+        $fixture = $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'RN0']);
+        self::assertSame('AS Autres', $fixture?->getOpponentLabel());
+        self::assertSame(FixtureReviewState::NEW, $fixture?->getReviewState(), 'un domicile futur rétabli est de nouveau « à traiter »');
+        self::assertNull($fixture?->getReviewedAt(), 'l\'horodatage du traitement précédent est effacé');
+    }
+
+    /**
+     * R2 — rétablir efface tout ce que l'ancienne ligne portait : écarts (même arbitrables),
+     * mémo « FBI affiche », libellé gardé, code de l'ancien adversaire ; ferme par le dépôt
+     * les entrées « à corriger dans FBI » ouvertes ; repointe le championnat sur celui de la
+     * division du fichier.
+     */
+    public function testARestoredRowWipesItsTracesClosesOpenCorrectionsAndRepointsTheCompetition(): void
+    {
+        $this->importMapped([['D2', 'RT1', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '15:30', '']]);
+        $this->place('RT1');
+        $id = $this->fixtureId('RT1');
+        // « Garder l'appli » sur l'heure → une entrée « à corriger dans FBI » OUVERTE.
+        $this->importMapped(
+            [['D2', 'RT1', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '17:00', '']],
+            null,
+            [['fixtureId' => $id, 'field' => 'kickoff', 'choice' => 'keep_app']],
+        );
+        $d2 = $this->em->getRepository(Competition::class)->findOneBy(['teamId' => $this->team->getId(), 'name' => 'D2']);
+        self::assertNotNull($d2);
+        $d2Id = $d2->getId();
+        $other = $this->rawCompetition('Ancien championnat');
+        $fixture = $this->em->find(Fixture::class, $id);
+        self::assertNotNull($fixture);
+        $fixture->putPendingDeviation(['field' => 'date', 'appValue' => '2026-10-03', 'sourceValue' => '2026-10-17', 'channel' => 'FBI_XLSX', 'seenAt' => '2026-09-10T00:00:00+00:00', 'autoApplied' => false]);
+        $fixture->setFbiEcho(['field' => 'kickoff', 'value' => '17:00', 'at' => '2026-09-10T00:00:00+00:00']);
+        $fixture->setKeptVenueLabel('ANCIENNE SALLE');
+        $fixture->setOpponentOrganismeCode('ARA0069001');
+        $fixture->setCompetitionId($other->getId());
+        $this->em->flush();
+        $openBefore = $this->em->getRepository(FbiCorrection::class)->findOneBy(['fixtureId' => $id, 'field' => FbiCorrectionField::KICKOFF]);
+        self::assertTrue($openBefore?->isOpen(), 'décor : une correction ouverte avant le rétablissement');
+
+        $result = $this->importMapped([['D2', 'RT1', 'BC TESTVILLE - 1', 'AS Autres', '03/10/2026', '15:30', '']]);
+
+        self::assertSame(1, $result['restored']);
+        $this->em->clear();
+        $restored = $this->em->find(Fixture::class, $id);
+        self::assertInstanceOf(Fixture::class, $restored);
+        self::assertSame('AS Autres', $restored->getOpponentLabel());
+        self::assertSame([], $restored->getPendingDeviations(), 'les écarts de l\'ancienne ligne sont vidés, même arbitrables');
+        self::assertNull($restored->getFbiEcho());
+        self::assertNull($restored->getKeptVenueLabel());
+        self::assertNull($restored->getOpponentOrganismeCode(), 'le code de l\'ancien adversaire ne survit pas');
+        self::assertSame($d2Id, $restored->getCompetitionId(), 'le championnat est celui de la division du fichier');
+        self::assertSame($this->defaultVenueId, $restored->getVenueId(), 'un domicile sans salle prend le gymnase choisi pour sa division');
+        $entry = $this->em->getRepository(FbiCorrection::class)->findOneBy(['fixtureId' => $id, 'field' => FbiCorrectionField::KICKOFF]);
+        self::assertInstanceOf(FbiCorrection::class, $entry);
+        self::assertFalse($entry->isOpen(), 'la correction de l\'ancienne ligne n\'a plus d\'objet');
+        self::assertSame(FbiCorrectionCloseSource::DEPOSIT, $entry->getClosedBy());
+    }
+
+    /**
+     * R2 [C2] — un terrain neutre résiduel rétabli en domicile avec une salle appariée (alias
+     * confirmé) perd sa raison NEUTRAL_GROUND et prend son gymnase : seul un `setVenueId` non nul
+     * efface la raison, la ré-hydratation ne doit pas la laisser survivre.
+     */
+    public function testARestoredNeutralLeftoverBecomesAHomeWithItsAliasedGymAndLosesTheNeutralReason(): void
+    {
+        $aliased = $this->createVenueWithAliases('Gymnase Alias', ['gymnase alias']);
+        $this->importMapped(
+            [['D2', 'RN1', 'BC TESTVILLE - 1', 'AS Voisins', '10/10/2026', '15:30', 'TERRAIN ADVERSE']],
+            venueMappings: [['label' => 'TERRAIN ADVERSE', 'venueId' => 'NEUTRAL']],
+            venueChoices: [],
+        );
+        self::assertSame(FixtureUnplacedReason::NEUTRAL_GROUND, $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'RN1'])?->getUnplacedReason(), 'décor : un terrain neutre');
+
+        $result = $this->importMapped([['D2', 'RN1', 'BC TESTVILLE - 1', 'AS Autres', '10/10/2026', '15:30', 'GYMNASE ALIAS']], null, [], [], []);
+
+        self::assertSame(1, $result['restored']);
+        $this->em->clear();
+        $fixture = $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'RN1']);
+        self::assertSame('AS Autres', $fixture?->getOpponentLabel());
+        self::assertSame($aliased, $fixture?->getVenueId(), 'le gymnase vient de l\'alias confirmé');
+        self::assertNull($fixture?->getUnplacedReason(), 'la raison « terrain neutre » ne survit pas à une ligne non neutre');
+        self::assertSame('GYMNASE ALIAS', $fixture?->getFbiVenueLabel());
+        self::assertSame(FixtureReviewState::NEW, $fixture?->getReviewState(), 'domicile futur non neutre : « à traiter »');
+    }
+
+    /** R2/R5 (correction SMITH 1) — un domicile rétabli que le dépôt déclare terrain neutre naît NEUTRAL_GROUND, sans gymnase, et traité. */
+    public function testARestoredHomeDeclaredNeutralIsNeutralGroundAndTreated(): void
+    {
+        $this->importMapped([['D2', 'RN2', 'BC TESTVILLE - 1', 'AS Voisins', '10/10/2026', '15:30', 'Gymnase X']]);
+        $this->place('RN2');
+
+        $result = $this->importMapped(
+            [['D2', 'RN2', 'BC TESTVILLE - 1', 'AS Autres', '10/10/2026', '15:30', 'TERRAIN ADVERSE']],
+            venueMappings: [['label' => 'TERRAIN ADVERSE', 'venueId' => 'NEUTRAL']],
+            venueChoices: [],
+        );
+
+        self::assertSame(1, $result['restored']);
+        $this->em->clear();
+        $fixture = $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'RN2']);
+        self::assertSame('AS Autres', $fixture?->getOpponentLabel());
+        self::assertSame(FixtureStatus::UNPLACED, $fixture?->getStatus());
+        self::assertNull($fixture?->getVenueId(), 'un terrain neutre n\'a pas de gymnase du club');
+        self::assertSame(FixtureUnplacedReason::NEUTRAL_GROUND, $fixture?->getUnplacedReason());
+        self::assertSame(FixtureReviewState::REVIEWED, $fixture?->getReviewState(), 'un neutre rétabli est traité, même futur');
+        self::assertNotNull($fixture?->getReviewedAt());
+    }
+
+    /**
+     * R3 + Q7 [C2] + R5 — un match PASSÉ se rétablit aussi (l'ancien adversaire ne survit que
+     * dans le message) ; quand le côté change, le message le dit ; un extérieur passé rétabli
+     * finit UNPLACED + traité, sans gymnase du club.
+     */
+    public function testARestoredMatchThatTurnsAwayOnAPastDateSaysTheSideAndEndsTreated(): void
+    {
+        $this->pinClock(new DateTimeImmutable('2026-11-11 10:00:00'));
+        $this->importMapped([['D2', 'RP1', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '15:30', 'Gymnase X']]);
+        $this->place('RP1');
+
+        $result = $this->importMapped([['D2', 'RP1', 'AS Autres', 'BC TESTVILLE - 1', '03/10/2026', '15:30', 'Salle Adverse']]);
+
+        self::assertSame(1, $result['restored']);
+        $warnings = $this->warningsFor($result['warnings'], 'RP1');
+        self::assertCount(1, $warnings, 'le changement de côté est dit DANS l\'avertissement de rétablissement, jamais un SWITCHED en plus');
+        self::assertSame(
+            'D2 n°RP1 : rencontre rétablie d\'après FBI — l\'adversaire de l\'application (AS Voisins) ne correspondait pas ; FBI annonce AS Autres le 03/10/2026 à 15:30, à l\'extérieur — placement annulé.',
+            $warnings[0]['message'],
+        );
+        $this->em->clear();
+        $fixture = $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'RP1']);
+        self::assertSame('AS Autres', $fixture?->getOpponentLabel());
+        self::assertSame(FixtureHomeAway::AWAY, $fixture?->getHomeAway());
+        self::assertSame(FixtureStatus::UNPLACED, $fixture?->getStatus());
+        self::assertNull($fixture?->getVenueId(), 'un extérieur ne garde jamais le gymnase du club');
+        self::assertSame(FixtureReviewState::REVIEWED, $fixture?->getReviewState(), 'un extérieur passé rétabli est traité');
+    }
+
+    /** Q7 [C2] — le segment de côté « , à domicile » paraît quand un extérieur est rétabli en domicile ; sans placement, pas de « placement annulé ». */
+    public function testARestoredAwayThatTurnsHomeSaysAtHomeWithoutPlacementCancelled(): void
+    {
+        $this->importMapped([['D2', 'RH1', 'AS Voisins', 'BC TESTVILLE - 1', '10/10/2026', '15:30', 'Salle Adverse']]);
+
+        $result = $this->importMapped([['D2', 'RH1', 'BC TESTVILLE - 1', 'AS Autres', '10/10/2026', '15:30', 'Gymnase X']]);
+
+        self::assertSame(1, $result['restored']);
+        $warnings = $this->warningsFor($result['warnings'], 'RH1');
+        self::assertCount(1, $warnings);
+        self::assertSame(
+            'D2 n°RH1 : rencontre rétablie d\'après FBI — l\'adversaire de l\'application (AS Voisins) ne correspondait pas ; FBI annonce AS Autres le 10/10/2026 à 15:30, à domicile.',
+            $warnings[0]['message'],
+        );
+    }
+
+    /** R4 — re-déposer le fichier qui a rétabli une rencontre ne la rétablit pas une seconde fois. */
+    public function testReDepositingTheFileThatRestoredAMatchIsIdempotent(): void
+    {
+        $this->importMapped([['D2', 'RI1', 'BC TESTVILLE - 1', 'AS Voisins', '10/10/2026', '15:30', 'Gymnase X']]);
+        $file = [['D2', 'RI1', 'BC TESTVILLE - 1', 'AS Autres', '10/10/2026', '15:30', 'Gymnase X']];
+        self::assertSame(1, $this->importMapped($file)['restored'], 'décor : premier rétablissement');
+
+        $again = $this->importMapped($file);
+
+        self::assertSame(0, $again['restored'], 'rien à rétablir au second passage');
+        self::assertSame(0, $again['created']);
+        self::assertSame([], $this->warningsFor($again['warnings'], 'RI1'), 'aucun avertissement de rétablissement au second passage');
+        $this->em->clear();
+        self::assertCount(1, $this->em->getRepository(Fixture::class)->findBy(['externalRef' => 'RI1']));
+    }
+
+    /** R6 — rétablir la ligne de la 2ᵉ phase ne touche jamais sa jumelle de 1ʳᵉ phase (même numéro, autre division). */
+    public function testRestoringAPhaseTwoRowLeavesItsPhaseOneTwinIntact(): void
+    {
+        $this->importMapped([['DFU18-3', '22', 'BC TESTVILLE - 1', 'AS Voisins', '10/10/2026', '15:30', 'Gymnase X']]);
+        $venueId = $this->place('22');
+        $this->importMapped([['RFU18-3', '22', 'BC TESTVILLE - 1', 'AS Autres', '14/11/2026', '15:30', 'Gymnase X']]);
+
+        $result = $this->importMapped([['RFU18-3', '22', 'BC TESTVILLE - 1', 'AS Tierce', '14/11/2026', '15:30', 'Gymnase X']]);
+
+        self::assertSame(1, $result['restored'], 'la 2ᵉ phase est rétablie');
+        $this->em->clear();
+        $phase2 = $this->fixtureUnderDivision('22', 'RFU18-3');
+        self::assertSame('AS Tierce', $phase2?->getOpponentLabel());
+        $phase1 = $this->fixtureUnderDivision('22', 'DFU18-3');
+        self::assertSame('AS Voisins', $phase1?->getOpponentLabel(), 'la jumelle de 1ʳᵉ phase garde son adversaire');
+        self::assertSame(FixtureStatus::PLACED, $phase1?->getStatus(), 'et son placement');
+        self::assertSame($venueId, $phase1?->getVenueId());
+        self::assertSame('2026-10-10', $phase1?->getMatchDate()->format('Y-m-d'));
+    }
+
+    /** R1 — une simple dérive de graphie du même adversaire (casse, espaces) ne rétablit jamais : la ligne placée reste intacte. */
+    public function testASpellingDriftOfTheSameOpponentNeverRestores(): void
+    {
+        $this->importMapped([['D2', 'RG1', 'BC TESTVILLE - 1', 'AS Voisins', '10/10/2026', '15:30', 'Gymnase X']]);
+        $venueId = $this->place('RG1');
+
+        $result = $this->importMapped([['D2', 'RG1', 'BC TESTVILLE - 1', 'as  VOISINS', '10/10/2026', '15:30', 'Gymnase X']]);
+
+        self::assertSame(0, $result['restored']);
+        self::assertSame([], $this->opponentWarnings($result['warnings']), 'ni rétablissement ni anomalie pour une graphie');
+        $this->em->clear();
+        $fixture = $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'RG1']);
+        self::assertSame('AS Voisins', $fixture?->getOpponentLabel(), 'le libellé n\'est pas réécrit');
         self::assertSame(FixtureStatus::PLACED, $fixture?->getStatus());
-        self::assertSame(FixtureReviewState::REVIEWED, $fixture?->getReviewState());
+        self::assertSame($venueId, $fixture?->getVenueId());
+    }
+
+    /** R1 — une inversion domicile↔extérieur avec le MÊME adversaire suit SWITCHED, jamais un rétablissement. */
+    public function testASideSwapWithTheSameOpponentIsASwitchNeverARestoration(): void
+    {
+        $this->importMapped([['D2', 'RW1', 'BC TESTVILLE - 1', 'AS Voisins', '10/10/2026', '15:30', 'Gymnase X']]);
+        $this->place('RW1');
+
+        $result = $this->importMapped([['D2', 'RW1', 'AS Voisins', 'BC TESTVILLE - 1', '10/10/2026', '15:30', 'Salle Adverse']]);
+
+        self::assertSame(0, $result['restored']);
+        self::assertSame(1, $result['updated']);
+        self::assertSame([], $this->opponentWarnings($result['warnings']));
+        self::assertSame(['SWITCHED'], array_column($this->warningsFor($result['warnings'], 'RW1'), 'type'));
+        $this->em->clear();
+        $fixture = $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'RW1']);
+        self::assertSame(FixtureHomeAway::AWAY, $fixture?->getHomeAway());
+        self::assertSame('AS Voisins', $fixture?->getOpponentLabel());
+    }
+
+    /**
+     * R5 — fin de parcours : un domicile d'un championnat COMMENCÉ, rétabli avec une heure et une
+     * salle appariée (alias), repasse « Déjà dans FBI » (VALIDATED + MANUAL) par la passe
+     * d'auto-validation du même dépôt. Rejoué sur la base réelle après le rebase sur le lot de
+     * novembre (la passe y devient `sweepStartedChampionships`, même prédicat). Jumeau de la
+     * mécanique d'auto-validation : {@see ImportLeagueAutoValidationTest} ; ici l'angle est
+     * qu'une ligne rétablie y entre comme une ligne créée.
+     */
+    public function testARestoredHomeOfAStartedChampionshipWithTimeAndAliasedGymEndsAlreadyInFbi(): void
+    {
+        $this->pinClock(new DateTimeImmutable('2026-11-11 10:00:00'));
+        $aliased = $this->createVenueWithAliases('Gymnase Alias', ['gymnase alias']);
+        $seasonId = $this->team->getSeasonId();
+        $mapping = [['division' => 'D2', 'fbiTeamLabel' => null, 'teamId' => $this->team->getId()]];
+        $first = $this->importer->import($this->xlsx([['D2', 'RV1', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '15:30', 'GYMNASE ALIAS']]), $this->club, $mapping, [], $seasonId, [], []);
+        self::assertSame(1, $first['leagueValidated'], 'décor : le domicile du championnat commencé est « Déjà dans FBI »');
+
+        $result = $this->importer->import($this->xlsx([['D2', 'RV1', 'BC TESTVILLE - 1', 'AS Autres', '03/10/2026', '15:30', 'GYMNASE ALIAS']]), $this->club, $mapping, [], $seasonId, [], []);
+
+        self::assertSame(1, $result['restored']);
+        $warnings = $this->warningsFor($result['warnings'], 'RV1');
+        self::assertCount(1, $warnings);
+        self::assertStringEndsWith('— placement annulé.', $warnings[0]['message'], 'une rencontre validée était placée');
+        $this->em->clear();
+        $fixture = $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'RV1']);
+        self::assertSame('AS Autres', $fixture?->getOpponentLabel());
+        self::assertSame($aliased, $fixture?->getVenueId());
+        self::assertSame(FixtureStatus::VALIDATED, $fixture?->getStatus(), 'rétablie, elle repasse « Déjà dans FBI » au même dépôt');
+        self::assertSame(FixturePlacementSource::MANUAL, $fixture?->getPlacementSource());
+    }
+
+    /**
+     * R5 bis [C1] — une ligne à rétablir compte comme une CRÉATION dans la couverture des salles :
+     * un domicile rétabli dont la salle n'a ni alias, ni choix, ni déclaration neutre fait refuser
+     * TOUT le dépôt (422 nommant la salle), et rien n'est écrit — la ligne garde son faux
+     * adversaire. Opt-out explicite de l'appariement automatique du helper (`[]`, correction SMITH 2).
+     */
+    public function testARestoredHomeWhoseFileVenueHasNoGymIsRefusedAndNothingIsWritten(): void
+    {
+        $this->importMapped([['D2', 'RB1', 'BC TESTVILLE - 1', 'AS Voisins', '10/10/2026', '15:30', 'Gymnase X']]);
+        $venueId = $this->place('RB1');
+        $ingestions = $this->em->getRepository(FbiIngestion::class)->count([]);
+
+        try {
+            $this->importMapped([['D2', 'RB1', 'BC TESTVILLE - 1', 'AS Autres', '10/10/2026', '15:30', 'SALLE INCONNUE']], null, [], [], []);
+            self::fail('un domicile rétabli sans gymnase doit faire refuser le dépôt');
+        } catch (ImportRejectedException $e) {
+            self::assertSame(422, $e->getStatusCode());
+            self::assertStringContainsString('SALLE INCONNUE', $e->getMessage(), 'le refus nomme la salle à apparier');
+        }
+
+        $this->em->clear();
+        $fixture = $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'RB1']);
+        self::assertSame('AS Voisins', $fixture?->getOpponentLabel(), 'zéro écriture : la ligne garde son faux adversaire');
+        self::assertSame(FixtureStatus::PLACED, $fixture?->getStatus());
+        self::assertSame($venueId, $fixture?->getVenueId());
+        self::assertSame($ingestions, $this->em->getRepository(FbiIngestion::class)->count([]), 'aucun dépôt enregistré');
+    }
+
+    /** R5 bis [C1] — la même ligne, salle appariée au dépôt (`venueMappings`), est rétablie avec ce gymnase. */
+    public function testARestoredHomeWhoseFileVenueIsPairedAtDepositIsRestoredWithThatGym(): void
+    {
+        $this->importMapped([['D2', 'RB2', 'BC TESTVILLE - 1', 'AS Voisins', '10/10/2026', '15:30', 'Gymnase X']]);
+        $this->place('RB2');
+        $paired = $this->createVenue('Gymnase Apparié');
+
+        $result = $this->importMapped(
+            [['D2', 'RB2', 'BC TESTVILLE - 1', 'AS Autres', '10/10/2026', '15:30', 'SALLE INCONNUE']],
+            venueMappings: [['label' => 'SALLE INCONNUE', 'venueId' => $paired]],
+            venueChoices: [],
+        );
+
+        self::assertSame(1, $result['restored']);
+        $this->em->clear();
+        $fixture = $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'RB2']);
+        self::assertSame('AS Autres', $fixture?->getOpponentLabel());
+        self::assertSame($paired, $fixture?->getVenueId());
+    }
+
+    /**
+     * R5 bis [C1] — condition de la modale : l'analyse liste la salle à domicile d'une ligne qui
+     * correspond à une rencontre EXISTANTE (sinon le 422 serait sans issue depuis l'écran, qui
+     * exige l'appariement de chaque libellé listé). Vert à la naissance (l'analyse lit toutes les
+     * lignes, FbiFixtureImporter::analyzeHomeVenues) : garde contre un futur saut des existants.
+     */
+    public function testTheAnalysisListsTheFileVenueOfARowMatchingAnExistingFixture(): void
+    {
+        $this->importMapped([['D2', 'RA1', 'BC TESTVILLE - 1', 'AS Voisins', '10/10/2026', '15:30', 'Gymnase X']]);
+        $this->place('RA1');
+
+        $analysis = $this->importer->analyze($this->xlsx([['D2', 'RA1', 'BC TESTVILLE - 1', 'AS Autres', '10/10/2026', '15:30', 'SALLE INCONNUE']]), $this->club);
+
+        $byLabel = array_column($analysis['venues'], null, 'label');
+        self::assertArrayHasKey('SALLE INCONNUE', $byLabel, 'la salle de la ligne existante est proposée à l\'appariement');
+        self::assertNull($byLabel['SALLE INCONNUE']['confirmedVenueId']);
     }
 
     // ── D4 : interdire de greffer une 2ᵉ phase sur le championnat de la 1ʳᵉ ──
@@ -751,12 +1117,16 @@ final class FbiFixtureImporterTest extends KernelTestCase
         self::assertSame([], $conform['deviations']);
     }
 
-    public function testTakeFileOnADateUnplacesAndResolvesTheEcart(): void
+    /**
+     * « Prendre le fichier » sur une DATE écrit la date de FBI et rien d'autre : un match
+     * « Déjà dans FBI » le reste et garde son gymnase (une seule sémantique « FBI pris »,
+     * jamais un dé-placement) ; le rapport dit « date du fichier retenue ».
+     */
+    public function testTakeFileOnADateKeepsStatusAndVenueAndResolvesTheEcart(): void
     {
-        // Retained semantics: take_file on a DATE = la ligue a re-décidé → the
-        // placement is invalidated (un-placed). The écart is then resolved.
         $this->importMapped([['D2', 'RD03', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '15:30', '']]);
-        $this->place('RD03');
+        $venueId = $this->place('RD03');
+        $this->setStatus('RD03', FixtureStatus::VALIDATED);
         $id = $this->fixtureId('RD03');
 
         $result = $this->importMapped(
@@ -766,13 +1136,19 @@ final class FbiFixtureImporterTest extends KernelTestCase
         );
         self::assertSame(1, $result['updated']);
         self::assertSame([], $result['unresolvedDeviations']);
+        self::assertSame(
+            ['D2 n°RD03 : date du fichier retenue (10/10/2026).'],
+            array_column($this->warningsFor($result['warnings'], 'RD03'), 'message'),
+            'le rapport dit la date retenue, jamais « placement annulé »',
+        );
 
+        $this->em->clear();
         $fixture = $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'RD03']);
         self::assertSame('2026-10-10', $fixture?->getMatchDate()->format('Y-m-d'));
-        self::assertSame(FixtureStatus::UNPLACED, $fixture?->getStatus());
-        self::assertNull($fixture?->getVenueId());
+        self::assertSame(FixtureStatus::VALIDATED, $fixture?->getStatus(), 'le statut est conservé');
+        self::assertSame($venueId, $fixture?->getVenueId(), 'le gymnase est conservé');
 
-        // Idempotence: re-deposit the same file — now UNPLACED, no deviation.
+        // Idempotence : le même fichier redéposé ne montre plus d'écart.
         $after = $this->importer->analyze($this->xlsx([['D2', 'RD03', 'BC TESTVILLE - 1', 'AS Voisins', '10/10/2026', '15:30', '']]), $this->club);
         self::assertSame([], $after['deviations']);
     }
@@ -807,10 +1183,13 @@ final class FbiFixtureImporterTest extends KernelTestCase
         self::assertSame('2026-10-10', $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'RH01'])?->getMatchDate()->format('Y-m-d'));
     }
 
-    public function testSubmittedTakeFileDropsToPlacedSubmittedKeepAppStaysSubmitted(): void
+    /**
+     * « Prendre le fichier » sur l'HEURE d'un match « Saisi dans FBI » écrit l'heure de FBI et
+     * le laisse Saisi (FBI montre déjà cette heure, rien à re-saisir) ; « Garder l'appli » ne
+     * touche pas non plus au statut.
+     */
+    public function testSubmittedTakeFileKeepsSubmittedKeepAppStaysSubmitted(): void
     {
-        // take_file on a SUBMITTED fixture: writes the value AND un-submits to
-        // PLACED (the FBI checkmark was on a wrong hour); keep_app leaves it.
         $this->importMapped([['D2', 'RS01', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '15:30', '']]);
         $this->place('RS01');
         $this->setStatus('RS01', FixtureStatus::SUBMITTED);
@@ -823,11 +1202,10 @@ final class FbiFixtureImporterTest extends KernelTestCase
         );
         self::assertSame([], $take['unresolvedDeviations']);
         $fixture = $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'RS01']);
-        self::assertSame(FixtureStatus::PLACED, $fixture?->getStatus());
+        self::assertSame(FixtureStatus::SUBMITTED, $fixture?->getStatus(), 'prendre l\'heure de FBI ne fait pas repasser « Placé »');
         self::assertSame('17:00', $fixture?->getKickoffTime()?->format('H:i'));
 
-        // Re-submit, then keep_app on a fresh divergence: status untouched.
-        $this->setStatus('RS01', FixtureStatus::SUBMITTED);
+        // keep_app sur une nouvelle divergence : statut intact.
         $keep = $this->importMapped(
             [['D2', 'RS01', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '18:30', '']],
             null,
@@ -938,11 +1316,13 @@ final class FbiFixtureImporterTest extends KernelTestCase
         self::assertCount(0, $this->em->getRepository(FbiCorrection::class)->findBy(['fixtureId' => $id]));
     }
 
-    public function testKickoffTakeFileOnSubmittedPostsFbiEchoClearedOnResubmit(): void
+    /**
+     * « Prendre le fichier » sur l'HEURE d'un match « Saisi dans FBI » n'écrit plus de mémo
+     * « FBI affiche … » : le match reste Saisi, il n'y a pas de ligne « à saisir » à annoter,
+     * et aucune entrée « à corriger dans FBI » n'est ouverte (l'appli s'aligne sur FBI).
+     */
+    public function testKickoffTakeFileOnSubmittedWritesNoFbiEcho(): void
     {
-        // « Prendre le fichier » sur l'HEURE d'un SUBMITTED : rétrogradé à PLACED (la
-        // coche FBI portait une mauvaise heure) ET un mémo fbiEcho « FBI affiche 17:00 »
-        // pour la ligne « à saisir ». Re-passer SUBMITTED efface le mémo.
         $this->importMapped([['D2', 'RK04', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '15:30', '']]);
         $this->place('RK04');
         $this->setStatus('RK04', FixtureStatus::SUBMITTED);
@@ -956,19 +1336,10 @@ final class FbiFixtureImporterTest extends KernelTestCase
         $this->em->clear();
 
         $fixture = $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'RK04']);
-        self::assertSame(FixtureStatus::PLACED, $fixture?->getStatus());
-        $echo = $fixture?->getFbiEcho();
-        self::assertIsArray($echo);
-        self::assertSame('kickoff', $echo['field']);
-        self::assertSame('17:00', $echo['value']);
-        self::assertArrayHasKey('at', $echo);
-        // take_file n'ouvre jamais d'entrée « à corriger » (l'appli s'aligne sur FBI).
+        self::assertSame('17:00', $fixture?->getKickoffTime()?->format('H:i'));
+        self::assertSame(FixtureStatus::SUBMITTED, $fixture?->getStatus());
+        self::assertNull($fixture?->getFbiEcho(), 'plus aucun mémo « FBI affiche » n\'est écrit');
         self::assertCount(0, $this->em->getRepository(FbiCorrection::class)->findBy(['fixtureId' => $id]));
-
-        // Re-saisi dans FBI → SUBMITTED → le mémo n'a plus d'objet, il est effacé.
-        $this->setStatus('RK04', FixtureStatus::SUBMITTED);
-        $this->em->clear();
-        self::assertNull($this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'RK04'])?->getFbiEcho());
     }
 
     /**
@@ -998,8 +1369,14 @@ final class FbiFixtureImporterTest extends KernelTestCase
 
     // ── Fermeture / idempotence du registre (dépôt) ─────────────────────────
 
-    /** (a) Un re-dépôt de la MÊME valeur FBI ne re-crée pas d'écart — juste « vu dans FBI ». */
-    public function testReDepositingTheSameDivergenceRefreshesSeenWithoutRecreatingAnEcart(): void
+    /**
+     * (a) « Garder l'appli » résiste sans se taire : tant que FBI montre encore la valeur
+     * gardée, chaque dépôt REPOSE la question (écart à trancher, rencontre déphasée), sans
+     * rien appliquer ; l'entrée « à corriger dans FBI » reste ouverte et re-datée « vu dans
+     * FBI ». L'écart reposé naît neuf (`persisting` faux, `seenAt` du dépôt) : « depuis quand »
+     * est porté par l'entrée du registre. Décor : championnat non commencé, hors semaine.
+     */
+    public function testReDepositingTheKeptDivergenceAsksAgainAndRefreshesSeen(): void
     {
         $this->pinClock(new DateTimeImmutable('2026-09-01 10:00:00'));
         $this->importMapped([['D2', 'RF01', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '15:30', '']]);
@@ -1014,16 +1391,101 @@ final class FbiFixtureImporterTest extends KernelTestCase
         // Re-dépôt du MÊME fichier divergent, sans décision : FBI affiche toujours 17:00.
         $this->pinClock(new DateTimeImmutable('2026-09-08 10:00:00'));
         $result = $this->importMapped([['D2', 'RF01', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '17:00', '']]);
-        self::assertSame([], $result['unresolvedDeviations'], 'aucun écart re-créé — le gestionnaire a déjà tranché');
+        self::assertCount(1, $result['unresolvedDeviations'], 'la question est reposée');
+        self::assertFalse($result['unresolvedDeviations'][0]['persisting'], 'l\'écart reposé naît neuf');
+        self::assertSame(['app' => '15:30', 'file' => '17:00'], $result['unresolvedDeviations'][0]['fields']['kickoff']);
         $this->em->clear();
 
         $fixture = $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'RF01']);
-        self::assertSame(FixtureReviewState::REVIEWED, $fixture?->getReviewState(), 'pas de retour « à traiter »');
-        self::assertSame([], $fixture?->getPendingDeviations());
+        self::assertSame('15:30', $fixture?->getKickoffTime()?->format('H:i'), 'rien n\'est appliqué');
+        self::assertSame(FixtureReviewState::OUT_OF_SYNC, $fixture?->getReviewState(), 'la rencontre redevient déphasée');
+        $pending = $fixture?->getPendingDeviation('kickoff');
+        self::assertNotNull($pending);
+        self::assertFalse($pending['autoApplied'], 'un écart à trancher, pas une application d\'office');
+        self::assertSame('2026-09-08', new DateTimeImmutable($pending['seenAt'])->format('Y-m-d'), 'seenAt du dépôt qui repose');
         $entry = $this->em->getRepository(FbiCorrection::class)->findOneBy(['fixtureId' => $id, 'field' => FbiCorrectionField::KICKOFF]);
         self::assertInstanceOf(FbiCorrection::class, $entry);
         self::assertTrue($entry->isOpen(), 'l\'entrée reste ouverte — FBI n\'a pas été corrigé');
         self::assertSame('2026-09-08', $entry->getLastSeenInFbiAt()?->format('Y-m-d'), '« vu dans FBI » re-daté');
+    }
+
+    /**
+     * Le même « Garder l'appli » est reposé dans la SEMAINE en cours : la correction ouverte
+     * bloque l'application d'office d'un Placé, la question revient (jumeau de régime de
+     * {@see testReDepositingTheKeptDivergenceAsksAgainAndRefreshesSeen}, hors semaine).
+     */
+    public function testInTheCurrentWeekTheKeptDivergenceIsAskedAgainNeverAppliedAtOnce(): void
+    {
+        // Semaine ISO du 16/09 : 14/09 → 20/09 ; le match du 19/09 y tombe.
+        $this->importMapped([['D2', 'RF05', 'BC TESTVILLE - 1', 'AS Voisins', '19/09/2026', '15:30', '']]);
+        $this->place('RF05');
+        $id = $this->fixtureId('RF05');
+        $this->importMapped(
+            [['D2', 'RF05', 'BC TESTVILLE - 1', 'AS Voisins', '19/09/2026', '17:00', '']],
+            null,
+            [['fixtureId' => $id, 'field' => 'kickoff', 'choice' => 'keep_app']],
+        );
+
+        $result = $this->importMapped([['D2', 'RF05', 'BC TESTVILLE - 1', 'AS Voisins', '19/09/2026', '17:00', '']]);
+
+        self::assertCount(1, $result['unresolvedDeviations'], 'la question est reposée, même dans la semaine');
+        $this->em->clear();
+        $fixture = $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'RF05']);
+        self::assertSame('15:30', $fixture?->getKickoffTime()?->format('H:i'), 'une valeur gardée n\'est jamais appliquée d\'office');
+        self::assertSame(FixtureReviewState::OUT_OF_SYNC, $fixture?->getReviewState());
+        self::assertFalse($fixture?->getPendingDeviation('kickoff')['autoApplied'] ?? true);
+    }
+
+    /**
+     * G4 — Garder → dépôt (question reposée) → Garder encore : UNE seule entrée « à corriger
+     * dans FBI » ouverte, la rencontre redevient traitée.
+     */
+    public function testKeepingAgainAfterAReposedQuestionLeavesOneOpenEntry(): void
+    {
+        $this->importMapped([['D2', 'RF06', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '15:30', '']]);
+        $this->place('RF06');
+        $id = $this->fixtureId('RF06');
+        $keep = [['fixtureId' => $id, 'field' => 'kickoff', 'choice' => 'keep_app']];
+        $divergent = [['D2', 'RF06', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '17:00', '']];
+
+        $this->importMapped($divergent, null, $keep);
+        $reposed = $this->importMapped($divergent);
+        self::assertCount(1, $reposed['unresolvedDeviations'], 'la question est reposée');
+        $again = $this->importMapped($divergent, null, $keep);
+        self::assertSame([], $again['unresolvedDeviations']);
+        $this->em->clear();
+
+        $open = array_filter(
+            $this->em->getRepository(FbiCorrection::class)->findBy(['fixtureId' => $id]),
+            static fn (FbiCorrection $entry): bool => $entry->isOpen(),
+        );
+        self::assertCount(1, $open, 'une seule entrée ouverte après deux « Garder »');
+        self::assertCount(1, $this->em->getRepository(FbiCorrection::class)->findBy(['fixtureId' => $id]), 'aucune entrée doublée ni fermée en route');
+        self::assertSame(FixtureReviewState::REVIEWED, $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'RF06'])?->getReviewState());
+    }
+
+    /**
+     * G5 — « Prendre le fichier » sur un champ qui porte une correction ouverte la FERME (par le
+     * dépôt) : l'appli s'aligne sur FBI, il n'y a plus rien à corriger dans FBI.
+     */
+    public function testTakeFileClosesTheOpenCorrectionOfThatField(): void
+    {
+        $this->importMapped([['D2', 'RF07', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '15:30', '']]);
+        $this->place('RF07');
+        $id = $this->fixtureId('RF07');
+        $divergent = [['D2', 'RF07', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '17:00', '']];
+        $this->importMapped($divergent, null, [['fixtureId' => $id, 'field' => 'kickoff', 'choice' => 'keep_app']]);
+        // FBI montre encore 17:00 : la question reposée est tranchée « Prendre le fichier ».
+        $this->importMapped($divergent);
+
+        $this->importMapped($divergent, null, [['fixtureId' => $id, 'field' => 'kickoff', 'choice' => 'take_file']]);
+        $this->em->clear();
+
+        self::assertSame('17:00', $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'RF07'])?->getKickoffTime()?->format('H:i'));
+        $entry = $this->em->getRepository(FbiCorrection::class)->findOneBy(['fixtureId' => $id, 'field' => FbiCorrectionField::KICKOFF]);
+        self::assertInstanceOf(FbiCorrection::class, $entry);
+        self::assertFalse($entry->isOpen(), 'prendre le fichier ferme la correction');
+        self::assertSame(FbiCorrectionCloseSource::DEPOSIT, $entry->getClosedBy());
     }
 
     /** (b) FBI corrigé (le fichier montre de nouveau la valeur de l'appli) → entrée fermée par le dépôt. */
@@ -1073,8 +1535,13 @@ final class FbiFixtureImporterTest extends KernelTestCase
         self::assertSame(FixtureReviewState::OUT_OF_SYNC, $fixture?->getReviewState());
     }
 
-    /** (d) Fenêtre imminente (« FBI fait foi ») → l'appli s'aligne d'office, l'entrée se ferme (dépôt). */
-    public function testImminentWindowClosesTheEntryByDeposit(): void
+    /**
+     * (d) G1 — dans la semaine en cours (« FBI fait foi »), une correction OUVERTE sur le champ
+     * bloque l'application d'office : FBI montre une TROISIÈME valeur, l'entrée est fermée par
+     * le dépôt et un écart normal s'ouvre, l'heure de l'appli reste intacte et la rencontre est
+     * déphasée (jamais marquée traitée en silence). Décor : Placé, date dans la semaine.
+     */
+    public function testInTheCurrentWeekAnOpenCorrectionBlocksTheApplicationAndAThirdValueBecomesAnEcart(): void
     {
         $this->pinClock(new DateTimeImmutable('2026-09-01 10:00:00'));
         $this->importMapped([['D2', 'RF04', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '15:30', '']]);
@@ -1088,14 +1555,18 @@ final class FbiFixtureImporterTest extends KernelTestCase
 
         // La date de match entre dans la semaine ISO en cours → source d'office.
         $this->pinClock(new DateTimeImmutable('2026-10-01 10:00:00'));
-        $this->importMapped([['D2', 'RF04', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '18:00', '']]);
+        $result = $this->importMapped([['D2', 'RF04', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '18:00', '']]);
         $this->em->clear();
 
+        self::assertCount(1, $result['unresolvedDeviations'], 'la troisième valeur est un écart normal à trancher');
         $fixture = $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'RF04']);
-        self::assertSame('18:00', $fixture?->getKickoffTime()?->format('H:i'), 'la source a fait foi');
+        self::assertSame('15:30', $fixture?->getKickoffTime()?->format('H:i'), 'pas d\'application d\'office sur un champ gardé');
+        self::assertSame(FixtureStatus::PLACED, $fixture?->getStatus());
+        self::assertSame(FixtureReviewState::OUT_OF_SYNC, $fixture?->getReviewState(), 'déphasée, jamais traitée en silence');
+        self::assertFalse($fixture?->getPendingDeviation('kickoff')['autoApplied'] ?? true);
         $entry = $this->em->getRepository(FbiCorrection::class)->findOneBy(['fixtureId' => $id, 'field' => FbiCorrectionField::KICKOFF]);
         self::assertInstanceOf(FbiCorrection::class, $entry);
-        self::assertFalse($entry->isOpen(), 'la source imminente ferme la correction');
+        self::assertFalse($entry->isOpen(), 'la troisième valeur rend la correction caduque');
         self::assertSame(FbiCorrectionCloseSource::DEPOSIT, $entry->getClosedBy());
     }
 
@@ -1427,14 +1898,19 @@ final class FbiFixtureImporterTest extends KernelTestCase
 
     // ── P4-199 : « FBI fait foi » sur un domicile placé déphasé dans la fenêtre ──
 
-    public function testPlacedHomeDeviationWithAPastAppDateIsAppliedAtOnceAndStaysTreated(): void
+    /**
+     * Semaine en cours (Q3 = B) : la date de la SOURCE (19/09) tombe dans la semaine ISO
+     * (14/09 → 20/09), FBI fait foi même sur un match seulement Placé — la date est écrite
+     * d'office, le match reste Placé dans son gymnase, une entrée autoApplied allume le
+     * bandeau et la rencontre reste traitée. A1 : l'entrée porte l'heure d'application,
+     * prise sur l'horloge RÉELLE (l'horloge métier est épinglée en septembre).
+     */
+    public function testPlacedHomeDeviationInTheCurrentWeekIsAppliedAtOnceKeepingStatusAndVenue(): void
     {
-        // Décision 3 (D3) — la date de la SOURCE (19/09) tombe dans la semaine ISO en cours
-        // (14/09 → 20/09) : la source est appliquée D'OFFICE (dé-placée), une entrée autoApplied
-        // allume le bandeau, la rencontre reste traitée (jamais un arbitrage OUT_OF_SYNC).
         $this->pinClock(new DateTimeImmutable('2026-09-16 10:00:00')); // semaine ISO 14/09 → 20/09
         $this->importMapped([['D2', 'RW9', 'BC TESTVILLE - 1', 'AS Voisins', '12/09/2026', '15:30', '']]); // date app passée
-        $this->place('RW9'); // PLACED + REVIEWED
+        $venueId = $this->place('RW9'); // PLACED + REVIEWED
+        $before = new DateTimeImmutable;
 
         $result = $this->importMapped([['D2', 'RW9', 'BC TESTVILLE - 1', 'AS Voisins', '19/09/2026', '15:30', '']]);
         self::assertSame(1, $result['updated']);
@@ -1442,13 +1918,17 @@ final class FbiFixtureImporterTest extends KernelTestCase
         $this->em->clear();
         $fixture = $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'RW9']);
         self::assertSame('2026-09-19', $fixture?->getMatchDate()->format('Y-m-d'), 'la source est écrite d\'office');
-        self::assertSame(FixtureStatus::UNPLACED, $fixture?->getStatus(), 'le déplacement de date dé-place');
-        self::assertNull($fixture?->getVenueId());
+        self::assertSame(FixtureStatus::PLACED, $fixture?->getStatus(), 'le match reste Placé');
+        self::assertSame($venueId, $fixture?->getVenueId(), 'il garde son gymnase');
         self::assertSame(FixtureReviewState::REVIEWED, $fixture?->getReviewState());
         $entry = $fixture?->getPendingDeviation('date');
         self::assertNotNull($entry);
         self::assertTrue($entry['autoApplied']);
         self::assertSame('2026-09-19', $entry['sourceValue']);
+        self::assertIsString($entry['appliedAt'] ?? null, 'une application d\'office est datée');
+        $appliedAt = DateTimeImmutable::createFromFormat(DateTimeImmutable::RFC3339, $entry['appliedAt']);
+        self::assertInstanceOf(DateTimeImmutable::class, $appliedAt, 'appliedAt est en RFC 3339');
+        self::assertGreaterThanOrEqual($before->getTimestamp() - 1, $appliedAt->getTimestamp(), 'horloge RÉELLE, jamais l\'horloge épinglée du 16/09');
     }
 
     public function testPlacedHomeDeviationWhoseSourceFallsBeforeTheCurrentWeekStaysAnArbitration(): void
@@ -1540,6 +2020,330 @@ final class FbiFixtureImporterTest extends KernelTestCase
         self::assertSame($venueId, $fixture?->getVenueId());
         self::assertSame(FixtureReviewState::OUT_OF_SYNC, $fixture?->getReviewState());
         self::assertFalse($fixture?->getPendingDeviation('date')['autoApplied'] ?? true, 'un écart à arbitrer, pas une application d\'office');
+    }
+
+    // ── Le fichier FBI fait foi : championnat commencé, match déjà dans FBI ──
+    //
+    // Décor de chaque test ◆ : horloge au mer. 16/09/2026 (semaine ISO 14/09 → 20/09), les
+    // DEUX dates (appli et fichier) hors de cette semaine, et le championnat rendu commencé
+    // EXPLICITEMENT par un match de la même division joué le 05/09 ({@see withPlayedMatch}).
+    // Sans ce décor, la semaine en cours ferait foi seule et la règle visée ne serait jamais atteinte.
+
+    /**
+     * B1 — championnat commencé, match seulement PLACÉ, deux dates hors semaine : FBI ne fait
+     * pas foi, les trois écarts (date, heure, salle) restent à trancher, rien n'est écrit, et le
+     * dépôt suivant qui diverge encore ne le réécrit ni ne le valide. Une entrée d'écart à
+     * trancher ne porte pas d'heure d'application (A1).
+     */
+    public function testAStartedChampionshipPlacedHomeKeepsEveryEcartToDecideDepositAfterDeposit(): void
+    {
+        $gymB = $this->createVenue('Gymnase B');
+        $this->createVenueWithAliases('Gymnase A', ['gymnase a']);
+        $this->importMapped($this->withPlayedMatch([['D2', 'B1', 'BC TESTVILLE - 1', 'AS Voisins', '04/10/2026', '15:30', '']]));
+        $this->placeAt('B1', $gymB);
+        $divergent = [['D2', 'B1', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '20:00', 'GYMNASE A']];
+
+        foreach (['premier dépôt', 'dépôt suivant'] as $deposit) {
+            $result = $this->importMapped($divergent);
+            self::assertCount(1, $result['unresolvedDeviations'], $deposit);
+            self::assertSame(['date', 'kickoff', 'venue'], array_keys($result['unresolvedDeviations'][0]['fields']), $deposit . ' : trois écarts à trancher');
+            $this->em->clear();
+            $fixture = $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'B1']);
+            self::assertSame('2026-10-04', $fixture?->getMatchDate()->format('Y-m-d'), $deposit . ' : date de l\'appli intacte');
+            self::assertSame('15:30', $fixture?->getKickoffTime()?->format('H:i'), $deposit . ' : heure intacte');
+            self::assertSame($gymB, $fixture?->getVenueId(), $deposit . ' : gymnase intact');
+            self::assertSame(FixtureStatus::PLACED, $fixture?->getStatus(), $deposit . ' : toujours Placé, jamais validé');
+            self::assertSame(FixtureReviewState::OUT_OF_SYNC, $fixture?->getReviewState(), $deposit);
+            foreach ($fixture?->getPendingDeviations() ?? [] as $entry) {
+                self::assertFalse($entry['autoApplied'], $deposit . ' : aucune application d\'office (' . $entry['field'] . ')');
+                self::assertArrayHasKey('appliedAt', $entry, 'la clé appliedAt est toujours posée');
+                self::assertNull($entry['appliedAt'], 'un écart à trancher n\'a pas d\'heure d\'application');
+            }
+        }
+    }
+
+    /**
+     * Championnat commencé, match DÉJÀ DANS FBI (Saisi ou Déjà dans FBI), deux dates hors
+     * semaine : la date du fichier est écrite d'office, statut et gymnase conservés, bandeau
+     * (autoApplied) et rencontre traitée.
+     */
+    public function testAStartedChampionshipHomeAlreadyInFbiTakesTheFileDateAtOnceKeepingStatusAndVenue(): void
+    {
+        $this->importMapped($this->withPlayedMatch([
+            ['D2', 'V1', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '15:30', ''],
+            ['D2', 'S1', 'BC TESTVILLE - 1', 'AS Autre', '03/10/2026', '15:30', ''],
+        ]));
+        $venues = ['V1' => $this->place('V1'), 'S1' => $this->place('S1')];
+        $statuses = ['V1' => FixtureStatus::VALIDATED, 'S1' => FixtureStatus::SUBMITTED];
+        foreach ($statuses as $ref => $status) {
+            $this->setStatus($ref, $status);
+        }
+
+        $result = $this->importMapped([
+            ['D2', 'V1', 'BC TESTVILLE - 1', 'AS Voisins', '10/10/2026', '15:30', ''],
+            ['D2', 'S1', 'BC TESTVILLE - 1', 'AS Autre', '10/10/2026', '15:30', ''],
+        ]);
+
+        self::assertSame([], $result['unresolvedDeviations'], 'FBI fait foi : rien à trancher');
+        $this->em->clear();
+        foreach ($statuses as $ref => $status) {
+            $fixture = $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => $ref]);
+            self::assertSame('2026-10-10', $fixture?->getMatchDate()->format('Y-m-d'), $ref . ' : date du fichier écrite');
+            self::assertSame($status, $fixture?->getStatus(), $ref . ' : statut conservé');
+            self::assertSame($venues[$ref], $fixture?->getVenueId(), $ref . ' : gymnase conservé');
+            self::assertSame(FixtureReviewState::REVIEWED, $fixture?->getReviewState(), $ref . ' : traitée');
+            self::assertTrue($fixture?->getPendingDeviation('date')['autoApplied'] ?? false, $ref . ' : bandeau « FBI a déplacé ce match »');
+        }
+    }
+
+    /** ◆ R3 — l'heure du fichier est écrite d'office sur un « Déjà dans FBI » : statut conservé, aucun mémo fbiEcho. */
+    public function testAStartedChampionshipHomeAlreadyInFbiTakesTheFileKickoffAtOnceWithoutFbiEcho(): void
+    {
+        $this->importMapped($this->withPlayedMatch([['D2', 'V2', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '20:00', '']]));
+        $this->place('V2');
+        $this->setStatus('V2', FixtureStatus::VALIDATED);
+
+        $result = $this->importMapped([['D2', 'V2', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '20:30', '']]);
+
+        self::assertSame([], $result['unresolvedDeviations']);
+        $this->em->clear();
+        $fixture = $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'V2']);
+        self::assertSame('20:30', $fixture?->getKickoffTime()?->format('H:i'));
+        self::assertSame(FixtureStatus::VALIDATED, $fixture?->getStatus(), 'aucun « à saisir » : FBI montre déjà cette heure');
+        self::assertNull($fixture?->getFbiEcho());
+        self::assertSame(FixtureReviewState::REVIEWED, $fixture?->getReviewState());
+    }
+
+    /** ◆ R3 — une salle du fichier à alias confirmé repointe d'office le gymnase d'un « Déjà dans FBI », statut conservé. */
+    public function testAStartedChampionshipHomeAlreadyInFbiFollowsAConfirmedAliasToAnotherGymAtOnce(): void
+    {
+        $gymA = $this->createVenue('Gymnase A');
+        $gymB = $this->createVenueWithAliases('Gymnase B', ['salle b']);
+        $this->importMapped($this->withPlayedMatch([['D2', 'V3', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '15:30', '']]));
+        $this->placeAt('V3', $gymA);
+        $this->setStatus('V3', FixtureStatus::VALIDATED);
+
+        $result = $this->importMapped([['D2', 'V3', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '15:30', 'SALLE B']]);
+
+        self::assertSame([], $result['unresolvedDeviations']);
+        $this->em->clear();
+        $fixture = $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'V3']);
+        self::assertSame($gymB, $fixture?->getVenueId(), 'l\'alias confirmé repointe le gymnase');
+        self::assertSame('SALLE B', $fixture?->getFbiVenueLabel());
+        self::assertSame(FixtureStatus::VALIDATED, $fixture?->getStatus());
+        self::assertSame(FixtureReviewState::REVIEWED, $fixture?->getReviewState());
+    }
+
+    /** ◆ R3 — une salle inconnue (aucun alias) n'est jamais appliquée d'office : gymnase conservé, écart à trancher. */
+    public function testAStartedChampionshipHomeAlreadyInFbiKeepsItsGymForAnUnknownSalleAndStaysAnEcart(): void
+    {
+        $gymA = $this->createVenue('Gymnase A');
+        $this->importMapped($this->withPlayedMatch([['D2', 'V4', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '15:30', '']]));
+        $this->placeAt('V4', $gymA);
+        $this->setStatus('V4', FixtureStatus::VALIDATED);
+
+        // Opt-out d'appariement : le libellé reste vraiment inconnu.
+        $result = $this->importMapped([['D2', 'V4', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '15:30', 'SALLE INCONNUE']], null, [], [], []);
+
+        self::assertCount(1, $result['unresolvedDeviations']);
+        $this->em->clear();
+        $fixture = $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'V4']);
+        self::assertSame($gymA, $fixture?->getVenueId(), 'jamais un gymnase perdu');
+        self::assertSame(FixtureStatus::VALIDATED, $fixture?->getStatus());
+        self::assertSame(FixtureReviewState::OUT_OF_SYNC, $fixture?->getReviewState());
+        self::assertFalse($fixture?->getPendingDeviation('venue')['autoApplied'] ?? true);
+    }
+
+    /** ◆ R4 — un match déjà JOUÉ et déjà dans FBI s'aligne sur le fichier, statut et gymnase conservés. */
+    public function testAPlayedHomeAlreadyInFbiIsAlignedOnTheFileKeepingItsStatus(): void
+    {
+        // Joué le jeu. 03/09 : avant le lundi 14/09, donc hors semaine.
+        $this->importMapped($this->withPlayedMatch([['D2', 'V5', 'BC TESTVILLE - 1', 'AS Voisins', '03/09/2026', '20:00', '']]));
+        $venueId = $this->place('V5');
+        $this->setStatus('V5', FixtureStatus::VALIDATED);
+
+        $result = $this->importMapped([['D2', 'V5', 'BC TESTVILLE - 1', 'AS Voisins', '03/09/2026', '20:30', '']]);
+
+        self::assertSame([], $result['unresolvedDeviations']);
+        $this->em->clear();
+        $fixture = $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'V5']);
+        self::assertSame('20:30', $fixture?->getKickoffTime()?->format('H:i'));
+        self::assertSame(FixtureStatus::VALIDATED, $fixture?->getStatus());
+        self::assertSame($venueId, $fixture?->getVenueId());
+        self::assertTrue($fixture?->getPendingDeviation('kickoff')['autoApplied'] ?? false);
+    }
+
+    /** R5 — un amical n'entre jamais dans le régime « championnat commencé » : même joué et déjà dans FBI, l'écart reste à trancher. */
+    public function testAFriendlyAlreadyInFbiIsNeverInTheStartedRegime(): void
+    {
+        $this->importMapped([
+            ['Amical PNF', 'AM1', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '15:30', ''],
+            ['Amical PNF', 'AM0', 'BC TESTVILLE - 1', 'AS Jouée', '05/09/2026', '15:30', ''],
+        ]);
+        $this->place('AM1');
+        $this->setStatus('AM1', FixtureStatus::VALIDATED);
+
+        $result = $this->importMapped([['Amical PNF', 'AM1', 'BC TESTVILLE - 1', 'AS Voisins', '10/10/2026', '15:30', '']]);
+
+        self::assertCount(1, $result['unresolvedDeviations'], 'un amical garde l\'arbitrage');
+        $this->em->clear();
+        self::assertSame('2026-10-03', $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'AM1'])?->getMatchDate()->format('Y-m-d'));
+    }
+
+    /** ◇ R2 — semaine en cours, match Placé : une salle à alias confirmé repointe d'office le gymnase, Placé conservé. */
+    public function testInTheCurrentWeekAPlacedHomeFollowsAConfirmedAliasToAnotherGymAtOnce(): void
+    {
+        $gymA = $this->createVenue('Gymnase A');
+        $gymB = $this->createVenueWithAliases('Gymnase B', ['salle b']);
+        // Le 19/09 tombe dans la semaine ISO du 16/09 ; même date des deux côtés, seule la salle diverge.
+        $this->importMapped([['D2', 'W1', 'BC TESTVILLE - 1', 'AS Voisins', '19/09/2026', '15:30', '']]);
+        $this->placeAt('W1', $gymA);
+
+        $result = $this->importMapped([['D2', 'W1', 'BC TESTVILLE - 1', 'AS Voisins', '19/09/2026', '15:30', 'SALLE B']]);
+
+        self::assertSame([], $result['unresolvedDeviations']);
+        $this->em->clear();
+        $fixture = $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'W1']);
+        self::assertSame($gymB, $fixture?->getVenueId(), 'le gymnase est repointé d\'office');
+        self::assertSame(FixtureStatus::PLACED, $fixture?->getStatus(), 'le match reste Placé');
+        self::assertSame(FixtureReviewState::REVIEWED, $fixture?->getReviewState());
+    }
+
+    /**
+     * ◆ G1 — championnat commencé, « Déjà dans FBI » : la valeur gardée (correction ouverte) que
+     * FBI montre encore n'est jamais appliquée d'office ; la question est reposée, rencontre déphasée.
+     */
+    public function testAStartedChampionshipKeptValueIsNeverAppliedAtOnceAndIsAskedAgain(): void
+    {
+        $this->importMapped($this->withPlayedMatch([['D2', 'G1', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '15:30', '']]));
+        $this->place('G1');
+        $this->setStatus('G1', FixtureStatus::VALIDATED);
+        $id = $this->fixtureId('G1');
+        $divergent = [['D2', 'G1', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '17:00', '']];
+        $this->importMapped($divergent, null, [['fixtureId' => $id, 'field' => 'kickoff', 'choice' => 'keep_app']]);
+
+        $result = $this->importMapped($divergent);
+
+        self::assertCount(1, $result['unresolvedDeviations'], 'la question est reposée');
+        $this->em->clear();
+        $fixture = $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'G1']);
+        self::assertSame('15:30', $fixture?->getKickoffTime()?->format('H:i'), 'la valeur gardée n\'est jamais écrasée d\'office');
+        self::assertSame(FixtureStatus::VALIDATED, $fixture?->getStatus());
+        self::assertSame(FixtureReviewState::OUT_OF_SYNC, $fixture?->getReviewState());
+        $entry = $this->em->getRepository(FbiCorrection::class)->findOneBy(['fixtureId' => $id, 'field' => FbiCorrectionField::KICKOFF]);
+        self::assertTrue($entry?->isOpen(), 'la correction reste ouverte');
+    }
+
+    /**
+     * ◆ G3 — championnat commencé, « Déjà dans FBI », correction ouverte : FBI montre une
+     * TROISIÈME valeur → correction fermée et écart normal, valeur de l'appli intacte ce
+     * dépôt-là ; laissé sans réponse, le dépôt suivant l'applique d'office.
+     */
+    public function testAThirdValueOnAStartedChampionshipHomeIsAnEcartThenAppliedAtOnceIfLeftUndecided(): void
+    {
+        $this->importMapped($this->withPlayedMatch([['D2', 'G3', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '15:30', '']]));
+        $this->place('G3');
+        $this->setStatus('G3', FixtureStatus::VALIDATED);
+        $id = $this->fixtureId('G3');
+        $this->importMapped(
+            [['D2', 'G3', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '17:00', '']],
+            null,
+            [['fixtureId' => $id, 'field' => 'kickoff', 'choice' => 'keep_app']],
+        );
+        $third = [['D2', 'G3', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '18:00', '']];
+
+        $result = $this->importMapped($third);
+        self::assertCount(1, $result['unresolvedDeviations'], 'un écart normal à trancher');
+        $this->em->clear();
+        self::assertSame('15:30', $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'G3'])?->getKickoffTime()?->format('H:i'), 'pas d\'office le dépôt de la troisième valeur');
+        $entry = $this->em->getRepository(FbiCorrection::class)->findOneBy(['fixtureId' => $id, 'field' => FbiCorrectionField::KICKOFF]);
+        self::assertFalse($entry?->isOpen(), 'la correction devient caduque');
+
+        // Sans réponse, le dépôt suivant fait foi.
+        $next = $this->importMapped($third);
+        self::assertSame([], $next['unresolvedDeviations']);
+        $this->em->clear();
+        $fixture = $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'G3']);
+        self::assertSame('18:00', $fixture?->getKickoffTime()?->format('H:i'), 'appliquée d\'office au dépôt suivant');
+        self::assertSame(FixtureStatus::VALIDATED, $fixture?->getStatus());
+        self::assertSame(FixtureReviewState::REVIEWED, $fixture?->getReviewState());
+    }
+
+    /**
+     * R3 + R6 — « Prendre le fichier » sur la SALLE d'un domicile placé, sans choix de gymnase :
+     * l'alias confirmé du libellé repointe le gymnase, statut conservé (plus de refus), et le
+     * rapport dit « salle du fichier retenue ».
+     */
+    public function testTakeFileOnTheVenueOfAPlacedHomeFollowsAConfirmedAliasAndSaysIt(): void
+    {
+        $gymA = $this->createVenue('Gymnase A');
+        $gymB = $this->createVenueWithAliases('Gymnase B', ['salle b']);
+        $this->importMapped([['D2', 'T1', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '15:30', '']]);
+        $this->placeAt('T1', $gymA);
+        $id = $this->fixtureId('T1');
+
+        $result = $this->importMapped(
+            [['D2', 'T1', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '15:30', 'SALLE B']],
+            null,
+            [['fixtureId' => $id, 'field' => 'venue', 'choice' => 'take_file']],
+        );
+
+        self::assertSame([], $result['unresolvedDeviations']);
+        self::assertSame(
+            ['D2 n°T1 : salle du fichier retenue (SALLE B).'],
+            array_column($this->warningsFor($result['warnings'], 'T1'), 'message'),
+        );
+        $this->em->clear();
+        $fixture = $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'T1']);
+        self::assertSame($gymB, $fixture?->getVenueId());
+        self::assertSame(FixtureStatus::PLACED, $fixture?->getStatus());
+    }
+
+    // ── A2 : un export plus ancien qu'une synchro API ne revient pas dessus ──
+
+    /**
+     * ◆ A2 — la synchro FFBB a appliqué d'office la date APRÈS la création du fichier déposé :
+     * le champ est sauté (rien écrit, l'entrée API reste, aucun écart).
+     */
+    public function testAnExportOlderThanAnApiApplicationSkipsThatField(): void
+    {
+        $this->seedApiAppliedDate('A2S', '2026-11-11T11:00:00+00:00');
+
+        $result = $this->importMapped([['D2', 'A2S', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '15:30', '']], exportedAt: new DateTimeImmutable('2026-11-11T07:00:00Z'));
+
+        self::assertSame([], $result['unresolvedDeviations'], 'aucun écart : le fichier est en retard sur l\'API');
+        $this->em->clear();
+        $fixture = $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'A2S']);
+        self::assertSame('2026-10-10', $fixture?->getMatchDate()->format('Y-m-d'), 'la valeur appliquée par l\'API reste');
+        $entry = $fixture?->getPendingDeviation('date');
+        self::assertSame('FFBB_API', $entry['channel'] ?? null, 'l\'entrée API reste (bandeau)');
+        self::assertSame('2026-11-11T11:00:00+00:00', $entry['appliedAt'] ?? null);
+        self::assertNotSame(FixtureReviewState::OUT_OF_SYNC, $fixture?->getReviewState());
+    }
+
+    /** ◆ A2 — l'API a appliqué AVANT la création du fichier : le fichier, plus récent, s'applique. */
+    public function testAnExportNewerThanAnApiApplicationIsApplied(): void
+    {
+        $this->seedApiAppliedDate('A2N', '2026-11-11T05:00:00+00:00');
+
+        $this->importMapped([['D2', 'A2N', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '15:30', '']], exportedAt: new DateTimeImmutable('2026-11-11T07:00:00Z'));
+
+        $this->em->clear();
+        $fixture = $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'A2N']);
+        self::assertSame('2026-10-03', $fixture?->getMatchDate()->format('Y-m-d'));
+        self::assertSame(FixtureStatus::VALIDATED, $fixture?->getStatus());
+        self::assertSame('FBI_XLSX', $fixture?->getPendingDeviation('date')['channel'] ?? null);
+    }
+
+    /** ◆ A2 — une entrée API ancienne, sans clé appliedAt, ne fait jamais sauter le champ. */
+    public function testAnApiEntryWithoutAppliedAtNeverSkipsTheField(): void
+    {
+        $this->seedApiAppliedDate('A2K', null);
+
+        $this->importMapped([['D2', 'A2K', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '15:30', '']], exportedAt: new DateTimeImmutable('2026-11-11T07:00:00Z'));
+
+        $this->em->clear();
+        self::assertSame('2026-10-03', $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'A2K'])?->getMatchDate()->format('Y-m-d'));
     }
 
     // ── P4-199 : retrait du suffixe FFBB « (n) » ────────────────────────────
@@ -2254,9 +3058,9 @@ final class FbiFixtureImporterTest extends KernelTestCase
      * @param list<array{label: string, venueId: string}>|null                              $venueMappings null = auto-apparier les salles à domicile ; [] = opt-out
      * @param list<array{division: string, venueId: string}>|null                           $venueChoices  null = auto-apparier les domiciles sans salle ; [] = opt-out
      *
-     * @return array{created: int, updated: int, unchanged: int, exempted: int, errors: list<string>, warnings: list<array{type: string, division: string, externalRef: string, message: string}>, unmappedDivisions: list<array{name: string, fbiTeamLabel: string|null, rowCount: int}>, unresolvedDeviations: list<array{fixtureId: string, externalRef: string, division: string, teamId: string, status: string, persisting: bool, fields: array<string, array{app: string|null, file: string|null}>}>, depositedAt: string}
+     * @return array{created: int, updated: int, unchanged: int, restored: int, exempted: int, errors: list<string>, warnings: list<array{type: string, division: string, externalRef: string, message: string}>, unmappedDivisions: list<array{name: string, fbiTeamLabel: string|null, rowCount: int}>, unresolvedDeviations: list<array{fixtureId: string, externalRef: string, division: string, teamId: string, status: string, persisting: bool, fields: array<string, array{app: string|null, file: string|null}>}>, depositedAt: string}
      */
-    private function importMapped(array $rows, ?array $mappings = null, array $decisions = [], ?array $venueMappings = null, ?array $venueChoices = null): array
+    private function importMapped(array $rows, ?array $mappings = null, array $decisions = [], ?array $venueMappings = null, ?array $venueChoices = null, ?DateTimeImmutable $exportedAt = null): array
     {
         if (null === $mappings) {
             $divisions = array_values(array_unique(array_column($rows, 0)));
@@ -2271,7 +3075,42 @@ final class FbiFixtureImporterTest extends KernelTestCase
             $venueChoices ??= $autoChoices;
         }
 
-        return $this->importer->import($this->xlsx($rows), $this->club, $mappings, $decisions, null, $venueMappings, $venueChoices);
+        return $this->importer->import($this->xlsx($rows), $this->club, $mappings, $decisions, null, $venueMappings, $venueChoices, $exportedAt);
+    }
+
+    /**
+     * Ajoute aux lignes un domicile de la MÊME division (« D2 ») joué le sam. 05/09/2026 :
+     * avec l'horloge par défaut (mer. 16/09), son premier match est strictement passé, le
+     * championnat est COMMENCÉ — et le 05/09 est avant le lundi 14/09, donc hors semaine.
+     *
+     * @param list<list<string>> $rows
+     *
+     * @return list<list<string>>
+     */
+    private function withPlayedMatch(array $rows): array
+    {
+        return [...$rows, ['D2', 'J0', 'BC TESTVILLE - 1', 'AS Déjà Jouée', '05/09/2026', '15:30', '']];
+    }
+
+    /**
+     * Un domicile « Déjà dans FBI » d'un championnat commencé dont la date (03/10 → 10/10) a été
+     * appliquée d'office par la synchro FFBB : app = 10/10, entrée `autoApplied` canal API, son
+     * heure d'application `appliedAt` (null = entrée ancienne, sans la clé).
+     */
+    private function seedApiAppliedDate(string $externalRef, ?string $appliedAt): void
+    {
+        $this->importMapped($this->withPlayedMatch([['D2', $externalRef, 'BC TESTVILLE - 1', 'AS Voisins', '10/10/2026', '15:30', '']]));
+        $this->place($externalRef);
+        $this->setStatus($externalRef, FixtureStatus::VALIDATED);
+        $fixture = $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => $externalRef]);
+        self::assertNotNull($fixture);
+        $entry = ['field' => 'date', 'appValue' => '2026-10-03', 'sourceValue' => '2026-10-10', 'channel' => 'FFBB_API', 'seenAt' => '2026-11-11T05:00:00+00:00', 'autoApplied' => true];
+        if (null !== $appliedAt) {
+            $entry['appliedAt'] = $appliedAt;
+        }
+        $fixture->putPendingDeviation($entry);
+        $fixture->markReviewed(new DateTimeImmutable('2026-09-16 10:00:00'));
+        $this->em->flush();
     }
 
     /**
@@ -2352,6 +3191,30 @@ final class FbiFixtureImporterTest extends KernelTestCase
         $this->em->flush();
 
         return $fixture;
+    }
+
+    /**
+     * Les avertissements du rapport portant sur ce numéro de match.
+     *
+     * @param list<array{type: string, division: string, externalRef: string, message: string}> $warnings
+     *
+     * @return list<array{type: string, division: string, externalRef: string, message: string}>
+     */
+    private function warningsFor(array $warnings, string $externalRef): array
+    {
+        return array_values(array_filter($warnings, static fn (array $w): bool => $w['externalRef'] === $externalRef));
+    }
+
+    /**
+     * Les avertissements qui parlent de l'adversaire (rétablissement ou ancienne anomalie).
+     *
+     * @param list<array{type: string, division: string, externalRef: string, message: string}> $warnings
+     *
+     * @return list<array{type: string, division: string, externalRef: string, message: string}>
+     */
+    private function opponentWarnings(array $warnings): array
+    {
+        return array_values(array_filter($warnings, static fn (array $w): bool => str_starts_with($w['type'], 'OPPONENT_')));
     }
 
     /** The id of the imported fixture — the key of a reconciliation decision. */

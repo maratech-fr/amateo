@@ -39,7 +39,7 @@ use Symfony\Component\Serializer\Attribute\Groups;
         controller: 'App\Controller\ImportFixturesAnalyzeController',
         openapi: new OpenApiOperation(
             summary: 'Analyze an FBI club export (.xlsx) — dry-run',
-            description: 'Multipart upload (field "file"). Parses the club-wide FBI export and returns its division groups resolved against the persisted Division↔team mappings, plus the reconciliation deviations — home matches already placed whose date/heure/salle differ from the file (state app VS state file), each to be decided at import: {divisions[{name, fbiTeamLabel, rowCount, teamId, competitionId}], totalRows, exempted, errors[], deviations[{fixtureId, externalRef, division, teamId, status, persisting, fields{date?,kickoff?,venue? each {app,file}}}]}. Writes nothing. 404 no club/membership · 403 non-management member · 409 archived season or plan not validated · 400 missing/invalid file or columns.',
+            description: 'Multipart upload (field "file"). Parses the club-wide FBI export and returns its division groups resolved against the persisted Division↔team mappings, plus the reconciliation deviations — home matches already placed whose date/heure/salle differ from the file (state app VS state file), each to be decided at import: {divisions[{name, fbiTeamLabel, rowCount, teamId, competitionId}], totalRows, exempted, errors[], deviations[{fixtureId, externalRef, division, teamId, status, persisting, fields{date?,kickoff?,venue? each {app,file}}}]}. Writes nothing. 404 no club/membership · 403 non-management member · 409 archived season or plan not validated · 400 missing/invalid file or columns · 422 file without an FBI export date or exported more than 24 hours ago.',
             requestBody: new OpenApiRequestBody(
                 content: new ArrayObject([
                     'multipart/form-data' => [
@@ -57,7 +57,7 @@ use Symfony\Component\Serializer\Attribute\Groups;
         controller: 'App\Controller\ImportFixturesController',
         openapi: new OpenApiOperation(
             summary: 'Import an FBI club export (.xlsx) with validated mappings',
-            description: 'Multipart upload: field "file" + optional field "mappings" (JSON list of {division, fbiTeamLabel?, teamId} — the manager\'s choices from the analyze step; persisted as Competition rows) + optional field "decisions" (JSON list of {fixtureId, field: date|kickoff|venue, choice: keep_app|take_file} — the per-écart verdicts from the reconciliation screen). Creates new fixtures and DIFF-UPDATES known ones (by FBI number per team): a rescheduled date or a HOME↔AWAY switch un-places the match and lands in warnings[]. A date/heure/salle difference on a home match already placed is NOT overwritten by default — without a decision it is left intact and reported in unresolvedDeviations. Every deposit is dated. Report {message, created, updated, unchanged, exempted, errors[], warnings[{type, division, externalRef, message}], unmappedDivisions[], unresolvedDeviations[{fixtureId, externalRef, division, teamId, status, persisting, fields}], depositedAt}. 404 no club/membership · 403 non-management member · 409 archived season, plan not validated or concurrent duplicate import · 400 missing/invalid file, columns, mappings or decisions.',
+            description: 'Multipart upload: field "file" + optional field "mappings" (JSON list of {division, fbiTeamLabel?, teamId} — the manager\'s choices from the analyze step; persisted as Competition rows) + optional field "decisions" (JSON list of {fixtureId, field: date|kickoff|venue, choice: keep_app|take_file} — the per-écart verdicts from the reconciliation screen). Creates new fixtures and DIFF-UPDATES known ones (by FBI number per team): a rescheduled date or a HOME↔AWAY switch un-places the match and lands in warnings[]. A date/heure/salle difference on a home match already placed is NOT overwritten by default — without a decision it is left intact and reported in unresolvedDeviations — unless the file is authoritative (current ISO week, or a started championship for a match already entered in FBI): the file value is then written at once, status and venue kept, unless the manager kept the app value. A known fixture whose opponent differs in the file (same division, same number) is wrong in the app: it is restored from the file as at creation (placement cancelled), counted in restored and reported as an OPPONENT_RESTORED warning. Every deposit is dated. Report {message, created, updated, unchanged, restored, exempted, errors[], warnings[{type, division, externalRef, message}], unmappedDivisions[], unresolvedDeviations[{fixtureId, externalRef, division, teamId, status, persisting, fields}], depositedAt}. 404 no club/membership · 403 non-management member · 409 archived season, plan not validated or concurrent duplicate import · 400 missing/invalid file, columns, mappings or decisions · 422 file without an FBI export date or exported more than 24 hours ago.',
             requestBody: new OpenApiRequestBody(
                 content: new ArrayObject([
                     'multipart/form-data' => [
@@ -190,9 +190,10 @@ class FixtureResource
     public ?DateTimeImmutable $reviewedAt = null;
 
     /**
-     * Les écarts source⇄app encore ouverts (déphasage), un par champ divergent.
+     * Les écarts source⇄app encore ouverts (déphasage), un par champ divergent. Une entrée
+     * appliquée d'office porte son heure d'application (`appliedAt`, RFC 3339), nulle sinon.
      *
-     * @var list<array{field: string, appValue: string|null, sourceValue: string|null, channel: string, seenAt: string, autoApplied: bool}>
+     * @var list<array{field: string, appValue: string|null, sourceValue: string|null, channel: string, seenAt: string, autoApplied: bool, appliedAt?: string|null}>
      */
     #[Groups(['read'])]
     public array $pendingDeviations = [];

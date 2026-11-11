@@ -228,13 +228,23 @@ final class XlsxUploadGuardTest extends TestCase
         return new XlsxUploadGuard($chunkSize);
     }
 
+    /**
+     * Le refus dit la borne franchie, mot pour mot, et rien d'autre : plus de conseil
+     * « découper par équipe ou par date » (un export FBI se dépose entier ; l'import
+     * d'équipes partage ces textes).
+     */
     private function assertRefused(JsonResponse|UploadedFile $result, int $status, string $needle): void
     {
+        $expected = [
+            '2 Mo' => 'Le fichier dépasse la taille maximale autorisée (2 Mo).',
+            '20 Mo' => 'Une fois décompressé, le fichier dépasse la taille maximale autorisée (20 Mo).',
+            '5 000' => 'Le fichier dépasse le nombre maximal de lignes autorisé (5 000).',
+        ];
+        self::assertArrayHasKey($needle, $expected);
         self::assertInstanceOf(JsonResponse::class, $result, 'le fichier devait être refusé');
         self::assertSame($status, $result->getStatusCode());
         $error = (string) (json_decode((string) $result->getContent(), true)['error'] ?? '');
-        self::assertStringContainsString($needle, $error, \sprintf('le message doit nommer « %s » ; obtenu : %s', $needle, $error));
-        self::assertStringContainsString('découper', $error, 'le message mentionne le découpage par équipe/date comme issue possible');
+        self::assertSame($expected[$needle], $error, 'le refus dit la borne franchie, mot pour mot, sans conseil de découpage');
     }
 
     private function requestWithFile(string $path, string $clientName, string $mime = self::XLSX_MIME): Request

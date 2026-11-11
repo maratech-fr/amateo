@@ -9,6 +9,7 @@ use App\Controller\LeagueValidatedFixturesController;
 use App\Entity\Club;
 use App\Entity\ClubUser;
 use App\Entity\Competition;
+use App\Entity\FbiCorrection;
 use App\Entity\Fixture;
 use App\Entity\Season;
 use App\Entity\Sport;
@@ -23,6 +24,7 @@ use App\Enum\FixtureStatus;
 use App\Enum\FixtureUnplacedReason;
 use App\Enum\SeasonStatus;
 use App\Service\FbiFixtureImporter;
+use App\Service\FriendlyAutoValidator;
 use App\Service\LeagueValidationOutlook;
 use App\Service\MatchPlacementPayloadBuilder;
 use App\Service\SeasonResolver;
@@ -293,6 +295,90 @@ final class ImportLeagueAutoValidationTest extends WebTestCase
         self::assertSame(0, $second['leagueValidated'] ?? null, 'le re-dépôt ne revalide pas (VALIDATED exclu)');
     }
 
+    // ── « Championnat commencé » : une seule définition, exposée au dépôt FBI ──
+
+    /**
+     * {@see LeagueValidationOutlook::startedCompetitionIds} rend les championnats COMMENCÉS de la
+     * saison avec la même définition que « validé ligue » : échéance passée ou du jour, OU premier
+     * match strictement passé ; un amical jamais ; un championnat sans l'un ni l'autre, absent.
+     * Horloge épinglée au 16/09/2026.
+     */
+    public function testStartedCompetitionIdsFollowTheValidatedLeagueDefinition(): void
+    {
+        [, $clubId, $seasonId] = $this->createClub();
+        $this->scopeGucToClub($clubId);
+        $team = $this->createTeam($clubId, $seasonId);
+        $venue = $this->createVenueWithAlias($clubId, $seasonId, 'Gymnase S', 'gymnase s');
+
+        $byDeadline = $this->seedHomeFixture($clubId, $seasonId, $team->getId(), self::FUTURE_DATE, '15:30', $venue->getId(), '2026-09-16');
+        $byFirstMatch = $this->seedHomeFixture($clubId, $seasonId, $team->getId(), '2026-09-15', '15:30', $venue->getId(), null);
+        $notYet = $this->seedHomeFixture($clubId, $seasonId, $team->getId(), '2026-09-16', '15:30', $venue->getId(), '2026-09-17');
+        $friendly = $this->seedHomeFixture($clubId, $seasonId, $team->getId(), '2026-09-01', '15:30', $venue->getId(), '2026-09-01');
+        $friendlyCompetition = $this->em->find(Competition::class, (string) $friendly->getCompetitionId());
+        self::assertInstanceOf(Competition::class, $friendlyCompetition);
+        $friendlyCompetition->setName('Amical PNF');
+        $this->em->flush();
+
+        $outlook = self::getContainer()->get(LeagueValidationOutlook::class);
+        self::assertInstanceOf(LeagueValidationOutlook::class, $outlook);
+        $started = $outlook->startedCompetitionIds($seasonId);
+
+        self::assertArrayHasKey((string) $byDeadline->getCompetitionId(), $started, 'échéance du jour : commencé (jour inclus)');
+        self::assertArrayHasKey((string) $byFirstMatch->getCompetitionId(), $started, 'premier match la veille : commencé');
+        self::assertArrayNotHasKey((string) $notYet->getCompetitionId(), $started, 'premier match aujourd\'hui, échéance demain : pas encore');
+        self::assertArrayNotHasKey((string) $friendly->getCompetitionId(), $started, 'un amical n\'est jamais un championnat commencé');
+    }
+
+    /**
+     * Un amical joué dont l'écart d'heure est REPOSÉ au dépôt (la valeur gardée est toujours dans
+     * FBI) n'est pas balayé « validé » tant que l'écart est ouvert ; une fois re-tranché, il l'est.
+     */
+    public function testAPlayedFriendlyWithARepostedDeviationIsNotSweptUntilDecidedAgain(): void
+    {
+        [, $clubId, $seasonId, $needle] = $this->createClub();
+        $this->scopeGucToClub($clubId);
+        $team = $this->createTeam($clubId, $seasonId);
+        $venue = $this->createVenueWithAlias($clubId, $seasonId, 'Gymnase Am', 'gymnase am');
+        // Joué le samedi 05/09 : avant le lundi de la semaine épinglée (14/09), donc hors semaine.
+        $played = $this->fbiDate('2026-09-05');
+
+        $this->deposit($clubId, $seasonId, [['Amical PNF', 'AM-1', $needle . ' - 1', 'AS Voisins', $played, '15:30', 'GYMNASE AM']], $team->getId());
+        $this->scopeGucToClub($clubId);
+        $friendly = $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'AM-1']);
+        self::assertInstanceOf(Fixture::class, $friendly);
+        $friendlyId = $friendly->getId();
+        $friendly->setStatus(FixtureStatus::PLACED, new DateTimeImmutable('2026-09-16 10:00:00'));
+        $friendly->setVenueId($venue->getId());
+        $this->em->flush();
+
+        // « Garder l'appli » sur l'heure (FBI dit 17:00, l'appli 15:30).
+        $keep = [['fixtureId' => $friendlyId, 'field' => 'kickoff', 'choice' => 'keep_app']];
+        $this->deposit($clubId, $seasonId, [['Amical PNF', 'AM-1', $needle . ' - 1', 'AS Voisins', $played, '17:00', 'GYMNASE AM']], $team->getId(), decisions: $keep);
+        $this->scopeGucToClub($clubId);
+        self::assertCount(1, $this->em->getRepository(FbiCorrection::class)->findBy(['fixtureId' => $friendlyId, 'closedAt' => null]), 'garder l\'appli ouvre une entrée « à corriger dans FBI »');
+
+        // Dépôt suivant, FBI montre toujours 17:00 : la question est reposée.
+        $this->deposit($clubId, $seasonId, [['Amical PNF', 'AM-1', $needle . ' - 1', 'AS Voisins', $played, '17:00', 'GYMNASE AM']], $team->getId());
+        $sweeper = self::getContainer()->get(FriendlyAutoValidator::class);
+        self::assertInstanceOf(FriendlyAutoValidator::class, $sweeper);
+        $this->scopeGucToClub($clubId);
+        $sweeper->sweep($clubId, $seasonId);
+        $this->em->clear();
+        $reposted = $this->em->find(Fixture::class, $friendlyId);
+        self::assertInstanceOf(Fixture::class, $reposted);
+        self::assertTrue($reposted->hasArbitrableDeviations(), 'l\'écart d\'heure est de nouveau à trancher');
+        self::assertSame(FixtureStatus::PLACED, $reposted->getStatus(), 'un écart ouvert n\'est jamais balayé « validé »');
+
+        // Re-tranché (« Garder » encore) : plus d'écart, le balayage passe.
+        $this->deposit($clubId, $seasonId, [['Amical PNF', 'AM-1', $needle . ' - 1', 'AS Voisins', $played, '17:00', 'GYMNASE AM']], $team->getId(), decisions: $keep);
+        $this->scopeGucToClub($clubId);
+        $sweeper->sweep($clubId, $seasonId);
+        $this->em->clear();
+        $decided = $this->em->find(Fixture::class, $friendlyId);
+        self::assertInstanceOf(Fixture::class, $decided);
+        self::assertSame(FixtureStatus::VALIDATED, $decided->getStatus(), 'tranché, l\'amical joué est balayé « validé »');
+    }
+
     protected function setUp(): void
     {
         $this->client = self::createClient();
@@ -321,12 +407,13 @@ final class ImportLeagueAutoValidationTest extends WebTestCase
      * Dépose un fichier FBI PAR LE SERVICE (le foyer où vit l'auto-validation, {@see FbiFixtureImporter::import}) :
      * mappings = chaque division des lignes → l'équipe donnée. Rend le rapport d'import.
      *
-     * @param list<list<string>>                          $rows          lignes de données (sans en-tête)
-     * @param list<array{label: string, venueId: string}> $venueMappings libellé → gymnase (uuid) ou 'NEUTRAL'
+     * @param list<list<string>>                                            $rows          lignes de données (sans en-tête)
+     * @param list<array{label: string, venueId: string}>                   $venueMappings libellé → gymnase (uuid) ou 'NEUTRAL'
+     * @param list<array{fixtureId: string, field: string, choice: string}> $decisions     arbitrages d'écarts du dépôt
      *
      * @return array<string, mixed>
      */
-    private function deposit(string $clubId, string $seasonId, array $rows, string $teamId, array $venueMappings = []): array
+    private function deposit(string $clubId, string $seasonId, array $rows, string $teamId, array $venueMappings = [], array $decisions = []): array
     {
         $this->scopeGucToClub($clubId);
         $club = $this->em->find(Club::class, $clubId);
@@ -336,7 +423,7 @@ final class ImportLeagueAutoValidationTest extends WebTestCase
             array_values(array_unique(array_column($rows, 0))),
         );
 
-        return $this->importer->import($this->xlsx($rows), $club, $mappings, [], $seasonId, $venueMappings);
+        return $this->importer->import($this->xlsx($rows), $club, $mappings, $decisions, $seasonId, $venueMappings);
     }
 
     /**

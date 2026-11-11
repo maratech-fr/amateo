@@ -11288,7 +11288,7 @@
                     }
                 },
                 "summary": "Import an FBI club export (.xlsx) with validated mappings",
-                "description": "Multipart upload: field \"file\" + optional field \"mappings\" (JSON list of {division, fbiTeamLabel?, teamId} \u2014 the manager's choices from the analyze step; persisted as Competition rows) + optional field \"decisions\" (JSON list of {fixtureId, field: date|kickoff|venue, choice: keep_app|take_file} \u2014 the per-\u00e9cart verdicts from the reconciliation screen). Creates new fixtures and DIFF-UPDATES known ones (by FBI number per team): a rescheduled date or a HOME\u2194AWAY switch un-places the match and lands in warnings[]. A date/heure/salle difference on a home match already placed is NOT overwritten by default \u2014 without a decision it is left intact and reported in unresolvedDeviations. Every deposit is dated. Report {message, created, updated, unchanged, exempted, errors[], warnings[{type, division, externalRef, message}], unmappedDivisions[], unresolvedDeviations[{fixtureId, externalRef, division, teamId, status, persisting, fields}], depositedAt}. 404 no club/membership \u00b7 403 non-management member \u00b7 409 archived season, plan not validated or concurrent duplicate import \u00b7 400 missing/invalid file, columns, mappings or decisions.",
+                "description": "Multipart upload: field \"file\" + optional field \"mappings\" (JSON list of {division, fbiTeamLabel?, teamId} \u2014 the manager's choices from the analyze step; persisted as Competition rows) + optional field \"decisions\" (JSON list of {fixtureId, field: date|kickoff|venue, choice: keep_app|take_file} \u2014 the per-\u00e9cart verdicts from the reconciliation screen). Creates new fixtures and DIFF-UPDATES known ones (by FBI number per team): a rescheduled date or a HOME\u2194AWAY switch un-places the match and lands in warnings[]. A date/heure/salle difference on a home match already placed is NOT overwritten by default \u2014 without a decision it is left intact and reported in unresolvedDeviations \u2014 unless the file is authoritative (current ISO week, or a started championship for a match already entered in FBI): the file value is then written at once, status and venue kept, unless the manager kept the app value. A known fixture whose opponent differs in the file (same division, same number) is wrong in the app: it is restored from the file as at creation (placement cancelled), counted in restored and reported as an OPPONENT_RESTORED warning. Every deposit is dated. Report {message, created, updated, unchanged, restored, exempted, errors[], warnings[{type, division, externalRef, message}], unmappedDivisions[], unresolvedDeviations[{fixtureId, externalRef, division, teamId, status, persisting, fields}], depositedAt}. 404 no club/membership \u00b7 403 non-management member \u00b7 409 archived season, plan not validated or concurrent duplicate import \u00b7 400 missing/invalid file, columns, mappings or decisions \u00b7 422 file without an FBI export date or exported more than 24 hours ago.",
                 "parameters": [],
                 "requestBody": {
                     "description": "The new Fixture resource",
@@ -11392,7 +11392,7 @@
                     }
                 },
                 "summary": "Analyze an FBI club export (.xlsx) \u2014 dry-run",
-                "description": "Multipart upload (field \"file\"). Parses the club-wide FBI export and returns its division groups resolved against the persisted Division\u2194team mappings, plus the reconciliation deviations \u2014 home matches already placed whose date/heure/salle differ from the file (state app VS state file), each to be decided at import: {divisions[{name, fbiTeamLabel, rowCount, teamId, competitionId}], totalRows, exempted, errors[], deviations[{fixtureId, externalRef, division, teamId, status, persisting, fields{date?,kickoff?,venue? each {app,file}}}]}. Writes nothing. 404 no club/membership \u00b7 403 non-management member \u00b7 409 archived season or plan not validated \u00b7 400 missing/invalid file or columns.",
+                "description": "Multipart upload (field \"file\"). Parses the club-wide FBI export and returns its division groups resolved against the persisted Division\u2194team mappings, plus the reconciliation deviations \u2014 home matches already placed whose date/heure/salle differ from the file (state app VS state file), each to be decided at import: {divisions[{name, fbiTeamLabel, rowCount, teamId, competitionId}], totalRows, exempted, errors[], deviations[{fixtureId, externalRef, division, teamId, status, persisting, fields{date?,kickoff?,venue? each {app,file}}}]}. Writes nothing. 404 no club/membership \u00b7 403 non-management member \u00b7 409 archived season or plan not validated \u00b7 400 missing/invalid file or columns \u00b7 422 file without an FBI export date or exported more than 24 hours ago.",
                 "parameters": [],
                 "requestBody": {
                     "description": "The new Fixture resource",
@@ -17302,7 +17302,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Mark fixtures as reviewed (\u00ab trait\u00e9 \u00bb). One gesture per call: by fixtureIds (per line \u2014 pending deviations are cleared, keeping the app value) or by teamId (bulk \u2014 fixtures still carrying pending deviations are skipped and named, never arbitrated in bulk).",
+                        "description": "Mark fixtures as reviewed (\u00ab trait\u00e9 \u00bb). One gesture per call: by fixtureIds (per line \u2014 pending deviations are cleared, keeping the app value), by teamId (bulk \u2014 auto-applied alerts are acknowledged, fixtures carrying an arbitrable deviation are skipped and named, never arbitrated in bulk) or by scope \"away\" (bulk over open away fixtures \u2014 same skip rule, home fixtures never touched). Acknowledging erases the previous values of the alerts.",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -17324,7 +17324,8 @@
                                                         "type": "string",
                                                         "enum": [
                                                             "pending_deviations"
-                                                        ]
+                                                        ],
+                                                        "description": "The fixture carries an arbitrable deviation (one not auto-applied): it must be decided on its own line"
                                                     }
                                                 }
                                             }
@@ -17344,10 +17345,10 @@
                         "description": "Season plan not chosen, or archived season"
                     },
                     "422": {
-                        "description": "Neither or both of fixtureIds and teamId were given"
+                        "description": "Not exactly one of fixtureIds, teamId and scope was given, or scope is not \"away\""
                     }
                 },
-                "summary": "Mark fixtures as reviewed \u2014 by line (fixtureIds) or in bulk (teamId), management only",
+                "summary": "Mark fixtures as reviewed \u2014 by line (fixtureIds), by team (teamId) or all open away fixtures (scope), management only",
                 "requestBody": {
                     "content": {
                         "application/json": {
@@ -17363,7 +17364,14 @@
                                     },
                                     "teamId": {
                                         "type": "string",
-                                        "description": "Bulk gesture: every fixture of the team is reviewed, except those still carrying pending deviations"
+                                        "description": "Bulk gesture: every fixture of the team is reviewed and its auto-applied alerts acknowledged, except those carrying an arbitrable deviation"
+                                    },
+                                    "scope": {
+                                        "type": "string",
+                                        "enum": [
+                                            "away"
+                                        ],
+                                        "description": "Bulk gesture over away fixtures: those new or carrying only auto-applied alerts are reviewed, those carrying an arbitrable deviation are skipped"
                                     }
                                 }
                             }
@@ -32150,7 +32158,7 @@
                         "format": "date-time"
                     },
                     "pendingDeviations": {
-                        "description": "Les \u00e9carts source\u21c4app encore ouverts (d\u00e9phasage), un par champ divergent.",
+                        "description": "Les \u00e9carts source\u21c4app encore ouverts (d\u00e9phasage), un par champ divergent. Une entr\u00e9e\nappliqu\u00e9e d'office porte son heure d'application (`appliedAt`, RFC 3339), nulle sinon.",
                         "type": "array",
                         "items": {
                             "type": "object",
@@ -32440,7 +32448,7 @@
                         "format": "date-time"
                     },
                     "pendingDeviations": {
-                        "description": "Les \u00e9carts source\u21c4app encore ouverts (d\u00e9phasage), un par champ divergent.",
+                        "description": "Les \u00e9carts source\u21c4app encore ouverts (d\u00e9phasage), un par champ divergent. Une entr\u00e9e\nappliqu\u00e9e d'office porte son heure d'application (`appliedAt`, RFC 3339), nulle sinon.",
                         "type": "array",
                         "items": {
                             "type": "object",
@@ -32637,7 +32645,7 @@
                                 "format": "date-time"
                             },
                             "pendingDeviations": {
-                                "description": "Les \u00e9carts source\u21c4app encore ouverts (d\u00e9phasage), un par champ divergent.",
+                                "description": "Les \u00e9carts source\u21c4app encore ouverts (d\u00e9phasage), un par champ divergent. Une entr\u00e9e\nappliqu\u00e9e d'office porte son heure d'application (`appliedAt`, RFC 3339), nulle sinon.",
                                 "type": "array",
                                 "items": {
                                     "type": "object",

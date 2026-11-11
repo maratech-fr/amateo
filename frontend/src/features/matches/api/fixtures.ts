@@ -25,6 +25,8 @@ export interface PendingDeviation {
   channel: "FBI_XLSX" | "FFBB_API";
   seenAt: string;
   autoApplied: boolean;
+  /** Heure d'une application d'office (RFC 3339), null pour un écart à trancher ; absente d'une entrée ancienne. */
+  appliedAt?: string | null;
 }
 
 export interface Fixture {

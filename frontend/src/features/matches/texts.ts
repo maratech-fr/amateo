@@ -9,6 +9,18 @@
 // Le libellé de la bascule d'alignement — partagé par la pastille ET l'annonce de la région live.
 const LEVEL_WILL_ALIGN = "Sera aligné à la confirmation";
 
+// Parenthèse des toasts de masse : au plus 3 noms, puis « et N autre(s) » pour le reste du total
+// (noms inconnus compris) ; sans aucun nom, pas de parenthèse.
+function boundedNames(names: string[], total: number): string {
+  const shown = names.slice(0, 3);
+  if (0 === shown.length) {
+    return "";
+  }
+  const rest = total - shown.length;
+  const more = rest > 0 ? ` et ${rest} autre${rest > 1 ? "s" : ""}` : "";
+  return ` (${shown.join(", ")}${more})`;
+}
+
 export const MATCHES_TEXTS = {
   venueOverlapTitle: "Deux matchs sur le même créneau",
   calendarToCheckTitle: "Calendrier à vérifier",
@@ -172,6 +184,8 @@ export const MATCHES_TEXTS = {
   importFbiAnalysisErrorsAria: "Erreurs d'analyse",
   importFbiReportSummary: (created: number, updated: number, unchanged: number, exempted: number) =>
     `${created} créé${created > 1 ? "s" : ""} · ${updated} mis à jour · ${unchanged} inchangé${unchanged > 1 ? "s" : ""}${exempted > 0 ? ` · ${exempted} exempt${exempted > 1 ? "s" : ""}` : ""}`,
+  importFbiRestored: (n: number) =>
+    `${n} rencontre${n > 1 ? "s" : ""} rétablie${n > 1 ? "s" : ""} d'après FBI : l'adversaire de l'application ne correspondait pas.`,
   importFbiWarningsAria: "Avertissements de l'import",
   importFbiCompleteness: (name: string, imported: number, expected: number) => `${name} : ${imported}/${expected} journées — fichier partiel ou phase pas encore sortie.`,
   importFbiUnmapped: (list: string) => `Non associées : ${list}`,
@@ -240,6 +254,38 @@ export const MATCHES_TEXTS = {
   reviewHideAway: "Masquer les extérieurs",
   reviewNothingToTreatTitle: "Rien à traiter",
   reviewNothingToTreatDescription: "Toutes les rencontres importées sont à jour. Déposez un export FBI ou vérifiez via le Canal FFBB pour en apporter de nouvelles.",
+  // État vide quand les extérieurs masqués ont encore des changements à marquer comme vus.
+  reviewNothingToTreatAwayHiddenTitle: "Des changements à marquer comme vus",
+  reviewNothingToTreatAwayHiddenDescription: "Les matchs à l'extérieur, masqués ici, ont des changements à marquer comme vus. Affichez-les, ou marquez-les tous d'un clic.",
+  reviewHelp: "L'import a déjà mis à jour vos matchs. Marquez-les comme vus pour vider la liste ; les écarts, eux, demandent votre arbitrage.",
+  reviewHelpMember: "L'import a déjà mis à jour vos matchs. Les gestionnaires du club vident cette liste et tranchent les écarts.",
+  reviewMarkAllSeen: "Tout marquer comme vu",
+  reviewMarkAwaySeen: "Tout marquer comme vu — extérieurs",
+  reviewMarkAwaySeenDisabled: "Aucune rencontre à l'extérieur à marquer comme vue.",
+  // Toast du geste « extérieurs » : chaque nombre s'accorde ; les laissées de côté sont nommées
+  // « équipe date », au plus 3, le reste compté (une rencontre absente de la liste chargée n'a pas
+  // de nom : elle est comptée, jamais nommée vide).
+  reviewAwaySeenToast: (n: number, skipped: { team: string; date: string }[]): string => {
+    if (0 === skipped.length) {
+      if (0 === n) {
+        return "Aucune rencontre à l'extérieur à marquer comme vue.";
+      }
+      return n > 1 ? `${n} rencontres à l'extérieur marquées comme vues.` : `${n} rencontre à l'extérieur marquée comme vue.`;
+    }
+    const seen = 0 === n ? "Aucune rencontre à l'extérieur marquée comme vue" : n > 1 ? `${n} rencontres à l'extérieur marquées comme vues` : `${n} rencontre à l'extérieur marquée comme vue`;
+    const m = skipped.length;
+    const names = skipped.map((s) => [s.team, s.date].filter((part) => "" !== part).join(" ")).filter((label) => "" !== label);
+    const listed = boundedNames(names, m);
+    return 1 === m ? `${seen} ; 1 laissée de côté${listed} — tranchez son écart.` : `${seen} ; ${m} laissées de côté${listed} — tranchez leurs écarts une par une.`;
+  },
+  // Toast du geste « équipe » : les rencontres à écart laissées de côté, nommées par leur date
+  // (au plus 3, le reste compté).
+  reviewSkippedToast: (team: string, n: number, dates: string[]): string => {
+    const listed = boundedNames(dates, n);
+    return n > 1
+      ? `${team} : ${n} rencontres à écart laissées de côté${listed} — tranchez leurs écarts une par une.`
+      : `${team} : ${n} rencontre à écart laissée de côté${listed} — tranchez son écart.`;
+  },
   // ReviewQueueRow
   rowKickoffNotPublished: "heure non publiée",
   rowNeutralGround: "Terrain neutre",

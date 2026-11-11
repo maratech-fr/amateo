@@ -6,6 +6,7 @@ namespace App\Tests\Integration\Api;
 
 use App\Clock\DevClockStore;
 use App\Entity\Competition;
+use App\Entity\FbiIngestion;
 use App\Entity\Fixture;
 use App\Entity\Season;
 use App\Entity\Sport;
@@ -16,7 +17,9 @@ use App\Enum\FixtureStatus;
 use App\Tests\ChoosesPlanVersionTrait;
 use App\Tests\TenantGucTrait;
 use App\Tests\VerifiesRegistration;
+use App\Tests\WritesFbiExports;
 use DateTimeImmutable;
+use DateTimeZone;
 use Doctrine\ORM\EntityManagerInterface;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
@@ -24,6 +27,7 @@ use PHPUnit\Framework\Attributes\Group;
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
+use ZipArchive;
 
 /**
  * End-to-end FBI one-pass import over HTTP (cadrage P1-4): analyze (dry-run
@@ -36,6 +40,7 @@ final class ImportFixturesApiTest extends WebTestCase
     use ChoosesPlanVersionTrait;
     use TenantGucTrait;
     use VerifiesRegistration;
+    use WritesFbiExports;
 
     private KernelBrowser $client;
 
@@ -307,6 +312,36 @@ final class ImportFixturesApiTest extends WebTestCase
         self::assertSame(1, $this->responseData()['leagueValidated'] ?? null, 'la réponse d\'import porte le compte des domiciles auto-validés');
     }
 
+    /**
+     * La réponse de POST /api/fixtures/import porte le compteur `restored` et l'avertissement
+     * `OPPONENT_RESTORED` : la réponse est un JSON écrit À LA MAIN par le contrôleur (correction
+     * SMITH 3), un compteur du service non relayé n'atteint jamais l'écran. La mécanique du
+     * rétablissement vit dans Integration/Service/FbiFixtureImporterTest (famille « Restor ») ;
+     * ICI seule la surface exposée par l'API est en jeu.
+     */
+    public function testImportResponseCarriesTheRestoredCountAndWarning(): void
+    {
+        [$token, $clubName, $teamId] = $this->registerWithTeam();
+        $needle = strtoupper($clubName);
+
+        $venueX = $this->createClubVenue($token, 'Gymnase X');
+        $this->upload('/api/fixtures/import', $token, $this->xlsx([
+            ['D2', 'A9700', $needle . ' - 1', 'AS Voisins', '10/10/2026', '15:30', 'Gymnase X'],
+        ]), ['mappings' => json_encode([['division' => 'D2', 'teamId' => $teamId]], \JSON_THROW_ON_ERROR), 'venueMappings' => json_encode([['label' => 'Gymnase X', 'venueId' => $venueX]], \JSON_THROW_ON_ERROR)]);
+        self::assertResponseStatusCodeSame(200);
+        self::assertSame(0, $this->responseData()['restored'] ?? null, 'une création n\'est jamais un rétablissement');
+
+        // Même division, même numéro, AUTRE adversaire : la ligne de l'application est fausse.
+        $this->upload('/api/fixtures/import', $token, $this->xlsx([
+            ['D2', 'A9700', $needle . ' - 1', 'AS Autres', '10/10/2026', '15:30', 'Gymnase X'],
+        ]));
+        self::assertResponseStatusCodeSame(200);
+        $report = $this->responseData();
+        self::assertSame(1, $report['restored'] ?? null, 'la réponse d\'import porte le compte des rencontres rétablies');
+        self::assertSame(['OPPONENT_RESTORED'], array_column($report['warnings'], 'type'));
+        self::assertSame('A9700', $report['warnings'][0]['externalRef'] ?? null);
+    }
+
     public function testImportRefusedWhileSocleNotValidated(): void
     {
         // SocleGuard path on BOTH import endpoints: without a validated main
@@ -387,6 +422,87 @@ final class ImportFixturesApiTest extends WebTestCase
         self::assertStringContainsString('2 Mo', $this->errorMessage());
     }
 
+    // ── Fraîcheur de l'export : refus AVANT toute écriture, sur les deux endpoints ──
+
+    /**
+     * Un export FBI de plus de 24 heures est refusé à l'analyse ET à l'import (422, la
+     * date du fichier dite à l'heure du club), et le refus n'écrit rien : ni rencontre,
+     * ni dépôt daté.
+     */
+    public function testAStaleExportIsRefusedOnAnalyzeAndImportNamingItsDateAndWritesNothing(): void
+    {
+        [$token, $clubName, $teamId] = $this->registerWithTeam();
+        $exportedAt = new DateTimeImmutable('-25 hours');
+        $rows = [['D2', 'F001', strtoupper($clubName) . ' - 1', 'AS Voisins', '03/10/2026', '15:30', '']];
+        $local = $exportedAt->setTimezone(new DateTimeZone('Europe/Paris'));
+        $expected = \sprintf(
+            'Ce fichier a été exporté de FBI le %s à %s, il y a plus de 24 heures. Téléchargez un nouvel export depuis FBI et déposez-le.',
+            $local->format('d/m/Y'),
+            $local->format('H:i'),
+        );
+
+        $this->upload('/api/fixtures/import/analyze', $token, $this->fbiExport($rows, $exportedAt));
+        self::assertResponseStatusCodeSame(422);
+        self::assertSame($expected, $this->errorMessage());
+
+        $this->upload('/api/fixtures/import', $token, $this->fbiExport($rows, $exportedAt), [
+            'mappings' => json_encode([['division' => 'D2', 'teamId' => $teamId]], \JSON_THROW_ON_ERROR),
+            'venueChoices' => json_encode([['division' => 'D2', 'venueId' => $this->createClubVenue($token, 'Gymnase F')]], \JSON_THROW_ON_ERROR),
+        ]);
+        self::assertResponseStatusCodeSame(422);
+        self::assertSame($expected, $this->errorMessage());
+
+        $this->assertNothingWrittenFor($token);
+    }
+
+    /** Un classeur refait sans `docProps` (aucune date d'export) est refusé sur les deux endpoints, sans écriture. */
+    public function testAnUndatedWorkbookIsRefusedOnAnalyzeAndImportAndWritesNothing(): void
+    {
+        [$token, $clubName, $teamId] = $this->registerWithTeam();
+        $rows = [['D2', 'F002', strtoupper($clubName) . ' - 1', 'AS Voisins', '03/10/2026', '15:30', '']];
+        $expected = 'Ce fichier ne porte pas la date d\'export de FBI. Déposez le fichier téléchargé depuis FBI, pas une copie refaite.';
+
+        $this->upload('/api/fixtures/import/analyze', $token, $this->withExportedAt($this->fbiExport($rows), null));
+        self::assertResponseStatusCodeSame(422);
+        self::assertSame($expected, $this->errorMessage());
+
+        $this->upload('/api/fixtures/import', $token, $this->withExportedAt($this->fbiExport($rows), null), [
+            'mappings' => json_encode([['division' => 'D2', 'teamId' => $teamId]], \JSON_THROW_ON_ERROR),
+            'venueChoices' => json_encode([['division' => 'D2', 'venueId' => $this->createClubVenue($token, 'Gymnase F')]], \JSON_THROW_ON_ERROR),
+        ]);
+        self::assertResponseStatusCodeSame(422);
+        self::assertSame($expected, $this->errorMessage());
+
+        $this->assertNothingWrittenFor($token);
+    }
+
+    /**
+     * Un export frais passe l'analyse et l'import ; un export ré-enregistré dans Excel
+     * (Excel garde `created`, change `modified` et l'auteur) passe aussi.
+     */
+    public function testAFreshExportAndAFreshExcelResaveAreAccepted(): void
+    {
+        [$token, $clubName, $teamId] = $this->registerWithTeam();
+        $rows = [['D2', 'F003', strtoupper($clubName) . ' - 1', 'AS Voisins', '03/10/2026', '15:30', '']];
+        $venueId = $this->createClubVenue($token, 'Gymnase F');
+        $params = [
+            'mappings' => json_encode([['division' => 'D2', 'teamId' => $teamId]], \JSON_THROW_ON_ERROR),
+            'venueChoices' => json_encode([['division' => 'D2', 'venueId' => $venueId]], \JSON_THROW_ON_ERROR),
+        ];
+
+        $this->upload('/api/fixtures/import/analyze', $token, $this->fbiExport($rows, new DateTimeImmutable('-1 hour')));
+        self::assertResponseStatusCodeSame(200);
+        $this->upload('/api/fixtures/import', $token, $this->fbiExport($rows, new DateTimeImmutable('-1 hour')), $params);
+        self::assertResponseStatusCodeSame(200);
+        self::assertSame(1, $this->responseData()['created']);
+
+        $resaved = $this->excelResave($this->fbiExport($rows, new DateTimeImmutable('-2 hours')));
+        $this->upload('/api/fixtures/import/analyze', $token, $resaved);
+        self::assertResponseStatusCodeSame(200);
+        $this->upload('/api/fixtures/import', $token, $this->excelResave($this->fbiExport($rows, new DateTimeImmutable('-2 hours'))), $params);
+        self::assertResponseStatusCodeSame(200);
+    }
+
     protected function setUp(): void
     {
         $this->client = self::createClient();
@@ -404,6 +520,7 @@ final class ImportFixturesApiTest extends WebTestCase
         foreach ($this->tempFiles as $file) {
             @unlink($file);
         }
+        $this->removeFbiExports();
         // Relâche l'horloge épinglée (Redis partagé, non rollbacké entre tests).
         self::getContainer()->get(DevClockStore::class)->set(null);
         parent::tearDown();
@@ -556,6 +673,38 @@ final class ImportFixturesApiTest extends WebTestCase
         $path = tempnam(sys_get_temp_dir(), 'big') . '.xlsx';
         file_put_contents($path, str_repeat('x', (int) (2.1 * 1024 * 1024)));
         $this->tempFiles[] = $path;
+
+        return $path;
+    }
+
+    /** Ni rencontre ni dépôt daté (FbiIngestion) pour le club du jeton. */
+    private function assertNothingWrittenFor(string $token): void
+    {
+        $this->client->request('GET', '/api/me', [], [], ['HTTP_AUTHORIZATION' => 'Bearer ' . $token]);
+        $clubId = $this->responseData()['club']['id'];
+        self::assertIsString($clubId);
+        $this->scopeGucToClub($clubId);
+        $this->em->clear();
+        self::assertCount(0, $this->em->getRepository(Fixture::class)->findBy(['clubId' => $clubId]), 'un refus de fraîcheur n\'écrit aucune rencontre');
+        self::assertCount(0, $this->em->getRepository(FbiIngestion::class)->findBy(['clubId' => $clubId]), 'un refus de fraîcheur n\'écrit aucun dépôt');
+    }
+
+    /**
+     * Ce qu'un enregistrement Excel fait à `core.xml` : `created` conservé, `modified`
+     * et `lastModifiedBy` ajoutés.
+     */
+    private function excelResave(string $path): string
+    {
+        $zip = new ZipArchive;
+        self::assertTrue($zip->open($path));
+        $core = (string) $zip->getFromName('docProps/core.xml');
+        $modified = new DateTimeImmutable('now', new DateTimeZone('UTC'));
+        $zip->addFromString('docProps/core.xml', str_replace(
+            '</cp:coreProperties>',
+            '<cp:lastModifiedBy>Gestionnaire</cp:lastModifiedBy><dcterms:modified xsi:type="dcterms:W3CDTF">' . $modified->format('Y-m-d\TH:i:s\Z') . '</dcterms:modified></cp:coreProperties>',
+            $core,
+        ));
+        $zip->close();
 
         return $path;
     }

@@ -53,4 +53,31 @@ final class CustomRoutesOpenApiTest extends KernelTestCase
             self::assertArrayHasKey($path, $paths, $path . ' must be documented in the OpenAPI');
         }
     }
+
+    /**
+     * Lot prod Matchs PR 2 — le contrat PUBLIÉ de « marquer comme vu » porte le troisième geste :
+     * `scope` ne vaut que `away` (le client ne peut rien demander d'autre), et la raison d'une
+     * rencontre sautée dit ce qu'elle signifie désormais — un écart ARBITRABLE, pas toute trace.
+     */
+    public function testReviewFixturesDocumentsTheAwayScopeAndTheArbitrableSkipReason(): void
+    {
+        self::bootKernel();
+        $factory = self::getContainer()->get(OpenApiFactoryInterface::class);
+        $operation = $factory()->getPaths()->getPath('/api/fixtures/review')?->getPost();
+        self::assertNotNull($operation, '/api/fixtures/review must document its POST');
+
+        $body = $operation->getRequestBody()?->getContent()['application/json']['schema'] ?? null;
+        self::assertIsArray($body);
+        self::assertSame(['away'], $body['properties']['scope']['enum'] ?? null, 'scope is documented with the single value « away »');
+
+        $responses = $operation->getResponses() ?? [];
+        $ok = $responses['200'] ?? null;
+        self::assertNotNull($ok);
+        $schema = $ok->getContent()['application/json']['schema'] ?? null;
+        self::assertIsArray($schema);
+        $reason = $schema['properties']['skipped']['items']['properties']['reason'] ?? null;
+        self::assertIsArray($reason);
+        self::assertSame(['pending_deviations'], $reason['enum'] ?? null, 'the skip reason value is unchanged');
+        self::assertStringContainsStringIgnoringCase('arbitrable', (string) ($reason['description'] ?? ''), 'the skip reason says it means an arbitrable deviation');
+    }
 }

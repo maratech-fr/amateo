@@ -53,12 +53,34 @@ réécrivait le n°X de la 1ʳᵉ phase, y compris une date déjà passée (bug 
 rencontres M15 » ci-dessous). Diff par `(team, division, externalRef)` : date/switch → **dé-placement**
 + warning ; heure réelle → mise à jour en place ; `00:00` = sentinelle « heure non fixée », n'écrase
 jamais une heure posée ; `Exempt` sauté. **Un adversaire différent sous le MÊME (team, division,
-externalRef)** n'est jamais un écrasement — décision fondateur 2026-10-27, « un match ne change pas
-d'adversaire, même forfait/repêchage : si ça arrive c'est un bug FFBB » — c'est une **anomalie**
-`OPPONENT_CHANGED` : la rencontre existante n'est touchée en rien (ni adversaire, ni date, ni statut),
-la ligne du fichier est écartée et nommée au rapport (« <division> n°<ref> : le fichier annonce un
-autre adversaire (X au lieu de Y) — ligne ignorée, vérifiez dans FBI »), comparaison NORMALISÉE
-(`VenueLabelNormalizer`, une simple dérive de graphie n'est pas une anomalie).
+externalRef)** (décision fondateur 2026-11-11) : la ligne de l'application est fausse, le fichier fait
+foi — l'importeur la **RÉTABLIT** en place (`FbiFixtureImporter::restoreFromRow`) : adversaire, date,
+heure, côté et salle du fichier, hydratés comme à la création (un match déjà joué est rétabli aussi).
+Tout ce que l'ancienne ligne portait tombe : placement (statut `UNPLACED`), gymnase, raison de
+dépointage, écarts, mémos, code organisme de l'ancien adversaire, corrections FBI ouvertes (fermées au
+registre) ; le traitement repart de `NEW` (`reviewedAt` nul) puis `treatOnArrival` (extérieur, passé,
+semaine en cours, terrain neutre → traité). Conservés : identifiant, club, saison, équipe, numéro,
+division du fichier, date de création, `ffbbRencontreId`. La passe post-flush des championnats
+commencés peut la remettre « Déjà dans FBI » dans le même dépôt. Le rapport compte ces lignes dans
+`restored` (jamais dans `updated`, ni dans l'ingestion) et porte un avertissement `OPPONENT_RESTORED`
+qui nomme l'ancien adversaire, le nouveau, la date, l'heure, le côté s'il change et « placement
+annulé » si la ligne était placée. Comparaison NORMALISÉE (`VenueLabelNormalizer`) : une dérive de
+graphie ne rétablit rien ; une inversion de côté avec le même adversaire reste un `SWITCHED`, jamais
+un rétablissement. Un domicile rétabli suit « Pas de salles appariées, pas d'import » comme une
+création : sans gymnase connu pour sa salle et non neutre, le dépôt entier est refusé 422 nommé, zéro
+écriture.
+**Fraîcheur de l'export** (rencontres seulement, jamais l'import d'équipes). Un dépôt est refusé 422
+(zéro écriture) s'il ne porte pas de date d'export ou s'il a plus de 24 h : `FbiExportFreshnessGuard`
+lit `dcterms:created` de `docProps/core.xml` brut dans le zip (FBI l'écrit à l'export, Excel le
+conserve à l'enregistrement ; jamais les dates d'entrées zip, jamais PhpSpreadsheet). La taille de la
+part se lit sur l'index du zip avant lecture : une part de plus de 64 Ko vaut « pas de date ». L'âge se
+mesure sur l'horloge RÉELLE (un club de démo à date simulée dépose des fichiers réels), le message dit
+la date du fichier à l'heure du club. L'import tolère 15 min de plus que l'analyse (les alias appariés
+ne s'écrivent qu'à l'import). Un fichier daté dans le futur passe : garde-fou contre l'erreur, pas
+contre la fraude. Appelé par `ImportFixturesAnalyzeController` et `ImportFixturesController` avant
+`analyze()` / `import()` ; jamais dans `XlsxUploadGuard` (partagé avec l'import d'équipes). Pas de
+colonne `exported_at`, pas de migration.
+
 Onglets par famille (Brassage · Coupe ARA · Coupes CRM · Amicaux · Départemental · Régional ·
 Autres — classification PURE présentationnelle, `divisionFamily.ts`, jamais un comportement métier)
 avec compteur d'appariement ; recherche/`Listbox` avec champ de recherche au-delà de 8 options.
@@ -68,7 +90,7 @@ appariée — > 50 % d'inconnus = division refusée nommée et sautée, 1..50 % 
 
 **Garde-fou mapping : une division ne peut pas greffer son numérotation sur un championnat FBI déjà
 peuplé sous un AUTRE libellé** (D4, M15, 2026-10-28, décision fondateur « ce sont deux championnats
-différents » — cas U13F3 prod BCCL : la division de la 2ᵉ phase s'appelait `DFU13-3-P2`, distincte de
+différents » — cas U13F3 en prod : la division de la 2ᵉ phase s'appelait `DFU13-3-P2`, distincte de
 `DFU13-3`, donc D1 seul suffisait déjà à les distinguer ; D4 couvre le cas où le gestionnaire
 mapperait quand même la 2ᵉ phase SUR le championnat de la 1ʳᵉ). `FbiMappingGuards::
 rejectSecondPhaseOntoFilledCompetition` refuse (nommé, division DROPPÉE des mappings — sautée sans
@@ -88,7 +110,7 @@ TENANT `OpponentVenueLink` ») s'il matche UNE salle fédérale exacte ; sinon i
 
 ### « Pas de salles appariées, pas d'import » (chantier A PR 2)
 
-**Décision fondateur 2026-10-22** (retours Rillieux, chantier A, PR 2/5) : un domicile IMPORTABLE
+**Décision fondateur 2026-10-22** (chantier A, PR 2/5) : un domicile IMPORTABLE
 et CRÉÉ par ce dépôt ne peut plus entrer sans gymnase du club. `analyze()` rend, en plus des
 divisions, deux inventaires LECTURE SEULE pour la modale d'import : `venues[]` — les salles à
 DOMICILE du fichier agrégées par libellé normalisé (`FbiFixtureImporter::analyzeHomeVenues`),
@@ -350,8 +372,7 @@ s'applique (app OU source), qui applique la source d'office (« pris en compte �
 cette fenêtre-ci, DISTINCTE de celle de naissance ci-dessus, est **restreinte à la semaine ISO en
 cours, lundi ET dimanche inclus** (D3, M15, 2026-10-28, `FbiArrivalReview::sourceIsAuthoritativeForWindow`)
 — avant, un simple plafond « ≤ dimanche » faisait foi pour N'IMPORTE QUELLE date passée, aussi
-lointaine soit-elle ; un domicile PLACÉ de plusieurs semaines que la source re-date loin devant (cas
-réel BCCL : un match du 10/10 réécrit en office au 14/11 par la numérotation réutilisée du 2ᵉ tour)
+lointaine soit-elle ; un domicile PLACÉ de plusieurs semaines que la source re-date loin devant (ex. : un match du 10/10 réécrit en office au 14/11 par la numérotation réutilisée du 2ᵉ tour)
 était ainsi réécrit SANS arbitrage. Un déphasage dont AUCUNE des deux dates ne tombe dans la semaine
 ISO en cours (passé ancien, ou entièrement futur) reste désormais toujours un arbitrage —
 **sauf sur la SALLE** (chantier A PR 4, § ci-dessus) : une salle inconnue (ni alias confirmé ni choix
@@ -359,11 +380,28 @@ inline) n'est **jamais** appliquée d'office même dans cette fenêtre, le gymna
 l'écart reste à trancher et la rencontre reste `OUT_OF_SYNC`. Une rencontre absente d'un dépôt n'est
 jamais touchée (import partiel légitime).
 
+**Régime « championnat commencé » (2026-11-11), canal xlsx seulement.** En plus de la semaine ISO en
+cours (inchangée, d'office sur tout domicile placé, Placé compris, sur les deux canaux), le fichier
+fait foi d'office sur un domicile **déjà dans FBI** (`SUBMITTED` ou `VALIDATED`) dès que le
+championnat de la rencontre a commencé (`LeagueValidationOutlook::startedCompetitionIds` : échéance
+≤ aujourd'hui ou premier match strictement passé, amicaux exclus ; même définition que « validé
+ligue »). Un match seulement `PLACED` (en retard sur FBI, pas encore saisi) hors de la semaine garde
+ses écarts à trancher. Le statut est lu par `applyDiff` AVANT le moteur partagé, qui ne reçoit aucune
+condition de statut ; le canal API (`FfbbRencontreReconciler`) reste « semaine en cours » seule.
+**Préséance de l'API** : `pendingEntry` pose `appliedAt` (horloge réelle) sur une entrée
+`autoApplied` ; un champ que l'API a appliqué d'office APRÈS la création de l'export déposé est sauté
+par l'application d'office xlsx (rien écrit, entrée API conservée). Une entrée sans `appliedAt` n'est
+jamais sautée ; une trace acquittée n'a plus de mémoire.
+
 Périmètre de réconciliation par écart (choix explicite, jamais un écrasement) : seuls les domiciles
 **déjà placés** peuvent diverger sur date/heure/salle — un `UNPLACED` reste hors périmètre sur date/
-heure, mais son écart de SALLE a son propre détecteur (§1). Conséquence par champ :
-date/salle **dé-placent** ; heure reste en place mais **rétrograde** un `SUBMITTED`/`VALIDATED` en
-`PLACED`.
+heure, mais son écart de SALLE a son propre détecteur (§1). **« Prendre le fichier » et l'application
+d'office ont UNE seule sémantique** (`FbiDeviationService::applyFieldTakeFile`) : la valeur du fichier
+est écrite, le statut et le gymnase sont conservés (date et heure : plus de dé-placement ni de retour
+à `PLACED`, plus de mémo `fbiEcho` écrit). Salle : alias confirmé du libellé → gymnase repointé quel
+que soit le statut ; libellé sans alias et sans choix → rien écrit, écart retenu (422 sur le geste
+explicite) ; choix inline d'un gymnase inchangé ; « terrain neutre » reste la seule exception qui
+dé-place.
 
 **Salle du périmètre PLACÉ, la MÊME clause alias que le non placé.** Un libellé fichier dont
 l'alias confirmé pointe le gymnase où la rencontre est placée n'ouvre pas d'écart — sans cette
@@ -377,22 +415,39 @@ n'est pas un effet de bord, c'est l'attestation qui fonctionne enfin sur ce cham
 §2)** : `analyze()` (dry-run, ci-dessus — mêmes deux canaux xlsx et API) ne consulte JAMAIS le
 registre et produit un enregistrement d'écart à CHAQUE dépôt tant que le fichier répète le libellé
 divergent, même après un « garder l'appli » précédent — c'est la fonction, pas un défaut : le
-gestionnaire doit continuer à être averti tant que FBI affiche la mauvaise valeur, jusqu'à ce qu'il
-la corrige lui-même dans le portail fédéral. `import()`/`apply()`, eux, ne recréent PAS d'écart sur
-la rencontre pour ce même cas (moteur partagé `processPerimeterFields`, mécanisme ledger) : ils
-RE-DATENT seulement l'entrée du registre « à corriger dans FBI »
-(`lastSeenInFbiAt`, ci-dessous) — le rappel persistant vit dans cette liste, pas dans un nouvel
-écart de la rencontre. **Leçon** : analyser et appliquer ne partagent PAS ce filtre — les lire comme
-un seul mécanisme fait conclure à tort que le dialogue s'est tu.
+la corrige lui-même dans le portail fédéral. `import()`/`apply()` (moteur partagé
+`processPerimeterFields`, mécanisme ledger) **reposent la question à chaque dépôt** tant que FBI
+montre l'autre valeur (2026-11-11) : l'entrée du registre « à corriger dans FBI » est re-datée
+(`lastSeenInFbiAt`, ci-dessous) ET un écart à trancher est reposé (`autoApplied: false`, `persisting:
+false`), la rencontre repasse `OUT_OF_SYNC` — dans tous les régimes et sur les deux canaux. Un champ
+gardé (correction ouverte) n'est jamais appliqué d'office, même quand le fichier fait foi ; une
+troisième valeur ferme la correction « par dépôt » et ouvre un écart normal ; « Prendre le fichier »
+(dépôt ou file de revue) ferme la correction ouverte ; Garder → dépôt → reposé → Garder reste UNE
+entrée ouverte (`open` est un upsert). Seule exception : la salle d'un domicile NON placé gardée
+(`keptVenueLabel`) ne repose rien. Tant qu'il est ouvert, l'écart reposé remet un match à venir « à
+confirmer » dans l'export parents (`MatchesExportDataProvider::isToConfirm` lit
+`hasArbitrableDeviations()` : une valeur imposée par FBI n'est pas un doute) et un amical joué n'est
+pas balayé « validé ». **Leçon** : le dry-run `analyze()` et `import()` restent deux chemins séparés ;
+les lire comme un seul mécanisme fait conclure à tort que le dialogue s'est tu.
 
 Deux routes de traitement (management + saison écrivable + socle pointé) : `POST
-/api/fixtures/review` (`{fixtureIds}` ligne, ou `{teamId}` masse — les rencontres à écart pendant
-sont sautées et NOMMÉES, jamais tranchées en masse) ; `POST /api/fixtures/review/deviations`
+/api/fixtures/review` (exactement UN de trois gestes, sinon 422 : `{fixtureIds}` ligne — écarts vidés,
+« garder l'appli » implicite ; `{teamId}` masse équipe ; `{scope: "away"}` masse extérieurs, seule
+portée admise). Les deux gestes en masse acquittent les rencontres `NEW` ou dont toutes les entrées
+sont `autoApplied` (domicile compris pour l'équipe ; un REVIEWED sans trace n'est pas re-horodaté,
+un domicile n'est jamais touché par la portée extérieurs) et SAUTENT, en les NOMMANT, celles qui
+portent un écart ARBITRABLE (`Fixture::hasArbitrableDeviations()`, une entrée `autoApplied === false`
+— ex. un ex-domicile devenu extérieur qui garde son écart de date) : jamais tranchées en masse. Un
+`OUT_OF_SYNC` sans aucune entrée n'est ni acquitté ni nommé. **Acquitter est définitif : les
+anciennes valeurs des alertes sont effacées**, la phrase « a déplacé ce match : … » n'est plus
+consultable ensuite (le toast et la file sont la dernière vue). Le front porte le geste extérieurs en
+un bouton « Tout marquer comme vu — extérieurs » (gestionnaires seulement, désactivé avec raison
+quand rien n'est acquittable, actif même si les extérieurs sont masqués) ; `POST /api/fixtures/review/deviations`
 (`{fixtureId, field, choice: keep_app|take_source, venueId?}`, rejoue le moteur partagé depuis la
 valeur PERSISTÉE — `venueId` OPTIONNEL sur `field: 'venue'` + `take_source`, l'appariement INLINE
 ci-dessus, chantier A PR 4). `ReviewQueueRow` : icône domicile/extérieur, heure ou « heure non publiée », salle
 résolue ; bouton **« Vu »** (NEW sans écart, OU REVIEWED qui porte encore une alerte `autoApplied`
-seule — même mot pour les deux cas, retours Nico BCCL 2026-10-27 M3, remplace « Valider »/« Pris en
+seule — même mot pour les deux cas, 2026-10-27 M3, remplace « Valider »/« Pris en
 compte » : la ligne ne « valide » rien, elle ACQUITTE une mise à jour déjà appliquée par l'import),
 une phrase UNIQUE pour l'alerte `autoApplied` (maison `lib/autoAppliedPhrase.ts` : date+heure
 reprogrammées fusionnent en « {source} a déplacé ce match : {ancienne date} → {nouvelle date} à
@@ -400,55 +455,10 @@ reprogrammées fusionnent en « {source} a déplacé ce match : {ancienne date} 
 chaque champ dans le même bloc — jamais des dates ISO brutes à l'écran), tranche champ par champ
 sinon (deux colonnes Amateo/source) ; « Replacer » seulement sur un domicile À VENIR.
 
-### Réparation post-déploiement des rencontres touchées par le bug M15 (2026-10-28)
+### Réparation des rencontres touchées par le bug M15 (2026-10-28) : un redépôt suffit
 
-> Procédure **ponctuelle**, jouée une seule fois après le déploiement du correctif D1-D4 ci-dessus,
-> sur les clubs déjà en prod à cette date. Elle écrit en base réelle de club : **ne se lance que sur
-> GO explicite du fondateur**, jamais en autonomie (`go-explicite-avant-tout-process`). Aucune donnée
-> personnelle n'est manipulée (noms d'équipes/divisions/numéros FBI seulement).
-
-**Portée mesurée (balayage LINK, lecture seule, 2026-10-27 soir)**, avant tout correctif : sur les
-clubs en prod à cette date, des rencontres de la 1ʳᵉ phase ont été réécrites d'office par le dépôt
-du 2ᵉ tour qui réutilisait leur numéro sous une autre division — BCCL : 10 rencontres / 7 équipes
-(dépôt du 27/10) ; Rillieux : 4 rencontres / 4 équipes (dépôt du 23/10). Un troisième club (démo) :
-aucune rencontre touchée. Le correctif D1-D4 empêche la récidive ; il ne répare pas, par construction,
-les rencontres déjà réécrites avant son déploiement (leur ancienne valeur n'est conservée nulle part).
-
-**Avant de commencer — l'adversaire d'origine est le plus souvent perdu lui aussi** : la version du
-code en prod au moment du bug réécrivait `opponentLabel` en silence au passage (écrasement retiré par
-ce correctif, § « Import FBI » ci-dessus), pas seulement la date. Une rencontre de la 1ʳᵉ phase
-réécrite par le 2ᵉ tour porte donc le plus souvent **la date ET l'adversaire** de la 2ᵉ phase. Or,
-avec le nouveau garde `OPPONENT_CHANGED`, un simple re-dépôt de l'export de la 1ʳᵉ phase sur une telle
-rencontre ne la répare PAS : l'adversaire du fichier (correct) diffère de celui en base (corrompu) →
-la ligne entière est écartée et SIGNALÉE (« ligne ignorée, vérifiez dans FBI ») — rien n'est écrit, y
-compris la date. Le garde protège désormais l'avenir, il ne défait pas le passé.
-
-**Procédure, par club touché, dans cet ordre** :
-1. **Repérer les rencontres de la 1ʳᵉ phase dont l'adversaire a changé.** Avant tout re-dépôt,
-   comparer (lecture seule) l'export de la 1ʳᵉ phase à l'état actuel de chaque rencontre concernée :
-   si SEULE la date diffère (adversaire intact), elle sera un simple écart à trancher à l'étape 2 ;
-   si l'adversaire diffère AUSSI, elle doit d'abord être **supprimée** (`DELETE
-   /api/fixtures/{id}`, § écran existant) pour que le re-dépôt la RECRÉE au lieu de tenter un diff
-   qui échouera sur `OPPONENT_CHANGED`. Une rencontre déjà PLACÉE qui est supprimée puis recréée perd
-   son placement (gymnase/heure) — le gestionnaire la replace après coup, ou la bascule « validé
-   ligue » la reprend d'office si son championnat est déjà commencé (§ ci-dessus).
-2. **Re-déposer l'export FBI de la 1ʳᵉ phase.** Avec la nouvelle identité (équipe + division +
-   numéro), chaque rencontre de la 1ʳᵉ phase (recréée à l'étape 1, ou restée intacte si seule sa date
-   avait divergé) redevient reconnaissable sous SA propre division. Une rencontre recréée (étape 1)
-   naît simplement avec les bonnes données ; une rencontre restée en place dont seule la date diverge
-   remonte un écart (`OUT_OF_SYNC`, « à trancher », M3) — **décision : prendre la source**
-   (`take_source`, § « Arbitrage » ci-dessus), l'export de la 1ʳᵉ phase restaure la vérité fédérale
-   d'origine.
-3. **Re-déposer l'export FBI de la 2ᵉ phase.** Chaque rencontre de la 2ᵉ phase a sa PROPRE division
-   dans le fichier — le gestionnaire la mappe vers un **nouveau championnat** (jamais vers celui de la
-   1ʳᵉ phase : le garde D4 ci-dessus le refuserait nommé si la cible est déjà peuplée de rencontres
-   FBI sous un autre libellé). La 2ᵉ phase crée alors ses propres rencontres, distinctes, qui
-   coexistent avec celles de la 1ʳᵉ phase déjà réparée.
-4. **Vérifier** qu'aucune rencontre de la 1ʳᵉ phase ne reste absente ou doublée sous la 2ᵉ division
-   (compte de rencontres par équipe cohérent avec le nombre de journées des deux phases).
-
-**Ce que voit le gestionnaire** : pour l'essentiel, rien de spécifique à cette réparation — le même
-écran Importer, la même file de traitement et le même vocabulaire (M3) qu'un dépôt ordinaire ; aucun
-message ne nomme « M15 » ni le bug. Seule l'étape 1 (suppression ciblée avant re-dépôt) est un geste
-hors écran courant, à faire une fois pour les rencontres dont l'adversaire a aussi été corrompu.
+Les rencontres de la 1ʳᵉ phase réécrites avant le correctif D1-D4 (date ET adversaire de la 2ᵉ phase)
+se réparent par un simple redépôt de l'export de la 1ʳᵉ phase : l'adversaire du fichier diffère de
+celui en base, la rencontre est rétablie d'après le fichier (§ « Import FBI » ci-dessus). Le 2ᵉ tour
+se redépose ensuite sous son propre championnat (garde D4) ; plus de suppression préalable.
 

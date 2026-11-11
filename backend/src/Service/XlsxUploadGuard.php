@@ -196,7 +196,7 @@ final class XlsxUploadGuard
     private function bytesMessage(): string
     {
         return \sprintf(
-            'Le fichier dépasse la taille maximale autorisée (%d Mo). Vous pouvez, si besoin, le découper par équipe ou par date avant de le réimporter.',
+            'Le fichier dépasse la taille maximale autorisée (%d Mo).',
             intdiv(self::MAX_UPLOAD_BYTES, 1024 * 1024),
         );
     }
@@ -204,7 +204,7 @@ final class XlsxUploadGuard
     private function inflatedMessage(): string
     {
         return \sprintf(
-            'Une fois décompressé, le fichier dépasse la taille maximale autorisée (%d Mo). Vous pouvez, si besoin, le découper par équipe ou par date avant de le réimporter.',
+            'Une fois décompressé, le fichier dépasse la taille maximale autorisée (%d Mo).',
             intdiv(self::MAX_INFLATED_BYTES, 1024 * 1024),
         );
     }
@@ -212,7 +212,7 @@ final class XlsxUploadGuard
     private function rowsMessage(): string
     {
         return \sprintf(
-            'Le fichier dépasse le nombre maximal de lignes autorisé (%s). Vous pouvez, si besoin, le découper par équipe ou par date avant de le réimporter.',
+            'Le fichier dépasse le nombre maximal de lignes autorisé (%s).',
             number_format(self::MAX_ROWS, 0, ',', ' '),
         );
     }

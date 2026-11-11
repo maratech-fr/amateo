@@ -22,7 +22,7 @@ use Doctrine\ORM\Mapping as ORM;
  * The opponent is a plain label here — the enriched global opponent directory
  * (coords, travel) is palier B.
  *
- * @phpstan-type PendingDeviation array{field: 'date'|'kickoff'|'venue', appValue: string|null, sourceValue: string|null, channel: 'FBI_XLSX'|'FFBB_API', seenAt: string, autoApplied: bool}
+ * @phpstan-type PendingDeviation array{field: 'date'|'kickoff'|'venue', appValue: string|null, sourceValue: string|null, channel: 'FBI_XLSX'|'FFBB_API', seenAt: string, autoApplied: bool, appliedAt?: string|null}
  * @phpstan-type FbiEcho array{field: string, value: string, at: string}
  */
 #[ORM\Entity(repositoryClass: FixtureRepository::class)]
@@ -402,6 +402,15 @@ class Fixture implements TenantOwnedInterface
         return $this;
     }
 
+    /** Remet le traitement à zéro : NEW, jamais traitée (rencontre rétablie d'après FBI). */
+    public function resetReview(): self
+    {
+        $this->reviewState = FixtureReviewState::NEW;
+        $this->reviewedAt = null;
+
+        return $this;
+    }
+
     /**
      * @return list<PendingDeviation>
      */
@@ -413,6 +422,26 @@ class Fixture implements TenantOwnedInterface
     public function hasPendingDeviations(): bool
     {
         return [] !== $this->pendingDeviations;
+    }
+
+    /**
+     * Vrai si au moins une entrée est à TRANCHER (`autoApplied === false`) : aucun geste en masse
+     * (équipe, extérieurs) ne l'acquitte. Des entrées toutes appliquées d'office ne sont qu'une
+     * alerte à acquitter. Une entrée sans la clé (JSON relu tel quel de la base) compte comme
+     * arbitrable : dans le doute, jamais vidée en masse.
+     */
+    public function hasArbitrableDeviations(): bool
+    {
+        // Élargi exprès : le type PendingDeviation garantit la clé, la colonne JSON non.
+        /** @var list<array<string, mixed>> $entries */
+        $entries = $this->pendingDeviations;
+        foreach ($entries as $entry) {
+            if (true !== ($entry['autoApplied'] ?? null)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
