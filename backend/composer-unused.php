@@ -9,7 +9,7 @@ use ComposerUnused\ComposerUnused\Configuration\NamedFilter;
  * Garde d'hygiène des dépendances backend (composer-unused).
  *
  * composer-unused signale un paquet de `require` dont aucun `use`/`new` n'apparaît dans `src/`.
- * Les 17 filtres ci-dessous sont des FAUX POSITIFS vérifiés : chacun est bien utilisé, mais pas
+ * Les 16 filtres ci-dessous sont des FAUX POSITIFS vérifiés : chacun est bien utilisé, mais pas
  * par un symbole PHP importé dans le code — il est câblé par bundle (bundles.php), par
  * configuration (DSN, YAML), par le runtime, ou par un autre paquet via l'injection de
  * dépendances. Chaque ligne porte sa raison. Tout AUTRE paquet devenu inutilisé doit rougir.
@@ -40,8 +40,6 @@ return static fn (Configuration $config): Configuration => $config
         ->addNamedFilter(NamedFilter::fromString('symfony/lock'))
         // MonologBundle — configuration du logging — bundles.php + monolog.yaml.
         ->addNamedFilter(NamedFilter::fromString('symfony/monolog-bundle'))
-        // Transport Redis de Messenger — sélectionné par le DSN (messenger.yaml), jamais importé.
-        ->addNamedFilter(NamedFilter::fromString('symfony/redis-messenger'))
         // Runtime qui amorce l'application (public/index.php via autoload_runtime) — jamais importé.
         ->addNamedFilter(NamedFilter::fromString('symfony/runtime'))
         // Traductions — câblées par config/DI, utilisées par Twig/validateurs, pas de symbole dans src/.
