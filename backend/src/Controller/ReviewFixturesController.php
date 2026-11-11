@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace App\Controller;
 
 use App\Entity\Fixture;
+use App\Enum\FixtureHomeAway;
+use App\Enum\FixtureReviewState;
 use App\Service\ManagementAccessGuard;
 use App\Service\SeasonAccessGuard;
 use App\Service\SocleGuard;
@@ -20,12 +22,16 @@ use Symfony\Component\Routing\Attribute\Route;
 
 /**
  * POST /api/fixtures/review — « traiter » des rencontres importées (PR-3a, espace
- * Importer). Deux gestes, exactement un par appel :
+ * Importer). Trois gestes, exactement un par appel :
  *   - `fixtureIds` (geste LIGNE) : chaque rencontre est traitée, écarts pendants
  *     vidés (« garder l'app » implicite — D4) → REVIEWED.
  *   - `teamId` (geste MASSE) : toutes les rencontres de l'équipe sont traitées,
- *     SAUF celles à écarts pendants, SAUTÉES et nommées (on ne tranche pas un
- *     écart en masse — D4).
+ *     alertes appliquées d'office acquittées, SAUF celles à écart ARBITRABLE,
+ *     SAUTÉES et nommées (on ne tranche pas un écart en masse — D4).
+ *   - `scope: "away"` (geste MASSE extérieurs) : les extérieurs ouverts (NEW, ou
+ *     portant des alertes toutes appliquées d'office) sont acquittés ; un extérieur
+ *     à écart arbitrable est sauté et nommé ; un domicile n'est jamais touché.
+ *     Acquitter efface définitivement les anciennes valeurs des alertes.
  *
  * Patron PlaceMatchesController : management + saison écrivable + socle pointé.
  * Le scope tenant/saison est automatique (filtres Doctrine) — une rencontre ou une
@@ -61,6 +67,8 @@ final class ReviewFixturesController extends AbstractController
 
         $fixtureIds = $this->stringList($body['fixtureIds'] ?? null);
         $teamId = \is_string($body['teamId'] ?? null) && '' !== $body['teamId'] ? $body['teamId'] : null;
+        $scopeGiven = \array_key_exists('scope', $body);
+        $awayScope = 'away' === ($body['scope'] ?? null);
 
         // Plafond par requête : au-delà, c'est un geste d'équipe (revue sécurité PR-3a).
         if (null !== $fixtureIds && \count($fixtureIds) > self::MAX_FIXTURE_IDS) {
@@ -70,10 +78,11 @@ final class ReviewFixturesController extends AbstractController
             );
         }
 
-        // Exactement un des deux gestes.
-        if ((null !== $fixtureIds) === (null !== $teamId)) {
+        // Exactement un des trois gestes ; une portée autre que « away » est refusée.
+        $gestures = (int) (null !== $fixtureIds) + (int) (null !== $teamId) + (int) $scopeGiven;
+        if (1 !== $gestures || ($scopeGiven && !$awayScope)) {
             return $this->json(
-                ['error' => 'Fournissez soit une liste de rencontres, soit une équipe — pas les deux, pas aucune.'],
+                ['error' => 'Fournissez soit une liste de rencontres, soit une équipe, soit la portée « extérieurs » — pas plusieurs, pas aucune.'],
                 Response::HTTP_UNPROCESSABLE_ENTITY,
             );
         }
@@ -92,14 +101,34 @@ final class ReviewFixturesController extends AbstractController
                 $fixture->markReviewed($now);
                 ++$reviewed;
             }
-        } else {
-            // Geste MASSE : traiter l'équipe, sauter les rencontres à écarts pendants.
+        } elseif (null !== $teamId) {
+            // Geste MASSE équipe : traiter l'équipe, alertes appliquées d'office acquittées,
+            // sauter les rencontres à écart arbitrable.
             foreach ($repository->findBy(['teamId' => $teamId]) as $fixture) {
-                if ($fixture->hasPendingDeviations()) {
+                if ($fixture->hasArbitrableDeviations()) {
                     $skipped[] = ['fixtureId' => $fixture->getId(), 'reason' => 'pending_deviations'];
 
                     continue;
                 }
+                $fixture->clearPendingDeviations();
+                $fixture->markReviewed($now);
+                ++$reviewed;
+            }
+        } else {
+            // Geste MASSE extérieurs : seuls les extérieurs OUVERTS sont acquittés — NEW, ou
+            // porteurs d'alertes toutes appliquées d'office. Un REVIEWED sans trace n'est pas
+            // re-horodaté. Un OUT_OF_SYNC SANS aucune entrée (orphelin) n'est ni acquitté ni
+            // nommé : choix conservateur, il reste tel quel à traiter sur sa ligne.
+            foreach ($repository->findBy(['homeAway' => FixtureHomeAway::AWAY]) as $fixture) {
+                if ($fixture->hasArbitrableDeviations()) {
+                    $skipped[] = ['fixtureId' => $fixture->getId(), 'reason' => 'pending_deviations'];
+
+                    continue;
+                }
+                if (FixtureReviewState::NEW !== $fixture->getReviewState() && !$fixture->hasPendingDeviations()) {
+                    continue;
+                }
+                $fixture->clearPendingDeviations();
                 $fixture->markReviewed($now);
                 ++$reviewed;
             }

@@ -604,27 +604,28 @@ final readonly class SeasonAndFixturePaths implements CustomPathContributor
             operationId: 'reviewFixtures',
             tags: ['Match'],
             responses: [
-                '200' => $this->schemas->jsonResponse('Mark fixtures as reviewed (« traité »). One gesture per call: by fixtureIds (per line — pending deviations are cleared, keeping the app value) or by teamId (bulk — fixtures still carrying pending deviations are skipped and named, never arbitrated in bulk).', [
+                '200' => $this->schemas->jsonResponse('Mark fixtures as reviewed (« traité »). One gesture per call: by fixtureIds (per line — pending deviations are cleared, keeping the app value), by teamId (bulk — auto-applied alerts are acknowledged, fixtures carrying an arbitrable deviation are skipped and named, never arbitrated in bulk) or by scope "away" (bulk over open away fixtures — same skip rule, home fixtures never touched). Acknowledging erases the previous values of the alerts.', [
                     'type' => 'object',
                     'properties' => [
                         'reviewed' => ['type' => 'integer', 'description' => 'How many fixtures were marked reviewed'],
                         'skipped' => ['type' => 'array', 'items' => ['type' => 'object', 'properties' => [
                             'fixtureId' => ['type' => 'string'],
-                            'reason' => ['type' => 'string', 'enum' => ['pending_deviations']],
+                            'reason' => ['type' => 'string', 'enum' => ['pending_deviations'], 'description' => 'The fixture carries an arbitrable deviation (one not auto-applied): it must be decided on its own line'],
                         ]]],
                     ],
                 ]),
                 '401' => new Response('Unauthorized (missing/expired JWT)'),
                 '403' => new Response('Not a management member'),
                 '409' => new Response('Season plan not chosen, or archived season'),
-                '422' => new Response('Neither or both of fixtureIds and teamId were given'),
+                '422' => new Response('Not exactly one of fixtureIds, teamId and scope was given, or scope is not "away"'),
             ],
-            summary: 'Mark fixtures as reviewed — by line (fixtureIds) or in bulk (teamId), management only',
+            summary: 'Mark fixtures as reviewed — by line (fixtureIds), by team (teamId) or all open away fixtures (scope), management only',
             requestBody: $this->schemas->jsonBody([
                 'type' => 'object',
                 'properties' => [
                     'fixtureIds' => ['type' => 'array', 'items' => ['type' => 'string'], 'description' => 'Per-line gesture: these fixtures are reviewed, their pending deviations cleared'],
-                    'teamId' => ['type' => 'string', 'description' => 'Bulk gesture: every fixture of the team is reviewed, except those still carrying pending deviations'],
+                    'teamId' => ['type' => 'string', 'description' => 'Bulk gesture: every fixture of the team is reviewed and its auto-applied alerts acknowledged, except those carrying an arbitrable deviation'],
+                    'scope' => ['type' => 'string', 'enum' => ['away'], 'description' => 'Bulk gesture over away fixtures: those new or carrying only auto-applied alerts are reviewed, those carrying an arbitrable deviation are skipped'],
                 ],
             ]),
         )));

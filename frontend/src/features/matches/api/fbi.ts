@@ -242,9 +242,11 @@ export const getLatestFbiIngestion = (): Promise<{ latest: FbiIngestionLatest | 
  * LIGNE — chaque rencontre listée traitée, ses écarts pendants vidés, « garder
  * l'app » implicite) OU `{teamId}` (geste MASSE — toutes les rencontres de
  * l'équipe traitées SAUF celles à écart pendant, sautées et nommées dans
- * `skipped`, jamais tranchées en masse).
+ * `skipped`, jamais tranchées en masse) OU `{scope: "away"}` (geste MASSE sur les
+ * extérieurs ouverts, même règle de saut, domiciles jamais touchés). Le saut vise un
+ * écart ARBITRABLE (non appliqué d'office) ; une alerte appliquée d'office s'acquitte.
  */
-export type ReviewFixturesBody = { fixtureIds: string[] } | { teamId: string };
+export type ReviewFixturesBody = { fixtureIds: string[] } | { teamId: string } | { scope: "away" };
 
 export interface ReviewFixturesResult {
   reviewed: number;
