@@ -51,6 +51,36 @@ Fonctionnalité: Une rencontre importée dit si elle est traitée
     Quand je valide la rencontre d'un geste
     Alors la rencontre est « traitée » et l'alerte de déplacement a disparu
 
+  Scénario: Les changements à l'extérieur se marquent vus d'un seul geste
+    Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur
+    Et une équipe jetable et un gymnase jetable « GYM BEHAT »
+    Quand je dépose un fichier FBI avec un match à l'extérieur
+    Et je re-dépose l'extérieur à une autre date, sans trancher
+    Alors la rencontre est « traitée » et porte une alerte de déplacement
+    Quand je marque comme vues toutes les rencontres à l'extérieur
+    Alors la rencontre est « traitée » et l'alerte de déplacement a disparu
+
+  Scénario: Un extérieur qui garde un écart hérité de son passé de domicile est laissé de côté
+    Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur
+    Et une équipe jetable et un gymnase jetable « GYM BEHAT »
+    Et un accès match le samedi sur « GYM BEHAT »
+    Quand je dépose un fichier FBI avec un match à domicile au gymnase « GYM BEHAT » à 15h30
+    Et je place la rencontre dans le gymnase « GYM BEHAT » à 15h30
+    Et je re-dépose le fichier avec une date différente, sans trancher
+    Alors la rencontre est « déphasée » et sa date d'origine est intacte
+    Quand je re-dépose le match devenu extérieur à sa date d'origine
+    Et je marque comme vues toutes les rencontres à l'extérieur
+    Alors la rencontre est laissée de côté, nommée, et son écart de date reste à trancher
+
+  Scénario: Un écart pris en compte s'acquitte avec toute l'équipe
+    Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur
+    Et une équipe jetable et un gymnase jetable « GYM BEHAT »
+    Quand je dépose un fichier FBI avec un match à l'extérieur
+    Et je re-dépose l'extérieur à une autre date, sans trancher
+    Alors la rencontre est « traitée » et porte une alerte de déplacement
+    Quand je marque comme vues toutes les rencontres de l'équipe
+    Alors la rencontre est « traitée » et l'alerte de déplacement a disparu
+
   Scénario: Le 2ᵉ tour réutilise un numéro — l'historique de la 1ʳᵉ phase est intact
     Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur
     Et une équipe jetable et un gymnase jetable « GYM BEHAT »

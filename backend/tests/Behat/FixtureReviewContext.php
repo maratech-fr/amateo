@@ -70,6 +70,9 @@ final class FixtureReviewContext extends BaseContext
     /** @var array<mixed> le rapport du dernier dépôt FBI (réponse de POST fixtures/import) */
     private array $lastReport = [];
 
+    /** @var array<mixed> la réponse du dernier geste « marquer comme vu » ({reviewed, skipped}) */
+    private array $lastReview = [];
+
     #[Given('le club de démonstration, connecté, dont le planning de saison est en vigueur')]
     public function leClubConnecte(): void
     {
@@ -453,6 +456,62 @@ final class FixtureReviewContext extends BaseContext
         }
     }
 
+    // ── PR 2 (lot matchs prod) : « Tout marquer comme vu » en masse ──────────────────────────
+    // Bout en bout des deux gestes de masse : le geste EXTÉRIEURS (`scope: away`) acquitte d'un
+    // coup l'alerte « FBI a déplacé ce match » d'un extérieur, et SAUTE (nommé, intact) un
+    // extérieur qui garde un écart arbitrable hérité de son passé de domicile ; le geste ÉQUIPE
+    // acquitte lui aussi une alerte appliquée d'office. ⚠ Le geste extérieurs vaut pour TOUT le
+    // club de démonstration : les assertions ne portent que sur la rencontre suivie. Les règles
+    // une à une (domicile jamais touché, re-horodatage, exclusivité des gestes, 409, tenant) :
+    // FixtureReviewApiTest et MatchTenantIsolationTest.
+
+    #[When('je marque comme vues toutes les rencontres à l\'extérieur')]
+    public function jeMarqueVuesLesExterieurs(): void
+    {
+        $this->review(['scope' => 'away'], 'le geste « extérieurs »');
+    }
+
+    #[When('je marque comme vues toutes les rencontres de l\'équipe')]
+    public function jeMarqueVuesLEquipe(): void
+    {
+        $this->review(['teamId' => $this->teamId], 'le geste « équipe »');
+    }
+
+    #[When('je re-dépose le match devenu extérieur à sa date d\'origine')]
+    public function jeReDeposeLeMatchDevenuExterieur(): void
+    {
+        // FBI inverse le côté (le domicile placé devient un extérieur) à la date que l'application
+        // porte encore : le placement est annulé, mais l'écart de date ouvert au dépôt précédent,
+        // arbitrable, n'est pas purgé par le changement de côté.
+        $this->depositMatch($this->matchDate, 'AWAY', 'Adversaire Behat', '', null);
+        $json = $this->apiGet(\sprintf('fixtures/%s', $this->fixtureId), $this->token)['json'];
+        if ('AWAY' !== ($json['homeAway'] ?? null)) {
+            throw new RuntimeException('le dépôt aurait dû faire de la rencontre un extérieur');
+        }
+    }
+
+    #[Then('la rencontre est laissée de côté, nommée, et son écart de date reste à trancher')]
+    public function laRencontreEstLaisseeDeCote(): void
+    {
+        $named = false;
+        foreach (\is_array($this->lastReview['skipped'] ?? null) ? $this->lastReview['skipped'] : [] as $skipped) {
+            if (\is_array($skipped) && $this->fixtureId === ($skipped['fixtureId'] ?? null) && 'pending_deviations' === ($skipped['reason'] ?? null)) {
+                $named = true;
+            }
+        }
+        if (!$named) {
+            throw new RuntimeException(\sprintf('la rencontre à écart aurait dû être nommée parmi les laissées de côté : %s', json_encode($this->lastReview)));
+        }
+        $this->assertReviewState('OUT_OF_SYNC');
+        $deviations = $this->apiGet(\sprintf('fixtures/%s', $this->fixtureId), $this->token)['json']['pendingDeviations'] ?? null;
+        foreach (\is_array($deviations) ? $deviations : [] as $deviation) {
+            if (\is_array($deviation) && 'date' === ($deviation['field'] ?? null) && false === ($deviation['autoApplied'] ?? null)) {
+                return;
+            }
+        }
+        throw new RuntimeException('l\'écart de date à trancher aurait dû rester intact');
+    }
+
     #[AfterScenario]
     public function nettoyer(): void
     {
@@ -481,6 +540,20 @@ final class FixtureReviewContext extends BaseContext
                 admin: true,
             );
         }
+    }
+
+    /**
+     * Joue un geste « marquer comme vu » et garde sa réponse ({reviewed, skipped}).
+     *
+     * @param array<string, mixed> $body
+     */
+    private function review(array $body, string $what): void
+    {
+        $result = $this->apiPost('fixtures/review', $body, $this->token);
+        if (200 !== $result['status']) {
+            throw new RuntimeException(\sprintf('%s a répondu %d (200 attendu) : %s', $what, $result['status'], json_encode($result['json'])));
+        }
+        $this->lastReview = $result['json'];
     }
 
     /** @return list<string> les numéros portant un avertissement OPPONENT_RESTORED dans le dernier rapport */

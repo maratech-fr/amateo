@@ -240,7 +240,9 @@ final class MemberWriteSweepTest extends WebTestCase
         'POST /api/fixtures/place' => ['/api/fixtures/place', '{}', 403],
         'POST /api/fixtures/import' => ['/api/fixtures/import', null, 403],
         'POST /api/fixtures/import/analyze' => ['/api/fixtures/import/analyze', null, 403],
-        'POST /api/fixtures/review' => ['/api/fixtures/review', '{}', 403],
+        // Corps = le geste « Tout marquer comme vu — extérieurs » (lot prod Matchs PR 2) : le plus
+        // large des trois, aucun identifiant à fournir — un Membre ne l'acquitte jamais.
+        'POST /api/fixtures/review' => ['/api/fixtures/review', '{"scope":"away"}', 403],
         'POST /api/fixtures/review/deviations' => ['/api/fixtures/review/deviations', '{}', 403],
         'POST /api/fixtures/league-validation' => ['/api/fixtures/league-validation', '{}', 403],
         'POST /api/fixtures/conflicts/mail-coaches' => ['/api/fixtures/conflicts/mail-coaches', '{}', 403],

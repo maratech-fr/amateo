@@ -1194,6 +1194,32 @@ final class MatchTenantIsolationTest extends WebTestCase
     }
 
     /**
+     * Lot prod Matchs PR 2 — le geste « Tout marquer comme vu — extérieurs » (`{scope: "away"}`)
+     * sélectionne les extérieurs sans aucun identifiant fourni par le client : il n'acquitte JAMAIS
+     * ceux d'un autre club. Témoin : sous SON identité, le club B acquitte bien son extérieur (il
+     * était éligible — le 0 du club A n'est pas vide par construction).
+     */
+    public function testAwayScopeNeverAcknowledgesAForeignClubsAways(): void
+    {
+        [, $userA] = $this->createClubUser('awA');
+        [$clubB, $userB, $seasonB] = $this->createClubUser('awB');
+        $foreignAway = $this->createAwayNoFootprintFixture($clubB, $seasonB);
+
+        $this->client->request('POST', '/api/fixtures/review', [], [], $this->authHeaders($userA) + ['CONTENT_TYPE' => 'application/json'], (string) json_encode(['scope' => 'away']));
+        self::assertResponseStatusCodeSame(200);
+        self::assertSame(0, $this->responseData()['reviewed'], 'aucun extérieur du club B n\'est vu par le club A');
+
+        $em = self::getContainer()->get(EntityManagerInterface::class);
+        $this->scopeGucToClub($clubB->getId());
+        $state = $em->getConnection()->fetchOne('SELECT review_state FROM fixture WHERE id = ?', [$foreignAway]);
+        self::assertSame('NEW', $state, 'l\'extérieur du club B reste à voir');
+
+        $this->client->request('POST', '/api/fixtures/review', [], [], $this->authHeaders($userB) + ['CONTENT_TYPE' => 'application/json'], (string) json_encode(['scope' => 'away']));
+        self::assertResponseStatusCodeSame(200);
+        self::assertSame(1, $this->responseData()['reviewed'], 'témoin : le club B acquitte son propre extérieur');
+    }
+
+    /**
      * NR axe §7.1 tenant isolation (revue lot L) — le geste « validé ligue » en lot ne
      * lit ni n'écrit jamais les rencontres d'un AUTRE club. Le club B possède une
      * rencontre ÉLIGIBLE ; sous SON identité B la compte à 1 (témoin : elle est bien

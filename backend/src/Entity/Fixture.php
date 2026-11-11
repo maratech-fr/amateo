@@ -425,6 +425,26 @@ class Fixture implements TenantOwnedInterface
     }
 
     /**
+     * Vrai si au moins une entrée est à TRANCHER (`autoApplied === false`) : aucun geste en masse
+     * (équipe, extérieurs) ne l'acquitte. Des entrées toutes appliquées d'office ne sont qu'une
+     * alerte à acquitter. Une entrée sans la clé (JSON relu tel quel de la base) compte comme
+     * arbitrable : dans le doute, jamais vidée en masse.
+     */
+    public function hasArbitrableDeviations(): bool
+    {
+        // Élargi exprès : le type PendingDeviation garantit la clé, la colonne JSON non.
+        /** @var list<array<string, mixed>> $entries */
+        $entries = $this->pendingDeviations;
+        foreach ($entries as $entry) {
+            if (true !== ($entry['autoApplied'] ?? null)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
      * @return PendingDeviation|null
      */
     public function getPendingDeviation(string $field): ?array

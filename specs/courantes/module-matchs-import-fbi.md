@@ -78,7 +78,7 @@ appariée — > 50 % d'inconnus = division refusée nommée et sautée, 1..50 % 
 
 **Garde-fou mapping : une division ne peut pas greffer son numérotation sur un championnat FBI déjà
 peuplé sous un AUTRE libellé** (D4, M15, 2026-10-28, décision fondateur « ce sont deux championnats
-différents » — cas U13F3 prod BCCL : la division de la 2ᵉ phase s'appelait `DFU13-3-P2`, distincte de
+différents » — cas U13F3 en prod : la division de la 2ᵉ phase s'appelait `DFU13-3-P2`, distincte de
 `DFU13-3`, donc D1 seul suffisait déjà à les distinguer ; D4 couvre le cas où le gestionnaire
 mapperait quand même la 2ᵉ phase SUR le championnat de la 1ʳᵉ). `FbiMappingGuards::
 rejectSecondPhaseOntoFilledCompetition` refuse (nommé, division DROPPÉE des mappings — sautée sans
@@ -98,7 +98,7 @@ TENANT `OpponentVenueLink` ») s'il matche UNE salle fédérale exacte ; sinon i
 
 ### « Pas de salles appariées, pas d'import » (chantier A PR 2)
 
-**Décision fondateur 2026-10-22** (retours Rillieux, chantier A, PR 2/5) : un domicile IMPORTABLE
+**Décision fondateur 2026-10-22** (chantier A, PR 2/5) : un domicile IMPORTABLE
 et CRÉÉ par ce dépôt ne peut plus entrer sans gymnase du club. `analyze()` rend, en plus des
 divisions, deux inventaires LECTURE SEULE pour la modale d'import : `venues[]` — les salles à
 DOMICILE du fichier agrégées par libellé normalisé (`FbiFixtureImporter::analyzeHomeVenues`),
@@ -153,7 +153,7 @@ le front l'affiche, il ne recalcule jamais la règle (miroir interdit, `.claude/
 
 Un club qui démarre l'application EN COURS de saison importe un fichier FBI dont des domiciles sont
 déjà datés côté fédération : date, heure et gymnase déjà enregistrés. Confirmer chaque placement à la
-main n'a pas de sens. **Décision fondateur 2026-10-22** (retours Rillieux, chantier A, PR 1/5) :
+main n'a pas de sens. **Décision fondateur 2026-10-22** (chantier A, PR 1/5) :
 le dépôt lui-même bascule maintenant ces domiciles en lot, SANS geste supplémentaire du
 gestionnaire. La doctrine antérieure (« le chemin de création de l'import ne pose jamais `VALIDATED`,
 une confirmation chiffrée séparée est seule à le faire ») est **amendée**, pas abrogée dans sa forme :
@@ -285,8 +285,7 @@ silencieux)**, même confirmation chiffrée partagée (`LeagueValidationConfirmD
   ouvre la MÊME confirmation — réservée au gestionnaire, jamais affichée à un Membre.
 
 Le front n'a **aucune règle** : c'est le backend qui décide QUOI est proposé (championnat commencé),
-le front affiche la lecture servie (`useLeagueValidationOutlook`). **Vocabulaire (retours Nico,
-BCCL 2026-10-27, M3)** : la pastille de statut EMPLOIE désormais les mêmes mots — `VALIDATED` se dit
+le front affiche la lecture servie (`useLeagueValidationOutlook`). **Vocabulaire (2026-10-27, M3)** : la pastille de statut EMPLOIE désormais les mêmes mots — `VALIDATED` se dit
 « Déjà dans FBI » (plus « Attesté FBI », §7 « Workflow de traitement »), et cette confirmation
 « Marquer « déjà dans FBI » » (`LEAGUE_VALIDATION_CONFIRM_LABEL`, `lib/leagueValidation.ts`, plus
 « validé ligue ») — le fondateur a demandé à revoir toute la table après l'avoir lui-même trouvée
@@ -353,8 +352,7 @@ s'applique (app OU source), qui applique la source d'office (« pris en compte �
 cette fenêtre-ci, DISTINCTE de celle de naissance ci-dessus, est **restreinte à la semaine ISO en
 cours, lundi ET dimanche inclus** (D3, M15, 2026-10-28, `FbiArrivalReview::sourceIsAuthoritativeForWindow`)
 — avant, un simple plafond « ≤ dimanche » faisait foi pour N'IMPORTE QUELLE date passée, aussi
-lointaine soit-elle ; un domicile PLACÉ de plusieurs semaines que la source re-date loin devant (cas
-réel BCCL : un match du 10/10 réécrit en office au 14/11 par la numérotation réutilisée du 2ᵉ tour)
+lointaine soit-elle ; un domicile PLACÉ de plusieurs semaines que la source re-date loin devant (ex. : un match du 10/10 réécrit en office au 14/11 par la numérotation réutilisée du 2ᵉ tour)
 était ainsi réécrit SANS arbitrage. Un déphasage dont AUCUNE des deux dates ne tombe dans la semaine
 ISO en cours (passé ancien, ou entièrement futur) reste désormais toujours un arbitrage —
 **sauf sur la SALLE** (chantier A PR 4, § ci-dessus) : une salle inconnue (ni alias confirmé ni choix
@@ -389,13 +387,23 @@ RE-DATENT seulement l'entrée du registre « à corriger dans FBI »
 un seul mécanisme fait conclure à tort que le dialogue s'est tu.
 
 Deux routes de traitement (management + saison écrivable + socle pointé) : `POST
-/api/fixtures/review` (`{fixtureIds}` ligne, ou `{teamId}` masse — les rencontres à écart pendant
-sont sautées et NOMMÉES, jamais tranchées en masse) ; `POST /api/fixtures/review/deviations`
+/api/fixtures/review` (exactement UN de trois gestes, sinon 422 : `{fixtureIds}` ligne — écarts vidés,
+« garder l'appli » implicite ; `{teamId}` masse équipe ; `{scope: "away"}` masse extérieurs, seule
+portée admise). Les deux gestes en masse acquittent les rencontres `NEW` ou dont toutes les entrées
+sont `autoApplied` (domicile compris pour l'équipe ; un REVIEWED sans trace n'est pas re-horodaté,
+un domicile n'est jamais touché par la portée extérieurs) et SAUTENT, en les NOMMANT, celles qui
+portent un écart ARBITRABLE (`Fixture::hasArbitrableDeviations()`, une entrée `autoApplied === false`
+— ex. un ex-domicile devenu extérieur qui garde son écart de date) : jamais tranchées en masse. Un
+`OUT_OF_SYNC` sans aucune entrée n'est ni acquitté ni nommé. **Acquitter est définitif : les
+anciennes valeurs des alertes sont effacées**, la phrase « a déplacé ce match : … » n'est plus
+consultable ensuite (le toast et la file sont la dernière vue). Le front porte le geste extérieurs en
+un bouton « Tout marquer comme vu — extérieurs » (gestionnaires seulement, désactivé avec raison
+quand rien n'est acquittable, actif même si les extérieurs sont masqués) ; `POST /api/fixtures/review/deviations`
 (`{fixtureId, field, choice: keep_app|take_source, venueId?}`, rejoue le moteur partagé depuis la
 valeur PERSISTÉE — `venueId` OPTIONNEL sur `field: 'venue'` + `take_source`, l'appariement INLINE
 ci-dessus, chantier A PR 4). `ReviewQueueRow` : icône domicile/extérieur, heure ou « heure non publiée », salle
 résolue ; bouton **« Vu »** (NEW sans écart, OU REVIEWED qui porte encore une alerte `autoApplied`
-seule — même mot pour les deux cas, retours Nico BCCL 2026-10-27 M3, remplace « Valider »/« Pris en
+seule — même mot pour les deux cas, 2026-10-27 M3, remplace « Valider »/« Pris en
 compte » : la ligne ne « valide » rien, elle ACQUITTE une mise à jour déjà appliquée par l'import),
 une phrase UNIQUE pour l'alerte `autoApplied` (maison `lib/autoAppliedPhrase.ts` : date+heure
 reprogrammées fusionnent en « {source} a déplacé ce match : {ancienne date} → {nouvelle date} à

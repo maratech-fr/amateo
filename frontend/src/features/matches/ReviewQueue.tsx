@@ -16,7 +16,7 @@ import type { AttachVenueLabelInput, Competition, Fixture, ResolveDeviationInput
 import { DEFAULT_KINDS, normalizeKinds, revealPlan } from "./lib/consultFilter";
 import { applyConsultToParams } from "./lib/urlState";
 import { useAttachVenueLabel, useCompetitions, useResolveFixtureDeviation, useReviewFixtures } from "./queries";
-import { buildReviewQueue, byMatchDateAsc } from "./lib/reviewQueue";
+import { buildReviewQueue, byMatchDateAsc, isOpenReview } from "./lib/reviewQueue";
 import { MATCHES_TEXTS } from "./texts";
 import { ReviewQueueRow } from "./ReviewQueueRow";
 import { useMatchesStore } from "./store";
@@ -38,10 +38,14 @@ interface ReviewQueueProps {
  * (le même que `TeamSelect`). Un interrupteur « Afficher les traitées » révèle les
  * rencontres déjà traitées (masquées par défaut).
  *
- * Retours Nico (BCCL, 2026-10-27), M3 — la file n'est pas une « validation » (« ça fait quoi,
+ * M3 (2026-10-27) — la file n'est pas une « validation » (« ça fait quoi,
  * ça mène où ? ») : c'est un ACQUITTEMENT. L'import a déjà mis à jour les matchs ; marquer « vu »
  * ne place rien, ne change ni date ni gymnase — ça vide la liste. Les écarts, eux, s'arbitrent.
  * D'où le vocabulaire : « nouveautés à voir » / « écarts à trancher » / « Tout marquer comme vu ».
+ *
+ * Un bouton GLOBAL « Tout marquer comme vu — extérieurs » (rangée des interrupteurs, gestionnaires
+ * seulement) acquitte d'un clic les extérieurs ouverts ; ceux qui portent un écart à trancher sont
+ * laissés de côté par le serveur et nommés dans le toast. Acquitter efface les anciennes valeurs.
  */
 export function ReviewQueue({ fixtures, teams, venues }: ReviewQueueProps) {
   // Un Membre lit la file : aucun « marquer comme vu », aucun arbitrage.
@@ -94,6 +98,9 @@ export function ReviewQueue({ fixtures, teams, venues }: ReviewQueueProps) {
   // Sans « afficher les traitées », on ne montre que les équipes à rencontres ouvertes.
   const visibleQueues = showTreated ? queues : queues.filter((q) => q.open.length > 0);
   const hasTreated = queues.some((q) => q.treated.length > 0);
+  // Un extérieur ACQUITTABLE d'un geste : ouvert et sans écart à trancher (toutes ses entrées
+  // appliquées d'office). Lu sur TOUTES les rencontres, « Masquer les extérieurs » n'y change rien.
+  const hasAcquittableAway = useMemo(() => fixtures.some((f) => "AWAY" === f.homeAway && isOpenReview(f) && !f.pendingDeviations.some((d) => !d.autoApplied)), [fixtures]);
 
   const setParam = (key: string, value: string | null): void => {
     const next = new URLSearchParams(searchParams);
@@ -174,16 +181,52 @@ export function ReviewQueue({ fixtures, teams, venues }: ReviewQueueProps) {
               .map((s) => fixtureById.get(s.fixtureId))
               .filter((f): f is Fixture => undefined !== f)
               .map((f) => frDateWeekdayNoYear(f.matchDate));
-            toast.info(
-              `${teamName(teamId)} : ${r.skipped.length} rencontre${r.skipped.length > 1 ? "s" : ""} à écart non validée${r.skipped.length > 1 ? "s" : ""}${dates.length > 0 ? ` (${dates.join(", ")})` : ""} — arbitrez leurs écarts.`,
-            );
+            toast.info(MATCHES_TEXTS.reviewSkippedToast(teamName(teamId), r.skipped.length, dates));
           }
         },
       },
     );
   };
 
+  const onValidateAway = (): void => {
+    reviewFixtures.mutate(
+      { scope: "away" },
+      {
+        onSuccess: (r) => {
+          // Nommer équipe + date, JAMAIS l'id. Une rencontre absente de la liste chargée est
+          // comptée sans nom (ni équipe ni date connues).
+          const skipped = r.skipped.map((s) => {
+            const f = fixtureById.get(s.fixtureId);
+            return undefined === f ? { team: "", date: "" } : { team: teamName(f.teamId), date: frDateWeekdayNoYear(f.matchDate) };
+          });
+          const message = MATCHES_TEXTS.reviewAwaySeenToast(r.reviewed, skipped);
+          if (skipped.length > 0) {
+            toast.info(message);
+          } else {
+            toast.success(message);
+          }
+        },
+      },
+    );
+  };
+
+  // Geste global « extérieurs » : réservé aux gestionnaires, désactivé quand aucun extérieur n'est
+  // acquittable — la raison s'écrit alors EN CLAIR à côté (pas de `disabledReason`, qui la
+  // doublerait). Présent aussi dans l'état vide (extérieurs masqués).
+  const awayButton = canManage ? (
+    <>
+      <Button variant="outline" size="sm" disabled={busy || !hasAcquittableAway} onClick={onValidateAway}>
+        <CheckCheck className="size-4" />
+        {MATCHES_TEXTS.reviewMarkAwaySeen}
+      </Button>
+      {hasAcquittableAway ? null : <span className="text-sm text-muted-foreground">{MATCHES_TEXTS.reviewMarkAwaySeenDisabled}</span>}
+    </>
+  ) : null;
+
   if (0 === visibleQueues.length) {
+    // Extérieurs masqués mais encore à marquer comme vus : l'état vide ne dit pas « à jour »
+    // (le bouton juste au-dessus est actif). Un Membre, sans le geste, lit le texte d'origine.
+    const awayHiddenPending = canManage && hideAway && hasAcquittableAway;
     return (
       <div className="flex flex-col gap-3">
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
@@ -195,8 +238,13 @@ export function ReviewQueue({ fixtures, teams, venues }: ReviewQueueProps) {
           <FilterToggle checked={hideAway} onChange={toggleHideAway}>
             {MATCHES_TEXTS.reviewHideAway}
           </FilterToggle>
+          {awayButton}
         </div>
-        <EmptyState icon={Inbox} title={MATCHES_TEXTS.reviewNothingToTreatTitle} description={MATCHES_TEXTS.reviewNothingToTreatDescription} />
+        <EmptyState
+          icon={Inbox}
+          title={awayHiddenPending ? MATCHES_TEXTS.reviewNothingToTreatAwayHiddenTitle : MATCHES_TEXTS.reviewNothingToTreatTitle}
+          description={awayHiddenPending ? MATCHES_TEXTS.reviewNothingToTreatAwayHiddenDescription : MATCHES_TEXTS.reviewNothingToTreatDescription}
+        />
       </div>
     );
   }
@@ -204,9 +252,7 @@ export function ReviewQueue({ fixtures, teams, venues }: ReviewQueueProps) {
   return (
     <div className="flex flex-col gap-3">
       {/* M3 — la file est un ACQUITTEMENT : l'import a déjà appliqué les mises à jour, « vu » vide la liste. */}
-      <p className="text-sm text-muted-foreground">
-        L'import a déjà mis à jour vos matchs. Marquez-les comme vus pour vider la liste ; les écarts, eux, demandent votre arbitrage.
-      </p>
+      <p className="text-sm text-muted-foreground">{canManage ? MATCHES_TEXTS.reviewHelp : MATCHES_TEXTS.reviewHelpMember}</p>
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
         <FilterToggle checked={showTreated} onChange={toggleTreated}>
           {MATCHES_TEXTS.reviewShowTreated}
@@ -214,6 +260,7 @@ export function ReviewQueue({ fixtures, teams, venues }: ReviewQueueProps) {
         <FilterToggle checked={hideAway} onChange={toggleHideAway}>
           {MATCHES_TEXTS.reviewHideAway}
         </FilterToggle>
+        {awayButton}
       </div>
       {visibleQueues.map((queue) => {
         // Traitées affichées = UNE liste par équipe, toujours triée par date (jamais les
@@ -244,7 +291,7 @@ export function ReviewQueue({ fixtures, teams, venues }: ReviewQueueProps) {
               {queue.open.length > 0 && canManage ? (
                 <Button variant="outline" size="sm" className="self-start" disabled={busy} onClick={() => onValidateTeam(queue.teamId)}>
                   <CheckCheck className="size-4" />
-                  Tout marquer comme vu
+                  {MATCHES_TEXTS.reviewMarkAllSeen}
                 </Button>
               ) : null}
               <ul className="flex flex-col gap-2">
