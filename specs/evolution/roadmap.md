@@ -1,4 +1,4 @@
-# Roadmap (126) — ce qui reste à faire
+# Roadmap (127) — ce qui reste à faire
 
 > **Ce fichier ne tient QUE l'ouvert.** Bugs, évolutions, dettes techniques : tout ce qu'on trace pour ne pas
 > l'oublier un jour. Rien de livré n'y figure — un item livré **quitte** ce fichier et laisse sa trace dans
@@ -220,6 +220,7 @@
 | P4-525 | **Marqueurs structurés `if: failure()` dans `ci.yml`, si le relevé laisse trop d'« inconnu »** | ⚪ | S | Le relevé classe par lecture du log du step échoué. Conditionnel : si, sur 30 jours, plus de 10 % des jobs rouges restent « inconnu », faire écrire à `ci.yml` un marqueur structuré (`if: failure()`) par job que le relevé lirait à la place des signatures. Rien à faire tant que la part d'« inconnu » reste sous ce seuil |
 | P4-526 | **Direction artistique du SaaS et de la vitrine** | ⚪ | S | Constat fondateur 2026-11-10 : le design de l'application et de la vitrine fait « très IA », trop générique. Aucun chantier lancé : le fondateur prend le temps de se questionner et donnera 3 à 5 références (sites ou applications qu'il trouve distinctifs). Méthode proposée : références, captures des écrans clés, une page de direction artistique écrite (palette, typographie, ton, formes, ce qu'on s'interdit) validée par lui, puis refonte par morceaux, vitrine d'abord. Aujourd'hui : fond chaud, accent teal, coins arrondis, `system-ui` pour tout le texte et une seule police de marque pour le logo |
 | P4-527 | **Première vraie branche de lot : vérifier l'auto-suppression au merge final et le multi-agents** | ⚪ | XS | Les gestes d'exploitation sur `lot/essai` ont prouvé les rulesets, le rebase et la garde `edited`, mais pas : la suppression automatique de `lot/<sujet>` par `delete_branch_on_merge` face à `lot-no-delete` au merge final, ni plusieurs agents qui poussent dans le même lot (`docs/ops/ci-runner.md` §9). À constater à la première branche de lot réelle |
+| P4-566 | **État vide de la file : « à jour » est faux quand des extérieurs masqués portent un écart à trancher** | ⚪ | XS | Matchs › Importer, « Masquer les extérieurs » coché : si les seuls extérieurs ouverts portent un écart à trancher (aucun à marquer comme vu d'un geste), la file est vide à l'écran et l'état vide dit « Toutes les rencontres importées sont à jour », alors qu'il reste des écarts à trancher. Le cas « extérieurs à marquer comme vus » a déjà son propre texte (`ReviewQueue.tsx`) ; il manque celui des écarts |
 
 ---
 

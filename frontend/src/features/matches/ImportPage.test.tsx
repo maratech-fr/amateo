@@ -273,6 +273,19 @@ describe("ImportPage — la file de traitement", () => {
     });
   });
 
+  /** Forme « 0 saut » du geste équipe : aucun toast « laissées de côté » (jamais « 0 rencontre à écart »). */
+  it("Tout marquer comme vu sans rencontre laissée de côté : aucun toast « laissées de côté »", async () => {
+    reviewFixtures.mockResolvedValueOnce({ reviewed: 2, skipped: [] });
+    const user = userEvent.setup();
+    renderPage([fx("team-1", "NEW", "2026-11-07"), fx("team-1", "NEW", "2026-11-14")], "/matchs/importer?equipe=team-1");
+    await user.click(await screen.findByRole("button", { name: MATCHES_TEXTS.reviewMarkAllSeen }));
+    expect(reviewFixtures).toHaveBeenCalledWith({ teamId: "team-1" });
+    // Le succès invalide la liste (2ᵉ lecture) : les rappels de succès ont alors tourné.
+    await waitFor(() => expect(getFixtures).toHaveBeenCalledTimes(2));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(useToastStore.getState().toasts.map((t) => t.message)).toEqual([]);
+  });
+
   it("un écart se lit en deux colonnes Amateo / FBI avec la conséquence, et se tranche", async () => {
     const user = userEvent.setup();
     renderPage([fx("team-1", "OUT_OF_SYNC", "2026-12-05", { pendingDeviations: [dateDev] })], "/matchs/importer?equipe=team-1");
@@ -383,11 +396,41 @@ describe("ImportPage — masquer les extérieurs (PR A)", () => {
  * Lot prod Matchs PR 2 — « Tout marquer comme vu — extérieurs » : un bouton GLOBAL, dans la rangée
  * des interrupteurs, acquitte d'un clic les extérieurs ouverts ({scope: "away"}) ; un toast dit
  * combien sont vus et NOMME (équipe + date, jamais l'id) ceux laissés de côté pour un écart à
- * trancher. Désactivé, raison annoncée, quand aucun extérieur n'est acquittable ; absent pour un
- * Membre ; présent même extérieurs masqués. Textes : clés de `texts.ts`, jamais la phrase.
+ * trancher. Désactivé, raison écrite en clair à côté, quand aucun extérieur n'est acquittable ;
+ * absent pour un Membre ; présent même extérieurs masqués, l'état vide disant alors qu'il reste des
+ * extérieurs à marquer comme vus. Textes : clés de `texts.ts`, jamais la phrase.
  */
 describe("ImportPage — tout marquer comme vu, extérieurs (lot prod Matchs PR 2)", () => {
   const awayGlobal = (): HTMLElement => screen.getByRole("button", { name: MATCHES_TEXTS.reviewMarkAwaySeen });
+
+  /** Désactivé = `disabled` natif OU `aria-disabled` (les deux régimes de `Button`). */
+  function expectDisabled(button: HTMLElement): void {
+    expect((button as HTMLButtonElement).disabled || "true" === button.getAttribute("aria-disabled")).toBe(true);
+  }
+
+  /**
+   * La raison est VISIBLE en clair à côté du bouton : rendue une seule fois (jamais doublée par le
+   * `<span sr-only>` de `disabledReason` — exception « raison déjà en clair » d'A11Y-30), hors
+   * `sr-only`, hors du bouton (son nom accessible reste le geste), sans infobulle `title`, et dans la
+   * rangée du bouton — leur plus proche ancêtre commun ne contient ni la file ni l'état vide.
+   */
+  function expectReasonShownBeside(button: HTMLElement, reason: string): void {
+    const occurrences = screen.getAllByText(reason);
+    expect(occurrences).toHaveLength(1);
+    const shown = occurrences[0];
+    expect(shown.closest(".sr-only")).toBeNull();
+    expect(button.contains(shown)).toBe(false);
+    expect(button).not.toHaveAttribute("title");
+    let row: HTMLElement | null = button.parentElement;
+    while (null !== row && !row.contains(shown)) {
+      row = row.parentElement;
+    }
+    expect(row).not.toBeNull();
+    const shared = within(row as HTMLElement);
+    expect(shared.queryByText(MATCHES_TEXTS.reviewHelp)).not.toBeInTheDocument();
+    expect(shared.queryByText(MATCHES_TEXTS.reviewNothingToTreatTitle)).not.toBeInTheDocument();
+    expect(shared.queryByRole("button", { name: /SM1|SF2/ })).not.toBeInTheDocument();
+  }
 
   it("acquitte les extérieurs d'un clic ({scope: 'away'}) et dit combien en toast", async () => {
     reviewFixtures.mockResolvedValueOnce({ reviewed: 2, skipped: [] });
@@ -424,7 +467,12 @@ describe("ImportPage — tout marquer comme vu, extérieurs (lot prod Matchs PR 
     });
   });
 
-  it("désactivé, raison annoncée, quand aucun extérieur n'est acquittable (seul un extérieur à écart à trancher)", async () => {
+  /**
+   * Contrôle visuel PR 2 : la raison du bouton désactivé n'était lisible qu'au survol / lecteur
+   * d'écran — l'œil voyait un bouton grisé sans savoir pourquoi. Elle s'écrit désormais EN CLAIR à
+   * côté du bouton (clé `reviewMarkAwaySeenDisabled`), une seule fois.
+   */
+  it("désactivé quand aucun extérieur n'est acquittable (seul un extérieur à écart à trancher) : la raison est écrite en clair à côté", async () => {
     const user = userEvent.setup();
     renderPage([
       fx("team-2", "OUT_OF_SYNC", "2026-12-05", { homeAway: "AWAY", status: "UNPLACED", pendingDeviations: [dateDev] }),
@@ -433,8 +481,8 @@ describe("ImportPage — tout marquer comme vu, extérieurs (lot prod Matchs PR 
       fx("team-1", "NEW", "2026-12-06"),
     ]);
     await screen.findByRole("button", { name: /SM1/ });
-    expect(awayGlobal()).toHaveAttribute("aria-disabled", "true");
-    expect(awayGlobal()).toHaveAccessibleDescription(MATCHES_TEXTS.reviewMarkAwaySeenDisabled);
+    expectDisabled(awayGlobal());
+    expectReasonShownBeside(awayGlobal(), MATCHES_TEXTS.reviewMarkAwaySeenDisabled);
     await user.click(awayGlobal());
     expect(reviewFixtures).not.toHaveBeenCalled();
   });
@@ -442,7 +490,37 @@ describe("ImportPage — tout marquer comme vu, extérieurs (lot prod Matchs PR 
   it("désactivé quand il n'y a aucun extérieur ouvert (seuls des domiciles à voir)", async () => {
     renderPage([fx("team-1", "NEW", "2026-12-06"), fx("team-2", "REVIEWED", "2026-12-12", { homeAway: "AWAY", status: "UNPLACED", reviewedAt: "2026-10-01T10:00:00+00:00" })]);
     await screen.findByRole("button", { name: /SM1/ });
-    expect(awayGlobal()).toHaveAttribute("aria-disabled", "true");
+    expectDisabled(awayGlobal());
+  });
+
+  /** Témoin du cas précédent : bouton actif ⇒ aucune raison de désactivation à l'écran (elle mentirait). */
+  it("actif : la raison de désactivation n'est écrite nulle part", async () => {
+    renderPage([fx("team-2", "NEW", "2026-12-05", { homeAway: "AWAY", status: "UNPLACED" })]);
+    await screen.findByRole("button", { name: /SF2/ });
+    expect(awayGlobal()).toBeEnabled();
+    expect(awayGlobal()).not.toHaveAttribute("aria-disabled", "true");
+    expect(screen.queryByText(MATCHES_TEXTS.reviewMarkAwaySeenDisabled)).not.toBeInTheDocument();
+  });
+
+  /**
+   * Contrôle visuel PR 2 : extérieurs masqués, la file est vide à l'écran MAIS un extérieur reste à
+   * marquer comme vu — « Toutes les rencontres importées sont à jour » contredirait le bouton actif
+   * juste au-dessus. L'état vide dit alors en clair que les extérieurs masqués ont des changements à
+   * marquer comme vus (clé `reviewNothingToTreatAwayHiddenDescription`). Témoin : le cas suivant.
+   */
+  it("extérieurs masqués avec un extérieur à voir : l'état vide ne dit pas « à jour », il renvoie aux extérieurs masqués", async () => {
+    renderPage([fx("team-2", "NEW", "2026-12-05", { homeAway: "AWAY", status: "UNPLACED" })], "/matchs/importer?exterieurs=masques");
+    expect(await screen.findByRole("button", { name: MATCHES_TEXTS.reviewMarkAwaySeen })).toBeEnabled();
+    expect(screen.getByText(MATCHES_TEXTS.reviewNothingToTreatAwayHiddenDescription)).toBeInTheDocument();
+    expect(screen.queryByText(MATCHES_TEXTS.reviewNothingToTreatDescription)).not.toBeInTheDocument();
+  });
+
+  it("extérieurs masqués sans extérieur acquittable : l'état vide d'origine, bouton désactivé raison en clair", async () => {
+    renderPage([fx("team-2", "REVIEWED", "2026-12-12", { homeAway: "AWAY", status: "UNPLACED", reviewedAt: "2026-10-01T10:00:00+00:00" })], "/matchs/importer?exterieurs=masques");
+    expect(await screen.findByText(MATCHES_TEXTS.reviewNothingToTreatDescription)).toBeInTheDocument();
+    expect(screen.queryByText(MATCHES_TEXTS.reviewNothingToTreatAwayHiddenDescription)).not.toBeInTheDocument();
+    expectDisabled(awayGlobal());
+    expectReasonShownBeside(awayGlobal(), MATCHES_TEXTS.reviewMarkAwaySeenDisabled);
   });
 
   it("présent et actif même extérieurs masqués : le geste et son toast disent tout", async () => {

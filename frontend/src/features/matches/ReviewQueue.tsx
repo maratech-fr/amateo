@@ -210,22 +210,23 @@ export function ReviewQueue({ fixtures, teams, venues }: ReviewQueueProps) {
     );
   };
 
-  // Geste global « extérieurs » : réservé aux gestionnaires, désactivé (raison annoncée) quand
-  // aucun extérieur n'est acquittable. Présent aussi dans l'état vide (extérieurs masqués).
+  // Geste global « extérieurs » : réservé aux gestionnaires, désactivé quand aucun extérieur n'est
+  // acquittable — la raison s'écrit alors EN CLAIR à côté (pas de `disabledReason`, qui la
+  // doublerait). Présent aussi dans l'état vide (extérieurs masqués).
   const awayButton = canManage ? (
-    <Button
-      variant="outline"
-      size="sm"
-      disabled={busy || !hasAcquittableAway}
-      disabledReason={hasAcquittableAway ? undefined : MATCHES_TEXTS.reviewMarkAwaySeenDisabled}
-      onClick={onValidateAway}
-    >
-      <CheckCheck className="size-4" />
-      {MATCHES_TEXTS.reviewMarkAwaySeen}
-    </Button>
+    <>
+      <Button variant="outline" size="sm" disabled={busy || !hasAcquittableAway} onClick={onValidateAway}>
+        <CheckCheck className="size-4" />
+        {MATCHES_TEXTS.reviewMarkAwaySeen}
+      </Button>
+      {hasAcquittableAway ? null : <span className="text-sm text-muted-foreground">{MATCHES_TEXTS.reviewMarkAwaySeenDisabled}</span>}
+    </>
   ) : null;
 
   if (0 === visibleQueues.length) {
+    // Extérieurs masqués mais encore à marquer comme vus : l'état vide ne dit pas « à jour »
+    // (le bouton juste au-dessus est actif). Un Membre, sans le geste, lit le texte d'origine.
+    const awayHiddenPending = canManage && hideAway && hasAcquittableAway;
     return (
       <div className="flex flex-col gap-3">
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
@@ -239,7 +240,11 @@ export function ReviewQueue({ fixtures, teams, venues }: ReviewQueueProps) {
           </FilterToggle>
           {awayButton}
         </div>
-        <EmptyState icon={Inbox} title={MATCHES_TEXTS.reviewNothingToTreatTitle} description={MATCHES_TEXTS.reviewNothingToTreatDescription} />
+        <EmptyState
+          icon={Inbox}
+          title={awayHiddenPending ? MATCHES_TEXTS.reviewNothingToTreatAwayHiddenTitle : MATCHES_TEXTS.reviewNothingToTreatTitle}
+          description={awayHiddenPending ? MATCHES_TEXTS.reviewNothingToTreatAwayHiddenDescription : MATCHES_TEXTS.reviewNothingToTreatDescription}
+        />
       </div>
     );
   }
@@ -247,7 +252,7 @@ export function ReviewQueue({ fixtures, teams, venues }: ReviewQueueProps) {
   return (
     <div className="flex flex-col gap-3">
       {/* M3 — la file est un ACQUITTEMENT : l'import a déjà appliqué les mises à jour, « vu » vide la liste. */}
-      <p className="text-sm text-muted-foreground">{MATCHES_TEXTS.reviewHelp}</p>
+      <p className="text-sm text-muted-foreground">{canManage ? MATCHES_TEXTS.reviewHelp : MATCHES_TEXTS.reviewHelpMember}</p>
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
         <FilterToggle checked={showTreated} onChange={toggleTreated}>
           {MATCHES_TEXTS.reviewShowTreated}
