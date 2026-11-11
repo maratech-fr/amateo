@@ -152,7 +152,8 @@ _verdict_semaphore = asyncio.Semaphore(settings.max_concurrent_verdicts)
 # Constat mesuré : `solve_match_placement` (CP-SAT) tournait dans CE processus uvicorn
 # via `asyncio.to_thread`. CP-SAT libère bien sa mémoire native en fin de solve, mais
 # glibc garde les arènes : le conteneur engine restait à ~474-539 Mio au repos après
-# quelques placements (limite `mem_limit 512m`, à NE PAS augmenter — décision fondateur).
+# quelques placements (limite prod `mem_limit: 1g`, `docker-compose.prod.yml` — un filet, pas
+# une cible : le correctif est ce fils jetable).
 # Un processus fils JETABLE rend 100 % de cette mémoire à sa mort ; `malloc_trim(0)` en
 # ceinture côté parent rend le reste (les arènes de l'orchestration FastAPI elle-même).
 #

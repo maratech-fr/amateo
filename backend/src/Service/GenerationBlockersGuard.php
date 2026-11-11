@@ -154,7 +154,7 @@ final readonly class GenerationBlockersGuard
         foreach ($this->capacityMirror->venueMinimumSaturation($payload) as $s) {
             if (\in_array($s['venueId'], $gridSaturated, true)) {
                 $result['blockers'][] = \sprintf(
-                    'Vos contraintes « au moins » réclament %s à %s, mais il n\'y reste que %s libre%s une fois les réservations déduites : la génération échouera. Ajoutez des créneaux dans ce gymnase, libérez des réservations, ou assouplissez ces contraintes.',
+                    'Vos contraintes « au moins » réclament %s à %s, mais il n\'y reste que %s libre%s une fois les réservations déduites : la génération est refusée tant que ce n\'est pas corrigé. Ajoutez des créneaux dans ce gymnase, libérez des réservations, ou assouplissez ces contraintes.',
                     $this->plural($s['demand'], 'place de créneau', 'places de créneau'),
                     $s['venueName'],
                     $this->plural($s['free'], 'place', 'places'),

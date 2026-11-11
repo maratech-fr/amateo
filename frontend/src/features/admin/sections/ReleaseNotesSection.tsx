@@ -189,7 +189,7 @@ function ReleaseNoteRow({ note, publishing, removing, onPublish, onRemove }: {
     <li className="flex flex-col gap-2 p-4 md:flex-row md:items-start md:justify-between">
       <div className="min-w-0">
         <ReleaseNoteHeading date={note.date} version={note.version} variant="console" />
-        <p className="mt-0.5 flex items-center gap-2 text-sm font-medium text-white">
+        <p className="mt-0.5 flex items-center gap-2 text-lg font-semibold text-white">
           {note.title}
           {null === note.publishedAt ? (
             <span className="rounded bg-console-muted/20 px-1.5 py-0.5 text-xs font-semibold uppercase text-console-text">{ADMIN_SECTIONS_TEXTS.releaseNotesBadgeDraft}</span>

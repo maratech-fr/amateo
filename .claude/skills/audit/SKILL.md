@@ -25,13 +25,13 @@ Lance 5 agents d'analyse en parallèle (lecture seule, aucun test destructif) :
 
 ## Étape 2 — Checks directs (toi-même, pas les agents)
 
-- **Supply chain** : `npm audit --omit=dev` (frontend, host), `docker compose exec -T php-fpm composer audit`, `docker compose exec -T engine pip-audit` (installer si absent).
+- **Supply chain** : `npm audit --omit=dev` dans le conteneur tooling (`docker compose --profile tools run --rm frontend-tooling npm audit --omit=dev`), `docker compose exec -T php-fpm composer audit`, `docker compose exec -T engine pip-audit` (installer si absent).
 - **Contenu des images de production** : pour chacune des 6 images (php nginx frontend postgres engine pdf-worker), lister les paquets installés (`dpkg-query` / `apk`) et les confronter à ce que l'image sert ; compter les failles HIGH/CRITICAL par image (Trivy) ; tout outil embarqué non utilisé = finding.
 - **Infra/Mercure** : lire la config du hub dans `docker-compose.yml` (directives `anonymous`, `cors_origins`, clés JWT), bindings de ports, limites de ressources.
 - **Prod-readiness/observabilité** : Sentry câblé ? backups PostgreSQL (`pg_dump`/scripts/volumes) ? limites RAM appliquées ? healthchecks ? config prod distincte ?
 - **Secrets** : `git ls-files` sur les emplacements sensibles (`backend/config/jwt/`, `.env*`) — vérifier ce qui est réellement tracké avant d'affirmer une fuite.
 - **RGPD (statique)** : purge/rétention implémentées ? audit trail ? données de mineurs/coachs exposées ?
-- **Perf (si stack up)** : lancer `make -C backend behat` (feature `generation-du-planning-de-saison.feature`) et relever le wall-time. Sinon marquer l'axe `non couvert`.
+- **Perf (si stack up)** : lancer `backend/scripts/with-sandbox.sh make -C backend behat` en mode play (feature `generation-du-planning-de-saison.feature`) et relever le wall-time. Sinon marquer l'axe `non couvert`.
 - **UX** : traité à part en **Étape 2 ter** (axes additifs cohérence / simplicité / inclusivité).
 
 ## Étape 2 bis — Chasse aux angles morts (OBLIGATOIRE)
@@ -241,7 +241,7 @@ l'audit n'est pas fini.
 
 ## Règles
 
-- Ne **jamais commiter** le résultat — le fichier reste en working tree, l'utilisateur décide (mémo projet : jamais de merge sans go explicite).
+- Ne **jamais commiter** le résultat — le fichier reste en working tree, l'utilisateur décide (mémo projet : jamais de merge sans go explicite, **sauf PR vers `lot/<sujet>` dans un lot validé, CI verte** — CLAUDE.md §7).
 - **Sévérité par défaut — extrême, assumée.** La barre de notation est l'application **commercialisable** (cible : mi-2027), jamais le stade de développement du moment. Le rôle de l'audit est de **prémunir des erreurs au plus tôt** pour une app **simple d'utilisation ET robuste en tout point** : dans le doute, noter BAS et flaguer. Ne jamais adoucir une note ou une gravité parce que « c'est encore en dev » — l'utilisateur veut voir les angles morts tôt et s'y habituer. Pas de gravité « à terme » : un backup absent est Élevé aujourd'hui, point. Le contexte dev se lit dans la trajectoire du registre (findings corrigés édition après édition), pas dans des notes gonflées.
 - **« Ça tourne » n'est JAMAIS un signal de réussite.** La note mesure la **distance au commercialisable**, pas « est-ce que ça démarre ». La fonctionnalité minimale est un **prérequis** (présent dès la zone 60+), pas un palier : une app qui s'exécute sans crash peut parfaitement mériter **20-39** si elle est insécure, illisible, non maintenable ou inutilisable par un gestionnaire lambda. Ne jamais remonter une note basse au motif que « au moins ça marche ». Les 6 tranches ci-dessus ne bougent pas (comparabilité) — leur sens reste stable d'une édition à l'autre.
 - En cas de doute sur une gravité, prendre la plus haute. Un finding sur-coté se rétrograde à l'édition suivante ; un finding sous-coté devient un incident en prod.

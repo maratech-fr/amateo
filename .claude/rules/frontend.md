@@ -419,7 +419,7 @@ paths:
   l'API sert vraiment (`*Date`/`*Deadline` → `Y-m-d`, `*At` → RFC 3339) — gardé par
   `backend/tests/CrossStack/FrontMockDateFormatMatchesContractTest.php`, détail
   [`../../docs/testing/testing-strategy.md`](../../docs/testing/testing-strategy.md) §2.
-- **Tout tourne dans Docker**, frontend compris : les 12 cibles de `frontend/Makefile` passent par
+- **Tout tourne dans Docker**, frontend compris : toutes les cibles de `frontend/Makefile` passent par
   `docker compose`, sans exception. Tester sur l'hôte valide une version de Node qui n'est celle de
   personne.
 - ⚠ **Un e2e qui passe sans avoir rien mis à l'épreuve est un faux vert** : quand un scénario peut

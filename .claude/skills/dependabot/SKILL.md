@@ -90,7 +90,7 @@ version MAJEURE** attend la décision du fondateur sur sa fiche (étape 1, point
    (§7.1 CLAUDE.md). Dans ce cas : commenter la PR avec le diagnostic, la laisser ouverte, la
    signaler à l'utilisateur dans le bilan.
 3. Committer le correctif **sur la branche de la PR Dependabot** (préfixe `(IA Claude) `,
-   trailers habituels) et pousser. Dependabot tolère les commits ajoutés à ses branches.
+   **aucun trailer** — fondateur 2026-09-30) et pousser. Dependabot tolère les commits ajoutés à ses branches.
 4. Relancer la suite de la zone → verte.
 
 ## Étape 3 — Par PR : merger
@@ -138,7 +138,7 @@ version MAJEURE** attend la décision du fondateur sur sa fiche (étape 1, point
 - **Jamais** downgrader une dépendance de sécurité (les PRs `security` de Dependabot sont prioritaires — les traiter en premier, toutes zones confondues).
 - Backend/engine : tout se lance **dans les containers** (PHPUnit avec `APP_ENV=test`).
 - **Tout se lance dans les containers, frontend compris.** L'hôte n'a que Docker, Docker Compose et
-  Make — convention du dépôt (CLAUDE.md §10), et **les 12 cibles de `frontend/Makefile` passent par
+  Make — convention du dépôt (CLAUDE.md §10), et **toutes les cibles de `frontend/Makefile` passent par
   `docker compose`, sans exception**. Tester le frontend sur l'hôte valide une version de Node qui
   n'est celle de personne : ni celle de la CI (runners `setup-node`), ni celle de l'image tooling —
   et fait conclure à tort qu'il faut agir sur le poste du fondateur (constaté 2026-07-29).

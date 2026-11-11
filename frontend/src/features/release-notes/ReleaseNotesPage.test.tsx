@@ -121,7 +121,44 @@ describe("ReleaseNotesPage — corps riche", () => {
 
     expect(screen.getByText(/Ligne A/)).toHaveClass("whitespace-pre-line");
   });
+
+  /**
+   * Petites lignes (hiérarchie des titres, Q3) : sur la page, le titre de note fait 18 px
+   * (`text-lg font-semibold`) et reste PLUS GRAND que l'intertitre du corps (14 px). Contrat de
+   * classes ; l'intertitre est gardé par `shared/components/ui/rich-text.test.tsx`, la modale (16 px)
+   * par `WhatsNewModal.test.tsx`.
+   */
+  it("hiérarchie : titre de carte en text-lg, plus grand que l'intertitre du corps", async () => {
+    mockGet.mockResolvedValue({
+      seenUpTo: null,
+      items: [
+        {
+          id: "r1",
+          date: "2026-11-15",
+          title: "Nouveautés de la rentrée",
+          body: "Matchs",
+          publishedAt: "2026-11-15T09:00:00+00:00",
+          version: "1.3.5",
+          bodyRich: { type: "doc", content: [{ type: "heading", attrs: { level: 3 }, content: [{ type: "text", text: "Matchs" }] }] },
+        },
+      ] as ReleaseNoteItem[],
+    });
+    renderWithProviders(<ReleaseNotesPage />);
+
+    const title = await screen.findByRole("heading", { level: 2, name: "Nouveautés de la rentrée" });
+    const intertitle = screen.getByRole("heading", { level: 3, name: "Matchs" });
+
+    expect(title.className.split(/\s+/)).toEqual(expect.arrayContaining(["text-lg", "font-semibold"]));
+    expect(textSizeRank(title)).toBeGreaterThan(textSizeRank(intertitle));
+  });
 });
+
+/** Rang de la classe de taille Tailwind d'un élément (−1 si aucune) — compare deux titres. */
+function textSizeRank(element: HTMLElement): number {
+  const scale = ["text-xs", "text-sm", "text-base", "text-lg", "text-xl", "text-2xl"];
+  const classes = element.className.split(/\s+/);
+  return scale.findIndex((size) => classes.includes(size));
+}
 
 /**
  * Promesse (A3) : **sur la page, chaque note s'annonce « date - version », puis son TITRE — un vrai

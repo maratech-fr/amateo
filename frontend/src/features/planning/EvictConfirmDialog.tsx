@@ -14,6 +14,7 @@ import { cn } from "@/shared/lib/utils";
 import { MOVE_VERDICT_TIMEOUT_SECONDS } from "./api";
 import type { Compromise, MoveViolation } from "./api";
 import { CompromiseList } from "./CompromiseList";
+import { PLANNING_TEXTS } from "./texts";
 
 /**
  * P2-32 (D6) — la modale qui s'interpose quand on déplace une équipe vers un créneau OCCUPÉ.
@@ -47,9 +48,9 @@ export type EvictDialogPhase = "checking" | "accepted" | "refused" | "failed" | 
 export type EvictFailureKind = "timeout" | "interrupted" | "unreachable";
 
 const FAILURE_MESSAGE: Record<EvictFailureKind, string> = {
-  timeout: "La vérification n'a pas abouti — le moteur n'a pas répondu à temps. Réessayez.",
-  interrupted: "La vérification a été interrompue avant la réponse — réessayez.",
-  unreachable: "La vérification n'a pas abouti — le moteur est indisponible. Réessayez.",
+  timeout: PLANNING_TEXTS.evictFailedTimeout,
+  interrupted: PLANNING_TEXTS.evictFailedInterrupted,
+  unreachable: PLANNING_TEXTS.evictFailedUnreachable,
 };
 
 interface EvictConfirmDialogProps {
@@ -96,15 +97,15 @@ export function EvictConfirmDialog({ open, phase, kind = "evict", occupantName, 
   const title =
     "refused" === phase
       ? isSwap
-        ? "Échange impossible"
-        : "Déplacement impossible"
+        ? PLANNING_TEXTS.swapRefusedTitle
+        : PLANNING_TEXTS.evictRefusedTitle
       : "failed" === phase
-        ? "La vérification n'a pas abouti"
+        ? PLANNING_TEXTS.evictFailedTitle
         : "indeterminate" === phase
-          ? "La vérification a pris trop de temps"
+          ? PLANNING_TEXTS.evictIndeterminateTitle
           : isSwap
-            ? "Échanger les deux créneaux ?"
-            : "Déplacer vers un créneau occupé ?";
+            ? PLANNING_TEXTS.swapTitle
+            : PLANNING_TEXTS.evictTitle;
 
   return createPortal(
     <div className="fixed inset-0 z-[90] flex items-center justify-center p-4">
@@ -129,7 +130,7 @@ export function EvictConfirmDialog({ open, phase, kind = "evict", occupantName, 
             // indisponible » si le front raccroche. La borne suit le budget client (cf. api.ts).
             <div className="flex items-center gap-2 text-muted-foreground" role="status">
               <Spinner className="size-4" />
-              Vérification en cours — le moteur calcule, cela peut prendre jusqu'à {MOVE_VERDICT_TIMEOUT_SECONDS} s.
+              {PLANNING_TEXTS.evictChecking(MOVE_VERDICT_TIMEOUT_SECONDS)}
             </div>
           ) : null}
 
@@ -138,19 +139,19 @@ export function EvictConfirmDialog({ open, phase, kind = "evict", occupantName, 
               <p className="text-muted-foreground">
                 {isSwap ? (
                   <>
-                    Échanger avec <span className="font-medium text-foreground">{occupantName}</span> ? Les deux séances troqueront leurs créneaux, sans perte.
-                  </>
-                ) : occupantIsGroup ? (
-                  <>
-                    Ce créneau est occupé par <span className="font-medium text-foreground">{occupantName}</span>. Le déplacer d'ici ? Ses séances passeront dans les séances à replacer.
+                    {PLANNING_TEXTS.swapAcceptedLead}
+                    <span className="font-medium text-foreground">{occupantName}</span>
+                    {PLANNING_TEXTS.swapAcceptedTail}
                   </>
                 ) : (
                   <>
-                    Ce créneau est occupé par <span className="font-medium text-foreground">{occupantName}</span>. La déplacer d'ici ? Elle passera dans les séances à replacer.
+                    {PLANNING_TEXTS.evictOccupiedLead}
+                    <span className="font-medium text-foreground">{occupantName}</span>
+                    {occupantIsGroup ? PLANNING_TEXTS.evictGroupAcceptedTail : PLANNING_TEXTS.evictTeamAcceptedTail}
                   </>
                 )}
               </p>
-              {compromises.length > 0 ? <CompromiseList compromises={compromises} /> : <EmptyHint>Aucun compromis détecté.</EmptyHint>}
+              {compromises.length > 0 ? <CompromiseList compromises={compromises} /> : <EmptyHint>{PLANNING_TEXTS.evictNoCompromise}</EmptyHint>}
             </div>
           ) : null}
 
@@ -158,7 +159,7 @@ export function EvictConfirmDialog({ open, phase, kind = "evict", occupantName, 
             <div className="flex flex-col gap-2">
               <div className="flex items-center gap-2 font-medium text-destructive">
                 <AlertTriangle className="size-4" aria-hidden="true" />
-                <span>Ce déplacement casse une règle du moteur — le créneau ne bougera pas.</span>
+                <span>{PLANNING_TEXTS.evictRefusedReason}</span>
               </div>
               <ul className="flex list-disc flex-col gap-1 pl-6 text-muted-foreground">
                 {violations.map((violation, index) => (
@@ -178,7 +179,7 @@ export function EvictConfirmDialog({ open, phase, kind = "evict", occupantName, 
           {/* ENG-51 — verdict indéterminé : ton NEUTRE (`muted`), jamais un style conflit. Ce n'est
               pas un refus (aucune règle en cause) — rien n'a bougé, on invite à réessayer. */}
           {"indeterminate" === phase ? (
-            <NoticeBanner tone="muted" role="status" message="La vérification a pris trop de temps, réessayez." />
+            <NoticeBanner tone="muted" role="status" message={PLANNING_TEXTS.verifyTimeout} />
           ) : null}
         </div>
 
@@ -187,16 +188,16 @@ export function EvictConfirmDialog({ open, phase, kind = "evict", occupantName, 
             vivaient déjà HORS de la zone défilante. */}
         <div className="mt-4 flex shrink-0 flex-wrap justify-end gap-2 border-t border-border pt-4">
           <Button variant="ghost" onClick={onClose}>
-            {"refused" === phase ? "Fermer" : "Annuler"}
+            {"refused" === phase ? PLANNING_TEXTS.evictClose : PLANNING_TEXTS.evictCancel}
           </Button>
           {"accepted" === phase ? (
             <Button variant={isSwap ? "default" : "destructive"} disabled={busy} onClick={onConfirm}>
-              {isSwap ? "Échanger" : "Déplacer et évincer"}
+              {isSwap ? PLANNING_TEXTS.swapConfirm : PLANNING_TEXTS.evictConfirm}
             </Button>
           ) : null}
           {"failed" === phase || "indeterminate" === phase ? (
             <Button variant="default" onClick={onRetry}>
-              Réessayer
+              {PLANNING_TEXTS.evictRetry}
             </Button>
           ) : null}
         </div>

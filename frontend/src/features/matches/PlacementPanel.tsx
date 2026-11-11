@@ -259,9 +259,17 @@ export function PlacementPanel({
           {true === isCtc ? <CtcMark partner={ctcPartner} /> : null}
           {teamLabel}
         </CardTitle>
-        <button type="button" onClick={onClose} aria-label={MATCHES_TEXTS.panelClose} className="rounded p-1 text-muted-foreground hover:text-foreground">
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          onClick={onClose}
+          aria-label={MATCHES_TEXTS.panelClose}
+          title={MATCHES_TEXTS.panelClose}
+          className="text-muted-foreground hover:text-foreground"
+        >
           <X className="size-4" />
-        </button>
+        </Button>
       </CardHeader>
       <CardContent className="pt-0">
         <Row label={MATCHES_TEXTS.panelCategoryRow} value={categoryLabel} />

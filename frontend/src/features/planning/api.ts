@@ -760,7 +760,7 @@ export async function moveSlot(id: string, patch: SlotMovePatch, signal?: AbortS
       }
       // 504 `engine_timeout` : le moteur a été trop lent (rien écrit). NOMMÉ pour l'écran.
       if (504 === error.response.status && "engine_timeout" === body.code) {
-        throw new EngineTimeoutError(body.error ?? "Le moteur n'a pas répondu à temps — réessayez.");
+        throw new EngineTimeoutError(body.error ?? "Le système n'a pas répondu à temps — réessayez.");
       }
     }
     throw error;
@@ -796,7 +796,7 @@ export async function placeSlot(scheduleId: string, body: PlaceSlotBody, signal?
         throw new GenerationInProgressError();
       }
       if (504 === error.response.status && "engine_timeout" === data.code) {
-        throw new EngineTimeoutError(data.error ?? "Le moteur n'a pas répondu à temps — réessayez.");
+        throw new EngineTimeoutError(data.error ?? "Le système n'a pas répondu à temps — réessayez.");
       }
     }
     throw error;
@@ -878,7 +878,7 @@ export async function moveGroup(body: MoveGroupBody, signal?: AbortSignal): Prom
         throw new GenerationInProgressError();
       }
       if (504 === error.response.status && "engine_timeout" === data.code) {
-        throw new EngineTimeoutError(data.error ?? "Le moteur n'a pas répondu à temps — réessayez.");
+        throw new EngineTimeoutError(data.error ?? "Le système n'a pas répondu à temps — réessayez.");
       }
     }
     throw error;
@@ -939,7 +939,7 @@ export async function swapSlots(body: SwapBody, signal?: AbortSignal): Promise<S
         throw new GenerationInProgressError();
       }
       if (504 === error.response.status && "engine_timeout" === data.code) {
-        throw new EngineTimeoutError(data.error ?? "Le moteur n'a pas répondu à temps — réessayez.");
+        throw new EngineTimeoutError(data.error ?? "Le système n'a pas répondu à temps — réessayez.");
       }
     }
     throw error;

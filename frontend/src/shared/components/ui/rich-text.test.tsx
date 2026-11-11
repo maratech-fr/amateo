@@ -103,6 +103,43 @@ describe("RichText — structure", () => {
   });
 });
 
+/**
+ * Promesse (petites lignes, hiérarchie des titres de notes, Q3/Q5) : **l'intertitre d'un corps riche
+ * est PLUS PETIT que le titre de la note qui le porte** — 14 px gras (`text-sm font-semibold`) sur
+ * toutes les surfaces, marqué d'un accent léger par peau (`text-accent` dans l'app,
+ * `text-console-accent` dans la console), jamais `text-base` (il égalait ou dépassait le titre).
+ * Les titres de note (16 px en modale, 18 px sur la page et la console) sont gardés sur leurs sites :
+ * `WhatsNewModal.test.tsx`, `ReleaseNotesPage.test.tsx`, `ReleaseNotesSection.test.tsx`. jsdom ne
+ * mesure rien : c'est un contrat de CLASSES (patron `modal-overflow.test.tsx`) ; le contraste de
+ * `text-accent` est mesuré par `tests/e2e/a11y-contrast.spec.ts`.
+ */
+describe("RichText — l'intertitre est plus petit que le titre de la note", () => {
+  const note = doc({ type: "heading", attrs: { level: 3 }, content: [text("Export PDF")] });
+
+  it.each([
+    ["app", undefined, "text-accent", "text-console-accent"],
+    ["console", "console", "text-console-accent", "text-accent"],
+  ] as const)("peau %s : 14 px gras, accent de la peau, jamais text-base", (_skin, variant, accent, otherAccent) => {
+    render(<RichText doc={note} variant={variant} />);
+    const classes = screen.getByRole("heading", { level: 3, name: "Export PDF" }).className.split(/\s+/);
+
+    expect(classes).toContain("text-sm");
+    expect(classes).toContain("font-semibold");
+    expect(classes).toContain(accent);
+    expect(classes).not.toContain(otherAccent);
+    expect(classes).not.toContain("text-base");
+  });
+
+  it("même contrat au niveau 4 (modale)", () => {
+    render(<RichText doc={note} headingLevel={4} />);
+    const classes = screen.getByRole("heading", { level: 4, name: "Export PDF" }).className.split(/\s+/);
+
+    expect(classes).toContain("text-sm");
+    expect(classes).toContain("text-accent");
+    expect(classes).not.toContain("text-base");
+  });
+});
+
 describe("RichText — couleurs par jeton de la peau", () => {
   it.each(COLORS)("couleur %s : jeton app par défaut, jeton console avec variant=\"console\"", (name) => {
     const note = doc(paragraph(text(`mot ${name}`, color(name))));

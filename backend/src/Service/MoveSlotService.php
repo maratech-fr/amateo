@@ -1458,7 +1458,7 @@ final class MoveSlotService
 
             return [[
                 'rule' => 'unknown_hard_conflict',
-                'message' => 'Ce déplacement casse une règle du moteur qui n\'a pas pu être nommée.',
+                'message' => 'Ce déplacement casse une règle du système qui n\'a pas pu être nommée.',
                 'teamId' => null, 'coachId' => null, 'venueId' => null,
                 'dayOfWeek' => null, 'startTime' => null, 'conflictingTeamId' => null,
             ]];
@@ -1471,7 +1471,7 @@ final class MoveSlotService
             }
             $violations[] = [
                 'rule' => (string) ($entry['rule'] ?? 'unknown_hard_conflict'),
-                'message' => (string) ($entry['message'] ?? 'Ce déplacement casse une règle du moteur.'),
+                'message' => (string) ($entry['message'] ?? 'Ce déplacement casse une règle du système.'),
                 'teamId' => $this->nullableString($entry['teamId'] ?? null),
                 'coachId' => $this->nullableString($entry['coachId'] ?? null),
                 'venueId' => $this->nullableString($entry['venueId'] ?? null),

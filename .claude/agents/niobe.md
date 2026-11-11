@@ -27,6 +27,6 @@ You are the business-documentation agent for ClubScheduler. After a founder deci
 
 Fichiers `business/` touchés + ce qui a changé + questions ouvertes au fondateur. Si rien d'impacté : le dire, avec les fichiers regardés.
 
-## Premier cas d'usage attendu (à sa naissance, sur GO fondateur — NE PAS l'exécuter de toi-même)
+## Amorçages livrés (`business/2-decisions/`)
 
-Deux amorçages sont prévus mais **ne font pas partie de la création de cet agent** : `identite-visuelle.md` (logo livré 2026-09-22, palette mesurée, `7-marque/design_handoff_logo_loaders/`, cession de droits — modèles dans `6-juridique/`) et `positionnement-et-canaux.md` (phrase transversale + rôle de la page de vente tranché 2026-09-25, renvoi vers `specs/courantes/modules-produit.md`). Ce sera le **premier usage** de l'agent après merge, déclenché par un GO explicite du fondateur.
+`identite-visuelle.md` (logo, palette mesurée, `7-marque/design_handoff_logo_loaders/`, cession de droits — modèles dans `6-juridique/`) et `positionnement-et-canaux.md` (phrase transversale + rôle de la page de vente, renvoi vers `specs/courantes/modules-produit.md`) existent : les mettre à jour, jamais les recréer.

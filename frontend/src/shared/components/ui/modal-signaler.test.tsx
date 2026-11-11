@@ -76,9 +76,26 @@ describe("Modal — pictos de l'en-tête : infobulle et retour au survol", () =>
     expect(button.getAttribute("title") ?? "").not.toBe("");
   });
 
+  // A11Y-33 : le bouton devient `Button variant="ghost"` dont le survol s'écrit `hover:enabled:bg-muted`
+  // (survol borné aux boutons actifs, `button-variants.ts`) — la promesse « change de fond au survol » est la même.
   it.each(["Signaler", "Fermer"])("le bouton « %s » change de fond au survol", (name) => {
     const button = within(renderHeader()).getByRole("button", { name });
 
-    expect(button.className).toMatch(/hover:bg-/);
+    expect(button.className).toMatch(/hover:(enabled:)?bg-/);
+  });
+
+  /**
+   * A11Y-33 (petites lignes) — les deux pictos de l'en-tête sont des cibles de 36 px, la norme maison
+   * du bouton-icône (`Button size="icon-sm"` = `size-9`), plus le `p-1` autour d'une icône de 16 px
+   * (24 px). Rendu réel de l'en-tête de la primitive ; les cinq autres sites (calendrier du mois,
+   * détail de séance, placement de match, diagnostics, verrous) sont gardés statiquement par
+   * `src/test/iconTargetSizeGuard.test.ts`, qui couvre aussi ce fichier (angle nommé : le garde lit la
+   * source, ce test lit le DOM rendu de la primitive partagée par toutes les modales).
+   */
+  it.each(["Signaler", "Fermer"])("le bouton « %s » est une cible de 36 px (size-9)", (name) => {
+    const button = within(renderHeader()).getByRole("button", { name });
+
+    expect(button.className.split(/\s+/)).toContain("size-9");
+    expect(button.className.split(/\s+/)).not.toContain("p-1");
   });
 });

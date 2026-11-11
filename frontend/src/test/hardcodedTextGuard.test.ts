@@ -70,6 +70,9 @@ const MIGRATED_FILES = [
   // Chantier E — le menu d'export migré dans features/planning/texts.ts en même temps que la case
   // « Afficher le nom des coachs ». La migration ne recule jamais.
   "features/planning/ExportMenu.tsx",
+  // Petites lignes (UXS-17) — la modale d'éviction migre ses littéraux (et `FAILURE_MESSAGE`) dans
+  // PLANNING_TEXTS en même temps que « moteur » y devient « le système ». La migration ne recule jamais.
+  "features/planning/EvictConfirmDialog.tsx",
   "features/planning/SlotDetail.tsx",
   "features/planning/DiagnosticsPanel.tsx",
   "features/matches/ConflictLine.tsx",

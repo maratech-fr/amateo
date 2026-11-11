@@ -975,7 +975,7 @@ final class BcclSeeder
             ['coach' => $coach18, 'team' => $u18f1],
             ['coach' => $coach25, 'team' => $u15f1],
             ['coach' => $coach26, 'team' => $u15f1],
-            // Mathis entraîne U13M2 mais joue aussi en U21M1 ; Florian entraîne
+            // `$coach17` entraîne U13M2 et joue en U21M1 ; `$coach13` entraîne
             // U18F3 et joue en Loisir 3 — le solveur en tire un conflit coach
             // (impossible d'être aux deux séances en même temps).
             ['coach' => $coach17, 'team' => $u21m1],

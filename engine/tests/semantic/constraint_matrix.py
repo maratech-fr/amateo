@@ -159,7 +159,7 @@ MATRIX: tuple[MatrixCell, ...] = (
         "preferredVenueId",
         "TEAM",
         Expectation.HONORED_HARD,
-        True,
+        False,
         note="HARD 'preferred' = forced venue",
         config={"preferredVenueId": "{good_venue}"},
         lock_silence=LockSilence.DIAGNOSED,

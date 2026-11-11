@@ -1,5 +1,6 @@
 import { Eye, EyeOff, Lock, PanelRightClose } from "lucide-react";
 
+import { Button } from "@/shared/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/components/ui/card";
 import { CtcMark } from "@/shared/components/ui/ctc-mark";
 import { EmptyHint } from "@/shared/components/ui/empty-hint";
@@ -65,9 +66,17 @@ export function LocksPanel({ locks, lookups, selectedSlotId, onSelectSlot, lensA
           </p>
         </div>
         {/* Repli — MÊME affordance que DiagnosticsPanel (retour fondateur : une seule manière). */}
-        <button type="button" onClick={onCollapse} aria-label="Réduire les verrous manuels" title="Réduire (plus de place pour la grille)" className="rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground">
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          onClick={onCollapse}
+          aria-label="Réduire les verrous manuels"
+          title="Réduire (plus de place pour la grille)"
+          className="text-muted-foreground hover:text-foreground"
+        >
           <PanelRightClose className="size-4" />
-        </button>
+        </Button>
       </CardHeader>
       <CardContent className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto pt-0">
         <button

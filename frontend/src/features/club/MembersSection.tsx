@@ -1,10 +1,12 @@
 import { RotateCcw, UserX } from "lucide-react";
+import { useState } from "react";
 
 import type { ActiveMember, DeactivatedMember } from "@/features/auth/api";
 import { useChangeMemberRole, useDeactivateMember, useMembers, useReactivateMember, useRefuseManagerRequest } from "@/features/auth/queries";
 import { StatusPill } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
 import { Card, CardContent } from "@/shared/components/ui/card";
+import { ConfirmDialog } from "@/shared/components/ui/confirm-dialog";
 import { EmptyHint } from "@/shared/components/ui/empty-hint";
 import { LoadErrorHint } from "@/shared/components/ui/load-error-hint";
 import { Select } from "@/shared/components/ui/select";
@@ -36,6 +38,8 @@ export function MembersSection() {
   const deactivate = useDeactivateMember();
   const reactivate = useReactivateMember();
   const refuseRequest = useRefuseManagerRequest();
+  // UXS-20 : Accepter (tous les droits) et Refuser passent par UNE confirmation nommée.
+  const [pending, setPending] = useState<PendingGesture>(null);
 
   if (readLoading(membersQuery)) {
     return (
@@ -92,7 +96,7 @@ export function MembersSection() {
                             size="sm"
                             disabled={busy}
                             aria-label={CLUB_TEXTS.acceptManagerRequestOf(`${member.firstName} ${member.lastName}`)}
-                            onClick={() => changeRole.mutate({ id: member.id, role: "admin" })}
+                            onClick={() => setPending({ kind: "accept", member })}
                           >
                             {CLUB_TEXTS.acceptManagerRequest}
                           </Button>
@@ -101,7 +105,7 @@ export function MembersSection() {
                             variant="outline"
                             disabled={busy}
                             aria-label={CLUB_TEXTS.refuseManagerRequestOf(`${member.firstName} ${member.lastName}`)}
-                            onClick={() => refuseRequest.mutate(member.id)}
+                            onClick={() => setPending({ kind: "refuse", member })}
                           >
                             {CLUB_TEXTS.refuseManagerRequest}
                           </Button>
@@ -171,6 +175,38 @@ export function MembersSection() {
           </ul>
         )}
       </section>
+
+      <ConfirmDialog
+        open={null !== pending}
+        title={pendingTitle(pending)}
+        description={pendingDescription(pending)}
+        confirmLabel={"accept" === pending?.kind ? CLUB_TEXTS.acceptManagerRequest : CLUB_TEXTS.refuseManagerRequest}
+        destructive={"accept" !== pending?.kind}
+        onCancel={() => setPending(null)}
+        onConfirm={() => {
+          if (null === pending) return;
+          if ("accept" === pending.kind) {
+            changeRole.mutate({ id: pending.member.id, role: "admin" });
+          } else {
+            refuseRequest.mutate(pending.member.id);
+          }
+          setPending(null);
+        }}
+      />
     </div>
   );
+}
+
+type PendingGesture = { kind: "refuse" | "accept"; member: ActiveMember } | null;
+
+function pendingTitle(pending: PendingGesture): string {
+  if (null === pending) return "";
+  const name = `${pending.member.firstName} ${pending.member.lastName}`;
+  return "accept" === pending.kind ? CLUB_TEXTS.acceptManagerRequestTitle(name) : CLUB_TEXTS.refuseManagerRequestTitle(name);
+}
+
+function pendingDescription(pending: PendingGesture): string | undefined {
+  if (null === pending) return undefined;
+  const name = `${pending.member.firstName} ${pending.member.lastName}`;
+  return "accept" === pending.kind ? CLUB_TEXTS.acceptManagerRequestDescription(name) : CLUB_TEXTS.refuseManagerRequestDescription(name);
 }

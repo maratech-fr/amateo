@@ -223,6 +223,24 @@ def test_not_offered_cells_are_locked_by_the_ui_test(cell: MatrixCell) -> None:
     assert not cell.offered_by_ui
 
 
+def test_hard_preferred_venue_is_not_offered_by_the_ui() -> None:
+    """DOC-62: a HARD ``preferredVenueId`` is refused 422 at write time (a
+    preference cannot be mandatory — the UI offers « impose », i.e.
+    ``forcedVenueId``), so the matrix must not claim the wizard offers it.
+
+    Only the ``offered_by_ui`` flag is pinned: the cell stays HONORED_HARD (the
+    engine still honors legacy rows as a forced venue, asserted by the
+    generated scenarios above). Human-readable twin:
+    ``docs/architecture/constraint-matrix.md`` (FACILITY ``preferredVenueId``).
+    """
+    cells = [
+        c for c in MATRIX if c.family == "FACILITY" and c.rule_type == "HARD" and c.config_key == "preferredVenueId"
+    ]
+    assert cells, "the FACILITY HARD preferredVenueId cell disappeared from the matrix"
+    for cell in cells:
+        assert cell.offered_by_ui is False, f"{cell.case_id}: refused 422 at write time, not offered by the UI"
+
+
 # --- Lock-silence dimension: a HARD lock that bypasses a DIAGNOSED rule speaks --
 #
 # A HARD lock is pre-placed OUTSIDE the solver (the locked slot has no variable

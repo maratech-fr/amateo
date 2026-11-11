@@ -183,9 +183,17 @@ export function SlotDetail({ cell, slot, venues, categoryLabel, constraints, tag
           {cell.teamLabel}
           {cell.locked ? <Lock className="size-4 text-muted-foreground" /> : null}
         </CardTitle>
-        <button type="button" onClick={onClose} aria-label={PLANNING_TEXTS.closeLabel} className="rounded p-1 text-muted-foreground hover:text-foreground">
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          onClick={onClose}
+          aria-label={PLANNING_TEXTS.closeLabel}
+          title={PLANNING_TEXTS.closeLabel}
+          className="text-muted-foreground hover:text-foreground"
+        >
           <X className="size-4" />
-        </button>
+        </Button>
       </CardHeader>
       <CardContent className="min-h-0 flex-1 overflow-y-auto pt-0">
         {/* B1 — une seule ligne discrète sous le titre (au lieu de trois lignes étiquetées).

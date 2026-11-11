@@ -334,6 +334,19 @@ describe("ClubPage", () => {
     expect(screen.getByRole("button", { name: "Localiser" })).toBeInTheDocument();
   });
 
+  /**
+   * UXS-18 (petites lignes) — le champ texte de la couleur d'accent se nomme par sa CLÉ
+   * (`CLUB_TEXTS.colorFieldLabel`), en mots de gestionnaire : jamais « hexadécimal ».
+   */
+  it("le champ texte de chaque couleur d'accent porte le nom accessible de la clé, sans « hexadécimal »", async () => {
+    const user = userEvent.setup();
+    render(<ClubPage />);
+    await user.click(screen.getByRole("button", { name: /Visuel/ }));
+    expect(screen.getByRole("textbox", { name: CLUB_TEXTS.colorFieldLabel(CLUB_TEXTS.accentLight) })).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: CLUB_TEXTS.colorFieldLabel(CLUB_TEXTS.accentDark) })).toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: /hexadécimal/ })).not.toBeInTheDocument();
+  });
+
   it("hides the Demandes section for a non-admin", () => {
     me.data = { role: "member", club: { ...baseClub, name: "BC Test", accentColor: null, accentColorDark: null, accentPalette: null, logoUrl: null } };
     render(<ClubPage />);
@@ -550,19 +563,27 @@ describe("ClubPage — carte « Mon rôle » (Membre)", () => {
     }
   });
 
-  it("aucune demande : le bouton « Demander à devenir gestionnaire » envoie la demande", async () => {
+  // UXS-20 (petites lignes) : la demande se confirme — rien ne part avant « Envoyer la demande ».
+  // L'annulation du dialogue est prouvée par `shared/session/RequestManagerRoleButton.test.tsx`.
+  it("aucune demande : le bouton « Demander à devenir gestionnaire » ouvre une confirmation, la demande part une fois confirmée", async () => {
     asMember(null);
     render(<ClubPage />);
     await userEvent.click(screen.getByRole("button", { name: CLUB_TEXTS.requestManagerRole }));
+    const dialog = screen.getByRole("dialog", { name: SESSION_TEXTS.requestManagerRoleConfirmTitle });
+    expect(requestManagerRole).not.toHaveBeenCalled();
+    await userEvent.click(within(dialog).getByRole("button", { name: SESSION_TEXTS.requestManagerRoleConfirmLabel }));
     expect(requestManagerRole).toHaveBeenCalledTimes(1);
   });
 
-  it("en cours auprès des gestionnaires : la date, et l'annulation possible (plus de bouton de demande)", async () => {
+  // Témoin UXS-20 (déclaré au plan) : « Annuler ma demande » est le geste INVERSE, réversible (on peut
+  // redemander) — il reste à un clic, sans confirmation.
+  it("en cours auprès des gestionnaires : la date, et l'annulation possible en un clic, sans confirmation (plus de bouton de demande)", async () => {
     asMember({ status: "pending", since: SINCE, escalated: false });
     render(<ClubPage />);
     expect(screen.getByText(CLUB_TEXTS.managerRequestPending("03/11/2026"))).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: CLUB_TEXTS.requestManagerRole })).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: CLUB_TEXTS.cancelManagerRequest }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(cancelManagerRequest).toHaveBeenCalledTimes(1);
   });
 
@@ -592,6 +613,7 @@ describe("ClubPage — carte « Mon rôle » (Membre)", () => {
     render(<ClubPage />);
     expect(screen.getByText(CLUB_TEXTS.managerRequestExpired("03/11/2026"))).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: CLUB_TEXTS.requestManagerRole }));
+    await userEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: SESSION_TEXTS.requestManagerRoleConfirmLabel }));
     expect(requestManagerRole).toHaveBeenCalledTimes(1);
   });
 

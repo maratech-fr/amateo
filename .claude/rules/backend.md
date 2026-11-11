@@ -18,9 +18,6 @@ paths:
   **Correctif d'une dérive : `composer update <les paquets>`** — surtout PAS un pin dans
   `composer.json`. Audit : `composer show "symfony/*"` (hors `*-contracts`, `flex`, `mercure`,
   `polyfill-*`) ; gardé par `SymfonyStackAlignmentTest` (lit l'INSTALLÉ, pas le lock).
-- ⚠ **`make migration-diff` inopérant tant que `doctrine/dbal` reste en 4.4.4** (constaté
-  2026-08-16) : le générateur de diff exige `doctrine/dbal` ≥ 4.5. Écrire la migration à la main
-  en attendant — même correctif que ci-dessus, `composer update doctrine/dbal` (jamais un pin).
 - **PHPUnit 11** via `vendor/bin/phpunit` — même binaire en CI, `Makefile` et `composer test`.
   Les conteneurs sont en `APP_ENV=dev` par défaut : les tests exigent `-e APP_ENV=test` explicite.
 - Piège tests : browser-kit rejoue le cookie JWT d'une requête à l'autre →
