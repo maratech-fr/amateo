@@ -11,7 +11,7 @@ import { frDateWeekdayNoYear } from "@/shared/lib/date";
 
 import type { AttachVenueLabelInput, Fixture, PendingDeviation, ResolveDeviationInput, Venue } from "./api";
 import { autoAppliedPhrase } from "./lib/autoAppliedPhrase";
-import { DEPOSITED_WARNING, FIELD_LABEL, fieldConsequence, isDeposited } from "./lib/deviationConsequence";
+import { FIELD_LABEL, fieldConsequence } from "./lib/deviationConsequence";
 import { FIXTURE_STATUS_LABEL } from "./lib/fixtureStatusLabel";
 import { isUnattachedHome } from "./lib/reviewQueue";
 import { MATCHES_TEXTS } from "./texts";
@@ -148,7 +148,6 @@ export function ReviewQueueRow({ fixture, venues, onValidateLine, onResolve, onP
                 <span className="tabular-nums">{d.sourceValue ?? "—"}</span>
               </div>
             </div>
-            {isDeposited(fixture.status) ? <p className="text-xs text-warning">{DEPOSITED_WARNING}</p> : null}
             {/* Arbitrer un écart : geste de gestionnaire, absent pour un Membre (il lit les deux valeurs). */}
             <ManagerOnly>
             <div className="flex flex-col gap-2 sm:flex-row">

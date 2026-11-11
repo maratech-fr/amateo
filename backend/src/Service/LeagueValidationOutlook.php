@@ -193,6 +193,25 @@ final class LeagueValidationOutlook
     }
 
     /**
+     * Les championnats COMMENCÉS de la saison (échéance atteinte ou premier match passé),
+     * amicaux exclus — la même définition que « validé ligue », lue par le dépôt FBI pour
+     * décider quand le fichier fait foi sur un match déjà dans FBI.
+     *
+     * @return array<string, true> competitionId → true
+     */
+    public function startedCompetitionIds(string $seasonId): array
+    {
+        $started = [];
+        foreach ($this->competitionMeta($seasonId, $this->seasonFixtures($seasonId)) as $competitionId => $entry) {
+            if ($entry['matured']) {
+                $started[$competitionId] = true;
+            }
+        }
+
+        return $started;
+    }
+
+    /**
      * @return list<Fixture>
      */
     private function seasonFixtures(string $seasonId): array

@@ -6,6 +6,7 @@ namespace App\Controller;
 
 use App\Entity\Club;
 use App\Exception\ImportRejectedException;
+use App\Service\Fbi\FbiExportFreshnessGuard;
 use App\Service\FbiFixtureImporter;
 use App\Service\FixtureImportGate;
 use InvalidArgumentException;
@@ -38,6 +39,7 @@ final class ImportFixturesAnalyzeController extends AbstractController
         private readonly FbiFixtureImporter $importer,
         private readonly FixtureImportGate $gate,
         private readonly LoggerInterface $logger,
+        private readonly FbiExportFreshnessGuard $freshness,
     ) {}
 
     public function __invoke(Request $request): JsonResponse
@@ -52,6 +54,8 @@ final class ImportFixturesAnalyzeController extends AbstractController
         }
 
         try {
+            // Un export sans date ou de plus de 24 h est refusé avant toute lecture.
+            $this->freshness->assertFresh((string) $file->getRealPath(), $club);
             $result = $this->importer->analyze((string) $file->getRealPath(), $club);
         } catch (ImportRejectedException $e) {
             // Le SEUL type relayé : son message est écrit pour le gestionnaire.

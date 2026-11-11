@@ -17,8 +17,8 @@ namespace App\Enum;
  *   1. réconciliation : un domicile PLACED/SUBMITTED que la source (xlsx FBI ou API
  *      FFBB) renvoie identique sur date + heure + salle, les trois présents, passe
  *      VALIDATED à l'intégration (`FbiFixtureImporter::reconcileNoDivergence`).
- *      Divergent → écart pendant, et « prendre la source » le fait retomber PLACED
- *      (`demoteSubmitted`) ;
+ *      Divergent → écart pendant ; « prendre la source » écrit la valeur et conserve le
+ *      statut (`FbiDeviationService::applyFieldTakeFile`) ;
  *   2. auto-validation AU DÉPÔT (chantier A, `FbiFixtureImporter::import`) — une PASSE
  *      SÉPARÉE, APRÈS le flush de création : tout championnat COMMENCÉ voit ses domiciles
  *      validables (heure + gymnase identifié, sans écart) basculer VALIDATED + source

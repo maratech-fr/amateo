@@ -270,7 +270,7 @@ final class FbiFixtureImporter
      *     depositedAt: string,
      * }
      */
-    public function import(string $filePath, Club $club, array $mappings, array $decisions = [], ?string $seasonId = null, array $venueMappings = [], array $venueChoices = []): array
+    public function import(string $filePath, Club $club, array $mappings, array $decisions = [], ?string $seasonId = null, array $venueMappings = [], array $venueChoices = [], ?DateTimeImmutable $exportedAt = null): array
     {
         $parsed = $this->parseFile($filePath, $club);
         $errors = $parsed['errors'];
@@ -338,6 +338,10 @@ final class FbiFixtureImporter
         /** @var array<string, true> $seenInFile intra-file duplicate guard, team|ref */
         $seenInFile = [];
 
+        // Les championnats COMMENCÉS de la saison, une fois par dépôt : sur un match déjà dans
+        // FBI d'un championnat commencé, le fichier fait foi (voir {@see applyDiff}).
+        $startedCompetitionIds = $this->leagueValidationOutlook->startedCompetitionIds($seasonId ?? $this->resolveSeasonId($club, $groups));
+
         $touchedCompetitions = [];
         foreach ($groups as $group) {
             $competition = $resolver($group['divisionKey'], $group['labelKey'], $group['multiLabel']);
@@ -399,7 +403,7 @@ final class FbiFixtureImporter
                     continue;
                 }
                 if ($existing instanceof Fixture) {
-                    $outcome = $this->applyDiff($existing, $row, $group['name'], $warnings, $decisionMap, $venueNames, $deviationRecords, $persistingSet, $now, $weekEnd);
+                    $outcome = $this->applyDiff($existing, $row, $group['name'], $warnings, $decisionMap, $venueNames, $deviationRecords, $persistingSet, $now, $weekEnd, $startedCompetitionIds, $exportedAt);
                     if ('updated' === $outcome) {
                         ++$updated;
                     } else {
@@ -551,15 +555,10 @@ final class FbiFixtureImporter
     }
 
     /**
-     * « Prendre le fichier » on one field. Retained semantics (RMM-4):
-     * - DATE: la ligue a re-décidé → write the date AND un-place (UNPLACED, venue
-     *   cleared) — exactly today's reschedule; the placement is invalidated.
-     * - KICKOFF: write the hour IN PLACE (venue kept); a SUBMITTED/VALIDATED
-     *   fixture drops to PLACED (D2 — the FBI checkmark was on a wrong hour).
-     * - VENUE: chantier A PR 4 — « prendre le fichier » ne laisse JAMAIS un domicile
-     *   sans gymnase (la promesse). La décision passe par le foyer partagé
-     *   {@see FbiDeviationService::applyFieldTakeFile} : un choix inline (uuid/'NEUTRAL')
-     *   ou l'alias confirmé reposent une salle ; faute de cible, rien n'est écrit.
+     * « Prendre le fichier » on one field — la valeur du fichier est écrite, statut et
+     * gymnase conservés (date, heure ; salle par choix inline ou alias confirmé, « terrain
+     * neutre » seul dé-place ; faute de cible, rien n'est écrit). Foyer partagé :
+     * {@see FbiDeviationService::applyFieldTakeFile}.
      *
      * @param array{numero: string, matchDate: DateTimeImmutable, homeAway: FixtureHomeAway, opponentLabel: string, kickoffTime: DateTimeImmutable|null, venueLabel: string|null} $row
      * @param string|null                                                                                                                                                         $venueChoice uuid d'un gymnase choisi inline, la sentinelle {@see self::NEUTRAL}, ou null
@@ -794,8 +793,9 @@ final class FbiFixtureImporter
      * @param bool                                                                                                                                                                      $sourceIsAuthoritative décision P4-199 « FBI fait foi » : un champ non tranché est appliqué D'OFFICE (voir {@see sourceIsAuthoritativeForWindow})
      * @param list<string>|null                                                                                                                                                         $scope                 champs dont la boucle de purge des entrées périmées s'occupe (défaut : tous les {@see DEVIATION_FIELDS}) — restreint à `['venue']` pour l'écart salle d'un non placé, sinon la purge effacerait les entrées `autoApplied` date/heure posées le même dépôt
      * @param array<string, string>                                                                                                                                                     $decisionVenues        chantier A PR 4 — « fixtureId|field » → venueId du choix INLINE (uuid ou {@see self::NEUTRAL}) d'un arbitrage de salle, threadé jusqu'à {@see applyFieldTakeFile}
+     * @param DateTimeImmutable|null                                                                                                                                                    $sourceExportedAt      date de création de l'export xlsx déposé : un champ que l'API a appliqué d'office APRÈS elle est sauté (null = canal API, ou date inconnue)
      */
-    public function processPerimeterFields(Fixture $existing, array $row, array $fields, array $decisions, string $channel, string $divisionName, array &$records, array &$persistingSet, array &$warnings, DateTimeImmutable $now, bool $sourceIsAuthoritative = false, ?array $scope = null, array $decisionVenues = []): bool
+    public function processPerimeterFields(Fixture $existing, array $row, array $fields, array $decisions, string $channel, string $divisionName, array &$records, array &$persistingSet, array &$warnings, DateTimeImmutable $now, bool $sourceIsAuthoritative = false, ?array $scope = null, array $decisionVenues = [], ?DateTimeImmutable $sourceExportedAt = null): bool
     {
         // Chantier A PR 4 — une salle sans cible connue (ni choix inline ni alias confirmé)
         // n'est jamais appliquée d'OFFICE dans la fenêtre : « FBI fait foi » sur date/heure,
@@ -814,6 +814,10 @@ final class FbiFixtureImporter
             $choice = $decisions[$existing->getId() . '|' . $field] ?? null;
             $venueChoice = $decisionVenues[$existing->getId() . '|' . $field] ?? null;
             $effect = 'none';
+            // G1 — sans décision de ce dépôt, un champ que le gestionnaire a GARDÉ (correction
+            // ouverte) n'est jamais appliqué d'office, quel que soit le régime ou le canal.
+            $appliesAtOnce = $sourceIsAuthoritative && 'take_file' !== $choice && 'keep_app' !== $choice
+                && !$this->ledger->findOpen($existing, FbiCorrectionField::from($field)) instanceof FbiCorrection;
             if ('take_file' === $choice) {
                 // The only branch that mutates the rencontre DATA → « updated » — SAUF une
                 // salle sans cible (chantier A PR 4) : « prendre le fichier » laisserait le
@@ -821,6 +825,9 @@ final class FbiFixtureImporter
                 if ($this->applyFieldTakeFile($existing, $field, $row, $now, $venueChoice)) {
                     $warnings[] = $this->takeFileWarning($field, $divisionName, $row);
                     $existing->removePendingDeviation($field);
+                    // L'appli s'aligne sur FBI : une entrée « à corriger dans FBI » de ce champ
+                    // n'a plus d'objet, elle se ferme (par le dépôt).
+                    $this->deviationService->closeOpenCorrection($existing, $field, $now);
                     $changed = true;
                     $effect = 'take_file';
                 } else {
@@ -841,11 +848,17 @@ final class FbiFixtureImporter
                 // FBI ». Les DEUX canaux (xlsx + API) passent par ce moteur partagé.
                 $this->ledger->open($existing, FbiCorrectionField::from($field), $vals['app'], $vals['file'], $now);
                 $effect = 'keep_app';
-            } elseif ($sourceIsAuthoritative && $this->applyFieldTakeFile($existing, $field, $row, $now)) {
-                // Décision P4-199 — « FBI fait foi » : la source est appliquée
-                // d'OFFICE (date/salle dé-placent, heure en place), et une entrée
-                // `autoApplied` remplace l'écart à arbitrer pour ALLUMER le bandeau
-                // « la source a déplacé ce match » — la rencontre reste traitée.
+            } elseif ($appliesAtOnce && $this->apiAppliedAfterExport($existing, $field, $sourceExportedAt)) {
+                // L'API a appliqué ce champ d'office APRÈS la création de l'export déposé : le
+                // fichier est en retard sur elle, le champ est sauté (rien écrit, l'entrée API
+                // reste, aucun écart).
+                continue;
+            } elseif ($appliesAtOnce && $this->applyFieldTakeFile($existing, $field, $row, $now)) {
+                // Décision P4-199 — « FBI fait foi » : la source est appliquée d'OFFICE
+                // (valeur écrite, statut et gymnase conservés), et une entrée `autoApplied`
+                // remplace l'écart à arbitrer pour ALLUMER le bandeau « la source a déplacé ce
+                // match » — la rencontre reste traitée. Jamais sur un champ GARDÉ (correction
+                // ouverte) : il tombe dans la branche `else`, la question y est reposée.
                 // Chantier A PR 4 — l'application d'office est SAUTÉE pour une salle inconnue
                 // (applyFieldTakeFile rend faux) : branche `else` ci-dessous, l'écart reste.
                 $existing->putPendingDeviation($this->deviationService->pendingEntry($existing, $field, $vals, $channel, $now, true));
@@ -856,20 +869,17 @@ final class FbiFixtureImporter
                 $effect = 'take_file';
             } else {
                 if ($sourceIsAuthoritative) {
-                    // « FBI fait foi » mais la SALLE est inconnue : jamais appliquée d'office
-                    // (le domicile garde son gymnase), l'écart reste à arbitrer → déphasé.
+                    // « FBI fait foi » mais la SALLE est inconnue, ou le champ a été GARDÉ :
+                    // jamais appliqué d'office, l'écart reste à arbitrer → déphasé.
                     $heldBackEcart = true;
                 }
                 $openCorrection = $this->ledger->findOpen($existing, FbiCorrectionField::from($field));
                 if ($openCorrection instanceof FbiCorrection && $this->ledger->stillShowsRecordedValue($openCorrection, $vals['file'])) {
-                    // (a) FBI affiche TOUJOURS la valeur d'origine : le gestionnaire a déjà
-                    // tranché « garder l'appli », il n'y a rien de neuf à traiter — on ne
-                    // re-crée PAS d'écart, on re-date juste « vu dans FBI ».
+                    // (a) FBI affiche TOUJOURS la valeur gardée : rien n'est appliqué, l'entrée
+                    // « à corriger dans FBI » reste ouverte et re-datée « vu dans FBI », et la
+                    // question est REPOSÉE (écart à trancher) tant que FBI montre l'autre valeur.
                     $this->ledger->refreshSeen($openCorrection, $now);
-
-                    continue;
-                }
-                if ($openCorrection instanceof FbiCorrection) {
+                } elseif ($openCorrection instanceof FbiCorrection) {
                     // (c) FBI affiche une TROISIÈME valeur : l'ancienne correction est
                     // caduque (fermée par le dépôt) ET un écart normal s'ouvre à arbitrer.
                     $this->ledger->closeBySource($openCorrection, $now);
@@ -984,6 +994,29 @@ final class FbiFixtureImporter
     public function attachConfirmedVenue(Fixture $fixture, ?string $venueLabel): bool
     {
         return $this->deviationService->attachConfirmedVenue($fixture, $venueLabel);
+    }
+
+    /**
+     * A2 — vrai si l'entrée courante du champ est une application d'office du canal API
+     * postérieure à la création de l'export déposé. Une entrée ancienne sans `appliedAt`
+     * n'est jamais concernée, ni le canal API lui-même (`$exportedAt` null).
+     */
+    private function apiAppliedAfterExport(Fixture $existing, string $field, ?DateTimeImmutable $exportedAt): bool
+    {
+        if (!$exportedAt instanceof DateTimeImmutable) {
+            return false;
+        }
+        $entry = $existing->getPendingDeviation($field);
+        if (null === $entry || true !== $entry['autoApplied'] || FbiIngestionSource::FFBB_API->value !== $entry['channel']) {
+            return false;
+        }
+        $appliedAt = $entry['appliedAt'] ?? null;
+        if (null === $appliedAt) {
+            return false;
+        }
+        $applied = DateTimeImmutable::createFromFormat(DateTimeImmutable::RFC3339, $appliedAt);
+
+        return $applied instanceof DateTimeImmutable && $applied > $exportedAt;
     }
 
     /**
@@ -1378,12 +1411,14 @@ final class FbiFixtureImporter
      *
      * @param array{numero: string, matchDate: DateTimeImmutable, homeAway: FixtureHomeAway, opponentLabel: string, kickoffTime: DateTimeImmutable|null, venueLabel: string|null}       $row
      * @param list<array{type: string, division: string, externalRef: string, message: string}>                                                                                         $warnings
-     * @param array<string, string>                                                                                                                                                     $decisions     fixtureId|field → keep_app|take_file
-     * @param array<string, string>                                                                                                                                                     $venueNames    venueId → Venue name (for the fuzzy salle compare)
-     * @param list<array{fixtureId: string, externalRef: string, division: string, teamId: string, status: string, field: string, app: string|null, file: string|null, effect: string}> $records       collected per-field deviation records
-     * @param array<string, true>                                                                                                                                                       $persistingSet « fixtureId|field » of écarts already open before this deposit (populated here)
+     * @param array<string, string>                                                                                                                                                     $decisions             fixtureId|field → keep_app|take_file
+     * @param array<string, string>                                                                                                                                                     $venueNames            venueId → Venue name (for the fuzzy salle compare)
+     * @param list<array{fixtureId: string, externalRef: string, division: string, teamId: string, status: string, field: string, app: string|null, file: string|null, effect: string}> $records               collected per-field deviation records
+     * @param array<string, true>                                                                                                                                                       $persistingSet         « fixtureId|field » of écarts already open before this deposit (populated here)
+     * @param array<string, true>                                                                                                                                                       $startedCompetitionIds championnats commencés de la saison ({@see LeagueValidationOutlook::startedCompetitionIds})
+     * @param DateTimeImmutable|null                                                                                                                                                    $exportedAt            date de création de l'export déposé (null = inconnue)
      */
-    private function applyDiff(Fixture $existing, array $row, string $divisionName, array &$warnings, array $decisions, array $venueNames, array &$records, array &$persistingSet, DateTimeImmutable $now, DateTimeImmutable $weekEnd): string
+    private function applyDiff(Fixture $existing, array $row, string $divisionName, array &$warnings, array $decisions, array $venueNames, array &$records, array &$persistingSet, DateTimeImmutable $now, DateTimeImmutable $weekEnd, array $startedCompetitionIds = [], ?DateTimeImmutable $exportedAt = null): string
     {
         // L'adversaire est ici le même à la graphie près (comparaison normalisée, foyer
         // {@see VenueLabelNormalizer}) : un adversaire DIFFÉRENT a déjà été rétabli par
@@ -1396,9 +1431,17 @@ final class FbiFixtureImporter
 
         $fields = $this->detectFieldDeviations($existing, $row, $venueNames);
         if (null !== $fields) {
+            // Le fichier fait foi dans la semaine en cours (tout domicile placé) OU, dès que le
+            // championnat a commencé, sur un match DÉJÀ DANS FBI (Saisi / Déjà dans FBI). Un match
+            // seulement Placé hors semaine garde ses écarts à trancher. Statut lu AVANT le moteur,
+            // qui ne reçoit aucune condition de statut ; le canal API reste « semaine » seule.
+            $alreadyInFbi = FixtureStatus::SUBMITTED === $existing->getStatus() || FixtureStatus::VALIDATED === $existing->getStatus();
+            $competitionId = $existing->getCompetitionId();
+            $sourceIsAuthoritative = $this->sourceIsAuthoritativeForWindow($existing, $row, $weekEnd)
+                || ($alreadyInFbi && null !== $competitionId && isset($startedCompetitionIds[$competitionId]));
             $changed = [] === $fields
                 ? $this->reconcileNoDivergence($existing, $row, $venueNames, $now)
-                : $this->processPerimeterFields($existing, $row, $fields, $decisions, FbiIngestionSource::FBI_XLSX->value, $divisionName, $records, $persistingSet, $warnings, $now, $this->sourceIsAuthoritativeForWindow($existing, $row, $weekEnd));
+                : $this->processPerimeterFields($existing, $row, $fields, $decisions, FbiIngestionSource::FBI_XLSX->value, $divisionName, $records, $persistingSet, $warnings, $now, $sourceIsAuthoritative, null, [], $exportedAt);
 
             // xlsx-only silent update (D3): the raw fbiVenueLabel, only when the venue
             // is not itself a divergence (a venue decision owns the label write). Le
@@ -1547,9 +1590,9 @@ final class FbiFixtureImporter
     private function takeFileWarning(string $field, string $divisionName, array $row): array
     {
         $message = match ($field) {
-            'date' => \sprintf('%s n°%s : re-programmé du fichier au %s — placement annulé.', $divisionName, $row['numero'], $row['matchDate']->format('d/m/Y')),
+            'date' => \sprintf('%s n°%s : date du fichier retenue (%s).', $divisionName, $row['numero'], $row['matchDate']->format('d/m/Y')),
             'kickoff' => \sprintf('%s n°%s : heure du fichier retenue (%s).', $divisionName, $row['numero'], $row['kickoffTime']?->format('H:i') ?? '—'),
-            default => \sprintf('%s n°%s : salle du fichier retenue (%s) — placement à revoir.', $divisionName, $row['numero'], $row['venueLabel'] ?? '—'),
+            default => \sprintf('%s n°%s : salle du fichier retenue (%s).', $divisionName, $row['numero'], $row['venueLabel'] ?? '—'),
         };
 
         return ['type' => 'RESCHEDULED', 'division' => $divisionName, 'externalRef' => $row['numero'], 'message' => $message];
