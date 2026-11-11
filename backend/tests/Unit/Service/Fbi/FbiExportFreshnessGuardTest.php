@@ -99,7 +99,7 @@ final class FbiExportFreshnessGuardTest extends TestCase
         $guard = $this->guard(self::EXPORTED);
 
         self::assertNull($guard->exportedAt($path));
-        $this->assertRefusedWith(self::MISSING, fn () => $guard->assertFresh($path, $this->club()));
+        $this->assertRefusedWith(self::MISSING, fn (): DateTimeImmutable => $guard->assertFresh($path, $this->club()));
     }
 
     public function testATenMegabyteCorePartHasNoDate(): void
@@ -115,7 +115,7 @@ final class FbiExportFreshnessGuardTest extends TestCase
     {
         $path = $this->withExportedAt($this->fbiExport([]), null);
 
-        $this->assertRefusedWith(self::MISSING, fn () => $this->guard(self::EXPORTED)->assertFresh($path, $this->club()));
+        $this->assertRefusedWith(self::MISSING, fn (): DateTimeImmutable => $this->guard(self::EXPORTED)->assertFresh($path, $this->club()));
     }
 
     public function testAnExportOfTwentyThreeHoursFiftyNineIsAccepted(): void
@@ -132,7 +132,7 @@ final class FbiExportFreshnessGuardTest extends TestCase
         // 09:38:31Z = 10:38 à Paris (UTC+1 en novembre) : le message parle l'heure du club.
         $path = $this->fbiExport([], new DateTimeImmutable(self::EXPORTED));
 
-        $this->assertRefusedWith(self::TOO_OLD, fn () => $this->guard('2026-11-11T09:39:31Z')->assertFresh($path, $this->club()));
+        $this->assertRefusedWith(self::TOO_OLD, fn (): DateTimeImmutable => $this->guard('2026-11-11T09:39:31Z')->assertFresh($path, $this->club()));
     }
 
     public function testTheImportGraceAcceptsTwentyFourHoursTenButNotTwentyFourHoursSixteen(): void
@@ -144,7 +144,7 @@ final class FbiExportFreshnessGuardTest extends TestCase
         $at = $this->guard('2026-11-11T09:48:31Z')->assertFresh($path, $this->club(), FbiExportFreshnessGuard::IMPORT_GRACE_SECONDS);
         self::assertSame(new DateTimeImmutable(self::EXPORTED)->getTimestamp(), $at->getTimestamp());
 
-        $this->assertRefusedWith(self::TOO_OLD, fn () => $this->guard('2026-11-11T09:54:31Z')->assertFresh($path, $this->club(), FbiExportFreshnessGuard::IMPORT_GRACE_SECONDS));
+        $this->assertRefusedWith(self::TOO_OLD, fn (): DateTimeImmutable => $this->guard('2026-11-11T09:54:31Z')->assertFresh($path, $this->club(), FbiExportFreshnessGuard::IMPORT_GRACE_SECONDS));
     }
 
     public function testAnExportDatedInTheFutureIsAccepted(): void
@@ -170,7 +170,7 @@ final class FbiExportFreshnessGuardTest extends TestCase
             $this->clubDay(new MockClock(new DateTimeImmutable('2026-11-09T08:00:00Z'))),
         );
 
-        $this->assertRefusedWith(self::TOO_OLD, fn () => $guard->assertFresh($path, $club));
+        $this->assertRefusedWith(self::TOO_OLD, fn (): DateTimeImmutable => $guard->assertFresh($path, $club));
     }
 
     public function testTheConstantsAreTheAgreedBounds(): void
