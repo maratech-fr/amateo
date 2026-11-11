@@ -41,11 +41,12 @@ final class MatchesPdfGeneratorTest extends TestCase
         self::assertFileDoesNotExist(PdfGenerator::outputDir() . '/' . $this->filenames[0], 'aucun fichier ne reste après la réponse');
     }
 
-    public function testTheDocumentIsPortrait(): void
+    /** Décision fondateur : paysage pour les deux regroupements (équipe comme jour). */
+    public function testTheDocumentIsLandscape(): void
     {
         $this->generatorWritingPdf()->generate($this->data());
 
-        self::assertFalse($this->payloads[0]['landscape'] ?? null);
+        self::assertTrue($this->payloads[0]['landscape'] ?? null);
     }
 
     /** Aucun nom réutilisable : deux exports identiques ne partagent jamais un fichier. */

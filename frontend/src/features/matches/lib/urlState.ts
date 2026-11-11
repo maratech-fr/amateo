@@ -343,8 +343,11 @@ function decodeTreatments(raw: string | null): TreatmentKey[] | null {
  * (rétro-compat P4-207, décodé puis réécrit), ET `ouvert` : le param qui ouvre une entrée
  * précise COMPTE comme une clé (décision fondateur), sans quoi un lien partagé vers une entrée
  * que la session masque la garderait invisible et perdrait le param en silence — le lien mentirait.
+ * `nouveaux` (lien « N nouveaux conflits » du bandeau, B1) aussi : le lien fait foi, il seede
+ * l'état (tous les conflits, « domicile seulement » remis à non pour la session). C'est un état
+ * d'adresse seulement, géré par la page (préservé par `applyConflictsToParams`).
  */
-export const CONFLICTS_PARAM_KEYS = ["pivot", "conflits", "traitement", "traites", "domicile", "ouvert"] as const;
+export const CONFLICTS_PARAM_KEYS = ["pivot", "conflits", "traitement", "traites", "domicile", "ouvert", "nouveaux"] as const;
 
 /**
  * PURE — l'URL porte-t-elle AU MOINS une clé de l'état Conflits ? Miroir de `hasConsultParams`

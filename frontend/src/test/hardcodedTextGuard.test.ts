@@ -110,6 +110,8 @@ const MIGRATED_FILES = [
   "features/matches/OpenVenueDialog.tsx",
   // Export des matchs pour les parents : la fenêtre naît migrée (`texts/export.ts`).
   "features/matches/ExportMatchesDialog.tsx",
+  // Bandeau « depuis votre dernière visite » : migré quand ses segments deviennent des liens.
+  "features/matches/ModuleVisitBanner.tsx",
   "features/wizard/steps/SlotReservationModal.tsx",
   "features/wizard/steps/ConstraintsStep.tsx",
   "features/wizard/steps/RecapStep.tsx",

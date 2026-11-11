@@ -330,7 +330,17 @@ export const updateFixture = (fixture: Fixture, input: EditFixtureInput): Promis
  * La liste des matchs en PDF. 60 s de délai, au-delà des 30 s du worker : avec les 10 s par défaut
  * de ky, un export club entier serait abandonné ici alors que le serveur le livre et compte le crédit.
  */
-export const exportFixturesPdf = (input: { from: string; to: string; teamId: string | null }): Promise<Blob> =>
+export interface ExportFixturesPdfInput {
+  from: string;
+  to: string;
+  teamId: string | null;
+  /** Seuls les matchs reçus chez nous (extérieur et terrain neutre écartés). */
+  homeOnly: boolean;
+  /** Une page par équipe, ou une page par semaine ISO avec les matchs jour par jour. */
+  groupBy: "team" | "day";
+}
+
+export const exportFixturesPdf = (input: ExportFixturesPdfInput): Promise<Blob> =>
   api.post("fixtures/export-pdf", { json: input, timeout: 60_000 }).blob();
 
 export const deleteFixture = (id: string): Promise<void> => api.delete(`fixtures/${id}`).then(() => undefined);

@@ -166,6 +166,8 @@ final class ImportFixturesApiTest extends WebTestCase
         $freshness = $this->responseData()['latest'] ?? null;
         self::assertIsArray($freshness);
         self::assertSame('FBI_XLSX', $freshness['source']);
+        // Le jour du dépôt, servi au fuseau du club pour le titre du module (FbiIngestionFreshnessTest).
+        self::assertMatchesRegularExpression('/^\d{4}-\d{2}-\d{2}$/', (string) ($freshness['depositedDate'] ?? ''));
     }
 
     public function testMappingASecondPhaseOntoTheFirstPhaseChampionshipIsRefusedOverHttp(): void

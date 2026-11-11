@@ -5,11 +5,14 @@ declare(strict_types=1);
 namespace App\Tests\Unit\Service;
 
 use App\Export\MatchesExportData;
+use App\Export\MatchesExportDaySection;
 use App\Export\MatchesExportPlace;
 use App\Export\MatchesExportRow;
 use App\Export\MatchesExportTeamSection;
+use App\Export\MatchesExportWeekSection;
 use App\Service\MatchesPdfGenerator;
 use DateTimeImmutable;
+use DOMElement;
 use PHPUnit\Framework\TestCase;
 use ReflectionClass;
 use Symfony\Component\DomCrawler\Crawler;
@@ -185,6 +188,206 @@ final class MatchesPdfHtmlTest extends TestCase
         self::assertStringContainsString('&lt;script&gt;', $html);
     }
 
+    // ─────────────────── Regroupement par jour et « à domicile seulement » (E3) ───────────────────
+
+    /** Par jour, la date est dans l'en-tête du jour : la ligne dit l'heure puis l'équipe. */
+    public function testDayGroupingColumnsAreTheFivePromisedOnes(): void
+    {
+        $html = $this->build(['groupBy' => 'day', 'sections' => [], 'weeks' => [$this->week('2026-W46', [$this->day('2026-11-14', [$this->row()])])]]);
+
+        $headers = new Crawler($html)->filterXPath('//th')->each(static fn (Crawler $th): string => trim($th->text()));
+        self::assertSame(['Heure', 'Équipe', 'Adversaire', 'Gymnase', 'Où'], $headers);
+    }
+
+    public function testADayRowReadsKickoffTeamOpponentPlaceAndWhere(): void
+    {
+        $place = new MatchesExportPlace(name: 'Gymnase du Parc', address: null, travelMinutes: null);
+        $row = $this->row(kickoff: '15:30', opponent: 'Les Lions', where: 'home', place: $place, teamName: 'U13 M1');
+        $html = $this->build(['groupBy' => 'day', 'sections' => [], 'weeks' => [$this->week('2026-W46', [$this->day('2026-11-14', [$row])])]]);
+
+        $rows = new Crawler($html)->filterXPath('//tr[td]');
+        self::assertCount(1, $rows);
+        $cells = $rows->filterXPath('.//td')->each(static fn (Crawler $td): string => trim((string) preg_replace('/\s+/u', ' ', $td->text())));
+        self::assertSame(['15:30', 'U13 M1', 'Les Lions', 'Gymnase du Parc', 'Domicile'], $cells);
+    }
+
+    /** L'en-tête de jour porte le jour de la semaine en toutes lettres, capitalisé, et l'année. */
+    public function testADayHeadingSpellsTheFullDate(): void
+    {
+        $html = $this->build(['groupBy' => 'day', 'sections' => [], 'weeks' => [$this->week('2026-W46', [$this->day('2026-11-14', [$this->row()])])]]);
+
+        $headings = new Crawler($html)->filterXPath('//h2')->each(static fn (Crawler $h2): string => trim($h2->text()));
+        self::assertSame(['Samedi 14 novembre 2026'], $headings);
+    }
+
+    public function testAHomeOnlyExportSaysSoInTheTitle(): void
+    {
+        $text = $this->textOf($this->build(['from' => '2026-11-09', 'to' => '2026-11-15', 'homeOnly' => true]));
+
+        self::assertStringContainsString('Matchs à domicile du 9 au 15 novembre 2026', $text);
+    }
+
+    public function testAHomeOnlyTeamExportSaysBothInTheTitle(): void
+    {
+        $text = $this->textOf($this->build(['from' => '2026-11-09', 'to' => '2026-11-15', 'homeOnly' => true, 'teamScopeName' => 'U15']));
+
+        self::assertStringContainsString('Matchs à domicile du 9 au 15 novembre 2026 — U15', $text);
+    }
+
+    public function testAnEmptyDayGroupingSaysTheStandardNothing(): void
+    {
+        $text = $this->textOf($this->build(['groupBy' => 'day', 'sections' => [], 'weeks' => []]));
+
+        self::assertStringContainsString('Aucun match sur cette période.', $text);
+        self::assertStringNotContainsString('à domicile', $text);
+    }
+
+    /** Décision fondateur (m3) : le vide dit ce qui a été demandé, pour les deux regroupements. */
+    public function testAnEmptyHomeOnlyDocumentSaysNoHomeMatch(): void
+    {
+        self::assertStringContainsString('Aucun match à domicile sur cette période.', $this->textOf($this->build(['homeOnly' => true, 'sections' => []])));
+        self::assertStringContainsString('Aucun match à domicile sur cette période.', $this->textOf($this->build(['homeOnly' => true, 'groupBy' => 'day', 'sections' => [], 'weeks' => []])));
+    }
+
+    public function testATeamWithoutHomeMatchSaysNoHomeMatch(): void
+    {
+        $text = $this->textOf($this->build(['homeOnly' => true, 'sections' => [$this->section('U9 F', [])]]));
+
+        self::assertStringContainsString('U9 F', $text);
+        self::assertStringContainsString('Aucun match à domicile sur cette période.', $text);
+    }
+
+    // ─────────────────── Coupures de page (E5, décision fondateur) ───────────────────
+
+    /** (a) Chaque équipe qui joue a sa page : la deuxième commence une page, la première non. */
+    public function testEachTeamWithMatchesStartsItsOwnPage(): void
+    {
+        $blocks = $this->pageBlocks($this->build(['sections' => [
+            $this->section('U9 Alpha', [$this->row(opponent: 'Adv A')]),
+            $this->section('U11 Bravo', [$this->row(opponent: 'Adv B')]),
+        ]]));
+
+        self::assertCount(2, $blocks);
+        self::assertStringContainsString('U9 Alpha', $blocks[0]['text']);
+        self::assertStringContainsString('U11 Bravo', $blocks[1]['text']);
+        self::assertSame([false, true], array_column($blocks, 'breaks'));
+    }
+
+    /** (b) Une équipe sans match sur la période n'a pas de page : elle passe après les équipes qui jouent. */
+    public function testATeamWithoutMatchMovesAfterThePlayingTeams(): void
+    {
+        $blocks = $this->pageBlocks($this->build(['sections' => [
+            $this->section('U9 Alpha', [$this->row(opponent: 'Adv A')]),
+            $this->section('U13 Vide', []),
+            $this->section('U11 Bravo', [$this->row(opponent: 'Adv B')]),
+        ]]));
+
+        self::assertCount(3, $blocks);
+        self::assertStringContainsString('U9 Alpha', $blocks[0]['text']);
+        self::assertStringContainsString('U11 Bravo', $blocks[1]['text']);
+        self::assertStringContainsString('U13 Vide', $blocks[2]['text']);
+        self::assertStringContainsString('Aucun match sur cette période.', $blocks[2]['text']);
+        self::assertSame([false, true, true], array_column($blocks, 'breaks'));
+    }
+
+    /** (c) Les équipes sans match partagent UN bloc final : aucune coupure entre elles. */
+    public function testTeamsWithoutMatchShareOneFinalBlock(): void
+    {
+        $blocks = $this->pageBlocks($this->build(['sections' => [
+            $this->section('U9 Alpha', [$this->row(opponent: 'Adv A')]),
+            $this->section('U13 Vide', []),
+            $this->section('U15 Vide', []),
+        ]]));
+
+        self::assertCount(2, $blocks);
+        self::assertStringContainsString('U13 Vide', $blocks[1]['text']);
+        self::assertStringContainsString('U15 Vide', $blocks[1]['text']);
+        self::assertSame(2, substr_count($blocks[1]['text'], 'Aucun match sur cette période.'));
+        self::assertSame([false, true], array_column($blocks, 'breaks'));
+    }
+
+    /** Le bloc des équipes sans match n'ouvre une page que s'il suit une équipe qui joue. */
+    public function testOnlyTeamsWithoutMatchMakeOnePageWithoutBreak(): void
+    {
+        $blocks = $this->pageBlocks($this->build(['sections' => [$this->section('U13 Vide', []), $this->section('U15 Vide', [])]]));
+
+        self::assertCount(1, $blocks);
+        self::assertSame([false], array_column($blocks, 'breaks'));
+    }
+
+    /** (d) L'export d'une seule équipe est un seul bloc, jamais coupé d'office. */
+    public function testASingleTeamExportIsOneBlockWithoutBreak(): void
+    {
+        $blocks = $this->pageBlocks($this->build(['teamScopeName' => 'U13 M1', 'sections' => [$this->section('U13 M1', [])]]));
+
+        self::assertCount(1, $blocks);
+        self::assertSame([false], array_column($blocks, 'breaks'));
+    }
+
+    /** (e) Par jour : une page par semaine ISO, lundi → dimanche (dim. 15 et lun. 16 sont sur deux pages). */
+    public function testEachIsoWeekStartsItsOwnPage(): void
+    {
+        $blocks = $this->pageBlocks($this->build(['groupBy' => 'day', 'from' => '2026-11-14', 'to' => '2026-11-16', 'sections' => [], 'weeks' => [
+            $this->week('2026-W46', [$this->day('2026-11-14', [$this->row(date: '2026-11-14')]), $this->day('2026-11-15', [$this->row(date: '2026-11-15')])]),
+            $this->week('2026-W47', [$this->day('2026-11-16', [$this->row(date: '2026-11-16')])]),
+        ]]));
+
+        self::assertCount(2, $blocks);
+        self::assertStringContainsString('Samedi 14 novembre 2026', $blocks[0]['text']);
+        self::assertStringContainsString('Dimanche 15 novembre 2026', $blocks[0]['text']);
+        self::assertStringContainsString('Lundi 16 novembre 2026', $blocks[1]['text']);
+        self::assertSame([false, true], array_column($blocks, 'breaks'));
+    }
+
+    /** (f) Une plage dans une seule semaine : une seule page, aucune coupure. */
+    public function testASingleWeekIsOneBlockWithoutBreak(): void
+    {
+        $blocks = $this->pageBlocks($this->build(['groupBy' => 'day', 'from' => '2026-11-14', 'to' => '2026-11-15', 'sections' => [], 'weeks' => [
+            $this->week('2026-W46', [$this->day('2026-11-14', [$this->row(date: '2026-11-14')]), $this->day('2026-11-15', [$this->row(date: '2026-11-15')])]),
+        ]]));
+
+        self::assertCount(1, $blocks);
+        self::assertSame([false], array_column($blocks, 'breaks'));
+    }
+
+    /**
+     * Les blocs imprimés (`.page`) dans l'ordre du document, et si chacun commence une page :
+     * `break-before: page` posé sur lui, ou la règle `.page + .page { break-before: page }` avec un
+     * bloc `.page` juste avant lui.
+     *
+     * @return list<array{text: string, breaks: bool}>
+     */
+    private function pageBlocks(string $html): array
+    {
+        $siblingRule = 1 === preg_match('/\.page\s*\+\s*\.page\s*\{[^}]*break-before:\s*page/', $html);
+        $pageClass = 'contains(concat(\' \', normalize-space(@class), \' \'), \' page \')';
+        $blocks = [];
+        foreach (new Crawler($html)->filterXPath('//body//*[' . $pageClass . ']') as $node) {
+            \assert($node instanceof DOMElement);
+            $previous = $node->previousElementSibling;
+            $inline = 1 === preg_match('/break-before:\s*page/', $node->getAttribute('style'));
+            $bySibling = $siblingRule && $previous instanceof DOMElement && \in_array('page', preg_split('/\s+/', $previous->getAttribute('class')) ?: [], true);
+            $blocks[] = [
+                'text' => trim((string) preg_replace('/\s+/u', ' ', $node->textContent)),
+                'breaks' => $inline || $bySibling,
+            ];
+        }
+
+        return $blocks;
+    }
+
+    /** @param list<MatchesExportDaySection> $days */
+    private function week(string $isoWeek, array $days): MatchesExportWeekSection
+    {
+        return new MatchesExportWeekSection(isoWeek: $isoWeek, days: $days);
+    }
+
+    /** @param list<MatchesExportRow> $rows */
+    private function day(string $date, array $rows): MatchesExportDaySection
+    {
+        return new MatchesExportDaySection(date: new DateTimeImmutable($date), rows: $rows);
+    }
+
     /** @return list<string> les cinq cellules de l'unique ligne rendue */
     private function onlyRowCells(MatchesExportRow $row): array
     {
@@ -212,6 +415,9 @@ final class MatchesPdfHtmlTest extends TestCase
             teamScopeName: $overrides['teamScopeName'] ?? null,
             hasTravel: $overrides['hasTravel'] ?? false,
             sections: $overrides['sections'] ?? [$this->section('U13 M1', [$this->row()])],
+            homeOnly: $overrides['homeOnly'] ?? false,
+            groupBy: $overrides['groupBy'] ?? 'team',
+            weeks: $overrides['weeks'] ?? [],
         );
 
         return new ReflectionClass(MatchesPdfGenerator::class)->newInstanceWithoutConstructor()->buildHtml($data);
@@ -231,6 +437,7 @@ final class MatchesPdfHtmlTest extends TestCase
         bool $friendly = false,
         string $where = 'home',
         ?MatchesExportPlace $place = null,
+        string $teamName = 'U13 M1',
     ): MatchesExportRow {
         return new MatchesExportRow(
             date: new DateTimeImmutable($date),
@@ -240,6 +447,7 @@ final class MatchesPdfHtmlTest extends TestCase
             friendly: $friendly,
             where: $where,
             place: $place,
+            teamName: $teamName,
         );
     }
 }

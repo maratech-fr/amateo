@@ -161,7 +161,7 @@ describe("ImportPage — les entrées de données", () => {
   });
 
   it("un dépôt existe → fraîcheur en relatif", async () => {
-    getLatestFbiIngestion.mockResolvedValueOnce({ latest: { depositedAt: "2026-08-22T09:00:00+00:00", source: "FBI_XLSX", created: 5, updated: 1, unchanged: 2, deviationsCount: 0 } });
+    getLatestFbiIngestion.mockResolvedValueOnce({ latest: { depositedAt: "2026-08-22T09:00:00+00:00", depositedDate: "2026-08-22", source: "FBI_XLSX", created: 5, updated: 1, unchanged: 2, deviationsCount: 0 } });
     renderPage([]);
     expect(await screen.findByText(/Dernier dépôt FBI/i)).toBeInTheDocument();
   });

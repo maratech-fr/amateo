@@ -127,6 +127,12 @@ export function ConflictsPage() {
   const allConflicts = useMemo<Conflict[]>(() => conflicts.data?.conflicts ?? [], [conflicts.data]);
   const heldLines = useMemo<HeldConflict[]>(() => conflicts.data?.held ?? [], [conflicts.data]);
   const newFingerprints = useMemo<Set<string>>(() => new Set(moduleVisit.data?.newConflictFingerprints ?? []), [moduleVisit.data]);
+  // B1 — `?nouveaux=1` (lien « N nouveaux conflits » du bandeau) : seuls les conflits dont l'empreinte
+  // est neuve depuis la dernière visite. État d'adresse seulement ; sans effet tant que la visite
+  // n'est pas résolue (rien à comparer — jamais une liste vidée à tort).
+  const visitResolved = undefined !== moduleVisit.data;
+  const newParam = "1" === searchParams.get("nouveaux");
+  const newOnly = newParam && visitResolved;
 
   // Compteurs par famille : SAISON, À TRAITER seulement (countByFamily filtre l'annoté).
   const familyCounts = useMemo(() => countByFamily(allConflicts), [allConflicts]);
@@ -143,8 +149,11 @@ export function ConflictsPage() {
       const active = new Set(treatments);
       out = out.filter((c) => active.has(treatmentOf(c)));
     }
+    if (newOnly) {
+      out = out.filter((c) => undefined !== c.fingerprint && newFingerprints.has(c.fingerprint));
+    }
     return out;
-  }, [allConflicts, effectiveFamilies, treatments]);
+  }, [allConflicts, effectiveFamilies, treatments, newOnly, newFingerprints]);
   const homeConflictCount = useMemo(() => familyTreatmentFiltered.filter(hasHomeSide).length, [familyTreatmentFiltered]);
   const filtered = useMemo(
     () => (homeOnly ? familyTreatmentFiltered.filter(hasHomeSide) : familyTreatmentFiltered),
@@ -289,8 +298,8 @@ export function ConflictsPage() {
     }
     const plural = (n: number): string => (n > 1 ? "s" : "");
     setLiveMsg(`Regroupé par ${PIVOT_LIVE_LABEL[conflictsPivot]} — ${entries.length} entrée${plural(entries.length)}, ${filtered.length} conflit${plural(filtered.length)}`);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- la phrase ne se rejoue QUE sur une interaction (pivot/familles/traitement/domicile), jamais sur un refetch (entries/filtered exclus des deps).
-  }, [conflictsPivot, conflictsFamilies, treatments, homeOnly]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- la phrase ne se rejoue QUE sur une interaction (pivot/familles/traitement/domicile/nouveaux), jamais sur un refetch (entries/filtered exclus des deps).
+  }, [conflictsPivot, conflictsFamilies, treatments, homeOnly, newParam]);
 
   // Interactions.
   const onPivot = (axis: ConflictPivotAxis): void => {
@@ -327,15 +336,30 @@ export function ConflictsPage() {
     setHomeOnly(next);
   };
 
+  // B1 — `?nouveaux` se pose et se retire dans l'adresse (autres params préservés).
+  const setNewOnly = (next: boolean): void => {
+    interactedRef.current = true;
+    const params = new URLSearchParams(searchParams);
+    if (next) {
+      params.set("nouveaux", "1");
+    } else {
+      params.delete("nouveaux");
+    }
+    setSearchParams(params, { replace: true });
+  };
+
   // Le bloc de filtres diffère-t-il des défauts ? (« Filtres · N » mobile + « Réinitialiser ».)
   const familiesDirty = null !== conflictsFamilies;
   const treatmentsDirty = null !== treatments;
-  const filtersDirtyCount = (familiesDirty ? 1 : 0) + (treatmentsDirty ? 1 : 0) + (homeOnly ? 1 : 0);
+  const filtersDirtyCount = (familiesDirty ? 1 : 0) + (treatmentsDirty ? 1 : 0) + (homeOnly ? 1 : 0) + (newParam ? 1 : 0);
   const resetFilters = (): void => {
     interactedRef.current = true;
     setConflictsFamilies(null);
     setTreatments(null);
     setHomeOnly(false);
+    if (newParam) {
+      setNewOnly(false);
+    }
     requestAnimationFrame(() => document.querySelector<HTMLElement>('[data-conflicts-entries] button')?.focus());
   };
 
@@ -548,6 +572,19 @@ export function ConflictsPage() {
       </Button>
 
       <div id="conflicts-filters-panel" className={cn(filtersOpen ? "flex" : "hidden", "flex-col gap-2 sm:flex")}>
+        {/* B1 — « Nouveautés » : les conflits neufs depuis la dernière visite (compte = celui du
+            bandeau). Paraît dès que la visite est résolue ET qu'il y a du neuf, ou que le lien l'a posé. */}
+        {visitResolved && (newFingerprints.size > 0 || newParam) ? (
+          <div role="group" aria-labelledby="conflicts-nouveautes-label" className="flex flex-wrap items-center gap-1.5">
+            <span id="conflicts-nouveautes-label" className="w-full shrink-0 text-xs font-medium text-muted-foreground sm:w-24">
+              {MATCHES_TEXTS.newConflictsGroupLabel}
+            </span>
+            <FilterChip pressed={newParam} count={newFingerprints.size} onPress={() => setNewOnly(!newParam)}>
+              {MATCHES_TEXTS.newConflictsChip}
+            </FilterChip>
+          </div>
+        ) : null}
+
         {/* Familles de conflits (présentes) avec compteur À TRAITER. */}
         <div role="group" aria-labelledby="conflicts-familles-label" className="flex flex-wrap items-center gap-1.5">
           <span id="conflicts-familles-label" className="w-full shrink-0 text-xs font-medium text-muted-foreground sm:w-24">
@@ -625,7 +662,17 @@ export function ConflictsPage() {
       </p>
 
       {/* Entrées pivotées, ou l'état vide de filtre. */}
-      {0 === entries.length ? (
+      {0 === entries.length && newOnly ? (
+        <EmptyHint>
+          <span>{MATCHES_TEXTS.noNewConflicts}</span>
+          <span className="mt-1 block">{MATCHES_TEXTS.noNewConflictsHint}</span>
+          <span className="mt-2 block">
+            <Button type="button" variant="outline" size="sm" onClick={() => setNewOnly(false)}>
+              {MATCHES_TEXTS.showAllConflicts}
+            </Button>
+          </span>
+        </EmptyHint>
+      ) : 0 === entries.length ? (
         <EmptyHint>
           <span>
             Aucun conflit ne correspond aux filtres — {allConflicts.length} conflit{allConflicts.length > 1 ? "s" : ""} sur la saison.

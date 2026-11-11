@@ -546,7 +546,8 @@ le même `ConflictRadarLoader` que le contrôleur de conflits (§2) — une seul
 
 Front : le POST part une fois au montage du module (`MatchesLayout`, garde socle), jamais à un
 re-render ni à la navigation interne. `ModuleVisitBanner` (bandeau `role="status"`, ton accent, non
-dismissible) sur le Calendrier ; chips « Nouveau » ornementales sur le radar.
+dismissible) sur le Calendrier — chaque morceau de son résumé est un lien là où agir (Importer ;
+`/matchs/conflits?nouveaux=1` pour les nouveaux conflits, §6 de `module-matchs-consultation.md`) ; chips « Nouveau » ornementales sur le radar.
 
 ### Échéances de saisie ligue/comité
 

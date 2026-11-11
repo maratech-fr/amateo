@@ -11,3 +11,9 @@ Fonctionnalité: L'export des matchs pour les parents
     Et un match amical de mon club dans la plage exportée
     Quand j'exporte les matchs de cette plage
     Alors je repars avec le PDF des matchs
+
+  Scénario: J'exporte les seuls matchs à domicile, regroupés par jour, et le worker rend le PDF
+    Étant donné le club de démonstration et son gestionnaire connecté
+    Et un match amical à domicile de mon club dans la plage exportée
+    Quand j'exporte les matchs à domicile de cette plage, regroupés par jour
+    Alors je repars avec le PDF des matchs

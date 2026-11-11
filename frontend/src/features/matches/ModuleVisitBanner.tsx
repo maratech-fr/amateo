@@ -1,9 +1,13 @@
 import { Sparkles } from "lucide-react";
+import { Fragment } from "react";
+import { Link } from "react-router";
 
 import { NoticeBanner } from "@/shared/components/ui/notice-banner";
 
 import type { ModuleVisitDelta } from "./api";
 import { moduleVisitSummary } from "./lib/moduleVisitSummary";
+import { visitDeltaLinkedSegments } from "./lib/visitDeltaSegments";
+import { MATCHES_TEXTS } from "./texts";
 
 interface ModuleVisitBannerProps {
   /** Le delta du « gardien » ; `undefined` tant que la requête n'est pas résolue. */
@@ -23,10 +27,11 @@ export function ModuleVisitBanner({ delta }: ModuleVisitBannerProps) {
   if (undefined === delta) {
     return null;
   }
-  const segments = moduleVisitSummary(delta);
-  if (0 === segments.length) {
+  if (0 === moduleVisitSummary(delta).length) {
     return null;
   }
+  // B1 — chaque morceau mène là où agir (Importer, conflits nouveaux) ; sans écran unique, un texte.
+  const segments = visitDeltaLinkedSegments(delta);
 
   return (
     <NoticeBanner
@@ -35,7 +40,19 @@ export function ModuleVisitBanner({ delta }: ModuleVisitBannerProps) {
       icon={<Sparkles className="size-4 text-accent" />}
       message={
         <>
-          <span className="font-medium">Depuis votre dernière visite :</span> {segments.join(" · ")}
+          <span className="font-medium">{MATCHES_TEXTS.sinceLastVisit}</span>{" "}
+          {segments.map((segment, index) => (
+            <Fragment key={segment.label}>
+              {0 === index ? null : " · "}
+              {null === segment.to ? (
+                segment.label
+              ) : (
+                <Link to={segment.to} className="underline underline-offset-2 hover:no-underline">
+                  {segment.label}
+                </Link>
+              )}
+            </Fragment>
+          ))}
         </>
       }
     />

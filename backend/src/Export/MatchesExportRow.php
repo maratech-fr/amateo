@@ -19,5 +19,6 @@ final readonly class MatchesExportRow
         /** @var 'home'|'away'|'neutral' */
         public string $where,
         public ?MatchesExportPlace $place,
+        public string $teamName = '',
     ) {}
 }

@@ -1,6 +1,7 @@
 import { useId, useState } from "react";
 
 import { Button } from "@/shared/components/ui/button";
+import { FilterToggle } from "@/shared/components/ui/filter-toggle";
 import { Input } from "@/shared/components/ui/input";
 import { Modal } from "@/shared/components/ui/modal";
 import { SegmentedControl } from "@/shared/components/ui/segmented-control";
@@ -13,6 +14,7 @@ import { useExportFixturesPdf } from "./queries";
 import { MATCHES_EXPORT_TEXTS as TEXTS } from "./texts/export";
 
 type Scope = "club" | "team";
+type GroupBy = "team" | "day";
 
 interface ExportDefaults {
   teamId: string | null;
@@ -39,6 +41,8 @@ function ExportForm({ onClose, teams, tiers, defaults }: Omit<ExportMatchesDialo
   const [teamId, setTeamId] = useState(defaults.teamId ?? "");
   const [from, setFrom] = useState(defaults.from);
   const [to, setTo] = useState(defaults.to);
+  const [groupBy, setGroupBy] = useState<GroupBy>("team");
+  const [homeOnly, setHomeOnly] = useState(false);
   const { run, busy } = useExportFixturesPdf();
 
   const credits = useCredits();
@@ -58,7 +62,8 @@ function ExportForm({ onClose, teams, tiers, defaults }: Omit<ExportMatchesDialo
   const download = (): void => {
     const team = "team" === scope ? teams.find((candidate) => candidate.id === teamId) : undefined;
     const slug = undefined === team ? "club" : slugFilename(team.name);
-    run({ from, to, teamId: "team" === scope ? teamId : null }, `matchs-${slug}-${from}-${to}.pdf`, onClose);
+    const suffix = `${homeOnly ? "-domicile" : ""}${"day" === groupBy ? "-par-jour" : ""}`;
+    run({ from, to, teamId: "team" === scope ? teamId : null, homeOnly, groupBy }, `matchs-${slug}${suffix}-${from}-${to}.pdf`, onClose);
   };
 
   return (
@@ -99,6 +104,25 @@ function ExportForm({ onClose, teams, tiers, defaults }: Omit<ExportMatchesDialo
             <TeamSelect aria-label={TEXTS.teamLabel} teams={teams} tiers={tiers} value={teamId} placeholder={TEXTS.teamPlaceholder} onValueChange={setTeamId} />
           </div>
         ) : null}
+
+        <div className="flex flex-col items-start gap-1">
+          <span id={`${fieldId}-group-by`} className="text-muted-foreground">
+            {TEXTS.groupByLabel}
+          </span>
+          <SegmentedControl
+            labelledBy={`${fieldId}-group-by`}
+            value={groupBy}
+            onValueChange={setGroupBy}
+            options={[
+              { key: "team", label: TEXTS.groupByTeam },
+              { key: "day", label: TEXTS.groupByDay },
+            ]}
+          />
+        </div>
+
+        <FilterToggle checked={homeOnly} onChange={setHomeOnly}>
+          {TEXTS.homeOnlyLabel}
+        </FilterToggle>
 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div className="flex flex-col gap-1">

@@ -44,9 +44,9 @@ vi.mock("@/shared/feedback/FeedbackDialog", () => ({ FeedbackDialog: () => <div 
 const club = (overrides: Record<string, unknown>): MeResponse["club"] =>
   ({ id: "c1", name: "BCCL", onboardingCompleted: true, logoUrl: null, ...overrides }) as unknown as MeResponse["club"];
 
-function renderLayout() {
+function renderLayout(path = "/") {
   return render(
-    <MemoryRouter>
+    <MemoryRouter initialEntries={[path]}>
       <AppLayout />
     </MemoryRouter>,
   );
@@ -139,6 +139,20 @@ describe("AppLayout — en-tête marque produit", () => {
       meData = { club: club({ name: "BCCL" }), seasonPlan: { chosenScheduleId: "sched-1" } as unknown as MeResponse["seasonPlan"] };
       renderLayout();
       expect(screen.getByRole("link", { name: "Matchs" })).toHaveAttribute("href", "/matchs");
+    });
+
+    // P4-414 — « Matchs » reste la page courante sur TOUS ses onglets (/matchs/conflits,
+    // /matchs/importer…), pas seulement sur /matchs : l'en-tête dit où l'on est.
+    it.each(["/matchs", "/matchs/conflits", "/matchs/importer"])("débloqué, sur %s → « Matchs » est la page courante", (path) => {
+      meData = { club: club({ name: "BCCL" }), seasonPlan: { chosenScheduleId: "sched-1" } as unknown as MeResponse["seasonPlan"] };
+      renderLayout(path);
+      expect(screen.getByRole("link", { name: "Matchs" })).toHaveAttribute("aria-current", "page");
+    });
+
+    it("débloqué, hors du module (/planning) → « Matchs » n'est pas la page courante", () => {
+      meData = { club: club({ name: "BCCL" }), seasonPlan: { chosenScheduleId: "sched-1" } as unknown as MeResponse["seasonPlan"] };
+      renderLayout("/planning");
+      expect(screen.getByRole("link", { name: "Matchs" })).not.toHaveAttribute("aria-current");
     });
 
     it("verrouillé (aucune version pointée) → « Matchs » reste un rôle lien FOCALISABLE, sa raison découvrable", () => {

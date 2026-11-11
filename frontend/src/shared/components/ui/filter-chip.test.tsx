@@ -25,7 +25,7 @@ describe("FilterChip (puce de filtre partagée)", () => {
     expect(screen.getByRole("button", { name: /Personne en double/ })).toHaveAttribute("aria-pressed", "false");
   });
 
-  it("affiche le compteur ; un 0 est mis en sourdine (text-muted-foreground)", () => {
+  it("affiche le compteur ; un 0 est mis en sourdine (text-muted-foreground) sur la puce NON pressée, jamais sur la pressée (fond accent plein)", () => {
     const { rerender } = render(
       <FilterChip pressed count={2} onPress={() => {}}>
         Personne en double
@@ -33,11 +33,17 @@ describe("FilterChip (puce de filtre partagée)", () => {
     );
     expect(within(screen.getByRole("button")).getByText("2")).not.toHaveClass("text-muted-foreground");
     rerender(
-      <FilterChip pressed count={0} onPress={() => {}}>
+      <FilterChip pressed={false} count={0} onPress={() => {}}>
         Personne en double
       </FilterChip>,
     );
     expect(within(screen.getByRole("button")).getByText("0")).toHaveClass("text-muted-foreground");
+    rerender(
+      <FilterChip pressed count={0} onPress={() => {}}>
+        Personne en double
+      </FilterChip>,
+    );
+    expect(within(screen.getByRole("button")).getByText("0")).not.toHaveClass("text-muted-foreground");
   });
 
   it("sans `count` : aucun compteur n'est rendu", () => {

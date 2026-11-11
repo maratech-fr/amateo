@@ -8,7 +8,7 @@ use App\Entity\Club;
 use App\Entity\ClubInvitation;
 use App\Mail\ClubMailMetadata;
 use App\Mail\EmailTemplateRenderer;
-use DateTimeImmutable;
+use App\Support\FrenchDate;
 use Psr\Log\LoggerInterface;
 use Symfony\Component\DependencyInjection\Attribute\Autowire;
 use Symfony\Component\Mailer\MailerInterface;
@@ -23,12 +23,6 @@ use Throwable;
  */
 final readonly class ClubInvitationMailer
 {
-    /** @var array<int, string> mois en toutes lettres (l'e-mail est lu par un humain). */
-    private const array MONTHS = [
-        1 => 'janvier', 2 => 'février', 3 => 'mars', 4 => 'avril', 5 => 'mai', 6 => 'juin',
-        7 => 'juillet', 8 => 'août', 9 => 'septembre', 10 => 'octobre', 11 => 'novembre', 12 => 'décembre',
-    ];
-
     public function __construct(
         private MailerInterface $mailer,
         private MailFrom $mailFrom,
@@ -43,7 +37,7 @@ final readonly class ClubInvitationMailer
         $base = '' !== $this->frontendBaseUrl ? rtrim($this->frontendBaseUrl, '/') : $requestHost;
         $link = $base . '/invitation/' . $rawToken;
         $product = $this->productIdentity->name();
-        $expiry = $this->frenchDate($invitation->getExpiresAt());
+        $expiry = FrenchDate::long($invitation->getExpiresAt());
         $inviter = '' !== trim($inviterFirstName) ? trim($inviterFirstName) : $clubName;
 
         $email = (new Email)
@@ -77,10 +71,5 @@ final readonly class ClubInvitationMailer
             // tracé — patron RegisterService::sendVerificationEmail.
             $this->logger->warning('Invitation mail dispatch failed (not enqueued)', ['error' => $e->getMessage()]);
         }
-    }
-
-    private function frenchDate(DateTimeImmutable $date): string
-    {
-        return \sprintf('%d %s %d', (int) $date->format('j'), self::MONTHS[(int) $date->format('n')], (int) $date->format('Y'));
     }
 }

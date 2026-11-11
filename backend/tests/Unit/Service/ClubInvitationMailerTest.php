@@ -54,6 +54,16 @@ final class ClubInvitationMailerTest extends TestCase
         $this->assertCtaHeadersPointToBodyLink($email, 'https://app.example.test/invitation/' . self::TOKEN, 'Accepter l\'invitation');
     }
 
+    /** La date d'expiration s'écrit comme partout ailleurs : « 1er décembre 2026 », jamais « 1 décembre ». */
+    public function testTheExpiryDateWritesTheFirstAsPremier(): void
+    {
+        $mailer = $this->recordingMailer();
+        $invitation = new ClubInvitation()->setEmail('invite@club.fr')->setExpiresAt(new DateTimeImmutable('2026-12-01'));
+        $this->mailer($mailer, 'https://app.example.test')->send($invitation, self::TOKEN, 'Gérard', 'BCCL', 'https://whatever.ignored');
+
+        self::assertStringContainsString('Ce lien expire le 1er décembre 2026.', (string) $this->sent($mailer)->getTextBody());
+    }
+
     private function mailer(MailerInterface $mailer, string $base): ClubInvitationMailer
     {
         return new ClubInvitationMailer($mailer, new MailFrom, new ProductIdentity, $base, new NullLogger);

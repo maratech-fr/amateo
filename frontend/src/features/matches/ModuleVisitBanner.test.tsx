@@ -1,9 +1,17 @@
-import { render, screen } from "@testing-library/react";
+import { render as rtlRender, screen, within } from "@testing-library/react";
+import type { ReactElement } from "react";
+import { MemoryRouter } from "react-router";
 import { describe, expect, it } from "vitest";
 
 import type { ModuleVisitDelta } from "./api";
 import { ModuleVisitBanner } from "./ModuleVisitBanner";
 import { moduleVisitSummary } from "./lib/moduleVisitSummary";
+import { MATCHES_TEXTS } from "./texts";
+
+/** Le bandeau porte des liens (B1) : il se rend dans un routeur, comme dans le module. */
+function render(ui: ReactElement) {
+  return rtlRender(<MemoryRouter>{ui}</MemoryRouter>);
+}
 
 function delta(over: Partial<ModuleVisitDelta>): ModuleVisitDelta {
   return {
@@ -51,7 +59,7 @@ describe("ModuleVisitBanner (RMM-3 — bandeau résumé)", () => {
   it("delta PLEIN → rend les trois morceaux", () => {
     render(<ModuleVisitBanner delta={delta({ newFixturesCount: 12, newConflictFingerprints: ["a", "b", "c"], planningChanged: true })} />);
     const banner = screen.getByRole("status");
-    expect(banner).toHaveTextContent("Depuis votre dernière visite");
+    expect(banner).toHaveTextContent(MATCHES_TEXTS.sinceLastVisit);
     expect(banner).toHaveTextContent("12 matchs arrivés");
     expect(banner).toHaveTextContent("3 nouveaux conflits");
     expect(banner).toHaveTextContent("le planning de saison a changé");
@@ -85,5 +93,25 @@ describe("ModuleVisitBanner (RMM-3 — bandeau résumé)", () => {
   it("delta MALFORMÉ (`{}`) → RIEN, aucune exception", () => {
     expect(() => render(<ModuleVisitBanner delta={{} as never} />)).not.toThrow();
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
+  });
+});
+
+// B1 — chaque morceau mène là où agir : les matchs arrivés à l'Importer, les conflits neufs aux
+// seuls conflits nouveaux. « Le planning a changé » reste un texte (aucun écran unique à ouvrir).
+describe("ModuleVisitBanner — bandeau cliquable (B1)", () => {
+  it("delta PLEIN → deux liens et un texte", () => {
+    render(<ModuleVisitBanner delta={delta({ newFixturesCount: 12, newConflictFingerprints: ["a", "b", "c"], planningChanged: true })} />);
+    const banner = screen.getByRole("status");
+    expect(within(banner).getByRole("link", { name: "12 matchs arrivés" })).toHaveAttribute("href", "/matchs/importer");
+    expect(within(banner).getByRole("link", { name: "3 nouveaux conflits" })).toHaveAttribute("href", "/matchs/conflits?nouveaux=1");
+    expect(within(banner).getAllByRole("link")).toHaveLength(2);
+    expect(banner).toHaveTextContent("le planning de saison a changé");
+  });
+
+  it("planning changé SEUL → le texte, aucun lien", () => {
+    render(<ModuleVisitBanner delta={delta({ planningChanged: true })} />);
+    const banner = screen.getByRole("status");
+    expect(banner).toHaveTextContent("le planning de saison a changé");
+    expect(within(banner).queryByRole("link")).not.toBeInTheDocument();
   });
 });

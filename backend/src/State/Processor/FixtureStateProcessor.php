@@ -22,6 +22,7 @@ use App\Service\FbiCorrectionLedger;
 use App\Service\MatchConflictDetector;
 use App\Service\PlanVenueClosures;
 use App\Service\SocleGuard;
+use App\Support\FrenchDate;
 use DateTimeImmutable;
 use Symfony\Component\Clock\ClockInterface;
 use Symfony\Component\HttpKernel\Exception\UnprocessableEntityHttpException;
@@ -32,11 +33,6 @@ use Symfony\Contracts\Service\Attribute\Required;
  */
 class FixtureStateProcessor extends AbstractStateProcessor
 {
-    /** ISO weekday (1 = Monday … 7 = Sunday) → the French day name, lowercase. */
-    private const array DAY_LABELS = ['', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi', 'dimanche'];
-
-    private const array MONTH_LABELS = ['', 'janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
-
     private SocleGuard $socleGuard;
 
     private ClockInterface $clock;
@@ -321,12 +317,7 @@ class FixtureStateProcessor extends AbstractStateProcessor
         $isHoliday = \is_string($clubId) && '' !== $clubId
             && [] !== $this->clubPublicHolidays->datesInWindow($clubId, $matchDate, $matchDate);
         $applicable = MatchConflictDetector::applicableWindows($venueId, $date, $isHoliday, $windowArrays);
-        $dayAndMonth = \sprintf(
-            '%s %d %s',
-            self::DAY_LABELS[(int) $matchDate->format('N')],
-            (int) $matchDate->format('j'),
-            self::MONTH_LABELS[(int) $matchDate->format('n')],
-        );
+        $dayAndMonth = FrenchDate::weekday($matchDate);
         if ([] === $applicable) {
             $this->refuse(\sprintf(
                 '%s n\'a pas d\'accès match le %s%s. Choisissez un autre gymnase, ou ouvrez-le ce jour-là depuis le panneau du match.',

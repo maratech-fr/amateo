@@ -9,7 +9,10 @@ use DateTimeImmutable;
 /** Tout ce que le PDF des matchs imprime : `MatchesPdfGenerator::buildHtml` ne lit rien d'autre. */
 final readonly class MatchesExportData
 {
-    /** @param list<MatchesExportTeamSection> $sections */
+    /**
+     * @param list<MatchesExportTeamSection> $sections
+     * @param list<MatchesExportWeekSection> $weeks
+     */
     public function __construct(
         public string $clubId,
         public string $clubName,
@@ -20,5 +23,9 @@ final readonly class MatchesExportData
         public ?string $teamScopeName,
         public bool $hasTravel,
         public array $sections,
+        public bool $homeOnly = false,
+        /** @var 'team'|'day' */
+        public string $groupBy = 'team',
+        public array $weeks = [],
     ) {}
 }

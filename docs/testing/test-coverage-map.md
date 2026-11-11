@@ -311,6 +311,7 @@ Calendrier, ouvre la liste « FBI — à faire », coche « saisi » sur sa renc
 |---|---|
 | `un-club-ne-voit-jamais-un-autre-club.feature` | un autre club ne liste, ne lit ni ne supprime une équipe qui n'est pas la sienne (404, jamais 403) ; un membre sans rôle de gestion ne modifie rien |
 | `l-export-du-planning.feature` | le planning en vigueur s'exporte en PDF non vide (le refus d'export sans session — PDF ET XLSX — est replié sur `Security/ExportAuthenticationTest`) |
+| `l-export-des-matchs-pour-les-parents.feature` | une plage de matchs s'exporte en vrai PDF rendu par le worker, par équipe et par jour avec « à domicile seulement » ; le contenu (regroupements, coupures de page, vide) est prouvé par `MatchesPdfHtmlTest` et `MatchesExportDataProviderTest`, la date du titre du module par `FbiIngestionFreshnessTest` |
 | `voeux-des-coachs.feature` | une campagne envoie un lien, l'entraîneur répond sans compte, le vœu remonte côté gestionnaire (remplace `smoke-coach-wishes.sh`) ; le gestionnaire transfère les doléances reçues et le planning de la semaine reflète la conversion (P2-63 PR 5) ; charger une version sans un coach efface sa ligne d'absence de la doléance et de l'export du club (P4-448, bornes club et saison dans `Security/RgpdExportTest`, coach conservé ou ramené dans `Integration/Service/StructureRestorerTest`) |
 
 **Choix de conception (décision fermée, `specs/courantes/etat-des-lieux.md` §2)** : les features

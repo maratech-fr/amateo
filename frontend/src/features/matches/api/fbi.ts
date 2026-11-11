@@ -218,6 +218,8 @@ export const importFbiFixtures = (
  * none yet). Open to any member (no management gate). */
 export interface FbiIngestionLatest {
   depositedAt: string;
+  /** Le jour du dépôt au fuseau du club (`Y-m-d`), servi par le serveur : le titre du module le date. */
+  depositedDate: string;
   source: "FBI_XLSX" | "FFBB_API";
   created: number;
   updated: number;
