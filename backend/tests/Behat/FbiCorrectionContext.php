@@ -183,16 +183,55 @@ final class FbiCorrectionContext extends BaseContext
         $this->deposit('17:00', null);
     }
 
-    #[Then('aucun écart n\'est à traiter et l\'entrée dit « vu dans FBI »')]
-    public function aucunEcartEtVuDansFbi(): void
+    /** « Garder l'appli » ne se tait pas : tant que FBI montre l'autre valeur, la question revient. */
+    #[Then('l\'écart d\'heure est de nouveau à trancher et l\'entrée dit « vu dans FBI »')]
+    public function lEcartEstReposeEtVuDansFbi(): void
     {
-        $state = $this->apiGet(\sprintf('fixtures/%s', $this->fixtureId), $this->token)['json']['reviewState'] ?? null;
-        if ('REVIEWED' !== $state) {
-            throw new RuntimeException('le re-dépôt de la même valeur ne devrait PAS re-créer d\'écart à traiter');
+        $json = $this->apiGet(\sprintf('fixtures/%s', $this->fixtureId), $this->token)['json'];
+        if ('OUT_OF_SYNC' !== ($json['reviewState'] ?? null)) {
+            throw new RuntimeException(\sprintf('le re-dépôt de la valeur gardée devrait reposer la question (état « %s »)', \is_string($json['reviewState'] ?? null) ? $json['reviewState'] : 'inconnu'));
+        }
+        if ('15:30' !== ($json['kickoffTime'] ?? null)) {
+            throw new RuntimeException('la valeur gardée (15:30) ne devrait jamais être écrasée');
+        }
+        $reposed = false;
+        foreach (\is_array($json['pendingDeviations'] ?? null) ? $json['pendingDeviations'] : [] as $deviation) {
+            if (\is_array($deviation) && 'kickoff' === ($deviation['field'] ?? null) && false === ($deviation['autoApplied'] ?? null)) {
+                $reposed = true;
+            }
+        }
+        if (!$reposed) {
+            throw new RuntimeException('un écart d\'heure à trancher devrait être reposé');
         }
         $entry = $this->onlyCorrection();
         if (null === ($entry['lastSeenInFbiAt'] ?? null)) {
             throw new RuntimeException('l\'entrée devrait porter un « vu dans FBI »');
+        }
+    }
+
+    #[When('je garde encore l\'appli')]
+    public function jeGardeEncoreLAppli(): void
+    {
+        $result = $this->apiPost('fixtures/review/deviations', [
+            'fixtureId' => $this->fixtureId,
+            'field' => 'kickoff',
+            'choice' => 'keep_app',
+        ], $this->token);
+        if (200 !== $result['status']) {
+            throw new RuntimeException(\sprintf('garder encore l\'appli a répondu %d (200 attendu)', $result['status']));
+        }
+    }
+
+    #[Then('une seule entrée « à corriger dans FBI » reste ouverte')]
+    public function uneSeuleEntreeResteOuverte(): void
+    {
+        $entry = $this->onlyCorrection();
+        if (($entry['appValue'] ?? null) !== '15:30' || ($entry['fbiValue'] ?? null) !== '17:00') {
+            throw new RuntimeException('l\'entrée ouverte devrait toujours dire : taper 15:30, FBI affiche 17:00');
+        }
+        $state = $this->apiGet(\sprintf('fixtures/%s', $this->fixtureId), $this->token)['json']['reviewState'] ?? null;
+        if ('REVIEWED' !== $state) {
+            throw new RuntimeException('garder encore l\'appli devrait rendre la rencontre traitée');
         }
     }
 

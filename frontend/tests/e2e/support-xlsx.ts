@@ -150,13 +150,25 @@ function buildSingleSheetXlsx(sheetName: string, header: string[], rows: string[
     `<Default Extension="xml" ContentType="application/xml"/>` +
     `<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>` +
     `<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>` +
+    `<Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>` +
     `</Types>`;
 
   const rootRels =
     `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
     `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">` +
     `<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>` +
+    `<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/>` +
     `</Relationships>`;
+
+  // La date d'export, comme FBI l'écrit (instant UTC à la seconde) : le serveur refuse un
+  // export rencontres sans elle ou de plus de 24 heures. Un export frais = l'instant du test.
+  const exportedAt = new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
+  const core =
+    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
+    `<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">` +
+    `<dc:creator>Apache POI</dc:creator>` +
+    `<dcterms:created xsi:type="dcterms:W3CDTF">${exportedAt}</dcterms:created>` +
+    `</cp:coreProperties>`;
 
   const workbook =
     `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
@@ -175,6 +187,7 @@ function buildSingleSheetXlsx(sheetName: string, header: string[], rows: string[
     { name: "xl/workbook.xml", data: Buffer.from(workbook, "utf8") },
     { name: "xl/_rels/workbook.xml.rels", data: Buffer.from(workbookRels, "utf8") },
     { name: "xl/worksheets/sheet1.xml", data: Buffer.from(sheet, "utf8") },
+    { name: "docProps/core.xml", data: Buffer.from(core, "utf8") },
   ]);
 }
 

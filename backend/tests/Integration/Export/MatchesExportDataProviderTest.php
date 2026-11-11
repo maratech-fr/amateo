@@ -97,6 +97,19 @@ final class MatchesExportDataProviderTest extends KernelTestCase
         self::assertTrue($this->row('A')->toConfirm);
     }
 
+    /**
+     * Une valeur que FBI a imposée et que l'appli a déjà écrite (entrée appliquée d'office, simple
+     * bandeau à acquitter) n'est pas un doute pour les parents : le match validé reste ferme.
+     */
+    public function testAValueAlreadyAppliedFromFbiLeavesAValidatedHomeFirm(): void
+    {
+        $fixture = $this->homeMatch('A', '2026-11-14', '17:00', FixtureStatus::VALIDATED, $this->championship->getId());
+        $fixture->putPendingDeviation(['field' => 'kickoff', 'appValue' => '15:30', 'sourceValue' => '17:00', 'channel' => 'FBI_XLSX', 'seenAt' => '2026-11-08T10:00:00+01:00', 'autoApplied' => true]);
+        $this->em->flush();
+
+        self::assertFalse($this->row('A')->toConfirm);
+    }
+
     public function testAFutureFriendlyHomeWithoutCompetitionIsFirm(): void
     {
         $this->homeMatch('A', '2026-11-14', '10:00', FixtureStatus::PLACED, null);

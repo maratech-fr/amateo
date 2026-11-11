@@ -3,7 +3,7 @@ Fonctionnalité: Ce que FBI doit encore refléter
   Quand l'appli et FBI divergent et que le gestionnaire GARDE l'appli, c'est FBI qui
   est en retard : il faut le corriger à la main dans le portail fédéral. L'appli tient
   le registre « à corriger dans FBI » — ce qu'il faut y taper, en face de ce que FBI
-  affiche encore. Un re-dépôt de la même valeur ne le harcèle pas ; un dépôt qui montre
+  affiche encore. Tant que FBI montre l'autre valeur, chaque dépôt repose la question ; un dépôt qui montre
   FBI corrigé ferme l'entrée tout seul ; et il peut aussi la cocher « corrigé ».
 
   Scénario: Garder l'appli ouvre une entrée, fermée quand FBI est corrigé
@@ -14,7 +14,9 @@ Fonctionnalité: Ce que FBI doit encore refléter
     Et FBI affiche 17h00 et je garde l'appli
     Alors une entrée « à corriger dans FBI » est ouverte, à taper 15h30 alors que FBI affiche 17h00
     Quand FBI affiche toujours 17h00 au dépôt suivant
-    Alors aucun écart n'est à traiter et l'entrée dit « vu dans FBI »
+    Alors l'écart d'heure est de nouveau à trancher et l'entrée dit « vu dans FBI »
+    Quand je garde encore l'appli
+    Alors une seule entrée « à corriger dans FBI » reste ouverte
     Quand FBI est corrigé et affiche de nouveau 15h30
     Alors le registre « à corriger dans FBI » est vide
 

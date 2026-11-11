@@ -11,6 +11,7 @@ import { useToastStore } from "@/shared/stores/toastStore";
 
 import type { AttachVenueLabelResult, FbiIngestionLatest, Fixture, FixtureReviewState, LeagueValidationOutlook, PendingDeviation, ReviewFixturesResult, Venue, VenueLabelInventoryRow } from "./api";
 import { ImportPage } from "./ImportPage";
+import { fieldConsequence } from "./lib/deviationConsequence";
 import { weekendKeyOf } from "./lib/weekendGrid";
 import { useMatchesStore } from "./store";
 import { MATCHES_TEXTS } from "./texts";
@@ -286,15 +287,20 @@ describe("ImportPage — la file de traitement", () => {
     expect(useToastStore.getState().toasts.map((t) => t.message)).toEqual([]);
   });
 
+  /**
+   * Un écart se lit en deux colonnes Amateo / FBI avec la conséquence de chaque choix, et se
+   * tranche ; sur un match déjà dans FBI, plus d'avertissement « repassera à Placé » (prendre le
+   * fichier garde le statut).
+   */
   it("un écart se lit en deux colonnes Amateo / FBI avec la conséquence, et se tranche", async () => {
     const user = userEvent.setup();
-    renderPage([fx("team-1", "OUT_OF_SYNC", "2026-12-05", { pendingDeviations: [dateDev] })], "/matchs/importer?equipe=team-1");
+    renderPage([fx("team-1", "OUT_OF_SYNC", "2026-12-05", { status: "VALIDATED", pendingDeviations: [dateDev] })], "/matchs/importer?equipe=team-1");
     await screen.findByText("Amateo");
     expect(screen.getByText("FBI")).toBeInTheDocument();
     expect(screen.getByText("2026-12-05")).toBeInTheDocument();
     expect(screen.getByText("2026-12-12")).toBeInTheDocument();
-    // Conséquence de « prendre le fichier » sur une date : dé-placement.
-    expect(screen.getByText(/dé-place le match/)).toBeInTheDocument();
+    expect(screen.getByText(fieldConsequence("date").takeFile)).toBeInTheDocument();
+    expect(screen.queryByText(/repasser à « Placé »/)).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Prendre FBI" }));
     expect(resolveFixtureDeviation).toHaveBeenCalledWith({ fixtureId: "fx-1", field: "date", choice: "take_source" });
