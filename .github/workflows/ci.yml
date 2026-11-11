@@ -727,6 +727,12 @@ jobs:
           # lifecycle) : la V1 d'un plan de période transcrit la version pointée du socle, filtrée des
           # réglages/fermetures de la période — falsifié dans les deux sens, avec la liste « à replacer ».
           FILES="$FILES tests/Security/PeriodCopyBirthTest.php"
+          # P4-503 (axes planning lifecycle + tenant isolation) : un planning de période non validé
+          # 7 jours après le début de sa période se valide seul — version chargée pointée, sœurs
+          # gardées, seuil sur la date CIVILE (fuseaux ouest/est, TimeZone de session), jamais le
+          # socle ni un plan déjà validé une fois ni une saison archivée au jour du club, gardes de
+          # l'UPDATE sous verrou, un club en échec n'arrête jamais les autres, matchs intacts.
+          FILES="$FILES tests/Security/PeriodPlanAutoValidationTest.php"
           # P2-44 PR-5 (axes generation pipeline + planning lifecycle) : les écarts NOMMÉS entre une
           # version affichée d'un plan de FERMETURE et la version pointée du socle — séances déplacées
           # (appariement chronologique) et non replacées (raison SERVIE par la sélection, null quand

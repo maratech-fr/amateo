@@ -90,6 +90,11 @@ const MIGRATED_FILES = [
   "features/matches/CoachMailBar.tsx",
   "features/matches/ConflictRadar.tsx",
   "features/cockpit/FbiDeadlineCard.tsx",
+  // P4-503 (validation automatique d'un planning de période) — « Tous les plannings » migré en
+  // même temps que son libellé « Validé automatiquement » (COCKPIT_TEXTS).
+  "features/cockpit/SeasonSchedulesModal.tsx",
+  // P4-503 — la carte d'alerte du radar (« validé automatiquement » / « sans planning ») naît migrée.
+  "features/cockpit/PeriodPlanAlertCard.tsx",
   // Fermetures de gymnase (PR 1) — la carte, la saisie unique, l'aperçu et le bandeau « périmé »,
   // nés migrés (COCKPIT_TEXTS / PLANNING_TEXTS).
   "features/cockpit/VenueClosureCard.tsx",
