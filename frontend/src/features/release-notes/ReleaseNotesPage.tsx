@@ -37,7 +37,7 @@ export function ReleaseNotesPage() {
           {data.items.map((item) => (
             <li key={item.id} className="rounded-lg border border-border bg-card p-4">
               <ReleaseNoteHeading date={item.date} version={item.version} />
-              <h2 className="mt-0.5 text-base font-semibold">{item.title}</h2>
+              <h2 className="mt-0.5 text-lg font-semibold">{item.title}</h2>
               {null !== item.bodyRich ? (
                 <RichText doc={item.bodyRich} headingLevel={3} className="mt-3 text-sm text-foreground" />
               ) : (

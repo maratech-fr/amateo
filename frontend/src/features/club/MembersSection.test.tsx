@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -123,24 +123,72 @@ describe("MembersSection", () => {
       expect(await screen.findByText(CLUB_TEXTS.managerRequestPill("03/11/2026", true))).toBeInTheDocument();
     });
 
-    it("« Accepter » est le geste du sélecteur de rôle : changeMemberRole(id, admin)", async () => {
+    /**
+     * UXS-20 (petites lignes, Q2) — « Accepter » donne tous les droits de gestion : le geste passe
+     * par une confirmation nommée. Rien ne part avant « Accepter » DANS le dialogue ; ensuite c'est
+     * le geste du sélecteur de rôle (`changeMemberRole(id, "admin")`), une seule fois.
+     */
+    it("« Accepter » ouvre une confirmation : rien ne part avant, changeMemberRole(id, admin) une fois après", async () => {
       const user = userEvent.setup();
       renderSection({ members: [me, paul], deactivated: [] });
       await screen.findByText("Paul Martin");
 
       await user.click(screen.getByRole("button", { name: CLUB_TEXTS.acceptManagerRequestOf("Paul Martin") }));
+      const dialog = screen.getByRole("dialog", { name: CLUB_TEXTS.acceptManagerRequestTitle("Paul Martin") });
+      expect(within(dialog).getByText(CLUB_TEXTS.acceptManagerRequestDescription("Paul Martin"))).toBeInTheDocument();
+      expect(api.changeMemberRole).not.toHaveBeenCalled();
+
+      await user.click(within(dialog).getByRole("button", { name: CLUB_TEXTS.acceptManagerRequest }));
+      await vi.waitFor(() => expect(api.changeMemberRole).toHaveBeenCalledTimes(1));
       expect(api.changeMemberRole).toHaveBeenCalledWith("m-paul", "admin");
       expect(api.refuseManagerRequest).not.toHaveBeenCalled();
     });
 
-    it("« Refuser » appelle la route de refus avec l'id de l'adhésion", async () => {
+    /**
+     * UXS-20 — « Refuser » se confirme : la route de refus ne part qu'après « Refuser » dans le
+     * dialogue, avec l'id de l'adhésion, une seule fois.
+     */
+    it("« Refuser » ouvre une confirmation : rien ne part avant, la route de refus une fois après", async () => {
       const user = userEvent.setup();
       renderSection({ members: [me, paul], deactivated: [] });
       await screen.findByText("Paul Martin");
 
       await user.click(screen.getByRole("button", { name: CLUB_TEXTS.refuseManagerRequestOf("Paul Martin") }));
+      const dialog = screen.getByRole("dialog", { name: CLUB_TEXTS.refuseManagerRequestTitle("Paul Martin") });
+      expect(within(dialog).getByText(CLUB_TEXTS.refuseManagerRequestDescription("Paul Martin"))).toBeInTheDocument();
+      expect(api.refuseManagerRequest).not.toHaveBeenCalled();
+
+      await user.click(within(dialog).getByRole("button", { name: CLUB_TEXTS.refuseManagerRequest }));
+      await vi.waitFor(() => expect(api.refuseManagerRequest).toHaveBeenCalledTimes(1));
       expect(api.refuseManagerRequest).toHaveBeenCalledWith("m-paul");
       expect(api.changeMemberRole).not.toHaveBeenCalled();
+    });
+
+    /** UXS-20 — le geste inverse : « Annuler » ou Échap ferment le dialogue sans rien écrire, la pastille reste. */
+    it.each([
+      ["Refuser", "Annuler"],
+      ["Refuser", "Échap"],
+      ["Accepter", "Annuler"],
+      ["Accepter", "Échap"],
+    ] as const)("« %s » puis %s : aucun appel, la pastille et les deux gestes restent", async (gesture, exit) => {
+      const user = userEvent.setup();
+      renderSection({ members: [me, paul], deactivated: [] });
+      await screen.findByText("Paul Martin");
+
+      const name = "Refuser" === gesture ? CLUB_TEXTS.refuseManagerRequestOf("Paul Martin") : CLUB_TEXTS.acceptManagerRequestOf("Paul Martin");
+      await user.click(screen.getByRole("button", { name }));
+      const dialog = screen.getByRole("dialog");
+      if ("Annuler" === exit) {
+        await user.click(within(dialog).getByRole("button", { name: "Annuler" }));
+      } else {
+        await user.keyboard("{Escape}");
+      }
+
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+      expect(api.refuseManagerRequest).not.toHaveBeenCalled();
+      expect(api.changeMemberRole).not.toHaveBeenCalled();
+      expect(screen.getByText(CLUB_TEXTS.managerRequestPill("03/11/2026", false))).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: CLUB_TEXTS.refuseManagerRequestOf("Paul Martin") })).toBeInTheDocument();
     });
 
     it("un refus serveur (409 « Aucune demande en cours. ») est restitué en toast, jamais avalé", async () => {
@@ -149,6 +197,7 @@ describe("MembersSection", () => {
       renderSection({ members: [me, paul], deactivated: [] });
       await screen.findByText("Paul Martin");
       await user.click(screen.getByRole("button", { name: CLUB_TEXTS.refuseManagerRequestOf("Paul Martin") }));
+      await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: CLUB_TEXTS.refuseManagerRequest }));
       await vi.waitFor(() => expect(toast.error).toHaveBeenCalled());
     });
   });

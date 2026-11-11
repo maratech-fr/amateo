@@ -1812,8 +1812,9 @@ describe("PlanningPage (integration)", () => {
 
       const dialog = await screen.findByRole("dialog");
       expect(await within(dialog).findByText(/interrompue avant la réponse/i)).toBeInTheDocument();
-      // Le mensonge d'origine ne doit PLUS apparaître.
-      expect(within(dialog).queryByText(/moteur est indisponible/i)).not.toBeInTheDocument();
+      // Le mensonge d'origine ne doit PLUS apparaître. Motif sans le sujet (« moteur » devient « le
+      // système », UXS-17) : la négation mord quel que soit le mot employé.
+      expect(within(dialog).queryByText(/est indisponible/i)).not.toBeInTheDocument();
       // Rien n'est tranché : ni oui (pas d'éviction), et [Réessayer] reste offert.
       expect(await within(dialog).findByRole("button", { name: /Réessayer/ })).toBeInTheDocument();
       expect(within(dialog).queryByRole("button", { name: /Déplacer et évincer/ })).not.toBeInTheDocument();
@@ -1828,7 +1829,7 @@ describe("PlanningPage (integration)", () => {
 
       // Le panneau du créneau source (toujours ouvert) porte le verdict : interruption NOMMÉE.
       expect(await screen.findByText(/interrompue avant la réponse/i)).toBeInTheDocument();
-      expect(screen.queryByText(/moteur est indisponible/i)).not.toBeInTheDocument();
+      expect(screen.queryByText(/est indisponible/i)).not.toBeInTheDocument();
     });
 
     it("placement d'une équipe à la dérive INTERROMPU côté client → toast « interrompue », jamais « indisponible »", async () => {

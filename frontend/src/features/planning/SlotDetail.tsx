@@ -183,9 +183,17 @@ export function SlotDetail({ cell, slot, venues, categoryLabel, constraints, tag
           {cell.teamLabel}
           {cell.locked ? <Lock className="size-4 text-muted-foreground" /> : null}
         </CardTitle>
-        <button type="button" onClick={onClose} aria-label={PLANNING_TEXTS.closeLabel} className="rounded p-1 text-muted-foreground hover:text-foreground">
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          onClick={onClose}
+          aria-label={PLANNING_TEXTS.closeLabel}
+          title={PLANNING_TEXTS.closeLabel}
+          className="text-muted-foreground hover:text-foreground"
+        >
           <X className="size-4" />
-        </button>
+        </Button>
       </CardHeader>
       <CardContent className="min-h-0 flex-1 overflow-y-auto pt-0">
         {/* B1 — une seule ligne discrète sous le titre (au lieu de trois lignes étiquetées).
@@ -262,7 +270,7 @@ export function SlotDetail({ cell, slot, venues, categoryLabel, constraints, tag
               P2-51 PR-6 (D11) : sur une séance de BLOC, ce bouton devient « Déplacer le groupe »
               (le déplacement d'une seule équipe serait refusé par le moteur — on ne le propose pas).
               L'action reste le MÊME geste click-click (la page l'aiguille vers le rail move-group). */}
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <Button
               size="sm"
               variant={armed ? "default" : "outline"}

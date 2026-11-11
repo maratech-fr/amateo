@@ -1,6 +1,7 @@
 import { AlertTriangle, CheckCircle2, ChevronDown, ChevronRight, Info, PanelRightClose, XCircle } from "lucide-react";
 import { useEffect, useState } from "react";
 
+import { Button } from "@/shared/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/components/ui/card";
 import { EmptyHint } from "@/shared/components/ui/empty-hint";
 import { WizardStepLink } from "@/features/wizard/WizardStepLink";
@@ -222,9 +223,17 @@ export function DiagnosticsPanel({ diagnostics, slots, emptySlots = [], lookups,
       <CardHeader className="shrink-0 flex-row items-center justify-between gap-2 pb-3">
         <CardTitle className="text-base">{PLANNING_TEXTS.diagnosticsSystemTitle}</CardTitle>
         {onCollapse ? (
-          <button type="button" onClick={onCollapse} className="rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground" aria-label={PLANNING_TEXTS.collapseDiagnosticsLabel} title={PLANNING_TEXTS.collapseDiagnosticsTitle}>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            onClick={onCollapse}
+            className="text-muted-foreground hover:text-foreground"
+            aria-label={PLANNING_TEXTS.collapseDiagnosticsLabel}
+            title={PLANNING_TEXTS.collapseDiagnosticsTitle}
+          >
             <PanelRightClose className="size-4" />
-          </button>
+          </Button>
         ) : null}
       </CardHeader>
       <CardContent className="min-h-0 flex-1 overflow-y-auto pt-0">

@@ -141,6 +141,35 @@ final class SlotMoveVerdictTest extends KernelTestCase
     }
 
     /**
+     * UXS-17 (petites lignes) — un refus que le verdict ne NOMME pas (pas de tableau `violations`, ou
+     * une règle sans message) remonte au gestionnaire dans le toast de la retouche
+     * (`violations[0].message`, `useRetouchGestures.ts`) : le repli parle de « règle du système »,
+     * jamais du « moteur ». Le refus reste un refus (rien n'est écrit — prouvé par
+     * {@see testRefusedMoveIsNotWritten}). Jumeau front : `frontend/src/test/engineWordGuard.test.ts`
+     * (aucun « moteur » dans les textes du flux de retouche).
+     */
+    public function testUnnamedRefusalSaysSystemNotEngine(): void
+    {
+        $metrics = '"metrics":{"solver_version":"cp-sat","nb_variables":0,"nb_constraints":0,"wall_time_ms":0}';
+        $verdicts = [
+            'sans tableau de violations' => '{"valid":false,' . $metrics . '}',
+            'règle sans message' => '{"valid":false,"violations":[{"rule":"coach_double_booking"}],' . $metrics . '}',
+        ];
+
+        foreach ($verdicts as $case => $verdict) {
+            $ctx = $this->seed();
+            $service = $this->service(new MockHttpClient(new MockResponse($verdict, ['http_code' => 200])));
+            $result = $service->move($ctx['slot'], 4, new DateTimeImmutable('20:00'), $ctx['venue2']);
+
+            self::assertFalse($result['valid'], $case);
+            self::assertNotEmpty($result['violations'], $case);
+            $message = $result['violations'][0]['message'];
+            self::assertStringNotContainsString('moteur', $message, $case . ' : le gestionnaire ne lit jamais « moteur »');
+            self::assertStringContainsString('règle du système', $message, $case);
+        }
+    }
+
+    /**
      * Déplacer une séance (même verrouillée) vers une case SANS créneau ouvert (aucune fenêtre de
      * gymnase au triplet cible) est refusé par la garde précoce de `move()` AVANT tout appel moteur,
      * et rien n'est écrit. C'est le filet au plus bas de `un-verrou-est-souverain.feature:15`

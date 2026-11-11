@@ -24,7 +24,7 @@ A delivered item **moves**: it is deleted from the roadmap and gains a trace lin
 | `README.md` (root) | human | project purpose, problem solved, architecture sketch, quickstart, layout, links to subproject READMEs |
 | `<zone>/README.md` | human | that zone's scope + what/why, **command recap**, **project recap** (structure/entry points), pointers to its structuring/business docs |
 | `<zone>/AGENTS.md` | agent | **pointers + zone-only gotchas.** NOT a re-description of commands, flows, tooling or counts already in CLAUDE.md / project-map / zone README — duplication here is the #1 historical cause of doc rot (audit 2026-07-03, DOC-02). If a fact exists elsewhere, link it. |
-| `CLAUDE.md` (root) | agent | short operational index (< ~200 lines), facts not obvious from filenames |
+| `CLAUDE.md` (root) | agent | short operational index — always-active rules only, the detail lives in `docs/` — facts not obvious from filenames |
 | `<zone>/docs/` | both | deep-dives (business rules, how-to guides, structuring mechanisms). **Single dir per zone** — `doc/` merged into `docs/` 2026-07-11; never recreate a `doc/` |
 | `docs/` (root) | both | cross-cutting: project-map, glossary, testing, architecture/ADRs |
 | `specs/evolution/roadmap.md` | both | **the OPEN only**: prioritized backlog (P1-P4), deliberate-keep debt, parking, unpriced vision. A delivered line does not live here |
@@ -172,7 +172,7 @@ No `archive/` bucket — nothing is lost (git + `initiales` hold the history). W
    ligne P4 si c'est structurant.
 2. **Drift sweep** on every doc you will touch + affected zone `AGENTS.md` (see above).
 3. **READMEs** — refresh the root README and any affected `<zone>/README.md` per the required sections above.
-4. **CLAUDE.md** — update only non-obvious facts; keep it a short index (< ~200 lines).
+4. **CLAUDE.md** — update only non-obvious facts; keep it a short index — always-active rules only, the detail lives in `docs/`.
 5. **Zone docs** (`<zone>/docs`, `docs/project-map.md`, `docs/testing/`, `docs/technique/`) — update the affected deep-dives; add a how-to/business doc if a new structuring mechanism appeared.
 6. **ADR** — if a structural decision was made, add one and reference it in `docs/architecture/adr-index.md`.
 7. **specs/** — reconcile per the rules above: update stale `courantes`, **run the graduation check**, **run the MOVE** (roadmap line deleted + trace in `etat-des-lieux.md` §3 + map §1 refreshed), record any **closed decision** in §2, add roadmap lines for newly found open items, apply the API-change trigger, delete removed features, surface dead process notes for confirmation.

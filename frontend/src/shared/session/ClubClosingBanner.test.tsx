@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -71,14 +71,19 @@ describe("ClubClosingBanner", () => {
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
   });
 
-  it("aucune demande : la date d'effacement et le bouton ; le clic envoie la demande, le dit et relit la session", async () => {
+  // UXS-20 (petites lignes) : le clic ouvre d'abord une confirmation — la demande ne part qu'après
+  // « Envoyer la demande » (l'annulation est prouvée par `RequestManagerRoleButton.test.tsx`).
+  it("aucune demande : la date d'effacement et le bouton ; le clic confirmé envoie la demande, le dit et relit la session", async () => {
     h.requestManagerRole.mockResolvedValue({ status: "club_pending", since: SINCE, clubEmailKnown: true });
     renderBanner(meWith(null));
 
     expect(await screen.findByText(SESSION_TEXTS.clubClosing("03/12/2026"))).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: SESSION_TEXTS.requestManagerRole }));
+    const dialog = screen.getByRole("dialog", { name: SESSION_TEXTS.requestManagerRoleConfirmTitle });
+    expect(h.requestManagerRole).not.toHaveBeenCalled();
+    await userEvent.click(within(dialog).getByRole("button", { name: SESSION_TEXTS.requestManagerRoleConfirmLabel }));
 
-    expect(h.requestManagerRole).toHaveBeenCalledTimes(1);
+    await vi.waitFor(() => expect(h.requestManagerRole).toHaveBeenCalledTimes(1));
     await vi.waitFor(() => expect(toast.success).toHaveBeenCalledWith(SESSION_TEXTS.managerRequestSent));
     await vi.waitFor(() => expect(h.getMe).toHaveBeenCalledTimes(2));
   });
@@ -115,6 +120,7 @@ describe("ClubClosingBanner", () => {
     h.requestManagerRole.mockRejectedValue(new Error("429"));
     renderBanner(meWith(null));
     await userEvent.click(await screen.findByRole("button", { name: SESSION_TEXTS.requestManagerRole }));
+    await userEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: SESSION_TEXTS.requestManagerRoleConfirmLabel }));
     await vi.waitFor(() => expect(toast.error).toHaveBeenCalled());
   });
 });

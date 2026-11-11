@@ -465,7 +465,7 @@ export function useRetouchGestures(
             return;
           }
           if (error instanceof MoveRejectedError) {
-            toast.error(error.violations[0]?.message ?? "Placement refusé par le moteur.");
+            toast.error(error.violations[0]?.message ?? "Placement refusé par le système.");
             highlightViolations(error.violations);
           } else if (error instanceof GenerationInProgressError) {
             toast.error("Une génération est en cours pour ce club — réessayez ensuite.");
@@ -475,7 +475,7 @@ export function useRetouchGestures(
           } else if (error instanceof TargetLockedError || error instanceof SlotEditError || error instanceof EngineTimeoutError) {
             toastRefusal(error);
           } else {
-            toast.error("Le moteur n'a pas répondu — réessayez.");
+            toast.error("Le système n'a pas répondu — réessayez.");
           }
           // On reste en mode placement pour réessayer ailleurs.
         },
@@ -740,7 +740,7 @@ export function useRetouchGestures(
             return; // déjà nommé + resynchronisé par le hook
           }
           if (error instanceof MoveRejectedError) {
-            toast.error(error.violations[0]?.message ?? "Échange refusé par le moteur.");
+            toast.error(error.violations[0]?.message ?? "Échange refusé par le système.");
             highlightViolations(error.violations);
           } else if (error instanceof TargetLockedError || error instanceof SlotEditError || error instanceof EngineTimeoutError) {
             toastRefusal(error);
@@ -956,7 +956,7 @@ export function useRetouchGestures(
           setEvictionNotice(null);
           setUndo(null);
           if (isBusinessSlotEditError(error) && !isNotLoadedRefusal(error)) {
-            toast.error(error instanceof MoveRejectedError ? (error.violations[0]?.message ?? "Replacement refusé par le moteur.") : "Replacement impossible — réessayez.");
+            toast.error(error instanceof MoveRejectedError ? (error.violations[0]?.message ?? "Replacement refusé par le système.") : "Replacement impossible — réessayez.");
           }
         },
       },

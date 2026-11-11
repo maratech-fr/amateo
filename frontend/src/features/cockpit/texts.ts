@@ -128,7 +128,7 @@ export const COCKPIT_TEXTS = {
   effectsSectionTitle: "Ce qui va changer",
   loadingEffects: "Calcul des effets en cours…",
   startFrozenHint: "Déjà commencée — le début ne bouge plus.",
-  futurePlansWarning: "Des plannings de période futurs seraient balayés si vous validez ou rouvrez le socle ensuite.",
+  futurePlansWarning: "Des plannings de période futurs seraient balayés si vous validez ou rouvrez le planning de saison ensuite.",
   datesChangedToast: "Dates modifiées — les nouveaux plannings sont dans « Tous les plannings ».",
   datesChangedToastFromList: "Dates modifiées.",
   // FbiDeadlineCard (carte « Saisie FBI » du cockpit) — migrée au lot lisibilité BCCL (PR1, 2026-10-27).

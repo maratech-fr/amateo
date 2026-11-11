@@ -14,13 +14,23 @@ import type { SurfaceSkin } from "@/shared/lib/surfaceSkin";
  * carte ; modale : 4 sous le `<h3>`). `variant` choisit les jetons de couleur de la peau.
  */
 export function RichText({ doc, variant = "app", headingLevel = 3, className }: { doc: RichDoc; variant?: SurfaceSkin; headingLevel?: 3 | 4; className?: string }) {
-  const ctx: RenderContext = { colors: RICH_COLOR_CLASS[variant], headingLevel };
+  const ctx: RenderContext = { colors: RICH_COLOR_CLASS[variant], headingLevel, headingClass: RICH_HEADING_CLASS[variant] };
   return <div className={cn("space-y-2", className)}>{renderChildren(doc.content, ctx)}</div>;
 }
+
+/**
+ * Intertitre du corps : 14 px gras, accent léger de la peau — toujours PLUS PETIT que le titre de la
+ * note qui le porte (16 px en modale, 18 px sur la page et dans la console).
+ */
+const RICH_HEADING_CLASS: Record<SurfaceSkin, string> = {
+  app: "mt-3 text-sm font-semibold text-accent first:mt-0",
+  console: "mt-3 text-sm font-semibold text-console-accent first:mt-0",
+};
 
 interface RenderContext {
   colors: ReadonlyMap<RichColor, string>;
   headingLevel: 3 | 4;
+  headingClass: string;
 }
 
 /** Nœud tel que lu, sans confiance : la forme est vérifiée champ par champ. */
@@ -46,7 +56,7 @@ function renderNode(node: LooseNode, ctx: RenderContext, key: number): ReactNode
     case "heading": {
       const Heading = 4 === ctx.headingLevel ? "h4" : "h3";
       return (
-        <Heading key={key} className="mt-3 text-base font-semibold first:mt-0">
+        <Heading key={key} className={ctx.headingClass}>
           {renderChildren(node.content, ctx)}
         </Heading>
       );

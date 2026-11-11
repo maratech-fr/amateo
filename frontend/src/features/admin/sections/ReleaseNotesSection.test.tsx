@@ -300,4 +300,29 @@ describe("ReleaseNotesSection — corps riche en peau console", () => {
     expect(within(preview).getByText("Texte de l'aperçu")).toBeInTheDocument();
     expect(preview.querySelector(".text-foreground, .text-muted-foreground")).toBeNull();
   });
+
+  /**
+   * Petites lignes (hiérarchie des titres, Q3) : dans la liste de la console, le titre d'une note fait
+   * 18 px (`text-lg font-semibold`, comme sur la page `/nouveautes`) et reste PLUS GRAND que
+   * l'intertitre de son corps (14 px, accent console — gardé par `rich-text.test.tsx`).
+   */
+  it("hiérarchie : titre de ligne en text-lg, plus grand que l'intertitre du corps", async () => {
+    const withHeading = { type: "doc", content: [{ type: "heading", attrs: { level: 3 }, content: [{ type: "text", text: "Matchs" }] }] };
+    mockList.mockResolvedValue({ items: [{ ...PUBLISHED, body: "Matchs", bodyRich: withHeading } as AdminReleaseNote] });
+    renderWithProviders(<ReleaseNotesSection />);
+
+    const title = await screen.findByText(PUBLISHED.title);
+    const row = title.closest("li") as HTMLElement;
+    const intertitle = within(row).getByRole("heading", { name: "Matchs" });
+
+    expect(title.className.split(/\s+/)).toEqual(expect.arrayContaining(["text-lg", "font-semibold"]));
+    expect(textSizeRank(title)).toBeGreaterThan(textSizeRank(intertitle));
+  });
 });
+
+/** Rang de la classe de taille Tailwind d'un élément (−1 si aucune) — compare deux titres. */
+function textSizeRank(element: HTMLElement): number {
+  const scale = ["text-xs", "text-sm", "text-base", "text-lg", "text-xl", "text-2xl"];
+  const classes = element.className.split(/\s+/);
+  return scale.findIndex((size) => classes.includes(size));
+}

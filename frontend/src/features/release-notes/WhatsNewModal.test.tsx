@@ -253,7 +253,36 @@ describe("WhatsNewModal — corps riche", () => {
     const dialog = await screen.findByRole("dialog", { name: RELEASE_NOTES_TEXTS.modalLabel });
     expect(within(dialog).getByText(NEWEST.body)).toHaveClass("whitespace-pre-line");
   });
+
+  /**
+   * Petites lignes (hiérarchie des titres, Q3) : dans la modale, le titre de note fait 16 px
+   * (`text-base`, comme le titre de la fenêtre — jamais plus gros que lui) et reste PLUS GRAND que
+   * l'intertitre du corps (14 px). Contrat de classes ; l'intertitre lui-même est gardé par
+   * `shared/components/ui/rich-text.test.tsx`, la page par `ReleaseNotesPage.test.tsx`.
+   */
+  it("hiérarchie : titre de note en text-base, plus grand que l'intertitre du corps", async () => {
+    const rich = {
+      ...NEWEST,
+      bodyRich: { type: "doc", content: [{ type: "heading", attrs: { level: 3 }, content: [{ type: "text", text: "Export PDF" }] }] },
+    } as ReleaseNoteItem;
+    mockGet.mockResolvedValue(response({ items: [rich] }));
+    renderWithProviders(<WhatsNewModal />);
+
+    const dialog = await screen.findByRole("dialog", { name: RELEASE_NOTES_TEXTS.modalLabel });
+    const title = within(dialog).getByRole("heading", { level: 3, name: NEWEST.title });
+    const intertitle = within(dialog).getByRole("heading", { level: 4, name: "Export PDF" });
+
+    expect(title.className.split(/\s+/)).toContain("text-base");
+    expect(textSizeRank(title)).toBeGreaterThan(textSizeRank(intertitle));
+  });
 });
+
+/** Rang de la classe de taille Tailwind d'un élément (−1 si aucune) — compare deux titres. */
+function textSizeRank(element: HTMLElement): number {
+  const scale = ["text-xs", "text-sm", "text-base", "text-lg", "text-xl", "text-2xl"];
+  const classes = element.className.split(/\s+/);
+  return scale.findIndex((size) => classes.includes(size));
+}
 
 /**
  * Promesse (A2, décision fondateur) : **TOUTE sortie de la modale enregistre la lecture** — croix,

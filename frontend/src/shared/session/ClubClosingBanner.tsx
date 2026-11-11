@@ -1,25 +1,15 @@
 import { AlertTriangle } from "lucide-react";
 
-import { Button } from "@/shared/components/ui/button";
 import { NoticeBanner } from "@/shared/components/ui/notice-banner";
 import { frDateSlashed } from "@/shared/lib/date";
 
-import { useMe, useRequestManagerRole } from "./queries";
+import { useMe } from "./queries";
+import { RequestManagerRoleButton } from "./RequestManagerRoleButton";
 import { SESSION_TEXTS } from "./texts";
 
 /** Date (JJ/MM/AAAA) d'un horodatage RFC 3339 ou d'une date Y-m-d servis par le serveur. */
 function day(value: string): string {
   return frDateSlashed(value.slice(0, 10));
-}
-
-/** Le geste de reprise du bandeau — monté seulement quand une demande est possible. */
-function RequestManagerRoleButton() {
-  const request = useRequestManagerRole();
-  return (
-    <Button type="button" size="sm" disabled={request.isPending} onClick={() => request.mutate()}>
-      {SESSION_TEXTS.requestManagerRole}
-    </Button>
-  );
 }
 
 /**

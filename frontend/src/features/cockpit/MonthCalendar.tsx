@@ -1,6 +1,7 @@
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useState } from "react";
 
+import { Button } from "@/shared/components/ui/button";
 import { LoadErrorHint } from "@/shared/components/ui/load-error-hint";
 import { Spinner } from "@/shared/components/ui/spinner";
 import { cn } from "@/shared/lib/utils";
@@ -44,12 +45,12 @@ export function MonthCalendar({ year, month, entries, holidays, publicHolidays, 
           {monthLabel(month)} {year}
         </h2>
         <div className="flex gap-1">
-          <button type="button" aria-label="Mois précédent" className="rounded p-1 text-muted-foreground hover:text-foreground" onClick={onPrev}>
+          <Button type="button" variant="ghost" size="icon-sm" aria-label="Mois précédent" title="Mois précédent" className="text-muted-foreground hover:text-foreground" onClick={onPrev}>
             <ChevronLeft className="size-4" />
-          </button>
-          <button type="button" aria-label="Mois suivant" className="rounded p-1 text-muted-foreground hover:text-foreground" onClick={onNext}>
+          </Button>
+          <Button type="button" variant="ghost" size="icon-sm" aria-label="Mois suivant" title="Mois suivant" className="text-muted-foreground hover:text-foreground" onClick={onNext}>
             <ChevronRight className="size-4" />
-          </button>
+          </Button>
         </div>
       </div>
 

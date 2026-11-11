@@ -219,6 +219,16 @@ paths:
   décision fondateur 2026-10-01. NR e2e `tests/e2e/layout-inline-rows.spec.ts` (deux rangées à
   36 px, `Type` au-dessus, 0 débordement horizontal) ; le builder de contraintes du wizard
   (`ConstraintsStep`) partage le même risque et a été rallié au même patron.
+- **A11Y : un bouton-icône (fermeture, navigation, repli) = `<Button variant="ghost" size="icon-sm">`**
+  (cible 36 px), jamais un `<button>` brut `p-1` autour d'une icône `size-4` (24 px, sous la
+  norme WCAG 2.5.8). Gardé par `frontend/src/test/iconTargetSizeGuard.test.ts` (statique, liste
+  nominative `SITES` : un site renommé = mise à jour mécanique, jamais une suppression ; les
+  autres boutons-icônes restent à la revue) ; le DOM de l'en-tête de `Modal` l'est par
+  `shared/components/ui/modal-signaler.test.tsx`.
+- **Textes visibles du flux de retouche : « le système », jamais « moteur »/« solveur »**
+  (`docs/glossary.md`). Gardé par `frontend/src/test/engineWordGuard.test.ts` (commentaires
+  exclus) sur `planning/texts.ts`, `EvictConfirmDialog.tsx`, `ActionVeil.tsx`,
+  `useRetouchGestures.ts` et `planning/api.ts`.
 - 🔴 **La raison d'une désactivation doit être DÉCOUVRABLE au clavier/lecteur d'écran, pas qu'au
   survol** (A11Y-30, audit 2026-10-03) : un `<button disabled>` natif sort de l'ordre de tabulation,
   son `title`/`aria-describedby` ne sont jamais annoncés. Quand un bouton est désactivé POUR UN
@@ -262,7 +272,7 @@ paths:
   MIGRE et l'ajoute à `MIGRATED_FILES`** — la migration ne recule jamais. Côté test : un test vérifie
   la CLÉ (`getByText(PLANNING_TEXTS.evictTitle)`), jamais la phrase recopiée ; nouvelle assertion →
   viser d'abord `getByRole(…, { name })`. Vague 1 (PR7) : cockpit `RadarPanel`/`DayDialog`, planning
-  `PlanningPage`/`SlotDetail`/`DiagnosticsPanel`, matchs `ConflictLine`, assistant
+  `PlanningPage`/`SlotDetail`/`DiagnosticsPanel`/`EvictConfirmDialog` (littéraux et messages de repli dans `PLANNING_TEXTS`), matchs `ConflictLine`, assistant
   `SlotReservationModal`/`ConstraintsStep`/`RecapStep`. Depuis (progressif, lot 5) : matchs
   `OpponentsPage`/`FfbbEngagementsDialog`, cockpit `WeekPickerDialog`, wizard `VenuesStep`, matchs
   `ExportMatchesDialog` (export des matchs pour les parents, née migrée dans
@@ -419,7 +429,7 @@ paths:
   l'API sert vraiment (`*Date`/`*Deadline` → `Y-m-d`, `*At` → RFC 3339) — gardé par
   `backend/tests/CrossStack/FrontMockDateFormatMatchesContractTest.php`, détail
   [`../../docs/testing/testing-strategy.md`](../../docs/testing/testing-strategy.md) §2.
-- **Tout tourne dans Docker**, frontend compris : les 12 cibles de `frontend/Makefile` passent par
+- **Tout tourne dans Docker**, frontend compris : toutes les cibles de `frontend/Makefile` passent par
   `docker compose`, sans exception. Tester sur l'hôte valide une version de Node qui n'est celle de
   personne.
 - ⚠ **Un e2e qui passe sans avoir rien mis à l'épreuve est un faux vert** : quand un scénario peut

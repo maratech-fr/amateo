@@ -82,7 +82,7 @@ export function WhatsNewModal() {
     >
       <article className="mt-4">
         <ReleaseNoteHeading date={note.date} version={note.version} />
-        <h3 className="mt-0.5 text-sm font-semibold">{note.title}</h3>
+        <h3 className="mt-0.5 text-base font-semibold">{note.title}</h3>
         {null !== note.bodyRich ? (
           <RichText doc={note.bodyRich} headingLevel={4} className="mt-2 text-sm text-foreground" />
         ) : (

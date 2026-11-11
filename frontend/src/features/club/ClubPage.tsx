@@ -3,7 +3,8 @@ import { useState } from "react";
 import { useNavigate } from "react-router";
 
 import { ManagerOnly } from "@/shared/session/ManagerOnly";
-import { useCancelManagerRequest, useCanManage, useMe, useRequestManagerRole } from "@/shared/session/queries";
+import { useCancelManagerRequest, useCanManage, useMe } from "@/shared/session/queries";
+import { RequestManagerRoleButton } from "@/shared/session/RequestManagerRoleButton";
 import { ReadOnlyNotice } from "@/shared/session/ReadOnlyNotice";
 import { ReadOnlyFieldset } from "@/shared/components/ui/read-only-fieldset";
 import type { FfbbOrganisme, MeResponse } from "@/shared/session/api";
@@ -59,7 +60,7 @@ function AccentField({ id, label, value, onChange }: { id: string; label: string
           value={valid ? value : DEFAULT_ACCENT}
           onChange={(e) => onChange(e.target.value)}
         />
-        <Input aria-label={`Couleur ${label} (hexadécimal)`} className="h-9 w-28 font-mono text-xs" value={value} placeholder={DEFAULT_ACCENT} onChange={(e) => onChange(e.target.value)} />
+        <Input aria-label={CLUB_TEXTS.colorFieldLabel(label)} className="h-9 w-28 font-mono text-xs" value={value} placeholder={DEFAULT_ACCENT} onChange={(e) => onChange(e.target.value)} />
         {/* Filled swatch → the accent stays legible whatever its lightness. */}
         <div className="rounded-md px-3 py-2 text-sm font-medium" style={valid ? { backgroundColor: value, color: readableForeground(value) } : undefined}>
           Aa
@@ -751,10 +752,8 @@ function requestDay(value: string): string {
  * l'adresse officielle → la date de renouvellement, sans bouton.
  */
 function MyRoleCard({ me }: { me: MeResponse }) {
-  const request = useRequestManagerRole();
   const cancel = useCancelManagerRequest();
   const managerRequest = me.managerRequest ?? null;
-  const busy = request.isPending || cancel.isPending;
 
   const lines: string[] = [];
   let canAsk = false;
@@ -802,13 +801,9 @@ function MyRoleCard({ me }: { me: MeResponse }) {
         ))}
         {canAsk || canCancel ? (
           <div className="flex flex-wrap gap-2">
-            {canAsk ? (
-              <Button size="sm" disabled={busy} onClick={() => request.mutate()}>
-                {CLUB_TEXTS.requestManagerRole}
-              </Button>
-            ) : null}
+            {canAsk ? <RequestManagerRoleButton /> : null}
             {canCancel ? (
-              <Button size="sm" variant="outline" disabled={busy} onClick={() => cancel.mutate()}>
+              <Button size="sm" variant="outline" disabled={cancel.isPending} onClick={() => cancel.mutate()}>
                 {CLUB_TEXTS.cancelManagerRequest}
               </Button>
             ) : null}
