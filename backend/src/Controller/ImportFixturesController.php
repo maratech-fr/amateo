@@ -145,6 +145,9 @@ final class ImportFixturesController extends AbstractController
             'created' => $result['created'],
             'updated' => $result['updated'],
             'unchanged' => $result['unchanged'],
+            // Les rencontres rétablies d'après le fichier : l'adversaire de l'application
+            // ne correspondait pas (même division, même numéro).
+            'restored' => $result['restored'],
             'exempted' => $result['exempted'],
             'errors' => $result['errors'],
             'warnings' => $result['warnings'],

@@ -402,6 +402,15 @@ class Fixture implements TenantOwnedInterface
         return $this;
     }
 
+    /** Remet le traitement à zéro : NEW, jamais traitée (rencontre rétablie d'après FBI). */
+    public function resetReview(): self
+    {
+        $this->reviewState = FixtureReviewState::NEW;
+        $this->reviewedAt = null;
+
+        return $this;
+    }
+
     /**
      * @return list<PendingDeviation>
      */
