@@ -60,6 +60,17 @@ Fonctionnalité: Une rencontre importée dit si elle est traitée
     Et je dépose un second championnat qui réutilise le même numéro de match
     Alors les deux rencontres coexistent et la première garde sa date, son adversaire et son placement
 
+  Scénario: Un adversaire différent sous le même numéro rétablit la rencontre d'après FBI
+    Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur
+    Et une équipe jetable et un gymnase jetable « GYM BEHAT »
+    Quand je dépose un fichier FBI avec un match à domicile déjà passé
+    Alors la rencontre est « Déjà dans FBI »
+    Quand je re-dépose ce match passé contre un autre adversaire
+    Alors le rapport d'import annonce 1 rencontre rétablie d'après FBI
+    Et la rencontre porte l'adversaire du fichier et est de nouveau « Déjà dans FBI »
+    Quand je re-dépose le même fichier rétabli
+    Alors le rapport d'import n'annonce aucune rencontre rétablie
+
   Scénario: Le suffixe FFBB « (n) » est retiré du libellé de l'adversaire
     Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur
     Et une équipe jetable et un gymnase jetable « GYM BEHAT »

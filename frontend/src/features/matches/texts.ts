@@ -172,6 +172,8 @@ export const MATCHES_TEXTS = {
   importFbiAnalysisErrorsAria: "Erreurs d'analyse",
   importFbiReportSummary: (created: number, updated: number, unchanged: number, exempted: number) =>
     `${created} créé${created > 1 ? "s" : ""} · ${updated} mis à jour · ${unchanged} inchangé${unchanged > 1 ? "s" : ""}${exempted > 0 ? ` · ${exempted} exempt${exempted > 1 ? "s" : ""}` : ""}`,
+  importFbiRestored: (n: number) =>
+    `${n} rencontre${n > 1 ? "s" : ""} rétablie${n > 1 ? "s" : ""} d'après FBI : l'adversaire de l'application ne correspondait pas.`,
   importFbiWarningsAria: "Avertissements de l'import",
   importFbiCompleteness: (name: string, imported: number, expected: number) => `${name} : ${imported}/${expected} journées — fichier partiel ou phase pas encore sortie.`,
   importFbiUnmapped: (list: string) => `Non associées : ${list}`,
