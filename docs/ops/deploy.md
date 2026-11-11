@@ -734,7 +734,7 @@ hygiène, mais n'est plus une fenêtre d'attaque : ce bloc n'expose plus aucune 
 effet ailleurs.)
 
 ⬜ **F7 — brancher le script** : ouvrir une **PR** qui remplit `analytics.scriptUrl` +
-`analytics.websiteId` dans `landing/config.js` (et bumpe le `?v=` des DEUX pages). **Jamais une
+`analytics.websiteId` dans `landing/config.js` (et bumpe le `?v=` commun des six pages). **Jamais une
 édition directe sur la VM** : le deploy réécrit `landing/` à chaque passage, elle serait écrasée.
 Un `websiteId` est public (visible dans toute page trackée) — sa place en git est correcte.
 Prochain deploy → premiers hits dans le dashboard **et dans l'onglet Statistiques de la console**
@@ -792,13 +792,32 @@ APP_ACTIVITY_EXCLUDED_EMAILS=adresse-du-compte@exemple.fr
 ### Déployer une release
 
 Taguer **construit et publie** les images — rien de plus (« tag ≠ déploiement »,
-§ *Comment ça marche*) :
+§ *Comment ça marche*).
+
+**0. PR « release vX.Y.Z »** (branche `chore/release-vX.Y.Z` → `main`, gate complet — la
+branche `release` existe déjà, d'où ce nom) : elle ajoute l'entrée `data-version="X.Y.Z"` au
+journal `landing/evolutions.html` (une à trois phrases en langage club : situation → ce que fait
+Amateo → ce que ça change), et la note « Nouveautés » si elle est voulue. **Mergée sur GO du
+fondateur** — la version et sa date sont décidées par lui, jamais proposées. Contrat d'une
+entrée : docblock de `LandingChangelogTest`.
+
+**1. Taguer** le commit mergé :
 
 ```bash
 git tag v1.2.0 && git push origin v1.2.0
 ```
 
-Déployer ensuite est un geste séparé et délibéré, au choix :
+Le step « Check the changelog names this version » (`deploy.yml`, job `build-push`) refuse de
+construire un tag `v*` neuf dont `landing/evolutions.html` n'a pas l'entrée : rien n'est
+construit, le run est rouge. Remède : compléter le journal par une PR, **supprimer le tag refusé**
+(`git push origin :refs/tags/vX.Y.Z` + `git tag -d vX.Y.Z`), le reposer sur le nouveau commit.
+Limites : le contrôle est sauté si le journal n'existe pas au commit construit (version
+antérieure à la vitrine à six pages) ou si les images de la version existent déjà (rollback) ;
+`grep -F` accepte une entrée laissée dans un commentaire HTML (revue humaine) ; une version
+`-rc` est gardée comme les autres (`data-version="1.4.0-rc1"`) ; un hotfix `sha-…` n'est pas
+gardé.
+
+**2. Déployer**, geste séparé :
 
 - **console superadmin** — `/admin` → onglet Exploitation → « Mise en prod
   programmée » (le chemin normal : programme le dispatch à une heure H, pose/
@@ -933,6 +952,11 @@ re-pousser un ancien tag ne déploierait donc **rien du tout**, quel que soit le
 tag ; `make deploy`/la console restent le seul chemin qui dispatche réellement
 le déploiement.
 
+⚠ Un rollback ramène aussi l'**ancienne vitrine** (`landing/` part avec la version) : revenir
+avant la vitrine à six pages fait répondre 404 aux pages nouvelles alors qu'elles sont indexées.
+Accepté pour un rollback court — rouler en avant dès que possible. Le step de garde du journal
+n'y joue pas (images présentes, ou journal absent au commit).
+
 ⚠ Le rollback rejoue le code d'avant mais **ne dé-migre pas la base**. Si la
 release fautive contenait une migration destructive : restaurer le dump pris
 automatiquement AVANT la migration (`backup-restore.md` §3 — le script refuse
@@ -962,7 +986,10 @@ git push -u origin hotfix/<sujet>
 ```
 
 1. Ouvrir une **PR vers `release`** (pas vers `main`) ; valider comme une PR
-   normale (tests verts), **merge sur GO fondateur**.
+   normale (tests verts), **merge sur GO fondateur**. Elle porte aussi l'**entrée du journal**
+   `landing/evolutions.html` pour `vX.Y.Z+1` : le step de garde (§ *Déployer une release*)
+   refuse sinon de construire le tag (tant que `release` n'a pas la vitrine à six pages, il est
+   sauté).
 2. **Taguer puis déployer** — taguer ne fait que construire (« tag ≠
    déploiement ») :
    ```bash

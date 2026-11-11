@@ -34,7 +34,7 @@
 | Consentement | `termsAcceptedAt` + `termsVersion` au register | obligation légale (preuve) | vie du compte (anonymisé avec lui). Couvre 100 % des comptes réels : exigé au register avant le premier utilisateur de production (pas de backfill nécessaire — les comptes dev/test antérieurs n'en ont pas) | — | `ConsentTest` |
 | Siège du club | `Club.address`/`postalCode`/`city`/`latitude`/`longitude` — l'adresse de l'ÉTABLISSEMENT (le club), posée par un gestionnaire (`PATCH /api/club/siege`) puis re-géocodée serveur-side ; donnée d'établissement, pas une PII (cohérent avec `Club.php:156-158` — ce sont les adresses PERSONNELLES du président/correspondant qui sont délibérément NON stockées) | contrat (via le club) | vie du club jusqu'à l'effacement d'un compte : la fiche `Club` elle-même **survit** (identité publique FFBB, § ligne « Effacement de compte »), mais **RGPD-02** (lot robustesse 2026-10-03) — l'adresse du siège N'EST PAS de l'identité publique FFBB (saisie par le gestionnaire, pas publiée par la fédération) : `ErasedClubPurger` la remet à `NULL` (adresse/CP/ville/latitude/longitude) dans la même écriture que la remise à zéro de l'abonnement ; supprimée pour de bon avec le club entier par `PurgeErasedClubsCommand` (+30 j sans membre actif revenu) | — | `ClubSiegeTest`, `Security/AccountErasureTest` |
 | Registre « à corriger dans FBI » | `FbiCorrection` — rencontre visée, champ (date/heure/salle), valeur appli, valeur FBI encore affichée, alias FBI du gymnase, `decidedBy` (guid interne, jamais un email/nom) | contrat (via le club) | saison courante + N-1 (purge saison) ; **supprimée avec la rencontre** (cascade applicative, pas de FK — `FixtureStateProcessor::cascadeBeforeDelete` → `FbiCorrectionLedger::removeForFixture`, ouvertes et fermées) | `app:seasons:purge` (`SeasonDataPurger::PURGED_BY_CLUB_SEASON`, ajoutée) — seule porte de sortie d'une entrée FERMÉE dont la rencontre survit (trace) ; exportée par la boucle générique de portabilité (`RgpdExportService::clubScopedTables()`, `TenantOwnedInterface`, aucune liste manuscrite à tenir) | `PurgeCompletenessTest`, `RgpdExportCompletenessTest` |
-| Mesure d'audience de la vitrine (P4-276) | Visites de la page de vente publique (`landing/`, **hors application, aucun compte ni club**) : pages vues, référent, type d'appareil. **Pas de cookie, aucun identifiant persistant** ; l'IP transite côté serveur pour un hachage journalier non réversible, jamais conservée en clair — agrégats anonymes. Umami auto-hébergé (`docker-compose.prod.yml` service `umami`, base `umami` SÉPARÉE, rôle `umami` sans aucun accès à `amateo`, ne traverse jamais la RLS) | **intérêt légitime** (connaître et améliorer l'audience de la page de vente). Conditions d'**exemption CNIL** « mesure d'audience » réunies : finalité strictement limitée, pour le seul éditeur, pas de recoupement avec d'autres traitements, pas de suivi inter-sites, aucune transmission à des tiers → **pas de bandeau de consentement** | rétention Umami (agrégats anonymes). **Base `umami` HORS sauvegardes applicatives** (`app:db:backup` ne vise que `POSTGRES_DB=amateo`) — couverte seulement par les snapshots disque de la VM, perte acceptée (`docs/ops/backup-restore.md`) | — (hors app : injection conditionnelle dans `landing/index.html` + `mentions-legales.html`, `landing/` sans CI → preuve manuelle navigateur) |
+| Mesure d'audience de la vitrine (P4-276) | Visites de la page de vente publique (`landing/`, **hors application, aucun compte ni club**) : pages vues, référent, type d'appareil. **Pas de cookie, aucun identifiant persistant** ; l'IP transite côté serveur pour un hachage journalier non réversible, jamais conservée en clair — agrégats anonymes. Umami auto-hébergé (`docker-compose.prod.yml` service `umami`, base `umami` SÉPARÉE, rôle `umami` sans aucun accès à `amateo`, ne traverse jamais la RLS) | **intérêt légitime** (connaître et améliorer l'audience de la page de vente). Conditions d'**exemption CNIL** « mesure d'audience » réunies : finalité strictement limitée, pour le seul éditeur, pas de recoupement avec d'autres traitements, pas de suivi inter-sites, aucune transmission à des tiers → **pas de bandeau de consentement** | rétention Umami (agrégats anonymes). **Base `umami` HORS sauvegardes applicatives** (`app:db:backup` ne vise que `POSTGRES_DB=amateo`) — couverte seulement par les snapshots disque de la VM, perte acceptée (`docs/ops/backup-restore.md`) | — (hors app : injection conditionnelle par `landing/assets/site.js`, donc sur toutes les pages de `landing/` ; garde statique `LandingDiscoverabilityTest`, rendu réel = preuve manuelle navigateur) |
 | Boîte aux lettres d'un club à horloge simulée (P4-16) | `ClubMailboxMessage` — e-mails INTERCEPTÉS (jamais envoyés) tant que le club vit à une date simulée : expéditeur/destinataire, sujet, corps, date simulée à l'interception. **SEC-31 — tout lien personnel à jeton (`…/doleances/<jeton>`) est MASQUÉ dans le corps à l'interception** (`ClockedClubMailInterceptor::maskPersonalLinks` → « lien personnel masqué ») : le jeton EST l'identité du coach, la boîte (lisible par tout membre et par `amateo_read`) ne le stocke jamais en clair. **Artefact de démo**, pas une donnée de workspace réel — les adresses y figurant sont déjà celles des membres (`club_user`/`app_user`) | contrat (via le club) | club-scoped SANS saison — vie du club ; vidée aussi en DIRECT au reset de la démo et à la désactivation de l'horloge (`AdminDemoController`, connexion admin) | `ON DELETE CASCADE` sur `club_id` (suppression du club) ; `DELETE /api/me` → `ErasedClubPurger::PURGED_BY_CLUB` (l'effacement RGPD **garde** la fiche club — identité FFBB — donc sans ce DELETE par `clubId` les adresses + corps resteraient) ; **exclue de l'export de portabilité** (`RgpdExportService::EXCLUDED_FROM_EXPORT` — artefact de démo, hors art. 20) | `PurgeCompletenessTest`, `RgpdExportCompletenessTest`, `Integration/Mail/ClockedClubMailInterceptTest` |
 
 ### Ce que l'export de portabilité NE contient PAS, et pourquoi
@@ -95,10 +95,20 @@ couverte ou exclue — le même défaut par défaut que pour l'export.
 
 ## 4. Doctrine backups (**livrée** — cf. `docs/ops/backup-restore.md`)
 
-Les sauvegardes contiennent des données effacées : purge **naturelle par rotation des dumps**
-(`DatabaseBackupCommand::RETENTION`, les 14 plus récents), **aucune restauration sélective** de
-données effacées (une restauration complète post-incident ré-exécute les purges au cron suivant —
-les champs `anonymizedAt`/`erasureScheduledAt` restaurés re-déclenchent les mécanismes).
+Les sauvegardes contiennent des données effacées : purge **naturelle par rotation**, **aucune
+restauration sélective** de données effacées (une restauration complète post-incident ré-exécute
+les purges au cron suivant — les champs `anonymizedAt`/`erasureScheduledAt` restaurés
+re-déclenchent les mécanismes). Trois mécanismes réels, aucun « 60 jours » :
+
+- **local** : `DatabaseBackupCommand::RETENTION` = 14 dumps EN NOMBRE (14 nuits d'activité, non
+  borné en jours — le tick saute les nuits sans activité) ;
+- **bucket `amateo-backups` (`nl-ams`)** : règle `expiration-dumps-30j`, version courante 30 j
+  (`docs/ops/backup-restore.md` §4bis) ;
+- **snapshots VM** : non confirmés (`backup-restore.md` §4).
+
+Le texte public (`landing/vos-donnees.html`, `PrivacyPage`) ne promet donc que ce qui est vrai des
+trois : données sorties des sauvegardes « à mesure qu'elles sont remplacées par de plus récentes »,
+copie hors site effacée au bout de 30 jours. Borner le local par l'âge : ligne de roadmap (P4-548).
 
 ## 5. Logs & PII
 
@@ -131,4 +141,8 @@ les champs `anonymizedAt`/`erasureScheduledAt` restaurés re-déclenchent les m�
 ## 6. Reste à faire (hors P0-1)
 
 - Textes juridiques finaux (CGU, politique, DPA) — fondateur/juriste, avant commercialisation.
+  Les phrases de délais de `PrivacyPage` (sauvegardes, effacement de l'espace du club) ont été
+  reformulées pour s'aligner sur `landing/vos-donnees.html` **sans changer** `TERMS_VERSION` : les
+  délais annoncés sont les mêmes (30 jours de reprise, copie hors site 30 jours), la reformulation
+  n'est pas substantielle (décision de la PR vitrine).
 - Mécanisme d'opposition outillé pour les contacts FFBB (avec l'annuaire adverse) — pas encore construit.

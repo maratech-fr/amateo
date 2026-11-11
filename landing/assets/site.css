@@ -1,0 +1,234 @@
+/* ── Feuille partagée de la vitrine (les six pages de `landing/`) ──────────────
+   Chargée par chaque page avec le MÊME `?v=` que `config.js` et `assets/site.js` (Caddy n'envoie
+   pas de Cache-Control : changer le `?v=` des six pages à chaque retouche de ce fichier).
+   Ici : police, jetons clair/sombre, socle, en-tête, burger, boutons, titres, pied à colonnes,
+   gabarit des pages sœurs (`main.page`). Les sections propres à l'accueil restent dans son <style>.
+   ⚠ Les `url()` sont relatives à CE fichier (`assets/`). */
+
+/* ── Voix display : Bricolage Grotesque (OFL, auto-hébergée — assets/fonts/) ── */
+@font-face {
+  font-family: "Bricolage Grotesque";
+  font-style: normal;
+  font-weight: 700 800;
+  font-display: swap;
+  src: url("fonts/bricolage-latin.woff2") format("woff2");
+}
+
+/* ── Palette : sobre, crédible trésorier ; le sport en accent, pas en criard ── */
+:root {
+  color-scheme: light;
+  --paper: #faf9f7;
+  --surface: #ffffff;
+  --ink: #191714;
+  --ink-2: #57534c;
+  --muted: #6d675d;         /* ≥ 4.5:1 sur --paper, tenable en petit texte */
+  --line: #e7e3dc;
+  --accent: #46afac;        /* teal signature du logo — décoratif seulement (2.50:1 sur --paper, jamais de texte dessus) */
+  --accent-ink: #2e7876;    /* teal assombri pour porter du texte — 4.91:1 sur --paper, 5.17:1 blanc dessus, 4.64:1 sur --accent-soft */
+  --accent-deep: #215857;   /* survol — 8.08:1 blanc dessus */
+  --accent-soft: #e9f5f5;   /* teinte très claire du teal — encre 16.05:1 dessus */
+  --accent-foreground: #ffffff;  /* texte posé sur le fond plein --accent-ink (bouton) — blanc en clair */
+  --radius: 12px;
+  --display: "Bricolage Grotesque", system-ui, sans-serif;
+}
+/* ── Thème sombre AU CHOIX (opt-in) ───────────────────────────────────────────
+   Posé par le mini-script anti-flash du <head> de chaque page. Palette DÉRIVÉE PAR CONVENTION
+   des jetons de l'app (`frontend/src/index.css` `.dark`) — jamais importée (règle landing).
+   Le teal signature devient PORTEUR de texte en sombre ; le bouton teal plein passe à un texte
+   SOMBRE (--accent-foreground), miroir de l'app. */
+html[data-theme="dark"] {
+  color-scheme: dark;
+  --paper: oklch(0.19 0.006 75);        /* ≈ app --background */
+  --surface: oklch(0.23 0.006 75);      /* ≈ app --card */
+  --ink: oklch(0.96 0.004 75);          /* ≈ app --foreground */
+  --ink-2: oklch(0.82 0.010 75);        /* texte secondaire clair */
+  --muted: oklch(0.68 0.015 75);        /* ≈ app --muted-foreground — ≥ 4.5:1 sur --paper */
+  --line: oklch(0.31 0.006 75);         /* ≈ app --border */
+  --accent: #46afac;                    /* teal signature — décoratif ET porteur en sombre */
+  --accent-ink: #46afac;                /* texte / liens / focus : le teal clair suffit sur fond sombre */
+  --accent-deep: #4db2af;               /* survol — ÉCLAIRCI (monte le contraste avec le texte sombre du bouton) */
+  --accent-soft: color-mix(in oklab, var(--accent) 14%, var(--surface));
+  --accent-foreground: oklch(0.19 0.010 75);  /* texte SOMBRE sur le bouton teal plein — miroir app */
+}
+* { box-sizing: border-box; margin: 0; }
+/* scroll-padding-top : l'en-tête sticky fait 64px — sans ça une ancre s'arrête SOUS l'en-tête
+   (P4-258). 64 + 12 de marge = 76 (= PAD de site.js). ⚠ PAS de `scroll-behavior: smooth` : le
+   glissement est piloté en JS ; le scroll-padding reste pour le saut NATIF (#hash, JS absent). */
+html { scroll-padding-top: 76px; }
+/* Fond d'écran commun app + vitrine (P5-16) : motif multi-sport du logo, posé sur le papier. */
+body {
+  background: var(--paper) url("brand/fond.svg") center / cover no-repeat fixed;
+  color: var(--ink);
+  font: 16px/1.6 system-ui, -apple-system, "Segoe UI", sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+html[data-theme="dark"] body {
+  background: var(--paper) url("brand/fond-dark.svg") center / cover no-repeat fixed;
+}
+::selection { background: color-mix(in srgb, var(--accent) 22%, var(--surface)); color: var(--ink); }
+.wrap { max-width: 1080px; margin: 0 auto; padding: 0 24px; }
+a { color: var(--accent-ink); text-underline-offset: 3px; }
+
+/* ── En-tête ── */
+header.site {
+  position: sticky; top: 0; z-index: 20;
+  background: color-mix(in srgb, var(--paper) 92%, transparent);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--line);
+}
+header.site .wrap { display: flex; align-items: center; justify-content: space-between; height: 64px; }
+/* Logotype « comme l'app » (BrandMark) : l'ICÔNE (arcs, thème-neutre) + le MOT en TEXTE à la
+   couleur du thème. Repli : si l'icône manque/échoue, le mot seul reste. */
+.logotype { display: inline-flex; align-items: center; gap: 9px; text-decoration: none; flex-shrink: 0; }
+.brand-logo { height: 30px; width: 30px; display: block; }
+.logo-word { font-family: var(--display); font-weight: 800; font-size: 23px; letter-spacing: -0.03em; line-height: 1; color: var(--ink); text-transform: lowercase; }
+nav.top { display: flex; gap: 22px; align-items: center; font-size: 15px; }
+nav.top a { color: var(--ink-2); text-decoration: none; }
+nav.top a:hover { color: var(--ink); }
+nav.top a.btn-primary { color: var(--accent-foreground); }
+nav.top a.btn-primary:hover { color: var(--accent-foreground); }
+/* Bascule de thème : un <button>, pas un <a> — hors de la règle mobile `nav.top > a`. */
+.theme-toggle {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 40px; height: 40px; padding: 0; border-radius: 10px; flex-shrink: 0;
+  border: 1.5px solid var(--line); background: var(--surface); color: var(--ink-2);
+  cursor: pointer; transition: color 80ms ease, border-color 80ms ease;
+}
+.theme-toggle:hover { color: var(--ink); border-color: var(--muted); }
+.theme-toggle:focus-visible { outline: 3px solid var(--accent-ink); outline-offset: 2px; }
+.theme-toggle svg { width: 18px; height: 18px; display: block; }
+.theme-toggle .icon-sun { display: none; }
+html[data-theme="dark"] .theme-toggle .icon-moon { display: none; }
+html[data-theme="dark"] .theme-toggle .icon-sun { display: block; }
+
+/* ── Menu mobile (burger, accueil seulement) ──────────────────────────────────
+   `<details>`/`<summary>` : marche SANS JS ; masqué en desktop ; le panneau recouvre sous
+   l'en-tête sticky (offset parent = `header.site`), pas de scroll-lock. */
+.nav-menu { display: none; }
+.nav-menu > summary {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 40px; height: 40px; border-radius: 10px; flex-shrink: 0; list-style: none;
+  border: 1.5px solid var(--line); background: var(--surface); color: var(--ink-2);
+  cursor: pointer; transition: color 80ms ease, border-color 80ms ease;
+}
+.nav-menu > summary::-webkit-details-marker { display: none; }
+.nav-menu > summary::marker { content: ""; }
+.nav-menu > summary:hover { color: var(--ink); border-color: var(--muted); }
+.nav-menu > summary:focus-visible { outline: 3px solid var(--accent-ink); outline-offset: 2px; }
+.nav-menu > summary svg { width: 20px; height: 20px; display: block; }
+.nav-menu > summary .icon-close { display: none; }
+.nav-menu[open] > summary .icon-menu { display: none; }
+.nav-menu[open] > summary .icon-close { display: block; }
+.nav-panel {
+  position: absolute; top: 100%; left: 0; right: 0;
+  display: flex; flex-direction: column; gap: 6px;
+  padding: 10px 16px 16px; background: var(--surface);
+  border-bottom: 1px solid var(--line); box-shadow: 0 18px 40px -22px rgba(25,23,20,.4);
+}
+.nav-panel a { display: block; padding: 13px 12px; border-radius: 8px; text-decoration: none; font-size: 16px; line-height: 1.25; }
+.nav-panel a:not(.btn) { color: var(--ink-2); }
+.nav-panel a:not(.btn):hover { color: var(--ink); background: var(--accent-soft); }
+.nav-panel a.btn { margin-top: 8px; }
+
+/* ≤880px : la barre de l'accueil passe au burger ; le logo et la bascule restent. Les pages
+   sœurs n'ont pas de burger : leur barre (logo + « Accueil » + bascule) tient dès 360px. */
+@media (max-width: 880px) {
+  nav.top { gap: 12px; }
+  .nav-menu { display: block; }
+}
+
+/* ── Boutons ── */
+.btn {
+  display: inline-block; padding: 12px 22px; border-radius: 10px;
+  font-weight: 650; font-size: 15.5px; text-decoration: none; text-align: center;
+  transition: transform 80ms ease, box-shadow 80ms ease;
+}
+.btn:hover { transform: translateY(-1px); }
+.btn:focus-visible { outline: 3px solid var(--accent-ink); outline-offset: 2px; }
+.btn-primary { background: var(--accent-ink); color: var(--accent-foreground); box-shadow: 0 2px 6px -2px rgba(25,23,20,.35); }
+.btn-primary:hover { background: var(--accent-deep); }
+.btn-ghost { border: 1.5px solid var(--line); color: var(--ink); background: var(--surface); }
+.btn-ghost:hover { border-color: var(--muted); }
+
+/* ── Titres et sections ── */
+h1 {
+  font-family: var(--display);
+  font-size: clamp(34px, 5.4vw, 56px); line-height: 1.05; letter-spacing: -0.02em;
+  font-weight: 800; max-width: 17ch; text-wrap: balance;
+}
+section { padding: 72px 0; }
+section.alt { background: var(--surface); border-block: 1px solid var(--line); }
+h2 { font-family: var(--display); font-size: clamp(25px, 3.5vw, 36px); letter-spacing: -0.015em; font-weight: 800; max-width: 26ch; text-wrap: balance; }
+.sub { margin-top: 10px; color: var(--ink-2); max-width: 62ch; }
+
+/* ── Gabarit des pages sœurs (`main.page`) : colonne de lecture, sections serrées ── */
+main.page { padding: 56px 0 24px; }
+main.page > .wrap { max-width: 760px; }
+main.page h1 { font-size: clamp(30px, 4.5vw, 44px); line-height: 1.08; max-width: none; }
+main.page .lead { margin-top: 14px; font-size: 18px; color: var(--ink-2); }
+main.page section { padding: 0; margin-top: 44px; }
+main.page h2 { font-size: clamp(21px, 2.6vw, 26px); max-width: none; }
+main.page h3 { font-size: 17.5px; line-height: 1.3; margin-bottom: 6px; }
+main.page section p { color: var(--ink-2); margin-top: 10px; }
+main.page section h2 + p { margin-top: 12px; }
+main.page address { color: var(--ink-2); font-style: normal; line-height: 1.7; margin-top: 10px; }
+main.page .updated { margin-top: 10px; color: var(--muted); font-size: 14px; }
+
+/* Fonctionnalités : un bloc par module, de la prose, aucune puce. */
+article.module { margin-top: 26px; padding-top: 18px; border-top: 2px solid var(--accent); }
+article.module p { color: var(--ink-2); }
+article.module figure.shot { margin: 18px 0 0; }
+figure.shot img {
+  width: 100%; height: auto; display: block; border-radius: var(--radius);
+  border: 1px solid var(--line); box-shadow: 0 24px 60px -24px rgba(25,23,20,.25);
+}
+figure.shot figcaption { margin-top: 10px; font-size: 13.5px; color: var(--muted); text-align: center; }
+/* « Ce qu'Amateo ne fait pas » : lignes à deux colonnes — l'affirmation en gras, une phrase. */
+#ne-fait-pas p {
+  display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); gap: 6px 24px;
+  padding: 14px 0; margin-top: 0; border-bottom: 1px solid var(--line);
+}
+#ne-fait-pas h2 + p { margin-top: 12px; border-top: 1px solid var(--line); }
+#ne-fait-pas p strong { color: var(--ink); }
+@media (max-width: 600px) {
+  #ne-fait-pas p { grid-template-columns: 1fr; }
+}
+
+/* Journal des évolutions : une entrée par version, la plus récente en tête. */
+article.release { margin-top: 36px; padding-top: 20px; border-top: 1px solid var(--line); }
+article.release h2 { font-size: clamp(19px, 2.3vw, 22px); }
+article.release h2 time { display: block; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; font-size: 14px; font-weight: 600; color: var(--muted); letter-spacing: 0; margin-bottom: 4px; }
+article.release p { color: var(--ink-2); margin-top: 10px; }
+
+/* ── Pied de page : marque + trois colonnes (Produit, À propos, Compte) ── */
+footer.site { border-top: 1px solid var(--line); margin-top: 56px; padding: 32px 0 40px; font-size: 14px; color: var(--muted); }
+footer.site .wrap { display: flex; justify-content: space-between; gap: 28px 48px; flex-wrap: wrap; }
+footer.site .foot-tagline { max-width: 34ch; }
+footer.site .foot-brand { display: inline-flex; align-items: center; gap: 7px; vertical-align: -5px; }
+footer.site .brand-logo { height: 20px; width: 20px; }
+footer.site .logo-word { font-size: 16px; }
+footer.site .cols { display: flex; gap: 28px 56px; flex-wrap: wrap; }
+footer.site .col-title { font-weight: 700; color: var(--ink); margin-bottom: 8px; }
+footer.site .col ul { list-style: none; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+footer.site .col a { color: var(--ink-2); text-decoration: none; }
+footer.site .col a:hover { color: var(--ink); text-decoration: underline; }
+
+/* Cibles tactiles ≥44px en mobile : padding gonflé + marge négative de compensation (le rendu
+   ne bouge pas, seule la zone cliquable grandit). Borné à ≤880px. */
+@media (max-width: 880px) {
+  footer.site a { display: inline-block; padding: 12px 4px; margin: -12px -4px; }
+  footer.site .col ul { gap: 14px; }
+  nav.top > a { display: inline-block; padding: 12px 6px; margin: -12px -6px; }
+  main.page .back a { display: inline-block; padding: 11px 0; margin: -11px 0; }
+  /* Liens au fil d'une phrase (mentions légales, Vos données) : la zone grandit, la ligne non. */
+  main.page section p a { display: inline-block; padding: 12px 0; margin: -12px 0; }
+  /* Logotype : zone cliquable de 44px de haut, rendu inchangé. */
+  .logotype { padding: 7px 0; margin: -7px 0; }
+  /* Bascule de thème et burger (✕ compris) : 44×44 au doigt. */
+  .theme-toggle, .nav-menu > summary { width: 44px; height: 44px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* Saut d'ancre direct : site.js teste lui-même prefers-reduced-motion. */
+  .btn, .theme-toggle, .nav-menu > summary { transition: none; }
+}

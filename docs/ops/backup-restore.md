@@ -31,9 +31,13 @@ sauvegarde. Elle vit dans le même cluster postgres (volume `postgres_data`).
   aussi un dump — bénin, le coût d'une nuit de pure lecture.
 - **Emplacement** : `backend/var/backups/amateo-YYYYmmdd-His-u.dump` (format custom
   `pg_dump -Fc`), **rétention 14 dumps**.
-- **Off-site (optionnel mais recommandé dès la prod)** : poser `BACKUP_SYNC_COMMAND` dans
-  l'env (ex. `rclone copy /app/backend/var/backups b2:amateo-backups`) — exécutée après
-  chaque dump, échec = warning jamais bloquant.
+- **Off-site (POSÉ en prod, §4bis)** : `BACKUP_SYNC_COMMAND` dans l'env (ex. `rclone copy
+  /app/backend/var/backups b2:amateo-backups`) — exécutée après chaque dump, échec = warning
+  jamais bloquant. La copie hors site est **effacée au bout de 30 jours** (règle de cycle de vie
+  du bucket, §4bis) : c'est ce que disent `vos-donnees.html` et `PrivacyPage`. ⚠ La rétention
+  LOCALE, elle, est un NOMBRE de fichiers (14) et le tick saute les nuits sans activité : en
+  période creuse un dump local peut dépasser 30 jours (ligne de roadmap « borner la rétention
+  locale à 30 jours d'âge », P4-548).
 - **Surveillance** : ligne « Sauvegarde base de données » du board fraîcheur + alerte email
   automatique (`freshness:db-backup`) si de l'activité reste non couverte > 26 h.
 
@@ -165,6 +169,13 @@ contre une panne RÉGIONALE (décision fondateur, posée le 2026-09-30).
    base de données » du board fraîcheur reste verte les jours suivants
    (l'alerte `freshness:db-backup` couvre le dump local, pas le bucket — un œil
    humain sur le bucket 1×/mois).
+
+6. **Règle de cycle de vie `expiration-dumps-30j`** (posée en prod via la console Scaleway) :
+   préfixe `db/`, expiration de la version courante à **30 jours**, versions non courantes
+   supprimées après **1 jour**, envois multipart incomplets abandonnés après 1 jour, **aucune
+   transition Glacier**. Elle borne la copie hors site ; elle ne touche ni les dumps locaux ni
+   les snapshots. À revoir 1×/mois avec le bucket (elle ne se voit que dans la console : aucune
+   alerte ne la couvre).
 
 ## 5. Sentry — activation (les 3 zones sont câblées, DSN vide = inactif)
 
