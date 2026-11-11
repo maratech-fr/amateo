@@ -270,7 +270,7 @@ export function SlotDetail({ cell, slot, venues, categoryLabel, constraints, tag
               P2-51 PR-6 (D11) : sur une séance de BLOC, ce bouton devient « Déplacer le groupe »
               (le déplacement d'une seule équipe serait refusé par le moteur — on ne le propose pas).
               L'action reste le MÊME geste click-click (la page l'aiguille vers le rail move-group). */}
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <Button
               size="sm"
               variant={armed ? "default" : "outline"}

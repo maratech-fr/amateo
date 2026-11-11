@@ -117,9 +117,9 @@ export const CLUB_TEXTS = {
   acceptManagerRequestOf: (name: string) => `Accepter la demande de ${name}`,
   refuseManagerRequestOf: (name: string) => `Refuser la demande de ${name}`,
   // UXS-20 — confirmation des deux gestes du gestionnaire (petites lignes, plan §2).
-  refuseManagerRequestTitle: (name: string) => `Refuser la demande de ${name} ?`,
+  refuseManagerRequestTitle: (name: string) => `Refuser la demande de ${name} ?`,
   refuseManagerRequestDescription: (name: string) => `${name} reste Membre et pourra renouveler sa demande plus tard.`,
-  acceptManagerRequestTitle: (name: string) => `Accepter la demande de ${name} ?`,
+  acceptManagerRequestTitle: (name: string) => `Accepter la demande de ${name} ?`,
   acceptManagerRequestDescription: (name: string) =>
-    `${name} devient gestionnaire : il pourra modifier le planning, les équipes et les membres du club.`,
+    `${name} devient gestionnaire, avec les droits de modifier le planning, les équipes et les membres du club.`,
 } as const satisfies Record<string, string | ((...args: never[]) => string)>;
