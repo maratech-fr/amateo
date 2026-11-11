@@ -246,6 +246,11 @@ fermée calculée en `Europe/Paris` :
 
 - réconciliation des générations bloquées toutes les 10 minutes (`--older-than 60`) ;
 - **alertes santé & fraîcheur toutes les 10 minutes** (`app:health:alert`, voir plus bas) ;
+- **validation automatique des plannings de période chaque jour à 00:15**
+  (`app:period-plans:auto-validate`, clé `period-plan-auto-validation`) : tout club, chacun jugé à
+  SON jour (fuseau, horloge simulée d'une démo) ; un club en échec n'arrête pas les suivants mais
+  fait sortir le passage en échec. `--dry-run` n'écrit rien, `--date` future refusée hors
+  `--dry-run`, `--club=<id>` ; règle produit : `planning-lifecycle-validated.md` §1 ;
 - **sauvegarde de la base chaque jour à 01:00** (`app:db:backup`) — le tick est bon marché,
   la commande **skippe s'il n'y a eu aucune activité** : la cadence réelle des dumps suit
   l'activité (clubs, générations, journal d'audit, **connexions** — `app_user.last_login_at`,
@@ -575,7 +580,10 @@ superadmin posant `simulated_today` sur un club réel — décaler l'horloge d'u
 donnerait la main sur des mécanismes datés qui ne le concernent pas (radar, bascule de saison,
 e-mails). L'horloge d'un compte démo se pose désormais aussi depuis l'app elle-même, par son
 gestionnaire : `POST /api/club/clock` (widget d'en-tête, rôle MANAGER, 403 si le club n'est pas
-`is_demo`), détail `backend-demo.md` §Module démo.
+`is_demo`), détail `backend-demo.md` §Module démo. **Poser une date valide aussitôt, pour CE club,
+les plannings de période dont le 7ᵉ jour après le début est atteint à cette date** (même service que
+la tâche de 00:15, jamais sur `clear` ; un échec est journalisé, la réponse reste 200, l'horloge
+posée) — **reculer l'horloge ne dé-valide rien** : rejouer une démo = la remettre à zéro.
 
 Front : `DemosSection.tsx` est rendue en bas de l'onglet **Clubs** (réorganisation en 5 onglets,
 §Organisation de la console) — deux cartes : « Démo BCCL » (fenêtre + réinitialisation sous

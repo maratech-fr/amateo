@@ -338,6 +338,18 @@ Une to-do n'est pas un inventaire. Trois règles :
   un plan de semaine révolue filtré ensuite partout, un artefact sans carte ni retour possible.
   Même critère au niveau **période** (`h.endDate >= today`) : une vacance commencée dont des jours
   restent devant garde son point d'entrée.
+- **Alerte d'un planning de période commencé** (validation automatique à J+7 de la période,
+  `planning-lifecycle-validated.md` §1) : le BACKEND calcule en lot, par planning, `alert`
+  (`auto_validated` : validé seul avec ≥ 1 autre version gardée, période pas finie — « Voir le
+  planning » ; `started_without_plan` : dès le jour J, aucune version terminée ni en vol —
+  « Reprendre »), `autoValidated` et `radarDismissed` (`PeriodPlanAlertResolver`, sur
+  `SchedulePlanResource`) ; le radar les lit sans rien redériver (`PeriodPlanAlertCard`, en tête
+  après l'encart socle). **« J'ai vu »** (`POST /api/schedule_plans/{id}/alert-seen`) vaut pour tout
+  le club et retire la carte ; sur `started_without_plan` il met la période en **sourdine**
+  (`radarDismissed`) : ni carte « à finaliser » ni fermeture au radar jusqu'à sa fin, elle reste au
+  calendrier. Une seule version validée seule = marque sans carte. « J'ai vu » et « Reprendre »
+  sont des écritures (`<ManagerOnly>`) ; « Voir le planning » reste ouvert au Membre. « Validé
+  automatiquement » ne s'affiche que dans « Tous les plannings ».
 - **La carte de couverture est repliée par défaut** ; les autres gardent leur action visible —
   tout replier mettait chaque geste du radar à deux clics sans raccourcir ce qui est réellement
   long (les N puces de semaine). L'en-tête (titre, dates, compteur « x/y couvertes ») reste

@@ -53,6 +53,10 @@ Schedule (= Version)                    ← existant, recentré
    autres versions du plan sont supprimées**. Pas de statut `VALIDATED`, pas d'`ARCHIVED` :
    « validé » se **dérive** du pointeur (une seule vérité).
 
+   **Exception (pointage automatique d'une période, fondateur 2026-11-03/11) :** la validation
+   automatique d'un planning de période (inv. 2, amendement) ne supprime PAS les sœurs : elles
+   sont gardées, `Rouvrir` les rend au gestionnaire ; seule la validation MANUELLE les supprime.
+
    **Tant que le plan SEASON pointe une version, aucune AUTRE version de saison n'est créée ni
    résolue.** À la création : `ScheduleStateProcessor::processPost` refuse en 409 tout POST
    « de saison » (sans `schedulePlanId`, ou visant explicitement le plan SEASON) tant que
@@ -72,6 +76,16 @@ Schedule (= Version)                    ← existant, recentré
 2. **Pointeur NULL = espace de travail.** On (re)travaille ⇒ pointeur remis à null, on
    génère des versions (V4, V5…), on choisira. **Aucun pointage automatique** (l'auto-baseline
    au 1er COMPLETED disparaît) — seul le gestionnaire pointe.
+
+   **Amendement (pointage automatique d'une période, fondateur 2026-11-03) :** un planning de
+   PÉRIODE (fermeture ou vacances) qu'aucun gestionnaire n'a validé **7 jours après le début de la
+   période** est pointé seul, une fois, sur sa version chargée (`PeriodPlanAutoValidator`, tâche
+   `app:period-plans:auto-validate`, 00:15 Europe/Paris, chaque club à son jour). **Jamais le plan
+   SEASON** (le socle reste un geste du gestionnaire), jamais un plan déjà validé une fois (même
+   rouvert : `auto_validated_date` / `first_chosen_at`), jamais une entrée `ignored`, une mère
+   découpée ou une saison archivée. Rien d'autre ne bouge (ni matchs, ni e-mail, ni Mercure) ;
+   `first_chosen_at` n'est pas posé (la stat « temps de clôture » reste humaine). Réversible par
+   `Rouvrir`.
 
    **Amendement (version chargée, fondateur 2026-11-03) :** dans un plan, **seule la version
    chargée** (l'étoile = la source des verrous, `SchedulePlanProvisioner::lockSourceScheduleIdOfPlan`)

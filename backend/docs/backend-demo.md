@@ -247,7 +247,9 @@ l'identique, `2026-02-31` refusé ⇒ 422), même vidage de boîte au `clear` vi
 `useApplySimulatedClock`) et tous les écrans datés se recalent. NR bloquant
 `Integration/Api/ClubClockEndpointTest` (démo manager 200 ; démo non-manager 403 ; vrai club
 manager 403 + horloge intacte ; date malformée 422 ; `clear` → NULL + boîte vidée ; un autre club
-jamais touché).
+jamais touché). Poser une date (jamais `clear`) valide aussi, pour CE club, les plannings de
+période dont le 7ᵉ jour est atteint (`PeriodPlanAutoValidator`, try/catch : échec journalisé, 200
+rendu) ; reculer l'horloge ne dé-valide rien — `superadmin-auth.md` §Démos.
 
 **Purge nocturne du prospect périmé** : `app:demo:purge-stale`
 (`src/Command/DemoPurgeStaleCommand.php`, cron-runner quotidien **03:15**, clé
