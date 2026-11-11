@@ -233,6 +233,35 @@ export const MATCHES_TEXTS = {
   reviewHideAway: "Masquer les extérieurs",
   reviewNothingToTreatTitle: "Rien à traiter",
   reviewNothingToTreatDescription: "Toutes les rencontres importées sont à jour. Déposez un export FBI ou vérifiez via le Canal FFBB pour en apporter de nouvelles.",
+  reviewHelp: "L'import a déjà mis à jour vos matchs. Marquez-les comme vus pour vider la liste ; les écarts, eux, demandent votre arbitrage.",
+  reviewMarkAllSeen: "Tout marquer comme vu",
+  reviewMarkAwaySeen: "Tout marquer comme vu — extérieurs",
+  reviewMarkAwaySeenDisabled: "Aucune rencontre à l'extérieur à marquer comme vue.",
+  // Toast du geste « extérieurs » : chaque nombre s'accorde ; chaque laissée de côté est nommée
+  // (équipe + date), repli sur ce qui est connu (rencontre absente de la liste chargée).
+  reviewAwaySeenToast: (n: number, skipped: { team: string; date: string }[]): string => {
+    if (0 === skipped.length) {
+      if (0 === n) {
+        return "Aucune rencontre à l'extérieur à marquer comme vue.";
+      }
+      return n > 1 ? `${n} rencontres à l'extérieur marquées comme vues.` : `${n} rencontre à l'extérieur marquée comme vue.`;
+    }
+    const seen = n > 1 ? `${n} rencontres à l'extérieur marquées comme vues` : `${n} rencontre à l'extérieur marquée comme vue`;
+    const m = skipped.length;
+    if (1 === m) {
+      const named = [skipped[0].team, skipped[0].date].filter((part) => "" !== part).join(", ");
+      return `${seen} ; 1 laissée de côté${"" !== named ? ` (${named})` : ""} — tranchez son écart.`;
+    }
+    const named = skipped.map((s) => [s.team, s.date].filter((part) => "" !== part).join(" ")).filter((label) => "" !== label);
+    return `${seen} ; ${m} laissées de côté${named.length > 0 ? ` (${named.join(", ")})` : ""} — tranchez leurs écarts une par une.`;
+  },
+  // Toast du geste « équipe » : les rencontres à écart laissées de côté, nommées par leur date.
+  reviewSkippedToast: (team: string, n: number, dates: string[]): string => {
+    const when = dates.length > 0 ? ` (${dates.join(", ")})` : "";
+    return n > 1
+      ? `${team} : ${n} rencontres à écart laissées de côté${when} — tranchez leurs écarts une par une.`
+      : `${team} : ${n} rencontre à écart laissée de côté${when} — tranchez son écart.`;
+  },
   // ReviewQueueRow
   rowKickoffNotPublished: "heure non publiée",
   rowNeutralGround: "Terrain neutre",

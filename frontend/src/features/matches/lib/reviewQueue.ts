@@ -46,8 +46,9 @@ export function hasAutoAppliedDeviation(fixture: Fixture): boolean {
 }
 
 /** À traiter d'un geste ou à arbitrer : NEW, OUT_OF_SYNC, ou REVIEWED encore porteuse
- * d'une alerte auto-appliquée (à acquitter). Ce prédicat gouverne `open` ET le badge. */
-function isOpenReview(fixture: Fixture): boolean {
+ * d'une alerte auto-appliquée (à acquitter). Ce prédicat gouverne `open`, le badge ET l'état du
+ * bouton « Tout marquer comme vu — extérieurs ». */
+export function isOpenReview(fixture: Fixture): boolean {
   return "NEW" === fixture.reviewState || "OUT_OF_SYNC" === fixture.reviewState || ("REVIEWED" === fixture.reviewState && hasAutoAppliedDeviation(fixture));
 }
 

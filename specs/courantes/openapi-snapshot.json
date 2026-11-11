@@ -17091,7 +17091,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Mark fixtures as reviewed (\u00ab trait\u00e9 \u00bb). One gesture per call: by fixtureIds (per line \u2014 pending deviations are cleared, keeping the app value) or by teamId (bulk \u2014 fixtures still carrying pending deviations are skipped and named, never arbitrated in bulk).",
+                        "description": "Mark fixtures as reviewed (\u00ab trait\u00e9 \u00bb). One gesture per call: by fixtureIds (per line \u2014 pending deviations are cleared, keeping the app value), by teamId (bulk \u2014 auto-applied alerts are acknowledged, fixtures carrying an arbitrable deviation are skipped and named, never arbitrated in bulk) or by scope \"away\" (bulk over open away fixtures \u2014 same skip rule, home fixtures never touched). Acknowledging erases the previous values of the alerts.",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -17113,7 +17113,8 @@
                                                         "type": "string",
                                                         "enum": [
                                                             "pending_deviations"
-                                                        ]
+                                                        ],
+                                                        "description": "The fixture carries an arbitrable deviation (one not auto-applied): it must be decided on its own line"
                                                     }
                                                 }
                                             }
@@ -17133,10 +17134,10 @@
                         "description": "Season plan not chosen, or archived season"
                     },
                     "422": {
-                        "description": "Neither or both of fixtureIds and teamId were given"
+                        "description": "Not exactly one of fixtureIds, teamId and scope was given, or scope is not \"away\""
                     }
                 },
-                "summary": "Mark fixtures as reviewed \u2014 by line (fixtureIds) or in bulk (teamId), management only",
+                "summary": "Mark fixtures as reviewed \u2014 by line (fixtureIds), by team (teamId) or all open away fixtures (scope), management only",
                 "requestBody": {
                     "content": {
                         "application/json": {
@@ -17152,7 +17153,14 @@
                                     },
                                     "teamId": {
                                         "type": "string",
-                                        "description": "Bulk gesture: every fixture of the team is reviewed, except those still carrying pending deviations"
+                                        "description": "Bulk gesture: every fixture of the team is reviewed and its auto-applied alerts acknowledged, except those carrying an arbitrable deviation"
+                                    },
+                                    "scope": {
+                                        "type": "string",
+                                        "enum": [
+                                            "away"
+                                        ],
+                                        "description": "Bulk gesture over away fixtures: those new or carrying only auto-applied alerts are reviewed, those carrying an arbitrable deviation are skipped"
                                     }
                                 }
                             }

@@ -7,6 +7,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Fixture, Team, Venue } from "./api";
 import { ReviewQueue } from "./ReviewQueue";
 import { useMatchesStore } from "./store";
+import { MATCHES_TEXTS } from "./texts";
 
 // La file n'exerce ici que le geste « Replacer » (A8) : on isole les mutations.
 vi.mock("./queries", () => ({
@@ -81,18 +82,13 @@ beforeEach(() => {
 });
 
 /**
- * Retours Nico (BCCL, 2026-10-27), M3 — la file d'import ne parle plus d'une « validation » (le
- * fondateur : « ça fait quoi, ça mène où ? »), c'est un ACQUITTEMENT. Wording VALIDÉ :
- *  - phrase d'aide en tête : « L'import a déjà mis à jour vos matchs. Marquez-les comme vus pour
- *    vider la liste ; les écarts, eux, demandent votre arbitrage. » ;
- *  - en-tête d'équipe : « N nouveautés à voir · M écarts à trancher » (plus « N à valider ·
- *    M écarts ») ;
- *  - bouton de corps : « Tout marquer comme vu » (plus « Tout valider »).
- * La tournure de pluriel reste à NEO ; les promesses pinées ici : les mots « nouveauté(s) à voir »,
- * « écart(s) à trancher », « Tout marquer comme vu » et la phrase d'aide apparaissent, « à valider »
- * / « Tout valider » ont disparu.
+ * M3 (2026-10-27) — la file d'import ne parle plus d'une « validation » (« ça fait quoi, ça mène
+ * où ? »), c'est un ACQUITTEMENT : une phrase d'aide en tête, un en-tête d'équipe « N nouveautés à
+ * voir · M écarts à trancher », un bouton de corps « Tout marquer comme vu ». Lot prod Matchs PR 2 :
+ * l'aide et le bouton vivent dans `texts.ts` (clés `reviewHelp`, `reviewMarkAllSeen`) — le test
+ * vérifie la CLÉ ; l'en-tête garde ses mots pinés (« à valider » a disparu).
  */
-describe("ReviewQueue — file d'import = acquittement, pas validation (M3, BCCL 2026-10-27)", () => {
+describe("ReviewQueue — file d'import = acquittement, pas validation (M3)", () => {
   function fixture(extra: Partial<Fixture>): Fixture {
     return {
       ...(homeAmical as Fixture),
@@ -129,17 +125,25 @@ describe("ReviewQueue — file d'import = acquittement, pas validation (M3, BCCL
     expect(header).not.toHaveTextContent("à valider");
   });
 
-  it("une phrase d'aide explique que l'import a déjà mis à jour les matchs, à marquer comme vus", () => {
-    renderWith([newFixture, outOfSync]);
-    expect(screen.getByText(/L'import a déjà mis à jour vos matchs/)).toBeInTheDocument();
-    expect(screen.getByText(/[Mm]arquez-les comme vus pour vider la liste/)).toBeInTheDocument();
+  it("les textes de la file vivent dans texts.ts (aide, gestes de masse, toasts)", () => {
+    expect(typeof MATCHES_TEXTS.reviewHelp).toBe("string");
+    expect(typeof MATCHES_TEXTS.reviewMarkAllSeen).toBe("string");
+    expect(typeof MATCHES_TEXTS.reviewMarkAwaySeen).toBe("string");
+    expect(typeof MATCHES_TEXTS.reviewMarkAwaySeenDisabled).toBe("string");
+    expect(typeof MATCHES_TEXTS.reviewAwaySeenToast).toBe("function");
+    expect(typeof MATCHES_TEXTS.reviewSkippedToast).toBe("function");
   });
 
-  it("le bouton de corps dit « Tout marquer comme vu » (plus « Tout valider »)", async () => {
+  it("une phrase d'aide explique que l'import a déjà mis à jour les matchs, à marquer comme vus", () => {
+    renderWith([newFixture, outOfSync]);
+    expect(screen.getByText(MATCHES_TEXTS.reviewHelp)).toBeInTheDocument();
+  });
+
+  it("le bouton de corps est « Tout marquer comme vu » (clé), plus « Tout valider »", async () => {
     const user = userEvent.setup();
     renderWith([newFixture, outOfSync]);
     await user.click(screen.getByRole("button", { name: /SM1/ }));
-    expect(screen.getByRole("button", { name: "Tout marquer comme vu" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: MATCHES_TEXTS.reviewMarkAllSeen })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Tout valider" })).not.toBeInTheDocument();
   });
 
@@ -153,10 +157,47 @@ describe("ReviewQueue — file d'import = acquittement, pas validation (M3, BCCL
       const user = userEvent.setup();
       renderWith([newFixture, outOfSync]);
       await user.click(screen.getByRole("button", { name: /SM1/ }));
-      expect(screen.queryByRole("button", { name: "Tout marquer comme vu" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: MATCHES_TEXTS.reviewMarkAllSeen })).not.toBeInTheDocument();
     } finally {
       session.canManage = true;
     }
+  });
+});
+
+/**
+ * Lot prod Matchs PR 2 — les toasts des gestes de masse s'accordent sur CHAQUE nombre et nomment
+ * chaque rencontre laissée de côté (équipe + date) : le singulier ne dit jamais « rencontres », le
+ * pluriel le dit, et « aucune vue, aucune laissée » se lit comme la raison du bouton désactivé.
+ */
+describe("ReviewQueue — accords des toasts de masse (lot prod Matchs PR 2)", () => {
+  it("extérieurs : 1 au singulier, N au pluriel, 0 = la raison du bouton désactivé", () => {
+    expect(MATCHES_TEXTS.reviewAwaySeenToast(1, [])).not.toMatch(/rencontres/);
+    expect(MATCHES_TEXTS.reviewAwaySeenToast(9, [])).toMatch(/\b9 rencontres\b/);
+    expect(MATCHES_TEXTS.reviewAwaySeenToast(0, [])).toBe(MATCHES_TEXTS.reviewMarkAwaySeenDisabled);
+  });
+
+  it("extérieurs : chaque laissée de côté est nommée, équipe et date", () => {
+    const one = MATCHES_TEXTS.reviewAwaySeenToast(9, [{ team: "U15F2", date: "sam. 5 déc." }]);
+    expect(one).toContain("U15F2");
+    expect(one).toContain("sam. 5 déc.");
+    const two = MATCHES_TEXTS.reviewAwaySeenToast(1, [
+      { team: "U15F2", date: "sam. 5 déc." },
+      { team: "SM1", date: "dim. 13 déc." },
+    ]);
+    for (const part of ["U15F2", "sam. 5 déc.", "SM1", "dim. 13 déc."]) {
+      expect(two).toContain(part);
+    }
+    expect(two).not.toBe(MATCHES_TEXTS.reviewAwaySeenToast(1, [{ team: "U15F2", date: "sam. 5 déc." }]));
+  });
+
+  it("équipe : nomme l'équipe et chaque date, accordé sur le nombre", () => {
+    const single = MATCHES_TEXTS.reviewSkippedToast("SM1", 1, ["sam. 5 déc."]);
+    expect(single).toContain("SM1");
+    expect(single).toContain("sam. 5 déc.");
+    expect(single).not.toMatch(/rencontres/);
+    const plural = MATCHES_TEXTS.reviewSkippedToast("SM1", 2, ["sam. 5 déc.", "sam. 12 déc."]);
+    expect(plural).toMatch(/\b2 rencontres\b/);
+    expect(plural).toContain("sam. 12 déc.");
   });
 });
 
