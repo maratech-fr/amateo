@@ -17140,10 +17140,13 @@
                         "description": "Not a management member \u2014 or, on the D\u00e9couverte credit plan, automatic placement must be week-end by week-end (send a one-week window)"
                     },
                     "409": {
-                        "description": "Placement already running for this club, season plan not chosen, or archived season"
+                        "description": "A placement is already running or already queued for this club, a deploy freeze is in progress, season plan not chosen, or archived season"
                     },
                     "422": {
                         "description": "Invalid window (a bound is not a date, or from is after to)"
+                    },
+                    "429": {
+                        "description": "Club quota reached for automatic placement"
                     }
                 },
                 "summary": "Enqueue the auto-placement of the unplaced home matches (async; writes PLACED+SOLVER in the worker; manual anchors never move)",

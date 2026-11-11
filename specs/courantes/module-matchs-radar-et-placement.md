@@ -355,7 +355,12 @@ sur le 3ᵉ topic Mercure fixe `/clubs/{clubId}/placement`. `GET /api/fixtures/p
 dernier run du club+saison (lecture seule, ouvert à tout membre). Anti-double-clic PAR CLUB
 `MatchPlacementLock` (Redis dédié — pris par le contrôleur, relâché par le worker ; ne protège pas
 deux clubs l'un de l'autre : ils partagent le sémaphore GLOBAL `max_concurrent_placements=1` de
-l'engine, détail ADR-0003 §2). Best-effort à poids
+l'engine, détail ADR-0003 §2). **Fiabilité du rail** (ADR-0003 §2, amendement 2026-11-11) : un
+second POST est refusé en **409** dont le texte suit le dernier run (« déjà demandé » s'il est en file,
+délai restant du verrou s'il est en cours), compté au quota dédié `match_placement` du club
+(**429**, Membre exempt) ; un run laissé en vol par un worker mort est déclaré FAILED au démarrage du
+worker suivant (`PlacementRunStartupReconciler`) ou à la main (`app:match-placement:reconcile-stuck`,
+`backend/docs/commands.md`), et un message relu ne re-solve jamais un run terminé. Best-effort à poids
 dominant : `10 000 × Σ placés + SOFT` — **aucune contrainte HARD n'est jamais violée en sortie** ; un
 match sans candidat licite sort NOMMÉ (`no_access_window` · `no_league_intersection` ·
 `team_venue_forbidden` · `club_rule_no_slot` · `venue_unavailable` · `venue_full` · `not_selected`,

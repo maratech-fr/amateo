@@ -32,13 +32,17 @@ use App\Service\MatchPlacementProgressPublisher;
 use App\Service\MatchPlacementResultApplier;
 use App\Service\OutputCreditLedger;
 use App\Service\PlacementRunEmailBuilder;
+use App\Service\PlacementRunFailureNotifier;
 use App\Service\PlanEntitlements;
 use App\Service\RequestIdContext;
 use App\Service\SeasonResolver;
 use App\Service\TenantConnectionContext;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
+use Doctrine\DBAL\Connection;
 use Doctrine\ORM\EntityManagerInterface;
+use Doctrine\ORM\Event\OnFlushEventArgs;
+use Doctrine\ORM\Events;
 use PHPUnit\Framework\Attributes\Group;
 use Psr\Log\NullLogger;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
@@ -108,6 +112,66 @@ final class PlaceMatchesHandlerTest extends WebTestCase
         $payload = json_decode($this->published[0]->getData(), true, flags: \JSON_THROW_ON_ERROR);
         self::assertSame('COMPLETED', $payload['status'] ?? null);
         self::assertSame($run->getId(), $payload['runId'] ?? null);
+    }
+
+    /**
+     * Promesse (D1 bis) : les placements appliqués et le passage du run à COMPLETED s'écrivent
+     * ENSEMBLE — soit dans le même flush, soit dans une transaction ouverte par le handler autour
+     * des deux. Sinon un COMPLETED qui échoue (perdant d'une course, base coupée) laisse des
+     * matchs posés par un run que l'écran dira échoué.
+     *
+     * Sonde : le niveau d'imbrication de transaction de la connexion à chaque flush, comparé au
+     * niveau AVANT le handler (la transaction du test). Angle comportemental jumeau :
+     * `RedeliveredPlacementTest::testALoserWhoseRunWasFailedMeanwhileWritesNothing`.
+     */
+    public function testPlacementsAndCompletionCommitTogether(): void
+    {
+        [$clubId, $seasonId, $userId, $fixtureId, $venueId] = $this->seed(isDemo: true);
+        $run = $this->seedRun($clubId, $seasonId, $userId);
+
+        $connection = $this->em->getConnection();
+        $baseline = $connection->getTransactionNestingLevel();
+        $probe = new class($connection) {
+            /** @var list<array{level: int, fixtures: bool, completed: bool}> */
+            public array $flushes = [];
+
+            public function __construct(private readonly Connection $connection) {}
+
+            public function onFlush(OnFlushEventArgs $args): void
+            {
+                $uow = $args->getObjectManager()->getUnitOfWork();
+                $fixtures = false;
+                $completed = false;
+                foreach ([...$uow->getScheduledEntityUpdates(), ...$uow->getScheduledEntityInsertions()] as $entity) {
+                    $fixtures = $fixtures || $entity instanceof Fixture;
+                    $completed = $completed || ($entity instanceof MatchPlacementRun && MatchPlacementRunStatus::COMPLETED === $entity->getStatus());
+                }
+                if ($fixtures || $completed) {
+                    $this->flushes[] = ['level' => $this->connection->getTransactionNestingLevel(), 'fixtures' => $fixtures, 'completed' => $completed];
+                }
+            }
+        };
+        $this->em->getEventManager()->addEventListener(Events::onFlush, $probe);
+
+        try {
+            $this->handler($this->engineReturning([
+                'status' => 'completed',
+                'placements' => [['matchId' => $fixtureId, 'venueId' => $venueId, 'kickoff' => '15:00']],
+                'unplaced' => [],
+            ]))->__invoke($this->message($run, $clubId, $seasonId));
+        } finally {
+            $this->em->getEventManager()->removeEventListener(Events::onFlush, $probe);
+        }
+
+        self::assertSame(MatchPlacementRunStatus::COMPLETED, $this->reloadRun($run, $clubId)->getStatus());
+        $fixtureFlushes = array_values(array_filter($probe->flushes, static fn (array $f): bool => $f['fixtures']));
+        $completedFlushes = array_values(array_filter($probe->flushes, static fn (array $f): bool => $f['completed']));
+        self::assertNotSame([], $fixtureFlushes, 'sonde : le placement appliqué doit passer par un flush');
+        self::assertNotSame([], $completedFlushes, 'sonde : le COMPLETED doit passer par un flush');
+
+        $sameFlush = [] !== array_filter($probe->flushes, static fn (array $f): bool => $f['fixtures'] && $f['completed']);
+        $insideHandlerTransaction = [] === array_filter([...$fixtureFlushes, ...$completedFlushes], static fn (array $f): bool => $f['level'] <= $baseline);
+        self::assertTrue($sameFlush || $insideHandlerTransaction, 'placements et COMPLETED s\'écrivent séparément : un COMPLETED raté laisserait des matchs posés');
     }
 
     public function testAnEngineErrorFailsTheRunConsumesNoCreditAndPublishesFailed(): void
@@ -289,6 +353,7 @@ final class PlaceMatchesHandlerTest extends WebTestCase
             $container->get(ClockInterface::class),
             $spyMailer,
             $container->get(PlacementRunEmailBuilder::class),
+            new PlacementRunFailureNotifier($this->em, $spyMailer, $container->get(PlacementRunEmailBuilder::class), new NullLogger),
             new NullLogger,
         );
     }

@@ -34,10 +34,15 @@ use Symfony\Component\RateLimiter\RateLimiterFactory;
  * mobilise Puppeteer. Le limiteur global suffit à borner un abus de XLSX ; lui coller un cap
  * horaire gênerait un usage légitime pour rien.
  *
- * ⚠ Un solve n'est compté que pour un GESTIONNAIRE actif : le refus 403 d'un Membre (garde du
- * contrôleur, en aval) ne doit jamais entamer le cap du club — sinon dix clics d'un Membre
- * priveraient le club de génération (`MemberReadsAreSideEffectFreeTest`). Les exports, ouverts à
- * tout membre, restent comptés pour tous.
+ * ⚠ Le placement automatique des matchs a son PROPRE seau (`match_placement`) : un run mobilise le
+ * solveur jusqu'à 45 min, et il ne doit ni manger le budget de génération ni l'inverse. Compté
+ * avant le contrôleur : une demande refusée (409 compris) reste une demande.
+ *
+ * ⚠ Un solve — génération OU placement des matchs — n'est compté que pour un GESTIONNAIRE actif :
+ * le refus 403 d'un Membre (garde du contrôleur, en aval) ne doit jamais entamer le cap du club —
+ * sinon dix clics d'un Membre priveraient le club de génération ou de placement
+ * (`MemberReadsAreSideEffectFreeTest`). Les exports, ouverts à tout membre, restent comptés pour
+ * tous.
  *
  * Priorité 5 : APRÈS `TenantFilterListener` (7), qui résout le club et pose `_club_id` —
  * sans quoi il n'y aurait rien à compter.
@@ -56,11 +61,14 @@ final class ClubQuotaSubscriber implements EventSubscriberInterface
 
     private const string MATCHES_EXPORT_ROUTE = 'api_fixtures_export_pdf';
 
+    private const string PLACE_ROUTE = 'api_fixtures_place';
+
     public function __construct(
         private readonly RateLimiterFactory $scheduleGenerationLimiter,
         private readonly RateLimiterFactory $schedulePdfExportLimiter,
         private readonly RateLimiterFactory $fixturesPdfExportLimiter,
         private readonly ManagementAccessGuard $managementAccessGuard,
+        private readonly RateLimiterFactory $matchPlacementLimiter,
     ) {}
 
     /** @return array<string, array{0: string, 1: int}> */
@@ -82,6 +90,7 @@ final class ClubQuotaSubscriber implements EventSubscriberInterface
             \in_array($route, self::SOLVE_ROUTES, true) => $this->scheduleGenerationLimiter,
             self::EXPORT_PDF_ROUTE === $route => $this->schedulePdfExportLimiter,
             self::MATCHES_EXPORT_ROUTE === $route => $this->fixturesPdfExportLimiter,
+            self::PLACE_ROUTE === $route => $this->matchPlacementLimiter,
             default => null,
         };
 
@@ -96,7 +105,7 @@ final class ClubQuotaSubscriber implements EventSubscriberInterface
             return;
         }
 
-        if ($limiter === $this->scheduleGenerationLimiter && !$this->isManager()) {
+        if (($limiter === $this->scheduleGenerationLimiter || $limiter === $this->matchPlacementLimiter) && !$this->isManager()) {
             return; // le contrôleur refusera (403) sans rien consommer du cap du club
         }
 

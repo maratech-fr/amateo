@@ -49,6 +49,46 @@ class MatchPlacementLock
         );
     }
 
+    /**
+     * Réarme le verrou au budget du run qui DÉMARRE — seulement pour son détenteur (compare-and-
+     * expire atomique). `false` : la clé a expiré (TTL de l'enfilage fondu dans la file) ou un autre
+     * jeton la tient ; l'appelant la reprend ou s'efface.
+     */
+    public function extend(string $clubId, string $token, int $ttlSeconds): bool
+    {
+        $redis = $this->connect();
+
+        $extended = $redis->eval(
+            'if redis.call(\'get\', KEYS[1]) == ARGV[1] then return redis.call(\'expire\', KEYS[1], ARGV[2]) else return 0 end',
+            [self::KEY_PREFIX . $clubId, $token, (string) max(1, $ttlSeconds)],
+            1,
+        );
+
+        return 1 === $extended;
+    }
+
+    /**
+     * Délai restant du verrou, en secondes arrondies au SUPÉRIEUR (le « au plus » du 409) ;
+     * `null` si aucune clé (ou clé sans expiration).
+     */
+    public function remainingSeconds(string $clubId): ?int
+    {
+        $milliseconds = $this->connect()->pttl(self::KEY_PREFIX . $clubId);
+        if (!\is_int($milliseconds) || $milliseconds < 0) {
+            return null;
+        }
+
+        return (int) ceil($milliseconds / 1000);
+    }
+
+    /** Le verrou du club est-il tenu (par qui que ce soit) ? */
+    public function isHeld(string $clubId): bool
+    {
+        $exists = $this->connect()->exists(self::KEY_PREFIX . $clubId);
+
+        return \is_int($exists) && $exists > 0;
+    }
+
     private function connect(): Redis
     {
         $parts = parse_url($this->redisUrl);

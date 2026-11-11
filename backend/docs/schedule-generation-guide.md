@@ -597,6 +597,9 @@ docker exec amateo-redis redis-cli GET schedule_generation:club:<club-uuid>
 
 ### Forcer la consommation d'un message (mode debug)
 
+⚠ Un seul consommateur du transport `async` à la fois (invariant du rail de placement, ADR-0003 §2) :
+jamais pendant un run en cours.
+
 ```bash
 cd backend && make exec
 php bin/console messenger:consume async --limit=1 -vv

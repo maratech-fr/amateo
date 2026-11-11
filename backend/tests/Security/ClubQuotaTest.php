@@ -134,6 +134,28 @@ final class ClubQuotaTest extends WebTestCase
     }
 
     /**
+     * La borne de production du placement automatique des matchs : 20 demandes par heure et par
+     * club (un run mobilise le solveur jusqu'à 45 min), seau à part de la génération ; 200 en dev,
+     * où Behat et e2e rejouent le placement sur le club de démonstration. Le câblage (une demande
+     * = une unité, refus = 429) : `PlacementQuotaTest`.
+     */
+    public function testTheMatchPlacementCapIsTheOneWeDecided(): void
+    {
+        $config = Yaml::parseFile(__DIR__ . '/../../config/packages/rate_limiter.yaml');
+        self::assertIsArray($config);
+
+        $placement = $config['framework']['rate_limiter']['match_placement'] ?? null;
+        self::assertIsArray($placement, 'Le cap du placement des matchs a disparu de rate_limiter.yaml.');
+        self::assertSame('sliding_window', $placement['policy'] ?? null);
+        self::assertSame(20, $placement['limit'] ?? null, 'Le budget de placement d\'un club a changé sans que personne ne le décide ici.');
+        self::assertSame('1 hour', $placement['interval'] ?? null);
+
+        $dev = $config['when@dev']['framework']['rate_limiter']['match_placement'] ?? null;
+        self::assertIsArray($dev, 'Behat et e2e jouent le placement en dev sur le club de démonstration : le cap de prod les ferait tomber en 429.');
+        self::assertSame(200, $dev['limit'] ?? null);
+    }
+
+    /**
      * Le 61ᵉ export des matchs de l'heure est refusé, et le seau de l'export du planning n'a pas
      * bougé : les deux ressources se comptent à part. Le subscriber est piloté directement : en HTTP,
      * le limiteur `api` (30/min en test) répondrait 429 bien avant, et le test passerait à tort.

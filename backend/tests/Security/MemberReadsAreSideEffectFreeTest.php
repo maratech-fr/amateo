@@ -50,7 +50,8 @@ use Symfony\Component\RateLimiter\RateLimiterFactory;
  *    ni dans l'aperçu du formulaire — il reste servi au gestionnaire ;
  *  - un logo adverse absent du stockage n'est PAS téléchargé pour un Membre (404, aucun appel,
  *    aucun marqueur) ;
- *  - « Générer » refusé à un Membre ne consomme RIEN du cap de génération du club ;
+ *  - « Générer » refusé à un Membre ne consomme RIEN du cap de génération du club ; « Placer
+ *    automatiquement » refusé ne consomme rien du cap de placement ;
  *  - l'export reste ouvert au Membre, et son PDF est compté sur le club.
  *
  * Seaux de débit : `reset()` ciblé des clés `api` du Membre/gestionnaire et des caps du club,
@@ -242,6 +243,25 @@ final class MemberReadsAreSideEffectFreeTest extends WebTestCase
         }
 
         self::assertSame($budgetBefore, $this->remaining('limiter.schedule_generation', 'club-' . $this->clubId), 'les refus d\'un Membre ont consommé le cap de génération du club');
+    }
+
+    /**
+     * « Placer automatiquement » refusé à un Membre (403) ne consomme RIEN du cap de placement du
+     * club : sans l'exemption, dix clics d'un Membre priveraient les gestionnaires de la moitié de
+     * leurs 20 placements de l'heure. Câblage du cap pour un gestionnaire : `PlacementQuotaTest`.
+     */
+    public function testMemberPlaceIsRefusedWithoutSpendingTheClubBudget(): void
+    {
+        $this->seed();
+        $this->resetBucket('limiter.match_placement', 'club-' . $this->clubId);
+        $budgetBefore = $this->remaining('limiter.match_placement', 'club-' . $this->clubId);
+
+        for ($i = 1; $i <= 10; ++$i) {
+            $this->asMember('POST', '/api/fixtures/place');
+            self::assertResponseStatusCodeSame(403, \sprintf('« Placer » n°%d d\'un Membre : 403, jamais le cap du club (429)', $i));
+        }
+
+        self::assertSame($budgetBefore, $this->remaining('limiter.match_placement', 'club-' . $this->clubId), 'les refus d\'un Membre ont consommé le cap de placement du club');
     }
 
     public function testMemberExportsAndThePdfIsChargedToTheClub(): void

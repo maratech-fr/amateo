@@ -44,6 +44,43 @@ solve). Le verrou club de `MatchPlacementLock` n'isole PAS deux clubs l'un de l'
 jeton unique, et le second appel attend derrière le solve du premier — l'attente ne pèse plus que sur le
 worker Messenger, jamais sur une requête HTTP d'un gestionnaire.
 
+**Fiabilité du rail (amendement 2026-11-11)** — un worker tué (OOM, SIGKILL d'un déploiement, Redis
+vidé) ne laisse plus un run figé ni un message relu à l'aveugle. **Invariant : un seul consommateur
+du transport `async` à la fois** (un seul conteneur `messenger-worker`) — le rattrapage du démarrage
+et les gardes du handler en dépendent ; `messenger:consume` à la main pendant un run le viole.
+- **Relecture jugée sur le statut en base** (`PlaceMatchesHandler`) : COMPLETED → acquitté sans
+  solver, verrou rendu ; FAILED → acquitté, verrou intact ; RUNNING → FAILED « interrompu », verrou
+  intact ; PENDING → nominal. Les transitions terminales sont conditionnelles (depuis RUNNING,
+  `@Version`) : un handler dont le run a été déclaré échoué pendant son solve est un perdant — rien
+  d'écrit, aucun crédit décompté, aucune publication. Placements et COMPLETED : une transaction.
+- **Verrou réarmé au départ** (`MatchPlacementLock::extend`, compare-and-expire) : le TTL posé à
+  l'enfilage peut fondre dans la file ; le run qui démarre réarme la clé au budget complet, la
+  reprend si elle a expiré, ou se déclare « remplacé » si un autre jeton la tient. RUNNING n'est
+  posé qu'après. Le verrou n'est jamais rendu sur un run RUNNING/FAILED orphelin : le calcul
+  interrompu peut encore tenir le moteur, la clé l'atteste jusqu'à son TTL.
+- **Réconciliateur** (`StuckPlacementRunReconciler`, deux modes `ReconcileMode`) : au **démarrage du
+  worker** (`PlacementRunStartupReconciler` sur `WorkerStartedEvent`, avant toute lecture de file),
+  tout RUNNING est orphelin → FAILED « interrompu » ; un PENDING absent de la file
+  (`PlacementQueueInspector`, lecture seule du flux Redis et du ZSET des messages différés ; une
+  entrée indécodable = file non lue, bras PENDING sauté) et plus vieux que la grâce de 5 min →
+  FAILED « relancez-le ». **Pas de cron.** À la main, worker vivant :
+  `app:match-placement:reconcile-stuck` (`--dry-run`, `--pending-grace`) — un RUNNING n'y est
+  déclaré échoué que si sa clé de verrou a disparu ET qu'il a démarré il y a plus de 5 min.
+  `PlaceMatchesFailureListener` clôt de même un run dont le message échoue définitivement.
+- **Hors requête, périmètre tenant par le GUC seul** (`TenantConnectionContext`), vidé en `finally` ;
+  jamais `TenantDoctrineScope` ni `getFilters()->enable` (filtre et club mémorisés survivraient
+  jusqu'au premier message du worker). Un club qui casse est journalisé et sauté, l'EM remis à neuf.
+- **409 selon le dernier run** (`PlacementConflictText`) : en file → « déjà demandé » sans délai ;
+  en cours (ou orphelin dont la clé est tenue) → délai restant du verrou, « au plus ». Le run est
+  daté à l'heure RÉELLE (`app.clock.real`, des durées) ; le balayage « Déjà dans FBI » garde
+  l'horloge décorée (date métier).
+- **Quota dédié `match_placement`** par club (`ClubQuotaSubscriber`, 409 compris, Membre exempt) et
+  `stop_grace_period` du worker en prod. SIGTERM ne coupe pas le message en cours : un solve qui
+  dépasse la grâce est tué, puis rattrapé au redémarrage.
+- **Résidus assumés** : quelques secondes après l'expiration de la clé, un handler qui applique
+  encore son résultat devient perdant ; un worker vivant mais coincé hors de l'appel moteur n'est
+  pas rattrapé (roadmap).
+
 ### 3. Best-effort « placement optionnel à poids dominant » — articulation avec ADR-0001
 
 Chaque match plaçable porte un booléen `is_placed`, l'objectif maximise `10 000 × Σ is_placed + SOFT`.

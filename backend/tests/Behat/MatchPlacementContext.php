@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Tests\Behat;
 
+use App\Service\MatchPlacementLock;
 use Behat\Hook\AfterScenario;
 use Behat\Step\Given;
 use Behat\Step\Then;
@@ -121,6 +122,12 @@ final class MatchPlacementContext extends BaseContext
 
     /** @var array<mixed> */
     private array $satFixture = [];
+
+    /** Le run du dernier « je lance le placement des matchs » (rattrapage des placements figés). */
+    private string $lastRunId = '';
+
+    /** Jeton du verrou de placement posé par le scénario ; rendu en fin de scénario s'il est encore tenu. */
+    private ?string $heldLockToken = null;
 
     #[Given('le club de démonstration, connecté, dont le planning de saison est en vigueur')]
     public function leClubConnecteAvecSocleEnVigueur(): void
@@ -1168,6 +1175,89 @@ final class MatchPlacementContext extends BaseContext
     }
 
     /**
+     * Le worker est mort en plein solve : le dernier run reste RUNNING, démarré il y a vingt
+     * minutes. Pointage SQL (autorisé par la charte) : aucun geste d'API ne fait mourir un worker.
+     */
+    #[Given('ce placement est laissé en cours depuis vingt minutes')]
+    public function cePlacementEstLaisseEnCours(): void
+    {
+        if ('' === $this->lastRunId) {
+            throw new RuntimeException('aucun placement lancé par ce scénario');
+        }
+        $this->dbalExec(\sprintf(
+            'UPDATE match_placement_run SET status = \'RUNNING\', started_at = now() - interval \'20 minutes\', finished_at = NULL WHERE id = \'%s\'',
+            $this->lastRunId,
+        ), admin: true);
+    }
+
+    /**
+     * Le verrou de placement du club, encore tenu (budget du run pas écoulé) — posé par le VRAI
+     * `MatchPlacementLock`, instancié sans noyau (les contextes Behat n'en ont pas).
+     *
+     * `REDIS_URL` est lu par `getenv()` puis repli `redis://redis:6379/0` ; l'application, elle, le
+     * résout aussi par Dotenv : si les deux divergent, le verrou posé ici n'est pas celui que lit la
+     * commande et « toujours en cours » rougit — c'est la première explication à chercher. La
+     * seconde : un redémarrage du worker de dev (`--time-limit=3600`, ou `cache:clear`) entre la
+     * mise en RUNNING et la première passe — son rattrapage de démarrage pose « interrompu ».
+     */
+    #[Given('un verrou de placement encore tenu pour ce club')]
+    public function unVerrouDePlacementEncoreTenu(): void
+    {
+        $token = $this->placementLock()->acquire($this->clubId, 3600);
+        if (null === $token) {
+            throw new RuntimeException('le verrou de placement du club est déjà tenu : un placement tourne encore');
+        }
+        $this->heldLockToken = $token;
+    }
+
+    #[When('le verrou de placement de ce club est rendu')]
+    public function leVerrouDePlacementEstRendu(): void
+    {
+        if (null !== $this->heldLockToken) {
+            $this->placementLock()->release($this->clubId, $this->heldLockToken);
+            $this->heldLockToken = null;
+        }
+    }
+
+    #[When('l\'opérateur lance le rattrapage des placements figés')]
+    public function lOperateurLanceLeRattrapage(): void
+    {
+        $this->runConsole(['php', 'bin/console', 'app:match-placement:reconcile-stuck']);
+    }
+
+    #[Then('le dernier placement est toujours en cours')]
+    public function leDernierPlacementEstToujoursEnCours(): void
+    {
+        $run = $this->dernierRun();
+        if ('RUNNING' !== ($run['status'] ?? null)) {
+            throw new RuntimeException(\sprintf('un placement dont le verrou est tenu a été touché par le rattrapage (statut « %s »)', (string) ($run['status'] ?? '?')));
+        }
+    }
+
+    #[Then('/^le dernier placement est déclaré échoué avec le message « (?P<message>[^»]+) »$/')]
+    public function leDernierPlacementEstDeclareEchoue(string $message): void
+    {
+        $run = $this->dernierRun();
+        if ('FAILED' !== ($run['status'] ?? null)) {
+            throw new RuntimeException(\sprintf('le placement figé n\'a pas été déclaré échoué (statut « %s »)', (string) ($run['status'] ?? '?')));
+        }
+        $error = \is_array($run['result'] ?? null) ? ($run['result']['error'] ?? null) : null;
+        if (trim($message) !== $error) {
+            throw new RuntimeException(\sprintf('message d\'échec inattendu : « %s »', \is_string($error) ? $error : ''));
+        }
+    }
+
+    /** Rend le verrou posé par le scénario s'il est encore tenu (compare-and-delete, jamais DEL brut). */
+    #[AfterScenario]
+    public function rendreLeVerrouDePlacement(): void
+    {
+        if (null !== $this->heldLockToken && '' !== $this->clubId) {
+            $this->placementLock()->release($this->clubId, $this->heldLockToken);
+            $this->heldLockToken = null;
+        }
+    }
+
+    /**
      * Nettoyage dans l'ordre du smoke (`trap cleanup`) : les fixtures D'ABORD
      * (une équipe engagée refuse sa suppression), puis créneau idéal, fenêtre,
      * équipes, gymnase ; on RECRÉE les fenêtres dominicales retirées ; enfin on
@@ -1269,6 +1359,26 @@ final class MatchPlacementContext extends BaseContext
         }
     }
 
+    /** @return array<mixed> le dernier run du club, lu comme l'écran le lit (GET placement-run) */
+    private function dernierRun(): array
+    {
+        $response = $this->apiGet('fixtures/placement-run', $this->token);
+        if (200 !== $response['status']) {
+            throw new RuntimeException(\sprintf('lecture du run de placement en échec (HTTP %d)', $response['status']));
+        }
+        $run = $response['json']['run'] ?? null;
+        if (!\is_array($run) || ($run['id'] ?? null) !== $this->lastRunId) {
+            throw new RuntimeException('le dernier run lu n\'est pas celui du scénario');
+        }
+
+        return $run;
+    }
+
+    private function placementLock(): MatchPlacementLock
+    {
+        return new MatchPlacementLock((string) (getenv('REDIS_URL') ?: 'redis://redis:6379/0'));
+    }
+
     /** @return array{status: int, json: array<mixed>} */
     private function poserLePremierMercredi(): array
     {
@@ -1307,6 +1417,7 @@ final class MatchPlacementContext extends BaseContext
         if (!\is_string($runId) || '' === $runId) {
             throw new RuntimeException('le placement enfilé n\'a pas renvoyé d\'identifiant de run');
         }
+        $this->lastRunId = $runId;
 
         return $this->awaitRunTerminal($runId);
     }
