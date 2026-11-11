@@ -21085,6 +21085,75 @@
                 }
             }
         },
+        "/api/schedule_plans/{id}/alert-seen": {
+            "post": {
+                "operationId": "postSchedulePlanAlertSeen",
+                "tags": [
+                    "SchedulePlan"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "The club has seen this alert of the period plan (for every manager of the club), dated the club day.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "id": {
+                                            "type": "string",
+                                            "format": "uuid"
+                                        },
+                                        "alertSeenDate": {
+                                            "type": "string",
+                                            "format": "date"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized (missing/expired JWT)"
+                    },
+                    "403": {
+                        "description": "Not a management member"
+                    },
+                    "404": {
+                        "description": "Unknown plan, or a plan belonging to another club"
+                    },
+                    "409": {
+                        "description": "The season is archived"
+                    },
+                    "422": {
+                        "description": "Unknown alert kind"
+                    }
+                },
+                "summary": "Mark the radar alert of a period plan as seen by the club",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "required": [
+                                    "kind"
+                                ],
+                                "properties": {
+                                    "kind": {
+                                        "type": "string",
+                                        "enum": [
+                                            "auto_validated",
+                                            "started_without_plan"
+                                        ],
+                                        "description": "The alert seen"
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "required": false
+                }
+            }
+        },
         "/api/schedule_plans/{id}/window": {
             "post": {
                 "operationId": "postSchedulePlanWindow",
@@ -34725,6 +34794,39 @@
                         "description": "L'identit\u00e9 de la FERMETURE (titre de la racine), partag\u00e9e par tous ses plans-segments.",
                         "default": "",
                         "type": "string"
+                    },
+                    "autoValidated": {
+                        "description": "Valid\u00e9 automatiquement, et jamais valid\u00e9 \u00e0 la main depuis (marque \u00ab Valid\u00e9 automatiquement \u00bb).",
+                        "default": false,
+                        "type": "boolean"
+                    },
+                    "alert": {
+                        "description": "L'alerte du radar pour ce planning de p\u00e9riode, sinon null : `auto_validated` (valid\u00e9\nautomatiquement alors que d'autres versions sont gard\u00e9es) ou `started_without_plan` (la\np\u00e9riode a commenc\u00e9 sans version termin\u00e9e).",
+                        "type": "object",
+                        "nullable": true,
+                        "properties": {
+                            "kind": {
+                                "type": "string",
+                                "enum": [
+                                    "auto_validated",
+                                    "started_without_plan"
+                                ]
+                            },
+                            "chosenVersionNumber": {
+                                "type": "integer",
+                                "nullable": true,
+                                "description": "The version pointed (auto_validated only)"
+                            },
+                            "keptVersionCount": {
+                                "type": "integer",
+                                "description": "Other finished versions kept (auto_validated only)"
+                            }
+                        }
+                    },
+                    "radarDismissed": {
+                        "description": "Le club a vu que la p\u00e9riode a commenc\u00e9 sans planning : elle sort du radar jusqu'\u00e0 sa fin.",
+                        "default": false,
+                        "type": "boolean"
                     }
                 }
             },
@@ -34844,6 +34946,39 @@
                         "description": "L'identit\u00e9 de la FERMETURE (titre de la racine), partag\u00e9e par tous ses plans-segments.",
                         "default": "",
                         "type": "string"
+                    },
+                    "autoValidated": {
+                        "description": "Valid\u00e9 automatiquement, et jamais valid\u00e9 \u00e0 la main depuis (marque \u00ab Valid\u00e9 automatiquement \u00bb).",
+                        "default": false,
+                        "type": "boolean"
+                    },
+                    "alert": {
+                        "description": "L'alerte du radar pour ce planning de p\u00e9riode, sinon null : `auto_validated` (valid\u00e9\nautomatiquement alors que d'autres versions sont gard\u00e9es) ou `started_without_plan` (la\np\u00e9riode a commenc\u00e9 sans version termin\u00e9e).",
+                        "type": "object",
+                        "nullable": true,
+                        "properties": {
+                            "kind": {
+                                "type": "string",
+                                "enum": [
+                                    "auto_validated",
+                                    "started_without_plan"
+                                ]
+                            },
+                            "chosenVersionNumber": {
+                                "type": "integer",
+                                "nullable": true,
+                                "description": "The version pointed (auto_validated only)"
+                            },
+                            "keptVersionCount": {
+                                "type": "integer",
+                                "description": "Other finished versions kept (auto_validated only)"
+                            }
+                        }
+                    },
+                    "radarDismissed": {
+                        "description": "Le club a vu que la p\u00e9riode a commenc\u00e9 sans planning : elle sort du radar jusqu'\u00e0 sa fin.",
+                        "default": false,
+                        "type": "boolean"
                     }
                 }
             },
@@ -34936,6 +35071,39 @@
                                 "description": "L'identit\u00e9 de la FERMETURE (titre de la racine), partag\u00e9e par tous ses plans-segments.",
                                 "default": "",
                                 "type": "string"
+                            },
+                            "autoValidated": {
+                                "description": "Valid\u00e9 automatiquement, et jamais valid\u00e9 \u00e0 la main depuis (marque \u00ab Valid\u00e9 automatiquement \u00bb).",
+                                "default": false,
+                                "type": "boolean"
+                            },
+                            "alert": {
+                                "description": "L'alerte du radar pour ce planning de p\u00e9riode, sinon null : `auto_validated` (valid\u00e9\nautomatiquement alors que d'autres versions sont gard\u00e9es) ou `started_without_plan` (la\np\u00e9riode a commenc\u00e9 sans version termin\u00e9e).",
+                                "type": "object",
+                                "nullable": true,
+                                "properties": {
+                                    "kind": {
+                                        "type": "string",
+                                        "enum": [
+                                            "auto_validated",
+                                            "started_without_plan"
+                                        ]
+                                    },
+                                    "chosenVersionNumber": {
+                                        "type": "integer",
+                                        "nullable": true,
+                                        "description": "The version pointed (auto_validated only)"
+                                    },
+                                    "keptVersionCount": {
+                                        "type": "integer",
+                                        "description": "Other finished versions kept (auto_validated only)"
+                                    }
+                                }
+                            },
+                            "radarDismissed": {
+                                "description": "Le club a vu que la p\u00e9riode a commenc\u00e9 sans planning : elle sort du radar jusqu'\u00e0 sa fin.",
+                                "default": false,
+                                "type": "boolean"
                             }
                         }
                     }

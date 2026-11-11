@@ -6,9 +6,13 @@ namespace App\State\Provider;
 
 use ApiPlatform\State\Pagination\Pagination;
 use App\ApiResource\SchedulePlanResource;
+use App\Entity\Club;
 use App\Entity\SchedulePlan;
 use App\Enum\SchedulePlanType;
 use App\Service\ClosureWindowPlanner;
+use App\Service\ClubDay;
+use App\Service\PeriodPlanAlertResolver;
+use App\Service\SchedulePlanProvisioner;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\QueryBuilder;
 use Symfony\Component\HttpFoundation\Request;
@@ -27,6 +31,9 @@ class SchedulePlanStateProvider extends AbstractStateProvider
         RequestStack $requestStack,
         Pagination $pagination,
         private readonly ClosureWindowPlanner $closureWindowPlanner,
+        private readonly SchedulePlanProvisioner $schedulePlanProvisioner,
+        private readonly PeriodPlanAlertResolver $alertResolver,
+        private readonly ClubDay $clubDay,
     ) {
         parent::__construct($entityManager, $requestStack, $pagination);
     }
@@ -52,6 +59,56 @@ class SchedulePlanStateProvider extends AbstractStateProvider
         }
 
         return $dto;
+    }
+
+    protected function provideItem(array $uriVariables, ?string $clubId): ?object
+    {
+        $dto = parent::provideItem($uriVariables, $clubId);
+        if ($dto instanceof SchedulePlanResource) {
+            $this->decorateCollection([$dto]);
+        }
+
+        return $dto;
+    }
+
+    /**
+     * Validation automatique d'un planning de période — `autoValidated`, `alert`, `radarDismissed`
+     * calculés EN LOT : les faits de tous les plans de période en une requête, puis le résolveur
+     * pur, au jour du club (fuseau, horloge simulée d'une démo). L'item passe par ce même chemin.
+     *
+     * @param array<int, SchedulePlanResource> $outputs
+     */
+    protected function decorateCollection(array $outputs): void
+    {
+        $periodPlanIds = [];
+        foreach ($outputs as $dto) {
+            if (SchedulePlanType::SEASON !== $dto->type) {
+                $periodPlanIds[] = $dto->id;
+            }
+        }
+        if ([] === $periodPlanIds) {
+            return;
+        }
+
+        $clubId = $this->requestStack->getCurrentRequest()?->attributes->get('_club_id');
+        $club = \is_string($clubId) && '' !== $clubId ? $this->entityManager->find(Club::class, $clubId) : null;
+        if (!$club instanceof Club) {
+            return;
+        }
+
+        $resolved = $this->alertResolver->forPlans(
+            $this->schedulePlanProvisioner->periodPlanFacts($periodPlanIds),
+            $this->clubDay->todayFor($club),
+        );
+        foreach ($outputs as $dto) {
+            $verdict = $resolved[$dto->id] ?? null;
+            if (null === $verdict) {
+                continue;
+            }
+            $dto->autoValidated = $verdict['autoValidated'];
+            $dto->alert = $verdict['alert'];
+            $dto->radarDismissed = $verdict['radarDismissed'];
+        }
     }
 
     /**

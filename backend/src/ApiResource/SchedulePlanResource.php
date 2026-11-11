@@ -109,6 +109,35 @@ class SchedulePlanResource
     #[Groups(['read'])]
     public string $closureTitle = '';
 
+    // Validation automatique d'un planning de période (7 jours après le début de sa période) :
+    // trois champs CALCULÉS par le serveur, en lot sur une collection. Le front les affiche.
+    /** Validé automatiquement, et jamais validé à la main depuis (marque « Validé automatiquement »). */
+    #[Groups(['read'])]
+    public bool $autoValidated = false;
+
+    /**
+     * L'alerte du radar pour ce planning de période, sinon null : `auto_validated` (validé
+     * automatiquement alors que d'autres versions sont gardées) ou `started_without_plan` (la
+     * période a commencé sans version terminée).
+     *
+     * @var array<string, mixed>|null
+     */
+    #[ApiProperty(openapiContext: [
+        'type' => 'object',
+        'nullable' => true,
+        'properties' => [
+            'kind' => ['type' => 'string', 'enum' => ['auto_validated', 'started_without_plan']],
+            'chosenVersionNumber' => ['type' => 'integer', 'nullable' => true, 'description' => 'The version pointed (auto_validated only)'],
+            'keptVersionCount' => ['type' => 'integer', 'description' => 'Other finished versions kept (auto_validated only)'],
+        ],
+    ])]
+    #[Groups(['read'])]
+    public ?array $alert = null;
+
+    /** Le club a vu que la période a commencé sans planning : elle sort du radar jusqu'à sa fin. */
+    #[Groups(['read'])]
+    public bool $radarDismissed = false;
+
     public static function fromEntity(SchedulePlan $entity): self
     {
         $dto = new self;

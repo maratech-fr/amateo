@@ -89,6 +89,18 @@ export function useSchedulePlans() {
 }
 
 /**
+ * « J'ai vu » sur l'alerte d'un planning de période (radar) : la vue vaut pour tout le club. Les
+ * plans (préfixe "calendar-entries") sont périmés au succès — la carte quitte le radar sans recharger.
+ */
+export function useMarkPlanAlertSeen() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ planId, kind }: { planId: string; kind: cockpitApi.PlanAlertKind }) => cockpitApi.markPlanAlertSeen(planId, kind),
+    onSuccess: () => invalidateEntries(queryClient),
+  });
+}
+
+/**
  * L'ANCRE des réglages d'une période, et son état — ADR-0002 inv. 5 (lots C2-C3).
  *
  * À utiliser PARTOUT plutôt que `useSchedulePlanForEntry(x).data?.id ?? null`. Cet idiome

@@ -118,6 +118,11 @@ début·milieu·fin) et `accueil-cockpit-temporel.md` §5bis.
   réutilisés, zéro changement moteur/contrat) mais borné à une version de PÉRIODE ; le socle se
   régénère toujours via `/regenerate`. Détail : `backend/docs/backend-controllers.md` §3,
   `frontend/docs/frontend-workloop.md` §6.7 bis.
+- **Validation automatique** : un planning de période (fermeture ou vacances) que personne n'a
+  validé **7 jours après le début de la période** est pointé seul sur sa version chargée, les
+  autres versions gardées ; jamais le planning de saison, jamais un planning déjà validé une fois
+  (même rouvert). Sans version terminée : rien n'est écrit et le radar dit « La période a commencé
+  sans planning. ». Détail : `planning-lifecycle-validated.md` §1 ; radar : `accueil-cockpit-temporel.md` §5.1.
 - **Manipulation** : structure verrouillée (équipes entières, gymnases/créneaux, coachs) ;
   **exception validée** : le **nombre de séances par équipe** est ajustable — un
   gestionnaire réel passe une équipe de 3 à 2 créneaux, ou supprime les créneaux d'une

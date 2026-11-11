@@ -18,7 +18,7 @@ const DEFAULT_PLANS = [
   { id: "p1", calendarEntryId: "entry-1", chosenScheduleId: null },
   { id: "p2", calendarEntryId: "entry-2", chosenScheduleId: null },
 ];
-let plansMock: { id: string; type?: string; name?: string; calendarEntryId: string | null; chosenScheduleId: string | null; windowEditable?: boolean; windowLockedReason?: string | null; closureTitle?: string }[] = DEFAULT_PLANS;
+let plansMock: { id: string; type?: string; name?: string; calendarEntryId: string | null; chosenScheduleId: string | null; autoValidated?: boolean; windowEditable?: boolean; windowLockedReason?: string | null; closureTitle?: string }[] = DEFAULT_PLANS;
 let seasonIsReadonly = false;
 // Entrées de calendrier servies par useCalendarEntries(saison) — la modale les interroge pour la
 // LIGNE DE DATES (fenêtre de chaque plan de période), y compris les périodes PASSÉES.
@@ -43,6 +43,7 @@ vi.mock("react-router", async (orig) => ({ ...(await orig<typeof import("react-r
 
 import { SeasonSchedulesModal } from "./SeasonSchedulesModal";
 import { seasonPlanCounts } from "./seasonPlannings";
+import { COCKPIT_TEXTS } from "./texts";
 
 beforeEach(() => {
   setSelectedScheduleId.mockClear();
@@ -132,6 +133,24 @@ describe("SeasonSchedulesModal — plannings, not versions", () => {
     ]);
     expect(screen.getByText("Validé")).toBeInTheDocument();
     expect(screen.getByText("Terminé · à valider")).toBeInTheDocument();
+  });
+
+  /**
+   * P4-503 (D13) — un planning de période validé AUTOMATIQUEMENT (7 jours après son début) se lit
+   * « Validé automatiquement » dans « Tous les plannings » ; un planning validé à la main garde
+   * « Validé ». La marque est SERVIE (`plan.autoValidated`), la modale ne la dérive pas.
+   */
+  it("distingue « Validé automatiquement » d'un « Validé » à la main (P4-503)", () => {
+    plansMock = [
+      { id: "p1", type: "HOLIDAY", name: "Vacances Toussaint", calendarEntryId: "entry-1", chosenScheduleId: "o1", autoValidated: true },
+      { id: "p2", type: "CLOSURE", name: "Gymnase fermé", calendarEntryId: "entry-2", chosenScheduleId: "o2", autoValidated: false },
+    ];
+    open([
+      plan({ id: "o1", name: "Vacances Toussaint", status: "COMPLETED", isChosen: true, planType: "HOLIDAY", schedulePlanId: "p1" }),
+      plan({ id: "o2", name: "Gymnase fermé", status: "COMPLETED", isChosen: true, planType: "CLOSURE", schedulePlanId: "p2" }),
+    ]);
+    expect(screen.getByText(COCKPIT_TEXTS.validatedAutomatically)).toBeInTheDocument();
+    expect(screen.getAllByText(COCKPIT_TEXTS.validated)).toHaveLength(1);
   });
 
   it("eye on the planning in force opens the planning page", async () => {

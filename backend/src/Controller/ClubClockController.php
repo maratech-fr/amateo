@@ -5,12 +5,15 @@ declare(strict_types=1);
 namespace App\Controller;
 
 use App\Entity\Club;
+use App\Service\ClubDay;
 use App\Service\ClubMailboxPurgerInterface;
 use App\Service\ManagementAccessGuard;
+use App\Service\PeriodPlanAutoValidator;
 use App\Service\SeasonResolver;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
 use JsonException;
+use Psr\Log\LoggerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\Clock\ClockInterface;
 use Symfony\Component\DependencyInjection\Attribute\Autowire;
@@ -19,6 +22,7 @@ use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\RequestStack;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\Routing\Attribute\Route;
+use Throwable;
 
 /**
  * Horloge simulée d'un club de DÉMONSTRATION, posée depuis l'app par son gestionnaire
@@ -47,6 +51,9 @@ final class ClubClockController extends AbstractController
         // calendrier RÉEL, jamais de la date simulée déjà posée sur ce club.
         #[Autowire(service: 'app.clock.real')]
         private readonly ClockInterface $realClock,
+        private readonly PeriodPlanAutoValidator $periodPlanAutoValidator,
+        private readonly ClubDay $clubDay,
+        private readonly LoggerInterface $logger,
     ) {}
 
     #[Route('/api/club/clock', name: 'api_club_clock', methods: ['POST'])]
@@ -88,6 +95,19 @@ final class ClubClockController extends AbstractController
         // une date ne touche jamais la boîte.
         if ($clear) {
             $this->mailboxPurger->purge($club->getId());
+        } else {
+            // Poser une date valide AUSSITÔT, pour CE club, les plannings de période dont le 7ᵉ
+            // jour est atteint à cette date : le cockpit rechargé est à jour sans attendre le
+            // passage de 00:15. Jamais sur `clear`. Un échec du balayage ne casse jamais la pose
+            // de l'horloge (déjà écrite) : journalisé, réponse 200 — le passage quotidien reprendra.
+            try {
+                $this->periodPlanAutoValidator->sweepClub($club, $this->clubDay->todayFor($club));
+            } catch (Throwable $e) {
+                $this->logger->error('Automatic validation of period plans after setting the demo clock failed.', [
+                    'clubId' => $club->getId(),
+                    'exception' => $e,
+                ]);
+            }
         }
 
         return $this->json(['simulatedToday' => $date]);

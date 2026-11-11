@@ -194,6 +194,16 @@ période transcrit la version POINTÉE du socle filtrée des réglages/fermeture
 deux sens ; séance saine copiée+verrouillée, jour fermé/gymnase désactivé/équipe réduite « à
 replacer » avec leur raison, réduction déterministe [dernières de la semaine], plan déjà versionné
 refusé 409, route sous les gardes rôle+tenant) ·
+`Security/PeriodPlanAutoValidationTest` (axes *planning lifecycle* + *tenant isolation* : un
+planning de période non validé 7 jours après le début de sa période se valide seul — la version
+chargée est pointée, ses sœurs gardées, sans poser la première validation humaine ; seuil jugé sur
+la date CIVILE de début, veille → rien, jour J+7 → validé, pour un club à l'ouest et à l'est d'UTC
+sous trois `TimeZone` de session ; jamais le socle, une entrée ignorée, une mère découpée, un plan
+déjà validé une fois, une saison archivée au jour du club ; une génération en vol saute le plan ;
+les gardes de l'UPDATE sous verrou [version supprimée, fenêtre re-datée, période découpée,
+validation manuelle concurrente → 0 ligne] ; un passage juge chaque club à son jour, un club en
+échec n'arrête jamais les autres et relâche le GUC ; Rouvrir puis Valider à la main ; matchs
+jamais touchés) ·
 `Security/SeasonVersionUniquenessTest` (socle en vigueur unique) ·
 `Security/SeasonPlanInForceTest` (SocleGuard, défense en profondeur) ·
 `Security/PeriodGatePayloadParityTest` (gate pré-solve == payload) ·

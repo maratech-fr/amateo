@@ -873,6 +873,31 @@ docker exec amateo-php-fpm php bin/console app:schedule:normalize-team-coach-sna
 
 Détail : [`backend/docs/commands.md`](../../backend/docs/commands.md).
 
+### Étape post-déploiement OBLIGATOIRE — validation automatique des plannings de période : `--dry-run` AVANT le premier passage
+
+La version qui porte `app:period-plans:auto-validate` (tâche quotidienne à 00:15, clé
+`period-plan-auto-validation`) valide seule, au premier passage, **d'un coup, tous les plannings de
+période commencés depuis 7 jours ou plus** de la saison en cours (tous les clubs) qu'aucun
+gestionnaire n'a validés : version chargée pointée, autres versions gardées, jamais le plan de saison,
+jamais un plan déjà validé une fois. **Avant ce premier tick**, lancer sur la VM la répétition, lire la
+liste et obtenir le GO du fondateur ; le premier passage est ensuite celui du `cron-runner` (ou à la
+main sans `--dry-run`) :
+
+```bash
+docker exec amateo-php-fpm php bin/console app:period-plans:auto-validate --dry-run   # liste ce qui serait validé, n'écrit rien
+docker exec amateo-php-fpm php bin/console app:period-plans:auto-validate             # applique (idempotente)
+```
+
+- **Un plan validé puis rouvert avant le 2026-07-18** a `first_chosen_at` NULL (le rattrapage de
+  l'époque ne couvrait que les plans alors pointés) : il peut figurer dans la liste alors qu'un
+  gestionnaire l'avait déjà validé ; le lire avant d'appliquer.
+- **Réversible** : « Rouvrir » dépointe, et la tâche ne revalide jamais un plan déjà passé par elle.
+- Un club en échec n'arrête pas les autres mais la commande sort en `FAILURE` : la rejouer.
+- Une version en cours de génération diffère le plan au passage suivant, sans rien écrire.
+
+Détail : [`backend/docs/commands.md`](../../backend/docs/commands.md), règle produit
+[`planning-lifecycle-validated.md`](../../specs/courantes/planning-lifecycle-validated.md) §1.
+
 ### Table `venue_unavailability` — supprimée par `Version20261108120000` (fermetures de gymnase)
 
 L'entité `VenueUnavailability` et son API sont retirées du code depuis la release des fermetures

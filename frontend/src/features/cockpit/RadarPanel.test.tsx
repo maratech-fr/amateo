@@ -10,6 +10,7 @@ import { SESSION_TEXTS } from "@/shared/session/texts";
 
 import { addDays, frDateShort, frDateShortNoYear, mondayOf, todayISO } from "./lib/date";
 import { usePlanningStore } from "@/features/planning/store";
+import { useWizardStore } from "@/features/wizard/store";
 import { RadarPanel } from "./RadarPanel";
 import { COCKPIT_TEXTS } from "./texts";
 
@@ -83,8 +84,12 @@ let calendarEntriesData: CalendarEntry[] | undefined = [];
 let plannedWindowsData: PlannedWindow[] = [];
 // Fermetures PR 1 (C4/C5) — impact servi d'une fermeture (governingPlans, fullyGoverned).
 let entryImpactData: Record<string, unknown> | undefined;
+// P4-503 — « J'ai vu » sur une alerte de plan de période. `mutate` et `mutateAsync` pointent sur le
+// MÊME espion : le test garde la variable `{planId, kind}`, pas le choix du verbe.
+const markPlanAlertSeen = vi.fn();
 
 vi.mock("./queries", () => ({
+  useMarkPlanAlertSeen: () => ({ mutate: markPlanAlertSeen, mutateAsync: markPlanAlertSeen, isPending: false }),
   useCreateHolidayPeriod: () => ({ mutate: createHolidayMutate, mutateAsync: createHolidayMutateAsync, isPending: false }),
   useCreateWeekChildren: () => ({ mutate: createWeekChildrenMutate, isPending: false }),
   useCreatePeriodPlan: () => ({ mutateAsync: vi.fn().mockResolvedValue({}), isPending: false }),
@@ -1250,5 +1255,228 @@ describe("RadarPanel — échec de lecture jamais « Tout roule » (UXS-09)", ()
       expect(screen.queryByRole("button", { name: "Reprendre" })).not.toBeInTheDocument();
       expect(screen.queryByText(SESSION_TEXTS.readOnlyNotice)).not.toBeInTheDocument();
     });
+  });
+});
+
+/**
+ * P4-503 — un planning de période commencé se valide seul (7 jours après le début de la période).
+ * Le serveur CALCULE l'alerte (`alert`) et la mise en sourdine (`radarDismissed`) de chaque plan
+ * (plan §4, D8) ; le radar ne dérive rien, il LIT ces deux champs : une carte d'alerte par plan
+ * qui en porte une (titrée du nom du plan servi), et une période « vue » sort du radar jusqu'à sa
+ * fin (cartes génériques, semaine orpheline, couverture de la mère, carte de fermeture). Les
+ * gestes « J'ai vu » et « Reprendre » sont des ÉCRITURES : réservés aux gestionnaires (C2).
+ * Jumeau serveur : `backend/tests/Integration/Api/SchedulePlanAlertSeenTest.php` (route + champs servis).
+ */
+describe("RadarPanel — alerte d'un planning de période commencé (P4-503)", () => {
+  const TODAY = "2998-12-15";
+  const STARTED = "2998-12-08";
+  const ENDS = "2998-12-20";
+
+  /** Une période de vacances COMMENCÉE (racine), sans enfant. */
+  const startedHoliday = (id: string, title: string): CalendarEntry => closure({ id, periodType: "holiday", title, startDate: STARTED, endDate: ENDS });
+
+  /** Un plan de période tel que le sert `SchedulePlanResource` après P4-503. */
+  const periodPlan = (calendarEntryId: string, over: Partial<SchedulePlan>): SchedulePlan => ({
+    id: `pl-${calendarEntryId}`,
+    type: "HOLIDAY",
+    name: "Plan",
+    startDate: STARTED,
+    calendarEntryId,
+    chosenScheduleId: null,
+    teamSelectionInitialized: true,
+    autoValidated: false,
+    alert: null,
+    radarDismissed: false,
+    ...over,
+  });
+
+  beforeEach(() => {
+    setTodayOverride(TODAY);
+    meData = { seasonPlan: { chosenScheduleId: "s-season" } };
+    conflictsData = undefined;
+    conflictsPending = false;
+    plansData = [];
+    seasonSlotsData = [];
+    schedulesData = [];
+    campaignsData = [];
+    plansState.failed = false;
+    venueClosuresData = [];
+    schoolHolidaysData = { zone: "A", items: [] };
+    calendarEntriesData = [];
+    plannedWindowsData = [];
+    entryImpactData = undefined;
+    markPlanAlertSeen.mockReset();
+    usePlanningStore.getState().setSelectedScheduleId(null);
+  });
+  afterEach(() => {
+    setTodayOverride(null);
+    canManage = true;
+  });
+
+  /** Une période validée automatiquement avec des versions gardées a SA carte, titrée du nom du plan, qui dit la version retenue et combien d'autres sont gardées. */
+  it("montre une carte « validée automatiquement » par plan, titrée du nom du plan, avec le détail version/gardées", () => {
+    plansData = [
+      periodPlan("h1", { name: "Noël — planning", chosenScheduleId: "s-v2", autoValidated: true, alert: { kind: "auto_validated", chosenVersionNumber: 2, keptVersionCount: 1 } }),
+      periodPlan("h2", { name: "Hiver — planning", chosenScheduleId: "s-w3", autoValidated: true, alert: { kind: "auto_validated", chosenVersionNumber: 3, keptVersionCount: 2 } }),
+    ];
+    schedulesData = [{ schedulePlanId: "pl-h1" }, { schedulePlanId: "pl-h2" }];
+    renderRadar({ entries: [startedHoliday("h1", "Vacances de Noël"), startedHoliday("h2", "Vacances d'hiver")] });
+
+    expect(screen.getByText("Noël — planning")).toBeInTheDocument();
+    expect(screen.getByText(COCKPIT_TEXTS.autoValidatedDetail(2, 1))).toBeInTheDocument();
+    expect(screen.getByText("Hiver — planning")).toBeInTheDocument();
+    expect(screen.getByText(COCKPIT_TEXTS.autoValidatedDetail(3, 2))).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: COCKPIT_TEXTS.seenFor("Noël — planning") })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: COCKPIT_TEXTS.seenFor("Hiver — planning") })).toBeInTheDocument();
+    expect(screen.queryByText(COCKPIT_TEXTS.allClear)).not.toBeInTheDocument();
+  });
+
+  /** « J'ai vu » sur une carte « validée automatiquement » envoie la vue de CE plan et de CE type d'alerte ; « Voir le planning » ouvre la version validée. */
+  it("« J'ai vu » marque l'alerte du plan, « Voir le planning » ouvre la version retenue", async () => {
+    const user = userEvent.setup();
+    plansData = [periodPlan("h1", { name: "Noël — planning", chosenScheduleId: "s-v2", autoValidated: true, alert: { kind: "auto_validated", chosenVersionNumber: 2, keptVersionCount: 1 } })];
+    schedulesData = [{ schedulePlanId: "pl-h1" }];
+    renderRadar({ entries: [startedHoliday("h1", "Vacances de Noël")] });
+
+    await user.click(screen.getByRole("button", { name: COCKPIT_TEXTS.seenFor("Noël — planning") }));
+    expect(markPlanAlertSeen).toHaveBeenCalledTimes(1);
+    expect(markPlanAlertSeen.mock.calls[0][0]).toEqual({ planId: "pl-h1", kind: "auto_validated" });
+
+    await user.click(screen.getByRole("button", { name: COCKPIT_TEXTS.viewPlanning }));
+    expect(usePlanningStore.getState().selectedScheduleId).toBe("s-v2");
+  });
+
+  /** Une période commencée sans version terminée a la carte « sans planning » avec « Reprendre » et « J'ai vu », À LA PLACE de la carte générique « à finaliser ». */
+  it("une période commencée sans planning a sa carte d'alerte, jamais la carte générique « en cours »", async () => {
+    const user = userEvent.setup();
+    plansData = [periodPlan("h1", { name: "Noël — planning", alert: { kind: "started_without_plan" } })];
+    schedulesData = [];
+    renderRadar({ entries: [startedHoliday("h1", "Vacances de Noël")] });
+
+    expect(screen.getByText(COCKPIT_TEXTS.periodStartedWithoutPlan)).toBeInTheDocument();
+    expect(screen.queryByText(COCKPIT_TEXTS.resumePlanning)).not.toBeInTheDocument();
+    // Un seul « Reprendre » : celui de la carte d'alerte (la carte générique en portait un aussi).
+    expect(screen.getAllByRole("button", { name: COCKPIT_TEXTS.resume })).toHaveLength(1);
+
+    await user.click(screen.getByRole("button", { name: COCKPIT_TEXTS.seenFor("Noël — planning") }));
+    expect(markPlanAlertSeen.mock.calls[0][0]).toEqual({ planId: "pl-h1", kind: "started_without_plan" });
+
+    await user.click(screen.getByRole("button", { name: COCKPIT_TEXTS.resume }));
+    expect(useWizardStore.getState().calendarEntryId).toBe("h1");
+  });
+
+  /** Une période « vue » (`radarDismissed`) sort du radar jusqu'à sa fin : ni alerte, ni carte « à finaliser » — le radar redevient « Tout roule ». */
+  it("une période vue (radarDismissed) n'a plus aucune carte au radar", () => {
+    plansData = [periodPlan("h1", { name: "Noël — planning", radarDismissed: true })];
+    schedulesData = [];
+    renderRadar({ entries: [startedHoliday("h1", "Vacances de Noël")] });
+
+    expect(screen.queryByText(COCKPIT_TEXTS.resumePlanning)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: COCKPIT_TEXTS.resume })).not.toBeInTheDocument();
+    expect(screen.getByText(COCKPIT_TEXTS.allClear)).toBeInTheDocument();
+    expect(screen.queryByText(COCKPIT_TEXTS.periodStartedWithoutPlan)).not.toBeInTheDocument();
+  });
+
+  /** Une semaine-enfant « vue » ne maintient plus la carte de couverture de sa mère quand c'était la seule semaine restant à couvrir. */
+  it("une semaine-enfant vue ne maintient pas la carte de couverture de sa mère", () => {
+    const w1s = mondayOf("2999-01-15");
+    const w2s = addDays(w1s, 7);
+    plansData = [
+      periodPlan("w1", { type: "CLOSURE", name: "S1", chosenScheduleId: "ov1" }),
+      periodPlan("w2", { type: "CLOSURE", name: "S2", radarDismissed: true }),
+    ];
+    renderRadar({
+      entries: [
+        closure({ id: "m1", title: "Barros en travaux", startDate: addDays(w1s, 3), endDate: addDays(w2s, 1) }),
+        closure({ id: "w1", title: "S1", parentEntryId: "m1", startDate: w1s, endDate: addDays(w1s, 6) }),
+        closure({ id: "w2", title: "S2", parentEntryId: "m1", startDate: w2s, endDate: addDays(w2s, 6) }),
+      ],
+    });
+
+    expect(screen.queryByRole("button", { name: "Déplier Barros en travaux" })).not.toBeInTheDocument();
+  });
+
+  /** Une semaine ORPHELINE (mère écartée) « vue » n'a plus sa carte dédiée. */
+  it("une semaine orpheline vue n'a plus de carte « à finaliser »", () => {
+    plansData = [periodPlan("w1", { type: "CLOSURE", name: "S1", radarDismissed: true })];
+    renderRadar({
+      entries: [
+        closure({ id: "m1", title: "Barros en travaux", status: "ignored", startDate: STARTED, endDate: ENDS }),
+        closure({ id: "w1", title: "S1", parentEntryId: "m1", startDate: STARTED, endDate: ENDS }),
+      ],
+    });
+
+    expect(screen.queryByText(COCKPIT_TEXTS.weekPlanningToFinalize)).not.toBeInTheDocument();
+    expect(screen.getByText(COCKPIT_TEXTS.allClear)).toBeInTheDocument();
+  });
+
+  /** Une FERMETURE commencée et « vue » sort aussi du radar : sa carte d'impact (ClosureRadarItem) disparaît avec l'alerte. */
+  it("une fermeture commencée vue n'a plus de carte, carte d'impact comprise", () => {
+    plansData = [periodPlan("c1", { type: "CLOSURE", name: "Fermeture — planning", radarDismissed: true })];
+    conflictsData = { conflicts: [{ dates: ["2998-12-16", "2998-12-17"] }], seasonPlanChosen: true };
+    renderRadar({ entries: [closure({ startDate: STARTED, endDate: ENDS })] });
+
+    expect(screen.queryByText("Gym Barros fermé")).not.toBeInTheDocument();
+    expect(screen.getByText(COCKPIT_TEXTS.allClear)).toBeInTheDocument();
+  });
+
+  /** Une fermeture commencée qui porte une alerte (non vue) garde sa carte d'impact : l'alerte s'AJOUTE. */
+  it("une fermeture commencée en alerte garde sa carte d'impact en plus de la carte d'alerte", () => {
+    plansData = [periodPlan("c1", { type: "CLOSURE", name: "Fermeture — planning", alert: { kind: "started_without_plan" } })];
+    conflictsData = { conflicts: [{ dates: ["2998-12-16", "2998-12-17"] }], seasonPlanChosen: true };
+    renderRadar({ entries: [closure({ startDate: STARTED, endDate: ENDS })] });
+
+    expect(screen.getByText(COCKPIT_TEXTS.periodStartedWithoutPlan)).toBeInTheDocument();
+    expect(textContaining(COCKPIT_TEXTS.sessionsToReplace(2))).toBeInTheDocument();
+  });
+
+  /**
+   * Une fermeture validée AUTOMATIQUEMENT (alerte non vue) n'apparaît qu'UNE fois dans « À traiter » :
+   * la carte d'alerte REMPLACE la carte générique « Planning de période validé » de la même entrée ;
+   * une fois l'alerte vue (alert null, plan toujours validé), la carte générique revient.
+   * Distinct du cas « commencée sans planning » ci-dessus, où la carte d'impact s'AJOUTE à l'alerte.
+   */
+  it("une fermeture validée automatiquement n'a que sa carte d'alerte, la carte générique revient une fois l'alerte vue", () => {
+    const autoValidated = periodPlan("c1", {
+      type: "CLOSURE",
+      name: "Fermeture — planning",
+      chosenScheduleId: "s-v1",
+      autoValidated: true,
+      alert: { kind: "auto_validated", chosenVersionNumber: 1, keptVersionCount: 1 },
+    });
+    plansData = [autoValidated];
+    schedulesData = [{ schedulePlanId: "pl-c1" }];
+    const entries = [closure({ startDate: STARTED, endDate: ENDS })];
+    const first = renderRadar({ entries });
+
+    expect(screen.getByText(COCKPIT_TEXTS.autoValidatedDetail(1, 1))).toBeInTheDocument();
+    expect(screen.queryByText(COCKPIT_TEXTS.periodPlanValidated)).not.toBeInTheDocument();
+    expect(screen.queryByText("Gym Barros fermé")).not.toBeInTheDocument();
+    first.unmount();
+
+    plansData = [{ ...autoValidated, alert: null }];
+    renderRadar({ entries });
+
+    expect(screen.queryByText(COCKPIT_TEXTS.autoValidatedDetail(1, 1))).not.toBeInTheDocument();
+    expect(screen.getByText(COCKPIT_TEXTS.periodPlanValidated)).toBeInTheDocument();
+    expect(screen.getByText("Gym Barros fermé")).toBeInTheDocument();
+  });
+
+  /** C2 — un Membre lit la carte d'alerte, mais n'a ni « J'ai vu » ni « Reprendre » (deux écritures) ; « Voir le planning » lui reste. */
+  it("en Membre : la carte d'alerte se lit, sans « J'ai vu » ni « Reprendre »", () => {
+    canManage = false;
+    plansData = [
+      periodPlan("h1", { name: "Noël — planning", chosenScheduleId: "s-v2", autoValidated: true, alert: { kind: "auto_validated", chosenVersionNumber: 2, keptVersionCount: 1 } }),
+      periodPlan("h2", { name: "Hiver — planning", alert: { kind: "started_without_plan" } }),
+    ];
+    schedulesData = [{ schedulePlanId: "pl-h1" }];
+    renderRadar({ entries: [startedHoliday("h1", "Vacances de Noël"), startedHoliday("h2", "Vacances d'hiver")] });
+
+    expect(screen.getByText(COCKPIT_TEXTS.autoValidatedDetail(2, 1))).toBeInTheDocument();
+    expect(screen.getByText(COCKPIT_TEXTS.periodStartedWithoutPlan)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: COCKPIT_TEXTS.viewPlanning })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: COCKPIT_TEXTS.seenFor("Noël — planning") })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: COCKPIT_TEXTS.seenFor("Hiver — planning") })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: COCKPIT_TEXTS.resume })).not.toBeInTheDocument();
   });
 });

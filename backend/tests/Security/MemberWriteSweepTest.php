@@ -210,6 +210,7 @@ final class MemberWriteSweepTest extends WebTestCase
         'POST /api/schedule_plans/{id}/transcribe-from-socle' => ['/api/schedule_plans/{schedule_plan}/transcribe-from-socle', null, 403],
         'POST /api/schedule_plans/{id}/window' => ['/api/schedule_plans/{schedule_plan}/window', '{}', 403],
         'POST /api/schedule_plans/{id}/window-preview' => ['/api/schedule_plans/{schedule_plan}/window-preview', '{}', 403],
+        'POST /api/schedule_plans/{id}/alert-seen' => ['/api/schedule_plans/{schedule_plan}/alert-seen', '{"kind":"auto_validated"}', 403],
         'POST /api/schedule-slots/{id}/manual-edit/lock' => ['/api/schedule-slots/{schedule_slot}/manual-edit/lock', '{}', 403],
         'POST /api/schedule-slots/{id}/move' => ['/api/schedule-slots/{schedule_slot}/move', '{}', 403],
         'POST /api/schedule-slots/{id}/mutualize' => ['/api/schedule-slots/{schedule_slot}/mutualize', '{}', 403],
