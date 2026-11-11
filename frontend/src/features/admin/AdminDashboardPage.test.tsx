@@ -185,7 +185,6 @@ const actions: AdminActionsResponse = {
             { value: "essentiel", label: "Essentiel" },
             { value: "club", label: "Club" },
             { value: "grand-club", label: "Grand club" },
-            { value: "sans-limite", label: "Sans limite" },
             { value: "beta", label: "Bêta" },
           ],
         },
@@ -438,7 +437,7 @@ describe("AdminDashboardPage", () => {
     // Le picker d'offre n'offre QUE les codes servis par le schéma (aucune liste en dur).
     const planPicker = screen.getByLabelText("Offre", { selector: "select" });
     const planOptions = within(planPicker).getAllByRole("option").map((option) => option.textContent);
-    expect(planOptions).toEqual([ADMIN_DASHBOARD_TEXTS.clubActionArgPlaceholder, "Découverte", "Essentiel", "Club", "Grand club", "Sans limite", "Bêta"]);
+    expect(planOptions).toEqual([ADMIN_DASHBOARD_TEXTS.clubActionArgPlaceholder, "Découverte", "Essentiel", "Club", "Grand club", "Bêta"]);
 
     // Tant que l'offre n'est pas choisie, pas de sélecteur de saison ; le bouton reste bloqué.
     expect(screen.queryByLabelText("Saison encaissée")).not.toBeInTheDocument();

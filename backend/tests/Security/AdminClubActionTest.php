@@ -144,6 +144,12 @@ final class AdminClubActionTest extends WebTestCase
         $setPlan = $byKey['set-plan'];
         self::assertSame('plan', $setPlan['arguments'][0]['key']);
         self::assertTrue($setPlan['arguments'][0]['required']);
+        // Grille 20 / 34 / 35+ : cinq offres attribuables, plus de palier « sans-limite ».
+        self::assertSame(
+            ['decouverte', 'essentiel', 'club', 'grand-club', 'beta'],
+            array_column($setPlan['arguments'][0]['choices'], 'value'),
+            'le picker d\'offre sert exactement les 5 offres existantes',
+        );
         self::assertSame('paidSeason', $setPlan['arguments'][1]['key']);
         self::assertSame(['argument' => 'plan', 'forbiddenValues' => ['decouverte']], $setPlan['arguments'][1]['gate']);
 
@@ -164,6 +170,11 @@ final class AdminClubActionTest extends WebTestCase
         $this->postAction($clubId, 'set-plan', ['plan' => 'platine', 'paidSeason' => 'next'], $csrfToken);
         self::assertResponseStatusCodeSame(400);
         self::assertSame([], $executor->calls);
+
+        // L'ancien palier « sans-limite » est désormais hors enum : même refus qu'une offre inventée.
+        $this->postAction($clubId, 'set-plan', ['plan' => 'sans-limite', 'paidSeason' => 'next'], $csrfToken);
+        self::assertResponseStatusCodeSame(400);
+        self::assertSame([], $executor->calls, 'un plan=sans-limite forgé n\'atteint jamais l\'exécuteur');
 
         // Clé inconnue → 400, rien exécuté.
         $this->postAction($clubId, 'set-plan', ['plan' => 'essentiel', 'extra' => '--help'], $csrfToken);

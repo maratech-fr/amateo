@@ -28,7 +28,7 @@ class SubscriptionPlan
     private DateTimeImmutable $updatedAt;
 
     // Stable attribution key (never displayed) : `decouverte`, `essentiel`, `club`,
-    // `grand-club`, `sans-limite`, `beta`. The superadmin set-plan action targets a
+    // `grand-club`, `beta`. The superadmin set-plan action targets a
     // plan by CODE, not by its (volatile) display name or UUID.
     #[ORM\Column(type: 'string', length: 60, unique: true)]
     private string $code;

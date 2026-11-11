@@ -45,7 +45,7 @@ export interface MeSeasonPlan {
 export interface ClubEntitlements {
   planCode: string;
   planName: string;
-  /** Cap d'équipes de l'offre (null = illimité : Découverte, bêta, sans-limite, démo). */
+  /** Cap d'équipes de l'offre (null = illimité : Découverte, bêta, grand-club, démo). */
   maxTeams: number | null;
   teamsUsed: number;
   /** Taille du pool de crédits ; null hors Découverte bridée. */

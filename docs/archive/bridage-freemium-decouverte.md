@@ -1,5 +1,9 @@
 # Bridage plan Découverte (freemium) + offres par statut — besoin spécifié
 
+> ⚠ **Périmé sur la grille des offres** : les paliers, plafonds et codes d'offre de ce document ne sont plus
+> ceux du code (offre `sans-limite` retirée, plafonds Club et Grand club changés). Le courant :
+> [`etat-des-lieux.md`](../../specs/courantes/etat-des-lieux.md) §1.11.
+
 > **Statut** : ✅ **LIVRÉ le 2026-08-10** (P1-3 complet — PR #487 socle · #488 enforcement · #490 crédit XLSX ·
 > PR C UX de conversion ; NR `PlanEntitlementsTest` au gate CI). Ce fichier reste la référence du MODÈLE
 > (et de l'historique de cadrage §3) ; la carte du livré vit dans

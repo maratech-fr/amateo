@@ -11,11 +11,13 @@ use App\Entity\Reservation;
 use App\Entity\Season;
 use App\Entity\SharedTrainingBlock;
 use App\Entity\SharedTrainingBlockTeam;
+use App\Entity\SubscriptionPlan;
 use App\Entity\Team;
 use App\Entity\User;
 use App\Entity\Venue;
 use App\Enum\SeasonStatus;
 use App\Service\ParcImport\ParcImportGate;
+use App\Service\SeasonResolver;
 use App\Tests\ChoosesPlanVersionTrait;
 use App\Tests\Integration\Service\FfbbExcelImporterTest;
 use App\Tests\TenantGucTrait;
@@ -1045,6 +1047,41 @@ final class ParcImportAnalyzeTest extends WebTestCase
         self::assertStringContainsString('SM1', (string) ($resLine['raison'] ?? ''), 'la raison NOMME l\'équipe');
     }
 
+    // ───────────────────────── Cap payant (grille 20 / 34 / 35+) ─────────────────────────
+
+    /**
+     * Offre Club à 32/34 : sur 5 équipes à créer, l'aperçu en coche 2 (les places restantes) et
+     * décoche les 3 autres en nommant la raison (Club permet 34, Grand club retire la limite).
+     */
+    public function testAClubOfferAt32ChecksTwoTeamsAndUnchecksThreeWithTheCapReason(): void
+    {
+        $this->giveClubOffer();
+        for ($i = 1; $i <= 32; ++$i) {
+            $this->makeTeam(\sprintf('Existante %02d', $i));
+        }
+
+        $parc = $this->parcWithCases([
+            ['gymnase' => 'MATEO', 'jour' => 1, 'debut' => '17:00', 'duree' => 90, 'equipes' => ['SM1']],
+            ['gymnase' => 'MATEO', 'jour' => 2, 'debut' => '17:00', 'duree' => 90, 'equipes' => ['SF1']],
+            ['gymnase' => 'MATEO', 'jour' => 3, 'debut' => '17:00', 'duree' => 90, 'equipes' => ['U13M1']],
+            ['gymnase' => 'MATEO', 'jour' => 4, 'debut' => '17:00', 'duree' => 90, 'equipes' => ['U15F1']],
+            ['gymnase' => 'MATEO', 'jour' => 5, 'debut' => '17:00', 'duree' => 90, 'equipes' => ['U17M1']],
+        ]);
+
+        [$status, $body] = $this->analyze($parc);
+        self::assertSame(200, $status);
+
+        $statuts = array_count_values(array_map(static fn (array $l): string => (string) $l['statut'], $body['sections']['equipes']));
+        self::assertSame(['aCreer' => 2, 'decoche' => 3], $statuts, '32 équipes sur un cap de 34 : 2 cochées, 3 décochées');
+
+        foreach ($body['sections']['equipes'] as $line) {
+            if ('decoche' === $line['statut']) {
+                self::assertStringContainsString('Votre offre Club permet 34 équipes', (string) $line['raison'], 'la raison nomme le cap Club');
+                self::assertStringContainsString('Grand club retire la limite', (string) $line['raison'], 'la raison nomme le palier supérieur');
+            }
+        }
+    }
+
     protected function setUp(): void
     {
         $this->client = self::createClient();
@@ -1188,6 +1225,15 @@ final class ParcImportAnalyzeTest extends WebTestCase
         $decoded = json_decode((string) $response->getContent(), true);
 
         return [$response->getStatusCode(), \is_array($decoded) ? $decoded : []];
+    }
+
+    /** Pose l'offre Club, réglée pour la saison du test (offre effective = Club). */
+    private function giveClubOffer(): void
+    {
+        $plan = $this->em->getRepository(SubscriptionPlan::class)->findOneBy(['code' => 'club']);
+        self::assertInstanceOf(SubscriptionPlan::class, $plan);
+        $this->club->setPlanId($plan->getId())->setPaidSeasonYear(SeasonResolver::seasonYear($this->season->getStartDate()));
+        $this->em->flush();
     }
 
     private function makeVenue(string $name): Venue

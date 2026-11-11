@@ -44,8 +44,9 @@ use Symfony\Component\HttpKernel\HttpKernelInterface;
  *    isolé entre clubs — même exigence que P4-45), un refus AMONT ne brûle rien, et
  *    payant/bêta/démo ne sont JAMAIS bridés ;
  *  · auth & memberships / périmètre — les CAPS PAYANTS aux portes de création d'équipes :
- *    Découverte crée librement (aucun cap), Essentiel refuse au-delà de 20 en nommant le
- *    palier supérieur, l'import Excel au-delà du cap est refusé avec décompte.
+ *    Découverte crée librement (aucun cap), Essentiel refuse au-delà de 20 et Club au-delà de 34
+ *    en nommant le palier supérieur, Grand club n'a aucun cap (grille 20 / 34 / 35+), l'import
+ *    Excel au-delà du cap est refusé avec décompte.
  *
  * Plus l'invisibilité de la bêta (superadmin-only) jusqu'en GET item (finding revue sécu).
  *
@@ -230,7 +231,7 @@ final class PlanEntitlementsTest extends WebTestCase
         $decouverte = $this->seedClub(credits: 3);
         self::assertTrue($entitlements->outputBudget($decouverte['club'], $decouverte['season'])['restricted'], 'Découverte est le SEUL régime bridé');
 
-        foreach (['essentiel', 'club', 'grand-club', 'sans-limite', 'beta'] as $code) {
+        foreach (['essentiel', 'club', 'grand-club', 'beta'] as $code) {
             $paid = $this->seedClub($code, credits: 50);
             self::assertFalse($entitlements->outputBudget($paid['club'], $paid['season'])['restricted'], \sprintf('l\'offre %s n\'est jamais bridée', $code));
             // Une sortie réussie ne décompte pas une offre non bridée.
@@ -281,7 +282,41 @@ final class PlanEntitlementsTest extends WebTestCase
         $body = (string) $this->client->getResponse()->getContent();
         self::assertStringContainsString('Essentiel', $body);
         self::assertStringContainsString('Club', $body, 'le message doit nommer le palier supérieur');
-        self::assertStringContainsString('30', $body, 'le message doit annoncer le cap du palier supérieur');
+        // Phrase lue sur le corps ré-encodé : le corps brut de test porte une trace dont les numéros
+        // de ligne pourraient contenir « 34 » par hasard.
+        self::assertStringContainsString('l\'offre Club monte à 34.', $this->readableBody(), 'le message doit annoncer le cap du palier supérieur (Club = 34)');
+    }
+
+    /**
+     * Grille 20 / 34 / 35+ : l'offre Club tient 34 équipes (la 34ᵉ passe) et refuse la 35ᵉ en
+     * nommant Grand club, qui retire la limite.
+     */
+    public function testClubRefusesThe35thTeamNamingGrandClub(): void
+    {
+        $ctx = $this->seedClub('club', credits: 0, teamCount: 33);
+
+        $status = $this->postJson($ctx['user'], '/api/teams', ['name' => 'T34', 'sportCategoryId' => $this->categoryId, 'priorityTierId' => 1]);
+        self::assertSame(201, $status, 'l\'offre Club tient 34 équipes : la 34ᵉ passe');
+
+        $status = $this->postJson($ctx['user'], '/api/teams', ['name' => 'T35', 'sportCategoryId' => $this->categoryId, 'priorityTierId' => 1]);
+        self::assertSame(422, $status, 'au-delà de 34, l\'offre Club refuse la création');
+
+        $message = $this->readableBody();
+        self::assertStringContainsString('Votre offre Club permet 34 équipes', $message, 'le refus nomme l\'offre courante et son cap');
+        self::assertStringContainsString('Grand club retire la limite', $message, 'le refus nomme le palier supérieur, sans limite');
+    }
+
+    /** Grand club (à partir de 35) n'a AUCUN cap : la 51ᵉ équipe passe, là où l'ancien cap était 50. */
+    public function testGrandClubIsNeverCapped(): void
+    {
+        $entitlements = self::getContainer()->get(PlanEntitlements::class);
+        \assert($entitlements instanceof PlanEntitlements);
+
+        $ctx = $this->seedClub('grand-club', credits: 0, teamCount: 50);
+        self::assertNull($entitlements->teamCap($ctx['club'], $ctx['season']), 'Grand club est illimité : aucun cap');
+
+        $status = $this->postJson($ctx['user'], '/api/teams', ['name' => 'T51', 'sportCategoryId' => $this->categoryId, 'priorityTierId' => 1]);
+        self::assertSame(201, $status, 'Grand club crée sa 51ᵉ équipe sans refus');
     }
 
     /** Import Excel au-delà du cap : refus tout-ou-rien avec DÉCOMPTE, rien écrit. */
@@ -310,6 +345,34 @@ final class PlanEntitlementsTest extends WebTestCase
         }
 
         self::assertSame(19, $this->teamCountOf($ctx['club']->getId(), $ctx['season']->getId()), 'rien n\'est écrit : l\'import est tout-ou-rien');
+    }
+
+    /** Offre Club à 33/34 : un fichier de 3 équipes est refusé en annonçant la SEULE place restante. */
+    public function testClubExcelImportCountsAgainstTheCapOf34(): void
+    {
+        $ctx = $this->seedClub('club', credits: 0, teamCount: 33, withFfbb: true); // reste 1 place sur 34
+        $this->ensureActiveSport();
+        $code = (string) $ctx['club']->getFfbbClubCode();
+
+        $file = $this->xlsx([
+            ['SM1', 'Seniors', '1', $code . ' - MON CLUB'],
+            ['SM2', 'Seniors', '2', $code . ' - MON CLUB'],
+            ['SM3', 'Seniors', '3', $code . ' - MON CLUB'],
+        ]);
+
+        $importer = self::getContainer()->get(FfbbExcelImporter::class);
+        \assert($importer instanceof FfbbExcelImporter);
+
+        try {
+            $importer->import($file, $ctx['club']->getId(), $ctx['season']->getId());
+            self::fail('un import qui franchit le cap Club (34) doit être refusé');
+        } catch (ImportRejectedException $e) {
+            self::assertSame(422, $e->getStatusCode());
+            self::assertStringContainsString('3 équipe(s) à créer', $e->getMessage(), 'le décompte dit combien d\'équipes le fichier crée');
+            self::assertStringContainsString('1 place(s) restante(s)', $e->getMessage(), '33 équipes sur un cap de 34 : une place reste');
+        }
+
+        self::assertSame(33, $this->teamCountOf($ctx['club']->getId(), $ctx['season']->getId()), 'rien n\'est écrit : l\'import est tout-ou-rien');
     }
 
     // ─────────────────────────────── Bêta invisible en GET item ───────────────────────────────
@@ -555,6 +618,14 @@ final class PlanEntitlementsTest extends WebTestCase
         $this->client->request('POST', $uri, [], [], $this->authHeaders($user) + ['CONTENT_TYPE' => 'application/json'], json_encode($payload, \JSON_THROW_ON_ERROR));
 
         return $this->client->getResponse()->getStatusCode();
+    }
+
+    /** Le corps de la dernière réponse, ré-encodé lisible (accents et apostrophes non échappés). */
+    private function readableBody(): string
+    {
+        $decoded = json_decode((string) $this->client->getResponse()->getContent(), true, 512, \JSON_THROW_ON_ERROR);
+
+        return (string) json_encode($decoded, \JSON_UNESCAPED_UNICODE | \JSON_THROW_ON_ERROR);
     }
 
     /** @return array{HTTP_AUTHORIZATION: string} */

@@ -89,6 +89,18 @@ final class SetClubPlanCommandTest extends KernelTestCase
         self::assertNull($club?->getPaidSeasonYear(), 'sans --paid-season, aucun encaissement');
     }
 
+    /** L'ancien palier « sans-limite » n'existe plus : la CLI le refuse comme un code inconnu, rien n'est écrit. */
+    public function testTheRetiredSansLimiteOfferIsAnUnknownCode(): void
+    {
+        $clubId = $this->club(isDemo: false);
+
+        self::assertSame(Command::FAILURE, $this->tester->execute(['--club' => $clubId, '--plan' => 'sans-limite']));
+        self::assertStringContainsString('Unknown offer code', $this->tester->getDisplay());
+
+        $this->em->clear();
+        self::assertNull($this->em->find(Club::class, $clubId)?->getPlanId(), 'le refus n\'écrit aucune offre');
+    }
+
     protected function setUp(): void
     {
         self::bootKernel();

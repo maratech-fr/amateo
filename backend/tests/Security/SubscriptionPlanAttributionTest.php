@@ -21,7 +21,7 @@ use Symfony\Component\Console\Tester\CommandTester;
 use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
 
 /**
- * P1-3 PR A — socle d'offres par statut. Garde le modèle (6 offres seedées, codes
+ * P1-3 PR A — socle d'offres par statut. Garde le modèle (5 offres seedées, codes
  * uniques), l'exposition (bêta cachée, aucun montant), l'attribution superadmin
  * (la commande écrit la FK), l'offre EFFECTIVE calculée à la lecture (expiration →
  * Découverte ; démo → droits pleins) et le bloc `entitlements` de /api/me.
@@ -42,15 +42,40 @@ final class SubscriptionPlanAttributionTest extends WebTestCase
 
     private EntityManagerInterface $em;
 
-    public function testTheSixOffersAreSeededWithUniqueCodes(): void
+    public function testTheFiveOffersAreSeededWithUniqueCodes(): void
     {
         $rows = $this->em->getConnection()->fetchAllAssociative('SELECT code FROM subscription_plan ORDER BY code');
         $codes = array_map(static fn (array $r): string => (string) $r['code'], $rows);
 
         self::assertSame(
-            ['beta', 'club', 'decouverte', 'essentiel', 'grand-club', 'sans-limite'],
+            ['beta', 'club', 'decouverte', 'essentiel', 'grand-club'],
             $codes,
-            'les 6 offres sont seedées avec des codes uniques',
+            'les 5 offres sont seedées avec des codes uniques — plus de palier « sans-limite »',
+        );
+    }
+
+    /**
+     * Le catalogue public sert la grille 20 / 34 / 35+ : Découverte, Essentiel ≤ 20, Club ≤ 34,
+     * Grand club illimité (0) — ni « sans-limite », ni la bêta.
+     */
+    public function testThePublicCatalogueServesTheTwentyThirtyFourUnlimitedGrid(): void
+    {
+        [$user] = $this->seedClub();
+        $this->client->loginUser($user);
+
+        $this->client->request('GET', '/api/subscription_plans');
+        self::assertResponseIsSuccessful();
+
+        $capByCode = [];
+        foreach (json_decode((string) $this->client->getResponse()->getContent(), true, 512, \JSON_THROW_ON_ERROR)['member'] as $row) {
+            $capByCode[(string) $row['code']] = (int) $row['maxTeams'];
+        }
+        ksort($capByCode);
+
+        self::assertSame(
+            ['club' => 34, 'decouverte' => 0, 'essentiel' => 20, 'grand-club' => 0],
+            $capByCode,
+            'catalogue servi : Club 34, Grand club illimité (0), aucune carte « sans-limite » ni bêta',
         );
     }
 
