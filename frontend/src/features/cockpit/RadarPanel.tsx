@@ -19,6 +19,7 @@ import { isHolidayAnchor } from "./lib/markers";
 import { seasonLockTitle, useSocleValidated } from "./lib/socle";
 import { useWeekAdapt } from "./lib/useWeekAdapt";
 import { WeekPickerDialog } from "./WeekPickerDialog";
+import { PeriodPlanAlertCard } from "./PeriodPlanAlertCard";
 import { useVenues } from "@/features/matches/queries";
 import { staleByClosureMessage } from "@/features/planning/lib/staleByClosure";
 import { WindowAlreadyPlannedNotice } from "./WindowAlreadyPlannedNotice";
@@ -143,6 +144,15 @@ export function RadarPanel({ entries, holidays, publicHolidays, publicHolidaysLo
       activeByEntry.set(p.calendarEntryId, p.chosenScheduleId);
     }
   }
+  // Validation automatique d'un planning de période (7 jours après le début de sa période) : le
+  // serveur CALCULE l'alerte (`alert`) et la mise en sourdine (`radarDismissed`) de chaque plan ;
+  // le radar les LIT. Un plan en alerte a SA carte (PeriodPlanAlertCard) à la place des cartes
+  // génériques « à finaliser » ; une période « vue » sort du radar jusqu'à sa fin (cartes génériques,
+  // semaine orpheline, couverture de la mère, carte de fermeture) — elle reste au calendrier.
+  const alertPlans = (plans ?? []).filter((p) => null !== p.calendarEntryId && null != p.alert);
+  const dismissedEntryIds = new Set((plans ?? []).filter((p) => null !== p.calendarEntryId && true === p.radarDismissed).map((p) => p.calendarEntryId as string));
+  const alertEntryIds = new Set(alertPlans.map((p) => p.calendarEntryId as string));
+  const outOfGenericCards = (entryId: string): boolean => alertEntryIds.has(entryId) || dismissedEntryIds.has(entryId);
 
   // The radar is a TO-DO list: entries the manager explicitly dismissed
   // (status=ignored) must not resurface (the calendar still shows them).
@@ -185,7 +195,7 @@ export function RadarPanel({ entries, holidays, publicHolidays, publicHolidaysLo
   // Les fermetures gardent leur ClosureRadarItem (détail des séances touchées) —
   // le remplacer par une carte générique ferait disparaître l'avertissement
   // d'impact tant que le plan n'est pas validé (revue #260 round 1).
-  const inProgressEntries = roots.filter((e) => pendingEntryIds.has(e.id) && "closure" !== e.periodType && !childrenByParent.has(e.id) && e.endDate >= today);
+  const inProgressEntries = roots.filter((e) => pendingEntryIds.has(e.id) && "closure" !== e.periodType && !childrenByParent.has(e.id) && e.endDate >= today && !outOfGenericCards(e.id));
 
   // Mères découpées à COUVRIR : une semaine existante non validée OU une semaine
   // MANQUANTE (décochée au picker, échec partiel — revue #262 : sans chip « à
@@ -235,7 +245,10 @@ export function RadarPanel({ entries, holidays, publicHolidays, publicHolidaysLo
   // passée n'a plus aucun slot, donc plus aucun `some` vrai.
   // A3 — une semaine GOUVERNÉE par des vacances n'est pas un travail restant (le rappel vit dans
   // le planning des vacances) : seule une semaine AJUSTABLE non couverte garde la carte à l'écran.
-  const splitMothers = roots.filter((e) => childrenByParent.has(e.id) && motherWeekSlots(e).some(({ child, governedBy }) => null === governedBy && (null === child || !activeByEntry.has(child.id))));
+  // Une semaine « vue » (`radarDismissed`) n'est plus un travail restant : elle ne maintient pas la carte.
+  const splitMothers = roots.filter(
+    (e) => childrenByParent.has(e.id) && motherWeekSlots(e).some(({ child, governedBy }) => null === governedBy && (null === child || (!activeByEntry.has(child.id) && !dismissedEntryIds.has(child.id)))),
+  );
 
   // Semaines ORPHELINES D'AFFICHAGE : une semaine dont la mère ne porte AUCUNE
   // carte de couverture — mère sortie de la fenêtre radar (finie), OU écartée
@@ -247,7 +260,7 @@ export function RadarPanel({ entries, holidays, publicHolidays, publicHolidaysLo
   // #262) — le restreindre aux semaines non commencées l'aurait vidé de sa raison d'être,
   // et le radar aurait affirmé « Tout roule » sur un gymnase fermé cette semaine-là.
   const orphanWeekChildren = active.filter(
-    (e) => null !== e.parentEntryId && !renderedMotherIds.has(e.parentEntryId) && e.endDate >= today && !activeByEntry.has(e.id),
+    (e) => null !== e.parentEntryId && !renderedMotherIds.has(e.parentEntryId) && e.endDate >= today && !activeByEntry.has(e.id) && !outOfGenericCards(e.id),
   );
 
   // P2-36 — la décision « semaines / bloc / chargement » vit dans useWeekAdapt (maison unique) :
@@ -326,6 +339,9 @@ export function RadarPanel({ entries, holidays, publicHolidays, publicHolidaysLo
   const visibleClosures = closures.filter((entry, i) => {
     if (childrenByParent.has(entry.id)) {
       return false; // mère découpée : sa carte de COUVERTURE prend le relais
+    }
+    if (dismissedEntryIds.has(entry.id)) {
+      return false; // « J'ai vu » : la période sort du radar jusqu'à sa fin (le calendrier la garde)
     }
     if (activeByEntry.has(entry.id)) {
       return true; // un planning secondaire VALIDÉ existe : cette semaine EST différente
@@ -425,6 +441,7 @@ export function RadarPanel({ entries, holidays, publicHolidays, publicHolidaysLo
     // dérivée d'entrées vides pour cause de panne n'est pas un horizon dégagé (doctrine `readState`).
     !stillLoading &&
     !readsFailed &&
+    alertPlans.length === 0 &&
     inProgressEntries.length === 0 &&
     orphanWeekChildren.length === 0 &&
     splitMothers.length === 0 &&
@@ -476,6 +493,14 @@ export function RadarPanel({ entries, holidays, publicHolidays, publicHolidaysLo
           </div>
         </NoticeBanner>
       ) : null}
+
+      {/* Plannings de période commencés en alerte (validés automatiquement avec des versions
+          gardées, ou commencés sans planning) : en tête, après l'encart du socle. */}
+      {alertPlans.map((p) => {
+        const entryId = p.calendarEntryId as string;
+        const locked = !socleValidated && !startedEntryIds.has(entryId);
+        return <PeriodPlanAlertCard key={`alert-${p.id}`} plan={p} onView={viewOverlay} onResume={() => adapt(entryId)} resumeDisabledReason={locked ? lockTitle : undefined} />;
+      })}
 
       {zone === null && !zoneLoading ? (
         <RadarCard icon={<MapPin className="size-4" />} title={COCKPIT_TEXTS.schoolZoneToSet} detail={COCKPIT_TEXTS.setZoneHint}>

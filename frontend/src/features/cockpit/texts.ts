@@ -201,6 +201,25 @@ export const COCKPIT_TEXTS = {
     ];
     return `Indisponibilité enregistrée — ${parts.join(" et ")} ${plural(locks + reservations, "retiré", "retirés")}${0 === locks && 1 === reservations ? "e" : ""} à ${venue}.`;
   },
+  // Validation automatique d'un planning de période (7 jours après le début de sa période) — carte
+  // d'alerte du radar (PeriodPlanAlertCard) et marque de « Tous les plannings ».
+  periodStartedWithoutPlan: "La période a commencé sans planning.",
+  autoValidatedDetail: (version: number, kept: number) =>
+    `Période commencée : V${version} validée automatiquement, ${kept} ${plural(kept, "autre version gardée", "autres versions gardées")}. Rouvrez le planning pour choisir.`,
+  seen: "J'ai vu",
+  seenFor: (title: string) => `J'ai vu — ${title}`,
+  validatedAutomatically: "Validé automatiquement",
+  validated: "Validé",
+  // SeasonSchedulesModal (« Tous les plannings »).
+  seasonPlanningsTitle: "Plannings de la saison",
+  periodWindowsLoadFailed: "Les fenêtres des plannings de période n'ont pas pu être chargées.",
+  exportPlanning: "Exporter",
+  exportPlanningLabel: (label: string) => `Exporter ${label}`,
+  exportFormatsLabel: (label: string) => `Formats d'export de ${label}`,
+  resumePlanningLabel: (label: string) => `Reprendre ${label}`,
+  consultPlanningLabel: (label: string) => `Consulter ${label}`,
+  statusInProgress: (status: string) => `${status} · en cours`,
+  completedToValidate: "Terminé · à valider",
   generationInProgress: "Une génération est en cours pour ce club : réessayez quand elle est terminée.",
   openPlanCta: "Ouvrir le plan",
   deleteClosureTitle: (title: string) => `Supprimer « ${title} » ?`,
