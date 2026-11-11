@@ -1430,6 +1430,38 @@ describe("RadarPanel — alerte d'un planning de période commencé (P4-503)", (
     expect(textContaining(COCKPIT_TEXTS.sessionsToReplace(2))).toBeInTheDocument();
   });
 
+  /**
+   * Une fermeture validée AUTOMATIQUEMENT (alerte non vue) n'apparaît qu'UNE fois dans « À traiter » :
+   * la carte d'alerte REMPLACE la carte générique « Planning de période validé » de la même entrée ;
+   * une fois l'alerte vue (alert null, plan toujours validé), la carte générique revient.
+   * Distinct du cas « commencée sans planning » ci-dessus, où la carte d'impact s'AJOUTE à l'alerte.
+   */
+  it("une fermeture validée automatiquement n'a que sa carte d'alerte, la carte générique revient une fois l'alerte vue", () => {
+    const autoValidated = periodPlan("c1", {
+      type: "CLOSURE",
+      name: "Fermeture — planning",
+      chosenScheduleId: "s-v1",
+      autoValidated: true,
+      alert: { kind: "auto_validated", chosenVersionNumber: 1, keptVersionCount: 1 },
+    });
+    plansData = [autoValidated];
+    schedulesData = [{ schedulePlanId: "pl-c1" }];
+    const entries = [closure({ startDate: STARTED, endDate: ENDS })];
+    const first = renderRadar({ entries });
+
+    expect(screen.getByText(COCKPIT_TEXTS.autoValidatedDetail(1, 1))).toBeInTheDocument();
+    expect(screen.queryByText(COCKPIT_TEXTS.periodPlanValidated)).not.toBeInTheDocument();
+    expect(screen.queryByText("Gym Barros fermé")).not.toBeInTheDocument();
+    first.unmount();
+
+    plansData = [{ ...autoValidated, alert: null }];
+    renderRadar({ entries });
+
+    expect(screen.queryByText(COCKPIT_TEXTS.autoValidatedDetail(1, 1))).not.toBeInTheDocument();
+    expect(screen.getByText(COCKPIT_TEXTS.periodPlanValidated)).toBeInTheDocument();
+    expect(screen.getByText("Gym Barros fermé")).toBeInTheDocument();
+  });
+
   /** C2 — un Membre lit la carte d'alerte, mais n'a ni « J'ai vu » ni « Reprendre » (deux écritures) ; « Voir le planning » lui reste. */
   it("en Membre : la carte d'alerte se lit, sans « J'ai vu » ni « Reprendre »", () => {
     canManage = false;
