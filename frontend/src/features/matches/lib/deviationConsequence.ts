@@ -1,4 +1,4 @@
-import type { DeviationField, FixtureStatus } from "../api";
+import type { DeviationField } from "../api";
 
 /**
  * RMM-4 — la CONSÉQUENCE d'un choix de réconciliation, en français, montrée AVANT
@@ -22,42 +22,25 @@ export interface FieldConsequence {
   takeFile: string;
   /** Ce que « garder l'app » fait — rien d'écrit, une trace. */
   keepApp: string;
-  /** Prendre le fichier LIBÈRE-t-il le créneau placé (dé-placement) ? date/salle oui, heure non. */
-  releasesSlot: boolean;
 }
 
 const KEEP_APP = "Rien n'est écrit — la rencontre est traitée avec la valeur d'Amateo ; si le prochain dépôt diverge encore, l'écart reviendra ici.";
 
 const CONSEQUENCE: Record<DeviationField, FieldConsequence> = {
   date: {
-    takeFile: "Prendre la date du fichier dé-place le match — ça libère le créneau placé, à replacer.",
+    takeFile: "Prendre la date du fichier change la date du match ; il garde son gymnase, son heure et son statut.",
     keepApp: KEEP_APP,
-    releasesSlot: true,
   },
   venue: {
-    takeFile: "Prendre la salle du fichier dé-place le match — ça libère le créneau placé, à replacer.",
+    takeFile: "Prendre la salle du fichier met le match dans le gymnase choisi ; il garde sa date, son heure et son statut. Avec « terrain neutre », il quitte son créneau.",
     keepApp: KEEP_APP,
-    releasesSlot: true,
   },
   kickoff: {
     takeFile: "Prendre l'heure du fichier garde le placement (le créneau reste).",
     keepApp: KEEP_APP,
-    releasesSlot: false,
   },
 };
 
 export function fieldConsequence(field: DeviationField): FieldConsequence {
   return CONSEQUENCE[field];
 }
-
-/**
- * Un match SAISI/VALIDÉ dans FBI est « déposé » à la fédération : prendre le
- * fichier le fera repasser à « Placé », à re-saisir. Membership de présentation
- * (le signalement renforcé), pas un verdict — même stance que `fixtureStatusLabel`.
- */
-export function isDeposited(status: FixtureStatus): boolean {
-  return "SUBMITTED" === status || "VALIDATED" === status;
-}
-
-/** Le message du signalement renforcé, quand l'écart porte sur un match déposé. */
-export const DEPOSITED_WARNING = "Ce match était marqué saisi dans FBI — prendre le fichier le fera repasser à « Placé », à re-saisir dans FBI.";

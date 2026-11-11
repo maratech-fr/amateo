@@ -20,13 +20,15 @@ use App\Service\FbiCorrectionLedger;
 use App\Service\FbiFixtureImporter;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
+use Psr\Clock\ClockInterface;
+use Symfony\Component\DependencyInjection\Attribute\Autowire;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
  * Le moteur de réconciliation app⇄fichier des écarts (RMM-4) : détection du
  * périmètre, « prendre le fichier » / « garder l'appli » par champ, les
  * enregistrements d'écart et leur regroupement, plus les utilitaires d'écriture
- * qu'ils partagent (dé-placement, rétrogradation, entrée pendante, rattachement
+ * qu'ils partagent (dé-placement, entrée pendante, rattachement
  * de gymnase confirmé, fuzzy salle, fermeture de correction). Extrait verbatim de
  * {@see FbiFixtureImporter} (lot 5 architecture, BCK-19) : foyer UNIQUE des deux
  * canaux (import xlsx + canal API {@see App\Service\Basketball\FfbbRencontreReconciler}).
@@ -42,6 +44,10 @@ final class FbiDeviationService
         private readonly FbiCorrectionLedger $ledger,
         private readonly EntityManagerInterface $entityManager,
         private readonly VenueExternalLabelAttacher $venueLabelAttacher,
+        // L'heure d'une application d'office (`appliedAt`) se compare à la date de création
+        // d'un export FBI, qui est réelle : jamais l'« aujourd'hui » simulé d'un club démo.
+        #[Autowire(service: 'app.clock.real')]
+        private readonly ClockInterface $realClock,
     ) {}
 
     /**
@@ -165,17 +171,17 @@ final class FbiDeviationService
     }
 
     /**
-     * « Prendre le fichier » on one field. Retained semantics (RMM-4):
-     * - DATE: la ligue a re-décidé → write the date AND un-place (UNPLACED, venue
-     *   cleared) — exactly today's reschedule; the placement is invalidated.
-     * - KICKOFF: write the hour IN PLACE (venue kept); a SUBMITTED/VALIDATED
-     *   fixture drops to PLACED (D2 — the FBI checkmark was on a wrong hour).
-     * - VENUE: chantier A PR 4 — « prendre le fichier » sur un écart de salle ne
-     *   laisse JAMAIS un domicile sans gymnase (la promesse protégée). La DÉCISION
-     *   « est-ce que ça laisserait venueId null ? » se prend AVANT toute écriture
-     *   ({@see applyVenueTakeFile}) : un choix inline (uuid → rattache + pose ;
-     *   'NEUTRAL' → terrain neutre) OU l'alias confirmé du libellé reposent une
-     *   salle ; faute de cible, on n'écrit RIEN (l'écart reste à trancher).
+     * « Prendre le fichier » on one field — UNE sémantique, partagée par le geste explicite
+     * (dépôt, file de revue) et l'application d'office (xlsx et API) : la valeur du fichier
+     * est écrite, le statut et le gymnase sont conservés (FBI montre déjà cette valeur, rien
+     * à re-saisir).
+     * - DATE : la date du fichier, le match garde son gymnase, son heure et son statut.
+     * - KICKOFF : l'heure du fichier, en place.
+     * - VENUE : un domicile ne perd JAMAIS son gymnase. La DÉCISION « est-ce que ça
+     *   laisserait venueId null ? » se prend AVANT toute écriture ({@see applyVenueTakeFile}) :
+     *   un choix inline (uuid → rattache + pose ; 'NEUTRAL' → terrain neutre, la seule
+     *   exception qui dé-place) OU l'alias confirmé du libellé reposent une salle, quel que
+     *   soit le statut ; faute de cible, on n'écrit RIEN (l'écart reste à trancher).
      *
      * @param array{numero: string, matchDate: DateTimeImmutable, homeAway: FixtureHomeAway, opponentLabel: string, kickoffTime: DateTimeImmutable|null, venueLabel: string|null} $row
      * @param string|null                                                                                                                                                         $venueChoice uuid d'un gymnase choisi inline, la sentinelle {@see FbiFixtureImporter::NEUTRAL}, ou null (pas de choix — suit l'alias confirmé)
@@ -187,14 +193,12 @@ final class FbiDeviationService
         switch ($field) {
             case 'date':
                 $existing->setMatchDate($row['matchDate']);
-                $this->unplace($existing, $now);
 
                 return true;
             case 'kickoff':
                 if ($row['kickoffTime'] instanceof DateTimeImmutable) {
                     $existing->setKickoffTime($row['kickoffTime']);
                 }
-                $this->demoteSubmitted($existing, $now, 'kickoff', $row['kickoffTime']?->format('H:i'));
 
                 return true;
             case 'venue':
@@ -357,12 +361,14 @@ final class FbiDeviationService
     /**
      * Build the pending-deviation entry for a field, preserving the ORIGINAL
      * `seenAt` when the écart was already open for that field (« depuis quand »),
-     * fresh otherwise.
+     * fresh otherwise. Une application d'office porte son heure (`appliedAt`, RFC 3339,
+     * horloge réelle) : un export FBI créé AVANT elle ne revient pas dessus. La clé est
+     * toujours posée, nulle pour un écart à trancher.
      *
      * @param array{app: string|null, file: string|null} $vals
      * @param 'FBI_XLSX'|'FFBB_API'                      $channel
      *
-     * @return array{field: 'date'|'kickoff'|'venue', appValue: string|null, sourceValue: string|null, channel: 'FBI_XLSX'|'FFBB_API', seenAt: string, autoApplied: bool}
+     * @return array{field: 'date'|'kickoff'|'venue', appValue: string|null, sourceValue: string|null, channel: 'FBI_XLSX'|'FFBB_API', seenAt: string, autoApplied: bool, appliedAt: string|null}
      */
     public function pendingEntry(Fixture $existing, string $field, array $vals, string $channel, DateTimeImmutable $now, bool $autoApplied): array
     {
@@ -376,6 +382,7 @@ final class FbiDeviationService
             'channel' => $channel,
             'seenAt' => $previous['seenAt'] ?? $now->format(DateTimeImmutable::ATOM),
             'autoApplied' => $autoApplied,
+            'appliedAt' => $autoApplied ? DateTimeImmutable::createFromInterface($this->realClock->now())->format(DateTimeImmutable::RFC3339) : null,
         ];
     }
 
@@ -388,8 +395,9 @@ final class FbiDeviationService
      *    qui désigne un gymnase du club (alias confirmé) est refusé (422) ;
      *  - uuid → le libellé source est rattaché à ce gymnase (MAISON {@see VenueExternalLabelAttacher},
      *    gardes verbatim) et le venueId est posé ; introuvable (tenant/saison) → 404 ;
-     *  - pas de choix → l'alias confirmé du libellé repose une salle (les 20 cas) ; faute
-     *    d'alias, on n'écrit RIEN et on rend faux (l'écart reste à trancher).
+     *  - pas de choix → l'alias confirmé du libellé repose une salle, quel que soit le statut
+     *    (statut conservé) ; faute d'alias, on n'écrit RIEN et on rend faux (l'écart reste à
+     *    trancher).
      *
      * @param array{numero: string, matchDate: DateTimeImmutable, homeAway: FixtureHomeAway, opponentLabel: string, kickoffTime: DateTimeImmutable|null, venueLabel: string|null} $row
      */
@@ -428,20 +436,17 @@ final class FbiDeviationService
         }
 
         // Pas de choix : DÉCISION AVANT TOUTE ÉCRITURE. On ne résout vers une salle QUE si
-        // le libellé source a un alias confirmé sur un NON PLACÉ ; sinon « prendre le
-        // fichier » laisserait le domicile sans gymnase → on n'écrit RIEN (l'écart reste).
-        $wasUnplaced = FixtureStatus::UNPLACED === $existing->getStatus();
-        if (!$wasUnplaced || null === $this->venueAliasResolver->resolveConfirmed($sourceLabel)) {
+        // le libellé source a un alias confirmé ; sinon « prendre le fichier » laisserait le
+        // domicile sans gymnase → on n'écrit RIEN (l'écart reste).
+        $target = $this->venueAliasResolver->resolveConfirmed($sourceLabel);
+        if (null === $target) {
             return false;
         }
-        // Cible connue (les 20 cas) : on vide le gymnase erroné puis l'alias confirmé repose
-        // le bon (Debarros). Le statut reste UNPLACED.
+        // Cible connue : l'alias confirmé repointe le gymnase, le statut est conservé.
         if (null !== $sourceLabel) {
             $existing->setFbiVenueLabel($sourceLabel);
         }
-        $existing->setKeptVenueLabel(null);
-        $this->unplace($existing, $now);
-        $this->attachConfirmedVenue($existing, $sourceLabel);
+        $existing->setVenueId($target); // réinitialise keptVenueLabel + unplacedReason
 
         return true;
     }
@@ -465,23 +470,6 @@ final class FbiDeviationService
         }
 
         return $venue;
-    }
-
-    /**
-     * D2: an in-place take_file un-submits a SUBMITTED/VALIDATED fixture to PLACED.
-     * La coche FBI portait une mauvaise valeur : la rencontre retombe « à saisir », et
-     * on POSE le mémo `fbiEcho` (« FBI affiche `$sourceValue` ») pour l'afficher sur la
-     * ligne « à saisir » de la liste FBI. Sans rétrogradation (déjà PLACED/UNPLACED),
-     * aucun mémo — il n'y a rien à re-saisir de plus qu'avant.
-     */
-    private function demoteSubmitted(Fixture $fixture, DateTimeImmutable $now, string $field, ?string $sourceValue): void
-    {
-        if (FixtureStatus::SUBMITTED === $fixture->getStatus() || FixtureStatus::VALIDATED === $fixture->getStatus()) {
-            $fixture->setStatus(FixtureStatus::PLACED, $now);
-            if (null !== $sourceValue) {
-                $fixture->setFbiEcho(['field' => $field, 'value' => $sourceValue, 'at' => $now->format(DateTimeImmutable::ATOM)]);
-            }
-        }
     }
 
     /**

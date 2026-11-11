@@ -8,6 +8,7 @@ use App\Clock\DevClockStore;
 use App\Entity\Club;
 use App\Entity\ClubUser;
 use App\Entity\Competition;
+use App\Entity\FbiCorrection;
 use App\Entity\FbiIngestion;
 use App\Entity\Fixture;
 use App\Entity\Season;
@@ -609,6 +610,92 @@ final class FfbbRencontresApiTest extends WebTestCase
         self::assertSame($appVenueId, $reloaded?->getVenueId(), 'le gymnase reste intact — zéro écriture');
     }
 
+    // ── Canal API : la semaine en cours fait foi, tous statuts placés ; rien d'autre ──
+
+    /**
+     * ◇ Semaine en cours, match seulement Placé : la synchro FFBB écrit d'office la date de la
+     * fédération, le match reste Placé dans son gymnase (une seule sémantique « FBI pris »).
+     */
+    public function testInTheCurrentWeekTheApiAppliesThePlacedHomeDateAtOnceKeepingStatusAndVenue(): void
+    {
+        $this->assertTheApiAppliesTheDateInTheCurrentWeek('FRW', FixtureStatus::PLACED);
+    }
+
+    /**
+     * ◇ Semaine en cours, match « Déjà dans FBI » d'un championnat NON commencé : la synchro FFBB
+     * écrit d'office la date, statut et gymnase conservés.
+     */
+    public function testInTheCurrentWeekTheApiAppliesTheValidatedHomeDateAtOnceKeepingStatusAndVenue(): void
+    {
+        $this->assertTheApiAppliesTheDateInTheCurrentWeek('FRV', FixtureStatus::VALIDATED);
+    }
+
+    /**
+     * ◆ Le canal API reste « semaine en cours » : un championnat commencé, un match « Déjà dans
+     * FBI », deux dates hors semaine → écart à trancher, jamais une application d'office (le
+     * régime « commencé » est propre au dépôt xlsx).
+     */
+    public function testOutsideTheWeekTheApiNeverAppliesAStartedChampionshipHomeAtOnce(): void
+    {
+        [$token, , $clubId] = $this->register('FRS');
+        $this->useStubClubCode($clubId);
+        $team = $this->createTeam($clubId);
+        $season = $this->seasonOf($clubId);
+        $champDate = $this->rencontreDate();
+        // Aujourd'hui = J−14 : ni J ni J+7 ne tombent dans la semaine ISO en cours.
+        self::getContainer()->get(DevClockStore::class)->set($champDate->modify('-14 days')->setTime(10, 0));
+        $competitionId = $this->pairedCompetitionId($clubId, $season->getId(), $team->getId());
+        // Un match joué six jours avant « aujourd'hui », dans le même championnat : il a commencé.
+        $played = $this->createFixture($clubId, $season->getId(), $team->getId(), $champDate->modify('-20 days'), 'AS DEJA JOUEE', false, FixtureStatus::UNPLACED, null);
+        $played->setCompetitionId($competitionId);
+        $fixture = $this->champHomeAt($clubId, $season->getId(), $team->getId(), $competitionId, $champDate->modify('+7 days'), FixtureStatus::VALIDATED);
+        $fixtureId = $fixture->getId();
+
+        $result = $this->apply($token, [], []);
+
+        self::assertCount(1, $result['unresolvedDeviations'], 'hors semaine, l\'API pose un écart à trancher');
+        $this->scopeGucToClub($clubId);
+        $this->em->clear();
+        $reloaded = $this->em->getRepository(Fixture::class)->find($fixtureId);
+        self::assertSame($champDate->modify('+7 days')->format('Y-m-d'), $reloaded?->getMatchDate()->format('Y-m-d'), 'la date de l\'appli est intacte');
+        self::assertSame(FixtureStatus::VALIDATED, $reloaded?->getStatus());
+        self::assertSame(FixtureReviewState::OUT_OF_SYNC, $reloaded?->getReviewState());
+    }
+
+    /**
+     * G2 sur le canal API : après « Garder l'appli », une synchro où la fédération montre encore
+     * la valeur gardée REPOSE la question (écart à trancher, rencontre déphasée), l'entrée « à
+     * corriger dans FBI » restant ouverte.
+     */
+    public function testTheApiAsksAgainWhileTheFederationStillShowsTheKeptValue(): void
+    {
+        [$token, , $clubId] = $this->register('FRK');
+        $this->useStubClubCode($clubId);
+        $team = $this->createTeam($clubId);
+        $season = $this->seasonOf($clubId);
+        $competitionId = $this->pairedCompetitionId($clubId, $season->getId(), $team->getId());
+        // Le match à J (J = aujourd'hui réel + 30, hors semaine), placé à 18:00 ; la fédération dit
+        // 20:30. Seule l'heure diverge (le gymnase porte l'alias de la salle fédérale).
+        $fixture = $this->champHomeAt($clubId, $season->getId(), $team->getId(), $competitionId, $this->rencontreDate(), FixtureStatus::PLACED);
+        $fixture->setKickoffTime(new DateTimeImmutable('2000-01-01')->setTime(18, 0));
+        $this->em->flush();
+        $fixtureId = $fixture->getId();
+        $kept = $this->apply($token, [['fixtureId' => $fixtureId, 'field' => 'kickoff', 'choice' => 'keep_app']], []);
+        self::assertSame([], $kept['unresolvedDeviations'], 'garder l\'appli tranche l\'écart');
+
+        $result = $this->apply($token, [], []);
+
+        self::assertCount(1, $result['unresolvedDeviations'], 'la question est reposée');
+        self::assertSame(['kickoff'], array_keys($result['unresolvedDeviations'][0]['fields']));
+        $this->scopeGucToClub($clubId);
+        $this->em->clear();
+        $reloaded = $this->em->getRepository(Fixture::class)->find($fixtureId);
+        self::assertSame('18:00', $reloaded?->getKickoffTime()?->format('H:i'), 'rien n\'est appliqué');
+        self::assertSame(FixtureReviewState::OUT_OF_SYNC, $reloaded?->getReviewState());
+        $open = $this->em->getRepository(FbiCorrection::class)->findBy(['fixtureId' => $fixtureId, 'closedAt' => null]);
+        self::assertCount(1, $open, 'l\'entrée « à corriger dans FBI » reste ouverte, sans doublon');
+    }
+
     public function testFfbbApiIngestionIsNotTheXlsxFreshnessAndDoesNotTouchATrace(): void
     {
         [$token, , $clubId] = $this->register('FRG');
@@ -866,6 +953,61 @@ final class FfbbRencontresApiTest extends WebTestCase
         $fixture->setMatchDate($date->setTime(0, 0));
         $fixture->setHomeAway($homeAway);
         $fixture->setOpponentLabel($opponent);
+
+        return $fixture;
+    }
+
+    /**
+     * Semaine en cours (aujourd'hui épinglé à J, la date de la rencontre du championnat du stub) :
+     * le domicile de l'appli est à J+7, la fédération le dit à J → la date est écrite d'office,
+     * statut et gymnase conservés, rencontre traitée.
+     */
+    private function assertTheApiAppliesTheDateInTheCurrentWeek(string $ara, FixtureStatus $status): void
+    {
+        [$token, , $clubId] = $this->register($ara);
+        $this->useStubClubCode($clubId);
+        $team = $this->createTeam($clubId);
+        $season = $this->seasonOf($clubId);
+        $champDate = $this->rencontreDate();
+        self::getContainer()->get(DevClockStore::class)->set($champDate->setTime(10, 0));
+        $competitionId = $this->pairedCompetitionId($clubId, $season->getId(), $team->getId());
+        $fixture = $this->champHomeAt($clubId, $season->getId(), $team->getId(), $competitionId, $champDate->modify('+7 days'), $status);
+        $fixtureId = $fixture->getId();
+        $venueId = $fixture->getVenueId();
+
+        $result = $this->apply($token, [], []);
+
+        self::assertSame([], $result['unresolvedDeviations'], 'la fédération fait foi dans la semaine');
+        $this->scopeGucToClub($clubId);
+        $this->em->clear();
+        $reloaded = $this->em->getRepository(Fixture::class)->find($fixtureId);
+        self::assertSame($champDate->format('Y-m-d'), $reloaded?->getMatchDate()->format('Y-m-d'), 'la date de la fédération est écrite');
+        self::assertSame($status, $reloaded?->getStatus(), 'statut conservé');
+        self::assertSame($venueId, $reloaded?->getVenueId(), 'gymnase conservé');
+        self::assertSame(FixtureReviewState::REVIEWED, $reloaded?->getReviewState());
+        self::assertTrue($reloaded?->getPendingDeviation('date')['autoApplied'] ?? false, 'bandeau « la fédération a déplacé ce match »');
+    }
+
+    /** Le championnat du stub apparié à l'équipe ; rend son id. */
+    private function pairedCompetitionId(string $clubId, string $seasonId, string $teamId): string
+    {
+        $this->pairTeamToStubCompetition($clubId, $seasonId, $teamId);
+        $competition = $this->em->getRepository(Competition::class)->findOneBy(['teamId' => $teamId, 'ffbbCompetitionId' => FfbbHttpClientStub::COMPETITION_ID]);
+        self::assertInstanceOf(Competition::class, $competition);
+
+        return $competition->getId();
+    }
+
+    /**
+     * Le domicile du championnat du stub (même adversaire, même heure), à `$date`, dans un
+     * gymnase dont l'alias confirmé est la salle de la fédération — seule la DATE diverge.
+     */
+    private function champHomeAt(string $clubId, string $seasonId, string $teamId, string $competitionId, DateTimeImmutable $date, FixtureStatus $status): Fixture
+    {
+        $fixture = $this->createFixture($clubId, $seasonId, $teamId, $date, FfbbHttpClientStub::CHAMP_OPPONENT, true, $status, FfbbHttpClientStub::CHAMP_KICKOFF);
+        $fixture->setCompetitionId($competitionId);
+        $fixture->setVenueId($this->venueWithAlias($clubId, $seasonId, 'Gymnase App', ['gymnase stub']));
+        $this->em->flush();
 
         return $fixture;
     }

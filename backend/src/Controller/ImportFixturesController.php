@@ -11,6 +11,7 @@ use App\Exception\ImportRejectedException;
 use App\Message\ComputeTravelTimesMessage;
 use App\Repository\FixtureRepository;
 use App\Service\Basketball\OpponentLocationResolver;
+use App\Service\Fbi\FbiExportFreshnessGuard;
 use App\Service\FbiFixtureImporter;
 use App\Service\FixtureImportGate;
 use App\Service\Geo\OpponentTravelResolver;
@@ -68,6 +69,7 @@ final class ImportFixturesController extends AbstractController
         private readonly MessageBusInterface $messageBus,
         private readonly FixtureRepository $fixtures,
         private readonly ClockInterface $clock,
+        private readonly FbiExportFreshnessGuard $freshness,
     ) {}
 
     public function __invoke(Request $request): JsonResponse
@@ -112,7 +114,10 @@ final class ImportFixturesController extends AbstractController
         $season = $this->seasonResolver->selectedOrCurrent($request, $club->getId());
 
         try {
-            $result = $this->importer->import((string) $file->getRealPath(), $club, $mappings, $decisions, $season?->getId(), $venueMappings, $venueChoices);
+            // Même garde qu'à l'analyse, avec la marge analyse → import ; l'instant lu
+            // départage le fichier d'une application d'office plus récente de l'API.
+            $exportedAt = $this->freshness->assertFresh((string) $file->getRealPath(), $club, FbiExportFreshnessGuard::IMPORT_GRACE_SECONDS);
+            $result = $this->importer->import((string) $file->getRealPath(), $club, $mappings, $decisions, $season?->getId(), $venueMappings, $venueChoices, $exportedAt);
         } catch (ImportRejectedException $e) {
             // Le SEUL type relayé : son message est écrit pour le gestionnaire.
             return $this->json(['error' => $e->getMessage()], $e->getStatusCode());

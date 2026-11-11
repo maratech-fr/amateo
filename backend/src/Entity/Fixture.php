@@ -22,7 +22,7 @@ use Doctrine\ORM\Mapping as ORM;
  * The opponent is a plain label here — the enriched global opponent directory
  * (coords, travel) is palier B.
  *
- * @phpstan-type PendingDeviation array{field: 'date'|'kickoff'|'venue', appValue: string|null, sourceValue: string|null, channel: 'FBI_XLSX'|'FFBB_API', seenAt: string, autoApplied: bool}
+ * @phpstan-type PendingDeviation array{field: 'date'|'kickoff'|'venue', appValue: string|null, sourceValue: string|null, channel: 'FBI_XLSX'|'FFBB_API', seenAt: string, autoApplied: bool, appliedAt?: string|null}
  * @phpstan-type FbiEcho array{field: string, value: string, at: string}
  */
 #[ORM\Entity(repositoryClass: FixtureRepository::class)]

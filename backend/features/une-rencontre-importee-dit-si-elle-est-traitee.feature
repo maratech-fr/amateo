@@ -19,8 +19,38 @@ Fonctionnalité: Une rencontre importée dit si elle est traitée
     Quand je re-dépose le fichier avec une date différente, sans trancher
     Alors la rencontre est « déphasée » et sa date d'origine est intacte
     Quand je tranche l'écart de date en adoptant la source
-    Alors la rencontre est « à replacer » et de nouveau « traitée »
+    Alors la rencontre a pris la date de FBI, reste « attestée FBI » dans son gymnase et de nouveau « traitée »
     Et une rencontre absente du dépôt reste intouchée
+
+  Scénario: Championnat commencé, rencontre attestée : FBI la déplace sans la dé-placer
+    Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur
+    Et une équipe jetable et un gymnase jetable « GYM BEHAT »
+    Et un accès match le samedi sur « GYM BEHAT »
+    Quand je dépose un fichier FBI avec un match à domicile au gymnase « GYM BEHAT » à 15h30
+    Et je place la rencontre dans le gymnase « GYM BEHAT » à 15h30
+    Et je re-dépose le même fichier
+    Alors la rencontre est « attestée FBI »
+    Quand le championnat a commencé : un match déjà joué de la même division est déposé
+    Et je re-dépose le fichier avec une date différente, sans trancher
+    Alors la rencontre a pris la date de FBI, reste « attestée FBI » dans son gymnase et de nouveau « traitée »
+
+  Scénario: Championnat commencé, rencontre seulement placée : l'écart reste à trancher
+    Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur
+    Et une équipe jetable et un gymnase jetable « GYM BEHAT »
+    Et un accès match le samedi sur « GYM BEHAT »
+    Quand je dépose un fichier FBI avec un match à domicile au gymnase « GYM BEHAT » à 15h30
+    Et je place la rencontre dans le gymnase « GYM BEHAT » à 15h30
+    Et le championnat a commencé : un match déjà joué de la même division est déposé
+    Et je re-dépose le fichier avec une date différente, sans trancher
+    Alors la rencontre est « déphasée » et sa date d'origine est intacte
+    Et la rencontre est toujours placée dans le gymnase « GYM BEHAT »
+
+  Scénario: Un export de plus de 24 heures est refusé en nommant sa date
+    Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur
+    Et une équipe jetable et un gymnase jetable « GYM BEHAT »
+    Quand je dépose un export FBI créé il y a plus de 24 heures
+    Alors le dépôt est refusé et le message dit la date d'export du fichier
+    Et aucune rencontre n'est importée
 
   Scénario: Un match à l'extérieur naît déjà traité
     Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur

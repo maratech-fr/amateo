@@ -37,7 +37,7 @@ final class ComposeStackParametrizationTest extends TestCase
         'NGINX_PORT' => '8180',
         'FRONTEND_PORT' => '8181',
         'ENGINE_PORT' => '8100',
-        'POSTGRES_PORT' => '15432',
+        'POSTGRES_PORT' => '25432',
         'REDIS_PORT' => '16379',
         'MERCURE_PORT' => '13100',
         'MAILPIT_SMTP_PORT' => '11025',

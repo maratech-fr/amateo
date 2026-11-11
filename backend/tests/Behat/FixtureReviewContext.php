@@ -36,6 +36,9 @@ final class FixtureReviewContext extends BaseContext
 
     private const string EXTERNAL_REF = 'BHR-1001';
 
+    /** Le numéro du match déjà joué qui rend le championnat commencé (jamais la rencontre suivie). */
+    private const string PLAYED_EXTERNAL_REF = 'BHR-1000';
+
     private const string VENUE_NAME = 'GYM BEHAT';
 
     private string $token = '';
@@ -55,6 +58,15 @@ final class FixtureReviewContext extends BaseContext
     private string $secondFixtureId = '';
 
     private string $controlFixtureId = '';
+
+    private string $playedFixtureId = '';
+
+    /** L'instant d'export (`dcterms:created`) du fichier périmé déposé. */
+    private ?DateTimeImmutable $staleExportedAt = null;
+
+    private int $rejectedStatus = 0;
+
+    private string $rejectedError = '';
 
     private string $competitionId = '';
 
@@ -247,18 +259,113 @@ final class FixtureReviewContext extends BaseContext
         }
     }
 
-    #[Then('la rencontre est « à replacer » et de nouveau « traitée »')]
-    public function laRencontreEstAReplacerEtTraitee(): void
+    /**
+     * Une seule sémantique « FBI pris » : la date de FBI est écrite, la rencontre garde son
+     * statut « attestée FBI » et son gymnase, et elle est traitée — qu'on ait tranché l'écart
+     * ou que le dépôt l'ait appliqué d'office.
+     */
+    #[Then('la rencontre a pris la date de FBI, reste « attestée FBI » dans son gymnase et de nouveau « traitée »')]
+    public function laRencontreAPrisLaDateDeFbiEtResteAttestee(): void
     {
         $json = $this->apiGet(\sprintf('fixtures/%s', $this->fixtureId), $this->token)['json'];
-        if (($json['status'] ?? null) !== 'UNPLACED') {
-            throw new RuntimeException(\sprintf('adopter la date source aurait dû dé-placer la rencontre (statut « %s »)', \is_string($json['status'] ?? null) ? $json['status'] : 'inconnu'));
+        if (($json['matchDate'] ?? null) !== $this->rescheduledDate) {
+            throw new RuntimeException(\sprintf('la date de FBI n\'a pas été prise (« %s » au lieu de « %s »)', \is_string($json['matchDate'] ?? null) ? $json['matchDate'] : 'inconnue', $this->rescheduledDate));
+        }
+        if (($json['status'] ?? null) !== 'VALIDATED') {
+            throw new RuntimeException(\sprintf('la rencontre aurait dû rester « attestée FBI » (statut « %s »)', \is_string($json['status'] ?? null) ? $json['status'] : 'inconnu'));
+        }
+        if (($json['venueId'] ?? null) !== $this->venueId) {
+            throw new RuntimeException('la rencontre aurait dû garder son gymnase');
         }
         if (($json['reviewState'] ?? null) !== 'REVIEWED') {
-            throw new RuntimeException(\sprintf('l\'écart tranché aurait dû re-traiter la rencontre (état « %s »)', \is_string($json['reviewState'] ?? null) ? $json['reviewState'] : 'inconnu'));
+            throw new RuntimeException(\sprintf('la rencontre aurait dû être traitée (état « %s »)', \is_string($json['reviewState'] ?? null) ? $json['reviewState'] : 'inconnu'));
         }
-        if (($json['matchDate'] ?? null) !== $this->rescheduledDate) {
-            throw new RuntimeException('la date de la source n\'a pas été adoptée');
+    }
+
+    // ── PR 4 (lot matchs prod) : le fichier FBI fait foi dès que le championnat a commencé ──
+    // Bout en bout : une fois un match de la division joué, un dépôt qui déplace un domicile
+    // DÉJÀ DANS FBI (« attestée FBI ») l'aligne d'office, sans le dé-placer ; un domicile
+    // seulement placé garde son écart à trancher. Les règles une à une (heure, salle, joué,
+    // amical, garder l'appli, préséance API) : FbiFixtureImporterTest.
+
+    /**
+     * Dépose, dans la MÊME division et pour la MÊME équipe, un AUTRE numéro de match joué le
+     * samedi d'avant la semaine en cours (premier match strictement passé = championnat commencé).
+     * La rencontre suivie (`fixtureId`) n'est pas touchée.
+     */
+    #[When('le championnat a commencé : un match déjà joué de la même division est déposé')]
+    public function leChampionnatACommence(): void
+    {
+        $clubToday = new DateTimeImmutable('today', new DateTimeZone('Europe/Paris'));
+        $played = $clubToday->modify(\sprintf('-%d days', (int) $clubToday->format('N') - 1))->modify('-2 days')->format('Y-m-d');
+        $this->depositMatch($played, 'HOME', 'Adversaire Déjà Joué', self::VENUE_NAME, null, self::PLAYED_EXTERNAL_REF);
+        $this->playedFixtureId = $this->dbalScalar(
+            \sprintf('SELECT id AS behatval FROM fixture WHERE club_id=\'%s\' AND external_ref=\'%s\' LIMIT 1', $this->clubId, self::PLAYED_EXTERNAL_REF),
+            admin: true,
+        );
+        if ('' === $this->playedFixtureId) {
+            throw new RuntimeException('le match déjà joué est introuvable après le dépôt');
+        }
+    }
+
+    #[Then('la rencontre est toujours placée dans le gymnase « GYM BEHAT »')]
+    public function laRencontreEstToujoursPlacee(): void
+    {
+        $json = $this->apiGet(\sprintf('fixtures/%s', $this->fixtureId), $this->token)['json'];
+        if (($json['status'] ?? null) !== 'PLACED' || ($json['venueId'] ?? null) !== $this->venueId) {
+            throw new RuntimeException(\sprintf('la rencontre aurait dû rester placée au gymnase « %s » (statut « %s »)', self::VENUE_NAME, \is_string($json['status'] ?? null) ? $json['status'] : 'inconnu'));
+        }
+    }
+
+    // ── PR 4 : un export de plus de 24 heures est refusé ─────────────────────────────────
+
+    #[When('je dépose un export FBI créé il y a plus de 24 heures')]
+    public function jeDeposeUnExportPerime(): void
+    {
+        $this->staleExportedAt = new DateTimeImmutable('-26 hours');
+        $date = date('d/m/Y', (int) strtotime($this->matchDate));
+        $path = $this->writeXlsx([[self::DIVISION, self::EXTERNAL_REF, $this->clubName, 'Adversaire Behat', $date, '15:30', self::VENUE_NAME]], $this->staleExportedAt);
+        $form = new FormDataPart([
+            'file' => DataPart::fromPath($path),
+            'mappings' => json_encode([['division' => self::DIVISION, 'teamId' => $this->teamId]], \JSON_THROW_ON_ERROR),
+            'venueMappings' => json_encode([['label' => self::VENUE_NAME, 'venueId' => $this->venueId]], \JSON_THROW_ON_ERROR),
+        ]);
+        $response = $this->client->request('POST', 'fixtures/import', [
+            'headers' => array_merge(['Authorization' => 'Bearer ' . $this->token], $form->getPreparedHeaders()->toArray()),
+            'body' => $form->bodyToIterable(),
+        ]);
+        $this->rejectedStatus = $response->getStatusCode();
+        $body = json_decode($response->getContent(false), true);
+        $this->rejectedError = \is_array($body) && \is_string($body['error'] ?? null) ? $body['error'] : '';
+        @unlink($path);
+    }
+
+    #[Then('le dépôt est refusé et le message dit la date d\'export du fichier')]
+    public function leDepotEstRefuseEtDitLaDate(): void
+    {
+        $local = $this->staleExportedAt?->setTimezone(new DateTimeZone('Europe/Paris'));
+        if (null === $local) {
+            throw new RuntimeException('aucun export périmé n\'a été déposé');
+        }
+        $expected = \sprintf(
+            'Ce fichier a été exporté de FBI le %s à %s, il y a plus de 24 heures. Téléchargez un nouvel export depuis FBI et déposez-le.',
+            $local->format('d/m/Y'),
+            $local->format('H:i'),
+        );
+        if (422 !== $this->rejectedStatus || $expected !== $this->rejectedError) {
+            throw new RuntimeException(\sprintf('refus 422 « %s » attendu ; reçu %d « %s »', $expected, $this->rejectedStatus, $this->rejectedError));
+        }
+    }
+
+    #[Then('aucune rencontre n\'est importée')]
+    public function aucuneRencontreNEstImportee(): void
+    {
+        $count = $this->dbalScalar(
+            \sprintf('SELECT count(*) AS behatval FROM fixture WHERE club_id=\'%s\' AND external_ref=\'%s\'', $this->clubId, self::EXTERNAL_REF),
+            admin: true,
+        );
+        if ('0' !== $count) {
+            throw new RuntimeException(\sprintf('un dépôt refusé ne doit rien écrire : %s rencontre(s) importée(s)', $count));
         }
     }
 
@@ -518,7 +625,7 @@ final class FixtureReviewContext extends BaseContext
         if ('' === $this->token) {
             return;
         }
-        foreach ([$this->fixtureId, $this->secondFixtureId, $this->controlFixtureId] as $id) {
+        foreach ([$this->fixtureId, $this->secondFixtureId, $this->controlFixtureId, $this->playedFixtureId] as $id) {
             if ('' !== $id) {
                 $this->apiDelete(\sprintf('fixtures/%s', $id), $this->token);
             }
@@ -621,13 +728,13 @@ final class FixtureReviewContext extends BaseContext
      *
      * @param list<array{division: string, teamId: string}>|null $mappings
      */
-    private function depositMatch(string $date, string $homeAway, string $opponent, string $salle, ?array $mappings): void
+    private function depositMatch(string $date, string $homeAway, string $opponent, string $salle, ?array $mappings, string $externalRef = self::EXTERNAL_REF): void
     {
         $equipe1 = 'HOME' === $homeAway ? $this->clubName : $opponent;
         $equipe2 = 'HOME' === $homeAway ? $opponent : $this->clubName;
         $rows = [[
             self::DIVISION,
-            self::EXTERNAL_REF,
+            $externalRef,
             $equipe1,
             $equipe2,
             date('d/m/Y', (int) strtotime($date)),
@@ -693,11 +800,17 @@ final class FixtureReviewContext extends BaseContext
     }
 
     /**
+     * Un classeur au format FBI ; sa date d'export (`dcterms:created`) est l'instant présent,
+     * ou `$exportedAt` pour un export ancien.
+     *
      * @param list<list<string>> $rows
      */
-    private function writeXlsx(array $rows): string
+    private function writeXlsx(array $rows, ?DateTimeImmutable $exportedAt = null): string
     {
         $spreadsheet = new Spreadsheet;
+        if ($exportedAt instanceof DateTimeImmutable) {
+            $spreadsheet->getProperties()->setCreated($exportedAt->getTimestamp());
+        }
         $spreadsheet->getActiveSheet()->fromArray(
             [['Division', 'N° de match ', 'Equipe 1', 'Equipe 2', 'Date de rencontre', 'Heure', 'Salle'], ...$rows],
             null,

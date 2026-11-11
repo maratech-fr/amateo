@@ -6,6 +6,7 @@ namespace App\Tests\Integration\Api;
 
 use App\Entity\Club;
 use App\Entity\ClubUser;
+use App\Entity\FbiCorrection;
 use App\Entity\Fixture;
 use App\Entity\Season;
 use App\Entity\Sport;
@@ -13,6 +14,7 @@ use App\Entity\SportCategory;
 use App\Entity\Team;
 use App\Entity\User;
 use App\Entity\Venue;
+use App\Enum\FbiCorrectionCloseSource;
 use App\Enum\FixtureHomeAway;
 use App\Enum\FixtureReviewState;
 use App\Enum\FixtureStatus;
@@ -330,11 +332,16 @@ final class FixtureReviewApiTest extends WebTestCase
         self::assertStringContainsString('geste par équipe', (string) $body['error']);
     }
 
-    public function testTakeSourceOnDateUnplacesAndReviews(): void
+    /**
+     * « Prendre le fichier » sur la DATE depuis la file : la date persistée de la source est
+     * adoptée, le match garde son statut et son gymnase (jamais dé-placé), il est traité.
+     */
+    public function testTakeSourceOnDateKeepsStatusAndVenueAndReviews(): void
     {
         [$club, $user, $season] = $this->createClubUser('rt');
         $team = $this->createTeam($club, $season, 'SF3');
         $fixture = $this->deviatedFixture($club, $season, $team, '2026-10-04', '2026-10-11');
+        $venueId = $fixture->getVenueId();
 
         $this->post($user, '/api/fixtures/review/deviations', [
             'fixtureId' => $fixture->getId(),
@@ -346,10 +353,89 @@ final class FixtureReviewApiTest extends WebTestCase
         self::assertSame('REVIEWED', $data['reviewState']);
         self::assertSame([], $data['pendingDeviations']);
 
-        $row = $this->reload($club, $fixture->getId());
-        self::assertSame('2026-10-11', substr((string) $row['match_date'], 0, 10), 'take_source adopted the persisted source date');
-        self::assertSame('UNPLACED', $row['status'], 'a date take_source un-places the match');
-        self::assertSame('REVIEWED', $row['review_state']);
+        $reloaded = $this->reloadFixture($club, $fixture->getId());
+        self::assertSame('2026-10-11', $reloaded->getMatchDate()->format('Y-m-d'), 'la date persistée de la source est adoptée');
+        self::assertSame(FixtureStatus::PLACED, $reloaded->getStatus(), 'le match reste placé');
+        self::assertSame($venueId, $reloaded->getVenueId(), 'il garde son gymnase');
+        self::assertSame(FixtureReviewState::REVIEWED, $reloaded->getReviewState());
+    }
+
+    /**
+     * « Prendre le fichier » sur la SALLE d'un match placé, sans choix de gymnase : l'alias
+     * confirmé du libellé de la source repointe le gymnase, statut conservé — plus jamais le
+     * refus « Cette salle n'est rattachée à aucun gymnase du club » sur un libellé connu.
+     */
+    public function testTakeSourceVenueOnAPlacedHomeFollowsTheConfirmedAliasKeepingItsStatus(): void
+    {
+        [$club, $user, $season] = $this->createClubUser('rtp');
+        $team = $this->createTeam($club, $season, 'SF3');
+        $gymA = $this->createAliasedVenue($club, $season, 'GYMNASE A', []);
+        $gymB = $this->createAliasedVenue($club, $season, 'Gymnase B', ['salle b']);
+        $fixture = $this->plainFixture($club, $season, $team, '2026-12-05');
+        $this->scopeGucToClub($club->getId());
+        $fixture->setVenueId($gymA);
+        $fixture->putPendingDeviation($this->deviation('venue', false));
+        $fixture->setReviewState(FixtureReviewState::OUT_OF_SYNC);
+        $this->em->flush();
+
+        $this->post($user, '/api/fixtures/review/deviations', [
+            'fixtureId' => $fixture->getId(),
+            'field' => 'venue',
+            'choice' => 'take_source',
+        ]);
+        self::assertResponseStatusCodeSame(200);
+
+        $reloaded = $this->reloadFixture($club, $fixture->getId());
+        self::assertSame($gymB, $reloaded->getVenueId(), 'l\'alias confirmé repointe le gymnase');
+        self::assertSame(FixtureStatus::PLACED, $reloaded->getStatus(), 'le match reste placé');
+        self::assertSame(FixtureReviewState::REVIEWED, $reloaded->getReviewState());
+    }
+
+    /**
+     * G4 par la file — Garder, la question revient (écart reposé), Garder encore : UNE seule
+     * entrée « à corriger dans FBI » ouverte (l'ouverture est un upsert).
+     */
+    public function testKeepingAgainFromTheQueueLeavesOneOpenCorrection(): void
+    {
+        [$club, $user, $season] = $this->createClubUser('rkk');
+        $team = $this->createTeam($club, $season, 'SF3');
+        $fixture = $this->deviatedFixture($club, $season, $team, '2026-10-04', '2026-10-11');
+        $keep = ['fixtureId' => $fixture->getId(), 'field' => 'date', 'choice' => 'keep_app'];
+
+        $this->post($user, '/api/fixtures/review/deviations', $keep);
+        self::assertResponseStatusCodeSame(200);
+        $this->reposeDateDeviation($club, $fixture->getId());
+        $this->post($user, '/api/fixtures/review/deviations', $keep);
+        self::assertResponseStatusCodeSame(200);
+
+        $this->scopeGucToClub($club->getId());
+        $this->em->clear();
+        self::assertCount(1, $this->em->getRepository(FbiCorrection::class)->findBy(['fixtureId' => $fixture->getId()]), 'une seule entrée, jamais doublée');
+        self::assertCount(1, $this->em->getRepository(FbiCorrection::class)->findBy(['fixtureId' => $fixture->getId(), 'closedAt' => null]), 'et elle est ouverte');
+    }
+
+    /**
+     * G5 par la file — « Prendre le fichier » sur un champ qui porte une correction ouverte la
+     * FERME : l'appli s'aligne sur FBI, plus rien à corriger dans FBI.
+     */
+    public function testTakeSourceFromTheQueueClosesTheOpenCorrection(): void
+    {
+        [$club, $user, $season] = $this->createClubUser('rtc');
+        $team = $this->createTeam($club, $season, 'SF3');
+        $fixture = $this->deviatedFixture($club, $season, $team, '2026-10-04', '2026-10-11');
+
+        $this->post($user, '/api/fixtures/review/deviations', ['fixtureId' => $fixture->getId(), 'field' => 'date', 'choice' => 'keep_app']);
+        self::assertResponseStatusCodeSame(200);
+        $this->reposeDateDeviation($club, $fixture->getId());
+        $this->post($user, '/api/fixtures/review/deviations', ['fixtureId' => $fixture->getId(), 'field' => 'date', 'choice' => 'take_source']);
+        self::assertResponseStatusCodeSame(200);
+
+        $this->scopeGucToClub($club->getId());
+        $this->em->clear();
+        $entry = $this->em->getRepository(FbiCorrection::class)->findOneBy(['fixtureId' => $fixture->getId()]);
+        self::assertInstanceOf(FbiCorrection::class, $entry);
+        self::assertFalse($entry->isOpen(), 'prendre le fichier ferme la correction');
+        self::assertSame(FbiCorrectionCloseSource::DEPOSIT, $entry->getClosedBy());
     }
 
     public function testKeepAppRemovesTheDeviationWithoutWritingTheSource(): void
@@ -945,6 +1031,22 @@ final class FixtureReviewApiTest extends WebTestCase
         $this->em->flush();
 
         return $venue->getId();
+    }
+
+    /** Le dépôt suivant repose l'écart de date (FBI montre encore 2026-10-11) : l'état qu'il laisse. */
+    private function reposeDateDeviation(Club $club, string $fixtureId): void
+    {
+        $fixture = $this->reloadFixture($club, $fixtureId);
+        $fixture->putPendingDeviation([
+            'field' => 'date',
+            'appValue' => '2026-10-04',
+            'sourceValue' => '2026-10-11',
+            'channel' => 'FBI_XLSX',
+            'seenAt' => '2026-09-08T10:00:00+00:00',
+            'autoApplied' => false,
+        ]);
+        $fixture->setReviewState(FixtureReviewState::OUT_OF_SYNC);
+        self::getContainer()->get(EntityManagerInterface::class)->flush();
     }
 
     private function reloadFixture(Club $club, string $fixtureId): Fixture

@@ -28,6 +28,8 @@
 #     IdentityAgent ~/.ssh/agent-prodread.sock) ;
 #   - ~/.pgpass-amateo (chmod 600) avec la ligne
 #       127.0.0.1:15432:amateo:amateo_read:<mot de passe>
+#     (15432 = port local du tunnel ; s'il est déjà pris sur le poste, le script
+#     s'arrête AVANT le tunnel et nomme ce qui l'occupe.)
 # Avant chaque enquête, le fondateur DÉVERROUILLE la clé dans l'agent DÉDIÉ, pour
 # une durée limitée :
 #   SSH_AUTH_SOCK=~/.ssh/agent-prodread.sock ssh-add -t 1h ~/.ssh/amateo_prod_read
@@ -74,6 +76,22 @@ usage() {
 die() {
   echo "prod-read: $*" >&2
   exit 1
+}
+
+# Vrai si quelque chose accepte une connexion sur 127.0.0.1:<port>.
+local_port_answers() {
+  timeout 3 bash -c ': <>"/dev/tcp/127.0.0.1/$1"' _ "$1" 2>/dev/null
+}
+
+# Best-effort : qui tient le port (conteneur Docker publié, sinon processus vu par `ss`).
+local_port_holder() {
+  local holder=""
+  holder="$(docker ps --filter "publish=$1" --format 'conteneur {{.Names}}' 2>/dev/null | paste -sd ',' -)" || true
+  if [[ -z "$holder" ]] && command -v ss >/dev/null 2>&1; then
+    holder="$(ss -ltnpH "sport = :$1" 2>/dev/null | grep -o 'users:(([^)]*))' | head -n 1)" || true
+  fi
+  [[ -n "$holder" ]] || holder="inconnu (processus d'un autre utilisateur ?)"
+  printf '%s' "$holder"
 }
 
 club=""
@@ -151,6 +169,13 @@ fi
 # et couperait le tunnel pendant le téléchargement — on le fait donc en amont.
 docker image inspect "$PSQL_IMAGE" >/dev/null 2>&1 || docker pull "$PSQL_IMAGE"
 
+# ── Le port local doit être LIBRE avant le tunnel ──
+# Sinon psql parlerait à ce qui l'occupe (ex. une stack Docker locale) et échouerait
+# sur un « password authentication failed » trompeur.
+if local_port_answers "$LOCAL_PORT"; then
+  die "port local 127.0.0.1:${LOCAL_PORT} déjà occupé (par : $(local_port_holder "$LOCAL_PORT")) — le tunnel ne peut pas s'y lier. Libérer ce port (arrêter la stack ou le processus qui le publie, ex. \`make epreuve-down\` pour une stack d'épreuve d'avant le port 25432), puis relancer. Le port est fixe : ~/.pgpass-amateo est indexé sur 127.0.0.1:${LOCAL_PORT}."
+fi
+
 # ── Barrière 2 : le tunnel SSH, via un socket de contrôle pour le refermer ──
 control_dir="$(mktemp -d "${TMPDIR:-/tmp}/prod-read.XXXXXX")"
 control_sock="${control_dir}/ctrl.sock"
@@ -168,9 +193,17 @@ ssh -fN -M -S "$control_sock" \
   -o ExitOnForwardFailure=yes \
   -o ServerAliveInterval=30 \
   -o ServerAliveCountMax=2 \
-  -L "${LOCAL_PORT}:${PROD_READ_REMOTE}" \
+  -L "127.0.0.1:${LOCAL_PORT}:${PROD_READ_REMOTE}" \
   "$SSH_ALIAS" \
-  || die "tunnel SSH refusé vers ${PROD_READ_REMOTE} — vérifier l'alias « ${SSH_ALIAS} » (~/.ssh/config), que la clé est déverrouillée (\`ssh-add -t 1h ~/.ssh/amateo_prod_read\`), et que \`permitopen\` (authorized_keys) ET \`PermitOpen\` (bloc Match sshd) côté VM visent EXACTEMENT ${PROD_READ_REMOTE} (docs/ops/deploy.md §1.8)"
+  || die "tunnel SSH refusé vers ${PROD_READ_REMOTE} — vérifier que le port local 127.0.0.1:${LOCAL_PORT} est libre, l'alias « ${SSH_ALIAS} » (~/.ssh/config), que la clé est déverrouillée (\`ssh-add -t 1h ~/.ssh/amateo_prod_read\`), et que \`permitopen\` (authorized_keys) ET \`PermitOpen\` (bloc Match sshd) côté VM visent EXACTEMENT ${PROD_READ_REMOTE} (docs/ops/deploy.md §1.8)"
+
+# ── Le tunnel doit être VIVANT et lié avant psql — jamais d'enchaînement sur un échec ──
+# `-L` est lié explicitement à 127.0.0.1 : avec `-L <port>:…` nu, ssh se contentait
+# de ::1 quand 127.0.0.1 était pris, et psql (qui vise 127.0.0.1) tombait ailleurs.
+ssh -S "$control_sock" -O check "$SSH_ALIAS" >/dev/null 2>&1 \
+  || die "tunnel SSH absent après lancement (socket de contrôle muet) — rien n'est envoyé à psql"
+local_port_answers "$LOCAL_PORT" \
+  || die "tunnel SSH lancé mais 127.0.0.1:${LOCAL_PORT} n'écoute pas — rien n'est envoyé à psql"
 
 # ── Préambule optionnel : poser le club (AIDE, pas une frontière — rls.md) ──
 preamble=""

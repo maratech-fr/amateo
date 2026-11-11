@@ -162,7 +162,7 @@ final readonly class MatchesExportDataProvider
 
     /**
      * Heure absente : toujours à confirmer. Match déjà joué : jamais, même avec un écart fédéral
-     * resté ouvert — le passé prime. Sinon : un écart ouvert remet tout en question, même validé ;
+     * resté ouvert — le passé prime. Sinon : un écart à trancher remet tout en question, même validé ;
      * et un domicile de championnat le reste tant que le gestionnaire ne l'a pas validé. Un amical
      * n'a pas de ligue pour le confirmer ; l'heure d'un extérieur ou d'un terrain neutre vient de
      * la fédération, le club ne peut rien y valider.
@@ -177,7 +177,9 @@ final readonly class MatchesExportDataProvider
         if ($fixture->getMatchDate()->format('Y-m-d') < $today->format('Y-m-d')) {
             return false;
         }
-        if ($fixture->hasPendingDeviations()) {
+        // Seul un écart à TRANCHER est un doute : une valeur que FBI a imposée et que l'appli a
+        // déjà écrite (entrée appliquée d'office, simple bandeau) ne l'est pas.
+        if ($fixture->hasArbitrableDeviations()) {
             return true;
         }
 

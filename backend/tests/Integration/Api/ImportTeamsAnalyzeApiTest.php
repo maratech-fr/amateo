@@ -11,6 +11,7 @@ use App\Enum\SeasonStatus;
 use App\Service\TeamImportGate;
 use App\Tests\TenantGucTrait;
 use App\Tests\VerifiesRegistration;
+use App\Tests\WritesFbiExports;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
 use Lexik\Bundle\JWTAuthenticationBundle\Services\JWTTokenManagerInterface;
@@ -38,6 +39,7 @@ final class ImportTeamsAnalyzeApiTest extends WebTestCase
 {
     use TenantGucTrait;
     use VerifiesRegistration;
+    use WritesFbiExports;
 
     private KernelBrowser $client;
 
@@ -113,6 +115,25 @@ final class ImportTeamsAnalyzeApiTest extends WebTestCase
         $this->assertIdenticalRefusal($clubId, $token, 429);
     }
 
+    /**
+     * La garde de fraîcheur des exports FBI ne vise QUE les rencontres : un classeur
+     * d'équipes refait sans `docProps` (aucune date d'export) s'analyse normalement.
+     */
+    public function testAnUndatedTeamWorkbookIsAnalyzedTheFreshnessGuardIsForFixturesOnly(): void
+    {
+        [$token, $clubId] = $this->registerManager('IAG');
+        $this->scopeGucToClub($clubId);
+        $season = $this->em->getRepository(Season::class)->findOneBy(['clubId' => $clubId]);
+        self::assertNotNull($season);
+
+        $undated = $this->withExportedAt($this->smallXlsx(), null);
+        $response = $this->post('/api/clubs/' . $clubId . '/import-teams/analyze', ['seasonId' => $season->getId()], [
+            'file' => new UploadedFile($undated, 'ffbb.xlsx', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', null, true),
+        ], $token, ['HTTP_X_SEASON_ID' => $season->getId()]);
+
+        self::assertSame(200, $response['status'], 'un classeur d\'équipes sans date d\'export est accepté : ' . $response['body']);
+    }
+
     protected function setUp(): void
     {
         $this->client = self::createClient();
@@ -124,6 +145,7 @@ final class ImportTeamsAnalyzeApiTest extends WebTestCase
         foreach ($this->tempFiles as $file) {
             @unlink($file);
         }
+        $this->removeFbiExports();
         parent::tearDown();
     }
 
