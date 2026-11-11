@@ -120,7 +120,26 @@ export interface SchedulePlan {
   closureTitle?: string;
   windowEditable?: boolean;
   windowLockedReason?: string | null;
+  /**
+   * Validation automatique d'un planning de période (7 jours après le début de sa période) — trois
+   * champs CALCULÉS par le serveur (le front les affiche, il ne redérive rien). Optionnels comme les
+   * champs de fenêtre ci-dessus : seul un plan de période en porte d'autres que leurs défauts.
+   *  - `autoValidated` : marque « Validé automatiquement » (« Tous les plannings ») ;
+   *  - `alert` : la carte d'alerte du radar, sinon null ;
+   *  - `radarDismissed` : « J'ai vu » sur « commencée sans planning » — la période sort du radar.
+   */
+  autoValidated?: boolean;
+  alert?: PlanAlert | null;
+  radarDismissed?: boolean;
 }
+
+export type PlanAlertKind = "auto_validated" | "started_without_plan";
+
+export type PlanAlert = { kind: "auto_validated"; chosenVersionNumber: number; keptVersionCount: number } | { kind: "started_without_plan" };
+
+/** « J'ai vu » : le club a vu l'alerte `kind` de ce planning de période (vaut pour tout le club). */
+export const markPlanAlertSeen = (planId: string, kind: PlanAlertKind): Promise<{ id: string; alertSeenDate: string }> =>
+  api.post(`schedule_plans/${planId}/alert-seen`, { json: { kind } }).json<{ id: string; alertSeenDate: string }>();
 
 /** Le plan d'une période. null si l'entrée n'en porte pas (cutoff/mutualisation — inv. 9). */
 export const getSchedulePlanForEntry = async (calendarEntryId: string): Promise<SchedulePlan | null> => {

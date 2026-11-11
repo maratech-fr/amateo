@@ -64,7 +64,7 @@ const LOADING_PHRASES = [
 // 4 PALIERS (pas une boucle : le dernier PERSISTE — le bout-en-bout dépasse 30 s sur un club dense,
 // une phrase qui revient ferait croire au plantage).
 const LONG_PALIERS = [
-  "Le moteur vérifie votre déplacement…",
+  "Le système vérifie votre déplacement…",
   "Il rejoue chaque règle sur le planning entier : coachs, gymnases, catégories.",
   "Sur un club chargé, ça peut demander une minute. Personne ne perd sa place.",
   "Toujours en cours. Rien n'est perdu — vous pouvez abandonner ce déplacement.",
@@ -74,7 +74,7 @@ const LONG_PALIERS = [
 const STABLE_TEXT: Record<Context, string> = {
   saving: "Enregistrement en cours, veuillez patienter.",
   loading: "Chargement de la page en cours.",
-  long: "Vérification de votre déplacement par le moteur en cours.",
+  long: "Vérification de votre déplacement par le système en cours.",
 };
 
 const STABLE_ID = "action-veil-stable";

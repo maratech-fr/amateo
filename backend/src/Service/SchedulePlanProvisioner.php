@@ -10,8 +10,11 @@ use App\Entity\SchedulePlan;
 use App\Entity\Season;
 use App\Entity\SharedTrainingBlock;
 use App\Entity\SharedTrainingBlockTeam;
+use App\Enum\CalendarEntryStatus;
 use App\Enum\SchedulePlanType;
+use App\Enum\ScheduleStatus;
 use App\Repository\ImplicitRuleSettingRepository;
+use App\Support\FrenchDate;
 use DateTimeImmutable;
 use Doctrine\DBAL\ArrayParameterType;
 use Doctrine\DBAL\Types\Types;
@@ -56,11 +59,15 @@ use Throwable;
  * scopes every statement by club, and INSERTs (persist) are never filtered.
  *
  * chosenScheduleId — le pointeur — est LE calendrier de la saison : choose() le
- * pose (valider), releaseSchedule() le retire (rouvrir). Rien ne le pose
- * automatiquement : seul le gestionnaire choisit.
+ * pose (valider), releaseSchedule() le retire (rouvrir). Seule exception : un plan de
+ * PÉRIODE jamais validé est pointé par chooseAutomatically() 7 jours après le début de sa
+ * période (PeriodPlanAutoValidator) — jamais le plan de saison.
  */
 final class SchedulePlanProvisioner
 {
+    /** Validation automatique d'un plan de période : 7 jours après le début CIVIL de sa période. */
+    public const int AUTO_VALIDATION_DELAY_DAYS = 7;
+
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
         private readonly ScheduleConstraintBuilder $constraintBuilder,
@@ -540,6 +547,131 @@ final class SchedulePlanProvisioner
     }
 
     /**
+     * Les plans de période du club ÉLIGIBLES à la validation automatique au jour `$today` (D3) :
+     * {@see autoValidationEligibleSql}, rangés par date de début. La saison archivée se juge chez
+     * l'appelant (au jour du club, {@see PeriodPlanAutoValidator}). Le club est nommé en plus de la
+     * RLS : le balayage d'un club ne lit jamais un plan d'un autre.
+     *
+     * @return list<array{planId: string, entryId: string, seasonId: string}>
+     */
+    public function autoValidationCandidates(string $clubId, DateTimeImmutable $today): array
+    {
+        $rows = $this->entityManager->getConnection()->fetchAllAssociative(
+            'SELECT p.id, p.calendar_entry_id, p.season_id FROM schedule_plan p '
+            . 'WHERE p.club_id = :club AND ' . $this->autoValidationEligibleSql() . ' '
+            . 'ORDER BY p.start_date, p.id',
+            ['club' => $clubId, 'today' => $today->format('Y-m-d')],
+        );
+
+        return array_map(static fn (array $row): array => [
+            'planId' => (string) $row['id'],
+            'entryId' => (string) $row['calendar_entry_id'],
+            'seasonId' => (string) $row['season_id'],
+        ], $rows);
+    }
+
+    /**
+     * Valider AUTOMATIQUEMENT un plan de période (D6) : pointe `$scheduleId` et pose la marque
+     * `auto_validated_date` (jour du club), SANS poser `first_chosen_at` (la première validation
+     * HUMAINE, stat « temps de clôture ») ni toucher aux sœurs. L'UPDATE re-vérifie TOUT sous le
+     * verrou de l'appelant ({@see lockPlanScope} de l'entrée) : éligibilité D3 (même prédicat que
+     * la lecture des candidats) et version COMPLETED de CE plan. Une mutation concurrente entre
+     * lecture et écriture (version supprimée, fenêtre re-datée au futur, période découpée,
+     * validation manuelle) donne 0 ligne : rien n'est écrit, jamais un pointeur mort.
+     *
+     * @return bool true si le plan a été pointé
+     */
+    public function chooseAutomatically(string $planId, string $scheduleId, DateTimeImmutable $today): bool
+    {
+        return $this->entityManager->getConnection()->executeStatement(
+            'UPDATE schedule_plan AS p SET chosen_schedule_id = :sid, auto_validated_date = CAST(:today AS date), updated_at = now(), version = p.version + 1 '
+            . 'WHERE p.id = :pid AND ' . $this->autoValidationEligibleSql() . ' '
+            . 'AND EXISTS (SELECT 1 FROM schedule s WHERE s.id = :sid AND s.schedule_plan_id = p.id AND s.status = :completed)',
+            ['sid' => $scheduleId, 'pid' => $planId, 'today' => $today->format('Y-m-d'), 'completed' => ScheduleStatus::COMPLETED->value],
+        ) > 0;
+    }
+
+    /**
+     * « J'ai vu » (D9) : le club a vu l'alerte `$kind` de ce plan au jour `$today` — valable pour
+     * TOUT le club. Ne touche ni au pointeur ni à `version` (aucun contenu du plan ne change).
+     *
+     * @return bool false si le plan n'existe pas (ou pas pour ce club : RLS)
+     */
+    public function markAlertSeen(string $planId, string $kind, DateTimeImmutable $today): bool
+    {
+        return $this->entityManager->getConnection()->executeStatement(
+            'UPDATE schedule_plan SET alert_seen_kind = :kind, alert_seen_date = CAST(:today AS date), updated_at = now() WHERE id = :pid',
+            ['kind' => $kind, 'today' => $today->format('Y-m-d'), 'pid' => $planId],
+        ) > 0;
+    }
+
+    /**
+     * Les FAITS d'alerte de plusieurs plans, en UNE requête (D8, zéro N+1) — lus par le provider
+     * (collection et item) et par le balayage sous verrou, puis interprétés par le résolveur pur
+     * {@see PeriodPlanAlertResolver}. Les dates de la fenêtre sont les dates CIVILES de l'entrée
+     * de calendrier (`calendar_entry.start_date`/`end_date`, type DATE, sans fuseau) — jamais une
+     * conversion dans le fuseau du club ni de la session : `schedule_plan.start_date` est une date
+     * civile portée à minuit UTC. Repli sur celle-ci, lue en UTC, pour un plan sans entrée (socle).
+     *
+     * SQL brut (filter-free), RLS scope le club.
+     *
+     * @param list<string> $planIds
+     *
+     * @return array<string, array{type: SchedulePlanType, startDate: string, endDate: string, chosenScheduleId: ?string, firstChosenAt: ?string, autoValidatedDate: ?string, alertSeenDate: ?string, alertSeenKind: ?string, entryActive: bool, hasChildren: bool, completedCount: int, inFlightCount: int, chosenVersionNumber: ?int, keptVersionCount: int}>
+     */
+    public function periodPlanFacts(array $planIds): array
+    {
+        if ([] === $planIds) {
+            return [];
+        }
+
+        $rows = $this->entityManager->getConnection()->fetchAllAssociative(
+            'SELECT p.id, p.type, p.chosen_schedule_id, p.first_chosen_at, p.alert_seen_kind, '
+            . 'to_char(COALESCE(e.start_date, (p.start_date AT TIME ZONE \'UTC\')::date), \'YYYY-MM-DD\') AS start_day, '
+            . 'to_char(COALESCE(e.end_date, (p.end_date AT TIME ZONE \'UTC\')::date), \'YYYY-MM-DD\') AS end_day, '
+            . 'to_char(p.auto_validated_date, \'YYYY-MM-DD\') AS auto_validated_day, '
+            . 'to_char(p.alert_seen_date, \'YYYY-MM-DD\') AS alert_seen_day, '
+            . 'COALESCE(e.status = :active, false) AS entry_active, '
+            . 'EXISTS (SELECT 1 FROM calendar_entry c WHERE c.parent_entry_id = p.calendar_entry_id) AS has_children, '
+            . '(SELECT COUNT(*) FROM schedule s WHERE s.schedule_plan_id = p.id AND s.status = :completed) AS completed_count, '
+            . '(SELECT COUNT(*) FROM schedule s WHERE s.schedule_plan_id = p.id AND s.status IN (:in_flight)) AS in_flight_count, '
+            . '(SELECT s.version_number FROM schedule s WHERE s.id = p.chosen_schedule_id AND s.schedule_plan_id = p.id) AS chosen_version_number, '
+            . '(SELECT COUNT(*) FROM schedule s WHERE s.schedule_plan_id = p.id AND s.status = :completed AND s.id IS DISTINCT FROM p.chosen_schedule_id) AS kept_version_count '
+            . 'FROM schedule_plan p LEFT JOIN calendar_entry e ON e.id = p.calendar_entry_id '
+            . 'WHERE p.id IN (:ids)',
+            [
+                'ids' => $planIds,
+                'active' => CalendarEntryStatus::ACTIVE->value,
+                'completed' => ScheduleStatus::COMPLETED->value,
+                'in_flight' => [ScheduleStatus::PENDING->value, ScheduleStatus::GENERATING->value],
+            ],
+            ['ids' => ArrayParameterType::STRING, 'in_flight' => ArrayParameterType::STRING],
+        );
+
+        $facts = [];
+        foreach ($rows as $row) {
+            $facts[(string) $row['id']] = [
+                'type' => SchedulePlanType::from((string) $row['type']),
+                'startDate' => (string) $row['start_day'],
+                'endDate' => (string) $row['end_day'],
+                'chosenScheduleId' => \is_string($row['chosen_schedule_id']) ? $row['chosen_schedule_id'] : null,
+                'firstChosenAt' => \is_string($row['first_chosen_at']) ? $row['first_chosen_at'] : null,
+                'autoValidatedDate' => \is_string($row['auto_validated_day']) ? $row['auto_validated_day'] : null,
+                'alertSeenDate' => \is_string($row['alert_seen_day']) ? $row['alert_seen_day'] : null,
+                'alertSeenKind' => \is_string($row['alert_seen_kind']) ? $row['alert_seen_kind'] : null,
+                'entryActive' => (bool) $row['entry_active'],
+                'hasChildren' => (bool) $row['has_children'],
+                'completedCount' => (int) $row['completed_count'],
+                'inFlightCount' => (int) $row['in_flight_count'],
+                'chosenVersionNumber' => null === $row['chosen_version_number'] ? null : (int) $row['chosen_version_number'],
+                'keptVersionCount' => (int) $row['kept_version_count'],
+            ];
+        }
+
+        return $facts;
+    }
+
+    /**
      * ADR-0002 inv. 5 + décision fondateur 2026-07-17 — LE PLAN NAÎT DU GESTE.
      *
      * Naissance SEULE : créer le plan de la période s'il n'existe pas, sinon rendre le
@@ -921,6 +1053,26 @@ final class SchedulePlanProvisioner
         }
     }
 
+    /**
+     * D3 — LE prédicat d'éligibilité à la validation automatique (alias `p` = `schedule_plan`,
+     * paramètre `:today` en `Y-m-d`), maison unique de la lecture des candidats et de l'UPDATE
+     * sous verrou : plan de PÉRIODE jamais validé (ni à la main, ni automatiquement), entrée
+     * active, sans enfant (une mère découpée ne porte jamais de version), et son 7ᵉ jour atteint —
+     * sur la date CIVILE de l'entrée (`calendar_entry.start_date`, DATE), jamais convertie.
+     */
+    private function autoValidationEligibleSql(): string
+    {
+        return \sprintf(
+            'p.type IN (\'%s\', \'%s\') AND p.chosen_schedule_id IS NULL AND p.first_chosen_at IS NULL AND p.auto_validated_date IS NULL '
+            . 'AND EXISTS (SELECT 1 FROM calendar_entry e WHERE e.id = p.calendar_entry_id AND e.status = \'%s\' AND e.start_date + %d <= CAST(:today AS date)) '
+            . 'AND NOT EXISTS (SELECT 1 FROM calendar_entry c WHERE c.parent_entry_id = p.calendar_entry_id)',
+            SchedulePlanType::CLOSURE->value,
+            SchedulePlanType::HOLIDAY->value,
+            CalendarEntryStatus::ACTIVE->value,
+            self::AUTO_VALIDATION_DELAY_DAYS,
+        );
+    }
+
     /** Inv. 9 : seuls closure/holiday portent un plan. Source unique du mapping. */
     private function periodPlanType(?string $periodType): ?SchedulePlanType
     {
@@ -1243,20 +1395,7 @@ final class SchedulePlanProvisioner
             && 6 === (int) $start->diff($end)->days;
 
         return $isFullWeek
-            ? 'Semaine du ' . $this->frenchDate($start)
-            : 'du ' . $this->frenchDate($start) . ' au ' . $this->frenchDate($end);
-    }
-
-    /**
-     * « 17 août 2026 », et « 1er septembre 2026 » le premier du mois. Table locale plutôt
-     * qu'`IntlDateFormatter` : ext-intl n'est pas une dépendance du projet, et ces noms de
-     * mois ne bougeront jamais.
-     */
-    private function frenchDate(DateTimeImmutable $date): string
-    {
-        $months = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
-        $day = (int) $date->format('j');
-
-        return (1 === $day ? '1er' : (string) $day) . ' ' . $months[(int) $date->format('n') - 1] . ' ' . $date->format('Y');
+            ? 'Semaine du ' . FrenchDate::long($start)
+            : 'du ' . FrenchDate::long($start) . ' au ' . FrenchDate::long($end);
     }
 }

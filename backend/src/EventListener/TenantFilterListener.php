@@ -4,15 +4,13 @@ declare(strict_types=1);
 
 namespace App\EventListener;
 
-use App\Doctrine\Filter\SeasonFilter;
-use App\Doctrine\Filter\TenantFilter;
 use App\Entity\Season;
 use App\Entity\User;
 use App\Repository\ClubUserRepository;
 use App\Repository\SeasonRepository;
 use App\Service\SeasonResolver;
 use App\Service\TenantConnectionContext;
-use Doctrine\ORM\EntityManagerInterface;
+use App\Service\TenantDoctrineScope;
 use Symfony\Component\Clock\ClockInterface;
 use Symfony\Component\EventDispatcher\EventSubscriberInterface;
 use Symfony\Component\HttpFoundation\JsonResponse;
@@ -36,12 +34,12 @@ class TenantFilterListener implements EventSubscriberInterface
     public const string STALE_SEASON_HEADER = 'X-Season-Rejected';
 
     public function __construct(
-        private readonly EntityManagerInterface $entityManager,
         private readonly ClubUserRepository $clubUserRepository,
         private readonly SeasonRepository $seasonRepository,
         private readonly SeasonResolver $seasonResolver,
         private readonly TokenStorageInterface $tokenStorage,
         private readonly TenantConnectionContext $tenantConnectionContext,
+        private readonly TenantDoctrineScope $tenantDoctrineScope,
         private readonly ClockInterface $clock,
     ) {}
 
@@ -66,6 +64,7 @@ class TenantFilterListener implements EventSubscriberInterface
         // Anti-staleness guard: never inherit a GUC from a previous request on
         // the same connection (shared kernel in tests, worker loops).
         $this->tenantConnectionContext->clear();
+        $this->tenantDoctrineScope->reset();
 
         $request = $event->getRequest();
 
@@ -139,15 +138,9 @@ class TenantFilterListener implements EventSubscriberInterface
             }
         }
 
-        $filterCollection = $this->entityManager->getFilters();
-
-        /** @var TenantFilter $filter */
-        $filter = $filterCollection->enable('tenant_filter');
-        $filter->setParameter('club_id', $clubId, 'uuid');
-
-        // Session-scoped GUC read by the RLS policies (the old SET LOCAL was a
-        // no-op outside a transaction — see TenantConnectionContext).
-        $this->tenantConnectionContext->setClubId($clubId);
+        // Tenant filter + session GUC read by the RLS policies, remembered so a
+        // manager reset later in the request re-applies them (TenantDoctrineScope).
+        $this->tenantDoctrineScope->scopeClub($clubId);
 
         // Season AFTER the GUC: the season lookups query the RLS-protected
         // season table — before the GUC they always found 0 rows and the
@@ -186,9 +179,7 @@ class TenantFilterListener implements EventSubscriberInterface
             $request->attributes->set('_season_id', $season->getId());
             $request->attributes->set('_season_readonly', $readonly);
 
-            /** @var SeasonFilter $seasonFilter */
-            $seasonFilter = $filterCollection->enable('season_filter');
-            $seasonFilter->setParameter('season_id', $season->getId(), 'uuid');
+            $this->tenantDoctrineScope->scopeSeason($season->getId());
         }
     }
 

@@ -70,6 +70,8 @@ final class TsFieldsMatchOpenApiSchemaTest extends TestCase
      *   - `schema` : un schéma nommé de `components.schemas` (les entités API Platform) ;
      *   - `response` : `[MÉTHODE, chemin]`, pour une route custom dont le corps 200 est écrit à la
      *     main inline dans `paths` (`CustomRoutesOpenApiFactory`).
+     * Optionnel, pour descendre dans le corps : `items` (un élément d'une propriété tableau) ou
+     * `property` (une propriété objet).
      *
      * @var array<string, array<string, mixed>>
      */
@@ -83,11 +85,21 @@ final class TsFieldsMatchOpenApiSchemaTest extends TestCase
         // P4-154 (P2-51) — le bloc de mutualisation, type miroir écrit à la main côté wizard.
         'wizard/SharedTrainingBlock' => ['ts' => 'wizard/api.ts', 'interface' => 'SharedTrainingBlock', 'schema' => 'SharedTrainingBlock'],
         'matches/DeadlineOutlook' => ['ts' => 'matches/api/competitions.ts', 'interface' => 'DeadlineOutlook', 'response' => ['GET', '/api/matches/deadline-outlook']],
+        // La vue « Déjà dans FBI » : `swept` (combien cette lecture a fait passer) est lu par le front
+        // pour rafraîchir les rencontres — un renommage serveur le rendrait muet sans bruit.
+        'matches/LeagueValidationOutlook' => ['ts' => 'matches/api/competitions.ts', 'interface' => 'LeagueValidationOutlook', 'response' => ['GET', '/api/fixtures/league-validation']],
         'planning/ValidateImpact' => ['ts' => 'planning/api.ts', 'interface' => 'ValidateImpact', 'response' => ['GET', '/api/schedules/{id}/validate-impact']],
         'matches/FfbbRencontresResult' => ['ts' => 'matches/api/ffbb.ts', 'interface' => 'FfbbRencontresResult', 'response' => ['GET', '/api/ffbb/rencontres']],
         // Une ligne d'engagement vit dans le tableau `engagements` du corps 200 : `items` descend
         // dans le schéma d'UN élément (deducedLevel/alignment gardés contre une dérive de champ).
         'matches/FfbbEngagement' => ['ts' => 'matches/api/ffbb.ts', 'interface' => 'FfbbEngagement', 'response' => ['GET', '/api/ffbb/engagements'], 'items' => 'engagements'],
+        // Journal de nouveautés : une note vue du membre et de la console, éléments du tableau
+        // `items` des deux GET (schémas inline écrits à la main — le champ `version` y entre).
+        'release-notes/ReleaseNoteItem' => ['ts' => 'release-notes/api.ts', 'interface' => 'ReleaseNoteItem', 'response' => ['GET', '/api/release-notes'], 'items' => 'items'],
+        'admin/AdminReleaseNote' => ['ts' => 'admin/api.ts', 'interface' => 'AdminReleaseNote', 'response' => ['GET', '/api/admin/release-notes'], 'items' => 'items'],
+        // Le dernier dépôt FBI vit dans l'objet `latest` du corps 200 : `property` descend dans cet
+        // objet. `depositedDate` (le jour du dépôt au fuseau du club, titre du module) y est gardé.
+        'matches/FbiIngestionLatest' => ['ts' => 'matches/api/fbi.ts', 'interface' => 'FbiIngestionLatest', 'response' => ['GET', '/api/fbi-ingestions/latest'], 'property' => 'latest'],
     ];
     private const string SNAPSHOT = __DIR__ . '/../../../specs/courantes/openapi-snapshot.json';
     private const string FRONT = __DIR__ . '/../../../frontend/src/features';
@@ -222,6 +234,15 @@ final class TsFieldsMatchOpenApiSchemaTest extends TestCase
             self::assertIsArray($arrayProperty, \sprintf('La propriété tableau « %s » est absente du schéma de réponse.', $itemsKey));
             $schema = $arrayProperty['items'] ?? null;
             self::assertIsArray($schema, \sprintf('La propriété « %s » n\'a pas de bloc `items`.', $itemsKey));
+        }
+
+        // `property` : l'interface décrit un OBJET porté par une propriété du corps (ex. `latest`).
+        if (isset($pair['property'])) {
+            $propertyKey = $pair['property'];
+            self::assertIsString($propertyKey);
+            self::assertIsArray($schema);
+            $schema = $schema['properties'][$propertyKey] ?? null;
+            self::assertIsArray($schema, \sprintf('La propriété objet « %s » est absente du schéma de réponse.', $propertyKey));
         }
 
         self::assertIsArray($schema);

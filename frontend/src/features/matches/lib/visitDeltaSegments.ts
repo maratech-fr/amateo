@@ -16,7 +16,21 @@ export interface VisitDelta {
   planningChanged: boolean;
 }
 
+/** Un segment du delta et l'écran où agir (`null` : aucun écran unique, le segment reste un texte). */
+export interface VisitDeltaLinkedSegment {
+  label: string;
+  to: string | null;
+}
+
 export function visitDeltaSegments(delta: VisitDelta): string[] {
+  return visitDeltaLinkedSegments(delta).map((segment) => segment.label);
+}
+
+/**
+ * B1 — les mêmes segments, chacun avec sa destination : les matchs arrivés mènent à l'Importer, les
+ * conflits neufs aux seuls conflits nouveaux (`?nouveaux=1`), « le planning a changé » à aucun écran.
+ */
+export function visitDeltaLinkedSegments(delta: VisitDelta): VisitDeltaLinkedSegment[] {
   // FRT-37 — garde de forme (maison unique). Un delta MALFORMÉ (payload API partiel, `{}`) lisait
   // `.newConflictFingerprints.length` sur `undefined` et abattait la route — cette fonction alimente
   // le bandeau du module ET la tuile cockpit. Compteur non-number / fingerprints non-array / booléen
@@ -28,16 +42,16 @@ export function visitDeltaSegments(delta: VisitDelta): string[] {
   ) {
     return [];
   }
-  const segments: string[] = [];
+  const segments: VisitDeltaLinkedSegment[] = [];
   if (delta.newFixturesCount > 0) {
-    segments.push(`${delta.newFixturesCount} match${delta.newFixturesCount > 1 ? "s" : ""} arrivé${delta.newFixturesCount > 1 ? "s" : ""}`);
+    segments.push({ label: `${delta.newFixturesCount} match${delta.newFixturesCount > 1 ? "s" : ""} arrivé${delta.newFixturesCount > 1 ? "s" : ""}`, to: "/matchs/importer" });
   }
   const conflicts = delta.newConflictFingerprints.length;
   if (conflicts > 0) {
-    segments.push(`${conflicts} nouveau${conflicts > 1 ? "x" : ""} conflit${conflicts > 1 ? "s" : ""}`);
+    segments.push({ label: `${conflicts} nouveau${conflicts > 1 ? "x" : ""} conflit${conflicts > 1 ? "s" : ""}`, to: "/matchs/conflits?nouveaux=1" });
   }
   if (delta.planningChanged) {
-    segments.push("le planning de saison a changé");
+    segments.push({ label: "le planning de saison a changé", to: null });
   }
   return segments;
 }

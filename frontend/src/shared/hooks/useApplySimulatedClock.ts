@@ -29,3 +29,16 @@ export function useApplySimulatedClock(): void {
     }
   }, [simulatedToday, queryClient]);
 }
+
+/**
+ * La console superadmin vit à la date RÉELLE : venu d'un club démo daté (horloge simulée posée
+ * par AppLayout), entrer sous `/admin` relâche l'override au montage — sinon « Il y a N jours »
+ * se compterait depuis la date simulée. Le `?today=` de dev garde la priorité
+ * (`applyServerToday`). Revenir dans l'app remonte AppLayout, dont `useApplySimulatedClock`
+ * ré-applique la date du club. Monté dans `AdminShell`.
+ */
+export function useReleaseSimulatedClock(): void {
+  useEffect(() => {
+    applyServerToday(null);
+  }, []);
+}

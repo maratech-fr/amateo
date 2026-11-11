@@ -372,8 +372,9 @@ final readonly class AdminMonitoringService
             'effectivePlan' => $this->effectivePlan($row, $storedCode, $storedName, $decouverte),
             'billingCycle' => $this->nullableString($row, 'billing_cycle'),
             'generationCountSeason' => $this->integer($row, 'generation_count_season'),
-            'createdAt' => (string) $row['created_at'],
-            'lastActivityAt' => $this->nullableString($row, 'last_activity_at'),
+            // RFC 3339, comme l'annonce l'OpenAPI (`date-time`) — jamais la forme brute PostgreSQL.
+            'createdAt' => $this->rfc3339((string) $row['created_at']),
+            'lastActivityAt' => $this->nullableRfc3339($row, 'last_activity_at'),
             'unsubscribed' => null !== $row['unsubscribed_at'],
             'currentSeason' => null === $row['season_id'] ? null : [
                 'id' => (string) $row['season_id'],
@@ -523,6 +524,20 @@ final readonly class AdminMonitoringService
         $value = $row[$key] ?? null;
 
         return null === $value ? null : (string) $value;
+    }
+
+    /** Un horodatage PostgreSQL (`2026-11-10 23:30:00+00`) servi en RFC 3339 (`2026-11-10T23:30:00+00:00`). */
+    private function rfc3339(string $raw): string
+    {
+        return new DateTimeImmutable($raw)->format(\DATE_ATOM);
+    }
+
+    /** @param array<string, mixed> $row */
+    private function nullableRfc3339(array $row, string $key): ?string
+    {
+        $value = $this->nullableString($row, $key);
+
+        return null === $value ? null : $this->rfc3339($value);
     }
 
     private function rate(int $count, int $total): float

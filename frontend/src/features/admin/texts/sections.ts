@@ -91,10 +91,10 @@ export const ADMIN_SECTIONS_TEXTS = {
 
   // ── ClubRequestsSection ──────────────────────────────────────────────────────────────────────
   clubRequestsEyebrow: "Arbitrages",
-  clubRequestsHeading: "Demandes de création & adhésions en attente",
-  clubRequestsCreationHeading: "Demandes de création de club",
+  clubRequestsHeading: "Demandes de club & adhésions en attente",
+  clubRequestsCreationHeading: "Demandes de club : création, reprise, promotion",
   clubRequestsCreationHint:
-    "Sans mail FFBB (aucun lien envoyé) ou expirées : la console est la seule voie. Approuver crée l'espace du club.",
+    "Un contact officiel FFBB approuve ou refuse ; sans mail FFBB (aucun lien envoyé) ou lien expiré, la console est la seule voie. La liste couvre les créations, les reprises d'un club sans gestionnaire et les promotions de Membre.",
   clubRequestsCreationEmpty: "Aucune demande en attente.",
   clubRequestsBadgeExpired: "Expirée",
   clubRequestsBadgeNoEmail: "Sans mail FFBB",
@@ -177,6 +177,8 @@ export const ADMIN_SECTIONS_TEXTS = {
     "La mise en production programmée n'est pas configurée : un jeton GitHub (et le dépôt cible) doit être posé côté serveur avant de pouvoir programmer un déploiement.",
   deploymentGithubUnreachableTags: "GitHub est injoignable — la liste des versions n'a pas pu être chargée.",
   deploymentGithubUnreachableSchedule: "GitHub est injoignable — réessayez dans un instant.",
+  deploymentTagsReadError: "La liste des versions déployables n'a pas pu être lue.",
+  deploymentTagsRetry: "Réessayer",
   deploymentActiveLabel: "Déploiement en attente",
   deploymentCancel: "Annuler la mise en production",
   deploymentVersionLabel: "Version",
@@ -268,6 +270,7 @@ export const ADMIN_SECTIONS_TEXTS = {
   feedbackBlockLastAction: "Dernier geste",
   feedbackBlockModalState: "État de la modale",
   feedbackModalStateTruncated: "tronqué",
+  feedbackModalStateRegionLabel: "État de la fenêtre signalée (zone défilante)",
   feedbackBlockTechnical: "Technique",
   feedbackScreenshot: "Capture d'écran",
   feedbackScreenshotAlt: "Capture d'écran jointe au signalement",
@@ -328,10 +331,45 @@ export const ADMIN_SECTIONS_TEXTS = {
   releaseNotesDateLabel: "Date",
   releaseNotesBodyLabel: "Contenu",
   releaseNotesSubmit: "Enregistrer",
+  // Raison du bouton « Enregistrer » désactivé (A11Y-30) : ce qui manque, dans l'ordre du formulaire.
+  releaseNotesSubmitMissing: (missing: { title: boolean; date: boolean; content: boolean }): string => {
+    const parts = [missing.title ? "un titre" : null, missing.date ? "une date" : null, missing.content ? "un contenu" : null].filter(
+      (part): part is string => null !== part,
+    );
+    const list = parts.length > 1 ? `${parts.slice(0, -1).join(", ")} et ${parts[parts.length - 1]}` : (parts[0] ?? "");
+    return `Pour enregistrer, ajoutez ${list}.`;
+  },
   releaseNotesEmpty: "Aucune note pour le moment.",
   releaseNotesBadgeDraft: "Brouillon",
   releaseNotesBadgePublished: "Publiée",
   releaseNotesPublish: "Publier",
   releaseNotesDelete: "Supprimer",
   releaseNotesToastSaved: "Note enregistrée (brouillon).",
+  releaseNotesVersionLabel: "Version",
+  releaseNotesVersionHint: "Numéro de la version en service, ex. 1.3.5 (facultatif). Pré-rempli quand l'application connaît sa version.",
+  // Éditeur riche (PR B Actualités) — barre « Mise en forme », couleurs, emoji, aperçu.
+  releaseNotesToolbarLabel: "Mise en forme",
+  releaseNotesToolBold: "Gras",
+  releaseNotesToolItalic: "Italique",
+  releaseNotesToolHeading: "Intertitre",
+  releaseNotesToolBulletList: "Liste à puces",
+  releaseNotesToolOrderedList: "Liste numérotée",
+  releaseNotesColorLabel: "Couleur du texte",
+  releaseNotesColorDefault: "Couleur par défaut",
+  releaseNotesColorRouge: "Rouge",
+  releaseNotesColorOrange: "Orange",
+  releaseNotesColorVert: "Vert",
+  releaseNotesColorBleu: "Bleu",
+  releaseNotesColorGris: "Gris",
+  releaseNotesEmoji: "Emoji",
+  releaseNotesEmojiDialog: "Insérer un emoji",
+  releaseNotesEmojiThemeSport: "Sport",
+  releaseNotesEmojiThemeFaces: "Visages",
+  releaseNotesEmojiThemeGestures: "Gestes",
+  releaseNotesEmojiThemeObjects: "Objets",
+  releaseNotesEmojiThemeSymbols: "Symboles",
+  releaseNotesEmojiThemeParty: "Fêtes",
+  releaseNotesPreview: "Aperçu",
+  releaseNotesUndo: "Annuler",
+  releaseNotesRedo: "Rétablir",
 } as const satisfies Record<string, string | ((...args: never[]) => string)>;

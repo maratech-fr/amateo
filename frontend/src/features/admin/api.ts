@@ -1,5 +1,7 @@
 import ky from "ky";
 
+import type { RichDoc } from "@/shared/lib/richDoc";
+
 export interface AdminIdentity {
   id: string;
   email: string;
@@ -390,6 +392,10 @@ export interface AdminReleaseNote {
   date: string;
   publishedAt: string | null;
   createdAt: string;
+  /** Version du produit annoncée (« 1.3.5 »), ou null. */
+  version: string | null;
+  /** Corps mis en forme (liste blanche serveur), ou null pour une note texte. */
+  bodyRich: RichDoc | null;
 }
 
 export interface AdminReleaseNotesResponse {
@@ -399,8 +405,13 @@ export interface AdminReleaseNotesResponse {
 /** Corps d'écriture d'une note (création + édition). */
 export interface ReleaseNoteWritePayload {
   title: string;
-  body: string;
+  /** Texte brut (ancien bundle) ; ignoré par le serveur quand `bodyRich` est présent (il le dérive). */
+  body?: string;
+  /** Corps mis en forme ; présent et non null → validé serveur, `body` dérivé. */
+  bodyRich?: RichDoc | null;
   noteDate: string;
+  /** Version annoncée ; absente ou null = note sans version (le serveur normalise). */
+  version?: string | null;
 }
 
 // P5-6 — l'inbox des signalements (rail SA mergé) : liste + QoS + détail + verdicts.

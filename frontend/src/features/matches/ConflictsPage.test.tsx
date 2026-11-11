@@ -1,14 +1,12 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { HTTPError } from "ky";
 import { createMemoryRouter, RouterProvider, useLocation } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useToastStore } from "@/shared/stores/toastStore";
-import { visibleTextOccurrences } from "@/test/utils";
 
-import type { Conflict, ConflictMailingResult } from "./api";
+import type { Conflict } from "./api";
 import * as matchesApi from "./api";
 import { ConflictsPage } from "./ConflictsPage";
 import { useMatchesStore } from "./store";
@@ -45,11 +43,17 @@ vi.mock("@/shared/session/queries", () => {
 
 const compState = vi.hoisted(() => ({ competitions: [] as unknown[] }));
 
+// Le « gardien » (delta de visite) : par défaut une première visite muette ; B1 pilote les
+// empreintes des conflits neufs, ou une lecture jamais résolue (`pending`).
+const FIRST_VISIT = { firstVisit: true, newFixturesCount: 0, newConflictFingerprints: [] as string[], planningChanged: false, referenceTakenAt: "2026-10-01T10:00:00+00:00" };
+const visitState = vi.hoisted(() => ({ delta: null as unknown, pending: false }));
+
 vi.mock("./api", () => ({
   getConflicts: vi.fn(() =>
     Promise.resolve({ clubId: "c", seasonId: "s", seasonPlanChosen: true, conflicts: state.conflicts, held: state.held, ...(undefined === state.coachMailing ? {} : { coachMailing: state.coachMailing }) }),
   ),
   mailConflictsToCoaches: vi.fn(),
+  getConflictMailPreview: vi.fn(() => new Promise(() => undefined)),
   getCompetitions: vi.fn(() => Promise.resolve(compState.competitions)),
   putConflictResolution: vi.fn(() => Promise.resolve({ fingerprint: "fp", resolution: { status: "DEROGATION_REQUESTED", note: null, updatedAt: "2026-10-03T20:45:00+02:00" } })),
   deleteConflictResolution: vi.fn(() => Promise.resolve(undefined)),
@@ -73,7 +77,7 @@ vi.mock("./api", () => ({
       { id: "fx-2", teamId: "team-2", seasonId: "s", competitionId: null, matchDate: "2026-10-03", homeAway: "HOME", opponentLabel: "Adv", status: "PLACED", venueId: "venue-1", kickoffTime: "18:00", externalRef: null, fbiVenueLabel: null, placementSource: "MANUAL", unplacedReason: null, neutralGround: false, reviewState: "NEW", reviewedAt: null, pendingDeviations: [], ffbbRencontreId: null, opponentOrganismeCode: null, opponentTeamKey: null, suggestedVenueId: null },
     ]),
   ),
-  postModuleVisit: vi.fn(() => Promise.resolve({ firstVisit: true, newFixturesCount: 0, newConflictFingerprints: [], planningChanged: false, referenceTakenAt: "2026-10-01T10:00:00+00:00" })),
+  postModuleVisit: vi.fn(() => (visitState.pending ? new Promise(() => undefined) : Promise.resolve(visitState.delta))),
 }));
 
 // Sonde de destination : « Voir la semaine » navigue vers /matchs ; on LIT la query de
@@ -110,6 +114,8 @@ beforeEach(() => {
   state.held = [];
   state.coachMailing = DEFAULT_COACH_MAILING;
   compState.competitions = [];
+  visitState.delta = FIRST_VISIT;
+  visitState.pending = false;
   meState.role = "admin";
   meState.isDemo = false;
   meState.seasonReadonly = false;
@@ -497,7 +503,7 @@ describe("ConflictsPage — traitement des conflits (P4-207)", () => {
     expect(screen.getByRole("button", { name: "Traiter le conflit" })).toBeInTheDocument();
   });
 
-  it("groupe Traitement : les 4 puces avec compteurs FIXES saison, un compteur à 0 en sourdine", async () => {
+  it("groupe Traitement : les 4 puces avec compteurs FIXES saison, un compteur à 0 lisible sur la puce pressée", async () => {
     state.conflicts = [
       { type: "MATCH_MATCH", severity: 3, coachId: "coach-1", fingerprint: "fp-open", resolution: null, left: side("fx-1", "team-1"), right: side("fx-2", "team-2") },
       { type: "MATCH_TRAINING", severity: 5, coachId: "coach-1", fingerprint: "fp-treated", resolution: { status: "RESOLVED_INTERNALLY", note: null, updatedAt: "2026-10-03T20:45:00+02:00" }, fixture: side("fx-1", "team-1"), training },
@@ -507,9 +513,12 @@ describe("ConflictsPage — traitement des conflits (P4-207)", () => {
     for (const label of ["À traiter", "Dérogation demandée", "Réglé en interne", "Sans solution pour l'instant"]) {
       expect(within(treatment).getByRole("button", { name: new RegExp(label) })).toBeInTheDocument();
     }
-    // 1 à traiter, 1 réglé en interne, 0 dérogation (en sourdine).
+    // 1 à traiter, 1 réglé en interne, 0 dérogation. Puces pressées d'office : le 0 garde la couleur
+    // du texte sur le fond accent plein (la sourdine ne vaut que pour une puce non pressée).
     expect(within(within(treatment).getByRole("button", { name: /À traiter/ })).getByText("1")).not.toHaveClass("text-muted-foreground");
-    expect(within(within(treatment).getByRole("button", { name: /Dérogation demandée/ })).getByText("0")).toHaveClass("text-muted-foreground");
+    const derogation = within(treatment).getByRole("button", { name: /Dérogation demandée/ });
+    expect(derogation).toHaveAttribute("aria-pressed", "true");
+    expect(within(derogation).getByText("0")).not.toHaveClass("text-muted-foreground");
   });
 
   it("le filtre « domicile » masque un COMPETITION_INCOMPLETE (aucun côté)", async () => {
@@ -528,16 +537,18 @@ describe("ConflictsPage — traitement des conflits (P4-207)", () => {
     expect(screen.queryByRole("button", { name: /Autres conflits/ })).not.toBeInTheDocument();
   });
 
-  it("une famille entièrement traitée garde sa chip, compteur ouverts 0 en sourdine", async () => {
+  it("une famille entièrement traitée garde sa chip, compteur ouverts 0 lisible sur la puce pressée", async () => {
     state.conflicts = [
       { type: "MATCH_MATCH", severity: 3, coachId: "coach-1", fingerprint: "fp-o", resolution: null, left: side("fx-1", "team-1"), right: side("fx-2", "team-2") },
       { type: "MATCH_TRAINING", severity: 5, coachId: "coach-1", fingerprint: "fp-t", resolution: { status: "RESOLVED_INTERNALLY", note: null, updatedAt: "2026-10-03T20:45:00+02:00" }, fixture: side("fx-1", "team-1"), training },
     ];
     renderAt();
-    // La famille « Match × entraînement » est TOUTE traitée : sa chip reste, à 0 en sourdine.
+    // La famille « Match × entraînement » est TOUTE traitée : sa chip reste, à 0. Pressée d'office,
+    // son 0 garde la couleur du texte sur le fond accent plein (sourdine = puce non pressée seulement).
     const chip = await screen.findByRole("button", { name: /Match × entraînement/ });
+    expect(chip).toHaveAttribute("aria-pressed", "true");
     const zero = within(chip).getByText("0");
-    expect(zero).toHaveClass("text-muted-foreground");
+    expect(zero).not.toHaveClass("text-muted-foreground");
     // La famille « Personne en double » garde son compte ouvert (1), non muet.
     expect(within(screen.getByRole("button", { name: /Personne en double/ })).getByText("1")).not.toHaveClass("text-muted-foreground");
   });
@@ -731,49 +742,41 @@ describe("ConflictsPage — filet des chemins de lecture (FRT-36)", () => {
 });
 
 // ── Envoyer les conflits aux coachs ─────────────────────────────────────────────────────────
-// Le serveur calcule TOUT (`coachMailing` du GET, résultat du POST) ; l'écran n'affiche que ça.
-// Textes : clés de `texts/conflictsMail.ts`, jamais la phrase recopiée.
+// La barre et sa modale d'aperçu vivent dans `CoachMailBar.tsx` : leurs tests (bouton, grisés,
+// confirmation, toast, ligne « Envoyé le … », aperçu) sont dans `CoachMailBar.test.tsx` et
+// `CoachMailBar.net.test.tsx`. Ici, seulement ce que la PAGE en fait : où elle la pose, et qu'elle
+// la garde sans conflit. Textes : clés de `texts/conflictsMail.ts`, jamais la phrase recopiée.
 
 const SENT_AT = "2026-11-03T14:32:00+01:00"; // affiché « 03/11/2026 à 14:32 » (heure murale servie)
 
-function mailingResult(over: Partial<ConflictMailingResult> = {}): ConflictMailingResult {
-  return { sentAt: SENT_AT, conflictCount: 0, recipients: [], cleared: [], skipped: [], failed: [], ...over };
-}
-const recipient = (n: number) => ({ coachId: `r-${n}`, firstName: `Coach${n}`, lastName: "Liste", conflictCount: 1 });
-const clearedCoach = (n: number) => ({ coachId: `c-${n}`, firstName: `Coach${n}`, lastName: "Plus" });
-const KARIM = { coachId: "coach-karim", firstName: "Karim", lastName: "Benali" };
-const EMMA = { coachId: "coach-emma", firstName: "Emma", lastName: "Durand" };
-const LEA = { coachId: "coach-lea", firstName: "Léa", lastName: "Roux" };
-
-function httpError(status: number, data: unknown): HTTPError {
-  const response = new Response(JSON.stringify(data), { status, headers: { "content-type": "application/json" } });
-  const error = new HTTPError(response, new Request("http://localhost/api/fixtures/conflicts/mail-coaches", { method: "POST" }), {} as never);
-  (error as unknown as { data?: unknown }).data = data;
-  return error;
-}
-
 const findSendButton = () => screen.findByRole("button", { name: MAIL.sendButton });
-const lastToast = () => useToastStore.getState().toasts.at(-1);
 /** Grisé : `disabled` natif (motif en clair à côté) ou `aria-disabled` (motif par `disabledReason`) — le motif, lui, est prouvé à part. */
 const expectGreyed = (button: HTMLElement): void => {
   expect(button.hasAttribute("disabled") || "true" === button.getAttribute("aria-disabled")).toBe(true);
 };
-const statusPrefix = () => MAIL.statusLine({ date: "§", time: "§", sender: null, mailedCount: 1, skippedNames: [] }).split("§")[0];
 
-describe("ConflictsPage — envoyer les conflits aux coachs : qui voit le bouton", () => {
-  it("un gestionnaire voit « Envoyer aux coachs », actif quand il y a des conflits de personne", async () => {
+/** Le plus petit ancêtre commun de deux nœuds. */
+function commonAncestor(a: HTMLElement, b: HTMLElement): HTMLElement {
+  let node: HTMLElement | null = a;
+  while (null !== node && !node.contains(b)) {
+    node = node.parentElement;
+  }
+  if (null === node) {
+    throw new Error("aucun ancêtre commun");
+  }
+  return node;
+}
+
+describe("ConflictsPage — envoyer les conflits aux coachs : où la page pose la barre", () => {
+  it("le bouton vit dans la rangée FIXE « Regrouper par » (plan D11), pas au-dessus des filtres et de la liste", async () => {
     renderAt();
+    await screen.findByRole("button", { name: /Mara · 3/ });
     const button = await findSendButton();
-    expect(button).not.toHaveAttribute("aria-disabled");
-    expect(button).toBeEnabled();
-  });
-
-  it("un membre n'a pas le bouton mais lit la ligne du dernier envoi", async () => {
-    meState.role = "member";
-    state.coachMailing = { ...DEFAULT_COACH_MAILING, last: { sentAt: SENT_AT, sentByFirstName: "Nadia", mailedCount: 7, skippedCoachIds: [] } };
-    renderAt();
-    expect(await screen.findByText(MAIL.statusLine({ date: "03/11/2026", time: "14:32", sender: "Nadia", mailedCount: 7, skippedNames: [] }))).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: MAIL.sendButton })).not.toBeInTheDocument();
+    const row = commonAncestor(screen.getByRole("group", { name: MATCHES_TEXTS.groupByLabel }), button);
+    // La rangée du pivot ne contient ni les puces de familles ni les entrées de la liste : si le
+    // bouton est posé ailleurs, le seul ancêtre commun est la page entière, qui les contient.
+    expect(row.contains(screen.getByRole("button", { name: /Personne en double/ })), "la rangée du bouton ne doit pas englober les puces de familles").toBe(false);
+    expect(row.contains(screen.getByRole("button", { name: /Mara · 3/ })), "la rangée du bouton ne doit pas englober la liste").toBe(false);
   });
 
   it("saison sans conflit : le bouton et la ligne d'état restent rendus au-dessus de l'état vide", async () => {
@@ -786,150 +789,99 @@ describe("ConflictsPage — envoyer les conflits aux coachs : qui voit le bouton
     expectGreyed(button);
     expect(button).toHaveAccessibleDescription(MAIL.disabledNothingToSend);
   });
-
-  it("zéro conflit de personne mais un coach à prévenir (« plus aucun conflit ») : le bouton reste ACTIF", async () => {
-    state.conflicts = [];
-    state.coachMailing = { personConflictCount: 0, pendingRecipientCount: 1, last: { sentAt: SENT_AT, sentByFirstName: "Nadia", mailedCount: 2, skippedCoachIds: [] } };
-    renderAt();
-    const button = await findSendButton();
-    expect(button).not.toHaveAttribute("aria-disabled");
-    expect(button).toBeEnabled();
-  });
 });
 
-describe("ConflictsPage — envoyer aux coachs : désactivé, avec sa raison découvrable", () => {
-  it.each([
-    ["rien à envoyer ni personne à prévenir", (): void => { state.coachMailing = { personConflictCount: 0, pendingRecipientCount: 0, last: null }; }, (): string => MAIL.disabledNothingToSend],
-    ["club de démonstration", (): void => { meState.isDemo = true; }, (): string => MAIL.disabledDemo],
-    ["saison archivée (saison de travail en lecture seule)", (): void => { meState.seasonReadonly = true; }, (): string => MAIL.disabledArchived],
-    ["réponse sans `coachMailing`", (): void => { state.coachMailing = undefined; }, (): string => MAIL.disabledUnavailable],
-  ])("%s : bouton désactivé, raison annoncée, le clic n'ouvre rien", async (_label, arrange, reason) => {
-    arrange();
+// B1 — « N nouveaux conflits » du bandeau mène ici avec `?nouveaux=1` : seuls les conflits dont
+// l'empreinte est neuve depuis la dernière visite (le delta du « gardien »), filtre porté par
+// l'adresse seulement. Le lien FAIT FOI : il remet « domicile seulement » à non pour la session,
+// pour que le compte affiché soit celui du bandeau (extérieurs compris).
+describe("ConflictsPage — les conflits nouveaux depuis la dernière visite (B1)", () => {
+  // Trois conflits du coach Mara : deux neufs (dont un extérieur/extérieur), un ancien.
+  function seasonWithNewConflicts(): Conflict[] {
+    return [
+      { type: "MATCH_MATCH", severity: 3, resolution: null, coachId: "coach-1", fingerprint: "fp-home", left: side("fx-1", "team-1"), right: side("fx-2", "team-2") },
+      { type: "MATCH_TRAINING", severity: 5, resolution: null, coachId: "coach-1", fingerprint: "fp-old", fixture: side("fx-1", "team-1"), training },
+      {
+        type: "MATCH_MATCH",
+        severity: 3,
+        resolution: null,
+        coachId: "coach-1",
+        fingerprint: "fp-away",
+        left: { ...side("fx-3", "team-1"), homeAway: "AWAY" as const },
+        right: { ...side("fx-4", "team-2"), homeAway: "AWAY" as const },
+      },
+    ];
+  }
+  const NEW_SINCE_VISIT = { ...FIRST_VISIT, firstVisit: false, newConflictFingerprints: ["fp-home", "fp-away"] };
+  const isNewChip = (name: string): boolean => name.startsWith(MATCHES_TEXTS.newConflictsChip);
+
+  beforeEach(() => {
+    state.conflicts = seasonWithNewConflicts();
+    visitState.delta = NEW_SINCE_VISIT;
+  });
+
+  it("sans ?nouveaux : la puce « Nouveaux » porte le compte des neufs, non pressée, et tout reste listé", async () => {
+    renderAt();
+    const chip = await screen.findByRole("button", { name: isNewChip });
+    expect(chip).toHaveAttribute("aria-pressed", "false");
+    expect(chip).toHaveTextContent("2");
+    expect(screen.getByRole("button", { name: /Mara · 3/ })).toBeInTheDocument();
+  });
+
+  it("?nouveaux=1 : seuls les conflits neufs, puce pressée", async () => {
+    renderAt("/matchs/conflits?nouveaux=1");
+    expect(await screen.findByRole("button", { name: /Mara · 2/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: isNewChip })).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("presser la puce ne garde que les neufs ; la relâcher rend tout", async () => {
     const user = userEvent.setup();
     renderAt();
-    const button = await findSendButton();
-    expectGreyed(button);
-    expect(button).toHaveAccessibleDescription(reason());
-    await user.click(button);
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    expect(matchesApi.mailConflictsToCoaches).not.toHaveBeenCalled();
+    await user.click(await screen.findByRole("button", { name: isNewChip }));
+    expect(await screen.findByRole("button", { name: /Mara · 2/ })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: isNewChip }));
+    expect(await screen.findByRole("button", { name: /Mara · 3/ })).toBeInTheDocument();
   });
 
-  it.each([
-    ["rien à envoyer ni personne à prévenir", (): void => { state.coachMailing = { personConflictCount: 0, pendingRecipientCount: 0, recipientCount: 0, last: null }; }, (): string => MAIL.disabledNothingToSend],
-    ["club de démonstration", (): void => { meState.isDemo = true; }, (): string => MAIL.disabledDemo],
-    ["saison archivée (saison de travail en lecture seule)", (): void => { meState.seasonReadonly = true; }, (): string => MAIL.disabledArchived],
-    ["réponse sans `coachMailing`", (): void => { state.coachMailing = undefined; }, (): string => MAIL.disabledUnavailable],
-  ])("%s : le motif se LIT à côté du bouton grisé (texte visible, pas un title ni un sr-only)", async (_label, arrange, reason) => {
-    arrange();
+  it("aucun conflit neuf et pas de ?nouveaux : pas de puce", async () => {
+    visitState.delta = { ...NEW_SINCE_VISIT, newConflictFingerprints: [] };
     renderAt();
-    const button = await findSendButton();
-    expectGreyed(button);
-    const bar = button.closest("div");
-    const visible = visibleTextOccurrences(reason()).filter((element) => null !== bar && bar.contains(element) && !button.contains(element));
-    expect(visible.length, "le motif doit être un texte visible dans la rangée du bouton").toBeGreaterThan(0);
+    await screen.findByRole("button", { name: /Mara · 3/ });
+    await waitFor(() => expect(matchesApi.postModuleVisit).toHaveBeenCalled());
+    expect(screen.queryByRole("button", { name: isNewChip })).not.toBeInTheDocument();
   });
-});
 
-describe("ConflictsPage — envoyer aux coachs : la confirmation dit ce qui part", () => {
-  it("elle annonce le nombre de coachs et de conflits SERVIS par le serveur, et que tous les conflits de personnes partent, filtres ou non", async () => {
-    // Des nombres que l'écran ne peut pas recompter depuis sa liste : ils ne viennent que de `coachMailing`.
-    state.coachMailing = { personConflictCount: 7, pendingRecipientCount: 1, recipientCount: 4, last: null };
+  it("visite pas encore résolue : pas de puce, rien n'est filtré", async () => {
+    visitState.pending = true;
+    renderAt();
+    expect(await screen.findByRole("button", { name: /Mara · 3/ })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: isNewChip })).not.toBeInTheDocument();
+  });
+
+  it("?nouveaux=1 remet « domicile seulement » à non pour la session : l'extérieur neuf est listé", async () => {
+    useMatchesStore.setState({ conflictsHomeOnly: true });
+    renderAt("/matchs/conflits?nouveaux=1");
+    expect(await screen.findByRole("button", { name: /Mara · 2/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^Tous/ })).toHaveAttribute("aria-pressed", "true");
+    expect(useMatchesStore.getState().conflictsHomeOnly).toBe(false);
+  });
+
+  it("?nouveaux=1 sans conflit neuf : l'état vide le dit, et « Voir tous les conflits » rend tout", async () => {
     const user = userEvent.setup();
-    renderAt();
-    await user.click(await findSendButton());
-    const dialog = screen.getByRole("dialog", { name: MAIL.confirmTitle });
-    expect(within(dialog).getByText(MAIL.confirmCounts({ coachCount: 4, conflictCount: 7 }), { exact: false })).toBeInTheDocument();
-    expect(within(dialog).getByText(MAIL.confirmIgnoresFilters, { exact: false })).toBeInTheDocument();
+    visitState.delta = { ...NEW_SINCE_VISIT, newConflictFingerprints: [] };
+    renderAt("/matchs/conflits?nouveaux=1");
+    expect(await screen.findByText(MATCHES_TEXTS.noNewConflicts)).toBeInTheDocument();
+    expect(screen.getByText(MATCHES_TEXTS.noNewConflictsHint)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: MATCHES_TEXTS.showAllConflicts }));
+    expect(await screen.findByRole("button", { name: /Mara · 3/ })).toBeInTheDocument();
   });
-});
 
-describe("ConflictsPage — envoyer aux coachs : confirmation puis envoi", () => {
-  it("le clic ouvre une confirmation qui nomme la saison ; « Annuler » n'envoie rien", async () => {
+  it("?nouveaux=1 compte comme un filtre posé : « Réinitialiser » rend tous les conflits", async () => {
     const user = userEvent.setup();
-    renderAt();
-    await user.click(await findSendButton());
-    const dialog = screen.getByRole("dialog", { name: MAIL.confirmTitle });
-    expect(within(dialog).getByText(MAIL.confirmBody("2026-2027"))).toBeInTheDocument();
-    await user.click(within(dialog).getByRole("button", { name: MAIL.confirmCancel }));
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    expect(matchesApi.mailConflictsToCoaches).not.toHaveBeenCalled();
-  });
-
-  it("« Envoyer » poste UNE fois ; pendant la requête « Envoi… » est désactivé ; au retour le radar est relu", async () => {
-    let resolve: (value: ConflictMailingResult) => void = () => undefined;
-    vi.mocked(matchesApi.mailConflictsToCoaches).mockReturnValueOnce(
-      new Promise<ConflictMailingResult>((r) => {
-        resolve = r;
-      }),
-    );
-    const user = userEvent.setup();
-    renderAt();
-    await user.click(await findSendButton());
-    const dialog = screen.getByRole("dialog", { name: MAIL.confirmTitle });
-    await user.click(within(dialog).getByRole("button", { name: MAIL.confirmAction }));
-
-    const pending = await within(dialog).findByRole("button", { name: MAIL.sending });
-    expect(pending).toBeDisabled();
-    await user.click(pending);
-    expect(matchesApi.mailConflictsToCoaches).toHaveBeenCalledTimes(1);
-
-    const readsBefore = vi.mocked(matchesApi.getConflicts).mock.calls.length;
-    resolve(mailingResult({ recipients: [recipient(1), recipient(2)] }));
-    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
-    await waitFor(() => expect(vi.mocked(matchesApi.getConflicts).mock.calls.length).toBeGreaterThan(readsBefore));
-  });
-
-  it("un refus serveur `{detail}` (409 socle rouvert) s'affiche tel quel en toast d'erreur", async () => {
-    // Le `detail` que sert vraiment `SocleGuard::SEASON_PLAN_REQUIRED_MESSAGE` (un mock envoie ce que l'API envoie).
-    const detail = "Validez le planning de saison avant de créer un match ou un planning de période.";
-    vi.mocked(matchesApi.mailConflictsToCoaches).mockRejectedValueOnce(httpError(409, { detail }));
-    const user = userEvent.setup();
-    renderAt();
-    await user.click(await findSendButton());
-    await user.click(within(screen.getByRole("dialog", { name: MAIL.confirmTitle })).getByRole("button", { name: MAIL.confirmAction }));
-    await waitFor(() => expect(lastToast()?.message).toBe(detail));
-    expect(lastToast()?.variant).toBe("error");
-  });
-});
-
-describe("ConflictsPage — envoyer aux coachs : le toast dit ce qui est parti", () => {
-  it.each([
-    ["un e-mail", mailingResult({ recipients: [recipient(1)] }), { mailedCount: 1, skippedNames: [] as string[], failedNames: [] as string[] }],
-    ["listes ET « plus aucun conflit » comptent ensemble", mailingResult({ recipients: [1, 2, 3, 4, 5].map(recipient), cleared: [clearedCoach(6), clearedCoach(7)] }), { mailedCount: 7, skippedNames: [], failedNames: [] }],
-    ["un coach sans adresse nommé", mailingResult({ recipients: [1, 2, 3, 4, 5, 6, 7].map(recipient), skipped: [{ ...KARIM, kind: "conflicts" }] }), { mailedCount: 7, skippedNames: ["Karim B."], failedNames: [] }],
-    [
-      "deux e-mails non partis nommés (dont un « plus aucun »)",
-      mailingResult({ recipients: [1, 2, 3, 4, 5, 6, 7].map(recipient), failed: [{ ...LEA, kind: "conflicts" }, { ...EMMA, kind: "cleared" }] }),
-      { mailedCount: 7, skippedNames: [], failedNames: ["Léa R.", "Emma D."] },
-    ],
-    ["rien enfilé, deux sans adresse", mailingResult({ sentAt: null, skipped: [{ ...KARIM, kind: "conflicts" }, { ...EMMA, kind: "cleared" }] }), { mailedCount: 0, skippedNames: ["Karim B.", "Emma D."], failedNames: [] }],
-  ])("%s", async (_label, result, expected) => {
-    vi.mocked(matchesApi.mailConflictsToCoaches).mockResolvedValueOnce(result);
-    const user = userEvent.setup();
-    renderAt();
-    await user.click(await findSendButton());
-    await user.click(within(screen.getByRole("dialog", { name: MAIL.confirmTitle })).getByRole("button", { name: MAIL.confirmAction }));
-    await waitFor(() => expect(lastToast()?.message).toBe(MAIL.toastResult(expected)));
-  });
-});
-
-describe("ConflictsPage — envoyer aux coachs : la ligne « Envoyé le … »", () => {
-  it.each([
-    ["un e-mail, par Nadia", { sentByFirstName: "Nadia", mailedCount: 1, skippedCoachIds: [] as string[] }, { sender: "Nadia" as string | null, mailedCount: 1, skippedNames: [] as string[] }],
-    ["auteur disparu : sans « par »", { sentByFirstName: null, mailedCount: 7, skippedCoachIds: [] }, { sender: null, mailedCount: 7, skippedNames: [] }],
-    ["un coach sans adresse à cet envoi", { sentByFirstName: "Nadia", mailedCount: 7, skippedCoachIds: ["coach-karim"] }, { sender: "Nadia", mailedCount: 7, skippedNames: ["Karim B."] }],
-    ["deux coachs sans adresse", { sentByFirstName: "Nadia", mailedCount: 7, skippedCoachIds: ["coach-karim", "coach-emma"] }, { sender: "Nadia", mailedCount: 7, skippedNames: ["Karim B.", "Emma D."] }],
-    ["un coach supprimé depuis : « un coach retiré »", { sentByFirstName: "Nadia", mailedCount: 7, skippedCoachIds: ["coach-disparu"] }, { sender: "Nadia", mailedCount: 7, skippedNames: [MAIL.coachRemoved] }],
-  ])("%s", async (_label, last, expected) => {
-    state.coachMailing = { ...DEFAULT_COACH_MAILING, last: { sentAt: SENT_AT, ...last } };
-    renderAt();
-    expect(await screen.findByText(MAIL.statusLine({ date: "03/11/2026", time: "14:32", ...expected }))).toBeInTheDocument();
-  });
-
-  it("aucun envoi encore : pas de ligne « Envoyé le »", async () => {
-    renderAt();
-    await findSendButton();
-    expect(screen.queryByText((text) => text.startsWith(statusPrefix()))).not.toBeInTheDocument();
+    renderAt("/matchs/conflits?nouveaux=1");
+    await screen.findByRole("button", { name: /Mara · 2/ });
+    await user.click(screen.getByRole("button", { name: "Réinitialiser" }));
+    expect(await screen.findByRole("button", { name: /Mara · 3/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: isNewChip })).toHaveAttribute("aria-pressed", "false");
   });
 });

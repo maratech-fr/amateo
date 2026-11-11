@@ -70,6 +70,9 @@ const MIGRATED_FILES = [
   // Chantier E — le menu d'export migré dans features/planning/texts.ts en même temps que la case
   // « Afficher le nom des coachs ». La migration ne recule jamais.
   "features/planning/ExportMenu.tsx",
+  // Petites lignes (UXS-17) — la modale d'éviction migre ses littéraux (et `FAILURE_MESSAGE`) dans
+  // PLANNING_TEXTS en même temps que « moteur » y devient « le système ». La migration ne recule jamais.
+  "features/planning/EvictConfirmDialog.tsx",
   "features/planning/SlotDetail.tsx",
   "features/planning/DiagnosticsPanel.tsx",
   "features/matches/ConflictLine.tsx",
@@ -84,8 +87,14 @@ const MIGRATED_FILES = [
   "features/matches/ReviewQueue.tsx",
   "features/matches/ReviewQueueRow.tsx",
   "features/matches/ConflictsPage.tsx",
+  "features/matches/CoachMailBar.tsx",
   "features/matches/ConflictRadar.tsx",
   "features/cockpit/FbiDeadlineCard.tsx",
+  // P4-503 (validation automatique d'un planning de période) — « Tous les plannings » migré en
+  // même temps que son libellé « Validé automatiquement » (COCKPIT_TEXTS).
+  "features/cockpit/SeasonSchedulesModal.tsx",
+  // P4-503 — la carte d'alerte du radar (« validé automatiquement » / « sans planning ») naît migrée.
+  "features/cockpit/PeriodPlanAlertCard.tsx",
   // Fermetures de gymnase (PR 1) — la carte, la saisie unique, l'aperçu et le bandeau « périmé »,
   // nés migrés (COCKPIT_TEXTS / PLANNING_TEXTS).
   "features/cockpit/VenueClosureCard.tsx",
@@ -109,6 +118,8 @@ const MIGRATED_FILES = [
   "features/matches/OpenVenueDialog.tsx",
   // Export des matchs pour les parents : la fenêtre naît migrée (`texts/export.ts`).
   "features/matches/ExportMatchesDialog.tsx",
+  // Bandeau « depuis votre dernière visite » : migré quand ses segments deviennent des liens.
+  "features/matches/ModuleVisitBanner.tsx",
   "features/wizard/steps/SlotReservationModal.tsx",
   "features/wizard/steps/ConstraintsStep.tsx",
   "features/wizard/steps/RecapStep.tsx",
@@ -172,6 +183,15 @@ const MIGRATED_FILES = [
   "features/cockpit/CockpitPage.tsx",
   "features/cockpit/SeasonPlanBanner.tsx",
   "features/cockpit/DeletePlanningButton.tsx",
+  // Actualités PR A — la modale « Quoi de neuf ? » et la page Nouveautés migrées dans
+  // features/release-notes/texts.ts ; le bandeau de maintenance (FRT-51) dans shared/deployment/texts.ts.
+  "features/release-notes/WhatsNewModal.tsx",
+  "features/release-notes/ReleaseNotesPage.tsx",
+  "shared/deployment/DeploymentNoticeBanner.tsx",
+  // Actualités PR B — l'éditeur riche de la console naît migré (features/admin/texts/sections.ts),
+  // comme toute la console superadmin.
+  "features/admin/releaseNoteEditor/ReleaseNoteEditor.tsx",
+  "features/admin/releaseNoteEditor/EmojiPicker.tsx",
 ];
 
 // Exemptions nominatives — un fichier migré autorisé à garder un littéral en dur, AVEC sa raison.

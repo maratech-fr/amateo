@@ -27,6 +27,7 @@ import { EmptyBlock, EmptyHint } from "@/shared/components/ui/empty-hint";
 import { Modal } from "@/shared/components/ui/modal";
 import { Spinner } from "@/shared/components/ui/spinner";
 import { useTodayISO } from "@/shared/lib/clock";
+import { errorMessage } from "@/shared/lib/errorMessage";
 import { cn } from "@/shared/lib/utils";
 import { toast } from "@/shared/stores/toastStore";
 
@@ -34,6 +35,7 @@ import type { AdminAction, AdminActionArgumentSpec, AdminClub, AdminFreshnessRes
 import { useAdminActions, useAdminClubs, useAdminFeedback, useAdminFreshness, useAdminHealth, useAdminJobs, useAdminOverview, useAdminSystemErrors, useRunAdminClubAction, useRunAdminJob } from "./queries";
 import { AudienceSection } from "./sections/AudienceSection";
 import { CapacitySection } from "./sections/CapacitySection";
+import { calendarDaysBetween } from "./lib/relativeDays";
 import { ClubRequestsSection } from "./sections/ClubRequestsSection";
 import { ContainersSection } from "./sections/ContainersSection";
 import { DemosSection } from "./sections/DemosSection";
@@ -61,6 +63,8 @@ const isRefreshableAdminQuery = (query: Query): boolean => {
 const integerFormatter = new Intl.NumberFormat("fr-FR");
 const dateFormatter = new Intl.DateTimeFormat("fr-FR", { day: "2-digit", month: "short", year: "numeric" });
 const shortDateFormatter = new Intl.DateTimeFormat("fr-FR", { day: "2-digit", month: "short" });
+// Date du title de « Dernière activité » : le jour Europe/Paris de l'instant (comme la colonne).
+const parisDateFormatter = new Intl.DateTimeFormat("fr-FR", { day: "numeric", month: "short", year: "numeric", timeZone: "Europe/Paris" });
 
 export function AdminDashboardPage() {
   const queryClient = useQueryClient();
@@ -118,11 +122,11 @@ export function AdminDashboardPage() {
   }));
 
   const [searchParams, setSearchParams] = useSearchParams();
-  const activeTab = resolveActiveTab(searchParams.get("tab"), localStorage.getItem(STORAGE_KEY));
+  const activeTab = resolveActiveTab(searchParams.get("tab"), readStoredTab());
   const activeSubTab = resolveActiveSubTab(activeTab, activeTab === "incidents" ? searchParams.get("sub") : null);
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, activeTab);
+    storeTab(activeTab);
   }, [activeTab]);
 
   // On mount, sync URL if the tab param is missing/invalid (localStorage → URL, replace — no history entry).
@@ -516,7 +520,7 @@ function JobsSection({ data, loading, error, retry }: DataSectionProps<AdminJobs
     setJobToRun(null);
     runJob.mutate(job.key, {
       onSuccess: () => toast.success(ADMIN_DASHBOARD_TEXTS.jobRunSuccess(job.label)),
-      onError: () => toast.error(ADMIN_DASHBOARD_TEXTS.jobRunError(job.label)),
+      onError: async (err) => toast.error(ADMIN_DASHBOARD_TEXTS.toastWithReason(ADMIN_DASHBOARD_TEXTS.jobRunError(job.label), await errorMessage(err))),
     });
   }
 
@@ -646,7 +650,7 @@ function ClubsTable({ clubs, page, pages, total, query, loading, onPageChange }:
         <table className="w-full min-w-[1120px] text-left text-sm">
           <caption className="sr-only">{ADMIN_DASHBOARD_TEXTS.clubsCaption}</caption>
           <thead className="border-b border-white/10 bg-white/[0.03] text-xs uppercase tracking-wider text-console-muted">
-            <tr><th className="px-5 py-4 font-medium">{ADMIN_DASHBOARD_TEXTS.clubColClub}</th><th className="px-4 py-4 font-medium">{ADMIN_DASHBOARD_TEXTS.clubColActivity}</th><th className="px-4 py-4 font-medium">{ADMIN_DASHBOARD_TEXTS.clubColOffer}</th><th className="px-4 py-4 font-medium">{ADMIN_DASHBOARD_TEXTS.clubColSeasonVolume}</th><th className="px-4 py-4 font-medium">{ADMIN_DASHBOARD_TEXTS.clubColSolver}</th><th className="px-4 py-4 font-medium">{ADMIN_DASHBOARD_TEXTS.clubColSupport}</th></tr>
+            <tr><th className="px-5 py-4 font-medium">{ADMIN_DASHBOARD_TEXTS.clubColClub}</th><th className="px-4 py-4 font-medium" title={ADMIN_DASHBOARD_TEXTS.clubActivityMeaning}>{ADMIN_DASHBOARD_TEXTS.clubColActivity}</th><th className="px-4 py-4 font-medium">{ADMIN_DASHBOARD_TEXTS.clubColOffer}</th><th className="px-4 py-4 font-medium">{ADMIN_DASHBOARD_TEXTS.clubColSeasonVolume}</th><th className="px-4 py-4 font-medium">{ADMIN_DASHBOARD_TEXTS.clubColSolver}</th><th className="px-4 py-4 font-medium">{ADMIN_DASHBOARD_TEXTS.clubColSupport}</th></tr>
           </thead>
           <tbody className="divide-y divide-white/10">
             {clubs.map((club) => <ClubRow key={club.id} club={club} onActions={() => setActionClub(club)} />)}
@@ -665,6 +669,26 @@ function ClubsTable({ clubs, page, pages, total, query, loading, onPageChange }:
   );
 }
 
+/**
+ * « Dernière activité » en jours calendaires Europe/Paris (même fuseau que le throttle serveur) ;
+ * l'instant exact et le sens de la colonne dans le title. « Aujourd'hui » = `useTodayISO()`,
+ * relâché de toute horloge simulée sous /admin (`useReleaseSimulatedClock`, AdminShell).
+ */
+function LastActivity({ iso }: { iso: string | null }) {
+  const todayIso = useTodayISO();
+  if (!iso) {
+    return <p title={ADMIN_DASHBOARD_TEXTS.clubNeverActiveTitle}>{ADMIN_DASHBOARD_TEXTS.clubNeverActive}</p>;
+  }
+
+  return (
+    <p>
+      <time dateTime={iso} title={ADMIN_DASHBOARD_TEXTS.clubLastActivityTitle(parisDateFormatter.format(new Date(iso)))}>
+        {ADMIN_DASHBOARD_TEXTS.clubLastActivity(calendarDaysBetween(iso, todayIso))}
+      </time>
+    </p>
+  );
+}
+
 function ClubRow({ club, onActions }: { club: AdminClub; onActions: () => void }) {
   const [expanded, setExpanded] = useState(false);
   // Signal « club qui coince » calculé côté backend : la 1re raison est visible sur la ligne
@@ -675,7 +699,7 @@ function ClubRow({ club, onActions }: { club: AdminClub; onActions: () => void }
     <>
       <tr className="align-top text-console-text hover:bg-white/[0.025]">
         <td className="px-5 py-5"><div className="flex items-start gap-3"><button type="button" aria-expanded={expanded} aria-label={ADMIN_DASHBOARD_TEXTS.clubToggleDetail(expanded, club.name)} onClick={() => setExpanded((value) => !value)} className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-md bg-white/[0.06] text-console-muted hover:bg-white/10">{expanded ? <ChevronDown className="size-4" aria-hidden="true" /> : <ChevronRight className="size-4" aria-hidden="true" />}</button><div><p className="font-medium text-white">{club.name}</p><p className="mt-1 text-xs text-console-text-faint">{club.ffbbClubCode ?? club.slug}</p>{club.isDemo ? <span className="mt-2 mr-2 inline-block rounded bg-console-demo-surface/20 px-1.5 py-0.5 text-xs font-medium text-console-demo">{ADMIN_DASHBOARD_TEXTS.clubDemo}</span> : null}{club.unsubscribed ? <span className="mt-2 inline-block text-xs font-medium text-console-warning">{ADMIN_DASHBOARD_TEXTS.clubUnsubscribed}</span> : null}{firstReason ? <p className="mt-2 flex items-center gap-1 text-xs font-medium text-console-warning"><AlertTriangle className="size-3 shrink-0" aria-hidden="true" />{firstReason}</p> : null}</div></div></td>
-        <td className="px-4 py-5"><p>{club.lastActivityAt ? formatDate(club.lastActivityAt) : ADMIN_DASHBOARD_TEXTS.clubNeverActive}</p><p className="mt-1 text-xs text-console-text-faint">{ADMIN_DASHBOARD_TEXTS.clubCreatedAt(formatDate(club.createdAt))}</p></td>
+        <td className="px-4 py-5"><LastActivity iso={club.lastActivityAt} /><p className="mt-1 text-xs text-console-text-faint">{ADMIN_DASHBOARD_TEXTS.clubCreatedAt(formatDate(club.createdAt))}</p></td>
         <td className="px-4 py-5"><p className="text-white">{club.effectivePlan.name}</p>{club.plan && club.plan.code !== club.effectivePlan.code ? <p className="mt-1 text-xs text-console-warning">{ADMIN_DASHBOARD_TEXTS.clubPlanDiverges(club.plan.name)}</p> : null}<p className="mt-1 text-xs text-console-text-faint">{ADMIN_DASHBOARD_TEXTS.clubGenerationCount(club.generationCountSeason)}{club.billingCycle ? ` · ${club.billingCycle}` : ""}</p></td>
         <td className="px-4 py-5"><p>{club.currentSeason?.name ?? ADMIN_DASHBOARD_TEXTS.clubNoSeason}</p><p className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-console-text-faint"><span className="flex items-center gap-1"><Users className="size-3" aria-hidden="true" />{ADMIN_DASHBOARD_TEXTS.clubTeamsCoaches(club.volumes.teams, club.volumes.coaches)}</span><span className="flex items-center gap-1"><MapPin className="size-3" aria-hidden="true" />{ADMIN_DASHBOARD_TEXTS.clubVenues(club.volumes.venues)}</span><span>{ADMIN_DASHBOARD_TEXTS.clubConstraints(club.volumes.constraints)}</span></p></td>
         <td className="px-4 py-5"><p><span className="font-medium text-white">{club.solver.generations}</span>{ADMIN_DASHBOARD_TEXTS.clubSolverSummary(formatRate(club.solver.infeasibleRate))}</p><p className="mt-1 text-xs text-console-text-faint">{ADMIN_DASHBOARD_TEXTS.clubSolverPercentiles(formatDuration(club.solver.p50WallTimeMs), formatDuration(club.solver.p95WallTimeMs))}</p>{club.solver.latestStatus ? <p className="mt-2 text-xs text-console-muted">{ADMIN_DASHBOARD_TEXTS.clubLatestStatus(club.solver.latestStatus)}</p> : null}</td>
@@ -801,7 +825,7 @@ function ClubActionsDialog({ club, onClose }: { club: AdminClub; onClose: () => 
           toast.success(ADMIN_DASHBOARD_TEXTS.clubActionRunSuccess(action.label, club.name));
           onClose();
         },
-        onError: () => toast.error(ADMIN_DASHBOARD_TEXTS.clubActionRunError(action.label, club.name)),
+        onError: async (err) => toast.error(ADMIN_DASHBOARD_TEXTS.toastWithReason(ADMIN_DASHBOARD_TEXTS.clubActionRunError(action.label, club.name), await errorMessage(err))),
       },
     );
   };
@@ -980,6 +1004,24 @@ function formatDuration(milliseconds: number | null): string {
   if (milliseconds === null) return "—";
   if (milliseconds < 1000) return `${milliseconds} ms`;
   return `${new Intl.NumberFormat("fr-FR", { maximumFractionDigits: 1 }).format(milliseconds / 1000)} s`;
+}
+
+// Onglet mémorisé : un navigateur qui refuse le stockage local (navigation privée, politique de
+// site) ouvre quand même la console, sur l'onglet par défaut — jamais une page blanche.
+function readStoredTab(): string | null {
+  try {
+    return localStorage.getItem(STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function storeTab(tab: string): void {
+  try {
+    localStorage.setItem(STORAGE_KEY, tab);
+  } catch {
+    // Stockage refusé : l'onglet n'est simplement pas mémorisé.
+  }
 }
 
 function formatDate(value: string): string {

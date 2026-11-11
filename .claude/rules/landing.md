@@ -5,27 +5,44 @@ paths:
 
 # Landing — conventions & pièges (chargé quand landing/ est touché)
 
-> La page de vente publique. **Elle n'a pas d'`AGENTS.md`** : tout ce qui la concerne tient ici.
+> La vitrine publique : six pages statiques (`index.html` accueil, `fonctionnalites.html`,
+> `vos-donnees.html`, `qui-fait.html`, `evolutions.html` journal, `mentions-legales.html`).
+> **Elle n'a pas d'`AGENTS.md`** : tout ce qui la concerne tient ici.
 
 - **La page s'adosse à [`specs/courantes/modules-produit.md`](../../specs/courantes/modules-produit.md)**
   — la carte des modules en langage club, promesse + preuve + capture ; toute nouvelle section
   vitrine vérifie ses affirmations contre ce fichier avant d'écrire un mot.
 - **Zéro build.** HTML/CSS statique servi tel quel — pas de npm, pas de bundler, pas de
-  transpilation. On édite `index.html` et `assets/` directement. N'introduis **aucune** chaîne de
-  build : c'est ce qui rend cette page increvable et déployable seule.
+  transpilation. On édite les pages et `assets/` directement. N'introduis **aucune** chaîne de
+  build : c'est ce qui rend ce site increvable et déployable seul.
 - **Aucun lien avec `frontend/`** — pas d'import de composant, pas de CSS partagé, pas de brique
-  commune. Les deux zones se ressemblent par **convention**, jamais par dépendance. Dupliquer une
-  couleur ici est le comportement VOULU.
+  commune avec l'app. Les deux zones se ressemblent par **convention**, jamais par dépendance.
+  Dupliquer une couleur ici est le comportement VOULU. **Entre les six pages**, en revanche, le
+  socle est partagé : `assets/site.css` (polices, jetons clair/sombre, en-tête, boutons, pied,
+  gabarit `main.page`) et `assets/site.js` (logo et liens depuis `config.js`, bascule de thème,
+  burger, glissement d'ancre, mesure d'audience). Reste **inline** dans chaque `<head>` le seul
+  anti-flash de thème (il doit précéder la feuille) ; les styles propres à l'accueil restent dans
+  son `<style>`. `site.js` marche sans `config.js` (chaque bloc a son `try/catch` et teste la
+  présence de ses éléments). **`config.js`, `site.css` et `site.js` portent le MÊME `?v=` sur les
+  six pages** (garde `LandingDiscoverabilityTest`) — à bumper ensemble. Les `url()` d'un fichier
+  CSS sont relatifs à lui (`fonts/…`, `brand/…`).
 - **La marque s'écrit EN HTML ; liens, coordonnées et logo vivent dans `config.js`** (P4-391,
   2026-10-31, remplace « config.js SEUL »). Un robot qui n'exécute pas le JS (moteur, aperçu de
   messagerie, IA) ne doit jamais lire « … » : `<title>`, `og:title`, `.brand`, `aria-label`,
   `<h1>` et JSON-LD portent le nom en clair dans le HTML servi, et AUCUN script ne réécrit plus
-  la marque ni le titre. `config.js` reste la source de ce que les SCRIPTS consomment (mailto de
-  démo, liens `appUrl`, logo, pages `system-pages/`). Le nom commercial **est tranché depuis le
-  2026-08-15** (produit **Amateo**, éditeur **Maratech**). `LandingDiscoverabilityTest` lie les
-  deux côtés (HTML ⇄ `config.js` : `brand`, `editor`, `siteUrl`) — **renommer = changer
-  `config.js` ET `grep -rn "Amateo" landing/ system-pages/`** (checklist de renommage) ; le test
-  rougit sur toute dérive.
+  la marque ni le titre. **Même règle pour les `href` des boutons d'appel** (inscription,
+  connexion, confidentialité, démo — P4-407) et pour les mentions légales (éditeur, statut,
+  hébergeur) : écrits en clair, jamais `href="#"` ni une obligation légale qui dépend du JS.
+  `config.js` reste la source de ce que `site.js` et `system-pages/` consomment (logo, liens
+  `appUrl`, mesure d'audience) et la VALEUR DE RÉFÉRENCE des copies en clair. Le nom commercial
+  **est tranché depuis le 2026-08-15** (produit **Amateo**). **L'éditeur et le responsable de
+  publication sont une PERSONNE, à titre personnel** (`editor`, `legal.editorStatus`), tant
+  qu'aucune société n'est immatriculée — jamais « Maratech », « micro-entreprise » ni SIRET dans
+  `landing/` (garde `LandingClaimsTest`) ; le jour J, une ligne de roadmap aligne vitrine, app et
+  e-mails. `LandingDiscoverabilityTest` et `LandingClaimsTest` lient les deux côtés (HTML ⇄
+  `config.js` : `brand`, `editor`, `editorStatus`, `siteUrl`, hébergeur) — **renommer = changer
+  `config.js` ET `grep -rn` la valeur dans `landing/` et `system-pages/`** (checklist de
+  renommage) ; les tests rougissent sur toute dérive.
   ⚠ `appUrl` s'écrit **sans slash final** — les CTA concatènent (`appUrl + "/register"`).
   **Clé `siteUrl` (P4-302, 2026-10-05)** : l'URL de la vitrine elle-même (domaine nu, même règle
   sans slash final) — consommée par `system-pages/503.html`/`maintenance.html` pour pointer leur
@@ -33,8 +50,8 @@ paths:
   changement de domaine ne touche que cette ligne.
   **Exception P4-391 :** chaque `<img data-brand-logo>` porte aussi `src="assets/brand/mark.svg"` en dur, pour le rendu sans JS ; changer `logo` dans `config.js` impose donc de le changer aussi dans le HTML.
   **Le logo suit le même patron (P5-25, 2026-09-25)** : `config.js` clé `logo` (source définitive
-  du handoff marque, `assets/brand/`) injecté par script sur chaque `[data-brand-logo]` — jamais un
-  chemin d'asset en dur dans `index.html`. `config.js` est chargé depuis `index.html` avec
+  du handoff marque, `assets/brand/`) injecté par `site.js` sur chaque `[data-brand-logo]` — jamais
+  un autre chemin d'asset que le repli ci-dessus. `config.js` est chargé par chaque page avec
   `?v=<date>`, à bumper à chaque ajout/retrait/renommage de clé — sinon un visiteur de retour garde
   l'ancien fichier en cache et toute nouvelle clé lit `undefined` (incident 2026-09-25, logo cassé ;
   l'injection est défensive depuis, mais le `?v=` est ce qui rend le vrai logo tout de suite).
@@ -45,19 +62,20 @@ paths:
   défensif inchangé, si l'icône manque/échoue seul le mot reste (marque toujours lisible).
 - **Le fond d'écran est un décor CSS, PAS une clé `config.js`** (P5-16, 2026-09-25) :
   `background: var(--paper) url("assets/brand/fond.svg") center / cover no-repeat fixed;` est un
-  chemin en dur dans `index.html` — contrairement à la marque/aux liens/au logo (règle
+  chemin en dur dans `assets/site.css` (relatif à lui : `url("brand/fond.svg")`) — contrairement à la marque/aux liens/au logo (règle
   précédente), un décor visuel n'a pas besoin d'indirection : il ne change jamais par club ni par
   domaine. Détail (opacité, purge C2PA, parité avec l'app) :
   `specs/courantes/identite-visuelle-produit.md` § « Le fond d'écran ».
 - **Exceptions « domaine en dur » (P5-24, étendues par P4-391)** : `og:url`/`og:image`,
-  `<link rel="canonical">`, le JSON-LD, `sitemap.xml` et `robots.txt` (ligne `Sitemap:`) portent
+  `<link rel="canonical">` de chaque page, le JSON-LD, `sitemap.xml` et `robots.txt` (ligne `Sitemap:`) portent
   des URL ABSOLUES en dur (`https://amateo.app/…`) — un crawler (messagerie, réseau social,
   moteur) ne charge pas `config.js` et n'exécute pas de JS : une valeur injectée n'existerait
   jamais pour lui. Le titre et `og:title`/`og:description` portent aussi la marque en clair
   (« Amateo — … »). Un changement de domaine touche donc ces fichiers EN PLUS de `siteUrl` ;
   `LandingDiscoverabilityTest` (canonical ⇄ `siteUrl`, URL absolues limitées à nos hôtes et aux
   vocabulaires schema.org/sitemaps.org) et `IndexationPolicyTest` (`Sitemap:` ⇄ `siteUrl`,
-  sitemap parsable listant les deux pages) le rendent mécanique. `og:image` pointe
+  sitemap parsable listant TOUTES les pages `landing/*.html`) le rendent mécanique. Chaque page
+  porte son propre `<title>`/`og:title`/description (table nommée dans le test, clés == pages). `og:image` pointe
   `assets/brand/og.png` (source versionnée `scripts/brand-og/`, README de régénération à côté —
   piège du cache immuable : renommer le fichier à toute retouche visuelle). Détail :
   `specs/courantes/identite-visuelle-produit.md` § « Ce qui reste à venir ».
@@ -67,9 +85,9 @@ paths:
   `Organization` (l'éditeur). Sa description recopie la `<meta name="description">` (garde :
   `LandingDiscoverabilityTest`). `offers` est **omis volontairement** : seul le palier Découverte
   est public (gratuit), les paliers payants restent « sur demande » — inexprimable proprement en
-  une offre/fourchette tant que leur prix n'est pas public. `mentions-legales.html` n'a pas ce
-  bloc (page sans offre produit) ; elle porte son propre `og:title` (« Amateo — Mentions
-  légales », cohérent avec son `<title>`).
+  une offre/fourchette tant que leur prix n'est pas public. L'éditeur y est un nœud `Person`
+  (`#editor`, nom = `config.js` `editor`, garde `LandingDiscoverabilityTest`), pas une
+  `Organization`. Les cinq autres pages n'ont pas ce bloc.
 - **Thème AU CHOIX, clair par défaut (P4-274, 2026-09-29)** : un mini-script en tête de `<head>`
   (avant le `<style>`, anti-flash) pose `data-theme="dark"` sur `<html>` depuis `localStorage.theme`
   (choix explicite du visiteur) sinon `prefers-color-scheme`, enveloppé (navigation privée,
@@ -85,8 +103,9 @@ paths:
   confort : miroir `aria-expanded`, fermeture au clic sur une ancre, Échap → focus). Le panneau
   (`position:absolute` sous l'en-tête sticky, recouvre, **pas de scroll-lock**) **reprend** les
   liens de la barre — ancres + « Se connecter » + CTA : **deux jeux distincts** (inline masqué en
-  mobile, panneau masqué en desktop), jamais partagés, chacun câblé par `config.js`
-  (`querySelectorAll` sur `[data-cta]`). Le **desktop reste intact** (le burger est `display:none`
+  mobile, panneau masqué en desktop), jamais partagés, chacun avec ses `href` écrits en clair
+  (`site.js` ne fait que les recaler sur `config.js`, `querySelectorAll` sur `[data-cta]`). Le
+  burger est propre à l'accueil ; les pages sœurs n'ont que logotype, « Accueil » et bascule. Le **desktop reste intact** (le burger est `display:none`
   ≥881px, les liens inline inchangés). Logo et bascule de thème : `flex-shrink:0` (le carré 40px ne
   s'écrase plus). Paragraphes de **contenu** à 16px ≤720px (`.pain p`/`.step p`/`.faq .a`, règle
   placée APRÈS leurs règles de base — à spécificité égale c'est l'ordre source qui tranche, pas la
@@ -100,16 +119,28 @@ paths:
   manque — poser un fichier `*-dark.*` suffit à l'activer, **aucun code à toucher**. Les 4 captures
   actuelles ont chacune leur sœur `-dark` (P5-27, 2026-10-07) ; le repli `onerror` reste un filet
   de sécurité pour un futur asset sans variante sombre.
-- **`mentions-legales.html` est une page statique SŒUR d'`index.html`, pas un fragment** (P4-275,
-  2026-09-29) : même scaffolding dupliqué VOLONTAIREMENT (thème anti-flash, palette, glissement
-  d'ancre — zéro brique partagée même entre pages `landing/`) ; ses valeurs (éditeur, statut,
-  hébergeur) viennent du bloc `legal`/`editor` de `config.js`, injectées par son propre script —
-  chargé avec le MÊME `?v=`, à bumper ensemble avec `index.html`.
+- **Les cinq autres pages sont des pages statiques SŒURS d'`index.html`, pas des fragments** :
+  même `<head>` (anti-flash inline, `site.css`), gabarit `main.page`, pied IDENTIQUE sur les six
+  (garde `LandingDiscoverabilityTest`), `site.js` en fin de `<body>` après `config.js`. Les liens
+  vers l'accueil sont `/` (jamais `index.html…`). Une page ajoutée entre d'office sous les gardes
+  (balayage `glob(landing/*.html)`, trait `LandingFiles`) : elle doit avoir son titre dans la
+  table du test et son entrée dans `sitemap.xml`.
+- **`evolutions.html` est le journal des évolutions, écrit à la main** — une entrée par version
+  livrée, `<article class="release" data-version="X.Y.Z">`, ordre décroissant, langage club
+  (contrat exact : docblock de `LandingChangelogTest`). **Il est couplé au déploiement** : le step
+  « Check the changelog names this version » de `deploy.yml` refuse de construire un tag `v*`
+  neuf sans entrée ; l'entrée s'écrit donc par la PR `chore/release-vX.Y.Z` AVANT de taguer
+  (`docs/ops/deploy.md` § Déployer une release). Les chiffres de résultat (heures gagnées) ne
+  vivent que sur `qui-fait.html`, comme objectif.
+- **Le portrait de `qui-fait.html` s'ajoute par un couple de fichiers** (`assets/qui-fait/fondateur.jpg`
+  sans métadonnées + `<figure class="portrait">` dans la page, alt = `config.js` `editor`) : l'un
+  sans l'autre rougit `LandingClaimsTest`.
 - **Glissement d'ancre animé en JS, pas `scroll-behavior: smooth` (P4-258, 2026-09-29)** :
-  `html { scroll-padding-top: 76px }` (en-tête sticky 64px + marge) reste pour le saut natif
+  `html { scroll-padding-top: 76px }` (en-tête sticky 64px + marge ; dans `site.css`) reste pour le saut natif
   (arrivée avec `#hash` dans l'URL, JS absent) ; le clic sur un lien `href="#…"` interne est
-  intercepté et animé en `requestAnimationFrame` (easeOutCubic, décélération maîtrisée, coupé net
-  si l'utilisateur reprend la main) — `scroll-behavior: smooth` a été retiré, il aurait doublé le
+  intercepté et animé en `requestAnimationFrame` par `site.js` (easeOutCubic, décélération maîtrisée, coupé net
+  si l'utilisateur reprend la main ; la cible est RECALCULÉE à chaque pas — une police ou une image
+  qui arrive en cours de route la déplace — puis un `scrollTo` final pose la position exacte) — `scroll-behavior: smooth` a été retiré, il aurait doublé le
   lissage. Saut direct (pas d'animation) sous `prefers-reduced-motion: reduce`.
 - **Palette recalée sur le logo (P5-25, 2026-09-25)** : `--accent` (`#46afac`, teal signature) est
   **décoratif seul** — il ne tient que 2,50:1 sur `--paper`, sous la barre texte. Le texte, les
@@ -129,7 +160,8 @@ paths:
   couleurs sont en `oklch`, la conversion vers sRGB passe par un canvas (P5-5 a corrigé des
   contrastes qui « paraissaient » bons).
 - **Mentions légales livrées (P4-275, 2026-09-29)** : `landing/mentions-legales.html` (LCEN
-  art. 6-III — éditeur, responsable de publication, hébergeur Scaleway ; renvoie vers la politique
+  art. 6-III — éditeur et responsable de publication nominatifs, hébergeur Scaleway, tous écrits
+  en clair ; renvoie vers la politique
   de confidentialité de l'app pour le volet RGPD). **Aucun FORMULAIRE n'est posté sur cette page** —
   la démo passe par un `mailto:` (client de messagerie du visiteur, rien n'est posté côté serveur) :
   un futur formulaire de contact POSTÉ déclencherait, lui, l'obligation RGPD complète —
@@ -137,24 +169,28 @@ paths:
   page n'est plus « zéro donnée » au sens strict — Umami mesure l'audience **sans cookie** (IP
   hachée côté serveur, agrégats anonymes), donc **pas de bandeau de consentement** mais une
   **transparence écrite obligatoire** : paragraphe « Mesure d'audience » de `mentions-legales.html`,
-  section de `PrivacyPage.tsx` (app), registre `docs/security/rgpd.md` §2.
+  section de `PrivacyPage.tsx` (app), registre `docs/security/rgpd.md` §2. La phrase d'effacement
+  de l'espace du club de `vos-donnees.html` est celle de `PrivacyPage.tsx`, mot pour mot (parité
+  gardée par `LandingClaimsTest` et le test de la page) : un délai se change des DEUX côtés.
 - **Mesure d'audience — clé `analytics` de `config.js` (P4-276, 2026-10-06)** : `analytics:
   { scriptUrl, websiteId }`, point unique comme le reste de `config.js`. Le script Umami n'est
-  injecté (dans `index.html` ET `mentions-legales.html`, scripts dupliqués VOLONTAIREMENT) que sous
+  injecté (par `assets/site.js`, donc sur les six pages) que sous
   **double garde** : (a) les deux clés non vides ; (b) `location.hostname` égal à l'hôte dérivé de
   `siteUrl` (`new URL(siteUrl).hostname`, aucun nouveau littéral de domaine) — en local, sur :5173
   ou sur un autre domaine, **rien n'est injecté, aucune requête ne part**. Tout est défensif
   (try/catch, ancien cache sans la clé → page intacte). Le `websiteId` n'est **pas un secret** (il
   est visible dans toute page trackée) : sa place en git est correcte. Renseigner/retirer ces clés
-  = **bumper le `?v=` de `config.js` dans les DEUX pages** (règle du point unique ci-dessus).
+  = **bumper le `?v=` commun dans les six pages** (règle ci-dessus).
   L'instance Umami vit dans la stack prod (`docker-compose.prod.yml`, `docs/ops/prod-stack.md` §
   Mesure d'audience, runbook `deploy.md` §1.11). **Vitrine seulement** — jamais l'app (volet « app »
   de P4-276 encore ouvert en roadmap).
 - **Aucun job CI dédié à `landing/`** (`.github/workflows/ci.yml` ne la mentionne nulle part, et
-  ni `LandingDiscoverabilityTest` ni `IndexationPolicyTest` ne sont des steps du job
-  `blocking-tests` : ils tournent dans `backend-tests`). Ces deux gardes **statiques** vivent dans
+  ni `LandingDiscoverabilityTest`, `LandingClaimsTest`, `LandingChangelogTest` ni
+  `IndexationPolicyTest` ne sont des steps du job `blocking-tests` : ils tournent dans
+  `backend-tests`). Ces gardes **statiques** (le trait `LandingFiles` porte la lecture commune)
+  vivent dans
   `backend/tests/` (lecture des fichiers suivis, HTML parsé sans exécuter ses scripts) et couvrent
-  le référencement ; la seule preuve d'une passe de design, de contraste ou de rendu reste un
+  le référencement, les affirmations faites aux clubs et le journal ; la seule preuve d'une passe de design, de contraste ou de rendu reste un
   axe joué **à la main** dans un vrai navigateur, captures à l'appui dans `captures/` (racine du
   dépôt, gitignoré).
 - **Une capture d'écran de l'app pour la vitrine s'exige sur le RÉSULTAT, pas sur une méthode

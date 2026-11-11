@@ -13,7 +13,10 @@ use Doctrine\Persistence\ManagerRegistry;
  * app:db:backup ET la ligne « Sauvegarde » du board (revue #258, findings 5 & 9 :
  * deux implémentations divergeaient d'une seconde et produisaient un rouge permanent).
  *
- * Signal d'activité : club.last_activity_at + solver_metrics + audit_log.
+ * Signal d'activité : club.last_activity_at + solver_metrics + audit_log + app_user.last_login_at.
+ * La connexion compte : elle avance pour TOUS les comptes, y compris l'adresse exclue de la
+ * « Dernière activité » des clubs et un compte sans adhésion active — une nuit où seul un tel
+ * compte a écrit est quand même sauvegardée.
  * Couverture : dump.mtime (posé au DÉBUT du snapshot, cf. DatabaseBackupCommand)
  * + 1 s de tolérance — TIMESTAMP(0) ARRONDIT à la seconde quand filemtime TRONQUE.
  */
@@ -32,7 +35,8 @@ final readonly class BackupCoverage
             'SELECT GREATEST(
                 (SELECT MAX(last_activity_at) FROM club),
                 (SELECT MAX(created_at) FROM solver_metrics),
-                (SELECT MAX(occurred_at) FROM audit_log)
+                (SELECT MAX(occurred_at) FROM audit_log),
+                (SELECT MAX(last_login_at) FROM app_user)
             )',
         );
 

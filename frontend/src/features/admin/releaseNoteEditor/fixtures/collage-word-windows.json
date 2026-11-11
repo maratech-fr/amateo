@@ -1,0 +1,7 @@
+{
+  "type": "doc",
+  "content": [
+    { "type": "paragraph", "content": [{ "type": "text", "text": "·Premier point" }] },
+    { "type": "paragraph", "content": [{ "type": "text", "text": "·Second point" }] }
+  ]
+}

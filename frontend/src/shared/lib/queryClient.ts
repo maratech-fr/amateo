@@ -52,6 +52,11 @@ export const queryClient = new QueryClient({
       if (query.meta?.ownsError === true) {
         return;
       }
+      // Queries flagged meta.silentFailure are BACKGROUND reads whose failure stays silent (no
+      // retry to offer, nothing to say — the deployment notice banner simply doesn't show).
+      if (query.meta?.silentFailure === true) {
+        return;
+      }
       report(error);
     },
   }),

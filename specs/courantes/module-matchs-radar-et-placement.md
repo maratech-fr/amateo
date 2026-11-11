@@ -239,7 +239,8 @@ jour-là ; jamais un déplacement, muet un jour férié.
 
 ### Envoyer les conflits aux coachs (M10)
 
-Sur l'onglet Conflits, un gestionnaire clique « Envoyer aux coachs » (confirmation nommant la saison).
+Sur l'onglet Conflits, un gestionnaire clique « Envoyer aux coachs » : une modale d'aperçu dit,
+coach par coach, ce qui partira, puis « Envoyer » confirme.
 **Périmètre** : les trois familles de conflit de PERSONNE sur un match (`MATCH_MATCH`,
 `MATCH_TRAINING`, `MATCH_COACH_UNAVAILABLE`), traitées ou non (aucun statut ni note n'est envoyé),
 datées d'aujourd'hui ou à venir (le filtre du radar, pas un filtre propre au mail). Les lignes
@@ -258,37 +259,84 @@ Règle unique, lue et écrite sous un verrou Redis par club : nouvelle mémoire 
 liste lundi, est sautée (pas d'adresse) mardi, son conflit disparaît vendredi → elle reçoit
 « plus aucun conflit » dès qu'elle a une adresse ; une personne jamais prévenue dont le conflit
 disparaît ne reçoit rien. Un coach sans adresse valide est sauté et nommé ; il ne compte pas dans
-les coachs « à prévenir ». Le calcul (qui reçoit quoi, compteurs) est un service pur UNIQUE,
-`ConflictCoachMailing`, partagé par le GET et le POST.
+les coachs « à prévenir ». Le calcul (qui reçoit quoi, compteurs, nouveau/modifié) est un service
+pur UNIQUE, `ConflictCoachMailing`, partagé par le GET, l'aperçu et le POST.
+
+**Mémoire par conflit : nouveau, modifié, déjà envoyé** (table `conflict_mail_receipt`, une ligne
+par club × saison × empreinte de conflit × coach : le digest du contenu envoyé et l'instant). Le
+digest est l'empreinte de ce que la TUILE du mail affiche, en valeurs affichées (heure, date,
+gravité, domicile/extérieur, lieu, trajet, durée, séance, bornes du chevauchement ; le rôle tel que
+lu : « joueur/joueuse » ou « coach ») ; les deux côtés d'un `MATCH_MATCH` sont non ordonnés ; les
+noms (équipe, gymnase, coach) et le genre ne comptent pas. Pour un coach : **nouveau** = conflit
+jamais reçu ; **modifié** = reçu dont le contenu a changé (match déplacé de 15:30 à 17:00, même
+conflit) ; **déjà envoyé** = reçu identique. **Un conflit disparu n'est rien** : ni nouveau ni
+modifié, pas signalé (seul le coach qui n'a PLUS AUCUN conflit reçoit « plus aucun conflit »). Un
+coach en mémoire sans aucun reçu (envoi d'avant cette mémoire) part une fois, sans aucune marque.
+**Par défaut, seuls partent les coachs qui ont un conflit nouveau ou modifié** (leur liste
+COMPLÈTE, nouveautés marquées), plus les « plus aucun conflit » et les coachs sans reçu connu ;
+« Tout renvoyer » (`resendAll`) renvoie chaque liste. Un coach sans nouveauté est écarté AVANT le
+tri des adresses : ni servi, ni nommé « sans adresse ». Après envoi, les reçus du coach sont
+REMPLACÉS par sa liste courante, ceux d'un coach prévenu « plus aucun » supprimés ; reçus et mémoire
+s'écrivent dans UNE transaction. Invariant : tout coach ayant un reçu est en mémoire (la réciproque
+est fausse : mémoire d'avant ces reçus, coach sauté). **Un coach supprimé emporte ses reçus** (FK
+`ON DELETE CASCADE`) et sort de la mémoire au prochain envoi.
 
 **API.** `GET /api/fixtures/conflicts` sert en plus `coachMailing` (`personConflictCount`,
 `pendingRecipientCount`, `recipientCount`, `last` = `{sentAt, sentByFirstName, mailedCount,
-skippedCoachIds}` ou `null`). `POST /api/fixtures/conflicts/mail-coaches` (synchrone, corps vide)
-répond `{sentAt, conflictCount, recipients, cleared, skipped, failed}` ; `sentAt` est `null` quand
-aucun mail n'est mis en file. Ordre des refus : 409 saison archivée (`{detail}`) → 403 non
-gestionnaire → 403 club de démonstration → 409 socle non choisi (`{detail}`) → 409 envoi déjà en
-cours (verrou club 60 s, relâché sur tout chemin) → 422 saison introuvable → 422 rien à envoyer
-(aucun conflit de personne et aucun coach à prévenir) → 429 plafond `conflict_mail_send` (200
-e-mails / 24 h par club, budget distinct de la collecte des doléances, consommé pour le nombre
-exact de mails, lot refusé en bloc). Les envois sont best-effort (un échec est nommé dans
-`failed`, avec son `kind` `conflicts` ou `cleared`, et le coach reste en mémoire). La ligne
-« Envoyé le … » et la mémoire ne sont écrites que si au moins un mail est mis en file ; « envoyé » =
-mis en file Messenger (un échec SMTP au worker est invisible, comme la collecte).
+skippedCoachIds}` ou `null`) — contrat inchangé, `recipientCount` n'est plus lu par l'écran.
+`GET /api/fixtures/conflicts/mail-coaches/preview` (gestionnaire seul) sert l'aperçu :
+`{seasonId, personConflictCount, defaultMailCount, resendAllMailCount, blockedByDefault,
+blockedOnResendAll, recipients}`, chaque destinataire avec `email` (tel que saisi),
+`hasValidAddress`, `kind`, `receiptKnown`, `conflictCount`, `newCount`, `changedCount`,
+`alreadySentCount`, `lastSentAt`, `sendsByDefault`, `sendsOnResendAll` ; motif quand rien ne
+partirait : `nothing` | `no_address` | `nothing_new` | `mixed` (par défaut), `nothing` |
+`no_address` (en renvoyant tout). Même calcul que le POST ; ni verrou, ni quota, ni écriture ; mêmes
+refus et même rang que le POST (sans verrou ni quota), aucun 422 « rien » (liste vide).
+`POST /api/fixtures/conflicts/mail-coaches` (synchrone, corps `{resendAll?: boolean}`, vide = false)
+répond `{sentAt, resendAll, conflictCount, recipients, cleared, skipped, failed}` (`recipients[]`
+porte en plus `newCount`, `changedCount`, `receiptKnown`) ; `sentAt` est `null` quand aucun mail
+n'est mis en file. Ordre des refus : 409 saison archivée par le calendrier (`{detail}`, noyau, GET
+compris) → 409 saison gelée à la main (`{detail}`) → 403 non gestionnaire → 403 club de
+démonstration → 409 socle non choisi (`{detail}`) → 409 envoi déjà en cours (verrou club 60 s,
+relâché sur tout chemin) → 422 saison introuvable → 422 option « tout renvoyer » invalide → 422 rien
+à envoyer (aucun conflit de personne et aucun coach à prévenir) → 422 « Rien de nouveau depuis le
+dernier envoi » (personne à servir ni à nommer sans adresse, des coachs écartés faute de nouveauté ;
+si seul un coach SANS adresse a du nouveau, c'est un 200 sans mail qui le nomme) → 429 plafond
+`conflict_mail_send` (200 e-mails / 24 h par club, budget distinct de la collecte des doléances,
+consommé pour le nombre exact de mails, lot refusé en bloc). Les envois sont best-effort (un échec
+est nommé dans `failed`, avec son `kind` `conflicts` ou `cleared`, aucun reçu n'est écrit pour lui,
+et le coach reste en mémoire). La ligne « Envoyé le … », la mémoire et les reçus ne sont écrits que
+si au moins un mail est mis en file ; « envoyé » = mis en file Messenger (un échec SMTP au worker
+est invisible, comme la collecte).
 
-**Écran.** Le bouton est rendu au-dessus du retour anticipé « aucun conflit » (il reste actif quand il
-n'y a plus de conflit mais des coachs à prévenir), visible des gestionnaires seuls ; un Membre voit
-la ligne « Envoyé le … ». Désactivé, avec son motif visible, quand rien n'est à envoyer, en
-démonstration, sur saison archivée ou si la réponse n'a pas `coachMailing`.
+**Écran.** Le bouton vit à droite de la rangée « Regrouper par » (la ligne « Envoyé le … » dessous) ;
+sans conflit, la barre reste au-dessus de l'état vide (le bouton reste actif quand il n'y a plus de
+conflit mais des coachs à prévenir), visible des gestionnaires seuls ; un Membre voit la ligne
+« Envoyé le … ». Désactivé, avec son motif visible, quand rien n'est à envoyer, en démonstration,
+sur saison archivée ou si la réponse n'a pas `coachMailing`. La modale relit l'aperçu à chaque
+ouverture : une ligne par coach (« Karim B. — adresse · 3 conflits · 1 nouveau · 2 déjà envoyés le
+03/11 — recevra un e-mail »), un bilan (« 4 e-mails partiront · 1 coach sans adresse valide ne
+recevra rien »), la case « Tout renvoyer ». Un coach sans adresse ou à adresse invalide porte une
+pastille et un champ prérempli : l'adresse se saisit ou se corrige sur place (enregistrée à la
+sortie du champ, puis l'aperçu est relu) ; la modale ne retire jamais une adresse. « Envoyer » est
+grisé, motif à l'appui, pendant la relecture de l'aperçu, l'enregistrement d'une adresse, un aperçu
+en échec (dit dans la modale, sans toast) ou quand rien ne partirait (motif servi). Chaque nombre et
+chaque motif viennent du serveur.
 
 **Mail.** Le builder pose un fragment HTML (tuiles, une par conflit, triées par date, couleur et
 mot de gravité propres au mail : Important / À regarder / À surveiller) que `EmailSignatureListener`
 enveloppe une fois dans la carte de marque, avec le texte brut équivalent ; le mail « plus aucun
-conflit » est du texte simple dans la même carte. Aucun lien, aucune réponse, aucune page publique,
-pas d'historique au-delà du dernier envoi.
+conflit » est du texte simple dans la même carte. Un conflit nouveau ou modifié porte la marque
+« Nouveau » / « Modifié » en fin de ligne-titre (et une seconde pastille en HTML) ; après l'intro,
+« Depuis le dernier envoi du 03/11/2026, 1 conflit est nouveau ou modifié : il est marqué. » ; une
+liste renvoyée sans nouveauté dit « Cette liste vous est renvoyée : aucun conflit de cette liste
+n'est nouveau ou modifié depuis l'envoi du … » ; un coach sans reçu connu n'a ni marque ni phrase.
+Aucun lien, aucune réponse, aucune page publique.
 
 **Écarts déclarés.** (1) Le verrou ne protège que deux envois SIMULTANÉS : deux gestionnaires à
 quelques secondes d'écart envoient deux fois la liste à jour. (2) Mails mis en file puis échec de
-l'upsert : 500, coachs déjà prévenus, mémoire non écrite, un nouveau clic renvoie les listes.
+l'écriture : 500, coachs déjà prévenus, ni reçus ni mémoire écrits, un nouveau clic renvoie les
+listes.
 (3) Un onglet resté ouvert pendant une réouverture du socle lit le message approximatif du garde du
 socle. (4) Une période sans version choisie n'a aucun entraînement vu par le radar, donc par le
 mail. (5) **Renoncement** : le mail ne porte PAS les conflits entraînement × entraînement ni les
@@ -307,7 +355,12 @@ sur le 3ᵉ topic Mercure fixe `/clubs/{clubId}/placement`. `GET /api/fixtures/p
 dernier run du club+saison (lecture seule, ouvert à tout membre). Anti-double-clic PAR CLUB
 `MatchPlacementLock` (Redis dédié — pris par le contrôleur, relâché par le worker ; ne protège pas
 deux clubs l'un de l'autre : ils partagent le sémaphore GLOBAL `max_concurrent_placements=1` de
-l'engine, détail ADR-0003 §2). Best-effort à poids
+l'engine, détail ADR-0003 §2). **Fiabilité du rail** (ADR-0003 §2, amendement 2026-11-11) : un
+second POST est refusé en **409** dont le texte suit le dernier run (« déjà demandé » s'il est en file,
+délai restant du verrou s'il est en cours), compté au quota dédié `match_placement` du club
+(**429**, Membre exempt) ; un run laissé en vol par un worker mort est déclaré FAILED au démarrage du
+worker suivant (`PlacementRunStartupReconciler`) ou à la main (`app:match-placement:reconcile-stuck`,
+`backend/docs/commands.md`), et un message relu ne re-solve jamais un run terminé. Best-effort à poids
 dominant : `10 000 × Σ placés + SOFT` — **aucune contrainte HARD n'est jamais violée en sortie** ; un
 match sans candidat licite sort NOMMÉ (`no_access_window` · `no_league_intersection` ·
 `team_venue_forbidden` · `club_rule_no_slot` · `venue_unavailable` · `venue_full` · `not_selected`,
@@ -498,7 +551,8 @@ le même `ConflictRadarLoader` que le contrôleur de conflits (§2) — une seul
 
 Front : le POST part une fois au montage du module (`MatchesLayout`, garde socle), jamais à un
 re-render ni à la navigation interne. `ModuleVisitBanner` (bandeau `role="status"`, ton accent, non
-dismissible) sur le Calendrier ; chips « Nouveau » ornementales sur le radar.
+dismissible) sur le Calendrier — chaque morceau de son résumé est un lien là où agir (Importer ;
+`/matchs/conflits?nouveaux=1` pour les nouveaux conflits, §6 de `module-matchs-consultation.md`) ; chips « Nouveau » ornementales sur le radar.
 
 ### Échéances de saisie ligue/comité
 
@@ -513,12 +567,14 @@ toCorrect}` — le compte GLOBAL « à faire dans FBI » toutes semaines confond
 domiciles PLACED, à corriger = entrées OUVERTES du registre ci-dessus), pour que le cockpit ET la
 barre de compteurs (§5) n'aient jamais à charger les fixtures —, et joint `guardianDelta` (réutilise
 `MatchModuleDeltaComputer` **sans stamper**) si une référence de visite existe déjà. Il sert aussi
-`toConfirmCount` — le compte GLOBAL de domiciles « validé ligue » validables
-(`LeagueValidationOutlook::compute`, § « Validé ligue » en lot) : un domicile validable est
-`UNPLACED`, donc `toPlaceCount` (ci-dessous) le SOUSTRAIT pour ne jamais le compter deux fois (« à
-confirmer », pas « à placer »). Cette route est aussi le point où le balayage des amicaux passés
-(`FriendlyAutoValidator::sweep`, § « Validé ligue » en lot) se déclenche — SEULEMENT si l'appelant
-est GESTIONNAIRE, jamais pour un Membre qui ouvre le même cockpit. Chaque fenêtre sert en plus DEUX
+`toConfirmCount` — le compte GLOBAL de domiciles « Déjà dans FBI » validables restant APRÈS la
+lecture (`LeagueValidationOutlook::compute`) : un domicile validable est `UNPLACED`, donc
+`toPlaceCount` (ci-dessous) le SOUSTRAIT pour ne jamais le compter deux fois. Cette route est aussi
+le point où les balayages « Déjà dans FBI » se déclenchent (amicaux passés `FriendlyAutoValidator::sweep`
+PUIS championnats commencés `LeagueValidationOutlook::sweepStartedChampionships`, détail et garde
+unique : [`module-matchs-import-fbi.md`](module-matchs-import-fbi.md) § « Déjà dans FBI ») — SEULEMENT
+si l'appelant est GESTIONNAIRE, la saison écrivable et le socle choisi, jamais pour un Membre qui
+ouvre le même cockpit ; `swept` dit combien cette lecture en a basculé. Chaque fenêtre sert en plus DEUX
 compteurs distincts (`EntryDeadlineOutlook::countHomeByCompetition`) : `toPlaceCount`
 (domiciles UNPLACED restants — un geste de placement) et `toEnterCount` (domiciles PLACED, prêts à copier
 dans FBI — aligné sur `fbiTodo.toEnter` et la liste FBI). La carte cockpit `FbiDeadlineCard` (`/`,
@@ -526,12 +582,9 @@ sous `SeasonPlanBanner`) fusionne le résumé du gardien dans la même carte (ja
 distingue trois régimes : une échéance en fenêtre J-7 → ton accent (warning si dépassée) avec la
 ligne globale au-dessus des échéances, chaque échéance segmentant « N match(s) à placer » et « N à
 saisir dans FBI » ; hors fenêtre mais `fbiTodo` > 0 → ton NEUTRE, la seule ligne globale (« N FBI à
-faire, dont M à corriger ») ; rien à faire, aucune fenêtre ET rien à confirmer « déjà dans FBI » →
-muette. Le bouton n'ouvre « Ouvrir la liste FBI » (`/matchs?fbi=1`) **que si** cette liste a du
+faire, dont M à corriger ») ; rien à faire et aucune fenêtre → muette. Le bouton n'ouvre « Ouvrir la liste FBI » (`/matchs?fbi=1`) **que si** cette liste a du
 contenu (`fbiTodo.toEnter + fbiTodo.toCorrect > 0`) ; sinon (tout reste à placer) il renvoie au
-Calendrier (`/matchs`, « Placer les matchs ») — la liste FBI serait sinon une modale vide. Quand
-`toConfirmCount > 0` ET l'utilisateur est gestionnaire, la carte ajoute une ligne dédiée « N matchs
-déjà dans FBI à confirmer » (plus « N à confirmer « validé ligue » », retours Nico BCCL 2026-10-27
-M3) + un bouton qui ouvre la confirmation chiffrée partagée (§ « Validé ligue » en lot) — jamais
-affichée à un Membre.
+Calendrier (`/matchs`, « Placer les matchs ») — la liste FBI serait sinon une modale vide. La carte
+n'a plus de ligne « à confirmer » ni de bouton : plus aucun geste de confirmation (décision fondateur
+2026-11-10).
 

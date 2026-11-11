@@ -217,7 +217,7 @@ déjà listés (`ci.yml:511,735,741`), aucune modification de `ci.yml`.
 5. Idempotence : second passage = 0.
 6. Synchro FFBB après la fermeture : SM1 contre Les Loups (27/12, 18:00, Mistral) dépointé ; le libellé FBI
    « MISTRAL » a un alias confirmé → la synchro ne repose PAS Mistral ; le match reste « À placer », le bandeau
-   « validé ligue » le liste « sans gymnase » ; placé à Brel → ligne « à saisir » `FBI affiche Mistral` ; après
+   « Déjà dans FBI » le liste « sans gymnase » ; placé à Brel → ligne « à saisir » `FBI affiche Mistral` ; après
    re-saisie FBI → SUBMITTED, mémo effacé. Témoin : alias vers un gymnase OUVERT → reposé comme aujourd'hui.
 7. Un placement est en cours : Enregistrer → toast 409, rien d'écrit ; run fini → le geste passe.
 8. Aperçu périmé : aperçu lu (2 matchs), un collègue place U13 le 26/12 à Mistral ; Enregistrer → 409, panneau relu
@@ -252,8 +252,8 @@ matchs / avec déclarés / 8 matchs « + 3 autres », toasts, notice de re-datag
 - Le match dépointé pouvait **repartir en silence dans le gymnase fermé** par la synchro FFBB
   (`Service/Fbi/FbiDeviationService.php:296-308`, `attachConfirmedVenue` : tout domicile `venueId NULL` dont le
   libellé a un alias confirmé, appelé par `FfbbRencontreReconciler.php:178,322`, l'import xlsx
-  `FbiFixtureImporter.php:429,1337,1426` et « prendre le fichier » `FbiDeviationService.php:444`), puis être **validé
-  ligue** au dépôt suivant (`Service/FbiFixtureImporter.php:470-478`, via `LeagueValidationOutlook::fixturesToConfirm`) ;
+  `FbiFixtureImporter.php:429,1337,1426` et « prendre le fichier » `FbiDeviationService.php:444`), puis passer **« Déjà dans
+  FBI »** au dépôt suivant ou à la prochaine lecture gestionnaire (`FbiFixtureImporter::import`, via `LeagueValidationOutlook::sweepStartedChampionships`) ;
   `setVenueId` efface alors `venue_closed` (`Fixture.php:494-495`).
 - Fenêtre « jours nouveaux » **incohérente** avec l'annonce (qui nomme toute la fenêtre) et avec le stock d'avant le lot.
 - **Course avec un run de placement** : `Service/MatchPlacementResultApplier.php:38-50` repose `venueId` sans relire
@@ -271,7 +271,7 @@ matchs / avec déclarés / 8 matchs « + 3 autres », toasts, notice de re-datag
   sans lire les fermetures : `Service/Basketball/VenueExternalLabelAttacher.php:87-99` (`attach`, boucle sur les
   domiciles `venueId NULL` dont le libellé égale l'alias), appelé par `POST /api/venues/{id}/external-labels`
   (`Controller/VenueExternalLabelController.php`, appel `attach` :125 — ≠ plan : :121-122), par l'import xlsx
-  (`Service/FbiFixtureImporter.php:1147`, avant la passe « validé ligue »), et par le choix inline
+  (`FbiFixtureImporter::attachConfirmedVenue`, avant la passe « Déjà dans FBI »), et par le choix inline
   (`FbiDeviationService.php:422`) ; et `VenueExternalLabelController::reassignHomeFixtures` (:185-212, appelé :154), qui
   re-pointe tous les domiciles non placés du libellé, quel que soit leur gymnase actuel.
 - **Annonce « fenêtre entière » mais effet filtré par les jours nouveaux** : les sorties anticipées de

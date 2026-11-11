@@ -31,7 +31,7 @@ export default defineConfig({
     // restent pour les specs club (projet `chromium`, qui hérite de la racine).
     {
       name: 'superadmin',
-      testMatch: /modal-reachability\.spec\.ts$/,
+      testMatch: /(modal-reachability|admin-clubs|release-notes)\.spec\.ts$/,
       dependencies: ['setup'],
       retries: 0,
       use: { ...devices['Desktop Chrome'], storageState: SUPERADMIN_STORAGE_STATE },
@@ -39,7 +39,7 @@ export default defineConfig({
     // Tout le reste — session club propre à chaque test, `retries: 2` en CI.
     {
       name: 'chromium',
-      testIgnore: /(superadmin\.setup|modal-reachability\.spec)\.ts$/,
+      testIgnore: /(superadmin\.setup|modal-reachability\.spec|admin-clubs\.spec|release-notes\.spec)\.ts$/,
       use: { ...devices['Desktop Chrome'] },
     },
   ],

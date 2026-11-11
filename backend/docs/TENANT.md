@@ -39,6 +39,7 @@ The shared membership lookups (`findActiveMembership`, `findActiveClubIds`, `isM
   3. Enables the `tenant_filter` SQL filter and sets its `club_id` parameter.
   4. Executes `set_config('app.club_id', '<uuid>', false)` (session-scoped, via `TenantConnectionContext`) on the PostgreSQL connection so that RLS policies are satisfied. *(The historical out-of-transaction `SET LOCAL` was a no-op — see point 2 above.)*
   5. Resolves the **season** (after the GUC — the season table is RLS-protected): explicit `_season_id` attribute / `X-Season-Id` header, **validated against the club** (unknown, malformed or foreign-club id → 403, never a silent fallback) → else the **calendar-derived current season** (`SeasonResolver`, July-15 pivot on `startDate` — `Season.status` is display metadata, never read for resolution). Sets `_season_id` + `_season_readonly` attributes and enables the **`season_filter`** SQL filter (clone of the tenant filter keyed on `season_id`) so every season-scoped read stays inside the selected season.
+- Steps 3, 4 and the `season_filter` go through `TenantDoctrineScope` (`backend/src/Service/TenantDoctrineScope.php`), which remembers them for the request. ⚠ **Never call `ManagerRegistry::resetManager()` bare inside a tenant request**: the reset `EntityManager` comes back with NO filter, so a following `findBy([])` reads every season of the club. Use `TenantDoctrineScope::resetManager()`, which re-applies both filters and the GUC on the new manager (guarded by `LeagueReadAutoValidationTest::testAStaleVersionDuringTheSweepNeverMixesThePreviousSeasonIntoTheAnswer`).
 - **Safety rule:** if no `club_id` can be resolved, the filters are **not** enabled and the GUC is **not** set. This prevents accidental cross-tenant queries. Same for the season: no resolvable season → `season_filter` stays off (mono-season behaviour unchanged).
 
 ### Season scoping (multi-season, transition P1)
@@ -101,7 +102,7 @@ services:
 | HTTP (no club_id resolvable) | No | Cleared at request start | Yes | Fail-closed: tenant tables return 0 rows |
 | Register (anonymous) | No | Yes, inside the transaction (AuthController) | Yes | WITH CHECK would reject the seeding otherwise |
 | Public coach-wish page (anonymous) | No | Yes — from the `CoachWishToken`'s `clubId`, released in `finally` | Yes | `PublicCoachWishController`: no JWT at all, the token IS the tenant carrier. Per-IP rate limit + byte-identical 404 run BEFORE the lookup |
-| Messenger worker | No | Yes — handler sets it from the message `clubId` | Yes | `GenerateScheduleHandler` / `ExportPdfHandler`, cleared in `finally` |
+| Messenger worker | No | Yes — handler sets it from the message `clubId` | Yes | `GenerateScheduleHandler` / `ExportPdfHandler`, cleared in `finally`. Outside any message (worker-startup reconciler `PlacementRunStartupReconciler`, failure listeners): GUC alone, per club — never `TenantDoctrineScope` / `getFilters()->enable`, whose filter and remembered club would leak into the worker's first message (`WorkerStartupReconcilerNeverScopesDoctrineFiltersTest`) |
 | CLI (`dbal:run-sql` default) | No | No | Yes | 0 rows on tenant tables — use `--connection admin` for ops |
 | Tests | Yes | Yes | Yes | dama rollback also reverts the GUC (`set_config(..., false)` is transactional) |
 

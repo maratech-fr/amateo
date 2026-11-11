@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Service;
 
 use App\Controller\LeagueValidatedFixturesController;
+use App\Controller\PlaceMatchesController;
 use App\Entity\Competition;
 use App\Entity\Fixture;
 use App\Enum\FixtureHomeAway;
@@ -16,6 +17,8 @@ use App\Service\Basketball\FbiDivisionSignature;
 use App\State\Processor\FixtureStateProcessor;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
+use Doctrine\ORM\OptimisticLockException;
+use Psr\Log\LoggerInterface;
 use Symfony\Component\Clock\ClockInterface;
 
 /**
@@ -46,6 +49,8 @@ final class LeagueValidationOutlook
         private readonly SharedCompetitionDeadlineRepository $sharedDeadlineRepository,
         private readonly FbiDivisionSignature $divisionSignature,
         private readonly ClockInterface $clock,
+        private readonly TenantDoctrineScope $tenantDoctrineScope,
+        private readonly LoggerInterface $logger,
     ) {}
 
     /**
@@ -142,11 +147,10 @@ final class LeagueValidationOutlook
     }
 
     /**
-     * Les domiciles à basculer « validé ligue » au POST : un domicile UNPLACED d'un
+     * Les domiciles à basculer « validé ligue » par le balayage : un domicile UNPLACED d'un
      * championnat COMMENCÉ, non amical, passant le prédicat (heure + gymnase identifié,
      * sans écart en attente). Recalculé au moment de l'application (l'horloge + les
-     * échéances du moment font foi, jamais ce que l'écran affichait) — le client ne
-     * choisit AUCUN championnat.
+     * échéances du moment font foi) — le client ne choisit AUCUN championnat.
      *
      * @return list<Fixture>
      */
@@ -174,17 +178,53 @@ final class LeagueValidationOutlook
     }
 
     /**
+     * Le balayage : chaque domicile validable d'un championnat COMMENCÉ passe « Déjà dans
+     * FBI » ({@see fixturesToConfirm} + {@see markLeagueValidated}). Foyer UNIQUE, appelé au
+     * dépôt FBI ({@see FbiFixtureImporter::import}) et à chaque lecture GESTIONNAIRE sous la
+     * garde saison écrivable + socle choisi (accueil {@see EntryDeadlineOutlook}, vue
+     * {@see LeagueValidatedFixturesController}, guichet {@see PlaceMatchesController}).
+     *
+     * Flush seulement si quelque chose a changé. Verrou optimiste périmé (un autre onglet a
+     * modifié l'une des rencontres pendant le balayage) : Doctrine a FERMÉ l'EntityManager —
+     * on le réinitialise en reposant le périmètre de la requête (filtres tenant + saison, GUC
+     * RLS : {@see TenantDoctrineScope::resetManager}) et on rend 0 : la lecture répond, sur la
+     * seule saison lue, et la suivante rattrape.
+     *
+     * @return int combien de rencontres ont basculé (0 si rien, ou si la course est perdue)
+     */
+    public function sweepStartedChampionships(string $seasonId, DateTimeImmutable $now): int
+    {
+        $swept = 0;
+        foreach ($this->fixturesToConfirm($seasonId) as $fixture) {
+            $this->markLeagueValidated($fixture, $now);
+            ++$swept;
+        }
+        if (0 === $swept) {
+            return 0;
+        }
+
+        try {
+            $this->entityManager->flush();
+        } catch (OptimisticLockException $exception) {
+            $this->tenantDoctrineScope->resetManager();
+            $this->logger->info('Championship sweep lost a concurrent modification; the next read will retry.', ['seasonId' => $seasonId, 'exception' => $exception]);
+
+            return 0;
+        }
+
+        return $swept;
+    }
+
+    /**
      * Applique « validé ligue » à un domicile validable : l'ancre MANUAL d'abord,
      * puis le statut — setStatus(VALIDATED) TRAITE la rencontre (REVIEWED + horodaté,
      * aucun écart pendant par construction, le prédicat l'exige). Le MANUAL n'est PAS
      * cosmétique : l'ancre FIXED du solveur ({@see MatchPlacementPayloadBuilder::matchRow})
      * et le cadenas de la grille l'exigent.
      *
-     * Foyer UNIQUE de l'écriture, partagé par le geste manuel en lot
-     * ({@see LeagueValidatedFixturesController::confirm}) et par l'auto-validation au
-     * dépôt FBI ({@see FbiFixtureImporter::import}) — jamais une seconde copie, c'est ce
-     * qui rend les deux ancres byte-identiques. N'appelle pas le flush : l'appelant
-     * décide quand écrire.
+     * Foyer UNIQUE de l'écriture, appelé par {@see sweepStartedChampionships} — jamais une
+     * seconde copie, c'est ce qui rend les ancres byte-identiques. N'appelle pas le flush :
+     * l'appelant décide quand écrire.
      */
     public function markLeagueValidated(Fixture $fixture, DateTimeImmutable $now): void
     {

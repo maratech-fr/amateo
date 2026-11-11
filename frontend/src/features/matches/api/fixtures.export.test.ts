@@ -16,10 +16,10 @@ describe("exportFixturesPdf", () => {
     vi.mocked(api.post).mockReset();
   });
 
-  it("poste la plage et l'équipe avec un délai de 60 s, et rend le fichier", async () => {
+  it("poste la plage, l'équipe, le regroupement et « à domicile seulement » avec un délai de 60 s, et rend le fichier", async () => {
     const blob = new Blob(["%PDF"]);
     vi.mocked(api.post).mockReturnValue({ blob: () => Promise.resolve(blob) } as never);
-    const input = { from: "2026-11-09", to: "2026-11-15", teamId: "team-13" };
+    const input = { from: "2026-11-09", to: "2026-11-15", teamId: "team-13", homeOnly: true, groupBy: "day" as const };
 
     await expect(exportFixturesPdf(input)).resolves.toBe(blob);
 

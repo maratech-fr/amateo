@@ -225,9 +225,13 @@ services:
       timeout: 5s
       retries: 5
       start_period: 20s
-    # Above the worker's PHP --memory-limit=256M so Messenger's graceful stop
-    # fires before the kernel OOM-killer (which would SIGKILL mid-message).
+    # --memory-limit n'est vérifié qu'ENTRE deux messages ; un pic en plein message peut
+    # atteindre mem_limit et finir en SIGKILL — au redémarrage, le rattrapage des runs de
+    # placement (PlacementRunStartupReconciler) puis la garde de redélivrance du handler
+    # ferment ce cas. Un SIGTERM ne coupe pas le message en cours : la grâce de 60 s laisse
+    # finir un message court, un solve long est tué puis rattrapé.
     mem_limit: 384m
+    stop_grace_period: 60s
     restart: unless-stopped
     <<: *logging
     networks:

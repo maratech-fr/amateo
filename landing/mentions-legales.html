@@ -7,9 +7,8 @@
   <meta name="description" content="Mentions légales : éditeur, responsable de publication et hébergeur du service." />
   <meta name="robots" content="index, follow" />
   <link rel="canonical" href="https://amateo.app/mentions-legales.html" /> <!-- nosemgrep: html.security.audit.missing-integrity.missing-integrity -- canonical : indique une URL, ne charge aucune ressource, integrity sans objet -->
-  <!-- Carte de partage (Open Graph / Twitter) — même patron qu'index.html, URL ABSOLUES.
-       og:url/og:title/og:description pointent CETTE page : og:title reprend le <title>, og:description
-       la méta-description ci-dessus — jamais le titre de l'accueil. L'image reste celle de la vitrine. -->
+  <!-- Carte de partage (Open Graph / Twitter) — même patron que l'accueil, URL ABSOLUES, pointant
+       CETTE page. L'image reste celle de la vitrine. -->
   <meta property="og:type" content="website" />
   <meta property="og:url" content="https://amateo.app/mentions-legales.html" />
   <meta property="og:title" content="Amateo — Mentions légales" />
@@ -20,9 +19,7 @@
   <meta name="twitter:card" content="summary_large_image" />
   <link rel="icon" type="image/svg+xml" href="assets/brand/icon.svg" />
   <link rel="icon" type="image/png" sizes="32x32" href="assets/brand/icon-32.png" />
-  <!-- Thème AU CHOIX, posé AVANT le <style> (anti-flash) : localStorage `theme` sinon système.
-       ⚠ Dupliqué VOLONTAIREMENT depuis index.html — zéro build, aucune brique partagée : chaque
-       page statique porte son propre scaffolding de thème (règle landing). -->
+  <!-- Thème AU CHOIX, posé AVANT la feuille partagée (anti-flash) — seul script inline de la page. -->
   <script>
     (function () {
       try {
@@ -34,125 +31,15 @@
       } catch (e) { /* stockage indisponible : on reste en clair */ }
     })();
   </script>
-  <style>
-    @font-face {
-      font-family: "Bricolage Grotesque";
-      font-style: normal;
-      font-weight: 700 800;
-      font-display: swap;
-      src: url("assets/fonts/bricolage-latin.woff2") format("woff2");
-    }
-    /* Palette dupliquée VOLONTAIREMENT depuis index.html (voir en-tête du <head>). */
-    :root {
-      color-scheme: light;
-      --paper: #faf9f7;
-      --surface: #ffffff;
-      --ink: #191714;
-      --ink-2: #57534c;
-      --muted: #6d675d;
-      --line: #e7e3dc;
-      --accent: #46afac;
-      --accent-ink: #2e7876;
-      --accent-deep: #215857;
-      --accent-soft: #e9f5f5;
-      --accent-foreground: #ffffff;
-      --radius: 12px;
-      --display: "Bricolage Grotesque", system-ui, sans-serif;
-    }
-    html[data-theme="dark"] {
-      color-scheme: dark;
-      --paper: oklch(0.19 0.006 75);
-      --surface: oklch(0.23 0.006 75);
-      --ink: oklch(0.96 0.004 75);
-      --ink-2: oklch(0.82 0.010 75);
-      --muted: oklch(0.68 0.015 75);
-      --line: oklch(0.31 0.006 75);
-      --accent: #46afac;
-      --accent-ink: #46afac;
-      --accent-deep: #4db2af;
-      --accent-soft: color-mix(in oklab, var(--accent) 14%, var(--surface));
-      --accent-foreground: oklch(0.19 0.010 75);
-    }
-    * { box-sizing: border-box; margin: 0; }
-    /* PAS de `scroll-behavior: smooth` : glissement d'ancre piloté en JS (easeOutCubic),
-       comme sur index.html — dupliqué VOLONTAIREMENT (zéro brique partagée). */
-    html { scroll-padding-top: 76px; }
-    body {
-      background: var(--paper) url("assets/brand/fond.svg") center / cover no-repeat fixed;
-      color: var(--ink);
-      font: 16px/1.65 system-ui, -apple-system, "Segoe UI", sans-serif;
-      -webkit-font-smoothing: antialiased;
-    }
-    html[data-theme="dark"] body {
-      background: var(--paper) url("assets/brand/fond-dark.svg") center / cover no-repeat fixed;
-    }
-    a { color: var(--accent-ink); text-underline-offset: 3px; }
-    .wrap { max-width: 760px; margin: 0 auto; padding: 0 24px; }
-
-    header.site {
-      position: sticky; top: 0; z-index: 20;
-      background: color-mix(in srgb, var(--paper) 92%, transparent);
-      backdrop-filter: blur(8px);
-      border-bottom: 1px solid var(--line);
-    }
-    header.site .wrap { display: flex; align-items: center; justify-content: space-between; height: 64px; }
-    .logotype { display: inline-flex; align-items: center; gap: 9px; text-decoration: none; flex-shrink: 0; }
-    .brand-logo { height: 30px; width: 30px; display: block; }
-    .logo-word { font-family: var(--display); font-weight: 800; font-size: 23px; letter-spacing: -0.03em; line-height: 1; color: var(--ink); text-transform: lowercase; }
-    nav.top { display: flex; gap: 16px; align-items: center; font-size: 15px; }
-    nav.top a { color: var(--ink-2); text-decoration: none; }
-    nav.top a:hover { color: var(--ink); }
-    .theme-toggle {
-      display: inline-flex; align-items: center; justify-content: center;
-      width: 40px; height: 40px; padding: 0; border-radius: 10px; flex-shrink: 0;
-      border: 1.5px solid var(--line); background: var(--surface); color: var(--ink-2);
-      cursor: pointer; transition: color 80ms ease, border-color 80ms ease;
-    }
-    .theme-toggle:hover { color: var(--ink); border-color: var(--muted); }
-    .theme-toggle:focus-visible { outline: 3px solid var(--accent-ink); outline-offset: 2px; }
-    .theme-toggle svg { width: 18px; height: 18px; display: block; }
-    .theme-toggle .icon-sun { display: none; }
-    html[data-theme="dark"] .theme-toggle .icon-moon { display: none; }
-    html[data-theme="dark"] .theme-toggle .icon-sun { display: block; }
-
-    main { padding: 56px 0 24px; }
-    h1 { font-family: var(--display); font-size: clamp(30px, 4.5vw, 44px); line-height: 1.08; letter-spacing: -0.02em; font-weight: 800; }
-    .updated { margin-top: 10px; color: var(--muted); font-size: 14px; }
-    section.legal { margin-top: 40px; }
-    section.legal h2 { font-family: var(--display); font-size: 20px; letter-spacing: -0.01em; font-weight: 800; margin-bottom: 10px; }
-    section.legal p { color: var(--ink-2); margin-top: 8px; }
-    section.legal address { color: var(--ink-2); font-style: normal; line-height: 1.7; }
-    .back { margin-top: 48px; font-size: 15px; }
-
-    footer.site { border-top: 1px solid var(--line); margin-top: 56px; padding: 28px 0 40px; font-size: 14px; color: var(--muted); }
-    footer.site .wrap { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
-    .foot-brand { display: inline-flex; align-items: center; gap: 7px; vertical-align: -5px; }
-    footer.site .brand-logo { height: 20px; width: 20px; }
-    footer.site .logo-word { font-size: 16px; }
-
-    /* Cibles tactiles ≥44px en mobile (lien « Accueil » de l'en-tête, retour, pied de page) :
-       padding gonflé, marge négative pour COMPENSER — rendu desktop inchangé, zone cliquable
-       plus grande. Borné à ≤880px (au pointeur, 44px n'est pas requis). Pas de burger : l'en-tête
-       (logo + « Accueil » + bascule) tient dès 360px. */
-    @media (max-width: 880px) {
-      nav.top a { display: inline-block; padding: 12px 6px; margin: -12px -6px; }
-      .back a { display: inline-block; padding: 11px 4px; margin: -11px -4px; }
-      footer.site a { display: inline-block; padding: 12px 4px; margin: -12px -4px; }
-    }
-
-    @media (prefers-reduced-motion: reduce) {
-      /* Saut d'ancre direct : le script de glissement teste prefers-reduced-motion. */
-      .theme-toggle { transition: none; }
-    }
-  </style>
+  <link rel="stylesheet" href="assets/site.css?v=2026-11-11" />
 </head>
 <body>
 
 <header class="site">
   <div class="wrap">
-    <a class="logotype" href="index.html" data-brand-label aria-label="Amateo"><img class="brand-logo" data-brand-logo src="assets/brand/mark.svg" alt="" width="30" height="30" /><span class="brand logo-word">Amateo</span></a>
+    <a class="logotype" href="/" data-brand-label aria-label="Amateo"><img class="brand-logo" data-brand-logo src="assets/brand/mark.svg" alt="" width="30" height="30" /><span class="brand logo-word">Amateo</span></a>
     <nav class="top" aria-label="Navigation">
-      <a data-cta="home" href="index.html">Accueil</a>
+      <a data-cta="home" href="/">Accueil</a>
       <button type="button" class="theme-toggle" data-theme-toggle aria-pressed="false" aria-label="Passer en thème sombre">
         <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
         <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4.2"/><path d="M12 2v2.5M12 19.5V22M4.22 4.22l1.77 1.77M18.01 18.01l1.77 1.77M2 12h2.5M19.5 12H22M4.22 19.78l1.77-1.77M18.01 5.99l1.77-1.77"/></svg>
@@ -161,46 +48,48 @@
   </div>
 </header>
 
-<main>
+<!-- Valeurs LCEN (éditeur, statut, hébergeur) écrites EN CLAIR : l'obligation ne dépend d'aucun
+     script. Référence : config.js (`editor`, `legal`) — `LandingClaimsTest` lie les deux. -->
+<main class="page">
   <div class="wrap">
     <h1>Mentions légales</h1>
     <p class="updated">Conformément aux articles 6-III et 19 de la loi n° 2004-575 du 21 juin 2004 pour la confiance dans l'économie numérique (LCEN).</p>
 
-    <section class="legal">
+    <section>
       <h2>Éditeur du service</h2>
       <p>
-        Le service <strong class="brand">Amateo</strong> est édité par <strong data-legal="editor">…</strong>,
-        <span data-legal="editorStatus">…</span>.
+        Le service <strong class="brand">Amateo</strong> est édité par <strong data-legal="editor">Franck Mpemba Boni</strong>,
+        <span data-legal="editorStatus">à titre personnel</span>.
       </p>
-      <p>Contact : <a data-legal="contactEmail" href="#">…</a></p>
+      <p>Contact : <a href="mailto:contact@amateo.app">contact@amateo.app</a></p>
     </section>
 
-    <section class="legal">
+    <section>
       <h2>Responsable de la publication</h2>
-      <p>Le responsable de la publication est l'éditeur, <strong data-legal="editor">…</strong>, joignable à l'adresse de contact ci-dessus.</p>
+      <p>Le responsable de la publication est <strong data-legal="editor">Franck Mpemba Boni</strong>, fondateur, joignable à l'adresse de contact ci-dessus.</p>
     </section>
 
-    <section class="legal">
+    <section>
       <h2>Hébergement</h2>
       <p>Le service est hébergé en France par :</p>
       <address>
-        <strong data-legal="hostName">…</strong><br />
-        <span data-legal="hostAddress">…</span><br />
-        <span data-legal="hostRcs">…</span><br />
-        Téléphone : <span data-legal="hostPhone">…</span>
+        <strong data-legal="hostName">Scaleway SAS</strong><br />
+        <span data-legal="hostAddress">8 rue de la Ville-l'Évêque, 75008 Paris, France</span><br />
+        <span data-legal="hostRcs">RCS Paris 433 115 904</span><br />
+        Téléphone : <span data-legal="hostPhone">+33 1 84 13 00 00</span>
       </address>
     </section>
 
-    <section class="legal">
+    <section>
       <h2>Données personnelles</h2>
       <p>
         Le traitement des données personnelles, les durées de conservation et l'exercice de vos droits
         (accès, rectification, effacement, portabilité, opposition) sont détaillés dans la
-        <a data-cta="privacy" href="#">politique de confidentialité</a> de l'application.
+        <a data-cta="privacy" href="https://app.amateo.app/confidentialite">politique de confidentialité</a> de l'application.
       </p>
     </section>
 
-    <section class="legal">
+    <section>
       <h2>Mesure d'audience</h2>
       <p>
         Ce site utilise <strong>Umami</strong>, une solution de mesure d'audience
@@ -209,11 +98,11 @@
         <strong>anonyme</strong> et <strong>sans cookie</strong> — aucun bandeau de consentement
         n'est donc nécessaire. Aucune donnée n'est transmise à des tiers et aucun suivi n'est
         effectué entre différents sites. Le détail de ce traitement figure dans la
-        <a data-cta="privacy" href="#">politique de confidentialité</a> de l'application.
+        <a data-cta="privacy" href="https://app.amateo.app/confidentialite">politique de confidentialité</a> de l'application.
       </p>
     </section>
 
-    <section class="legal">
+    <section>
       <h2>Propriété intellectuelle</h2>
       <p>
         La marque <strong class="brand">Amateo</strong>, le logo, les textes et les visuels de ce site sont la
@@ -221,166 +110,44 @@
       </p>
     </section>
 
-    <p class="back"><a data-cta="home" href="index.html">← Retour à l'accueil</a></p>
+    <p class="back"><a data-cta="home" href="/">← Retour à l'accueil</a></p>
   </div>
 </main>
 
 <footer class="site">
   <div class="wrap">
-    <span><span class="foot-brand"><img class="brand-logo" data-brand-logo src="assets/brand/mark.svg" alt="" width="20" height="20" /><span class="brand logo-word">Amateo</span></span> — le planning des clubs de basket.</span>
-    <span><a data-cta="home" href="index.html">Accueil</a></span>
+    <p class="foot-tagline"><span class="foot-brand"><img class="brand-logo" data-brand-logo src="assets/brand/mark.svg" alt="" width="20" height="20" /><span class="brand logo-word">Amateo</span></span> — le planning des clubs de basket. Actuellement en bêta avec des clubs pilotes.</p>
+    <div class="cols">
+      <nav class="col" aria-label="Produit">
+        <p class="col-title">Produit</p>
+        <ul>
+          <li><a href="fonctionnalites.html">Fonctionnalités</a></li>
+          <li><a href="/#offres">Offres</a></li>
+          <li><a href="/#faq">Questions fréquentes</a></li>
+          <li><a href="evolutions.html">Journal des évolutions</a></li>
+        </ul>
+      </nav>
+      <nav class="col" aria-label="À propos">
+        <p class="col-title">À propos</p>
+        <ul>
+          <li><a href="qui-fait.html">Qui fait <span class="brand">Amateo</span></a></li>
+          <li><a href="vos-donnees.html">Vos données</a></li>
+          <li><a href="mentions-legales.html">Mentions légales</a></li>
+          <li><a data-cta="demo-inline" href="mailto:contact@amateo.app?subject=Demande%20de%20demo%20-%20Amateo&amp;body=Bonjour%2C%0A%0AJe%20souhaite%20voir%20Amateo%20en%20demo%20pour%20mon%20club.%0A%0AClub%20%3A%20%0ANombre%20d'equipes%20(environ)%20%3A%20%0ADisponibilites%20%3A%20">Contact</a></li>
+        </ul>
+      </nav>
+      <nav class="col" aria-label="Compte">
+        <p class="col-title">Compte</p>
+        <ul>
+          <li><a data-cta="login" href="https://app.amateo.app/login">Se connecter</a></li>
+          <li><a data-cta="register" href="https://app.amateo.app/register">Essayer gratuitement</a></li>
+        </ul>
+      </nav>
+    </div>
   </div>
 </footer>
 
-<!-- ?v=… : cache-bust de config.js, aligné sur index.html (bumper les DEUX ensemble). -->
-<script src="config.js?v=2026-10-19"></script>
-<script>
-  // Injection des valeurs légales depuis config.js — MÊME source unique que la vitrine.
-  (function () {
-    const cfg = window.LANDING_CONFIG || {};
-    const { appUrl, contactEmail, logo } = cfg;
-    const legal = cfg.legal || {};
-    const host = legal.host || {};
-
-    document.querySelectorAll("[data-brand-logo]").forEach((img) => {
-      if (logo) {
-        img.onerror = () => { img.onerror = null; img.remove(); };
-        img.src = logo;
-      } else {
-        img.remove();
-      }
-    });
-
-    const setText = (sel, value) => {
-      document.querySelectorAll(sel).forEach((el) => { el.textContent = value || "—"; });
-    };
-    setText('[data-legal="editor"]', cfg.editor);
-    setText('[data-legal="editorStatus"]', legal.editorStatus);
-    setText('[data-legal="hostName"]', host.name);
-    setText('[data-legal="hostAddress"]', host.address);
-    setText('[data-legal="hostRcs"]', host.rcs);
-    setText('[data-legal="hostPhone"]', host.phone);
-
-    document.querySelectorAll('[data-legal="contactEmail"]').forEach((a) => {
-      a.textContent = contactEmail;
-      a.href = "mailto:" + contactEmail;
-    });
-    document.querySelectorAll('[data-cta="privacy"]').forEach((a) => { a.href = appUrl + "/confidentialite"; });
-
-    // Mesure d'audience Umami (sans cookie, P4-276) — injection DÉFENSIVE à DOUBLE
-    // garde, IDENTIQUE à index.html (dupliquée VOLONTAIREMENT, zéro brique partagée) :
-    // (a) les deux clés `analytics` non vides ; (b) hostname courant = l'hôte dérivé
-    // de `siteUrl`. En local / :5173 / autre domaine → rien n'est injecté.
-    try {
-      const a = cfg.analytics;
-      let siteHost = "";
-      try { siteHost = new URL(cfg.siteUrl).hostname; } catch (e) { siteHost = ""; }
-      if (a && a.scriptUrl && a.websiteId && siteHost && location.hostname === siteHost) {
-        const s = document.createElement("script");
-        s.defer = true;
-        s.src = a.scriptUrl;
-        s.setAttribute("data-website-id", a.websiteId);
-        document.head.appendChild(s);
-      }
-    } catch (e) { /* config absent / ancien cache : pas de mesure, page intacte */ }
-  })();
-</script>
-<script>
-  // Bascule de thème — dupliquée VOLONTAIREMENT depuis index.html (aucune brique partagée).
-  (function () {
-    const root = document.documentElement;
-    const toggle = document.querySelector("[data-theme-toggle]");
-    const current = () => (root.getAttribute("data-theme") === "dark" ? "dark" : "light");
-    function reflect(theme) {
-      if (!toggle) return;
-      const dark = theme === "dark";
-      toggle.setAttribute("aria-pressed", String(dark));
-      toggle.setAttribute("aria-label", dark ? "Passer en thème clair" : "Passer en thème sombre");
-    }
-    reflect(current());
-    if (toggle) {
-      toggle.addEventListener("click", () => {
-        const next = current() === "dark" ? "light" : "dark";
-        if (next === "dark") root.setAttribute("data-theme", "dark");
-        else root.removeAttribute("data-theme");
-        try { localStorage.setItem("theme", next); } catch (e) { /* stockage indisponible */ }
-        reflect(next);
-      });
-    }
-  })();
-</script>
-<script>
-  // Glissement des ancres internes — MÊME script que index.html, dupliqué VOLONTAIREMENT
-  // (zéro build, zéro brique partagée). easeOutCubic en rAF, saut direct sous reduced-motion,
-  // interrompu si l'utilisateur reprend la main. Inerte tant qu'aucun lien `#…` n'existe ici.
-  (function () {
-    const PAD = 76;
-    const reduced = () => {
-      try { return window.matchMedia("(prefers-reduced-motion: reduce)").matches; } catch (e) { return false; }
-    };
-    const easeOutCubic = (t) => 1 - Math.pow(1 - t, 3);
-
-    const targetY = (hash) => {
-      if (hash === "#" || hash === "") return 0;
-      let el = null;
-      try { el = document.querySelector(hash); } catch (e) { el = null; }
-      if (!el) return null;
-      const top = el.getBoundingClientRect().top + window.scrollY;
-      return Math.max(0, Math.round(top - PAD));
-    };
-    const focusTarget = (hash) => {
-      if (hash === "#" || hash === "") return;
-      let el = null;
-      try { el = document.querySelector(hash); } catch (e) { el = null; }
-      if (!el) return;
-      if (!el.hasAttribute("tabindex")) el.setAttribute("tabindex", "-1");
-      el.focus({ preventScroll: true });
-    };
-
-    let raf = null;
-    const stop = () => {
-      if (raf) { cancelAnimationFrame(raf); raf = null; }
-      window.removeEventListener("wheel", stop, { passive: true });
-      window.removeEventListener("touchstart", stop, { passive: true });
-      window.removeEventListener("keydown", stop, true);
-    };
-    const animate = (y, done) => {
-      stop();
-      const start = window.scrollY;
-      const dist = y - start;
-      if (Math.abs(dist) < 2) { window.scrollTo(0, y); if (done) done(); return; }
-      const dur = Math.min(900, Math.max(600, Math.abs(dist) * 0.6));
-      const t0 = performance.now();
-      window.addEventListener("wheel", stop, { passive: true });
-      window.addEventListener("touchstart", stop, { passive: true });
-      window.addEventListener("keydown", stop, true);
-      const step = (now) => {
-        const p = Math.min(1, (now - t0) / dur);
-        window.scrollTo(0, Math.round(start + dist * easeOutCubic(p)));
-        if (p < 1) { raf = requestAnimationFrame(step); }
-        else { stop(); if (done) done(); }
-      };
-      raf = requestAnimationFrame(step);
-    };
-
-    document.addEventListener("click", (e) => {
-      if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
-      const t = e.target;
-      const a = t && t.closest ? t.closest('a[href^="#"]') : null;
-      if (!a) return;
-      const hash = a.getAttribute("href");
-      if (hash === null) return;
-      const y = targetY(hash);
-      if (y === null) return;
-      e.preventDefault();
-      try {
-        if (hash === "#") history.pushState(null, "", location.pathname + location.search);
-        else history.pushState(null, "", hash);
-      } catch (err) { /* file:// ou restrictions : sans blocage */ }
-      if (reduced()) { window.scrollTo(0, y); focusTarget(hash); return; }
-      animate(y, () => focusTarget(hash));
-    });
-  })();
-</script>
+<script src="config.js?v=2026-11-11"></script>
+<script src="assets/site.js?v=2026-11-11"></script>
 </body>
 </html>

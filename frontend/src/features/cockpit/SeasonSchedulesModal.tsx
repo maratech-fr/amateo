@@ -51,13 +51,13 @@ function CompactExport({ scheduleId, label, clubId = null }: { scheduleId: strin
 
   return (
     <div className="flex items-center gap-1">
-      <Button variant="ghost" size="icon" className="size-8" aria-expanded={open} aria-label={`Exporter ${label}`} title="Exporter" onClick={() => setOpen((o) => !o)}>
+      <Button variant="ghost" size="icon" className="size-8" aria-expanded={open} aria-label={COCKPIT_TEXTS.exportPlanningLabel(label)} title={COCKPIT_TEXTS.exportPlanning} onClick={() => setOpen((o) => !o)}>
         <Download className="size-4" />
       </Button>
       {open ? (
         // AUD-FRT-23 (2e site, trouvé au grep — l'audit n'avait vu qu'ExportMenu) : une rangée
         // de boutons de format, sans navigation aux flèches, n'est pas un menu ARIA.
-        <div role="group" aria-label={`Formats d'export de ${label}`} className="flex items-center gap-1">
+        <div role="group" aria-label={COCKPIT_TEXTS.exportFormatsLabel(label)} className="flex items-center gap-1">
           {EXPORT_FORMATS.map(({ key, label: fmt }) => (
             <button
               key={key}
@@ -143,12 +143,14 @@ export function SeasonSchedulesModal({ schedules, entries = [], schedulesResolve
   // toolbar (« validé » / « en vigueur »).
   const stateLabel = (row: PlanningRow): string => {
     if (row.isChosen) {
-      return "Validé";
+      // La marque « Validé automatiquement » est SERVIE (`plan.autoValidated`), jamais dérivée ici.
+      const autoValidated = null !== row.schedulePlanId && true === planById.get(row.schedulePlanId)?.autoValidated;
+      return autoValidated ? COCKPIT_TEXTS.validatedAutomatically : COCKPIT_TEXTS.validated;
     }
     if (row.isOpen) {
-      return `${STATUS_LABELS[row.status]} · en cours`;
+      return COCKPIT_TEXTS.statusInProgress(STATUS_LABELS[row.status]);
     }
-    return "COMPLETED" === row.status ? "Terminé · à valider" : STATUS_LABELS[row.status];
+    return "COMPLETED" === row.status ? COCKPIT_TEXTS.completedToValidate : STATUS_LABELS[row.status];
   };
   const deletableEntryId = (row: PlanningRow): string | null => {
     if (!row.isOverlay || isReadonly || "PENDING" === row.status || "GENERATING" === row.status || null === row.schedulePlanId) {
@@ -191,12 +193,12 @@ export function SeasonSchedulesModal({ schedules, entries = [], schedulesResolve
   };
 
   return (
-    <Modal label="Plannings de la saison" title="Plannings de la saison" onClose={onClose} size="lg">
+    <Modal label={COCKPIT_TEXTS.seasonPlanningsTitle} title={COCKPIT_TEXTS.seasonPlanningsTitle} onClose={onClose} size="lg">
       {/* readState — l'échec de lecture des fenêtres de période n'est jamais rendu comme du vide
           (frontend.md) : un « Réessayer » le dit, plutôt que de masquer silencieusement les dates. */}
       {readFailed(seasonEntriesQuery) ? (
         <LoadErrorHint className="mt-4" onRetry={() => void seasonEntriesQuery.refetch()}>
-          Les fenêtres des plannings de période n'ont pas pu être chargées.
+          {COCKPIT_TEXTS.periodWindowsLoadFailed}
         </LoadErrorHint>
       ) : null}
       <ul className="mt-4 space-y-2">
@@ -217,12 +219,12 @@ export function SeasonSchedulesModal({ schedules, entries = [], schedulesResolve
               </div>
               <div className="flex shrink-0 items-center gap-1">
                 {row.isOpen ? (
-                  <Button variant="ghost" size="icon" className="size-8" aria-label={`Reprendre ${row.label}`} title="Reprendre" disabled={resumeBlocked} onClick={() => consult(row)}>
+                  <Button variant="ghost" size="icon" className="size-8" aria-label={COCKPIT_TEXTS.resumePlanningLabel(row.label)} title={COCKPIT_TEXTS.resume} disabled={resumeBlocked} onClick={() => consult(row)}>
                     <Pencil className="size-4" />
                   </Button>
                 ) : (
                   <>
-                    <Button variant="ghost" size="icon" className="size-8" aria-label={`Consulter ${row.label}`} title="Consulter" onClick={() => consult(row)}>
+                    <Button variant="ghost" size="icon" className="size-8" aria-label={COCKPIT_TEXTS.consultPlanningLabel(row.label)} title={COCKPIT_TEXTS.consult} onClick={() => consult(row)}>
                       <Eye className="size-4" />
                     </Button>
                     <CompactExport scheduleId={row.id} label={row.label} clubId={me?.club?.id ?? null} />

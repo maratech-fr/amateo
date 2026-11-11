@@ -4,7 +4,11 @@ declare(strict_types=1);
 
 namespace App\Tests\Security;
 
+use App\Entity\Competition;
+use App\Entity\Fixture;
 use App\Entity\OpponentDirectoryEntry;
+use App\Enum\CompetitionType;
+use App\Enum\FixtureHomeAway;
 use App\Enum\OpponentLocationPrecision;
 use App\Service\TenantConnectionContext;
 use App\Storage\LogoStorage;
@@ -32,18 +36,22 @@ use Symfony\Component\RateLimiter\RateLimiterFactory;
  * Les lectures ouvertes au Membre par le chantier (conflits de séances placées, contrôle des
  * contraintes avant génération, propositions de créneaux ligue, campagnes de doléances et leur
  * aperçu) et celles déjà ouvertes (conflits et corrections de matchs, trajets adverses, libellés de
- * salle) répondent 200 au Membre, et l'empreinte des tables du club (amical compris) ne bouge pas :
- * aucune écriture, aucun message, aucun appel sortant.
+ * salle, accueil des matchs — dont la lecture par un GESTIONNAIRE fait passer « Déjà dans FBI » les
+ * amicaux passés et les domiciles des championnats commencés) répondent 200 au Membre, et
+ * l'empreinte des tables du club (amical compris) ne bouge pas : aucune écriture, aucun message,
+ * aucun appel sortant.
  *
  * Ce qui reste fermé, et pourquoi :
  *  - les SEPT lectures qui appellent l'extérieur (FFBB, géocodage, vérification géographique) →
  *    403, aucun appel parti — un Membre ne déclenche jamais d'appel sortant ;
  *  - l'aperçu du MAIL de doléances (`email-preview`) → 403 ;
+ *  - l'aperçu de l'envoi des conflits aux coachs (`mail-coaches/preview`, noms et adresses) → 403 ;
  *  - le lien personnel d'un coach (`token`) n'est JAMAIS servi au Membre : ni dans la campagne,
  *    ni dans l'aperçu du formulaire — il reste servi au gestionnaire ;
  *  - un logo adverse absent du stockage n'est PAS téléchargé pour un Membre (404, aucun appel,
  *    aucun marqueur) ;
- *  - « Générer » refusé à un Membre ne consomme RIEN du cap de génération du club ;
+ *  - « Générer » refusé à un Membre ne consomme RIEN du cap de génération du club ; « Placer
+ *    automatiquement » refusé ne consomme rien du cap de placement ;
  *  - l'export reste ouvert au Membre, et son PDF est compté sur le club.
  *
  * Seaux de débit : `reset()` ciblé des clés `api` du Membre/gestionnaire et des caps du club,
@@ -71,6 +79,10 @@ final class MemberReadsAreSideEffectFreeTest extends WebTestCase
         ['GET', '/api/fixtures/fbi-corrections', null],
         ['GET', '/api/opponents/travel', null],
         ['GET', '/api/venues/fbi-labels', null],
+        // L'accueil du Membre : la lecture d'un GESTIONNAIRE y balaie amicaux passés et
+        // domiciles des championnats commencés ; celle d'un Membre n'écrit jamais (décor :
+        // un domicile validable d'un championnat commencé + un amical PASSÉ, cf. seed()).
+        ['GET', '/api/matches/deadline-outlook', null],
     ];
 
     /** Les lectures qui appellent l'extérieur : fermées au Membre, sans exception. */
@@ -164,6 +176,24 @@ final class MemberReadsAreSideEffectFreeTest extends WebTestCase
         self::assertResponseStatusCodeSame(403, 'l\'aperçu du mail aux coachs reste réservé au gestionnaire');
     }
 
+    /**
+     * L'aperçu de l'envoi des conflits aux coachs sert NOMS ET ADRESSES des coachs : il reste
+     * réservé au gestionnaire (403 au Membre). Témoin : le gestionnaire l'obtient (200) — un 403
+     * pour tous, ou une route absente, ne passerait pas pour une garde. Angle jumeau :
+     * `ConflictCoachMailApiTest::testMemberIsRefused` (le POST et le GET d'aperçu, décor d'envoi).
+     */
+    public function testConflictMailPreviewStaysManagerOnly(): void
+    {
+        $this->seed();
+        $preview = '/api/fixtures/conflicts/mail-coaches/preview';
+
+        $this->api($this->managerToken, 'GET', $preview);
+        self::assertResponseStatusCodeSame(200, 'témoin : le gestionnaire ouvre l\'aperçu de l\'envoi aux coachs');
+
+        $this->asMember('GET', $preview);
+        self::assertResponseStatusCodeSame(403, 'l\'aperçu de l\'envoi aux coachs (adresses comprises) reste réservé au gestionnaire');
+    }
+
     public function testOpponentLogoMissIsNotDownloadedForAMemberButAStoredLogoIsServed(): void
     {
         $this->seed();
@@ -215,6 +245,25 @@ final class MemberReadsAreSideEffectFreeTest extends WebTestCase
         self::assertSame($budgetBefore, $this->remaining('limiter.schedule_generation', 'club-' . $this->clubId), 'les refus d\'un Membre ont consommé le cap de génération du club');
     }
 
+    /**
+     * « Placer automatiquement » refusé à un Membre (403) ne consomme RIEN du cap de placement du
+     * club : sans l'exemption, dix clics d'un Membre priveraient les gestionnaires de la moitié de
+     * leurs 20 placements de l'heure. Câblage du cap pour un gestionnaire : `PlacementQuotaTest`.
+     */
+    public function testMemberPlaceIsRefusedWithoutSpendingTheClubBudget(): void
+    {
+        $this->seed();
+        $this->resetBucket('limiter.match_placement', 'club-' . $this->clubId);
+        $budgetBefore = $this->remaining('limiter.match_placement', 'club-' . $this->clubId);
+
+        for ($i = 1; $i <= 10; ++$i) {
+            $this->asMember('POST', '/api/fixtures/place');
+            self::assertResponseStatusCodeSame(403, \sprintf('« Placer » n°%d d\'un Membre : 403, jamais le cap du club (429)', $i));
+        }
+
+        self::assertSame($budgetBefore, $this->remaining('limiter.match_placement', 'club-' . $this->clubId), 'les refus d\'un Membre ont consommé le cap de placement du club');
+    }
+
     public function testMemberExportsAndThePdfIsChargedToTheClub(): void
     {
         $this->seed();
@@ -251,6 +300,7 @@ final class MemberReadsAreSideEffectFreeTest extends WebTestCase
             'teamId' => $this->ids['team'], 'matchDate' => new DateTimeImmutable('+10 days')->format('Y-m-d'),
             'homeAway' => 'HOME', 'opponentLabel' => 'Amical MR',
         ]);
+        $this->seedRowsAManagerReadWouldSweep();
 
         $monday = new DateTimeImmutable('monday next week +6 weeks');
         $holiday = $this->create($token, '/api/calendar_entries', ['kind' => 'period', 'periodType' => 'holiday', 'title' => 'Vacances MR', 'startDate' => $monday->format('Y-m-d'), 'endDate' => $monday->modify('+6 days')->format('Y-m-d')]);
@@ -259,6 +309,58 @@ final class MemberReadsAreSideEffectFreeTest extends WebTestCase
 
         $this->addActiveMember();
         self::getContainer()->get(TenantConnectionContext::class)->clear();
+    }
+
+    /**
+     * Pointage (patron `MatchTenantIsolationTest::testLeagueValidationNeverReadsOrWritesAForeignClubsFixtures`) :
+     * les deux rangées qu'une lecture GESTIONNAIRE de l'accueil ferait passer « Déjà dans FBI » —
+     * un domicile UNPLACED daté (heure + gymnase) d'un championnat COMMENCÉ (échéance 2020) et un
+     * amical PASSÉ (−10 jours). Sans elles, l'empreinte resterait immobile même si la lecture du
+     * Membre balayait : le test serait vert par construction.
+     */
+    private function seedRowsAManagerReadWouldSweep(): void
+    {
+        $em = self::getContainer()->get(EntityManagerInterface::class);
+        \assert($em instanceof EntityManagerInterface);
+        self::getContainer()->get(TenantConnectionContext::class)->setClubId($this->clubId);
+
+        $competition = new Competition;
+        $competition->setClubId($this->clubId);
+        $competition->setSeasonId($this->ids['season']);
+        $competition->setTeamId($this->ids['team']);
+        $competition->setName('Championnat MR');
+        $competition->setCompetitionType(CompetitionType::CHAMPIONSHIP);
+        $competition->setEntryDeadline(new DateTimeImmutable('2020-09-10'));
+        $em->persist($competition);
+        $em->flush();
+
+        $home = new Fixture;
+        $home->setClubId($this->clubId);
+        $home->setSeasonId($this->ids['season']);
+        $home->setTeamId($this->ids['team']);
+        $home->setCompetitionId($competition->getId());
+        $home->setMatchDate(new DateTimeImmutable('+20 days'));
+        $home->setHomeAway(FixtureHomeAway::HOME);
+        $home->setOpponentLabel('Adversaire MR');
+        $home->setVenueId($this->ids['venue']);
+        $home->setKickoffTime(new DateTimeImmutable('15:30'));
+        $em->persist($home);
+
+        $pastFriendly = new Fixture;
+        $pastFriendly->setClubId($this->clubId);
+        $pastFriendly->setSeasonId($this->ids['season']);
+        $pastFriendly->setTeamId($this->ids['team']);
+        $pastFriendly->setCompetitionId(null);
+        $pastFriendly->setMatchDate(new DateTimeImmutable('-10 days'));
+        $pastFriendly->setHomeAway(FixtureHomeAway::HOME);
+        $pastFriendly->setOpponentLabel('Amical passé MR');
+        $em->persist($pastFriendly);
+        $em->flush();
+
+        // L'empreinte lit max(updated_at) à la SECONDE : une écriture tombée dans la même seconde
+        // que le décor serait invisible. Les rencontres du décor sont reculées d'un jour, pour que
+        // toute bascule faite par une lecture du Membre se voie.
+        $em->getConnection()->executeStatement('UPDATE fixture SET updated_at = updated_at - interval \'1 day\' WHERE club_id = ?', [$this->clubId]);
     }
 
     private function remaining(string $limiterService, string $key): int

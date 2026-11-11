@@ -183,37 +183,25 @@ final class ExportContext extends BaseContext
     #[Given('un match amical de mon club dans la plage exportée')]
     public function unMatchAmicalDansLaPlage(): void
     {
-        // Une équipe de la saison en cours et une date de cette saison : le scénario crée ce qu'il vérifie.
-        $row = $this->dbalScalar(
-            \sprintf('SELECT t.id || \'|\' || LEAST(GREATEST(CURRENT_DATE + 7, s.start_date), s.end_date) AS behatval FROM team t JOIN season s ON s.id=t.season_id WHERE t.club_id=\'%s\' AND CURRENT_DATE BETWEEN s.start_date AND s.end_date LIMIT 1', $this->clubId),
-            admin: true,
-        );
-        [$teamId, $date] = array_pad(explode('|', $row), 2, '');
-        if (1 !== preg_match('/^[0-9a-f-]{36}$/i', $teamId) || 1 !== preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
-            throw new RuntimeException('aucune équipe dans la saison en cours — la base est-elle seedée ?');
-        }
-        $this->matchDate = $date;
+        $this->creerUnMatchJetable('AWAY');
+    }
 
-        $created = $this->apiPost('fixtures', ['teamId' => $teamId, 'matchDate' => $date, 'homeAway' => 'AWAY', 'opponentLabel' => 'Export Parents Jetable'], $this->token);
-        $fixtureId = $created['json']['id'] ?? null;
-        if (!\is_string($fixtureId) || '' === $fixtureId) {
-            throw new RuntimeException(\sprintf('la création du match a répondu %d', $created['status']));
-        }
-        $this->fixtureId = $fixtureId;
+    #[Given('un match amical à domicile de mon club dans la plage exportée')]
+    public function unMatchAmicalADomicileDansLaPlage(): void
+    {
+        $this->creerUnMatchJetable('HOME');
+    }
+
+    #[When('j\'exporte les matchs à domicile de cette plage, regroupés par jour')]
+    public function jExporteLesMatchsADomicileParJour(): void
+    {
+        $this->exporterLesMatchs(['homeOnly' => true, 'groupBy' => 'day']);
     }
 
     #[When('j\'exporte les matchs de cette plage')]
     public function jExporteLesMatchs(): void
     {
-        $response = $this->client->request('POST', $this->renderOrigin() . '/api/fixtures/export-pdf', [
-            'headers' => ['Authorization' => 'Bearer ' . $this->token],
-            'json' => ['from' => $this->matchDate, 'to' => $this->matchDate, 'teamId' => null],
-            // Le rendu Puppeteer est synchrone sur ce rail : le délai du client couvre les 30 s du worker.
-            'timeout' => 60,
-        ]);
-        $this->matchesStatus = $response->getStatusCode();
-        $this->matchesContentType = $response->getHeaders(false)['content-type'][0] ?? '';
-        $this->matchesBytes = $response->getContent(false);
+        $this->exporterLesMatchs([]);
     }
 
     #[Then('je repars avec le PDF des matchs')]
@@ -257,6 +245,41 @@ final class ExportContext extends BaseContext
             \sprintf('UPDATE schedule SET pdf_export_status=%s, pdf_export_url=%s WHERE id=\'%s\'', $status, $url, $this->scheduleId),
             admin: true,
         );
+    }
+
+    private function creerUnMatchJetable(string $homeAway): void
+    {
+        // Une équipe de la saison en cours et une date de cette saison : le scénario crée ce qu'il vérifie.
+        $row = $this->dbalScalar(
+            \sprintf('SELECT t.id || \'|\' || LEAST(GREATEST(CURRENT_DATE + 7, s.start_date), s.end_date) AS behatval FROM team t JOIN season s ON s.id=t.season_id WHERE t.club_id=\'%s\' AND CURRENT_DATE BETWEEN s.start_date AND s.end_date LIMIT 1', $this->clubId),
+            admin: true,
+        );
+        [$teamId, $date] = array_pad(explode('|', $row), 2, '');
+        if (1 !== preg_match('/^[0-9a-f-]{36}$/i', $teamId) || 1 !== preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
+            throw new RuntimeException('aucune équipe dans la saison en cours — la base est-elle seedée ?');
+        }
+        $this->matchDate = $date;
+
+        $created = $this->apiPost('fixtures', ['teamId' => $teamId, 'matchDate' => $date, 'homeAway' => $homeAway, 'opponentLabel' => 'Export Parents Jetable'], $this->token);
+        $fixtureId = $created['json']['id'] ?? null;
+        if (!\is_string($fixtureId) || '' === $fixtureId) {
+            throw new RuntimeException(\sprintf('la création du match a répondu %d', $created['status']));
+        }
+        $this->fixtureId = $fixtureId;
+    }
+
+    /** @param array<string, mixed> $options les options du document (`homeOnly`, `groupBy`), en plus de la plage */
+    private function exporterLesMatchs(array $options): void
+    {
+        $response = $this->client->request('POST', $this->renderOrigin() . '/api/fixtures/export-pdf', [
+            'headers' => ['Authorization' => 'Bearer ' . $this->token],
+            'json' => ['from' => $this->matchDate, 'to' => $this->matchDate, 'teamId' => null] + $options,
+            // Le rendu Puppeteer est synchrone sur ce rail : le délai du client couvre les 30 s du worker.
+            'timeout' => 60,
+        ]);
+        $this->matchesStatus = $response->getStatusCode();
+        $this->matchesContentType = $response->getHeaders(false)['content-type'][0] ?? '';
+        $this->matchesBytes = $response->getContent(false);
     }
 
     /** L'origine HTTP (hors préfixe /api) à laquelle la route de téléchargement est servie. */

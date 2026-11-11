@@ -1,0 +1,126 @@
+import { ADMIN_SECTIONS_TEXTS } from "../texts/sections";
+
+/**
+ * Le catalogue INTERNE d'emoji de la barre d'outils des notes : liste curatée, zéro dépendance,
+ * rendue par la police emoji du système. `label` = nom accessible FR du bouton (unique).
+ *
+ * Chaque caractère passe le validateur serveur (`TextSanity` : aucun caractère de contrôle ni
+ * bidi) — gardé par la fixture `fixtures/emoji-catalogue.json` (`editorOutput.test.ts`, rejouée
+ * côté serveur par `ReleaseNoteRichDocEditorFixturesTest`) : ajouter un emoji ici sans régénérer
+ * la fixture rougit le test.
+ */
+export const EMOJI_CATALOG: ReadonlyArray<{ theme: string; items: ReadonlyArray<{ char: string; label: string }> }> = [
+  {
+    theme: ADMIN_SECTIONS_TEXTS.releaseNotesEmojiThemeSport,
+    items: [
+      { char: "🏀", label: "ballon de basket" },
+      { char: "⚽", label: "ballon de football" },
+      { char: "🏐", label: "ballon de volley" },
+      { char: "🏈", label: "ballon de football américain" },
+      { char: "🎾", label: "balle de tennis" },
+      { char: "🏓", label: "ping-pong" },
+      { char: "🏸", label: "badminton" },
+      { char: "🥅", label: "cage de but" },
+      { char: "🏆", label: "trophée" },
+      { char: "🥇", label: "médaille d'or" },
+      { char: "🥈", label: "médaille d'argent" },
+      { char: "🥉", label: "médaille de bronze" },
+      { char: "🏅", label: "médaille sportive" },
+      { char: "👟", label: "chaussure de sport" },
+      { char: "⏱️", label: "chronomètre" },
+    ],
+  },
+  {
+    theme: ADMIN_SECTIONS_TEXTS.releaseNotesEmojiThemeFaces,
+    items: [
+      { char: "😀", label: "visage souriant" },
+      { char: "😃", label: "grand sourire" },
+      { char: "😄", label: "sourire aux yeux rieurs" },
+      { char: "😁", label: "sourire éclatant" },
+      { char: "😅", label: "sourire avec une goutte de sueur" },
+      { char: "😂", label: "larmes de joie" },
+      { char: "🙂", label: "léger sourire" },
+      { char: "😉", label: "clin d'œil" },
+      { char: "😊", label: "sourire aux joues roses" },
+      { char: "😍", label: "yeux en cœur" },
+      { char: "😎", label: "lunettes de soleil" },
+      { char: "🤔", label: "visage pensif" },
+      { char: "😮", label: "bouche bée" },
+      { char: "😢", label: "visage qui pleure" },
+    ],
+  },
+  {
+    theme: ADMIN_SECTIONS_TEXTS.releaseNotesEmojiThemeGestures,
+    items: [
+      { char: "👍", label: "pouce levé" },
+      { char: "👎", label: "pouce baissé" },
+      { char: "👏", label: "applaudissements" },
+      { char: "🙌", label: "mains levées" },
+      { char: "👋", label: "main qui salue" },
+      { char: "🤝", label: "poignée de main" },
+      { char: "💪", label: "biceps" },
+      { char: "🙏", label: "mains jointes" },
+      { char: "✌️", label: "V de la victoire" },
+      { char: "👌", label: "OK de la main" },
+      { char: "🤞", label: "doigts croisés" },
+      { char: "👉", label: "index vers la droite" },
+      { char: "👀", label: "yeux" },
+    ],
+  },
+  {
+    theme: ADMIN_SECTIONS_TEXTS.releaseNotesEmojiThemeObjects,
+    items: [
+      { char: "📅", label: "calendrier" },
+      { char: "🗓️", label: "agenda à spirale" },
+      { char: "⏰", label: "réveil" },
+      { char: "📌", label: "punaise" },
+      { char: "📎", label: "trombone" },
+      { char: "📝", label: "mémo" },
+      { char: "📄", label: "page" },
+      { char: "📊", label: "graphique en barres" },
+      { char: "📈", label: "courbe ascendante" },
+      { char: "🔔", label: "cloche" },
+      { char: "📣", label: "mégaphone" },
+      { char: "💡", label: "ampoule" },
+      { char: "🔧", label: "clé à molette" },
+      { char: "📱", label: "téléphone portable" },
+    ],
+  },
+  {
+    theme: ADMIN_SECTIONS_TEXTS.releaseNotesEmojiThemeSymbols,
+    items: [
+      { char: "✅", label: "coche verte" },
+      { char: "❌", label: "croix" },
+      { char: "⚠️", label: "avertissement" },
+      { char: "❗", label: "point d'exclamation" },
+      { char: "❓", label: "point d'interrogation" },
+      { char: "⭐", label: "étoile" },
+      { char: "✨", label: "étincelles" },
+      { char: "🔥", label: "flamme" },
+      { char: "🚀", label: "fusée" },
+      { char: "❤️", label: "cœur rouge" },
+      { char: "💙", label: "cœur bleu" },
+      { char: "🆕", label: "bouton nouveau" },
+      { char: "➡️", label: "flèche vers la droite" },
+      { char: "🔒", label: "cadenas" },
+    ],
+  },
+  {
+    theme: ADMIN_SECTIONS_TEXTS.releaseNotesEmojiThemeParty,
+    items: [
+      { char: "🎉", label: "cotillons" },
+      { char: "🎊", label: "confettis" },
+      { char: "🎈", label: "ballon de baudruche" },
+      { char: "🎂", label: "gâteau d'anniversaire" },
+      { char: "🎁", label: "cadeau" },
+      { char: "🥳", label: "visage festif" },
+      { char: "🍾", label: "bouteille de champagne" },
+      { char: "🥂", label: "trinquer" },
+      { char: "🎄", label: "sapin de Noël" },
+      { char: "🎃", label: "citrouille" },
+      { char: "☀️", label: "soleil" },
+      { char: "🏖️", label: "plage" },
+      { char: "❄️", label: "flocon" },
+    ],
+  },
+];

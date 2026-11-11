@@ -108,9 +108,16 @@ les primitives TOTP et le fail-closed audit ont leurs tests unitaires.
 - La table porte `club_id`, est sous RLS `FORCE` et respecte `TenantOwnedInterface`.
   Le rôle runtime ne peut jamais lire les métriques d'un autre club ; la connexion
   `admin` les lira pour les agrégations SA2.
-- `Club.lastActivityAt` est mis à jour au plus une fois par jour lors d'une activité
-  authentifiée et à la mise en file d'une génération. La rétention six mois, le
-  partitionnement mensuel et la purge sont reportés au lot d'exploitation dédié.
+- `Club.lastActivityAt` est mis à jour (1) par le listener d'authentification, au plus une
+  fois par jour calendaire Europe/Paris **et par utilisateur** — plusieurs utilisateurs d'un
+  même club écrivent chacun leur trace ; un utilisateur de plusieurs clubs marque tous ses
+  clubs où son adhésion est active —, sauf pour l'adresse de `APP_ACTIVITY_EXCLUDED_EMAILS`
+  (compte interne : sa trace `app_user.last_login_at` avance, ses clubs non) ; (2) à la mise
+  en file de toute génération (`/generate`, `/regenerate`, `/fill` —
+  `ClubActivityTrace::markGeneration`, dans la transaction du guichet, après ses gardes : une
+  génération refusée ne marque pas), à l'horloge réelle, compte exclu compris ; « Charger une
+  version » (`/regenerate-from`, aucun solve) n'est pas une génération. La rétention six mois,
+  le partitionnement mensuel et la purge sont reportés au lot d'exploitation dédié.
 
 ## Supervision read-only SA2 — API parc et solveur
 
@@ -127,7 +134,8 @@ réutilisent ni le firewall ni le JWT club :
   type de plan) et `clubSizes` (répartition par tranche de taille, avec la médiane de
   gymnases) ;
 - `GET /api/admin/clubs?page=1&limit=25&query=...` recherche sur nom, slug ou code FFBB
-  et retourne une liste paginée avec dates d'activité, saison courante, volumétrie active
+  et retourne une liste paginée avec dates d'activité (`createdAt`, `lastActivityAt`, en
+  RFC 3339 — `2026-11-10T23:30:00+00:00`), saison courante, volumétrie active
   de la saison et indicateurs solveur sur 30 jours. `limit` est borné à 100 et `query` à
   100 caractères. **L'offre est rendue en DEUX vérités distinctes depuis A1 (2026-08-11)** :
   `plan` (l'offre STOCKÉE — `{code, name}` ou null) et `effectivePlan` (l'offre qui
@@ -148,6 +156,13 @@ réutilisent ni le firewall ni le JWT club :
   dernière génération `FAILED`/`INFEASIBLE` (lue sans la fenêtre de 30 jours) ; aucune activité
   depuis plus de 14 jours ; des générations ont eu lieu mais le socle de saison n'a jamais été
   validé (`first_chosen_at` NULL). Un club de démonstration ou désabonné n'est jamais signalé.
+  La console affiche `lastActivityAt` en **jours calendaires Europe/Paris** (« Aujourd'hui »,
+  « Hier », « Il y a N jours », « Jamais » ; la date exacte et le sens au survol) — même fuseau
+  que le throttle d'écriture, et à la date RÉELLE (la console relâche l'horloge simulée d'un
+  club démo). Deux écarts déclarés : l'alerte « plus de 14 jours » compte en blocs de 24 h, la
+  colonne en jours calendaires — elles peuvent différer d'un jour ; « aujourd'hui » côté
+  console est le jour LOCAL du navigateur — ouverte hors du fuseau Paris entre minuit Paris
+  et minuit local, la colonne lit ±1 jour (la console se consulte depuis la France).
 
 La « saison courante » est la saison couvrant la date du jour ; en son absence, l'API
 retourne la saison la plus récente. Toutes les lectures sont auditées par la garantie
@@ -231,9 +246,16 @@ fermée calculée en `Europe/Paris` :
 
 - réconciliation des générations bloquées toutes les 10 minutes (`--older-than 60`) ;
 - **alertes santé & fraîcheur toutes les 10 minutes** (`app:health:alert`, voir plus bas) ;
+- **validation automatique des plannings de période chaque jour à 00:15**
+  (`app:period-plans:auto-validate`, clé `period-plan-auto-validation`) : tout club, chacun jugé à
+  SON jour (fuseau, horloge simulée d'une démo) ; un club en échec n'arrête pas les suivants mais
+  fait sortir le passage en échec. `--dry-run` n'écrit rien, `--date` future refusée hors
+  `--dry-run`, `--club=<id>` ; règle produit : `planning-lifecycle-validated.md` §1 ;
 - **sauvegarde de la base chaque jour à 01:00** (`app:db:backup`) — le tick est bon marché,
   la commande **skippe s'il n'y a eu aucune activité** : la cadence réelle des dumps suit
-  l'activité des clubs, pas le calendrier ;
+  l'activité (clubs, générations, journal d'audit, **connexions** — `app_user.last_login_at`,
+  qui avance pour tout compte, adresse exclue de la « Dernière activité » comprise), pas le
+  calendrier ;
 - digest des doléances coach chaque jour à 07:00 — n'envoie que si une réponse est postérieure
   au dernier digest (silence total = aucun email), et pousse le récap final le lendemain de la
   deadline ; digest des signalements chaque jour à 07:30 ;
@@ -434,6 +456,24 @@ capacité, mesure d'audience de la vitrine) · **Santé** (services, conteneurs,
 leur nouvel onglet par `LEGACY_TAB_MAP` — un lien ou un `localStorage` mémorisé avant la
 réorganisation continue d'ouvrir le bon onglet.
 
+Les **notes de nouveautés** (`/api/admin/release-notes`, `AdminReleaseNoteController`) portent une
+**version produit facultative** (`release_note.product_version`, exposée sous la clé JSON `version`, `null`
+pour une note sans version) : le serveur retire les espaces et un « v » de tête (« v1.3.5 » → « 1.3.5 »),
+un vide vaut « sans version », sinon 2 à 4 segments numériques ou 400. Le formulaire de la console
+pré-remplit la version du bundle quand elle est un numéro. Il n'existe pas de route de modification
+d'une note (roadmap P4-535).
+
+Le **corps d'une note** se saisit dans un éditeur riche (`features/admin/releaseNoteEditor/`, TipTap confiné à
+ce dossier) : gras, italique, un niveau de titre, listes à puces et numérotées (3 niveaux au plus), 5 couleurs
+(rouge, orange, vert, bleu, gris), sauts de ligne, emoji par un sélecteur de la barre d'outils ; ni lien, ni
+image, ni tableau. Le payload porte `bodyRich` (JSON, `release_note.body_rich`) ; le serveur le valide contre
+une liste blanche fermée (`ReleaseNoteRichDoc`) et dérive `body` en texte brut ; sans `bodyRich`, `body` brut
+reste accepté. Un collage garde titres et listes, perd les liens (texte brut) et les couleurs externes.
+Limites : la liste collée depuis Word pour Windows arrive en paragraphes « · texte » (à remettre en liste
+d'un clic) ; un collage de texte brut « a. … » peut produire une liste numérotée de type « a » refusée en 400
+à l'enregistrement (non testé). L'aperçu est rendu en peau console. Règles, bornes et gardes :
+[`docs/security/rich-content.md`](../../docs/security/rich-content.md).
+
 Santé et Incidents portent une **pastille d'alerte** (« à vérifier » — un point décoratif +
 texte `sr-only` sur l'onglet, primitive `Tabs`/`TabItem.badge`,
 `frontend/src/shared/components/ui/tabs.tsx`) calculée **au niveau de la page**
@@ -540,7 +580,10 @@ superadmin posant `simulated_today` sur un club réel — décaler l'horloge d'u
 donnerait la main sur des mécanismes datés qui ne le concernent pas (radar, bascule de saison,
 e-mails). L'horloge d'un compte démo se pose désormais aussi depuis l'app elle-même, par son
 gestionnaire : `POST /api/club/clock` (widget d'en-tête, rôle MANAGER, 403 si le club n'est pas
-`is_demo`), détail `backend-demo.md` §Module démo.
+`is_demo`), détail `backend-demo.md` §Module démo. **Poser une date valide aussitôt, pour CE club,
+les plannings de période dont le 7ᵉ jour après le début est atteint à cette date** (même service que
+la tâche de 00:15, jamais sur `clear` ; un échec est journalisé, la réponse reste 200, l'horloge
+posée) — **reculer l'horloge ne dé-valide rien** : rejouer une démo = la remettre à zéro.
 
 Front : `DemosSection.tsx` est rendue en bas de l'onglet **Clubs** (réorganisation en 5 onglets,
 §Organisation de la console) — deux cartes : « Démo BCCL » (fenêtre + réinitialisation sous

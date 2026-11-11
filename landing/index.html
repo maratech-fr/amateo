@@ -3,29 +3,29 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Amateo — Le planning d'entraînements des clubs de basket</title>
-  <meta name="description" content="Le planning de votre club de basket amateur, généré en quelques minutes à partir de vos contraintes — et vos matchs placés depuis l'export FBI de la FFBB." />
+  <title>Amateo — Planning d'entraînement et matchs FBI des clubs de basket</title>
+  <meta name="description" content="Le planning de votre club de basket amateur, préparé à partir de vos règles, et vos matchs placés depuis l'export FBI de la FFBB." />
   <link rel="canonical" href="https://amateo.app/" /> <!-- nosemgrep: html.security.audit.missing-integrity.missing-integrity -- canonical : indique une URL, ne charge aucune ressource, integrity sans objet -->
   <!-- Carte de partage (Open Graph / Twitter) : aperçu affiché quand un lien vers la vitrine
        est collé dans une messagerie / un réseau. URL ABSOLUES (l'aperçu se charge hors contexte).
        Copie recopiée du <title>/<meta description> ci-dessus ; image servie par la vitrine elle-même. -->
   <meta property="og:type" content="website" />
   <meta property="og:url" content="https://amateo.app/" />
-  <meta property="og:title" content="Amateo — Le planning d'entraînements des clubs de basket" />
-  <meta property="og:description" content="Le planning de votre club de basket amateur, généré en quelques minutes à partir de vos contraintes — et vos matchs placés depuis l'export FBI de la FFBB." />
+  <meta property="og:title" content="Amateo — Planning d'entraînement et matchs FBI des clubs de basket" />
+  <meta property="og:description" content="Le planning de votre club de basket amateur, préparé à partir de vos règles, et vos matchs placés depuis l'export FBI de la FFBB." />
   <meta property="og:image" content="https://amateo.app/assets/brand/og.png" />
   <meta property="og:image:width" content="1200" />
   <meta property="og:image:height" content="630" />
   <meta name="twitter:card" content="summary_large_image" />
-  <!-- Balisage schema.org (SoftwareApplication + Organization éditrice), ÉCRIT dans le HTML pour
-       être lu sans JavaScript. La description recopie la meta description ci-dessus. Pas d'`offers` :
-       les paliers payants sont « sur demande », inexprimables en une offre. -->
-  <script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"SoftwareApplication","@id":"https://amateo.app/#app","name":"Amateo","applicationCategory":"BusinessApplication","operatingSystem":"Web","url":"https://amateo.app/","inLanguage":"fr","description":"Le planning de votre club de basket amateur, généré en quelques minutes à partir de vos contraintes — et vos matchs placés depuis l'export FBI de la FFBB.","publisher":{"@id":"https://amateo.app/#editor"}},{"@type":"Organization","@id":"https://amateo.app/#editor","name":"Maratech","url":"https://amateo.app/","logo":"https://amateo.app/assets/brand/mark.svg"}]}</script>
+  <!-- Balisage schema.org (SoftwareApplication + Person éditrice — config.js `editor`), ÉCRIT dans
+       le HTML pour être lu sans JavaScript. La description recopie la meta description ci-dessus.
+       Pas d'`offers` : les paliers payants sont « sur demande », inexprimables en une offre. -->
+  <script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"SoftwareApplication","@id":"https://amateo.app/#app","name":"Amateo","applicationCategory":"BusinessApplication","operatingSystem":"Web","url":"https://amateo.app/","inLanguage":"fr","description":"Le planning de votre club de basket amateur, préparé à partir de vos règles, et vos matchs placés depuis l'export FBI de la FFBB.","publisher":{"@id":"https://amateo.app/#editor"}},{"@type":"Person","@id":"https://amateo.app/#editor","name":"Franck Mpemba Boni","url":"https://amateo.app/qui-fait.html"}]}</script>
   <link rel="icon" type="image/svg+xml" href="assets/brand/icon.svg" />
   <link rel="icon" type="image/png" sizes="32x32" href="assets/brand/icon-32.png" />
-  <!-- Thème AU CHOIX, posé AVANT le <style> pour éviter tout flash : localStorage `theme`
-       (choix explicite du visiteur), sinon la préférence système. Sans JS → aucun `data-theme`
-       → thème clair. Le stockage est enveloppé (navigation privée, cookies refusés). -->
+  <!-- Thème AU CHOIX, posé AVANT la feuille partagée pour éviter tout flash : localStorage `theme`
+       (choix explicite du visiteur), sinon la préférence système. Sans JS → thème clair. SEUL
+       script inline de la page (le reste vit dans assets/site.js). -->
   <script>
     (function () {
       try {
@@ -37,210 +37,41 @@
       } catch (e) { /* stockage indisponible : on reste en clair */ }
     })();
   </script>
+  <link rel="stylesheet" href="assets/site.css?v=2026-11-11" />
+  <!-- Sections propres à l'accueil ; le socle (jetons, en-tête, boutons, pied) vit dans assets/site.css. -->
   <style>
-    /* ── Voix display : Bricolage Grotesque (OFL, auto-hébergée — assets/fonts/) ── */
-    @font-face {
-      font-family: "Bricolage Grotesque";
-      font-style: normal;
-      font-weight: 700 800;
-      font-display: swap;
-      src: url("assets/fonts/bricolage-latin.woff2") format("woff2");
-    }
-    /* ── Palette : sobre, crédible trésorier ; le sport en accent, pas en criard ── */
-    :root {
-      color-scheme: light;
-      --paper: #faf9f7;
-      --surface: #ffffff;
-      --ink: #191714;
-      --ink-2: #57534c;
-      --muted: #6d675d;         /* ≥ 4.5:1 sur --paper, tenable en petit texte */
-      --line: #e7e3dc;
-      --accent: #46afac;        /* teal signature du logo — décoratif seulement (2.50:1 sur --paper, jamais de texte dessus) */
-      --accent-ink: #2e7876;    /* teal assombri pour porter du texte — 4.91:1 sur --paper, 5.17:1 blanc dessus, 4.64:1 sur --accent-soft */
-      --accent-deep: #215857;   /* survol — 8.08:1 blanc dessus */
-      --accent-soft: #e9f5f5;   /* teinte très claire du teal — encre 16.05:1 dessus */
-      --accent-foreground: #ffffff;  /* texte posé sur le fond plein --accent-ink (bouton) — blanc en clair */
-      --radius: 12px;
-      --display: "Bricolage Grotesque", system-ui, sans-serif;
-    }
-    /* ── Thème sombre AU CHOIX (opt-in) ───────────────────────────────────────────
-       Posé par le mini-script du <head>. Palette DÉRIVÉE PAR CONVENTION des jetons de
-       l'app (`frontend/src/index.css` `.dark`) — jamais importée, les deux zones se
-       ressemblent par convention (règle landing). Base grise chaude (hue 75, mêmes L/chroma
-       que l'app), et le teal signature devient PORTEUR de texte en sombre (≈ 7:1 sur --paper,
-       là où en clair il restait décoratif). Le bouton teal plein passe donc à un texte SOMBRE
-       (--accent-foreground), miroir exact de `--accent-foreground` de l'app en `.dark`. */
-    html[data-theme="dark"] {
-      color-scheme: dark;
-      --paper: oklch(0.19 0.006 75);        /* ≈ app --background */
-      --surface: oklch(0.23 0.006 75);      /* ≈ app --card */
-      --ink: oklch(0.96 0.004 75);          /* ≈ app --foreground */
-      --ink-2: oklch(0.82 0.010 75);        /* texte secondaire clair */
-      --muted: oklch(0.68 0.015 75);        /* ≈ app --muted-foreground — ≥ 4.5:1 sur --paper */
-      --line: oklch(0.31 0.006 75);         /* ≈ app --border */
-      --accent: #46afac;                    /* teal signature — décoratif ET porteur en sombre */
-      --accent-ink: #46afac;                /* texte / liens / focus : le teal clair suffit sur fond sombre */
-      --accent-deep: #4db2af;               /* survol — ÉCLAIRCI (monte le contraste avec le texte sombre du bouton) */
-      --accent-soft: color-mix(in oklab, var(--accent) 14%, var(--surface)); /* teinte sombre du teal — le teal clair passe dessus */
-      --accent-foreground: oklch(0.19 0.010 75);  /* texte SOMBRE sur le bouton teal plein — miroir app */
-    }
-    * { box-sizing: border-box; margin: 0; }
-    /* scroll-padding-top : l'en-tête sticky fait 64px — sans ça une ancre (#faq, #offres…)
-       s'arrête SOUS l'en-tête et son titre est masqué (P4-258). 64 + 12 de marge = 76.
-       ⚠ PAS de `scroll-behavior: smooth` : le glissement des ancres est piloté en JS
-       (easeOutCubic, décélération maîtrisée) — un smooth CSS doublerait le lissage. Le
-       scroll-padding reste pour le saut NATIF (arrivée avec #hash dans l'URL, ou JS absent). */
-    html { scroll-padding-top: 76px; }
-    /* Fond d'écran commun app + vitrine (P5-16) : même motif multi-sport du logo, posé sur le papier.
-       SVG statique purgé (assets/brand/fond.svg), opacité 0,26 (variante vitrine). `fixed` : parallaxe
-       desktop-first assumée (iOS Safari retombe en scroll). En-tête sticky translucide inchangé. */
-    body {
-      background: var(--paper) url("assets/brand/fond.svg") center / cover no-repeat fixed;
-      color: var(--ink);
-      font: 16px/1.6 system-ui, -apple-system, "Segoe UI", sans-serif;
-      -webkit-font-smoothing: antialiased;
-    }
-    /* Fond sombre : même motif, variante claire-sur-sombre (fond-dark.svg, copie de l'app). */
-    html[data-theme="dark"] body {
-      background: var(--paper) url("assets/brand/fond-dark.svg") center / cover no-repeat fixed;
-    }
-    ::selection { background: color-mix(in srgb, var(--accent) 22%, var(--surface)); color: var(--ink); }
-    .wrap { max-width: 1080px; margin: 0 auto; padding: 0 24px; }
-    a { color: var(--accent-ink); text-underline-offset: 3px; }
-
-    /* ── Header ── */
-    header.site {
-      position: sticky; top: 0; z-index: 20;
-      background: color-mix(in srgb, var(--paper) 92%, transparent);
-      backdrop-filter: blur(8px);
-      border-bottom: 1px solid var(--line);
-    }
-    header.site .wrap { display: flex; align-items: center; justify-content: space-between; height: 64px; }
-    /* Logotype « comme l'app » (BrandMark) : l'ICÔNE (arcs, thème-neutre) + le MOT en TEXTE
-       à la couleur du thème, un seul rendu clair/sombre. Le mot est écrit dans le HTML ;
-       `text-transform` le met en minuscules comme le logo.
-       Repli conservé : si l'icône manque/échoue, le mot seul reste (marque toujours lisible). */
-    .logotype { display: inline-flex; align-items: center; gap: 9px; text-decoration: none; flex-shrink: 0; }
-    .brand-logo { height: 30px; width: 30px; display: block; }
-    .logo-word { font-family: var(--display); font-weight: 800; font-size: 23px; letter-spacing: -0.03em; line-height: 1; color: var(--ink); text-transform: lowercase; }
-    footer.site .brand-logo { height: 20px; width: 20px; }
-    footer.site .logo-word { font-size: 16px; }
-    footer.site .foot-brand { display: inline-flex; align-items: center; gap: 7px; vertical-align: -5px; }
-    nav.top { display: flex; gap: 22px; align-items: center; font-size: 15px; }
-    nav.top a { color: var(--ink-2); text-decoration: none; }
-    nav.top a:hover { color: var(--ink); }
-    nav.top a.btn-primary { color: var(--accent-foreground); }
-    nav.top a.btn-primary:hover { color: var(--accent-foreground); }
-    /* Bascule de thème : un <button>, pas un <a> — donc hors de la règle mobile
-       `nav.top > a { display:none }` (≤880px, cf. burger ci-dessous) : reste visible dans
-       l'en-tête aux côtés du burger. `flex-shrink:0` : le carré ne se fait jamais écraser quand
-       l'espace manque (sinon 40px → 28px de large à 360px). Lune en clair, soleil en sombre. */
-    .theme-toggle {
-      display: inline-flex; align-items: center; justify-content: center;
-      width: 40px; height: 40px; padding: 0; border-radius: 10px; flex-shrink: 0;
-      border: 1.5px solid var(--line); background: var(--surface); color: var(--ink-2);
-      cursor: pointer; transition: color 80ms ease, border-color 80ms ease;
-    }
-    .theme-toggle:hover { color: var(--ink); border-color: var(--muted); }
-    .theme-toggle:focus-visible { outline: 3px solid var(--accent-ink); outline-offset: 2px; }
-    .theme-toggle svg { width: 18px; height: 18px; display: block; }
-    .theme-toggle .icon-sun { display: none; }
-    html[data-theme="dark"] .theme-toggle .icon-moon { display: none; }
-    html[data-theme="dark"] .theme-toggle .icon-sun { display: block; }
-
-    /* ── Menu mobile (burger) ─────────────────────────────────────────────────────
-       `<details>`/`<summary>` : marche SANS JS (le navigateur ouvre/ferme nativement) ;
-       le JS n'ajoute que le confort (fermeture au clic sur une ancre, Échap → focus, miroir
-       aria-expanded). Masqué en desktop (`display:none` de base) — le desktop reste INTACT,
-       les liens inline de `nav.top` sont inchangés ; le burger n'apparaît qu'≤880px. Le panneau
-       est en `position:absolute` sous l'en-tête sticky (offset parent = `header.site`, positionné) :
-       il recouvre, ne pousse rien, pas de scroll-lock. */
-    .nav-menu { display: none; }
-    .nav-menu > summary {
-      display: inline-flex; align-items: center; justify-content: center;
-      width: 40px; height: 40px; border-radius: 10px; flex-shrink: 0; list-style: none;
-      border: 1.5px solid var(--line); background: var(--surface); color: var(--ink-2);
-      cursor: pointer; transition: color 80ms ease, border-color 80ms ease;
-    }
-    .nav-menu > summary::-webkit-details-marker { display: none; }
-    .nav-menu > summary::marker { content: ""; }
-    .nav-menu > summary:hover { color: var(--ink); border-color: var(--muted); }
-    .nav-menu > summary:focus-visible { outline: 3px solid var(--accent-ink); outline-offset: 2px; }
-    .nav-menu > summary svg { width: 20px; height: 20px; display: block; }
-    .nav-menu > summary .icon-close { display: none; }
-    .nav-menu[open] > summary .icon-menu { display: none; }
-    .nav-menu[open] > summary .icon-close { display: block; }
-    .nav-panel {
-      position: absolute; top: 100%; left: 0; right: 0;
-      display: flex; flex-direction: column; gap: 6px;
-      padding: 10px 16px 16px; background: var(--surface);
-      border-bottom: 1px solid var(--line); box-shadow: 0 18px 40px -22px rgba(25,23,20,.4);
-    }
-    .nav-panel a { display: block; padding: 13px 12px; border-radius: 8px; text-decoration: none; font-size: 16px; line-height: 1.25; }
-    .nav-panel a:not(.btn) { color: var(--ink-2); }
-    .nav-panel a:not(.btn):hover { color: var(--ink); background: var(--accent-soft); }
-    .nav-panel a.btn { margin-top: 8px; }  /* « Essayer gratuitement » : garde son fond plein, pleine largeur */
-
-    /* ≤880px : la barre passe au burger (décision fondateur). Les liens inline de `nav.top`
-       (ancres, « Se connecter », CTA) cèdent la place au panneau ; le logo et la bascule de
-       thème (un <button>, pas un <a>) restent dans l'en-tête. */
-    @media (max-width: 880px) {
-      nav.top { gap: 12px; }
-      nav.top > a { display: none; }
-      .nav-menu { display: block; }
-    }
-
-    /* ── Boutons ── */
-    .btn {
-      display: inline-block; padding: 12px 22px; border-radius: 10px;
-      font-weight: 650; font-size: 15.5px; text-decoration: none; text-align: center;
-      transition: transform 80ms ease, box-shadow 80ms ease;
-    }
-    .btn:hover { transform: translateY(-1px); }
-    .btn:focus-visible { outline: 3px solid var(--accent-ink); outline-offset: 2px; }
-    .btn-primary { background: var(--accent-ink); color: var(--accent-foreground); box-shadow: 0 2px 6px -2px rgba(25,23,20,.35); }
-    .btn-primary:hover { background: var(--accent-deep); }
-    .btn-ghost { border: 1.5px solid var(--line); color: var(--ink); background: var(--surface); }
-    .btn-ghost:hover { border-color: var(--muted); }
-
     /* ── Hero ── */
     .hero { padding: 80px 0 40px; }
-    h1 {
-      font-family: var(--display);
-      font-size: clamp(34px, 5.4vw, 56px); line-height: 1.05; letter-spacing: -0.02em;
-      font-weight: 800; max-width: 17ch; text-wrap: balance;
-    }
     .hero p.lede { margin: 22px 0 0; font-size: 19px; color: var(--ink-2); max-width: 56ch; }
     .hero .ctas { margin-top: 32px; display: flex; gap: 14px; flex-wrap: wrap; }
     .hero .under { margin-top: 14px; font-size: 14px; color: var(--muted); }
 
+    /* ── Bandeau des garanties : quatre affirmations, chacune menant à sa preuve ── */
+    ul.guarantees {
+      list-style: none; padding: 0; margin: 28px 0 0;
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px 24px;
+    }
+    ul.guarantees li { border-left: 2px solid var(--accent); padding-left: 12px; font-size: 14.5px; line-height: 1.45; }
+    ul.guarantees a { color: var(--ink-2); text-decoration: none; }
+    ul.guarantees a:hover { color: var(--ink); text-decoration: underline; }
+    ul.guarantees a:focus-visible { outline: 3px solid var(--accent-ink); outline-offset: 2px; border-radius: 4px; }
+
     /* ── Capture — l'unique moment de motion authored de la page ── */
     figure.shot { margin: 56px 0 0; }
-    figure.shot img {
-      width: 100%; height: auto; display: block; border-radius: var(--radius);
-      border: 1px solid var(--line); box-shadow: 0 24px 60px -24px rgba(25,23,20,.25);
-      animation: settle 700ms cubic-bezier(0.16, 1, 0.3, 1) both;
-    }
+    figure.shot img { animation: settle 700ms cubic-bezier(0.16, 1, 0.3, 1) both; }
     @keyframes settle {
       from { transform: translateY(18px); box-shadow: 0 6px 18px -12px rgba(25,23,20,.25); }
       to   { transform: translateY(0);    box-shadow: 0 24px 60px -24px rgba(25,23,20,.25); }
     }
-    figure.shot figcaption { margin-top: 10px; font-size: 13.5px; color: var(--muted); text-align: center; }
-
-    /* ── Sections ── */
-    section { padding: 72px 0; }
-    section.alt { background: var(--surface); border-block: 1px solid var(--line); }
-    h2 { font-family: var(--display); font-size: clamp(25px, 3.5vw, 36px); letter-spacing: -0.015em; font-weight: 800; max-width: 26ch; text-wrap: balance; }
-    .sub { margin-top: 10px; color: var(--ink-2); max-width: 62ch; }
 
     /* ── Douleur — trois colonnes éditoriales, pas trois cartes ── */
     .pains { margin-top: 44px; display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 36px; }
     .pain { border-top: 2px solid var(--accent); padding-top: 18px; }
     .pain h3 { font-size: 17.5px; margin-bottom: 8px; line-height: 1.3; }
     .pain p { font-size: 15px; color: var(--ink-2); }
-    /* #matchs porte quatre cartes : même rythme que les 4 étapes (min 230px) — 4 de front en desktop, 2×2 en tablette, 1 en mobile ; #douleur (3 cartes) intact */
+    /* #matchs porte quatre cartes : même rythme que les 4 étapes (min 230px) */
     #matchs .pains { grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); }
-    /* #matchs : deux captures secondaires côte à côte sous le calendrier — empilées en mobile (même idiome auto-fit, aucune media query) */
+    /* #matchs : deux captures secondaires côte à côte sous le calendrier — empilées en mobile */
     #matchs .shots-pair { margin-top: 28px; display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 24px; align-items: start; }
     #matchs .shots-pair figure.shot { margin: 0; }
 
@@ -256,15 +87,17 @@
     }
     .step h3 { font-size: 17px; }
     .step p { margin-top: 6px; font-size: 15px; color: var(--ink-2); }
-    /* <600px : une seule colonne, séparateur HORIZONTAL (le trait vertical + l'indentation de
-       26px, pensés pour des colonnes côte à côte, n'ont plus de sens empilés). */
     @media (max-width: 600px) {
       .steps { grid-template-columns: 1fr; }
       .step { padding: 8px 0; }
       .step + .step { border-left: 0; border-top: 1px solid var(--line); padding-left: 0; padding-top: 22px; margin-top: 14px; }
     }
 
+    /* ── D'où vient Amateo (bloc sans chiffre, lien vers « Qui fait ») ── */
+    #origine .more { margin-top: 16px; font-weight: 650; }
+
     /* ── Offres ── */
+    .teams-note { font-size: 14.5px; }
     .plans { margin-top: 40px; display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 18px; align-items: stretch; }
     .plan {
       border: 1px solid var(--line); border-radius: var(--radius); padding: 24px;
@@ -276,13 +109,11 @@
     .plan .price { margin-top: auto; font-weight: 700; font-size: 15px; }
     .plan .price small { display: block; font-weight: 400; color: var(--muted); font-size: 13px; margin-top: 2px; }
     .plan ul { padding-left: 18px; font-size: 14.5px; color: var(--ink-2); }
-    .badge-free { display: inline-block; background: var(--accent-soft); color: var(--accent-ink); font-size: 12.5px; font-weight: 700; border-radius: 999px; padding: 2px 10px; }
+    .badge-free { display: inline-block; align-self: flex-start; background: var(--accent-soft); color: var(--accent-ink); font-size: 12.5px; font-weight: 700; border-radius: 999px; padding: 2px 10px; }
 
     /* ── FAQ ── */
     .faq { margin-top: 36px; max-width: 780px; }
-    .faq details {
-      border-bottom: 1px solid var(--line); padding: 4px 0;
-    }
+    .faq details { border-bottom: 1px solid var(--line); padding: 4px 0; }
     .faq summary {
       cursor: pointer; padding: 14px 4px; font-weight: 650; font-size: 16.5px; list-style: none;
       display: flex; justify-content: space-between; align-items: center; gap: 16px;
@@ -297,28 +128,22 @@
     .final { text-align: center; padding: 88px 0; }
     .final h2 { margin: 0 auto; }
     .final .ctas { margin-top: 28px; display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; }
+    footer.site { margin-top: 0; }
 
-    footer.site { border-top: 1px solid var(--line); padding: 28px 0 40px; font-size: 14px; color: var(--muted); }
-    footer.site .wrap { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
-
-    /* Cibles tactiles ≥44px en mobile (lien FAQ en ligne + liens de pied de page) : padding gonflé,
-       marge négative pour COMPENSER — le rendu visuel desktop ne bouge pas, seule la zone cliquable
-       grandit. Borné à ≤880px : au pointeur (desktop) 44px n'est pas requis, le desktop reste intact. */
+    /* ≤880px : la barre passe au burger — les liens inline cèdent la place au panneau (le logo
+       et la bascule, un <button>, restent). Cibles tactiles ≥44px (liens en ligne de la FAQ). */
     @media (max-width: 880px) {
-      footer.site a { display: inline-block; padding: 12px 4px; margin: -12px -4px; }
+      nav.top > a { display: none; }
       .faq .a a { display: inline-block; padding: 11px 0; margin: -11px 0; }
+      /* Garanties : chaque puce entière est la cible (≥ 44px de haut). */
+      ul.guarantees a { display: flex; align-items: center; min-height: 44px; }
+      #origine .more a { display: inline-block; padding: 12px 0; margin: -12px 0; }
     }
-    /* Paragraphes de CONTENU à 16px en mobile (décision fondateur) — lisibilité au pouce. Placé
-       APRÈS les règles de base `.pain p`/`.step p`/`.faq .a` : à spécificité égale, c'est l'ordre
-       source qui tranche, pas la media query. */
+    /* Paragraphes de CONTENU à 16px en mobile — placé APRÈS les règles de base (ordre source). */
     @media (max-width: 720px) {
       .pain p, .step p, .faq .a { font-size: 16px; }
     }
-
     @media (prefers-reduced-motion: reduce) {
-      /* Le saut d'ancre redevient direct : le script de glissement teste lui-même
-         prefers-reduced-motion et fait un window.scrollTo instantané. */
-      .btn { transition: none; }
       figure.shot img { animation: none; }
       .faq summary svg { transition: none; }
     }
@@ -328,21 +153,20 @@
 
 <header class="site">
   <div class="wrap">
-    <a class="logotype" href="#" data-brand-label aria-label="Amateo"><img class="brand-logo" data-brand-logo src="assets/brand/mark.svg" alt="" width="30" height="30" /><span class="brand logo-word">Amateo</span></a>
+    <a class="logotype" href="/" data-brand-label aria-label="Amateo"><img class="brand-logo" data-brand-logo src="assets/brand/mark.svg" alt="" width="30" height="30" /><span class="brand logo-word">Amateo</span></a>
     <nav class="top" aria-label="Navigation principale">
       <a href="#fonctionnement">Comment ça marche</a>
+      <a href="fonctionnalites.html">Fonctionnalités</a>
       <a href="#offres">Offres</a>
       <a href="#faq">FAQ</a>
-      <a data-cta="login" href="#">Se connecter</a>
+      <a data-cta="login" href="https://app.amateo.app/login">Se connecter</a>
       <button type="button" class="theme-toggle" data-theme-toggle aria-pressed="false" aria-label="Passer en thème sombre">
         <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
         <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4.2"/><path d="M12 2v2.5M12 19.5V22M4.22 4.22l1.77 1.77M18.01 18.01l1.77 1.77M2 12h2.5M19.5 12H22M4.22 19.78l1.77-1.77M18.01 5.99l1.77-1.77"/></svg>
       </button>
-      <a class="btn btn-primary" data-cta="register" href="#">Essayer gratuitement</a>
+      <a class="btn btn-primary" data-cta="register" href="https://app.amateo.app/register">Essayer gratuitement</a>
       <!-- Menu mobile (≤880px) : <details>/<summary> natif (marche sans JS). Le panneau REPREND
-           les liens de la barre (ancres + « Se connecter » + CTA) ; en desktop ce bloc est
-           masqué et seuls les liens inline ci-dessus s'affichent — aucun lien partagé, deux
-           jeux distincts, chacun câblé par config.js (querySelectorAll sur [data-cta]). -->
+           les liens de la barre ; en desktop ce bloc est masqué — deux jeux distincts. -->
       <details class="nav-menu">
         <summary data-nav-burger aria-label="Ouvrir le menu" aria-expanded="false">
           <svg class="icon-menu" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
@@ -350,10 +174,11 @@
         </summary>
         <div class="nav-panel">
           <a href="#fonctionnement">Comment ça marche</a>
+          <a href="fonctionnalites.html">Fonctionnalités</a>
           <a href="#offres">Offres</a>
           <a href="#faq">FAQ</a>
-          <a data-cta="login" href="#">Se connecter</a>
-          <a class="btn btn-primary" data-cta="register" href="#">Essayer gratuitement</a>
+          <a data-cta="login" href="https://app.amateo.app/login">Se connecter</a>
+          <a class="btn btn-primary" data-cta="register" href="https://app.amateo.app/register">Essayer gratuitement</a>
         </div>
       </details>
     </nav>
@@ -365,16 +190,22 @@
     <section class="hero">
       <h1>Le planning de votre club de basket, sans le casse-tête.</h1>
       <p class="lede">
-        Chaque année, dans chaque club de basket FFBB, quelqu'un passe ses soirées à répartir les
-        créneaux de gymnase entre les équipes, en espérant n'oublier aucune contrainte.
-        <span class="brand">Amateo</span> capture toutes les contraintes du club, <strong>génère un
-        planning optimisé en quelques minutes</strong>, et le réajuste quand la réalité change.
+        <span class="brand">Amateo</span> retient toutes les règles du club, prépare le planning
+        d'entraînement, le réajuste quand la mairie ou un coach change la donne, et range vos
+        matchs depuis l'export FBI.
       </p>
       <div class="ctas">
-        <a class="btn btn-primary" data-cta="register" href="#">Essayer gratuitement avec mon club</a>
-        <a class="btn btn-ghost" data-cta="demo" href="#">Demander une démo</a>
+        <a class="btn btn-primary" data-cta="register" href="https://app.amateo.app/register">Essayer gratuitement avec mon club</a>
+        <a class="btn btn-ghost" data-cta="demo" href="mailto:contact@amateo.app?subject=Demande%20de%20demo%20-%20Amateo&amp;body=Bonjour%2C%0A%0AJe%20souhaite%20voir%20Amateo%20en%20demo%20pour%20mon%20club.%0A%0AClub%20%3A%20%0ANombre%20d'equipes%20(environ)%20%3A%20%0ADisponibilites%20%3A%20">Demander une démo</a>
       </div>
       <p class="under">Gratuit pour découvrir — votre club complet, aucune carte bancaire.</p>
+
+      <ul class="guarantees" aria-label="Nos garanties">
+        <li><a href="vos-donnees.html">Hébergé en France (Paris), copie de secours aux Pays-Bas.</a></li>
+        <li><a href="vos-donnees.html">Vos données vous appartiennent : export complet et suppression à la demande.</a></li>
+        <li><a data-cta="register" href="https://app.amateo.app/register">Découverte gratuite, sans carte bancaire.</a></li>
+        <li><a href="fonctionnalites.html#ne-fait-pas">Ne remplace pas FBI et n'y écrit rien.</a></li>
+      </ul>
 
       <figure class="shot">
         <img src="assets/planning.png" alt="La grille de planning générée : chaque équipe placée sur son créneau de gymnase, les contraintes respectées" width="2160" height="1216" />
@@ -423,17 +254,17 @@
         <div class="step">
           <h3>Posez vos contraintes</h3>
           <p>« Pas le mercredi », « fin avant 19h pour les petits », « ce coach a deux équipes » :
-          chaque règle est capturée, écrite, et ne se perd plus jamais.</p>
+          chaque règle est retenue, écrite, et ne se perd plus jamais.</p>
         </div>
         <div class="step">
           <h3>Générez</h3>
-          <p>Le moteur d'optimisation place toutes les équipes en respectant chaque contrainte,
-          et vous dit honnêtement ce qui coince quand tout ne tient pas.</p>
+          <p><span class="brand">Amateo</span> place toutes les équipes en respectant chaque
+          contrainte, et vous dit honnêtement ce qui coince quand tout ne tient pas.</p>
         </div>
         <div class="step">
           <h3>Ajustez, en confiance</h3>
-          <p>Déplacez, verrouillez, régénérez. Vacances, matchs, imprévus : le planning suit la
-          saison au lieu de la subir.</p>
+          <p>Déplacez, bloquez une séance, refaites le planning autour de vos choix. Vacances,
+          matchs, imprévus : le planning suit la saison au lieu de la subir.</p>
         </div>
       </div>
     </div>
@@ -443,14 +274,15 @@
     <div class="wrap">
       <h2>Les matchs, un dossier de moins à garder en tête.</h2>
       <p class="sub">Le calendrier des matchs arrive de la fédération, par FBI, l'outil de gestion de la
-      FFBB. L'app le range : les rencontres importées, les domiciles placés, les conflits repérés, les échéances suivies. Vous
-      déposez l'export une fois, et vous n'avez plus à tout tenir de tête.</p>
+      FFBB. <span class="brand">Amateo</span> le range : les rencontres importées, les domiciles placés,
+      les conflits repérés, les échéances suivies. Vous déposez l'export une fois, et vous n'avez plus
+      à tout tenir de tête.</p>
       <div class="pains">
         <article class="pain">
-          <h3>Déposez l'export FBI, l'app place vos matchs</h3>
-          <p>L'import du fichier FBI du club range vos rencontres par équipe, et un solveur pose vos
-          domiciles sur les créneaux où vos gymnases sont libres — à vous d'ajuster ou de verrouiller
-          ce qui doit l'être.</p>
+          <h3>Déposez l'export FBI, <span class="brand">Amateo</span> place vos matchs</h3>
+          <p>L'import du fichier FBI du club range vos rencontres par équipe, et
+          <span class="brand">Amateo</span> pose vos domiciles sur les créneaux où vos gymnases sont
+          libres — à vous d'ajuster ou de bloquer ce qui doit l'être.</p>
         </article>
         <article class="pain">
           <h3>Les écarts avec FBI ne vous échappent plus</h3>
@@ -459,9 +291,10 @@
         </article>
         <article class="pain">
           <h3>Les conflits de coachs vus avant le week-end</h3>
-          <p>Un radar signale à la volée un coach sur deux rencontres, un match et un entraînement en
-          même temps, un gymnase pris deux fois ; chaque conflit se traite — dérogation demandée,
-          réglé en interne, sans solution pour l'instant — sans jamais se masquer.</p>
+          <p><span class="brand">Amateo</span> repère tout seul, dès le dépôt du fichier, un coach sur
+          deux rencontres, un match et un entraînement en même temps, un gymnase pris deux fois ;
+          chaque conflit se traite — dérogation demandée, réglé en interne, sans solution pour
+          l'instant — sans jamais se masquer.</p>
         </article>
         <article class="pain">
           <h3>Les déplacements comptés, adversaires localisés</h3>
@@ -478,7 +311,7 @@
 
       <div class="shots-pair">
         <figure class="shot">
-          <img src="assets/matchs-importer.jpg" alt="L'écran Importer du module matchs : bouton « Importer FBI », date du dernier dépôt, un bandeau proposant de valider en lot les rencontres des championnats commencés, et la liste des rencontres restant à traiter" width="2160" height="1500" loading="lazy" />
+          <img src="assets/matchs-importer.jpg" alt="L'écran Importer du module matchs : bouton « Importer FBI », date du dernier dépôt, et la liste des rencontres restant à traiter" width="2160" height="1500" loading="lazy" />
           <figcaption>Un dépôt de l'export FBI, et le club sait ce qui reste à saisir et à valider — sans traquer la ligne oubliée.</figcaption>
         </figure>
         <figure class="shot">
@@ -489,12 +322,21 @@
     </div>
   </section>
 
-  <section class="alt" id="transparence">
+  <section id="transparence">
     <div class="wrap">
-      <h2>Votre bureau voit tout, en lecture.</h2>
-      <p class="sub">Invitez le président ou le trésorier avec un accès lecture : le planning, les
-      contraintes tenues, l'outil au travail : la transparence du club, sans risque qu'un clic ne
-      dérègle quoi que ce soit. Et les coachs reçoivent leur planning sans avoir besoin d'un compte.</p>
+      <h2>Le planning ne dépend plus d'une seule personne.</h2>
+      <p class="sub">Si votre gestionnaire part, le savoir du club reste : équipes, gymnases, règles,
+      tout est écrit. Invitez le président ou le trésorier en lecture : ils voient le vrai planning,
+      sans risque de rien dérégler. Vous envoyez le planning aux coachs en PDF ou en Excel : ils
+      n'ont pas besoin de compte.</p>
+    </div>
+  </section>
+  <section class="alt" id="origine">
+    <div class="wrap">
+      <h2>Créé par un joueur de basket pour son club amateur.</h2>
+      <p class="sub">Là-bas, refaire le planning à chaque changement de coach ou de créneau prenait
+      des heures. <span class="brand">Amateo</span> est né pour que ça n'arrive plus.</p>
+      <p class="more"><a href="qui-fait.html">Qui fait <span class="brand">Amateo</span> →</a></p>
     </div>
   </section>
 
@@ -503,13 +345,14 @@
       <h2>Découvrez gratuitement. Payez selon la taille de votre club.</h2>
       <p class="sub">Un tarif par saison, pas d'abonnement mensuel, parce qu'un club décide
       son budget une fois par an.</p>
+      <p class="sub teams-note">Une équipe = chaque groupe que vous entraînez, compétition et loisir compris.</p>
       <div class="plans">
         <article class="plan free">
           <span class="badge-free">Pour commencer</span>
           <span class="name">Découverte</span>
           <span class="cap">Votre club <strong>complet</strong> — toutes vos équipes, tous vos gymnases, toutes vos contraintes.</span>
           <ul>
-            <li>10 générations offertes</li>
+            <li>10 crédits offerts : chaque planning généré, placement de matchs ou export en utilise un</li>
             <li>Ajustements manuels illimités</li>
             <li>Aucune carte bancaire</li>
           </ul>
@@ -520,7 +363,7 @@
           <span class="cap">Jusqu'à 20 équipes</span>
           <ul>
             <li>Générations illimitées</li>
-            <li>Plannings de vacances &amp; périodes</li>
+            <li>Plannings de vacances et de fermetures</li>
             <li>Placement des matchs</li>
             <li>Exports PDF &amp; Excel</li>
           </ul>
@@ -528,19 +371,19 @@
         </article>
         <article class="plan">
           <span class="name">Club</span>
-          <span class="cap">Jusqu'à 30 équipes</span>
+          <span class="cap">De 21 à 34 équipes</span>
           <ul>
             <li>Tout Essentiel</li>
-            <li>Le palier du club moyen</li>
+            <li>Même offre complète, pour plus d'équipes</li>
           </ul>
           <span class="price">Sur demande<small>Tarif par saison</small></span>
         </article>
         <article class="plan">
           <span class="name">Grand club</span>
-          <span class="cap">30 équipes et plus</span>
+          <span class="cap">À partir de 35 équipes</span>
           <ul>
-            <li>Tout, sans limite</li>
-            <li>Pour les structures type 40-50 équipes</li>
+            <li>Tout Essentiel</li>
+            <li>Même offre complète, pour plus d'équipes</li>
           </ul>
           <span class="price">Sur demande<small>Tarif par saison</small></span>
         </article>
@@ -554,59 +397,74 @@
       <div class="faq">
         <details>
           <summary>Il faut tout ressaisir à la main ? <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M7 1v12M1 7h12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></summary>
-          <p class="a">Non. Vos équipes engagées s'importent automatiquement depuis les données
-          publiques de la FFBB dès l'inscription, avec leurs catégories et niveaux. Vous complétez
-          avec vos gymnases, créneaux et contraintes — guidé étape par étape.</p>
+          <p class="a">Non, même en cours de saison. Avec le code de votre club,
+          <span class="brand">Amateo</span> récupère son nom, son logo et les équipes engagées. Et si
+          vous avez déjà votre planning, vous le transmettez à <span class="brand">Amateo</span> grâce
+          à l'IA : vous relisez l'aperçu avant d'importer, et vous ne repartez pas de zéro : vos
+          équipes, vos gymnases et vos créneaux sont repris ; il reste à ajouter vos coachs et vos
+          règles, guidé pas à pas. Il suffit ensuite de déposer l'export FBI de votre club pour
+          qu'<span class="brand">Amateo</span> connaisse tous les matchs de la saison, ceux déjà joués
+          comme ceux à venir.</p>
         </details>
         <details>
           <summary>C'est fait pour un club amateur ? <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M7 1v12M1 7h12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></summary>
-          <p class="a">Oui, et seulement pour lui : Amateo s'adresse aux clubs de basket amateurs
-          affiliés à la FFBB, gérés par des bénévoles ou un salarié, avec leurs équipes, leurs gymnases
-          et leurs coachs. Quelle que soit la taille du club, l'offre Découverte le prend en entier, et
-          vous êtes guidé pas à pas, sans informaticien.</p>
+          <p class="a">Oui, et seulement pour lui. <span class="brand">Amateo</span> est fait pour les
+          clubs de basket amateurs affiliés à la FFBB, gérés par des bénévoles ou un salarié. Du petit
+          club de quartier au club de 50 équipes, vous êtes guidé pas à pas, sans informaticien.</p>
         </details>
         <details>
           <summary>Est-ce que ça m'aide avec FBI ? <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M7 1v12M1 7h12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></summary>
-          <p class="a">Oui. FBI est l'outil de gestion de la FFBB où vivent vos rencontres ; Amateo ne
-          le remplace pas et n'y écrit rien. Vous déposez l'export FBI de votre club : l'app range les
-          matchs par équipe, pose vos domiciles sur les créneaux libres de vos gymnases, et l'écran
-          « FBI — à faire » liste ce qu'il reste à saisir ou à corriger dans FBI, avec l'échéance de
-          chaque compétition.</p>
+          <p class="a">Oui. FBI est l'outil de la FFBB où vivent vos rencontres :
+          <span class="brand">Amateo</span> ne le remplace pas et n'y écrit rien. Vous déposez l'export
+          FBI de votre club. <span class="brand">Amateo</span> range les matchs par équipe et place vos
+          matchs à domicile sur les créneaux libres de vos gymnases. Un écran « FBI — à faire » vous dit
+          ce qu'il reste à saisir ou à corriger dans FBI, avec l'échéance de chaque compétition, pour
+          qu'aucun écart ne passe inaperçu.</p>
         </details>
         <details>
           <summary>Et si le planning généré ne me convient pas ? <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M7 1v12M1 7h12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></summary>
-          <p class="a">Vous gardez la main : chaque séance se déplace en deux clics, se
-          verrouille, et vous pouvez régénérer autour de vos choix. L'outil optimise, vous décidez.</p>
+          <p class="a">Vous gardez la main. Chaque séance se déplace en deux clics et se verrouille.
+          Vous pouvez ensuite régénérer le planning autour de vos choix : ce que vous avez verrouillé ne
+          bouge pas. <span class="brand">Amateo</span> dégrossit le travail, à vous les finitions.</p>
         </details>
         <details>
           <summary>Que se passe-t-il quand la mairie change nos créneaux ? <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M7 1v12M1 7h12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></summary>
-          <p class="a">C'est exactement le cas pour lequel l'outil est fait : vous mettez la grille
-          à jour, vous régénérez, et le planning s'adapte sans repartir d'une feuille blanche, et
-          sans perdre les contraintes déjà posées.</p>
+          <p class="a">C'est exactement le cas pour lequel <span class="brand">Amateo</span> est fait.
+          Vous mettez à jour les créneaux de vos gymnases, vous régénérez : le planning s'adapte, sans
+          repartir d'une feuille blanche et sans perdre les contraintes déjà posées. Si c'est une
+          fermeture ponctuelle, seule cette période change, le reste de la saison reste intact.</p>
         </details>
         <details>
           <summary>Les coachs doivent-ils créer un compte ? <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M7 1v12M1 7h12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></summary>
-          <p class="a">Non. Les coachs reçoivent leur planning et peuvent transmettre leurs
-          indisponibilités par un simple lien, sans compte ni mot de passe. L'outil est fait
-          pour le gestionnaire ; il peut inviter son bureau en lecture s'il le souhaite.</p>
+          <p class="a">Non. Les coachs n'ont pas de compte : vous leur transmettez le planning (export
+          PDF ou Excel) par WhatsApp ou par e-mail, comme vous le faites déjà. Si vous avez besoin de
+          leurs indisponibilités, vous leur envoyez un lien personnel, sans compte ni mot de passe. Ils
+          reçoivent aussi par e-mail la liste des conflits de matchs qui les concernent quand vous la
+          leur envoyez. <span class="brand">Amateo</span> est fait pour le gestionnaire ; il peut
+          inviter son bureau en lecture s'il le souhaite.</p>
         </details>
         <details>
           <summary>Combien ça coûte ? <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M7 1v12M1 7h12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></summary>
-          <p class="a">La découverte est gratuite, avec votre club complet. Ensuite, le tarif
-          dépend de la taille du club et se règle par saison — demandez-nous, la grille est
-          simple et sans surprise.</p>
+          <p class="a">La Découverte est gratuite, avec votre club complet : 10 crédits pour voir ce que
+          donne <span class="brand">Amateo</span>. Chaque planning généré, placement de matchs ou export
+          en utilise un. Ensuite, le tarif dépend de la taille du club et se règle une fois par saison,
+          sans abonnement mensuel. Demandez-nous, la grille est simple et sans surprise.</p>
         </details>
         <details>
           <summary>Où sont hébergées nos données ? <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M7 1v12M1 7h12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></summary>
-          <p class="a">En France, chez un hébergeur français (Scaleway, Paris), sauvegardées chaque
-          jour. Vos données appartiennent à votre club : export complet à la demande, suppression
-          définitive possible à tout moment, conformément au RGPD.</p>
+          <p class="a">En France, chez un hébergeur français (Scaleway, Paris), avec une copie de
+          secours aux Pays-Bas. Les sauvegardes sont automatiques, chaque nuit où le service a été
+          utilisé. Vos données appartiennent à votre club : export complet à la demande, suppression de
+          votre compte et de l'espace du club à la demande, conformément au RGPD. Les délais exacts sont
+          détaillés dans la page <a href="vos-donnees.html">« Vos données »</a>.</p>
         </details>
         <details>
           <summary>On peut voir avant de s'engager ? <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M7 1v12M1 7h12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></summary>
-          <p class="a">Oui, deux façons : créez un compte gratuit avec votre vrai club (vos équipes
-          s'importent toutes seules), ou <a data-cta="demo-inline" href="#">demandez une démo</a> — on
-          vous montre l'outil sur un club exemple, en visio, en 20 minutes.</p>
+          <p class="a">Oui, de deux façons. Créez un compte gratuit avec le code de votre club : votre
+          nom, votre logo et vos équipes arrivent tout seuls, et vous essayez
+          <span class="brand">Amateo</span> sur votre vrai club. Ou
+          <a data-cta="demo-inline" href="mailto:contact@amateo.app?subject=Demande%20de%20demo%20-%20Amateo&amp;body=Bonjour%2C%0A%0AJe%20souhaite%20voir%20Amateo%20en%20demo%20pour%20mon%20club.%0A%0AClub%20%3A%20%0ANombre%20d'equipes%20(environ)%20%3A%20%0ADisponibilites%20%3A%20">demandez une démo</a> :
+          nous vous montrons l'outil sur un club exemple, en visio, en 30 minutes.</p>
         </details>
       </div>
     </div>
@@ -616,8 +474,8 @@
     <div class="wrap">
       <h2>La saison n'a pas encore débuté que le planning est déjà prêt.</h2>
       <div class="ctas">
-        <a class="btn btn-primary" data-cta="register" href="#">Essayer gratuitement avec mon club</a>
-        <a class="btn btn-ghost" data-cta="demo" href="#">Demander une démo</a>
+        <a class="btn btn-primary" data-cta="register" href="https://app.amateo.app/register">Essayer gratuitement avec mon club</a>
+        <a class="btn btn-ghost" data-cta="demo" href="mailto:contact@amateo.app?subject=Demande%20de%20demo%20-%20Amateo&amp;body=Bonjour%2C%0A%0AJe%20souhaite%20voir%20Amateo%20en%20demo%20pour%20mon%20club.%0A%0AClub%20%3A%20%0ANombre%20d'equipes%20(environ)%20%3A%20%0ADisponibilites%20%3A%20">Demander une démo</a>
       </div>
     </div>
   </section>
@@ -625,199 +483,40 @@
 
 <footer class="site">
   <div class="wrap">
-    <span><span class="foot-brand"><img class="brand-logo" data-brand-logo src="assets/brand/mark.svg" alt="" width="20" height="20" /><span class="brand logo-word">Amateo</span></span> — le planning des clubs de basket. Actuellement en bêta avec des clubs pilotes.</span>
-    <span><a href="mentions-legales.html">Mentions légales</a> · <a data-cta="demo-inline" href="#">Contact</a></span>
+    <p class="foot-tagline"><span class="foot-brand"><img class="brand-logo" data-brand-logo src="assets/brand/mark.svg" alt="" width="20" height="20" /><span class="brand logo-word">Amateo</span></span> — le planning des clubs de basket. Actuellement en bêta avec des clubs pilotes.</p>
+    <div class="cols">
+      <nav class="col" aria-label="Produit">
+        <p class="col-title">Produit</p>
+        <ul>
+          <li><a href="fonctionnalites.html">Fonctionnalités</a></li>
+          <li><a href="/#offres">Offres</a></li>
+          <li><a href="/#faq">Questions fréquentes</a></li>
+          <li><a href="evolutions.html">Journal des évolutions</a></li>
+        </ul>
+      </nav>
+      <nav class="col" aria-label="À propos">
+        <p class="col-title">À propos</p>
+        <ul>
+          <li><a href="qui-fait.html">Qui fait <span class="brand">Amateo</span></a></li>
+          <li><a href="vos-donnees.html">Vos données</a></li>
+          <li><a href="mentions-legales.html">Mentions légales</a></li>
+          <li><a data-cta="demo-inline" href="mailto:contact@amateo.app?subject=Demande%20de%20demo%20-%20Amateo&amp;body=Bonjour%2C%0A%0AJe%20souhaite%20voir%20Amateo%20en%20demo%20pour%20mon%20club.%0A%0AClub%20%3A%20%0ANombre%20d'equipes%20(environ)%20%3A%20%0ADisponibilites%20%3A%20">Contact</a></li>
+        </ul>
+      </nav>
+      <nav class="col" aria-label="Compte">
+        <p class="col-title">Compte</p>
+        <ul>
+          <li><a data-cta="login" href="https://app.amateo.app/login">Se connecter</a></li>
+          <li><a data-cta="register" href="https://app.amateo.app/register">Essayer gratuitement</a></li>
+        </ul>
+      </nav>
+    </div>
   </div>
 </footer>
 
-<!-- ?v=… : cache-bust de config.js. Caddy file_server (comme le serveur Python de relecture)
-     n'envoie pas de Cache-Control → un ancien config.js pouvait rester en cache avec un index.html
-     neuf. Bumper cette date À CHAQUE ajout/retrait de clé dans config.js (cf. commentaire là-bas). -->
-<script src="config.js?v=2026-10-19"></script>
-<script>
-  // Les liens et le logo sont injectés depuis config.js — UNE source.
-  (function () {
-    const { brand, appUrl, contactEmail, logo } = window.LANDING_CONFIG;
-    // Injection défensive de l'ICÔNE : si `logo` manque (ancien config.js en cache) ou si
-    // l'image échoue, on retire l'icône — le MOT (texte, toujours visible) reste le repli :
-    // la marque demeure lisible, jamais d'image cassée.
-    document.querySelectorAll("[data-brand-logo]").forEach((img) => {
-      if (logo) {
-        img.onerror = () => { img.onerror = null; img.remove(); };
-        img.src = logo;
-      } else {
-        img.remove();
-      }
-    });
-    // ⚠ Objet ET corps 100 % ASCII (P4-273) : certains clients mail cassent l'encodage des
-    // accents/tirets d'un mailto (objet illisible, corps tronqué). Le texte VISIBLE de la page
-    // garde ses accents — seul le brouillon d'e-mail est déaccentué.
-    const mailto = "mailto:" + contactEmail
-      + "?subject=" + encodeURIComponent("Demande de demo - " + brand)
-      + "&body=" + encodeURIComponent("Bonjour,\n\nJe souhaite voir " + brand + " en demo pour mon club.\n\nClub : \nNombre d'equipes (environ) : \nDisponibilites : ");
-    document.querySelectorAll("[data-cta=register]").forEach((a) => { a.href = appUrl + "/register"; });
-    document.querySelectorAll("[data-cta=login]").forEach((a) => { a.href = appUrl + "/login"; });
-    document.querySelectorAll("[data-cta=demo],[data-cta=demo-inline]").forEach((a) => { a.href = mailto; });
-
-    // Mesure d'audience Umami (sans cookie, P4-276) — injection DÉFENSIVE à DOUBLE
-    // garde : (a) les deux clés `analytics` non vides ; (b) hostname courant =
-    // l'hôte dérivé de `siteUrl` (aucun nouveau littéral de domaine). En local,
-    // sur :5173 ou sur un autre domaine, RIEN n'est injecté — zéro requête.
-    try {
-      const a = window.LANDING_CONFIG.analytics;
-      let host = "";
-      try { host = new URL(window.LANDING_CONFIG.siteUrl).hostname; } catch (e) { host = ""; }
-      if (a && a.scriptUrl && a.websiteId && host && location.hostname === host) {
-        const s = document.createElement("script");
-        s.defer = true;
-        s.src = a.scriptUrl;
-        s.setAttribute("data-website-id", a.websiteId);
-        document.head.appendChild(s);
-      }
-    } catch (e) { /* config absent / ancien cache : pas de mesure, page intacte */ }
-  })();
-</script>
-<script>
-  // Bascule de thème (clair ⇄ sombre) + captures thème-conscientes. Le <head> a déjà posé
-  // `data-theme` ; ce script aligne le bouton, persiste le choix et tente les captures sombres.
-  (function () {
-    const root = document.documentElement;
-    const toggle = document.querySelector("[data-theme-toggle]");
-    const current = () => (root.getAttribute("data-theme") === "dark" ? "dark" : "light");
-
-    // `nom.ext` → `nom-dark.ext` (avant un éventuel ?query). Convention P5-27.
-    const darkSrc = (src) => src.replace(/(\.[a-z0-9]+)(\?.*)?$/i, "-dark$1$2");
-    // Chaque capture a désormais sa sœur `-dark` (livrées en P5-27) ; le repli onerror
-    // reste en filet de sécurité — si une `-dark` manque ou échoue, la version claire est rendue.
-    function paintShots(theme) {
-      document.querySelectorAll("figure.shot img").forEach((img) => {
-        const light = img.getAttribute("data-shot-light") || img.getAttribute("src");
-        img.setAttribute("data-shot-light", light);
-        if (theme === "dark") {
-          img.onerror = () => { img.onerror = null; img.src = light; };
-          img.src = darkSrc(light);
-        } else {
-          img.onerror = null;
-          if (img.getAttribute("src") !== light) img.src = light;
-        }
-      });
-    }
-    function reflect(theme) {
-      if (!toggle) return;
-      const dark = theme === "dark";
-      toggle.setAttribute("aria-pressed", String(dark));
-      toggle.setAttribute("aria-label", dark ? "Passer en thème clair" : "Passer en thème sombre");
-    }
-
-    reflect(current());
-    paintShots(current());
-
-    if (toggle) {
-      toggle.addEventListener("click", () => {
-        const next = current() === "dark" ? "light" : "dark";
-        if (next === "dark") root.setAttribute("data-theme", "dark");
-        else root.removeAttribute("data-theme");
-        try { localStorage.setItem("theme", next); } catch (e) { /* stockage indisponible */ }
-        reflect(next);
-        paintShots(next);
-      });
-    }
-  })();
-</script>
-<script>
-  // Menu mobile (burger) — confort au-dessus du <details> natif (qui, lui, marche sans JS) :
-  // miroir aria-expanded, fermeture au clic sur un lien du panneau, Échap → focus le burger.
-  (function () {
-    const menu = document.querySelector("details.nav-menu");
-    if (!menu) return;
-    const summary = menu.querySelector("summary");
-    const sync = () => { if (summary) summary.setAttribute("aria-expanded", String(menu.open)); };
-    menu.addEventListener("toggle", sync);
-    sync();
-    menu.querySelectorAll(".nav-panel a").forEach((a) => {
-      a.addEventListener("click", () => { menu.open = false; });
-    });
-    menu.addEventListener("keydown", (e) => {
-      if (e.key === "Escape" && menu.open) { menu.open = false; if (summary) summary.focus(); }
-    });
-  })();
-</script>
-<script>
-  // Glissement des ancres internes — décélération MAÎTRISÉE (easeOutCubic), zéro build, zéro lib.
-  // Remplace `scroll-behavior: smooth` (vitesse/courbe non maîtrisées, parfois quasi
-  // instantané selon le navigateur) : on anime window.scrollTo en requestAnimationFrame.
-  // Sous prefers-reduced-motion → saut DIRECT (a11y). Interrompu si l'utilisateur reprend la main.
-  (function () {
-    const PAD = 76; // = scroll-padding-top (hauteur de l'en-tête sticky + marge)
-    const reduced = () => {
-      try { return window.matchMedia("(prefers-reduced-motion: reduce)").matches; } catch (e) { return false; }
-    };
-    const easeOutCubic = (t) => 1 - Math.pow(1 - t, 3);
-
-    const targetY = (hash) => {
-      if (hash === "#" || hash === "") return 0;
-      let el = null;
-      try { el = document.querySelector(hash); } catch (e) { el = null; }
-      if (!el) return null;
-      const top = el.getBoundingClientRect().top + window.scrollY;
-      return Math.max(0, Math.round(top - PAD));
-    };
-    const focusTarget = (hash) => {
-      if (hash === "#" || hash === "") return;
-      let el = null;
-      try { el = document.querySelector(hash); } catch (e) { el = null; }
-      if (!el) return;
-      if (!el.hasAttribute("tabindex")) el.setAttribute("tabindex", "-1"); // focusable sans piège tab
-      el.focus({ preventScroll: true }); // le focus ne doit PAS re-scroller (on gère le scroll)
-    };
-
-    let raf = null;
-    const stop = () => {
-      if (raf) { cancelAnimationFrame(raf); raf = null; }
-      window.removeEventListener("wheel", stop, { passive: true });
-      window.removeEventListener("touchstart", stop, { passive: true });
-      window.removeEventListener("keydown", stop, true);
-    };
-    const animate = (y, done) => {
-      stop();
-      const start = window.scrollY;
-      const dist = y - start;
-      if (Math.abs(dist) < 2) { window.scrollTo(0, y); if (done) done(); return; }
-      // Durée proportionnelle à la distance (~0,6 ms/px), PLAFONNÉE à 600–900 ms.
-      const dur = Math.min(900, Math.max(600, Math.abs(dist) * 0.6));
-      const t0 = performance.now();
-      // L'utilisateur reprend la main → on coupe l'animation net.
-      window.addEventListener("wheel", stop, { passive: true });
-      window.addEventListener("touchstart", stop, { passive: true });
-      window.addEventListener("keydown", stop, true);
-      const step = (now) => {
-        const p = Math.min(1, (now - t0) / dur);
-        window.scrollTo(0, Math.round(start + dist * easeOutCubic(p)));
-        if (p < 1) { raf = requestAnimationFrame(step); }
-        else { stop(); if (done) done(); }
-      };
-      raf = requestAnimationFrame(step);
-    };
-
-    document.addEventListener("click", (e) => {
-      if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
-      const t = e.target;
-      const a = t && t.closest ? t.closest('a[href^="#"]') : null;
-      if (!a) return;
-      const hash = a.getAttribute("href");
-      if (hash === null) return;
-      const y = targetY(hash);
-      if (y === null) return; // cible absente : on laisse le comportement par défaut
-      e.preventDefault();
-      // URL : reflète l'ancre (retire le hash pour un retour en haut via href="#").
-      try {
-        if (hash === "#") history.pushState(null, "", location.pathname + location.search);
-        else history.pushState(null, "", hash);
-      } catch (err) { /* file:// ou restrictions : sans blocage */ }
-      if (reduced()) { window.scrollTo(0, y); focusTarget(hash); return; }
-      animate(y, () => focusTarget(hash));
-    });
-  })();
-</script>
+<!-- ?v=… : cache-bust COMMUN à config.js, assets/site.css et assets/site.js (Caddy n'envoie pas de
+     Cache-Control). Le changer dans les six pages ensemble, à chaque retouche de l'un des trois. -->
+<script src="config.js?v=2026-11-11"></script>
+<script src="assets/site.js?v=2026-11-11"></script>
 </body>
 </html>

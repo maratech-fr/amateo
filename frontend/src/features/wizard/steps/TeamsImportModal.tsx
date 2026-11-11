@@ -157,7 +157,7 @@ export function TeamsImportModal({ clubId, seasonId, onClose }: TeamsImportModal
     <Modal
       label={TEXTS.title}
       title={TEXTS.title}
-      size="md"
+      size="lg"
       onClose={onClose}
       footer={
         <>
@@ -206,8 +206,8 @@ export function TeamsImportModal({ clubId, seasonId, onClose }: TeamsImportModal
             </div>
             <ul className="flex flex-col gap-1">
               {rows.map((r) => (
-                <li key={r.row} className="flex items-center gap-2">
-                  <label className="flex min-w-0 flex-1 items-center gap-2 rounded px-1 py-1 text-sm hover:bg-muted">
+                <li key={r.row} className="flex flex-wrap items-center gap-2">
+                  <label className="flex min-w-0 grow basis-full items-center gap-2 rounded px-1 py-1 text-sm hover:bg-muted sm:basis-0">
                     <input type="checkbox" className="size-4 shrink-0" checked={checked.has(r.row)} onChange={() => toggle(r.row)} />
                     <span className="min-w-0 flex-1 truncate">
                       {r.name} · {r.category}
@@ -218,7 +218,7 @@ export function TeamsImportModal({ clubId, seasonId, onClose }: TeamsImportModal
                   <Select
                     aria-label={TEXTS.tierAria(r.name)}
                     compact
-                    wrapperClassName="w-32 shrink-0"
+                    wrapperClassName="w-40 shrink-0"
                     value={String(tierByRow[r.row] ?? r.suggestedTierId)}
                     onChange={(e) => setTierByRow((prev) => ({ ...prev, [r.row]: Number(e.target.value) }))}
                   >
@@ -231,7 +231,7 @@ export function TeamsImportModal({ clubId, seasonId, onClose }: TeamsImportModal
                   <Select
                     aria-label={TEXTS.genderAria(r.name)}
                     compact
-                    wrapperClassName="w-24 shrink-0"
+                    wrapperClassName="w-28 shrink-0"
                     aria-invalid={(checked.has(r.row) && "" === (genderByRow[r.row] ?? r.suggestedGender ?? "")) || undefined}
                     value={genderByRow[r.row] ?? r.suggestedGender ?? ""}
                     onChange={(e) => setGenderByRow((prev) => ({ ...prev, [r.row]: e.target.value as Gender | "" }))}

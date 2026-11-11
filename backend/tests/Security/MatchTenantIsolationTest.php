@@ -940,7 +940,9 @@ final class MatchTenantIsolationTest extends WebTestCase
      * NR axe §7.1 tenant isolation — « Envoyer aux coachs » e-maille des adresses TIERCES et tient
      * une mémoire par club (`conflict_mailing`). L'envoi de A n'atteint jamais un coach de B ; la
      * ligne de A est invisible à B (son GET n'a pas de « Envoyé le … », la RLS ne lui rend aucune
-     * ligne de A) ; l'envoi de B ne part qu'à ses coachs et sa mémoire ne contient jamais ceux de A.
+     * ligne de A, ni aucun reçu par conflit `conflict_mail_receipt`) ; l'aperçu de B (noms et
+     * adresses, `mail-coaches/preview`) ne liste jamais un coach de A ; l'envoi de B ne part qu'à ses
+     * coachs et sa mémoire ne contient jamais ceux de A.
      * Jumeau métier (envoi, mémoire, gardes) : {@see ConflictCoachMailApiTest}.
      */
     public function testConflictsMailedToCoachesNeverCrossClubs(): void
@@ -966,6 +968,21 @@ final class MatchTenantIsolationTest extends WebTestCase
         $this->scopeGucToClub($clubB->getId());
         self::assertSame(0, (int) $this->em->getConnection()->fetchOne('SELECT COUNT(*) FROM conflict_mailing WHERE club_id = :a', ['a' => $clubA->getId()]), 'la RLS cache la ligne de A à B');
 
+        // Reçus par conflit (quel conflit est parti à quel coach) : écrits pour A, invisibles à B.
+        $this->scopeGucToClub($clubA->getId());
+        self::assertGreaterThan(0, (int) $this->em->getConnection()->fetchOne('SELECT COUNT(*) FROM conflict_mail_receipt WHERE club_id = :a', ['a' => $clubA->getId()]), 'témoin : l\'envoi de A a écrit ses reçus');
+        $this->scopeGucToClub($clubB->getId());
+        self::assertSame(0, (int) $this->em->getConnection()->fetchOne('SELECT COUNT(*) FROM conflict_mail_receipt WHERE club_id = :a', ['a' => $clubA->getId()]), 'la RLS cache les reçus de A à B');
+
+        // L'aperçu de B (noms et adresses) ne liste que les coachs de B.
+        $this->client->request('GET', '/api/fixtures/conflicts/mail-coaches/preview', [], [], $this->authHeaders($userB));
+        self::assertResponseStatusCodeSame(200);
+        $previewB = $this->responseData();
+        self::assertSame([$coachB->getId()], array_column($previewB['recipients'] ?? [], 'coachId'), 'l\'aperçu de B ne liste que le coach de B');
+        $rawPreviewB = (string) $this->client->getResponse()->getContent();
+        self::assertStringNotContainsString($coachA->getId(), $rawPreviewB);
+        self::assertStringNotContainsString('coach.a@club-a.test', $rawPreviewB, 'l\'adresse d\'un coach de A n\'est jamais servie à B');
+
         $this->client->enableProfiler();
         $this->client->request('POST', '/api/fixtures/conflicts/mail-coaches', [], [], $this->authHeaders($userB), '');
         self::assertResponseStatusCodeSame(200);
@@ -976,6 +993,7 @@ final class MatchTenantIsolationTest extends WebTestCase
         $memoryB = (string) $this->em->getConnection()->fetchOne('SELECT recipient_coach_ids FROM conflict_mailing WHERE club_id = :b', ['b' => $clubB->getId()]);
         self::assertStringContainsString($coachB->getId(), $memoryB);
         self::assertStringNotContainsString($coachA->getId(), $memoryB);
+        self::assertSame(0, (int) $this->em->getConnection()->fetchOne('SELECT COUNT(*) FROM conflict_mail_receipt WHERE coach_id = :a', ['a' => $coachA->getId()]), 'B ne lit ni n\'écrit jamais un reçu d\'un coach de A');
     }
 
     /**
@@ -1194,11 +1212,12 @@ final class MatchTenantIsolationTest extends WebTestCase
     }
 
     /**
-     * NR axe §7.1 tenant isolation (revue lot L) — le geste « validé ligue » en lot ne
-     * lit ni n'écrit jamais les rencontres d'un AUTRE club. Le club B possède une
-     * rencontre ÉLIGIBLE ; sous SON identité B la compte à 1 (témoin : elle est bien
-     * éligible), mais le club A la compte à 0 et n'en bascule aucune — et la rencontre
-     * de B reste UNPLACED, sans source de placement. Cloisonnement club ET saison.
+     * NR axe §7.1 tenant isolation (revue lot L) — la lecture « Déjà dans FBI » d'un
+     * gestionnaire, qui ÉCRIT désormais (un championnat commencé passe seul ses domiciles
+     * validables), ne lit ni n'écrit jamais les rencontres d'un AUTRE club. Ordre imposé par
+     * l'écriture-à-la-lecture : A lit D'ABORD (0 validable, 0 balayé) ; la lecture brute prouve
+     * que la rencontre ÉLIGIBLE de B est restée UNPLACED sans source ; PUIS B lit et la balaie
+     * (`swept` 1) — témoin qu'elle était bien éligible, le 0 de A ne venant que du cloisonnement.
      */
     public function testLeagueValidationNeverReadsOrWritesAForeignClubsFixtures(): void
     {
@@ -1218,21 +1237,13 @@ final class MatchTenantIsolationTest extends WebTestCase
         $this->em->flush();
         $foreignId = $foreign->getId();
 
-        // Témoin : sous SA propre identité, B en compte bien 1 — le 0 vu par A ne peut donc
-        // venir que du cloisonnement, jamais de l'inéligibilité de la rencontre.
-        $this->client->request('GET', '/api/fixtures/league-validation', [], [], $this->authHeaders($userB));
-        self::assertResponseStatusCodeSame(200);
-        self::assertSame(1, $this->responseData()['totalValidatable'] ?? -1);
-
-        // A ne voit RIEN : total 0…
+        // A lit D'ABORD : rien à valider, rien balayé (sa lecture gestionnaire écrit, mais
+        // jamais hors de son club).
         $this->client->request('GET', '/api/fixtures/league-validation', [], [], $this->authHeaders($userA));
         self::assertResponseStatusCodeSame(200);
-        self::assertSame(0, $this->responseData()['totalValidatable'] ?? -1);
-
-        // …et une bascule par A ne touche aucune rencontre de B.
-        $this->client->request('POST', '/api/fixtures/league-validation', [], [], $this->authHeaders($userA));
-        self::assertResponseStatusCodeSame(200);
-        self::assertSame(0, $this->responseData()['confirmed'] ?? -1);
+        $readByA = $this->responseData();
+        self::assertSame(0, $readByA['totalValidatable'] ?? -1);
+        self::assertSame(0, $readByA['swept'] ?? -1, 'la lecture de A ne balaie aucune rencontre de B');
 
         // La rencontre de B est intacte : toujours UNPLACED, aucune source de placement.
         // Lecture BRUTE sous le scope de B (la connexion dama partagée est scopée club).
@@ -1240,8 +1251,14 @@ final class MatchTenantIsolationTest extends WebTestCase
         $connection = self::getContainer()->get(EntityManagerInterface::class)->getConnection();
         $row = $connection->fetchAssociative('SELECT status, placement_source FROM fixture WHERE id = ?', [$foreignId]);
         self::assertIsArray($row);
-        self::assertSame('UNPLACED', $row['status'], 'la bascule de A ne valide jamais la rencontre de B');
+        self::assertSame('UNPLACED', $row['status'], 'la lecture de A ne valide jamais la rencontre de B');
         self::assertNull($row['placement_source'], 'aucune source de placement posée cross-club');
+
+        // Témoin : sous SA propre identité, B la balaie bien — le 0 vu par A ne peut donc
+        // venir que du cloisonnement, jamais de l'inéligibilité de la rencontre.
+        $this->client->request('GET', '/api/fixtures/league-validation', [], [], $this->authHeaders($userB));
+        self::assertResponseStatusCodeSame(200);
+        self::assertSame(1, $this->responseData()['swept'] ?? -1, 'témoin : la rencontre de B était bien éligible');
 
         unset($clubA);
     }

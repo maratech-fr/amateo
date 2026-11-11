@@ -107,6 +107,22 @@ class SchedulePlan implements TenantOwnedInterface
     private ?DateTimeImmutable $firstChosenAt = null;
 
     /**
+     * Jour du club où le plan de période a été validé AUTOMATIQUEMENT (7 jours après le début de
+     * sa période). Posé une fois, en SQL, par {@see SchedulePlanProvisioner::chooseAutomatically},
+     * jamais effacé : « déjà auto-validé » (jamais revalidé, même rouvert) et marque « Validé
+     * automatiquement » tant qu'aucune validation humaine (`firstChosenAt`) ne l'a suivie.
+     */
+    #[ORM\Column(type: 'date_immutable', nullable: true)]
+    private ?DateTimeImmutable $autoValidatedDate = null;
+
+    /** « J'ai vu » du club sur l'alerte du radar : jour du club de la vue, et le type d'alerte vu. */
+    #[ORM\Column(type: 'date_immutable', nullable: true)]
+    private ?DateTimeImmutable $alertSeenDate = null;
+
+    #[ORM\Column(type: 'string', length: 32, nullable: true)]
+    private ?string $alertSeenKind = null;
+
+    /**
      * Monotonic version counter (ADR-0002 lot B1). Never derived from
      * MAX(versionNumber): validating a plan DELETES the non-chosen versions, so a
      * MAX-based number would be reused (a deleted V3 then regenerated as V3
@@ -281,6 +297,21 @@ class SchedulePlan implements TenantOwnedInterface
     public function getFirstChosenAt(): ?DateTimeImmutable
     {
         return $this->firstChosenAt;
+    }
+
+    public function getAutoValidatedDate(): ?DateTimeImmutable
+    {
+        return $this->autoValidatedDate;
+    }
+
+    public function getAlertSeenDate(): ?DateTimeImmutable
+    {
+        return $this->alertSeenDate;
+    }
+
+    public function getAlertSeenKind(): ?string
+    {
+        return $this->alertSeenKind;
     }
 
     public function getLockSourceScheduleId(): ?string

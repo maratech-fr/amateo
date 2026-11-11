@@ -15,6 +15,8 @@ export const CLUB_TEXTS = {
   accentHint: "Couleur d'accent — une pour le thème clair, une pour le sombre. Elle habille boutons, liens et éléments actifs de toute l'interface.",
   accentLight: "Thème clair",
   accentDark: "Thème sombre",
+  // UXS-18 — nom accessible du champ texte de la couleur (plus de « hexadécimal »).
+  colorFieldLabel: (label: string) => `Couleur ${label} (code couleur, par exemple #1E90FF)`,
   resetColors: "Réinitialiser les couleurs",
 
   // DangerSection
@@ -114,4 +116,10 @@ export const CLUB_TEXTS = {
   refuseManagerRequest: "Refuser",
   acceptManagerRequestOf: (name: string) => `Accepter la demande de ${name}`,
   refuseManagerRequestOf: (name: string) => `Refuser la demande de ${name}`,
+  // UXS-20 — confirmation des deux gestes du gestionnaire (petites lignes, plan §2).
+  refuseManagerRequestTitle: (name: string) => `Refuser la demande de ${name}\u00A0?`,
+  refuseManagerRequestDescription: (name: string) => `${name} reste Membre et pourra renouveler sa demande plus tard.`,
+  acceptManagerRequestTitle: (name: string) => `Accepter la demande de ${name}\u00A0?`,
+  acceptManagerRequestDescription: (name: string) =>
+    `${name} devient gestionnaire, avec les droits de modifier le planning, les équipes et les membres du club.`,
 } as const satisfies Record<string, string | ((...args: never[]) => string)>;

@@ -12,6 +12,7 @@ import { renderWithProviders } from "@/test/utils";
 import * as matchesApi from "./api";
 import { CalendarPage } from "./CalendarPage";
 import { useMatchesStore } from "./store";
+import { MATCHES_TEXTS } from "./texts";
 import { MATCHES_EXPORT_TEXTS as EXPORT_TEXTS } from "./texts/export";
 
 // Sonde d'URL : le Calendrier re-synchronise l'URL depuis le store (effet d'écriture,
@@ -162,13 +163,13 @@ vi.mock("./api", () => ({
   submitFixture,
   reopenFixture: vi.fn(() => Promise.resolve({})),
   postModuleVisit: vi.fn(() => Promise.resolve({ firstVisit: true, newFixturesCount: 0, newConflictFingerprints: [], planningChanged: false, referenceTakenAt: "2026-08-24T10:00:00+00:00" })),
-  getLatestFbiIngestion: vi.fn(() => Promise.resolve({ latest: { depositedAt: "2026-08-20T09:00:00+00:00", source: "FBI_XLSX", created: 10, updated: 2, unchanged: 3, deviationsCount: 0 } })),
+  getLatestFbiIngestion: vi.fn(() => Promise.resolve({ latest: { depositedAt: "2026-08-20T09:00:00+00:00", depositedDate: "2026-08-20", source: "FBI_XLSX", created: 10, updated: 2, unchanged: 3, deviationsCount: 0 } })),
   getOpponentTravel: vi.fn(() => Promise.resolve([])),
   getVenueLabelInventory: vi.fn(() => Promise.resolve([])),
   getFbiCorrections: vi.fn(() => Promise.resolve([])),
   closeFbiCorrection: vi.fn(() => Promise.resolve({})),
   reopenFbiCorrection: vi.fn(() => Promise.resolve({})),
-  getLeagueValidationOutlook: vi.fn(() => Promise.resolve({ matured: [], toTreat: [], missingDeadline: [], totalValidatable: 0 })),
+  getLeagueValidationOutlook: vi.fn(() => Promise.resolve({ matured: [], toTreat: [], missingDeadline: [], totalValidatable: 0, swept: 0 })),
   confirmLeagueValidatedFixtures: vi.fn(() => Promise.resolve({ confirmed: 0 })),
 }));
 
@@ -224,29 +225,35 @@ describe("CalendarPage — la Semaine (ex-boucle, fusion PR 3b)", () => {
     expect(screen.getByLabelText("Chargement")).toHaveClass("size-8");
   });
 
-  it("gestionnaire → le bandeau « déjà dans FBI » (championnats commencés) est monté", async () => {
+  // Un championnat commencé passe SEUL « Déjà dans FBI » à la lecture du gestionnaire : le bandeau
+  // ne garde que ce qui reste à traiter (sans heure ni gymnase, écart) — jamais un geste de
+  // confirmation, même quand la lecture sert encore des validables.
+  it("gestionnaire → le bandeau « à traiter » est monté, sans aucun geste « déjà dans FBI »", async () => {
     meState.role = "admin";
     vi.mocked(matchesApi.getLeagueValidationOutlook).mockResolvedValueOnce({
       matured: [{ competitionId: "c1", name: "PNM", deadline: "2020-09-10", deadlineSource: "club", maturedBy: "deadline", firstMatchDate: null, validatableCount: 3 }],
-      toTreat: [],
+      toTreat: [{ fixtureId: "f9", teamId: "t1", competitionName: "PNM", matchDate: "2026-10-04", opponentLabel: "ASVEL", reason: "NO_KICKOFF" }],
       missingDeadline: [],
       totalValidatable: 3,
+      swept: 0,
     });
     renderWithProviders(<CalendarPage />, { route: EXPLICIT });
-    expect(await screen.findByText(/à confirmer « déjà dans FBI »/)).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: MATCHES_TEXTS.leagueTreatInQueue })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /déjà dans FBI/i })).not.toBeInTheDocument();
   });
 
-  it("Membre → le bandeau « déjà dans FBI » n'est jamais monté", async () => {
+  it("Membre → le bandeau « à traiter » n'est jamais monté", async () => {
     meState.role = "member";
     vi.mocked(matchesApi.getLeagueValidationOutlook).mockResolvedValueOnce({
-      matured: [{ competitionId: "c1", name: "PNM", deadline: "2020-09-10", deadlineSource: "club", maturedBy: "deadline", firstMatchDate: null, validatableCount: 3 }],
-      toTreat: [],
+      matured: [],
+      toTreat: [{ fixtureId: "f9", teamId: "t1", competitionName: "PNM", matchDate: "2026-10-04", opponentLabel: "ASVEL", reason: "NO_KICKOFF" }],
       missingDeadline: [],
-      totalValidatable: 3,
+      totalValidatable: 0,
+      swept: 0,
     });
     renderWithProviders(<CalendarPage />, { route: EXPLICIT });
     await screen.findByRole("group", { name: "Semaine affichée" });
-    expect(screen.queryByText(/à confirmer « déjà dans FBI »/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: MATCHES_TEXTS.leagueTreatInQueue })).not.toBeInTheDocument();
   });
 
   it("rend la barre « Semaine affichée » (3 compteurs) ET l'établi (grille + radar) SANS rail", async () => {
@@ -625,7 +632,9 @@ describe("CalendarPage — chips, familles, temporalités (ex-Consulter)", () =>
     expect(screen.getByRole("button", { name: /Collision de gymnase/ })).toBeInTheDocument();
   });
 
-  it("une famille entièrement traitée garde sa chip à 0 en sourdine (P4-207)", async () => {
+  // Puce pressée (toutes les familles le sont d'office) : son 0 garde la couleur du texte, lisible
+  // sur le fond accent plein — la sourdine ne vaut que pour une puce non pressée (FilterChip).
+  it("une famille entièrement traitée garde sa chip à 0, lisible sur la puce pressée (P4-207)", async () => {
     setTodayOverride("2026-10-01");
     vi.mocked(matchesApi.getFixtures).mockResolvedValueOnce(consultFixtures as never);
     vi.mocked(matchesApi.getCompetitions).mockResolvedValueOnce(consultCompetitions as never);
@@ -639,7 +648,8 @@ describe("CalendarPage — chips, familles, temporalités (ex-Consulter)", () =>
     } as never);
     renderWithProviders(<CalendarPage />, { route: EXPLICIT });
     const chip = await screen.findByRole("button", { name: /Collision de gymnase/ });
-    expect(within(chip).getByText("0")).toHaveClass("text-muted-foreground");
+    expect(chip).toHaveAttribute("aria-pressed", "true");
+    expect(within(chip).getByText("0")).not.toHaveClass("text-muted-foreground");
   });
 
   it("le compteur d'une famille suit la SEMAINE affichée (scope hebdo)", async () => {
@@ -1114,7 +1124,9 @@ describe("CalendarPage — export des matchs pour les parents", () => {
     await user.click(screen.getByRole("button", { name: EXPORT_TEXTS.exportButton }));
     const dialog = within(await screen.findByRole("dialog", { name: EXPORT_TEXTS.dialogTitle }));
 
-    expect(dialog.queryByRole("button", { name: (name) => name.includes(EXPORT_TEXTS.teamLabel) })).not.toBeInTheDocument();
+    // Le segment « Équipe » du groupe « Regrouper par » porte le même mot : il est écarté (il vit dans un `group`).
+    const teamTriggers = dialog.queryAllByRole("button", { name: (name) => name.includes(EXPORT_TEXTS.teamLabel) }).filter((button) => null === button.closest('[role="group"]'));
+    expect(teamTriggers).toHaveLength(0);
   });
 });
 

@@ -112,6 +112,7 @@ final readonly class SeasonAndFixturePaths implements CustomPathContributor
                     'properties' => [
                         'latest' => ['type' => 'object', 'nullable' => true, 'properties' => [
                             'depositedAt' => ['type' => 'string', 'format' => 'date-time'],
+                            'depositedDate' => ['type' => 'string', 'format' => 'date', 'description' => 'Civil day of the deposit in the club timezone (Y-m-d)'],
                             'source' => ['type' => 'string', 'enum' => ['FBI_XLSX', 'FFBB_API']],
                             'created' => ['type' => 'integer'],
                             'updated' => ['type' => 'integer'],
@@ -205,7 +206,7 @@ final readonly class SeasonAndFixturePaths implements CustomPathContributor
                         'coachMailing' => ['type' => 'object', 'description' => 'Sending the conflicts to the coaches: the button counters (computed by the same service as the send) and the last send of the season', 'properties' => [
                             'personConflictCount' => ['type' => 'integer', 'description' => 'Person conflicts on a match that would be mailed (held lines excluded)'],
                             'pendingRecipientCount' => ['type' => 'integer', 'description' => 'Coaches told at an earlier send who no longer have a conflict and have a valid address — to be told « no conflict left »'],
-                            'recipientCount' => ['type' => 'integer', 'description' => 'Coaches who will actually receive an e-mail (a list or « no conflict left »), valid address only — what the confirmation announces'],
+                            'recipientCount' => ['type' => 'integer', 'description' => 'Coaches with a valid address who hold a list or are to be told « no conflict left » (what a « resend all » would mail); what a default send mails is told by the preview'],
                             'last' => ['type' => 'object', 'nullable' => true, 'description' => 'The last send of the season, null when nothing was ever sent', 'properties' => [
                                 'sentAt' => ['type' => 'string', 'format' => 'date-time', 'description' => 'Club wall-clock time'],
                                 'sentByFirstName' => ['type' => 'string', 'nullable' => true, 'description' => 'null when the sender no longer exists'],
@@ -225,12 +226,21 @@ final readonly class SeasonAndFixturePaths implements CustomPathContributor
             operationId: 'postFixtureConflictsMailCoaches',
             tags: ['Match'],
             responses: [
-                '200' => $this->schemas->jsonResponse('Each concerned coach was mailed, as an indication, his own person conflicts on a match; a coach told at an earlier send who has none left was mailed « no conflict left ». Best-effort: coaches without an address are skipped, failed sends are named', [
+                '200' => $this->schemas->jsonResponse('Each concerned coach was mailed, as an indication, his full list of person conflicts on a match, new or changed ones marked; by default only coaches with a conflict new or changed since the last send are mailed (resendAll mails every list); a coach told at an earlier send who has none left was mailed « no conflict left ». Best-effort: coaches without an address are skipped, failed sends are named', [
                     'type' => 'object',
                     'properties' => [
                         'sentAt' => ['type' => 'string', 'format' => 'date-time', 'nullable' => true, 'description' => 'Club wall-clock time; null when no e-mail was queued (nothing stamped)'],
+                        'resendAll' => ['type' => 'boolean', 'description' => 'The option the send ran with'],
                         'conflictCount' => ['type' => 'integer'],
-                        'recipients' => ['type' => 'array', 'items' => ['type' => 'object', 'properties' => ['coachId' => ['type' => 'string'], 'firstName' => ['type' => 'string'], 'lastName' => ['type' => 'string'], 'conflictCount' => ['type' => 'integer']]]],
+                        'recipients' => ['type' => 'array', 'items' => ['type' => 'object', 'properties' => [
+                            'coachId' => ['type' => 'string'],
+                            'firstName' => ['type' => 'string'],
+                            'lastName' => ['type' => 'string'],
+                            'conflictCount' => ['type' => 'integer'],
+                            'newCount' => ['type' => 'integer', 'description' => 'Conflicts of the list never sent to this coach'],
+                            'changedCount' => ['type' => 'integer', 'description' => 'Conflicts of the list whose displayed content changed since they were sent to this coach'],
+                            'receiptKnown' => ['type' => 'boolean', 'description' => 'false when nothing detailed was ever recorded for this coach: no mark'],
+                        ]]],
                         'cleared' => ['type' => 'array', 'items' => ['type' => 'object', 'properties' => ['coachId' => ['type' => 'string'], 'firstName' => ['type' => 'string'], 'lastName' => ['type' => 'string']]]],
                         'skipped' => ['type' => 'array', 'items' => ['type' => 'object', 'properties' => ['coachId' => ['type' => 'string'], 'firstName' => ['type' => 'string'], 'lastName' => ['type' => 'string'], 'kind' => ['type' => 'string', 'enum' => ['conflicts', 'cleared']]]]],
                         'failed' => ['type' => 'array', 'items' => ['type' => 'object', 'properties' => ['coachId' => ['type' => 'string'], 'firstName' => ['type' => 'string'], 'lastName' => ['type' => 'string'], 'kind' => ['type' => 'string', 'enum' => ['conflicts', 'cleared']]]]],
@@ -239,10 +249,55 @@ final readonly class SeasonAndFixturePaths implements CustomPathContributor
                 '400' => new Response('No club in context'),
                 '403' => new Response('Not a management member, or a demonstration club'),
                 '409' => new Response('Archived season, season plan not validated, or a send already in progress for the club'),
-                '422' => new Response('No season, or nothing to send and no coach to tell'),
+                '422' => new Response('No season, invalid « resend all » option, nothing to send and no coach to tell, or nothing new since the last send'),
                 '429' => new Response('Club e-mail cap reached (200 / 24 h) — the whole batch is refused'),
             ],
             summary: 'Send the person conflicts on a match to the concerned coaches — management only',
+            requestBody: $this->schemas->jsonBody([
+                'type' => 'object',
+                'properties' => [
+                    'resendAll' => ['type' => 'boolean', 'description' => 'Mail every concerned coach his full list, even with nothing new (default false; an empty body means false)'],
+                ],
+            ]),
+        )));
+
+        $paths->addPath('/api/fixtures/conflicts/mail-coaches/preview', new PathItem(get: new Operation(
+            operationId: 'getFixtureConflictsMailCoachesPreview',
+            tags: ['Match'],
+            responses: [
+                '200' => $this->schemas->jsonResponse('Before the send, coach by coach, what the send would do — computed exactly as the send does; read-only (no lock, no cap, no write)', [
+                    'type' => 'object',
+                    'properties' => [
+                        'seasonId' => ['type' => 'string'],
+                        'personConflictCount' => ['type' => 'integer'],
+                        'defaultMailCount' => ['type' => 'integer', 'description' => 'E-mails a default send would queue'],
+                        'resendAllMailCount' => ['type' => 'integer', 'description' => 'E-mails a « resend all » send would queue'],
+                        'blockedByDefault' => ['type' => 'string', 'nullable' => true, 'enum' => ['nothing', 'no_address', 'nothing_new', 'mixed'], 'description' => 'Why a default send would mail nothing (null when it would mail someone)'],
+                        'blockedOnResendAll' => ['type' => 'string', 'nullable' => true, 'enum' => ['nothing', 'no_address'], 'description' => 'Why a « resend all » send would mail nothing (null when it would mail someone)'],
+                        'recipients' => ['type' => 'array', 'description' => 'Sorted: mailed by default first, then without a valid address, then nothing new; alphabetical next', 'items' => ['type' => 'object', 'properties' => [
+                            'coachId' => ['type' => 'string'],
+                            'firstName' => ['type' => 'string'],
+                            'lastName' => ['type' => 'string'],
+                            'email' => ['type' => 'string', 'nullable' => true, 'description' => 'As entered — may be invalid'],
+                            'hasValidAddress' => ['type' => 'boolean'],
+                            'kind' => ['type' => 'string', 'enum' => ['conflicts', 'cleared']],
+                            'receiptKnown' => ['type' => 'boolean', 'description' => 'false when nothing detailed was ever recorded for this coach'],
+                            'conflictCount' => ['type' => 'integer'],
+                            'newCount' => ['type' => 'integer'],
+                            'changedCount' => ['type' => 'integer'],
+                            'alreadySentCount' => ['type' => 'integer'],
+                            'lastSentAt' => ['type' => 'string', 'format' => 'date-time', 'nullable' => true, 'description' => 'Club wall-clock time of the latest send of a current conflict to this coach'],
+                            'sendsByDefault' => ['type' => 'boolean'],
+                            'sendsOnResendAll' => ['type' => 'boolean'],
+                        ]]],
+                    ],
+                ]),
+                '400' => new Response('No club in context'),
+                '403' => new Response('Not a management member, or a demonstration club'),
+                '409' => new Response('Archived season, or season plan not validated'),
+                '422' => new Response('No season'),
+            ],
+            summary: 'Preview the send of the person conflicts to the coaches (who would receive what) — management only',
         )));
 
         $paths->addPath('/api/fixtures/conflicts/{fingerprint}/resolution', new PathItem(
@@ -401,7 +456,7 @@ final readonly class SeasonAndFixturePaths implements CustomPathContributor
             operationId: 'getMatchDeadlineOutlook',
             tags: ['Match'],
             responses: [
-                '200' => $this->schemas->jsonResponse('The entry-deadline cockpit outlook: each still-owed effective deadline (club value, else community default) with its competitions, how many home fixtures remain to enter, and whether the seven-day reminder window is open. When at least one window is open, the current user\'s guardian delta is joined (read-only, the visit is not stamped).', [
+                '200' => $this->schemas->jsonResponse('The entry-deadline cockpit outlook: each still-owed effective deadline (club value, else community default) with its competitions, how many home fixtures remain to enter, and whether the seven-day reminder window is open. When at least one window is open, the current user\'s guardian delta is joined (the visit is not stamped). A manager read on a writable season whose season plan is chosen first switches past friendlies and the dated home fixtures of started championships to « Déjà dans FBI » (swept).', [
                     'type' => 'object',
                     'properties' => [
                         'windows' => ['type' => 'array', 'items' => ['type' => 'object', 'properties' => [
@@ -416,7 +471,8 @@ final readonly class SeasonAndFixturePaths implements CustomPathContributor
                             'toEnter' => ['type' => 'integer', 'description' => 'Home fixtures PLACED but not yet entered in FBI (UNPLACED and already-submitted excluded)'],
                             'toCorrect' => ['type' => 'integer', 'description' => 'Open « to correct in FBI » ledger entries (kept-app divergences FBI is still behind on)'],
                         ]],
-                        'toConfirmCount' => ['type' => 'integer', 'description' => 'Home fixtures ready to be marked « validé ligue » in one gesture (matured championships, kickoff + identified venue, no pending deviation) — the grand total of the batch outlook'],
+                        'toConfirmCount' => ['type' => 'integer', 'description' => 'Home fixtures of started championships ready to become « Déjà dans FBI » (kickoff + identified venue, no pending deviation) and not switched by this read — a manager read on a writable season switches them (0 left), a member read never writes'],
+                        'swept' => ['type' => 'integer', 'description' => 'How many fixtures THIS read switched to « Déjà dans FBI » (past friendlies, then started championships). 0 for a member, an archived season, a season plan not chosen, or when a concurrent modification won the race (the next read retries)'],
                         'guardianDelta' => ['type' => 'object', 'nullable' => true, 'description' => 'Present only when a reminder window is open AND the user already has a visit reference', 'properties' => [
                             'newFixturesCount' => ['type' => 'integer'],
                             'newConflictFingerprints' => ['type' => 'array', 'items' => ['type' => 'string']],
@@ -427,7 +483,7 @@ final readonly class SeasonAndFixturePaths implements CustomPathContributor
                 '400' => new Response('No club in context'),
                 '401' => new Response('Unauthorized (missing/expired JWT)'),
             ],
-            summary: 'League/committee entry-deadline outlook for the cockpit (read-only, open to any member)',
+            summary: 'League/committee entry-deadline outlook for the cockpit (open to any member; a manager read sweeps « Déjà dans FBI »)',
         )));
 
         $placementRunResult = [
@@ -473,8 +529,9 @@ final readonly class SeasonAndFixturePaths implements CustomPathContributor
                 '400' => new Response('No club or no user in context'),
                 '401' => new Response('Unauthorized (missing/expired JWT)'),
                 '403' => new Response('Not a management member — or, on the Découverte credit plan, automatic placement must be week-end by week-end (send a one-week window)'),
-                '409' => new Response('Placement already running for this club, season plan not chosen, or archived season'),
+                '409' => new Response('A placement is already running or already queued for this club, a deploy freeze is in progress, season plan not chosen, or archived season'),
                 '422' => new Response('Invalid window (a bound is not a date, or from is after to)'),
+                '429' => new Response('Club quota reached for automatic placement'),
             ],
             summary: 'Enqueue the auto-placement of the unplaced home matches (async; writes PLACED+SOLVER in the worker; manual anchors never move)',
             requestBody: $this->schemas->jsonBody([
@@ -498,7 +555,7 @@ final readonly class SeasonAndFixturePaths implements CustomPathContributor
                 '401' => new Response('Unauthorized (missing/expired JWT)'),
                 '403' => new Response('Free credits exhausted on the Découverte plan'),
                 '404' => new Response('Team not found in this club and season'),
-                '422' => new Response('Invalid range (a bound is not a date, or from is after to)'),
+                '422' => new Response('Invalid range (a bound is not a date, or from is after to), homeOnly not a boolean, or unknown groupBy'),
                 '429' => new Response('Club quota reached for this export'),
                 '502' => new Response('The PDF could not be rendered; no credit is consumed'),
             ],
@@ -510,6 +567,8 @@ final readonly class SeasonAndFixturePaths implements CustomPathContributor
                     'from' => ['type' => 'string', 'format' => 'date', 'description' => 'First day (AAAA-MM-JJ), inclusive'],
                     'to' => ['type' => 'string', 'format' => 'date', 'description' => 'Last day (AAAA-MM-JJ), inclusive'],
                     'teamId' => ['type' => 'string', 'nullable' => true, 'description' => 'One team; null = the whole club'],
+                    'homeOnly' => ['type' => 'boolean', 'nullable' => true, 'description' => 'Only the matches received at home (away and neutral ground left out); absent = every match'],
+                    'groupBy' => ['type' => 'string', 'enum' => ['team', 'day'], 'nullable' => true, 'description' => 'One page per team (default) or one page per ISO week, matches listed day by day'],
                 ],
             ]),
         )));
@@ -606,7 +665,7 @@ final readonly class SeasonAndFixturePaths implements CustomPathContributor
                 operationId: 'leagueValidationOutlook',
                 tags: ['Match'],
                 responses: [
-                    '200' => $this->schemas->jsonResponse('The batch « validé ligue » outlook, driven by each competition having STARTED. A championship has started when its entry deadline has passed (inclusive) OR its first match is already played (min match date strictly in the past) — so only STARTED competitions are proposed; a future-deadline championship with no match yet played (e.g. a new October youth wave with provisional dates) is deliberately left untouched. Per started competition: its name, deadline (null when it started by first match played), source, how it matured (deadline | firstMatchPlayed), the first match date (when that is what started it), and the count of validatable home fixtures (UNPLACED, kickoff + identified venue, no pending deviation). Plus the NAMED fixtures still to treat (no kickoff, no venue, or a pending deviation), the no-deadline competitions NOT YET started that nonetheless have ready fixtures (deadline to be entered), and the grand total to validate. Friendly competitions (label « Amical … ») are never proposed.', [
+                    '200' => $this->schemas->jsonResponse('The « Déjà dans FBI » outlook, driven by each competition having STARTED. Before answering, the read switches by itself every validatable home fixture of a started championship to « Déjà dans FBI » (status VALIDATED + placement source MANUAL — the anchor the grid lock and the placement solver both require), past friendlies included, and says how many (swept). A championship has started when its entry deadline has passed (inclusive) OR its first match is already played (min match date strictly in the past) — so only STARTED competitions are proposed; a future-deadline championship with no match yet played (e.g. a new October youth wave with provisional dates) is deliberately left untouched. Per started competition: its name, deadline (null when it started by first match played), source, how it matured (deadline | firstMatchPlayed), the first match date (when that is what started it), and the count of validatable home fixtures (UNPLACED, kickoff + identified venue, no pending deviation). Plus the NAMED fixtures still to treat (no kickoff, no venue, or a pending deviation), the no-deadline competitions NOT YET started that nonetheless have ready fixtures (deadline to be entered), and the grand total to validate. Friendly competitions (label « Amical … ») are never proposed.', [
                         'type' => 'object',
                         'properties' => [
                             'matured' => [
@@ -650,29 +709,14 @@ final readonly class SeasonAndFixturePaths implements CustomPathContributor
                                 ],
                             ],
                             'totalValidatable' => ['type' => 'integer'],
+                            'swept' => ['type' => 'integer', 'description' => 'How many fixtures THIS read switched to « Déjà dans FBI » before answering (past friendlies, then the validatable home fixtures of started championships); 0 when nothing was left, or when a concurrent modification won the race (the next read retries)'],
                         ],
                     ]),
                     '401' => new Response('Unauthorized (missing/expired JWT)'),
                     '403' => new Response('Not a management member'),
                     '409' => new Response('No active season, season plan not chosen, or archived season'),
                 ],
-                summary: 'The batch « validé ligue » outlook by matured competition (read-only, management only)',
-            ),
-            post: new Operation(
-                operationId: 'confirmLeagueValidatedFixtures',
-                tags: ['Match'],
-                responses: [
-                    '200' => $this->schemas->jsonResponse('Mark every eligible home fixture « validé ligue » (status VALIDATED + placement source MANUAL — the anchor the grid lock and the placement solver both require). Idempotent: a second call finds nothing (the predicate excludes VALIDATED).', [
-                        'type' => 'object',
-                        'properties' => [
-                            'confirmed' => ['type' => 'integer', 'description' => 'How many fixtures were switched to « validé ligue »'],
-                        ],
-                    ]),
-                    '401' => new Response('Unauthorized (missing/expired JWT)'),
-                    '403' => new Response('Not a management member'),
-                    '409' => new Response('No active season, season plan not chosen, archived season, or a concurrent modification (another tab / double-click)'),
-                ],
-                summary: 'Mark the eligible home fixtures « validé ligue » in one confirmed gesture (management only)',
+                summary: 'The « Déjà dans FBI » outlook by started competition — the read first switches the validatable home fixtures by itself (management only)',
             ),
         ));
     }

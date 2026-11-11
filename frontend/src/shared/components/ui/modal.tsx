@@ -2,6 +2,7 @@ import { Flag, X } from "lucide-react";
 import { type ReactNode, useRef } from "react";
 import { createPortal } from "react-dom";
 
+import { Button } from "@/shared/components/ui/button";
 import { serializeModalState, useModalReport } from "@/shared/components/ui/modalReportContext";
 import { MODAL_WIDTH } from "@/shared/components/ui/modal-width";
 import { useModalA11y } from "@/shared/lib/useModalA11y";
@@ -102,19 +103,21 @@ export function Modal({ label, title, onClose, children, size = "md", footer, re
             {/* Drapeau rendu QUAND ET SEULEMENT QUAND un canal existe (`openReport !== null`) : hors
                 provider (console admin, test de primitive) aucun drapeau — jamais un drapeau inerte. */}
             {showReportFlag && null !== openReport ? (
-              <button
+              <Button
                 type="button"
+                variant="ghost"
+                size="icon-sm"
                 aria-label="Signaler"
                 title="Signaler un problème sur cette fenêtre"
-                className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+                className="text-muted-foreground hover:text-foreground"
                 onClick={() => openReport?.({ modalState: serializeModalState(reportState?.()), screenLabel: label })}
               >
                 <Flag className="size-4 text-destructive" />
-              </button>
+              </Button>
             ) : null}
-            <button type="button" aria-label="Fermer" title="Fermer" className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground" onClick={onClose}>
+            <Button type="button" variant="ghost" size="icon-sm" aria-label="Fermer" title="Fermer" className="text-muted-foreground hover:text-foreground" onClick={onClose}>
               <X className="size-4" />
-            </button>
+            </Button>
           </div>
         </div>
         {/* `p-1 -m-1` : une gouttière qui laisse respirer l'anneau `focus-visible:ring-2` d'un

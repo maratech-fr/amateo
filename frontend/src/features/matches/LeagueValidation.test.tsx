@@ -1,11 +1,11 @@
-import { screen, within } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
+import { screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { renderWithProviders } from "@/test/utils";
 
 import type { LeagueValidationOutlook } from "./api";
 import { LeagueValidationBanner } from "./LeagueValidation";
+import { MATCHES_TEXTS } from "./texts";
 
 // On pilote les hooks PROD, jamais le réseau (patron EntryDeadlinesEditor).
 const { outlookState, confirmMutate } = vi.hoisted(() => ({
@@ -24,14 +24,14 @@ vi.mock("@/shared/session/queries", async (importOriginal) => ({
   useCanManage: () => session.canManage,
 }));
 
-const EMPTY: LeagueValidationOutlook = { matured: [], toTreat: [], missingDeadline: [], totalValidatable: 0 };
+const EMPTY: LeagueValidationOutlook = { matured: [], toTreat: [], missingDeadline: [], totalValidatable: 0, swept: 0 };
 
 beforeEach(() => {
   outlookState.current = undefined;
   confirmMutate.mockReset();
 });
 
-describe("LeagueValidationBanner — trois états servis par l'échéance (lot O)", () => {
+describe("LeagueValidationBanner — ce qui reste à traiter ou à renseigner, jamais à confirmer", () => {
   it("lecture absente (chargement/échec) ⇒ aucun bandeau", () => {
     outlookState.current = undefined;
     const { container } = renderWithProviders(<LeagueValidationBanner />);
@@ -44,24 +44,34 @@ describe("LeagueValidationBanner — trois états servis par l'échéance (lot O
     expect(container).toBeEmptyDOMElement();
   });
 
-  it("championnats échus avec validables ⇒ la confirmation liste chaque championnat + un seul oui", async () => {
+  // Un championnat commencé passe SEUL « Déjà dans FBI » à la lecture du gestionnaire : le bandeau
+  // ne propose plus aucune confirmation. Des validables encore servis (lecture dont le balayage
+  // n'a pas pu écrire) ne font naître ni bandeau ni geste — la lecture suivante les bascule.
+  it("des validables servis sans rien à traiter ⇒ aucun bandeau, aucun geste de confirmation", () => {
     outlookState.current = {
       ...EMPTY,
       totalValidatable: 12,
       matured: [{ competitionId: "c1", name: "PNM", deadline: "2026-11-10", deadlineSource: "club", maturedBy: "deadline", firstMatchDate: null, validatableCount: 12 }],
     };
-    const user = userEvent.setup();
+    const { container } = renderWithProviders(<LeagueValidationBanner />);
+
+    expect(container).toBeEmptyDOMElement();
+    expect(screen.queryByRole("button")).not.toBeInTheDocument();
+  });
+
+  it("des validables servis À CÔTÉ de rencontres à traiter ⇒ seul le bloc « à traiter » s'affiche", () => {
+    outlookState.current = {
+      ...EMPTY,
+      totalValidatable: 12,
+      matured: [{ competitionId: "c1", name: "PNM", deadline: "2026-11-10", deadlineSource: "club", maturedBy: "deadline", firstMatchDate: null, validatableCount: 12 }],
+      toTreat: [{ fixtureId: "f1", teamId: "t1", competitionName: "U13 Départemental", matchDate: "2026-10-04", opponentLabel: "ASVEL", reason: "NO_KICKOFF" }],
+    };
     renderWithProviders(<LeagueValidationBanner />);
 
-    expect(screen.getByText(/à confirmer « déjà dans FBI »/)).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: /Marquer « déjà dans FBI »/ }));
-    const dialog = await screen.findByRole("dialog");
-    // Le DÉTAIL par championnat (nom + échéance + compte) — maturedLabel. Arbitrage fondateur
-    // 2026-10-27 (source §64) : « — N à valider » → « — N déjà dans FBI à confirmer ». ROUGE tant
-    // que leagueValidation.ts:52 n'est pas appliqué (consommateur suivi avec le test lib).
-    expect(within(dialog).getByText(/PNM — échéance .* — 12 déjà dans FBI à confirmer/)).toBeInTheDocument();
-    await user.click(within(dialog).getByRole("button", { name: /Marquer « déjà dans FBI »/ }));
-    expect(confirmMutate).toHaveBeenCalledOnce();
+    // Un seul bandeau (à traiter), un seul geste : « Traiter dans la file ».
+    expect(screen.getAllByRole("status")).toHaveLength(1);
+    expect(screen.getAllByRole("button")).toHaveLength(1);
+    expect(screen.getByRole("button", { name: MATCHES_TEXTS.leagueTreatInQueue })).toBeInTheDocument();
   });
 
   it("un championnat échu dont TOUT reste à traiter ⇒ pas de bouton de validation, rencontres NOMMÉES + renvoi vers la file", () => {
@@ -93,17 +103,16 @@ describe("LeagueValidationBanner — trois états servis par l'échéance (lot O
   });
 
   /**
-   * Chantier Membre (PR 2) : la validation ligue reste RÉSERVÉE côté serveur (`league-validation`
-   * balaie aussi les amicaux) — pour un Membre le bandeau n'existe pas, il ne propose jamais
-   * « Marquer « déjà dans FBI » » (témoin : le cas « championnats échus… » ci-dessus).
+   * Chantier Membre (PR 2) : la vue « Déjà dans FBI » reste RÉSERVÉE côté serveur (sa lecture
+   * ÉCRIT : amicaux passés et championnats commencés) — pour un Membre le bandeau n'existe pas,
+   * même avec des rencontres à traiter (témoin : le cas « à traiter » ci-dessus, rendu au gestionnaire).
    */
-  it("Membre : aucun bandeau de validation ligue", () => {
+  it("Membre : aucun bandeau, même avec des rencontres à traiter", () => {
     session.canManage = false;
     try {
       outlookState.current = {
         ...EMPTY,
-        totalValidatable: 12,
-        matured: [{ competitionId: "c1", name: "PNM", deadline: "2026-11-10", deadlineSource: "club", maturedBy: "deadline", firstMatchDate: null, validatableCount: 12 }],
+        toTreat: [{ fixtureId: "f1", teamId: "t1", competitionName: "U13 Départemental", matchDate: "2026-10-04", opponentLabel: "ASVEL", reason: "NO_VENUE" }],
       };
       const { container } = renderWithProviders(<LeagueValidationBanner />);
       expect(container).toBeEmptyDOMElement();

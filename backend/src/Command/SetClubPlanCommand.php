@@ -18,7 +18,7 @@ use Symfony\Component\Console\Style\SymfonyStyle;
 /**
  * SA4 / P1-3 — attribution superadmin d'une OFFRE à un club (virement encaissé →
  * offre posée). Cible un plan par son CODE stable (`decouverte`, `essentiel`,
- * `club`, `grand-club`, `sans-limite`, `beta`) : l'UI console liste dynamiquement
+ * `club`, `grand-club`, `beta`) : l'UI console liste dynamiquement
  * une entrée figée PAR offre (AdminActionCatalog).
  *
  * Une offre payante n'ouvre le droit qu'avec une saison réglée : `--paid-season`
@@ -50,7 +50,7 @@ final class SetClubPlanCommand extends Command
     protected function configure(): void
     {
         $this->addOption('club', null, InputOption::VALUE_REQUIRED, 'Target club id (required).');
-        $this->addOption('plan', null, InputOption::VALUE_REQUIRED, 'Offer code (decouverte|essentiel|club|grand-club|sans-limite|beta).');
+        $this->addOption('plan', null, InputOption::VALUE_REQUIRED, 'Offer code (decouverte|essentiel|club|grand-club|beta).');
         $this->addOption('paid-season', null, InputOption::VALUE_REQUIRED, 'Mark a season as paid alongside the offer (current|next). Forbidden with decouverte.');
     }
 

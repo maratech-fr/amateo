@@ -55,6 +55,8 @@ test("un Membre demande, le gestionnaire accepte : le Membre devient gestionnair
     // --- Le Membre demande depuis sa carte « Mon rôle ».
     await member.goto("/club");
     await member.getByRole("button", { name: CLUB_TEXTS.requestManagerRole }).click();
+    // UXS-20 : la demande se confirme avant de partir.
+    await member.getByRole("dialog", { name: SESSION_TEXTS.requestManagerRoleConfirmTitle }).getByRole("button", { name: SESSION_TEXTS.requestManagerRoleConfirmLabel }).click();
     await expect(member.getByText(SESSION_TEXTS.managerRequestSent)).toBeVisible();
     await expect(member.getByRole("button", { name: CLUB_TEXTS.cancelManagerRequest })).toBeVisible();
 
@@ -63,6 +65,8 @@ test("un Membre demande, le gestionnaire accepte : le Membre devient gestionnair
     await manager.getByRole("button", { name: new RegExp(`^${CLUB_TEXTS.sectionMembers}`) }).click();
     await expect(manager.getByText(/Demande gestionnaire/)).toBeVisible();
     await manager.getByRole("button", { name: CLUB_TEXTS.acceptManagerRequestOf("Léa Demande") }).click();
+    // UXS-20 (Q2) : « Accepter » donne tous les droits — il se confirme.
+    await manager.getByRole("dialog", { name: CLUB_TEXTS.acceptManagerRequestTitle("Léa Demande") }).getByRole("button", { name: CLUB_TEXTS.acceptManagerRequest, exact: true }).click();
     await expect(manager.getByText(/Demande gestionnaire/)).toHaveCount(0);
 
     // --- Le Membre, rechargé, est gestionnaire : la section « Membres » lui est ouverte.
@@ -79,6 +83,8 @@ test("un Membre demande, le gestionnaire accepte : le Membre devient gestionnair
       await approvePendingAsMember(manager, otherEmail);
       await other.goto("/club");
       await other.getByRole("button", { name: CLUB_TEXTS.requestManagerRole }).click();
+      await other.getByRole("dialog", { name: SESSION_TEXTS.requestManagerRoleConfirmTitle }).getByRole("button", { name: SESSION_TEXTS.requestManagerRoleConfirmLabel }).click();
+      // « Annuler ma demande » reste à un clic (geste inverse, réversible) : aucune confirmation.
       await other.getByRole("button", { name: CLUB_TEXTS.cancelManagerRequest }).click();
       await expect(other.getByText(SESSION_TEXTS.managerRequestCancelled)).toBeVisible();
       await expect(other.getByRole("button", { name: CLUB_TEXTS.requestManagerRole })).toBeVisible();

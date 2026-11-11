@@ -53,7 +53,7 @@ const EXEMPTIONS: { file: string; reason: string }[] = [
   { file: "app/NotFoundPage.tsx", reason: "404 statique — aucune lecture de données" },
   {
     file: "features/matches/MatchesLayout.tsx",
-    reason: "layout (garde socle + navigation) ; les lectures de données vivent dans ses pages enfants, déjà gardées",
+    reason: "layout (garde socle + navigation) ; sa seule lecture propre, la fraîcheur FBI du titre, est fail-open (« Matchs » sans donnée) ; les autres lectures vivent dans ses pages enfants, déjà gardées",
   },
   {
     file: "features/matches/MatchesLanding.tsx",

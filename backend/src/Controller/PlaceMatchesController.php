@@ -8,12 +8,17 @@ use App\Entity\Club;
 use App\Entity\MatchPlacementRun;
 use App\Entity\Season;
 use App\Entity\User;
+use App\Enum\MatchPlacementRunStatus;
 use App\Message\PlaceMatchesMessage;
 use App\MessageHandler\PlaceMatchesHandler;
+use App\Repository\MatchPlacementRunRepository;
 use App\Service\DeploymentGate;
+use App\Service\FriendlyAutoValidator;
+use App\Service\LeagueValidationOutlook;
 use App\Service\ManagementAccessGuard;
 use App\Service\MatchPlacementLock;
 use App\Service\MatchPlacementPayloadBuilder;
+use App\Service\PlacementConflictText;
 use App\Service\PlanEntitlements;
 use App\Service\SeasonAccessGuard;
 use App\Service\SeasonResolver;
@@ -23,6 +28,7 @@ use Doctrine\ORM\EntityManagerInterface;
 use Psr\Log\LoggerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\Clock\ClockInterface;
+use Symfony\Component\DependencyInjection\Attribute\Autowire;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\RequestStack;
@@ -36,7 +42,9 @@ use Throwable;
 /**
  * POST /api/fixtures/place — « Placer automatiquement » (P1-4 PR D, ADR-0003).
  * Rail ASYNCHRONE (patron de la génération) : le contrôleur garde toutes ses gardes
- * (SEC-07 → socle 409 → saison archivée 409 → fenêtre Découverte 403), prend le verrou
+ * (SEC-07 → socle 409 → saison archivée 409 → fenêtre Découverte 403), balaie « Déjà dans
+ * FBI » les domiciles datés des championnats commencés (après les gardes de saison et de
+ * socle, avant de décider quoi placer), prend le verrou
  * anti-double-demande, ENFILE un {@see PlaceMatchesMessage} et répond 202 avec l'id du
  * run. Le worker ({@see PlaceMatchesHandler}) solve, applique, décompte
  * le crédit au SUCCÈS et pousse la bascule terminale sur `/clubs/{clubId}/placement`.
@@ -71,12 +79,21 @@ final class PlaceMatchesController extends AbstractController
         private readonly DeploymentGate $deploymentGate,
         private readonly SeasonAccessGuard $seasonAccessGuard,
         private readonly SocleGuard $socleGuard,
+        private readonly FriendlyAutoValidator $friendlyAutoValidator,
+        private readonly LeagueValidationOutlook $leagueValidationOutlook,
         private readonly MatchPlacementLock $lock,
         private readonly MatchPlacementPayloadBuilder $payloadBuilder,
         private readonly PlanEntitlements $planEntitlements,
         private readonly MessageBusInterface $messageBus,
+        // Horloge DÉCORÉE : le balayage « Déjà dans FBI » date les rencontres (`reviewedAt`, date
+        // MÉTIER) au jour du club — simulé pour un club de démonstration, comme l'écran.
         private readonly ClockInterface $clock,
         private readonly LoggerInterface $logger,
+        // Horloge RÉELLE, réservée à `createdAt` du run : il sert des DURÉES (grâce du rattrapage,
+        // seuil d'e-mail, ordre du dernier run) qui ne suivent jamais une date simulée.
+        #[Autowire(service: 'app.clock.real')]
+        private readonly ClockInterface $realClock,
+        private readonly MatchPlacementRunRepository $runRepository,
     ) {}
 
     // priority > 0: the static path must win over API Platform's /api/fixtures/{id}.
@@ -97,6 +114,16 @@ final class PlaceMatchesController extends AbstractController
         }
         $this->seasonAccessGuard->assertWritable($request);
         $this->socleGuard->assertSeasonPlanChosen($request->attributes->get('_season_id') ?? $request->headers->get('X-Season-Id'));
+
+        // Balayage « Déjà dans FBI » AVANT de décider quoi placer (gardes passées : gestionnaire,
+        // hors gel, saison écrivable, socle en vigueur) : une page montée avant que le
+        // championnat ne commence n'a peut-être rien relu — un domicile daté d'un championnat
+        // commencé ne doit jamais partir TO_PLACE. Amicaux passés PUIS championnats.
+        $sweepSeasonId = $request->attributes->get('_season_id');
+        if (\is_string($sweepSeasonId) && '' !== $sweepSeasonId) {
+            $this->friendlyAutoValidator->sweep($clubId, $sweepSeasonId);
+            $this->leagueValidationOutlook->sweepStartedChampionships($sweepSeasonId, DateTimeImmutable::createFromInterface($this->clock->now()));
+        }
 
         $user = $this->getUser();
         if (!$user instanceof User) {
@@ -163,18 +190,26 @@ final class PlaceMatchesController extends AbstractController
         $weeksCount = $this->distinctIsoWeeksToPlace($matches);
 
         // Verrou pris ICI pour tout le run (TTL = budget du run) : une 2ᵉ demande pendant un run
-        // ouvert échoue à l'acquisition → 409 (même message métier qu'avant). Rendu par le worker.
+        // ouvert échoue à l'acquisition → 409, dont le texte suit le dernier run du club (en file :
+        // aucun délai promis ; en cours : le délai restant du verrou). Rendu par le worker.
         $token = $this->lock->acquire($clubId, PlaceMatchesMessage::budgetSecondsFor($weeksCount));
         if (null === $token) {
-            return $this->json(['error' => 'Un placement est déjà en cours — réessayez dans un instant.'], Response::HTTP_CONFLICT);
+            $latest = $this->runRepository->latestForCurrentScope();
+
+            return $this->json(
+                ['error' => PlacementConflictText::for($latest?->getStatus(), $this->lock->remainingSeconds($clubId))],
+                Response::HTTP_CONFLICT,
+            );
         }
+
+        $run = null;
 
         try {
             $run = new MatchPlacementRun(
                 clubId: $clubId,
                 seasonId: $season?->getId(),
                 requestedByUserId: $user->getId(),
-                createdAt: DateTimeImmutable::createFromInterface($this->clock->now()),
+                createdAt: DateTimeImmutable::createFromInterface($this->realClock->now()),
             );
             $this->entityManager->persist($run);
             $this->entityManager->flush();
@@ -188,8 +223,9 @@ final class PlaceMatchesController extends AbstractController
                 window: $window,
             ));
         } catch (Throwable $exception) {
-            // L'enfilage a échoué : le worker ne rendra pas le verrou, on le rend ici pour ne pas
-            // bloquer le club pendant tout le TTL.
+            // L'enfilage a échoué : aucun worker ne traitera ce run ni ne rendra le verrou. Le run
+            // déjà écrit passe FAILED (l'écran le relit et rouvre le bouton), puis on rend le verrou.
+            $this->failUnqueuedRun($run);
             $this->lock->release($clubId, $token);
             $this->logger->error('Failed to enqueue match placement', ['clubId' => $clubId, 'exception' => $exception]);
 
@@ -200,6 +236,27 @@ final class PlaceMatchesController extends AbstractController
             'runId' => $run->getId(),
             'status' => $run->getStatus()->value,
         ], Response::HTTP_ACCEPTED);
+    }
+
+    /**
+     * Best-effort : un run flushé dont le message n'a pas été enfilé passe FAILED « n'a pas pu être
+     * lancé » (jamais un PENDING que personne ne traitera). Run non écrit, ou EM fermé : rien à
+     * faire ici — le rattrapage du worker fermera un PENDING resté sans message.
+     */
+    private function failUnqueuedRun(?MatchPlacementRun $run): void
+    {
+        if (!$run instanceof MatchPlacementRun || !$this->entityManager->isOpen() || !$this->entityManager->contains($run)) {
+            return;
+        }
+
+        try {
+            $run->setStatus(MatchPlacementRunStatus::FAILED)
+                ->setFinishedAt(DateTimeImmutable::createFromInterface($this->realClock->now()))
+                ->setResultData(['error' => PlaceMatchesHandler::ERROR_NOT_STARTED]);
+            $this->entityManager->flush();
+        } catch (Throwable $exception) {
+            $this->logger->warning('Failed to mark an unqueued match placement run as failed', ['runId' => $run->getId(), 'exception' => $exception]);
+        }
     }
 
     /**

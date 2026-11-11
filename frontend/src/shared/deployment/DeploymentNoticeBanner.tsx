@@ -3,11 +3,12 @@ import { useReducer } from "react";
 
 import { Button } from "@/shared/components/ui/button";
 import { NoticeBanner } from "@/shared/components/ui/notice-banner";
-import { PRODUCT_NAME } from "@/shared/lib/product";
 
 import { useDeploymentNotice } from "./queries";
+import { DEPLOYMENT_TEXTS } from "./texts";
 
-// Début = date longue + heure courte ; retour = juste l'heure (même jour, par construction).
+// Début = date longue + heure courte ; retour = l'heure seule si c'est le même jour CALENDAIRE
+// local, sinon date longue + heure (une fenêtre qui enjambe minuit).
 // Fuseau LOCAL (pas de timeZone forcé) : le gestionnaire lit l'heure de SON navigateur.
 const startFmt = new Intl.DateTimeFormat("fr-FR", { dateStyle: "long", timeStyle: "short" });
 const timeFmt = new Intl.DateTimeFormat("fr-FR", { hour: "2-digit", minute: "2-digit" });
@@ -48,17 +49,20 @@ export function DeploymentNoticeBanner() {
     bump();
   };
 
-  const start = startFmt.format(new Date(data.scheduledAt));
-  const until = timeFmt.format(new Date(data.expectedReturnAt));
+  const startAt = new Date(data.scheduledAt);
+  const returnAt = new Date(data.expectedReturnAt);
+  const start = startFmt.format(startAt);
+  const notice =
+    startAt.toDateString() === returnAt.toDateString()
+      ? DEPLOYMENT_TEXTS.noticeSameDay(start, timeFmt.format(returnAt))
+      : DEPLOYMENT_TEXTS.noticeOtherDay(start, startFmt.format(returnAt));
 
   return (
     <NoticeBanner tone="warning" role="status" className="mb-4">
       <div className="flex items-center gap-2">
         <Wrench className="size-4 shrink-0 text-warning" aria-hidden="true" />
-        <span className="min-w-0 flex-1">
-          Maintenance prévue le {start} : {PRODUCT_NAME} sera indisponible jusqu'à {until} environ.
-        </span>
-        <Button type="button" variant="ghost" size="icon-sm" onClick={close} aria-label="Masquer l'annonce de maintenance" className="shrink-0 text-muted-foreground">
+        <span className="min-w-0 flex-1">{notice}</span>
+        <Button type="button" variant="ghost" size="icon-sm" onClick={close} aria-label={DEPLOYMENT_TEXTS.dismiss} className="shrink-0 text-muted-foreground">
           <X className="size-4" />
         </Button>
       </div>

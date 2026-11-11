@@ -3,7 +3,6 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ClubEntitlements } from "@/shared/session/api";
-import { openListbox, pickListboxOption } from "@/test/pickListboxOption";
 import { renderWithProviders } from "@/test/utils";
 
 import * as matchesApi from "./api";
@@ -11,7 +10,8 @@ import { ExportMatchesDialog } from "./ExportMatchesDialog";
 import { MATCHES_EXPORT_TEXTS as TEXTS } from "./texts/export";
 
 /**
- * Promesse : la fenêtre d'export envoie exactement ce que le gestionnaire a choisi, nomme le fichier
+ * Promesse : la fenêtre d'export envoie exactement ce que le gestionnaire a choisi (plage, équipe,
+ * regroupement par équipe ou par jour, « à domicile seulement »), nomme le fichier
  * d'après son choix, dit ce qu'un export coûte en Découverte, et ne déclenche rien sur « Annuler » ni
  * sur une plage impossible. Tout membre y accède (parité planning) : le rôle n'entre pas ici.
  * Le contrôle « Équipes » est un `SegmentedControl` (boutons), « Équipe » un `TeamSelect` : la liste
@@ -48,13 +48,30 @@ function open(defaults: { teamId: string | null; from: string; to: string } = { 
 
 type DialogQueries = ReturnType<typeof within>;
 
-/** Le déclencheur de `TeamSelect` : son nom accessible est « Équipe + valeur choisie ». */
+/**
+ * Le déclencheur de `TeamSelect` : son nom accessible est « Équipe + valeur choisie ». Le segment
+ * « Équipe » du groupe « Regrouper par » porte le même mot : il est écarté (il vit dans un `group`).
+ */
+function isTeamTrigger(button: HTMLElement): boolean {
+  return null === button.closest('[role="group"]');
+}
+
 function queryTeamTrigger(dialog: DialogQueries): HTMLElement | null {
-  return dialog.queryByRole("button", { name: (name: string) => name.includes(TEXTS.teamLabel) });
+  return dialog.queryAllByRole("button", { name: (name: string) => name.includes(TEXTS.teamLabel) }).find(isTeamTrigger) ?? null;
 }
 
 function teamTrigger(dialog: DialogQueries): HTMLElement {
-  return dialog.getByRole("button", { name: (name: string) => name.includes(TEXTS.teamLabel) });
+  const trigger = queryTeamTrigger(dialog);
+  if (null === trigger) {
+    throw new Error("déclencheur du sélecteur d'équipe introuvable");
+  }
+  return trigger;
+}
+
+/** Ouvre le sélecteur d'équipe de la fenêtre et choisit `option` (sa liste vit dans un portail). */
+async function pickTeam(user: ReturnType<typeof userEvent.setup>, dialog: DialogQueries, option: string): Promise<void> {
+  await user.click(teamTrigger(dialog));
+  await user.click(within(screen.getByRole("listbox")).getByRole("option", { name: (name: string) => name.includes(option) }));
 }
 
 function credits(remaining: number): Partial<ClubEntitlements> {
@@ -74,7 +91,7 @@ describe("ExportMatchesDialog — ce qui part au serveur", () => {
 
     await user.click(dialog.getByRole("button", { name: TEXTS.downloadButton }));
 
-    await waitFor(() => expect(matchesApi.exportFixturesPdf).toHaveBeenCalledWith({ from: "2026-11-01", to: "2026-11-30", teamId: null }));
+    await waitFor(() => expect(matchesApi.exportFixturesPdf).toHaveBeenCalledWith({ from: "2026-11-01", to: "2026-11-30", teamId: null, homeOnly: false, groupBy: "team" }));
     await waitFor(() => expect(downloadSpy).toHaveBeenCalledWith(expect.any(Blob), "matchs-club-2026-11-01-2026-11-30.pdf"));
   });
 
@@ -85,7 +102,7 @@ describe("ExportMatchesDialog — ce qui part au serveur", () => {
     expect(teamTrigger(dialog)).toHaveAccessibleName(expect.stringContaining("U13 M1"));
     await user.click(dialog.getByRole("button", { name: TEXTS.downloadButton }));
 
-    await waitFor(() => expect(matchesApi.exportFixturesPdf).toHaveBeenCalledWith({ from: "2026-11-09", to: "2026-11-15", teamId: "team-13" }));
+    await waitFor(() => expect(matchesApi.exportFixturesPdf).toHaveBeenCalledWith({ from: "2026-11-09", to: "2026-11-15", teamId: "team-13", homeOnly: false, groupBy: "team" }));
     await waitFor(() => expect(downloadSpy).toHaveBeenCalledWith(expect.any(Blob), "matchs-u13-m1-2026-11-09-2026-11-15.pdf"));
   });
 
@@ -94,7 +111,7 @@ describe("ExportMatchesDialog — ce qui part au serveur", () => {
     const { dialog } = open();
 
     await user.click(dialog.getByRole("button", { name: TEXTS.scopeTeam }));
-    await pickListboxOption(user, TEXTS.teamLabel, "U15 F");
+    await pickTeam(user, dialog, "U15 F");
     await user.click(dialog.getByRole("button", { name: TEXTS.scopeClub }));
 
     expect(queryTeamTrigger(dialog)).not.toBeInTheDocument();
@@ -120,7 +137,7 @@ describe("ExportMatchesDialog — ce qui part au serveur", () => {
     const { dialog } = open();
 
     await user.click(dialog.getByRole("button", { name: TEXTS.scopeTeam }));
-    await pickListboxOption(user, TEXTS.teamLabel, "U15 F");
+    await pickTeam(user, dialog, "U15 F");
     await user.click(dialog.getByRole("button", { name: TEXTS.downloadButton }));
 
     await waitFor(() => expect(matchesApi.exportFixturesPdf).toHaveBeenCalledWith(expect.objectContaining({ teamId: "team-15" })));
@@ -157,7 +174,7 @@ describe("ExportMatchesDialog — ce qui part au serveur", () => {
     fireEvent.change(dialog.getByLabelText(TEXTS.toLabel), { target: { value: "2027-01-15" } });
     await user.click(dialog.getByRole("button", { name: TEXTS.downloadButton }));
 
-    await waitFor(() => expect(matchesApi.exportFixturesPdf).toHaveBeenCalledWith({ from: "2026-12-15", to: "2027-01-15", teamId: null }));
+    await waitFor(() => expect(matchesApi.exportFixturesPdf).toHaveBeenCalledWith({ from: "2026-12-15", to: "2027-01-15", teamId: null, homeOnly: false, groupBy: "team" }));
   });
 
   it("Annuler ferme sans rien appeler", async () => {
@@ -188,6 +205,51 @@ describe("ExportMatchesDialog — ce qui part au serveur", () => {
   });
 });
 
+describe("ExportMatchesDialog — regroupement et « à domicile seulement »", () => {
+  it("« Regrouper par » propose Équipe puis Jour, Équipe choisi d'office ; la case domicile part décochée", () => {
+    const { dialog } = open();
+
+    const group = dialog.getByRole("group", { name: TEXTS.groupByLabel });
+    expect(within(group).getAllByRole("button").map((b) => b.textContent)).toEqual([TEXTS.groupByTeam, TEXTS.groupByDay]);
+    expect(within(group).getByRole("button", { name: TEXTS.groupByTeam })).toHaveAttribute("aria-pressed", "true");
+    expect(dialog.getByRole("checkbox", { name: TEXTS.homeOnlyLabel })).not.toBeChecked();
+  });
+
+  it("par jour : groupBy « day », fichier suffixé « -par-jour »", async () => {
+    const user = userEvent.setup();
+    const { dialog } = open();
+
+    await user.click(within(dialog.getByRole("group", { name: TEXTS.groupByLabel })).getByRole("button", { name: TEXTS.groupByDay }));
+    await user.click(dialog.getByRole("button", { name: TEXTS.downloadButton }));
+
+    await waitFor(() => expect(matchesApi.exportFixturesPdf).toHaveBeenCalledWith({ from: "2026-11-01", to: "2026-11-30", teamId: null, homeOnly: false, groupBy: "day" }));
+    await waitFor(() => expect(downloadSpy).toHaveBeenCalledWith(expect.any(Blob), "matchs-club-par-jour-2026-11-01-2026-11-30.pdf"));
+  });
+
+  it("à domicile seulement : homeOnly vrai, fichier suffixé « -domicile »", async () => {
+    const user = userEvent.setup();
+    const { dialog } = open();
+
+    await user.click(dialog.getByRole("checkbox", { name: TEXTS.homeOnlyLabel }));
+    await user.click(dialog.getByRole("button", { name: TEXTS.downloadButton }));
+
+    await waitFor(() => expect(matchesApi.exportFixturesPdf).toHaveBeenCalledWith({ from: "2026-11-01", to: "2026-11-30", teamId: null, homeOnly: true, groupBy: "team" }));
+    await waitFor(() => expect(downloadSpy).toHaveBeenCalledWith(expect.any(Blob), "matchs-club-domicile-2026-11-01-2026-11-30.pdf"));
+  });
+
+  it("une équipe, à domicile, par jour : le nom porte les trois, dans cet ordre", async () => {
+    const user = userEvent.setup();
+    const { dialog } = open({ teamId: "team-13", from: "2026-11-09", to: "2026-11-15" });
+
+    await user.click(dialog.getByRole("checkbox", { name: TEXTS.homeOnlyLabel }));
+    await user.click(within(dialog.getByRole("group", { name: TEXTS.groupByLabel })).getByRole("button", { name: TEXTS.groupByDay }));
+    await user.click(dialog.getByRole("button", { name: TEXTS.downloadButton }));
+
+    await waitFor(() => expect(matchesApi.exportFixturesPdf).toHaveBeenCalledWith({ from: "2026-11-09", to: "2026-11-15", teamId: "team-13", homeOnly: true, groupBy: "day" }));
+    await waitFor(() => expect(downloadSpy).toHaveBeenCalledWith(expect.any(Blob), "matchs-u13-m1-domicile-par-jour-2026-11-09-2026-11-15.pdf"));
+  });
+});
+
 describe("ExportMatchesDialog — le sélecteur d'équipe", () => {
   it("une équipe en entente porte son repère dans la liste, les autres non", async () => {
     const user = userEvent.setup();
@@ -195,7 +257,8 @@ describe("ExportMatchesDialog — le sélecteur d'équipe", () => {
 
     // Le déclencheur vit dans la fenêtre ; sa liste s'ouvre dans un portail, donc hors d'elle.
     expect(teamTrigger(dialog)).toBeInTheDocument();
-    const list = await openListbox(user, TEXTS.teamLabel);
+    await user.click(teamTrigger(dialog));
+    const list = screen.getByRole("listbox");
     expect(teamTrigger(dialog)).toHaveAttribute("aria-expanded", "true");
 
     const ctc = within(list).getByRole("option", { name: /U15 F/ });

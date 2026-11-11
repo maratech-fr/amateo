@@ -464,19 +464,13 @@ final class FbiFixtureImporter
         // flush : les rencontres viennent de naître UNPLACED (jamais placées d'office), on
         // relit maintenant celles qu'un championnat COMMENCÉ rend validables (heure +
         // gymnase, sans écart) et on les bascule VALIDATED + MANUAL par la MAISON UNIQUE du
-        // prédicat et de l'écriture ({@see LeagueValidationOutlook}, partagée avec le geste
-        // manuel en lot — jamais une seconde copie, d'où une ancre FIXED byte-identique). Le
-        // POST manuel ne sert plus que de rattrapage (échéance qui tombe APRÈS le dépôt).
-        $leagueValidated = 0;
-        if (null !== $seasonId) {
-            foreach ($this->leagueValidationOutlook->fixturesToConfirm($seasonId) as $fixture) {
-                $this->leagueValidationOutlook->markLeagueValidated($fixture, $now);
-                ++$leagueValidated;
-            }
-            if ($leagueValidated > 0) {
-                $this->entityManager->flush();
-            }
-        }
+        // prédicat et de l'écriture ({@see LeagueValidationOutlook::sweepStartedChampionships},
+        // partagée avec la lecture gestionnaire — jamais une seconde copie, d'où une ancre FIXED
+        // byte-identique). Un championnat qui commence APRÈS le dépôt bascule à la lecture
+        // gestionnaire suivante (accueil, vue « Déjà dans FBI », guichet de placement).
+        $leagueValidated = null !== $seasonId
+            ? $this->leagueValidationOutlook->sweepStartedChampionships($seasonId, $now)
+            : 0;
 
         // Completeness (6.2): « 9/22 journées — fichier partiel ou phase pas
         // sortie » — counted on the PERSISTED fixtures (the data that is true),

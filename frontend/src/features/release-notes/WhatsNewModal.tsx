@@ -3,8 +3,11 @@ import { Link } from "react-router";
 
 import { Button } from "@/shared/components/ui/button";
 import { Modal } from "@/shared/components/ui/modal";
+import { RichText } from "@/shared/components/ui/rich-text";
 
 import { useMarkReleaseNotesSeen, useReleaseNotes } from "./queries";
+import { ReleaseNoteHeading } from "./ReleaseNoteHeading";
+import { RELEASE_NOTES_TEXTS } from "./texts";
 
 /**
  * P5-12 — la modale « quoi de neuf ». Elle s'ouvre UNIQUEMENT s'il existe une
@@ -16,7 +19,14 @@ import { useMarkReleaseNotesSeen, useReleaseNotes } from "./queries";
  * s'ouvrirait d'un coup à la première connexion. À partir de là, seule une note
  * publiée plus tard déclenchera la modale.
  *
- * Le corps est du TEXTE BRUT (`whitespace-pre-line`), jamais de markdown/html.
+ * Une SEULE note est montrée : la plus récemment PUBLIÉE (la date éditoriale est
+ * antidatable, elle ne trie pas) ; les autres fraîches sont comptées en pied, lisibles
+ * par « Voir tout ». TOUTE sortie (croix, Échap, clic sur le fond, « Voir tout »,
+ * « J'ai compris ») enregistre la lecture et ferme aussitôt — un échec du POST est
+ * toasté par le filet global et la modale revient au prochain chargement.
+ *
+ * Corps : `RichText` (éléments React, titres au niveau 4 sous le `<h3>` de la note) pour une note
+ * riche ; texte brut `whitespace-pre-line` pour une note texte (`bodyRich` null). Jamais de HTML.
  */
 export function WhatsNewModal() {
   const { data } = useReleaseNotes();
@@ -37,43 +47,48 @@ export function WhatsNewModal() {
   if (!data || null === seenUpTo || dismissed) return null;
 
   const seenTime = new Date(seenUpTo).getTime();
-  const fresh = data.items.filter((item) => new Date(item.publishedAt).getTime() > seenTime);
-  if (0 === fresh.length) return null;
+  const fresh = data.items
+    .filter((item) => new Date(item.publishedAt).getTime() > seenTime)
+    .sort((a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime());
+  const note = fresh[0];
+  if (undefined === note) return null;
+  const others = fresh.length - 1;
+
+  const close = () => {
+    markSeen.mutate();
+    setDismissed(true);
+  };
 
   return (
     <Modal
-      label="Quoi de neuf"
-      title="Quoi de neuf ?"
-      onClose={() => setDismissed(true)}
-      // Rangée en `justify-between` (lien à gauche, action à droite) : un enfant `w-full`
-      // remplit le pied `justify-end` de la primitive et préserve exactement cette disposition.
+      label={RELEASE_NOTES_TEXTS.modalLabel}
+      title={RELEASE_NOTES_TEXTS.modalTitle}
+      onClose={close}
+      // Rangée en `justify-between` (compteur + lien à gauche, action à droite) : un enfant
+      // `w-full` remplit le pied `justify-end` de la primitive et préserve cette disposition.
       footer={
         <div className="flex w-full items-center justify-between gap-3">
-          <Link to="/nouveautes" className="text-sm text-accent underline" onClick={() => setDismissed(true)}>
-            Tout voir
-          </Link>
-          <Button type="button" disabled={markSeen.isPending} onClick={() => markSeen.mutate(undefined, { onSuccess: () => setDismissed(true) })}>
-            J'ai compris
+          <p className="text-sm text-muted-foreground">
+            {others >= 1 ? <><span>{RELEASE_NOTES_TEXTS.modalOthers(others)}</span>{" · "}</> : null}
+            <Link to="/nouveautes" className="text-accent underline" onClick={close}>
+              {RELEASE_NOTES_TEXTS.modalSeeAll}
+            </Link>
+          </p>
+          <Button type="button" onClick={close}>
+            {RELEASE_NOTES_TEXTS.modalGotIt}
           </Button>
         </div>
       }
     >
-      <ul className="mt-4 space-y-4">
-        {fresh.map((item) => (
-          <li key={item.id} className="border-b border-border pb-4 last:border-b-0">
-            <p className="text-sm font-semibold">{item.title}</p>
-            <p className="mt-0.5 text-xs text-muted-foreground">{formatDate(item.date)}</p>
-            <p className="mt-2 whitespace-pre-line text-sm text-foreground">{item.body}</p>
-          </li>
-        ))}
-      </ul>
+      <article className="mt-4">
+        <ReleaseNoteHeading date={note.date} version={note.version} />
+        <h3 className="mt-0.5 text-base font-semibold">{note.title}</h3>
+        {null !== note.bodyRich ? (
+          <RichText doc={note.bodyRich} headingLevel={4} className="mt-2 text-sm text-foreground" />
+        ) : (
+          <p className="mt-2 whitespace-pre-line text-sm text-foreground">{note.body}</p>
+        )}
+      </article>
     </Modal>
   );
-}
-
-const dateFormatter = new Intl.DateTimeFormat("fr-FR", { day: "2-digit", month: "long", year: "numeric" });
-
-function formatDate(value: string): string {
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? value : dateFormatter.format(date);
 }

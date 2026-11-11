@@ -26,6 +26,7 @@ use App\Enum\SeasonStatus;
 use App\Message\PlaceMatchesMessage;
 use App\MessageHandler\PlaceMatchesHandler;
 use App\Service\MatchPlacementLock;
+use App\Service\MatchPlacementPayloadBuilder;
 use App\Service\SeasonResolver;
 use App\Tests\ChoosesPlanVersionTrait;
 use App\Tests\TenantGucTrait;
@@ -35,6 +36,8 @@ use Lexik\Bundle\JWTAuthenticationBundle\Services\JWTTokenManagerInterface;
 use PHPUnit\Framework\Attributes\Group;
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
+use Symfony\Component\Messenger\Exception\TransportException;
+use Symfony\Component\Messenger\MessageBusInterface;
 use Symfony\Component\Messenger\Transport\InMemory\InMemoryTransport;
 
 /**
@@ -263,10 +266,250 @@ final class PlaceMatchesControllerTest extends WebTestCase
         self::assertLessThanOrEqual('19:00', $kickoff);
     }
 
+    /**
+     * « Placer automatiquement » sans aucune lecture préalable (page montée avant que le championnat
+     * ne commence) : le guichet fait passer « Déjà dans FBI » le domicile daté d'un championnat
+     * commencé AVANT de décider s'il y a quelque chose à placer — heure inchangée, ancre FIXED au
+     * solveur, et rien n'est enfilé (« Aucun match à placer. »). Jumeau côté lecture :
+     * `LeagueReadAutoValidationTest` ; ici, le guichet de placement.
+     */
+    public function testPlacementSweepsAStartedChampionshipHomeBeforeDecidingWhatToPlace(): void
+    {
+        [$token, $clubId, $seasonId] = $this->createClub();
+        $this->scopeGucToClub($clubId);
+        $team = $this->createTeam($clubId, $seasonId);
+        $venue = $this->createVenue($clubId, $seasonId);
+        $this->createWindow($clubId, $seasonId, $venue->getId(), 6, '14:00', '22:30');
+        $home = $this->createFixture($clubId, $seasonId, $team->getId(), '2099-03-14');
+        $competition = $this->em->find(Competition::class, (string) $home->getCompetitionId());
+        self::assertInstanceOf(Competition::class, $competition);
+        $competition->setEntryDeadline(new DateTimeImmutable('2020-09-10'));
+        $home->setVenueId($venue->getId());
+        $home->setKickoffTime(new DateTimeImmutable('20:30'));
+        $this->em->flush();
+        $homeId = $home->getId();
+        $queuedBefore = $this->queuedCount();
+
+        $this->client->request('POST', '/api/fixtures/place', [], [], ['HTTP_AUTHORIZATION' => 'Bearer ' . $token]);
+
+        $this->em->clear();
+        $this->scopeGucToClub($clubId);
+        $fresh = $this->em->find(Fixture::class, $homeId);
+        self::assertInstanceOf(Fixture::class, $fresh);
+        self::assertSame(FixtureStatus::VALIDATED, $fresh->getStatus(), 'le guichet de placement balaie avant de placer');
+        self::assertSame(FixturePlacementSource::MANUAL, $fresh->getPlacementSource());
+        self::assertSame('20:30', $fresh->getKickoffTime()?->format('H:i'), 'l\'heure fédérale est conservée');
+
+        self::assertResponseStatusCodeSame(200);
+        self::assertStringContainsString('Aucun match', (string) $this->client->getResponse()->getContent());
+        self::assertSame($queuedBefore, $this->queuedCount(), 'rien à placer : aucun run enfilé');
+
+        $club = $this->em->find(Club::class, $clubId);
+        self::assertInstanceOf(Club::class, $club);
+        $builder = self::getContainer()->get(MatchPlacementPayloadBuilder::class);
+        self::assertInstanceOf(MatchPlacementPayloadBuilder::class, $builder);
+        $built = $builder->build($club, $seasonId);
+        self::assertSame(0, $built['toPlaceCount']);
+        $matches = $built['payload']['matches'];
+        self::assertIsArray($matches);
+        $kinds = array_column($matches, 'kind', 'id');
+        self::assertSame('FIXED', $kinds[$homeId] ?? null, 'le domicile balayé part en ancre fixe');
+    }
+
+    /**
+     * Promesse (B1-c, club de démonstration) : le balayage « Déjà dans FBI » du guichet de placement
+     * reste à la date SIMULÉE du club — la rencontre balayée est datée (`reviewedAt`) du jour que
+     * l'écran affiche, comme le fait la lecture. Seul l'horodatage du RUN passe à l'heure réelle
+     * (`testRunCreatedAtFollowsTheRealClockEvenForADemoClub`). Falsifiable : l'horloge réelle à la
+     * place de l'horloge décorée pour le balayage date la rencontre d'aujourd'hui réel.
+     */
+    public function testTheSweepStampsFixturesAtTheDemoClubDate(): void
+    {
+        [$token, $clubId, $seasonId] = $this->createClub();
+        $simulated = $this->setDemoDate($clubId, '07-05');
+        $this->scopeGucToClub($clubId);
+        $team = $this->createTeam($clubId, $seasonId);
+        $venue = $this->createVenue($clubId, $seasonId);
+        $this->createWindow($clubId, $seasonId, $venue->getId(), 6, '14:00', '22:30');
+        // Un domicile daté (heure + gymnase) d'un championnat dont l'échéance est passée À LA DATE
+        // SIMULÉE seulement : à l'heure réelle, rien n'aurait mûri.
+        $home = $this->createFixture($clubId, $seasonId, $team->getId(), $simulated->modify('-9 days')->format('Y-m-d'));
+        $competition = $this->em->find(Competition::class, (string) $home->getCompetitionId());
+        self::assertInstanceOf(Competition::class, $competition);
+        $competition->setEntryDeadline($simulated->modify('-15 days'));
+        $home->setVenueId($venue->getId());
+        $home->setKickoffTime(new DateTimeImmutable('20:30'));
+        $this->em->flush();
+        $homeId = $home->getId();
+
+        $this->client->request('POST', '/api/fixtures/place', [], [], ['HTTP_AUTHORIZATION' => 'Bearer ' . $token]);
+
+        $this->em->clear();
+        $this->scopeGucToClub($clubId);
+        $fresh = $this->em->find(Fixture::class, $homeId);
+        self::assertInstanceOf(Fixture::class, $fresh);
+        self::assertSame(FixtureStatus::VALIDATED, $fresh->getStatus(), 'à la date simulée, le championnat a commencé : le guichet balaie');
+        self::assertSame($simulated->format('Y-m-d'), $fresh->getReviewedAt()?->format('Y-m-d'), 'la rencontre balayée est datée du jour du club de démonstration, pas du jour réel');
+    }
+
+    /**
+     * Promesse (B1-c) : un run de placement est daté à l'heure RÉELLE, même pour un club de
+     * démonstration dont la date est simulée. `createdAt` sert des DURÉES (grâce de 5 min du
+     * rattrapage, seuil d'e-mail de 2 min, ordre du « dernier run ») : daté dans le futur simulé,
+     * le run serait vu « jamais orphelin » par le rattrapage et resterait le « dernier » à vie.
+     */
+    public function testRunCreatedAtFollowsTheRealClockEvenForADemoClub(): void
+    {
+        [$token, $clubId, $seasonId] = $this->createClub();
+        $simulated = $this->setDemoDate($clubId, '07-05');
+        $this->scopeGucToClub($clubId);
+        $team = $this->createTeam($clubId, $seasonId);
+        $venue = $this->createVenue($clubId, $seasonId);
+        $this->createWindow($clubId, $seasonId, $venue->getId(), 6, '14:00', '18:00');
+        $this->createFixture($clubId, $seasonId, $team->getId(), $simulated->modify('+1 day')->modify('saturday')->format('Y-m-d'));
+
+        $this->client->request('POST', '/api/fixtures/place', [], [], ['HTTP_AUTHORIZATION' => 'Bearer ' . $token]);
+        self::assertResponseStatusCodeSame(202);
+        $runId = json_decode((string) $this->client->getResponse()->getContent(), true, 512, \JSON_THROW_ON_ERROR)['runId'];
+
+        $this->em->clear();
+        $this->scopeGucToClub($clubId);
+        $run = $this->em->getRepository(MatchPlacementRun::class)->find($runId);
+        self::assertInstanceOf(MatchPlacementRun::class, $run);
+        self::assertLessThan(5, abs($run->getCreatedAt()->getTimestamp() - time()), 'le run est daté à l\'heure réelle, jamais à la date simulée du club (' . $run->getCreatedAt()->format('Y-m-d') . ')');
+    }
+
+    /**
+     * Promesse (B1-d) : un enfilage qui échoue ne laisse jamais un run PENDING orphelin — le run déjà
+     * écrit passe FAILED avec un motif lisible (l'écran le relit et rouvre le bouton), le verrou du
+     * club est rendu, et l'erreur remonte (500).
+     */
+    public function testAFailedDispatchLeavesAFailedRunNotAPendingOne(): void
+    {
+        [$token, $clubId, $seasonId] = $this->createClub();
+        $this->scopeGucToClub($clubId);
+        $team = $this->createTeam($clubId, $seasonId);
+        $venue = $this->createVenue($clubId, $seasonId);
+        $this->createWindow($clubId, $seasonId, $venue->getId(), 6, '14:00', '18:00');
+        $this->createFixture($clubId, $seasonId, $team->getId(), '2026-10-03');
+
+        // Noyau neuf (le bus du décor est déjà instancié) puis bus qui casse à l'enfilage. La
+        // transaction du test (DAMA) survit au redémarrage : le décor reste visible.
+        self::ensureKernelShutdown();
+        $this->client = self::createClient();
+        $this->em = self::getContainer()->get(EntityManagerInterface::class);
+        $bus = $this->createMock(MessageBusInterface::class);
+        $bus->method('dispatch')->willThrowException(new TransportException('Redis injoignable'));
+        self::getContainer()->set('messenger.default_bus', $bus);
+
+        $this->client->request('POST', '/api/fixtures/place', [], [], ['HTTP_AUTHORIZATION' => 'Bearer ' . $token]);
+        self::assertResponseStatusCodeSame(500);
+
+        $this->em->clear();
+        $this->scopeGucToClub($clubId);
+        $runs = $this->em->getRepository(MatchPlacementRun::class)->findBy(['clubId' => $clubId]);
+        self::assertCount(1, $runs, 'le run a bien été écrit avant l\'enfilage');
+        self::assertSame(MatchPlacementRunStatus::FAILED, $runs[0]->getStatus(), 'un enfilage raté ne laisse pas un PENDING que personne ne traitera');
+        self::assertSame('Le placement automatique n\'a pas pu être lancé. Réessayez.', $runs[0]->getResultData()['error'] ?? null);
+
+        $lock = self::getContainer()->get(MatchPlacementLock::class);
+        $probe = $lock->acquire($clubId, 5);
+        self::assertNotNull($probe, 'le verrou du club est rendu');
+        $lock->release($clubId, $probe);
+    }
+
+    /**
+     * Promesse (D8, run EN FILE) : une seconde demande alors que le dernier run du club attend son
+     * tour n'annonce aucun délai — le TTL posé à l'enfilage n'est pas une fin — et n'invite pas à
+     * réessayer (l'écran passe en « en cours » juste après ; un reclic coûterait une unité de quota).
+     * Les textes eux-mêmes : `PlacementConflictTextTest`.
+     */
+    public function testASecondRequestBehindAQueuedRunDoesNotPromiseADelay(): void
+    {
+        [$token, $clubId, $seasonId, $userId] = $this->createClub();
+        $this->seedPlaceableMatch($clubId, $seasonId);
+        $this->scopeGucToClub($clubId);
+        $this->em->persist(new MatchPlacementRun($clubId, $seasonId, $userId, new DateTimeImmutable));
+        $this->em->flush();
+
+        $lock = self::getContainer()->get(MatchPlacementLock::class);
+        $held = $lock->acquire($clubId, 150);
+        self::assertNotNull($held);
+
+        try {
+            $this->client->request('POST', '/api/fixtures/place', [], [], ['HTTP_AUTHORIZATION' => 'Bearer ' . $token]);
+            self::assertResponseStatusCodeSame(409);
+            self::assertSame('Un placement est déjà demandé pour ce club — il démarrera dès que possible.', $this->errorOf());
+        } finally {
+            $lock->release($clubId, $held);
+        }
+    }
+
+    /**
+     * Promesse (D8, run EN COURS) : une seconde demande pendant un placement en cours dit au plus
+     * combien de temps il peut encore prendre — le délai restant du verrou, armé au budget du run,
+     * arrondi à la minute supérieure (150 s → « 3 minutes au plus »).
+     */
+    public function testSecondRequestSaysHowLongTheRunningPlacementMayStillTake(): void
+    {
+        [$token, $clubId, $seasonId, $userId] = $this->createClub();
+        $this->seedPlaceableMatch($clubId, $seasonId);
+        $this->scopeGucToClub($clubId);
+        $running = new MatchPlacementRun($clubId, $seasonId, $userId, new DateTimeImmutable('-1 minute'));
+        $running->setStatus(MatchPlacementRunStatus::RUNNING)->setStartedAt(new DateTimeImmutable('-50 seconds'));
+        $this->em->persist($running);
+        $this->em->flush();
+
+        $lock = self::getContainer()->get(MatchPlacementLock::class);
+        $held = $lock->acquire($clubId, 150);
+        self::assertNotNull($held);
+
+        try {
+            $this->client->request('POST', '/api/fixtures/place', [], [], ['HTTP_AUTHORIZATION' => 'Bearer ' . $token]);
+            self::assertResponseStatusCodeSame(409);
+            self::assertSame('Un placement est déjà en cours — il se terminera dans 3 minutes au plus.', $this->errorOf());
+        } finally {
+            $lock->release($clubId, $held);
+        }
+    }
+
     protected function setUp(): void
     {
         $this->client = self::createClient();
         $this->em = self::getContainer()->get(EntityManagerInterface::class);
+    }
+
+    private function seedPlaceableMatch(string $clubId, string $seasonId): void
+    {
+        $this->scopeGucToClub($clubId);
+        $team = $this->createTeam($clubId, $seasonId);
+        $venue = $this->createVenue($clubId, $seasonId);
+        $this->createWindow($clubId, $seasonId, $venue->getId(), 6, '14:00', '18:00');
+        $this->createFixture($clubId, $seasonId, $team->getId(), '2026-10-03');
+    }
+
+    private function errorOf(): ?string
+    {
+        $data = json_decode((string) $this->client->getResponse()->getContent(), true, 512, \JSON_THROW_ON_ERROR);
+
+        return \is_array($data) && \is_string($data['error'] ?? null) ? $data['error'] : null;
+    }
+
+    /**
+     * Pose la date simulée d'un club de démonstration DANS sa saison (sinon la saison n'est plus
+     * résolue et le guichet ne balaie rien) : `MM-JJ` de la seconde année de la saison courante.
+     */
+    private function setDemoDate(string $clubId, string $monthDay): DateTimeImmutable
+    {
+        $year = SeasonResolver::seasonYear(new DateTimeImmutable('today'));
+        $simulated = new DateTimeImmutable(($year + 1) . '-' . $monthDay);
+        $club = $this->em->find(Club::class, $clubId);
+        self::assertInstanceOf(Club::class, $club);
+        self::assertTrue($club->isDemo(), 'décor : la date simulée est réservée aux clubs de démonstration');
+        $club->setSimulatedToday($simulated);
+        $this->em->flush();
+
+        return $simulated;
     }
 
     /**

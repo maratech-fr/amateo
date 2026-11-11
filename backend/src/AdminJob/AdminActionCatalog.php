@@ -54,7 +54,6 @@ final readonly class AdminActionCatalog
                             'essentiel' => 'Essentiel',
                             'club' => 'Club',
                             'grand-club' => 'Grand club',
-                            'sans-limite' => 'Sans limite',
                             'beta' => 'Bêta',
                         ],
                     ),

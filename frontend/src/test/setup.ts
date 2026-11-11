@@ -35,6 +35,13 @@ class ResizeObserverStub {
 }
 globalThis.ResizeObserver ??= ResizeObserverStub as unknown as typeof ResizeObserver;
 
+// jsdom ships no Range geometry: ProseMirror (éditeur de notes, `releaseNoteEditor/`) mesure la
+// sélection pour la faire défiler à l'écran après une commande de liste — sans ces stubs, chaque
+// geste de barre lève « getClientRects is not a function » avant de notifier l'éditeur. Valeurs
+// nulles : jsdom n'a de toute façon aucun moteur de mise en page.
+Range.prototype.getClientRects ??= () => ({ length: 0, item: () => null, [Symbol.iterator]: [][Symbol.iterator] }) as unknown as DOMRectList;
+Range.prototype.getBoundingClientRect ??= () => ({ x: 0, y: 0, width: 0, height: 0, top: 0, left: 0, right: 0, bottom: 0, toJSON: () => ({}) }) as DOMRect;
+
 afterEach(() => {
   cleanup();
 });

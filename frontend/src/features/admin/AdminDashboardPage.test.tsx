@@ -1,8 +1,9 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { cleanup, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { axe } from "vitest-axe";
 
+import { setTodayOverride } from "@/shared/lib/clock";
 import { renderWithProviders } from "@/test/utils";
 
 import type { AdminActionsResponse, AdminClubRequestsResponse, AdminClubsResponse, AdminFeedbackResponse, AdminFreshnessResponse, AdminHealthResponse, AdminJobsResponse, AdminOverviewResponse, AdminSystemErrorsResponse } from "./api";
@@ -184,7 +185,6 @@ const actions: AdminActionsResponse = {
             { value: "essentiel", label: "Essentiel" },
             { value: "club", label: "Club" },
             { value: "grand-club", label: "Grand club" },
-            { value: "sans-limite", label: "Sans limite" },
             { value: "beta", label: "Bêta" },
           ],
         },
@@ -437,7 +437,7 @@ describe("AdminDashboardPage", () => {
     // Le picker d'offre n'offre QUE les codes servis par le schéma (aucune liste en dur).
     const planPicker = screen.getByLabelText("Offre", { selector: "select" });
     const planOptions = within(planPicker).getAllByRole("option").map((option) => option.textContent);
-    expect(planOptions).toEqual([ADMIN_DASHBOARD_TEXTS.clubActionArgPlaceholder, "Découverte", "Essentiel", "Club", "Grand club", "Sans limite", "Bêta"]);
+    expect(planOptions).toEqual([ADMIN_DASHBOARD_TEXTS.clubActionArgPlaceholder, "Découverte", "Essentiel", "Club", "Grand club", "Bêta"]);
 
     // Tant que l'offre n'est pas choisie, pas de sélecteur de saison ; le bouton reste bloqué.
     expect(screen.queryByLabelText("Saison encaissée")).not.toBeInTheDocument();
@@ -893,5 +893,92 @@ describe("AdminDashboardPage", () => {
     expect(screen.getByRole("button", { name: ADMIN_DASHBOARD_TEXTS.refresh })).toBeInTheDocument();
     expect(ADMIN_DASHBOARD_TEXTS, "plus d'eyebrow").not.toHaveProperty("headerEyebrow");
     expect(ADMIN_DASHBOARD_TEXTS, "plus de description").not.toHaveProperty("headerDescription");
+  });
+
+  // D1 (console PR 1) — la colonne « Dernière activité » se lit en jours calendaires Europe/Paris
+  // (« Aujourd'hui », « Hier », « Il y a N jours », « Jamais »), le sens étant dit par le title de la
+  // cellule, celui de l'en-tête et le caption. La PAIRE 22:30 / 23:30 UTC (veille au soir) prouve le
+  // fuseau : 23:30 UTC = 00:30 Paris = aujourd'hui. Jumeau pur : lib/relativeDays.test.ts.
+  describe("colonne Dernière activité (jours calendaires Europe/Paris)", () => {
+    const previousTz = process.env.TZ;
+    const row = (name: string): HTMLElement => screen.getByText(name).closest("tr") as HTMLElement;
+    const club = (id: string, lastActivityAt: string | null) => ({ ...clubs.items[0], id, name: `Club ${id}`, lastActivityAt });
+
+    beforeEach(() => {
+      process.env.TZ = "Europe/Paris";
+      setTodayOverride("2026-11-10");
+      mockClubs.mockReset().mockResolvedValue({
+        items: [
+          club("matin", "2026-11-10T08:00:00+00:00"),
+          club("minuit-trente", "2026-11-09T23:30:00+00:00"),
+          club("veille-soir", "2026-11-09T22:30:00+00:00"),
+          club("veille-matin", "2026-11-09T10:00:00+00:00"),
+          club("douze", "2026-10-29T10:00:00+00:00"),
+          club("jamais", null),
+        ],
+        pagination: { page: 1, limit: 25, total: 6, pages: 1 },
+        metricsWindowDays: 30,
+      });
+    });
+
+    afterEach(() => {
+      cleanup();
+      setTodayOverride(null);
+      process.env.TZ = previousTz;
+    });
+
+    it("dit Aujourd'hui / Hier / Il y a N jours au jour calendaire Paris — 23:30 UTC la veille compte pour aujourd'hui", async () => {
+      renderWithProviders(<AdminDashboardPage />, { route: "/admin?tab=clubs" });
+      await screen.findByText("Club matin");
+
+      expect(within(row("Club matin")).getByText(ADMIN_DASHBOARD_TEXTS.clubLastActivity(0))).toBeInTheDocument();
+      expect(within(row("Club minuit-trente")).getByText(ADMIN_DASHBOARD_TEXTS.clubLastActivity(0))).toBeInTheDocument();
+      expect(within(row("Club veille-soir")).getByText(ADMIN_DASHBOARD_TEXTS.clubLastActivity(1))).toBeInTheDocument();
+      expect(within(row("Club veille-matin")).getByText(ADMIN_DASHBOARD_TEXTS.clubLastActivity(1))).toBeInTheDocument();
+      expect(within(row("Club douze")).getByText(ADMIN_DASHBOARD_TEXTS.clubLastActivity(12))).toBeInTheDocument();
+      expect(within(row("Club jamais")).getByText(ADMIN_DASHBOARD_TEXTS.clubNeverActive)).toBeInTheDocument();
+    });
+
+    it("porte l'instant dans <time dateTime> et la date Paris + le sens dans son title", async () => {
+      renderWithProviders(<AdminDashboardPage />, { route: "/admin?tab=clubs" });
+      await screen.findByText("Club minuit-trente");
+
+      const time = row("Club minuit-trente").querySelector("time");
+      expect(time, "la date relative est un <time>").not.toBeNull();
+      expect(time).toHaveAttribute("dateTime", "2026-11-09T23:30:00+00:00");
+      // 23:30 UTC le 9 = 00:30 Paris le 10 : le title date du 10, pas du 9.
+      expect(time).toHaveAttribute("title", ADMIN_DASHBOARD_TEXTS.clubLastActivityTitle("10 nov. 2026"));
+      expect(within(row("Club jamais")).getByTitle(ADMIN_DASHBOARD_TEXTS.clubNeverActiveTitle)).toHaveTextContent(ADMIN_DASHBOARD_TEXTS.clubNeverActive);
+    });
+
+    it("dit le sens de la colonne dans le title de l'en-tête et dans le caption", async () => {
+      renderWithProviders(<AdminDashboardPage />, { route: "/admin?tab=clubs" });
+      await screen.findByText("Club matin");
+
+      expect(screen.getByRole("columnheader", { name: ADMIN_DASHBOARD_TEXTS.clubColActivity, hidden: true })).toHaveAttribute("title", ADMIN_DASHBOARD_TEXTS.clubActivityMeaning);
+      const meaning = ADMIN_DASHBOARD_TEXTS.clubActivityMeaning;
+      const caption = row("Club matin").closest("table")?.querySelector("caption");
+      expect(caption?.textContent ?? "").toContain(meaning.charAt(0).toLowerCase() + meaning.slice(1));
+    });
+  });
+
+  // D9 (console PR 1) — un navigateur qui refuse le stockage local (navigation privée, politique de
+  // site) ouvre quand même la console, sur l'onglet Clubs par défaut, au lieu d'une page blanche.
+  it("ouvre l'onglet Clubs quand le stockage local est refusé (getItem/setItem jettent)", async () => {
+    const getItem = vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
+      throw new DOMException("refusé", "SecurityError");
+    });
+    const setItem = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new DOMException("refusé", "SecurityError");
+    });
+    try {
+      renderWithProviders(<AdminDashboardPage />, { route: "/admin" });
+
+      expect(await screen.findByText("Basket Club des Lacs")).toBeVisible();
+      expect(screen.getByRole("tab", { name: ADMIN_DASHBOARD_TEXTS.tabClubs, selected: true })).toBeInTheDocument();
+    } finally {
+      getItem.mockRestore();
+      setItem.mockRestore();
+    }
   });
 });

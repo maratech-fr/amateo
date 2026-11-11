@@ -21,6 +21,7 @@ use App\Tests\Behat\LockContext;
 use App\Tests\Behat\MatchPlacementContext;
 use App\Tests\Behat\OnboardingContext;
 use App\Tests\Behat\ParcImportContext;
+use App\Tests\Behat\PeriodAutoValidationContext;
 use App\Tests\Behat\PeriodLockSmallClubContext;
 use App\Tests\Behat\PeriodOverlayContext;
 use App\Tests\Behat\PlacedPersonConflictContext;
@@ -107,6 +108,11 @@ return (new Config)
                     ->withContexts(SoclePlansContext::class),
             )
             ->withSuite(
+                new Suite('validation-automatique')
+                    ->withPaths('%paths.base%/features/un-planning-de-periode-commence-se-valide-seul.feature')
+                    ->withContexts(PeriodAutoValidationContext::class),
+            )
+            ->withSuite(
                 new Suite('bloc')
                     ->withPaths('%paths.base%/features/l-unite-de-placement-est-le-bloc.feature')
                     ->withContexts(TrainingBlockContext::class),
@@ -191,7 +197,7 @@ return (new Config)
             )
             ->withSuite(
                 new Suite('validation-ligue')
-                    ->withPaths('%paths.base%/features/un-club-en-cours-de-saison-valide-ses-matchs-en-lot.feature')
+                    ->withPaths('%paths.base%/features/un-championnat-commence-valide-seul-ses-matchs-a-domicile.feature')
                     ->withContexts(LeagueValidationContext::class),
             )
             ->withSuite(

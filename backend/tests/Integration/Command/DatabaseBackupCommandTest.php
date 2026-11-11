@@ -32,6 +32,9 @@ final class DatabaseBackupCommandTest extends KernelTestCase
     /** @var list<string> */
     private array $clubIds = [];
 
+    /** @var list<string> */
+    private array $userIds = [];
+
     public function testActivityDrivenDumpSkipThenForceAndRetention(): void
     {
         $this->seedActivity();
@@ -73,6 +76,7 @@ final class DatabaseBackupCommandTest extends KernelTestCase
         $this->admin()->executeStatement('UPDATE club SET last_activity_at = NULL');
         $this->admin()->executeStatement('DELETE FROM solver_metrics');
         $this->admin()->executeStatement('DELETE FROM audit_log');
+        $this->admin()->executeStatement('UPDATE app_user SET last_login_at = NULL');
         $this->seedActivity(withActivity: false);
         $application = new Application(self::$kernel);
 
@@ -85,6 +89,38 @@ final class DatabaseBackupCommandTest extends KernelTestCase
         $second = new CommandTester($application->find('app:db:backup'));
         self::assertSame(Command::SUCCESS, $second->execute(['--dir' => $this->dir]));
         self::assertCount(1, $this->dumps());
+    }
+
+    /**
+     * Une nuit où le seul signal est une CONNEXION (`app_user.last_login_at`) — l'adresse exclue de
+     * la « Dernière activité » des clubs, ou un compte sans adhésion active — déclenche quand même
+     * un dump : la connexion fait partie du signal d'activité ({@see BackupCoverage::latestActivity}).
+     */
+    public function testALoginAloneIsAnActivitySignalThatTriggersADump(): void
+    {
+        $this->admin()->executeStatement('UPDATE club SET last_activity_at = NULL');
+        $this->admin()->executeStatement('DELETE FROM solver_metrics');
+        $this->admin()->executeStatement('DELETE FROM audit_log');
+        $this->admin()->executeStatement('UPDATE app_user SET last_login_at = NULL');
+        $this->seedActivity(withActivity: false);
+        $application = new Application(self::$kernel);
+
+        // Premier dump (bootstrap : données sans signal), puis une connexion APRÈS lui.
+        $bootstrap = new CommandTester($application->find('app:db:backup'));
+        self::assertSame(Command::SUCCESS, $bootstrap->execute(['--dir' => $this->dir]), $bootstrap->getDisplay());
+        self::assertCount(1, $this->dumps());
+        foreach ($this->dumps() as $dump) {
+            touch($dump, time() - 3600);
+        }
+        $this->userIds[] = $userId = Uuid::v4()->toRfc4122();
+        $this->admin()->executeStatement(
+            'INSERT INTO app_user (id, email, password_hash, first_name, last_name, created_at, updated_at, last_login_at) VALUES (:id, :email, \'x\', \'B\', \'K\', NOW(), NOW(), NOW() AT TIME ZONE \'UTC\')',
+            ['id' => $userId, 'email' => 'bkp-' . $userId . '@test.com'],
+        );
+
+        $afterLogin = new CommandTester($application->find('app:db:backup'));
+        self::assertSame(Command::SUCCESS, $afterLogin->execute(['--dir' => $this->dir]), $afterLogin->getDisplay());
+        self::assertCount(2, $this->dumps(), 'une connexion postérieure au dernier dump est de l\'activité à protéger');
     }
 
     public function testRestoreCheckProvesTheLatestDumpIsRestorable(): void
@@ -139,6 +175,9 @@ final class DatabaseBackupCommandTest extends KernelTestCase
         @rmdir($this->dir);
         if ([] !== $this->clubIds) {
             $this->admin()->executeStatement('DELETE FROM club WHERE id IN (:ids)', ['ids' => $this->clubIds], ['ids' => ArrayParameterType::STRING]);
+        }
+        if ([] !== $this->userIds) {
+            $this->admin()->executeStatement('DELETE FROM app_user WHERE id IN (:ids)', ['ids' => $this->userIds], ['ids' => ArrayParameterType::STRING]);
         }
         parent::tearDown();
     }

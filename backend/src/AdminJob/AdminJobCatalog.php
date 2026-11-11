@@ -40,6 +40,9 @@ final class AdminJobCatalog
         return [
             new AdminJobDefinition('reconcile-stuck-schedules', 'Réconciliation des générations bloquées', 'app:schedules:reconcile-stuck', AdminJobSchedule::everyTenMinutes(), ['--older-than' => 60]),
             new AdminJobDefinition('health-alerts', 'Alertes santé & fraîcheur', 'app:health:alert', AdminJobSchedule::everyTenMinutes()),
+            // Juste après la bascule du jour en métropole : un planning de période non validé
+            // 7 jours après le début de sa période est validé, chaque club jugé à SON jour.
+            new AdminJobDefinition('period-plan-auto-validation', 'Validation automatique des plannings de période commencés', 'app:period-plans:auto-validate', AdminJobSchedule::daily(0, 15)),
             // Tick nocturne pas cher : la commande SKIPPE sans activité — la cadence
             // réelle des dumps suit l'activité des clubs, pas le calendrier.
             new AdminJobDefinition('db-backup', 'Sauvegarde base de données', 'app:db:backup', AdminJobSchedule::daily(1)),

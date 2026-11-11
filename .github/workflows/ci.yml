@@ -727,6 +727,12 @@ jobs:
           # lifecycle) : la V1 d'un plan de période transcrit la version pointée du socle, filtrée des
           # réglages/fermetures de la période — falsifié dans les deux sens, avec la liste « à replacer ».
           FILES="$FILES tests/Security/PeriodCopyBirthTest.php"
+          # P4-503 (axes planning lifecycle + tenant isolation) : un planning de période non validé
+          # 7 jours après le début de sa période se valide seul — version chargée pointée, sœurs
+          # gardées, seuil sur la date CIVILE (fuseaux ouest/est, TimeZone de session), jamais le
+          # socle ni un plan déjà validé une fois ni une saison archivée au jour du club, gardes de
+          # l'UPDATE sous verrou, un club en échec n'arrête jamais les autres, matchs intacts.
+          FILES="$FILES tests/Security/PeriodPlanAutoValidationTest.php"
           # P2-44 PR-5 (axes generation pipeline + planning lifecycle) : les écarts NOMMÉS entre une
           # version affichée d'un plan de FERMETURE et la version pointée du socle — séances déplacées
           # (appariement chronologique) et non replacées (raison SERVIE par la sélection, null quand
@@ -1045,6 +1051,32 @@ jobs:
           # plus FAILED/GENERATING orphelin/PENDING qui re-solvent (compteur = 1), prouvant que
           # SEUL COMPLETED bloque. Sans ce gate, une redélivrance écrase un planning livré, en silence.
           FILES="$FILES tests/MessageHandler/RedeliveredGenerationTest.php"
+          # P4-512 (axe generation pipeline) — le placement relu après un worker tué ne refait pas
+          # en aveugle : COMPLETED relu → 0 appel moteur, 0 crédit, 0 publication ; FAILED relu →
+          # acquitté, verrou intact ; RUNNING relu → FAILED « interrompu », verrou intact ; PENDING →
+          # verrou réarmé au budget complet (repris s'il a expiré, NOUVEAU jeton rendu ; pris par un
+          # autre → « remplacé ») ; un perdant n'écrit rien (placements + COMPLETED d'un seul bloc).
+          # Sans ce gate, une redélivrance relance un solve en double ou écrase un résultat livré.
+          FILES="$FILES tests/MessageHandler/RedeliveredPlacementTest.php"
+          # P4-512 (axes generation pipeline + tenant isolation) — le rattrapage des placements laissés
+          # en vol : au démarrage du worker, tout RUNNING est orphelin ; worker vivant (commande), un
+          # RUNNING n'est déclaré mort que verrou disparu ET démarré depuis plus de 5 min ; un PENDING
+          # absent de la file depuis plus de 5 min → « relancez-le » ; terminés et verrou jamais
+          # touchés ; chaque club sous SON GUC, aucun filtre Doctrine ni GUC laissé derrière (le
+          # premier message du worker suit), un club en erreur sauté et l'EM rendu utilisable.
+          # Sans ce gate, un worker tué laisse un placement « en cours » pour toujours.
+          FILES="$FILES tests/Integration/Service/StuckPlacementRunReconcilerTest.php"
+          # P4-512 (axe generation pipeline) — le hook de démarrage du worker : le consommateur de
+          # `async` rattrape une fois en mode « démarrage » ; un autre worker ne rattrape rien ; un
+          # rattrapage qui casse n'empêche jamais le worker de démarrer (erreur journalisée, EM remis
+          # à neuf, GUC vidé). Sans ce gate, le rattrapage cesse de jouer au redémarrage, en silence.
+          FILES="$FILES tests/Unit/EventListener/PlacementRunStartupReconcilerTest.php"
+          # P4-512 (axe generation pipeline) — la lecture de la file Messenger du rattrapage, sur le
+          # Redis réel et le VRAI transport : stream ET file différée (retries), sans doublon, pages
+          # comprises ; une entrée indécodable ou un Redis injoignable = file NON lue (jamais une liste
+          # partielle) ; ordre file différée → stream → file différée. Sans ce gate, le rattrapage
+          # déclarerait « interrompus » des placements bel et bien en file.
+          FILES="$FILES tests/Integration/Service/PlacementQueueInspectorTest.php"
           # P4-240 (axe constraint semantics) — le contrat de PLACEMENT des matchs contre le VRAI
           # moteur (le job démarre déjà php-fpm + engine). Deux promesses : tout ce qui est plaçable
           # EST placé (fenêtre large, zéro conflit → zéro `unplaced`), et le VOCABULAIRE des raisons
@@ -1194,6 +1226,16 @@ jobs:
           # ferait prévenir le démo, de erase() l'anonymiserait. Promu step NOMMÉ (gate, pas après) car il
           # garde une promesse LÉGALE : des comptes démo supprimés à tort, ou de vrais comptes jamais purgés.
           FILES="$FILES tests/Security/InactiveUsersRetentionTest.php"
+          # Axe generation pipeline (+ auth) — la « Dernière activité » d'un club lue par la console
+          # superadmin est une trace VRAIE : ouverture de l'app par un utilisateur ACTIF du club (au plus
+          # une fois par jour calendaire Europe/Paris et par utilisateur, multi-clubs compris), ou mise en
+          # file d'une génération par l'un des trois guichets (Générer, Régénérer, Combler), dans leur
+          # transaction, après leurs gardes, à l'horloge RÉELLE (jamais la date simulée d'un démo) ;
+          # l'adresse exclue ne marque que par ses générations. Falsifié : sans l'UPDATE club du listener,
+          # sans l'appel d'un guichet, ou sur un throttle 24 h / jour UTC, un cas rougit. Sans ce gate, la
+          # console dirait « Jamais » d'un club qui travaille, ou « Aujourd'hui » d'un club que seul le
+          # compte interne a ouvert.
+          FILES="$FILES tests/Security/ClubActivityTraceTest.php"
           # Axe tenant isolation (BCK-24/BCK-38) — garde de COMPLÉTUDE des purges : toute entité
           # tenant doit être purgée (par saison, par club) ou nommément exclue AVEC sa raison, pour
           # la rétention/reset de saison ET pour l'effacement RGPD (art. 17). Le test DÉRIVE des
@@ -1245,13 +1287,21 @@ jobs:
           # NR d'axe CONSTRAINT SEMANTICS (chantier A) — AU DÉPÔT d'un fichier FBI, tout championnat
           # COMMENCÉ (échéance passée OU premier match joué) voit ses domiciles validables (heure +
           # gymnase, sans écart) passer tout seuls « validé ligue » (source MANUAL + statut VALIDATED),
-          # BYTE-IDENTIQUE au POST manuel en lot ; un championnat non commencé reste UNPLACED/TO_PLACE,
+          # BYTE-IDENTIQUE à la lecture gestionnaire ; un championnat non commencé reste UNPLACED/TO_PLACE,
           # un sans heure / sans gymnase / avec écart n'est jamais validé, le compteur leagueValidated
           # est exact et un re-dépôt ne revalide pas. Le DÉPÔT emprunte la MAISON UNIQUE du prédicat
           # (LeagueValidationOutlook), jamais une seconde copie. Sans ce gate, une régression qui
           # cesserait de valider au dépôt — ou qui verrouillerait en ancre fixe une vague non commencée
           # qu'il faut pouvoir bouger — passerait tous les checks requis.
           FILES="$FILES tests/Integration/Service/ImportLeagueAutoValidationTest.php"
+          # NR d'axes CONSTRAINT SEMANTICS + AUTH & MEMBERSHIPS — un championnat COMMENCÉ passe SEUL ses
+          # domiciles datés « Déjà dans FBI » (VALIDATED + MANUAL) à la LECTURE de l'accueil par un
+          # gestionnaire, entre deux dépôts : passés et futurs, heures inchangées, ancres FIXED, `swept`
+          # exact ; sans heure / écart / terrain neutre jamais touchés ; relire n'écrit rien ; une version
+          # périmée pendant le balayage répond 200 et la lecture suivante rattrape. Rien ne s'écrit dans
+          # une saison archivée ni sans socle choisi. Sans ce gate, une lecture qui écrirait dans une
+          # saison archivée — ou cesserait de basculer — passerait tous les checks requis.
+          FILES="$FILES tests/Integration/Service/LeagueReadAutoValidationTest.php"
           # NR d'axe CONSTRAINT SEMANTICS + GENERATION PIPELINE (lot correctif import IA « G2 » PR1) —
           # une RÉSERVATION DÉRIVÉE d'une CASE parc-v2 par l'IMPORT DE PARC est HONORÉE par le solveur, de
           # bout en bout : texte parc-v2 → dérivation + import réel (ParcImportExecutor) → vrai builder → vrai moteur /generate. Une

@@ -17,13 +17,14 @@ use Symfony\Component\Mime\Part\DataPart;
 use Symfony\Component\Mime\Part\Multipart\FormDataPart;
 
 /**
- * Le geste « validé ligue » en lot piloté par l'ÉCHÉANCE du championnat (lot O), de bout
- * en bout sur la stack qui tourne : un club en cours de saison importe des domiciles déjà
- * datés (heure + gymnase), apparie le libellé de salle, PUIS l'échéance de saisie du
- * championnat pilote la validation — passée, on bascule ; non passée, rien n'est proposé.
- * Un domicile sans heure n'est pas validé mais il est nommé à traiter, et rejouer ne
- * bascule plus rien. On possède TOUTES les ressources (équipe + gymnase + division
- * jetables) et on restaure en fin de scénario.
+ * Un championnat COMMENCÉ passe seul ses domiciles datés « validé ligue » (à l'écran : « Déjà
+ * dans FBI »), de bout en bout sur la stack qui tourne : un club en cours de saison importe des
+ * domiciles déjà datés (heure + gymnase), apparie le libellé de salle, PUIS le démarrage du
+ * championnat (échéance passée, ou premier match joué) fait basculer ses domiciles — au dépôt,
+ * ou à la lecture d'un gestionnaire entre deux dépôts. Aucun geste en lot. Un domicile sans
+ * heure n'est pas validé mais il est nommé à traiter, et relire ne bascule plus rien. On
+ * possède TOUTES les ressources (équipe + gymnase + division jetables) et on restaure en fin
+ * de scénario.
  *
  * ⚠ La division jetable N'EST PAS appariée à la fédération : poser son échéance n'écrit
  * QUE la valeur club (`Competition.entryDeadline`), jamais la table partagée entre tous
@@ -73,7 +74,8 @@ final class LeagueValidationContext extends BaseContext
 
     private string $matchDate = '';
 
-    private int $lastConfirmed = -1;
+    /** Combien la dernière lecture gestionnaire a fait passer « validé ligue » (`swept`). */
+    private int $lastSwept = -1;
 
     #[Given('le club de démonstration, connecté, dont le planning de saison est en vigueur')]
     public function leClubConnecte(): void
@@ -198,11 +200,13 @@ final class LeagueValidationContext extends BaseContext
     #[When('un gestionnaire ouvre la vue « validé ligue »')]
     public function unGestionnaireOuvreLaVue(): void
     {
-        // Une simple LECTURE par un gestionnaire déclenche le balayage des amicaux passés.
+        // Une simple LECTURE par un gestionnaire balaie les amicaux passés PUIS les domiciles
+        // datés des championnats commencés ; `swept` dit combien elle en a fait passer.
         $result = $this->apiGet('fixtures/league-validation', $this->token);
         if (200 !== $result['status']) {
             throw new RuntimeException(\sprintf('la lecture « validé ligue » a répondu %d (200 attendu)', $result['status']));
         }
+        $this->lastSwept = \is_int($result['json']['swept'] ?? null) ? $result['json']['swept'] : -1;
     }
 
     #[Then('l\'amical passé est « validé ligue »')]
@@ -223,12 +227,6 @@ final class LeagueValidationContext extends BaseContext
     {
         // Une échéance loin dans le futur : le championnat n'est pas échu, rien n'est proposé.
         $this->setDeadline('2099-12-31');
-    }
-
-    #[Then('1 rencontre est validable « validé ligue »')]
-    public function uneRencontreEstValidable(): void
-    {
-        $this->assertCount(1);
     }
 
     #[Then('le domicile sans heure est nommé parmi les rencontres à traiter')]
@@ -259,21 +257,11 @@ final class LeagueValidationContext extends BaseContext
         $this->assertCount(0);
     }
 
-    #[When('je valide les placements côté ligue')]
-    public function jeValideLesPlacements(): void
-    {
-        $result = $this->apiPost('fixtures/league-validation', [], $this->token);
-        if (200 !== $result['status']) {
-            throw new RuntimeException(\sprintf('valider les placements côté ligue a répondu %d (200 attendu)', $result['status']));
-        }
-        $this->lastConfirmed = \is_int($result['json']['confirmed'] ?? null) ? $result['json']['confirmed'] : -1;
-    }
-
     #[Then('1 rencontre a basculé « validé ligue »')]
     public function uneRencontreABascule(): void
     {
-        if (1 !== $this->lastConfirmed) {
-            throw new RuntimeException(\sprintf('%d rencontre(s) basculée(s) au lieu de 1', $this->lastConfirmed));
+        if (1 !== $this->lastSwept) {
+            throw new RuntimeException(\sprintf('%d rencontre(s) basculée(s) par la lecture au lieu de 1', $this->lastSwept));
         }
     }
 

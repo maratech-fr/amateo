@@ -11,6 +11,7 @@ use App\Entity\Reservation;
 use App\Entity\Season;
 use App\Entity\SharedTrainingBlock;
 use App\Entity\SharedTrainingBlockTeam;
+use App\Entity\SubscriptionPlan;
 use App\Entity\Team;
 use App\Entity\User;
 use App\Entity\Venue;
@@ -19,6 +20,7 @@ use App\Enum\Gender;
 use App\Enum\SeasonStatus;
 use App\Service\ParcImport\ParcImportGate;
 use App\Service\ParcImport\TeamNameInterpreter;
+use App\Service\SeasonResolver;
 use App\Tests\ChoosesPlanVersionTrait;
 use App\Tests\CrossStack\ParcImportReservationSemanticsGateTest;
 use App\Tests\Integration\Service\FfbbExcelImporterTest;
@@ -1526,6 +1528,40 @@ final class ParcImportExecuteTest extends WebTestCase
         self::assertSame(5, $sm1->getSessionsPerWeek(), 'la valeur corrigée à la main (5) n\'est jamais écrasée par le recompte');
     }
 
+    // ───────────────────────── Cap payant (grille 20 / 34 / 35+) ─────────────────────────
+
+    /**
+     * Offre Club : à 33/34 l'import crée la 34ᵉ équipe ; à 34/34 il refuse la 35ᵉ en 422 nommant
+     * le cap Club et Grand club, sans rien écrire.
+     */
+    public function testAClubOfferImportsTheThirtyFourthTeamThenRefusesTheThirtyFifth(): void
+    {
+        $this->giveClubOffer();
+        for ($i = 1; $i <= 33; ++$i) {
+            $this->makeTeam(\sprintf('Existante %02d', $i), 2);
+        }
+        $this->scopeGucToClub($this->club->getId());
+
+        [$status, $body] = $this->import(
+            $this->parcWithCases([['gymnase' => 'Palais Neuf', 'jour' => 1, 'debut' => '18:00', 'duree' => 90, 'equipes' => ['SM1']]]),
+            [['section' => 'equipes', 'index' => 0, 'coche' => true, 'corrections' => ['genre' => 'M']]],
+        );
+        self::assertSame(200, $status, 'à 33/34, l\'offre Club crée la 34ᵉ équipe : ' . json_encode($body, \JSON_UNESCAPED_UNICODE));
+        $this->scopeGucToClub($this->club->getId());
+        self::assertSame(34, $this->rowCount('team'));
+
+        [$status, $body] = $this->import(
+            $this->parcWithCases([['gymnase' => 'Palais Neuf', 'jour' => 2, 'debut' => '18:00', 'duree' => 90, 'equipes' => ['SF1']]]),
+            [['section' => 'equipes', 'index' => 0, 'coche' => true, 'corrections' => ['genre' => 'F']]],
+        );
+        self::assertSame(422, $status, 'à 34/34, la 35ᵉ équipe est refusée');
+        $message = (string) json_encode($body, \JSON_UNESCAPED_UNICODE);
+        self::assertStringContainsString('Votre offre Club permet 34 équipes', $message, 'le refus nomme le cap Club');
+        self::assertStringContainsString('Grand club retire la limite', $message, 'le refus nomme le palier supérieur');
+        $this->scopeGucToClub($this->club->getId());
+        self::assertSame(34, $this->rowCount('team'), 'le refus n\'écrit rien');
+    }
+
     protected function setUp(): void
     {
         $this->client = self::createClient();
@@ -1983,6 +2019,15 @@ final class ParcImportExecuteTest extends WebTestCase
         $this->em->flush();
 
         return $container->get(JWTTokenManagerInterface::class)->create($viewer);
+    }
+
+    /** Pose l'offre Club, réglée pour la saison du test (offre effective = Club). */
+    private function giveClubOffer(): void
+    {
+        $plan = $this->em->getRepository(SubscriptionPlan::class)->findOneBy(['code' => 'club']);
+        self::assertInstanceOf(SubscriptionPlan::class, $plan);
+        $this->club->setPlanId($plan->getId())->setPaidSeasonYear(SeasonResolver::seasonYear($this->season->getStartDate()));
+        $this->em->flush();
     }
 
     private function rowCount(string $table): int

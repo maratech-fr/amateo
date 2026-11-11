@@ -39,7 +39,7 @@ const {
   resolveFixtureDeviation: vi.fn(() => Promise.resolve({ fixtureId: "x", reviewState: "REVIEWED", reviewedAt: "2026-10-02T10:00:00+00:00", pendingDeviations: [] })),
   attachVenueLabel: vi.fn((): Promise<AttachVenueLabelResult> => Promise.resolve({ venueId: "venue-1", label: "GYMNASE MATEO", attached: 2 })),
   getVenueLabelInventory: vi.fn((): Promise<VenueLabelInventoryRow[]> => Promise.resolve([])),
-  getLeagueValidationOutlook: vi.fn(() => Promise.resolve<LeagueValidationOutlook>({ matured: [], toTreat: [], missingDeadline: [], totalValidatable: 0 })),
+  getLeagueValidationOutlook: vi.fn(() => Promise.resolve<LeagueValidationOutlook>({ matured: [], toTreat: [], missingDeadline: [], totalValidatable: 0, swept: 0 })),
   confirmLeagueValidatedFixtures: vi.fn(() => Promise.resolve({ confirmed: 0 })),
 }));
 
@@ -125,7 +125,7 @@ beforeEach(() => {
   reviewFixtures.mockResolvedValue({ reviewed: 1, skipped: [] });
   getVenues.mockResolvedValue([{ id: "venue-1", name: "Gymnase Alpha", color: null, externalLabels: [] }]);
   attachVenueLabel.mockResolvedValue({ venueId: "venue-1", label: "GYMNASE MATEO", attached: 2 });
-  getLeagueValidationOutlook.mockResolvedValue({ matured: [], toTreat: [], missingDeadline: [], totalValidatable: 0 });
+  getLeagueValidationOutlook.mockResolvedValue({ matured: [], toTreat: [], missingDeadline: [], totalValidatable: 0, swept: 0 });
   confirmLeagueValidatedFixtures.mockResolvedValue({ confirmed: 0 });
   useMatchesStore.setState({ reconciliation: null, filterMode: "equipe", filterIds: [], selectedWeekend: null, selectedFixtureId: null });
   useToastStore.setState({ toasts: [] });
@@ -161,7 +161,7 @@ describe("ImportPage — les entrées de données", () => {
   });
 
   it("un dépôt existe → fraîcheur en relatif", async () => {
-    getLatestFbiIngestion.mockResolvedValueOnce({ latest: { depositedAt: "2026-08-22T09:00:00+00:00", source: "FBI_XLSX", created: 5, updated: 1, unchanged: 2, deviationsCount: 0 } });
+    getLatestFbiIngestion.mockResolvedValueOnce({ latest: { depositedAt: "2026-08-22T09:00:00+00:00", depositedDate: "2026-08-22", source: "FBI_XLSX", created: 5, updated: 1, unchanged: 2, deviationsCount: 0 } });
     renderPage([]);
     expect(await screen.findByText(/Dernier dépôt FBI/i)).toBeInTheDocument();
   });
@@ -193,47 +193,18 @@ const MATURED_OUTLOOK = {
   toTreat: [],
   missingDeadline: [],
   totalValidatable: 3,
+  swept: 0,
 };
 
-describe("ImportPage — rattrapage « déjà dans FBI » piloté par l'échéance (lot O)", () => {
-  it("rien d'échu ⇒ aucun bandeau (jamais un geste sans rencontre à valider)", async () => {
+describe("ImportPage — un championnat commencé passe seul « Déjà dans FBI » (aucun geste à proposer)", () => {
+  it("des validables servis ⇒ aucun geste « déjà dans FBI » sur la page, aucune écriture déclenchée", async () => {
+    getLeagueValidationOutlook.mockResolvedValue(MATURED_OUTLOOK);
     renderPage([]);
     await screen.findByRole("button", { name: /Importer FBI/ });
-    expect(screen.queryByText(/à confirmer « déjà dans FBI »/)).not.toBeInTheDocument();
-  });
+    await waitFor(() => expect(getLeagueValidationOutlook).toHaveBeenCalled());
 
-  it("championnats échus prêts ⇒ bandeau chiffré, et confirmer bascule via l'API + toast avec le nombre RÉEL", async () => {
-    getLeagueValidationOutlook.mockResolvedValue(MATURED_OUTLOOK);
-    // Le nombre affiché vient du total (3) ; le toast, du serveur (2 réellement basculées).
-    confirmLeagueValidatedFixtures.mockResolvedValueOnce({ confirmed: 2 });
-    const user = userEvent.setup();
-    renderPage([]);
-    expect(await screen.findByText(/à confirmer « déjà dans FBI »/)).toBeInTheDocument();
-
-    await user.click(screen.getByRole("button", { name: /Marquer « déjà dans FBI »/ }));
-    const dialog = await screen.findByRole("dialog");
-    // La confirmation DÉTAILLE chaque championnat échu (nom + échéance + compte).
-    // maturedLabel — arbitrage fondateur 2026-10-27 (source §64) : « — N à valider » →
-    // « — N déjà dans FBI à confirmer ». ROUGE tant que leagueValidation.ts:52 n'est pas appliqué.
-    expect(within(dialog).getByText(/PNM — échéance .* — 3 déjà dans FBI à confirmer/)).toBeInTheDocument();
-    await user.click(within(dialog).getByRole("button", { name: /Marquer « déjà dans FBI »/ }));
-
-    expect(confirmLeagueValidatedFixtures).toHaveBeenCalledOnce();
-    await waitFor(() => {
-      const messages = useToastStore.getState().toasts.map((t) => t.message);
-      expect(messages.some((m) => /2 rencontres marquées « déjà dans FBI »/.test(m))).toBe(true);
-    });
-  });
-
-  it("refuser n'écrit rien (la bannière reste, c'est refaisable)", async () => {
-    getLeagueValidationOutlook.mockResolvedValue(MATURED_OUTLOOK);
-    const user = userEvent.setup();
-    renderPage([]);
-    await user.click(await screen.findByRole("button", { name: /Marquer « déjà dans FBI »/ }));
-    const dialog = await screen.findByRole("dialog");
-    await user.click(within(dialog).getByRole("button", { name: "Annuler" }));
+    expect(screen.queryByRole("button", { name: /déjà dans FBI/i })).not.toBeInTheDocument();
     expect(confirmLeagueValidatedFixtures).not.toHaveBeenCalled();
-    expect(screen.getByText(/à confirmer « déjà dans FBI »/)).toBeInTheDocument();
   });
 });
 

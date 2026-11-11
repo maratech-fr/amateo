@@ -31,6 +31,7 @@ use App\OpenApi\PathContributor\OpponentTravelPaths;
 use App\OpenApi\PathContributor\PublicTokenPaths;
 use App\OpenApi\PathContributor\RedatePreviewPaths;
 use App\OpenApi\PathContributor\ReleaseNoteAndFeedbackPaths;
+use App\OpenApi\PathContributor\SchedulePlanAlertPaths;
 use App\OpenApi\PathContributor\SeasonAndFixturePaths;
 use App\OpenApi\PathContributor\TrainingConflictPaths;
 use App\OpenApi\PathContributor\UncoveredCustomPaths;
@@ -99,6 +100,7 @@ final readonly class CustomRoutesOpenApiFactory implements OpenApiFactoryInterfa
             new LeagueWindowSuggestionPaths($schemas),
             new MailboxPaths($schemas),
             new ClubClockPaths($schemas),
+            new SchedulePlanAlertPaths($schemas),
             new InvitationPaths($schemas),
             new CoachWishPaths($schemas),
             new CoachWishPreviewPaths($schemas),

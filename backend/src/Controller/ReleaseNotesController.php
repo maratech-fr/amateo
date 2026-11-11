@@ -53,6 +53,10 @@ final class ReleaseNotesController extends AbstractController
                 // APRÈS `seenUpTo` (la date éditoriale est antidatable, elle ne sert
                 // qu'à l'affichage).
                 'publishedAt' => $note->getPublishedAt()?->format(DateTimeImmutable::ATOM),
+                // Version du produit annoncée (« 1.3.5 »), null pour une note sans version.
+                'version' => $note->getProductVersion(),
+                // Corps mis en forme (liste blanche serveur), null pour une note texte (`body` seul).
+                'bodyRich' => $note->getBodyRich(),
             ], $this->releaseNotes->findPublished()),
         ]);
     }

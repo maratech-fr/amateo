@@ -7,8 +7,9 @@ namespace App\Support;
 use DateTimeImmutable;
 
 /**
- * Les dates d'un document lu par des parents : « 1er novembre 2026 », « sam. 14 nov. ». Tables
- * locales plutôt qu'`IntlDateFormatter` : ces noms ne bougeront jamais.
+ * Les dates lues par un humain (PDF des parents, e-mail d'invitation, messages 422) : « 1er novembre
+ * 2026 », « sam. 14 nov. », « samedi 1er novembre ». Seule maison des noms de mois. Tables locales
+ * plutôt qu'`IntlDateFormatter` : ces noms ne bougeront jamais.
  */
 final class FrenchDate
 {
@@ -19,10 +20,25 @@ final class FrenchDate
     /** Indexé par jour ISO (1 = lundi). */
     private const array SHORT_DAYS = [1 => 'lun.', 2 => 'mar.', 3 => 'mer.', 4 => 'jeu.', 5 => 'ven.', 6 => 'sam.', 7 => 'dim.'];
 
+    /** Indexé par jour ISO (1 = lundi). */
+    private const array DAYS = [1 => 'lundi', 2 => 'mardi', 3 => 'mercredi', 4 => 'jeudi', 5 => 'vendredi', 6 => 'samedi', 7 => 'dimanche'];
+
     /** « 1er novembre 2026 », « 9 novembre 2026 ». */
     public static function long(DateTimeImmutable $date): string
     {
         return self::dayAndMonth($date) . ' ' . $date->format('Y');
+    }
+
+    /** « samedi 1er novembre » : jour de la semaine en toutes lettres, sans année. */
+    public static function weekday(DateTimeImmutable $date): string
+    {
+        return self::DAYS[(int) $date->format('N')] . ' ' . self::dayAndMonth($date);
+    }
+
+    /** « samedi 14 novembre 2026 ». */
+    public static function longDay(DateTimeImmutable $date): string
+    {
+        return self::DAYS[(int) $date->format('N')] . ' ' . self::long($date);
     }
 
     /** « sam. 14 nov. » */

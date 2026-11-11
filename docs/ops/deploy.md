@@ -734,7 +734,7 @@ hygiène, mais n'est plus une fenêtre d'attaque : ce bloc n'expose plus aucune 
 effet ailleurs.)
 
 ⬜ **F7 — brancher le script** : ouvrir une **PR** qui remplit `analytics.scriptUrl` +
-`analytics.websiteId` dans `landing/config.js` (et bumpe le `?v=` des DEUX pages). **Jamais une
+`analytics.websiteId` dans `landing/config.js` (et bumpe le `?v=` commun des six pages). **Jamais une
 édition directe sur la VM** : le deploy réécrit `landing/` à chaque passage, elle serait écrasée.
 Un `websiteId` est public (visible dans toute page trackée) — sa place en git est correcte.
 Prochain deploy → premiers hits dans le dashboard **et dans l'onglet Statistiques de la console**
@@ -762,6 +762,29 @@ annoncé par `landing/robots.txt`). Rien à coder, rien à committer.
 Attentes réalistes : la recherche sur **le nom** aboutit en jours à semaines ; les recherches
 **génériques** (« planning basket »…) en mois, et seulement avec des liens entrants.
 
+### 1.13 Compte interne exclu de la « Dernière activité » des clubs
+
+La colonne « Dernière activité » de la console ne doit pas compter le compte Membre du fondateur
+sur le club pilote. Geste **hors dépôt** (le `backend/.env` du dépôt la laisse VIDE) : dans le
+`.env.prod` de la VM, poser l'adresse **telle qu'elle est en base** (`app_user.email`), puis
+redéployer (ou redémarrer `php-fpm` puis `nginx`, dans cet ordre) :
+
+```
+APP_ACTIVITY_EXCLUDED_EMAILS=adresse-du-compte@exemple.fr
+```
+
+- **Une seule adresse** aujourd'hui (le mécanisme accepte une liste CSV, casse et espaces
+  ignorés) : toute autre adresse est une décision fondateur.
+- Ce que l'exclusion fait : une **connexion** de ce compte ne marque pas ses clubs. Ce qu'elle
+  ne fait pas : sa trace RGPD (`app_user.last_login_at`) avance toujours, une **génération**
+  qu'il lance (« Générer », « Régénérer », « Combler ») marque le club, et la sauvegarde
+  nocturne voit sa connexion.
+- **Changer l'adresse du compte** (changement d'e-mail confirmé) rompt l'exclusion **en
+  silence** : mettre à jour `APP_ACTIVITY_EXCLUDED_EMAILS` dans la foulée, même geste.
+- La console n'affiche pas la liste : pour la vérifier, lire le `.env.prod` de la VM.
+- Conseil : que ce compte reste **Membre** partout (jamais gestionnaire d'un club réel), pour
+  qu'aucun geste d'écriture n'échappe au signal d'activité des clubs.
+
 ---
 
 ## Partie 2 — Au quotidien
@@ -769,13 +792,32 @@ Attentes réalistes : la recherche sur **le nom** aboutit en jours à semaines ;
 ### Déployer une release
 
 Taguer **construit et publie** les images — rien de plus (« tag ≠ déploiement »,
-§ *Comment ça marche*) :
+§ *Comment ça marche*).
+
+**0. PR « release vX.Y.Z »** (branche `chore/release-vX.Y.Z` → `main`, gate complet — la
+branche `release` existe déjà, d'où ce nom) : elle ajoute l'entrée `data-version="X.Y.Z"` au
+journal `landing/evolutions.html` (une à trois phrases en langage club : situation → ce que fait
+Amateo → ce que ça change), et la note « Nouveautés » si elle est voulue. **Mergée sur GO du
+fondateur** — la version et sa date sont décidées par lui, jamais proposées. Contrat d'une
+entrée : docblock de `LandingChangelogTest`.
+
+**1. Taguer** le commit mergé :
 
 ```bash
 git tag v1.2.0 && git push origin v1.2.0
 ```
 
-Déployer ensuite est un geste séparé et délibéré, au choix :
+Le step « Check the changelog names this version » (`deploy.yml`, job `build-push`) refuse de
+construire un tag `v*` neuf dont `landing/evolutions.html` n'a pas l'entrée : rien n'est
+construit, le run est rouge. Remède : compléter le journal par une PR, **supprimer le tag refusé**
+(`git push origin :refs/tags/vX.Y.Z` + `git tag -d vX.Y.Z`), le reposer sur le nouveau commit.
+Limites : le contrôle est sauté si le journal n'existe pas au commit construit (version
+antérieure à la vitrine à six pages) ou si les images de la version existent déjà (rollback) ;
+`grep -F` accepte une entrée laissée dans un commentaire HTML (revue humaine) ; une version
+`-rc` est gardée comme les autres (`data-version="1.4.0-rc1"`) ; un hotfix `sha-…` n'est pas
+gardé.
+
+**2. Déployer**, geste séparé :
 
 - **console superadmin** — `/admin` → onglet Exploitation → « Mise en prod
   programmée » (le chemin normal : programme le dispatch à une heure H, pose/
@@ -830,6 +872,31 @@ docker exec amateo-php-fpm php bin/console app:schedule:normalize-team-coach-sna
   avant la version qui retire « coach obligatoire ».
 
 Détail : [`backend/docs/commands.md`](../../backend/docs/commands.md).
+
+### Étape post-déploiement OBLIGATOIRE — validation automatique des plannings de période : `--dry-run` AVANT le premier passage
+
+La version qui porte `app:period-plans:auto-validate` (tâche quotidienne à 00:15, clé
+`period-plan-auto-validation`) valide seule, au premier passage, **d'un coup, tous les plannings de
+période commencés depuis 7 jours ou plus** de la saison en cours (tous les clubs) qu'aucun
+gestionnaire n'a validés : version chargée pointée, autres versions gardées, jamais le plan de saison,
+jamais un plan déjà validé une fois. **Avant ce premier tick**, lancer sur la VM la répétition, lire la
+liste et obtenir le GO du fondateur ; le premier passage est ensuite celui du `cron-runner` (ou à la
+main sans `--dry-run`) :
+
+```bash
+docker exec amateo-php-fpm php bin/console app:period-plans:auto-validate --dry-run   # liste ce qui serait validé, n'écrit rien
+docker exec amateo-php-fpm php bin/console app:period-plans:auto-validate             # applique (idempotente)
+```
+
+- **Un plan validé puis rouvert avant le 2026-07-18** a `first_chosen_at` NULL (le rattrapage de
+  l'époque ne couvrait que les plans alors pointés) : il peut figurer dans la liste alors qu'un
+  gestionnaire l'avait déjà validé ; le lire avant d'appliquer.
+- **Réversible** : « Rouvrir » dépointe, et la tâche ne revalide jamais un plan déjà passé par elle.
+- Un club en échec n'arrête pas les autres mais la commande sort en `FAILURE` : la rejouer.
+- Une version en cours de génération diffère le plan au passage suivant, sans rien écrire.
+
+Détail : [`backend/docs/commands.md`](../../backend/docs/commands.md), règle produit
+[`planning-lifecycle-validated.md`](../../specs/courantes/planning-lifecycle-validated.md) §1.
 
 ### Table `venue_unavailability` — supprimée par `Version20261108120000` (fermetures de gymnase)
 
@@ -910,6 +977,11 @@ re-pousser un ancien tag ne déploierait donc **rien du tout**, quel que soit le
 tag ; `make deploy`/la console restent le seul chemin qui dispatche réellement
 le déploiement.
 
+⚠ Un rollback ramène aussi l'**ancienne vitrine** (`landing/` part avec la version) : revenir
+avant la vitrine à six pages fait répondre 404 aux pages nouvelles alors qu'elles sont indexées.
+Accepté pour un rollback court — rouler en avant dès que possible. Le step de garde du journal
+n'y joue pas (images présentes, ou journal absent au commit).
+
 ⚠ Le rollback rejoue le code d'avant mais **ne dé-migre pas la base**. Si la
 release fautive contenait une migration destructive : restaurer le dump pris
 automatiquement AVANT la migration (`backup-restore.md` §3 — le script refuse
@@ -939,7 +1011,10 @@ git push -u origin hotfix/<sujet>
 ```
 
 1. Ouvrir une **PR vers `release`** (pas vers `main`) ; valider comme une PR
-   normale (tests verts), **merge sur GO fondateur**.
+   normale (tests verts), **merge sur GO fondateur**. Elle porte aussi l'**entrée du journal**
+   `landing/evolutions.html` pour `vX.Y.Z+1` : le step de garde (§ *Déployer une release*)
+   refuse sinon de construire le tag (tant que `release` n'a pas la vitrine à six pages, il est
+   sauté).
 2. **Taguer puis déployer** — taguer ne fait que construire (« tag ≠
    déploiement ») :
    ```bash
@@ -1181,13 +1256,14 @@ déploiement actif :
    Les e-mails reportent, en plus, la note du tick (`dispatch_note` : retard/plafond du point 2,
    réserve de fin, « plusieurs exécutions »), les segments étant séparés par « · ».
 
-⚠ **Filet absent côté placement** : si le worker meurt pendant un placement (`match_placement_run`
-`RUNNING`), rien ne le reconcilie jamais — à l'inverse de `app:schedules:reconcile-stuck`
-(`backend/src/Command/ReconcileStuckSchedulesCommand.php`) qui fait ce travail pour les schedules
-`GENERATING`. Seul le TTL du verrou Redis (`MatchPlacementLock`,
-`backend/src/Service/MatchPlacementLock.php`) libère une relance ultérieure ; la ligne `RUNNING`
-elle-même reste figée. Un déploiement qui tuerait le worker pendant un placement laisserait donc ce
-run `RUNNING` pour toujours (roadmap).
+**Placement et redémarrage du worker** : le déploiement arrête `messenger-worker` avec une grâce de
+`stop_grace_period: 60s` (`docker-compose.prod.yml`) — SIGTERM ne coupe pas le message en cours, un
+solve qui la dépasse est tué (SIGKILL). Le run `match_placement_run` laissé `RUNNING` (ou `PENDING`
+sans message) est alors déclaré `FAILED` au **démarrage du worker suivant**
+(`PlacementRunStartupReconciler`, sans cron), et le message relu est acquitté sans re-solver ; le
+verrou Redis du club n'est pas rendu (le calcul interrompu peut encore tenir le moteur, il expire à
+son budget). Worker vivant, run figé : `app:match-placement:reconcile-stuck`
+(`backend/docs/commands.md`). Contrat : ADR-0003 §2, amendement 2026-11-11.
 
 **Écran console** : `DeploymentSection` (`frontend/src/features/admin/sections/DeploymentSection.tsx`)
 vit dans l'onglet **Exploitation** de `/admin`, au-dessus des notes de nouveautés. Le formulaire

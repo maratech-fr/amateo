@@ -177,6 +177,88 @@ final class ConflictsToCoachesContext extends BaseContext
         }
     }
 
+    #[Then('Karim reçoit un e-mail qui liste son conflit, sans marque de nouveauté')]
+    public function karimRecoitSonConflitSansMarque(): void
+    {
+        $this->assertSent();
+        $mail = $this->nextMailForKarim();
+        if (!str_starts_with($mail['subject'], 'Un conflit vous concerne — ') || 1 !== substr_count($mail['text'], 'Personne en double — ')) {
+            throw new RuntimeException(\sprintf('Karim devrait recevoir UN conflit, obtenu « %s » :' . "\n" . '%s', $mail['subject'], $mail['text']));
+        }
+        foreach ([' · Nouveau', ' · Modifié', 'Depuis le dernier envoi', 'Cette liste vous est renvoyée'] as $absent) {
+            if (str_contains($mail['text'], $absent)) {
+                throw new RuntimeException(\sprintf('premier envoi : aucune marque attendue, trouvé « %s »', $absent));
+            }
+        }
+    }
+
+    #[When('U11M1, aussi coachée par Karim, joue à l\'extérieur ce samedi à 16h')]
+    public function u11m1AussiCoacheeParKarimJoue(): void
+    {
+        $this->mainCoach('U11M1', $this->karimId);
+        $this->awayMatch('U11M1', $this->saturday, '16:00');
+
+        // Témoin du décor : Karim tient U15F1, le premier coup d'envoi (15h30) ; ses conflits sont
+        // U15F1 × U13F1, l'ancien, inchangé, et U15F1 × U11M1, le nouveau. U13F1 × U11M1 ne fait
+        // aucune ligne : il n'y est retenu nulle part (règle prouvée au plus bas par
+        // MatchConflictDetectorTest::testASoleMainOfThreeOverlappingMatchesHoldsTheFirstKickoffAndHasTwoConflicts).
+        // U11M1 joue APRÈS U15F1 : à coup d'envoi égal, l'id — aléatoire — déciderait qui Karim
+        // tient, et l'ancien conflit disparaîtrait une fois sur deux.
+        $expected = [$this->teamPair('U15F1', 'U13F1'), $this->teamPair('U15F1', 'U11M1')];
+        sort($expected);
+        $seen = $this->doublePairsOf($this->karimId);
+        if ($expected !== $seen) {
+            throw new RuntimeException(\sprintf('le décor devrait mettre Karim en double sur U15F1 × U13F1 et U15F1 × U11M1, le radar voit : %s', json_encode($seen)));
+        }
+    }
+
+    #[Then('Karim reçoit un e-mail qui liste ses 2 conflits, dont 1 marqué nouveau')]
+    public function karimRecoitSesDeuxConflitsDontUnNouveau(): void
+    {
+        $this->assertSent();
+        $mail = $this->nextMailForKarim();
+        if (2 !== substr_count($mail['text'], 'Personne en double — ')) {
+            throw new RuntimeException('la liste COMPLÈTE de Karim devrait porter 2 tuiles, l\'ancienne comprise :' . "\n" . $mail['text']);
+        }
+        if (1 !== substr_count($mail['text'], ' · Nouveau') || str_contains($mail['text'], ' · Modifié')) {
+            throw new RuntimeException('seul le nouveau conflit devrait être marqué, l\'ancien inchangé ne l\'est pas :' . "\n" . $mail['text']);
+        }
+        if (!str_contains($mail['text'], '1 conflit est nouveau ou modifié : il est marqué.')) {
+            throw new RuntimeException('la phrase « Depuis le dernier envoi… » manque :' . "\n" . $mail['text']);
+        }
+    }
+
+    #[Then('un nouvel envoi sans changement est refusé : rien de nouveau depuis le dernier envoi')]
+    public function unNouvelEnvoiSansChangementEstRefuse(): void
+    {
+        $again = $this->apiPost('fixtures/conflicts/mail-coaches', [], $this->smallClubToken);
+        if (422 !== $again['status'] || 'Rien de nouveau depuis le dernier envoi : cochez « Tout renvoyer » pour renvoyer les listes.' !== ($again['json']['error'] ?? null)) {
+            throw new RuntimeException(\sprintf('un envoi sans nouveauté devrait être un 422 nommé, obtenu %d %s', $again['status'], json_encode($again['json'])));
+        }
+    }
+
+    #[When('le gestionnaire renvoie tout aux coachs')]
+    public function leGestionnaireRenvoieTout(): void
+    {
+        $this->lastSend = $this->apiPost('fixtures/conflicts/mail-coaches', ['resendAll' => true], $this->smallClubToken);
+    }
+
+    #[Then('Karim reçoit sa liste complète, qui dit qu\'aucun conflit n\'est nouveau ou modifié depuis l\'envoi précédent')]
+    public function karimRecoitSaListeRenvoyee(): void
+    {
+        $this->assertSent();
+        $mail = $this->nextMailForKarim();
+        if (2 !== substr_count($mail['text'], 'Personne en double — ')) {
+            throw new RuntimeException('la liste renvoyée devrait porter les 2 tuiles :' . "\n" . $mail['text']);
+        }
+        if (!str_contains($mail['text'], 'Cette liste vous est renvoyée : aucun conflit de cette liste n\'est nouveau ou modifié depuis l\'envoi du ')) {
+            throw new RuntimeException('la phrase de renvoi manque :' . "\n" . $mail['text']);
+        }
+        if (str_contains($mail['text'], ' · Nouveau') || str_contains($mail['text'], ' · Modifié')) {
+            throw new RuntimeException('une liste renvoyée sans nouveauté ne porte aucune marque :' . "\n" . $mail['text']);
+        }
+    }
+
     #[AfterScenario]
     public function nettoyer(): void
     {
@@ -195,6 +277,40 @@ final class ConflictsToCoachesContext extends BaseContext
         }
 
         return array_values(array_unique($persons));
+    }
+
+    /**
+     * Les paires d'équipes des conflits « personne en double » (MATCH_MATCH, non tenus) que le radar
+     * voit pour cette personne, triées.
+     *
+     * @return list<string>
+     */
+    private function doublePairsOf(string $personId): array
+    {
+        $conflicts = $this->apiGet('fixtures/conflicts', $this->smallClubToken)['json']['conflicts'] ?? [];
+        $pairs = [];
+        foreach (\is_array($conflicts) ? $conflicts : [] as $conflict) {
+            if (!\is_array($conflict) || 'MATCH_MATCH' !== ($conflict['type'] ?? null) || $personId !== ($conflict['coachId'] ?? null) || isset($conflict['heldBy'])) {
+                continue;
+            }
+            $left = \is_array($conflict['left'] ?? null) ? (string) ($conflict['left']['teamId'] ?? '') : '';
+            $right = \is_array($conflict['right'] ?? null) ? (string) ($conflict['right']['teamId'] ?? '') : '';
+            $sides = [$left, $right];
+            sort($sides);
+            $pairs[] = implode('|', $sides);
+        }
+        sort($pairs);
+
+        return $pairs;
+    }
+
+    /** La paire de deux équipes du décor, au format de {@see doublePairsOf}. */
+    private function teamPair(string $teamA, string $teamB): string
+    {
+        $sides = [$this->smallClubTeamIds[$teamA], $this->smallClubTeamIds[$teamB]];
+        sort($sides);
+
+        return implode('|', $sides);
     }
 
     private function newCoach(string $first, string $last, ?string $email): string
