@@ -11,6 +11,10 @@ import { TERMS_VERSION } from "./terms";
  * provisoires : chaque section marquée « À COMPLÉTER » attend la rédaction
  * finale (fondateur/juriste) avant la commercialisation. La page est publique
  * (liée depuis le register — le consentement pointe ici).
+ *
+ * Exemption déclarée de la règle `texts.ts` : page juridique provisoire, ses phrases restent ici.
+ * La phrase d'effacement de l'espace du club est celle de la vitrine (`landing/vos-donnees.html`),
+ * mot pour mot — parité gardée par `LandingClaimsTest` et le test de ce composant.
  */
 const PLACEHOLDER = "— À COMPLÉTER (rédaction finale fondateur/juriste avant commercialisation) —";
 
@@ -62,7 +66,7 @@ export function PrivacyPage() {
           <li>Saisons : la saison courante et la précédente sont conservées ; les plus anciennes sont purgées automatiquement.</li>
           <li>Journal d'audit : 12 mois.</li>
           <li>Comptes jamais vérifiés : 7 jours.</li>
-          <li>Sauvegardes : purge naturelle par rotation (30 jours) — aucune restauration sélective de données effacées.</li>
+          <li>Sauvegardes : renouvelées en continu (copie hors site effacée au bout de 30 jours) — aucune restauration sélective de données effacées.</li>
         </ul>
       </Section>
 
@@ -70,7 +74,14 @@ export function PrivacyPage() {
         <ul className="list-disc space-y-1 pl-5">
           <li><strong>Accès / portabilité</strong> : exportez vos données (page Profil) et celles du club (Gestion du club) au format JSON.</li>
           <li><strong>Rectification</strong> : modifiez vos informations dans la page Profil.</li>
-          <li><strong>Effacement</strong> : supprimez votre compte depuis la page Profil (anonymisation immédiate ; si vous étiez le dernier gestionnaire, l'espace du club est supprimé après 30 jours, sauf reprise).</li>
+          <li>
+            <strong>Effacement</strong> : supprimez votre compte depuis la page Profil (anonymisation immédiate).
+            Quand le dernier gestionnaire supprime son compte, l'espace du club est effacé 30 jours plus tard ;
+            pendant ces 30 jours, un gestionnaire peut reprendre la main et tout annuler. Ses données sortent
+            ensuite des sauvegardes à mesure qu'elles sont remplacées par de plus récentes ; la copie conservée
+            aux Pays-Bas est effacée au bout de 30 jours. Nous ne restaurons jamais une sauvegarde pour
+            récupérer des données supprimées.
+          </li>
           <li><strong>Opposition</strong> (contacts FFBB) : {PLACEHOLDER}</li>
         </ul>
         <p>Les coachs et membres saisis par un club exercent leurs droits auprès de leur club, responsable de traitement de ces données.</p>

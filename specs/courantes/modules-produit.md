@@ -82,6 +82,8 @@ planning progressif, et vous êtes prévenus avant l'échéance, pas après.
   §3.
 - Rappels avant l'échéance (J-14 / J-7 / J-3) par e-mail, plus un radar in-app — `etat-des-lieux.md`
   §1.2.
+- Rappels par e-mail à J-14 / J-7 / J-3 avant une période posée par le club, et à J-30 / J-14 /
+  J-7 avant des vacances scolaires non préparées — `backend/src/Command/PeriodReminderCommand.php`.
 
 **Où dans l'app :** cockpit `/`, dialogue du jour sur une période de vacances.
 
@@ -203,10 +205,31 @@ remplie : son nom, ses couleurs, son logo, et même les équipes qu'il a engagé
   saisies une par une — `backend/src/Service/Basketball/FfbbTeamImporter.php`.
 - L'export FBI des équipes peut aussi être importé à l'étape Équipes du wizard, en cochant les
   lignes à reprendre (doublons détectés et décochés par défaut) — `etat-des-lieux.md` §1.7.
+- Import d'un planning existant par IA : équipes, gymnases, créneaux, séances partagées,
+  réservations — jamais les coachs ni les contraintes —
+  `backend/src/Service/ParcImport/ParcImportExecutor.php`.
 
 **Où dans l'app :** `/register` (code FFBB), `/wizard` étape Équipes.
 
 **Capture :** aucune encore.
+
+---
+
+## Ce qu'Amateo ne fait pas
+
+Les limites du produit, dites franchement à qui les vit :
+
+- Il n'écrit rien dans FBI : il dit quoi y saisir (écran « FBI — à faire », module 2 §2), le
+  gestionnaire le tape lui-même. Côté fédération, l'accès est en lecture seule.
+- Il ne gère ni paiements, ni licences, ni cotisations.
+- Il ne fabrique pas le calendrier des championnats : celui-ci arrive de la fédération, il le range.
+- Il ne remplace pas le jugement du gestionnaire : Amateo dégrossit le travail, à vous les
+  finitions.
+- Il n'envoie ni convocations ni messages aux joueurs ou aux familles : le coach dépose ses
+  disponibilités par un lien personnel, sans compte, et le gestionnaire lui envoie ce lien, ses
+  relances et la liste de ses conflits ; les autres e-mails sont ceux du compte (vérification,
+  invitation, mot de passe) et les rappels de période.
+- Il est fait pour le basket amateur affilié FFBB, et pour lui seul.
 
 ---
 

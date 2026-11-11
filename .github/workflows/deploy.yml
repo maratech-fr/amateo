@@ -162,6 +162,25 @@ jobs:
             echo "All 6 images for ${{ steps.meta.outputs.version }} already published — skipping build, deploying as-is."
           fi
 
+      # A new v* version is never built without its entry in the landing
+      # changelog (landing/evolutions.html, written by the `chore/release-vX.Y.Z`
+      # PR before tagging — docs/ops/deploy.md). Skipped when the journal does not
+      # exist at the built commit (rollback to a version older than the six-page
+      # landing). A `sha-…` hotfix is not guarded. Guarded by LandingChangelogTest.
+      - name: Check the changelog names this version
+        if: steps.existing.outputs.found != 'true' && startsWith(steps.meta.outputs.version, 'v')
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          if [ ! -f landing/evolutions.html ]; then
+            echo "Journal absent à ce commit (version antérieure à la vitrine à six pages) — contrôle sauté."
+            exit 0
+          fi
+          grep -Fq "data-version=\"${VERSION#v}\"" landing/evolutions.html || {
+            echo "FATAL: landing/evolutions.html n'a pas d'entrée pour ${VERSION} — le journal se complète par la PR « chore/release-${VERSION} » AVANT de taguer (docs/ops/deploy.md)." >&2
+            exit 1
+          }
+
       # One step per image — same targets as the CI "Build prod images" step
       # (anti-rot pair: CI proves they build, this one publishes them).
       - name: Build & push scheduler-php

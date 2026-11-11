@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Amateo — Ce qu'Amateo fait, et ce qu'il ne fait pas</title>
+  <meta name="description" content="Planning de saison, imprévus, vacances, contraintes ; placement des matchs, erreurs FBI, conflits de coachs, déplacements. Et ce qu'Amateo ne fait pas." />
+  <link rel="canonical" href="https://amateo.app/fonctionnalites.html" /> <!-- nosemgrep: html.security.audit.missing-integrity.missing-integrity -- canonical : indique une URL, ne charge aucune ressource, integrity sans objet -->
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://amateo.app/fonctionnalites.html" />
+  <meta property="og:title" content="Amateo — Ce qu'Amateo fait, et ce qu'il ne fait pas" />
+  <meta property="og:description" content="Planning de saison, imprévus, vacances, contraintes ; placement des matchs, erreurs FBI, conflits de coachs, déplacements. Et ce qu'Amateo ne fait pas." />
+  <meta property="og:image" content="https://amateo.app/assets/brand/og.png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <link rel="icon" type="image/svg+xml" href="assets/brand/icon.svg" />
+  <link rel="icon" type="image/png" sizes="32x32" href="assets/brand/icon-32.png" />
+  <!-- Thème AU CHOIX, posé AVANT la feuille partagée (anti-flash) — seul script inline de la page. -->
+  <script>
+    (function () {
+      try {
+        var saved = localStorage.getItem("theme");
+        var dark = saved
+          ? saved === "dark"
+          : (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches);
+        if (dark) document.documentElement.setAttribute("data-theme", "dark");
+      } catch (e) { /* stockage indisponible : on reste en clair */ }
+    })();
+  </script>
+  <link rel="stylesheet" href="assets/site.css?v=2026-11-11" />
+</head>
+<body>
+
+<header class="site">
+  <div class="wrap">
+    <a class="logotype" href="/" data-brand-label aria-label="Amateo"><img class="brand-logo" data-brand-logo src="assets/brand/mark.svg" alt="" width="30" height="30" /><span class="brand logo-word">Amateo</span></a>
+    <nav class="top" aria-label="Navigation">
+      <a data-cta="home" href="/">Accueil</a>
+      <button type="button" class="theme-toggle" data-theme-toggle aria-pressed="false" aria-label="Passer en thème sombre">
+        <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+        <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4.2"/><path d="M12 2v2.5M12 19.5V22M4.22 4.22l1.77 1.77M18.01 18.01l1.77 1.77M2 12h2.5M19.5 12H22M4.22 19.78l1.77-1.77M18.01 5.99l1.77-1.77"/></svg>
+      </button>
+    </nav>
+  </div>
+</header>
+
+<!-- Chaque affirmation de cette page s'adosse à specs/courantes/modules-produit.md (règle landing) ;
+     « Ce qu'Amateo ne fait pas » y a sa section, liée par LandingClaimsTest. Aucune puce : de la prose. -->
+<main class="page">
+  <div class="wrap">
+    <h1>Ce qu'<span class="brand">Amateo</span> fait, et ce qu'il ne fait pas</h1>
+
+    <section id="planning">
+      <h2>Le planning</h2>
+
+      <article class="module">
+        <h3>Planning de saison</h3>
+        <p>Vous décrivez une fois vos équipes, vos gymnases, vos coachs et vos contraintes : le planning
+        de la saison sort seul, et vous gardez la main pour l'affiner. Six étapes guidées, rien n'est
+        perdu si vous vous arrêtez en route. Une combinaison impossible est expliquée, jamais contournée
+        en douce. Sur la grille, une séance se déplace, se verrouille, se mutualise entre équipes ; le
+        planning s'exporte en PDF ou en Excel, pour tous les gymnases ou un seul.</p>
+        <figure class="shot">
+          <img src="assets/planning.png" alt="La grille de planning générée : chaque équipe placée sur son créneau de gymnase, les contraintes respectées" width="2160" height="1216" loading="lazy" />
+        </figure>
+      </article>
+
+      <article class="module">
+        <h3>Les imprévus</h3>
+        <p>Un gymnase ferme : vous posez la fermeture depuis l'accueil et seule cette période change, le
+        reste de la saison reste intact. Les séances qui ne passent plus sont nommées « à replacer », et
+        les écarts avec le planning de saison sont résumés équipe par équipe.</p>
+      </article>
+
+      <article class="module">
+        <h3>Les vacances</h3>
+        <p>Le calendrier scolaire et les jours fériés arrivent tout seuls. Chaque période de vacances a
+        son planning, avec une reprise progressive si vous le souhaitez. Vous recevez un rappel par
+        e-mail 30, 14 et 7 jours avant chaque période de vacances scolaires, et 14, 7 et 3 jours avant
+        une période que vous avez posée vous-même, tant que son planning n'est pas prêt.</p>
+      </article>
+
+      <article class="module">
+        <h3>Les contraintes, faciles à gérer</h3>
+        <p>Une règle se pose une fois — par club, par équipe, par coach ou par gymnase — et Amateo ne
+        l'oublie jamais. Certaines vont de soi sans que vous les écriviez : le coach principal est
+        présent à ses séances, un repos suit un jour de match. Les vœux et les indisponibilités des
+        coachs arrivent par un lien personnel, sans compte ; c'est toujours vous qui tranchez.</p>
+      </article>
+    </section>
+
+    <section id="matchs">
+      <h2>Les matchs</h2>
+
+      <article class="module">
+        <h3>L'aide au placement</h3>
+        <p>Vous déposez l'export FBI de votre club : Amateo range les matchs par équipe et pose vos
+        matchs à domicile sur les créneaux où vos gymnases sont libres. Un nouveau dépôt du même fichier
+        ne remplace rien en silence : chaque écart (date, heure, salle) vous est montré. Le résultat
+        s'ajuste et se verrouille à la main.</p>
+        <figure class="shot">
+          <img src="assets/matchs.jpg" alt="Le calendrier des rencontres d'un week-end : les matchs à domicile posés sur leur gymnase, la liste des matchs à placer à côté, les conflits signalés en tête" width="2160" height="1800" loading="lazy" />
+        </figure>
+      </article>
+
+      <article class="module">
+        <h3>La détection des erreurs FBI</h3>
+        <p>Un écart entre votre planning et ce que dit la fédération ne passe plus inaperçu. L'écran
+        « FBI — à faire » liste ce qu'il reste à saisir ou à corriger dans FBI, avec l'échéance de
+        chaque compétition ; il alerte, sans jamais bloquer.</p>
+        <figure class="shot">
+          <img src="assets/matchs-importer.jpg" alt="L'écran Importer du module matchs : bouton « Importer FBI », date du dernier dépôt, et la liste des rencontres restant à traiter" width="2160" height="1500" loading="lazy" />
+        </figure>
+      </article>
+
+      <article class="module">
+        <h3>Les conflits de coachs vus en amont</h3>
+        <p>Un coach sur deux rencontres, un match et un entraînement au même moment, un gymnase pris
+        deux fois : Amateo le repère tout seul, dès le dépôt du fichier. Chaque conflit se traite —
+        dérogation demandée, réglé en interne, sans solution pour l'instant — et ne se masque jamais.
+        D'un seul geste, chaque coach reçoit par e-mail les conflits qui le concernent.</p>
+        <figure class="shot">
+          <img src="assets/matchs-conflits.jpg" alt="L'onglet Conflits regroupé par coach : un coach (nom de démo) engagé sur deux rencontres qui se chevauchent, avec départ, coup d'envoi, retour et durée du chevauchement, et un bouton « Traiter »" width="2160" height="1500" loading="lazy" />
+        </figure>
+      </article>
+
+      <article class="module">
+        <h3>Les déplacements extérieurs</h3>
+        <p>Un match à l'extérieur mobilise votre coach et votre équipe plus longtemps qu'un
+        entraînement : Amateo compte le trajet routier réel jusqu'au gymnase adverse. L'annuaire des
+        adversaires se localise tout seul depuis le fichier FBI.</p>
+      </article>
+    </section>
+
+    <section id="demarrer">
+      <h2>On ne repart pas de zéro</h2>
+      <p>Vous vous inscrivez avec le code de votre club : son nom, son adresse, sa couleur et son logo
+      arrivent, et les équipes engagées cette saison sont créées automatiquement. Si vous avez déjà un
+      planning, sur tableur, en PDF ou en photo, l'IA le transforme en équipes, gymnases et créneaux :
+      vous relisez l'aperçu avant d'importer. Les coachs et les contraintes se saisissent ensuite,
+      guidés pas à pas.</p>
+    </section>
+
+    <section id="ne-fait-pas">
+      <h2>Ce qu'<span class="brand">Amateo</span> ne fait pas</h2>
+      <p><strong>Il n'écrit rien dans FBI.</strong> <span>FBI reste l'outil de la fédération ; Amateo lit votre export et vous dit quoi y saisir.</span></p>
+      <p><strong>Il ne gère ni paiements, ni licences, ni cotisations.</strong> <span>Il vit à côté de votre outil de gestion, pas à sa place.</span></p>
+      <p><strong>Il ne fabrique pas le calendrier des championnats.</strong> <span>Les rencontres viennent du comité ou de la ligue ; Amateo les range et les place.</span></p>
+      <p><strong>Il ne remplace pas votre jugement.</strong> <span>Amateo dégrossit le travail, à vous les finitions.</span></p>
+      <p><strong>Il n'envoie ni convocations ni messages aux joueurs ou aux familles.</strong> <span>Vous transmettez le planning aux coachs en PDF ou en Excel ; ils déposent leurs indisponibilités par un lien personnel, sans compte.</span></p>
+      <p><strong>Il est fait pour le basket amateur affilié FFBB, et pour lui seul aujourd'hui.</strong> <span>Pas d'autre sport, pas d'autre fédération.</span></p>
+    </section>
+  </div>
+</main>
+
+<footer class="site">
+  <div class="wrap">
+    <p class="foot-tagline"><span class="foot-brand"><img class="brand-logo" data-brand-logo src="assets/brand/mark.svg" alt="" width="20" height="20" /><span class="brand logo-word">Amateo</span></span> — le planning des clubs de basket. Actuellement en bêta avec des clubs pilotes.</p>
+    <div class="cols">
+      <nav class="col" aria-label="Produit">
+        <p class="col-title">Produit</p>
+        <ul>
+          <li><a href="fonctionnalites.html">Fonctionnalités</a></li>
+          <li><a href="/#offres">Offres</a></li>
+          <li><a href="/#faq">Questions fréquentes</a></li>
+          <li><a href="evolutions.html">Journal des évolutions</a></li>
+        </ul>
+      </nav>
+      <nav class="col" aria-label="À propos">
+        <p class="col-title">À propos</p>
+        <ul>
+          <li><a href="qui-fait.html">Qui fait <span class="brand">Amateo</span></a></li>
+          <li><a href="vos-donnees.html">Vos données</a></li>
+          <li><a href="mentions-legales.html">Mentions légales</a></li>
+          <li><a data-cta="demo-inline" href="mailto:contact@amateo.app?subject=Demande%20de%20demo%20-%20Amateo&amp;body=Bonjour%2C%0A%0AJe%20souhaite%20voir%20Amateo%20en%20demo%20pour%20mon%20club.%0A%0AClub%20%3A%20%0ANombre%20d'equipes%20(environ)%20%3A%20%0ADisponibilites%20%3A%20">Contact</a></li>
+        </ul>
+      </nav>
+      <nav class="col" aria-label="Compte">
+        <p class="col-title">Compte</p>
+        <ul>
+          <li><a data-cta="login" href="https://app.amateo.app/login">Se connecter</a></li>
+          <li><a data-cta="register" href="https://app.amateo.app/register">Essayer gratuitement</a></li>
+        </ul>
+      </nav>
+    </div>
+  </div>
+</footer>
+
+<script src="config.js?v=2026-11-11"></script>
+<script src="assets/site.js?v=2026-11-11"></script>
+</body>
+</html>

@@ -1,1 +1,9 @@
-<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><url><loc>https://amateo.app/</loc></url><url><loc>https://amateo.app/mentions-legales.html</loc></url></urlset>
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url><loc>https://amateo.app/</loc></url>
+  <url><loc>https://amateo.app/fonctionnalites.html</loc></url>
+  <url><loc>https://amateo.app/vos-donnees.html</loc></url>
+  <url><loc>https://amateo.app/qui-fait.html</loc></url>
+  <url><loc>https://amateo.app/evolutions.html</loc></url>
+  <url><loc>https://amateo.app/mentions-legales.html</loc></url>
+</urlset>

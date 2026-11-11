@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Amateo — Vos données</title>
+  <meta name="description" content="Où vivent les données de votre club, comment elles sont sauvegardées, et ce que vous pouvez en faire : export, suppression, délais." />
+  <link rel="canonical" href="https://amateo.app/vos-donnees.html" /> <!-- nosemgrep: html.security.audit.missing-integrity.missing-integrity -- canonical : indique une URL, ne charge aucune ressource, integrity sans objet -->
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://amateo.app/vos-donnees.html" />
+  <meta property="og:title" content="Amateo — Vos données" />
+  <meta property="og:description" content="Où vivent les données de votre club, comment elles sont sauvegardées, et ce que vous pouvez en faire : export, suppression, délais." />
+  <meta property="og:image" content="https://amateo.app/assets/brand/og.png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <link rel="icon" type="image/svg+xml" href="assets/brand/icon.svg" />
+  <link rel="icon" type="image/png" sizes="32x32" href="assets/brand/icon-32.png" />
+  <!-- Thème AU CHOIX, posé AVANT la feuille partagée (anti-flash) — seul script inline de la page. -->
+  <script>
+    (function () {
+      try {
+        var saved = localStorage.getItem("theme");
+        var dark = saved
+          ? saved === "dark"
+          : (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches);
+        if (dark) document.documentElement.setAttribute("data-theme", "dark");
+      } catch (e) { /* stockage indisponible : on reste en clair */ }
+    })();
+  </script>
+  <link rel="stylesheet" href="assets/site.css?v=2026-11-11" />
+</head>
+<body>
+
+<header class="site">
+  <div class="wrap">
+    <a class="logotype" href="/" data-brand-label aria-label="Amateo"><img class="brand-logo" data-brand-logo src="assets/brand/mark.svg" alt="" width="30" height="30" /><span class="brand logo-word">Amateo</span></a>
+    <nav class="top" aria-label="Navigation">
+      <a data-cta="home" href="/">Accueil</a>
+      <button type="button" class="theme-toggle" data-theme-toggle aria-pressed="false" aria-label="Passer en thème sombre">
+        <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+        <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4.2"/><path d="M12 2v2.5M12 19.5V22M4.22 4.22l1.77 1.77M18.01 18.01l1.77 1.77M2 12h2.5M19.5 12H22M4.22 19.78l1.77-1.77M18.01 5.99l1.77-1.77"/></svg>
+      </button>
+    </nav>
+  </div>
+</header>
+
+<!-- La phrase « Supprimer l'espace du club. … » est recopiée MOT POUR MOT dans
+     frontend/src/features/legal/PrivacyPage.tsx (parité gardée par LandingClaimsTest). -->
+<main class="page">
+  <div class="wrap">
+    <h1>Vos données</h1>
+    <p class="lead">Ce que votre club confie à <span class="brand">Amateo</span> lui appartient. Cette page
+    dit où ces données vivent, comment elles sont protégées, et comment les récupérer ou les effacer.</p>
+
+    <section>
+      <h2>Où elles sont</h2>
+      <p>Le serveur d'<span class="brand">Amateo</span> est hébergé en France, à Paris, chez Scaleway, un
+      hébergeur français. Une copie de secours des sauvegardes est conservée aux Pays-Bas, chez le même
+      hébergeur, hors du centre de données du serveur.</p>
+    </section>
+
+    <section>
+      <h2>Comment elles sont sauvegardées</h2>
+      <p>Chaque nuit où le service a été utilisé, une sauvegarde complète est faite automatiquement. Elle
+      est copiée aux Pays-Bas chez le même hébergeur, hors du centre de données du serveur.</p>
+    </section>
+
+    <section>
+      <h2>Ce que vous pouvez faire</h2>
+      <p><strong>Exporter.</strong> Depuis votre Profil, vous téléchargez les données de votre compte ;
+      depuis Gestion du club, l'export complet du club.</p>
+      <p><strong>Supprimer votre compte.</strong> Il est anonymisé immédiatement.</p>
+      <p><strong>Supprimer l'espace du club.</strong> Quand le dernier gestionnaire supprime son compte,
+      l'espace du club est effacé 30 jours plus tard ; pendant ces 30 jours, un gestionnaire peut
+      reprendre la main et tout annuler. Ses données sortent ensuite des sauvegardes à mesure qu'elles
+      sont remplacées par de plus récentes ; la copie conservée aux Pays-Bas est effacée au bout de
+      30 jours. Nous ne restaurons jamais une sauvegarde pour récupérer des données supprimées.</p>
+    </section>
+
+    <section>
+      <h2>Chaque club chez lui</h2>
+      <p>Un club ne voit jamais les données d'un autre : la séparation est faite dans l'application et
+      dans la base de données elle-même.</p>
+    </section>
+
+    <section>
+      <h2>Qui intervient</h2>
+      <p>Scaleway (France) héberge le serveur, garde les sauvegardes et envoie les e-mails. Infomaniak
+      gère le nom de domaine (DNS). Sentry reçoit les erreurs techniques, sans nom, sans e-mail et sans
+      adresse IP. Umami, installé sur notre serveur, compte les visites de ce site sans cookie.</p>
+    </section>
+
+    <p class="back">Le détail juridique : la
+    <a data-cta="privacy" href="https://app.amateo.app/confidentialite">politique de confidentialité</a>
+    de l'application et les <a href="mentions-legales.html">mentions légales</a>.</p>
+  </div>
+</main>
+
+<footer class="site">
+  <div class="wrap">
+    <p class="foot-tagline"><span class="foot-brand"><img class="brand-logo" data-brand-logo src="assets/brand/mark.svg" alt="" width="20" height="20" /><span class="brand logo-word">Amateo</span></span> — le planning des clubs de basket. Actuellement en bêta avec des clubs pilotes.</p>
+    <div class="cols">
+      <nav class="col" aria-label="Produit">
+        <p class="col-title">Produit</p>
+        <ul>
+          <li><a href="fonctionnalites.html">Fonctionnalités</a></li>
+          <li><a href="/#offres">Offres</a></li>
+          <li><a href="/#faq">Questions fréquentes</a></li>
+          <li><a href="evolutions.html">Journal des évolutions</a></li>
+        </ul>
+      </nav>
+      <nav class="col" aria-label="À propos">
+        <p class="col-title">À propos</p>
+        <ul>
+          <li><a href="qui-fait.html">Qui fait <span class="brand">Amateo</span></a></li>
+          <li><a href="vos-donnees.html">Vos données</a></li>
+          <li><a href="mentions-legales.html">Mentions légales</a></li>
+          <li><a data-cta="demo-inline" href="mailto:contact@amateo.app?subject=Demande%20de%20demo%20-%20Amateo&amp;body=Bonjour%2C%0A%0AJe%20souhaite%20voir%20Amateo%20en%20demo%20pour%20mon%20club.%0A%0AClub%20%3A%20%0ANombre%20d'equipes%20(environ)%20%3A%20%0ADisponibilites%20%3A%20">Contact</a></li>
+        </ul>
+      </nav>
+      <nav class="col" aria-label="Compte">
+        <p class="col-title">Compte</p>
+        <ul>
+          <li><a data-cta="login" href="https://app.amateo.app/login">Se connecter</a></li>
+          <li><a data-cta="register" href="https://app.amateo.app/register">Essayer gratuitement</a></li>
+        </ul>
+      </nav>
+    </div>
+  </div>
+</footer>
+
+<script src="config.js?v=2026-11-11"></script>
+<script src="assets/site.js?v=2026-11-11"></script>
+</body>
+</html>

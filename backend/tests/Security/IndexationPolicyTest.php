@@ -53,13 +53,12 @@ final class IndexationPolicyTest extends TestCase
 
     /**
      * P4-391 — promise: the landing robots.txt hands crawlers a sitemap that exists
-     * and lists both public pages (a dangling Sitemap: line would point at a 404).
+     * and parses (a dangling Sitemap: line would point at a 404). What it lists is
+     * guarded by testSitemapListsExactlyTheLandingPages.
      */
     public function testLandingRobotsAdvertisesAnExistingSitemap(): void
     {
-        $matched = preg_match('/^\s*siteUrl:\s*"([^"]+)"/m', $this->read('/landing/config.js'), $config);
-        self::assertSame(1, $matched, 'siteUrl not found in landing/config.js.');
-        $siteUrl = $config[1];
+        $siteUrl = $this->landingSiteUrl();
 
         self::assertMatchesRegularExpression(
             '#^\s*Sitemap:\s*' . preg_quote($siteUrl, '#') . '/sitemap\.xml\s*$#mi',
@@ -67,15 +66,30 @@ final class IndexationPolicyTest extends TestCase
             'The landing robots.txt must advertise siteUrl/sitemap.xml.',
         );
 
-        // XMLDocument throws on malformed XML: this line IS the "parsable" check.
-        $sitemap = XMLDocument::createFromString($this->read('/landing/sitemap.xml'));
-        $locations = [];
-        foreach ($sitemap->getElementsByTagName('loc') as $location) {
-            $locations[] = trim((string) $location->textContent);
-        }
+        self::assertNotSame([], $this->sitemapLocations(), 'The landing sitemap lists no page.');
+    }
 
-        self::assertContains($siteUrl . '/', $locations);
-        self::assertContains($siteUrl . '/mentions-legales.html', $locations);
+    /**
+     * P4-522 (D13) — promise: search engines are handed every public page of the
+     * landing and nothing else — the sitemap lists exactly `landing/*.html` (the home
+     * page as siteUrl/, the others as siteUrl/<file>), so a new page can't stay
+     * unlisted and a removed one can't leave a 404 behind.
+     */
+    public function testSitemapListsExactlyTheLandingPages(): void
+    {
+        $siteUrl = $this->landingSiteUrl();
+
+        $expected = [];
+        foreach (glob(self::ROOT . '/landing/*.html') ?: [] as $path) {
+            $page = basename($path);
+            $expected[] = 'index.html' === $page ? $siteUrl . '/' : $siteUrl . '/' . $page;
+        }
+        self::assertContains($siteUrl . '/', $expected, 'Witness: the glob no longer sees landing/index.html.');
+
+        $locations = $this->sitemapLocations();
+        sort($expected);
+        sort($locations);
+        self::assertSame($expected, $locations, 'sitemap.xml must list exactly the landing pages.');
     }
 
     public function testAppRobotsForbidsCrawlingEntirely(): void
@@ -116,6 +130,27 @@ final class IndexationPolicyTest extends TestCase
                 \sprintf('The public app robots.txt must never mention the "%s" route.', $marker),
             );
         }
+    }
+
+    private function landingSiteUrl(): string
+    {
+        $matched = preg_match('/^\s*siteUrl:\s*"([^"]+)"/m', $this->read('/landing/config.js'), $config);
+        self::assertSame(1, $matched, 'siteUrl not found in landing/config.js.');
+
+        return $config[1];
+    }
+
+    /** @return list<string> */
+    private function sitemapLocations(): array
+    {
+        // XMLDocument throws on malformed XML: this line IS the "parsable" check.
+        $sitemap = XMLDocument::createFromString($this->read('/landing/sitemap.xml'));
+        $locations = [];
+        foreach ($sitemap->getElementsByTagName('loc') as $location) {
+            $locations[] = trim((string) $location->textContent);
+        }
+
+        return $locations;
     }
 
     /**

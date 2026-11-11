@@ -333,11 +333,11 @@ FIGÉ**.
   — `landing/assets/brand/og.png` et `frontend/public/brand/og.png`, chacune sur son propre
   domaine, jamais un fetch cross-domaine. Source versionnée : `scripts/brand-og/og.html` (gabarit
   HTML capturé en 1200×630, assets de marque en chemins relatifs vers `landing/assets/brand/`,
-  détail de régénération et piège du cache immuable — `scripts/brand-og/README.md`). `landing/
-  index.html`, `landing/mentions-legales.html` et `frontend/index.html` portent chacun leur bloc
+  détail de régénération et piège du cache immuable — `scripts/brand-og/README.md`). les six
+  pages de `landing/` et `frontend/index.html` portent chacune leur bloc
   `og:`/`twitter:` (`og:url`/`og:image` en URL ABSOLUES — un aperçu se charge hors du contexte de
   la page, un chemin relatif ne s'y résout pas), copie recopiée du `<title>`/`<meta description>`
-  de chaque page, sans `og:site_name`. **Doctrine « vitrine : marque en clair ; app : inchangée »
+  de chaque page (une valeur propre par page de la vitrine), sans `og:site_name`. **Doctrine « vitrine : marque en clair ; app : inchangée »
   (P4-391, 2026-10-31)** : sur la vitrine, `<title>`, `og:title` et le logotype portent « Amateo »
   écrit dans le HTML (un robot sans JS la lit) ; `frontend/index.html` est INCHANGÉ (son `og:` reste
   sans marque en clair, seul le domaine `amateo.app` y figure — une adresse plutôt que la marque).
@@ -345,11 +345,10 @@ FIGÉ**.
   clair (lisible dans un aperçu qui n'adapte pas au thème du visiteur) — `etat-des-lieux.md` §2.
 - **Balisage JSON-LD `schema.org` — posé (2026-10-06), STATIQUE depuis P4-391 (2026-10-31)** :
   `landing/index.html` porte, écrit dans le HTML (lisible sans JavaScript — il était injecté par
-  script avant), un graphe `SoftwareApplication` (le produit) + `Organization` (l'éditeur). La description reprend la `<meta name="description">` de
+  script avant), un graphe `SoftwareApplication` (le produit) + `Person` (l'éditeur, à titre personnel, tant qu'aucune société n'existe). La description reprend la `<meta name="description">` de
   la page. `offers` est **omis volontairement** : seul le palier Découverte est public, les
-  paliers payants restent « sur demande ». `landing/mentions-legales.html` n'a pas ce bloc (page
-  sans offre produit) mais porte désormais son propre `og:title` (« Mentions légales ») au lieu de
-  celui de l'accueil. Détail : `.claude/rules/landing.md`.
+  paliers payants restent « sur demande ». Les cinq autres pages n'ont pas ce bloc (pas d'offre
+  produit). Détail : `.claude/rules/landing.md`.
 - **Page publique de doléances des coachs — posée (P5-24 PR-3, 2026-09-29)** : un pied « Propulsé
   par [`BrandMark`] — découvrir » se pose sous la carte des SIX états de `PublicWishPage`
   (`frontend/src/features/coach-wishes/PublicWishPage.tsx` — chargement, lien expiré, lien

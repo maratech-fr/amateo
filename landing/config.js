@@ -1,17 +1,17 @@
 // ── Configuration de la page de vente ────────────────────────────────────────
-// Source de ce que les SCRIPTS consomment : liens, mailto de démo, logo, pages `system-pages/`
-// (décision fondateur 2026-08-10 : nom paramétrable). Le nom est TRANCHÉ depuis le 2026-08-15 —
-// produit **Amateo**, éditeur **Maratech**, `amateo.app` acheté (P5-15).
-// ⚠ Depuis P4-391 la marque est AUSSI écrite en clair dans le HTML (un robot sans JS la lit) :
-// renommer = changer `brand` ici ET `grep -rn "Amateo" landing/ system-pages/` ;
-// `LandingDiscoverabilityTest` rougit sur toute dérive.
+// Source de ce que `assets/site.js` consomme : liens, mailto de démo, logo, mesure d'audience,
+// pages `system-pages/` (décision fondateur 2026-08-10 : nom paramétrable). Le nom du produit
+// est TRANCHÉ depuis le 2026-08-15 — **Amateo**, `amateo.app` acheté (P5-15).
+// ⚠ Depuis P4-391 la marque est AUSSI écrite en clair dans le HTML (un robot sans JS la lit),
+// comme les `href` des boutons d'appel (P4-407) et les mentions légales (éditeur, hébergeur) :
+// renommer = changer la valeur ici ET `grep -rn` la valeur dans `landing/` et `system-pages/` ;
+// `LandingDiscoverabilityTest` et `LandingClaimsTest` rougissent sur toute dérive.
 //
-// ⚠ CACHE : ce fichier est chargé par `index.html` avec `?v=AAAA-MM-JJ` (cache-bust).
-// Caddy `file_server` n'envoie pas de Cache-Control → un visiteur peut garder un ancien
-// config.js en cache avec un index.html neuf. À CHAQUE ajout/retrait/renommage de clé ici,
-// bumper la date du `?v=` dans `index.html` pour forcer la revalidation. (Le script d'injection
-// dégrade proprement si une clé manque — repli texte, jamais d'image cassée — mais le `?v=`
-// évite d'afficher ce repli à un visiteur qui revient.)
+// ⚠ CACHE : ce fichier est chargé par chaque page avec `?v=AAAA-MM-JJ` (cache-bust), le MÊME
+// que `assets/site.css` et `assets/site.js`. Caddy `file_server` n'envoie pas de Cache-Control →
+// un visiteur peut garder un ancien config.js en cache avec une page neuve. À CHAQUE
+// ajout/retrait/renommage de clé ici, bumper le `?v=` dans les six pages. (`site.js` dégrade
+// proprement si une clé ou tout le fichier manque — mais le `?v=` évite d'afficher ce repli.)
 window.LANDING_CONFIG = {
   brand: "Amateo",
   // L'URL de l'app (register/login). Convention retenue le 2026-08-18 : le domaine
@@ -27,21 +27,22 @@ window.LANDING_CONFIG = {
   // Contact démo / questions — adresse pro du domaine produit (décision fondateur
   // 2026-08-17). Règle business tenue : jamais un Gmail perso sur la page.
   contactEmail: "contact@amateo.app",
-  // Éditeur (responsable de publication / de traitement RGPD) — variable, jamais
-  // un littéral dans le HTML. Miroir par CONVENTION de `PUBLISHER_NAME`
-  // (`frontend/src/shared/lib/product.ts`), jamais importé de `frontend/`.
-  editor: "Maratech",
+  // Éditeur et responsable de publication : une PERSONNE, à titre personnel, tant qu'aucune
+  // entreprise n'est immatriculée (raison sociale à poser le jour où elle existe — ligne de
+  // roadmap). Écrit en clair dans `mentions-legales.html`, `qui-fait.html` et le JSON-LD
+  // (`Person`) de `index.html` ; les tests lient ces copies à cette valeur.
+  editor: "Franck Mpemba Boni",
   // Le logo suit désormais le patron de l'app (BrandMark) : l'ICÔNE (les trois arcs,
   // `mark.svg` — arcs SEULS, comme BrandIcon, jamais le favicon `icon.svg` à disque blanc)
   // sert de mark thème-neutre, et le MOT (`brand`) est rendu en TEXTE à la couleur du thème —
   // un seul rendu en clair comme en sombre. Point unique : le chemin de l'icône vit ici
   // (injecté dans `[data-brand-logo]`), le mot vient de `brand`.
   logo: "assets/brand/mark.svg",
-  // Mentions légales (LCEN + RGPD) — consommées par `mentions-legales.html`. Point unique.
-  // Éditeur = micro-entreprise Maratech EN COURS DE CRÉATION (bêta) : nom affiché, pas
-  // d'adresse postale (décision fondateur), contact = `contactEmail` ci-dessus.
+  // Mentions légales (LCEN + RGPD) — écrites en clair dans `mentions-legales.html` (l'obligation
+  // ne dépend d'aucun script) ; ces valeurs en sont la référence, gardée par `LandingClaimsTest`.
+  // Pas d'adresse postale (décision fondateur), contact = `contactEmail` ci-dessus.
   legal: {
-    editorStatus: "micro-entreprise en cours de création",
+    editorStatus: "à titre personnel",
     // Hébergeur — Scaleway SAS (siège social vérifié le 2026-09-29 sur la mention
     // légale officielle scaleway.com/legal-notice + registres RCS). LCEN art. 6-III :
     // dénomination, adresse et téléphone de l'hébergeur.
@@ -55,7 +56,7 @@ window.LANDING_CONFIG = {
   // Mesure d'audience de la vitrine (Umami auto-hébergé, sans cookie — P4-276).
   // BRANCHÉ (F7, 2026-10-19) : l'instance Umami de prod existe et le site est créé
   // dans l'UI, d'où le `websiteId` ci-dessous (fourni par le fondateur, jamais inventé).
-  // Double garde à l'injection (index.html / mentions-legales.html) : le script n'est
+  // Double garde à l'injection (`assets/site.js`, chargé par chaque page) : le script n'est
   // injecté que si les deux clés sont non vides ET que le hostname courant = l'hôte de
   // `siteUrl` — rien ne part en local/:5173 ni sur un autre domaine, même ces valeurs
   // renseignées. Le `websiteId` n'est PAS un secret (il est visible dans toute page
