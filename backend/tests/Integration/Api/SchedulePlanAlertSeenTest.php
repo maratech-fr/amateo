@@ -10,6 +10,7 @@ use App\Enum\CalendarEntryPeriodType;
 use App\Service\PeriodPlanAutoValidator;
 use App\Tests\PeriodPlanAutoValidationDecorTrait;
 use App\Tests\StartsFreshBrowserSession;
+use Doctrine\ORM\EntityManagerInterface;
 use DateTimeImmutable;
 use PHPUnit\Framework\Attributes\Group;
 use Symfony\Bridge\Doctrine\Middleware\Debug\DebugDataHolder;
@@ -125,17 +126,30 @@ final class SchedulePlanAlertSeenTest extends WebTestCase
         self::assertSame('started_without_plan', $this->getPlan($token, $planId)['alert']['kind'] ?? null, 'rien écrit : l\'alerte reste');
     }
 
-    /** Tenant — le gestionnaire d'un AUTRE club ne marque jamais le plan d'un club (403/404) et rien n'est écrit. */
+    /**
+     * Tenant — le gestionnaire d'un AUTRE club ne marque jamais le plan d'un club (403/404) et rien
+     * n'est écrit. « Rien écrit » se lit dans la BASE (les deux colonnes de la vue restent nulles),
+     * pas par un GET du propriétaire après la requête de l'intrus : sous `disableReboot`, le filtre
+     * Doctrine `tenant_filter` posé pour l'intrus survit jusqu'à la requête suivante et y filtre
+     * l'adhésion du propriétaire (404 de harnais, reproduit avec un simple GET de l'intrus à la
+     * place du POST). Le GET du propriétaire AVANT l'intrusion reste le témoin que l'alerte existe.
+     */
     public function testAnotherClubManagerCannotMarkThePlan(): void
     {
-        ['season' => $season, 'token' => $token] = $this->demoClub('OWNER');
+        ['club' => $owner, 'season' => $season, 'token' => $token] = $this->demoClub('OWNER');
         $planId = $this->seedDecorPeriod($season, '2026-12-21', '2027-01-03')['planId'];
+        self::assertSame('started_without_plan', $this->getPlan($token, $planId)['alert']['kind'] ?? null, 'témoin : l\'alerte existe avant l\'intrusion');
         ['token' => $intruderToken] = $this->demoClub('INTRUDER');
 
         $this->postSeen($intruderToken, $planId, 'started_without_plan');
 
         self::assertContains($this->client->getResponse()->getStatusCode(), [403, 404], 'un autre club est refusé');
-        self::assertSame('started_without_plan', $this->getPlan($token, $planId)['alert']['kind'] ?? null, 'rien écrit : l\'alerte reste');
+        $this->scopeGucToClub($owner->getId());
+        $seen = self::getContainer()->get(EntityManagerInterface::class)->getConnection()->fetchAssociative(
+            'SELECT alert_seen_kind, alert_seen_date FROM schedule_plan WHERE id = :id',
+            ['id' => $planId],
+        );
+        self::assertSame(['alert_seen_kind' => null, 'alert_seen_date' => null], $seen, 'rien écrit : aucune vue posée sur le plan du propriétaire');
     }
 
     /** Un type d'alerte inconnu est refusé 422, message en clair, rien écrit. */

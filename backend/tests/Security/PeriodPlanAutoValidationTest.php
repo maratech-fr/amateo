@@ -431,7 +431,8 @@ final class PeriodPlanAutoValidationTest extends WebTestCase
         self::assertResponseIsSuccessful('Rouvrir un plan auto-validé');
         $reopened = $this->getPlan($token, $planId);
         self::assertFalse($reopened['autoValidated'] ?? null, 'rouvert : plus de marque');
-        self::assertNull($reopened['alert'] ?? 'absent', 'rouvert : plus d\'alerte');
+        self::assertArrayHasKey('alert', $reopened, 'le champ alert est servi');
+        self::assertNull($reopened['alert'], 'rouvert : plus d\'alerte');
 
         $this->sweep($club, '2026-12-29');
         self::assertNull($this->decorChosenOf($club->getId(), $planId), 'rouvert : l\'auto ne revalide jamais');
