@@ -720,7 +720,7 @@ describe("résolution des conflits (P4-207) — l'écriture rafraîchit le radar
 });
 
 describe("useExportFixturesPdf — un échec se dit, sans exposer le serveur", () => {
-  const input = { from: "2026-11-09", to: "2026-11-15", teamId: null };
+  const input = { from: "2026-11-09", to: "2026-11-15", teamId: null, homeOnly: false, groupBy: "team" as const };
 
   it("un succès télécharge le fichier sous le nom demandé", async () => {
     const blob = new Blob(["%PDF"]);

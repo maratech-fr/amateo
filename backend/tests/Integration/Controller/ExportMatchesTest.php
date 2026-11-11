@@ -145,7 +145,7 @@ final class ExportMatchesTest extends WebTestCase
         self::assertSame([], $this->workerPayloads, 'le mur refuse avant le worker');
     }
 
-    public function testTheDocumentCarriesTheMatchAndIsPortrait(): void
+    public function testTheDocumentCarriesTheMatchAndIsLandscape(): void
     {
         $ctx = $this->seedClub();
         $this->matchIn($ctx, 'Les Lions');
@@ -154,7 +154,78 @@ final class ExportMatchesTest extends WebTestCase
         $this->export($ctx['user'], $this->november());
 
         self::assertStringContainsString('Les Lions', (string) ($this->workerPayloads[0]['html'] ?? ''));
-        self::assertFalse($this->workerPayloads[0]['landscape'] ?? null);
+        self::assertTrue($this->workerPayloads[0]['landscape'] ?? null);
+    }
+
+    /** Sans les deux options, le document reste celui d'avant : par équipe, domicile et extérieur. */
+    public function testWithoutTheNewOptionsTheDocumentIsGroupedByTeamWithEveryMatch(): void
+    {
+        $ctx = $this->seedClub();
+        $this->matchIn($ctx, 'Adversaire reçu', homeAway: FixtureHomeAway::HOME);
+        $this->matchIn($ctx, 'Adversaire visité');
+        $this->workerWrites();
+
+        $this->export($ctx['user'], $this->november());
+
+        self::assertResponseStatusCodeSame(200);
+        $html = (string) ($this->workerPayloads[0]['html'] ?? '');
+        self::assertStringContainsString('Adversaire reçu', $html);
+        self::assertStringContainsString('Adversaire visité', $html);
+        self::assertStringContainsString('<th>Date</th>', $html);
+    }
+
+    public function testHomeOnlyKeepsOnlyTheHomeMatches(): void
+    {
+        $ctx = $this->seedClub();
+        $this->matchIn($ctx, 'Adversaire reçu', homeAway: FixtureHomeAway::HOME);
+        $this->matchIn($ctx, 'Adversaire visité');
+        $this->workerWrites();
+
+        $this->export($ctx['user'], ['homeOnly' => true] + $this->november());
+
+        self::assertResponseStatusCodeSame(200);
+        $html = (string) ($this->workerPayloads[0]['html'] ?? '');
+        self::assertStringContainsString('Adversaire reçu', $html);
+        self::assertStringNotContainsString('Adversaire visité', $html);
+    }
+
+    public function testTheDayGroupingReachesTheDocument(): void
+    {
+        $ctx = $this->seedClub();
+        $this->matchIn($ctx, 'Les Lions');
+        $this->workerWrites();
+
+        $this->export($ctx['user'], ['groupBy' => 'day'] + $this->november());
+
+        self::assertResponseStatusCodeSame(200);
+        self::assertStringContainsString('<th>Équipe</th>', (string) ($this->workerPayloads[0]['html'] ?? ''));
+    }
+
+    public function testAnUnknownGroupingIs422AndCostsNothing(): void
+    {
+        $ctx = $this->seedClub();
+        $this->workerWrites();
+
+        $this->export($ctx['user'], ['groupBy' => 'venue'] + $this->november());
+
+        self::assertResponseStatusCodeSame(422);
+        self::assertSame('Regroupement invalide.', $this->errorBody());
+        self::assertSame(0, $this->creditsOf($ctx['club']));
+        self::assertSame([], $this->workerPayloads);
+    }
+
+    /** Décision fondateur (m2) : une option mal formée est refusée, jamais lue comme « tout le club ». */
+    public function testANonBooleanHomeOnlyIs422AndCostsNothing(): void
+    {
+        $ctx = $this->seedClub();
+        $this->workerWrites();
+
+        $this->export($ctx['user'], ['homeOnly' => '1'] + $this->november());
+
+        self::assertResponseStatusCodeSame(422);
+        self::assertSame('Option « à domicile seulement » invalide.', $this->errorBody());
+        self::assertSame(0, $this->creditsOf($ctx['club']));
+        self::assertSame([], $this->workerPayloads);
     }
 
     public function testATeamScopeLeavesOtherTeamsOut(): void
@@ -429,7 +500,7 @@ final class ExportMatchesTest extends WebTestCase
     }
 
     /** @param array{club: Club, season: Season, team: Team} $ctx */
-    private function matchIn(array $ctx, string $opponent, ?Team $team = null): void
+    private function matchIn(array $ctx, string $opponent, ?Team $team = null, FixtureHomeAway $homeAway = FixtureHomeAway::AWAY): void
     {
         $this->scopeGucToClub($ctx['club']->getId());
         $fixture = new Fixture;
@@ -437,7 +508,7 @@ final class ExportMatchesTest extends WebTestCase
         $fixture->setSeasonId($ctx['season']->getId());
         $fixture->setTeamId(($team ?? $ctx['team'])->getId());
         $fixture->setMatchDate(new DateTimeImmutable($this->year . '-11-14'));
-        $fixture->setHomeAway(FixtureHomeAway::AWAY);
+        $fixture->setHomeAway($homeAway);
         $fixture->setOpponentLabel($opponent);
         $this->em->persist($fixture);
         $this->em->flush();

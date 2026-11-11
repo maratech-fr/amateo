@@ -5,6 +5,7 @@ import { NavLink, Outlet, useLocation } from "react-router";
 
 import { HelpButton } from "@/shared/components/ui/help-button";
 import { PageHeader } from "@/shared/components/ui/page-header";
+import { frDateSlashed } from "@/shared/lib/date";
 import { cn } from "@/shared/lib/utils";
 import { useSocleValidated } from "@/shared/lib/socle";
 
@@ -14,7 +15,7 @@ import { composeActiveFilters, composeDisplayedRange } from "./lib/feedbackConte
 import { listPhases } from "./lib/phaseView";
 import { MATCHES_HELP_LABEL, MATCHES_HELP_TRIGGER, MATCHES_TAB_HELP, MATCHES_TAB_LABEL, activeMatchesTab } from "./lib/screenHelp";
 import { pendingReviewCount } from "./lib/reviewQueue";
-import { useConflicts, useFixtures, useModuleVisit } from "./queries";
+import { useConflicts, useFixtures, useLatestFbiIngestion, useModuleVisit } from "./queries";
 import { useMatchesStore } from "./store";
 import { MATCHES_TEXTS } from "./texts";
 
@@ -89,6 +90,12 @@ export function MatchesLayout() {
   const activeFilters = composeActiveFilters({ filterMode, filterIds, consultKinds, consultFamilies, consultAway });
   const displayedRange = composeDisplayedRange({ temporality: consultTemporality, weekendKey: selectedWeekend, month: consultMonth, phaseLabel });
 
+  // Le titre date le dernier DÉPÔT de fichier FBI au jour du club (`depositedDate`, servi par le
+  // serveur) — cache partagé avec Importer/Calendrier, invalidé après chaque import. Fail-open :
+  // aucun dépôt, lecture en cours ou en échec → « Matchs ».
+  const latestDeposit = useLatestFbiIngestion().data?.latest ?? null;
+  const pageTitle = null !== latestDeposit ? MATCHES_TEXTS.pageTitleWithImport(frDateSlashed(latestDeposit.depositedDate)) : MATCHES_TEXTS.pageTitle;
+
   // Matchs verrouillés tant que le plan de saison ne pointe pas une version
   // (état cockpit 2) — même condition que le SocleGuard côté serveur. Le garde
   // couvre LES DEUX espaces puisqu'il enveloppe l'Outlet.
@@ -99,7 +106,7 @@ export function MatchesLayout() {
     return (
       <div className="flex flex-col gap-4">
         <PageHeader
-          title={MATCHES_TEXTS.pageTitle}
+          title={pageTitle}
           screen={pathname}
           screenLabel={MATCHES_TEXTS.screenContext(MATCHES_TAB_LABEL[activeMatchesTab(pathname)])}
           activeFilters={activeFilters}
@@ -126,7 +133,7 @@ export function MatchesLayout() {
           courant) — un seul, en tête du module, à la place du bouton discret d'antan qui ne
           vivait que sur le Calendrier. */}
       <PageHeader
-        title={MATCHES_TEXTS.pageTitle}
+        title={pageTitle}
         screen={pathname}
         screenLabel={MATCHES_TEXTS.screenContext(MATCHES_TAB_LABEL[activeMatchesTab(pathname)])}
         activeFilters={activeFilters}

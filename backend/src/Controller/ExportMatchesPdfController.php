@@ -57,6 +57,17 @@ final class ExportMatchesPdfController extends AbstractController
             return $this->json(['error' => 'Plage de dates invalide.'], Response::HTTP_UNPROCESSABLE_ENTITY);
         }
 
+        // Option absente (ou `null`) : le document d'avant. Une valeur mal formée est refusée, jamais
+        // lue comme « tout le club ».
+        $homeOnly = $body['homeOnly'] ?? false;
+        if (!\is_bool($homeOnly)) {
+            return $this->json(['error' => 'Option « à domicile seulement » invalide.'], Response::HTTP_UNPROCESSABLE_ENTITY);
+        }
+        $groupBy = $body['groupBy'] ?? 'team';
+        if ('team' !== $groupBy && 'day' !== $groupBy) {
+            return $this->json(['error' => 'Regroupement invalide.'], Response::HTTP_UNPROCESSABLE_ENTITY);
+        }
+
         $team = null;
         $teamId = $body['teamId'] ?? null;
         if (null !== $teamId) {
@@ -70,7 +81,7 @@ final class ExportMatchesPdfController extends AbstractController
         }
 
         try {
-            $bytes = $this->pdfGenerator->generate($this->exportData->load($clubId, $season, $from, $to, $team));
+            $bytes = $this->pdfGenerator->generate($this->exportData->load($clubId, $season, $from, $to, $team, $homeOnly, $groupBy));
         } catch (RuntimeException $e) {
             $this->logger->error('Export des matchs : rendu PDF en échec.', ['exception' => $e]);
 

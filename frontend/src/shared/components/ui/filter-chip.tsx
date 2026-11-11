@@ -25,7 +25,7 @@ export function FilterChip({
 }: {
   pressed: boolean;
   onPress: () => void;
-  /** Compteur affiché en fin de puce ; `undefined` = aucun compteur. `0` s'affiche en sourdine. */
+  /** Compteur affiché en fin de puce ; `undefined` = aucun compteur. `0` s'affiche en sourdine (puce non pressée seulement). */
   count?: number;
   /** Élément d'icône rendu en tête (l'appelant en fixe les classes : `size-3.5`, `aria-hidden`). */
   icon?: ReactNode;
@@ -42,7 +42,9 @@ export function FilterChip({
     >
       {icon}
       {children}
-      {undefined !== count ? <span className={cn("tabular-nums text-xs", 0 === count ? "text-muted-foreground" : undefined)}>{count}</span> : null}
+      {/* Un 0 se met en sourdine sur la puce NON pressée seulement : sur le fond accent plein de la
+          puce pressée, le gris sourdine tombe sous 1,2:1 — le compteur y garde la couleur du texte. */}
+      {undefined !== count ? <span className={cn("tabular-nums text-xs", 0 === count && !pressed ? "text-muted-foreground" : undefined)}>{count}</span> : null}
     </Button>
   );
 }

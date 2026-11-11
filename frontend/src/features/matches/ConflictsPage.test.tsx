@@ -43,6 +43,11 @@ vi.mock("@/shared/session/queries", () => {
 
 const compState = vi.hoisted(() => ({ competitions: [] as unknown[] }));
 
+// Le « gardien » (delta de visite) : par défaut une première visite muette ; B1 pilote les
+// empreintes des conflits neufs, ou une lecture jamais résolue (`pending`).
+const FIRST_VISIT = { firstVisit: true, newFixturesCount: 0, newConflictFingerprints: [] as string[], planningChanged: false, referenceTakenAt: "2026-10-01T10:00:00+00:00" };
+const visitState = vi.hoisted(() => ({ delta: null as unknown, pending: false }));
+
 vi.mock("./api", () => ({
   getConflicts: vi.fn(() =>
     Promise.resolve({ clubId: "c", seasonId: "s", seasonPlanChosen: true, conflicts: state.conflicts, held: state.held, ...(undefined === state.coachMailing ? {} : { coachMailing: state.coachMailing }) }),
@@ -72,7 +77,7 @@ vi.mock("./api", () => ({
       { id: "fx-2", teamId: "team-2", seasonId: "s", competitionId: null, matchDate: "2026-10-03", homeAway: "HOME", opponentLabel: "Adv", status: "PLACED", venueId: "venue-1", kickoffTime: "18:00", externalRef: null, fbiVenueLabel: null, placementSource: "MANUAL", unplacedReason: null, neutralGround: false, reviewState: "NEW", reviewedAt: null, pendingDeviations: [], ffbbRencontreId: null, opponentOrganismeCode: null, opponentTeamKey: null, suggestedVenueId: null },
     ]),
   ),
-  postModuleVisit: vi.fn(() => Promise.resolve({ firstVisit: true, newFixturesCount: 0, newConflictFingerprints: [], planningChanged: false, referenceTakenAt: "2026-10-01T10:00:00+00:00" })),
+  postModuleVisit: vi.fn(() => (visitState.pending ? new Promise(() => undefined) : Promise.resolve(visitState.delta))),
 }));
 
 // Sonde de destination : « Voir la semaine » navigue vers /matchs ; on LIT la query de
@@ -109,6 +114,8 @@ beforeEach(() => {
   state.held = [];
   state.coachMailing = DEFAULT_COACH_MAILING;
   compState.competitions = [];
+  visitState.delta = FIRST_VISIT;
+  visitState.pending = false;
   meState.role = "admin";
   meState.isDemo = false;
   meState.seasonReadonly = false;
@@ -496,7 +503,7 @@ describe("ConflictsPage — traitement des conflits (P4-207)", () => {
     expect(screen.getByRole("button", { name: "Traiter le conflit" })).toBeInTheDocument();
   });
 
-  it("groupe Traitement : les 4 puces avec compteurs FIXES saison, un compteur à 0 en sourdine", async () => {
+  it("groupe Traitement : les 4 puces avec compteurs FIXES saison, un compteur à 0 lisible sur la puce pressée", async () => {
     state.conflicts = [
       { type: "MATCH_MATCH", severity: 3, coachId: "coach-1", fingerprint: "fp-open", resolution: null, left: side("fx-1", "team-1"), right: side("fx-2", "team-2") },
       { type: "MATCH_TRAINING", severity: 5, coachId: "coach-1", fingerprint: "fp-treated", resolution: { status: "RESOLVED_INTERNALLY", note: null, updatedAt: "2026-10-03T20:45:00+02:00" }, fixture: side("fx-1", "team-1"), training },
@@ -506,9 +513,12 @@ describe("ConflictsPage — traitement des conflits (P4-207)", () => {
     for (const label of ["À traiter", "Dérogation demandée", "Réglé en interne", "Sans solution pour l'instant"]) {
       expect(within(treatment).getByRole("button", { name: new RegExp(label) })).toBeInTheDocument();
     }
-    // 1 à traiter, 1 réglé en interne, 0 dérogation (en sourdine).
+    // 1 à traiter, 1 réglé en interne, 0 dérogation. Puces pressées d'office : le 0 garde la couleur
+    // du texte sur le fond accent plein (la sourdine ne vaut que pour une puce non pressée).
     expect(within(within(treatment).getByRole("button", { name: /À traiter/ })).getByText("1")).not.toHaveClass("text-muted-foreground");
-    expect(within(within(treatment).getByRole("button", { name: /Dérogation demandée/ })).getByText("0")).toHaveClass("text-muted-foreground");
+    const derogation = within(treatment).getByRole("button", { name: /Dérogation demandée/ });
+    expect(derogation).toHaveAttribute("aria-pressed", "true");
+    expect(within(derogation).getByText("0")).not.toHaveClass("text-muted-foreground");
   });
 
   it("le filtre « domicile » masque un COMPETITION_INCOMPLETE (aucun côté)", async () => {
@@ -527,16 +537,18 @@ describe("ConflictsPage — traitement des conflits (P4-207)", () => {
     expect(screen.queryByRole("button", { name: /Autres conflits/ })).not.toBeInTheDocument();
   });
 
-  it("une famille entièrement traitée garde sa chip, compteur ouverts 0 en sourdine", async () => {
+  it("une famille entièrement traitée garde sa chip, compteur ouverts 0 lisible sur la puce pressée", async () => {
     state.conflicts = [
       { type: "MATCH_MATCH", severity: 3, coachId: "coach-1", fingerprint: "fp-o", resolution: null, left: side("fx-1", "team-1"), right: side("fx-2", "team-2") },
       { type: "MATCH_TRAINING", severity: 5, coachId: "coach-1", fingerprint: "fp-t", resolution: { status: "RESOLVED_INTERNALLY", note: null, updatedAt: "2026-10-03T20:45:00+02:00" }, fixture: side("fx-1", "team-1"), training },
     ];
     renderAt();
-    // La famille « Match × entraînement » est TOUTE traitée : sa chip reste, à 0 en sourdine.
+    // La famille « Match × entraînement » est TOUTE traitée : sa chip reste, à 0. Pressée d'office,
+    // son 0 garde la couleur du texte sur le fond accent plein (sourdine = puce non pressée seulement).
     const chip = await screen.findByRole("button", { name: /Match × entraînement/ });
+    expect(chip).toHaveAttribute("aria-pressed", "true");
     const zero = within(chip).getByText("0");
-    expect(zero).toHaveClass("text-muted-foreground");
+    expect(zero).not.toHaveClass("text-muted-foreground");
     // La famille « Personne en double » garde son compte ouvert (1), non muet.
     expect(within(screen.getByRole("button", { name: /Personne en double/ })).getByText("1")).not.toHaveClass("text-muted-foreground");
   });
@@ -776,5 +788,100 @@ describe("ConflictsPage — envoyer les conflits aux coachs : où la page pose l
     expect(screen.getByText(MAIL.statusLine({ date: "03/11/2026", time: "14:32", sender: "Nadia", mailedCount: 2, skippedNames: [] }))).toBeInTheDocument();
     expectGreyed(button);
     expect(button).toHaveAccessibleDescription(MAIL.disabledNothingToSend);
+  });
+});
+
+// B1 — « N nouveaux conflits » du bandeau mène ici avec `?nouveaux=1` : seuls les conflits dont
+// l'empreinte est neuve depuis la dernière visite (le delta du « gardien »), filtre porté par
+// l'adresse seulement. Le lien FAIT FOI : il remet « domicile seulement » à non pour la session,
+// pour que le compte affiché soit celui du bandeau (extérieurs compris).
+describe("ConflictsPage — les conflits nouveaux depuis la dernière visite (B1)", () => {
+  // Trois conflits du coach Mara : deux neufs (dont un extérieur/extérieur), un ancien.
+  function seasonWithNewConflicts(): Conflict[] {
+    return [
+      { type: "MATCH_MATCH", severity: 3, resolution: null, coachId: "coach-1", fingerprint: "fp-home", left: side("fx-1", "team-1"), right: side("fx-2", "team-2") },
+      { type: "MATCH_TRAINING", severity: 5, resolution: null, coachId: "coach-1", fingerprint: "fp-old", fixture: side("fx-1", "team-1"), training },
+      {
+        type: "MATCH_MATCH",
+        severity: 3,
+        resolution: null,
+        coachId: "coach-1",
+        fingerprint: "fp-away",
+        left: { ...side("fx-3", "team-1"), homeAway: "AWAY" as const },
+        right: { ...side("fx-4", "team-2"), homeAway: "AWAY" as const },
+      },
+    ];
+  }
+  const NEW_SINCE_VISIT = { ...FIRST_VISIT, firstVisit: false, newConflictFingerprints: ["fp-home", "fp-away"] };
+  const isNewChip = (name: string): boolean => name.startsWith(MATCHES_TEXTS.newConflictsChip);
+
+  beforeEach(() => {
+    state.conflicts = seasonWithNewConflicts();
+    visitState.delta = NEW_SINCE_VISIT;
+  });
+
+  it("sans ?nouveaux : la puce « Nouveaux » porte le compte des neufs, non pressée, et tout reste listé", async () => {
+    renderAt();
+    const chip = await screen.findByRole("button", { name: isNewChip });
+    expect(chip).toHaveAttribute("aria-pressed", "false");
+    expect(chip).toHaveTextContent("2");
+    expect(screen.getByRole("button", { name: /Mara · 3/ })).toBeInTheDocument();
+  });
+
+  it("?nouveaux=1 : seuls les conflits neufs, puce pressée", async () => {
+    renderAt("/matchs/conflits?nouveaux=1");
+    expect(await screen.findByRole("button", { name: /Mara · 2/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: isNewChip })).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("presser la puce ne garde que les neufs ; la relâcher rend tout", async () => {
+    const user = userEvent.setup();
+    renderAt();
+    await user.click(await screen.findByRole("button", { name: isNewChip }));
+    expect(await screen.findByRole("button", { name: /Mara · 2/ })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: isNewChip }));
+    expect(await screen.findByRole("button", { name: /Mara · 3/ })).toBeInTheDocument();
+  });
+
+  it("aucun conflit neuf et pas de ?nouveaux : pas de puce", async () => {
+    visitState.delta = { ...NEW_SINCE_VISIT, newConflictFingerprints: [] };
+    renderAt();
+    await screen.findByRole("button", { name: /Mara · 3/ });
+    await waitFor(() => expect(matchesApi.postModuleVisit).toHaveBeenCalled());
+    expect(screen.queryByRole("button", { name: isNewChip })).not.toBeInTheDocument();
+  });
+
+  it("visite pas encore résolue : pas de puce, rien n'est filtré", async () => {
+    visitState.pending = true;
+    renderAt();
+    expect(await screen.findByRole("button", { name: /Mara · 3/ })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: isNewChip })).not.toBeInTheDocument();
+  });
+
+  it("?nouveaux=1 remet « domicile seulement » à non pour la session : l'extérieur neuf est listé", async () => {
+    useMatchesStore.setState({ conflictsHomeOnly: true });
+    renderAt("/matchs/conflits?nouveaux=1");
+    expect(await screen.findByRole("button", { name: /Mara · 2/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^Tous/ })).toHaveAttribute("aria-pressed", "true");
+    expect(useMatchesStore.getState().conflictsHomeOnly).toBe(false);
+  });
+
+  it("?nouveaux=1 sans conflit neuf : l'état vide le dit, et « Voir tous les conflits » rend tout", async () => {
+    const user = userEvent.setup();
+    visitState.delta = { ...NEW_SINCE_VISIT, newConflictFingerprints: [] };
+    renderAt("/matchs/conflits?nouveaux=1");
+    expect(await screen.findByText(MATCHES_TEXTS.noNewConflicts)).toBeInTheDocument();
+    expect(screen.getByText(MATCHES_TEXTS.noNewConflictsHint)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: MATCHES_TEXTS.showAllConflicts }));
+    expect(await screen.findByRole("button", { name: /Mara · 3/ })).toBeInTheDocument();
+  });
+
+  it("?nouveaux=1 compte comme un filtre posé : « Réinitialiser » rend tous les conflits", async () => {
+    const user = userEvent.setup();
+    renderAt("/matchs/conflits?nouveaux=1");
+    await screen.findByRole("button", { name: /Mara · 2/ });
+    await user.click(screen.getByRole("button", { name: "Réinitialiser" }));
+    expect(await screen.findByRole("button", { name: /Mara · 3/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: isNewChip })).toHaveAttribute("aria-pressed", "false");
   });
 });

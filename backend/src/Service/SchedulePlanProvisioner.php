@@ -12,6 +12,7 @@ use App\Entity\SharedTrainingBlock;
 use App\Entity\SharedTrainingBlockTeam;
 use App\Enum\SchedulePlanType;
 use App\Repository\ImplicitRuleSettingRepository;
+use App\Support\FrenchDate;
 use DateTimeImmutable;
 use Doctrine\DBAL\ArrayParameterType;
 use Doctrine\DBAL\Types\Types;
@@ -1243,20 +1244,7 @@ final class SchedulePlanProvisioner
             && 6 === (int) $start->diff($end)->days;
 
         return $isFullWeek
-            ? 'Semaine du ' . $this->frenchDate($start)
-            : 'du ' . $this->frenchDate($start) . ' au ' . $this->frenchDate($end);
-    }
-
-    /**
-     * « 17 août 2026 », et « 1er septembre 2026 » le premier du mois. Table locale plutôt
-     * qu'`IntlDateFormatter` : ext-intl n'est pas une dépendance du projet, et ces noms de
-     * mois ne bougeront jamais.
-     */
-    private function frenchDate(DateTimeImmutable $date): string
-    {
-        $months = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
-        $day = (int) $date->format('j');
-
-        return (1 === $day ? '1er' : (string) $day) . ' ' . $months[(int) $date->format('n') - 1] . ' ' . $date->format('Y');
+            ? 'Semaine du ' . FrenchDate::long($start)
+            : 'du ' . FrenchDate::long($start) . ' au ' . FrenchDate::long($end);
     }
 }

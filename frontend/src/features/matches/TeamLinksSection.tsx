@@ -177,7 +177,7 @@ function EditableLinks<T extends TeamLike>({
               {TEXTS.training}
               <Select
                 aria-label={TEXTS.intensityAria(teamName(link.teamAId), teamName(link.teamBId))}
-                wrapperClassName="w-32"
+                wrapperClassName="w-44"
                 value={link.trainingIntensity}
                 disabled={updateLink.isPending}
                 onChange={(e) => updateLink.mutate({ link, input: { trainingIntensity: e.target.value as TeamLinkIntensity } })}

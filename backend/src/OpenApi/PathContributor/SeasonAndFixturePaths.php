@@ -112,6 +112,7 @@ final readonly class SeasonAndFixturePaths implements CustomPathContributor
                     'properties' => [
                         'latest' => ['type' => 'object', 'nullable' => true, 'properties' => [
                             'depositedAt' => ['type' => 'string', 'format' => 'date-time'],
+                            'depositedDate' => ['type' => 'string', 'format' => 'date', 'description' => 'Civil day of the deposit in the club timezone (Y-m-d)'],
                             'source' => ['type' => 'string', 'enum' => ['FBI_XLSX', 'FFBB_API']],
                             'created' => ['type' => 'integer'],
                             'updated' => ['type' => 'integer'],
@@ -553,7 +554,7 @@ final readonly class SeasonAndFixturePaths implements CustomPathContributor
                 '401' => new Response('Unauthorized (missing/expired JWT)'),
                 '403' => new Response('Free credits exhausted on the Découverte plan'),
                 '404' => new Response('Team not found in this club and season'),
-                '422' => new Response('Invalid range (a bound is not a date, or from is after to)'),
+                '422' => new Response('Invalid range (a bound is not a date, or from is after to), homeOnly not a boolean, or unknown groupBy'),
                 '429' => new Response('Club quota reached for this export'),
                 '502' => new Response('The PDF could not be rendered; no credit is consumed'),
             ],
@@ -565,6 +566,8 @@ final readonly class SeasonAndFixturePaths implements CustomPathContributor
                     'from' => ['type' => 'string', 'format' => 'date', 'description' => 'First day (AAAA-MM-JJ), inclusive'],
                     'to' => ['type' => 'string', 'format' => 'date', 'description' => 'Last day (AAAA-MM-JJ), inclusive'],
                     'teamId' => ['type' => 'string', 'nullable' => true, 'description' => 'One team; null = the whole club'],
+                    'homeOnly' => ['type' => 'boolean', 'nullable' => true, 'description' => 'Only the matches received at home (away and neutral ground left out); absent = every match'],
+                    'groupBy' => ['type' => 'string', 'enum' => ['team', 'day'], 'nullable' => true, 'description' => 'One page per team (default) or one page per ISO week, matches listed day by day'],
                 ],
             ]),
         )));

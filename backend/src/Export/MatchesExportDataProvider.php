@@ -42,7 +42,7 @@ final readonly class MatchesExportDataProvider
         private LogoStorage $logoStorage,
     ) {}
 
-    public function load(string $clubId, Season $season, DateTimeImmutable $from, DateTimeImmutable $to, ?Team $team): MatchesExportData
+    public function load(string $clubId, Season $season, DateTimeImmutable $from, DateTimeImmutable $to, ?Team $team, bool $homeOnly = false, string $groupBy = 'team'): MatchesExportData
     {
         $club = $this->entityManager->getRepository(Club::class)->find($clubId);
         if (!$club instanceof Club) {
@@ -65,6 +65,7 @@ final readonly class MatchesExportDataProvider
         }
 
         $sections = [];
+        $allRows = [];
         foreach ($this->teamsToPrint($clubId, $seasonId, $team) as $printed) {
             $teamFixtures = $fixturesByTeam[$printed->getId()] ?? [];
             usort($teamFixtures, $this->compareByDateThenKickoff(...));
@@ -72,6 +73,10 @@ final readonly class MatchesExportDataProvider
             $rows = [];
             foreach ($teamFixtures as $fixture) {
                 $where = $this->whereOf($fixture);
+                // « À domicile seulement » : reçu chez nous — un terrain neutre n'en est pas.
+                if ($homeOnly && 'home' !== $where) {
+                    continue;
+                }
                 $competitionId = $fixture->getCompetitionId();
                 $friendly = null === $competitionId || isset($friendlyCompetitionIds[$competitionId]);
                 $place = match ($where) {
@@ -89,9 +94,11 @@ final readonly class MatchesExportDataProvider
                     friendly: $friendly,
                     where: $where,
                     place: $place,
+                    teamName: $printed->getName(),
                 );
             }
             $sections[] = new MatchesExportTeamSection(teamName: $printed->getName(), rows: $rows);
+            array_push($allRows, ...$rows);
         }
 
         return new MatchesExportData(
@@ -104,7 +111,42 @@ final readonly class MatchesExportDataProvider
             teamScopeName: $team?->getName(),
             hasTravel: $hasTravel,
             sections: $sections,
+            homeOnly: $homeOnly,
+            groupBy: 'day' === $groupBy ? 'day' : 'team',
+            weeks: 'day' === $groupBy ? $this->weeksOf($allRows) : [],
         );
+    }
+
+    /**
+     * Regroupement par jour : une semaine ISO (lundi → dimanche) par page, ses jours dans l'ordre,
+     * et dans un jour l'heure d'abord (inconnue en dernier) puis le nom de l'équipe. Un jour sans
+     * match n'apparaît pas.
+     *
+     * @param list<MatchesExportRow> $rows
+     *
+     * @return list<MatchesExportWeekSection>
+     */
+    private function weeksOf(array $rows): array
+    {
+        usort($rows, static fn (MatchesExportRow $a, MatchesExportRow $b): int => [$a->date->format('Y-m-d'), null === $a->kickoff, $a->kickoff] <=> [$b->date->format('Y-m-d'), null === $b->kickoff, $b->kickoff]
+            ?: FrenchNameOrder::compare($a->teamName, $b->teamName));
+
+        /** @var array<string, array<string, list<MatchesExportRow>>> $byWeekThenDay */
+        $byWeekThenDay = [];
+        foreach ($rows as $row) {
+            $byWeekThenDay[$row->date->format('o-\WW')][$row->date->format('Y-m-d')][] = $row;
+        }
+
+        $weeks = [];
+        foreach ($byWeekThenDay as $isoWeek => $days) {
+            $daySections = [];
+            foreach ($days as $dayRows) {
+                $daySections[] = new MatchesExportDaySection(date: $dayRows[0]->date, rows: $dayRows);
+            }
+            $weeks[] = new MatchesExportWeekSection(isoWeek: (string) $isoWeek, days: $daySections);
+        }
+
+        return $weeks;
     }
 
     private function compareByDateThenKickoff(Fixture $a, Fixture $b): int

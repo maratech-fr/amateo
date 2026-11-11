@@ -409,6 +409,23 @@ final class FixtureApiTest extends WebTestCase
         self::assertSame('Gymnase Matéo n\'a pas d\'accès match le mercredi 25 novembre. Choisissez un autre gymnase, ou ouvrez-le ce jour-là depuis le panneau du match.', $this->firstViolation());
     }
 
+    /** Le premier du mois s'écrit « 1er » dans les deux refus d'accès match, comme dans le PDF et l'e-mail. Le 01/12/2026 est un mardi. */
+    public function testTheAccessRefusalsWriteTheFirstOfTheMonthAsPremier(): void
+    {
+        $this->persistVenue();
+        $competitionId = $this->createCompetition();
+        $this->persistMatchWindow(6, '14:00', '18:00');
+
+        $this->post($this->competitionBody($competitionId, '2026-12-01', '19:00'));
+        self::assertResponseStatusCodeSame(422);
+        self::assertSame('Gymnase Matéo n\'a pas d\'accès match le mardi 1er décembre. Choisissez un autre gymnase, ou ouvrez-le ce jour-là depuis le panneau du match.', $this->firstViolation());
+
+        $this->persistMatchWindow(2, '18:00', '22:00');
+        $this->post($this->competitionBody($competitionId, '2026-12-01', '16:00'));
+        self::assertResponseStatusCodeSame(422);
+        self::assertSame('Coup d\'envoi hors des accès match de Gymnase Matéo le mardi 1er décembre (18:00 – 22:00). Choisissez une heure dans ces plages, ou ouvrez-le ce jour-là depuis le panneau du match.', $this->firstViolation());
+    }
+
     public function testAnOpeningNeverLiftsACalendarClosure(): void
     {
         // Une fermeture du calendrier reste refusée malgré une ouverture, et son message reste le sien

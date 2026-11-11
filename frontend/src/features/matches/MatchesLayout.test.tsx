@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { MatchesLayout } from "./MatchesLayout";
 import { useMatchesStore } from "./store";
+import { MATCHES_TEXTS } from "./texts";
 
 // Le socle est validé quand le plan de saison pointe une version. Mutable par test
 // pour éprouver le garde sur LES DEUX espaces (RMM-1 PR2 — le garde vit une fois
@@ -25,7 +26,12 @@ const fixturesState = vi.hoisted(() => ({ rows: [] as { reviewState: string; pen
 // P4-207 — les conflits nourrissent le badge de l'onglet Conflits (openConflictCount). Mutable
 // par test pour piloter le compte à traiter.
 const conflictsState = vi.hoisted(() => ({ rows: [] as { type: string; severity: number; resolution: unknown }[], held: [] as { type: string; heldBy: string }[] }));
+// Le titre du module date le dernier dépôt FBI (`latest.depositedDate`, jour du club, `Y-m-d`).
+// Mutable par test : aucun dépôt, un dépôt, ou une lecture en échec.
+const freshness = vi.hoisted(() => ({ latest: null as { depositedAt: string; depositedDate: string; source: "FBI_XLSX"; created: number; updated: number; unchanged: number; deviationsCount: number } | null, fail: false }));
+const getLatestFbiIngestion = vi.hoisted(() => vi.fn());
 vi.mock("./api", () => ({
+  getLatestFbiIngestion,
   postModuleVisit: vi.fn(() => {
     visit.count += 1;
     return Promise.resolve({ firstVisit: true, newFixturesCount: 0, newConflictFingerprints: [], planningChanged: false, referenceTakenAt: "2026-08-24T10:00:00+00:00" });
@@ -61,6 +67,9 @@ beforeEach(() => {
   fixturesState.fail = false;
   conflictsState.rows = [];
   conflictsState.held = [];
+  freshness.latest = null;
+  freshness.fail = false;
+  getLatestFbiIngestion.mockReset().mockImplementation(() => (freshness.fail ? Promise.reject(new Error("boom")) : Promise.resolve({ latest: freshness.latest })));
 });
 
 function renderAt(path: string) {
@@ -159,6 +168,42 @@ describe("MatchesLayout (RMM-1 PR2 — deux espaces)", () => {
     meState.chosen = "s1";
     renderAt("/matchs/configuration");
     expect(screen.getByText("CONFIG")).toBeInTheDocument();
+  });
+});
+
+describe("MatchesLayout — le titre date le dernier import FBI", () => {
+  // Dépôt à 00:30 heure de Paris le 10/11 : l'horodatage du serveur (UTC) dit encore le 09/11. Le
+  // titre lit le jour du club servi par le serveur, jamais l'horodatage tranché par le front.
+  const deposit = (depositedDate: string) => ({ depositedAt: "2026-11-09T23:30:00+00:00", depositedDate, source: "FBI_XLSX" as const, created: 3, updated: 0, unchanged: 0, deviationsCount: 0 });
+
+  it("un dépôt existe → « Matchs - (Dernier import FBI jj/mm/aaaa) », la date venant du jour servi par le serveur", async () => {
+    meState.chosen = "s1";
+    freshness.latest = deposit("2026-11-10");
+    renderAt("/matchs");
+    expect(await screen.findByRole("heading", { level: 1, name: MATCHES_TEXTS.pageTitleWithImport("10/11/2026") })).toBeInTheDocument();
+  });
+
+  it("même titre daté sur le module VERROUILLÉ", async () => {
+    meState.chosen = null;
+    freshness.latest = deposit("2026-11-10");
+    renderAt("/matchs");
+    expect(await screen.findByRole("heading", { level: 1, name: MATCHES_TEXTS.pageTitleWithImport("10/11/2026") })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: MATCHES_TEXTS.lockedTitle })).toBeInTheDocument();
+  });
+
+  it("aucun dépôt (latest null) → « Matchs » seul", async () => {
+    meState.chosen = "s1";
+    renderAt("/matchs");
+    await waitFor(() => expect(getLatestFbiIngestion).toHaveBeenCalled());
+    await waitFor(() => expect(screen.getByRole("heading", { level: 1 })).toHaveAccessibleName(MATCHES_TEXTS.pageTitle));
+  });
+
+  it("lecture en échec → « Matchs » seul (fail-open, jamais un titre à moitié daté)", async () => {
+    meState.chosen = "s1";
+    freshness.fail = true;
+    renderAt("/matchs");
+    await waitFor(() => expect(getLatestFbiIngestion).toHaveBeenCalled());
+    await waitFor(() => expect(screen.getByRole("heading", { level: 1 })).toHaveAccessibleName(MATCHES_TEXTS.pageTitle));
   });
 });
 

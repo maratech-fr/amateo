@@ -32,8 +32,8 @@ import { SeasonSelector } from "./SeasonSelector";
 import { SeasonTransitionBanner } from "./SeasonTransitionBanner";
 
 /**
- * M13 (retours Nico, BCCL 2026-10-27) — « Matchs » était trop discret, caché dans la grappe de
- * droite (Nico ne savait pas que le module existait) : il SORT de cette grappe, prend l'ASPECT d'un
+ * M13 — « Matchs » était trop discret, caché dans la grappe de droite (les gestionnaires ne
+ * savaient pas que le module existait) : il SORT de cette grappe, prend l'ASPECT d'un
  * bouton SECONDAIRE (variante `outline` du système, aucune couleur neuve) et se place SEUL au CENTRE
  * du bandeau pour ressortir : même hauteur que les autres contrôles de l'en-tête, texte franc,
  * alors que le sélecteur de saison à côté reste un menu discret. Il GARDE son rôle de lien (NavLink → `<a>`) et son état actif (fond accent sur /matchs).
@@ -51,11 +51,11 @@ import { SeasonTransitionBanner } from "./SeasonTransitionBanner";
  * deux repères sans nom distinct nuiraient au lecteur d'écran — la grappe de droite reste l'unique
  * `<nav>`.
  */
-function NavItem({ to, children }: { to: string; children: string }) {
+function NavItem({ to, children, end = true }: { to: string; children: string; end?: boolean }) {
   return (
     <NavLink
       to={to}
-      end
+      end={end}
       className={({ isActive }) =>
         cn(buttonVariants({ variant: "outline", size: "default" }), "px-2.5 font-semibold md:px-5", isActive ? "bg-accent text-accent-foreground hover:bg-accent-hover" : "text-foreground hover:bg-muted")
       }
@@ -141,7 +141,10 @@ export function AppLayout() {
               same condition the server enforces (SocleGuard). */}
           <div className="flex shrink-0 items-center">
             {null != data?.seasonPlan?.chosenScheduleId ? (
-              <NavItem to="/matchs">Matchs</NavItem>
+              // `end={false}` : « Matchs » reste la page courante sur tous ses onglets (/matchs/…).
+              <NavItem to="/matchs" end={false}>
+                Matchs
+              </NavItem>
             ) : (
               // Désactivé mais DÉCOUVRABLE (A11Y-30) : focalisable (`tabIndex=0`), la raison
               // annoncée via `aria-describedby` vers un `<span sr-only>` frère — un `<span>` muet
@@ -153,9 +156,9 @@ export function AppLayout() {
                   tabIndex={0}
                   aria-describedby={matchsLockReasonId}
                   // M13 — mêmes aspect et dimensions de bouton secondaire que l'état débloqué, mais éteint
-                  // (opacité réduite, curseur interdit) ; l'invariant A11Y-30 (focalisable + raison
-                  // annoncée) est préservé.
-                  className={cn(buttonVariants({ variant: "outline", size: "default" }), "cursor-not-allowed px-2.5 font-semibold text-muted-foreground opacity-50 md:px-5")}
+                  // (texte atténué, curseur interdit — sans opacité, qui ferait tomber le contraste) ;
+                  // l'invariant A11Y-30 (focalisable + raison annoncée) est préservé.
+                  className={cn(buttonVariants({ variant: "outline", size: "default" }), "cursor-not-allowed px-2.5 font-semibold text-muted-foreground md:px-5")}
                   title="Validez le planning de saison pour débloquer les matchs"
                 >
                   Matchs

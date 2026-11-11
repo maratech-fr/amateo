@@ -163,7 +163,7 @@ vi.mock("./api", () => ({
   submitFixture,
   reopenFixture: vi.fn(() => Promise.resolve({})),
   postModuleVisit: vi.fn(() => Promise.resolve({ firstVisit: true, newFixturesCount: 0, newConflictFingerprints: [], planningChanged: false, referenceTakenAt: "2026-08-24T10:00:00+00:00" })),
-  getLatestFbiIngestion: vi.fn(() => Promise.resolve({ latest: { depositedAt: "2026-08-20T09:00:00+00:00", source: "FBI_XLSX", created: 10, updated: 2, unchanged: 3, deviationsCount: 0 } })),
+  getLatestFbiIngestion: vi.fn(() => Promise.resolve({ latest: { depositedAt: "2026-08-20T09:00:00+00:00", depositedDate: "2026-08-20", source: "FBI_XLSX", created: 10, updated: 2, unchanged: 3, deviationsCount: 0 } })),
   getOpponentTravel: vi.fn(() => Promise.resolve([])),
   getVenueLabelInventory: vi.fn(() => Promise.resolve([])),
   getFbiCorrections: vi.fn(() => Promise.resolve([])),
@@ -632,7 +632,9 @@ describe("CalendarPage — chips, familles, temporalités (ex-Consulter)", () =>
     expect(screen.getByRole("button", { name: /Collision de gymnase/ })).toBeInTheDocument();
   });
 
-  it("une famille entièrement traitée garde sa chip à 0 en sourdine (P4-207)", async () => {
+  // Puce pressée (toutes les familles le sont d'office) : son 0 garde la couleur du texte, lisible
+  // sur le fond accent plein — la sourdine ne vaut que pour une puce non pressée (FilterChip).
+  it("une famille entièrement traitée garde sa chip à 0, lisible sur la puce pressée (P4-207)", async () => {
     setTodayOverride("2026-10-01");
     vi.mocked(matchesApi.getFixtures).mockResolvedValueOnce(consultFixtures as never);
     vi.mocked(matchesApi.getCompetitions).mockResolvedValueOnce(consultCompetitions as never);
@@ -646,7 +648,8 @@ describe("CalendarPage — chips, familles, temporalités (ex-Consulter)", () =>
     } as never);
     renderWithProviders(<CalendarPage />, { route: EXPLICIT });
     const chip = await screen.findByRole("button", { name: /Collision de gymnase/ });
-    expect(within(chip).getByText("0")).toHaveClass("text-muted-foreground");
+    expect(chip).toHaveAttribute("aria-pressed", "true");
+    expect(within(chip).getByText("0")).not.toHaveClass("text-muted-foreground");
   });
 
   it("le compteur d'une famille suit la SEMAINE affichée (scope hebdo)", async () => {
@@ -1121,7 +1124,9 @@ describe("CalendarPage — export des matchs pour les parents", () => {
     await user.click(screen.getByRole("button", { name: EXPORT_TEXTS.exportButton }));
     const dialog = within(await screen.findByRole("dialog", { name: EXPORT_TEXTS.dialogTitle }));
 
-    expect(dialog.queryByRole("button", { name: (name) => name.includes(EXPORT_TEXTS.teamLabel) })).not.toBeInTheDocument();
+    // Le segment « Équipe » du groupe « Regrouper par » porte le même mot : il est écarté (il vit dans un `group`).
+    const teamTriggers = dialog.queryAllByRole("button", { name: (name) => name.includes(EXPORT_TEXTS.teamLabel) }).filter((button) => null === button.closest('[role="group"]'));
+    expect(teamTriggers).toHaveLength(0);
   });
 });
 

@@ -285,6 +285,17 @@ describe("hasConflictsParams (mémoire de session — l'URL porte-t-elle une cl�
   it("?ouvert seul (lien vers une entrée précise) ⇒ true — décision fondateur", () => {
     expect(hasConflictsParams(new URLSearchParams("ouvert=coach-1"))).toBe(true);
   });
+
+  // B1 — le lien du bandeau (« N nouveaux conflits » → `?nouveaux=1`) FAIT FOI : il seede l'état
+  // Conflits (tous les conflits, « domicile seulement » remis à non pour la session).
+  it("?nouveaux seul (lien du bandeau) ⇒ true — clé de l'état Conflits", () => {
+    expect(hasConflictsParams(new URLSearchParams("nouveaux=1"))).toBe(true);
+  });
+
+  it("les re-synchros de l'état Conflits gardent ?nouveaux dans l'adresse", () => {
+    const next = applyConflictsToParams(new URLSearchParams("nouveaux=1"), { pivot: "coach", families: null, treatments: null, homeOnly: false });
+    expect(next.get("nouveaux")).toBe("1");
+  });
 });
 
 describe("decodeConflictsParams (onglet Conflits, B)", () => {

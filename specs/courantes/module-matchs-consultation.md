@@ -178,7 +178,8 @@ le layout — la nav des onglets reste inchangée.
 
 Le bouton « Exporter » de la barre d'actions du Calendrier (`CalendarPage.tsx`) ouvre
 `ExportMatchesDialog` : **tout le club** ou **une équipe**, **du … au …** (un seul jour = deux
-dates égales), puis « Télécharger le PDF » (`POST /api/fixtures/export-pdf`, rail synchrone,
+dates égales), « Regrouper par » **Équipe | Jour**, case « Matchs à domicile seulement », puis
+« Télécharger le PDF » (`POST /api/fixtures/export-pdf`, rail synchrone,
 `ExportMatchesPdfController`). **Tout membre exporte**, pas seulement le gestionnaire (parité avec
 l'export du planning) ; l'export consomme un crédit selon les règles existantes (Découverte :
 mention dans la fenêtre, bouton désactivé à zéro ; le crédit ne se décompte qu'au 200, donc jamais
@@ -186,12 +187,28 @@ sans fichier livré — `CreditBudgetSubscriber`) et passe par un limiteur dédi
 (60 par heure et par club, distinct du limiteur de l'export du planning). Pré-remplissage de la
 fenêtre : `lib/exportRange.ts` (ce qui est à l'écran — semaine, mois, phase —, sinon le mois en cours).
 
-Le document est un PDF **portrait** (`MatchesPdfGenerator` → worker PDF partagé, fichier supprimé
-dès lu) : en-tête (logo, nom du club, plage, date d'édition), **une partie par équipe** (tout le
-club : les équipes ayant au moins un match dans la saison ; une équipe sans match dans la plage
-imprime « Aucun match sur cette période. »), colonnes Date · Heure · Adversaire · Où · Lieu, sans
-statut, conflit ni coach. Ce qui s'imprime est décidé par `MatchesExportDataProvider` :
+Le document est un PDF **paysage** (`MatchesPdfGenerator` → worker PDF partagé, fichier supprimé
+dès lu), en-tête (logo, nom du club, plage, date d'édition), sans statut, conflit ni coach.
+Corps de requête : `{from, to, teamId?, homeOnly?, groupBy?}` ; `homeOnly` non booléen → 422
+« Option « à domicile seulement » invalide. », `groupBy` autre que `team` | `day` → 422
+« Regroupement invalide. » (aucun crédit dans les deux cas). Titre : « Matchs du … au … », précédé de
+« à domicile » si `homeOnly`, suivi de « — <équipe> » pour une équipe seule. Ce qui s'imprime est
+décidé par `MatchesExportDataProvider` :
 
+- **Par équipe** (défaut) : colonnes Date · Heure · Adversaire · Où · Lieu. Tout le club : les
+  équipes ayant au moins un match dans la saison. **Une page par équipe qui joue sur la plage** ;
+  les équipes sans match sur la plage n'ont pas de page : elles sont listées ensemble, dans un bloc
+  final, avec « Aucun match sur cette période. » (ce bloc ouvre une page seulement s'il suit une
+  équipe avec lignes). Une équipe seule : une page, jamais de coupure.
+- **Par jour** : colonnes Heure · Équipe · Adversaire · Gymnase · Où, un en-tête daté par jour
+  (« Samedi 14 novembre 2026 »), triés par heure (heure inconnue en dernier) puis équipe ; **une
+  page par semaine ISO** (lundi → dimanche, `weeks` du contrat `MatchesExportData`), sans titre de
+  semaine. Une plage sur une seule semaine : une seule page ; les jours sans match n'apparaissent pas.
+- **Coupures de page** : une section plus longue qu'une page continue sur la suivante sans couper
+  une ligne, l'en-tête de colonnes se répète, un en-tête de jour reste avec sa première ligne
+  (règles CSS d'impression de `MatchesPdfGenerator`).
+- **À domicile seulement** : `where = home` ; l'extérieur et le terrain neutre sont écartés. Sans
+  aucun match : « Aucun match à domicile sur cette période. » (les deux regroupements).
 - **Heure « à confirmer »** : heure absente, ou écart fédéral ouvert, ou domicile de championnat
   non validé (un amical, un extérieur et un terrain neutre n'ont rien à faire valider par le club).
   Un match **déjà joué** n'est jamais « à confirmer » (le passé prime), sauf sans heure ; un
@@ -204,6 +221,8 @@ statut, conflit ni coach. Ce qui s'imprime est décidé par `MatchesExportDataPr
 - **Trajet** : à l'extérieur seulement, après l'adresse, avec une légende d'en-tête unique si au
   moins un trajet est imprimé ; un trajet non calculé n'apparaît pas.
 - Crédit de marque en pied de page (même pied que l'export du planning).
+
+Nom de fichier proposé : `matchs-{club|équipe}[-domicile][-par-jour]-{du}-{au}.pdf`.
 
 Limites : `502` sans crédit si le rendu échoue ; les fichiers `matchs-*.pdf` orphelins sont
 purgés au bout d'une heure (`PurgeExportsCommand`). Le format image (Instagram, Facebook) reste à
@@ -221,6 +240,13 @@ gymnase partagé (décision fermée — il fausserait le compte saison de l'ongl
   une entrée précise COMPTE comme une clé), sinon le store (`conflictsTreatments`/
   `conflictsHomeOnly` dans `useMatchesStore`, à côté de `conflictsPivot`/
   `conflictsFamilies`) est gardé et l'adresse se re-synchronise depuis lui.
+- **Nouveautés** : la clé d'adresse `?nouveaux=1` (posée par le lien du bandeau « Depuis votre
+  dernière visite », comptée par `hasConflictsParams`) ne garde que les conflits dont l'empreinte est
+  neuve depuis la dernière visite. **Le lien fait foi** : sans `domicile` dans l'adresse, tous les
+  conflits comptent et le réglage mémorisé « domicile seulement » repasse à non pour la session. Une
+  puce « Nouveaux » (compteur) apparaît quand la visite est résolue ET qu'il y a du neuf, ou que
+  l'adresse la pose ; sans nouveau conflit : « Aucun nouveau conflit. » + bouton « Voir tous les
+  conflits » ; « Réinitialiser » la retire.
 - **Pivot** (`pivotConflicts`, pur — répartit en seaux les lignes déjà servies, ne recalcule rien) :
   coach (défaut) · équipe · gymnase · journée (week-end). Chaque axe porte une sentinelle pour les
   conflits sans ressource résolue (« Autres conflits », « Extérieur », « Sans date »), toujours en

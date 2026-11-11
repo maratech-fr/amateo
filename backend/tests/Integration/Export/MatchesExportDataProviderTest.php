@@ -23,6 +23,7 @@ use App\Export\MatchesExportData;
 use App\Export\MatchesExportDataProvider;
 use App\Export\MatchesExportRow;
 use App\Export\MatchesExportTeamSection;
+use App\Export\MatchesExportWeekSection;
 use App\Repository\FixtureRepository;
 use App\Service\Basketball\VenueLabelNormalizer;
 use App\Service\Geo\IgnRoutingClient;
@@ -368,6 +369,98 @@ final class MatchesExportDataProviderTest extends KernelTestCase
         self::assertNull($data->logoDataUri);
     }
 
+    // ─────────────────── « À domicile seulement » et regroupement par jour (E2) ───────────────────
+
+    /** Domicile = reçu chez nous : un extérieur et un terrain neutre sortent du document. */
+    public function testHomeOnlyKeepsHomeRowsAndLeavesAwayAndNeutralOut(): void
+    {
+        $this->homeMatch('Reçu', '2026-11-14', '15:30', FixtureStatus::PLACED, null);
+        $this->awayMatch('Visité', '2026-11-15', '14:00');
+        $this->neutralMatch('Neutre', '14:00');
+
+        $data = $this->loadFor('2026-11-09', '2026-11-15', homeOnly: true);
+
+        self::assertTrue($data->homeOnly);
+        self::assertSame(['Reçu'], $this->opponentsOf($data->sections[0]->rows));
+    }
+
+    /** Une équipe qui ne joue qu'à l'extérieur garde sa section, vide : le document dit qu'elle ne reçoit pas. */
+    public function testHomeOnlyKeepsATeamWithoutHomeMatchAsAnEmptySection(): void
+    {
+        $this->awayMatch('Visité', '2026-11-15', '14:00');
+
+        $sections = $this->loadFor('2026-11-09', '2026-11-15', homeOnly: true)->sections;
+
+        self::assertCount(1, $sections);
+        self::assertSame([], $sections[0]->rows);
+    }
+
+    public function testEveryRowNamesItsTeam(): void
+    {
+        $this->homeMatch('A', '2026-11-14', '15:30', FixtureStatus::PLACED, null);
+
+        self::assertSame($this->team->getName(), $this->row('A')->teamName);
+    }
+
+    /** Par jour : l'heure d'abord, puis l'équipe ; une heure inconnue passe en dernier. */
+    public function testADayIsSortedByKickoffThenTeamWithUnknownKickoffLast(): void
+    {
+        $alpha = $this->makeTeam('Alpha', 1, 0);
+        $this->homeMatch('U13 à 15:30', '2026-11-14', '15:30', FixtureStatus::PLACED, null);
+        $this->baseFixture($alpha, 'Alpha sans heure', '2026-11-14', FixtureHomeAway::HOME, null);
+        $this->baseFixture($alpha, 'Alpha à 15:30', '2026-11-14', FixtureHomeAway::HOME, '15:30');
+        $this->homeMatch('U13 à 10:00', '2026-11-14', '10:00', FixtureStatus::PLACED, null);
+
+        $data = $this->loadFor('2026-11-14', '2026-11-14', groupBy: 'day');
+
+        self::assertSame('day', $data->groupBy);
+        self::assertCount(1, $data->weeks);
+        self::assertCount(1, $data->weeks[0]->days);
+        self::assertSame(['U13 à 10:00', 'Alpha à 15:30', 'U13 à 15:30', 'Alpha sans heure'], $this->opponentsOf($data->weeks[0]->days[0]->rows));
+    }
+
+    public function testADayWithoutMatchIsAbsent(): void
+    {
+        $this->homeMatch('Samedi', '2026-11-14', '15:30', FixtureStatus::PLACED, null);
+        $this->homeMatch('Lundi', '2026-11-16', '20:00', FixtureStatus::PLACED, null);
+
+        self::assertSame(['2026-11-14', '2026-11-16'], $this->dayDatesOf($this->loadFor('2026-11-14', '2026-11-16', groupBy: 'day')));
+    }
+
+    /** Une semaine ISO va du lundi au dimanche : dimanche 15 et lundi 16 novembre 2026 sont sur deux semaines. */
+    public function testWeeksSplitBetweenSundayAndMonday(): void
+    {
+        $this->homeMatch('Dimanche', '2026-11-15', '15:30', FixtureStatus::PLACED, null);
+        $this->homeMatch('Lundi', '2026-11-16', '20:00', FixtureStatus::PLACED, null);
+
+        $weeks = $this->loadFor('2026-11-15', '2026-11-16', groupBy: 'day')->weeks;
+
+        self::assertSame(['2026-W46', '2026-W47'], array_map(static fn (MatchesExportWeekSection $week): string => $week->isoWeek, $weeks));
+    }
+
+    /** Le 31/12/2026 et le 01/01/2027 sont dans la même semaine ISO, 2026-W53 : une seule page. */
+    public function testNewYearStaysInTheSameIsoWeek(): void
+    {
+        $this->homeMatch('Réveillon', '2026-12-31', '15:30', FixtureStatus::PLACED, null);
+        $this->homeMatch('Jour de l\'an', '2027-01-01', '15:30', FixtureStatus::PLACED, null);
+
+        $weeks = $this->loadFor('2026-12-31', '2027-01-01', groupBy: 'day')->weeks;
+
+        self::assertSame(['2026-W53'], array_map(static fn (MatchesExportWeekSection $week): string => $week->isoWeek, $weeks));
+        self::assertCount(2, $weeks[0]->days);
+    }
+
+    public function testTheDayGroupingHonoursHomeOnly(): void
+    {
+        $this->homeMatch('Reçu', '2026-11-14', '15:30', FixtureStatus::PLACED, null);
+        $this->awayMatch('Visité', '2026-11-14', '14:00');
+
+        $data = $this->loadFor('2026-11-14', '2026-11-14', homeOnly: true, groupBy: 'day');
+
+        self::assertCount(1, $data->weeks);
+        self::assertSame(['Reçu'], $this->opponentsOf($data->weeks[0]->days[0]->rows));
+    }
+
     // ─────────────────── Lecture bornée ───────────────────
 
     public function testTheRepositoryReadIsInclusiveAndScoped(): void
@@ -437,6 +530,44 @@ final class MatchesExportDataProviderTest extends KernelTestCase
             new DateTimeImmutable('2026-11-15'),
             $team,
         );
+    }
+
+    private function loadFor(string $from, string $to, bool $homeOnly = false, string $groupBy = 'team'): MatchesExportData
+    {
+        $this->em->flush();
+
+        return self::getContainer()->get(MatchesExportDataProvider::class)->load(
+            $this->club->getId(),
+            $this->season,
+            new DateTimeImmutable($from),
+            new DateTimeImmutable($to),
+            null,
+            $homeOnly,
+            $groupBy,
+        );
+    }
+
+    /**
+     * @param list<MatchesExportRow> $rows
+     *
+     * @return list<string>
+     */
+    private function opponentsOf(array $rows): array
+    {
+        return array_map(static fn (MatchesExportRow $row): string => $row->opponent, $rows);
+    }
+
+    /** @return list<string> les jours imprimés, toutes semaines confondues */
+    private function dayDatesOf(MatchesExportData $data): array
+    {
+        $dates = [];
+        foreach ($data->weeks as $week) {
+            foreach ($week->days as $day) {
+                $dates[] = $day->date->format('Y-m-d');
+            }
+        }
+
+        return $dates;
     }
 
     private function row(string $opponent): MatchesExportRow

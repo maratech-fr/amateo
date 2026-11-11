@@ -192,6 +192,15 @@ export const MATCHES_TEXTS = {
   importFbiVenuesRemaining: (n: number) => `${n} salle${n > 1 ? "s" : ""} encore sans gymnase — voir l'onglet Salles.`,
   // ── MatchesLayout (en-tête + navigation du module, migré P4-356) ──────────────────────────────
   pageTitle: "Matchs",
+  pageTitleWithImport: (date: string) => `Matchs - (Dernier import FBI ${date})`,
+  // ── ModuleVisitBanner (bandeau « depuis votre dernière visite ») ──────────────────────────────
+  sinceLastVisit: "Depuis votre dernière visite :",
+  // ── ConflictsPage — les conflits nouveaux depuis la dernière visite (`?nouveaux=1`) ───────────
+  newConflictsGroupLabel: "Nouveautés",
+  newConflictsChip: "Nouveaux",
+  noNewConflicts: "Aucun nouveau conflit.",
+  noNewConflictsHint: "Les nouveautés sont comptées depuis votre dernière visite ; après 30 minutes d'absence, le décompte repart de zéro.",
+  showAllConflicts: "Voir tous les conflits",
   screenContext: (tab: string) => `Matchs · ${tab}`,
   lockedTitle: "Matchs verrouillés",
   lockedHint: "Validez d'abord votre planning de saison (accueil → Ouvrir) pour débloquer les matchs.",
