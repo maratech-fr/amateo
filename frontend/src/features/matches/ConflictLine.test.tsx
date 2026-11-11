@@ -608,11 +608,27 @@ describe("ConflictLine — détail par côté (P2-54)", () => {
     expect(group).not.toHaveClass("flex-wrap");
   });
 
-  it("VENUE_OVERLAP : la colonne d'identité ne capte plus tout le vide (pas de w-full → l'espace se répartit)", () => {
+  /**
+   * Promesse : ni l'identité ni Date · Créneau ne sont étranglés. Identité (équipe + adversaire)
+   * et Gymnase se PARTAGENT la largeur libre et se replient (ni `w-full` sur l'identité, ni
+   * `whitespace-nowrap` sur Gymnase) ; seuls Date et Créneau sont insécables. Régressions visées :
+   * Gymnase insécable → un nom de gymnase long écrase l'identité (mesuré : 110 px à 1280 px) ;
+   * `w-full` sur l'identité → elle capte le vide et coupe Date · Créneau ; Date ou Créneau
+   * sécable → « 16:00 → 18:00 » ou la date se cassent. La largeur réelle se prouve en capture
+   * (jsdom ne met rien en page) ; ici, les classes qui la garantissent, sur CHAQUE ligne.
+   */
+  it("VENUE_OVERLAP : identité et Gymnase se replient (ni w-full ni whitespace-nowrap), Date et Créneau restent insécables", () => {
     renderDetail(oneLineVenue);
-    const table = screen.getByRole("table", { name: "Détail par équipe" });
-    const firstRow = within(table).getAllByRole("row").slice(1)[0];
-    const identityCell = cellsOf(firstRow)[0];
-    expect(identityCell).not.toHaveClass("w-full");
+    const table = screen.getByRole("table", { name: MATCHES_TEXTS.sideDetailCaption });
+    const bodyRows = within(table).getAllByRole("row").slice(1);
+    expect(bodyRows).toHaveLength(2);
+    for (const row of bodyRows) {
+      // identité(0) · Gymnase(1) · Date(2) · Créneau(3)
+      const [identity, venue, date, slot] = cellsOf(row as HTMLElement);
+      expect(identity).not.toHaveClass("w-full");
+      expect(venue).not.toHaveClass("whitespace-nowrap");
+      expect(date).toHaveClass("whitespace-nowrap");
+      expect(slot).toHaveClass("whitespace-nowrap");
+    }
   });
 });

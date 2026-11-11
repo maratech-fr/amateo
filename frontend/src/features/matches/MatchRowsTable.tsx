@@ -237,7 +237,7 @@ function ConflictPills({
       venues={venues}
       tone={meta.tone}
       isNew={meta.isNew}
-      trailing={
+      below={
         <Button
           variant="outline"
           size="sm"
@@ -269,7 +269,7 @@ function ConflictPills({
         ))}
       </span>
       {null !== openFamily ? (
-        <Modal label="Détail du conflit" title={pillLabel(openFamily, conflicts, coaches)} size="md" onClose={() => setOpenFamily(null)}>
+        <Modal label="Détail du conflit" title={pillLabel(openFamily, conflicts, coaches)} size="lg" onClose={() => setOpenFamily(null)}>
           <ConflictSeverityGroups conflicts={familyConflicts} teams={teams} coaches={coaches} venues={venues} renderConflict={renderConflict} />
         </Modal>
       ) : null}

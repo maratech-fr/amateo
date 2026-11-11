@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { Coach, Conflict, Fixture, Team, Venue } from "./api";
 import { MatchRowsTable } from "./MatchRowsTable";
+import { MATCHES_TEXTS } from "./texts";
 
 function fx(partial: Partial<Fixture> & Pick<Fixture, "id">): Fixture {
   return {
@@ -154,6 +155,67 @@ describe("MatchRowsTable (PR-2b — ligne de match partagée Mois/Phase)", () =>
     renderTable({ conflictsByFixture: new Map([["fx-1", [overlap]]]), coaches });
     await user.click(screen.getByRole("button", { name: /Collision de gymnase/ }));
     expect(await screen.findByRole("dialog")).toBeInTheDocument();
+  });
+
+  /**
+   * Promesse : le détail d'un conflit s'ouvre au palier `lg` (plafond 768 px, `MODAL_WIDTH`) —
+   * au palier `md` (576 px) le tableau Gymnase · Date · Créneau étranglait l'identité. La même
+   * modale sert la pastille « … en double » (un seul `<Modal>` dans `MatchRowsTable`). La
+   * largeur rendue se prouve en capture ; ici, le palier choisi.
+   */
+  it("la modale de détail d'un conflit s'ouvre au palier lg (plafond lg:max-w-3xl)", async () => {
+    const user = userEvent.setup();
+    const overlap: Conflict = {
+      type: "VENUE_OVERLAP",
+      severity: 1,
+      resolution: null,
+      venueId: "venue-1",
+      left: { fixtureId: "fx-1", teamId: "team-1", homeAway: "HOME", matchDate: "2026-10-03", kickoffTime: "16:00", windowStart: "2026-10-03T16:00:00", windowEnd: "2026-10-03T18:00:00" },
+      right: { fixtureId: "fx-2", teamId: "team-1", homeAway: "HOME", matchDate: "2026-10-03", kickoffTime: "16:30", windowStart: "2026-10-03T16:30:00", windowEnd: "2026-10-03T18:30:00" },
+      start: "2026-10-03T16:30:00",
+      end: "2026-10-03T18:00:00",
+    };
+    renderTable({ conflictsByFixture: new Map([["fx-1", [overlap]]]), coaches });
+    await user.click(screen.getByRole("button", { name: /Collision de gymnase/ }));
+    const dialog = await screen.findByRole("dialog", { name: "Détail du conflit" });
+    expect(dialog).toHaveClass("lg:max-w-3xl");
+    expect(dialog).not.toHaveClass("lg:max-w-xl");
+  });
+
+  /**
+   * Promesse : dans la modale de détail, « Voir la semaine » est SOUS le tableau Gymnase · Date ·
+   * Créneau, jamais à sa droite — posé à côté (slot `trailing`, ~220 px) il réduisait le tableau à
+   * 534 px et coupait Date · Créneau. Preuve structurelle : le bouton suit le tableau ET leur plus
+   * proche ancêtre commun est la ligne de conflit elle-même (`li` en colonne), pas une rangée
+   * `flex-row` partagée. La position rendue se prouve en capture.
+   */
+  it("dans la modale de collision, « Voir la semaine » est rendu SOUS le tableau, pas dans sa rangée", async () => {
+    const user = userEvent.setup();
+    const overlap: Conflict = {
+      type: "VENUE_OVERLAP",
+      severity: 1,
+      resolution: null,
+      venueId: "venue-1",
+      left: { fixtureId: "fx-1", teamId: "team-1", homeAway: "HOME", matchDate: "2026-10-03", kickoffTime: "16:00", windowStart: "2026-10-03T16:00:00", windowEnd: "2026-10-03T18:00:00" },
+      right: { fixtureId: "fx-2", teamId: "team-1", homeAway: "HOME", matchDate: "2026-10-03", kickoffTime: "16:30", windowStart: "2026-10-03T16:30:00", windowEnd: "2026-10-03T18:30:00" },
+      start: "2026-10-03T16:30:00",
+      end: "2026-10-03T18:00:00",
+    };
+    renderTable({ conflictsByFixture: new Map([["fx-1", [overlap]]]), coaches });
+    await user.click(screen.getByRole("button", { name: /Collision de gymnase/ }));
+    const dialog = await screen.findByRole("dialog", { name: "Détail du conflit" });
+    const table = within(dialog).getByRole("table", { name: MATCHES_TEXTS.sideDetailCaption });
+    const button = within(dialog).getByRole("button", { name: /Voir la semaine/ });
+    // Après le tableau dans l'ordre du document.
+    expect(table.compareDocumentPosition(button) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // Plus proche ancêtre commun = la ligne de conflit (en colonne), pas une rangée partagée.
+    let common = button.parentElement as HTMLElement;
+    while (!common.contains(table)) {
+      common = common.parentElement as HTMLElement;
+    }
+    const conflictItem = within(dialog).getAllByRole("listitem").find((li) => li.contains(table));
+    expect(common).toBe(conflictItem);
+    expect(common).toHaveClass("flex-col");
   });
 
   it("cliquer la ligne (bouton accessible) appelle onSelectFixture", async () => {
