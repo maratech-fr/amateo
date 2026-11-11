@@ -69,6 +69,18 @@ graphie ne rétablit rien ; une inversion de côté avec le même adversaire res
 un rétablissement. Un domicile rétabli suit « Pas de salles appariées, pas d'import » comme une
 création : sans gymnase connu pour sa salle et non neutre, le dépôt entier est refusé 422 nommé, zéro
 écriture.
+**Fraîcheur de l'export** (rencontres seulement, jamais l'import d'équipes). Un dépôt est refusé 422
+(zéro écriture) s'il ne porte pas de date d'export ou s'il a plus de 24 h : `FbiExportFreshnessGuard`
+lit `dcterms:created` de `docProps/core.xml` brut dans le zip (FBI l'écrit à l'export, Excel le
+conserve à l'enregistrement ; jamais les dates d'entrées zip, jamais PhpSpreadsheet). La taille de la
+part se lit sur l'index du zip avant lecture : une part de plus de 64 Ko vaut « pas de date ». L'âge se
+mesure sur l'horloge RÉELLE (un club de démo à date simulée dépose des fichiers réels), le message dit
+la date du fichier à l'heure du club. L'import tolère 15 min de plus que l'analyse (les alias appariés
+ne s'écrivent qu'à l'import). Un fichier daté dans le futur passe : garde-fou contre l'erreur, pas
+contre la fraude. Appelé par `ImportFixturesAnalyzeController` et `ImportFixturesController` avant
+`analyze()` / `import()` ; jamais dans `XlsxUploadGuard` (partagé avec l'import d'équipes). Pas de
+colonne `exported_at`, pas de migration.
+
 Onglets par famille (Brassage · Coupe ARA · Coupes CRM · Amicaux · Départemental · Régional ·
 Autres — classification PURE présentationnelle, `divisionFamily.ts`, jamais un comportement métier)
 avec compteur d'appariement ; recherche/`Listbox` avec champ de recherche au-delà de 8 options.
@@ -360,11 +372,28 @@ inline) n'est **jamais** appliquée d'office même dans cette fenêtre, le gymna
 l'écart reste à trancher et la rencontre reste `OUT_OF_SYNC`. Une rencontre absente d'un dépôt n'est
 jamais touchée (import partiel légitime).
 
+**Régime « championnat commencé » (2026-11-11), canal xlsx seulement.** En plus de la semaine ISO en
+cours (inchangée, d'office sur tout domicile placé, Placé compris, sur les deux canaux), le fichier
+fait foi d'office sur un domicile **déjà dans FBI** (`SUBMITTED` ou `VALIDATED`) dès que le
+championnat de la rencontre a commencé (`LeagueValidationOutlook::startedCompetitionIds` : échéance
+≤ aujourd'hui ou premier match strictement passé, amicaux exclus ; même définition que « validé
+ligue »). Un match seulement `PLACED` (en retard sur FBI, pas encore saisi) hors de la semaine garde
+ses écarts à trancher. Le statut est lu par `applyDiff` AVANT le moteur partagé, qui ne reçoit aucune
+condition de statut ; le canal API (`FfbbRencontreReconciler`) reste « semaine en cours » seule.
+**Préséance de l'API** : `pendingEntry` pose `appliedAt` (horloge réelle) sur une entrée
+`autoApplied` ; un champ que l'API a appliqué d'office APRÈS la création de l'export déposé est sauté
+par l'application d'office xlsx (rien écrit, entrée API conservée). Une entrée sans `appliedAt` n'est
+jamais sautée ; une trace acquittée n'a plus de mémoire.
+
 Périmètre de réconciliation par écart (choix explicite, jamais un écrasement) : seuls les domiciles
 **déjà placés** peuvent diverger sur date/heure/salle — un `UNPLACED` reste hors périmètre sur date/
-heure, mais son écart de SALLE a son propre détecteur (§1). Conséquence par champ :
-date/salle **dé-placent** ; heure reste en place mais **rétrograde** un `SUBMITTED`/`VALIDATED` en
-`PLACED`.
+heure, mais son écart de SALLE a son propre détecteur (§1). **« Prendre le fichier » et l'application
+d'office ont UNE seule sémantique** (`FbiDeviationService::applyFieldTakeFile`) : la valeur du fichier
+est écrite, le statut et le gymnase sont conservés (date et heure : plus de dé-placement ni de retour
+à `PLACED`, plus de mémo `fbiEcho` écrit). Salle : alias confirmé du libellé → gymnase repointé quel
+que soit le statut ; libellé sans alias et sans choix → rien écrit, écart retenu (422 sur le geste
+explicite) ; choix inline d'un gymnase inchangé ; « terrain neutre » reste la seule exception qui
+dé-place.
 
 **Salle du périmètre PLACÉ, la MÊME clause alias que le non placé.** Un libellé fichier dont
 l'alias confirmé pointe le gymnase où la rencontre est placée n'ouvre pas d'écart — sans cette
@@ -378,13 +407,20 @@ n'est pas un effet de bord, c'est l'attestation qui fonctionne enfin sur ce cham
 §2)** : `analyze()` (dry-run, ci-dessus — mêmes deux canaux xlsx et API) ne consulte JAMAIS le
 registre et produit un enregistrement d'écart à CHAQUE dépôt tant que le fichier répète le libellé
 divergent, même après un « garder l'appli » précédent — c'est la fonction, pas un défaut : le
-gestionnaire doit continuer à être averti tant que FBI affiche la mauvaise valeur, jusqu'à ce qu'il
-la corrige lui-même dans le portail fédéral. `import()`/`apply()`, eux, ne recréent PAS d'écart sur
-la rencontre pour ce même cas (moteur partagé `processPerimeterFields`, mécanisme ledger) : ils
-RE-DATENT seulement l'entrée du registre « à corriger dans FBI »
-(`lastSeenInFbiAt`, ci-dessous) — le rappel persistant vit dans cette liste, pas dans un nouvel
-écart de la rencontre. **Leçon** : analyser et appliquer ne partagent PAS ce filtre — les lire comme
-un seul mécanisme fait conclure à tort que le dialogue s'est tu.
+la corrige lui-même dans le portail fédéral. `import()`/`apply()` (moteur partagé
+`processPerimeterFields`, mécanisme ledger) **reposent la question à chaque dépôt** tant que FBI
+montre l'autre valeur (2026-11-11) : l'entrée du registre « à corriger dans FBI » est re-datée
+(`lastSeenInFbiAt`, ci-dessous) ET un écart à trancher est reposé (`autoApplied: false`, `persisting:
+false`), la rencontre repasse `OUT_OF_SYNC` — dans tous les régimes et sur les deux canaux. Un champ
+gardé (correction ouverte) n'est jamais appliqué d'office, même quand le fichier fait foi ; une
+troisième valeur ferme la correction « par dépôt » et ouvre un écart normal ; « Prendre le fichier »
+(dépôt ou file de revue) ferme la correction ouverte ; Garder → dépôt → reposé → Garder reste UNE
+entrée ouverte (`open` est un upsert). Seule exception : la salle d'un domicile NON placé gardée
+(`keptVenueLabel`) ne repose rien. Tant qu'il est ouvert, l'écart reposé remet un match à venir « à
+confirmer » dans l'export parents (`MatchesExportDataProvider::isToConfirm` lit
+`hasArbitrableDeviations()` : une valeur imposée par FBI n'est pas un doute) et un amical joué n'est
+pas balayé « validé ». **Leçon** : le dry-run `analyze()` et `import()` restent deux chemins séparés ;
+les lire comme un seul mécanisme fait conclure à tort que le dialogue s'est tu.
 
 Deux routes de traitement (management + saison écrivable + socle pointé) : `POST
 /api/fixtures/review` (exactement UN de trois gestes, sinon 422 : `{fixtureIds}` ligne — écarts vidés,
