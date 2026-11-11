@@ -1231,13 +1231,14 @@ déploiement actif :
    Les e-mails reportent, en plus, la note du tick (`dispatch_note` : retard/plafond du point 2,
    réserve de fin, « plusieurs exécutions »), les segments étant séparés par « · ».
 
-⚠ **Filet absent côté placement** : si le worker meurt pendant un placement (`match_placement_run`
-`RUNNING`), rien ne le reconcilie jamais — à l'inverse de `app:schedules:reconcile-stuck`
-(`backend/src/Command/ReconcileStuckSchedulesCommand.php`) qui fait ce travail pour les schedules
-`GENERATING`. Seul le TTL du verrou Redis (`MatchPlacementLock`,
-`backend/src/Service/MatchPlacementLock.php`) libère une relance ultérieure ; la ligne `RUNNING`
-elle-même reste figée. Un déploiement qui tuerait le worker pendant un placement laisserait donc ce
-run `RUNNING` pour toujours (roadmap).
+**Placement et redémarrage du worker** : le déploiement arrête `messenger-worker` avec une grâce de
+`stop_grace_period: 60s` (`docker-compose.prod.yml`) — SIGTERM ne coupe pas le message en cours, un
+solve qui la dépasse est tué (SIGKILL). Le run `match_placement_run` laissé `RUNNING` (ou `PENDING`
+sans message) est alors déclaré `FAILED` au **démarrage du worker suivant**
+(`PlacementRunStartupReconciler`, sans cron), et le message relu est acquitté sans re-solver ; le
+verrou Redis du club n'est pas rendu (le calcul interrompu peut encore tenir le moteur, il expire à
+son budget). Worker vivant, run figé : `app:match-placement:reconcile-stuck`
+(`backend/docs/commands.md`). Contrat : ADR-0003 §2, amendement 2026-11-11.
 
 **Écran console** : `DeploymentSection` (`frontend/src/features/admin/sections/DeploymentSection.tsx`)
 vit dans l'onglet **Exploitation** de `/admin`, au-dessus des notes de nouveautés. Le formulaire

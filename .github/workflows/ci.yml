@@ -1045,6 +1045,32 @@ jobs:
           # plus FAILED/GENERATING orphelin/PENDING qui re-solvent (compteur = 1), prouvant que
           # SEUL COMPLETED bloque. Sans ce gate, une redélivrance écrase un planning livré, en silence.
           FILES="$FILES tests/MessageHandler/RedeliveredGenerationTest.php"
+          # P4-512 (axe generation pipeline) — le placement relu après un worker tué ne refait pas
+          # en aveugle : COMPLETED relu → 0 appel moteur, 0 crédit, 0 publication ; FAILED relu →
+          # acquitté, verrou intact ; RUNNING relu → FAILED « interrompu », verrou intact ; PENDING →
+          # verrou réarmé au budget complet (repris s'il a expiré, NOUVEAU jeton rendu ; pris par un
+          # autre → « remplacé ») ; un perdant n'écrit rien (placements + COMPLETED d'un seul bloc).
+          # Sans ce gate, une redélivrance relance un solve en double ou écrase un résultat livré.
+          FILES="$FILES tests/MessageHandler/RedeliveredPlacementTest.php"
+          # P4-512 (axes generation pipeline + tenant isolation) — le rattrapage des placements laissés
+          # en vol : au démarrage du worker, tout RUNNING est orphelin ; worker vivant (commande), un
+          # RUNNING n'est déclaré mort que verrou disparu ET démarré depuis plus de 5 min ; un PENDING
+          # absent de la file depuis plus de 5 min → « relancez-le » ; terminés et verrou jamais
+          # touchés ; chaque club sous SON GUC, aucun filtre Doctrine ni GUC laissé derrière (le
+          # premier message du worker suit), un club en erreur sauté et l'EM rendu utilisable.
+          # Sans ce gate, un worker tué laisse un placement « en cours » pour toujours.
+          FILES="$FILES tests/Integration/Service/StuckPlacementRunReconcilerTest.php"
+          # P4-512 (axe generation pipeline) — le hook de démarrage du worker : le consommateur de
+          # `async` rattrape une fois en mode « démarrage » ; un autre worker ne rattrape rien ; un
+          # rattrapage qui casse n'empêche jamais le worker de démarrer (erreur journalisée, EM remis
+          # à neuf, GUC vidé). Sans ce gate, le rattrapage cesse de jouer au redémarrage, en silence.
+          FILES="$FILES tests/Unit/EventListener/PlacementRunStartupReconcilerTest.php"
+          # P4-512 (axe generation pipeline) — la lecture de la file Messenger du rattrapage, sur le
+          # Redis réel et le VRAI transport : stream ET file différée (retries), sans doublon, pages
+          # comprises ; une entrée indécodable ou un Redis injoignable = file NON lue (jamais une liste
+          # partielle) ; ordre file différée → stream → file différée. Sans ce gate, le rattrapage
+          # déclarerait « interrompus » des placements bel et bien en file.
+          FILES="$FILES tests/Integration/Service/PlacementQueueInspectorTest.php"
           # P4-240 (axe constraint semantics) — le contrat de PLACEMENT des matchs contre le VRAI
           # moteur (le job démarre déjà php-fpm + engine). Deux promesses : tout ce qui est plaçable
           # EST placé (fenêtre large, zéro conflit → zéro `unplaced`), et le VOCABULAIRE des raisons

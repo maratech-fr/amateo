@@ -246,6 +246,13 @@ framework:
             policy: 'sliding_window'
             limit: 60
             interval: '1 hour'
+        # 20/h : un run de placement des matchs mobilise le solveur jusqu'à 45 min ; compté par
+        # club (ClubQuotaSubscriber), 409 compris — un clic refusé reste un clic ; Membre exempt,
+        # comme les solves. Seau à part de schedule_generation.
+        match_placement:
+            policy: 'sliding_window'
+            limit: 20
+            interval: '1 hour'
         rgpd_export:
             policy: 'sliding_window'
             limit: 10
@@ -300,6 +307,11 @@ when@dev:
                 limit: 200
                 interval: '1 hour'
             fixtures_pdf_export:
+                policy: 'sliding_window'
+                limit: 200
+                interval: '1 hour'
+            # Behat et e2e rejouent le placement sur le club de démonstration (~19 demandes par run).
+            match_placement:
                 policy: 'sliding_window'
                 limit: 200
                 interval: '1 hour'

@@ -227,6 +227,11 @@ services:
     #   - LoginSuccessListener         — lastLoginAt (mesure d'inactivité RGPD) (P4-304)
     #   - AccountErasureService / purges RGPD — délai d'effacement, préavis orphelin
     #   - AuditTrail                   — horodatage du journal d'audit
+    #   - PlaceMatchesController       — createdAt du run de placement (durées : grâce du
+    #                                    rattrapage, seuil d'e-mail, ordre du dernier run) ; le
+    #                                    balayage « Déjà dans FBI » garde l'horloge décorée
+    #   - StuckPlacementRunReconciler / PlaceMatchesFailureListener — grâces du rattrapage et
+    #                                    finishedAt des runs déclarés échoués
     # Les DATES MÉTIER (saisons, échéances) continuent, elles, de traverser le service
     # `clock` décoré.
     app.clock.real:

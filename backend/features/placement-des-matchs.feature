@@ -174,6 +174,25 @@ Fonctionnalité: Le placement des matchs honore les fenêtres d'accès et nomme 
     Quand je lance un placement puis, aussitôt, un second pour le même club
     Alors la seconde demande est refusée par un conflit, avec un message métier
 
+  Scénario: Un placement laissé en cours par un worker mort est déclaré échoué, un placement vivant est laissé tranquille
+    Un worker tué en plein solve laisse son placement « en cours » pour toujours : l'écran
+    bloque le bouton et rien ne bouge. L'opérateur lance le rattrapage, worker vivant : tant
+    que le verrou du club tient (le budget du run n'est pas écoulé), le placement peut encore
+    aboutir et n'est pas touché ; une fois le verrou disparu, il est déclaré échoué avec un
+    message qui dit quoi faire, et le gestionnaire peut relancer.
+    Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur
+    Et deux équipes et un gymnase jetables
+    Et une fenêtre d'accès le samedi de 14h00 à 18h00 sur ce gymnase
+    Et un match à domicile de la première équipe le samedi à placer
+    Quand je lance le placement des matchs
+    Et ce placement est laissé en cours depuis vingt minutes
+    Et un verrou de placement encore tenu pour ce club
+    Quand l'opérateur lance le rattrapage des placements figés
+    Alors le dernier placement est toujours en cours
+    Quand le verrou de placement de ce club est rendu
+    Et l'opérateur lance le rattrapage des placements figés
+    Alors le dernier placement est déclaré échoué avec le message « Le placement automatique a été interrompu. Il pourra être relancé une fois le calcul interrompu terminé. »
+
   Scénario: Un amical n'est jamais proposé au solveur et se place à la main hors créneau
     Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur
     Et deux équipes et un gymnase jetables

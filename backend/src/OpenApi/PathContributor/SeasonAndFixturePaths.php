@@ -529,8 +529,9 @@ final readonly class SeasonAndFixturePaths implements CustomPathContributor
                 '400' => new Response('No club or no user in context'),
                 '401' => new Response('Unauthorized (missing/expired JWT)'),
                 '403' => new Response('Not a management member — or, on the Découverte credit plan, automatic placement must be week-end by week-end (send a one-week window)'),
-                '409' => new Response('Placement already running for this club, season plan not chosen, or archived season'),
+                '409' => new Response('A placement is already running or already queued for this club, a deploy freeze is in progress, season plan not chosen, or archived season'),
                 '422' => new Response('Invalid window (a bound is not a date, or from is after to)'),
+                '429' => new Response('Club quota reached for automatic placement'),
             ],
             summary: 'Enqueue the auto-placement of the unplaced home matches (async; writes PLACED+SOLVER in the worker; manual anchors never move)',
             requestBody: $this->schemas->jsonBody([

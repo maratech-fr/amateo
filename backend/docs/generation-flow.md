@@ -493,6 +493,10 @@ docker compose exec redis redis-cli XRANGE messages - + COUNT 10
 
 ### Forcer la consommation d'un message
 
+⚠ Invariant **un seul consommateur du transport `async` à la fois** (ADR-0003 §2) : le rattrapage des
+placements au démarrage du worker et les gardes de redélivrance supposent qu'aucun autre
+`messenger:consume async` ne tourne — un second consommateur lancé pendant un run les contredit.
+
 ```bash
 cd backend && make exec
 # Dans le conteneur php-fpm :

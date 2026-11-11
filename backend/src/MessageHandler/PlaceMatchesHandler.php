@@ -17,10 +17,12 @@ use App\Service\MatchPlacementProgressPublisher;
 use App\Service\MatchPlacementResultApplier;
 use App\Service\OutputCreditLedger;
 use App\Service\PlacementRunEmailBuilder;
+use App\Service\PlacementRunFailureNotifier;
 use App\Service\PlanEntitlements;
 use App\Service\TenantConnectionContext;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
+use Doctrine\ORM\OptimisticLockException;
 use Psr\Log\LoggerInterface;
 use RuntimeException;
 use Symfony\Component\Clock\ClockInterface;
@@ -32,17 +34,25 @@ use Throwable;
 /**
  * Le PLACEMENT ASYNCHRONE des matchs (patron {@see GenerateScheduleHandler}). Le solve
  * quitte le rail synchrone (plafond HTTP) pour le worker, sous un budget dimensionné sur
- * le nombre de semaines ISO à placer. Trois garanties du patron :
+ * le nombre de semaines ISO à placer. Garanties :
  *
  *  - **RLS** : aucune requête HTTP dans le worker → aucun GUC posé par le listener. On scope
  *    la connexion au club du message AVANT toute requête, on clear en `finally`.
- *  - **Statut terminal TOUJOURS posé** : succès → COMPLETED + résultat appliqué + crédit
- *    décompté (Découverte) + publication Mercure ; échec moteur → FAILED, aucun crédit,
- *    publication FAILED ; sur exception inattendue, FAILED défensif — jamais un run bloqué
- *    en RUNNING.
- *  - **Verrou pris par le contrôleur, rendu ici** : le `MatchPlacementLock` tenu depuis
- *    l'enfilage (anti-double-demande) est relâché par ce worker (compare-and-delete par
- *    token porté par le message), dans le `finally`.
+ *  - **Relecture jugée sur le statut EN BASE** : Messenger relit le message d'un worker tué.
+ *    COMPLETED → rien n'est refait, verrou rendu ; FAILED → acquitté, verrou intact (un calcul
+ *    orphelin peut encore tenir le moteur, la clé l'atteste jusqu'à son TTL) ; RUNNING (le
+ *    rattrapage du démarrage n'a pas joué) → FAILED « interrompu », verrou intact ; PENDING →
+ *    nominal.
+ *  - **Verrou réarmé au départ** : le TTL posé à l'enfilage a pu fondre dans la file. Le run qui
+ *    démarre réarme la clé au budget COMPLET ; expirée, il la reprend (et c'est ce NOUVEAU jeton
+ *    qui est rendu en `finally`) ; tenue par un autre jeton, le run est « remplacé », sans solve.
+ *    RUNNING n'est posé qu'APRÈS : un run visible RUNNING a toujours eu sa clé armée au budget
+ *    complet de CE run (le rattrapage en mode commande s'en sert).
+ *  - **Transitions terminales conditionnelles** : COMPLETED/FAILED seulement depuis RUNNING
+ *    (relecture fraîche, puis `@Version` au flush) — un handler dont le run a été déclaré échoué
+ *    pendant son solve est un PERDANT : il n'écrit rien, ne décompte rien, ne publie rien. Les
+ *    placements et le COMPLETED s'écrivent dans UNE transaction ; crédit et Mercure après commit.
+ *    Invariant : un seul consommateur du transport `async` à la fois.
  *
  * L'exception est ACQUITTÉE (jamais rejouée) : un run FAILED est un fait d'exploitation, pas
  * un message à re-solver — relancer réécrirait un run déjà terminé.
@@ -50,8 +60,17 @@ use Throwable;
 #[AsMessageHandler]
 final class PlaceMatchesHandler
 {
-    /** Seuil au-delà duquel on prévient par e-mail le gestionnaire qui a lancé le run. */
-    private const int EMAIL_THRESHOLD_SECONDS = 120;
+    /** T1 — run RUNNING sans worker (relu ici, ou rattrapé au démarrage / par la commande). */
+    public const string ERROR_INTERRUPTED = 'Le placement automatique a été interrompu. Il pourra être relancé une fois le calcul interrompu terminé.';
+
+    /** T2 — run PENDING dont le message n'est plus dans la file. */
+    public const string ERROR_ORPHANED = 'Le placement automatique a été interrompu. Relancez-le.';
+
+    /** T3 — verrou du club repris par une demande plus récente avant le départ du run. */
+    public const string ERROR_REPLACED = 'Le placement automatique a été remplacé par une demande plus récente.';
+
+    /** T4 — message en échec définitif, ou enfilage raté. */
+    public const string ERROR_NOT_STARTED = 'Le placement automatique n\'a pas pu être lancé. Réessayez.';
 
     public function __construct(
         private readonly TenantConnectionContext $tenantConnectionContext,
@@ -66,6 +85,7 @@ final class PlaceMatchesHandler
         private readonly ClockInterface $clock,
         private readonly MailerInterface $mailer,
         private readonly PlacementRunEmailBuilder $emailBuilder,
+        private readonly PlacementRunFailureNotifier $failureNotifier,
         private readonly ?LoggerInterface $logger = null,
     ) {}
 
@@ -92,6 +112,40 @@ final class PlaceMatchesHandler
 
             return;
         }
+        // Relecture : le message peut être relu après la mort d'un worker — on juge sur la base.
+        $this->entityManager->refresh($run);
+
+        switch ($run->getStatus()) {
+            case MatchPlacementRunStatus::COMPLETED:
+                $this->logger?->info('Redelivered match placement already completed — acked without solving', ['clubId' => $clubId, 'runId' => $run->getId()]);
+                $this->lock->release($clubId, $message->getLockToken());
+
+                return;
+            case MatchPlacementRunStatus::FAILED:
+                $this->logger?->info('Redelivered match placement already failed — acked without solving', ['clubId' => $clubId, 'runId' => $run->getId()]);
+
+                return;
+            case MatchPlacementRunStatus::RUNNING:
+                $this->logger?->warning('Redelivered match placement found RUNNING — failed as interrupted', ['clubId' => $clubId, 'runId' => $run->getId()]);
+                $this->fail($run, self::ERROR_INTERRUPTED);
+
+                return;
+            case MatchPlacementRunStatus::PENDING:
+                break;
+        }
+
+        // Verrou réarmé au budget complet du run qui démarre (D2).
+        $lockToken = $message->getLockToken();
+        if (!$this->lock->extend($clubId, $lockToken, $message->budgetSeconds())) {
+            $newToken = $this->lock->acquire($clubId, $message->budgetSeconds());
+            if (null === $newToken) {
+                $this->logger?->warning('Match placement lock taken by a newer request — run replaced without solving', ['clubId' => $clubId, 'runId' => $run->getId()]);
+                $this->fail($run, self::ERROR_REPLACED, MatchPlacementRunStatus::PENDING);
+
+                return;
+            }
+            $lockToken = $newToken;
+        }
 
         try {
             $run->setStatus(MatchPlacementRunStatus::RUNNING)->setStartedAt($this->now());
@@ -100,7 +154,7 @@ final class PlaceMatchesHandler
             $built = $this->payloadBuilder->build($this->clubOf($run), $message->getSeasonId(), $message->getWindow());
 
             if (0 === $built['toPlaceCount']) {
-                $this->complete($run, [
+                $this->complete($run, [], static fn (array $outcome): array => [
                     'placed' => 0,
                     'skipped' => 0,
                     'unplaced' => [],
@@ -126,9 +180,8 @@ final class PlaceMatchesHandler
             $placements = $result['placements'] ?? [];
             /** @var list<array{matchId: string, reason: string, message: string}> $unplaced */
             $unplaced = $result['unplaced'] ?? [];
-            $outcome = $this->applier->apply($placements);
 
-            $this->complete($run, [
+            $this->complete($run, $placements, static fn (array $outcome): array => [
                 'placed' => $outcome['applied'],
                 'skipped' => $outcome['skipped'],
                 'unplaced' => $unplaced,
@@ -142,25 +195,59 @@ final class PlaceMatchesHandler
             $this->logger?->error('Match placement failed unexpectedly', ['clubId' => $clubId, 'runId' => $run->getId(), 'exception' => $exception]);
             $this->failDefensively($message->getRunId(), 'Le placement automatique a échoué. Réessayez.');
         } finally {
-            $this->lock->release($clubId, $message->getLockToken());
+            $this->lock->release($clubId, $lockToken);
         }
     }
 
     /**
-     * Pose COMPLETED + le résultat, décompte le crédit Découverte (sortie produite), publie
-     * la bascule Mercure. Le crédit se décompte APRÈS la persistance du run (une sortie
-     * aboutie), jamais sur un run FAILED.
+     * Applique les placements ET pose COMPLETED dans UNE transaction (jamais des matchs posés par
+     * un run que l'écran dira échoué), seulement si le run est encore RUNNING en base. Puis, après
+     * commit : crédit Découverte, bascule Mercure, e-mail de fin. Un perdant (run passé terminal
+     * par un autre écrivain pendant le solve) n'écrit rien et ne dit rien.
      *
-     * @param array<string, mixed> $result
+     * @param list<array{matchId: string, venueId: string, kickoff: string}>    $placements
+     * @param callable(array{applied: int, skipped: int}): array<string, mixed> $resultOf
      */
-    private function complete(MatchPlacementRun $run, array $result): void
+    private function complete(MatchPlacementRun $run, array $placements, callable $resultOf): void
     {
-        $run->setStatus(MatchPlacementRunStatus::COMPLETED)->setFinishedAt($this->now())->setResultData($result);
-        $this->entityManager->flush();
+        if (!$this->isStill($run, MatchPlacementRunStatus::RUNNING)) {
+            return;
+        }
+
+        // Transaction tenue sur la connexion (pas `wrapInTransaction`, qui fermerait l'EM sur toute
+        // erreur — y compris une erreur de l'applier AVANT écriture, que le FAILED défensif doit
+        // encore pouvoir poser sur un EM ouvert).
+        $connection = $this->entityManager->getConnection();
+        $connection->beginTransaction();
+
+        try {
+            $outcome = [] === $placements ? ['applied' => 0, 'skipped' => 0] : $this->applier->apply($placements);
+            $result = $resultOf($outcome);
+            $run->setStatus(MatchPlacementRunStatus::COMPLETED)->setFinishedAt($this->now())->setResultData($result);
+            $this->entityManager->flush();
+            $connection->commit();
+        } catch (OptimisticLockException $exception) {
+            $this->rollBack();
+            $this->logger?->warning('Match placement run was finished by another writer meanwhile — nothing written', ['runId' => $run->getId(), 'exception' => $exception]);
+
+            return;
+        } catch (Throwable $exception) {
+            $this->rollBack();
+
+            throw $exception;
+        }
 
         $this->consumeCreditIfRestricted($run);
         $this->publisher->publishTerminal((string) $run->getClubId(), $run->getId(), MatchPlacementRunStatus::COMPLETED->value);
         $this->emailManagerIfRunWasLong($run, $result);
+    }
+
+    private function rollBack(): void
+    {
+        $connection = $this->entityManager->getConnection();
+        if ($connection->isTransactionActive()) {
+            $connection->rollBack();
+        }
     }
 
     /**
@@ -172,7 +259,7 @@ final class PlaceMatchesHandler
      */
     private function emailManagerIfRunWasLong(MatchPlacementRun $run, array $result): void
     {
-        if (!$this->runExceededEmailThreshold($run)) {
+        if (!PlacementRunFailureNotifier::exceededEmailThreshold($run)) {
             return;
         }
 
@@ -195,56 +282,53 @@ final class PlaceMatchesHandler
         }
     }
 
-    private function fail(MatchPlacementRun $run, string $message): void
-    {
-        $run->setStatus(MatchPlacementRunStatus::FAILED)->setFinishedAt($this->now())->setResultData(['error' => $message]);
-        $this->entityManager->flush();
-
-        $this->publisher->publishTerminal((string) $run->getClubId(), $run->getId(), MatchPlacementRunStatus::FAILED->value);
-        $this->emailManagerIfFailedRunWasLong($run);
-    }
-
     /**
-     * Prévient par e-mail le gestionnaire quand un run ÉCHOUÉ a duré plus de deux minutes. Décision
-     * fondateur (2026-10-03) : on envoie aussi en cas d'échec, sinon le gestionnaire parti de
-     * l'écran croit que le moteur travaille encore et ne revient jamais. Best-effort, comme la
-     * variante succès — un échec d'envoi n'altère pas le run FAILED déjà persisté.
+     * Pose FAILED + le motif, seulement si le run est encore dans l'état `$from` en base (un perdant
+     * n'écrase jamais un terminal posé par un autre écrivain), puis publie et prévient le demandeur
+     * d'un run long (best-effort, décision fondateur 2026-10-03 : sinon il croit que le moteur
+     * travaille encore et ne revient jamais).
      */
-    private function emailManagerIfFailedRunWasLong(MatchPlacementRun $run): void
+    private function fail(MatchPlacementRun $run, string $message, MatchPlacementRunStatus $from = MatchPlacementRunStatus::RUNNING): void
     {
-        if (!$this->runExceededEmailThreshold($run)) {
+        if (!$this->isStill($run, $from)) {
             return;
         }
 
-        $user = $this->entityManager->getRepository(User::class)->find($run->getRequestedByUserId());
-        if (!$user instanceof User) {
-            return;
-        }
-
-        // Identité du club (logo + nom court) sur la carte d'e-mail (D1), nullable best-effort.
-        $club = $this->entityManager->getRepository(Club::class)->find((string) $run->getClubId());
+        $run->setStatus(MatchPlacementRunStatus::FAILED)->setFinishedAt($this->now())->setResultData(['error' => $message]);
 
         try {
-            $this->mailer->send($this->emailBuilder->buildFailure($user->getEmail(), $club));
-        } catch (Throwable $exception) {
-            $this->logger?->warning('Match placement failure e-mail failed (best-effort)', ['runId' => $run->getId(), 'exception' => $exception]);
+            $this->entityManager->flush();
+        } catch (OptimisticLockException $exception) {
+            $this->logger?->warning('Match placement run was finished by another writer meanwhile — failure not written', ['runId' => $run->getId(), 'exception' => $exception]);
+
+            return;
         }
+
+        $this->publisher->publishTerminal((string) $run->getClubId(), $run->getId(), MatchPlacementRunStatus::FAILED->value);
+        $this->failureNotifier->notify($run);
     }
 
-    /** Le run a-t-il dépassé le seuil d'e-mail (le demandeur a eu le temps de quitter l'écran) ? */
-    private function runExceededEmailThreshold(MatchPlacementRun $run): bool
+    /** Relecture FRAÎCHE du statut en base (hors identity map) : le run est-il encore `$status` ? */
+    private function isStill(MatchPlacementRun $run, MatchPlacementRunStatus $status): bool
     {
-        $finishedAt = $run->getFinishedAt();
+        $current = $this->entityManager->getConnection()->fetchOne(
+            'SELECT status FROM match_placement_run WHERE id = :id',
+            ['id' => $run->getId()],
+        );
+        if ($status->value === $current) {
+            return true;
+        }
 
-        return $finishedAt instanceof DateTimeImmutable
-            && $finishedAt->getTimestamp() - $run->getCreatedAt()->getTimestamp() > self::EMAIL_THRESHOLD_SECONDS;
+        $this->logger?->warning('Match placement run changed status meanwhile — nothing written', ['runId' => $run->getId(), 'expected' => $status->value, 'actual' => $current]);
+
+        return false;
     }
 
     /**
      * Échec terminal défensif pour une erreur par ailleurs non rattrapée : l'EntityManager
      * a pu être fermé par l'erreur d'origine. On re-cherche le run sur un EM propre et on
-     * pose FAILED ; si l'EM est mort, le run reste RUNNING (résidu assumé, comme la
-     * génération — pas de watchdog de placement à ce stade).
+     * pose FAILED s'il est encore en vol — jamais par-dessus un terminal ; si l'EM est mort, le
+     * run reste RUNNING : le rattrapage du prochain démarrage du worker le fermera.
      */
     private function failDefensively(string $runId, string $message): void
     {
@@ -255,10 +339,11 @@ final class PlaceMatchesHandler
         try {
             $this->entityManager->clear();
             $run = $this->entityManager->getRepository(MatchPlacementRun::class)->find($runId);
-            if (!$run instanceof MatchPlacementRun) {
+            if (!$run instanceof MatchPlacementRun
+                || !\in_array($run->getStatus(), [MatchPlacementRunStatus::PENDING, MatchPlacementRunStatus::RUNNING], true)) {
                 return;
             }
-            $this->fail($run, $message);
+            $this->fail($run, $message, $run->getStatus());
         } catch (Throwable) {
             // Impossible d'enregistrer l'échec (connexion perdue) : rien de plus à faire.
         }

@@ -102,7 +102,7 @@ services:
 | HTTP (no club_id resolvable) | No | Cleared at request start | Yes | Fail-closed: tenant tables return 0 rows |
 | Register (anonymous) | No | Yes, inside the transaction (AuthController) | Yes | WITH CHECK would reject the seeding otherwise |
 | Public coach-wish page (anonymous) | No | Yes — from the `CoachWishToken`'s `clubId`, released in `finally` | Yes | `PublicCoachWishController`: no JWT at all, the token IS the tenant carrier. Per-IP rate limit + byte-identical 404 run BEFORE the lookup |
-| Messenger worker | No | Yes — handler sets it from the message `clubId` | Yes | `GenerateScheduleHandler` / `ExportPdfHandler`, cleared in `finally` |
+| Messenger worker | No | Yes — handler sets it from the message `clubId` | Yes | `GenerateScheduleHandler` / `ExportPdfHandler`, cleared in `finally`. Outside any message (worker-startup reconciler `PlacementRunStartupReconciler`, failure listeners): GUC alone, per club — never `TenantDoctrineScope` / `getFilters()->enable`, whose filter and remembered club would leak into the worker's first message (`WorkerStartupReconcilerNeverScopesDoctrineFiltersTest`) |
 | CLI (`dbal:run-sql` default) | No | No | Yes | 0 rows on tenant tables — use `--connection admin` for ops |
 | Tests | Yes | Yes | Yes | dama rollback also reverts the GUC (`set_config(..., false)` is transactional) |
 
