@@ -19,6 +19,7 @@ use PHPUnit\Framework\Attributes\Group;
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
+use ZipArchive;
 
 /**
  * NR — un import en échec ne renvoie JAMAIS la chaîne d'une dépendance (P4-5).
@@ -54,15 +55,21 @@ final class ImportErrorMessageLeakTest extends WebTestCase
      *
      * L'extension et le type MIME sont ceux d'un vrai classeur — sans quoi le
      * garde de format du contrôleur répondrait 400 AVANT d'atteindre le parseur,
-     * et le test ne prouverait rien du chemin qu'il prétend garder.
+     * et le test ne prouverait rien du chemin qu'il prétend garder. Même raison pour
+     * la garde de fraîcheur des exports FBI : le zip porte un `docProps/core.xml`
+     * daté de l'instant (il la franchit), mais son classeur est illisible.
      */
     public function testALibraryFailureNeverLeaksItsMessage(): void
     {
         [$token] = $this->registerWithTeam();
 
         $path = tempnam(sys_get_temp_dir(), 'leak') . '.xlsx';
-        file_put_contents($path, "PK\x03\x04 ceci n'est pas un classeur");
         $this->tempFiles[] = $path;
+        $zip = new ZipArchive;
+        self::assertTrue($zip->open($path, ZipArchive::CREATE | ZipArchive::OVERWRITE));
+        $zip->addFromString('docProps/core.xml', '<?xml version="1.0" encoding="UTF-8"?><cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dcterms="http://purl.org/dc/terms/"><dcterms:created>' . gmdate('Y-m-d\TH:i:s\Z') . '</dcterms:created></cp:coreProperties>');
+        $zip->addFromString('xl/workbook.xml', 'ceci n\'est pas un classeur');
+        $zip->close();
 
         $this->client->request('POST', '/api/fixtures/import', [], [
             'file' => new UploadedFile($path, 'fbi.xlsx', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', null, true),

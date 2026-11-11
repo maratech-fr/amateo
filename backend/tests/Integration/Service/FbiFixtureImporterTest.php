@@ -366,12 +366,16 @@ final class FbiFixtureImporterTest extends KernelTestCase
 
     // ── Diff/update semantics ──────────────────────────────────────────────
 
-    public function testRescheduledDateUnplacesAndWarns(): void
+    /**
+     * « Prendre le fichier » sur la DATE d'un match seulement PLACÉ : la date de FBI est écrite,
+     * le match reste Placé dans son gymnase et le rapport dit « date du fichier retenue ».
+     * Angle de statut jumeau de {@see testTakeFileOnADateKeepsStatusAndVenueAndResolvesTheEcart}
+     * (même geste sur un « Déjà dans FBI ») — doublon voulu, point sensible : matchs.
+     */
+    public function testTakeFileOnTheDateOfAPlacedHomeKeepsItPlacedAndSaysIt(): void
     {
-        // RMM-4: a date écart on a PLACED home is now a CHOICE — « take_file »
-        // keeps the pre-RMM-4 reschedule (la ligue a re-décidé → un-place).
         $this->importMapped([['D2', 'R3001', 'BC TESTVILLE - 1', 'AS Voisins', '03/10/2026', '15:30', '']]);
-        $this->place('R3001');
+        $venueId = $this->place('R3001');
         $id = $this->fixtureId('R3001');
 
         $result = $this->importMapped(
@@ -384,12 +388,13 @@ final class FbiFixtureImporterTest extends KernelTestCase
         self::assertSame(1, $result['updated']);
         self::assertSame([], $result['unresolvedDeviations']);
         self::assertSame('RESCHEDULED', $result['warnings'][0]['type']);
-        self::assertStringContainsString('placement annulé', $result['warnings'][0]['message']);
+        self::assertSame('D2 n°R3001 : date du fichier retenue (10/10/2026).', $result['warnings'][0]['message']);
 
+        $this->em->clear();
         $fixture = $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => 'R3001']);
         self::assertSame('2026-10-10', $fixture?->getMatchDate()->format('Y-m-d'));
-        self::assertSame(FixtureStatus::UNPLACED, $fixture?->getStatus());
-        self::assertNull($fixture?->getVenueId());
+        self::assertSame(FixtureStatus::PLACED, $fixture?->getStatus(), 'le match reste Placé');
+        self::assertSame($venueId, $fixture?->getVenueId(), 'il garde son gymnase');
     }
 
     public function testHomeAwaySwitchUnplacesAndWarns(): void
