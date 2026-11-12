@@ -237,7 +237,8 @@ services:
     networks:
       - amateo_network
 
-  # Minute scheduler tick (app:jobs:run-due, Europe/Paris cadences — SA3-C).
+  # Minute scheduler tick (app:jobs:run-due, Europe/Paris cadences — SA3-C). A job that never ran
+  # waits for its next slot unless the latest one is under 30 min old.
   cron-runner:
     image: ghcr.io/${GHCR_OWNER:?}/scheduler-php:${VERSION:-latest}
     build:
