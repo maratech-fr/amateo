@@ -1,4 +1,4 @@
-# Roadmap (157) — ce qui reste à faire
+# Roadmap (159) — ce qui reste à faire
 
 > **Ce fichier ne tient QUE l'ouvert.** Bugs, évolutions, dettes techniques : tout ce qu'on trace pour ne pas
 > l'oublier un jour. Rien de livré n'y figure — un item livré **quitte** ce fichier et laisse sa trace dans
@@ -250,6 +250,8 @@
 | P4-566 | **`TenantDoctrineScope::reset()` oublie le club mais ne désactive pas les filtres Doctrine** | ⚪ | XS | `reset()` remet `clubId`/`seasonId` à null sans éteindre `tenant_filter` ni relâcher le GUC : sans effet en php-fpm (un processus = une requête), à risque si un noyau servait plusieurs requêtes (constaté par les tests de P4-503 sous `disableReboot`). À faire : éteindre les filtres au `reset()`, avec un test qui sert deux requêtes de deux clubs dans le même noyau. |
 | P4-567 | **Radar de l'accueil : la carte « Planning de période validé » d'une fermeture n'est pas alignée sur la carte d'alerte voisine** | ⚪ | XS | `ClosureRadarItem` (`RadarPanel.tsx:861`, `hasOverlay` : icône `AlertTriangle` `text-accent` `:922`) rend la carte générique `RadarCard` (`:976`), dont le titre est en `truncate` (`:1000`) alors que `PeriodPlanAlertCard.tsx:42` passe en `line-clamp-2` : le même nom de fermeture est coupé sur l'une et pas sur l'autre. Le triangle d'alerte, ici sur une information calme, est le même que celui d'un problème. À 1280 px, « Ajuster » tombe seul sur une troisième rangée. Constaté au contrôle visuel de P4-503. |
 | P4-573 | **État vide de la file : « à jour » est faux quand des extérieurs masqués portent un écart à trancher** | ⚪ | XS | Matchs › Importer, « Masquer les extérieurs » coché : si les seuls extérieurs ouverts portent un écart à trancher (aucun à marquer comme vu d'un geste), la file est vide à l'écran et l'état vide dit « Toutes les rencontres importées sont à jour », alors qu'il reste des écarts à trancher. Le cas « extérieurs à marquer comme vus » a déjà son propre texte (`ReviewQueue.tsx`) ; il manque celui des écarts |
+| P4-574 | **En local, le `cron-runner` ne devrait démarrer que sur demande** | ⚪ | XS | Profil Docker, comme `frontend-dev` : la base de jeu ne doit jamais changer sans geste du fondateur. Aujourd'hui `make start`, `make build` (`up -d`) et `backend/scripts/with-sandbox.sh` le relancent. |
+| P4-575 | **`period-reminders` échoue chaque jour en local depuis au moins le 2026-11-08** | ⚪ | XS | `admin_job_run.status = failed` : cause à instruire, vérifier en prod. |
 
 ---
 

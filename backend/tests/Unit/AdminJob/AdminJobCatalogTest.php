@@ -21,8 +21,10 @@ final class AdminJobCatalogTest extends TestCase
         self::assertNotNull($restoreCheck, 'The closed catalog must schedule the db-restore-check job.');
         self::assertSame('app:db:restore-check', $restoreCheck->command);
 
+        // Jobs déjà passés à leur créneau précédent : chacun rend son créneau de CE dimanche
+        // (lecture indépendante de la règle « jamais lancé », couverte par AdminJobScheduleTest).
         $sundayMorning = new DateTimeImmutable('2026-07-19T05:00:00+02:00');
-        $restoreDue = $restoreCheck->schedule->nextDueAt($sundayMorning, null);
+        $restoreDue = $restoreCheck->schedule->nextDueAt($sundayMorning, new DateTimeImmutable('2026-07-12T04:00:00+02:00'));
         self::assertSame('2026-07-19T04:00:00+02:00', $restoreDue->format(DateTimeInterface::ATOM));
         self::assertSame('Sunday', $restoreDue->format('l'));
 
@@ -30,7 +32,7 @@ final class AdminJobCatalogTest extends TestCase
         $backup = $catalog->find('db-backup');
         self::assertNotNull($backup);
         self::assertTrue(
-            $backup->schedule->nextDueAt($sundayMorning, null) < $restoreDue,
+            $backup->schedule->nextDueAt($sundayMorning, new DateTimeImmutable('2026-07-18T01:00:00+02:00')) < $restoreDue,
             'restore-check must run after the nightly backup.',
         );
 
@@ -38,7 +40,7 @@ final class AdminJobCatalogTest extends TestCase
         $lastPurge = $catalog->find('purge-exports');
         self::assertNotNull($lastPurge);
         self::assertTrue(
-            $lastPurge->schedule->nextDueAt($sundayMorning, null) < $restoreDue,
+            $lastPurge->schedule->nextDueAt($sundayMorning, new DateTimeImmutable('2026-07-18T03:45:00+02:00')) < $restoreDue,
             'restore-check must run after the nightly purges.',
         );
     }
@@ -52,9 +54,8 @@ final class AdminJobCatalogTest extends TestCase
         self::assertNotNull($job, 'The closed catalog must schedule the period-plan-auto-validation job.');
         self::assertSame('app:period-plans:auto-validate', $job->command);
 
-        // Même lecture que restore-check : sans dernier passage, l'échéance rendue est la plus
-        // récente déjà atteinte (rattrapage) — à 00:20 c'est 00:15 du jour même.
-        $due = $job->schedule->nextDueAt(new DateTimeImmutable('2026-12-28T00:20:00+01:00'), null);
+        // Passé la veille à 00:15 : à 00:20 l'échéance est 00:15 du jour même.
+        $due = $job->schedule->nextDueAt(new DateTimeImmutable('2026-12-28T00:20:00+01:00'), new DateTimeImmutable('2026-12-27T00:15:00+01:00'));
         self::assertSame('2026-12-28T00:15:00+01:00', $due->format(DateTimeInterface::ATOM));
     }
 }

@@ -247,7 +247,8 @@ services:
 
   # Minute scheduler tick. app:jobs:run-due resolves due slots in Europe/Paris;
   # the allowlisted app:jobs:run wrapper prevents overlap and persists outcomes.
-  # Missed slots are caught up once after restart; one failure never stops the next job.
+  # Missed slots are caught up once after restart, but a job that never ran waits for its next
+  # slot unless the latest one is under 30 min old; one failure never stops the next job.
   cron-runner:
     restart: unless-stopped
     build:

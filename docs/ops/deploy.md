@@ -883,7 +883,9 @@ période commencés depuis 7 jours ou plus** de la saison en cours (tous les clu
 gestionnaire n'a validés : version chargée pointée, autres versions gardées, jamais le plan de saison,
 jamais un plan déjà validé une fois. **Avant ce premier tick**, lancer sur la VM la répétition, lire la
 liste et obtenir le GO du fondateur ; le premier passage est ensuite celui du `cron-runner` (ou à la
-main sans `--dry-run`) :
+main sans `--dry-run`). Un job du catalogue jamais lancé n'est pas rattrapé : le premier passage
+automatique a lieu au premier 00:15 qui suit le déploiement (sauf déploiement entre 00:15 et 00:45,
+fenêtre de tolérance de 30 min), ce qui laisse le temps du dry-run :
 
 ```bash
 docker exec amateo-php-fpm php bin/console app:period-plans:auto-validate --dry-run   # liste ce qui serait validé, n'écrit rien
