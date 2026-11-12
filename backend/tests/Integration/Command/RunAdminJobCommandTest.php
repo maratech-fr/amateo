@@ -107,39 +107,45 @@ final class RunAdminJobCommandTest extends KernelTestCase
 
     public function testDueRunnerCatchesUpOnceAndDoesNotDuplicateTheScheduledSlot(): void
     {
-        $definition = new AdminJobDefinition('test-job', 'Test job', 'test:job:count', AdminJobSchedule::daily(8));
-        $catalog = new AdminJobCatalog([$definition]);
-        $registry = self::getContainer()->get(ManagerRegistry::class);
-        \assert($registry instanceof ManagerRegistry);
-        $store = new AdminJobRunStore($registry);
-        $wrapper = new RunAdminJobCommand($catalog, new AdminJobRunner($store));
-        $target = new class extends Command {
-            public int $executions = 0;
-
-            public function __construct()
-            {
-                parent::__construct('test:job:count');
-            }
-
-            protected function execute(InputInterface $input, OutputInterface $output): int
-            {
-                ++$this->executions;
-
-                return Command::SUCCESS;
-            }
-        };
-        $dueRunner = new RunDueAdminJobsCommand($catalog, $store, new MockClock('2026-07-16T10:05:00+02:00'));
-        $application = new Application;
-        $application->setAutoExit(false);
-        $application->addCommands([$target, $wrapper, $dueRunner]);
-        $tester = new CommandTester($dueRunner);
+        // Promesse : un job DÉJÀ passé (15/07 08:00) qui a manqué le 16/07 08:00 le rattrape une
+        // seule fois, même si le tick repasse ; le créneau rattrapé est celui de Paris.
+        $this->admin->insert('admin_job_run', [
+            'id' => '00000000-0000-4000-8000-000000000021',
+            'job_key' => 'test-job',
+            'command_name' => 'test:job:count',
+            'source' => 'scheduled',
+            'status' => 'succeeded',
+            'started_at' => '2026-07-15 08:00:00+02',
+            'scheduled_for' => '2026-07-15 08:00:00+02',
+        ]);
+        [$tester, $target] = $this->dueRunnerAt('2026-07-16T10:05:00+02:00');
 
         self::assertSame(Command::SUCCESS, $tester->execute([]));
         self::assertSame(Command::SUCCESS, $tester->execute([]));
         self::assertSame(1, $target->executions);
-        self::assertSame(1, (int) $this->admin->fetchOne('SELECT COUNT(*) FROM admin_job_run'));
-        $scheduledFor = new DateTimeImmutable((string) $this->admin->fetchOne('SELECT scheduled_for FROM admin_job_run'));
+        self::assertSame(2, (int) $this->admin->fetchOne('SELECT COUNT(*) FROM admin_job_run'));
+        $scheduledFor = new DateTimeImmutable((string) $this->admin->fetchOne('SELECT MAX(scheduled_for) FROM admin_job_run'));
         self::assertSame('2026-07-16T08:00:00+02:00', $scheduledFor->setTimezone(new DateTimeZone('Europe/Paris'))->format(DateTimeInterface::ATOM));
+    }
+
+    public function testDueRunnerLeavesANeverRunJobUntilItsNextSlot(): void
+    {
+        // Promesse : un job du catalogue qui n'a JAMAIS tourné ne part pas au premier tick du
+        // cron-runner (déploiement à 10:05, créneau 08:00 passé) — il attend le 08:00 suivant,
+        // et part au tick qui atteint ce créneau. Jumeau unitaire :
+        // AdminJobScheduleTest::testDailyJobNeverRunWaitsForItsNextSlotInsteadOfFiringAtTheFirstTick.
+        [$firstTick, $target] = $this->dueRunnerAt('2026-07-16T10:05:00+02:00');
+
+        self::assertSame(Command::SUCCESS, $firstTick->execute([]));
+        self::assertSame(0, $target->executions);
+        self::assertSame(0, (int) $this->admin->fetchOne('SELECT COUNT(*) FROM admin_job_run'));
+
+        [$nextSlotTick, $nextTarget] = $this->dueRunnerAt('2026-07-17T08:00:40+02:00');
+
+        self::assertSame(Command::SUCCESS, $nextSlotTick->execute([]));
+        self::assertSame(1, $nextTarget->executions);
+        $scheduledFor = new DateTimeImmutable((string) $this->admin->fetchOne('SELECT scheduled_for FROM admin_job_run'));
+        self::assertSame('2026-07-17T08:00:00+02:00', $scheduledFor->setTimezone(new DateTimeZone('Europe/Paris'))->format(DateTimeInterface::ATOM));
     }
 
     public function testDatabaseRejectsADuplicateScheduledSlotUnlessThePreviousRunWasInterrupted(): void
@@ -233,6 +239,43 @@ final class RunAdminJobCommandTest extends KernelTestCase
         $application->addCommand($wrapper);
 
         return new CommandTester($wrapper);
+    }
+
+    /**
+     * Tick `app:jobs:run-due` figé à `$now`, sur un catalogue d'un seul job quotidien 08:00
+     * (`test-job`) dont la commande cible compte ses exécutions.
+     *
+     * @return array{0: CommandTester, 1: object{executions: int}}
+     */
+    private function dueRunnerAt(string $now): array
+    {
+        $definition = new AdminJobDefinition('test-job', 'Test job', 'test:job:count', AdminJobSchedule::daily(8));
+        $catalog = new AdminJobCatalog([$definition]);
+        $registry = self::getContainer()->get(ManagerRegistry::class);
+        \assert($registry instanceof ManagerRegistry);
+        $store = new AdminJobRunStore($registry);
+        $wrapper = new RunAdminJobCommand($catalog, new AdminJobRunner($store));
+        $target = new class extends Command {
+            public int $executions = 0;
+
+            public function __construct()
+            {
+                parent::__construct('test:job:count');
+            }
+
+            protected function execute(InputInterface $input, OutputInterface $output): int
+            {
+                ++$this->executions;
+
+                return Command::SUCCESS;
+            }
+        };
+        $dueRunner = new RunDueAdminJobsCommand($catalog, $store, new MockClock($now));
+        $application = new Application;
+        $application->setAutoExit(false);
+        $application->addCommands([$target, $wrapper, $dueRunner]);
+
+        return [new CommandTester($dueRunner), $target];
     }
 
     /** @return array<string, mixed> */
