@@ -13,6 +13,13 @@ final readonly class AdminJobSchedule
 {
     private const TIMEZONE = 'Europe/Paris';
 
+    /**
+     * Un job jamais lancé ne part sur son créneau le plus récent que si ce créneau date de moins
+     * de 30 min : le cron-runner tique toutes les ~60 s et un long job (sauvegarde) le retarde de
+     * plusieurs minutes. Au-delà (déploiement d'un nouveau job), il attend son créneau suivant.
+     */
+    private const NEVER_RUN_TOLERANCE = '-30 minutes';
+
     private function __construct(public string $cadence, private int $hour = 0, private int $minute = 0)
     {
         if ($hour < 0 || $hour > 23 || $minute < 0 || $minute > 59) {
@@ -57,10 +64,19 @@ final readonly class AdminJobSchedule
         }
 
         $due = $this->mostRecentDueAt($now);
-        if (!$lastScheduledFor instanceof DateTimeImmutable || $lastScheduledFor < $due) {
+        if (!$lastScheduledFor instanceof DateTimeImmutable) {
+            return $due >= $now->modify(self::NEVER_RUN_TOLERANCE) ? $due : $this->followingDueAt($due);
+        }
+
+        if ($lastScheduledFor < $due) {
             return $due;
         }
 
+        return $this->followingDueAt($due);
+    }
+
+    private function followingDueAt(DateTimeImmutable $due): DateTimeImmutable
+    {
         return match ($this->cadence) {
             'every_10_minutes' => $due->modify('+10 minutes'),
             'daily' => $due->modify('+1 day'),
