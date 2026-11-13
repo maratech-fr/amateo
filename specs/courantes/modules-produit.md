@@ -332,7 +332,7 @@ Les limites du produit, dites franchement à qui les vit :
 - Il ne fabrique pas le calendrier des championnats : celui-ci arrive de la fédération, il le range.
 - Il ne remplace pas le jugement du gestionnaire : Amateo dégrossit le travail, à vous les
   finitions.
-- Il n'écrit jamais aux joueurs ni aux familles : pas de convocation, pas de message. Le club
+- Il n'envoie ni convocations ni messages aux joueurs ou aux familles. Le club
   exporte (le planning, la liste des matchs en PDF) et donne le fichier à qui il veut. Seuls les
   coachs reçoivent des e-mails d'Amateo, envoyés par le gestionnaire : le lien personnel où ils
   déposent leurs disponibilités (sans compte), ses relances et la liste de leurs conflits. Les
