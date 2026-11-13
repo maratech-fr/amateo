@@ -67,10 +67,12 @@ L'accueil **est** le cockpit (bandeau socle, calendrier d'exceptions, radar de r
   déjà segmentée sous aperçu puis confirmation) tient cette même règle. → [ADR-0002](../../docs/architecture/adr-0002-pattern-plan.md)
   inv. 4 · [`accueil-cockpit-temporel.md`](accueil-cockpit-temporel.md) §5bis
 - **Prolonger/raccourcir une FERMETURE à travers des vacances, en reprenant le planning validé**
-  (backend seul, rail ancré au PLAN distinct de D3 v2) : aperçu puis confirmation par jeton, le
+  (rail ancré au PLAN distinct de D3 v2) : aperçu puis confirmation par jeton, le
   « milieu » déjà travaillé est ré-ancré (même version), chaque run d'après-vacances naît en copie
   validée d'office, la datée `venue_closed` s'étend sur toute la fenêtre, le passé ne bouge jamais.
-  Surface écran à venir. → [`types-de-planning.md`](types-de-planning.md) §2 ·
+  Écran livré : bouton « Dates » (`SeasonSchedulesModal.tsx:244,249`) qui ouvre `ClosureWindowDialog`
+  (`SeasonSchedulesModal.tsx:261`), aperçu et application via `window-preview` / `window`
+  (`cockpit/api.ts:465,479`). → [`types-de-planning.md`](types-de-planning.md) §2 ·
   [`accueil-cockpit-temporel.md`](accueil-cockpit-temporel.md) §5bis
 - **Une adaptation peut naître comme une COPIE du socle, sans solveur** : transcription filtrée de la sélection de
   période (équipes/gymnases/jours désactivés, séances réduites) en verrous HARD, séances qui ne passent plus

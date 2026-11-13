@@ -53,6 +53,10 @@ reconstruire le planning de la saison.
 **Livré :**
 - Une période d'exception (fermeture) posée depuis le cockpit ; sa grille de gymnases est une
   **copie** prise à sa naissance, jamais une réécriture de la saison — `etat-des-lieux.md` §1.2.
+- Avant d'enregistrer la fermeture d'un gymnase, un aperçu dit ce qu'elle touche : les équipes
+  qui s'y entraînent, les matchs à déplacer (nommés : équipe, adversaire, jour, heure), et les
+  verrous et réservations qui seront retirés des plannings de période concernés —
+  `frontend/src/features/cockpit/ClosureImpactPanel.tsx:15-20`.
 - Découpage automatique en segments début / milieu / fin pour une fermeture qui déborde une
   semaine entière — `etat-des-lieux.md` §1.2 (P2-41).
 - L'adaptation peut naître comme une copie du planning de saison, **sans repasser par le
@@ -89,7 +93,44 @@ planning progressif, et vous êtes prévenus avant l'échéance, pas après.
 
 **Capture :** aucune encore.
 
-### 4. Les contraintes, faciles à gérer
+### 4. Préparer la saison suivante dès le 1er mai
+
+**Promesse.** Le planning de septembre est prêt en juin : vous n'attendez plus l'été pour vous y
+mettre. Les familles, qui ont besoin de visibilité pour organiser les autres activités des
+enfants, savent dès juin quand a lieu le basket ; et le bureau part en vacances l'esprit
+tranquille.
+
+**Livré :**
+- À partir du 1er mai et jusqu'à la fin de la saison en cours, « Préparer la saison suivante »
+  copie vos gymnases, vos équipes, vos coachs et vos règles permanentes dans une saison à part,
+  librement modifiable — la saison en cours n'est pas touchée, et le planning généré n'est pas
+  copié (il se génère dans la nouvelle saison) — `frontend/src/app/SeasonSelector.tsx:51-56,159,166`.
+- Un rappel par e-mail aux gestionnaires tant que la saison suivante n'est pas préparée : vers le
+  15 mai, vers le 15 juin et vers le 1er juillet (échéance : le 15 juillet) —
+  `backend/src/Command/TransitionReminderCommand.php:30-34,48`.
+
+**Où dans l'app :** sélecteur de saison de l'en-tête.
+
+**Capture :** aucune encore.
+
+### 5. Les statistiques d'occupation des gymnases
+
+**Promesse.** Pour négocier vos créneaux avec la mairie, vous avez les chiffres : « le lundi, on a
+8 heures, dont 3 de régional ».
+
+**Livré :**
+- Les heures de chaque gymnase, puis de chaque niveau, jour de la semaine par jour de la
+  semaine, séparées entre réalisé et à venir, avec une ligne de total par jour ; la plage de dates
+  se choisit (la saison entière par défaut) — `backend/src/Controller/VenueUsageStatsController.php:35-37`,
+  `frontend/src/features/club/ClubPage.tsx:541,593-605`.
+- Condition : le planning de saison doit être validé ; sinon le tableau est vide et l'écran dit
+  pourquoi — `backend/src/Controller/VenueUsageStatsController.php:122-131`.
+
+**Où dans l'app :** `/club`, section « Statistiques des gymnases ».
+
+**Capture :** aucune encore.
+
+### 6. Les contraintes, faciles à gérer
 
 **Promesse.** Vous posez une règle une fois — un jour interdit, une salle indisponible, un coach
 — le solveur ne l'oublie jamais ; certaines vont même de soi, sans que vous ayez à les écrire.
@@ -104,9 +145,29 @@ planning progressif, et vous êtes prévenus avant l'échéance, pas après.
 - Le lien du coach dépose un souhait, il **n'écrit jamais** une contrainte : c'est toujours le
   gestionnaire qui arbitre et tranche (les jours souhaités sont purement informatifs, zéro effet
   solveur) — `etat-des-lieux.md` §1.6.
+- Pour une équipe à plusieurs coachs principaux, un seul coach répond pour tout le staff : le
+  gestionnaire choisit lequel reçoit le lien — `backend/src/ApiResource/CoachWishCampaignResource.php:48`.
+- Chaque matin à 7 h, les gestionnaires reçoivent par e-mail les nouvelles réponses (rien s'il n'y
+  en a pas), et un récapitulatif final à l'échéance — `backend/src/Command/CoachWishDigestCommand.php:32`.
+- « Relancer les silencieux » : une relance par jour, aux seuls coachs qui n'ont pas répondu —
+  `backend/src/ApiResource/CoachWishCampaignResource.php:40`.
+- Les souhaits cochés passent au planning d'un geste, en réglages de la semaine concernée — le
+  gestionnaire relit avant de transférer — `backend/src/Controller/CoachWishTransferController.php`.
+- Les règles de bien-être se règlent d'un clic (Obligatoire ou Objectif) : chaque coach
+  garde un jour de repos par semaine ; un salarié est placé chaque jour où le club tourne
+  (jamais bloquant, un jour sans salarié est signalé après coup) ; jamais trop de créneaux
+  dos-à-dos pour une même personne, ni trop de jours d'affilée pour une équipe ; et les jeunes
+  passent avant les grands sur un même gymnase et un même jour —
+  `backend/src/Enum/ImplicitRuleKey.php:83-90`, `frontend/src/features/wizard/lib/implicitRules.ts:60-70`.
+- Le récapitulatif dit ce qui bloquera AVANT de lancer la génération (« n blocages à corriger
+  avant de générer »), et ce qu'il dit voué à l'échec est refusé avant même d'être envoyé au
+  calcul, quel que soit le chemin pris — `frontend/src/features/wizard/steps/RecapStep.tsx:201-204,425`,
+  `backend/src/Service/GenerationBlockersGuard.php`. Il avertit aussi sans bloquer, par exemple
+  quand un coach seul sur une équipe a plus de séances que de jours disponibles —
+  `backend/src/Service/PreSolvePreventionWarnings.php:329`.
 
-**Où dans l'app :** wizard étape Contraintes, page publique `/doleances/:token` (coach), cockpit
-(todo-list des doléances).
+**Où dans l'app :** wizard étape Contraintes et Récap, page publique `/doleances/:token` (coach),
+cockpit (todo-list des doléances).
 
 **Capture :** aucune encore.
 
@@ -164,6 +225,12 @@ un gymnase pris deux fois : vous le voyez avant le week-end, pas après.
   conflits.
 - Un onglet Conflits dédié, pivoté par coach, équipe, gymnase ou journée — `etat-des-lieux.md`
   §1.5.
+- D'un geste, chaque coach concerné reçoit par e-mail SA liste de conflits : le conflit se règle
+  des semaines avant, pas la semaine du match. Un aperçu dit avant l'envoi, coach par coach, ce
+  qui partira ; par défaut, seuls les coachs qui ont un conflit nouveau ou modifié depuis le
+  dernier envoi sont écrits (les changements sont marqués dans le mail), un choix renvoie toutes
+  les listes ; un coach qui n'a plus de conflit est prévenu qu'il n'en a plus —
+  `backend/src/Controller/ConflictCoachMailController.php:43-50`.
 
 **Où dans l'app :** `/matchs/conflits`.
 
@@ -186,6 +253,46 @@ simple entraînement, trajet compris — et vous savez où joue chaque adversair
   `etat-des-lieux.md` §1.5.
 
 **Où dans l'app :** `/matchs/adversaires`.
+
+**Capture :** aucune encore.
+
+### 5. La liste des matchs en PDF
+
+**Promesse.** Quelqu'un vous demande « c'est quand, les matchs ? » : vous sortez la liste en un
+clic, prête à transmettre — Amateo ne l'envoie à personne, c'est vous qui la donnez.
+
+**Livré :**
+- Un PDF des matchs de tout le club ou d'une seule équipe, entre deux dates, regroupé par équipe
+  ou par jour, avec l'option « matchs à domicile seulement » —
+  `backend/src/Controller/ExportMatchesPdfController.php:26-27,45-70`.
+- Tout membre du bureau peut le télécharger, pas seulement les gestionnaires (comme l'export du
+  planning) — `backend/src/Controller/ExportMatchesPdfController.php:26-27`.
+
+**Où dans l'app :** `/matchs` (Calendrier), bouton « Exporter ».
+
+**Capture :** aucune encore.
+
+---
+
+## Le club à plusieurs — le bureau et la passation
+
+**Promesse.** Le bureau voit tout sans risquer de rien casser, et si le gestionnaire part, la
+suite est prévue — sans dépendre d'un oubli de passation.
+
+**Livré :**
+- Deux rôles : Gestionnaire, qui modifie, et Membre, qui consulte tout et ne modifie rien ; le
+  serveur refuse l'écriture à un Membre, l'écran ne lui offre même pas le geste —
+  `frontend/src/shared/lib/roles.ts:15,31-38`, `backend/src/Service/ManagementAccessGuard.php`.
+- Le gestionnaire invite un collègue du bureau par e-mail, en lui donnant le rôle de Gestionnaire
+  ou de Membre — `backend/src/Controller/ClubInvitationController.php:64-113`.
+- Avant de supprimer son compte, le seul gestionnaire du club nomme un successeur parmi les
+  Membres, en un clic — `frontend/src/features/profile/SuccessorPicker.tsx:13-18`.
+- Un Membre peut demander à devenir gestionnaire ; les gestionnaires acceptent ou refusent, et
+  sans réponse au bout de 14 jours la demande est transmise une fois à l'adresse officielle du
+  club. Si le club n'a plus aucun gestionnaire, la demande part directement à cette adresse —
+  `backend/src/Service/ManagerRoleRequestService.php:26-29,43`.
+
+**Où dans l'app :** `/club` (membres, invitations), `/profile` (zone danger).
 
 **Capture :** aucune encore.
 
@@ -225,10 +332,12 @@ Les limites du produit, dites franchement à qui les vit :
 - Il ne fabrique pas le calendrier des championnats : celui-ci arrive de la fédération, il le range.
 - Il ne remplace pas le jugement du gestionnaire : Amateo dégrossit le travail, à vous les
   finitions.
-- Il n'envoie ni convocations ni messages aux joueurs ou aux familles : le coach dépose ses
-  disponibilités par un lien personnel, sans compte, et le gestionnaire lui envoie ce lien, ses
-  relances et la liste de ses conflits ; les autres e-mails sont ceux du compte (vérification,
-  invitation, mot de passe) et les rappels de période.
+- Il n'écrit jamais aux joueurs ni aux familles : pas de convocation, pas de message. Le club
+  exporte (le planning, la liste des matchs en PDF) et donne le fichier à qui il veut. Seuls les
+  coachs reçoivent des e-mails d'Amateo, envoyés par le gestionnaire : le lien personnel où ils
+  déposent leurs disponibilités (sans compte), ses relances et la liste de leurs conflits. Les
+  autres e-mails vont au bureau : ceux du compte (vérification, invitation, mot de passe), les
+  rappels de période et de saison suivante, le résumé des réponses des coachs.
 - Il est fait pour le basket amateur affilié FFBB, et pour lui seul.
 
 ---
