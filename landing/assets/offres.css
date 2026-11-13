@@ -1,6 +1,10 @@
 /* ── Offres (`offres.html`) : les deux cartes (Découverte, l'offre complète et ses trois paliers)
    et la démonstration des dix crédits. Le curseur de palier est commun (site.css). ── */
 
+/* Blocs empilés (≤ 820 px, cf. `.w-two` dans site.css) : chaque bloc ouvre par son titre, puis sa
+   carte — le premier bloc a la carte du curseur en tête dans le DOM (colonne gauche en grand écran). */
+@media (max-width: 820px) { .w-two > .w-col { order: -1; } }
+
 .of-one { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2.2fr); gap: 14px; align-items: stretch; }
 @media (max-width: 820px) { .of-one { grid-template-columns: minmax(0, 1fr); } }
 .of-one .w-card ul { display: grid; gap: 6px; font-size: 14.5px; }

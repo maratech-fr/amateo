@@ -64,9 +64,11 @@
 @media (max-width: 480px) { .i11-l { grid-template-columns: minmax(0, 1fr); } }
 .i11-l li { animation: mIn .35s cubic-bezier(.2,.8,.2,1) backwards; }
 .i11-l li.kc { grid-column: 1 / -1; }
-.i11-l label { display: flex; gap: 8px; align-items: center; min-height: 44px; border: 1px solid var(--a-line); border-radius: 9px; padding: 6px 9px; font-size: 13.5px; cursor: pointer; background: #ffffff; }
+/* Tuile étroite (≈ 165 px vers 768 px) : l'étiquette passe à la ligne au lieu de déborder. */
+.i11-l label { display: flex; flex-wrap: wrap; gap: 2px 8px; align-items: center; min-height: 44px; border: 1px solid var(--a-line); border-radius: 9px; padding: 6px 9px; font-size: 13.5px; cursor: pointer; background: #ffffff; }
 .i11-l label:has(input:checked) { background: var(--a-soft); border-color: var(--teal-ink); }
 .i11-l input { accent-color: var(--teal-ink); flex: none; width: 18px; height: 18px; margin: 0; }
+.i11-l label > span { flex: 1 1 4em; min-width: 0; overflow-wrap: anywhere; }
 .i11-l small { margin-left: auto; font-size: 11px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: var(--b-muted); }
 .i11-l em { font-style: normal; font-size: 11.5px; font-weight: 800; background: #fdecd2; color: #7a4500; border-radius: 999px; padding: 1px 8px; }
 @keyframes mIn { from { opacity: 0; transform: translateY(12px); } }

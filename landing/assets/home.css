@@ -109,6 +109,9 @@ header.site.small { box-shadow: 0 1px 0 #11302f22, 0 10px 24px -20px #11302faa; 
 .p-beach.on { opacity: 1; }
 .p-beach svg { display: block; width: 100%; height: 100%; }
 @keyframes pTk { from { opacity: 0; transform: translateY(8px); } }
+/* Sous la barre inline (≤ 980 px), la carte de la scène ne dépasse pas 560 px, centrée : à 768 px
+   la grille ne s'étire plus sur toute la largeur. En dessous de 560 px, rien ne change. */
+@media (max-width: 980px) { .p-pin { width: 100%; max-width: 560px; justify-self: center; } }
 @media (max-width: 860px) {
   .js .p-grid { grid-template-columns: minmax(0, 1fr); gap: 0; }
   .p-pin { order: 1; top: 72px; z-index: 2; padding: 10px; border-radius: 16px; }
