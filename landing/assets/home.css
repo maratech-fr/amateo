@@ -89,7 +89,7 @@ header.site.small { box-shadow: 0 1px 0 #11302f22, 0 10px 24px -20px #11302faa; 
 .a-cellx.mt { opacity: 1; background: #f7dff0; color: #7d1160; font-size: 10px; font-weight: 800; line-height: 1.1; display: flex; align-items: center; justify-content: center; text-align: center; }
 .a-blk { position: absolute; width: 20%; height: 20%; left: calc(var(--d) * 20%); top: calc(var(--r) * 20%); padding: 3px; transition: left .85s cubic-bezier(.34,1.45,.5,1), top .85s cubic-bezier(.34,1.45,.5,1), opacity .4s, transform .4s; }
 .a-blk b { display: flex; align-items: center; justify-content: center; height: 100%; border-radius: 999px; font-size: 12px; font-weight: 800; border: 1.5px solid transparent; transform: rotate(var(--tilt, 0deg)); box-shadow: 0 2px 0 #00000022; }
-.a-blk.y b { background: var(--a-soft); color: var(--teal-ink); }
+.a-blk.y b { background: var(--a-soft); color: var(--accent-deep); } /* teal un cran plus sombre : ≥ 4,5:1 sur --a-soft */
 .a-blk.m b { background: var(--teal-ink); color: #ffffff; }
 .a-blk.s b { background: var(--a-fg); color: #ffffff; }
 .a-blk.l b { background: var(--a-surface); border: 1.5px dashed var(--a-muted); }
@@ -103,7 +103,7 @@ header.site.small { box-shadow: 0 1px 0 #11302f22, 0 10px 24px -20px #11302faa; 
 .p-sc b.tk { animation: i2t .3s ease-out; }
 .p-chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .p-chips li { font-size: 12.5px; font-weight: 600; border: 1px solid var(--a-line); border-radius: 999px; padding: 4px 10px; color: var(--a-muted); transition: background .3s, color .3s, border-color .3s, transform .3s cubic-bezier(.34,1.45,.5,1); }
-.p-chips li.on { background: var(--a-soft); border-color: var(--teal-ink); color: var(--teal-ink); }
+.p-chips li.on { background: var(--a-soft); border-color: var(--teal-ink); color: var(--accent-deep); }
 .p-chips li.new { transform: scale(1.08); }
 .p-beach { position: absolute; inset: 0; opacity: 0; transition: opacity .6s ease; pointer-events: none; z-index: 2; }
 .p-beach.on { opacity: 1; }
@@ -155,14 +155,22 @@ header.site.small { box-shadow: 0 1px 0 #11302f22, 0 10px 24px -20px #11302faa; 
 .p-clubs { background: #ffffff; color: var(--b-fg); padding-block: clamp(44px, 6vw, 72px); }
 .p-clubs .wrap { display: grid; gap: 10px; justify-items: center; text-align: center; }
 .p-clubs ul { display: flex; flex-wrap: wrap; justify-content: center; gap: 18px clamp(24px, 6vw, 72px); margin-top: 18px; }
-.p-clubs li { position: relative; display: grid; justify-items: center; gap: 10px; padding-bottom: 34px; border-radius: 12px; }
+.p-clubs li { position: relative; display: grid; justify-items: center; gap: 10px; padding-bottom: 42px; border-radius: 12px; }
 .p-clubs li:focus-visible { outline: 3px solid var(--teal-ink); outline-offset: 6px; }
 .p-clubs img { width: clamp(110px, 14vw, 150px); height: auto; aspect-ratio: 1; object-fit: contain; transition: transform .25s cubic-bezier(.34,1.45,.5,1); }
-.p-clubs li span { position: absolute; bottom: 0; left: 50%; transform: translate(-50%, 6px); white-space: nowrap; background: var(--scoreboard); color: var(--score-ink); font-weight: 800; font-size: 14px; border-radius: 999px; padding: 5px 12px; opacity: 0; transition: opacity .2s ease, transform .2s ease; }
+/* Pastille du nom : une seule ligne, largeur = son texte, centrée sous le logo. Au survol et au
+   focus, elle se pose 4 px au-dessus du bas du <li> (hors du logo, hors de l'anneau de focus). */
+.p-clubs li span { position: absolute; bottom: 4px; left: 50%; transform: translate(-50%, 6px); white-space: nowrap; background: var(--scoreboard); color: var(--score-ink); font-weight: 800; font-size: 14px; line-height: 1.4; border-radius: 999px; padding: 5px 12px; opacity: 0; transition: opacity .2s ease, transform .2s ease; }
 .p-clubs li:hover img, .p-clubs li:focus-visible img { transform: translateY(-4px); }
 .p-clubs li:hover span, .p-clubs li:focus-visible span { opacity: 1; transform: translate(-50%, 0); }
-@media (hover: none) { .p-clubs li span { opacity: 1; transform: translate(-50%, 0); } }
-@media (max-width: 520px) { .p-clubs li span { white-space: normal; width: max-content; max-width: 150px; text-align: center; border-radius: 12px; } }
+/* Écran tactile : pas de survol, le nom est TOUJOURS visible. La pastille entre dans le flux sous
+   son logo : le <li> prend la largeur du nom, deux pastilles ne se chevauchent jamais (les <li>
+   passent à la ligne quand deux noms ne tiennent pas côte à côte). */
+@media (hover: none) {
+  .p-clubs li { padding-bottom: 0; }
+  .p-clubs li span { position: static; transform: none; opacity: 1; }
+  .p-clubs li:hover span, .p-clubs li:focus-visible span { transform: none; }
+}
 
 /* ── Offres : le curseur de palier (styles communs dans site.css) ── */
 .p-offres { padding-block: 30px 0; }

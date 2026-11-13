@@ -36,39 +36,40 @@
       if (!next) {
         box.hidden = true; // liste épuisée : le héros s'affiche sans compte à rebours
       } else {
-        var label = box.querySelector("[data-cd-label]");
-        var digits = box.querySelector("[data-cd-digits]");
-        var question = box.querySelector("[data-cd-question]");
-        var cells = digits ? digits.querySelectorAll("b") : [];
-        var units = digits ? digits.querySelectorAll("span") : [];
-        if (question) question.textContent = next.question;
-        var days = function (s) { return Math.floor(s / 86400); };
+        // Noms préfixés `cd` : ce bloc partage la portée de l'IIFE avec la scène (un `var` homonyme
+        // y serait remonté et le compte à rebours écrirait dans la grille).
+        var cdLabel = box.querySelector("[data-cd-label]");
+        var cdDigits = box.querySelector("[data-cd-digits]");
+        var cdQuestion = box.querySelector("[data-cd-question]");
+        var cdCells = cdDigits ? cdDigits.querySelectorAll("b") : [];
+        var cdUnits = cdDigits ? cdDigits.querySelectorAll("span") : [];
+        if (cdQuestion) cdQuestion.textContent = next.question;
+        var cdDaysOf = function (s) { return Math.floor(s / 86400); };
         if (reduced) {
           // Une ligne fixe, en jours : rien ne défile.
-          var left = Math.max(0, Math.floor((next.at - Date.now()) / 1000));
-          var d = days(left);
-          var when = d >= 2 ? d + " jours" : (d === 1 ? "1 jour" : "moins d’un jour");
+          var cdDays = cdDaysOf(Math.max(0, Math.floor((next.at - Date.now()) / 1000)));
+          var cdWhen = cdDays >= 2 ? cdDays + " jours" : (cdDays === 1 ? "1 jour" : "moins d’un jour");
           box.classList.add("still");
-          if (label) label.textContent = next.label + " " + when;
-          if (digits) digits.hidden = true;
+          if (cdLabel) cdLabel.textContent = next.label + " " + cdWhen;
+          if (cdDigits) cdDigits.hidden = true;
         } else {
-          if (label) label.textContent = next.label;
-          var last = [];
-          var count = function () {
+          if (cdLabel) cdLabel.textContent = next.label;
+          var cdLast = [];
+          var cdCount = function () {
             var s = Math.max(0, Math.floor((next.at - Date.now()) / 1000));
-            var v = [days(s), Math.floor(s % 86400 / 3600), Math.floor(s % 3600 / 60), s % 60];
+            var v = [cdDaysOf(s), Math.floor(s % 86400 / 3600), Math.floor(s % 3600 / 60), s % 60];
             v.forEach(function (n, i) {
               var t = (n < 10 ? "0" : "") + n;
-              if (last[i] === t || !cells[i]) return;
-              last[i] = t;
-              cells[i].textContent = t;
-              tick(cells[i]);
+              if (cdLast[i] === t || !cdCells[i]) return;
+              cdLast[i] = t;
+              cdCells[i].textContent = t;
+              tick(cdCells[i]);
             });
             // « jour » / « jours » sous le premier chiffre.
-            if (units[0] && units[0].lastChild) units[0].lastChild.textContent = v[0] > 1 ? "jours" : "jour";
+            if (cdUnits[0] && cdUnits[0].lastChild) cdUnits[0].lastChild.textContent = v[0] > 1 ? "jours" : "jour";
           };
-          count();
-          setInterval(count, 1000);
+          cdCount();
+          setInterval(cdCount, 1000);
         }
       }
     }
@@ -234,10 +235,10 @@
     var finalCta = document.querySelector("[data-final-cta]");
     var tiersBox = document.querySelector("#offres [data-tiers]");
     if (finalCta && tiersBox) {
-      var label = function (n) { return "Essayer avec mon club de " + n + " équipe" + (n > 1 ? "s" : ""); };
-      var range = tiersBox.querySelector("input[type=range]");
-      if (range) finalCta.textContent = label(+range.value);
-      tiersBox.addEventListener("tiers", function (e) { finalCta.textContent = label(+e.detail); });
+      var ctaLabel = function (n) { return "Essayer avec mon club de " + n + " équipe" + (n > 1 ? "s" : ""); };
+      var ctaRange = tiersBox.querySelector("input[type=range]");
+      if (ctaRange) finalCta.textContent = ctaLabel(+ctaRange.value);
+      tiersBox.addEventListener("tiers", function (e) { finalCta.textContent = ctaLabel(+e.detail); });
     }
   } catch (e) { /* le bouton garde son libellé sans JS */ }
 })();
