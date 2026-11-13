@@ -125,7 +125,7 @@ paths:
 - **Orange : un petit texte porte `--orange-ink`** (`#a35a00`), pas `--orange` (`#d47800`, réservé aux
   décors et aux chiffres ≥ 24 px gras). Sur fond terrain sombre le texte orange est `--peach`
   (`#ffd5bd`), sur la carte noire `--score-ink` (`#ffc24d`). Contrastes mesurés en navigateur.
-- **Mise en page mobile (lot 4, 2026-10-09)** : ≤880px la barre passe au **burger** — un
+- **Mise en page mobile (lot 4, 2026-10-09)** : ≤980px la barre passe au **burger** — un
   `<details class="nav-menu">`/`<summary>` NATIF (ouvre/ferme **sans JS** ; le JS n'ajoute que le
   confort : miroir `aria-expanded`, fermeture au clic sur une ancre, Échap → focus). Le panneau
   (`position:absolute` sous l'en-tête sticky, recouvre, **pas de scroll-lock**) **reprend** les
@@ -136,13 +136,16 @@ paths:
   de `nav.top` : « Comment ça marche », « Fonctionnalités », « Offres », « FAQ », « Se connecter »,
   « Essayer gratuitement » ; seul `aria-current="page"` varie ; gardes
   `testHeaderIsIdenticalAndNamesTheSixEntries`, `testFooterIsIdenticalAcrossPages`). Le burger est
-  `display:none` ≥881px, les liens inline restent. Le logo est en `flex-shrink:0` (le carré 40px ne
+  `display:none` ≥981px (`site.css`, `@media (max-width: 980px)`), les liens inline restent. Le logo est en `flex-shrink:0` (le carré 40px ne
   s'écrase plus). Paragraphes de **contenu** à 16px ≤720px (`.pain p`/`.step p`/`.faq .a`, règle
   placée APRÈS leurs règles de base — à spécificité égale c'est l'ordre source qui tranche, pas la
   media query). Étapes en **1 colonne + séparateur horizontal** <600px. Cibles tactiles ≥44px en
   mobile par padding gonflé + marge négative de compensation (bornées ≤880px, le rendu desktop ne
-  bouge pas). Preuve = banc Playwright 6 largeurs × burger ouvert/fermé × JS coupé,
-  captures `captures/lot4-*` (aucun job CI ne couvre `landing/`, cf. ci-dessous).
+  bouge pas). (aucun job CI ne couvre `landing/`, cf. ci-dessous.)
+- **Contrôle visuel de la vitrine (règle 2026-11-13)** : quatre largeurs — **1920, 1280, 768 et 360 px** —
+  avec **JavaScript coupé** et **mouvement réduit émulé**. Le burger (visible ≤980px) se vérifie ouvert
+  et fermé à 768 et 360 ; à 1920 et 1280 la barre inline reste. Captures à plat dans `captures/`
+  (gitignoré), nommées `vitrine-<chantier>-<page>-<largeur>.png`.
 - **Les sept autres pages sont des pages statiques SŒURS d'`index.html`, pas des fragments** :
   même `<head>` (`site.css`, sa feuille de page s'il y en a une), pied IDENTIQUE sur les huit,
   `site.js` en fin de `<body>` après `config.js`. `offres.html` et `faq.html` ont leur propre habillage
