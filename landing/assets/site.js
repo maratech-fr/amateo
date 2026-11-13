@@ -1,15 +1,17 @@
-// ── Script partagé de la vitrine (les six pages de `landing/`) ───────────────
-// Chargé en fin de <body>, APRÈS `config.js`, avec le même `?v=` que `config.js` et `site.css`.
-// Seul l'anti-flash de thème reste inline dans chaque <head> (il doit précéder la feuille).
+// ── Script partagé de la vitrine (les huit pages de `landing/`) ──────────────
+// Chargé en fin de <body>, APRÈS `config.js` et AVANT le script de la page (`home.js`,
+// `offres.js`, `faq.js`), avec le même `?v=` que `config.js` et les feuilles.
 //
 // Règles de ce fichier :
-// - la page marche SANS lui : marque, titres, `href` des boutons, mentions légales sont écrits
-//   en clair dans le HTML ; ce script n'apporte que du confort (logo, thème, burger, glissement)
-//   et la mesure d'audience ;
+// - la page marche SANS lui : marque, titres, `href` des boutons, mentions légales et tout le texte
+//   sont écrits en clair dans le HTML ; ce script n'apporte que du confort (logo, burger,
+//   glissement, révélation, curseur de palier) et la mesure d'audience ;
+// - un élément qui n'a de sens qu'avec JS porte `data-js-only hidden` : on le montre ici ;
 // - chaque bloc vit dans son propre try/catch et teste la présence de ses éléments : un
-//   `config.js` absent (404) ou périmé en cache n'emporte ni le thème, ni le burger, ni les ancres ;
+//   `config.js` absent (404) ou périmé en cache n'emporte ni le burger, ni les ancres ;
 // - la configuration se lit TOUJOURS avec un repli (`|| {}`) ;
-// - aucun bloc ne réécrit la marque ni le titre (gardé par `LandingDiscoverabilityTest`).
+// - aucun bloc ne réécrit la marque ni le titre (gardé par `LandingDiscoverabilityTest`) ;
+// - tout ce qui bouge lit `prefers-reduced-motion` et reste immobile si le visiteur le demande.
 (function () {
   "use strict";
 
@@ -19,8 +21,17 @@
   } catch (e) {
     cfg = {};
   }
+  var reduced = function () {
+    try { return window.matchMedia("(prefers-reduced-motion: reduce)").matches; } catch (e) { return false; }
+  };
 
-  // ── 1. Logo, boutons d'appel, mesure d'audience (depuis config.js) ──────────
+  // ── 0. JS présent : classe `js` sur <html>, éléments réservés au JS montrés ──
+  try {
+    document.documentElement.classList.add("js");
+    document.querySelectorAll("[data-js-only]").forEach(function (el) { el.hidden = false; });
+  } catch (e) { /* sans classe : la page reste dans sa forme sans JS */ }
+
+  // ── 1. Logo, boutons d'appel (depuis config.js) ──────────────────────────────
   try {
     // Icône du logotype : si `logo` manque (ancien cache) ou si l'image échoue, on retire
     // l'icône — le MOT (texte) reste, la marque demeure lisible, jamais d'image cassée.
@@ -31,9 +42,9 @@
       }
     });
 
-    // Boutons d'appel : leurs `href` sont DÉJÀ écrits en clair (P4-407, visiteur sans JS) ;
-    // on les réécrit à l'identique depuis config.js — un changement de domaine y est rattrapé.
-    // ⚠ Objet ET corps du mailto 100 % ASCII (P4-273) : certains clients mail cassent les accents.
+    // Boutons d'appel : leurs `href` sont DÉJÀ écrits en clair (visiteur sans JS) ; on les
+    // réécrit à l'identique depuis config.js — un changement de domaine y est rattrapé.
+    // ⚠ Objet ET corps du mailto 100 % ASCII : certains clients mail cassent les accents.
     if (cfg.appUrl) {
       var app = cfg.appUrl;
       document.querySelectorAll("[data-cta=register]").forEach(function (a) { a.href = app + "/register"; });
@@ -49,9 +60,9 @@
   } catch (e) { /* config absent / ancien cache : les href écrits en clair restent */ }
 
   try {
-    // Mesure d'audience Umami (sans cookie, P4-276) — DOUBLE garde : (a) les deux clés
-    // `analytics` non vides ; (b) hostname courant = l'hôte dérivé de `siteUrl` (aucun littéral
-    // de domaine ici). En local, sur :5173 ou sur un autre domaine, RIEN n'est injecté.
+    // Mesure d'audience Umami (sans cookie) — DOUBLE garde : (a) les deux clés `analytics` non
+    // vides ; (b) hostname courant = l'hôte dérivé de `siteUrl` (aucun littéral de domaine ici).
+    // En local, sur :5173 ou sur un autre domaine, RIEN n'est injecté.
     var analytics = cfg.analytics || {};
     var siteHost = "";
     try { siteHost = new URL(cfg.siteUrl).hostname; } catch (e) { siteHost = ""; }
@@ -64,49 +75,7 @@
     }
   } catch (e) { /* pas de mesure, page intacte */ }
 
-  // ── 2. Bascule de thème + captures thème-conscientes ───────────────────────
-  try {
-    var root = document.documentElement;
-    var toggle = document.querySelector("[data-theme-toggle]");
-    var current = function () { return root.getAttribute("data-theme") === "dark" ? "dark" : "light"; };
-    // `nom.ext` → `nom-dark.ext` (avant un éventuel ?query). Convention P5-27 ; repli onerror
-    // sur la version claire si une `-dark` manque.
-    var darkSrc = function (src) { return src.replace(/(\.[a-z0-9]+)(\?.*)?$/i, "-dark$1$2"); };
-    var paintShots = function (theme) {
-      document.querySelectorAll("figure.shot img").forEach(function (img) {
-        var light = img.getAttribute("data-shot-light") || img.getAttribute("src");
-        img.setAttribute("data-shot-light", light);
-        if (theme === "dark") {
-          img.onerror = function () { img.onerror = null; img.src = light; };
-          img.src = darkSrc(light);
-        } else {
-          img.onerror = null;
-          if (img.getAttribute("src") !== light) img.src = light;
-        }
-      });
-    };
-    var reflect = function (theme) {
-      if (!toggle) return;
-      var dark = theme === "dark";
-      toggle.setAttribute("aria-pressed", String(dark));
-      toggle.setAttribute("aria-label", dark ? "Passer en thème clair" : "Passer en thème sombre");
-    };
-
-    reflect(current());
-    paintShots(current());
-    if (toggle) {
-      toggle.addEventListener("click", function () {
-        var next = current() === "dark" ? "light" : "dark";
-        if (next === "dark") root.setAttribute("data-theme", "dark");
-        else root.removeAttribute("data-theme");
-        try { localStorage.setItem("theme", next); } catch (e) { /* stockage indisponible */ }
-        reflect(next);
-        paintShots(next);
-      });
-    }
-  } catch (e) { /* thème : la page reste dans celui posé par l'anti-flash */ }
-
-  // ── 3. Menu mobile (burger, accueil seulement) ─────────────────────────────
+  // ── 2. Menu mobile (burger, toutes les pages) ───────────────────────────────
   // Confort au-dessus du <details> natif (qui marche sans JS) : miroir aria-expanded,
   // fermeture au clic sur un lien du panneau, Échap → focus le burger. No-op sans burger.
   try {
@@ -125,17 +94,14 @@
     }
   } catch (e) { /* burger : le <details> natif reste */ }
 
-  // ── 4. Glissement des ancres internes ──────────────────────────────────────
+  // ── 3. Glissement des ancres internes ──────────────────────────────────────
   // Décélération maîtrisée (easeOutCubic) en requestAnimationFrame — pas de
   // `scroll-behavior: smooth`. Saut direct sous prefers-reduced-motion ; coupé net si
-  // l'utilisateur reprend la main. P4-408 : la position de la cible est RECALCULÉE à chaque
-  // pas (une police ou une image qui arrive pendant le glissement déplace la cible), puis
-  // un dernier `scrollTo` pose la position exacte — l'ancre ne finit plus sous l'en-tête.
+  // l'utilisateur reprend la main. La position de la cible est RECALCULÉE à chaque pas (une
+  // police ou une image qui arrive pendant le glissement déplace la cible), puis un dernier
+  // `scrollTo` pose la position exacte. Un lien `/#ancre` lu depuis l'accueil glisse aussi.
   try {
     var PAD = 76; // = scroll-padding-top de site.css (en-tête sticky 64px + marge)
-    var reduced = function () {
-      try { return window.matchMedia("(prefers-reduced-motion: reduce)").matches; } catch (e) { return false; }
-    };
     var easeOutCubic = function (t) { return 1 - Math.pow(1 - t, 3); };
     var find = function (hash) {
       try { return document.querySelector(hash); } catch (e) { return null; }
@@ -155,9 +121,9 @@
       el.focus({ preventScroll: true }); // le focus ne doit PAS re-scroller
     };
 
-    // Police display arrivée APRÈS la fin du glissement (réseau lent) : les titres au-dessus
-    // changent de hauteur et la cible repasse sous l'en-tête. On la recale une fois, quand les
-    // polices sont prêtes — sauf si le visiteur a repris la main entre-temps.
+    // Police arrivée APRÈS la fin du glissement (réseau lent) : les titres au-dessus changent de
+    // hauteur et la cible repasse sous l'en-tête. On la recale une fois, quand les polices sont
+    // prêtes — sauf si le visiteur a repris la main entre-temps.
     var settle = function (hash) {
       try {
         if (!document.fonts || document.fonts.status === "loaded") return;
@@ -210,12 +176,21 @@
       raf = requestAnimationFrame(step);
     };
 
+    // Le hash d'un lien qui mène à une ancre de LA page courante (`#x`, ou `/#x` lu depuis `/`).
+    var samePageHash = function (a) {
+      var href = a.getAttribute("href");
+      if (href === null) return null;
+      if (href.charAt(0) === "#") return href;
+      if (a.hash && a.pathname === location.pathname && a.host === location.host) return a.hash;
+      return null;
+    };
+
     document.addEventListener("click", function (e) {
       if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
       var t = e.target;
-      var a = t && t.closest ? t.closest('a[href^="#"]') : null;
+      var a = t && t.closest ? t.closest("a[href]") : null;
       if (!a) return;
-      var hash = a.getAttribute("href");
+      var hash = samePageHash(a);
       if (hash === null) return;
       var y = targetY(hash);
       if (y === null) return; // cible absente : comportement par défaut
@@ -228,4 +203,47 @@
       animate(hash, function () { focusTarget(hash); settle(hash); });
     });
   } catch (e) { /* glissement : le saut natif (scroll-padding-top) reste */ }
+
+  // ── 4. Révélation au défilement (`[data-rv]`) ──────────────────────────────
+  // Un bloc arrive en douceur quand il entre à l'écran. Rien ne se cache sans JS ni en
+  // mouvement réduit : la classe `wait` n'est posée qu'ici, et seulement hors de l'écran.
+  try {
+    if (!reduced() && "IntersectionObserver" in window) {
+      var watch = new IntersectionObserver(function (entries) {
+        entries.forEach(function (entry) {
+          if (entry.isIntersecting) { entry.target.classList.remove("wait"); watch.unobserve(entry.target); }
+        });
+      }, { threshold: 0.2 });
+      document.querySelectorAll("[data-rv]").forEach(function (el) {
+        if (el.getBoundingClientRect().top < window.innerHeight) return; // déjà visible : rien à révéler
+        el.classList.add("wait");
+        watch.observe(el);
+      });
+    }
+  } catch (e) { /* révélation : les blocs restent affichés */ }
+
+  // ── 5. Curseur de palier (`[data-tiers]`) ──────────────────────────────────
+  // Le visiteur règle son nombre d'équipes, son palier s'allume (`li[data-max]`, bornes de la
+  // grille du produit). L'événement `tiers` (detail = nombre) sert au bouton final de l'accueil.
+  try {
+    document.querySelectorAll("[data-tiers]").forEach(function (box) {
+      var range = box.querySelector("input[type=range]");
+      var out = box.querySelector("output");
+      var tiers = box.querySelectorAll("li[data-max]");
+      if (!range) return;
+      var paint = function () {
+        var n = +range.value;
+        var lit = false;
+        if (out) out.textContent = String(n);
+        tiers.forEach(function (li) {
+          var on = !lit && n <= +li.getAttribute("data-max");
+          if (on) lit = true;
+          li.classList.toggle("on", on);
+        });
+        try { box.dispatchEvent(new CustomEvent("tiers", { detail: n, bubbles: true })); } catch (e) { /* vieux navigateur */ }
+      };
+      range.addEventListener("input", paint);
+      paint();
+    });
+  } catch (e) { /* curseur : la liste des paliers reste lisible */ }
 })();

@@ -8,10 +8,10 @@
 // `LandingDiscoverabilityTest` et `LandingClaimsTest` rougissent sur toute dérive.
 //
 // ⚠ CACHE : ce fichier est chargé par chaque page avec `?v=AAAA-MM-JJ` (cache-bust), le MÊME
-// que `assets/site.css` et `assets/site.js`. Caddy `file_server` n'envoie pas de Cache-Control →
-// un visiteur peut garder un ancien config.js en cache avec une page neuve. À CHAQUE
-// ajout/retrait/renommage de clé ici, bumper le `?v=` dans les six pages. (`site.js` dégrade
-// proprement si une clé ou tout le fichier manque — mais le `?v=` évite d'afficher ce repli.)
+// que toutes les feuilles et tous les scripts de `assets/`. Caddy `file_server` n'envoie pas de
+// Cache-Control → un visiteur peut garder un ancien config.js en cache avec une page neuve. À
+// CHAQUE ajout/retrait/renommage de clé ici, bumper le `?v=` dans les huit pages. (`site.js`
+// dégrade proprement si une clé ou tout le fichier manque — mais le `?v=` évite d'afficher ce repli.)
 window.LANDING_CONFIG = {
   brand: "Amateo",
   // L'URL de l'app (register/login). Convention retenue le 2026-08-18 : le domaine
@@ -32,11 +32,10 @@ window.LANDING_CONFIG = {
   // roadmap). Écrit en clair dans `mentions-legales.html`, `qui-fait.html` et le JSON-LD
   // (`Person`) de `index.html` ; les tests lient ces copies à cette valeur.
   editor: "Franck Mpemba Boni",
-  // Le logo suit désormais le patron de l'app (BrandMark) : l'ICÔNE (les trois arcs,
-  // `mark.svg` — arcs SEULS, comme BrandIcon, jamais le favicon `icon.svg` à disque blanc)
-  // sert de mark thème-neutre, et le MOT (`brand`) est rendu en TEXTE à la couleur du thème —
-  // un seul rendu en clair comme en sombre. Point unique : le chemin de l'icône vit ici
-  // (injecté dans `[data-brand-logo]`), le mot vient de `brand`.
+  // Le logo suit le patron de l'app (BrandMark) : l'ICÔNE (les trois arcs, `mark.svg` — arcs
+  // SEULS, comme BrandIcon, jamais le favicon `icon.svg` à disque blanc) suivie du MOT (`brand`)
+  // rendu en TEXTE dans le HTML. Point unique : le chemin de l'icône vit ici (injecté dans
+  // `[data-brand-logo]`), le mot vient de `brand`.
   logo: "assets/brand/mark.svg",
   // Mentions légales (LCEN + RGPD) — écrites en clair dans `mentions-legales.html` (l'obligation
   // ne dépend d'aucun script) ; ces valeurs en sont la référence, gardée par `LandingClaimsTest`.
