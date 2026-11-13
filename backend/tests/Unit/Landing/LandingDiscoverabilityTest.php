@@ -4,17 +4,24 @@ declare(strict_types=1);
 
 namespace App\Tests\Unit\Landing;
 
+use Dom\Element;
 use Dom\HTMLDocument;
+use FilesystemIterator;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
+use RecursiveDirectoryIterator;
+use RecursiveIteratorIterator;
+use SplFileInfo;
 
 /**
  * P4-391 — promesse : la vitrine se présente sous son vrai nom et son vrai sujet à qui ne
  * lance pas JavaScript (crawler de moteur, aperçu de messagerie, IA) : tout ce qu'un
  * moteur doit lire est ÉCRIT dans le HTML servi, et reste cohérent avec `landing/config.js`.
- * P4-522 — la vitrine a six pages qui partagent `assets/site.css` et `assets/site.js` : chaque
- * page (`landing/*.html`, balayée — aucune liste à tenir) est sous ces gardes, ses liens
- * internes aboutissent, ses boutons d'appel marchent sans JS (P4-407).
+ * P4-522 — la vitrine a huit pages qui partagent `assets/site.css`, `assets/site.js`, un en-tête et
+ * un pied identiques : chaque page (`landing/*.html`, balayée — aucune liste à tenir) est sous ces
+ * gardes, ses liens internes aboutissent, ses boutons d'appel marchent sans JS (P4-407). Les
+ * scripts et feuilles propres à une page (`assets/*.js`, `assets/*.css`) sont lus au même titre
+ * que les pages : aucun ne réécrit la marque, n'appelle un tiers ni ne ramène un thème sombre.
  *
  * Lecture statique des fichiers suivis (un crawl réel ne tourne pas en CI) : le HTML est
  * parsé SANS exécuter ses scripts, exactement la vue d'un crawler sans JS. Le robots.txt et
@@ -36,13 +43,15 @@ final class LandingDiscoverabilityTest extends TestCase
         $brand = $this->config('brand');
         $expected = [
             'evolutions.html' => $brand . ' — Journal des évolutions',
+            'faq.html' => $brand . ' — Questions fréquentes',
             'fonctionnalites.html' => $brand . ' — Ce qu\'' . $brand . ' fait, et ce qu\'il ne fait pas',
             'index.html' => $brand . ' — Planning d\'entraînement et matchs FBI des clubs de basket',
             'mentions-legales.html' => $brand . ' — Mentions légales',
+            'offres.html' => $brand . ' — Les offres',
             'qui-fait.html' => $brand . ' — Qui fait ' . $brand,
             'vos-donnees.html' => $brand . ' — Vos données',
         ];
-        self::assertSame(array_keys($expected), $this->pages(), 'Les pages servies ≠ les six pages validées (une page sans titre validé, ou une page manquante).');
+        self::assertSame(array_keys($expected), $this->pages(), 'Les pages servies ≠ les huit pages validées (une page sans titre validé, ou une page manquante).');
 
         foreach ($expected as $page => $title) {
             $document = $this->parse($page);
@@ -51,16 +60,22 @@ final class LandingDiscoverabilityTest extends TestCase
         }
     }
 
-    /** Promesse : le titre visible nomme le basket, dans la phrase validée par le fondateur. */
+    /**
+     * Promesse : le titre visible nomme le basket, dans la phrase validée par le fondateur — un moteur
+     * lit « sans le casse-tête », jamais le « avec » barré, qui n'est qu'un décor CSS hors du DOM.
+     */
     public function testHeroHeadlineIsTheFounderSentence(): void
     {
-        self::assertSame(
-            'Le planning de votre club de basket, sans le casse-tête.',
-            $this->text($this->parse('index.html'), 'h1'),
-        );
+        $headline = $this->text($this->parse('index.html'), 'h1');
+        self::assertSame('Le planning de votre club de basket, sans le casse-tête.', $headline);
+        self::assertStringNotContainsString('avec', $headline, 'Le « avec » barré vit en CSS (pseudo-élément), jamais dans le texte du h1.');
     }
 
-    /** Promesse : la description lue par les moteurs porte les mots que cherche un club, partage compris. */
+    /**
+     * Promesse : la description lue par les moteurs porte les mots que cherche un club, partage compris,
+     * et c'est la définition affichée sur la page (`.p-defq` puis `.p-defs`) — un moteur et un visiteur
+     * lisent la même phrase.
+     */
     public function testMetaDescriptionNamesBasketAmateurAndFbi(): void
     {
         $document = $this->parse('index.html');
@@ -70,6 +85,13 @@ final class LandingDiscoverabilityTest extends TestCase
             self::assertStringContainsString($word, $description, 'Mot attendu dans la meta description.');
         }
         self::assertSame($description, $this->attribute($document, 'meta[property="og:description"]', 'content'));
+
+        $definition = $this->element($document, 'section.p-intro .p-def');
+        self::assertSame(
+            $this->text($definition, 'p.p-defq') . ' ' . $this->text($definition, 'p.p-defs'),
+            $description,
+            'La meta description ≠ la définition affichée (.p-defq + .p-defs).',
+        );
     }
 
     /** Promesse : aucun emplacement de marque n'attend un script — sans JS, la page dit son nom, jamais « … ». */
@@ -96,7 +118,8 @@ final class LandingDiscoverabilityTest extends TestCase
 
     /**
      * Promesse : aucun script ne réécrit la marque ou le titre — le HTML servi reste la seule vérité.
-     * Le script partagé `assets/site.js` est lu au même titre que chaque page.
+     * Chaque script de `assets/` (le partagé `site.js` et ceux d'une page) est lu au même titre que
+     * chaque page.
      */
     public function testNoScriptRewritesBrandOrTitle(): void
     {
@@ -106,7 +129,7 @@ final class LandingDiscoverabilityTest extends TestCase
             'data-brand-jsonld' => '/data-brand-jsonld/',
         ];
 
-        $files = ['/landing/assets/site.js'];
+        $files = $this->assetFiles('js');
         foreach ($this->pages() as $page) {
             $files[] = '/landing/' . $page;
         }
@@ -184,7 +207,9 @@ final class LandingDiscoverabilityTest extends TestCase
 
     /**
      * Promesse : une adresse en dur ne pointe que chez nous ou vers un vocabulaire
-     * (schema.org, sitemaps.org) — un domaine périmé ou un brouillon ne part pas aux moteurs.
+     * (schema.org, sitemaps.org) — un domaine périmé ou un brouillon ne part pas aux moteurs, et
+     * aucune feuille ni aucun script de `assets/` ne fait charger au visiteur une ressource tierce
+     * (police, bibliothèque, image) qui recevrait son adresse IP.
      * `www.sitemaps.org` est la forme que porte l'espace de noms officiel d'un sitemap.
      */
     public function testAbsoluteUrlsStayOnOurHosts(): void
@@ -198,7 +223,7 @@ final class LandingDiscoverabilityTest extends TestCase
             'www.sitemaps.org',
         ];
 
-        $files = ['/landing/robots.txt', '/landing/sitemap.xml'];
+        $files = ['/landing/robots.txt', '/landing/sitemap.xml', ...$this->assetFiles('css'), ...$this->assetFiles('js')];
         foreach ($this->pages() as $page) {
             $files[] = '/landing/' . $page;
         }
@@ -214,82 +239,140 @@ final class LandingDiscoverabilityTest extends TestCase
         self::assertGreaterThan(0, $seen, 'Aucune URL trouvée : le motif ne lit plus rien.');
     }
 
+    /**
+     * Promesse : les polices de la vitrine sont servies par nous et sous licence — chaque `@font-face`
+     * de `assets/*.css` pointe un `.woff2` présent sous `assets/fonts/`, chaque `.woff2` a sa licence
+     * OFL à côté, et aucune feuille ne charge rien d'ailleurs (`@import`, `url()` absolue ou `//hôte`) :
+     * un visiteur ne livre jamais son IP à un service de polices.
+     */
+    public function testFontsAreSelfHostedWithTheirLicence(): void
+    {
+        $fontsDir = self::repositoryRoot() . '/landing/assets/fonts/';
+        $referenced = [];
+        foreach ($this->assetFiles('css') as $file) {
+            $css = $this->read($file);
+            self::assertSame(0, preg_match('/@import\b/i', $css), "{$file} : @import interdit (une feuille, un fichier).");
+
+            preg_match_all('/url\(\s*["\']?([^"\')]+)["\']?\s*\)/i', $css, $urls);
+            foreach ($urls[1] as $url) {
+                self::assertSame(0, preg_match('#^(?:[a-z][a-z0-9+.-]*:|//)#i', $url), "{$file} : url({$url}) ne pointe pas un fichier de la vitrine.");
+            }
+
+            preg_match_all('/@font-face\s*\{([^}]*)\}/i', $css, $faces);
+            foreach ($faces[1] as $face) {
+                self::assertSame(1, preg_match('/src:\s*url\(\s*["\']?fonts\/([a-z0-9-]+\.woff2)["\']?\s*\)\s*format\(\s*["\']woff2["\']\s*\)\s*(?:;|$)/i', $face, $source), "{$file} : un @font-face sans src unique vers fonts/*.woff2 — {$face}");
+                self::assertFileExists($fontsDir . $source[1], "{$file} : police absente de assets/fonts/.");
+                $referenced[] = $source[1];
+            }
+        }
+        foreach (['archivo-latin.woff2', 'caveat-latin.woff2', 'bricolage-latin.woff2'] as $font) {
+            self::assertContains($font, $referenced, "Police attendue non déclarée par un @font-face : {$font}.");
+        }
+
+        $fonts = glob($fontsDir . '*.woff2') ?: [];
+        self::assertNotSame([], $fonts, 'Témoin : aucune police sous assets/fonts/.');
+        foreach ($fonts as $font) {
+            $family = explode('-', basename($font, '.woff2'))[0];
+            self::assertNotSame([], glob($fontsDir . 'OFL-' . $family . '*.txt') ?: [], basename($font) . " : licence OFL-{$family}….txt absente à côté de la police.");
+        }
+    }
+
     /** Promesse : pas de balisage FAQPage — Google ne l'affiche plus pour un site comme le nôtre, il encombrerait la page. */
     public function testNoFaqPageMarkup(): void
     {
         $pages = $this->pages();
-        self::assertGreaterThanOrEqual(6, \count($pages), 'Témoin : le balayage doit voir les six pages de la vitrine.');
+        self::assertGreaterThanOrEqual(6, \count($pages), 'Témoin : le balayage doit voir les pages de la vitrine.');
         foreach ($pages as $page) {
             self::assertFalse(str_contains($this->read('/landing/' . $page), 'FAQPage'), "FAQPage dans {$page}");
         }
     }
 
     /**
-     * Promesse (D1) : un visiteur de retour ne mélange jamais un ancien fichier partagé avec une page
-     * neuve — `config.js`, `assets/site.css` et `assets/site.js` sont chargés par CHAQUE page avec
-     * le MÊME `?v=` (Caddy n'envoie pas de Cache-Control), le script partagé APRÈS `config.js`, en
-     * fin de `<body>`.
+     * Promesse (D1) : un visiteur de retour ne mélange jamais un ancien fichier avec une page neuve —
+     * TOUTE ressource locale (`script[src]`, `link[rel=stylesheet]`) de CHAQUE page porte le MÊME
+     * `?v=` (Caddy n'envoie pas de Cache-Control) ; les scripts se chargent en fin de `<body>`, dans
+     * l'ordre `config.js` → `assets/site.js` (qui le lit) → script de la page ; une page interactive
+     * charge son propre script et sa propre feuille (`index.html` → `home`, `offres.html` → `offres`,
+     * `faq.html` → `faq`).
      */
-    public function testEveryPageSharesOneCacheBusterForConfigStylesheetAndScript(): void
+    public function testEveryPageSharesOneCacheBusterForEveryLocalScriptAndStylesheet(): void
     {
+        $pageAssets = ['index.html' => 'home', 'offres.html' => 'offres', 'faq.html' => 'faq'];
         $versions = [];
         foreach ($this->pages() as $page) {
             $document = $this->parse($page);
-            $config = $this->versionedAsset($document, 'script[src]', 'src', 'config.js', $page);
-            $stylesheet = $this->versionedAsset($document, 'link[rel="stylesheet"][href]', 'href', 'assets/site.css', $page);
-            $script = $this->versionedAsset($document, 'script[src]', 'src', 'assets/site.js', $page);
-            self::assertSame([$config], array_values(array_unique([$config, $stylesheet, $script])), "{$page} : config.js, site.css et site.js doivent porter le même ?v=.");
-            $versions[$page] = $config;
+            $version = $this->versionedAsset($document, 'script[src]', 'src', 'config.js', $page);
+            $this->versionedAsset($document, 'link[rel="stylesheet"][href]', 'href', 'assets/site.css', $page);
+            $this->versionedAsset($document, 'script[src]', 'src', 'assets/site.js', $page);
+            $versions[$page] = $version;
 
-            $source = $this->read('/landing/' . $page);
-            $configAt = strpos($source, 'config.js?v=');
-            $scriptAt = strpos($source, 'assets/site.js?v=');
-            self::assertIsInt($configAt);
-            self::assertIsInt($scriptAt);
-            self::assertLessThan($scriptAt, $configAt, "{$page} : site.js doit être chargé APRÈS config.js (il le lit).");
+            $scripts = [];
+            foreach (['script[src]' => 'src', 'link[rel="stylesheet"][href]' => 'href'] as $selector => $attribute) {
+                foreach ($document->querySelectorAll($selector) as $element) {
+                    $reference = (string) $element->getAttribute($attribute);
+                    if (1 === preg_match('#^(?:[a-z][a-z0-9+.-]*:|//)#i', $reference)) {
+                        continue; // Hôte extérieur : gardé par testAbsoluteUrlsStayOnOurHosts.
+                    }
+                    self::assertSame(1, preg_match('#^/?([^?]+)\?v=([^&"\s]+)$#', $reference, $parts), "{$page} : {$reference} sans ?v=.");
+                    self::assertSame($version, $parts[2], "{$page} : {$reference} ne porte pas le ?v= commun ({$version}).");
+                    if ('src' === $attribute) {
+                        self::assertSame('BODY', $element->parentElement?->tagName, "{$page} : {$reference} se charge en fin de <body>.");
+                        $scripts[] = $parts[1];
+                    }
+                }
+            }
+            self::assertSame(['config.js', 'assets/site.js'], \array_slice($scripts, 0, 2), "{$page} : config.js puis assets/site.js, avant tout script de page.");
 
-            $scriptElement = $this->element($document, 'script[src*="assets/site.js?v="]');
-            self::assertSame('BODY', $scriptElement->parentElement?->tagName, "{$page} : site.js se charge en fin de <body>.");
+            if (isset($pageAssets[$page])) {
+                $name = $pageAssets[$page];
+                $this->versionedAsset($document, 'script[src]', 'src', "assets/{$name}.js", $page);
+                $this->versionedAsset($document, 'link[rel="stylesheet"][href]', 'href', "assets/{$name}.css", $page);
+            }
         }
 
         self::assertCount(1, array_unique($versions), 'Un seul ?v= pour toute la vitrine : ' . json_encode($versions, \JSON_UNESCAPED_SLASHES));
     }
 
     /**
-     * Promesse (D1) : le thème choisi s'applique AVANT le premier rendu (aucun flash clair) — le
-     * mini-script anti-flash reste inline dans `<head>`, avant la feuille partagée ; c'est le SEUL
-     * script inline d'une page (tout le reste vit une fois, dans `assets/site.js`).
+     * Promesse : la vitrine n'a qu'un thème, clair — aucune page ni aucun fichier de `assets/` ne pose
+     * ou ne lit un thème (`data-theme`, bascule `[data-theme-toggle]`, `localStorage`,
+     * `prefers-color-scheme`), et aucune variante `*-dark.*` ne reste servie sous `assets/`.
      */
-    public function testThemeAntiFlashStaysInlineBeforeTheStylesheet(): void
+    public function testNoDarkThemeAnywhere(): void
+    {
+        $files = [...$this->assetFiles('js'), ...$this->assetFiles('css')];
+        foreach ($this->pages() as $page) {
+            $files[] = '/landing/' . $page;
+        }
+        foreach ($files as $file) {
+            $contents = $this->read($file);
+            foreach (['data-theme', 'localStorage', 'prefers-color-scheme'] as $needle) {
+                $this->assertAbsent($needle, $contents, "« {$needle} » dans {$file} : la vitrine n'a qu'un thème.");
+            }
+        }
+
+        $dark = [];
+        $assets = new RecursiveIteratorIterator(new RecursiveDirectoryIterator(self::repositoryRoot() . '/landing/assets', FilesystemIterator::SKIP_DOTS));
+        foreach ($assets as $asset) {
+            if ($asset instanceof SplFileInfo && 1 === preg_match('/-dark\./', $asset->getFilename())) {
+                $dark[] = $asset->getFilename();
+            }
+        }
+        self::assertSame([], $dark, 'Variantes sombres encore servies sous landing/assets.');
+    }
+
+    /**
+     * Promesse : aucune page ne porte de script ni de style inline (hors JSON-LD, qui est une donnée) —
+     * tout vit dans `assets/*.js` et `assets/*.css`, chargés avec le `?v=` commun.
+     */
+    public function testNoInlineScriptOrStyle(): void
     {
         foreach ($this->pages() as $page) {
             $document = $this->parse($page);
-            $head = $document->head;
-            self::assertNotNull($head, "Pas de <head> dans {$page}");
-
-            $antiFlashAt = null;
-            $stylesheetAt = null;
-            $position = 0;
-            foreach ($this->childElements($head) as $child) {
-                ++$position;
-                if ('SCRIPT' === $child->tagName && !$child->hasAttribute('src') && str_contains((string) $child->textContent, 'data-theme')) {
-                    $antiFlashAt ??= $position;
-                }
-                if ('LINK' === $child->tagName && str_contains((string) $child->getAttribute('href'), 'assets/site.css')) {
-                    $stylesheetAt ??= $position;
-                }
-            }
-            self::assertNotNull($antiFlashAt, "{$page} : script anti-flash de thème absent du <head>.");
-            self::assertNotNull($stylesheetAt, "{$page} : <link> vers assets/site.css absent du <head>.");
-            self::assertLessThan($stylesheetAt, $antiFlashAt, "{$page} : l'anti-flash doit précéder la feuille partagée.");
-
-            $inline = 0;
             foreach ($document->querySelectorAll('script:not([src])') as $script) {
-                if ('application/ld+json' !== $script->getAttribute('type')) {
-                    ++$inline;
-                }
+                self::assertSame('application/ld+json', $script->getAttribute('type'), "{$page} : script inline (seul le JSON-LD reste dans la page).");
             }
-            self::assertSame(1, $inline, "{$page} : seul l'anti-flash reste inline ; le reste vit dans assets/site.js.");
+            self::assertSame(0, $document->querySelectorAll('style')->length, "{$page} : <style> inline (les styles vivent dans assets/*.css).");
         }
     }
 
@@ -329,8 +412,8 @@ final class LandingDiscoverabilityTest extends TestCase
     }
 
     /**
-     * Promesse (D2) : le pied de page est le même sur les six pages — on retrouve partout Produit,
-     * À propos et Compte, avec les mêmes liens.
+     * Promesse (D2) : le pied de page est le même sur toutes les pages — on retrouve partout Produit,
+     * À propos et Compte, avec les mêmes liens ; Offres et Questions fréquentes mènent à leurs pages.
      */
     public function testFooterIsIdenticalAcrossPages(): void
     {
@@ -351,8 +434,8 @@ final class LandingDiscoverabilityTest extends TestCase
         }
         $expected = [
             'Fonctionnalités' => 'fonctionnalites.html',
-            'Offres' => '/#offres',
-            'Questions fréquentes' => '/#faq',
+            'Offres' => 'offres.html',
+            'Questions fréquentes' => 'faq.html',
             'Journal des évolutions' => 'evolutions.html',
             'Qui fait ' . $brand => 'qui-fait.html',
             'Vos données' => 'vos-donnees.html',
@@ -373,9 +456,8 @@ final class LandingDiscoverabilityTest extends TestCase
     }
 
     /**
-     * Promesse (D2) : le logotype et « Accueil » ramènent à l'adresse publique de l'accueil (`/`),
-     * jamais à `index.html` (une seconde URL du même contenu) ; les pages sœurs gardent la bascule de
-     * thème, sans burger.
+     * Promesse (D2) : le logotype ramène à l'adresse publique de l'accueil (`/`), et aucun lien ne
+     * pointe `index.html` (une seconde URL du même contenu).
      */
     public function testHomeLinksUseTheRootPath(): void
     {
@@ -383,48 +465,58 @@ final class LandingDiscoverabilityTest extends TestCase
             $document = $this->parse($page);
             self::assertSame('/', $this->attribute($document, 'a.logotype', 'href'), "logotype de {$page}");
             foreach ($document->querySelectorAll('a[href]') as $link) {
-                self::assertFalse(str_starts_with((string) $link->getAttribute('href'), 'index.html'), "{$page} : lien vers index.html (« / » attendu).");
+                self::assertFalse(str_starts_with(ltrim((string) $link->getAttribute('href'), '/'), 'index.html'), "{$page} : lien vers index.html (« / » attendu).");
             }
-            self::assertNotNull($document->querySelector('[data-theme-toggle]'), "{$page} : bascule de thème absente.");
-            if ('index.html' === $page) {
-                continue;
-            }
-
-            $homeLinks = [];
-            foreach ($this->element($document, 'header.site')->querySelectorAll('a') as $link) {
-                if ('Accueil' === $this->normalize((string) $link->textContent)) {
-                    $homeLinks[] = $link->getAttribute('href');
-                }
-            }
-            self::assertSame(['/'], $homeLinks, "{$page} : un lien « Accueil » vers / attendu dans l'en-tête.");
-            self::assertNull($document->querySelector('details.nav-menu'), "{$page} : une page sœur n'a pas de burger.");
         }
     }
 
-    /** Promesse (D2) : la barre de l'accueil et son panneau mobile proposent les six mêmes entrées, dans l'ordre validé. */
-    public function testHomeNavigationNamesTheSixEntries(): void
+    /**
+     * Promesse (D2, C1) : où qu'il arrive, le visiteur retrouve le même en-tête — logotype vers `/`,
+     * la barre et le burger natif (`details.nav-menu`, ouvrable sans JS) proposent les six mêmes
+     * entrées dans l'ordre validé, chacune vers sa page ; seul `aria-current="page"` change d'une
+     * page à l'autre. Le logotype remplace « Accueil ».
+     */
+    public function testHeaderIsIdenticalAndNamesTheSixEntries(): void
     {
-        $expected = ['Comment ça marche', 'Fonctionnalités', 'Offres', 'FAQ', 'Se connecter', 'Essayer gratuitement'];
-        $document = $this->parse('index.html');
+        $expected = [
+            'Comment ça marche' => ['href', '/#fonctionnement'],
+            'Fonctionnalités' => ['href', 'fonctionnalites.html'],
+            'Offres' => ['href', 'offres.html'],
+            'FAQ' => ['href', 'faq.html'],
+            'Se connecter' => ['data-cta', 'login'],
+            'Essayer gratuitement' => ['data-cta', 'register'],
+        ];
+        $home = $this->element($this->parse('index.html'), 'header.site');
+        $reference = $this->headerWithoutCurrentPage($home);
 
-        foreach (['nav.top > a', '.nav-panel > a'] as $selector) {
-            $labels = [];
-            foreach ($document->querySelectorAll($selector) as $link) {
-                $labels[] = $this->normalize((string) $link->textContent);
+        foreach ($this->pages() as $page) {
+            $header = $this->element($this->parse($page), 'header.site');
+            self::assertNotNull($header->querySelector('a.logotype[href="/"]'), "{$page} : logotype vers / absent de l'en-tête.");
+            self::assertNotNull($header->querySelector('nav.top details.nav-menu'), "{$page} : burger natif absent de l'en-tête.");
+
+            foreach (['nav.top > a', 'details.nav-menu .nav-panel > a'] as $selector) {
+                $links = iterator_to_array($header->querySelectorAll($selector));
+                $labels = array_map(fn (Element $link): string => $this->normalize((string) $link->textContent), $links);
+                self::assertSame(array_keys($expected), $labels, "{$page} : entrées de « {$selector} »");
+                foreach ($links as $index => $link) {
+                    [$attribute, $value] = $expected[$labels[$index]];
+                    $actual = (string) $link->getAttribute($attribute);
+                    self::assertSame($value, 'href' === $attribute && !str_starts_with($value, '/') ? ltrim($actual, '/') : $actual, "{$page} : {$attribute} de « {$labels[$index]} » ({$selector})");
+                }
             }
-            self::assertSame($expected, $labels, "Entrées de « {$selector} »");
-        }
-        foreach ($document->querySelectorAll('nav.top a') as $link) {
-            if ('Fonctionnalités' === $this->normalize((string) $link->textContent)) {
-                self::assertContains($link->getAttribute('href'), ['fonctionnalites.html', '/fonctionnalites.html']);
+            foreach ($header->querySelectorAll('a') as $link) {
+                self::assertNotSame('Accueil', $this->normalize((string) $link->textContent), "{$page} : le logotype remplace « Accueil ».");
             }
+
+            self::assertSame($reference, $this->headerWithoutCurrentPage($header), "L'en-tête de {$page} diffère de celui de l'accueil (seul aria-current peut changer).");
         }
     }
 
     /**
      * Promesse (P4-407) : un visiteur sans JS peut s'inscrire, se connecter, demander une démo et lire
      * la politique de confidentialité — chaque `[data-cta]` porte son `href` EN CLAIR dans le HTML,
-     * égal à ce que `config.js` donne (aucun `href="#"` qui attendrait un script).
+     * égal à ce que `config.js` donne (aucun `href="#"` qui attendrait un script), et aucun bouton de
+     * maquette (`[data-mock]`, qui n'ouvre rien) ne reste sur une page servie.
      */
     public function testCtaHrefsAreWrittenInClearAndMatchConfig(): void
     {
@@ -444,6 +536,7 @@ final class LandingDiscoverabilityTest extends TestCase
 
         $seen = [];
         foreach ($this->pages() as $page) {
+            self::assertNull($this->parse($page)->querySelector('[data-mock]'), "{$page} : un bouton de maquette [data-mock] reste sur la page.");
             foreach ($this->parse($page)->querySelectorAll('[data-cta]') as $cta) {
                 $kind = (string) $cta->getAttribute('data-cta');
                 self::assertArrayHasKey($kind, $expected, "{$page} : data-cta « {$kind} » inconnu.");
@@ -499,6 +592,27 @@ final class LandingDiscoverabilityTest extends TestCase
     }
 
     /**
+     * Promesse (C8) : un visiteur qui demande moins de mouvement l'obtient — chaque script de
+     * `assets/` qui anime (`requestAnimationFrame`, `setInterval`, `.animate(`, `IntersectionObserver`)
+     * lit `prefers-reduced-motion` ; le script de l'accueil (compte à rebours, scène) en fait partie.
+     * Garde de FORME : le comportement (compte à rebours figé, scène sans transition) se prouve par
+     * les captures « mouvement réduit » de la passe visuelle.
+     */
+    public function testAnimatedScriptsHonourReducedMotion(): void
+    {
+        $animated = [];
+        foreach ($this->assetFiles('js') as $file) {
+            $script = $this->read($file);
+            if (1 !== preg_match('/requestAnimationFrame|setInterval|\.animate\(|IntersectionObserver/', $script)) {
+                continue;
+            }
+            $animated[] = $file;
+            self::assertStringContainsString('prefers-reduced-motion', $script, "{$file} anime sans lire prefers-reduced-motion.");
+        }
+        self::assertContains('/landing/assets/home.js', $animated, 'Témoin : le script de l\'accueil (compte à rebours, scène) n\'est pas vu comme animé.');
+    }
+
+    /**
      * Le `?v=` d'une ressource partagée chargée par la page — exactement une occurrence.
      */
     private function versionedAsset(HTMLDocument $document, string $selector, string $attribute, string $file, string $page): string
@@ -512,6 +626,18 @@ final class LandingDiscoverabilityTest extends TestCase
         self::assertCount(1, $versions, "{$page} doit charger {$file}?v=… exactement une fois.");
 
         return $versions[0];
+    }
+
+    /** Balisage de l'en-tête, `aria-current` retiré (le seul écart admis d'une page à l'autre), espaces repliés. */
+    private function headerWithoutCurrentPage(Element $header): string
+    {
+        $copy = $header->cloneNode(true);
+        self::assertInstanceOf(Element::class, $copy);
+        foreach ($copy->querySelectorAll('[aria-current]') as $current) {
+            $current->removeAttribute('aria-current');
+        }
+
+        return $this->normalize((string) $copy->innerHTML);
     }
 
     /** Équivalent PHP d'`encodeURIComponent` (JS ne code pas ! ' ( ) *). */
