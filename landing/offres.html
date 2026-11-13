@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Amateo — Les offres</title>
+  <meta name="description" content="Une seule offre Amateo, en entier pour tous les clubs de basket : découverte gratuite avec 10 crédits, puis un tarif par saison selon le nombre d'équipes." />
+  <link rel="canonical" href="https://amateo.app/offres.html" /> <!-- nosemgrep: html.security.audit.missing-integrity.missing-integrity -- canonical : indique une URL, ne charge aucune ressource, integrity sans objet -->
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://amateo.app/offres.html" />
+  <meta property="og:title" content="Amateo — Les offres" />
+  <meta property="og:description" content="Une seule offre Amateo, en entier pour tous les clubs de basket : découverte gratuite avec 10 crédits, puis un tarif par saison selon le nombre d'équipes." />
+  <meta property="og:image" content="https://amateo.app/assets/brand/og.png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <link rel="icon" type="image/svg+xml" href="assets/brand/icon.svg" />
+  <link rel="icon" type="image/png" sizes="32x32" href="assets/brand/icon-32.png" />
+  <link rel="stylesheet" href="assets/site.css?v=2026-11-13" />
+  <link rel="stylesheet" href="assets/offres.css?v=2026-11-13" />
+</head>
+<body>
+
+<header class="site">
+  <div class="wrap">
+    <a class="logotype" href="/" data-brand-label aria-label="Amateo"><img class="brand-logo" data-brand-logo src="assets/brand/mark.svg" alt="" width="32" height="32" /><span class="brand logo-word">Amat<b>eo</b></span></a>
+    <nav class="top" aria-label="Navigation principale">
+      <a href="/#fonctionnement">Comment ça marche</a>
+      <a href="fonctionnalites.html">Fonctionnalités</a>
+      <a href="offres.html" aria-current="page">Offres</a>
+      <a href="faq.html">FAQ</a>
+      <a data-cta="login" href="https://app.amateo.app/login">Se connecter</a>
+      <a class="b-btn p-cta" data-cta="register" href="https://app.amateo.app/register">Essayer gratuitement</a>
+      <details class="nav-menu">
+        <summary aria-label="Ouvrir le menu" aria-expanded="false">
+          <svg class="icon-menu" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
+          <svg class="icon-close" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M5 5l14 14M19 5L5 19"/></svg>
+        </summary>
+        <div class="nav-panel">
+          <a href="/#fonctionnement">Comment ça marche</a>
+          <a href="fonctionnalites.html">Fonctionnalités</a>
+          <a href="offres.html" aria-current="page">Offres</a>
+          <a href="faq.html">FAQ</a>
+          <a data-cta="login" href="https://app.amateo.app/login">Se connecter</a>
+          <a class="b-btn p-cta" data-cta="register" href="https://app.amateo.app/register">Essayer gratuitement</a>
+        </div>
+      </details>
+    </nav>
+  </div>
+</header>
+
+<!-- Une offre, trois paliers SANS NOM (grille du produit : jusqu'à 20 équipes, de 21 à 34, 35 et
+     plus), chacun « Tarif sur demande » — gardé par LandingClaimsTest::testOfferCardsMatchTheLadder. -->
+<main>
+  <section class="w-hero">
+    <div class="wrap">
+      <p class="w-hand">Les offres</p>
+      <h1>Une seule offre. <em>Le prix suit la taille du club.</em></h1>
+      <p class="lede">Tous les clubs ont le même <span class="brand">Amateo</span>, en entier. Vous découvrez gratuitement, puis un tarif par saison, sans abonnement mensuel : un club décide son budget une fois par an.</p>
+    </div>
+    <svg class="s-arc toBoard" data-rv viewBox="0 0 1200 80" preserveAspectRatio="none" aria-hidden="true"><path class="f" d="M0 80V46Q600 -34 1200 46V80Z"/><g class="l3"><path class="m" pathLength="1" d="M0 46Q600 -34 1200 46"/><path class="o" pathLength="1" d="M0 46Q600 -34 1200 46"/><path class="t" pathLength="1" d="M0 46Q600 -34 1200 46"/></g></svg>
+  </section>
+
+  <section class="w-sec">
+    <div class="wrap w-two">
+      <div class="w-card">
+        <div class="i10" data-tiers>
+          <div class="i10-top" data-js-only hidden><label for="offer-teams">Combien d'équipes entraînez-vous ?</label><output for="offer-teams">18</output></div>
+          <input type="range" id="offer-teams" min="1" max="45" value="18" data-js-only hidden />
+          <ul class="i10-tiers">
+            <li data-max="20"><b>Jusqu'à 20 équipes</b><small>Palier 1</small></li>
+            <li data-max="34"><b>De 21 à 34 équipes</b><small>Palier 2</small></li>
+            <li data-max="9999"><b>35 équipes et plus</b><small>Palier 3</small></li>
+          </ul>
+          <p class="i-note">La Découverte reste gratuite pour commencer, quelle que soit la taille du club.</p>
+        </div>
+      </div>
+      <div class="w-col">
+        <h2>Votre palier, d'après vos équipes.</h2>
+        <p class="w-sub teams-note">Une équipe = chaque groupe que vous entraînez, compétition et loisir compris. Réglez le curseur : votre palier s'allume. Ce que fait <span class="brand">Amateo</span>, lui, ne change pas.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="w-sec">
+    <div class="wrap w-two">
+      <div class="w-col">
+        <p class="w-hand ink" data-js-only hidden>Essayez : dépensez vos crédits.</p>
+        <h2>La Découverte : dix crédits pour juger sur pièces.</h2>
+        <p class="w-sub">Votre club complet : toutes vos équipes, tous vos gymnases, toutes vos contraintes. Chaque planning généré, placement de matchs ou export utilise un crédit. Les ajustements à la main restent illimités, sans limite de durée et sans carte bancaire.</p>
+      </div>
+      <div class="w-card" data-credits data-js-only hidden>
+        <div class="i13">
+          <p class="i13-top"><span>Crédits restants</span><output data-credits-left>10</output></p>
+          <div class="i13-r" data-credits-row aria-hidden="true"></div>
+        </div>
+        <div class="i13-a" data-credits-actions>
+          <button type="button" class="i-act" data-c="Planning généré">Générer un planning</button>
+          <button type="button" class="i-act" data-c="Matchs placés">Placer les matchs</button>
+          <button type="button" class="i-act" data-c="Export créé">Exporter en PDF</button>
+          <button type="button" class="i-replay" data-free>Déplacer une séance à la main</button>
+          <button type="button" class="i-replay" data-reset>Recommencer</button>
+        </div>
+        <p class="i13-s" data-credits-line aria-live="polite">Chaque planning généré, placement de matchs ou export utilise un crédit.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="w-sec">
+    <div class="wrap">
+      <h2>Une offre complète, trois paliers de prix.</h2>
+      <p class="w-sub">Aucune fonction réservée aux grands clubs. Le seul écart entre les paliers, c'est le nombre d'équipes.</p>
+      <div class="of-one">
+        <article class="w-card plan of-free">
+          <p class="of-cap">Pour commencer</p>
+          <h3>Découverte</h3>
+          <p>Votre club complet, pour juger sur pièces.</p>
+          <ul><li>10 crédits offerts</li><li>Ajustements manuels illimités</li><li>Aucune carte bancaire</li></ul>
+          <p class="of-price">Gratuit<small>Sans limite de durée</small></p>
+        </article>
+        <article class="w-card plan of-full">
+          <p class="of-cap">Pour toute la saison</p>
+          <h3><span class="brand">Amateo</span>, en entier</h3>
+          <ul class="of-all"><li>Générations illimitées</li><li>Plannings de vacances et de fermetures</li><li>Placement des matchs</li><li>Conflits envoyés aux coachs</li><li>Exports PDF et Excel</li><li>Saison prochaine préparée dès mai</li></ul>
+          <ol class="of-tiers">
+            <li><small>Palier 1</small><b>Jusqu'à 20 équipes</b><span>Tarif sur demande</span></li>
+            <li><small>Palier 2</small><b>De 21 à 34 équipes</b><span>Tarif sur demande</span></li>
+            <li><small>Palier 3</small><b>35 équipes et plus</b><span>Tarif sur demande</span></li>
+          </ol>
+          <p class="of-foot">Un tarif par saison. Le même contenu aux trois paliers.</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <svg class="s-arc toFloor" data-rv viewBox="0 0 1200 80" preserveAspectRatio="none" aria-hidden="true"><path class="f" d="M0 0H1200V46Q600 -34 0 46Z"/><g class="l3"><path class="m" pathLength="1" d="M0 46Q600 -34 1200 46"/><path class="o" pathLength="1" d="M0 46Q600 -34 1200 46"/><path class="t" pathLength="1" d="M0 46Q600 -34 1200 46"/></g></svg>
+  <section class="s-end w-end">
+    <div class="wrap">
+      <h2 data-rv>Votre saison peut commencer ce soir.</h2>
+      <p data-rv class="rv-1">Gratuit pour découvrir : votre club complet, aucune carte bancaire.</p>
+      <div class="b-cta rv-2" data-rv>
+        <a class="b-btn" data-cta="register" href="https://app.amateo.app/register">Essayer gratuitement avec mon club</a>
+        <a class="b-btn ghost" data-cta="demo" href="mailto:contact@amateo.app?subject=Demande%20de%20demo%20-%20Amateo&amp;body=Bonjour%2C%0A%0AJe%20souhaite%20voir%20Amateo%20en%20demo%20pour%20mon%20club.%0A%0AClub%20%3A%20%0ANombre%20d'equipes%20(environ)%20%3A%20%0ADisponibilites%20%3A%20">Demander une démo</a>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="site">
+  <div class="wrap">
+    <p class="foot-tagline"><span class="foot-brand"><img class="brand-logo" data-brand-logo src="assets/brand/mark.svg" alt="" width="20" height="20" /><span class="brand logo-word">Amateo</span></span> — le planning des clubs de basket. Actuellement en bêta avec des clubs pilotes.</p>
+    <div class="cols">
+      <nav class="col" aria-label="Produit">
+        <p class="col-title">Produit</p>
+        <ul>
+          <li><a href="fonctionnalites.html">Fonctionnalités</a></li>
+          <li><a href="offres.html">Offres</a></li>
+          <li><a href="faq.html">Questions fréquentes</a></li>
+          <li><a href="evolutions.html">Journal des évolutions</a></li>
+        </ul>
+      </nav>
+      <nav class="col" aria-label="À propos">
+        <p class="col-title">À propos</p>
+        <ul>
+          <li><a href="qui-fait.html">Qui fait <span class="brand">Amateo</span></a></li>
+          <li><a href="vos-donnees.html">Vos données</a></li>
+          <li><a href="mentions-legales.html">Mentions légales</a></li>
+          <li><a data-cta="demo-inline" href="mailto:contact@amateo.app?subject=Demande%20de%20demo%20-%20Amateo&amp;body=Bonjour%2C%0A%0AJe%20souhaite%20voir%20Amateo%20en%20demo%20pour%20mon%20club.%0A%0AClub%20%3A%20%0ANombre%20d'equipes%20(environ)%20%3A%20%0ADisponibilites%20%3A%20">Contact</a></li>
+        </ul>
+      </nav>
+      <nav class="col" aria-label="Compte">
+        <p class="col-title">Compte</p>
+        <ul>
+          <li><a data-cta="login" href="https://app.amateo.app/login">Se connecter</a></li>
+          <li><a data-cta="register" href="https://app.amateo.app/register">Essayer gratuitement</a></li>
+        </ul>
+      </nav>
+    </div>
+  </div>
+</footer>
+
+<script src="config.js?v=2026-11-13"></script>
+<script src="assets/site.js?v=2026-11-13"></script>
+<script src="assets/offres.js?v=2026-11-13"></script>
+</body>
+</html>

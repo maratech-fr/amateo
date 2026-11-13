@@ -10,7 +10,7 @@ Detailed companion to the short index in [`/CLAUDE.md`](../CLAUDE.md). Frontend 
 backend/   PHP 8.4 · Symfony 7.4 · API Platform 4.4 · Doctrine ORM 3.7 · Messenger · Mercure · JWT
 engine/    Python 3.14 · FastAPI · OR-Tools CP-SAT
 frontend/  TS · React 19 · Vite · TW4  (active: auth · planning work-loop · wizard)
-landing/   Vitrine publique, six pages — HTML/CSS statique PUR (zéro build, AUCUN lien avec frontend/) ;
+landing/   Vitrine publique, huit pages — HTML/CSS statique PUR (zéro build, AUCUN lien avec frontend/) ;
            socle partagé assets/site.css + site.js ; marque écrite dans le HTML, config.js = ce que
            site.js consomme (liens, logo, audience) ; en prod : servie par CADDY sur la VM
            (`file_server`, docs/ops/Caddyfile.example) — PAS un vhost nginx : les deux nginx du compose

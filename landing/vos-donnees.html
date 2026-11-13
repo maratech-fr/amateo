@@ -16,31 +16,34 @@
   <meta name="twitter:card" content="summary_large_image" />
   <link rel="icon" type="image/svg+xml" href="assets/brand/icon.svg" />
   <link rel="icon" type="image/png" sizes="32x32" href="assets/brand/icon-32.png" />
-  <!-- Thème AU CHOIX, posé AVANT la feuille partagée (anti-flash) — seul script inline de la page. -->
-  <script>
-    (function () {
-      try {
-        var saved = localStorage.getItem("theme");
-        var dark = saved
-          ? saved === "dark"
-          : (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches);
-        if (dark) document.documentElement.setAttribute("data-theme", "dark");
-      } catch (e) { /* stockage indisponible : on reste en clair */ }
-    })();
-  </script>
-  <link rel="stylesheet" href="assets/site.css?v=2026-11-11" />
+  <link rel="stylesheet" href="assets/site.css?v=2026-11-13" />
 </head>
 <body>
 
 <header class="site">
   <div class="wrap">
-    <a class="logotype" href="/" data-brand-label aria-label="Amateo"><img class="brand-logo" data-brand-logo src="assets/brand/mark.svg" alt="" width="30" height="30" /><span class="brand logo-word">Amateo</span></a>
-    <nav class="top" aria-label="Navigation">
-      <a data-cta="home" href="/">Accueil</a>
-      <button type="button" class="theme-toggle" data-theme-toggle aria-pressed="false" aria-label="Passer en thème sombre">
-        <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
-        <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4.2"/><path d="M12 2v2.5M12 19.5V22M4.22 4.22l1.77 1.77M18.01 18.01l1.77 1.77M2 12h2.5M19.5 12H22M4.22 19.78l1.77-1.77M18.01 5.99l1.77-1.77"/></svg>
-      </button>
+    <a class="logotype" href="/" data-brand-label aria-label="Amateo"><img class="brand-logo" data-brand-logo src="assets/brand/mark.svg" alt="" width="32" height="32" /><span class="brand logo-word">Amat<b>eo</b></span></a>
+    <nav class="top" aria-label="Navigation principale">
+      <a href="/#fonctionnement">Comment ça marche</a>
+      <a href="fonctionnalites.html">Fonctionnalités</a>
+      <a href="offres.html">Offres</a>
+      <a href="faq.html">FAQ</a>
+      <a data-cta="login" href="https://app.amateo.app/login">Se connecter</a>
+      <a class="b-btn p-cta" data-cta="register" href="https://app.amateo.app/register">Essayer gratuitement</a>
+      <details class="nav-menu">
+        <summary aria-label="Ouvrir le menu" aria-expanded="false">
+          <svg class="icon-menu" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
+          <svg class="icon-close" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M5 5l14 14M19 5L5 19"/></svg>
+        </summary>
+        <div class="nav-panel">
+          <a href="/#fonctionnement">Comment ça marche</a>
+          <a href="fonctionnalites.html">Fonctionnalités</a>
+          <a href="offres.html">Offres</a>
+          <a href="faq.html">FAQ</a>
+          <a data-cta="login" href="https://app.amateo.app/login">Se connecter</a>
+          <a class="b-btn p-cta" data-cta="register" href="https://app.amateo.app/register">Essayer gratuitement</a>
+        </div>
+      </details>
     </nav>
   </div>
 </header>
@@ -105,8 +108,8 @@
         <p class="col-title">Produit</p>
         <ul>
           <li><a href="fonctionnalites.html">Fonctionnalités</a></li>
-          <li><a href="/#offres">Offres</a></li>
-          <li><a href="/#faq">Questions fréquentes</a></li>
+          <li><a href="offres.html">Offres</a></li>
+          <li><a href="faq.html">Questions fréquentes</a></li>
           <li><a href="evolutions.html">Journal des évolutions</a></li>
         </ul>
       </nav>
@@ -130,7 +133,7 @@
   </div>
 </footer>
 
-<script src="config.js?v=2026-11-11"></script>
-<script src="assets/site.js?v=2026-11-11"></script>
+<script src="config.js?v=2026-11-13"></script>
+<script src="assets/site.js?v=2026-11-13"></script>
 </body>
 </html>

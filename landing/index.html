@@ -4,15 +4,15 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Amateo — Planning d'entraînement et matchs FBI des clubs de basket</title>
-  <meta name="description" content="Le planning de votre club de basket amateur, préparé à partir de vos règles, et vos matchs placés depuis l'export FBI de la FFBB." />
+  <meta name="description" content="Amateo est un logiciel en ligne de planification des entraînements et des matchs pour les clubs de basket amateur affiliés à la FFBB. Il prépare les plannings selon les contraintes du club et aide à placer les rencontres issues d'un export FBI." />
   <link rel="canonical" href="https://amateo.app/" /> <!-- nosemgrep: html.security.audit.missing-integrity.missing-integrity -- canonical : indique une URL, ne charge aucune ressource, integrity sans objet -->
   <!-- Carte de partage (Open Graph / Twitter) : aperçu affiché quand un lien vers la vitrine
        est collé dans une messagerie / un réseau. URL ABSOLUES (l'aperçu se charge hors contexte).
-       Copie recopiée du <title>/<meta description> ci-dessus ; image servie par la vitrine elle-même. -->
+       La description est la définition affichée sous le héros (.p-defq + .p-defs), mot pour mot. -->
   <meta property="og:type" content="website" />
   <meta property="og:url" content="https://amateo.app/" />
   <meta property="og:title" content="Amateo — Planning d'entraînement et matchs FBI des clubs de basket" />
-  <meta property="og:description" content="Le planning de votre club de basket amateur, préparé à partir de vos règles, et vos matchs placés depuis l'export FBI de la FFBB." />
+  <meta property="og:description" content="Amateo est un logiciel en ligne de planification des entraînements et des matchs pour les clubs de basket amateur affiliés à la FFBB. Il prépare les plannings selon les contraintes du club et aide à placer les rencontres issues d'un export FBI." />
   <meta property="og:image" content="https://amateo.app/assets/brand/og.png" />
   <meta property="og:image:width" content="1200" />
   <meta property="og:image:height" content="630" />
@@ -20,165 +20,36 @@
   <!-- Balisage schema.org (SoftwareApplication + Person éditrice — config.js `editor`), ÉCRIT dans
        le HTML pour être lu sans JavaScript. La description recopie la meta description ci-dessus.
        Pas d'`offers` : les paliers payants sont « sur demande », inexprimables en une offre. -->
-  <script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"SoftwareApplication","@id":"https://amateo.app/#app","name":"Amateo","applicationCategory":"BusinessApplication","operatingSystem":"Web","url":"https://amateo.app/","inLanguage":"fr","description":"Le planning de votre club de basket amateur, préparé à partir de vos règles, et vos matchs placés depuis l'export FBI de la FFBB.","publisher":{"@id":"https://amateo.app/#editor"}},{"@type":"Person","@id":"https://amateo.app/#editor","name":"Franck Mpemba Boni","url":"https://amateo.app/qui-fait.html"}]}</script>
+  <script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"SoftwareApplication","@id":"https://amateo.app/#app","name":"Amateo","applicationCategory":"BusinessApplication","operatingSystem":"Web","url":"https://amateo.app/","inLanguage":"fr","description":"Amateo est un logiciel en ligne de planification des entraînements et des matchs pour les clubs de basket amateur affiliés à la FFBB. Il prépare les plannings selon les contraintes du club et aide à placer les rencontres issues d'un export FBI.","publisher":{"@id":"https://amateo.app/#editor"}},{"@type":"Person","@id":"https://amateo.app/#editor","name":"Franck Mpemba Boni","url":"https://amateo.app/qui-fait.html"}]}</script>
   <link rel="icon" type="image/svg+xml" href="assets/brand/icon.svg" />
   <link rel="icon" type="image/png" sizes="32x32" href="assets/brand/icon-32.png" />
-  <!-- Thème AU CHOIX, posé AVANT la feuille partagée pour éviter tout flash : localStorage `theme`
-       (choix explicite du visiteur), sinon la préférence système. Sans JS → thème clair. SEUL
-       script inline de la page (le reste vit dans assets/site.js). -->
-  <script>
-    (function () {
-      try {
-        var saved = localStorage.getItem("theme");
-        var dark = saved
-          ? saved === "dark"
-          : (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches);
-        if (dark) document.documentElement.setAttribute("data-theme", "dark");
-      } catch (e) { /* stockage indisponible : on reste en clair */ }
-    })();
-  </script>
-  <link rel="stylesheet" href="assets/site.css?v=2026-11-11" />
-  <!-- Sections propres à l'accueil ; le socle (jetons, en-tête, boutons, pied) vit dans assets/site.css. -->
-  <style>
-    /* ── Hero ── */
-    .hero { padding: 80px 0 40px; }
-    .hero p.lede { margin: 22px 0 0; font-size: 19px; color: var(--ink-2); max-width: 56ch; }
-    .hero .ctas { margin-top: 32px; display: flex; gap: 14px; flex-wrap: wrap; }
-    .hero .under { margin-top: 14px; font-size: 14px; color: var(--muted); }
-
-    /* ── Bandeau des garanties : quatre affirmations, chacune menant à sa preuve ── */
-    ul.guarantees {
-      list-style: none; padding: 0; margin: 28px 0 0;
-      display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px 24px;
-    }
-    ul.guarantees li { border-left: 2px solid var(--accent); padding-left: 12px; font-size: 14.5px; line-height: 1.45; }
-    ul.guarantees a { color: var(--ink-2); text-decoration: none; }
-    ul.guarantees a:hover { color: var(--ink); text-decoration: underline; }
-    ul.guarantees a:focus-visible { outline: 3px solid var(--accent-ink); outline-offset: 2px; border-radius: 4px; }
-
-    /* ── Capture — l'unique moment de motion authored de la page ── */
-    figure.shot { margin: 56px 0 0; }
-    figure.shot img { animation: settle 700ms cubic-bezier(0.16, 1, 0.3, 1) both; }
-    @keyframes settle {
-      from { transform: translateY(18px); box-shadow: 0 6px 18px -12px rgba(25,23,20,.25); }
-      to   { transform: translateY(0);    box-shadow: 0 24px 60px -24px rgba(25,23,20,.25); }
-    }
-
-    /* ── Douleur — trois colonnes éditoriales, pas trois cartes ── */
-    .pains { margin-top: 44px; display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 36px; }
-    .pain { border-top: 2px solid var(--accent); padding-top: 18px; }
-    .pain h3 { font-size: 17.5px; margin-bottom: 8px; line-height: 1.3; }
-    .pain p { font-size: 15px; color: var(--ink-2); }
-    /* #matchs porte quatre cartes : même rythme que les 4 étapes (min 230px) */
-    #matchs .pains { grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); }
-    /* #matchs : deux captures secondaires côte à côte sous le calendrier — empilées en mobile */
-    #matchs .shots-pair { margin-top: 28px; display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 24px; align-items: start; }
-    #matchs .shots-pair figure.shot { margin: 0; }
-
-    /* ── Étapes ── */
-    .steps { margin-top: 40px; display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 0; counter-reset: step; }
-    .step { padding: 8px 26px 8px 0; position: relative; }
-    .step + .step { border-left: 1px solid var(--line); padding-left: 26px; }
-    .step::before {
-      counter-increment: step; content: counter(step);
-      display: inline-flex; align-items: center; justify-content: center;
-      width: 30px; height: 30px; border-radius: 999px; margin-bottom: 12px;
-      background: var(--ink); color: var(--paper); font-weight: 800; font-size: 14px;
-    }
-    .step h3 { font-size: 17px; }
-    .step p { margin-top: 6px; font-size: 15px; color: var(--ink-2); }
-    @media (max-width: 600px) {
-      .steps { grid-template-columns: 1fr; }
-      .step { padding: 8px 0; }
-      .step + .step { border-left: 0; border-top: 1px solid var(--line); padding-left: 0; padding-top: 22px; margin-top: 14px; }
-    }
-
-    /* ── D'où vient Amateo (bloc sans chiffre, lien vers « Qui fait ») ── */
-    #origine .more { margin-top: 16px; font-weight: 650; }
-
-    /* ── Offres ── */
-    .teams-note { font-size: 14.5px; }
-    .plans { margin-top: 40px; display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 18px; align-items: stretch; }
-    .plan {
-      border: 1px solid var(--line); border-radius: var(--radius); padding: 24px;
-      background: var(--surface); display: flex; flex-direction: column; gap: 10px;
-    }
-    .plan.free { border-color: var(--accent); border-width: 2px; }
-    .plan .name { font-weight: 800; font-size: 17px; }
-    .plan .cap { color: var(--ink-2); font-size: 14.5px; }
-    .plan .price { margin-top: auto; font-weight: 700; font-size: 15px; }
-    .plan .price small { display: block; font-weight: 400; color: var(--muted); font-size: 13px; margin-top: 2px; }
-    .plan ul { padding-left: 18px; font-size: 14.5px; color: var(--ink-2); }
-    .badge-free { display: inline-block; align-self: flex-start; background: var(--accent-soft); color: var(--accent-ink); font-size: 12.5px; font-weight: 700; border-radius: 999px; padding: 2px 10px; }
-
-    /* ── FAQ ── */
-    .faq { margin-top: 36px; max-width: 780px; }
-    .faq details { border-bottom: 1px solid var(--line); padding: 4px 0; }
-    .faq summary {
-      cursor: pointer; padding: 14px 4px; font-weight: 650; font-size: 16.5px; list-style: none;
-      display: flex; justify-content: space-between; align-items: center; gap: 16px;
-    }
-    .faq summary::-webkit-details-marker { display: none; }
-    .faq summary svg { flex-shrink: 0; color: var(--muted); transition: transform 240ms cubic-bezier(0.16, 1, 0.3, 1); }
-    .faq details[open] summary svg { transform: rotate(45deg); }
-    .faq summary:focus-visible { outline: 3px solid var(--accent-ink); outline-offset: 2px; border-radius: 6px; }
-    .faq .a { padding: 0 4px 18px; color: var(--ink-2); font-size: 15.5px; max-width: 68ch; }
-
-    /* ── CTA final ── */
-    .final { text-align: center; padding: 88px 0; }
-    .final h2 { margin: 0 auto; }
-    .final .ctas { margin-top: 28px; display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; }
-    footer.site { margin-top: 0; }
-
-    /* ≤880px : la barre passe au burger — les liens inline cèdent la place au panneau (le logo
-       et la bascule, un <button>, restent). Cibles tactiles ≥44px (liens en ligne de la FAQ). */
-    @media (max-width: 880px) {
-      nav.top > a { display: none; }
-      .faq .a a { display: inline-block; padding: 11px 0; margin: -11px 0; }
-      /* Garanties : chaque puce entière est la cible (≥ 44px de haut). */
-      ul.guarantees a { display: flex; align-items: center; min-height: 44px; }
-      #origine .more a { display: inline-block; padding: 12px 0; margin: -12px 0; }
-    }
-    /* Paragraphes de CONTENU à 16px en mobile — placé APRÈS les règles de base (ordre source). */
-    @media (max-width: 720px) {
-      .pain p, .step p, .faq .a { font-size: 16px; }
-    }
-    @media (prefers-reduced-motion: reduce) {
-      figure.shot img { animation: none; }
-      .faq summary svg { transition: none; }
-    }
-  </style>
+  <link rel="stylesheet" href="assets/site.css?v=2026-11-13" />
+  <link rel="stylesheet" href="assets/home.css?v=2026-11-13" />
 </head>
 <body>
 
 <header class="site">
   <div class="wrap">
-    <a class="logotype" href="/" data-brand-label aria-label="Amateo"><img class="brand-logo" data-brand-logo src="assets/brand/mark.svg" alt="" width="30" height="30" /><span class="brand logo-word">Amateo</span></a>
+    <a class="logotype" href="/" data-brand-label aria-label="Amateo"><img class="brand-logo" data-brand-logo src="assets/brand/mark.svg" alt="" width="32" height="32" /><span class="brand logo-word">Amat<b>eo</b></span></a>
     <nav class="top" aria-label="Navigation principale">
-      <a href="#fonctionnement">Comment ça marche</a>
+      <a href="/#fonctionnement">Comment ça marche</a>
       <a href="fonctionnalites.html">Fonctionnalités</a>
-      <a href="#offres">Offres</a>
-      <a href="#faq">FAQ</a>
+      <a href="offres.html">Offres</a>
+      <a href="faq.html">FAQ</a>
       <a data-cta="login" href="https://app.amateo.app/login">Se connecter</a>
-      <button type="button" class="theme-toggle" data-theme-toggle aria-pressed="false" aria-label="Passer en thème sombre">
-        <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
-        <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4.2"/><path d="M12 2v2.5M12 19.5V22M4.22 4.22l1.77 1.77M18.01 18.01l1.77 1.77M2 12h2.5M19.5 12H22M4.22 19.78l1.77-1.77M18.01 5.99l1.77-1.77"/></svg>
-      </button>
-      <a class="btn btn-primary" data-cta="register" href="https://app.amateo.app/register">Essayer gratuitement</a>
-      <!-- Menu mobile (≤880px) : <details>/<summary> natif (marche sans JS). Le panneau REPREND
-           les liens de la barre ; en desktop ce bloc est masqué — deux jeux distincts. -->
+      <a class="b-btn p-cta" data-cta="register" href="https://app.amateo.app/register">Essayer gratuitement</a>
       <details class="nav-menu">
-        <summary data-nav-burger aria-label="Ouvrir le menu" aria-expanded="false">
-          <svg class="icon-menu" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
-          <svg class="icon-close" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M5 5l14 14M19 5L5 19"/></svg>
+        <summary aria-label="Ouvrir le menu" aria-expanded="false">
+          <svg class="icon-menu" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
+          <svg class="icon-close" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M5 5l14 14M19 5L5 19"/></svg>
         </summary>
         <div class="nav-panel">
-          <a href="#fonctionnement">Comment ça marche</a>
+          <a href="/#fonctionnement">Comment ça marche</a>
           <a href="fonctionnalites.html">Fonctionnalités</a>
-          <a href="#offres">Offres</a>
-          <a href="#faq">FAQ</a>
+          <a href="offres.html">Offres</a>
+          <a href="faq.html">FAQ</a>
           <a data-cta="login" href="https://app.amateo.app/login">Se connecter</a>
-          <a class="btn btn-primary" data-cta="register" href="https://app.amateo.app/register">Essayer gratuitement</a>
+          <a class="b-btn p-cta" data-cta="register" href="https://app.amateo.app/register">Essayer gratuitement</a>
         </div>
       </details>
     </nav>
@@ -186,297 +57,156 @@
 </header>
 
 <main>
-  <div class="wrap">
-    <section class="hero">
-      <h1>Le planning de votre club de basket, sans le casse-tête.</h1>
-      <p class="lede">
-        <span class="brand">Amateo</span> retient toutes les règles du club, prépare le planning
-        d'entraînement, le réajuste quand la mairie ou un coach change la donne, et range vos
-        matchs depuis l'export FBI.
-      </p>
-      <div class="ctas">
-        <a class="btn btn-primary" data-cta="register" href="https://app.amateo.app/register">Essayer gratuitement avec mon club</a>
-        <a class="btn btn-ghost" data-cta="demo" href="mailto:contact@amateo.app?subject=Demande%20de%20demo%20-%20Amateo&amp;body=Bonjour%2C%0A%0AJe%20souhaite%20voir%20Amateo%20en%20demo%20pour%20mon%20club.%0A%0AClub%20%3A%20%0ANombre%20d'equipes%20(environ)%20%3A%20%0ADisponibilites%20%3A%20">Demander une démo</a>
-      </div>
-      <p class="under">Gratuit pour découvrir — votre club complet, aucune carte bancaire.</p>
+  <div class="p-prog" data-js-only hidden aria-hidden="true"></div>
 
-      <ul class="guarantees" aria-label="Nos garanties">
-        <li><a href="vos-donnees.html">Hébergé en France (Paris), copie de secours aux Pays-Bas.</a></li>
-        <li><a href="vos-donnees.html">Vos données vous appartiennent : export complet et suppression à la demande.</a></li>
-        <li><a data-cta="register" href="https://app.amateo.app/register">Découverte gratuite, sans carte bancaire.</a></li>
-        <li><a href="fonctionnalites.html#ne-fait-pas">Ne remplace pas FBI et n'y écrit rien.</a></li>
+  <section class="p-hero">
+    <div class="wrap">
+      <h1>Le planning<br>
+        de votre club de basket,<br>
+        <em><span class="sans">sans</span> le <span class="nw">casse-tête.</span></em></h1>
+      <div class="p-herobot">
+        <p class="lede"><span class="brand">Amateo</span> retient toutes les règles du club, prépare le planning d'entraînement, le réajuste quand la mairie ou un coach change la donne, et range vos matchs depuis l'export FBI.</p>
+        <div class="b-cta">
+          <a class="b-btn" data-cta="register" href="https://app.amateo.app/register">Essayer gratuitement avec mon club</a>
+          <a class="b-btn ghost" data-cta="demo" href="mailto:contact@amateo.app?subject=Demande%20de%20demo%20-%20Amateo&amp;body=Bonjour%2C%0A%0AJe%20souhaite%20voir%20Amateo%20en%20demo%20pour%20mon%20club.%0A%0AClub%20%3A%20%0ANombre%20d'equipes%20(environ)%20%3A%20%0ADisponibilites%20%3A%20">Demander une démo</a>
+        </div>
+      </div>
+      <!-- Compte à rebours vers la prochaine échéance : home.js prend la première date à venir de la
+           liste ci-dessous (une donnée, jamais affichée telle quelle) ; liste épuisée = bloc caché.
+           Dates à revoir chaque saison (doc de release). Les vacances d'hiver : cinq jours avant le
+           début de celles de la première zone, calendrier scolaire officiel. -->
+      <div class="p-count" data-countdown data-js-only hidden>
+        <p class="i2-l" data-cd-label></p>
+        <p class="i2-d" data-cd-digits aria-hidden="true"><span><b>00</b>jours</span><span><b>00</b>h</span><span><b>00</b>min</span><span><b>00</b>s</span></p>
+        <p class="p-q" data-cd-question></p>
+        <ol data-deadlines hidden>
+          <li data-date="2026-12-19" data-question="Votre planning de vacances est-il prêt ?">Vacances de Noël dans</li>
+          <li data-date="2027-01-05" data-question="La date exacte dépend de votre comité. Vos matchs de janvier sont-ils placés ?">Reprise de janvier, troisième phase, dans</li>
+          <li data-date="2027-02-01" data-question="Selon votre zone, elles commencent plus ou moins tôt. Votre planning de vacances est-il prêt ?">Premières vacances d’hiver dans</li>
+          <li data-date="2027-05-01" data-question="Selon votre championnat, les dates varient. Vos gymnases sont-ils prêts pour les phases finales ?">Playoffs dans</li>
+          <li data-date="2027-07-01" data-question="Le planning de septembre est-il prêt avant d’aller en vacances ?">Avant les vacances d’été, la saison prochaine se prépare : dans</li>
+          <li data-date="2027-08-16" data-question="Votre calendrier de reprise est-il posé ?">Mi-août, la reprise approche : dans</li>
+        </ol>
+      </div>
+    </div>
+    <svg class="s-arc toBoard" data-rv viewBox="0 0 1200 80" preserveAspectRatio="none" aria-hidden="true"><path class="f" d="M0 80V46Q600 -34 1200 46V80Z"/><g class="l3"><path class="m" pathLength="1" d="M0 46Q600 -34 1200 46"/><path class="o" pathLength="1" d="M0 46Q600 -34 1200 46"/><path class="t" pathLength="1" d="M0 46Q600 -34 1200 46"/></g></svg>
+  </section>
+
+  <section class="p-intro">
+    <div class="wrap">
+      <div class="p-def">
+        <p class="w-hand ink"><span class="brand">Amateo</span>, en une phrase.</p>
+        <p class="p-defq">Amateo est un logiciel en ligne de planification des entraînements et des matchs pour les clubs de basket amateur affiliés à la FFBB.</p>
+        <p class="p-defs">Il prépare les plannings selon les contraintes du club et aide à placer les rencontres issues d'un export FBI.</p>
+      </div>
+      <aside class="p-gar" aria-labelledby="garanties-titre">
+        <h2 id="garanties-titre">Quatre garanties</h2>
+        <ul class="guarantees">
+          <li><a href="vos-donnees.html">Hébergé en France (Paris), copie de secours aux Pays-Bas.</a></li>
+          <li><a href="vos-donnees.html">Vos données vous appartiennent : export complet et suppression à la demande.</a></li>
+          <li><a data-cta="register" href="https://app.amateo.app/register">Découverte gratuite, sans carte bancaire.</a></li>
+          <li><a href="fonctionnalites.html#ne-fait-pas">Ne remplace pas FBI et n'y écrit rien.</a></li>
+        </ul>
+      </aside>
+    </div>
+  </section>
+
+  <section class="p-story" id="saison">
+    <div class="wrap p-lead"><p class="w-hand ink">Faites défiler : une saison se déroule sous vos yeux.</p><h2>Une saison avec <span class="brand">Amateo</span>.</h2></div>
+    <div class="wrap p-grid">
+      <div class="p-pin" data-js-only hidden>
+        <p class="a-status" data-scene-status aria-live="polite"><i></i><span>10 équipes placées · 0 conflit</span></p>
+        <div class="p-side">
+          <div class="a-grid">
+            <div class="a-days" aria-hidden="true"><span>Lun</span><span>Mar</span><span>Mer</span><span>Jeu</span><span>Ven</span></div>
+            <div class="a-rows" aria-hidden="true"><span>Municipal<br>17 h 30</span><span>Municipal<br>19 h</span><span>Municipal<br>20 h 30</span><span>Annexe<br>17 h 30</span><span>Annexe<br>19 h</span></div>
+            <div class="a-board" data-scene-board aria-hidden="true"></div>
+          </div>
+          <p class="p-sc" aria-hidden="true"><span>Charge mentale</span><b>0</b><i></i><b data-scene-score>2</b><span>Votre club</span></p>
+        </div>
+        <ul class="p-chips" data-scene-chips aria-hidden="true">
+          <li>Juil.</li><li>Août</li><li>Sept.</li><li>Oct.</li><li>Nov.</li><li>Janv.</li><li>Mai</li><li>Juin</li><li>Juil.</li>
+        </ul>
+        <div class="p-cap" data-scene-cap aria-hidden="true"></div>
+      </div>
+      <ol class="p-steps" data-scene-steps>
+        <li><small>Juillet</small><h3>La saison se prépare.</h3><p>Vos équipes arrivent depuis la FFBB. Vous ajoutez gymnases, coachs et règles une seule fois : le planning de la saison est posé avant la rentrée.</p></li>
+        <li><small>Août</small><h3>La reprise, équipe par équipe.</h3><p>Tout le monde ne reprend pas la même semaine. Le calendrier de reprise a son propre planning, sans toucher à celui de la saison.</p></li>
+        <li><small>Septembre</small><h3>Les matchs arrivent.</h3><p>Vous déposez l'export FBI. Un match des U18F tombe le lundi à 19 h, sur l'entraînement des U15M. <span class="brand">Amateo</span> le repère tout de suite.</p></li>
+        <li><small>Le même soir</small><h3>Un geste, c'est réglé.</h3><p>Vous libérez le créneau : les U15M passent au vendredi, le match a sa salle.</p></li>
+        <li><small>Octobre</small><h3>Les premières vacances.</h3><p>Une coach est absente, l'annexe ferme. La semaine de la Toussaint s'adapte, le reste de la saison ne bouge pas.</p></li>
+        <li><small>Novembre</small><h3>La deuxième phase.</h3><p>Nouvel export FBI. Le match du lundi passe au mercredi : <span class="brand">Amateo</span> vous montre l'écart, les U15M retrouvent leur lundi.</p></li>
+        <li><small>Janvier</small><h3>La troisième phase.</h3><p>Encore de nouveaux matchs. Même geste : vous déposez le fichier, chaque match trouve sa salle.</p></li>
+        <li><small>Mai</small><h3>Les playoffs.</h3><p>Les phases finales tombent tard. Un match prend le vendredi à 19 h, les SF1 glissent à 20 h 30.</p></li>
+        <li><small>Juin</small><h3>La saison prochaine est déjà prête.</h3><p>Préparée dès le mois de mai : une équipe de plus, un coach qui change. En juin, le planning de septembre est prêt, sans avoir touché à la saison en cours.</p></li>
+        <li><small>Juillet</small><h3>Des vacances bien méritées.</h3><p>Plus de planning. Du soleil, un transat, la plage. Tout est prêt pour la rentrée.</p></li>
+      </ol>
+    </div>
+  </section>
+
+  <section class="p-say" data-scene-say>
+    <p class="p-big"><span>Vous gardez</span> <span>la main.</span></p>
+    <div class="wrap"><p class="p-saysub">Chaque séance se déplace en deux clics et se verrouille. Vous régénérez le planning autour de vos choix : ce que vous avez verrouillé ne bouge pas.</p></div>
+  </section>
+
+  <section class="p-quarts" id="fonctionnement" data-scene-quarts>
+    <div class="wrap">
+      <h2 data-rv>Quatre quart-temps pour un planning.</h2>
+      <ol>
+        <li><div><b>Q1</b><h3>Décrivez votre club</h3><p>Vos équipes s'importent depuis la FFBB. Ajoutez vos gymnases, vos créneaux, vos coachs.</p></div></li>
+        <li><div><b>Q2</b><h3>Posez vos contraintes</h3><p>Chaque règle est retenue, écrite, et ne se perd plus jamais.</p></div></li>
+        <li><div><b>Q3</b><h3>Générez</h3><p>Toutes les équipes placées, et ce qui coince dit honnêtement.</p></div></li>
+        <li><div><b>Q4</b><h3>Ajustez, en confiance</h3><p>Déplacez, bloquez une séance, refaites le planning autour de vos choix.</p></div></li>
+      </ol>
+    </div>
+  </section>
+
+  <!-- Clubs affichés : liste fermée (LandingClaimsTest::DISPLAYED_CLUBS). Ajouter ou retirer un club =
+       un <li>, un fichier sous assets/clubs/ et une ligne du test, ensemble. -->
+  <section class="p-clubs" id="clubs">
+    <div class="wrap">
+      <p class="w-hand ink">Sur le terrain.</p>
+      <h2>Ils nous font confiance.</h2>
+      <ul class="clubs">
+        <li tabindex="0"><img src="assets/clubs/villeurbanne-sharks.jpg" alt="Villeurbanne Sharks" width="300" height="300" loading="lazy" /><span aria-hidden="true">Villeurbanne Sharks</span></li>
+        <li tabindex="0"><img src="assets/clubs/basket-rillieux-crepieux.jpg" alt="Basket Rillieux Crépieux" width="300" height="300" loading="lazy" /><span aria-hidden="true">Basket Rillieux Crépieux</span></li>
+        <li tabindex="0"><img src="assets/clubs/al-antonin-perrin.jpg" alt="AL Antonin Perrin" width="300" height="300" loading="lazy" /><span aria-hidden="true">AL Antonin Perrin</span></li>
       </ul>
-
-      <figure class="shot">
-        <img src="assets/planning.png" alt="La grille de planning générée : chaque équipe placée sur son créneau de gymnase, les contraintes respectées" width="2160" height="1216" />
-        <figcaption>Un planning généré : chaque équipe à sa place, chaque contrainte respectée, et tout reste ajustable à la main.</figcaption>
-      </figure>
-    </section>
-  </div>
-
-  <section class="alt" id="douleur">
-    <div class="wrap">
-      <h2>Le tableur tient… jusqu'à la contrainte qu'on avait oubliée.</h2>
-      <p class="sub">Le vrai problème n'est pas le temps passé. C'est la charge mentale : tenir
-      toutes les règles de tête, et recommencer à zéro quand une seule saute.</p>
-      <div class="pains">
-        <article class="pain">
-          <h3>Les contraintes vivent dans une seule tête</h3>
-          <p>« Le coach des U13 ne peut pas le mardi, la mairie ferme le gymnase pendant les
-          vacances, les U9 doivent finir avant 19h… » Rien n'est écrit. Si la personne qui sait
-          s'absente, tout s'arrête.</p>
-        </article>
-        <article class="pain">
-          <h3>Une contrainte oubliée = tout recommencer</h3>
-          <p>Le planning était prêt. Puis quelqu'un signale un conflit de coach, et c'est reparti
-          pour une soirée à tout décaler, en risquant d'en casser trois autres.</p>
-        </article>
-        <article class="pain">
-          <h3>La réalité change en cours de saison</h3>
-          <p>La mairie reprend un créneau, un coach devient indisponible, les vacances arrivent.
-          Le planning parfait de septembre ne survit pas à novembre.</p>
-        </article>
-      </div>
     </div>
   </section>
 
-  <section id="fonctionnement">
-    <div class="wrap">
-      <h2>Vos contraintes entrent, votre planning sort.</h2>
-      <p class="sub">Pensé pour les gestionnaires de clubs amateurs — bénévoles ou salariés — pas pour
-      des informaticiens.</p>
-      <div class="steps">
-        <div class="step">
-          <h3>Décrivez votre club</h3>
-          <p>Vos équipes s'importent automatiquement depuis la FFBB. Ajoutez vos gymnases, vos
-          créneaux, vos coachs, guidé pas à pas.</p>
-        </div>
-        <div class="step">
-          <h3>Posez vos contraintes</h3>
-          <p>« Pas le mercredi », « fin avant 19h pour les petits », « ce coach a deux équipes » :
-          chaque règle est retenue, écrite, et ne se perd plus jamais.</p>
-        </div>
-        <div class="step">
-          <h3>Générez</h3>
-          <p><span class="brand">Amateo</span> place toutes les équipes en respectant chaque
-          contrainte, et vous dit honnêtement ce qui coince quand tout ne tient pas.</p>
-        </div>
-        <div class="step">
-          <h3>Ajustez, en confiance</h3>
-          <p>Déplacez, bloquez une séance, refaites le planning autour de vos choix. Vacances,
-          matchs, imprévus : le planning suit la saison au lieu de la subir.</p>
+  <section class="p-offres" id="offres">
+    <div class="p-narrow">
+      <h2 data-rv>Découvrez gratuitement. Payez selon la taille de votre club.</h2>
+      <p class="p-sub" data-rv>Un tarif par saison, pas d'abonnement mensuel, parce qu'un club décide son budget une fois par an.</p>
+      <div class="i10" data-tiers data-rv>
+        <div class="i10-top" data-js-only hidden><label for="home-teams">Combien d'équipes entraînez-vous ?</label><output for="home-teams">18</output></div>
+        <input type="range" id="home-teams" min="1" max="45" value="18" data-js-only hidden />
+        <ul class="i10-tiers">
+          <li data-max="20"><b>Jusqu'à 20 équipes</b><small>Palier 1</small></li>
+          <li data-max="34"><b>De 21 à 34 équipes</b><small>Palier 2</small></li>
+          <li data-max="9999"><b>35 équipes et plus</b><small>Palier 3</small></li>
+        </ul>
+        <p class="i-note">La Découverte reste gratuite pour commencer : votre club complet, 10 crédits, aucune carte bancaire.</p>
+      </div>
+      <a class="p-more" href="offres.html">Voir le détail des offres</a>
+    </div>
+    <svg class="s-arc toFloor" data-rv viewBox="0 0 1200 80" preserveAspectRatio="none" aria-hidden="true"><path class="f" d="M0 0H1200V46Q600 -34 0 46Z"/><g class="l3"><path class="m" pathLength="1" d="M0 46Q600 -34 1200 46"/><path class="o" pathLength="1" d="M0 46Q600 -34 1200 46"/><path class="t" pathLength="1" d="M0 46Q600 -34 1200 46"/></g></svg>
+  </section>
+
+  <section class="s-end p-fin">
+    <div class="wrap s-endgrid">
+      <div class="s-endcopy">
+        <p class="s-score" data-js-only hidden aria-hidden="true"><span>Charge mentale</span><b>0</b><span>:</span><b data-scene-points>0</b><span>Votre club</span></p>
+        <p data-js-only hidden>Dix moments de la saison, dix paniers pour le club.</p>
+        <h2 data-rv>Votre saison peut commencer ce soir.</h2>
+        <p data-rv class="rv-1">Gratuit pour découvrir : votre club complet, aucune carte bancaire.</p>
+        <div class="b-cta rv-2" data-rv>
+          <a class="b-btn" data-cta="register" data-final-cta href="https://app.amateo.app/register">Essayer gratuitement avec mon club</a>
+          <a class="b-btn ghost" data-cta="demo" href="mailto:contact@amateo.app?subject=Demande%20de%20demo%20-%20Amateo&amp;body=Bonjour%2C%0A%0AJe%20souhaite%20voir%20Amateo%20en%20demo%20pour%20mon%20club.%0A%0AClub%20%3A%20%0ANombre%20d'equipes%20(environ)%20%3A%20%0ADisponibilites%20%3A%20">Demander une démo</a>
         </div>
       </div>
-    </div>
-  </section>
-
-  <section class="alt" id="matchs">
-    <div class="wrap">
-      <h2>Les matchs, un dossier de moins à garder en tête.</h2>
-      <p class="sub">Le calendrier des matchs arrive de la fédération, par FBI, l'outil de gestion de la
-      FFBB. <span class="brand">Amateo</span> le range : les rencontres importées, les domiciles placés,
-      les conflits repérés, les échéances suivies. Vous déposez l'export une fois, et vous n'avez plus
-      à tout tenir de tête.</p>
-      <div class="pains">
-        <article class="pain">
-          <h3>Déposez l'export FBI, <span class="brand">Amateo</span> place vos matchs</h3>
-          <p>L'import du fichier FBI du club range vos rencontres par équipe, et
-          <span class="brand">Amateo</span> pose vos domiciles sur les créneaux où vos gymnases sont
-          libres — à vous d'ajuster ou de bloquer ce qui doit l'être.</p>
-        </article>
-        <article class="pain">
-          <h3>Les écarts avec FBI ne vous échappent plus</h3>
-          <p>L'écran « FBI — à faire » liste ce qui reste à saisir ou à corriger dans FBI, avec
-          l'échéance de chaque compétition — il alerte, sans jamais bloquer.</p>
-        </article>
-        <article class="pain">
-          <h3>Les conflits de coachs vus avant le week-end</h3>
-          <p><span class="brand">Amateo</span> repère tout seul, dès le dépôt du fichier, un coach sur
-          deux rencontres, un match et un entraînement en même temps, un gymnase pris deux fois ;
-          chaque conflit se traite — dérogation demandée, réglé en interne, sans solution pour
-          l'instant — sans jamais se masquer.</p>
-        </article>
-        <article class="pain">
-          <h3>Les déplacements comptés, adversaires localisés</h3>
-          <p>Le temps d'un match à l'extérieur intègre le trajet réel jusqu'au gymnase adverse, et
-          l'annuaire des adversaires se localise tout seul depuis le libellé du fichier FBI, sans
-          rien à saisir.</p>
-        </article>
-      </div>
-
-      <figure class="shot">
-        <img src="assets/matchs.jpg" alt="Le calendrier des rencontres d'un week-end : les matchs à domicile posés sur leur gymnase, la liste des matchs à placer à côté, les conflits signalés en tête" width="2160" height="1800" loading="lazy" />
-        <figcaption>L'essentiel remonte tout seul en tête : les matchs à placer, les conflits à traiter et ce qu'il faut rendre à FBI — vous n'avez plus à y penser.</figcaption>
-      </figure>
-
-      <div class="shots-pair">
-        <figure class="shot">
-          <img src="assets/matchs-importer.jpg" alt="L'écran Importer du module matchs : bouton « Importer FBI », date du dernier dépôt, et la liste des rencontres restant à traiter" width="2160" height="1500" loading="lazy" />
-          <figcaption>Un dépôt de l'export FBI, et le club sait ce qui reste à saisir et à valider — sans traquer la ligne oubliée.</figcaption>
-        </figure>
-        <figure class="shot">
-          <img src="assets/matchs-conflits.jpg" alt="L'onglet Conflits regroupé par coach : un coach (nom de démo) engagé sur deux rencontres qui se chevauchent, avec départ, coup d'envoi, retour et durée du chevauchement, et un bouton « Traiter »" width="2160" height="1500" loading="lazy" />
-          <figcaption>Les conflits regroupés et suivis : chaque cas dit qui, quand, et ce qu'il reste à trancher.</figcaption>
-        </figure>
-      </div>
-    </div>
-  </section>
-
-  <section id="transparence">
-    <div class="wrap">
-      <h2>Le planning ne dépend plus d'une seule personne.</h2>
-      <p class="sub">Si votre gestionnaire part, le savoir du club reste : équipes, gymnases, règles,
-      tout est écrit. Invitez le président ou le trésorier en lecture : ils voient le vrai planning,
-      sans risque de rien dérégler. Vous envoyez le planning aux coachs en PDF ou en Excel : ils
-      n'ont pas besoin de compte.</p>
-    </div>
-  </section>
-  <section class="alt" id="origine">
-    <div class="wrap">
-      <h2>Créé par un joueur de basket pour son club amateur.</h2>
-      <p class="sub">Là-bas, refaire le planning à chaque changement de coach ou de créneau prenait
-      des heures. <span class="brand">Amateo</span> est né pour que ça n'arrive plus.</p>
-      <p class="more"><a href="qui-fait.html">Qui fait <span class="brand">Amateo</span> →</a></p>
-    </div>
-  </section>
-
-  <section id="offres">
-    <div class="wrap">
-      <h2>Découvrez gratuitement. Payez selon la taille de votre club.</h2>
-      <p class="sub">Un tarif par saison, pas d'abonnement mensuel, parce qu'un club décide
-      son budget une fois par an.</p>
-      <p class="sub teams-note">Une équipe = chaque groupe que vous entraînez, compétition et loisir compris.</p>
-      <div class="plans">
-        <article class="plan free">
-          <span class="badge-free">Pour commencer</span>
-          <span class="name">Découverte</span>
-          <span class="cap">Votre club <strong>complet</strong> — toutes vos équipes, tous vos gymnases, toutes vos contraintes.</span>
-          <ul>
-            <li>10 crédits offerts : chaque planning généré, placement de matchs ou export en utilise un</li>
-            <li>Ajustements manuels illimités</li>
-            <li>Aucune carte bancaire</li>
-          </ul>
-          <span class="price">Gratuit<small>Le temps de vous convaincre, sans limite de durée.</small></span>
-        </article>
-        <article class="plan">
-          <span class="name">Essentiel</span>
-          <span class="cap">Jusqu'à 20 équipes</span>
-          <ul>
-            <li>Générations illimitées</li>
-            <li>Plannings de vacances et de fermetures</li>
-            <li>Placement des matchs</li>
-            <li>Exports PDF &amp; Excel</li>
-          </ul>
-          <span class="price">Sur demande<small>Tarif par saison</small></span>
-        </article>
-        <article class="plan">
-          <span class="name">Club</span>
-          <span class="cap">De 21 à 34 équipes</span>
-          <ul>
-            <li>Tout Essentiel</li>
-            <li>Même offre complète, pour plus d'équipes</li>
-          </ul>
-          <span class="price">Sur demande<small>Tarif par saison</small></span>
-        </article>
-        <article class="plan">
-          <span class="name">Grand club</span>
-          <span class="cap">À partir de 35 équipes</span>
-          <ul>
-            <li>Tout Essentiel</li>
-            <li>Même offre complète, pour plus d'équipes</li>
-          </ul>
-          <span class="price">Sur demande<small>Tarif par saison</small></span>
-        </article>
-      </div>
-    </div>
-  </section>
-
-  <section class="alt" id="faq">
-    <div class="wrap">
-      <h2>Questions fréquentes</h2>
-      <div class="faq">
-        <details>
-          <summary>Il faut tout ressaisir à la main ? <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M7 1v12M1 7h12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></summary>
-          <p class="a">Non, même en cours de saison. Avec le code de votre club,
-          <span class="brand">Amateo</span> récupère son nom, son logo et les équipes engagées. Et si
-          vous avez déjà votre planning, vous le transmettez à <span class="brand">Amateo</span> grâce
-          à l'IA : vous relisez l'aperçu avant d'importer, et vous ne repartez pas de zéro : vos
-          équipes, vos gymnases et vos créneaux sont repris ; il reste à ajouter vos coachs et vos
-          règles, guidé pas à pas. Il suffit ensuite de déposer l'export FBI de votre club pour
-          qu'<span class="brand">Amateo</span> connaisse tous les matchs de la saison, ceux déjà joués
-          comme ceux à venir.</p>
-        </details>
-        <details>
-          <summary>C'est fait pour un club amateur ? <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M7 1v12M1 7h12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></summary>
-          <p class="a">Oui, et seulement pour lui. <span class="brand">Amateo</span> est fait pour les
-          clubs de basket amateurs affiliés à la FFBB, gérés par des bénévoles ou un salarié. Du petit
-          club de quartier au club de 50 équipes, vous êtes guidé pas à pas, sans informaticien.</p>
-        </details>
-        <details>
-          <summary>Est-ce que ça m'aide avec FBI ? <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M7 1v12M1 7h12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></summary>
-          <p class="a">Oui. FBI est l'outil de la FFBB où vivent vos rencontres :
-          <span class="brand">Amateo</span> ne le remplace pas et n'y écrit rien. Vous déposez l'export
-          FBI de votre club. <span class="brand">Amateo</span> range les matchs par équipe et place vos
-          matchs à domicile sur les créneaux libres de vos gymnases. Un écran « FBI — à faire » vous dit
-          ce qu'il reste à saisir ou à corriger dans FBI, avec l'échéance de chaque compétition, pour
-          qu'aucun écart ne passe inaperçu.</p>
-        </details>
-        <details>
-          <summary>Et si le planning généré ne me convient pas ? <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M7 1v12M1 7h12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></summary>
-          <p class="a">Vous gardez la main. Chaque séance se déplace en deux clics et se verrouille.
-          Vous pouvez ensuite régénérer le planning autour de vos choix : ce que vous avez verrouillé ne
-          bouge pas. <span class="brand">Amateo</span> dégrossit le travail, à vous les finitions.</p>
-        </details>
-        <details>
-          <summary>Que se passe-t-il quand la mairie change nos créneaux ? <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M7 1v12M1 7h12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></summary>
-          <p class="a">C'est exactement le cas pour lequel <span class="brand">Amateo</span> est fait.
-          Vous mettez à jour les créneaux de vos gymnases, vous régénérez : le planning s'adapte, sans
-          repartir d'une feuille blanche et sans perdre les contraintes déjà posées. Si c'est une
-          fermeture ponctuelle, seule cette période change, le reste de la saison reste intact.</p>
-        </details>
-        <details>
-          <summary>Les coachs doivent-ils créer un compte ? <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M7 1v12M1 7h12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></summary>
-          <p class="a">Non. Les coachs n'ont pas de compte : vous leur transmettez le planning (export
-          PDF ou Excel) par WhatsApp ou par e-mail, comme vous le faites déjà. Si vous avez besoin de
-          leurs indisponibilités, vous leur envoyez un lien personnel, sans compte ni mot de passe. Ils
-          reçoivent aussi par e-mail la liste des conflits de matchs qui les concernent quand vous la
-          leur envoyez. <span class="brand">Amateo</span> est fait pour le gestionnaire ; il peut
-          inviter son bureau en lecture s'il le souhaite.</p>
-        </details>
-        <details>
-          <summary>Combien ça coûte ? <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M7 1v12M1 7h12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></summary>
-          <p class="a">La Découverte est gratuite, avec votre club complet : 10 crédits pour voir ce que
-          donne <span class="brand">Amateo</span>. Chaque planning généré, placement de matchs ou export
-          en utilise un. Ensuite, le tarif dépend de la taille du club et se règle une fois par saison,
-          sans abonnement mensuel. Demandez-nous, la grille est simple et sans surprise.</p>
-        </details>
-        <details>
-          <summary>Où sont hébergées nos données ? <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M7 1v12M1 7h12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></summary>
-          <p class="a">En France, chez un hébergeur français (Scaleway, Paris), avec une copie de
-          secours aux Pays-Bas. Les sauvegardes sont automatiques, chaque nuit où le service a été
-          utilisé. Vos données appartiennent à votre club : export complet à la demande, suppression de
-          votre compte et de l'espace du club à la demande, conformément au RGPD. Les délais exacts sont
-          détaillés dans la page <a href="vos-donnees.html">« Vos données »</a>.</p>
-        </details>
-        <details>
-          <summary>On peut voir avant de s'engager ? <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M7 1v12M1 7h12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></summary>
-          <p class="a">Oui, de deux façons. Créez un compte gratuit avec le code de votre club : votre
-          nom, votre logo et vos équipes arrivent tout seuls, et vous essayez
-          <span class="brand">Amateo</span> sur votre vrai club. Ou
-          <a data-cta="demo-inline" href="mailto:contact@amateo.app?subject=Demande%20de%20demo%20-%20Amateo&amp;body=Bonjour%2C%0A%0AJe%20souhaite%20voir%20Amateo%20en%20demo%20pour%20mon%20club.%0A%0AClub%20%3A%20%0ANombre%20d'equipes%20(environ)%20%3A%20%0ADisponibilites%20%3A%20">demandez une démo</a> :
-          nous vous montrons l'outil sur un club exemple, en visio, en 30 minutes.</p>
-        </details>
-      </div>
-    </div>
-  </section>
-
-  <section class="final">
-    <div class="wrap">
-      <h2>La saison n'a pas encore débuté que le planning est déjà prêt.</h2>
-      <div class="ctas">
-        <a class="btn btn-primary" data-cta="register" href="https://app.amateo.app/register">Essayer gratuitement avec mon club</a>
-        <a class="btn btn-ghost" data-cta="demo" href="mailto:contact@amateo.app?subject=Demande%20de%20demo%20-%20Amateo&amp;body=Bonjour%2C%0A%0AJe%20souhaite%20voir%20Amateo%20en%20demo%20pour%20mon%20club.%0A%0AClub%20%3A%20%0ANombre%20d'equipes%20(environ)%20%3A%20%0ADisponibilites%20%3A%20">Demander une démo</a>
-      </div>
+      <div class="s-hoopw" data-scene-hoop aria-hidden="true"><svg class="s-hoop" viewBox="0 0 1000 1000"><circle cx="500" cy="500" r="313" stroke="#B51C8A" stroke-width="83" pathLength="360" stroke-dasharray="133 400" transform="rotate(98 500 500)"/><circle cx="500" cy="500" r="325" stroke="#D47800" stroke-width="66" pathLength="360" stroke-dasharray="69 400" transform="rotate(252 500 500)"/><circle cx="500" cy="500" r="332" stroke="#46AFAC" stroke-width="50" pathLength="360" stroke-dasharray="89 400" transform="rotate(334.5 500 500)"/></svg></div>
     </div>
   </section>
 </main>
@@ -489,8 +219,8 @@
         <p class="col-title">Produit</p>
         <ul>
           <li><a href="fonctionnalites.html">Fonctionnalités</a></li>
-          <li><a href="/#offres">Offres</a></li>
-          <li><a href="/#faq">Questions fréquentes</a></li>
+          <li><a href="offres.html">Offres</a></li>
+          <li><a href="faq.html">Questions fréquentes</a></li>
           <li><a href="evolutions.html">Journal des évolutions</a></li>
         </ul>
       </nav>
@@ -514,9 +244,10 @@
   </div>
 </footer>
 
-<!-- ?v=… : cache-bust COMMUN à config.js, assets/site.css et assets/site.js (Caddy n'envoie pas de
-     Cache-Control). Le changer dans les six pages ensemble, à chaque retouche de l'un des trois. -->
-<script src="config.js?v=2026-11-11"></script>
-<script src="assets/site.js?v=2026-11-11"></script>
+<!-- ?v=… : cache-bust COMMUN à config.js, aux feuilles et aux scripts de assets/ (Caddy n'envoie pas
+     de Cache-Control). Le changer sur les huit pages ensemble, à chaque retouche de l'un d'eux. -->
+<script src="config.js?v=2026-11-13"></script>
+<script src="assets/site.js?v=2026-11-13"></script>
+<script src="assets/home.js?v=2026-11-13"></script>
 </body>
 </html>
