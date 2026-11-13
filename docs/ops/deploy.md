@@ -736,7 +736,7 @@ hygiène, mais n'est plus une fenêtre d'attaque : ce bloc n'expose plus aucune 
 effet ailleurs.)
 
 ⬜ **F7 — brancher le script** : ouvrir une **PR** qui remplit `analytics.scriptUrl` +
-`analytics.websiteId` dans `landing/config.js` (et bumpe le `?v=` commun des six pages). **Jamais une
+`analytics.websiteId` dans `landing/config.js` (et bumpe le `?v=` commun des huit pages). **Jamais une
 édition directe sur la VM** : le deploy réécrit `landing/` à chaque passage, elle serait écrasée.
 Un `websiteId` est public (visible dans toute page trackée) — sa place en git est correcte.
 Prochain deploy → premiers hits dans le dashboard **et dans l'onglet Statistiques de la console**
@@ -760,6 +760,16 @@ annoncé par `landing/robots.txt`). Rien à coder, rien à committer.
 5. À regarder sous **2 à 6 semaines** : **Pages** (la vitrine est-elle indexée ?) ; **Performance**
    filtrée sur les requêtes « amateo », « planning basket », « club amateur », « FBI » ; la
    recherche `site:amateo.app` ; dans Umami, la source `google`.
+
+**Après chaque mise en ligne qui ajoute ou retire une page de la vitrine** (la refonte à huit pages
+ajoute `offres.html` et `faq.html`), refaire deux gestes, l'un et l'autre sans code :
+
+- **Google Search Console** → **Sitemaps** → renvoyer `https://amateo.app/sitemap.xml` (il liste les
+  huit pages, une par `landing/*.html`, `IndexationPolicyTest`), puis **Inspection de l'URL** →
+  **Demander une indexation** pour chaque nouvelle page.
+- **Bing Webmaster Tools** (<https://www.bing.com/webmasters>) → **Sitemaps** → soumettre le même
+  `https://amateo.app/sitemap.xml` (une propriété se crée par import depuis Search Console ou par
+  enregistrement DNS), puis **Soumission d'URL** pour les nouvelles pages.
 
 Attentes réalistes : la recherche sur **le nom** aboutit en jours à semaines ; les recherches
 **génériques** (« planning basket »…) en mois, et seulement avec des liens entrants.
@@ -802,6 +812,14 @@ journal `landing/evolutions.html` (une à trois phrases en langage club : situat
 Amateo → ce que ça change), et la note « Nouveautés » si elle est voulue. **Mergée sur GO du
 fondateur** — la version et sa date sont décidées par lui, jamais proposées. Contrat d'une
 entrée : docblock de `LandingChangelogTest`.
+
+**Vérifier aussi le compte à rebours de l'accueil** (`landing/index.html`, `ol[data-deadlines]`,
+six échéances écrites en dur — `.claude/rules/landing.md`) : il doit rester **au moins deux
+échéances à venir** ; sinon la PR les réécrit. **À la première release après le 1er juillet**, les six
+sont réécrites pour la saison suivante depuis le calendrier scolaire officiel (jeu
+`fr-en-calendrier-scolaire`, `ImportSchoolHolidaysCommand`), et `COUNTDOWN_DEADLINES` de
+`LandingClaimsTest` suit. Aucun test ne compare à la date du jour : liste épuisée = le héros
+s'affiche sans compte à rebours, sans erreur.
 
 **1. Taguer** le commit mergé :
 

@@ -5,8 +5,9 @@ paths:
 
 # Landing — conventions & pièges (chargé quand landing/ est touché)
 
-> La vitrine publique : six pages statiques (`index.html` accueil, `fonctionnalites.html`,
-> `vos-donnees.html`, `qui-fait.html`, `evolutions.html` journal, `mentions-legales.html`).
+> La vitrine publique : huit pages statiques (`index.html` accueil, `offres.html`, `faq.html`,
+> `fonctionnalites.html`, `vos-donnees.html`, `qui-fait.html`, `evolutions.html` journal,
+> `mentions-legales.html`).
 > **Elle n'a pas d'`AGENTS.md`** : tout ce qui la concerne tient ici.
 
 - **La page s'adosse à [`specs/courantes/modules-produit.md`](../../specs/courantes/modules-produit.md)**
@@ -17,15 +18,18 @@ paths:
   build : c'est ce qui rend ce site increvable et déployable seul.
 - **Aucun lien avec `frontend/`** — pas d'import de composant, pas de CSS partagé, pas de brique
   commune avec l'app. Les deux zones se ressemblent par **convention**, jamais par dépendance.
-  Dupliquer une couleur ici est le comportement VOULU. **Entre les six pages**, en revanche, le
-  socle est partagé : `assets/site.css` (polices, jetons clair/sombre, en-tête, boutons, pied,
-  gabarit `main.page`) et `assets/site.js` (logo et liens depuis `config.js`, bascule de thème,
-  burger, glissement d'ancre, mesure d'audience). Reste **inline** dans chaque `<head>` le seul
-  anti-flash de thème (il doit précéder la feuille) ; les styles propres à l'accueil restent dans
-  son `<style>`. `site.js` marche sans `config.js` (chaque bloc a son `try/catch` et teste la
-  présence de ses éléments). **`config.js`, `site.css` et `site.js` portent le MÊME `?v=` sur les
-  six pages** (garde `LandingDiscoverabilityTest`) — à bumper ensemble. Les `url()` d'un fichier
-  CSS sont relatifs à lui (`fonts/…`, `brand/…`).
+  Dupliquer une couleur ici est le comportement VOULU. **Entre les huit pages**, en revanche, le
+  socle est partagé : `assets/site.css` (polices, jetons, en-tête, boutons, pied, gabarit
+  `main.page` des pages encore à l'ancien habillage) et `assets/site.js` (classe `js` sur `<html>`,
+  logo et liens depuis `config.js`, burger, glissement d'ancre, mesure d'audience). **Une feuille et
+  un script par page interactive**, en plus du socle : `home.{css,js}`, `offres.{css,js}`,
+  `faq.{css,js}` — IIFE autonomes, aucun global partagé, chargés en fin de `<body>` après
+  `site.js`. `site.js` marche sans `config.js` (chaque bloc a son `try/catch` et teste la présence
+  de ses éléments). **Zéro `<script>` ni `<style>` inline** (le JSON-LD, qui n'est pas du code,
+  fait seul exception), **zéro ressource tierce**. **Toute ressource locale (`config.js`, feuilles,
+  scripts) porte le MÊME `?v=` sur les huit pages**, `config.js` avant `site.js` avant le script de
+  la page (gardes `LandingDiscoverabilityTest`) — à bumper ensemble. Les `url()` d'un fichier CSS
+  sont relatifs à lui (`fonts/…`, `brand/…`).
 - **La marque s'écrit EN HTML ; liens, coordonnées et logo vivent dans `config.js`** (P4-391,
   2026-10-31, remplace « config.js SEUL »). Un robot qui n'exécute pas le JS (moteur, aperçu de
   messagerie, IA) ne doit jamais lire « … » : `<title>`, `og:title`, `.brand`, `aria-label`,
@@ -57,15 +61,13 @@ paths:
   l'injection est défensive depuis, mais le `?v=` est ce qui rend le vrai logo tout de suite).
   **Le logotype recopie désormais le patron `BrandMark` de l'app (P4-274, 2026-09-29)** : `logo`
   pointe `assets/brand/mark.svg` (les trois arcs SEULS, sans le disque blanc du favicon
-  `icon.svg`) — un mark thème-neutre — et le MOT (la marque, écrite dans le HTML, en minuscules par CSS) est rendu en TEXTE à la
-  couleur du thème courant (`.logo-word`, `color: var(--ink)`), un seul rendu clair/sombre ; repli
+  `icon.svg`) — un mark sans fond — et le MOT (la marque, écrite dans le HTML, en minuscules par CSS) est rendu en TEXTE
+  (`.logo-word`) ; repli
   défensif inchangé, si l'icône manque/échoue seul le mot reste (marque toujours lisible).
-- **Le fond d'écran est un décor CSS, PAS une clé `config.js`** (P5-16, 2026-09-25) :
-  `background: var(--paper) url("assets/brand/fond.svg") center / cover no-repeat fixed;` est un
-  chemin en dur dans `assets/site.css` (relatif à lui : `url("brand/fond.svg")`) — contrairement à la marque/aux liens/au logo (règle
-  précédente), un décor visuel n'a pas besoin d'indirection : il ne change jamais par club ni par
-  domaine. Détail (opacité, purge C2PA, parité avec l'app) :
-  `specs/courantes/identite-visuelle-produit.md` § « Le fond d'écran ».
+- **Fond uni, plus de motifs sur la vitrine** : `body { background: var(--b-board) }` (`#f5f7f4`,
+  `assets/site.css`). `assets/brand/fond.svg` reste sur disque pour la seule image de partage
+  (`scripts/brand-og/og.html`) ; aucune page ni feuille ne le référence. L'app garde son propre
+  fond : `specs/courantes/identite-visuelle-produit.md` § « Le fond d'écran ».
 - **Exceptions « domaine en dur » (P5-24, étendues par P4-391)** : `og:url`/`og:image`,
   `<link rel="canonical">` de chaque page, le JSON-LD, `sitemap.xml` et `robots.txt` (ligne `Sitemap:`) portent
   des URL ABSOLUES en dur (`https://amateo.app/…`) — un crawler (messagerie, réseau social,
@@ -87,41 +89,65 @@ paths:
   est public (gratuit), les paliers payants restent « sur demande » — inexprimable proprement en
   une offre/fourchette tant que leur prix n'est pas public. L'éditeur y est un nœud `Person`
   (`#editor`, nom = `config.js` `editor`, garde `LandingDiscoverabilityTest`), pas une
-  `Organization`. Les cinq autres pages n'ont pas ce bloc.
-- **Thème AU CHOIX, clair par défaut (P4-274, 2026-09-29)** : un mini-script en tête de `<head>`
-  (avant le `<style>`, anti-flash) pose `data-theme="dark"` sur `<html>` depuis `localStorage.theme`
-  (choix explicite du visiteur) sinon `prefers-color-scheme`, enveloppé (navigation privée,
-  cookies refusés → repli clair silencieux). Un bouton `.theme-toggle` (lune/soleil, dans
-  `nav.top` — un `<button>`, pas un `<a>`, donc épargné par la règle mobile `nav.top > a { display:none }`
-  qui masque les liens inline ≤880px, cf. burger ci-dessous)
-  bascule l'attribut et persiste le choix. Jetons sombres **dérivés PAR CONVENTION** des jetons
-  `.dark` de l'app (`frontend/src/index.css`, même hue 75, mêmes L/chroma) — jamais importés, les
-  deux zones restent indépendantes (règle ci-dessus). Détail des jetons et du fond sombre :
-  `specs/courantes/identite-visuelle-produit.md`.
+  `Organization`. Les sept autres pages n'ont pas ce bloc.
+- **Pas de thème sombre, ni bascule, ni asset `-dark`** : la vitrine n'a qu'un rendu clair.
+  Aucun `data-theme`, `[data-theme-toggle]`, `localStorage` ni `prefers-color-scheme` dans les pages
+  et `assets/*.{js,css}`, aucun fichier `*-dark.*` sous `assets/` (garde `testNoDarkThemeAnywhere`).
+  Un asset ne varie donc plus par thème : une capture = un fichier.
+- **Polices hébergées, sous licence OFL** : `assets/fonts/` porte `archivo-latin.woff2` (corps,
+  400-800), `caveat-latin.woff2` (manuscrit) et `bricolage-latin.woff2` (titres), chacune avec son
+  `OFL-*.txt` ; les `@font-face` de `site.css` pointent ces fichiers. Aucune feuille ne charge rien
+  d'ailleurs (`@import`, `url()` absolue) — un visiteur ne livre jamais son IP à un service de
+  polices. Gardes : `testFontsAreSelfHostedWithTheirLicence`, `testAbsoluteUrlsStayOnOurHosts`
+  (balaie aussi `assets/*.{css,js}`). Ajouter une police = son `.woff2` + sa licence, même PR.
+- **Tout est lisible sans JavaScript.** Tout élément qui n'a de sens qu'avec JS (compte à rebours,
+  curseur de palier, compteur de questions, démonstrations) porte `data-js-only hidden` ; `site.js`
+  retire `hidden`. Le texte, les `href`, les onze `<details>` de la FAQ, les logos des clubs et leur
+  `alt` sont dans le HTML servi. Sous `prefers-reduced-motion`, rien ne glisse et le compte à rebours
+  est figé en jours (garde de forme `testAnimatedScriptsHonourReducedMotion` : tout script animé lit
+  ce média ; le comportement se prouve par captures).
+- **Compte à rebours de l'accueil** : `div.p-count[data-countdown]` contient `ol[data-deadlines]` et
+  **six échéances écrites en dur** (`li[data-date="AAAA-MM-JJ"][data-question]`, dates croissantes ;
+  `testCountdownDeadlinesAreWellFormed`). Quand la date réelle varie (comité, zone, championnat), le
+  libellé nomme un repère exact et la question dit de quoi la date dépend. **Liste épuisée = bloc
+  caché**, le héros s'affiche sans lui. Aucun test ne compare à la date du jour (il casserait à date
+  fixe) : la vérification vit dans la doc de release (`docs/ops/deploy.md` § Déployer une release,
+  étape 0) — à chaque release, au moins deux échéances à venir ; à la première release après le
+  1er juillet, réécrire les six pour la saison suivante depuis le jeu officiel
+  `fr-en-calendrier-scolaire` (`ImportSchoolHolidaysCommand`).
+- **Clubs affichés (section `#clubs`, « Ils nous font confiance »)** : noms et logos EN CLAIR dans le
+  HTML (`<li tabindex="0"><img alt="<nom>" width height><span aria-hidden="true"><nom></span></li>`),
+  **liste fermée gardée par `testDisplayedClubsAreTheClosedList`** (constante `DISPLAYED_CLUBS`, nom →
+  fichier, ordre exact ; aucun logo orphelin sous `assets/clubs/` ; JPEG ≤ 40 Ko, ≤ 400 px, sans
+  métadonnées). Fichiers nommés d'après le nom affiché. **Ajouter ou retirer un club = un `<li>`, un
+  fichier sous `assets/clubs/`, une ligne dans `DISPLAYED_CLUBS`, `?v=` bumpé** ; le test rougit si
+  l'un des trois manque. La trace de l'accord du club vit hors dépôt.
+- **Orange : un petit texte porte `--orange-ink`** (`#a35a00`), pas `--orange` (`#d47800`, réservé aux
+  décors et aux chiffres ≥ 24 px gras). Sur fond terrain sombre le texte orange est `--peach`
+  (`#ffd5bd`), sur la carte noire `--score-ink` (`#ffc24d`). Contrastes mesurés en navigateur.
 - **Mise en page mobile (lot 4, 2026-10-09)** : ≤880px la barre passe au **burger** — un
   `<details class="nav-menu">`/`<summary>` NATIF (ouvre/ferme **sans JS** ; le JS n'ajoute que le
   confort : miroir `aria-expanded`, fermeture au clic sur une ancre, Échap → focus). Le panneau
   (`position:absolute` sous l'en-tête sticky, recouvre, **pas de scroll-lock**) **reprend** les
   liens de la barre — ancres + « Se connecter » + CTA : **deux jeux distincts** (inline masqué en
   mobile, panneau masqué en desktop), jamais partagés, chacun avec ses `href` écrits en clair
-  (`site.js` ne fait que les recaler sur `config.js`, `querySelectorAll` sur `[data-cta]`). Le
-  burger est propre à l'accueil ; les pages sœurs n'ont que logotype, « Accueil » et bascule. Le **desktop reste intact** (le burger est `display:none`
-  ≥881px, les liens inline inchangés). Logo et bascule de thème : `flex-shrink:0` (le carré 40px ne
+  (`site.js` ne fait que les recaler sur `config.js`, `querySelectorAll` sur `[data-cta]`). **En-tête et pied sont
+  IDENTIQUES sur les huit pages, burger compris** (`header.site`, `a.logotype[href="/"]`, six entrées
+  de `nav.top` : « Comment ça marche », « Fonctionnalités », « Offres », « FAQ », « Se connecter »,
+  « Essayer gratuitement » ; seul `aria-current="page"` varie ; gardes
+  `testHeaderIsIdenticalAndNamesTheSixEntries`, `testFooterIsIdenticalAcrossPages`). Le burger est
+  `display:none` ≥881px, les liens inline restent. Le logo est en `flex-shrink:0` (le carré 40px ne
   s'écrase plus). Paragraphes de **contenu** à 16px ≤720px (`.pain p`/`.step p`/`.faq .a`, règle
   placée APRÈS leurs règles de base — à spécificité égale c'est l'ordre source qui tranche, pas la
   media query). Étapes en **1 colonne + séparateur horizontal** <600px. Cibles tactiles ≥44px en
   mobile par padding gonflé + marge négative de compensation (bornées ≤880px, le rendu desktop ne
-  bouge pas). Preuve = banc Playwright 6 largeurs × clair/sombre × burger ouvert/fermé × JS coupé,
+  bouge pas). Preuve = banc Playwright 6 largeurs × burger ouvert/fermé × JS coupé,
   captures `captures/lot4-*` (aucun job CI ne couvre `landing/`, cf. ci-dessous).
-- **Convention `-dark` pour toute capture/asset qui varie par thème (P4-274, 2026-09-29)** :
-  `nom.ext` → `nom-dark.ext`, même dossier. Le script de bascule de thème essaie systématiquement
-  la variante `-dark` en sombre et retombe sur la version claire via `onerror` si une `-dark`
-  manque — poser un fichier `*-dark.*` suffit à l'activer, **aucun code à toucher**. Les 4 captures
-  actuelles ont chacune leur sœur `-dark` (P5-27, 2026-10-07) ; le repli `onerror` reste un filet
-  de sécurité pour un futur asset sans variante sombre.
-- **Les cinq autres pages sont des pages statiques SŒURS d'`index.html`, pas des fragments** :
-  même `<head>` (anti-flash inline, `site.css`), gabarit `main.page`, pied IDENTIQUE sur les six
-  (garde `LandingDiscoverabilityTest`), `site.js` en fin de `<body>` après `config.js`. Les liens
+- **Les sept autres pages sont des pages statiques SŒURS d'`index.html`, pas des fragments** :
+  même `<head>` (`site.css`, sa feuille de page s'il y en a une), pied IDENTIQUE sur les huit,
+  `site.js` en fin de `<body>` après `config.js`. `offres.html` et `faq.html` ont leur propre habillage
+  (`<main>`) ; `fonctionnalites`, `vos-donnees`, `qui-fait`, `evolutions` et `mentions-legales` gardent
+  encore le gabarit `main.page` de `site.css`. Les liens
   vers l'accueil sont `/` (jamais `index.html…`). Une page ajoutée entre d'office sous les gardes
   (balayage `glob(landing/*.html)`, trait `LandingFiles`) : elle doit avoir son titre dans la
   table du test et son entrée dans `sitemap.xml`.
@@ -174,13 +200,13 @@ paths:
   gardée par `LandingClaimsTest` et le test de la page) : un délai se change des DEUX côtés.
 - **Mesure d'audience — clé `analytics` de `config.js` (P4-276, 2026-10-06)** : `analytics:
   { scriptUrl, websiteId }`, point unique comme le reste de `config.js`. Le script Umami n'est
-  injecté (par `assets/site.js`, donc sur les six pages) que sous
+  injecté (par `assets/site.js`, donc sur les huit pages) que sous
   **double garde** : (a) les deux clés non vides ; (b) `location.hostname` égal à l'hôte dérivé de
   `siteUrl` (`new URL(siteUrl).hostname`, aucun nouveau littéral de domaine) — en local, sur :5173
   ou sur un autre domaine, **rien n'est injecté, aucune requête ne part**. Tout est défensif
   (try/catch, ancien cache sans la clé → page intacte). Le `websiteId` n'est **pas un secret** (il
   est visible dans toute page trackée) : sa place en git est correcte. Renseigner/retirer ces clés
-  = **bumper le `?v=` commun dans les six pages** (règle ci-dessus).
+  = **bumper le `?v=` commun dans les huit pages** (règle ci-dessus).
   L'instance Umami vit dans la stack prod (`docker-compose.prod.yml`, `docs/ops/prod-stack.md` §
   Mesure d'audience, runbook `deploy.md` §1.11). **Vitrine seulement** — jamais l'app (volet « app »
   de P4-276 encore ouvert en roadmap).
@@ -200,8 +226,7 @@ paths:
   visibles sont publiques (codes d'équipe, clubs adverses, gymnases). Deux façons d'y arriver,
   toutes deux valides : le **seed démo** (`app:demo:seed`) ou une **prise de vue sur une stack
   réelle** avec le nom du club remplacé dans le DOM au moment de la capture. **Les 4 captures
-  actuelles** (`planning.png`, `matchs.jpg`, `matchs-importer.jpg`, `matchs-conflits.jpg`, et leurs
-  sœurs `-dark`) suivent la seconde voie, sur le club BCCL de DÉVELOPPEMENT du bac à sable — pour
+  actuelles** (`planning.png`, `matchs.jpg`, `matchs-importer.jpg`, `matchs-conflits.jpg`) suivent la seconde voie, sur le club BCCL de DÉVELOPPEMENT du bac à sable — pour
   en reprendre une, rejouer `frontend/scripts/capture-landing-shots.mjs`
   (`frontend/scripts/README-capture-landing-shots.md`), qui anonymise le DOM à chaque capture (nom/
   code club remplacés, blasons retirés, chrome de dev masqué, libellés neutres des coachs — « Coach »
