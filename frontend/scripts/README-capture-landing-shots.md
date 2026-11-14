@@ -1,7 +1,12 @@
 # Reprise des captures de la vitrine (P5-27)
 
-`capture-landing-shots.mjs` reprend les **4 visuels de `landing/`** en **clair ET en sombre**
-(8 fichiers), sur l'app réelle, de façon reproductible.
+`capture-landing-shots.mjs` reprend les visuels de `landing/` sur l'app réelle, de façon reproductible.
+
+> **État de l'écart.** La vitrine ne sert plus que **`planning.png` et `matchs-conflits.jpg`**
+> (liste fermée, `.claude/rules/landing.md`) et n'a plus de thème sombre. Le script produit encore
+> les 4 écrans en clair ET en sombre (8 fichiers) : **ne copier que ces deux fichiers clairs**, ignorer
+> le reste (le garde de la vitrine refuse toute autre image sous `landing/assets/`). Mettre le script
+> en accord = roadmap P4-577.
 
 > **Ce n'est pas un test.** Il vit dans `frontend/scripts/` (hors `frontend/tests/e2e/`, le
 > `testDir` de `playwright.config.ts`) pour **ne jamais tourner en CI** — aucune CI ne couvre
@@ -51,16 +56,16 @@ Gymnases et clubs adverses = données publiques autorisées.
 
 ## Ce qu'il produit
 
-| Écran | Route | Fichier clair | Fichier sombre | Dimensions (viewport) |
-|-------|-------|---------------|----------------|-----------------------|
+| Écran | Route | Fichier clair | Fichier sombre (inutilisé) | Dimensions (viewport) |
+|-------|-------|---------------|----------------------------|-----------------------|
 | Planning généré | `/planning` | `planning.png` | `planning-dark.png` | 1080 × 608 |
-| Calendrier matchs (week-end) | `/matchs?semaine=…` | `matchs.jpg` | `matchs-dark.jpg` | 1080 × 585 |
-| Importer | `/matchs/importer` | `matchs-importer.jpg` | `matchs-importer-dark.jpg` | 1080 × 750 |
+| Calendrier matchs (week-end) — **non servi** | `/matchs?semaine=…` | `matchs.jpg` | `matchs-dark.jpg` | 1080 × 585 |
+| Importer — **non servi** | `/matchs/importer` | `matchs-importer.jpg` | `matchs-importer-dark.jpg` | 1080 × 750 |
 | Conflits (regroupés par coach) | `/matchs/conflits?pivot=coach` | `matchs-conflits.jpg` | `matchs-conflits-dark.jpg` | 1080 × 750 |
 
 `deviceScaleFactor: 2` ⇒ images de **2160 px** de large (ordre de grandeur des assets actuels).
-JPEG qualité 80, PNG pour le hero. Le nom sombre colle `-dark` avant l'extension — la vitrine
-dérive ce nom toute seule (`landing/index.html`), **aucun code vitrine à éditer**.
+JPEG qualité 80, PNG pour le hero. Le nom sombre colle `-dark` avant l'extension ; la vitrine ne
+l'utilise plus.
 
 ## Variables d'environnement
 
@@ -205,17 +210,16 @@ journalise chaque appariement et **ne fait rien** si tout est déjà apparié. S
 
 ## 3. Vérifier, puis copier à la main
 
-Avant toute copie, **ouvrir les 8 images** et vérifier les règles d'anonymisation fermées
+Avant toute copie, **ouvrir les images à copier** (les deux servies) et vérifier les règles d'anonymisation fermées
 (`.claude/rules/landing.md`) : en-tête **« Démo Basket Club »** (jamais un club réel), **blason
 club absent**, **aucune personne réelle** (surnoms de démo admis), données publiques seulement, et
 **aucun `ARA0069036`** résiduel. C'est LA surface RGPD du lot.
 
 ```bash
-# UNIQUEMENT après validation visuelle (GO fondateur sur les 8 captures) :
-cp captures/landing-shots/*.png captures/landing-shots/*.jpg landing/assets/
+# UNIQUEMENT après validation visuelle (GO fondateur sur ces deux captures) :
+cp captures/landing-shots/planning.png captures/landing-shots/matchs-conflits.jpg landing/assets/
 ```
 
-La copie remplace les versions claires existantes et ajoute les 4 `*-dark`. Recaler ensuite si
-besoin les `alt`/`width`/`height` des `<img>` de `landing/index.html` (hors périmètre de ce
-script). Vérifier enfin dans un vrai navigateur : bascule du bouton clair↔sombre (les 4 images
-changent), aucun repli `onerror` déclenché (les 4 `-dark` en 200 dans l'onglet réseau).
+La copie remplace les deux fichiers existants. Recaler ensuite si besoin les `alt`/`width`/`height`
+de leurs `<img>` dans `landing/fonctionnalites.html` (hors périmètre de ce script). Vérifier enfin
+dans un vrai navigateur que les deux images s'affichent.

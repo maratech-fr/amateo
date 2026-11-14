@@ -15,9 +15,13 @@ use Symfony\Component\Yaml\Yaml;
  * names this version » de `deploy.yml` (job `build-push`) refuse un tag `v*` neuf absent de
  * `landing/evolutions.html`, et le dernier tag fusionné dans HEAD y a toujours son entrée.
  *
- * Contrat d'une entrée : `<article class="release" id="v1-3-5" data-version="1.3.5"><h2><time
- * datetime="2026-11-10">…</time> — v1.3.5 · …</h2><p>…</p></article>`, ordre décroissant,
- * `data-version` sans « v ». Limites dites : un tag futur n'est pas connu d'une PR (d'où la PR
+ * Contrat d'une entrée : `<article class="release" id="v1-3-6" data-version="1.3.6" data-topic="matchs">
+ * <p class="topic">Matchs</p><h2><time datetime="2026-11-12">12 nov. 2026</time> — <span class="ver">v1.3.6</span>
+ * · <span class="ttl">…</span></h2><p class="jr-lead">la situation du club</p><p>ce qui change</p></article>`,
+ * ordre décroissant, `data-version` sans « v », un thème par version (`TOPICS`, liste fermée : le
+ * filtre du journal en a un bouton par thème, sauf « Lancement », visible sous « Tout » seul). La
+ * mention « Dernière mise en ligne · » de la première entrée est posée par CSS, jamais écrite dans
+ * le HTML : une PR de release n'a rien à déplacer. Limites dites : un tag futur n'est pas connu d'une PR (d'où la PR
  * `chore/release-vX.Y.Z` qui écrit l'entrée avant le tag, `docs/ops/deploy.md`) ; un hotfix
  * `sha-…` n'est pas gardé ; `grep -F` accepte une entrée laissée en commentaire.
  */
@@ -30,28 +34,43 @@ final class LandingChangelogTest extends TestCase
 
     private const string GUARD_STEP = 'Check the changelog names this version';
 
-    /** Les entrées validées par le fondateur le 2026-11-11 (version → date de mise en ligne). */
+    /** Thèmes du journal (`data-topic` → libellé affiché), liste fermée, dans l'ordre du filtre. */
+    private const array TOPICS = [
+        'planning' => 'Planning',
+        'matchs' => 'Matchs',
+        'coachs' => 'Coachs',
+        'bureau' => 'Bureau du club',
+        'lancement' => 'Lancement',
+    ];
+
+    /**
+     * Les entrées validées par le fondateur (version → date de mise en ligne, date affichée, thème,
+     * titre — `{brand}` = `config.js` `brand` —, situation du club en tête d'entrée).
+     */
     private const array VALIDATED_RELEASES = [
-        '1.3.5' => '2026-11-10',
-        '1.3.4' => '2026-11-04',
-        '1.3.3' => '2026-11-02',
-        '1.3.2' => '2026-11-01',
-        '1.3.1' => '2026-10-31',
-        '1.3.0' => '2026-10-28',
-        '1.2.0' => '2026-10-16',
-        '1.1.0' => '2026-10-11',
-        '1.0.0' => '2026-10-02',
+        '1.3.6' => ['2026-11-12', '12 nov. 2026', 'matchs', 'FBI fait foi, {brand} suit', 'Un export FBI de plus de 24 heures est refusé.'],
+        '1.3.5' => ['2026-11-10', '10 nov. 2026', 'planning', 'Les vacances anticipées', 'Les vacances scolaires bouleversent les créneaux, et on s\'en aperçoit souvent trop tard.'],
+        '1.3.4' => ['2026-11-04', '4 nov. 2026', 'bureau', 'Chacun à sa place dans le bureau', 'Tout le bureau n\'a pas besoin de modifier le planning.'],
+        '1.3.3' => ['2026-11-02', '2 nov. 2026', 'coachs', 'Les familles et les coachs', 'Les parents veulent savoir quand joue leur enfant.'],
+        '1.3.2' => ['2026-11-01', '1 nov. 2026', 'planning', 'Le gymnase ouvert un jour précis', 'La mairie ouvre parfois une salle un samedi particulier pour un match.'],
+        '1.3.1' => ['2026-10-31', '31 oct. 2026', 'planning', 'Une réservation qui ne se discute pas', 'Quand la mairie vous accorde un créneau, il doit être pris.'],
+        '1.3.0' => ['2026-10-28', '28 oct. 2026', 'planning', 'Rejoindre {brand} avec le planning que vous avez déjà', 'Votre club a déjà son planning, sur tableur, en PDF ou en photo, et vous ne voulez pas tout reprendre à zéro.'],
+        '1.2.0' => ['2026-10-16', '16 oct. 2026', 'planning', 'Les imprévus de gymnase', 'Une salle indisponible, une équipe à déplacer : d\'ordinaire, un seul changement fait tout bouger.'],
+        '1.1.0' => ['2026-10-11', '11 oct. 2026', 'coachs', 'Les coachs participent', 'Chaque saison, les coachs changent de disponibilités, et il faut les relancer un par un.'],
+        '1.0.0' => ['2026-10-02', '2 oct. 2026', 'lancement', 'Le lancement', 'Construire le planning d\'entraînement d\'une saison, c\'est des heures de casse-tête entre équipes, coachs et gymnases.'],
     ];
 
     /**
      * Promesse : chaque entrée du journal suit le contrat lu par la garde de déploiement (version
-     * sans « v », `id` dérivé, date ISO, texte non vide), les versions vont de la plus récente à la
-     * plus ancienne, et les neuf entrées validées y sont, à leur date.
+     * sans « v », `id` dérivé, date ISO, texte non vide) et porte un thème de la liste fermée avec
+     * son libellé et la situation du club en tête ; les versions vont de la plus récente à la plus
+     * ancienne, et les dix entrées validées y sont, à leur date, sous leur thème et leur titre.
      */
     public function testEveryReleaseEntryIsWellFormedAndDescending(): void
     {
         $document = $this->parse('evolutions.html');
-        self::assertSame('Journal des évolutions', $this->text($document, 'h1'));
+        self::assertSame('Ce qui a changé, match après match.', $this->text($document, 'h1'));
+        $this->assertAbsent('Dernière mise en ligne', $this->normalize((string) $document->body?->textContent), '« Dernière mise en ligne » s\'écrit en CSS sur la première entrée, jamais dans le HTML.');
 
         $entries = [];
         $previous = null;
@@ -69,6 +88,18 @@ final class LandingChangelogTest extends TestCase
             self::assertStringContainsString('v' . $version, $this->text($article, 'h2'), "{$version} : le titre nomme la version.");
             self::assertNotSame('', $this->text($article, 'p'), "{$version} : entrée sans texte.");
 
+            $topic = (string) $article->getAttribute('data-topic');
+            self::assertArrayHasKey($topic, self::TOPICS, "{$version} : data-topic « {$topic} » hors de la liste fermée des thèmes.");
+            self::assertSame(self::TOPICS[$topic], $this->text($article, 'p.topic'), "{$version} : libellé du thème");
+            self::assertNotSame('', $this->text($article, 'p.jr-lead'), "{$version} : la situation du club (p.jr-lead) manque.");
+
+            if (isset(self::VALIDATED_RELEASES[$version])) {
+                [, $shown, $validatedTopic, $title, $lead] = self::VALIDATED_RELEASES[$version];
+                self::assertSame($validatedTopic, $topic, "{$version} : thème validé");
+                self::assertSame($shown . ' — v' . $version . ' · ' . str_replace('{brand}', $this->config('brand'), $title), $this->typographyFree($this->text($article, 'h2')), "{$version} : titre validé");
+                self::assertSame($lead, $this->typographyFree($this->text($article, 'p.jr-lead')), "{$version} : situation validée");
+            }
+
             if (null !== $previous) {
                 self::assertTrue(version_compare($previous['version'], $version, '>'), "Ordre décroissant rompu : {$previous['version']} puis {$version}.");
                 self::assertGreaterThanOrEqual($date, $previous['date'], "Dates : {$previous['version']} ({$previous['date']}) avant {$version} ({$date}).");
@@ -77,15 +108,40 @@ final class LandingChangelogTest extends TestCase
             $entries[$version] = $date;
         }
 
-        foreach (self::VALIDATED_RELEASES as $version => $date) {
+        foreach (self::VALIDATED_RELEASES as $version => [$date]) {
             self::assertSame($date, $entries[$version] ?? null, "Entrée validée v{$version} absente ou mal datée.");
         }
     }
 
-    /** Promesse (F17) : le journal s'engage, sous son titre, à être tenu à chaque mise en ligne. */
+    /** Promesse (F17) : le journal s'engage, juste sous son titre, à être tenu à chaque mise en ligne. */
     public function testJournalSubtitleIsTheCommitment(): void
     {
-        self::assertStringContainsString('Ce journal est tenu à jour à chaque mise en ligne.', $this->visibleText('evolutions.html'));
+        $lede = $this->element($this->parse('evolutions.html'), 'h1')->nextElementSibling;
+        self::assertNotNull($lede, 'Rien sous le titre du journal.');
+        self::assertStringStartsWith('Tenu à jour à chaque mise en ligne.', $this->normalize((string) $lede->textContent));
+    }
+
+    /**
+     * Promesse : le journal se lit en entier sans JS — toutes les versions sont dans le HTML servi, le
+     * filtre par thème n'existe qu'avec JS (`.jr-f[data-js-only][hidden]`) et propose « Tout » puis un
+     * bouton par thème de `TOPICS` sauf « Lancement », chacun visant son `data-topic`. Le comportement
+     * du filtre (compteur « 2 versions » sous « Coachs ») se prouve par les captures de la passe visuelle.
+     */
+    public function testTopicFilterOnlyExistsWithJavaScriptAndNamesTheTopics(): void
+    {
+        $document = $this->parse('evolutions.html');
+        self::assertGreaterThanOrEqual(\count(self::VALIDATED_RELEASES), $document->querySelectorAll('article.release')->length, 'Toutes les versions sont dans le HTML servi.');
+
+        $filter = $this->element($document, '.jr-f');
+        self::assertTrue($filter->hasAttribute('data-js-only') && $filter->hasAttribute('hidden'), 'Le filtre du journal n\'existe qu\'avec JS (data-js-only hidden).');
+
+        $expected = ['' => 'Tout'] + self::TOPICS;
+        unset($expected['lancement']);
+        $buttons = [];
+        foreach ($filter->querySelectorAll('button') as $button) {
+            $buttons[(string) $button->getAttribute('data-f')] = $this->normalize((string) $button->textContent);
+        }
+        self::assertSame($expected, $buttons, 'Boutons du filtre : « Tout » puis un par thème (data-f = data-topic), sans « Lancement ».');
     }
 
     /**
@@ -162,6 +218,12 @@ final class LandingChangelogTest extends TestCase
         $this->assertGuardRun($run, 'v1.4.0', '<article class="release" id="v1-4-0" data-version="1.4.0"></article>', 0, 'entrée présente → construction autorisée');
         $this->assertGuardRun($run, 'v1.4.0', '<article class="release" id="v1-3-5" data-version="1.3.5"></article>', 1, 'entrée absente → construction refusée');
         $this->assertGuardRun($run, 'v1.4.0', '<article class="release" id="v1-4-01" data-version="1.4.01"></article>', 1, 'une version voisine ne vaut pas entrée');
+    }
+
+    /** Apostrophe typographique ramenée à l'apostrophe droite : on compare des mots. */
+    private function typographyFree(string $text): string
+    {
+        return str_replace('’', '\'', $text);
     }
 
     /**
