@@ -16,7 +16,7 @@
   <meta name="twitter:card" content="summary_large_image" />
   <link rel="icon" type="image/svg+xml" href="assets/brand/icon.svg" />
   <link rel="icon" type="image/png" sizes="32x32" href="assets/brand/icon-32.png" />
-  <link rel="stylesheet" href="assets/site.css?v=2026-11-13" />
+  <link rel="stylesheet" href="assets/site.css?v=2026-11-14" />
 </head>
 <body>
 
@@ -48,56 +48,74 @@
   </div>
 </header>
 
-<!-- La phrase « Supprimer l'espace du club. … » est recopiée MOT POUR MOT dans
-     frontend/src/features/legal/PrivacyPage.tsx (parité gardée par LandingClaimsTest). -->
-<main class="page">
-  <div class="wrap">
-    <h1>Vos données</h1>
-    <p class="lead">Ce que votre club confie à <span class="brand">Amateo</span> lui appartient. Cette page
-    dit où ces données vivent, comment elles sont protégées, et comment les récupérer ou les effacer.</p>
+<!-- La phrase d'effacement (sous « Supprimer l'espace du club. ») est recopiée MOT POUR MOT dans
+     frontend/src/features/legal/PrivacyPage.tsx (parité gardée par LandingClaimsTest) : un délai se
+     change des DEUX côtés. Le schéma `.vd-line` vient sous la phrase, jamais à sa place. -->
+<main>
+  <section class="w-hero">
+    <div class="wrap">
+      <p class="w-hand">Vos données</p>
+      <h1>Ce que votre club confie <em>lui appartient.</em></h1>
+      <p class="lede">Où ces données vivent, comment elles sont protégées, et comment les récupérer ou les effacer.</p>
+    </div>
+    <svg class="s-arc toBoard" data-rv viewBox="0 0 1200 80" preserveAspectRatio="none" aria-hidden="true"><path class="f" d="M0 80V46Q600 -34 1200 46V80Z"/><g class="l3"><path class="m" pathLength="1" d="M0 46Q600 -34 1200 46"/><path class="o" pathLength="1" d="M0 46Q600 -34 1200 46"/><path class="t" pathLength="1" d="M0 46Q600 -34 1200 46"/></g></svg>
+  </section>
 
-    <section>
+  <section class="w-sec">
+    <div class="wrap">
       <h2>Où elles sont</h2>
-      <p>Le serveur d'<span class="brand">Amateo</span> est hébergé en France, à Paris, chez Scaleway, un
-      hébergeur français. Une copie de secours des sauvegardes est conservée aux Pays-Bas, chez le même
-      hébergeur, hors du centre de données du serveur.</p>
-    </section>
+      <div class="vd-map">
+        <article class="w-card"><p class="w-cap">France · Paris</p><h3>Le serveur</h3><p>Hébergé chez Scaleway, un hébergeur français. Une sauvegarde complète chaque nuit où le service a été utilisé.</p></article>
+        <p class="vd-arrow"><i aria-hidden="true"></i>copie chaque nuit</p>
+        <article class="w-card"><p class="w-cap">Pays-Bas</p><h3>La copie de secours</h3><p>Chez le même hébergeur, hors du centre de données du serveur.</p></article>
+      </div>
+    </div>
+  </section>
 
-    <section>
-      <h2>Comment elles sont sauvegardées</h2>
-      <p>Chaque nuit où le service a été utilisé, une sauvegarde complète est faite automatiquement. Elle
-      est copiée aux Pays-Bas chez le même hébergeur, hors du centre de données du serveur.</p>
-    </section>
-
-    <section>
+  <section class="w-sec follow">
+    <div class="wrap">
       <h2>Ce que vous pouvez faire</h2>
-      <p><strong>Exporter.</strong> Depuis votre Profil, vous téléchargez les données de votre compte ;
-      depuis Gestion du club, l'export complet du club.</p>
-      <p><strong>Supprimer votre compte.</strong> Il est anonymisé immédiatement.</p>
-      <p><strong>Supprimer l'espace du club.</strong> Quand le dernier gestionnaire supprime son compte,
-      l'espace du club est effacé 30 jours plus tard ; pendant ces 30 jours, un gestionnaire peut
-      reprendre la main et tout annuler. Ses données sortent ensuite des sauvegardes à mesure qu'elles
-      sont remplacées par de plus récentes ; la copie conservée aux Pays-Bas est effacée au bout de
-      30 jours. Nous ne restaurons jamais une sauvegarde pour récupérer des données supprimées.</p>
-    </section>
+      <div class="vd-three">
+        <article class="w-card"><h3>Exporter.</h3><p>Depuis votre Profil, les données de votre compte ; depuis Gestion du club, l'export complet du club.</p></article>
+        <article class="w-card"><h3>Supprimer votre compte.</h3><p>Il est anonymisé immédiatement.</p></article>
+        <article class="w-card vd-erase">
+          <h3>Supprimer l'espace du club.</h3>
+          <p>Quand le dernier gestionnaire supprime son compte, l'espace du club est effacé 30 jours plus tard ; pendant ces 30 jours, un gestionnaire peut reprendre la main et tout annuler. Ses données sortent ensuite des sauvegardes à mesure qu'elles sont remplacées par de plus récentes ; la copie conservée aux Pays-Bas est effacée au bout de 30 jours. Nous ne restaurons jamais une sauvegarde pour récupérer des données supprimées.</p>
+          <p class="vd-line" aria-hidden="true"><span>Dernier gestionnaire parti</span><i></i><span>Effacé à 30 jours</span></p>
+        </article>
+      </div>
+    </div>
+  </section>
 
-    <section>
-      <h2>Chaque club chez lui</h2>
-      <p>Un club ne voit jamais les données d'un autre : la séparation est faite dans l'application et
-      dans la base de données elle-même.</p>
-    </section>
+  <section class="w-sec follow">
+    <div class="wrap w-two vd-split">
+      <div class="w-col">
+        <h2>Chaque club chez lui</h2>
+        <p class="w-sub">Un club ne voit jamais les données d'un autre : la séparation est faite dans l'application et dans la base de données elle-même.</p>
+      </div>
+      <div class="w-col">
+        <h2>Qui intervient</h2>
+        <ul class="vd-who">
+          <li><b>Scaleway</b><span>Héberge le serveur, garde les sauvegardes, envoie les e-mails. France.</span></li>
+          <li><b>Infomaniak</b><span>Gère le nom de domaine.</span></li>
+          <li><b>Sentry</b><span>Reçoit les erreurs techniques, sans nom, sans e-mail, sans adresse IP.</span></li>
+          <li><b>Umami</b><span>Sur notre serveur, compte les visites du site sans cookie.</span></li>
+        </ul>
+      </div>
+    </div>
+  </section>
 
-    <section>
-      <h2>Qui intervient</h2>
-      <p>Scaleway (France) héberge le serveur, garde les sauvegardes et envoie les e-mails. Infomaniak
-      gère le nom de domaine (DNS). Sentry reçoit les erreurs techniques, sans nom, sans e-mail et sans
-      adresse IP. Umami, installé sur notre serveur, compte les visites de ce site sans cookie.</p>
-    </section>
-
-    <p class="back">Le détail juridique : la
-    <a data-cta="privacy" href="https://app.amateo.app/confidentialite">politique de confidentialité</a>
-    de l'application et les <a href="mentions-legales.html">mentions légales</a>.</p>
-  </div>
+  <svg class="s-arc toFloor" data-rv viewBox="0 0 1200 80" preserveAspectRatio="none" aria-hidden="true"><path class="f" d="M0 0H1200V46Q600 -34 0 46Z"/><g class="l3"><path class="m" pathLength="1" d="M0 46Q600 -34 1200 46"/><path class="o" pathLength="1" d="M0 46Q600 -34 1200 46"/><path class="t" pathLength="1" d="M0 46Q600 -34 1200 46"/></g></svg>
+  <section class="s-end w-end">
+    <div class="wrap">
+      <h2 data-rv>Vos données, votre club.</h2>
+      <p data-rv class="rv-1">Le détail juridique vit dans la <a data-cta="privacy" href="https://app.amateo.app/confidentialite">politique de confidentialité</a> et les <a href="mentions-legales.html">mentions légales</a>.</p>
+      <div class="b-cta rv-2" data-rv>
+        <a class="b-btn" data-cta="register" href="https://app.amateo.app/register">Essayer gratuitement avec mon club</a>
+        <a class="b-btn ghost" data-cta="demo" href="mailto:contact@amateo.app?subject=Demande%20de%20demo%20-%20Amateo&amp;body=Bonjour%2C%0A%0AJe%20souhaite%20voir%20Amateo%20en%20demo%20pour%20mon%20club.%0A%0AClub%20%3A%20%0ANombre%20d'equipes%20(environ)%20%3A%20%0ADisponibilites%20%3A%20">Demander une démo</a>
+      </div>
+    </div>
+  </section>
 </main>
 
 <footer class="site">
@@ -133,7 +151,7 @@
   </div>
 </footer>
 
-<script src="config.js?v=2026-11-13"></script>
-<script src="assets/site.js?v=2026-11-13"></script>
+<script src="config.js?v=2026-11-14"></script>
+<script src="assets/site.js?v=2026-11-14"></script>
 </body>
 </html>
