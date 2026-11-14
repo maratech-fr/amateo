@@ -509,20 +509,23 @@ final class LandingDiscoverabilityTest extends TestCase
     }
 
     /**
-     * Promesse (D2, C1) : où qu'il arrive, le visiteur retrouve le même en-tête — logotype vers `/`,
-     * la barre et le burger natif (`details.nav-menu`, ouvrable sans JS) proposent les six mêmes
-     * entrées dans l'ordre validé, chacune vers sa page ; seul `aria-current="page"` change d'une
-     * page à l'autre. Le logotype remplace « Accueil ».
+     * Promesse (D2, C1 ; décision fondateur 2026-11-14) : où qu'il arrive, le visiteur retrouve le
+     * même en-tête — logotype vers `/`, puis SEULEMENT « Se connecter » et « Essayer gratuitement »
+     * en boutons directs ; les quatre liens de navigation ne vivent QUE dans le panneau du burger
+     * natif (`details.nav-menu`, ouvrable sans JS), jamais en double hors de lui. Seul
+     * `aria-current="page"` change d'une page à l'autre. Le logotype remplace « Accueil ».
      */
-    public function testHeaderIsIdenticalAndNamesTheSixEntries(): void
+    public function testHeaderShowsTwoCallsAndKeepsNavigationInTheBurger(): void
     {
-        $expected = [
+        $calls = [
+            'Se connecter' => ['data-cta', 'login'],
+            'Essayer gratuitement' => ['data-cta', 'register'],
+        ];
+        $navigation = [
             'Comment ça marche' => ['href', '/#fonctionnement'],
             'Fonctionnalités' => ['href', 'fonctionnalites.html'],
             'Offres' => ['href', 'offres.html'],
             'FAQ' => ['href', 'faq.html'],
-            'Se connecter' => ['data-cta', 'login'],
-            'Essayer gratuitement' => ['data-cta', 'register'],
         ];
         $home = $this->element($this->parse('index.html'), 'header.site');
         $reference = $this->headerWithoutCurrentPage($home);
@@ -530,24 +533,51 @@ final class LandingDiscoverabilityTest extends TestCase
         foreach ($this->pages() as $page) {
             $header = $this->element($this->parse($page), 'header.site');
             self::assertNotNull($header->querySelector('a.logotype[href="/"]'), "{$page} : logotype vers / absent de l'en-tête.");
-            self::assertNotNull($header->querySelector('nav.top details.nav-menu'), "{$page} : burger natif absent de l'en-tête.");
+            self::assertNotNull($header->querySelector('nav.top details.nav-menu > summary'), "{$page} : burger natif (<details>/<summary>, ouvrable sans JS) absent de l'en-tête.");
 
-            foreach (['nav.top > a', 'details.nav-menu .nav-panel > a'] as $selector) {
+            foreach (['nav.top > a' => $calls, 'details.nav-menu .nav-panel > a' => $navigation] as $selector => $expected) {
                 $links = iterator_to_array($header->querySelectorAll($selector));
                 $labels = array_map(fn (Element $link): string => $this->normalize((string) $link->textContent), $links);
                 self::assertSame(array_keys($expected), $labels, "{$page} : entrées de « {$selector} »");
                 foreach ($links as $index => $link) {
-                    [$attribute, $value] = $expected[$labels[$index]];
+                    [$attribute, $value] = $expected[$labels[$index]] ?? ['', ''];
                     $actual = (string) $link->getAttribute($attribute);
                     self::assertSame($value, 'href' === $attribute && !str_starts_with($value, '/') ? ltrim($actual, '/') : $actual, "{$page} : {$attribute} de « {$labels[$index]} » ({$selector})");
                 }
             }
+            self::assertNull($header->querySelector('details.nav-menu [data-cta]'), "{$page} : « Se connecter » / « Essayer gratuitement » restent HORS du burger, jamais en double dedans.");
+            self::assertCount(1 + \count($calls) + \count($navigation), $header->querySelectorAll('a'), "{$page} : l'en-tête ne porte que le logotype, les deux boutons et les liens du burger (aucun lien de navigation hors du panneau).");
             foreach ($header->querySelectorAll('a') as $link) {
                 self::assertNotSame('Accueil', $this->normalize((string) $link->textContent), "{$page} : le logotype remplace « Accueil ».");
             }
 
             self::assertSame($reference, $this->headerWithoutCurrentPage($header), "L'en-tête de {$page} diffère de celui de l'accueil (seul aria-current peut changer).");
         }
+    }
+
+    /**
+     * Promesse (décision fondateur 2026-11-14) : le burger et les deux boutons d'appel de l'en-tête
+     * sont visibles À TOUTES LES LARGEURS, 1920 px compris — aucune règle de `assets/site.css`
+     * (dans une media query ou non) ne masque `.nav-menu`, son `summary` ni un lien direct de
+     * `nav.top`. Garde de FORME (pas de moteur CSS en CI) : le rendu se prouve aux captures
+     * 1920/1280/768/360 de la passe visuelle.
+     */
+    public function testBurgerAndCallsAreNeverHiddenByTheStylesheet(): void
+    {
+        $css = (string) preg_replace('#/\*.*?\*/#s', '', $this->read('/landing/assets/site.css'));
+        preg_match_all('/([^{}]+)\{([^{}]*)\}/', $css, $rules, \PREG_SET_ORDER);
+        $burgerRules = 0;
+        foreach ($rules as [, $selectorList, $declarations]) {
+            foreach (array_map('trim', explode(',', $selectorList)) as $selector) {
+                $selector = (string) preg_replace('/\s+/', ' ', $selector);
+                if (1 !== preg_match('/^(?:\.nav-menu(?: ?> ?summary)?|nav\.top ?> ?a(?:\.[\w-]+|\[data-cta[^\]]*\])*)$/', $selector)) {
+                    continue;
+                }
+                ++$burgerRules;
+                self::assertDoesNotMatchRegularExpression('/display\s*:\s*none|visibility\s*:\s*hidden/', $declarations, "assets/site.css : « {$selector} » est masqué ({$declarations}) — le burger et les deux boutons restent visibles à toutes les largeurs.");
+            }
+        }
+        self::assertGreaterThan(0, $burgerRules, 'Témoin : aucune règle de site.css ne vise plus .nav-menu / nav.top > a — le balayage ne voit rien.');
     }
 
     /**

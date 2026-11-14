@@ -126,26 +126,31 @@ paths:
 - **Orange : un petit texte porte `--orange-ink`** (`#a35a00`), pas `--orange` (`#d47800`, réservé aux
   décors et aux chiffres ≥ 24 px gras). Sur fond terrain sombre le texte orange est `--peach`
   (`#ffd5bd`), sur la carte noire `--score-ink` (`#ffc24d`). Contrastes mesurés en navigateur.
-- **Mise en page mobile (lot 4, 2026-10-09)** : ≤980px la barre passe au **burger** — un
-  `<details class="nav-menu">`/`<summary>` NATIF (ouvre/ferme **sans JS** ; le JS n'ajoute que le
-  confort : miroir `aria-expanded`, fermeture au clic sur une ancre, Échap → focus). Le panneau
-  (`position:absolute` sous l'en-tête sticky, recouvre, **pas de scroll-lock**) **reprend** les
-  liens de la barre — ancres + « Se connecter » + CTA : **deux jeux distincts** (inline masqué en
-  mobile, panneau masqué en desktop), jamais partagés, chacun avec ses `href` écrits en clair
-  (`site.js` ne fait que les recaler sur `config.js`, `querySelectorAll` sur `[data-cta]`). **En-tête et pied sont
-  IDENTIQUES sur les huit pages, burger compris** (`header.site`, `a.logotype[href="/"]`, six entrées
-  de `nav.top` : « Comment ça marche », « Fonctionnalités », « Offres », « FAQ », « Se connecter »,
-  « Essayer gratuitement » ; seul `aria-current="page"` varie ; gardes
-  `testHeaderIsIdenticalAndNamesTheSixEntries`, `testFooterIsIdenticalAcrossPages`). Le burger est
-  `display:none` ≥981px (`site.css`, `@media (max-width: 980px)`), les liens inline restent. Le logo est en `flex-shrink:0` (le carré 40px ne
+- **En-tête et burger (décision fondateur 2026-11-14)** : la navigation vit **ENTIÈREMENT dans le
+  burger, à toutes les largeurs** (jamais de barre inline, aucune media query ne masque le burger).
+  L'en-tête = logotype + « Se connecter » + « Essayer gratuitement » (liens directs de `nav.top`,
+  `data-cta`) + burger : un `<details class="nav-menu">`/`<summary>` NATIF (ouvre/ferme **sans JS** ;
+  le JS n'ajoute que le confort : miroir `aria-expanded`, fermeture au clic sur un lien du panneau ou
+  hors du menu, Échap → ferme et rend le focus au burger). Le panneau porte les **quatre** liens de
+  navigation seulement (« Comment ça marche », « Fonctionnalités », « Offres », « FAQ »), jamais les
+  deux boutons en double ; carte de 280 px calée sous le burger ≥641px, pleine largeur sous l'en-tête
+  sticky ≤640px ; **pas de scroll-lock**. ≤440px le mot du logotype (`.logo-word`) est masqué
+  visuellement, la marque restant portée par l'`aria-label` du lien. Chaque `href` est écrit en clair
+  (`site.js` ne fait que les recaler sur `config.js`, `querySelectorAll` sur `[data-cta]`).
+  **En-tête et pied sont IDENTIQUES sur les huit pages** (`header.site`, `a.logotype[href="/"]` ; seul
+  `aria-current="page"` varie). L'en-tête est **gardé en COPIE dans chaque page** — décision explicite,
+  pas de composant (zéro build, cf. plus haut) : l'identité est tenue par le test, pas par l'outillage.
+  Gardes `testHeaderShowsTwoCallsAndKeepsNavigationInTheBurger`, `testBurgerAndCallsAreNeverHiddenByTheStylesheet`
+  (forme seulement, pas de moteur CSS en CI : le rendu se prouve aux captures), `testFooterIsIdenticalAcrossPages`.
+- **Mise en page mobile (lot 4, 2026-10-09)** : le logo est en `flex-shrink:0` (le carré 40px ne
   s'écrase plus). Paragraphes de **contenu** à 16px ≤720px (`.pain p`/`.step p`/`.faq .a`, règle
   placée APRÈS leurs règles de base — à spécificité égale c'est l'ordre source qui tranche, pas la
   media query). Étapes en **1 colonne + séparateur horizontal** <600px. Cibles tactiles ≥44px en
   mobile par padding gonflé + marge négative de compensation (bornées ≤880px, le rendu desktop ne
   bouge pas). (aucun job CI ne couvre `landing/`, cf. ci-dessous.)
 - **Contrôle visuel de la vitrine (règle 2026-11-13)** : quatre largeurs — **1920, 1280, 768 et 360 px** —
-  avec **JavaScript coupé** et **mouvement réduit émulé**. Le burger (visible ≤980px) se vérifie ouvert
-  et fermé à 768 et 360 ; à 1920 et 1280 la barre inline reste. Captures dans le sous-dossier du lot
+  avec **JavaScript coupé** et **mouvement réduit émulé**. Le burger (visible à toutes les largeurs) se vérifie ouvert
+  et fermé aux quatre largeurs. Captures dans le sous-dossier du lot
   `captures/vitrine/` (gitignoré), nommées `<page>-<largeur>.png` (téléphone 360, tablette 768,
   PC portable 1280, PC fixe 1920).
 - **Les sept autres pages sont des pages statiques SŒURS d'`index.html`, pas des fragments** :

@@ -168,8 +168,10 @@ header.site.small { box-shadow: 0 1px 0 #11302f22, 0 10px 24px -20px #11302faa; 
 .p-clubs li:hover span, .p-clubs li:focus-visible span { opacity: 1; transform: translate(-50%, 0); }
 /* Écran tactile : pas de survol, le nom est TOUJOURS visible. La pastille entre dans le flux sous
    son logo : le <li> prend la largeur du nom, deux pastilles ne se chevauchent jamais (les <li>
-   passent à la ligne quand deux noms ne tiennent pas côte à côte). */
-@media (hover: none) {
+   passent à la ligne quand deux noms ne tiennent pas côte à côte). Même rendu sous 520 px, souris
+   comprise : une pastille absolue centrée sur un logo au bord de l'écran dépassait de la page
+   (défilement horizontal à 320 px). */
+@media (hover: none), (max-width: 520px) {
   .p-clubs li { padding-bottom: 0; }
   .p-clubs li span { position: static; transform: none; opacity: 1; }
   .p-clubs li:hover span, .p-clubs li:focus-visible span { transform: none; }
@@ -190,6 +192,11 @@ header.site.small { box-shadow: 0 1px 0 #11302f22, 0 10px 24px -20px #11302faa; 
 .s-endcopy { display: grid; gap: 16px; justify-items: start; }
 .s-score { display: inline-flex; align-items: center; gap: 10px; background: var(--scoreboard); color: var(--score-ink); border-radius: 10px; padding: 8px 14px; font-size: 13px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
 .s-score b { font-size: 26px; font-variant-numeric: tabular-nums; min-width: 1.3ch; text-align: center; }
+/* Téléphone étroit : le tableau de marque se resserre pour tenir dans 280 px utiles. */
+@media (max-width: 380px) {
+  .s-score { gap: 6px; padding: 8px 10px; font-size: 12px; letter-spacing: .03em; }
+  .s-score b { font-size: 22px; }
+}
 .s-hoopw { justify-self: center; }
 .s-hoopw.in { animation: sPulse .7s cubic-bezier(.34,1.45,.5,1); }
 @keyframes sPulse { 40% { transform: scale(1.12); } }

@@ -75,9 +75,10 @@
     }
   } catch (e) { /* pas de mesure, page intacte */ }
 
-  // ── 2. Menu mobile (burger, toutes les pages) ───────────────────────────────
+  // ── 2. Burger (toute la navigation, à toutes les largeurs) ─────────────────
   // Confort au-dessus du <details> natif (qui marche sans JS) : miroir aria-expanded,
-  // fermeture au clic sur un lien du panneau, Échap → focus le burger. No-op sans burger.
+  // fermeture au clic sur un lien du panneau ou en dehors du menu, Échap → ferme et rend le
+  // focus au burger. No-op sans burger.
   try {
     var menu = document.querySelector("details.nav-menu");
     if (menu) {
@@ -88,7 +89,10 @@
       menu.querySelectorAll(".nav-panel a").forEach(function (a) {
         a.addEventListener("click", function () { menu.open = false; });
       });
-      menu.addEventListener("keydown", function (e) {
+      document.addEventListener("click", function (e) {
+        if (menu.open && !menu.contains(e.target)) menu.open = false;
+      });
+      document.addEventListener("keydown", function (e) {
         if (e.key === "Escape" && menu.open) { menu.open = false; if (summary) summary.focus(); }
       });
     }

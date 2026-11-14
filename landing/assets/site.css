@@ -111,20 +111,24 @@ header.site .wrap { display: flex; align-items: center; gap: 14px; min-height: 6
 .logotype:hover .brand-logo { transform: rotate(360deg); }
 .logo-word { font-family: var(--display); font-weight: 800; font-size: 26px; letter-spacing: -.03em; line-height: 1; text-transform: lowercase; }
 .logo-word b { color: var(--teal); font-weight: 800; }
-nav.top { margin-left: auto; display: flex; align-items: center; gap: 22px; font-size: 15px; font-weight: 600; }
-nav.top > a { color: var(--b-fg); text-decoration: none; padding: 10px 0; }
-nav.top > a:hover { color: var(--teal-ink); }
-nav.top > a[aria-current="page"] { color: var(--teal-ink); text-decoration: underline; text-decoration-thickness: 2px; }
-nav.top > a.p-cta, .nav-panel a.p-cta { background: var(--b-floor); border-color: var(--b-floor); color: var(--b-line); padding: 9px 18px; white-space: nowrap; }
+/* À droite du logotype : « Se connecter », « Essayer gratuitement », puis le burger — visibles à
+   TOUTES les largeurs ; la navigation (quatre liens) ne vit que dans le panneau du burger. */
+nav.top { margin-left: auto; display: flex; align-items: center; gap: 18px; font-size: 15px; font-weight: 600; }
+nav.top > a.p-login { display: inline-flex; align-items: center; min-height: 44px; color: var(--b-fg); text-decoration: none; white-space: nowrap; }
+nav.top > a.p-login:hover { color: var(--teal-ink); text-decoration: underline; }
+nav.top > a.p-cta { background: var(--b-floor); border-color: var(--b-floor); color: var(--b-line); padding: 9px 18px; white-space: nowrap; }
 
-/* Menu mobile : `<details>`/`<summary>` natif (marche sans JS), masqué en grand écran ; le
-   panneau recouvre sous l'en-tête sticky (offset parent = `header.site`), pas de scroll-lock. */
-.nav-menu { display: none; }
+/* Burger : `<details>`/`<summary>` natif (s'ouvre sans JS). Le panneau tombe sous le burger, calé
+   à droite, en carte ; sur téléphone il prend toute la largeur sous l'en-tête. Pas de scroll-lock. */
+.nav-menu { position: relative; display: block; }
 .nav-menu > summary {
   display: inline-flex; align-items: center; justify-content: center;
   width: 44px; height: 44px; border-radius: 10px; list-style: none;
   border: 2px solid var(--b-floor); background: #ffffff; color: var(--b-floor); cursor: pointer;
 }
+.nav-menu > summary:hover { background: var(--a-soft); }
+.nav-menu > summary:focus-visible { outline: 3px solid var(--b-fg); outline-offset: 3px; }
+.nav-menu[open] > summary { background: var(--b-floor); color: var(--b-line); }
 .nav-menu > summary::-webkit-details-marker { display: none; }
 .nav-menu > summary::marker { content: ""; }
 .nav-menu > summary svg { width: 22px; height: 22px; display: block; }
@@ -132,19 +136,39 @@ nav.top > a.p-cta, .nav-panel a.p-cta { background: var(--b-floor); border-color
 .nav-menu[open] > summary .icon-menu { display: none; }
 .nav-menu[open] > summary .icon-close { display: block; }
 .nav-panel {
-  position: absolute; top: 100%; left: 0; right: 0;
-  display: flex; flex-direction: column; gap: 4px;
-  padding: 10px 20px 18px; background: #ffffff;
-  box-shadow: 0 1px 0 #11302f22, 0 18px 40px -22px #11302f88;
+  position: absolute; top: calc(100% + 10px); right: 0; width: 280px;
+  display: flex; flex-direction: column; gap: 2px;
+  padding: 10px; background: #ffffff; border-radius: 16px;
+  box-shadow: 0 0 0 1px #11302f1f, 0 22px 44px -18px #11302f88;
 }
-.nav-panel > a { display: block; padding: 12px; min-height: 44px; border-radius: 10px; text-decoration: none; font-size: 17px; font-weight: 600; color: var(--b-fg); }
+.nav-panel > a { display: flex; align-items: center; padding: 10px 14px; min-height: 44px; border-radius: 10px; text-decoration: none; font-size: 17px; font-weight: 600; color: var(--b-fg); }
 .nav-panel > a:hover { background: var(--a-soft); }
-.nav-panel > a[aria-current="page"] { color: var(--teal-ink); text-decoration: underline; }
-.nav-panel > a.p-cta { margin-top: 8px; text-align: center; }
-@media (max-width: 980px) {
-  nav.top > a { display: none; }
-  .nav-menu { display: block; }
-  .logotype { padding: 6px 0; }
+.nav-panel > a:focus-visible { outline: 3px solid var(--b-fg); outline-offset: -3px; }
+.nav-panel > a[aria-current="page"] { color: var(--teal-ink-soft); background: var(--a-soft); text-decoration: underline; text-decoration-thickness: 2px; }
+
+/* Tablette et téléphone : écarts resserrés ; le panneau occupe toute la largeur sous l'en-tête
+   (positionné sur `header.site`, sticky). */
+@media (max-width: 640px) {
+  header.site .wrap { gap: 10px; }
+  nav.top { gap: 10px; font-size: 14px; }
+  nav.top > a.p-cta { padding: 8px 14px; }
+  .nav-menu { position: static; }
+  .nav-panel { top: 100%; left: 0; right: 0; width: auto; border-radius: 0 0 16px 16px; padding: 10px 14px 16px; }
+}
+/* Téléphone étroit : le logotype garde son dessin, le mot passe aux lecteurs d'écran seulement (le
+   lien porte déjà la marque en `aria-label`) ; « Essayer gratuitement » tient sur deux lignes. Les
+   deux libellés restent entiers. */
+@media (max-width: 440px) {
+  .logotype .logo-word { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  nav.top { gap: 8px; font-size: 13.5px; }
+  nav.top > a.p-cta { white-space: normal; width: min-content; line-height: 1.15; padding: 6px 14px; }
+}
+/* Sous 360 px (jusqu'à 320) : marges latérales de l'en-tête et écarts resserrés pour que logo, deux
+   boutons et burger (44 px) tiennent sans défilement horizontal. */
+@media (max-width: 359px) {
+  header.site .wrap { padding-left: max(12px, env(safe-area-inset-left, 0px)); padding-right: max(12px, env(safe-area-inset-right, 0px)); gap: 6px; }
+  nav.top { gap: 6px; font-size: 13px; }
+  nav.top > a.p-cta { padding: 6px 10px; }
 }
 
 /* ── Boutons ── */
@@ -165,7 +189,7 @@ nav.top > a.p-cta, .nav-panel a.p-cta { background: var(--b-floor); border-color
 .w-go:hover { background: var(--teal-ink); border-color: var(--teal-ink); }
 /* Bouton plein (texte clair sur parquet, ou texte parquet sur blanc) : l'anneau `currentColor` se
    confondrait avec le fond de page. Anneau foncé sur fond clair, clair sur le parquet. */
-.w-go:focus-visible, nav.top > a.p-cta:focus-visible, .nav-panel a.p-cta:focus-visible { outline-color: var(--b-fg); }
+.w-go:focus-visible, nav.top > a.p-cta:focus-visible { outline-color: var(--b-fg); }
 .s-end .b-btn:focus-visible { outline-color: var(--b-line); }
 
 /* ── Écriture à la main, arcs entre deux bandeaux, révélation au défilement ── */
@@ -227,6 +251,11 @@ nav.top > a.p-cta, .nav-panel a.p-cta { background: var(--b-floor); border-color
 @media (max-width: 480px) {
   .s-end .b-cta { justify-self: stretch; flex-direction: column; }
   .s-end .b-cta .b-btn { width: 100%; white-space: nowrap; padding-inline: 12px; font-size: 15px; }
+}
+/* Sous 360 px, un libellé long (« Essayer avec mon club de 18 équipes ») passe sur deux lignes
+   plutôt que de déborder. */
+@media (max-width: 359px) {
+  .s-end .b-cta .b-btn { white-space: normal; font-size: 14px; }
 }
 
 /* ── Curseur de palier (accueil et Offres) : la liste des paliers se lit sans JS ; le curseur et
