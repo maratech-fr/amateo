@@ -16,7 +16,8 @@
   <meta name="twitter:card" content="summary_large_image" />
   <link rel="icon" type="image/svg+xml" href="assets/brand/icon.svg" />
   <link rel="icon" type="image/png" sizes="32x32" href="assets/brand/icon-32.png" />
-  <link rel="stylesheet" href="assets/site.css?v=2026-11-13" />
+  <link rel="stylesheet" href="assets/site.css?v=2026-11-14" />
+  <link rel="stylesheet" href="assets/evolutions.css?v=2026-11-14" />
 </head>
 <body>
 
@@ -49,109 +50,156 @@
 </header>
 
 <!-- Contrat d'une entrée (lu par le step « Check the changelog names this version » de deploy.yml et
-     par LandingChangelogTest) : <article class="release" id="vX-Y-Z" data-version="X.Y.Z">, h2 avec
-     <time datetime="AAAA-MM-JJ">, la plus récente EN TÊTE. Une entrée s'ajoute par la PR
-     `chore/release-vX.Y.Z`, AVANT le tag (docs/ops/deploy.md) — ton « situation → ce que fait
-     Amateo → ce que ça change pour le club ». -->
-<main class="page">
-  <div class="wrap">
-    <h1>Journal des évolutions</h1>
-    <p class="lead">Ce journal est tenu à jour à chaque mise en ligne.</p>
+     par LandingChangelogTest) :
+     <article class="release" id="vX-Y-Z" data-version="X.Y.Z" data-topic="planning|matchs|coachs|bureau|lancement">
+       <p class="topic">Planning</p>
+       <h2><time datetime="AAAA-MM-JJ">12 nov. 2026</time> — <span class="ver">vX.Y.Z</span> · <span class="ttl">Titre</span></h2>
+       <p class="jr-lead">La situation du club, en une phrase.</p>
+       <p>Ce qui change.</p>
+     </article>
+     La plus récente EN TÊTE ; « Dernière mise en ligne · » est posé par CSS sur la première entrée,
+     rien à déplacer. Une entrée s'ajoute par la PR `chore/release-vX.Y.Z`, AVANT le tag
+     (docs/ops/deploy.md). Le filtre (`.jr-f`) n'existe qu'avec JS : sans lui, tout se lit. -->
+<main>
+  <section class="w-hero">
+    <div class="wrap">
+      <p class="w-hand">Le journal</p>
+      <h1>Ce qui a changé, <em>match après match.</em></h1>
+      <p class="lede">Tenu à jour à chaque mise en ligne. Chaque version part d'une situation de club, pas d'une liste de fonctions.</p>
+    </div>
+    <svg class="s-arc toBoard" data-rv viewBox="0 0 1200 80" preserveAspectRatio="none" aria-hidden="true"><path class="f" d="M0 80V46Q600 -34 1200 46V80Z"/><g class="l3"><path class="m" pathLength="1" d="M0 46Q600 -34 1200 46"/><path class="o" pathLength="1" d="M0 46Q600 -34 1200 46"/><path class="t" pathLength="1" d="M0 46Q600 -34 1200 46"/></g></svg>
+  </section>
 
-    <article class="release" id="v1-3-6" data-version="1.3.6">
-      <h2><time datetime="2026-11-12">12 novembre 2026</time> — v1.3.6 · Matchs : FBI fait foi, Amateo suit</h2>
-      <p>Un export FBI de plus de 24 heures est refusé ; dès qu'un championnat a commencé, un match déjà
-      saisi dans FBI suit le fichier sans perdre son créneau, et vous gardez la main sur ce que vous avez
-      choisi de garder. Les plannings de période oubliés se valident seuls 7 jours après le début de la
-      période, et l'accueil vous le dit.</p>
-    </article>
+  <section class="w-sec">
+    <div class="wrap">
+      <div class="jr-f" data-js-only hidden role="group" aria-label="Filtrer les versions par thème">
+        <button type="button" data-f="" aria-pressed="true">Tout</button>
+        <button type="button" data-f="planning" aria-pressed="false">Planning</button>
+        <button type="button" data-f="matchs" aria-pressed="false">Matchs</button>
+        <button type="button" data-f="coachs" aria-pressed="false">Coachs</button>
+        <button type="button" data-f="bureau" aria-pressed="false">Bureau du club</button>
+        <span data-jr-count aria-live="polite"></span>
+      </div>
 
-    <article class="release" id="v1-3-5" data-version="1.3.5">
-      <h2><time datetime="2026-11-10">10 novembre 2026</time> — v1.3.5 · Les vacances anticipées</h2>
-      <p>Les vacances scolaires bouleversent les créneaux, et on s'en aperçoit souvent trop tard. Vous
-      recevez un e-mail de rappel 30, 14 et 7 jours avant, tant que le planning de la période n'est pas
-      prêt. Après l'adaptation d'une fermeture, un bilan par équipe dit ce qui a bougé. Fini les
-      erreurs.</p>
-    </article>
+      <div class="jr" data-jr>
+        <article class="release" id="v1-3-6" data-version="1.3.6" data-topic="matchs">
+          <p class="topic">Matchs</p>
+          <h2><time datetime="2026-11-12">12 nov. 2026</time> — <span class="ver">v1.3.6</span> · <span class="ttl">FBI fait foi, Amateo suit</span></h2>
+          <p class="jr-lead">Un export FBI de plus de 24 heures est refusé.</p>
+          <p>Dès qu'un championnat a commencé, un match déjà saisi dans FBI suit le fichier sans perdre son
+          créneau, et vous gardez la main sur ce que vous avez choisi de garder. Les plannings de période
+          oubliés se valident seuls 7 jours après le début de la période, et l'accueil vous le dit.</p>
+        </article>
 
-    <article class="release" id="v1-3-4" data-version="1.3.4">
-      <h2><time datetime="2026-11-04">4 novembre 2026</time> — v1.3.4 · Chacun à sa place dans le bureau</h2>
-      <p>Tout le bureau n'a pas besoin de modifier le planning. Un membre peut maintenant tout consulter
-      sans rien modifier : élus, trésorier, président, parent bénévole peuvent suivre l'organisation de
-      la saison sans risque d'erreur. Un membre peut demander à devenir gestionnaire, et un gestionnaire
-      peut nommer son successeur : le club ne dépend plus d'une seule personne. Chaque coach reçoit ses
-      conflits d'agenda en tuiles claires. Une fermeture de gymnase se saisit une fois, avec un aperçu
-      de ce qu'elle touche. Le récapitulatif signale avant la génération ce qui ne pourrait pas
-      marcher.</p>
-    </article>
+        <article class="release" id="v1-3-5" data-version="1.3.5" data-topic="planning">
+          <p class="topic">Planning</p>
+          <h2><time datetime="2026-11-10">10 nov. 2026</time> — <span class="ver">v1.3.5</span> · <span class="ttl">Les vacances anticipées</span></h2>
+          <p class="jr-lead">Les vacances scolaires bouleversent les créneaux, et on s'en aperçoit souvent trop tard.</p>
+          <p>Vous recevez un e-mail de rappel 30, 14 et 7 jours avant, tant que le planning de la période
+          n'est pas prêt. Après l'adaptation d'une fermeture, un bilan par équipe dit ce qui a bougé. Fini
+          les erreurs.</p>
+        </article>
 
-    <article class="release" id="v1-3-3" data-version="1.3.3">
-      <h2><time datetime="2026-11-02">2 novembre 2026</time> — v1.3.3 · Les familles et les coachs</h2>
-      <p>Les parents veulent savoir quand joue leur enfant. Vous exportez le PDF des matchs d'une équipe
-      ou de tout le club, entre deux dates, prêt à afficher ou à envoyer. Quand une équipe a plusieurs
-      coachs, un seul répond pour tout son staff, au lieu de multiplier les demandes. Un groupe réservé
-      sans coach au départ donne un planning avec une alerte, pas un échec.</p>
-    </article>
+        <article class="release" id="v1-3-4" data-version="1.3.4" data-topic="bureau">
+          <p class="topic">Bureau du club</p>
+          <h2><time datetime="2026-11-04">4 nov. 2026</time> — <span class="ver">v1.3.4</span> · <span class="ttl">Chacun à sa place dans le bureau</span></h2>
+          <p class="jr-lead">Tout le bureau n'a pas besoin de modifier le planning.</p>
+          <p>Un membre peut maintenant tout consulter sans rien modifier : élus, trésorier, président, parent
+          bénévole peuvent suivre l'organisation de la saison sans risque d'erreur. Un membre peut demander à
+          devenir gestionnaire, et un gestionnaire peut nommer son successeur : le club ne dépend plus d'une
+          seule personne. Chaque coach reçoit ses conflits d'agenda en tuiles claires. Une fermeture de
+          gymnase se saisit une fois, avec un aperçu de ce qu'elle touche. Le récapitulatif signale avant la
+          génération ce qui ne pourrait pas marcher.</p>
+        </article>
 
-    <article class="release" id="v1-3-2" data-version="1.3.2">
-      <h2><time datetime="2026-11-01">1er novembre 2026</time> — v1.3.2 · Le gymnase ouvert un jour précis</h2>
-      <p>La mairie ouvre parfois une salle un samedi particulier pour un match. Vous ouvrez maintenant un
-      gymnase à une date précise, et tout l'outil en tient compte. Amateo prévient aussi des situations
-      qui passeraient inaperçues : des jours sans salarié, un coach qui enchaîne les jours, ou le seul
-      coach d'une équipe trop chargé.</p>
-    </article>
+        <article class="release" id="v1-3-3" data-version="1.3.3" data-topic="coachs">
+          <p class="topic">Coachs</p>
+          <h2><time datetime="2026-11-02">2 nov. 2026</time> — <span class="ver">v1.3.3</span> · <span class="ttl">Les familles et les coachs</span></h2>
+          <p class="jr-lead">Les parents veulent savoir quand joue leur enfant.</p>
+          <p>Vous exportez le PDF des matchs d'une équipe ou de tout le club, entre deux dates, prêt à afficher
+          ou à envoyer. Quand une équipe a plusieurs coachs, un seul répond pour tout son staff, au lieu de
+          multiplier les demandes. Un groupe réservé sans coach au départ donne un planning avec une alerte,
+          pas un échec.</p>
+        </article>
 
-    <article class="release" id="v1-3-1" data-version="1.3.1">
-      <h2><time datetime="2026-10-31">31 octobre 2026</time> — v1.3.1 · Une réservation qui ne se discute pas</h2>
-      <p>Quand la mairie vous accorde un créneau, il doit être pris. Désormais, une réservation l'emporte
-      sur la règle qu'elle contredit, et Amateo nomme la règle sacrifiée pour que vous sachiez ce qui a
-      changé. Quand une génération échoue, le message dit la vraie cause. Vous associez un gymnase à sa
-      fiche de la fédération depuis une fenêtre dédiée. L'import de votre planning par IA s'affine : les
-      séances partagées entre équipes se corrigent, et les erreurs sont nommées avant l'import.</p>
-    </article>
+        <article class="release" id="v1-3-2" data-version="1.3.2" data-topic="planning">
+          <p class="topic">Planning</p>
+          <h2><time datetime="2026-11-01">1 nov. 2026</time> — <span class="ver">v1.3.2</span> · <span class="ttl">Le gymnase ouvert un jour précis</span></h2>
+          <p class="jr-lead">La mairie ouvre parfois une salle un samedi particulier pour un match.</p>
+          <p>Vous ouvrez maintenant un gymnase à une date précise, et tout l'outil en tient compte. Amateo
+          prévient aussi des situations qui passeraient inaperçues : des jours sans salarié, un coach qui
+          enchaîne les jours, ou le seul coach d'une équipe trop chargé.</p>
+        </article>
 
-    <article class="release" id="v1-3-0" data-version="1.3.0">
-      <h2><time datetime="2026-10-28">28 octobre 2026</time> — v1.3.0 · Rejoindre Amateo avec le planning que vous avez déjà</h2>
-      <p>Votre club a déjà son planning, sur tableur, en PDF ou en photo, et vous ne voulez pas tout
-      reprendre à zéro en cours de saison ? L'IA fait la jonction. Un assistant de votre choix, avec une
-      consigne fournie par Amateo, transforme votre planning en équipes, gymnases et créneaux. Vous
-      relisez l'aperçu, vous importez, et vos équipes, vos gymnases et vos créneaux sont en place sans
-      rien ressaisir ; il ne reste qu'à ajouter vos coachs et vos règles. Les équipes en entente (CTC)
-      sont reconnues partout. Une fermeture de gymnase qui chevauche des vacances se prolonge ou se
-      décale depuis l'écran. Les jours fériés sont respectés par le placement des matchs et par la
-      détection de conflits. Un signalement part avec la capture de l'écran.</p>
-    </article>
+        <article class="release" id="v1-3-1" data-version="1.3.1" data-topic="planning">
+          <p class="topic">Planning</p>
+          <h2><time datetime="2026-10-31">31 oct. 2026</time> — <span class="ver">v1.3.1</span> · <span class="ttl">Une réservation qui ne se discute pas</span></h2>
+          <p class="jr-lead">Quand la mairie vous accorde un créneau, il doit être pris.</p>
+          <p>Désormais, une réservation l'emporte sur la règle qu'elle contredit, et Amateo nomme la règle
+          sacrifiée pour que vous sachiez ce qui a changé. Quand une génération échoue, le message dit la
+          vraie cause. Vous associez un gymnase à sa fiche de la fédération depuis une fenêtre dédiée.
+          L'import de votre planning par IA s'affine : les séances partagées entre équipes se corrigent, et
+          les erreurs sont nommées avant l'import.</p>
+        </article>
 
-    <article class="release" id="v1-2-0" data-version="1.2.0">
-      <h2><time datetime="2026-10-16">16 octobre 2026</time> — v1.2.0 · Les imprévus de gymnase</h2>
-      <p>Une salle indisponible, une équipe à déplacer : d'ordinaire, un seul changement fait tout
-      bouger. Un entraînement partagé peut maintenant prendre la place d'une séance d'équipe, et deux
-      séances s'échangent d'un clic. Vous retirez une séance sans relancer tout le planning. Si un
-      groupe n'arrive pas à se placer, Amateo vous dit ce qui le bloque : tel verrou ou telle plage
-      horaire.</p>
-    </article>
+        <article class="release" id="v1-3-0" data-version="1.3.0" data-topic="planning">
+          <p class="topic">Planning</p>
+          <h2><time datetime="2026-10-28">28 oct. 2026</time> — <span class="ver">v1.3.0</span> · <span class="ttl">Rejoindre Amateo avec le planning que vous avez déjà</span></h2>
+          <p class="jr-lead">Votre club a déjà son planning, sur tableur, en PDF ou en photo, et vous ne voulez pas tout reprendre à zéro.</p>
+          <p>L'IA fait la jonction. Un assistant de votre choix, avec une consigne fournie par Amateo,
+          transforme votre planning en équipes, gymnases et créneaux. Vous relisez l'aperçu, vous importez, et
+          vos équipes, vos gymnases et vos créneaux sont en place sans rien ressaisir. Il ne reste qu'à
+          ajouter vos coachs et vos règles.</p>
+          <p>Les équipes en entente (CTC) sont reconnues partout. Une fermeture de gymnase qui chevauche des
+          vacances se prolonge ou se décale depuis l'écran. Les jours fériés sont respectés par le placement
+          des matchs et par la détection de conflits. Un signalement part avec la capture de l'écran.</p>
+        </article>
 
-    <article class="release" id="v1-1-0" data-version="1.1.0">
-      <h2><time datetime="2026-10-11">11 octobre 2026</time> — v1.1.0 · Les coachs participent</h2>
-      <p>Chaque saison, les coachs changent de disponibilités, et il faut les relancer un par un. Chaque
-      coach reçoit désormais un lien personnel, sans compte à créer, pour dire quand il est libre, quels
-      jours il préfère et avec qui il veut partager un entraînement. Vous voyez le message tel qu'il
-      arrivera chez le coach avant de l'envoyer. Deux équipes qui s'entraînent ensemble se déclarent en
-      quelques clics. Quand une génération est impossible, Amateo dit quelles règles se contredisent, au
-      lieu de laisser le bureau chercher. Un gestionnaire peut inviter un collègue du bureau par
-      e-mail.</p>
-    </article>
+        <article class="release" id="v1-2-0" data-version="1.2.0" data-topic="planning">
+          <p class="topic">Planning</p>
+          <h2><time datetime="2026-10-16">16 oct. 2026</time> — <span class="ver">v1.2.0</span> · <span class="ttl">Les imprévus de gymnase</span></h2>
+          <p class="jr-lead">Une salle indisponible, une équipe à déplacer : d'ordinaire, un seul changement fait tout bouger.</p>
+          <p>Un entraînement partagé peut maintenant prendre la place d'une séance d'équipe, et deux séances
+          s'échangent d'un clic. Vous retirez une séance sans relancer tout le planning. Si un groupe n'arrive
+          pas à se placer, Amateo vous dit ce qui le bloque : tel verrou ou telle plage horaire.</p>
+        </article>
 
-    <article class="release" id="v1-0-0" data-version="1.0.0">
-      <h2><time datetime="2026-10-02">2 octobre 2026</time> — v1.0.0 · Le lancement</h2>
-      <p>Construire le planning d'entraînement d'une saison, c'est des heures de casse-tête entre
-      équipes, coachs et gymnases. Amateo génère le planning de la saison à partir de ce que vous
-      décrivez une fois, et vous le retouchez ensuite à la main. Il s'exporte en PDF ou en Excel pour
-      l'afficher dans les salles. Pour les matchs, vous déposez le fichier de la fédération : Amateo
-      place vos matchs à domicile sur les créneaux où vos gymnases sont libres, en tenant compte des
-      indisponibilités des coachs.</p>
-    </article>
-  </div>
+        <article class="release" id="v1-1-0" data-version="1.1.0" data-topic="coachs">
+          <p class="topic">Coachs</p>
+          <h2><time datetime="2026-10-11">11 oct. 2026</time> — <span class="ver">v1.1.0</span> · <span class="ttl">Les coachs participent</span></h2>
+          <p class="jr-lead">Chaque saison, les coachs changent de disponibilités, et il faut les relancer un par un.</p>
+          <p>Chaque coach reçoit désormais un lien personnel, sans compte à créer, pour dire quand il est libre,
+          quels jours il préfère et avec qui il veut partager un entraînement. Vous voyez le message tel qu'il
+          arrivera chez le coach avant de l'envoyer. Deux équipes qui s'entraînent ensemble se déclarent en
+          quelques clics. Quand une génération est impossible, Amateo dit quelles règles se contredisent, au
+          lieu de laisser le bureau chercher. Un gestionnaire peut inviter un collègue du bureau par
+          e-mail.</p>
+        </article>
+
+        <article class="release" id="v1-0-0" data-version="1.0.0" data-topic="lancement">
+          <p class="topic">Lancement</p>
+          <h2><time datetime="2026-10-02">2 oct. 2026</time> — <span class="ver">v1.0.0</span> · <span class="ttl">Le lancement</span></h2>
+          <p class="jr-lead">Construire le planning d'entraînement d'une saison, c'est des heures de casse-tête entre équipes, coachs et gymnases.</p>
+          <p>Amateo génère le planning de la saison à partir de ce que vous décrivez une fois, et vous le
+          retouchez ensuite à la main. Il s'exporte en PDF ou en Excel pour l'afficher dans les salles. Pour
+          les matchs, vous déposez le fichier de la fédération : Amateo place vos matchs à domicile sur les
+          créneaux où vos gymnases sont libres, en tenant compte des indisponibilités des coachs.</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <svg class="s-arc toFloor" data-rv viewBox="0 0 1200 80" preserveAspectRatio="none" aria-hidden="true"><path class="f" d="M0 0H1200V46Q600 -34 0 46Z"/><g class="l3"><path class="m" pathLength="1" d="M0 46Q600 -34 1200 46"/><path class="o" pathLength="1" d="M0 46Q600 -34 1200 46"/><path class="t" pathLength="1" d="M0 46Q600 -34 1200 46"/></g></svg>
+  <section class="s-end w-end">
+    <div class="wrap">
+      <h2 data-rv>La prochaine version se prépare.</h2>
+      <p data-rv class="rv-1">Essayez la version d'aujourd'hui avec votre club.</p>
+      <div class="b-cta rv-2" data-rv>
+        <a class="b-btn" data-cta="register" href="https://app.amateo.app/register">Essayer gratuitement avec mon club</a>
+        <a class="b-btn ghost" data-cta="demo" href="mailto:contact@amateo.app?subject=Demande%20de%20demo%20-%20Amateo&amp;body=Bonjour%2C%0A%0AJe%20souhaite%20voir%20Amateo%20en%20demo%20pour%20mon%20club.%0A%0AClub%20%3A%20%0ANombre%20d'equipes%20(environ)%20%3A%20%0ADisponibilites%20%3A%20">Demander une démo</a>
+      </div>
+    </div>
+  </section>
 </main>
 
 <footer class="site">
@@ -187,7 +235,8 @@
   </div>
 </footer>
 
-<script src="config.js?v=2026-11-13"></script>
-<script src="assets/site.js?v=2026-11-13"></script>
+<script src="config.js?v=2026-11-14"></script>
+<script src="assets/site.js?v=2026-11-14"></script>
+<script src="assets/evolutions.js?v=2026-11-14"></script>
 </body>
 </html>

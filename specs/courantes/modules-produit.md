@@ -192,7 +192,7 @@ vos domiciles sur les créneaux où vos gymnases sont disponibles — vous n'ave
 
 **Où dans l'app :** `/matchs` (Calendrier), `/matchs/importer`.
 
-**Capture :** `landing/assets/matchs.jpg`.
+**Capture :** aucune servie par la vitrine.
 
 ### 2. La détection des erreurs FBI
 
@@ -209,7 +209,7 @@ inaperçu — vous savez exactement quoi corriger, et où le corriger.
 
 **Où dans l'app :** `/matchs` (deep-link « FBI — à faire »), `/matchs/importer`.
 
-**Capture :** `landing/assets/matchs-importer.jpg`.
+**Capture :** aucune servie par la vitrine.
 
 ### 3. Les conflits de coachs vus en amont
 
@@ -332,7 +332,7 @@ Les limites du produit, dites franchement à qui les vit :
 - Il ne fabrique pas le calendrier des championnats : celui-ci arrive de la fédération, il le range.
 - Il ne remplace pas le jugement du gestionnaire : Amateo dégrossit le travail, à vous les
   finitions.
-- Il n'envoie ni convocations ni messages aux joueurs ou aux familles. Le club
+- Rien n'est envoyé aux joueurs ni aux familles : ni convocations ni messages. Le club
   exporte (le planning, la liste des matchs en PDF) et donne le fichier à qui il veut. Seuls les
   coachs reçoivent des e-mails d'Amateo, envoyés par le gestionnaire : le lien personnel où ils
   déposent leurs disponibilités (sans compte), ses relances et la liste de leurs conflits. Les

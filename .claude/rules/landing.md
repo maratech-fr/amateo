@@ -19,11 +19,12 @@ paths:
 - **Aucun lien avec `frontend/`** — pas d'import de composant, pas de CSS partagé, pas de brique
   commune avec l'app. Les deux zones se ressemblent par **convention**, jamais par dépendance.
   Dupliquer une couleur ici est le comportement VOULU. **Entre les huit pages**, en revanche, le
-  socle est partagé : `assets/site.css` (polices, jetons, en-tête, boutons, pied, gabarit
-  `main.page` des pages encore à l'ancien habillage) et `assets/site.js` (classe `js` sur `<html>`,
+  socle est partagé : `assets/site.css` (polices, jetons, en-tête, boutons, pied, et le gabarit commun
+  des pages intérieures : bandeau `.w-hero`, sections `.w-sec`, cartes `.w-card`, bloc final `.s-end`) et `assets/site.js` (classe `js` sur `<html>`,
   logo et liens depuis `config.js`, burger, glissement d'ancre, mesure d'audience). **Une feuille et
   un script par page interactive**, en plus du socle : `home.{css,js}`, `offres.{css,js}`,
-  `faq.{css,js}` — IIFE autonomes, aucun global partagé, chargés en fin de `<body>` après
+  `faq.{css,js}`, `fonctionnalites.{css,js}`, `evolutions.{css,js}` (Fonctionnalités et Journal) ; les trois autres pages
+  (`vos-donnees`, `qui-fait`, `mentions-legales`) n'ont que le socle — IIFE autonomes, aucun global partagé, chargés en fin de `<body>` après
   `site.js`. `site.js` marche sans `config.js` (chaque bloc a son `try/catch` et teste la présence
   de ses éléments). **Zéro `<script>` ni `<style>` inline** (le JSON-LD, qui n'est pas du code,
   fait seul exception), **zéro ressource tierce**. **Toute ressource locale (`config.js`, feuilles,
@@ -144,13 +145,15 @@ paths:
   bouge pas). (aucun job CI ne couvre `landing/`, cf. ci-dessous.)
 - **Contrôle visuel de la vitrine (règle 2026-11-13)** : quatre largeurs — **1920, 1280, 768 et 360 px** —
   avec **JavaScript coupé** et **mouvement réduit émulé**. Le burger (visible ≤980px) se vérifie ouvert
-  et fermé à 768 et 360 ; à 1920 et 1280 la barre inline reste. Captures à plat dans `captures/`
-  (gitignoré), nommées `vitrine-<chantier>-<page>-<largeur>.png`.
+  et fermé à 768 et 360 ; à 1920 et 1280 la barre inline reste. Captures dans le sous-dossier du lot
+  `captures/vitrine/` (gitignoré), nommées `<page>-<largeur>.png` (téléphone 360, tablette 768,
+  PC portable 1280, PC fixe 1920).
 - **Les sept autres pages sont des pages statiques SŒURS d'`index.html`, pas des fragments** :
   même `<head>` (`site.css`, sa feuille de page s'il y en a une), pied IDENTIQUE sur les huit,
-  `site.js` en fin de `<body>` après `config.js`. `offres.html` et `faq.html` ont leur propre habillage
-  (`<main>`) ; `fonctionnalites`, `vos-donnees`, `qui-fait`, `evolutions` et `mentions-legales` gardent
-  encore le gabarit `main.page` de `site.css`. Les liens
+  `site.js` en fin de `<body>` après `config.js`. Les sept sont écrites au gabarit commun de `site.css`
+  (`<main>` : bandeau `.w-hero`, sections `.w-sec`, bloc final `.s-end` ; plus de `main.page`) ; l'accueil
+  garde sa mise en page propre (`home.css`). Le bloc final passe ses deux boutons en pleine largeur,
+  un par ligne, sous 480 px. Les liens
   vers l'accueil sont `/` (jamais `index.html…`). Une page ajoutée entre d'office sous les gardes
   (balayage `glob(landing/*.html)`, trait `LandingFiles`) : elle doit avoir son titre dans la
   table du test et son entrée dans `sitemap.xml`.
@@ -161,9 +164,18 @@ paths:
   neuf sans entrée ; l'entrée s'écrit donc par la PR `chore/release-vX.Y.Z` AVANT de taguer
   (`docs/ops/deploy.md` § Déployer une release). Les chiffres de résultat (heures gagnées) ne
   vivent que sur `qui-fait.html`, comme objectif.
-- **Le portrait de `qui-fait.html` s'ajoute par un couple de fichiers** (`assets/qui-fait/fondateur.jpg`
+  **Chaque version porte UN thème** (`data-topic` + `<p class="topic">`), à choisir dans la **liste
+  fermée** Planning · Matchs · Coachs · Bureau du club · Lancement (`TOPICS` de `LandingChangelogTest`) ;
+  la PR de release le pose (`docs/ops/deploy.md` étape 0). L'entrée s'ouvre par `p.jr-lead` (la
+  situation du club), puis ce qui change. La mention « Dernière mise en ligne » de l'entrée la plus
+  récente est posée par CSS (`evolutions.css`), jamais écrite dans le HTML. Le filtre par thème
+  (`evolutions.js`) n'existe qu'avec JS ; sans lui, toutes les entrées se lisent.
+- **Le portrait de `qui-fait.html` est un couple de fichiers** (`assets/qui-fait/fondateur.jpg`
   sans métadonnées + `<figure class="portrait">` dans la page, alt = `config.js` `editor`) : l'un
   sans l'autre rougit `LandingClaimsTest`.
+- **Captures de l'app servies : liste fermée `planning.png` et `matchs-conflits.jpg`**, toutes deux
+  affichées par `fonctionnalites.html` (garde `testServedScreenshotsAreTheClosedList` : une image
+  orpheline ou manquante sous `assets/` rougit). En ajouter une = le fichier, son `<img>` et la liste du test.
 - **Glissement d'ancre animé en JS, pas `scroll-behavior: smooth` (P4-258, 2026-09-29)** :
   `html { scroll-padding-top: 76px }` (en-tête sticky 64px + marge ; dans `site.css`) reste pour le saut natif
   (arrivée avec `#hash` dans l'URL, JS absent) ; le clic sur un lien `href="#…"` interne est
@@ -171,12 +183,14 @@ paths:
   si l'utilisateur reprend la main ; la cible est RECALCULÉE à chaque pas — une police ou une image
   qui arrive en cours de route la déplace — puis un `scrollTo` final pose la position exacte) — `scroll-behavior: smooth` a été retiré, il aurait doublé le
   lissage. Saut direct (pas d'animation) sous `prefers-reduced-motion: reduce`.
-- **Palette recalée sur le logo (P5-25, 2026-09-25)** : `--accent` (`#46afac`, teal signature) est
-  **décoratif seul** — il ne tient que 2,50:1 sur `--paper`, sous la barre texte. Le texte, les
-  liens, les boutons et **les anneaux de focus** portent `--accent-ink` (`#2e7876`, ≥ 4,5:1 partout
-  où il est posé) ; `--accent-deep` (`#215857`) sert au survol ; `--accent-soft` (`#e9f5f5`) sert de
-  fond. Ne jamais remonter le teal signature sur du texte ou un focus — un accent de marque n'y
-  monte que s'il passe 4,5:1 mesuré (3:1 pour un indicateur de focus WCAG 2.2).
+- **Palette de la vitrine (jetons de `site.css`)** : `--teal` (`#46afac`, teal signature) est
+  **décoratif seul** — il ne tient que 2,50:1 sur `--b-board`, sous la barre texte. Un texte teal
+  (liens, légendes) porte `--teal-ink` (`#2e7876`) ; **posé sur un fond `--a-soft`** (`#e2f2f1`) il
+  porte `--teal-ink-soft` (`#286c6a`), car `--teal-ink` n'y tient que 4,48:1 — `--teal-ink-soft` est
+  **réservé à ces fonds**. `--accent-deep` sert au survol. Les **anneaux de focus** sur fond clair ou
+  sur bouton plein portent `--b-fg` (encre `#11302f`) ; sur le parquet, `--b-line`. Ne jamais remonter
+  le teal signature sur du texte ou un focus — un accent de marque n'y monte que s'il passe 4,5:1
+  mesuré (3:1 pour un indicateur de focus WCAG 2.2).
 - **Deux domaines, une machine** : le domaine **nu** sert `landing/`, un **sous-domaine** sert l'app.
   Un lien « Se connecter » vers l'app est donc un lien absolu inter-domaines, pas une route.
   ⚠ Ce ne sont **pas des vhosts nginx** : c'est **Caddy**, sur la VM et hors compose, qui tient la TLS
@@ -228,8 +242,8 @@ paths:
   dans le DOM au moment de la capture, jamais le nom d'une vraie personne ; (3) les données
   visibles sont publiques (codes d'équipe, clubs adverses, gymnases). Deux façons d'y arriver,
   toutes deux valides : le **seed démo** (`app:demo:seed`) ou une **prise de vue sur une stack
-  réelle** avec le nom du club remplacé dans le DOM au moment de la capture. **Les 4 captures
-  actuelles** (`planning.png`, `matchs.jpg`, `matchs-importer.jpg`, `matchs-conflits.jpg`) suivent la seconde voie, sur le club BCCL de DÉVELOPPEMENT du bac à sable — pour
+  réelle** avec le nom du club remplacé dans le DOM au moment de la capture. **Les 2 captures
+  servies** (`planning.png`, `matchs-conflits.jpg`) suivent la seconde voie, sur le club BCCL de DÉVELOPPEMENT du bac à sable — pour
   en reprendre une, rejouer `frontend/scripts/capture-landing-shots.mjs`
   (`frontend/scripts/README-capture-landing-shots.md`), qui anonymise le DOM à chaque capture (nom/
   code club remplacés, blasons retirés, chrome de dev masqué, libellés neutres des coachs — « Coach »

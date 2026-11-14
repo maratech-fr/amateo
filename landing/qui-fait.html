@@ -16,7 +16,7 @@
   <meta name="twitter:card" content="summary_large_image" />
   <link rel="icon" type="image/svg+xml" href="assets/brand/icon.svg" />
   <link rel="icon" type="image/png" sizes="32x32" href="assets/brand/icon-32.png" />
-  <link rel="stylesheet" href="assets/site.css?v=2026-11-13" />
+  <link rel="stylesheet" href="assets/site.css?v=2026-11-14" />
 </head>
 <body>
 
@@ -48,44 +48,70 @@
   </div>
 </header>
 
-<!-- Éditeur = config.js `editor` (lien gardé par LandingClaimsTest). Portrait : à venir — le fichier
-     assets/qui-fait/fondateur.* et son <figure class="portrait"><img> arrivent ENSEMBLE (≤ 800 px,
+<!-- Éditeur = config.js `editor` (lien gardé par LandingClaimsTest). Le portrait
+     assets/qui-fait/fondateur.jpg et son <figure class="portrait"><img> vont ENSEMBLE (≤ 800 px,
      sans métadonnées, alt = l'éditeur), gardés par testPortraitIsCoupledToThePageAndCarriesNoMetadata.
      Les chiffres de gain de temps vivent sur CETTE page seulement, présentés comme un but. -->
-<main class="page">
-  <div class="wrap">
-    <h1>Qui fait <span class="brand">Amateo</span></h1>
+<main>
+  <section class="w-hero">
+    <div class="wrap qf-top">
+      <div class="w-col">
+        <p class="w-hand">Qui fait <span class="brand">Amateo</span></p>
+        <h1>Un joueur de basket, <em>pour son club.</em></h1>
+        <p class="lede">Franck Mpemba Boni, fondateur. Je joue au basket depuis l'âge de 5 ans, et depuis plus de quinze ans dans le même club.</p>
+      </div>
+      <figure class="portrait">
+        <svg viewBox="0 0 1000 1000" aria-hidden="true"><circle class="m" cx="500" cy="500" r="440" pathLength="360"/><circle class="o" cx="500" cy="500" r="446" pathLength="360"/><circle class="t" cx="500" cy="500" r="450" pathLength="360"/></svg>
+        <img src="assets/qui-fait/fondateur.jpg" alt="Franck Mpemba Boni" width="480" height="480" />
+      </figure>
+    </div>
+    <svg class="s-arc toBoard" data-rv viewBox="0 0 1200 80" preserveAspectRatio="none" aria-hidden="true"><path class="f" d="M0 80V46Q600 -34 1200 46V80Z"/><g class="l3"><path class="m" pathLength="1" d="M0 46Q600 -34 1200 46"/><path class="o" pathLength="1" d="M0 46Q600 -34 1200 46"/><path class="t" pathLength="1" d="M0 46Q600 -34 1200 46"/></g></svg>
+  </section>
 
-    <section>
-      <h2>Qui</h2>
-      <p>Franck Mpemba Boni, fondateur. Je joue au basket depuis l'âge de 5 ans, et depuis plus de
-      quinze ans dans le même club : 50 équipes, 37 coachs, 9 gymnases.</p>
-    </section>
+  <section class="w-sec">
+    <div class="wrap">
+      <p class="w-hand ink">Mon club, en trois chiffres.</p>
+      <div class="qf-stats"><p><b>50</b><span>équipes</span></p><p><b>37</b><span>coachs</span></p><p><b>9</b><span>gymnases</span></p></div>
+    </div>
+  </section>
 
-    <section>
-      <h2>Pourquoi</h2>
-      <p>Un collègue passait 35 heures sur le planning de la saison, puis recommençait à chaque coach
-      qui changeait de disponibilités et à chaque créneau que la mairie modifiait. Le second souci :
-      les matchs envoyés par le comité ou la ligue, à traiter sous 24 à 48 heures.
-      <span class="brand">Amateo</span> est né de la réunion des deux.</p>
-    </section>
+  <section class="w-sec follow">
+    <div class="wrap w-two">
+      <div class="w-col">
+        <h2>Pourquoi</h2>
+        <p class="qf-quote">Un collègue passait <em>35 heures</em> sur le planning de la saison, puis recommençait.</p>
+        <p class="w-sub">À chaque coach qui changeait de disponibilités, à chaque créneau que la mairie modifiait. Le second souci : les matchs envoyés par le comité ou la ligue, à traiter sous 24 à 48 heures. <span class="brand">Amateo</span> est né de la réunion des deux.</p>
+      </div>
+      <div class="w-card qf-goal">
+        <h3>Notre but, pour un club de 50 équipes</h3>
+        <ul class="qf-bars">
+          <li class="hand"><span><b>35 heures</b> : le planning à la main</span><i aria-hidden="true"></i></li>
+          <li class="first"><span><b>Moins de 2 heures</b> : la première saison, mise en place comprise</span><i aria-hidden="true"></i></li>
+          <li class="next"><span><b>Environ 30 minutes</b> : les saisons suivantes</span><i aria-hidden="true"></i></li>
+        </ul>
+        <p class="qf-note">Un but, pas encore une mesure.</p>
+      </div>
+    </div>
+  </section>
 
-    <section>
-      <h2>Ce que ça donne</h2>
-      <p>Pour un club de 50 équipes, notre but : moins de deux heures la première saison, mise en place
-      comprise ; environ 30 minutes les suivantes.</p>
-    </section>
+  <section class="w-sec follow">
+    <div class="wrap w-two qf-cards">
+      <article class="w-card"><h3>Où en est le projet</h3><p>En production depuis octobre 2026, en bêta gratuite avec des clubs pilotes.</p><a class="w-go" href="evolutions.html">Lire le journal</a></article>
+      <article class="w-card"><h3>Qui édite</h3><p><span class="brand">Amateo</span> est édité par Franck Mpemba Boni, à titre personnel.</p></article>
+    </div>
+  </section>
 
-    <section>
-      <h2>Où en est le projet</h2>
-      <p>En production depuis octobre 2026, en bêta gratuite avec des clubs pilotes.</p>
-    </section>
-
-    <section>
-      <h2>Qui édite</h2>
-      <p><span class="brand">Amateo</span> est édité par Franck Mpemba Boni, à titre personnel.</p>
-    </section>
-  </div>
+  <svg class="s-arc toFloor" data-rv viewBox="0 0 1200 80" preserveAspectRatio="none" aria-hidden="true"><path class="f" d="M0 0H1200V46Q600 -34 0 46Z"/><g class="l3"><path class="m" pathLength="1" d="M0 46Q600 -34 1200 46"/><path class="o" pathLength="1" d="M0 46Q600 -34 1200 46"/><path class="t" pathLength="1" d="M0 46Q600 -34 1200 46"/></g></svg>
+  <section class="s-end w-end">
+    <div class="wrap">
+      <h2 data-rv>Parlons de votre club.</h2>
+      <p data-rv class="rv-1">Une démo : 30 minutes en visio, sur un club exemple.</p>
+      <div class="b-cta rv-2" data-rv>
+        <a class="b-btn" data-cta="register" href="https://app.amateo.app/register">Essayer gratuitement avec mon club</a>
+        <a class="b-btn ghost" data-cta="demo" href="mailto:contact@amateo.app?subject=Demande%20de%20demo%20-%20Amateo&amp;body=Bonjour%2C%0A%0AJe%20souhaite%20voir%20Amateo%20en%20demo%20pour%20mon%20club.%0A%0AClub%20%3A%20%0ANombre%20d'equipes%20(environ)%20%3A%20%0ADisponibilites%20%3A%20">Demander une démo</a>
+      </div>
+    </div>
+  </section>
 </main>
 
 <footer class="site">
@@ -121,7 +147,7 @@
   </div>
 </footer>
 
-<script src="config.js?v=2026-11-13"></script>
-<script src="assets/site.js?v=2026-11-13"></script>
+<script src="config.js?v=2026-11-14"></script>
+<script src="assets/site.js?v=2026-11-14"></script>
 </body>
 </html>

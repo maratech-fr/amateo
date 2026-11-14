@@ -809,7 +809,8 @@ Taguer **construit et publie** les images — rien de plus (« tag ≠ déploiem
 **0. PR « release vX.Y.Z »** (branche `chore/release-vX.Y.Z` → `main`, gate complet — la
 branche `release` existe déjà, d'où ce nom) : elle ajoute l'entrée `data-version="X.Y.Z"` au
 journal `landing/evolutions.html` (une à trois phrases en langage club : situation → ce que fait
-Amateo → ce que ça change), et la note « Nouveautés » si elle est voulue. **Mergée sur GO du
+Amateo → ce que ça change) sous **un thème de la liste fermée** — Planning, Matchs, Coachs, Bureau du
+club ou Lancement (`data-topic`, `LandingChangelogTest`) —, et la note « Nouveautés » si elle est voulue. **Mergée sur GO du
 fondateur** — la version et sa date sont décidées par lui, jamais proposées. Contrat d'une
 entrée : docblock de `LandingChangelogTest`.
 

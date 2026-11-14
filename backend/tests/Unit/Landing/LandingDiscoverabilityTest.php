@@ -293,11 +293,11 @@ final class LandingDiscoverabilityTest extends TestCase
      * `?v=` (Caddy n'envoie pas de Cache-Control) ; les scripts se chargent en fin de `<body>`, dans
      * l'ordre `config.js` → `assets/site.js` (qui le lit) → script de la page ; une page interactive
      * charge son propre script et sa propre feuille (`index.html` → `home`, `offres.html` → `offres`,
-     * `faq.html` → `faq`).
+     * `faq.html` → `faq`, `fonctionnalites.html` → `fonctionnalites`, `evolutions.html` → `evolutions`).
      */
     public function testEveryPageSharesOneCacheBusterForEveryLocalScriptAndStylesheet(): void
     {
-        $pageAssets = ['index.html' => 'home', 'offres.html' => 'offres', 'faq.html' => 'faq'];
+        $pageAssets = ['index.html' => 'home', 'offres.html' => 'offres', 'faq.html' => 'faq', 'fonctionnalites.html' => 'fonctionnalites', 'evolutions.html' => 'evolutions'];
         $versions = [];
         foreach ($this->pages() as $page) {
             $document = $this->parse($page);
@@ -374,6 +374,44 @@ final class LandingDiscoverabilityTest extends TestCase
             }
             self::assertSame(0, $document->querySelectorAll('style')->length, "{$page} : <style> inline (les styles vivent dans assets/*.css).");
         }
+    }
+
+    /**
+     * Promesse : tout se lit sans JavaScript — sur chaque page, un élément caché (`hidden`) n'est qu'un
+     * élément qui attend un script (`[data-js-only]` ou dans un tel bloc), et chaque `[data-js-only]`
+     * est caché dans le HTML servi ; un bouton (`<button>`, onglets compris) ne fait rien sans script,
+     * il vit donc dans un bloc `[data-js-only]`. Garde de FORME : le rendu sans JS se prouve par les
+     * captures « JS coupé » de la passe visuelle.
+     */
+    public function testEverythingHiddenOnlyWaitsForJavaScript(): void
+    {
+        $seen = 0;
+        foreach ($this->pages() as $page) {
+            $document = $this->parse($page);
+            foreach ($document->querySelectorAll('[hidden]') as $hidden) {
+                ++$seen;
+                self::assertNotNull($hidden->closest('[data-js-only]'), "{$page} : <{$hidden->localName}> caché sans attendre de script — sans JS, ce contenu est perdu.");
+            }
+            foreach ($document->querySelectorAll('[data-js-only]') as $jsOnly) {
+                self::assertTrue($jsOnly->hasAttribute('hidden'), "{$page} : [data-js-only] visible sans JS (hidden manquant).");
+            }
+            foreach ($document->querySelectorAll('button, [role="tablist"]') as $control) {
+                self::assertNotNull($control->closest('[data-js-only]'), "{$page} : <{$control->localName}> affiché sans JS, il ne ferait rien.");
+            }
+        }
+        self::assertGreaterThan(0, $seen, 'Témoin : aucun élément caché lu sur la vitrine.');
+    }
+
+    /**
+     * Promesse : les huit pages portent le nouvel habillage — plus aucune n'utilise l'ancien gabarit
+     * `main.page`, et `assets/site.css` ne le style plus.
+     */
+    public function testNoPageKeepsTheOldTemplate(): void
+    {
+        foreach ($this->pages() as $page) {
+            self::assertNull($this->parse($page)->querySelector('main.page'), "{$page} : encore au gabarit main.page.");
+        }
+        $this->assertAbsent('main.page', $this->read('/landing/assets/site.css'), 'assets/site.css style encore le gabarit main.page.');
     }
 
     /**

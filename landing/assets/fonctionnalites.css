@@ -1,0 +1,144 @@
+/* ── Fonctionnalités (`fonctionnalites.html`) ───────────────────────────────────
+   Chargée après `site.css`, même `?v=`. Sans JS, les deux modules se lisent l'un sous l'autre, chacun
+   sous son titre (`.fn-title`) ; avec JS, des onglets (`.fn-seg`) montrent l'un ou l'autre et le titre
+   s'efface (l'onglet le porte). La glissière, le bouton « Rejouer » et les onglets n'existent
+   qu'avec JS. */
+
+/* ── Glissière : du tableur à Amateo (tout à gauche = le tableur, tout à droite = Amateo) ── */
+.fn-cmp { position: relative; height: 240px; border-radius: 14px; overflow: hidden; border: 2px solid var(--b-floor); --x: 30%; }
+.fn-after, .fn-before {
+  position: absolute; inset: 0; display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr)); grid-template-rows: 30px repeat(3, minmax(0, 1fr));
+}
+.fn-after { background: var(--a-bg); padding: 0 6px 6px; }
+.fn-after span { display: grid; place-items: center; padding: 3px; min-width: 0; }
+.fn-after .h { font-size: 12px; font-weight: 800; color: var(--a-muted); }
+.fn-after b { display: grid; place-items: center; width: 100%; height: 100%; border-radius: 999px; font-size: 12px; font-weight: 800; }
+.fn-after b.y { background: var(--a-soft); color: var(--teal-ink-soft); }
+.fn-after b.m { background: var(--teal-ink); color: #ffffff; }
+.fn-after b.s { background: var(--a-fg); color: #ffffff; }
+.fn-after b.l { border: 1.5px dashed var(--a-muted); color: var(--a-fg); }
+/* Le tableur recouvre Amateo à droite de la poignée. */
+.fn-before { background: #ffffff; clip-path: inset(0 0 0 var(--x)); font: 12px/1.2 "Courier New", ui-monospace, monospace; color: #222222; }
+.fn-before span { border: 1px solid #c9c9c9; padding: 4px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; display: flex; align-items: center; min-width: 0; }
+.fn-before .h { background: #e9e9e9; justify-content: center; font-weight: 700; }
+.fn-before .c1 { background: #fff59a; }
+.fn-before .c2 { background: #ffb3a8; }
+.fn-before .c3 { background: #c8f0c0; }
+.fn-cmp input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: ew-resize; z-index: 3; }
+.fn-bar { position: absolute; top: 0; bottom: 0; left: var(--x); width: 4px; margin-left: -2px; background: var(--orange); z-index: 2; pointer-events: none; }
+/* La poignée suit la barre mais reste entière aux deux bouts (bornée à sa demi-largeur, 24 px). */
+.fn-cmp::after {
+  content: "◀ ▶"; position: absolute; top: 50%; left: clamp(24px, var(--x), calc(100% - 24px)); z-index: 2; pointer-events: none;
+  transform: translate(-50%, -50%); width: 44px; text-align: center;
+  background: var(--orange); color: #1a0d06; font-size: 11px; font-weight: 800; border-radius: 999px; padding: 9px 0; white-space: nowrap;
+}
+.fn-cmp:has(input:focus-visible)::after { box-shadow: 0 0 0 3px #ffffff, 0 0 0 6px var(--b-fg); }
+.fn-leg { display: flex; justify-content: space-between; gap: 10px; font-size: 13px; font-weight: 800; color: var(--b-floor); }
+.fn-leg > span:last-child { text-align: right; }
+
+/* ── Les deux modules ── */
+.w-sec.band .wrap > .fn-pane { margin-top: 10px; }
+.fn-seg { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; max-width: 620px; }
+.fn-seg button {
+  display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 1px 10px; align-items: center; text-align: left;
+  min-height: 44px; border: 2px solid var(--a-line); background: var(--a-bg); border-radius: 14px; padding: 10px 12px;
+  font-weight: 800; font-size: 17px; line-height: 1.2; transition: transform .2s ease;
+}
+.fn-seg button b {
+  grid-row: 1 / 3; width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center;
+  background: var(--b-floor); color: var(--b-line); font-size: 16px;
+}
+.fn-seg button small { font-weight: 500; font-size: 13px; color: var(--a-muted); }
+.fn-seg button:hover { transform: translateY(-2px); }
+.fn-seg button[aria-selected="true"] { background: var(--b-floor); border-color: var(--b-floor); color: var(--b-line); }
+.fn-seg button[aria-selected="true"] b { background: var(--orange); color: #1a0d06; }
+.fn-seg button[aria-selected="true"] small { color: var(--b-soft); }
+@media (max-width: 560px) { .fn-seg { grid-template-columns: minmax(0, 1fr); } }
+/* Anneau de focus foncé : sur l'onglet choisi (fond parquet, texte clair), `currentColor` ne se voit pas. */
+.fn-seg button:focus-visible { outline: 3px solid var(--b-fg); outline-offset: 3px; }
+
+.fn-pane { display: grid; gap: 14px; }
+.fn-pane + .fn-pane { margin-top: 26px; }
+.fn-title { display: flex; align-items: center; gap: 10px; font-size: 22px; font-weight: 800; line-height: 1.2; }
+.fn-title b { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; background: var(--b-floor); color: var(--b-line); font-size: 16px; }
+/* Avec JS, l'onglet nomme le module : le titre de section s'efface, une section à la fois. */
+.js .fn-title { display: none; }
+.js .fn-pane + .fn-pane { margin-top: 0; }
+
+.fn-items { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.fn-items .w-card { grid-template-columns: 44px minmax(0, 1fr); column-gap: 12px; align-items: start; }
+.fn-items .w-card > * { grid-column: 2; }
+.fn-items .w-card b.n { grid-column: 1; grid-row: 1 / span 2; font-weight: 800; font-size: 34px; line-height: 1; color: var(--orange); }
+@media (min-width: 721px) { .fn-items .w-card:last-child:nth-child(odd) { grid-column: 1 / -1; } }
+@media (max-width: 720px) { .fn-items { grid-template-columns: minmax(0, 1fr); } }
+/* Téléphone : le chiffre passe devant le titre, le texte reprend toute la largeur de la carte. */
+@media (max-width: 480px) {
+  .fn-items .w-card { grid-template-columns: auto minmax(0, 1fr); column-gap: 10px; align-items: baseline; padding: 16px; }
+  .fn-items .w-card b.n { grid-row: 1; font-size: 26px; }
+  .fn-items .w-card h3 { grid-column: 2; }
+  .fn-items .w-card p { grid-column: 1 / -1; }
+}
+
+.fn-real { display: grid; }
+.fn-real summary {
+  cursor: pointer; justify-self: start; display: inline-flex; align-items: center; min-height: 44px; list-style: none;
+  border: 2px solid var(--b-floor); color: var(--b-floor); background: #ffffff; border-radius: 999px; padding: 8px 18px; font-weight: 800;
+}
+.fn-real summary::-webkit-details-marker { display: none; }
+.fn-real summary::marker { content: ""; }
+.fn-real summary:hover { background: var(--a-soft); }
+.fn-real[open] summary { background: var(--b-floor); color: var(--b-line); }
+.fn-real summary:focus-visible { outline: 3px solid var(--b-fg); outline-offset: 3px; }
+.fn-real img { display: block; width: 100%; height: auto; border-radius: 14px; border: 3px solid var(--b-floor); margin-top: 12px; background: #ffffff; }
+
+/* ── Le récapitulatif (bandeau orange) ── */
+.fn-recap { background: var(--orange); color: #1a0d06; }
+.fn-recap .w-two { align-items: center; }
+.fn-recap .w-sub { color: #3a1f08; }
+.fn-score-card { display: grid; gap: 12px; justify-items: start; }
+.fn-score {
+  width: 100%; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px;
+  background: var(--scoreboard); color: var(--score-ink); border-radius: 18px; padding: 24px 14px;
+}
+.fn-score p { display: grid; justify-items: center; gap: 6px; text-align: center; }
+.fn-score b { font-size: clamp(36px, 6vw, 56px); line-height: 1; font-variant-numeric: tabular-nums; }
+.fn-score span { font-size: 11.5px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: #c79a45; }
+.fn-replay {
+  min-height: 44px; border: 2px solid #1a0d06; background: transparent; color: #1a0d06;
+  border-radius: 999px; padding: 7px 16px; font-weight: 800; font-size: 14px;
+}
+.fn-replay:hover { background: #1a0d06; color: var(--score-ink); }
+
+/* ── Le bureau ── */
+.fn-club { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+@media (max-width: 720px) { .fn-club { grid-template-columns: minmax(0, 1fr); } }
+
+/* ── On ne repart pas de zéro ── */
+.fn-steps { display: grid; gap: 10px; }
+.fn-steps li {
+  display: grid; grid-template-columns: 44px minmax(0, 1fr); gap: 14px; align-items: start;
+  background: #ffffff; border-radius: 16px; padding: 14px 16px; box-shadow: 0 14px 30px -26px #000000aa;
+}
+.fn-steps li > b { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 50%; background: var(--b-floor); color: var(--b-line); font-weight: 800; font-size: 20px; }
+.fn-steps div { display: grid; gap: 4px; padding-top: 2px; }
+.fn-steps h3 { font-size: 18px; font-weight: 800; line-height: 1.2; }
+.fn-steps p { font-size: 15.5px; color: var(--b-muted); }
+
+/* ── Ce qu'Amateo ne fait pas (la carte noire) ── */
+.fn-not { background: var(--scoreboard); color: #f4f7f5; border-radius: 20px; padding: clamp(20px, 3vw, 32px); display: grid; gap: 18px; }
+.fn-not h2 { color: var(--score-ink); }
+.fn-not ul { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px 32px; }
+.fn-not li { display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 4px 10px; align-content: start; }
+.fn-not li::before {
+  content: ""; width: 18px; height: 18px; margin-top: 3px;
+  background: linear-gradient(45deg, transparent 43%, #ff5a3c 43% 57%, transparent 57%), linear-gradient(-45deg, transparent 43%, #ff5a3c 43% 57%, transparent 57%);
+}
+.fn-not li b { font-weight: 800; }
+.fn-not li > span { grid-column: 2; color: var(--b-soft); font-size: 15px; }
+@media (max-width: 720px) { .fn-not ul { grid-template-columns: minmax(0, 1fr); } }
+
+@media (max-width: 720px) {
+  .fn-items .w-card p, .fn-steps p { font-size: 16px; }
+  .fn-not li > span { font-size: 16px; }
+}
