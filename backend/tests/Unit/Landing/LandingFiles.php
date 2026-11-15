@@ -38,6 +38,24 @@ trait LandingFiles
         return $pages;
     }
 
+    /**
+     * Les scripts (`js`) ou feuilles (`css`) servis sous `landing/assets/`, chemins relatifs au dépôt,
+     * triés — le commun (`site.*`) et ceux d'une page (`home.*`, `offres.*`…), balayés comme les pages.
+     *
+     * @return list<string>
+     */
+    private function assetFiles(string $extension): array
+    {
+        $files = [];
+        foreach (glob(self::repositoryRoot() . '/landing/assets/*.' . $extension) ?: [] as $path) {
+            $files[] = '/landing/assets/' . basename($path);
+        }
+        sort($files);
+        self::assertContains('/landing/assets/site.' . $extension, $files, "Le balayage ne voit plus assets/site.{$extension}.");
+
+        return $files;
+    }
+
     private function parse(string $page): HTMLDocument
     {
         return HTMLDocument::createFromString($this->read('/landing/' . $page), \LIBXML_NOERROR, 'UTF-8');

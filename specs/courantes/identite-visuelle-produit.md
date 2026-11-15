@@ -14,7 +14,8 @@ fermée, voir `etat-des-lieux.md` §2 — rouvrirait un club voulant aussi teint
 
 ## Décision 1 — base CHAUDE
 
-L'app reprend la base de la vitrine (`landing/index.html`), plutôt que des neutres bleu-froid
+L'app a repris la base chaude qu'avait alors la vitrine (`landing/index.html`, depuis passée au
+fond terrain, § « La vitrine » ci-dessous ; l'app n'a pas bougé), plutôt que des neutres bleu-froid
 génériques (teinte OKLCH 260) — partagée **par convention** (jetons
 dupliqués dans `frontend/src/index.css`, jamais un import de `landing/`, les deux zones restant
 indépendantes par construction, `CLAUDE.md` §2).
@@ -136,9 +137,8 @@ fixe — l'icône produit ne s'efface jamais devant celle d'un club.
   marque n'a pas deux visages.
 - **La vitrine recopie ce même patron pour son logotype (P4-274, 2026-09-29)** : `landing/config.js`
   clé `logo` pointe `landing/assets/brand/mark.svg` (les trois arcs SEULS, sans le disque blanc du
-  favicon `icon.svg` — mark thème-neutre, comme `BrandIcon`) et le mot (`brand`) est injecté en
-  TEXTE à côté (`.logo-word`, `color: var(--ink)`), en minuscules — un seul rendu clair/sombre,
-  recopié par convention, jamais importé de `frontend/` (`CLAUDE.md` §2).
+  favicon `icon.svg` — mark sans fond, comme `BrandIcon`) et le mot (`brand`) est écrit en
+  TEXTE à côté (`.logo-word`), en minuscules — recopié par convention, jamais importé de `frontend/` (`CLAUDE.md` §2).
 - **Les pages système (503/maintenance) recopient le même mark, en couleurs FIXES (P4-302,
   2026-10-05)** : `system-pages/503.html`/`maintenance.html` inlinent les trois arcs de
   `landing/assets/brand/mark.svg` (mêmes `stroke`/`stroke-dasharray` que `BrandIcon`, zéro
@@ -152,16 +152,30 @@ fixe — l'icône produit ne s'efface jamais devant celle d'un club.
   `features/planning/GenerationServiceDown.tsx` reste hors de ce lot (ne passe pas par
   `SystemScreen`, cf. `frontend/docs/frontend-features.md` §6.8).
 
+## La vitrine
+
+La vitrine (`landing/`) a sa propre identité, recopiée par convention et jamais importée (`CLAUDE.md`
+§2) :
+
+- **Un seul thème, clair — pas de thème sombre**, ni bascule, ni asset `-dark` (gardé par
+  `LandingDiscoverabilityTest::testNoDarkThemeAnywhere`).
+- **Fond uni** `#f5f7f4` (`--b-board`), sans motifs. Palette terrain : parquet `#0e4a4c`, tableau
+  `#f5f7f4`, encre `#11302f`, carte de score `#14110c` à chiffres `#ffc24d`. Les trois couleurs du
+  logo restent des décors : teal `#46afac` (texte : `--teal-ink` `#2e7876`), orange `#d47800` (décor
+  et chiffres ≥ 24 px gras ; **tout petit texte orange porte `--orange-ink` `#a35a00`**, ≥ 4,5:1
+  mesuré en navigateur), magenta `#b51c8a`.
+- **Polices hébergées sous licence OFL** (`landing/assets/fonts/`, aucune ressource tierce) :
+  Archivo (corps), Caveat (manuscrit), Bricolage Grotesque (titres et logotype).
+
 ## Le fond d'écran
 
-Un seul fond, **identique app et vitrine** : les motifs multi-sport aux 3 couleurs du logo, posés
+Un seul fond **côté app** (la vitrine n’en a plus, § « La vitrine ») : les motifs multi-sport aux 3 couleurs du logo, posés
 en `background-image` CSS sur `body` — pas de composant React, pas d'animation, **le fond est
 FIGÉ**.
 
 - **Assets** : `frontend/public/brand/fond-light.svg` / `fond-dark.svg` (thème clair/sombre de
-  l'app) et `landing/assets/brand/fond.svg` / `fond-dark.svg` (vitrine — **thème au choix depuis le
-  2026-09-29 (P4-274)**, bouton de bascule ; `fond-dark.svg` est une copie OCTET-IDENTIQUE de celle
-  de l'app). Les quatre sont des copies **purgées** des SVG livrés par le fondateur (dossier
+  l'app) et `landing/assets/brand/fond.svg` (vitrine — plus posé en fond, voir § « La vitrine » ;
+  il ne sert plus qu'à l'image de partage). Les trois sont des copies **purgées** des SVG livrés par le fondateur (dossier
   `business/`, hors dépôt) : manifeste C2PA retiré (l'original portait la signature « Anthropic
   Claude Content Signing » — ces SVG sortent d'une session Claude, pas d'un outil de design),
   `<metadata>` retirée, `<rect>` de sol retiré (le sol est notre papier, pas le gris de la
@@ -169,16 +183,13 @@ FIGÉ**.
   ⇄ `icon.svg`, `CLAUDE.md` §2), jamais partagées par import entre `frontend/` et `landing/`.
 - **Pose** : `body { background-image: url("/brand/fond-light.svg"); background-size: cover;
   background-position: center; background-repeat: no-repeat; background-attachment: fixed; }`
-  (`frontend/src/index.css`), `.dark body` bascule sur `fond-dark.svg` ; la vitrine pose
-  l'équivalent en un seul déclaratif (`background: var(--paper) url("assets/brand/fond.svg")
-  center / cover no-repeat fixed;`, `landing/index.html`), et `html[data-theme="dark"] body`
-  bascule sur `fond-dark.svg` — même mécanique que l'app, posée en attribut plutôt qu'en classe
-  (`data-theme` posé par le mini-script anti-flash du `<head>`, cf. `.claude/rules/landing.md`).
+  (`frontend/src/index.css`), `.dark body` bascule sur `fond-dark.svg` ; la vitrine ne
+  pose plus de motifs (§ « La vitrine »).
   `fixed` : parallaxe de fond assumée desktop-first — iOS Safari retombe en `scroll` (comportement
   natif, pas un bug).
 - **Sol et opacité** : le sol est notre papier — `--background` côté app, `--paper` côté vitrine
   (`background-color` posé avant l'image). Opacité des motifs : **0,15 clair / 0,17 sombre** dans
-  l'app, **0,26** sur la vitrine (contraste éditorial différent, vitrine = une seule page longue).
+  l'app (la vitrine n'a plus de motifs).
 - **Zones opaques** : l'en-tête d'`AppLayout` (`bg-background` sur le `<header>`, plus sur la
   racine) et les cartes restent opaques — le fond ne vit **que** dans les zones vides. Les racines
   de shell (`AppLayout`, `AuthLayout`) ne portent donc plus `bg-background` : elles laissent

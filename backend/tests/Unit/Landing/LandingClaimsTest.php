@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Tests\Unit\Landing;
 
+use DateTimeImmutable;
 use Dom\Element;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
@@ -33,12 +34,46 @@ final class LandingClaimsTest extends TestCase
 
     private const string PRIVACY_PAGE = '/frontend/src/features/legal/PrivacyPage.tsx';
 
-    /** Promesse (D3) : le bandeau de l'accueil porte les quatre garanties validées, chacune menant à sa preuve. */
+    /**
+     * Clubs affichés sur l'accueil (« Ils nous font confiance. »), dans l'ordre de la page : nom affiché
+     * → logo sous `landing/assets/clubs/`. Liste fermée : ajouter ou retirer un club = un `<li>`, un
+     * fichier et une ligne ici, ensemble.
+     */
+    private const array DISPLAYED_CLUBS = [
+        'Villeurbanne Sharks' => 'villeurbanne-sharks.jpg',
+        'Basket Rillieux Crépieux' => 'basket-rillieux-crepieux.jpg',
+        'AL Antonin Perrin' => 'al-antonin-perrin.jpg',
+    ];
+
+    /**
+     * Les six échéances du compte à rebours de l'accueil, dans l'ordre : libellé → date (`null` = la date
+     * varie d'une année à l'autre et se vérifie par sa forme seule : réelle, entre ses voisines).
+     */
+    private const array COUNTDOWN_DEADLINES = [
+        ['Vacances de Noël dans', '2026-12-19'],
+        ['Reprise de janvier, troisième phase, dans', '2027-01-05'],
+        ['Premières vacances d\'hiver dans', null],
+        ['Playoffs dans', '2027-05-01'],
+        ['Avant les vacances d\'été, la saison prochaine se prépare : dans', '2027-07-01'],
+        ['Mi-août, la reprise approche : dans', '2027-08-16'],
+    ];
+
+    /**
+     * Promesse (D3) : à côté de la définition (`section.p-intro`, juste après le héros), la carte
+     * « Quatre garanties » porte les quatre garanties validées, chacune menant à sa preuve.
+     */
     public function testGuaranteesBannerHoldsFourLinkedClaims(): void
     {
         $document = $this->parse('index.html');
-        $banner = $this->element($document, 'ul.guarantees');
-        self::assertSame('Nos garanties', $banner->getAttribute('aria-label'));
+        $intro = $this->element($document, 'section.p-intro');
+        self::assertNotNull($intro->querySelector('.p-def'), 'La carte des garanties est à côté de la définition (.p-def).');
+        self::assertNotNull($intro->previousElementSibling?->querySelector('h1'), 'section.p-intro suit immédiatement le héros (h1).');
+
+        $card = $this->element($intro, 'aside.p-gar');
+        $titleId = (string) $card->getAttribute('aria-labelledby');
+        self::assertNotSame('', $titleId, 'aside.p-gar est nommé par son titre (aria-labelledby).');
+        self::assertSame('Quatre garanties', $this->text($card, 'h2#' . $titleId));
+        $banner = $this->element($card, 'ul.guarantees');
 
         $expected = [
             ['Hébergé en France (Paris), copie de secours aux Pays-Bas.', 'vos-donnees.html', null],
@@ -69,70 +104,201 @@ final class LandingClaimsTest extends TestCase
     }
 
     /**
-     * Promesse (D3, F10) : juste après la section du bureau, l'accueil dit d'où vient Amateo — sans
-     * AUCUN chiffre (les chiffres vivent sur « Qui fait ») — et mène à la page « Qui fait ».
-     */
-    public function testOriginBlockFollowsTheBoardSectionAndLinksToQuiFait(): void
-    {
-        $brand = $this->config('brand');
-        $document = $this->parse('index.html');
-        $origin = $this->element($document, 'section#origine');
-
-        self::assertSame('transparence', $origin->previousElementSibling?->getAttribute('id'), '#origine suit immédiatement la section du bureau (#transparence).');
-        self::assertSame('Créé par un joueur de basket pour son club amateur.', $this->text($origin, 'h2'));
-
-        $text = $this->normalize((string) $origin->textContent);
-        self::assertStringContainsString('Là-bas, refaire le planning à chaque changement de coach ou de créneau prenait des heures. ' . $brand . ' est né pour que ça n\'arrive plus.', $text);
-        self::assertSame(0, preg_match('/\d/', $text), 'Le bloc d\'origine ne porte aucun chiffre.');
-
-        $toQuiFait = null;
-        foreach ($origin->querySelectorAll('a') as $link) {
-            if (\in_array($link->getAttribute('href'), ['qui-fait.html', '/qui-fait.html'], true)) {
-                $toQuiFait = $link;
-            }
-        }
-        self::assertNotNull($toQuiFait, 'Le bloc d\'origine mène à qui-fait.html.');
-        self::assertSame('Qui fait ' . $brand . ' →', $this->normalize((string) $toQuiFait->textContent));
-    }
-
-    /**
-     * Promesse (D3, F2) : les cartes d'offres disent la grille du produit — Essentiel jusqu'à 20
-     * équipes, Club de 21 à 34, Grand club à partir de 35 (`PlanEntitlements`) — sans prix affiché
-     * et sans palier disparu (« 30 équipes », « 40-50 », « Tout, sans limite »). Le code n'est pas
-     * lu par ce test : la largeur est dite, la grille est recopiée.
+     * Promesse (D3, F2) : il n'y a qu'une offre, en entier pour tous les clubs — la Découverte gratuite
+     * (10 crédits), puis trois paliers SANS NOM qui suivent la grille du produit (jusqu'à 20 équipes,
+     * de 21 à 34, 35 et plus : `PlanEntitlements`), chacun « Tarif sur demande », sans prix affiché ni
+     * palier disparu. Le curseur de l'accueil nomme les mêmes trois paliers que `offres.html` et y
+     * mène. Le code n'est pas lu par ce test : la largeur est dite, la grille est recopiée.
      */
     public function testOfferCardsMatchTheLadder(): void
     {
-        $offers = $this->element($this->parse('index.html'), 'section#offres');
-        $cards = iterator_to_array($offers->querySelectorAll('.plans article.plan'));
-        self::assertCount(4, $cards, 'Quatre cartes : Découverte, Essentiel, Club, Grand club.');
+        $tiers = ['Jusqu\'à 20 équipes', 'De 21 à 34 équipes', '35 équipes et plus'];
+        $page = $this->parse('offres.html');
 
-        $names = array_map(fn (Element $card): string => $this->text($card, '.name'), $cards);
-        self::assertSame(['Découverte', 'Essentiel', 'Club', 'Grand club'], $names);
+        $free = $this->element($page, 'article.plan.of-free');
+        $freeText = $this->normalize((string) $free->textContent);
+        self::assertStringContainsString('Découverte', $freeText);
+        self::assertStringContainsString('10 crédits offerts', $freeText);
 
-        self::assertSame('Une équipe = chaque groupe que vous entraînez, compétition et loisir compris.', $this->text($offers, '.teams-note'));
-
-        $items = static fn (Element $card): array => array_map(
-            static fn (Element $li): string => trim((string) preg_replace('/\s+/u', ' ', (string) $li->textContent)),
-            iterator_to_array($card->querySelectorAll('li')),
-        );
-        self::assertContains('10 crédits offerts : chaque planning généré, placement de matchs ou export en utilise un', $items($cards[0]));
-
-        self::assertSame('Jusqu\'à 20 équipes', $this->text($cards[1], '.cap'));
-        self::assertContains('Plannings de vacances et de fermetures', $items($cards[1]));
-        self::assertSame('De 21 à 34 équipes', $this->text($cards[2], '.cap'));
-        self::assertSame('À partir de 35 équipes', $this->text($cards[3], '.cap'));
-        foreach ([2, 3] as $index) {
-            self::assertSame(['Tout Essentiel', 'Même offre complète, pour plus d\'équipes'], $items($cards[$index]), $names[$index]);
-        }
-        foreach ([1, 2, 3] as $index) {
-            self::assertStringStartsWith('Sur demande', $this->text($cards[$index], '.price'), $names[$index]);
-            self::assertStringContainsString('Tarif par saison', $this->text($cards[$index], '.price'), $names[$index]);
+        $full = $this->element($page, 'article.plan.of-full');
+        self::assertNotNull($full->querySelector('ul.of-all li'), 'La carte complète liste ce que fait Amateo (ul.of-all).');
+        $rows = iterator_to_array($full->querySelectorAll('ol.of-tiers > li'));
+        self::assertSame($tiers, array_map(fn (Element $li): string => $this->text($li, 'b'), $rows), 'Trois paliers, dans l\'ordre de la grille.');
+        foreach ($rows as $index => $row) {
+            self::assertSame('Tarif sur demande', $this->text($row, 'span'), $tiers[$index]);
+            self::assertNotSame('', $this->text($row, 'small'), $tiers[$index] . ' : repère du palier (small).');
         }
 
-        $text = $this->normalize((string) $offers->textContent);
-        foreach (['€', '30 équipes', '40-50', 'Tout, sans limite', '10 générations'] as $stale) {
-            $this->assertAbsent($stale, $text, "« {$stale} » ne figure plus dans les offres.");
+        self::assertStringStartsWith('Une équipe = chaque groupe que vous entraînez, compétition et loisir compris.', $this->text($page, 'p.teams-note'));
+
+        $home = $this->element($this->parse('index.html'), 'section#offres');
+        $homeTiers = array_map(fn (Element $b): string => $this->normalize((string) $b->textContent), iterator_to_array($home->querySelectorAll('[data-tiers] li b')));
+        self::assertSame($tiers, $homeTiers, 'Le curseur de l\'accueil nomme les paliers de offres.html.');
+        $toOffers = [];
+        foreach ($home->querySelectorAll('a') as $link) {
+            if (\in_array($link->getAttribute('href'), ['offres.html', '/offres.html'], true)) {
+                $toOffers[] = $this->normalize((string) $link->textContent);
+            }
+        }
+        self::assertContains('Voir le détail des offres', $toOffers, 'L\'accueil mène au détail des offres.');
+
+        foreach (['offres.html' => $this->visibleText('offres.html'), 'index.html#offres' => $this->normalize((string) $home->textContent)] as $where => $text) {
+            foreach (['€', 'Essentiel', 'Grand club', '30 équipes', '10 générations'] as $stale) {
+                $this->assertAbsent($stale, $text, "« {$stale} » dans {$where} : une offre, trois paliers sans nom.");
+            }
+        }
+    }
+
+    /**
+     * Promesse : l'accueil n'affiche comme clubs qui lui font confiance QUE ceux de `DISPLAYED_CLUBS`,
+     * dans cet ordre, avant les offres — chaque logo est nommé une fois aux lecteurs d'écran (`alt`),
+     * la pastille visible répète le nom en `aria-hidden`, le `<li>` se focalise au clavier. Aucun logo
+     * n'est servi sans son club dans la liste (fichiers de `assets/clubs/` = la liste exacte), et
+     * chacun reste léger et propre : JPEG ≤ 40 Ko, ≤ 400 px, sans métadonnées.
+     */
+    public function testDisplayedClubsAreTheClosedList(): void
+    {
+        $document = $this->parse('index.html');
+        $section = $this->element($document, 'section#clubs.p-clubs');
+        self::assertSame('Ils nous font confiance.', $this->text($section, 'h2'));
+
+        $items = [];
+        foreach ($this->childElements($this->element($section, 'ul.clubs')) as $child) {
+            self::assertSame('LI', $child->tagName, 'ul.clubs ne contient que des <li>.');
+            $items[] = $child;
+        }
+        self::assertCount(\count(self::DISPLAYED_CLUBS), $items, 'Un <li> par club affiché, ni plus ni moins.');
+
+        $index = 0;
+        foreach (self::DISPLAYED_CLUBS as $name => $file) {
+            $item = $items[$index++];
+            self::assertSame('0', $item->getAttribute('tabindex'), "{$name} : le logo se focalise au clavier.");
+            $images = $item->querySelectorAll('img');
+            self::assertSame(1, $images->length, "{$name} : un seul logo.");
+            $image = $this->element($item, 'img');
+            self::assertSame('assets/clubs/' . $file, ltrim((string) $image->getAttribute('src'), '/'), "{$name} : fichier du logo.");
+            self::assertSame($name, $image->getAttribute('alt'), "{$name} : alt = nom affiché.");
+            foreach (['width', 'height'] as $dimension) {
+                self::assertNotSame('', (string) $image->getAttribute($dimension), "{$name} : {$dimension} absent (la page saute au chargement).");
+            }
+            self::assertSame($name, $this->text($item, 'span[aria-hidden="true"]'), "{$name} : la pastille répète le nom, masquée aux lecteurs d'écran.");
+        }
+
+        $served = array_map('basename', glob(self::repositoryRoot() . '/landing/assets/clubs/*') ?: []);
+        sort($served);
+        $listed = array_values(self::DISPLAYED_CLUBS);
+        sort($listed);
+        self::assertSame($listed, $served, 'Les fichiers de landing/assets/clubs/ ≠ DISPLAYED_CLUBS (logo orphelin ou manquant).');
+
+        foreach (self::DISPLAYED_CLUBS as $name => $file) {
+            $path = self::repositoryRoot() . '/landing/assets/clubs/' . $file;
+            self::assertLessThanOrEqual(40 * 1024, (int) filesize($path), "{$name} : logo > 40 Ko.");
+            $size = getimagesize($path);
+            self::assertIsArray($size, "{$name} : logo illisible.");
+            self::assertSame(\IMAGETYPE_JPEG, $size[2], "{$name} : logo en JPEG.");
+            self::assertLessThanOrEqual(400, max($size[0], $size[1]), "{$name} : logo > 400 px.");
+            self::assertSame([], $this->embeddedMetadata((string) file_get_contents($path)), "{$name} : le logo porte des métadonnées.");
+        }
+
+        $order = array_map(static fn (Element $node): string => (string) $node->getAttribute('id'), iterator_to_array($document->querySelectorAll('#clubs, #offres')));
+        self::assertSame(['clubs', 'offres'], $order, '#clubs précède #offres sur l\'accueil.');
+    }
+
+    /**
+     * Promesse : la FAQ se lit sans JS — onze `<details>` natifs (aucun bouton `aria-expanded` qui
+     * attendrait un script), les onze questions validées dans l'ordre et rangées en trois temps
+     * (`#demarrer`, `#quotidien`, `#club`), la première ouverte ; le compteur « sur 11 » n'existe
+     * qu'avec JS ; les réponses mènent aux offres, à « Vos données », aux fonctionnalités et à la démo.
+     */
+    public function testFaqIsElevenNativeDetails(): void
+    {
+        $brand = $this->config('brand');
+        $expected = [
+            'demarrer' => [
+                'Faut-il tout ressaisir pour démarrer avec ' . $brand . ' ?',
+                'C\'est fait pour un club amateur ?',
+                'On peut voir avant de s\'engager ?',
+                'Comment préparer le planning d\'entraînement d\'un club qui a plusieurs gymnases ?',
+            ],
+            'quotidien' => [
+                'Comment placer les matchs à domicile depuis l\'export FBI ?',
+                'Et si le planning généré ne me convient pas ?',
+                'Comment adapter le planning quand un gymnase ferme ou que la mairie change les créneaux ?',
+                'Les coachs doivent-ils créer un compte ?',
+                'Comment les parents savent quand joue leur enfant ?',
+            ],
+            'club' => [
+                'Combien ça coûte ?',
+                'Où sont hébergées nos données ?',
+            ],
+        ];
+        $document = $this->parse('faq.html');
+
+        $questions = iterator_to_array($document->querySelectorAll('details.fq-item'));
+        self::assertCount(11, $questions, 'Onze questions, en <details> natifs.');
+        $number = 0;
+        foreach ($expected as $group => $titles) {
+            foreach ($titles as $title) {
+                $question = $questions[$number++];
+                self::assertSame('q-' . $number, $question->getAttribute('id'), "Question {$number} : id");
+                self::assertSame($title, $this->text($question, 'summary .q'), "Question {$number} : titre");
+                self::assertSame((string) $number, $this->text($question, 'summary i'), "Question {$number} : numéro");
+                self::assertNotSame('', $this->text($question, '.a'), "Question {$number} : réponse vide.");
+                self::assertSame($group, $question->closest('section')?->getAttribute('id'), "Question {$number} : rangée sous #{$group}.");
+                self::assertSame(1 === $number, $question->hasAttribute('open'), "Question {$number} : seule la première est ouverte.");
+            }
+        }
+        self::assertNull($document->querySelector('button[aria-expanded]'), 'FAQ : un bouton aria-expanded attend un script, <details> suffit.');
+
+        $score = $this->element($document, '.fq-score');
+        self::assertTrue($score->hasAttribute('data-js-only') && $score->hasAttribute('hidden'), 'Le compteur de questions lues n\'existe qu\'avec JS (data-js-only hidden).');
+        self::assertStringContainsString('sur 11', $this->normalize((string) $score->textContent));
+        self::assertStringContainsString('Onze questions', $this->visibleText('faq.html'));
+
+        $links = [3 => ['data-cta', 'demo-inline'], 4 => ['href', 'fonctionnalites.html'], 10 => ['href', 'offres.html'], 11 => ['href', 'vos-donnees.html']];
+        foreach ($links as $number => [$attribute, $value]) {
+            $found = false;
+            foreach ($questions[$number - 1]->querySelectorAll('.a a') as $link) {
+                $found = $found || $value === ltrim((string) $link->getAttribute($attribute), '/');
+            }
+            self::assertTrue($found, "Question {$number} : la réponse mène à [{$attribute}={$value}].");
+        }
+    }
+
+    /**
+     * Promesse : le compte à rebours de l'accueil ne montre que des échéances bien formées — le bloc
+     * n'existe qu'avec JS (`data-js-only hidden`, dans le héros), la liste reste cachée, six entrées
+     * dans l'ordre de `COUNTDOWN_DEADLINES`, chacune une vraie date ISO, croissante, avec sa question.
+     * « La date est à venir » n'est PAS testé (la CI tourne à date quelconque) : la doc de release
+     * porte la vérification et la réécriture annuelle.
+     */
+    public function testCountdownDeadlinesAreWellFormed(): void
+    {
+        $document = $this->parse('index.html');
+        $block = $this->element($document, '[data-countdown]');
+        self::assertTrue($block->hasAttribute('data-js-only') && $block->hasAttribute('hidden'), 'Le compte à rebours n\'existe qu\'avec JS (data-js-only hidden).');
+        self::assertNotNull($this->element($document, 'h1')->closest('section')?->querySelector('[data-countdown]'), 'Le compte à rebours vit dans le héros (la section du h1).');
+
+        $list = $this->element($block, 'ol[data-deadlines]');
+        self::assertTrue($list->hasAttribute('hidden'), 'La liste des échéances est une donnée, jamais affichée telle quelle.');
+        $entries = iterator_to_array($list->querySelectorAll('li'));
+        self::assertCount(\count(self::COUNTDOWN_DEADLINES), $entries, 'Six échéances.');
+
+        $previous = null;
+        foreach (self::COUNTDOWN_DEADLINES as $index => [$label, $date]) {
+            $entry = $entries[$index];
+            self::assertSame($this->typographyFree($label), $this->typographyFree((string) $entry->textContent), "Échéance n° {$index} : libellé");
+            $actual = (string) $entry->getAttribute('data-date');
+            $parsed = DateTimeImmutable::createFromFormat('!Y-m-d', $actual);
+            self::assertTrue($parsed instanceof DateTimeImmutable && $actual === $parsed->format('Y-m-d'), "{$label} : « {$actual} » n'est pas une date ISO réelle.");
+            if (null !== $date) {
+                self::assertSame($date, $actual, "{$label} : date");
+            }
+            if (null !== $previous) {
+                self::assertGreaterThan($previous, $actual, "{$label} : les échéances sont croissantes.");
+            }
+            $previous = $actual;
+            self::assertNotSame('', trim((string) $entry->getAttribute('data-question')), "{$label} : question vide.");
         }
     }
 
@@ -179,8 +345,8 @@ final class LandingClaimsTest extends TestCase
     /**
      * Promesse (D3, termes validés groupes 1 et 2) : l'accueil parle la langue d'un club, pas celle du
      * moteur — ni « solveur », ni « optimis… », ni « radar », ni « l'app » ; « l'outil » ne désigne
-     * que FBI ou la démo ; hors FAQ (qui garde les mots de l'écran), ni « mutualis… », ni
-     * « verrouill… », ni « régénér… », ni « période ».
+     * que FBI ou la démo ; ni « mutualis… », ni « période ». « Verrouiller » et « régénérer » sont
+     * admis (C3) : ce sont les mots des boutons que le club touche.
      */
     public function testLandingAvoidsEngineVocabulary(): void
     {
@@ -197,53 +363,91 @@ final class LandingClaimsTest extends TestCase
         );
         $this->assertAbsent('l\'outil', $withoutAllowedTool, '« l\'outil » sur l\'accueil hors FBI et la démo : écrire « Amateo ».');
 
-        $outsideFaq = mb_strtolower($this->visibleText('index.html', ['#faq']));
-        foreach (['mutualis', 'verrouill', 'régénér', 'période'] as $word) {
-            $this->assertAbsent($word, $outsideFaq, "« {$word} » sur l'accueil hors FAQ");
+        foreach (['mutualis', 'période'] as $word) {
+            $this->assertAbsent($word, $everywhere, "« {$word} » sur l'accueil");
         }
     }
 
     /**
-     * Promesse (D6) : la page Fonctionnalités décrit les huit modules en prose (aucune puce) et dit
-     * franchement, en six lignes, ce qu'Amateo ne fait pas — dont les deux corrigées le 2026-11-11.
+     * Promesse (D6) : la page Fonctionnalités nomme ses treize modules — sept sous `#planning`, six sous
+     * `#matchs` —, tous lisibles sans JS (aucun module caché en attendant un onglet), et dit franchement,
+     * en six limites, ce qu'Amateo ne fait pas. Un seul rappel est vendu, celui des vacances scolaires
+     * (30, 14 et 7 jours avant) ; celui des périodes posées (14, 7 et 3 jours) reste dans la spec.
      */
     public function testFeaturesPageNamesWhatTheToolDoesNot(): void
     {
+        $brand = $this->config('brand');
         $document = $this->parse('fonctionnalites.html');
-        self::assertSame('Ce qu\'' . $this->config('brand') . ' fait, et ce qu\'il ne fait pas', $this->text($document, 'h1'));
+        self::assertSame('Ce qu\'' . $brand . ' fait, et ce qu\'il ne fait pas.', $this->text($document, 'h1'));
 
-        $modules = [];
-        foreach ($document->querySelectorAll('article.module') as $module) {
-            $modules[] = $this->text($module, 'h3');
+        $expected = [
+            'planning' => [
+                'Planning de saison', 'Les imprévus', 'Les vacances', 'Les contraintes, faciles à gérer',
+                'Les souhaits des coachs, sans relancer un par un', 'La saison prochaine, prête avant l\'été', 'Des chiffres pour la mairie',
+            ],
+            'matchs' => [
+                'L\'aide au placement', 'La détection des erreurs FBI', 'Les conflits de coachs vus en amont',
+                'Les déplacements extérieurs', 'Chaque coach reçoit ses conflits', 'La liste des matchs, en PDF',
+            ],
+        ];
+        foreach ($expected as $id => $titles) {
+            $section = $this->element($document, 'section#' . $id);
+            $modules = array_map(fn (Element $module): string => $this->typographyFree($this->text($module, 'h3')), iterator_to_array($section->querySelectorAll('article.module')));
+            self::assertSame($titles, $modules, "Modules de #{$id}");
+            for ($node = $section; $node instanceof Element; $node = $node->parentElement) {
+                self::assertFalse($node->hasAttribute('hidden'), "#{$id} est caché dans le HTML servi : sans JS, les deux modules se lisent l'un sous l'autre.");
+            }
         }
-        self::assertSame([
-            'Planning de saison', 'Les imprévus', 'Les vacances', 'Les contraintes, faciles à gérer',
-            'L\'aide au placement', 'La détection des erreurs FBI', 'Les conflits de coachs vus en amont', 'Les déplacements extérieurs',
-        ], $modules);
-        self::assertNull($document->querySelector('main ul, main ol'), 'Fonctionnalités : aucune puce, de la prose.');
 
-        $lines = iterator_to_array($this->element($document, 'section#ne-fait-pas')->querySelectorAll('p'));
-        self::assertCount(6, $lines, 'Six lignes « ce qu\'Amateo ne fait pas ».');
-        $statements = [];
-        $explanations = [];
-        foreach ($lines as $line) {
-            $statements[] = $this->text($line, 'strong');
-            $explanations[] = $this->text($line, 'strong + span');
-        }
+        $limits = $this->element($document, 'section#ne-fait-pas');
+        $items = iterator_to_array($limits->querySelectorAll('ul > li'));
+        self::assertCount(6, $items, 'Six limites « ce qu\'' . $brand . ' ne fait pas ».');
+        $statements = array_map(fn (Element $item): string => $this->text($item, 'b'), $items);
+        $explanations = array_map(fn (Element $item): string => $this->text($item, 'b + span'), $items);
         self::assertSame([
             'Il n\'écrit rien dans FBI.',
-            'Il ne gère ni paiements, ni licences, ni cotisations.',
+            'Ni paiements, ni licences, ni cotisations.',
             'Il ne fabrique pas le calendrier des championnats.',
             'Il ne remplace pas votre jugement.',
-            'Il n\'envoie ni convocations ni messages aux joueurs ou aux familles.',
-            'Il est fait pour le basket amateur affilié FFBB, et pour lui seul aujourd\'hui.',
-        ], $statements);
-        self::assertStringContainsString('dégrossit le travail, à vous les finitions', $explanations[3]);
-        self::assertSame('Vous transmettez le planning aux coachs en PDF ou en Excel ; ils déposent leurs indisponibilités par un lien personnel, sans compte.', $explanations[4]);
+            'Rien n\'est envoyé aux joueurs ni aux familles.',
+            'Le basket amateur affilié FFBB, et lui seul.',
+        ], array_map($this->typographyFree(...), $statements));
+        self::assertStringContainsString($brand . ' dégrossit le travail, à vous les finitions', $this->typographyFree($explanations[3]));
+        self::assertSame('Vous exportez le planning ou la liste des matchs, et vous donnez l\'export à qui vous voulez.', $this->typographyFree($explanations[4]));
+
+        $faq = [];
+        foreach ($document->querySelectorAll('a[href]') as $link) {
+            $faq[$this->normalize((string) $link->textContent)] = ltrim((string) $link->getAttribute('href'), '/');
+        }
+        self::assertSame('faq.html#demarrer', $faq['Le voir dans la FAQ'] ?? null, '« Le voir dans la FAQ » mène aux questions pour démarrer.');
 
         $text = $this->visibleText('fonctionnalites.html');
-        self::assertStringContainsString('30, 14 et 7 jours avant chaque période de vacances scolaires', $text, 'Rappels des vacances scolaires (J-30/J-14/J-7).');
-        self::assertStringContainsString('14, 7 et 3 jours avant une période que vous avez posée vous-même', $text, 'Rappels des périodes posées (J-14/J-7/J-3).');
+        self::assertStringContainsString('30, 14 et 7 jours avant', $text, 'Rappels des vacances scolaires (J-30/J-14/J-7).');
+        $this->assertAbsent('14, 7 et 3 jours', $text, 'Le rappel des périodes posées quitte la vitrine (la spec le garde).');
+    }
+
+    /**
+     * Promesse : la vitrine ne montre que les captures de l'application qu'elle utilise — les images
+     * du haut de `landing/assets/` sont exactement celles-ci, et chacune est affichée par
+     * Fonctionnalités. Une capture retirée de la page part avec son fichier ; en ajouter une = un
+     * fichier, son `<img>` et une ligne ici.
+     */
+    public function testServedScreenshotsAreTheClosedList(): void
+    {
+        $expected = ['matchs-conflits.jpg', 'planning.png'];
+        $served = [];
+        foreach (glob(self::repositoryRoot() . '/landing/assets/*') ?: [] as $path) {
+            if (is_file($path) && 1 === preg_match('/\.(?:jpe?g|png|webp|gif|avif)$/i', $path)) {
+                $served[] = basename($path);
+            }
+        }
+        sort($served);
+        self::assertSame($expected, $served, 'Captures servies sous landing/assets/ ≠ la liste fermée (capture orpheline ou manquante).');
+
+        $shown = array_map(static fn (Element $image): string => ltrim((string) $image->getAttribute('src'), '/'), iterator_to_array($this->parse('fonctionnalites.html')->querySelectorAll('img[src]')));
+        foreach ($expected as $file) {
+            self::assertContains('assets/' . $file, $shown, "{$file} n'est affichée par aucune image de fonctionnalites.html.");
+        }
     }
 
     /**
@@ -265,18 +469,19 @@ final class LandingClaimsTest extends TestCase
         $section = $this->normalize($section);
 
         $page = $this->element($this->parse('fonctionnalites.html'), 'section#ne-fait-pas');
-        $statements = $this->normalize((string) $page->textContent);
+        $statements = $this->typographyFree((string) $page->textContent);
         foreach ([
             'n\'écrit rien dans FBI',
-            'ni paiements, ni licences, ni cotisations',
+            'paiements, ni licences, ni cotisations',
             'ne fabrique pas le calendrier des championnats',
             'ne remplace pas',
-            'n\'envoie ni convocations ni messages aux joueurs ou aux familles',
+            'Rien n\'est envoyé aux joueurs ni aux familles',
             'basket amateur affilié FFBB',
         ] as $anchor) {
             self::assertStringContainsString($anchor, $statements, "Vitrine : « {$anchor} » absent de #ne-fait-pas.");
             self::assertStringContainsString($anchor, $section, "modules-produit.md : « {$anchor} » absent de « Ce qu'Amateo ne fait pas ».");
         }
+        self::assertStringContainsString('Rien n\'est envoyé aux joueurs ni aux familles : ni convocations ni messages.', $section, 'modules-produit.md : la limite « familles » s\'ouvre sur la phrase de la vitrine.');
 
         $wholeSpec = $this->normalize($spec);
         self::assertStringContainsString('J-14 / J-7 / J-3', $wholeSpec, 'modules-produit.md : rappels des périodes posées.');
@@ -291,31 +496,54 @@ final class LandingClaimsTest extends TestCase
      */
     public function testAiImportClaimsLeaveCoachesAndRulesToTheManager(): void
     {
+        $title = 'Faut-il tout ressaisir pour démarrer avec ' . $this->config('brand') . ' ?';
         $answer = null;
-        foreach ($this->parse('index.html')->querySelectorAll('#faq details') as $question) {
-            if (str_starts_with($this->text($question, 'summary'), 'Il faut tout ressaisir à la main ?')) {
+        foreach ($this->parse('faq.html')->querySelectorAll('details.fq-item') as $question) {
+            if ($title === $this->text($question, 'summary .q')) {
                 $answer = $this->text($question, '.a');
             }
         }
-        self::assertNotNull($answer, 'FAQ « Il faut tout ressaisir à la main ? » absente.');
-        self::assertStringContainsString('il reste à ajouter vos coachs et vos règles', $answer);
+        self::assertNotNull($answer, "FAQ « {$title} » absente de faq.html.");
+        self::assertStringContainsString('Il reste à ajouter vos coachs et vos règles', $answer);
 
-        self::assertStringContainsString('il ne reste qu\'à ajouter vos coachs et vos règles', $this->text($this->parse('evolutions.html'), 'article#v1-3-0'));
-        self::assertStringContainsString('Les coachs et les contraintes se saisissent ensuite', $this->visibleText('fonctionnalites.html'));
+        self::assertStringContainsString('Il ne reste qu\'à ajouter vos coachs et vos règles.', $this->typographyFree($this->text($this->parse('evolutions.html'), 'article#v1-3-0')));
+        self::assertStringContainsString('Les coachs et les contraintes se saisissent ensuite.', $this->typographyFree($this->visibleText('fonctionnalites.html')));
     }
 
     /**
-     * Promesse (D7, F14) : le gain de temps n'est jamais promis — « moins de deux heures » est
-     * présenté comme « notre but », et sur « Qui fait » seulement.
+     * Promesse (D7, F14) : le gain de temps n'est jamais promis — « Moins de 2 heures » est présenté
+     * sous « Notre but », dit « un but, pas encore une mesure », et sur « Qui fait » seulement : aucune
+     * autre page ne cite 2 heures, deux heures ni les 35 heures du planning à la main.
      */
     public function testOutcomeFiguresStayOnQuiFaitAsAGoal(): void
     {
-        self::assertMatchesRegularExpression('/notre but[^.]*moins de deux heures/u', $this->visibleText('qui-fait.html'));
+        $quiFait = $this->visibleText('qui-fait.html');
+        self::assertMatchesRegularExpression('/Notre but[^.]*Moins de 2 heures/u', $quiFait);
+        self::assertStringContainsString('Un but, pas encore une mesure.', $quiFait);
         foreach ($this->pages() as $page) {
-            if ('qui-fait.html' !== $page) {
-                $this->assertAbsent('deux heures', $this->visibleText($page), "« deux heures » hors de qui-fait.html ({$page})");
+            if ('qui-fait.html' === $page) {
+                continue;
             }
+            $text = $this->visibleText($page);
+            $this->assertAbsent('deux heures', $text, "« deux heures » hors de qui-fait.html ({$page})");
+            self::assertSame(0, preg_match('/(?<![\d,])(?:2|35) heures/u', $text), "« 2 heures » ou « 35 heures » hors de qui-fait.html ({$page})");
         }
+    }
+
+    /**
+     * Promesse : « Qui fait » présente la personne derrière le produit — le titre validé, l'éditeur
+     * à titre personnel (gardé par `testPublisherIsWrittenInClearAndMatchesConfig`), et un lien vers
+     * le journal pour voir où en est le projet.
+     */
+    public function testQuiFaitNamesTheFounderAndLeadsToTheJournal(): void
+    {
+        $document = $this->parse('qui-fait.html');
+        self::assertSame('Un joueur de basket, pour son club.', $this->text($document, 'h1'));
+        $journal = [];
+        foreach ($document->querySelectorAll('main a[href]') as $link) {
+            $journal[$this->normalize((string) $link->textContent)] = ltrim((string) $link->getAttribute('href'), '/');
+        }
+        self::assertSame('evolutions.html', $journal['Lire le journal'] ?? null, '« Lire le journal » mène au journal.');
     }
 
     /**
@@ -323,23 +551,21 @@ final class LandingClaimsTest extends TestCase
      * date) ni hors format — le fichier `assets/qui-fait/fondateur.*` et son `<img>` dans
      * `figure.portrait` vont ensemble (ni l'un sans l'autre) ; présents, l'image fait ≤ 800 px, sans
      * Exif/XMP/IPTC (JPEG APP1/APP13) ni `eXIf`/`tEXt`/`iTXt`/`zTXt` (PNG), et son `alt` est
-     * `config.js` `editor`. Vert tant qu'aucun des deux n'existe (photo à venir, suivi Light).
+     * `config.js` `editor`, avec `width` et `height` (la page ne saute pas au chargement). La photo est
+     * livrée : son absence rougit.
      */
     public function testPortraitIsCoupledToThePageAndCarriesNoMetadata(): void
     {
         $files = glob(self::repositoryRoot() . '/landing/assets/qui-fait/fondateur.*') ?: [];
-        $page = self::repositoryRoot() . '/landing/qui-fait.html';
-        $image = is_file($page) ? $this->parse('qui-fait.html')->querySelector('figure.portrait img') : null;
+        $image = $this->parse('qui-fait.html')->querySelector('figure.portrait img');
 
-        if ([] === $files && !$image instanceof Element) {
-            $this->addToAssertionCount(1); // Ni photo ni <img> : état attendu tant que la photo n'est pas fournie.
-
-            return;
-        }
         self::assertCount(1, $files, 'Un <img> de portrait sans son fichier assets/qui-fait/fondateur.* (ou plusieurs fichiers).');
         self::assertNotNull($image, 'Un fichier assets/qui-fait/fondateur.* sans son <figure class="portrait"><img> dans qui-fait.html.');
         self::assertSame('assets/qui-fait/' . basename($files[0]), ltrim((string) $image->getAttribute('src'), '/'), 'Le <img> du portrait pointe un autre fichier.');
         self::assertSame($this->config('editor'), $image->getAttribute('alt'), 'alt du portrait = config.js editor.');
+        foreach (['width', 'height'] as $dimension) {
+            self::assertNotSame('', (string) $image->getAttribute($dimension), "Portrait : {$dimension} absent (la page saute au chargement).");
+        }
 
         $size = getimagesize($files[0]);
         self::assertIsArray($size, 'Le portrait n\'est pas une image lisible.');
@@ -383,9 +609,88 @@ final class LandingClaimsTest extends TestCase
     }
 
     /**
+     * Promesse (P4-275, C20) : le rhabillage des mentions légales n'en change pas un mot — sous le titre
+     * « Qui édite, qui héberge. », le chapô est la phrase LCEN et chaque phrase du texte légal (éditeur,
+     * contact, hébergement, données personnelles, mesure d'audience avec sa dernière phrase, propriété
+     * intellectuelle) figure telle quelle ; les deux renvois à la politique de confidentialité sont des
+     * `[data-cta=privacy]`, le contact un `mailto:`, et « Retour à l'accueil » un `[data-cta=home]`.
+     * Les valeurs en clair (éditeur, hébergeur) : `testPublisherIsWrittenInClearAndMatchesConfig`.
+     */
+    public function testLegalNoticeKeepsItsTextWordForWord(): void
+    {
+        $brand = $this->config('brand');
+        $email = $this->config('contactEmail');
+        $document = $this->parse('mentions-legales.html');
+
+        $title = $this->element($document, 'h1');
+        self::assertSame('Qui édite, qui héberge.', $this->normalize((string) $title->textContent));
+        $lcen = 'Conformément aux articles 6-III et 19 de la loi n° 2004-575 du 21 juin 2004 pour la confiance dans l\'économie numérique (LCEN).';
+        self::assertSame($lcen, $this->typographyFree((string) $title->nextElementSibling?->textContent), 'Le chapô des mentions légales est la phrase LCEN.');
+
+        $text = $this->typographyFree($this->visibleText('mentions-legales.html'));
+        foreach ([
+            'Éditeur du service', 'Responsable de la publication', 'Hébergement', 'Données personnelles', 'Mesure d\'audience', 'Propriété intellectuelle',
+            'Le service ' . $brand . ' est édité par ' . $this->config('editor') . ', ' . $this->config('editorStatus') . '.',
+            'Contact : ' . $email,
+            'Le service est hébergé en France par :',
+            'Le traitement des données personnelles, les durées de conservation et l\'exercice de vos droits (accès, rectification, effacement, portabilité, opposition) sont détaillés dans la politique de confidentialité de l\'application.',
+            'Ce site utilise Umami, une solution de mesure d\'audience auto-hébergée sur notre serveur en France : elle compte les pages vues et la provenance des visites pour nous aider à améliorer cette page. La mesure est anonyme et sans cookie — aucun bandeau de consentement n\'est donc nécessaire. Aucune donnée n\'est transmise à des tiers et aucun suivi n\'est effectué entre différents sites. Le détail de ce traitement figure dans la politique de confidentialité de l\'application.',
+            'La marque ' . $brand . ', le logo, les textes et les visuels de ce site sont la propriété de l\'éditeur. Toute reproduction sans autorisation écrite préalable est interdite.',
+        ] as $sentence) {
+            self::assertStringContainsString($sentence, $text, 'Mentions légales : texte changé ou perdu.');
+        }
+
+        self::assertSame(2, $document->querySelectorAll('[data-cta="privacy"]')->length, 'Deux renvois à la politique de confidentialité ([data-cta=privacy]).');
+        self::assertSame($email, $this->text($document, 'main a[href="mailto:' . $email . '"]'), 'Le contact est un lien mailto:.');
+        self::assertStringContainsString('Retour à l\'accueil', $this->typographyFree($this->text($document, 'main [data-cta="home"]')));
+    }
+
+    /**
+     * Promesse (F5, C5) : sur « Vos données », la carte d'effacement porte la phrase de l'application
+     * ENTIÈRE — titre « Supprimer l'espace du club. » puis, juste dessous, la phrase seule dans son
+     * paragraphe — et le petit schéma (`.vd-line`) vient après elle, jamais à sa place. La page dit
+     * aussi les quatre intervenants qui touchent aux données, et renvoie au détail juridique (politique
+     * de confidentialité de l'application, mentions légales). Parité de la phrase avec l'app :
+     * `testErasureDelayIsTheSameOnTheSiteAndInTheApp`.
+     */
+    public function testErasureCardCarriesTheWholeSentenceBeforeItsDiagram(): void
+    {
+        $document = $this->parse('vos-donnees.html');
+        self::assertSame('Ce que votre club confie lui appartient.', $this->text($document, 'h1'));
+
+        $heading = null;
+        foreach ($document->querySelectorAll('h3') as $candidate) {
+            if (self::ERASURE_TITLE === $this->typographyFree((string) $candidate->textContent)) {
+                $heading = $candidate;
+            }
+        }
+        self::assertInstanceOf(Element::class, $heading, 'Carte d\'effacement : h3 « ' . self::ERASURE_TITLE . ' » absent.');
+        $sentence = $heading->nextElementSibling;
+        self::assertInstanceOf(Element::class, $sentence);
+        self::assertSame('P', $sentence->tagName, 'La phrase d\'effacement suit son titre, dans son propre paragraphe.');
+        self::assertSame(self::ERASURE_SENTENCE, $this->typographyFree((string) $sentence->textContent), 'La carte porte la phrase d\'effacement entière, seule dans son paragraphe.');
+
+        $card = $heading->parentElement;
+        self::assertInstanceOf(Element::class, $card);
+        $order = array_map(static fn (Element $child): string => $child === $sentence ? 'phrase' : ($child->classList->contains('vd-line') ? 'schéma' : ''), $this->childElements($card));
+        self::assertSame(['phrase', 'schéma'], array_values(array_filter($order)), 'Le schéma .vd-line passe sous la phrase, dans la même carte.');
+
+        $who = array_map(fn (Element $b): string => $this->normalize((string) $b->textContent), iterator_to_array($document->querySelectorAll('ul.vd-who > li > b')));
+        self::assertSame(['Scaleway', 'Infomaniak', 'Sentry', 'Umami'], $who, 'Qui intervient : les quatre prestataires.');
+
+        $mentions = false;
+        foreach ($document->querySelectorAll('main a[href]') as $link) {
+            $mentions = $mentions || ('mentions-legales.html' === ltrim((string) $link->getAttribute('href'), '/') && 'mentions légales' === $this->normalize((string) $link->textContent));
+        }
+        self::assertTrue($mentions, '« mentions légales » mène à mentions-legales.html.');
+        self::assertSame('politique de confidentialité', $this->text($document, 'main a[data-cta="privacy"]'));
+    }
+
+    /**
      * Promesse (D9) : la vitrine ne nomme aucune société — aucune n'est immatriculée à ce jour : ni le
      * nom d'éditeur que l'application porte encore (`PUBLISHER_NAME`, `product.ts`, hors lot F7), ni
-     * « micro-entreprise », ni « SIRET », pas même en commentaire de `config.js` ou de `site.js`.
+     * « micro-entreprise », ni « SIRET », pas même en commentaire de `config.js` ou d'un script de
+     * `assets/`.
      */
     public function testLandingNamesNoCompany(): void
     {
@@ -393,7 +698,7 @@ final class LandingClaimsTest extends TestCase
         self::assertSame(1, $matched, 'PUBLISHER_NAME introuvable dans product.ts.');
         $forbidden = [$matches[1], 'micro-entreprise', 'SIRET'];
 
-        $files = ['/landing/config.js', '/landing/assets/site.js'];
+        $files = ['/landing/config.js', ...$this->assetFiles('js')];
         foreach ($this->pages() as $page) {
             $files[] = '/landing/' . $page;
         }
@@ -421,7 +726,7 @@ final class LandingClaimsTest extends TestCase
     }
 
     /**
-     * Segments ou blocs de métadonnées d'une image JPEG/PNG (vide = image propre).
+     * Segments ou blocs de métadonnées d'une image JPEG/PNG (vide = image propre) — portrait et logos des clubs.
      *
      * @return list<string>
      */
@@ -462,6 +767,6 @@ final class LandingClaimsTest extends TestCase
 
             return $found;
         }
-        self::fail('Portrait : format inattendu (JPEG ou PNG attendu).');
+        self::fail('Image : format inattendu (JPEG ou PNG attendu).');
     }
 }

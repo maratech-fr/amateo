@@ -22,7 +22,7 @@ exposes the API, **engine** solves, **frontend** renders (wizard → generate �
 | `backend/` | PHP 8.4 · Symfony 7.4 · API Platform 4.4 · Doctrine ORM 3.7 | `public/index.php` | API, persistence, async orchestration |
 | `engine/` | Python 3.14 · FastAPI · OR-Tools CP-SAT | `app/main.py` | Schedule solver (`POST /generate` · `/place-matches` · `/validate-assignments`) |
 | `frontend/` | TS · React 19 · Vite · Tailwind 4 | `src/main.tsx` | UI — auth · planning work-loop · data-entry wizard |
-| `landing/` | HTML/CSS statique (zéro build) | `index.html` | Vitrine publique, six pages — **hors app**, aucun lien avec `frontend/` ; marque écrite dans le HTML, `config.js` = ce que `assets/site.js` consomme |
+| `landing/` | HTML/CSS statique (zéro build) | `index.html` | Vitrine publique, huit pages — **hors app**, aucun lien avec `frontend/` ; marque écrite dans le HTML, `config.js` = ce que `assets/site.js` consomme |
 | `system-pages/` | HTML/CSS statique (zéro build) | `503.html` | Pages servies **quand l'app est morte** (503 subie + maintenance) — par **Caddy**, hors Docker ; frère de `landing/`, marque jamais en littéral (`.claude/rules/system-pages.md`) |
 | `specs/` | Markdown | `specs/README.md` | Living specs (initiales/courantes/evolution) |
 

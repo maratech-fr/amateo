@@ -1,0 +1,92 @@
+/* ── Journal des évolutions (`evolutions.html`) ─────────────────────────────────
+   Chargée après `site.css`, même `?v=`. Une frise : sur grand écran, les versions alternent de part
+   et d'autre d'une ligne aux trois couleurs du logo, la date posée sur la ligne ; sur petit écran,
+   une colonne, la date en tête de carte. Sans JS, l'alternance suit l'ordre (`nth-of-type`) ; avec
+   JS, `evolutions.js` pose `.r` sur une version visible sur deux (le filtre en cache certaines).
+   Le titre `h2` porte en texte « date — version · titre » (contrat de LandingChangelogTest) : ses
+   séparateurs sont rendus à taille nulle, chaque morceau a sa place. */
+
+/* ── Filtre par thème (JS seulement) ── */
+.jr-f { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.jr-f button {
+  min-height: 44px; border: 2px solid var(--b-floor); background: transparent; color: var(--b-floor);
+  border-radius: 999px; padding: 7px 16px; font-weight: 800; font-size: 14.5px;
+}
+.jr-f button:hover { background: var(--a-soft); }
+.jr-f button[aria-pressed="true"] { background: var(--b-floor); color: var(--b-line); }
+/* Anneau de focus foncé : sur la puce choisie (texte clair), `currentColor` ne se voit pas. */
+.jr-f button:focus-visible { outline: 3px solid var(--b-fg); outline-offset: 3px; }
+.jr-f span { margin-left: auto; font-size: 14px; font-weight: 600; color: var(--b-muted); }
+
+/* ── La frise ── */
+.jr { position: relative; display: grid; gap: 22px; padding-block: 6px; }
+.jr::before {
+  content: ""; position: absolute; top: 0; bottom: 0; left: 9px; width: 4px; margin-left: -2px;
+  border-radius: 4px; background: linear-gradient(var(--magenta), var(--orange), var(--teal));
+}
+.release {
+  position: relative; margin-left: 34px; min-width: 0;
+  background: #ffffff; border-radius: 18px; padding: 18px 20px;
+  box-shadow: 0 14px 30px -26px #000000aa;
+  display: grid; gap: 10px; align-content: start;
+}
+/* Le point de la frise, en face de la date. */
+.release::after {
+  content: ""; position: absolute; top: 24px; left: -31px; width: 14px; height: 14px; border-radius: 50%;
+  background: var(--b-floor); box-shadow: 0 0 0 4px var(--b-board);
+}
+
+/* Thème : une pastille par famille. */
+.release .topic { justify-self: start; border-radius: 999px; padding: 3px 11px; font-size: 12.5px; font-weight: 800; line-height: 1.4; }
+.release[data-topic="planning"] .topic { background: var(--a-soft); color: var(--teal-ink-soft); }
+.release[data-topic="matchs"] .topic { background: #f7dff0; color: #7d1160; }
+.release[data-topic="coachs"] .topic { background: #fdecd2; color: #7a4500; }
+.release[data-topic="bureau"] .topic { background: #e3ecea; color: var(--b-floor); }
+.release[data-topic="lancement"] .topic { background: var(--scoreboard); color: var(--score-ink); }
+
+/* Date, version, titre. */
+.release h2 { display: flex; flex-wrap: wrap; align-items: center; row-gap: 8px; font-size: 0; line-height: 0; }
+.release h2 time {
+  margin-right: 10px; border-radius: 999px; padding: 4px 10px;
+  background: var(--scoreboard); color: var(--score-ink);
+  font-size: 11.5px; line-height: 1.3; font-weight: 800; letter-spacing: .06em; text-transform: uppercase;
+}
+.release h2 .ver { font-size: 13px; line-height: 1.3; font-weight: 800; color: var(--teal-ink); letter-spacing: .02em; }
+.release:first-of-type h2 .ver::before { content: "Dernière mise en ligne · "; }
+.release h2 .ttl {
+  flex-basis: 100%; margin-top: 2px; color: var(--b-fg);
+  font-size: clamp(20px, 2.4vw, 26px); line-height: 1.15; font-weight: 800; letter-spacing: -.01em; text-wrap: balance;
+}
+.release p { font-size: 15.5px; color: var(--b-muted); }
+.release p.jr-lead { font-size: 16.5px; font-weight: 600; color: var(--b-fg); }
+
+/* La dernière mise en ligne, sur le parquet. */
+.release:first-of-type { background: var(--b-floor); color: var(--b-line); }
+.release:first-of-type p { color: var(--b-soft); }
+.release:first-of-type p.jr-lead,
+.release:first-of-type h2 .ttl { color: var(--b-line); }
+.release:first-of-type h2 .ver { color: var(--peach); }
+.release:first-of-type::after { background: var(--orange); }
+
+/* Grand écran : la ligne au centre, les versions de part et d'autre, la date sur la ligne. */
+@media (min-width: 821px) {
+  .jr { gap: 26px; }
+  .jr::before { left: 50%; }
+  .release { margin-left: 0; width: calc(50% - 56px); justify-self: start; padding: 20px 22px; }
+  .release.r,
+  html:not(.js) .release:nth-of-type(even) { justify-self: end; }
+  .release::after { top: 30px; left: auto; right: -18px; width: 18px; height: 4px; border-radius: 0; box-shadow: none; background: var(--b-floor); }
+  .release.r::after,
+  html:not(.js) .release:nth-of-type(even)::after { right: auto; left: -18px; }
+  .release h2 time {
+    position: absolute; top: 16px; right: -94px; width: 76px; margin: 0;
+    border-radius: 12px; padding: 8px 6px; text-align: center; font-size: 12px; line-height: 1.3;
+  }
+  .release.r h2 time,
+  html:not(.js) .release:nth-of-type(even) h2 time { right: auto; left: -94px; }
+  .release:first-of-type h2 time { box-shadow: 0 0 0 3px var(--orange); }
+}
+
+@media (max-width: 720px) {
+  .release p { font-size: 16px; }
+}
