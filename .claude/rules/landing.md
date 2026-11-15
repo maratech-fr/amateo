@@ -131,8 +131,8 @@ paths:
   L'en-tête = logotype + « Se connecter » + « Essayer gratuitement » (liens directs de `nav.top`,
   `data-cta`) + burger : un `<details class="nav-menu">`/`<summary>` NATIF (ouvre/ferme **sans JS** ;
   le JS n'ajoute que le confort : miroir `aria-expanded`, fermeture au clic sur un lien du panneau ou
-  hors du menu, Échap → ferme et rend le focus au burger). Le panneau porte les **quatre** liens de
-  navigation seulement (« Comment ça marche », « Fonctionnalités », « Offres », « FAQ »), jamais les
+  hors du menu, Échap → ferme et rend le focus au burger). Le panneau porte les **cinq** liens de
+  navigation seulement (« Comment ça marche », « Fonctionnalités », « Offres », « FAQ », « Journal » — ajouté le 2026-11-15), jamais les
   deux boutons en double ; carte de 280 px calée sous le burger ≥641px, pleine largeur sous l'en-tête
   sticky ≤640px ; **pas de scroll-lock**. ≤440px le mot du logotype (`.logo-word`) est masqué
   visuellement, la marque restant portée par l'`aria-label` du lien. Chaque `href` est écrit en clair

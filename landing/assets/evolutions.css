@@ -70,11 +70,16 @@
 
 /* Grand écran : la ligne au centre, les versions de part et d'autre, la date sur la ligne. */
 @media (min-width: 821px) {
-  .jr { gap: 26px; }
+  /* Deux files indépendantes (flottants) : une version à droite remonte sous la précédente de gauche
+     au lieu d'attendre qu'elle finisse, plus de grand vide d'un côté. */
+  .jr { display: flow-root; }
   .jr::before { left: 50%; }
-  .release { margin-left: 0; width: calc(50% - 56px); justify-self: start; padding: 20px 22px; }
+  .release {
+    float: left; clear: left; margin: 0 0 26px; width: calc(50% - 56px); padding: 20px 22px;
+  }
   .release.r,
-  html:not(.js) .release:nth-of-type(even) { justify-self: end; }
+  html:not(.js) .release:nth-of-type(even) { float: right; clear: right; }
+  html:not(.js) .release:nth-of-type(2) { margin-top: 72px; }
   .release::after { top: 30px; left: auto; right: -18px; width: 18px; height: 4px; border-radius: 0; box-shadow: none; background: var(--b-floor); }
   .release.r::after,
   html:not(.js) .release:nth-of-type(even)::after { right: auto; left: -18px; }
@@ -85,6 +90,13 @@
   .release.r h2 time,
   html:not(.js) .release:nth-of-type(even) h2 time { right: auto; left: -94px; }
   .release:first-of-type h2 time { box-shadow: 0 0 0 3px var(--orange); }
+}
+
+/* Au survol, la version et sa date s'entourent de la même couleur : la date flotte sur la frise, on voit
+   à quelle version elle appartient. (La date est dans la carte : survoler l'une, c'est survoler l'autre.) */
+@media (hover: hover) {
+  .release:hover { box-shadow: 0 0 0 3px var(--orange), 0 14px 30px -26px #000000aa; }
+  .release:hover h2 time { box-shadow: 0 0 0 3px var(--orange); }
 }
 
 @media (max-width: 720px) {

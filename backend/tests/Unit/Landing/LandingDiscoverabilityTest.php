@@ -511,7 +511,7 @@ final class LandingDiscoverabilityTest extends TestCase
     /**
      * Promesse (D2, C1 ; décision fondateur 2026-11-14) : où qu'il arrive, le visiteur retrouve le
      * même en-tête — logotype vers `/`, puis SEULEMENT « Se connecter » et « Essayer gratuitement »
-     * en boutons directs ; les quatre liens de navigation ne vivent QUE dans le panneau du burger
+     * en boutons directs ; les cinq liens de navigation ne vivent QUE dans le panneau du burger
      * natif (`details.nav-menu`, ouvrable sans JS), jamais en double hors de lui. Seul
      * `aria-current="page"` change d'une page à l'autre. Le logotype remplace « Accueil ».
      */
@@ -526,6 +526,7 @@ final class LandingDiscoverabilityTest extends TestCase
             'Fonctionnalités' => ['href', 'fonctionnalites.html'],
             'Offres' => ['href', 'offres.html'],
             'FAQ' => ['href', 'faq.html'],
+            'Journal' => ['href', 'evolutions.html'],
         ];
         $home = $this->element($this->parse('index.html'), 'header.site');
         $reference = $this->headerWithoutCurrentPage($home);
