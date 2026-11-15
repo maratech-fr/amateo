@@ -2145,17 +2145,18 @@ jobs:
       # this job even though no dev build uses those targets.
       # Runner auto-hébergé (démon persistant, partagé) : tags `scan-<run>-<tentative>/…` propres
       # au run (deux runs ne se marchent pas dessus ; ci-stack-down et le hook du runner les
-      # retirent) et `--pull` (la base est tirée fraîche, pas celle d'un run ancien). Ce que ce
-      # job ne prouve plus sur le runner : un build DE ZÉRO (cache du démon) — deploy.yml, chez
-      # GitHub, le prouve à chaque release.
+      # retirent). `--pull` tire la base fraîche, mais sur le démon persistant il ne casse pas le
+      # cache d'une couche `RUN` : une couche `apt` périmée a fait juger par Trivy une version
+      # déjà corrigée dans le Dockerfile. Le scan doit juger des images construites de zéro,
+      # comme celles que livre deploy.yml : d'où `--no-cache` sur chaque build prod.
       - name: Build prod images
         run: |
-          docker build --pull --target prod -f docker/php/Dockerfile -t scan-${{ github.run_id }}-${{ github.run_attempt }}/php-prod .
-          docker build --pull --target nginx-prod -f docker/php/Dockerfile -t scan-${{ github.run_id }}-${{ github.run_attempt }}/nginx-prod .
-          docker build --pull --target prod -f docker/frontend/Dockerfile -t scan-${{ github.run_id }}-${{ github.run_attempt }}/frontend-prod .
-          docker build --pull --target prod -f docker/engine/Dockerfile -t scan-${{ github.run_id }}-${{ github.run_attempt }}/engine-prod .
-          docker build --pull -f docker/postgres/Dockerfile.prod -t scan-${{ github.run_id }}-${{ github.run_attempt }}/postgres-prod .
-          docker build --pull -f docker/pdf-worker/Dockerfile -t scan-${{ github.run_id }}-${{ github.run_attempt }}/pdf-worker .
+          docker build --pull --no-cache --target prod -f docker/php/Dockerfile -t scan-${{ github.run_id }}-${{ github.run_attempt }}/php-prod .
+          docker build --pull --no-cache --target nginx-prod -f docker/php/Dockerfile -t scan-${{ github.run_id }}-${{ github.run_attempt }}/nginx-prod .
+          docker build --pull --no-cache --target prod -f docker/frontend/Dockerfile -t scan-${{ github.run_id }}-${{ github.run_attempt }}/frontend-prod .
+          docker build --pull --no-cache --target prod -f docker/engine/Dockerfile -t scan-${{ github.run_id }}-${{ github.run_attempt }}/engine-prod .
+          docker build --pull --no-cache -f docker/postgres/Dockerfile.prod -t scan-${{ github.run_id }}-${{ github.run_attempt }}/postgres-prod .
+          docker build --pull --no-cache -f docker/pdf-worker/Dockerfile -t scan-${{ github.run_id }}-${{ github.run_attempt }}/pdf-worker .
 
       # SEC A19 — Trivy sur les images PROD fraîchement construites : les paquets
       # OS (openssl, libc, nginx…) sont l'angle mort de dependency-audit, qui ne
