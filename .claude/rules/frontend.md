@@ -9,6 +9,9 @@ paths:
 > routage, état serveur/client, primitives, a11y). Il porte **seulement ce qui, non
 > su, rend un test VERT à tort** — parce que ces règles-là doivent être en contexte sans que
 > personne ait à penser à les chercher.
+>
+> Une norme d'écran nouvelle ne naît plus avec sa garde statique. Une garde statique neuve n'entre
+> que pour la sécurité ou un geste destructeur.
 
 - 🔴 **Le front n'invente JAMAIS une règle métier — il AFFICHE celle que le backend a calculée.**
   Toute logique qui répond « qu'est-ce qui s'applique / que fait le solveur / ce geste est-il
@@ -268,8 +271,8 @@ paths:
   typo de clé = erreur `tsc`). Gardé par `frontend/src/test/hardcodedTextGuard.test.ts` (liste
   nominative `MIGRATED_FILES` : dans un écran listé, un nœud texte JSX littéral ≥ 3 lettres, ou un
   littéral FR dans `title=`/`aria-label=`/`placeholder=`/`message=`/`label=`/`legend=`/`description=`/`confirmLabel=`/`confirmPhrase=`, rougit ; largeur
-  documentée, exemptions ≤ 5 motivées ; `texts.ts` hors portée). **Chaque PR qui touche un écran le
-  MIGRE et l'ajoute à `MIGRATED_FILES`** — la migration ne recule jamais. Côté test : un test vérifie
+  documentée, exemptions ≤ 5 motivées ; `texts.ts` hors portée). **`MIGRATED_FILES` est gelée** : la liste ne
+  grandit plus, un écran qui y figure reste policé. Côté test : un test vérifie
   la CLÉ (`getByText(PLANNING_TEXTS.evictTitle)`), jamais la phrase recopiée ; nouvelle assertion →
   viser d'abord `getByRole(…, { name })`. Vague 1 (PR7) : cockpit `RadarPanel`/`DayDialog`, planning
   `PlanningPage`/`SlotDetail`/`DiagnosticsPanel`/`EvictConfirmDialog` (littéraux et messages de repli dans `PLANNING_TEXTS`), matchs `ConflictLine`, assistant
@@ -415,8 +418,8 @@ paths:
   `.innerHTML =`, `getHTML(`, `srcDoc` hors `sandbox=""` (gardé par `src/test/noInnerHtmlGuard.test.ts`,
   zéro exemption). Le bleu des notes est le jeton de texte `text-info` (`--info`), gardé AA par
   `a11y-contrast.spec.ts`. → `docs/security/rich-content.md`.
-- **TDD obligatoire**, RED prouvé avant l'implémentation
-  ([`../../frontend/docs/frontend-strategy.md`](../../frontend/docs/frontend-strategy.md) §1).
+- **Un test front s'écrit pour ce que seul l'écran porte : un geste, une donnée affichée, un état lié à une règle métier, et tout bug corrigé côté écran — jamais pour une classe, une couleur, un libellé ou un placement.** Il s'écrit RED avant l'implémentation
+  ([`../../frontend/docs/frontend-strategy.md`](../../frontend/docs/frontend-strategy.md) §1) ; un composant de pure présentation naît sans test, prouvé par capture.
 - **Passe de design `ui-ux-pro-max`** (dans un agent — elle ne MESURE rien, mais elle TRANCHE une
   décision contre son corpus) dès qu'un écran naît, change d'apparence, **ou qu'une décision
   d'INTERACTION est arrêtée** : ce qui bloque, ce qui attend, ce qui prend le focus, ce qui

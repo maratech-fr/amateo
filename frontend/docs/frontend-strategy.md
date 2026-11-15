@@ -10,11 +10,11 @@
 
 ---
 
-## 1. Testing Strategy — TDD Mandatory
+## 1. Testing Strategy — RED first, for what only the screen carries
 
-**TDD is MANDATORY for all frontend work. Write tests FIRST, watch them fail (RED), implement minimal to pass (GREEN), then refactor (REFACTOR).**
+**Un test front s'écrit pour ce que seul l'écran porte : un geste, une donnée affichée, un état lié à une règle métier, et tout bug corrigé côté écran — jamais pour une classe, une couleur, un libellé ou un placement** (ceux-là se prouvent par capture). Ce test s'écrit FIRST, on le regarde échouer (RED), on implémente le minimum pour le faire passer (GREEN), puis on refactore (REFACTOR). Un composant de pure présentation naît sans test.
 
-Aucune exception. Chaque composant, hook, store, route et intégration API doit suivre le
+Chaque composant, hook, store, route et intégration API qui porte l'un de ces quatre cas suit le
 cycle RED → GREEN → REFACTOR avant d'être considéré livrable.
 
 ### Règles d'application
@@ -25,9 +25,9 @@ cycle RED → GREEN → REFACTOR avant d'être considéré livrable.
 | **GREEN** | Implémenter le code minimal pour faire passer le test. Pas de code défensif non testé. Pas de feature non demandée. | Tous les tests du cycle passent (exit 0). |
 | **REFACTOR** | Améliorer la structure (extraction, renommage, typage) sans changer le comportement. Re-lancer les tests après chaque refactor. | Tests toujours verts après refactor. |
 
-### Périmètre de test obligatoire
+### Périmètre de test
 
-- **Composants UI** : tests de rendu (React Testing Library) — props, états, accessibilité ARIA.
+- **Composants UI** : gestes, données affichées, états liés à une règle métier (React Testing Library) et accessibilité ARIA — pas l'apparence.
 - **Hooks personnalisés** : `renderHook` + scénarios de cycle de vie.
 - **Stores Zustand** : tests d'état, d'actions, de `persist`/`migrate`.
 - **Queries TanStack Query** : tests avec un `QueryClient` de test **réel** (`renderHook`,

@@ -9,9 +9,13 @@
 
 ## 0. Règles fondateur
 
-- **Behat = enchaînement fonctionnel de bout en bout**, calqué sur un geste réel de gestionnaire
-  (je me connecte, j'importe, je déclenche, ça me donne ça). Un scénario qui ne prouve qu'UNE chose
-  est proscrit — PHPUnit est là pour ça.
+- **Behat est le CONTRAT.** Chaque promesse métier se lit dans un scénario Gherkin français, écrit
+  ROUGE avant le code — correctif urgent compris. Un scénario est un enchaînement de bout en bout,
+  calqué sur un geste réel de gestionnaire (je me connecte, j'importe, je déclenche, ça me donne
+  ça) ; une décision de comportement s'écrit comme une étape d'un enchaînement existant quand il en
+  existe un, comme un scénario neuf sinon.
+- **Un test ne s'écrit que pour une décision de comportement.** Couleur, libellé et placement se
+  prouvent par capture, sans test.
 - **E2E = parcours navigateur + les contrôles que seul le navigateur peut faire** (contraste,
   reflow, en-têtes nginx, hit-testing, pixel-diff, flux SSE Mercure).
 - **Réduire le nombre sans baisser la qualité.** Un scénario ne part que si un test plus bas,
@@ -26,17 +30,16 @@
 - **Les doublons sont ACCEPTÉS — voire voulus — sur les points sensibles** (plusieurs angles sur la
   même vérité) ; HORS de ces points, un test qui existe sous plusieurs formes sans plus-value part.
 
-## 1. Points sensibles (où le doublon est voulu)
+## 1. Le sensible (où le doublon est voulu) et les tests sous Behat
 
-Un test à un second niveau, ou un angle de plus, ne se justifie que sur un **point sensible** :
+Un test à un second niveau, ou un angle de plus, ne se justifie que sur le **sensible**, liste
+fermée : **isolation entre clubs · tests d'abus (§5) · moteur · axes §7.1** (`CLAUDE.md`). Hors de
+cette liste, un seul angle suffit, et un second est une dette à retirer.
 
-- génération de saison · reprise · fermeture de gymnase · matchs · sécurité · tenant ·
-  mutualisation · manipulation de planning · solveur ;
-- cycle de vie du planning · pipeline de génération · périmètre engagé · export.
+Un test sous Behat ne s'écrit que si le plan le nomme, dans trois cas : une logique à nombreux cas ; la non-régression d'un axe §7.1 ; ce que seul l'écran porte : un geste, une donnée affichée, un état lié à une règle métier, et tout bug corrigé côté écran.
 
-**Saisie — mitigée, par ordre d'importance** : **contraintes** (sensible, doublons tolérés) >
-**équipes = gymnases** (un seul angle) > **coachs** (le moins important). Hors points sensibles, un
-seul angle suffit, et un second est une dette à retirer.
+Un test nommé par le plan pour une logique à nombreux cas n'est pas un second angle : il prouve les
+cas, le scénario prouve la promesse.
 
 ## 2. La charte des niveaux
 
@@ -46,7 +49,7 @@ dépôt**.
 ### Behat (`backend/features/`, Gherkin FR, API réelle)
 - **Doit** : rejouer un ENCHAÎNEMENT métier de bout en bout sur un décor réaliste préparé par l'API
   (connexion → saisie → déclenchement → vérité). Une feature = une promesse métier.
-- **Ne doit jamais** : prouver une seule règle isolée (→ PHPUnit), ni préparer son décor par SQL
+- **Ne doit jamais** : porter à lui seul une logique à nombreux cas (→ test nommé par le plan), ni préparer son décor par SQL
   direct (sauf nettoyage/pointage), ni dépendre d'une API externe réelle (FFBB).
 - **Exemple** : `generation-du-planning-de-saison.feature` (le seul smoke plein format A→Z).
 
@@ -60,8 +63,9 @@ dépôt**.
   `a11y-contrast.spec.ts` (contraste calculé, invisible à jsdom).
 
 ### PHPUnit (`backend/tests/`)
-- **Doit** : prouver UNE règle serveur (garde, invariant, calcul) au plus bas coût, témoin
-  falsifiable ; un NR d'axe §7.1 y vit et GATE via `ci.yml` + `blocking-tests.md`.
+- **Doit** : prouver une logique à nombreux cas que le plan nomme, ou une garde du sensible
+  (invariant, calcul), au plus bas coût, témoin falsifiable ; un NR d'axe §7.1 y vit et GATE via
+  `ci.yml` + `blocking-tests.md`.
 - **Ne doit jamais** : rejouer tout un parcours (→ Behat), ni rester vert une garde désactivée (une
   garde doublée « en défense en profondeur » sur le même chemin d'écriture peut rendre le NR
   intestable — falsifier, pas lire).
@@ -78,9 +82,9 @@ vivre dans un test de code VIVANT (garde API/service), jamais dépendre du test 
 preuve.
 
 ### Vitest (`frontend/src/**`, jsdom + RTL)
-- **Doit** : prouver un comportement de composant / un état (rendu, branche, redérivation interdite)
-  en mutant la PROD, pas le mock.
-- **Ne doit jamais** : prétendre tester le contraste ou le reflow (jsdom n'a aucun moteur de
+- **Doit** : prouver ce que seul l'écran porte (§1) en mutant la PROD, pas le mock (redérivation
+  interdite).
+- **Ne doit jamais** : porter une classe, une couleur, un libellé ou un placement ; prétendre tester le contraste ou le reflow (jsdom n'a aucun moteur de
   layout → vert par construction, il n'atteste rien ; un garde STATIQUE le remplace avant le scan
   Playwright) ni valider une version périmée dans l'image tooling (la rebâtir AVANT).
 - **Exemple** : `EvictConfirmDialog.test.tsx` (le verdict d'un déplacement vers une case occupée).
@@ -111,9 +115,9 @@ preuve.
   `getByRole('heading', { name: … })`) plutôt que la phrase exacte (`getByText("…")`) quand c'est
   possible — robuste au changement de libellé, porteur de sens a11y.
 - La vérification d'un TEXTE précis passe par les **clés de textes centralisées** (fondation PR7,
-  cf. ci-dessous) : un test vérifie la CLÉ, jamais la phrase recopiée. Sur un écran pas encore
-  migré, un libellé en dur recopié reste toléré là où le rôle ne discrimine pas — on n'en ajoute
-  pas sans nécessité, et migrer l'écran est le bon réflexe.
+  cf. ci-dessous) : un test vérifie la CLÉ, jamais la phrase recopiée. Sur un écran hors de la
+  liste, un libellé en dur recopié reste toléré là où le rôle ne discrimine pas — on n'en ajoute
+  pas sans nécessité.
 
 ### Textes centralisés (fondation PR7)
 
@@ -131,8 +135,8 @@ preuve.
   nominative `MIGRATED_FILES`. Dans un écran listé, un nœud texte JSX littéral ≥ 3 lettres ou un
   littéral FR dans `title=`/`aria-label=`/`placeholder=`/`message=`/`label=` rougit. Largeur
   documentée (reliquat helper-returned / interpolation mêlée → revue) ; exemptions ≤ 5 motivées.
-  `texts.ts` est hors portée (il DÉTIENT les littéraux). **Chaque PR qui touche un écran le migre et
-  l'ajoute à `MIGRATED_FILES`** ; la migration ne recule jamais.
+  `texts.ts` est hors portée (il DÉTIENT les littéraux). **`MIGRATED_FILES` est gelée** : la liste ne
+  grandit plus, et les écrans qui y figurent restent policés.
 - **Les E2E gardent leurs littéraux** (`tests/e2e/` hors portée) : témoin indépendant des clés.
 - **Suite progressive (reliquat de la vague 1, à ne pas perdre)** : deux clés de `COCKPIT_TEXTS` —
   `weeksCoveredCount` et `venueUnavailableTitle` — sont des **oracles de TEST simplifiés** (pluriel /
@@ -350,3 +354,51 @@ l'import des équipes FBI est le premier geste de journey)* · 4. Incident consu
 5. Incident re-daté · 6. Mutualiser en cours de route (`mutualize`) · 7-8-9. Matchs : placer/traiter,
 consulter/filtrer (+ FBI à faire), file d'import — réunis dans `matches.spec.ts` · 10. Transition de
 saison. P2 / P6 / P7 n'ont pas d'E2E (aucun geste que seul le navigateur prouve).
+
+## 7. La boucle de travail sous contrat Behat : des créneaux courts
+
+La stack d'épreuve est unique. Elle se prend pour une preuve et se rend aussitôt ; entre deux
+créneaux, l'agent travaille sur le socle de test privé de son worktree, si bien que plusieurs
+chantiers à comportement serveur avancent en parallèle.
+
+| Créneau | Qui | Pour quoi | Il la rend |
+|---|---|---|---|
+| Rouge | `tank` | Jouer sa suite seule, la voir rouge pour la bonne raison, noter sa durée | Dès le rouge constaté |
+| Vert | `neo` | Rejouer cette suite jusqu'au vert | Au vert, ou après trois essais ou trente minutes |
+| Falsification | `tank` | Couper la garde et voir le rouge, la rétablir et voir le vert, puis jouer les suites de la zone touchée | À la fin |
+
+- **Prendre** : `make epreuve-status`, puis `make epreuve-up WT=<worktree>`. Une seule suite :
+  `vendor/bin/behat --suite=<nom>` dans le conteneur PHP de la stack d'épreuve (`make -C backend
+  behat` joue tout et redémarre les workers).
+- **Rendre** : aucun run Behat en cours (on attend sa fin : un run tué laisse des générations
+  fantômes) ; `make epreuve-down` ; son travail commité dans son worktree ; une ligne au rapport —
+  suite jouée, verdict, durée. L'occupant suivant repart d'une base PostgreSQL vide et reseedée
+  (`epreuve-up` la refait à chaque montée).
+- **Redis garde ses volumes à la descente** : file Messenger et verrous de génération et de
+  placement par club. Un message ou un verrou survivant ferait prendre au créneau suivant un 409
+  étranger à son code. Avant de rendre après un run tué, un créneau coupé à trente minutes ou une
+  génération encore en file, l'occupant réconcilie les générations bloquées, vide la file et retire
+  les clés de verrou une par une — jamais `FLUSHALL` — et le note dans sa ligne de rapport.
+- **Une montée coûte** l'infra, l'installation, les clés JWT, la base vidée et migrée, trois seeds,
+  la stack complète et le contrôle d'isolation ; un chantier en paie au moins trois au lieu d'une,
+  c'est le prix du parallèle. Le premier créneau mesure la durée d'une montée et l'écrit ici.
+- **Occupée** : `make epreuve-up` refuse et nomme l'occupant. L'agent continue sur son socle privé,
+  relit `make epreuve-status` par une attente bornée à trente minutes, puis rend la main à
+  l'orchestrateur, qui tient la file. Jamais `epreuve-down` ni `epreuve-destroy` sur la stack d'un
+  autre, jamais Behat sur la stack du fondateur, jamais une seconde stack.
+- **`neo` entre deux créneaux** code contre le texte du scénario rouge ; sur son socle privé,
+  `make -C backend phpstan`, `cs`, `rector`, puis `make -C backend tests-complete` pour l'existant
+  (`make -C frontend test` côté front) ; le test à nombreux cas, si le plan en nomme un, est déjà
+  écrit par `tank` et tourne sur ce socle. Il redémarre le moteur de la stack d'épreuve s'il l'a
+  touché, au début de son créneau.
+- **Correctif urgent** : l'orchestrateur déclare l'urgence ; le chantier qui tient la stack finit
+  son run en cours et fait `make epreuve-down` ; le correctif enchaîne ses créneaux sans la rendre
+  (rouge de `tank`, vert de `neo`, falsification) ; le chantier interrompu la reprend par une
+  nouvelle montée. Le contrat n'a pas d'exception : pas de correctif sans scénario rouge.
+- **Correctif passé par la branche `release`** : le worktree part de `origin/release`, la stack
+  d'épreuve monte ce code, le scénario se prouve de la même façon, en priorité. Aucun run `ci.yml`
+  n'existe pour cette PR : `make -C backend tests-complete` et les suites Behat de la zone touchée,
+  en local, sont les seules preuves avant le GO. Le report sur `main` est une PR ordinaire : scénario
+  et correctif y jouent le gate complet.
+- **Ce qui n'y passe pas** : ce que seul l'écran porte se prouve par `make -C frontend test`,
+  permis en worktree nu.

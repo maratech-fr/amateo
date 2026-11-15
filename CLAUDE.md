@@ -166,14 +166,16 @@ la branche modifie un fichier déjà modifié par une PR ouverte** — avant d'o
 intersection non vide = la branche attend le merge ; les autres branches attendent.
 **Branche `release`** = iso-prod, pilotée par le workflow de déploiement (recalée sur le commit
 déployé) — **jamais de commit direct** ; correctif rapide = PR vers `release` puis report sur `main`
-(`docs/ops/deploy.md`).
+(`docs/ops/deploy.md`). Un correctif passé par `release` n'a aucun run `ci.yml` : son scénario se
+prouve sur la stack d'épreuve, `make -C backend tests-complete` tourne en local, et son report sur
+`main` rejoue le gate complet.
 
 **Deux lanes — choisir AVANT de commencer et le dire** :
 - **Full** (défaut : feature, comportement/API/schéma, axe §7.1).
 - **Light** (TOUTES : ≤2 fichiers, zéro comportement/API/schéma, zéro axe) : implémenter →
   tests verts → `documentation-update` → PR → GO user. **Tout code applicatif passe par `neo`,
   dans les deux lanes** — l'orchestrateur ne code jamais ; en Light, pas de `tank`
-  séparé (règle 2026-10-30).
+  séparé (règle 2026-10-30). Zéro comportement, donc zéro test ; si un test s'impose, la voie est Full.
 
 **Cycle full lane** :
 0. **Lire le CODE avant d'analyser** — tout constat vérifié (grep/read/test) et cité
@@ -183,20 +185,24 @@ déployé) — **jamais de commit direct** ; correctif rapide = PR vers `release
    questions qui décident. **Il ne tranche rien** : la direction se règle en discussion. **User
    valide — pas de `/plan` avant.** Jamais un identifiant (P4-…, D…) sans son contenu en une phrase.
 2. `/plan` (agent `morpheus`, porte la checklist §9 — dont **contrats nouveaux** et **tableau
-   décision → test**, qui est le brief de `tank`, **carte des conséquences** et **parcours de bout en bout**) ; `smith`
+   comportement → scénario**, qui est le brief de `tank`, **carte des conséquences** et **parcours de bout en bout**) ; `smith`
    **obligatoire** si le plan touche moteur, génération, wizard ou axe §7.1, optionnel sinon. User valide.
-3. **Tests ROUGES d'abord** (agent `tank`, depuis la promesse) puis implémenter **strictement dans
-   le scope** (agent `neo`, zéro refactor opportuniste) jusqu'au vert — `neo` adapte MÉCANIQUEMENT un
-   test (renommage/signature), jamais n'en crée ni n'en supprime (option A, charte `docs/testing/`).
+3. **Le contrat d'abord** : pour chaque décision de COMPORTEMENT, `tank` écrit le scénario Behat en
+   français, ROUGE ; un test ne s'écrit jamais pour une couleur, un libellé ou un placement. `neo`
+   implémente **strictement dans le scope** (zéro refactor opportuniste) jusqu'au vert et n'adapte un
+   test que MÉCANIQUEMENT (renommage/signature), jamais n'en crée ni n'en supprime (option A, charte
+   `docs/testing/tests-par-parcours.md`).
 4. **NR obligatoire si axe §7.1 touché — même PR, porté par `tank`.** ⚠ `phase1` ne gate pas (§4) :
    un NR qui doit gater = step `ci.yml` **ET** ligne `docs/testing/blocking-tests.md`, même PR — sinon le dire.
-5. **« Résolu » ne se dit qu'après avoir testé les variantes du cas** (réservé, libre, période ; règle
-   fondateur 2026-10-30). **Tests verts en local avant de proposer le merge** : `/validation-runner` (suite ciblée +
-   contrats cross-zone). **Behat** : le gate est le job CI `functional-tests` (required check,
-   §4) — plus de run local systématique avant chaque PR/merge (décision fondateur 2026-10-11) ;
-   en local (toujours sous `with-sandbox.sh`) seulement si la CI est bloquée ou pour diagnostiquer
-   un Behat rouge en CI — table feature↔zone pour ce diagnostic :
-   `.claude/skills/validation-runner/SKILL.md`.
+5. **« Résolu » ne se dit qu'après avoir JOUÉ les variantes du cas** (réservé, libre, période ; règle
+   fondateur 2026-10-30) : une variante qui change le résultat devient une ligne d'`Exemples` du
+   scénario, pas un test de plus. **Tests verts en local avant de proposer le merge** : `/validation-runner` (suite ciblée +
+   contrats cross-zone). **Behat** : le gate est le job CI `functional-tests` ; la suite entière ne se rejoue pas en
+   local avant chaque PR (décision fondateur 2026-10-11). Le scénario du chantier, lui, se joue sur la
+   stack d'épreuve, par créneaux courts (`docs/testing/tests-par-parcours.md` §7) : rouge par `tank`,
+   vert par `neo`, falsifié par `tank`. Un correctif urgent suit le même contrat et prend la stack en
+   priorité : le chantier en cours la rend, le correctif joue rouge puis vert, le chantier la reprend.
+   Table feature↔zone pour diagnostiquer un Behat rouge en CI : `.claude/skills/validation-runner/SKILL.md`.
    **Dans un lot, avant le merge d'une PR vers `lot/<sujet>`** (`backend-tests`, `functional-tests`
    et `e2e` n'y tournent pas, §4) : `/validation-runner` ET `make -C backend tests-complete` verts en
    local ; ET si le diff touche une zone couverte par un Behat ou un e2e (table feature↔zone du
@@ -221,6 +227,9 @@ déployé) — **jamais de commit direct** ; correctif rapide = PR vers `release
    AVANT de proposer le GO suivant** — une PR empilée n'hérite jamais du vert d'avant le merge.
 
 ### 7.1 Structuring axes (liste fermée — NR requis si touché ; l'étendre = décision user)
+
+La liste borne aussi le **sensible** (avec les tests d'abus et le moteur) : là seulement, un second
+angle de test est voulu (`docs/testing/tests-par-parcours.md` §1).
 
 tenant isolation · generation pipeline (controller→messenger→engine→import→Mercure) ·
 **constraint semantics** (une contrainte saisie doit être honorée par le solveur — smoke
