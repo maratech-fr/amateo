@@ -743,8 +743,6 @@ class T7FamiliesMatchCi(ReleveCase):
     def test_names_added_by_v3_are_classified(self):
         cases = {
             "Install deps": INFRA,
-            "Engine changed?": INFRA,
-            "Skipped, engine untouched": INFRA,
             "Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1": INFRA,
             "ParcImportCorrectionTenantNR": VRAI_BUG,
             "ci-releve self-test": VRAI_BUG,
@@ -753,6 +751,18 @@ class T7FamiliesMatchCi(ReleveCase):
         for name, cause in cases.items():
             with self.subTest(step=name):
                 self.assertEqual(cause, self.classify(synth_job(name), synth(["some output line"])).cause)
+
+    def test_steps_of_the_three_regimes_are_classified(self):
+        """Steps nés avec les trois régimes de CI (plan CI 2026-11-15, contrats de la PR 1) : un rouge
+        du Vitest du gate de lot est un vrai bug ; un rouge du verdict ou de l'avertissement de pool
+        n'est jamais « inconnu ». Les deux steps du filtre par chemin de la perf PR ont disparu de
+        ci.yml : T7 rougit si la table les garde."""
+        for name in ("Static guards (Vitest, always)", "Unit tests related to the diff (Vitest --changed)"):
+            with self.subTest(step=name):
+                self.assertEqual(VRAI_BUG, self.classify(synth_job(name, job_name="Lot Gate"), synth(["some output line"])).cause)
+        for name in ("Prove the merged pull request played the full gate", "Say which pool plays the full gate"):
+            with self.subTest(step=name):
+                self.assertNotEqual(INCONNU, self.classify(synth_job(name, job_name="Main Verdict"), synth(["some output line"])).cause)
 
     def test_step_outside_the_table_is_unknown_with_its_name(self):
         """Ancien nom de step du lot des 71 (Blocking Tests, job 125032935526)."""
