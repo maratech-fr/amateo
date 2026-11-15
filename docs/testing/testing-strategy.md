@@ -6,50 +6,53 @@ Scope: backend + engine. The rebuilt frontend has its own tests (Vitest + RTL un
 
 ## 1. CI pipeline (`.github/workflows/ci.yml`)
 
-Order and dependencies (tout `needs` ci-dessous s'ajoute à `needs: preflight`, que **tous** les jobs portent) :
+**Le gate complet** — toute PR vers `main`, PR finale d'un lot comprise. Order and dependencies
+(tout `needs` ci-dessous s'ajoute à `needs: preflight`, que **tous** les jobs du gate complet portent) :
 
 ```
-preflight ─► (tous les jobs) — « Preflight » : refuse une PR de fork, sans checkout, required check
+preflight ─► (tous les jobs du gate complet) — « Preflight » : refuse une PR de fork, sans checkout, required check
 lint ──┐
        ├─► blocking-tests ──┐
 phpstan┘                    ├─► build-docker
 engine-tests ───────────────┘
-backend-tests       (suite PHPUnit COMPLÈTE + pcov + cliquet, un seul passage) — PR→main only, BLOCKS the merge (required check), does NOT gate build-docker
-e2e                 (Playwright dans le conteneur `e2e`, full stack + Vite) — PR→main only, BLOCKS the merge (required check)
-frontend            (lint + tsc -b + vite build + vitest --coverage + cliquet) — PR only, does NOT gate build-docker
-dependency-audit    (composer/npm/pip audit, A18)          — no other needs ; runs on main and on PR→main (not on PR→lot) ; BLOCKS the merge, does NOT gate build-docker
-rector              (dry-run, style gate P4-24)            — PR only, gates NOTHING… but BLOCKS the merge
-secrets-scan        (gitleaks)                             — no other needs ; runs on main too ; BLOCKS the merge
-semgrep             (security gate)                        — no other needs ; runs on main too ; BLOCKS the merge
-engine-semantics    (groupe `contract`, cross-stack)       — PR only, BLOCKS the merge
-functional-tests    (Behat, Gherkin FR, API-only, one feature per promise) — PR→main only, BLOCKS the merge (required check of `main`)
-engine-tests        (pytest --cov + cliquet, ruff, mypy, bandit, deptry) — runs on main too ; GATES build-docker — donc le cliquet engine gate build-docker
-engine-perf         (dense + BCCL solve + place-matches build < 60 s) — needs engine-tests ; main only
-engine-perf-pr      (dense solve, PR budget = 60 s)         — needs engine-tests ; PR only, skipped when engine/ untouched
+backend-tests       (suite PHPUnit COMPLÈTE + pcov + cliquet, un seul passage) — BLOCKS the merge (required check), does NOT gate build-docker
+e2e                 (Playwright dans le conteneur `e2e`, full stack + Vite) — BLOCKS the merge (required check)
+frontend            (lint + tsc -b + vite build + vitest --coverage + cliquet) — BLOCKS the merge (required check), does NOT gate build-docker
+dependency-audit    (composer/npm/pip audit, A18)          — no other needs ; BLOCKS the merge, does NOT gate build-docker
+rector              (dry-run, style gate P4-24)            — gates NOTHING… but BLOCKS the merge
+secrets-scan        (gitleaks)                             — no other needs ; BLOCKS the merge
+semgrep             (security gate)                        — no other needs ; BLOCKS the merge
+engine-semantics    (groupe `contract`, cross-stack)       — BLOCKS the merge
+functional-tests    (Behat, Gherkin FR, API-only, one feature per promise) — BLOCKS the merge (required check of `main`)
+engine-tests        (pytest --cov + cliquet, ruff, mypy, bandit, deptry) — GATES build-docker — donc le cliquet engine gate build-docker
+engine-perf         (« Engine Perf Gate » : tous les tests `-m perf`) — needs engine-tests ; NOT a required check, mais le verdict de `main` le compte
 ```
 
-**Régime par branche cible (2026-11-10).** `ci.yml` se déclenche sur `push main` et sur
-`pull_request` (types `opened`, `synchronize`, `reopened`, `edited`) vers `main` ou `lot/**` ; un
-push sur `lot/**` ne lance rien. Le tri se fait par la **branche cible** de la PR, jamais par
-dossier touché (aucun `paths`) : une PR vers `main` joue tout sauf `engine-perf` ; une PR vers
-`lot/<sujet>` joue les jobs sans `if` et les jobs « PR only » (`preflight`, `lint`, `secrets-scan`,
-`semgrep`, `engine-tests`, `phpstan`, `rector`, `blocking-tests`, `frontend`, `engine-semantics`,
-`engine-perf-pr`) — **sauf** `backend-tests`, `e2e`, `functional-tests`, `dependency-audit` et
-`build-docker`, qui attendent la PR finale `lot/<sujet>` → `main`. Ci-dessus, « PR only » vaut donc
-« PR vers `main` ou `lot/**` » et « PR→main only » exclut les PR vers un lot. Garde : `CiWorkflowRegimeTest`
-(listes de régimes fermées, `if` exacts) ; ce qu'il ne prouve pas, les gestes et les pièges :
-[`../ops/ci-runner.md`](../ops/ci-runner.md) § Branche de lot. **Les features Behat et les specs
-e2e ne changent pas de contenu : seul leur MOMENT d'exécution change** (PR finale du lot au lieu de
-chaque PR du lot ; la preuve locale avant merge d'une PR→lot : `CLAUDE.md` §7 étape 5).
+**Hors du gate complet** — chacun est le seul job de son régime, sans `needs` :
 
-**Où tourne la CI, et `main` allégé.** Les jobs de `ci.yml` tournent sur les runners GitHub tant que
-le dépôt est public, sur la VM auto-hébergée du fondateur au passage en privé (routage par variable
-de dépôt, retour arrière, VM éteinte = file de 24 h seulement tant que les variables pointent vers
-elle : [`../ops/ci-runner.md`](../ops/ci-runner.md)). **Sur `push main`** ne
-tournent que `preflight`, `lint`, `secrets-scan`, `semgrep`, `dependency-audit`, `engine-tests`,
-`engine-perf` et `build-docker` (dont les `needs` sont relâchés : il tourne même quand les jobs
-PR-only sont sautés, sauf échec ou annulation d'un `needs` ; il tourne sur PR→main
-et sur `push main`, pas sur une PR vers `lot/**`) ; le reste est PR-only. Avec les
+```
+lot-gate            (« Lot Gate » : gitleaks, moteur, front, PHPStan, liste bloquante) — PR vers `lot/<sujet>` seulement ; seul check requis du ruleset `lot-gate`
+main-verdict        (« Main Verdict » : prouve que la PR mergée a joué le gate complet) — `push main` seulement ; lu par `isCiGreen`
+```
+
+**Trois régimes, triés par l'événement et la branche cible (2026-11-15).** `ci.yml` se déclenche sur
+`push main` et sur `pull_request` (types `opened`, `synchronize`, `reopened`, `edited`) vers `main`
+ou `lot/**` ; un push sur `lot/**` ne lance rien. Le tri se fait par l'événement et la **branche
+cible**, jamais par dossier touché (aucun `paths`, aucun job sauté selon le diff) : une PR vers
+`main` joue le gate complet ci-dessus ; une PR vers `lot/<sujet>` joue le seul `lot-gate` ; un
+`push main` joue le seul `main-verdict`. `dependency-audit` et `build-docker` ne tournent plus qu'en
+PR vers `main`. La table des régimes, le contenu et l'ordre des steps du gate de lot, ce qu'il ne
+joue pas, le verdict de `main`, les gestes et les pièges :
+[`../ops/ci-runner.md`](../ops/ci-runner.md) § Branche de lot (maison unique). Garde :
+`CiWorkflowRegimeTest` (listes de régimes fermées, `if` exacts) ; la logique du verdict :
+`scripts/ci-verdict-test.py`. **Les features Behat et les specs e2e ne changent pas de contenu :
+seul leur MOMENT d'exécution change** (PR finale du lot au lieu de chaque PR du lot ; la preuve
+locale avant merge d'une PR→lot : `CLAUDE.md` §7 étape 5).
+
+**Où tourne la CI.** Le gate complet tourne sur le pool que désignent `CI_RUNS_ON` /
+`CI_RUNS_ON_HEAVY` (la VM auto-hébergée du fondateur une fois les variables posées, GitHub sinon) ;
+le gate de lot et le verdict sont hébergés par défaut (`CI_RUNS_ON_LOT`, `CI_RUNS_ON_VERDICT`).
+Routage, retour arrière, VM éteinte : [`../ops/ci-runner.md`](../ops/ci-runner.md). Avec les
 required checks (15, **Preflight** compris) et `strict` (branche à jour obligatoire), l'arbre mergé
 est celui que la PR a prouvé. **Ce que `build-docker` prouve** : que les six images de PROD se
 construisent (`--pull`, tags `scan-<run>-<attempt>/…`) et passent Trivy CRITICAL ; sur le runner il
@@ -116,20 +119,16 @@ Artefact `coverage-backend` (`backend/coverage/`, `upload-artifact` avec `if: al
 versionné et sa règle de cliquet sont détaillés dans
 [`test-coverage-map.md`](test-coverage-map.md) (§ `coverage-floor.json`).
 
-**`engine-perf-pr`** (P4-167) donne un signal de perf plus tôt et moins cher sur les PR sans
-dupliquer `engine-perf` : `if: github.event_name == 'pull_request'`, `needs: engine-tests`,
-`timeout-minutes: 15`. Un step dédié détermine si `engine/` a bougé (`git diff --name-only
-origin/${BASE_REF}...HEAD | grep -qE '^(engine/|docker/engine/)'`, `BASE_REF` passé par l'**ENV**,
-jamais interpolé dans le shell — un nom de branche est une entrée d'attaquant sur une PR de fork,
-finding semgrep `run-shell-injection`) : si rien n'a bougé le job finit vert en secondes (un required
-check absent bloquerait le merge autrement qu'un required check vert) ; sinon il build l'image engine et
-lance `pytest -m perf -k dense_club --durations=0 -rA` avec `PERF_BUDGET_SECONDS=60` (même budget que
-`main` — décision fermée, `specs/courantes/etat-des-lieux.md` §2). ⚠ **Piège du sélecteur** : `pytest -k`
-matche le node id ENTIER, et le fichier `engine/tests/perf/test_perf_dense.py` porte aussi le test BCCL
-— `-k dense` aurait donc aussi sélectionné `test_bccl_completes_under_budget` (le mot `dense` apparaît
-dans le nom du FICHIER). Le sélecteur correct est `-k dense_club`, qui isole
-`test_dense_club_completes_under_budget`. `engine-perf` (main) garde les deux paliers, dense et BCCL, au
-même budget 60 s.
+**`engine-perf`** (« Engine Perf Gate ») est le seul job de perf du moteur : un job du gate complet
+d'une PR vers `main`, `needs: [preflight, engine-tests]`, `timeout-minutes: 30`. Il lance
+`pytest -m perf --durations=0` — tous les tests `perf` de `engine/tests/perf/` (grand club dense,
+BCCL, génération nominale BCCL, construction et résolution de `/place-matches`), sans `-k` ni filtre
+par chemin : une PR qui ne touche pas `engine/` le paie aussi. La CI ne pose aucun
+`PERF_BUDGET_SECONDS` (le budget de 60 s des grands clubs tient, un retour au blocage mono-worker à
+612 s rougit) ; ce réglage ne sert qu'à relever le budget d'un run local sur une machine plus lente.
+**Non requis au merge** (« Engine Perf Gate » n'est pas l'un des 15 checks de `main`), mais le
+verdict de `main` le compte comme chacun des autres jobs du gate. Une PR vers un lot ne le joue pas.
+On ne « réessaie » jamais un flake de perf en CI : si ce gate rougit, on mesure.
 
 **Gardes d'hygiène des dépendances (2026-09-30)** — trois outils, un par zone, chacun un step
 dans un job EXISTANT (pas de job dédié) :
@@ -137,17 +136,15 @@ dans un job EXISTANT (pas de job dédié) :
   `worker-heartbeat.js`, `tests/e2e/*.setup.ts` ; projet `src/**`, `tests/**`, `tooling/**`),
   step du job `frontend`. Rougit sur une dépendance déclarée mais jamais importée ou un fichier
   source inatteignable depuis les entrées ; le mode `--dependencies --files` laisse les exports
-  inutilisés HORS du gate. **Pas dans `make -C frontend lint`** — un dev qui ne lance que la cible
-  Make ne voit pas de dérive knip avant la CI ; en local : `docker compose -f docker-compose.yml
-  --profile tools run --rm --no-deps frontend-tooling npm run lint:deps`. Faux positif : ajouter
+  inutilisés HORS du gate. **Déjà dans `make -C frontend lint`** (donc dans `make -C frontend test`,
+  qui l'appelle) : une dérive knip se voit en local avant la CI. Faux positif : ajouter
   le paquet à `ignoreDependencies` dans `frontend/knip.json`, avec sa raison en commentaire JSON
   n'étant pas supporté, la documenter dans le message du commit qui l'ajoute.
 - **composer-unused** (backend) — `composer composer-unused` (config `backend/composer-unused.php`,
   16 filtres nominatifs, chacun sa raison en commentaire PHP : bundle câblé par `bundles.php`,
-  DSN/YAML, ou runtime — jamais un symbole PHP importé), step du job `phpstan`. **Pas dans
-  `make -C backend lint`/`phpstan`/`tests-complete`** — en local :
-  `docker compose exec php-fpm composer composer-unused` (ou `sh -c 'cd /app/backend && composer
-  composer-unused'` en dehors du répertoire `backend/`). Faux positif : ajouter
+  DSN/YAML, ou runtime — jamais un symbole PHP importé), step du job `phpstan`. **Déjà dans
+  `make -C backend lint`** (cible dédiée `make -C backend composer-unused`) ; pas dans `phpstan`,
+  `test` ni `tests-complete`. Faux positif : ajouter
   `->addNamedFilter(NamedFilter::fromString('vendor/paquet'))` à `backend/composer-unused.php`
   avec sa raison en commentaire.
 - **deptry** (engine) — `deptry .` (config `[tool.deptry]` de `engine/pyproject.toml` : exclusions
@@ -155,8 +152,8 @@ dans un job EXISTANT (pas de job dédié) :
   `uvicorn`, `ruff`, `mypy`, `bandit`, `pytest-cov`, `pytest-timeout`, `deptry` lui-même), step du
   job `engine-tests`. Rougit sur DEP001 (import manquant du lockfile), DEP002 (déclaré, jamais
   importé) ou DEP003 (transitive seulement). **Déjà dans `make -C engine lint` ET `make -C engine
-  test`** (contrairement aux deux gardes ci-dessus) — une dérive se voit donc en local avant la
-  CI. Faux positif : ajouter l'entrée à `per_rule_ignores` dans `engine/pyproject.toml` avec sa
+  test`** — comme les deux gardes ci-dessus dans le `make lint` de leur zone, une dérive se voit donc
+  en local avant la CI. Faux positif : ajouter l'entrée à `per_rule_ignores` dans `engine/pyproject.toml` avec sa
   raison en commentaire.
 
 Les trois sont des gardes d'**hygiène**, pas de sécurité : elles bloquent sur un paquet mort, pas
@@ -170,7 +167,7 @@ sont des **required status checks** de `main` — `rector` et `dependency-audit`
 bloquent le merge sans gater aucun job. Même raison pour laquelle `SymfonyStackAlignmentTest` tourne
 dans `backend-tests` et non dans le gate bloquant.
 
-**Régime de permissions des workflows (P4-92)** : chaque workflow de `.github/workflows/` déclare un bloc `permissions:` racine explicite (`contents: read` sur `ci.yml`, surchargé `packages: read` sur `secrets-scan`/`build-docker` qui pullent une image miroir ghcr ; `contents: read` + `packages: read` à la racine de `security-weekly.yml`), cliquet gardé par `WorkflowPermissionsDeclaredTest` (testsuite `Unit`, **ne gate pas**) qui rougit sur un bloc racine manquant ou un scope `write` hors de la liste fermée `deploy.yml`/`mirror-images.yml` — ce n'est PAS un correctif de faille, `default_workflow_permissions` valant déjà `read` côté dépôt.
+**Régime de permissions des workflows (P4-92)** : chaque workflow de `.github/workflows/` déclare un bloc `permissions:` racine explicite (`contents: read` sur `ci.yml`, surchargé `packages: read` sur `secrets-scan`/`build-docker`/`lot-gate` qui pullent une image miroir ghcr, et `actions: read` + `pull-requests: read` sur `main-verdict` qui ne fait que lire l'API ; `contents: read` + `packages: read` à la racine de `security-weekly.yml`), cliquet gardé par `WorkflowPermissionsDeclaredTest` (testsuite `Unit`, **ne gate pas**) qui rougit sur un bloc racine manquant ou un scope `write` hors de la liste fermée `deploy.yml`/`mirror-images.yml` — ce n'est PAS un correctif de faille, `default_workflow_permissions` valant déjà `read` côté dépôt.
 
 **Connexion Docker Hub (anti-429, 2026-10-09)** : chaque job qui tire une image Docker Hub (build/pull de bases `php`/`node`/`nginx`/`python`/`postgres`, `docker compose`, `semgrep/semgrep`, `aquasec/trivy`) se connecte à Docker Hub **si la variable de dépôt `DOCKERHUB_USERNAME` et le secret `DOCKERHUB_TOKEN` existent** (jeton « Public Repo Read-only ») via un step `docker/login-action` conditionnel `if: vars.DOCKERHUB_USERNAME != ''`. L'identifiant est une VARIABLE (non secrète, lisible dans un `if:`) et le jeton reste un secret lu dans le seul `with:` du step — jamais un secret dans un `env:` de workflow (règle semgrep `gha-workflow-env-secret` : il serait exposé à tout le workflow, code de PR compris). Motif : les runners partagés tapent sur le quota **anonyme** par IP et se font refuser `429 Too Many Requests`. **Sans variable/secret (PR de fork, non posés), la CI tire en anonyme exactement comme avant.** Couvre `ci.yml`, `visual-baselines.yml`, `security-weekly.yml`, `mirror-images.yml` et `deploy.yml` (builds prod) ; les images servies par `ghcr.io/maratech-fr/mirror-*` (gitleaks, trivy du build-docker) restent tirées de ghcr et ne sont pas concernées.
 
@@ -205,7 +202,7 @@ All PHP test jobs first **create + migrate the test DB** (`doctrine:database:cre
 
 | Job | What it runs |
 |-----|--------------|
-| `lint` | `docker compose config` + `make -n help` + step final `ci-releve self-test` (`scripts/ci-releve-test.py`, l'outil `make ci-releve` : `docs/ops/ci-runner.md` § Exploitation) ; câblage gardé par `CiReleveWiringTest` (statique, non bloquant) |
+| `lint` | `docker compose config` + `make -n help` + step `ci-verdict self-test` (`scripts/ci-verdict-test.py`, la logique du verdict de `main`) + step final `ci-releve self-test` (`scripts/ci-releve-test.py`, l'outil `make ci-releve` : `docs/ops/ci-runner.md` § Exploitation) ; câblage gardé par `CiReleveWiringTest` (statique, non bloquant) |
 | `phpstan` (job name: **PHPStan & CS-Fixer**) | `composer phpstan` (level 8) **+ `composer cs-fix -- --dry-run --diff`** **+ `composer composer-unused`** — needs postgres + redis. CS-Fixer vit ici, et non dans `lint`, parce que ce job a déjà le conteneur PHP que `lint` n'a pas (jusqu'au 2026-07-17 CS-Fixer ne tournait **nulle part** en CI, et `main` a été mergée rouge dessus deux fois) |
 | `rector` (**Rector (style gate)**) | `composer rector -- --dry-run` (P4-24). Job **dédié, sans `needs`**, dépendance d'aucun autre — mais le contexte « Rector (style gate) » fait partie des **required status checks de `main`**, donc **il bloque le merge**. Corriger en local : `docker compose exec php-fpm sh -c 'cd /app/backend && composer rector'` (`make -C backend rector` est un dry-run : il montre, il ne fixe pas) |
 | `blocking-tests` | les tests sécurité/queue/contrat lancés en **UNE invocation PHPUnit** (step `Blocking suite (phase1, one PHPUnit process)` : `--group phase1` + la liste des chemins, un par ligne, chacun précédé de son commentaire de raison) **plus un step filtré** (`ParcImportCorrectionTenantNR`, classe `integration` hors `phase1`) — **gate du reste de la suite PHP** et de `build-docker`. ⚠ **La liste vit dans [`blocking-tests.md`](blocking-tests.md), et NULLE PART AILLEURS** : elle était recopiée ici et les deux copies ont dérivé l'une de l'autre (audit DOC-16 puis DOC-26, 3 éditions). Deux endroits pour une même vérité finissent par diverger — la copie est supprimée, pas resynchronisée. ⚠ **`--group phase1` ≠ le gate** : bien plus de fichiers `backend/tests/` portent l'annotation que le step `Blocking suite` n'en liste ; un fichier `phase1` non listé tourne dans `backend-tests`, donc après le gate et sans bloquer `build-docker`. La vérité exécutable est `.github/workflows/ci.yml` |
@@ -215,7 +212,10 @@ All PHP test jobs first **create + migrate the test DB** (`doctrine:database:cre
 | `engine-tests` | `pytest --cov=app --cov-fail-under=$FLOOR` (`$FLOOR` lu de `coverage-floor.json`, clé `engine` — cliquet fondu ici 2026-10-14) + `ruff check .` (+ `ruff format --check`) + `mypy` + `bandit -r app/` (ENG-46, lot correctif de l'audit 0918 — bandit était déjà en local via `make test`, il ne gatait pas la CI) + `deptry .` (in the engine container). **GATE `build-docker`** → le cliquet engine gate donc aussi `build-docker` (décision fondateur 2026-10-14) |
 | `frontend` | `npm run lint` (dont `eslint-plugin-jsx-a11y`, §4bis) + `npm run lint:deps` (knip) + `tsc -b` + `vite build` + `npm run test:coverage` (`vitest run --coverage`, `thresholds.lines` lu de `coverage-floor.json`, clé `frontend` — cliquet fondu ici 2026-10-14) (parallel, no needs). Required check de `main` → **bloque le merge** ; does **NOT** gate `build-docker` (P4-166) |
 | `dependency-audit` | `composer audit` / `npm audit --audit-level=high` / `pip-audit` (A18, blocking, parallel, no needs). Les trois passent par `.github/scripts/audit-retry.sh` (P4-171) : 3 tentatives (10 s, 30 s) **seulement** quand la sortie porte une signature réseau (timeout, 5xx, DNS, `curl error`) — un `exit 1` d'audit sans cette signature est rendu tel quel, le gate ne s'aveugle pas |
-| `build-docker` | build des six images de PROD (dont `pdf-worker`) (`--pull`, tags `scan-<run>-<tentative>/…`) + scan Trivy CRITICAL (needs **blocking + engine** tests, plus `preflight`) ; sur `push main` ses `needs` sont relâchés (voir plus haut) |
+| `build-docker` | build des six images de PROD (dont `pdf-worker`) (`--pull`, tags `scan-<run>-<tentative>/…`) + scan Trivy CRITICAL (needs **blocking + engine** tests, plus `preflight`) ; PR vers `main` seulement, tant qu'aucun de ses `needs` n'a échoué ni été annulé |
+| `engine-perf` (**Engine Perf Gate**) | `pytest -m perf --durations=0`, tous les tests `perf` (ci-dessus) ; needs `preflight` + `engine-tests` ; non requis au merge, compté par le verdict de `main` |
+| `lot-gate` (**Lot Gate**) | le seul job d'une PR vers `lot/<sujet>` : gitleaks, moteur (pytest + cliquet moteur, ruff, format, mypy, bandit, deptry), front (build, gardes statiques Vitest, Vitest lié au diff par `--changed`), PHPStan, puis la liste bloquante — les steps `Blocking suite` et `ParcImportCorrectionTenantNR` de `blocking-tests`, rejoués par alias d'ancres YAML. Sans `needs`, garde fork en premier step. Contenu, ordre, ce qu'il ne joue pas : `docs/ops/ci-runner.md` § Branche de lot |
+| `main-verdict` (**Main Verdict**) | le seul job d'un `push main` : `scripts/ci-verdict.py` prouve par l'API GitHub que la PR mergée qui porte le commit a joué le gate complet (chaque job de son run de PR hors « Lot Gate » et « Main Verdict » réussi). Sans `needs`, aucun Docker, aucun secret. Codes de retour, réessai, faux rouge : `docs/ops/ci-runner.md` § Branche de lot |
 
 All PHP jobs invoke `vendor/bin/phpunit` (PHPUnit 11, the direct `phpunit/phpunit` dep) — same binary as `Makefile` and `composer test`.
 

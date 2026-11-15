@@ -57,16 +57,19 @@ make epreuve-up WT=<worktree> | epreuve-status | epreuve-down   # worktree : Beh
 Graphe des jobs, rôles et pièges : **`docs/testing/testing-strategy.md` §1** (canonique). Qui teste
 quoi, par axe, et les angles morts : `docs/testing/test-coverage-map.md`.
 
-- **Où tourne la CI** : runners GitHub tant que le dépôt est public (variables `CI_RUNS_ON` /
-  `CI_RUNS_ON_HEAVY`) ; VM auto-hébergée du fondateur au passage en privé (`docs/ops/ci-runner.md`) —
+- **Où tourne la CI** : le gate complet sur le pool des variables `CI_RUNS_ON` / `CI_RUNS_ON_HEAVY`
+  (la VM auto-hébergée du fondateur une fois posées, GitHub sinon) ; le gate de lot et le verdict de
+  `main` chez GitHub par défaut (`CI_RUNS_ON_LOT`, `CI_RUNS_ON_VERDICT` ; `docs/ops/ci-runner.md`) —
   VM éteinte = checks « Queued », file de 24 h, seulement tant que les variables pointent vers elle.
   Required checks de `main` : 15, dont **Preflight** (refuse les PR de fork), avec `strict`
   (branche à jour) et `enforce_admins`.
-- **Deux régimes, triés par la branche CIBLE de la PR** (jamais par dossier touché) : PR vers `main` =
-  gate **complet** (tout `ci.yml` sauf `engine-perf`) ; PR vers `lot/<sujet>` = régime **léger**
-  (`backend-tests`, `e2e`, `functional-tests`, `dependency-audit`, `build-docker` sautés). Types
-  d'événement et branches fermés, gardés par `CiWorkflowRegimeTest`. Les rulesets `lot/**` vivent
-  hors dépôt ; leur cible, les preuves faites et les pièges : **`docs/ops/ci-runner.md` § Branche de lot**.
+- **Trois régimes, triés par l'événement et la branche CIBLE** (jamais par dossier touché) : PR vers
+  `main` = gate **complet** (les 15 checks requis plus « Engine Perf Gate », non requis) ; PR vers
+  `lot/<sujet>` = le seul job « Lot Gate » (gitleaks, moteur, front, PHPStan, liste bloquante — ni
+  Rector, Semgrep, Behat, e2e…) ; push `main` = le seul job « Main Verdict », qui prouve que la PR
+  mergée a joué le gate complet. Types d'événement et branches fermés, gardés par
+  `CiWorkflowRegimeTest`. Les rulesets `lot/**` vivent hors dépôt ; leur cible, les preuves faites et
+  les pièges : **`docs/ops/ci-runner.md` § Branche de lot**.
 - **Bloquant = chemin listé dans le step `Blocking suite` (ou le step filtré) du job
   `blocking-tests` dans `.github/workflows/ci.yml`** — jamais l'annotation `#[Group('phase1')]`
   (bien plus de fichiers la portent que le step n'en liste). Un test annoté mais non listé tourne
@@ -155,8 +158,8 @@ de plan, ni tag, ni déploiement, ni prod) ; push libre, stop à « PR ready » 
 compris) : on attend le vert, en rallumant la VM si les variables de runner pointent vers elle
 (`docs/ops/ci-runner.md`) ;
 **avant tout GO ou merge d'une PR vers `main`** (la PR finale d'un lot comme toute autre) : lire la
-sortie COMPLÈTE de `gh pr checks <n>` — une seule ligne « skipping » est admise, « Engine Perf Gate
-(main only) » ; toute autre bloque le GO. ⚠ Le code retour ne compte pas ici (0 même avec des
+sortie COMPLÈTE de `gh pr checks <n>` — deux lignes « skipping » sont admises, « Lot Gate » et
+« Main Verdict » ; toute autre bloque le GO. ⚠ Le code retour ne compte pas ici (0 même avec des
 « skipping »). Variante mécanique : `gh pr checks <n> --required --json name,bucket` sans aucune
 entrée `skipping`. Pourquoi, remède : `docs/ops/ci-runner.md` § Branche de lot ;
 **une seule PR ouverte à la fois** — deux en simultané seulement si merger l'une n'affecte pas

@@ -7,13 +7,19 @@
 > `.github/workflows/ci.yml` (un chemin par ligne, chacun avec son commentaire de raison) **plus** le
 > step filtré, **dans les deux sens**. Ce que chaque test garde en détail : **son propre docblock**.
 > Graphe des jobs, rôles et pièges : [`testing-strategy.md`](testing-strategy.md) §1.
+> **Cette liste est aussi ce que joue le gate de lot** : le job `Lot Gate` d'une PR vers
+> `lot/<sujet>` rejoue la suite bloquante et le step filtré par alias des ancres YAML de
+> `blocking-tests`. Chaque fichier qu'on y ajoute se paie donc en minutes hébergées à chaque PR de
+> lot, en plus du temps mural du gate complet ([`../ops/ci-runner.md`](../ops/ci-runner.md)
+> § Branche de lot).
 
 **blocking-tests** (must pass first — chemins du step `Blocking suite`, un par ligne, + le step filtré ; tag = ce qui est gardé) :
 `Unit/Entity/UserInterfaceContractTest` (boot conteneur : `eraseCredentials`) ·
 `Unit/Documentation/CiWorkflowRegimeTest` (NR de tous les axes : régime de la CI sur le runner
-— routage par variable, garde fork, gate complet sur chaque PR vers `main`, léger vers `lot/**`,
-types d'événement et branches fermés, étanchéité des jobs sur le démon partagé, bloquants en deux
-processus) ·
+— routage par variable, garde fork, trois régimes fermés [gate complet sur chaque PR vers `main`,
+seul job `Lot Gate` vers `lot/**`, seul job `Main Verdict` sur `push main`], contenu, ordre et
+conditions de step du gate de lot, qui rejoue exactement la liste bloquante, types d'événement et
+branches fermés, étanchéité des jobs sur le démon partagé, bloquants en deux processus) ·
 `Security/LoginFailureCopyTest` (axe *auth & memberships*, P4-263 : le refus de `/api/login` parle
 français — « Identifiants invalides. » via le socle `symfony/translation` + `default_locale: fr` —
 ET reste BYTE-IDENTIQUE entre mauvais mot de passe et compte non vérifié [anti-énumération de
