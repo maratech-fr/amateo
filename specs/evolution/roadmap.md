@@ -1,4 +1,4 @@
-# Roadmap (161) — ce qui reste à faire
+# Roadmap (162) — ce qui reste à faire
 
 > **Ce fichier ne tient QUE l'ouvert.** Bugs, évolutions, dettes techniques : tout ce qu'on trace pour ne pas
 > l'oublier un jour. Rien de livré n'y figure — un item livré **quitte** ce fichier et laisse sa trace dans
@@ -254,6 +254,7 @@
 | P4-578 | **`system-pages/` : aligner l'habillage sur la nouvelle vitrine** | ⚪ | S | Les pages 503 et maintenance gardent l'ancien habillage (fond à motifs, ancien jeu de polices) alors que la vitrine est passée au fond terrain, aux polices hébergées et à un seul thème clair. Les aligner sans lien de code avec `landing/` (règle `.claude/rules/system-pages.md`) |
 | P4-579 | **Image de partage sans Google Fonts** | ⚪ | XS | `scripts/brand-og/og.html` charge encore Google Fonts (outil hors ligne qui régénère `og.png`). Le faire lire les polices hébergées de `landing/assets/fonts/`, puis régénérer l'image (renommer le fichier : cache immuable) |
 | P4-580 | **Paliers : l'application dit Essentiel / Club / Grand club, la vitrine « une seule offre, trois paliers »** | ⚪ | S | La vitrine présente une offre unique à trois paliers sans nom (jusqu'à 20, 21 à 34, 35 et plus équipes) ; l'application nomme encore les paliers Essentiel, Club et Grand club. Harmoniser le vocabulaire (décision fermée côté vitrine : `etat-des-lieux.md` §2) |
+| P4-581 | **Features Behat : un vocabulaire qu'un gestionnaire lit sans jargon** | ⚪ | S | Les titres et les étapes des features parlent encore d'« overlay », de « COMPLETED », de « verrouillé en dur ». Les réécrire pour qu'un gestionnaire les lise tel quel. Non cadré |
 
 ---
 
@@ -271,7 +272,7 @@
 | P5-4b | **Mesure de charge en prod — à reprendre quand le volume de clubs le justifie** | ⚪ | S | Le harnais et deux runs locaux INDICATIFS existent (`docs/ops/load-test.md` §Mesures). Le harnais ne peut PAS viser la prod tel quel, et c'est voulu : garde `sandbox-guard.sh` fail-closed, commande de seed dev-only (`services_dev.yaml`), stack dev câblée — ne jamais affaiblir ces gardes. La mémoire tient sur le papier (somme des limites ~5,1 Go, serveur PRO2-XXS à 7,8 Go). Décision fondateur 2026-10-08 : avec quelques clubs bêta la charge n'est pas observable, le sujet revient avec du volume. **Déclencheurs** (console superadmin § Capacité, `AdminCapacityService`) : pic `peakRssMb` du moteur au-delà de ~80 % de sa limite, p95 de durée qui dérape, attente en file, plaintes → PRO2-XS. **Trou connu** : le placement de matchs ne s'auto-mesure pas (aucun relevé RSS dans `match_output_schema.py`) — seul `docker stats` le voit ; l'ajouter touche le contrat. Si un tir redevient nécessaire : VM jetable de même gabarit, POST direct sur `engine:8000` depuis le réseau interne, jamais sur la prod. |
 ---
 
-## Findings d'audit ouverts (registre `/audit`) — 47
+## Findings d'audit ouverts (registre `/audit`) — 46
 
 > **À quoi sert cette section.** Le skill `/audit` tient un **registre à IDs stables** : un finding garde son
 > identifiant d'une édition à l'autre, ce qui rend la comparaison inter-éditions possible (« ce défaut est-il
@@ -298,7 +299,6 @@
 | AUD-AGT-08 | SMITH « optionnel sinon » (`CLAUDE.md` §7 étape 2) contre la mémoire `validation-plan-explicite` (« relu par SMITH en version finale ») | Moyenne | agentique | 2026-11-06 | — |
 | AUD-AGT-09 | Cadence : mémoire `workflow-prefs-pr-cadence:13` « ne jamais commencer la PR suivante » contre `coder-jamais-a-l-arret` et `CLAUDE.md` §7 | Moyenne | agentique | 2026-11-06 | `CLAUDE.md` tranche ; les deux mémoires restent à recaler |
 | AUD-AGT-10 | « push libre » (`CLAUDE.md` §7) contre « rector avant tout push backend » (`rules/backend.md:12`, mémoire `rector-before-push`) | Moyenne | agentique | 2026-11-06 | — |
-| AUD-AGT-11 | Lane Light : « pas de `tank` séparé » + `neo` « ne crée aucun test » = aucun auteur de test possible | Moyenne | agentique | 2026-11-06 | — |
 | AUD-AGT-15 | Agents « lecture seule » (`oracle`, `morpheus`, `smith`, `switch`, `link`) dotés de `Bash` (`tools:` ligne 4) : la lecture seule n'est qu'une consigne | Moyenne | agentique | 2026-11-06 | — |
 | AUD-AGT-21 | Des fichiers mémoire citent encore les anciens noms d'agents (coder, cadreur, planner, docs-writer, test-keeper) | Faible | agentique | 2026-11-06 | Hors dépôt |
 | AUD-AGT-22 | Doublons à plusieurs copies : « déjà en contexte » dans les fiches, Option A, worktree avec deux « maisons uniques » déclarées (`CLAUDE.md` → `neo.md`, `tank.md:61` → les deux) | Faible | agentique | 2026-11-06 | Non revérifié depuis l'édition |
