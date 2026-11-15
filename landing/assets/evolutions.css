@@ -92,6 +92,13 @@
   .release:first-of-type h2 time { box-shadow: 0 0 0 3px var(--orange); }
 }
 
+/* Au survol, la version et sa date s'entourent de la même couleur : la date flotte sur la frise, on voit
+   à quelle version elle appartient. (La date est dans la carte : survoler l'une, c'est survoler l'autre.) */
+@media (hover: hover) {
+  .release:hover { box-shadow: 0 0 0 3px var(--orange), 0 14px 30px -26px #000000aa; }
+  .release:hover h2 time { box-shadow: 0 0 0 3px var(--orange); }
+}
+
 @media (max-width: 720px) {
   .release p { font-size: 16px; }
 }
