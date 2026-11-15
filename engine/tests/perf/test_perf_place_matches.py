@@ -8,8 +8,8 @@ pairwise-coach loops would silently blow up on a real club before a client
 complains.
 
 Marked ``perf`` so it is EXCLUDED from the default suite (``addopts -m 'not
-perf'``). Its name deliberately avoids ``dense_club`` so the PR-tier job (which
-filters ``-k dense_club``) leaves it to the main-only ``pytest -m perf`` run.
+perf'``). Runs with the other ``perf`` tests in the ``engine-perf`` job of every
+PR to ``main`` (``pytest -m perf``, no ``-k``); not a required check of ``main``.
 """
 
 from __future__ import annotations

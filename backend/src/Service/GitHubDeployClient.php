@@ -80,11 +80,11 @@ final class GitHubDeployClient
     /**
      * La CI est verte quand le dernier run `ci.yml` du head_sha du tag a conclu `success`.
      *
-     * Sur un commit de `main`, ce run est ALLÉGÉ : il dit « les images prod se construisent
-     * (Trivy CRITICAL), la perf tient, lint/secrets/semgrep/audit sont verts » — les suites
-     * (bloquants, complète, e2e, Behat, sémantique moteur) ont été prouvées par la PR sur l'arbre
-     * mergé (branche à jour obligatoire ; squash d'une PR, ou merge commit d'une branche de lot
-     * dont la PR finale a rejoué le gate complet). Un run non conclu (runner éteint) n'est pas vert.
+     * Sur un commit de `main`, ce run est le VERDICT (job « Main Verdict ») : il atteste que la PR
+     * mergée qui porte ce commit (squash d'une PR, ou merge commit de la PR finale d'un lot) a joué
+     * le gate complet et que chacun de ses jobs a réussi — un job sauté n'y vaut jamais succès. Il
+     * ne dépend pas du runner auto-hébergé tant que la variable `CI_RUNS_ON_VERDICT` n'est pas
+     * posée. Un run non conclu (runner éteint, job en file) n'est pas vert.
      */
     public function isCiGreen(string $version): bool
     {

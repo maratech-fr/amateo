@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs'
-import { defineConfig, mergeConfig } from 'vitest/config'
+import { configDefaults, defineConfig, mergeConfig } from 'vitest/config'
 import viteConfig from './vite.config'
 import { ActWarningsRatchet, readCeiling } from './tooling/actWarningsRatchet'
 
@@ -29,6 +29,19 @@ export default mergeConfig(viteConfig, defineConfig({
     globals: true,
     setupFiles: ['./src/test/setup.ts'],
     exclude: ['tests/e2e/**', 'node_modules/**'],
+    // `vitest --changed` (gate de lot) ne rejoue que les tests du graphe d'imports du diff. Ces
+    // fichiers sont lus HORS de ce graphe (config, outillage, plafonds, setup) : un diff qui ne
+    // touche qu'eux ne rejouerait rien, d'où un passage complet. La clé REMPLACE les défauts de
+    // Vitest, gardés en tête.
+    forceRerunTriggers: [
+      ...configDefaults.forceRerunTriggers,
+      '**/package-lock.json',
+      '**/tsconfig*.json',
+      '**/tooling/**',
+      '**/act-warnings-ceiling.json',
+      '**/coverage-floor.json',
+      '**/src/test/setup.ts',
+    ],
     // FRT-34 — `default` d'abord (affichage), puis le cliquet act (comptage + verdict).
     reporters: ['default', new ActWarningsRatchet(actWarningsCeiling)],
     // P4-116 (AUD-FRT-25) — le plafond par test passe de 5 s (défaut Vitest) à 15 s.

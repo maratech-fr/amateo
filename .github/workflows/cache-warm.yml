@@ -1,0 +1,38 @@
+name: Cache Warm
+
+# Réchauffe chaque jour, depuis `main`, le cache GitHub Actions de l'image php (scope `ci-php`
+# de `build-php-cached`). Le gate de lot, hébergé par défaut, lit ce cache : sans ce réchauffage
+# il expire (7 jours sans lecture, ou éviction) et chaque PR de lot paie un build à froid. Les
+# caches écrits par une PR ne servent qu'à sa branche ; ceux de la branche par défaut servent à
+# toutes. Un lot qui modifie lui-même le Dockerfile paie un build à froid au premier run de
+# chacune de ses PR, jusqu'à son merge.
+#
+# Toujours chez GitHub (`ubuntu-24.04` en littéral) : ce cache ne sert que les runners hébergés,
+# la VM s'appuie sur le cache de couches de son démon.
+on:
+  schedule:
+    # Chaque jour à 04:00 UTC, avant les premières PR de la journée.
+    - cron: '0 4 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  warm:
+    name: Warm the php image cache
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      # Checkout par défaut : le Dockerfile de `main`.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      # USER_ID/GROUP_ID du runner : mêmes build-args que ceux des jobs de ci.yml, donc mêmes
+      # couches en cache.
+      - name: Prepare .env
+        run: |
+          cp .env.dist .env
+          printf 'USER_ID=%s\nGROUP_ID=%s\n' "$(id -u)" "$(id -g)" >> .env
+
+      - name: Pre-build php image (GHA cache)
+        uses: ./.github/actions/build-php-cached
