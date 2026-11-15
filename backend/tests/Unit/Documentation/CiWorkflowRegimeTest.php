@@ -802,6 +802,30 @@ final class CiWorkflowRegimeTest extends TestCase
     }
 
     /**
+     * R10 — Promesse : le scan juge des images construites de zéro, comme celles que livre le
+     * déploiement ; le cache persistant du démon de la VM ne doit pas décider d'un verdict de
+     * sécurité. Chaque `docker build` de « Build prod images » porte `--no-cache` et `--pull`
+     * (`--pull` tire la base mais sert encore une couche `RUN apt-get …` périmée) ; « Build all
+     * images » (cibles de dev) garde son cache.
+     */
+    public function testTheImagesTheScanJudgesAreBuiltWithoutCache(): void
+    {
+        $build = $this->job(self::CI, 'build-docker');
+        $prodLines = array_filter(
+            $this->logicalLines($this->str($this->namedStep($build, 'build-docker', 'Build prod images')['run'] ?? null)),
+            static fn (string $line): bool => 1 === preg_match('/\bdocker build\b/', $line),
+        );
+        self::assertNotEmpty($prodLines, '« Build prod images » construit les images que le scan juge.');
+        foreach ($prodLines as $line) {
+            self::assertMatchesRegularExpression('/(^|\s)--no-cache(\s|$)/', $line, 'Build prod sans --no-cache : une couche en cache sur le démon de la VM déciderait du verdict Trivy. Ligne : ' . $line);
+            self::assertMatchesRegularExpression('/(^|\s)--pull(\s|$)/', $line, 'Build prod sans --pull. Ligne : ' . $line);
+        }
+
+        $devRun = $this->str($this->namedStep($build, 'build-docker', 'Build all images')['run'] ?? null);
+        self::assertStringNotContainsString('--no-cache', $devRun, '« Build all images » (cibles de dev) garde son cache : seul le scan exige des images construites de zéro.');
+    }
+
+    /**
      * R7 — Promesse : l'e2e (et la régénération des captures) tourne dans le conteneur
      * Playwright — mêmes PNG chez GitHub et dans la VM — avec mailpit, un volume node_modules
      * rendu à l'uid du runner par l'HÔTE, et la clé TOTP du superadmin jamais exportée au job.
