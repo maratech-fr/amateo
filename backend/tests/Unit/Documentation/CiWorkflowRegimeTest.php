@@ -20,25 +20,27 @@ use Symfony\Component\Yaml\Yaml;
  * garde que le YAML ne s'en écarte pas après coup. Une méthode par décision du plan (R1…R9),
  * chacune nomme sa promesse.
  *
- * Listes FERMÉES à dessein (jobs, classes de runner, 5 régimes ALWAYS / PR_ANY / PR_MAIN /
- * MAIN_TARGET / MAIN_PUSH) : un job ajouté demain rougit ici tant que son auteur ne l'a pas
- * rangé — c'est le geste voulu. Branche de lot (D1…D15) : une PR vers `lot/<sujet>` joue le
- * régime léger, une PR vers `main` (dont la PR finale du lot) le gate complet, le push `main`
- * ses 8 jobs (`isCiGreen`) ; les `if` réels sont ÉVALUÉS par événement (`jobsThatRun`).
+ * Listes FERMÉES à dessein (jobs, classes de runner, 3 régimes PR_MAIN / LOT / MAIN_PUSH, steps
+ * du gate de lot) : un job ou un step ajouté demain rougit ici tant que son auteur ne l'a pas
+ * rangé — c'est le geste voulu. Trois régimes (plan CI 2026-11-15, § 9) : une PR vers
+ * `lot/<sujet>` joue le seul job `lot-gate` (« Lot Gate ») ; une PR vers `main` (dont la PR
+ * finale du lot) joue le gate complet, 16 jobs ; le push `main` joue le seul `main-verdict`
+ * (« Main Verdict »), qui prouve que la PR mergée a joué ce gate complet. Les `if` réels sont
+ * ÉVALUÉS par événement (`jobsThatRun`).
  *
  * Ce que ce test NE prouve PAS (preuve ailleurs, ou aucune) :
  *  - la sémantique GitHub « un job sauté compte comme réussi pour un required check » — le test
- *    la suppose, il ne l'exécute pas ;
- *  - B1 (changement de base lot→main relance 16 jobs) et M1 (deux PR d'une même tête, rerun
- *    d'un run léger) : prouvés sur la branche d'essai `lot/essai` (gestes 4 et 5) ;
+ *    la suppose, il ne l'exécute pas ; la logique du verdict : `scripts/ci-verdict-test.py` ;
+ *  - que GitHub Actions accepte les ancres YAML (`&blocking_suite_run`) : premier run de la PR ;
+ *  - le comportement réel de `vitest --changed` et du cache de l'image PHP : PR d'essai ;
  *  - les rulesets `lot-gate` / `lot-no-delete` (hors dépôt), ni la concordance de
  *    LOT_REQUIRED_CHECKS avec le ruleset réellement posé ;
  *  - la concordance des 15 MAIN_REQUIRED_CHECKS avec la protection réelle de `main` : la
  *    constante est une COPIE, relue par `gh api …/branches/main/protection/required_status_checks` ;
  *  - qu'un check requis de `main` soit satisfait par un run LÉGER (même tête partagée, run
- *    annulé) : aucun test ne le voit — la garde est la lecture obligatoire de `gh pr checks <n>`
- *    (une seule ligne « skipping » admise, « Engine Perf Gate (main only) ») avant tout GO ou
- *    merge vers `main`.
+ *    annulé) : aucun test ne le voit avant le merge — la garde est la lecture obligatoire de
+ *    `gh pr checks <n>` (deux lignes « skipping » admises, « Lot Gate » et « Main Verdict »)
+ *    avant tout GO ou merge vers `main`, puis le verdict après le merge.
  *
  * NR d'axe (tous les axes §7.1 : ce chantier décide QUAND tournent leurs NR) — il gate : step
  * `Blocking suite` du job `blocking-tests` + ligne de `docs/testing/blocking-tests.md`
@@ -61,6 +63,81 @@ final class CiWorkflowRegimeTest extends TestCase
 
     private const string RUNS_ON_HEAVY = '${{vars.CI_RUNS_ON_HEAVY||\'ubuntu-24.04\'}}';
 
+    /** Gate de lot : hébergé par défaut, basculé sur la VM par la réserve de minutes (75 %). */
+    private const string RUNS_ON_LOT = '${{vars.CI_RUNS_ON_LOT||\'ubuntu-24.04\'}}';
+
+    /** Verdict de `main` : hébergé par défaut, basculé sur la VM à 90 % du quota. */
+    private const string RUNS_ON_VERDICT = '${{vars.CI_RUNS_ON_VERDICT||\'ubuntu-24.04\'}}';
+
+    private const string CACHE_WARM = '.github/workflows/cache-warm.yml';
+
+    private const string BUILD_PHP_CACHED = './.github/actions/build-php-cached';
+
+    private const string FORK_GUARD = 'Refuse pull requests from forks';
+
+    private const string POOL_STEP = 'Say which pool plays the full gate';
+
+    private const string POOL_WARNING = '::warning title=Gate complet sur un runner hébergé::Les variables CI_RUNS_ON et CI_RUNS_ON_HEAVY sont absentes : ce run consomme des minutes hébergées.';
+
+    private const string VERDICT_STEP = 'Prove the merged pull request played the full gate';
+
+    private const string GUARDS_STEP = 'Static guards (Vitest, always)';
+
+    private const string RELATED_STEP = 'Unit tests related to the diff (Vitest --changed)';
+
+    private const string GUARDS_COMMAND = 'npx vitest run src/test/ tooling/ .guard.test';
+
+    private const string RELATED_COMMAND = 'npx vitest run --changed "origin/${BASE_REF}" --passWithNoTests';
+
+    private const string BLOCKING_SUITE_STEP = 'Blocking suite (phase1, one PHPUnit process)';
+
+    private const string FILTERED_NR_STEP = 'ParcImportCorrectionTenantNR';
+
+    /**
+     * Steps du job `lot-gate`, dans l'ordre (contrat PR 1, état A). `(checkout)` et `(setup-node)`
+     * désignent les actions par leur `uses`, quel que soit le nom donné au step. Le front passe
+     * AVANT « Start services » : sur 2 vCPU, Vitest ne partage pas la machine avec la stack.
+     */
+    private const array LOT_GATE_STEPS = [
+        self::FORK_GUARD,
+        '(checkout)',
+        self::ISOLATE_STEP,
+        'Login to Docker Hub (anti-429)',
+        'Login to ghcr.io (mirror pull)',
+        'Run gitleaks (full history)',
+        'Prepare .env',
+        'Build engine',
+        'Run pytest + coverage + cliquet',
+        'Run ruff',
+        'Check ruff formatting',
+        'Run mypy',
+        'Run bandit',
+        'Run deptry',
+        '(setup-node)',
+        'Install deps',
+        'Build (tsc -b + vite)',
+        self::GUARDS_STEP,
+        self::RELATED_STEP,
+        'Pre-build php image (GHA cache)',
+        'Start services',
+        'Install PHP deps (cached + retried)',
+        'Run PHPStan',
+        'Generate JWT keys',
+        'Init test database',
+        self::BLOCKING_SUITE_STEP,
+        self::FILTERED_NR_STEP,
+        'Tear down the compose stack (always)',
+    ];
+
+    /**
+     * Déclencheurs d'un passage COMPLET de `vitest --changed`, en plus de ceux par défaut de
+     * Vitest (plan § 9.2) : chacun est lu par la config ou les tests sans passer par le graphe
+     * d'imports, donc un diff qui ne touche qu'eux ne rejouerait aucun test.
+     */
+    private const array FULL_RERUN_TRIGGERS = [
+        'package-lock.json', 'tsconfig', 'tooling/', 'act-warnings-ceiling.json', 'coverage-floor.json', 'src/test/setup.ts',
+    ];
+
     private const string PROJECT = 'ci-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}';
 
     private const string COMPOSE_FILE = '${{ github.workspace }}/docker-compose.yml:${{ github.workspace }}/docker-compose.test.yml';
@@ -69,11 +146,11 @@ final class CiWorkflowRegimeTest extends TestCase
 
     private const string STACK_DOWN = './.github/actions/ci-stack-down';
 
-    /** Les 16 jobs historiques + `preflight`. */
+    /** Les 16 jobs du gate complet (dont `preflight`), le gate de lot et le verdict de `main`. */
     private const array JOBS = [
         'preflight', 'lint', 'frontend', 'secrets-scan', 'semgrep', 'dependency-audit', 'phpstan', 'rector',
-        'blocking-tests', 'backend-tests', 'engine-tests', 'engine-perf', 'engine-perf-pr', 'e2e',
-        'engine-semantics', 'functional-tests', 'build-docker',
+        'blocking-tests', 'backend-tests', 'engine-tests', 'engine-perf', 'e2e',
+        'engine-semantics', 'functional-tests', 'build-docker', 'lot-gate', 'main-verdict',
     ];
 
     /** Classe `amateo-heavy` (≈ 3-5 Go chacun) : au plus deux en même temps dans la VM. */
@@ -86,53 +163,53 @@ final class CiWorkflowRegimeTest extends TestCase
      */
     private const array LITERAL_JOBS = [];
 
-    /** Workflows qui restent chez GitHub (déploiement, balayage hebdo, miroir manuel). */
+    /**
+     * Workflows qui restent chez GitHub (déploiement, balayage hebdo, miroir manuel, réchauffage
+     * quotidien du cache de l'image PHP — ce cache sert les runners hébergés, jamais la VM).
+     */
     private const array HOSTED_WORKFLOWS = [
         '.github/workflows/deploy.yml',
         '.github/workflows/security-weekly.yml',
         '.github/workflows/mirror-images.yml',
+        self::CACHE_WARM,
     ];
 
     /**
-     * Les 5 régimes : chaque job de ci.yml est dans UN seul (D2), et chaque régime a son `if`
+     * Les 3 régimes : chaque job de ci.yml est dans UN seul (D2), et chaque régime a son `if`
      * EXACT (D3). Un job sauté compte comme RÉUSSI pour un required check : une coquille d'`if`
      * viderait le gate de `main` en silence — d'où listes fermées et conditions exactes.
      *
-     * ALWAYS : aucun `if` — PR→main, PR→lot/**, push main.
+     * PR_MAIN : PR vers `main` seulement — le gate complet, 15 checks requis plus `engine-perf`.
      */
-    private const array ALWAYS = ['preflight', 'lint', 'secrets-scan', 'semgrep', 'engine-tests'];
+    private const array PR_MAIN = [
+        'preflight', 'lint', 'frontend', 'secrets-scan', 'semgrep', 'dependency-audit', 'phpstan', 'rector',
+        'blocking-tests', 'backend-tests', 'engine-tests', 'engine-perf', 'e2e', 'engine-semantics',
+        'functional-tests', 'build-docker',
+    ];
 
-    /** PR_ANY : toute PR (vers `main` ou `lot/**`), jamais sur push main. */
-    private const array PR_ANY = ['phpstan', 'rector', 'blocking-tests', 'frontend', 'engine-semantics', 'engine-perf-pr'];
+    /** LOT : PR vers une autre base que `main` (les `lot/**`) — un seul job court. */
+    private const array LOT = ['lot-gate'];
 
-    /** PR_MAIN : PR vers `main` seulement — les lourds du gate, rejoués à la PR finale d'un lot. */
-    private const array PR_MAIN = ['backend-tests', 'e2e', 'functional-tests'];
-
-    /** MAIN_TARGET : PR vers `main` ET push main (le run de `main` fait `isCiGreen`), jamais PR→lot. */
-    private const array MAIN_TARGET = ['dependency-audit', 'build-docker'];
-
-    /** MAIN_PUSH : push main seulement (budget de perf BCCL). */
-    private const array MAIN_PUSH = ['engine-perf'];
-
-    private const string IF_PR_ANY = 'github.event_name==\'pull_request\'';
+    /** MAIN_PUSH : push sur `main` seulement — le verdict que lit `isCiGreen`. */
+    private const array MAIN_PUSH = ['main-verdict'];
 
     private const string IF_PR_MAIN = 'github.event_name==\'pull_request\'&&github.base_ref==\'main\'';
 
-    private const string IF_MAIN_TARGET = 'github.event_name!=\'pull_request\'||github.base_ref==\'main\'';
+    private const string IF_LOT = 'github.event_name==\'pull_request\'&&github.base_ref!=\'main\'';
 
-    private const string IF_MAIN_PUSH = 'github.ref==\'refs/heads/main\'';
+    private const string IF_MAIN_PUSH = 'github.event_name==\'push\'';
 
-    /** `if` de build-docker, chaîne ENTIÈRE squashée (sans espaces ni `${{ }}`), parenthèses comprises. */
+    /** `if` de build-docker, chaîne ENTIÈRE squashée (sans espaces ni `${{ }}`). */
     private const string IF_BUILD_DOCKER = '!cancelled()&&needs.preflight.result==\'success\'&&!contains(needs.*.result,\'failure\')'
-        . '&&!contains(needs.*.result,\'cancelled\')&&(github.event_name!=\'pull_request\'||github.base_ref==\'main\')';
+        . '&&!contains(needs.*.result,\'cancelled\')&&github.event_name==\'pull_request\'&&github.base_ref==\'main\'';
 
     private const array BUILD_DOCKER_NEEDS = ['preflight', 'blocking-tests', 'engine-tests'];
 
     /**
      * COPIE des 15 contextes requis de `main` (tous `app_id 15368`), relue par
-     * `gh api repos/{owner}/{repo}/branches/main/protection/required_status_checks` le 2026-11-10.
+     * `gh api repos/{owner}/{repo}/branches/main/protection/required_status_checks` le 2026-11-15.
      * Aucun test ne relit la protection réelle : une divergence se voit à cette relecture-là.
-     * Ni « Engine Perf Gate (main only) » ni « Engine Perf (PR, dense only) » n'y figurent.
+     * Ni « Engine Perf Gate », ni « Lot Gate », ni « Main Verdict » n'y figurent.
      */
     private const array MAIN_REQUIRED_CHECKS = [
         'Preflight', 'Lint', 'Secrets Scan (gitleaks)', 'Semgrep (security gate)', 'Dependency Audit',
@@ -160,22 +237,11 @@ final class CiWorkflowRegimeTest extends TestCase
         'Build Docker Images' => 'build-docker',
     ];
 
-    /**
-     * Les 10 checks à poser dans le ruleset `lot-gate` (hors dépôt) : les 15 de `main` moins les 5
-     * lourds. « Engine Perf (PR, dense only) » tourne sur PR→lot sans être requis (miroir de main).
-     */
-    private const array LOT_REQUIRED_CHECKS = [
-        'Preflight', 'Lint', 'Secrets Scan (gitleaks)', 'Semgrep (security gate)', 'Engine Tests',
-        'PHPStan & CS-Fixer', 'Rector (style gate)', 'Blocking Tests', 'Frontend (build + unit)', 'Engine semantics',
-    ];
+    /** Le seul check du ruleset `lot-gate` (hors dépôt), réduit par le geste 3 de la PR 1. */
+    private const array LOT_REQUIRED_CHECKS = ['Lot Gate'];
 
-    /** Les 6 jobs SAUTÉS sur une PR→lot : les 5 lourds du gate de `main` + le budget de perf de main. */
-    private const array SKIPPED_ON_LOT = ['backend-tests', 'e2e', 'functional-tests', 'dependency-audit', 'build-docker', 'engine-perf'];
-
-    /** Run de push main (`isCiGreen` lit ce run) : inchangé par la branche de lot. */
-    private const array MAIN_PUSH_RUN = [
-        'preflight', 'lint', 'secrets-scan', 'semgrep', 'dependency-audit', 'engine-tests', 'engine-perf', 'build-docker',
-    ];
+    /** Run de push main (`isCiGreen` lit ce run) : le verdict seul. */
+    private const array MAIN_PUSH_RUN = ['main-verdict'];
 
     private const string CONCURRENCY_GROUP = 'ci-${{ github.ref }}';
 
@@ -188,8 +254,10 @@ final class CiWorkflowRegimeTest extends TestCase
 
     /**
      * R1 — Promesse : chaque job de ci.yml part sur le runner par une VARIABLE de dépôt (retour
-     * arrière = supprimer la variable, sans commit), dans sa classe de poids ; ce qui doit rester
-     * chez GitHub garde le littéral.
+     * arrière = supprimer la variable, sans commit), dans sa classe de poids ; le gate de lot et
+     * le verdict ont chacun la leur, hébergée par défaut, que la réserve de minutes bascule sur la
+     * VM (plan § 9.1, § 9.6) ; ce qui doit rester chez GitHub, réchauffage du cache compris,
+     * garde le littéral.
      */
     public function testEveryCiJobIsRoutedByARepositoryVariableInItsWeightClass(): void
     {
@@ -198,13 +266,15 @@ final class CiWorkflowRegimeTest extends TestCase
         sort($ids);
         $expected = self::JOBS;
         sort($expected);
-        self::assertSame($expected, $ids, "ci.yml doit porter EXACTEMENT ces jobs (16 historiques + `preflight`).\n"
-            . 'Un job ajouté ou retiré se range ici, dans sa classe de runner et son régime (ALWAYS/PR_ANY/PR_MAIN/MAIN_TARGET/MAIN_PUSH).');
+        self::assertSame($expected, $ids, "ci.yml doit porter EXACTEMENT ces jobs (les 16 du gate complet, `lot-gate`, `main-verdict`).\n"
+            . 'Un job ajouté ou retiré se range ici, dans sa classe de runner et son régime (PR_MAIN/LOT/MAIN_PUSH).');
 
         $wrong = [];
         foreach ($jobs as $id => $job) {
             $want = match (true) {
                 \in_array($id, self::LITERAL_JOBS, true) => 'ubuntu-24.04',
+                'lot-gate' === $id => self::RUNS_ON_LOT,
+                'main-verdict' === $id => self::RUNS_ON_VERDICT,
                 \in_array($id, self::HEAVY_JOBS, true) => self::RUNS_ON_HEAVY,
                 default => self::RUNS_ON,
             };
@@ -214,7 +284,8 @@ final class CiWorkflowRegimeTest extends TestCase
             }
         }
         self::assertSame([], $wrong, "runs-on hors régime dans ci.yml :\n  - " . implode("\n  - ", $wrong)
-            . "\nLourds (e2e, functional-tests, backend-tests, build-docker, frontend) → CI_RUNS_ON_HEAVY ; les autres → CI_RUNS_ON ;"
+            . "\nLourds (e2e, functional-tests, backend-tests, build-docker, frontend) → CI_RUNS_ON_HEAVY ; lot-gate → CI_RUNS_ON_LOT ;"
+            . ' main-verdict → CI_RUNS_ON_VERDICT ; les autres → CI_RUNS_ON ;'
             . ' toujours avec le repli `|| \'ubuntu-24.04\'` (variable absente = GitHub-hosted).');
 
         foreach (self::HOSTED_WORKFLOWS as $file) {
@@ -241,7 +312,10 @@ final class CiWorkflowRegimeTest extends TestCase
 
     /**
      * R2 — Promesse : une PR de fork n'exécute jamais rien sur le runner — `preflight` (sans
-     * checkout) rougit sur un `pull_request` venu d'un autre dépôt, et tout autre job l'attend.
+     * checkout) rougit sur un `pull_request` vers `main` venu d'un autre dépôt, et tout job du
+     * gate complet l'attend. Seuls deux jobs ne l'attendent pas (plan § 9.2, § 9.4) : `lot-gate`,
+     * qui porte sa propre garde fork en premier step, et `main-verdict`, qui ne tourne que sur un
+     * push `main` (un fork ne pousse pas sur `main`) et n'attendrait sinon jamais une VM éteinte.
      */
     public function testAForkPullRequestIsRefusedBeforeAnyJobTouchesTheRunner(): void
     {
@@ -251,7 +325,7 @@ final class CiWorkflowRegimeTest extends TestCase
 
         self::assertSame('Preflight', $preflight['name'] ?? null, 'Le job `preflight` s\'appelle « Preflight » : c\'est le nom du required check.');
         self::assertArrayNotHasKey('needs', $preflight, '`preflight` est la racine du graphe : il n\'attend rien.');
-        self::assertArrayNotHasKey('if', $preflight, '`preflight` tourne toujours (sur `main`, sa garde se saute) : un job sauté vaudrait succès pour les jobs suivants.');
+        self::assertSame(self::IF_PR_MAIN, $this->condition($preflight['if'] ?? null), '`preflight` ne tourne que sur une PR vers `main` : il ouvre le gate complet, et lui seul.');
 
         $guard = null;
         foreach ($this->steps($preflight, 'preflight') as $step) {
@@ -271,7 +345,7 @@ final class CiWorkflowRegimeTest extends TestCase
 
         $orphans = [];
         foreach ($jobs as $id => $job) {
-            if ('preflight' === $id) {
+            if (\in_array($id, ['preflight', 'lot-gate', 'main-verdict'], true)) {
                 continue;
             }
             if (!\in_array('preflight', $this->needs($job), true)) {
@@ -280,6 +354,11 @@ final class CiWorkflowRegimeTest extends TestCase
         }
         self::assertSame([], $orphans, "Ces jobs n'attendent pas `preflight` (needs) — ils démarreraient sur le runner avant la garde fork :\n  - "
             . implode("\n  - ", $orphans));
+
+        foreach (['lot-gate', 'main-verdict'] as $id) {
+            self::assertArrayHasKey($id, $jobs, \sprintf('ci.yml doit porter le job `%s`.', $id));
+            self::assertArrayNotHasKey('needs', $jobs[$id], \sprintf('`%s` n\'attend aucun job : `preflight` est sauté dans son régime, et un `needs` sauté le sauterait aussi (sauté = succès).', $id));
+        }
     }
 
     /**
@@ -306,25 +385,28 @@ final class CiWorkflowRegimeTest extends TestCase
     }
 
     /**
-     * D2 — Promesse : chaque job de ci.yml est rangé dans UN seul des 5 régimes (ALWAYS, PR_ANY,
-     * PR_MAIN, MAIN_TARGET, MAIN_PUSH) — un job ajouté demain rougit ici tant qu'il n'est pas rangé.
+     * D2 — Promesse : chaque job de ci.yml est rangé dans UN seul des 3 régimes (PR_MAIN 16 jobs,
+     * LOT 1, MAIN_PUSH 1 ; plan § 9.1) — un job ajouté demain rougit ici tant qu'il n'est pas rangé.
      */
     public function testEveryJobBelongsToExactlyOneRegime(): void
     {
         $ids = array_keys($this->jobs(self::CI));
         sort($ids);
 
-        $classified = array_merge(self::ALWAYS, self::PR_ANY, self::PR_MAIN, self::MAIN_TARGET, self::MAIN_PUSH);
+        self::assertCount(16, self::PR_MAIN);
+        self::assertCount(1, self::LOT);
+        self::assertCount(1, self::MAIN_PUSH);
+        $classified = array_merge(self::PR_MAIN, self::LOT, self::MAIN_PUSH);
         self::assertSame(array_values(array_unique($classified)), $classified, 'Un job figure dans DEUX régimes.');
         sort($classified);
-        self::assertSame($ids, $classified, "Les 5 régimes doivent couvrir EXACTEMENT les jobs de ci.yml.\n"
+        self::assertSame($ids, $classified, "Les 3 régimes doivent couvrir EXACTEMENT les jobs de ci.yml.\n"
             . 'Job manquant = non rangé (son `if` n\'est gardé par rien) ; job en trop = disparu de ci.yml.');
     }
 
     /**
      * D3 — Promesse : chaque job porte l'`if` EXACT de son régime, rien de plus — aucune condition
      * cachée (chemins, doc seule, action de PR…) ne peut sauter un job du gate de `main`, et
-     * `build-docker` garde sa chaîne entière et ses `needs`.
+     * `build-docker` garde sa chaîne entière et ses `needs` (plan § 12, contrats de la PR 1).
      */
     public function testEveryRegimeConditionIsExact(): void
     {
@@ -337,17 +419,12 @@ final class CiWorkflowRegimeTest extends TestCase
             }
         };
 
-        foreach (self::ALWAYS as $id) {
-            $expect($id, null, $jobs[$id] ?? []);
-        }
-        foreach (self::PR_ANY as $id) {
-            $expect($id, self::IF_PR_ANY, $jobs[$id] ?? []);
-        }
         foreach (self::PR_MAIN as $id) {
-            $expect($id, self::IF_PR_MAIN, $jobs[$id] ?? []);
+            $expect($id, 'build-docker' === $id ? self::IF_BUILD_DOCKER : self::IF_PR_MAIN, $jobs[$id] ?? []);
         }
-        $expect('dependency-audit', self::IF_MAIN_TARGET, $jobs['dependency-audit'] ?? []);
-        $expect('build-docker', self::IF_BUILD_DOCKER, $jobs['build-docker'] ?? []);
+        foreach (self::LOT as $id) {
+            $expect($id, self::IF_LOT, $jobs[$id] ?? []);
+        }
         foreach (self::MAIN_PUSH as $id) {
             $expect($id, self::IF_MAIN_PUSH, $jobs[$id] ?? []);
         }
@@ -360,14 +437,15 @@ final class CiWorkflowRegimeTest extends TestCase
 
     /**
      * D4 — Promesse : une PR vers `main` (dont la PR finale d'un lot) joue TOUT le gate — les 16
-     * jobs, seul `engine-perf` (push main) est sauté. Évaluation des `if` réels de ci.yml.
+     * jobs, perf du moteur comprise ; seuls `lot-gate` et `main-verdict` sont sautés (plan § 9.3).
+     * Évaluation des `if` réels de ci.yml.
      */
     public function testAPullRequestToMainRunsTheWholeGate(): void
     {
-        $expected = array_values(array_diff(self::JOBS, self::MAIN_PUSH));
+        $expected = self::PR_MAIN;
         sort($expected);
         self::assertCount(16, $expected);
-        self::assertSame($expected, $this->jobsThatRun($this->pullRequestTo('main')), 'PR→main doit exécuter les 16 jobs (tout sauf engine-perf).');
+        self::assertSame($expected, $this->jobsThatRun($this->pullRequestTo('main')), 'PR→main doit exécuter les 16 jobs du gate complet (tout sauf lot-gate et main-verdict).');
     }
 
     /**
@@ -378,8 +456,9 @@ final class CiWorkflowRegimeTest extends TestCase
     {
         self::assertCount(15, self::MAIN_REQUIRED_CHECKS);
         self::assertSame(self::MAIN_REQUIRED_CHECKS, array_values(array_unique(self::MAIN_REQUIRED_CHECKS)));
-        self::assertNotContains('Engine Perf Gate (main only)', self::MAIN_REQUIRED_CHECKS);
-        self::assertNotContains('Engine Perf (PR, dense only)', self::MAIN_REQUIRED_CHECKS);
+        self::assertNotContains('Engine Perf Gate', self::MAIN_REQUIRED_CHECKS);
+        self::assertNotContains('Lot Gate', self::MAIN_REQUIRED_CHECKS);
+        self::assertNotContains('Main Verdict', self::MAIN_REQUIRED_CHECKS);
         $names = array_keys(self::CHECK_NAME_TO_JOB);
         sort($names);
         $required = self::MAIN_REQUIRED_CHECKS;
@@ -400,48 +479,61 @@ final class CiWorkflowRegimeTest extends TestCase
     }
 
     /**
-     * D6 — Promesse : une PR vers `lot/<sujet>` joue le régime LÉGER — ALWAYS ∪ PR_ANY (11 jobs),
-     * dont les 10 checks du ruleset `lot-gate` ; les 6 autres (5 lourds + engine-perf) sont sautés.
+     * D6 — Promesse : une PR vers `lot/<sujet>` joue UN seul job, `lot-gate`, dont le nom
+     * « Lot Gate » est le seul check du ruleset `lot-gate` ; les 17 autres sont sautés (plan § 9.2,
+     * § 9.5).
      */
-    public function testAPullRequestToALotBranchRunsOnlyTheLightRegime(): void
+    public function testAPullRequestToALotBranchRunsOnlyTheLotGate(): void
     {
-        $light = array_merge(self::ALWAYS, self::PR_ANY);
-        sort($light);
-        self::assertCount(11, $light);
         $running = $this->jobsThatRun($this->pullRequestTo('lot/essai'));
-        self::assertSame($light, $running, 'PR→lot/** doit exécuter EXACTEMENT ALWAYS ∪ PR_ANY (11 jobs).');
+        self::assertSame(self::LOT, $running, 'PR→lot/** doit exécuter EXACTEMENT `lot-gate`, et lui seul.');
 
-        $skipped = array_values(array_diff(self::JOBS, $running));
-        sort($skipped);
-        $expectedSkipped = self::SKIPPED_ON_LOT;
-        sort($expectedSkipped);
-        self::assertSame($expectedSkipped, $skipped, 'PR→lot/** saute EXACTEMENT les 6 : backend-tests, e2e, functional-tests, dependency-audit, build-docker, engine-perf.');
-
-        self::assertCount(10, self::LOT_REQUIRED_CHECKS);
-        foreach (self::LOT_REQUIRED_CHECKS as $check) {
-            self::assertContains($check, self::MAIN_REQUIRED_CHECKS, \sprintf('« %s » (lot-gate) est un check de main.', $check));
-            self::assertContains(self::CHECK_NAME_TO_JOB[$check], $running, \sprintf('« %s » (requis par lot-gate) doit TOURNER sur PR→lot.', $check));
-        }
+        $jobs = $this->jobs(self::CI);
+        self::assertSame(self::LOT_REQUIRED_CHECKS, [$this->str($jobs['lot-gate']['name'] ?? null)], 'Le job `lot-gate` s\'appelle « Lot Gate » : c\'est le seul check requis du ruleset `lot-gate`.');
+        self::assertSame(25, $jobs['lot-gate']['timeout-minutes'] ?? null, '`lot-gate` : délai de 25 minutes (cible 9 minutes facturées).');
     }
 
     /**
-     * D7 — Promesse : le run de push `main` (celui que lit `isCiGreen` avant un déploiement) garde
-     * exactement ses 8 jobs : preflight, lint, secrets-scan, semgrep, dependency-audit,
-     * engine-tests, engine-perf, build-docker.
+     * D7 — Promesse : le push `main` ne joue que le verdict (plan § 9.4) : « Main Verdict », le
+     * run que lit `isCiGreen` avant un déploiement.
      */
-    public function testMainPushKeepsWhatMakesItGreen(): void
+    public function testMainPushRunsOnlyTheVerdict(): void
     {
         $expected = self::MAIN_PUSH_RUN;
         sort($expected);
-        self::assertSame($expected, $this->jobsThatRun(['event_name' => 'push', 'base_ref' => '', 'ref' => 'refs/heads/main']), 'push main doit exécuter EXACTEMENT les 8 jobs de isCiGreen.');
+        self::assertSame($expected, $this->jobsThatRun(['event_name' => 'push', 'base_ref' => '', 'ref' => 'refs/heads/main']), 'push main doit exécuter EXACTEMENT `main-verdict`.');
+        self::assertSame('Main Verdict', $this->job(self::CI, 'main-verdict')['name'] ?? null, 'Le job `main-verdict` s\'appelle « Main Verdict » (une des deux lignes « skipping » admises au GO).');
     }
 
     /**
      * D8 — Promesse : aucun job n'est sauté selon le CONTENU d'une PR — ni `paths`/`paths-ignore`
-     * sur les déclencheurs, ni filtre « doc seule » (décision 2026-11-06, maintenue).
+     * sur les déclencheurs, ni filtre « doc seule » (décision 2026-11-06, maintenue), ni `git diff`
+     * qui saute un step ; la SEULE sélection par contenu est `vitest --changed` dans le gate de lot
+     * (plan § 9.2 ; le filtre par chemin de la perf PR disparaît, § 9.3).
      */
     public function testNoTriggerOrJobFiltersOnTheChangedPaths(): void
     {
+        $byContent = [];
+        foreach ($this->jobs(self::CI) as $id => $job) {
+            foreach (\is_array($job['steps'] ?? null) ? $job['steps'] : [] as $i => $step) {
+                if (!\is_array($step)) {
+                    continue;
+                }
+                $where = \sprintf('%s / %s', $id, $this->str($step['name'] ?? $i));
+                $uses = $this->str($step['uses'] ?? null);
+                if (str_contains($uses, 'paths-filter') || str_contains($uses, 'changed-files')) {
+                    $byContent[] = $where . ' (uses ' . $uses . ')';
+                }
+                foreach ($this->logicalLines($this->str($step['run'] ?? null)) as $line) {
+                    if (str_contains($line, 'git diff') || str_contains($line, '--changed')) {
+                        $byContent[] = $where;
+                    }
+                }
+            }
+        }
+        self::assertSame(['lot-gate / ' . self::RELATED_STEP], array_values(array_unique($byContent)), "La seule sélection par contenu de ci.yml est `vitest --changed` du gate de lot ; trouvé :\n  - "
+            . implode("\n  - ", $byContent));
+
         $on = $this->workflow(self::CI)['on'] ?? [];
         self::assertIsArray($on);
         foreach ($on as $event => $config) {
@@ -490,7 +582,8 @@ final class CiWorkflowRegimeTest extends TestCase
     /**
      * R4 — Promesse : deux jobs qui tournent en même temps sur le même démon Docker ne se voient
      * jamais — projet compose propre au job, overlay sans port hôte, identifiants Docker propres
-     * au job, et la stack toujours démontée à la fin.
+     * au job, et la stack toujours démontée à la fin. Vaut pour le gate de lot, qui tourne sur la
+     * VM dès que la réserve de minutes l'y bascule (plan § 9.6).
      */
     public function testEveryJobIsSealedOnTheSharedDockerDaemon(): void
     {
@@ -510,7 +603,13 @@ final class CiWorkflowRegimeTest extends TestCase
                 }
             }
             self::assertIsInt($isolate, \sprintf('`%s` doit porter le step « %s » (DOCKER_CONFIG propre au job).', $id, self::ISOLATE_STEP));
-            self::assertLessThanOrEqual(1, $isolate, \sprintf('`%s` : « %s » vient en premier ou juste après le checkout.', $id, self::ISOLATE_STEP));
+            if ('lot-gate' === $id) {
+                // Le gate de lot refuse un fork AVANT tout checkout : l'isolement vient juste après
+                // la garde (step 0) et le checkout (step 1), et avant tout login.
+                self::assertSame(2, $isolate, \sprintf('`lot-gate` : « %s » vient en troisième, après la garde fork et le checkout.', self::ISOLATE_STEP));
+            } else {
+                self::assertLessThanOrEqual(1, $isolate, \sprintf('`%s` : « %s » vient en premier ou juste après le checkout.', $id, self::ISOLATE_STEP));
+            }
             for ($i = 0; $i < $isolate; ++$i) {
                 self::assertFalse($this->isDockerLogin($steps[$i]), \sprintf('`%s` : un login Docker précède « %s » — ses identifiants tomberaient dans le DOCKER_CONFIG du runner.', $id, self::ISOLATE_STEP));
             }
@@ -703,6 +802,30 @@ final class CiWorkflowRegimeTest extends TestCase
     }
 
     /**
+     * R10 — Promesse : le scan juge des images construites de zéro, comme celles que livre le
+     * déploiement ; le cache persistant du démon de la VM ne doit pas décider d'un verdict de
+     * sécurité. Chaque `docker build` de « Build prod images » porte `--no-cache` et `--pull`
+     * (`--pull` tire la base mais sert encore une couche `RUN apt-get …` périmée) ; « Build all
+     * images » (cibles de dev) garde son cache.
+     */
+    public function testTheImagesTheScanJudgesAreBuiltWithoutCache(): void
+    {
+        $build = $this->job(self::CI, 'build-docker');
+        $prodLines = array_filter(
+            $this->logicalLines($this->str($this->namedStep($build, 'build-docker', 'Build prod images')['run'] ?? null)),
+            static fn (string $line): bool => 1 === preg_match('/\bdocker build\b/', $line),
+        );
+        self::assertNotEmpty($prodLines, '« Build prod images » construit les images que le scan juge.');
+        foreach ($prodLines as $line) {
+            self::assertMatchesRegularExpression('/(^|\s)--no-cache(\s|$)/', $line, 'Build prod sans --no-cache : une couche en cache sur le démon de la VM déciderait du verdict Trivy. Ligne : ' . $line);
+            self::assertMatchesRegularExpression('/(^|\s)--pull(\s|$)/', $line, 'Build prod sans --pull. Ligne : ' . $line);
+        }
+
+        $devRun = $this->str($this->namedStep($build, 'build-docker', 'Build all images')['run'] ?? null);
+        self::assertStringNotContainsString('--no-cache', $devRun, '« Build all images » (cibles de dev) garde son cache : seul le scan exige des images construites de zéro.');
+    }
+
+    /**
      * R7 — Promesse : l'e2e (et la régénération des captures) tourne dans le conteneur
      * Playwright — mêmes PNG chez GitHub et dans la VM — avec mailpit, un volume node_modules
      * rendu à l'uid du runner par l'HÔTE, et la clé TOTP du superadmin jamais exportée au job.
@@ -882,6 +1005,293 @@ final class CiWorkflowRegimeTest extends TestCase
         }
     }
 
+    /**
+     * L1 — Promesse : quand le gate complet part sur un runner hébergé (variables de la VM
+     * absentes), `preflight` le dit en avertissement — sans checkout, sans jamais rougir (plan
+     * § 9.1, contrats de la PR 1).
+     */
+    public function testPreflightWarnsWhenTheFullGatePlaysOnAHostedRunner(): void
+    {
+        $pool = $this->namedStep($this->job(self::CI, 'preflight'), 'preflight', self::POOL_STEP);
+        $run = $this->str($pool['run'] ?? null);
+        self::assertStringContainsString(self::POOL_WARNING, $run, '`preflight` : avertissement mot pour mot, niveau `::warning` (jamais `::error`).');
+        self::assertStringNotContainsString('exit 1', $run, 'L\'avertissement de pool ne fait jamais rougir `preflight`.');
+        $if = $this->condition($pool['if'] ?? null);
+        self::assertMatchesRegularExpression('/runner\.environment|vars\.CI_RUNS_ON/', $if, \sprintf('« %s » ne parle que sur un runner hébergé : son `if` lit `runner.environment` ou les variables de routage.', self::POOL_STEP));
+    }
+
+    /**
+     * L2 — Promesse : une PR de fork vers un lot n'exécute rien — le PREMIER step de `lot-gate` est
+     * la garde fork, identique à celle de `preflight`, avant tout checkout ; le checkout qui suit
+     * prend tout l'historique (gitleaks sur l'historique, `--changed` contre la base) (plan § 9.2).
+     */
+    public function testTheLotGateRefusesAForkBeforeAnyCheckoutAndFetchesTheWholeHistory(): void
+    {
+        $steps = $this->steps($this->job(self::CI, 'lot-gate'), 'lot-gate');
+        $preflightGuard = $this->namedStep($this->job(self::CI, 'preflight'), 'preflight', self::FORK_GUARD);
+
+        self::assertSame(self::FORK_GUARD, $steps[0]['name'] ?? null, '`lot-gate` : le PREMIER step est la garde fork.');
+        self::assertSame($this->condition($preflightGuard['if'] ?? null), $this->condition($steps[0]['if'] ?? null), 'La garde fork de `lot-gate` porte la même condition que celle de `preflight`.');
+        self::assertStringContainsString('exit1', $this->squash($steps[0]['run'] ?? null), 'La garde fork de `lot-gate` fait ÉCHOUER le job (`exit 1`).');
+
+        self::assertStringStartsWith('actions/checkout@', $this->str($steps[1]['uses'] ?? null), '`lot-gate` : le checkout vient juste après la garde fork, jamais avant.');
+        self::assertSame(0, $steps[1]['with']['fetch-depth'] ?? null, '`lot-gate` : checkout complet (`fetch-depth: 0`) — gitleaks lit tout l\'historique, `--changed` compare à origin/<base>.');
+    }
+
+    /**
+     * L3 — Promesse : le gate de lot joue exactement son contenu, dans l'ordre du contrat (état A :
+     * gitleaks, moteur, front, PHPStan, suite bloquante), et rien d'autre (plan § 9.2).
+     */
+    public function testTheLotGatePlaysItsStepsInTheContractOrder(): void
+    {
+        $job = $this->job(self::CI, 'lot-gate');
+        $labels = array_map(fn (array $step): string => $this->stepLabel($step), $this->steps($job, 'lot-gate'));
+        self::assertSame(self::LOT_GATE_STEPS, $labels, '`lot-gate` : steps exacts, dans l\'ordre du contrat de la PR 1.');
+
+        $uses = [];
+        foreach ($this->steps($job, 'lot-gate') as $step) {
+            $uses[$this->stepLabel($step)] = $this->str($step['uses'] ?? null);
+        }
+        self::assertSame(self::BUILD_PHP_CACHED, $uses['Pre-build php image (GHA cache)'] ?? null, '`lot-gate` construit l\'image PHP par build-php-cached : le cache que réchauffe `cache-warm.yml`.');
+        self::assertSame(self::STACK_DOWN, $uses['Tear down the compose stack (always)'] ?? null);
+        self::assertStringContainsString('composer phpstan', $this->str($this->namedStep($job, 'lot-gate', 'Run PHPStan')['run'] ?? null), 'PHPStan reste dans le gate de lot.');
+    }
+
+    /**
+     * L4 — Promesse : trois steps du gate de lot portent une condition, et pas un de plus — la garde
+     * fork, le login Docker Hub, le démontage en `always()` ; tout autre step tourne toujours, le
+     * premier rouge arrête le job (plan § 9.2, « Trois conditions de step admises »).
+     */
+    public function testTheLotGateAdmitsOnlyThreeStepConditions(): void
+    {
+        $preflightGuard = $this->namedStep($this->job(self::CI, 'preflight'), 'preflight', self::FORK_GUARD);
+        $admitted = [
+            self::FORK_GUARD => $this->condition($preflightGuard['if'] ?? null),
+            'Login to Docker Hub (anti-429)' => 'vars.DOCKERHUB_USERNAME!=\'\'',
+            'Tear down the compose stack (always)' => 'always()',
+        ];
+
+        $wrong = [];
+        foreach ($this->steps($this->job(self::CI, 'lot-gate'), 'lot-gate') as $step) {
+            $label = $this->stepLabel($step);
+            $got = \array_key_exists('if', $step) ? $this->condition($step['if']) : null;
+            $want = $admitted[$label] ?? null;
+            if ($got !== $want) {
+                $wrong[] = \sprintf('%s : if « %s », attendu « %s »', $label, $got ?? '(aucun)', $want ?? '(aucun)');
+            }
+        }
+        self::assertSame([], $wrong, "`lot-gate` : conditions de step hors des trois admises :\n  - " . implode("\n  - ", $wrong));
+    }
+
+    /**
+     * L5 — Promesse : le gate de lot laisse à la PR finale ce qu'il ne joue pas — Rector,
+     * CS-Fixer, Semgrep, le groupe `contract` (sémantique moteur), la perf, la couverture Vitest,
+     * ESLint (plan § 9.2, « Ce que le lot laisse passer »). Lu sur les commandes, commentaires
+     * shell retirés.
+     */
+    public function testTheLotGateLeavesOutWhatOnlyTheFullGatePlays(): void
+    {
+        $lines = [];
+        foreach ($this->steps($this->job(self::CI, 'lot-gate'), 'lot-gate') as $step) {
+            foreach ($this->logicalLines($this->str($step['run'] ?? null)) as $line) {
+                $lines[] = $line;
+            }
+            $lines[] = $this->str($step['uses'] ?? null);
+        }
+        $commands = strtolower(implode("\n", $lines));
+
+        // Mots entiers : un chemin de la liste bloquante (`OpponentDirectoryShareTest`) contient « rector ».
+        foreach ([
+            '/\brector\b/' => 'Rector',
+            '/\bphp-cs-fixer\b/' => 'CS-Fixer',
+            '/\bsemgrep\b/' => 'Semgrep',
+            '/--group[\s=]+contract\b/' => 'le groupe `contract`',
+            '/--coverage\b/' => 'la couverture Vitest',
+            '/\btest:coverage\b/' => 'la couverture Vitest',
+            '/\bnpm run lint\b/' => 'ESLint',
+            '/\beslint\b/' => 'ESLint',
+        ] as $pattern => $what) {
+            self::assertDoesNotMatchRegularExpression($pattern, $commands, \sprintf('`lot-gate` ne joue pas %s (%s) : la PR finale vers `main` le joue.', $what, $pattern));
+        }
+        self::assertDoesNotMatchRegularExpression('/-m\s*["\']?perf\b/', $commands, '`lot-gate` ne joue pas la perf du moteur : elle vit dans `engine-perf`, sur PR vers `main`.');
+    }
+
+    /**
+     * L6 — Promesse : le gate de lot joue toujours les gardes statiques Vitest, puis seulement les
+     * tests liés au diff (`--changed` contre la base), sans couverture ; la base passe par
+     * l'environnement, jamais interpolée dans le shell (plan § 9.2, contrats de la PR 1).
+     */
+    public function testTheLotGateRunsTheVitestGuardsThenOnlyTheTestsRelatedToTheDiff(): void
+    {
+        $job = $this->job(self::CI, 'lot-gate');
+
+        $guards = $this->namedStep($job, 'lot-gate', self::GUARDS_STEP);
+        self::assertSame('frontend', $guards['working-directory'] ?? null, 'Les gardes Vitest tournent dans `frontend`.');
+        self::assertStringContainsString(self::GUARDS_COMMAND, $this->str($guards['run'] ?? null), 'Gardes statiques : `src/test/`, `tooling/` et les `.guard.test`, à chaque run.');
+
+        $related = $this->namedStep($job, 'lot-gate', self::RELATED_STEP);
+        self::assertSame('frontend', $related['working-directory'] ?? null, 'Le Vitest lié tourne dans `frontend`.');
+        $run = $this->str($related['run'] ?? null);
+        self::assertStringContainsString(self::RELATED_COMMAND, $run, 'Vitest lié : `--changed` contre origin/<base>, vert si aucun test n\'est lié.');
+        self::assertStringNotContainsString('${{', $run, 'La base n\'est jamais interpolée dans le shell (injection par nom de branche).');
+        $env = \is_array($related['env'] ?? null) ? $related['env'] : [];
+        self::assertSame('${{github.base_ref}}', $this->squash($env['BASE_REF'] ?? null), 'La base passe par `env: BASE_REF: ${{ github.base_ref }}`.');
+    }
+
+    /**
+     * L7 — Promesse : le gate de lot joue EXACTEMENT la liste bloquante, sans la recopier — les deux
+     * `run` PHPUnit de `blocking-tests` portent les ancres `&blocking_suite_run` et
+     * `&filtered_tenant_nr_run`, que `lot-gate` reprend par alias (plan § 9.2, contrats de la PR 1 ;
+     * la liste garde une seule maison, gardée par `BlockingTestsListMatchesCiTest`).
+     */
+    public function testTheLotGatePlaysExactlyTheBlockingListThroughTwoYamlAnchors(): void
+    {
+        $raw = file_get_contents(self::ROOT . '/' . self::CI);
+        self::assertIsString($raw);
+        foreach (['blocking_suite_run', 'filtered_tenant_nr_run'] as $anchor) {
+            self::assertSame(1, preg_match_all('/^\s*run:\s*&' . $anchor . '\b/m', $raw), \sprintf('ci.yml : une seule ancre `run: &%s`, posée dans `blocking-tests`.', $anchor));
+            self::assertSame(1, preg_match_all('/^\s*run:\s*\*' . $anchor . '\s*$/m', $raw), \sprintf('ci.yml : un seul alias `run: *%s`, dans `lot-gate`.', $anchor));
+        }
+
+        $blocking = $this->job(self::CI, 'blocking-tests');
+        $lot = $this->job(self::CI, 'lot-gate');
+        foreach ([self::BLOCKING_SUITE_STEP, self::FILTERED_NR_STEP] as $name) {
+            $source = $this->str($this->namedStep($blocking, 'blocking-tests', $name)['run'] ?? null);
+            self::assertNotSame('', $source);
+            self::assertSame($source, $this->str($this->namedStep($lot, 'lot-gate', $name)['run'] ?? null), \sprintf('« %s » : `lot-gate` joue le même `run` que `blocking-tests`.', $name));
+        }
+    }
+
+    /**
+     * L8 — Promesse : `vitest --changed` rejoue TOUT quand change un fichier que la config ou les
+     * tests lisent hors du graphe d'imports — les déclencheurs par défaut de Vitest, plus
+     * `package-lock.json`, `tsconfig*.json`, `tooling/**`, `act-warnings-ceiling.json`,
+     * `coverage-floor.json`, `src/test/setup.ts` (plan § 9.2). Lecture statique de la config,
+     * commentaires retirés.
+     */
+    public function testVitestRerunsEverythingWhenAFileOutsideTheImportGraphChanges(): void
+    {
+        $config = file_get_contents(self::ROOT . '/frontend/vitest.config.ts');
+        self::assertIsString($config);
+        $code = (string) preg_replace('#//[^\n]*#', '', $config);
+        self::assertSame(1, preg_match('/forceRerunTriggers\s*:\s*\[([^\]]*)\]/', $code, $m), '`frontend/vitest.config.ts` déclare `test.forceRerunTriggers: [ … ]`.');
+        $triggers = $m[1];
+
+        $defaults = str_contains($triggers, 'configDefaults.forceRerunTriggers')
+            || (str_contains($triggers, 'package.json') && str_contains($triggers, 'vitest.config') && str_contains($triggers, 'vite.config'));
+        self::assertTrue($defaults, '`forceRerunTriggers` garde les déclencheurs par défaut de Vitest (`...configDefaults.forceRerunTriggers`) : la clé les remplace sinon.');
+        foreach (self::FULL_RERUN_TRIGGERS as $trigger) {
+            self::assertStringContainsString($trigger, $triggers, \sprintf('`forceRerunTriggers` : « %s » force un passage complet.', $trigger));
+        }
+    }
+
+    /**
+     * L9 — Promesse : la perf du moteur est UN job de la PR vers `main`, « Engine Perf Gate », qui
+     * joue ses trois paliers sans filtre par chemin, après les tests moteur, sans être un check
+     * requis — le verdict de `main` la compte (plan § 9.3).
+     */
+    public function testTheEnginePerfIsOneJobOfThePullRequestToMainWithItsThreeTiersAndNotRequired(): void
+    {
+        $job = $this->job(self::CI, 'engine-perf');
+        self::assertSame('Engine Perf Gate', $job['name'] ?? null, 'Le job de perf s\'appelle « Engine Perf Gate ».');
+        self::assertSame(['preflight', 'engine-tests'], $this->needs($job), '`engine-perf` : needs EXACTS [preflight, engine-tests].');
+        self::assertNotContains('Engine Perf Gate', self::MAIN_REQUIRED_CHECKS, 'La perf n\'est pas un check requis de `main`.');
+
+        $perfRuns = [];
+        foreach ($this->jobs(self::CI) as $id => $any) {
+            foreach (\is_array($any['steps'] ?? null) ? $any['steps'] : [] as $step) {
+                foreach ($this->logicalLines($this->str(\is_array($step) ? ($step['run'] ?? null) : null)) as $line) {
+                    if (1 === preg_match('/-m\s*["\']?perf\b/', $line)) {
+                        $perfRuns[] = $id . ' : ' . trim($line);
+                    }
+                }
+            }
+        }
+        self::assertCount(1, $perfRuns, "Un seul step de ci.yml joue la perf du moteur :\n  - " . implode("\n  - ", $perfRuns));
+        self::assertStringStartsWith('engine-perf : ', $perfRuns[0]);
+        self::assertStringContainsString('pytest -m perf --durations=0', $perfRuns[0], '`engine-perf` : `pytest -m perf --durations=0`.');
+        self::assertStringNotContainsString(' -k ', $perfRuns[0], '`engine-perf` joue les trois paliers : aucun `-k` ne les filtre.');
+    }
+
+    /**
+     * L10 — Promesse : le verdict de `main` ne fait que LIRE — il ne tourne que sur un push `main`,
+     * checkoute la réf par défaut (jamais une réf de PR), ne touche pas à Docker, n'a que des
+     * permissions de lecture et le jeton du job, et lance `scripts/ci-verdict.py` (plan § 9.4).
+     */
+    public function testTheMainVerdictOnlyReadsAndProvesTheMergedPullRequest(): void
+    {
+        $job = $this->job(self::CI, 'main-verdict');
+        self::assertSame(['actions' => 'read', 'contents' => 'read', 'pull-requests' => 'read'], $this->sorted($job['permissions'] ?? null), '`main-verdict` : permissions `contents`, `actions`, `pull-requests` en lecture, rien d\'autre.');
+
+        $steps = $this->steps($job, 'main-verdict');
+        self::assertSame(['(checkout)', self::ISOLATE_STEP, self::VERDICT_STEP], array_map(fn (array $s): string => $this->stepLabel($s), $steps), '`main-verdict` : checkout, isolement, verdict — trois steps.');
+
+        $with = \is_array($steps[0]['with'] ?? null) ? $steps[0]['with'] : [];
+        self::assertArrayNotHasKey('ref', $with, 'Le checkout du verdict est celui par défaut (le commit poussé), jamais une réf de PR.');
+        self::assertArrayNotHasKey('repository', $with, 'Le checkout du verdict vise ce dépôt.');
+
+        foreach ($steps as $step) {
+            self::assertFalse($this->isDockerLogin($step), '`main-verdict` : aucun login Docker.');
+        }
+        self::assertFalse($this->isComposeJob($steps), '`main-verdict` : aucune stack compose.');
+        $verdictRun = $this->str($steps[2]['run'] ?? null);
+        self::assertStringNotContainsString('docker', $verdictRun, '`main-verdict` : aucun step Docker.');
+        self::assertStringContainsString('python3 -I scripts/ci-verdict.py', $verdictRun, 'Le verdict lance `python3 -I scripts/ci-verdict.py`.');
+
+        preg_match_all('/secrets\.(\w+)/', (string) json_encode($job), $secrets);
+        self::assertSame([], array_values(array_diff(array_unique($secrets[1]), ['GITHUB_TOKEN'])), '`main-verdict` : aucun secret — seul le jeton du job.');
+    }
+
+    /**
+     * L11 — Promesse : la logique du verdict est éprouvée à chaque PR — `scripts/ci-verdict-test.py`
+     * tourne dans `lint`, juste avant le self-test du relevé, qui reste le dernier step (contrats
+     * de la PR 1 ; `CiReleveWiringTest::testSelfTestIsTheLastStepOfLint`).
+     */
+    public function testTheVerdictSelfTestRunsInLintBeforeTheReleveSelfTest(): void
+    {
+        $steps = $this->steps($this->job(self::CI, 'lint'), 'lint');
+        $names = array_map(fn (array $s): string => $this->str($s['name'] ?? null), $steps);
+        $verdict = array_search('ci-verdict self-test', $names, true);
+        $releve = array_search('ci-releve self-test', $names, true);
+        self::assertIsInt($verdict, '`lint` porte le step « ci-verdict self-test ».');
+        self::assertIsInt($releve);
+        self::assertSame($releve - 1, $verdict, '« ci-verdict self-test » vient juste avant « ci-releve self-test ».');
+        self::assertStringContainsString('python3 -I scripts/ci-verdict-test.py', $this->str($steps[$verdict]['run'] ?? null));
+    }
+
+    /**
+     * L12 — Promesse : le cache GHA de l'image PHP reste chaud pour les PR de lot — `cache-warm.yml`
+     * (« Cache Warm ») le réécrit chaque jour depuis `main` (planifié, ou à la main), sur un runner
+     * hébergé, par la même action que le gate de lot (plan § 9.2 « Cache de l'image PHP »).
+     */
+    public function testTheCacheWarmRewritesThePhpImageCacheDailyFromMain(): void
+    {
+        $workflow = $this->workflow(self::CACHE_WARM);
+        self::assertSame('Cache Warm', $workflow['name'] ?? null);
+
+        $on = $workflow['on'] ?? null;
+        self::assertIsArray($on);
+        $events = array_keys($on);
+        sort($events);
+        self::assertSame(['schedule', 'workflow_dispatch'], $events, '`cache-warm.yml` : planifié et manuel, rien d\'autre (le planifié tourne sur `main`).');
+        self::assertIsArray($on['schedule'], '`on.schedule` porte sa ligne cron.');
+        self::assertNotEmpty($on['schedule']);
+
+        $jobs = $this->jobs(self::CACHE_WARM);
+        self::assertCount(1, $jobs, '`cache-warm.yml` : un seul job.');
+        foreach ($jobs as $id => $job) {
+            self::assertSame('ubuntu-24.04', $job['runs-on'] ?? null, 'Le réchauffage tourne sur `ubuntu-24.04` littéral : ce cache sert les runners hébergés.');
+            $steps = $this->steps($job, $id);
+            $uses = array_map(fn (array $s): string => $this->str($s['uses'] ?? null), $steps);
+            self::assertContains(self::BUILD_PHP_CACHED, $uses, '`cache-warm.yml` appelle build-php-cached : même scope de cache que le gate de lot.');
+            foreach ($steps as $step) {
+                if (str_starts_with($this->str($step['uses'] ?? null), 'actions/checkout@')) {
+                    self::assertArrayNotHasKey('ref', \is_array($step['with'] ?? null) ? $step['with'] : [], 'Le réchauffage construit le Dockerfile de `main` : checkout par défaut.');
+                }
+            }
+        }
+    }
+
     // --- évaluation des `if` de ci.yml --------------------------------------------------------
 
     /** @return array{event_name: string, base_ref: string, ref: string} */
@@ -1057,6 +1467,50 @@ final class CiWorkflowRegimeTest extends TestCase
         self::assertNotEmpty($steps, \sprintf('`%s` : aucun step.', $id));
 
         return $steps;
+    }
+
+    /**
+     * Le step de ce nom, dans ce job — absent, le test rougit en le nommant.
+     *
+     * @param array<mixed> $job
+     *
+     * @return array<mixed>
+     */
+    private function namedStep(array $job, string $id, string $name): array
+    {
+        foreach ($this->steps($job, $id) as $step) {
+            if ($name === ($step['name'] ?? null)) {
+                return $step;
+            }
+        }
+        self::fail(\sprintf('`%s` doit porter le step « %s ».', $id, $name));
+    }
+
+    /**
+     * Le nom d'un step ; `(checkout)` et `(setup-node)` pour ces deux actions, quel que soit leur nom.
+     *
+     * @param array<mixed> $step
+     */
+    private function stepLabel(array $step): string
+    {
+        $uses = $this->str($step['uses'] ?? null);
+
+        return match (true) {
+            str_starts_with($uses, 'actions/checkout@') => '(checkout)',
+            str_starts_with($uses, 'actions/setup-node@') => '(setup-node)',
+            default => $this->str($step['name'] ?? $uses),
+        };
+    }
+
+    /** @return array<mixed> */
+    private function sorted(mixed $map): array
+    {
+        if (!\is_array($map)) {
+            return [];
+        }
+        ksort($map);
+
+        return $map;
     }
 
     /**

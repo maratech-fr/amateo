@@ -13,29 +13,35 @@ on:
 permissions:
   contents: read
 
-# Régime par branche cible (jamais par dossier touché) : une PR vers `main` joue le gate
-# COMPLET (tout sauf engine-perf) ; une PR vers `lot/<sujet>` joue le régime LÉGER (jobs sans
-# `if` + jobs `if: pull_request`) — les lourds (backend-tests, e2e, functional-tests,
-# dependency-audit, build-docker) attendent la PR finale `lot/<sujet>` → `main`. Le push sur
-# `main` garde son run (isCiGreen) ; un push sur `lot/**` ne lance aucun run.
+# Trois régimes, triés par l'événement et la branche cible (jamais par dossier touché) :
+#   - PR vers `main` (dont la PR finale d'un lot) : le gate COMPLET, 16 jobs — les 15 checks
+#     requis de `main` et `engine-perf` —, `if: github.event_name == 'pull_request' &&
+#     github.base_ref == 'main'`, sur la VM par CI_RUNS_ON / CI_RUNS_ON_HEAVY ;
+#   - PR vers `lot/<sujet>` : le seul job `lot-gate` (« Lot Gate »), hébergé par défaut
+#     (CI_RUNS_ON_LOT) ; ce qu'il ne joue pas se rejoue à la PR finale vers `main` ;
+#   - push `main` : le seul job `main-verdict` (« Main Verdict », lu par isCiGreen), qui prouve
+#     que la PR mergée a joué le gate complet, hébergé par défaut (CI_RUNS_ON_VERDICT).
+# Un push sur `lot/**` ne lance aucun run.
 #
 # Un push qui remplace un autre sur la MÊME réf annule le run précédent — sauf sur `main`, où
-# chaque commit mérite son verdict complet (file de merge, historique du gate). Économise des
-# exécutants sur les PR qui repoussent vite, sans jamais couper un run de `main`.
+# chaque commit mérite son verdict. Économise des exécutants sur les PR qui repoussent vite,
+# sans jamais couper un run de `main`.
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 
 jobs:
-  # Garde fork (ceinture YAML ; le garde réel est le réglage « Require approval for all
-  # external contributors » du dépôt) : une PR venue d'un AUTRE dépôt — vers `main` comme vers
-  # `lot/**` — n'exécute rien sur le runner auto-hébergé. Aucun checkout ici — le code d'un
-  # fork n'atterrit jamais sur le runner. Tous les autres jobs `needs: preflight` ; « Preflight » est un required check (un
-  # job sauté vaudrait succès). Sur `push main` le step se saute et le job est vert.
+  # Garde fork du gate complet (ceinture YAML ; le garde réel est le réglage « Require approval
+  # for all external contributors » du dépôt) : une PR venue d'un AUTRE dépôt vers `main`
+  # n'exécute rien sur le runner auto-hébergé. Aucun checkout ici — le code d'un fork n'atterrit
+  # jamais sur le runner. Les 15 autres jobs du gate complet `needs: preflight` ; « Preflight »
+  # est un required check (un job sauté vaudrait succès). `lot-gate` porte sa propre garde en
+  # premier step ; `main-verdict` ne tourne que sur un push `main`, qu'un fork ne peut pas faire.
   preflight:
     name: Preflight
     runs-on: ${{ vars.CI_RUNS_ON || 'ubuntu-24.04' }}
+    if: github.event_name == 'pull_request' && github.base_ref == 'main'
     timeout-minutes: 5
     steps:
       - name: Refuse pull requests from forks
@@ -44,9 +50,18 @@ jobs:
           echo "::error::Cette CI ne tourne que pour les PR du dépôt lui-même ; une PR de fork n'est jamais exécutée sur le runner."
           exit 1
 
+      # Retour arrière « VM en panne » = supprimer CI_RUNS_ON et CI_RUNS_ON_HEAVY : le gate complet
+      # part alors chez GitHub et consomme le quota de minutes hébergées. Ce step le dit sans
+      # jamais rougir le job.
+      - name: Say which pool plays the full gate
+        if: vars.CI_RUNS_ON == '' && vars.CI_RUNS_ON_HEAVY == ''
+        run: |
+          echo "::warning title=Gate complet sur un runner hébergé::Les variables CI_RUNS_ON et CI_RUNS_ON_HEAVY sont absentes : ce run consomme des minutes hébergées."
+
   lint:
     name: Lint
     runs-on: ${{ vars.CI_RUNS_ON || 'ubuntu-24.04' }}
+    if: github.event_name == 'pull_request' && github.base_ref == 'main'
     needs: preflight
     # Un step bloqué (verrou apt, téléchargement figé) consommerait sinon le défaut
     # GitHub de 6 h : il occupe un exécutant, bloque la file, et ne dit RIEN.
@@ -76,6 +91,9 @@ jobs:
       - name: Stack resolve bench
         run: bash backend/scripts/lib/stack-resolve-test.sh
 
+      - name: ci-verdict self-test
+        run: python3 -I scripts/ci-verdict-test.py
+
       - name: ci-releve self-test
         run: python3 --version && python3 -I scripts/ci-releve-test.py
 
@@ -86,7 +104,7 @@ jobs:
   frontend:
     name: Frontend (build + unit)
     runs-on: ${{ vars.CI_RUNS_ON_HEAVY || 'ubuntu-24.04' }}
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' && github.base_ref == 'main'
     needs: preflight
     # Un step bloqué (verrou apt, téléchargement figé) consommerait sinon le défaut
     # GitHub de 6 h : il occupe un exécutant, bloque la file, et ne dit RIEN.
@@ -159,6 +177,7 @@ jobs:
   secrets-scan:
     name: Secrets Scan (gitleaks)
     runs-on: ${{ vars.CI_RUNS_ON || 'ubuntu-24.04' }}
+    if: github.event_name == 'pull_request' && github.base_ref == 'main'
     needs: preflight
     # docker login ghcr — image miroir gitleaks, P4-92 (contents:read répété : un bloc de job REMPLACE la racine)
     permissions:
@@ -196,6 +215,7 @@ jobs:
   semgrep:
     name: Semgrep (security gate)
     runs-on: ${{ vars.CI_RUNS_ON || 'ubuntu-24.04' }}
+    if: github.event_name == 'pull_request' && github.base_ref == 'main'
     needs: preflight
     # Un step bloqué (verrou apt, téléchargement figé) consommerait sinon le défaut
     # GitHub de 6 h : il occupe un exécutant, bloque la file, et ne dit RIEN.
@@ -231,8 +251,9 @@ jobs:
   dependency-audit:
     name: Dependency Audit
     runs-on: ${{ vars.CI_RUNS_ON || 'ubuntu-24.04' }}
-    # PR vers `main` et push main ; jamais sur une PR vers `lot/**` (vue à la PR finale du lot).
-    if: github.event_name != 'pull_request' || github.base_ref == 'main'
+    # PR vers `main` seulement (une PR vers `lot/**` la joue à la PR finale du lot ; le push
+    # `main` ne joue que le verdict).
+    if: github.event_name == 'pull_request' && github.base_ref == 'main'
     needs: preflight
     env:
       # Un projet compose PAR JOB et par tentative : deux jobs sur le même démon (runner
@@ -322,7 +343,7 @@ jobs:
   phpstan:
     name: PHPStan & CS-Fixer
     runs-on: ${{ vars.CI_RUNS_ON || 'ubuntu-24.04' }}
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' && github.base_ref == 'main'
     needs: preflight
     env:
       # Un projet compose PAR JOB et par tentative : deux jobs sur le même démon (runner
@@ -408,7 +429,7 @@ jobs:
   rector:
     name: Rector (style gate)
     runs-on: ${{ vars.CI_RUNS_ON || 'ubuntu-24.04' }}
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' && github.base_ref == 'main'
     needs: preflight
     env:
       # Un projet compose PAR JOB et par tentative : deux jobs sur le même démon (runner
@@ -474,7 +495,7 @@ jobs:
   blocking-tests:
     name: Blocking Tests
     runs-on: ${{ vars.CI_RUNS_ON || 'ubuntu-24.04' }}
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' && github.base_ref == 'main'
     env:
       # Un projet compose PAR JOB et par tentative : deux jobs sur le même démon (runner
       # auto-hébergé) ne se voient jamais — conteneurs, volumes, réseaux et images au nom du
@@ -537,13 +558,15 @@ jobs:
       # `-d memory_limit=1G` : ~133 fichiers dans un processus, même flag que `backend-tests`.
       # La liste de docs/testing/blocking-tests.md doit rester EXACTEMENT celle des chemins de
       # ce step + le step filtré (garde BlockingTestsListMatchesCiTest, dans les deux sens).
+      # Ancre YAML `&blocking_suite_run` : `lot-gate` rejoue CE `run` par alias, la liste garde
+      # une seule maison.
       - name: Blocking suite (phase1, one PHPUnit process)
-        run: |
+        run: &blocking_suite_run |
           FILES=""
           # Régime de la CI sur le runner auto-hébergé (NR de tous les axes : il décide QUAND
-          # tournent leurs NR) — routage par variable, garde fork, régime par branche cible (gate
-          # complet sur chaque PR vers main, léger vers lot/**), étanchéité des jobs sur le démon
-          # partagé, bloquants en deux processus.
+          # tournent leurs NR) — routage par variable, garde fork, trois régimes (gate complet sur
+          # chaque PR vers main, gate de lot vers lot/**, verdict sur push main), étanchéité des
+          # jobs sur le démon partagé, bloquants en deux processus.
           FILES="$FILES tests/Unit/Documentation/CiWorkflowRegimeTest.php"
           # L'axe auth/memberships : sans ce test dans le gate BLOQUANT, une
           # re-suppression de `eraseCredentials` (bump Rector + `make rector` pour
@@ -1319,8 +1342,9 @@ jobs:
       # tenant est refusé 422 par la garde `ownedTeam`, rien écrit. Step FILTRÉ sur le seul test de
       # cet axe (la classe porte aussi des tests non bloquants). Sans ce gate, un élargissement du
       # canal fuiterait une équipe étrangère dans un bloc en passant tous les checks requis de `main`.
+      # Ancre YAML `&filtered_tenant_nr_run`, rejouée par alias dans `lot-gate`.
       - name: ParcImportCorrectionTenantNR
-        run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Integration/Api/ParcImportExecuteTest.php --filter testAMutualisationCorrectionWithATeamFromAnotherClubIsRefusedWritingNothing'
+        run: &filtered_tenant_nr_run docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Integration/Api/ParcImportExecuteTest.php --filter testAMutualisationCorrectionWithATeamFromAnotherClubIsRefusedWritingNothing'
 
       # Démonte TOUJOURS la stack du job (conteneurs, volumes, images locales, orphelins) — même
       # job rouge ou annulé en cours : le démon du runner auto-hébergé est partagé et persistant.
@@ -1438,6 +1462,7 @@ jobs:
   engine-tests:
     name: Engine Tests
     runs-on: ${{ vars.CI_RUNS_ON || 'ubuntu-24.04' }}
+    if: github.event_name == 'pull_request' && github.base_ref == 'main'
     needs: preflight
     env:
       # Un projet compose PAR JOB et par tentative : deux jobs sur le même démon (runner
@@ -1536,7 +1561,7 @@ jobs:
         uses: ./.github/actions/ci-stack-down
 
   engine-perf:
-    name: Engine Perf Gate (main only)
+    name: Engine Perf Gate
     runs-on: ${{ vars.CI_RUNS_ON || 'ubuntu-24.04' }}
     env:
       # Un projet compose PAR JOB et par tentative : deux jobs sur le même démon (runner
@@ -1549,12 +1574,13 @@ jobs:
     # Un step bloqué (verrou apt, téléchargement figé) consommerait sinon le défaut
     # GitHub de 6 h : il occupe un exécutant, bloque la file, et ne dit RIEN.
     timeout-minutes: 30
-    # Perf gate is main-only. It guards the MVP "< 3 min" exit criterion and,
-    # since the multi-worker fix, ratchets the large tier (dense + BCCL) to a
-    # 60s budget so a regression to the single-worker prove-stall (612s) fails.
-    # PRs get a cheaper, earlier signal from `engine-perf-pr` below (dense only,
-    # only when engine/ moved, higher budget) — this job keeps main honest at 60s.
-    if: github.ref == 'refs/heads/main'
+    # Perf du moteur : un job du gate complet de la PR vers `main`, tous les tests `-m perf`
+    # (aucun `-k`), sans filtre par chemin. Il garde le critère MVP « < 3 min »
+    # et, depuis le correctif multi-worker, tient le grand palier (dense + BCCL) sous 60 s : un
+    # retour au blocage mono-worker (612 s) rougit. NON requis au merge (« Engine Perf Gate »
+    # n'est pas un check requis de `main`) ; le verdict de `main` le compte comme les autres.
+    # On ne « réessaie » jamais un flake en CI : si ce gate rougit, on mesure.
+    if: github.event_name == 'pull_request' && github.base_ref == 'main'
     needs: [preflight, engine-tests]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -1587,109 +1613,6 @@ jobs:
 
       - name: Run perf gate
         run: docker compose run --rm engine pytest -m perf --durations=0
-
-      # Démonte TOUJOURS la stack du job (conteneurs, volumes, images locales, orphelins) — même
-      # job rouge ou annulé en cours : le démon du runner auto-hébergé est partagé et persistant.
-      - name: Tear down the compose stack (always)
-        if: always()
-        uses: ./.github/actions/ci-stack-down
-
-  engine-perf-pr:
-    name: Engine Perf (PR, dense only)
-    runs-on: ${{ vars.CI_RUNS_ON || 'ubuntu-24.04' }}
-    # Un step bloqué (verrou apt, téléchargement figé) consommerait sinon le défaut
-    # GitHub de 6 h : il occupe un exécutant, bloque la file, et ne dit RIEN.
-    timeout-minutes: 15
-    # Earlier, cheaper perf signal ON PRS — vers `main` comme vers `lot/**` (main keeps the
-    # full gate above).
-    # Only the dense tier (BCCL stays on main), and only when engine/ moved
-    # (a backend-only PR does not pay it) — P4-167, decisions C1-C3.
-    if: github.event_name == 'pull_request'
-    needs: [preflight, engine-tests]
-    # Budget PR = budget main (60 s), décision C2 du 2026-09-03 : la variance a été
-    # mesurée AVANT (C1, 5 runs sur runners GitHub, dense de l'ordre de 0,2-0,3 s,
-    # valeurs dans la PR #838) — 60 s est ≥ 1,5 × la médiane par deux ordres de
-    # grandeur, et la régression visée est le prove-stall mono-worker (612 s).
-    # Une seule vérité PR/main plutôt qu'un seuil dérivé qui dériverait tout seul.
-    # On ne « réessaie » jamais un flake en CI : si ce gate rougit, on mesure.
-    env:
-      # Un projet compose PAR JOB et par tentative : deux jobs sur le même démon (runner
-      # auto-hébergé) ne se voient jamais — conteneurs, volumes, réseaux et images au nom du
-      # projet. Overlay `docker-compose.test.yml` : aucun port hôte publié. Chemins ABSOLUS :
-      # un step en `working-directory: frontend` ne résoudrait pas un chemin relatif.
-      COMPOSE_PROJECT_NAME: ci-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}
-      AMATEO_STACK: ci-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}
-      COMPOSE_FILE: ${{ github.workspace }}/docker-compose.yml:${{ github.workspace }}/docker-compose.test.yml
-      PERF_PR_BUDGET: "60"
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          # need base..HEAD to diff which paths changed on this PR
-          fetch-depth: 0
-
-      # Runner auto-hébergé PERSISTANT et partagé : les identifiants Docker de ce job (logins
-      # Docker Hub / ghcr) vont dans un DOCKER_CONFIG propre au job, jamais dans celui du runner.
-      # Posé par GITHUB_ENV : le contexte `runner` est interdit dans un `env` de job.
-      - name: Isolate the Docker credentials of this job
-        run: |
-          echo "DOCKER_CONFIG=$RUNNER_TEMP/docker-config" >> "$GITHUB_ENV"
-          echo "HOME=$HOME"
-
-      # Connexion Docker Hub avant tout tirage : les runners partagés GitHub épuisent le
-      # quota ANONYME (429 Too Many Requests — incident 2026-10-09, python:3.12-slim refusé).
-      # Conditionnelle : sans les secrets (PR de fork) la CI tire en anonyme, comme avant.
-      - name: Login to Docker Hub (anti-429)
-        if: vars.DOCKERHUB_USERNAME != ''
-        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4
-        with:
-          username: ${{ vars.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-
-      # Path filter WITHOUT a third-party action: the repo pins every external
-      # action by SHA and gates supply chain with semgrep/secrets-scan, so the
-      # filter is a plain git diff, not `dorny/paths-filter` or `tj-actions`.
-      - name: Engine changed?
-        id: engine_changed
-        # base_ref passe par l'ENV, jamais interpolé dans le shell : un nom de
-        # branche est une entrée d'attaquant sur une PR de fork (semgrep
-        # run-shell-injection, gate `semgrep`).
-        env:
-          BASE_REF: ${{ github.base_ref }}
-        run: |
-          if git diff --name-only "origin/${BASE_REF}...HEAD" \
-              | grep -qE '^(engine/|docker/engine/)'; then
-            echo "changed=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "changed=false" >> "$GITHUB_OUTPUT"
-          fi
-
-      # When engine is untouched the job still finishes GREEN in seconds: a
-      # required check that is a green-empty job differs from one that never ran
-      # (a "missing" required check blocks the merge — we want the passing one).
-      - name: Skipped, engine untouched
-        if: steps.engine_changed.outputs.changed != 'true'
-        run: |
-          echo "Skipped: engine untouched — no engine/ or docker/engine/ change on this PR."
-
-      - name: Prepare .env
-        if: steps.engine_changed.outputs.changed == 'true'
-        run: |
-          cp .env.dist .env
-          printf 'USER_ID=%s\nGROUP_ID=%s\n' "$(id -u)" "$(id -g)" >> .env
-
-      - name: Build engine
-        if: steps.engine_changed.outputs.changed == 'true'
-        run: docker compose build engine
-
-      # Dense tier only (BCCL stays on main — C2/C3). The selector is `dense_club`,
-      # not `dense`: pytest -k matches the full node id, and the FILE is
-      # test_perf_dense.py, so `-k dense` would also drag in the BCCL test. The
-      # dense test function is test_dense_club_… — `dense_club` isolates it.
-      # --durations=0 + -rA surface the measured solve time in the log: this run
-      # is also the C1 measurement point (variance before we tighten the budget).
-      - name: Run perf gate (dense)
-        if: steps.engine_changed.outputs.changed == 'true'
-        run: docker compose run --rm -e PERF_BUDGET_SECONDS=${{ env.PERF_PR_BUDGET }} engine pytest -m perf -k dense_club --durations=0 -rA
 
       # Démonte TOUJOURS la stack du job (conteneurs, volumes, images locales, orphelins) — même
       # job rouge ou annulé en cours : le démon du runner auto-hébergé est partagé et persistant.
@@ -1983,7 +1906,7 @@ jobs:
   engine-semantics:
     name: Engine semantics
     runs-on: ${{ vars.CI_RUNS_ON || 'ubuntu-24.04' }}
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' && github.base_ref == 'main'
     needs: preflight
     env:
       # Un projet compose PAR JOB et par tentative : deux jobs sur le même démon (runner
@@ -2167,10 +2090,10 @@ jobs:
   build-docker:
     name: Build Docker Images
     runs-on: ${{ vars.CI_RUNS_ON_HEAVY || 'ubuntu-24.04' }}
-    # Sur `push main` ses `needs` PR seulement (blocking-tests) sont SAUTÉS : il tourne quand même,
-    # tant que rien n'a échoué ni été annulé et que la garde fork est passée. Dernier terme :
-    # PR vers `main` et push main seulement, jamais sur une PR vers `lot/**`.
-    if: ${{ !cancelled() && needs.preflight.result == 'success' && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') && (github.event_name != 'pull_request' || github.base_ref == 'main') }}
+    # Tourne tant que rien n'a échoué ni été annulé et que la garde fork est passée. Derniers
+    # termes : PR vers `main` seulement (une PR vers `lot/**` le rejoue à la PR finale du lot ;
+    # le push `main` ne joue que le verdict).
+    if: ${{ !cancelled() && needs.preflight.result == 'success' && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') && github.event_name == 'pull_request' && github.base_ref == 'main' }}
     env:
       # Un projet compose PAR JOB et par tentative : deux jobs sur le même démon (runner
       # auto-hébergé) ne se voient jamais — conteneurs, volumes, réseaux et images au nom du
@@ -2222,17 +2145,18 @@ jobs:
       # this job even though no dev build uses those targets.
       # Runner auto-hébergé (démon persistant, partagé) : tags `scan-<run>-<tentative>/…` propres
       # au run (deux runs ne se marchent pas dessus ; ci-stack-down et le hook du runner les
-      # retirent) et `--pull` (la base est tirée fraîche, pas celle d'un run ancien). Ce que ce
-      # job ne prouve plus sur le runner : un build DE ZÉRO (cache du démon) — deploy.yml, chez
-      # GitHub, le prouve à chaque release.
+      # retirent). `--pull` tire la base fraîche, mais sur le démon persistant il ne casse pas le
+      # cache d'une couche `RUN` : une couche `apt` périmée a fait juger par Trivy une version
+      # déjà corrigée dans le Dockerfile. Le scan doit juger des images construites de zéro,
+      # comme celles que livre deploy.yml : d'où `--no-cache` sur chaque build prod.
       - name: Build prod images
         run: |
-          docker build --pull --target prod -f docker/php/Dockerfile -t scan-${{ github.run_id }}-${{ github.run_attempt }}/php-prod .
-          docker build --pull --target nginx-prod -f docker/php/Dockerfile -t scan-${{ github.run_id }}-${{ github.run_attempt }}/nginx-prod .
-          docker build --pull --target prod -f docker/frontend/Dockerfile -t scan-${{ github.run_id }}-${{ github.run_attempt }}/frontend-prod .
-          docker build --pull --target prod -f docker/engine/Dockerfile -t scan-${{ github.run_id }}-${{ github.run_attempt }}/engine-prod .
-          docker build --pull -f docker/postgres/Dockerfile.prod -t scan-${{ github.run_id }}-${{ github.run_attempt }}/postgres-prod .
-          docker build --pull -f docker/pdf-worker/Dockerfile -t scan-${{ github.run_id }}-${{ github.run_attempt }}/pdf-worker .
+          docker build --pull --no-cache --target prod -f docker/php/Dockerfile -t scan-${{ github.run_id }}-${{ github.run_attempt }}/php-prod .
+          docker build --pull --no-cache --target nginx-prod -f docker/php/Dockerfile -t scan-${{ github.run_id }}-${{ github.run_attempt }}/nginx-prod .
+          docker build --pull --no-cache --target prod -f docker/frontend/Dockerfile -t scan-${{ github.run_id }}-${{ github.run_attempt }}/frontend-prod .
+          docker build --pull --no-cache --target prod -f docker/engine/Dockerfile -t scan-${{ github.run_id }}-${{ github.run_attempt }}/engine-prod .
+          docker build --pull --no-cache -f docker/postgres/Dockerfile.prod -t scan-${{ github.run_id }}-${{ github.run_attempt }}/postgres-prod .
+          docker build --pull --no-cache -f docker/pdf-worker/Dockerfile -t scan-${{ github.run_id }}-${{ github.run_attempt }}/pdf-worker .
 
       # SEC A19 — Trivy sur les images PROD fraîchement construites : les paquets
       # OS (openssl, libc, nginx…) sont l'angle mort de dependency-audit, qui ne
@@ -2277,3 +2201,209 @@ jobs:
       - name: Tear down the compose stack (always)
         if: always()
         uses: ./.github/actions/ci-stack-down
+
+  # Gate de lot : le SEUL job d'une PR vers `lot/<sujet>`, et le seul check requis du ruleset
+  # `lot-gate` (« Lot Gate »). Un job, une machine, une stack : gitleaks, moteur (pytest +
+  # linters), front (build, gardes statiques Vitest, Vitest lié au diff), PHPStan, puis la liste
+  # bloquante — EXACTEMENT celle de `blocking-tests`, rejouée par les deux ancres YAML. Ce qu'il
+  # ne joue pas (Rector, CS-Fixer, Semgrep, sémantique moteur, perf, Vitest complet et
+  # couverture, ESLint, Behat, e2e) se joue à la PR finale vers `main`.
+  #
+  # Pas de `needs` : `preflight` est sauté dans ce régime (et un `needs` sauté le sauterait).
+  # Sa garde fork est donc son PREMIER step, avant tout checkout. Trois conditions de step
+  # seulement — la garde fork, le login Docker Hub, le démontage : le premier rouge arrête le
+  # job. Hébergé par défaut ; la réserve de minutes le bascule sur la VM par CI_RUNS_ON_LOT.
+  lot-gate:
+    name: Lot Gate
+    runs-on: ${{ vars.CI_RUNS_ON_LOT || 'ubuntu-24.04' }}
+    if: github.event_name == 'pull_request' && github.base_ref != 'main'
+    env:
+      # Un projet compose PAR JOB et par tentative : deux jobs sur le même démon (runner
+      # auto-hébergé) ne se voient jamais — conteneurs, volumes, réseaux et images au nom du
+      # projet. Overlay `docker-compose.test.yml` : aucun port hôte publié. Chemins ABSOLUS :
+      # un step en `working-directory: frontend` ne résoudrait pas un chemin relatif.
+      COMPOSE_PROJECT_NAME: ci-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}
+      AMATEO_STACK: ci-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}
+      COMPOSE_FILE: ${{ github.workspace }}/docker-compose.yml:${{ github.workspace }}/docker-compose.test.yml
+    # docker login ghcr — image miroir gitleaks, P4-92 (contents:read répété : un bloc de job REMPLACE la racine)
+    permissions:
+      contents: read
+      packages: read
+    # Cible : 9 minutes facturées ; au-delà de 25, un step est figé.
+    timeout-minutes: 25
+    steps:
+      - name: Refuse pull requests from forks
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository
+        run: |
+          echo "::error::Cette CI ne tourne que pour les PR du dépôt lui-même ; une PR de fork n'est jamais exécutée sur le runner."
+          exit 1
+
+      # fetch-depth: 0 — gitleaks lit tout l'historique, et `vitest --changed` compare l'arbre à
+      # `origin/<base>`, qui doit exister localement.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+
+      # Runner auto-hébergé PERSISTANT et partagé : les identifiants Docker de ce job (logins
+      # Docker Hub / ghcr) vont dans un DOCKER_CONFIG propre au job, jamais dans celui du runner.
+      # Posé par GITHUB_ENV : le contexte `runner` est interdit dans un `env` de job.
+      - name: Isolate the Docker credentials of this job
+        run: |
+          echo "DOCKER_CONFIG=$RUNNER_TEMP/docker-config" >> "$GITHUB_ENV"
+          echo "HOME=$HOME"
+
+      # Connexion Docker Hub avant tout tirage : les runners partagés GitHub épuisent le
+      # quota ANONYME (429 Too Many Requests). Conditionnelle : sans les secrets (PR de fork)
+      # la CI tire en anonyme.
+      - name: Login to Docker Hub (anti-429)
+        if: vars.DOCKERHUB_USERNAME != ''
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4
+        with:
+          username: ${{ vars.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # Image gitleaks tirée de NOTRE miroir ghcr (même image et même version que `secrets-scan`).
+      - name: Login to ghcr.io (mirror pull)
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+      - name: Run gitleaks (full history)
+        run: >
+          docker run --rm -v "$PWD:/repo" ghcr.io/maratech-fr/mirror-gitleaks:v8.30.0
+          git /repo --no-banner -c /repo/.gitleaks.toml
+
+      - name: Prepare .env
+        run: |
+          cp .env.dist .env
+          printf 'USER_ID=%s\nGROUP_ID=%s\n' "$(id -u)" "$(id -g)" >> .env
+
+      - name: Build engine
+        run: docker compose build engine
+
+      # Mêmes commandes que `engine-tests` (cliquet de couverture moteur compris).
+      - name: Run pytest + coverage + cliquet
+        run: |
+          set -euo pipefail
+          FLOOR=$(python3 -c "import json; print(json.load(open('coverage-floor.json'))['engine'])")
+          echo "Plancher engine (coverage-floor.json) : ${FLOOR}%"
+          mkdir -p engine/coverage
+          docker compose run --rm -u "$(id -u):$(id -g)" engine \
+            pytest --cov=app --cov-report=term-missing \
+              --cov-report=xml:coverage/engine.xml \
+              --cov-fail-under="${FLOOR}" | tee engine/coverage/engine.txt
+
+      - name: Run ruff
+        run: docker compose run --rm engine ruff check .
+
+      - name: Check ruff formatting
+        run: docker compose run --rm engine ruff format --check .
+
+      - name: Run mypy
+        run: docker compose run --rm engine mypy
+
+      - name: Run bandit
+        run: docker compose run --rm engine bandit -r app/
+
+      - name: Run deptry
+        run: docker compose run --rm engine deptry .
+
+      # Le front passe AVANT la stack PHP : sur 2 vCPU, Vitest ne partage pas la machine avec elle.
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install deps
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build (tsc -b + vite)
+        working-directory: frontend
+        run: npm run build
+
+      # Gardes statiques, à chaque run : elles lisent les sources par grep, hors du graphe
+      # d'imports, donc `--changed` ne les sélectionnerait jamais.
+      - name: Static guards (Vitest, always)
+        working-directory: frontend
+        run: npx vitest run src/test/ tooling/ .guard.test
+
+      # Seulement les tests liés au diff contre la base (vert si aucun). Un fichier lu hors du
+      # graphe d'imports force un passage complet (`forceRerunTriggers`, vitest.config.ts). La
+      # base passe par l'ENV, jamais interpolée dans le shell : un nom de branche est une entrée
+      # d'attaquant (semgrep run-shell-injection).
+      - name: Unit tests related to the diff (Vitest --changed)
+        working-directory: frontend
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: npx vitest run --changed "origin/${BASE_REF}" --passWithNoTests
+
+      # La couche chère de l'image php vient du cache GHA, réchauffé chaque jour depuis `main`
+      # par `cache-warm.yml` (voir l'action).
+      - name: Pre-build php image (GHA cache)
+        uses: ./.github/actions/build-php-cached
+
+      - name: Start services
+        run: docker compose up -d --wait php-fpm engine
+
+      # P4-100 — cache de backend/vendor + retry : un 5xx du registre ne doit
+      # plus rougir une PR saine (voir l'action).
+      - name: Install PHP deps (cached + retried)
+        uses: ./.github/actions/composer-install-cached
+
+      - name: Run PHPStan
+        run: docker compose exec -T php-fpm composer phpstan
+
+      - name: Generate JWT keys
+        run: docker compose exec -T php-fpm sh -c 'cd /app/backend && php bin/console lexik:jwt:generate-keypair --skip-if-exists --no-interaction'
+
+      - name: Init test database
+        run: docker compose exec -T php-fpm sh -c 'cd /app/backend && php bin/console doctrine:database:create --if-not-exists --connection admin --env=test && php bin/console doctrine:migrations:migrate --no-interaction --env=test'
+
+      # La liste bloquante, par alias des ancres de `blocking-tests` : jamais recopiée ici.
+      - name: Blocking suite (phase1, one PHPUnit process)
+        run: *blocking_suite_run
+
+      - name: ParcImportCorrectionTenantNR
+        run: *filtered_tenant_nr_run
+
+      # Démonte TOUJOURS la stack du job (conteneurs, volumes, images locales, orphelins) — même
+      # job rouge ou annulé en cours : le démon du runner auto-hébergé est partagé et persistant.
+      - name: Tear down the compose stack (always)
+        if: always()
+        uses: ./.github/actions/ci-stack-down
+
+  # Verdict de `main` : le SEUL job d'un push `main`, celui que lit `isCiGreen` avant un
+  # déploiement. Il prouve que la PR mergée qui porte ce commit a joué le gate complet — son run
+  # de PR le plus récent, chaque job hors « Lot Gate » et « Main Verdict » réussi
+  # (`scripts/ci-verdict.py`). Un job sauté vaut succès pour un check requis : ce verdict ferme
+  # ce trou après le merge.
+  #
+  # Seul job du gate de `main` dispensé de `needs: preflight` : un fork ne pousse pas sur `main`,
+  # et VM éteinte le verdict attendrait sinon `preflight`. Il ne fait que LIRE : checkout par
+  # défaut (le commit poussé), aucun Docker, aucun secret — le jeton du job, en lecture.
+  # Hébergé par défaut ; la réserve de minutes le bascule sur la VM par CI_RUNS_ON_VERDICT.
+  main-verdict:
+    name: Main Verdict
+    runs-on: ${{ vars.CI_RUNS_ON_VERDICT || 'ubuntu-24.04' }}
+    if: github.event_name == 'push'
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: read
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      # Runner auto-hébergé PERSISTANT et partagé : les identifiants Docker de ce job (logins
+      # Docker Hub / ghcr) vont dans un DOCKER_CONFIG propre au job, jamais dans celui du runner.
+      # Posé par GITHUB_ENV : le contexte `runner` est interdit dans un `env` de job.
+      - name: Isolate the Docker credentials of this job
+        run: |
+          echo "DOCKER_CONFIG=$RUNNER_TEMP/docker-config" >> "$GITHUB_ENV"
+          echo "HOME=$HOME"
+
+      # Liste de PR ou de runs vide juste après le merge (indexation de GitHub) : relue pendant
+      # deux minutes avant de conclure. Faux rouge → « Re-run jobs ».
+      - name: Prove the merged pull request played the full gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -I scripts/ci-verdict.py

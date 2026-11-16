@@ -17,8 +17,9 @@ paths:
   côté frontend/backend, désormais dans `make -C frontend lint` / `make -C backend lint` aussi) —
   détail : `docs/testing/testing-strategy.md` §1.
 - **pytest** (`-ra`) + golden fixtures (`tests/golden/`, solves complets sur fixtures réelles) +
-  invariants post-solve (`tests/invariants/`) + hypothesis + perf (`-m perf`, main only — dont un
-  club synthétique volumineux pour `/place-matches`, `tests/perf/test_perf_place_matches.py`) ;
+  invariants post-solve (`tests/invariants/`) + hypothesis + perf (`-m perf`, job « Engine Perf
+  Gate » des PR vers `main`, non requis au merge — dont un club synthétique volumineux pour
+  `/place-matches`, `tests/perf/test_perf_place_matches.py`) ;
   `pytest-timeout` contre les solves fous. Les golden dépendent du **worker unique déterministe**
   (≤200 de complexité) — ne pas toucher `_adaptive_workers` sans les re-jouer.
 - Le contrat backend⇄engine est **synchronisé À LA MAIN** (`engine/CONTRACT_VERSION`, 1.9, un seul

@@ -8,10 +8,10 @@ of the kickoffs actually observed per (venue, ISO weekday) — so the fixture is
 100 % placeable BY CONSTRUCTION. The gate asserts the solver places at least 90 %
 of them under the PRODUCTION per-ISO-week budget and NEVER violates a HARD rule.
 
-Marked ``perf`` (main-only, EXCLUDED from the default suite) like its synthetic
-sibling: real volume (141 matches · 5 gyms) under the full solver budget is too
-heavy for the PR-tier. Names deliberately avoid ``dense_club`` so the PR-tier
-``-k dense_club`` filter leaves it to the main-only ``pytest -m perf`` run.
+Marked ``perf`` (EXCLUDED from the default suite) like its synthetic sibling:
+real volume (141 matches · 5 gyms) under the full solver budget is too heavy for
+the default suite. Runs with the other ``perf`` tests in the ``engine-perf`` job
+of every PR to ``main`` (``pytest -m perf``, no ``-k``); not a required check.
 """
 
 from __future__ import annotations

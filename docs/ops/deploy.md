@@ -1184,18 +1184,24 @@ déployée est saine et la page de maintenance reste affichée — le geste est 
 ### Mise en prod programmée (console superadmin)
 
 **Sens de « CI verte ».** `GitHubDeployClient::isCiGreen` lit la conclusion du dernier run `ci.yml`
-du commit du tag. Depuis que le run de `main` est allégé (`docs/testing/testing-strategy.md` §1),
-« verte » veut dire : **sur ce commit, les images de prod se construisent (Trivy CRITICAL), la perf
-tient, lint, secrets, semgrep et audit des dépendances sont verts** — les suites de tests ont, elles,
-été prouvées par la PR. Tant que les variables de runner pointent vers la VM du fondateur
-(`docs/ops/ci-runner.md`), le run de `main` non conclu (VM éteinte) rend `isCiGreen` faux et la
-console refuse (422) ; la bascule à l'heure H re-vérifie. **Règle : après le dernier merge de la
-journée, attendre la fin du run de `main` avant d'éteindre la VM.** Un déploiement programmé la nuit
-VM éteinte fonctionne si ce run est déjà conclu (`deploy.yml` s'exécute chez GitHub).
+du commit du tag. Le run d'un commit de `main` est le verdict (job « Main Verdict »,
+`docs/testing/testing-strategy.md` §1) : « verte » veut dire que **la PR mergée qui porte ce commit
+a joué le gate complet et que chacun de ses jobs a réussi** — images de prod construites (Trivy
+CRITICAL), perf, suites de tests, Behat, e2e. Un job sauté n'y vaut jamais succès. Le verdict est
+hébergé par défaut (`CI_RUNS_ON_VERDICT` absente) : il se conclut chez GitHub sans la VM, et un
+déploiement programmé la nuit VM éteinte fonctionne (`deploy.yml` s'exécute aussi chez GitHub). Un
+faux rouge se règle en relançant le job « Main Verdict » ; un vrai rouge (la PR n'a pas joué le gate
+complet) : on tague le commit suivant. Détail du verdict : `docs/ops/ci-runner.md` § Branche de lot.
+**Tant que `CI_RUNS_ON_VERDICT` pointe vers la VM** (réserve de minutes, même doc), le verdict non
+conclu (VM éteinte) rend `isCiGreen` faux et la console refuse (422) ; la bascule à l'heure H
+re-vérifie ; GitHub annule le job resté en file plus de 24 h et la console refuse alors le tag :
+allumer la VM puis relancer le job (règle d'arrêt de la VM dans ce cas : `docs/ops/ci-runner.md`,
+geste 25).
 
 **Tag et branche de lot.** Un commit intermédiaire d'un lot (squash dans `lot/<sujet>`) n'a aucun run
 `ci.yml` : un tag posé dessus est refusé par `isCiGreen`. On tague le merge commit de la PR finale
-`lot/<sujet>` → `main`, ou un commit de `main`.
+`lot/<sujet>` → `main` (son verdict atteste que cette PR a joué le gate complet), ou un commit de
+`main`.
 
 Depuis qu'un tag ne fait plus que construire (« tag ≠ déploiement »), cette console est le chemin
 **normal** pour programmer la mise en prod d'une nouvelle version — `make deploy VERSION=<tag>`
