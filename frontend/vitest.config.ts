@@ -25,10 +25,37 @@ if (frontendFloor === null || frontendFloor === undefined) {
 
 export default mergeConfig(viteConfig, defineConfig({
   test: {
-    environment: 'jsdom',
     globals: true,
-    setupFiles: ['./src/test/setup.ts'],
     exclude: ['tests/e2e/**', 'node_modules/**'],
+    // Deux projets. `logique` : un `.test.ts` tourne en `node`, sans fichier de préparation.
+    // `ecran` : un `.test.tsx` garde jsdom et `setup.ts`. ⚠ Un `.test.ts` qui atteint, même par
+    // import transitif, un module à branche « pas de navigateur » (`typeof window`…) y passerait à
+    // vide : il est renommé `.test.tsx`. Preuve : couverture comparée jsdom/node, aucune ligne de
+    // produit perdue hors `shared/lib/clock.ts` (lecture de `?today=` au chargement du module).
+    projects: [
+      {
+        extends: true,
+        test: {
+          name: 'logique',
+          environment: 'node',
+          include: [
+            'src/**/*.test.ts',
+            'tooling/**/*.test.ts',
+            'tests/**/*.test.ts',
+            'tests/**/*.test.js',
+          ],
+        },
+      },
+      {
+        extends: true,
+        test: {
+          name: 'ecran',
+          environment: 'jsdom',
+          include: ['src/**/*.test.tsx'],
+          setupFiles: ['./src/test/setup.ts'],
+        },
+      },
+    ],
     // `vitest --changed` (gate de lot) ne rejoue que les tests du graphe d'imports du diff. Ces
     // fichiers sont lus HORS de ce graphe (config, outillage, plafonds, setup) : un diff qui ne
     // touche qu'eux ne rejouerait rien, d'où un passage complet. La clé REMPLACE les défauts de
