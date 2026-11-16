@@ -185,14 +185,14 @@ au-delà de 3 s est colorié dans le rapport : c'est là qu'on regarde si le sc�
 
 | Outil | Version (`frontend/package.json`) | Rôle |
 |------|---------|------|
-| Vitest | 4.x | Runner de test (config `vitest.config.ts` : jsdom, `globals`, setup `src/test/setup.ts`, exclut `tests/e2e/`) |
+| Vitest | 4.x | Runner de test (config `vitest.config.ts` : `globals`, exclut `tests/e2e/` ; deux projets — `logique` en node sans setup pour les `.test.ts`, `ecran` en jsdom + setup `src/test/setup.ts` pour les `.test.tsx` ; la règle de choix est dans `docs/testing/tests-par-parcours.md`) |
 | @vitest/coverage-v8 | 4.x | Couverture (`vitest run --coverage`, `make coverage`, step de couverture du job CI `frontend` — mesure et cliquet détaillés dans `docs/testing/test-coverage-map.md`) |
 | @testing-library/react | 16.x | Rendu et queries DOM |
 | @testing-library/user-event | 14.x | Simulation d'interaction |
 | @testing-library/jest-dom | 7.x | Matchers DOM |
 | jsdom | 30.x | Environnement DOM |
 | `vi.mock` (Vitest) | — | **Mock réseau EN SERVICE, le seul de la suite** : remplace NOTRE module (`queries`/`api` de la feature). |
-| Cliquet act-warnings | — | `tooling/actWarningsRatchet.ts` (reporter Vitest) : compte les avertissements React « not wrapped in act » au processus principal, rougit le run dès qu'ils dépassent le plafond versionné `act-warnings-ceiling.json` (FRT-34, même patron que le plancher de couverture ; fil de détente si le compte tombe à 0 alors que le plafond > 0 = capture cassée). **Plafond actuel 30, atteint** : un test nouveau ou modifié ne doit émettre aucun avertissement `act` supplémentaire (envelopper dans `act`/`waitFor`) ; ne pas relever `act-warnings-ceiling.json`. |
+| Cliquet act-warnings | — | `tooling/actWarningsRatchet.ts` (reporter Vitest) : compte les avertissements React « not wrapped in act » au processus principal, rougit le run dès qu'ils dépassent le plafond versionné `act-warnings-ceiling.json` (FRT-34, même patron que le plancher de couverture ; fil de détente si le compte tombe à 0 alors que le plafond > 0 = capture cassée). **Plafond actuel 30, atteint** : un test nouveau ou modifié ne doit émettre aucun avertissement `act` supplémentaire (envelopper dans `act`/`waitFor`) ; ne pas relever `act-warnings-ceiling.json`. ⚠ `vitest --project <nom>` déclenche le verdict du cliquet à tort (le run est tenu pour complet) : hors CI, lire le compte comme indicatif et ne jamais abaisser ni relever le plafond sur un tel run. |
 | @playwright/test | 1.x | E2E (`frontend/tests/e2e/`) |
 | **vitest-axe** · **@axe-core/playwright** | 0.x · 4.x | **Assertions a11y** — suite unitaire (`src/test/a11y.test.tsx`) + spec de contraste e2e (`tests/e2e/a11y-contrast.spec.ts`) |
 | knip | 6.x | **Garde d'hygiène des dépendances** (`npm run lint:deps`, config `frontend/knip.json`), lancée par `make -C frontend lint` ET step CI du job `frontend` — mêmes commandes, détail : `docs/testing/testing-strategy.md` §1 |

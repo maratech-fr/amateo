@@ -76,8 +76,7 @@ paths:
   (`shared/components/ui/segmented-control.tsx`, UXC-28, audit 2026-10-03) : rangée de boutons nus
   dans UN conteneur bordé (`role="group"` nommé, segments `aria-pressed`, 36 px), union discriminée
   `mode="single"|"multiple"`, compteur par segment optionnel — vues planning, axe équipe/coach/
-  gymnase, « Période », pivot « Regrouper par », filtre adversaires, « Types ». Gardé par
-  `frontend/src/test/segmentedControlGuard.test.ts` (un conteneur `bg-card`+`p-0.5` fait main rougit) ; `snapshotFile`
+  gymnase, « Période », pivot « Regrouper par », filtre adversaires, « Types ». Norme jugée sur capture/revue, sans garde ; `snapshotFile`
   (`shared/lib/fileSnapshot.ts`, P3-7) est la maison unique du snapshot mémoire d'un `File` avant
   envoi — ferme le piège `ERR_UPLOAD_FILE_CHANGED` (fichier relu sur disque à l'envoi, déguisé en
   « Problème de connexion ») — consommée par `TeamsImportModal.tsx` et `ImportFbiDialog.tsx` ;
@@ -85,7 +84,7 @@ paths:
   `text-muted-foreground`, `bg-muted`, `border-border`…), **jamais un `#hex`** ni une classe sans
   jeton (`text-warning-foreground` était un no-op, P4-130). `PRODUCT_ACCENT` (`shared/lib/product.ts`)
   est la SEULE maison d'un hex d'accent produit ; les valeurs statiques d'accent d'`index.css` sont
-  la sortie EXACTE de sa dérivation, gardée par `src/test/accentTokenParity.test.ts` — **on ne les
+  la sortie EXACTE de sa dérivation (sans garde : la parité se juge à la revue) — **on ne les
   édite jamais à la main, on les recalcule** (`specs/courantes/identite-visuelle-produit.md`).
   `BrandIcon` (`shared/components/ui/brand-icon.tsx`) est la première exception admise à « jamais
   un `#hex` » **en composant React** (ses trois arcs) ; `BrandSplash`
@@ -116,9 +115,8 @@ paths:
   2026-09-30) : toute heure de pendule passe par `shared/lib/time.ts::formatMinutes` (jamais
   `frClock` — supprimé — ni un « 21h »/« 09h » assemblé à la main) ; toute durée de créneau passe
   par `shared/lib/duration.ts::formatDuration`, forme COMPACTE (jamais la forme aérée
-  `time.formatDurationMinutes` — supprimée). Gardé par
-  `frontend/src/test/timeFormatGuard.test.ts` (grep statique des sources `src/**`, zéro exemption
-  nominative). Hors portée, délibérément : les durées ÉCOULÉES/CUMULÉES de la console superadmin
+  `time.formatDurationMinutes` — supprimée). Norme jugée sur
+  capture/revue, sans garde. Hors portée, délibérément : les durées ÉCOULÉES/CUMULÉES de la console superadmin
   et des gymnases (`venueStats.formatHours`), et les exemples rédigés des bulles d'aide.
 - 🔴 **Enregistrer/Annuler d'une ligne en édition = TEXTE, jamais une icône seule (N1) ; toute
   suppression passe par une confirmation, jamais un clic direct (N2)** — mêmes normes fondateur
@@ -156,27 +154,20 @@ paths:
   — fond opaque `bg-surface-<ton>`, bordure, rayon, padding, texte `text-foreground`), jamais une
   boîte faite main (série « uniformité des écrans », PR 4/7, 2026-10-01 — les bandeaux de
   Planning/Matchs/Assistant/Cockpit ont été ramenés dessus ; portée étendue à `src/shared/**`
-  au reliquat UX de l'audit 2026-10-03, UXC-27 — `CreditsBanner`). Gardé par
-  `frontend/src/test/bannerPrimitiveGuard.test.ts` (grep statique `src/features/**` ET
-  `src/shared/**` hors console admin : un `role="status"`/`"alert"` + une classe de bordure de
-  ton sur la MÊME ligne hors `NoticeBanner` rougit).
+  au reliquat UX de l'audit 2026-10-03, UXC-27 — `CreditsBanner`). Norme
+  jugée sur capture/revue, sans garde.
 - 🔴 **Toute pastille d'état passe par `StatusPill`** (`shared/components/ui/badge.tsx` — icône +
   texte, bordure + fond teinté, variantes warning/accent/accent-solid/neutral), jamais un
   `<span>` arrondi recodé à la main (série « uniformité des écrans », PR 5/7, 2026-10-01 —
   `SocleDeviationPanel`, `ToReplaceList` et les pastilles accent plein de `ClubPage`/
   `MembersSection`/`ReconciliationView` ramenées dessus ; au passage, les derniers états vide/
   échec/chargement faits main de `PendingMembersSection`/`ClubPage`/`ReleaseNotesPage`/
-  `ConfigurationPage` migrent sur `EmptyHint`/`LoadErrorHint`/`Spinner`). Gardé par
-  `frontend/src/test/pillPrimitiveGuard.test.ts` (grep statique `src/features/**` : une ligne
-  portant à la fois la FORME d'une pastille (`rounded-full` + `text-xs`) ET une classe de TON
-  (teinte/bordure warning|destructive|accent|success, ou une surface `bg-surface-*`) hors
-  `StatusPill` rougit — les pastilles NEUTRES `bg-muted`/`border-border` ne sont PAS attrapées,
-  largeur de grep documentée, leur passage relève de la revue). Exemptions nominatives :
-  `features/admin/**` (console superadmin, hors écrans de l'app club), `CoachesStep` (pastilles de
-  LIAISON coach/joueur↔équipe, hors contrat StatusPill), `CampaignDialog` (puces de FILTRE
-  interactives, relèvent de `FilterChip`), `DriftBanner` (bouton-bascule, pas une pastille d'état).
-  Hors portée, délibérément : les quatre indices de chargement restés en TEXTE (`ClubPage` §
-  statistiques et § offres, `PeriodTeams`, `PeriodVenues`).
+  `ConfigurationPage` migrent sur `EmptyHint`/`LoadErrorHint`/`Spinner`). Norme jugée sur
+  capture/revue, sans garde ; les pastilles NEUTRES `bg-muted`/`border-border` et les exceptions
+  (console superadmin `features/admin/**`, pastilles de LIAISON de `CoachesStep`, puces de FILTRE
+  de `CampaignDialog` — relèvent de `FilterChip` —, bouton-bascule de `DriftBanner`) ne sont pas
+  des `StatusPill`. Hors portée, délibérément : les quatre indices de chargement restés en TEXTE
+  (`ClubPage` § statistiques et § offres, `PeriodTeams`, `PeriodVenues`).
 - 🔴 **Le toast d'erreur d'une mutation vit UNE fois, au NIVEAU HOOK** (`useMutation({ onError })`),
   jamais passé à `mutate(vars, { onError })` (FRT-38, 2026-10-06). Le filet global
   `MutationCache.onError` (`shared/lib/queryClient.ts`) ne se DÉSARME que sur
@@ -229,9 +220,7 @@ paths:
   autres boutons-icônes restent à la revue) ; le DOM de l'en-tête de `Modal` l'est par
   `shared/components/ui/modal-signaler.test.tsx`.
 - **Textes visibles du flux de retouche : « le système », jamais « moteur »/« solveur »**
-  (`docs/glossary.md`). Gardé par `frontend/src/test/engineWordGuard.test.ts` (commentaires
-  exclus) sur `planning/texts.ts`, `EvictConfirmDialog.tsx`, `ActionVeil.tsx`,
-  `useRetouchGestures.ts` et `planning/api.ts`.
+  (`docs/glossary.md`). Vocabulaire jugé à la revue, sans garde.
 - 🔴 **La raison d'une désactivation doit être DÉCOUVRABLE au clavier/lecteur d'écran, pas qu'au
   survol** (A11Y-30, audit 2026-10-03) : un `<button disabled>` natif sort de l'ordre de tabulation,
   son `title`/`aria-describedby` ne sont jamais annoncés. Quand un bouton est désactivé POUR UN

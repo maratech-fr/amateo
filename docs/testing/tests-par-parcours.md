@@ -83,12 +83,18 @@ d'état qu'elle établit, p. ex. « une équipe ne siège jamais deux fois à la
 vivre dans un test de code VIVANT (garde API/service), jamais dépendre du test de migration pour sa
 preuve.
 
-### Vitest (`frontend/src/**`, jsdom + RTL)
+### Vitest (`frontend/src/**`, deux projets : `logique` en node, `ecran` en jsdom + RTL)
 - **Doit** : prouver ce que seul l'écran porte (§1) en mutant la PROD, pas le mock (redérivation
   interdite).
 - **Ne doit jamais** : porter une classe, une couleur, un libellé ou un placement ; prétendre tester le contraste ou le reflow (jsdom n'a aucun moteur de
   layout → vert par construction, il n'atteste rien ; un garde STATIQUE le remplace avant le scan
   Playwright) ni valider une version périmée dans l'image tooling (la rebâtir AVANT).
+- **Deux projets** (`frontend/vitest.config.ts`) : `logique` (node, sans `setup.ts`) joue les `.test.ts` ;
+  `ecran` (jsdom + `setup.ts`) joue les `.test.tsx`. Un `.test.ts` qui importe directement l'un des
+  modules testant la présence du navigateur — `api/client`, `clipboard`, `toastStore`,
+  `sessionExpiredNotice`, `online`, `lastClickStore`, `brand-splash.math`, `clock` — ou en dépend
+  transitivement, est un `.test.tsx`. ⚠ En node il passerait à VIDE (la branche « pas de navigateur »
+  répond, le test reste vert sans rien prouver).
 - **Exemple** : `EvictConfirmDialog.test.tsx` (le verdict d'un déplacement vers une case occupée).
 
 ### Pytest (`engine/tests/`, ruff + mypy strict)
@@ -133,7 +139,7 @@ preuve.
   ou `getByRole(…, { name: PLANNING_TEXTS.… })` quand c'est plus juste — **jamais** la phrase
   recopiée. Une clé dont la valeur = le texte actuel laisse le test VERT (byte-identique) : c'est
   normal, la valeur bouge, le test non.
-- **Garde** : `frontend/src/test/hardcodedTextGuard.test.ts` (patron `timeFormatGuard`), liste
+- **Garde** : `frontend/src/test/hardcodedTextGuard.test.ts`, liste
   nominative `MIGRATED_FILES`. Dans un écran listé, un nœud texte JSX littéral ≥ 3 lettres ou un
   littéral FR dans `title=`/`aria-label=`/`placeholder=`/`message=`/`label=` rougit. Largeur
   documentée (reliquat helper-returned / interpolation mêlée → revue) ; exemptions ≤ 5 motivées.

@@ -1,4 +1,4 @@
-# Roadmap (162) — ce qui reste à faire
+# Roadmap (163) — ce qui reste à faire
 
 > **Ce fichier ne tient QUE l'ouvert.** Bugs, évolutions, dettes techniques : tout ce qu'on trace pour ne pas
 > l'oublier un jour. Rien de livré n'y figure — un item livré **quitte** ce fichier et laisse sa trace dans
@@ -255,6 +255,7 @@
 | P4-580 | **Paliers : l'application dit Essentiel / Club / Grand club, la vitrine « une seule offre, trois paliers »** | ⚪ | S | La vitrine présente une offre unique à trois paliers sans nom (jusqu'à 20, 21 à 34, 35 et plus équipes) ; l'application nomme encore les paliers Essentiel, Club et Grand club. Harmoniser le vocabulaire (décision fermée côté vitrine : `etat-des-lieux.md` §2) |
 | P4-581 | **Features Behat : un vocabulaire qu'un gestionnaire lit sans jargon** | ⚪ | S | Les titres et les étapes des features parlent encore d'« overlay », de « COMPLETED », de « verrouillé en dur ». Les réécrire pour qu'un gestionnaire les lise tel quel. Non cadré |
 | P4-582 | **La démo prospect ne s'active pas depuis la console superadmin en production** | ⚪ | S | Cause non cherchée. Pistes lues dans le code : `POST /api/admin/demos/prospect/activate` (`AdminDemoController::activate`) ne pose `demo_active_until` (4 h) que sur le compte dont l'adresse est `app.demo_animator_email`, et répond 404 « Le compte de démonstration est absent » si aucune ligne `app_user` ne porte cette adresse (le compte n'est créé que par `app:demo:create` au premier passage, avec `--animator-password`) ; si la fenêtre est posée, `UserChecker` refuse la connexion d'un compte démo hors fenêtre par le même message qu'un mauvais mot de passe. À diagnostiquer en production : le compte existe-t-il, quelle valeur porte `demo_active_until`. Non cadré |
+| P4-583 | **Trier les 246 autres fichiers de tests de composants front** | ⚪ | M | Le critère est celui de la charte (`docs/testing/tests-par-parcours.md` § Vitest) : un geste, une donnée ou une règle métier reste ; une classe, une couleur, un libellé ou un placement sort. Le tri de 16 des 23 plus gros fichiers a montré que le tri retire surtout des lignes de test (52 tests) : le gain de temps mural vient des deux projets Vitest (environ 70 s) et des cinq fichiers frontière accélérés (environ 11 s). À décider sur cette mesure, pas avant. Non cadré |
 
 ---
 

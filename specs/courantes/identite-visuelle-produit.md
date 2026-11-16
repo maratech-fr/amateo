@@ -55,11 +55,9 @@ jamais un jeton CSS statique indépendant.
   `accentHoverForMode(accentForMode(PRODUCT_ACCENT, mode), mode)`. Elles existent en dur pour être
   visibles **avant** que le hook ne tourne (premier rendu) et sur les surfaces qu'il ne touche pas.
   Deux valeurs pour une seule couleur = dérive possible si l'une bouge sans l'autre — c'est
-  exactement ce que garde `frontend/src/test/accentTokenParity.test.ts` : il **lit** `index.css`,
-  extrait `--accent`/`--accent-hover` des deux blocs et exige l'égalité stricte avec la sortie de
-  `accentForMode`/`accentHoverForMode` sur `PRODUCT_ACCENT`. Une valeur statique éditée à la main
-  sans repasser par la dérivation rougit ce test — **on ne les édite jamais directement, on les
-  recalcule**.
+  pourquoi **on ne les édite jamais directement, on les recalcule** : l'égalité stricte avec la
+  sortie de `accentForMode`/`accentHoverForMode` sur `PRODUCT_ACCENT` se juge à la revue et sur
+  capture, sans garde automatique.
 - `ClubPage.tsx` : `DEFAULT_ACCENT = PRODUCT_ACCENT` (repli du sélecteur de couleur sur l'écran
   « Gestion du club », et valeur reposée par le bouton « Réinitialiser ») — plus aucun hex d'accent
   hors `product.ts` dans le code frontend.
@@ -216,10 +214,10 @@ FIGÉ**.
   admettait déjà `BrandIcon` ; les couleurs en dur **à l'intérieur** de ces SVG d'asset statiques
   (`public/brand/fond-*.svg`, `landing/assets/brand/fond.svg` — comme `favicon.svg` avant eux)
   sont la même exception : un fichier SVG servi tel quel n'a pas de jeton de thème à consommer.
-- **Garde** : `frontend/src/test/brandBackground.test.ts` tient deux faits qu'aucun autre test ne
-  voit — la parité clair/sombre dans `index.css` (`body` référence `fond-light.svg`, `.dark body`
-  référence `fond-dark.svg`) et la purge des deux copies servies (ni `c2pa`, ni `<metadata`, ni le
-  rect de sol). **Aucune assertion sur la valeur d'opacité** (plage fondateur, ajustable).
+- **Sans garde** : la parité clair/sombre dans `index.css` (`body` référence `fond-light.svg`,
+  `.dark body` référence `fond-dark.svg`) et la purge des deux copies servies (ni `c2pa`, ni
+  `<metadata`, ni le rect de sol) se jugent à la revue et sur capture. Aucune valeur d'opacité
+  n'est tenue (plage fondateur, ajustable).
 - ⚠ **Aucun gate automatisé ne voit les motifs** : ce sont des SVG statiques dans `public/`, hors
   du graphe TypeScript (aucun lint ne les lit) ; le scan de contraste axe (`a11y-contrast.spec.ts`,
   `expectNoContrastViolations`) n'assert que `results.violations` sur les éléments texte — un
