@@ -1,0 +1,129 @@
+# Relevé hebdomadaire de la couverture backend et front, hors du run de chaque PR.
+# Les planchers vivent dans `coverage-floor.json` (racine) : clé `backend` lue par
+# `backend/scripts/coverage-gate.php`, clé `frontend` lue par `frontend/vitest.config.ts`.
+# Un rouge ne bloque aucun merge (aucune PR, aucun push ne lance ce workflow) : il se lit par
+# `make ci-mesure`, qui imprime la ligne de roadmap à ouvrir dans la prochaine PR.
+# VM éteinte le lundi : le job attend ; au-delà de 24 h, `gh workflow run quality-weekly.yml`.
+name: Quality Weekly
+
+on:
+  schedule:
+    - cron: '0 5 * * 1' # lundi 05:00 UTC
+  workflow_dispatch: {} # relançable à la main depuis l'onglet Actions
+
+permissions:
+  contents: read
+
+jobs:
+  # Patron du job `backend-tests` de ci.yml, couverture en plus : suite PHPUnit instrumentée par
+  # pcov (driver présent seulement dans l'image dev/test, inerte par défaut ; activé ici par
+  # `-d pcov.enabled=1`), puis le cliquet. memory_limit=1G : pcov + suite entière débordent les
+  # 512 Mo de l'image — même flag que `make coverage`.
+  coverage-backend:
+    name: Coverage (backend)
+    runs-on: ${{ vars.CI_RUNS_ON_HEAVY || 'ubuntu-24.04' }}
+    env:
+      # Un projet compose PAR JOB et par tentative : deux jobs sur le même démon (runner
+      # auto-hébergé) ne se voient jamais. Overlay `docker-compose.test.yml` : aucun port hôte
+      # publié. Chemins ABSOLUS.
+      COMPOSE_PROJECT_NAME: ci-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}
+      AMATEO_STACK: ci-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}
+      COMPOSE_FILE: ${{ github.workspace }}/docker-compose.yml:${{ github.workspace }}/docker-compose.test.yml
+    timeout-minutes: 60
+    steps:
+      # fetch-depth: 0 — RoadmapIdentityTest rejoue l'historique de la roadmap ; un clone
+      # superficiel le ferait se saborder en skip.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+
+      # Runner auto-hébergé PERSISTANT et partagé : les identifiants Docker de ce job vont dans un
+      # DOCKER_CONFIG propre au job, jamais dans celui du runner.
+      - name: Isolate the Docker credentials of this job
+        run: |
+          echo "DOCKER_CONFIG=$RUNNER_TEMP/docker-config" >> "$GITHUB_ENV"
+          echo "HOME=$HOME"
+
+      # Connexion Docker Hub avant tout tirage (quota anonyme, 429). Conditionnelle.
+      - name: Login to Docker Hub (anti-429)
+        if: vars.DOCKERHUB_USERNAME != ''
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4
+        with:
+          username: ${{ vars.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Prepare .env
+        run: |
+          cp .env.dist .env
+          printf 'USER_ID=%s\nGROUP_ID=%s\n' "$(id -u)" "$(id -g)" >> .env
+
+      - name: Pre-build php image (GHA cache)
+        uses: ./.github/actions/build-php-cached
+
+      - name: Start services
+        run: docker compose up -d --wait php-fpm engine
+
+      - name: Install PHP deps (cached + retried)
+        uses: ./.github/actions/composer-install-cached
+
+      - name: Generate JWT keys
+        run: docker compose exec -T php-fpm sh -c 'cd /app/backend && php bin/console lexik:jwt:generate-keypair --skip-if-exists --no-interaction'
+
+      - name: Init test database
+        run: docker compose exec -T php-fpm sh -c 'cd /app/backend && php bin/console doctrine:database:create --if-not-exists --connection admin --env=test && php bin/console doctrine:migrations:migrate --no-interaction --env=test'
+
+      # Le groupe `contract` reste exclu, comme dans `backend-tests`. Le clover est écrit AVANT
+      # le cliquet pour que l'artefact parte même si le plancher (ou un test) rougit.
+      - name: Run full suite + coverage + cliquet
+        run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php -d pcov.enabled=1 -d memory_limit=1G vendor/bin/phpunit tests/ --exclude-group contract --coverage-text --coverage-clover coverage/backend.xml && php scripts/coverage-gate.php'
+
+      - name: Upload coverage report (backend)
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: coverage-backend
+          path: backend/coverage/
+          retention-days: 7
+
+      # Démonte TOUJOURS la stack du job — même job rouge ou annulé en cours : le démon du runner
+      # auto-hébergé est partagé et persistant.
+      - name: Tear down the compose stack (always)
+        if: always()
+        uses: ./.github/actions/ci-stack-down
+
+  # Vitest avec couverture : le cliquet est `thresholds.lines` de `vitest.config.ts`, qui lit le
+  # plancher `frontend` de `coverage-floor.json`.
+  coverage-frontend:
+    name: Coverage (frontend)
+    runs-on: ${{ vars.CI_RUNS_ON_HEAVY || 'ubuntu-24.04' }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      # Runner auto-hébergé PERSISTANT et partagé : DOCKER_CONFIG propre au job.
+      - name: Isolate the Docker credentials of this job
+        run: |
+          echo "DOCKER_CONFIG=$RUNNER_TEMP/docker-config" >> "$GITHUB_ENV"
+          echo "HOME=$HOME"
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install deps
+        working-directory: frontend
+        run: npm ci
+
+      - name: Unit tests + coverage (Vitest, cliquet)
+        working-directory: frontend
+        run: npm run test:coverage
+
+      - name: Upload coverage report (frontend)
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: coverage-frontend
+          path: frontend/coverage/
+          retention-days: 7

@@ -11,17 +11,17 @@ STACK_GOALS := $(or $(MAKECMDGOALS),help)
 DOCKER_COMPOSE := $(STACK_COMPOSE)
 # Refus AVANT toute recette : un `make -n` les prouve aussi, et rien ne démarre à moitié.
 ifeq ($(filter principal epreuve nu,$(STACK_MODE)),)
-ifneq ($(filter-out help deploy ci-releve,$(STACK_GOALS)),)
+ifneq ($(filter-out help deploy ci-releve ci-mesure,$(STACK_GOALS)),)
 $(error $(or $(call stack_field,STACK_REASON),stack-resolve : dépôt non identifié (git absent ou dossier hors dépôt) — aucune cible Docker))
 endif
 endif
 ifeq ($(STACK_MODE),nu)
-STACK_REFUSED := $(filter-out install test lint help deploy ci-releve epreuve-up epreuve-dev epreuve-status epreuve-down epreuve-destroy epreuve-check,$(STACK_GOALS))
+STACK_REFUSED := $(filter-out install test lint help deploy ci-releve ci-mesure epreuve-up epreuve-dev epreuve-status epreuve-down epreuve-destroy epreuve-check,$(STACK_GOALS))
 ifneq ($(STACK_REFUSED),)
 $(error $(firstword $(STACK_REFUSED)) : indisponible en worktree nu — stack d'épreuve (make epreuve-up WT=…) ou dépôt principal)
 endif
 ifneq ($(call stack_field,STACK_ENV_OK),1)
-ifneq ($(filter-out help deploy ci-releve epreuve-up epreuve-dev epreuve-status epreuve-down epreuve-destroy epreuve-check,$(STACK_GOALS)),)
+ifneq ($(filter-out help deploy ci-releve ci-mesure epreuve-up epreuve-dev epreuve-status epreuve-down epreuve-destroy epreuve-check,$(STACK_GOALS)),)
 $(error .env sans AMATEO_STACK=$(TEST_PROJECT) exact : make -C backend test-up)
 endif
 endif
@@ -181,6 +181,15 @@ deploy: ## Deploy VERSION=vX.Y.Z (or origin/main HEAD if omitted) via the deploy
 # Lecture seule de l'API GitHub par le `gh` du poste : jamais dans un conteneur.
 ci-releve: ## Relevé des jobs CI rouges (DAYS=14, ARGS="--since … --until … --branch … --json …")
 	python3 -I scripts/ci-releve.py --days $(or $(DAYS),14) $(ARGS)
+
+# Jour de renouvellement du quota de minutes hébergées, lu sur la page de facturation GitHub.
+# Valeur provisoire tant que le fondateur ne l'a pas lu.
+CYCLE_DAY ?= 1
+
+# Lecture seule de l'API GitHub par le `gh` du poste : jamais dans un conteneur. Code 3 à 75 % du
+# quota, 4 à 90 %, 2 si la facturation est illisible.
+ci-mesure: ## Minutes facturées, plafonds de temps, relevé hebdo (DAYS=30, PART=origin/<base>, RUN=<id>, CYCLE_DAY=N)
+	python3 -I scripts/ci-mesure.py --cycle-day $(CYCLE_DAY) --days $(or $(DAYS),30) $(if $(PART),--part $(PART)) $(if $(RUN),--run $(RUN))
 
 # --- Stack d'épreuve : UNE stack complète et seedée pour un worktree, à côté de celle du fondateur.
 # Toujours `-p amateo-epreuve` en toutes lettres, jamais la compose de la copie appelante, qui peut
