@@ -23,8 +23,9 @@ use RuntimeException;
  * `Security/StalePeriodPlanRegenerationTest` (payload sans le gymnase, 409 avant Rouvrir, 202 après).
  * Ce context ne prouve que ce qu'eux ne peuvent pas : le moteur réel honore le retrait.
  *
- * Servi par deux suites : `overlay` (plan VALIDÉ : périmé → Rouvrir → Régénérer) et
- * `verrou-periode` (le verrou d'un autre jour survit à une fermeture).
+ * Servi par la suite `overlay` (plan VALIDÉ : périmé → Rouvrir → Régénérer). Le cas du plan
+ * non validé (sans Rouvrir) n'a plus de scénario : le retrait et le payload sont gardés par les
+ * deux jumeaux PHPUnit, le vrai solve par le scénario du plan validé.
  */
 final class ClosurePinsSmallClubContext extends BaseContext
 {

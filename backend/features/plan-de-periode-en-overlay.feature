@@ -6,12 +6,6 @@ Fonctionnalité: Un plan de période se génère en overlay, sur sa propre grill
   remplissage d'un trou honore les blocs partagés recopiés du socle : un membre
   libéré recolle sur la case de son partenaire épinglé.
 
-  Scénario: Une période de fermeture obtient son plan et sa génération overlay aboutit
-    Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur
-    Et une période de fermeture à venir
-    Quand j'ouvre son plan de période puis je génère une version en overlay
-    Alors la génération overlay aboutit avec le statut « COMPLETED »
-
   Scénario: Le remplissage recolle un membre de bloc libéré sur la case de son partenaire épinglé
     Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur
     Et une nouvelle période de fermeture dont le plan recopie les blocs partagés du socle
@@ -32,13 +26,13 @@ Fonctionnalité: Un plan de période se génère en overlay, sur sa propre grill
     Quand je lance le remplissage de la période
     Alors le remplissage aboutit et l'équipe au jour imposé garde sa séance ce jour-là
 
-  Scénario: Je re-date l'incident : le plan survit, la version aussi, et l'empreinte reste inchangée
-    Prolonger une fermeture SANS faire entrer ni sortir de contrainte datée ne change rien à ce que
-    le solveur placerait : l'empreinte de structure reste égale au snapshot figé de la version, donc
-    le planning ne se signale PAS à régénérer (règle fondateur : si ça ne change rien au planning,
-    pas de bandeau).
+  Scénario: Une fermeture obtient son planning ; la prolonger ne demande pas de le refaire
+    Prolonger une fermeture sans faire entrer ni sortir de contrainte datée ne change rien à ce que
+    le système placerait : le planning ne se signale pas à régénérer.
     Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur
-    Et une fermeture à venir avec une version overlay aboutie
+    Et une période de fermeture à venir
+    Quand j'ouvre son plan de période puis je génère une version en overlay
+    Alors la génération overlay aboutit avec le statut « COMPLETED »
     Quand je prolonge la fermeture de deux semaines
     Alors la période porte les nouvelles dates, son plan aussi, la version existe toujours et le planning n'est pas signalé à régénérer
 

@@ -12,6 +12,7 @@ use App\Entity\Venue;
 use App\Entity\VenueTravelTime;
 use App\Enum\SeasonStatus;
 use App\Enum\VenueTravelTimeSource;
+use App\Service\Geo\IgnRoutingClient;
 use App\Service\Geo\VenueTravelTimeAutofillService;
 use App\Service\SeasonResolver;
 use App\Service\TravelComputeLock;
@@ -23,6 +24,7 @@ use Lexik\Bundle\JWTAuthenticationBundle\Services\JWTTokenManagerInterface;
 use PHPUnit\Framework\Attributes\Group;
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
+use Symfony\Component\Clock\MockClock;
 
 /**
  * P2-53 RMM-8 (PR-1) — l'autofill de la matrice de trajet, falsifié dans les deux
@@ -166,6 +168,12 @@ final class VenueTravelTimeAutofillTest extends WebTestCase
     protected function setUp(): void
     {
         $this->client = self::createClient();
+        // L'IGN stubbé répond tout de suite ; seul le pas d'une seconde entre deux appels coûtait du
+        // temps. Sur une horloge simulée, ce pas avance le temps sans attendre (`MockClock::sleep`).
+        self::getContainer()->set(IgnRoutingClient::class, new IgnRoutingClient(
+            self::getContainer()->get(IgnRoutingHttpClientStub::class),
+            new MockClock,
+        ));
         $this->em = self::getContainer()->get(EntityManagerInterface::class);
     }
 

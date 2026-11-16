@@ -6,24 +6,12 @@ Fonctionnalité: Un verrou de plan de période survit à la régénération, sur
   la saison : la version nouvelle repart des DONNÉES EN COURS et les réépingle aux mêmes cases. Sur
   un petit club réaliste (palier 60 s), là où ces promesses tenaient sur le BCCL complet.
 
-  Scénario: Deux séances verrouillées d'un plan de période reviennent verrouillées après régénération
-    La génération overlay aboutit sur la grille propre de la période ; deux séances qu'on y verrouille
-    en dur reviennent VERROUILLÉES aux mêmes cases après « Régénérer » — le verrou de période est
-    souverain. Sans le réépinglage des verrous HARD des données en cours, elles reviendraient
-    déverrouillées, replacées ailleurs.
+  Scénario: Les séances verrouillées d'une période le restent à chaque nouvelle génération
     Étant donné un petit club réaliste dont le planning de saison est en vigueur, avec un plan de période portant une version overlay terminée
     Et deux séances libres de cette version du petit club verrouillées en dur
     Quand je régénère le plan de période du petit club
     Alors la régénération aboutit et les deux séances reviennent verrouillées, aux mêmes cases
-
-  Scénario: Régénérer repart des données en cours (ses verrous compris), même à la deuxième régénération
-    « Régénérer » repart TOUJOURS de la dernière version terminée : une deuxième régénération repart
-    de la version née de la première (devenue la version en cours), verrous compris — ils ne se
-    perdent pas d'une génération à l'autre.
-    Étant donné un petit club réaliste dont le planning de saison est en vigueur, avec un plan de période portant une version overlay terminée
-    Et deux séances libres de cette version du petit club verrouillées en dur
-    Quand je régénère le plan de période du petit club
-    Et je régénère encore le plan de période du petit club
+    Quand je régénère encore le plan de période du petit club
     Alors la régénération aboutit et les deux séances reviennent verrouillées, aux mêmes cases
 
   Scénario: Charger les verrous d'une version plus ANCIENNE, puis régénérer, repart de SES verrous
@@ -36,12 +24,3 @@ Fonctionnalité: Un verrou de plan de période survit à la régénération, sur
     Et deux séances libres de cette version du petit club verrouillées en dur
     Quand je régénère le plan de période du petit club
     Alors la régénération aboutit et les deux séances reviennent verrouillées, aux mêmes cases
-
-  Scénario: Le verrou d'un autre jour survit à une fermeture
-    Une fermeture déclarée ne retire que les épingles qu'elle met hors de portée : le verrou au
-    gymnase fermé ce jour-là part, celui d'un autre jour reste, et la régénération le remet à la même
-    case, verrouillé, sans placer de séance au gymnase fermé ce jour-là.
-    Étant donné un petit club réaliste avec un plan de période dont deux séances sont verrouillées en dur sur deux jours différents
-    Quand je déclare la fermeture du gymnase de la première séance verrouillée, le jour de cette séance
-    Et je régénère le plan de période après la fermeture
-    Alors la régénération aboutit sans aucune séance à ce gymnase ce jour-là, et la séance verrouillée de l'autre jour revient verrouillée à la même case
