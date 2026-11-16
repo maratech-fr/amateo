@@ -40,11 +40,11 @@ runs:
         context: .
         file: docker/php/Dockerfile
         load: true
-        # WITH_PCOV=1 — cette image est celle des jobs CI (dev/test), dont
-        # `backend-tests` qui a besoin du driver pcov pour son step de couverture (P4-166 B1 ;
-        # ex-`backend-coverage`, fondu dans `backend-tests` le 2026-10-14). pcov est CHARGÉ mais
-        # INERTE (pcov.enabled=0 dans le Dockerfile) : `blocking-tests` et `e2e` ne paient aucun
-        # coût ; seul le step de couverture de `backend-tests` l'active (`-d pcov.enabled=1`).
+        # WITH_PCOV=1 — cette image est celle des jobs CI (dev/test), dont le run hebdomadaire
+        # `quality-weekly.yml`, seul à avoir besoin du driver pcov (couverture backend ; plus dans
+        # `backend-tests` depuis que la couverture a quitté le run de PR). pcov est CHARGÉ mais
+        # INERTE (pcov.enabled=0 dans le Dockerfile) : `backend-tests`, `blocking-tests` et `e2e` ne
+        # paient aucun coût ; seul `quality-weekly.yml` l'active (`-d pcov.enabled=1`).
         # L'image de PROD (job `build-docker`, target prod, n'utilise PAS cette action) ne reçoit
         # jamais cet arg.
         build-args: |

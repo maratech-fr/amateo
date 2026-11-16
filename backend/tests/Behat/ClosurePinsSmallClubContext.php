@@ -23,8 +23,9 @@ use RuntimeException;
  * `Security/StalePeriodPlanRegenerationTest` (payload sans le gymnase, 409 avant Rouvrir, 202 après).
  * Ce context ne prouve que ce qu'eux ne peuvent pas : le moteur réel honore le retrait.
  *
- * Servi par deux suites : `overlay` (plan VALIDÉ : périmé → Rouvrir → Régénérer) et
- * `verrou-periode` (le verrou d'un autre jour survit à une fermeture).
+ * Servi par la suite `overlay` (plan VALIDÉ : périmé → Rouvrir → Régénérer). Le cas du plan
+ * non validé (sans Rouvrir) n'a plus de scénario : le retrait et le payload sont gardés par les
+ * deux jumeaux PHPUnit, le vrai solve par le scénario du plan validé.
  */
 final class ClosurePinsSmallClubContext extends BaseContext
 {
@@ -47,12 +48,6 @@ final class ClosurePinsSmallClubContext extends BaseContext
     private string $regeneratedId = '';
 
     private string $regeneratedStatus = '';
-
-    #[Given('un petit club réaliste avec un plan de période dont deux séances sont verrouillées en dur sur deux jours différents')]
-    public function unPlanDePeriodeAvecDeuxVerrous(): void
-    {
-        $this->buildPlanWithTwoLocks(validate: false);
-    }
 
     #[Given('un petit club réaliste avec un plan de période VALIDÉ dont deux séances sont verrouillées en dur sur deux jours différents')]
     public function unPlanDePeriodeValideAvecDeuxVerrous(): void
@@ -107,14 +102,6 @@ final class ClosurePinsSmallClubContext extends BaseContext
         $this->jeRegenereApresLaFermeture();
     }
 
-    #[When('je régénère le plan de période après la fermeture')]
-    public function jeRegenereApresLaFermeture(): void
-    {
-        $overlay = $this->generateSmallClubPeriodVersion($this->periodPlanId);
-        $this->regeneratedId = $overlay['id'];
-        $this->regeneratedStatus = $overlay['status'];
-    }
-
     #[Then('la régénération aboutit sans aucune séance à ce gymnase ce jour-là, et la séance verrouillée de l\'autre jour revient verrouillée à la même case')]
     public function laRegenerationAboutitSansLeGymnase(): void
     {
@@ -145,6 +132,13 @@ final class ClosurePinsSmallClubContext extends BaseContext
     public function nettoyer(): void
     {
         $this->teardownSmallClub();
+    }
+
+    private function jeRegenereApresLaFermeture(): void
+    {
+        $overlay = $this->generateSmallClubPeriodVersion($this->periodPlanId);
+        $this->regeneratedId = $overlay['id'];
+        $this->regeneratedStatus = $overlay['status'];
     }
 
     /**

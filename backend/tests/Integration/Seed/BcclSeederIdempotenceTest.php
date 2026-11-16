@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Tests\Integration\Seed;
 
+use App\Entity\Club;
 use App\Entity\OpponentVenueLink;
 use App\Enum\OpponentVenueLinkSource;
 use App\Repository\SchoolHolidayPeriodRepository;
@@ -65,20 +66,54 @@ final class BcclSeederIdempotenceTest extends KernelTestCase
 
     private BcclSeeder $seeder;
 
+    /**
+     * Un seed dev pose tout le décor promis, et un second seed n'y change rien.
+     *
+     * Un seul process, deux seeds au lieu de treize process et dix-sept seeds : chaque facette
+     * d'un ancien test « un seed » est une assertion privée qui se nomme, lue entre les deux
+     * passages. Toutes ces facettes sont en lecture seule ; aucun geste ne s'intercale entre les deux
+     * seeds, donc le second passage voit la base exacte qu'il voyait dans les tests séparés. Les tests
+     * qui modifient une ligne entre deux passages (siège, durées de match, appariements
+     * d'adversaires, lien de vacances d'été) restent à part : leur geste touche une table qu'une
+     * facette d'ici lit, au moins par `counts()`.
+     *
+     * Le premier échec masque les facettes suivantes : chaque message nomme la sienne.
+     */
     #[RunInSeparateProcess]
     #[PreserveGlobalState(false)]
-    public function testRunningTheDevSeedTwiceIsStable(): void
+    public function testOneDevSeedCarriesTheWholeDecorAndASecondSeedChangesNothing(): void
     {
-        $this->seeder->run($this->em, BcclSeedProfile::dev());
+        $club = $this->seeder->run($this->em, BcclSeedProfile::dev());
         self::assertTrue($this->em->isOpen(), 'le premier passage garde l\'EntityManager ouvert');
         $first = $this->counts();
 
+        $this->assertSeasonTranscriptionIsCoherent($club);
+        $this->assertStructuralInvariantsAreCoherent($club);
+        $this->assertRepriseWeekPlansAndGridsAreCoherent($club);
+        $this->assertNoTeamTrainsTwiceTheSameDay($club);
+        $this->assertTranscribedReprisePlansSatisfyEveryHardTeamRuleHonouringOverrides();
+        $this->assertMateoIncidentValidatedOverlay($club);
+        $this->assertMateoIncidentChildrenAreValidSegmentsAndRootCarriesNoBlockPlan($club);
+        $this->assertWeekendMatchLayout($club);
+        $this->assertSeededInvariantsHoldAcrossEveryScope($club);
+        $this->assertReprise17ReservationsPinOnlyChosenFanionBlocks($club);
+        $genesisRefs = $this->repriseGenesisRefs($club);
+        $this->assertRepriseGenesisConstraintsHangOnTheirChildWeek($genesisRefs);
+        $this->assertMateoIncidentPlansCarryTheReconstructedGrid($club);
+
         $this->seeder->run($this->em, BcclSeedProfile::dev());
         self::assertTrue($this->em->isOpen(), 'le second passage garde l\'EntityManager ouvert');
-        $second = $this->counts();
 
-        self::assertSame($first, $second, 'un second seed dev ne change aucun compte (clubs, équipes, créneaux, réservations)');
+        self::assertSame($first, $this->counts(), 'un second seed dev ne change aucun compte (clubs, équipes, créneaux, réservations)');
         self::assertSame([], $this->duplicateSlots(), 'aucun créneau en doublon pour la clé (gymnase, jour, heure, saison, plan)');
+        $this->assertSecondSeedKeepsRepriseReservations($club);
+        $this->assertRepriseGenesisConstraintsHangOnTheirChildWeek($genesisRefs);
+        $this->assertMateoIncidentPlansCarryTheReconstructedGrid($club);
+        $staleEntries = (int) $this->connection->fetchOne(
+            'SELECT COUNT(*) FROM calendar_entry WHERE club_id = ? AND title LIKE ?',
+            [$club->getId(), 'Matéo indisponible (travaux)%'],
+        );
+        self::assertSame(0, $staleEntries, 'l\'ancien incident ne ressuscite pas au second run');
     }
 
     /**
@@ -112,6 +147,369 @@ final class BcclSeederIdempotenceTest extends KernelTestCase
     }
 
     /**
+     * Le club de DÉMONSTRATION est cohérent sur deux fronts qu'un seul seed démo suffit à prouver :
+     *  - P5-17 : la transcription ne vise QUE le profil dev — la démo reste « avant première
+     *    génération » (plan SEASON sans pointeur), l'écran de démo part sur le wizard/Récap ;
+     *  - zone scolaire : son code FFBB synthétique (ARA9999999) ne livre aucun département au
+     *    résolveur de zone, donc le seed pose la zone A (Rhône) par repli — sans quoi `school_zone`
+     *    resterait NULL et le radar afficherait « zone scolaire à renseigner » au lieu du compte à
+     *    rebours des vacances.
+     */
+    #[RunInSeparateProcess]
+    #[PreserveGlobalState(false)]
+    public function testDemoSeedBaselineIsCoherent(): void
+    {
+        $club = $this->seeder->run($this->em, BcclSeedProfile::demo('demo-pass-baseline'));
+
+        // P5-17 — la démo ne pointe aucun planning de saison.
+        $chosen = $this->connection->fetchOne(
+            'SELECT chosen_schedule_id FROM schedule_plan WHERE club_id = ? AND type = \'SEASON\'',
+            [$club->getId()],
+        );
+        self::assertNull(false === $chosen ? null : $chosen, 'le club de démonstration ne pointe aucun planning');
+
+        // Zone scolaire A (Rhône), posée par repli du seed (code FFBB synthétique).
+        self::assertSame('A', $club->getSchoolZone(), 'le club démo vit en zone A (Rhône)');
+    }
+
+    /**
+     * Défaut 4 (doublon « Vacances d'été ») — la mère « Vacances d'été » est un ANCRAGE de
+     * vacances scolaires : elle porte `school_holiday_id` pointant la vacance « été » de la ZONE
+     * du club (dépt 69 → A), et sa fenêtre est celle de la vacance CLAMPÉE à la saison. Sans ce
+     * lien, le cockpit affichait DEUX « Vacances d'été » (feed scolaire + cette entrée).
+     *
+     * Les migrations créent la table de référence mais ne la peuplent pas en test : on garantit
+     * la ligne « été » que le seed doit rattacher. Idempotence : un second run garde le lien.
+     */
+    #[RunInSeparateProcess]
+    #[PreserveGlobalState(false)]
+    public function testSummerRepriseMotherCarriesSchoolHolidayLink(): void
+    {
+        // Donnée de référence globale (sans RLS) : la vacance d'été de la zone A recouvrant
+        // l'été 2026 (04/07 → 31/08), telle que le feed officiel la porte (année 2025-2026).
+        $this->connection->executeStatement(
+            'INSERT INTO school_holiday_period (id, created_at, zone, label, holiday_type, start_date, end_date, school_year) '
+            . 'VALUES (:id, now(), \'A\', \'Vacances d\'\'Été\', \'ete\', \'2026-07-04\', \'2026-08-31\', \'2025-2026\') '
+            . 'ON CONFLICT (zone, holiday_type, school_year) DO UPDATE SET start_date = EXCLUDED.start_date, end_date = EXCLUDED.end_date',
+            ['id' => '11111111-1111-4111-8111-111111111111'],
+        );
+        $holidayId = (string) $this->connection->fetchOne(
+            'SELECT id FROM school_holiday_period WHERE zone = \'A\' AND holiday_type = \'ete\' AND school_year = \'2025-2026\'',
+        );
+
+        $club = $this->seeder->run($this->em, BcclSeedProfile::dev());
+
+        $mother = $this->connection->fetchAssociative(
+            'SELECT school_holiday_id, to_char(start_date, \'YYYY-MM-DD\') AS s, to_char(end_date, \'YYYY-MM-DD\') AS e '
+            . 'FROM calendar_entry WHERE club_id = ? AND parent_entry_id IS NULL AND title = ?',
+            [$club->getId(), 'Vacances d\'été'],
+        );
+        self::assertNotFalse($mother, 'la mère « Vacances d\'été » existe');
+        self::assertSame($holidayId, (string) $mother['school_holiday_id'], 'la mère porte le lien vers la vacance scolaire été de sa zone');
+        // Fenêtre = celle de la vacance (04/07→31/08) CLAMPÉE à la saison (début 15/07).
+        self::assertSame('2026-07-15', (string) $mother['s'], 'début clampé au début de saison');
+        self::assertSame('2026-08-31', (string) $mother['e'], 'fin = fin des vacances (dans la saison)');
+
+        // Idempotence : un second run garde le lien (find-or-create, aucun doublon).
+        $this->seeder->run($this->em, BcclSeedProfile::dev());
+        $secondLink = (string) $this->connection->fetchOne(
+            'SELECT school_holiday_id FROM calendar_entry WHERE club_id = ? AND parent_entry_id IS NULL AND title = ?',
+            [$club->getId(), 'Vacances d\'été'],
+        );
+        self::assertSame($holidayId, $secondLink, 'un second seed garde le lien');
+    }
+
+    /**
+     * Un seed dev avec identités INJECTÉES (le chemin du fondateur : fichier local + reprises) ne
+     * lève plus et dérive de l'ENTITÉ chaque libellé de contrainte coach — saison, décochages des
+     * reprises, genèse — deux passes de suite. Jeu SYNTHÉTIQUE (« Synth NN Nom ») : aucun nom
+     * réel au dépôt. Avant : les décochages et la genèse portaient des libellés de coach
+     * LITTÉRAUX, introuvables dès que les noms étaient remplacés → `RuntimeException`.
+     *
+     * Falsifiable : remettre un libellé de coach littéral dans `deactivatedConstraints` ou dans la
+     * genèse du 17 rend ce test ROUGE (exception ou ligne absente).
+     */
+    #[RunInSeparateProcess]
+    #[PreserveGlobalState(false)]
+    public function testDevSeedWithInjectedIdentitiesDerivesEveryCoachLabelFromTheEntity(): void
+    {
+        $synthetic = [];
+        for ($n = 1; $n <= 30; ++$n) {
+            $synthetic[] = ['firstName' => \sprintf('Synth %02d', $n), 'lastName' => 'Nom'];
+        }
+        $profile = BcclSeedProfile::dev(new BcclSeedIdentities(null, [], $synthetic));
+
+        foreach (['premier', 'second'] as $pass) {
+            try {
+                $club = $this->seeder->run($this->em, $profile);
+            } catch (RuntimeException) {
+                self::fail(\sprintf('%s passage : le seed dev avec identités injectées lève (un libellé de coach littéral ne vise plus rien)', $pass));
+            }
+            $clubId = $club->getId();
+
+            $seasonCoachConstraints = array_map('strval', $this->connection->fetchFirstColumn(
+                'SELECT name FROM "constraint" WHERE club_id = ? AND scope = \'COACH\' AND calendar_entry_id IS NULL ORDER BY name',
+                [$clubId],
+            ));
+            self::assertCount(6, $seasonCoachConstraints, \sprintf('%s passage : exactement 6 contraintes coach de saison', $pass));
+            foreach ($seasonCoachConstraints as $name) {
+                self::assertMatchesRegularExpression('/^Synth \d{2} Nom · indispo /u', $name, \sprintf('%s passage : contrainte coach de saison nommée depuis l\'entité', $pass));
+                self::assertStringStartsNotWith('Coach', $name, \sprintf('%s passage : aucun libellé par défaut ne survit au remplacement', $pass));
+            }
+
+            $deactivated17 = array_map('strval', $this->connection->fetchFirstColumn(
+                'SELECT c.name FROM constraint_period_override o '
+                . 'JOIN "constraint" c ON c.id = o.constraint_id '
+                . 'JOIN schedule_plan sp ON sp.id = o.schedule_plan_id '
+                . 'WHERE sp.club_id = ? AND sp.name = ? AND o.is_active = false',
+                [$clubId, 'Reprise du 17 août'],
+            ));
+            foreach (['Synth 11 Nom · indispo jeudi', 'Synth 06 Nom · indispo vendredi'] as $expected) {
+                self::assertContains($expected, $deactivated17, \sprintf('%s passage : la semaine du 17 décoche « %s »', $pass, $expected));
+            }
+
+            $genesis = (int) $this->connection->fetchOne(
+                'SELECT COUNT(*) FROM "constraint" WHERE club_id = ? AND scope = \'COACH\' AND calendar_entry_id IS NOT NULL AND name = ?',
+                [$clubId, 'Synth 11 Nom · indispo lundi, vendredi'],
+            );
+            self::assertSame(1, $genesis, \sprintf('%s passage : la genèse coach du 17 est nommée depuis l\'entité, en une seule ligne', $pass));
+        }
+    }
+
+    /**
+     * P5-13 — les reprises et les gestionnaires additionnels ne visent QUE le profil dev. Le club
+     * de DÉMONSTRATION ne porte aucun plan de période (HOLIDAY/CLOSURE), aucune entrée calendrier
+     * (l'incident Matéo compris), et le gestionnaire du club dev n'existe pas chez la démo (identités
+     * disjointes). La répartition WE des matchs est dev-only aussi : aucune fenêtre d'accès match ni
+     * créneau idéal de match.
+     */
+    #[RunInSeparateProcess]
+    #[PreserveGlobalState(false)]
+    public function testDemoSeedCarriesNoRepriseNorDevManagerAccount(): void
+    {
+        $club = $this->seeder->run($this->em, BcclSeedProfile::demo('demo-pass-reprise'));
+
+        $periodPlans = (int) $this->connection->fetchOne(
+            'SELECT COUNT(*) FROM schedule_plan WHERE club_id = ? AND type IN (\'HOLIDAY\', \'CLOSURE\')',
+            [$club->getId()],
+        );
+        self::assertSame(0, $periodPlans, 'la démo ne porte aucun plan de période');
+
+        $entries = (int) $this->connection->fetchOne(
+            'SELECT COUNT(*) FROM calendar_entry WHERE club_id = ?',
+            [$club->getId()],
+        );
+        self::assertSame(0, $entries, 'la démo ne pose aucune entrée calendrier');
+
+        // Identités disjointes : le gestionnaire fictif du club dev n'est pas créé par la démo.
+        $devManager = $this->connection->fetchOne(
+            'SELECT 1 FROM app_user WHERE email = ?',
+            ['dev-bccl@amateo.local'],
+        );
+        self::assertFalse($devManager, 'la démo ne crée pas le compte gestionnaire du club dev');
+
+        foreach (['team_match_habit', 'venue_match_window', 'opponent_venue_link'] as $table) {
+            $count = (int) $this->connection->fetchOne(
+                'SELECT COUNT(*) FROM ' . $table . ' WHERE club_id = ?',
+                [$club->getId()],
+            );
+            self::assertSame(0, $count, \sprintf('la démo ne pose aucune ligne dans %s (répartition WE + adversaires dev/prod-only)', $table));
+        }
+
+        // Les tables d'adversaires GLOBALES (hors tenant) restent vides : la démo n'amorce rien.
+        self::assertSame(0, $this->rowsIn('opponent_directory'), 'la démo n\'amorce aucune localisation d\'adversaire partagée');
+        self::assertSame(0, $this->rowsIn('opponent_venue_suggestion'), 'la démo n\'amorce aucune suggestion de gymnase partagée');
+    }
+
+    /**
+     * Durées de match + échauffement par catégorie (relevé de la base réelle 2026-09-29) — le seed
+     * pose Senior 120/45, U15 105/(défaut), U21 120/(défaut) ; les autres catégories suivent le
+     * défaut de famille (NULL). Ces valeurs sont RÉAPPLIQUÉES à chaque run (pas « only-fill » comme
+     * le siège) : une dérive manuelle est ramenée au réel au re-run. Falsifiable dans les deux sens.
+     */
+    #[RunInSeparateProcess]
+    #[PreserveGlobalState(false)]
+    public function testDevSeedCarriesPerCategoryMatchDurations(): void
+    {
+        $club = $this->seeder->run($this->em, BcclSeedProfile::dev());
+        $clubId = $club->getId();
+
+        $durations = fn (): array => $this->connection->fetchAllKeyValue(
+            'SELECT name, match_minutes || \'/\' || COALESCE(warmup_minutes::text, \'-\') '
+            . 'FROM sport_category WHERE club_id = ? AND name IN (\'Senior\', \'U15\', \'U21\') ORDER BY name',
+            [$clubId],
+        );
+        self::assertSame(
+            ['Senior' => '120/45', 'U15' => '105/-', 'U21' => '120/-'],
+            $durations(),
+            'le seed pose les durées de match + échauffement du terrain (Senior 120/45, U15 105/défaut, U21 120/défaut)',
+        );
+
+        // Réappliquées au re-run : une dérive manuelle est ramenée au réel (pas « only-fill »).
+        $this->connection->executeStatement(
+            'UPDATE sport_category SET match_minutes = 999, warmup_minutes = 999 WHERE club_id = ? AND name = \'U15\'',
+            [$clubId],
+        );
+        $this->em->clear();
+        $this->seeder->run($this->em, BcclSeedProfile::dev());
+        self::assertSame(
+            ['Senior' => '120/45', 'U15' => '105/-', 'U21' => '120/-'],
+            $durations(),
+            'un second seed réapplique les durées (la dérive 999/999 sur U15 est ramenée à 105/défaut)',
+        );
+    }
+
+    /**
+     * Amorçage des adversaires (relevé de la base réelle 2026-09-29) — le seed dev pose les trois
+     * tables de référence du module « adversaires » à leurs volumes réels : 75 localisations
+     * partagées (opponent_directory, GLOBALE), 101 appariements du club (opponent_venue_link : 32
+     * MANUAL + 69 AUTO), 15 suggestions partagées (opponent_venue_suggestion, GLOBALE, toutes
+     * MANUAL). Le club ne crée aucun match (le ré-import se fait en prod). Idempotent (upserts
+     * natifs + find-or-create) : un second run ne double rien.
+     *
+     * Deux sens de la règle « source préservée, MANUAL jamais écrasé » : un lien MANUAL modifié à
+     * la main SURVIT à un re-run (le seed ne le touche pas) ; un lien AUTO dérivé est RESTAURÉ au
+     * réel (le seed réapplique ses champs fédéraux).
+     */
+    #[RunInSeparateProcess]
+    #[PreserveGlobalState(false)]
+    public function testDevSeedCarriesOpponentReferenceData(): void
+    {
+        $club = $this->seeder->run($this->em, BcclSeedProfile::dev());
+        $clubId = $club->getId();
+
+        // Volumes (baseline test = 0 sur les tables GLOBALES, cf. amateo_test vierge).
+        self::assertSame(75, $this->rowsIn('opponent_directory'), 'le seed pose 75 localisations partagées');
+        self::assertSame(15, $this->rowsIn('opponent_venue_suggestion'), 'le seed pose 15 suggestions partagées');
+        $linkCount = (int) $this->connection->fetchOne('SELECT COUNT(*) FROM opponent_venue_link WHERE club_id = ?', [$clubId]);
+        self::assertSame(101, $linkCount, 'le seed pose 101 appariements pour le club');
+
+        /** @var array<string, int> $bySource */
+        $bySource = $this->connection->fetchAllKeyValue(
+            'SELECT source, COUNT(*) FROM opponent_venue_link WHERE club_id = ? GROUP BY source ORDER BY source',
+            [$clubId],
+        );
+        self::assertSame(['AUTO' => 69, 'MANUAL' => 32], array_map('intval', $bySource), 'les liens se répartissent 69 AUTO + 32 MANUAL');
+
+        // Toutes les suggestions sont MANUAL, à compte 0 (l'upsert ne fabrique pas de choix).
+        $suggestionSources = $this->connection->fetchFirstColumn('SELECT DISTINCT source FROM opponent_venue_suggestion');
+        self::assertSame(['MANUAL'], array_map('strval', $suggestionSources), 'les suggestions semées sont MANUAL');
+        self::assertSame(0, (int) $this->connection->fetchOne('SELECT COALESCE(MAX(chosen_by_count), 0) FROM opponent_venue_suggestion'), 'le seed ne fabrique aucun compte de choix (« un COMPTE, jamais un QUI »)');
+
+        // Aucun match : le ré-import se fait en prod, hors seed.
+        self::assertSame(0, (int) $this->connection->fetchOne('SELECT COUNT(*) FROM fixture WHERE club_id = ?', [$clubId]), 'le seed ne crée aucun match');
+
+        // (1) Un lien MANUAL modifié à la main SURVIT au re-run.
+        $manual = $this->em->getRepository(OpponentVenueLink::class)->findOneBy(['clubId' => $clubId, 'source' => OpponentVenueLinkSource::MANUAL]);
+        self::assertInstanceOf(OpponentVenueLink::class, $manual, 'un lien MANUAL existe');
+        $manual->setVenueLabel('SENTINELLE MANUAL');
+        $this->em->flush();
+
+        // (2) Un lien AUTO dérivé est RESTAURÉ au réel au re-run.
+        $auto = $this->em->getRepository(OpponentVenueLink::class)->findOneBy(['clubId' => $clubId, 'source' => OpponentVenueLinkSource::AUTO]);
+        self::assertInstanceOf(OpponentVenueLink::class, $auto, 'un lien AUTO existe');
+        $seededAutoLabel = $auto->getVenueLabel();
+        $auto->setVenueLabel('DERIVE AUTO');
+        $this->em->flush();
+
+        $this->seeder->run($this->em, BcclSeedProfile::dev());
+
+        // Idempotent : mêmes volumes après le second run.
+        self::assertSame(75, $this->rowsIn('opponent_directory'), 'un second run ne double pas les localisations');
+        self::assertSame(15, $this->rowsIn('opponent_venue_suggestion'), 'un second run ne double pas les suggestions');
+        self::assertSame(101, (int) $this->connection->fetchOne('SELECT COUNT(*) FROM opponent_venue_link WHERE club_id = ?', [$clubId]), 'un second run ne double pas les appariements');
+
+        $this->em->refresh($manual);
+        self::assertSame('SENTINELLE MANUAL', $manual->getVenueLabel(), 'un lien MANUAL n\'est JAMAIS écrasé par un re-run');
+        $this->em->refresh($auto);
+        self::assertSame($seededAutoLabel, $auto->getVenueLabel(), 'un lien AUTO dérivé est restauré au réel par un re-run');
+    }
+
+    /**
+     * NR (tenant isolation, §7.1) — LE SEED SCOPE SES CATÉGORIES SPORTIVES AU CLUB.
+     *
+     * Le seed tourne sur la connexion ADMIN, qui TRAVERSE la RLS : rien n'arrête un
+     * find-or-create de catégorie non scopé au club, et rien ne le signale. Si les deux
+     * recherches de `SportCategory` du seeder (create-or-pass + le closure `$fetchCat`)
+     * oublient le `clubId`, un club seedé sur une base où un AUTRE a déjà créé ses
+     * catégories les RETROUVE par (sportId, name), n'en crée AUCUNE pour lui, et accroche
+     * ses 50 équipes aux catégories d'un AUTRE club — fuite de tenant pure. En aval,
+     * GET /api/sport_categories sous le jeton de ce club rend une liste VIDE (le
+     * TenantFilter fait, lui, son travail) et une trentaine de scénarios Behat meurent
+     * faute de catégorie pour bâtir une équipe.
+     *
+     * Ce test seede DEUX clubs dans la même base (dev PUIS démo) et exige : (a) chaque
+     * club possède son propre jeu COMPLET de catégories ; (b) AUCUNE équipe de ces deux
+     * clubs ne pointe une catégorie appartenant à un AUTRE club (jointure team →
+     * sport_category, club de l'équipe == club de la catégorie).
+     *
+     * Falsifiable : retirer le `clubId` de l'UNE OU l'AUTRE recherche rend ce test ROUGE
+     * — la seule seconde recherche non scopée suffit à accrocher les équipes ailleurs.
+     */
+    #[RunInSeparateProcess]
+    #[PreserveGlobalState(false)]
+    public function testSeedScopesSportCategoriesToTheirOwnClub(): void
+    {
+        $bccl = $this->seeder->run($this->em, BcclSeedProfile::dev());
+        $demo = $this->seeder->run($this->em, BcclSeedProfile::demo('demo-pass-tenant-scope'));
+
+        self::assertNotSame($bccl->getId(), $demo->getId(), 'les deux clubs seedés sont bien distincts');
+
+        // (a) Chaque club a son PROPRE jeu complet de catégories (le catalogue entier).
+        $expectedCount = \count(CategoryCatalog::categories());
+        foreach ([$bccl->getId(), $demo->getId()] as $clubId) {
+            $ownCategories = (int) $this->connection->fetchOne(
+                'SELECT COUNT(*) FROM sport_category WHERE club_id = ?',
+                [$clubId],
+            );
+            self::assertSame($expectedCount, $ownCategories, \sprintf('le club %s possède son propre jeu complet de catégories', $clubId));
+
+            $teamCount = (int) $this->connection->fetchOne('SELECT COUNT(*) FROM team WHERE club_id = ?', [$clubId]);
+            self::assertGreaterThan(0, $teamCount, 'le club a bien des équipes — sinon la requête d\'isolation ci-dessous serait vide');
+        }
+
+        // (b) LA REQUÊTE QUI TRANCHE : une équipe de l'un des deux clubs dont la catégorie
+        // appartient à un AUTRE club. Avec la recherche non scopée, les équipes du second
+        // club seedé pointent les catégories du premier → ces lignes apparaissent → ROUGE.
+        $leaks = $this->connection->fetchAllAssociative(
+            'SELECT t.name AS team, t.club_id AS team_club, sc.club_id AS category_club '
+            . 'FROM team t JOIN sport_category sc ON sc.id = t.sport_category_id '
+            . 'WHERE t.club_id IN (?, ?) AND sc.club_id <> t.club_id',
+            [$bccl->getId(), $demo->getId()],
+        );
+        self::assertSame([], $leaks, 'aucune équipe ne pointe une catégorie appartenant à un autre club');
+    }
+
+    protected function setUp(): void
+    {
+        $adminUrl = $_SERVER['DATABASE_ADMIN_URL'] ?? getenv('DATABASE_ADMIN_URL');
+        self::assertNotFalse($adminUrl, 'DATABASE_ADMIN_URL doit être défini pour seeder en superuser');
+        $_SERVER['DATABASE_URL'] = $adminUrl;
+        $_ENV['DATABASE_URL'] = $adminUrl;
+        putenv('DATABASE_URL=' . $adminUrl);
+
+        self::bootKernel();
+        $this->em = self::getContainer()->get(EntityManagerInterface::class);
+        $this->connection = $this->em->getConnection();
+        $this->seeder = self::getContainer()->get(BcclSeeder::class);
+
+        // Garde-fou : sans la connexion superuser, le seeder échouerait sur son
+        // propre garde RLS — mais silencieusement tard. On l'affirme tôt.
+        self::assertSame('amateo_owner', $this->connection->fetchOne('SELECT current_user'));
+
+        // Notre filet de rollback (voir docblock) : tout le seed vit ici.
+        $this->connection->beginTransaction();
+    }
+
+    protected function tearDown(): void
+    {
+        if ($this->connection->isTransactionActive()) {
+            $this->connection->rollBack();
+        }
+        parent::tearDown();
+    }
+
+    /**
      * La transcription de SAISON du seed dev est cohérente — un seul seed suffit à prouver trois
      * facettes read-only (P5-17) :
      *  1. les NOMS des contraintes semées sont ceux que le wizard produirait (décision fondateur
@@ -121,19 +519,15 @@ final class BcclSeederIdempotenceTest extends KernelTestCase
      *  3. chaque RÉSERVATION de base (plan NULL) retrouve son créneau transcrit, verrouillé HARD.
      *
      * (Que ce planning transcrit SATISFASSE les règles dures d'équipe est prouvé à part par
-     * {@see self::testDevSeedStructuralInvariantsAreCoherent}, qui partage le même profil dev.)
+     * {@see self::assertStructuralInvariantsAreCoherent}, sur le même seed.)
      *
      * Facette 1 — FORME, pas contenu : chaque nom suit « <cible> · <prédicat> », une contrainte
      * ciblant un TAG commence par « Groupe ». EXCEPTION (P5-13 « incident Matéo ») : une fermeture
      * datée `venue_closed` est app-générée par `useCreateVenueClosure`, qui la nomme comme le TITRE
      * de son entrée de fermeture — on vérifie alors son nom == le titre de son entrée.
      */
-    #[RunInSeparateProcess]
-    #[PreserveGlobalState(false)]
-    public function testDevSeedSeasonTranscriptionIsCoherent(): void
+    private function assertSeasonTranscriptionIsCoherent(Club $club): void
     {
-        $club = $this->seeder->run($this->em, BcclSeedProfile::dev());
-
         /** @var list<array{name: string, config: string, entry_title: ?string}> $rows */
         $rows = $this->connection->fetchAllAssociative(
             'SELECT c.name, c.config, e.title AS entry_title FROM "constraint" c '
@@ -210,32 +604,6 @@ final class BcclSeederIdempotenceTest extends KernelTestCase
     }
 
     /**
-     * Le club de DÉMONSTRATION est cohérent sur deux fronts qu'un seul seed démo suffit à prouver :
-     *  - P5-17 : la transcription ne vise QUE le profil dev — la démo reste « avant première
-     *    génération » (plan SEASON sans pointeur), l'écran de démo part sur le wizard/Récap ;
-     *  - zone scolaire : son code FFBB synthétique (ARA9999999) ne livre aucun département au
-     *    résolveur de zone, donc le seed pose la zone A (Rhône) par repli — sans quoi `school_zone`
-     *    resterait NULL et le radar afficherait « zone scolaire à renseigner » au lieu du compte à
-     *    rebours des vacances.
-     */
-    #[RunInSeparateProcess]
-    #[PreserveGlobalState(false)]
-    public function testDemoSeedBaselineIsCoherent(): void
-    {
-        $club = $this->seeder->run($this->em, BcclSeedProfile::demo('demo-pass-baseline'));
-
-        // P5-17 — la démo ne pointe aucun planning de saison.
-        $chosen = $this->connection->fetchOne(
-            'SELECT chosen_schedule_id FROM schedule_plan WHERE club_id = ? AND type = \'SEASON\'',
-            [$club->getId()],
-        );
-        self::assertNull(false === $chosen ? null : $chosen, 'le club de démonstration ne pointe aucun planning');
-
-        // Zone scolaire A (Rhône), posée par repli du seed (code FFBB synthétique).
-        self::assertSame('A', $club->getSchoolZone(), 'le club démo vit en zone A (Rhône)');
-    }
-
-    /**
      * Les invariants STRUCTURELS du seed dev tiennent — un seul seed prouve trois facettes
      * read-only :
      *  1. le planning de SAISON transcrit respecte chaque règle DURE d'équipe que le seed déclare
@@ -251,12 +619,8 @@ final class BcclSeederIdempotenceTest extends KernelTestCase
      * vit dans le builder, pas dans le seed, et la garder ici dupliquerait cette algèbre. Le risque
      * ciblé est celui qui s'est présenté : une règle TEAM ajoutée au seed d'après la saisie app.
      */
-    #[RunInSeparateProcess]
-    #[PreserveGlobalState(false)]
-    public function testDevSeedStructuralInvariantsAreCoherent(): void
+    private function assertStructuralInvariantsAreCoherent(Club $club): void
     {
-        $club = $this->seeder->run($this->em, BcclSeedProfile::dev());
-
         /** @var list<array{team: string, day: int, start: string, name: string, family: string, config: string}> $rows */
         $rows = $this->connection->fetchAllAssociative(
             'SELECT t.name AS team, s.day_of_week AS day, to_char(s.start_time, \'HH24:MI\') AS start, '
@@ -411,12 +775,8 @@ final class BcclSeederIdempotenceTest extends KernelTestCase
      *     que son réel contredit (U18M1 jeudi de Coach 11, U15M1 vendredi de Coach 06) ainsi
      *     que « SM2 · pas vendredi » (le bloc est figé lun/mar/jeu par réservation).
      */
-    #[RunInSeparateProcess]
-    #[PreserveGlobalState(false)]
-    public function testDevSeedRepriseWeekPlansAndGridsAreCoherent(): void
+    private function assertRepriseWeekPlansAndGridsAreCoherent(Club $club): void
     {
-        $club = $this->seeder->run($this->em, BcclSeedProfile::dev());
-
         // ── Facette 1 — chaque plan de reprise pointe une version COMPLETED avec ses groupes. ──
         foreach ([['Reprise du 17 août', 25, 2], ['Reprise du 24 août', 39, 2]] as [$planName, $expectedSlots, $expectedGroups]) {
             $row = $this->connection->fetchAssociative(
@@ -518,15 +878,12 @@ final class BcclSeederIdempotenceTest extends KernelTestCase
      * 8 lignes exactement : une équipe ne s'entraîne jamais deux fois le même jour, la séance seule de
      * SM2 le jeudi à Armand est retirée.
      * Idempotence stricte : purge-puis-réinsertion — une ligne retirée de la liste ne survit pas
-     * à un re-run sur base déjà seedée. Falsifiable : re-brancher `$week['sessions']` comme
-     * source des réservations du 17 rend ce test ROUGE (25 ≠ 10).
+     * à un re-run sur base déjà seedée ({@see self::assertSecondSeedKeepsRepriseReservations}).
+     * Falsifiable : re-brancher `$week['sessions']` comme source des réservations du 17 rend ce
+     * test ROUGE (25 ≠ 10).
      */
-    #[RunInSeparateProcess]
-    #[PreserveGlobalState(false)]
-    public function testReprise17ReservationsPinOnlyChosenFanionBlocks(): void
+    private function assertReprise17ReservationsPinOnlyChosenFanionBlocks(Club $club): void
     {
-        $club = $this->seeder->run($this->em, BcclSeedProfile::dev());
-
         $rows = $this->connection->fetchAllAssociative(
             'SELECT t.name AS team, r.day_of_week, to_char(r.start_time, \'HH24:MI\') AS start '
             . 'FROM reservation r JOIN team t ON t.id = r.team_id '
@@ -564,9 +921,11 @@ final class BcclSeederIdempotenceTest extends KernelTestCase
             array_map(static fn (array $row): array => [(string) $row['team'], (int) $row['day_of_week'], (string) $row['start']], $rows24),
             'les réservations du 24 sont exactement les 8 créneaux fanion (bloc SM lun/mar/jeu, SF2 lun/mar) — rien d\'autre',
         );
+    }
 
-        // Idempotence : un second run purge-réinsère, mêmes comptes, pas de résurrection.
-        $this->seeder->run($this->em, BcclSeedProfile::dev());
+    /** Idempotence des réservations de reprise : un second run purge-réinsère, mêmes comptes, pas de résurrection. */
+    private function assertSecondSeedKeepsRepriseReservations(Club $club): void
+    {
         foreach ([['Reprise du 17 août', 10], ['Reprise du 24 août', 8]] as [$planName, $expectedCount]) {
             $count = (int) $this->connection->fetchOne(
                 'SELECT COUNT(*) FROM reservation r JOIN schedule_plan sp ON sp.id = r.schedule_plan_id '
@@ -581,12 +940,8 @@ final class BcclSeederIdempotenceTest extends KernelTestCase
      * Le club de test ne porte aucune équipe deux fois le même jour : ni réservée, ni placée dans la version de reprise du 24.
      * Sans quoi le seed fabriquerait un planning impossible à reproduire au geste, ou un Récap bloqué.
      */
-    #[RunInSeparateProcess]
-    #[PreserveGlobalState(false)]
-    public function testNoTeamTrainsTwiceTheSameDayInTheSeed(): void
+    private function assertNoTeamTrainsTwiceTheSameDay(Club $club): void
     {
-        $club = $this->seeder->run($this->em, BcclSeedProfile::dev());
-
         $doubledReservations = $this->connection->fetchAllAssociative(
             'SELECT sp.name AS plan, t.name AS team, r.day_of_week FROM reservation r JOIN team t ON t.id = r.team_id '
             . 'LEFT JOIN schedule_plan sp ON sp.id = r.schedule_plan_id WHERE r.club_id = ? '
@@ -606,57 +961,10 @@ final class BcclSeederIdempotenceTest extends KernelTestCase
     }
 
     /**
-     * Défaut 4 (doublon « Vacances d'été ») — la mère « Vacances d'été » est un ANCRAGE de
-     * vacances scolaires : elle porte `school_holiday_id` pointant la vacance « été » de la ZONE
-     * du club (dépt 69 → A), et sa fenêtre est celle de la vacance CLAMPÉE à la saison. Sans ce
-     * lien, le cockpit affichait DEUX « Vacances d'été » (feed scolaire + cette entrée).
-     *
-     * Les migrations créent la table de référence mais ne la peuplent pas en test : on garantit
-     * la ligne « été » que le seed doit rattacher. Idempotence : un second run garde le lien.
-     */
-    #[RunInSeparateProcess]
-    #[PreserveGlobalState(false)]
-    public function testSummerRepriseMotherCarriesSchoolHolidayLink(): void
-    {
-        // Donnée de référence globale (sans RLS) : la vacance d'été de la zone A recouvrant
-        // l'été 2026 (04/07 → 31/08), telle que le feed officiel la porte (année 2025-2026).
-        $this->connection->executeStatement(
-            'INSERT INTO school_holiday_period (id, created_at, zone, label, holiday_type, start_date, end_date, school_year) '
-            . 'VALUES (:id, now(), \'A\', \'Vacances d\'\'Été\', \'ete\', \'2026-07-04\', \'2026-08-31\', \'2025-2026\') '
-            . 'ON CONFLICT (zone, holiday_type, school_year) DO UPDATE SET start_date = EXCLUDED.start_date, end_date = EXCLUDED.end_date',
-            ['id' => '11111111-1111-4111-8111-111111111111'],
-        );
-        $holidayId = (string) $this->connection->fetchOne(
-            'SELECT id FROM school_holiday_period WHERE zone = \'A\' AND holiday_type = \'ete\' AND school_year = \'2025-2026\'',
-        );
-
-        $club = $this->seeder->run($this->em, BcclSeedProfile::dev());
-
-        $mother = $this->connection->fetchAssociative(
-            'SELECT school_holiday_id, to_char(start_date, \'YYYY-MM-DD\') AS s, to_char(end_date, \'YYYY-MM-DD\') AS e '
-            . 'FROM calendar_entry WHERE club_id = ? AND parent_entry_id IS NULL AND title = ?',
-            [$club->getId(), 'Vacances d\'été'],
-        );
-        self::assertNotFalse($mother, 'la mère « Vacances d\'été » existe');
-        self::assertSame($holidayId, (string) $mother['school_holiday_id'], 'la mère porte le lien vers la vacance scolaire été de sa zone');
-        // Fenêtre = celle de la vacance (04/07→31/08) CLAMPÉE à la saison (début 15/07).
-        self::assertSame('2026-07-15', (string) $mother['s'], 'début clampé au début de saison');
-        self::assertSame('2026-08-31', (string) $mother['e'], 'fin = fin des vacances (dans la saison)');
-
-        // Idempotence : un second run garde le lien (find-or-create, aucun doublon).
-        $this->seeder->run($this->em, BcclSeedProfile::dev());
-        $secondLink = (string) $this->connection->fetchOne(
-            'SELECT school_holiday_id FROM calendar_entry WHERE club_id = ? AND parent_entry_id IS NULL AND title = ?',
-            [$club->getId(), 'Vacances d\'été'],
-        );
-        self::assertSame($holidayId, $secondLink, 'un second seed garde le lien');
-    }
-
-    /**
      * NR (P5-13) — LES SEMAINES DE REPRISE TRANSCRITES RESPECTENT LES RÈGLES DURES D'ÉQUIPE
      * QU'ELLES N'ONT PAS DÉCOCHÉES.
      *
-     * Miroir période de {@see testTheTranscribedRealScheduleSatisfiesEveryHardTeamRule}, avec un
+     * Miroir période de {@see self::assertStructuralInvariantsAreCoherent} (facette 1), avec un
      * amendement essentiel : une contrainte DÉCOCHÉE pour le plan (ConstraintPeriodOverride
      * isActive=false) n'est PAS exigée — c'est précisément le mécanisme qui rend une reprise
      * cohérente avec les règles de saison qu'elle contredit (SM1 hors mardi/jeudi, etc.). Toute
@@ -676,12 +984,8 @@ final class BcclSeederIdempotenceTest extends KernelTestCase
      * semaine du 17) rend ce test ROUGE en nommant la séance du lundi de SM1 ; poser la genèse SM
      * à 21:00 (> 20:45) le rendrait ROUGE aussi.
      */
-    #[RunInSeparateProcess]
-    #[PreserveGlobalState(false)]
-    public function testTranscribedReprisePlansSatisfyEveryHardTeamRuleHonouringOverrides(): void
+    private function assertTranscribedReprisePlansSatisfyEveryHardTeamRuleHonouringOverrides(): void
     {
-        $this->seeder->run($this->em, BcclSeedProfile::dev());
-
         /** @var list<array{team: string, day: int, start: string, name: string, family: string, config: string}> $rows */
         $rows = $this->connection->fetchAllAssociative(
             'SELECT t.name AS team, s.day_of_week AS day, to_char(s.start_time, \'HH24:MI\') AS start, '
@@ -741,41 +1045,17 @@ final class BcclSeederIdempotenceTest extends KernelTestCase
      * entrée-enfant — « Mineurs · pas après 19:50 » (10 équipes), « U15M · pas après 18:15 » (2),
      * « U18F{1,2} · préfère JDR » (FACILITY PREFERRED), « SF1 · pas vendredi », « SM3 · préfère
      * Armand » — chacune invisible de l'autre semaine, et un second run est stable (find-or-create,
-     * zéro doublon).
+     * zéro doublon) : ce contrôle se rejoue après le second seed avec les identifiants relevés
+     * après le premier ({@see self::repriseGenesisRefs}).
      *
      * Falsifiable : attacher une genèse à la mère (au lieu de l'enfant), altérer une config, ou
      * croiser les genèses des deux semaines rend ce test ROUGE.
+     *
+     * @param array{clubId: string, child17: string, child24: string, sm1: string, sm2: string, coach11: string, jdrId: string, armandId: string} $refs
      */
-    #[RunInSeparateProcess]
-    #[PreserveGlobalState(false)]
-    public function testRepriseGenesisConstraintsHangOnTheChildWeekOfTheSeventeenth(): void
+    private function assertRepriseGenesisConstraintsHangOnTheirChildWeek(array $refs): void
     {
-        $club = $this->seeder->run($this->em, BcclSeedProfile::dev());
-        $clubId = $club->getId();
-
-        $motherId = (string) $this->connection->fetchOne(
-            'SELECT id FROM calendar_entry WHERE club_id = ? AND parent_entry_id IS NULL AND title = ?',
-            [$clubId, 'Vacances d\'été'],
-        );
-        $child17 = (string) $this->connection->fetchOne(
-            'SELECT id FROM calendar_entry WHERE club_id = ? AND parent_entry_id = ? AND start_date = ?',
-            [$clubId, $motherId, '2026-08-17'],
-        );
-        $child24 = (string) $this->connection->fetchOne(
-            'SELECT id FROM calendar_entry WHERE club_id = ? AND parent_entry_id = ? AND start_date = ?',
-            [$clubId, $motherId, '2026-08-24'],
-        );
-        self::assertNotSame('', $child17, 'l\'entrée-enfant du 17 existe');
-        self::assertNotSame('', $child24, 'l\'entrée-enfant du 24 existe');
-
-        $sm1 = (string) $this->connection->fetchOne('SELECT id FROM team WHERE club_id = ? AND name = ?', [$clubId, 'SM1']);
-        $sm2 = (string) $this->connection->fetchOne('SELECT id FROM team WHERE club_id = ? AND name = ?', [$clubId, 'SM2']);
-        $coach11 = (string) $this->connection->fetchOne(
-            'SELECT id FROM coach WHERE club_id = ? AND first_name = ? AND last_name = ?',
-            [$clubId, 'Coach 11', ''],
-        );
-        $jdrId = (string) $this->connection->fetchOne('SELECT id FROM venue WHERE club_id = ? AND name = ?', [$clubId, 'JDR']);
-        $armandId = (string) $this->connection->fetchOne('SELECT id FROM venue WHERE club_id = ? AND name = ?', [$clubId, 'Armand']);
+        ['clubId' => $clubId, 'child17' => $child17, 'child24' => $child24, 'sm1' => $sm1, 'sm2' => $sm2, 'coach11' => $coach11, 'jdrId' => $jdrId, 'armandId' => $armandId] = $refs;
 
         $genesisRows = fn (string $entryId): array => $this->connection->fetchAllAssociative(
             'SELECT name, scope, family, rule_type, scope_target_id, config::text AS config '
@@ -806,18 +1086,17 @@ final class BcclSeederIdempotenceTest extends KernelTestCase
         // l'assertion est une pièce de monnaie (constaté : vert puis rouge sur deux runs).
         usort($expected17, static fn (array $a, array $b): int => [$a['name'], $a['scope_target_id']] <=> [$b['name'], $b['scope_target_id']]);
 
-        $assertMatches = function (array $rows) use ($expected17): void {
-            self::assertCount(3, $rows, 'la semaine du 17 porte exactement 3 genèses');
-            foreach ($rows as $i => $row) {
-                $exp = $expected17[$i];
-                self::assertSame($exp['name'], (string) $row['name']);
-                self::assertSame($exp['scope'], (string) $row['scope']);
-                self::assertSame($exp['family'], (string) $row['family']);
-                self::assertSame($exp['rule_type'], (string) $row['rule_type']);
-                self::assertSame($exp['scope_target_id'], (string) $row['scope_target_id'], \sprintf('« %s » vise la bonne cible', $exp['name']));
-                self::assertSame($exp['config'], json_decode((string) $row['config'], true, 512, \JSON_THROW_ON_ERROR), \sprintf('« %s » porte sa config exacte', $exp['name']));
-            }
-        };
+        $rows17 = $genesisRows($child17);
+        self::assertCount(3, $rows17, 'la semaine du 17 porte exactement 3 genèses');
+        foreach ($rows17 as $i => $row) {
+            $exp = $expected17[$i];
+            self::assertSame($exp['name'], (string) $row['name']);
+            self::assertSame($exp['scope'], (string) $row['scope']);
+            self::assertSame($exp['family'], (string) $row['family']);
+            self::assertSame($exp['rule_type'], (string) $row['rule_type']);
+            self::assertSame($exp['scope_target_id'], (string) $row['scope_target_id'], \sprintf('« %s » vise la bonne cible', $exp['name']));
+            self::assertSame($exp['config'], json_decode((string) $row['config'], true, 512, \JSON_THROW_ON_ERROR), \sprintf('« %s » porte sa config exacte', $exp['name']));
+        }
 
         // La semaine du 24 porte SES 16 genèses (comptes par nom + configs sondées), sans jamais
         // recouper celles du 17.
@@ -825,91 +1104,66 @@ final class BcclSeederIdempotenceTest extends KernelTestCase
             (string) $row['scope'], (string) $row['family'], (string) $row['rule_type'],
             json_decode((string) $row['config'], true, 512, \JSON_THROW_ON_ERROR),
         ];
-        $assertWeek24 = function (array $rows) use ($probe, $jdrId, $armandId): void {
-            self::assertCount(16, $rows, 'la semaine du 24 porte exactement 16 genèses');
-            $byName = [];
-            foreach ($rows as $row) {
-                $byName[(string) $row['name']][] = $row;
-            }
-            // Multiplicités exactes : 10 + 2 + 1 + 1 + 1 + 1 = 16.
-            self::assertCount(10, $byName['Mineurs · pas après 19:50'] ?? [], '10 genèses « Mineurs · pas après 19:50 »');
-            self::assertCount(2, $byName['U15M · pas après 18:15'] ?? [], '2 genèses « U15M · pas après 18:15 »');
-            self::assertCount(1, $byName['U18F1 · préfère JDR'] ?? [], '1 genèse « U18F1 · préfère JDR »');
-            self::assertCount(1, $byName['U18F2 · préfère JDR'] ?? [], '1 genèse « U18F2 · préfère JDR »');
-            self::assertCount(1, $byName['SF1 · pas vendredi'] ?? [], '1 genèse « SF1 · pas vendredi »');
-            self::assertCount(1, $byName['SM3 · préfère Armand'] ?? [], '1 genèse « SM3 · préfère Armand »');
-            // Configs sondées (scope, famille, type de règle, config).
-            self::assertSame(['TEAM', 'TIME', 'HARD', ['maxStartTime' => '19:50']], $probe($byName['Mineurs · pas après 19:50'][0]), 'une genèse « Mineurs » est TIME/HARD à 19:50');
-            self::assertSame(['TEAM', 'TIME', 'HARD', ['maxStartTime' => '18:15']], $probe($byName['U15M · pas après 18:15'][0]), '« U15M » est TIME/HARD à 18:15');
-            self::assertSame(['TEAM', 'DAY', 'HARD', ['forbiddenDays' => [5]]], $probe($byName['SF1 · pas vendredi'][0]), '« SF1 · pas vendredi » est DAY/HARD forbiddenDays [5]');
-            self::assertSame(['TEAM', 'FACILITY', 'PREFERRED', ['preferredVenueId' => $jdrId]], $probe($byName['U18F1 · préfère JDR'][0]), '« U18F1 · préfère JDR » vise JDR (id résolu depuis $venues)');
-            self::assertSame(['TEAM', 'FACILITY', 'PREFERRED', ['preferredVenueId' => $armandId]], $probe($byName['SM3 · préfère Armand'][0]), '« SM3 · préfère Armand » vise Armand');
-        };
-
-        $assertMatches($genesisRows($child17));
-        $assertWeek24($genesisRows($child24));
-
-        // Idempotence : un second run ne duplique rien et garde les mêmes cibles.
-        $this->seeder->run($this->em, BcclSeedProfile::dev());
-        $assertMatches($genesisRows($child17));
-        $assertWeek24($genesisRows($child24));
+        $rows24 = $genesisRows($child24);
+        self::assertCount(16, $rows24, 'la semaine du 24 porte exactement 16 genèses');
+        $byName = [];
+        foreach ($rows24 as $row) {
+            $byName[(string) $row['name']][] = $row;
+        }
+        // Multiplicités exactes : 10 + 2 + 1 + 1 + 1 + 1 = 16.
+        self::assertCount(10, $byName['Mineurs · pas après 19:50'] ?? [], '10 genèses « Mineurs · pas après 19:50 »');
+        self::assertCount(2, $byName['U15M · pas après 18:15'] ?? [], '2 genèses « U15M · pas après 18:15 »');
+        self::assertCount(1, $byName['U18F1 · préfère JDR'] ?? [], '1 genèse « U18F1 · préfère JDR »');
+        self::assertCount(1, $byName['U18F2 · préfère JDR'] ?? [], '1 genèse « U18F2 · préfère JDR »');
+        self::assertCount(1, $byName['SF1 · pas vendredi'] ?? [], '1 genèse « SF1 · pas vendredi »');
+        self::assertCount(1, $byName['SM3 · préfère Armand'] ?? [], '1 genèse « SM3 · préfère Armand »');
+        // Configs sondées (scope, famille, type de règle, config).
+        self::assertSame(['TEAM', 'TIME', 'HARD', ['maxStartTime' => '19:50']], $probe($byName['Mineurs · pas après 19:50'][0]), 'une genèse « Mineurs » est TIME/HARD à 19:50');
+        self::assertSame(['TEAM', 'TIME', 'HARD', ['maxStartTime' => '18:15']], $probe($byName['U15M · pas après 18:15'][0]), '« U15M » est TIME/HARD à 18:15');
+        self::assertSame(['TEAM', 'DAY', 'HARD', ['forbiddenDays' => [5]]], $probe($byName['SF1 · pas vendredi'][0]), '« SF1 · pas vendredi » est DAY/HARD forbiddenDays [5]');
+        self::assertSame(['TEAM', 'FACILITY', 'PREFERRED', ['preferredVenueId' => $jdrId]], $probe($byName['U18F1 · préfère JDR'][0]), '« U18F1 · préfère JDR » vise JDR (id résolu depuis $venues)');
+        self::assertSame(['TEAM', 'FACILITY', 'PREFERRED', ['preferredVenueId' => $armandId]], $probe($byName['SM3 · préfère Armand'][0]), '« SM3 · préfère Armand » vise Armand');
     }
 
     /**
-     * Un seed dev avec identités INJECTÉES (le chemin du fondateur : fichier local + reprises) ne
-     * lève plus et dérive de l'ENTITÉ chaque libellé de contrainte coach — saison, décochages des
-     * reprises, genèse — deux passes de suite. Jeu SYNTHÉTIQUE (« Synth NN Nom ») : aucun nom
-     * réel au dépôt. Avant : les décochages et la genèse portaient des libellés de coach
-     * LITTÉRAUX, introuvables dès que les noms étaient remplacés → `RuntimeException`.
+     * Les identifiants que le contrôle des genèses compare, relevés UNE fois après le premier seed :
+     * un second seed qui recréerait une entrée-enfant, une équipe ou un gymnase au lieu de les
+     * retrouver ferait rougir le contrôle rejoué.
      *
-     * Falsifiable : remettre un libellé de coach littéral dans `deactivatedConstraints` ou dans la
-     * genèse du 17 rend ce test ROUGE (exception ou ligne absente).
+     * @return array{clubId: string, child17: string, child24: string, sm1: string, sm2: string, coach11: string, jdrId: string, armandId: string}
      */
-    #[RunInSeparateProcess]
-    #[PreserveGlobalState(false)]
-    public function testDevSeedWithInjectedIdentitiesDerivesEveryCoachLabelFromTheEntity(): void
+    private function repriseGenesisRefs(Club $club): array
     {
-        $synthetic = [];
-        for ($n = 1; $n <= 30; ++$n) {
-            $synthetic[] = ['firstName' => \sprintf('Synth %02d', $n), 'lastName' => 'Nom'];
-        }
-        $profile = BcclSeedProfile::dev(new BcclSeedIdentities(null, [], $synthetic));
+        $clubId = $club->getId();
 
-        foreach (['premier', 'second'] as $pass) {
-            try {
-                $club = $this->seeder->run($this->em, $profile);
-            } catch (RuntimeException) {
-                self::fail(\sprintf('%s passage : le seed dev avec identités injectées lève (un libellé de coach littéral ne vise plus rien)', $pass));
-            }
-            $clubId = $club->getId();
+        $motherId = (string) $this->connection->fetchOne(
+            'SELECT id FROM calendar_entry WHERE club_id = ? AND parent_entry_id IS NULL AND title = ?',
+            [$clubId, 'Vacances d\'été'],
+        );
+        $child17 = (string) $this->connection->fetchOne(
+            'SELECT id FROM calendar_entry WHERE club_id = ? AND parent_entry_id = ? AND start_date = ?',
+            [$clubId, $motherId, '2026-08-17'],
+        );
+        $child24 = (string) $this->connection->fetchOne(
+            'SELECT id FROM calendar_entry WHERE club_id = ? AND parent_entry_id = ? AND start_date = ?',
+            [$clubId, $motherId, '2026-08-24'],
+        );
+        self::assertNotSame('', $child17, 'l\'entrée-enfant du 17 existe');
+        self::assertNotSame('', $child24, 'l\'entrée-enfant du 24 existe');
 
-            $seasonCoachConstraints = array_map('strval', $this->connection->fetchFirstColumn(
-                'SELECT name FROM "constraint" WHERE club_id = ? AND scope = \'COACH\' AND calendar_entry_id IS NULL ORDER BY name',
-                [$clubId],
-            ));
-            self::assertCount(6, $seasonCoachConstraints, \sprintf('%s passage : exactement 6 contraintes coach de saison', $pass));
-            foreach ($seasonCoachConstraints as $name) {
-                self::assertMatchesRegularExpression('/^Synth \d{2} Nom · indispo /u', $name, \sprintf('%s passage : contrainte coach de saison nommée depuis l\'entité', $pass));
-                self::assertStringStartsNotWith('Coach', $name, \sprintf('%s passage : aucun libellé par défaut ne survit au remplacement', $pass));
-            }
+        $sm1 = (string) $this->connection->fetchOne('SELECT id FROM team WHERE club_id = ? AND name = ?', [$clubId, 'SM1']);
+        $sm2 = (string) $this->connection->fetchOne('SELECT id FROM team WHERE club_id = ? AND name = ?', [$clubId, 'SM2']);
+        $coach11 = (string) $this->connection->fetchOne(
+            'SELECT id FROM coach WHERE club_id = ? AND first_name = ? AND last_name = ?',
+            [$clubId, 'Coach 11', ''],
+        );
+        $jdrId = (string) $this->connection->fetchOne('SELECT id FROM venue WHERE club_id = ? AND name = ?', [$clubId, 'JDR']);
+        $armandId = (string) $this->connection->fetchOne('SELECT id FROM venue WHERE club_id = ? AND name = ?', [$clubId, 'Armand']);
 
-            $deactivated17 = array_map('strval', $this->connection->fetchFirstColumn(
-                'SELECT c.name FROM constraint_period_override o '
-                . 'JOIN "constraint" c ON c.id = o.constraint_id '
-                . 'JOIN schedule_plan sp ON sp.id = o.schedule_plan_id '
-                . 'WHERE sp.club_id = ? AND sp.name = ? AND o.is_active = false',
-                [$clubId, 'Reprise du 17 août'],
-            ));
-            foreach (['Synth 11 Nom · indispo jeudi', 'Synth 06 Nom · indispo vendredi'] as $expected) {
-                self::assertContains($expected, $deactivated17, \sprintf('%s passage : la semaine du 17 décoche « %s »', $pass, $expected));
-            }
-
-            $genesis = (int) $this->connection->fetchOne(
-                'SELECT COUNT(*) FROM "constraint" WHERE club_id = ? AND scope = \'COACH\' AND calendar_entry_id IS NOT NULL AND name = ?',
-                [$clubId, 'Synth 11 Nom · indispo lundi, vendredi'],
-            );
-            self::assertSame(1, $genesis, \sprintf('%s passage : la genèse coach du 17 est nommée depuis l\'entité, en une seule ligne', $pass));
-        }
+        return [
+            'clubId' => $clubId, 'child17' => $child17, 'child24' => $child24, 'sm1' => $sm1, 'sm2' => $sm2,
+            'coach11' => $coach11, 'jdrId' => $jdrId, 'armandId' => $armandId,
+        ];
     }
 
     /**
@@ -929,11 +1183,8 @@ final class BcclSeederIdempotenceTest extends KernelTestCase
      * Falsifiable : retirer le décochage de « SM2 · au moins 1 à Matéo », changer le nombre de
      * séances d'une équipe (Σ ≠ 90), ou laisser survivre l'ancien incident, rend ce test ROUGE.
      */
-    #[RunInSeparateProcess]
-    #[PreserveGlobalState(false)]
-    public function testDevSeedCarriesMateoIncidentValidatedOverlay(): void
+    private function assertMateoIncidentValidatedOverlay(Club $club): void
     {
-        $club = $this->seeder->run($this->em, BcclSeedProfile::dev());
         $incidentTitle = 'Matéo indisponible (incident) — du 31 août 2026 au 16 oct. 2026';
 
         // --- L'ANCIEN incident « (travaux) » a été purgé : ni racine ni segment ne subsistent ---
@@ -1064,18 +1315,14 @@ final class BcclSeederIdempotenceTest extends KernelTestCase
      * cases (venue+jour+heure), TOUTES à capacité 1 (occupant-unique — une case multi-équipes est
      * EXACTEMENT les membres d'un bloc déclaré, donc un occupant unique), ZÉRO créneau Matéo (le
      * gymnase est fermé). La mutualisation compte 13 blocs (les 8 socle hérités + 5 ajoutés),
-     * chacun à commonSessions=1, aux ensembles réels. Idempotence : deux runs laissent 76 cases et
-     * 13 blocs, sans doublon ni résurrection de l'ancien incident.
+     * chacun à commonSessions=1, aux ensembles réels. Idempotence : rejoué après le second seed, le
+     * contrôle retrouve 76 cases et 13 blocs, sans doublon ni résurrection de l'ancien incident.
      *
      * Falsifiable : remonter une case à capacité 2, réintroduire un créneau Matéo, ou changer un
      * bloc (membre ou compte), rend ce test ROUGE.
      */
-    #[RunInSeparateProcess]
-    #[PreserveGlobalState(false)]
-    public function testMateoIncidentPlanCarriesReconstructedSingleOccupancyGrid(): void
+    private function assertMateoIncidentPlansCarryTheReconstructedGrid(Club $club): void
     {
-        $club = $this->seeder->run($this->em, BcclSeedProfile::dev());
-
         // Les DEUX plans-enfants (milieu, fin) portent la MÊME grille transcrite.
         $assertGrid = function (string $planId): void {
             self::assertSame(76, $this->incidentPlanSlotCount($planId), 'la grille du plan compte exactement 76 cases (venue+jour+heure)');
@@ -1104,21 +1351,6 @@ final class BcclSeederIdempotenceTest extends KernelTestCase
         foreach ($childPlanIds as $planId) {
             $assertGrid($planId);
         }
-
-        // Idempotence : un second run purge+réinsère, chaque grille reste à 76 et les 13 blocs
-        // tiennent, sans doublon ni résurrection de l'ancien incident « (travaux) ».
-        $this->seeder->run($this->em, BcclSeedProfile::dev());
-        $childPlanIds2 = $this->mateoIncidentChildPlanIds($club->getId());
-        self::assertCount(2, $childPlanIds2, 'les deux plans-enfants tiennent au second run');
-        foreach ($childPlanIds2 as $planId) {
-            $assertGrid($planId);
-        }
-        self::assertSame([], $this->duplicateSlots(), 'aucun créneau en doublon après le second run');
-        $staleEntries = (int) $this->connection->fetchOne(
-            'SELECT COUNT(*) FROM calendar_entry WHERE club_id = ? AND title LIKE ?',
-            [$club->getId(), 'Matéo indisponible (travaux)%'],
-        );
-        self::assertSame(0, $staleEntries, 'l\'ancien incident ne ressuscite pas au second run');
     }
 
     /**
@@ -1133,11 +1365,8 @@ final class BcclSeederIdempotenceTest extends KernelTestCase
      * 31/08→11/10 (donnée fondateur, session du 2026-09-02) ne matchait plus rien. Les enfants seedés
      * sont une photo datée : on les juge à la date de cette photo, pas à celle du run.
      */
-    #[RunInSeparateProcess]
-    #[PreserveGlobalState(false)]
-    public function testMateoIncidentChildrenAreValidSegmentsAndRootCarriesNoBlockPlan(): void
+    private function assertMateoIncidentChildrenAreValidSegmentsAndRootCarriesNoBlockPlan(Club $club): void
     {
-        $club = $this->seeder->run($this->em, BcclSeedProfile::dev());
         // Horloge figée à la session fondateur qui a posé l'incident (voir le docblock) : le service
         // du conteneur porte l'horloge réelle, on rebâtit la règle avec les mêmes dépendances.
         $segmentation = new ClosureSegmentation(
@@ -1195,51 +1424,6 @@ final class BcclSeederIdempotenceTest extends KernelTestCase
     }
 
     /**
-     * P5-13 — les reprises et les gestionnaires additionnels ne visent QUE le profil dev. Le club
-     * de DÉMONSTRATION ne porte aucun plan de période (HOLIDAY/CLOSURE), aucune entrée calendrier
-     * (l'incident Matéo compris), et le gestionnaire du club dev n'existe pas chez la démo (identités
-     * disjointes). La répartition WE des matchs est dev-only aussi : aucune fenêtre d'accès match ni
-     * créneau idéal de match.
-     */
-    #[RunInSeparateProcess]
-    #[PreserveGlobalState(false)]
-    public function testDemoSeedCarriesNoRepriseNorDevManagerAccount(): void
-    {
-        $club = $this->seeder->run($this->em, BcclSeedProfile::demo('demo-pass-reprise'));
-
-        $periodPlans = (int) $this->connection->fetchOne(
-            'SELECT COUNT(*) FROM schedule_plan WHERE club_id = ? AND type IN (\'HOLIDAY\', \'CLOSURE\')',
-            [$club->getId()],
-        );
-        self::assertSame(0, $periodPlans, 'la démo ne porte aucun plan de période');
-
-        $entries = (int) $this->connection->fetchOne(
-            'SELECT COUNT(*) FROM calendar_entry WHERE club_id = ?',
-            [$club->getId()],
-        );
-        self::assertSame(0, $entries, 'la démo ne pose aucune entrée calendrier');
-
-        // Identités disjointes : le gestionnaire fictif du club dev n'est pas créé par la démo.
-        $devManager = $this->connection->fetchOne(
-            'SELECT 1 FROM app_user WHERE email = ?',
-            ['dev-bccl@amateo.local'],
-        );
-        self::assertFalse($devManager, 'la démo ne crée pas le compte gestionnaire du club dev');
-
-        foreach (['team_match_habit', 'venue_match_window', 'opponent_venue_link'] as $table) {
-            $count = (int) $this->connection->fetchOne(
-                'SELECT COUNT(*) FROM ' . $table . ' WHERE club_id = ?',
-                [$club->getId()],
-            );
-            self::assertSame(0, $count, \sprintf('la démo ne pose aucune ligne dans %s (répartition WE + adversaires dev/prod-only)', $table));
-        }
-
-        // Les tables d'adversaires GLOBALES (hors tenant) restent vides : la démo n'amorce rien.
-        self::assertSame(0, $this->rowsIn('opponent_directory'), 'la démo n\'amorce aucune localisation d\'adversaire partagée');
-        self::assertSame(0, $this->rowsIn('opponent_venue_suggestion'), 'la démo n\'amorce aucune suggestion de gymnase partagée');
-    }
-
-    /**
      * Répartition WE des matchs (données fondateur) — le seed dev pose l'état terrain du week-end
      * en trois entités du module matchs :
      *
@@ -1253,11 +1437,8 @@ final class BcclSeederIdempotenceTest extends KernelTestCase
      * Le seed ne crée aucun match (0 ligne `fixture`). Falsifiable : changer une heure, un gymnase,
      * un tag de semaine, ou créer un match, rend ce test ROUGE.
      */
-    #[RunInSeparateProcess]
-    #[PreserveGlobalState(false)]
-    public function testDevSeedCarriesWeekendMatchLayout(): void
+    private function assertWeekendMatchLayout(Club $club): void
     {
-        $club = $this->seeder->run($this->em, BcclSeedProfile::dev());
         $clubId = $club->getId();
 
         // --- 10 fenêtres d'accès match (gymnase, jour, début, fin). ---
@@ -1326,110 +1507,6 @@ final class BcclSeederIdempotenceTest extends KernelTestCase
     }
 
     /**
-     * Durées de match + échauffement par catégorie (relevé de la base réelle 2026-09-29) — le seed
-     * pose Senior 120/45, U15 105/(défaut), U21 120/(défaut) ; les autres catégories suivent le
-     * défaut de famille (NULL). Ces valeurs sont RÉAPPLIQUÉES à chaque run (pas « only-fill » comme
-     * le siège) : une dérive manuelle est ramenée au réel au re-run. Falsifiable dans les deux sens.
-     */
-    #[RunInSeparateProcess]
-    #[PreserveGlobalState(false)]
-    public function testDevSeedCarriesPerCategoryMatchDurations(): void
-    {
-        $club = $this->seeder->run($this->em, BcclSeedProfile::dev());
-        $clubId = $club->getId();
-
-        $durations = fn (): array => $this->connection->fetchAllKeyValue(
-            'SELECT name, match_minutes || \'/\' || COALESCE(warmup_minutes::text, \'-\') '
-            . 'FROM sport_category WHERE club_id = ? AND name IN (\'Senior\', \'U15\', \'U21\') ORDER BY name',
-            [$clubId],
-        );
-        self::assertSame(
-            ['Senior' => '120/45', 'U15' => '105/-', 'U21' => '120/-'],
-            $durations(),
-            'le seed pose les durées de match + échauffement du terrain (Senior 120/45, U15 105/défaut, U21 120/défaut)',
-        );
-
-        // Réappliquées au re-run : une dérive manuelle est ramenée au réel (pas « only-fill »).
-        $this->connection->executeStatement(
-            'UPDATE sport_category SET match_minutes = 999, warmup_minutes = 999 WHERE club_id = ? AND name = \'U15\'',
-            [$clubId],
-        );
-        $this->em->clear();
-        $this->seeder->run($this->em, BcclSeedProfile::dev());
-        self::assertSame(
-            ['Senior' => '120/45', 'U15' => '105/-', 'U21' => '120/-'],
-            $durations(),
-            'un second seed réapplique les durées (la dérive 999/999 sur U15 est ramenée à 105/défaut)',
-        );
-    }
-
-    /**
-     * Amorçage des adversaires (relevé de la base réelle 2026-09-29) — le seed dev pose les trois
-     * tables de référence du module « adversaires » à leurs volumes réels : 75 localisations
-     * partagées (opponent_directory, GLOBALE), 101 appariements du club (opponent_venue_link : 32
-     * MANUAL + 69 AUTO), 15 suggestions partagées (opponent_venue_suggestion, GLOBALE, toutes
-     * MANUAL). Le club ne crée aucun match (le ré-import se fait en prod). Idempotent (upserts
-     * natifs + find-or-create) : un second run ne double rien.
-     *
-     * Deux sens de la règle « source préservée, MANUAL jamais écrasé » : un lien MANUAL modifié à
-     * la main SURVIT à un re-run (le seed ne le touche pas) ; un lien AUTO dérivé est RESTAURÉ au
-     * réel (le seed réapplique ses champs fédéraux).
-     */
-    #[RunInSeparateProcess]
-    #[PreserveGlobalState(false)]
-    public function testDevSeedCarriesOpponentReferenceData(): void
-    {
-        $club = $this->seeder->run($this->em, BcclSeedProfile::dev());
-        $clubId = $club->getId();
-
-        // Volumes (baseline test = 0 sur les tables GLOBALES, cf. amateo_test vierge).
-        self::assertSame(75, $this->rowsIn('opponent_directory'), 'le seed pose 75 localisations partagées');
-        self::assertSame(15, $this->rowsIn('opponent_venue_suggestion'), 'le seed pose 15 suggestions partagées');
-        $linkCount = (int) $this->connection->fetchOne('SELECT COUNT(*) FROM opponent_venue_link WHERE club_id = ?', [$clubId]);
-        self::assertSame(101, $linkCount, 'le seed pose 101 appariements pour le club');
-
-        /** @var array<string, int> $bySource */
-        $bySource = $this->connection->fetchAllKeyValue(
-            'SELECT source, COUNT(*) FROM opponent_venue_link WHERE club_id = ? GROUP BY source ORDER BY source',
-            [$clubId],
-        );
-        self::assertSame(['AUTO' => 69, 'MANUAL' => 32], array_map('intval', $bySource), 'les liens se répartissent 69 AUTO + 32 MANUAL');
-
-        // Toutes les suggestions sont MANUAL, à compte 0 (l'upsert ne fabrique pas de choix).
-        $suggestionSources = $this->connection->fetchFirstColumn('SELECT DISTINCT source FROM opponent_venue_suggestion');
-        self::assertSame(['MANUAL'], array_map('strval', $suggestionSources), 'les suggestions semées sont MANUAL');
-        self::assertSame(0, (int) $this->connection->fetchOne('SELECT COALESCE(MAX(chosen_by_count), 0) FROM opponent_venue_suggestion'), 'le seed ne fabrique aucun compte de choix (« un COMPTE, jamais un QUI »)');
-
-        // Aucun match : le ré-import se fait en prod, hors seed.
-        self::assertSame(0, (int) $this->connection->fetchOne('SELECT COUNT(*) FROM fixture WHERE club_id = ?', [$clubId]), 'le seed ne crée aucun match');
-
-        // (1) Un lien MANUAL modifié à la main SURVIT au re-run.
-        $manual = $this->em->getRepository(OpponentVenueLink::class)->findOneBy(['clubId' => $clubId, 'source' => OpponentVenueLinkSource::MANUAL]);
-        self::assertInstanceOf(OpponentVenueLink::class, $manual, 'un lien MANUAL existe');
-        $manual->setVenueLabel('SENTINELLE MANUAL');
-        $this->em->flush();
-
-        // (2) Un lien AUTO dérivé est RESTAURÉ au réel au re-run.
-        $auto = $this->em->getRepository(OpponentVenueLink::class)->findOneBy(['clubId' => $clubId, 'source' => OpponentVenueLinkSource::AUTO]);
-        self::assertInstanceOf(OpponentVenueLink::class, $auto, 'un lien AUTO existe');
-        $seededAutoLabel = $auto->getVenueLabel();
-        $auto->setVenueLabel('DERIVE AUTO');
-        $this->em->flush();
-
-        $this->seeder->run($this->em, BcclSeedProfile::dev());
-
-        // Idempotent : mêmes volumes après le second run.
-        self::assertSame(75, $this->rowsIn('opponent_directory'), 'un second run ne double pas les localisations');
-        self::assertSame(15, $this->rowsIn('opponent_venue_suggestion'), 'un second run ne double pas les suggestions');
-        self::assertSame(101, (int) $this->connection->fetchOne('SELECT COUNT(*) FROM opponent_venue_link WHERE club_id = ?', [$clubId]), 'un second run ne double pas les appariements');
-
-        $this->em->refresh($manual);
-        self::assertSame('SENTINELLE MANUAL', $manual->getVenueLabel(), 'un lien MANUAL n\'est JAMAIS écrasé par un re-run');
-        $this->em->refresh($auto);
-        self::assertSame($seededAutoLabel, $auto->getVenueLabel(), 'un lien AUTO dérivé est restauré au réel par un re-run');
-    }
-
-    /**
      * Deux invariants transverses tiennent sur TOUTE la donnée semée — un seul seed dev suffit :
      *
      *  1. P2-60 — « unité de placement = le bloc » : sur le socle ET sur chaque plan de période,
@@ -1443,11 +1520,8 @@ final class BcclSeederIdempotenceTest extends KernelTestCase
      * ⚠ Si la facette 1 rougit, le seed BCCL (club RÉEL du fondateur) viole déjà l'invariant : le
      * message nomme la portée, l'équipe et son S/B/R/individualUsed — à RAPPORTER, pas à corriger.
      */
-    #[RunInSeparateProcess]
-    #[PreserveGlobalState(false)]
-    public function testSeededInvariantsHoldAcrossEveryScope(): void
+    private function assertSeededInvariantsHoldAcrossEveryScope(Club $club): void
     {
-        $club = $this->seeder->run($this->em, BcclSeedProfile::dev());
         $clubId = $club->getId();
 
         // ── Facette 1 — invariant solo (réservations individuelles ≤ résidu) sur chaque portée. ──
@@ -1527,90 +1601,6 @@ final class BcclSeederIdempotenceTest extends KernelTestCase
         }
 
         self::assertSame([], $violations, 'chaque semaine-enfant de vacances seedée est entièrement de vacances (lun→ven)');
-    }
-
-    /**
-     * NR (tenant isolation, §7.1) — LE SEED SCOPE SES CATÉGORIES SPORTIVES AU CLUB.
-     *
-     * Le seed tourne sur la connexion ADMIN, qui TRAVERSE la RLS : rien n'arrête un
-     * find-or-create de catégorie non scopé au club, et rien ne le signale. Si les deux
-     * recherches de `SportCategory` du seeder (create-or-pass + le closure `$fetchCat`)
-     * oublient le `clubId`, un club seedé sur une base où un AUTRE a déjà créé ses
-     * catégories les RETROUVE par (sportId, name), n'en crée AUCUNE pour lui, et accroche
-     * ses 50 équipes aux catégories d'un AUTRE club — fuite de tenant pure. En aval,
-     * GET /api/sport_categories sous le jeton de ce club rend une liste VIDE (le
-     * TenantFilter fait, lui, son travail) et une trentaine de scénarios Behat meurent
-     * faute de catégorie pour bâtir une équipe.
-     *
-     * Ce test seede DEUX clubs dans la même base (dev PUIS démo) et exige : (a) chaque
-     * club possède son propre jeu COMPLET de catégories ; (b) AUCUNE équipe de ces deux
-     * clubs ne pointe une catégorie appartenant à un AUTRE club (jointure team →
-     * sport_category, club de l'équipe == club de la catégorie).
-     *
-     * Falsifiable : retirer le `clubId` de l'UNE OU l'AUTRE recherche rend ce test ROUGE
-     * — la seule seconde recherche non scopée suffit à accrocher les équipes ailleurs.
-     */
-    #[RunInSeparateProcess]
-    #[PreserveGlobalState(false)]
-    public function testSeedScopesSportCategoriesToTheirOwnClub(): void
-    {
-        $bccl = $this->seeder->run($this->em, BcclSeedProfile::dev());
-        $demo = $this->seeder->run($this->em, BcclSeedProfile::demo('demo-pass-tenant-scope'));
-
-        self::assertNotSame($bccl->getId(), $demo->getId(), 'les deux clubs seedés sont bien distincts');
-
-        // (a) Chaque club a son PROPRE jeu complet de catégories (le catalogue entier).
-        $expectedCount = \count(CategoryCatalog::categories());
-        foreach ([$bccl->getId(), $demo->getId()] as $clubId) {
-            $ownCategories = (int) $this->connection->fetchOne(
-                'SELECT COUNT(*) FROM sport_category WHERE club_id = ?',
-                [$clubId],
-            );
-            self::assertSame($expectedCount, $ownCategories, \sprintf('le club %s possède son propre jeu complet de catégories', $clubId));
-
-            $teamCount = (int) $this->connection->fetchOne('SELECT COUNT(*) FROM team WHERE club_id = ?', [$clubId]);
-            self::assertGreaterThan(0, $teamCount, 'le club a bien des équipes — sinon la requête d\'isolation ci-dessous serait vide');
-        }
-
-        // (b) LA REQUÊTE QUI TRANCHE : une équipe de l'un des deux clubs dont la catégorie
-        // appartient à un AUTRE club. Avec la recherche non scopée, les équipes du second
-        // club seedé pointent les catégories du premier → ces lignes apparaissent → ROUGE.
-        $leaks = $this->connection->fetchAllAssociative(
-            'SELECT t.name AS team, t.club_id AS team_club, sc.club_id AS category_club '
-            . 'FROM team t JOIN sport_category sc ON sc.id = t.sport_category_id '
-            . 'WHERE t.club_id IN (?, ?) AND sc.club_id <> t.club_id',
-            [$bccl->getId(), $demo->getId()],
-        );
-        self::assertSame([], $leaks, 'aucune équipe ne pointe une catégorie appartenant à un autre club');
-    }
-
-    protected function setUp(): void
-    {
-        $adminUrl = $_SERVER['DATABASE_ADMIN_URL'] ?? getenv('DATABASE_ADMIN_URL');
-        self::assertNotFalse($adminUrl, 'DATABASE_ADMIN_URL doit être défini pour seeder en superuser');
-        $_SERVER['DATABASE_URL'] = $adminUrl;
-        $_ENV['DATABASE_URL'] = $adminUrl;
-        putenv('DATABASE_URL=' . $adminUrl);
-
-        self::bootKernel();
-        $this->em = self::getContainer()->get(EntityManagerInterface::class);
-        $this->connection = $this->em->getConnection();
-        $this->seeder = self::getContainer()->get(BcclSeeder::class);
-
-        // Garde-fou : sans la connexion superuser, le seeder échouerait sur son
-        // propre garde RLS — mais silencieusement tard. On l'affirme tôt.
-        self::assertSame('amateo_owner', $this->connection->fetchOne('SELECT current_user'));
-
-        // Notre filet de rollback (voir docblock) : tout le seed vit ici.
-        $this->connection->beginTransaction();
-    }
-
-    protected function tearDown(): void
-    {
-        if ($this->connection->isTransactionActive()) {
-            $this->connection->rollBack();
-        }
-        parent::tearDown();
     }
 
     /**

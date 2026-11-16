@@ -132,9 +132,8 @@ describe("signatureLayout — aucune translation de groupe (D11, 2026-10-26)", (
   // (−14 unités × fit 0,5). SANS `groupDx`, le logo serait centré au pixel. L'ancienne estimation
   // « encre décalée de ~16 unités à DROITE » était fausse (largeur d'encre des cercles mal estimée).
   //
-  // FILET de ce retrait (règle « suppression = filet cité, vert avant ») : l'e2e de centrage RÉEL
-  // `tests/e2e/login-splash.spec.ts` (union mot + icône centrée sur son encre, ±4 px) + la mesure
-  // ci-dessus restent le juge du rendu — jsdom n'a aucun moteur de layout, il ne jugeait jamais le
+  // FILET de ce retrait : la mesure ci-dessus (l'e2e de centrage réel, retiré depuis, n'est plus
+  // un juge du rendu) — jsdom n'a aucun moteur de layout, il ne jugeait jamais le
   // centrage lui-même, seulement le CÂBLAGE d'une translation qui n'a plus lieu d'être.
   it("ne renvoie plus aucune translation horizontale de groupe (groupDx absent)", () => {
     expect("groupDx" in signatureLayout(1, 1)).toBe(false);

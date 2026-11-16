@@ -14,9 +14,10 @@ use RuntimeException;
  * Plan de période en overlay de bout en bout, sur la stack qui tourne.
  *
  * Reproduit ce que faisait le smoke « overlay » (ADR-0002) :
- *   - scénario 1 : période CLOSURE → plan né du geste d'Adapter (POST
- *     /schedule_plans) → version → génération OVERLAY (grille propre de la
- *     période) → COMPLETED ;
+ *   - « Une fermeture obtient son planning » : période CLOSURE → plan né du geste
+ *     d'Adapter (POST /schedule_plans) → version → génération OVERLAY (grille propre
+ *     de la période) → COMPLETED ; puis, sur cette même génération, la prolongation de
+ *     deux semaines ne fait pas bouger l'empreinte de structure ;
  *   - scénario 2 : le plan de fermeture recopie les blocs partagés du socle ; on
  *     transcrit (séances verrouillées HARD → V1), on libère UN membre d'un bloc
  *     (suppression de sa séance → trou), on remplit, et on AFFIRME que le membre
@@ -67,8 +68,6 @@ final class PeriodOverlayContext extends BaseContext
     private string $redateTitle = '';
 
     private string $redateStart = '';
-
-    private string $redateEnd = '';
 
     private string $redateNewEnd = '';
 
@@ -121,24 +120,37 @@ final class PeriodOverlayContext extends BaseContext
         // La fenêtre doit rester CLAIRE de toute période déjà seedée
         // (PeriodWindowUniquenessGuard 409 sur chevauchement). +49 jours passe
         // au-delà de toutes les fenêtres du seed et glisse avec le temps réel.
-        $this->entryId = $this->createClosurePeriod($this->holidayFreeMonday(49, 4), 'Fermeture overlay fonctionnel');
+        // 18 jours sans vacances : la fermeture (4 j) et sa prolongation de deux semaines.
+        $this->redateStart = $this->holidayFreeMonday(49, 18);
+        $this->redateTitle = 'Fermeture overlay fonctionnel';
+        $this->entryId = $this->createClosurePeriod($this->redateStart, $this->redateTitle);
     }
 
     #[When('j\'ouvre son plan de période puis je génère une version en overlay')]
     public function jOuvreLePlanEtGenere(): void
     {
         $plan = $this->apiPost('schedule_plans', ['calendarEntryId' => $this->entryId], $this->token);
-        $planId = $this->idOf($plan, 'plan de période');
+        $this->redatePlanId = $this->idOf($plan, 'plan de période');
 
-        $version = $this->apiPost('schedules', ['schedulePlanId' => $planId, 'status' => 'DRAFT'], $this->token);
-        $versionId = $this->idOf($version, 'version overlay');
+        $version = $this->apiPost('schedules', ['schedulePlanId' => $this->redatePlanId, 'status' => 'DRAFT'], $this->token);
+        $this->redateVersionId = $this->idOf($version, 'version overlay');
 
-        $launched = $this->apiPost(\sprintf('schedules/%s/generate', $versionId), [], $this->token);
+        $launched = $this->apiPost(\sprintf('schedules/%s/generate', $this->redateVersionId), [], $this->token);
         if (202 !== $launched['status']) {
             throw new RuntimeException(\sprintf('le déclenchement de la génération overlay a répondu %d (202 attendu)', $launched['status']));
         }
 
-        $this->overlayStatus = $this->pollUntilTerminal($versionId);
+        $this->overlayStatus = $this->pollUntilTerminal($this->redateVersionId);
+        if ('COMPLETED' !== $this->overlayStatus) {
+            return; // le « Alors » qui suit nomme le statut obtenu ; la prolongation n'est pas jouée.
+        }
+
+        // P4-266 — l'empreinte de structure du plan JUSTE APRÈS la génération : la référence que la
+        // prolongation ne doit pas faire bouger (le signal « à régénérer » se dérive de sa divergence).
+        $this->redatePlanHashBefore = $this->planStructureHash($this->redatePlanId);
+        if ('' === $this->redatePlanHashBefore) {
+            throw new RuntimeException('le plan de période ne sert aucune empreinte de structure après génération — décor non tenu');
+        }
     }
 
     #[Then('/^la génération overlay aboutit avec le statut « (?P<statut>[A-Z]+) »$/')]
@@ -310,39 +322,6 @@ final class PeriodOverlayContext extends BaseContext
 
         if ((int) $copresent < 1) {
             throw new RuntimeException('le membre de bloc libéré n\'a PAS recollé sur la case de son partenaire épinglé (balayage non bloc-aware)');
-        }
-    }
-
-    #[Given('une fermeture à venir avec une version overlay aboutie')]
-    public function uneFermetureAvecVersionAboutie(): void
-    {
-        // Fenêtre bien au-delà des périodes seedées ET des deux autres scénarios (+49/+63 j).
-        // Le re-datage prolonge de deux semaines : la fenêtre libre de vacances couvre 4 + 14 j.
-        $this->redateStart = $this->holidayFreeMonday(77, 18);
-        $this->redateEnd = date('Y-m-d', (int) strtotime($this->redateStart . ' +4 days'));
-        $this->redateTitle = 'Fermeture à re-dater';
-
-        $this->entryId = $this->createClosurePeriod($this->redateStart, $this->redateTitle);
-
-        $plan = $this->apiPost('schedule_plans', ['calendarEntryId' => $this->entryId], $this->token);
-        $this->redatePlanId = $this->idOf($plan, 'plan de période');
-
-        $version = $this->apiPost('schedules', ['schedulePlanId' => $this->redatePlanId, 'status' => 'DRAFT'], $this->token);
-        $this->redateVersionId = $this->idOf($version, 'version overlay');
-
-        $launched = $this->apiPost(\sprintf('schedules/%s/generate', $this->redateVersionId), [], $this->token);
-        if (202 !== $launched['status']) {
-            throw new RuntimeException(\sprintf('le déclenchement de la génération a répondu %d (202 attendu)', $launched['status']));
-        }
-        if ('COMPLETED' !== $this->pollUntilTerminal($this->redateVersionId)) {
-            throw new RuntimeException('la génération overlay de la fermeture à re-dater n\'a pas abouti');
-        }
-
-        // P4-266 — l'empreinte de structure du plan JUSTE APRÈS la génération : c'est la référence
-        // que le re-datage doit faire bouger (le signal « à régénérer » se dérive de sa divergence).
-        $this->redatePlanHashBefore = $this->planStructureHash($this->redatePlanId);
-        if ('' === $this->redatePlanHashBefore) {
-            throw new RuntimeException('le plan de période ne sert aucune empreinte de structure après génération — décor non tenu');
         }
     }
 

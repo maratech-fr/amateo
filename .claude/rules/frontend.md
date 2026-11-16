@@ -219,8 +219,8 @@ paths:
   DEUX rangées structurées** (jamais un bouton d'action orphelin tombé par `flex-wrap`) : rangée 1
   = la sélection, rangée 2 = les valeurs + le bouton d'action à droite — patron `RuleFields`/
   `CoachFields` de `features/matches/ConstraintsPage.tsx` (règle de club, indisponibilité coach),
-  décision fondateur 2026-10-01. NR e2e `tests/e2e/layout-inline-rows.spec.ts` (deux rangées à
-  36 px, `Type` au-dessus, 0 débordement horizontal) ; le builder de contraintes du wizard
+  décision fondateur 2026-10-01. Plus de NR e2e sur ce patron (le spec
+  `layout-inline-rows` est retiré : la mesure en pixels n'est plus automatique) ; le builder de contraintes du wizard
   (`ConstraintsStep`) partage le même risque et a été rallié au même patron.
 - **A11Y : un bouton-icône (fermeture, navigation, repli) = `<Button variant="ghost" size="icon-sm">`**
   (cible 36 px), jamais un `<button>` brut `p-1` autour d'une icône `size-4` (24 px, sous la

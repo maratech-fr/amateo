@@ -140,7 +140,7 @@ return (new Config)
             ->withSuite(
                 new Suite('verrou-periode')
                     ->withPaths('%paths.base%/features/un-verrou-de-periode-survit-a-la-regeneration.feature')
-                    ->withContexts(PeriodLockSmallClubContext::class, ClosurePinsSmallClubContext::class),
+                    ->withContexts(PeriodLockSmallClubContext::class),
             )
             ->withSuite(
                 new Suite('fermeture-planning')

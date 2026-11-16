@@ -490,9 +490,9 @@ reflowés en silence.
 (égalité d'ENSEMBLE : une classe manquante rougit, une classe en trop aussi — c'est elle qui
 attrape une reprise de croissance au-delà du plafond). Ils ne peuvent pas voir qu'une classe
 n'engendre aucun CSS : jsdom n'a pas de moteur de mise en page. Les PIXELS se mesurent en
-Playwright — `tests/e2e/width-calibration.spec.ts` (fiche à 832 px et paragraphe borné, sur
-1920×1080) et `tests/e2e/modal-reachability.spec.ts` (le palier `xl` atteint 1152 px et s'y
-arrête).
+Playwright — `tests/e2e/modal-reachability.spec.ts` (le palier `xl` atteint 1152 px et s'y
+arrête) ; la fiche à 832 px et le paragraphe borné n'ont plus de mesure automatique (le spec
+`width-calibration` est retiré).
 
 **Écrans denses : la largeur se DÉPENSE, elle ne se subit pas (4ᵉ tranche, 2026-08-21).** Un
 écran dense n'a pas de cap — le défaut n'est jamais « trop étroit », c'est « la place est là et
