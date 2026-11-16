@@ -261,6 +261,7 @@ final class CiWorkflowRegimeTest extends TestCase
      */
     public function testEveryCiJobIsRoutedByARepositoryVariableInItsWeightClass(): void
     {
+        self::fail('essai du Lot Gate : test bloquant volontairement cassé');
         $jobs = $this->jobs(self::CI);
         $ids = array_keys($jobs);
         sort($ids);
