@@ -439,7 +439,8 @@ VITEST_LOG = log("""
 """)
 VITEST_JOB = job(
     "Frontend (build + unit)",
-    [step("Unit tests + coverage (Vitest, cliquet)", "2026-11-08T00:09:39Z", "2026-11-08T00:14:25Z", "failure", 10)],
+    # Step renommé par la PR 2 du plan CI 2026-11-15 (la couverture sort du run de PR) ; le log, lui, est réel.
+    [step("Unit tests (Vitest)", "2026-11-08T00:09:39Z", "2026-11-08T00:14:25Z", "failure", 10)],
     job_id=128570147316,
     branch="dependabot/npm_and_yarn/frontend/frontend-npm-d65614ae52",
 )
@@ -763,6 +764,20 @@ class T7FamiliesMatchCi(ReleveCase):
         for name in ("Prove the merged pull request played the full gate", "Say which pool plays the full gate"):
             with self.subTest(step=name):
                 self.assertNotEqual(INCONNU, self.classify(synth_job(name, job_name="Main Verdict"), synth(["some output line"])).cause)
+
+    def test_steps_of_the_measure_and_brake_are_classified(self):
+        """Steps nés ou renommés avec la mesure et le frein (plan CI 2026-11-15, contrats de la PR 2) :
+        un rouge du self-test du verdict, de la garde « le plafond ne remonte pas », des Vitest et
+        PHPUnit sans couverture est un vrai bug, jamais « inconnu ». Les anciens noms (« … + coverage »)
+        ont quitté ci.yml : T7 rougit si la table les garde."""
+        for name in (
+            "ci-verdict self-test",
+            "Test time ceiling never rises",
+            "Unit tests (Vitest)",
+            "Run full suite",
+        ):
+            with self.subTest(step=name):
+                self.assertEqual(VRAI_BUG, self.classify(synth_job(name), synth(["some output line"])).cause)
 
     def test_step_outside_the_table_is_unknown_with_its_name(self):
         """Ancien nom de step du lot des 71 (Blocking Tests, job 125032935526)."""

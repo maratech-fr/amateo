@@ -67,7 +67,11 @@ jobs:
     # GitHub de 6 h : il occupe un exécutant, bloque la file, et ne dit RIEN.
     timeout-minutes: 10
     steps:
+      # Historique complet : « Test time ceiling never rises » lit `origin/<base>` par `git show`,
+      # absent d'un checkout superficiel.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
 
       # Runner auto-hébergé PERSISTANT et partagé : les identifiants Docker de ce job (logins
       # Docker Hub / ghcr) vont dans un DOCKER_CONFIG propre au job, jamais dans celui du runner.
@@ -90,6 +94,24 @@ jobs:
 
       - name: Stack resolve bench
         run: bash backend/scripts/lib/stack-resolve-test.sh
+
+      # Un plafond de `test-time-ceiling.json` (ou sa marge) ne monte que sur la ligne datée du
+      # fondateur dans le corps de la PR. Base et corps passent par `env`, jamais interpolés
+      # dans le shell. Sur la PR finale d'un lot, la base est `main` : la ligne y est redemandée.
+      - name: Test time ceiling never rises
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: python3 -I scripts/suite-time.py --never-rises "origin/${BASE_REF}"
+
+      - name: suite-time self-test
+        run: python3 -I scripts/suite-time-test.py
+
+      - name: ci-mesure self-test
+        run: python3 -I scripts/ci-mesure-test.py
+
+      - name: tests-retires self-test
+        run: python3 -I scripts/tests-retires-test.py
 
       - name: ci-verdict self-test
         run: python3 -I scripts/ci-verdict-test.py
@@ -147,23 +169,15 @@ jobs:
         working-directory: frontend
         run: npm run build
 
-      # Unitaires Vitest AVEC couverture + cliquet (ex-job `frontend-coverage` fondu ici,
-      # 2026-10-14 : un seul passage de la suite au lieu de deux). Le cliquet rougit si la
-      # couverture de lignes descend sous le plancher versionné (`coverage-floor.json`, lu par
-      # `vitest.config.ts` → `thresholds.lines`) — un required check de `main` (job `frontend`),
-      # donc BLOQUANT AU MERGE, mais `frontend` n'est pas dans les `needs` de `build-docker`
-      # (une perte de 1 % ne bloque pas une image de prod urgente).
-      - name: Unit tests + coverage (Vitest, cliquet)
+      # Unitaires Vitest SANS couverture : la couverture front et son plancher
+      # (`coverage-floor.json`, lu par `vitest.config.ts` → `thresholds.lines`) se mesurent chaque
+      # lundi dans `quality-weekly.yml`, hors du run de PR. Dernier acte : la durée de la suite
+      # contre son plafond (`test-time-ceiling.json`), verdict sur la VM seulement.
+      - name: Unit tests (Vitest)
         working-directory: frontend
-        run: npm run test:coverage
-
-      - name: Upload coverage report (frontend)
-        if: always()
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
-        with:
-          name: coverage-frontend
-          path: frontend/coverage/
-          retention-days: 7
+        run: |
+          npm run test
+          python3 -I ../scripts/suite-time.py --suite frontend --seconds "$SECONDS"
 
   # A18: blocking dependency-vulnerability audits, deliberately isolated in their OWN
   # job (no `needs`, and NOT a dependency of build-docker). A newly-disclosed advisory
@@ -1353,23 +1367,15 @@ jobs:
         uses: ./.github/actions/ci-stack-down
 
   # Backend : UN SEUL passage de la suite PHPUnit COMPLÈTE (`phpunit tests/ --exclude-group
-  # contract`), instrumenté par pcov, avec le cliquet de couverture — remplace les ex-jobs
-  # `unit-tests` ET `backend-coverage` qui jouaient DEUX FOIS la même suite (P4-166 ; fusion
-  # 2026-10-14). SANS `needs` : aucun job ne consomme son artefact, le `needs: blocking-tests`
-  # d'`unit-tests` n'était que de l'ordonnancement — ce job démarre donc à t=0, en parallèle du
-  # gate, et le verdict backend tombe plus tôt.
+  # contract`), SANS couverture — remplace les ex-jobs `unit-tests` ET `backend-coverage` qui
+  # jouaient DEUX FOIS la même suite (P4-166 ; fusion 2026-10-14). SANS `needs` : ce job démarre
+  # à t=0, en parallèle du gate, et le verdict backend tombe plus tôt. Required check de `main`
+  # (« Backend Tests (suite + couverture) », nom gardé tel quel), hors des `needs` de
+  # `build-docker`.
   #
-  # Cliquet : `scripts/coverage-gate.php` lit le plancher `backend` de `coverage-floor.json`
-  # (racine, une seule maison, remontée dans la MÊME PR quand la mesure s'améliore ; jamais un
-  # chiffre en dur) et sort 1 sous le plancher — PHPUnit 11 n'a pas de `--fail-under` natif. Le
-  # cliquet rougit CE job, un required check de `main` (« Backend Tests (suite + couverture) »,
-  # ex-« Unit Tests ») : il BLOQUE LE MERGE. Mais ce job n'est PAS dans les `needs` de
-  # `build-docker` — une perte de 1 % ne prend jamais en otage une image de prod urgente.
-  #
-  # pcov : driver présent UNIQUEMENT dans l'image dev/test (build-php-cached, WITH_PCOV=1) et
-  # INERTE par défaut (pcov.enabled=0) ; ce job seul l'active via `-d pcov.enabled=1`. L'image de
-  # PROD ne reçoit jamais cet arg et n'embarque jamais pcov. Restitution (B2) : artefact
-  # `coverage-backend` (clover + résumé texte), écrit AVANT le gate (`if: always()` plus bas).
+  # Couverture : la suite instrumentée par pcov et son cliquet (`scripts/coverage-gate.php`,
+  # plancher `backend` de `coverage-floor.json`) tournent chaque lundi dans `quality-weekly.yml`,
+  # hors du run de PR — un rouge ne bloque aucun merge.
   backend-tests:
     name: Backend Tests (suite + couverture)
     runs-on: ${{ vars.CI_RUNS_ON_HEAVY || 'ubuntu-24.04' }}
@@ -1438,20 +1444,12 @@ jobs:
         run: docker compose exec -T php-fpm sh -c 'cd /app/backend && php bin/console doctrine:database:create --if-not-exists --connection admin --env=test && php bin/console doctrine:migrations:migrate --no-interaction --env=test'
 
       # SEC-13 : le groupe `contract` reste EXCLU — il interroge le VRAI moteur (job dédié
-      # « Engine semantics »), une autre question que « le code unitaire tient-il ? ». pcov
-      # instrumente la suite ; le clover est écrit AVANT le gate pour que l'artefact parte même
-      # si le cliquet (ou un test) rougit (`if: always()` plus bas). memory_limit=1G : pcov +
-      # suite entière débordent les 512 Mo de l'image (#1337) — même flag que `make coverage`.
-      - name: Run full suite + coverage + cliquet
-        run: docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php -d pcov.enabled=1 -d memory_limit=1G vendor/bin/phpunit tests/ --exclude-group contract --coverage-text --coverage-clover coverage/backend.xml && php scripts/coverage-gate.php'
-
-      - name: Upload coverage report (backend)
-        if: always()
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
-        with:
-          name: coverage-backend
-          path: backend/coverage/
-          retention-days: 7
+      # « Engine semantics »), une autre question que « le code unitaire tient-il ? ». Dernier
+      # acte : la durée de la suite contre son plafond (`test-time-ceiling.json`), sur l'hôte.
+      - name: Run full suite
+        run: |
+          docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/ --exclude-group contract'
+          python3 -I scripts/suite-time.py --suite backend --seconds "$SECONDS"
 
       # Démonte TOUJOURS la stack du job (conteneurs, volumes, images locales, orphelins) — même
       # job rouge ou annulé en cours : le démon du runner auto-hébergé est partagé et persistant.
@@ -1507,11 +1505,13 @@ jobs:
       # pytest AVEC couverture + cliquet (ex-job `engine-coverage` fondu ici, 2026-10-14 :
       # un seul passage au lieu de deux). ⚠ CONSÉQUENCE ACTÉE (décision fondateur 2026-10-14) :
       # `engine-tests` EST dans les `needs` de `build-docker`, donc le cliquet engine gate
-      # DÉSORMAIS `build-docker` — contrairement aux cliquets backend/frontend qui restent hors
-      # de ce chemin (ils bloquent le merge via leur required check, pas l'image). Plancher lu de
+      # DÉSORMAIS `build-docker` — contrairement aux cliquets backend/frontend, joués hors du run
+      # de PR par le relevé hebdomadaire (`quality-weekly.yml`). Plancher lu de
       # `coverage-floor.json` (racine, clé `engine`) — jamais un seuil en dur. `set -euo pipefail`
       # pour que le `| tee` ne masque pas l'échec du seuil. `-u` mappe l'uid du runner : l'engine
       # tourne sinon en uid 1000 (SEC-15) et ne pourrait pas écrire le rapport dans le bind-mount.
+      # Dernier acte : la durée de la suite contre son plafond (`test-time-ceiling.json`), sur
+      # l'hôte — jamais recopié dans `lot-gate`, qui ne mesure aucun plafond.
       - name: Run pytest + coverage + cliquet
         run: |
           set -euo pipefail
@@ -1522,6 +1522,7 @@ jobs:
             pytest --cov=app --cov-report=term-missing \
               --cov-report=xml:coverage/engine.xml \
               --cov-fail-under="${FLOOR}" | tee engine/coverage/engine.txt
+          python3 -I scripts/suite-time.py --suite engine --seconds "$SECONDS"
 
       - name: Run ruff
         run: docker compose run --rm engine ruff check .
@@ -1794,6 +1795,7 @@ jobs:
         # Playwright fait échouer le step. Le tee alimente le step « E2E — tests flaky ».
         # Dans le conteneur Playwright (cible par défaut du service : http://frontend-dev:5173) ;
         # `CI=true` passé explicitement (retries: 2, forbidOnly) — l'env du runner n'y entre pas.
+        # Dernier acte, sur l'hôte : la durée de la suite contre son plafond (`test-time-ceiling.json`).
         run: |
           set -o pipefail
           docker compose --profile tools run --rm --no-deps -e CI=true \
@@ -1801,6 +1803,7 @@ jobs:
             -e E2E_SUPERADMIN_PASSWORD='E2eAdminPass!2026' \
             -e E2E_SUPERADMIN_TOTP_SECRET="$(sed -n 's/.*setup key: *//p' "$RUNNER_TEMP/e2e-sa.txt" | tr -d '\r\n')" \
             e2e sh -lc 'PUPPETEER_SKIP_DOWNLOAD=1 npm ci --legacy-peer-deps && npx playwright test' 2>&1 | tee "$RUNNER_TEMP/playwright-list.log"
+          python3 -I ../scripts/suite-time.py --suite e2e --seconds "$SECONDS"
 
       # D-04 — les en-têtes A17 (CSP, HSTS, X-Frame-Options, nosniff) ne vivent QUE sur
       # l'image nginx. La suite ci-dessus tourne contre le dev server, où le spec dédié se
@@ -2074,8 +2077,12 @@ jobs:
       - name: Start messenger worker
         run: docker compose up -d --wait messenger-worker
 
+      # Dernier acte : la durée de la suite contre son plafond (`test-time-ceiling.json`), sur
+      # l'hôte ; verdict sur la VM seulement.
       - name: Functional tests (Behat, Gherkin FR — API-only, real async rail)
-        run: docker compose exec -T -e APP_ENV=dev php-fpm vendor/bin/behat --format=pretty --no-interaction
+        run: |
+          docker compose exec -T -e APP_ENV=dev php-fpm vendor/bin/behat --format=pretty --no-interaction
+          python3 -I scripts/suite-time.py --suite behat --seconds "$SECONDS"
 
       - name: Dump service logs on failure
         if: failure()
@@ -2206,8 +2213,9 @@ jobs:
   # `lot-gate` (« Lot Gate »). Un job, une machine, une stack : gitleaks, moteur (pytest +
   # linters), front (build, gardes statiques Vitest, Vitest lié au diff), PHPStan, puis la liste
   # bloquante — EXACTEMENT celle de `blocking-tests`, rejouée par les deux ancres YAML. Ce qu'il
-  # ne joue pas (Rector, CS-Fixer, Semgrep, sémantique moteur, perf, Vitest complet et
-  # couverture, ESLint, Behat, e2e) se joue à la PR finale vers `main`.
+  # ne joue pas (Rector, CS-Fixer, Semgrep, sémantique moteur, perf, Vitest complet, ESLint,
+  # Behat, e2e) se joue à la PR finale vers `main` ; la couverture backend et front, au relevé
+  # hebdomadaire (`quality-weekly.yml`).
   #
   # Pas de `needs` : `preflight` est sauté dans ce régime (et un `needs` sauté le sauterait).
   # Sa garde fork est donc son PREMIER step, avant tout checkout. Trois conditions de step
@@ -2238,8 +2246,8 @@ jobs:
           echo "::error::Cette CI ne tourne que pour les PR du dépôt lui-même ; une PR de fork n'est jamais exécutée sur le runner."
           exit 1
 
-      # fetch-depth: 0 — gitleaks lit tout l'historique, et `vitest --changed` compare l'arbre à
-      # `origin/<base>`, qui doit exister localement.
+      # fetch-depth: 0 — gitleaks lit tout l'historique ; `vitest --changed` et la garde du
+      # plafond de temps comparent l'arbre à `origin/<base>`, qui doit exister localement.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
@@ -2269,6 +2277,14 @@ jobs:
         run: >
           docker run --rm -v "$PWD:/repo" ghcr.io/maratech-fr/mirror-gitleaks:v8.30.0
           git /repo --no-banner -c /repo/.gitleaks.toml
+
+      # Même garde que dans `lint` : un plafond de temps ne monte que sur la ligne datée du
+      # fondateur. Le gate de lot ne MESURE aucun plafond, il refuse seulement qu'on le relève.
+      - name: Test time ceiling never rises
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: python3 -I scripts/suite-time.py --never-rises "origin/${BASE_REF}"
 
       - name: Prepare .env
         run: |

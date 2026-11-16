@@ -1,0 +1,7 @@
+{
+  "backend": {"ceiling": 1000, "margin": 25},
+  "behat": {"ceiling": 950, "margin": 25},
+  "e2e": {"ceiling": 635, "margin": 25},
+  "frontend": {"ceiling": 230, "margin": 25},
+  "engine": {"ceiling": 60, "margin": 25}
+}

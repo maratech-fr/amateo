@@ -153,7 +153,8 @@ tests-engine-semantics:
 # pour jouer dans le bac à sable amateo_dev depuis le mode play. Les workers sont
 # redémarrés (consommateurs frais — évite la file bloquée), mais APRÈS le cache:clear
 # dev (voir l'ordre critique dans la recette : un clear sous un worker déjà démarré le
-# fait planter et la file async n'est plus consommée).
+# fait planter et la file async n'est plus consommée). `SUITE=<nom>` (suites de
+# `behat.dist.php`) n'en joue qu'une.
 .PHONY: behat ## Run the functional tests (Behat, Gherkin FR, API-only, real stack)
 behat: APP_ENV = dev
 behat:
@@ -172,7 +173,7 @@ behat:
 	$(EXEC) php bin/console cache:clear --env=dev
 	$(FIG) up -d messenger-worker cron-runner >/dev/null 2>&1 || true
 	$(FIG) restart messenger-worker cron-runner >/dev/null 2>&1 || true
-	$(EXEC) php vendor/bin/behat --format=pretty --no-interaction
+	$(EXEC) php vendor/bin/behat --format=pretty --no-interaction $(if $(SUITE),--suite=$(SUITE))
 
 # Sans argument : `--group phase1` (inchangé). F=<fichier ou dossier, relatif à backend/>
 # lance ce chemin à la place ; FILTER=<motif> ajoute `--filter`. Ex. :
