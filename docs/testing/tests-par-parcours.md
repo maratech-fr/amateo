@@ -139,7 +139,7 @@ preuve.
   ou `getByRole(…, { name: PLANNING_TEXTS.… })` quand c'est plus juste — **jamais** la phrase
   recopiée. Une clé dont la valeur = le texte actuel laisse le test VERT (byte-identique) : c'est
   normal, la valeur bouge, le test non.
-- **Garde** : `frontend/src/test/hardcodedTextGuard.test.ts`, liste
+- **Garde** : `frontend/src/test/hardcodedTextGuard.test.ts` (patron `timeFormatGuard`), liste
   nominative `MIGRATED_FILES`. Dans un écran listé, un nœud texte JSX littéral ≥ 3 lettres ou un
   littéral FR dans `title=`/`aria-label=`/`placeholder=`/`message=`/`label=` rougit. Largeur
   documentée (reliquat helper-returned / interpolation mêlée → revue) ; exemptions ≤ 5 motivées.

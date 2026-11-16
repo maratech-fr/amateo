@@ -182,9 +182,10 @@ portée d'axe.** Les motifs multi-sport posés en `background-image` sur `body`
 hors du graphe TypeScript, aucun outil de lint ne les lit, et le scan de contraste axe-core
 (`a11y-contrast.spec.ts`, `expectNoContrastViolations`) n'assert que `results.violations` sur les
 éléments évalués par axe — un `background-image` décoratif sur `body` n'entre jamais dans cette
-liste, contrairement au texte posé au-dessus. Aucune garde
-automatique (ni la parité clair/sombre ni la purge des assets ne sont testées, aucune assertion
-sur l'opacité). La preuve que le texte reste lisible par-dessus le fond reste une **passe visuelle
+liste, contrairement au texte posé au-dessus. La seule garde est
+`frontend/src/test/brandBackground.test.ts` (Vitest, jsdom) : elle prouve la PARITÉ clair/sombre et
+la PURGE des assets, jamais un ratio de contraste — elle assume explicitement ne rien assertir sur
+l'opacité. La preuve que le texte reste lisible par-dessus le fond reste une **passe visuelle
 manuelle** pour la majorité du produit — même angle mort que le reflow ci-dessus : un défaut de
 fond derrière du texte pourrait passer inaperçu jusqu'à une régression visible à l'œil. **Partiellement
 mitigé depuis la PR 8/8 « uniformité des écrans »** (`frontend/tests/e2e/visual-reference.spec.ts`) :
