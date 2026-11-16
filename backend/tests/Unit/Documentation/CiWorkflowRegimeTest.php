@@ -26,7 +26,9 @@ use Symfony\Component\Yaml\Yaml;
  * `lot/<sujet>` joue le seul job `lot-gate` (« Lot Gate ») ; une PR vers `main` (dont la PR
  * finale du lot) joue le gate complet, 16 jobs ; le push `main` joue le seul `main-verdict`
  * (« Main Verdict »), qui prouve que la PR mergée a joué ce gate complet. Les `if` réels sont
- * ÉVALUÉS par événement (`jobsThatRun`).
+ * ÉVALUÉS par événement (`jobsThatRun`). Mesure et frein (PR 2 du même plan, M1 à M4) : la
+ * couverture backend et front sort du run de PR vers `quality-weekly.yml`, chaque suite se mesure
+ * contre son plafond de temps, et ce plafond ne remonte pas sans décision du fondateur.
  *
  * Ce que ce test NE prouve PAS (preuve ailleurs, ou aucune) :
  *  - la sémantique GitHub « un job sauté compte comme réussi pour un required check » — le test
@@ -93,6 +95,26 @@ final class CiWorkflowRegimeTest extends TestCase
 
     private const string FILTERED_NR_STEP = 'ParcImportCorrectionTenantNR';
 
+    /** Relevé hebdomadaire de la couverture backend et front, hors du run de chaque PR (plan § 5.1, contrats de la PR 2). */
+    private const string QUALITY = '.github/workflows/quality-weekly.yml';
+
+    /** Garde « un plafond de temps ne remonte que sur décision du fondateur » (plan § 8), dans `lint` et `lot-gate`. */
+    private const string TIME_CEILING_STEP = 'Test time ceiling never rises';
+
+    private const string NEVER_RISES_COMMAND = 'python3 -I scripts/suite-time.py --never-rises "origin/${BASE_REF}"';
+
+    /**
+     * Les cinq suites sous plafond de temps (plan § 8) : job → [préfixe du nom du step de la
+     * suite, nom de la suite dans `test-time-ceiling.json`]. Préfixes, comme la table du relevé.
+     */
+    private const array TIMED_SUITES = [
+        'backend-tests' => ['Run full suite', 'backend'],
+        'functional-tests' => ['Functional tests (Behat', 'behat'],
+        'e2e' => ['Run Playwright suite', 'e2e'],
+        'frontend' => ['Unit tests (Vitest', 'frontend'],
+        'engine-tests' => ['Run pytest', 'engine'],
+    ];
+
     /**
      * Steps du job `lot-gate`, dans l'ordre (contrat PR 1, état A). `(checkout)` et `(setup-node)`
      * désignent les actions par leur `uses`, quel que soit le nom donné au step. Le front passe
@@ -105,6 +127,7 @@ final class CiWorkflowRegimeTest extends TestCase
         'Login to Docker Hub (anti-429)',
         'Login to ghcr.io (mirror pull)',
         'Run gitleaks (full history)',
+        self::TIME_CEILING_STEP,
         'Prepare .env',
         'Build engine',
         'Run pytest + coverage + cliquet',
@@ -583,13 +606,18 @@ final class CiWorkflowRegimeTest extends TestCase
      * R4 — Promesse : deux jobs qui tournent en même temps sur le même démon Docker ne se voient
      * jamais — projet compose propre au job, overlay sans port hôte, identifiants Docker propres
      * au job, et la stack toujours démontée à la fin. Vaut pour le gate de lot, qui tourne sur la
-     * VM dès que la réserve de minutes l'y bascule (plan § 9.6).
+     * VM dès que la réserve de minutes l'y bascule (plan § 9.6), et pour le relevé hebdomadaire
+     * de couverture, qui y tourne chaque lundi à côté des PR (plan § 5.1).
      */
     public function testEveryJobIsSealedOnTheSharedDockerDaemon(): void
     {
         $sealed = $this->jobs(self::CI);
         unset($sealed['preflight']);
         $sealed['visual-baselines.yml/visual-baselines'] = $this->job(self::VISUAL, 'visual-baselines');
+        // Le relevé hebdomadaire de couverture tourne sur la VM, classe lourde, à côté des PR.
+        foreach ($this->jobs(self::QUALITY) as $id => $job) {
+            $sealed['quality-weekly.yml/' . $id] = $job;
+        }
 
         $composeJobs = 0;
         foreach ($sealed as $id => $job) {
@@ -1292,6 +1320,187 @@ final class CiWorkflowRegimeTest extends TestCase
         }
     }
 
+    /**
+     * M1 — Promesse : la couverture backend et front sort du run de chaque PR — aucun job de
+     * ci.yml ne collecte la couverture PHPUnit ou Vitest, ni n'en publie le rapport ; seule la
+     * couverture du moteur reste dans le run (28 s) ; les suites jouent sans elle (plan § 5.1,
+     * contrats de la PR 2). Le nom du check « Backend Tests (suite + couverture) » ne change pas :
+     * D5 (`testEveryRequiredCheckOfMainIsProducedOnAPullRequestToMain`) le garde déjà.
+     */
+    public function testCoverageLeavesEveryPullRequestJobButTheEngine(): void
+    {
+        $found = [];
+        foreach ($this->jobs(self::CI) as $id => $job) {
+            foreach ($this->steps($job, $id) as $step) {
+                $where = \sprintf('%s / %s', $id, $this->stepLabel($step));
+                foreach ($this->logicalLines($this->str($step['run'] ?? null)) as $line) {
+                    foreach ([
+                        '/--coverage\b/' => 'couverture PHPUnit ou Vitest',
+                        '/\btest:coverage\b/' => 'couverture Vitest',
+                        '/pcov\.enabled\s*=\s*1/' => 'pcov',
+                        '/coverage-gate\.php/' => 'cliquet de couverture backend',
+                    ] as $pattern => $what) {
+                        if (1 === preg_match($pattern, $line)) {
+                            $found[] = $where . ' : ' . $what;
+                        }
+                    }
+                }
+                $with = \is_array($step['with'] ?? null) ? $step['with'] : [];
+                $artifact = $this->str($with['name'] ?? null);
+                if (str_starts_with($this->str($step['uses'] ?? null), 'actions/upload-artifact@')
+                    && \in_array($artifact, ['coverage-frontend', 'coverage-backend'], true)) {
+                    $found[] = $where . ' : publie ' . $artifact;
+                }
+            }
+        }
+        self::assertSame([], $found, "La couverture backend et front vit dans `quality-weekly.yml`, plus dans un job de PR :\n  - " . implode("\n  - ", $found));
+
+        $frontend = $this->stepStartingWith($this->job(self::CI, 'frontend'), 'frontend', 'Unit tests (Vitest');
+        self::assertStringContainsString('npm run test', $this->str($frontend['run'] ?? null), '`frontend` : Vitest joue toute la suite, sans couverture.');
+        $backend = $this->stepStartingWith($this->job(self::CI, 'backend-tests'), 'backend-tests', 'Run full suite');
+        self::assertStringContainsString('vendor/bin/phpunit tests/ --exclude-group contract', $this->str($backend['run'] ?? null), '`backend-tests` : PHPUnit joue toute la suite, sans couverture.');
+
+        $engine = $this->stepStartingWith($this->job(self::CI, 'engine-tests'), 'engine-tests', 'Run pytest');
+        self::assertStringContainsString('--cov-fail-under', $this->squash($engine['run'] ?? null), '`engine-tests` garde sa couverture et son cliquet à chaque run.');
+    }
+
+    /**
+     * M2 — Promesse : la couverture backend et front se mesure chaque lundi (ou à la main), sur la
+     * VM en classe lourde, contre les planchers de `coverage-floor.json` ; un rouge ne bloque
+     * aucun merge, car ce relevé ne tourne sur aucune PR ni aucun push (plan § 5.1, contrats de
+     * la PR 2 ; parcours « Lundi, relevé hebdomadaire »).
+     */
+    public function testTheWeeklyQualityRunMeasuresBackendAndFrontendCoverageAgainstTheFloors(): void
+    {
+        $workflow = $this->workflow(self::QUALITY);
+        self::assertSame('Quality Weekly', $workflow['name'] ?? null);
+
+        $on = $workflow['on'] ?? null;
+        self::assertIsArray($on);
+        $events = array_keys($on);
+        sort($events);
+        self::assertSame(['schedule', 'workflow_dispatch'], $events, '`quality-weekly.yml` : planifié et manuel, jamais sur une PR ni un push — il ne bloque aucun merge.');
+        self::assertIsArray($on['schedule']);
+        $crons = array_map(fn (mixed $entry): string => \is_array($entry) ? $this->str($entry['cron'] ?? null) : '', $on['schedule']);
+        self::assertSame(['0 5 * * 1'], array_values($crons), 'Le relevé tourne le lundi à 05:00 UTC.');
+
+        $jobs = $this->jobs(self::QUALITY);
+        $ids = array_keys($jobs);
+        sort($ids);
+        self::assertSame(['coverage-backend', 'coverage-frontend'], $ids, '`quality-weekly.yml` : deux jobs, `coverage-backend` et `coverage-frontend`.');
+
+        $commands = [];
+        foreach ($jobs as $id => $job) {
+            self::assertSame(self::RUNS_ON_HEAVY, $this->squash($job['runs-on'] ?? null), \sprintf('`%s` tourne sur la VM, classe lourde (CI_RUNS_ON_HEAVY, repli hébergé).', $id));
+            self::assertSame([], $this->needs($job), \sprintf('`%s` : aucun `needs`.', $id));
+            $lines = [];
+            foreach ($this->steps($job, $id) as $step) {
+                foreach ($this->logicalLines($this->str($step['run'] ?? null)) as $line) {
+                    $lines[] = $line;
+                }
+            }
+            $commands[$id] = implode("\n", $lines);
+        }
+
+        self::assertMatchesRegularExpression('/vendor\/bin\/phpunit\b.*--coverage-clover\b/', $commands['coverage-backend'], '`coverage-backend` : la suite PHPUnit avec la couverture clover.');
+        self::assertStringContainsString('php scripts/coverage-gate.php', $commands['coverage-backend'], '`coverage-backend` : le plancher `backend` de `coverage-floor.json`, par `coverage-gate.php`.');
+        self::assertMatchesRegularExpression('/\bnpm run test:coverage\b/', $commands['coverage-frontend'], '`coverage-frontend` : Vitest avec la couverture, dont le plancher `frontend` est lu par `vitest.config.ts`.');
+    }
+
+    /**
+     * M3 — Promesse : chaque suite se mesure contre son plafond de temps — `scripts/suite-time.py`
+     * en dernière commande du `run:` de la suite, dans `backend-tests`, `functional-tests`,
+     * `e2e`, `frontend`, `engine-tests`, une fois chacune et nulle part ailleurs ; le step ne
+     * peut pas échouer en silence (plan § 8, contrats de la PR 2).
+     */
+    public function testEverySuiteChecksItsTimeCeilingAtTheEndOfItsRun(): void
+    {
+        foreach (self::TIMED_SUITES as $id => [$prefix, $suite]) {
+            $step = $this->stepStartingWith($this->job(self::CI, $id), $id, $prefix);
+            $lines = $this->logicalLines($this->str($step['run'] ?? null));
+            self::assertNotSame([], $lines, \sprintf('`%s` / « %s » : `run` vide.', $id, $prefix));
+            $last = trim((string) end($lines));
+            self::assertMatchesRegularExpression(
+                '/^python3 -I (\.\.\/)?scripts\/suite-time\.py --suite ' . preg_quote($suite, '/') . ' --seconds \S+$/',
+                $last,
+                \sprintf('`%s` / « %s » : la DERNIÈRE commande mesure la suite `%s` contre son plafond.', $id, $prefix, $suite),
+            );
+            self::assertArrayNotHasKey('continue-on-error', $step, \sprintf('`%s` / « %s » : un plafond dépassé fait échouer le step.', $id, $prefix));
+        }
+
+        $calls = [];
+        foreach ($this->jobs(self::CI) as $id => $job) {
+            foreach ($this->steps($job, $id) as $step) {
+                foreach ($this->logicalLines($this->str($step['run'] ?? null)) as $line) {
+                    if (str_contains($line, 'suite-time.py --suite')) {
+                        $calls[] = $id;
+                    }
+                }
+            }
+        }
+        sort($calls);
+        $expected = array_keys(self::TIMED_SUITES);
+        sort($expected);
+        self::assertSame($expected, $calls, 'Une mesure par suite, dans son job seulement (le gate de lot ne mesure aucun plafond).');
+    }
+
+    /**
+     * M4 — Promesse : un plafond de temps ne remonte jamais sans la ligne datée du fondateur — la
+     * garde `--never-rises` compare `test-time-ceiling.json` à la base de la PR, dans `lint` (PR
+     * vers `main`, dont la PR finale d'un lot, qui redemande la ligne) et dans `lot-gate` ; le
+     * corps de la PR et la base passent par l'environnement, jamais interpolés dans le shell
+     * (plan § 8 « Comment il remonte », « Dans un lot » ; contrats de la PR 2).
+     */
+    public function testTheTimeCeilingNeverRisesWithoutTheFoundersDatedLine(): void
+    {
+        foreach (['lint', 'lot-gate'] as $id) {
+            $step = $this->namedStep($this->job(self::CI, $id), $id, self::TIME_CEILING_STEP);
+            $run = $this->str($step['run'] ?? null);
+            self::assertStringContainsString(self::NEVER_RISES_COMMAND, $run, \sprintf('`%s` : `suite-time.py --never-rises` contre origin/<base>.', $id));
+            self::assertStringNotContainsString('${{', $run, \sprintf('`%s` : ni le corps de la PR ni la base ne sont interpolés dans le shell (injection).', $id));
+            $env = \is_array($step['env'] ?? null) ? $step['env'] : [];
+            self::assertSame('${{github.base_ref}}', $this->squash($env['BASE_REF'] ?? null), \sprintf('`%s` : la base passe par `env: BASE_REF`.', $id));
+            self::assertSame('${{github.event.pull_request.body}}', $this->squash($env['PR_BODY'] ?? null), \sprintf('`%s` : le corps de la PR passe par `env: PR_BODY`.', $id));
+            self::assertArrayNotHasKey('if', $step, \sprintf('`%s` : la garde tourne à chaque run.', $id));
+            self::assertArrayNotHasKey('continue-on-error', $step, \sprintf('`%s` : un refus fait échouer le job.', $id));
+        }
+
+        $names = array_map(fn (array $s): string => $this->str($s['name'] ?? null), $this->steps($this->job(self::CI, 'lint'), 'lint'));
+        $guard = array_search(self::TIME_CEILING_STEP, $names, true);
+        $verdict = array_search('ci-verdict self-test', $names, true);
+        self::assertIsInt($guard);
+        self::assertIsInt($verdict);
+        self::assertLessThan($verdict, $guard, '`lint` : la garde du plafond vient avant les self-tests, dont celui du relevé reste le dernier.');
+    }
+
+    /**
+     * M5 — Promesse : les gardes Python de la mesure et du frein sont éprouvées à chaque PR — les
+     * self-tests de `suite-time`, `ci-mesure` et `tests-retires` tournent dans `lint`, dans cet
+     * ordre, avant celui du verdict ; celui du relevé reste le dernier step (décision de
+     * l'orchestrateur sur la PR 2, `CiReleveWiringTest::testSelfTestIsTheLastStepOfLint`).
+     */
+    public function testTheMeasureSelfTestsRunInLintBeforeTheVerdictSelfTest(): void
+    {
+        $steps = $this->steps($this->job(self::CI, 'lint'), 'lint');
+        $names = array_map(fn (array $s): string => $this->str($s['name'] ?? null), $steps);
+
+        $positions = [];
+        foreach (['suite-time', 'ci-mesure', 'tests-retires'] as $script) {
+            $position = array_search($script . ' self-test', $names, true);
+            self::assertIsInt($position, \sprintf('`lint` porte le step « %s self-test ».', $script));
+            self::assertSame(\sprintf('python3 -I scripts/%s-test.py', $script), trim($this->str($steps[$position]['run'] ?? null)), \sprintf('« %s self-test » lance `python3 -I scripts/%s-test.py`.', $script, $script));
+            $positions[] = $position;
+        }
+        $sorted = $positions;
+        sort($sorted);
+        self::assertSame($sorted, $positions, '`lint` : suite-time, puis ci-mesure, puis tests-retires.');
+
+        $verdict = array_search('ci-verdict self-test', $names, true);
+        self::assertIsInt($verdict);
+        self::assertLessThan($verdict, max($positions), 'Les trois self-tests viennent avant « ci-verdict self-test ».');
+        self::assertSame('ci-releve self-test', end($names), '« ci-releve self-test » reste le dernier step de `lint`.');
+    }
+
     // --- évaluation des `if` de ci.yml --------------------------------------------------------
 
     /** @return array{event_name: string, base_ref: string, ref: string} */
@@ -1484,6 +1693,23 @@ final class CiWorkflowRegimeTest extends TestCase
             }
         }
         self::fail(\sprintf('`%s` doit porter le step « %s ».', $id, $name));
+    }
+
+    /**
+     * Le seul step de ce job dont le nom commence par ce préfixe — absent ou en double, le test
+     * rougit en le nommant (le nom complet d'un step de suite reste libre, comme dans la table du
+     * relevé).
+     *
+     * @param array<mixed> $job
+     *
+     * @return array<mixed>
+     */
+    private function stepStartingWith(array $job, string $id, string $prefix): array
+    {
+        $matching = array_values(array_filter($this->steps($job, $id), fn (array $step): bool => str_starts_with($this->str($step['name'] ?? null), $prefix)));
+        self::assertCount(1, $matching, \sprintf('`%s` doit porter UN step dont le nom commence par « %s ».', $id, $prefix));
+
+        return $matching[0];
     }
 
     /**
