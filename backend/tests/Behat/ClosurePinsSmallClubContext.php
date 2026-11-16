@@ -49,12 +49,6 @@ final class ClosurePinsSmallClubContext extends BaseContext
 
     private string $regeneratedStatus = '';
 
-    #[Given('un petit club réaliste avec un plan de période dont deux séances sont verrouillées en dur sur deux jours différents')]
-    public function unPlanDePeriodeAvecDeuxVerrous(): void
-    {
-        $this->buildPlanWithTwoLocks(validate: false);
-    }
-
     #[Given('un petit club réaliste avec un plan de période VALIDÉ dont deux séances sont verrouillées en dur sur deux jours différents')]
     public function unPlanDePeriodeValideAvecDeuxVerrous(): void
     {
@@ -108,8 +102,7 @@ final class ClosurePinsSmallClubContext extends BaseContext
         $this->jeRegenereApresLaFermeture();
     }
 
-    #[When('je régénère le plan de période après la fermeture')]
-    public function jeRegenereApresLaFermeture(): void
+    private function jeRegenereApresLaFermeture(): void
     {
         $overlay = $this->generateSmallClubPeriodVersion($this->periodPlanId);
         $this->regeneratedId = $overlay['id'];
