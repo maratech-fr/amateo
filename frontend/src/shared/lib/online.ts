@@ -32,3 +32,5 @@ export function useOnline(): boolean {
     () => true,
   );
 }
+
+// essai du Lot Gate : ligne jetable
