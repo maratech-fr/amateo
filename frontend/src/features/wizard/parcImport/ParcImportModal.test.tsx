@@ -1,4 +1,4 @@
-import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -1530,17 +1530,30 @@ describe("ParcImportModal — PR A (incident d'un club pilote : équipe ignorée
   });
 
   it("D13 — une séance commune en alerte « équipe ignorée » et GARDÉE bloque « Importer »", async () => {
-    // ROUGE : aujourd'hui seules les lignes équipe/gymnase ambiguës (ou un genre manquant) bloquent ;
-    // une séance commune gardée mais en alerte n'empêche PAS l'import (le défaut d'un club pilote : l'import part et 422).
+    // Promesse : une séance commune gardée mais en alerte « équipe ignorée » empêche l'import (sinon
+    // l'import part et le serveur répond 422). Toutes les étapes sont VISITÉES avant l'assertion : une
+    // étape non vue bloque à elle seule « Importer », et rendrait le test vert sans la règle D13. Le
+    // témoin (même séance, sans alerte) prouve que rien d'autre ne bloque.
     const user = userEvent.setup();
-    const analysis = analysisOf({
-      equipes: [mkLine(0, "U13M1", "aCreer")], // une ligne cochée → count > 0 (l'import n'est pas bloqué par « rien à importer »)
-      mutualisations: [keptMutualisationAlerte()],
-    });
-    renderWithProviders(<ParcImportModal {...defaultProps} />);
-    await analyzeThen(user, analysis);
+    const importAfterVisitingAllSteps = async (mutualisation: Line): Promise<HTMLElement> => {
+      renderWithProviders(<ParcImportModal {...defaultProps} />);
+      await analyzeThen(
+        user,
+        analysisOf({
+          equipes: [mkLine(0, "U13M1", "aCreer")], // une ligne cochée → count > 0 (l'import n'est pas bloqué par « rien à importer »)
+          mutualisations: [mutualisation],
+        }),
+      );
+      await visitAllSteps(user);
+      return screen.getByRole("button", { name: /Importer/ });
+    };
 
-    const importBtn = screen.getByRole("button", { name: /Importer/ });
+    const { groupe, position } = keptMutualisationAlerte();
+    const temoin = await importAfterVisitingAllSteps({ ...mkLine(0, "SF1 + SM shooting", "aCreer"), groupe, position });
+    expect(temoin, "témoin : la même séance sans alerte laisse importer").not.toHaveAttribute("aria-disabled", "true");
+    cleanup();
+
+    const importBtn = await importAfterVisitingAllSteps(keptMutualisationAlerte());
     expect(importBtn, "une séance commune en alerte gardée bloque l'import (D13)").toHaveAttribute("aria-disabled", "true");
   });
 
