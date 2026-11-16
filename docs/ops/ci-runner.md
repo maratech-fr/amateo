@@ -31,7 +31,7 @@ de ressources (mémoire, vCPU) ; il n'y a ni cgroup ni limite mémoire par conte
 | Variable de dépôt | Valeur sur la VM | Label du runner | Jobs |
 |---|---|---|---|
 | `CI_RUNS_ON` | `amateo-light` | `amateo-light` (runner 3 seul) | les jobs « légers » du gate complet : `preflight`, `lint`, `secrets-scan`, `semgrep`, `dependency-audit`, `phpstan`, `rector`, `blocking-tests`, `engine-tests`, `engine-perf`, `engine-semantics` |
-| `CI_RUNS_ON_HEAVY` | `amateo-heavy` | `amateo-heavy` (runners 1 et 2) | les jobs « lourds » du gate complet : `frontend`, `backend-tests`, `e2e`, `functional-tests`, `build-docker` ; et le job de `visual-baselines.yml` |
+| `CI_RUNS_ON_HEAVY` | `amateo-heavy` | `amateo-heavy` (runners 1 et 2) | les jobs « lourds » du gate complet : `frontend`, `backend-tests`, `e2e`, `functional-tests`, `build-docker` ; ; le job de `visual-baselines.yml` et les deux jobs de `quality-weekly.yml` (§8) |
 | `CI_RUNS_ON_LOT` | `amateo` (réserve, §9) | `amateo` (les 3 runners) | `lot-gate` (« Lot Gate ») |
 | `CI_RUNS_ON_VERDICT` | `amateo` (réserve, §9) | `amateo` (les 3 runners) | `main-verdict` (« Main Verdict ») |
 
@@ -221,6 +221,35 @@ sur les autres, à enchaîner VM allumée.
   Rector qui plante (`[ERROR] Could not process … file`) tombe en « step … exit code 1 (identifiant non
   lu) » : repli conforme, pas d'extracteur ; (g) la sortie peut être recopiée dans la roadmap ou l'état
   des lieux (publics) : l'assainissement vaut aussi pour cela.
+- **Couverture hebdomadaire** : `.github/workflows/quality-weekly.yml` (« Quality Weekly », `schedule`
+  lundi 05:00 UTC et `workflow_dispatch`) mesure la couverture backend (PHPUnit sous pcov, puis
+  `scripts/coverage-gate.php`) et front (`npm run test:coverage`) hors du run de PR, chacune dans son
+  job sur le pool `CI_RUNS_ON_HEAVY`. Planchers : `coverage-floor.json` (clés `backend`, `frontend`).
+  Un rouge ne bloque aucun merge : `make ci-mesure` lit la conclusion du dernier run et imprime la
+  ligne de roadmap à ouvrir. VM éteinte le lundi : le job attend, et au-delà de 24 h
+  `gh workflow run quality-weekly.yml`. La couverture du moteur reste dans chaque run.
+- **Plafond de temps par suite** : `test-time-ceiling.json` (racine ; `backend`, `behat`, `e2e`,
+  `frontend`, `engine` ; plafond en secondes, marge en pourcentage). `scripts/suite-time.py --suite
+  <nom> --seconds "$SECONDS"` est le dernier acte de chaque suite dans `ci.yml` : verdict
+  (code 1 au-dessus du plafond) seulement sur la VM, indicatif sur un runner hébergé. Plafonds
+  initiaux : la médiane du jour plus un quart ; ils descendent au bilan de lot (le plus petit de
+  l'ancien et de la médiane plus la marge), dans la PR suivante. **Garde** : `scripts/suite-time.py
+  --never-rises origin/<base>`, dans `lint` et dans `lot-gate`, refuse une suite retirée du fichier,
+  un plafond ou une marge qui monte, sauf la ligne exacte « Plafond <suite> remonté de A à B s :
+  décision du fondateur du AAAA-MM-JJ. » (ou « Marge <suite> remontée de A à B % : … ») dans le corps
+  de la PR. Aucun agent n'écrit cette ligne sans réponse du fondateur. Sur la PR finale d'un lot,
+  la base est `main` : la ligne y est redemandée. Plafond rouge : `make ci-mesure RUN=<id>` dit si la
+  base a dérivé, si la suite est au plafond par accumulation, ou si c'est du bruit (relancer une
+  fois) ou la PR elle-même.
+- **Compteur** : `make ci-mesure [DAYS=30] [PART=origin/<base>] [RUN=<id>] [CYCLE_DAY=<jour>]`, lecture
+  seule (`gh` du poste). Il imprime les minutes « Actions Linux » facturées depuis le jour de
+  renouvellement contre 3 000 (ligne de facturation de l'organisation, jamais une somme recalculée ;
+  sortie en erreur, code 2, si le jeton ne lit pas la facturation), le stockage « Actions storage »,
+  le rappel des variables de réserve encore posées, la médiane et le 9ᵉ décile facturés de « Lot Gate »,
+  la médiane de chaque suite à côté de son plafond, le diagnostic de `RUN`, le dernier relevé
+  hebdomadaire et la part de test du diff `PART...HEAD`. Code retour 3 à 75 % du quota, 4 à 90 %.
+  Qui le lance : l'orchestrateur avant chaque `gh pr create` vers un lot et à chaque bilan de lot ;
+  entre deux lectures, seuls les courriels de GitHub alertent.
 
 Après tout changement du `.env` d'un runner : relancer son service. Après une modification des hooks
 dans le dépôt : les recopier dans la VM (le runner ne lit pas le dépôt pour eux).
@@ -298,7 +327,7 @@ Hébergé par défaut ; la réserve de minutes (ci-dessous) le bascule sur la VM
 - **Ce qu'il ne joue pas** : Rector, CS-Fixer et composer-unused, Semgrep, ESLint et knip,
   `engine-semantics` (le groupe `contract` entier contre le vrai moteur : seuls les tests de ce
   groupe qui figurent dans la liste bloquante sont joués), le Vitest complet, le cliquet des
-  avertissements `act` (sans verdict sur un run partiel), la couverture backend et front (le cliquet
+  avertissements `act` (sans verdict sur un run partiel), la couverture backend et front, relevée chaque lundi (§8 ; le cliquet
   du moteur, lui, est joué), `dependency-audit`, `build-docker`, Behat, e2e, la perf. Ce qui le
   rattrape : les commandes locales avant le merge vers le lot (`CLAUDE.md` §7 étape 5), puis la PR
   finale vers `main` ; un rouge de fin de lot se diagnostique par `git bisect` (règles de geste).
@@ -400,20 +429,24 @@ agents depuis `origin/lot/<sujet>`, PR ouvertes avec `--base lot/<sujet>`.
 
 Applicable après le passage du dépôt en privé (`specs/evolution/roadmap.md`, P4-392). Le quota
 hébergé du plan Team est de 3 000 minutes « Actions Linux » par mois, remis à zéro au jour de
-renouvellement du cycle de facturation : jour à lire une fois sur la page de facturation (Settings →
-Billing), non relevé tant que le dépôt est public. Consomment ce quota : « Lot Gate » et « Main
+renouvellement du cycle de facturation. Consomment ce quota : « Lot Gate » et « Main
 Verdict » (hébergés par défaut), `cache-warm.yml`, `deploy.yml`, `security-weekly.yml` et
 `mirror-images.yml` ; le gate complet est sur la VM. `deploy.yml` reste chez GitHub : un quota vidé
-avant son renouvellement empêche tout déploiement, d'où la réserve. Gestes du fondateur, sur lecture
-de l'usage « Actions Linux » depuis le jour de renouvellement :
+avant son renouvellement empêche tout déploiement, d'où la réserve. Le compteur est
+`make ci-mesure` (§8). Gestes du fondateur, sur sa lecture de l'usage « Actions Linux » :
 
-- **À 75 % du quota (2 250 minutes)** : `gh variable set CI_RUNS_ON_LOT --body amateo`, VM allumée
-  (« Lot Gate » en file si elle est éteinte, §6). Preuve : le run de lot suivant affiche
-  « amateo-ci-N » comme runner.
+- **À lire une fois sur la page de facturation (Settings → Billing)** : le jour de renouvellement du
+  quota, le tarif des runners auto-hébergés en dépôt privé et le stockage inclus. Tant que le jour
+  n'est pas lu, `make ci-mesure` compte depuis le 1ᵉʳ du mois (`CYCLE_DAY ?= 1`, `Makefile`) : le lire,
+  puis le poser dans le `Makefile` (valeur de 1 à 28) ou à la volée, `make ci-mesure CYCLE_DAY=<jour>`.
+- **À 75 % du quota (2 250 minutes)** : l'orchestrateur n'ouvre plus de PR de lot et le dit ;
+  `gh variable set CI_RUNS_ON_LOT --body amateo`, VM allumée (« Lot Gate » en file si elle est
+  éteinte, §6). Preuve : le run de lot suivant affiche « amateo-ci-N » comme runner.
 - **À 90 % (2 700 minutes)** : `gh variable set CI_RUNS_ON_VERDICT --body amateo`. Le verdict est alors
   sur la VM : règle d'usage du geste 25, annulation après 24 h de file (§6).
 - **Au renouvellement** : `gh variable delete CI_RUNS_ON_LOT`, puis
-  `gh variable delete CI_RUNS_ON_VERDICT`.
+  `gh variable delete CI_RUNS_ON_VERDICT` ; `make ci-mesure` le rappelle tant qu'elles restent posées
+  sous 75 %.
 
 ### Critère de durée (décision fondateur 2026-11-15)
 

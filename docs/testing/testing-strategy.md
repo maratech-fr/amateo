@@ -15,9 +15,9 @@ lint ──┐
        ├─► blocking-tests ──┐
 phpstan┘                    ├─► build-docker
 engine-tests ───────────────┘
-backend-tests       (suite PHPUnit COMPLÈTE + pcov + cliquet, un seul passage) — BLOCKS the merge (required check), does NOT gate build-docker
+backend-tests       (suite PHPUnit COMPLÈTE, sans couverture, un seul passage) — BLOCKS the merge (required check), does NOT gate build-docker
 e2e                 (Playwright dans le conteneur `e2e`, full stack + Vite) — BLOCKS the merge (required check)
-frontend            (lint + tsc -b + vite build + vitest --coverage + cliquet) — BLOCKS the merge (required check), does NOT gate build-docker
+frontend            (lint + tsc -b + vite build + vitest, sans couverture) — BLOCKS the merge (required check), does NOT gate build-docker
 dependency-audit    (composer/npm/pip audit, A18)          — no other needs ; BLOCKS the merge, does NOT gate build-docker
 rector              (dry-run, style gate P4-24)            — gates NOTHING… but BLOCKS the merge
 secrets-scan        (gitleaks)                             — no other needs ; BLOCKS the merge
@@ -59,65 +59,55 @@ construisent (`--pull`, tags `scan-<run>-<attempt>/…`) et passent Trivy CRITIC
 profite du cache de couches du démon, donc **il ne prouve plus un build de zéro** — `deploy.yml`, chez
 GitHub, le prouve à chaque release.
 
-**Fusion « un seul passage couvert par suite » (2026-10-14).** Chaque suite tournait DEUX fois en
-CI (un job sans couverture + un job de couverture). Les trois ex-jobs de couverture
-(`engine-coverage`, `frontend-coverage`, `backend-coverage`) sont FONDUS dans leur suite :
-`engine-tests` lance `pytest --cov` avec cliquet, `frontend` lance `vitest --coverage` avec cliquet,
-et le nouveau `backend-tests` (ci-dessous) remplace à lui seul les ex-`unit-tests` ET
-`backend-coverage`. Les trois cliquets BLOQUENT LE MERGE via leur required check ; en plus, parce que
-`engine-tests` est dans les `needs` de `build-docker`, **le cliquet engine gate désormais
-`build-docker`** (décision fondateur 2026-10-14) — alors que les cliquets backend/frontend restent
-hors de ce chemin (`backend-tests` et `frontend` ne sont pas des `needs` de `build-docker`).
+**Un seul passage par suite.** Chaque suite tourne UNE fois en CI : `engine-tests`, `frontend` et
+`backend-tests` (ci-dessous) portent leur suite, sans job de couverture à part. Seule la couverture
+du moteur reste dans chaque run (plus bas) ; celles du backend et du front se mesurent chaque lundi
+(§ « Couverture hebdomadaire »). Parce que `engine-tests` est dans les `needs` de `build-docker`,
+**le cliquet engine gate `build-docker`** (décision fondateur 2026-10-14) ; `backend-tests` et
+`frontend` n'en sont pas des `needs`.
 
-**`backend-tests`** (ex-`unit-tests` + `backend-coverage`) lance la suite PHPUnit COMPLÈTE
-`phpunit tests/ --exclude-group contract` en UN SEUL passage, instrumenté par le driver `pcov`
-(`-d pcov.enabled=1`), avec le cliquet `backend/scripts/coverage-gate.php` (plancher `backend` de
-`coverage-floor.json` ; PHPUnit 11 n'a pas de `--fail-under` natif). **SANS `needs`** : aucun job ne
-consomme son artefact (le `needs: blocking-tests` de l'ex-`unit-tests` n'était que de
-l'ordonnancement), il démarre donc à t=0. `timeout-minutes: 45`, `fetch-depth: 0` (pour
-`RoadmapIdentityTest`, qui rejoue l'histoire git de la roadmap). Required check de `main` (« Backend Tests (suite + couverture) »,
-ex-« Unit Tests ») → **bloque le merge** ; **absent des `needs` de `build-docker`** — une perte de
-1 % ne prend jamais en otage une image de prod. `pcov` est **chargé mais INERTE**
-(`pcov.enabled = 0` par défaut) et n'existe QUE dans l'image dev/test (`ARG WITH_PCOV=0` par défaut,
-mis à `1` par `docker-compose.yml` et l'action CI `build-php-cached`) — l'image de PROD ne reçoit
-jamais cet arg. Le groupe `contract` reste exclu (il interroge le VRAI moteur → job dédié « Engine
-semantics »). Artefact `coverage-backend` (clover + résumé texte), `upload-artifact` avec
-`if: always()`. ⚠ **Bascule du required check AU MERGE (geste fondateur)** : retirer « Unit Tests »
-des required status checks de `main`, ajouter « Backend Tests (suite + couverture) » ; rollback =
-revert + re-poser « Unit Tests ».
+**`backend-tests`** lance la suite PHPUnit COMPLÈTE `phpunit tests/ --exclude-group contract` en UN
+SEUL passage, **sans couverture** : le check « Backend Tests (suite + couverture) » garde son nom
+(required check de `main`), il ne mesure plus la couverture. **SANS `needs`** : il démarre à t=0.
+`timeout-minutes: 45`, `fetch-depth: 0` (pour `RoadmapIdentityTest`, qui rejoue l'histoire git de
+la roadmap). **Bloque le merge** ; **absent des `needs` de `build-docker`** — une régression ne
+prend jamais en otage une image de prod. Le groupe `contract` reste exclu (il interroge le VRAI
+moteur → job dédié « Engine semantics »). Dernier acte du step : la durée de la suite contre son
+plafond (§ « Plafond de temps »).
 
 La **couverture engine** (P4-166) est mesurée DANS `engine-tests` : son step `pytest` lance
 `pytest --cov=app` avec `--cov-fail-under` lu de `coverage-floor.json` (racine, clé `engine`) —
-jamais un seuil en dur. Depuis la fusion 2026-10-14, parce que `engine-tests` gate `build-docker`,
-**le cliquet engine gate aussi `build-docker`** (décision fondateur) : une régression de couverture
-engine bloque l'image, contrairement aux cliquets backend/frontend. `set -o pipefail` protège le
-`| tee`, `-u` mappe l'uid du runner (SEC-15). Artefact `coverage-engine` (xml + résumé texte),
-`upload-artifact` avec `if: always()`. Le plancher versionné et sa règle de cliquet sont détaillés
-dans [`test-coverage-map.md`](test-coverage-map.md) (§ `coverage-floor.json`).
+jamais un seuil en dur. Parce que `engine-tests` gate `build-docker`, une régression de couverture
+engine bloque l'image. `set -o pipefail` protège le `| tee`, `-u` mappe l'uid du runner (SEC-15).
+Artefact `coverage-engine` (xml + résumé texte), `upload-artifact` avec `if: always()`. Le plancher
+versionné et sa règle de cliquet : [`test-coverage-map.md`](test-coverage-map.md) (§ `coverage-floor.json`).
 
-La **couverture frontend** (P4-166) est mesurée DANS `frontend` : son step unitaire lance
-`npm run test:coverage` (Vitest `--coverage`), `thresholds.lines` lu de `coverage-floor.json`
-(racine, clé `frontend`) — jamais un seuil en dur. Le cliquet rougit `frontend` (required check de
-`main`, donc **bloque le merge**) ; `frontend` **n'est PAS un `needs` de `build-docker`**, une perte
-de 1 % ne bloque jamais l'image (décision fermée, `specs/courantes/etat-des-lieux.md` §2). Artefact
-`coverage-frontend` (`frontend/coverage/`, `upload-artifact` avec `if: always()`). Détail
-d'implémentation (exclusions déclarées, piège `__dirname` sous `--coverage`) :
-[`test-coverage-map.md`](test-coverage-map.md) (§ `coverage-floor.json`).
+**Couverture hebdomadaire (backend et front).** `.github/workflows/quality-weekly.yml` (« Quality
+Weekly », cron lundi 05:00 UTC et `workflow_dispatch`, classe lourde de la VM) joue deux jobs, aucun
+ne tourne sur une PR ni un push :
+- `Coverage (backend)` : la suite PHPUnit sous `pcov` (`-d pcov.enabled=1`, `memory_limit=1G`), puis
+  `backend/scripts/coverage-gate.php` (lit le clover, compare au plancher `backend` de
+  `coverage-floor.json`, sort 1 dessous — PHPUnit 11 n'a pas de `--fail-under` natif). `pcov` est
+  **chargé mais INERTE** (`pcov.enabled = 0` dans `docker/php/Dockerfile`) et n'existe QUE dans
+  l'image dev/test (`ARG WITH_PCOV=0` par défaut, mis à `1` par `docker-compose.yml` et l'action
+  `build-php-cached`) ; l'image de PROD ne l'embarque jamais.
+- `Coverage (frontend)` : `npm run test:coverage` (Vitest `--coverage`), `thresholds.lines` lu du
+  plancher `frontend` de `coverage-floor.json`.
 
-La **couverture backend** (P4-166) est mesurée DANS `backend-tests` : le step unique lance
-`phpunit tests/ --exclude-group contract` instrumenté par `pcov` (`-d pcov.enabled=1`), suivi de
-`backend/scripts/coverage-gate.php` (sans dépendance, lit le clover produit par `--coverage-clover`,
-compare au plancher `backend` de `coverage-floor.json`, sort 1 sous le plancher — PHPUnit 11 n'a pas
-de `--fail-under` natif). `pcov` est **chargé mais INERTE** (`pcov.enabled = 0` par défaut dans
-l'image, `docker/php/Dockerfile`) : `blocking-tests` ne paie aucun coût d'instrumentation, seul ce
-step l'active. Le driver n'existe QUE dans l'image dev/test (`ARG WITH_PCOV=0` par défaut, mis à `1`
-par `docker-compose.yml` et l'action CI `build-php-cached`) — l'image de PROD
-(`docker-compose.prod.yml`, cible `prod`) ne reçoit jamais cet arg et n'embarque jamais `pcov`. Le
-cliquet rougit `backend-tests` (required check de `main`, donc **bloque le merge**) ; `backend-tests`
-**n'est PAS un `needs` de `build-docker`** (décision fermée, `specs/courantes/etat-des-lieux.md` §2).
-Artefact `coverage-backend` (`backend/coverage/`, `upload-artifact` avec `if: always()`). Le plancher
-versionné et sa règle de cliquet sont détaillés dans
-[`test-coverage-map.md`](test-coverage-map.md) (§ `coverage-floor.json`).
+Un rouge ne bloque aucun merge : c'est une alarme. `make ci-mesure` lit la conclusion du dernier run
+et imprime la ligne de roadmap à ouvrir ; un retrait de tests conforme qui franchit un plancher se
+signale, il ne s'annule pas (`tests-par-parcours.md` §3). Artefacts `coverage-backend` et
+`coverage-frontend` : rétention 7 jours. Les planchers ne changent pas ; leur règle de cliquet et
+les exclusions déclarées : [`test-coverage-map.md`](test-coverage-map.md) (§ `coverage-floor.json`).
+Pool, VM éteinte, relance : [`../ops/ci-runner.md`](../ops/ci-runner.md) §8.
+
+**Plafond de temps par suite.** `test-time-ceiling.json` (racine) fixe, pour `backend`, `behat`,
+`e2e`, `frontend` et `engine`, un plafond en secondes et une marge en pourcentage.
+`scripts/suite-time.py --suite <nom> --seconds "$SECONDS"` est le dernier acte de chaque suite dans
+`ci.yml` ; il ne rend un verdict que sur la VM (indicatif sur un runner hébergé). La garde
+`--never-rises`, dans `lint` et `lot-gate`, refuse toute hausse d'un plafond ou d'une marge sans la
+ligne datée du fondateur dans le corps de la PR. Gestes, diagnostic d'un rouge, descente des
+plafonds : [`../ops/ci-runner.md`](../ops/ci-runner.md) §8.
 
 **`engine-perf`** (« Engine Perf Gate ») est le seul job de perf du moteur : un job du gate complet
 d'une PR vers `main`, `needs: [preflight, engine-tests]`, `timeout-minutes: 30`. Il lance
@@ -202,15 +192,15 @@ All PHP test jobs first **create + migrate the test DB** (`doctrine:database:cre
 
 | Job | What it runs |
 |-----|--------------|
-| `lint` | `docker compose config` + `make -n help` + step `ci-verdict self-test` (`scripts/ci-verdict-test.py`, la logique du verdict de `main`) + step final `ci-releve self-test` (`scripts/ci-releve-test.py`, l'outil `make ci-releve` : `docs/ops/ci-runner.md` § Exploitation) ; câblage gardé par `CiReleveWiringTest` (statique, non bloquant) |
+| `lint` | `docker compose config` + `make -n help` + step `ci-verdict self-test` (`scripts/ci-verdict-test.py`, la logique du verdict de `main`) + la garde `--never-rises` des plafonds de temps et les auto-tests de `suite-time.py`, `ci-mesure.py` et `tests-retires.py` + step final `ci-releve self-test` (`scripts/ci-releve-test.py`, l'outil `make ci-releve` : `docs/ops/ci-runner.md` § Exploitation) ; câblage gardé par `CiReleveWiringTest` (statique, non bloquant) |
 | `phpstan` (job name: **PHPStan & CS-Fixer**) | `composer phpstan` (level 8) **+ `composer cs-fix -- --dry-run --diff`** **+ `composer composer-unused`** — needs postgres + redis. CS-Fixer vit ici, et non dans `lint`, parce que ce job a déjà le conteneur PHP que `lint` n'a pas (jusqu'au 2026-07-17 CS-Fixer ne tournait **nulle part** en CI, et `main` a été mergée rouge dessus deux fois) |
 | `rector` (**Rector (style gate)**) | `composer rector -- --dry-run` (P4-24). Job **dédié, sans `needs`**, dépendance d'aucun autre — mais le contexte « Rector (style gate) » fait partie des **required status checks de `main`**, donc **il bloque le merge**. Corriger en local : `docker compose exec php-fpm sh -c 'cd /app/backend && composer rector'` (`make -C backend rector` est un dry-run : il montre, il ne fixe pas) |
 | `blocking-tests` | les tests sécurité/queue/contrat lancés en **UNE invocation PHPUnit** (step `Blocking suite (phase1, one PHPUnit process)` : `--group phase1` + la liste des chemins, un par ligne, chacun précédé de son commentaire de raison) **plus un step filtré** (`ParcImportCorrectionTenantNR`, classe `integration` hors `phase1`) — **gate du reste de la suite PHP** et de `build-docker`. ⚠ **La liste vit dans [`blocking-tests.md`](blocking-tests.md), et NULLE PART AILLEURS** : elle était recopiée ici et les deux copies ont dérivé l'une de l'autre (audit DOC-16 puis DOC-26, 3 éditions). Deux endroits pour une même vérité finissent par diverger — la copie est supprimée, pas resynchronisée. ⚠ **`--group phase1` ≠ le gate** : bien plus de fichiers `backend/tests/` portent l'annotation que le step `Blocking suite` n'en liste ; un fichier `phase1` non listé tourne dans `backend-tests`, donc après le gate et sans bloquer `build-docker`. La vérité exécutable est `.github/workflows/ci.yml` |
-| `backend-tests` (job name: **Backend Tests (suite + couverture)**) | full PHPUnit `tests/ --exclude-group contract` en UN passage, instrumenté par `pcov` (`-d pcov.enabled=1`), + `scripts/coverage-gate.php` (cliquet, plancher `backend` de `coverage-floor.json`). **Sans `needs`** (démarre à t=0). Remplace les ex-`unit-tests` + `backend-coverage` (fusion 2026-10-14). Required check de `main` → **bloque le merge** ; does **NOT** gate `build-docker` (P4-166) |
+| `backend-tests` (job name: **Backend Tests (suite + couverture)**) | full PHPUnit `tests/ --exclude-group contract` en UN passage, sans couverture (relevée chaque lundi par `quality-weekly.yml`), puis la durée de la suite contre son plafond (`scripts/suite-time.py`). **Sans `needs`** (démarre à t=0). Remplace les ex-`unit-tests` + `backend-coverage` (fusion 2026-10-14). Required check de `main` → **bloque le merge** ; does **NOT** gate `build-docker` (P4-166) |
 | `e2e` | Playwright (full stack + Vite), **sans `needs` autre que `preflight`** (2026-10-14 — ne consommait aucun artefact, le `needs: blocking-tests` n'était que de l'ordonnancement). **La suite tourne DANS le conteneur Playwright** du service compose `e2e` (image épinglée, `shm_size`), Vite dans le service `frontend-dev` (attente bornée par `wget` sur `127.0.0.1`, l'image est busybox Alpine : `localhost` s'y résout en `::1` alors que Vite n'écoute qu'en IPv4), mailpit dans le projet ; aucun Node, Chromium ni port hôte : le projet compose est propre au job (`ci-<run>-<tentative>-<job>`). Le volume `node_modules` du conteneur est chowné par l'HÔTE (guillemets doubles : `$(id -u)` évalué hors du conteneur root), la clé TOTP du superadmin jetable vit dans `RUNNER_TEMP`, jamais dans `GITHUB_ENV`. ⚠ **Deux cibles, pas une** : la suite tourne contre le **dev server** (`frontend-dev:5173`), puis un step dédié rejoue `security-headers.spec.ts` contre l'**image nginx** (service `frontend`, `E2E_BASE_URL=http://frontend`) avec `E2E_A17_REQUIRED=1`. Sans ce second passage, les tests A17 (CSP, HSTS, X-Frame-Options, nosniff) se **skippaient à chaque run** — les en-têtes n'existent que sur le build nginx — et le contrôle n'a jamais tourné en CI (audit D-04). La variable interdit au skip de revenir en silence : viser un dev server là devient un échec. **Fiabilité infra (2026-09-15)** : `COMPOSE_BAKE=false` (env du job) écarte le builder bake qui se figeait « waiting for BuildKit » ; un step **Pre-pull third-party images** (`docker compose pull --ignore-buildable`, enveloppé de `.github/scripts/retry.sh`) tire nginx/mercure/redis/postgres à part, l'image `engine` est bâtie dans son propre step relançable, et les steps d'infra (pull, build, `up --wait`) passent par `retry.sh` — un aléa de Docker Hub/BuildKit ne rougit plus une PR saine. Un step `if: failure()` écrit dans le résumé de job si l'échec est **AVANT Playwright (infra)** ou **Playwright**. **Un job vert peut cacher un flaky** (Playwright sort 0 dès qu'un retry passe, P4-256, toujours ouvert) : un step `always()` (`.github/scripts/flaky-summary.sh`) annonce dans le résumé de job les tests perdus-puis-rejoués, sans jamais faire rougir le job ni le gater. L'artefact `playwright-results` (traces `retain-on-failure`, conservées sur tout essai en échec, y compris l'essai perdu puis rejoué) est lui aussi uploadé en `always()` — la trace de l'essai perdu survit donc même sur un run vert, récupérable 7 jours |
 | `functional-tests` | **Behat, Gherkin français, API seule** (`backend/features/`, contexts `backend/tests/Behat/`) — scénarios métier relus par le fondateur, joués contre la stack RÉELLE (nginx→php-fpm, vrai `messenger-worker`, vrai engine, **`pdf-worker`** compris — `l-export-du-planning.feature` attend un PDF Puppeteer réel, sans lui le worker d'export répond `failed`), sans navigateur ni noyau in-process. **Aucun `needs`** — ils répondent « la fonctionnalité marche-t-elle ? », indépendamment des suites unitaires, et n'installent ni npm ni Chromium : le verdict tombe plus tôt. Chaque feature est autosuffisante (JWT auto, données créées/nettoyées, pointeur socle rouvert PUIS restauré) : jouable seule et dans n'importe quel ordre. **Remplace intégralement les 5 smokes bash** (`smoke-solver.sh`, `onboarding-smoke.sh`, `smoke-place-matches.sh`, `smoke-overlay.sh`, `smoke-coach-wishes.sh`, tous SUPPRIMÉS de `backend/scripts/`) — parité prouvée assertion par assertion, même verdicts. Table feature ↔ ce qu'elle prouve : [`test-coverage-map.md`](test-coverage-map.md) §5 |
 | `engine-tests` | `pytest --cov=app --cov-fail-under=$FLOOR` (`$FLOOR` lu de `coverage-floor.json`, clé `engine` — cliquet fondu ici 2026-10-14) + `ruff check .` (+ `ruff format --check`) + `mypy` + `bandit -r app/` (ENG-46, lot correctif de l'audit 0918 — bandit était déjà en local via `make test`, il ne gatait pas la CI) + `deptry .` (in the engine container). **GATE `build-docker`** → le cliquet engine gate donc aussi `build-docker` (décision fondateur 2026-10-14) |
-| `frontend` | `npm run lint` (dont `eslint-plugin-jsx-a11y`, §4bis) + `npm run lint:deps` (knip) + `tsc -b` + `vite build` + `npm run test:coverage` (`vitest run --coverage`, `thresholds.lines` lu de `coverage-floor.json`, clé `frontend` — cliquet fondu ici 2026-10-14) (parallel, no needs). Required check de `main` → **bloque le merge** ; does **NOT** gate `build-docker` (P4-166) |
+| `frontend` | `npm run lint` (dont `eslint-plugin-jsx-a11y`, §4bis) + `npm run lint:deps` (knip) + `tsc -b` + `vite build` + `npm run test` (`vitest run`, sans couverture : plancher `frontend` relevé chaque lundi par `quality-weekly.yml`), puis la durée de la suite contre son plafond (parallel, no needs). Required check de `main` → **bloque le merge** ; does **NOT** gate `build-docker` (P4-166) |
 | `dependency-audit` | `composer audit` / `npm audit --audit-level=high` / `pip-audit` (A18, blocking, parallel, no needs). Les trois passent par `.github/scripts/audit-retry.sh` (P4-171) : 3 tentatives (10 s, 30 s) **seulement** quand la sortie porte une signature réseau (timeout, 5xx, DNS, `curl error`) — un `exit 1` d'audit sans cette signature est rendu tel quel, le gate ne s'aveugle pas |
 | `build-docker` | build des six images de PROD (dont `pdf-worker`) (`--pull`, tags `scan-<run>-<tentative>/…`) + scan Trivy CRITICAL (needs **blocking + engine** tests, plus `preflight`) ; PR vers `main` seulement, tant qu'aucun de ses `needs` n'a échoué ni été annulé |
 | `engine-perf` (**Engine Perf Gate**) | `pytest -m perf --durations=0`, tous les tests `perf` (ci-dessus) ; needs `preflight` + `engine-tests` ; non requis au merge, compté par le verdict de `main` |

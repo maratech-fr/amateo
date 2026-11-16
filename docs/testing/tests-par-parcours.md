@@ -18,8 +18,10 @@
   prouvent par capture, sans test.
 - **E2E = parcours navigateur + les contrôles que seul le navigateur peut faire** (contraste,
   reflow, en-têtes nginx, hit-testing, pixel-diff, flux SSE Mercure).
-- **Réduire le nombre sans baisser la qualité.** Un scénario ne part que si un test plus bas,
-  **cité `fichier:ligne`**, prouve la même promesse ; s'il n'existe pas, on l'écrit AVANT.
+- **Réduire le nombre sans baisser la qualité** — règle de retrait au §3. Deux scénarios qui paient
+  la même génération se fondent : le second devient une ligne « Alors » du premier. Sous le plafond
+  de temps d'une suite (`test-time-ceiling.json`), l'ordre est : accélérer, fusionner, puis
+  question au fondateur ; le plafond ne remonte que sur sa ligne datée dans le corps de la PR.
 - **Décor réaliste** : la préparation passe par l'API (le geste réel du gestionnaire) ; le SQL
   direct est réservé au nettoyage et au pointage.
 - **Les parcours décrivent comment PENSE le gestionnaire**, pas ce que fait Amateo : un écart entre
@@ -160,10 +162,24 @@ preuve.
    serveur ? → Behat/PHPUnit ; seul un navigateur la voit ? → E2E).
 5. **Falsifier dans les DEUX sens** : un test neuf (ou une garde) n'est acquis qu'après l'avoir
    désactivé et constaté le ROUGE, puis le VERT une fois rétabli.
-6. **Suppression = filet cité, vert AVANT** : un test ne part que si un test plus bas, **nommé et
-   cité**, prouve la même promesse ET est vert sur la base réelle avant le retrait. **Jamais
+6. **Retrait.** Sur le sensible (§1) : filet cité, vert avant — un test plus bas, **nommé et cité**,
+   prouve la même promesse ET est vert sur la base réelle avant le retrait. Ailleurs : seul sort un
+   test de couleur, de libellé, de placement ou de doubles seuls ; dans le doute il reste. **Jamais
    `cat >` / `Write` sur un fichier de test existant** (il détruit une suite qui reste verte) — on
    ÉDITE.
+7. **Les trois preuves d'une PR de réduction**, produites par `tank` en local et rejouées par
+   l'orchestrateur avant `gh pr create` : (a) les titres disparus entre la base et la tête, le
+   sensible rougissant — `python3 -I scripts/tests-retires.py --titres <avant> <après>` sur les
+   listes des lanceurs (`vitest list`, `phpunit --list-tests`, `playwright test --list`, lignes
+   « Scénario ») ; (b) un tableau « promesse retirée → ce qui la garde encore, ou rien » (« rien »
+   seulement pour l'apparence, un libellé ou un placement), posé dans le corps de la PR ; (c) les
+   lignes de produit qui perdent leur couverture, fichier par fichier —
+   `scripts/tests-retires.py --couverture <avant> <après>` sur les rapports de `make -C backend
+   coverage` et `make -C frontend coverage`, chacune rattachée à une ligne du tableau. La mesure
+   avant et après (durée de la suite, couverture) figure au rapport.
+8. **Le plancher de couverture est une alarme hebdomadaire** (`quality-weekly.yml`,
+   [`testing-strategy.md`](testing-strategy.md) §1) : un retrait conforme qui le franchit se
+   signale, il ne s'annule pas.
 
 ## 4. Décor de référence (petit club réaliste)
 

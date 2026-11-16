@@ -49,6 +49,7 @@ cd engine  && make test     # ruff (+format --check) + mypy + bandit + deptry + 
 make -C frontend dev        # Dockerized Vite :5173 (proxies /api, /.well-known/mercure)
 make -C frontend e2e        # Playwright entièrement dockerisé — exige stack + dev lancés
 make ci-releve [DAYS=14]    # POURQUOI chaque job CI rouge l'a été (API GitHub par `gh`, sans Docker) — avant de dire « flaky » (docs/ops/ci-runner.md §8)
+make ci-mesure [DAYS=30] [PART=origin/<base>] [RUN=<id>]   # minutes hébergées contre le quota (seuils de réserve), plafonds de temps, relevé hebdo, part de test (docs/ops/ci-runner.md §8-§9)
 make epreuve-up WT=<worktree> | epreuve-status | epreuve-down   # worktree : Behat/e2e sur la stack d'épreuve (:8181, §10.5)
 ```
 
@@ -70,6 +71,11 @@ quoi, par axe, et les angles morts : `docs/testing/test-coverage-map.md`.
   mergée a joué le gate complet. Types d'événement et branches fermés, gardés par
   `CiWorkflowRegimeTest`. Les rulesets `lot/**` vivent hors dépôt ; leur cible, les preuves faites et
   les pièges : **`docs/ops/ci-runner.md` § Branche de lot**.
+- **Couverture et temps** : la couverture backend et front n'est plus dans le run de PR — elle se
+  mesure chaque lundi (`quality-weekly.yml`) contre `coverage-floor.json`, alarme sans blocage de
+  merge (lue par `make ci-mesure`) ; celle du moteur reste dans chaque run. Chaque suite a un
+  plafond de temps (`test-time-ceiling.json`) : il ne remonte que sur la ligne datée du fondateur
+  dans le corps de la PR. Détail : `docs/testing/testing-strategy.md` §1, `docs/ops/ci-runner.md`.
 - **Bloquant = chemin listé dans le step `Blocking suite` (ou le step filtré) du job
   `blocking-tests` dans `.github/workflows/ci.yml`** — jamais l'annotation `#[Group('phase1')]`
   (bien plus de fichiers la portent que le step n'en liste). Un test annoté mais non listé tourne
@@ -215,7 +221,8 @@ prouve sur la stack d'épreuve, `make -C backend tests-complete` tourne en local
    tête du lot ; le squash coupable nomme sa PR.
    **Contrôle visuel** (agent `switch`) si le plan nomme des écrans dont l'apparence change :
    captures sur un club de test du bac à sable + passe de design, AVANT de dire au user « prêt ».
-6. Résumé (liste des détails tranchés par l'orchestrateur, pour que le fondateur puisse en contester un) +
+6. Résumé (liste des détails tranchés par l'orchestrateur, pour que le fondateur puisse en contester un ;
+   la part de test du diff, par `make ci-mesure PART=origin/<base>`) +
    **`documentation-update` (avant CHAQUE PR, les deux lanes)** — « rien d'impacté » se
    conclut en regardant, jamais en supposant.
 7. **`/code-review` : le fondateur seul le déclenche.** **`/security-review` RESTE systématique**
