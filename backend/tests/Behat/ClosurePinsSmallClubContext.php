@@ -102,13 +102,6 @@ final class ClosurePinsSmallClubContext extends BaseContext
         $this->jeRegenereApresLaFermeture();
     }
 
-    private function jeRegenereApresLaFermeture(): void
-    {
-        $overlay = $this->generateSmallClubPeriodVersion($this->periodPlanId);
-        $this->regeneratedId = $overlay['id'];
-        $this->regeneratedStatus = $overlay['status'];
-    }
-
     #[Then('la régénération aboutit sans aucune séance à ce gymnase ce jour-là, et la séance verrouillée de l\'autre jour revient verrouillée à la même case')]
     public function laRegenerationAboutitSansLeGymnase(): void
     {
@@ -139,6 +132,13 @@ final class ClosurePinsSmallClubContext extends BaseContext
     public function nettoyer(): void
     {
         $this->teardownSmallClub();
+    }
+
+    private function jeRegenereApresLaFermeture(): void
+    {
+        $overlay = $this->generateSmallClubPeriodVersion($this->periodPlanId);
+        $this->regeneratedId = $overlay['id'];
+        $this->regeneratedStatus = $overlay['status'];
     }
 
     /**
