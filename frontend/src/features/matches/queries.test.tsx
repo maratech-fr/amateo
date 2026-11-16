@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, renderHook, waitFor } from "@testing-library/react";
+import { act, renderHook, waitFor as rtlWaitFor } from "@testing-library/react";
 import { HTTPError, TimeoutError } from "ky";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -128,6 +128,13 @@ function httpError(status: number, data: unknown): HTTPError {
 function makeClient(): QueryClient {
   return new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
 }
+
+/**
+ * `renderHook` ne touche pas le DOM : `waitFor` n'est réveillé que par son sondage, 50 ms par
+ * défaut, et chaque attente qui ne passe pas du premier coup coûte ce pas. Sondage à 5 ms, même
+ * délai maximal : l'assertion attendue est la même, elle est constatée plus tôt.
+ */
+const waitFor: typeof rtlWaitFor = (callback, options) => rtlWaitFor(callback, { interval: 5, ...options });
 
 function wrapperFor(client: QueryClient) {
   return ({ children }: { children: ReactNode }) => <QueryClientProvider client={client}>{children}</QueryClientProvider>;

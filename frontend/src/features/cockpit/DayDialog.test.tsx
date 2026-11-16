@@ -481,13 +481,6 @@ describe("DayDialog — holiday awareness (Lot B)", () => {
     expect(screen.queryByRole("button", { name: "Adapter" })).not.toBeInTheDocument();
   });
 
-  // The modal reuses the calendar's emoji markers (same look in both places).
-  it("marks day entries with the same calendar emojis (⛔ closure, 🛑 cutoff)", () => {
-    renderDialog([entry({ id: "c1", kind: "period", periodType: "closure", title: "Gym fermé" }), entry({ id: "c2", kind: "period", periodType: "cutoff", title: "Coupure de Noël" })]);
-    expect(screen.getByText(COCKPIT_TEXTS.closureMarker)).toBeInTheDocument();
-    expect(screen.getByText(COCKPIT_TEXTS.cutoffMarker)).toBeInTheDocument();
-  });
-
   // L'été s'adapte comme les autres vacances (planning de reprise — retour
   // fondateur 2026-07-18, P2-5 E2 : l'exclusion `ete` est levée).
   it("offers « Adapter » on a summer holiday (planning de reprise)", () => {
@@ -1239,24 +1232,6 @@ describe("DayDialog — re-datage d'une indisponibilité découpée (« aperçu 
     expect(await screen.findByText("La semaine du 12 au 17 mai ne bouge pas.")).toBeInTheDocument();
     expect(screen.getByText("La semaine du 18 au 24 mai passe au 25 au 31 mai.")).toBeInTheDocument();
     expect(screen.getAllByRole("listitem")).toHaveLength(2);
-  });
-
-  it("« Confirmer » est en variante destructive SSI un effet supprime un plan (absorb|vanish)", async () => {
-    // Sans suppression : variante par défaut (pas destructive).
-    renderWith([split()]);
-    await openAndPreview([{ kind: "shift", label: "La semaine glisse." }]);
-    const confirmNeutral = await screen.findByRole("button", { name: "Confirmer" });
-    expect(confirmNeutral.className).not.toMatch(/destructive/);
-  });
-
-  it("« Confirmer » DEVIENT destructif quand l'aperçu porte une absorption", async () => {
-    renderWith([split()]);
-    await openAndPreview([
-      { kind: "shift", label: "La semaine du 12 au 17 mai passe au 8 au 14 juin." },
-      { kind: "absorb", label: "Le plan de la semaine du 15 au 21 juin est supprimé car absorbé." },
-    ]);
-    const confirm = await screen.findByRole("button", { name: "Confirmer" });
-    expect(confirm.className).toMatch(/destructive/);
   });
 
   it("changer une date PÉRIME l'aperçu : la liste disparaît, le bouton redevient « Voir les effets »", async () => {

@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { HTTPError } from "ky";
 import type { ReactNode } from "react";
 import { createMemoryRouter, RouterProvider } from "react-router";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import * as wizardApi from "@/features/wizard/api";
 import { queryClient } from "@/shared/lib/queryClient";
@@ -75,6 +75,12 @@ const wrapper = ({ children }: { children: ReactNode }) => <QueryClientProvider 
 
 const errorToasts = () => useToastStore.getState().toasts.filter((t) => "error" === t.variant);
 
+// Le vrai client relance une fois (`retry: 1`) après 1 s ; la relance reste, son attente non :
+// les filets ne parlent qu'à l'échec final, que la relance soit immédiate ou différée.
+const defaults = queryClient.getDefaultOptions();
+beforeAll(() => queryClient.setDefaultOptions({ ...defaults, queries: { ...defaults.queries, retryDelay: 0 } }));
+afterAll(() => queryClient.setDefaultOptions(defaults));
+
 beforeEach(() => {
   vi.clearAllMocks();
   useToastStore.setState({ toasts: [] });
@@ -111,7 +117,7 @@ describe("CoachMailBar — filets globaux (vrai queryClient)", () => {
 
     await user.click(await screen.findByRole("button", { name: MAIL.sendButton }));
     const dialog = await screen.findByRole("dialog", { name: MAIL.confirmTitle });
-    // `retry: 1` du vrai client : l'échec se déclare après une relance (~1 s).
+    // `retry: 1` du vrai client : l'échec se déclare après une relance.
     const alert = await within(dialog).findByRole("alert", {}, { timeout: 4000 });
     expect(alert).toHaveTextContent(MAIL.previewLoadFailed);
     expect(useToastStore.getState().toasts, "la modale dit l'échec : le toast générique le doublerait").toHaveLength(0);

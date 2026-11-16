@@ -1,7 +1,7 @@
 import { QueryClientProvider } from "@tanstack/react-query";
 import { renderHook, waitFor } from "@testing-library/react";
 import { HTTPError } from "ky";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import type { ReactNode } from "react";
 
 import { queryClient } from "@/shared/lib/queryClient";
@@ -46,6 +46,12 @@ describe("useSocleDeviation — gating", () => {
  * VRAI client de l'app — c'est lui qui porte le filet.
  */
 describe("useSocleDeviation — l'échec de lecture n'est dit qu'une fois (dans le panneau)", () => {
+  // Le vrai client relance une fois (`retry: 1`) après 1 s ; la relance reste, son attente non :
+  // le filet ne parle qu'à l'échec final, que la relance soit immédiate ou différée.
+  const defaults = queryClient.getDefaultOptions();
+  beforeAll(() => queryClient.setDefaultOptions({ ...defaults, queries: { ...defaults.queries, retryDelay: 0 } }));
+  afterAll(() => queryClient.setDefaultOptions(defaults));
+
   it.each([409, 500])("un %d ne pose AUCUN toast générique", async (status) => {
     const error = new HTTPError(new Response(JSON.stringify({ error: "Message serveur." }), { status }), new Request("http://localhost/api/schedules/sc-1/socle-deviation"), {} as never);
     vi.spyOn(api, "getSocleDeviation").mockRejectedValue(error);

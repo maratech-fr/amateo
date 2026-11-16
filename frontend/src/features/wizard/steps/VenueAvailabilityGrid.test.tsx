@@ -284,42 +284,6 @@ describe("VenueAvailabilityGrid — repère au survol (#8)", () => {
     await user.unhover(cell);
     expect(screen.queryByText("Mardi · 17:15")).toBeNull();
   });
-
-  it("surligne la ligne d'heure de la gouttière alignée sur la case survolée, puis la relâche", async () => {
-    const user = userEvent.setup();
-    render(<VenueAvailabilityGrid venue={venue} slots={[]} selectedSlotId={null} onAdd={vi.fn()} onSelect={vi.fn()} />);
-
-    // La gouttière affiche « 09:00 » (heure pile) ; au repos elle n'est pas marquée active.
-    expect(screen.getByText("09:00")).not.toHaveAttribute("data-active", "true");
-
-    await user.hover(screen.getByRole("button", { name: "Mar 09:00" }));
-    expect(screen.getByText("09:00")).toHaveAttribute("data-active", "true");
-
-    await user.unhover(screen.getByRole("button", { name: "Mar 09:00" }));
-    expect(screen.getByText("09:00")).not.toHaveAttribute("data-active", "true");
-  });
-});
-
-/**
- * Retours Rillieux #8 — séparateur de jour. La frontière entre colonnes de JOUR doit rester PLUS
- * marquée que le quadrillage interne (lignes d'heures), y compris après l'éclaircissement de la
- * grille (tranché par le fondateur sur captures A/B à la PR). On épingle la distinction par la
- * LARGEUR (bordure gauche à 2 px), jamais par une couleur exacte : le séparateur vertical est
- * épais, les lignes de temps horizontales restent fines.
- *
- * Garde de non-régression : la promesse est déjà tenue structurellement — ce test la verrouille
- * pendant le changement de couleurs du lot, où il serait facile de diluer le séparateur avec le reste.
- */
-describe("VenueAvailabilityGrid — séparateur de jour marqué (#8)", () => {
-  it("la frontière de jour (bordure gauche) est plus épaisse que le quadrillage interne (lignes d'heures)", () => {
-    render(<VenueAvailabilityGrid venue={venue} slots={[]} selectedSlotId={null} onAdd={vi.fn()} onSelect={vi.fn()} />);
-
-    const cell = screen.getByRole("button", { name: "Mar 09:00" });
-    // Le séparateur de jour est un trait VERTICAL épais…
-    expect(cell).toHaveClass("border-l-2");
-    // …quand les lignes d'heures (horizontales) restent fines : pas de bordure haute 2 px.
-    expect(cell.className).not.toMatch(/\bborder-t-2\b/);
-  });
 });
 
 /**

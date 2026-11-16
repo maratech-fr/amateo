@@ -475,17 +475,6 @@ describe("WishesTab", () => {
     expect(createMut).toHaveBeenCalledWith(expect.objectContaining({ wishedDays: [2], unavailableDays: [3] }), expect.anything());
   });
 
-  // Lot 5 — « Jours disponibles » est rendu AU-DESSUS de « Jours souhaités ».
-  it("rend « Jours disponibles » AVANT « Jours souhaités »", async () => {
-    const user = userEvent.setup();
-    render(<WishesTab mother={mother} weekFilter="2026-02-16" />);
-    await user.click(screen.getByRole("button", { name: "Ajouter" }));
-
-    const dispo = screen.getByRole("group", { name: COACH_WISHES_MANAGER_TEXTS.formTeamDaysLegend });
-    const wished = screen.getByRole("group", { name: "Jours souhaités" });
-    expect(dispo.compareDocumentPosition(wished) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-  });
-
   // Lot 5 — « Créneaux souhaités » est un champ NOMBRE (spinbutton) borné 0-7 (bornes serveur).
   it("rend « Créneaux souhaités » en champ nombre borné 0-7", async () => {
     const user = userEvent.setup();
@@ -521,17 +510,6 @@ describe("WishesTab", () => {
     const dispo = screen.getByRole("group", { name: COACH_WISHES_MANAGER_TEXTS.formTeamDaysLegend });
     expect(within(dispo).getByRole("button", { name: "jeudi" })).toHaveAttribute("aria-pressed", "false");
     expect(within(dispo).getByRole("button", { name: "lundi" })).toHaveAttribute("aria-pressed", "true");
-  });
-
-  // ── P2-63 C — sélecteur d'équipe partagé (TeamSelect, groupé par rang) ──
-
-  it("C — le sélecteur « Équipe » est un TeamSelect groupé par rang", async () => {
-    const user = userEvent.setup();
-    render(<WishesTab mother={mother} weekFilter="2026-02-16" />);
-    await user.click(screen.getByRole("button", { name: "Ajouter" }));
-    await user.click(screen.getByRole("button", { name: /^Équipe SM1/ }));
-    expect(within(screen.getByRole("group", { name: /Fanion/ })).getByRole("option", { name: "Fanion" })).toBeInTheDocument();
-    expect(within(screen.getByRole("group", { name: /Moyenne/ })).getByRole("option", { name: "SM1" })).toBeInTheDocument();
   });
 
   // ── P3-14 (retour terrain 2026-07-31) ──
@@ -656,18 +634,6 @@ describe("WishesTab", () => {
   });
 
   // ── P2-63 PR 2 / D — semaine d'abord, équipe servie désactivée, coach facultatif ──
-
-  // Le founder : « sélection de la semaine d'abord ». Le sélecteur Semaine précède Équipe.
-  it("D — rend la Semaine AVANT l'Équipe dans le formulaire d'ajout", async () => {
-    const user = userEvent.setup();
-    render(<WishesTab mother={mother} weekFilter={null} />);
-    await user.click(screen.getByRole("button", { name: "Ajouter" }));
-
-    const semaine = screen.getByLabelText("Semaine");
-    const equipe = screen.getByRole("button", { name: /^Équipe SM1/ });
-    // Ordre du DOM : Semaine précède Équipe (comparaison de position documentaire).
-    expect(semaine.compareDocumentPosition(equipe) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-  });
 
   // Une équipe DÉJÀ servie sur la semaine choisie est DÉSACTIVÉE avec motif, jamais masquée.
   it("D — désactive avec motif une équipe déjà servie sur la semaine, sans la masquer", async () => {

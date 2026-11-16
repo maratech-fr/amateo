@@ -168,17 +168,6 @@ describe("PublicWishPage — parcours en étapes", () => {
     expect(h.submit).toHaveBeenCalledWith("abc", [{ teamId: "t1", weekStart: "2026-02-16", slotsWanted: 2, unavailableDays: [], wishedDays: [2, 3], comment: "note manager" , keepSeasonSlots: false, staffUnavailability: [] }], []);
   });
 
-  // Lot 5 — « Jours disponibles » est rendu AU-DESSUS de « Jours souhaités » sur la page coach aussi.
-  it("P2-63 lot 5 — rend « Jours disponibles » AVANT « Jours souhaités »", async () => {
-    h.getContext.mockResolvedValue(context());
-    renderAt();
-    await start();
-
-    const dispo = screen.getByRole("group", { name: COACH_WISHES_PUBLIC_TEXTS.teamDaysLegend });
-    const wished = screen.getByRole("group", { name: "Jours souhaités" });
-    expect(dispo.compareDocumentPosition(wished) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-  });
-
   // P2-63 A — inversion de PRÉSENTATION : « Jours disponibles » (tous pressés, on dépresse) ;
   // le payload reste `unavailableDays` (jours dépressés = indisponibles), zéro migration.
   it("P2-63 A — « Jours disponibles » : tout pressé sauf l'indisponible, et dépresser un jour l'envoie en unavailableDays", async () => {

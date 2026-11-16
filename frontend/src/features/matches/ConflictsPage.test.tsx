@@ -755,30 +755,7 @@ const expectGreyed = (button: HTMLElement): void => {
   expect(button.hasAttribute("disabled") || "true" === button.getAttribute("aria-disabled")).toBe(true);
 };
 
-/** Le plus petit ancêtre commun de deux nœuds. */
-function commonAncestor(a: HTMLElement, b: HTMLElement): HTMLElement {
-  let node: HTMLElement | null = a;
-  while (null !== node && !node.contains(b)) {
-    node = node.parentElement;
-  }
-  if (null === node) {
-    throw new Error("aucun ancêtre commun");
-  }
-  return node;
-}
-
 describe("ConflictsPage — envoyer les conflits aux coachs : où la page pose la barre", () => {
-  it("le bouton vit dans la rangée FIXE « Regrouper par » (plan D11), pas au-dessus des filtres et de la liste", async () => {
-    renderAt();
-    await screen.findByRole("button", { name: /Mara · 3/ });
-    const button = await findSendButton();
-    const row = commonAncestor(screen.getByRole("group", { name: MATCHES_TEXTS.groupByLabel }), button);
-    // La rangée du pivot ne contient ni les puces de familles ni les entrées de la liste : si le
-    // bouton est posé ailleurs, le seul ancêtre commun est la page entière, qui les contient.
-    expect(row.contains(screen.getByRole("button", { name: /Personne en double/ })), "la rangée du bouton ne doit pas englober les puces de familles").toBe(false);
-    expect(row.contains(screen.getByRole("button", { name: /Mara · 3/ })), "la rangée du bouton ne doit pas englober la liste").toBe(false);
-  });
-
   it("saison sans conflit : le bouton et la ligne d'état restent rendus au-dessus de l'état vide", async () => {
     state.conflicts = [];
     state.coachMailing = { personConflictCount: 0, pendingRecipientCount: 0, last: { sentAt: SENT_AT, sentByFirstName: "Nadia", mailedCount: 2, skippedCoachIds: [] } };

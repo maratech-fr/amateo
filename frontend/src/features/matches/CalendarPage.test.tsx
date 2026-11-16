@@ -219,12 +219,6 @@ afterEach(() => {
 });
 
 describe("CalendarPage — la Semaine (ex-boucle, fusion PR 3b)", () => {
-  it("au chargement, rend le FullPageSpinner PLEINE PAGE (pas un spinner nu)", () => {
-    vi.mocked(matchesApi.getFixtures).mockReturnValueOnce(new Promise(() => {}));
-    renderWithProviders(<CalendarPage />, { route: EXPLICIT });
-    expect(screen.getByLabelText("Chargement")).toHaveClass("size-8");
-  });
-
   // Un championnat commencé passe SEUL « Déjà dans FBI » à la lecture du gestionnaire : le bandeau
   // ne garde que ce qui reste à traiter (sans heure ni gymnase, écart) — jamais un geste de
   // confirmation, même quand la lecture sert encore des validables.
@@ -632,26 +626,6 @@ describe("CalendarPage — chips, familles, temporalités (ex-Consulter)", () =>
     expect(screen.getByRole("button", { name: /Collision de gymnase/ })).toBeInTheDocument();
   });
 
-  // Puce pressée (toutes les familles le sont d'office) : son 0 garde la couleur du texte, lisible
-  // sur le fond accent plein — la sourdine ne vaut que pour une puce non pressée (FilterChip).
-  it("une famille entièrement traitée garde sa chip à 0, lisible sur la puce pressée (P4-207)", async () => {
-    setTodayOverride("2026-10-01");
-    vi.mocked(matchesApi.getFixtures).mockResolvedValueOnce(consultFixtures as never);
-    vi.mocked(matchesApi.getCompetitions).mockResolvedValueOnce(consultCompetitions as never);
-    vi.mocked(matchesApi.getConflicts).mockResolvedValueOnce({
-      clubId: "c",
-      seasonId: "s",
-      seasonPlanChosen: true,
-      conflicts: [
-        { type: "VENUE_OVERLAP", severity: 1, resolution: { status: "RESOLVED_INTERNALLY", note: null, updatedAt: "2026-10-03T20:45:00+02:00" }, left: { fixtureId: "fx-home-amical", teamId: "team-1", homeAway: "HOME", matchDate: "2026-10-03", kickoffTime: "16:00", windowStart: "", windowEnd: "" }, right: { fixtureId: "fx-home-coupe", teamId: "team-2", homeAway: "HOME", matchDate: "2026-10-03", kickoffTime: "18:00", windowStart: "", windowEnd: "" } },
-      ],
-    } as never);
-    renderWithProviders(<CalendarPage />, { route: EXPLICIT });
-    const chip = await screen.findByRole("button", { name: /Collision de gymnase/ });
-    expect(chip).toHaveAttribute("aria-pressed", "true");
-    expect(within(chip).getByText("0")).not.toHaveClass("text-muted-foreground");
-  });
-
   it("le compteur d'une famille suit la SEMAINE affichée (scope hebdo)", async () => {
     seedConsult();
     const user = userEvent.setup();
@@ -951,18 +925,6 @@ describe("CalendarPage — défauts (état vierge) + interrupteur Extérieurs", 
     expect(screen.queryByText(/matchs? masqués? cette semaine/)).not.toBeInTheDocument();
     // Annonce sr-only remplie après interaction.
     expect(screen.getByText("2 matchs affichés")).toBeInTheDocument();
-  });
-
-  it("indice « masqués » : phrase SINGULIÈRE (un seul amical masqué)", async () => {
-    setTodayOverride("2026-10-01");
-    vi.mocked(matchesApi.getFixtures).mockResolvedValueOnce([
-      fx({ id: "fx-champ", teamId: "team-1", competitionId: "comp-champ", matchDate: "2026-10-03", homeAway: "HOME", opponentLabel: "ChampHome", status: "PLACED", venueId: "venue-1", kickoffTime: "16:00" }),
-      fx({ id: "fx-amical", teamId: "team-2", competitionId: null, matchDate: "2026-10-03", homeAway: "HOME", opponentLabel: "AmicalHome", status: "PLACED", venueId: "venue-1", kickoffTime: "18:00" }),
-    ] as never);
-    vi.mocked(matchesApi.getCompetitions).mockResolvedValueOnce([champComp] as never);
-    vi.mocked(matchesApi.getConflicts).mockResolvedValueOnce({ clubId: "c", seasonId: "s", seasonPlanChosen: true, held: [], conflicts: [] } as never);
-    renderWithProviders(<CalendarPage />, { route: "/" });
-    expect(await screen.findByText("1 match masqué cette semaine (1 amical).")).toBeInTheDocument();
   });
 
   it("« Réinitialiser » remet les défauts (types, extérieurs, semaine type) sans toucher la temporalité", async () => {

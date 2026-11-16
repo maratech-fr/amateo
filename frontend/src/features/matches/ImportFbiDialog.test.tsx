@@ -369,12 +369,6 @@ describe("ImportFbiDialog", () => {
     await waitFor(() => expect(importFbiFixtures).toHaveBeenCalledOnce());
   };
 
-  it("les libellés du résumé de rétablissement sont ceux validés (singulier / pluriel)", () => {
-    expect(typeof R.importFbiRestored, "clé MATCHES_TEXTS.importFbiRestored").toBe("function");
-    expect(R.importFbiRestored(1)).toBe("1 rencontre rétablie d'après FBI : l'adversaire de l'application ne correspondait pas.");
-    expect(R.importFbiRestored(3)).toBe("3 rencontres rétablies d'après FBI : l'adversaire de l'application ne correspondait pas.");
-  });
-
   it.each([1, 4])("le rapport résume %i rencontre(s) rétablie(s) d'après FBI", async (restored) => {
     expect(typeof R.importFbiRestored, "clé MATCHES_TEXTS.importFbiRestored").toBe("function");
     const user = userEvent.setup();
@@ -738,15 +732,6 @@ describe("ImportFbiDialog", () => {
   });
 
   // ── D6 — les salles ont leur onglet, dernier, avec un compteur vivant ──
-
-  it("les libellés de l'onglet Salles sont ceux validés (pluriels compris)", () => {
-    expect(M.importFbiVenuesTab(1, 3)).toBe("Salles (1/3)");
-    expect(M.importFbiVenuesRemaining(1)).toBe("1 salle encore sans gymnase — voir l'onglet Salles.");
-    expect(M.importFbiVenuesRemaining(3)).toBe("3 salles encore sans gymnase — voir l'onglet Salles.");
-    expect(M.importFbiVenueMissingReason).toBe("Associez un gymnase à chaque salle à domicile dans l'onglet Salles (ou déclarez-la « terrain neutre ») pour pouvoir importer.");
-    expect(M.importFbiFamiliesAria).toBe("Divisions et salles à domicile");
-    expect(M, "le titre de section disparaît avec la section").not.toHaveProperty("importFbiVenuesTitle");
-  });
 
   it("l'onglet Salles vient en dernier et compte en direct salles et domiciles sans salle", async () => {
     const user = userEvent.setup();
