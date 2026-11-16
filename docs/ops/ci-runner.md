@@ -446,3 +446,5 @@ de l'usage « Actions Linux » depuis le jour de renouvellement :
   un rouge de fin de lot se diagnostique par `git bisect` entre `merge-base lot main` et la tête du
   lot (`CLAUDE.md` §7 étape 5). Un correctif urgent passe par une PR vers `release`
   (`docs/ops/deploy.md`) puis report sur `main` ; le rebase final le ramène dans le lot.
+
+Essai du Lot Gate : ligne de test, branche jetable.
