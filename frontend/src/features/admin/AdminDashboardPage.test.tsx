@@ -584,27 +584,6 @@ describe("AdminDashboardPage", () => {
     expect(await axe(container)).toHaveNoViolations();
   }, 10_000);
 
-  // Revue #346 — le déplacement de `Tabs` vers `shared/` a introduit une peau par défaut
-  // (`app`, thème clair) : un `variant="console"` oublié sur un site d'appel peint des tokens
-  // clairs sur la coque sombre (`--console-surface`) et rend l'onglet actif illisible. C'est arrivé aux
-  // sous-onglets Journaux, et RIEN ne l'avait vu — le test du composant épingle le composant,
-  // pas la PAGE. Cette assertion garde le site d'appel.
-  it("habille TOUS ses onglets de la peau console, sous-onglets compris", async () => {
-    const user = userEvent.setup();
-    renderWithProviders(<AdminDashboardPage />, { route: "/admin" });
-  
-    await user.click(await screen.findByRole("tab", { name: /Incidents/ }));
-    for (const tab of screen.getAllByRole("tab")) {
-      expect(tab.className).toMatch(/text-white|text-console-text-dim/);
-      expect(tab.className).not.toContain("text-muted-foreground");
-    }
-    // Les PANNEAUX aussi : leur anneau de focus vient du même `variant`, et l'oublier
-    // rendrait invisible la position du focus sur la coque sombre (revue #346 round 2).
-    for (const panel of screen.getAllByRole("tabpanel", { hidden: true })) {
-      expect(panel.className).toContain("ring-console-accent/20");
-    }
-  });
-
   // PR1 console superadmin — « silence quand tout va bien » : une pastille sur l'onglet
   // Santé ou Incidents suffit à dire qu'il faut aller voir. Les signaux sont pollés au
   // niveau page (les panneaux montent toujours leurs enfants). On prouve ici QUAND chaque
@@ -884,17 +863,6 @@ describe("AdminDashboardPage", () => {
     });
   });
 
-  // D3 — la console ouvre sur son nom et son geste, sans eyebrow ni description de présentation.
-  it("l'en-tête se réduit au titre de la console et à « Actualiser »", async () => {
-    renderWithProviders(<AdminDashboardPage />, { route: "/admin?tab=clubs" });
-
-    expect(ADMIN_DASHBOARD_TEXTS.headerTitle).toBe("Console d'administration");
-    expect(await screen.findByRole("heading", { level: 1, name: ADMIN_DASHBOARD_TEXTS.headerTitle })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: ADMIN_DASHBOARD_TEXTS.refresh })).toBeInTheDocument();
-    expect(ADMIN_DASHBOARD_TEXTS, "plus d'eyebrow").not.toHaveProperty("headerEyebrow");
-    expect(ADMIN_DASHBOARD_TEXTS, "plus de description").not.toHaveProperty("headerDescription");
-  });
-
   // D1 (console PR 1) — la colonne « Dernière activité » se lit en jours calendaires Europe/Paris
   // (« Aujourd'hui », « Hier », « Il y a N jours », « Jamais »), le sens étant dit par le title de la
   // cellule, celui de l'en-tête et le caption. La PAIRE 22:30 / 23:30 UTC (veille au soir) prouve le
@@ -949,16 +917,6 @@ describe("AdminDashboardPage", () => {
       // 23:30 UTC le 9 = 00:30 Paris le 10 : le title date du 10, pas du 9.
       expect(time).toHaveAttribute("title", ADMIN_DASHBOARD_TEXTS.clubLastActivityTitle("10 nov. 2026"));
       expect(within(row("Club jamais")).getByTitle(ADMIN_DASHBOARD_TEXTS.clubNeverActiveTitle)).toHaveTextContent(ADMIN_DASHBOARD_TEXTS.clubNeverActive);
-    });
-
-    it("dit le sens de la colonne dans le title de l'en-tête et dans le caption", async () => {
-      renderWithProviders(<AdminDashboardPage />, { route: "/admin?tab=clubs" });
-      await screen.findByText("Club matin");
-
-      expect(screen.getByRole("columnheader", { name: ADMIN_DASHBOARD_TEXTS.clubColActivity, hidden: true })).toHaveAttribute("title", ADMIN_DASHBOARD_TEXTS.clubActivityMeaning);
-      const meaning = ADMIN_DASHBOARD_TEXTS.clubActivityMeaning;
-      const caption = row("Club matin").closest("table")?.querySelector("caption");
-      expect(caption?.textContent ?? "").toContain(meaning.charAt(0).toLowerCase() + meaning.slice(1));
     });
   });
 

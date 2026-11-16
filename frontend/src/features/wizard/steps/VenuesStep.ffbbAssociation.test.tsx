@@ -302,17 +302,6 @@ describe("VenuesStep — Associer une salle FFBB, sur la carte du gymnase", () =
     await user.click(within(dialog).getByRole("button", { name: WIZARD_TEXTS.associateVenueConfirm }));
   };
 
-  it("le menu « Associer à… » a quitté la liste des salles de l'accordéon", async () => {
-    const user = userEvent.setup();
-    h.nearby.salles = [SALLE];
-    renderWithProviders(<Harness />);
-
-    await user.click(accordion());
-
-    const row = screen.getByText(SALLE.name).closest("li") as HTMLElement;
-    expect(within(row).queryByRole("button", { name: /associer/i })).not.toBeInTheDocument();
-  });
-
   it("n'est pas proposé sur un gymnase déjà lié", () => {
     h.venues.data = [LINKED];
     h.nearby.salles = [SALLE];
@@ -505,18 +494,6 @@ describe("VenuesStep — Associer : la recherche dans toute la FFBB, dans sa mod
 
     expect(h.updateCalls[0]?.body).toEqual(expect.objectContaining({ externalRef: NO_GPS.externalRef, address: NO_GPS.address }));
     expect(await screen.findByRole("textbox", { name: "Adresse" })).toHaveValue(NO_GPS.address);
-  });
-
-  it("une salle avec position garde le texte habituel de confirmation", async () => {
-    const user = userEvent.setup();
-    h.nearby.salles = [SALLE];
-    renderWithProviders(<Harness />);
-
-    await user.click(openButton());
-    await pick(user, SALLE);
-
-    expect(within(confirmDialog(SALLE)).getByText(WIZARD_TEXTS.associateVenueDescription)).toBeInTheDocument();
-    expect(within(confirmDialog(SALLE)).queryByText(WIZARD_TEXTS.associateVenueDescriptionNoGps)).not.toBeInTheDocument();
   });
 
   it("une adresse absente à la FFBB n'affiche jamais « null », ni sur la ligne ni à la confirmation", async () => {

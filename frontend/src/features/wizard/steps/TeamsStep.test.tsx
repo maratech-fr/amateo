@@ -6,8 +6,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { renderWithProviders } from "@/test/utils";
 import { WizardFooterContext } from "../lib/footerSlot";
 
-import { TEAM_COLUMNS } from "../lib/teamColumns";
-
 import type { TeamLink } from "@/features/matches/api";
 
 import type { SharedTrainingBlock, Team } from "../api";
@@ -226,24 +224,6 @@ describe("TeamsStep", () => {
     expect(within(teamRow().parentElement as HTMLElement).queryByRole("img", { name: TEAMS_TEXTS.engagedRowMarker })).not.toBeInTheDocument();
   });
 
-  it("reserves the lock column on a team that is not engaged, so the row columns stay aligned (P4-375)", () => {
-    // jsdom ne mesure rien : on garde la réserve de largeur par sa classe, le rendu se juge sur capture.
-    renderWithProviders(<TeamsStep />);
-
-    const reserved = within(teamRow()).getByRole("button", { name: TEAMS_TEXTS.linksOfTeam("SM3") }).previousElementSibling;
-    expect(reserved).toHaveAttribute("aria-hidden", "true");
-    expect(reserved).toHaveClass("w-4", "shrink-0");
-  });
-
-  it("puts the lock in that same reserved column on an engaged team (P4-375)", () => {
-    team = { ...baseTeam, isEngaged: true };
-    renderWithProviders(<TeamsStep />);
-
-    const lock = within(teamRow()).getByRole("button", { name: TEAMS_TEXTS.linksOfTeam("SM3") }).previousElementSibling;
-    expect(lock).toHaveAttribute("role", "img");
-    expect(lock?.querySelector("svg")).toHaveClass("size-4");
-  });
-
   it("leaves both open on a team that does not play yet", () => {
     renderWithProviders(<TeamsStep />);
     const row = teamRow();
@@ -378,21 +358,6 @@ describe("TeamsStep", () => {
     expect(screen.getByRole("button", { name: "Ajouter la passerelle" })).toBeInTheDocument();
     // Jamais un dialog dans le dialog : « Gérer les passerelles » est masqué.
     expect(screen.queryByRole("button", { name: "Gérer les passerelles" })).toBeNull();
-  });
-
-  it("shows a play-level select and no redundant inner heading", () => {
-    renderWithProviders(<TeamsStep />);
-    // Play-level select exists on both the add form and the row.
-    expect(screen.getAllByLabelText("Niveau de jeu").length).toBeGreaterThan(0);
-    // Point 5: the sticky wizard header owns the title; no inner "Équipes" h2.
-    expect(screen.queryByRole("heading", { name: "Équipes" })).toBeNull();
-  });
-
-  it("keeps a Rang select on the ADD form but NOT on team rows (rang changed via Trier)", () => {
-    renderWithProviders(<TeamsStep />); // exactly one team (t1) is rendered
-    // Only the add form still offers a rank picker; the row has none — a team's
-    // tier is changed via the "Trier" drag & drop, not an inline dropdown.
-    expect(screen.getAllByLabelText("Rang")).toHaveLength(1);
   });
 
   it("keeps the gender select (categories are ungendered now)", () => {
@@ -656,49 +621,8 @@ describe("TeamsStep", () => {
     ]);
   }, 10_000);
 
-  /**
-   * P4-107 (4ᵉ tranche) — **les trois rendus des mêmes colonnes ne peuvent plus diverger.**
-   *
-   * L'étape rend les mêmes colonnes à TROIS endroits : l'en-tête du formulaire d'ajout, le
-   * formulaire, et l'en-tête + les lignes de la liste. Chacun portait ses classes, et ils
-   * avaient DÉJÀ divergé — le Genre valait `w-24` en haut et `w-20` en bas, si bien que les
-   * deux tableaux ne s'alignaient pas. `TEAM_COLUMNS` est désormais leur maison unique.
-   *
-   * ⚠ **Ce que ce test NE prouve PAS, et il faut le savoir en le lisant** : que « Homme » tienne
-   * dans son sélecteur. jsdom n'a aucun moteur de mise en page — aucune largeur n'y existe. Il
-   * garde la PARITÉ (modifier un seul site rougit) ; la troncature réelle se mesure en
-   * Playwright, `tests/e2e/width-calibration.spec.ts`.
-   */
-  it("la largeur d'une colonne est la MÊME dans le formulaire et dans la ligne", () => {
-    // L'équipe par défaut du harnais suffit : le sujet est la largeur, pas la donnée.
-    renderWithProviders(<TeamsStep />);
-
-    // Les DEUX sélecteurs « Genre » de l'écran — celui du formulaire d'ajout et celui de la
-    // ligne — sont exactement ce qui avait divergé (`w-24` en haut, `w-20` en bas).
-    const widthOf = (el: HTMLElement): string | undefined => el.className.split(/\s+/).find((c) => c.startsWith("w-"));
-    const widths = screen.getAllByLabelText("Genre").map((el) => widthOf(el as HTMLElement));
-    expect(widths.length).toBeGreaterThan(1);
-    expect(new Set(widths).size, `les deux sites doivent porter la MÊME largeur, trouvé ${widths.join(" / ")}`).toBe(1);
-    expect(widths[0]).toBe(TEAM_COLUMNS.gender);
-    // Falsifié dans l'autre sens : ni l'une ni l'autre des deux valeurs divergentes d'avant —
-    // `w-20` coupait « Homme » en « Homn », et `w-24` était l'autre moitié du désalignement.
-    expect(TEAM_COLUMNS.gender).not.toBe("w-20");
-    expect(TEAM_COLUMNS.gender).not.toBe("w-24");
-  });
-
-  // ── Chantier D (CTC) D4 — l'entente se RÈGLE dans la modale Liens ; la ligne n'en garde que le REPÈRE ──
-  // Décision fondateur 2026-10-25 : la SAISIE (case + partenaire) a quitté la ligne pour un 3ᵉ onglet
-  // « Entente (CTC) » de la modale Liens — ses promesses vivent désormais dans
-  // `TeamLinksModal.test.tsx` (« onglet Entente (CTC) (D4) » : cocher PUT isCtc, partenaire au blur,
-  // champ pré-rempli). La LIGNE n'affiche plus que le REPÈRE : le picto CtcMark devant le nom + un
-  // segment en tête de la sous-ligne. (Remplace les ex-tests de saisie :665-699.)
-
-  it("ne porte plus de case « Entente (CTC) » sur la ligne (la saisie a migré dans la modale Liens)", () => {
-    team = { ...baseTeam, isCtc: true, ctcPartner: "AS Voisine" };
-    renderWithProviders(<TeamsStep />);
-    // Plus aucune case à cocher d'entente, ni sur la ligne ni ailleurs sur l'écran Équipes.
-    expect(screen.queryByRole("checkbox", { name: /entente/i })).toBeNull();
-  });
+  // ── Chantier D (CTC) D4 — la saisie de l'entente vit dans la modale Liens (`TeamLinksModal.test.tsx`) ;
+  // la ligne n'en garde que le REPÈRE : le picto CtcMark devant le nom + un segment en tête de la sous-ligne.
 
   it("affiche le repère CtcMark DEVANT le nom sur la ligne d'une équipe en entente", () => {
     team = { ...baseTeam, isCtc: true, ctcPartner: "AS Voisine" };

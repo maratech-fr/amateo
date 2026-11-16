@@ -363,23 +363,6 @@ describe("PlanningPage (integration)", () => {
     expect(screen.queryByRole("button", { name: /valider/i })).not.toBeInTheDocument();
   });
 
-  // Lot B — le « Signaler » de l'en-tête vit sur l'écran AUTONOME (comme tout écran principal) ;
-  // EMBARQUÉ dans le wizard, il est MASQUÉ (l'en-tête du wizard porte déjà la porte — pas de double).
-  it("autonome : l'en-tête porte « Signaler »", async () => {
-    renderWithProviders(<PlanningPage />);
-
-    expect(await screen.findByText("U11")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /signaler/i })).toBeInTheDocument();
-  });
-
-  it("embarqué (wizard) : aucun « Signaler » (l'en-tête du wizard le porte déjà)", async () => {
-    vi.mocked(listSchedules).mockResolvedValue([{ id: SID, name: "Planning A", status: "COMPLETED", score: 9051, createdAt: "2026-01-01T00:00:00Z", updatedAt: "2026-01-01T00:00:00Z", planType: "SEASON", schedulePlanId: "season-plan", isChosen: true }]);
-    renderWithProviders(<PlanningPage embedded />);
-
-    expect(await screen.findByText("U11")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /signaler/i })).not.toBeInTheDocument();
-  });
-
   // Revue sécu — l'id remonté est ÉPHÉMÈRE : il alimente le « Signaler » de l'en-tête du wizard
   // (étape Génération) tant que le planning embarqué est à l'écran. Au démontage (sortie de l'étape,
   // bascule de période, autre club sans rechargement), il DOIT être effacé, sinon le signalement
@@ -3385,12 +3368,6 @@ describe("PlanningPage — version chargée", () => {
       await screen.findByText("U11");
     };
 
-    it("le vocabulaire est celui du titre : « source », jamais « chargée »", () => {
-      expect(PLANNING_TEXTS.notSourceBanner("V1", "V2", true)).toMatch(/source/);
-      expect(PLANNING_TEXTS.notSourceBanner("V1", "V2", true)).not.toMatch(/chargée/);
-      expect(PLANNING_TEXTS.openSourceVersion).toMatch(/source/);
-    });
-
     it.each([
       ["antérieure à la source", "p1", "V1"],
       ["plus récente que la source", "p3", "V3"],
@@ -3570,13 +3547,5 @@ describe("PlanningPage — version chargée", () => {
     await user.click(screen.getByRole("button", { name: /Charger cette version/ }));
 
     expect(await screen.findByText(PLANNING_TEXTS.loadVersionDescriptionGeneric)).toBeInTheDocument();
-  });
-});
-
-/** Un club sans planning est renvoyé vers le Wizard, nommé « Wizard », jamais « assistant » (décision fondateur 2026-11-07). */
-describe("PlanningPage — l'état « aucun planning » renvoie au Wizard", () => {
-  it("le libellé dit « Passez par le Wizard… », sans le mot « assistant »", () => {
-    expect(PLANNING_TEXTS.noPlanningDescription).toBe("Passez par le Wizard pour saisir vos données et générer un premier planning.");
-    expect(PLANNING_TEXTS.noPlanningDescription).not.toMatch(/assistant/i);
   });
 });

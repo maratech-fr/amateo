@@ -141,6 +141,8 @@ describe("api client — 401 handling", () => {
  * présent ou non, avec le `code` machine best-effort. L'incident déclencheur : un 502
  * nginx SANS X-Request-Id ni corps JSON, que l'ancien rail (qui exigeait un request-id)
  * n'enregistrait pas du tout. On exerce les VRAIS hooks de `api` via `api.extend`.
+ * `retry: 0` : sur un GET ≥ 500, ky relance deux fois (0,3 s puis 0,6 s) ; le hook voit déjà
+ * le premier passage, l'attente n'ajoute rien à la preuve.
  */
 describe("api client — mémoire d'incident serveur (P4-129)", () => {
   afterEach(() => {
@@ -158,7 +160,7 @@ describe("api client — mémoire d'incident serveur (P4-129)", () => {
   it("enregistre un 502 SANS X-Request-Id (statut + URL) — l'incident déclencheur", async () => {
     stubResponse(502, "<html><body>502 Bad Gateway</body></html>", "text/html");
 
-    const client = api.extend({ baseUrl: "http://localhost/api/" });
+    const client = api.extend({ baseUrl: "http://localhost/api/", retry: 0 });
     await expect(client.get("teams").json()).rejects.toBeDefined();
 
     const incident = readRecentIncident();
@@ -181,7 +183,7 @@ describe("api client — mémoire d'incident serveur (P4-129)", () => {
       ),
     );
 
-    const client = api.extend({ baseUrl: "http://localhost/api/" });
+    const client = api.extend({ baseUrl: "http://localhost/api/", retry: 0 });
     await expect(client.get("teams").json()).rejects.toBeDefined();
 
     const incident = readRecentIncident();
@@ -193,7 +195,7 @@ describe("api client — mémoire d'incident serveur (P4-129)", () => {
   it("tolère un corps HTML (pas de throw) et enregistre quand même l'incident", async () => {
     stubResponse(500, "<html>oops</html>", "text/html");
 
-    const client = api.extend({ baseUrl: "http://localhost/api/" });
+    const client = api.extend({ baseUrl: "http://localhost/api/", retry: 0 });
     // Le parse du clone échoue silencieusement : la requête rejette sur la HTTPError
     // de ky (500), pas sur une erreur de parsing du hook.
     await expect(client.get("teams").json()).rejects.toBeDefined();

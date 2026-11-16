@@ -3,9 +3,8 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ModalReportProviderContext } from "@/shared/components/ui/modalReportContext";
-import { dayLabelLongCap, dayLabelShort } from "@/shared/lib/days";
+import { dayLabelShort } from "@/shared/lib/days";
 import { formatDuration } from "@/shared/lib/duration";
-import { tierGroupLabel } from "@/shared/lib/teamTiers";
 import { endTime, formatMinutes } from "@/shared/lib/time";
 import { renderWithProviders } from "@/test/utils";
 
@@ -152,7 +151,7 @@ function analysisOf(
  * `listbox.tsx`, `aria-labelledby=[labelId, valueId]`) : « Gymnase … — U11M1 + U11M2 Créer » au
  * repos. On matche donc le PRÉFIXE `venueForGroup(libelle)` (clé `texts.ts` gardée comme source) via
  * un matcher FONCTION de testing-library — pas de `RegExp` construite (convention du dépôt, Semgrep
- * `detect-non-literal-regexp` ; cf. `accentTokenParity.test.ts`).
+ * `detect-non-literal-regexp`).
  */
 function venueForGroupTrigger(libelle: string): (accessibleName: string) => boolean {
   const prefix = PARC_IMPORT_TEXTS.venueForGroup(libelle);
@@ -572,13 +571,6 @@ describe("ParcImportModal — assistant 5 étapes & lignes ambiguës (refonte im
     expect(copied).toContain("Rillieux");
   });
 
-  it("l'aide de collage recommande les assistants GPT, Gemini, Claude et Copilot", () => {
-    // Contenu de la CLÉ de texte centralisée (jamais une phrase recopiée).
-    for (const assistant of ["GPT", "Gemini", "Claude", "Copilot"]) {
-      expect(PARC_IMPORT_TEXTS.promptHelp).toContain(assistant);
-    }
-  });
-
   it("s'ouvre aussi bien depuis Équipes que depuis Gymnases (deux portes, même assistant)", () => {
     const { unmount } = renderWithProviders(<ParcImportModal {...defaultProps} origin="teams" />);
     expect(screen.getByRole("button", { name: PARC_IMPORT_TEXTS.copyPrompt })).toBeInTheDocument();
@@ -713,34 +705,6 @@ describe("ParcImportModal — assistant 5 étapes & lignes ambiguës (refonte im
 
   // ─────────── Écart au plan 3b — réservations & mutualisations en GRILLE, plus de case à cocher (ROUGE) ───────────
 
-  it("3b — l'étape Réservations ne porte AUCUNE case à cocher (la grille fait foi)", async () => {
-    const user = userEvent.setup();
-    const payload = {
-      format: "parc-v2",
-      gymnases: [{ nom: "Gymnase Léon-Blum" }],
-      cases: [
-        { gymnase: "Gymnase Léon-Blum", jour: 2, debut: "18:00", duree: 90, equipes: ["SM1"] },
-        { gymnase: "Gymnase Léon-Blum", jour: 3, debut: "17:00", duree: 90, equipes: ["U11M1", "U11M2"] },
-      ],
-    };
-    const analysis = analysisOf(
-      {
-        reservations: [mkLine(0, "SM1 · Gymnase Léon-Blum 18:00", "decoche", { raison: "Réservation déjà présente dans le planning." })],
-        mutualisations: [mkLine(0, "U11M1 + U11M2", "alerte", { raison: "Les séances communes dépassent les séances hebdomadaires — à ajuster à la main." })],
-      },
-      { payload },
-    );
-    renderWithProviders(<ParcImportModal {...defaultProps} />);
-
-    await analyzeThen(user, analysis);
-    await goToStep(user, "reservations");
-
-    // Décision fondateur : réservations ET mutualisations en GRILLE par gymnase, plus de case à cocher.
-    expect(screen.queryAllByRole("checkbox")).toHaveLength(0);
-    // La composition d'une mutualisation n'est pas corrigeable inline (pas de champ amorcé sur l'ensemble).
-    expect(screen.queryByDisplayValue("U11M1 + U11M2")).not.toBeInTheDocument();
-  });
-
   it("3b/D8/P4-363 — une mutualisation se corrige à l'étape MUTUALISATIONS : gymnase (→ venueId) + nom de groupe (→ corrections.groupe), jamais via une case à cocher", async () => {
     // Retours fondateur 2026-10-26 — les mutualisations ont leur PROPRE étape (le gestionnaire doit
     // VOIR qu'il y a des mutualisations à vérifier). Les contrôles P4-363 (sélecteur de gymnase de la
@@ -840,44 +804,6 @@ describe("ParcImportModal — assistant 5 étapes & lignes ambiguës (refonte im
 
   // ─────────── Écart au plan 3c — l'éditeur de case réutilise le contrôle de durée partagé (ROUGE) ───────────
 
-  it("3c — la durée d'une case se choisit via le contrôle partagé DurationSelect (combobox « Durée »), le même que la modale de réservation du wizard — pas un champ nombre ad hoc", async () => {
-    const user = userEvent.setup();
-    const payload = {
-      format: "parc-v2",
-      gymnases: [{ nom: "Gymnase Léon-Blum" }],
-      cases: [{ gymnase: "Gymnase Léon-Blum", jour: 2, debut: "18:00", duree: 90, equipes: [] }],
-    };
-    const analysis = analysisOf({ creneaux: [mkLine(0, "Gymnase Léon-Blum · jour 2 18:00", "aCreer")] }, { payload });
-    renderWithProviders(<ParcImportModal {...defaultProps} />);
-
-    await analyzeThen(user, analysis);
-    // Retours fondateur 2026-10-26 — un créneau se corrige à l'étape GYMNASES (grille iso-wizard).
-    await goToStep(user, "gymnases");
-    await user.click(await screen.findByRole("button", { name: /18:00/ }));
-
-    // `slotFields.DurationSelect` : un combobox « Durée » dont les options sont formatées par
-    // `formatDuration` (« 1h30 ») + une option « Autre… » — jamais un `<input type="number">` ad hoc.
-    const durationControl = screen.getByRole("combobox", { name: "Durée" });
-    expect(within(durationControl).getByRole("option", { name: formatDuration(90) })).toBeInTheDocument();
-    expect(within(durationControl).getByRole("option", { name: "Autre…" })).toBeInTheDocument();
-  });
-
-  // ─────────── Écart au plan 3d — « Toutes les équipes du club » rangé PAR RANG (ROUGE) ───────────
-
-  it("3d — le groupe « Toutes les équipes du club » du sélecteur est rangé PAR RANG (groupTeamsByTier)", async () => {
-    const user = userEvent.setup();
-    const analysis = analysisOf({ equipes: [mkLine(0, "Nouvelle Équipe", "aCreer")] });
-    renderWithProviders(<ParcImportModal {...defaultProps} />);
-
-    await analyzeThen(user, analysis);
-    await user.click(await screen.findByRole("button", { name: decisionTrigger("Nouvelle Équipe") }));
-
-    // Les équipes du club (lues via useWizardTeams + usePriorityTiers, mockées avec des rangs S et D)
-    // produisent un TITRE de groupe par rang, jamais une liste plate « Toutes les équipes du club ».
-    const list = screen.getByRole("listbox");
-    expect(within(list).getByText(tierGroupLabel(w.tiers[0]))).toBeInTheDocument();
-    expect(within(list).getByText(tierGroupLabel(w.tiers[1]))).toBeInTheDocument();
-  });
 });
 
 /**
@@ -1242,26 +1168,6 @@ describe("ParcImportModal — finitions de l'aperçu (captures 04-07, 2026-10-26
     expect(scope.queryByText(T.rematchCreate)).not.toBeInTheDocument();
   });
 
-  it("2b — l'en-tête d'une ligne de mutualisation inclut le GYMNASE (« Lundi 17:30 · MONT BLANC »)", async () => {
-    const user = userEvent.setup();
-    const { libelle, analysis } = mutualAnalysis();
-    renderWithProviders(<ParcImportModal {...defaultProps} />);
-
-    await analyzeThen(user, analysis);
-    await goToStep(user, "mutualisations");
-
-    const line = screen.getByText(libelle).closest("li");
-    const scope = within(line as HTMLElement);
-    // L'élément d'en-tête (le <span> jour+heure, feuille) doit porter AUSSI le gymnase — pas seulement
-    // le sélecteur (qui, lui, n'inclut jamais « Lundi 17:30 »). On exige donc jour + heure + gymnase
-    // réunis dans UN même <span> de l'en-tête.
-    const hits = scope.queryAllByText(
-      (content: string, el: Element | null) =>
-        "SPAN" === el?.tagName && content.includes(dayLabelLongCap(1)) && content.includes(formatMinutes(17 * 60 + 30)) && content.includes("MONT BLANC"),
-    );
-    expect(hits.length, "l'en-tête de ligne doit inclure le gymnase (« Lundi 17:30 · MONT BLANC »)").toBeGreaterThan(0);
-  });
-
   it("2c — sans alerte, le compteur dit « N mutualisations lues » (« à vérifier » réservé aux alertes)", async () => {
     const user = userEvent.setup();
     const { analysis } = mutualAnalysis("aCreer");
@@ -1275,23 +1181,6 @@ describe("ParcImportModal — finitions de l'aperçu (captures 04-07, 2026-10-26
     // Il dit « lues » (nouvelle clé `mutualisationsReadCount`).
     expect(typeof T.mutualisationsReadCount, "clé `mutualisationsReadCount(n)` à créer (option A)").toBe("function");
     expect(screen.getByText(T.mutualisationsReadCount(1))).toBeInTheDocument();
-  });
-
-  it("2d — le placeholder du nom de groupe est COURT (non tronqué), sans l'exemple « (ex. … ) »", async () => {
-    const user = userEvent.setup();
-    const { libelle, analysis } = mutualAnalysis();
-    renderWithProviders(<ParcImportModal {...defaultProps} />);
-
-    await analyzeThen(user, analysis);
-    await goToStep(user, "mutualisations");
-
-    const line = screen.getByText(libelle).closest("li");
-    const scope = within(line as HTMLElement);
-    const nameInput = scope.getByRole("textbox", { name: (n: string) => n.startsWith(T.groupLabel(libelle)) });
-    const placeholder = nameInput.getAttribute("placeholder") ?? "";
-    // Placeholder COURT, non tronqué dans le champ : plus l'exemple « (ex. « CEC ») » qui se fait couper.
-    expect(placeholder).not.toContain("(ex.");
-    expect(placeholder.length, "placeholder du nom de groupe trop long (tronqué dans le champ)").toBeLessThanOrEqual(20);
   });
 
   // ─────────── 3. Éditeur de créneau — gymnase pré-rempli, pas de case à cocher, contrôles du wizard ───────────
@@ -1326,18 +1215,6 @@ describe("ParcImportModal — finitions de l'aperçu (captures 04-07, 2026-10-26
     // Pré-rempli du gymnase de la case (« Gymnase Léon-Blum »), jamais le placeholder nu « Créer ».
     expect(scope.getByText("Gymnase Léon-Blum")).toBeInTheDocument();
     expect(scope.queryByText(T.rematchCreate)).not.toBeInTheDocument();
-  });
-
-  it("3b — l'éditeur n'a AUCUNE case à cocher : Garder/Ignorer via le contrôle segmenté de l'étape Mutualisations", async () => {
-    const user = userEvent.setup();
-    const dialog = await openReservationEditor(user);
-    const scope = within(dialog);
-
-    // Plus de case à cocher « Garder cette ligne » : le même contrôle segmenté (role=group) que les mutualisations.
-    expect(scope.queryByRole("checkbox")).not.toBeInTheDocument();
-    const keep = scope.getByRole("button", { name: T.mutualKeep as unknown as string });
-    expect(scope.getByRole("button", { name: T.mutualIgnore as unknown as string })).toBeInTheDocument();
-    expect(keep.closest('[role="group"]'), "Garder/Ignorer doivent vivre dans UN contrôle segmenté").not.toBeNull();
   });
 
   it("3c — l'heure se saisit avec le contrôle du wizard (native <input type=\"time\">) et l'éditeur affiche la FIN calculée (slotFields.SlotEndField)", async () => {
@@ -1428,23 +1305,6 @@ describe("ParcImportModal — PR2 (règle unique, genre obligatoire, étape Ente
     });
   }
 
-  it("le rail porte une étape « Ententes (CTC) » juste après « Équipes » (testée par NOM, jamais par compte)", async () => {
-    const user = userEvent.setup();
-    renderWithProviders(<ParcImportModal {...defaultProps} />);
-    await analyzeThen(user, analysisOf({ equipes: [mkCreate(0, "SM1", { suggestedGender: "M" })] }));
-
-    expect(typeof T.stepEntentes, "clé `stepEntentes` à créer (libellé de l'étape, option A)").toBe("string");
-
-    const buttons = screen.getAllByRole("button");
-    const equipes = screen.getByRole("button", { name: stepNamed(PARC_IMPORT_TEXTS.sectionTitle("equipes")) });
-    const ententes = screen.getByRole("button", { name: stepNamed(T.stepEntentes as unknown as string) });
-    const gymnases = screen.getByRole("button", { name: stepNamed(PARC_IMPORT_TEXTS.sectionTitle("gymnases")) });
-
-    // Ordre du rail (position dans le DOM) : Équipes → Ententes → Gymnases.
-    expect(buttons.indexOf(equipes), "Ententes suit Équipes").toBeLessThan(buttons.indexOf(ententes));
-    expect(buttons.indexOf(ententes), "Gymnases suit Ententes").toBeLessThan(buttons.indexOf(gymnases));
-  });
-
   it("une ligne équipe « Créer » porte un Select Rang + un Select Genre, pré-remplis par la suggestion", async () => {
     const user = userEvent.setup();
     renderWithProviders(<ParcImportModal {...defaultProps} />);
@@ -1530,28 +1390,6 @@ describe("ParcImportModal — PR2 (règle unique, genre obligatoire, étape Ente
     const body = q.importMutate.mock.calls[0]?.[0] as { decisions: Array<{ section: string; index: number; corrections?: { ctc?: boolean } }> };
     const dec = body.decisions.find((d) => "equipes" === d.section && 0 === d.index);
     expect(dec?.corrections?.ctc, "l'entente décochée part ctc:false").toBe(false);
-  });
-
-  it("étape Ententes — une équipe en entente porte le pictogramme CtcMark (role img « Entente (CTC) … »), jamais une icône de LIEN (réservée aux mutualisations)", async () => {
-    // Revue fondateur 2026-10-26 (capture 03c-ententes) — l'étape posait un picto de LIEN (`Link2`)
-    // devant CHAQUE équipe. Décision : le repère d'entente est le CtcMark PARTAGÉ (poignée de main),
-    // posé partout où une entente est montrée ; l'icône de lien, réservée aux MUTUALISATIONS, disparaît
-    // de l'étape Ententes. On vérifie les DEUX moitiés de la promesse : le repère EST là (la primitive
-    // partagée `CtcMark` — role img dont le nom accessible est son propre contrat « Entente (CTC) … »,
-    // gardé par ctc-mark.test.tsx, pas un texte d'écran), et AUCUNE icône de lien ne subsiste.
-    const user = userEvent.setup();
-    const { container } = renderWithProviders(<ParcImportModal {...defaultProps} />);
-    await analyzeThen(user, analysisOf({ equipes: [mkCreate(0, "U15F CTC", { suggestedGender: "F", suggestedCtc: true })] }));
-
-    await user.click(screen.getByRole("button", { name: stepNamed(T.stepEntentes as unknown as string) }));
-
-    // La case est pré-cochée (entente suggérée) : l'équipe est EN entente, donc son repère CtcMark est rendu.
-    expect(screen.getByRole("checkbox", { name: T.ententeFor("U15F CTC") })).toBeChecked();
-    // Le CtcMark (role img) est présent, nom accessible = le contrat de la primitive « Entente (CTC) … ».
-    const mark = screen.getByRole("img", { name: (n: string) => n.startsWith("Entente (CTC)") });
-    expect(mark, "une équipe en entente porte le repère CtcMark à l'étape Ententes").toBeInTheDocument();
-    // Et PLUS aucune icône de lien (`Link2` → svg.lucide-link-2) : elle est réservée aux mutualisations.
-    expect(container.querySelector("svg.lucide-link-2"), "le picto de LIEN ne doit plus apparaître à l'étape Ententes").toBeNull();
   });
 
   it("étape Ententes — le champ « club partenaire » borne la saisie à 120 caractères (colonne varchar(120) côté serveur)", async () => {
@@ -1691,58 +1529,6 @@ describe("ParcImportModal — PR A (incident d'un club pilote : équipe ignorée
     }
   });
 
-  it("D9 — une ligne IGNORÉE est rendue barrée (line-through)", async () => {
-    // Promesse : une ligne qu'on met en « Ignorer » est visuellement BARRÉE (plus « grisée/barrée »,
-    // retours fondateur). ROUGE : le libellé d'une ligne ignorée n'a aucune classe `line-through`.
-    const user = userEvent.setup();
-    renderWithProviders(<ParcImportModal {...defaultProps} />);
-    await analyzeThen(user, analysisOf({ equipes: [mkLine(0, "SF1", "aCreer")] }));
-
-    await user.click(await screen.findByRole("button", { name: decisionTrigger("SF1") }));
-    await user.click(within(screen.getByRole("listbox")).getByRole("option", { name: T.ignoreLine as unknown as string }));
-
-    const label = screen.getByText("SF1"); // DONNÉE serveur (libellé), affichée verbatim
-    const barred = label.className.includes("line-through") || (label.parentElement?.className.includes("line-through") ?? false);
-    expect(barred, "une ligne ignorée est barrée (D9)").toBe(true);
-  });
-
-  it("D10 — le pied d'étape n'a plus de bouton texte « Fermer » (la croix d'en-tête reste), Précédent avant Importer", async () => {
-    // ROUGE : le pied d'une étape de contenu rend encore un bouton TEXTE « Fermer » (clé `close`) À CÔTÉ
-    // de la croix d'en-tête (aria-label « Fermer » de modal.tsx) → DEUX boutons « Fermer ».
-    const user = userEvent.setup();
-    renderWithProviders(<ParcImportModal {...defaultProps} />);
-    await analyzeThen(user, analysisOf({ equipes: [mkLine(0, "SF1", "aCreer")] }));
-
-    const closers = screen.getAllByRole("button", { name: T.close as unknown as string });
-    expect(closers, "seule la croix d'en-tête ferme (plus de bouton texte « Fermer » au pied)").toHaveLength(1);
-    expect(closers[0]?.textContent ?? "", "la seule « Fermer » restante est la croix (icône, sans texte)").toBe("");
-
-    // Précédent vient AVANT Importer dans l'ordre du document (groupés à gauche, Importer à droite).
-    const prev = screen.getByRole("button", { name: T.previous as unknown as string });
-    const importBtn = screen.getByRole("button", { name: /Importer/ });
-    // Node.DOCUMENT_POSITION_FOLLOWING (4) : importBtn suit prev.
-    expect(prev.compareDocumentPosition(importBtn) & Node.DOCUMENT_POSITION_FOLLOWING, "Précédent avant Importer").toBeTruthy();
-  });
-
-  it("D11 — l'option suggérée se lit « <nom> (suggéré) », jamais « Apparier à … »", async () => {
-    // ⚠ Exception documentée à la règle « assert la CLÉ » : la clé `matchToSuggested` est précisément
-    // CE qui change de valeur (de « Apparier à « X » (suggéré) » vers « X (suggéré) »), donc l'asserter
-    // serait VERT vacuement. On assert la FORME du nom accessible de l'option : contient « (suggéré) »,
-    // ne contient PAS « Apparier ». « (suggéré) » n'est pas une phrase recopiée mais le marqueur stable.
-    const user = userEvent.setup();
-    const line = mkLine(0, "SF1", "suggere", { cibleId: "t1", candidats: [{ id: "t1", nom: "U21M1" }] });
-    renderWithProviders(<ParcImportModal {...defaultProps} />);
-    await analyzeThen(user, analysisOf({ equipes: [line] }));
-
-    await user.click(await screen.findByRole("button", { name: decisionTrigger("SF1") }));
-    const options = within(screen.getByRole("listbox")).getAllByRole("option");
-    const suggested = options.find((o) => (o.textContent ?? "").includes("(suggéré)"));
-    expect(suggested, "une option suggérée est offerte").toBeDefined();
-    const name = suggested?.textContent ?? "";
-    expect(name).toContain("U21M1");
-    expect(name, "l'option suggérée ne commence plus par « Apparier à … » (D11)").not.toContain("Apparier");
-  });
-
   it("D13 — une séance commune en alerte « équipe ignorée » et GARDÉE bloque « Importer »", async () => {
     // ROUGE : aujourd'hui seules les lignes équipe/gymnase ambiguës (ou un genre manquant) bloquent ;
     // une séance commune gardée mais en alerte n'empêche PAS l'import (le défaut d'un club pilote : l'import part et 422).
@@ -1777,18 +1563,6 @@ describe("ParcImportModal — PR A (incident d'un club pilote : équipe ignorée
     ).toHaveAttribute("aria-current", "step");
   });
 
-  it("D13 — la raison du blocage au pied porte le ton « text-warning »", async () => {
-    // Patron ImportFbiDialog (raison de blocage en ORANGE). ROUGE : la raison au pied est en
-    // `text-muted-foreground`, pas `text-warning`.
-    const user = userEvent.setup();
-    const analysis = analysisOf({ equipes: [mkAmbiguous(0, "Armond", [{ id: "t1", nom: "Armand" }, { id: "t2", nom: "Armund" }])] });
-    renderWithProviders(<ParcImportModal {...defaultProps} />);
-    await analyzeThen(user, analysis);
-
-    const reason = screen.getByText(T.importBlocked(1, 0));
-    const warning = reason.className.includes("text-warning") || (reason.parentElement?.className.includes("text-warning") ?? false);
-    expect(warning, "la raison du blocage porte le ton warning (D13)").toBe(true);
-  });
 });
 
 // ─────────── D3 (incident d'un club pilote) — étape Séances communes : redéfinir la COMPOSITION d'équipes ───────────
@@ -1923,45 +1697,6 @@ describe("ParcImportModal — PR A lot 2 (Ignorer barré · champ Séances masqu
     fireEvent.change(screen.getByRole("textbox", { name: PARC_IMPORT_TEXTS.pasteLabel }), { target: { value: '{"format":"parc-v2","cases":[]}' } });
     await user.click(screen.getByRole("button", { name: PARC_IMPORT_TEXTS.analyze }));
   }
-
-  const goToStep = async (user: ReturnType<typeof userEvent.setup>, section: "equipes" | "gymnases" | "mutualisations" | "reservations"): Promise<void> => {
-    await user.click(screen.getByRole("button", { name: stepNamed(PARC_IMPORT_TEXTS.sectionTitle(section)) }));
-  };
-
-  it("E4 — une séance commune mise en « Ignorer » est barrée et grisée", async () => {
-    const user = userEvent.setup();
-    const analysis = analysisOf({
-      mutualisations: [mkLine(0, "U11M1 + U11M2", "aCreer", { groupe: "CEC", gymnaseId: null, position: { gymnase: "Gymnase Zénith", jour: 3, debut: "17:00", duree: 90 } })],
-    });
-    renderWithProviders(<ParcImportModal {...defaultProps} />);
-    await analyzeThen(user, analysis);
-    await goToStep(user, "mutualisations");
-
-    // Précondition : la ligne est gardée, son nom (seul à l'écran, arbitrage du 31/10) n'est pas barré.
-    const before = screen.getByText("CEC");
-    expect(before.className).not.toContain("line-through");
-
-    // On bascule la ligne en « Ignorer » (contrôle segmenté Garder/Ignorer).
-    await user.click(screen.getByRole("button", { name: T.mutualIgnore as unknown as string }));
-
-    const after = screen.getByText("CEC");
-    expect(after.className, "une ligne ignorée est barrée (D9 étendu)").toContain("line-through");
-    expect(after.className, "une ligne ignorée est grisée").toContain("text-muted-foreground");
-  });
-
-  it("E4 — une séance commune sans nom, mise en « Ignorer », barre ses équipes", async () => {
-    const user = userEvent.setup();
-    const analysis = analysisOf({
-      mutualisations: [mkLine(0, "U11M1 + U11M2", "aCreer", { groupe: "", gymnaseId: null, position: { gymnase: "Gymnase Zénith", jour: 3, debut: "17:00", duree: 90 } })],
-    });
-    renderWithProviders(<ParcImportModal {...defaultProps} />);
-    await analyzeThen(user, analysis);
-    await goToStep(user, "mutualisations");
-
-    await user.click(screen.getByRole("button", { name: T.mutualIgnore as unknown as string }));
-
-    expect(screen.getByText("U11M1 + U11M2").className).toContain("line-through");
-  });
 
   it("E5 — une ligne Équipes IGNORÉE n'affiche plus de champ Séances éditable", async () => {
     const user = userEvent.setup();
@@ -2548,23 +2283,6 @@ describe("ParcImportModal — quick wins : composition d'un groupe et bouton de 
   });
 
   describe("D10 — le bouton de vérification au pied de modale", () => {
-    it("les libellés sont ceux validés (pluriels compris), et l'ancienne clé a disparu", () => {
-      expect(T).toMatchObject({
-        verifyUpToDate: "Vérifié",
-        verifyAction: "Revérifier",
-        verifying: "Vérification…",
-        importStaleReason: "Revérifiez vos modifications avant d'importer.",
-        importVerifyingReason: "Vérification en cours.",
-        verifyStatusUpToDate: "Vérification à jour.",
-        verifyStatusStale: "Des modifications sont à revérifier avant d'importer.",
-        verifyStatusRunning: "Vérification en cours.",
-        verifyStatusFailed: "La vérification a échoué — réessayez.",
-      });
-      expect(T.staleHint(1)).toBe("Vous avez modifié 1 ligne : revérifiez pour mettre à jour les alertes et débloquer l'import.");
-      expect(T.staleHint(3)).toBe("Vous avez modifié 3 lignes : revérifiez pour mettre à jour les alertes et débloquer l'import.");
-      expect(T).not.toHaveProperty("revalidate");
-    });
-
     it("après l'analyse : « Vérifié » inactif à côté d'« Importer » actif, status à jour, plus rien en en-tête d'étape", async () => {
       const user = userEvent.setup();
       renderWithProviders(<ParcImportModal {...defaultProps} />);

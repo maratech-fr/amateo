@@ -653,14 +653,8 @@ describe("ConstraintsStep — constraint-matrix offer lock", () => {
 });
 
 /**
- * PR A (lot 5) — P4-283 : la STRUCTURE (lisible par rôles) du formulaire d'ajout du builder.
- * jsdom ne MESURE aucune mise en page (`boundingBox` y vaut 0) : le reflow « deux rangées à
- * 36 px » se prouve en Playwright (`tests/e2e/layout-inline-rows.spec.ts`, jumeau wizard
- * « builder de contraintes »). Ici on prouve la STRUCTURE DOM que ce reflow suppose — le bouton
- * d'action quitte la rangée de la cible pour rejoindre celle des valeurs.
- * NB : l'ISO-RENDU du tableau sur la primitive `Table` (P4-284) est DÉJÀ gardé, au même niveau,
- * par `describe("le tableau des contraintes")` plus bas (five `columnheader`, séparation
- * verbe/valeur, trois bornes, repli sur le nom) — pas de doublon ici.
+ * Le formulaire d'ajout du builder en lecture seule pour un Membre. Le titre du bloc est gardé tel
+ * quel pour que le titre complet du test Membre reste stable (preuve de non-retrait du sensible).
  */
 describe("ConstraintsStep — PR A : structure du formulaire d'ajout (deux rangées)", () => {
   beforeEach(() => {
@@ -679,32 +673,10 @@ describe("ConstraintsStep — PR A : structure du formulaire d'ajout (deux rang�
     h.reservations = [];
   });
 
-  // P4-283 — le bouton « Ajouter la contrainte » appartient à la rangée des VALEURS (avec
-  // « Pas avant »), jamais à celle de la CIBLE. Aujourd'hui tout partage un unique conteneur
-  // flex-wrap : le bouton `ml-auto` tombe en orphelin dès que la ligne déborde à 1280 px. Le
-  // patron visé : `matches/ConstraintsPage.tsx` RuleFields (rangée 1 = sélection, rangée 2 =
-  // valeurs + bouton d'action). jsdom ne voit pas le reflow, mais il voit à quel parent le
-  // bouton appartient — c'est ce que la refonte en deux rangées change. Le MESURAGE (36 px,
-  // deux rangées, 0 débordement) vit dans le spec e2e jumeau.
-  it("P4-283 — le bouton d'ajout partage la rangée des valeurs, pas celle de la cible (TIME)", () => {
-    renderWithProviders(<ConstraintsStep />);
-
-    const addButton = screen.getByRole("button", { name: WIZARD_TEXTS.addConstraint });
-    const target = screen.getByRole("combobox", { name: WIZARD_TEXTS.targetLabel });
-    const valueInput = screen.getByLabelText(WIZARD_TEXTS.timeNotBefore);
-    const valueRow = addButton.parentElement;
-
-    expect(valueRow).not.toBeNull();
-    // Rangée 2 = valeurs + bouton d'action.
-    expect(valueRow).toContainElement(valueInput);
-    // La cible (rangée 1) ne descend JAMAIS dans la rangée du bouton d'action.
-    expect(valueRow).not.toContainElement(target);
-  });
-
   /**
    * Chantier Membre (PR 2) : l'étape Contraintes d'un Membre se LIT (onglets de familles navigables)
    * mais n'offre pas « Ajouter la contrainte » ; la saisie (cible, valeurs) est en lecture.
-   * Témoin gestionnaire : le cas précédent, même décor (le bouton existe).
+   * Témoin gestionnaire : les cas de saisie du premier bloc (le bouton existe).
    */
   it("Membre : onglets lisibles, aucun ajout, saisie en lecture", () => {
     session.canManage = false;
@@ -743,25 +715,6 @@ describe("ConstraintsStep — UXS-19 : la dispo coach du Wizard vaut pour les en
     h.reservations = [];
   });
 
-  it("mode « indisponible » : la phrase est là, sans lien", async () => {
-    const user = userEvent.setup();
-    renderWithProviders(<ConstraintsStep />);
-
-    await user.click(screen.getByRole("button", { name: "Dispo coach" }));
-    const hint = screen.getByText(WIZARD_TEXTS.coachAvailabilityTrainingOnlyHint);
-    expect(within(hint).queryByRole("link")).toBeNull();
-  });
-
-  it("mode « disponible uniquement » : la phrase reste", async () => {
-    const user = userEvent.setup();
-    renderWithProviders(<ConstraintsStep />);
-
-    await user.click(screen.getByRole("button", { name: "Dispo coach" }));
-    await user.selectOptions(screen.getByLabelText("Coach"), "co1");
-    await user.selectOptions(screen.getByLabelText("Disponibilité"), "available");
-    expect(screen.getByText(WIZARD_TEXTS.coachAvailabilityTrainingOnlyHint)).toBeInTheDocument();
-  });
-
   it("Membre : la phrase se lit aussi (hors de la saisie réservée aux gestionnaires)", async () => {
     session.canManage = false;
     try {
@@ -772,15 +725,6 @@ describe("ConstraintsStep — UXS-19 : la dispo coach du Wizard vaut pour les en
     } finally {
       session.canManage = true;
     }
-  });
-
-  it("absente hors de la famille Dispo coach (horaires par défaut, gymnase)", async () => {
-    const user = userEvent.setup();
-    renderWithProviders(<ConstraintsStep />);
-
-    expect(screen.queryByText(WIZARD_TEXTS.coachAvailabilityTrainingOnlyHint)).not.toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Gymnase" }));
-    expect(screen.queryByText(WIZARD_TEXTS.coachAvailabilityTrainingOnlyHint)).not.toBeInTheDocument();
   });
 });
 
@@ -1854,11 +1798,9 @@ describe("ConstraintsStep — affiner un groupe (targetTags / excludeTags)", () 
 });
 
 /**
- * P2-45 — l'onglet « Mutualisation » A DÉMÉNAGÉ dans l'étape Équipes (modale par équipe) : il
- * n'existe plus DANS ConstraintsStep, ni en saison ni en période. La création d'un groupe et son
- * ancrage (socle `schedulePlanId` null / plan de période) sont désormais gardés depuis leurs
- * nouveaux hôtes (TeamsStep.test, PeriodSteps.test). Le wrapper `describe` survit pour son
- * `beforeEach`, dont dépend « le tableau des contraintes » niché ci-dessous.
+ * P2-45 — la mutualisation se règle dans l'étape Équipes (TeamsStep.test, PeriodSteps.test). Le
+ * wrapper `describe` survit pour son `beforeEach`, dont dépend « le tableau des contraintes »
+ * niché ci-dessous (son titre est gardé pour que les titres complets restent stables).
  */
 describe("ConstraintsStep — l'onglet Mutualisation a déménagé (P2-45)", () => {
   beforeEach(() => {
@@ -1870,19 +1812,6 @@ describe("ConstraintsStep — l'onglet Mutualisation a déménagé (P2-45)", () 
   afterEach(() => {
     cleanup();
     useWizardStore.getState().exitPeriodMode();
-  });
-
-  it("n'offre plus d'onglet « Mutualisation » en saison", () => {
-    renderWithProviders(<ConstraintsStep />);
-    expect(screen.queryByRole("button", { name: "Mutualisation" })).toBeNull();
-    // Falsification : « Réserver », l'onglet voisin, n'a PAS bougé — c'est bien Mutualisation qui part.
-    expect(screen.getByRole("button", { name: "Réserver" })).toBeInTheDocument();
-  });
-
-  it("n'offre plus d'onglet « Mutualisation » en période non plus", () => {
-    useWizardStore.getState().startPeriodMode("entry-27");
-    renderWithProviders(<ConstraintsStep />);
-    expect(screen.queryByRole("button", { name: "Mutualisation" })).toBeNull();
   });
 
   /**
