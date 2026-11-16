@@ -78,8 +78,8 @@ describe("BrandSplash — rendu", () => {
   // RÉTRÉCIE (flex-shrink: 0, testé ci-dessous), pas d'un `translateX(groupDx)` — l'ancien câblage a
   // été retiré, mesure Playwright à l'appui (le `groupDx` décalait le logo de −7 px au lieu de le
   // centrer, cf. `brand-splash.math.test.ts`). jsdom ne mesure aucune mise en page : ici on vérifie
-  // le CÂBLAGE (absence de `translateX`), le centrage RÉEL restant jugé par l'e2e
-  // `tests/e2e/login-splash.spec.ts` (±4 px). Le conteneur de scène est le parent du mot.
+  // le CÂBLAGE (absence de `translateX`) ; le centrage RÉEL n'a plus de mesure automatique
+  // (l'e2e de centrage est retiré). Le conteneur de scène est le parent du mot.
   it("la scène ne porte QUE scale(fit) — aucune translation horizontale de groupe", () => {
     mockReducedMotion(false);
     render(<BrandSplash phase="breathing" {...inertProps} />);
@@ -102,8 +102,8 @@ describe("BrandSplash — rendu", () => {
   // flex rétrécit à la largeur du viewport (boîte 1280 au lieu de 1920 AVANT `scale`) : ses enfants,
   // toujours posés en 1920, se décalent vers la droite (~150 px à 1280 px — centre de l'encre 793 vs
   // 640, et le décalage grandit quand l'écran rétrécit). C'est la cause principale de D11.
-  // jsdom n'a aucun moteur de layout (le non-rétrécissement RÉEL se prouve en Playwright,
-  // `tests/e2e/login-splash.spec.ts`) : ici on vérifie le CÂBLAGE — que la scène déclare bien
+  // jsdom n'a aucun moteur de layout (le non-rétrécissement RÉEL n'a plus de
+  // mesure Playwright, l'e2e de centrage est retiré) : ici on vérifie le CÂBLAGE — que la scène déclare bien
   // `flex-shrink: 0`, en style inline (`flexShrink: 0`) OU en classe (`shrink-0`).
   it("la scène porte flex-shrink: 0 — sinon ses coordonnées 1920 collapsent à la largeur du viewport", () => {
     mockReducedMotion(false);

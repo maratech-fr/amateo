@@ -284,9 +284,12 @@ créneaux S réservés, indispos → génération → corrections (**verrouiller
 - **Fait (PR4c)** : les trois régénérations de PLAN DE PÉRIODE d'`un-verrou-est-souverain` (ex-`:47/:57/:69` — verrou
   de période qui survit à « Régénérer », deuxième régénération, « Charger » une version plus ancienne) sont RÉ-EXPRIMÉES
   sur `SmallClubFixtureTrait` (palier 60 s) dans `un-verrou-de-periode-survit-a-la-regeneration.feature` — mêmes promesses,
-  mêmes assertions (les deux séances reviennent HARD aux mêmes cases), et l'aboutissement overlay prouvé par le décor. Le
-  smoke `plan-de-periode-en-overlay:9` reste sur le BCCL (second angle, point sensible). Mesuré : suite `verrou` 182 s → 17 s
-  (2 scénarios de saison) + nouvelle suite `verrou-periode` 78 s (3 scénarios) = 95 s (−87 s). ⚠ **Manque produit découvert**
+  mêmes assertions (les deux séances reviennent HARD aux mêmes cases), et l'aboutissement overlay prouvé par le décor.
+  Réduction ultérieure : régénération et « régénérer encore » forment UN scénario, et « le verrou d'un autre jour survit
+  à une fermeture » est retiré (couvert par le scénario de fermeture déclarée pendant un plan validé de
+  `plan-de-periode-en-overlay.feature`). Le smoke « une période de fermeture obtient son plan, l'overlay aboutit » n'est
+  plus un scénario à part : le scénario « une fermeture obtient son planning ; la prolonger ne demande pas de le refaire »
+  le porte. ⚠ **Manque produit découvert**
   par le décor réaliste : un club NEUF ne peut pas générer un plan de PÉRIODE — sa règle opt-in `maxConsecutiveDays` naît OFF
   sur le plan, et le moteur REFUSE `intensity:"OFF"` (422), là où le payload de SAISON l'omet (`ImplicitRuleResolver::
   resolveFromIndexed` sérialise une opt-in STOCKÉE à OFF au lieu de la sauter comme une opt-in ABSENTE). Le décor règle la

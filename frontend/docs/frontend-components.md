@@ -209,9 +209,8 @@ club, établi par un témoin `GET /api/me` — jamais un littéral)
 **And** le `<span>` visuel du nom est MASQUÉ (`toBeHidden`)
 **When** le viewport repasse à 1280 px
 **Then** le `<span>` du nom redevient visible, le nom accessible ne change pas
-(`frontend/tests/e2e/width-calibration.spec.ts` — « en-tête à 360 px : le nom du club se
-masque sous sm, le lien d'accueil garde son nom accessible », P4-261 ; ⚠ ce test verrouille le
-comportement du NOM, pas le non-débordement de l'en-tête — à 360 px le produit déborde encore,
+(contrat gardé en jsdom par `frontend/src/app/AppLayout.test.tsx`, P4-261 — plus de mesure e2e ;
+⚠ il verrouille le comportement du NOM, pas le non-débordement de l'en-tête — à 360 px le produit déborde encore,
 dette trackée en Vision)
 
 ---

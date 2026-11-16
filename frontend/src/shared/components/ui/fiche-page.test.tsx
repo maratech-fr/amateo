@@ -24,7 +24,7 @@ import { FichePage } from "./fiche-page";
  *
  * ⚠ Ce fichier garde le CONTRAT de classes — jsdom n'a aucun moteur de mise en page et ne
  * mesure aucune largeur. Que `max-w-fiche` existe VRAIMENT (token `--container-fiche` posé
- * dans `index.css`) et vaille 832 px se prouve en Playwright : `tests/e2e/width-calibration.spec.ts`.
+ * dans `index.css`) et vaille 832 px n'a plus de mesure automatique (l'e2e de calibration est retiré).
  */
 describe("FichePage — le cadre des pages fiche", () => {
   function classesOf(node: ReturnType<typeof render>): string[] {

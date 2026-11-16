@@ -19,7 +19,7 @@
  *
  * ⚑ Ce que ces constantes NE garantissent pas : qu'une valeur tienne réellement. jsdom n'a aucun
  * moteur de mise en page — le test unitaire ne peut vérifier que la PARITÉ entre les trois sites.
- * Qu'aucune valeur ne soit coupée se mesure en Playwright (`tests/e2e/width-calibration.spec.ts`).
+ * Qu'aucune valeur ne soit coupée n'a plus de mesure automatique (l'e2e de calibration est retiré).
  */
 export const TEAM_COLUMNS = {
   /** Nom : occupe la place restante, mais PLAFONNÉE — « SM1 » n'a pas besoin de 1050 px. */

@@ -193,7 +193,7 @@ describe("AppLayout — en-tête marque produit", () => {
     expect(screen.getByTestId("feedback-dialog")).toBeInTheDocument();
   });
 
-  // Régression CI (#1022, width-calibration.spec 360 px) : les pastilles `shrink-0` ajoutées dans
+  // Régression CI (#1022, en-tête à 360 px) : les pastilles `shrink-0` ajoutées dans
   // la grappe écrasaient le lien d'accueil `min-w-0` à largeur NULLE → lien HIDDEN à 360 px. Le lien
   // doit garder un PLANCHER (l'icône, `shrink-0`) : il ne porte donc PAS `min-w-0` (qui supprime son
   // plancher de contenu), et c'est le SPAN du nom qui porte `min-w-0` (troncature au bureau sans

@@ -11,8 +11,8 @@ import type { Venue } from "../api";
  * « Ajouter un gymnase » (clé `WIZARD_TEXTS.addVenueButton`, l'invariant a11y / feedback), mais son
  * texte VISIBLE est raccourci à « Ajouter » (`addVenueButtonShort`) + un complément lu uniquement
  * par le lecteur d'écran (`<span class="sr-only">`, valeur `addVenueButtonSrSuffix`). But : la ligne
- * d'ajout cesse de déborder à l'étroit (le libellé long pesait ~188 px — cf. le NR e2e
- * `tests/e2e/layout-inline-rows.spec.ts`), le nom accessible restant identique.
+ * d'ajout cesse de déborder à l'étroit (le libellé long pesait ~188 px ; l'e2e de mesure est
+ * retiré), le nom accessible restant identique.
  *
  * On MUTE la PROD (le vrai `VenuesStep`), pas un double ; le décor est celui, éprouvé, de
  * `VenuesStep.selectCreated.test.tsx`. Sans gymnase, l'accordéon « Ajouter des gymnases » s'ouvre
