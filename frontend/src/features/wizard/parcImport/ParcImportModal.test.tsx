@@ -151,7 +151,7 @@ function analysisOf(
  * `listbox.tsx`, `aria-labelledby=[labelId, valueId]`) : « Gymnase … — U11M1 + U11M2 Créer » au
  * repos. On matche donc le PRÉFIXE `venueForGroup(libelle)` (clé `texts.ts` gardée comme source) via
  * un matcher FONCTION de testing-library — pas de `RegExp` construite (convention du dépôt, Semgrep
- * `detect-non-literal-regexp`).
+ * `detect-non-literal-regexp` ; cf. `accentTokenParity.test.ts`).
  */
 function venueForGroupTrigger(libelle: string): (accessibleName: string) => boolean {
   const prefix = PARC_IMPORT_TEXTS.venueForGroup(libelle);
