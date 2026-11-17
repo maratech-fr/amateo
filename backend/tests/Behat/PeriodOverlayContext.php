@@ -17,7 +17,9 @@ use RuntimeException;
  *   - « Une fermeture obtient son planning » : période CLOSURE → plan né du geste
  *     d'Adapter (POST /schedule_plans) → version → génération OVERLAY (grille propre
  *     de la période) → COMPLETED ; puis, sur cette même génération, la prolongation de
- *     deux semaines ne fait pas bouger l'empreinte de structure ;
+ *     deux semaines ne fait pas bouger l'empreinte de structure ; la grille propre de la
+ *     période comprend la copie de l'occupation posée dans la saison (déplacer la copie ne touche
+ *     pas la saison, « Reprendre la grille » ramène celle de la saison) ;
  *   - scénario 2 : le plan de fermeture recopie les blocs partagés du socle ; on
  *     transcrit (séances verrouillées HARD → V1), on libère UN membre d'un bloc
  *     (suppression de sa séance → trou), on remplit, et on AFFIRME que le membre
@@ -29,7 +31,12 @@ use RuntimeException;
  */
 final class PeriodOverlayContext extends BaseContext
 {
+    use PosesVenueOccupancyTrait;
+
     private const string USER_EMAIL = 'dev-bccl@amateo.local';
+
+    /** Durée de l'occupation « École » posée dans la grille de saison (2h15). */
+    private const int OCCUPANCY_MINUTES = 135;
 
     private const int POLL_INTERVAL_SECONDS = 2;
 
@@ -79,6 +86,17 @@ final class PeriodOverlayContext extends BaseContext
     private string $splitShortEnd = '';
 
     private int $splitPreviewCount = 0;
+
+    /** Gymnase de saison qui porte l'occupation « École », et l'occupation telle que la saison la liste. */
+    private string $occupancyVenueId = '';
+
+    /** @var array{id: string, dayOfWeek: int, startTime: string, durationMinutes: int, label: string}|null */
+    private ?array $seasonOccupancy = null;
+
+    /** Jour et début où la copie de la période a été déplacée. */
+    private int $movedDay = 0;
+
+    private string $movedStart = '';
 
     #[Given('le club de démonstration, connecté, dont le planning de saison est en vigueur')]
     public function leClubConnecteAvecSocleEnVigueur(): void
@@ -476,9 +494,108 @@ final class PeriodOverlayContext extends BaseContext
         }
     }
 
+    #[Given('/^l\'occupation « (?P<label>[^»]+) » posée dans la grille de saison$/u')]
+    public function lOccupationPoseeDansLaGrilleDeSaison(string $label): void
+    {
+        // Un gymnase de la saison en vigueur qui porte des créneaux de saison : sa grille est copiée
+        // à la naissance du plan de période. La plage libre (le mardi d'abord) est lue par l'API.
+        $this->occupancyVenueId = $this->dbalScalar(
+            \sprintf(
+                'SELECT s.venue_id AS behatval FROM venue_training_slot s'
+                . ' JOIN schedule_plan p ON p.club_id = s.club_id AND p.season_id = s.season_id AND p.type = \'SEASON\''
+                . ' WHERE s.club_id = \'%s\' AND s.schedule_plan_id IS NULL ORDER BY s.venue_id LIMIT 1',
+                $this->clubId,
+            ),
+            admin: true,
+        );
+        if (1 !== preg_match('/^[0-9a-f-]{36}$/i', $this->occupancyVenueId)) {
+            throw new RuntimeException('aucun gymnase de saison avec des créneaux — la base est-elle seedée ?');
+        }
+
+        $free = $this->plageLibre($this->token, $this->occupancyVenueId, self::OCCUPANCY_MINUTES, [2, 1, 3, 4, 6, 7]);
+        $posed = $this->poseOccupation($this->token, $this->occupancyVenueId, $free['day'], $free['start'], self::OCCUPANCY_MINUTES, $label);
+        if (201 !== $posed['status']) {
+            throw new RuntimeException(\sprintf('la pose de l\'occupation « %s » dans la grille de saison a répondu %d (201 attendu) — %s', $label, $posed['status'], $this->messageDuRefus($posed['json'])));
+        }
+
+        $this->seasonOccupancy = $this->theOnlyOccupancy(null, 'la grille de saison');
+        if ($label !== $this->seasonOccupancy['label'] || $free['day'] !== $this->seasonOccupancy['dayOfWeek'] || $free['start'] !== $this->seasonOccupancy['startTime']) {
+            throw new RuntimeException(\sprintf('la grille de saison ne liste pas l\'occupation posée : %s', json_encode($this->seasonOccupancy, \JSON_UNESCAPED_UNICODE)));
+        }
+    }
+
+    #[Then('/^le plan de période porte sa copie de l\'occupation « (?P<label>[^»]+) »$/u')]
+    public function lePlanPorteSaCopie(string $label): void
+    {
+        $copy = $this->theOnlyOccupancy($this->redatePlanId, 'la grille de la période');
+        $season = $this->seasonOccupancyOrFail();
+        if ($season['id'] === $copy['id']) {
+            throw new RuntimeException('la période liste l\'occupation de la saison elle-même, pas sa copie');
+        }
+        unset($copy['id'], $season['id']);
+        if ($season !== $copy || $label !== $copy['label']) {
+            throw new RuntimeException(\sprintf('la copie de la période (%s) diffère de l\'occupation de la saison (%s)', json_encode($copy, \JSON_UNESCAPED_UNICODE), json_encode($season, \JSON_UNESCAPED_UNICODE)));
+        }
+    }
+
+    #[When('je déplace celle de la période au vendredi')]
+    public function jeDeplaceCelleDeLaPeriodeAuVendredi(): void
+    {
+        $copy = $this->theOnlyOccupancy($this->redatePlanId, 'la grille de la période');
+        $free = $this->plageLibre($this->token, $this->occupancyVenueId, $copy['durationMinutes'], [5], $this->redatePlanId);
+        $this->movedDay = $free['day'];
+        $this->movedStart = $free['start'];
+
+        $moved = $this->apiPut(\sprintf('venue_occupancies/%s', $copy['id']), [
+            'venueId' => $this->occupancyVenueId,
+            'dayOfWeek' => $free['day'],
+            'startTime' => $free['start'],
+            'durationMinutes' => $copy['durationMinutes'],
+            'label' => $copy['label'],
+        ], $this->token);
+        if (200 !== $moved['status']) {
+            throw new RuntimeException(\sprintf('le déplacement de la copie de la période a répondu %d (200 attendu) — %s', $moved['status'], $this->messageDuRefus($moved['json'])));
+        }
+
+        $after = $this->theOnlyOccupancy($this->redatePlanId, 'la grille de la période');
+        if ($this->movedDay !== $after['dayOfWeek'] || $this->movedStart !== $after['startTime']) {
+            throw new RuntimeException(\sprintf('la période ne liste pas l\'occupation déplacée au vendredi %s : %s', $this->movedStart, json_encode($after, \JSON_UNESCAPED_UNICODE)));
+        }
+    }
+
+    #[Then('celle de la saison n\'a pas bougé')]
+    public function celleDeLaSaisonNaPasBouge(): void
+    {
+        $season = $this->theOnlyOccupancy(null, 'la grille de saison');
+        if ($this->seasonOccupancyOrFail() !== $season) {
+            throw new RuntimeException(\sprintf('déplacer la copie de la période a touché la saison : %s (avant : %s)', json_encode($season, \JSON_UNESCAPED_UNICODE), json_encode($this->seasonOccupancy, \JSON_UNESCAPED_UNICODE)));
+        }
+    }
+
+    #[When('je reprends la grille du planning de saison pour ce gymnase')]
+    public function jeReprendsLaGrilleDuPlanningDeSaison(): void
+    {
+        $reset = $this->apiPost('venue_period_overrides/reset-grid', ['schedulePlanId' => $this->redatePlanId, 'venueId' => $this->occupancyVenueId], $this->token);
+        if (200 !== $reset['status']) {
+            throw new RuntimeException(\sprintf('« Reprendre la grille » a répondu %d (200 attendu)', $reset['status']));
+        }
+    }
+
+    #[Then('la période porte de nouveau l\'occupation de la saison')]
+    public function laPeriodePorteDeNouveauLOccupationDeLaSaison(): void
+    {
+        $copy = $this->theOnlyOccupancy($this->redatePlanId, 'la grille de la période après « Reprendre »');
+        $season = $this->seasonOccupancyOrFail();
+        unset($copy['id'], $season['id']);
+        if ($season !== $copy) {
+            throw new RuntimeException(\sprintf('après « Reprendre la grille », la période porte %s au lieu de l\'occupation de la saison %s', json_encode($copy, \JSON_UNESCAPED_UNICODE), json_encode($season, \JSON_UNESCAPED_UNICODE)));
+        }
+    }
+
     /**
-     * Supprime la période créée (cascade son plan + ses versions) et repose le
-     * pointeur du socle à NULL si c'est nous qui l'avons posé. Quoi qu'il arrive.
+     * Supprime la période créée (cascade son plan + ses versions, et les copies d'occupation de
+     * son plan), retire l'occupation posée dans la grille de saison et repose le pointeur du socle
+     * à NULL si c'est nous qui l'avons posé. Quoi qu'il arrive.
      */
     #[AfterScenario]
     public function nettoyer(): void
@@ -486,6 +603,8 @@ final class PeriodOverlayContext extends BaseContext
         if ('' === $this->token) {
             return;
         }
+
+        $this->retireOccupationsPosees($this->token);
 
         if ('' !== $this->forcedConstraintId) {
             $this->apiDelete(\sprintf('constraints/%s', $this->forcedConstraintId), $this->token);
@@ -501,6 +620,28 @@ final class PeriodOverlayContext extends BaseContext
                 admin: true,
             );
         }
+    }
+
+    /**
+     * L'unique occupation listée pour le gymnase de l'occupation dans une couche (saison si
+     * `$planId` est nul) — le décor n'en pose qu'une : en trouver zéro ou deux est un échec nommé.
+     *
+     * @return array{id: string, dayOfWeek: int, startTime: string, durationMinutes: int, label: string}
+     */
+    private function theOnlyOccupancy(?string $planId, string $where): array
+    {
+        $listed = $this->occupationsListees($this->token, $this->occupancyVenueId, $planId);
+        if (1 !== \count($listed)) {
+            throw new RuntimeException(\sprintf('%s liste %d occupation(s) pour ce gymnase (1 attendue) : %s', $where, \count($listed), json_encode($listed, \JSON_UNESCAPED_UNICODE)));
+        }
+
+        return $listed[0];
+    }
+
+    /** @return array{id: string, dayOfWeek: int, startTime: string, durationMinutes: int, label: string} */
+    private function seasonOccupancyOrFail(): array
+    {
+        return $this->seasonOccupancy ?? throw new RuntimeException('aucune occupation de saison posée par le scénario');
     }
 
     /** L'empreinte de structure COURANTE d'un plan, servie par la route structure-hash (P4-266). */

@@ -4,10 +4,12 @@ declare(strict_types=1);
 
 namespace App\Tests\Behat;
 
+use App\Export\ScheduleExportData;
 use Behat\Hook\AfterScenario;
 use Behat\Step\Given;
 use Behat\Step\Then;
 use Behat\Step\When;
+use PhpOffice\PhpSpreadsheet\IOFactory;
 use RuntimeException;
 
 /**
@@ -15,11 +17,15 @@ use RuntimeException;
  * memberships, rail export réel : Messenger → worker Puppeteer → fichier servi par nginx), sur la
  * stack qui tourne.
  *
- * Deux promesses, en HTTP contre la vraie chaîne :
+ * Trois promesses, en HTTP contre la vraie chaîne :
  *   - le gestionnaire demande l'export PDF de sa version de saison en vigueur → 202, le worker
  *     rend le document (statut `completed`, URL renseignée), et le fichier servi est un vrai PDF
  *     non vide (entête « %PDF », type application/pdf) ;
- *   - la même demande SANS session (aucun Bearer) est refusée (401) : l'export ne fuit pas.
+ *   - la même demande SANS session (aucun Bearer) est refusée (401) : l'export ne fuit pas ;
+ *   - une occupation posée dans un gymnase exporté n'est nommée dans l'Excel (« Occupation — École »)
+ *     que si le gestionnaire le demande (`showOccupancies: true`) ; sans l'option, elle n'y est pas.
+ *     Les cas nombreux (couche, gymnase désactivé, chevauchement, PDF) vivent dans
+ *     `Integration/Service/ScheduleExportOccupanciesTest`.
  *
  * Décor : le club de démonstration et sa version de saison COMPLETED en vigueur. L'export écrit
  * l'état d'export SUR cette version ; on le restaure dans son état d'entrée en fin — quoi qu'il
@@ -28,11 +34,22 @@ use RuntimeException;
  */
 final class ExportContext extends BaseContext
 {
+    use PosesVenueOccupancyTrait;
+
     private const string USER_EMAIL = 'dev-bccl@amateo.local';
+
+    /** Durée de l'occupation posée pour l'export (2h15). */
+    private const int OCCUPANCY_MINUTES = 135;
 
     private const int POLL_INTERVAL_SECONDS = 2;
 
     private const int TIMEOUT_SECONDS = 120;
+
+    /** @var array{day: int, start: string, end: string, label: string}|null l'occupation posée pour l'export */
+    private ?array $exportOccupancy = null;
+
+    /** @var list<array<string, string>> lignes du dernier export Excel, indexées par en-tête de colonne */
+    private array $xlsxRows = [];
 
     private string $token = '';
 
@@ -218,6 +235,91 @@ final class ExportContext extends BaseContext
         }
     }
 
+    #[Given('/^l\'occupation « (?P<label>[^»]+) » posée sur une plage libre d\'un gymnase du planning en vigueur$/u')]
+    public function uneOccupationSurUnGymnaseDuPlanningEnVigueur(string $label): void
+    {
+        // Un gymnase qui porte une séance placée de la version exportée (il paraît donc dans l'export
+        // de tous les gymnases), et une plage où ce gymnase n'a ni créneau, ni occupation, ni séance :
+        // l'occupation est rendue telle quelle, sans être masquée par une séance.
+        $venueId = $this->dbalScalar(
+            \sprintf('SELECT venue_id AS behatval FROM schedule_slot_template WHERE schedule_id=\'%s\' ORDER BY venue_id LIMIT 1', $this->scheduleId),
+            admin: true,
+        );
+        if (1 !== preg_match('/^[0-9a-f-]{36}$/i', $venueId)) {
+            throw new RuntimeException('le planning en vigueur ne porte aucune séance placée — la base est-elle seedée ?');
+        }
+        $sessions = $this->dbalScalar(
+            \sprintf(
+                'SELECT string_agg(day_of_week || \',\' || (EXTRACT(HOUR FROM start_time) * 60 + EXTRACT(MINUTE FROM start_time))::int || \',\' || duration_minutes, \';\') AS behatval'
+                . ' FROM schedule_slot_template WHERE schedule_id=\'%s\' AND venue_id=\'%s\'',
+                $this->scheduleId,
+                $venueId,
+            ),
+            admin: true,
+        );
+        $busy = [];
+        foreach (array_filter(explode(';', $sessions)) as $session) {
+            [$day, $start, $duration] = array_map('intval', explode(',', $session));
+            $busy[] = [$day, $start, $start + $duration];
+        }
+
+        $free = $this->plageLibre($this->token, $venueId, self::OCCUPANCY_MINUTES, [2, 1, 3, 4, 5, 6, 7], null, $busy);
+        $posed = $this->poseOccupation($this->token, $venueId, $free['day'], $free['start'], self::OCCUPANCY_MINUTES, $label);
+        if (201 !== $posed['status']) {
+            throw new RuntimeException(\sprintf('la pose de l\'occupation « %s » a répondu %d (201 attendu) — %s', $label, $posed['status'], $this->messageDuRefus($posed['json'])));
+        }
+        $end = $this->minutesDe($free['start']) + self::OCCUPANCY_MINUTES;
+        $this->exportOccupancy = ['day' => $free['day'], 'start' => $free['start'], 'end' => \sprintf('%02d:%02d', intdiv($end, 60), $end % 60), 'label' => $label];
+    }
+
+    #[When('je demande l\'export Excel avec les occupations')]
+    public function jeDemandeLexportExcelAvecLesOccupations(): void
+    {
+        $this->xlsxRows = $this->exportXlsx(['showOccupancies' => true]);
+    }
+
+    #[When('je le demande sans l\'option')]
+    public function jeLeDemandeSansLOption(): void
+    {
+        $this->xlsxRows = $this->exportXlsx([]);
+    }
+
+    #[Then('/^le fichier nomme « (?P<cell>.+) »$/u')]
+    public function leFichierNomme(string $cell): void
+    {
+        $occupancy = $this->exportOccupancy ?? throw new RuntimeException('aucune occupation posée par le scénario');
+        $expected = ['Jour' => ScheduleExportData::DAY_LABELS[$occupancy['day']] ?? '', 'Début' => $occupancy['start'], 'Fin' => $occupancy['end'], 'Équipe' => $cell];
+        foreach ($this->xlsxRows as $row) {
+            if (array_intersect_key($row, $expected) === $expected) {
+                return;
+            }
+        }
+
+        throw new RuntimeException(\sprintf('l\'export Excel ne porte aucune ligne %s (%d lignes lues)', json_encode($expected, \JSON_UNESCAPED_UNICODE), \count($this->xlsxRows)));
+    }
+
+    #[Then('il ne la nomme pas')]
+    public function ilNeLaNommePas(): void
+    {
+        $occupancy = $this->exportOccupancy ?? throw new RuntimeException('aucune occupation posée par le scénario');
+        if ([] === $this->xlsxRows) {
+            throw new RuntimeException('l\'export Excel sans l\'option ne porte aucune ligne — rien n\'a été mis à l\'épreuve');
+        }
+        foreach ($this->xlsxRows as $row) {
+            if (str_contains($row['Équipe'] ?? '', $occupancy['label']) && str_starts_with($row['Équipe'] ?? '', 'Occupation')) {
+                throw new RuntimeException(\sprintf('l\'export Excel demandé sans l\'option nomme l\'occupation : %s', json_encode($row, \JSON_UNESCAPED_UNICODE)));
+            }
+        }
+    }
+
+    /** Retire l'occupation posée par le scénario — quoi qu'il arrive. */
+    #[AfterScenario]
+    public function retirerLesOccupations(): void
+    {
+        $this->retireOccupationsPosees($this->token);
+        $this->exportOccupancy = null;
+    }
+
     /** Retire le match créé par le scénario — quoi qu'il arrive. */
     #[AfterScenario]
     public function retirerLeMatchJetable(): void
@@ -280,6 +382,50 @@ final class ExportContext extends BaseContext
         $this->matchesStatus = $response->getStatusCode();
         $this->matchesContentType = $response->getHeaders(false)['content-type'][0] ?? '';
         $this->matchesBytes = $response->getContent(false);
+    }
+
+    /**
+     * Demande l'export Excel du planning en vigueur (tous les gymnases) avec le corps donné, et rend
+     * ses lignes indexées par en-tête de colonne — le classeur est lu comme un gestionnaire l'ouvre.
+     *
+     * @param array<string, mixed> $body
+     *
+     * @return list<array<string, string>>
+     */
+    private function exportXlsx(array $body): array
+    {
+        $response = $this->client->request('POST', \sprintf('schedules/%s/export-xlsx', $this->scheduleId), [
+            'headers' => ['Authorization' => 'Bearer ' . $this->token],
+            'json' => (object) $body,
+        ]);
+        $status = $response->getStatusCode();
+        if (200 !== $status) {
+            throw new RuntimeException(\sprintf('l\'export Excel a répondu %d (200 attendu)', $status));
+        }
+
+        $path = tempnam(sys_get_temp_dir(), 'export-xlsx-');
+        if (false === $path) {
+            throw new RuntimeException('impossible de créer un fichier temporaire pour lire l\'export Excel');
+        }
+        try {
+            file_put_contents($path, $response->getContent(false));
+            $sheet = IOFactory::load($path)->getActiveSheet()->toArray(null, false, false, false);
+        } finally {
+            @unlink($path);
+        }
+
+        $headers = array_map(static fn (mixed $h): string => \is_scalar($h) ? (string) $h : '', $sheet[0] ?? []);
+        $rows = [];
+        foreach (\array_slice($sheet, 1) as $line) {
+            $row = [];
+            foreach ($headers as $i => $header) {
+                $value = $line[$i] ?? '';
+                $row[$header] = \is_scalar($value) ? (string) $value : '';
+            }
+            $rows[] = $row;
+        }
+
+        return $rows;
     }
 
     /** L'origine HTTP (hors préfixe /api) à laquelle la route de téléchargement est servie. */

@@ -37,6 +37,7 @@ use App\Tests\Behat\VenueAliasContext;
 use App\Tests\Behat\VenueAliasIdentityContext;
 use App\Tests\Behat\VenueClosureSmallClubContext;
 use App\Tests\Behat\VenueDeviationContext;
+use App\Tests\Behat\VenueOccupancyContext;
 use Behat\Config\Config;
 use Behat\Config\Profile;
 use Behat\Config\Suite;
@@ -230,6 +231,11 @@ return (new Config)
                 new Suite('demo-conservee')
                     ->withPaths('%paths.base%/features/le-club-demo-d-un-prospect-se-conserve.feature')
                     ->withContexts(DemoRetainedContext::class),
+            )
+            ->withSuite(
+                new Suite('occupations')
+                    ->withPaths('%paths.base%/features/une-occupation-nomme-un-moment-ou-le-gymnase-n-est-pas-au-club.feature')
+                    ->withContexts(VenueOccupancyContext::class),
             )
             ->withSuite(
                 new Suite('invitation')
