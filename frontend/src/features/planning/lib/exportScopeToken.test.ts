@@ -38,4 +38,13 @@ describe("exportScopeToken — synchro avec le nom de fichier du back", () => {
     expect(checkedUrl.endsWith(exportScopeToken(null, false))).toBe(false);
     expect(checkedUrl.endsWith(exportScopeToken(null, true))).toBe(true);
   });
+
+  // PR6 (plan v5 §3) — le back suffixe `-occupations` APRÈS `-coaches` quand les occupations sont
+  // demandées : le run qui les demande n'attend que SON fichier, jamais celui d'un run sans elles.
+  it("demander les occupations ajoute -occupations après -coaches, et seulement alors", () => {
+    expect(exportScopeToken(null, true, true)).toBe("-all-coaches-occupations.pdf");
+    expect(exportScopeToken(null, false, true)).toBe("-all-occupations.pdf");
+    expect(exportScopeToken(null, true, false)).toBe("-all-coaches.pdf");
+    expect("/exports/schedule-s1-all-coaches.pdf".endsWith(exportScopeToken(null, true, true))).toBe(false);
+  });
 });

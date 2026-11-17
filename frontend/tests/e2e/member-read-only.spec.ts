@@ -2,7 +2,7 @@ import type { Browser, Request, Response } from "@playwright/test";
 
 import { expect, test, type Page } from "./fixtures";
 import { SESSION_TEXTS } from "../../src/shared/session/texts";
-import { loginSeededClub, registerAndVerify, settleVeil, uniqueAra, watchFailedApiCalls } from "./support";
+import { firstHolidayFreeMonday, isoLocal, loginSeededClub, registerAndVerify, settleVeil, uniqueAra, watchFailedApiCalls } from "./support";
 
 /**
  * PROMESSE (chantier « Demandes d'adhésion et rôle Membre », PR 2) : **un Membre lit tout, ne
@@ -133,12 +133,73 @@ async function newPage(browser: Browser): Promise<Page> {
   return page;
 }
 
+/**
+ * PR6 (occupations) — décor de la visite d'une période par le Membre, posé par le GESTIONNAIRE et par
+ * l'API (geste réel) : une fermeture jetable d'une semaine sans vacances, son plan de période (né avec
+ * la copie de la grille de saison), et l'occupation « École » posée dans CE plan, sur une heure libre
+ * d'un gymnase du club (un chevauchement serait refusé 422). Effacé en `finally` par la suppression
+ * de la période.
+ */
+async function createPeriodWithOccupancy(manager: Page): Promise<{ entryId: string; venueName: string; label: string }> {
+  const label = "École";
+  const monday = await firstHolidayFreeMonday(manager, 1);
+  const friday = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + 4);
+  const entry = await manager.request.post("/api/calendar_entries", {
+    headers: { "Content-Type": "application/json" },
+    data: { kind: "period", periodType: "closure", title: `Occupations Membre e2e ${Date.now()}`, startDate: isoLocal(monday), endDate: isoLocal(friday) },
+  });
+  expect(entry.ok(), `création de la fermeture jetable (HTTP ${entry.status()})`).toBe(true);
+  const entryId = ((await entry.json()) as { id: string }).id;
+  const plan = await manager.request.post("/api/schedule_plans", { headers: { "Content-Type": "application/json" }, data: { calendarEntryId: entryId } });
+  expect(plan.ok(), `création du plan de période (HTTP ${plan.status()})`).toBe(true);
+  const planId = ((await plan.json()) as { id: string }).id;
+
+  const members = <T>(body: unknown): T[] => (Array.isArray(body) ? body : (((body as { member?: T[] }).member ?? []) as T[]));
+  const venues = members<{ id: string; name: string }>(await (await manager.request.get("/api/venues")).json()).filter((v) => !v.name.startsWith("Gymnase coordonnées"));
+  const venue = venues[0];
+  expect(venue, "décor : le club seedé porte au moins un gymnase").toBeDefined();
+  if (undefined === venue) {
+    throw new Error("décor non tenu : aucun gymnase");
+  }
+  // Les créneaux de la période pour ce gymnase : on cherche une heure LIBRE d'une heure.
+  const busy: { day: number; start: number; end: number }[] = [];
+  for (let pageNumber = 1; pageNumber <= 10; pageNumber += 1) {
+    const res = await manager.request.get(`/api/venue_training_slots?schedulePlanId=${planId}&venueId=${venue.id}&page=${pageNumber}`);
+    const batch = members<{ dayOfWeek: number; startTime: string; durationMinutes: number }>(await res.json());
+    for (const s of batch) {
+      const [hh, mm] = (s.startTime.match(/(\d{2}):(\d{2})/)?.slice(1) ?? ["0", "0"]).map(Number);
+      const start = hh * 60 + mm;
+      busy.push({ day: s.dayOfWeek, start, end: start + s.durationMinutes });
+    }
+    if (batch.length < 30) break;
+  }
+  let chosen: { day: number; start: number } | null = null;
+  for (let day = 1; day <= 7 && null === chosen; day += 1) {
+    for (let start = 9 * 60; start <= 21 * 60 && null === chosen; start += 15) {
+      if (!busy.some((b) => b.day === day && start < b.end && b.start < start + 60)) {
+        chosen = { day, start };
+      }
+    }
+  }
+  if (null === chosen) {
+    throw new Error("décor non tenu : aucune heure libre dans la grille de période du gymnase");
+  }
+  const startTime = `${String(Math.floor(chosen.start / 60)).padStart(2, "0")}:${String(chosen.start % 60).padStart(2, "0")}`;
+  const occupancy = await manager.request.post("/api/venue_occupancies", {
+    headers: { "Content-Type": "application/json" },
+    data: { venueId: venue.id, dayOfWeek: chosen.day, startTime, durationMinutes: 60, label, schedulePlanId: planId },
+  });
+  expect(occupancy.status(), `pose de l'occupation dans la période (HTTP ${occupancy.status()})`).toBe(201);
+  return { entryId, venueName: venue.name, label };
+}
+
 test.describe("Membre — lecture seule de bout en bout", () => {
   test("club établi : chaque écran se lit, rien ne s'écrit, rien ne sort", async ({ page, browser }) => {
     test.setTimeout(240_000);
     const manager = await newPage(browser);
     const email = `membre-${uniqueAra("m").toLowerCase()}@test.fr`;
     let locatedVenueId = "";
+    let periodEntryId = "";
     try {
       await loginSeededClub(manager);
       const meRes = await manager.request.get("/api/me");
@@ -186,8 +247,37 @@ test.describe("Membre — lecture seule de bout en bout", () => {
           await expect(page.getByText(/Gymnase coordonnées/).first(), "témoin : la carte du gymnase localisé est ouverte").toBeVisible();
           await expect(page.getByRole("link", { name: "Voir sur la carte" }).first(), "témoin : la vue repliée « Localisé » est rendue").toBeVisible();
           expect(watch.violations, `gymnase localisé sans adresse : le Membre a déclenché ${watch.violations.join(" · ")}`).toEqual([]);
+          // PR6 (occupations) — le choix [Créneau | Occupation] et le champ « Motif » sont des gestes
+          // de gestionnaire : un Membre ne les voit pas sur les Gymnases de saison.
+          await expect(page.getByRole("button", { name: /^Occupation$/ }), "Gymnases de saison : le sélecteur Créneau | Occupation est offert au Membre").toHaveCount(0);
+          await expect(page.getByRole("textbox", { name: /Motif/ }), "Gymnases de saison : le champ « Motif » est offert au Membre").toHaveCount(0);
         }
       }
+
+      // PR6 (occupations) — Gymnases d'une PÉRIODE, vus par le Membre : le bloc « École » se lit,
+      // sans sélecteur, sans « Motif », et le bloc n'est pas un bouton. L'onglet offre déjà d'autres
+      // gestes à un Membre (barre de durée, coches, « Reprendre », « Vider » — hors périmètre, plan
+      // §11) : le balayage général des boutons d'écriture de `visit` ne s'applique donc pas ici, la
+      // visite porte ses propres vérifications.
+      const periodDecor = await createPeriodWithOccupancy(manager);
+      periodEntryId = periodDecor.entryId;
+      // Le Wizard d'une période n'a pas d'adresse : son mode vit dans l'état persistant du Wizard
+      // (`cs-wizard`, `features/wizard/store.ts`), que pose le geste « Ajuster » du calendrier
+      // (`cockpit/DayDialog.tsx`, `startPeriodMode`). On le pose de même, puis on vise l'étape.
+      await page.evaluate((entryId) => {
+        localStorage.setItem("cs-wizard", JSON.stringify({ state: { stepId: "venues", maxIndex: 6, mode: "period", calendarEntryId: entryId }, version: 4 }));
+      }, periodDecor.entryId);
+      await page.goto("/wizard?step=venues");
+      await settleVeil(page);
+      await page.locator("#period-venue-picker").click();
+      await page.getByRole("option", { name: periodDecor.venueName }).click();
+      const ecole = page.getByText(periodDecor.label, { exact: true });
+      await expect(ecole.first(), "témoin : le bloc d'occupation de la période est rendu au Membre").toBeVisible({ timeout: 20_000 });
+      await expect(page.locator("button").filter({ hasText: periodDecor.label }), "période : le bloc d'occupation est un bouton pour le Membre").toHaveCount(0);
+      await expect(page.getByRole("button", { name: /^Occupation$/ }), "période : le sélecteur Créneau | Occupation est offert au Membre").toHaveCount(0);
+      await expect(page.getByRole("textbox", { name: /Motif/ }), "période : le champ « Motif » est offert au Membre").toHaveCount(0);
+      expect(watch.violations, `période : le Membre a déclenché ${watch.violations.join(" · ")}`).toEqual([]);
+      await page.evaluate(() => localStorage.removeItem("cs-wizard"));
       await visit(page, watch, "/club", true);
       // `/club` : ni Demandes d'adhésion, ni Invitations, ni Membres.
       await expect(page.getByRole("button", { name: /Demandes d'adhésion/ })).toHaveCount(0);
@@ -200,6 +290,10 @@ test.describe("Membre — lecture seule de bout en bout", () => {
       await eraseAccount(page);
       if ("" !== locatedVenueId) {
         await manager.request.delete(`/api/venues/${locatedVenueId}`).catch(() => undefined);
+      }
+      // La période jetable : la supprimer emporte son plan, et ses occupations avec lui (cascade).
+      if ("" !== periodEntryId) {
+        await manager.request.delete(`/api/calendar_entries/${periodEntryId}`).catch(() => undefined);
       }
       await manager.context().close();
     }
