@@ -1348,6 +1348,13 @@ jobs:
           # réservation retombe sur le mercredi. Sans ce gate, une régression qui cesserait d'écrire la
           # réservation (ou de la poser HARD au socle) passerait tous les checks requis.
           FILES="$FILES tests/CrossStack/ParcImportReservationSemanticsGateTest.php"
+          # NR d'axe BACKEND↔ENGINE CONTRACT (PR 1a, contrat 1.10, plafond de séances par jour) — le plafond
+          # part au moteur sous `teams[].maxSessionsPerDay` SEULEMENT quand la valeur effective dépasse 1 :
+          # un club resté partout à 1 garde un payload (et une empreinte) identique ; en période, la valeur
+          # de la période l'emporte, sinon celle de la saison ; le vrai moteur accepte le champ. Sans ce
+          # gate, un champ émis à 1 changerait l'empreinte de tous les clubs (régénérations forcées), ou un
+          # champ oublié laisserait le moteur à une séance par jour, en passant tous les checks requis.
+          FILES="$FILES tests/CrossStack/MaxSessionsPerDayPayloadParityTest.php"
           docker compose exec -T -e APP_ENV=test php-fpm sh -c "cd /app/backend && php -d memory_limit=1G vendor/bin/phpunit --group phase1 $FILES"
 
       # Axe tenant isolation (GO fondateur 2026-10-30, incident d'un club pilote, PR A import du parc) — la

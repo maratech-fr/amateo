@@ -378,9 +378,18 @@ AVANT l'import la séance tombe le mercredi, APRÈS la réservation du lundi ell
 malgré la préférence contraire. TÉMOIN falsifiable dans les deux sens : le MÊME décor résolu AVANT
 l'import suit la préférence (mercredi), donc c'est bien la réservation importée — et elle seule — qui
 déplace la séance ; si l'import cessait d'écrire la réservation ou de la poser HARD au socle
-(`schedulePlanId` null), le second solve retomberait sur le mercredi. Skip propre si le moteur est absent.
+(`schedulePlanId` null), le second solve retomberait sur le mercredi. PR 1a : un parc où l'équipe a deux
+cases le lundi relève son plafond à 2 séances par jour, le Récap ne bloque plus et le moteur pose les deux
+séances sur les deux cases réservées. Skip propre si le moteur est absent.
 Sans ce gate, un import qui cesserait de poser ses réservations en verrous honorés passerait tous les
 checks requis) ·
+`CrossStack/MaxSessionsPerDayPayloadParityTest` (axe *backend↔engine contract*, PR 1a, contrat 1.10 —
+le plafond de séances par jour part au moteur sous `teams[].maxSessionsPerDay` SEULEMENT quand la valeur
+effective dépasse 1 : un club resté partout à 1 émet un payload, donc une empreinte, identique ; en
+période, la valeur de la période l'emporte, sinon celle de la saison ; le vrai moteur accepte le champ
+[`TeamSchema` refuse tout champ inconnu]. Groupes `phase1` + `contract`, skip propre si le moteur est
+absent. Sans ce gate, un champ émis à 1 changerait l'empreinte de tous les clubs, ou un champ oublié
+laisserait le moteur à une séance par jour, en passant tous les checks requis) ·
 `Integration/Api/ParcImportExecuteTest` (axe *tenant isolation*, GO fondateur 2026-10-30 — incident
 d'un club pilote, PR A import du parc : la redéfinition de la composition d'une séance commune par le canal
 `corrections.equipes` [liste ≥ 2 d'UUID d'équipe DU CLUB, ou `import:<index>` vers une ligne Équipes
