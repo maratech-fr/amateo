@@ -221,8 +221,7 @@ fact the grid and the reservations impose.
 
 **Decision 1 — the salarié distribution rule is an OBJECTIVE whatever its stored level.** The HARD branch
 of `add_salarie_distribution_constraints` is gone: both levels push the weighted violation literal
-(`SALARIE_VIOLATION_WEIGHT`) and a `CompromiseTermInfo(detail="salarie")`; `intensity` stays in the
-signature with no effect for this rule (stored settings, payload and API unchanged). A weekday on which
+(`SALARIE_VIOLATION_WEIGHT`) and a `CompromiseTermInfo(detail="salarie")`; `intensity` only distinguishes `OFF` (« Ignorée », contract 1.11: nothing is posted) — HARD and PREFERRED are the same objective (the API refuses HARD for this rule). A weekday on which
 no venue of the club has a case carries neither literal nor alert (same grid reading in the post-solve
 diagnostic). The alert (`implicit_rule_not_honored`, `ruleKey` `salarieDistribution`, WARNING) is worded
 as a fact — « Aucun salarié n'a de séance le jeudi. » — and `/validate-assignments` accepts a move that
