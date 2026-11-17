@@ -508,7 +508,8 @@ final class RecapRefusesASecondSessionSameDayTest extends WebTestCase
         $body = $this->recap($ctx);
 
         self::assertSame(['U15 est réservée deux fois le mardi sur des créneaux qui se chevauchent : 18:00-19:30 à Armand et 19:00-20:30 à JDR. Une équipe ne peut pas être à deux séances en même temps : retirez l\'une des deux au récapitulatif.'], $this->dayBlockers($body));
-        $this->assertDoubled($ids, $body);
+        $this->assertOverlapping($ids, $body);
+        self::assertSame([], $body['doubledReservationIds'] ?? null, 'un chevauchement n\'est jamais dit « trop de séances »');
         self::assertSame([], $this->overlapWarnings($body));
     }
 
@@ -529,7 +530,8 @@ final class RecapRefusesASecondSessionSameDayTest extends WebTestCase
             '/^U15 a deux séances le jeudi sur des créneaux qui se chevauchent : 20:00-21:30 à JDR \(réservation\) et 19:00-20:30 à Armand \(verrou de la version V?1\)\. Une équipe ne peut pas être à deux séances en même temps : retirez la réservation au récapitulatif, ou déverrouillez la séance du jeudi dans la version V?1\.$/u',
             $found[0],
         );
-        $this->assertDoubled([$reservation], $body);
+        $this->assertOverlapping([$reservation], $body);
+        self::assertSame([], $body['doubledReservationIds'] ?? null, 'un chevauchement n\'est jamais dit « trop de séances »');
         self::assertSame([], $this->overlapWarnings($body));
     }
 
@@ -551,7 +553,13 @@ final class RecapRefusesASecondSessionSameDayTest extends WebTestCase
         self::assertCount(1, $found);
         self::assertStringContainsString('se chevauchent', $found[0]);
         self::assertStringNotContainsString('autorisez', $found[0]);
-        $this->assertDoubled($ids, $body);
+        // Les deux qui se chevauchent portent la cause « chevauche » (elle l'emporte) ; la troisième n'est
+        // désignée qu'une fois au plus. Sa cause propre n'est pas fixée par le plan : non vérifiée ici.
+        self::assertIsArray($body['overlappingReservationIds'] ?? null, 'le Récap dit quelles lignes chevauchent');
+        self::assertContains($ids[0], $body['overlappingReservationIds']);
+        self::assertContains($ids[1], $body['overlappingReservationIds']);
+        self::assertNotContains($ids[2], $body['overlappingReservationIds']);
+        $this->assertOneCausePerLine($body);
     }
 
     /** Plafond 2, deux verrous chargés qui se chevauchent sans réservation : rien ne bloque, l'alerte de chevauchement parle. */
@@ -582,6 +590,44 @@ final class RecapRefusesASecondSessionSameDayTest extends WebTestCase
 
         self::assertSame([], $this->dayBlockers($body));
         self::assertSame(['U15 est réservée deux fois le mardi sur des créneaux qui se chevauchent : 18:00-19:30 à Armand et 19:00-20:30 à JDR.'], $this->overlapWarnings($body));
+    }
+
+    /**
+     * Contrat d'API du Récap : chaque ligne bloquée dit sa cause, lue telle quelle par l'écran. Plafond 2 : trois réservations
+     * disjointes → toutes dans `doubledReservationIds` (trop de séances) ; deux qui se chevauchent → toutes deux dans
+     * `overlappingReservationIds` ; jamais une ligne dans les deux ; les deux champs présents dans le corps 422 comme dans le 200.
+     * Jumeau écran : `frontend/src/features/wizard/steps/RecapStep.test.tsx` (le motif de la ligne suit la liste lue).
+     */
+    public function testEachBlockedLineCarriesOneCauseInBothResponseBodies(): void
+    {
+        $ctx = $this->seasonDecor();
+
+        $healthy = $this->recap($ctx);
+        self::assertSame(200, $this->client->getResponse()->getStatusCode());
+        self::assertSame([], $healthy['doubledReservationIds'] ?? null, 'corps 200 : le champ « trop de séances » est présent, vide');
+        self::assertSame([], $healthy['overlappingReservationIds'] ?? null, 'corps 200 : le champ « chevauche » est présent, vide');
+
+        $this->dailyCap($ctx, $ctx['u15'], 2);
+        $this->dailyCap($ctx, $ctx['u18'], 2);
+
+        $this->extraWindow($ctx, $ctx['armand'], self::TUESDAY, '10:00');
+        $tooMany = [
+            $this->reservation($ctx, $ctx['u15'], $ctx['armand'], self::TUESDAY, '10:00'),
+            $this->reservation($ctx, $ctx['u15'], $ctx['armand'], self::TUESDAY, '18:00'),
+            $this->reservation($ctx, $ctx['u15'], $ctx['jdr'], self::TUESDAY, '20:30'),
+        ];
+        $this->window($ctx, $ctx['jdr'], self::THURSDAY, '20:00');
+        $overlapping = [
+            $this->reservation($ctx, $ctx['u18'], $ctx['armand'], self::THURSDAY, '19:00'),
+            $this->reservation($ctx, $ctx['u18'], $ctx['jdr'], self::THURSDAY, '20:00'),
+        ];
+
+        $blocked = $this->recap($ctx);
+
+        self::assertSame(422, $this->client->getResponse()->getStatusCode());
+        $this->assertDoubled($tooMany, $blocked);
+        $this->assertOverlapping($overlapping, $blocked);
+        $this->assertOneCausePerLine($blocked);
     }
 
     protected function setUp(): void
@@ -652,6 +698,30 @@ final class RecapRefusesASecondSessionSameDayTest extends WebTestCase
     {
         self::assertIsArray($body['doubledReservationIds'] ?? null, 'le Récap désigne les lignes à retirer');
         self::assertEqualsCanonicalizing($expected, $body['doubledReservationIds']);
+    }
+
+    /**
+     * Les lignes bloquées parce que leur créneau chevauche une autre séance de l'équipe ce jour-là.
+     *
+     * @param list<string>         $expected
+     * @param array<string, mixed> $body
+     */
+    private function assertOverlapping(array $expected, array $body): void
+    {
+        self::assertIsArray($body['overlappingReservationIds'] ?? null, 'le Récap dit quelles lignes chevauchent');
+        self::assertEqualsCanonicalizing($expected, $body['overlappingReservationIds']);
+    }
+
+    /**
+     * Une ligne bloquée porte une seule cause : jamais dans les deux listes à la fois.
+     *
+     * @param array<string, mixed> $body
+     */
+    private function assertOneCausePerLine(array $body): void
+    {
+        self::assertIsArray($body['doubledReservationIds'] ?? null, 'le champ « trop de séances » est toujours présent');
+        self::assertIsArray($body['overlappingReservationIds'] ?? null, 'le champ « chevauche » est toujours présent');
+        self::assertSame([], array_values(array_intersect($body['doubledReservationIds'], $body['overlappingReservationIds'])), 'une ligne bloquée porte une seule cause');
     }
 
     /**
