@@ -141,8 +141,8 @@ function WellbeingRuleRow({
   onReset: (ruleKey: ImplicitRuleKey) => void;
 }) {
   const threshold = thresholdOf(setting);
-  // Le repère « Saison : » d'une règle jamais obligatoire reste absent, comme avant ses deux crans.
-  const seasonMark = isNeverMandatory(meta.ruleKey) ? null : seasonSetting;
+  // En période, toute règle porte son repère « Saison : », règle jamais obligatoire comprise.
+  const seasonMark = seasonSetting;
 
   return (
     <div
