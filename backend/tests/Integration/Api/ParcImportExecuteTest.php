@@ -1686,8 +1686,12 @@ final class ParcImportExecuteTest extends WebTestCase
         $teamsBefore = $this->rowCount('team');
 
         $parc = $this->mondayParc([['09:00', 90], ['18:00', 90]], ['SM1']);
+        // Le reste du parc s'importerait : sans la garde de saison, l'équipe de l'autre saison serait relevée.
         $decisionsTargeting = static fn (string $cibleId): array => [
+            ['section' => 'gymnases', 'index' => 0, 'coche' => true],
             ['section' => 'equipes', 'index' => 0, 'coche' => true, 'cibleId' => $cibleId],
+            ['section' => 'creneaux', 'index' => 0, 'coche' => true],
+            ['section' => 'creneaux', 'index' => 1, 'coche' => true],
             ['section' => 'reservations', 'index' => 0, 'coche' => true],
             ['section' => 'reservations', 'index' => 1, 'coche' => true],
         ];
