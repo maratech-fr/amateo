@@ -39,7 +39,13 @@ final class RecapRefusesASecondSessionSameDayTest extends WebTestCase
 
     private const string RULE = 'une seule séance par jour';
 
-    private const string TWO_RESERVATIONS = 'U15 est réservée deux fois le mardi : 18:00-19:30 à Armand et 20:30-22:00 à JDR — une seule séance par jour. Retirez l\'une des deux au récapitulatif.';
+    /** Le renvoi [R] vers le réglage de l'équipe, au singulier. */
+    private const string WHERE = '(étape Équipes, bouton Liens de l\'équipe, onglet « Séances par jour »)';
+
+    /** Le renvoi [R] au pluriel, quand le motif nomme plusieurs équipes. */
+    private const string WHERE_PLURAL = '(étape Équipes, bouton Liens de chaque équipe, onglet « Séances par jour »)';
+
+    private const string TWO_RESERVATIONS = 'U15 est réservée deux fois le mardi : 18:00-19:30 à Armand et 20:30-22:00 à JDR — une seule séance par jour. Retirez l\'une des deux au récapitulatif, ou autorisez 2 séances par jour pour cette équipe ' . self::WHERE . '.';
 
     private EntityManagerInterface $em;
 
@@ -136,6 +142,7 @@ final class RecapRefusesASecondSessionSameDayTest extends WebTestCase
         self::assertCount(1, $found, 'un seul motif pour le groupe');
         self::assertStringContainsString('U15', $found[0]);
         self::assertStringContainsString('U18', $found[0]);
+        self::assertStringEndsWith('ou autorisez 2 séances par jour pour ces équipes ' . self::WHERE_PLURAL . '.', $found[0]);
         $this->assertDoubled($ids, $body);
     }
 
@@ -194,7 +201,7 @@ final class RecapRefusesASecondSessionSameDayTest extends WebTestCase
         $found = $this->ruleBlockers($body);
         self::assertCount(1, $found);
         self::assertMatchesRegularExpression(
-            '/^U15 a deux séances le jeudi : 20:30-22:00 à JDR \(réservation\) et 19:00-20:30 à Armand \(verrou de la version V?1\) — une seule séance par jour\. Retirez la réservation au récapitulatif, ou déverrouillez la séance du jeudi dans la version V?1\.$/u',
+            '/^U15 a deux séances le jeudi : 20:30-22:00 à JDR \(réservation\) et 19:00-20:30 à Armand \(verrou de la version V?1\) — une seule séance par jour\. Retirez la réservation au récapitulatif, déverrouillez la séance du jeudi dans la version V?1, ou autorisez 2 séances par jour pour cette équipe ' . preg_quote(self::WHERE, '/') . '\.$/u',
             $found[0],
         );
         $this->assertDoubled([$reservation], $body);
@@ -295,6 +302,7 @@ final class RecapRefusesASecondSessionSameDayTest extends WebTestCase
         $body = $this->recap($ctx);
 
         self::assertCount(1, $this->ruleBlockers($body));
+        self::assertStringNotContainsString('autorisez', $this->ruleBlockers($body)[0], 'des cases qui se chevauchent : relever le plafond ne réglerait rien');
         self::assertSame([], $this->overlapWarnings($body));
     }
 
@@ -349,6 +357,233 @@ final class RecapRefusesASecondSessionSameDayTest extends WebTestCase
         self::assertResponseStatusCodeSame(202);
     }
 
+    /**
+     * Plafond 1, N réservations disjointes le mardi : la phrase dit combien en retirer, et propose d'en autoriser N tant que N ≤ 4.
+     *
+     * @return iterable<string, array{list<string>, string}>
+     */
+    public static function overTheDefaultCap(): iterable
+    {
+        yield 'N = 2' => [['18:00', '20:30'], self::TWO_RESERVATIONS];
+        yield 'N = 3' => [['10:00', '18:00', '20:30'], 'U15 est réservée trois fois le mardi : 10:00-11:30 à Armand, 18:00-19:30 à Armand et 20:30-22:00 à JDR — une seule séance par jour. Retirez-en 2 au récapitulatif, ou autorisez 3 séances par jour pour cette équipe ' . self::WHERE . '.'];
+        yield 'N = 5, sans proposition' => [['08:00', '10:00', '13:00', '18:00', '20:30'], 'U15 est réservée 5 fois le mardi : 08:00-09:30 à Armand, 10:00-11:30 à Armand, 13:00-14:30 à Armand, 18:00-19:30 à Armand et 20:30-22:00 à JDR — une seule séance par jour. Retirez-en 4 au récapitulatif.'];
+    }
+
+    /**
+     * T2a : au-delà du plafond de 1, la phrase exacte, et la proposition de relever le plafond seulement quand c'est permis (≤ 4).
+     *
+     * @param list<string> $starts
+     */
+    #[DataProvider('overTheDefaultCap')]
+    public function testOverTheDefaultCapTheSentenceSaysHowManyToRemoveOrToAllow(array $starts, string $expected): void
+    {
+        $ctx = $this->seasonDecor();
+        $ids = [];
+        foreach ($starts as $start) {
+            $venue = '20:30' === $start ? $ctx['jdr'] : $ctx['armand'];
+            if (!\in_array($start, ['18:00', '20:30'], true)) {
+                $this->extraWindow($ctx, $venue, self::TUESDAY, $start);
+            }
+            $ids[] = $this->reservation($ctx, $ctx['u15'], $venue, self::TUESDAY, $start);
+        }
+
+        $body = $this->recap($ctx);
+
+        self::assertSame([$expected], $this->dayBlockers($body));
+        $this->assertDoubled($ids, $body);
+    }
+
+    /** Plafond 2 : deux réservations disjointes le même jour sont permises, le Récap ne bloque plus. */
+    public function testACapOfTwoAllowsTwoDisjointReservations(): void
+    {
+        $ctx = $this->seasonDecor();
+        $this->dailyCap($ctx, $ctx['u15'], 2);
+        $this->reservation($ctx, $ctx['u15'], $ctx['armand'], self::TUESDAY, '18:00');
+        $this->reservation($ctx, $ctx['u15'], $ctx['jdr'], self::TUESDAY, '20:30');
+
+        $body = $this->recap($ctx);
+
+        self::assertSame([], $this->dayBlockers($body));
+        self::assertSame([], $body['doubledReservationIds'] ?? []);
+    }
+
+    /** Plafond 2 : deux réservations collées (18:00-19:30 puis 19:30-21:00) ne se chevauchent pas : ni blocage, ni alerte. */
+    public function testACapOfTwoAcceptsTwoBackToBackReservations(): void
+    {
+        $ctx = $this->seasonDecor();
+        $this->dailyCap($ctx, $ctx['u15'], 2);
+        $this->extraWindow($ctx, $ctx['armand'], self::TUESDAY, '19:30');
+        $this->reservation($ctx, $ctx['u15'], $ctx['armand'], self::TUESDAY, '18:00');
+        $this->reservation($ctx, $ctx['u15'], $ctx['armand'], self::TUESDAY, '19:30');
+
+        $body = $this->recap($ctx);
+
+        self::assertSame([], $this->dayBlockers($body));
+        self::assertSame([], $this->overlapWarnings($body));
+    }
+
+    /** T2b : plafond 2 et trois réservations disjointes : le motif dit le plafond, demande d'en retirer une ou d'en autoriser 3. */
+    public function testThreeReservationsOverACapOfTwoBlock(): void
+    {
+        $ctx = $this->seasonDecor();
+        $this->dailyCap($ctx, $ctx['u15'], 2);
+        $this->extraWindow($ctx, $ctx['armand'], self::TUESDAY, '10:00');
+        $ids = [
+            $this->reservation($ctx, $ctx['u15'], $ctx['armand'], self::TUESDAY, '10:00'),
+            $this->reservation($ctx, $ctx['u15'], $ctx['armand'], self::TUESDAY, '18:00'),
+            $this->reservation($ctx, $ctx['u15'], $ctx['jdr'], self::TUESDAY, '20:30'),
+        ];
+
+        $body = $this->recap($ctx);
+
+        self::assertSame(['U15 est réservée trois fois le mardi : 10:00-11:30 à Armand, 18:00-19:30 à Armand et 20:30-22:00 à JDR — 2 séances par jour au plus pour cette équipe. Retirez-en une au récapitulatif, ou autorisez 3 séances par jour pour cette équipe ' . self::WHERE . '.'], $this->dayBlockers($body));
+        $this->assertDoubled($ids, $body);
+    }
+
+    /** T2c à plafond 2 : deux réservations et un verrou chargé le même jour, le motif dit le plafond et propose 3. */
+    public function testAReservationAndALoadedLockOverACapOfTwoSayTheCap(): void
+    {
+        $ctx = $this->seasonDecor();
+        $this->dailyCap($ctx, $ctx['u15'], 2);
+        $this->extraWindow($ctx, $ctx['armand'], self::THURSDAY, '10:00');
+        $this->session($ctx, $ctx['u15'], $ctx['armand'], self::THURSDAY, '19:00', LockLevel::HARD);
+        $this->reservation($ctx, $ctx['u15'], $ctx['armand'], self::THURSDAY, '10:00');
+        $this->reservation($ctx, $ctx['u15'], $ctx['jdr'], self::THURSDAY, '20:30');
+
+        $found = $this->dayBlockers($this->recap($ctx));
+
+        self::assertCount(1, $found);
+        self::assertStringStartsWith('U15 a trois séances le jeudi : ', $found[0]);
+        self::assertStringContainsString(' — 2 séances par jour au plus pour cette équipe. ', $found[0]);
+        self::assertStringEndsWith('ou autorisez 3 séances par jour pour cette équipe ' . self::WHERE . '.', $found[0]);
+    }
+
+    /** Retour à 1 séance par jour : le blocage revient, mot pour mot. */
+    public function testLoweringTheCapBackToOneBringsTheBlockerBack(): void
+    {
+        $ctx = $this->seasonDecor();
+        $this->dailyCap($ctx, $ctx['u15'], 2);
+        $this->reservation($ctx, $ctx['u15'], $ctx['armand'], self::TUESDAY, '18:00');
+        $this->reservation($ctx, $ctx['u15'], $ctx['jdr'], self::TUESDAY, '20:30');
+        self::assertSame([], $this->dayBlockers($this->recap($ctx)));
+
+        $this->dailyCap($ctx, $ctx['u15'], 1);
+        $this->em->clear();
+
+        self::assertSame([self::TWO_RESERVATIONS], $this->dayBlockers($this->recap($ctx)));
+    }
+
+    /** Groupe {U15 à 2, U18 à 1} réservé deux fois le mardi : seul le membre en dépassement est nommé. */
+    public function testAGroupWithMixedCapsNamesOnlyTheMemberOverItsCap(): void
+    {
+        $ctx = $this->seasonDecor();
+        $this->dailyCap($ctx, $ctx['u15'], 2);
+        $this->group($ctx, [$ctx['u15'], $ctx['u18']], commonSessions: 2);
+        foreach ([$ctx['u15'], $ctx['u18']] as $teamId) {
+            $this->reservation($ctx, $teamId, $ctx['armand'], self::TUESDAY, '18:00');
+            $this->reservation($ctx, $teamId, $ctx['jdr'], self::TUESDAY, '20:30');
+        }
+
+        $found = $this->dayBlockers($this->recap($ctx));
+
+        self::assertCount(1, $found);
+        self::assertStringStartsWith('U18 est réservée deux fois le mardi', $found[0]);
+        self::assertStringNotContainsString('U15', $found[0]);
+    }
+
+    /**
+     * T2d : plafond 2, deux réservations qui se chevauchent : blocage nommé, sans proposer d'autoriser davantage ; les deux lignes
+     * sont désignées, et l'alerte de chevauchement se tait (l'équipe et le jour sont couverts).
+     */
+    public function testTwoOverlappingReservationsUnderACapOfTwoBlock(): void
+    {
+        $ctx = $this->seasonDecor();
+        $this->dailyCap($ctx, $ctx['u15'], 2);
+        $this->window($ctx, $ctx['jdr'], self::TUESDAY, '19:00');
+        $ids = [
+            $this->reservation($ctx, $ctx['u15'], $ctx['armand'], self::TUESDAY, '18:00'),
+            $this->reservation($ctx, $ctx['u15'], $ctx['jdr'], self::TUESDAY, '19:00'),
+        ];
+
+        $body = $this->recap($ctx);
+
+        self::assertSame(['U15 est réservée deux fois le mardi sur des créneaux qui se chevauchent : 18:00-19:30 à Armand et 19:00-20:30 à JDR. Une équipe ne peut pas être à deux séances en même temps : retirez l\'une des deux au récapitulatif.'], $this->dayBlockers($body));
+        $this->assertDoubled($ids, $body);
+        self::assertSame([], $this->overlapWarnings($body));
+    }
+
+    /** T2d avec verrou : plafond 2, une réservation chevauche un verrou de la version chargée ; seule la réservation part à la poubelle. */
+    public function testAReservationOverlappingALoadedLockUnderACapOfTwoBlocks(): void
+    {
+        $ctx = $this->seasonDecor();
+        $this->dailyCap($ctx, $ctx['u15'], 2);
+        $this->window($ctx, $ctx['jdr'], self::THURSDAY, '20:00');
+        $this->session($ctx, $ctx['u15'], $ctx['armand'], self::THURSDAY, '19:00', LockLevel::HARD);
+        $reservation = $this->reservation($ctx, $ctx['u15'], $ctx['jdr'], self::THURSDAY, '20:00');
+
+        $body = $this->recap($ctx);
+
+        $found = $this->dayBlockers($body);
+        self::assertCount(1, $found);
+        self::assertMatchesRegularExpression(
+            '/^U15 a deux séances le jeudi sur des créneaux qui se chevauchent : 20:00-21:30 à JDR \(réservation\) et 19:00-20:30 à Armand \(verrou de la version V?1\)\. Une équipe ne peut pas être à deux séances en même temps : retirez la réservation au récapitulatif, ou déverrouillez la séance du jeudi dans la version V?1\.$/u',
+            $found[0],
+        );
+        $this->assertDoubled([$reservation], $body);
+        self::assertSame([], $this->overlapWarnings($body));
+    }
+
+    /** Plafond 2, trois réservations dont deux se chevauchent : un seul blocage, celui du chevauchement, sans « autorisez ». */
+    public function testExcessAndOverlapTheSameDayGiveOnlyTheOverlapBlocker(): void
+    {
+        $ctx = $this->seasonDecor();
+        $this->dailyCap($ctx, $ctx['u15'], 2);
+        $this->window($ctx, $ctx['jdr'], self::TUESDAY, '19:00');
+        $ids = [
+            $this->reservation($ctx, $ctx['u15'], $ctx['armand'], self::TUESDAY, '18:00'),
+            $this->reservation($ctx, $ctx['u15'], $ctx['jdr'], self::TUESDAY, '19:00'),
+            $this->reservation($ctx, $ctx['u15'], $ctx['jdr'], self::TUESDAY, '20:30'),
+        ];
+
+        $body = $this->recap($ctx);
+
+        $found = $this->dayBlockers($body);
+        self::assertCount(1, $found);
+        self::assertStringContainsString('se chevauchent', $found[0]);
+        self::assertStringNotContainsString('autorisez', $found[0]);
+        $this->assertDoubled($ids, $body);
+    }
+
+    /** Plafond 2, deux verrous chargés qui se chevauchent sans réservation : rien ne bloque, l'alerte de chevauchement parle. */
+    public function testTwoOverlappingLocksUnderACapOfTwoAreWarnedNotBlocked(): void
+    {
+        $ctx = $this->seasonDecor();
+        $this->dailyCap($ctx, $ctx['u15'], 2);
+        $this->window($ctx, $ctx['jdr'], self::THURSDAY, '20:00');
+        $this->session($ctx, $ctx['u15'], $ctx['armand'], self::THURSDAY, '19:00', LockLevel::HARD);
+        $this->session($ctx, $ctx['u15'], $ctx['jdr'], self::THURSDAY, '20:00', LockLevel::HARD);
+
+        $body = $this->recap($ctx);
+
+        self::assertSame([], $this->dayBlockers($body));
+        self::assertSame(['U15 a deux séances le jeudi sur des créneaux qui se chevauchent : 19:00-20:30 à Armand et 20:00-21:30 à JDR.'], $this->overlapWarnings($body));
+    }
+
+    /** Plafond 2, en période : deux réservations qui se chevauchent ne bloquent pas, l'alerte reste, mot pour mot. */
+    public function testInAPeriodTwoOverlappingReservationsUnderACapOfTwoAreWarnedNotBlocked(): void
+    {
+        $ctx = $this->periodDecor();
+        $this->dailyCap($ctx, $ctx['u15'], 2);
+        $this->window($ctx, $ctx['jdr'], self::TUESDAY, '19:00', $ctx['planId']);
+        $this->reservation($ctx, $ctx['u15'], $ctx['armand'], self::TUESDAY, '18:00');
+        $this->reservation($ctx, $ctx['u15'], $ctx['jdr'], self::TUESDAY, '19:00');
+
+        $body = $this->recap($ctx, $ctx['entryId']);
+
+        self::assertSame([], $this->dayBlockers($body));
+        self::assertSame(['U15 est réservée deux fois le mardi sur des créneaux qui se chevauchent : 18:00-19:30 à Armand et 19:00-20:30 à JDR.'], $this->overlapWarnings($body));
+    }
+
     protected function setUp(): void
     {
         $this->client = self::createClient();
@@ -389,6 +624,23 @@ final class RecapRefusesASecondSessionSameDayTest extends WebTestCase
         return array_values(array_filter(
             \is_array($body['blockers'] ?? null) ? $body['blockers'] : [],
             static fn (mixed $blocker): bool => \is_string($blocker) && str_contains($blocker, self::RULE),
+        ));
+    }
+
+    /**
+     * Les motifs « séances d'une équipe le même jour », quelle qu'en soit la cause (plafond dépassé ou chevauchement).
+     *
+     * @param array<string, mixed> $body
+     *
+     * @return list<string>
+     */
+    private function dayBlockers(array $body): array
+    {
+        self::assertArrayHasKey('blockers', $body, 'le Récap a bien répondu');
+
+        return array_values(array_filter(
+            \is_array($body['blockers']) ? $body['blockers'] : [],
+            static fn (mixed $blocker): bool => \is_string($blocker) && 1 === preg_match('/ (fois|séances) le (lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche)\b/u', $blocker),
         ));
     }
 

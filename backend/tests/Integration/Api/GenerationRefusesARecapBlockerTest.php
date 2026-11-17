@@ -118,6 +118,45 @@ final class GenerationRefusesARecapBlockerTest extends WebTestCase
         self::assertStringNotContainsString('cette période', (string) $body['error'], 'Récap de saison : aucune mention de période');
     }
 
+    /**
+     * Une équipe à 2 séances par jour réservée deux fois le mardi sur des cases qui se chevauchent : les guichets de saison refusent
+     * avec le motif du Récap (T2d), mot pour mot, et rien ne part en file. Le comblement n'est pas concerné : ce blocage est de saison
+     * seulement ({@see RecapRefusesASecondSessionSameDayTest::testFillingAPeriodDoesNotBlock}).
+     */
+    #[DataProvider('seasonCounters')]
+    public function testASeasonCounterRefusesTwoOverlappingReservationsUnderACapOfTwo(string $counter, ScheduleStatus $status): void
+    {
+        $ctx = $this->seedGroup(coachesAvailable: true);
+        $other = (new Venue)->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])->setName('Gymnase Deux')->setSource('manual');
+        $this->em->persist($other);
+        $this->em->flush();
+        $this->em->persist((new VenueTrainingSlot)->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])->setVenueId($other->getId())
+            ->setDayOfWeek(2)->setStartTime(new DateTimeImmutable('18:30'))->setDurationMinutes(90)->setCapacity(2));
+        $team = (new Team)->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])->setName('U13')->setSessionsPerWeek(2)
+            ->setSportCategoryId('cccccccc-cccc-4ccc-8ccc-cccccccccccc')->setPriorityTierId(1);
+        $team->setMaxSessionsPerDay(2);
+        $this->em->persist($team);
+        $this->em->flush();
+        foreach ([[$ctx['venueId'], '18:00'], [$other->getId(), '18:30']] as [$venueId, $start]) {
+            $this->em->persist((new Reservation)->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])->setTeamId($team->getId())
+                ->setVenueId($venueId)->setDayOfWeek(2)->setStartTime(new DateTimeImmutable($start))->setDurationMinutes(90));
+        }
+        $this->em->flush();
+        $schedule = $this->version($ctx, $status);
+
+        $this->post($ctx, $schedule->getId(), $counter);
+
+        self::assertResponseStatusCodeSame(422);
+        $body = json_decode((string) $this->client->getResponse()->getContent(), true);
+        self::assertTrue($body['blocker'] ?? false);
+        self::assertSame(
+            'U13 est réservée deux fois le mardi sur des créneaux qui se chevauchent : 18:00-19:30 à Gymnase Un et 18:30-20:00 à Gymnase Deux. Une équipe ne peut pas être à deux séances en même temps : retirez l\'une des deux au récapitulatif.',
+            $body['error'] ?? null,
+        );
+        $this->em->clear();
+        self::assertSame($status, $this->em->getRepository(Schedule::class)->find($schedule->getId())?->getStatus(), 'rien n\'est mis en file');
+    }
+
     /** Comblement d'une période : même refus, aucune version V+1. */
     public function testFillingAPeriodRefusesAndCreatesNoVersion(): void
     {
