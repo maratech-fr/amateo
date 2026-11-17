@@ -335,7 +335,7 @@ final class CapacityMirrorParityTest extends TestCase
                 ['dayOfWeek' => 1, 'startTime' => '19:30', 'durationMinutes' => 90, 'capacity' => 1],
             ],
         ]];
-        $team = ['id' => 't1', 'name' => 'T1', 'sportCategoryId' => 'cat-1', 'priorityTierId' => 3, 'sessionsPerWeek' => 2];
+        $team = ['id' => 't1', 'name' => 'T1', 'priorityTierId' => 3, 'sessionsPerWeek' => 2];
         $pins = [$this->pin('t1', 'v1', 1, '18:00'), [...$this->pin('t1', 'v1', 1, '19:30'), 'id' => 'pin-t1-v1-1-soir']];
         $minTwo = [$this->minAtVenue('t1', 'v1', count: 2)];
 
