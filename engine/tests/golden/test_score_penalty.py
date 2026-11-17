@@ -50,12 +50,11 @@ def test_hard_only_team_no_penalty() -> None:
     assert result.score >= 0, f"score should be >= 0 (HARD-only team not penalized), got {result.score}"
 
 
-def test_score_formula_version_is_v14() -> None:
-    """Guard: version bumped to V14 when « garder ses créneaux de saison » (PR 6, lot 8) gave the
-    socle-reference bonus (``add_socle_reference_bonus``) its KEEP regime (poids pleins/partiels par
-    tier) — dès qu'un terme peut faire bouger le score rapporté, l'identifiant du barème change
-    (règle V10/V11/V12/V13)."""
-    assert SCORE_FORMULA_VERSION == "T24_LEVEL_2_FIXED_WEIGHTS_V14", f"expected V14, got {SCORE_FORMULA_VERSION!r}"
+def test_score_formula_version_is_v15() -> None:
+    """Guard: version bumped to V15 when the per-day session cap (PR 1a) added the « même jour »
+    (−10) and « moins de 2 h d'écart » (−50) terms to the placement objective — dès qu'un terme peut
+    faire bouger le score rapporté, l'identifiant du barème change (règle V10 à V14)."""
+    assert SCORE_FORMULA_VERSION == "T24_LEVEL_2_FIXED_WEIGHTS_V15", f"expected V15, got {SCORE_FORMULA_VERSION!r}"
 
 
 def test_unplaced_penalty_unchanged() -> None:

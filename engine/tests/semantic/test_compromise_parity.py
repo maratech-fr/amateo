@@ -89,3 +89,41 @@ def test_without_the_preference_the_same_move_names_nothing() -> None:
     assert verdict["valid"] is True
     families = {c["family"] for c in verdict["compromises"]}
     assert "venue_preference" not in families, "sans préférence, aucun compromis de gymnase"
+
+
+# --- PR 1a — l'écart de 2 h : la génération l'évite, le geste qui le casse le nomme -------------
+# Exception écrite (plan 1a.2) : le geste ne reçoit pas les références de saison, il nomme donc
+# aussi l'écart d'une paire de saison que la génération ne facture pas.
+
+_GAP_VENUES = [make_venue("A", [(1, "09:00"), (1, "17:00"), (1, "18:30")])]
+
+
+def _gap_team() -> dict[str, Any]:
+    return {**make_team("U13", sessions_per_week=2), "maxSessionsPerDay": 2}
+
+
+def test_generation_avoids_glued_sessions_and_the_gluing_move_names_it() -> None:
+    """Parité : la génération espace les deux séances du lundi, le geste qui les colle nomme l'écart."""
+    generated = solve_payload(make_payload(teams=[_gap_team()], venues=_GAP_VENUES, timeout=10))
+    starts = sorted(str(s["startTime"])[:5] for s in generated["slots"] if s["teamId"] == "U13")
+    assert len(starts) == 2 and "09:00" in starts, starts
+
+    payload: dict[str, Any] = {
+        "version": read_contract_version(),
+        "clubId": "test-club",
+        "seasonId": "test-season",
+        "solverTimeoutSeconds": 2,
+        "venues": _GAP_VENUES,
+        "teams": [_gap_team()],
+        "coaches": [],
+        "constraints": [],
+        "slotTemplates": [
+            {"id": "s", "teamId": "U13", "venueId": "A", "dayOfWeek": 1, "startTime": "17:00", "durationMinutes": 90}
+        ],
+        "candidate": {"teamId": "U13", "venueId": "A", "dayOfWeek": 1, "startTime": "18:30", "durationMinutes": 90},
+        "reference": {"teamId": "U13", "venueId": "A", "dayOfWeek": 1, "startTime": "09:00", "durationMinutes": 90},
+    }
+    verdict = validate_assignment(ValidateAssignmentsInputSchema.model_validate(as_validate_payload(payload)))
+    assert verdict["valid"] is True
+    named = {(c["family"], c["effect"]) for c in verdict["compromises"]}
+    assert ("same_day", "broken") in named, verdict["compromises"]

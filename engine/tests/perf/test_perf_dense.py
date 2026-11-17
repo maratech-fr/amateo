@@ -122,3 +122,26 @@ def test_bccl_nominal_solve_stays_in_main_order() -> None:
         f"BCCL nominale en {elapsed:.1f}s, au-dessus de {BCCL_NOMINAL_ORDER_BUDGET_SECONDS:.0f}s : "
         "régression probable aux hypothèses CP-SAT posées dès le premier solve (présolve bridé)."
     )
+
+
+@pytest.mark.perf
+def test_dense_club_with_daily_caps_completes_under_budget() -> None:
+    """PR 1a — le club dense avec 6 équipes à 2 séances par jour et 2 à 3 tient le budget. Mesure la
+    durée seulement : il ne dit rien du collé que la phase 2 choisirait sur une phase 1 non prouvée."""
+    budget = _budget_seconds()
+    with open(FIXTURES_DIR / "dense_club.json", encoding="utf-8") as f:
+        data = json.load(f)
+    teams = data["teams"]
+    assert len(teams) >= 8
+    for team in teams[:6]:
+        team["maxSessionsPerDay"] = 2
+    for team in teams[6:8]:
+        team["maxSessionsPerDay"] = 3
+
+    start = time.monotonic()
+    result = solve_payload(data, timeout=int(budget))
+    elapsed = time.monotonic() - start
+
+    assert result["status"] == "completed"
+    assert len(result["slots"]) > 0
+    assert elapsed < budget, f"dense club with daily caps took {elapsed:.1f}s, over the {budget:.0f}s budget"

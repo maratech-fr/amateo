@@ -275,3 +275,76 @@ def test_implicit_rule_broken_when_a_move_breaks_the_age_order() -> None:
     fam = _families(result)
     assert fam["implicit_rule"]["effect"] == "broken"
     assert fam["implicit_rule"]["venueId"] == "A"
+
+
+# --- PR 1a — famille ``same_day`` : « même jour » (T-comp) et son sous-genre écart (T-comp-écart) ---
+# Le calcul du geste ne reçoit pas les références de saison : rapprocher deux séances de saison y
+# est nommé comme n'importe quelle paire (exception assumée à la parité, docblock du terme).
+
+
+def _same_day_move(baseline_start: str, candidate: tuple[int, str], reference: tuple[int, str]) -> dict[str, Any]:
+    """U13 à plafond 2 : une séance figée le lundi, l'autre déplacée de ``reference`` vers ``candidate``."""
+    return _run(
+        {
+            "clubId": "c",
+            "seasonId": "s",
+            "venues": [make_venue("A", [(1, "09:00"), (1, "17:00"), (1, "18:00"), (1, "18:30"), (3, "18:00")])],
+            "teams": [{**make_team("U13", sessions_per_week=2), "maxSessionsPerDay": 2}],
+            "constraints": [],
+            "slotTemplates": [
+                {
+                    "id": "base",
+                    "teamId": "U13",
+                    "venueId": "A",
+                    "dayOfWeek": 1,
+                    "startTime": baseline_start,
+                    "durationMinutes": 90,
+                },
+            ],
+            "candidate": {
+                "teamId": "U13",
+                "venueId": "A",
+                "dayOfWeek": candidate[0],
+                "startTime": candidate[1],
+                "durationMinutes": 90,
+            },
+            "reference": {
+                "teamId": "U13",
+                "venueId": "A",
+                "dayOfWeek": reference[0],
+                "startTime": reference[1],
+                "durationMinutes": 90,
+            },
+        }
+    )
+
+
+def _same_day_compromises(result: dict[str, Any]) -> set[tuple[str, str]]:
+    assert result["valid"] is True, result["violations"]
+    return {(c["effect"], c["message"]) for c in result["compromises"] if c["family"] == "same_day"}
+
+
+def test_same_day_broken_when_a_move_adds_a_session_to_a_day() -> None:
+    """T-comp : amener une 2ᵉ séance un lundi (espacée) est nommé « une séance de plus le même jour »."""
+    result = _same_day_move("09:00", candidate=(1, "18:00"), reference=(3, "18:00"))
+    assert _same_day_compromises(result) == {("broken", "U13 a désormais une séance de plus le même jour (lundi).")}
+
+
+def test_same_day_gained_when_a_move_takes_a_session_off_a_day() -> None:
+    """T-comp, sens inverse : sortir la 2ᵉ séance du lundi est nommé comme un gain."""
+    result = _same_day_move("09:00", candidate=(3, "18:00"), reference=(1, "18:00"))
+    assert _same_day_compromises(result) == {("gained", "U13 a une séance de moins le même jour (lundi).")}
+
+
+def test_same_day_gap_broken_when_a_move_glues_two_sessions() -> None:
+    """T-comp-écart : coller une séance à l'autre séance du lundi est nommé (accepté, jamais refusé)."""
+    result = _same_day_move("17:00", candidate=(1, "18:30"), reference=(1, "09:00"))
+    assert _same_day_compromises(result) == {
+        ("broken", "U13 a désormais deux séances à moins de 2 h d'écart le lundi.")
+    }
+
+
+def test_same_day_gap_gained_when_a_move_spaces_two_sessions() -> None:
+    """T-comp-écart, sens inverse : remettre la séance à 09:00 est nommé comme un gain."""
+    result = _same_day_move("17:00", candidate=(1, "09:00"), reference=(1, "18:30"))
+    assert _same_day_compromises(result) == {("gained", "U13 n'a plus deux séances à moins de 2 h d'écart le lundi.")}

@@ -922,5 +922,123 @@ class InfeasibilityCausesTest(unittest.TestCase):
                 DiagnosticCauseSchema.model_validate(cause)
 
 
+class SameDayGapDiagnosticTest(unittest.TestCase):
+    """PR 1a — l'annonce « deux séances à moins de 2 h d'écart » lue directement sur les créneaux
+    finaux : une par (équipe, jour), silence entre deux verrous, mention de saison réservée aux
+    références ``keep``. Jumeau bout en bout : ``tests/semantic/test_max_sessions_per_day.py``."""
+
+    @staticmethod
+    def _model(refs: list[dict[str, Any]] | None = None) -> dict[str, Any]:
+        return {
+            "teams": [
+                {"id": "U15", "name": "U15", "priorityTierId": 3, "sportCategoryId": "c", "maxSessionsPerDay": 3}
+            ],
+            "venues": [],
+            "socleReferenceAssignments": refs or [],
+        }
+
+    @staticmethod
+    def _slot(start: str, minutes: int = 90, *, lock: str = "NONE") -> dict[str, Any]:
+        return {
+            "teamId": "U15",
+            "venueId": "A",
+            "dayOfWeek": 1,
+            "startTime": start,
+            "durationMinutes": minutes,
+            "lockLevel": lock,
+        }
+
+    @staticmethod
+    def _ref(start: str, *, keep: bool) -> dict[str, Any]:
+        ref: dict[str, Any] = {"teamId": "U15", "dayOfWeek": 1, "startTime": f"{start}:00"}
+        if keep:
+            ref.update({"keep": True, "venueId": "A"})
+        return ref
+
+    def _diagnose(self, slots: list[dict[str, Any]], refs: list[dict[str, Any]] | None = None) -> list[dict[str, Any]]:
+        from app.solver.result_builder.diagnostics import _diagnose_same_day_gap
+
+        return _diagnose_same_day_gap(self._model(refs), slots)
+
+    def test_two_free_glued_sessions_are_announced_once_without_rule_key(self) -> None:
+        """Deux séances libres collées : un avertissement T-écart, sans ``ruleKey`` ni suggestion."""
+        diags = self._diagnose([self._slot("17:00"), self._slot("18:30")])
+        self.assertEqual(1, len(diags))
+        diag = diags[0]
+        self.assertEqual("diag-same-day-gap-U15-1", diag["id"])
+        self.assertEqual("implicit_rule_not_honored", diag["type"])
+        self.assertEqual("WARNING", diag["severity"])
+        self.assertEqual("U15", diag["teamId"])
+        self.assertEqual(1, diag["dayOfWeek"])
+        self.assertEqual([], diag["suggestions"])
+        self.assertIsNone(diag.get("ruleKey"))
+        self.assertIsNone(diag.get("startTime"))
+        self.assertEqual(
+            "U15 : deux séances le lundi à moins de 2 h d'écart (17:00-18:30 et 18:30-20:00).", diag["message"]
+        )
+
+    def test_two_glued_locks_are_never_announced(self) -> None:
+        """Verrou × verrou (réservation ou verrou de version, même ``HARD``) : silence."""
+        self.assertEqual([], self._diagnose([self._slot("17:00", lock="HARD"), self._slot("18:30", lock="HARD")]))
+
+    def test_a_free_session_beside_a_lock_is_announced_in_both_orders(self) -> None:
+        """Libre × verrou, dans les deux ordres : annoncé."""
+        self.assertEqual(1, len(self._diagnose([self._slot("17:00", lock="HARD"), self._slot("18:30")])))
+        self.assertEqual(1, len(self._diagnose([self._slot("17:00"), self._slot("18:30", lock="HARD")])))
+
+    def test_two_hours_apart_is_never_announced(self) -> None:
+        """Deux heures pile entre la fin de l'une et le début de l'autre : silence."""
+        self.assertEqual([], self._diagnose([self._slot("17:00"), self._slot("20:30")]))
+
+    def test_three_close_sessions_make_one_plural_announcement(self) -> None:
+        """Trois séances proches : une seule annonce, au pluriel."""
+        diags = self._diagnose([self._slot("17:00"), self._slot("18:30"), self._slot("20:00")])
+        self.assertEqual(1, len(diags))
+        self.assertEqual(
+            "U15 : des séances du lundi à moins de 2 h d'écart (17:00-18:30, 18:30-20:00 et 20:00-21:30).",
+            diags[0]["message"],
+        )
+
+    def test_season_pair_with_keep_references_is_announced_as_kept_from_the_season(self) -> None:
+        """Toutes les séances proches à des horaires ``keep`` : T-écart-saison."""
+        diags = self._diagnose(
+            [self._slot("17:00"), self._slot("18:30")],
+            [self._ref("17:00", keep=True), self._ref("18:30", keep=True)],
+        )
+        self.assertEqual(
+            "U15 : deux séances le lundi à moins de 2 h d'écart (17:00-18:30 et 18:30-20:00), "
+            "gardées du planning de saison.",
+            diags[0]["message"],
+        )
+
+    def test_fill_references_without_keep_never_bring_the_season_mention(self) -> None:
+        """Références de comblement aux mêmes horaires (sans ``keep``) : T-écart, jamais la mention."""
+        diags = self._diagnose(
+            [self._slot("17:00"), self._slot("18:30")],
+            [self._ref("17:00", keep=False), self._ref("18:30", keep=False)],
+        )
+        self.assertEqual(
+            "U15 : deux séances le lundi à moins de 2 h d'écart (17:00-18:30 et 18:30-20:00).", diags[0]["message"]
+        )
+
+    def test_one_close_session_off_season_drops_the_season_mention(self) -> None:
+        """Une seule séance proche hors horaire de saison : T-écart sans la mention."""
+        diags = self._diagnose([self._slot("17:00"), self._slot("18:30")], [self._ref("17:00", keep=True)])
+        self.assertEqual(1, len(diags))
+        self.assertFalse(diags[0]["message"].endswith("gardées du planning de saison."))
+
+    def test_season_mention_uses_the_period_hours(self) -> None:
+        """Durées de période différentes : la mention de saison reste, avec les heures de la période."""
+        diags = self._diagnose(
+            [self._slot("17:00", 120), self._slot("20:30")],
+            [self._ref("17:00", keep=True), self._ref("20:30", keep=True)],
+        )
+        self.assertEqual(
+            "U15 : deux séances le lundi à moins de 2 h d'écart (17:00-19:00 et 20:30-22:00), "
+            "gardées du planning de saison.",
+            diags[0]["message"],
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -169,3 +169,192 @@ def test_solver_timeout_yields_a_neutral_indeterminate_verdict(monkeypatch: Any)
     assert result["indeterminate"] is True
     assert result["violations"] == []
     assert result["compromises"] == []
+
+
+# --- PR 1a — plafond de séances par jour (A9, A9bis) ----------------------------------------
+# Le verdict lit le même plafond que la génération : au plafond → T5 (mêmes phrases que la garde
+# backend T4a / T4b, jumeau ``backend/tests/Security/OneSessionPerDayGesturesTest.php``) ; un
+# chevauchement est refusé ; un collé est ACCEPTÉ (l'écart n'est jamais dans la couche dure).
+# Plafond baissé sur un planning chargé : le figé est toléré, rien ne s'y ajoute.
+
+MONDAY = 1
+TUESDAY = 2
+WEDNESDAY = 3
+THURSDAY = 4
+
+
+def _capped_team(team_id: str, *, spw: int, cap: int | None) -> dict[str, Any]:
+    team = make_team(team_id, sessions_per_week=spw)
+    if cap is not None:
+        team["maxSessionsPerDay"] = cap
+    return team
+
+
+def _session(sid: str, team_id: str, venue: str, day: int, start: str, *, lock: str | None = None) -> dict[str, Any]:
+    slot: dict[str, Any] = {
+        "id": sid,
+        "teamId": team_id,
+        "venueId": venue,
+        "dayOfWeek": day,
+        "startTime": start,
+        "durationMinutes": 90,
+    }
+    if lock is not None:
+        slot["lockLevel"] = lock
+    return slot
+
+
+def _at(team_id: str, venue: str, day: int, start: str) -> dict[str, Any]:
+    return {"teamId": team_id, "venueId": venue, "dayOfWeek": day, "startTime": start, "durationMinutes": 90}
+
+
+def _verdict(
+    teams: list[dict[str, Any]],
+    venues: list[dict[str, Any]],
+    sessions: list[dict[str, Any]],
+    candidate: dict[str, Any],
+    reference: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "clubId": "club",
+        "seasonId": "season",
+        "venues": venues,
+        "teams": teams,
+        "coaches": [],
+        "constraints": [],
+        "slotTemplates": sessions,
+        "candidate": candidate,
+    }
+    if reference is not None:
+        payload["reference"] = reference
+    return _run(payload)
+
+
+def _messages(result: dict[str, Any]) -> list[str]:
+    return [str(v["message"]) for v in result["violations"]]
+
+
+def test_cap_two_move_onto_an_overlapping_slot_is_refused_as_overlap() -> None:
+    """Plafond 2 : amener une séance qui chevauche l'autre séance du lundi est refusé (chevauchement)."""
+    result = _verdict(
+        [_capped_team("U15", spw=2, cap=2)],
+        [make_venue("A", [(MONDAY, "18:00"), (WEDNESDAY, "18:00")]), make_venue("B", [(MONDAY, "18:30")])],
+        [_session("s1", "U15", "A", MONDAY, "18:00")],
+        _at("U15", "B", MONDAY, "18:30"),
+        _at("U15", "A", WEDNESDAY, "18:00"),
+    )
+    assert result["valid"] is False
+    assert {v["rule"] for v in result["violations"]} == {"team_no_overlap"}, result["violations"]
+    assert _messages(result) == ["U15 a déjà une séance qui chevauche ce créneau le lundi."]
+
+
+def test_cap_two_move_onto_a_full_day_is_refused_with_the_cap_sentence() -> None:
+    """Plafond 2 : amener une troisième séance un lundi qui en a déjà 2 → T5 (phrase T4b)."""
+    result = _verdict(
+        [_capped_team("U15", spw=3, cap=2)],
+        [make_venue("A", [(MONDAY, "09:00"), (MONDAY, "14:00"), (MONDAY, "18:00"), (WEDNESDAY, "18:00")])],
+        [_session("s1", "U15", "A", MONDAY, "09:00"), _session("s2", "U15", "A", MONDAY, "14:00")],
+        _at("U15", "A", MONDAY, "18:00"),
+        _at("U15", "A", WEDNESDAY, "18:00"),
+    )
+    assert result["valid"] is False
+    assert "U15 a déjà 2 séances le lundi : 2 séances par jour au plus pour cette équipe." in _messages(result)
+
+
+def test_cap_two_move_glued_to_the_other_session_is_accepted() -> None:
+    """Plafond 2 : coller une séance à l'autre séance du lundi est ACCEPTÉ (l'écart n'est pas dur)."""
+    result = _verdict(
+        [_capped_team("U15", spw=2, cap=2)],
+        [make_venue("A", [(MONDAY, "17:00"), (MONDAY, "18:30"), (WEDNESDAY, "18:00")])],
+        [_session("s1", "U15", "A", MONDAY, "17:00")],
+        _at("U15", "A", MONDAY, "18:30"),
+        _at("U15", "A", WEDNESDAY, "18:00"),
+    )
+    assert result["valid"] is True, result["violations"]
+
+
+def _lowered_cap_venues() -> list[dict[str, Any]]:
+    return [
+        make_venue(
+            "A",
+            [
+                (MONDAY, "09:00"),
+                (MONDAY, "14:00"),
+                (MONDAY, "18:00"),
+                (TUESDAY, "18:00"),
+                (WEDNESDAY, "18:00"),
+                (THURSDAY, "18:00"),
+            ],
+        )
+    ]
+
+
+def _lowered_cap_double(*, lock_morning: bool = False) -> list[dict[str, Any]]:
+    """U15 remise à 1 séance par jour alors que la version chargée lui garde un doublé le lundi."""
+    return [
+        _session("m", "U15", "A", MONDAY, "09:00", lock="HARD" if lock_morning else None),
+        _session("e", "U15", "A", MONDAY, "18:00"),
+    ]
+
+
+def test_lowered_cap_a_gesture_on_another_team_is_accepted() -> None:
+    """Plafond baissé à 1 avec un doublé libre en place : un geste sur une autre équipe passe."""
+    result = _verdict(
+        [_capped_team("U15", spw=2, cap=None), _capped_team("U13", spw=1, cap=None)],
+        _lowered_cap_venues(),
+        _lowered_cap_double(),
+        _at("U13", "A", WEDNESDAY, "18:00"),
+        _at("U13", "A", TUESDAY, "18:00"),
+    )
+    assert result["valid"] is True, result["violations"]
+    assert "baseline_infeasible" not in {v["rule"] for v in result["violations"]}
+
+
+def test_lowered_cap_with_a_lock_and_a_free_session_a_gesture_on_another_team_is_accepted() -> None:
+    """Même chose quand le doublé du lundi est un verrou + une séance libre."""
+    result = _verdict(
+        [_capped_team("U15", spw=2, cap=None), _capped_team("U13", spw=1, cap=None)],
+        _lowered_cap_venues(),
+        _lowered_cap_double(lock_morning=True),
+        _at("U13", "A", WEDNESDAY, "18:00"),
+        _at("U13", "A", TUESDAY, "18:00"),
+    )
+    assert result["valid"] is True, result["violations"]
+
+
+def test_lowered_cap_moving_one_session_out_to_a_free_day_is_accepted() -> None:
+    """Plafond baissé : sortir la séance du lundi soir vers le mercredi est accepté."""
+    result = _verdict(
+        [_capped_team("U15", spw=2, cap=None)],
+        _lowered_cap_venues(),
+        [_session("m", "U15", "A", MONDAY, "09:00")],
+        _at("U15", "A", WEDNESDAY, "18:00"),
+        _at("U15", "A", MONDAY, "18:00"),
+    )
+    assert result["valid"] is True, result["violations"]
+
+
+def test_lowered_cap_bringing_one_more_session_that_day_is_refused() -> None:
+    """Plafond baissé : amener une séance du jeudi au lundi déjà doublé → T5 (phrase T4a)."""
+    result = _verdict(
+        [_capped_team("U15", spw=3, cap=None)],
+        _lowered_cap_venues(),
+        _lowered_cap_double(),
+        _at("U15", "A", MONDAY, "14:00"),
+        _at("U15", "A", THURSDAY, "18:00"),
+    )
+    assert result["valid"] is False
+    assert "U15 s'entraîne déjà le lundi : une seule séance par jour." in _messages(result)
+
+
+def test_lowered_cap_moving_one_of_the_double_within_the_day_is_refused() -> None:
+    """Plafond baissé : déplacer la séance du lundi soir vers un autre créneau du lundi → T5 (T4a)."""
+    result = _verdict(
+        [_capped_team("U15", spw=2, cap=None)],
+        _lowered_cap_venues(),
+        [_session("m", "U15", "A", MONDAY, "09:00")],
+        _at("U15", "A", MONDAY, "14:00"),
+        _at("U15", "A", MONDAY, "18:00"),
+    )
+    assert result["valid"] is False
+    assert "U15 s'entraîne déjà le lundi : une seule séance par jour." in _messages(result)
