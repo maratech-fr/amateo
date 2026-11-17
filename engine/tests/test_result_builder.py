@@ -12,7 +12,7 @@ from app.solver.result_builder import build_result
 WELLNESS_LEAD = (
     "Elle se heurte sans doute à une règle de bien-être réglée « Obligatoire » (jour de repos, enchaînements, "
     "jeunes avant les grands) ou à un coach qui tient plusieurs équipes : passez cette règle de bien-être en "
-    "« Objectif » pour le vérifier."
+    "« Souhaitée » pour le vérifier."
 )
 
 
@@ -815,7 +815,7 @@ class InfeasibilityCausesTest(unittest.TestCase):
         )
         self.assertEqual("Ces 2 règles se contredisent : « Lundi imposé » et une règle sans nom.", message)
         self.assertEqual(
-            ["Assouplissez l'une de ces règles, ou passez-la en « Objectif », puis relancez la génération."],
+            ["Assouplissez l'une de ces règles, ou passez-la en « Souhaitée », puis relancez la génération."],
             suggestions,
         )
 
@@ -825,7 +825,7 @@ class InfeasibilityCausesTest(unittest.TestCase):
             [{"kind": "coach_unavailability", "constraintId": "c1", "label": "Indispo", "count": 1}]
         )
         self.assertEqual(
-            ["Assouplissez cette règle, ou passez-la en « Objectif », puis relancez la génération."], suggestions
+            ["Assouplissez cette règle, ou passez-la en « Souhaitée », puis relancez la génération."], suggestions
         )
 
     def test_a_group_without_extra_reservation_beside_a_rule_is_not_told_to_remove_one(self) -> None:

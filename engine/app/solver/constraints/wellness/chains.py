@@ -20,6 +20,7 @@ from ...compromise import FAMILY_IMPLICIT, CompromiseTermInfo
 from ..common import (
     CHAIN_VIOLATION_WEIGHT,
     HARD,
+    OFF,
     PREFERRED,
     AssignmentVariable,
     BoolVarLike,
@@ -76,7 +77,12 @@ def add_max_consecutive_sessions_constraints(
     and ``N-k`` free yields ``sum(free) <= max_consecutive - 1 - k`` (HARD): dropping one
     free slot is enough to break it. A fully-locked chain (``k == max_consecutive``) posts
     nothing — the post-solve detection already diagnoses it.
+
+    ``intensity=OFF`` (« Ignorée », contrat 1.11): nothing is posted, neither bound nor term.
     """
+
+    if intensity == OFF:
+        return 0
 
     coach_ids: set[str] = set()
     for coach in coaches:

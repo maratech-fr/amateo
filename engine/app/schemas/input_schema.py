@@ -138,7 +138,7 @@ class CoachRestDayRuleSchema(SerializableModel):
     historique) ; ``PREFERRED`` la retire du dur et la pénalise dans l'objectif. La
     violation est TOUJOURS diagnostiquée post-solve, quel que soit le cran."""
 
-    intensity: Literal["HARD", "PREFERRED"] = "HARD"
+    intensity: Literal["HARD", "PREFERRED", "OFF"] = "HARD"
     min_rest_days: int = Field(default=1, ge=1, le=4, alias="minRestDays")
 
 
@@ -146,14 +146,14 @@ class IntensityRuleSchema(SerializableModel):
     """Une règle implicite à cran seul (pas de seuil réglable) : 3c distribution
     salariés, 12 âge croissant."""
 
-    intensity: Literal["HARD", "PREFERRED"] = "HARD"
+    intensity: Literal["HARD", "PREFERRED", "OFF"] = "HARD"
 
 
 class MaxConsecutiveSessionsRuleSchema(SerializableModel):
     """Implicit rule 3d — une personne n'enchaîne pas ``maxConsecutive`` créneaux
     dos-à-dos. Défaut 3 = comportement historique (« jamais 3 dos-à-dos »)."""
 
-    intensity: Literal["HARD", "PREFERRED"] = "HARD"
+    intensity: Literal["HARD", "PREFERRED", "OFF"] = "HARD"
     max_consecutive: int = Field(default=3, ge=2, le=6, alias="maxConsecutive")
 
 
@@ -173,7 +173,7 @@ class MaxConsecutiveDaysRuleSchema(SerializableModel):
     prise sur une semaine de 7 jours.
     """
 
-    intensity: Literal["HARD", "PREFERRED"] = "HARD"
+    intensity: Literal["HARD", "PREFERRED", "OFF"] = "HARD"
     max_consecutive_days: int = Field(default=3, ge=2, le=5, alias="maxConsecutiveDays")
 
 
@@ -333,7 +333,7 @@ class ScheduleInputSchema(SerializableModel):
     # la valeur du fil. On l'aligne néanmoins sur le contrat courant (engine/CONTRACT_VERSION) pour
     # qu'aucun lecteur ne le prenne pour une version concurrente ; gardé par
     # test_schema_version_defaults_match_contract_version.
-    version: str = "1.10"
+    version: str = "1.11"
     club_id: str = Field(alias="clubId")
     season_id: str = Field(alias="seasonId")
     schedule_name: str | None = Field(default=None, alias="scheduleName")

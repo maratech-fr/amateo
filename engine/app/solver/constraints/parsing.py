@@ -38,10 +38,14 @@ def _rule_block(raw: Mapping[str, Any], *names: str) -> Mapping[str, Any] | None
 
 
 def _intensity(block: Mapping[str, Any] | None) -> str:
+    """Le cran d'une règle du club. ``OFF`` (« Ignorée », contrat 1.11) l'éteint ; l'absence ou une
+    valeur inconnue vaut HARD — jamais une règle éteinte par erreur de saisie."""
     if block is None:
         return HARD
     value = str(block.get("intensity") or HARD).upper()
-    return PREFERRED if value == PREFERRED else HARD
+    if value in (PREFERRED, OFF):
+        return value
+    return HARD
 
 
 def _travel_intensity(block: Mapping[str, Any] | None) -> str:

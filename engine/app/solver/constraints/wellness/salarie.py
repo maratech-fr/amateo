@@ -13,6 +13,7 @@ from typing import Any, cast
 from ...compromise import FAMILY_IMPLICIT, CompromiseTermInfo
 from ..common import (
     HARD,
+    OFF,
     SALARIE_VIOLATION_WEIGHT,
     AssignmentVariable,
     BoolVarLike,
@@ -40,7 +41,8 @@ def add_salarie_distribution_constraints(
     Un OBJECTIF, jamais un blocage (décision fondateur 2026-10-31) : un salarié est un coach
     ``isEmployee=True`` ; pour chaque jour lun-ven de la grille, ``day_has_salarie[d]`` est réifié et
     son littéral de violation ``day_has_salarie[d] == 0`` part dans ``soft_terms_out``. ``intensity``
-    reste dans la signature, mais est SANS EFFET pour cette règle : le cran stocké ne change rien.
+    ne distingue que ``OFF`` (« Ignorée », contrat 1.11) : rien n'est posé, ni terme ni borne ; HARD
+    et PREFERRED y sont le même objectif.
 
     Un jour sans aucun créneau au club ne porte aucun terme : ce serait un malus constant pour un fait
     que le gestionnaire ne peut pas changer. La grille se lit sur ``model.slot_capacities`` ; un modèle
@@ -56,6 +58,9 @@ def add_salarie_distribution_constraints(
 
     Skipped if there are fewer than 2 salarié coaches.
     """
+
+    if intensity == OFF:
+        return 0
 
     salarie_ids: set[str] = set()
     for coach in coaches:

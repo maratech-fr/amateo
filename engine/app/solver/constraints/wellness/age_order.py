@@ -16,6 +16,7 @@ from ...model import _time_to_minutes
 from ..common import (
     AGE_VIOLATION_WEIGHT,
     HARD,
+    OFF,
     PREFERRED,
     AssignmentVariable,
     BoolVarLike,
@@ -48,7 +49,12 @@ def add_age_ascending_constraints(
 
     Teams with ``ageMin=None`` (Loisir, Baby) and HARD-locked teams are exempt.
     No constraint is added between teams sharing the same ``ageMin``.
+
+    ``intensity=OFF`` (« Ignorée », contrat 1.11): nothing is posted, neither bound nor term.
     """
+
+    if intensity == OFF:
+        return 0
 
     team_age_min: dict[str, int] = {}
     for team in teams:
