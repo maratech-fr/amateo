@@ -81,6 +81,9 @@ class TeamSchema(SerializableModel):
     forced_venue_id: str | None = Field(default=None, alias="forcedVenueId")
     parent_team_id: str | None = Field(default=None, alias="parentTeamId")
     ffbb_team_id: str | None = Field(default=None, alias="ffbbTeamId")
+    # Contrat 1.10 — plafond de séances par jour pour cette équipe (1 à 4). Le backend ne l'émet
+    # qu'au-delà de 1 : absent = 1, le comportement d'avant (une seule séance par jour).
+    max_sessions_per_day: int = Field(default=1, ge=1, le=4, alias="maxSessionsPerDay")
 
 
 class CoachSchema(SerializableModel):
@@ -330,7 +333,7 @@ class ScheduleInputSchema(SerializableModel):
     # la valeur du fil. On l'aligne néanmoins sur le contrat courant (engine/CONTRACT_VERSION) pour
     # qu'aucun lecteur ne le prenne pour une version concurrente ; gardé par
     # test_schema_version_defaults_match_contract_version.
-    version: str = "1.9"
+    version: str = "1.10"
     club_id: str = Field(alias="clubId")
     season_id: str = Field(alias="seasonId")
     schedule_name: str | None = Field(default=None, alias="scheduleName")

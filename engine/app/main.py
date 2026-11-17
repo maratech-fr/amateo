@@ -39,6 +39,7 @@ from app.solver.constraints import (
     parse_v2_constraints,
     resolve_implicit_rules,
 )
+from app.solver.constraints.common import _locked_team_days, _max_sessions_per_day_by_team
 from app.solver.constraints.diagnostics import RESERVED_BLOCK_ALERT_ID_PREFIX
 from app.solver.match_placement import solve_match_placement
 from app.solver.model import DEFAULT_SESSION_MINUTES, ScheduleCpModel, _time_to_minutes, build_model
@@ -52,12 +53,15 @@ from app.solver.objective import (
     add_missing_session_penalty,
     add_preferred_day_bonus,
     add_preferred_time_bonus,
+    add_same_day_gap_penalty,
+    add_same_day_penalty,
     add_socle_reference_bonus,
     add_spacing_penalty,
     add_team_link_penalty,
     add_venue_preference_bonus,
     build_stability_terms,
     is_team_satisfied_by_hard_locks,
+    season_reference_keys,
 )
 from app.solver.result_builder import build_result
 from app.solver.validate_assignments import validate_assignment
@@ -730,7 +734,12 @@ def _solve(
     )
 
     _time_window_added, conflicts = add_time_window_constraints(model, model.x, parsed["time_windows"])
-    _vm_added, vm_conflicts = add_venue_minimum_constraints(model, model.x, parsed.get("venue_minimums", []))
+    _vm_added, vm_conflicts = add_venue_minimum_constraints(
+        model,
+        model.x,
+        parsed.get("venue_minimums", []),
+        max_sessions_per_day=_max_sessions_per_day_by_team(data.get("teams", [])),
+    )
     # Parse-time "constraint not honored" warnings (target-less scope, coach
     # ruleType coerced…) ride the same diagnostics channel as hard conflicts.
     conflicts = [*conflicts, *vm_conflicts, *parsed.get("parse_warnings", [])]
@@ -787,6 +796,30 @@ def _solve(
     soft_terms.extend(add_preferred_time_bonus(model, model.x, parsed["time_windows"], LEVEL_2_OBJECTIVE_WEIGHTS))
     soft_terms.extend(add_match_day_rest_bonus(model, model.x, data.get("teams", []), LEVEL_2_OBJECTIVE_WEIGHTS))
     soft_terms.extend(add_spacing_penalty(model, model.x, data.get("teams", []), LEVEL_2_OBJECTIVE_WEIGHTS))
+    # PR 1a — plafond de séances par jour : « même jour » (−10 par rang) et « moins de 2 h d'écart »
+    # (−50), équipes à plafond ≥ 2 seulement (plafond 1 : aucun terme, chemin byte-identique). Une
+    # paire aux deux horaires de saison d'une équipe qui garde ses créneaux (références ``keep``)
+    # ne coûte ni l'un ni l'autre : la génération d'une période la garde.
+    season_keys = season_reference_keys(data.get("socleReferenceAssignments"))
+    soft_terms.extend(
+        add_same_day_penalty(
+            model,
+            model.x,
+            data.get("teams", []),
+            LEVEL_2_OBJECTIVE_WEIGHTS,
+            locked_team_days=_locked_team_days(model),
+            season_reference_keys=season_keys,
+        )
+    )
+    soft_terms.extend(
+        add_same_day_gap_penalty(
+            model,
+            assignments,
+            data.get("teams", []),
+            LEVEL_2_OBJECTIVE_WEIGHTS,
+            season_reference_keys=season_keys,
+        )
+    )
     # P4-51 — le plafond de jours d'un coach (préféré, jamais dur) : voir add_coach_day_cap_penalty.
     soft_terms.extend(
         add_coach_day_cap_penalty(model, model.x, data.get("coaches", []), team_coach_map, LEVEL_2_OBJECTIVE_WEIGHTS)

@@ -10,11 +10,13 @@ from collections.abc import Mapping
 from datetime import UTC, datetime
 from typing import Any
 
-from ...model import DEFAULT_SESSION_MINUTES
+from ...constraints.common import TEAM_SAME_DAY_GAP_MINUTES, _max_sessions_per_day_by_team
+from ...model import DEFAULT_SESSION_MINUTES, _format_time, _time_to_minutes
 from ..helpers import (
     _coach_name_map,
     _coach_threshold,
     _collection,
+    _day_label,
     _get,
     _label,
     _team_ids,
@@ -202,4 +204,93 @@ def _diagnose_unused_slots(
                 }
             )
 
+    return diagnostics
+
+
+def _diagnose_same_day_gap(
+    model_data: Mapping[str, Any] | Any,
+    slots: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """PR 1a — une annonce par (équipe, jour) dès que deux séances d'une équipe à plafond ≥ 2 sont à
+    moins de 2 h l'une de l'autre (fin de l'une, début de la suivante) et qu'au moins une des deux
+    n'est pas un verrou. Deux verrous collés (réservations ou verrous de version : le moteur n'en
+    connaît qu'un état, ``HARD``) : silence.
+
+    Type ``implicit_rule_not_honored`` SANS ``ruleKey`` — entorse assumée : une règle fixe, non
+    réglable, donc sans lien « Ajuster » ; ``suggestions`` vide (une suggestion d'avertissement ne
+    s'affiche nulle part). L'annonce ne dépend pas du coût : une paire de saison exemptée est quand
+    même annoncée, avec la mention « gardées du planning de saison » quand TOUTES les séances proches
+    du jour sont à des horaires de saison — références ``keep`` seulement (même filtre que
+    ``season_slots.py`` ; jamais en comblement). Heures affichées : celles des créneaux FINAUX."""
+    caps = _max_sessions_per_day_by_team(_collection(model_data, "teams"))
+    capped = {team_id for team_id, cap in caps.items() if cap >= 2}
+    if not capped:
+        return []
+
+    references = _collection(model_data, "socleReferenceAssignments", "socle_reference_assignments")
+    season_keys: set[tuple[str, int, int]] = set()
+    for ref in references:
+        if not bool(_get(ref, "keep", default=False)):
+            continue
+        try:
+            season_keys.add(
+                (
+                    str(_get(ref, "teamId", "team_id")),
+                    int(_get(ref, "dayOfWeek", "day_of_week")),
+                    _time_to_minutes(_get(ref, "startTime", "start_time")),
+                )
+            )
+        except TypeError, ValueError:
+            continue
+
+    team_names = _team_name_map(model_data)
+    # (équipe, jour) -> [(début, fin, verrou ?)]
+    by_team_day: dict[tuple[str, int], list[tuple[int, int, bool]]] = defaultdict(list)
+    for slot in slots:
+        team_id = str(slot.get("teamId"))
+        if team_id not in capped:
+            continue
+        try:
+            day = int(slot["dayOfWeek"])
+            start = _time_to_minutes(str(slot["startTime"]))
+        except KeyError, TypeError, ValueError:
+            continue
+        duration = int(slot.get("durationMinutes") or DEFAULT_SESSION_MINUTES)
+        is_lock = str(slot.get("lockLevel") or "NONE").upper() == "HARD"
+        by_team_day[(team_id, day)].append((start, start + duration, is_lock))
+
+    diagnostics: list[dict[str, Any]] = []
+    for (team_id, day), sessions in sorted(by_team_day.items()):
+        ordered = sorted(sessions)
+        close: set[int] = set()
+        for i, (a_start, a_end, a_lock) in enumerate(ordered):
+            for j in range(i + 1, len(ordered)):
+                b_start, _b_end, b_lock = ordered[j]
+                if a_start < b_start and b_start - a_end < TEAM_SAME_DAY_GAP_MINUTES and not (a_lock and b_lock):
+                    close.update((i, j))
+        if not close:
+            continue
+        chosen = [ordered[i] for i in sorted(close)]
+        ranges = [f"{_format_time(start)}-{_format_time(end)}" for start, end, _lock in chosen]
+        team = _label(team_id, team_names)
+        weekday = _day_label(day)
+        if len(ranges) == 2:
+            body = f"{team} : deux séances le {weekday} à moins de 2 h d'écart ({ranges[0]} et {ranges[1]})"
+        else:
+            body = (
+                f"{team} : des séances du {weekday} à moins de 2 h d'écart ({', '.join(ranges[:-1])} et {ranges[-1]})"
+            )
+        season = all((team_id, day, start) in season_keys for start, _end, _lock in chosen)
+        diagnostics.append(
+            {
+                "id": f"diag-same-day-gap-{team_id}-{day}",
+                "type": "implicit_rule_not_honored",
+                "severity": "WARNING",
+                "teamId": team_id,
+                "dayOfWeek": day,
+                "message": body + (", gardées du planning de saison." if season else "."),
+                "suggestions": [],
+                "createdAt": datetime.now(UTC).isoformat(),
+            }
+        )
     return diagnostics

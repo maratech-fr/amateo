@@ -17,6 +17,7 @@ from ..common import (
     _dedupe_variables,
     _get,
     _locked_team_days,
+    _max_sessions_per_day_by_team,
     _record_closure,
     _scalar_id,
     _to_day_int,
@@ -29,7 +30,7 @@ def add_one_session_per_day_constraints(
     *,
     teams: Iterable[Any] = (),
 ) -> int:
-    """Implicit rule 11: a team can have at most one training session per day."""
+    """Implicit rule 11: a team trains at most ``maxSessionsPerDay`` times per day (1 by default)."""
 
     groups: dict[tuple[str, str], list[BoolVarLike]] = defaultdict(list)
     for assignment in assignments:
@@ -91,6 +92,18 @@ def add_one_session_per_day_constraints(
             cast(Any, model).Add(sum(free_day_active_vars) <= max(0, spw - len(locked_days_for_team)))
             added += 1
 
+    # PR 1a (contrat 1.10) — budget du jour : ``Σ créneaux libres du jour <= max(plafond − verrous
+    # du jour, séances figées du jour)``, plancher 0. Plafond 1 sans séance figée (toute la
+    # génération) = chemin d'avant, byte-identique : ``<= 0`` dès qu'un verrou occupe le jour,
+    # ``<= 1`` sinon. Les séances FIGÉES (``fixed``) n'existent que dans le verdict d'un geste :
+    # un doublé déjà en place sous un plafond baissé est toléré, rien ne s'y ajoute.
+    caps = _max_sessions_per_day_by_team(teams)
+    fixed_by_team_day: dict[tuple[str, str], set[int]] = defaultdict(set)
+    for assignment in assignments:
+        if assignment.fixed and assignment.team_id is not None and assignment.slot_id is not None:
+            day_key = str(assignment.slot_id).split(":")[0]
+            fixed_by_team_day[(str(assignment.team_id), day_key)].add(id(assignment.var))
+
     for (team_id, day), vars_list in groups.items():
         deduped = _dedupe_variables(vars_list)
         locked_count = 0
@@ -100,10 +113,13 @@ def add_one_session_per_day_constraints(
                 locked_count = team_locks.get(int(day), 0)
             except TypeError, ValueError:
                 locked_count = 0
-        if locked_count >= 1:
-            # Un verrou occupe déjà l'unique séance du jour → aucun créneau libre ce jour-là.
-            # ``<= 0`` (et non ``<= 1 - locked_count``) : deux verrous le même jour sont un
-            # conflit ENTRE verrous, laissé au diagnostic — jamais une contrainte infaisable.
+        cap = caps.get(team_id, 1)
+        fixed_count = len(fixed_by_team_day.get((team_id, day), ()))
+        bound = max(0, cap - locked_count, fixed_count)
+        if bound == 0:
+            # Les verrous occupent déjà toutes les séances permises ce jour-là → aucun créneau
+            # libre. ``<= 0`` (jamais ``<= plafond − verrous`` négatif) : des verrous au-delà du
+            # plafond sont un conflit ENTRE verrous, laissé au diagnostic — jamais un infaisable.
             if deduped:
                 cast(Any, model).Add(sum(deduped) <= 0)
                 added += 1
@@ -112,8 +128,8 @@ def add_one_session_per_day_constraints(
                 # ci-dessus sont des canaux de réification, PAS des fermetures — hors mesure.)
                 for locked_out_var in deduped:
                     _record_closure(model, locked_out_var, {"kind": "hard_lock"})
-        elif len(deduped) > 1:
-            cast(Any, model).Add(sum(deduped) <= 1)
+        elif len(deduped) > bound:
+            cast(Any, model).Add(sum(deduped) <= bound)
             added += 1
 
     return added

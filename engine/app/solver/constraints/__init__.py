@@ -211,6 +211,7 @@ from .structural import add_forbidden_assignments as add_forbidden_assignments
 from .structural import add_min_sessions_constraints as add_min_sessions_constraints
 from .structural import add_room_at_most_one as add_room_at_most_one
 from .structural import add_team_no_overlap as add_team_no_overlap
+from .structural import add_team_self_no_overlap_constraints as add_team_self_no_overlap_constraints
 from .structural import close_sessions_without_holder as close_sessions_without_holder
 from .targeting import TeamLinkPlacement as TeamLinkPlacement
 from .targeting import _forced_venue_id as _forced_venue_id
@@ -382,6 +383,9 @@ def add_level_1_hard_constraints(
 
     # 4. A team cannot have two sessions at the same time slot.
     stats.team_no_overlap = add_team_no_overlap(model, assignment_list)
+    # 4 bis. PR 1a — à plafond de séances par jour ≥ 2, deux séances d'une équipe ne se chevauchent
+    # jamais (horaires différents compris, autre gymnase compris). Plafond 1 : rien n'est posé.
+    stats.team_no_overlap += add_team_self_no_overlap_constraints(model, assignment_list, teams=teams)
 
     # 5. Pre-placed slots are fixed and excluded from optimization choices.
     stats.fixed_slots = add_fixed_slots(model, assignment_list)
@@ -465,6 +469,7 @@ __all__ = [
     "add_shared_block_constraints",
     "add_team_link_constraints",
     "add_team_no_overlap",
+    "add_team_self_no_overlap_constraints",
     "add_time_window_constraints",
     "add_travel_departage_penalty",
     "add_travel_time_hard_constraints",

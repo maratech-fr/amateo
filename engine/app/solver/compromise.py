@@ -37,6 +37,10 @@ FAMILY_TEAM_LINK = "team_link"
 # deux séances enchaînées à des gymnases différents dont l'écart est plus court que le barème du
 # coach. Extension de la liste FERMÉE décidée par le fondateur pour ce lot.
 FAMILY_TRAVEL = "travel_time"
+# PR 1a (contrat 1.10) — plafond de séances par jour : « une séance de plus le même jour » (malus
+# ``same_day``) et son sous-genre ``detail="gap"`` (« deux séances à moins de 2 h d'écart », malus
+# ``same_day_gap``). Extension de la liste FERMÉE décidée par le fondateur pour ce lot.
+FAMILY_SAME_DAY = "same_day"
 
 COMPROMISE_FAMILIES = frozenset(
     {
@@ -50,6 +54,7 @@ COMPROMISE_FAMILIES = frozenset(
         FAMILY_IMPLICIT,
         FAMILY_TEAM_LINK,
         FAMILY_TRAVEL,
+        FAMILY_SAME_DAY,
     }
 )
 
@@ -163,6 +168,18 @@ def _message(family: str, effect: str, rep: CompromiseTermInfo, names: dict[str,
             f"{coach} n'a désormais plus le temps de rejoindre son gymnase suivant."
             if broken
             else f"{coach} a de nouveau le temps de rejoindre son gymnase suivant."
+        )
+    if family == FAMILY_SAME_DAY:
+        if rep.detail == "gap":
+            return (
+                f"{team} a désormais deux séances à moins de 2 h d'écart le {day}."
+                if broken
+                else f"{team} n'a plus deux séances à moins de 2 h d'écart le {day}."
+            )
+        return (
+            f"{team} a désormais une séance de plus le même jour ({day})."
+            if broken
+            else f"{team} a une séance de moins le même jour ({day})."
         )
     if family == FAMILY_CHAINING:
         where = f"au {venue}" if venue else ""

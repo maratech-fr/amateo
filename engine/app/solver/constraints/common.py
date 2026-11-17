@@ -529,6 +529,29 @@ def _locked_team_days(model: Any) -> dict[str, dict[int, int]]:
     return result
 
 
+# PR 1a (contrat 1.10) — écart souhaité entre la fin d'une séance et le début de la suivante,
+# pour une même équipe le même jour. Souple (``same_day_gap``, −50) : jamais un refus.
+TEAM_SAME_DAY_GAP_MINUTES = 120
+
+
+def _max_sessions_per_day_by_team(teams: Iterable[Any]) -> dict[str, int]:
+    """``team_id -> plafond de séances par jour`` (``maxSessionsPerDay``, 1 à 4, défaut 1).
+
+    Le backend n'émet le champ qu'au-delà de 1 : une équipe absente de la carte, ou au champ
+    absent, vaut 1 — le comportement d'avant le contrat 1.10."""
+    caps: dict[str, int] = {}
+    for team in teams or ():
+        tid = _scalar_id(_get(team, "id", "team_id", "teamId", default=None))
+        if tid is None:
+            continue
+        raw = _get(team, "maxSessionsPerDay", "max_sessions_per_day", default=1)
+        try:
+            caps[str(tid)] = max(1, int(raw))
+        except TypeError, ValueError:
+            caps[str(tid)] = 1
+    return caps
+
+
 def _locked_venue_substart_counts(model: Any) -> dict[tuple[str, int, int], int]:
     """``(venue, weekday, sub-slot start minute) -> nombre de séances verrouillées`` (P4-97 bis).
 

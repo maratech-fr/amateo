@@ -13,7 +13,7 @@ from typing import Any
 
 from ortools.sat.python import cp_model
 
-from ..constraints.common import _hold_key, _lock_hold
+from ..constraints.common import _hold_key, _lock_hold, _max_sessions_per_day_by_team
 from ..model import (
     DEFAULT_SESSION_MINUTES,
     SLOT_MINUTES,
@@ -139,6 +139,15 @@ def _build_solver_slots(
         start_minutes = _time_to_minutes(slot_start)
         active[(team_id, venue_id, day_of_week)].append(start_minutes)
 
+    # PR 1a — une équipe à plafond de séances par jour ≥ 2 peut avoir deux séances qui se suivent dans
+    # le même gymnase : ce sont DEUX séances, jamais fusionnées en une (la fusion ne vaut que pour des
+    # variables d'une même séance, impossible à plafond 1 au-delà d'une par jour).
+    capped_teams = {
+        team_id
+        for team_id, cap in _max_sessions_per_day_by_team(_get(model_data, "teams", default=None) or ()).items()
+        if cap >= 2
+    }
+
     slots: list[dict[str, Any]] = []
     for (team_id, venue_id, day_of_week), starts in active.items():
         starts_sorted = sorted(starts)
@@ -153,7 +162,7 @@ def _build_solver_slots(
         block_end = starts_sorted[0] + _slot_dur(venue_id, day_of_week, starts_sorted[0])
 
         for s in starts_sorted[1:]:
-            if s == block_end:
+            if s == block_end and str(team_id) not in capped_teams:
                 # contiguous — extend block
                 block_end = s + _slot_dur(venue_id, day_of_week, s)
             else:

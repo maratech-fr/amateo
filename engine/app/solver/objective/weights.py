@@ -37,7 +37,12 @@ from ..helpers import MISSING
 # change. INERTE par défaut (aucune référence ``keep`` émise ⇒ aucun bonus de ce régime, goldens et
 # score du régime comblement byte-identiques — les poids 12-20 de ``SOCLE_REFERENCE_TIER_WEIGHTS``
 # ne bougent pas), mais présent dès qu'une équipe « garde ses créneaux ».
-SCORE_FORMULA_VERSION = "T24_LEVEL_2_FIXED_WEIGHTS_V14"
+# V15 (PR 1a, contrat 1.10 — plafond de séances par jour) — l'objectif de PLACEMENT gagne deux
+# malus, pour les seules équipes à plafond ≥ 2 : ``same_day`` (−10 par séance au-delà de la
+# première d'un jour, ``add_same_day_penalty``) et ``same_day_gap`` (−50 par séance commencée moins
+# de 2 h après la fin d'une autre séance de l'équipe ce jour-là, ``add_same_day_gap_penalty``).
+# INERTES par défaut (aucune équipe à plafond ≥ 2 ⇒ aucun terme, goldens et score byte-identiques).
+SCORE_FORMULA_VERSION = "T24_LEVEL_2_FIXED_WEIGHTS_V15"
 
 LEVEL_2_OBJECTIVE_WEIGHTS = MappingProxyType(
     {
@@ -126,6 +131,19 @@ LEVEL_2_OBJECTIVE_WEIGHTS = MappingProxyType(
         #      deux camps d'un conflit de créneau (chaque équipe sous quota paie le sien),
         #      donc il n'inverse jamais l'ordre S > A > B > C > D d'un arbitrage de créneau.
         "missing_session": -1000,
+        # V15 (PR 1a) — « même jour » : −10 par séance au-delà de la première d'un jour, pour une
+        # équipe à plafond ≥ 2 (un littéral par rang, patron ``overload_day``). Un verrou et un
+        # créneau de saison gardé (référence ``keep``) situent le rang sans coûter. 10 > une règle
+        # Souhaitée seule (6) + l'écart d'un jour (2) : un doublé n'est retenu que pour placer une
+        # séance, honorer une autre règle ou retrouver un créneau de saison.
+        "same_day": -10,
+        # V15 (PR 1a) — « moins de 2 h d'écart » : −50 par séance commencée moins de 2 h après la
+        # fin d'une autre séance de l'équipe ce jour-là (libre × libre, libre × verrou ; jamais
+        # verrou × verrou ; jamais une paire dont les deux séances sont à des horaires de saison
+        # ``keep``). 50 > l'empilement de confort d'une place espacée (10 + 5 + 10 + 20 = 45) ; le
+        # doublé collé coûte 60 < 90 (écart de tier B−C) : aucune inversion de tier. Retirer une
+        # séance soulage au plus 2 littéraux (100) + 10 + 107 = 217 ≪ 1021 (``missing_session``).
+        "same_day_gap": -50,
     }
 )
 
@@ -345,6 +363,13 @@ SOCLE_REFERENCE_TIER_WEIGHTS = MappingProxyType(
 #      preferred_day 5 + preferred_time 5 + deux bien-être 6+6 = 32 < 44 ; le résiduel pathologique
 #      (~68, D-g) reste sous le plein D 65 et sous tous les pleins. « Garder ses créneaux de saison
 #      passe avant TOUTES les autres préférences » (Q3bis).
+#      PR 1a (V15) — une paire dont les DEUX séances sont à des horaires ``keep`` ne paie ni l'écart
+#      de 2 h ni « même jour » : la garantie ci-dessus tient pour un doublé de saison. Cas E, seul cas
+#      où le niveau décide : un SEUL créneau de saison reste, tout ce qui reste est le même jour,
+#      chaque autre place est à moins de 2 h de lui mais deux d'entre elles sont espacées. Garder le
+#      créneau coûte 60 (écart 50 + même jour 10), prendre les deux places espacées 10 : l'équipe le
+#      garde si son poids dépasse 50 — tous les pleins ; au barème partiel S 60, A 56, B 52 gardent,
+#      C 48 et D 44 lâchent (le diagnostic « créneaux de saison conservés » le nomme « déplacé »).
 #   4. COEXISTENCE avec la proximité au précédent (``PLACEMENT_PROXIMITY_WEIGHT`` 9, régénération). La
 #      note (d) de PLACEMENT_PROXIMITY_WEIGHT supposait les deux greffes exclusives ; en génération
 #      PLEINE d'un plan de période RÉGÉNÉRÉ, ``previousAssignments`` ET un keep peuvent coexister sur
@@ -392,6 +417,10 @@ BONUS_WEIGHT_NAMES = (
     # V10 — littéral « une séance de plus manque au quota », passé en soft_terms depuis
     # add_missing_session_penalty (jamais un bonus par assignment : aucun champ ne le porte).
     "missing_session",
+    # V15 (PR 1a) — littéraux « même jour » et « moins de 2 h d'écart », passés en soft_terms
+    # (jamais un bonus par assignment : aucun champ ne les porte).
+    "same_day",
+    "same_day_gap",
 )
 
 _PRIORITY_TIER_FIELDS = (

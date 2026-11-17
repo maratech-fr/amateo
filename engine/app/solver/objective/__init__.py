@@ -111,6 +111,12 @@ from .terms import (
     add_preferred_time_bonus as add_preferred_time_bonus,
 )
 from .terms import (
+    add_same_day_gap_penalty as add_same_day_gap_penalty,
+)
+from .terms import (
+    add_same_day_penalty as add_same_day_penalty,
+)
+from .terms import (
     add_socle_reference_bonus as add_socle_reference_bonus,
 )
 from .terms import (
@@ -124,6 +130,9 @@ from .terms import (
 )
 from .terms import (
     build_stability_terms as build_stability_terms,
+)
+from .terms import (
+    season_reference_keys as season_reference_keys,
 )
 from .weights import (
     _BONUS_FIELD_ALIASES as _BONUS_FIELD_ALIASES,
@@ -378,9 +387,12 @@ __all__ = [
     "add_level_2_objective",
     "add_missing_session_penalty",
     "add_preferred_day_bonus",
+    "add_same_day_gap_penalty",
+    "add_same_day_penalty",
     "add_socle_reference_bonus",
     "add_team_link_penalty",
     "add_venue_preference_bonus",
     "build_stability_terms",
     "is_team_satisfied_by_hard_locks",
+    "season_reference_keys",
 ]
