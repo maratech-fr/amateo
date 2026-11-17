@@ -15,6 +15,7 @@ use App\Repository\VenueRepository;
 use App\Service\CoachDoubleBookingDetector;
 use App\Service\ConstraintValidationService;
 use App\Service\GenerationBlockersGuard;
+use App\Service\ImplicitRuleResolver;
 use App\Service\PayloadCapacityMirror;
 use App\Service\PeriodConstraintSelection;
 use App\Service\PeriodConstraintSelector;
@@ -60,6 +61,7 @@ final class ValidateConstraintsController extends AbstractController
         private readonly PreSolvePreventionWarnings $preventionWarnings,
         private readonly GenerationBlockersGuard $generationBlockersGuard,
         private readonly SecondSessionSameDayDetector $secondSessionSameDayDetector,
+        private readonly ImplicitRuleResolver $implicitRuleResolver,
     ) {}
 
     #[Route('/api/constraints/validate', name: 'api_constraints_validate', methods: ['POST'])]
@@ -242,8 +244,14 @@ final class ValidateConstraintsController extends AbstractController
             ? ['demand' => $this->capacityMirror->demand($capacityPayload), 'offer' => $this->capacityMirror->offer($capacityPayload)]
             : null;
 
+        // Les règles du club réglées sur « Ignorée » pour CE plan : annoncées au Récap, jamais
+        // comptées parmi les alertes. Une période sans plan n'envoie rien au solveur : rien à annoncer.
+        $ignoredRules = null === $calendarEntryId
+            ? $this->implicitRuleResolver->ignoredRuleKeys($clubId, $seasonId, null)
+            : ($selection instanceof PeriodConstraintSelection ? $this->implicitRuleResolver->ignoredRuleKeys($clubId, $seasonId, $selection->schedulePlanId) : []);
+
         return $this->json(
-            ['valid' => $valid, 'errors' => $errors, 'conflicts' => $conflicts, 'warnings' => $warnings, 'blockers' => $blockers, 'doubledReservationIds' => $secondSession['reservationIds'], 'overlappingReservationIds' => $secondSession['overlappingReservationIds'], 'notices' => $this->coachDoubleBookingDetector->detectHoldNotices($reservations, $constraints, $clubId, $seasonId), 'capacity' => $capacity],
+            ['valid' => $valid, 'errors' => $errors, 'conflicts' => $conflicts, 'warnings' => $warnings, 'blockers' => $blockers, 'doubledReservationIds' => $secondSession['reservationIds'], 'overlappingReservationIds' => $secondSession['overlappingReservationIds'], 'ignoredRules' => $ignoredRules, 'notices' => $this->coachDoubleBookingDetector->detectHoldNotices($reservations, $constraints, $clubId, $seasonId), 'capacity' => $capacity],
             $valid ? Response::HTTP_OK : Response::HTTP_UNPROCESSABLE_ENTITY,
         );
     }

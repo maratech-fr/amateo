@@ -125,6 +125,29 @@ final class ImplicitRuleResolver
     }
 
     /**
+     * Les règles appliquées par défaut que le club a réglées sur « Ignorée » (OFF), dans l'ordre de
+     * l'enum — ce que le Récap annonce. Une opt-in éteinte n'y figure jamais : l'être est son défaut.
+     * Même portée que le payload : un plan de période lit sa copie, à défaut la saison.
+     *
+     * @return list<string>
+     */
+    public function ignoredRuleKeys(string $clubId, string $seasonId, ?string $schedulePlanId): array
+    {
+        $resolved = null === $schedulePlanId
+            ? $this->resolve($clubId, $seasonId)
+            : $this->resolveForPlan($clubId, $seasonId, $schedulePlanId);
+
+        $ignored = [];
+        foreach ($resolved as $ruleKey => $entry) {
+            if (ImplicitRuleIntensity::OFF->value === ($entry['intensity'] ?? null)) {
+                $ignored[] = $ruleKey;
+            }
+        }
+
+        return $ignored;
+    }
+
+    /**
      * @param array<string, ImplicitRuleSetting> $stored
      *
      * @return array<string, array<string, mixed>>
@@ -144,10 +167,10 @@ final class ImplicitRuleResolver
                 continue;
             }
             // P4-340 — une opt-in RÉSOLUE OFF (copie de plan matérialisée OFF pour un club neuf,
-            // ou opt-in stockée OFF en saison) est SAUTÉE, tout comme une opt-in absente : la
-            // sérialiser émettrait `intensity:"OFF"`, que le moteur refuse (422 Pydantic — il
-            // n'accepte que HARD/PREFERRED et lit l'absence comme « inactive »). Le PUT garde
-            // l'affichage inactif via le repli `inactiveEntry()`.
+            // ou opt-in stockée OFF en saison) est SAUTÉE, tout comme une opt-in absente : le
+            // moteur lit son absence comme « inactive ». Le PUT garde l'affichage inactif via le
+            // repli `inactiveEntry()`. Une règle HISTORIQUE OFF, elle, part en `OFF` EXPLICITE
+            // (contrat 1.11) : son absence vaudrait HARD au moteur.
             if ($ruleKey->isOptIn() && ImplicitRuleIntensity::OFF === $setting->getIntensity()) {
                 continue;
             }

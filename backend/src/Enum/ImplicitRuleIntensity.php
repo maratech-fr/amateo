@@ -17,10 +17,10 @@ enum ImplicitRuleIntensity: string
     case HARD = 'HARD';
     case PREFERRED = 'PREFERRED';
     /**
-     * Règle PROPOSÉE mais non appliquée (P2-42). N'a de sens que pour une règle opt-in :
-     * les quatre règles historiques s'appliquent dès qu'un club existe et n'ont donc pas
-     * d'état éteint. Le bloc `implicitRules` du payload OMET une règle à OFF — le moteur
-     * lit l'absence comme « inactive », il n'a pas à connaître ce cran.
+     * « Ignorée » : la règle n'est pas appliquée et ne bloque jamais. Une règle opt-in à OFF est
+     * OMISE du bloc `implicitRules` du payload (le moteur lit son absence comme « inactive ») ;
+     * une règle historique à OFF y part en `OFF` EXPLICITE (contrat 1.11), son absence valant
+     * HARD au moteur.
      */
     case OFF = 'OFF';
 }
