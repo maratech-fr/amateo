@@ -333,13 +333,29 @@ describe("ImplicitRulesPanel — une règle jamais obligatoire n'offre que Souha
     await waitFor(() => expect(wizardApi.updateImplicitRuleSetting).toHaveBeenCalledWith("salarieDistribution", expect.objectContaining({ intensity: "OFF" })));
   });
 
-  it("en période, elle ne porte pas de repère « Saison : », les autres règles le gardent", async () => {
+  /**
+   * En période, la règle salarié porte le repère « Saison : … » comme les autres (décision fondateur
+   * 2026-11-17), au cran tel que la saison l'AFFICHE : une saison HARD stockée se lit « Souhaitée »
+   * (`displayedIntensity`), jamais « Obligatoire ». La période est « Souhaitée » dans les deux cas, si
+   * bien que le repère « Ignorée » ne peut venir que de la saison.
+   */
+  it.each([
+    { season: "OFF" as const, expected: IMPLICIT_RULES_TEXTS.seasonReference(IMPLICIT_RULES_TEXTS.cranIgnored) },
+    { season: "HARD" as const, expected: IMPLICIT_RULES_TEXTS.seasonReference(IMPLICIT_RULES_TEXTS.cranPreferred) },
+  ])("en période, saison $season : la règle porte le repère de saison affiché, comme les autres règles", async ({ season, expected }) => {
     vi.mocked(wizardApi.listImplicitRuleSettings).mockImplementation((plan?: string | null) =>
-      Promise.resolve("plan-1" === plan ? RESOLVED({ salarieDistribution: { intensity: "PREFERRED", isDefault: false } }) : RESOLVED()),
+      Promise.resolve(
+        "plan-1" === plan
+          ? RESOLVED({ salarieDistribution: { intensity: "PREFERRED", isDefault: false } })
+          : RESOLVED({ salarieDistribution: { intensity: season, isDefault: false } }),
+      ),
     );
     renderPanel(<WellbeingRulesPanel schedulePlanId="plan-1" />);
-    await screen.findByRole("group", { name: `Intensité — ${REST_TITLE}` });
 
-    await waitFor(() => expect(screen.getAllByText(/^Saison :/)).toHaveLength(RESOLVED().length - 1));
+    const crans = await screen.findByRole("group", { name: IMPLICIT_RULES_TEXTS.intensityGroup(SALARIE_TITLE) });
+    const row = crans.closest<HTMLElement>('[data-rule-key="salarieDistribution"]');
+    expect(row).not.toBeNull();
+    await waitFor(() => expect(within(row as HTMLElement).getByText(expected)).toBeInTheDocument());
+    expect(screen.getAllByText(/^Saison :/)).toHaveLength(RESOLVED().length);
   });
 });
