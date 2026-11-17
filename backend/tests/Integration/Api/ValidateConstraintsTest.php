@@ -33,6 +33,7 @@ use App\Tests\ProvisionsPeriodPlanTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
+use Lexik\Bundle\JWTAuthenticationBundle\Services\JWTTokenManagerInterface;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
@@ -884,8 +885,9 @@ final class ValidateConstraintsTest extends WebTestCase
      */
     public function testTheRecapListsTheIgnoredRulesOfTheSeason(): void
     {
-        $this->client->loginUser($this->user);
-        $this->client->request('POST', '/api/constraints/validate', [], [], []);
+        // Deux requêtes sur le pare-feu JWT sans session : `loginUser` ne tient qu'une requête,
+        // chaque appel porte donc son jeton Bearer.
+        $this->client->request('POST', '/api/constraints/validate', [], [], $this->bearer());
         self::assertResponseStatusCodeSame(200);
         self::assertSame([], json_decode((string) $this->client->getResponse()->getContent(), true)['ignoredRules'] ?? null, 'rien d\'ignoré : la liste existe, vide');
 
@@ -894,7 +896,7 @@ final class ValidateConstraintsTest extends WebTestCase
         $this->storeRule(ImplicitRuleKey::COACH_REST_DAY, ImplicitRuleIntensity::OFF);
         $this->storeRule(ImplicitRuleKey::SALARIE_DISTRIBUTION, ImplicitRuleIntensity::PREFERRED);
 
-        $this->client->request('POST', '/api/constraints/validate', [], [], []);
+        $this->client->request('POST', '/api/constraints/validate', [], [], $this->bearer());
         self::assertResponseStatusCodeSame(200);
         self::assertSame(['coachRestDay', 'ageAscending'], json_decode((string) $this->client->getResponse()->getContent(), true)['ignoredRules'] ?? null);
     }
@@ -930,7 +932,9 @@ final class ValidateConstraintsTest extends WebTestCase
 
         self::assertSame(['salarieDistribution'], $this->validateForPeriod($entry)['ignoredRules'] ?? null);
 
-        $this->client->request('POST', '/api/constraints/validate', [], [], []);
+        // Seconde requête : `loginUser` ne tient qu'une requête sur le pare-feu JWT, d'où le Bearer.
+        $this->client->request('POST', '/api/constraints/validate', [], [], $this->bearer());
+        self::assertResponseStatusCodeSame(200);
         self::assertSame([], json_decode((string) $this->client->getResponse()->getContent(), true)['ignoredRules'] ?? null, 'la saison n\'ignore rien');
     }
 
@@ -1370,6 +1374,12 @@ final class ValidateConstraintsTest extends WebTestCase
     }
 
     /** @return array<string, mixed> */
+    /** @return array{HTTP_AUTHORIZATION: string} */
+    private function bearer(): array
+    {
+        return ['HTTP_AUTHORIZATION' => 'Bearer ' . self::getContainer()->get(JWTTokenManagerInterface::class)->create($this->user)];
+    }
+
     private function validateForPeriod(CalendarEntry $entry): array
     {
         $this->client->loginUser($this->user);
