@@ -817,8 +817,8 @@ export const deleteConstraint = (id: string): Promise<void> => api.delete(`const
  * le serveur (422). Voir `App\ApiResource\ImplicitRuleSettingResource`.
  */
 export type ImplicitRuleKey = "coachRestDay" | "salarieDistribution" | "maxConsecutiveSessions" | "ageAscending" | "maxConsecutiveDays";
-/** ⚠ `OFF` n'existe que pour les règles OPT-IN (P2-42) : la règle est proposée mais NON
- *  appliquée tant que le club ne l'active pas. Les règles historiques n'ont que 2 crans. */
+/** `OFF` = « Ignorée » : la règle n'est pas appliquée. Une règle OPT-IN (P2-42) y naît ; les autres
+ *  y sont réglées par le club. La présence d'un salarié n'accepte jamais `HARD` (422). */
 export type ImplicitRuleIntensity = "HARD" | "PREFERRED" | "OFF";
 
 export interface ImplicitRuleSetting {
@@ -880,6 +880,9 @@ export interface ValidateResult {
   /** Les réservations bloquées parce que leur créneau CHEVAUCHE une autre séance de la même équipe le
    *  même jour. Le serveur donne la cause : l'écran ne la déduit jamais des heures. */
   overlappingReservationIds?: string[];
+  /** Les règles du club réglées sur « Ignorée » pour ce qui sera généré, dans l'ordre du serveur.
+   *  Annoncées au Récap en bandeau neutre, jamais comptées parmi les alertes. */
+  ignoredRules?: ImplicitRuleKey[];
   /**
    * Avertissements formulés par le serveur — « "X" vise le gymnase Y, désactivé pour
    * cette période : elle ne sera pas appliquée ». Ils n'invalident RIEN (règle #8) et

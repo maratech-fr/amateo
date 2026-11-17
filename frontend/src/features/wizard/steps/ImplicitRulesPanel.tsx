@@ -7,7 +7,7 @@ import { Button } from "@/shared/components/ui/button";
 import { Input } from "@/shared/components/ui/input";
 import { LoadErrorHint } from "@/shared/components/ui/load-error-hint";
 import { Select } from "@/shared/components/ui/select";
-import { isAlwaysObjective } from "@/shared/lib/implicitRules";
+import { isNeverMandatory } from "@/shared/lib/implicitRules";
 import { readState } from "@/shared/lib/readState";
 import { cn } from "@/shared/lib/utils";
 
@@ -24,8 +24,9 @@ import { useImplicitRuleSettings, useResetImplicitRuleSetting, useTravelRuleSett
  *    éditables côté moteur, un contrôle ici promettrait un réglage qui n'existe pas. Le texte
  *    est un CONTRAT (gelé par le test) : chaque ligne AFFIRME un comportement du solveur.
  *  - **Règles de bien-être** — RÉGLABLES (contrat moteur 2.7). Chacune porte une intensité
- *    (Obligatoire = HARD / Objectif = PREFERRED) et, pour deux d'entre elles, un seuil. Une règle que
- *    le moteur traite toujours en objectif (`isAlwaysObjective`) est présentée sans aucun réglage.
+ *    (Obligatoire = HARD / Souhaitée = PREFERRED / Ignorée = OFF) et, pour deux d'entre elles, un
+ *    seuil. Une règle qui ne peut jamais être obligatoire (`isNeverMandatory`) n'offre que Souhaitée
+ *    et Ignorée.
  *
  * ⚠ **Régime 1 strict** (`.claude/rules/frontend.md`) : ce panneau N'INVENTE aucune règle. Il
  * AFFICHE la collection RÉSOLUE par le serveur (toujours 4 entrées, défauts inclus) et POSTE le
@@ -36,19 +37,22 @@ import { useImplicitRuleSettings, useResetImplicitRuleSetting, useTravelRuleSett
  * Deux verrous gardent l'accord avec le moteur : le gel Vitest de ce fichier, et le test
  * sémantique `engine/tests/semantic/test_implicit_rules_are_still_applied.py`.
  */
-/** Les deux crans d'intensité, libellés humains. Les valeurs techniques (HARD/PREFERRED) restent
- *  celles du contrat — jamais affichées telles quelles. */
+/** Les trois crans d'intensité, libellés humains, dans l'ordre « Obligatoire · Souhaitée · Ignorée ».
+ *  Les valeurs techniques (HARD/PREFERRED/OFF) restent celles du contrat — jamais affichées telles quelles. */
 const INTENSITY_CRANS: { value: ImplicitRuleIntensity; label: string }[] = [
   { value: "HARD", label: T.cranMandatory },
-  { value: "PREFERRED", label: T.cranObjective },
+  { value: "PREFERRED", label: T.cranPreferred },
+  { value: "OFF", label: T.cranIgnored },
 ];
 
-/** Les règles OPT-IN (P2-42) ont un cran de plus : elles naissent INACTIVES. Les quatre
- *  historiques s'appliquent dès qu'un club existe et n'ont donc pas d'état « éteint ». */
-const OPT_IN_RULES: ReadonlySet<ImplicitRuleKey> = new Set<ImplicitRuleKey>(["maxConsecutiveDays"]);
-
 function cransFor(ruleKey: ImplicitRuleKey): { value: ImplicitRuleIntensity; label: string }[] {
-  return OPT_IN_RULES.has(ruleKey) ? [{ value: "OFF", label: T.cranInactive }, ...INTENSITY_CRANS] : INTENSITY_CRANS;
+  return isNeverMandatory(ruleKey) ? INTENSITY_CRANS.filter((cran) => "HARD" !== cran.value) : INTENSITY_CRANS;
+}
+
+/** Le cran affiché : une règle jamais obligatoire servie HARD (son défaut non stocké) se lit Souhaitée,
+ *  le moteur traitant les deux en un même objectif. */
+function displayedIntensity(setting: ImplicitRuleSetting): ImplicitRuleIntensity {
+  return isNeverMandatory(setting.ruleKey) && "HARD" === setting.intensity ? "PREFERRED" : setting.intensity;
 }
 
 /** Bornes OFFERTES pour chaque seuil (ergonomie de saisie ; le serveur reste juge, 422). Clés =
@@ -100,7 +104,7 @@ function buildPayload(setting: ImplicitRuleSetting, intensity: ImplicitRuleInten
  * saison », pas d'indicateur calculé). Reprend les libellés d'intensité du panneau (jamais l'enum).
  */
 function seasonReference(setting: ImplicitRuleSetting): string {
-  const intensity = cransFor(setting.ruleKey).find((cran) => cran.value === setting.intensity)?.label ?? setting.intensity;
+  const intensity = cransFor(setting.ruleKey).find((cran) => cran.value === displayedIntensity(setting))?.label ?? setting.intensity;
   const threshold = thresholdOf(setting);
 
   return null === threshold ? T.seasonReference(intensity) : T.seasonReferenceWithThreshold(intensity, threshold.value, THRESHOLD_UNIT[threshold.field](threshold.value));
@@ -111,7 +115,8 @@ function range(min: number, max: number): number[] {
 }
 
 /**
- * Une règle réglable : intensité 2 crans + seuil optionnel + « Réinitialiser ». En saison
+ * Une règle réglable : intensité (3 crans, 2 pour une règle jamais obligatoire) + seuil optionnel
+ * + « Réinitialiser ». En saison
  * archivée (`readOnly`), tout est désactivé — le serveur rendrait 409, l'écran ne le laisse pas
  * tenter en aveugle.
  */
@@ -136,7 +141,8 @@ function WellbeingRuleRow({
   onReset: (ruleKey: ImplicitRuleKey) => void;
 }) {
   const threshold = thresholdOf(setting);
-  const adjustable = !isAlwaysObjective(meta.ruleKey);
+  // Le repère « Saison : » d'une règle jamais obligatoire reste absent, comme avant ses deux crans.
+  const seasonMark = isNeverMandatory(meta.ruleKey) ? null : seasonSetting;
 
   return (
     <div
@@ -146,13 +152,12 @@ function WellbeingRuleRow({
       <div>
         <p className="text-sm font-medium text-foreground">{meta.title}</p>
         <p className="text-xs text-muted-foreground">{meta.detail}</p>
-        {adjustable && null !== seasonSetting ? <p className="text-xs italic text-muted-foreground">{seasonReference(seasonSetting)}</p> : null}
+        {null !== seasonMark ? <p className="text-xs italic text-muted-foreground">{seasonReference(seasonMark)}</p> : null}
       </div>
-      {adjustable ? (
       <div className="flex flex-wrap items-center gap-2">
         <div role="group" aria-label={T.intensityGroup(meta.title)} className="inline-flex overflow-hidden rounded-md border border-border">
           {cransFor(setting.ruleKey).map((cran) => {
-            const active = setting.intensity === cran.value;
+            const active = displayedIntensity(setting) === cran.value;
             return (
               <button
                 key={cran.value}
@@ -199,7 +204,6 @@ function WellbeingRuleRow({
           </Button>
         ) : null}
       </div>
-      ) : null}
     </div>
   );
 }
@@ -226,9 +230,9 @@ export function ProductRulesPanel() {
 }
 
 const TRAVEL_INTENSITY_CRANS: { value: VenueTravelRuleIntensity; label: string }[] = [
-  { value: "OFF", label: T.cranInactive },
-  { value: "PREFERRED", label: T.travelPreferred },
   { value: "MANDATORY", label: T.cranMandatory },
+  { value: "PREFERRED", label: T.cranPreferred },
+  { value: "OFF", label: T.cranIgnored },
 ];
 
 const TRAVEL_TOLERANCE_BOUNDS = { min: 0, max: 60 } as const;
@@ -251,7 +255,7 @@ function clampMinutes(raw: string, bounds: { min: number; max: number }, fallbac
  * et le temps par défaut ne sont pas redérivés non plus — ils sont LUS du backend
  * (`venue_travel_rule_setting`, résolu défauts PREFERRED/20/20) et POSTÉS au choix du gestionnaire.
  *
- * Trois réglages (décision fondateur 2026-09-30) : le cran Inactive/Préféré/Obligatoire, le
+ * Trois réglages (décision fondateur 2026-09-30) : le cran Obligatoire/Souhaitée/Ignorée, le
  * battement toléré (retranché du barème pour l'écart exigé) et le temps par défaut d'un couple sans
  * temps. Écriture management ; désactivé (lecture) sur une saison archivée, comme les règles
  * bien-être.
@@ -305,7 +309,7 @@ export function TravelRuleNotice() {
         <Route className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
         <p className="text-sm font-medium text-foreground">{T.travelTitle}</p>
         {off ? (
-          <StatusPill variant="neutral">{T.cranInactive}</StatusPill>
+          <StatusPill variant="neutral">{T.cranIgnored}</StatusPill>
         ) : (
           <StatusPill variant="accent" icon={<Check className="size-3 text-accent" aria-hidden="true" />}>
             {T.travelActive}
@@ -373,7 +377,7 @@ export function TravelRuleNotice() {
       </div>
 
       <p className="text-xs text-muted-foreground">
-        {T.travelHelpTolerance}<em>{T.travelToleranceTerm}</em>{T.travelHelpDefault}<em>{T.travelDefaultTerm}</em>{T.travelHelpPreferred}<em>{T.travelPreferred}</em>{T.travelHelpMandatory}<em>{T.cranMandatory}</em>{T.travelHelpInactive}<em>{T.cranInactive}</em>{T.travelHelpEnd}
+        {T.travelHelpTolerance}<em>{T.travelToleranceTerm}</em>{T.travelHelpDefault}<em>{T.travelDefaultTerm}</em>{T.travelHelpPreferred}<em>{T.cranPreferred}</em>{T.travelHelpMandatory}<em>{T.cranMandatory}</em>{T.travelHelpInactive}<em>{T.cranIgnored}</em>{T.travelHelpEnd}
       </p>
     </div>
   );

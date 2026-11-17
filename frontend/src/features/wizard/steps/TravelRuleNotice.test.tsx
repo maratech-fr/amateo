@@ -52,8 +52,8 @@ describe("TravelRuleNotice — cran + battement toléré + temps par défaut", (
     settingState.data = setting("PREFERRED");
     renderWithProviders(<TravelRuleNotice />);
     expect(screen.getByText("Trajet entre gymnases")).toBeInTheDocument();
-    expect(screen.getByLabelText("Inactive — trajet entre gymnases")).toHaveAttribute("aria-pressed", "false");
-    expect(screen.getByLabelText("Préféré — trajet entre gymnases")).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByLabelText("Ignorée — trajet entre gymnases")).toHaveAttribute("aria-pressed", "false");
+    expect(screen.getByLabelText("Souhaitée — trajet entre gymnases")).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByLabelText("Obligatoire — trajet entre gymnases")).toHaveAttribute("aria-pressed", "false");
     expect(screen.getByText("Active")).toBeInTheDocument();
     expect(screen.getByLabelText<HTMLInputElement>("Battement toléré, en minutes").value).toBe("20");
@@ -75,14 +75,14 @@ describe("TravelRuleNotice — cran + battement toléré + temps par défaut", (
     expect(screen.getByLabelText("Obligatoire — trajet entre gymnases")).toHaveAttribute("aria-pressed", "true");
   });
 
-  it("OFF : pastille « Inactive » (pas « Active »), cran pressé, champs minutes désactivés", () => {
+  it("OFF : pastille « Ignorée » (pas « Active »), cran pressé, champs minutes désactivés", () => {
     matrixState.data = [row];
     settingState.data = setting("OFF");
     renderWithProviders(<TravelRuleNotice />);
-    // Le mot « Inactive » apparaît aussi sur le cran et dans l'aide : on prouve l'état OFF par
+    // Le mot « Ignorée » apparaît aussi sur le cran et dans l'aide : on prouve l'état OFF par
     // l'ABSENCE de la pastille « Active » + le cran pressé.
     expect(screen.queryByText("Active")).toBeNull();
-    expect(screen.getByLabelText("Inactive — trajet entre gymnases")).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByLabelText("Ignorée — trajet entre gymnases")).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByLabelText<HTMLInputElement>("Battement toléré, en minutes").disabled).toBe(true);
     expect(screen.getByLabelText<HTMLInputElement>("Temps par défaut pour un couple de gymnases sans temps, en minutes").disabled).toBe(true);
   });
@@ -95,11 +95,11 @@ describe("TravelRuleNotice — cran + battement toléré + temps par défaut", (
     expect(updateMutate).toHaveBeenCalledWith({ intensity: "MANDATORY", toleranceMinutes: 20, defaultMinutes: 20 });
   });
 
-  it("passer Inactive écrit OFF", () => {
+  it("passer Ignorée écrit OFF", () => {
     matrixState.data = [row];
     settingState.data = setting("PREFERRED");
     renderWithProviders(<TravelRuleNotice />);
-    fireEvent.click(screen.getByLabelText("Inactive — trajet entre gymnases"));
+    fireEvent.click(screen.getByLabelText("Ignorée — trajet entre gymnases"));
     expect(updateMutate).toHaveBeenCalledWith({ intensity: "OFF", toleranceMinutes: 20, defaultMinutes: 20 });
   });
 
@@ -128,6 +128,6 @@ describe("TravelRuleNotice — cran + battement toléré + temps par défaut", (
     settingState.data = setting("MANDATORY");
     readonlyState.value = true;
     renderWithProviders(<TravelRuleNotice />);
-    expect(screen.getByLabelText<HTMLButtonElement>("Préféré — trajet entre gymnases").disabled).toBe(true);
+    expect(screen.getByLabelText<HTMLButtonElement>("Souhaitée — trajet entre gymnases").disabled).toBe(true);
   });
 });

@@ -20,6 +20,8 @@ import { coachTeamNames, countSlotsByVenue } from "../lib/summary";
 import { useStepValidation } from "../lib/useStepValidation";
 import { BlockerList } from "./BlockerList";
 import { VenueSwatch } from "@/shared/components/ui/venue-swatch";
+import { WELLBEING_RULES } from "../lib/implicitRules";
+import { WizardStepLink } from "../WizardStepLink";
 
 import { SectionCountTitle, SummaryRow, TeamTierAccordion } from "./StructureSummary";
 import { useActiveTeams, useActiveVenues, useGridSlots, usePriorityTiers, useReservations, useSharedTrainingBlocks, useWizardCoachPlayers, useWizardCoaches, useWizardConstraints, useWizardTeamCoaches, useWizardTeams, useWizardTeamTags, useWizardVenues } from "../queries";
@@ -208,7 +210,10 @@ export function RecapStep() {
   // D2/D3 (lot 2) — le verdict du récap est la source UNIQUE : blocages (`errors`), warnings du
   // serveur, et notices de créneau partagé typées. Le footer « Continuer vers la génération » est
   // gaté par les mêmes `errors` ; l'accordéon d'alertes (plus bas) réunit les trois.
-  const { errors: blockers = [], warnings = [], notices = [], doubledReservationIds = [], overlappingReservationIds = [] } = useStepValidation("recap");
+  const { errors: blockers = [], warnings = [], notices = [], doubledReservationIds = [], overlappingReservationIds = [], ignoredRules = [] } = useStepValidation("recap");
+  // Les règles du club que le serveur dit ignorées, nommées par leur titre : un bandeau neutre qui
+  // informe, jamais compté parmi les alertes.
+  const ignoredRuleTitles = ignoredRules.map((ruleKey) => WELLBEING_RULES.find((rule) => rule.ruleKey === ruleKey)?.title ?? ruleKey);
 
   // Les équipes en pause : hors des compteurs (elles ne seront pas générées) mais
   // VISIBLES et barrées dans le détail — on doit voir ce qu'on a mis en pause.
@@ -452,6 +457,13 @@ export function RecapStep() {
         </AccordionSection>
       ) : notices.length > 0 ? (
         <div className="mb-4 space-y-2">{noticeBanners}</div>
+      ) : null}
+      {ignoredRules.length > 0 ? (
+        <NoticeBanner tone="muted" className="mb-4" message={WIZARD_TEXTS.ignoredRules(ignoredRuleTitles)}>
+          <WizardStepLink step="constraints" params={{ rule: ignoredRules[0] }} className="text-xs font-medium text-accent underline underline-offset-2 hover:text-accent">
+            {WIZARD_TEXTS.ignoredRulesLink}
+          </WizardStepLink>
+        </NoticeBanner>
       ) : null}
       {/* P4-107 (4ᵉ tranche) — la bande de cartes est BORNÉE : à 1920 chacune faisait ~460 px
           pour porter un nombre à deux chiffres, et l'œil devait parcourir toute la largeur pour

@@ -28,6 +28,12 @@ export const WIZARD_TEXTS = {
   tooManySessionsSameDay: (day: string) => `Trop de séances le ${day}`,
   /** Le motif d'une réservation que le serveur désigne (`overlappingReservationIds`) : elle chevauche une autre séance. */
   overlappingSessionSameDay: (day: string) => `Chevauche une autre séance le ${day}`,
+  /** Le bandeau neutre du Récap : les règles du club que le serveur dit ignorées (`ignoredRules`). */
+  ignoredRules: (titles: string[]) =>
+    1 === titles.length
+      ? `Règle ignorée pour cette génération : ${titles[0]}. Elle n'est pas appliquée.`
+      : `Règles ignorées pour cette génération : ${titles.slice(0, -1).join(", ")} et ${titles[titles.length - 1]}. Elles ne sont pas appliquées.`,
+  ignoredRulesLink: "Modifier les règles",
   removeReservationLabel: (team: string, where: string) => `Retirer la réservation de ${team} · ${where}`,
   removeLotLabel: (teams: string, where: string) => `Retirer l'entraînement mutualisé ${teams} · ${where}`,
   /** Confirmation de retrait : nomme la séance, et la période seulement quand c'en est une. */

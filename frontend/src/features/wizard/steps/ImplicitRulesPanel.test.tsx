@@ -60,12 +60,12 @@ describe("ImplicitRulesPanel — règles de bien-être réglables", () => {
     }
   });
 
-  it("« Objectif » PUT PREFERRED en préservant le seuil, puis refetch (invalidation)", async () => {
+  it("« Souhaitée » PUT PREFERRED en préservant le seuil, puis refetch (invalidation)", async () => {
     const user = userEvent.setup();
     renderPanel(<WellbeingRulesPanel />);
     await screen.findByRole("group", { name: `Intensité — ${REST_TITLE}` });
 
-    await user.click(screen.getByRole("button", { name: `Objectif — ${REST_TITLE}` }));
+    await user.click(screen.getByRole("button", { name: `Souhaitée — ${REST_TITLE}` }));
 
     await waitFor(() => expect(wizardApi.updateImplicitRuleSetting).toHaveBeenCalledWith("coachRestDay", { intensity: "PREFERRED", minRestDays: 1 }));
     // L'effet de l'invalidation : le GET est rappelé (au moins 2 fois).
@@ -120,7 +120,7 @@ describe("ImplicitRulesPanel — règles de bien-être réglables", () => {
     renderPanel(<WellbeingRulesPanel />);
     await screen.findByRole("group", { name: `Intensité — ${REST_TITLE}` });
 
-    expect(screen.getByRole("button", { name: `Objectif — ${REST_TITLE}` })).toBeDisabled();
+    expect(screen.getByRole("button", { name: `Souhaitée — ${REST_TITLE}` })).toBeDisabled();
     expect(screen.getByRole("combobox", { name: `Jours de repos minimum — ${REST_TITLE}` })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Réinitialiser" })).toBeDisabled();
   });
@@ -137,7 +137,7 @@ describe("ImplicitRulesPanel — règles de bien-être réglables", () => {
       renderPanel(<WellbeingRulesPanel />);
       await screen.findByRole("group", { name: `Intensité — ${REST_TITLE}` });
 
-      expect(screen.getByRole("button", { name: `Objectif — ${REST_TITLE}` })).toBeDisabled();
+      expect(screen.getByRole("button", { name: `Souhaitée — ${REST_TITLE}` })).toBeDisabled();
       expect(screen.getByRole("combobox", { name: `Jours de repos minimum — ${REST_TITLE}` })).toBeDisabled();
       const reset = screen.queryByRole("button", { name: "Réinitialiser" });
       expect(null === reset || reset.matches(":disabled")).toBe(true);
@@ -236,7 +236,7 @@ describe("ImplicitRulesPanel — portée par période", () => {
     // La règle affiche l'état de la PÉRIODE (HARD → « Obligatoire » enfoncé)…
     expect(screen.getByRole("button", { name: `Obligatoire — ${REST_TITLE}` })).toHaveAttribute("aria-pressed", "true");
     // …et en repère la valeur de la SAISON (PREFERRED, 2 jours), jamais celle de la période.
-    expect(screen.getByText(/Saison : Objectif, 2 jours/)).toBeInTheDocument();
+    expect(screen.getByText(/Saison : Souhaitée, 2 jours/)).toBeInTheDocument();
   });
 
   it("mode saison (schedulePlanId absent) : NI phrase de portée NI repère « Saison : … »", async () => {
@@ -259,7 +259,7 @@ describe("ImplicitRulesPanel — portée par période", () => {
     renderPanel(<WellbeingRulesPanel schedulePlanId="plan-1" />);
     await screen.findByRole("group", { name: `Intensité — ${REST_TITLE}` });
 
-    await user.click(screen.getByRole("button", { name: `Objectif — ${REST_TITLE}` }));
+    await user.click(screen.getByRole("button", { name: `Souhaitée — ${REST_TITLE}` }));
 
     await waitFor(() => expect(wizardApi.updateImplicitRuleSetting).toHaveBeenCalledWith("coachRestDay", { intensity: "PREFERRED", minRestDays: 4, schedulePlanId: "plan-1" }));
     await waitFor(() => expect(vi.mocked(wizardApi.listImplicitRuleSettings).mock.calls.filter((c) => "plan-1" === c[0]).length).toBeGreaterThanOrEqual(2));
@@ -291,9 +291,9 @@ describe("ImplicitRulesPanel — portée par période", () => {
     await within(season.container).findByRole("group", { name: `Intensité — ${REST_TITLE}` });
     await within(period.container).findByRole("group", { name: `Intensité — ${REST_TITLE}` });
 
-    // Chaque écran affiche SA couche : saison → PREFERRED (Objectif), période → HARD (Obligatoire).
+    // Chaque écran affiche SA couche : saison → PREFERRED (Souhaitée), période → HARD (Obligatoire).
     // Un cache partagé ferait afficher à l'un les valeurs de l'autre.
-    expect(within(season.container).getByRole("button", { name: `Objectif — ${REST_TITLE}` })).toHaveAttribute("aria-pressed", "true");
+    expect(within(season.container).getByRole("button", { name: `Souhaitée — ${REST_TITLE}` })).toHaveAttribute("aria-pressed", "true");
     expect(within(period.container).getByRole("button", { name: `Obligatoire — ${REST_TITLE}` })).toHaveAttribute("aria-pressed", "true");
   });
 });
