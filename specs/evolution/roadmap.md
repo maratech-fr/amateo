@@ -1,4 +1,4 @@
-# Roadmap (169) — ce qui reste à faire
+# Roadmap (171) — ce qui reste à faire
 
 > **Ce fichier ne tient QUE l'ouvert.** Bugs, évolutions, dettes techniques : tout ce qu'on trace pour ne pas
 > l'oublier un jour. Rien de livré n'y figure — un item livré **quitte** ce fichier et laisse sa trace dans
@@ -118,6 +118,8 @@
 | P4-587 | **Fin d'import du parc : les lignes du plafond par jour sont du texte nu, sans titre ni pictogramme** | ⚪ | XS | `parcImport/ParcImportModal.tsx` ~l.1918-1924 : les lignes `dailyCaps` (relevé / plafonné / chevauchement, textes dans `parcImport/texts.ts` ~l.96-101) sont une `<ul>` de texte `text-sm` à côté des compteurs de section, sans titre ni pictogramme. Or `capped` et `overlap` annoncent une action à venir (« le récapitulatif demandera d'en retirer une » pour le chevauchement). À faire : un titre de bloc et un pictogramme distinguant l'information (`raised`) de ce qui demandera un geste (`capped`, `overlap`). |
 | P4-588 | **Modale Liens, onglet « Séances par jour » : l'aide fait un mur de texte au-dessus du champ** | ⚪ | XS | `steps/TeamDailyCapPanel.tsx:60-62` affiche `TEAMS_TEXTS.dailyCapHelp` (`texts/teams.ts:42`, un paragraphe de ~9 lignes en `text-xs`) AVANT le sélecteur. À faire : le champ d'abord, l'aide dessous, ou découpée en paragraphes courts. |
 | P4-589 | **Planning, panneau Diagnostics : les alertes consécutives n'ont pas de séparateur** | ⚪ | XS | Comportement existant, relevé lors de la PR du plafond par jour : plusieurs alertes de suite se lisent comme un seul bloc. L'écran exact du panneau n'a pas été relu dans le code à la rédaction de cette ligne. À faire : un séparateur ou un espacement entre alertes. |
+| P4-591 | **Afficher les occupations dans le planning (grille de consultation)** | ⚪ | M | Une occupation de gymnase (« École », mardi 14:00-16:15) n'est lisible qu'à l'écran Gymnases (saison et période) et par la case d'export « Afficher les occupations » : les vues « par gymnase » et « par jour » du planning ne la montrent pas. Hors périmètre de la livraison des occupations, par décision fondateur 2026-11-17. À instruire avec la hauteur de grille et un interrupteur d'affichage. Non cadré |
+| P4-592 | **Onglet Gymnases d'une période : des gestes d'écriture déjà offerts à un Membre, chemin d'accès non prouvé** | ⚪ | S | `PeriodVenues.tsx` ne lisait pas le rôle avant l'ajout des occupations, qui ne le lit que pour ses gestes neufs (choix [Créneau \| Occupation], motif, clic sur une occupation) : la barre de durée, le clic sur une case, l'éditeur de créneau, les coches de jours, « Reprendre » et « Vider » restent offerts à un Membre, que le serveur refuse en 403. Aucun test n'établit par quel chemin un Membre atteint cet onglet (`member-read-only.spec.ts` ne visite aucune période). À faire : prouver le chemin d'accès d'un Membre, puis ne pas offrir ces gestes si l'onglet lui est atteignable |
 
 ### Sécurité & données
 

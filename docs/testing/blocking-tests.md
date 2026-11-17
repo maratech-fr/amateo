@@ -394,15 +394,15 @@ laisserait le moteur à une séance par jour, en passant tous les checks requis)
 contract*, lot double contexte PR 6 — une occupation de gymnase n'informe que le lecteur : la poser
 par la route réelle, en saison comme dans un plan de période, ne fait pas bouger l'empreinte de
 structure servie par `GET /api/schedule_plans/{id}/structure-hash`, cache de l'envoi purgé ; TÉMOIN
-dans chaque couche : un créneau posé fait bouger l'empreinte. Falsification à jouer une fois le code livré : ajouter les occupations à
+dans chaque couche : un créneau posé fait bouger l'empreinte. Chute attendue si les occupations sont ajoutées à
 l'envoi au moteur) ·
 `Integration/VenueOccupancyLifecycleTest` (axe *planning lifecycle*, lot double contexte PR 6 — les
 occupations suivent la vie des grilles : copie à la naissance d'un plan de période, « Reprendre » et
 « Vider » limités au gymnase visé, copie vers un plan frère sans doublon [purge des réglages ancrés],
 cascade à la suppression du plan, saison intacte à la validation/réouverture du socle et au
 chargement d'une version, dormantes avec leur gymnase, passage de saison, purge de saison, impact de
-suppression d'un gymnase. Falsification à jouer une fois le code livré : retirer l'occupation de la purge des réglages ancrés [cas
-plan frère] ; effacer les occupations au chargement d'une version) ·
+suppression d'un gymnase. Chute attendue si l'occupation sort de la purge des réglages ancrés [cas
+plan frère] ou si le chargement d'une version les efface) ·
 `Integration/Api/ParcImportExecuteTest` (axe *tenant isolation*, GO fondateur 2026-10-30 — incident
 d'un club pilote, PR A import du parc : la redéfinition de la composition d'une séance commune par le canal
 `corrections.equipes` [liste ≥ 2 d'UUID d'équipe DU CLUB, ou `import:<index>` vers une ligne Équipes
