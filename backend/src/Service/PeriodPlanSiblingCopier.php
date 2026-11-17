@@ -172,7 +172,7 @@ final class PeriodPlanSiblingCopier
         foreach ($this->entityManager->getRepository(TeamPeriodOverride::class)->findBy(['schedulePlanId' => $src]) as $row) {
             $this->entityManager->persist(
                 (new TeamPeriodOverride)->setClubId($clubId)->setSeasonId($seasonId)->setSchedulePlanId($dst)
-                    ->setTeamId($row->getTeamId())->setIsActive($row->isActive())->setSessionsPerWeek($row->getSessionsPerWeek())->setSource($row->getSource()),
+                    ->setTeamId($row->getTeamId())->setIsActive($row->isActive())->setSessionsPerWeek($row->getSessionsPerWeek())->setMaxSessionsPerDay($row->getMaxSessionsPerDay())->setSource($row->getSource()),
             );
         }
         foreach ($this->entityManager->getRepository(ConstraintPeriodOverride::class)->findBy(['schedulePlanId' => $src]) as $row) {

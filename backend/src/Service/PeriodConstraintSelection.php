@@ -35,6 +35,7 @@ final readonly class PeriodConstraintSelection
      *                                                                                               MAISON UNIQUE `PlanVenueClosures` compose, gate et payload la partagent
      * @param array<string, true>                                  $deactivatedTeamIds               équipes désactivées pour ce plan (sparse)
      * @param array<string, int>                                   $sessionOverrides                 teamId → séances/semaine surchargées pour la période
+     * @param array<string, int>                                   $maxPerDayOverrides               teamId → séances max par jour surchargées pour la période
      */
     public function __construct(
         public string $schedulePlanId,
@@ -47,5 +48,6 @@ final readonly class PeriodConstraintSelection
         public array $effectiveClosedWeekdaysByVenue,
         public array $deactivatedTeamIds,
         public array $sessionOverrides,
+        public array $maxPerDayOverrides = [],
     ) {}
 }

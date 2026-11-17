@@ -58,7 +58,7 @@ use Symfony\Contracts\HttpClient\Exception\TransportExceptionInterface;
 final class MoveSlotService
 {
     /** Contrat backend⇄engine du endpoint de validation (F2a). Un seul contrat, 3 endpoints. */
-    private const string CONTRACT_VERSION = '1.9';
+    private const string CONTRACT_VERSION = '1.10';
 
     /**
      * Budget SOLVEUR court PAR solve : la baseline est entièrement figée, le moteur ne place
@@ -182,8 +182,8 @@ final class MoveSlotService
             $startTime,
             $excludedSlotIds,
         );
-        // Deux séances le même jour sont impossibles : la case a parlé d'abord, le jour ensuite.
-        $this->teamCaseOccupancyGuard->assertTeamFreeOnDay($schedule->getId(), $slot->getTeamId(), $dayOfWeek, $excludedSlotIds);
+        // Le plafond de séances par jour (et, au-delà de 1, le chevauchement) : la case a parlé d'abord, le jour ensuite.
+        $this->teamCaseOccupancyGuard->assertTeamCanTrainThen($schedule->getId(), $slot->getTeamId(), $dayOfWeek, $startTime, $durationMinutes, $excludedSlotIds);
 
         // (3) Le candidat : l'équipe posée dans l'emplacement de destination, à la durée de la
         //     FENÊTRE. Le solveur ne lit pas `candidate.durationMinutes` (il dérive tout de la
@@ -334,8 +334,8 @@ final class MoveSlotService
             $dayOfWeek,
             $startTime,
         );
-        // « Placer une séance surnuméraire reste permis », mais jamais un jour où l'équipe s'entraîne déjà.
-        $this->teamCaseOccupancyGuard->assertTeamFreeOnDay($schedule->getId(), $teamId, $dayOfWeek);
+        // « Placer une séance surnuméraire reste permis », mais jamais au-delà du plafond du jour ni en chevauchement.
+        $this->teamCaseOccupancyGuard->assertTeamCanTrainThen($schedule->getId(), $teamId, $dayOfWeek, $startTime, $durationMinutes);
 
         // Contrat 2.18 : `candidates` est une LISTE (ici à UN élément — une création à la dérive) ;
         // aucune `references` (pas de source d'origine → « avant » = baseline nue).
@@ -498,9 +498,9 @@ final class MoveSlotService
                 ' — déplacez-la ou retirez-la d\'abord.',
             );
         }
-        // Un groupe vaut une équipe : aucun membre ne doit déjà s'entraîner ce jour-là hors du geste.
+        // Un groupe vaut une équipe : chaque membre se juge à SON plafond du jour, hors du geste.
         foreach ($sources as $source) {
-            $this->teamCaseOccupancyGuard->assertTeamFreeOnDay($schedule->getId(), $source->getTeamId(), $dayOfWeek, $guardExcluded);
+            $this->teamCaseOccupancyGuard->assertTeamCanTrainThen($schedule->getId(), $source->getTeamId(), $dayOfWeek, $startTime, $durationMinutes, $guardExcluded);
         }
 
         // (4) UN verdict, N candidats : chaque membre posé à la case cible, chaque référence = sa
@@ -711,12 +711,12 @@ final class MoveSlotService
                 $guardExcluded,
             );
         }
-        // Chacun arrive sur le jour de l'autre : ni l'un ni l'autre ne s'y entraîne déjà hors du geste.
+        // Chacun arrive sur le jour de l'autre, jugé à la durée de la FENÊTRE où il atterrit.
         foreach ($sources as $sourceSlot) {
-            $this->teamCaseOccupancyGuard->assertTeamFreeOnDay($schedule->getId(), $sourceSlot->getTeamId(), $target->getDayOfWeek(), $guardExcluded);
+            $this->teamCaseOccupancyGuard->assertTeamCanTrainThen($schedule->getId(), $sourceSlot->getTeamId(), $target->getDayOfWeek(), $target->getStartTime(), $targetWindowDuration, $guardExcluded);
         }
         foreach ($targets as $targetSlot) {
-            $this->teamCaseOccupancyGuard->assertTeamFreeOnDay($schedule->getId(), $targetSlot->getTeamId(), $source->getDayOfWeek(), $guardExcluded);
+            $this->teamCaseOccupancyGuard->assertTeamCanTrainThen($schedule->getId(), $targetSlot->getTeamId(), $source->getDayOfWeek(), $source->getStartTime(), $sourceWindowDuration, $guardExcluded);
         }
 
         // Les DEUX cases, CAPTURÉES avant toute mutation : la source EST l'un des `$sources`, donc

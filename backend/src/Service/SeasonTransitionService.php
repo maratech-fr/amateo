@@ -286,6 +286,7 @@ final class SeasonTransitionService
             $copy->setGender($team->getGender());
             $copy->setSize($team->getSize());
             $copy->setSessionsPerWeek($team->getSessionsPerWeek());
+            $copy->setMaxSessionsPerDay($team->getMaxSessionsPerDay());
             $copy->setMinSessionsOverride($team->getMinSessionsOverride());
             $copy->setMatchDay($team->getMatchDay());
             $forcedVenueId = $team->getForcedVenueId();

@@ -13573,7 +13573,10 @@
                                                             "match_rest",
                                                             "spacing",
                                                             "coach_day_cap",
-                                                            "implicit_rule"
+                                                            "implicit_rule",
+                                                            "same_day",
+                                                            "team_link",
+                                                            "travel_time"
                                                         ],
                                                         "description": "Which comfort family the trade-off belongs to"
                                                     },
@@ -14161,7 +14164,10 @@
                                                             "match_rest",
                                                             "spacing",
                                                             "coach_day_cap",
-                                                            "implicit_rule"
+                                                            "implicit_rule",
+                                                            "same_day",
+                                                            "team_link",
+                                                            "travel_time"
                                                         ],
                                                         "description": "Which comfort family the trade-off belongs to"
                                                     },
@@ -14496,7 +14502,10 @@
                                                             "match_rest",
                                                             "spacing",
                                                             "coach_day_cap",
-                                                            "implicit_rule"
+                                                            "implicit_rule",
+                                                            "same_day",
+                                                            "team_link",
+                                                            "travel_time"
                                                         ],
                                                         "description": "Which comfort family the trade-off belongs to"
                                                     },
@@ -15029,7 +15038,10 @@
                                                             "match_rest",
                                                             "spacing",
                                                             "coach_day_cap",
-                                                            "implicit_rule"
+                                                            "implicit_rule",
+                                                            "same_day",
+                                                            "team_link",
+                                                            "travel_time"
                                                         ],
                                                         "description": "Which comfort family the trade-off belongs to"
                                                     },
@@ -36553,6 +36565,10 @@
                         "default": 0,
                         "type": "integer"
                     },
+                    "maxSessionsPerDay": {
+                        "default": 1,
+                        "type": "integer"
+                    },
                     "minSessionsOverride": {
                         "type": [
                             "integer",
@@ -36651,6 +36667,15 @@
                     },
                     "minSessionsOverride": {
                         "minimum": 0,
+                        "type": [
+                            "integer",
+                            "null"
+                        ]
+                    },
+                    "maxSessionsPerDay": {
+                        "minimum": 1,
+                        "maximum": 4,
+                        "description": "S\u00e9ances au plus le m\u00eame jour. Absent au PUT = on garde la valeur ; absent au POST = 1.",
                         "type": [
                             "integer",
                             "null"
@@ -36788,6 +36813,10 @@
                         "default": 0,
                         "type": "integer"
                     },
+                    "maxSessionsPerDay": {
+                        "default": 1,
+                        "type": "integer"
+                    },
                     "minSessionsOverride": {
                         "type": [
                             "integer",
@@ -36907,6 +36936,10 @@
                             },
                             "sessionsPerWeek": {
                                 "default": 0,
+                                "type": "integer"
+                            },
+                            "maxSessionsPerDay": {
+                                "default": 1,
                                 "type": "integer"
                             },
                             "minSessionsOverride": {
@@ -37540,6 +37573,12 @@
                             "null"
                         ]
                     },
+                    "maxSessionsPerDay": {
+                        "type": [
+                            "integer",
+                            "null"
+                        ]
+                    },
                     "source": {
                         "description": "Lot 9 \u2014 l'origine de cet override quand il a \u00e9t\u00e9 pos\u00e9 par un geste nomm\u00e9 (``mutualisation``\npour une \u00e9quipe activ\u00e9e par la mutualisation d'une case) ; NULL pour un r\u00e9glage ordinaire du\nwizard. Le planning l'AFFICHE (pastille \u00ab via mutualisation \u00bb), il ne d\u00e9cide rien avec.",
                         "type": [
@@ -37589,6 +37628,15 @@
                             "integer",
                             "null"
                         ]
+                    },
+                    "maxSessionsPerDay": {
+                        "minimum": 1,
+                        "maximum": 4,
+                        "description": "null = keep the team's seasonal maxSessionsPerDay (remplacement complet : absent = null).",
+                        "type": [
+                            "integer",
+                            "null"
+                        ]
                     }
                 }
             },
@@ -37625,6 +37673,12 @@
                         "type": "boolean"
                     },
                     "sessionsPerWeek": {
+                        "type": [
+                            "integer",
+                            "null"
+                        ]
+                    },
+                    "maxSessionsPerDay": {
                         "type": [
                             "integer",
                             "null"
@@ -37676,6 +37730,12 @@
                                 "type": "boolean"
                             },
                             "sessionsPerWeek": {
+                                "type": [
+                                    "integer",
+                                    "null"
+                                ]
+                            },
+                            "maxSessionsPerDay": {
                                 "type": [
                                     "integer",
                                     "null"

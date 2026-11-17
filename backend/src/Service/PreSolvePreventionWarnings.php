@@ -191,9 +191,11 @@ final readonly class PreSolvePreventionWarnings
                 continue;
             }
 
-            if (\count($openDays) < $demand) {
+            // Une équipe à plafond P > 1 peut s'entraîner P fois chacun de ses jours ouverts.
+            $dailyCap = max(1, (int) ($team['maxSessionsPerDay'] ?? 1));
+            if (\count($openDays) * $dailyCap < $demand) {
                 $messages[] = \sprintf(
-                    0 === $reserved ? '%s demande %s, mais ses règles n\'ouvrent %s.' : '%s : il lui reste %s à placer, mais ses règles n\'ouvrent %s.',
+                    0 === $reserved ? '%s demande %s, mais ses règles n\'ouvrent %s%s.' : '%s : il lui reste %s à placer, mais ses règles n\'ouvrent %s%s.',
                     $this->nameOf($team),
                     $this->sessionCount($demand),
                     match (\count($openDays)) {
@@ -201,6 +203,7 @@ final readonly class PreSolvePreventionWarnings
                         1 => 'qu\'un seul jour',
                         default => 'que ' . \count($openDays) . ' jours',
                     },
+                    1 === $dailyCap ? '' : \sprintf(', à %d séances par jour au plus', $dailyCap),
                 );
             } elseif ([] === array_intersect_key($reachable, array_flip($openDays))) {
                 $messages[] = \sprintf(

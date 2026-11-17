@@ -42,7 +42,7 @@ final readonly class ManualEditPaths implements CustomPathContributor
             'type' => 'array',
             'description' => 'Named comfort trade-offs of an ACCEPTED candidate (empty on refusal): what the move BREAKS or GAINS, ready to display',
             'items' => ['type' => 'object', 'properties' => [
-                'family' => ['type' => 'string', 'enum' => ['chaining', 'venue_preference', 'day_preference', 'time_preference', 'match_rest', 'spacing', 'coach_day_cap', 'implicit_rule'], 'description' => 'Which comfort family the trade-off belongs to'],
+                'family' => ['type' => 'string', 'enum' => ['chaining', 'venue_preference', 'day_preference', 'time_preference', 'match_rest', 'spacing', 'coach_day_cap', 'implicit_rule', 'same_day', 'team_link', 'travel_time'], 'description' => 'Which comfort family the trade-off belongs to'],
                 'effect' => ['type' => 'string', 'enum' => ['broken', 'gained'], 'description' => 'broken = a preference honored before no longer is; gained = the reverse'],
                 'message' => ['type' => 'string', 'description' => 'Ready-to-display sentence naming the team/coach/venue (no internal identifier)'],
                 'teamId' => ['type' => 'string', 'nullable' => true, 'description' => 'Team the trade-off is about (grid highlighting)'],

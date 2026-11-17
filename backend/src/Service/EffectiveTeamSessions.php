@@ -33,4 +33,18 @@ final class EffectiveTeamSessions
 
         return $team->getSessionsPerWeek();
     }
+
+    /** Séances au plus le même jour : la surcharge de période quand elle fixe une valeur, sinon celle de la saison. */
+    public function maxPerDay(Team $team, ?string $schedulePlanId): int
+    {
+        if (null !== $schedulePlanId) {
+            $override = $this->entityManager->getRepository(TeamPeriodOverride::class)
+                ->findOneBy(['schedulePlanId' => $schedulePlanId, 'teamId' => $team->getId()]);
+            if ($override instanceof TeamPeriodOverride && null !== $override->getMaxSessionsPerDay()) {
+                return $override->getMaxSessionsPerDay();
+            }
+        }
+
+        return $team->getMaxSessionsPerDay();
+    }
 }

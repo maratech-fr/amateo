@@ -15,18 +15,32 @@ use DateTimeInterface;
 use Doctrine\ORM\EntityManagerInterface;
 
 /**
- * Une équipe ne s'entraîne qu'une fois par jour. Réserver deux fois le même jour passe au geste, le Récap
- * de saison et ses guichets l'arrêtent : il faut au moins une réservation en cause, face à une autre
- * réservation ou à un verrou de la version CHARGÉE. Deux verrous seuls ne bloquent pas, et une réservation
- * posée sur le placement même d'un verrou est une seule séance. Les équipes aux mêmes cases (un groupe
- * mutualisé) partagent un seul motif.
+ * Une équipe s'entraîne au plus « son plafond » de fois par jour (1 par défaut, réglé dans l'onglet
+ * « Séances par jour »), et jamais sur deux créneaux qui se chevauchent. Réserver au-delà passe au geste,
+ * le Récap de saison et ses guichets l'arrêtent : il faut au moins une réservation en cause, face à une
+ * autre réservation ou à un verrou de la version CHARGÉE. Deux verrous seuls ne bloquent pas, et une
+ * réservation posée sur le placement même d'un verrou est une seule séance. Les équipes aux mêmes cases
+ * et au même plafond (un groupe mutualisé) partagent un seul motif.
  *
- * @phpstan-type Place array{start: string, venue: string, text: string}
- * @phpstan-type Bucket array{day: int, teams: list<string>, reserved: array<string, Place>, locked: array<string, Place>, ids: list<string>}
+ * Deux causes, une seule par (équipe, jour) : le chevauchement (plafond ≥ 2, intervalles demi-ouverts,
+ * deux cases qui se touchent ne se chevauchent pas) l'emporte sur le dépassement du plafond. Chaque
+ * réservation bloquée porte sa cause : `reservationIds` (trop de séances ce jour-là) ou
+ * `overlappingReservationIds` (chevauche une autre séance) — deux listes disjointes. Quand le chevauchement
+ * parle, une réservation en trop qui ne chevauche rien n'est dans aucune des deux.
+ *
+ * @phpstan-type Place array{start: string, venue: string, text: string, from: int, to: int}
+ * @phpstan-type Bucket array{day: int, cap: int, overlap: bool, teams: list<string>, reserved: array<string, Place>, locked: array<string, Place>, ids: list<string>}
  */
 final readonly class SecondSessionSameDayDetector
 {
-    private const array COUNT_WORDS = [2 => 'deux', 3 => 'trois'];
+    private const array COUNT_WORDS = [2 => 'deux', 3 => 'trois', 4 => 'quatre'];
+
+    /** Le plafond le plus haut réglable : au-delà, le motif ne propose plus de l'autoriser. */
+    private const int MAX_DAILY_CAP = 4;
+
+    private const string WHERE = '(étape Équipes, bouton Liens de l\'équipe, onglet « Séances par jour »)';
+
+    private const string WHERE_PLURAL = '(étape Équipes, bouton Liens de chaque équipe, onglet « Séances par jour »)';
 
     public function __construct(
         private EntityManagerInterface $entityManager,
@@ -36,12 +50,12 @@ final readonly class SecondSessionSameDayDetector
     /**
      * @param list<Reservation> $reservations le périmètre de saison qui partira au solveur
      *
-     * @return array{blockers: list<string>, reservationIds: list<string>, teamDays: list<string>} `teamDays` : les « équipe|jour » couverts
+     * @return array{blockers: list<string>, reservationIds: list<string>, overlappingReservationIds: list<string>, teamDays: list<string>} `teamDays` : les « équipe|jour » couverts
      */
     public function detect(array $reservations): array
     {
         $reservedByTeamDay = [];
-        $idsByTeamDay = [];
+        $idsByTeamDayPlace = [];
         $seasonId = null;
         $venueNames = [];
         foreach ($reservations as $reservation) {
@@ -53,10 +67,10 @@ final readonly class SecondSessionSameDayDetector
             $key = $teamId . '|' . $reservation->getDayOfWeek();
             $place = $this->placeKey($reservation->getVenueId(), $reservation->getStartTime());
             $reservedByTeamDay[$key][$place] = $this->place($reservation->getVenueId(), $reservation->getStartTime(), $reservation->getDurationMinutes(), $venueNames);
-            $idsByTeamDay[$key][] = $reservation->getId();
+            $idsByTeamDayPlace[$key][$place][] = $reservation->getId();
         }
         if (null === $seasonId) {
-            return ['blockers' => [], 'reservationIds' => [], 'teamDays' => []];
+            return ['blockers' => [], 'reservationIds' => [], 'overlappingReservationIds' => [], 'teamDays' => []];
         }
 
         $loadedVersionId = $this->schedulePlanProvisioner->loadedVersionIdOfSeason($seasonId);
@@ -72,19 +86,34 @@ final readonly class SecondSessionSameDayDetector
         /** @var array<string, Bucket> $buckets */
         $buckets = [];
         $teamDays = [];
+        $usedLocks = false;
         foreach ($reservedByTeamDay as $key => $reserved) {
             $locked = $lockedByTeamDay[$key] ?? [];
-            if (\count($reserved) + \count($locked) < 2) {
+            [$teamId, $day] = explode('|', $key);
+            $team = $this->entityManager->getRepository(Team::class)->find($teamId);
+            $cap = $team instanceof Team ? $team->getMaxSessionsPerDay() : 1;
+
+            // Le chevauchement d'abord, à plafond ≥ 2 : une réservation qui chevauche une autre séance du jour.
+            $overlapping = $cap >= 2 ? $this->overlappingReservedPlaces($reserved, $locked) : [];
+            if ([] !== $overlapping) {
+                $reserved = array_intersect_key($reserved, $overlapping);
+                $locked = array_filter($locked, fn (array $lock): bool => $this->overlapsAny($lock, $reserved));
+                $isOverlap = true;
+            } elseif (\count($reserved) + \count($locked) > $cap) {
+                $isOverlap = false;
+            } else {
                 continue;
             }
             ksort($reserved);
             ksort($locked);
+            $usedLocks = $usedLocks || [] !== $locked;
             $teamDays[] = $key;
-            [$teamId, $day] = explode('|', $key);
-            $bucketKey = $day . '#' . implode(',', array_keys($reserved)) . '#' . implode(',', array_keys($locked));
-            $buckets[$bucketKey] ??= ['day' => (int) $day, 'teams' => [], 'reserved' => $reserved, 'locked' => $locked, 'ids' => []];
-            $buckets[$bucketKey]['teams'][] = $this->entityManager->getRepository(Team::class)->find($teamId)?->getName() ?? 'Cette équipe';
-            array_push($buckets[$bucketKey]['ids'], ...$idsByTeamDay[$key]);
+            $bucketKey = $day . '#' . $cap . '#' . ($isOverlap ? 'o' : 'x') . '#' . implode(',', array_keys($reserved)) . '#' . implode(',', array_keys($locked));
+            $buckets[$bucketKey] ??= ['day' => (int) $day, 'cap' => $cap, 'overlap' => $isOverlap, 'teams' => [], 'reserved' => $reserved, 'locked' => $locked, 'ids' => []];
+            $buckets[$bucketKey]['teams'][] = $team?->getName() ?? 'Cette équipe';
+            foreach (array_keys($reserved) as $place) {
+                array_push($buckets[$bucketKey]['ids'], ...$idsByTeamDayPlace[$key][$place]);
+            }
         }
         foreach ($buckets as &$bucket) {
             sort($bucket['teams'], \SORT_NATURAL);
@@ -92,29 +121,74 @@ final readonly class SecondSessionSameDayDetector
         unset($bucket);
         uasort($buckets, static fn (array $a, array $b): int => [$a['day'], $a['teams']] <=> [$b['day'], $b['teams']]);
 
-        $versionLabel = [] === $lockedByTeamDay || null === $loadedVersionId ? '' : $this->versionLabel($loadedVersionId);
+        $versionLabel = !$usedLocks || null === $loadedVersionId ? '' : $this->versionLabel($loadedVersionId);
         $blockers = [];
         $ids = [];
+        $overlappingIds = [];
         foreach ($buckets as $bucket) {
+            if ($bucket['overlap']) {
+                $blockers[] = $this->overlapSentence($bucket, $versionLabel);
+                array_push($overlappingIds, ...$bucket['ids']);
+                continue;
+            }
             $blockers[] = [] === $bucket['locked'] ? $this->twoReservationsSentence($bucket) : $this->reservationAndLockSentence($bucket, $versionLabel);
             array_push($ids, ...$bucket['ids']);
         }
 
-        return ['blockers' => $blockers, 'reservationIds' => $ids, 'teamDays' => $teamDays];
+        return ['blockers' => $blockers, 'reservationIds' => $ids, 'overlappingReservationIds' => $overlappingIds, 'teamDays' => $teamDays];
+    }
+
+    /**
+     * Les réservations qui chevauchent une autre séance du jour (réservation ou verrou).
+     *
+     * @param array<string, Place> $reserved
+     * @param array<string, Place> $locked
+     *
+     * @return array<string, true>
+     */
+    private function overlappingReservedPlaces(array $reserved, array $locked): array
+    {
+        $found = [];
+        foreach ($reserved as $key => $place) {
+            $others = [...array_diff_key($reserved, [$key => true]), ...array_values($locked)];
+            if ($this->overlapsAny($place, $others)) {
+                $found[$key] = true;
+            }
+        }
+
+        return $found;
+    }
+
+    /**
+     * @param Place                    $place
+     * @param array<int|string, Place> $others
+     */
+    private function overlapsAny(array $place, array $others): bool
+    {
+        foreach ($others as $other) {
+            if ($place['from'] < $other['to'] && $other['from'] < $place['to']) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /** @param Bucket $bucket */
     private function twoReservationsSentence(array $bucket): string
     {
         $count = \count($bucket['reserved']);
+        $single = 1 === \count($bucket['teams']);
 
         return \sprintf(
-            '%s %s fois le %s : %s — une seule séance par jour. %s au récapitulatif.',
-            1 === \count($bucket['teams']) ? $bucket['teams'][0] . ' est réservée' : $this->joined($bucket['teams']) . ' sont réservées',
+            '%s %s fois le %s : %s — %s. %s au récapitulatif%s.',
+            $single ? $bucket['teams'][0] . ' est réservée' : $this->joined($bucket['teams']) . ' sont réservées',
             self::COUNT_WORDS[$count] ?? (string) $count,
             TeamCaseOccupancyGuard::DAY_LABELS[$bucket['day']] ?? '',
             $this->joined(array_map(static fn (array $place): string => $place['text'], $this->ordered($bucket['reserved']))),
-            2 === $count ? 'Retirez l\'une des deux' : 'Retirez-en ' . ($count - 1),
+            $this->capPhrase($bucket['cap'], $single),
+            $this->removeHowMany($count, $bucket['cap']),
+            $this->allowMore($bucket, $count, $single),
         );
     }
 
@@ -123,22 +197,107 @@ final readonly class SecondSessionSameDayDetector
     {
         $count = \count($bucket['reserved']) + \count($bucket['locked']);
         $day = TeamCaseOccupancyGuard::DAY_LABELS[$bucket['day']] ?? '';
-        $places = [
-            ...array_map(static fn (array $place): string => $place['text'] . ' (réservation)', $this->ordered($bucket['reserved'])),
-            ...array_map(static fn (array $place): string => \sprintf('%s (verrou de la version %s)', $place['text'], $versionLabel), $this->ordered($bucket['locked'])),
-        ];
+        $single = 1 === \count($bucket['teams']);
+        $allow = $this->allowMore($bucket, $count, $single);
 
         return \sprintf(
-            '%s %s séances le %s : %s — une seule séance par jour. Retirez %s au récapitulatif, ou déverrouillez %s du %s dans la version %s.',
-            1 === \count($bucket['teams']) ? $bucket['teams'][0] . ' a' : $this->joined($bucket['teams']) . ' ont',
+            '%s %s séances le %s : %s — %s. Retirez %s au récapitulatif, %sdéverrouillez %s du %s dans la version %s%s.',
+            $single ? $bucket['teams'][0] . ' a' : $this->joined($bucket['teams']) . ' ont',
             self::COUNT_WORDS[$count] ?? (string) $count,
             $day,
-            $this->joined($places),
+            $this->joined($this->placesWithOrigin($bucket, $versionLabel)),
+            $this->capPhrase($bucket['cap'], $single),
+            1 === \count($bucket['reserved']) ? 'la réservation' : 'les réservations',
+            '' === $allow ? 'ou ' : '',
+            1 === \count($bucket['locked']) ? 'la séance' : 'les séances',
+            $day,
+            $versionLabel,
+            $allow,
+        );
+    }
+
+    /**
+     * Des cases qui se chevauchent : relever le plafond n'y changerait rien, aucune proposition.
+     *
+     * @param Bucket $bucket
+     */
+    private function overlapSentence(array $bucket, string $versionLabel): string
+    {
+        $day = TeamCaseOccupancyGuard::DAY_LABELS[$bucket['day']] ?? '';
+        $single = 1 === \count($bucket['teams']);
+        $count = \count($bucket['reserved']) + \count($bucket['locked']);
+        $countWord = self::COUNT_WORDS[$count] ?? (string) $count;
+        if ([] === $bucket['locked']) {
+            return \sprintf(
+                '%s %s fois le %s sur des créneaux qui se chevauchent : %s. Une équipe ne peut pas être à deux séances en même temps : %s.',
+                $single ? $bucket['teams'][0] . ' est réservée' : $this->joined($bucket['teams']) . ' sont réservées',
+                $countWord,
+                $day,
+                $this->joined(array_map(static fn (array $place): string => $place['text'], $this->ordered($bucket['reserved']))),
+                2 === $count ? 'retirez l\'une des deux au récapitulatif' : 'retirez-en au récapitulatif jusqu\'à ce qu\'aucune ne chevauche une autre',
+            );
+        }
+
+        return \sprintf(
+            '%s %s séances le %s sur des créneaux qui se chevauchent : %s. Une équipe ne peut pas être à deux séances en même temps : retirez %s au récapitulatif, ou déverrouillez %s du %s dans la version %s.',
+            $single ? $bucket['teams'][0] . ' a' : $this->joined($bucket['teams']) . ' ont',
+            $countWord,
+            $day,
+            $this->joined($this->placesWithOrigin($bucket, $versionLabel)),
             1 === \count($bucket['reserved']) ? 'la réservation' : 'les réservations',
             1 === \count($bucket['locked']) ? 'la séance' : 'les séances',
             $day,
             $versionLabel,
         );
+    }
+
+    /**
+     * @param Bucket $bucket
+     *
+     * @return list<string>
+     */
+    private function placesWithOrigin(array $bucket, string $versionLabel): array
+    {
+        return [
+            ...array_map(static fn (array $place): string => $place['text'] . ' (réservation)', $this->ordered($bucket['reserved'])),
+            ...array_map(static fn (array $place): string => \sprintf('%s (verrou de la version %s)', $place['text'], $versionLabel), $this->ordered($bucket['locked'])),
+        ];
+    }
+
+    private function capPhrase(int $cap, bool $single): string
+    {
+        return 1 === $cap ? 'une seule séance par jour' : \sprintf('%d séances par jour au plus pour %s', $cap, $single ? 'cette équipe' : 'ces équipes');
+    }
+
+    private function removeHowMany(int $count, int $cap): string
+    {
+        $excess = $count - $cap;
+        if (2 === $count && 1 === $excess) {
+            return 'Retirez l\'une des deux';
+        }
+
+        return 1 === $excess ? 'Retirez-en une' : 'Retirez-en ' . $excess;
+    }
+
+    /**
+     * « , ou autorisez N séances par jour pour cette équipe [R] » — seulement quand N est réglable et que les cases
+     * sont deux à deux disjointes (sinon relever le plafond ne réglerait rien).
+     *
+     * @param Bucket $bucket
+     */
+    private function allowMore(array $bucket, int $count, bool $single): string
+    {
+        if ($count > self::MAX_DAILY_CAP) {
+            return '';
+        }
+        $places = [...array_values($bucket['reserved']), ...array_values($bucket['locked'])];
+        foreach ($places as $i => $place) {
+            if ($this->overlapsAny($place, \array_slice($places, $i + 1))) {
+                return '';
+            }
+        }
+
+        return \sprintf(', ou autorisez %d séances par jour pour %s %s', $count, $single ? 'cette équipe' : 'ces équipes', $single ? self::WHERE : self::WHERE_PLURAL);
     }
 
     /**
@@ -178,7 +337,9 @@ final readonly class SecondSessionSameDayDetector
         $from = $start->format('H:i');
         $to = DateTimeImmutable::createFromInterface($start)->modify(\sprintf('+%d minutes', $durationMinutes))->format('H:i');
 
-        return ['start' => $from, 'venue' => $venueNames[$venueId], 'text' => \sprintf('%s-%s à %s', $from, $to, $venueNames[$venueId])];
+        $minutes = (int) $start->format('G') * 60 + (int) $start->format('i');
+
+        return ['start' => $from, 'venue' => $venueNames[$venueId], 'text' => \sprintf('%s-%s à %s', $from, $to, $venueNames[$venueId]), 'from' => $minutes, 'to' => $minutes + $durationMinutes];
     }
 
     /** « V2 » : le même libellé que le reste de l'écran. */

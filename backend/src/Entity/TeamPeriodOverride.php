@@ -60,6 +60,10 @@ class TeamPeriodOverride implements TenantOwnedInterface
     #[ORM\Column(type: 'integer', nullable: true)]
     private ?int $sessionsPerWeek = null;
 
+    /** null = keep the team's seasonal maxSessionsPerDay; set = the period-specific daily cap (1..4). */
+    #[ORM\Column(type: 'smallint', nullable: true)]
+    private ?int $maxSessionsPerDay = null;
+
     /**
      * Generic ORIGIN marker for an override NOT entered by hand by the manager. null = a
      * manager-entered override (the historical default). A producer stamps its own value — e.g.
@@ -172,6 +176,18 @@ class TeamPeriodOverride implements TenantOwnedInterface
     public function setSessionsPerWeek(?int $sessionsPerWeek): self
     {
         $this->sessionsPerWeek = $sessionsPerWeek;
+
+        return $this;
+    }
+
+    public function getMaxSessionsPerDay(): ?int
+    {
+        return $this->maxSessionsPerDay;
+    }
+
+    public function setMaxSessionsPerDay(?int $maxSessionsPerDay): self
+    {
+        $this->maxSessionsPerDay = $maxSessionsPerDay;
 
         return $this;
     }
