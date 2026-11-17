@@ -43,14 +43,13 @@ def venue(
 ) -> dict[str, Any]:
     return {
         "id": venue_id,
-        "name": venue_id,
         "matchWindows": windows if windows is not None else [{"dayOfWeek": 6, "start": "14:00", "end": "18:00"}],
         "unavailabilities": unavailabilities or [],
     }
 
 
 def team(team_id: str = "t1", **over: Any) -> dict[str, Any]:
-    base: dict[str, Any] = {"id": team_id, "name": team_id, "leagueWindows": [], "habits": [], "coaches": []}
+    base: dict[str, Any] = {"id": team_id, "leagueWindows": [], "habits": [], "coaches": []}
     base.update(over)
     return base
 
@@ -257,7 +256,7 @@ def test_category_duration_is_honoured() -> None:
         payload(
             matches=[to_place("m1", "t1")],
             venues=[venue(windows=[{"dayOfWeek": 6, "start": "14:00", "end": "15:15"}])],
-            teams=[team("t1", matchMinutes=75, warmupMinutes=30)],
+            teams=[team("t1", matchMinutes=75)],
         )
     )
     assert fits["unplaced"] == []
@@ -267,7 +266,7 @@ def test_category_duration_is_honoured() -> None:
         payload(
             matches=[to_place("m1", "t1")],
             venues=[venue(windows=[{"dayOfWeek": 6, "start": "14:00", "end": "15:15"}])],
-            teams=[team("t1", matchMinutes=105, warmupMinutes=30)],
+            teams=[team("t1", matchMinutes=105)],
         )
     )
     assert overflows["placements"] == []
@@ -516,9 +515,8 @@ def test_away_match_never_pushes_the_home_match_of_a_shared_coach() -> None:
                         coaches=[{"coachId": "c1", "role": "MAIN"}],
                         habits=[{"dayOfWeek": 6, "kickoff": "15:00", "venueId": "v1"}],
                         matchMinutes=60,
-                        warmupMinutes=0,
                     ),
-                    team("t2", coaches=[{"coachId": "c1", "role": "MAIN"}], matchMinutes=60, warmupMinutes=0),
+                    team("t2", coaches=[{"coachId": "c1", "role": "MAIN"}], matchMinutes=60),
                 ],
             )
         )

@@ -2,14 +2,12 @@
   "version": "1.8",
   "clubId": "club-fully-reserved-grid",
   "seasonId": "season-1",
-  "scheduleName": null,
   "solverSeed": 42,
   "solverTimeoutSeconds": 650,
   "teams": [
     {
       "id": "t-1",
       "name": "Équipe 1",
-      "sportCategoryId": "cat",
       "sessionsPerWeek": 1,
       "ageMin": null,
       "priorityTierId": 4,
@@ -18,7 +16,6 @@
     {
       "id": "t-2",
       "name": "Équipe 2",
-      "sportCategoryId": "cat",
       "sessionsPerWeek": 3,
       "ageMin": 19,
       "priorityTierId": 2,
@@ -27,7 +24,6 @@
     {
       "id": "t-3",
       "name": "Équipe 3",
-      "sportCategoryId": "cat",
       "sessionsPerWeek": 3,
       "ageMin": 22,
       "priorityTierId": 1,
@@ -36,7 +32,6 @@
     {
       "id": "t-4",
       "name": "Équipe 4",
-      "sportCategoryId": "cat",
       "sessionsPerWeek": 1,
       "ageMin": null,
       "priorityTierId": 4,
@@ -45,7 +40,6 @@
     {
       "id": "t-5",
       "name": "Équipe 5",
-      "sportCategoryId": "cat",
       "sessionsPerWeek": 2,
       "ageMin": 16,
       "priorityTierId": 4,
@@ -54,7 +48,6 @@
     {
       "id": "t-6",
       "name": "Équipe 6",
-      "sportCategoryId": "cat",
       "sessionsPerWeek": 2,
       "ageMin": 12,
       "priorityTierId": 4,
@@ -63,7 +56,6 @@
     {
       "id": "t-7",
       "name": "Équipe 7",
-      "sportCategoryId": "cat",
       "sessionsPerWeek": 1,
       "ageMin": 10,
       "priorityTierId": 4,
@@ -72,7 +64,6 @@
     {
       "id": "t-8",
       "name": "Équipe 8",
-      "sportCategoryId": "cat",
       "sessionsPerWeek": 3,
       "ageMin": 22,
       "priorityTierId": 2,
@@ -81,7 +72,6 @@
     {
       "id": "t-9",
       "name": "Équipe 9",
-      "sportCategoryId": "cat",
       "sessionsPerWeek": 1,
       "ageMin": 10,
       "priorityTierId": 4,
@@ -90,7 +80,6 @@
     {
       "id": "t-10",
       "name": "Équipe 10",
-      "sportCategoryId": "cat",
       "sessionsPerWeek": 2,
       "ageMin": 14,
       "priorityTierId": 4,
@@ -99,7 +88,6 @@
     {
       "id": "t-11",
       "name": "Équipe 11",
-      "sportCategoryId": "cat",
       "sessionsPerWeek": 2,
       "ageMin": 12,
       "priorityTierId": 4,
@@ -108,7 +96,6 @@
     {
       "id": "t-12",
       "name": "Équipe 12",
-      "sportCategoryId": "cat",
       "sessionsPerWeek": 2,
       "ageMin": 22,
       "priorityTierId": 1,
@@ -117,7 +104,6 @@
     {
       "id": "t-13",
       "name": "Équipe 13",
-      "sportCategoryId": "cat",
       "sessionsPerWeek": 1,
       "ageMin": 8,
       "priorityTierId": 4,
@@ -126,7 +112,6 @@
     {
       "id": "t-14",
       "name": "Équipe 14",
-      "sportCategoryId": "cat",
       "sessionsPerWeek": 2,
       "ageMin": 19,
       "priorityTierId": 3,
@@ -286,8 +271,7 @@
       "lastName": "A",
       "isEmployee": false,
       "isVehicled": false,
-      "maxDaysOverride": null,
-      "parentCoachId": null
+      "maxDaysOverride": null
     },
     {
       "id": "c-b",
@@ -295,8 +279,7 @@
       "lastName": "B",
       "isEmployee": true,
       "isVehicled": true,
-      "maxDaysOverride": null,
-      "parentCoachId": null
+      "maxDaysOverride": null
     },
     {
       "id": "c-c",
@@ -304,8 +287,7 @@
       "lastName": "C",
       "isEmployee": false,
       "isVehicled": false,
-      "maxDaysOverride": null,
-      "parentCoachId": null
+      "maxDaysOverride": null
     },
     {
       "id": "c-d",
@@ -313,8 +295,7 @@
       "lastName": "D",
       "isEmployee": false,
       "isVehicled": false,
-      "maxDaysOverride": null,
-      "parentCoachId": null
+      "maxDaysOverride": null
     },
     {
       "id": "c-e",
@@ -322,8 +303,7 @@
       "lastName": "E",
       "isEmployee": true,
       "isVehicled": false,
-      "maxDaysOverride": null,
-      "parentCoachId": null
+      "maxDaysOverride": null
     },
     {
       "id": "c-f",
@@ -331,8 +311,7 @@
       "lastName": "F",
       "isEmployee": false,
       "isVehicled": false,
-      "maxDaysOverride": null,
-      "parentCoachId": null
+      "maxDaysOverride": null
     },
     {
       "id": "c-g",
@@ -340,8 +319,7 @@
       "lastName": "G",
       "isEmployee": false,
       "isVehicled": false,
-      "maxDaysOverride": null,
-      "parentCoachId": null
+      "maxDaysOverride": null
     },
     {
       "id": "c-h",
@@ -349,8 +327,7 @@
       "lastName": "H",
       "isEmployee": false,
       "isVehicled": false,
-      "maxDaysOverride": null,
-      "parentCoachId": null
+      "maxDaysOverride": null
     }
   ],
   "constraints": [

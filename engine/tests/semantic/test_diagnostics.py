@@ -20,7 +20,6 @@ ALLOWED_SEVERITIES = {"ERROR", "WARNING", "INFO", "SUCCESS"}
 def _team(team_id: str, sessions: int = 1) -> dict[str, Any]:
     return {
         "id": team_id,
-        "sportCategoryId": "cat",
         "priorityTierId": 3,
         "name": team_id,
         "sessionsPerWeek": sessions,

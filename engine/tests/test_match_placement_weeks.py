@@ -46,7 +46,6 @@ def _base_payload(matches: list[dict[str, Any]], **over: Any) -> dict[str, Any]:
         "venues": [
             {
                 "id": "mateo",
-                "name": "Mateo",
                 "matchWindows": _saturday_window(),
                 "unavailabilities": [],
             }
@@ -54,15 +53,13 @@ def _base_payload(matches: list[dict[str, Any]], **over: Any) -> dict[str, Any]:
         "teams": [
             {
                 "id": "pnm",
-                "name": "PNM",
                 "leagueWindows": [],
                 "habits": [{"dayOfWeek": 6, "kickoff": "15:30", "venueId": "mateo"}],
                 "coaches": [{"coachId": "emerick", "role": "MAIN"}],
             },
-            {"id": "sf1", "name": "SF1", "leagueWindows": [], "habits": [], "coaches": []},
+            {"id": "sf1", "leagueWindows": [], "habits": [], "coaches": []},
             {
                 "id": "rf3",
-                "name": "RF3",
                 "leagueWindows": [],
                 "habits": [],
                 "coaches": [{"coachId": "emerick", "role": "MAIN"}],

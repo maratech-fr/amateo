@@ -11,7 +11,6 @@ from tests.support import make_payload, make_venue, solve_payload, team_constrai
 def _team(team_id: str, *, sessions: int = 1, match_day: int | None = None) -> dict[str, Any]:
     team: dict[str, Any] = {
         "id": team_id,
-        "sportCategoryId": "cat",
         "priorityTierId": 3,
         "name": team_id,
         "sessionsPerWeek": sessions,

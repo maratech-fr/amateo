@@ -5,8 +5,8 @@ from datetime import date, time
 from app.schemas.match_input_schema import ClubRuleSchema, CoachUnavailabilitySchema, MatchTeamSchema
 
 # ── Geometry (D1, P4-203, lot M) ──────────────────────────────────────────────
-# Durations are PER TEAM now: the payload carries teams[].matchMinutes /
-# teams[].warmupMinutes (resolved by the backend from the sport category). The
+# Durations are PER TEAM now: the payload carries teams[].matchMinutes
+# (resolved by the backend from the sport category). The
 # court is held for the MATCH only ([kickoff, kickoff + matchMinutes]) — the
 # warm-up no longer occupies the venue (founder decision 2026-09-13: "you warm
 # up on the side during the previous match").
@@ -23,11 +23,10 @@ from app.schemas.match_input_schema import ClubRuleSchema, CoachUnavailabilitySc
 # window). `roundTripMinutes` is still carried on the contract but no longer read.
 # A PERSON is a coach OR an active player (teams[].players, P4-240 ③): both project
 # and clash on the same window, a player weighted like a MAIN coach (W_COACH_MAIN).
-# warmupMinutes stays on the contract (no version bump) but the solver no longer
-# reads it for any window; keeping it avoids re-syncing the schemas for a nil gain.
+# The warm-up holds no window at all, so it left the contract (1.10): the payload
+# no longer carries warmupMinutes.
 STEP_MIN = 15
 DEFAULT_MATCH_MIN = 105
-DEFAULT_WARMUP_MIN = 30
 
 
 def _minutes(value: time) -> int:
@@ -62,12 +61,12 @@ def _kick_in_unavailability(kick: int, unav: CoachUnavailabilitySchema) -> bool:
     return after_min and before_max
 
 
-def _durations(team: MatchTeamSchema | None) -> tuple[int, int]:
-    """(matchMinutes, warmupMinutes) of a team — the documented defaults when the
-    team is absent or the fields were omitted (Pydantic already fills 105 / 30)."""
+def _match_minutes(team: MatchTeamSchema | None) -> int:
+    """matchMinutes of a team — the documented default when the team is absent or
+    the field was omitted (Pydantic already fills 105)."""
     if team is None:
-        return DEFAULT_MATCH_MIN, DEFAULT_WARMUP_MIN
-    return team.match_minutes, team.warmup_minutes
+        return DEFAULT_MATCH_MIN
+    return team.match_minutes
 
 
 def _team_players(team: MatchTeamSchema | None) -> list[str]:

@@ -33,14 +33,12 @@
   "teams": [
     {
       "id": "cec-groupe-3",
-      "sportCategoryId": "cat-u11",
       "priorityTierId": 5,
       "name": "CEC Groupe 3 (U11F1/U11M2)",
       "sessionsPerWeek": 1
     },
     {
       "id": "u18f1",
-      "sportCategoryId": "cat-u18",
       "priorityTierId": 3,
       "name": "U18F1",
       "sessionsPerWeek": 1

@@ -78,7 +78,6 @@ class TestGenerateContract:
                 "teams": [
                     {
                         "id": "team-a",
-                        "sportCategoryId": "sc-1",
                         "priorityTierId": 1,
                         "name": "Team A",
                         "sessionsPerWeek": 2,
@@ -113,7 +112,6 @@ class TestGenerateContract:
                 "teams": [
                     {
                         "id": "team-a",
-                        "sportCategoryId": "sc-1",
                         "priorityTierId": 1,
                         "name": "Team A",
                         "sessionsPerWeek": 1,
@@ -165,7 +163,6 @@ class TestGenerateContract:
                 "teams": [
                     {
                         "id": "team-a",
-                        "sportCategoryId": "sc-1",
                         "priorityTierId": 1,
                         "name": "Team A",
                         "sessionsPerWeek": 1,
@@ -318,7 +315,6 @@ class TestGenerateContract:
                 "teams": [
                     {
                         "id": "team-competitive",
-                        "sportCategoryId": "sc-1",
                         "priorityTierId": 1,
                         "name": "Team Competitive",
                         "sessionsPerWeek": 3,
@@ -365,7 +361,6 @@ class TestGenerateContract:
                 "teams": [
                     {
                         "id": "team-locked",
-                        "sportCategoryId": "sc-1",
                         "priorityTierId": 1,
                         "name": "Team Fully Locked",
                         "sessionsPerWeek": 1,
@@ -419,14 +414,12 @@ class TestGenerateContract:
                 "teams": [
                     {
                         "id": "team-a",
-                        "sportCategoryId": "sc-1",
                         "priorityTierId": 3,
                         "name": "Team A",
                         "sessionsPerWeek": 1,
                     },
                     {
                         "id": "team-b",
-                        "sportCategoryId": "sc-1",
                         "priorityTierId": 3,
                         "name": "Team B",
                         "sessionsPerWeek": 1,
@@ -518,14 +511,16 @@ class TestGenerateContract:
         ouverture datée : `MatchAccessWindowSchema.openingDate` et `MatchSchema.importedVenueId` /
         `importedKickoff`, champs additifs, puis 1.9 → 1.10 — plafond de séances par jour :
         `TeamSchema.maxSessionsPerDay`, champ additif, puis 1.10 → 1.11 — règles du club à trois
-        états : `OFF` accepté par l'intensité des quatre règles réglables) et un payload qui
-        s'attribue cette version est recevable comme un payload qui n'annonce rien."""
+        états : `OFF` accepté par l'intensité des quatre règles réglables, puis 1.11 → 1.12 — contrat
+        allégé : les champs que le moteur ne lit pas quittent le schéma et sont refusés, l'heure d'un
+        créneau de gymnase est vérifiée) et un payload qui s'attribue cette version est recevable comme
+        un payload qui n'annonce rien."""
         from app.main import read_contract_version
 
-        assert read_contract_version() == "1.11"
+        assert read_contract_version() == "1.12"
 
-        stamped = ScheduleInputSchema.model_validate({"clubId": "club-v", "seasonId": "season-v", "version": "1.11"})
-        assert stamped.version == "1.11"
+        stamped = ScheduleInputSchema.model_validate({"clubId": "club-v", "seasonId": "season-v", "version": "1.12"})
+        assert stamped.version == "1.12"
 
 
 # --- Contrat allégé (ENG-60) : un champ que le moteur ne lit pas ne voyage plus ---------------

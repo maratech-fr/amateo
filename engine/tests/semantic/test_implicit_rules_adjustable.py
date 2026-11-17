@@ -24,7 +24,6 @@ from tests.support import make_payload, make_venue, solve_payload, team_coach
 def _team(team_id: str, *, sessions: int = 1, tier: int = 1, age_min: int | None = None) -> dict[str, Any]:
     team: dict[str, Any] = {
         "id": team_id,
-        "sportCategoryId": "cat",
         "priorityTierId": tier,
         "name": team_id,
         "sessionsPerWeek": sessions,

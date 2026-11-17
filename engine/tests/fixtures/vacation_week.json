@@ -56,70 +56,60 @@
   "teams": [
     {
       "id": "sm1",
-      "sportCategoryId": "senior",
       "priorityTierId": 1,
       "name": "Senior Men 1",
       "sessionsPerWeek": 2
     },
     {
       "id": "sm2",
-      "sportCategoryId": "senior",
       "priorityTierId": 1,
       "name": "Senior Men 2",
       "sessionsPerWeek": 2
     },
     {
       "id": "sw1",
-      "sportCategoryId": "senior",
       "priorityTierId": 1,
       "name": "Senior Women 1",
       "sessionsPerWeek": 2
     },
     {
       "id": "u18m",
-      "sportCategoryId": "u18",
       "priorityTierId": 2,
       "name": "U18 Men",
       "sessionsPerWeek": 2
     },
     {
       "id": "u18w",
-      "sportCategoryId": "u18",
       "priorityTierId": 2,
       "name": "U18 Women",
       "sessionsPerWeek": 2
     },
     {
       "id": "u15m",
-      "sportCategoryId": "u15",
       "priorityTierId": 3,
       "name": "U15 Men",
       "sessionsPerWeek": 1
     },
     {
       "id": "u15w",
-      "sportCategoryId": "u15",
       "priorityTierId": 3,
       "name": "U15 Women",
       "sessionsPerWeek": 1
     },
     {
       "id": "u13m",
-      "sportCategoryId": "u13",
       "priorityTierId": 4,
       "name": "U13 Men",
       "sessionsPerWeek": 1
     },
     {
       "id": "u13w",
-      "sportCategoryId": "u13",
       "priorityTierId": 4,
       "name": "U13 Women",
       "sessionsPerWeek": 1
     },
     {
       "id": "u11",
-      "sportCategoryId": "u11",
       "priorityTierId": 5,
       "name": "U11 Mixed",
       "sessionsPerWeek": 1

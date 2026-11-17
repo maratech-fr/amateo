@@ -46,7 +46,9 @@ class SerializableModel(BaseModel):
 
 class VenueTrainingSlotSchema(SerializableModel):
     day_of_week: int = Field(alias="dayOfWeek")
-    start_time: str = Field(alias="startTime")  # "19:00"
+    # « HH:MM » (secondes tolérées) : une heure mal écrite est refusée à l'entrée (422) au lieu de
+    # casser le solve plus loin (500). Le backend n'émet que `H:i`.
+    start_time: str = Field(alias="startTime", pattern=r"^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$")  # "19:00"
     duration_minutes: int = Field(alias="durationMinutes")
     capacity: int = Field(default=1, ge=1)
 
@@ -54,13 +56,8 @@ class VenueTrainingSlotSchema(SerializableModel):
 class VenueSchema(SerializableModel):
     id: str
     name: str
-    is_external: bool = Field(default=False, alias="isExternal")
-    color: str | None = None
-    latitude: str | None = None
-    longitude: str | None = None
-    source: str = ""
-    external_ref: str | None = Field(default=None, alias="externalRef")
-    parent_venue_id: str | None = Field(default=None, alias="parentVenueId")
+    # Contrat 1.10 (allégé) — couleur, coordonnées, source, référence externe, « gymnase extérieur » et
+    # lien de saison RETIRÉS : jamais lus par le solveur. `extra="forbid"` les refuse s'ils reparaissent.
     training_slots: list[VenueTrainingSlotSchema] = Field(
         default_factory=list, alias="trainingSlots", max_length=MAX_SLOTS_PER_VENUE
     )
@@ -68,19 +65,15 @@ class VenueSchema(SerializableModel):
 
 class TeamSchema(SerializableModel):
     id: str
-    sport_category_id: str = Field(alias="sportCategoryId")
-    """Age range from SportCategory. Used for age-ascending constraint. None = constraint skipped."""
+    # Contrat 1.10 (allégé) — `sportCategoryId`, `ageMax`, `gender`, `level`, `parentTeamId` et
+    # `ffbbTeamId` RETIRÉS : jamais lus par le solveur. `extra="forbid"` les refuse s'ils reparaissent.
     ageMin: int | None = None
-    ageMax: int | None = None
+    """Minimum age from SportCategory. Used for age-ascending constraint. None = constraint skipped."""
     priority_tier_id: int = Field(alias="priorityTierId")
     name: str
-    gender: str | None = None
-    level: str | None = None
     sessions_per_week: int = Field(alias="sessionsPerWeek")
     match_day: int | None = Field(default=None, alias="matchDay")
     forced_venue_id: str | None = Field(default=None, alias="forcedVenueId")
-    parent_team_id: str | None = Field(default=None, alias="parentTeamId")
-    ffbb_team_id: str | None = Field(default=None, alias="ffbbTeamId")
     # Contrat 1.10 — plafond de séances par jour pour cette équipe (1 à 4). Le backend ne l'émet
     # qu'au-delà de 1 : absent = 1, le comportement d'avant (une seule séance par jour).
     max_sessions_per_day: int = Field(default=1, ge=1, le=4, alias="maxSessionsPerDay")
@@ -94,8 +87,8 @@ class CoachSchema(SerializableModel):
     # Chantier H (contrat 1.6) — `acceptableLateMinutes` RETIRÉ : levier MORT (aucune UI, jamais lu
     # par le moteur). La tolérance d'arrivée tardive est portée par la SÉANCE
     # (`ScheduleSlotTemplateSchema.coach_late_tolerance_minutes`), pas par la personne. `extra="forbid"`
-    # du modèle sérialisable rejette désormais ce champ s'il reparaît.
-    parent_coach_id: str | None = Field(default=None, alias="parentCoachId")
+    # du modèle sérialisable rejette désormais ce champ s'il reparaît. Contrat 1.10 : `parentCoachId`
+    # (lien de saison, jamais lu) retiré de même.
     is_employee: bool = Field(default=False, alias="isEmployee")
     # P2-53 RMM-8 PR-2 — le coach est-il VÉHICULÉ ? Décide de SON barème de trajet
     # (véhiculé → temps voiture, sinon temps à pied) dans la règle implicite `travelTime`.
@@ -122,7 +115,8 @@ class ConstraintV2Schema(BaseModel):
     rule_type: str | None = Field(default=None, alias="ruleType")
     name: str | None = None
     config: dict[str, object] = Field(default_factory=dict)
-    sort_order: int = Field(default=0, alias="sortOrder")
+    # Contrat 1.10 — `sortOrder` retiré (jamais lu) ; un ancien envoi qui le porte reste toléré
+    # (`extra="ignore"`).
     is_active: bool = Field(default=True, alias="isActive")
     # Legacy v1 fields (still sent by backend for TEAM_COACH, etc.)
     team_id: str | None = Field(default=None, alias="teamId")
@@ -333,10 +327,9 @@ class ScheduleInputSchema(SerializableModel):
     # la valeur du fil. On l'aligne néanmoins sur le contrat courant (engine/CONTRACT_VERSION) pour
     # qu'aucun lecteur ne le prenne pour une version concurrente ; gardé par
     # test_schema_version_defaults_match_contract_version.
-    version: str = "1.11"
+    version: str = "1.12"
     club_id: str = Field(alias="clubId")
     season_id: str = Field(alias="seasonId")
-    schedule_name: str | None = Field(default=None, alias="scheduleName")
     solver_seed: int = Field(default=42, alias="solverSeed")
     solver_timeout_seconds: int = Field(default=650, alias="solverTimeoutSeconds")
     venues: list[VenueSchema] = Field(default_factory=list, max_length=MAX_VENUES)

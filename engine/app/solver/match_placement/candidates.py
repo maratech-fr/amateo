@@ -4,7 +4,7 @@ from ortools.sat.python import cp_model
 
 from app.schemas.match_input_schema import MatchPlacementInputSchema, MatchSchema
 
-from .geometry import STEP_MIN, _durations, _iso_day, _kick_in_club_rule, _minutes
+from .geometry import STEP_MIN, _iso_day, _kick_in_club_rule, _match_minutes, _minutes
 
 
 class _Candidate:
@@ -24,7 +24,7 @@ def _candidate_kickoffs(
     reason when it is EMPTY (derived at build time, before any solve)."""
     day = _iso_day(match.match_date)
     team = next((t for t in input_data.teams if t.id == match.team_id), None)
-    match_min, _ = _durations(team)
+    match_min = _match_minutes(team)
     # PR2 « jours fériés » — un match fixé par la ligue un jour FÉRIÉ n'est pas un week-end libre :
     # la ligue a posé ce jour exprès. Pour une date fériée le domaine se construit sur la ligne
     # « Jours fériés » du gymnase (appliesOnPublicHolidays), JAMAIS la fenêtre du jour de semaine,
