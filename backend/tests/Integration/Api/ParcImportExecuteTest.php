@@ -1564,7 +1564,11 @@ final class ParcImportExecuteTest extends WebTestCase
         }
     }
 
-    /** Réimporter le même parc : plus aucun `raised` (rien n'est réécrit), mais les états `overlap` et `capped` sont redits. */
+    /**
+     * Réimporter le même parc ne relève plus rien : les réservations déjà présentes, laissées décochées, n'annoncent
+     * rien (seules les lignes cochées comptent, décision fondateur 2026-11-17) ; cochées, elles redisent `overlap`
+     * sans `raised`. Jumeau Behat de la ligne décochée : `features/l-import-du-parc-en-un-geste.feature`.
+     */
     public function testReimportingTheSameParcRaisesNothingAndRestatesTheStates(): void
     {
         $parc = $this->mondayParc([['09:00', 90], ['18:00', 90], ['18:30', 90]], ['SM1']);
@@ -1572,10 +1576,22 @@ final class ParcImportExecuteTest extends WebTestCase
         self::assertSame(200, $first);
         self::assertSame(['raised', 'overlap'], array_column($this->dailyCapLinesOf($body, 'SM1'), 'outcome'));
 
-        [$second, $again] = $this->importAllCreatable($parc);
+        // Une seule analyse (limiteur) : au réimport aucune réservation n'est « à créer », les laisser décochées
+        // revient à retirer leurs décisions.
+        $everyReservationChecked = $this->decisionsFromAnalysis($parc, checkEveryReservation: true);
+        $reservationsUnchecked = array_values(array_filter($everyReservationChecked, static fn (array $d): bool => 'reservations' !== $d['section']));
+        self::assertSame(3, \count($everyReservationChecked) - \count($reservationsUnchecked), 'les trois réservations du lundi');
+
+        [$second, $again] = $this->import($parc, $reservationsUnchecked);
 
         self::assertSame(200, $second);
-        self::assertSame(['overlap'], array_column($this->dailyCapLinesOf($again, 'SM1'), 'outcome'));
+        self::assertSame([], $this->dailyCapLinesOf($again, 'SM1'), 'réservations déjà présentes décochées : rien d\'annoncé');
+        self::assertSame(2, $this->capOf('SM1'));
+
+        [$third, $checked] = $this->import($parc, $everyReservationChecked);
+
+        self::assertSame(200, $third);
+        self::assertSame(['overlap'], array_column($this->dailyCapLinesOf($checked, 'SM1'), 'outcome'), 'cochées : l\'état est redit, rien n\'est relevé');
         self::assertSame(2, $this->capOf('SM1'));
     }
 
@@ -1892,6 +1908,20 @@ final class ParcImportExecuteTest extends WebTestCase
      */
     private function importAllCreatable(array $parc): array
     {
+        return $this->import($parc, $this->decisionsFromAnalysis($parc));
+    }
+
+    /**
+     * Décisions tirées de l'analyse HTTP : toutes les lignes « à créer » cochées ; `$checkEveryReservation` coche
+     * aussi les réservations déjà présentes (réimport où le gestionnaire recoche tout). Un appel au limiteur
+     * `parc_import` (5 par 15 min en test).
+     *
+     * @param array<string, mixed> $parc
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function decisionsFromAnalysis(array $parc, bool $checkEveryReservation = false): array
+    {
         // On passe par l'analyse HTTP pour obtenir les statuts dérivés et cocher les « à créer ».
         $this->client->request(
             'POST',
@@ -1907,7 +1937,11 @@ final class ParcImportExecuteTest extends WebTestCase
         $decisions = [];
         foreach ((array) ($analyze['sections'] ?? []) as $section => $lines) {
             foreach (\is_array($lines) ? $lines : [] as $i => $line) {
-                if (!\is_array($line) || 'aCreer' !== ($line['statut'] ?? null)) {
+                if (!\is_array($line)) {
+                    continue;
+                }
+                $everyReservation = $checkEveryReservation && 'reservations' === $section;
+                if (!$everyReservation && 'aCreer' !== ($line['statut'] ?? null)) {
                     continue;
                 }
                 $decision = ['section' => $section, 'index' => $i, 'coche' => true];
@@ -1921,7 +1955,7 @@ final class ParcImportExecuteTest extends WebTestCase
             }
         }
 
-        return $this->import($parc, $decisions);
+        return $decisions;
     }
 
     /**
