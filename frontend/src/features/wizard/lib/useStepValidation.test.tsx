@@ -185,6 +185,20 @@ describe("computeReservationWarnings (W6)", () => {
     const warnings = computeReservationWarnings(reservations, teams, venues, slots);
     expect(warnings).toContainEqual("U13 : 2 séances le même jour (mardi).");
   });
+
+  // PR 1a — le seuil de l'avertissement est le plafond de séances par jour de l'équipe
+  // (`Team.maxSessionsPerDay`, servi par l'API), pas « 2 » en dur : une équipe autorisée à 2 séances
+  // par jour n'est avertie qu'à la troisième. Plafond 1 : le cas ci-dessus, inchangé.
+  it("n'avertit qu'au-delà du plafond de l'équipe : 2 séances le mardi à plafond 2 = rien, 3 = un avertissement", () => {
+    const teams = [{ ...team("t1", "U13", 3), maxSessionsPerDay: 2 } as Team];
+    const venues = [venue("v1", "Gymnase A", false)];
+    const slots = [slot("v1", 2, "09:00", 1), slot("v1", 2, "14:00", 1), slot("v1", 2, "20:00", 1)];
+    const two = [reservation("r1", "t1", "v1", 2, "09:00"), reservation("r2", "t1", "v1", 2, "20:00")];
+    expect(computeReservationWarnings(two, teams, venues, slots)).toEqual([]);
+
+    const three = [...two, reservation("r3", "t1", "v1", 2, "14:00")];
+    expect(computeReservationWarnings(three, teams, venues, slots)).toHaveLength(1);
+  });
 });
 
 // E9 (lot 2, retours essai fondateur 30/10) — l'avertissement de capacité (règle 1) doit IGNORER une
