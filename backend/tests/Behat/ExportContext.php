@@ -409,12 +409,21 @@ final class ExportContext extends BaseContext
         }
         try {
             file_put_contents($path, $response->getContent(false));
-            $sheet = IOFactory::load($path)->getActiveSheet()->toArray(null, false, false, false);
+            // La feuille « Planning » par son NOM : la feuille active à l'ouverture est la matrice
+            // « Équipes × jours », qui ne porte ni horaire ni occupation — « il ne la nomme pas »
+            // y passerait à vide.
+            $planning = IOFactory::load($path)->getSheetByName('Planning')
+                ?? throw new RuntimeException('l\'export Excel ne porte pas de feuille « Planning »');
+            $sheet = $planning->toArray(null, false, false, false);
         } finally {
             @unlink($path);
         }
 
         $headers = array_map(static fn (mixed $h): string => \is_scalar($h) ? (string) $h : '', $sheet[0] ?? []);
+        $missing = array_diff(['Jour', 'Début', 'Fin', 'Équipe'], $headers);
+        if ([] !== $missing) {
+            throw new RuntimeException(\sprintf('la feuille « Planning » de l\'export Excel n\'a pas les colonnes %s', implode(', ', $missing)));
+        }
         $rows = [];
         foreach (\array_slice($sheet, 1) as $line) {
             $row = [];
