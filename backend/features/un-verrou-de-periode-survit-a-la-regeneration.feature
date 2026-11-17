@@ -18,9 +18,16 @@ Fonctionnalité: Un verrou de plan de période survit à la régénération, sur
     « Charger » fait des verrous d'une version de période les données EN COURS de son plan, MÊME quand
     une version plus RÉCENTE existe : la régénération qui suit repart de la version CHARGÉE, ses
     verrous compris, et non de la plus récente. Sans « Charger », on repartirait des données en cours
-    (la version récente) et les verrous de l'ancienne se perdraient.
+    (la version récente) et les verrous de l'ancienne se perdraient. Ces verrous chargés comptent comme des séances :
+    une équipe réduite pour la période sous le nombre de ses séances verrouillées est bloquée, jusqu'à ce qu'on la rende.
     Étant donné un petit club réaliste dont le planning de saison est en vigueur, avec un plan de période jetable portant une version transcrite plus ancienne que les données en cours
     Et je charge les verrous de cette version du petit club
     Et deux séances libres de cette version du petit club verrouillées en dur
+    Quand je réduis à une séance pour cette période une équipe dont les deux séances sont verrouillées
+    Alors le récapitulatif de la période bloque et nomme ses deux séances
+    Quand j'essaie de générer le plan de période du petit club
+    Alors c'est refusé par le même motif, et la version créée est retirée sans rien mettre en file
+    Quand je lui rends sa seconde séance pour cette période
+    Alors le récapitulatif de la période ne bloque plus
     Quand je régénère le plan de période du petit club
     Alors la régénération aboutit et les deux séances reviennent verrouillées, aux mêmes cases

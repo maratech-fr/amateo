@@ -21,7 +21,9 @@ use RuntimeException;
  *   - « Régénérer » repart TOUJOURS de la dernière version terminée — même à la deuxième
  *     régénération, les verrous ne se perdent pas d'une génération à l'autre ;
  *   - « Charger » fait des verrous d'une version plus ANCIENNE les données en cours : la
- *     régénération qui suit repart de SES verrous, non de la version la plus récente.
+ *     régénération qui suit repart de SES verrous, non de la version la plus récente ;
+ *   - ces verrous chargés comptent comme des séances : réduite pour la période sous le nombre de ses séances
+ *     verrouillées, une équipe est bloquée au Récap et à la génération, par le même motif.
  *
  * Remplace, sur un décor léger (palier 60 s au lieu de ~600 s sur le BCCL complet), les trois
  * scénarios de période de `un-verrou-est-souverain.feature` (régénération d'un plan de période)
@@ -36,6 +38,12 @@ final class PeriodLockSmallClubContext extends BaseContext
 {
     use SmallClubFixtureTrait;
 
+    /** Équipe à deux séances, toutes deux verrouillées dans la version chargée, réduite à une séance pour la période. */
+    private const string REDUCED_TEAM = 'U20M1';
+
+    /** ISO-8601 : 1 = lundi. */
+    private const array DAY_NAMES = [1 => 'lundi', 2 => 'mardi', 3 => 'mercredi', 4 => 'jeudi', 5 => 'vendredi', 6 => 'samedi', 7 => 'dimanche'];
+
     private string $periodPlanId = '';
 
     /** Version dont on verrouille des séances libres (overlay source, ou v1 ancienne pour « Charger »). */
@@ -47,6 +55,15 @@ final class PeriodLockSmallClubContext extends BaseContext
     private string $lastRegeneratedId = '';
 
     private string $finalStatus = '';
+
+    private string $periodEntryId = '';
+
+    private string $reductionId = '';
+
+    private string $periodBlocker = '';
+
+    /** @var array{created: int, generate: int, json: array<mixed>, statusBeforeRemoval: string, removed: int} */
+    private array $refusedGeneration = ['created' => 0, 'generate' => 0, 'json' => [], 'statusBeforeRemoval' => '', 'removed' => 0];
 
     #[Given('un petit club réaliste dont le planning de saison est en vigueur, avec un plan de période portant une version overlay terminée')]
     public function unPetitClubAvecPlanDePeriodeOverlay(): void
@@ -76,8 +93,8 @@ final class PeriodLockSmallClubContext extends BaseContext
 
         $start = $this->smallClubFutureMonday(49);
         $end = date('Y-m-d', (int) strtotime($start . ' +4 days'));
-        $entryId = $this->createSmallClubClosureEntry($start, $end, 'Fermeture — Charger les verrous (petit club)');
-        $this->periodPlanId = $this->openSmallClubPeriodPlan($entryId);
+        $this->periodEntryId = $this->createSmallClubClosureEntry($start, $end, 'Fermeture — Charger les verrous (petit club)');
+        $this->periodPlanId = $this->openSmallClubPeriodPlan($this->periodEntryId);
 
         // v1 = transcription du socle (COMPLETED sans solve), la version plus ANCIENNE que « Charger »
         // désignera. On verrouille sur ELLE.
@@ -151,9 +168,140 @@ final class PeriodLockSmallClubContext extends BaseContext
         }
     }
 
+    #[When('je réduis à une séance pour cette période une équipe dont les deux séances sont verrouillées')]
+    public function jeReduisUneEquipeVerrouillee(): void
+    {
+        $locked = (int) $this->dbalScalar(
+            \sprintf(
+                'SELECT COUNT(*) AS behatval FROM schedule_slot_template WHERE schedule_id=\'%s\' AND team_id=\'%s\' AND lock_level=\'HARD\'',
+                $this->sourceVersionId,
+                $this->smallClubTeamIds[self::REDUCED_TEAM],
+            ),
+            admin: true,
+        );
+        if (2 !== $locked) {
+            throw new RuntimeException(\sprintf('décor : %s devrait avoir ses deux séances verrouillées dans la version chargée (trouvées : %d)', self::REDUCED_TEAM, $locked));
+        }
+
+        $created = $this->apiPost('team_period_overrides', [
+            'schedulePlanId' => $this->periodPlanId,
+            'teamId' => $this->smallClubTeamIds[self::REDUCED_TEAM],
+            'isActive' => true,
+            'sessionsPerWeek' => 1,
+        ], $this->smallClubToken);
+        if (!\in_array($created['status'], [200, 201], true)) {
+            throw new RuntimeException(\sprintf('la réduction de %s pour la période a répondu %d (201 attendu) : %s', self::REDUCED_TEAM, $created['status'], json_encode($created['json'], \JSON_UNESCAPED_UNICODE)));
+        }
+        $this->reductionId = $this->smallClubStringField($created['json'], 'id');
+    }
+
+    /** Le motif nomme les deux séances verrouillées de l'équipe dans la version chargée : jour, heures, gymnase. */
+    #[Then('le récapitulatif de la période bloque et nomme ses deux séances')]
+    public function leRecapDeLaPeriodeBloqueEtNommeSesDeuxSeances(): void
+    {
+        $this->periodBlocker = $this->reducedTeamBlocker();
+        $raw = $this->dbalScalar(
+            \sprintf(
+                'SELECT string_agg(venue_id || \'|\' || day_of_week || \'|\' || to_char(start_time, \'HH24:MI\'), \';\') AS behatval'
+                . ' FROM schedule_slot_template WHERE schedule_id=\'%s\' AND team_id=\'%s\'',
+                $this->sourceVersionId,
+                $this->smallClubTeamIds[self::REDUCED_TEAM],
+            ),
+            admin: true,
+        );
+        foreach ('' === $raw ? [] : explode(';', $raw) as $session) {
+            [$venueId, $day, $start] = explode('|', $session);
+            $hours = \sprintf('%s-%s', $start, date('H:i', (int) strtotime($start . ' +90 minutes')));
+            foreach ([self::DAY_NAMES[(int) $day], $hours, (string) array_search($venueId, $this->smallClubVenueIds, true)] as $expected) {
+                if (!str_contains($this->periodBlocker, $expected)) {
+                    throw new RuntimeException(\sprintf('le motif doit nommer chaque séance verrouillée de %s (« %s » attendu) — obtenu : « %s »', self::REDUCED_TEAM, $expected, $this->periodBlocker));
+                }
+            }
+        }
+    }
+
+    /** Le geste de l'étape Génération : créer la version, la générer ; refusée, l'écran la supprime. */
+    #[When('j\'essaie de générer le plan de période du petit club')]
+    public function jEssaieDeGenererLePlanDePeriode(): void
+    {
+        $created = $this->apiPost('schedules', ['schedulePlanId' => $this->periodPlanId, 'status' => 'DRAFT'], $this->smallClubToken);
+        $this->refusedGeneration['created'] = $created['status'];
+        $id = $this->smallClubStringField($created['json'], 'id');
+
+        $launched = $this->apiPost(\sprintf('schedules/%s/generate', $id), [], $this->smallClubToken);
+        $this->refusedGeneration['generate'] = $launched['status'];
+        $this->refusedGeneration['json'] = $launched['json'];
+        if (422 !== $launched['status']) {
+            // Partie en file : on attend son verdict pour ne laisser aucune génération fantôme au créneau suivant.
+            $this->pollSmallClubUntilTerminal($id);
+
+            return;
+        }
+        $this->refusedGeneration['statusBeforeRemoval'] = (string) ($this->apiGet(\sprintf('schedules/%s', $id), $this->smallClubToken)['json']['status'] ?? '');
+        $this->refusedGeneration['removed'] = $this->apiDelete(\sprintf('schedules/%s', $id), $this->smallClubToken)['status'];
+    }
+
+    #[Then('c\'est refusé par le même motif, et la version créée est retirée sans rien mettre en file')]
+    public function cEstRefuseParLeMemeMotifRienEnFile(): void
+    {
+        $refused = $this->refusedGeneration;
+        if (422 !== $refused['generate'] || true !== ($refused['json']['blocker'] ?? null)) {
+            throw new RuntimeException(\sprintf('la génération de période devait être refusée comme un blocage (422, blocker) — reçu %d : %s', $refused['generate'], json_encode($refused['json'], \JSON_UNESCAPED_UNICODE)));
+        }
+        if ($this->periodBlocker !== ($refused['json']['error'] ?? null)) {
+            throw new RuntimeException(\sprintf('le guichet doit dire le motif du Récap de la période mot pour mot — Récap : « %s », guichet : %s', $this->periodBlocker, json_encode($refused['json'], \JSON_UNESCAPED_UNICODE)));
+        }
+        if ('DRAFT' !== $refused['statusBeforeRemoval']) {
+            throw new RuntimeException(\sprintf('rien ne part en file : la version refusée devait rester DRAFT, obtenu « %s »', $refused['statusBeforeRemoval']));
+        }
+        if (!\in_array($refused['removed'], [200, 204], true)) {
+            throw new RuntimeException(\sprintf('la version refusée devait se retirer (204), reçu %d', $refused['removed']));
+        }
+    }
+
+    #[When('je lui rends sa seconde séance pour cette période')]
+    public function jeLuiRendsSaSeconde(): void
+    {
+        $removed = $this->apiDelete(\sprintf('team_period_overrides/%s', $this->reductionId), $this->smallClubToken);
+        if (!\in_array($removed['status'], [200, 204], true)) {
+            throw new RuntimeException(\sprintf('le retrait de la réduction a répondu %d (204 attendu)', $removed['status']));
+        }
+    }
+
+    #[Then('le récapitulatif de la période ne bloque plus')]
+    public function leRecapDeLaPeriodeNeBloquePlus(): void
+    {
+        $blockers = $this->periodRecapBlockers();
+        if ([] !== $blockers) {
+            throw new RuntimeException(\sprintf('le récapitulatif de la période ne devrait plus rien bloquer — blocages : %s', json_encode($blockers, \JSON_UNESCAPED_UNICODE)));
+        }
+    }
+
     #[AfterScenario]
     public function nettoyer(): void
     {
         $this->teardownSmallClub();
+    }
+
+    /** @return list<string> */
+    private function periodRecapBlockers(): array
+    {
+        $recap = $this->apiPost('constraints/validate', ['calendarEntryId' => $this->periodEntryId], $this->smallClubToken);
+        if (!\in_array($recap['status'], [200, 422], true) || !\is_array($recap['json']['blockers'] ?? null)) {
+            throw new RuntimeException(\sprintf('le récapitulatif de la période doit répondre 200 ou 422 avec la liste blockers — reçu %d : %s', $recap['status'], json_encode($recap['json'], \JSON_UNESCAPED_UNICODE)));
+        }
+
+        return array_values(array_map(strval(...), $recap['json']['blockers']));
+    }
+
+    private function reducedTeamBlocker(): string
+    {
+        $blockers = $this->periodRecapBlockers();
+        $mine = array_values(array_filter($blockers, static fn (string $blocker): bool => str_contains($blocker, self::REDUCED_TEAM)));
+        if (1 !== \count($mine)) {
+            throw new RuntimeException(\sprintf('le récapitulatif de la période devrait bloquer %s par un motif, un seul — blocages : %s', self::REDUCED_TEAM, json_encode($blockers, \JSON_UNESCAPED_UNICODE)));
+        }
+
+        return $mine[0];
     }
 }
