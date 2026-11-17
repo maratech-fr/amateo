@@ -113,6 +113,7 @@ function TeamRow({ team, number, categories, tiers, onField, onDelete, onOpenLin
   const engaged = true === team.isEngaged;
   // Un Membre lit la ligne : champs en lecture, ni flèches, ni suppression (« Liens » reste, en lecture).
   const canManage = useCanManage();
+  const dailyCap = team.maxSessionsPerDay ?? 1;
 
   return (
     <div className="border-t border-border py-1.5">
@@ -140,14 +141,22 @@ function TeamRow({ team, number, categories, tiers, onField, onDelete, onOpenLin
         {/* Repère d'entente (CTC), DEVANT le nom — « d'un coup d'œil » (D4, décision fondateur). */}
         {true === team.isCtc ? <CtcMark partner={team.ctcPartner} /> : null}
         <ReadOnlyFieldset readOnly={!canManage} className="flex flex-wrap items-center gap-2">
-        <Input
-          aria-label={TEAMS_TEXTS.colNameAria}
-          compact
-          className={TEAM_COLUMNS.name}
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          onBlur={() => name.trim() && name !== team.name && onField(team, { name: name.trim() })}
-        />
+        {/* Repère « N/jour » (plus d'une séance le même jour, réglé dans Liens) : posé DANS la
+            colonne du nom, à droite du champ — une pastille de plus dans la ligne poussait la
+            corbeille seule à la ligne suivante, et les lignes n'avaient plus la même hauteur. */}
+        <div className={cn("relative", TEAM_COLUMNS.name)}>
+          <Input
+            aria-label={TEAMS_TEXTS.colNameAria}
+            compact
+            className={cn(dailyCap > 1 && "pr-16")}
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            onBlur={() => name.trim() && name !== team.name && onField(team, { name: name.trim() })}
+          />
+          <span className="absolute inset-y-0 right-1.5 flex items-center">
+            <DailyCapMarker max={dailyCap} />
+          </span>
+        </div>
         <Select aria-label={TEAMS_TEXTS.colCategory} compact className={TEAM_COLUMNS.category} value={team.sportCategoryId} onChange={(e) => onField(team, { sportCategoryId: e.target.value })}>
           {categories.map((c) => (
             <option key={c.id} value={c.id}>
@@ -206,8 +215,6 @@ function TeamRow({ team, number, categories, tiers, onField, onDelete, onOpenLin
         )}
         {/* P2-45 — l'affordance « Liens » : une icône muette par ligne (densité nominale), à côté
             de la corbeille. Elle ouvre passerelles + mutualisation de CETTE équipe. */}
-        {/* Repère « N/jour » : l'équipe est autorisée à plus d'une séance le même jour (réglé dans Liens). */}
-        <DailyCapMarker max={team.maxSessionsPerDay ?? 1} />
         {/* P2-45 — l'affordance « Liens » (passerelles · mutualisation · entente CTC depuis D4). */}
         <Button size="icon" variant="ghost" className="size-8" aria-label={TEAMS_TEXTS.linksOfTeam(team.name)} onClick={() => onOpenLinks(team)}>
           <Link2 className="size-4" />
