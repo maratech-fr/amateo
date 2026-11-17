@@ -9,6 +9,7 @@ use App\Entity\ClubLeagueWindow;
 use App\Entity\Coach;
 use App\Entity\CoachPlayerMembership;
 use App\Entity\Constraint;
+use App\Entity\ImplicitRuleSetting;
 use App\Entity\MatchConstraint;
 use App\Entity\PriorityTier;
 use App\Entity\Schedule;
@@ -29,6 +30,8 @@ use App\Enum\CoachGender;
 use App\Enum\ConstraintFamily;
 use App\Enum\ConstraintRuleType;
 use App\Enum\ConstraintScope;
+use App\Enum\ImplicitRuleIntensity;
+use App\Enum\ImplicitRuleKey;
 use App\Enum\MatchWeek;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
@@ -370,6 +373,28 @@ final class SeasonTransitionServiceTest extends KernelTestCase
         $copied = $this->em->getRepository(Team::class)->findOneBy(['seasonId' => $target->getId(), 'name' => 'SM1']);
         self::assertInstanceOf(Team::class, $copied);
         self::assertSame(2, $copied->getMaxSessionsPerDay());
+    }
+
+    /** PR 1b — une règle du club réglée sur « Ignorée » le reste à la saison suivante. */
+    public function testAnIgnoredClubRuleSurvivesTheTransition(): void
+    {
+        [$club, $season] = $this->createClubGraph();
+        $this->em->persist((new ImplicitRuleSetting)
+            ->setClubId($club->getId())
+            ->setSeasonId($season->getId())
+            ->setRuleKey(ImplicitRuleKey::AGE_ASCENDING)
+            ->setIntensity(ImplicitRuleIntensity::OFF));
+        $this->em->flush();
+
+        $target = $this->service->transition($season);
+
+        $copied = $this->em->getRepository(ImplicitRuleSetting::class)->findOneBy([
+            'seasonId' => $target->getId(),
+            'schedulePlanId' => null,
+            'ruleKey' => ImplicitRuleKey::AGE_ASCENDING,
+        ]);
+        self::assertInstanceOf(ImplicitRuleSetting::class, $copied, 'le réglage de la règle suit la saison suivante');
+        self::assertSame(ImplicitRuleIntensity::OFF, $copied->getIntensity());
     }
 
     public function testCoachIsVehicledSurvivesTheTransition(): void
