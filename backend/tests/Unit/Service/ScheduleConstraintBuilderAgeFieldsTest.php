@@ -27,6 +27,7 @@ final class ScheduleConstraintBuilderAgeFieldsTest extends TestCase
 
     private LoggerInterface&MockObject $logger;
 
+    /** L'âge minimal de la catégorie part au moteur pour chaque équipe ; l'âge maximal, jamais lu, ne part plus. */
     public function testBuildAddsAgeFieldsToEveryTeam(): void
     {
         $u13Category = (new SportCategory)
@@ -71,14 +72,12 @@ final class ScheduleConstraintBuilderAgeFieldsTest extends TestCase
         $teamsById = [];
         foreach ($payload['teams'] as $teamPayload) {
             self::assertArrayHasKey('ageMin', $teamPayload);
-            self::assertArrayHasKey('ageMax', $teamPayload);
+            self::assertArrayNotHasKey('ageMax', $teamPayload);
             $teamsById[$teamPayload['id']] = $teamPayload;
         }
 
         self::assertSame(12, $teamsById['team-u13']['ageMin']);
-        self::assertSame(13, $teamsById['team-u13']['ageMax']);
         self::assertNull($teamsById['team-loisir']['ageMin']);
-        self::assertNull($teamsById['team-loisir']['ageMax']);
     }
 
     protected function setUp(): void

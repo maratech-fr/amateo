@@ -8,6 +8,9 @@ Fonctionnalité: La boucle de travail du gestionnaire tient à la régénératio
   signale ; remise sur Obligatoire, l'annonce disparaît. La présence d'un salarié, elle, ne peut
   jamais être obligatoire. La nouvelle version honore le tout — ce qu'on saisit, le planning le
   respecte, et un verrou est souverain. Sur un petit club réaliste (palier 60 s).
+  Après la régénération, seule une donnée qui peut déplacer une séance fait dire « périmé » au
+  planning : une couleur ou un niveau que rien ne vise ne le périme pas, une séance de plus ou un
+  nom le périment, et le geste inverse efface toujours le signal.
 
   Scénario: Je contrains, je réserve, je verrouille, je régénère : tout tient
     Étant donné un petit club réaliste dont le planning de saison est en vigueur, puis rouvert pour y retravailler
@@ -24,6 +27,18 @@ Fonctionnalité: La boucle de travail du gestionnaire tient à la régénératio
     Alors le récapitulatif annonce cette règle comme ignorée
     Quand je régénère le planning de saison du petit club
     Alors la régénération aboutit : le verrou tient sa case, la case réservée reste vide, SM1 n'a aucune séance avant 20h30, et aucun signalement ne porte sur l'ordre des âges
+    Quand je change la couleur d'un gymnase et le niveau de l'équipe Loisir
+    Alors le planning n'est pas signalé périmé
+    Quand j'ajoute une séance par semaine à l'équipe Loisir
+    Alors il est signalé périmé
+    Quand je la retire
+    Alors il ne l'est plus
+    Quand je renomme l'équipe Loisir
+    Alors il est signalé périmé
+    Quand je lui rends son nom
+    Alors il ne l'est plus
+    Quand je renomme une contrainte puis lui rends son nom
+    Alors il ne l'est toujours pas
     Quand je remets « Les jeunes avant les grands » sur Obligatoire
     Alors le récapitulatif ne l'annonce plus comme ignorée
     Quand j'essaie de régler la présence d'un salarié sur Obligatoire

@@ -274,9 +274,9 @@ def test_category_duration_is_honoured() -> None:
     assert overflows["unplaced"][0]["reason"] == "no_access_window"
 
 
-def test_absent_durations_default_to_105_and_30() -> None:
-    # A team WITHOUT matchMinutes/warmupMinutes behaves as 105 / 30 (the omitted
-    # fields keep the previous behaviour). Window 14:00-15:45 = one 105-min match.
+def test_absent_match_minutes_default_to_105() -> None:
+    # A team WITHOUT matchMinutes plays a 105-min match (the omitted field keeps the
+    # previous behaviour). Window 14:00-15:45 = one 105-min match.
     result = solve_match_placement(
         payload(
             matches=[to_place()],
