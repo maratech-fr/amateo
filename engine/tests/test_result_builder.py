@@ -931,7 +931,7 @@ class SameDayGapDiagnosticTest(unittest.TestCase):
     def _model(refs: list[dict[str, Any]] | None = None) -> dict[str, Any]:
         return {
             "teams": [
-                {"id": "U15", "name": "U15", "priorityTierId": 3, "sportCategoryId": "c", "maxSessionsPerDay": 3}
+                {"id": "U15", "name": "U15", "priorityTierId": 3, "maxSessionsPerDay": 3}
             ],
             "venues": [],
             "socleReferenceAssignments": refs or [],

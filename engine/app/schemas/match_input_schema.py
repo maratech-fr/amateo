@@ -63,7 +63,7 @@ class MatchVenueUnavailabilitySchema(SerializableModel):
 
 
 class MatchVenueSchema(SerializableModel):
-    # Contrat 1.10 : `name` (never read by the solver) left the contract.
+    # Contrat 1.12 : `name` (never read by the solver) left the contract.
     id: str
     match_windows: list[MatchAccessWindowSchema] = Field(
         default_factory=list, alias="matchWindows", max_length=MAX_WINDOWS_PER_VENUE
@@ -157,7 +157,7 @@ class MatchTeamSchema(SerializableModel):
     # Per-category match duration (P4-203) resolved by the backend
     # (MatchDurationResolver). OMITTED ⇒ the documented default (105), so an old
     # payload keeps the previous behaviour: the venue holds the match only
-    # ([kickoff, kickoff + matchMinutes]). Contrat 1.10 : `name` and `warmupMinutes`
+    # ([kickoff, kickoff + matchMinutes]). Contrat 1.12 : `name` and `warmupMinutes`
     # (never read by the solver) left the contract; `extra="forbid"` refuses them.
     match_minutes: int = Field(default=105, alias="matchMinutes", ge=1)
     # Venues this team is FORBIDDEN to play at (P4-272 ④ — scope TEAM HARD rules,

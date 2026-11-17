@@ -56,7 +56,7 @@ class VenueTrainingSlotSchema(SerializableModel):
 class VenueSchema(SerializableModel):
     id: str
     name: str
-    # Contrat 1.10 (allégé) — couleur, coordonnées, source, référence externe, « gymnase extérieur » et
+    # Contrat 1.12 (allégé) — couleur, coordonnées, source, référence externe, « gymnase extérieur » et
     # lien de saison RETIRÉS : jamais lus par le solveur. `extra="forbid"` les refuse s'ils reparaissent.
     training_slots: list[VenueTrainingSlotSchema] = Field(
         default_factory=list, alias="trainingSlots", max_length=MAX_SLOTS_PER_VENUE
@@ -65,7 +65,7 @@ class VenueSchema(SerializableModel):
 
 class TeamSchema(SerializableModel):
     id: str
-    # Contrat 1.10 (allégé) — `sportCategoryId`, `ageMax`, `gender`, `level`, `parentTeamId` et
+    # Contrat 1.12 (allégé) — `sportCategoryId`, `ageMax`, `gender`, `level`, `parentTeamId` et
     # `ffbbTeamId` RETIRÉS : jamais lus par le solveur. `extra="forbid"` les refuse s'ils reparaissent.
     ageMin: int | None = None
     """Minimum age from SportCategory. Used for age-ascending constraint. None = constraint skipped."""
@@ -87,7 +87,7 @@ class CoachSchema(SerializableModel):
     # Chantier H (contrat 1.6) — `acceptableLateMinutes` RETIRÉ : levier MORT (aucune UI, jamais lu
     # par le moteur). La tolérance d'arrivée tardive est portée par la SÉANCE
     # (`ScheduleSlotTemplateSchema.coach_late_tolerance_minutes`), pas par la personne. `extra="forbid"`
-    # du modèle sérialisable rejette désormais ce champ s'il reparaît. Contrat 1.10 : `parentCoachId`
+    # du modèle sérialisable rejette désormais ce champ s'il reparaît. Contrat 1.12 : `parentCoachId`
     # (lien de saison, jamais lu) retiré de même.
     is_employee: bool = Field(default=False, alias="isEmployee")
     # P2-53 RMM-8 PR-2 — le coach est-il VÉHICULÉ ? Décide de SON barème de trajet
@@ -115,7 +115,7 @@ class ConstraintV2Schema(BaseModel):
     rule_type: str | None = Field(default=None, alias="ruleType")
     name: str | None = None
     config: dict[str, object] = Field(default_factory=dict)
-    # Contrat 1.10 — `sortOrder` retiré (jamais lu) ; un ancien envoi qui le porte reste toléré
+    # Contrat 1.12 — `sortOrder` retiré (jamais lu) ; un ancien envoi qui le porte reste toléré
     # (`extra="ignore"`).
     is_active: bool = Field(default=True, alias="isActive")
     # Legacy v1 fields (still sent by backend for TEAM_COACH, etc.)

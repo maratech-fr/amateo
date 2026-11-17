@@ -23,7 +23,7 @@ from app.schemas.match_input_schema import ClubRuleSchema, CoachUnavailabilitySc
 # window). `roundTripMinutes` is still carried on the contract but no longer read.
 # A PERSON is a coach OR an active player (teams[].players, P4-240 ③): both project
 # and clash on the same window, a player weighted like a MAIN coach (W_COACH_MAIN).
-# The warm-up holds no window at all, so it left the contract (1.10): the payload
+# The warm-up holds no window at all, so it left the contract (1.12): the payload
 # no longer carries warmupMinutes.
 STEP_MIN = 15
 DEFAULT_MATCH_MIN = 105
