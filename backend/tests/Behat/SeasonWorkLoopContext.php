@@ -500,6 +500,12 @@ final class SeasonWorkLoopContext extends BaseContext
         }
     }
 
+    #[AfterScenario]
+    public function nettoyer(): void
+    {
+        $this->teardownSmallClub();
+    }
+
     /**
      * Le signal de l'écran Planning : l'empreinte COURANTE du plan (`structure-hash`) diffère du
      * `snapshotHash` de la version régénérée.
@@ -536,12 +542,6 @@ final class SeasonWorkLoopContext extends BaseContext
         if (200 !== $updated['status']) {
             throw new RuntimeException(\sprintf('modification de %s/%s refusée (HTTP %d) — corps : %s', $resource, $id, $updated['status'], json_encode($updated['json'], \JSON_UNESCAPED_UNICODE | \JSON_UNESCAPED_SLASHES)));
         }
-    }
-
-    #[AfterScenario]
-    public function nettoyer(): void
-    {
-        $this->teardownSmallClub();
     }
 
     /**
