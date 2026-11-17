@@ -368,7 +368,24 @@ fil de relances successives (incident d'un club pilote). Dans les deux cas, rien
 … ») puis le détail de l'échec — ex. « Séance commune SF1 + SM1 + SM2 · lundi 20:30 · Léon Jouhaux :
 l'équipe « SM shooting » est introuvable. », « Réservation U13M1 · mardi 18:00 · Léon Jouhaux :
 l'équipe « SM shooting » est introuvable. » : le contrôleur rend **422** `{errors: […]}`. Succès →
-**200** `{recap: {<section>: {crees, apparies, misAJour, ignores}}}`.
+**200** `{recap: {<section>: {crees, apparies, misAJour, ignores}}, dailyCaps: […]}`.
+
+**`dailyCaps` — le plafond de séances par jour relevé d'après les cases** (fin de la passe
+« réservations », `ParcImportExecutor::raiseDailyCaps`). Pour chaque équipe d'une ligne de
+réservation cochée du parc soumis, le calcul lit les cases du parc (une case déjà réservée à
+l'identique, au réimport, compte aussi ; une réservation saisie à la main hors du parc, non) : par
+jour, le plus grand nombre de cases deux à deux disjointes — deux cases qui se touchent comptent 2.
+S'il dépasse le plafond de l'équipe, le plafond est relevé à ce nombre, borné à 4, jamais baissé ;
+l'équipe est relue par `ownedTeam` (jamais celle d'un autre club). Chaque ligne de `dailyCaps` porte
+`{teamId, teamName, outcome, maxSessionsPerDay, day, count}`, `outcome` valant :
+`raised` (événement : émis seulement quand la valeur est écrite), `capped` (état : plus de 4 cases
+disjointes un même jour ; plafond posé à 4, redit à chaque import) — au plus l'un des deux par équipe,
+sur le premier jour de la semaine qui atteint son maximum —, ou `overlap` (état : une ligne par jour où
+deux cases de l'équipe se chevauchent, en plus). Exemple, lundi 09:00, 18:00 et 18:30 de 90 min :
+`raised` (plafond 2) et `overlap` ; au réimport, `overlap` seul ; au Récap, le blocage du
+chevauchement seul. Le front en fait trois lignes (`PARC_IMPORT_TEXTS.dailyCapRaised`, `dailyCapCapped`,
+`dailyCapOverlap`) en fin d'import. Aucun relèvement sous un socle en vigueur : le 409 de la garde
+(refus 4 ci-dessus) arrête l'import entier avant l'exécuteur.
 
 Le **cap payant** (`PlanEntitlements::remainingTeamSlots`) est vérifié pour TOUTES les équipes
 `aCreer` cochées **avant tout persist** — jamais « les premières lignes passent, les suivantes

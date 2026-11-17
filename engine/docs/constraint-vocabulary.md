@@ -228,7 +228,7 @@ supérieur l'emporte dans l'objectif. Le **minimum de séances** du rang est une
 | `COACH_REST_DAY` | **dur par défaut, réglable** (le cran PREFERRED en fait un objectif, avec alerte si non tenu) : chaque coach a ≥ 1 jour de repos du lundi au vendredi (≤ 4 jours travaillés). Ignoré pour un coach dont le `maxDaysOverride` est déjà ≤ 4 |
 | `SALARIE_DISTRIBUTION` | **objectif, jamais un blocage** (quel que soit le cran stocké, décision 2026-10-31) : le solveur vise au moins un coach salarié (`isEmployee`) présent chaque jour lun-ven où le club a un créneau ; un jour sans salarié donne une alerte factuelle (`implicit_rule_not_honored`, WARNING). L'alerte distingue un jour où un salarié pouvait venir d'un jour où aucun n'était disponible (indisponibilités de coach lues au début du créneau). Inactif si le club compte moins de 2 salariés |
 | `MAX_CONSECUTIVE_SESSIONS` | **dur par défaut, réglable** (le cran PREFERRED en fait un objectif, avec alerte si non tenu) : une même personne n'est jamais sur les 3 créneaux d'un enchaînement A→B→C le même jour, **tous gymnases confondus** |
-| `ONE_SESSION_PER_DAY` | **dur** : ≤ 1 séance par jour et par équipe, sans exception (le drapeau `allowMultipleSessionsPerDay` est retiré du contrat, P4-79) |
+| `ONE_SESSION_PER_DAY` | **dur** : ≤ `teams[].maxSessionsPerDay` séances par jour et par équipe (1 si absent), sans exception ; deux séances d'une équipe à plafond ≥ 2 ne se chevauchent jamais. Le drapeau `allowMultipleSessionsPerDay` est retiré du contrat (P4-79). Détail : §Plafond de séances par jour |
 | `AGE_ASCENDING` | **dur par défaut, réglable** (le cran PREFERRED en fait un objectif, avec alerte si non tenu) : à gymnase et jour égaux, une équipe plus jeune ne passe pas après une plus âgée. Exempt si `ageMin` est absent (Loisir, Baby) ou si l'équipe est verrouillée en HARD |
 | `MAX_CONSECUTIVE_DAYS` | **dur ou soft, au choix du club** : une ÉQUIPE ne s'entraîne pas `maxConsecutiveDays` jours de suite (défaut 3, bornes 2-5). ⚠ À ne pas confondre avec `MAX_CONSECUTIVE_SESSIONS`, presque homonyme : celle-là vise une PERSONNE sur des créneaux dos-à-dos DANS UNE JOURNÉE. **Seule règle dont l'absence du payload signifie NON APPLIQUÉE** — les autres retombent sur HARD (P2-42). Le solveur ne voit pas les séances verrouillées dans sa fenêtre : un diagnostic post-solve `implicit_rule_not_honored` (`ruleKey` `maxConsecutiveDays`, WARNING) lit les séances POSÉES, verrous compris, et nomme une équipe (ou un groupe mutualisé) qui atteint `maxConsecutiveDays` jours de suite, un message par suite, la semaine ne bouclant pas |
 | jour de repos après match | bonus soft (`add_match_day_rest_bonus`) : préfère laisser le lendemain d'un match libre |
@@ -414,11 +414,78 @@ Un créneau HARD n'a pas de variable dans `model.x` → naturellement ignoré, l
 que les séances réellement à placer. `socleReferenceAssignments` absent/vide ⇒ `[]`, chemin
 byte-identique.
 
-`SCORE_FORMULA_VERSION` = **`T24_LEVEL_2_FIXED_WEIGHTS_V14`** (V13 sans le régime KEEP, lui-même V12
-sans le terme de référence socle — chacun INERTE tant qu'aucune référence du régime correspondant
-n'est émise). `sharedBlocks`/`slotTemplates` — miroir `MAX_SLOT_TEMPLATES` sur le cap de la liste.
+`SCORE_FORMULA_VERSION` = **`T24_LEVEL_2_FIXED_WEIGHTS_V15`** (V14 sans les deux malus du plafond par jour, V13 sans le régime KEEP, lui-même V12
+sans le terme de référence socle — chacun INERTE tant que son entrée n'est pas émise : références du régime correspondant, ou équipe à plafond ≥ 2). `sharedBlocks`/`slotTemplates` — miroir `MAX_SLOT_TEMPLATES` sur le cap de la liste.
 Gardé côté backend par `CrossStack/SocleReferencePayloadParityTest` (les deux régimes) et
 `CrossStack/SeasonSlotKeepSemanticsGateTest` (KEEP, vrai moteur, témoin + contre-témoin).
+
+## Plafond de séances par jour (`teams[].maxSessionsPerDay`, contrat 1.10)
+
+Champ d'équipe, 1 à 4, absent = 1. Le backend ne l'émet qu'au-delà de 1 (valeur effective : celle de la
+période si elle est posée, sinon celle de la saison). À plafond 1, rien de ce qui suit n'est posé : le
+modèle, les goldens et le score sont identiques à l'avant-1.10.
+
+- **Budget du jour (dur)** — `add_one_session_per_day_constraints` : somme des créneaux libres du jour
+  ≤ `max(plafond − verrous du jour, séances figées du jour)`, plancher 0. Les séances figées n'existent
+  que dans le verdict d'un geste : un plafond baissé sous un doublé déjà en place le tolère, mais refuse
+  d'en ajouter une (le doublé reste jusqu'à la génération suivante).
+- **Non-chevauchement (dur)** — `add_team_self_no_overlap_constraints`, plafond ≥ 2 : à chaque heure de
+  début possible, au plus un des créneaux de l'équipe qui couvrent cette heure (intervalle `[début, fin)`).
+  Un créneau libre qui chevauche un verrou de la même équipe (autre gymnase compris) est fermé, cause
+  `hard_lock`. Identique en génération et dans le verdict.
+- **Écart de 2 h (souple, −50)** — `add_same_day_gap_penalty` : une séance commencée moins de
+  `TEAM_SAME_DAY_GAP_MINUTES` (120) après la fin d'une autre séance de l'équipe le même jour coûte 50,
+  que l'écart soit de 0 ou de 90 minutes. Libre × libre et libre × verrou (dans les deux ordres) ;
+  verrou × verrou : jamais compté, ni annoncé (verrou, réservation et verrou posé par « Charger » sont un
+  seul état pour le moteur, `lockLevel: "HARD"`). Jamais dans la couche dure : un déplacement à la main
+  n'est pas refusé pour cet écart.
+- **« Même jour » (souple, −10)** — `add_same_day_penalty` : −10 par séance comptée au-delà de la
+  première d'un jour. Un verrou et un créneau de saison gardé (référence `keep`) situent le rang sans
+  coûter ; deux verrous : 0.
+- **Exemption de saison** : la paire dont les DEUX séances sont à des horaires de **références `keep`**
+  (`season_reference_keys`, `objective/terms/stability.py`) ne paie ni l'écart ni « même jour », en
+  génération pleine d'une période, pour l'équipe qui garde ses créneaux de saison. Une référence de
+  comblement (sans `keep`) n'exempte rien : un trou comblé est une séance libre. L'exemption lit l'heure de
+  DÉBUT seule, jamais la durée (une grille de période peut porter d'autres durées que la saison : deux
+  créneaux de saison à 2 h d'écart peuvent y être collés, et restent exemptés). Un verrou posé à un horaire
+  de saison compte comme un créneau de saison. Le calcul des compromis d'un geste ne reçoit pas les
+  références : rapprocher ou éloigner deux séances de saison y est nommé comme pour toute paire.
+- **Cas E (le seul où le niveau de l'équipe décide)** : un seul créneau de saison reste, tout ce qui
+  reste est le même jour, chaque autre place est à moins de 2 h de lui mais deux d'entre elles sont à 2 h
+  ou plus l'une de l'autre. Garder le créneau de saison coûte 60 (écart 50 + « même jour » 10), prendre les
+  deux places espacées 10 : l'équipe le garde si son poids dépasse 50 — tous les niveaux au barème plein,
+  S 60, A 56 et B 52 au barème partiel ; C 48 et D 44 lâchent (le diagnostic « créneaux de saison
+  conservés » nomme alors le créneau « déplacé »). Dès qu'une place existe un autre jour, la paire
+  « créneau de saison + autre jour » gagne pour tous les niveaux.
+- **Annonce** (génération seulement, jamais recalculée après un geste) — `_diagnose_same_day_gap`
+  (`result_builder/diagnostics/placement.py`) : un diagnostic WARNING par (équipe, jour) dès que deux
+  séances sont à moins de 2 h l'une de l'autre et qu'au moins une n'est pas un verrou. Type
+  `implicit_rule_not_honored` SANS `ruleKey` (entorse de sens assumée : règle fixe, non réglable, donc
+  sans lien « Ajuster »), `suggestions` vide ; la mention « gardées du planning de saison » seulement si
+  toutes les séances proches sont à des références `keep`. L'annonce ne dépend pas du coût : une paire
+  exemptée est quand même annoncée.
+- **Limite de la preuve d'optimalité** : le doublé collé n'est écarté que si une place espacée existe et
+  que la phase 1 est prouvée optimale ; elle verrouille alors son placement avant l'enchaînement (phase 2).
+  Sur un club dense qui épuise son budget, la phase 2 peut regagner 50 ailleurs. L'écart n'est qu'un coût
+  parmi les autres : si la place espacée vaut plus de 50 pour une autre équipe, c'est l'autre qui l'obtient.
+- **Verdict d'un geste** : séances de l'équipe déjà ce jour-là ≥ plafond → refus (`one_session_per_day`,
+  phrase « N séances le … : P séances par jour au plus pour cette équipe ») ; chevauchement inchangé ; l'écart
+  n'est jamais contrôlé, mais sort en compromis (famille `same_day`, sous-genre `gap`).
+- **Diagnostic de verrous** (`_diagnose_locked_structural_conflicts`) : au-delà du plafond seulement ; deux
+  verrous qui se chevauchent sont nommés ; deux verrous collés ou disjoints sous le plafond : silence.
+- **Plancher « au moins N à V » (`minAtVenueCount`)** — `_capped_venue_minimum` (`targeting.py`), plafond
+  P > 1 seulement (plafond 1 : calcul d'avant) : crédit = Σ par jour de min(verrous de l'équipe à ce
+  gymnase ce jour-là, P) ; place du jour = P − verrous de l'équipe ce jour-là, tous gymnases ; atteignable
+  du jour = min(place du jour, plus grand nombre de créneaux candidats de ce gymnase deux à deux
+  disjoints). Même calcul avec les candidats retirés par le verrou d'une autre équipe (la réservation
+  gagne). Verdict d'un geste : le planning figé compte Σ par jour de min(séances figées, P). Le miroir
+  backend (`PayloadCapacityMirror`) fait le même calcul, plafond lu dans `payload.teams[]`.
+- **Effet sur l'ordre des âges** : un doublé libre matin + soir d'une équipe jeune interdit, ce jour-là et
+  dans ce gymnase, toute séance d'une équipe plus âgée qui commencerait avant la séance du soir de la plus
+  jeune (règle Obligatoire ; en Souhaitée, coût 6). Règle non modifiée.
+
+Poids : `same_day` −10 et `same_day_gap` −50, dans `weights.py` (qui fait foi : la justification du 50 face
+à l'empilement de confort et à l'écart de tier y est écrite).
 
 ## Ce qu'un verrou HARD écrase (P2-9)
 

@@ -146,8 +146,8 @@ passer » est refusé.
 | Un gymnase ne dépasse jamais sa capacité | `add_room_at_most_one:284` | « au plus la CAPACITÉ », pas « une seule équipe » — la capacité se règle par créneau |
 | Un coach n'est jamais dans deux gymnases à la fois | `add_coach_at_most_one:311` | **venue-aware** : le MÊME gymnase est AUTORISÉ (D-14, arbitrage fondateur) |
 | Une personne ne peut pas encadrer et jouer en même temps | `add_coach_player_non_overlap:374` | coach-joueur, les deux rôles |
-| Une équipe n'a jamais deux séances en même temps | `add_team_no_overlap:745` | — |
-| Au plus une séance par jour et par équipe | `add_one_session_per_day_constraints` | **sans exception** — le levier d'exemption est retiré (P4-79, voir ci-dessous) |
+| Une équipe n'a jamais deux séances en même temps | `add_team_no_overlap:745` ; `add_team_self_no_overlap_constraints` (ses propres séances, plafond ≥ 2) | à plafond 1, le budget du jour interdit déjà le doublé ; à plafond ≥ 2, deux séances de l'équipe ne se chevauchent jamais |
+| Au plus une séance par jour et par équipe, sauf réglage de l'équipe | `add_one_session_per_day_constraints` | plafond `teams[].maxSessionsPerDay` (1 à 4, défaut 1, contrat 1.10) ; **sans autre exception** — le levier d'exemption est retiré (P4-79, voir ci-dessous). Le moteur cherche en plus (souple) 2 h entre deux séances d'une équipe à plafond ≥ 2 : `engine/docs/constraint-vocabulary.md` §Plafond de séances par jour |
 | Chaque coach garde un jour de repos | `add_coach_rest_day_constraints:452` | lundi→vendredi ; le week-end ne compte pas |
 
 ⚑ **Un créneau VERROUILLÉ est un FAIT du planning, pas une exception aux règles** (P4-97 + P4-97 bis) : il est **imposé** (le solveur ne le déplace ni ne le supprime) **et il

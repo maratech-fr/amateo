@@ -345,7 +345,7 @@ matchs à l'extérieur envoyés au coach pour appeler l'adversaire (roadmap).
 ## 3. Solveur de placement (`POST /api/fixtures/place` → engine `/place-matches`)
 
 Second problème solveur ([ADR-0003](../../docs/architecture/adr-0003-match-placement-solve.md)),
-même `CONTRACT_VERSION` **1.9** que `/generate`/`/validate-assignments` (un seul contrat pour les
+même `CONTRACT_VERSION` **1.10** que `/generate`/`/validate-assignments` (un seul contrat pour les
 trois endpoints — voir §6 `CLAUDE.md`). **Rail ASYNCHRONE** (amendement ADR-0003 2026-10-04, patron
 exact de la génération) : `PlaceMatchesController` garde toutes ses gardes (management + saison
 écrivable + socle pointé), prend le verrou, ENFILE un `PlaceMatchesMessage` et répond **202**
@@ -418,7 +418,7 @@ résolution de planning effectif, parité radar `MATCH_TRAINING`) — un match f
 jamais être gêné par une occupation d'entraînement fantôme. Payload omis (ancien contrat) ⇒ `[]`,
 comportement byte-identique à avant PR2 (aucune date traitée comme férié).
 
-**Ouverture datée et position importée (contrat 1.9)** : `MatchAccessWindowSchema.openingDate`
+**Ouverture datée et position importée (bump 1.8 → 1.9)** : `MatchAccessWindowSchema.openingDate`
 (3ᵉ cible exclusive) — `_candidate_kickoffs` ajoute ces plages à celles de leur date, férié ou non ;
 le builder n'émet que les ouvertures dont la date porte un match à PLACER (plafond par gymnase tenu),
 le motif ne part jamais. Un club sans ligne hebdomadaire mais avec une ouverture : le match de ce
@@ -454,7 +454,7 @@ cette équipe (le rôle coach gagne, parité `MatchConflictDetector`, gardé par
 `trainingOccupancies` projetées sont étendues de la même façon aux joueurs actifs de l'équipe du
 créneau (`MatchPlacementPayloadBuilder::trainingOccupancies`).
 
-**Un coach tient la séance, face aux matchs à placer** (fondateur, 2026-11-02, contrat 1.9 constant) :
+**Un coach tient la séance, face aux matchs à placer** (fondateur, 2026-11-02, sans bump de version) :
 `trainingOccupancies` ne dit plus « le coach stocké de la séance + ses joueurs » mais « personne
 retenue par une séance ce jour-là » — le tenant daté de la séance (même calcul que le radar §2 :
 `Conflicts/DatedHolding` via `DayHoldings`, entrées `PlanHoldingInputs`, indisponibilités

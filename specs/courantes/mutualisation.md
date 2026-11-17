@@ -94,8 +94,8 @@ déjà déclaré pour cette portée, case déjà occupée au-delà de sa capacit
 occupation), Σ des séances communes dépassant le volume hebdomadaire effectif d'une équipe, équipe
 déjà placée sans séance désignée, équipe rejoignante siégeant déjà à la case d'ancrage par une
 AUTRE séance (une équipe ne siège jamais deux fois à la même case — `TeamCaseOccupancyGuard`),
-ou s'entraînant déjà ce jour-là (une équipe ne s'entraîne qu'une fois par jour, chevauchement ou non —
-`TeamCaseOccupancyGuard::otherSessionOnDay`, hors la séance désignée comme remplacée ; depuis la fiche, la
+ou ayant déjà atteint son plafond de séances par jour (1 par défaut ; à plafond 2 ou plus, d'abord le chevauchement d'une de ses séances, puis le plafond —
+`TeamCaseOccupancyGuard::dayCapReachedBy`, hors la séance désignée comme remplacée ; depuis la fiche, la
 phrase de refus nomme la séance à désigner). Un groupe vaut UNE équipe pour cette règle.
 
 ### 2.3 Déplacer / retirer / défaire un groupe déjà ancré

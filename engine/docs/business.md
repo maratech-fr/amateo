@@ -93,7 +93,7 @@ dans une journee) : absente du payload, elle est `OFF`.
 | `COACH_REST_DAY` | Chaque entraineur garde au moins un jour de repos du lundi au vendredi (au plus 4 jours travailles). Ignore pour un entraineur dont le maximum de jours declare est deja inferieur ou egal a 4 |
 | `SALARIE_DISTRIBUTION` | Au moins un entraineur **salarie** est present chaque jour du lundi au vendredi. **Objectif, jamais un blocage**, quel que soit le cran stocke : un jour sans salarie est signale apres la generation (« Aucun salarie n'a de seance le jeudi »), sans faire echouer le planning. Un jour sans aucun creneau au club ne compte pas. La regle ne s'active que si le club compte au moins 2 salaries |
 | `MAX_CONSECUTIVE_SESSIONS` | Une meme personne n'enchaine jamais 3 creneaux consecutifs le meme jour (A puis B puis C), meme en changeant de gymnase |
-| `ONE_SESSION_PER_DAY` | Une equipe n'a qu'une seance par jour, sauf si elle est explicitement autorisee a en avoir plusieurs |
+| `ONE_SESSION_PER_DAY` | Une equipe n'a qu'une seance par jour, sauf si le club a releve son plafond de seances par jour (1 a 4) ; a 2 ou plus, deux de ses seances ne se chevauchent jamais, et le moteur cherche a laisser 2 h entre elles |
 | `AGE_ASCENDING` | Dans un meme gymnase le meme jour, une equipe plus jeune ne s'entraine pas apres une plus agee — les petits passent en premier. Sans effet pour les equipes sans tranche d'age (Loisir, Baby) ou verrouillees en HARD |
 
 ### Creneau (`ScheduleSlotTemplate`)
