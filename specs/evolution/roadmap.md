@@ -32,6 +32,8 @@
 > [`outil-extraction-cas-reels.md`](outil-extraction-cas-reels.md) (P4-502) ·
 > [`fermetures-de-gymnase-plan.md`](fermetures-de-gymnase-plan.md) (P4-484) ·
 > [`fermeture-matchs-a-placer.md`](fermeture-matchs-a-placer.md) (P4-511 ; dossier de réouverture d'un chantier arrêté) ·
+> [`pr2-competition-manuelle-et-echauffement.md`](pr2-competition-manuelle-et-echauffement.md) (lot double contexte, PR 2 ; plan suspendu, questions ouvertes en tête) ·
+> [`deplacer-verrouille-creneaux-reserves.md`](deplacer-verrouille-creneaux-reserves.md) (chantier « déplacer verrouille » ; plan suspendu, questions ouvertes en tête) ·
 > [`duplications-de-verite.md`](duplications-de-verite.md) (doctrine du motif « une vérité, deux endroits » —
 > le test de fusion réutilisé par `documentation-update`, les duplications délibérées à ne jamais mutualiser.
 > Reste **D-11**, dormant : `match_day` est NULL sur toutes les équipes et aucun écran ne l'expose — à traiter
