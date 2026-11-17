@@ -1,3 +1,4 @@
+import { PLANNING_TEXTS } from "@/features/planning/texts";
 import { LEVEL_LABEL, type Gender, type TeamLevel } from "@/shared/lib/teamIdentity";
 
 /**
@@ -34,6 +35,16 @@ export const TEAMS_TEXTS = {
   linkTypeAria: "Type de lien",
   passerellesTab: "Passerelles",
   mutualisationTab: "Mutualisation",
+
+  // ── Onglet « Séances par jour » (plafond de séances par jour et par équipe) ──
+  dailyCapTab: "Séances par jour",
+  dailyCapLabel: "Séances max par jour",
+  dailyCapHelp: `Nombre maximum de séances le même jour pour cette équipe. 1 par défaut. Au-delà de 1, le planning évite quand même de placer deux séances le même jour : il le fait surtout pour placer une séance, respecter une autre de vos règles ou retrouver un créneau du planning de saison. Deux séances d'une même équipe ne se chevauchent jamais. Le planning cherche à laisser au moins 2 h entre la fin de l'une et le début de la suivante ; quand il ne le fait pas, il vous le signale. Deux séances que vous réservez ou verrouillez peuvent se suivre sans cet écart, sans signalement. Une équipe qui garde ses créneaux de saison garde aussi deux créneaux de saison qui se suivent, quand ils existent encore en période : le planning le signale sans les séparer, sauf avec « ${PLANNING_TEXTS.fillAutomatically} », qui place librement les séances manquantes.`,
+  /** En période : la valeur de saison, rappelée sous le champ. */
+  dailyCapPeriodScope: (seasonValue: number) => `Ce réglage ne vaut que pour cette période. Saison : ${seasonValue}.`,
+  /** Repère de ligne (plafond > 1) et son nom accessible. */
+  dailyCapMarker: (n: number) => `${n}/jour`,
+  dailyCapMarkerAria: (n: number) => `${n} séances par jour au plus`,
 
   // ── Libellés d'enum (Genre : table inline ; Niveau : maison partagée + placeholder) ──
   genderLabel: (value: Gender | ""): string => {

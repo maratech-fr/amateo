@@ -60,6 +60,7 @@ const team = (id: string, name: string, sessionsPerWeek: number): Team => ({
   level: null,
   sessionsPerWeek,
   isActive: true,
+  maxSessionsPerDay: 1,
 });
 
 const venue = (id: string, name: string, canSplit: boolean): Venue => ({ id, name, color: null, canSplit, isActive: true });

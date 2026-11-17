@@ -33,6 +33,7 @@ import { TEAMS_TEXTS } from "../texts/teams";
 import { payload } from "../lib/teamPayload";
 import { ParcImportModal } from "../parcImport/ParcImportModal";
 import { PeriodTeams } from "./PeriodTeams";
+import { DailyCapMarker } from "./TeamDailyCapPanel";
 import { TeamLinksModal } from "./TeamLinksModal";
 import { TeamsImportModal } from "./TeamsImportModal";
 import { compareNamesFr } from "@/shared/lib/nameOrder";
@@ -205,6 +206,8 @@ function TeamRow({ team, number, categories, tiers, onField, onDelete, onOpenLin
         )}
         {/* P2-45 — l'affordance « Liens » : une icône muette par ligne (densité nominale), à côté
             de la corbeille. Elle ouvre passerelles + mutualisation de CETTE équipe. */}
+        {/* Repère « N/jour » : l'équipe est autorisée à plus d'une séance le même jour (réglé dans Liens). */}
+        <DailyCapMarker max={team.maxSessionsPerDay ?? 1} />
         {/* P2-45 — l'affordance « Liens » (passerelles · mutualisation · entente CTC depuis D4). */}
         <Button size="icon" variant="ghost" className="size-8" aria-label={TEAMS_TEXTS.linksOfTeam(team.name)} onClick={() => onOpenLinks(team)}>
           <Link2 className="size-4" />
@@ -1023,7 +1026,7 @@ function TeamsEditor() {
       {/* P2-45 — la modale Liens de l'équipe. En SAISON, les passerelles sont ÉDITABLES
           (readOnlyLinks=false) et la mutualisation écrit sur le socle (schedulePlanId null). */}
       {null !== linksTeam ? (
-        <TeamLinksModal team={linksTeam} teams={teams} tiers={tiers} schedulePlanId={null} readOnlyLinks={false} onClose={() => setLinksTeam(null)} />
+        <TeamLinksModal team={linksTeam} teams={teams} tiers={tiers} schedulePlanId={null} readOnlyLinks={false} dailyCapReadOnly={sessionsLocked} onClose={() => setLinksTeam(null)} />
       ) : null}
       {/* P3-7 — la modale d'import. Montée seulement club + saison connus (l'onboarding les a
           toujours) ; le bouton reste visible même sinon, mais n'ouvre rien à vide. */}

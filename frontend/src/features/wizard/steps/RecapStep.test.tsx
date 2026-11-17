@@ -399,7 +399,7 @@ describe("RecapStep — read-only summary", () => {
       await user.click(screen.getByRole("button", { name: /Réservations/ }));
       expect(screen.getByRole("button", { name: /^Retirer la réservation de SM1/ })).toBeInTheDocument();
       expect(screen.queryByRole("button", { name: /^Retirer la réservation de Fanion/ })).toBeNull();
-      expect(screen.getAllByText(WIZARD_TEXTS.secondSessionSameDay(dayLabelLong(2)), { exact: false })).toHaveLength(1);
+      expect(screen.getAllByText(WIZARD_TEXTS.tooManySessionsSameDay(dayLabelLong(2)), { exact: false })).toHaveLength(1);
     });
 
     // A30 (avenant du plan 1a) : la ligne bloquée porte le motif que le SERVEUR donne, lu dans l'une
@@ -441,7 +441,7 @@ describe("RecapStep — read-only summary", () => {
       renderWithProviders(<RecapStep />);
 
       await user.click(screen.getByRole("button", { name: /Réservations/ }));
-      expect(screen.getAllByText(WIZARD_TEXTS.secondSessionSameDay(dayLabelLong(2)), { exact: false })).toHaveLength(2);
+      expect(screen.getAllByText(WIZARD_TEXTS.tooManySessionsSameDay(dayLabelLong(2)), { exact: false })).toHaveLength(2);
     });
 
     it("chaque poubelle désignée a un nom accessible distinct : jour, gymnase, heure", async () => {
@@ -470,7 +470,7 @@ describe("RecapStep — read-only summary", () => {
       renderWithProviders(<RecapStep />);
 
       await user.click(screen.getByRole("button", { name: /Réservations/ }));
-      expect(screen.getAllByText(WIZARD_TEXTS.secondSessionSameDay(dayLabelLong(2)), { exact: false })).toHaveLength(2);
+      expect(screen.getAllByText(WIZARD_TEXTS.tooManySessionsSameDay(dayLabelLong(2)), { exact: false })).toHaveLength(2);
       const names = screen.getAllByRole("button", { name: /^Retirer l'entraînement mutualisé SM1 \+ Fanion/ }).map((button) => button.getAttribute("aria-label") ?? "");
       expect(new Set(names).size).toBe(2);
       expect(names.every((name) => /\bmar/i.test(name) && name.includes("Gymnase A"))).toBe(true);

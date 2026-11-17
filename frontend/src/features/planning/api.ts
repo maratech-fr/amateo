@@ -353,7 +353,10 @@ export interface Diagnostic {
   startTime: string | null;
   /** Clé de la règle implicite « bien-être » assouplie — renseignée SEULEMENT par un
    *  `implicit_rule_not_honored` (l'engine la porte, cf. contrat 2.7), null partout ailleurs.
-   *  Elle cible le réglage à ajuster dans le wizard (`?step=constraints&rule=<ruleKey>`). */
+   *  Elle cible le réglage à ajuster dans le wizard (`?step=constraints&rule=<ruleKey>`).
+   *  ⚠ Un `implicit_rule_not_honored` peut aussi arriver SANS `ruleKey` : il désigne alors une règle
+   *  fixe, non réglable (deux séances d'une équipe à moins de 2 h l'une de l'autre) — pas de lien
+   *  « Ajuster » à poser. */
   ruleKey: string | null;
   message: string;
   suggestions: unknown;
