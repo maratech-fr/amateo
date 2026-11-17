@@ -877,53 +877,6 @@ final class ValidateConstraintsTest extends WebTestCase
         );
     }
 
-    protected function setUp(): void
-    {
-        $this->client = self::createClient();
-        $container = self::getContainer();
-        $this->em = $container->get(EntityManagerInterface::class);
-        $hasher = $container->get('security.user_password_hasher');
-
-        $uid = uniqid('', true);
-
-        $this->club = new Club;
-        $this->club->setName('Constraint Test Club');
-        $this->club->setSlug('constraint-test-' . $uid);
-        $this->club->setTimezone('Europe/Paris');
-        $this->club->setLocale('fr');
-        $this->club->setOnboardingCompleted(true);
-        $this->club->setFfbbClubCode('CST' . strtoupper(substr(md5($uid), 0, 10)));
-        $this->em->persist($this->club);
-
-        $this->user = new User;
-        $this->user->setEmail('cst' . $uid . '@test.com');
-        $this->user->setFirstName('Cst');
-        $this->user->setLastName('Tester');
-        $this->user->setPasswordHash($hasher->hashPassword($this->user, 'pass'));
-        $this->em->persist($this->user);
-
-        $this->em->flush();
-
-        $this->scopeGucToClub($this->club->getId());
-
-        $cu = new ClubUser;
-        $cu->setClubId($this->club->getId());
-        $cu->setUserId($this->user->getId());
-        $cu->setRole('admin');
-        $cu->setIsActive(true);
-        $this->em->persist($cu);
-
-        $this->season = new Season;
-        $this->season->setClubId($this->club->getId());
-        $this->season->setName('2025-2026');
-        $this->season->setStartDate(new DateTimeImmutable('2025-09-01'));
-        $this->season->setEndDate(new DateTimeImmutable('2026-06-30'));
-        $this->season->setStatus(SeasonStatus::ACTIVE);
-        $this->em->persist($this->season);
-
-        $this->em->flush();
-    }
-
     /**
      * PR 1b — le Récap annonce les règles du club réglées sur « Ignorée » : seulement celles qui
      * s'appliquent par défaut (« jours d'affilée », éteinte par défaut, ne compte pas), dans l'ordre
@@ -979,6 +932,53 @@ final class ValidateConstraintsTest extends WebTestCase
 
         $this->client->request('POST', '/api/constraints/validate', [], [], []);
         self::assertSame([], json_decode((string) $this->client->getResponse()->getContent(), true)['ignoredRules'] ?? null, 'la saison n\'ignore rien');
+    }
+
+    protected function setUp(): void
+    {
+        $this->client = self::createClient();
+        $container = self::getContainer();
+        $this->em = $container->get(EntityManagerInterface::class);
+        $hasher = $container->get('security.user_password_hasher');
+
+        $uid = uniqid('', true);
+
+        $this->club = new Club;
+        $this->club->setName('Constraint Test Club');
+        $this->club->setSlug('constraint-test-' . $uid);
+        $this->club->setTimezone('Europe/Paris');
+        $this->club->setLocale('fr');
+        $this->club->setOnboardingCompleted(true);
+        $this->club->setFfbbClubCode('CST' . strtoupper(substr(md5($uid), 0, 10)));
+        $this->em->persist($this->club);
+
+        $this->user = new User;
+        $this->user->setEmail('cst' . $uid . '@test.com');
+        $this->user->setFirstName('Cst');
+        $this->user->setLastName('Tester');
+        $this->user->setPasswordHash($hasher->hashPassword($this->user, 'pass'));
+        $this->em->persist($this->user);
+
+        $this->em->flush();
+
+        $this->scopeGucToClub($this->club->getId());
+
+        $cu = new ClubUser;
+        $cu->setClubId($this->club->getId());
+        $cu->setUserId($this->user->getId());
+        $cu->setRole('admin');
+        $cu->setIsActive(true);
+        $this->em->persist($cu);
+
+        $this->season = new Season;
+        $this->season->setClubId($this->club->getId());
+        $this->season->setName('2025-2026');
+        $this->season->setStartDate(new DateTimeImmutable('2025-09-01'));
+        $this->season->setEndDate(new DateTimeImmutable('2026-06-30'));
+        $this->season->setStatus(SeasonStatus::ACTIVE);
+        $this->em->persist($this->season);
+
+        $this->em->flush();
     }
 
     private function storeRule(ImplicitRuleKey $ruleKey, ImplicitRuleIntensity $intensity): void

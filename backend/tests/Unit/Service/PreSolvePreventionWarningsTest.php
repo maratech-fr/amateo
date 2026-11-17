@@ -70,6 +70,15 @@ final class PreSolvePreventionWarningsTest extends TestCase
         yield '2 réservées, 1 manque' => [3, [1, 2], [5], 'U15 n\'autorise que des jours où aucun créneau ne lui est ouvert : 2 séances sont réservées, 1 séance manquera.'];
     }
 
+    /** @return iterable<string, array{string, list<string>}> */
+    public static function salarieSettings(): iterable
+    {
+        $alert = ['Aucun salarié n\'est disponible sur les créneaux du jeudi : Anna Martin et Ben Durand sont indisponibles ce jour-là.'];
+        yield 'Obligatoire stockée' => ['HARD', $alert];
+        yield 'Souhaitée' => ['PREFERRED', $alert];
+        yield 'Ignorée' => ['OFF', []];
+    }
+
     public function testAVenueWithoutAnySlotIsFlagged(): void
     {
         $found = $this->warnings->detect($this->payload(venues: [
@@ -286,15 +295,6 @@ final class PreSolvePreventionWarningsTest extends TestCase
             ['Aucun salarié n\'est disponible sur les créneaux du jeudi : Anna Martin et Ben Durand sont indisponibles ce jour-là.'],
             $this->employeeWarnings($found),
         );
-    }
-
-    /** @return iterable<string, array{string, list<string>}> */
-    public static function salarieSettings(): iterable
-    {
-        $alert = ['Aucun salarié n\'est disponible sur les créneaux du jeudi : Anna Martin et Ben Durand sont indisponibles ce jour-là.'];
-        yield 'Obligatoire stockée' => ['HARD', $alert];
-        yield 'Souhaitée' => ['PREFERRED', $alert];
-        yield 'Ignorée' => ['OFF', []];
     }
 
     /**
