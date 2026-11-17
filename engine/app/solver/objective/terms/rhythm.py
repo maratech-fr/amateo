@@ -279,10 +279,21 @@ def add_same_day_gap_penalty(
     Un littéral par (équipe, jour, heure de début h), h parcourant les débuts des créneaux libres
     ET des verrous de l'équipe ce jour-là. Le littéral est vrai dès que l'équipe commence une séance
     à h alors qu'une autre de ses séances du jour, commencée avant, a fini depuis moins de 2 h :
-    ``M·D(h) + V(h) ≤ M·(1 + littéral)``, D(h) = séances qui commencent à h (variables libres, ou 1
-    si un verrou y commence), V(h) = séances voisines, M = le plus grand V(h) possible (même logique
-    que ``(P−1)·D + V ≤ (P−1)·(1 + littéral)``, sans infaisabilité quand des verrous dépassent le
-    plafond). Borné par le bas seulement : la maximisation le garde à 0 quand rien ne l'impose.
+    ``M·D(h) + V(h) ≤ M·(1 + littéral)``, avec :
+
+    * D(h) = séances qui commencent à h (variables libres, ou 1 si un verrou y commence). D(h) ∈
+      {0, 1} : le non-chevauchement dur interdit à une équipe deux séances commencées à la même heure.
+    * V(h) = séances voisines (commencées avant h, finies depuis moins de ``gap_minutes``).
+    * M = nombre de termes de V(h), donc sa plus grande valeur possible. D = 0 : V ≤ M tient
+      toujours, littéral libre. D = 1 : M + V ≤ 2M tient toujours, et M + V ≤ M force le littéral
+      dès que V ≥ 1.
+
+    Piège : M ne vaut PAS ``P − 1`` (P = plafond). ``(P−1)·D + V ≤ (P−1)·(1 + littéral)`` n'est pas
+    équivalent et est faux deux fois. (a) Il facture une séance qui n'existe pas : plafond 2,
+    créneaux de 90 min à 14:00, 15:30 et 17:00, l'équipe prend 14:00 et 15:30 ; à h = 17:00, D = 0
+    mais V = 2 > 1 force le littéral, soit −100 au lieu de −50. (b) Il rend le modèle INFAISABLE
+    quand des verrous dépassent déjà le plafond : D = 1 et V = 2 avec P = 2 donnent 3 ≤ 2.
+    Borné par le bas seulement : la maximisation garde le littéral à 0 quand rien ne l'impose.
 
     * h libre : V compte les variables libres voisines et les verrous voisins (constantes).
     * h = début d'un verrou : V ne compte que les variables libres voisines ; aucune ⇒ aucun

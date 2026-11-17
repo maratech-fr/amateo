@@ -119,7 +119,8 @@ def _build_solver_slots(
     """Build output slots from CP-SAT boolean variables set to 1.
 
     Consecutive variables for the same (team, venue, day) are merged into a
-    single slot. Duration per variable comes from ``model.slot_durations``
+    single slot only when the team's sessions-per-day cap is 1; at cap >= 2,
+    two back-to-back sessions stay two slots. Duration per variable comes from ``model.slot_durations``
     (the training-slot's declared duration) with a fallback to SLOT_MINUTES
     for backward-compatible 15-min granularity.
     """
