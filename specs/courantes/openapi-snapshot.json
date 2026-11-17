@@ -29722,12 +29722,6 @@
                         "description": "Genre pour l'accord des libell\u00e9s (FEMALE|MALE|UNSPECIFIED).",
                         "default": "UNSPECIFIED",
                         "type": "string"
-                    },
-                    "parentCoachId": {
-                        "type": [
-                            "string",
-                            "null"
-                        ]
                     }
                 }
             },
@@ -29808,12 +29802,6 @@
                             "string",
                             "null"
                         ]
-                    },
-                    "parentCoachId": {
-                        "type": [
-                            "string",
-                            "null"
-                        ]
                     }
                 }
             },
@@ -29879,12 +29867,6 @@
                         "description": "Genre pour l'accord des libell\u00e9s (FEMALE|MALE|UNSPECIFIED).",
                         "default": "UNSPECIFIED",
                         "type": "string"
-                    },
-                    "parentCoachId": {
-                        "type": [
-                            "string",
-                            "null"
-                        ]
                     }
                 }
             },
@@ -29955,12 +29937,6 @@
                                 "description": "Genre pour l'accord des libell\u00e9s (FEMALE|MALE|UNSPECIFIED).",
                                 "default": "UNSPECIFIED",
                                 "type": "string"
-                            },
-                            "parentCoachId": {
-                                "type": [
-                                    "string",
-                                    "null"
-                                ]
                             }
                         }
                     }
@@ -31613,13 +31589,6 @@
                         "default": 0,
                         "type": "integer"
                     },
-                    "parentConstraintId": {
-                        "description": "N\u2192N+1 lineage: source constraint of the season-transition copy.",
-                        "type": [
-                            "string",
-                            "null"
-                        ]
-                    },
                     "removed": {
                         "description": "Ce que l'enregistrement d'une fermeture de gymnase a retir\u00e9 des plannings de p\u00e9riode (verrous\net r\u00e9servations au gymnase ferm\u00e9, ces jours-l\u00e0) ; null hors de ce geste.",
                         "type": [
@@ -31841,13 +31810,6 @@
                         "default": 0,
                         "type": "integer"
                     },
-                    "parentConstraintId": {
-                        "description": "N\u2192N+1 lineage: source constraint of the season-transition copy.",
-                        "type": [
-                            "string",
-                            "null"
-                        ]
-                    },
                     "removed": {
                         "description": "Ce que l'enregistrement d'une fermeture de gymnase a retir\u00e9 des plannings de p\u00e9riode (verrous\net r\u00e9servations au gymnase ferm\u00e9, ces jours-l\u00e0) ; null hors de ce geste.",
                         "type": [
@@ -31952,13 +31914,6 @@
                             "sortOrder": {
                                 "default": 0,
                                 "type": "integer"
-                            },
-                            "parentConstraintId": {
-                                "description": "N\u2192N+1 lineage: source constraint of the season-transition copy.",
-                                "type": [
-                                    "string",
-                                    "null"
-                                ]
                             },
                             "removed": {
                                 "description": "Ce que l'enregistrement d'une fermeture de gymnase a retir\u00e9 des plannings de p\u00e9riode (verrous\net r\u00e9servations au gymnase ferm\u00e9, ces jours-l\u00e0) ; null hors de ce geste.",
@@ -37003,12 +36958,6 @@
                         "default": false,
                         "type": "boolean"
                     },
-                    "parentTeamId": {
-                        "type": [
-                            "string",
-                            "null"
-                        ]
-                    },
                     "isCtc": {
                         "description": "\u00c9quipe d\u00e9clar\u00e9e \u00ab en entente (CTC) \u00bb \u2014 rep\u00e8re interne, aucun effet moteur.",
                         "default": false,
@@ -37110,12 +37059,6 @@
                     "isActive": {
                         "type": [
                             "boolean",
-                            "null"
-                        ]
-                    },
-                    "parentTeamId": {
-                        "type": [
-                            "string",
                             "null"
                         ]
                     },
@@ -37251,12 +37194,6 @@
                         "default": false,
                         "type": "boolean"
                     },
-                    "parentTeamId": {
-                        "type": [
-                            "string",
-                            "null"
-                        ]
-                    },
                     "isCtc": {
                         "description": "\u00c9quipe d\u00e9clar\u00e9e \u00ab en entente (CTC) \u00bb \u2014 rep\u00e8re interne, aucun effet moteur.",
                         "default": false,
@@ -37375,12 +37312,6 @@
                             "isActive": {
                                 "default": false,
                                 "type": "boolean"
-                            },
-                            "parentTeamId": {
-                                "type": [
-                                    "string",
-                                    "null"
-                                ]
                             },
                             "isCtc": {
                                 "description": "\u00c9quipe d\u00e9clar\u00e9e \u00ab en entente (CTC) \u00bb \u2014 rep\u00e8re interne, aucun effet moteur.",
@@ -38687,10 +38618,6 @@
                         "default": "",
                         "type": "string"
                     },
-                    "isExternal": {
-                        "default": false,
-                        "type": "boolean"
-                    },
                     "color": {
                         "type": [
                             "string",
@@ -38737,12 +38664,6 @@
                         "default": false,
                         "type": "boolean"
                     },
-                    "parentVenueId": {
-                        "type": [
-                            "string",
-                            "null"
-                        ]
-                    },
                     "canSplit": {
                         "description": "Divisible court \u2014 a slot here can host 2 teams (per-slot capacity).",
                         "default": false,
@@ -38761,12 +38682,6 @@
                         "maxLength": 180,
                         "type": [
                             "string",
-                            "null"
-                        ]
-                    },
-                    "isExternal": {
-                        "type": [
-                            "boolean",
                             "null"
                         ]
                     },
@@ -38821,12 +38736,6 @@
                             "null"
                         ]
                     },
-                    "parentVenueId": {
-                        "type": [
-                            "string",
-                            "null"
-                        ]
-                    },
                     "canSplit": {
                         "type": [
                             "boolean",
@@ -38862,10 +38771,6 @@
                     "name": {
                         "default": "",
                         "type": "string"
-                    },
-                    "isExternal": {
-                        "default": false,
-                        "type": "boolean"
                     },
                     "color": {
                         "type": [
@@ -38913,12 +38818,6 @@
                         "default": false,
                         "type": "boolean"
                     },
-                    "parentVenueId": {
-                        "type": [
-                            "string",
-                            "null"
-                        ]
-                    },
                     "canSplit": {
                         "description": "Divisible court \u2014 a slot here can host 2 teams (per-slot capacity).",
                         "default": false,
@@ -38953,10 +38852,6 @@
                             "name": {
                                 "default": "",
                                 "type": "string"
-                            },
-                            "isExternal": {
-                                "default": false,
-                                "type": "boolean"
                             },
                             "color": {
                                 "type": [
@@ -39003,12 +38898,6 @@
                             "isActive": {
                                 "default": false,
                                 "type": "boolean"
-                            },
-                            "parentVenueId": {
-                                "type": [
-                                    "string",
-                                    "null"
-                                ]
                             },
                             "canSplit": {
                                 "description": "Divisible court \u2014 a slot here can host 2 teams (per-slot capacity).",

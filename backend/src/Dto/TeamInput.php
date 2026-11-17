@@ -58,9 +58,6 @@ class TeamInput
     #[Groups(['write'])]
     public ?bool $isActive = null;
 
-    #[Groups(['write'])]
-    public ?string $parentTeamId = null;
-
     #[Assert\Choice(callback: [TeamLevel::class, 'values'])]
     #[Groups(['write'])]
     public ?string $level = null;

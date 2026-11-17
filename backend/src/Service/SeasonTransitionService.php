@@ -37,7 +37,7 @@ use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
  * by the P2 guided review). System team tags re-derive on their own via
  * TeamTagSyncListener (see the flush note below).
  * The copy is a starting point, fully editable via the existing wizard;
- * lineage lives in the per-row parent_*_id columns.
+ * no link is kept back to season N.
  *
  * N+1 starts with baseline/socle null → the existing cockpit gate forces the
  * baseline work. Its `status` is 'draft' (display metadata only — resolution
@@ -182,7 +182,6 @@ final class SeasonTransitionService
             $copy->setClubId($clubId);
             $copy->setSeasonId($target->getId());
             $copy->setName($venue->getName());
-            $copy->setIsExternal($venue->getIsExternal());
             $copy->setColor($venue->getColor());
             $copy->setCanSplit($venue->getCanSplit());
             $copy->setLatitude($venue->getLatitude());
@@ -194,7 +193,6 @@ final class SeasonTransitionService
             // du gymnase (comme son nom) : ils suivent la copie N+1.
             $copy->setExternalLabels($venue->getExternalLabels());
             $copy->setIsActive($venue->getIsActive());
-            $copy->setParentVenueId($venue->getId());
             $this->entityManager->persist($copy);
             $venueMap[$venue->getId()] = $copy->getId();
         }
@@ -284,7 +282,6 @@ final class SeasonTransitionService
             // ils suivent la copie N+1 comme les autres champs saisis.
             $copy->setGender($coach->getGender());
             $copy->setIsVehicled($coach->isVehicled());
-            $copy->setParentCoachId($coach->getId());
             $this->entityManager->persist($copy);
             $coachMap[$coach->getId()] = $copy->getId();
         }
@@ -310,7 +307,6 @@ final class SeasonTransitionService
             $forcedVenueId = $team->getForcedVenueId();
             $copy->setForcedVenueId(null !== $forcedVenueId ? ($venueMap[$forcedVenueId] ?? null) : null);
             $copy->setIsActive($team->getIsActive());
-            $copy->setParentTeamId($team->getId());
             $this->entityManager->persist($copy);
             $teamMap[$team->getId()] = $copy->getId();
         }
@@ -529,7 +525,6 @@ final class SeasonTransitionService
             $copy->setSourceOccurrenceId($constraint->getSourceOccurrenceId());
             $copy->setIsActive($constraint->getIsActive());
             $copy->setSortOrder($constraint->getSortOrder());
-            $copy->setParentConstraintId($constraint->getId());
             $this->entityManager->persist($copy);
             ++$constraints;
         }

@@ -12,7 +12,6 @@ use Doctrine\ORM\Mapping as ORM;
 #[ORM\Entity(repositoryClass: CoachRepository::class)]
 #[ORM\Table(name: 'coach')]
 #[ORM\Index(name: 'idx_coach_club_season', columns: ['club_id', 'season_id'])]
-#[ORM\Index(name: 'idx_coach_parent', columns: ['parent_coach_id'])]
 #[ORM\HasLifecycleCallbacks]
 class Coach implements TenantOwnedInterface
 {
@@ -72,9 +71,6 @@ class Coach implements TenantOwnedInterface
      */
     #[ORM\Column(length: 12, enumType: CoachGender::class, options: ['default' => 'UNSPECIFIED'])]
     private CoachGender $gender = CoachGender::UNSPECIFIED;
-
-    #[ORM\Column(type: 'guid', nullable: true)]
-    private ?string $parentCoachId = null;
 
     public function __construct()
     {
@@ -264,18 +260,6 @@ class Coach implements TenantOwnedInterface
     public function setGender(CoachGender $gender): self
     {
         $this->gender = $gender;
-
-        return $this;
-    }
-
-    public function getParentCoachId(): ?string
-    {
-        return $this->parentCoachId;
-    }
-
-    public function setParentCoachId(?string $parentCoachId): self
-    {
-        $this->parentCoachId = $parentCoachId;
 
         return $this;
     }

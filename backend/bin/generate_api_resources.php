@@ -155,14 +155,12 @@ $entities = [
             ['name' => 'createdAt', 'type' => 'DateTimeImmutable', 'readOnly' => true],
             ['name' => 'updatedAt', 'type' => 'DateTimeImmutable', 'readOnly' => true],
             ['name' => 'name', 'type' => 'string', 'required' => true, 'assert' => 'NotBlank'],
-            ['name' => 'isExternal', 'type' => 'bool', 'required' => true],
             ['name' => 'color', 'type' => 'string', 'nullable' => true],
             ['name' => 'latitude', 'type' => 'string', 'nullable' => true],
             ['name' => 'longitude', 'type' => 'string', 'nullable' => true],
             ['name' => 'source', 'type' => 'string', 'required' => true, 'assert' => 'Choice', 'choices' => ['"manual"', '"ffbb"', '"import"']],
             ['name' => 'externalRef', 'type' => 'string', 'nullable' => true],
             ['name' => 'isActive', 'type' => 'bool', 'required' => true],
-            ['name' => 'parentVenueId', 'type' => 'string', 'nullable' => true],
         ],
     ],
     'Team' => [
@@ -183,7 +181,6 @@ $entities = [
             ['name' => 'matchDay', 'type' => 'int', 'nullable' => true],
             ['name' => 'forcedVenueId', 'type' => 'string', 'nullable' => true],
             ['name' => 'isActive', 'type' => 'bool', 'required' => true],
-            ['name' => 'parentTeamId', 'type' => 'string', 'nullable' => true],
         ],
     ],
     'Coach' => [
@@ -202,7 +199,6 @@ $entities = [
             ['name' => 'maxDaysOverride', 'type' => 'int', 'nullable' => true],
             ['name' => 'maxDaysOverrideConfirmed', 'type' => 'bool', 'required' => true],
             ['name' => 'isActive', 'type' => 'bool', 'required' => true],
-            ['name' => 'parentCoachId', 'type' => 'string', 'nullable' => true],
         ],
     ],
     'CoachUnavailability' => [

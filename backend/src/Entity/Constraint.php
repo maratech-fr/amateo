@@ -17,7 +17,6 @@ use Doctrine\ORM\Mapping as ORM;
 #[ORM\Index(name: 'idx_constraint_scope_family', columns: ['scope', 'family'])]
 #[ORM\Index(name: 'idx_constraint_rule_type', columns: ['rule_type'])]
 #[ORM\Index(name: 'idx_constraint_calendar_entry', columns: ['calendar_entry_id'])]
-#[ORM\Index(name: 'idx_constraint_parent', columns: ['parent_constraint_id'])]
 #[ORM\HasLifecycleCallbacks]
 class Constraint implements TenantOwnedInterface
 {
@@ -85,10 +84,6 @@ class Constraint implements TenantOwnedInterface
 
     #[ORM\Column(type: 'integer')]
     private int $sortOrder = 0;
-
-    /** N→N+1 lineage: id of the season-N constraint this one was copied from (SeasonTransitionService). */
-    #[ORM\Column(type: 'guid', nullable: true)]
-    private ?string $parentConstraintId = null;
 
     public function __construct()
     {
@@ -328,18 +323,6 @@ class Constraint implements TenantOwnedInterface
     public function setSortOrder(int $sortOrder): self
     {
         $this->sortOrder = $sortOrder;
-
-        return $this;
-    }
-
-    public function getParentConstraintId(): ?string
-    {
-        return $this->parentConstraintId;
-    }
-
-    public function setParentConstraintId(?string $parentConstraintId): self
-    {
-        $this->parentConstraintId = $parentConstraintId;
 
         return $this;
     }

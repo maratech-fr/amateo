@@ -115,7 +115,7 @@ final class NestedBlockOccupantFoldParityTest extends KernelTestCase
     private function solveNestedPinnedCase(): array
     {
         $team = static fn (string $id, int $sessions): array => [
-            'id' => $id, 'name' => strtoupper($id), 'sportCategoryId' => 'cat-1',
+            'id' => $id, 'name' => strtoupper($id),
             'priorityTierId' => 3, 'sessionsPerWeek' => $sessions,
         ];
         $venue = static fn (string $id, int $day): array => [

@@ -194,7 +194,7 @@ final class CapacityMirrorParityTest extends TestCase
             ],
         ]];
         $team = [[
-            'id' => 't1', 'name' => 'T1', 'sportCategoryId' => 'cat-1',
+            'id' => 't1', 'name' => 'T1',
             'priorityTierId' => 3, 'sessionsPerWeek' => 2,
         ]];
         $minTwo = [$this->minAtVenue('t1', 'v1', count: 2)];
@@ -261,8 +261,8 @@ final class CapacityMirrorParityTest extends TestCase
         ]];
         $pins = [$this->pin('t1', 'v1', 1, '18:00'), $this->pin('t1', 'v1', 2, '18:00')];
         $teams = [
-            ['id' => 't1', 'name' => 'T1', 'sportCategoryId' => 'cat-1', 'priorityTierId' => 3, 'sessionsPerWeek' => 2],
-            ['id' => 't2', 'name' => 'T2', 'sportCategoryId' => 'cat-1', 'priorityTierId' => 3, 'sessionsPerWeek' => 1],
+            ['id' => 't1', 'name' => 'T1', 'priorityTierId' => 3, 'sessionsPerWeek' => 2],
+            ['id' => 't2', 'name' => 'T2', 'priorityTierId' => 3, 'sessionsPerWeek' => 1],
         ];
 
         $payload = $this->basePayload(teams: $teams, venues: $venues, constraints: [$this->minAtVenue('t1', 'v1', count: 2), $this->minAtVenue('t2', 'v1')], slotTemplates: $pins);
@@ -392,7 +392,6 @@ final class CapacityMirrorParityTest extends TestCase
         return array_map(static fn (int $i): array => [
             'id' => 't' . $i,
             'name' => 'T' . $i,
-            'sportCategoryId' => 'cat-1',
             'priorityTierId' => 3,
             'sessionsPerWeek' => 1,
         ], range(1, $count));
