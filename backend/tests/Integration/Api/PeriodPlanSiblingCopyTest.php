@@ -147,6 +147,31 @@ final class PeriodPlanSiblingCopyTest extends WebTestCase
         self::assertSame($sourceGridDays, $this->gridDaysOf($club, $targetPlanId), 'la copie reprend la grille du PLAN source');
     }
 
+    /** Le plafond de séances par jour réglé pour la période source suit dans le plan sœur : la copie reprend la VALEUR. */
+    public function testTheDailyCapOfThePeriodIsCopiedIntoTheSiblingPlan(): void
+    {
+        [$user, $club, $season] = $this->createClubWithSeason();
+        $venue = $this->venue($club, $season);
+        $this->seedSeasonGridSlot($club, $season, $venue->getId());
+        $sourceEntry = $this->adaptedPeriod($user, 'Barros (plafond)', '2026-03-02', '2026-03-15');
+        $sourcePlanId = $this->planIdOf($club, $sourceEntry);
+        $this->seedPointedVersionWithLockedSlots($club, $season, $sourcePlanId, $venue->getId());
+        $this->scopeGucToClub($club->getId());
+        $this->em->persist((new TeamPeriodOverride)->setClubId($club->getId())->setSeasonId($season->getId())->setSchedulePlanId($sourcePlanId)
+            ->setTeamId(self::TEAM_ID)->setIsActive(true)->setSessionsPerWeek(null)->setMaxSessionsPerDay(3));
+        $this->em->flush();
+        $targetEntry = $this->adaptedPeriod($user, 'Barros (plafond, après)', '2026-03-30', '2026-04-05');
+        $targetPlanId = $this->planIdOf($club, $targetEntry);
+
+        self::getContainer()->get(PeriodPlanSiblingCopier::class)->copyInto($sourcePlanId, $targetEntry);
+
+        $this->scopeGucToClub($club->getId());
+        $this->em->clear();
+        $copied = $this->em->getRepository(TeamPeriodOverride::class)->findOneBy(['schedulePlanId' => $targetPlanId, 'teamId' => self::TEAM_ID]);
+        self::assertInstanceOf(TeamPeriodOverride::class, $copied);
+        self::assertSame(3, $copied->getMaxSessionsPerDay());
+    }
+
     /** Source NON pointée (espace de travail) → naissance VIDE : le plan cible reste sans version. */
     public function testUnpointedSourceYieldsAnEmptyBirth(): void
     {

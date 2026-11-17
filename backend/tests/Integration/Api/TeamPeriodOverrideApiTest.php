@@ -113,6 +113,61 @@ final class TeamPeriodOverrideApiTest extends WebTestCase
         self::assertTrue(json_decode((string) $this->client->getResponse()->getContent(), true)['teamSelectionInitialized'], 'the first override marks the plan configured');
     }
 
+    /**
+     * Le plafond de séances par jour d'une période fait l'aller-retour : absent ou `null` = celui de la saison, une valeur l'écrase,
+     * le remplacement complet le remet à `null`.
+     */
+    public function testTheDailyCapOfAPeriodRoundTripsAndNullMeansTheSeason(): void
+    {
+        $created = $this->post(['schedulePlanId' => $this->planId, 'teamId' => self::TEAM, 'isActive' => true, 'sessionsPerWeek' => null]);
+        self::assertResponseStatusCodeSame(201);
+        self::assertArrayHasKey('maxSessionsPerDay', $created, 'le champ est exposé');
+        self::assertNull($created['maxSessionsPerDay'], 'absent = la valeur de la saison');
+
+        $this->client->request('PUT', '/api/team_period_overrides/' . $created['id'], [], [], $this->headers(), json_encode(['schedulePlanId' => $this->planId, 'teamId' => self::TEAM, 'isActive' => true, 'sessionsPerWeek' => null, 'maxSessionsPerDay' => 3], \JSON_THROW_ON_ERROR));
+        self::assertResponseIsSuccessful();
+        self::assertSame(3, json_decode((string) $this->client->getResponse()->getContent(), true)['maxSessionsPerDay'] ?? null);
+
+        $this->client->request('PUT', '/api/team_period_overrides/' . $created['id'], [], [], $this->headers(), json_encode(['schedulePlanId' => $this->planId, 'teamId' => self::TEAM, 'isActive' => true, 'sessionsPerWeek' => null, 'maxSessionsPerDay' => null], \JSON_THROW_ON_ERROR));
+        self::assertResponseIsSuccessful();
+        self::assertNull(json_decode((string) $this->client->getResponse()->getContent(), true)['maxSessionsPerDay'] ?? 'absent');
+    }
+
+    /** Le plafond d'une période est borné à 1..4 comme celui de la saison : 0 ou 5 → 422, rien n'est écrit. */
+    public function testTheDailyCapOfAPeriodIsBounded(): void
+    {
+        foreach ([0, 5] as $cap) {
+            $this->post(['schedulePlanId' => $this->planId, 'teamId' => self::TEAM, 'isActive' => true, 'sessionsPerWeek' => null, 'maxSessionsPerDay' => $cap]);
+            self::assertResponseStatusCodeSame(422, \sprintf('%d séances par jour', $cap));
+        }
+        $this->client->request('GET', '/api/team_period_overrides?schedulePlanId=' . $this->planId, [], [], $this->headers());
+        self::assertSame([], json_decode((string) $this->client->getResponse()->getContent(), true)['member'] ?? null, 'rien n\'est écrit');
+    }
+
+    /** Isolation : le gestionnaire d'un AUTRE club ne change pas le plafond de période de ce club — 404, la valeur reste. */
+    public function testAnotherClubCannotChangeTheDailyCapOfAPeriod(): void
+    {
+        $created = $this->post(['schedulePlanId' => $this->planId, 'teamId' => self::TEAM, 'isActive' => true, 'sessionsPerWeek' => null, 'maxSessionsPerDay' => 2]);
+        self::assertResponseStatusCodeSame(201);
+
+        $uid = uniqid('', true);
+        $other = (new Club)->setName('TPO autre ' . $uid)->setSlug('tpo-autre-' . $uid)->setTimezone('Europe/Paris')->setLocale('fr')->setOnboardingCompleted(true);
+        $this->em->persist($other);
+        $intruder = (new User)->setEmail('tpo-autre' . $uid . '@test.com')->setFirstName('I')->setLastName('N')->setPasswordHash('x');
+        $this->em->persist($intruder);
+        $this->em->flush();
+        $this->scopeGucToClub($other->getId());
+        $this->em->persist((new ClubUser)->setClubId($other->getId())->setUserId($intruder->getId())->setRole('admin')->setIsActive(true));
+        $this->em->flush();
+        $intruderToken = self::getContainer()->get(JWTTokenManagerInterface::class)->create($intruder);
+
+        $this->client->request('PUT', '/api/team_period_overrides/' . $created['id'], [], [], ['HTTP_AUTHORIZATION' => 'Bearer ' . $intruderToken, 'CONTENT_TYPE' => 'application/ld+json'], json_encode(['schedulePlanId' => $this->planId, 'teamId' => self::TEAM, 'isActive' => true, 'sessionsPerWeek' => null, 'maxSessionsPerDay' => 4], \JSON_THROW_ON_ERROR));
+        self::assertResponseStatusCodeSame(404);
+
+        $this->client->request('GET', '/api/team_period_overrides/' . $created['id'], [], [], $this->headers());
+        self::assertSame(2, json_decode((string) $this->client->getResponse()->getContent(), true)['maxSessionsPerDay'] ?? null, 'la valeur reste');
+    }
+
     protected function setUp(): void
     {
         $this->client = self::createClient();
