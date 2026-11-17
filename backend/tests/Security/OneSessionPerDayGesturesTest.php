@@ -462,13 +462,17 @@ final class OneSessionPerDayGesturesTest extends WebTestCase
     /** Groupe mixte {U15 à 2, U18 à 1}, chacun a déjà une séance le mardi : seul U18 fait refuser ; U18 relevé à 2, le groupe passe. */
     public function testAGroupWithMixedCapsIsRefusedOnlyByTheMemberAtItsCap(): void
     {
+        // Deux requêtes dans le test : sans `disableReboot()`, le noyau redémarre entre elles et perd le moteur simulé posé en setUp.
+        $this->client->disableReboot();
         $ctx = $this->decor(false);
         $this->dailyCap($ctx, $ctx['u15'], 2);
         $block = $this->group($ctx, [$ctx['u15'], $ctx['u18']]);
         $this->session($ctx, $ctx['u15'], $ctx['armand'], self::THURSDAY, '19:00', blockId: $block);
         $this->session($ctx, $ctx['u18'], $ctx['armand'], self::THURSDAY, '19:00', blockId: $block);
+        // Chacune a déjà sa séance du mardi, à une case à elle (hors groupe, deux équipes ne partagent pas une case).
+        $this->extraWindow($ctx, $ctx['armand'], self::TUESDAY, '10:00');
         $this->session($ctx, $ctx['u15'], $ctx['armand'], self::TUESDAY, '18:00');
-        $this->session($ctx, $ctx['u18'], $ctx['armand'], self::TUESDAY, '18:00');
+        $this->session($ctx, $ctx['u18'], $ctx['armand'], self::TUESDAY, '10:00');
         $move = [
             'scheduleId' => $ctx['scheduleId'],
             'blockId' => $block,

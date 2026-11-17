@@ -130,7 +130,10 @@ final class TeamPeriodOverrideApiTest extends WebTestCase
 
         $this->client->request('PUT', '/api/team_period_overrides/' . $created['id'], [], [], $this->headers(), json_encode(['schedulePlanId' => $this->planId, 'teamId' => self::TEAM, 'isActive' => true, 'sessionsPerWeek' => null, 'maxSessionsPerDay' => null], \JSON_THROW_ON_ERROR));
         self::assertResponseIsSuccessful();
-        self::assertNull(json_decode((string) $this->client->getResponse()->getContent(), true)['maxSessionsPerDay'] ?? 'absent');
+        // `??` prendrait un `null` rendu pour une absence : on exige la clé, puis sa valeur nulle (= la saison).
+        $back = json_decode((string) $this->client->getResponse()->getContent(), true);
+        self::assertArrayHasKey('maxSessionsPerDay', $back, 'le champ est toujours rendu');
+        self::assertNull($back['maxSessionsPerDay'], 'null = retour à la valeur de la saison');
     }
 
     /** Le plafond d'une période est borné à 1..4 comme celui de la saison : 0 ou 5 → 422, rien n'est écrit. */

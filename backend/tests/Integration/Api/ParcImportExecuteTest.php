@@ -1587,7 +1587,15 @@ final class ParcImportExecuteTest extends WebTestCase
         $this->makeTeam('SM2', sessionsPerWeek: 4);
         $this->em->flush();
 
-        [$status, $body] = $this->importAllCreatable($this->mondayParc([['09:00', 90], ['18:00', 90]], ['SM1', 'SM2']));
+        // Chaque équipe dans son gymnase : deux équipes sur la même case seraient une case partagée sans
+        // groupe, que l'import signale au lieu de l'écrire (rien ne serait relevé).
+        $cases = [];
+        foreach (['SM1' => 'Palais Neuf', 'SM2' => 'Salle Est'] as $team => $gym) {
+            foreach (['09:00', '18:00'] as $start) {
+                $cases[] = ['gymnase' => $gym, 'jour' => 1, 'debut' => $start, 'duree' => 90, 'equipes' => [$team]];
+            }
+        }
+        [$status, $body] = $this->importAllCreatable($this->parcWithCases($cases));
 
         self::assertSame(200, $status, (string) json_encode($body, \JSON_UNESCAPED_UNICODE));
         self::assertSame(3, $this->capOf('SM1'), 'jamais baissé');

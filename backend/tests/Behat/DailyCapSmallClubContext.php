@@ -111,6 +111,14 @@ final class DailyCapSmallClubContext extends BaseContext
     #[When('je réserve SM1 une troisième fois le lundi, sur un créneau d\'un autre gymnase qui chevauche l\'un des deux')]
     public function jeReserveUneTroisiemeFoisEnChevauchement(): void
     {
+        // Une réservation d'équipe consomme une séance de sa semaine : à 2 séances, une troisième est refusée
+        // au geste (`ReservationGroupOccupancy::assertSoloBudgetAllows`, budget = séances de l'équipe). Le
+        // gestionnaire suit ce que l'écran lui dit (« augmentez son nombre de séances ») : SM1 passe à 3
+        // séances, le temps de cette réservation ; le retrait la remet à 2.
+        $this->writeSm1(['sessionsPerWeek' => 3]);
+        if (200 !== $this->teamWriteStatus) {
+            throw new RuntimeException(\sprintf('passer SM1 à 3 séances a répondu %d — %s', $this->teamWriteStatus, $this->encoded($this->teamWriteJson)));
+        }
         // Gymnase Nord, lundi 18:00-19:30 : chevauche 18:00-19:30 au Gymnase Centre (le créneau existe
         // dans la grille du petit club, aucun créneau à créer).
         $this->overlappingReservationId = $this->reserveSm1(self::OVERLAP_VENUE, self::MONDAY_STARTS[0]);
@@ -135,6 +143,10 @@ final class DailyCapSmallClubContext extends BaseContext
         $deleted = $this->apiDelete(\sprintf('reservations/%s', $this->overlappingReservationId), $this->smallClubToken);
         if (204 !== $deleted['status']) {
             throw new RuntimeException(\sprintf('le retrait de la réservation a répondu %d (204 attendu)', $deleted['status']));
+        }
+        $this->writeSm1(['sessionsPerWeek' => 2]);
+        if (200 !== $this->teamWriteStatus) {
+            throw new RuntimeException(\sprintf('remettre SM1 à 2 séances a répondu %d — %s', $this->teamWriteStatus, $this->encoded($this->teamWriteJson)));
         }
     }
 
@@ -303,8 +315,18 @@ final class DailyCapSmallClubContext extends BaseContext
         return $mine[0];
     }
 
-    /** PUT de l'équipe SM1 (écho des champs que le PUT remet à défaut s'ils manquent), plafond changé. */
+    /** PUT de l'équipe SM1 : son plafond de séances par jour, le reste en écho. */
     private function writeSm1MaxSessionsPerDay(int $value): void
+    {
+        $this->writeSm1(['maxSessionsPerDay' => $value]);
+    }
+
+    /**
+     * PUT de l'équipe SM1 : écho des champs que le PUT remet à défaut s'ils manquent, plus les champs changés.
+     *
+     * @param array<string, int> $changes
+     */
+    private function writeSm1(array $changes): void
     {
         $teamId = $this->smallClubTeamIds['SM1'];
         $current = $this->apiGet(\sprintf('teams/%s', $teamId), $this->smallClubToken)['json'];
@@ -315,7 +337,8 @@ final class DailyCapSmallClubContext extends BaseContext
             'sessionsPerWeek' => $current['sessionsPerWeek'] ?? null,
             'level' => $current['level'] ?? null,
             'gender' => $current['gender'] ?? null,
-            'maxSessionsPerDay' => $value,
+            'maxSessionsPerDay' => $current['maxSessionsPerDay'] ?? null,
+            ...$changes,
         ], $this->smallClubToken);
         $this->teamWriteStatus = $response['status'];
         $this->teamWriteJson = $response['json'];

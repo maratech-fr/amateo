@@ -397,9 +397,8 @@ final class TeamApiTest extends WebTestCase
     /** Une équipe créée sans le champ s'entraîne au plus une fois par jour ; avec le champ, la valeur est écrite et relue. */
     public function testADailyCapIsOneByDefaultAndWritableOnCreate(): void
     {
-        $this->client->loginUser($this->user);
         foreach ([[[], 1], [['maxSessionsPerDay' => 3], 3]] as [$extra, $expected]) {
-            $this->client->request('POST', '/api/teams', [], [], ['CONTENT_TYPE' => 'application/ld+json'], json_encode([
+            $this->client->request('POST', '/api/teams', [], [], $this->bearerHeaders(), json_encode([
                 'name' => 'Nouvelle ' . $expected,
                 'sportCategoryId' => $this->sportCategory->getId(),
                 'priorityTierId' => $this->priorityTier->getId(),
@@ -439,7 +438,7 @@ final class TeamApiTest extends WebTestCase
         $this->putTeam($team, ['maxSessionsPerDay' => 2]);
         self::assertResponseStatusCodeSame(200, 'même valeur sous planning en vigueur');
 
-        $this->client->request('POST', '/api/teams', [], [], ['CONTENT_TYPE' => 'application/ld+json'], json_encode([
+        $this->client->request('POST', '/api/teams', [], [], $this->bearerHeaders(), json_encode([
             'name' => 'Créée sous socle',
             'sportCategoryId' => $this->sportCategory->getId(),
             'priorityTierId' => $this->priorityTier->getId(),
@@ -669,13 +668,25 @@ final class TeamApiTest extends WebTestCase
      */
     private function putTeam(Team $team, array $extra): void
     {
-        $this->client->loginUser($this->user);
-        $this->client->request('PUT', \sprintf('/api/teams/%s', $team->getId()), [], [], ['CONTENT_TYPE' => 'application/ld+json'], json_encode([
+        $this->client->request('PUT', \sprintf('/api/teams/%s', $team->getId()), [], [], $this->bearerHeaders(), json_encode([
             'name' => $team->getName(),
             'sportCategoryId' => $this->sportCategory->getId(),
             'priorityTierId' => $this->priorityTier->getId(),
             ...$extra,
         ], \JSON_THROW_ON_ERROR));
+    }
+
+    /**
+     * ⚠ Bearer à CHAQUE requête : le firewall est stateless, `loginUser` ne survit pas d'un appel au suivant.
+     *
+     * @return array<string, string>
+     */
+    private function bearerHeaders(): array
+    {
+        return [
+            'HTTP_AUTHORIZATION' => 'Bearer ' . self::getContainer()->get(JWTTokenManagerInterface::class)->create($this->user),
+            'CONTENT_TYPE' => 'application/ld+json',
+        ];
     }
 
     /** Le corps de la réponse, lettres accentuées en clair (pour chercher une phrase dans les violations). */
