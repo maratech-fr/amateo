@@ -3,7 +3,6 @@ import userEvent from "@testing-library/user-event";
 import { type ReactNode, useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { pickListboxOption } from "@/test/pickListboxOption";
 import { renderWithProviders } from "@/test/utils";
 import { toast } from "@/shared/stores/toastStore";
 
@@ -231,7 +230,10 @@ describe("Gymnases de saison — le clic pose un créneau, ou une occupation si 
     const user = await renderStep();
 
     await chooseOccupancy(user, "École");
-    await pickListboxOption(user, WIZARD_TEXTS.venueSelectAria, "Gymnase Beta");
+    // Nom EXACT du sélecteur (libellé + valeur lue) : « Gymnase » est aussi une sous-chaîne du bouton
+    // « Associer « Gymnase Alpha » à une salle FFBB », que la recherche de `pickListboxOption` attrapait.
+    await user.click(screen.getByRole("button", { name: `${WIZARD_TEXTS.venueSelectAria} Gymnase Alpha` }));
+    await user.click(within(screen.getByRole("listbox")).getByRole("option", { name: "Gymnase Beta" }));
 
     expect(screen.getByRole("button", { name: WIZARD_TEXTS.placementKindSlot })).toHaveAttribute("aria-pressed", "true");
     expect(screen.queryByRole("textbox", { name: WIZARD_TEXTS.occupancyLabelField })).not.toBeInTheDocument();
