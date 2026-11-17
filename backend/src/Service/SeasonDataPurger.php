@@ -44,6 +44,7 @@ use App\Entity\TeamPeriodOverride;
 use App\Entity\TeamTagAssignment;
 use App\Entity\Venue;
 use App\Entity\VenueMatchWindow;
+use App\Entity\VenueOccupancy;
 use App\Entity\VenuePeriodOverride;
 use App\Entity\VenueTrainingSlot;
 use App\Entity\VenueTravelRuleSetting;
@@ -201,6 +202,9 @@ final class SeasonDataPurger
         Team::class,
         Coach::class,
         VenueTrainingSlot::class,
+        // Occupations de gymnase (club_id+season_id, aucun enfant ; celles d'une période partent
+        // aussi avec leur plan par la clé étrangère) : purgées avant Venue.
+        VenueOccupancy::class,
         // P1-4 PR B — capacité matchs : les deux tables pointent venue_id,
         // purgées AVANT Venue (aucune FK en base, même règle que le reste).
         VenueMatchWindow::class,

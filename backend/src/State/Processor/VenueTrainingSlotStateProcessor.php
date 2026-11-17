@@ -10,7 +10,14 @@ use App\Entity\User;
 use App\Entity\Venue;
 use App\Entity\VenueTrainingSlot;
 use App\Enum\AuditAction;
+use App\Service\ManagementAccessGuard;
+use App\Service\SeasonAccessGuard;
+use App\Service\SeasonResolver;
+use App\Service\VenueGridConflict;
+use App\Service\VenueGridOverlap;
 use DateTimeImmutable;
+use Doctrine\ORM\EntityManagerInterface;
+use Symfony\Component\HttpFoundation\RequestStack;
 
 /**
  * @extends AbstractStateProcessor<VenueTrainingSlot, VenueTrainingSlotInput, VenueTrainingSlotResource>
@@ -18,6 +25,17 @@ use DateTimeImmutable;
 class VenueTrainingSlotStateProcessor extends AbstractStateProcessor
 {
     use AssertsSchedulePlanExistsTrait;
+
+    public function __construct(
+        EntityManagerInterface $entityManager,
+        RequestStack $requestStack,
+        SeasonResolver $seasonResolver,
+        SeasonAccessGuard $seasonAccessGuard,
+        ManagementAccessGuard $managementAccessGuard,
+        private readonly VenueGridOverlap $gridOverlap,
+    ) {
+        parent::__construct($entityManager, $requestStack, $seasonResolver, $seasonAccessGuard, $managementAccessGuard);
+    }
 
     protected function getEntityClass(): string
     {
@@ -279,53 +297,28 @@ class VenueTrainingSlotStateProcessor extends AbstractStateProcessor
 
     /**
      * Two slots of the SAME gym may never share any time on the same weekday —
-     * divisibility is a within-slot capacity, not a licence to stack slots. The
-     * wizard guards this client-side too; this is the server backstop so no
-     * client can ever persist overlapping availability.
+     * divisibility is a within-slot capacity, not a licence to stack slots — and a slot
+     * never shares time with an occupancy of the same gym either. The wizard guards this
+     * client-side too; this is the server backstop. Replayed on EVERY edit, even of the
+     * capacity alone: a slot already covered by an occupancy (born of a copy) is refused.
+     *
+     * Deux créneaux de PLANS DIFFÉRENTS ne sont jamais servis ensemble, donc ne peuvent
+     * pas se télescoper — y compris un créneau de saison face à la COPIE qu'une période
+     * en détient (#8) : la règle ne compare que la MÊME couche (`VenueGridOverlap`).
      */
     private function validateNoOverlap(VenueTrainingSlot $entity): void
     {
-        $start = $this->minutesOf($entity);
-        $end = $start + $entity->getDurationMinutes();
-
-        /** @var list<VenueTrainingSlot> $sameDay */
-        $sameDay = $this->entityManager->getRepository(VenueTrainingSlot::class)->findBy([
-            'venueId' => $entity->getVenueId(),
-            'dayOfWeek' => $entity->getDayOfWeek(),
-        ]);
-
-        foreach ($sameDay as $other) {
-            if ($other->getId() === $entity->getId()) {
-                continue; // an edit does not conflict with itself
-            }
-            // Layers that are NEVER generated together may share a time: two DIFFERENT
-            // periods (both schedulePlanId set and distinct) never union. But the
-            // overlay build unions SEASONAL ∪ one period, so a period slot must not
-            // overlap a seasonal one (else the same court is double-booked at solve).
-            if ($this->neverGeneratedTogether($entity, $other)) {
-                continue;
-            }
-            $otherStart = $this->minutesOf($other);
-            if ($start < $otherStart + $other->getDurationMinutes() && $otherStart < $end) {
-                $this->refuse('Ce créneau en chevauche un autre du même gymnase ce jour-là.');
-            }
+        $conflict = $this->gridOverlap->firstConflict(
+            $entity->getVenueId(),
+            $entity->getDayOfWeek(),
+            $this->minutesOf($entity),
+            $entity->getDurationMinutes(),
+            $entity->getSchedulePlanId(),
+            exceptSlotId: $entity->getId(),
+        );
+        if ($conflict instanceof VenueGridConflict) {
+            $this->refuse($conflict->message(VenueGridConflict::SLOT));
         }
-    }
-
-    /**
-     * Deux créneaux de PLANS DIFFÉRENTS ne sont jamais servis ensemble, donc ne peuvent
-     * pas se télescoper — y compris un créneau de saison face à la COPIE qu'une période
-     * en détient (#8) : depuis que la période possède sa grille, le socle est bâti sur
-     * les créneaux de saison seuls et une période sur les siens seuls, sans union.
-     *
-     * Exiger (comme avant) que les DEUX portent un plan rendait la grille de saison
-     * inéditable dès qu'une période existait : sa copie, identique heure pour heure,
-     * était vue comme un chevauchement (revue #8). Le chevauchement RÉEL — deux créneaux
-     * d'une même couche — reste refusé.
-     */
-    private function neverGeneratedTogether(VenueTrainingSlot $a, VenueTrainingSlot $b): bool
-    {
-        return $a->getSchedulePlanId() !== $b->getSchedulePlanId();
     }
 
     private function minutesOf(VenueTrainingSlot $slot): int

@@ -18,6 +18,7 @@ use App\Entity\TeamLink;
 use App\Entity\TeamMatchHabit;
 use App\Entity\Venue;
 use App\Entity\VenueMatchWindow;
+use App\Entity\VenueOccupancy;
 use App\Entity\VenueTrainingSlot;
 use App\Entity\VenueTravelRuleSetting;
 use App\Entity\VenueTravelTime;
@@ -224,6 +225,23 @@ final class SeasonTransitionService
             $copy->setCapacity($slot->getCapacity());
             $this->entityManager->persist($copy);
             ++$slots;
+        }
+
+        // Les occupations de SAISON suivent les créneaux vers les gymnases copiés ; celles d'une
+        // période restent à leur plan, une dormante (gymnase non copié) est ignorée. Sans contrôle.
+        foreach ($this->rows(VenueOccupancy::class, $clubId, $sourceId) as $occupancy) {
+            if (null !== $occupancy->getSchedulePlanId()) {
+                continue;
+            }
+            $newVenueId = $venueMap[$occupancy->getVenueId()] ?? null;
+            if (null === $newVenueId) {
+                continue;
+            }
+            $this->entityManager->persist(
+                (new VenueOccupancy)->setClubId($clubId)->setSeasonId($target->getId())->setVenueId($newVenueId)
+                    ->setDayOfWeek($occupancy->getDayOfWeek())->setStartTime($occupancy->getStartTime())
+                    ->setDurationMinutes($occupancy->getDurationMinutes())->setLabel($occupancy->getLabel()),
+            );
         }
 
         // P1-4 PR B — les fenêtres d'accès MATCH se recopient comme les créneaux :
