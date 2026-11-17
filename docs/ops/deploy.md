@@ -894,6 +894,56 @@ docker exec amateo-php-fpm php bin/console app:schedule:normalize-team-coach-sna
 
 Détail : [`backend/docs/commands.md`](../../backend/docs/commands.md).
 
+### Étape post-déploiement AUTOMATIQUE — réaligner les empreintes après l'allègement du contrat moteur
+
+Le contrat moteur 1.12 ne porte plus les champs que le solveur ne lit pas (équipe : catégorie, âge maximal,
+genre, niveau, lien de saison ; gymnase : couleur, coordonnées, source, référence externe, « gymnase
+extérieur », lien de saison ; coach : lien de saison ; contrainte : `sortOrder`), et l'empreinte de
+structure trie les contraintes. L'empreinte de toute version antérieure diffère donc de l'empreinte
+courante : sans réalignement, tout planning non validé paraît « périmé ».
+
+`scripts/remote-deploy.sh` lance seul `app:schedule:prune-unread-snapshot-fields --max-seconds=900`, juste
+après la ligne « Deploy … OK » (sondes de santé et version persistée faites), avant le nettoyage d'images.
+La commande retire ces clés du snapshot des versions **terminées** (`COMPLETED`, `FAILED`) et recalcule
+`snapshot_hash` DEPUIS ce snapshot : une version réellement périmée le reste. Les versions en cours
+(`PENDING`, `GENERATING`) et les brouillons ne sont jamais touchés, verrou posé ou non ; elles sont
+réalignées au passage suivant, une fois terminées. Idempotente : un second passage n'écrit rien.
+
+**Compte rendu** : le journal du déploiement (Actions → Deploy). Le signal est `[OK]` devant
+`N schedule(s) pruned.` : rien à taper. La même ligne précédée de `[WARNING]`, ou le message
+`⚠ RÉALIGNEMENT DES PLANNINGS INCOMPLET`, dit que le travail n'est pas fini : le nombre seul ne dit rien.
+Le déploiement reste vert dans tous les cas (l'appel est neutralisé par `|| echo`).
+
+- **Entre le redémarrage et `[OK]`**, tout planning non validé paraît « périmé » (bannière « vos données
+  ont changé », « Régénérer » actif). Faire cette mise en prod avec une fenêtre de maintenance ; sans
+  fenêtre (`make deploy`), un gestionnaire connecté le voit le temps de la commande.
+- **Réalignement incomplet** (`Club <id> skipped: a generation is running — rerun later.`,
+  `Stopped after … time limit reached — rerun to finish.`, ou `Schedule <id> (club <id>) failed: …`) :
+  relancer à la main jusqu'à `[OK]` :
+  1. vérifier qu'aucun passage ne tourne encore : `docker top amateo-php-fpm | grep prune-unread-snapshot-fields`
+     ne rend rien (deux passages simultanés se gênent : l'un s'arrête sur `failed`) ;
+  2. `docker exec amateo-php-fpm php bin/console app:schedule:prune-unread-snapshot-fields --max-seconds=900`
+     (ou sans `--max-seconds`, sans limite de durée ; `--dry-run` compte sans rien écrire ni purger).
+- **La commande s'arrête d'elle-même au bout de 900 s**, entre deux plannings : ce qui est écrit est
+  complet, rejouer termine. Aucun `timeout` devant : il tuerait le client sans arrêter PHP dans le
+  conteneur.
+- **Tant que la relance n'est pas faite**, les plannings non validés des clubs non traités paraissent
+  « périmés » à tort. Non destructeur ; une régénération peut déplacer des séances.
+- **Pendant le redémarrage**, quelques secondes où l'application et le moteur ne sont pas de la même
+  version : une génération ou un déplacement peut échouer, le relancer suffit.
+- **Retour à une version antérieure** : l'ancien code recalcule l'empreinte avec les champs retirés ; tous
+  les plannings non validés paraissent périmés jusqu'à régénération. Aucune commande ne répare : le remède
+  des étapes précédentes ne s'applique pas ici.
+- **Cinq colonnes ne sont pas supprimées par ce déploiement** (les quatre liens de saison et
+  `venue.is_external`, plus lues ni écrites) : leur suppression vient à la prochaine mise en prod de
+  `main`, jamais avec un correctif passé par `release`, et après elle aucun retour avant cette version
+  (roadmap, P4-602). D'ici là `make migration-diff` propose de les supprimer : ne pas committer cette
+  proposition.
+- L'appel est retiré du script à cette mise en prod-là ; d'ici là un correctif passé par `release` le
+  rejoue sans effet (`[OK] 0 schedule(s) pruned.`). La commande reste disponible.
+
+Détail : [`backend/docs/commands.md`](../../backend/docs/commands.md).
+
 ### Étape post-déploiement OBLIGATOIRE — validation automatique des plannings de période : `--dry-run` AVANT le premier passage
 
 La version qui porte `app:period-plans:auto-validate` (tâche quotidienne à 00:15, clé

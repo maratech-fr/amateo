@@ -72,7 +72,7 @@ final class MatchAccessEngineParityTest extends TestCase
         }
         $venues = [];
         foreach ($byVenue as $id => $lines) {
-            $venues[] = ['id' => $id, 'name' => $id, 'matchWindows' => $lines, 'unavailabilities' => []];
+            $venues[] = ['id' => $id, 'matchWindows' => $lines, 'unavailabilities' => []];
         }
 
         try {
@@ -83,7 +83,7 @@ final class MatchAccessEngineParityTest extends TestCase
                 'publicHolidays' => $isHoliday ? [$date] : [],
                 'matches' => [['id' => 'm1', 'teamId' => 't1', 'date' => $date, 'kind' => 'TO_PLACE', 'importedVenueId' => $venueId, 'importedKickoff' => $kickoff]],
                 'venues' => $venues,
-                'teams' => [['id' => 't1', 'name' => 'T1', 'leagueWindows' => [], 'habits' => [], 'coaches' => []]],
+                'teams' => [['id' => 't1', 'leagueWindows' => [], 'habits' => [], 'coaches' => []]],
             ]);
             self::assertSame(200, $response->getStatusCode(), $response->getContent(false));
             $placement = $response->toArray(false)['placements'][0] ?? null;

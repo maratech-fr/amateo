@@ -33,14 +33,12 @@
   "teams": [
     {
       "id": "u18m1",
-      "sportCategoryId": "cat-u18",
       "priorityTierId": 3,
       "name": "U18M1",
       "sessionsPerWeek": 1
     },
     {
       "id": "sm2",
-      "sportCategoryId": "cat-senior",
       "priorityTierId": 2,
       "name": "SM2",
       "sessionsPerWeek": 1

@@ -112,7 +112,6 @@ def random_fixture(draw: st.DrawFn) -> dict[str, Any]:
             teams.append(
                 {
                     "id": tid,
-                    "sportCategoryId": "sc-1",
                     "priorityTierId": tier,
                     "name": f"Team {tid}",
                     "sessionsPerWeek": draw(st.integers(min_value=1, max_value=2)),
@@ -310,7 +309,6 @@ class TestInvariants:
             "teams": [
                 {
                     "id": tid,
-                    "sportCategoryId": "sc-1",
                     "priorityTierId": 1,
                     "name": f"Team {tid}",
                     "sessionsPerWeek": 1,
@@ -382,7 +380,6 @@ class TestInvariants:
             "teams": [
                 {
                     "id": tid,
-                    "sportCategoryId": "sc-1",
                     "priorityTierId": 1,
                     "name": f"Team {tid}",
                     "sessionsPerWeek": 1,
@@ -559,7 +556,6 @@ class TestInvariants:
             teams=[
                 {
                     "id": f"team-{d}",
-                    "sportCategoryId": "sc-1",
                     "priorityTierId": 1,
                     "name": f"Team {d}",
                     "sessionsPerWeek": 1,
@@ -656,14 +652,12 @@ class TestInvariants:
             "teams": [
                 {
                     "id": "team-s",
-                    "sportCategoryId": "sc-1",
                     "priorityTierId": 1,
                     "name": "Team S",
                     "sessionsPerWeek": 1,
                 },
                 {
                     "id": "team-d",
-                    "sportCategoryId": "sc-1",
                     "priorityTierId": 5,
                     "name": "Team D",
                     "sessionsPerWeek": 0,

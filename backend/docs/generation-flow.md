@@ -126,11 +126,11 @@ Voici ce que fait la branche de base, dans l'ordre :
 
    > Exemple : ADN expose `trainingSlots: [{dayOfWeek: 2, startTime: "17:00", durationMinutes: 300, capacity: 1}, …]` — uniquement les créneaux effectivement déclarés dans le wizard.
 
-2. **Équipes actives** (`teams[]`) : récupère toutes les équipes avec leurs tags (générés par `TeamTagService`), leur niveau, leur genre, et leur nombre de séances hebdomadaires (`sessionsPerWeek`). Elles portent aussi leur plafond de séances par jour (`maxSessionsPerDay`, contrat 1.10), émis **seulement au-delà de 1** : la valeur de la période (`PeriodConstraintSelection::$maxPerDayOverrides`) l'emporte, sinon celle de la saison (`EffectiveTeamSessions::maxPerDay`) ; un club resté à 1 garde un payload, donc une empreinte, identique.
+2. **Équipes actives** (`teams[]`) : récupère toutes les équipes avec leur âge minimal (`ageMin`, de leur catégorie), leur nom, leur jour de match dérivé (`matchDay`) et leur nombre de séances hebdomadaires (`sessionsPerWeek`). Le contrat allégé (1.12) ne porte ni catégorie, ni âge maximal, ni genre, ni niveau, ni lien de saison : le solveur ne les lit pas, et leur changement ne périme donc aucun planning. Elles portent aussi leur plafond de séances par jour (`maxSessionsPerDay`, contrat 1.10), émis **seulement au-delà de 1** : la valeur de la période (`PeriodConstraintSelection::$maxPerDayOverrides`) l'emporte, sinon celle de la saison (`EffectiveTeamSessions::maxPerDay`) ; un club resté à 1 garde un payload, donc une empreinte, identique.
 
-   > Exemple : SM3 a `sessionsPerWeek: 2`, tags `["SENIOR", "MASCULINE"]`, niveau `HONNEUR`.
+   > Exemple : SM3 part avec `sessionsPerWeek: 2` et son `ageMin` ; son niveau `HONNEUR` ne part pas.
 
-3. **Entraîneurs actifs** (`coaches[]`) : récupère tous les entraîneurs, sérialisés avec leur **identité et métadonnées seules** (nom, email, `isEmployee`, `maxDaysOverride`, etc.). Leurs indisponibilités ne sont **pas** portées par l'objet coach : ce sont des contraintes `COACH_AVAILABILITY` dans `constraints[]`. Les liens d'encadrement (`TeamCoach`) sont eux aussi sérialisés en contraintes dédiées.
+3. **Entraîneurs actifs** (`coaches[]`) : récupère tous les entraîneurs, sérialisés avec leur **identité et métadonnées seules** (nom, `isEmployee`, `maxDaysOverride`, etc.). Leurs indisponibilités ne sont **pas** portées par l'objet coach : ce sont des contraintes `COACH_AVAILABILITY` dans `constraints[]`. Les liens d'encadrement (`TeamCoach`) sont eux aussi sérialisés en contraintes dédiées.
 
    > Exemple : l'objet coach de Coach 05 ne contient que son identité. Son indisponibilité du vendredi voyage dans `constraints[]` (`COACH_AVAILABILITY`, `scopeTargetId` = Coach 05, `config: {unavailableDays: [5]}` — la cible est le scope, SEC-13), et ses encadrements SM1 (MAIN) / SM2 (ASSISTANT) en contraintes issues de `TeamCoach`.
 
@@ -142,13 +142,13 @@ Voici ce que fait la branche de base, dans l'ordre :
 
 6. **Niveaux de priorité** : il n'y a **pas** de clé `priorityTiers` top-level dans le payload. Les `PriorityTier` du club (S, A, B, C, D) sont sérialisés comme des **contraintes** de type `PRIORITY_TIER` dans `constraints[]`. Leurs poids ne sont pas envoyés (`orToolsWeight` volontairement omis) : le solveur applique des poids **codés en dur** côté engine — S=10000, A=1000, B=100, C=10, D=1 — un poids par tier serait accepté puis ignoré.
 
-7. **Métadonnées** : ajoute `version: "1.11"` (`ScheduleConstraintBuilder::CONTRACT_VERSION`, alignée sur `engine/CONTRACT_VERSION`), `clubId`, `seasonId`, `solverSeed` et `solverTimeoutSeconds`.
+7. **Métadonnées** : ajoute `version: "1.12"` (`ScheduleConstraintBuilder::CONTRACT_VERSION`, alignée sur `engine/CONTRACT_VERSION`), `clubId`, `seasonId`, `solverSeed` et `solverTimeoutSeconds`.
 
 Le payload complet pèse généralement entre 50 et 200 Ko de JSON selon la taille du club.
 
 ### 3c — Snapshot SHA-256
 
-Le payload construit **à ce stade** (avant la greffe de convergence ci-dessous) est hashé en SHA-256 par `ScheduleConstraintBuilder::structureHash` (maison unique de l'empreinte de structure, partagée avec `structureHashOfPlan`) : elle **ignore `version`** (un numéro de contrat n'est pas de la structure) et **les `slotTemplates` non HARD** (une séance NONE est un résultat du solveur, relu à la génération suivante ; le payload, lui, les garde). « Régénérer » est grisé seulement si l'empreinte est égale ET que le planning n'a pas été modifié à la main. Le hash est stocké sur l'entité `Schedule` dans le champ `snapshotHash`, et le payload lui-même est conservé dans `snapshotData`.
+Le payload construit **à ce stade** (avant la greffe de convergence ci-dessous) est hashé en SHA-256 par `ScheduleConstraintBuilder::structureHash` (maison unique de l'empreinte de structure, partagée avec `structureHashOfPlan`) : elle **ignore `version`** (un numéro de contrat n'est pas de la structure) et **les `slotTemplates` non HARD** (une séance NONE est un résultat du solveur, relu à la génération suivante ; le payload, lui, les garde). Elle **trie les `constraints` par id** : l'ordre lu en base n'est pas de la structure. Comme le payload n'envoie plus les champs que le solveur ne lit pas (contrat 1.12), ils n'entrent plus dans l'empreinte ; les noms, eux, y restent. « Régénérer » est grisé seulement si l'empreinte est égale ET que le planning n'a pas été modifié à la main. Le hash est stocké sur l'entité `Schedule` dans le champ `snapshotHash`, et le payload lui-même est conservé dans `snapshotData`.
 
 **À quoi ça sert ?**
 
@@ -408,7 +408,7 @@ Voici un tableau récapitulatif de tous les cas d'erreur possibles, avec leur ca
 | **Épinglage orphelin** | `OrphanPinGuard` (#8) : un verrou ou une réservation ne correspond plus à aucun créneau de la grille de période | — (refus synchrone **422**) | Aucun | Le message nomme le gymnase et le jour : redéfinir les créneaux, ou retirer l'épinglage |
 | **Club déjà en génération** | Verrou Redis `schedule_generation:club:{clubId}` tenu par un autre worker | `PENDING` (retry Messenger via `RecoverableMessageHandlingException`) | Aucun | Rien à faire : la demande sera rejouée automatiquement à la fin de la génération en cours |
 | **Timeout HTTP (> 750 s)** | Problème trop complexe pour le solveur CP-SAT (budget adaptatif 60/180/600 s dépassé côté engine) | `FAILED` | `engine_timeout` | Simplifier les contraintes `HARD`, augmenter le nombre de salles, ou réduire le nombre d'équipes |
-| **Payload invalide (422)** | Réponse engine sans clé `status` (corps d'erreur Pydantic) — improbable car le payload est construit par `ScheduleConstraintBuilder` | `FAILED` | `engine_failed` | Comparer le `snapshotData` au schéma engine (contrat 1.11, `engine/CONTRACT_VERSION`) |
+| **Payload invalide (422)** | Réponse engine sans clé `status` (corps d'erreur Pydantic) — improbable car le payload est construit par `ScheduleConstraintBuilder` | `FAILED` | `engine_failed` | Comparer le `snapshotData` au schéma engine (contrat 1.12, `engine/CONTRACT_VERSION`) |
 | **Engine inaccessible** | Conteneur `engine` arrêté ou crash | `FAILED` | `engine_error` | Vérifier l'état des conteneurs Docker (`make logs SERVICE=engine`) |
 | **Planning infaisable** | Contraintes `HARD` mutuellement exclusives | `FAILED` | `conflict` + liste équipes non placées | Relâcher une contrainte `HARD` en `PREFERRED`, ou ajouter des ressources (salle, coach) |
 | **Partiellement résolu** | Ressources insuffisantes pour toutes les équipes | `COMPLETED` (score bas) | `unplaced` diagnostics | Accepter le planning incomplet, ou ajouter des créneaux/salles |

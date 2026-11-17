@@ -45,35 +45,30 @@
   "teams": [
     {
       "id": "team-mon",
-      "sportCategoryId": "senior",
       "priorityTierId": 1,
       "name": "Team Monday",
       "sessionsPerWeek": 1
     },
     {
       "id": "team-tue",
-      "sportCategoryId": "senior",
       "priorityTierId": 1,
       "name": "Team Tuesday",
       "sessionsPerWeek": 1
     },
     {
       "id": "team-wed",
-      "sportCategoryId": "senior",
       "priorityTierId": 1,
       "name": "Team Wednesday",
       "sessionsPerWeek": 1
     },
     {
       "id": "team-thu",
-      "sportCategoryId": "senior",
       "priorityTierId": 1,
       "name": "Team Thursday",
       "sessionsPerWeek": 1
     },
     {
       "id": "team-fri",
-      "sportCategoryId": "senior",
       "priorityTierId": 1,
       "name": "Team Friday",
       "sessionsPerWeek": 1

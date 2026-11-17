@@ -14,7 +14,6 @@ def test_time_hard_min_start_time_blocks_early_slot() -> None:
             "teams": [
                 {
                     "id": "team-senior",
-                    "sportCategoryId": "sc-1",
                     "priorityTierId": 3,
                     "name": "Team Senior",
                     "sessionsPerWeek": 1,
@@ -59,7 +58,6 @@ def test_time_hard_max_start_time_blocks_late_slot() -> None:
             "teams": [
                 {
                     "id": "team-jeune",
-                    "sportCategoryId": "sc-1",
                     "priorityTierId": 3,
                     "name": "Team Jeune",
                     "sessionsPerWeek": 1,
@@ -104,7 +102,6 @@ def test_day_hard_forbidden_days_blocks_forbidden_weekday() -> None:
             "teams": [
                 {
                     "id": "team-forbidden",
-                    "sportCategoryId": "sc-1",
                     "priorityTierId": 3,
                     "name": "Team Forbidden",
                     "sessionsPerWeek": 1,
@@ -149,7 +146,6 @@ def test_day_preferred_day_places_team_on_preferred_weekday() -> None:
             "teams": [
                 {
                     "id": "team-preferred",
-                    "sportCategoryId": "sc-1",
                     "priorityTierId": 3,
                     "name": "Team Preferred",
                     "sessionsPerWeek": 1,

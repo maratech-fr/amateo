@@ -67,7 +67,6 @@ def test_holiday_match_uses_the_holiday_line_not_the_weekday_window() -> None:
         venues=[
             {
                 "id": "v1",
-                "name": "V1",
                 "matchWindows": [
                     {"dayOfWeek": HOLIDAY_ISO_DAY, "start": "18:00", "end": "22:00"},
                     {"appliesOnPublicHolidays": True, "start": "10:00", "end": "18:00"},
@@ -75,7 +74,7 @@ def test_holiday_match_uses_the_holiday_line_not_the_weekday_window() -> None:
                 "unavailabilities": [],
             }
         ],
-        teams=[{"id": "t1", "name": "T1", "leagueWindows": [], "habits": [], "coaches": []}],
+        teams=[{"id": "t1", "leagueWindows": [], "habits": [], "coaches": []}],
     )
 
     assert result["status"] == "completed"
@@ -95,7 +94,6 @@ def test_holiday_match_ignores_the_weekday_league_window() -> None:
         venues=[
             {
                 "id": "v1",
-                "name": "V1",
                 "matchWindows": [{"appliesOnPublicHolidays": True, "start": "10:00", "end": "18:00"}],
                 "unavailabilities": [],
             }
@@ -103,7 +101,6 @@ def test_holiday_match_ignores_the_weekday_league_window() -> None:
         teams=[
             {
                 "id": "t1",
-                "name": "T1",
                 "leagueWindows": [{"dayOfWeek": HOLIDAY_ISO_DAY, "kickoffMin": "18:00", "kickoffMax": "20:00"}],
                 "habits": [],
                 "coaches": [],
@@ -133,7 +130,6 @@ def test_ordinary_wednesday_still_honours_the_weekday_window_and_league() -> Non
         venues=[
             {
                 "id": "v1",
-                "name": "V1",
                 "matchWindows": [
                     {"dayOfWeek": HOLIDAY_ISO_DAY, "start": "18:00", "end": "22:00"},
                     {"appliesOnPublicHolidays": True, "start": "10:00", "end": "18:00"},
@@ -144,7 +140,6 @@ def test_ordinary_wednesday_still_honours_the_weekday_window_and_league() -> Non
         teams=[
             {
                 "id": "t1",
-                "name": "T1",
                 "leagueWindows": [{"dayOfWeek": HOLIDAY_ISO_DAY, "kickoffMin": "18:00", "kickoffMax": "20:00"}],
                 "habits": [],
                 "coaches": [],
@@ -178,11 +173,11 @@ def _opening(day: str, start: str = "14:00", end: str = "20:00") -> dict[str, An
 def _venue(
     windows: list[dict[str, Any]], venue_id: str = "v1", unavailabilities: list[dict[str, Any]] | None = None
 ) -> dict[str, Any]:
-    return {"id": venue_id, "name": venue_id, "matchWindows": windows, "unavailabilities": unavailabilities or []}
+    return {"id": venue_id, "matchWindows": windows, "unavailabilities": unavailabilities or []}
 
 
 def _team(**over: Any) -> dict[str, Any]:
-    return {"id": "t1", "name": "T1", "leagueWindows": [], "habits": [], "coaches": [], **over}
+    return {"id": "t1", "leagueWindows": [], "habits": [], "coaches": [], **over}
 
 
 def _match(match_date: str = HOLIDAY, match_id: str = "m1") -> dict[str, Any]:

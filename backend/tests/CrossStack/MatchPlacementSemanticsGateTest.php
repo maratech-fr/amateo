@@ -207,7 +207,6 @@ final class MatchPlacementSemanticsGateTest extends KernelTestCase
             'matches' => [['id' => 'm1', 'teamId' => 't1', 'date' => self::SATURDAY, 'kind' => 'TO_PLACE']],
             'venues' => [[
                 'id' => 'v1',
-                'name' => 'V1',
                 'matchWindows' => [['dayOfWeek' => 6, 'start' => '13:00', 'end' => '22:30']],
                 'unavailabilities' => [['startDate' => '2026-10-01', 'endDate' => '2026-10-05']],
             ]],
@@ -313,7 +312,6 @@ final class MatchPlacementSemanticsGateTest extends KernelTestCase
             'matches' => [['id' => 'm1', 'teamId' => 't1', 'date' => self::HOLIDAY_WEDNESDAY, 'kind' => 'TO_PLACE']],
             'venues' => [[
                 'id' => 'v1',
-                'name' => 'V1',
                 'matchWindows' => [
                     ['dayOfWeek' => 3, 'start' => '18:00', 'end' => '22:00'],
                     ['appliesOnPublicHolidays' => true, 'start' => '10:00', 'end' => '18:00'],
@@ -322,7 +320,6 @@ final class MatchPlacementSemanticsGateTest extends KernelTestCase
             ]],
             'teams' => [[
                 'id' => 't1',
-                'name' => 'T1',
                 'leagueWindows' => [['dayOfWeek' => 3, 'kickoffMin' => '18:00', 'kickoffMax' => '20:00']],
                 'habits' => [],
                 'coaches' => [],
@@ -439,7 +436,7 @@ final class MatchPlacementSemanticsGateTest extends KernelTestCase
         for ($i = 0; $i < $fixedCount; ++$i) {
             $matches[] = ['id' => 'fx' . $i, 'teamId' => 'fix' . $i, 'date' => self::SATURDAY, 'kind' => 'FIXED', 'venueId' => 'w' . $i, 'kickoff' => '15:00'];
             $venues[] = $this->venue('w' . $i, [['13:00', '22:30']]);
-            $teams[] = ['id' => 'fix' . $i, 'name' => 'FIX' . $i, 'leagueWindows' => [], 'habits' => [], 'coaches' => $coaches];
+            $teams[] = ['id' => 'fix' . $i, 'leagueWindows' => [], 'habits' => [], 'coaches' => $coaches];
         }
 
         $result = $this->solve(['matches' => $matches, 'venues' => $venues, 'teams' => $teams]);
@@ -543,7 +540,6 @@ final class MatchPlacementSemanticsGateTest extends KernelTestCase
     {
         return [
             'id' => $id,
-            'name' => strtoupper($id),
             'matchWindows' => array_map(
                 static fn (array $w): array => ['dayOfWeek' => 6, 'start' => $w[0], 'end' => $w[1]],
                 $windows,
@@ -555,13 +551,13 @@ final class MatchPlacementSemanticsGateTest extends KernelTestCase
     /** @return array<string, mixed> */
     private function team(string $id): array
     {
-        return ['id' => $id, 'name' => strtoupper($id), 'leagueWindows' => [], 'habits' => [], 'coaches' => []];
+        return ['id' => $id, 'leagueWindows' => [], 'habits' => [], 'coaches' => []];
     }
 
     /** Une équipe avec une durée de match explicite — D1 : le gymnase tient [kickoff, kickoff+matchMinutes]. @return array<string, mixed> */
     private function teamWithMatchMinutes(string $id, int $matchMinutes): array
     {
-        return ['id' => $id, 'name' => strtoupper($id), 'leagueWindows' => [], 'habits' => [], 'coaches' => [], 'matchMinutes' => $matchMinutes];
+        return ['id' => $id, 'leagueWindows' => [], 'habits' => [], 'coaches' => [], 'matchMinutes' => $matchMinutes];
     }
 
     /**
@@ -574,7 +570,6 @@ final class MatchPlacementSemanticsGateTest extends KernelTestCase
     {
         return [
             'id' => $id,
-            'name' => strtoupper($id),
             'leagueWindows' => [],
             'habits' => [['dayOfWeek' => $dayOfWeek, 'kickoff' => $kickoff, 'venueId' => $venueId]],
             'coaches' => [['coachId' => $coachId, 'role' => $role]],
@@ -586,7 +581,6 @@ final class MatchPlacementSemanticsGateTest extends KernelTestCase
     {
         return [
             'id' => $id,
-            'name' => strtoupper($id),
             'leagueWindows' => [],
             'habits' => [['dayOfWeek' => $dayOfWeek, 'kickoff' => $kickoff, 'venueId' => $venueId]],
             'coaches' => [],
@@ -604,7 +598,6 @@ final class MatchPlacementSemanticsGateTest extends KernelTestCase
     {
         return [
             'id' => $id,
-            'name' => strtoupper($id),
             'leagueWindows' => [],
             'habits' => [['dayOfWeek' => $dayOfWeek, 'kickoff' => $kickoff, 'venueId' => $venueId]],
             'coaches' => [],

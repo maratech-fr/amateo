@@ -51,21 +51,18 @@
   "teams": [
     {
       "id": "u15f1",
-      "sportCategoryId": "cat-u15",
       "priorityTierId": 3,
       "name": "U15F1",
       "sessionsPerWeek": 1
     },
     {
       "id": "sm2",
-      "sportCategoryId": "cat-senior",
       "priorityTierId": 2,
       "name": "SM2",
       "sessionsPerWeek": 1
     },
     {
       "id": "sf1",
-      "sportCategoryId": "cat-senior",
       "priorityTierId": 1,
       "name": "SF1",
       "sessionsPerWeek": 1

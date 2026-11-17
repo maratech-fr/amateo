@@ -27,7 +27,7 @@ class ResultBuilderTest(unittest.TestCase):
         return {
             "clubId": "club-1",
             "seasonId": "season-1",
-            "teams": [{"id": "team-1", "priorityTierId": 3, "sportCategoryId": "sc-1", "name": "Team 1"}],
+            "teams": [{"id": "team-1", "priorityTierId": 3, "name": "Team 1"}],
             "venues": [
                 {
                     "id": "venue-1",
@@ -159,7 +159,7 @@ class ResultBuilderTest(unittest.TestCase):
 
     def test_all_teams_appear_in_output(self):
         data = self._minimal_data()
-        data["teams"].append({"id": "team-2", "priorityTierId": 2, "sportCategoryId": "sc-1", "name": "Team 2"})
+        data["teams"].append({"id": "team-2", "priorityTierId": 2, "name": "Team 2"})
         model = build_model(data)
         # Do not force any variable to 1, so team-2 has no slot.
         solver, status = self._solve(model)
@@ -930,9 +930,7 @@ class SameDayGapDiagnosticTest(unittest.TestCase):
     @staticmethod
     def _model(refs: list[dict[str, Any]] | None = None) -> dict[str, Any]:
         return {
-            "teams": [
-                {"id": "U15", "name": "U15", "priorityTierId": 3, "sportCategoryId": "c", "maxSessionsPerDay": 3}
-            ],
+            "teams": [{"id": "U15", "name": "U15", "priorityTierId": 3, "maxSessionsPerDay": 3}],
             "venues": [],
             "socleReferenceAssignments": refs or [],
         }

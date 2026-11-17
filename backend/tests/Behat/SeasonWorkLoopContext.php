@@ -85,6 +85,9 @@ final class SeasonWorkLoopContext extends BaseContext
     /** @var array<mixed> */
     private array $ruleJson = [];
 
+    /** La contrainte « SM1 pas avant 20h30 », renommée puis rétablie. */
+    private string $sm1ConstraintId = '';
+
     #[Given('un petit club réaliste dont le planning de saison est en vigueur, puis rouvert pour y retravailler')]
     public function unPetitClubSocleEnVigueurPuisRouvert(): void
     {
@@ -109,6 +112,7 @@ final class SeasonWorkLoopContext extends BaseContext
         if (!\in_array($created['status'], [200, 201], true)) {
             throw new RuntimeException(\sprintf('création de la contrainte SM1 refusée (HTTP %d)', $created['status']));
         }
+        $this->sm1ConstraintId = $this->smallClubStringField($created['json'], 'id');
     }
 
     #[Given('je réserve un créneau libre sur une case occupée du socle')]
@@ -416,10 +420,134 @@ final class SeasonWorkLoopContext extends BaseContext
         }
     }
 
+    /**
+     * « Périmé » (bannière « vos données ont changé ») ne s'affiche que pour une donnée qui peut
+     * déplacer une séance : la couleur d'un gymnase et le niveau d'une équipe qu'aucune contrainte
+     * ne vise ne partent pas au moteur. Témoin d'abord : juste après la régénération, le planning
+     * n'est pas périmé — sans quoi la suite ne prouverait rien.
+     */
+    #[When('je change la couleur d\'un gymnase et le niveau de l\'équipe Loisir')]
+    public function jeChangeLaCouleurEtLeNiveau(): void
+    {
+        if ($this->planIsStale()) {
+            throw new RuntimeException('témoin : juste après la régénération, le planning ne devrait pas être périmé');
+        }
+        $this->putBack('venues', $this->smallClubVenueIds['Gymnase Nord'], ['color' => '#2563eb']);
+        $this->putBack('teams', $this->smallClubTeamIds['Loisir'], ['level' => 'REGIONAL']);
+    }
+
+    #[Then('le planning n\'est pas signalé périmé')]
+    public function lePlanningNEstPasPerime(): void
+    {
+        if ($this->planIsStale()) {
+            throw new RuntimeException('le planning est signalé périmé alors que rien de ce qui a changé ne peut déplacer une séance');
+        }
+    }
+
+    #[When('j\'ajoute une séance par semaine à l\'équipe Loisir')]
+    public function jAjouteUneSeanceALoisir(): void
+    {
+        $this->putBack('teams', $this->smallClubTeamIds['Loisir'], ['sessionsPerWeek' => $this->smallClubTeamPlan()['Loisir']['sessionsPerWeek'] + 1]);
+    }
+
+    #[When('je la retire')]
+    public function jeLaRetire(): void
+    {
+        $this->putBack('teams', $this->smallClubTeamIds['Loisir'], ['sessionsPerWeek' => $this->smallClubTeamPlan()['Loisir']['sessionsPerWeek']]);
+    }
+
+    #[When('je renomme l\'équipe Loisir')]
+    public function jeRenommeLoisir(): void
+    {
+        $this->putBack('teams', $this->smallClubTeamIds['Loisir'], ['name' => 'Loisir Adultes']);
+    }
+
+    #[When('je lui rends son nom')]
+    public function jeLuiRendsSonNom(): void
+    {
+        $this->putBack('teams', $this->smallClubTeamIds['Loisir'], ['name' => 'Loisir']);
+    }
+
+    /**
+     * Un nom de contrainte modifié périme le planning, et lui rendre son nom efface le signal.
+     * Ne prouve PAS que l'ordre des contraintes lu en base reste hors de l'empreinte (la contrainte
+     * renommée reste la dernière en base, son ordre ne bouge pas) : ce filet-là est
+     * `PruneUnreadSnapshotFieldsCommandTest::testAVersionWithConstraintsInAnotherOrderGetsTheSortedHash`.
+     */
+    #[When('je renomme une contrainte puis lui rends son nom')]
+    public function jeRenommeUneContraintePuisLuiRendsSonNom(): void
+    {
+        $original = $this->apiGet(\sprintf('constraints/%s', $this->sm1ConstraintId), $this->smallClubToken);
+        $name = $original['json']['name'] ?? null;
+        if (!\is_string($name) || '' === $name) {
+            throw new RuntimeException('la contrainte SM1 n\'a pas de nom à rétablir');
+        }
+        $this->putBack('constraints', $this->sm1ConstraintId, ['name' => $name . ' (renommée)']);
+        if (!$this->planIsStale()) {
+            throw new RuntimeException('témoin : renommer une contrainte devrait périmer le planning (le nom fait partie de l\'envoi)');
+        }
+        $this->putBack('constraints', $this->sm1ConstraintId, ['name' => $name]);
+    }
+
+    #[Then('il est signalé périmé')]
+    public function ilEstSignalePerime(): void
+    {
+        if (!$this->planIsStale()) {
+            throw new RuntimeException('le planning devrait être signalé périmé : la donnée changée part au moteur');
+        }
+    }
+
+    #[Then('il ne l\'est plus')]
+    #[Then('il ne l\'est toujours pas')]
+    public function ilNeLEstPlus(): void
+    {
+        if ($this->planIsStale()) {
+            throw new RuntimeException('le planning est encore signalé périmé alors que la donnée est revenue à sa valeur');
+        }
+    }
+
     #[AfterScenario]
     public function nettoyer(): void
     {
         $this->teardownSmallClub();
+    }
+
+    /**
+     * Le signal de l'écran Planning : l'empreinte COURANTE du plan (`structure-hash`) diffère du
+     * `snapshotHash` de la version régénérée.
+     */
+    private function planIsStale(): bool
+    {
+        $version = $this->apiGet(\sprintf('schedules/%s', $this->regeneratedId), $this->smallClubToken);
+        $planId = $version['json']['schedulePlanId'] ?? null;
+        $snapshotHash = $version['json']['snapshotHash'] ?? null;
+        if (!\is_string($planId) || !\is_string($snapshotHash)) {
+            throw new RuntimeException(\sprintf('la version régénérée ne porte ni plan ni empreinte (HTTP %d)', $version['status']));
+        }
+        $current = $this->apiGet(\sprintf('schedule_plans/%s/structure-hash', $planId), $this->smallClubToken);
+        $currentHash = $current['json']['currentStructureHash'] ?? null;
+        if (200 !== $current['status'] || !\is_string($currentHash)) {
+            throw new RuntimeException(\sprintf('l\'empreinte courante du plan est illisible (HTTP %d)', $current['status']));
+        }
+
+        return $currentHash !== $snapshotHash;
+    }
+
+    /**
+     * Le geste de l'écran d'édition : relire la ressource, changer un champ, tout renvoyer (PUT).
+     *
+     * @param array<string, mixed> $changes
+     */
+    private function putBack(string $resource, string $id, array $changes): void
+    {
+        $current = $this->apiGet(\sprintf('%s/%s', $resource, $id), $this->smallClubToken);
+        if (200 !== $current['status']) {
+            throw new RuntimeException(\sprintf('lecture de %s/%s refusée (HTTP %d)', $resource, $id, $current['status']));
+        }
+        $updated = $this->apiPut(\sprintf('%s/%s', $resource, $id), [...$current['json'], ...$changes], $this->smallClubToken);
+        if (200 !== $updated['status']) {
+            throw new RuntimeException(\sprintf('modification de %s/%s refusée (HTTP %d) — corps : %s', $resource, $id, $updated['status'], json_encode($updated['json'], \JSON_UNESCAPED_UNICODE | \JSON_UNESCAPED_SLASHES)));
+        }
     }
 
     /**

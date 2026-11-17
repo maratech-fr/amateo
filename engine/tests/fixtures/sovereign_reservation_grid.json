@@ -14,10 +14,10 @@
     }
   ],
   "teams": [
-    { "id": "SF1", "name": "SF1", "sportCategoryId": "seniors", "priorityTierId": 1, "sessionsPerWeek": 1 },
-    { "id": "SM1", "name": "SM1", "sportCategoryId": "seniors", "priorityTierId": 1, "sessionsPerWeek": 2 },
-    { "id": "SM2", "name": "SM2", "sportCategoryId": "seniors", "priorityTierId": 2, "sessionsPerWeek": 2 },
-    { "id": "U18", "name": "U18", "sportCategoryId": "u18", "priorityTierId": 3, "sessionsPerWeek": 1 }
+    { "id": "SF1", "name": "SF1", "priorityTierId": 1, "sessionsPerWeek": 1 },
+    { "id": "SM1", "name": "SM1", "priorityTierId": 1, "sessionsPerWeek": 2 },
+    { "id": "SM2", "name": "SM2", "priorityTierId": 2, "sessionsPerWeek": 2 },
+    { "id": "U18", "name": "U18", "priorityTierId": 3, "sessionsPerWeek": 1 }
   ],
   "coaches": [
     { "id": "coachA", "firstName": "A", "lastName": "Joueur-SM1" },

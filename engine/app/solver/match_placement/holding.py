@@ -22,7 +22,7 @@ from datetime import date
 
 from app.schemas.match_input_schema import MatchPlacementInputSchema, MatchSchema, MatchTeamSchema
 
-from .geometry import _durations, _iso_day, _kick_in_unavailability, _minutes, _team_players
+from .geometry import _iso_day, _kick_in_unavailability, _match_minutes, _minutes, _team_players
 
 BUDGET = 10_000
 
@@ -142,7 +142,7 @@ def _fixed_need(
     """Le besoin d'un match figé : ses principaux, moins ceux qu'une séance retient déjà ou dont une plage
     du module Matchs contient le coup d'envoi. Ceux sans match à placer ce jour-là passent devant."""
     assert match.kickoff is not None  # nosec B101 -- l'appelant ne garde que les matchs ancrés
-    match_min, _ = _durations(team)
+    match_min = _match_minutes(team)
     start = _minutes(match.kickoff)
     end = start + match_min
 
@@ -198,7 +198,7 @@ def fixed_person_windows(
         assignment = assign(_fixed_need(input_data, match, team, occupancies, busy) for match, team in fixed)
         for match, team in fixed:
             assert match.kickoff is not None  # nosec B101 -- filtré ci-dessus
-            match_min, _ = _durations(team)
+            match_min = _match_minutes(team)
             start = _minutes(match.kickoff)
             holder = assignment.holders.get(match.id)
             mains = _mains(team)

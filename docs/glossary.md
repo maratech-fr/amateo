@@ -77,11 +77,11 @@
 | **Écart au socle** (`SocleDeviation`) / **Bilan par rang** | Comparaison créneau par créneau entre le socle et une version de FERMETURE `COMPLETED` : `moved[]` (appariement chronologique socle→période, `to.slotId` vise la carte de la grille) et `unplaced[]` (reliquat sans contrepartie, `reason` motivée ou nulle). Le **bilan par rang** (`teams[]`, `ranks[]`) en est tiré : par équipe, séances gardées / perdues / retirées par choix / nouvelles ; une séance est « commune avec » une autre équipe quand elles tiennent la même case dans un bloc de mutualisation déclaré. Calculé par `SocleDeviationCalculator`, servi en LECTURE par `GET /api/schedules/{id}/socle-deviation`. Marqué dans la grille par un symbole ⇄ (token `--diff`, violet) AVANT le nom d'équipe — jamais un mot à l'écran, jamais de légende. |
 | **Garder ses créneaux de saison** (`ConstraintFamily::SEASON_SLOTS`) | Préférence TEAM, toujours PRÉFÉRÉE, sans config — créée par « Transférer au planning » pour une équipe dont le coach a coché « garder mes créneaux habituels ». Famille FILTRÉE du payload moteur : son effet passe par `socleReferenceAssignments` en régime `keep` (détail : `engine/docs/constraint-vocabulary.md` §Référence socle), pas par une contrainte reçue. Visible/supprimable à l'étape Équipes en mode période (pastille `PeriodTeams`). |
 
-## Payload backend↔engine (contrat `CONTRACT_VERSION`, actuel 1.11)
+## Payload backend↔engine (contrat `CONTRACT_VERSION`, actuel 1.12)
 
-Clés racine : `version` · `clubId` · `seasonId` · `scheduleName` · `solverSeed` (déterminisme) ·
+Clés racine : `version` · `clubId` · `seasonId` · `solverSeed` (déterminisme) ·
 `solverTimeoutSeconds` (**plafond**, jamais le budget réel — paliers adaptatifs 60/180/600 s) ·
-`venues` · `teams` · `coaches` · `constraints` · `slotTemplates` · `priorityTiers`.
+`venues` · `teams` · `coaches` · `constraints` · `slotTemplates`.
 
 | Clé | Sens |
 |-----|------|

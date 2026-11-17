@@ -103,7 +103,6 @@ class TeamStateProcessor extends AbstractStateProcessor
         $entity->setMatchDay($input->matchDay);
         $entity->setForcedVenueId($input->forcedVenueId);
         $entity->setIsActive($input->isActive ?? true);
-        $entity->setParentTeamId($input->parentTeamId);
 
         $isCtc = $input->isCtc ?? false;
         $entity->setIsCtc($isCtc);
@@ -200,9 +199,6 @@ class TeamStateProcessor extends AbstractStateProcessor
         }
         if (null !== $input->forcedVenueId) {
             $entity->setForcedVenueId($input->forcedVenueId);
-        }
-        if (null !== $input->parentTeamId) {
-            $entity->setParentTeamId($input->parentTeamId);
         }
         $entity->setIsActive($input->isActive ?? $entity->getIsActive());
 

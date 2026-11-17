@@ -81,10 +81,6 @@ class ConstraintResource
     #[Groups(['read'])]
     public int $sortOrder = 0;
 
-    /** N→N+1 lineage: source constraint of the season-transition copy. */
-    #[Groups(['read'])]
-    public ?string $parentConstraintId = null;
-
     /**
      * Ce que l'enregistrement d'une fermeture de gymnase a retiré des plannings de période (verrous
      * et réservations au gymnase fermé, ces jours-là) ; null hors de ce geste.
@@ -114,7 +110,6 @@ class ConstraintResource
         $dto->calendarEntryId = $entity->getCalendarEntryId();
         $dto->isActive = $entity->getIsActive();
         $dto->sortOrder = $entity->getSortOrder();
-        $dto->parentConstraintId = $entity->getParentConstraintId();
 
         return $dto;
     }

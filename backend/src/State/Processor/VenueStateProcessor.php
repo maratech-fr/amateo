@@ -71,9 +71,6 @@ class VenueStateProcessor extends AbstractStateProcessor
         if (null !== $input->name) {
             $entity->setName($input->name);
         }
-        if (null !== $input->isExternal) {
-            $entity->setIsExternal($input->isExternal);
-        }
         if (null !== $input->color) {
             $entity->setColor($input->color);
         }
@@ -94,9 +91,6 @@ class VenueStateProcessor extends AbstractStateProcessor
         }
         if (null !== $input->isActive) {
             $entity->setIsActive($input->isActive);
-        }
-        if (null !== $input->parentVenueId) {
-            $entity->setParentVenueId($input->parentVenueId);
         }
         if (null !== $input->canSplit) {
             $entity->setCanSplit($input->canSplit);
@@ -126,9 +120,6 @@ class VenueStateProcessor extends AbstractStateProcessor
         }
         if (null !== $input->name) {
             $entity->setName($input->name);
-        }
-        if (null !== $input->isExternal) {
-            $entity->setIsExternal($input->isExternal);
         }
         if (null !== $input->color) {
             $entity->setColor($input->color);
@@ -168,9 +159,6 @@ class VenueStateProcessor extends AbstractStateProcessor
         }
         if (null !== $input->isActive) {
             $entity->setIsActive($input->isActive);
-        }
-        if (null !== $input->parentVenueId) {
-            $entity->setParentVenueId($input->parentVenueId);
         }
         // canSplit was silently dropped on update → toggling "terrain divisible"
         // never persisted, so the per-slot capacity control never appeared and the

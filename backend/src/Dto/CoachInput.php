@@ -51,7 +51,4 @@ class CoachInput
     #[Assert\Choice(callback: [CoachGender::class, 'values'], message: 'Genre de coach inconnu.')]
     #[Groups(['write'])]
     public ?string $gender = null;
-
-    #[Groups(['write'])]
-    public ?string $parentCoachId = null;
 }

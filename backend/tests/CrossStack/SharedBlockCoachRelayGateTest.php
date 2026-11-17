@@ -308,7 +308,7 @@ final class SharedBlockCoachRelayGateTest extends TestCase
     /** @return array<string, mixed> */
     private function team(string $id): array
     {
-        return ['id' => $id, 'name' => strtoupper($id), 'sportCategoryId' => 'cat', 'priorityTierId' => 3, 'sessionsPerWeek' => 1];
+        return ['id' => $id, 'name' => strtoupper($id), 'priorityTierId' => 3, 'sessionsPerWeek' => 1];
     }
 
     /**

@@ -20,7 +20,6 @@
   "teams": [
     {
       "id": "greedy-team",
-      "sportCategoryId": "senior",
       "priorityTierId": 1,
       "name": "Greedy Team",
       "sessionsPerWeek": 50

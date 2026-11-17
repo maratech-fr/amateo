@@ -1176,6 +1176,11 @@ jobs:
           # réaligne les empreintes depuis les snapshots. Sans ce gate, tous les plannings pourraient
           # paraître périmés à tort, ou un planning vraiment périmé cesser de l'être.
           FILES="$FILES tests/Integration/Command/NormalizeTeamCoachSnapshotsCommandTest.php"
+          # Axes planning lifecycle + generation pipeline + tenant isolation : la commande lancée par la
+          # mise en prod retire du snapshot les champs que le moteur ne lit plus et recalcule l'empreinte
+          # triée. Sans ce gate, tous les plannings pourraient paraître périmés à tort, une version en
+          # cours être réécrite, ou un club être lu sous le contexte d'un autre.
+          FILES="$FILES tests/Integration/Command/PruneUnreadSnapshotFieldsCommandTest.php"
           # Lot 3B PR A (axes constraint semantics + backend↔engine contract) — « un coach suffit »
           # (Q4B) : dès qu'une séance a plusieurs coachs requis, UN coach disponible suffit, l'UNION des
           # coachs des membres servant une séance de BLOC. De bout en bout contre le VRAI moteur

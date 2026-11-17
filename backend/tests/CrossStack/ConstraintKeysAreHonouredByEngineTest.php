@@ -380,7 +380,7 @@ final class ConstraintKeysAreHonouredByEngineTest extends TestCase
     /** @return array<string, mixed> */
     private function team(string $id, ?int $matchDay = null): array
     {
-        $team = ['id' => $id, 'name' => strtoupper($id), 'sportCategoryId' => 'cat', 'priorityTierId' => 3, 'sessionsPerWeek' => 1];
+        $team = ['id' => $id, 'name' => strtoupper($id), 'priorityTierId' => 3, 'sessionsPerWeek' => 1];
         if (null !== $matchDay) {
             $team['matchDay'] = $matchDay;
         }

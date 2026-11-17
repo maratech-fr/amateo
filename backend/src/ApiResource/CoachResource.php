@@ -72,9 +72,6 @@ class CoachResource
     #[Groups(['read'])]
     public string $gender = 'UNSPECIFIED';
 
-    #[Groups(['read'])]
-    public ?string $parentCoachId = null;
-
     public static function fromEntity(Coach $entity): self
     {
         $dto = new self;
@@ -91,7 +88,6 @@ class CoachResource
         $dto->isEmployee = $entity->isEmployee();
         $dto->isVehicled = $entity->isVehicled();
         $dto->gender = $entity->getGender()->value;
-        $dto->parentCoachId = $entity->getParentCoachId();
 
         return $dto;
     }

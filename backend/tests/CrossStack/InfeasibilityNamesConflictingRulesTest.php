@@ -129,7 +129,7 @@ final class InfeasibilityNamesConflictingRulesTest extends TestCase
             'clubId' => 'club-proof',
             'seasonId' => 'season-proof',
             'solverSeed' => 42,
-            'teams' => [['id' => self::TEAM, 'name' => self::TEAM, 'sportCategoryId' => 'cat', 'priorityTierId' => 3, 'sessionsPerWeek' => 1]],
+            'teams' => [['id' => self::TEAM, 'name' => self::TEAM, 'priorityTierId' => 3, 'sessionsPerWeek' => 1]],
             'venues' => [[
                 'id' => self::VENUE,
                 'name' => 'Gymnase A',

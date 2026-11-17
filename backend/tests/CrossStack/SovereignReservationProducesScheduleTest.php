@@ -174,7 +174,7 @@ final class SovereignReservationProducesScheduleTest extends TestCase
             'clubId' => 'club-only-exception',
             'seasonId' => 'season-only-exception',
             'solverSeed' => 42,
-            'teams' => [['id' => 'U21M1', 'name' => 'U21M1', 'sportCategoryId' => 'cat', 'priorityTierId' => 3, 'sessionsPerWeek' => 1]],
+            'teams' => [['id' => 'U21M1', 'name' => 'U21M1', 'priorityTierId' => 3, 'sessionsPerWeek' => 1]],
             'venues' => [[
                 'id' => self::COMMON_VENUE,
                 'name' => 'Gymnase A',
@@ -219,7 +219,7 @@ final class SovereignReservationProducesScheduleTest extends TestCase
     /** @return array<string, mixed> */
     private function team(string $id): array
     {
-        return ['id' => $id, 'name' => strtoupper($id), 'sportCategoryId' => 'cat', 'priorityTierId' => 3, 'sessionsPerWeek' => 1];
+        return ['id' => $id, 'name' => strtoupper($id), 'priorityTierId' => 3, 'sessionsPerWeek' => 1];
     }
 
     /**

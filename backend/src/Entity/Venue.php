@@ -12,7 +12,6 @@ use Doctrine\ORM\Mapping as ORM;
 #[ORM\Entity(repositoryClass: VenueRepository::class)]
 #[ORM\Table(name: 'venue')]
 #[ORM\Index(name: 'idx_venue_club_season', columns: ['club_id', 'season_id'])]
-#[ORM\Index(name: 'idx_venue_parent', columns: ['parent_venue_id'])]
 #[ORM\HasLifecycleCallbacks]
 class Venue implements TenantOwnedInterface
 {
@@ -38,9 +37,6 @@ class Venue implements TenantOwnedInterface
 
     #[ORM\Column(type: 'string', length: 180)]
     private string $name;
-
-    #[ORM\Column(type: 'boolean')]
-    private bool $isExternal = false;
 
     #[ORM\Column(type: 'boolean', options: ['default' => false])]
     private bool $canSplit = false;
@@ -76,9 +72,6 @@ class Venue implements TenantOwnedInterface
 
     #[ORM\Column(type: 'boolean')]
     private bool $isActive = true;
-
-    #[ORM\Column(type: 'guid', nullable: true)]
-    private ?string $parentVenueId = null;
 
     public function __construct()
     {
@@ -167,23 +160,6 @@ class Venue implements TenantOwnedInterface
     public function setName(string $name): self
     {
         $this->name = $name;
-
-        return $this;
-    }
-
-    public function getIsExternal(): bool
-    {
-        return $this->isExternal;
-    }
-
-    public function isIsExternal(): bool
-    {
-        return $this->isExternal;
-    }
-
-    public function setIsExternal(bool $isExternal): self
-    {
-        $this->isExternal = $isExternal;
 
         return $this;
     }
@@ -334,18 +310,6 @@ class Venue implements TenantOwnedInterface
     public function setIsActive(bool $isActive): self
     {
         $this->isActive = $isActive;
-
-        return $this;
-    }
-
-    public function getParentVenueId(): ?string
-    {
-        return $this->parentVenueId;
-    }
-
-    public function setParentVenueId(?string $parentVenueId): self
-    {
-        $this->parentVenueId = $parentVenueId;
 
         return $this;
     }

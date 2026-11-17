@@ -24,14 +24,12 @@ def test_capacity_2_slot_allows_two_teams() -> None:
             "teams": [
                 {
                     "id": "team-a",
-                    "sportCategoryId": "sc-1",
                     "priorityTierId": 3,
                     "name": "Team A",
                     "sessionsPerWeek": 1,
                 },
                 {
                     "id": "team-b",
-                    "sportCategoryId": "sc-1",
                     "priorityTierId": 3,
                     "name": "Team B",
                     "sessionsPerWeek": 1,
@@ -67,14 +65,12 @@ def test_capacity_1_slot_allows_only_one_team() -> None:
             "teams": [
                 {
                     "id": "team-a",
-                    "sportCategoryId": "sc-1",
                     "priorityTierId": 3,
                     "name": "Team A",
                     "sessionsPerWeek": 1,
                 },
                 {
                     "id": "team-b",
-                    "sportCategoryId": "sc-1",
                     "priorityTierId": 3,
                     "name": "Team B",
                     "sessionsPerWeek": 1,
@@ -114,7 +110,6 @@ def test_capacity_0_slot_is_rejected_by_validation() -> None:
                 "teams": [
                     {
                         "id": "team-a",
-                        "sportCategoryId": "sc-1",
                         "priorityTierId": 3,
                         "name": "Team A",
                         "sessionsPerWeek": 1,

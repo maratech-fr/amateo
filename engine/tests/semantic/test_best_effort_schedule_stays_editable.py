@@ -339,9 +339,9 @@ def _seniors_before_younger() -> dict[str, Any]:
     Minimes (19:30). Les âges rendent ce lundi contraire à « les plus jeunes d'abord », règle implicite dure."""
     return make_payload(
         teams=[
-            {**_named("T", "Seniors A"), "ageMin": 35, "ageMax": 99},
-            {**_named("U", "Cadets"), "ageMin": 15, "ageMax": 16},
-            {**_named("X", "Minimes"), "ageMin": 13, "ageMax": 14},
+            {**_named("T", "Seniors A"), "ageMin": 35},
+            {**_named("U", "Cadets"), "ageMin": 15},
+            {**_named("X", "Minimes"), "ageMin": 13},
         ],
         venues=[make_venue("V", [(1, "18:00"), (1, "19:30"), (FRIDAY, "18:00")])],
         constraints=[_rule("d", "T", "DAY", {"forcedDays": [FRIDAY]}, "Vendredi imposé")],

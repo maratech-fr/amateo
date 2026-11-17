@@ -332,9 +332,8 @@ final class TeamApiTest extends WebTestCase
      * « level: null efface » ; or un PUT qui OMET `level` est indiscernable d'un PUT
      * qui l'efface (`?string` des deux côtés) : renommer une équipe par un client
      * minimal effaçait son niveau — donc son tag NIVEAU du payload solveur — en
-     * silence. Nouveau contrat, aligné sur forcedVenueId/matchDay/minSessionsOverride/
-     * parentTeamId : ABSENT (ou null) = ON GARDE. Effacer un niveau par l'API devient
-     * impossible — assumé.
+     * silence. Nouveau contrat, aligné sur forcedVenueId/matchDay/minSessionsOverride :
+     * ABSENT (ou null) = ON GARDE. Effacer un niveau par l'API devient impossible — assumé.
      */
     public function testAbsentLevelKeepsTheCurrentValueOnUpdate(): void
     {
@@ -361,6 +360,30 @@ final class TeamApiTest extends WebTestCase
         // Le témoin « une valeur EXPLICITE agit toujours » n'est pas dupliqué ici :
         // `EngagedTeamGuardTest::testAnEngagedTeamCannotChangeLevel` prouve qu'un
         // `level` explicite atteint la garde (409) — le champ n'est pas devenu inerte.
+    }
+
+    /**
+     * Un client qui envoie encore le lien de saison retiré (`parentTeamId`, ENG-60) reçoit la
+     * réponse normale : la clé est ignorée en silence, jamais servie en retour.
+     */
+    public function testARetiredSeasonLinkSentToTheApiIsIgnored(): void
+    {
+        $client = $this->client;
+        $client->loginUser($this->user);
+
+        $client->request('POST', '/api/teams', [], [], [
+            'CONTENT_TYPE' => 'application/ld+json',
+        ], json_encode([
+            'name' => 'U13 Filles 1',
+            'sportCategoryId' => $this->sportCategory->getId(),
+            'priorityTierId' => $this->priorityTier->getId(),
+            'parentTeamId' => '55555555-5555-4555-8555-555555555555',
+        ], \JSON_THROW_ON_ERROR));
+
+        self::assertResponseStatusCodeSame(201);
+        $data = json_decode((string) $client->getResponse()->getContent(), true);
+        self::assertSame('U13 Filles 1', $data['name']);
+        self::assertArrayNotHasKey('parentTeamId', $data, 'le lien de saison n\'est plus servi');
     }
 
     public function testInvalidLevelIsRejected(): void

@@ -47,9 +47,6 @@ class VenueResource
     public string $name = '';
 
     #[Groups(['read'])]
-    public bool $isExternal = false;
-
-    #[Groups(['read'])]
     public ?string $color = null;
 
     #[Groups(['read'])]
@@ -81,9 +78,6 @@ class VenueResource
     #[Groups(['read'])]
     public bool $isActive = false;
 
-    #[Groups(['read'])]
-    public ?string $parentVenueId = null;
-
     /** Divisible court — a slot here can host 2 teams (per-slot capacity). */
     #[Groups(['read'])]
     public bool $canSplit = false;
@@ -96,7 +90,6 @@ class VenueResource
         $dto->createdAt = $entity->getCreatedAt();
         $dto->updatedAt = $entity->getUpdatedAt();
         $dto->name = $entity->getName();
-        $dto->isExternal = $entity->getIsExternal();
         $dto->color = $entity->getColor();
         $dto->latitude = $entity->getLatitude();
         $dto->longitude = $entity->getLongitude();
@@ -105,7 +98,6 @@ class VenueResource
         $dto->externalRef = $entity->getExternalRef();
         $dto->externalLabels = $entity->getExternalLabels();
         $dto->isActive = $entity->getIsActive();
-        $dto->parentVenueId = $entity->getParentVenueId();
         $dto->canSplit = $entity->getCanSplit();
 
         return $dto;

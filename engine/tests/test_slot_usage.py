@@ -21,21 +21,18 @@ def _build_input_with_three_tiers() -> ScheduleInputSchema:
             "teams": [
                 {
                     "id": "team-s",
-                    "sportCategoryId": "sc-1",
                     "priorityTierId": 1,  # S tier (weight=10000)
                     "name": "Team S",
                     "sessionsPerWeek": 1,
                 },
                 {
                     "id": "team-c",
-                    "sportCategoryId": "sc-1",
                     "priorityTierId": 4,  # C tier (weight=10)
                     "name": "Team C",
                     "sessionsPerWeek": 1,
                 },
                 {
                     "id": "team-d",
-                    "sportCategoryId": "sc-1",
                     "priorityTierId": 5,  # D tier (weight=1)
                     "name": "Team D",
                     "sessionsPerWeek": 1,

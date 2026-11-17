@@ -196,7 +196,7 @@ final class OneCoachHoldsTheSessionGateTest extends TestCase
     /** @return array<string, mixed> */
     private function team(string $id): array
     {
-        return ['id' => $id, 'name' => $id, 'sportCategoryId' => 'cat', 'priorityTierId' => 3, 'sessionsPerWeek' => 1];
+        return ['id' => $id, 'name' => $id, 'priorityTierId' => 3, 'sessionsPerWeek' => 1];
     }
 
     /** @return array<string, mixed> */
