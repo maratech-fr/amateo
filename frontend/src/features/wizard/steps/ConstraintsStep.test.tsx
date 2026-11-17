@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { listboxTrigger, openListbox, pickListboxOption } from "@/test/pickListboxOption";
 import { renderWithProviders } from "@/test/utils";
 import { WIZARD_TEXTS } from "../texts";
+import { TEAMS_TEXTS } from "../texts/teams";
 
 import type { Constraint, ImplicitRuleSetting, SharedTrainingBlock } from "../api";
 import { isAlwaysObjective } from "@/shared/lib/implicitRules";
@@ -1335,9 +1336,12 @@ describe("ConstraintsStep — période : choisir, nommer, atteindre", () => {
     expect(coachRule?.detail).toContain("MÊME gymnase");
     expect(coachRule?.detail).toContain("autorisées");
 
-    // Aucune règle du produit ne doit renvoyer vers un réglage inexistant.
+    // Aucune règle du produit ne renvoie vers un réglage inexistant : l'exception « séances par
+    // jour » nomme le bouton et l'onglet RÉELS, lus dans les clés que l'écran affiche
+    // (`TeamsStep.tsx` : aria-label `linksOfTeam`, `TeamLinksModal.tsx` : onglet `dailyCapTab`).
     const perDay = PRODUCT_RULES.find((r) => "one-session-per-day" === r.id);
-    expect(perDay?.detail).not.toMatch(/sauf si|autoris/i);
+    expect(perDay?.detail).toContain(TEAMS_TEXTS.linksOfTeam("l'équipe"));
+    expect(perDay?.detail).toContain(`« ${TEAMS_TEXTS.dailyCapTab} »`);
 
     // Le minimum de séances est une CIBLE, pas une loi (honnêteté du produit).
     const minimum = PRODUCT_RULES.find((r) => "team-minimum-target" === r.id);
