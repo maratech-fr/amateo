@@ -1663,6 +1663,50 @@ final class ParcImportExecuteTest extends WebTestCase
         self::assertSame(1, $this->foreignCapOf($foreign), 'homonymie : l\'équipe de l\'autre club reste à 1');
     }
 
+    /**
+     * Une cible d'équipe d'une AUTRE SAISON du même club est refusée comme un id inexistant (même 422, même
+     * message : pas d'oracle) et l'équipe de l'autre saison n'est jamais relevée. Jumeau : la cible d'un autre
+     * club, {@see testDailyCapRaiseNeverTouchesAnotherClubTeam}.
+     */
+    public function testACibleIdFromAnotherSeasonOfTheSameClubIsRefusedLikeAnUnknownId(): void
+    {
+        $previousSeason = (new Season)
+            ->setClubId($this->club->getId())->setName('2025-2026')
+            ->setStartDate(new DateTimeImmutable('2025-07-01'))->setEndDate(new DateTimeImmutable('2026-06-30'))
+            ->setStatus(SeasonStatus::ARCHIVED)->setTransitionData([]);
+        $this->em->persist($previousSeason);
+        $this->em->flush();
+        $oldTeam = (new Team)
+            ->setClubId($this->club->getId())->setSeasonId($previousSeason->getId())
+            ->setSportCategoryId($this->uuid())->setPriorityTierId(3)
+            ->setName('SM1')->setSessionsPerWeek(2)->setIsActive(true);
+        $this->em->persist($oldTeam);
+        $this->em->flush();
+        $oldTeamId = $oldTeam->getId();
+        $teamsBefore = $this->rowCount('team');
+
+        $parc = $this->mondayParc([['09:00', 90], ['18:00', 90]], ['SM1']);
+        $decisionsTargeting = static fn (string $cibleId): array => [
+            ['section' => 'equipes', 'index' => 0, 'coche' => true, 'cibleId' => $cibleId],
+            ['section' => 'reservations', 'index' => 0, 'coche' => true],
+            ['section' => 'reservations', 'index' => 1, 'coche' => true],
+        ];
+
+        [$otherSeason, $otherSeasonBody] = $this->import($parc, $decisionsTargeting($oldTeamId));
+        [$unknown, $unknownBody] = $this->import($parc, $decisionsTargeting($this->uuid()));
+
+        self::assertSame(422, $otherSeason, 'une équipe d\'une autre saison du club est refusée : ' . json_encode($otherSeasonBody, \JSON_UNESCAPED_UNICODE));
+        self::assertStringContainsString('Équipe introuvable', implode(' ', $otherSeasonBody['errors'] ?? []));
+        self::assertSame([$unknown, $unknownBody], [$otherSeason, $otherSeasonBody], 'même réponse qu\'un id inexistant : pas d\'oracle');
+        self::assertSame($teamsBefore, $this->rowCount('team'), 'rien écrit');
+
+        $this->em->clear();
+        $reloaded = $this->em->getRepository(Team::class)->find($oldTeamId);
+        self::assertInstanceOf(Team::class, $reloaded);
+        self::assertSame(1, $reloaded->getMaxSessionsPerDay(), 'l\'équipe de l\'autre saison n\'est pas relevée');
+        self::assertSame(2, $reloaded->getSessionsPerWeek(), 'ni ses séances');
+    }
+
     // ───────────────────────── Cap payant (grille 20 / 34 / 35+) ─────────────────────────
 
     /**
