@@ -225,6 +225,46 @@ final class SocleReferencePayloadParityTest extends KernelTestCase
         self::assertArrayNotHasKey('socleReferenceAssignments', $run['schedule']->getSnapshotData());
     }
 
+    /**
+     * PR 1a (D1) — le COMBLEMENT n'émet aucune référence `keep`, y compris pour une équipe qui porte « garder ses créneaux de
+     * saison » : sa référence est celle du comblement (sans `keep`, sans gymnase). Le moteur n'exempte donc de l'écart de 2 h
+     * aucune séance comblée. Falsifiable : émettre `keep` au comblement rend ce test rouge.
+     */
+    public function testFillEmitsNoKeepReferenceEvenForATeamKeepingItsSeasonSlots(): void
+    {
+        [$club, $season, $venueA, , $teamIds] = $this->seed('sr-fill-keep');
+
+        $seasonPlanId = $this->seasonPlanIdOf($season);
+        $socle = $this->schedule($club, $season, $seasonPlanId, ScheduleStatus::COMPLETED, 1);
+        $this->slot($socle, $teamIds[0], $venueA, 1, '17:00:00');
+        $this->slot($socle, $teamIds[0], $venueA, 1, '18:30:00');
+        $this->em->flush();
+        $this->pointSeasonPlanAt($seasonPlanId, $socle->getId());
+
+        $entry = $this->closurePeriod($club, $season);
+        $overlayPlanId = $this->planIdOf($entry);
+        $this->seasonSlotsConstraint($club, $season, $entry, $teamIds[0]);
+        $fillSource = $this->schedule($club, $season, $overlayPlanId, ScheduleStatus::COMPLETED, 1);
+        $this->slot($fillSource, $teamIds[1], $venueA, 5, '20:00:00');
+        $this->em->flush();
+
+        $target = $this->schedule($club, $season, $overlayPlanId, ScheduleStatus::PENDING, 2);
+
+        $run = $this->runCapture($club->getId(), $target->getId(), $fillSource->getId());
+        $payload = $run['payload'];
+        self::assertIsArray($payload);
+        self::assertArrayHasKey('socleReferenceAssignments', $payload, 'le comblement émet sa référence');
+        $forTheKeepingTeam = array_values(array_filter(
+            $payload['socleReferenceAssignments'],
+            static fn (array $reference): bool => $teamIds[0] === $reference['teamId'],
+        ));
+        self::assertCount(2, $forTheKeepingTeam, 'les deux horaires de saison de l\'équipe sont référencés');
+        foreach ($forTheKeepingTeam as $reference) {
+            self::assertFalse((bool) ($reference['keep'] ?? false), 'au comblement, jamais de référence « garder »');
+            self::assertArrayNotHasKey('venueId', $reference, 'référence de comblement : le gymnase est libre');
+        }
+    }
+
     protected function setUp(): void
     {
         self::bootKernel();
