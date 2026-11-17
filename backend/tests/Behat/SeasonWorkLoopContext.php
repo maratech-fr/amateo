@@ -84,6 +84,7 @@ final class SeasonWorkLoopContext extends BaseContext
 
     /** @var array<mixed> */
     private array $ruleJson = [];
+
     /** La contrainte « SM1 pas avant 20h30 », renommée puis rétablie. */
     private string $sm1ConstraintId = '';
 

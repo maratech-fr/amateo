@@ -267,7 +267,7 @@ final class VenueOccupancyLifecycleTest extends WebTestCase
         $target = self::getContainer()->get(SeasonTransitionService::class)->transition($season);
 
         $this->scopeGucToClub($this->club->getId());
-        $copiedVenue = (string) $this->em->getConnection()->fetchOne('SELECT id FROM venue WHERE season_id = :s AND parent_venue_id = :p', ['s' => $target->getId(), 'p' => $kept->getId()]);
+        $copiedVenue = (string) $this->em->getConnection()->fetchOne('SELECT id FROM venue WHERE season_id = :s AND name = :n', ['s' => $target->getId(), 'n' => $kept->getName()]);
         self::assertNotSame('', $copiedVenue, 'décor : le gymnase présent est copié vers la saison suivante');
         self::assertSame(
             [[$copiedVenue, 2, '14:00', 135, 'École', null]],
