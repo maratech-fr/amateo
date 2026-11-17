@@ -51,10 +51,9 @@ L'**engine** est un microservice Python qui reçoit un contexte complet (clubs, 
 
 ```json
 {
-  "version": "1.7",
+  "version": "1.12",
   "clubId": "uuid",
   "seasonId": "uuid",
-  "scheduleName": "Saison 2026-2027",
   "solverSeed": 42,
   "venues": [...],
   "teams": [...],

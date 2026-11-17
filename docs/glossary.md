@@ -79,9 +79,9 @@
 
 ## Payload backend↔engine (contrat `CONTRACT_VERSION`, actuel 1.12)
 
-Clés racine : `version` · `clubId` · `seasonId` · `scheduleName` · `solverSeed` (déterminisme) ·
+Clés racine : `version` · `clubId` · `seasonId` · `solverSeed` (déterminisme) ·
 `solverTimeoutSeconds` (**plafond**, jamais le budget réel — paliers adaptatifs 60/180/600 s) ·
-`venues` · `teams` · `coaches` · `constraints` · `slotTemplates` · `priorityTiers`.
+`venues` · `teams` · `coaches` · `constraints` · `slotTemplates`.
 
 | Clé | Sens |
 |-----|------|

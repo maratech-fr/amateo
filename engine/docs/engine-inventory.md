@@ -101,8 +101,8 @@ jeton, l'autre vérifie que deux placements restent sérialisés.
 - **Solve** : `solve_match_placement(input_data)`, dans un **processus fils jetable** depuis
   ENG-49 (voir plus haut), plus un simple thread worker. Best-effort à poids dominant : aucune
   HARD violée, le non-plaçable ressort **nommé**.
-- **Durées PAR ÉQUIPE et fenêtres personne/salle** (`match_placement/` : durées `_durations`/`STEP_MIN` dans `geometry.py`, fenêtres posées dans `_place_matches`) : chaque équipe porte
-  `matchMinutes`/`warmupMinutes` (défauts Pydantic **105/30**, résolus côté backend par
+- **Durées PAR ÉQUIPE et fenêtres personne/salle** (`match_placement/` : durées `_match_minutes`/`STEP_MIN` dans `geometry.py`, fenêtres posées dans `_place_matches`) : chaque équipe porte
+  `matchMinutes` (défaut Pydantic **105**, résolu côté backend par
   `MatchDurationResolver` — catégorie sinon défaut de famille 75/90/105). La **salle** ne tient
   que le MATCH `[kickoff, kickoff + matchMinutes]` — l'échauffement ne l'occupe plus (décision
   fondateur : « on s'échauffe sur le côté pendant le match précédent »). Une **personne** est un
@@ -111,8 +111,8 @@ jeton, l'autre vérifie que deux placements restent sérialisés.
   (domicile déjà ancré) et des `training_occupancies` : un match `AWAY` ne projette **plus aucune**
   fenêtre personne (P4-240 ③ décision B — « c'est la vie », le radar reste seul à signaler
   l'indisponibilité réelle). La fenêtre personne vaut donc toujours `[kickoff, kickoff +
-  matchMinutes]`, sans échauffement ni trajet. `warmupMinutes` reste au schéma (pas de bump) mais
-  n'est plus lu par aucune fenêtre du solveur.
+  matchMinutes]`, sans échauffement ni trajet. `warmupMinutes` a quitté le contrat (1.12) : le
+  schéma le refuse.
 - **`teams[].players`** (`MatchTeamSchema`, P4-240 ③ décision A, additif — `CONTRACT_VERSION`
   inchangée **2.25**, `max_length` **60**) : ids `CoachPlayerMembership` actifs de l'équipe, le
   backend excluant déjà toute personne qui coache AUSSI cette équipe (le rôle coach gagne, parité
@@ -289,7 +289,6 @@ Version contrat active : **`"1.12"`** (fichier `CONTRACT_VERSION`, source de vé
 | `version` | — | `str` | `"1.12"` (repli — cf. ci-dessus) |
 | `club_id` | `clubId` | `str` | requis |
 | `season_id` | `seasonId` | `str` | requis |
-| `schedule_name` | `scheduleName` | `str \| None` | `None` |
 | `solver_seed` | `solverSeed` | `int` | `42` |
 | `solver_timeout_seconds` | `solverTimeoutSeconds` | `int` | `650` |
 | `venues` | — | `list[VenueSchema]` | `[]` |
@@ -303,11 +302,11 @@ Version contrat active : **`"1.12"`** (fichier `CONTRACT_VERSION`, source de vé
 Sous-schemas clés :
 - **PreviousAssignmentSchema** : `teamId`, `venueId`, `dayOfWeek` (1-7), `startTime` (str `"19:00"`) — un placement de la génération PRÉCÉDENTE, pour le terme de **stabilité** (§POST /generate, §5 Solver). Cap `max_length` = `MAX_SLOT_TEMPLATES` (2000, même ordre de grandeur qu'un placement par séance). Patron `implicitRules` : absent/vide ⇒ chemin byte-identique. ÉMIS par le backend en régénération (`ScheduleConstraintBuilder::previousAssignments`) — absent seulement en toute première génération d'un plan.
 - **SocleReferenceAssignmentSchema** : `teamId`, `dayOfWeek` (1-7), `startTime` (str), `venueId` (optionnel), `keep` (bool, défaut `False`) — un placement de la version POINTÉE du socle, DEUX régimes exclusifs (détail des poids et du calcul plein/partiel : `engine/docs/constraint-vocabulary.md` §Référence socle). `keep` absent/`False` + SANS `venueId` = comblement PR-3 (bonus de PLACEMENT par tier, gymnase ignoré, ÉMIS uniquement en comblement). `keep: true` + `venueId` posé = « garder ses créneaux de saison » (PR 6, lot 8 — bonus plein si gymnase+jour+heure, partiel si jour+heure seuls), ÉMIS uniquement en génération PLEINE d'un plan de période pour les équipes `SEASON_SLOTS`. Cap `max_length` = `MAX_SLOT_TEMPLATES` dans les deux cas.
-- **VenueSchema** : `id`, `name`, `isExternal`, `color`, `latitude`, `longitude`, `source`, `externalRef`, `parentVenueId`, `trainingSlots: list[VenueTrainingSlotSchema]`. (contrat 1.3 — `isActive` d'entité RETIRÉ : jamais lu par le solveur ; la désactivation qui compte passe par les overrides de période, qui FILTRENT l'entité du payload en amont.)
-- **VenueTrainingSlotSchema** : `dayOfWeek`, `startTime` (str `"19:00"`), `durationMinutes`, `capacity` (≥1, default 1).
-- **TeamSchema** : `id`, `sportCategoryId`, `ageMin`, `ageMax`, `priorityTierId`, `name`, `gender`, `level`, `sessionsPerWeek`, `maxSessionsPerDay` (1 à 4, défaut 1, absent = 1 ; contrat 1.10), `matchDay`, `forcedVenueId`, `parentTeamId`, `ffbbTeamId`. (contrat 1.3 — `minSessionsOverride`, `isActive`, `tags` RETIRÉS : aucun n'était lu par le solveur ; `Team.isActive` reste un attribut d'archivage côté backend SANS effet solveur — l'override de période est LE mécanisme de désactivation.)
-- **CoachSchema** : `id`, `firstName`, `lastName`, `maxDaysOverride`, `maxDaysOverrideConfirmed`, `parentCoachId`, `isEmployee`. (contrat 1.3 — `email`/`phone` RETIRÉS, RGPD-03 : le solveur ne les lisait jamais, ils n'ont plus à voyager ni à se dupliquer dans les snapshots/feedbacks ; `isActive` RETIRÉ, jamais lu ; contrat 1.6 — `acceptableLateMinutes` RETIRÉ, levier MORT remplacé par la tolérance de SÉANCE.)
-- **ConstraintV2Schema** : unifié v2/legacy. `ConfigDict(extra="ignore")`. Champs v2 : `scope`, `scopeTargetId`, `family`, `ruleType`, `name`, `config`, `sortOrder`, `isActive`. Champs legacy v1 : `teamId`, `type`, `severity`, `value`, `metadata`.
+- **VenueSchema** : `id`, `name`, `trainingSlots: list[VenueTrainingSlotSchema]`. (contrat 1.3 — `isActive` d'entité RETIRÉ : jamais lu par le solveur ; la désactivation qui compte passe par les overrides de période, qui FILTRENT l'entité du payload en amont.)
+- **VenueTrainingSlotSchema** : `dayOfWeek`, `startTime` (str `"19:00"`, `HH:MM[:SS]` vérifié : sinon 422), `durationMinutes`, `capacity` (≥1, default 1).
+- **TeamSchema** : `id`, `ageMin`, `priorityTierId`, `name`, `sessionsPerWeek`, `maxSessionsPerDay` (1 à 4, défaut 1, absent = 1 ; contrat 1.10), `matchDay`, `forcedVenueId`. (contrat 1.12 — `sportCategoryId`, `ageMax`, `gender`, `level`, `parentTeamId`, `ffbbTeamId` RETIRÉS, jamais lus ; contrat 1.3 — `minSessionsOverride`, `isActive`, `tags` RETIRÉS : aucun n'était lu par le solveur ; `Team.isActive` reste un attribut d'archivage côté backend SANS effet solveur — l'override de période est LE mécanisme de désactivation.)
+- **CoachSchema** : `id`, `firstName`, `lastName`, `maxDaysOverride`, `maxDaysOverrideConfirmed`, `isEmployee`. (contrat 1.3 — `email`/`phone` RETIRÉS, RGPD-03 : le solveur ne les lisait jamais, ils n'ont plus à voyager ni à se dupliquer dans les snapshots/feedbacks ; `isActive` RETIRÉ, jamais lu ; contrat 1.6 — `acceptableLateMinutes` RETIRÉ, levier MORT remplacé par la tolérance de SÉANCE.)
+- **ConstraintV2Schema** : unifié v2/legacy. `ConfigDict(extra="ignore")`. Champs v2 : `scope`, `scopeTargetId`, `family`, `ruleType`, `name`, `config`, `isActive`. Champs legacy v1 : `teamId`, `type`, `severity`, `value`, `metadata`.
 - **ScheduleSlotTemplateSchema** : `id`, `teamId`, `venueId`, `coachId`, `dayOfWeek`, `startTime` (time), `durationMinutes`, `lockLevel` (default `"NONE"`), `coachLateToleranceMinutes` (0..30, défaut 0, contrat 1.6 — tolérance d’arrivée tardive de la séance), `pendingConstraintSuggestion`.
 - **PriorityTierSchema** / top-level `priorityTiers` : RETIRÉS du contrat 1.3 (schéma mort — le backend ne les a jamais émis : les tiers voyagent en contraintes `PRIORITY_TIER`, §4.3, et le solveur bâtit sa carte tier→plancher depuis CES contraintes). `extra="forbid"` refuse désormais un `priorityTiers` de tête.
 
@@ -328,8 +327,8 @@ Contrat **1.12** (le MÊME que `/generate` — un seul contrat pour les trois en
   `coaches: list[TeamCoachRefSchema]` ≤20 avec `role`
   MAIN/ASSISTANT, `players: list[str]` ≤60 (`MAX_PLAYERS_PER_TEAM`, P4-240 ③ décision A — ids
   `CoachPlayerMembership` actifs, additif, une joueuse pèse comme un coach MAIN),
-  `matchMinutes`/`warmupMinutes` — durées résolues par le backend, défauts
-  105/30, `forbiddenVenueIds: list[str]` (`forbidden_venue_ids`, P4-272 ④, additif, ≤50
+  `matchMinutes` — durée résolue par le backend, défaut
+  105, `forbiddenVenueIds: list[str]` (`forbidden_venue_ids`, P4-272 ④, additif, ≤50
   `MAX_MATCH_VENUES`) — gymnases INTERDITS à cette équipe, triés, `[]` par défaut ; le solveur les
   retire du domaine AVANT tout calcul de créneau, jamais choisis), cf. §POST /place-matches), **`MatchSchema`** (un match daté : `kind`
   `TO_PLACE`/`FIXED`/`AWAY`, `venueId`/`kickoff` (requis si `FIXED`), `currentVenueId`/

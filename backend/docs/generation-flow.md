@@ -126,11 +126,11 @@ Voici ce que fait la branche de base, dans l'ordre :
 
    > Exemple : ADN expose `trainingSlots: [{dayOfWeek: 2, startTime: "17:00", durationMinutes: 300, capacity: 1}, …]` — uniquement les créneaux effectivement déclarés dans le wizard.
 
-2. **Équipes actives** (`teams[]`) : récupère toutes les équipes avec leurs tags (générés par `TeamTagService`), leur niveau, leur genre, et leur nombre de séances hebdomadaires (`sessionsPerWeek`). Elles portent aussi leur plafond de séances par jour (`maxSessionsPerDay`, contrat 1.10), émis **seulement au-delà de 1** : la valeur de la période (`PeriodConstraintSelection::$maxPerDayOverrides`) l'emporte, sinon celle de la saison (`EffectiveTeamSessions::maxPerDay`) ; un club resté à 1 garde un payload, donc une empreinte, identique.
+2. **Équipes actives** (`teams[]`) : récupère toutes les équipes avec leur âge minimal (`ageMin`, de leur catégorie), leur nom, leur jour de match dérivé (`matchDay`) et leur nombre de séances hebdomadaires (`sessionsPerWeek`). Le contrat allégé (1.12) ne porte ni catégorie, ni âge maximal, ni genre, ni niveau, ni lien de saison : le solveur ne les lit pas, et leur changement ne périme donc aucun planning. Elles portent aussi leur plafond de séances par jour (`maxSessionsPerDay`, contrat 1.10), émis **seulement au-delà de 1** : la valeur de la période (`PeriodConstraintSelection::$maxPerDayOverrides`) l'emporte, sinon celle de la saison (`EffectiveTeamSessions::maxPerDay`) ; un club resté à 1 garde un payload, donc une empreinte, identique.
 
-   > Exemple : SM3 a `sessionsPerWeek: 2`, tags `["SENIOR", "MASCULINE"]`, niveau `HONNEUR`.
+   > Exemple : SM3 part avec `sessionsPerWeek: 2` et son `ageMin` ; son niveau `HONNEUR` ne part pas.
 
-3. **Entraîneurs actifs** (`coaches[]`) : récupère tous les entraîneurs, sérialisés avec leur **identité et métadonnées seules** (nom, email, `isEmployee`, `maxDaysOverride`, etc.). Leurs indisponibilités ne sont **pas** portées par l'objet coach : ce sont des contraintes `COACH_AVAILABILITY` dans `constraints[]`. Les liens d'encadrement (`TeamCoach`) sont eux aussi sérialisés en contraintes dédiées.
+3. **Entraîneurs actifs** (`coaches[]`) : récupère tous les entraîneurs, sérialisés avec leur **identité et métadonnées seules** (nom, `isEmployee`, `maxDaysOverride`, etc.). Leurs indisponibilités ne sont **pas** portées par l'objet coach : ce sont des contraintes `COACH_AVAILABILITY` dans `constraints[]`. Les liens d'encadrement (`TeamCoach`) sont eux aussi sérialisés en contraintes dédiées.
 
    > Exemple : l'objet coach de Coach 05 ne contient que son identité. Son indisponibilité du vendredi voyage dans `constraints[]` (`COACH_AVAILABILITY`, `scopeTargetId` = Coach 05, `config: {unavailableDays: [5]}` — la cible est le scope, SEC-13), et ses encadrements SM1 (MAIN) / SM2 (ASSISTANT) en contraintes issues de `TeamCoach`.
 
@@ -148,7 +148,7 @@ Le payload complet pèse généralement entre 50 et 200 Ko de JSON selon la tail
 
 ### 3c — Snapshot SHA-256
 
-Le payload construit **à ce stade** (avant la greffe de convergence ci-dessous) est hashé en SHA-256 par `ScheduleConstraintBuilder::structureHash` (maison unique de l'empreinte de structure, partagée avec `structureHashOfPlan`) : elle **ignore `version`** (un numéro de contrat n'est pas de la structure) et **les `slotTemplates` non HARD** (une séance NONE est un résultat du solveur, relu à la génération suivante ; le payload, lui, les garde). « Régénérer » est grisé seulement si l'empreinte est égale ET que le planning n'a pas été modifié à la main. Le hash est stocké sur l'entité `Schedule` dans le champ `snapshotHash`, et le payload lui-même est conservé dans `snapshotData`.
+Le payload construit **à ce stade** (avant la greffe de convergence ci-dessous) est hashé en SHA-256 par `ScheduleConstraintBuilder::structureHash` (maison unique de l'empreinte de structure, partagée avec `structureHashOfPlan`) : elle **ignore `version`** (un numéro de contrat n'est pas de la structure) et **les `slotTemplates` non HARD** (une séance NONE est un résultat du solveur, relu à la génération suivante ; le payload, lui, les garde). Elle **trie les `constraints` par id** : l'ordre lu en base n'est pas de la structure. Comme le payload n'envoie plus les champs que le solveur ne lit pas (contrat 1.12), ils n'entrent plus dans l'empreinte ; les noms, eux, y restent. « Régénérer » est grisé seulement si l'empreinte est égale ET que le planning n'a pas été modifié à la main. Le hash est stocké sur l'entité `Schedule` dans le champ `snapshotHash`, et le payload lui-même est conservé dans `snapshotData`.
 
 **À quoi ça sert ?**
 
