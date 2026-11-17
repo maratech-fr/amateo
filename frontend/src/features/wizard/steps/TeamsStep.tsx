@@ -140,15 +140,17 @@ function TeamRow({ team, number, categories, tiers, onField, onDelete, onOpenLin
         ) : null}
         {/* Repère d'entente (CTC), DEVANT le nom — « d'un coup d'œil » (D4, décision fondateur). */}
         {true === team.isCtc ? <CtcMark partner={team.ctcPartner} /> : null}
-        <ReadOnlyFieldset readOnly={!canManage} className="flex flex-wrap items-center gap-2">
+        {/* `grow basis-0` dès `sm` : la zone de saisie prend la place restante au lieu de se
+            dimensionner sur son contenu — sinon le `pr-16` du champ du nom (repère « N/jour »)
+            élargit la zone de 52 px et renvoie la corbeille à la ligne. Sous `sm`, pleine ligne. */}
+        <ReadOnlyFieldset readOnly={!canManage} className="flex grow basis-full flex-wrap items-center gap-2 sm:basis-0">
         {/* Repère « N/jour » (plus d'une séance le même jour, réglé dans Liens) : posé DANS la
-            colonne du nom, à droite du champ — une pastille de plus dans la ligne poussait la
-            corbeille seule à la ligne suivante, et les lignes n'avaient plus la même hauteur. */}
+            colonne du nom, à droite du champ, le texte coupé avant lui. */}
         <div className={cn("relative", TEAM_COLUMNS.name)}>
           <Input
             aria-label={TEAMS_TEXTS.colNameAria}
             compact
-            className={cn(dailyCap > 1 && "pr-16")}
+            className={cn(dailyCap > 1 && "pr-16 text-ellipsis")}
             value={name}
             onChange={(e) => setName(e.target.value)}
             onBlur={() => name.trim() && name !== team.name && onField(team, { name: name.trim() })}
