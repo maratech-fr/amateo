@@ -320,6 +320,36 @@ final class CapacityMirrorParityTest extends TestCase
         self::assertCount(1, $this->solve($rawPayload)['slots'], 'sans bloc, l\'unique place ne tient qu\'une séance');
     }
 
+    /**
+     * PR 1a — crédit du plancher à plafond 2 : deux verrous de t1 à V1 le MÊME lundi (18:00 et 19:30, disjoints) servent les deux
+     * séances exigées à V1 quand t1 a droit à 2 séances par jour (crédit = Σ par jour de min(verrous, plafond) = 2). Miroir et
+     * moteur se taisent ensemble. TÉMOIN : le même payload à plafond 1 (champ absent) ne crédite qu'un jour — les deux côtés
+     * signalent ensemble le plancher inatteignable.
+     */
+    public function testUnderACapOfTwoTwoLocksTheSameDayCreditTheFloorOnBothSides(): void
+    {
+        $venues = [[
+            'id' => 'v1', 'name' => 'V1',
+            'trainingSlots' => [
+                ['dayOfWeek' => 1, 'startTime' => '18:00', 'durationMinutes' => 90, 'capacity' => 1],
+                ['dayOfWeek' => 1, 'startTime' => '19:30', 'durationMinutes' => 90, 'capacity' => 1],
+            ],
+        ]];
+        $team = ['id' => 't1', 'name' => 'T1', 'sportCategoryId' => 'cat-1', 'priorityTierId' => 3, 'sessionsPerWeek' => 2];
+        $pins = [$this->pin('t1', 'v1', 1, '18:00'), [...$this->pin('t1', 'v1', 1, '19:30'), 'id' => 'pin-t1-v1-1-soir']];
+        $minTwo = [$this->minAtVenue('t1', 'v1', count: 2)];
+
+        $capped = $this->basePayload(teams: [[...$team, 'maxSessionsPerDay' => 2]], venues: $venues, constraints: $minTwo, slotTemplates: $pins);
+        self::assertSame([], $this->mirror->venueMinimumSaturation($capped), 'PARITÉ ROMPUE (PHP) : à plafond 2, deux verrous du même jour créditent 2 séances');
+        $result = $this->solve($capped);
+        self::assertSame('completed', $result['status']);
+        self::assertNotContains('venue_minimum_unreachable', array_column($result['diagnostics'] ?? [], 'type'), 'PARITÉ ROMPUE (moteur) : même crédit que le miroir');
+
+        $atOne = $this->basePayload(teams: [$team], venues: $venues, constraints: $minTwo, slotTemplates: $pins);
+        self::assertCount(1, $this->mirror->venueMinimumSaturation($atOne), 'témoin : à plafond 1, un seul jour crédité');
+        self::assertContains('venue_minimum_unreachable', array_column($this->solve($atOne)['diagnostics'] ?? [], 'type'), 'témoin : le moteur le dit aussi');
+    }
+
     protected function setUp(): void
     {
         $this->mirror = new PayloadCapacityMirror;
