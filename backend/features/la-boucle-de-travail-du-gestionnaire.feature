@@ -1,7 +1,9 @@
 # language: fr
 Fonctionnalité: La boucle de travail du gestionnaire tient à la régénération
   Le vrai geste de retouche : le gestionnaire pose une contrainte d'équipe, réserve un créneau
-  libre pour une occupation du club, verrouille une séance bien placée, puis régénère. La
+  libre pour une occupation du club, verrouille une séance bien placée, déplace une séance vers
+  un jour où l'équipe s'entraîne déjà (refusé tant qu'elle n'y est pas autorisée, accepté à deux
+  séances par jour, avec la concession nommée), la remet en place, puis régénère. La
   nouvelle version honore les trois à la fois — ce qu'on saisit, le planning le respecte, et un
   verrou est souverain. Sur un petit club réaliste (palier 60 s).
 
@@ -10,5 +12,11 @@ Fonctionnalité: La boucle de travail du gestionnaire tient à la régénératio
     Et j'interdis à SM1 de s'entraîner avant 20h30
     Et je réserve un créneau libre sur une case occupée du socle
     Et je verrouille une autre séance du socle
+    Quand j'essaie de déplacer une séance de SF1 vers un jour où elle s'entraîne déjà
+    Alors c'est refusé : une seule séance par jour
+    Quand j'autorise 2 séances par jour pour SF1 et je refais ce déplacement vers un créneau qui ne chevauche pas l'autre séance
+    Alors il est accepté, et le geste nomme la concession : deux séances à moins de 2 h d'écart
+    Quand je remets cette séance à sa case d'origine
+    Alors c'est accepté, et SF1 n'a plus qu'une séance ce jour-là
     Quand je régénère le planning de saison du petit club
     Alors la régénération aboutit : le verrou tient sa case, la case réservée reste vide, et SM1 n'a aucune séance avant 20h30

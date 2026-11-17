@@ -10,6 +10,7 @@ use App\Tests\Behat\ConflictResolutionContext;
 use App\Tests\Behat\ConflictsToCoachesContext;
 use App\Tests\Behat\ConflictTruthContext;
 use App\Tests\Behat\ConstraintHonoredContext;
+use App\Tests\Behat\DailyCapSmallClubContext;
 use App\Tests\Behat\DemoRetainedContext;
 use App\Tests\Behat\ExportContext;
 use App\Tests\Behat\FbiCorrectionContext;
@@ -66,6 +67,11 @@ return (new Config)
                 new Suite('boucle-travail')
                     ->withPaths('%paths.base%/features/la-boucle-de-travail-du-gestionnaire.feature')
                     ->withContexts(SeasonWorkLoopContext::class),
+            )
+            ->withSuite(
+                new Suite('deux-seances-par-jour')
+                    ->withPaths('%paths.base%/features/une-equipe-s-entraine-deux-fois-le-meme-jour.feature')
+                    ->withContexts(DailyCapSmallClubContext::class),
             )
             ->withSuite(
                 new Suite('onboarding')

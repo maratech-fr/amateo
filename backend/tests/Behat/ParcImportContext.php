@@ -28,7 +28,9 @@ use RuntimeException;
  *    {@see ParcImportReservationSemanticsGateTest} (NR bloquant) ;
  *  - case à 2 équipes + groupe → bloc mutualisé nommé : {@see ParcImportExecuteTest::testACaseWithAGroupeCreatesABlockLabelledByThatGroupe}.
  * Cette feature prouve l'ENCHAÎNEMENT réel : l'aperçu dérivé, l'import qui pose la réservation au socle
- * (schedulePlanId null) ET crée le bloc mutualisé nommé de la case à deux équipes.
+ * (schedulePlanId null) ET crée le bloc mutualisé nommé de la case à deux équipes ; et qu'une équipe à
+ * deux cases le même jour est relevée à deux séances par jour, annoncé une seule fois, ce que le
+ * récapitulatif lit ensuite (cas nombreux du relèvement : {@see ParcImportExecuteTest}).
  *
  * Décor : club de démonstration (patron {@see TeamsImportContext} + {@see SoclePlansContext}). Tout ce
  * que l'import crée porte un nom jetable (préfixe « ZZQWXYBEHAT »), purgé en fin de scénario. Le socle
@@ -66,6 +68,9 @@ final class ParcImportContext extends BaseContext
     private array $importJson = [];
 
     private int $importStatus = 0;
+
+    /** Le parc où TEAM_A a deux cases le lundi (09:00 et 18:00) au lieu du parc de deux équipes. */
+    private bool $doubledMondayParc = false;
 
     // ───────────────────────────── Décor ─────────────────────────────
 
@@ -222,6 +227,65 @@ final class ParcImportContext extends BaseContext
         }
     }
 
+    // ─────────────────────── Deux cases le même jour ───────────────────────
+
+    #[When('j\'importe un parc où ma première équipe a deux cases le lundi, à 09:00 et à 18:00')]
+    public function jImporteUnParcDoubleLeLundi(): void
+    {
+        $this->doubledMondayParc = true;
+        [$this->importStatus, $this->importJson] = $this->postImport();
+    }
+
+    #[When('j\'importe de nouveau le même parc')]
+    public function jImporteDeNouveauLeMemeParc(): void
+    {
+        [$this->importStatus, $this->importJson] = $this->postImport();
+    }
+
+    #[Then('l\'import réussit et annonce 2 séances par jour autorisées pour cette équipe, d\'après ses cases du lundi')]
+    public function lImportAnnonceDeuxSeancesParJour(): void
+    {
+        $this->lImportReussit();
+        $raised = array_values(array_filter($this->dailyCaps(), static fn (array $c): bool => self::TEAM_A === ($c['teamName'] ?? null) && 'raised' === ($c['outcome'] ?? null)));
+        if (1 !== \count($raised)) {
+            throw new RuntimeException(\sprintf('l\'import devrait annoncer UN relèvement pour « %s » — dailyCaps : %s', self::TEAM_A, json_encode($this->dailyCaps(), \JSON_UNESCAPED_UNICODE)));
+        }
+        foreach (['maxSessionsPerDay' => 2, 'day' => 1, 'count' => 2] as $field => $expected) {
+            if ($expected !== ($raised[0][$field] ?? null)) {
+                throw new RuntimeException(\sprintf('le relèvement annoncé devrait porter %s = %d (2 séances par jour, d\'après ses 2 cases du lundi) — obtenu : %s', $field, $expected, json_encode($raised[0], \JSON_UNESCAPED_UNICODE)));
+            }
+        }
+    }
+
+    #[Then('le récapitulatif ne bloque pas cette équipe')]
+    public function leRecapitulatifNeBloquePasCetteEquipe(): void
+    {
+        $recap = $this->apiPost('constraints/validate', [], $this->token, ['X-Season-Id' => $this->seasonId]);
+        if (200 !== $recap['status']) {
+            throw new RuntimeException(\sprintf('le récapitulatif a répondu %d (200 attendu)', $recap['status']));
+        }
+        $blockers = \is_array($recap['json']['blockers'] ?? null) ? $recap['json']['blockers'] : [];
+        $mine = array_filter($blockers, static fn (mixed $b): bool => \is_string($b) && str_contains($b, self::TEAM_A));
+        if ([] !== $mine) {
+            throw new RuntimeException(\sprintf('deux cases le lundi relevées à 2 séances par jour : le récapitulatif ne doit plus bloquer « %s » — %s', self::TEAM_A, json_encode(array_values($mine), \JSON_UNESCAPED_UNICODE)));
+        }
+    }
+
+    #[Then('l\'import n\'annonce plus aucun relèvement, et l\'équipe reste à 2 séances par jour')]
+    public function lImportNAnnoncePlusDeRelevement(): void
+    {
+        $this->lImportReussit();
+        $raised = array_filter($this->dailyCaps(), static fn (array $c): bool => 'raised' === ($c['outcome'] ?? null));
+        if ([] !== $raised) {
+            throw new RuntimeException(\sprintf('un réimport ne relève plus rien (le plafond est déjà à 2) — dailyCaps : %s', json_encode(array_values($raised), \JSON_UNESCAPED_UNICODE)));
+        }
+        $teamId = $this->dbalScalar(\sprintf('SELECT id AS behatval FROM team WHERE club_id=\'%s\' AND name=\'%s\'', $this->clubId, self::TEAM_A), admin: true);
+        $team = $this->apiGet(\sprintf('teams/%s', $teamId), $this->token, ['X-Season-Id' => $this->seasonId]);
+        if (2 !== ($team['json']['maxSessionsPerDay'] ?? null)) {
+            throw new RuntimeException(\sprintf('« %s » doit rester à 2 séances par jour après le réimport — obtenu : %s', self::TEAM_A, json_encode($team['json']['maxSessionsPerDay'] ?? null)));
+        }
+    }
+
     // ───────────────────────────── Nettoyage ─────────────────────────────
 
     #[AfterScenario]
@@ -288,6 +352,17 @@ final class ParcImportContext extends BaseContext
      */
     private function parc(): array
     {
+        if ($this->doubledMondayParc) {
+            return [
+                'format' => 'parc-v2',
+                'gymnases' => [['nom' => self::VENUE]],
+                'cases' => [
+                    ['gymnase' => self::VENUE, 'jour' => 1, 'debut' => '09:00', 'duree' => 90, 'equipes' => [self::TEAM_A]],
+                    ['gymnase' => self::VENUE, 'jour' => 1, 'debut' => '18:00', 'duree' => 90, 'equipes' => [self::TEAM_A]],
+                ],
+            ];
+        }
+
         return [
             'format' => 'parc-v2',
             'gymnases' => [['nom' => self::VENUE]],
@@ -342,6 +417,18 @@ final class ParcImportContext extends BaseContext
         );
 
         return [$response['status'], $response['json']];
+    }
+
+    /**
+     * Les lignes `dailyCaps` de la dernière réponse d'import (relèvements, plafonds atteints, chevauchements).
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function dailyCaps(): array
+    {
+        $caps = $this->importJson['dailyCaps'] ?? [];
+
+        return array_values(array_filter(\is_array($caps) ? $caps : [], 'is_array'));
     }
 
     /**
