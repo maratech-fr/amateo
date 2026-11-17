@@ -28,7 +28,8 @@ use Symfony\Component\HttpKernel\Exception\UnprocessableEntityHttpException;
  *  - `decisions` : la liste des choix de l'aperçu.
  * L'opération est `deserialize: false` (le contrôleur lit `getContent()` lui-même) et `read: false`.
  *
- * Succès → 200 `{recap: {<section>: {crees, apparies, misAJour, ignores}}}`. Une ligne cochée
+ * Succès → 200 `{recap: {<section>: {crees, apparies, misAJour, ignores}}, dailyCaps: [{teamId, teamName, outcome
+ * (raised|capped|overlap), maxSessionsPerDay, day, count}]}`. Une ligne cochée
  * invalide au moment de l'écriture → 422 `{errors: […]}` nommant la ligne, rien écrit.
  */
 #[AsController]

@@ -62,6 +62,7 @@ const team = (over: Partial<Team> & Pick<Team, "id" | "name">): Team => ({
   gender: null,
   level: null,
   sessionsPerWeek: 1,
+  maxSessionsPerDay: 1,
   isActive: true,
   ...over,
 });

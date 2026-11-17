@@ -140,3 +140,17 @@ def test_nr2_missing_session_beats_comfort_plus_avoided_venue() -> None:
     placed = _placed_by_team(result)
     assert placed[X] == 2, f"X must keep both sessions; missing_session must beat comfort+avoided; got {placed[X]}"
     assert placed[Y] == 1, f"Y still placed; got {placed[Y]}"
+
+
+def test_same_day_and_gap_maluses_never_drop_the_middle_of_three_sessions() -> None:
+    """PR 1a — ni « même jour » (−10) ni l'écart (−50) ne coûtent une séance : pire cas, la séance
+    au milieu de trois qui se suivent (tier D, plafond 3, un seul jour ouvert) reste placée.
+
+    La retirer soulagerait au plus 2 écarts (100) + 10, bien sous ``missing_session`` (≥ 1021)."""
+    team = {**make_team(X, sessions_per_week=3, priority_tier_id=5), "maxSessionsPerDay": 3}
+    result = solve_payload(
+        make_payload(teams=[team], venues=[make_venue("v", [(1, "17:00"), (1, "18:30"), (1, "20:00")])]),
+        timeout=15,
+    )
+    assert result["status"] == "completed"
+    assert _placed_by_team(result)[X] == 3, "une séance a été sacrifiée pour un malus de même jour ou d'écart"

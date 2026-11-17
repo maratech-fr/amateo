@@ -81,12 +81,16 @@ final class PeriodConstraintSelector
 
         $deactivatedTeamIds = [];
         $sessionOverrides = [];
+        $maxPerDayOverrides = [];
         foreach ($this->entityManager->getRepository(TeamPeriodOverride::class)->findBy(['schedulePlanId' => $schedulePlanId]) as $teamOverride) {
             if (!$teamOverride->isActive()) {
                 $deactivatedTeamIds[$teamOverride->getTeamId()] = true;
             }
             if (null !== $teamOverride->getSessionsPerWeek()) {
                 $sessionOverrides[$teamOverride->getTeamId()] = $teamOverride->getSessionsPerWeek();
+            }
+            if (null !== $teamOverride->getMaxSessionsPerDay()) {
+                $maxPerDayOverrides[$teamOverride->getTeamId()] = $teamOverride->getMaxSessionsPerDay();
             }
         }
 
@@ -199,6 +203,7 @@ final class PeriodConstraintSelector
             effectiveClosedWeekdaysByVenue: $effectiveClosedWeekdaysByVenue,
             deactivatedTeamIds: $deactivatedTeamIds,
             sessionOverrides: $sessionOverrides,
+            maxPerDayOverrides: $maxPerDayOverrides,
         );
     }
 

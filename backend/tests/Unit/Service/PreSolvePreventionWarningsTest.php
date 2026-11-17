@@ -1416,6 +1416,37 @@ final class PreSolvePreventionWarningsTest extends TestCase
         self::assertContains($expected, $found);
     }
 
+    /**
+     * À plafond 2, les jours ouverts comptent double : jours × plafond = demande se tait, un de moins alerte et dit le plafond.
+     * Plafond 1 : les phrases de {@see self::tooFewDays()}, inchangées.
+     */
+    public function testAtACapOfTwoOpenDaysCountTwiceAndTheWarningSaysTheCap(): void
+    {
+        $atThreshold = $this->warnings->detect($this->payload(
+            venues: [$this->venue('v1', 'Matéo', [1, 2, 3, 4, 5])],
+            teams: [[...$this->team('t1', 'U15', 4), 'maxSessionsPerDay' => 2]],
+            constraints: [$this->dayRule('TEAM', 't1', ['allowedDays' => [1, 2]])],
+        ));
+        self::assertSame([], array_values(array_filter($atThreshold, static fn (string $w): bool => str_contains($w, 'n\'ouvrent'))), '2 jours × 2 = 4 séances : rien à dire');
+
+        $oneShort = $this->warnings->detect($this->payload(
+            venues: [$this->venue('v1', 'Matéo', [1, 2, 3, 4, 5])],
+            teams: [[...$this->team('t1', 'U15', 5), 'maxSessionsPerDay' => 2]],
+            constraints: [$this->dayRule('TEAM', 't1', ['allowedDays' => [1, 2]])],
+        ));
+        self::assertContains('U15 demande 5 séances, mais ses règles n\'ouvrent que 2 jours, à 2 séances par jour au plus.', $oneShort);
+
+        $withReservation = $this->warnings->detect([
+            ...$this->payload(
+                venues: [$this->venue('v1', 'Matéo', [1, 2, 3])],
+                teams: [[...$this->team('t1', 'U15', 4), 'maxSessionsPerDay' => 2]],
+                constraints: [$this->dayRule('TEAM', 't1', ['allowedDays' => [1]])],
+            ),
+            'slotTemplates' => [$this->reservation('t1', 'v1', 3, '18:00')],
+        ]);
+        self::assertContains('U15 : il lui reste 3 séances à placer, mais ses règles n\'ouvrent qu\'un seul jour, à 2 séances par jour au plus.', $withReservation);
+    }
+
     /** Une équipe déjà servie par ses réservations ne demande plus rien : réservée lundi et mardi, sa règle du lundi se tait. */
     public function testReservationsAreSubtractedFromWhatTheRulesMustOpen(): void
     {

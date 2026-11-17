@@ -55,7 +55,7 @@ final class ScheduleConstraintBuilder
      * Elle DOIT valoir exactement la valeur du fichier — gardé par
      * `PayloadVersionMatchesContractVersionTest`.
      */
-    public const string CONTRACT_VERSION = '1.9';
+    public const string CONTRACT_VERSION = '1.10';
     private const CACHE_TTL_SECONDS = 14_400;
     private const DEFAULT_SOLVER_SEED = 42;
     /**
@@ -86,6 +86,14 @@ final class ScheduleConstraintBuilder
      * @var array<string, int>
      */
     private array $currentSessionOverrides = [];
+
+    /**
+     * teamId → séances max par jour surchargées pour la période, posé le temps d'un build de période
+     * (même cycle de vie que {@see $currentSessionOverrides}).
+     *
+     * @var array<string, int>
+     */
+    private array $currentMaxPerDayOverrides = [];
 
     /**
      * PR 6 (lot 8) — ids des équipes qui portent une contrainte « Garder ses créneaux de saison »
@@ -265,6 +273,7 @@ final class ScheduleConstraintBuilder
         // end of buildForOverlay) so a prior overlay build that threw mid-payload on
         // the long-lived worker can never leak its overrides into a base generation.
         $this->currentSessionOverrides = [];
+        $this->currentMaxPerDayOverrides = [];
         $this->currentSeasonSlotKeepTeamIds = [];
 
         $payload = $this->buildPayload(
@@ -409,6 +418,7 @@ final class ScheduleConstraintBuilder
         $deactivatedTeamIds = $selection->deactivatedTeamIds;
         $disabledVenueIds = $selection->disabledVenueIds;
         $this->currentSessionOverrides = $selection->sessionOverrides;
+        $this->currentMaxPerDayOverrides = $selection->maxPerDayOverrides;
         $constraints = $selection->kept;
 
         // PR 6 (lot 8) — les équipes qui portent une contrainte « Garder ses créneaux de saison »
@@ -520,6 +530,7 @@ final class ScheduleConstraintBuilder
 
         $this->currentAvailabilitiesByVenue = [];
         $this->currentSessionOverrides = [];
+        $this->currentMaxPerDayOverrides = [];
         // ⚠ Ne PAS réinitialiser `currentSeasonSlotKeepTeamIds` ici : il est posé plus haut (depuis la
         // sélection) et le handler le LIT APRÈS le retour de `buildForOverlay` pour greffer les keep.
         // Les deux champs ci-dessus sont transients (consommés PENDANT buildPayload) ; celui-ci est un
@@ -622,6 +633,7 @@ final class ScheduleConstraintBuilder
         // instance can never leak a stale map into serializeVenue/serializeTeam.
         $this->currentAvailabilitiesByVenue = [];
         $this->currentSessionOverrides = [];
+        $this->currentMaxPerDayOverrides = [];
         $this->currentSeasonSlotKeepTeamIds = [];
 
         return $this->buildPayload(
@@ -1383,6 +1395,10 @@ final class ScheduleConstraintBuilder
         // `Team.isActive` reste un attribut d'archivage SANS effet solveur. Les tags, eux, étaient
         // lus ici en SEULE lecture (jamais resynchronisés — c'est `TeamTagSyncListener` qui les tient
         // au write-path) : plus rien à relire puisqu'ils ne voyagent plus.
+        // Contrat 1.10 — séances max par jour, émis SEULEMENT au-delà de 1 : un club resté partout à
+        // 1 garde un payload (et une empreinte de structure) byte-identique à celui d'avant le champ.
+        $maxPerDay = $this->currentMaxPerDayOverrides[$team->getId()] ?? $team->getMaxSessionsPerDay();
+
         return [
             'id' => $team->getId(),
             'sportCategoryId' => $team->getSportCategoryId(),
@@ -1396,6 +1412,7 @@ final class ScheduleConstraintBuilder
             'matchDay' => $this->deriveMatchDay($team, $seasonId),
             'forcedVenueId' => $team->getForcedVenueId(),
             'parentTeamId' => $team->getParentTeamId(),
+            ...($maxPerDay > 1 ? ['maxSessionsPerDay' => $maxPerDay] : []),
         ];
     }
 

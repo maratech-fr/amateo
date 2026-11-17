@@ -58,6 +58,9 @@ class TeamPeriodOverrideResource
     #[Groups(['read'])]
     public ?int $sessionsPerWeek = null;
 
+    #[Groups(['read'])]
+    public ?int $maxSessionsPerDay = null;
+
     /**
      * Lot 9 — l'origine de cet override quand il a été posé par un geste nommé (``mutualisation``
      * pour une équipe activée par la mutualisation d'une case) ; NULL pour un réglage ordinaire du
@@ -77,6 +80,7 @@ class TeamPeriodOverrideResource
         $dto->teamId = $entity->getTeamId();
         $dto->isActive = $entity->isActive();
         $dto->sessionsPerWeek = $entity->getSessionsPerWeek();
+        $dto->maxSessionsPerDay = $entity->getMaxSessionsPerDay();
         $dto->source = $entity->getSource();
 
         return $dto;

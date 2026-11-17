@@ -365,6 +365,172 @@ final class OneSessionPerDayGesturesTest extends WebTestCase
         self::assertResponseStatusCodeSame(200);
     }
 
+    /** Plafond 1 inchangé : vers une case qui CHEVAUCHE sa séance du jour, le motif reste « une seule séance par jour » (T4a). */
+    public function testAtTheDefaultCapAnOverlappingCaseIsStillTheOneSessionRefusal(): void
+    {
+        $ctx = $this->decor(false);
+        $this->extraWindow($ctx, $ctx['jdr'], self::TUESDAY, '19:00');
+        $this->session($ctx, $ctx['u15'], $ctx['armand'], self::TUESDAY, '18:00');
+        $thursday = $this->session($ctx, $ctx['u15'], $ctx['armand'], self::THURSDAY, '19:00');
+
+        $this->post($ctx, '/api/schedule-slots/' . $thursday->getId() . '/move', ['dayOfWeek' => self::TUESDAY, 'venueId' => $ctx['jdr'], 'startTime' => '19:00']);
+
+        $this->assertRefused('U15', 'mardi');
+        $this->assertStillOnDay($ctx, $thursday->getId(), self::THURSDAY);
+    }
+
+    /** Plafond 2 : une seconde séance le mardi, sans chevauchement, passe la garde et le moteur juge — en saison comme en période. */
+    #[DataProvider('layers')]
+    public function testUnderACapOfTwoASecondDisjointSessionPasses(bool $period): void
+    {
+        $ctx = $this->decor($period);
+        $this->dailyCap($ctx, $ctx['u15'], 2);
+        $this->session($ctx, $ctx['u15'], $ctx['armand'], self::TUESDAY, '18:00');
+        $thursday = $this->session($ctx, $ctx['u15'], $ctx['armand'], self::THURSDAY, '19:00');
+
+        $this->post($ctx, '/api/schedule-slots/' . $thursday->getId() . '/move', ['dayOfWeek' => self::TUESDAY, 'venueId' => $ctx['jdr'], 'startTime' => '20:30']);
+
+        self::assertResponseStatusCodeSame(200);
+        self::assertSame(1, $this->engineCalls, 'la garde laisse le moteur juger');
+    }
+
+    /** Plafond 2 : une case collée à sa séance du mardi (18:00-19:30 puis 19:30) n'est pas un chevauchement : acceptée. */
+    public function testUnderACapOfTwoABackToBackCaseIsAccepted(): void
+    {
+        $ctx = $this->decor(false);
+        $this->dailyCap($ctx, $ctx['u15'], 2);
+        $this->extraWindow($ctx, $ctx['armand'], self::TUESDAY, '19:30');
+        $this->session($ctx, $ctx['u15'], $ctx['armand'], self::TUESDAY, '18:00');
+        $thursday = $this->session($ctx, $ctx['u15'], $ctx['armand'], self::THURSDAY, '19:00');
+
+        $this->post($ctx, '/api/schedule-slots/' . $thursday->getId() . '/move', ['dayOfWeek' => self::TUESDAY, 'venueId' => $ctx['armand'], 'startTime' => '19:30']);
+
+        self::assertResponseStatusCodeSame(200);
+    }
+
+    /** T4b : plafond 2 atteint le mardi, une troisième séance est refusée avant le moteur, rien ne bouge. */
+    public function testUnderACapOfTwoAThirdSessionIsRefused(): void
+    {
+        $ctx = $this->decor(false);
+        $this->dailyCap($ctx, $ctx['u15'], 2);
+        $this->extraWindow($ctx, $ctx['armand'], self::TUESDAY, '10:00');
+        $this->session($ctx, $ctx['u15'], $ctx['armand'], self::TUESDAY, '18:00');
+        $this->session($ctx, $ctx['u15'], $ctx['jdr'], self::TUESDAY, '20:30');
+        $thursday = $this->session($ctx, $ctx['u15'], $ctx['armand'], self::THURSDAY, '19:00');
+
+        $this->post($ctx, '/api/schedule-slots/' . $thursday->getId() . '/move', ['dayOfWeek' => self::TUESDAY, 'venueId' => $ctx['armand'], 'startTime' => '10:00']);
+
+        $this->assertRefusedWith('U15 a déjà 2 séances le mardi : 2 séances par jour au plus pour cette équipe.');
+        $this->assertStillOnDay($ctx, $thursday->getId(), self::THURSDAY);
+    }
+
+    /** T4c : plafond 2, une case qui chevauche sa séance du mardi est refusée (chevauchement d'abord), rien n'est créé. */
+    public function testUnderACapOfTwoAnOverlappingCaseIsRefused(): void
+    {
+        $ctx = $this->decor(false);
+        $this->dailyCap($ctx, $ctx['u15'], 2);
+        $this->extraWindow($ctx, $ctx['jdr'], self::TUESDAY, '19:00');
+        $this->session($ctx, $ctx['u15'], $ctx['armand'], self::TUESDAY, '18:00');
+
+        $this->post($ctx, '/api/schedules/' . $ctx['scheduleId'] . '/place-slot', ['teamId' => $ctx['u15'], 'dayOfWeek' => self::TUESDAY, 'venueId' => $ctx['jdr'], 'startTime' => '19:00']);
+
+        $this->assertRefusedWith('U15 a déjà une séance qui chevauche ce créneau le mardi.');
+        $this->scopeGucToClub($ctx['clubId']);
+        self::assertCount(1, $this->em->getRepository(ScheduleSlotTemplate::class)->findBy(['scheduleId' => $ctx['scheduleId']]), 'rien n\'est créé');
+    }
+
+    /**
+     * L'échange se juge à la durée de la fenêtre d'ARRIVÉE : la séance de 90 min arrive dans une fenêtre de 4 h (17:00-21:00) qui
+     * chevauche sa séance de 20:30 — refusé T4c, alors qu'à sa propre durée (17:00-18:30) elle ne chevaucherait rien.
+     */
+    public function testASwapIsJudgedAtTheDurationOfTheWindowItLandsIn(): void
+    {
+        $ctx = $this->decor(false);
+        $this->dailyCap($ctx, $ctx['u15'], 2);
+        $this->extraWindow($ctx, $ctx['armand'], self::TUESDAY, '17:00', 240);
+        $this->session($ctx, $ctx['u15'], $ctx['jdr'], self::TUESDAY, '20:30');
+        $source = $this->session($ctx, $ctx['u15'], $ctx['armand'], self::THURSDAY, '19:00');
+        $target = $this->session($ctx, $ctx['u18'], $ctx['armand'], self::TUESDAY, '17:00')->setDurationMinutes(240);
+        $this->em->flush();
+
+        $this->post($ctx, '/api/schedule-slots/swap', ['slotId' => $source->getId(), 'otherSlotId' => $target->getId()]);
+
+        $this->assertRefusedWith('U15 a déjà une séance qui chevauche ce créneau le mardi.');
+        $this->assertStillOnDay($ctx, $source->getId(), self::THURSDAY);
+    }
+
+    /** Groupe mixte {U15 à 2, U18 à 1}, chacun a déjà une séance le mardi : seul U18 fait refuser ; U18 relevé à 2, le groupe passe. */
+    public function testAGroupWithMixedCapsIsRefusedOnlyByTheMemberAtItsCap(): void
+    {
+        // Deux requêtes dans le test : sans `disableReboot()`, le noyau redémarre entre elles et perd le moteur simulé posé en setUp.
+        $this->client->disableReboot();
+        $ctx = $this->decor(false);
+        $this->dailyCap($ctx, $ctx['u15'], 2);
+        $block = $this->group($ctx, [$ctx['u15'], $ctx['u18']]);
+        $this->session($ctx, $ctx['u15'], $ctx['armand'], self::THURSDAY, '19:00', blockId: $block);
+        $this->session($ctx, $ctx['u18'], $ctx['armand'], self::THURSDAY, '19:00', blockId: $block);
+        // Chacune a déjà sa séance du mardi, à une case à elle (hors groupe, deux équipes ne partagent pas une case).
+        $this->extraWindow($ctx, $ctx['armand'], self::TUESDAY, '10:00');
+        $this->session($ctx, $ctx['u15'], $ctx['armand'], self::TUESDAY, '18:00');
+        $this->session($ctx, $ctx['u18'], $ctx['armand'], self::TUESDAY, '10:00');
+        $move = [
+            'scheduleId' => $ctx['scheduleId'],
+            'blockId' => $block,
+            'source' => ['venueId' => $ctx['armand'], 'dayOfWeek' => self::THURSDAY, 'startTime' => '19:00'],
+            'target' => ['venueId' => $ctx['jdr'], 'dayOfWeek' => self::TUESDAY, 'startTime' => '20:30'],
+        ];
+
+        $this->post($ctx, '/api/schedule-slots/move-group', $move);
+        $this->assertRefused('U18', 'mardi');
+
+        $this->dailyCap($ctx, $ctx['u18'], 2);
+        $this->post($ctx, '/api/schedule-slots/move-group', $move);
+        self::assertResponseStatusCodeSame(200);
+    }
+
+    /**
+     * Mutualiser depuis la fiche, plafond 2 atteint le mardi pour la recrue : refusé T4b, et la fiche demande de désigner l'une
+     * de ses séances du mardi (elle en a plusieurs, aucune n'est nommée).
+     */
+    public function testMutualizingUnderACapOfTwoAsksToDesignateOneOfTheSessionsOfThatDay(): void
+    {
+        $ctx = $this->decor(false);
+        $this->dailyCap($ctx, $ctx['u18'], 2);
+        $this->extraWindow($ctx, $ctx['armand'], self::TUESDAY, '10:00');
+        $anchor = $this->session($ctx, $ctx['u15'], $ctx['armand'], self::TUESDAY, '18:00');
+        $this->session($ctx, $ctx['u18'], $ctx['armand'], self::TUESDAY, '10:00');
+        $this->session($ctx, $ctx['u18'], $ctx['jdr'], self::TUESDAY, '20:30');
+        $thursday = $this->session($ctx, $ctx['u18'], $ctx['armand'], self::THURSDAY, '19:00');
+
+        $this->post($ctx, '/api/schedule-slots/' . $anchor->getId() . '/mutualize', ['teamIds' => [$ctx['u15'], $ctx['u18']], 'replacedSlotIds' => [$thursday->getId()]]);
+
+        self::assertResponseStatusCodeSame(422);
+        $error = (string) ($this->body()['error'] ?? '');
+        self::assertStringContainsString('U18 a déjà 2 séances le mardi : 2 séances par jour au plus pour cette équipe.', $error);
+        self::assertStringContainsString('Désignez l\'une de ses séances du mardi comme séance remplacée.', $error);
+        $this->assertStillOnDay($ctx, $thursday->getId(), self::THURSDAY);
+        $this->assertNoGroupWritten($ctx);
+    }
+
+    /**
+     * Plafond redescendu à 1 avec un doublé déjà en place le mardi : déplacer l'une des deux vers un autre créneau du MÊME mardi est
+     * refusé (T4a, l'autre séance suffit à atteindre le plafond) ; vers un jour libre, accepté.
+     */
+    public function testWithACapLoweredToOneOverAPlacedDoubleTheDoubleCanOnlyLeaveItsDay(): void
+    {
+        $ctx = $this->decor(false);
+        $this->extraWindow($ctx, $ctx['armand'], self::TUESDAY, '10:00');
+        $this->session($ctx, $ctx['u15'], $ctx['armand'], self::TUESDAY, '18:00');
+        $evening = $this->session($ctx, $ctx['u15'], $ctx['jdr'], self::TUESDAY, '20:30');
+
+        $this->post($ctx, '/api/schedule-slots/' . $evening->getId() . '/move', ['dayOfWeek' => self::TUESDAY, 'venueId' => $ctx['armand'], 'startTime' => '10:00']);
+        $this->assertRefused('U15', 'mardi');
+        $this->assertStillOnDay($ctx, $evening->getId(), self::TUESDAY);
+
+        $this->post($ctx, '/api/schedule-slots/' . $evening->getId() . '/move', ['dayOfWeek' => 3, 'venueId' => $ctx['armand'], 'startTime' => '18:00']);
+        self::assertResponseStatusCodeSame(200);
+    }
+
     protected function setUp(): void
     {
         $this->client = self::createClient();
@@ -400,6 +566,14 @@ final class OneSessionPerDayGesturesTest extends WebTestCase
     {
         self::assertResponseStatusCodeSame(422);
         self::assertSame(\sprintf('%s s\'entraîne déjà le %s : une seule séance par jour.', $team, $day), $this->body()['error'] ?? null);
+        self::assertSame(0, $this->engineCalls, 'refusé avant le moteur');
+    }
+
+    /** Le refus porte la phrase donnée, et le moteur n'a jamais été consulté. */
+    private function assertRefusedWith(string $sentence): void
+    {
+        self::assertResponseStatusCodeSame(422);
+        self::assertSame($sentence, $this->body()['error'] ?? null);
         self::assertSame(0, $this->engineCalls, 'refusé avant le moteur');
     }
 

@@ -4,9 +4,9 @@
 
 ---
 
-## 1. Le backend construit le payload (contrat 1.9)
+## 1. Le backend construit le payload (contrat 1.10)
 
-Quand un utilisateur clique sur "Generer l'emploi du temps" dans le frontend, le backend assemble un objet JSON conforme au schema `ScheduleInputSchema` (version de contrat **1.9**, fichier `engine/CONTRACT_VERSION`). Voici la structure complete, avec des explications inline.
+Quand un utilisateur clique sur "Generer l'emploi du temps" dans le frontend, le backend assemble un objet JSON conforme au schema `ScheduleInputSchema` (version de contrat **1.10**, fichier `engine/CONTRACT_VERSION`). Voici la structure complete, avec des explications inline.
 
 ```json
 {
@@ -125,7 +125,7 @@ Quand un utilisateur clique sur "Generer l'emploi du temps" dans le frontend, le
 
 ### Explications par section
 
-- **`version`** : version du contrat (actuellement `1.9`). Le moteur ne compare que le **MAJOR** : `"1.0"` et `"1.2"` passent tous les deux ; un payload `0.x` ou `2.x` est refuse.
+- **`version`** : version du contrat (actuellement `1.10`). Le moteur ne compare que le **MAJOR** : `"1.0"` et `"1.2"` passent tous les deux ; un payload `0.x` ou `2.x` est refuse.
 - **`clubId` / `seasonId`** : identifiants du club et de la saison en cours. Le moteur ne les utilise pas pour le calcul, mais les inclut dans les logs et les diagnostics.
 - **`venues`** : liste des salles. Chaque salle porte ses **creneaux d'entrainement** explicites dans la cle `trainingSlots` : `{dayOfWeek, startTime, durationMinutes, capacity}`. Il n'existe **ni** cle `availability` **ni** champ `endTime` (la fin se deduit de `startTime + durationMinutes`) — les schemas Pydantic sont `extra=forbid`, donc une cle inconnue provoque un `422`. La `capacity` indique combien d'equipes peuvent occuper le creneau simultanement (gymnase divisible : le backend envoie `canSplit ? capacity : 1`).
 - **`teams`** : liste des equipes. Le champ `sportCategoryId` est **requis** (son absence provoque un `422`). Le `priorityTierId` identifie le rang de priorite (1 = S ... 5 = D), dont le poids est code en dur cote moteur.
@@ -156,7 +156,7 @@ Avant de lancer le solveur, le moteur acquiert un verrou asyncio specifique au `
 
 ### Verification de version
 
-Le moteur verifie que le **MAJOR** de `version` correspond au MAJOR de son contrat (`1` pour le contrat `1.9`) : `"1.0"` comme `"1.9"` sont acceptes — le MINOR est ignore. C'est pourquoi la version que le PAYLOAD s'attribue (constante PHP du builder) DOIT valoir exactement `engine/CONTRACT_VERSION` et non « un `1.x` quelconque » : sinon un changement de forme du payload sans bump de MAJOR passerait inapercu des deux cotes. Cette egalite stricte est gardee par `PayloadVersionMatchesContractVersionTest`. Si le MAJOR differe, le moteur retourne une erreur indiquant la version attendue et la version recue.
+Le moteur verifie que le **MAJOR** de `version` correspond au MAJOR de son contrat (`1` pour le contrat `1.10`) : `"1.0"` comme `"1.10"` sont acceptes — le MINOR est ignore. C'est pourquoi la version que le PAYLOAD s'attribue (constante PHP du builder) DOIT valoir exactement `engine/CONTRACT_VERSION` et non « un `1.x` quelconque » : sinon un changement de forme du payload sans bump de MAJOR passerait inapercu des deux cotes. Cette egalite stricte est gardee par `PayloadVersionMatchesContractVersionTest`. Si le MAJOR differe, le moteur retourne une erreur indiquant la version attendue et la version recue.
 
 ---
 
@@ -195,7 +195,7 @@ Ces contraintes doivent etre satisfaites pour que la solution soit **faisable**.
 11. **COACH_REST_DAY** : chaque coach a au moins un jour de repos du lundi au vendredi (au plus 4 jours travailles). Ignore pour un coach dont le `maxDaysOverride` est deja inferieur ou egal a 4.
 12. **SALARIE_DISTRIBUTION** : objectif (malus, jamais un blocage, quel que soit le cran stocke) : un coach salarie (`isEmployee`) present chaque jour du lundi au vendredi ou le club a un creneau. Inactif si le club compte moins de 2 salaries.
 13. **MAX_CONSECUTIVE_SESSIONS** : une meme personne n'est jamais sur les 3 creneaux d'un enchainement A -> B -> C le meme jour, tous gymnases confondus.
-14. **ONE_SESSION_PER_DAY** : au plus une seance par jour et par equipe, sans exception (le drapeau `allowMultipleSessionsPerDay` est retire du contrat, P4-79).
+14. **ONE_SESSION_PER_DAY** : au plus `maxSessionsPerDay` seances par jour et par equipe (champ d'equipe 1 a 4, absent = 1, contrat 1.10 ; le backend ne l'emet qu'au-dela de 1), sans exception (le drapeau `allowMultipleSessionsPerDay` est retire du contrat, P4-79). Pour une equipe a plafond 2 ou plus, deux de ses seances ne se chevauchent jamais, et le moteur cherche (souple) a laisser 2 h entre elles : detail dans `constraint-vocabulary.md` §Plafond de seances par jour.
 15. **AGE_ASCENDING** : a gymnase et jour egaux, une equipe plus jeune ne passe pas apres une plus agee. Exempt si `ageMin` est absent (Loisir, Baby) ou si l'equipe est verrouillee en HARD.
 16. **VENUE_MINIMUMS** (`minAtVenueId`) : au moins N seances de l'equipe dans ce gymnase — un plancher, pas un forcage. Si N est prouvablement inatteignable, l'engine n'ajoute pas la contrainte et emet un diagnostic `venue_minimum_unreachable` plutot qu'un INFEASIBLE.
 
@@ -338,7 +338,7 @@ Le frontend ecoute ce topic via `EventSource`. Des que l'evenement arrive, le fr
 
 ## Resume du flux en 5 etapes
 
-1. **Backend** : construit le payload (contrat 1.9) a partir des entites du club (equipes, salles, entraineurs, contraintes)
+1. **Backend** : construit le payload (contrat 1.10) a partir des entites du club (equipes, salles, entraineurs, contraintes)
 2. **Moteur** : valide le payload, acquiert le verrou club, verifie le MAJOR de la version
 3. **Solveur** : construit le modele, ajoute les contraintes HARD, definit l'objectif, resout dans le budget adaptatif (60/180/600 s selon la taille du probleme)
 4. **Moteur** : retourne `ScheduleOutputSchema` avec creneaux, diagnostics, metriques

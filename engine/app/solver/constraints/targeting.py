@@ -430,6 +430,8 @@ def add_venue_minimum_constraints(
     model: Any,
     x: Mapping[Any, BoolVarLike],
     venue_minimums: Iterable[Mapping[str, Any]] = (),
+    *,
+    max_sessions_per_day: Mapping[str, int] | None = None,
 ) -> tuple[int, list[dict[str, Any]]]:
     """ALIGN-05: 'at least N of the team's sessions at venue V'.
 
@@ -469,18 +471,7 @@ def add_venue_minimum_constraints(
         floor_constraint_id = rule.get("constraint_id")
         floor_label = rule.get("label")
 
-        locked_days = locked_days_by_team_venue.get((team_id, venue_id), set())
-        effective_min = minimum - len(locked_days)
-        if effective_min <= 0:
-            # Les réservations saturent déjà le plancher : rien à contraindre, rien à signaler.
-            continue
-
-        frozen = getattr(model, "frozen_occupancy", None)
-        if frozen is not None and len({s[2] for s in frozen if s[0] == team_id and s[1] == venue_id}) < minimum:
-            # Verdict : le planning figé ne tient déjà pas ce plancher (best-effort).
-            model.lifted_rules.append({"teams": [team_id], "label": floor_label, "venueId": venue_id})
-            continue
-
+        cap = (max_sessions_per_day or {}).get(team_id, 1)
         team_venue_vars = [
             var
             for slot_key, var in x.items()
@@ -489,46 +480,91 @@ def add_venue_minimum_constraints(
             and str(slot_key[0]) == team_id
             and str(slot_key[1]) == venue_id
         ]
-
-        # Reachability is bounded by the number of DISTINCT FREE DAYS available at the
-        # venue, NOT the raw slot count: a team plays ≤1 session/day (per-day cap),
-        # so two same-day slots still contribute at most ONE session. Locked days are
-        # excluded — they already carry a session and cannot host another. Counting raw
-        # vars would let a provably-infeasible minimum slip past → silent INFEASIBLE.
-        team_venue_days = {
-            slot_key[2]
-            for slot_key in x
-            if isinstance(slot_key, tuple)
-            and len(slot_key) >= 3
-            and str(slot_key[0]) == team_id
-            and str(slot_key[1]) == venue_id
-        } - locked_days
-
-        # Réservation souveraine — le plancher n'est inatteignable QUE parce que le verrou d'une autre
-        # équipe occupe la case : on le pose quand même. L'INFEASIBLE qui en résulte passe par la sonde
-        # de causalité puis le best-effort (la séance reste non placée, jamais déportée ailleurs).
-        lock_taken_days = {
-            slot_key[2]
-            for slot_key in (getattr(model, "lock_removed_candidates", None) or {})
-            if str(slot_key[0]) == team_id and str(slot_key[1]) == venue_id
-        }
-        if len(team_venue_days | (lock_taken_days - locked_days)) < effective_min:
-            conflicts.append(
-                {
-                    "id": f"venue_minimum_unreachable-{team_id}-{venue_id}",
-                    "type": "venue_minimum_unreachable",
-                    "severity": "ERROR",
-                    "teamId": team_id,
-                    "message": (
-                        f"{_team_label(model, team_id)} demande au moins {minimum} séance(s) à "
-                        f"{_venue_label(model, venue_id)}, mais ce gymnase n'offre que {len(team_venue_days)} jour(s) "
-                        f"libre(s) en plus de ses {len(locked_days)} jour(s) réservé(s), à une séance par jour."
-                    ),
-                    "suggestions": ["Baissez le minimum, ou ajoutez des créneaux d'autres jours dans ce gymnase."],
-                    "createdAt": datetime.now(UTC).isoformat(),
-                }
+        if cap > 1:
+            # PR 1a — plafond P ≥ 2 : un calcul par jour (crédit, place, atteignable). Plafond 1 :
+            # la branche historique ci-dessous, inchangée.
+            capped = _capped_venue_minimum(
+                model,
+                x,
+                team_id=team_id,
+                venue_id=venue_id,
+                minimum=minimum,
+                cap=cap,
+                floor_label=floor_label,
             )
-            continue
+            if capped is None:
+                continue
+            effective_min, reachable_free, reachable_with_taken, credit = capped
+            if reachable_with_taken < effective_min:
+                conflicts.append(
+                    {
+                        "id": f"venue_minimum_unreachable-{team_id}-{venue_id}",
+                        "type": "venue_minimum_unreachable",
+                        "severity": "ERROR",
+                        "teamId": team_id,
+                        "message": (
+                            f"{_team_label(model, team_id)} demande au moins {minimum} séance(s) à "
+                            f"{_venue_label(model, venue_id)}, mais ce gymnase n'offre que {reachable_free} "
+                            f"séance(s) libre(s) en plus de ses {credit} séance(s) réservée(s), à {cap} séances "
+                            "par jour au plus."
+                        ),
+                        "suggestions": ["Baissez le minimum, ou ajoutez des créneaux d'autres jours dans ce gymnase."],
+                        "createdAt": datetime.now(UTC).isoformat(),
+                    }
+                )
+                continue
+        else:
+            locked_days = locked_days_by_team_venue.get((team_id, venue_id), set())
+            effective_min = minimum - len(locked_days)
+            if effective_min <= 0:
+                # Les réservations saturent déjà le plancher : rien à contraindre, rien à signaler.
+                continue
+
+            frozen = getattr(model, "frozen_occupancy", None)
+            if frozen is not None and len({s[2] for s in frozen if s[0] == team_id and s[1] == venue_id}) < minimum:
+                # Verdict : le planning figé ne tient déjà pas ce plancher (best-effort).
+                model.lifted_rules.append({"teams": [team_id], "label": floor_label, "venueId": venue_id})
+                continue
+
+            # Reachability is bounded by the number of DISTINCT FREE DAYS available at the
+            # venue, NOT the raw slot count: a team plays ≤1 session/day (per-day cap),
+            # so two same-day slots still contribute at most ONE session. Locked days are
+            # excluded — they already carry a session and cannot host another. Counting raw
+            # vars would let a provably-infeasible minimum slip past → silent INFEASIBLE.
+            team_venue_days = {
+                slot_key[2]
+                for slot_key in x
+                if isinstance(slot_key, tuple)
+                and len(slot_key) >= 3
+                and str(slot_key[0]) == team_id
+                and str(slot_key[1]) == venue_id
+            } - locked_days
+
+            # Réservation souveraine — le plancher n'est inatteignable QUE parce que le verrou d'une autre
+            # équipe occupe la case : on le pose quand même. L'INFEASIBLE qui en résulte passe par la sonde
+            # de causalité puis le best-effort (la séance reste non placée, jamais déportée ailleurs).
+            lock_taken_days = {
+                slot_key[2]
+                for slot_key in (getattr(model, "lock_removed_candidates", None) or {})
+                if str(slot_key[0]) == team_id and str(slot_key[1]) == venue_id
+            }
+            if len(team_venue_days | (lock_taken_days - locked_days)) < effective_min:
+                conflicts.append(
+                    {
+                        "id": f"venue_minimum_unreachable-{team_id}-{venue_id}",
+                        "type": "venue_minimum_unreachable",
+                        "severity": "ERROR",
+                        "teamId": team_id,
+                        "message": (
+                            f"{_team_label(model, team_id)} demande au moins {minimum} séance(s) à "
+                            f"{_venue_label(model, venue_id)}, mais ce gymnase n'offre que {len(team_venue_days)} jour(s) "
+                            f"libre(s) en plus de ses {len(locked_days)} jour(s) réservé(s), à une séance par jour."
+                        ),
+                        "suggestions": ["Baissez le minimum, ou ajoutez des créneaux d'autres jours dans ce gymnase."],
+                        "createdAt": datetime.now(UTC).isoformat(),
+                    }
+                )
+                continue
 
         # P4-96 PR-2 — « au moins N séances dans ce gymnase » est une contrainte SOURCE saisie :
         # hypothéquée sur UNE littérale (kind `session_floor`), elle est NOMMÉE dans le noyau
@@ -561,6 +597,94 @@ def add_venue_minimum_constraints(
         added += 1
 
     return added, conflicts
+
+
+def _disjoint_count(intervals: Iterable[tuple[int, int]]) -> int:
+    """Le plus grand nombre de créneaux deux à deux disjoints (intervalles [début, fin)), choisis par
+    heure de fin croissante. Deux créneaux qui se touchent comptent pour deux."""
+    count = 0
+    last_end: int | None = None
+    for start, end in sorted(intervals, key=lambda iv: (iv[1], iv[0])):
+        if last_end is None or start >= last_end:
+            count += 1
+            last_end = end
+    return count
+
+
+def _capped_venue_minimum(
+    model: Any,
+    x: Mapping[Any, BoolVarLike],
+    *,
+    team_id: str,
+    venue_id: str,
+    minimum: int,
+    cap: int,
+    floor_label: Any,
+) -> tuple[int, int, int, int] | None:
+    """PR 1a — le plancher « au moins N séances au gymnase V » d'une équipe à plafond P ≥ 2.
+
+    * crédit = Σ par jour de min(verrous de l'équipe à ce gymnase ce jour-là, P) ;
+    * place du jour = P − verrous de l'équipe ce jour-là, tous gymnases (plancher 0) ;
+    * atteignable du jour = min(place du jour, plus grand nombre de créneaux candidats de ce
+      gymnase deux à deux disjoints) — calculé sur les candidats libres, puis avec les candidats
+      retirés par le verrou d'une AUTRE équipe (``lock_removed_candidates``, réservation souveraine :
+      le plancher est alors posé quand même).
+    Verdict d'un geste : le planning figé compte Σ par jour de min(séances figées, P).
+
+    Renvoie ``None`` quand il n'y a rien à poser ni à signaler (crédit suffisant, ou planning figé
+    déjà en infraction — règle levée, best-effort) ; sinon
+    ``(minimum effectif, atteignable libre, atteignable avec les cases prises, crédit)``."""
+    locks_here: dict[int, int] = defaultdict(int)
+    locks_all: dict[int, int] = defaultdict(int)
+    for locked in getattr(model, "locked_slots", ()) or ():
+        if str(_get(locked, "team_id", "teamId", default="") or "") != team_id:
+            continue
+        day_raw = _get(locked, "day_of_week", "dayOfWeek", default=None)
+        if day_raw is None:
+            continue
+        try:
+            day = int(day_raw)
+        except TypeError, ValueError:
+            continue
+        locks_all[day] += 1
+        if str(_get(locked, "venue_id", "venueId", default="") or "") == venue_id:
+            locks_here[day] += 1
+
+    credit = sum(min(count, cap) for count in locks_here.values())
+    effective_min = minimum - credit
+    if effective_min <= 0:
+        return None
+
+    frozen = getattr(model, "frozen_occupancy", None)
+    if frozen is not None:
+        frozen_by_day: dict[int, int] = defaultdict(int)
+        for entry in frozen:
+            if entry[0] == team_id and entry[1] == venue_id:
+                frozen_by_day[int(entry[2])] += 1
+        if sum(min(count, cap) for count in frozen_by_day.values()) < minimum:
+            # Verdict : le planning figé ne tient déjà pas ce plancher (best-effort).
+            model.lifted_rules.append({"teams": [team_id], "label": floor_label, "venueId": venue_id})
+            return None
+
+    durations: Mapping[Any, int] = getattr(model, "slot_durations", None) or {}
+
+    def _reachable(keys: Iterable[Any]) -> int:
+        by_day: dict[int, list[tuple[int, int]]] = defaultdict(list)
+        for key in keys:
+            if not isinstance(key, tuple) or len(key) < 4:
+                continue
+            if str(key[0]) != team_id or str(key[1]) != venue_id:
+                continue
+            day = int(key[2])
+            start = _time_to_minutes(key[3])
+            duration = int(durations.get((str(key[1]), day, key[3]), DEFAULT_SESSION_MINUTES))
+            by_day[day].append((start, start + duration))
+        return sum(
+            min(max(0, cap - locks_all.get(day, 0)), _disjoint_count(intervals)) for day, intervals in by_day.items()
+        )
+
+    taken = list(getattr(model, "lock_removed_candidates", None) or {})
+    return effective_min, _reachable(x), _reachable([*x, *taken]), credit
 
 
 def _forced_venue_id(assignment: AssignmentVariable, forced_venues: Mapping[Any, Any] | None) -> Any:

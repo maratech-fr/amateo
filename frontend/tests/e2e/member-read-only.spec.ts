@@ -166,6 +166,17 @@ test.describe("Membre — lecture seule de bout en bout", () => {
       }
       for (const step of ["teams", "venues", "coaches", "constraints", "recap", "generate"]) {
         await visit(page, watch, `/wizard?step=${step}`, true);
+        if ("teams" === step) {
+          // PR 1a — l'onglet « Séances par jour » de la modale Liens est un écran d'écriture : le Membre
+          // l'ouvre (lecture), son champ est en lecture seule, et l'ouvrir n'écrit rien.
+          await settleVeil(page);
+          await page.getByRole("button", { name: /^Liens de / }).first().click();
+          const dialog = page.getByRole("dialog");
+          await dialog.getByRole("tab", { name: "Séances par jour" }).click();
+          await expect(dialog.getByLabel("Séances max par jour"), "témoin : le champ du plafond est rendu, en lecture seule").toBeDisabled();
+          expect(watch.violations, `onglet Séances par jour : le Membre a déclenché ${watch.violations.join(" · ")}`).toEqual([]);
+          await page.keyboard.press("Escape");
+        }
         if ("venues" === step) {
           // Le Membre CONSULTE le gymnase localisé sans adresse (choisir un gymnase est une lecture) :
           // sa carte s'affiche repliée « Localisé », sans retrouver l'adresse par un appel sortant.

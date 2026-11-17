@@ -23,6 +23,7 @@ import { useCanManage } from "@/shared/session/queries";
 import { toast } from "@/shared/stores/toastStore";
 
 import type { Team, TeamPeriodOverride } from "../api";
+import { effectiveMaxPerDay, periodOverrideBody } from "../lib/periodOverride";
 import { mutualisedTeammateLabel } from "../lib/sharedTraining";
 import {
   useCreateTeamPeriodOverride,
@@ -39,6 +40,7 @@ import { SectionCountTitle } from "./StructureSummary";
 import { claimPeriodSeed, periodSeedWasClaimed } from "./periodSeed";
 import { periodSeedKeptTeamIds } from "./periodSeedSelection";
 import { PeriodAnchorGate } from "./PeriodAnchorGate";
+import { DailyCapMarker } from "./TeamDailyCapPanel";
 import { TeamLinksModal } from "./TeamLinksModal";
 
 // In-session guard against re-seeding between firing the Fanion-only seed and the
@@ -132,26 +134,27 @@ function PeriodTeamsPanel({ calendarEntryId, schedulePlanId }: { calendarEntryId
   };
 
   // Upsert the override, or DELETE it when the state is back to the seasonal default
-  // (active + seasonal session count) — keeps the table sparse. Returns the mutation
-  // promise so batch actions (seed / ramp) can await the whole set.
+  // (active + seasonal session count + seasonal daily cap) — keeps the table sparse. The body is
+  // built by `periodOverrideBody` (full replacement: a gesture on one field never drops the others,
+  // e.g. un/re-checking a team keeps its period daily cap). Returns the mutation promise so batch
+  // actions (seed / ramp) can await the whole set.
   /**
    * Rend `null` quand il n'y a RIEN à écrire (l'état voulu est déjà celui de la saison,
    * sans override) — à distinguer d'une écriture réussie : `Promise.allSettled` ne voit
    * aucune différence entre « zéro requête » et « toutes réussies », et c'est ainsi que
    * « Sélection appliquée » se confirmait sur zéro ligne écrite.
    */
-  const upsertAsync = (t: Team, next: { isActive: boolean; sessions: number | null }): Promise<unknown> | null => {
+  const upsertAsync = (t: Team, patch: { isActive?: boolean; sessionsPerWeek?: number | null }): Promise<unknown> | null => {
     const existing = overrideOf.get(t.id);
-    const backToSeasonal = next.isActive && (null === next.sessions || next.sessions === t.sessionsPerWeek);
-    if (backToSeasonal) {
+    const body = periodOverrideBody(schedulePlanId, t, existing, patch);
+    if (null === body) {
       return existing ? del.mutateAsync(existing.id) : null;
     }
-    const body = { schedulePlanId, teamId: t.id, isActive: next.isActive, sessionsPerWeek: next.sessions };
     return existing ? update.mutateAsync({ id: existing.id, body }) : create.mutateAsync(body);
   };
   // Fire-and-forget for single edits (checkbox/session). Swallow the rejection: the
   // global MutationCache already toasts it — this only avoids an unhandledrejection.
-  const upsert = (t: Team, next: { isActive: boolean; sessions: number | null }) => void upsertAsync(t, next)?.catch(() => {});
+  const upsert = (t: Team, patch: { isActive?: boolean; sessionsPerWeek?: number | null }) => void upsertAsync(t, patch)?.catch(() => {});
 
   // Default team selection on a FRESH period (no overrides yet, not already seeded this
   // session), ONCE — best-effort. The DEPTH depends on the period type (E3) :
@@ -203,14 +206,14 @@ function PeriodTeamsPanel({ calendarEntryId, schedulePlanId }: { calendarEntryId
     void Promise.allSettled(toDeactivate.map((t) => create.mutateAsync({ schedulePlanId: plan.id, teamId: t.id, isActive: false }))).finally(() => setBusy(false));
   }, [canManage, isLoading, overridesFailed, planLoading, plan, entry, isClosure, teams, tiers, overrides, topTierId, calendarEntryId, create]);
 
-  const toggle = (t: Team, value: boolean) => upsert(t, { isActive: value, sessions: overrideOf.get(t.id)?.sessionsPerWeek ?? null });
+  const toggle = (t: Team, value: boolean) => upsert(t, { isActive: value });
   const setSessions = (t: Team, raw: number) => {
     // Ignore an emptied / out-of-range field client-side (Number("") === 0; the field
     // caps at 7 but paste/typing can exceed it) rather than fire a doomed 422.
     if (!Number.isInteger(raw) || raw < 1 || raw > 7) {
       return;
     }
-    upsert(t, { isActive: isActive(t), sessions: raw === t.sessionsPerWeek ? null : raw });
+    upsert(t, { sessionsPerWeek: raw });
   };
 
   // Ramp presets: activate every team up to (and including) a tier group index —
@@ -222,7 +225,7 @@ function PeriodTeamsPanel({ calendarEntryId, schedulePlanId }: { calendarEntryId
     setBusy(true);
     try {
       const writes = groups
-        .flatMap((g, i) => g.teams.map((t) => upsertAsync(t, { isActive: i <= upToIndex, sessions: overrideOf.get(t.id)?.sessionsPerWeek ?? null })))
+        .flatMap((g, i) => g.teams.map((t) => upsertAsync(t, { isActive: i <= upToIndex })))
         .filter((w): w is Promise<unknown> => null !== w);
       const results = await Promise.allSettled(writes);
       // On ne confirme QUE si des lignes ont réellement été écrites, toutes sans échec.
@@ -313,6 +316,7 @@ function PeriodTeamsPanel({ calendarEntryId, schedulePlanId }: { calendarEntryId
                         {t.name}
                       </span>
                     </label>
+                    <DailyCapMarker max={effectiveMaxPerDay(t, overrideOf.get(t.id))} />
                     {linksLabelOf(t) ? <span className="text-xs italic text-muted-foreground">· {linksLabelOf(t)}</span> : null}
                     {/* P2-63 PR 5 (F) — provenance « via doléances », SEULEMENT pour la valeur
                         'coach_wish' (une équipe activée par la mutualisation porte 'mutualisation'). */}

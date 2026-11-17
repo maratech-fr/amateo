@@ -44,6 +44,12 @@ from .rhythm import (
     add_match_day_rest_bonus as add_match_day_rest_bonus,
 )
 from .rhythm import (
+    add_same_day_gap_penalty as add_same_day_gap_penalty,
+)
+from .rhythm import (
+    add_same_day_penalty as add_same_day_penalty,
+)
+from .rhythm import (
     add_spacing_penalty as add_spacing_penalty,
 )
 from .sessions import (
@@ -54,6 +60,9 @@ from .stability import (
 )
 from .stability import (
     build_stability_terms as build_stability_terms,
+)
+from .stability import (
+    season_reference_keys as season_reference_keys,
 )
 from .team_links import (
     add_team_link_penalty as add_team_link_penalty,

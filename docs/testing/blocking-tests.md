@@ -236,7 +236,7 @@ deux cas) ·
 `Security/ScheduleCapabilityParityTest` (capacité affichée == verdict) ·
 `Security/TeamTagScopeTest` (portée d'un tag = ce que le solveur applique) ·
 `Integration/Service/LockOriginProvenanceTest` (origine d'un verrou VRAIE : réservation → RESERVATION, épinglage → MANUAL — y compris un verrou MANUAL HÉRITÉ de la version SOURCE à « Régénérer » (V1), jamais dégradé en UNKNOWN (ce qui faussait aussi le compteur de la saison) —, indécidable → UNKNOWN, jamais deviné) ·
-`Integration/Api/RecapRefusesASecondSessionSameDayTest` (axes constraint semantics + generation pipeline : deux réservations d'une équipe le même jour passent au geste, le Récap et `/generate`·`/regenerate` les refusent ; réservation + verrou de la version chargée aussi ; un groupe vaut une équipe ; sur ce recouvrement, l'alerte de chevauchement se tait et ne dit jamais « réservée » d'un verrou ; témoins : verrous seuls, verrou d'une autre version, même placement, créneau libre, période et comblement ne bloquent pas) ·
+`Integration/Api/RecapRefusesASecondSessionSameDayTest` (axes constraint semantics + generation pipeline : deux réservations d'une équipe le même jour passent au geste, le Récap et `/generate`·`/regenerate` les refusent ; réservation + verrou de la version chargée aussi ; un groupe vaut une équipe ; sur ce recouvrement, l'alerte de chevauchement se tait et ne dit jamais « réservée » d'un verrou ; témoins : verrous seuls, verrou d'une autre version, même placement, créneau libre, période et comblement ne bloquent pas ; contrat d'API : chaque ligne bloquée porte une seule cause, `doubledReservationIds` (trop de séances) ou `overlappingReservationIds` (chevauche), les deux champs dans les corps 200 et 422) ·
 `Security/OneSessionPerDayGesturesTest` (axes planning lifecycle + constraint semantics : mutualiser en fiche et au dépôt, déplacer, poser, déplacer un groupe, échanger refusent une seconde séance le même jour avant le moteur, saison et période, rien écrit ; témoins : rester sur son jour, évincer sa séance, autre équipe) ·
 `Security/SlotMoveVerdictTest` (déplacer un créneau passe sous le verdict moteur : refus = planning intact, source hors baseline, 409 pendant une génération ; Q2 — évincer un occupant de GROUPE retire ses N séances membres ENSEMBLE [le bloc SURVIT, elles passent « à replacer »] et la réponse porte `evictedGroup` [bloc + N états] au lieu d'`evicted`, falsifié en comptant les N séances supprimées et la survie du bloc) ·
 `Security/SlotPlacementVerdictTest` (placer une séance à la dérive passe sous le verdict moteur : refus = rien créé, gardes 409, tenant) ·
@@ -378,18 +378,29 @@ AVANT l'import la séance tombe le mercredi, APRÈS la réservation du lundi ell
 malgré la préférence contraire. TÉMOIN falsifiable dans les deux sens : le MÊME décor résolu AVANT
 l'import suit la préférence (mercredi), donc c'est bien la réservation importée — et elle seule — qui
 déplace la séance ; si l'import cessait d'écrire la réservation ou de la poser HARD au socle
-(`schedulePlanId` null), le second solve retomberait sur le mercredi. Skip propre si le moteur est absent.
+(`schedulePlanId` null), le second solve retomberait sur le mercredi. PR 1a : un parc où l'équipe a deux
+cases le lundi relève son plafond à 2 séances par jour, le Récap ne bloque plus et le moteur pose les deux
+séances sur les deux cases réservées. Skip propre si le moteur est absent.
 Sans ce gate, un import qui cesserait de poser ses réservations en verrous honorés passerait tous les
 checks requis) ·
+`CrossStack/MaxSessionsPerDayPayloadParityTest` (axe *backend↔engine contract*, PR 1a, contrat 1.10 —
+le plafond de séances par jour part au moteur sous `teams[].maxSessionsPerDay` SEULEMENT quand la valeur
+effective dépasse 1 : un club resté partout à 1 émet un payload, donc une empreinte, identique ; en
+période, la valeur de la période l'emporte, sinon celle de la saison ; le vrai moteur accepte le champ
+[`TeamSchema` refuse tout champ inconnu]. Groupes `phase1` + `contract`, skip propre si le moteur est
+absent. Sans ce gate, un champ émis à 1 changerait l'empreinte de tous les clubs, ou un champ oublié
+laisserait le moteur à une séance par jour, en passant tous les checks requis) ·
 `Integration/Api/ParcImportExecuteTest` (axe *tenant isolation*, GO fondateur 2026-10-30 — incident
 d'un club pilote, PR A import du parc : la redéfinition de la composition d'une séance commune par le canal
 `corrections.equipes` [liste ≥ 2 d'UUID d'équipe DU CLUB, ou `import:<index>` vers une ligne Équipes
 gardée] ne fait JAMAIS entrer dans un bloc mutualisé une équipe d'un AUTRE club — un UUID hors tenant
-est refusé 422 par la garde `ownedTeam`, rien écrit [tout-ou-rien]. Le step `ci.yml` est FILTRÉ sur le
-seul `testAMutualisationCorrectionWithATeamFromAnotherClubIsRefusedWritingNothing` [la classe porte
-aussi des tests non bloquants]. Falsification : désactiver `ownedTeam` doit rougir ce gate. Sans lui,
-un élargissement du canal fuiterait une équipe étrangère dans un bloc en passant tous les checks
-requis de `main`).
+est refusé 422 par la garde `ownedTeam`, rien écrit [tout-ou-rien]. Même axe, PR 1a plafond de séances
+par jour : `testDailyCapRaiseNeverTouchesAnotherClubTeam` — le relèvement du plafond par l'import n'écrit
+jamais l'équipe d'un autre club, ni par une cible forgée [422, rien écrit] ni par homonymie [l'équipe de
+ce club est créée et relevée, l'autre reste à 1]. Le step `ci.yml` est FILTRÉ sur ces deux seules
+méthodes [la classe porte aussi des tests non bloquants]. Falsification : désactiver `ownedTeam` doit
+rougir ce gate. Sans lui, un élargissement du canal fuiterait une équipe étrangère dans un bloc, ou un
+relèvement écrirait hors tenant, en passant tous les checks requis de `main`).
 `CrossStack/SovereignReservationProducesScheduleTest` (axes *generation pipeline* + *constraint
 semantics* + *backend↔engine contract*, besoin fondateur 2026-10-30, amendement ADR-0001 — « la
 réservation gagne envers tout, mais c'est la SEULE exception »). De bout en bout contre le VRAI

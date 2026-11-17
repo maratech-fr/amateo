@@ -76,6 +76,9 @@ final class ParcImportExecutor
 
     private const int DEFAULT_GROUP_RESERVATION_DURATION = 90;
 
+    /** Le plafond de séances par jour le plus haut réglable : au-delà, l'import borne et le dit (`capped`). */
+    private const int MAX_SESSIONS_PER_DAY = 4;
+
     /** Catégorie « repère » d'une équipe importée sans catégorie — jamais un rattachement muet. */
     private const string UNFILED_CATEGORY = 'À classer';
 
@@ -125,6 +128,15 @@ final class ParcImportExecutor
 
     private ?string $sportId = null;
 
+    /**
+     * Les cases du parc SOUMIS (lignes cochées, réservations individuelles et de groupe), par équipe et
+     * par jour : `[début, fin[` en minutes, clé « début-fin ». Elles seules relèvent le plafond de séances
+     * par jour — une réservation saisie à la main, hors du parc, ne compte pas.
+     *
+     * @var array<string, array<int, array<string, array{0: int, 1: int}>>>
+     */
+    private array $dailyCases = [];
+
     /** @var array<int, true>|null rangs valides (PriorityTier), chargés une fois pour valider un corrections.tierId. */
     private ?array $validTierIds = null;
 
@@ -146,7 +158,7 @@ final class ParcImportExecutor
      * @param array<string, mixed>       $parc      le parc-v2 décodé, déjà validé en FORME et en bornes
      * @param list<array<string, mixed>> $decisions les choix de l'aperçu
      *
-     * @return array{recap: array<string, array<string, int>>}
+     * @return array{recap: array<string, array<string, int>>, dailyCaps: list<array{teamId: string, teamName: string, outcome: string, maxSessionsPerDay: int, day: int, count: int}>}
      */
     public function import(Club $club, string $seasonId, array $parc, array $decisions): array
     {
@@ -155,6 +167,7 @@ final class ParcImportExecutor
         $this->teamIdByEquipesIndex = [];
         $this->resolutionErrors = [];
         $this->sportId = null;
+        $this->dailyCases = [];
         // Snapshot AVANT toute écriture : l'ambiguïté se mesure sur l'état d'avant l'import (comme
         // l'analyzer), jamais sur les équipes créées au fil de ce run.
         $this->preImportTeamPool = $this->activeTeamPool();
@@ -171,7 +184,7 @@ final class ParcImportExecutor
         // l'état d'avant l'import, comme le pool d'équipes.
         $this->venueAmbiguousByIndex = $this->snapshotVenueAmbiguity($derived);
 
-        /** @var array{recap: array<string, array<string, int>>} $result */
+        /** @var array{recap: array<string, array<string, int>>, dailyCaps: list<array{teamId: string, teamName: string, outcome: string, maxSessionsPerDay: int, day: int, count: int}>} $result */
         $result = $this->entityManager->wrapInTransaction(function () use ($club, $seasonId, $derived, $index): array {
             // Cap payant AVANT tout persist (tout-ou-rien) : jamais « les premières passent ».
             $this->assertTeamCapNotExceeded($derived, $index, $club, $seasonId);
@@ -190,7 +203,7 @@ final class ParcImportExecutor
                 throw new ParcImportResolutionException($this->resolutionErrors);
             }
 
-            return ['recap' => $recap];
+            return ['recap' => $recap, 'dailyCaps' => $this->raiseDailyCaps($club, $seasonId)];
         });
 
         return $result;
@@ -541,6 +554,9 @@ final class ParcImportExecutor
             return;
         }
         $duration = $this->intCorrectionOr($corrections, 'duree', $entry, 'duree') ?? self::DEFAULT_GROUP_RESERVATION_DURATION;
+        foreach ($teamIds as $teamId) {
+            $this->noteDailyCase($teamId, $day, $start, $duration);
+        }
 
         if ($this->allMembersReservedOnCase($teamIds, $venueId, $day, $start)) {
             // Déjà posée (rejeu) : aucun doublon. Mais ce retour saute le plafond de la garde ci-dessous :
@@ -597,6 +613,8 @@ final class ParcImportExecutor
         foreach ($this->lines($derived, 'reservations') as $i => $entry) {
             $decision = $index['reservations'][$i] ?? null;
             if (null === $decision || !$decision['coche']) {
+                // Une ligne décochée ne compte pas pour le plafond de séances par jour, même si sa réservation
+                // existe déjà à l'identique : seules les lignes cochées le relèvent.
                 ++$recap['ignores'];
 
                 continue;
@@ -628,6 +646,7 @@ final class ParcImportExecutor
             if (null === $day || null === $start) {
                 $this->fail('reservations', $i, 'Jour ou heure de cette réservation illisible.');
             }
+            $this->noteDailyCase($teamId, $day, $start, $duration);
 
             // Idempotence : une réservation socle identique (équipe + gymnase + jour + heure) existe
             // déjà → réutilisée, jamais recréée.
@@ -669,6 +688,76 @@ final class ParcImportExecutor
         }
 
         return $recap;
+    }
+
+    // ───────────────────────── Plafond de séances par jour ─────────────────────────
+
+    private function noteDailyCase(string $teamId, int $day, string $startHhmm, int $duration): void
+    {
+        [$hours, $minutes] = array_map(intval(...), explode(':', $startHhmm) + [0, 0]);
+        $from = $hours * 60 + $minutes;
+        $this->dailyCases[$teamId][$day][$from . '-' . ($from + $duration)] = [$from, $from + $duration];
+    }
+
+    /**
+     * Relève le plafond de séances par jour de chaque équipe d'une case cochée, d'après ses cases du parc soumis :
+     * par jour, le plus grand nombre de cases deux à deux disjointes (deux cases qui se touchent comptent 2). Au-delà
+     * du plafond : relevé à ce nombre, borné à 4 — jamais baissé. Le résultat :
+     *  - `raised` (un ÉVÉNEMENT : émis seulement quand la valeur est écrite) ou `capped` (un ÉTAT : plus de 4 cases
+     *    disjointes un même jour, redit à chaque import) — au plus une de ces deux lignes par équipe, sur le premier
+     *    jour de la semaine qui atteint son maximum ;
+     *  - `overlap` (un ÉTAT) : une ligne par jour où deux de ses cases se chevauchent.
+     * L'équipe est relue par {@see ownedTeam} : jamais celle d'un autre club.
+     *
+     * @return list<array{teamId: string, teamName: string, outcome: string, maxSessionsPerDay: int, day: int, count: int}>
+     */
+    private function raiseDailyCaps(Club $club, string $seasonId): array
+    {
+        $lines = [];
+        foreach ($this->dailyCases as $teamId => $days) {
+            ksort($days);
+            $disjointByDay = [];
+            $overlapDays = [];
+            foreach ($days as $day => $cases) {
+                $intervals = array_values($cases);
+                usort($intervals, static fn (array $a, array $b): int => [$a[1], $a[0]] <=> [$b[1], $b[0]]);
+                $count = 0;
+                $lastEnd = null;
+                foreach ($intervals as [$from, $to]) {
+                    if (null === $lastEnd || $from >= $lastEnd) {
+                        ++$count;
+                        $lastEnd = $to;
+                    }
+                }
+                $disjointByDay[$day] = $count;
+                foreach ($intervals as $i => $a) {
+                    foreach (\array_slice($intervals, $i + 1) as $b) {
+                        if ($a[0] < $b[1] && $b[0] < $a[1]) {
+                            $overlapDays[$day] = \count($intervals);
+                        }
+                    }
+                }
+            }
+            $max = max([0, ...$disjointByDay]);
+            $firstDay = (int) array_search($max, $disjointByDay, true);
+            $team = $this->ownedTeam($teamId, $club, $seasonId, 'reservations', 0);
+            $line = static fn (string $outcome, int $day, int $count): array => ['teamId' => $team->getId(), 'teamName' => $team->getName(), 'outcome' => $outcome, 'maxSessionsPerDay' => $team->getMaxSessionsPerDay(), 'day' => $day, 'count' => $count];
+            if ($max > self::MAX_SESSIONS_PER_DAY) {
+                if ($team->getMaxSessionsPerDay() < self::MAX_SESSIONS_PER_DAY) {
+                    $team->setMaxSessionsPerDay(self::MAX_SESSIONS_PER_DAY);
+                }
+                $lines[] = $line('capped', $firstDay, $max);
+            } elseif ($max > $team->getMaxSessionsPerDay()) {
+                $team->setMaxSessionsPerDay($max);
+                $lines[] = $line('raised', $firstDay, $max);
+            }
+            foreach ($overlapDays as $day => $count) {
+                $lines[] = $line('overlap', $day, $count);
+            }
+        }
+        $this->entityManager->flush();
+
+        return $lines;
     }
 
     // ───────────────────────────── Cap payant ─────────────────────────────

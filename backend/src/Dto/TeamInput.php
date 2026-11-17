@@ -42,6 +42,11 @@ class TeamInput
     #[Groups(['write'])]
     public ?int $minSessionsOverride = null;
 
+    /** Séances au plus le même jour. Absent au PUT = on garde la valeur ; absent au POST = 1. */
+    #[Assert\Range(notInRangeMessage: 'Le nombre de séances par jour doit être compris entre 1 et 4.', min: 1, max: 4)]
+    #[Groups(['write'])]
+    public ?int $maxSessionsPerDay = null;
+
     // Day-of-week 0..6 (0 = Monday). Rejects the "matchDay = 99" the audit flagged.
     #[Assert\Range(min: 0, max: 6)]
     #[Groups(['write'])]

@@ -4,7 +4,7 @@ import type { Coach, PriorityTier, Team } from "../api";
 import { coachMeta, groupedCoaches, orderedCoaches, orderedTeams, teamsOfTier } from "./ranking";
 
 function team(over: Partial<Team>): Team {
-  return { id: "id", name: "T", sportCategoryId: "c", priorityTierId: 1, tierOrder: 0, gender: null, level: null, sessionsPerWeek: 2, isActive: true, ...over };
+  return { id: "id", name: "T", sportCategoryId: "c", priorityTierId: 1, tierOrder: 0, gender: null, level: null, sessionsPerWeek: 2, isActive: true, maxSessionsPerDay: 1, ...over };
 }
 
 const tiers: PriorityTier[] = [

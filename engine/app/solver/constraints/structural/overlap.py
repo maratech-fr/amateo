@@ -8,16 +8,20 @@ externes ``..common``. L'orchestrateur ``add_level_1_hard_constraints`` du paque
 from __future__ import annotations
 
 from collections import defaultdict
-from collections.abc import Sequence
-from typing import Any
+from collections.abc import Iterable, Sequence
+from typing import Any, cast
 
+from ...model import DEFAULT_SESSION_MINUTES, _time_to_minutes
 from ..common import (
     AssignmentVariable,
     BoolVarLike,
     _assignment_time_key,
     _coach_presence_literal,
     _extract_interval,
+    _get,
     _locked_person_day_occupations,
+    _max_sessions_per_day_by_team,
+    _record_closure,
 )
 from .pairing import (
     CaseBvars,
@@ -249,3 +253,76 @@ def add_team_no_overlap(model: Any, assignments: Sequence[AssignmentVariable]) -
             continue
         groups[(team_id, time_key)].append(assignment.var)
     return _add_at_most_one_groups(model, groups.values())
+
+
+def add_team_self_no_overlap_constraints(
+    model: Any,
+    assignments: Sequence[AssignmentVariable],
+    *,
+    teams: Iterable[Any] = (),
+) -> int:
+    """PR 1a (contrat 1.10) — deux séances d'une même équipe ne se chevauchent jamais (règle dure).
+
+    Seulement pour une équipe à plafond ≥ 2 (``maxSessionsPerDay``) : à plafond 1, le budget du
+    jour interdit déjà deux séances le même jour, rien n'est posé et le modèle est inchangé.
+
+    Pour une équipe et un jour : à chaque heure de début possible, au plus un des créneaux qui
+    couvrent cette heure (intervalle [début, fin), sans allongement) est retenu — une contrainte
+    par heure de début, pas de paires. Deux intervalles se chevauchent si et seulement si l'un
+    commence pendant l'autre : les heures de début suffisent. Un créneau libre qui chevauche un
+    verrou de la même équipe (autre gymnase compris) est fermé, cause ``hard_lock``. Posé dans
+    l'agrégateur, donc identique en génération et dans le verdict d'un geste."""
+    caps = _max_sessions_per_day_by_team(teams)
+    capped = {team_id for team_id, cap in caps.items() if cap >= 2}
+    if not capped:
+        return 0
+
+    # (équipe, jour) -> [(début, fin, variable)] des créneaux libres.
+    free: dict[tuple[str, int], list[tuple[int, int, BoolVarLike]]] = defaultdict(list)
+    for assignment in assignments:
+        team_id = assignment.team_id
+        if team_id is None or str(team_id) not in capped:
+            continue
+        start, end, day = _extract_interval(assignment)
+        if start is None or end is None or day is None:
+            continue
+        try:
+            day_int = int(day)
+        except TypeError, ValueError:
+            continue
+        free[(str(team_id), day_int)].append((start, end, assignment.var))
+
+    # (équipe, jour) -> [(début, fin)] des verrous de l'équipe.
+    locks: dict[tuple[str, int], list[tuple[int, int]]] = defaultdict(list)
+    for locked in getattr(model, "locked_slots", ()) or ():
+        team_id = str(_get(locked, "team_id", "teamId", default="") or "")
+        if team_id not in capped:
+            continue
+        day_raw = _get(locked, "day_of_week", "dayOfWeek", default=None)
+        start_raw = _get(locked, "start_time", "startTime", default=None)
+        if day_raw is None or start_raw is None:
+            continue
+        try:
+            day_int = int(day_raw)
+        except TypeError, ValueError:
+            continue
+        lock_start = _time_to_minutes(start_raw)
+        duration = int(_get(locked, "duration_minutes", "durationMinutes", default=DEFAULT_SESSION_MINUTES))
+        locks[(team_id, day_int)].append((lock_start, lock_start + duration))
+
+    added = 0
+    for team_day, entries in free.items():
+        open_entries: list[tuple[int, int, BoolVarLike]] = []
+        for start, end, var in entries:
+            if any(start < l_end and l_start < end for l_start, l_end in locks.get(team_day, ())):
+                cast(Any, model).Add(var == 0)
+                _record_closure(model, var, {"kind": "hard_lock"})
+                added += 1
+                continue
+            open_entries.append((start, end, var))
+        starts = sorted({start for start, _end, _var in open_entries})
+        added += _add_at_most_one_groups(
+            model,
+            ([var for start, end, var in open_entries if start <= hour < end] for hour in starts),
+        )
+    return added

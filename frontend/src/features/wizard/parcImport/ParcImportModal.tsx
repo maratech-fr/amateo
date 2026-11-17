@@ -13,7 +13,7 @@ import { SegmentedControl } from "@/shared/components/ui/segmented-control";
 import { Select } from "@/shared/components/ui/select";
 import { Spinner } from "@/shared/components/ui/spinner";
 import { StepRail, type StepRailState, type StepRailStep } from "@/shared/components/ui/step-rail";
-import { DAYS, dayLabelLongCap } from "@/shared/lib/days";
+import { DAYS, dayLabelLong, dayLabelLongCap } from "@/shared/lib/days";
 import { groupTeamsByTier, type TeamLike, type TierLike, tierGroupLabel } from "@/shared/lib/teamTiers";
 import { formatMinutes } from "@/shared/lib/time";
 import { cn } from "@/shared/lib/utils";
@@ -28,6 +28,7 @@ import {
   useImportParc,
   type ParcAnalysis,
   type ParcAnalysisLine,
+  type ParcImportDailyCap,
   type ParcImportDecision,
   type ParcImportResult,
 } from "./queries";
@@ -1914,7 +1915,23 @@ function RecapView({ result, headingRef }: { result: ParcImportResult; headingRe
           ))}
         </ul>
       )}
+      {undefined === result.dailyCaps || 0 === result.dailyCaps.length ? null : (
+        <ul className="flex flex-col gap-1 text-sm text-foreground">
+          {result.dailyCaps.map((c) => (
+            <li key={`${c.outcome}-${c.teamId}-${c.day}`}>{dailyCapLine(c)}</li>
+          ))}
+        </ul>
+      )}
       <p className="text-sm text-muted-foreground">{T.recapNext}</p>
     </section>
   );
+}
+
+/** Une ligne de fin d'import par fait servi dans `dailyCaps` — le front n'en calcule aucun. */
+function dailyCapLine(c: ParcImportDailyCap): string {
+  const day = dayLabelLong(c.day);
+  if ("raised" === c.outcome) {
+    return T.dailyCapRaised(c.teamName, c.maxSessionsPerDay, day);
+  }
+  return "capped" === c.outcome ? T.dailyCapCapped(c.teamName, c.count, c.maxSessionsPerDay, day) : T.dailyCapOverlap(c.teamName, day);
 }

@@ -4,6 +4,7 @@ from typing import Any, cast
 
 from app.solver.compromise import CompromiseTermInfo, compute_compromises
 from app.solver.constraints import MANDATORY, ParsedConstraints, add_travel_time_penalty, resolve_implicit_rules
+from app.solver.constraints.common import _locked_team_days
 from app.solver.model import SlotKey, build_model
 from app.solver.objective import (
     LEVEL_2_OBJECTIVE_WEIGHTS,
@@ -12,6 +13,8 @@ from app.solver.objective import (
     add_match_day_rest_bonus,
     add_preferred_day_bonus,
     add_preferred_time_bonus,
+    add_same_day_gap_penalty,
+    add_same_day_penalty,
     add_spacing_penalty,
     add_team_link_penalty,
     add_venue_preference_bonus,
@@ -70,6 +73,22 @@ def _evaluate_state(
     )
     soft_terms.extend(
         add_spacing_penalty(model, model.x, data.get("teams", []), LEVEL_2_OBJECTIVE_WEIGHTS, info_out=info)
+    )
+    # PR 1a — « même jour » et « moins de 2 h d'écart », SANS références de saison : le calcul d'un
+    # geste ne les reçoit pas, il nomme donc aussi l'écart d'une paire de saison (exception voulue à
+    # la parité, docblock de ``add_same_day_gap_penalty``).
+    soft_terms.extend(
+        add_same_day_penalty(
+            model,
+            model.x,
+            data.get("teams", []),
+            LEVEL_2_OBJECTIVE_WEIGHTS,
+            locked_team_days=_locked_team_days(model),
+            info_out=info,
+        )
+    )
+    soft_terms.extend(
+        add_same_day_gap_penalty(model, assignments, data.get("teams", []), LEVEL_2_OBJECTIVE_WEIGHTS, info_out=info)
     )
     soft_terms.extend(
         add_coach_day_cap_penalty(

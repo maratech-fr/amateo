@@ -12,6 +12,7 @@ from app.solver.constraints import (
     add_venue_minimum_constraints,
     resolve_implicit_rules,
 )
+from app.solver.constraints.common import _max_sessions_per_day_by_team
 from app.solver.model import (
     DEFAULT_SESSION_MINUTES,
     ScheduleCpModel,
@@ -120,7 +121,12 @@ def _apply_hard(
     # plancher (verdict « valide » à tort). C'est le miroir déterministe
     # ``_venue_minimum_move_violation`` (avant le solve) qui juge l'état concret et NOMME le refus,
     # exactement comme le trajet (ENG-36).
-    add_venue_minimum_constraints(model, model.x, parsed.get("venue_minimums", []))
+    add_venue_minimum_constraints(
+        model,
+        model.x,
+        parsed.get("venue_minimums", []),
+        max_sessions_per_day=_max_sessions_per_day_by_team(data.get("teams", [])),
+    )
     return stats
 
 

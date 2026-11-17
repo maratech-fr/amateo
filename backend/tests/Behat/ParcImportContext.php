@@ -28,7 +28,11 @@ use RuntimeException;
  *    {@see ParcImportReservationSemanticsGateTest} (NR bloquant) ;
  *  - case à 2 équipes + groupe → bloc mutualisé nommé : {@see ParcImportExecuteTest::testACaseWithAGroupeCreatesABlockLabelledByThatGroupe}.
  * Cette feature prouve l'ENCHAÎNEMENT réel : l'aperçu dérivé, l'import qui pose la réservation au socle
- * (schedulePlanId null) ET crée le bloc mutualisé nommé de la case à deux équipes.
+ * (schedulePlanId null) ET crée le bloc mutualisé nommé de la case à deux équipes ; et qu'une équipe à
+ * deux cases le même jour est relevée à deux séances par jour, annoncé une seule fois, ce que le
+ * récapitulatif lit ensuite (cas nombreux du relèvement : {@see ParcImportExecuteTest}) ; et que seules
+ * les lignes COCHÉES relèvent ce plafond — une réservation déjà présente, proposée décochée au réimport,
+ * laisse l'équipe au plafond que sa fiche lui a donné (décision fondateur 2026-11-17).
  *
  * Décor : club de démonstration (patron {@see TeamsImportContext} + {@see SoclePlansContext}). Tout ce
  * que l'import crée porte un nom jetable (préfixe « ZZQWXYBEHAT »), purgé en fin de scénario. Le socle
@@ -66,6 +70,9 @@ final class ParcImportContext extends BaseContext
     private array $importJson = [];
 
     private int $importStatus = 0;
+
+    /** Le parc où TEAM_A a deux cases le lundi (09:00 et 18:00) au lieu du parc de deux équipes. */
+    private bool $doubledMondayParc = false;
 
     // ───────────────────────────── Décor ─────────────────────────────
 
@@ -222,6 +229,116 @@ final class ParcImportContext extends BaseContext
         }
     }
 
+    // ─────────────────────── Deux cases le même jour ───────────────────────
+
+    // Motif en expression régulière : en syntaxe turnip, « :00 » serait lu comme un paramètre.
+    #[When('/^j\'importe un parc où ma première équipe a deux cases le lundi, à 09:00 et à 18:00$/')]
+    public function jImporteUnParcDoubleLeLundi(): void
+    {
+        $this->doubledMondayParc = true;
+        [$this->importStatus, $this->importJson] = $this->postImport();
+    }
+
+    #[When('j\'importe de nouveau le même parc')]
+    public function jImporteDeNouveauLeMemeParc(): void
+    {
+        [$this->importStatus, $this->importJson] = $this->postImport();
+    }
+
+    #[Then('l\'import réussit et annonce 2 séances par jour autorisées pour cette équipe, d\'après ses cases du lundi')]
+    public function lImportAnnonceDeuxSeancesParJour(): void
+    {
+        $this->lImportReussit();
+        $raised = array_values(array_filter($this->dailyCaps(), static fn (array $c): bool => self::TEAM_A === ($c['teamName'] ?? null) && 'raised' === ($c['outcome'] ?? null)));
+        if (1 !== \count($raised)) {
+            throw new RuntimeException(\sprintf('l\'import devrait annoncer UN relèvement pour « %s » — dailyCaps : %s', self::TEAM_A, json_encode($this->dailyCaps(), \JSON_UNESCAPED_UNICODE)));
+        }
+        foreach (['maxSessionsPerDay' => 2, 'day' => 1, 'count' => 2] as $field => $expected) {
+            if ($expected !== ($raised[0][$field] ?? null)) {
+                throw new RuntimeException(\sprintf('le relèvement annoncé devrait porter %s = %d (2 séances par jour, d\'après ses 2 cases du lundi) — obtenu : %s', $field, $expected, json_encode($raised[0], \JSON_UNESCAPED_UNICODE)));
+            }
+        }
+    }
+
+    #[Then('le récapitulatif ne bloque pas cette équipe')]
+    public function leRecapitulatifNeBloquePasCetteEquipe(): void
+    {
+        $recap = $this->apiPost('constraints/validate', [], $this->token, ['X-Season-Id' => $this->seasonId]);
+        // 200 = valide, 422 = invalide (blocages ou erreurs) : les deux portent le même corps.
+        if (!\in_array($recap['status'], [200, 422], true)) {
+            throw new RuntimeException(\sprintf('le récapitulatif a répondu %d (200 ou 422 attendu)', $recap['status']));
+        }
+        $blockers = \is_array($recap['json']['blockers'] ?? null) ? $recap['json']['blockers'] : [];
+        $mine = array_filter($blockers, static fn (mixed $b): bool => \is_string($b) && str_contains($b, self::TEAM_A));
+        if ([] !== $mine) {
+            throw new RuntimeException(\sprintf('deux cases le lundi relevées à 2 séances par jour : le récapitulatif ne doit plus bloquer « %s » — %s', self::TEAM_A, json_encode(array_values($mine), \JSON_UNESCAPED_UNICODE)));
+        }
+    }
+
+    #[Then('l\'import n\'annonce plus aucun relèvement, et l\'équipe reste à 2 séances par jour')]
+    public function lImportNAnnoncePlusDeRelevement(): void
+    {
+        $this->lImportReussit();
+        $raised = array_filter($this->dailyCaps(), static fn (array $c): bool => 'raised' === ($c['outcome'] ?? null));
+        if ([] !== $raised) {
+            throw new RuntimeException(\sprintf('un réimport ne relève plus rien (le plafond est déjà à 2) — dailyCaps : %s', json_encode(array_values($raised), \JSON_UNESCAPED_UNICODE)));
+        }
+        $teamId = $this->dbalScalar(\sprintf('SELECT id AS behatval FROM team WHERE club_id=\'%s\' AND name=\'%s\'', $this->clubId, self::TEAM_A), admin: true);
+        $team = $this->apiGet(\sprintf('teams/%s', $teamId), $this->token, ['X-Season-Id' => $this->seasonId]);
+        if (2 !== ($team['json']['maxSessionsPerDay'] ?? null)) {
+            throw new RuntimeException(\sprintf('« %s » doit rester à 2 séances par jour après le réimport — obtenu : %s', self::TEAM_A, json_encode($team['json']['maxSessionsPerDay'] ?? null)));
+        }
+    }
+
+    /** Le geste de la fiche d'équipe : un PUT qui ré-échoit la fiche, plafond ramené à 1 (socle rouvert, donc permis). */
+    #[When('je ramène cette équipe à 1 séance par jour dans sa fiche')]
+    public function jeRameneCetteEquipeAUneSeanceParJour(): void
+    {
+        $teamId = $this->teamAId();
+        $team = $this->apiGet(\sprintf('teams/%s', $teamId), $this->token, ['X-Season-Id' => $this->seasonId]);
+        $body = [
+            'name' => $team['json']['name'] ?? self::TEAM_A,
+            'sportCategoryId' => $team['json']['sportCategoryId'] ?? null,
+            'priorityTierId' => $team['json']['priorityTierId'] ?? null,
+            'maxSessionsPerDay' => 1,
+        ];
+        $response = $this->apiPut(\sprintf('teams/%s', $teamId), $body, $this->token, ['X-Season-Id' => $this->seasonId]);
+        if (200 !== $response['status']) {
+            throw new RuntimeException(\sprintf('ramener « %s » à 1 séance par jour a répondu %d (200 attendu) : %s', self::TEAM_A, $response['status'], json_encode($response['json'], \JSON_UNESCAPED_UNICODE)));
+        }
+    }
+
+    /**
+     * Le réimport tel que l'écran le propose : l'aperçu présente les deux réservations du lundi DÉCOCHÉES
+     * (« déjà présente ») — vérifié ici, sinon le scénario ne prouverait rien —, et l'import part avec
+     * les seules lignes « à créer » cochées.
+     */
+    #[When('j\'importe de nouveau le même parc, ses deux réservations du lundi proposées décochées car déjà présentes')]
+    public function jImporteDeNouveauReservationsDecochees(): void
+    {
+        $this->jAnalyseMonParc(); // analyse le parc courant (celui aux deux cases du lundi ici)
+        $reservations = $this->sectionLines('reservations');
+        $unchecked = array_filter($reservations, static fn (array $l): bool => 'decoche' === ($l['statut'] ?? null) && false === ($l['coche'] ?? null));
+        if (2 !== \count($reservations) || 2 !== \count($unchecked)) {
+            throw new RuntimeException(\sprintf('l\'aperçu du réimport doit proposer les deux réservations du lundi décochées (déjà présentes) — obtenu : %s', json_encode($reservations, \JSON_UNESCAPED_UNICODE)));
+        }
+        [$this->importStatus, $this->importJson] = $this->postImport();
+    }
+
+    #[Then('l\'import n\'annonce rien pour cette équipe, qui reste à 1 séance par jour')]
+    public function lImportNAnnonceRienEtLEquipeResteAUne(): void
+    {
+        $this->lImportReussit();
+        $mine = array_filter($this->dailyCaps(), static fn (array $c): bool => self::TEAM_A === ($c['teamName'] ?? null));
+        if ([] !== $mine) {
+            throw new RuntimeException(\sprintf('une ligne décochée ne relève jamais le plafond : aucune annonce attendue pour « %s » — dailyCaps : %s', self::TEAM_A, json_encode(array_values($mine), \JSON_UNESCAPED_UNICODE)));
+        }
+        $team = $this->apiGet(\sprintf('teams/%s', $this->teamAId()), $this->token, ['X-Season-Id' => $this->seasonId]);
+        if (1 !== ($team['json']['maxSessionsPerDay'] ?? null)) {
+            throw new RuntimeException(\sprintf('« %s » doit rester à 1 séance par jour : ses réservations décochées ne comptent pas — obtenu : %s', self::TEAM_A, json_encode($team['json']['maxSessionsPerDay'] ?? null)));
+        }
+    }
+
     // ───────────────────────────── Nettoyage ─────────────────────────────
 
     #[AfterScenario]
@@ -288,6 +405,17 @@ final class ParcImportContext extends BaseContext
      */
     private function parc(): array
     {
+        if ($this->doubledMondayParc) {
+            return [
+                'format' => 'parc-v2',
+                'gymnases' => [['nom' => self::VENUE]],
+                'cases' => [
+                    ['gymnase' => self::VENUE, 'jour' => 1, 'debut' => '09:00', 'duree' => 90, 'equipes' => [self::TEAM_A]],
+                    ['gymnase' => self::VENUE, 'jour' => 1, 'debut' => '18:00', 'duree' => 90, 'equipes' => [self::TEAM_A]],
+                ],
+            ];
+        }
+
         return [
             'format' => 'parc-v2',
             'gymnases' => [['nom' => self::VENUE]],
@@ -345,6 +473,18 @@ final class ParcImportContext extends BaseContext
     }
 
     /**
+     * Les lignes `dailyCaps` de la dernière réponse d'import (relèvements, plafonds atteints, chevauchements).
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function dailyCaps(): array
+    {
+        $caps = $this->importJson['dailyCaps'] ?? [];
+
+        return array_values(array_filter(\is_array($caps) ? $caps : [], 'is_array'));
+    }
+
+    /**
      * @return list<array<string, mixed>>
      */
     private function sectionLines(string $section): array
@@ -353,6 +493,16 @@ final class ParcImportContext extends BaseContext
         $lines = \is_array($sections) ? ($sections[$section] ?? []) : [];
 
         return array_values(array_filter(\is_array($lines) ? $lines : [], 'is_array'));
+    }
+
+    private function teamAId(): string
+    {
+        $id = $this->dbalScalar(\sprintf('SELECT id AS behatval FROM team WHERE club_id=\'%s\' AND name=\'%s\'', $this->clubId, self::TEAM_A), admin: true);
+        if ('' === $id) {
+            throw new RuntimeException(\sprintf('« %s » introuvable — le parc a-t-il été importé ?', self::TEAM_A));
+        }
+
+        return $id;
     }
 
     private function teamCount(string $name): int

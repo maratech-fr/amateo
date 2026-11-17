@@ -122,3 +122,27 @@ def test_bccl_nominal_solve_stays_in_main_order() -> None:
         f"BCCL nominale en {elapsed:.1f}s, au-dessus de {BCCL_NOMINAL_ORDER_BUDGET_SECONDS:.0f}s : "
         "régression probable aux hypothèses CP-SAT posées dès le premier solve (présolve bridé)."
     )
+
+
+@pytest.mark.perf
+def test_bccl_with_daily_caps_on_every_team_completes_under_budget() -> None:
+    """PR 1a — la BCCL avec TOUTES ses équipes à 2 séances par jour (pire cas de l'encodage de
+    l'écart) tient le budget. La BCCL et non le club dense : ses nombreux débuts distincts par jour
+    multiplient les heures et les voisines que l'encodage lit, le club dense n'en a que deux.
+    Mesure la durée seulement : il ne dit rien du collé que la phase 2 choisirait sur une phase 1
+    non prouvée."""
+    budget = _budget_seconds()
+    with open(FIXTURES_DIR / "bccl_2026_08_15.json", encoding="utf-8") as f:
+        data = json.load(f)
+    teams = data["teams"]
+    assert len(teams) == 50
+    for team in teams:
+        team["maxSessionsPerDay"] = 2
+
+    start = time.monotonic()
+    result = solve_payload(data, timeout=int(budget))
+    elapsed = time.monotonic() - start
+
+    assert result["status"] == "completed"
+    assert len(result["slots"]) > 0
+    assert elapsed < budget, f"BCCL with daily caps took {elapsed:.1f}s, over the {budget:.0f}s budget"

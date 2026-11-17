@@ -93,7 +93,7 @@ vi.mock("../queries", () => ({
 }));
 // D2/D3 (lot 2) — le verdict du récap porte désormais `errors` (blocages), `warnings` et des
 // notices TYPÉES (créneaux partagés). RecapStep les rend dans l'accordéon d'alertes en haut.
-const validationState = vi.hoisted(() => ({ value: { errors: [], warnings: [], notices: [] } as { errors: string[]; warnings: string[]; notices: Array<{ key: string; tone: "warning" | "muted"; place: string; message: string }>; doubledReservationIds?: string[] } }));
+const validationState = vi.hoisted(() => ({ value: { errors: [], warnings: [], notices: [] } as { errors: string[]; warnings: string[]; notices: Array<{ key: string; tone: "warning" | "muted"; place: string; message: string }>; doubledReservationIds?: string[]; overlappingReservationIds?: string[] } }));
 vi.mock("../lib/useStepValidation", () => ({ useStepValidation: () => validationState.value }));
 vi.mock("../store", () => ({ useWizardStore: (sel: (s: { mode: string; calendarEntryId: string | null }) => unknown) => sel(storeState.value) }));
 vi.mock("@/shared/stores/toastStore", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
@@ -399,7 +399,24 @@ describe("RecapStep — read-only summary", () => {
       await user.click(screen.getByRole("button", { name: /Réservations/ }));
       expect(screen.getByRole("button", { name: /^Retirer la réservation de SM1/ })).toBeInTheDocument();
       expect(screen.queryByRole("button", { name: /^Retirer la réservation de Fanion/ })).toBeNull();
-      expect(screen.getAllByText(WIZARD_TEXTS.secondSessionSameDay(dayLabelLong(2)), { exact: false })).toHaveLength(1);
+      expect(screen.getAllByText(WIZARD_TEXTS.tooManySessionsSameDay(dayLabelLong(2)), { exact: false })).toHaveLength(1);
+    });
+
+    // A30 (avenant du plan 1a) : la ligne bloquée porte le motif que le SERVEUR donne, lu dans l'une
+    // des deux listes ; l'écran ne déduit jamais un chevauchement des heures. Jumeau serveur :
+    // `RecapRefusesASecondSessionSameDayTest::testEachBlockedLineCarriesOneCauseInBothResponseBodies`.
+    it("chaque ligne bloquée dit la cause que le serveur donne : trop de séances, ou chevauche", async () => {
+      recapLayer.slots = tuesdayWindows;
+      // Mêmes heures que le témoin, disjointes : seul le serveur dit que r2 chevauche (l'écran ne recalcule rien).
+      h.reservations = [at("r1", "t1", "18:00"), at("r2", "t1", "20:30")];
+      validationState.value = { errors: ["SM1 est réservée deux fois"], warnings: [], notices: [], doubledReservationIds: ["r1"], overlappingReservationIds: ["r2"] };
+      const user = userEvent.setup();
+      renderWithProviders(<RecapStep />);
+
+      await user.click(screen.getByRole("button", { name: /Réservations/ }));
+      expect(screen.getAllByRole("button", { name: /^Retirer la réservation de SM1/ })).toHaveLength(2);
+      expect(screen.getAllByText(WIZARD_TEXTS.tooManySessionsSameDay(dayLabelLong(2)), { exact: false })).toHaveLength(1);
+      expect(screen.getAllByText(WIZARD_TEXTS.overlappingSessionSameDay(dayLabelLong(2)), { exact: false })).toHaveLength(1);
     });
 
     it("un groupe désigné se retire en lot, case par case : on ne casse jamais le groupe", async () => {
@@ -424,7 +441,7 @@ describe("RecapStep — read-only summary", () => {
       renderWithProviders(<RecapStep />);
 
       await user.click(screen.getByRole("button", { name: /Réservations/ }));
-      expect(screen.getAllByText(WIZARD_TEXTS.secondSessionSameDay(dayLabelLong(2)), { exact: false })).toHaveLength(2);
+      expect(screen.getAllByText(WIZARD_TEXTS.tooManySessionsSameDay(dayLabelLong(2)), { exact: false })).toHaveLength(2);
     });
 
     it("chaque poubelle désignée a un nom accessible distinct : jour, gymnase, heure", async () => {
@@ -453,7 +470,7 @@ describe("RecapStep — read-only summary", () => {
       renderWithProviders(<RecapStep />);
 
       await user.click(screen.getByRole("button", { name: /Réservations/ }));
-      expect(screen.getAllByText(WIZARD_TEXTS.secondSessionSameDay(dayLabelLong(2)), { exact: false })).toHaveLength(2);
+      expect(screen.getAllByText(WIZARD_TEXTS.tooManySessionsSameDay(dayLabelLong(2)), { exact: false })).toHaveLength(2);
       const names = screen.getAllByRole("button", { name: /^Retirer l'entraînement mutualisé SM1 \+ Fanion/ }).map((button) => button.getAttribute("aria-label") ?? "");
       expect(new Set(names).size).toBe(2);
       expect(names.every((name) => /\bmar/i.test(name) && name.includes("Gymnase A"))).toBe(true);

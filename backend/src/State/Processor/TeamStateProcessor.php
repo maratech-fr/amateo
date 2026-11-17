@@ -15,6 +15,7 @@ use App\Service\ManagementAccessGuard;
 use App\Service\PlanEntitlements;
 use App\Service\SeasonAccessGuard;
 use App\Service\SeasonResolver;
+use App\Service\SocleGuard;
 use App\Service\TeamEngagementGuard;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\HttpFoundation\RequestStack;
@@ -33,6 +34,7 @@ class TeamStateProcessor extends AbstractStateProcessor
         ManagementAccessGuard $managementAccessGuard,
         private readonly TeamEngagementGuard $teamEngagementGuard,
         private readonly PlanEntitlements $planEntitlements,
+        private readonly SocleGuard $socleGuard,
     ) {
         parent::__construct($entityManager, $requestStack, $seasonResolver, $seasonAccessGuard, $managementAccessGuard);
     }
@@ -93,6 +95,9 @@ class TeamStateProcessor extends AbstractStateProcessor
         $entity->setLevel(null !== $input->level ? TeamLevel::tryFrom($input->level) : null);
         if (null !== $input->sessionsPerWeek) {
             $entity->setSessionsPerWeek($input->sessionsPerWeek);
+        }
+        if (null !== $input->maxSessionsPerDay) {
+            $entity->setMaxSessionsPerDay($input->maxSessionsPerDay);
         }
         $entity->setMinSessionsOverride($input->minSessionsOverride);
         $entity->setMatchDay($input->matchDay);
@@ -163,6 +168,16 @@ class TeamStateProcessor extends AbstractStateProcessor
 
         if (null !== $input->sessionsPerWeek) {
             $entity->setSessionsPerWeek($input->sessionsPerWeek);
+        }
+
+        // Séances par jour : absent = on garde. Sous planning de saison EN VIGUEUR, la valeur ne
+        // change plus (le même verrou que l'écran pose sur le nombre de séances) ; un écho à
+        // l'identique passe, le plafond d'une PÉRIODE reste libre (surcharge de période).
+        if (null !== $input->maxSessionsPerDay && $input->maxSessionsPerDay !== $entity->getMaxSessionsPerDay()) {
+            if ($this->socleGuard->isSeasonPlanChosen($entity->getSeasonId())) {
+                $this->refuse('Rouvrez le planning de saison pour modifier le nombre de séances.');
+            }
+            $entity->setMaxSessionsPerDay($input->maxSessionsPerDay);
         }
 
         // PUT PARTIEL : un champ ABSENT du payload garde sa valeur. Aucun client

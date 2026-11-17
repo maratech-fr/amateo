@@ -15,7 +15,7 @@ import { TEAMS_TEXTS } from "../texts/teams";
 
 const baseTeam: Team = {
   id: "t1", name: "SM3", sportCategoryId: "cat1", priorityTierId: 5, tierOrder: 0,
-  gender: "M", level: "DEPARTEMENTAL", sessionsPerWeek: 1, isActive: true,
+  gender: "M", level: "DEPARTEMENTAL", sessionsPerWeek: 1, isActive: true, maxSessionsPerDay: 1,
 };
 // Mutable : « engagée » vient du serveur, donc les tests le font varier comme lui.
 let team: Team = baseTeam;

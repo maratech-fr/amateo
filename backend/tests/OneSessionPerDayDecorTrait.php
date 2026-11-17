@@ -110,6 +110,33 @@ trait OneSessionPerDayDecorTrait
     }
 
     /**
+     * Le plafond de séances par jour de l'équipe, en saison (le réglage de l'onglet « Séances par jour »).
+     *
+     * @param Decor $ctx
+     */
+    private function dailyCap(array $ctx, string $teamId, int $cap): void
+    {
+        $this->scopeGucToClub($ctx['clubId']);
+        $team = $this->em->getRepository(Team::class)->find($teamId);
+        self::assertInstanceOf(Team::class, $team);
+        $team->setMaxSessionsPerDay($cap);
+        $this->em->flush();
+    }
+
+    /**
+     * Une case de plus à la grille de saison (durée au choix) — ou de la période quand le décor en a une.
+     *
+     * @param Decor $ctx
+     */
+    private function extraWindow(array $ctx, string $venueId, int $day, string $start, int $durationMinutes = 90): void
+    {
+        $this->scopeGucToClub($ctx['clubId']);
+        $this->em->persist((new VenueTrainingSlot)->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])->setVenueId($venueId)->setSchedulePlanId($ctx['planId'])
+            ->setDayOfWeek($day)->setStartTime(new DateTimeImmutable($start))->setDurationMinutes($durationMinutes)->setCapacity(3));
+        $this->em->flush();
+    }
+
+    /**
      * Un groupe mutualisé de la portée du décor.
      *
      * @param Decor        $ctx

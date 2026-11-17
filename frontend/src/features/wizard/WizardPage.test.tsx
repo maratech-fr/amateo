@@ -93,7 +93,7 @@ vi.mock("./api", async (orig) => ({
 beforeEach(() => {
   useWizardStore.setState({ stepId: "teams", mode: "season", calendarEntryId: null });
   useNavTransition.setState({ token: 0 }); // NR voile : aucune transition en cours entre deux tests
-  vi.mocked(api.listTeams).mockResolvedValue([{ id: "t1", name: "SF1", sportCategoryId: "cat1", priorityTierId: 1, tierOrder: 0, gender: null, level: null, sessionsPerWeek: 2, isActive: true }]);
+  vi.mocked(api.listTeams).mockResolvedValue([{ id: "t1", name: "SF1", sportCategoryId: "cat1", priorityTierId: 1, tierOrder: 0, gender: null, level: null, sessionsPerWeek: 2, isActive: true, maxSessionsPerDay: 1 }]);
   deleteEntryMutateAsync.mockClear();
   periodPlanId = "plan-x";
   schedulesData = [];

@@ -146,7 +146,7 @@ final class ValidateConstraintsController extends AbstractController
         // qui rend `null` plutôt que de lever). La capacité est un CONFORT : sans elle, le récap reste utile.
         $reservations = $this->reservationsInScope($clubId, $seasonId, $calendarEntryId, $selection);
         // Une seule séance par jour, en saison : le Récap désigne aussi les lignes à retirer.
-        $secondSession = null === $calendarEntryId ? $this->secondSessionSameDayDetector->detect($reservations) : ['blockers' => [], 'reservationIds' => [], 'teamDays' => []];
+        $secondSession = null === $calendarEntryId ? $this->secondSessionSameDayDetector->detect($reservations) : ['blockers' => [], 'reservationIds' => [], 'overlappingReservationIds' => [], 'teamDays' => []];
 
         try {
             $capacityPayload = null;
@@ -243,7 +243,7 @@ final class ValidateConstraintsController extends AbstractController
             : null;
 
         return $this->json(
-            ['valid' => $valid, 'errors' => $errors, 'conflicts' => $conflicts, 'warnings' => $warnings, 'blockers' => $blockers, 'doubledReservationIds' => $secondSession['reservationIds'], 'notices' => $this->coachDoubleBookingDetector->detectHoldNotices($reservations, $constraints, $clubId, $seasonId), 'capacity' => $capacity],
+            ['valid' => $valid, 'errors' => $errors, 'conflicts' => $conflicts, 'warnings' => $warnings, 'blockers' => $blockers, 'doubledReservationIds' => $secondSession['reservationIds'], 'overlappingReservationIds' => $secondSession['overlappingReservationIds'], 'notices' => $this->coachDoubleBookingDetector->detectHoldNotices($reservations, $constraints, $clubId, $seasonId), 'capacity' => $capacity],
             $valid ? Response::HTTP_OK : Response::HTTP_UNPROCESSABLE_ENTITY,
         );
     }

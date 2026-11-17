@@ -22,6 +22,9 @@ export interface Team {
   level: TeamLevel | null;
   sessionsPerWeek: number;
   isActive: boolean;
+  /** Séances max le même jour pour cette équipe (1 à 4, 1 par défaut) — valeur de SAISON, lue par
+   *  le Récap, les gestes et le système. En période, la surcharge du plan peut la remplacer. */
+  maxSessionsPerDay: number;
   /** Équipe « en entente (CTC) » — repère visuel interne, aucun effet moteur (exposé par TeamResource). */
   isCtc?: boolean;
   /** Le/les partenaire(s) de l'entente, texte libre opaque ; null hors entente. */
@@ -60,6 +63,7 @@ export interface TeamPayload {
   gender?: Gender | null;
   level?: TeamLevel | null;
   sessionsPerWeek?: number;
+  maxSessionsPerDay?: number;
   isActive?: boolean;
   isCtc?: boolean;
   ctcPartner?: string | null;
@@ -350,6 +354,8 @@ export interface TeamPeriodOverride {
   teamId: string;
   isActive: boolean;
   sessionsPerWeek: number | null;
+  /** Séances max par jour pour cette période ; `null` = la valeur de saison de l'équipe. */
+  maxSessionsPerDay: number | null;
   /** Lot 9 — origine d'un override posé par un geste nommé (`mutualisation` = équipe activée par la
    *  mutualisation d'une case) ; `null` pour un réglage ordinaire du wizard. Le planning l'AFFICHE. */
   source: string | null;
@@ -360,6 +366,7 @@ export interface TeamPeriodOverridePayload {
   teamId: string;
   isActive: boolean;
   sessionsPerWeek?: number | null;
+  maxSessionsPerDay?: number | null;
 }
 
 export const listTeamPeriodOverrides = (schedulePlanId: string): Promise<TeamPeriodOverride[]> => collectionAll<TeamPeriodOverride>("team_period_overrides", { schedulePlanId });
@@ -834,8 +841,12 @@ export interface ValidateResult {
    * PR B ne renvoie pas la clé.
    */
   blockers?: string[];
-  /** Les réservations à retirer pour rendre à une équipe une seule séance par jour (Récap de saison). */
+  /** Les réservations bloquées parce que leur équipe a trop de séances ce jour-là (au-delà de son
+   *  plafond de séances par jour, Récap de saison). Disjointe de `overlappingReservationIds`. */
   doubledReservationIds?: string[];
+  /** Les réservations bloquées parce que leur créneau CHEVAUCHE une autre séance de la même équipe le
+   *  même jour. Le serveur donne la cause : l'écran ne la déduit jamais des heures. */
+  overlappingReservationIds?: string[];
   /**
    * Avertissements formulés par le serveur — « "X" vise le gymnase Y, désactivé pour
    * cette période : elle ne sera pas appliquée ». Ils n'invalident RIEN (règle #8) et

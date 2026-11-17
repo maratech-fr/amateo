@@ -92,6 +92,13 @@ export const PARC_IMPORT_TEXTS = {
   },
 
   /** Le récap d'une section importée (contrat PR2, provisoire). */
+  /** Fin d'import, plafond de séances par jour : relevé d'après les cases. */
+  dailyCapRaised: (team: string, max: number, day: string): string => `${team} : ${max} séances par jour autorisées, d'après ses cases du ${day}.`,
+  /** Fin d'import : plus de 4 cases un même jour. */
+  dailyCapCapped: (team: string, count: number, max: number, day: string): string =>
+    `${team} : ${count} cases le ${day}, au-delà de ${max} séances par jour — le récapitulatif demandera d'en retirer.`,
+  /** Fin d'import : deux cases qui se chevauchent un même jour. */
+  dailyCapOverlap: (team: string, day: string): string => `${team} : deux cases se chevauchent le ${day} — le récapitulatif demandera d'en retirer une.`,
   sectionRecap: (crees: number, apparies: number, misAJour: number, ignores: number): string =>
     `${crees} créé(s) · ${apparies} rattaché(s) · ${misAJour} mis à jour · ${ignores} ignoré(s)`,
 

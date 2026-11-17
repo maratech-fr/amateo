@@ -33,6 +33,7 @@ import { TEAMS_TEXTS } from "../texts/teams";
 import { payload } from "../lib/teamPayload";
 import { ParcImportModal } from "../parcImport/ParcImportModal";
 import { PeriodTeams } from "./PeriodTeams";
+import { DailyCapMarker } from "./TeamDailyCapPanel";
 import { TeamLinksModal } from "./TeamLinksModal";
 import { TeamsImportModal } from "./TeamsImportModal";
 import { compareNamesFr } from "@/shared/lib/nameOrder";
@@ -112,6 +113,7 @@ function TeamRow({ team, number, categories, tiers, onField, onDelete, onOpenLin
   const engaged = true === team.isEngaged;
   // Un Membre lit la ligne : champs en lecture, ni flèches, ni suppression (« Liens » reste, en lecture).
   const canManage = useCanManage();
+  const dailyCap = team.maxSessionsPerDay ?? 1;
 
   return (
     <div className="border-t border-border py-1.5">
@@ -138,15 +140,25 @@ function TeamRow({ team, number, categories, tiers, onField, onDelete, onOpenLin
         ) : null}
         {/* Repère d'entente (CTC), DEVANT le nom — « d'un coup d'œil » (D4, décision fondateur). */}
         {true === team.isCtc ? <CtcMark partner={team.ctcPartner} /> : null}
-        <ReadOnlyFieldset readOnly={!canManage} className="flex flex-wrap items-center gap-2">
-        <Input
-          aria-label={TEAMS_TEXTS.colNameAria}
-          compact
-          className={TEAM_COLUMNS.name}
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          onBlur={() => name.trim() && name !== team.name && onField(team, { name: name.trim() })}
-        />
+        {/* `grow basis-0` dès `sm` : la zone de saisie prend la place restante au lieu de se
+            dimensionner sur son contenu — sinon le `pr-16` du champ du nom (repère « N/jour »)
+            élargit la zone de 52 px et renvoie la corbeille à la ligne. Sous `sm`, pleine ligne. */}
+        <ReadOnlyFieldset readOnly={!canManage} className="flex grow basis-full flex-wrap items-center gap-2 sm:basis-0">
+        {/* Repère « N/jour » (plus d'une séance le même jour, réglé dans Liens) : posé DANS la
+            colonne du nom, à droite du champ, le texte coupé avant lui. */}
+        <div className={cn("relative", TEAM_COLUMNS.name)}>
+          <Input
+            aria-label={TEAMS_TEXTS.colNameAria}
+            compact
+            className={cn(dailyCap > 1 && "pr-16 text-ellipsis")}
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            onBlur={() => name.trim() && name !== team.name && onField(team, { name: name.trim() })}
+          />
+          <span className="absolute inset-y-0 right-1.5 flex items-center">
+            <DailyCapMarker max={dailyCap} />
+          </span>
+        </div>
         <Select aria-label={TEAMS_TEXTS.colCategory} compact className={TEAM_COLUMNS.category} value={team.sportCategoryId} onChange={(e) => onField(team, { sportCategoryId: e.target.value })}>
           {categories.map((c) => (
             <option key={c.id} value={c.id}>
@@ -1023,7 +1035,7 @@ function TeamsEditor() {
       {/* P2-45 — la modale Liens de l'équipe. En SAISON, les passerelles sont ÉDITABLES
           (readOnlyLinks=false) et la mutualisation écrit sur le socle (schedulePlanId null). */}
       {null !== linksTeam ? (
-        <TeamLinksModal team={linksTeam} teams={teams} tiers={tiers} schedulePlanId={null} readOnlyLinks={false} onClose={() => setLinksTeam(null)} />
+        <TeamLinksModal team={linksTeam} teams={teams} tiers={tiers} schedulePlanId={null} readOnlyLinks={false} dailyCapReadOnly={sessionsLocked} onClose={() => setLinksTeam(null)} />
       ) : null}
       {/* P3-7 — la modale d'import. Montée seulement club + saison connus (l'onboarding les a
           toujours) ; le bouton reste visible même sinon, mais n'ouvre rien à vide. */}

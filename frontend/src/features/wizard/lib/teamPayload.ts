@@ -14,6 +14,7 @@ export function payload(team: Team, patch: Partial<TeamPayload>): TeamPayload {
     gender: team.gender,
     level: team.level,
     sessionsPerWeek: team.sessionsPerWeek,
+    maxSessionsPerDay: team.maxSessionsPerDay,
     isActive: team.isActive,
     isCtc: team.isCtc,
     ctcPartner: team.ctcPartner,

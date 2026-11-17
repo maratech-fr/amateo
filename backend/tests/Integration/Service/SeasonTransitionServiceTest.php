@@ -356,6 +356,22 @@ final class SeasonTransitionServiceTest extends KernelTestCase
         self::assertSame(CoachGender::FEMALE, $copiedAnna->getGender(), 'le genre du coach survit au passage de saison (P4-311)');
     }
 
+    /** Le plafond de séances par jour est un réglage permanent de l'équipe : il suit la copie de la saison suivante. */
+    public function testTheTeamDailyCapSurvivesTheTransition(): void
+    {
+        [, $season] = $this->createClubGraph();
+        $sm1 = $this->em->getRepository(Team::class)->findOneBy(['seasonId' => $season->getId(), 'name' => 'SM1']);
+        self::assertInstanceOf(Team::class, $sm1);
+        $sm1->setMaxSessionsPerDay(2);
+        $this->em->flush();
+
+        $target = $this->service->transition($season);
+
+        $copied = $this->em->getRepository(Team::class)->findOneBy(['seasonId' => $target->getId(), 'name' => 'SM1']);
+        self::assertInstanceOf(Team::class, $copied);
+        self::assertSame(2, $copied->getMaxSessionsPerDay());
+    }
+
     public function testCoachIsVehicledSurvivesTheTransition(): void
     {
         // P4-311 — la case « véhiculé » (le coach peut transporter : attribut métier qui

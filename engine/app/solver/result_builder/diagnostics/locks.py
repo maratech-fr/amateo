@@ -10,6 +10,7 @@ from collections.abc import Mapping
 from datetime import UTC, datetime
 from typing import Any
 
+from ...constraints.common import _max_sessions_per_day_by_team
 from ...model import (
     DEFAULT_SESSION_MINUTES,
     _format_time,
@@ -17,6 +18,7 @@ from ...model import (
 )
 from ..helpers import (
     _coach_name_map,
+    _collection,
     _day_label,
     _get,
     _label,
@@ -128,7 +130,11 @@ def _diagnose_locked_structural_conflicts(
                 )
 
     # --- Équipe avec deux séances le même jour ------------------------------------------
-    team_day_slots: dict[tuple[str, int], list[tuple[int, str, bool]]] = defaultdict(list)
+    # PR 1a — au-delà du plafond de séances par jour de l'équipe seulement (T6), et deux verrous qui
+    # se chevauchent (T6b). Plafond 1 : message et seuil d'avant, inchangés. Deux verrous collés
+    # ou disjoints sous le plafond : silence.
+    caps = _max_sessions_per_day_by_team(_collection(model_data, "teams"))
+    team_day_slots: dict[tuple[str, int], list[tuple[int, str, bool, int]]] = defaultdict(list)
     for slot in slots:
         day = _slot_day(slot)
         if day is None:
@@ -136,30 +142,76 @@ def _diagnose_locked_structural_conflicts(
         team_id = str(slot["teamId"])
         start = _time_to_minutes(str(slot["startTime"]))
         is_hard = str(slot.get("lockLevel") or "NONE").upper() == "HARD"
-        team_day_slots[(team_id, day)].append((start, str(slot["startTime"])[:5], is_hard))
+        duration = int(slot.get("durationMinutes") or DEFAULT_SESSION_MINUTES)
+        team_day_slots[(team_id, day)].append((start, str(slot["startTime"])[:5], is_hard, start + duration))
 
     for (team_id, day), day_slots in sorted(team_day_slots.items()):
-        if len(day_slots) < 2 or not any(is_hard for _s, _t, is_hard in day_slots):
+        if len(day_slots) < 2 or not any(is_hard for _s, _t, is_hard, _e in day_slots):
             continue
-        times = ", ".join(t for _s, t, _h in sorted(day_slots))
-        diagnostics.append(
-            {
-                "id": f"diag-locked-team-day-{team_id}-{day}",
-                "type": "conflict",
-                "severity": "ERROR",
-                "teamId": team_id,
-                "dayOfWeek": day,
-                "message": (
-                    f"{_label(team_id, team_names)} a {len(day_slots)} séances le même jour "
-                    f"({_day_label(day)} à {times}) alors qu'une seule par jour est permise : "
-                    "un créneau verrouillé prime, mais deux séances le même jour restent à arbitrer."
-                ),
-                "suggestions": [
-                    "Déplacez ou retirez l'une des réservations verrouillées de cette équipe ce jour-là.",
-                ],
-                "createdAt": datetime.now(UTC).isoformat(),
-            }
-        )
+        cap = caps.get(team_id, 1)
+        times = ", ".join(t for _s, t, _h, _e in sorted(day_slots))
+        if cap == 1:
+            diagnostics.append(
+                {
+                    "id": f"diag-locked-team-day-{team_id}-{day}",
+                    "type": "conflict",
+                    "severity": "ERROR",
+                    "teamId": team_id,
+                    "dayOfWeek": day,
+                    "message": (
+                        f"{_label(team_id, team_names)} a {len(day_slots)} séances le même jour "
+                        f"({_day_label(day)} à {times}) alors qu'une seule par jour est permise : "
+                        "un créneau verrouillé prime, mais deux séances le même jour restent à arbitrer."
+                    ),
+                    "suggestions": [
+                        "Déplacez ou retirez l'une des réservations verrouillées de cette équipe ce jour-là.",
+                    ],
+                    "createdAt": datetime.now(UTC).isoformat(),
+                }
+            )
+            continue
+        if len(day_slots) > cap:
+            diagnostics.append(
+                {
+                    "id": f"diag-locked-team-day-{team_id}-{day}",
+                    "type": "conflict",
+                    "severity": "ERROR",
+                    "teamId": team_id,
+                    "dayOfWeek": day,
+                    "message": (
+                        f"{_label(team_id, team_names)} a {len(day_slots)} séances le même jour "
+                        f"({_day_label(day)} à {times}) alors que {cap} par jour sont permises pour cette "
+                        "équipe : un créneau verrouillé prime, mais les séances en trop restent à arbitrer."
+                    ),
+                    "suggestions": [
+                        "Déplacez ou retirez l'une des réservations verrouillées de cette équipe ce jour-là.",
+                    ],
+                    "createdAt": datetime.now(UTC).isoformat(),
+                }
+            )
+        locked = sorted((s, t, e) for s, t, is_hard, e in day_slots if is_hard)
+        for index, (a_start, a_text, a_end) in enumerate(locked):
+            overlapping = next(((b_text) for b_start, b_text, _b_end in locked[index + 1 :] if b_start < a_end), None)
+            if overlapping is None:
+                continue
+            diagnostics.append(
+                {
+                    "id": f"diag-locked-team-overlap-{team_id}-{day}-{a_start}",
+                    "type": "conflict",
+                    "severity": "ERROR",
+                    "teamId": team_id,
+                    "dayOfWeek": day,
+                    "message": (
+                        f"{_label(team_id, team_names)} a deux séances verrouillées qui se chevauchent le "
+                        f"{_day_label(day)} ({a_text} et {overlapping}) : un créneau verrouillé prime, mais elle "
+                        "ne peut pas être aux deux."
+                    ),
+                    "suggestions": [
+                        "Déplacez ou retirez l'une des réservations verrouillées de cette équipe ce jour-là.",
+                    ],
+                    "createdAt": datetime.now(UTC).isoformat(),
+                }
+            )
 
     return diagnostics
 

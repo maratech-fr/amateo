@@ -84,6 +84,9 @@ class TeamResource
     public int $sessionsPerWeek = 0;
 
     #[Groups(['read'])]
+    public int $maxSessionsPerDay = 1;
+
+    #[Groups(['read'])]
     public ?int $minSessionsOverride = null;
 
     #[Groups(['read'])]
@@ -120,6 +123,7 @@ class TeamResource
         $dto->gender = $entity->getGender();
         $dto->level = $entity->getLevel();
         $dto->sessionsPerWeek = $entity->getSessionsPerWeek();
+        $dto->maxSessionsPerDay = $entity->getMaxSessionsPerDay();
         $dto->minSessionsOverride = $entity->getMinSessionsOverride();
         $dto->matchDay = $entity->getMatchDay();
         $dto->forcedVenueId = $entity->getForcedVenueId();

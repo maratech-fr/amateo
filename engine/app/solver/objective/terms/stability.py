@@ -141,3 +141,30 @@ def add_socle_reference_bonus(
             terms.append((var, int(weight)))
 
     return terms
+
+
+def season_reference_keys(
+    socle_reference_assignments: Iterable[Mapping[str, Any]] | None,
+) -> frozenset[tuple[str, int, str]]:
+    """PR 1a — les horaires de SAISON d'une équipe qui garde ses créneaux : clés
+    ``(équipe, jour, « HH:MM »)`` des seules références ``keep: true``.
+
+    Même lecture du drapeau que ``add_socle_reference_bonus`` et même filtre que le diagnostic
+    « créneaux de saison conservés » (``season_slots.py``) ; clé normalisée exactement comme
+    ``add_socle_reference_bonus`` (jour en ``int``, heure en « HH:MM » — le backend écrit
+    « H:i:s »). Une référence de comblement (sans ``keep``) n'est jamais un horaire de saison :
+    l'ensemble est vide si le bloc est absent ou ne porte que des références de comblement."""
+    keys: set[tuple[str, int, str]] = set()
+    for ref in socle_reference_assignments or ():
+        if not bool(_get(ref, "keep", default=False)):
+            continue
+        team_id = _scalar_id(_get(ref, "teamId", "team_id", default=None))
+        day = _get(ref, "dayOfWeek", "day_of_week", default=None)
+        start = _get(ref, "startTime", "start_time", default=None)
+        if team_id is None or day is None or start is None:
+            continue
+        try:
+            keys.add((str(team_id), int(_scalar_id(day)), _format_time(_time_to_minutes(start))))
+        except TypeError, ValueError:
+            continue
+    return frozenset(keys)
