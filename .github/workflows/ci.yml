@@ -1356,9 +1356,13 @@ jobs:
       # tenant est refusé 422 par la garde `ownedTeam`, rien écrit. Step FILTRÉ sur le seul test de
       # cet axe (la classe porte aussi des tests non bloquants). Sans ce gate, un élargissement du
       # canal fuiterait une équipe étrangère dans un bloc en passant tous les checks requis de `main`.
+      # Même axe, même classe (PR 1a, plafond de séances par jour) : le relèvement du plafond par l'import
+      # n'écrit JAMAIS l'équipe d'un autre club — ni par une cible forgée (422, rien écrit), ni par
+      # homonymie (l'équipe de ce club est créée et relevée, l'autre reste à 1). Sans ce gate, un
+      # relèvement qui chercherait l'équipe hors tenant passerait tous les checks requis de `main`.
       # Ancre YAML `&filtered_tenant_nr_run`, rejouée par alias dans `lot-gate`.
       - name: ParcImportCorrectionTenantNR
-        run: &filtered_tenant_nr_run docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Integration/Api/ParcImportExecuteTest.php --filter testAMutualisationCorrectionWithATeamFromAnotherClubIsRefusedWritingNothing'
+        run: &filtered_tenant_nr_run docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Integration/Api/ParcImportExecuteTest.php --filter "testAMutualisationCorrectionWithATeamFromAnotherClubIsRefusedWritingNothing|testDailyCapRaiseNeverTouchesAnotherClubTeam"'
 
       # Démonte TOUJOURS la stack du job (conteneurs, volumes, images locales, orphelins) — même
       # job rouge ou annulé en cours : le démon du runner auto-hébergé est partagé et persistant.

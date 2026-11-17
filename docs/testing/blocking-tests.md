@@ -385,11 +385,13 @@ checks requis) ·
 d'un club pilote, PR A import du parc : la redéfinition de la composition d'une séance commune par le canal
 `corrections.equipes` [liste ≥ 2 d'UUID d'équipe DU CLUB, ou `import:<index>` vers une ligne Équipes
 gardée] ne fait JAMAIS entrer dans un bloc mutualisé une équipe d'un AUTRE club — un UUID hors tenant
-est refusé 422 par la garde `ownedTeam`, rien écrit [tout-ou-rien]. Le step `ci.yml` est FILTRÉ sur le
-seul `testAMutualisationCorrectionWithATeamFromAnotherClubIsRefusedWritingNothing` [la classe porte
-aussi des tests non bloquants]. Falsification : désactiver `ownedTeam` doit rougir ce gate. Sans lui,
-un élargissement du canal fuiterait une équipe étrangère dans un bloc en passant tous les checks
-requis de `main`).
+est refusé 422 par la garde `ownedTeam`, rien écrit [tout-ou-rien]. Même axe, PR 1a plafond de séances
+par jour : `testDailyCapRaiseNeverTouchesAnotherClubTeam` — le relèvement du plafond par l'import n'écrit
+jamais l'équipe d'un autre club, ni par une cible forgée [422, rien écrit] ni par homonymie [l'équipe de
+ce club est créée et relevée, l'autre reste à 1]. Le step `ci.yml` est FILTRÉ sur ces deux seules
+méthodes [la classe porte aussi des tests non bloquants]. Falsification : désactiver `ownedTeam` doit
+rougir ce gate. Sans lui, un élargissement du canal fuiterait une équipe étrangère dans un bloc, ou un
+relèvement écrirait hors tenant, en passant tous les checks requis de `main`).
 `CrossStack/SovereignReservationProducesScheduleTest` (axes *generation pipeline* + *constraint
 semantics* + *backend↔engine contract*, besoin fondateur 2026-10-30, amendement ADR-0001 — « la
 réservation gagne envers tout, mais c'est la SEULE exception »). De bout en bout contre le VRAI
