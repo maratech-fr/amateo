@@ -6,7 +6,8 @@ import { renderWithProviders } from "@/test/utils";
 import { WIZARD_TEXTS } from "../texts";
 import { dayLabelLong } from "@/shared/lib/days";
 
-import type { SharedTrainingBlock } from "../api";
+import type { ImplicitRuleKey, SharedTrainingBlock } from "../api";
+import { WELLBEING_RULES } from "../lib/implicitRules";
 
 const h = { reservations: [] as Array<Record<string, unknown>> };
 // P2-27 — les groupes de mutualisation affichés au récap.
@@ -93,7 +94,7 @@ vi.mock("../queries", () => ({
 }));
 // D2/D3 (lot 2) — le verdict du récap porte désormais `errors` (blocages), `warnings` et des
 // notices TYPÉES (créneaux partagés). RecapStep les rend dans l'accordéon d'alertes en haut.
-const validationState = vi.hoisted(() => ({ value: { errors: [], warnings: [], notices: [] } as { errors: string[]; warnings: string[]; notices: Array<{ key: string; tone: "warning" | "muted"; place: string; message: string }>; doubledReservationIds?: string[]; overlappingReservationIds?: string[] } }));
+const validationState = vi.hoisted(() => ({ value: { errors: [], warnings: [], notices: [] } as { errors: string[]; warnings: string[]; notices: Array<{ key: string; tone: "warning" | "muted"; place: string; message: string }>; doubledReservationIds?: string[]; overlappingReservationIds?: string[]; ignoredRules?: ImplicitRuleKey[] } }));
 vi.mock("../lib/useStepValidation", () => ({ useStepValidation: () => validationState.value }));
 vi.mock("../store", () => ({ useWizardStore: (sel: (s: { mode: string; calendarEntryId: string | null }) => unknown) => sel(storeState.value) }));
 vi.mock("@/shared/stores/toastStore", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
@@ -190,6 +191,32 @@ describe("RecapStep — read-only summary", () => {
         expect(await screen.findByRole("button", { name: /^2 alerte\(s\) à vérifier/ })).toBeInTheDocument();
         expect(screen.getByText(/créneau sans réservation/)).toBeInTheDocument();
       });
+    });
+  });
+
+  /**
+   * PR 1b — les règles du club réglées sur « Ignorée » s'annoncent au Récap dans un bandeau neutre,
+   * à partir de la liste que le serveur renvoie (`ignoredRules`) ; ce bandeau informe, il n'est jamais
+   * compté parmi les alertes. Jumeau serveur : `ValidateConstraintsTest::testTheRecapListsTheIgnoredRulesOfTheSeason`.
+   */
+  describe("règles ignorées (PR 1b)", () => {
+    const ageTitle = WELLBEING_RULES.find((r) => "ageAscending" === r.ruleKey)?.title ?? "";
+
+    it("le bandeau nomme la règle que le serveur dit ignorée, hors du compte des alertes", async () => {
+      validationState.value = { errors: [], warnings: [], notices: [], ignoredRules: ["ageAscending"] };
+      renderWithProviders(<RecapStep />);
+
+      expect(await screen.findByText(WIZARD_TEXTS.ignoredRules([ageTitle]), { exact: false })).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /alerte\(s\) à vérifier/ })).toBeNull();
+      expect(screen.getByText(WIZARD_TEXTS.allReady)).toBeInTheDocument();
+    });
+
+    it("sans règle ignorée, aucun bandeau", async () => {
+      validationState.value = { errors: [], warnings: [], notices: [], ignoredRules: [] };
+      renderWithProviders(<RecapStep />);
+
+      expect(await screen.findByText(WIZARD_TEXTS.allReady)).toBeInTheDocument();
+      expect(screen.queryByText(WIZARD_TEXTS.ignoredRules([ageTitle]), { exact: false })).toBeNull();
     });
   });
 
