@@ -7,9 +7,10 @@ import { pickListboxOption } from "@/test/pickListboxOption";
 // On mocke les COUCHES VOISINES (export réseau, crédits) — la règle testée ici,
 // « l'export annonce son périmètre quand l'écran est filtré » (P4-62), vit dans
 // le composant, pas dans les mocks.
+const exportRun = vi.hoisted(() => vi.fn());
 vi.mock("./queries", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./queries")>()),
-  useScheduleExport: () => ({ run: vi.fn(), busy: null }),
+  useScheduleExport: () => ({ run: exportRun, busy: null }),
 }));
 vi.mock("@/shared/credits/useCredits", () => ({ useCredits: () => null }));
 
@@ -90,5 +91,41 @@ describe("ExportMenu — chantier E, le nom des coachs", () => {
 
     const box = screen.getByRole("checkbox", { name: /coach/i });
     expect(box).not.toBeChecked();
+  });
+});
+
+/**
+ * PR6 « occupations de gymnase » (plan v5 §5 Export, §6 V3, D4-D5) — la case « Afficher les
+ * occupations » n'existe que si la couche affichée porte au moins une occupation, décochée par
+ * défaut ; cochée, l'export part avec l'option. Ce que le fichier contient alors est prouvé côté
+ * serveur (`ScheduleExportOccupanciesTest`, Behat « J'exporte avec ou sans les occupations ») ;
+ * ici, seulement la case et ce qu'elle transmet.
+ */
+describe("ExportMenu — afficher les occupations", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    exportRun.mockReset();
+  });
+
+  it("n'offre pas la case quand la couche affichée ne porte aucune occupation", async () => {
+    render(<ExportMenu scheduleId="s1" venues={venues} screenFilterCount={0} occupancyCount={0} />);
+    await openMenu();
+
+    // Témoin : le panneau est bien ouvert (la case des coachs y est).
+    expect(screen.getByRole("checkbox", { name: /coach/i })).toBeInTheDocument();
+    expect(screen.queryByRole("checkbox", { name: /occupation/i })).not.toBeInTheDocument();
+  });
+
+  it("offre la case décochée dès qu'il existe une occupation ; cochée, l'export reçoit l'option", async () => {
+    const user = userEvent.setup();
+    render(<ExportMenu scheduleId="s1" venues={venues} screenFilterCount={0} occupancyCount={1} clubId="club-1" />);
+    await openMenu();
+
+    const box = screen.getByRole("checkbox", { name: /occupation/i });
+    expect(box).not.toBeChecked();
+    await user.click(box);
+    await user.click(screen.getByRole("button", { name: /PDF/i }));
+
+    expect(exportRun).toHaveBeenCalledWith("pdf", null, false, true);
   });
 });

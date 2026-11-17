@@ -7,7 +7,9 @@
     // dans les `page.evaluate`) ET des modules Node (`node:fs`/`path`/`crypto`/…).
     "lib": ["ES2023", "DOM"],
     "module": "esnext",
-    "types": ["node"],
+    // `vite/client` : un module de textes (`features/planning/texts.ts`) tire par import de TYPE
+    // le client API, qui lit `import.meta.env` — effacé à l'exécution, mais vérifié par tsc.
+    "types": ["node", "vite/client"],
     "skipLibCheck": true,
 
     /* Bundler mode — miroir de tsconfig.app.json */

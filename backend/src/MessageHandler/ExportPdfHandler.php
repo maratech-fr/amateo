@@ -66,7 +66,7 @@ final readonly class ExportPdfHandler
         $this->entityManager->flush();
 
         try {
-            $result = $this->pdfGenerator->generate($schedule, $message->getVenueId(), $message->getShowCoaches());
+            $result = $this->pdfGenerator->generate($schedule, $message->getVenueId(), $message->getShowCoaches(), $message->getShowOccupancies());
             $schedule->setPdfExportStatus('completed');
             $schedule->setPdfExportUrl($result['pdf']);
         } catch (Throwable) {

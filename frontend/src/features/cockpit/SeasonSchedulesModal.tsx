@@ -13,7 +13,7 @@ import { Button } from "@/shared/components/ui/button";
 import { LoadErrorHint } from "@/shared/components/ui/load-error-hint";
 import { Modal } from "@/shared/components/ui/modal";
 import { readFailed } from "@/shared/lib/readState";
-import { getShowCoaches } from "@/features/planning/lib/exportPrefs";
+import { getShowCoaches, getShowOccupancies } from "@/features/planning/lib/exportPrefs";
 import { frDateNumeric } from "./lib/date";
 import { useCalendarEntries, useSchedulePlans } from "./queries";
 import type { CalendarEntry, SchedulePlan } from "./api";
@@ -48,6 +48,8 @@ function CompactExport({ scheduleId, label, clubId = null }: { scheduleId: strin
   // coachs » que la page planning (clé par club). Pas de case ici (déclencheur icône) : on
   // honore simplement le choix déjà fait. Sans club connu → décoché.
   const showCoaches = null !== clubId ? getShowCoaches(clubId) : false;
+  // « Afficher les occupations » : même mémorisation par club, honorée telle quelle.
+  const showOccupancies = null !== clubId ? getShowOccupancies(clubId) : false;
 
   return (
     <div className="flex items-center gap-1">
@@ -63,7 +65,7 @@ function CompactExport({ scheduleId, label, clubId = null }: { scheduleId: strin
               key={key}
               type="button"
               disabled={null !== busy}
-              onClick={() => void run(key, null, showCoaches)}
+              onClick={() => void run(key, null, showCoaches, showOccupancies)}
               className="flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs font-medium hover:bg-muted disabled:opacity-50"
             >
               {busy === key ? <Spinner className="size-3" /> : null}

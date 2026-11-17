@@ -59,5 +59,12 @@ final readonly class ScheduleExportData
         public array $teamMainCoachIds = [],
         /** @var array<string, list<string>> teamId → tous ses coachs principaux, dans l'ordre */
         public array $teamCoachIds = [],
+        /**
+         * @var list<ExportReservedWindow> les OCCUPATIONS du gymnase (libellé = le motif nu), chargées
+         *                                 seulement quand le gestionnaire coche « Afficher les occupations ».
+         *                                 Jamais une qui partage du temps avec une séance ou un créneau de la
+         *                                 couche exportée, jamais celle d'un gymnase absent de l'export d'ensemble
+         */
+        public array $occupancies = [],
     ) {}
 }

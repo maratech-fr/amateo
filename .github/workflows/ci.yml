@@ -1355,6 +1355,20 @@ jobs:
           # gate, un champ émis à 1 changerait l'empreinte de tous les clubs (régénérations forcées), ou un
           # champ oublié laisserait le moteur à une séance par jour, en passant tous les checks requis.
           FILES="$FILES tests/CrossStack/MaxSessionsPerDayPayloadParityTest.php"
+          # NR d'axes GENERATION PIPELINE + BACKEND↔ENGINE CONTRACT (lot double contexte, PR 6) — une
+          # OCCUPATION de gymnase n'informe que le lecteur : poser une occupation (saison ou plan de
+          # période) ne fait pas bouger l'empreinte de structure servie, donc n'entre pas dans l'envoi
+          # au moteur ; témoin : un créneau posé dans la même couche la fait bouger. Sans ce gate, une
+          # occupation glissée dans l'envoi périmerait les plannings et changerait le solve en passant
+          # tous les checks requis.
+          FILES="$FILES tests/Integration/Api/OccupancyStaysOutOfTheSolverTest.php"
+          # NR d'axe PLANNING LIFECYCLE (lot double contexte, PR 6) — les occupations suivent la vie
+          # des grilles : copiées à la naissance d'un plan de période, « Reprendre »/« Vider » limités au
+          # gymnase, copie sœur sans doublon (purge des réglages ancrés), cascade à la suppression du
+          # plan, intactes au chargement d'une version, dormantes avec leur gymnase, passage de saison,
+          # purge, impact de suppression d'un gymnase. Sans ce gate, un plan frère portant deux jeux
+          # d'occupations ou un chargement qui les efface passerait tous les checks requis.
+          FILES="$FILES tests/Integration/VenueOccupancyLifecycleTest.php"
           docker compose exec -T -e APP_ENV=test php-fpm sh -c "cd /app/backend && php -d memory_limit=1G vendor/bin/phpunit --group phase1 $FILES"
 
       # Axe tenant isolation (GO fondateur 2026-10-30, incident d'un club pilote, PR A import du parc) — la

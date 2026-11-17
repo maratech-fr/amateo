@@ -26624,6 +26624,418 @@
                 ]
             }
         },
+        "/api/venue_occupancies": {
+            "get": {
+                "operationId": "api_venue_occupancies_get_collection",
+                "tags": [
+                    "VenueOccupancy"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "VenueOccupancy collection",
+                        "content": {
+                            "application/ld+json": {
+                                "schema": {
+                                    "type": "object",
+                                    "description": "VenueOccupancy.jsonld collection.",
+                                    "allOf": [
+                                        {
+                                            "$ref": "#/components/schemas/HydraCollectionBaseSchema"
+                                        },
+                                        {
+                                            "type": "object",
+                                            "required": [
+                                                "member"
+                                            ],
+                                            "properties": {
+                                                "member": {
+                                                    "type": "array",
+                                                    "items": {
+                                                        "$ref": "#/components/schemas/VenueOccupancy.jsonld"
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    ]
+                                }
+                            },
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/VenueOccupancy"
+                                    }
+                                }
+                            },
+                            "text/html": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/VenueOccupancy.html"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                "summary": "Retrieves the collection of VenueOccupancy resources.",
+                "description": "Retrieves the collection of VenueOccupancy resources.",
+                "parameters": [
+                    {
+                        "name": "page",
+                        "in": "query",
+                        "description": "The collection page number",
+                        "required": false,
+                        "deprecated": false,
+                        "schema": {
+                            "type": "integer",
+                            "default": 1
+                        },
+                        "style": "form",
+                        "explode": true
+                    }
+                ]
+            },
+            "post": {
+                "operationId": "api_venue_occupancies_post",
+                "tags": [
+                    "VenueOccupancy"
+                ],
+                "responses": {
+                    "201": {
+                        "description": "VenueOccupancy resource created",
+                        "content": {
+                            "application/ld+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/VenueOccupancy.jsonld"
+                                }
+                            },
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/VenueOccupancy"
+                                }
+                            },
+                            "text/html": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/VenueOccupancy.html"
+                                }
+                            }
+                        },
+                        "links": {}
+                    },
+                    "400": {
+                        "description": "Invalid input",
+                        "content": {
+                            "application/ld+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error.jsonld"
+                                }
+                            },
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error"
+                                }
+                            },
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error"
+                                }
+                            }
+                        },
+                        "links": {}
+                    },
+                    "422": {
+                        "description": "An error occurred",
+                        "content": {
+                            "application/ld+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ConstraintViolation.jsonld"
+                                }
+                            },
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ConstraintViolation"
+                                }
+                            },
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ConstraintViolation"
+                                }
+                            }
+                        },
+                        "links": {}
+                    }
+                },
+                "summary": "Creates a VenueOccupancy resource.",
+                "description": "Creates a VenueOccupancy resource.",
+                "parameters": [],
+                "requestBody": {
+                    "description": "The new VenueOccupancy resource",
+                    "content": {
+                        "application/ld+json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/VenueOccupancy.VenueOccupancyInput"
+                            }
+                        },
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/VenueOccupancy.VenueOccupancyInput"
+                            }
+                        },
+                        "text/html": {
+                            "schema": {
+                                "$ref": "#/components/schemas/VenueOccupancy.VenueOccupancyInput"
+                            }
+                        }
+                    },
+                    "required": true
+                }
+            }
+        },
+        "/api/venue_occupancies/{id}": {
+            "get": {
+                "operationId": "api_venue_occupancies_id_get",
+                "tags": [
+                    "VenueOccupancy"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "VenueOccupancy resource",
+                        "content": {
+                            "application/ld+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/VenueOccupancy.jsonld"
+                                }
+                            },
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/VenueOccupancy"
+                                }
+                            },
+                            "text/html": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/VenueOccupancy.html"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "content": {
+                            "application/ld+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error.jsonld"
+                                }
+                            },
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error"
+                                }
+                            },
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error"
+                                }
+                            }
+                        },
+                        "links": {}
+                    }
+                },
+                "summary": "Retrieves a VenueOccupancy resource.",
+                "description": "Retrieves a VenueOccupancy resource.",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "description": "VenueOccupancy identifier",
+                        "required": true,
+                        "deprecated": false,
+                        "schema": {
+                            "type": "string"
+                        },
+                        "style": "simple",
+                        "explode": false
+                    }
+                ]
+            },
+            "put": {
+                "operationId": "api_venue_occupancies_id_put",
+                "tags": [
+                    "VenueOccupancy"
+                ],
+                "responses": {
+                    "200": {
+                        "description": "VenueOccupancy resource updated",
+                        "content": {
+                            "application/ld+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/VenueOccupancy.jsonld"
+                                }
+                            },
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/VenueOccupancy"
+                                }
+                            },
+                            "text/html": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/VenueOccupancy.html"
+                                }
+                            }
+                        },
+                        "links": {}
+                    },
+                    "400": {
+                        "description": "Invalid input",
+                        "content": {
+                            "application/ld+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error.jsonld"
+                                }
+                            },
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error"
+                                }
+                            },
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error"
+                                }
+                            }
+                        },
+                        "links": {}
+                    },
+                    "422": {
+                        "description": "An error occurred",
+                        "content": {
+                            "application/ld+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ConstraintViolation.jsonld"
+                                }
+                            },
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ConstraintViolation"
+                                }
+                            },
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ConstraintViolation"
+                                }
+                            }
+                        },
+                        "links": {}
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "content": {
+                            "application/ld+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error.jsonld"
+                                }
+                            },
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error"
+                                }
+                            },
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error"
+                                }
+                            }
+                        },
+                        "links": {}
+                    }
+                },
+                "summary": "Replaces the VenueOccupancy resource.",
+                "description": "Replaces the VenueOccupancy resource.",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "description": "VenueOccupancy identifier",
+                        "required": true,
+                        "deprecated": false,
+                        "schema": {
+                            "type": "string"
+                        },
+                        "style": "simple",
+                        "explode": false
+                    }
+                ],
+                "requestBody": {
+                    "description": "The updated VenueOccupancy resource",
+                    "content": {
+                        "application/ld+json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/VenueOccupancy.VenueOccupancyInput"
+                            }
+                        },
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/VenueOccupancy.VenueOccupancyInput"
+                            }
+                        },
+                        "text/html": {
+                            "schema": {
+                                "$ref": "#/components/schemas/VenueOccupancy.VenueOccupancyInput"
+                            }
+                        }
+                    },
+                    "required": true
+                }
+            },
+            "delete": {
+                "operationId": "api_venue_occupancies_id_delete",
+                "tags": [
+                    "VenueOccupancy"
+                ],
+                "responses": {
+                    "204": {
+                        "description": "VenueOccupancy resource deleted"
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "content": {
+                            "application/ld+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error.jsonld"
+                                }
+                            },
+                            "application/problem+json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error"
+                                }
+                            },
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Error"
+                                }
+                            }
+                        },
+                        "links": {}
+                    }
+                },
+                "summary": "Removes the VenueOccupancy resource.",
+                "description": "Removes the VenueOccupancy resource.",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "description": "VenueOccupancy identifier",
+                        "required": true,
+                        "deprecated": false,
+                        "schema": {
+                            "type": "string"
+                        },
+                        "style": "simple",
+                        "explode": false
+                    }
+                ]
+            }
+        },
         "/api/venue_period_overrides": {
             "get": {
                 "operationId": "api_venue_period_overrides_get_collection",
@@ -38987,6 +39399,224 @@
                 ],
                 "description": "Match access window of a venue \u2014 \u2265 1 window makes it a MATCH venue (derived flag)."
             },
+            "VenueOccupancy": {
+                "type": "object",
+                "description": "Une occupation de gymnase : un moment o\u00f9 le gymnase n'est pas au club, nomm\u00e9 par son motif.\nInformation seulement : elle ne change rien au planning.",
+                "properties": {
+                    "id": {
+                        "default": "",
+                        "type": "string"
+                    },
+                    "version": {
+                        "default": 0,
+                        "type": "integer"
+                    },
+                    "createdAt": {
+                        "type": "string",
+                        "format": "date-time"
+                    },
+                    "updatedAt": {
+                        "type": "string",
+                        "format": "date-time"
+                    },
+                    "venueId": {
+                        "default": "",
+                        "type": "string"
+                    },
+                    "dayOfWeek": {
+                        "default": 0,
+                        "type": "integer"
+                    },
+                    "startTime": {
+                        "type": "string",
+                        "format": "date-time"
+                    },
+                    "durationMinutes": {
+                        "default": 60,
+                        "type": "integer"
+                    },
+                    "label": {
+                        "description": "Le motif de l'occupation (\u00ab \u00c9cole \u00bb), 40 caract\u00e8res au plus.",
+                        "default": "",
+                        "type": "string"
+                    },
+                    "schedulePlanId": {
+                        "description": "null = occupation de la grille de saison ; pos\u00e9 = celle de la grille de ce plan de p\u00e9riode.",
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    }
+                }
+            },
+            "VenueOccupancy.VenueOccupancyInput": {
+                "type": "object",
+                "description": "Une occupation de gymnase : un moment o\u00f9 le gymnase n'est pas au club, nomm\u00e9 par son motif.\nInformation seulement : elle ne change rien au planning.",
+                "required": [
+                    "venueId",
+                    "dayOfWeek",
+                    "startTime",
+                    "durationMinutes"
+                ],
+                "properties": {
+                    "venueId": {
+                        "format": "uuid",
+                        "externalDocs": {
+                            "url": "https://schema.org/identifier"
+                        },
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "dayOfWeek": {
+                        "minimum": 1,
+                        "maximum": 7,
+                        "type": [
+                            "integer",
+                            "null"
+                        ]
+                    },
+                    "startTime": {
+                        "pattern": "^(\\d{2}:\\d{2})$",
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "durationMinutes": {
+                        "minimum": 15,
+                        "type": [
+                            "integer",
+                            "null"
+                        ]
+                    },
+                    "label": {
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    },
+                    "schedulePlanId": {
+                        "format": "uuid",
+                        "description": "null = occupation de saison ; l'identifiant d'un plan de p\u00e9riode la pose dans sa grille. Pos\u00e9 \u00e0 la cr\u00e9ation seulement.",
+                        "externalDocs": {
+                            "url": "https://schema.org/identifier"
+                        },
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    }
+                }
+            },
+            "VenueOccupancy.html": {
+                "type": "object",
+                "description": "Une occupation de gymnase : un moment o\u00f9 le gymnase n'est pas au club, nomm\u00e9 par son motif.\nInformation seulement : elle ne change rien au planning.",
+                "properties": {
+                    "id": {
+                        "default": "",
+                        "type": "string"
+                    },
+                    "version": {
+                        "default": 0,
+                        "type": "integer"
+                    },
+                    "createdAt": {
+                        "type": "string",
+                        "format": "date-time"
+                    },
+                    "updatedAt": {
+                        "type": "string",
+                        "format": "date-time"
+                    },
+                    "venueId": {
+                        "default": "",
+                        "type": "string"
+                    },
+                    "dayOfWeek": {
+                        "default": 0,
+                        "type": "integer"
+                    },
+                    "startTime": {
+                        "type": "string",
+                        "format": "date-time"
+                    },
+                    "durationMinutes": {
+                        "default": 60,
+                        "type": "integer"
+                    },
+                    "label": {
+                        "description": "Le motif de l'occupation (\u00ab \u00c9cole \u00bb), 40 caract\u00e8res au plus.",
+                        "default": "",
+                        "type": "string"
+                    },
+                    "schedulePlanId": {
+                        "description": "null = occupation de la grille de saison ; pos\u00e9 = celle de la grille de ce plan de p\u00e9riode.",
+                        "type": [
+                            "string",
+                            "null"
+                        ]
+                    }
+                }
+            },
+            "VenueOccupancy.jsonld": {
+                "allOf": [
+                    {
+                        "$ref": "#/components/schemas/HydraItemBaseSchema"
+                    },
+                    {
+                        "type": "object",
+                        "properties": {
+                            "id": {
+                                "default": "",
+                                "type": "string"
+                            },
+                            "version": {
+                                "default": 0,
+                                "type": "integer"
+                            },
+                            "createdAt": {
+                                "type": "string",
+                                "format": "date-time"
+                            },
+                            "updatedAt": {
+                                "type": "string",
+                                "format": "date-time"
+                            },
+                            "venueId": {
+                                "default": "",
+                                "type": "string"
+                            },
+                            "dayOfWeek": {
+                                "default": 0,
+                                "type": "integer"
+                            },
+                            "startTime": {
+                                "type": "string",
+                                "format": "date-time"
+                            },
+                            "durationMinutes": {
+                                "default": 60,
+                                "type": "integer"
+                            },
+                            "label": {
+                                "description": "Le motif de l'occupation (\u00ab \u00c9cole \u00bb), 40 caract\u00e8res au plus.",
+                                "default": "",
+                                "type": "string"
+                            },
+                            "schedulePlanId": {
+                                "description": "null = occupation de la grille de saison ; pos\u00e9 = celle de la grille de ce plan de p\u00e9riode.",
+                                "type": [
+                                    "string",
+                                    "null"
+                                ]
+                            }
+                        }
+                    }
+                ],
+                "description": "Une occupation de gymnase : un moment o\u00f9 le gymnase n'est pas au club, nomm\u00e9 par son motif.\nInformation seulement : elle ne change rien au planning."
+            },
             "VenuePeriodOverride": {
                 "type": "object",
                 "description": "R\u00e9glage sparse par (p\u00e9riode, gymnase) : un `mode` FACULTATIF \u2014 DISABLED (le gymnase ne\nsert pas) ou BLANK (grille vierge, les cr\u00e9neaux de saison sont ignor\u00e9s) \u2014 et/ou un masque\nmanuel `dayOverrides` (jour ISO \u2192 OPEN|CLOSED) qui s'ajoute au d\u00e9faut de l'indisponibilit\u00e9.\nPas de ligne = INHERIT, le d\u00e9faut. L'overlay de p\u00e9riode lit ces lignes ; le planning\nprincipal reste intact.",
@@ -39946,6 +40576,10 @@
         {
             "name": "VenueMatchWindow",
             "description": "Match access window of a venue \u2014 \u2265 1 window makes it a MATCH venue (derived flag)."
+        },
+        {
+            "name": "VenueOccupancy",
+            "description": "Une occupation de gymnase : un moment o\u00f9 le gymnase n'est pas au club, nomm\u00e9 par son motif.\nInformation seulement : elle ne change rien au planning."
         },
         {
             "name": "VenuePeriodOverride",

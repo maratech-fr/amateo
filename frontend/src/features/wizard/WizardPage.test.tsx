@@ -45,6 +45,7 @@ vi.mock("@/features/planning/api", async (orig) => ({
 
 import * as api from "./api";
 import { useWizardStore } from "./store";
+import { WIZARD_TEXTS } from "./texts";
 import { WizardPage } from "./WizardLayout";
 
 vi.mock("./api", async (orig) => ({
@@ -65,6 +66,8 @@ vi.mock("./api", async (orig) => ({
   deleteVenue: vi.fn(() => Promise.resolve()),
   createSlot: vi.fn(() => Promise.resolve({})),
   deleteSlot: vi.fn(() => Promise.resolve()),
+  listVenueOccupancies: vi.fn(() => Promise.resolve([])),
+  createVenueOccupancy: vi.fn(() => Promise.resolve({})),
   listCoaches: vi.fn(() => Promise.resolve([])),
   listTeamCoaches: vi.fn(() => Promise.resolve([])),
   listCoachPlayers: vi.fn(() => Promise.resolve([])),
@@ -419,17 +422,28 @@ describe("mode saison, socle validé (P4-268)", () => {
     expect(screen.getByRole("button", { name: /Contraintes/ })).toBeEnabled();
   });
 
-  it("étape Gymnases : la grille des créneaux est en LECTURE SEULE (mention, pas de barre de pose)", async () => {
+  it("étape Gymnases : socle validé, les CRÉNEAUX sont en LECTURE SEULE (ni pose ni édition) ; un clic sur la grille ne pose qu'une occupation (Q1)", async () => {
     useWizardStore.setState({ stepId: "venues" });
     vi.mocked(api.listVenues).mockResolvedValue([{ id: "v1", name: "Gymnase A", color: "#3498DB", canSplit: false, isActive: true, externalRef: null }]);
     vi.mocked(api.listVenueSlots).mockResolvedValue([{ id: "s1", venueId: "v1", dayOfWeek: 2, startTime: "20:30", durationMinutes: 120, capacity: 1 }]);
+    vi.mocked(api.createSlot).mockClear();
+    vi.mocked(api.createVenueOccupancy).mockClear();
+    const user = userEvent.setup();
     renderWithProviders(<WizardPage />, { route: "/wizard" });
 
     // La MENTION explique le verrou…
     expect(await screen.findByText(/Les créneaux d'entraînement sont une contrainte du planning/)).toBeInTheDocument();
-    // …la barre de pose disparaît, et aucune cellule vide n'est cliquable (on ne peut plus POSER).
+    // …ni sélecteur « Créneau », ni barre de pose de créneau…
+    expect(screen.queryByRole("button", { name: WIZARD_TEXTS.placementKindSlot })).toBeNull();
     expect(screen.queryByText(/cliquez la grille pour ajouter un créneau/)).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Lun 08:00" })).toBeNull();
+    // …le créneau existant se voit mais ne s'ouvre pas (pas d'édition)…
+    expect(screen.getByText("20:30 – 22:30")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /20:30 – 22:30/ })).toBeNull();
+    // …et la case cliquée pose une occupation, jamais un créneau (plan PR 6 §0 Q1, §5).
+    await user.type(screen.getByRole("textbox", { name: WIZARD_TEXTS.occupancyLabelField }), "École");
+    await user.click(screen.getByRole("button", { name: "Lun 08:00" }));
+    await waitFor(() => expect(api.createVenueOccupancy).toHaveBeenCalledWith(expect.objectContaining({ venueId: "v1", dayOfWeek: 1, startTime: "08:00" })));
+    expect(api.createSlot).not.toHaveBeenCalled();
     // La fiche du gymnase, elle, reste éditable (nom).
     expect(screen.getByLabelText("Renommer le gymnase")).toBeEnabled();
   });

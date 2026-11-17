@@ -288,7 +288,7 @@ créneaux S réservés, indispos → génération → corrections (**verrouiller
   Réduction ultérieure : régénération et « régénérer encore » forment UN scénario, et « le verrou d'un autre jour survit
   à une fermeture » est retiré (couvert par le scénario de fermeture déclarée pendant un plan validé de
   `plan-de-periode-en-overlay.feature`). Le smoke « une période de fermeture obtient son plan, l'overlay aboutit » n'est
-  plus un scénario à part : le scénario « une fermeture obtient son planning ; la prolonger ne demande pas de le refaire »
+  plus un scénario à part : le scénario « une fermeture obtient son planning sur sa propre grille, occupations comprises ; la prolonger ne demande pas de le refaire »
   le porte. ⚠ **Manque produit découvert**
   par le décor réaliste : un club NEUF ne peut pas générer un plan de PÉRIODE — sa règle opt-in `maxConsecutiveDays` naît OFF
   sur le plan, et le moteur REFUSE `intensity:"OFF"` (422), là où le payload de SAISON l'omet (`ImplicitRuleResolver::

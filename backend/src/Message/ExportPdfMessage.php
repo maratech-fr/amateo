@@ -21,6 +21,8 @@ final readonly class ExportPdfMessage
         // MÊME garde legacy que clubId/venueId : un message enfilé AVANT l'ajout de ce champ se
         // désérialise avec la propriété readonly NON initialisée ; le getter retombe sur false.
         private ?bool $showCoaches = false,
+        // « Afficher les occupations » : même garde legacy (un message enfilé avant ce champ → false).
+        private ?bool $showOccupancies = false,
     ) {}
 
     public function getScheduleId(): string
@@ -43,5 +45,11 @@ final readonly class ExportPdfMessage
     {
         // ?? guards the uninitialized-readonly case of a legacy payload (see getClubId()).
         return $this->showCoaches ?? false;
+    }
+
+    public function getShowOccupancies(): bool
+    {
+        // ?? guards the uninitialized-readonly case of a legacy payload (see getClubId()).
+        return $this->showOccupancies ?? false;
     }
 }

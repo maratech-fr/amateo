@@ -1,6 +1,8 @@
-import type { VenueTrainingSlot } from "../api";
+import type { VenueOccupancy, VenueTrainingSlot } from "../api";
+import { dayLabelLong } from "@/shared/lib/days";
 import { formatDuration } from "@/shared/lib/duration";
 
+import { WIZARD_TEXTS } from "../texts";
 import { dayLabel, fmtMinutes, hhmm, toMinutes } from "./days";
 
 /**
@@ -72,7 +74,7 @@ export const conflictMessage = (c: VenueTrainingSlot): string =>
  *
  * Rend le message à afficher, ou null si la pose est valide.
  */
-export function slotPlacementError(others: VenueTrainingSlot[], day: number, startTime: string, durationMinutes: number): string | null {
+export function slotPlacementError(others: VenueTrainingSlot[], day: number, startTime: string, durationMinutes: number, occupancies: VenueOccupancy[]): string | null {
   // L'heure d'ABORD : le champ « Début » est un `<input type="time">` sans `required`,
   // dans une modale sans `<form>` — rien ne l'exige. Vidé en cours de frappe, il rendait
   // NaN, et NaN traversait tout : la borne de minuit se taisait (correctement), puis
@@ -90,6 +92,75 @@ export function slotPlacementError(others: VenueTrainingSlot[], day: number, sta
   }
 
   const conflict = findSlotConflict(others, day, startTime, durationMinutes);
+  if (null !== conflict) {
+    return conflictMessage(conflict);
+  }
 
-  return null === conflict ? null : conflictMessage(conflict);
+  // Un créneau ne se pose pas non plus sur une occupation du même gymnase (même règle de
+  // chevauchement, bornes jointives acceptées).
+  const occupancy = findOccupancyConflict(occupancies, day, startTime, durationMinutes);
+
+  return null === occupancy ? null : WIZARD_TEXTS.slotOnOccupancyConflict(occupancy.label, occupancyWhen(occupancy, dayLabel));
+}
+
+/** Le jour et la plage d'une occupation, « Mar 14:00–16:15 » (le libellé de jour est choisi par l'appelant). */
+const occupancyWhen = (o: VenueOccupancy, day: (n: number) => string): string =>
+  `${day(o.dayOfWeek)} ${hhmm(o.startTime)}–${fmtMinutes(toMinutes(o.startTime) + o.durationMinutes)}`;
+
+/** La première occupation du même jour qui partage du temps avec [début, début + durée), ou null. */
+function findOccupancyConflict(occupancies: VenueOccupancy[], day: number, startTime: string, durationMinutes: number): VenueOccupancy | null {
+  const start = toMinutes(startTime);
+  const end = start + durationMinutes;
+  return (
+    occupancies.find((o) => {
+      if (o.dayOfWeek !== day) {
+        return false;
+      }
+      const oStart = toMinutes(o.startTime);
+      return start < oStart + o.durationMinutes && oStart < end;
+    }) ?? null
+  );
+}
+
+/**
+ * LA validation de pose d'une OCCUPATION — heure lisible, minuit, puis chevauchement avec un
+ * créneau, puis avec une autre occupation du même gymnase. Pré-contrôle : le serveur reste juge.
+ * `otherOccupancies` exclut déjà l'occupation éditée. Rend le message, ou null si la pose est valide.
+ */
+export function occupancyPlacementError(slots: VenueTrainingSlot[], otherOccupancies: VenueOccupancy[], day: number, startTime: string, durationMinutes: number): string | null {
+  if (!Number.isFinite(toMinutes(startTime))) {
+    return "Renseignez une heure de début (format HH:MM).";
+  }
+  if (toMinutes(startTime) + durationMinutes > DAY_END) {
+    return WIZARD_TEXTS.occupancyPastMidnight(hhmm(startTime), formatDuration(durationMinutes));
+  }
+
+  const slot = findSlotConflict(slots, day, startTime, durationMinutes);
+  if (null !== slot) {
+    return WIZARD_TEXTS.occupancyOnSlotConflict(`${dayLabel(slot.dayOfWeek)} ${hhmm(slot.startTime)}–${fmtMinutes(toMinutes(slot.startTime) + slot.durationMinutes)}`);
+  }
+
+  const occupancy = findOccupancyConflict(otherOccupancies, day, startTime, durationMinutes);
+
+  return null === occupancy ? null : WIZARD_TEXTS.occupancyOnOccupancyConflict(occupancy.label, occupancyWhen(occupancy, dayLabel));
+}
+
+/**
+ * Les occupations qui partagent du temps avec un créneau du même jour (état né d'une copie, d'une
+ * version chargée ou de deux gestionnaires) — ce que le bandeau signale, triées jour puis heure.
+ */
+export function occupanciesOverlappingSlots(slots: VenueTrainingSlot[], occupancies: VenueOccupancy[]): VenueOccupancy[] {
+  return occupancies
+    .filter((o) => null !== findSlotConflict(slots, o.dayOfWeek, o.startTime, o.durationMinutes))
+    .sort((a, b) => a.dayOfWeek - b.dayOfWeek || toMinutes(a.startTime) - toMinutes(b.startTime));
+}
+
+/** « mardi 18:00–19:00 » : le jour en toutes lettres et la plage d'une occupation, pour le bandeau. */
+export const occupancyLongWhen = (o: VenueOccupancy): string => occupancyWhen(o, dayLabelLong);
+
+/** « mardi 18:00–19:30 » : le premier créneau que recouvre une occupation, pour le bandeau (« » s'il n'y en a pas). */
+export function overlappedSlotLongWhen(slots: VenueTrainingSlot[], o: VenueOccupancy): string {
+  const slot = findSlotConflict(slots, o.dayOfWeek, o.startTime, o.durationMinutes);
+
+  return null === slot ? "" : `${dayLabelLong(slot.dayOfWeek)} ${hhmm(slot.startTime)}–${fmtMinutes(toMinutes(slot.startTime) + slot.durationMinutes)}`;
 }

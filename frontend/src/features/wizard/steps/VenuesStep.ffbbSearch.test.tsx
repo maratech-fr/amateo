@@ -68,6 +68,8 @@ vi.mock("../queries", () => ({
   useWizardTeams: () => ({ data: [] }),
   useWizardCoaches: () => ({ data: [] }),
   useVenueSlots: () => ({ data: [] }),
+  useVenueOccupancies: () => ({ data: [] }),
+  useCreateVenueOccupancy: () => ({ mutate: vi.fn() }),
   useReservations: () => ({ data: [] }),
   useVenueGeoCheck: () => ({ data: [] }),
   // La création mémorise le gymnase créé (exposé par `data`, comme l'API) ET consigne le payload

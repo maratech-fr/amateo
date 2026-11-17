@@ -48,7 +48,7 @@ final class ExportXlsxController extends AbstractController
 
         $venueId = $this->resolveExportVenueId($this->entityManager, $this->requestStack, $schedule);
 
-        $binary = $this->spreadsheetGenerator->generate($schedule, $venueId);
+        $binary = $this->spreadsheetGenerator->generate($schedule, $venueId, $this->resolveShowOccupancies($this->requestStack));
 
         $response = new Response($binary, Response::HTTP_OK);
         $response->headers->set('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');

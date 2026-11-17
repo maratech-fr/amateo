@@ -24,6 +24,8 @@ use App\Service\PlanEntitlements;
 use App\Service\ReservationGroupOccupancy;
 use App\Service\SoloReservationBudget;
 use App\Service\SportCategoryResolver;
+use App\Service\VenueGridConflict;
+use App\Service\VenueGridOverlap;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\HttpKernel\Exception\UnprocessableEntityHttpException;
@@ -152,6 +154,7 @@ final class ParcImportExecutor
         private readonly ParcCaseDeriver $deriver,
         private readonly TeamLabelMatcher $matcher,
         private readonly TeamCreationSuggester $suggester,
+        private readonly VenueGridOverlap $gridOverlap,
     ) {}
 
     /**
@@ -399,10 +402,12 @@ final class ParcImportExecutor
                 }
             }
 
-            // Chevauchement (rejeu de VenueTrainingSlotStateProcessor::validateNoOverlap) : deux
-            // créneaux du MÊME gymnase le MÊME jour ne peuvent jamais partager un horaire.
-            if ($this->slotOverlaps($venueId, $day, $start, $duration)) {
-                $this->fail('creneaux', $i, 'Ce créneau en chevauche un autre du même gymnase ce jour-là.');
+            // Chevauchement (rejeu de VenueTrainingSlotStateProcessor::validateNoOverlap) : un
+            // créneau du MÊME gymnase le MÊME jour ne partage jamais un horaire avec un autre
+            // créneau ni avec une occupation de la saison.
+            $conflict = $this->slotOverlaps($venueId, $day, $start, $duration);
+            if ($conflict instanceof VenueGridConflict) {
+                $this->fail('creneaux', $i, $conflict->message(VenueGridConflict::SLOT));
             }
 
             $slot = (new VenueTrainingSlot)
@@ -1100,29 +1105,14 @@ final class ParcImportExecutor
         return false;
     }
 
-    private function slotOverlaps(string $venueId, int $day, string $startHhmm, int $duration): bool
+    private function slotOverlaps(string $venueId, int $day, string $startHhmm, int $duration): ?VenueGridConflict
     {
         $start = $this->minutesOf($startHhmm);
         if (null === $start) {
-            return false;
-        }
-        $end = $start + $duration;
-
-        /** @var list<VenueTrainingSlot> $rows */
-        $rows = $this->entityManager->getRepository(VenueTrainingSlot::class)->findBy([
-            'venueId' => $venueId,
-            'dayOfWeek' => $day,
-            'schedulePlanId' => null,
-        ]);
-        foreach ($rows as $slot) {
-            $otherStart = (int) $slot->getStartTime()->format('H') * 60 + (int) $slot->getStartTime()->format('i');
-            $otherEnd = $otherStart + $slot->getDurationMinutes();
-            if ($start < $otherEnd && $otherStart < $end) {
-                return true;
-            }
+            return null;
         }
 
-        return false;
+        return $this->gridOverlap->firstConflict($venueId, $day, $start, $duration, null);
     }
 
     private function reservationExists(string $teamId, string $venueId, int $day, string $startHhmm): bool

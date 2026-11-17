@@ -53,7 +53,7 @@ import { buildClubView } from "./lib/clubView";
 import { ClubViewTable } from "./ClubViewTable";
 import { availableResourceGroups, buildGrid, DAYS, type Lookups, slotGroupKey } from "./lib/grid";
 import { PlanningToolbar } from "./PlanningToolbar";
-import { useCategories, useCoachPlayers, useCoaches, useConstraints, useDeleteSchedule, useDiagnostics, useFillSchedule, useLoadLocks, useMutualizeSlot, usePlacedConflicts, useRegenerate, useRegenerateFromVersion, useRegenerateOverlay, useSchedules, useSlots, useSocleDeviation, useStructureHash, useTeamCoaches, useTeams, useTrainingSlots, useVenues } from "./queries";
+import { useCategories, useCoachPlayers, useCoaches, useConstraints, useDeleteSchedule, useDiagnostics, useFillSchedule, useLoadLocks, useMutualizeSlot, usePlacedConflicts, useRegenerate, useRegenerateFromVersion, useRegenerateOverlay, useSchedules, useSlots, useSocleDeviation, useStructureHash, useTeamCoaches, useTeams, useTrainingSlots, useVenueOccupancies, useVenues } from "./queries";
 import { blocksForSlot } from "./lib/blockSession";
 import { ResourceFilter } from "./ResourceFilter";
 import { SlotDetail } from "./SlotDetail";
@@ -258,6 +258,8 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
   // panneau ne doit pas annoncer un planning propre (revue #350, doctrine `readState`).
   const diagnosticsPending = null !== validScheduleId && undefined === diagnosticsQuery.data;
   const { data: trainingSlots = [] } = useTrainingSlots(slotLayerId);
+  // Les occupations de la couche affichée : leur seul nombre décide si le menu d'export offre « Afficher les occupations ».
+  const { data: layerOccupancies = [] } = useVenueOccupancies(slotLayerId);
   const { data: teams = [] } = useTeams();
   const { data: venues = [] } = useVenues();
   const { data: coaches = [] } = useCoaches();
@@ -1056,6 +1058,7 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
                     exportName={exportName}
                     screenFilterCount={resourceFilter.length}
                     clubId={me?.club?.id ?? null}
+                    occupancyCount={layerOccupancies.length}
                   />
                 ) : null
               }

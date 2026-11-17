@@ -392,6 +392,51 @@ export function useDeleteSlot() {
   });
 }
 
+// --- Occupations de gymnase : un moment où le gymnase n'est pas au club ---
+
+/** Les occupations d'une couche : la saison sans argument, sinon la grille de ce plan de période. */
+export function useVenueOccupancies(schedulePlanId?: string) {
+  return useQuery({
+    queryKey: ["wizard", "venue_occupancies", schedulePlanId ?? "season"],
+    queryFn: () => wizardApi.listVenueOccupancies(schedulePlanId),
+    staleTime: 30_000,
+  });
+}
+
+/**
+ * Après une écriture d'occupation : la liste de la couche, et le compte du menu d'export du
+ * planning (sa clé à lui, `["venue-occupancies", …]`) — la case « Afficher les occupations »
+ * suit aussitôt dans le même onglet.
+ */
+function invalidateOccupancies(queryClient: ReturnType<typeof useQueryClient>, schedulePlanId?: string): void {
+  void queryClient.invalidateQueries({ queryKey: ["wizard", "venue_occupancies", schedulePlanId ?? "season"] });
+  void queryClient.invalidateQueries({ queryKey: ["venue-occupancies"] });
+}
+
+export function useCreateVenueOccupancy(schedulePlanId?: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: Omit<wizardApi.VenueOccupancyPayload, "schedulePlanId">) => wizardApi.createVenueOccupancy({ ...body, schedulePlanId: schedulePlanId ?? null }),
+    onSuccess: () => invalidateOccupancies(queryClient, schedulePlanId),
+  });
+}
+
+export function useUpdateVenueOccupancy(schedulePlanId?: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, body }: { id: string; body: Omit<wizardApi.VenueOccupancyPayload, "schedulePlanId"> }) => wizardApi.updateVenueOccupancy(id, body),
+    onSuccess: () => invalidateOccupancies(queryClient, schedulePlanId),
+  });
+}
+
+export function useDeleteVenueOccupancy(schedulePlanId?: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => wizardApi.deleteVenueOccupancy(id),
+    onSuccess: () => invalidateOccupancies(queryClient, schedulePlanId),
+  });
+}
+
 // --- Period-editable structure (F1): slots + team overrides scoped to a period ---
 
 export function usePeriodSlots(schedulePlanId: string | null) {
@@ -450,6 +495,12 @@ function invalidatePeriodGrid(queryClient: ReturnType<typeof useQueryClient>, sc
   // l'onglet « Réserver » et le récap montrent des épinglages fantômes, et le décompte de
   // la confirmation suivante ment (invariant n°4 — revue #8 PR-B).
   void queryClient.invalidateQueries({ queryKey: ["wizard", "reservations", schedulePlanId] });
+  // « Vider » supprime aussi les occupations du gymnase pour la période, « Reprendre » les
+  // recrée (nouveaux identifiants) : sans relire leur liste, l'écran garderait des blocs gris
+  // supprimés et ouvrirait au clic une occupation qui n'existe plus. Le compte du menu d'export
+  // du planning (sa propre clé) suit.
+  void queryClient.invalidateQueries({ queryKey: ["wizard", "venue_occupancies", schedulePlanId] });
+  void queryClient.invalidateQueries({ queryKey: ["venue-occupancies"] });
 }
 
 /**

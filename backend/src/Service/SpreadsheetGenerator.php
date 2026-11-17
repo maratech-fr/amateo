@@ -47,9 +47,9 @@ class SpreadsheetGenerator
     ) {}
 
     /** @return string binary .xlsx content */
-    public function generate(Schedule $schedule, ?string $venueId = null): string
+    public function generate(Schedule $schedule, ?string $venueId = null, bool $showOccupancies = false): string
     {
-        return $this->render($this->exportData->load($schedule, $venueId), $venueId);
+        return $this->render($this->exportData->load($schedule, $venueId, $showOccupancies), $venueId);
     }
 
     /**
@@ -110,6 +110,20 @@ class SpreadsheetGenerator
                     'Fin' => $end->format('H:i'),
                     'Gymnase' => $venueName($window->venueId),
                     'Équipe' => $window->label,
+                ],
+            ];
+        }
+        // Une OCCUPATION (option cochée) : une ligne dont la colonne « Équipe » dit « Occupation — <motif> ».
+        foreach ($data->occupancies as $window) {
+            $end = $window->startTime->add(new DateInterval('PT' . $window->durationMinutes . 'M'));
+            $rows[] = [
+                'day' => $window->dayOfWeek, 'start' => $window->startTime->format('H:i'), 'venue' => $venueName($window->venueId),
+                'cells' => [
+                    'Jour' => ScheduleExportData::DAY_LABELS[$window->dayOfWeek] ?? '',
+                    'Début' => $window->startTime->format('H:i'),
+                    'Fin' => $end->format('H:i'),
+                    'Gymnase' => $venueName($window->venueId),
+                    'Équipe' => 'Occupation — ' . $window->label,
                 ],
             ];
         }

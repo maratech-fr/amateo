@@ -22,6 +22,7 @@ use App\Entity\TeamPeriodOverride;
 use App\Entity\TeamTagAssignment;
 use App\Entity\Venue;
 use App\Entity\VenueMatchWindow;
+use App\Entity\VenueOccupancy;
 use App\Entity\VenuePeriodOverride;
 use App\Entity\VenueTrainingSlot;
 use App\Entity\VenueTravelTime;
@@ -101,6 +102,8 @@ final class CascadePlan
         return [
             new DeleteByFieldStep(VenueTrainingSlot::class, 'venueId', new ImpactLabel('venue_slot', 'créneau de disponibilité', 'créneaux de disponibilité')),
             new DeleteByFieldStep(VenueMatchWindow::class, 'venueId', new ImpactLabel('venue_match_window', 'fenêtre de match', 'fenêtres de match')),
+            // Les occupations du gymnase (saison et périodes) partent avec lui.
+            new DeleteByFieldStep(VenueOccupancy::class, 'venueId', new ImpactLabel('venue_occupancy', 'occupation', 'occupations')),
             // P4-272 ④ — les INTERDICTIONS de gymnase pointant CE gymnase (scope TEAM,
             // venueId = ce gymnase ; les règles CLUB portent un venueId nul, jamais
             // touchées ici). Sans elle, l'interdiction pendrait sur un gymnase mort.

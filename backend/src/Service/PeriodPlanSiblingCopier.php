@@ -13,6 +13,7 @@ use App\Entity\ScheduleSlotTemplate;
 use App\Entity\SharedTrainingBlock;
 use App\Entity\SharedTrainingBlockTeam;
 use App\Entity\TeamPeriodOverride;
+use App\Entity\VenueOccupancy;
 use App\Entity\VenuePeriodOverride;
 use App\Entity\VenueTrainingSlot;
 use App\Enum\ScheduleStatus;
@@ -31,7 +32,7 @@ use Symfony\Component\HttpKernel\Exception\UnprocessableEntityHttpException;
  * « même planning » = copie.
  *
  * Patron {@see PeriodPlanTranscriber} (copie SANS solve), mais la source est un plan de PÉRIODE
- * sœur (pas le socle) et la copie emporte EN PLUS les 8 familles ancrées-plan
+ * sœur (pas le socle) et la copie emporte EN PLUS les 9 familles ancrées-plan
  * ({@see OverlayManager::purgePlanAnchoredSettings}), car la sœur n'hérite pas de la saison : elle
  * reprend la grille et les réglages du PLAN source, pas ceux du socle. La V1 née est COMPLETED
  * (jamais un solve), pointée (validée d'office), source de verrous posée, et porte un MARQUEUR de
@@ -162,7 +163,7 @@ final class PeriodPlanSiblingCopier
     }
 
     /**
-     * Copie les 8 familles ancrées-plan ({@see OverlayManager::purgePlanAnchoredSettings}) du plan
+     * Copie les 9 familles ancrées-plan ({@see OverlayManager::purgePlanAnchoredSettings}) du plan
      * source vers le plan cible — nouvel UUID par ligne, dénormalisation club/saison/plan. Les blocs
      * de mutualisation remappent leurs membres sur le bloc copié (patron {@see
      * SchedulePlanProvisioner::copySocleSharedBlocks}). L'appelant flush.
@@ -226,6 +227,14 @@ final class PeriodPlanSiblingCopier
             $this->entityManager->persist(
                 (new ImplicitRuleSetting)->setClubId($clubId)->setSeasonId($seasonId)->setSchedulePlanId($dst)
                     ->setRuleKey($row->getRuleKey())->setIntensity($row->getIntensity())->setParams($row->getParams()),
+            );
+        }
+
+        foreach ($this->entityManager->getRepository(VenueOccupancy::class)->findBy(['schedulePlanId' => $src]) as $row) {
+            $this->entityManager->persist(
+                (new VenueOccupancy)->setClubId($clubId)->setSeasonId($seasonId)->setSchedulePlanId($dst)
+                    ->setVenueId($row->getVenueId())->setDayOfWeek($row->getDayOfWeek())->setStartTime($row->getStartTime())
+                    ->setDurationMinutes($row->getDurationMinutes())->setLabel($row->getLabel()),
             );
         }
     }

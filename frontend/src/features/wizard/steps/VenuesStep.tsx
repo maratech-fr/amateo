@@ -29,17 +29,39 @@ import { useVenueMatchWindows } from "@/features/matches/queries";
 import { ManagerOnly } from "@/shared/session/ManagerOnly";
 import { useCanManage, useMe, useWorkingSeason } from "@/shared/session/queries";
 
-import type { FfbbSalle, Venue, VenueTrainingSlot } from "../api";
+import type { FfbbSalle, Venue, VenueOccupancy, VenueTrainingSlot } from "../api";
 import { DAYS, hhmm } from "../lib/days";
 import { filterSalles } from "../lib/salleSuggestions";
-import { slotPlacementError } from "../lib/slotOverlap";
-import { useCreateSlot, useCreateVenue, useDeleteSlot, useDeletionImpact, useDeleteVenue, useFfbbSalles, useFfbbSallesByName, useFfbbSallesProches, useLocateVenue, useReservations, useUpdateSlot, useUpdateVenue, useVenueGeoCheck, useVenueSlots, useWizardTeams, useWizardVenues } from "../queries";
+import { occupancyPlacementError, slotPlacementError } from "../lib/slotOverlap";
+import {
+  useCreateSlot,
+  useCreateVenue,
+  useCreateVenueOccupancy,
+  useDeleteSlot,
+  useDeletionImpact,
+  useDeleteVenue,
+  useFfbbSalles,
+  useFfbbSallesByName,
+  useFfbbSallesProches,
+  useLocateVenue,
+  useReservations,
+  useUpdateSlot,
+  useUpdateVenue,
+  useVenueGeoCheck,
+  useVenueOccupancies,
+  useVenueSlots,
+  useWizardTeams,
+  useWizardVenues,
+} from "../queries";
 import { venueGeoAlertMessage } from "../lib/venueGeoAlert";
 import { useWizardStore } from "../store";
 import { useWizardFooter } from "../lib/footerSlot";
 import { WIZARD_TEXTS } from "../texts";
 import { AssociateSalleModal } from "./AssociateSalleModal";
+import { OccupancyEditor } from "./OccupancyEditor";
+import { OccupancyOverlapNotice } from "./OccupancyOverlapNotice";
 import { PeriodVenues } from "./PeriodVenues";
+import { PlacementKindBar, type PlacementKind } from "./PlacementKindBar";
 import { SalleResultRow } from "./SalleResultRow";
 import { ParcImportModal } from "../parcImport/ParcImportModal";
 import { TravelMatrixModal } from "./TravelMatrixModal";
@@ -119,7 +141,20 @@ export function ColorField({ venue, onApply }: { venue: Venue; onApply: (color: 
   );
 }
 
-function SlotEditor({ slot, canSplit, otherSlots, onClose }: { slot: VenueTrainingSlot; canSplit: boolean; otherSlots: VenueTrainingSlot[]; onClose: () => void }) {
+function SlotEditor({
+  slot,
+  canSplit,
+  otherSlots,
+  otherOccupancies,
+  onClose,
+}: {
+  slot: VenueTrainingSlot;
+  canSplit: boolean;
+  otherSlots: VenueTrainingSlot[];
+  /** Les occupations du gymnase et de la couche affichés : un créneau ne se déplace pas dessus. */
+  otherOccupancies: VenueOccupancy[];
+  onClose: () => void;
+}) {
   const update = useUpdateSlot();
   const del = useDeleteSlot();
   // P4-108 — cette collection n'était chargée dans CETTE modale que pour compter l'impact
@@ -137,7 +172,7 @@ function SlotEditor({ slot, canSplit, otherSlots, onClose }: { slot: VenueTraini
   const save = () => {
     // Minuit puis chevauchement — même foyer que la pose au clic (`slotPlacementError`),
     // `otherSlots` excluant déjà le créneau édité.
-    const invalid = slotPlacementError(otherSlots, day, time, duration);
+    const invalid = slotPlacementError(otherSlots, day, time, duration, otherOccupancies);
     if (null !== invalid) {
       setError(invalid);
       return;
@@ -274,6 +309,9 @@ function VenuesEditor() {
   const locate = useLocateVenue();
   const delVenue = useDeleteVenue();
   const addSlot = useCreateSlot();
+  // Occupations de la grille de SAISON (un moment où le gymnase n'est pas au club).
+  const { data: occupancies = [] } = useVenueOccupancies();
+  const addOccupancy = useCreateVenueOccupancy();
 
   // Chantier G — l'import du parc par IA (onboarding), même porte d'entrée que côté Équipes. Le
   // prompt embarque le périmètre DÉJÀ saisi (équipes/gymnases/coachs), d'où les deux lectures voisines.
@@ -333,6 +371,11 @@ function VenuesEditor() {
   const [duration, setDuration] = useState(90);
   const [venueName, setVenueName] = useState("");
   const [editingSlot, setEditingSlot] = useState<VenueTrainingSlot | null>(null);
+  // Ce que pose le clic sur la grille : « Créneau » à chaque arrivée et à chaque changement de
+  // gymnase ; « Occupation » reste choisi après une pose. Le motif accompagne une occupation.
+  const [placementKind, setPlacementKind] = useState<PlacementKind>("slot");
+  const [occupancyLabel, setOccupancyLabel] = useState("");
+  const [editingOccupancy, setEditingOccupancy] = useState<VenueOccupancy | null>(null);
   // Capture the venue at click time — the dropdown selection may change before
   // the user confirms, and we must delete the venue the dialog is about.
   const [pendingDeleteVenue, setPendingDeleteVenue] = useState<Venue | null>(null);
@@ -403,6 +446,7 @@ function VenuesEditor() {
   }, [travelStream.latest, matrixOpen]);
 
   const venueSlots = null === selected ? [] : slots.filter((s) => s.venueId === selected.id);
+  const venueOccupancies = null === selected ? [] : occupancies.filter((o) => o.venueId === selected.id);
   // Les fenêtres match du gymnase affiché : la grille les rend en fantôme, la légende
   // n'apparaît que s'il y en a. Une seule dérivation pour les deux — sinon la légende
   // et la grille peuvent finir par ne pas parler du même gymnase.
@@ -442,8 +486,16 @@ function VenuesEditor() {
   // P3-16 — l'impact vient du serveur, et seulement quand une suppression attend confirmation.
   const venueImpact = useDeletionImpact("venue", pendingDeleteVenue?.id ?? null);
 
+  /** Changer de gymnase ramène le choix sur « Créneau » et referme ce qui visait l'ancien. */
+  const resetPlacement = () => {
+    setPlacementKind("slot");
+    setOccupancyLabel("");
+    setEditingOccupancy(null);
+  };
+
   const onVenueCreated = (created: Venue) => {
     setSelectedId(created.id);
+    resetPlacement();
     toast.success(WIZARD_TEXTS.venueAdded(created.name));
     setAddOpenChoice(false);
   };
@@ -748,6 +800,7 @@ function VenuesEditor() {
               onValueChange={(next) => {
                 setSelectedId(next);
                 setEditingSlot(null);
+                resetPlacement();
                 // Drop the rename buffer so switching gyms can't write the name
                 // typed for the previous one onto the newly selected gym.
                 setVenueName("");
@@ -843,19 +896,25 @@ function VenuesEditor() {
 
           {/* Lecture seule (socle validé) : la barre de pose n'a pas lieu d'être — on la remplace
               par la MENTION qui dit pourquoi la grille ne répond plus au clic. */}
+          {/* Planning validé : les créneaux sont une contrainte, mais les occupations restent
+              modifiables — le gestionnaire garde une barre « À poser : Occupation ». Un Membre
+              voit le bandeau d'aujourd'hui, sans barre. */}
           {slotsReadOnly ? (
             <NoticeBanner
               tone="muted"
               role="status"
               className="mb-3"
               icon={<Lock className="size-4 text-muted-foreground" />}
-              message={WIZARD_TEXTS.slotsReadOnlyNotice}
+              message={canManage ? WIZARD_TEXTS.slotsReadOnlyNoticeManager : WIZARD_TEXTS.slotsReadOnlyNotice}
             />
-          ) : !canManage ? null : (
-          /* Slot-placement toolbar — only the duration of the next dropped slot.
-              Capacity is set per-slot in the edit panel (a new slot is always 1). */
+          ) : null}
+          {!canManage ? null : (
+          /* Slot-placement toolbar — what the click places, then the duration of the next
+              dropped block. Capacity is set per-slot in the edit panel (a new slot is always 1). */
+          <>
           <div className="mb-3 flex flex-wrap items-center gap-2">
             <span className="text-xs text-muted-foreground">{WIZARD_TEXTS.toPlaceLabel}</span>
+            <PlacementKindBar kind={placementKind} onKind={setPlacementKind} label={occupancyLabel} onLabel={setOccupancyLabel} kindLocked={slotsReadOnly} />
             {/* D8 — même sélecteur partagé ; pas d'heure connue ici (le début vient du clic
                 sur la grille) : la borne de minuit est vérifiée à la pose (`slotPlacementError`). */}
             <DurationSelect aria-label={WIZARD_TEXTS.durationToPlaceLabel} className="h-9" wrapperClassName="w-24" value={duration} onChange={setDuration} />
@@ -864,7 +923,7 @@ function VenuesEditor() {
                 question se pose. */}
             {/* « un créneau » tout court devenait ambigu dès qu'une plage match s'affiche
                 dans la même grille : on dit ce que le clic pose. */}
-            <span className="text-xs text-muted-foreground">{WIZARD_TEXTS.clickGridHint}</span>
+            <span className="text-xs text-muted-foreground">{slotsReadOnly || "occupancy" === placementKind ? WIZARD_TEXTS.occupancyClickGridHint : WIZARD_TEXTS.clickGridHint}</span>
             {/* La hachure est un motif MUET sans ce mot : elle apparaît dans la grille sans
                 que rien n'en dise le sens. La légende ne s'affiche que s'il y a quelque
                 chose à légender. */}
@@ -879,6 +938,8 @@ function VenuesEditor() {
               </span>
             ) : null}
           </div>
+          {!slotsReadOnly && "occupancy" === placementKind ? <p className="-mt-2 mb-3 text-xs text-muted-foreground">{WIZARD_TEXTS.occupancyHelp}</p> : null}
+          </>
           )}
 
           <VenueAvailabilityGrid
@@ -886,9 +947,23 @@ function VenuesEditor() {
             slots={venueSlots}
             matchWindows={venueMatchWindows}
             selectedSlotId={editingSlot?.id ?? null}
-            readOnly={slotsReadOnly || !canManage}
+            // Planning validé : seuls les créneaux sont inertes (gestionnaire) ; un Membre ne pose rien.
+            readOnly={!canManage}
+            slotsLocked={slotsReadOnly}
+            occupancies={venueOccupancies}
+            onSelectOccupancy={canManage ? (occupancy) => setEditingOccupancy(occupancy) : undefined}
             onAdd={(dayOfWeek, startTime) => {
-              const invalid = slotPlacementError(venueSlots, dayOfWeek, startTime, duration);
+              if (slotsReadOnly || "occupancy" === placementKind) {
+                const label = occupancyLabel.trim();
+                const invalidOccupancy = "" === label ? WIZARD_TEXTS.occupancyMissingLabel : occupancyPlacementError(venueSlots, venueOccupancies, dayOfWeek, startTime, duration);
+                if (null !== invalidOccupancy) {
+                  toast.error(invalidOccupancy);
+                  return;
+                }
+                addOccupancy.mutate({ venueId: selected.id, dayOfWeek, startTime, durationMinutes: duration, label });
+                return;
+              }
+              const invalid = slotPlacementError(venueSlots, dayOfWeek, startTime, duration, venueOccupancies);
               if (null !== invalid) {
                 toast.error(invalid);
                 return;
@@ -898,12 +973,25 @@ function VenuesEditor() {
             onSelect={(slot) => setEditingSlot(slot)}
           />
 
+          <OccupancyOverlapNotice slots={venueSlots} occupancies={venueOccupancies} />
+
+          {null !== editingOccupancy && canManage ? (
+            <OccupancyEditor
+              key={editingOccupancy.id}
+              occupancy={editingOccupancy}
+              otherSlots={venueSlots}
+              otherOccupancies={venueOccupancies.filter((o) => o.id !== editingOccupancy.id)}
+              onClose={() => setEditingOccupancy(null)}
+            />
+          ) : null}
+
           {null !== editingSlot && !slotsReadOnly && canManage ? (
             <SlotEditor
               key={editingSlot.id}
               slot={editingSlot}
               canSplit={selected.canSplit}
               otherSlots={venueSlots.filter((s) => s.id !== editingSlot.id)}
+              otherOccupancies={venueOccupancies}
               onClose={() => {
                 // Fermer l'éditeur du créneau ciblé = « on a agi » → le retour nommé s'efface.
                 const closingId = editingSlot.id;

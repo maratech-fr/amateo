@@ -1,6 +1,8 @@
 import type { Browser, Request, Response } from "@playwright/test";
 
 import { expect, test, type Page } from "./fixtures";
+import { COCKPIT_TEXTS } from "../../src/features/cockpit/texts";
+import { PLANNING_TEXTS } from "../../src/features/planning/texts";
 import { SESSION_TEXTS } from "../../src/shared/session/texts";
 import { loginSeededClub, registerAndVerify, settleVeil, uniqueAra, watchFailedApiCalls } from "./support";
 
@@ -133,12 +135,59 @@ async function newPage(browser: Browser): Promise<Page> {
   return page;
 }
 
+/**
+ * PR6 (occupations) — décor du menu Exporter vu par le Membre, posé par le GESTIONNAIRE et par l'API
+ * (geste réel) : une occupation « École » de SAISON (la couche que `/planning` affiche, le socle
+ * pointé — `useVersionLanding.ts:70`), sur une heure libre de la grille de saison d'un gymnase du club
+ * (un chevauchement serait refusé 422). Effacée en `finally`.
+ */
+async function createSeasonOccupancy(manager: Page): Promise<string> {
+  const members = <T>(body: unknown): T[] => (Array.isArray(body) ? body : (((body as { member?: T[] }).member ?? []) as T[]));
+  const venues = members<{ id: string; name: string }>(await (await manager.request.get("/api/venues")).json()).filter((v) => !v.name.startsWith("Gymnase coordonnées"));
+  const venue = venues[0];
+  expect(venue, "décor : le club seedé porte au moins un gymnase").toBeDefined();
+  if (undefined === venue) {
+    throw new Error("décor non tenu : aucun gymnase");
+  }
+  // Les créneaux de SAISON de ce gymnase (sans `schedulePlanId`) : on cherche une heure LIBRE d'une heure.
+  const busy: { day: number; start: number; end: number }[] = [];
+  for (let pageNumber = 1; pageNumber <= 10; pageNumber += 1) {
+    const res = await manager.request.get(`/api/venue_training_slots?venueId=${venue.id}&page=${pageNumber}`);
+    const batch = members<{ dayOfWeek: number; startTime: string; durationMinutes: number }>(await res.json());
+    for (const s of batch) {
+      const [hh, mm] = (s.startTime.match(/(\d{2}):(\d{2})/)?.slice(1) ?? ["0", "0"]).map(Number);
+      const start = hh * 60 + mm;
+      busy.push({ day: s.dayOfWeek, start, end: start + s.durationMinutes });
+    }
+    if (batch.length < 30) break;
+  }
+  let chosen: { day: number; start: number } | null = null;
+  for (let day = 1; day <= 7 && null === chosen; day += 1) {
+    for (let start = 9 * 60; start <= 21 * 60 && null === chosen; start += 15) {
+      if (!busy.some((b) => b.day === day && start < b.end && b.start < start + 60)) {
+        chosen = { day, start };
+      }
+    }
+  }
+  if (null === chosen) {
+    throw new Error("décor non tenu : aucune heure libre dans la grille de saison du gymnase");
+  }
+  const startTime = `${String(Math.floor(chosen.start / 60)).padStart(2, "0")}:${String(chosen.start % 60).padStart(2, "0")}`;
+  const occupancy = await manager.request.post("/api/venue_occupancies", {
+    headers: { "Content-Type": "application/json" },
+    data: { venueId: venue.id, dayOfWeek: chosen.day, startTime, durationMinutes: 60, label: "École" },
+  });
+  expect(occupancy.status(), `pose de l'occupation de saison (HTTP ${occupancy.status()})`).toBe(201);
+  return ((await occupancy.json()) as { id: string }).id;
+}
+
 test.describe("Membre — lecture seule de bout en bout", () => {
   test("club établi : chaque écran se lit, rien ne s'écrit, rien ne sort", async ({ page, browser }) => {
     test.setTimeout(240_000);
     const manager = await newPage(browser);
     const email = `membre-${uniqueAra("m").toLowerCase()}@test.fr`;
     let locatedVenueId = "";
+    let occupancyId = "";
     try {
       await loginSeededClub(manager);
       const meRes = await manager.request.get("/api/me");
@@ -152,11 +201,22 @@ test.describe("Membre — lecture seule de bout en bout", () => {
       });
       expect(venue.ok(), "le gestionnaire crée un gymnase localisé sans adresse").toBe(true);
       locatedVenueId = ((await venue.json()) as { id: string }).id;
+      occupancyId = await createSeasonOccupancy(manager);
 
       await becomeMember(page, manager, ara, email);
       const watch = watchMember(page);
 
       await visit(page, watch, "/", false);
+      // PR6 (occupations) — le Membre exporte ce qu'il lit : il ouvre le planning de saison depuis
+      // l'accueil (« Ouvrir », `SeasonPlanBanner.tsx`, sans garde de rôle), puis le menu Exporter
+      // (`PlanningPage.tsx` `rightSlot`, sans garde de rôle) lui offre « Afficher les occupations »
+      // dès que la couche affichée porte une occupation (`ExportMenu.tsx`, `offersOccupancies`).
+      await page.getByRole("button", { name: COCKPIT_TEXTS.open, exact: true }).click();
+      await expect(page, "« Ouvrir » mène le Membre au planning").toHaveURL(/\/planning/);
+      await settleVeil(page);
+      await page.getByRole("button", { name: PLANNING_TEXTS.exportButton }).click();
+      await expect(page.getByRole("checkbox", { name: PLANNING_TEXTS.exportShowOccupancies }), "/planning : le Membre ne voit pas « Afficher les occupations » dans Exporter").toBeVisible();
+      expect(watch.violations, `/planning (Exporter) : le Membre a déclenché ${watch.violations.join(" · ")}`).toEqual([]);
       await visit(page, watch, "/planning", false);
       for (const sub of ["consulter", "semaine-type", "conflits"]) {
         await visit(page, watch, `/matchs/${sub}`, false);
@@ -186,8 +246,16 @@ test.describe("Membre — lecture seule de bout en bout", () => {
           await expect(page.getByText(/Gymnase coordonnées/).first(), "témoin : la carte du gymnase localisé est ouverte").toBeVisible();
           await expect(page.getByRole("link", { name: "Voir sur la carte" }).first(), "témoin : la vue repliée « Localisé » est rendue").toBeVisible();
           expect(watch.violations, `gymnase localisé sans adresse : le Membre a déclenché ${watch.violations.join(" · ")}`).toEqual([]);
+          // PR6 (occupations) — le choix [Créneau | Occupation] et le champ « Motif » sont des gestes
+          // de gestionnaire : un Membre ne les voit pas sur les Gymnases de saison. Étape atteinte
+          // par l'adresse `/wizard?step=venues` que l'app lit (`WizardLayout.tsx`, deep link), pas
+          // par un état injecté. Jumeaux : `VenuesStep.occupancy.test.tsx` (« Membre : ni barre de
+          // pose… ») et le 403 serveur (`MemberWriteSweepTest`, `/api/venue_occupancies`).
+          await expect(page.getByRole("button", { name: /^Occupation$/ }), "Gymnases de saison : le sélecteur Créneau | Occupation est offert au Membre").toHaveCount(0);
+          await expect(page.getByRole("textbox", { name: /Motif/ }), "Gymnases de saison : le champ « Motif » est offert au Membre").toHaveCount(0);
         }
       }
+
       await visit(page, watch, "/club", true);
       // `/club` : ni Demandes d'adhésion, ni Invitations, ni Membres.
       await expect(page.getByRole("button", { name: /Demandes d'adhésion/ })).toHaveCount(0);
@@ -200,6 +268,9 @@ test.describe("Membre — lecture seule de bout en bout", () => {
       await eraseAccount(page);
       if ("" !== locatedVenueId) {
         await manager.request.delete(`/api/venues/${locatedVenueId}`).catch(() => undefined);
+      }
+      if ("" !== occupancyId) {
+        await manager.request.delete(`/api/venue_occupancies/${occupancyId}`).catch(() => undefined);
       }
       await manager.context().close();
     }

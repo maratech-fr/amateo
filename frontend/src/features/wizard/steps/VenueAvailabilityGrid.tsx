@@ -2,13 +2,14 @@ import { useLayoutEffect, useRef, useState } from "react";
 
 import type { Closure } from "@/features/cockpit/api";
 import type { VenueMatchWindow } from "@/features/matches/api";
-import { dayLabelLongCap } from "@/shared/lib/days";
+import { dayLabelLong, dayLabelLongCap } from "@/shared/lib/days";
 import { formatDuration } from "@/shared/lib/duration";
 import { formatTimeRange } from "@/shared/lib/time";
 import { cn } from "@/shared/lib/utils";
 
-import type { Venue, VenueTrainingSlot } from "../api";
+import type { Venue, VenueOccupancy, VenueTrainingSlot } from "../api";
 import { fmtMinutes as fmt, hhmm, toMinutes as startMinutes } from "../lib/days";
+import { WIZARD_TEXTS } from "../texts";
 import { closureForSlot, closureLabel } from "../lib/venueClosures";
 import { END_MIN, gridTemplateColumns, ROW_H, START_MIN, STEP, WEEK } from "../lib/weekGrid";
 
@@ -39,9 +40,33 @@ interface Props {
    * gardent l'édition.
    */
   readOnly?: boolean;
+  /**
+   * Occupations du gymnase (un moment où il n'est pas au club) : des blocs gris rendus APRÈS les
+   * créneaux, par-dessus. Elles bornent la hauteur de la grille comme un créneau.
+   */
+  occupancies?: VenueOccupancy[];
+  /** Ouvre une occupation. Absent : le bloc est un `<div>` inerte, même hors lecture seule. */
+  onSelectOccupancy?: (occupancy: VenueOccupancy) => void;
+  /**
+   * Créneaux INERTES, cases et occupations actives (planning de saison validé, vu du gestionnaire :
+   * les créneaux sont une contrainte, les occupations restent modifiables).
+   */
+  slotsLocked?: boolean;
 }
 
-export function VenueAvailabilityGrid({ venue, slots, selectedSlotId, onAdd, onSelect, matchWindows: allMatchWindows = [], closures = [], readOnly = false }: Props) {
+export function VenueAvailabilityGrid({
+  venue,
+  slots,
+  selectedSlotId,
+  onAdd,
+  onSelect,
+  matchWindows: allMatchWindows = [],
+  closures = [],
+  readOnly = false,
+  occupancies = [],
+  onSelectOccupancy,
+  slotsLocked = false,
+}: Props) {
   // Une ouverture datée n'a pas sa place dans une grille hebdomadaire : ni fantôme, ni plage étirée.
   const matchWindows = allMatchWindows.filter((w) => null == w.openingDate);
   const color = venue.color ?? "var(--accent)";
@@ -65,8 +90,14 @@ export function VenueAvailabilityGrid({ venue, slots, selectedSlotId, onAdd, onS
   // fenêtre 07:00→09:00 hors plage rejouerait mot pour mot le `grid-row: -2` ci-dessus,
   // à ceci près qu'un fantôme relogé ment sans qu'on puisse le cliquer pour s'en rendre
   // compte. Ce qui est rendu borne la grille — sans exception.
-  const starts = [...slots.map((s) => startMinutes(s.startTime)), ...matchWindows.map((w) => startMinutes(w.startTime))];
-  const ends = [...slots.map((s) => startMinutes(s.startTime) + s.durationMinutes), ...matchWindows.map((w) => startMinutes(w.endTime))];
+  //
+  // Les OCCUPATIONS aussi : « Ménage » 07:00-08:00 doit s'afficher à sa vraie heure.
+  const starts = [...slots.map((s) => startMinutes(s.startTime)), ...matchWindows.map((w) => startMinutes(w.startTime)), ...occupancies.map((o) => startMinutes(o.startTime))];
+  const ends = [
+    ...slots.map((s) => startMinutes(s.startTime) + s.durationMinutes),
+    ...matchWindows.map((w) => startMinutes(w.endTime)),
+    ...occupancies.map((o) => startMinutes(o.startTime) + o.durationMinutes),
+  ];
   const gridStart = Math.min(START_MIN, ...starts.map((m) => Math.floor(m / 60) * 60));
   const gridEnd = Math.max(END_MIN, ...ends.map((m) => Math.ceil(m / 60) * 60));
   const rows = Array.from({ length: (gridEnd - gridStart) / STEP }, (_, i) => gridStart + i * STEP);
@@ -119,6 +150,7 @@ export function VenueAvailabilityGrid({ venue, slots, selectedSlotId, onAdd, onS
     // P4-37 — la grille DÉFILE en interne au lieu de pousser la page. Elle n'avait aucune
     // borne verticale : passer de 22h à 23h l'aurait allongée d'autant, aggravant un
     // problème qui existait déjà. `max-h` + `overflow-y-auto` la bornent au viewport.
+    <>
     <div ref={scrollBoxRef} className="max-h-[min(70vh,40rem)] overflow-auto rounded-lg border border-border bg-card">
       <div className="grid text-xs" style={{ gridTemplateColumns, gridTemplateRows }}>
         {/* Coin figé sur les DEUX axes : il masque la gouttière quand elle défile sous
@@ -255,13 +287,15 @@ export function VenueAvailabilityGrid({ venue, slots, selectedSlotId, onAdd, onS
           // une bande de remplacement (grain JOUR strict, lu de `weekdays`).
           const closedBy = closureForSlot(slot, closures);
           const closedText = closedBy ? closureLabel(closedBy) : "";
+          // Créneaux inertes : lecture seule, ou planning validé (les occupations restent actives).
+          const slotInert = readOnly || slotsLocked;
           const slotClass = cn(
             // Full border + OPAQUE fill so a slot is always clearly bounded — the old
             // semi-transparent var(--muted) fill was identical to the empty cells'
             // hover:bg-muted, so hovering the grid made slots "vanish" into the highlighted
             // cells (reliability bug).
             "z-10 m-px flex flex-col items-start overflow-hidden rounded border border-border border-l-4 px-1 text-left text-[10px] font-medium leading-tight",
-            readOnly ? "" : "hover:ring-1 hover:ring-accent",
+            slotInert ? "" : "hover:ring-1 hover:ring-accent",
             slot.id === selectedSlotId ? "ring-2 ring-accent" : "",
             closedBy ? "line-through" : "",
           );
@@ -278,7 +312,7 @@ export function VenueAvailabilityGrid({ venue, slots, selectedSlotId, onAdd, onS
           );
           // LECTURE SEULE : un `<div>` inerte (le texte visible reste lu par les lecteurs d'écran) ;
           // en édition, un bouton qui ouvre l'éditeur du créneau.
-          return readOnly ? (
+          return slotInert ? (
             <div key={slot.id} className={slotClass} style={slotStyle}>
               {body}
             </div>
@@ -302,7 +336,54 @@ export function VenueAvailabilityGrid({ venue, slots, selectedSlotId, onAdd, onS
             </button>
           );
         })}
+
+        {/* Occupations — rendues APRÈS les créneaux, donc par-dessus : un créneau et une
+            occupation superposés restent tous deux (le bandeau le signale), et l'occupation se
+            clique toujours pour être déplacée ou supprimée. Gris neutre opaque, hachure inclinée
+            à l'inverse de celle de l'accès match, bordure pleine. */}
+        {occupancies.map((occupancy) => {
+          const di = WEEK.findIndex((d) => d.n === occupancy.dayOfWeek);
+          if (di < 0) {
+            return null;
+          }
+          const startRow = 2 + Math.round((startMinutes(occupancy.startTime) - gridStart) / STEP);
+          const span = Math.max(1, Math.round(occupancy.durationMinutes / STEP));
+          const range = formatTimeRange(occupancy.startTime, occupancy.durationMinutes);
+          const editable = !readOnly && undefined !== onSelectOccupancy;
+          const occupancyClass = cn(
+            "z-10 m-px flex flex-col items-start overflow-hidden rounded border border-muted-foreground/60 bg-muted px-1 text-left text-[10px] font-medium leading-tight text-foreground",
+            editable ? "hover:ring-1 hover:ring-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" : "",
+          );
+          const occupancyStyle = { gridColumn: 2 + di, gridRow: `${startRow} / span ${span}`, backgroundImage: OCCUPANCY_HATCH };
+          const body = (
+            <>
+              <span>{span >= 2 ? range : hhmm(occupancy.startTime)}</span>
+              <span className="w-full truncate">{occupancy.label}</span>
+            </>
+          );
+          const name = WIZARD_TEXTS.occupancyBlockName(occupancy.label, `${dayLabelLong(occupancy.dayOfWeek)} ${range}`, editable);
+          return editable ? (
+            <button key={`occ-${occupancy.id}`} type="button" onClick={() => onSelectOccupancy(occupancy)} aria-label={name} title={name} className={occupancyClass} style={occupancyStyle}>
+              {body}
+            </button>
+          ) : (
+            <div key={`occ-${occupancy.id}`} role="img" aria-label={name} className={occupancyClass} style={occupancyStyle}>
+              {body}
+            </div>
+          );
+        })}
       </div>
     </div>
+    {/* Légende visible de tous, dès que le gymnase affiché porte une occupation. */}
+    {occupancies.length > 0 ? (
+      <p className="mt-1.5 flex items-center gap-1.5 text-xs text-muted-foreground">
+        <span aria-hidden="true" className="inline-block h-3.5 w-6 shrink-0 rounded border border-muted-foreground/60 bg-muted" style={{ backgroundImage: OCCUPANCY_HATCH }} />
+        {WIZARD_TEXTS.occupancyLegend}
+      </p>
+    ) : null}
+    </>
   );
 }
+
+/** Hachure grise inclinée à l'inverse de celle de l'accès match (45°), pour s'en distinguer d'un coup d'œil. */
+const OCCUPANCY_HATCH = "repeating-linear-gradient(-45deg, color-mix(in oklch, var(--muted-foreground) 22%, transparent) 0 3px, transparent 3px 8px)";

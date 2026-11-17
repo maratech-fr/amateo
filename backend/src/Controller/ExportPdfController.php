@@ -57,6 +57,7 @@ final class ExportPdfController extends AbstractController
                 clubId: $schedule->getClubId(),
                 venueId: $venueId,
                 showCoaches: $showCoaches,
+                showOccupancies: $this->resolveShowOccupancies($this->requestStack),
             ),
         );
 

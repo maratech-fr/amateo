@@ -8,7 +8,7 @@ import { VenueSelect } from "@/shared/components/ui/venue-select";
 import { useCredits } from "@/shared/credits/useCredits";
 
 import type { Venue } from "./api";
-import { getShowCoaches, setShowCoaches } from "./lib/exportPrefs";
+import { getShowCoaches, getShowOccupancies, setShowCoaches, setShowOccupancies } from "./lib/exportPrefs";
 import { type ExportFormat, useScheduleExport } from "./queries";
 import { PLANNING_TEXTS } from "./texts";
 
@@ -27,6 +27,7 @@ export function ExportMenu({
   exportName = null,
   screenFilterCount = 0,
   clubId = null,
+  occupancyCount = 0,
 }: {
   scheduleId: string;
   venues: Venue[];
@@ -46,6 +47,11 @@ export function ExportMenu({
    * export contient.
    */
   screenFilterCount?: number;
+  /**
+   * Le nombre d'occupations (d'un gymnase existant) que porte la couche affichée : la case
+   * « Afficher les occupations » n'existe que s'il y en a au moins une.
+   */
+  occupancyCount?: number;
 }) {
   const [open, setOpen] = useState(false);
   const [scope, setScope] = useState<string>(""); // "" = all venues
@@ -61,6 +67,16 @@ export function ExportMenu({
       setShowCoaches(clubId, checked);
     }
   };
+  // « Afficher les occupations » : décochée par défaut, mémorisée par club, offerte seulement si la
+  // couche affichée porte une occupation (sinon l'export part sans l'option).
+  const [showOccupancies, setShowOccupanciesState] = useState(() => (null !== clubId ? getShowOccupancies(clubId) : false));
+  const toggleOccupancies = (checked: boolean): void => {
+    setShowOccupanciesState(checked);
+    if (null !== clubId) {
+      setShowOccupancies(clubId, checked);
+    }
+  };
+  const offersOccupancies = occupancyCount > 0;
   // §4bis pt 2 — les DEUX exports (PDF/Excel) consomment 1 crédit : chaque
   // entrée affiche le solde et se désactive à 0 (Découverte bridée). null = offre
   // non bridée (payant/bêta/démo) : ni suffixe, ni blocage.
@@ -133,13 +149,19 @@ export function ExportMenu({
             <input type="checkbox" checked={showCoaches} onChange={(e) => toggleCoaches(e.target.checked)} className="size-4" />
             {PLANNING_TEXTS.exportShowCoaches}
           </label>
+          {offersOccupancies ? (
+            <label className="mb-3 flex items-center gap-2 text-sm">
+              <input type="checkbox" checked={showOccupancies} onChange={(e) => toggleOccupancies(e.target.checked)} className="size-4" />
+              {PLANNING_TEXTS.exportShowOccupancies}
+            </label>
+          ) : null}
           <div className="flex flex-col gap-1">
             {formats.map(({ key, label, icon: Icon }) => (
               <button
                 key={key}
                 type="button"
                 disabled={null !== busy || creditsBlocked}
-                onClick={() => void run(key, venueId, showCoaches)}
+                onClick={() => void run(key, venueId, showCoaches, offersOccupancies && showOccupancies)}
                 className="flex items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-muted disabled:opacity-50"
               >
                 {busy === key ? <Spinner className="size-4" /> : <Icon className="size-4" />}
