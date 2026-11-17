@@ -96,6 +96,23 @@ final class ParcImportExecuteTest extends WebTestCase
         yield 'une chaîne non numérique (« abc ») n\'est pas un id de rang' => ['abc'];
     }
 
+    // ───────────────────────── Plafond de séances par jour relevé par l'import ─────────────────────────
+
+    /**
+     * Cases du lundi d'une équipe → plafond relevé et lignes `dailyCaps` : le nombre de cases deux à deux disjointes du jour le plus
+     * chargé (deux cases qui se touchent comptent 2), borné à 4 (`capped` au-delà) ; deux cases qui se chevauchent donnent `overlap`.
+     *
+     * @return iterable<string, array{list<array{0: string, 1: int}>, int, list<string>}>
+     */
+    public static function mondayCases(): iterable
+    {
+        yield 'deux cases disjointes' => [[['09:00', 90], ['18:00', 90]], 2, ['raised']];
+        yield 'deux cases collées' => [[['18:00', 90], ['19:30', 90]], 2, ['raised']];
+        yield 'deux cases qui se chevauchent' => [[['18:00', 90], ['18:30', 90]], 1, ['overlap']];
+        yield 'disjointe + chevauchement' => [[['09:00', 90], ['18:00', 90], ['18:30', 90]], 2, ['raised', 'overlap']];
+        yield 'cinq cases' => [[['08:00', 90], ['10:00', 90], ['12:00', 90], ['14:00', 90], ['18:00', 90]], 4, ['capped']];
+    }
+
     // ───────────────────────────── Gate (domaine sensible) ─────────────────────────────
 
     public function testNonManagerIsRefusedWithoutWriting(): void
@@ -1526,23 +1543,6 @@ final class ParcImportExecuteTest extends WebTestCase
         $sm1 = $this->em->getRepository(Team::class)->findOneBy(['clubId' => $this->club->getId(), 'name' => 'SM1']);
         self::assertInstanceOf(Team::class, $sm1);
         self::assertSame(5, $sm1->getSessionsPerWeek(), 'la valeur corrigée à la main (5) n\'est jamais écrasée par le recompte');
-    }
-
-    // ───────────────────────── Plafond de séances par jour relevé par l'import ─────────────────────────
-
-    /**
-     * Cases du lundi d'une équipe → plafond relevé et lignes `dailyCaps` : le nombre de cases deux à deux disjointes du jour le plus
-     * chargé (deux cases qui se touchent comptent 2), borné à 4 (`capped` au-delà) ; deux cases qui se chevauchent donnent `overlap`.
-     *
-     * @return iterable<string, array{list<array{0: string, 1: int}>, int, list<string>}>
-     */
-    public static function mondayCases(): iterable
-    {
-        yield 'deux cases disjointes' => [[['09:00', 90], ['18:00', 90]], 2, ['raised']];
-        yield 'deux cases collées' => [[['18:00', 90], ['19:30', 90]], 2, ['raised']];
-        yield 'deux cases qui se chevauchent' => [[['18:00', 90], ['18:30', 90]], 1, ['overlap']];
-        yield 'disjointe + chevauchement' => [[['09:00', 90], ['18:00', 90], ['18:30', 90]], 2, ['raised', 'overlap']];
-        yield 'cinq cases' => [[['08:00', 90], ['10:00', 90], ['12:00', 90], ['14:00', 90], ['18:00', 90]], 4, ['capped']];
     }
 
     /** L'import relève le plafond d'après les cases de l'équipe et le dit, ligne par ligne, dans `dailyCaps`. */

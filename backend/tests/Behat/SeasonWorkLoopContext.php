@@ -355,34 +355,35 @@ final class SeasonWorkLoopContext extends BaseContext
 
     /**
      * Choisit, dans le socle, une séance LIBRE de SF1 et une case vide du jour de son AUTRE séance :
-     * une autre heure (90 min fixes, donc aucun chevauchement), ni réservée ni occupée, sans séance
-     * plus tardive dans ce gymnase ce jour-là (l'ordre des âges ne doit pas refuser le geste pour une
-     * autre raison), le gymnase de l'autre séance d'abord (aucun trajet). Déterministe.
+     * une autre heure (90 min fixes, donc aucun chevauchement), ni réservée ni occupée, où l'ordre des
+     * âges tient (aucune plus jeune après elle, aucune plus âgée avant elle, dans ce gymnase ce jour-là :
+     * le geste ne doit pas être refusé pour une autre raison), le gymnase de l'autre séance d'abord (aucun trajet). Déterministe.
      */
     private function pickSf1MoveTowardsItsOtherDay(): void
     {
         $row = $this->dbalScalar(
             \sprintf(
-                'WITH mine AS ('
-                . ' SELECT id, venue_id, day_of_week, start_time, lock_level FROM schedule_slot_template'
-                . ' WHERE schedule_id=\'%1$s\' AND team_id=\'%2$s\'),'
-                . ' pair AS ('
-                . ' SELECT m.id AS moved_id, m.venue_id AS o_venue, m.day_of_week AS o_day, m.start_time AS o_start,'
-                . ' o.venue_id AS other_venue, o.day_of_week AS y_day, o.start_time AS other_start'
-                . ' FROM mine m JOIN mine o ON o.id <> m.id AND o.day_of_week <> m.day_of_week'
-                . ' WHERE m.lock_level=\'NONE\')'
-                . ' SELECT p.moved_id || \'|\' || p.o_venue || \'|\' || p.o_day || \'|\' || to_char(p.o_start, \'HH24:MI\')'
+                // Une seule requête SELECT (dbal:run-sql n'exécute pas un WITH comme une lecture).
+                'SELECT m.id || \'|\' || m.venue_id || \'|\' || m.day_of_week || \'|\' || to_char(m.start_time, \'HH24:MI\')'
                 . ' || \'|\' || vts.venue_id || \'|\' || vts.day_of_week || \'|\' || to_char(vts.start_time, \'HH24:MI\') AS behatval'
-                . ' FROM pair p'
+                . ' FROM schedule_slot_template m'
+                . ' JOIN schedule_slot_template o ON o.schedule_id = m.schedule_id AND o.team_id = m.team_id'
+                . ' AND o.id <> m.id AND o.day_of_week <> m.day_of_week'
                 . ' JOIN venue_training_slot vts ON vts.club_id=\'%3$s\' AND vts.schedule_plan_id IS NULL'
-                . ' AND vts.day_of_week = p.y_day AND vts.start_time <> p.other_start'
-                . ' WHERE NOT EXISTS (SELECT 1 FROM schedule_slot_template s WHERE s.schedule_id=\'%1$s\''
-                . ' AND s.venue_id=vts.venue_id AND s.day_of_week=vts.day_of_week AND s.start_time=vts.start_time)'
+                . ' AND vts.day_of_week = o.day_of_week AND vts.start_time <> o.start_time'
+                . ' WHERE m.schedule_id=\'%1$s\' AND m.team_id=\'%2$s\' AND m.lock_level=\'NONE\''
                 . ' AND NOT EXISTS (SELECT 1 FROM schedule_slot_template s WHERE s.schedule_id=\'%1$s\''
-                . ' AND s.venue_id=vts.venue_id AND s.day_of_week=vts.day_of_week AND s.start_time > vts.start_time)'
+                . ' AND s.venue_id=vts.venue_id AND s.day_of_week=vts.day_of_week AND s.start_time=vts.start_time)'
+                . ' AND NOT EXISTS (SELECT 1 FROM schedule_slot_template s'
+                . ' JOIN team t ON t.id = s.team_id JOIN sport_category c ON c.id = t.sport_category_id'
+                . ' JOIN team me ON me.id = \'%2$s\' JOIN sport_category mc ON mc.id = me.sport_category_id'
+                . ' WHERE s.schedule_id=\'%1$s\' AND s.team_id <> \'%2$s\''
+                . ' AND s.venue_id=vts.venue_id AND s.day_of_week=vts.day_of_week'
+                . ' AND c.age_min IS NOT NULL AND mc.age_min IS NOT NULL'
+                . ' AND ((c.age_min < mc.age_min AND s.start_time > vts.start_time) OR (c.age_min > mc.age_min AND s.start_time < vts.start_time)))'
                 . ' AND NOT EXISTS (SELECT 1 FROM reservation r WHERE r.club_id=\'%3$s\' AND r.schedule_plan_id IS NULL'
                 . ' AND r.venue_id=vts.venue_id AND r.day_of_week=vts.day_of_week AND r.start_time=vts.start_time)'
-                . ' ORDER BY (vts.venue_id = p.other_venue) DESC, vts.start_time DESC, p.moved_id, vts.venue_id LIMIT 1',
+                . ' ORDER BY (vts.venue_id = o.venue_id) DESC, vts.start_time DESC, m.id, vts.venue_id LIMIT 1',
                 $this->socleVersionId,
                 $this->smallClubTeamIds['SF1'],
                 $this->smallClubId,
@@ -391,7 +392,16 @@ final class SeasonWorkLoopContext extends BaseContext
         );
         $parts = '' === $row ? [] : explode('|', $row);
         if (7 !== \count($parts)) {
-            throw new RuntimeException('aucune case vide le jour de l\'autre séance de SF1 sur le petit club — décor à revoir');
+            $sf1 = $this->dbalScalar(
+                \sprintf(
+                    'SELECT COALESCE(string_agg(day_of_week || \' \' || to_char(start_time, \'HH24:MI\') || \' \' || lock_level || \' \' || venue_id, \' ; \'), \'\') AS behatval'
+                    . ' FROM schedule_slot_template WHERE schedule_id=\'%s\' AND team_id=\'%s\'',
+                    $this->socleVersionId,
+                    $this->smallClubTeamIds['SF1'],
+                ),
+                admin: true,
+            );
+            throw new RuntimeException(\sprintf('aucune case vide le jour de l\'autre séance de SF1 sur le petit club — décor à revoir (séances de SF1 : %s ; requête : « %s »)', $sf1, $row));
         }
         [$this->sf1SlotId, $this->sf1OriginVenueId, $originDay, $this->sf1OriginStart, $this->sf1TargetVenueId, $targetDay, $this->sf1TargetStart] = $parts;
         $this->sf1OriginDay = (int) $originDay;

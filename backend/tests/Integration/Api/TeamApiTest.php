@@ -53,6 +53,14 @@ final class TeamApiTest extends WebTestCase
 
     private KernelBrowser $client;
 
+    /** @return iterable<string, array{int}> */
+    public static function outOfRangeDailyCaps(): iterable
+    {
+        yield '0' => [0];
+        yield '5' => [5];
+        yield '99' => [99];
+    }
+
     public function testCreateTeam(): void
     {
         $client = $this->client;
@@ -372,14 +380,6 @@ final class TeamApiTest extends WebTestCase
         self::assertResponseStatusCodeSame(422);
     }
 
-    /** @return iterable<string, array{int}> */
-    public static function outOfRangeDailyCaps(): iterable
-    {
-        yield '0' => [0];
-        yield '5' => [5];
-        yield '99' => [99];
-    }
-
     /** Le plafond de séances par jour est borné à 1..4 : hors bornes, 422 avec la phrase dite, rien n'est écrit. */
     #[DataProvider('outOfRangeDailyCaps')]
     public function testADailyCapOutsideOneToFourIsRefused(int $cap): void
@@ -427,7 +427,7 @@ final class TeamApiTest extends WebTestCase
     /**
      * Planning de saison en vigueur : renvoyer la MÊME valeur est accepté (un formulaire qui renvoie tout ne casse pas), et créer une
      * équipe reste libre. Rouvrir le planning puis changer la valeur : accepté. (Le refus d'un changement sous planning en vigueur est
-     * prouvé par le scénario `une-equipe-s-entraine-deux-fois-le-meme-jour.feature`.)
+     * prouvé par le scénario `une-equipe-s-entraine-deux-fois-le-meme-jour.feature`.).
      */
     public function testUnderAValidatedSeasonPlanTheSameValueAndACreationPassAndReopeningFreesTheCap(): void
     {

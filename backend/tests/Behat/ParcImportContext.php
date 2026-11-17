@@ -229,7 +229,8 @@ final class ParcImportContext extends BaseContext
 
     // ─────────────────────── Deux cases le même jour ───────────────────────
 
-    #[When('j\'importe un parc où ma première équipe a deux cases le lundi, à 09:00 et à 18:00')]
+    // Motif en expression régulière : en syntaxe turnip, « :00 » serait lu comme un paramètre.
+    #[When('/^j\'importe un parc où ma première équipe a deux cases le lundi, à 09:00 et à 18:00$/')]
     public function jImporteUnParcDoubleLeLundi(): void
     {
         $this->doubledMondayParc = true;
@@ -261,8 +262,9 @@ final class ParcImportContext extends BaseContext
     public function leRecapitulatifNeBloquePasCetteEquipe(): void
     {
         $recap = $this->apiPost('constraints/validate', [], $this->token, ['X-Season-Id' => $this->seasonId]);
-        if (200 !== $recap['status']) {
-            throw new RuntimeException(\sprintf('le récapitulatif a répondu %d (200 attendu)', $recap['status']));
+        // 200 = valide, 422 = invalide (blocages ou erreurs) : les deux portent le même corps.
+        if (!\in_array($recap['status'], [200, 422], true)) {
+            throw new RuntimeException(\sprintf('le récapitulatif a répondu %d (200 ou 422 attendu)', $recap['status']));
         }
         $blockers = \is_array($recap['json']['blockers'] ?? null) ? $recap['json']['blockers'] : [];
         $mine = array_filter($blockers, static fn (mixed $b): bool => \is_string($b) && str_contains($b, self::TEAM_A));

@@ -277,8 +277,9 @@ final class DailyCapSmallClubContext extends BaseContext
     private function readRecap(): void
     {
         $response = $this->apiPost('constraints/validate', [], $this->smallClubToken);
-        if (200 !== $response['status']) {
-            throw new RuntimeException(\sprintf('le récapitulatif a répondu %d (200 attendu)', $response['status']));
+        // 200 = valide, 422 = invalide (blocages ou erreurs) : les deux portent le même corps.
+        if (!\in_array($response['status'], [200, 422], true)) {
+            throw new RuntimeException(\sprintf('le récapitulatif a répondu %d (200 ou 422 attendu)', $response['status']));
         }
         $this->recapJson = $response['json'];
     }

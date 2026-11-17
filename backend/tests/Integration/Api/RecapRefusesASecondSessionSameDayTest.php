@@ -58,6 +58,18 @@ final class RecapRefusesASecondSessionSameDayTest extends WebTestCase
         yield '/regenerate' => ['regenerate', ScheduleStatus::COMPLETED];
     }
 
+    /**
+     * Plafond 1, N réservations disjointes le mardi : la phrase dit combien en retirer, et propose d'en autoriser N tant que N ≤ 4.
+     *
+     * @return iterable<string, array{list<string>, string}>
+     */
+    public static function overTheDefaultCap(): iterable
+    {
+        yield 'N = 2' => [['18:00', '20:30'], self::TWO_RESERVATIONS];
+        yield 'N = 3' => [['10:00', '18:00', '20:30'], 'U15 est réservée trois fois le mardi : 10:00-11:30 à Armand, 18:00-19:30 à Armand et 20:30-22:00 à JDR — une seule séance par jour. Retirez-en 2 au récapitulatif, ou autorisez 3 séances par jour pour cette équipe ' . self::WHERE . '.'];
+        yield 'N = 5, sans proposition' => [['08:00', '10:00', '13:00', '18:00', '20:30'], 'U15 est réservée 5 fois le mardi : 08:00-09:30 à Armand, 10:00-11:30 à Armand, 13:00-14:30 à Armand, 18:00-19:30 à Armand et 20:30-22:00 à JDR — une seule séance par jour. Retirez-en 4 au récapitulatif.'];
+    }
+
     /** Deux réservations le même jour : la phrase exacte, invalide, et les deux lignes désignées pour la poubelle du Récap. */
     public function testTwoReservationsTheSameDayBlockTheRecap(): void
     {
@@ -355,18 +367,6 @@ final class RecapRefusesASecondSessionSameDayTest extends WebTestCase
         $this->post($ctx, '/api/schedules/' . $ctx['scheduleId'] . '/fill', []);
 
         self::assertResponseStatusCodeSame(202);
-    }
-
-    /**
-     * Plafond 1, N réservations disjointes le mardi : la phrase dit combien en retirer, et propose d'en autoriser N tant que N ≤ 4.
-     *
-     * @return iterable<string, array{list<string>, string}>
-     */
-    public static function overTheDefaultCap(): iterable
-    {
-        yield 'N = 2' => [['18:00', '20:30'], self::TWO_RESERVATIONS];
-        yield 'N = 3' => [['10:00', '18:00', '20:30'], 'U15 est réservée trois fois le mardi : 10:00-11:30 à Armand, 18:00-19:30 à Armand et 20:30-22:00 à JDR — une seule séance par jour. Retirez-en 2 au récapitulatif, ou autorisez 3 séances par jour pour cette équipe ' . self::WHERE . '.'];
-        yield 'N = 5, sans proposition' => [['08:00', '10:00', '13:00', '18:00', '20:30'], 'U15 est réservée 5 fois le mardi : 08:00-09:30 à Armand, 10:00-11:30 à Armand, 13:00-14:30 à Armand, 18:00-19:30 à Armand et 20:30-22:00 à JDR — une seule séance par jour. Retirez-en 4 au récapitulatif.'];
     }
 
     /**
