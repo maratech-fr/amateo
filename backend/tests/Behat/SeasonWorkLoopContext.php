@@ -468,7 +468,12 @@ final class SeasonWorkLoopContext extends BaseContext
         $this->putBack('teams', $this->smallClubTeamIds['Loisir'], ['name' => 'Loisir']);
     }
 
-    /** L'ordre des contraintes lu en base n'entre pas dans l'empreinte : rendre son nom à une contrainte efface toujours la bannière. */
+    /**
+     * Un nom de contrainte modifié périme le planning, et lui rendre son nom efface le signal.
+     * Ne prouve PAS que l'ordre des contraintes lu en base reste hors de l'empreinte (la contrainte
+     * renommée reste la dernière en base, son ordre ne bouge pas) : ce filet-là est
+     * `PruneUnreadSnapshotFieldsCommandTest::testAVersionWithConstraintsInAnotherOrderGetsTheSortedHash`.
+     */
     #[When('je renomme une contrainte puis lui rends son nom')]
     public function jeRenommeUneContraintePuisLuiRendsSonNom(): void
     {
