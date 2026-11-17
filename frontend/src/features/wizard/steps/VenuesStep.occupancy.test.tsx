@@ -130,7 +130,7 @@ const overrideDisabled = (venueId: string): VenuePeriodOverride =>
   ({ id: "ov1", schedulePlanId: "plan-1", venueId, mode: "DISABLED", dayOverrides: null }) as VenuePeriodOverride;
 
 /** Le bandeau « une occupation chevauche un créneau » pour « École » le mardi 18:00–19:00. */
-const OVERLAP_ECOLE = (): string => WIZARD_TEXTS.occupancyOverlapOne("École", "mardi 18:00–19:00");
+const OVERLAP_ECOLE = (): string => WIZARD_TEXTS.occupancyOverlapOne("École", "mardi 18:00–19:00", "mardi 18:00–19:30");
 
 function Harness() {
   const [extra, setExtra] = useState<ReactNode>(null);

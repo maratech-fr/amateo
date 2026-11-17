@@ -157,3 +157,10 @@ export function occupanciesOverlappingSlots(slots: VenueTrainingSlot[], occupanc
 
 /** « mardi 18:00–19:00 » : le jour en toutes lettres et la plage d'une occupation, pour le bandeau. */
 export const occupancyLongWhen = (o: VenueOccupancy): string => occupancyWhen(o, dayLabelLong);
+
+/** « mardi 18:00–19:30 » : le premier créneau que recouvre une occupation, pour le bandeau (« » s'il n'y en a pas). */
+export function overlappedSlotLongWhen(slots: VenueTrainingSlot[], o: VenueOccupancy): string {
+  const slot = findSlotConflict(slots, o.dayOfWeek, o.startTime, o.durationMinutes);
+
+  return null === slot ? "" : `${dayLabelLong(slot.dayOfWeek)} ${hhmm(slot.startTime)}–${fmtMinutes(toMinutes(slot.startTime) + slot.durationMinutes)}`;
+}

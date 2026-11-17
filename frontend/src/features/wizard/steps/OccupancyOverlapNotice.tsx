@@ -4,7 +4,7 @@ import { NoticeBanner } from "@/shared/components/ui/notice-banner";
 import { useCanManage } from "@/shared/session/queries";
 
 import type { VenueOccupancy, VenueTrainingSlot } from "../api";
-import { occupanciesOverlappingSlots, occupancyLongWhen } from "../lib/slotOverlap";
+import { occupanciesOverlappingSlots, occupancyLongWhen, overlappedSlotLongWhen } from "../lib/slotOverlap";
 import { WIZARD_TEXTS } from "../texts";
 
 /**
@@ -23,8 +23,8 @@ export function OccupancyOverlapNotice({ slots, occupancies }: { slots: VenueTra
 
   const message =
     1 === overlapping.length
-      ? WIZARD_TEXTS.occupancyOverlapOne(overlapping[0].label, occupancyLongWhen(overlapping[0]))
-      : WIZARD_TEXTS.occupancyOverlapMany(overlapping.map((o) => WIZARD_TEXTS.occupancyOverlapItem(o.label, occupancyLongWhen(o))));
+      ? WIZARD_TEXTS.occupancyOverlapOne(overlapping[0].label, occupancyLongWhen(overlapping[0]), overlappedSlotLongWhen(slots, overlapping[0]))
+      : WIZARD_TEXTS.occupancyOverlapMany(overlapping.map((o) => WIZARD_TEXTS.occupancyOverlapItem(o.label, occupancyLongWhen(o), overlappedSlotLongWhen(slots, o))));
 
   return <NoticeBanner tone="warning" role="status" className="mt-2" icon={<AlertTriangle className="size-4 text-warning" />} message={message} />;
 }

@@ -352,7 +352,7 @@ export function VenueAvailabilityGrid({
           const editable = !readOnly && undefined !== onSelectOccupancy;
           const occupancyClass = cn(
             "z-10 m-px flex flex-col items-start overflow-hidden rounded border border-muted-foreground/60 bg-muted px-1 text-left text-[10px] font-medium leading-tight text-foreground",
-            editable ? "hover:ring-1 hover:ring-accent" : "",
+            editable ? "hover:ring-1 hover:ring-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" : "",
           );
           const occupancyStyle = { gridColumn: 2 + di, gridRow: `${startRow} / span ${span}`, backgroundImage: OCCUPANCY_HATCH };
           const body = (
@@ -377,7 +377,7 @@ export function VenueAvailabilityGrid({
     {/* Légende visible de tous, dès que le gymnase affiché porte une occupation. */}
     {occupancies.length > 0 ? (
       <p className="mt-1.5 flex items-center gap-1.5 text-xs text-muted-foreground">
-        <span aria-hidden="true" className="inline-block size-3 rounded-sm border border-muted-foreground/60 bg-muted" style={{ backgroundImage: OCCUPANCY_HATCH }} />
+        <span aria-hidden="true" className="inline-block h-3.5 w-6 shrink-0 rounded border border-muted-foreground/60 bg-muted" style={{ backgroundImage: OCCUPANCY_HATCH }} />
         {WIZARD_TEXTS.occupancyLegend}
       </p>
     ) : null}
