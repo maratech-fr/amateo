@@ -21,16 +21,20 @@ import { toast } from "@/shared/stores/toastStore";
 
 import type { Closure } from "@/features/cockpit/api";
 
-import type { Venue, VenuePeriodOverride, VenueTrainingSlot } from "../api";
+import { useCanManage } from "@/shared/session/queries";
+
+import type { Venue, VenueOccupancy, VenuePeriodOverride, VenueTrainingSlot } from "../api";
 import { DAYS, hhmm } from "../lib/days";
 import { closuresByVenue, closurePeriodLabel } from "../lib/venueClosures";
 import { computeDayMaskToggle, manualClosedWeekdays } from "../lib/venueDays";
 import type { DayMask } from "../lib/venueDays";
-import { slotPlacementError } from "../lib/slotOverlap";
+import { occupancyPlacementError, slotPlacementError } from "../lib/slotOverlap";
+import { WIZARD_TEXTS } from "../texts";
 import {
   useClearVenuePeriodGrid,
   useClearVenuePeriodMode,
   useCreatePeriodSlot,
+  useCreateVenueOccupancy,
   useDeletePeriodSlot,
   useDeletionImpact,
   usePeriodSlots,
@@ -38,11 +42,15 @@ import {
   useResetVenuePeriodGrid,
   useSetVenuePeriodMode,
   useUpdatePeriodSlot,
+  useVenueOccupancies,
   useVenuePeriodOverrides,
   useWizardVenues,
 } from "../queries";
 import { WEEK } from "../lib/weekGrid";
 import { CapacitySelect, DurationSelect, SharedSlotHint, SlotEndField } from "./slotFields";
+import { OccupancyEditor } from "./OccupancyEditor";
+import { OccupancyOverlapNotice } from "./OccupancyOverlapNotice";
+import { PlacementKindBar, type PlacementKind } from "./PlacementKindBar";
 import { VenueAvailabilityGrid } from "./VenueAvailabilityGrid";
 import { PeriodAnchorGate } from "./PeriodAnchorGate";
 
@@ -81,6 +89,8 @@ export function PeriodVenues({ calendarEntryId }: { calendarEntryId: string }) {
 function PeriodVenuesPanel({ calendarEntryId, schedulePlanId }: { calendarEntryId: string; schedulePlanId: string }) {
   const { data: venues = [] } = useWizardVenues();
   const periodSlotsQuery = usePeriodSlots(schedulePlanId);
+  // Les occupations de la grille de la période (sa copie, prise à la naissance du plan).
+  const occupanciesQuery = useVenueOccupancies(schedulePlanId);
   const overridesQuery = useVenuePeriodOverrides(schedulePlanId);
   const conflictsQuery = useEntryConflicts(calendarEntryId);
   const conflicts = conflictsQuery.data;
@@ -100,7 +110,7 @@ function PeriodVenuesPanel({ calendarEntryId, schedulePlanId }: { calendarEntryI
   // `readState` plutôt que les drapeaux bruts : un refetch d'arrière-plan raté
   // laisse la donnée en cache intacte — céder la place à une erreur détruirait un
   // écran qui fonctionne. Seul un échec SANS rien à montrer s'affiche.
-  if (readLoading(periodSlotsQuery) || readLoading(overridesQuery) || readLoading(conflictsQuery)) {
+  if (readLoading(periodSlotsQuery) || readLoading(occupanciesQuery) || readLoading(overridesQuery) || readLoading(conflictsQuery)) {
     // Les conflits font partie du chargement : sans eux, la grille se rend avec ZÉRO
     // fermeture affichée — tout paraît permis, et le gestionnaire pose des créneaux dans un
     // gymnase fermé (le vide crédible, version fermetures).
@@ -115,11 +125,12 @@ function PeriodVenuesPanel({ calendarEntryId, schedulePlanId }: { calendarEntryI
       </LoadErrorHint>
     );
   }
-  if (readFailed(periodSlotsQuery) || readFailed(overridesQuery)) {
+  if (readFailed(periodSlotsQuery) || readFailed(occupanciesQuery) || readFailed(overridesQuery)) {
     return (
       <LoadErrorHint
         onRetry={() => {
           void periodSlotsQuery.refetch();
+          void occupanciesQuery.refetch();
           void overridesQuery.refetch();
         }}
       >
@@ -166,6 +177,7 @@ function PeriodVenuesPanel({ calendarEntryId, schedulePlanId }: { calendarEntryI
     return days.length > 0 ? `fermé ${days.map((d) => dayLabelLong(d)).join(", ")}` : "";
   };
   const venueSlots = periodSlots.filter((s) => s.venueId === selected.id);
+  const venueOccupancies = (occupanciesQuery.data ?? []).filter((o) => o.venueId === selected.id);
   // Le bandeau rappelle TOUT ce qui ne sert pas : indisponibilités déclarées ET jours décochés
   // à la main (décision C) — sans quoi un jour fermé d'un clic passait inaperçu hors du gymnase
   // sélectionné.
@@ -229,6 +241,7 @@ function PeriodVenuesPanel({ calendarEntryId, schedulePlanId }: { calendarEntryI
         venue={selected}
         schedulePlanId={schedulePlanId}
         slots={venueSlots}
+        occupancies={venueOccupancies}
         override={override}
         closures={closuresByV.get(selected.id) ?? []}
         fullyClosed={fullyClosed.has(selected.id)}
@@ -247,6 +260,7 @@ function PeriodVenuePanel({
   venue,
   schedulePlanId,
   slots,
+  occupancies,
   override,
   closures,
   fullyClosed,
@@ -260,6 +274,8 @@ function PeriodVenuePanel({
   venue: Venue;
   schedulePlanId: string;
   slots: VenueTrainingSlot[];
+  /** Les occupations du gymnase dans la grille de la période. */
+  occupancies: VenueOccupancy[];
   override: VenuePeriodOverride | null;
   closures: Closure[];
   /** Indispo INFORMATIVE (2026-08-18) — gymnase entièrement fermé sur la fenêtre (donnée serveur).
@@ -282,6 +298,16 @@ function PeriodVenuePanel({
   const clearMode = useClearVenuePeriodMode(schedulePlanId);
   const resetGrid = useResetVenuePeriodGrid(schedulePlanId);
   const clearGrid = useClearVenuePeriodGrid(schedulePlanId);
+  const createOccupancy = useCreateVenueOccupancy(schedulePlanId);
+  // Le rôle n'est lu que pour les gestes NEUFS de l'onglet (choix [Créneau | Occupation], motif,
+  // clic sur une occupation) : les gestes existants restent tels qu'aujourd'hui.
+  const canManage = useCanManage();
+  // « Créneau » à chaque arrivée et à chaque changement de gymnase (ce panneau est remonté par
+  // `key={selected.id}`) ; « Occupation » reste choisi après une pose.
+  const [placementKind, setPlacementKind] = useState<PlacementKind>("slot");
+  const [occupancyLabel, setOccupancyLabel] = useState("");
+  const [editingOccupancy, setEditingOccupancy] = useState<VenueOccupancy | null>(null);
+  const posesOccupancy = canManage && "occupancy" === placementKind;
 
   const isDisabled = "DISABLED" === override?.mode;
   // `syncing` ferme la fenêtre entre le succès d'une mutation et le refetch des overrides :
@@ -457,23 +483,37 @@ function PeriodVenuePanel({
             l'éditeur — un créneau neuf vaut toujours 1, comme en saison. */}
         <div className="mb-3 flex flex-wrap items-center gap-2">
           <span className="text-xs text-muted-foreground">À poser :</span>
+          {canManage ? <PlacementKindBar kind={placementKind} onKind={setPlacementKind} label={occupancyLabel} onLabel={setOccupancyLabel} /> : null}
           {/* D8 — sélecteur partagé « Autre… » ; la borne de minuit est vérifiée à la pose. */}
           <DurationSelect aria-label="Durée à poser" className="h-9" wrapperClassName="w-24" value={posingDuration} onChange={onPosingDuration} />
-          <span className="text-xs text-muted-foreground">— cliquez la grille pour ajouter un créneau</span>
+          <span className="text-xs text-muted-foreground">{posesOccupancy ? WIZARD_TEXTS.occupancyClickGridHint : "— cliquez la grille pour ajouter un créneau"}</span>
         </div>
+        {posesOccupancy ? <p className="-mt-2 mb-3 text-xs text-muted-foreground">{WIZARD_TEXTS.occupancyHelp}</p> : null}
 
         <VenueAvailabilityGrid
           venue={venue}
           slots={slots}
           closures={closures}
           selectedSlotId={editingSlot?.id ?? null}
+          occupancies={occupancies}
+          onSelectOccupancy={canManage ? (occupancy) => setEditingOccupancy(occupancy) : undefined}
           onAdd={(dayOfWeek, startTime) => {
+            if (posesOccupancy) {
+              const label = occupancyLabel.trim();
+              const invalidOccupancy = "" === label ? WIZARD_TEXTS.occupancyMissingLabel : occupancyPlacementError(slots, occupancies, dayOfWeek, startTime, posingDuration);
+              if (null !== invalidOccupancy) {
+                toast.error(invalidOccupancy);
+                return;
+              }
+              createOccupancy.mutate({ venueId: venue.id, dayOfWeek, startTime, durationMinutes: posingDuration, label });
+              return;
+            }
             // Un créneau peut finir APRÈS la dernière ligne de la grille — un créneau du
             // soir (22:00–23:30) est légitime, et l'y interdire rendait la période plus
             // stricte que la saison (revue #8 PR-B round 2). La seule borne est MINUIT
             // (P4-37), et son message par défaut nomme désormais la durée : le gestionnaire
             // a la barre « À poser » sous les yeux pour la corriger.
-            const invalid = slotPlacementError(slots, dayOfWeek, startTime, posingDuration);
+            const invalid = slotPlacementError(slots, dayOfWeek, startTime, posingDuration, occupancies);
             if (null !== invalid) {
               toast.error(invalid);
               return;
@@ -483,6 +523,9 @@ function PeriodVenuePanel({
           onSelect={(slot) => onEditSlot(slot)}
         />
       </fieldset>
+
+      {/* Gymnase désactivé : sa grille est gelée, « déplacez-la » serait un ordre impossible. */}
+      {!isDisabled ? <OccupancyOverlapNotice slots={slots} occupancies={occupancies} /> : null}
 
       {offGridSlots.length > 0 && !isDisabled ? (
         <NoticeBanner tone="destructive" className="mt-2">
@@ -509,7 +552,7 @@ function PeriodVenuePanel({
         <Button type="button" size="sm" variant="outline" disabled={isDisabled || gridBusy} onClick={() => setPending("reset")}>
           Reprendre la grille du planning de saison
         </Button>
-        <Button type="button" size="sm" variant="outline" disabled={isDisabled || gridBusy || 0 === slots.length} onClick={() => setPending("clear")}>
+        <Button type="button" size="sm" variant="outline" disabled={isDisabled || gridBusy || (0 === slots.length && 0 === occupancies.length)} onClick={() => setPending("clear")}>
           Vider la grille
         </Button>
       </div>
@@ -521,6 +564,7 @@ function PeriodVenuePanel({
           schedulePlanId={schedulePlanId}
           canSplit={venue.canSplit}
           otherSlots={slots.filter((s) => s.id !== editingSlot.id)}
+          otherOccupancies={occupancies}
           reservationsHere={reservations.filter((r) => r.venueId === venue.id && r.dayOfWeek === editingSlot.dayOfWeek && hhmm(r.startTime) === hhmm(editingSlot.startTime))}
           // P2-43 volet (i) — l'état effectif du gymnase (jour → provenance) + ses fermetures :
           // l'éditeur DIT qu'un créneau tombe un jour fermé (poser reste permis).
@@ -530,14 +574,24 @@ function PeriodVenuePanel({
         />
       ) : null}
 
+      {null !== editingOccupancy && canManage && !isDisabled ? (
+        <OccupancyEditor
+          key={editingOccupancy.id}
+          occupancy={editingOccupancy}
+          otherSlots={slots}
+          otherOccupancies={occupancies.filter((o) => o.id !== editingOccupancy.id)}
+          onClose={() => setEditingOccupancy(null)}
+        />
+      ) : null}
+
       <ConfirmDialog
         open={null !== pending}
         destructive
         title={"reset" === pending ? `Reprendre la grille de ${venue.name} ?` : `Vider la grille de ${venue.name} ?`}
         description={
           "reset" === pending
-            ? `Les créneaux de ${venue.name} pour cette période seront remplacés par ceux de votre planning de saison.${reservationCount > 0 ? ` ${reservationCount} réservation${reservationCount > 1 ? "s" : ""} sur ce gymnase ser${reservationCount > 1 ? "ont" : "a"} supprimée${reservationCount > 1 ? "s" : ""}.` : ""}`
-            : `Tous les créneaux de ${venue.name} pour cette période seront supprimés, à ressaisir.${reservationCount > 0 ? ` ${reservationCount} réservation${reservationCount > 1 ? "s" : ""} sur ce gymnase part${reservationCount > 1 ? "iront" : "ira"} avec eux.` : ""}`
+            ? `Les créneaux et les occupations de ${venue.name} pour cette période seront remplacés par ceux de votre planning de saison.${reservationCount > 0 ? ` ${reservationCount} réservation${reservationCount > 1 ? "s" : ""} sur ce gymnase ser${reservationCount > 1 ? "ont" : "a"} supprimée${reservationCount > 1 ? "s" : ""}.` : ""}`
+            : `Tous les créneaux et toutes les occupations de ${venue.name} pour cette période seront supprimés, à ressaisir.${reservationCount > 0 ? ` ${reservationCount} réservation${reservationCount > 1 ? "s" : ""} sur ce gymnase part${reservationCount > 1 ? "iront" : "ira"} avec eux.` : ""}`
         }
         confirmLabel={"reset" === pending ? "Reprendre" : "Vider"}
         onConfirm={() => {
@@ -549,6 +603,7 @@ function PeriodVenuePanel({
             clearGrid.mutate(venue.id, { onSuccess: () => toast.success("Grille vidée") });
           }
           onEditSlot(null); // l'éditeur pouvait viser un créneau qu'on vient de détruire
+          setEditingOccupancy(null); // idem pour une occupation, supprimée ou recréée par le geste
           setPending(null);
         }}
         onCancel={() => setPending(null)}
@@ -574,6 +629,7 @@ function PeriodSlotEditor({
   schedulePlanId,
   canSplit,
   otherSlots,
+  otherOccupancies,
   reservationsHere,
   effectiveClosed,
   closures,
@@ -583,6 +639,8 @@ function PeriodSlotEditor({
   schedulePlanId: string;
   canSplit: boolean;
   otherSlots: VenueTrainingSlot[];
+  /** Les occupations du gymnase dans la grille de la période : un créneau ne se déplace pas dessus. */
+  otherOccupancies: VenueOccupancy[];
   reservationsHere: { id: string }[];
   /** P2-43 volet (i) — l'état effectif jour par jour du gymnase (jour ISO → provenance), SERVI. */
   effectiveClosed: Record<string, "manual" | "default-incident">;
@@ -634,7 +692,7 @@ function PeriodSlotEditor({
   };
 
   const save = () => {
-    const invalid = slotPlacementError(otherSlots, day, time, duration);
+    const invalid = slotPlacementError(otherSlots, day, time, duration, otherOccupancies);
     if (null !== invalid) {
       setError(invalid);
       return;

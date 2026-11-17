@@ -162,7 +162,7 @@ async function chooseOccupancy(user: ReturnType<typeof userEvent.setup>, label: 
 
 /** Un message affiché à l'utilisateur : en toast d'erreur ou dans l'écran (le plan ne fixe pas le canal). */
 function messageShown(errorSpy: ReturnType<typeof vi.spyOn>, text: string): boolean {
-  return errorSpy.mock.calls.some((call) => call[0] === text) || null !== screen.queryByText(text);
+  return errorSpy.mock.calls.some((call: unknown[]) => call[0] === text) || null !== screen.queryByText(text);
 }
 
 beforeEach(() => {

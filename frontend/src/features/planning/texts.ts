@@ -163,6 +163,7 @@ export const PLANNING_TEXTS = {
   exportBothViews: "Chaque export contient les deux vues : la grille (jours × gymnases) et la vue par club (équipes × jours).",
   exportOnePage: "Une page paysage, ajustée pour rester lisible.",
   exportShowCoaches: "Afficher le nom des coachs",
+  exportShowOccupancies: "Afficher les occupations",
   exportScopeAll: "tous les gymnases",
   exportScopeOne: "un gymnase",
   exportScreenFilteredPrefix: (count: number): string =>

@@ -125,6 +125,8 @@ vi.mock("../queries", () => ({
   useUpdateTeam: () => ({ mutate: vi.fn() }),
   useWizardVenues: () => ({ data: [{ id: "v1", name: "Gymnase A", color: "#ff0000", canSplit: venueCanSplitState.value, isActive: true }, ...extraVenuesState.value] }),
   useVenueSlots: () => ({ data: [] }),
+  useVenueOccupancies: () => ({ data: [] }),
+  useCreateVenueOccupancy: () => ({ mutate: vi.fn() }),
   usePeriodSlots: (anchor: string | null) => {
     periodSlotsAnchor.value = anchor;
 

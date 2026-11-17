@@ -42,6 +42,8 @@ vi.mock("../queries", () => ({
   useWizardTeams: () => ({ data: [] }),
   useWizardCoaches: () => ({ data: [] }),
   useVenueSlots: () => ({ data: [] }),
+  useVenueOccupancies: () => ({ data: [] }),
+  useCreateVenueOccupancy: () => ({ mutate: vi.fn() }),
   useReservations: () => ({ data: [] }),
   useVenueGeoCheck: () => ({ data: [] }),
   // La création : `mutate` mémorise le gymnase créé (exposé par `data`) ET invoque `onSuccess`

@@ -24,3 +24,27 @@ export function setShowCoaches(clubId: string, value: boolean): void {
     // Stockage inaccessible : on ne mémorise pas, mais on ne casse pas la page.
   }
 }
+
+// « Afficher les occupations » : même mémorisation par club, clé `export-show-occupancies-<clubId>`,
+// décochée par défaut, mêmes gardes.
+const occupanciesKeyFor = (clubId: string): string => `export-show-occupancies-${clubId}`;
+
+export function getShowOccupancies(clubId: string): boolean {
+  try {
+    return "true" === localStorage.getItem(occupanciesKeyFor(clubId));
+  } catch {
+    return false;
+  }
+}
+
+export function setShowOccupancies(clubId: string, value: boolean): void {
+  try {
+    if (value) {
+      localStorage.setItem(occupanciesKeyFor(clubId), "true");
+    } else {
+      localStorage.removeItem(occupanciesKeyFor(clubId));
+    }
+  } catch {
+    // Stockage inaccessible : on ne mémorise pas, mais on ne casse pas la page.
+  }
+}

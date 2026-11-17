@@ -290,6 +290,39 @@ export const updateSlot = (id: string, body: SlotPayload): Promise<VenueTraining
 export const deleteSlot = (id: string): Promise<void> => api.delete(`venue_training_slots/${id}`).then(() => undefined);
 
 /**
+ * Une OCCUPATION de gymnase : un moment où le gymnase n'est pas au club (« École », mardi
+ * 14:00-16:15), défini comme un créneau. Information seulement : elle ne change rien au planning.
+ * `schedulePlanId` null = grille de saison ; posé = la grille de ce plan de période.
+ */
+export interface VenueOccupancy {
+  id: string;
+  version: number;
+  venueId: string;
+  dayOfWeek: number;
+  startTime: string;
+  durationMinutes: number;
+  label: string;
+  schedulePlanId: string | null;
+}
+
+export interface VenueOccupancyPayload {
+  venueId: string;
+  dayOfWeek: number;
+  startTime: string;
+  durationMinutes: number;
+  label: string;
+  /** Posé à la création seulement : une occupation ne change jamais de couche. */
+  schedulePlanId?: string | null;
+}
+
+/** Les occupations d'une couche : la saison sans argument, sinon la grille de ce plan de période. */
+export const listVenueOccupancies = (schedulePlanId?: string): Promise<VenueOccupancy[]> =>
+  collectionAll<VenueOccupancy>("venue_occupancies", undefined === schedulePlanId ? undefined : { schedulePlanId });
+export const createVenueOccupancy = (body: VenueOccupancyPayload): Promise<VenueOccupancy> => api.post("venue_occupancies", { json: body }).json();
+export const updateVenueOccupancy = (id: string, body: VenueOccupancyPayload): Promise<VenueOccupancy> => api.put(`venue_occupancies/${id}`, { json: body }).json();
+export const deleteVenueOccupancy = (id: string): Promise<void> => api.delete(`venue_occupancies/${id}`).then(() => undefined);
+
+/**
  * #8 — le MODE d'un gymnase POUR une période. Réglage SPARSE : pas de ligne = « hériter »,
  * le défaut. Seuls les deux écarts sont stockés.
  *
