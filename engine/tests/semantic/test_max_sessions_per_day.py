@@ -466,16 +466,39 @@ def test_a_glued_pair_costs_50_once_even_with_an_empty_slot_right_after() -> Non
     assert spaced["score"] - glued["score"] == GAP_COST
 
 
-def test_two_locks_at_cap_beside_a_free_candidate_keep_the_model_feasible() -> None:
-    """Cas (b) de l'encodage : deux verrous à 15:30 et 16:30 (plafond 2) et un 17:30 libre candidat : planning produit."""
+def test_locks_above_the_cap_beside_a_free_candidate_keep_the_model_feasible() -> None:
+    """Cas (b) de l'encodage : trois verrous un même jour au plafond 2, un créneau libre juste après : planning produit.
+
+    Fige le grand M = nombre de voisines (``rhythm.py``) : avec M = P − 1 = 1, à h = 18:00 les trois
+    verrous voisins donnent V = 3 > 2·M, contrainte intenable → génération « failed ». Deux verrous
+    seulement (V = 2 = 2·M) ne le prouvent pas : le littéral suffit à tenir.
+    """
     result = _solve(
-        teams=[_team("T", spw=3, cap=2)],
+        teams=[_team("T", spw=4, cap=2)],
         venues=[
-            _venue("A", [(MONDAY, "15:30", 60), (MONDAY, "16:30", 60), (MONDAY, "17:30", 90), (WEDNESDAY, "18:00", 90)])
+            _venue(
+                "A",
+                [
+                    (MONDAY, "16:00", 40),
+                    (MONDAY, "16:40", 40),
+                    (MONDAY, "17:20", 40),
+                    (MONDAY, "18:00", 90),
+                    (WEDNESDAY, "18:00", 90),
+                ],
+            )
         ],
-        slot_templates=[_lock("T", "A", MONDAY, "15:30", minutes=60), _lock("T", "A", MONDAY, "16:30", minutes=60)],
+        slot_templates=[
+            _lock("T", "A", MONDAY, "16:00", minutes=40),
+            _lock("T", "A", MONDAY, "16:40", minutes=40),
+            _lock("T", "A", MONDAY, "17:20", minutes=40),
+        ],
     )
-    assert _placed(result, "T") == [(MONDAY, "15:30", "A"), (MONDAY, "16:30", "A"), (WEDNESDAY, "18:00", "A")]
+    assert _placed(result, "T") == [
+        (MONDAY, "16:00", "A"),
+        (MONDAY, "16:40", "A"),
+        (MONDAY, "17:20", "A"),
+        (WEDNESDAY, "18:00", "A"),
+    ]
 
 
 def test_two_glued_locks_cost_nothing_and_are_never_announced() -> None:
