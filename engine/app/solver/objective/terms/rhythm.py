@@ -292,7 +292,12 @@ def add_same_day_gap_penalty(
     équivalent et est faux deux fois. (a) Il facture une séance qui n'existe pas : plafond 2,
     créneaux de 90 min à 14:00, 15:30 et 17:00, l'équipe prend 14:00 et 15:30 ; à h = 17:00, D = 0
     mais V = 2 > 1 force le littéral, soit −100 au lieu de −50. (b) Il rend le modèle INFAISABLE
-    quand des verrous dépassent déjà le plafond : D = 1 et V = 2 avec P = 2 donnent 3 ≤ 2.
+    quand des verrous dépassent déjà le plafond à côté d'un créneau libre : plafond 2, verrous de
+    40 min à 16:00, 16:40 et 17:20, créneau libre à 18:00 ; à h = 18:00, V = 3 (verrous, constants)
+    et le membre de droite vaut au plus 2·(P−1) = 2, donc 3 ≤ 2 quel que soit D — génération
+    « failed ». Avec M = 3, 3·D + 3 ≤ 3·(1 + littéral) tient. Deux verrous ne suffisent pas à le
+    montrer (V = 2 = 2·(P−1), le littéral tient) ; V ne compte jamais de verrou à h = début d'un
+    verrou, donc seul un h libre porte le cas.
     Borné par le bas seulement : la maximisation garde le littéral à 0 quand rien ne l'impose.
 
     * h libre : V compte les variables libres voisines et les verrous voisins (constantes).
