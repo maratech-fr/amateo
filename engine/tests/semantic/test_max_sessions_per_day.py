@@ -430,6 +430,54 @@ def test_cap_four_four_sessions_in_a_row_cost_three_gaps() -> None:
     assert spaced["score"] - in_a_row["score"] == 3 * GAP_COST
 
 
+def _pair_with_an_unused_slot_after(team_starts: tuple[str, str]) -> dict[str, Any]:
+    """T (plafond 2, 2 séances) sur ``team_starts`` ; le créneau 17:00 reste candidat pour T mais O le prend.
+
+    O (HARD « pas avant 17:00 ») n'a que 17:00 : la capacité 1 en ferme l'usage à T sans retirer la
+    variable de T à 17:00, que l'encodage de l'écart lit donc à D = 0.
+    """
+    return _solve(
+        teams=[_team("T", spw=2, cap=2), _team("O", spw=1, cap=None)],
+        venues=[make_venue("A", [(MONDAY, team_starts[0]), (MONDAY, team_starts[1]), (MONDAY, "17:00")])],
+        constraints=[
+            team_constraint(
+                constraint_id="o-late",
+                team_id="O",
+                family="TIME",
+                rule_type="HARD",
+                config={"minStartTime": "17:00"},
+            )
+        ],
+    )
+
+
+def test_a_glued_pair_costs_50_once_even_with_an_empty_slot_right_after() -> None:
+    """Cas (a) de l'encodage : 14:00 et 15:30 pris, 17:00 vide coûtent UN compromis (50), jamais 100.
+
+    Fige le grand M = nombre de voisines (``rhythm.py``) : avec M = P − 1 = 1, à h = 17:00 on a
+    D = 0 et V = 2 > 1, ce qui forcerait un second littéral pour une séance qui n'existe pas.
+    """
+    glued = _pair_with_an_unused_slot_after(("14:00", "15:30"))
+    spaced = _pair_with_an_unused_slot_after(("10:00", "14:00"))
+
+    assert _starts_on(glued, "T", MONDAY) == ["14:00", "15:30"], _placed(glued, "T")
+    assert _starts_on(glued, "O", MONDAY) == ["17:00"], _placed(glued, "O")
+    assert _starts_on(spaced, "T", MONDAY) == ["10:00", "14:00"], _placed(spaced, "T")
+    assert spaced["score"] - glued["score"] == GAP_COST
+
+
+def test_two_locks_at_cap_beside_a_free_candidate_keep_the_model_feasible() -> None:
+    """Cas (b) de l'encodage : deux verrous à 15:30 et 16:30 (plafond 2) et un 17:30 libre candidat : planning produit."""
+    result = _solve(
+        teams=[_team("T", spw=3, cap=2)],
+        venues=[
+            _venue("A", [(MONDAY, "15:30", 60), (MONDAY, "16:30", 60), (MONDAY, "17:30", 90), (WEDNESDAY, "18:00", 90)])
+        ],
+        slot_templates=[_lock("T", "A", MONDAY, "15:30", minutes=60), _lock("T", "A", MONDAY, "16:30", minutes=60)],
+    )
+    assert _placed(result, "T") == [(MONDAY, "15:30", "A"), (MONDAY, "16:30", "A"), (WEDNESDAY, "18:00", "A")]
+
+
 def test_two_glued_locks_cost_nothing_and_are_never_announced() -> None:
     """Verrou × verrou (réservations 17:00-19:00 et 19:00-21:00) : coût 0, aucun diagnostic."""
 
