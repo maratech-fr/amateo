@@ -153,7 +153,7 @@ tranquille.
   `backend/src/ApiResource/CoachWishCampaignResource.php:40`.
 - Les souhaits cochés passent au planning d'un geste, en réglages de la semaine concernée — le
   gestionnaire relit avant de transférer — `backend/src/Controller/CoachWishTransferController.php`.
-- Les règles de bien-être se règlent d'un clic (Obligatoire ou Objectif) : chaque coach
+- Les règles de bien-être se règlent d'un clic (Obligatoire, Souhaitée ou Ignorée ; la présence d'un salarié n'est jamais obligatoire) : chaque coach
   garde un jour de repos par semaine ; un salarié est placé chaque jour où le club tourne
   (jamais bloquant, un jour sans salarié est signalé après coup) ; jamais trop de créneaux
   dos-à-dos pour une même personne, ni trop de jours d'affilée pour une équipe ; et les jeunes

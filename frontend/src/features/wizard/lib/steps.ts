@@ -1,4 +1,6 @@
-export type WizardStepId = "teams" | "venues" | "coaches" | "constraints" | "recap" | "generate";
+import type { ImplicitRuleKey } from "../api";
+
+export type WizardStepId ="teams" | "venues" | "coaches" | "constraints" | "recap" | "generate";
 
 export interface StepDef {
   id: WizardStepId;
@@ -45,6 +47,8 @@ export interface StepValidation {
   /** Récap SEULEMENT : les réservations que le serveur désigne parce que leur créneau chevauche une
    *  autre séance de la même équipe le même jour. */
   overlappingReservationIds?: string[];
+  /** Récap SEULEMENT : les règles du club réglées sur « Ignorée », dans l'ordre du serveur. */
+  ignoredRules?: ImplicitRuleKey[];
 }
 
 export const okValidation = (): StepValidation => ({ errors: [], warnings: [] });

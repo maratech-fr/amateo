@@ -70,6 +70,15 @@ final class PreSolvePreventionWarningsTest extends TestCase
         yield '2 réservées, 1 manque' => [3, [1, 2], [5], 'U15 n\'autorise que des jours où aucun créneau ne lui est ouvert : 2 séances sont réservées, 1 séance manquera.'];
     }
 
+    /** @return iterable<string, array{string, list<string>}> */
+    public static function salarieSettings(): iterable
+    {
+        $alert = ['Aucun salarié n\'est disponible sur les créneaux du jeudi : Anna Martin et Ben Durand sont indisponibles ce jour-là.'];
+        yield 'Obligatoire stockée' => ['HARD', $alert];
+        yield 'Souhaitée' => ['PREFERRED', $alert];
+        yield 'Ignorée' => ['OFF', []];
+    }
+
     public function testAVenueWithoutAnySlotIsFlagged(): void
     {
         $found = $this->warnings->detect($this->payload(venues: [
@@ -286,6 +295,24 @@ final class PreSolvePreventionWarningsTest extends TestCase
             ['Aucun salarié n\'est disponible sur les créneaux du jeudi : Anna Martin et Ben Durand sont indisponibles ce jour-là.'],
             $this->employeeWarnings($found),
         );
+    }
+
+    /**
+     * PR 1b — l'alerte « aucun salarié disponible » du Récap se tait quand le club a ignoré la règle,
+     * et parle aux deux autres crans.
+     *
+     * @param list<string> $expected
+     */
+    #[DataProvider('salarieSettings')]
+    public function testTheEmployeeAlertFollowsTheSalarieSetting(string $intensity, array $expected): void
+    {
+        $payload = $this->employeesPayload(
+            employees: [$this->employee('anna', 'Anna', 'Martin'), $this->employee('ben', 'Ben', 'Durand')],
+            unavailable: [$this->coachUnavailable('anna', [4]), $this->coachUnavailable('ben', [4])],
+        );
+        $payload['implicitRules'] = ['salarieDistribution' => ['intensity' => $intensity]];
+
+        self::assertSame($expected, $this->employeeWarnings($this->warnings->detect($payload)));
     }
 
     /** Trois salariés se lisent comme une phrase : virgule, puis « et » avant le dernier. */

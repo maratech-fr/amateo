@@ -22,7 +22,11 @@ use RuntimeException;
  * est lu de la même façon par la garde des gestes et par le verdict du moteur : à 1, déplacer une
  * séance de SF1 vers un jour où elle s'entraîne déjà est refusé ; à 2, accepté avec la concession
  * d'écart nommée ; le geste inverse est accepté (cas nombreux : `OneSessionPerDayGesturesTest`,
- * `engine/tests/semantic/test_validate_assignments_semantics.py`). Remplace, sur un décor léger (palier 60 s) :
+ * `engine/tests/semantic/test_validate_assignments_semantics.py`). Une règle du club réglée sur
+ * Ignorée est annoncée par le Récap, puis ni appliquée ni signalée par la régénération ; remise sur
+ * Obligatoire, l'annonce disparaît ; la présence d'un salarié n'est jamais obligatoire (cas
+ * nombreux : `ImplicitRuleSettingApiTest`, `ValidateConstraintsTest`, moteur
+ * `test_implicit_rules_adjustable.py`). Remplace, sur un décor léger (palier 60 s) :
  *   - `une-contrainte-saisie-est-honoree.feature:9` (une contrainte d'équipe honorée) ;
  *   - `un-verrou-est-souverain.feature:9` (une séance verrouillée reste à sa case après régénération) ;
  *   - `un-verrou-est-souverain.feature:31` (un créneau libre réservé retire la place au solveur).
@@ -74,6 +78,12 @@ final class SeasonWorkLoopContext extends BaseContext
 
     /** @var array<mixed> */
     private array $moveJson = [];
+
+    /** Réponse au réglage d'une règle du club refusé (salarié sur Obligatoire). */
+    private int $ruleStatus = 0;
+
+    /** @var array<mixed> */
+    private array $ruleJson = [];
 
     #[Given('un petit club réaliste dont le planning de saison est en vigueur, puis rouvert pour y retravailler')]
     public function unPetitClubSocleEnVigueurPuisRouvert(): void
@@ -292,7 +302,55 @@ final class SeasonWorkLoopContext extends BaseContext
         $this->finalStatus = $this->pollSmallClubUntilTerminal($this->regeneratedId);
     }
 
-    #[Then('la régénération aboutit : le verrou tient sa case, la case réservée reste vide, et SM1 n\'a aucune séance avant 20h30')]
+    #[Given('je règle « Les jeunes avant les grands » sur Ignorée')]
+    public function jeRegleLOrdreDesAgesSurIgnoree(): void
+    {
+        $this->putAgeAscending('OFF');
+    }
+
+    #[Then('le récapitulatif annonce cette règle comme ignorée')]
+    public function leRecapAnnonceLaRegleIgnoree(): void
+    {
+        $ignored = $this->recapIgnoredRules();
+        // Exactement l'ordre des âges : « jours d'affilée », éteinte par défaut, n'est pas annoncée.
+        if (['ageAscending'] !== $ignored) {
+            throw new RuntimeException(\sprintf('le récapitulatif doit annoncer la seule règle « Les jeunes avant les grands » comme ignorée (ignoredRules = ["ageAscending"]) — obtenu : %s', $this->encoded($ignored)));
+        }
+    }
+
+    #[When('je remets « Les jeunes avant les grands » sur Obligatoire')]
+    public function jeRemetsLOrdreDesAgesSurObligatoire(): void
+    {
+        $this->putAgeAscending('HARD');
+    }
+
+    #[Then('le récapitulatif ne l\'annonce plus comme ignorée')]
+    public function leRecapNeLAnnoncePlus(): void
+    {
+        $ignored = $this->recapIgnoredRules();
+        if (\in_array('ageAscending', $ignored, true)) {
+            throw new RuntimeException(\sprintf('remise sur Obligatoire, la règle ne doit plus être annoncée comme ignorée — ignoredRules : %s', $this->encoded($ignored)));
+        }
+    }
+
+    #[When('j\'essaie de régler la présence d\'un salarié sur Obligatoire')]
+    public function jEssaieDeRendreLeSalarieObligatoire(): void
+    {
+        $response = $this->apiPut('implicit_rule_settings/salarieDistribution', ['intensity' => 'HARD'], $this->smallClubToken);
+        $this->ruleStatus = $response['status'];
+        $this->ruleJson = $response['json'];
+    }
+
+    #[Then('c\'est refusé : « La présence d\'un salarié ne peut pas être obligatoire : choisissez Souhaitée ou Ignorée. »')]
+    public function cEstRefuseLeSalarieNEstJamaisObligatoire(): void
+    {
+        $expected = 'La présence d\'un salarié ne peut pas être obligatoire : choisissez Souhaitée ou Ignorée.';
+        if (422 !== $this->ruleStatus || !str_contains($this->encoded($this->ruleJson), $expected)) {
+            throw new RuntimeException(\sprintf('régler la présence d\'un salarié sur Obligatoire doit être refusé (422, « %s ») — reçu %d : %s', $expected, $this->ruleStatus, $this->encoded($this->ruleJson)));
+        }
+    }
+
+    #[Then('la régénération aboutit : le verrou tient sa case, la case réservée reste vide, SM1 n\'a aucune séance avant 20h30, et aucun signalement ne porte sur l\'ordre des âges')]
     public function toutTient(): void
     {
         if ('COMPLETED' !== $this->finalStatus) {
@@ -344,6 +402,17 @@ final class SeasonWorkLoopContext extends BaseContext
         );
         if ($earliest < '20:30:00') {
             throw new RuntimeException(\sprintf('une séance de SM1 est placée à %s, avant l\'heure interdite 20:30', $earliest));
+        }
+
+        // 4. La règle ignorée n'est pas signalée. Peut être vrai par hasard (aucun écart d'âge à
+        // signaler) : la preuve qu'elle n'est ni posée ni signalée vit au moteur
+        // (`engine/tests/semantic/test_implicit_rules_adjustable.py`).
+        $ageSignals = (int) $this->dbalScalar(
+            \sprintf('SELECT COUNT(*) AS behatval FROM schedule_diagnostic WHERE schedule_id=\'%s\' AND rule_key=\'ageAscending\'', $this->regeneratedId),
+            admin: true,
+        );
+        if (0 !== $ageSignals) {
+            throw new RuntimeException(\sprintf('la règle « Les jeunes avant les grands » est ignorée : aucun signalement ne doit la porter — %d trouvé(s)', $ageSignals));
         }
     }
 
@@ -417,6 +486,29 @@ final class SeasonWorkLoopContext extends BaseContext
         ], $this->smallClubToken);
         $this->moveStatus = $response['status'];
         $this->moveJson = $response['json'];
+    }
+
+    private function putAgeAscending(string $intensity): void
+    {
+        $written = $this->apiPut('implicit_rule_settings/ageAscending', ['intensity' => $intensity], $this->smallClubToken);
+        if (200 !== $written['status']) {
+            throw new RuntimeException(\sprintf('régler « Les jeunes avant les grands » sur %s a répondu %d (200 attendu) : %s', $intensity, $written['status'], $this->encoded($written['json'])));
+        }
+    }
+
+    /**
+     * Les règles que le Récap annonce comme ignorées (`ignoredRules`, corps 200 comme 422).
+     *
+     * @return list<mixed>
+     */
+    private function recapIgnoredRules(): array
+    {
+        $recap = $this->apiPost('constraints/validate', [], $this->smallClubToken);
+        if (!\in_array($recap['status'], [200, 422], true) || !\is_array($recap['json']['ignoredRules'] ?? null)) {
+            throw new RuntimeException(\sprintf('le récapitulatif doit répondre 200 ou 422 avec la liste ignoredRules — reçu %d : %s', $recap['status'], $this->encoded($recap['json'])));
+        }
+
+        return array_values($recap['json']['ignoredRules']);
     }
 
     private function encoded(mixed $value): string

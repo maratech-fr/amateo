@@ -409,7 +409,8 @@ final readonly class PreSolvePreventionWarnings
      * Un jour ouvré de la grille où aucun salarié ne peut venir sur aucun créneau : la règle « un
      * salarié présent chaque jour » ne pourra pas y être tenue. Même seuil (2 salariés) et mêmes
      * jours (lundi-vendredi) que le moteur. Un jour où un salarié est libre mais où rien n'est
-     * réservé ne dit rien : le solveur y reste libre.
+     * réservé ne dit rien : le solveur y reste libre. Règle réglée sur « Ignorée » (`OFF` dans le
+     * bloc `implicitRules` du payload) : rien à annoncer, le moteur ne la vise pas.
      *
      * @param array<string, mixed>       $payload
      * @param list<array<string, mixed>> $venues
@@ -419,6 +420,12 @@ final readonly class PreSolvePreventionWarnings
      */
     private function daysWithoutAnyAvailableEmployee(array $payload, array $venues, array $constraints): array
     {
+        $implicitRules = $payload['implicitRules'] ?? null;
+        $salarieRule = \is_array($implicitRules) ? ($implicitRules['salarieDistribution'] ?? null) : null;
+        if (\is_array($salarieRule) && 'OFF' === ($salarieRule['intensity'] ?? null)) {
+            return [];
+        }
+
         $employees = array_values(array_filter(
             $this->listOf($payload, 'coaches'),
             static fn (array $coach): bool => true === ($coach['isEmployee'] ?? false),

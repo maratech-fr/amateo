@@ -178,18 +178,18 @@ une séance JOUÉE ; deux coachs-joueurs sont présents les 5 soirs).
   coach** (`coachRestDay`, seuil `minRestDays` 1-4, défaut 1), **distribution des salariés**
   (`salarieDistribution`), **jamais N créneaux dos-à-dos** (`maxConsecutiveSessions`, seuil
   `maxConsecutive` 2-6, défaut 3 — coaché ET joué confondus), **âge croissant** (`ageAscending`).
-  ⚠ **`salarieDistribution` fait exception (2026-10-31)** : c'est un OBJECTIF quel que soit le cran stocké (le cran est sans effet, l'alerte dit un fait et ne bloque jamais — ADR-0001, amendement 2026-10-31).
-  Intensité **HARD** (bloque, comportement historique = défaut) ou **PREFERRED** (le solveur vise
+  ⚠ **`salarieDistribution` fait exception (2026-10-31)** : c'est un OBJECTIF à HARD comme à PREFERRED (l'alerte dit un fait et ne bloque jamais — ADR-0001, amendement 2026-10-31) ; le serveur n'en accepte que deux crans, PREFERRED (« Souhaitée ») ou OFF, et refuse HARD en 422 (`ImplicitRuleSettingStateProcessor`).
+  Intensité **HARD** (bloque, comportement historique = défaut), **PREFERRED** ou **OFF** (« Ignorée », contrat 1.11 : rien n'est posé ni diagnostiqué ; le résolveur envoie `OFF` explicite pour une règle historique — son absence vaudrait HARD — et omet seulement l'opt-in) (le solveur vise
   la règle via un littéral de violation AGRÉGÉ par entité, poids −6, preuve d'empilement dans
-  `objective.py` — jamais un terme par occurrence, qui pouvait supprimer des séances). Un cran
-  DÉSACTIVÉE est une **extension future**, coupée du lot sur smith.
+  `objective.py` — jamais un terme par occurrence, qui pouvait supprimer des séances). Le cran
+  « Ignorée » (OFF) éteint la règle ; le Récap l'annonce (`ignoredRules`).
   ⚠ **Bien-être PAR PÉRIODE** : la portée n'est PAS « club+saison » — `schedule_plan_id` sur
   `ImplicitRuleSetting` (ADR-0002 inv. 5) fixe la portée réelle au **plan** : NULL = la saison
   (base + repli des plans nés avant la fonctionnalité), un plan de période reçoit à sa NAISSANCE
   une **copie matérialisée** de ses 4 lignes — patron de la copie de grille (#8) — et une
   modification de la saison POSTÉRIEURE à la naissance ne redescend plus dans sa copie. Détail :
   ADR-0002.
-- **Violation TOUJOURS diagnostiquée**, quel que soit le cran (exigence fondateur) : type
+- **Violation diagnostiquée à tout cran sauf « Ignorée »** (exigence fondateur) : type
   `implicit_rule_not_honored` + `ruleKey`, détection post-solve inconditionnelle au **même grain
   que la pose** (coach MAIN — les ASSISTANT ne comptent pas — + séances jouées), textes
   différenciés : « règle assouplie par vous » (PREFERRED, informatif) vs « le solveur n'a pas pu

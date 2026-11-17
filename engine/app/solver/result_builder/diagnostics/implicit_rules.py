@@ -83,8 +83,8 @@ def _diagnose_implicit_rule_violations(
     grain que la pose : personnes = coachs (``team_coach_map``, ASSISTANT déjà exclus) +
     joueurs (``team_player_map``), JAMAIS ``slot.coachId``.
 
-    Toujours exécuté, quel que soit le cran : PREFERRED non tenu → « assouplie par vous » ;
-    HARD contourné par un verrou → « le solveur n'a pas pu honorer ». Émet
+    Exécuté à tout cran sauf ``OFF`` (« Ignorée ») : une règle ignorée n'est jamais signalée.
+    PREFERRED non tenu → « assouplie par vous » ; HARD contourné par un verrou → « le solveur n'a pas pu honorer ». Émet
     ``implicit_rule_not_honored`` (WARNING) avec la ``ruleKey`` du contrat. Exception : la présence
     d'un salarié est un objectif à tout cran, son alerte énonce le fait, sans ces deux préfixes.
     """
@@ -119,9 +119,10 @@ def _diagnose_implicit_rule_violations(
                 coach_working_days[person].add(day)
 
     rest_cap = 5 - rules.min_rest_days
+    rest_ignored = rules.coach_rest_day_intensity == OFF
     for coach_id in sorted(coach_working_days):
         days = coach_working_days[coach_id]
-        if len(days) <= rest_cap:
+        if rest_ignored or len(days) <= rest_cap:
             continue
         name = _label(coach_id, coach_names)
         prefix = _softened_prefix(_IMPLICIT_RULE_LABELS["coachRestDay"], rules.coach_rest_day_intensity)
@@ -141,7 +142,7 @@ def _diagnose_implicit_rule_violations(
         )
 
     # --- 3c salarié distribution : un jour ouvré de la grille sans séance d'un salarié ----
-    if len(salarie_ids) >= 2:
+    if len(salarie_ids) >= 2 and rules.salarie_distribution_intensity != OFF:
         salarie_days: set[int] = set()
         for slot in slots:
             day = _slot_day(slot)
@@ -278,6 +279,8 @@ def _diagnose_chain_violations(
     coach_names: Mapping[str, str],
     team_names: Mapping[str, str],
 ) -> list[dict[str, Any]]:
+    if rules.max_consecutive_sessions_intensity == OFF:
+        return []
     k = rules.max_consecutive
     # (person, day) -> list of (start, end, team_id, is_coaching)
     person_day: dict[tuple[str, str], list[tuple[int, int, str, bool]]] = defaultdict(list)
@@ -359,6 +362,8 @@ def _diagnose_age_violations(
     venue_names: Mapping[str, str],
     team_names: Mapping[str, str],
 ) -> list[dict[str, Any]]:
+    if rules.age_ascending_intensity == OFF:
+        return []
     team_age_min: dict[str, int] = {}
     for team in _collection(model_data, "teams"):
         tid = _get(team, "id", "team_id", "teamId")

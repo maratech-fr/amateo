@@ -1,16 +1,16 @@
 import { describe, expect, it } from "vitest";
 
-import { ALWAYS_OBJECTIVE_RULES, isAlwaysObjective } from "./implicitRules";
+import { NEVER_MANDATORY_RULES, isNeverMandatory } from "./implicitRules";
 
-/** Une règle que le moteur traite toujours en objectif n'offre aucun réglage à l'écran : les autres gardent le leur. */
-describe("isAlwaysObjective", () => {
+/** Une règle qui ne peut jamais être obligatoire n'offre pas le cran « Obligatoire » : les autres le gardent. */
+describe("isNeverMandatory", () => {
   it("désigne la règle des salariés, seule", () => {
-    expect([...ALWAYS_OBJECTIVE_RULES]).toEqual(["salarieDistribution"]);
-    expect(isAlwaysObjective("salarieDistribution")).toBe(true);
-    expect(isAlwaysObjective("coachRestDay")).toBe(false);
+    expect([...NEVER_MANDATORY_RULES]).toEqual(["salarieDistribution"]);
+    expect(isNeverMandatory("salarieDistribution")).toBe(true);
+    expect(isNeverMandatory("coachRestDay")).toBe(false);
   });
 
-  it("un diagnostic sans règle n'est pas une règle sans réglage", () => {
-    expect(isAlwaysObjective(null)).toBe(false);
+  it("un diagnostic sans règle n'est pas une règle sans cran obligatoire", () => {
+    expect(isNeverMandatory(null)).toBe(false);
   });
 });

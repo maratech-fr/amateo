@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ImplicitRuleSetting } from "../api";
 import * as wizardApi from "../api";
 import { WELLBEING_RULES } from "../lib/implicitRules";
+import { IMPLICIT_RULES_TEXTS } from "../texts/implicitRules";
 import { WellbeingRulesPanel } from "./ImplicitRulesPanel";
 
 vi.mock("../api", () => ({
@@ -59,12 +60,12 @@ describe("ImplicitRulesPanel — règles de bien-être réglables", () => {
     }
   });
 
-  it("« Objectif » PUT PREFERRED en préservant le seuil, puis refetch (invalidation)", async () => {
+  it("« Souhaitée » PUT PREFERRED en préservant le seuil, puis refetch (invalidation)", async () => {
     const user = userEvent.setup();
     renderPanel(<WellbeingRulesPanel />);
     await screen.findByRole("group", { name: `Intensité — ${REST_TITLE}` });
 
-    await user.click(screen.getByRole("button", { name: `Objectif — ${REST_TITLE}` }));
+    await user.click(screen.getByRole("button", { name: `Souhaitée — ${REST_TITLE}` }));
 
     await waitFor(() => expect(wizardApi.updateImplicitRuleSetting).toHaveBeenCalledWith("coachRestDay", { intensity: "PREFERRED", minRestDays: 1 }));
     // L'effet de l'invalidation : le GET est rappelé (au moins 2 fois).
@@ -119,7 +120,7 @@ describe("ImplicitRulesPanel — règles de bien-être réglables", () => {
     renderPanel(<WellbeingRulesPanel />);
     await screen.findByRole("group", { name: `Intensité — ${REST_TITLE}` });
 
-    expect(screen.getByRole("button", { name: `Objectif — ${REST_TITLE}` })).toBeDisabled();
+    expect(screen.getByRole("button", { name: `Souhaitée — ${REST_TITLE}` })).toBeDisabled();
     expect(screen.getByRole("combobox", { name: `Jours de repos minimum — ${REST_TITLE}` })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Réinitialiser" })).toBeDisabled();
   });
@@ -136,7 +137,7 @@ describe("ImplicitRulesPanel — règles de bien-être réglables", () => {
       renderPanel(<WellbeingRulesPanel />);
       await screen.findByRole("group", { name: `Intensité — ${REST_TITLE}` });
 
-      expect(screen.getByRole("button", { name: `Objectif — ${REST_TITLE}` })).toBeDisabled();
+      expect(screen.getByRole("button", { name: `Souhaitée — ${REST_TITLE}` })).toBeDisabled();
       expect(screen.getByRole("combobox", { name: `Jours de repos minimum — ${REST_TITLE}` })).toBeDisabled();
       const reset = screen.queryByRole("button", { name: "Réinitialiser" });
       expect(null === reset || reset.matches(":disabled")).toBe(true);
@@ -235,7 +236,7 @@ describe("ImplicitRulesPanel — portée par période", () => {
     // La règle affiche l'état de la PÉRIODE (HARD → « Obligatoire » enfoncé)…
     expect(screen.getByRole("button", { name: `Obligatoire — ${REST_TITLE}` })).toHaveAttribute("aria-pressed", "true");
     // …et en repère la valeur de la SAISON (PREFERRED, 2 jours), jamais celle de la période.
-    expect(screen.getByText(/Saison : Objectif, 2 jours/)).toBeInTheDocument();
+    expect(screen.getByText(/Saison : Souhaitée, 2 jours/)).toBeInTheDocument();
   });
 
   it("mode saison (schedulePlanId absent) : NI phrase de portée NI repère « Saison : … »", async () => {
@@ -258,7 +259,7 @@ describe("ImplicitRulesPanel — portée par période", () => {
     renderPanel(<WellbeingRulesPanel schedulePlanId="plan-1" />);
     await screen.findByRole("group", { name: `Intensité — ${REST_TITLE}` });
 
-    await user.click(screen.getByRole("button", { name: `Objectif — ${REST_TITLE}` }));
+    await user.click(screen.getByRole("button", { name: `Souhaitée — ${REST_TITLE}` }));
 
     await waitFor(() => expect(wizardApi.updateImplicitRuleSetting).toHaveBeenCalledWith("coachRestDay", { intensity: "PREFERRED", minRestDays: 4, schedulePlanId: "plan-1" }));
     await waitFor(() => expect(vi.mocked(wizardApi.listImplicitRuleSettings).mock.calls.filter((c) => "plan-1" === c[0]).length).toBeGreaterThanOrEqual(2));
@@ -290,43 +291,71 @@ describe("ImplicitRulesPanel — portée par période", () => {
     await within(season.container).findByRole("group", { name: `Intensité — ${REST_TITLE}` });
     await within(period.container).findByRole("group", { name: `Intensité — ${REST_TITLE}` });
 
-    // Chaque écran affiche SA couche : saison → PREFERRED (Objectif), période → HARD (Obligatoire).
+    // Chaque écran affiche SA couche : saison → PREFERRED (Souhaitée), période → HARD (Obligatoire).
     // Un cache partagé ferait afficher à l'un les valeurs de l'autre.
-    expect(within(season.container).getByRole("button", { name: `Objectif — ${REST_TITLE}` })).toHaveAttribute("aria-pressed", "true");
+    expect(within(season.container).getByRole("button", { name: `Souhaitée — ${REST_TITLE}` })).toHaveAttribute("aria-pressed", "true");
     expect(within(period.container).getByRole("button", { name: `Obligatoire — ${REST_TITLE}` })).toHaveAttribute("aria-pressed", "true");
   });
 });
 
 /**
- * La règle des salariés est toujours un objectif pour le moteur (retours du 31/10) : l'écran n'offre
- * aucun réglage sans effet, quel que soit ce qui est stocké. ROUGE option A, contrat
- * `shared/lib/implicitRules.ts::isAlwaysObjective`.
+ * PR 1b — la présence d'un salarié n'est jamais obligatoire : elle se règle sur deux crans seulement,
+ * « Souhaitée » et « Ignorée » ; choisir « Ignorée » l'éteint (PUT `OFF`). Contrat
+ * `shared/lib/implicitRules.ts::isNeverMandatory`. Le refus serveur d'un appel direct en HARD : scénario
+ * `la-boucle-de-travail-du-gestionnaire.feature`.
  */
-describe("ImplicitRulesPanel — une règle toujours objectif n'a aucun réglage", () => {
+describe("ImplicitRulesPanel — une règle jamais obligatoire n'offre que Souhaitée et Ignorée", () => {
   const SALARIE_TITLE = WELLBEING_RULES.find((r) => "salarieDistribution" === r.ruleKey)?.title ?? "";
 
   beforeEach(() => {
     workingSeason.value = { isReadonly: false };
+    vi.mocked(wizardApi.updateImplicitRuleSetting).mockClear().mockResolvedValue({} as ImplicitRuleSetting);
   });
   afterEach(() => vi.mocked(wizardApi.listImplicitRuleSettings).mockReset());
 
-  it("la règle reste présentée, sans crans ni « Réinitialiser », même avec un réglage stocké hors défaut", async () => {
-    vi.mocked(wizardApi.listImplicitRuleSettings).mockResolvedValue(RESOLVED({ salarieDistribution: { intensity: "PREFERRED", isDefault: false } }));
+  it("la règle porte deux crans, sans « Obligatoire », et « Ignorée » PUT OFF", async () => {
+    vi.mocked(wizardApi.listImplicitRuleSettings).mockResolvedValue(RESOLVED({ salarieDistribution: { intensity: "PREFERRED" } }));
+    const user = userEvent.setup();
     renderPanel(<WellbeingRulesPanel />);
-    await screen.findByRole("group", { name: `Intensité — ${REST_TITLE}` });
 
-    expect(screen.getByText(SALARIE_TITLE)).toBeInTheDocument();
-    expect(screen.queryByRole("group", { name: `Intensité — ${SALARIE_TITLE}` })).toBeNull();
-    expect(screen.queryByRole("button", { name: "Réinitialiser" })).toBeNull();
+    const crans = await screen.findByRole("group", { name: IMPLICIT_RULES_TEXTS.intensityGroup(SALARIE_TITLE) });
+    const ignored = IMPLICIT_RULES_TEXTS.cranOf(IMPLICIT_RULES_TEXTS.cranIgnored, SALARIE_TITLE);
+    const preferred = IMPLICIT_RULES_TEXTS.cranOf(IMPLICIT_RULES_TEXTS.cranPreferred, SALARIE_TITLE);
+    expect(
+      within(crans)
+        .getAllByRole("button")
+        .map((b) => b.getAttribute("aria-label"))
+        .sort(),
+    ).toEqual([ignored, preferred].sort());
+
+    await user.click(within(crans).getByRole("button", { name: ignored }));
+
+    await waitFor(() => expect(wizardApi.updateImplicitRuleSetting).toHaveBeenCalledWith("salarieDistribution", expect.objectContaining({ intensity: "OFF" })));
   });
 
-  it("en période, elle ne porte pas de repère « Saison : », les autres règles le gardent", async () => {
+  /**
+   * En période, la règle salarié porte le repère « Saison : … » comme les autres (décision fondateur
+   * 2026-11-17), au cran tel que la saison l'AFFICHE : une saison HARD stockée se lit « Souhaitée »
+   * (`displayedIntensity`), jamais « Obligatoire ». La période est « Souhaitée » dans les deux cas, si
+   * bien que le repère « Ignorée » ne peut venir que de la saison.
+   */
+  it.each([
+    { season: "OFF" as const, expected: IMPLICIT_RULES_TEXTS.seasonReference(IMPLICIT_RULES_TEXTS.cranIgnored) },
+    { season: "HARD" as const, expected: IMPLICIT_RULES_TEXTS.seasonReference(IMPLICIT_RULES_TEXTS.cranPreferred) },
+  ])("en période, saison $season : la règle porte le repère de saison affiché, comme les autres règles", async ({ season, expected }) => {
     vi.mocked(wizardApi.listImplicitRuleSettings).mockImplementation((plan?: string | null) =>
-      Promise.resolve("plan-1" === plan ? RESOLVED({ salarieDistribution: { intensity: "PREFERRED", isDefault: false } }) : RESOLVED()),
+      Promise.resolve(
+        "plan-1" === plan
+          ? RESOLVED({ salarieDistribution: { intensity: "PREFERRED", isDefault: false } })
+          : RESOLVED({ salarieDistribution: { intensity: season, isDefault: false } }),
+      ),
     );
     renderPanel(<WellbeingRulesPanel schedulePlanId="plan-1" />);
-    await screen.findByRole("group", { name: `Intensité — ${REST_TITLE}` });
 
-    await waitFor(() => expect(screen.getAllByText(/^Saison :/)).toHaveLength(RESOLVED().length - 1));
+    const crans = await screen.findByRole("group", { name: IMPLICIT_RULES_TEXTS.intensityGroup(SALARIE_TITLE) });
+    const row = crans.closest<HTMLElement>('[data-rule-key="salarieDistribution"]');
+    expect(row).not.toBeNull();
+    await waitFor(() => expect(within(row as HTMLElement).getByText(expected)).toBeInTheDocument());
+    expect(screen.getAllByText(/^Saison :/)).toHaveLength(RESOLVED().length);
   });
 });

@@ -6,8 +6,11 @@ namespace App\Tests\Api;
 
 use App\Entity\Club;
 use App\Entity\ClubUser;
+use App\Entity\ImplicitRuleSetting;
 use App\Entity\Season;
 use App\Entity\User;
+use App\Enum\ImplicitRuleIntensity;
+use App\Enum\ImplicitRuleKey;
 use App\Enum\SeasonStatus;
 use App\Service\SeasonResolver;
 use App\Tests\CrossStack\ImplicitRulePayloadParityTest;
@@ -21,8 +24,8 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 
 /**
  * La porte API des règles implicites « bien-être » (P2-28 PR 2) : collection RÉSOLUE (toujours
- * 4), upsert par `ruleKey`, bornes de seuil et couple règle↔seuil refusés en 422 français, DELETE
- * = réinitialiser.
+ * 5), upsert par `ruleKey`, bornes de seuil et couple règle↔seuil refusés en 422 français, DELETE
+ * = réinitialiser ; trois crans (Obligatoire, Souhaitée, Ignorée), deux pour le salarié (PR 1b).
  */
 #[Group('integration')]
 final class ImplicitRuleSettingApiTest extends WebTestCase
@@ -185,25 +188,92 @@ final class ImplicitRuleSettingApiTest extends WebTestCase
     }
 
     /**
-     * P4-340 — CHEMIN D'ABUS : désactiver (OFF) une règle qui n'est PAS opt-in est refusé (422,
-     * message français).
-     *
-     * Seule `maxConsecutiveDays` est optionnelle ({@see ImplicitRuleKey::isOptIn}). Accepter OFF
-     * sur une règle historique (ici `coachRestDay`) serait un piège : le résolveur l'omettrait du
-     * payload et le moteur appliquerait alors son DÉFAUT HARD — le gestionnaire croirait l'avoir
-     * éteinte alors qu'elle s'imposerait quand même. Le refus garde cette porte fermée.
+     * PR 1b — chacune des cinq règles réglables accepte « Ignorée » (OFF) et la collection la sert
+     * ignorée. Le piège que l'ancien refus évitait (une règle omise du payload vaut HARD au moteur)
+     * est désormais fermé côté payload : la règle historique part en OFF explicite
+     * ({@see ImplicitRulePayloadParityTest::testAHistoricRuleStoredOffIsEmittedOffExplicitly}).
      */
-    public function testPutOffOnANonOptInRuleIsRefused(): void
+    public function testEveryAdjustableRuleAcceptsIgnored(): void
     {
         [$user] = $this->seed();
+        $auth = $this->authHeaders($user);
 
-        $this->client->request('PUT', '/api/implicit_rule_settings/coachRestDay', [], [], $this->authHeaders($user) + ['CONTENT_TYPE' => 'application/json'], json_encode(['intensity' => 'OFF'], \JSON_THROW_ON_ERROR));
-        self::assertResponseStatusCodeSame(422, 'OFF sur une règle non opt-in doit être refusé');
+        foreach (['coachRestDay', 'salarieDistribution', 'maxConsecutiveSessions', 'ageAscending', 'maxConsecutiveDays'] as $ruleKey) {
+            $this->client->request('PUT', '/api/implicit_rule_settings/' . $ruleKey, [], [], $auth + ['CONTENT_TYPE' => 'application/json'], json_encode(['intensity' => 'OFF'], \JSON_THROW_ON_ERROR));
+            self::assertResponseStatusCodeSame(200, \sprintf('« Ignorée » doit être accepté pour %s', $ruleKey));
+            $resource = json_decode((string) $this->client->getResponse()->getContent(), true, 512, \JSON_THROW_ON_ERROR);
+            self::assertIsArray($resource);
+            self::assertSame('OFF', $resource['intensity'] ?? null, \sprintf('%s est servie ignorée au retour du PUT', $ruleKey));
+        }
 
-        // Décoder le JSON (API Platform échappe l'unicode : lire le CORPS BRUT manquerait « é ») ;
-        // le refus doit PARLER en français (le champ exact du message reste ajustable côté impl).
-        $haystack = json_encode(json_decode((string) $this->client->getResponse()->getContent(), true, 512, \JSON_THROW_ON_ERROR), \JSON_UNESCAPED_UNICODE);
-        self::assertMatchesRegularExpression('/désactiv|optionnelle|ne peut pas/iu', (string) $haystack, 'le 422 doit expliquer EN FRANÇAIS qu\'on ne peut pas désactiver cette règle');
+        $this->client->request('GET', '/api/implicit_rule_settings', [], [], $auth);
+        foreach ($this->members() as $rule) {
+            self::assertSame('OFF', $rule['intensity'], \sprintf('%s est lue ignorée dans la collection', $rule['ruleKey']));
+        }
+    }
+
+    /**
+     * PR 1b — la présence d'un salarié n'a que deux crans à l'écran : un cran HARD déjà stocké (avant
+     * 1b) est servi « Souhaitée » (PREFERRED). Le payload, lui, l'émet tel quel
+     * ({@see ImplicitRulePayloadParityTest::testASalarieRuleStoredHardIsEmittedAsIs}).
+     */
+    public function testASalarieRuleStoredHardIsServedPreferred(): void
+    {
+        [$user, $club, $season] = $this->seed();
+
+        $stored = new ImplicitRuleSetting;
+        $stored->setClubId($club->getId());
+        $stored->setSeasonId($season->getId());
+        $stored->setRuleKey(ImplicitRuleKey::SALARIE_DISTRIBUTION);
+        $stored->setIntensity(ImplicitRuleIntensity::HARD);
+        $this->em->persist($stored);
+        $this->em->flush();
+
+        $this->client->request('GET', '/api/implicit_rule_settings', [], [], $this->authHeaders($user));
+        self::assertSame('PREFERRED', $this->member('salarieDistribution')['intensity']);
+    }
+
+    /**
+     * PR 1b — « Réinitialiser » une règle de période rend la valeur de saison ; à défaut de réglage
+     * de saison, HARD pour une règle historique et « Souhaitée » (PREFERRED) pour le salarié, jamais
+     * un cran que l'écran ne propose pas.
+     */
+    public function testPlanScopeResetWithoutSeasonValueGivesHardOrPreferredForTheSalarie(): void
+    {
+        [$user] = $this->seed();
+        $auth = $this->authHeaders($user);
+        $planId = $this->adaptHolidayPlan($user);
+
+        foreach (['ageAscending', 'salarieDistribution'] as $ruleKey) {
+            $this->client->request('PUT', '/api/implicit_rule_settings/' . $ruleKey, [], [], $auth + ['CONTENT_TYPE' => 'application/json'], json_encode(['schedulePlanId' => $planId, 'intensity' => 'OFF'], \JSON_THROW_ON_ERROR));
+            self::assertResponseStatusCodeSame(200, \sprintf('« Ignorée » pour la seule période doit être accepté pour %s', $ruleKey));
+            $this->client->request('DELETE', '/api/implicit_rule_settings/' . $ruleKey . '?schedulePlanId=' . $planId, [], [], $auth);
+            self::assertResponseStatusCodeSame(204);
+        }
+
+        $this->client->request('GET', '/api/implicit_rule_settings?schedulePlanId=' . $planId, [], [], $auth);
+        self::assertSame('HARD', $this->member('ageAscending')['intensity'], 'règle historique sans réglage de saison : retour à Obligatoire');
+        self::assertSame('PREFERRED', $this->member('salarieDistribution')['intensity'], 'salarié sans réglage de saison : retour à Souhaitée');
+    }
+
+    /**
+     * PR 1b — une règle ignorée par un club ne l'est jamais pour un autre : chaque club lit et écrit
+     * ses propres réglages.
+     */
+    public function testARuleIgnoredByOneClubStaysAppliedForAnother(): void
+    {
+        [$userA] = $this->seed();
+        [$userB] = $this->seed();
+
+        $this->client->request('PUT', '/api/implicit_rule_settings/ageAscending', [], [], $this->authHeaders($userA) + ['CONTENT_TYPE' => 'application/json'], json_encode(['intensity' => 'OFF'], \JSON_THROW_ON_ERROR));
+        self::assertResponseStatusCodeSame(200);
+
+        $this->client->request('GET', '/api/implicit_rule_settings', [], [], $this->authHeaders($userB));
+        self::assertSame('HARD', $this->member('ageAscending')['intensity'], 'l\'autre club garde la règle appliquée');
+        self::assertTrue($this->member('ageAscending')['isDefault']);
+
+        $this->client->request('GET', '/api/implicit_rule_settings', [], [], $this->authHeaders($userA));
+        self::assertSame('OFF', $this->member('ageAscending')['intensity'], 'témoin : le club qui l\'a ignorée la lit ignorée');
     }
 
     /**

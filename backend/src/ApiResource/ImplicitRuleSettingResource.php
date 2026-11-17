@@ -11,6 +11,7 @@ use ApiPlatform\Metadata\Get;
 use ApiPlatform\Metadata\GetCollection;
 use ApiPlatform\Metadata\Put;
 use App\Dto\ImplicitRuleSettingInput;
+use App\Enum\ImplicitRuleIntensity;
 use App\Enum\ImplicitRuleKey;
 use App\State\Processor\ImplicitRuleSettingStateProcessor;
 use App\State\Provider\ImplicitRuleSettingStateProvider;
@@ -65,6 +66,11 @@ class ImplicitRuleSettingResource
         $dto = new self;
         $dto->ruleKey = $ruleKey->value;
         $dto->intensity = (string) ($resolvedEntry['intensity'] ?? '');
+        // La présence d'un salarié n'a que deux crans (Souhaitée, Ignorée) : un cran HARD stocké
+        // avant ce réglage est servi Souhaitée — le moteur les traite déjà en un même objectif.
+        if (ImplicitRuleKey::SALARIE_DISTRIBUTION === $ruleKey && !$isDefault && ImplicitRuleIntensity::HARD->value === $dto->intensity) {
+            $dto->intensity = ImplicitRuleIntensity::PREFERRED->value;
+        }
         $dto->minRestDays = ImplicitRuleKey::COACH_REST_DAY === $ruleKey ? (int) ($resolvedEntry['minRestDays'] ?? 0) : null;
         $dto->maxConsecutive = ImplicitRuleKey::MAX_CONSECUTIVE_SESSIONS === $ruleKey ? (int) ($resolvedEntry['maxConsecutive'] ?? 0) : null;
         $dto->maxConsecutiveDays = ImplicitRuleKey::MAX_CONSECUTIVE_DAYS === $ruleKey ? (int) ($resolvedEntry['maxConsecutiveDays'] ?? 0) : null;

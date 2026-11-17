@@ -513,11 +513,12 @@ class TestGenerateContract:
         moteur produit le planning et nomme la règle relâchée, amendement ADR-0001), puis 1.8 → 1.9 —
         ouverture datée : `MatchAccessWindowSchema.openingDate` et `MatchSchema.importedVenueId` /
         `importedKickoff`, champs additifs, puis 1.9 → 1.10 — plafond de séances par jour :
-        `TeamSchema.maxSessionsPerDay`, champ additif) et un payload qui
+        `TeamSchema.maxSessionsPerDay`, champ additif, puis 1.10 → 1.11 — règles du club à trois
+        états : `OFF` accepté par l'intensité des quatre règles réglables) et un payload qui
         s'attribue cette version est recevable comme un payload qui n'annonce rien."""
         from app.main import read_contract_version
 
-        assert read_contract_version() == "1.10"
+        assert read_contract_version() == "1.11"
 
-        stamped = ScheduleInputSchema.model_validate({"clubId": "club-v", "seasonId": "season-v", "version": "1.10"})
-        assert stamped.version == "1.10"
+        stamped = ScheduleInputSchema.model_validate({"clubId": "club-v", "seasonId": "season-v", "version": "1.11"})
+        assert stamped.version == "1.11"

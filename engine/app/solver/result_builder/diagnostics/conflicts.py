@@ -43,7 +43,7 @@ règles de bien-être et la capacité ne posant que des bornes hautes (ADR-0001)
 
 _WELLNESS_LEAD_TAIL = (
     "sans doute à une règle de bien-être réglée « Obligatoire » (jour de repos, enchaînements, jeunes avant "
-    "les grands) ou à un coach qui tient plusieurs équipes : passez cette règle de bien-être en « Objectif » "
+    "les grands) ou à un coach qui tient plusieurs équipes : passez cette règle de bien-être en « Souhaitée » "
     "pour le vérifier."
 )
 
@@ -400,7 +400,7 @@ def _infeasible_core_message(
         suggestions = [f"{subject} {_WELLNESS_LEAD_TAIL}"]
     elif core_labels:
         target = "l'une de ces règles" if cited > 1 else "cette règle"
-        suggestions = [f"Assouplissez {target}, ou passez-la en « Objectif », puis relancez la génération."]
+        suggestions = [f"Assouplissez {target}, ou passez-la en « Souhaitée », puis relancez la génération."]
 
     if not core_labels:
         return _infeasible_message(model_data), suggestions
