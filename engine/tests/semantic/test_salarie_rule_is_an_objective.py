@@ -261,3 +261,21 @@ def test_a_day_without_any_club_slot_has_no_objective_term(intensity: str) -> No
 def test_every_day_with_a_club_slot_has_its_objective_term(intensity: str) -> None:
     """Témoin : chaque jour ouvré de la grille porte son terme, et le samedi n'en porte aucun."""
     assert _objective_days([1, 2, 3, 4, 5, 6], intensity) == {1, 2, 3, 4, 5}
+
+
+# --- PR 1b — « Ignorée » (OFF) : le seul cran qui change quelque chose ------------------------------
+
+
+def test_an_ignored_salarie_rule_has_no_objective_term() -> None:
+    """Ignorée, la règle ne vise plus rien : aucun terme, quel que soit le jour. Témoin aux deux autres
+    crans : ``test_every_day_with_a_club_slot_has_its_objective_term``."""
+    assert _objective_days([1, 2, 3, 4, 5], "OFF") == set()
+
+
+def test_an_ignored_salarie_rule_raises_no_alert_on_a_day_without_one() -> None:
+    """Le vendredi sans salarié, alerté aux deux autres crans
+    (``test_a_day_with_a_slot_and_no_possible_employee_raises_the_alert``), ne l'est plus."""
+    result = solve_payload(_one_team_a_day({1: "e1", 2: "e1", 3: "e2", 4: "e2", 5: "vol"}, intensity="OFF"))
+
+    assert result["status"] == "completed"
+    assert _alerts(result) == []

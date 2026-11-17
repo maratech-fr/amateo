@@ -256,3 +256,34 @@ def test_generation_parity_preferred_completes_hard_hardens() -> None:
     hard = solve_payload(_generation_scene("HARD"))
     assert hard["status"] == "completed"
     assert len(_coach_weekdays(hard)) <= 4
+
+
+# ── PR 1b — « Ignorée » (OFF) : le verdict se tait, ni refus ni compromis ─────────────────────────
+
+
+def _implicit_compromises(result: dict[str, Any]) -> list[dict[str, Any]]:
+    return [c for c in result["compromises"] if c["family"] == "implicit_rule"]
+
+
+def test_ignored_rest_day_accepts_the_fifth_day_without_naming_it() -> None:
+    """Repos coach ignoré : le 5ᵉ jour est accepté et rien ne le nomme, ni violation ni compromis
+    (témoins : refus en HARD, compromis en PREFERRED, ci-dessus)."""
+    result = _run(_five_day_scene("OFF"))
+    assert result["valid"] is True, result["violations"]
+    assert _implicit_compromises(result) == [], result["compromises"]
+
+
+def test_ignored_rest_day_never_pollutes_a_genuine_refusal() -> None:
+    """Le refus légitime (capacité) reste nommé ; le repos coach ignoré n'y est pas ajouté."""
+    result = _run(_genuine_refusal_scene("OFF"))
+    assert result["valid"] is False
+    assert any(v["rule"] == "venue_capacity" for v in result["violations"])
+    assert not any(v["rule"] == "coach_no_rest_day" for v in result["violations"])
+
+
+def test_ignored_salarie_rule_says_nothing_when_a_day_loses_its_employee() -> None:
+    """Salarié ignoré : vider le jeudi de tout salarié est accepté sans compromis
+    (témoin : ``test_a_move_emptying_a_day_of_employees_is_accepted_and_named``)."""
+    result = _run(_salarie_move_scene("OFF", thursday_emptied=True))
+    assert result["valid"] is True, result["violations"]
+    assert _implicit_compromises(result) == [], result["compromises"]

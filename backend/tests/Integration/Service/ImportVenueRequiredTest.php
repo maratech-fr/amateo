@@ -437,7 +437,7 @@ final class ImportVenueRequiredTest extends WebTestCase
         $builder = self::getContainer()->get(MatchPlacementPayloadBuilder::class);
         self::assertInstanceOf(MatchPlacementPayloadBuilder::class, $builder);
         $built = $builder->build($club, $seasonId)['payload'];
-        self::assertSame('1.10', $built['version'] ?? null, 'le contrat engine (1.10 depuis le plafond de séances par jour)');
+        self::assertSame('1.11', $built['version'] ?? null, 'le contrat engine (1.11 depuis les règles du club à trois états)');
 
         $row = null;
         foreach ($built['matches'] as $candidate) {
