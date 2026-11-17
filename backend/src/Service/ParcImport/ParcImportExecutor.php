@@ -613,9 +613,8 @@ final class ParcImportExecutor
         foreach ($this->lines($derived, 'reservations') as $i => $entry) {
             $decision = $index['reservations'][$i] ?? null;
             if (null === $decision || !$decision['coche']) {
-                // Une case du parc déjà réservée à l'identique (réimport) reste une case de l'équipe : elle
-                // compte pour le plafond de séances par jour, sans rien écrire.
-                $this->noteAlreadyReservedCase($entry);
+                // Une ligne décochée ne compte pas pour le plafond de séances par jour, même si sa réservation
+                // existe déjà à l'identique : seules les lignes cochées le relèvent.
                 ++$recap['ignores'];
 
                 continue;
@@ -692,35 +691,6 @@ final class ParcImportExecutor
     }
 
     // ───────────────────────── Plafond de séances par jour ─────────────────────────
-
-    /** Une ligne de réservation non cochée dont la réservation existe déjà à l'identique : sa case compte. */
-    private function noteAlreadyReservedCase(mixed $entry): void
-    {
-        if (!\is_array($entry)) {
-            return;
-        }
-        $teamId = $this->teamIdForName($this->stringField($entry, 'equipe'));
-        $venueId = $this->venueIdForName($this->stringField($entry, 'gymnase'));
-        $day = $this->intCorrectionOr([], 'jour', $entry, 'jour');
-        $start = $this->timeCorrectionOr([], 'debut', $entry, 'debut');
-        // Retours SÉPARÉS : un `||` serait réécrit par Rector en in_array, perdant le narrowing non-null.
-        if (null === $teamId) {
-            return;
-        }
-        if (null === $venueId) {
-            return;
-        }
-        if (null === $day) {
-            return;
-        }
-        if (null === $start) {
-            return;
-        }
-        if (!$this->reservationExists($teamId, $venueId, $day, $start)) {
-            return;
-        }
-        $this->noteDailyCase($teamId, $day, $start, $this->intCorrectionOr([], 'duree', $entry, 'duree') ?? self::DEFAULT_RESERVATION_DURATION);
-    }
 
     private function noteDailyCase(string $teamId, int $day, string $startHhmm, int $duration): void
     {
