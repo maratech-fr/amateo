@@ -291,8 +291,9 @@ final class SeasonWorkLoopContext extends BaseContext
 
     /**
      * Dans la version régénérée (la nouvelle version chargée), la séance de SF1 que tient sa réservation ; vers une case
-     * vide de la grille de saison, un jour où SF1 ne s'entraîne pas, sans réservation, où l'ordre des âges tient (le geste
-     * ne doit pouvoir tomber que sur la réservation).
+     * vide de la grille de saison, le jour de son autre séance à une autre heure (SF1 a droit à 2 séances par jour depuis
+     * le début du scénario, et ce geste-là y est accepté), le gymnase de l'autre séance d'abord (aucun trajet), sans
+     * réservation, où l'ordre des âges tient : sans la réservation, le geste passerait.
      */
     #[When('j\'essaie de déplacer la séance réservée de SF1 vers une case libre')]
     public function jEssaieDeDeplacerLaSeanceReserveeDeSf1(): void
@@ -320,7 +321,8 @@ final class SeasonWorkLoopContext extends BaseContext
                 . ' WHERE vts.club_id=\'%3$s\' AND vts.schedule_plan_id IS NULL'
                 . ' AND NOT EXISTS (SELECT 1 FROM schedule_slot_template s WHERE s.schedule_id=\'%1$s\''
                 . ' AND s.venue_id=vts.venue_id AND s.day_of_week=vts.day_of_week AND s.start_time=vts.start_time)'
-                . ' AND NOT EXISTS (SELECT 1 FROM schedule_slot_template s WHERE s.schedule_id=\'%1$s\' AND s.team_id=\'%2$s\' AND s.day_of_week=vts.day_of_week)'
+                . ' AND EXISTS (SELECT 1 FROM schedule_slot_template o WHERE o.schedule_id=\'%1$s\' AND o.team_id=\'%2$s\''
+                . ' AND o.id <> \'%4$s\' AND o.day_of_week=vts.day_of_week AND o.day_of_week <> %5$d AND o.start_time <> vts.start_time)'
                 . ' AND NOT EXISTS (SELECT 1 FROM reservation r WHERE r.club_id=\'%3$s\' AND r.schedule_plan_id IS NULL'
                 . ' AND r.venue_id=vts.venue_id AND r.day_of_week=vts.day_of_week AND r.start_time=vts.start_time)'
                 . ' AND NOT EXISTS (SELECT 1 FROM schedule_slot_template s'
@@ -330,16 +332,19 @@ final class SeasonWorkLoopContext extends BaseContext
                 . ' AND s.venue_id=vts.venue_id AND s.day_of_week=vts.day_of_week'
                 . ' AND c.age_min IS NOT NULL AND mc.age_min IS NOT NULL'
                 . ' AND ((c.age_min < mc.age_min AND s.start_time > vts.start_time) OR (c.age_min > mc.age_min AND s.start_time < vts.start_time)))'
-                . ' ORDER BY vts.start_time DESC, vts.day_of_week, vts.venue_id LIMIT 1',
+                . ' ORDER BY (vts.venue_id = (SELECT o.venue_id FROM schedule_slot_template o WHERE o.schedule_id=\'%1$s\' AND o.team_id=\'%2$s\''
+                . ' AND o.id <> \'%4$s\' AND o.day_of_week=vts.day_of_week LIMIT 1)) DESC, vts.start_time DESC, vts.venue_id LIMIT 1',
                 $this->regeneratedId,
                 $this->smallClubTeamIds['SF1'],
                 $this->smallClubId,
+                $this->sf1HeldSlotId,
+                $this->sf1HeldDay,
             ),
             admin: true,
         );
         $parts = '' === $row ? [] : explode('|', $row);
         if (3 !== \count($parts)) {
-            throw new RuntimeException('décor : aucune case vide un jour où SF1 ne s\'entraîne pas dans la version régénérée');
+            throw new RuntimeException('décor : aucune case vide le jour de l\'autre séance de SF1 dans la version régénérée');
         }
 
         $response = $this->apiPost(\sprintf('schedule-slots/%s/move', $this->sf1HeldSlotId), [
