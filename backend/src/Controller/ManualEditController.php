@@ -17,6 +17,7 @@ use App\Exception\EvictTargetMismatchException;
 use App\Exception\MutualizationRefusedException;
 use App\Exception\ScheduleGenerationInProgressException;
 use App\Exception\SlotUnavailableException;
+use App\Exception\SourceReservedException;
 use App\Exception\SwapCrossScheduleException;
 use App\Exception\SwapWithSelfException;
 use App\Exception\TeamAlreadyAtCaseException;
@@ -205,6 +206,10 @@ final class ManualEditController extends AbstractController implements SeasonSco
             // Aucune fenêtre de gymnase à la destination (cible inexistante ou jour fermé) : le
             // créneau n'existe pas, rien à faire juger, rien écrit. Miroir exact de placeSlot.
             return $this->json(['code' => 'slot_unavailable', 'error' => 'Aucun créneau de gymnase n\'est ouvert à cet horaire.'], Response::HTTP_UNPROCESSABLE_ENTITY);
+        } catch (SourceReservedException $e) {
+            // La séance est tenue par une réservation du plan : elle ne se déplace pas d'ici, rien n'est
+            // écrit, le moteur n'est pas appelé. Le message dit où retirer la réservation.
+            return $this->json(['code' => 'source_reserved', 'error' => $e->getMessage()], Response::HTTP_UNPROCESSABLE_ENTITY);
         } catch (TeamAlreadyAtCaseException $e) {
             // Règle fondateur : l'équipe siège déjà à la cible et aucune éviction n'a été demandée —
             // 422 NOMMÉ (message humain, noms réels), rien n'est écrit. Le moteur n'a pas été appelé.
@@ -498,6 +503,9 @@ final class ManualEditController extends AbstractController implements SeasonSco
             return $this->json(['code' => 'generation_in_progress'], Response::HTTP_CONFLICT);
         } catch (SlotUnavailableException) {
             return $this->json(['code' => 'slot_unavailable', 'error' => 'Aucune séance de bloc à déplacer à cet horaire, ou créneau cible fermé.'], Response::HTTP_UNPROCESSABLE_ENTITY);
+        } catch (SourceReservedException $e) {
+            // Un membre est tenu par une réservation du plan : aucun membre ne bouge, le moteur n'est pas appelé.
+            return $this->json(['code' => 'source_reserved', 'error' => $e->getMessage()], Response::HTTP_UNPROCESSABLE_ENTITY);
         } catch (TeamAlreadyAtCaseException $e) {
             // Règle fondateur : un membre déplacé siège déjà à la case cible par une AUTRE séance que
             // l'éviction ne libère pas — 422 NOMMÉ (consigne « déplacez-la ou retirez-la d'abord »),
@@ -632,6 +640,9 @@ final class ManualEditController extends AbstractController implements SeasonSco
         } catch (SwapWithSelfException) {
             // Même créneau, ou une équipe commune aux deux côtés : l'échange n'a pas de sens.
             return $this->json(['code' => 'swap_with_self', 'error' => 'On ne peut pas échanger un créneau avec lui-même ou avec un autre créneau de la même équipe.'], Response::HTTP_UNPROCESSABLE_ENTITY);
+        } catch (SourceReservedException $e) {
+            // La source est tenue par une réservation du plan : aucun côté ne bouge, moteur jamais appelé.
+            return $this->json(['code' => 'source_reserved', 'error' => $e->getMessage()], Response::HTTP_UNPROCESSABLE_ENTITY);
         } catch (EvictTargetLockedException) {
             // D4 : un verrou est souverain — on n'échange pas un créneau verrouillé.
             return $this->json(['code' => 'target_locked', 'error' => 'Ce créneau est verrouillé — déverrouillez-le d\'abord.'], Response::HTTP_UNPROCESSABLE_ENTITY);

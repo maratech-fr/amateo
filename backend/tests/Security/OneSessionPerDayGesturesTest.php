@@ -6,6 +6,8 @@ namespace App\Tests\Security;
 
 use App\Entity\ScheduleSlotTemplate;
 use App\Entity\SharedTrainingBlock;
+use App\Enum\LockLevel;
+use App\Enum\LockOrigin;
 use App\Service\EngineClient;
 use App\Service\RequestIdContext;
 use App\Tests\Integration\Api\RecapRefusesASecondSessionSameDayTest;
@@ -24,6 +26,11 @@ use Symfony\Component\HttpClient\Response\MockResponse;
  * impossibles. Mutualiser (fiche, glisser-déposer), déplacer, poser, déplacer un groupe et échanger le refusent avant le moteur,
  * en saison comme en période, rien n'est écrit. Un groupe mutualisé compte comme une équipe : chacun de ses membres porte la règle.
  * Les séances engagées dans le geste ne comptent pas : rester sur son jour reste légal.
+ *
+ * Même rail, NR (planning lifecycle) : une séance verrouillée que tient une réservation du plan de sa version, à sa case
+ * exacte, ne se déplace pas depuis le planning (déplacer, essai compris, échanger, déplacer un groupe) — 422
+ * `source_reserved` avant le moteur, rien n'est écrit. Le critère est la réservation du plan, jamais l'origine du verrou.
+ * Jumeau Behat : `la-boucle-de-travail-du-gestionnaire.feature`, 1er scénario (la séance réservée de SF1).
  *
  * Jumeau VOULU (point sensible manipulation de planning) : {@see RecapRefusesASecondSessionSameDayTest} (les réservations, que le
  * geste laisse passer et que le Récap arrête).
@@ -49,6 +56,30 @@ final class OneSessionPerDayGesturesTest extends WebTestCase
     {
         yield 'saison' => [false];
         yield 'période' => [true];
+    }
+
+    /**
+     * Les façons dont une séance de saison tient sa case par une réservation : verrou posé par la réservation, verrou posé à
+     * la main sur une case réservée (le critère ne lit pas l'origine), et l'essai à blanc du même déplacement.
+     *
+     * @return iterable<string, array{LockOrigin, bool}>
+     */
+    public static function reservedSeasonSessions(): iterable
+    {
+        yield 'verrou posé par la réservation' => [LockOrigin::RESERVATION, false];
+        yield 'verrou posé à la main sur la case réservée' => [LockOrigin::MANUAL, false];
+        yield 'essai à blanc' => [LockOrigin::RESERVATION, true];
+    }
+
+    /**
+     * Les réservations à la case d'une séance verrouillée qui ne la tiennent pas : le critère exige la MÊME équipe.
+     *
+     * @return iterable<string, array{?string}>
+     */
+    public static function reservationsOfSomeoneElse(): iterable
+    {
+        yield 'réservation d\'une autre équipe' => ['u18'];
+        yield 'créneau libre réservé (sans équipe)' => [null];
     }
 
     /** Déplacer sa séance du jeudi vers le mardi où elle s'entraîne déjà : refusé, la séance reste au jeudi. */
@@ -531,6 +562,129 @@ final class OneSessionPerDayGesturesTest extends WebTestCase
         self::assertResponseStatusCodeSame(200);
     }
 
+    /**
+     * NR (planning lifecycle) : une séance verrouillée que tient une réservation du socle à sa case ne se déplace pas depuis
+     * le planning — 422 `source_reserved`, avant le moteur, la séance reste à sa case.
+     */
+    #[DataProvider('reservedSeasonSessions')]
+    public function testMovingASessionHeldByAReservationIsRefused(LockOrigin $origin, bool $dryRun): void
+    {
+        $ctx = $this->decor(false);
+        $held = $this->lockedSession($ctx, $ctx['u15'], $ctx['armand'], self::THURSDAY, '19:00', $origin);
+        $this->reservation($ctx, $ctx['u15'], $ctx['armand'], self::THURSDAY, '19:00');
+
+        $this->post($ctx, '/api/schedule-slots/' . $held->getId() . '/move', ['dayOfWeek' => self::TUESDAY, 'venueId' => $ctx['jdr'], 'startTime' => '20:30', 'dryRun' => $dryRun]);
+
+        $this->assertSourceReserved('U15', period: false);
+        $this->assertStillOnDay($ctx, $held->getId(), self::THURSDAY);
+    }
+
+    /** TÉMOIN (Q1) : une séance NON verrouillée posée sur la case d'une réservation se déplace librement. */
+    public function testAnUnlockedSessionOnAReservedCaseMoves(): void
+    {
+        $ctx = $this->decor(false);
+        $free = $this->session($ctx, $ctx['u15'], $ctx['armand'], self::THURSDAY, '19:00');
+        $this->reservation($ctx, $ctx['u15'], $ctx['armand'], self::THURSDAY, '19:00');
+
+        $this->post($ctx, '/api/schedule-slots/' . $free->getId() . '/move', ['dayOfWeek' => self::TUESDAY, 'venueId' => $ctx['jdr'], 'startTime' => '20:30']);
+
+        self::assertResponseStatusCodeSame(200);
+    }
+
+    /** TÉMOIN : la réservation de l'équipe est sur une AUTRE case : sa séance verrouillée se déplace comme aujourd'hui. */
+    public function testALockedSessionWhoseReservationIsElsewhereMoves(): void
+    {
+        $ctx = $this->decor(false);
+        $locked = $this->lockedSession($ctx, $ctx['u15'], $ctx['armand'], self::THURSDAY, '19:00', LockOrigin::MANUAL);
+        $this->reservation($ctx, $ctx['u15'], $ctx['jdr'], self::THURSDAY, '20:30');
+
+        $this->post($ctx, '/api/schedule-slots/' . $locked->getId() . '/move', ['dayOfWeek' => self::TUESDAY, 'venueId' => $ctx['jdr'], 'startTime' => '20:30']);
+
+        self::assertResponseStatusCodeSame(200);
+    }
+
+    /**
+     * TÉMOIN : la case de la séance verrouillée est réservée, mais pas pour son équipe (autre équipe, créneau libre) :
+     * aucune réservation ne la tient, elle se déplace comme aujourd'hui.
+     */
+    #[DataProvider('reservationsOfSomeoneElse')]
+    public function testALockedSessionOnACaseReservedForSomeoneElseMoves(?string $holder): void
+    {
+        $ctx = $this->decor(false);
+        $locked = $this->lockedSession($ctx, $ctx['u15'], $ctx['armand'], self::THURSDAY, '19:00', LockOrigin::MANUAL);
+        $this->reservation($ctx, null === $holder ? null : $ctx[$holder], $ctx['armand'], self::THURSDAY, '19:00');
+
+        $this->post($ctx, '/api/schedule-slots/' . $locked->getId() . '/move', ['dayOfWeek' => self::TUESDAY, 'venueId' => $ctx['jdr'], 'startTime' => '20:30']);
+
+        self::assertResponseStatusCodeSame(200);
+    }
+
+    /**
+     * TÉMOIN (période) : la réservation n'existe qu'au socle, pas dans le plan de la période. La séance de période porte un
+     * verrou d'origine RÉSERVATION (origine fausse, enregistrée à tort) : le critère lit le plan, pas l'origine — accepté.
+     */
+    public function testInAPeriodASocleOnlyReservationDoesNotHoldTheSession(): void
+    {
+        $ctx = $this->decor(true);
+        $held = $this->lockedSession($ctx, $ctx['u15'], $ctx['armand'], self::THURSDAY, '19:00', LockOrigin::RESERVATION);
+        $this->reservation([...$ctx, 'planId' => null], $ctx['u15'], $ctx['armand'], self::THURSDAY, '19:00');
+
+        $this->post($ctx, '/api/schedule-slots/' . $held->getId() . '/move', ['dayOfWeek' => self::TUESDAY, 'venueId' => $ctx['jdr'], 'startTime' => '20:30']);
+
+        self::assertResponseStatusCodeSame(200);
+    }
+
+    /** Période : la réservation du plan de la période tient la séance — refusé, et la consigne parle de la période. */
+    public function testInAPeriodTheReservationOfThePeriodPlanHoldsTheSession(): void
+    {
+        $ctx = $this->decor(true);
+        $held = $this->lockedSession($ctx, $ctx['u15'], $ctx['armand'], self::THURSDAY, '19:00', LockOrigin::RESERVATION);
+        $this->reservation($ctx, $ctx['u15'], $ctx['armand'], self::THURSDAY, '19:00');
+
+        $this->post($ctx, '/api/schedule-slots/' . $held->getId() . '/move', ['dayOfWeek' => self::TUESDAY, 'venueId' => $ctx['jdr'], 'startTime' => '20:30']);
+
+        $this->assertSourceReserved('U15', period: true);
+        $this->assertStillOnDay($ctx, $held->getId(), self::THURSDAY);
+    }
+
+    /** Échanger une séance tenue par une réservation : refusé `source_reserved`, aucun des deux côtés ne bouge. */
+    public function testSwappingASessionHeldByAReservationIsRefused(): void
+    {
+        $ctx = $this->decor(false);
+        $held = $this->lockedSession($ctx, $ctx['u15'], $ctx['armand'], self::THURSDAY, '19:00', LockOrigin::RESERVATION);
+        $this->reservation($ctx, $ctx['u15'], $ctx['armand'], self::THURSDAY, '19:00');
+        $other = $this->session($ctx, $ctx['u18'], $ctx['jdr'], self::TUESDAY, '20:30');
+
+        $this->post($ctx, '/api/schedule-slots/swap', ['slotId' => $held->getId(), 'otherSlotId' => $other->getId()]);
+
+        $this->assertSourceReserved('U15', period: false);
+        $this->assertStillOnDay($ctx, $held->getId(), self::THURSDAY);
+        $this->assertStillOnDay($ctx, $other->getId(), self::TUESDAY);
+    }
+
+    /** Q2 : déplacer un groupe dont UN membre tient la case par une réservation : refusé `source_reserved`, aucun membre ne bouge. */
+    public function testMovingAGroupWhoseMemberIsHeldByAReservationIsRefused(): void
+    {
+        $ctx = $this->decor(false);
+        $block = $this->group($ctx, [$ctx['u15'], $ctx['u18']]);
+        $u15 = $this->lockedSession($ctx, $ctx['u15'], $ctx['armand'], self::THURSDAY, '19:00', LockOrigin::RESERVATION, $block);
+        $u18 = $this->session($ctx, $ctx['u18'], $ctx['armand'], self::THURSDAY, '19:00', blockId: $block);
+        $this->reservation($ctx, $ctx['u15'], $ctx['armand'], self::THURSDAY, '19:00');
+
+        $this->post($ctx, '/api/schedule-slots/move-group', [
+            'scheduleId' => $ctx['scheduleId'],
+            'blockId' => $block,
+            'source' => ['venueId' => $ctx['armand'], 'dayOfWeek' => self::THURSDAY, 'startTime' => '19:00'],
+            'target' => ['venueId' => $ctx['jdr'], 'dayOfWeek' => self::TUESDAY, 'startTime' => '20:30'],
+        ]);
+
+        self::assertResponseStatusCodeSame(422);
+        self::assertSame('source_reserved', $this->body()['code'] ?? null);
+        self::assertSame(0, $this->engineCalls, 'refusé avant le moteur');
+        $this->assertStillOnDay($ctx, $u15->getId(), self::THURSDAY);
+        $this->assertStillOnDay($ctx, $u18->getId(), self::THURSDAY);
+    }
+
     protected function setUp(): void
     {
         $this->client = self::createClient();
@@ -574,6 +728,30 @@ final class OneSessionPerDayGesturesTest extends WebTestCase
     {
         self::assertResponseStatusCodeSame(422);
         self::assertSame($sentence, $this->body()['error'] ?? null);
+        self::assertSame(0, $this->engineCalls, 'refusé avant le moteur');
+    }
+
+    /**
+     * Une séance verrouillée HARD dont l'origine est posée par le test (le décor force MANUAL).
+     *
+     * @param Decor $ctx
+     */
+    private function lockedSession(array $ctx, string $teamId, string $venueId, int $day, string $start, LockOrigin $origin, ?string $blockId = null): ScheduleSlotTemplate
+    {
+        $slot = $this->session($ctx, $teamId, $venueId, $day, $start, LockLevel::HARD, $blockId)->setLockOrigin($origin);
+        $this->em->flush();
+
+        return $slot;
+    }
+
+    /** Le refus `source_reserved` nomme l'équipe, sa consigne dit la période seulement en période, et le moteur n'a jamais été consulté. */
+    private function assertSourceReserved(string $team, bool $period): void
+    {
+        self::assertResponseStatusCodeSame(422);
+        self::assertSame('source_reserved', $this->body()['code'] ?? null);
+        $error = (string) ($this->body()['error'] ?? '');
+        self::assertStringStartsWith($team . ' ', $error);
+        self::assertSame($period, str_contains($error, 'période'), 'la consigne dit où retirer la réservation : la période seulement en période');
         self::assertSame(0, $this->engineCalls, 'refusé avant le moteur');
     }
 
