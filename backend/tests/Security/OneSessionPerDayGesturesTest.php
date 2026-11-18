@@ -71,6 +71,17 @@ final class OneSessionPerDayGesturesTest extends WebTestCase
         yield 'essai à blanc' => [LockOrigin::RESERVATION, true];
     }
 
+    /**
+     * Les réservations à la case d'une séance verrouillée qui ne la tiennent pas : le critère exige la MÊME équipe.
+     *
+     * @return iterable<string, array{?string}>
+     */
+    public static function reservationsOfSomeoneElse(): iterable
+    {
+        yield 'réservation d\'une autre équipe' => ['u18'];
+        yield 'créneau libre réservé (sans équipe)' => [null];
+    }
+
     /** Déplacer sa séance du jeudi vers le mardi où elle s'entraîne déjà : refusé, la séance reste au jeudi. */
     #[DataProvider('layers')]
     public function testMovingOntoADayAlreadyTrainedIsRefused(bool $period): void
@@ -586,6 +597,22 @@ final class OneSessionPerDayGesturesTest extends WebTestCase
         $ctx = $this->decor(false);
         $locked = $this->lockedSession($ctx, $ctx['u15'], $ctx['armand'], self::THURSDAY, '19:00', LockOrigin::MANUAL);
         $this->reservation($ctx, $ctx['u15'], $ctx['jdr'], self::THURSDAY, '20:30');
+
+        $this->post($ctx, '/api/schedule-slots/' . $locked->getId() . '/move', ['dayOfWeek' => self::TUESDAY, 'venueId' => $ctx['jdr'], 'startTime' => '20:30']);
+
+        self::assertResponseStatusCodeSame(200);
+    }
+
+    /**
+     * TÉMOIN : la case de la séance verrouillée est réservée, mais pas pour son équipe (autre équipe, créneau libre) :
+     * aucune réservation ne la tient, elle se déplace comme aujourd'hui.
+     */
+    #[DataProvider('reservationsOfSomeoneElse')]
+    public function testALockedSessionOnACaseReservedForSomeoneElseMoves(?string $holder): void
+    {
+        $ctx = $this->decor(false);
+        $locked = $this->lockedSession($ctx, $ctx['u15'], $ctx['armand'], self::THURSDAY, '19:00', LockOrigin::MANUAL);
+        $this->reservation($ctx, null === $holder ? null : $ctx[$holder], $ctx['armand'], self::THURSDAY, '19:00');
 
         $this->post($ctx, '/api/schedule-slots/' . $locked->getId() . '/move', ['dayOfWeek' => self::TUESDAY, 'venueId' => $ctx['jdr'], 'startTime' => '20:30']);
 

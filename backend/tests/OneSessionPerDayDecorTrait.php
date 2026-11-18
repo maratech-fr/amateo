@@ -96,9 +96,11 @@ trait OneSessionPerDayDecorTrait
     }
 
     /**
+     * Une réservation de gymnase du plan du décor ; `$teamId` null = créneau libre réservé (sans équipe).
+     *
      * @param Decor $ctx
      */
-    private function reservation(array $ctx, string $teamId, string $venueId, int $day, string $start): string
+    private function reservation(array $ctx, ?string $teamId, string $venueId, int $day, string $start): string
     {
         $reservation = (new Reservation)->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])->setSchedulePlanId($ctx['planId'])
             ->setTeamId($teamId)->setVenueId($venueId)->setDayOfWeek($day)
