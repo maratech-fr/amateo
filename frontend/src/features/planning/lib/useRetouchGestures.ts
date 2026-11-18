@@ -137,11 +137,9 @@ export function useRetouchGestures(
   const [mutualizeAtCaseDialog, setMutualizeAtCaseDialog] = useState<{ sourceSlotId: string; targetSlot: Slot; sourceName: string; occupantName: string; teamCount: number } | null>(null);
   const [mutualizeAtCaseError, setMutualizeAtCaseError] = useState<string | null>(null);
   // P4-474 — le dernier refus CODÉ d'un déplacement, d'une éviction ou d'un échange (motif serveur
-  // verbatim), lu dans la fiche de son créneau source, plus en toast. `keepsTargeting` : le refus
-  // tient à la cible (le mode reste armé) ; faux quand la source elle-même ne bouge pas d'ici
-  // (`source_reserved` : le mode se désarme). Effacé au geste suivant, au changement de créneau ou de
-  // version, et à Échap.
-  const [moveRefusal, setMoveRefusal] = useState<{ slotId: string; message: string; keepsTargeting: boolean } | null>(null);
+  // verbatim), lu dans la fiche de son créneau source, plus en toast. Effacé au geste suivant, au
+  // changement de créneau ou de version, et à Échap.
+  const [moveRefusal, setMoveRefusal] = useState<{ slotId: string; message: string } | null>(null);
 
   const moveMutation = useMoveSlot();
   const moveGroupMutation = useMoveGroup();
@@ -160,7 +158,7 @@ export function useRetouchGestures(
   const moveReset = moveMutation.reset;
   // P4-474 — un refus codé vit dans la fiche de SON créneau source seulement.
   const refusedFeedback: MoveFeedback | null =
-    null !== moveRefusal && moveRefusal.slotId === selectedSlotId ? { status: "refused", message: moveRefusal.message, keepsTargeting: moveRefusal.keepsTargeting } : null;
+    null !== moveRefusal && moveRefusal.slotId === selectedSlotId ? { status: "refused", message: moveRefusal.message } : null;
   const moveState: MoveFeedback = null !== refusedFeedback
     ? refusedFeedback
     : moveMutation.isPending
@@ -341,11 +339,10 @@ export function useRetouchGestures(
       setTargetMode(null);
       return;
     }
-    const keepsTargeting = !(error instanceof SlotEditError && "source_reserved" === error.code);
-    if (!keepsTargeting) {
+    if (error instanceof SlotEditError && "source_reserved" === error.code) {
       setTargetMode(null);
     }
-    setMoveRefusal({ slotId: sourceSlotId, message: error.message, keepsTargeting });
+    setMoveRefusal({ slotId: sourceSlotId, message: error.message });
   };
 
   // Déplacer un créneau (éventuellement en évinçant l'occupant de la cible) sous le verdict

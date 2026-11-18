@@ -78,7 +78,7 @@ export const PLANNING_TEXTS = {
   // « Régénérer » depuis une version de départ modifiée à la main : on prévient avant de lancer.
   regenerateEditedTitle: "Régénérer un planning modifié à la main ?",
   regenerateEditedDescription: (label: string): string =>
-    `La version ${label} a été modifiée à la main depuis sa génération. La régénération calcule un nouveau planning : seules les séances verrouillées et les réservations gardent leur place. Une séance déplacée ou posée sans verrou peut changer de place, et une séance retirée peut revenir. Pour garder une séance là où vous l'avez mise, annulez, puis verrouillez-la depuis sa fiche. La version ${label} reste dans la liste des versions.`,
+    `Pour garder une séance là où vous l'avez mise, annulez, puis verrouillez-la depuis sa fiche : seules les séances verrouillées et les réservations gardent leur place. La version ${label} a été modifiée à la main depuis sa génération ; une séance déplacée ou posée sans verrou peut changer de place, et une séance retirée peut revenir. La version ${label} reste dans la liste des versions.`,
   regenerateEditedConfirm: "Régénérer quand même",
   regenerateLoadedEditedNote: (label: string): string => `La version ${label} a été modifiée à la main : seules ses séances verrouillées et les réservations gardent leur place.`,
   // Dialogues Rouvrir / Déverrouiller / Valider / Charger de PlanningPage.
@@ -118,9 +118,9 @@ export const PLANNING_TEXTS = {
   readOnlyPlanningSlot: "Planning validé (lecture seule). Rouvrez-le pour modifier ce créneau.",
   escKey: "Échap",
   moveRejected: "Déplacement refusé — le créneau n’a pas bougé.",
-  moveRefusedKeepTargeting: "Choisissez une autre case, ou appuyez sur Échap pour annuler.",
-  reservedSessionHint:
-    "Ce créneau est réservé auprès du gymnase. Tant que sa réservation existe dans ce planning, il ne se déplace pas d'ici : retirez-la d'abord (Wizard, étape Contraintes, onglet Réserver, ou Récapitulatif).",
+  // Même chemin que le refus serveur `source_reserved` : le Wizard de la période pour une version de période.
+  reservedSessionHint: (periodPlan: boolean): string =>
+    `Ce créneau est réservé auprès du gymnase. Tant que sa réservation existe dans ce planning, il ne se déplace pas d'ici : retirez-la d'abord (${periodPlan ? "Wizard de la période" : "Wizard"}, étape Contraintes, onglet Réserver, ou Récapitulatif).`,
   moveBlocked: "Une génération est en cours pour ce club — réessayez le déplacement une fois qu’elle est terminée.",
   moveInterrupted: "La vérification a été interrompue avant la réponse — rien n’a été modifié, réessayez.",
   moveError: "Le système n’a pas répondu — rien n’a été modifié, réessayez.",

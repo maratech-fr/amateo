@@ -2,7 +2,7 @@ import { AlertTriangle, ChevronDown, ChevronRight, Lock, LockOpen, Move, Trash2,
 
 import { useCanManage } from "@/shared/session/queries";
 import { Spinner } from "@/shared/components/ui/spinner";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { StatusPill } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
@@ -39,9 +39,8 @@ export type MoveFeedback =
   // ENG-51 : le solveur n'a PAS tranché dans le temps imparti (ni accepté ni refusé). Ce n'est pas
   // un refus (aucune règle nommée) : rien n'a bougé, on invite à réessayer — bandeau NEUTRE.
   | { status: "indeterminate" }
-  // P4-474 : un refus CODÉ du serveur (motif verbatim). `keepsTargeting` : le mode cible reste armé
-  // (le refus tient à la case visée) ; faux quand la séance elle-même ne bouge pas d'ici.
-  | { status: "refused"; message: string; keepsTargeting: boolean }
+  // P4-474 : un refus CODÉ du serveur (motif verbatim).
+  | { status: "refused"; message: string }
   | { status: "error" };
 
 interface SlotDetailProps {
@@ -63,6 +62,8 @@ interface SlotDetailProps {
   busy: boolean;
   /** F2b : le retour du dernier déplacement (verdict moteur). Défaut = idle. */
   moveState?: MoveFeedback;
+  /** La version affichée est une version de période : l'aide d'une réservation renvoie au Wizard de la période. */
+  periodPlan?: boolean;
   /** VALIDATED schedule → the slot is read-only (no move/lock). */
   readOnly?: boolean;
   /** Version non chargée : les gestes restent visibles, grisés, avec ce motif. Null = gestes offerts. */
@@ -103,11 +104,11 @@ interface SlotDetailProps {
  * bien verrouillé, on ne sait simplement pas d'où vient le verrou : c'est cette nuance qui
  * décide si le gestionnaire ose y toucher. Jamais de code d'enum à l'écran.
  */
-const LOCK_ORIGIN: Record<LockOrigin, { label: string; hint: string }> = {
-  RESERVATION: { label: "Réservation gymnase", hint: PLANNING_TEXTS.reservedSessionHint },
+const lockOrigins = (periodPlan: boolean): Record<LockOrigin, { label: string; hint: string }> => ({
+  RESERVATION: { label: "Réservation gymnase", hint: PLANNING_TEXTS.reservedSessionHint(periodPlan) },
   MANUAL: { label: "Épinglé manuellement", hint: "Vous (ou un gestionnaire) avez fixé ce créneau à la main. Vous pouvez le retirer." },
   UNKNOWN: { label: "Verrouillé — origine inconnue", hint: "Ce créneau est bien verrouillé, mais on ne sait pas pourquoi. Vérifiez avant d'y toucher." },
-};
+});
 
 function ConstraintList({ label, items, describe }: { label: string; items: Constraint[]; describe: (c: Constraint) => string | null }) {
   return (
@@ -148,7 +149,7 @@ function ConstraintList({ label, items, describe }: { label: string; items: Cons
 
 const noName = (): string | undefined => undefined;
 
-export function SlotDetail({ cell, slot, venues, categoryLabel, constraints, tagTeamIds = NO_TAGS, teamName = noName, coachName = noName, teamMainCoaches, busy, moveState = { status: "idle" }, readOnly = false, gesturesBlockedReason = null, armed = false, groupSession = null, inBlock = false, blockLabel = null, viaMutualisation = false, removePending = false, onClose, onToggleLock, onArmMove, onRemove, onMutualize }: SlotDetailProps) {
+export function SlotDetail({ cell, slot, venues, categoryLabel, constraints, tagTeamIds = NO_TAGS, teamName = noName, coachName = noName, teamMainCoaches, busy, moveState = { status: "idle" }, periodPlan = false, readOnly = false, gesturesBlockedReason = null, armed = false, groupSession = null, inBlock = false, blockLabel = null, viaMutualisation = false, removePending = false, onClose, onToggleLock, onArmMove, onRemove, onMutualize }: SlotDetailProps) {
   const gesturesBlocked = null !== gesturesBlockedReason;
   // Un Membre lit la séance (équipe, gymnase, coach, contraintes) : aucun geste de retouche,
   // quoi que l'écran passe en `readOnly` (la session suffit).
@@ -158,7 +159,21 @@ export function SlotDetail({ cell, slot, venues, categoryLabel, constraints, tag
   // Le compte reste visible replié pour savoir s'il y a quelque chose à ouvrir.
   const [constraintsOpen, setConstraintsOpen] = useState(false);
 
-  const origin = null !== slot.lockOrigin ? LOCK_ORIGIN[slot.lockOrigin] : null;
+  const origin = null !== slot.lockOrigin ? lockOrigins(periodPlan)[slot.lockOrigin] : null;
+
+  // Un refus (verdict du système ou refus codé du serveur) s'affiche sous les gestes : dans une fiche
+  // courte qui défile (étape Génération du Wizard), il tomberait hors de vue. On l'amène à l'écran à
+  // son apparition. La clé change à chaque nouveau refus (un geste repasse par « pending »), pas à
+  // chaque rendu. `scrollIntoView`/`matchMedia` absents en jsdom : appels gardés.
+  const refusalRef = useRef<HTMLDivElement>(null);
+  const refusalKey = "refused" === moveState.status ? moveState.message : "rejected" === moveState.status ? moveState.violations : null;
+  useEffect(() => {
+    if (null === refusalKey) {
+      return;
+    }
+    const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
+    refusalRef.current?.scrollIntoView?.({ block: "nearest", behavior: reduceMotion ? "auto" : "smooth" });
+  }, [refusalKey]);
   const applicable = applicableConstraints(slot, constraints, tagTeamIds, teamMainCoaches);
   // Ce que chaque règle FAIT se dérive de sa config ; le gymnase d'une règle FACILITY se nomme
   // depuis les gymnases connus du panneau (introuvable → on retombe sur le nom, pas d'invention).
@@ -353,31 +368,33 @@ export function SlotDetail({ cell, slot, venues, categoryLabel, constraints, tag
           {/* Le déplacement passe sous le verdict du moteur (F2b) : ici le résultat du dernier
               essai. On ne le montre que hors « pending » (le bouton porte déjà l'attente). */}
           {"rejected" === moveState.status ? (
-            <NoticeBanner tone="destructive" role="alert">
-              <div className="flex items-center gap-2 font-medium text-destructive">
-                <AlertTriangle className="size-4" aria-hidden="true" />
-                <span>{PLANNING_TEXTS.moveRejected}</span>
-              </div>
-              <ul className="flex list-disc flex-col gap-1 pl-6 text-muted-foreground">
-                {moveState.violations.map((v, i) => (
-                  <li key={`${v.rule}-${i}`}>{v.message}</li>
-                ))}
-              </ul>
-              {armed ? <p className="text-muted-foreground">{PLANNING_TEXTS.moveRefusedKeepTargeting}</p> : null}
-            </NoticeBanner>
+            <div ref={refusalRef}>
+              <NoticeBanner tone="destructive" role="alert">
+                <div className="flex items-center gap-2 font-medium text-destructive">
+                  <AlertTriangle className="size-4" aria-hidden="true" />
+                  <span>{PLANNING_TEXTS.moveRejected}</span>
+                </div>
+                <ul className="flex list-disc flex-col gap-1 pl-6 text-muted-foreground">
+                  {moveState.violations.map((v, i) => (
+                    <li key={`${v.rule}-${i}`}>{v.message}</li>
+                  ))}
+                </ul>
+              </NoticeBanner>
+            </div>
           ) : null}
 
-          {/* P4-474 — un refus codé du serveur se lit ICI (plus en toast) : son motif verbatim, puis,
-              si le mode cible reste armé, la consigne pour choisir une autre case. */}
+          {/* P4-474 — un refus codé du serveur se lit ICI (plus en toast) : son motif verbatim. Mode
+              cible encore armé : la consigne « Échap pour annuler » est déjà dans le bandeau au-dessus. */}
           {"refused" === moveState.status ? (
-            <NoticeBanner tone="destructive" role="alert">
-              <div className="flex items-center gap-2 font-medium text-destructive">
-                <AlertTriangle className="size-4" aria-hidden="true" />
-                <span>{PLANNING_TEXTS.moveRejected}</span>
-              </div>
-              <p className="text-muted-foreground">{moveState.message}</p>
-              {moveState.keepsTargeting && armed ? <p className="text-muted-foreground">{PLANNING_TEXTS.moveRefusedKeepTargeting}</p> : null}
-            </NoticeBanner>
+            <div ref={refusalRef}>
+              <NoticeBanner tone="destructive" role="alert">
+                <div className="flex items-center gap-2 font-medium text-destructive">
+                  <AlertTriangle className="size-4" aria-hidden="true" />
+                  <span>{PLANNING_TEXTS.moveRejected}</span>
+                </div>
+                <p className="text-muted-foreground">{moveState.message}</p>
+              </NoticeBanner>
+            </div>
           ) : null}
 
           {"blocked" === moveState.status ? (

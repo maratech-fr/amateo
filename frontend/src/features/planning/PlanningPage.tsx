@@ -303,7 +303,7 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
   // V1 — « Régénérer » un overlay repart TOUJOURS des données EN COURS (la version SOURCE des
   // verrous). Quand on régénère en regardant une AUTRE version que la source, on confirme (patron
   // « Charger ») : les champs figent le libellé des deux versions et le nombre de verrous de la source.
-  const [overlayRegenConfirm, setOverlayRegenConfirm] = useState<{ planId: string; viewedLabel: string; sourceLabel: string; lockCount: number; sourceEdited: boolean } | null>(null);
+  const [overlayRegenConfirm, setOverlayRegenConfirm] = useState<{ planId: string; viewedLabel: string; sourceLabel: string; sourceShortLabel: string; lockCount: number; sourceEdited: boolean } | null>(null);
   // Lot 9 — la modale de mutualisation (geste F3) et le message d'un refus serveur (422/409/404)
   // affiché DANS la modale (jamais toasté — FRT-38 : le feedback vit une fois, côté hook/modale).
   const mutualizeMutation = useMutualizeSlot();
@@ -1051,6 +1051,7 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
                   planId: overlayPlanId,
                   viewedLabel: labels.get(selectedSchedule.id) ?? selectedSchedule.name,
                   sourceLabel: labels.get(source.id) ?? source.name,
+                  sourceShortLabel: versionLabelOf(schedules, source.id) ?? source.name,
                   lockCount: source.hardLockCount ?? 0,
                   sourceEdited: departureEdited,
                 });
@@ -1465,6 +1466,7 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
                           moveState={"blocked" === removeState.status ? removeState : null !== selectedSlotBlock ? moveGroupState : moveState}
                           // Un pseudo-créneau de réservation (planning FAILED) n'existe pas
                           // côté serveur : déplacer/verrouiller le viserait dans le vide.
+                          periodPlan={null !== selectedSchedule && !isSeasonPlanType(selectedSchedule.planType)}
                           readOnly={gesturesReadOnly || isFailed}
                           gesturesBlockedReason={gesturesBlockedReason}
                           // P2-30 · PR-6 : ce créneau est-il la source du mode cible armé (simple ou groupe) ?
@@ -1737,7 +1739,7 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
           null === overlayRegenConfirm ? null : (
             <>
               Vous regardez la version {overlayRegenConfirm.viewedLabel}, mais les données en cours sont celles de la version {overlayRegenConfirm.sourceLabel}. La régénération repartira de la version {overlayRegenConfirm.sourceLabel} ({overlayRegenConfirm.lockCount} verrou{overlayRegenConfirm.lockCount > 1 ? "s" : ""}). Pour repartir de la version {overlayRegenConfirm.viewedLabel}, chargez d'abord ses données avec «&nbsp;Charger&nbsp;».
-              {overlayRegenConfirm.sourceEdited ? <p className="mt-2">{PLANNING_TEXTS.regenerateLoadedEditedNote(overlayRegenConfirm.sourceLabel)}</p> : null}
+              {overlayRegenConfirm.sourceEdited ? <p className="mt-2">{PLANNING_TEXTS.regenerateLoadedEditedNote(overlayRegenConfirm.sourceShortLabel)}</p> : null}
             </>
           )
         }
