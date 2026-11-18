@@ -7,7 +7,9 @@ Fonctionnalité: La boucle de travail du gestionnaire tient à la régénératio
   ignore aussi une règle du club : le récapitulatif l'annonce, la génération ne l'applique ni ne la
   signale ; remise sur Obligatoire, l'annonce disparaît. La présence d'un salarié, elle, ne peut
   jamais être obligatoire. La nouvelle version honore le tout — ce qu'on saisit, le planning le
-  respecte, et un verrou est souverain. Sur un petit club réaliste (palier 60 s).
+  respecte, et un verrou est souverain. Une séance que tient une réservation de gymnase ne se
+  déplace pas depuis le planning : le refus dit de retirer d'abord la réservation, rien ne bouge.
+  Sur un petit club réaliste (palier 60 s).
   Après la régénération, seule une donnée qui peut déplacer une séance fait dire « périmé » au
   planning : une couleur ou un niveau que rien ne vise ne le périme pas, une séance de plus ou un
   nom le périment, et le geste inverse efface toujours le signal.
@@ -23,10 +25,13 @@ Fonctionnalité: La boucle de travail du gestionnaire tient à la régénératio
     Quand j'interdis à SM1 de s'entraîner avant 20h30
     Et je réserve un créneau libre sur une case occupée du socle
     Et je verrouille une autre séance du socle
+    Et je réserve à SF1 la case de sa séance
     Et je règle « Les jeunes avant les grands » sur Ignorée
     Alors le récapitulatif annonce cette règle comme ignorée
     Quand je régénère le planning de saison du petit club
     Alors la régénération aboutit : le verrou tient sa case, la case réservée reste vide, SM1 n'a aucune séance avant 20h30, et aucun signalement ne porte sur l'ordre des âges
+    Quand j'essaie de déplacer la séance réservée de SF1 vers une case libre
+    Alors c'est refusé : « SF1 tient ce créneau par une réservation de gymnase », et la séance n'a pas bougé
     Quand je change la couleur d'un gymnase et le niveau de l'équipe Loisir
     Alors le planning n'est pas signalé périmé
     Quand j'ajoute une séance par semaine à l'équipe Loisir

@@ -11,7 +11,7 @@ import { useToastStore } from "@/shared/stores/toastStore";
 import { renderWithProviders, visibleTextOccurrences } from "@/test/utils";
 
 import { stalenessMessage } from "./lib/staleness";
-import { createOverlayVersion, EngineTimeoutError, EngineVerificationInterruptedError, fillSchedule, GenerationInProgressError, getDiagnostics, getPlacedConflicts, getSlots, getSocleDeviation, getStructureHash, getTeams, getTrainingSlots, getVenues, listSchedules, loadLocks, lockSlot, moveSlot, MoveRejectedError, OverlaysExistError, placeSlot, removeSlot, reopenSchedule, TargetLockedError, validateSchedule } from "./api";
+import { createOverlayVersion, EngineTimeoutError, EngineVerificationInterruptedError, fillSchedule, GenerationInProgressError, getDiagnostics, getPlacedConflicts, getSlots, getSocleDeviation, getStructureHash, getTeams, getTrainingSlots, getVenues, listSchedules, loadLocks, lockSlot, moveSlot, MoveRejectedError, OverlaysExistError, placeSlot, removeSlot, reopenSchedule, SlotEditError, TargetLockedError, validateSchedule } from "./api";
 import { regenerate } from "./api";
 import type { Schedule } from "./api";
 import { PlanningPage } from "./PlanningPage";
@@ -1527,7 +1527,9 @@ describe("PlanningPage (integration)", () => {
       await vi.waitFor(() => expect(vi.mocked(placeSlot)).toHaveBeenCalledWith(SID, { teamId: "team-2", dayOfWeek: 1, startTime: "18:00", venueId: "venue-1" }, expect.any(AbortSignal)));
     });
 
-    it("cible verrouillée concurremment → 422 target_locked pendant l'essai : message propre, modale fermée, mode cible ARMÉ", async () => {
+    // Un refus lié à la CIBLE laisse le mode armé : on réessaie ailleurs sans réarmer. Où le motif se
+    // lit (fiche, toast) est une question de placement, prouvée par capture, pas ici.
+    it("cible verrouillée concurremment → 422 target_locked pendant l'essai : modale fermée, aucun move réel, mode cible ARMÉ", async () => {
       const user = userEvent.setup();
       vi.mocked(getTeams).mockResolvedValue(twoTeams);
       vi.mocked(getSlots).mockResolvedValue(twoSlots);
@@ -1538,10 +1540,49 @@ describe("PlanningPage (integration)", () => {
       await armMoveFrom(user, "U11");
       await takePlaceOnU13(user);
 
-      await vi.waitFor(() => expect(useToastStore.getState().toasts.some((t) => "error" === t.variant && /verrouill/i.test(t.message))).toBe(true));
-      // La modale s'est fermée, aucun move réel, et le mode reste armé pour réessayer ailleurs.
-      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+      await vi.waitFor(() => expect(vi.mocked(moveSlot)).toHaveBeenCalledTimes(1));
+      await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+      // Seul l'essai est parti : aucun move réel.
+      expect(vi.mocked(moveSlot)).toHaveBeenCalledTimes(1);
+      expect(vi.mocked(moveSlot).mock.calls[0][1]).toMatchObject({ dryRun: true });
       expect(screen.getByRole("button", { name: /Choisir la case cible/ })).toBeInTheDocument();
+    });
+
+    // P4-474 — ce que devient le mode « Choisir la case cible » après un refus codé d'un déplacement.
+    describe("mode cible après un refus codé", () => {
+      const moveToEmptyCase = async (user: ReturnType<typeof userEvent.setup>, refusal: Error): Promise<void> => {
+        vi.mocked(moveSlot).mockRejectedValue(refusal);
+        renderWithProviders(<PlanningPage />);
+        await armMoveFrom(user, "U11");
+        await user.click(await screen.findByRole("button", { name: /Placer ici/ }));
+        await vi.waitFor(() => expect(vi.mocked(moveSlot)).toHaveBeenCalledTimes(1));
+      };
+
+      it("refus lié à la cible (jour déjà pris) : le mode reste armé pour choisir une autre case", async () => {
+        const user = userEvent.setup();
+        await moveToEmptyCase(user, new SlotEditError("team_already_trains_that_day", "U11 s'entraîne déjà le mardi : une seule séance par jour."));
+
+        expect(screen.getByRole("button", { name: /Choisir la case cible/ })).toBeInTheDocument();
+        expect(screen.getAllByRole("button", { name: /Placer ici/ }).length).toBeGreaterThan(0);
+      });
+
+      it("séance tenue par une réservation (source_reserved) : aucune autre case n'y changera rien, le mode se désarme", async () => {
+        const user = userEvent.setup();
+        await moveToEmptyCase(user, new SlotEditError("source_reserved", "U11 tient ce créneau par une réservation de gymnase : il ne se déplace pas depuis le planning."));
+
+        await waitFor(() => expect(screen.queryByRole("button", { name: /Choisir la case cible/ })).not.toBeInTheDocument());
+        expect(screen.queryAllByRole("button", { name: /Placer ici/ })).toHaveLength(0);
+      });
+
+      it("version plus chargée (409 not_loaded_version) : le motif reste un seul toast, hors de la page, et le mode se désarme", async () => {
+        const user = userEvent.setup();
+        const motive = "Chargez cette version pour la modifier.";
+        await moveToEmptyCase(user, new SlotEditError("not_loaded_version", motive));
+
+        await waitFor(() => expect(screen.queryByRole("button", { name: /Choisir la case cible/ })).not.toBeInTheDocument());
+        expect(useToastStore.getState().toasts.filter((t) => "error" === t.variant && motive === t.message)).toHaveLength(1);
+        expect(screen.queryByText(motive)).not.toBeInTheDocument();
+      });
     });
 
     it("bandeau dérive → arme le PLACEMENT → clic case vide → placeSlot pour l'équipe", async () => {
@@ -3537,6 +3578,117 @@ describe("PlanningPage — version chargée", () => {
       await user.click(screen.getByRole("button", { name: /^Régénérer/ }));
 
       await waitFor(() => expect(vi.mocked(regenerate)).toHaveBeenCalled());
+    });
+  });
+
+  // D1 — « Régénérer » prévient avant de perdre des retouches : la version de DÉPART (saison : la chargée ;
+  // période : la source) est marquée « modifiée à la main » → un dialogue, jamais un lancement direct.
+  // Non marquée → appel direct (témoin : « sur la version chargée, pas de dialogue » ci-dessus).
+  describe("Régénérer une version de départ modifiée à la main", () => {
+    // Dans ces décors, aucun autre dialogue ne s'ouvre au clic sur « Régénérer » : le seul dialogue est l'avertissement.
+    const editedDialog = () => screen.findByRole("dialog");
+    // Le dialogue a deux boutons : « Annuler » (libellé par défaut de ConfirmDialog) et la confirmation.
+    const confirmIn = (dialog: HTMLElement): HTMLElement => {
+      const confirm = within(dialog).getAllByRole("button").find((button) => "Annuler" !== button.textContent);
+      if (undefined === confirm) {
+        throw new Error("le dialogue n'offre aucune confirmation");
+      }
+      return confirm;
+    };
+
+    beforeEach(() => {
+      vi.mocked(regenerate).mockClear();
+      vi.mocked(createOverlayVersion).mockClear();
+    });
+
+    it("saison : le dialogue s'ouvre, « Annuler » ne lance rien", async () => {
+      const user = userEvent.setup();
+      await open([older(), loaded({ manuallyEditedSinceGeneration: true })], "v2");
+
+      await user.click(screen.getByRole("button", { name: /^Régénérer/ }));
+      const dialog = await editedDialog();
+      expect(vi.mocked(regenerate)).not.toHaveBeenCalled();
+
+      await user.click(within(dialog).getByRole("button", { name: "Annuler" }));
+      await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+      expect(vi.mocked(regenerate)).not.toHaveBeenCalled();
+    });
+
+    it("saison : « Régénérer quand même » lance la régénération une fois", async () => {
+      const user = userEvent.setup();
+      await open([older(), loaded({ manuallyEditedSinceGeneration: true })], "v2");
+
+      await user.click(screen.getByRole("button", { name: /^Régénérer/ }));
+      await user.click(confirmIn(await editedDialog()));
+
+      await waitFor(() => expect(vi.mocked(regenerate)).toHaveBeenCalledTimes(1));
+      expect(vi.mocked(regenerate)).toHaveBeenCalledWith("v2");
+    });
+
+    it("saison, version en échec regardée : le marqueur lu est celui de la chargée, que le dialogue nomme", async () => {
+      const user = userEvent.setup();
+      await open([older(), loaded({ manuallyEditedSinceGeneration: true }), version("v3", "2026-03-01T00:00:00Z", { status: "FAILED", capabilities: NOT_LOADED_CAPS } as Partial<Schedule>)], "v2");
+      act(() => usePlanningStore.setState({ selectedScheduleId: "v3" }));
+
+      await user.click(await screen.findByRole("button", { name: /^Régénérer/ }));
+
+      const dialog = await editedDialog();
+      // La version nommée est la version de départ (V2, chargée), jamais la version regardée (V3, en échec).
+      expect(within(dialog).getAllByText(/\bV2\b/).length).toBeGreaterThan(0);
+      expect(within(dialog).queryByText(/\bV3\b/)).not.toBeInTheDocument();
+      expect(vi.mocked(regenerate)).not.toHaveBeenCalled();
+
+      // Confirmer lance l'appel d'aujourd'hui, depuis la version regardée (le serveur repart de la chargée).
+      await user.click(confirmIn(dialog));
+      await waitFor(() => expect(vi.mocked(regenerate)).toHaveBeenCalledTimes(1));
+      expect(vi.mocked(regenerate)).toHaveBeenCalledWith("v3");
+    });
+
+    it("saison, version en échec regardée, chargée NON marquée : appel direct, sans dialogue", async () => {
+      const user = userEvent.setup();
+      await open([older(), loaded(), version("v3", "2026-03-01T00:00:00Z", { status: "FAILED", manuallyEditedSinceGeneration: true, capabilities: NOT_LOADED_CAPS } as Partial<Schedule>)], "v2");
+      act(() => usePlanningStore.setState({ selectedScheduleId: "v3" }));
+
+      await user.click(await screen.findByRole("button", { name: /^Régénérer/ }));
+
+      await waitFor(() => expect(vi.mocked(regenerate)).toHaveBeenCalledTimes(1));
+      // Lancé depuis la version regardée (v3) : le marqueur de v3 n'a pas compté, celui de la chargée seul.
+      expect(vi.mocked(regenerate)).toHaveBeenCalledWith("v3");
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+
+    describe("période", () => {
+      const period = (id: string, createdAt: string, extra: Record<string, unknown>) => version(id, createdAt, { planType: "CLOSURE", schedulePlanId: "ete-plan", ...extra } as Partial<Schedule>);
+      const openSource = async () => {
+        vi.mocked(listSchedules).mockResolvedValue([period("p1", "2026-01-01T00:00:00Z", { isLockSource: true, manuallyEditedSinceGeneration: true, capabilities: LOADED_CAPS })]);
+        plansState.plans = [{ id: "ete-plan", type: "CLOSURE", name: "Ajustement gymnase", startDate: "2026-09-07", calendarEntryId: "e-ete", chosenScheduleId: null, teamSelectionInitialized: true }];
+        usePlanningStore.setState({ selectedScheduleId: "p1" });
+        renderWithProviders(<PlanningPage embedded scopePlanId="ete-plan" />);
+        await screen.findByText("U11");
+      };
+
+      it("source marquée : le dialogue s'ouvre, « Annuler » ne lance rien", async () => {
+        const user = userEvent.setup();
+        await openSource();
+
+        await user.click(screen.getByRole("button", { name: /^Régénérer/ }));
+        const dialog = await editedDialog();
+        await user.click(within(dialog).getByRole("button", { name: "Annuler" }));
+
+        await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+        expect(vi.mocked(createOverlayVersion)).not.toHaveBeenCalled();
+      });
+
+      it("source marquée : « Régénérer quand même » lance la régénération de la période une fois", async () => {
+        const user = userEvent.setup();
+        await openSource();
+
+        await user.click(screen.getByRole("button", { name: /^Régénérer/ }));
+        await user.click(confirmIn(await editedDialog()));
+
+        await waitFor(() => expect(vi.mocked(createOverlayVersion)).toHaveBeenCalledTimes(1));
+        expect(vi.mocked(createOverlayVersion)).toHaveBeenCalledWith("ete-plan");
+      });
     });
   });
 
