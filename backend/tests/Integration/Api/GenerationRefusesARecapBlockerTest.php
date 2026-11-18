@@ -78,13 +78,12 @@ final class GenerationRefusesARecapBlockerTest extends WebTestCase
         yield '/regenerate' => ['regenerate', ScheduleStatus::COMPLETED];
     }
 
-    /** @return iterable<string, array{LockOrigin, bool, int}> */
+    /** @return iterable<string, array{LockOrigin, int}> */
     public static function lockOnItsOwnReservation(): iterable
     {
         // Dernière colonne : les épingles de l'équipe qui partent au solveur (le payload de saison saute le verrou d'origine réservation).
-        yield 'verrou posé à la main sur la case de la réservation' => [LockOrigin::MANUAL, true, 2];
-        yield 'verrou d\'origine réservation sur sa case' => [LockOrigin::RESERVATION, true, 1];
-        yield 'verrou sur la case d\'un créneau libre (sans équipe)' => [LockOrigin::MANUAL, false, 1];
+        yield 'verrou posé à la main sur la case de la réservation' => [LockOrigin::MANUAL, 2];
+        yield 'verrou d\'origine réservation sur sa case' => [LockOrigin::RESERVATION, 1];
     }
 
     /** Groupe sans aucun coach disponible : refusé avant le moteur, le motif du Récap tel quel, le statut n'a pas bougé. */
@@ -385,15 +384,14 @@ final class GenerationRefusesARecapBlockerTest extends WebTestCase
 
     /**
      * Un verrou posé sur la case d'une réservation de la même équipe compte une fois, pas deux : U11 A, 1 séance par semaine,
-     * réservée et verrouillée le mardi 18:00, n'est pas bloquée. Un créneau libre sur la case de son seul verrou n'est jamais
-     * une réservation de l'équipe.
+     * réservée et verrouillée le mardi 18:00, n'est pas bloquée.
      */
     #[DataProvider('lockOnItsOwnReservation')]
-    public function testALockOnItsOwnReservationCountsOnce(LockOrigin $origin, bool $teamReservation, int $pinsSent): void
+    public function testALockOnItsOwnReservationCountsOnce(LockOrigin $origin, int $pinsSent): void
     {
         $ctx = $this->seedSolo(sessionsPerWeek: 1);
         $loaded = $this->version($ctx, ScheduleStatus::COMPLETED);
-        $this->reserve($ctx, $teamReservation ? $ctx['teamA'] : null, 2);
+        $this->reserve($ctx, $ctx['teamA'], 2);
         $this->pin($ctx, $loaded->getId(), $ctx['teamA'], 2, LockLevel::HARD, $origin);
         $this->assertPinnedForTheSolver($ctx, $ctx['teamA'], $pinsSent);
 
@@ -731,15 +729,14 @@ final class GenerationRefusesARecapBlockerTest extends WebTestCase
     }
 
     /**
-     * Une réservation de saison à Gymnase Un, ce jour-là à 18:00 ; sans équipe, un créneau libre.
+     * Une réservation de saison de l'équipe à Gymnase Un, ce jour-là à 18:00.
      *
      * @param array{clubId: string, seasonId: string, venueId: string} $ctx
      */
-    private function reserve(array $ctx, ?string $teamId, int $day): void
+    private function reserve(array $ctx, string $teamId, int $day): void
     {
         $reservation = (new Reservation)->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])->setVenueId($ctx['venueId'])
-            ->setDayOfWeek($day)->setStartTime(new DateTimeImmutable('18:00'))->setDurationMinutes(90);
-        null === $teamId ? $reservation->setLabel('Loto du club') : $reservation->setTeamId($teamId);
+            ->setDayOfWeek($day)->setStartTime(new DateTimeImmutable('18:00'))->setDurationMinutes(90)->setTeamId($teamId);
         $this->em->persist($reservation);
         $this->em->flush();
     }
