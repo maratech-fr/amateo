@@ -247,6 +247,7 @@ gone. A fully reserved team gets no « not enough room » message, even inside a
 reservation that breaks a rule is named (`rule_sacrificed`). The guards upstream of the engine
 (`CoachInTwoPlacesGuard`, the Récap blockers) are unchanged: « the reservation wins » holds inside the
 engine, not against them; an over-pinned shared block stays `failed`, named by its teams.
+One Récap blocker is not enforced by `/fill`: a team with more locked sessions than weekly sessions. A fill pins every placed session of its source, so only reservations are counted there; the Récap, `/generate` and `/regenerate` refuse it.
 
 **Known gap, not an exception.** `maxConsecutiveDays` only reads free variables, so it never blocks, and
 no post-solve diagnostic covers it: a violation caused by locks is SILENT (roadmap line). No contract change (1.8), no new diagnostic kind. Guards:

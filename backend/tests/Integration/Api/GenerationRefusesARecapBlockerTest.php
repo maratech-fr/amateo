@@ -26,11 +26,14 @@ use App\Enum\CalendarEntryPeriodType;
 use App\Enum\ConstraintFamily;
 use App\Enum\ConstraintRuleType;
 use App\Enum\ConstraintScope;
+use App\Enum\LockLevel;
+use App\Enum\LockOrigin;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
 use App\Enum\TeamCoachRole;
 use App\Service\GenerationBlockersGuard;
 use App\Service\ScheduleConstraintBuilder;
+use App\Service\SchedulePlanProvisioner;
 use App\Tests\ChoosesPlanVersionTrait;
 use App\Tests\CrossStack\SharedBlockPreSolveMirrorParityTest;
 use App\Tests\Security\RecapReservedGroupIsNotAFailureTest;
@@ -48,7 +51,8 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 /**
  * NR (axes generation pipeline et constraint semantics) : ce que le Récap dit bloquant, les guichets `/generate`,
  * `/regenerate` et `/fill` le refusent aussi, sans passer par l'écran : 422 `{error, blocker: true}`, le motif du Récap tel
- * quel, rien en file. Bloc inservable pris en exemple parce que sa parité avec le moteur est prouvée ailleurs.
+ * quel, rien en file. Bloc inservable pris en exemple parce que sa parité avec le moteur est prouvée ailleurs. Une séance
+ * verrouillée de la version chargée compte comme une réservation, sauf au comblement, qui épingle déjà tout le placé de sa source.
  *
  * Jumeaux VOULUS (point sensible génération) : {@see SharedBlockPreSolveMirrorParityTest} (ce qui bloque, le moteur l'aurait
  * refusé) ; {@see GenerationRefusesACoachInTwoPlacesTest} (l'autre famille de blocage, la garde voisine) ;
@@ -72,6 +76,14 @@ final class GenerationRefusesARecapBlockerTest extends WebTestCase
     {
         yield '/generate' => ['generate', ScheduleStatus::DRAFT];
         yield '/regenerate' => ['regenerate', ScheduleStatus::COMPLETED];
+    }
+
+    /** @return iterable<string, array{LockOrigin, int}> */
+    public static function lockOnItsOwnReservation(): iterable
+    {
+        // Dernière colonne : les épingles de l'équipe qui partent au solveur (le payload de saison saute le verrou d'origine réservation).
+        yield 'verrou posé à la main sur la case de la réservation' => [LockOrigin::MANUAL, 2];
+        yield 'verrou d\'origine réservation sur sa case' => [LockOrigin::RESERVATION, 1];
     }
 
     /** Groupe sans aucun coach disponible : refusé avant le moteur, le motif du Récap tel quel, le statut n'a pas bougé. */
@@ -326,6 +338,223 @@ final class GenerationRefusesARecapBlockerTest extends WebTestCase
         self::assertStringContainsString('U11 A a 2 réservations pour 1 séance par semaine', $found[0]);
     }
 
+    /**
+     * Un verrou compte comme une séance : U11 A, 1 séance par semaine, réservée le mardi et verrouillée le mercredi dans
+     * la version chargée. Les guichets de saison refusent avec le motif du Récap tel quel, qui nomme la séance verrouillée du
+     * mercredi (jour, heures, gymnase) et pas la réservation ; rien ne part en file, aucune version n'est créée.
+     */
+    #[DataProvider('seasonCounters')]
+    public function testALockedSessionBeyondTheWeeklyCountRefusesWithTheRecapReason(string $counter, ScheduleStatus $status): void
+    {
+        $ctx = $this->seedSolo(sessionsPerWeek: 1);
+        $loaded = $this->version($ctx, ScheduleStatus::COMPLETED);
+        $this->reserve($ctx, $ctx['teamA'], 2);
+        $this->pin($ctx, $loaded->getId(), $ctx['teamA'], 3, LockLevel::HARD, LockOrigin::MANUAL);
+        $schedule = 'regenerate' === $counter ? $loaded : $this->version($ctx, ScheduleStatus::DRAFT);
+        $before = $this->em->getRepository(Schedule::class)->count(['seasonId' => $ctx['seasonId']]);
+        $this->assertPinnedForTheSolver($ctx, $ctx['teamA'], 2);
+
+        $recap = $this->recapBlockers($ctx);
+        $this->post($ctx, $schedule->getId(), $counter);
+
+        self::assertResponseStatusCodeSame(422, 'une réservation et un verrou pour 1 séance par semaine : le guichet doit refuser');
+        $body = json_decode((string) $this->client->getResponse()->getContent(), true);
+        self::assertTrue($body['blocker'] ?? false);
+        self::assertSame($recap[0] ?? '(le Récap ne bloque pas)', $body['error'] ?? null, 'le guichet dit mot pour mot le motif du Récap');
+        $this->assertNamesTheSessions((string) $body['error'], 'U11 A', ['mercredi'], ['mardi']);
+        $this->em->clear();
+        self::assertSame($status, $this->em->getRepository(Schedule::class)->find($schedule->getId())?->getStatus(), 'rien n\'est mis en file');
+        self::assertSame($before, $this->em->getRepository(Schedule::class)->count(['seasonId' => $ctx['seasonId']]), 'aucune version créée');
+    }
+
+    /** TÉMOIN : même décor, la séance du mercredi déverrouillée, les guichets partent. C'est donc le verrou qui refusait. */
+    #[DataProvider('seasonCounters')]
+    public function testTheSameDecorWithTheSessionUnlockedStarts(string $counter, ScheduleStatus $status): void
+    {
+        $ctx = $this->seedSolo(sessionsPerWeek: 1);
+        $loaded = $this->version($ctx, ScheduleStatus::COMPLETED);
+        $this->reserve($ctx, $ctx['teamA'], 2);
+        $this->pin($ctx, $loaded->getId(), $ctx['teamA'], 3, LockLevel::NONE, null);
+        $schedule = 'regenerate' === $counter ? $loaded : $this->version($ctx, $status);
+
+        $this->post($ctx, $schedule->getId(), $counter);
+
+        self::assertResponseStatusCodeSame(202);
+    }
+
+    /**
+     * Un verrou posé sur la case d'une réservation de la même équipe compte une fois, pas deux : U11 A, 1 séance par semaine,
+     * réservée et verrouillée le mardi 18:00, n'est pas bloquée.
+     */
+    #[DataProvider('lockOnItsOwnReservation')]
+    public function testALockOnItsOwnReservationCountsOnce(LockOrigin $origin, int $pinsSent): void
+    {
+        $ctx = $this->seedSolo(sessionsPerWeek: 1);
+        $loaded = $this->version($ctx, ScheduleStatus::COMPLETED);
+        $this->reserve($ctx, $ctx['teamA'], 2);
+        $this->pin($ctx, $loaded->getId(), $ctx['teamA'], 2, LockLevel::HARD, $origin);
+        $this->assertPinnedForTheSolver($ctx, $ctx['teamA'], $pinsSent);
+
+        self::assertNull($this->guard()->firstBlockerMessage($this->version($ctx, ScheduleStatus::DRAFT)));
+    }
+
+    /**
+     * Verrous seuls, sans aucune réservation : U11 A, 1 séance par semaine, verrouillée le mardi et le mercredi
+     * dans la version chargée, est bloquée et ses deux séances sont nommées. Jumeau : {@see testATeamOfAGroupKeepsTodaysCount}.
+     */
+    public function testTwoLockedSessionsForOneWeeklySessionBlock(): void
+    {
+        $ctx = $this->seedSolo(sessionsPerWeek: 1);
+        $loaded = $this->version($ctx, ScheduleStatus::COMPLETED);
+        foreach ([2, 3] as $day) {
+            $this->pin($ctx, $loaded->getId(), $ctx['teamA'], $day, LockLevel::HARD, LockOrigin::MANUAL);
+        }
+        $this->assertPinnedForTheSolver($ctx, $ctx['teamA'], 2);
+
+        $message = $this->guard()->firstBlockerMessage($this->version($ctx, ScheduleStatus::DRAFT));
+
+        self::assertNotNull($message, 'deux séances verrouillées pour 1 séance par semaine : le Récap doit bloquer');
+        $this->assertNamesTheSessions($message, 'U11 A', ['mardi', 'mercredi'], []);
+    }
+
+    /**
+     * Une équipe d'un groupe du socle garde le comptage d'aujourd'hui : même décor que
+     * {@see testTwoLockedSessionsForOneWeeklySessionBlock}, U11 A en groupe avec U11 B, aucun blocage.
+     */
+    public function testATeamOfAGroupKeepsTodaysCount(): void
+    {
+        $ctx = $this->seedGroup(coachesAvailable: true);
+        $loaded = $this->version($ctx, ScheduleStatus::COMPLETED);
+        foreach ([2, 3] as $day) {
+            $this->pin($ctx, $loaded->getId(), $ctx['teamA'], $day, LockLevel::HARD, LockOrigin::MANUAL);
+        }
+        $this->assertPinnedForTheSolver($ctx, $ctx['teamA'], 2);
+
+        self::assertNull($this->guard()->firstBlockerMessage($this->version($ctx, ScheduleStatus::DRAFT)));
+    }
+
+    /**
+     * Période, groupe du plan dont le partenaire est en pause : U11 A reste membre du groupe de la portée, son comptage est
+     * celui d'aujourd'hui, ses deux verrous pour 1 séance ne bloquent pas. Jumeau qui bloque sans groupe :
+     * {@see testThePeriodCountIsReadOnThePeriodSessions}.
+     */
+    public function testAPeriodGroupWithAPausedPartnerKeepsTodaysCount(): void
+    {
+        $ctx = $this->seedPeriod($this->seedSolo(sessionsPerWeek: 1), planGroup: false);
+        $this->declareGroup($ctx['clubId'], $ctx['seasonId'], $ctx['planId'], [$ctx['teamA'], $ctx['teamB']]);
+        $paused = (new TeamPeriodOverride)->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])->setSchedulePlanId($ctx['planId'])->setTeamId($ctx['teamB']);
+        $paused->setIsActive(false);
+        $this->em->persist($paused);
+        foreach ([2, 3] as $day) {
+            $this->pin($ctx, $ctx['scheduleId'], $ctx['teamA'], $day, LockLevel::HARD, LockOrigin::MANUAL);
+        }
+        $this->assertPinnedForTheSolver($ctx, $ctx['teamA'], 2);
+
+        self::assertNull($this->guard()->firstBlockerMessage($this->periodSchedule($ctx)));
+    }
+
+    /**
+     * Un groupe ne vaut que dans sa portée : U11 A, en groupe avec U11 B pour la seule période, verrouillée le mardi et le
+     * mercredi dans la version chargée de la saison pour 1 séance. Le Récap de saison bloque et nomme les deux séances.
+     * Jumeau dans la période : {@see testAPeriodGroupWithAPausedPartnerKeepsTodaysCount}.
+     */
+    public function testAGroupOfAPeriodDoesNotSpareTheSeasonCount(): void
+    {
+        $ctx = $this->seedPeriod($this->seedSolo(sessionsPerWeek: 1), planGroup: false);
+        $this->declareGroup($ctx['clubId'], $ctx['seasonId'], $ctx['planId'], [$ctx['teamA'], $ctx['teamB']]);
+        $seasonLoaded = (string) self::getContainer()->get(SchedulePlanProvisioner::class)->loadedVersionIdOfSeason($ctx['seasonId']);
+        foreach ([2, 3] as $day) {
+            $this->pin($ctx, $seasonLoaded, $ctx['teamA'], $day, LockLevel::HARD, LockOrigin::MANUAL);
+        }
+        $season = $this->em->getRepository(Schedule::class)->find($seasonLoaded);
+        self::assertInstanceOf(Schedule::class, $season);
+        $this->assertPinnedForTheSolver(['clubId' => $ctx['clubId'], 'seasonId' => $ctx['seasonId']], $ctx['teamA'], 2);
+
+        $message = $this->guard()->firstBlockerMessage($season);
+
+        self::assertNotNull($message, 'le groupe de la période ne vaut pas pour la saison : le Récap de saison doit bloquer');
+        $this->assertNamesTheSessions($message, 'U11 A', ['mardi', 'mercredi'], []);
+    }
+
+    /**
+     * Le comblement ne compte que les réservations (exception écrite à l'invariant des trois guichets) : U11 A, 2 séances,
+     * sa version source porte 3 séances verrouillées. `/generate` d'une version de la période refuse en nommant les trois,
+     * `/fill` part (il épingle déjà tout le placé de sa source).
+     */
+    public function testFillingCountsReservationsOnlyWhileGeneratingCountsLocks(): void
+    {
+        $ctx = $this->seedPeriod($this->seedSolo(sessionsPerWeek: 2), planGroup: false);
+        foreach ([1, 2, 3] as $day) {
+            $this->pin($ctx, $ctx['scheduleId'], $ctx['teamA'], $day, LockLevel::HARD, LockOrigin::MANUAL);
+        }
+        $draft = (new Schedule)->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])->setName('Brouillon de période')->setStatus(ScheduleStatus::DRAFT);
+        $this->linkSeededSchedule($draft, $this->entryIdOf($ctx['planId']));
+        $this->em->flush();
+        $this->assertPinnedForTheSolver($ctx, $ctx['teamA'], 3);
+
+        $this->post($ctx, $ctx['scheduleId'], 'fill');
+        self::assertResponseStatusCodeSame(202, 'le comblement ne compte pas les verrous de sa source');
+
+        $this->post($ctx, $draft->getId(), 'generate');
+        self::assertResponseStatusCodeSame(422, 'générer la période compte les trois séances verrouillées pour 2 séances');
+        $body = json_decode((string) $this->client->getResponse()->getContent(), true);
+        self::assertTrue($body['blocker'] ?? false);
+        $this->assertNamesTheSessions((string) $body['error'], 'U11 A', ['lundi', 'mardi', 'mercredi'], []);
+    }
+
+    /**
+     * Le compte se lit sur les séances de la période : U11 A, 2 séances en saison réduites à 1 pour la période, deux séances
+     * verrouillées dans chaque version chargée. La saison ne bloque pas, la période bloque et nomme les deux séances.
+     */
+    public function testThePeriodCountIsReadOnThePeriodSessions(): void
+    {
+        $ctx = $this->seedPeriod($this->seedSolo(sessionsPerWeek: 2), planGroup: false);
+        $seasonLoaded = (string) self::getContainer()->get(SchedulePlanProvisioner::class)->loadedVersionIdOfSeason($ctx['seasonId']);
+        $reduced = (new TeamPeriodOverride)->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])->setSchedulePlanId($ctx['planId'])->setTeamId($ctx['teamA']);
+        $reduced->setIsActive(true);
+        $reduced->setSessionsPerWeek(1);
+        $this->em->persist($reduced);
+        foreach ([2, 3] as $day) {
+            $this->pin($ctx, $seasonLoaded, $ctx['teamA'], $day, LockLevel::HARD, LockOrigin::MANUAL);
+            $this->pin($ctx, $ctx['scheduleId'], $ctx['teamA'], $day, LockLevel::HARD, LockOrigin::MANUAL);
+        }
+        $season = $this->em->getRepository(Schedule::class)->find($seasonLoaded);
+        self::assertInstanceOf(Schedule::class, $season);
+        $this->assertPinnedForTheSolver(['clubId' => $ctx['clubId'], 'seasonId' => $ctx['seasonId']], $ctx['teamA'], 2);
+        $this->assertPinnedForTheSolver($ctx, $ctx['teamA'], 2);
+
+        self::assertNull($this->guard()->firstBlockerMessage($season), 'en saison, 2 séances verrouillées pour 2 séances : rien à dire');
+        $message = $this->guard()->firstBlockerMessage($this->periodSchedule($ctx));
+        self::assertNotNull($message, 'en période, 2 séances verrouillées pour 1 séance : le Récap de la période doit bloquer');
+        $this->assertNamesTheSessions($message, 'U11 A', ['mardi', 'mercredi'], []);
+    }
+
+    /**
+     * Le cadenas qui ne sert à rien, par l'API du cadenas : U11 A, 2 séances, réservée le jeudi ; la version chargée porte le jeudi (cadenas
+     * d'origine réservation), le lundi et le mercredi verrouillés à la main. Le Récap nomme lundi et mercredi, jamais le jeudi.
+     * Ôter le cadenas du jeudi ne change rien (même motif) ; ôter celui du lundi lève le blocage.
+     */
+    public function testUnlockingTheReservedCaseChangesNothingAndUnlockingANamedSessionLifts(): void
+    {
+        $ctx = $this->seedSolo(sessionsPerWeek: 2);
+        $loaded = $this->version($ctx, ScheduleStatus::COMPLETED);
+        $this->reserve($ctx, $ctx['teamA'], 4);
+        $thursday = $this->pin($ctx, $loaded->getId(), $ctx['teamA'], 4, LockLevel::HARD, LockOrigin::RESERVATION);
+        $monday = $this->pin($ctx, $loaded->getId(), $ctx['teamA'], 1, LockLevel::HARD, LockOrigin::MANUAL);
+        $this->pin($ctx, $loaded->getId(), $ctx['teamA'], 3, LockLevel::HARD, LockOrigin::MANUAL);
+        $this->assertPinnedForTheSolver($ctx, $ctx['teamA'], 3);
+
+        $first = $this->recapBlockers($ctx);
+        self::assertCount(1, $first, 'une réservation et deux séances verrouillées hors de sa case pour 2 séances : le Récap doit bloquer');
+        $this->assertNamesTheSessions($first[0], 'U11 A', ['lundi', 'mercredi'], ['jeudi']);
+
+        $this->unlock($ctx, $thursday);
+        self::assertSame($first, $this->recapBlockers($ctx), 'le cadenas de la case réservée ne compte pas : même motif');
+
+        $this->unlock($ctx, $monday);
+        self::assertSame([], $this->recapBlockers($ctx), 'une séance nommée déverrouillée : le blocage est levé');
+    }
+
     protected function setUp(): void
     {
         $this->client = self::createClient();
@@ -342,11 +571,24 @@ final class GenerationRefusesARecapBlockerTest extends WebTestCase
         self::assertStringContainsString('U11 B', (string) $body['error']);
     }
 
-    /** @param array{user: User} $ctx */
+    /**
+     * Bearer plutôt que `loginUser` : un test qui enchaîne plusieurs requêtes garde son identité au redémarrage du noyau.
+     *
+     * @param array{user: User} $ctx
+     */
     private function post(array $ctx, string $scheduleId, string $counter): void
     {
-        $this->client->loginUser($ctx['user']);
-        $this->client->request('POST', "/api/schedules/{$scheduleId}/{$counter}");
+        $this->client->request('POST', "/api/schedules/{$scheduleId}/{$counter}", [], [], $this->bearer($ctx));
+    }
+
+    /**
+     * @param array{user: User} $ctx
+     *
+     * @return array{HTTP_AUTHORIZATION: string}
+     */
+    private function bearer(array $ctx): array
+    {
+        return ['HTTP_AUTHORIZATION' => 'Bearer ' . self::getContainer()->get(JWTTokenManagerInterface::class)->create($ctx['user'])];
     }
 
     /**
@@ -483,5 +725,146 @@ final class GenerationRefusesARecapBlockerTest extends WebTestCase
         $this->em->flush();
 
         return $schedule;
+    }
+
+    /**
+     * Le club de {@see seedGroup}, sans groupe, ouvert du lundi au jeudi à 18:00 : U11 A joue seule.
+     *
+     * @return array{user: User, clubId: string, seasonId: string, venueId: string, teamA: string, teamB: string, coachIds: list<string>}
+     */
+    private function seedSolo(int $sessionsPerWeek): array
+    {
+        $ctx = $this->seedGroup(coachesAvailable: true);
+        foreach ($this->em->getRepository(SharedTrainingBlockTeam::class)->findBy(['seasonId' => $ctx['seasonId']]) as $member) {
+            $this->em->remove($member);
+        }
+        foreach ($this->em->getRepository(SharedTrainingBlock::class)->findBy(['seasonId' => $ctx['seasonId']]) as $block) {
+            $this->em->remove($block);
+        }
+        foreach ([1, 4] as $day) {
+            $this->em->persist((new VenueTrainingSlot)->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])->setVenueId($ctx['venueId'])
+                ->setDayOfWeek($day)->setStartTime(new DateTimeImmutable('18:00'))->setDurationMinutes(90)->setCapacity(2));
+        }
+        $this->em->getRepository(Team::class)->find($ctx['teamA'])?->setSessionsPerWeek($sessionsPerWeek);
+        $this->em->flush();
+
+        return $ctx;
+    }
+
+    /**
+     * Une réservation de saison de l'équipe à Gymnase Un, ce jour-là à 18:00.
+     *
+     * @param array{clubId: string, seasonId: string, venueId: string} $ctx
+     */
+    private function reserve(array $ctx, string $teamId, int $day): void
+    {
+        $reservation = (new Reservation)->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])->setVenueId($ctx['venueId'])
+            ->setDayOfWeek($day)->setStartTime(new DateTimeImmutable('18:00'))->setDurationMinutes(90)->setTeamId($teamId);
+        $this->em->persist($reservation);
+        $this->em->flush();
+    }
+
+    /**
+     * Une séance de la version, à Gymnase Un ce jour-là 18:00-19:30, au niveau de verrou donné. Rend son id.
+     *
+     * @param array{clubId: string, seasonId: string, venueId: string} $ctx
+     */
+    private function pin(array $ctx, string $scheduleId, string $teamId, int $day, LockLevel $level, ?LockOrigin $origin): string
+    {
+        $slot = (new ScheduleSlotTemplate)->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])->setScheduleId($scheduleId)
+            ->setTeamId($teamId)->setVenueId($ctx['venueId'])->setDayOfWeek($day)->setStartTime(new DateTimeImmutable('18:00'))->setDurationMinutes(90)
+            ->setLockLevel($level)->setLockOrigin($origin);
+        $this->em->persist($slot);
+        $this->em->flush();
+
+        return $slot->getId();
+    }
+
+    /**
+     * Le motif nomme l'équipe et les jours de ses séances verrouillées comptées, avec leurs heures et leur gymnase ; jamais les
+     * jours à taire (une réservation, un verrou posé sur sa propre réservation).
+     *
+     * @param list<string> $named
+     * @param list<string> $silent
+     */
+    private function assertNamesTheSessions(string $message, string $team, array $named, array $silent): void
+    {
+        self::assertStringContainsString($team, $message);
+        foreach ($named as $day) {
+            self::assertStringContainsString($day, $message, "la séance verrouillée du {$day} est nommée");
+        }
+        self::assertStringContainsString('18:00-19:30', $message, 'les heures de la séance sont dites');
+        self::assertStringContainsString('Gymnase Un', $message, 'son gymnase est dit');
+        foreach ($silent as $day) {
+            self::assertStringNotContainsString($day, $message, "le {$day} n'est pas une séance verrouillée comptée");
+        }
+    }
+
+    /**
+     * Décor : ces épingles HARD de l'équipe partent bien au solveur (réservations et séances verrouillées de la version chargée).
+     * Un rouge du comptage ne peut alors venir que de la règle, jamais d'un verrou absent du payload.
+     *
+     * @param array{clubId: string, seasonId: string, planId?: string} $ctx
+     */
+    private function assertPinnedForTheSolver(array $ctx, string $teamId, int $expected): void
+    {
+        $builder = self::getContainer()->get(ScheduleConstraintBuilder::class);
+        if (isset($ctx['planId'])) {
+            $entry = $this->em->getRepository(CalendarEntry::class)->find($this->entryIdOf($ctx['planId']));
+            self::assertInstanceOf(CalendarEntry::class, $entry);
+            $payload = $builder->buildForPeriodPlan($ctx['clubId'], $ctx['seasonId'], $ctx['planId'], $entry);
+        } else {
+            $payload = $builder->buildForClubSeason($ctx['clubId'], $ctx['seasonId']);
+        }
+        $pins = array_filter(
+            $payload['slotTemplates'] ?? [],
+            static fn (mixed $pin): bool => \is_array($pin) && $teamId === ($pin['teamId'] ?? null) && LockLevel::HARD->value === ($pin['lockLevel'] ?? null),
+        );
+        self::assertCount($expected, $pins, 'décor : épingles HARD de l\'équipe envoyées au solveur');
+    }
+
+    private function guard(): GenerationBlockersGuard
+    {
+        return self::getContainer()->get(GenerationBlockersGuard::class);
+    }
+
+    /**
+     * Les blocages du Récap de saison.
+     *
+     * @param array{user: User} $ctx
+     *
+     * @return list<string>
+     */
+    private function recapBlockers(array $ctx): array
+    {
+        $this->client->request('POST', '/api/constraints/validate', [], [], $this->bearer($ctx));
+        $recap = json_decode((string) $this->client->getResponse()->getContent(), true);
+
+        return array_values($recap['blockers'] ?? []);
+    }
+
+    /**
+     * Le geste du cadenas : la séance repasse sans verrou.
+     *
+     * @param array{user: User} $ctx
+     */
+    private function unlock(array $ctx, string $slotId): void
+    {
+        $this->client->request('POST', "/api/schedule-slots/{$slotId}/manual-edit/lock", [], [], [...$this->bearer($ctx), 'CONTENT_TYPE' => 'application/json'], (string) json_encode(['lockLevel' => 'NONE']));
+        self::assertResponseIsSuccessful('le cadenas s\'ôte');
+    }
+
+    /** @param array{scheduleId: string} $ctx */
+    private function periodSchedule(array $ctx): Schedule
+    {
+        $schedule = $this->em->getRepository(Schedule::class)->find($ctx['scheduleId']);
+        self::assertInstanceOf(Schedule::class, $schedule);
+
+        return $schedule;
+    }
+
+    private function entryIdOf(string $planId): string
+    {
+        return (string) $this->em->getConnection()->fetchOne('SELECT calendar_entry_id FROM schedule_plan WHERE id = :pid', ['pid' => $planId]);
     }
 }

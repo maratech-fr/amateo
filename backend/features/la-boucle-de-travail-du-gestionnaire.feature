@@ -43,3 +43,21 @@ Fonctionnalité: La boucle de travail du gestionnaire tient à la régénératio
     Alors le récapitulatif ne l'annonce plus comme ignorée
     Quand j'essaie de régler la présence d'un salarié sur Obligatoire
     Alors c'est refusé : « La présence d'un salarié ne peut pas être obligatoire : choisissez Souhaitée ou Ignorée. »
+
+  Scénario: Une séance verrouillée compte comme une séance de l'équipe
+    Le moteur joue chaque séance verrouillée : une équipe ne peut pas en avoir, avec ses réservations, plus que de
+    séances par semaine. Un verrou posé sur la case de sa propre réservation compte une fois. Le Récapitulatif nomme les
+    séances verrouillées en trop, la régénération est refusée par le même motif, et ôter le bon cadenas lève le blocage.
+    Étant donné un petit club réaliste dont le planning de saison est en vigueur, puis rouvert pour y retravailler
+    Quand je verrouille les deux séances de U20M1 et lui réserve la case de la première
+    Alors le récapitulatif ne bloque pas
+    Quand je lui réserve un second créneau un jour où elle ne s'entraîne pas
+    Alors le récapitulatif bloque U20M1 et nomme sa seule séance verrouillée hors réservation
+    Quand j'essaie de régénérer le planning de saison du petit club
+    Alors c'est refusé par le même motif, sans nouvelle version
+    Quand j'ôte le cadenas de la séance posée sur la réservation
+    Alors le récapitulatif bloque toujours par le même motif
+    Quand j'ôte le cadenas de la séance nommée
+    Alors le récapitulatif ne bloque pas
+    Quand je retire ses deux réservations
+    Alors U20M1 n'a plus ni réservation ni séance verrouillée

@@ -32,10 +32,20 @@ use RuntimeException;
  *   - `un-verrou-est-souverain.feature:31` (un créneau libre réservé retire la place au solveur).
  * (Les régénérations de PLAN DE PÉRIODE — :47/:57/:69 — et les edges :21/:40 restent dans
  * `un-verrou`, promesses distinctes du cycle de vie des plans de période, sans filet plus bas.)
+ *
+ * Second scénario, sans solve de plus que le socle : une séance verrouillée compte comme une séance de l'équipe, une
+ * fois seulement quand elle est posée sur sa propre réservation (cas nombreux, saison, période, groupe, comblement :
+ * `GenerationRefusesARecapBlockerTest`).
  */
 final class SeasonWorkLoopContext extends BaseContext
 {
     use SmallClubFixtureTrait;
+
+    /** Équipe à deux séances sans coach, dont un verrou compte comme une séance. */
+    private const string COUNTED_TEAM = 'U20M1';
+
+    /** ISO-8601 : 1 = lundi. */
+    private const array DAY_NAMES = [1 => 'lundi', 2 => 'mardi', 3 => 'mercredi', 4 => 'jeudi', 5 => 'vendredi', 6 => 'samedi', 7 => 'dimanche'];
 
     private string $socleVersionId = '';
 
@@ -87,6 +97,22 @@ final class SeasonWorkLoopContext extends BaseContext
 
     /** La contrainte « SM1 pas avant 20h30 », renommée puis rétablie. */
     private string $sm1ConstraintId = '';
+
+    /** @var list<array{id: string, venueId: string, day: int, start: string}> les deux séances de l'équipe comptée, la première réservée */
+    private array $countedSessions = [];
+
+    /** @var list<string> */
+    private array $countedReservationIds = [];
+
+    /** Le motif du Récap qui nomme la séance verrouillée hors réservation. */
+    private string $countedBlocker = '';
+
+    private int $schedulesBefore = 0;
+
+    private int $regenerateStatus = 0;
+
+    /** @var array<mixed> */
+    private array $regenerateJson = [];
 
     #[Given('un petit club réaliste dont le planning de saison est en vigueur, puis rouvert pour y retravailler')]
     public function unPetitClubSocleEnVigueurPuisRouvert(): void
@@ -506,10 +532,229 @@ final class SeasonWorkLoopContext extends BaseContext
         }
     }
 
+    /**
+     * Les deux séances (libres, l'équipe n'a pas de coach) de U20M1 au socle, triées par jour : la première reçoit aussi
+     * une réservation à sa propre case, le geste « je réserve ce qui est bien placé ».
+     */
+    #[When('je verrouille les deux séances de U20M1 et lui réserve la case de la première')]
+    public function jeVerrouilleLesDeuxSeancesEtReserveLaPremiere(): void
+    {
+        $raw = $this->dbalScalar(
+            \sprintf(
+                'SELECT string_agg(row, \';\' ORDER BY day_of_week, start_time) AS behatval FROM ('
+                . ' SELECT day_of_week, start_time, id || \'|\' || venue_id || \'|\' || day_of_week || \'|\' || to_char(start_time, \'HH24:MI\') AS row'
+                . ' FROM schedule_slot_template WHERE schedule_id=\'%s\' AND team_id=\'%s\' AND lock_level=\'NONE\''
+                . ') q',
+                $this->socleVersionId,
+                $this->smallClubTeamIds[self::COUNTED_TEAM],
+            ),
+            admin: true,
+        );
+        $rows = '' === $raw ? [] : explode(';', $raw);
+        if (2 !== \count($rows)) {
+            throw new RuntimeException(\sprintf('décor : %s devrait avoir deux séances libres au socle (trouvées : %d)', self::COUNTED_TEAM, \count($rows)));
+        }
+        foreach ($rows as $row) {
+            [$id, $venueId, $day, $start] = explode('|', $row);
+            $this->countedSessions[] = ['id' => $id, 'venueId' => $venueId, 'day' => (int) $day, 'start' => $start];
+            $this->setLock($id, 'HARD');
+        }
+        $first = $this->countedSessions[0];
+        $this->countedReservationIds[] = $this->reserveForCountedTeam($first['venueId'], $first['day'], $first['start']);
+    }
+
+    /** Une case de la grille de saison, un jour où U20M1 ne s'entraîne pas, vide au socle et sans réservation. */
+    #[When('je lui réserve un second créneau un jour où elle ne s\'entraîne pas')]
+    public function jeLuiReserveUnSecondCreneau(): void
+    {
+        $row = $this->dbalScalar(
+            \sprintf(
+                'SELECT vts.venue_id || \'|\' || vts.day_of_week || \'|\' || to_char(vts.start_time, \'HH24:MI\') AS behatval'
+                . ' FROM venue_training_slot vts'
+                . ' WHERE vts.club_id=\'%1$s\' AND vts.schedule_plan_id IS NULL AND vts.day_of_week NOT IN (%3$d, %4$d)'
+                . ' AND NOT EXISTS (SELECT 1 FROM schedule_slot_template s WHERE s.schedule_id=\'%2$s\''
+                . ' AND s.venue_id=vts.venue_id AND s.day_of_week=vts.day_of_week AND s.start_time=vts.start_time)'
+                . ' AND NOT EXISTS (SELECT 1 FROM reservation r WHERE r.club_id=\'%1$s\' AND r.schedule_plan_id IS NULL'
+                . ' AND r.venue_id=vts.venue_id AND r.day_of_week=vts.day_of_week AND r.start_time=vts.start_time)'
+                . ' ORDER BY vts.day_of_week, vts.start_time, vts.venue_id LIMIT 1',
+                $this->smallClubId,
+                $this->socleVersionId,
+                $this->countedSessions[0]['day'],
+                $this->countedSessions[1]['day'],
+            ),
+            admin: true,
+        );
+        $parts = '' === $row ? [] : explode('|', $row);
+        if (3 !== \count($parts)) {
+            throw new RuntimeException(\sprintf('décor : aucune case vide un jour où %s ne s\'entraîne pas', self::COUNTED_TEAM));
+        }
+        $this->countedReservationIds[] = $this->reserveForCountedTeam($parts[0], (int) $parts[1], $parts[2]);
+    }
+
+    #[Then('le récapitulatif ne bloque pas')]
+    public function leRecapitulatifNeBloquePas(): void
+    {
+        $blockers = $this->recapBlockers();
+        if ([] !== $blockers) {
+            throw new RuntimeException(\sprintf('le récapitulatif ne devrait rien bloquer — blocages : %s', $this->encoded($blockers)));
+        }
+    }
+
+    /**
+     * Le motif nomme la seule séance verrouillée comptée (la seconde : jour, heures, gymnase), jamais celle posée sur la
+     * réservation ; les réservations ne sont pas nommées.
+     */
+    #[Then('le récapitulatif bloque U20M1 et nomme sa seule séance verrouillée hors réservation')]
+    public function leRecapBloqueEtNommeLaSeanceVerrouillee(): void
+    {
+        $this->countedBlocker = $this->countedTeamBlocker();
+        $named = $this->countedSessions[1];
+        $venueName = (string) array_search($named['venueId'], $this->smallClubVenueIds, true);
+        $hours = \sprintf('%s-%s', $named['start'], date('H:i', (int) strtotime($named['start'] . ' +90 minutes')));
+        foreach ([self::DAY_NAMES[$named['day']], $hours, $venueName] as $expected) {
+            if (!str_contains($this->countedBlocker, $expected)) {
+                throw new RuntimeException(\sprintf('le motif doit nommer la séance verrouillée hors réservation (« %s » attendu) — obtenu : « %s »', $expected, $this->countedBlocker));
+            }
+        }
+        $silent = self::DAY_NAMES[$this->countedSessions[0]['day']];
+        if (str_contains($this->countedBlocker, $silent)) {
+            throw new RuntimeException(\sprintf('la séance verrouillée sur sa propre réservation (%s) ne compte pas : le motif ne doit pas la nommer — obtenu : « %s »', $silent, $this->countedBlocker));
+        }
+    }
+
+    #[When('j\'essaie de régénérer le planning de saison du petit club')]
+    public function jEssaieDeRegenerer(): void
+    {
+        $this->schedulesBefore = $this->countSmallClubSchedules();
+        $response = $this->apiPost(\sprintf('schedules/%s/regenerate', $this->socleVersionId), [], $this->smallClubToken);
+        $this->regenerateStatus = $response['status'];
+        $this->regenerateJson = $response['json'];
+    }
+
+    #[Then('c\'est refusé par le même motif, sans nouvelle version')]
+    public function cEstRefuseParLeMemeMotif(): void
+    {
+        if (422 !== $this->regenerateStatus || true !== ($this->regenerateJson['blocker'] ?? null)) {
+            throw new RuntimeException(\sprintf('la régénération devait être refusée comme un blocage (422, blocker) — reçu %d : %s', $this->regenerateStatus, $this->encoded($this->regenerateJson)));
+        }
+        if ($this->countedBlocker !== ($this->regenerateJson['error'] ?? null)) {
+            throw new RuntimeException(\sprintf('le guichet doit dire le motif du Récap mot pour mot — Récap : « %s », guichet : %s', $this->countedBlocker, $this->encoded($this->regenerateJson)));
+        }
+        $after = $this->countSmallClubSchedules();
+        if ($this->schedulesBefore !== $after) {
+            throw new RuntimeException(\sprintf('aucune version ne doit naître d\'un refus (%d avant, %d après)', $this->schedulesBefore, $after));
+        }
+    }
+
+    #[When('j\'ôte le cadenas de la séance posée sur la réservation')]
+    public function jOteLeCadenasDeLaSeanceReservee(): void
+    {
+        $this->setLock($this->countedSessions[0]['id'], 'NONE');
+    }
+
+    #[Then('le récapitulatif bloque toujours par le même motif')]
+    public function leRecapBloqueToujoursParLeMemeMotif(): void
+    {
+        $now = $this->countedTeamBlocker();
+        if ($this->countedBlocker !== $now) {
+            throw new RuntimeException(\sprintf('le cadenas d\'une séance posée sur sa réservation ne compte pas : le motif ne doit pas changer — avant « %s », après « %s »', $this->countedBlocker, $now));
+        }
+    }
+
+    #[When('j\'ôte le cadenas de la séance nommée')]
+    public function jOteLeCadenasDeLaSeanceNommee(): void
+    {
+        $this->setLock($this->countedSessions[1]['id'], 'NONE');
+    }
+
+    #[When('je retire ses deux réservations')]
+    public function jeRetireSesDeuxReservations(): void
+    {
+        foreach ($this->countedReservationIds as $reservationId) {
+            $removed = $this->apiDelete(\sprintf('reservations/%s', $reservationId), $this->smallClubToken);
+            if (!\in_array($removed['status'], [200, 204], true)) {
+                throw new RuntimeException(\sprintf('le retrait d\'une réservation a répondu %d (204 attendu)', $removed['status']));
+            }
+        }
+    }
+
+    #[Then('U20M1 n\'a plus ni réservation ni séance verrouillée')]
+    public function plusNiReservationNiVerrou(): void
+    {
+        $left = (int) $this->dbalScalar(
+            \sprintf(
+                'SELECT (SELECT COUNT(*) FROM reservation WHERE team_id=\'%1$s\') + (SELECT COUNT(*) FROM schedule_slot_template WHERE schedule_id=\'%2$s\' AND team_id=\'%1$s\' AND lock_level=\'HARD\') AS behatval',
+                $this->smallClubTeamIds[self::COUNTED_TEAM],
+                $this->socleVersionId,
+            ),
+            admin: true,
+        );
+        if (0 !== $left) {
+            throw new RuntimeException(\sprintf('%s devrait être revenue à son état d\'arrivée — %d réservation(s) ou verrou(s) restant(s)', self::COUNTED_TEAM, $left));
+        }
+    }
+
     #[AfterScenario]
     public function nettoyer(): void
     {
         $this->teardownSmallClub();
+    }
+
+    private function setLock(string $slotId, string $level): void
+    {
+        $response = $this->apiPost(\sprintf('schedule-slots/%s/manual-edit/lock', $slotId), ['lockLevel' => $level], $this->smallClubToken);
+        if (200 !== $response['status']) {
+            throw new RuntimeException(\sprintf('le cadenas (%s) a répondu %d (200 attendu) : %s', $level, $response['status'], $this->encoded($response['json'])));
+        }
+    }
+
+    private function reserveForCountedTeam(string $venueId, int $day, string $start): string
+    {
+        $created = $this->apiPost('reservations', [
+            'teamId' => $this->smallClubTeamIds[self::COUNTED_TEAM],
+            'venueId' => $venueId,
+            'dayOfWeek' => $day,
+            'startTime' => $start,
+            'durationMinutes' => 90,
+            'schedulePlanId' => null,
+        ], $this->smallClubToken);
+        if (!\in_array($created['status'], [200, 201], true)) {
+            throw new RuntimeException(\sprintf('la réservation de %s a répondu %d (201 attendu) : %s', self::COUNTED_TEAM, $created['status'], $this->encoded($created['json'])));
+        }
+
+        return $this->smallClubStringField($created['json'], 'id');
+    }
+
+    /**
+     * Les blocages du Récap de saison (corps 200 comme 422).
+     *
+     * @return list<string>
+     */
+    private function recapBlockers(): array
+    {
+        $recap = $this->apiPost('constraints/validate', [], $this->smallClubToken);
+        if (!\in_array($recap['status'], [200, 422], true) || !\is_array($recap['json']['blockers'] ?? null)) {
+            throw new RuntimeException(\sprintf('le récapitulatif doit répondre 200 ou 422 avec la liste blockers — reçu %d : %s', $recap['status'], $this->encoded($recap['json'])));
+        }
+
+        return array_values(array_map(strval(...), $recap['json']['blockers']));
+    }
+
+    /** Le seul blocage du Récap qui nomme l'équipe comptée. */
+    private function countedTeamBlocker(): string
+    {
+        $blockers = $this->recapBlockers();
+        $mine = array_values(array_filter($blockers, static fn (string $blocker): bool => str_contains($blocker, self::COUNTED_TEAM)));
+        if (1 !== \count($mine)) {
+            throw new RuntimeException(\sprintf('le récapitulatif devrait bloquer %s par un motif, un seul — blocages : %s', self::COUNTED_TEAM, $this->encoded($blockers)));
+        }
+
+        return $mine[0];
+    }
+
+    private function countSmallClubSchedules(): int
+    {
+        return (int) $this->dbalScalar(\sprintf('SELECT COUNT(*) AS behatval FROM schedule WHERE club_id=\'%s\'', $this->smallClubId), admin: true);
     }
 
     /**
