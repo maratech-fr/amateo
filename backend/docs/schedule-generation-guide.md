@@ -719,9 +719,10 @@ SEASON, qui n'utilise pas ce pointeur) ou par « Charger » (`POST /api/schedule
 TOUJOURS de cette source ; si le gestionnaire regarde une AUTRE version, le front confirme avant
 (`PlanningPage.tsx`).
 
-À l'import du résultat, `ScheduleResultImporter` restaure l'origine `MANUAL` d'un verrou HARD
-hérité de la source (il ressortait en `UNKNOWN`, faussant le compteur « verrous posés » de la
-saison) ; `OrphanPinGuard` lit les mêmes verrous EFFECTIFS (la source, jamais la version nue en
+À l'enregistrement du résultat du moteur, `ScheduleResultImporter` restaure l'origine `MANUAL` d'un
+verrou HARD hérité de la source (il ressortait en `UNKNOWN`, faussant le compteur « verrous posés »
+de la saison) ; la règle d'origine (réservation bornée au plan de la séance) vit dans
+`generation-flow.md` §5.1 ; `OrphanPinGuard` lit les mêmes verrous EFFECTIFS (la source, jamais la version nue en
 cours de génération) pour refuser en 422 un épinglage qui ne retomberait plus sur aucun créneau de
 la grille.
 
