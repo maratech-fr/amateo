@@ -1,6 +1,6 @@
 # Chantier « déplacer verrouille » : déplacer un créneau le verrouille (troisième sorte « déplacé manuellement »)
 
-**Statut : la partie B est livrée, la partie A (« déplacer verrouille ») n'est pas commencée ; plan suspendu, 2026-11-18.**
+**Statut : la partie B et le chantier D1 sont livrés ; ce plan est désormais D3, CONDITIONNÉ à un signal terrain (un déplacement perdu malgré l'avertissement de D1), roadmap P4-607 ; suspendu, 2026-11-18.** D1 = avertissement avant « Régénérer » quand la version de départ est « modifiée à la main » + refus serveur de déplacer une séance verrouillée tenue par une réservation de son plan (règle et exemple : [`etat-des-lieux.md`](../courantes/etat-des-lieux.md), décision du 2026-11-18). La décision Q2 ci-dessous (retrait de la réservation avec confirmation) est REMPLACÉE par ce refus ; les passages du plan qui la supposent (A, aide T3 « Le déplacer retire la réservation ») sont caducs.
 
 **Ce qui existe déjà (B).** Une équipe ne peut pas avoir plus de réservations plus séances verrouillées (version chargée) que de séances par semaine : le Récap bloque, `/generate` et `/regenerate` refusent en 422 `blocker`, pas `/fill`. Règle, exemple chiffré, décisions et limites : [`etat-des-lieux.md`](../courantes/etat-des-lieux.md) §2 « Un verrou compte comme une séance », limites ouvertes en roadmap (P4-603 à P4-605). Le comptage vit dans `GenerationBlockersGuard::overBookedTeamBlockers` (verrous lus sur le payload, séances HARD de `slotTemplates`). **Ce que A ajoute** : le troisième type de séance comptée, « déplacé manuellement », qui s'ajoute aux réservations et aux séances verrouillées.
 
@@ -33,9 +33,9 @@ Les déplacements à la main restent libres et ne verrouillent rien sur le momen
 Décisions du fondateur, non rouvertes :
 - **Verrou différé au lancement.**
 - **Q1** : si la génération est refusée, les verrous posés restent.
-- **Q2 (déplacement)** : déplacer un créneau réservé ne modifie que la version chargée. Seule la `Reservation` de l'équipe déplacée est retirée, avec confirmation et trace.
+- **Q2 (déplacement) — REMPLACÉE le 2026-11-18** par le refus livré en D1 (422 `source_reserved` : une séance verrouillée tenue par une réservation de son plan ne se déplace pas, la `Reservation` n'est jamais retirée par un déplacement). Texte d'origine, pour mémoire : déplacer un créneau réservé ne modifie que la version chargée ; seule la `Reservation` de l'équipe déplacée est retirée, avec confirmation et trace.
 - **Q3** : l'annulation d'un « Prendre sa place » laisse l'équipe évincée libre.
-- **A** : case libre, le serveur refuse d'abord (« ce déplacement retire 1 réservation »), sans calcul ; confirmation ; le calcul tourne une fois. Case occupée, la vérification existante rapporte aussi la réservation : un message, une confirmation.
+- **A (CADUQUE pour une séance réservée : D1 la refuse, voir Q2)** : case libre, le serveur refuse d'abord (« ce déplacement retire 1 réservation »), sans calcul ; confirmation ; le calcul tourne une fois. Case occupée, la vérification existante rapporte aussi la réservation : un message, une confirmation.
 - **C** : une séance déplacée devenue verrou peut faire refuser « Régénérer » pour une cause que le Récap n'avait pas montrée. Accepté.
 - **B, règle unique, version chargée seule.** Les **créneaux réservés** d'une équipe sont : (1) ses réservations, (2) ses séances verrouillées (HARD d'origine autre que RESERVATION), (3) ses séances déplacées à la main. La PR B livre (1) et (2) ; la PR D ajoute (3). Chaque créneau compte une fois ; la séance HARD d'origine RESERVATION est la réservation elle-même. **Deux garde-fous seulement** : l'écran des contraintes et le Récap (422 `blocker` avant le moteur, trois guichets). Pas de refus du cadenas, pas de régénération obligatoire, pas de visibilité de ce qu'une réservation remplace (roadmap, §12).
 
@@ -70,7 +70,7 @@ Définitions :
 23. Routes : `/api/schedule-slots/{id}/move`, `/api/schedules/{id}/place-slot`, `/api/schedule-slots/move-group`, `/api/schedule-slots/swap`.
 24. Refus 422 à l'écran : aucun des lancements ne relit les séances (`planning/queries.ts:723-737`, `:747-760`, `PlanningPage.tsx:1141-1148`).
 35. **La transcription verrouille tout.** `PeriodPlanTranscriber.php:208-226` : copie « à l'identique », HARD, origine RESERVATION si une réservation du plan coïncide, sinon MANUAL ; aucun `sharedTrainingBlockId` posé. Marqueur sur la version (`:67`, `:172`), lu par aucun écran. Automatique sur une fermeture vierge (`GenerateStep.tsx:239-271`), manuelle ailleurs (`wizard/texts.ts:120`, `:124`).
-36. **La copie de période sœur verrouille aussi** : `PeriodPlanSiblingCopier.php:147-162`. Ni elle ni la transcription ne recopient `sharedTrainingBlockId`.
+36. **La copie de période sœur recopie le verrou à l'identique** (`PeriodPlanSiblingCopier::copySlots` : niveau ET origine, verbatim, jamais deviné). Ni elle ni la transcription ne recopient `sharedTrainingBlockId`.
 37. **Le marqueur se perd à la première régénération** (`ScheduleResultImporter.php:174-186`).
 42. **Patrons Behat voisins.** `SmallClubFixtureTrait.php:213-245`, `:260-266`, `:373-386` ; `TrainingBlockContext.php:289-362`, `:632-653`, période transcrite sans calcul `:234-287`. Suites : `behat.dist.php`, `boucle-travail` `:68`, `bloc` `:123-125`, `verrou-periode` `:148`.
 43. **Second scénario de `un-verrou-de-periode…`** (`PeriodLockSmallClubContext.php:71-114`) : toutes les séances de V1 finissent verrouillées.
@@ -203,7 +203,7 @@ Tous lus dans le code, aucun joué.
 - **T1, N ≥ 2.** Titre : « Déplacer ces créneaux réservés ? » Corps : « Ce déplacement retire {N} réservations de gymnase : les séances resteront à leur nouvelle place à la prochaine génération. Les autres versions du planning ne changent pas. « Annuler le dernier geste » ne recrée pas les réservations. »
 - **Paragraphe des dialogues d'éviction et d'échange** : « Ce déplacement retire aussi 1 réservation de gymnase. « Annuler le dernier geste » ne la recrée pas. » / « Ce déplacement retire aussi {N} réservations de gymnase. « Annuler le dernier geste » ne les recrée pas. »
 - **T2, suffixe de toast** : « — 1 réservation retirée » / « — {N} réservations retirées », avant « — N compromis ». Exemples : « Créneau déplacé — 1 réservation retirée. » ; « SM1 déplacée — U17 est à replacer — 1 réservation retirée. » ; « Groupe déplacé — 3 réservations retirées. » ; « Séances échangées — 2 réservations retirées — 2 compromis ».
-- **T3, aide de la fiche**, forme (a) : « Ce créneau est réservé auprès du gymnase. Le déplacer retire la réservation. »
+- **T3, aide de la fiche (CADUQUE : D1 dit « ne se déplace pas d'ici, retirez d'abord la réservation »)**, forme (a) : « Ce créneau est réservé auprès du gymnase. Le déplacer retire la réservation. »
 - **Refus 409** : « Ce déplacement retire 1 réservation de gymnase : confirmez-le. » / « Ce déplacement retire {N} réservations de gymnase : confirmez-le. »
 
 **Ce que D ajoute aux phrases de B.**
