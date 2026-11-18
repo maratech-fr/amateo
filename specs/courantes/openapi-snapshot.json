@@ -14590,7 +14590,7 @@
                         "description": "Schedule is validated (read-only), or a generation is running for the club (body carries code=generation_in_progress)"
                     },
                     "422": {
-                        "description": "Refused with nothing written. Either the solver refused the move (broken rules named for display), OR no venue window is open at the destination \u2014 nonexistent target or closed day (body carries code=slot_unavailable), OR the eviction target is invalid (body carries code=evict_target_mismatch), OR the eviction target is locked (body carries code=target_locked), OR the session is locked and held by a reservation of its version's plan at its exact case, so it does not move from the planning — dryRun included (body carries code=source_reserved, error says where to remove the reservation)",
+                        "description": "Refused with nothing written. Either the solver refused the move (broken rules named for display), OR no venue window is open at the destination \u2014 nonexistent target or closed day (body carries code=slot_unavailable), OR the eviction target is invalid (body carries code=evict_target_mismatch), OR the eviction target is locked (body carries code=target_locked), OR the session is locked and held by a reservation of its version's plan at its exact case, so it does not move from the planning \u2014 dryRun included (body carries code=source_reserved, error says where to remove the reservation)",
                         "content": {
                             "application/json": {
                                 "schema": {
