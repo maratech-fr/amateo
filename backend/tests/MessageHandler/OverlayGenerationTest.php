@@ -41,6 +41,7 @@ use App\Tests\ProvisionsPeriodPlanTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 use Symfony\Component\HttpClient\MockHttpClient;
@@ -61,6 +62,13 @@ final class OverlayGenerationTest extends KernelTestCase
     use TenantGucTrait;
 
     private const VENUE_CLOSED = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+
+    /** @return iterable<string, array{int}> */
+    public static function lateArrivalTolerances(): iterable
+    {
+        yield 'témoin, sans tolérance' => [0];
+        yield 'tolérance de 10 min' => [10];
+    }
 
     public function testClosureOverlaySnapshotRemovesClosedVenueSlotsAndSkipsBaseline(): void
     {
@@ -136,8 +144,15 @@ final class OverlayGenerationTest extends KernelTestCase
      * DANS le snapshot gelé de la V+1 (le solve partiel les fige), et NE greffe PAS
      * `previousAssignments` (un HARD n'a pas de variable — le terme de stabilité serait un no-op).
      * Falsifié dans les deux sens : sans le mode, aucune épingle et le précédent revient.
+     *
+     * La séance de la source porte une tolérance d'arrivée tardive : l'épingle du comblement l'envoie
+     * au moteur, le moteur la renvoie HARD, et la séance NÉE de l'enregistrement du résultat garde
+     * cette tolérance — lue dans le snapshot figé, sans aucune réservation derrière. L'empreinte de
+     * structure du plan (recalculée depuis la version née, devenue la source des verrous) vaut alors le
+     * `snapshotHash` : « à régénérer » reste éteint. Témoin : tolérance 0, où l'égalité tient déjà.
      */
-    public function testFillModePinsSourcePlacementsIntoTheSnapshotAndSkipsPreviousAssignments(): void
+    #[DataProvider('lateArrivalTolerances')]
+    public function testFillModePinsSourcePlacementsIntoTheSnapshotAndSkipsPreviousAssignments(int $tolerance): void
     {
         [$em, $club, $season, $entry] = $this->seedClosureOverlay('ov-fill');
 
@@ -195,6 +210,7 @@ final class OverlayGenerationTest extends KernelTestCase
         $placement->setStartTime(new DateTimeImmutable('18:00'));
         $placement->setDurationMinutes(90);
         $placement->setLockLevel(LockLevel::NONE); // la source peut être NONE : le fill FIGE en HARD
+        $placement->setCoachLateToleranceMinutes($tolerance);
         $em->persist($placement);
 
         // La V+1 à combler.
@@ -212,7 +228,17 @@ final class OverlayGenerationTest extends KernelTestCase
         $em->clear();
         $this->clearGuc();
 
-        $engineResult = json_encode(['status' => 'completed', 'score' => 1, 'slots' => [], 'diagnostics' => []], \JSON_THROW_ON_ERROR);
+        // Le moteur renvoie l'épingle telle quelle : HARD, à sa case (il ne renvoie pas la tolérance).
+        $engineResult = json_encode(['status' => 'completed', 'score' => 1, 'slots' => [[
+            'id' => 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+            'teamId' => $teamId,
+            'venueId' => $activeVenueId,
+            'coachId' => null,
+            'dayOfWeek' => 2,
+            'startTime' => '18:00',
+            'durationMinutes' => 90,
+            'lockLevel' => LockLevel::HARD->value,
+        ]], 'diagnostics' => []], \JSON_THROW_ON_ERROR);
         $sentPayload = $this->runHandler($em, $club->getId(), $targetId, $engineResult, $sourceId);
 
         // Le payload RÉELLEMENT envoyé au moteur porte l'épingle en HARD, et AUCUN previousAssignments.
@@ -236,6 +262,18 @@ final class OverlayGenerationTest extends KernelTestCase
         ));
         self::assertCount(1, $snapshotPins, 'l\'épingle du comblement vit dans le snapshot gelé');
         self::assertSame(LockLevel::HARD->value, $snapshotPins[0]['lockLevel']);
+        self::assertSame($tolerance, $snapshotPins[0]['coachLateToleranceMinutes'], 'le snapshot figé avant l\'enregistrement porte la tolérance de la séance source');
+
+        $born = $em->getRepository(ScheduleSlotTemplate::class)->findBy(['scheduleId' => $targetId]);
+        self::assertCount(1, $born, 'la séance renvoyée par le moteur naît dans la version comblée');
+        self::assertSame(LockLevel::HARD, $born[0]->getLockLevel());
+        self::assertSame($tolerance, $born[0]->getCoachLateToleranceMinutes(), 'la séance née garde la tolérance partie au moteur');
+
+        self::assertSame(
+            $reloaded->getSnapshotHash(),
+            self::getContainer()->get(SchedulePlanProvisioner::class)->structureHashOfPlan($planId),
+            'juste après le comblement, l\'empreinte de structure du plan == le snapshotHash de la version comblée',
+        );
     }
 
     /**

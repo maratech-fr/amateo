@@ -23,7 +23,10 @@ use RuntimeException;
  *   - « Charger » fait des verrous d'une version plus ANCIENNE les données en cours : la
  *     régénération qui suit repart de SES verrous, non de la version la plus récente ;
  *   - ces verrous chargés comptent comme des séances : réduite pour la période sous le nombre de ses séances
- *     verrouillées, une équipe est bloquée au Récap et à la génération, par le même motif.
+ *     verrouillées, une équipe est bloquée au Récap et à la génération, par le même motif ;
+ *   - une séance verrouillée ne se dit « réservée » que si une réservation de SON plan occupe sa
+ *     case : posée sur une case réservée au planning de saison, elle revient de la régénération de
+ *     la période épinglée à la main, pas réservée.
  *
  * Remplace, sur un décor léger (palier 60 s au lieu de ~600 s sur le BCCL complet), les trois
  * scénarios de période de `un-verrou-est-souverain.feature` (régénération d'un plan de période)
@@ -41,6 +44,9 @@ final class PeriodLockSmallClubContext extends BaseContext
     /** Équipe à deux séances, toutes deux verrouillées dans la version chargée, réduite à une séance pour la période. */
     private const string REDUCED_TEAM = 'U20M1';
 
+    /** Équipe dont une séance est réservée au planning de SAISON (jamais réservée dans la période). */
+    private const string RESERVED_TEAM = 'SM1';
+
     /** ISO-8601 : 1 = lundi. */
     private const array DAY_NAMES = [1 => 'lundi', 2 => 'mardi', 3 => 'mercredi', 4 => 'jeudi', 5 => 'vendredi', 6 => 'samedi', 7 => 'dimanche'];
 
@@ -53,6 +59,9 @@ final class PeriodLockSmallClubContext extends BaseContext
     private array $lockedCells = [];
 
     private string $lastRegeneratedId = '';
+
+    /** @var array{teamId: string, venueId: string, day: int, start: string} case réservée au planning de saison */
+    private array $reservedCell = ['teamId' => '', 'venueId' => '', 'day' => 0, 'start' => ''];
 
     private string $finalStatus = '';
 
@@ -85,11 +94,31 @@ final class PeriodLockSmallClubContext extends BaseContext
         $this->sourceVersionId = $overlay['id'];
     }
 
-    #[Given('un petit club réaliste dont le planning de saison est en vigueur, avec un plan de période jetable portant une version transcrite plus ancienne que les données en cours')]
+    #[Given('un petit club réaliste dont le planning de saison, où SM1 a une séance réservée, est en vigueur, avec un plan de période jetable portant une version transcrite plus ancienne que les données en cours')]
     public function unPetitClubAvecPlanDePeriodeJetableAncienne(): void
     {
         $this->buildSmallClub();
-        $this->generateAndValidateSmallClubSocle();
+
+        // Réservation du planning de SAISON (schedulePlanId null), posée avant toute version : la case
+        // se prend dans la grille. Le socle place SM1 sur cette case ; la période, elle, n'a aucune
+        // réservation — la séance transcrite y est un épinglage de gestion (MANUAL).
+        $this->reservedCell = ['teamId' => $this->smallClubTeamIds[self::RESERVED_TEAM], 'venueId' => $this->smallClubVenueIds['Gymnase Centre'], 'day' => 2, 'start' => '18:00'];
+        $reserved = $this->apiPost('reservations', [
+            'teamId' => $this->reservedCell['teamId'],
+            'venueId' => $this->reservedCell['venueId'],
+            'dayOfWeek' => $this->reservedCell['day'],
+            'startTime' => $this->reservedCell['start'],
+            'durationMinutes' => 90,
+            'schedulePlanId' => null,
+        ], $this->smallClubToken);
+        if (!\in_array($reserved['status'], [200, 201], true)) {
+            throw new RuntimeException(\sprintf('la réservation de %s au planning de saison a répondu %d (201 attendu) : %s', self::RESERVED_TEAM, $reserved['status'], json_encode($reserved['json'], \JSON_UNESCAPED_UNICODE)));
+        }
+
+        $socleId = $this->generateAndValidateSmallClubSocle();
+        if ('HARD|RESERVATION' !== $this->reservedCellLock($socleId)) {
+            throw new RuntimeException(\sprintf('décor : le socle devait placer %s sur sa case réservée, verrouillée RESERVATION (obtenu « %s »)', self::RESERVED_TEAM, $this->reservedCellLock($socleId)));
+        }
 
         $start = $this->smallClubFutureMonday(49);
         $end = date('Y-m-d', (int) strtotime($start . ' +4 days'));
@@ -99,15 +128,20 @@ final class PeriodLockSmallClubContext extends BaseContext
         // v1 = transcription du socle (COMPLETED sans solve), la version plus ANCIENNE que « Charger »
         // désignera. On verrouille sur ELLE.
         $this->sourceVersionId = $this->transcribeSmallClubSocleToPlan($this->periodPlanId);
+        if ('HARD|MANUAL' !== $this->reservedCellLock($this->sourceVersionId)) {
+            throw new RuntimeException(\sprintf('décor : la version transcrite devait porter %s sur la case réservée du socle, épinglée MANUAL (obtenu « %s »)', self::RESERVED_TEAM, $this->reservedCellLock($this->sourceVersionId)));
+        }
 
         // La transcription verrouille HARD (origine MANUAL) TOUTE séance copiée : pour éprouver
-        // « verrouiller des séances LIBRES », on en DÉVERROUILLE deux (→ NONE sur v1).
+        // « verrouiller des séances LIBRES », on en DÉVERROUILLE deux (→ NONE sur v1). Jamais celles
+        // de SM1 : sa séance sur la case réservée doit rester épinglée jusqu'à la régénération finale.
         $toFree = $this->dbalScalar(
             \sprintf(
                 'SELECT string_agg(id::text, \',\') AS behatval FROM ('
-                . ' SELECT id FROM schedule_slot_template WHERE schedule_id=\'%s\' AND lock_level=\'HARD\' AND lock_origin=\'MANUAL\' ORDER BY id LIMIT 2'
+                . ' SELECT id FROM schedule_slot_template WHERE schedule_id=\'%s\' AND lock_level=\'HARD\' AND lock_origin=\'MANUAL\' AND team_id<>\'%s\' ORDER BY id LIMIT 2'
                 . ') q',
                 $this->sourceVersionId,
+                $this->reservedCell['teamId'],
             ),
             admin: true,
         );
@@ -165,6 +199,20 @@ final class PeriodLockSmallClubContext extends BaseContext
         }
         if (!$this->smallClubSessionsStillLockedAt($this->lastRegeneratedId, $this->lockedCells)) {
             throw new RuntimeException('une séance verrouillée d\'un plan de période aurait dû revenir VERROUILLÉE (HARD) à la même case après régénération');
+        }
+    }
+
+    /**
+     * Une séance ne se dit « réservée » que si une réservation de SON plan occupe sa case : la période
+     * n'a pas la réservation du planning de saison, la séance de SM1 y revient donc épinglée à la main
+     * (MANUAL, révocable), jamais RESERVATION.
+     */
+    #[Then('la séance de SM1 posée sur la case réservée du planning de saison revient épinglée à la main, pas réservée')]
+    public function laSeanceDeSm1RevientEpingleeALaMain(): void
+    {
+        $lock = $this->reservedCellLock($this->lastRegeneratedId);
+        if ('HARD|MANUAL' !== $lock) {
+            throw new RuntimeException(\sprintf('dans la période, la séance de %s sur la case réservée du planning de saison doit revenir épinglée à la main (HARD|MANUAL) — obtenu « %s »', self::RESERVED_TEAM, $lock));
         }
     }
 
@@ -281,6 +329,23 @@ final class PeriodLockSmallClubContext extends BaseContext
     public function nettoyer(): void
     {
         $this->teardownSmallClub();
+    }
+
+    /** « niveau|origine » de la séance de l'équipe réservée sur sa case, dans la version donnée ('' si absente). */
+    private function reservedCellLock(string $scheduleId): string
+    {
+        return $this->dbalScalar(
+            \sprintf(
+                'SELECT string_agg(lock_level || \'|\' || coalesce(lock_origin, \'\'), \';\') AS behatval FROM schedule_slot_template'
+                . ' WHERE schedule_id=\'%s\' AND team_id=\'%s\' AND venue_id=\'%s\' AND day_of_week=%d AND to_char(start_time, \'HH24:MI\')=\'%s\'',
+                $scheduleId,
+                $this->reservedCell['teamId'],
+                $this->reservedCell['venueId'],
+                $this->reservedCell['day'],
+                $this->reservedCell['start'],
+            ),
+            admin: true,
+        );
     }
 
     /** @return list<string> */

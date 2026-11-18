@@ -199,6 +199,7 @@ prouve sur la stack d'épreuve, `make -C backend tests-complete` tourne en local
 2. `/plan` (agent `morpheus`, porte la checklist §9 — dont **contrats nouveaux** et **tableau
    comportement → scénario**, qui est le brief de `tank`, **carte des conséquences** et **parcours de bout en bout**) ; `smith`
    **obligatoire** si le plan touche moteur, génération, wizard ou axe §7.1, optionnel sinon. User valide.
+   **Plafond : 4 versions** (v1 → smith → v2 → … v4 = dernière, pas de v5) ; le reste ouvert devient question au fondateur ou limite écrite (2026-11-17).
 3. **Le contrat d'abord** : pour chaque décision de COMPORTEMENT, `tank` écrit le scénario Behat en
    français, ROUGE ; un test ne s'écrit jamais pour une couleur, un libellé ou un placement. `neo`
    implémente **strictement dans le scope** (zéro refactor opportuniste) jusqu'au vert et n'adapte un

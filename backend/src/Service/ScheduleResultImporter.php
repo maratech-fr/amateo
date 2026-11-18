@@ -47,6 +47,7 @@ final class ScheduleResultImporter
 
         $reservationPlacements = $this->reservationPlacements($schedule);
         $manualPlacements = $this->sourceManualPlacements($schedule);
+        $pinTolerances = $this->snapshotPinTolerances($schedule);
 
         $solverSlots = $this->deduplicateNoneSlots($solverOutput['slots'] ?? []);
         $keptPlacements = [];
@@ -70,7 +71,7 @@ final class ScheduleResultImporter
             }
 
             $slot = $existingSlot ?? (new ScheduleSlotTemplate)->setId(SlotIdScoper::scope($schedule->getId(), (string) $engineId));
-            $this->hydrateSlot($slot, $schedule, $slotData, $reservationPlacements, $manualPlacements);
+            $this->hydrateSlot($slot, $schedule, $slotData, $reservationPlacements, $manualPlacements, $pinTolerances);
 
             if (null === $existingSlot) {
                 $this->entityManager->persist($slot);
@@ -128,10 +129,11 @@ final class ScheduleResultImporter
 
     /**
      * @param array<string, mixed> $slotData
-     * @param array<string, int>   $reservationPlacements placement key → late-arrival tolerance of this plan's durable pins
+     * @param array<string, true>  $reservationPlacements placement keys of this plan's team reservations
      * @param array<string, true>  $manualPlacements      placement keys of the source version's MANUAL locks
+     * @param array<string, int>   $pinTolerances         placement key → late-arrival tolerance of the HARD pins sent to the engine
      */
-    private function hydrateSlot(ScheduleSlotTemplate $slot, Schedule $schedule, array $slotData, array $reservationPlacements, array $manualPlacements): void
+    private function hydrateSlot(ScheduleSlotTemplate $slot, Schedule $schedule, array $slotData, array $reservationPlacements, array $manualPlacements, array $pinTolerances): void
     {
         $lockLevel = LockLevel::tryFrom(strtoupper((string) ($slotData['lockLevel'] ?? 'NONE'))) ?? LockLevel::NONE;
         $placement = $this->placementKey(
@@ -150,9 +152,9 @@ final class ScheduleResultImporter
             ->setDayOfWeek((int) $slotData['dayOfWeek'])
             ->setStartTime($this->parseStartTime((string) $slotData['startTime']))
             ->setDurationMinutes((int) $slotData['durationMinutes'])
-            // Chantier H — une séance importée hérite de la tolérance d'arrivée tardive de la
-            // réservation qui l'a épinglée (0 sinon), pour qu'elle survive à la régénération.
-            ->setCoachLateToleranceMinutes($reservationPlacements[$placement] ?? 0)
+            // Une séance qui revient verrouillée porte la tolérance d'arrivée tardive de l'épingle
+            // partie au moteur sur sa case (snapshot figé de la version) ; une séance NONE, 0.
+            ->setCoachLateToleranceMinutes(LockLevel::HARD === $lockLevel ? ($pinTolerances[$placement] ?? 0) : 0)
             ->setLockLevel($lockLevel)
             ->setLockOrigin($this->originForImportedLock($lockLevel, $slot, $reservationPlacements, $manualPlacements));
     }
@@ -162,13 +164,13 @@ final class ScheduleResultImporter
      * une épingle réalimentée au moteur : les verrous HARD de CETTE version sont préservés INTACTS par
      * `import()` (leur ligne est sautée, jamais réhydratée), donc un HARD qui ressort du solveur vient
      * d'un pin durable du PLAN. Deux provenances VRAIES, jamais devinées (cf. `LockOriginProvenanceTest`) :
-     *  - il coïncide avec une `Reservation` du plan → RESERVATION ;
+     *  - il coïncide avec une `Reservation` de SON plan (celle d'un autre plan ne compte pas) → RESERVATION ;
      *  - sinon il coïncide avec un verrou MANUAL de la version SOURCE (verrou de work-loop hérité, V1
      *    « les verrous survivent à Régénérer ») → MANUAL. Ça RÉPARE AUSSI le compteur de la saison :
      *    un MANUAL hérité ressortait en UNKNOWN jusqu'ici, faussant le décompte « verrous posés ».
      *  - ni l'un ni l'autre → UNKNOWN (indécidable).
      *
-     * @param array<string, int>  $reservationPlacements
+     * @param array<string, true> $reservationPlacements
      * @param array<string, true> $manualPlacements
      */
     private function originForImportedLock(LockLevel $lockLevel, ScheduleSlotTemplate $slot, array $reservationPlacements, array $manualPlacements): ?LockOrigin
@@ -214,19 +216,22 @@ final class ScheduleResultImporter
     }
 
     /**
-     * Placement key → late-arrival tolerance (minutes) of the durable Reservation pins that feed
-     * THIS schedule's plan — the only source of a HARD lock in a solver result. Chantier H: the
-     * tolerance (0 = none) is carried onto the imported slot so it survives regeneration and
-     * inherited pins. The value is an int (incl. 0), so `isset()` still answers « is a reservation
-     * placement » for the lock-origin check. Loaded once per import.
+     * Placement keys of the team Reservations of THIS schedule's plan — a season plan reads the
+     * season's reservations (`schedulePlanId` null), a period plan its own only. A reservation of
+     * another plan on the same placement does NOT make a lock RESERVATION. `planIsSeason` (not
+     * `isSeasonSchedule`, which throws when the plan row is gone) keeps the import alive: a plan
+     * deleted mid-solve reads as a period plan and the origin falls back to MANUAL/UNKNOWN.
+     * Loaded once per import.
      *
-     * @return array<string, int>
+     * @return array<string, true>
      */
     private function reservationPlacements(Schedule $schedule): array
     {
+        $planId = $schedule->getSchedulePlanId();
         $reservations = $this->entityManager->getRepository(Reservation::class)->findBy([
             'clubId' => $schedule->getClubId(),
             'seasonId' => $schedule->getSeasonId(),
+            'schedulePlanId' => $this->schedulePlanProvisioner->planIsSeason($planId) ? null : $planId,
         ]);
 
         $placements = [];
@@ -241,10 +246,38 @@ final class ScheduleResultImporter
                 $reservation->getVenueId(),
                 $reservation->getDayOfWeek(),
                 $reservation->getStartTime()->format('H:i'),
-            )] = $reservation->getCoachLateToleranceMinutes();
+            )] = true;
         }
 
         return $placements;
+    }
+
+    /**
+     * Placement key → late-arrival tolerance (minutes) of the HARD pins this version sent to the
+     * engine, read from its frozen snapshot (`slotTemplates`) — the exact value solved and hashed,
+     * whatever the pin's provenance (plan reservation, inherited lock, fill-mode pin). Two pins on
+     * one placement: the last one of the list wins, i.e. the reservation's
+     * ({@see ScheduleConstraintBuilder::buildPayload} appends reservations after the slot templates).
+     * An empty snapshot (only in tests that call `import` by hand) gives tolerance 0.
+     *
+     * @return array<string, int>
+     */
+    private function snapshotPinTolerances(Schedule $schedule): array
+    {
+        $pins = $schedule->getSnapshotData()['slotTemplates'] ?? null;
+        if (!\is_array($pins)) {
+            return [];
+        }
+
+        $tolerances = [];
+        foreach ($pins as $pin) {
+            if (!\is_array($pin) || LockLevel::HARD->value !== ($pin['lockLevel'] ?? null)) {
+                continue;
+            }
+            $tolerances[$this->placementKeyFromData($pin)] = (int) ($pin['coachLateToleranceMinutes'] ?? 0);
+        }
+
+        return $tolerances;
     }
 
     private function parseStartTime(string $startTime): DateTimeImmutable
