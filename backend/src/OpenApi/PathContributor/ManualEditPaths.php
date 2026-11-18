@@ -129,11 +129,11 @@ final readonly class ManualEditPaths implements CustomPathContributor
                     '400' => new Response('Missing or invalid field (dayOfWeek, startTime or venueId)'),
                     '404' => new Response('Slot not found'),
                     '409' => new Response('Schedule is validated (read-only), or a generation is running for the club (body carries code=generation_in_progress)'),
-                    '422' => $this->schemas->jsonResponse('Refused with nothing written. Either the solver refused the move (broken rules named for display), OR no venue window is open at the destination — nonexistent target or closed day (body carries code=slot_unavailable), OR the eviction target is invalid (body carries code=evict_target_mismatch), OR the eviction target is locked (body carries code=target_locked)', [
+                    '422' => $this->schemas->jsonResponse('Refused with nothing written. Either the solver refused the move (broken rules named for display), OR no venue window is open at the destination — nonexistent target or closed day (body carries code=slot_unavailable), OR the eviction target is invalid (body carries code=evict_target_mismatch), OR the eviction target is locked (body carries code=target_locked), OR the session is locked and held by a reservation of its version\'s plan at its exact case, so it does not move from the planning — dryRun included (body carries code=source_reserved, error says where to remove the reservation)', [
                         'type' => 'object',
                         'properties' => [
                             'valid' => ['type' => 'boolean', 'enum' => [false]],
-                            'code' => ['type' => 'string', 'nullable' => true, 'description' => 'slot_unavailable, evict_target_mismatch or target_locked when a server pre-check refused (no engine call)'],
+                            'code' => ['type' => 'string', 'nullable' => true, 'description' => 'slot_unavailable, evict_target_mismatch, target_locked or source_reserved when a server pre-check refused (no engine call)'],
                             'error' => ['type' => 'string', 'nullable' => true, 'description' => 'Human message for the eviction pre-check refusal'],
                             'violations' => ['type' => 'array', 'items' => ['type' => 'object', 'properties' => [
                                 'rule' => ['type' => 'string', 'description' => 'Machine code of the broken rule (UI branches on it)'],
@@ -245,11 +245,11 @@ final readonly class ManualEditPaths implements CustomPathContributor
                     '400' => new Response('Missing or invalid field (scheduleId, blockId, source or target case)'),
                     '404' => new Response('Schedule or mutualisation block not found'),
                     '409' => new Response('Schedule is validated (read-only), or a generation is running for the club (body carries code=generation_in_progress)'),
-                    '422' => $this->schemas->jsonResponse('Refused with NOTHING moved (all-or-nothing): the solver refused the group move (broken rules named for display — e.g. shared_block_broken when the move would split the block), OR no block session sits at the source case / the target window is closed (body carries code=slot_unavailable)', [
+                    '422' => $this->schemas->jsonResponse('Refused with NOTHING moved (all-or-nothing): the solver refused the group move (broken rules named for display — e.g. shared_block_broken when the move would split the block), OR no block session sits at the source case / the target window is closed (body carries code=slot_unavailable), OR a member session is locked and held by a reservation of the version\'s plan at its exact case (body carries code=source_reserved)', [
                         'type' => 'object',
                         'properties' => [
                             'valid' => ['type' => 'boolean', 'enum' => [false]],
-                            'code' => ['type' => 'string', 'nullable' => true, 'description' => 'slot_unavailable when a server pre-check refused (no engine call)'],
+                            'code' => ['type' => 'string', 'nullable' => true, 'description' => 'slot_unavailable or source_reserved when a server pre-check refused (no engine call)'],
                             'error' => ['type' => 'string', 'nullable' => true],
                             'violations' => $dryViolations,
                         ],
@@ -301,7 +301,7 @@ final readonly class ManualEditPaths implements CustomPathContributor
                     '400' => new Response('Missing or invalid field (slotId, otherSlotId)'),
                     '404' => new Response('One of the two slots was not found'),
                     '409' => new Response('Schedule is validated (read-only), or a generation is running for the club (body carries code=generation_in_progress)'),
-                    '422' => $this->schemas->jsonResponse('Refused with NOTHING moved (all-or-nothing): the solver refused the swap (broken rules named for display), OR a server pre-check refused before any engine call — the two slots are not in the same schedule (code=swap_cross_schedule), the same slot or a team shared between both sides (code=swap_with_self), the occupant is itself a group session (code=evict_target_is_group), the occupant is locked (code=target_locked), a window is missing at one case (code=slot_unavailable), a moved side already sits at its destination case (code=team_already_at_case), or a moved side already trains on its destination day (code=team_already_trains_that_day)', [
+                    '422' => $this->schemas->jsonResponse('Refused with NOTHING moved (all-or-nothing): the solver refused the swap (broken rules named for display), OR a server pre-check refused before any engine call — the two slots are not in the same schedule (code=swap_cross_schedule), the same slot or a team shared between both sides (code=swap_with_self), the source session is locked and held by a reservation of the version\'s plan at its exact case (code=source_reserved), the occupant is itself a group session (code=evict_target_is_group), the occupant is locked (code=target_locked), a window is missing at one case (code=slot_unavailable), a moved side already sits at its destination case (code=team_already_at_case), or a moved side already trains on its destination day (code=team_already_trains_that_day)', [
                         'type' => 'object',
                         'properties' => [
                             'valid' => ['type' => 'boolean', 'enum' => [false]],
