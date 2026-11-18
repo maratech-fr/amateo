@@ -1,4 +1,4 @@
-# Roadmap (185) — ce qui reste à faire
+# Roadmap (189) — ce qui reste à faire
 
 > **Ce fichier ne tient QUE l'ouvert.** Bugs, évolutions, dettes techniques : tout ce qu'on trace pour ne pas
 > l'oublier un jour. Rien de livré n'y figure — un item livré **quitte** ce fichier et laisse sa trace dans
@@ -32,7 +32,7 @@
 > [`outil-extraction-cas-reels.md`](outil-extraction-cas-reels.md) (P4-502) ·
 > [`fermetures-de-gymnase-plan.md`](fermetures-de-gymnase-plan.md) (P4-484) ·
 > [`fermeture-matchs-a-placer.md`](fermeture-matchs-a-placer.md) (P4-511 ; dossier de réouverture d'un chantier arrêté) ·
-> [`pr2-competition-manuelle-et-echauffement.md`](pr2-competition-manuelle-et-echauffement.md) (lot double contexte, PR 2 ; plan suspendu, questions ouvertes en tête) ·
+> [`lot-double-contexte-restes.md`](lot-double-contexte-restes.md) (P4-611 à P4-614 ; lot clos, besoins non cadrés, PR 2 abandonnée) ·
 > [`deplacer-verrouille-creneaux-reserves.md`](deplacer-verrouille-creneaux-reserves.md) (chantier « déplacer verrouille » ; plan suspendu, partie A non commencée, partie B livrée) ·
 > [`duplications-de-verite.md`](duplications-de-verite.md) (doctrine du motif « une vérité, deux endroits » —
 > le test de fusion réutilisé par `documentation-update`, les duplications délibérées à ne jamais mutualiser.
@@ -280,6 +280,10 @@
 | P4-608 | **Le texte « Déverrouiller ce créneau réservé ? » promet un déplacement que la réservation empêche** | ⚪ | S | La clé `unlockReservedTitle` / `unlockReservedDescription` (`frontend/src/features/planning/texts.ts`) annonce que la prochaine génération pourra déplacer ou libérer le créneau ; or les réservations sont ajoutées au payload après les épingles (`ScheduleConstraintBuilder::buildPayload`) : la réservation épingle de nouveau la case. Texte non corrigé. Priorité basse. Exemple : U13 réservée lundi 18:00, cadenas retiré, « Régénérer » : U13 reste lundi 18:00. |
 | P4-609 | **Wizard, étape Contraintes, onglet « Réserver » : le texte renvoie à « l'étape « Récap » », et ne dit pas qu'en période les réservations sont celles de la période** | ⚪ | XS | `frontend/src/features/wizard/steps/ReservationPanel.tsx` dit « l'étape « Récap » » alors que l'étape s'appelle « Récapitulatif » ; en période, l'onglet ne dit pas que ses réservations sont celles de la période. |
 | P4-610 | **Étape Génération du Wizard : les boutons flottants « haut / bas de page » chevauchent « Gymnases : tous » et « Exporter » à 1280 px** | ⚪ | XS | Constaté à 1280 px de large dans l'étape Génération du Wizard ; la cause n'est pas cherchée. |
+| P4-611 | **Fenêtres de match de la ligue régionale du club (lot double contexte, PR 3)** | 🟡 | XS | Le catalogue fédéral ne contient que les fenêtres de la ligue de référence ; une ligue absente retombe dessus (`LeagueMatchWindowRepository.php:36`), le club hérite de fenêtres fausses sans le savoir. À faire : lire le règlement de la ligue (son site renvoyait 503 le 2026-11-13) et ajouter un fichier de données et son semis. Sans code : le gestionnaire corrige sa copie à la main. Non cadré. Détail : [`lot-double-contexte-restes.md`](lot-double-contexte-restes.md) |
+| P4-612 | **Variante de semaine : planning « avec événement » et planning normal, indisponibilité régulière (lot double contexte, PR 4)** | 🟡 | L | Un événement récurrent semi-permanent (match à domicile du mercredi soir de l'équipe de haut niveau, une dizaine de semaines par saison, calendrier irrégulier) rend le gymnase indisponible un créneau précis : deux équipes perdent leur séance, reportées aujourd'hui à la main sur deux créneaux libres. Veut : déclarer une indisponibilité régulière et deux plannings (semaine A, semaine B) au lieu d'une fermeture datée par semaine. **Décision : Amateo ne décide PAS quand la variante s'applique** (le gestionnaire choisit le planning n°2). Une fermeture ne se date qu'au jour aujourd'hui : fermeture à l'heure à instruire, règle récurrente écartée. ADR-0002, `smith` obligatoire. Non cadré. Détail : [`lot-double-contexte-restes.md`](lot-double-contexte-restes.md) |
+| P4-613 | **Planning des salariés : fiche salarié indépendante du coach, activités, export simple (lot double contexte, PR 5)** | 🟡 | L | Informatif, sans solveur ni compte. Fiche salarié sans lien obligatoire avec un coach ; activités nommées (réunion, formation, intervention) attribuées à un salarié ou à tous ; export simple pour les gestionnaires. Version mini (S) : un motif libre sur l'indisponibilité du coach. Exemple : « réunion hebdomadaire » le lundi 12:00-13:00 pour tous les salariés. 1 à 2 PR. Non cadré. Détail : [`lot-double-contexte-restes.md`](lot-double-contexte-restes.md) |
+| P4-614 | **Import du parc : reconnaître les cases qui ne sont pas des équipes (lot double contexte, PR 7)** | 🟡 | M | École, autre section, formations, réunions arrivent en « À classer » et créent de fausses équipes si elles restent cochées : tout le planning doit être conservé. Dépend de P4-613 (destination des activités). Se traite avec P4-412 et P4-385. Non cadré. Détail : [`lot-double-contexte-restes.md`](lot-double-contexte-restes.md) |
 
 ---
 
