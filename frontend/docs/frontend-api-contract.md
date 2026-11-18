@@ -105,7 +105,7 @@ Référence : `backend-inventory.md` §3 (AuthController, PasswordController, Me
 
 | Étape | Endpoint | Statut HTTP | Frontend |
 |-------|----------|-------------|----------|
-| Lancer | `POST /api/schedules/{id}/generate` | 202 | Mutation TanStack Query, écran `GenerationWaiting`. 422 `{error, blocker: true}` = blocage du Récap refusé par le serveur (même garde sur `/regenerate` et `/fill`) : `isBlockerRefusal` (`shared/lib/errorMessage.ts`) le distingue d'un autre 422 |
+| Lancer | `POST /api/schedules/{id}/generate` | 202 | Mutation TanStack Query, écran `GenerationWaiting`. 422 `{error, blocker: true}` = blocage du Récap refusé par le serveur (même garde sur `/regenerate` et `/fill`, sauf les séances verrouillées d'une équipe, que `/fill` ne compte pas) : `isBlockerRefusal` (`shared/lib/errorMessage.ts`) le distingue d'un autre 422 |
 | Suivi | `GET /api/schedules` — invalidé par le flux Mercure, sinon `polling` | 200 | Flux SSE + `refetchInterval` 2 500/15 000 ms selon connexion (§5) |
 | Résultat | `GET /api/schedule_slot_templates?scheduleId={id}` | 200 | Re-fetch slots sur événement terminal (SSE ou polling) |
 | Diagnostics | `GET /api/schedule_diagnostics?scheduleId={id}` | 200 | Afficher rapport (`DiagnosticsPanel`) |

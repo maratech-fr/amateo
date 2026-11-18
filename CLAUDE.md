@@ -140,7 +140,10 @@ quoi, par axe, et les angles morts : `docs/testing/test-coverage-map.md`.
   diagnostics expliqués ; **SEULE exception : « la réservation gagne »** — un verrou HARD qui
   contredit une règle l'emporte, le planning est produit et l'écart nommé. Aucun autre repli de
   relaxation. Ce que le Récap dit voué à l'échec est refusé 422 `blocker` AVANT le moteur, sur les
-  trois guichets de génération. → `docs/architecture/adr-0001-single-pass-solve.md`.
+  trois guichets de génération. Exception : une équipe au-dessus de son nombre de séances par ses
+  séances verrouillées est bloquée au Récap et refusée par `/generate` et `/regenerate`, pas par
+  `/fill` (au comblement seules les réservations comptent).
+  → `docs/architecture/adr-0001-single-pass-solve.md`.
 
 ## 7. Workflow rules (orchestrator)
 
