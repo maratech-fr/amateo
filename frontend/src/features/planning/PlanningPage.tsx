@@ -291,7 +291,10 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
   const regenerateFromMutation = useRegenerateFromVersion();
   const [regenerateFromOpen, setRegenerateFromOpen] = useState(false);
   // Régénérer en regardant une autre version que la chargée : on dit d'où ça repart avant de lancer.
-  const [seasonRegenConfirm, setSeasonRegenConfirm] = useState<{ scheduleId: string; viewed: string; loaded: string; lockCount: number; viewedHasLocks: boolean; canLoad: boolean } | null>(null);
+  const [seasonRegenConfirm, setSeasonRegenConfirm] = useState<{ scheduleId: string; viewed: string; loaded: string; lockCount: number; viewedHasLocks: boolean; canLoad: boolean; loadedEdited: boolean } | null>(null);
+  // D1 — la version de DÉPART d'une régénération (saison : la chargée ; période : la source) a été
+  // modifiée à la main : on prévient avant de lancer. Confirmer rejoue l'appel direct, sans rien de plus.
+  const [editedRegenConfirm, setEditedRegenConfirm] = useState<{ label: string; launch: { scheduleId: string } | { planId: string } } | null>(null);
   // V1bis — « Charger » les verrous d'une version de PÉRIODE (pose le pointeur, ne génère pas). La
   // confirmation nomme la version et dit l'effet. `isLockSource` bascule ⇒ la liste des versions est
   // invalidée par la mutation.
@@ -300,7 +303,7 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
   // V1 — « Régénérer » un overlay repart TOUJOURS des données EN COURS (la version SOURCE des
   // verrous). Quand on régénère en regardant une AUTRE version que la source, on confirme (patron
   // « Charger ») : les champs figent le libellé des deux versions et le nombre de verrous de la source.
-  const [overlayRegenConfirm, setOverlayRegenConfirm] = useState<{ planId: string; viewedLabel: string; sourceLabel: string; lockCount: number } | null>(null);
+  const [overlayRegenConfirm, setOverlayRegenConfirm] = useState<{ planId: string; viewedLabel: string; sourceLabel: string; lockCount: number; sourceEdited: boolean } | null>(null);
   // Lot 9 — la modale de mutualisation (geste F3) et le message d'un refus serveur (422/409/404)
   // affiché DANS la modale (jamais toasté — FRT-38 : le feedback vit une fois, côté hook/modale).
   const mutualizeMutation = useMutualizeSlot();
@@ -798,6 +801,16 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
   // nom imparfait vaut mieux qu'un « planning.xlsx » anonyme (revue #339).
   const exportName = displayedPlanName;
 
+  // L'appel « Régénérer » de saison d'aujourd'hui, direct ou après l'avertissement D1.
+  const launchSeasonRegenerate = (scheduleId: string): void => {
+    regenerateMutation.mutate(scheduleId, {
+      onSuccess: (created) => {
+        setSessionLaunchedScheduleId(created.id);
+        setSelectedScheduleId(created.id);
+      },
+    });
+  };
+
   return (
     <div>
       {/* P4-168 — témoin (sans rendu) du canal de livraison : c'est l'écran qui affiche le
@@ -997,6 +1010,9 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
                 // An overlay "Régénérer" creates a NEW version UNDER its period's plan
                 // (ADR-0002 C4); a season plan regenerates from the current structure.
                 const overlayPlanId = !isSeasonPlanType(selectedSchedule?.planType) ? selectedSchedule?.schedulePlanId ?? null : null;
+                // D1 — le marqueur lu est celui de la version de DÉPART (la chargée en saison, la source
+                // en période), jamais celui de la version regardée.
+                const departureEdited = true === loadedVersion?.manuallyEditedSinceGeneration;
                 if (null === overlayPlanId) {
                   // Une version en échec n'a rien à reprendre : on relance directement.
                   if (undefined !== loadedVersion && null !== loadedLabel && null !== selectedSchedule && loadedVersion.id !== selectedSchedule.id && "COMPLETED" === selectedSchedule.status) {
@@ -1007,26 +1023,26 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
                       lockCount: loadedVersion.hardLockCount ?? 0,
                       viewedHasLocks: (selectedSchedule.hardLockCount ?? 0) > 0,
                       canLoad: true === selectedSchedule.capabilities?.canRegenerateFrom,
+                      loadedEdited: departureEdited,
                     });
                     return;
                   }
-                  regenerateMutation.mutate(validScheduleId, {
-                    onSuccess: (created) => {
-                      setSessionLaunchedScheduleId(created.id);
-                      setSelectedScheduleId(created.id);
-                    },
-                  });
+                  if (departureEdited && null !== loadedLabel) {
+                    setEditedRegenConfirm({ label: loadedLabel, launch: { scheduleId: validScheduleId } });
+                    return;
+                  }
+                  launchSeasonRegenerate(validScheduleId);
                   return;
                 }
                 // V1 — la régénération repart TOUJOURS des données EN COURS (la version SOURCE des
                 // verrous). Si on regarde DÉJÀ la source, mutation directe. Sinon, et si une sœur
                 // EST la source, on confirme (sans elle, version unique ou source = regardée : direct).
-                if (null === selectedSchedule || true === selectedSchedule.isLockSource) {
-                  regenerateOverlayMutation.mutate(overlayPlanId, select);
-                  return;
-                }
                 const source = schedules.find((s) => s.schedulePlanId === overlayPlanId && true === s.isLockSource);
-                if (undefined === source) {
+                if (null === selectedSchedule || true === selectedSchedule.isLockSource || undefined === source) {
+                  if (departureEdited && null !== loadedLabel) {
+                    setEditedRegenConfirm({ label: loadedLabel, launch: { planId: overlayPlanId } });
+                    return;
+                  }
                   regenerateOverlayMutation.mutate(overlayPlanId, select);
                   return;
                 }
@@ -1036,6 +1052,7 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
                   viewedLabel: labels.get(selectedSchedule.id) ?? selectedSchedule.name,
                   sourceLabel: labels.get(source.id) ?? source.name,
                   lockCount: source.hardLockCount ?? 0,
+                  sourceEdited: departureEdited,
                 });
               }}
               onValidate={() => setValidateOpen(true)}
@@ -1682,7 +1699,14 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
         open={null !== seasonRegenConfirm}
         title={PLANNING_TEXTS.regenerateFromCurrentTitle}
         destructive={false}
-        description={null === seasonRegenConfirm ? null : PLANNING_TEXTS.regenerateFromLoadedDescription({ viewed: seasonRegenConfirm.viewed, loaded: seasonRegenConfirm.loaded, lockCount: seasonRegenConfirm.lockCount, viewedHasLocks: seasonRegenConfirm.viewedHasLocks, canLoad: seasonRegenConfirm.canLoad })}
+        description={
+          null === seasonRegenConfirm ? null : (
+            <>
+              <p>{PLANNING_TEXTS.regenerateFromLoadedDescription({ viewed: seasonRegenConfirm.viewed, loaded: seasonRegenConfirm.loaded, lockCount: seasonRegenConfirm.lockCount, viewedHasLocks: seasonRegenConfirm.viewedHasLocks, canLoad: seasonRegenConfirm.canLoad })}</p>
+              {seasonRegenConfirm.loadedEdited ? <p className="mt-2">{PLANNING_TEXTS.regenerateLoadedEditedNote(seasonRegenConfirm.loaded)}</p> : null}
+            </>
+          )
+        }
         confirmLabel={PLANNING_TEXTS.regenerateFromLoadedConfirm(seasonRegenConfirm?.loaded ?? "")}
         onConfirm={() => {
           if (null === seasonRegenConfirm) {
@@ -1713,6 +1737,7 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
           null === overlayRegenConfirm ? null : (
             <>
               Vous regardez la version {overlayRegenConfirm.viewedLabel}, mais les données en cours sont celles de la version {overlayRegenConfirm.sourceLabel}. La régénération repartira de la version {overlayRegenConfirm.sourceLabel} ({overlayRegenConfirm.lockCount} verrou{overlayRegenConfirm.lockCount > 1 ? "s" : ""}). Pour repartir de la version {overlayRegenConfirm.viewedLabel}, chargez d'abord ses données avec «&nbsp;Charger&nbsp;».
+              {overlayRegenConfirm.sourceEdited ? <p className="mt-2">{PLANNING_TEXTS.regenerateLoadedEditedNote(overlayRegenConfirm.sourceLabel)}</p> : null}
             </>
           )
         }
@@ -1726,6 +1751,29 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
           regenerateOverlayMutation.mutate(planId, { onSuccess: (created: { id: string }) => setSelectedScheduleId(created.id) });
         }}
         onCancel={() => setOverlayRegenConfirm(null)}
+      />
+
+      {/* D1 — la version de départ a été modifiée à la main : régénérer peut déplacer ce qui n'est pas
+          verrouillé. Confirmer lance l'appel d'aujourd'hui ; rien n'est détruit (la version reste). */}
+      <ConfirmDialog
+        open={null !== editedRegenConfirm}
+        title={PLANNING_TEXTS.regenerateEditedTitle}
+        destructive={false}
+        description={null === editedRegenConfirm ? null : PLANNING_TEXTS.regenerateEditedDescription(editedRegenConfirm.label)}
+        confirmLabel={PLANNING_TEXTS.regenerateEditedConfirm}
+        onConfirm={() => {
+          if (null === editedRegenConfirm) {
+            return;
+          }
+          const { launch } = editedRegenConfirm;
+          setEditedRegenConfirm(null);
+          if ("scheduleId" in launch) {
+            launchSeasonRegenerate(launch.scheduleId);
+            return;
+          }
+          regenerateOverlayMutation.mutate(launch.planId, { onSuccess: (created: { id: string }) => setSelectedScheduleId(created.id) });
+        }}
+        onCancel={() => setEditedRegenConfirm(null)}
       />
 
       {/* V1bis — « Charger » les verrous d'une version de PÉRIODE : pose le pointeur (les données en

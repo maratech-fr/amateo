@@ -39,6 +39,9 @@ export type MoveFeedback =
   // ENG-51 : le solveur n'a PAS tranché dans le temps imparti (ni accepté ni refusé). Ce n'est pas
   // un refus (aucune règle nommée) : rien n'a bougé, on invite à réessayer — bandeau NEUTRE.
   | { status: "indeterminate" }
+  // P4-474 : un refus CODÉ du serveur (motif verbatim). `keepsTargeting` : le mode cible reste armé
+  // (le refus tient à la case visée) ; faux quand la séance elle-même ne bouge pas d'ici.
+  | { status: "refused"; message: string; keepsTargeting: boolean }
   | { status: "error" };
 
 interface SlotDetailProps {
@@ -101,7 +104,7 @@ interface SlotDetailProps {
  * décide si le gestionnaire ose y toucher. Jamais de code d'enum à l'écran.
  */
 const LOCK_ORIGIN: Record<LockOrigin, { label: string; hint: string }> = {
-  RESERVATION: { label: "Réservation gymnase", hint: "Ce créneau est réservé auprès du gymnase — ne le déplacez pas sans vérifier." },
+  RESERVATION: { label: "Réservation gymnase", hint: PLANNING_TEXTS.reservedSessionHint },
   MANUAL: { label: "Épinglé manuellement", hint: "Vous (ou un gestionnaire) avez fixé ce créneau à la main. Vous pouvez le retirer." },
   UNKNOWN: { label: "Verrouillé — origine inconnue", hint: "Ce créneau est bien verrouillé, mais on ne sait pas pourquoi. Vérifiez avant d'y toucher." },
 };
@@ -360,6 +363,20 @@ export function SlotDetail({ cell, slot, venues, categoryLabel, constraints, tag
                   <li key={`${v.rule}-${i}`}>{v.message}</li>
                 ))}
               </ul>
+              {armed ? <p className="text-muted-foreground">{PLANNING_TEXTS.moveRefusedKeepTargeting}</p> : null}
+            </NoticeBanner>
+          ) : null}
+
+          {/* P4-474 — un refus codé du serveur se lit ICI (plus en toast) : son motif verbatim, puis,
+              si le mode cible reste armé, la consigne pour choisir une autre case. */}
+          {"refused" === moveState.status ? (
+            <NoticeBanner tone="destructive" role="alert">
+              <div className="flex items-center gap-2 font-medium text-destructive">
+                <AlertTriangle className="size-4" aria-hidden="true" />
+                <span>{PLANNING_TEXTS.moveRejected}</span>
+              </div>
+              <p className="text-muted-foreground">{moveState.message}</p>
+              {moveState.keepsTargeting && armed ? <p className="text-muted-foreground">{PLANNING_TEXTS.moveRefusedKeepTargeting}</p> : null}
             </NoticeBanner>
           ) : null}
 

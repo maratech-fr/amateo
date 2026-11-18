@@ -136,6 +136,12 @@ export function useRetouchGestures(
   // le serveur reste seul juge. Null = fermée. `mutualizeAtCaseError` porte le refus 422 serveur VERBATIM.
   const [mutualizeAtCaseDialog, setMutualizeAtCaseDialog] = useState<{ sourceSlotId: string; targetSlot: Slot; sourceName: string; occupantName: string; teamCount: number } | null>(null);
   const [mutualizeAtCaseError, setMutualizeAtCaseError] = useState<string | null>(null);
+  // P4-474 — le dernier refus CODÉ d'un déplacement, d'une éviction ou d'un échange (motif serveur
+  // verbatim), lu dans la fiche de son créneau source, plus en toast. `keepsTargeting` : le refus
+  // tient à la cible (le mode reste armé) ; faux quand la source elle-même ne bouge pas d'ici
+  // (`source_reserved` : le mode se désarme). Effacé au geste suivant, au changement de créneau ou de
+  // version, et à Échap.
+  const [moveRefusal, setMoveRefusal] = useState<{ slotId: string; message: string; keepsTargeting: boolean } | null>(null);
 
   const moveMutation = useMoveSlot();
   const moveGroupMutation = useMoveGroup();
@@ -152,7 +158,12 @@ export function useRetouchGestures(
   // (422) arrive en MoveRejectedError avec ses motifs ; une génération en cours en
   // GenerationInProgressError ; toute autre erreur (moteur injoignable) → « error ».
   const moveReset = moveMutation.reset;
-  const moveState: MoveFeedback = moveMutation.isPending
+  // P4-474 — un refus codé vit dans la fiche de SON créneau source seulement.
+  const refusedFeedback: MoveFeedback | null =
+    null !== moveRefusal && moveRefusal.slotId === selectedSlotId ? { status: "refused", message: moveRefusal.message, keepsTargeting: moveRefusal.keepsTargeting } : null;
+  const moveState: MoveFeedback = null !== refusedFeedback
+    ? refusedFeedback
+    : moveMutation.isPending
     ? { status: "pending" }
     : moveMutation.error instanceof MoveRejectedError
       ? { status: "rejected", violations: moveMutation.error.violations }
@@ -161,8 +172,8 @@ export function useRetouchGestures(
         : // P4-119 (b) : l'attente coupée CÔTÉ CLIENT a son propre message — jamais « moteur injoignable ».
           moveMutation.error instanceof EngineVerificationInterruptedError
           ? { status: "interrupted" }
-          : // P2-30 : verrou de cible / cible incohérente sont TOASTÉS (message serveur propre),
-            // pas rendus en panneau — ni un « moteur injoignable » ni un refus de légalité.
+          : // Verrou de cible / refus codé : lus via `refusedFeedback` (P4-474), jamais un « moteur
+            // injoignable » ni un refus de légalité.
             moveMutation.error instanceof TargetLockedError || moveMutation.error instanceof SlotEditError
             ? { status: "idle" }
             : null !== moveMutation.error && undefined !== moveMutation.error
@@ -176,7 +187,9 @@ export function useRetouchGestures(
   // P2-51 PR-6 — le verdict du dernier déplacement de GROUPE, même dérivation que `moveState` (un
   // refus 422 → rejected ; slot_unavailable/verrou → toasté, panneau idle ; interruption → nommée).
   const moveGroupReset = moveGroupMutation.reset;
-  const moveGroupState: MoveFeedback = moveGroupMutation.isPending
+  const moveGroupState: MoveFeedback = null !== refusedFeedback
+    ? refusedFeedback
+    : moveGroupMutation.isPending
     ? { status: "pending" }
     : moveGroupMutation.error instanceof MoveRejectedError
       ? { status: "rejected", violations: moveGroupMutation.error.violations }
@@ -248,6 +261,11 @@ export function useRetouchGestures(
     setSwapDialog(null);
     setMutualizeAtCaseDialog(null);
     setMutualizeAtCaseError(null);
+    setMoveRefusal(null);
+  }
+  // Changer de créneau efface le refus du précédent (même idiome de phase de rendu).
+  if (null !== moveRefusal && moveRefusal.slotId !== selectedSlotId) {
+    setMoveRefusal(null);
   }
 
   // P4-119 (d) — l'armement d'un geste cible SUIT son ancre et tombe dès qu'elle disparaît, sinon
@@ -272,6 +290,7 @@ export function useRetouchGestures(
   const cancelTarget = () => {
     const source = targetMode?.kind === "move" || targetMode?.kind === "move-group" ? targetMode.sourceSlotId : null;
     setTargetMode(null);
+    setMoveRefusal(null);
     // Le focus revient sur la source (a11y) — best-effort, inerte en jsdom.
     if (null !== source) {
       requestAnimationFrame(() => (document.querySelector(`[data-slot-id="${source}"] button`) as HTMLElement | null)?.focus?.());
@@ -292,6 +311,7 @@ export function useRetouchGestures(
     if (!guardArm()) {
       return;
     }
+    setMoveRefusal(null);
     setTargetMode((cur) => (cur?.kind === "move" && cur.sourceSlotId === slotId ? null : { kind: "move", sourceSlotId: slotId }));
   };
   // P2-51 PR-6 (D11) — armer/désarmer le déplacement d'un BLOC entier depuis le panneau d'une de ses
@@ -300,6 +320,7 @@ export function useRetouchGestures(
     if (!guardArm()) {
       return;
     }
+    setMoveRefusal(null);
     setTargetMode((cur) => (cur?.kind === "move-group" && cur.sourceSlotId === slotId ? null : { kind: "move-group", sourceSlotId: slotId, blockId, source }));
   };
   // Armer le placement d'une équipe à la dérive (le panneau de détail se ferme : pas de source).
@@ -312,6 +333,21 @@ export function useRetouchGestures(
     setTargetMode({ kind: "place", teamId, scheduleId: validScheduleId, view: viewMode });
   };
 
+  // P4-474 — un refus CODÉ (verrou de cible, cible incohérente, jour pris, séance réservée…) se lit
+  // dans la fiche du créneau source. « Version plus chargée » reste le seul toast du hook (l'écran est
+  // regrisé) et désarme. `source_reserved` désarme : aucune autre case n'y changerait rien.
+  const refuseInSlot = (sourceSlotId: string, error: Error): void => {
+    if (isNotLoadedRefusal(error)) {
+      setTargetMode(null);
+      return;
+    }
+    const keepsTargeting = !(error instanceof SlotEditError && "source_reserved" === error.code);
+    if (!keepsTargeting) {
+      setTargetMode(null);
+    }
+    setMoveRefusal({ slotId: sourceSlotId, message: error.message, keepsTargeting });
+  };
+
   // Déplacer un créneau (éventuellement en évinçant l'occupant de la cible) sous le verdict
   // moteur. Le TOAST, l'undo et le raccourci d'éviction sont décidés ICI (noms d'équipes).
   const doMove = (sourceSlotId: string, patch: { dayOfWeek: number; startTime: string; venueId: string }, evictSlotId?: string) => {
@@ -321,6 +357,7 @@ export function useRetouchGestures(
     }
     const from = { dayOfWeek: source.dayOfWeek, startTime: toHourMinute(source.startTime), venueId: source.venueId };
     const sourceTeamId = source.teamId;
+    setMoveRefusal(null);
     moveMutation.mutate(
       { id: sourceSlotId, patch: undefined === evictSlotId ? patch : { ...patch, evictSlotId } },
       {
@@ -359,9 +396,11 @@ export function useRetouchGestures(
         },
         onError: (error) => {
           setEvictDialog(null);
-          // Verrou de cible / cible incohérente / moteur trop lent : message serveur propre (le
-          // timeout est NOMMÉ, pas un numéro nu), on RESTE en mode cible.
-          if (error instanceof TargetLockedError || error instanceof SlotEditError || error instanceof EngineTimeoutError) {
+          // Refus codé (verrou de cible, cible incohérente, séance réservée…) : dans la fiche (P4-474).
+          // Moteur trop lent : toast NOMMÉ (pas un numéro nu), on RESTE en mode cible.
+          if (error instanceof TargetLockedError || error instanceof SlotEditError) {
+            refuseInSlot(sourceSlotId, error);
+          } else if (error instanceof EngineTimeoutError) {
             toastRefusal(error);
           }
           // Un refus de légalité (MoveRejectedError) s'affiche dans le panneau (moveState) et
@@ -375,11 +414,12 @@ export function useRetouchGestures(
   // verdict moteur. Le serveur résout les créneaux membres depuis la case source (jamais de slotIds
   // client). Un refus de légalité s'affiche dans le panneau (`moveGroupState`) + surligne le conflit ;
   // verrou de cible / cible incohérente / moteur trop lent sont toastés (message serveur), mode armé.
-  const doMoveGroup = (blockId: string, source: { venueId: string; dayOfWeek: number; startTime: string }, target: { venueId: string; dayOfWeek: number; startTime: string }, evictSlotId?: string) => {
+  const doMoveGroup = (sourceSlotId: string, blockId: string, source: { venueId: string; dayOfWeek: number; startTime: string }, target: { venueId: string; dayOfWeek: number; startTime: string }, evictSlotId?: string) => {
     if (null === validScheduleId) {
       return;
     }
     const freed = { venueId: source.venueId, dayOfWeek: source.dayOfWeek, startTime: toHourMinute(source.startTime) };
+    setMoveRefusal(null);
     moveGroupMutation.mutate(
       {
         scheduleId: validScheduleId,
@@ -423,7 +463,9 @@ export function useRetouchGestures(
           if (error instanceof VerdictAbandonedError) {
             return; // déjà nommé + resynchronisé par le hook
           }
-          if (error instanceof TargetLockedError || error instanceof SlotEditError || error instanceof EngineTimeoutError) {
+          if (error instanceof TargetLockedError || error instanceof SlotEditError) {
+            refuseInSlot(sourceSlotId, error);
+          } else if (error instanceof EngineTimeoutError) {
             toastRefusal(error);
           }
           // MoveRejectedError / GenerationInProgress / interruption : rendus par le panneau
@@ -506,11 +548,11 @@ export function useRetouchGestures(
       }
     };
     const onError = (error: unknown) => {
-      // Refus MÉTIER (verrou D3, cible incohérente/occupée par un groupe, génération en cours) :
-      // la modale se ferme, le motif est toasté, le mode cible reste armé.
+      // Refus MÉTIER codé (verrou D3, cible incohérente/occupée par un groupe, séance réservée) : la
+      // modale se ferme, le motif se lit dans la fiche (P4-474). Génération en cours : toast.
       if (error instanceof TargetLockedError || error instanceof SlotEditError) {
         setEvictDialog(null);
-        toastRefusal(error);
+        refuseInSlot(sourceSlotId, error);
         return;
       }
       if (error instanceof GenerationInProgressError) {
@@ -570,7 +612,7 @@ export function useRetouchGestures(
     const { sourceSlotId, targetSlot, group } = evictDialog;
     const target = { dayOfWeek: targetSlot.dayOfWeek, startTime: toHourMinute(targetSlot.startTime), venueId: targetSlot.venueId };
     if (undefined !== group) {
-      doMoveGroup(group.blockId, group.source, target, targetSlot.id);
+      doMoveGroup(sourceSlotId, group.blockId, group.source, target, targetSlot.id);
     } else {
       doMove(sourceSlotId, target, targetSlot.id);
     }
@@ -688,7 +730,7 @@ export function useRetouchGestures(
     const onError = (error: unknown) => {
       if (error instanceof TargetLockedError || error instanceof SlotEditError) {
         setSwapDialog(null);
-        toastRefusal(error);
+        refuseInSlot(sourceSlotId, error);
         return;
       }
       if (error instanceof GenerationInProgressError) {
@@ -716,6 +758,7 @@ export function useRetouchGestures(
       return;
     }
     const { sourceSlotId, targetSlot } = swapDialog;
+    setMoveRefusal(null);
     swapMutation.mutate(
       { slotId: sourceSlotId, otherSlotId: targetSlot.id },
       {
@@ -742,7 +785,9 @@ export function useRetouchGestures(
           if (error instanceof MoveRejectedError) {
             toast.error(error.violations[0]?.message ?? "Échange refusé par le système.");
             highlightViolations(error.violations);
-          } else if (error instanceof TargetLockedError || error instanceof SlotEditError || error instanceof EngineTimeoutError) {
+          } else if (error instanceof TargetLockedError || error instanceof SlotEditError) {
+            refuseInSlot(sourceSlotId, error);
+          } else if (error instanceof EngineTimeoutError) {
             toastRefusal(error);
           }
         },
@@ -794,6 +839,8 @@ export function useRetouchGestures(
     if (null === targetMode) {
       return;
     }
+    // Un nouveau choix de case efface le refus du précédent (P4-474).
+    setMoveRefusal(null);
     // P2-51 PR-6 (D11) · P4-329 — déplacement de GROUPE : une case LIBRE part directement au rail
     // move-group ; une case OCCUPÉE ouvre la MÊME modale d'éviction que le move simple, alimentée par
     // un ESSAI (dry-run + evictSlotId) — rien n'est écrit tant qu'on n'a pas confirmé. Cliquer la case
@@ -829,7 +876,7 @@ export function useRetouchGestures(
         openDropMenu(sourceSlotId, occupant, { blockId, source });
         return;
       }
-      doMoveGroup(blockId, source, targetCase);
+      doMoveGroup(sourceSlotId, blockId, source, targetCase);
       return;
     }
     if (targetMode.kind === "move" && cellSlotId === targetMode.sourceSlotId) {
