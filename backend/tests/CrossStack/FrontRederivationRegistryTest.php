@@ -161,6 +161,7 @@ final class FrontRederivationRegistryTest extends TestCase
         'features/planning/SlotDetail.tsx' => 'présentation : ruleType → libellé « obligatoire »/« préférence »',
         'features/matches/ConstraintsPage.tsx' => 'présentation : scope → SECTION d\'affichage (règles CLUB dans « Club », interdictions de gymnase TEAM dans « Équipes ») — un simple tri des lignes en deux listes, jamais un verdict d\'applicabilité (le solveur et le radar décident côté serveur, P4-272 ④)',
         'features/matches/lib/teamLinkLabel.ts' => 'présentation : maison UNIQUE du libellé d\'intensité de passerelle (table PREFERRED/MANDATORY → « Préféré »/« Obligatoire »), consommée par les deux hôtes de la sous-ligne — aucun verdict, le solveur reste seul juge de ce qu\'une intensité FAIT',
+        'features/wizard/steps/ImplicitRulesPanel.tsx' => 'présentation : « HARD » y compare des intensités de règle de bien-être (pas un ruleType de contrainte) pour ôter le cran « Obligatoire » et lire « Souhaitée » un HARD stocké, d\'après shared/lib/implicitRules.ts (présentation d\'un fait serveur) — le serveur fait foi (ImplicitRuleSettingStateProcessor refuse HARD en 422), aucun verdict ici',
         // OpponentsPage.tsx / LocateOpponentModal.tsx : ex-faux positifs par collision de noms
         // (branche sur OpponentTravelScope TEAM|CLUB). L'amendement 2026-09-20 a retiré le grain
         // « scope » du trajet adverse (gymnase rattaché au club adverse + libellé) : ces fichiers
