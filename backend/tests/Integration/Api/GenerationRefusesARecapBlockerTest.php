@@ -454,6 +454,29 @@ final class GenerationRefusesARecapBlockerTest extends WebTestCase
     }
 
     /**
+     * Un groupe ne vaut que dans sa portée : U11 A, en groupe avec U11 B pour la seule période, verrouillée le mardi et le
+     * mercredi dans la version chargée de la saison pour 1 séance. Le Récap de saison bloque et nomme les deux séances.
+     * Jumeau dans la période : {@see testAPeriodGroupWithAPausedPartnerKeepsTodaysCount}.
+     */
+    public function testAGroupOfAPeriodDoesNotSpareTheSeasonCount(): void
+    {
+        $ctx = $this->seedPeriod($this->seedSolo(sessionsPerWeek: 1), planGroup: false);
+        $this->declareGroup($ctx['clubId'], $ctx['seasonId'], $ctx['planId'], [$ctx['teamA'], $ctx['teamB']]);
+        $seasonLoaded = (string) self::getContainer()->get(SchedulePlanProvisioner::class)->loadedVersionIdOfSeason($ctx['seasonId']);
+        foreach ([2, 3] as $day) {
+            $this->pin($ctx, $seasonLoaded, $ctx['teamA'], $day, LockLevel::HARD, LockOrigin::MANUAL);
+        }
+        $season = $this->em->getRepository(Schedule::class)->find($seasonLoaded);
+        self::assertInstanceOf(Schedule::class, $season);
+        $this->assertPinnedForTheSolver(['clubId' => $ctx['clubId'], 'seasonId' => $ctx['seasonId']], $ctx['teamA'], 2);
+
+        $message = $this->guard()->firstBlockerMessage($season);
+
+        self::assertNotNull($message, 'le groupe de la période ne vaut pas pour la saison : le Récap de saison doit bloquer');
+        $this->assertNamesTheSessions($message, 'U11 A', ['mardi', 'mercredi'], []);
+    }
+
+    /**
      * Le comblement ne compte que les réservations (exception écrite à l'invariant des trois guichets) : U11 A, 2 séances,
      * sa version source porte 3 séances verrouillées. `/generate` d'une version de la période refuse en nommant les trois,
      * `/fill` part (il épingle déjà tout le placé de sa source).
