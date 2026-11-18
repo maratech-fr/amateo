@@ -964,6 +964,13 @@ jobs:
           # sur une structure imbâtissable. Sans lui, l'empreinte mentirait en permanence — bouton
           # « Régénérer » grisé à tort ou jamais, bannière « à régénérer » muette ou criant sans cesse.
           FILES="$FILES tests/Integration/Api/SchedulePlanStructureHashTest.php"
+          # Axes generation pipeline + planning lifecycle : une génération de période (overlay et
+          # comblement) passe par le VRAI handler, moteur simulé — le snapshot figé porte les épingles
+          # du comblement, la version ne devient jamais celle du socle, une période disparue échoue
+          # nommément ; et la séance renvoyée HARD par le moteur garde la tolérance d'arrivée tardive
+          # partie au moteur, l'empreinte du plan restant égale au snapshotHash. Sans ce gate, la
+          # tolérance retomberait à 0 au comblement et « à régénérer » s'allumerait à tort.
+          FILES="$FILES tests/MessageHandler/OverlayGenerationTest.php"
           # P3-16 + DOC-2 (axes planning lifecycle + périmètre engagé) : supprimer une salle, une
           # équipe ou un coach détruit en cascade — et la modale annonçait, depuis le cache du
           # navigateur, une FRACTION de ce qui partait (2 familles sur 10 pour un gymnase, matchs

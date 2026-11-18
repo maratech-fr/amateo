@@ -4,21 +4,28 @@ declare(strict_types=1);
 
 namespace App\Tests\Integration\Service;
 
+use App\Entity\CalendarEntry;
 use App\Entity\Club;
 use App\Entity\Reservation;
 use App\Entity\Schedule;
 use App\Entity\ScheduleSlotTemplate;
 use App\Entity\Season;
+use App\Enum\CalendarEntryKind;
+use App\Enum\CalendarEntryPeriodType;
+use App\Enum\CalendarEntryStatus;
 use App\Enum\LockLevel;
 use App\Enum\LockOrigin;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
 use App\Service\ManualEditService;
+use App\Service\ScheduleConstraintBuilder;
 use App\Service\ScheduleResultImporter;
 use App\Tests\ChoosesPlanVersionTrait;
+use App\Tests\ProvisionsPeriodPlanTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 
@@ -40,6 +47,7 @@ use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 final class LockOriginProvenanceTest extends KernelTestCase
 {
     use ChoosesPlanVersionTrait;
+    use ProvisionsPeriodPlanTrait;
     use TenantGucTrait;
 
     private const ENGINE_ID = '11111111-1111-4111-8111-111111111111';
@@ -51,6 +59,17 @@ final class LockOriginProvenanceTest extends KernelTestCase
     private ScheduleResultImporter $importer;
 
     private ManualEditService $manualEdit;
+
+    /** @return iterable<string, array{'season'|'period', 'season'|'period'|'other-period', bool, bool, LockOrigin}> */
+    public static function provenanceByPlan(): iterable
+    {
+        yield '2 · socle, réservation d\'une période seule, MANUAL chargé → MANUAL' => ['season', 'period', true, true, LockOrigin::MANUAL];
+        yield '3 · socle, réservation d\'une période seule, rien de chargé → UNKNOWN' => ['season', 'period', true, false, LockOrigin::UNKNOWN];
+        yield '4 · période, réservation du socle seule, MANUAL chargé → MANUAL' => ['period', 'season', true, true, LockOrigin::MANUAL];
+        yield '5 · période, sa propre réservation → RESERVATION' => ['period', 'period', true, false, LockOrigin::RESERVATION];
+        yield '6 · période, réservation d\'une autre période → UNKNOWN' => ['period', 'other-period', true, false, LockOrigin::UNKNOWN];
+        yield '7 · période, créneau libre de son plan → UNKNOWN' => ['period', 'period', false, false, LockOrigin::UNKNOWN];
+    }
 
     public function testAReservationBornLockReadsAsReservation(): void
     {
@@ -151,6 +170,69 @@ final class LockOriginProvenanceTest extends KernelTestCase
         self::assertNull($slot->getLockOrigin(), 'Déverrouiller efface l\'origine (plus de verrou).');
     }
 
+    /**
+     * Une séance qui revient verrouillée du moteur ne se dit RESERVATION que si une réservation de
+     * SON plan occupe sa case ; sinon MANUAL si la version chargée la portait en MANUAL, sinon UNKNOWN.
+     * Le plan de saison (socle) et chaque plan de période ont leurs réservations : celle d'un autre
+     * plan ne dit rien de la séance. Le cas « saison + réservation du socle → RESERVATION » est
+     * {@see testAReservationBornLockReadsAsReservation} (filet contre un filtre trop large).
+     *
+     * @param 'season'|'period'                $versionPlan     le plan de la version qui reçoit le résultat
+     * @param 'season'|'period'|'other-period' $reservationPlan le plan de la réservation posée sur la case
+     */
+    #[DataProvider('provenanceByPlan')]
+    public function testTheReservationOriginIsReadOnTheSessionsOwnPlan(
+        string $versionPlan,
+        string $reservationPlan,
+        bool $reservedForTheTeam,
+        bool $loadedVersionCarriesManual,
+        LockOrigin $expected,
+    ): void {
+        [$club, $season] = $this->seed();
+        $period = $this->periodEntry($club, $season, '2026-02-09');
+        $periodPlanId = $this->planIdOf($period);
+        $otherPeriodPlanId = $this->planIdOf($this->periodEntry($club, $season, '2026-03-09'));
+        $calendarEntryId = 'period' === $versionPlan ? $period->getId() : null;
+
+        $this->reservation($club, $season, match ($reservationPlan) {
+            'season' => null,
+            'period' => $periodPlanId,
+            'other-period' => $otherPeriodPlanId,
+        }, $reservedForTheTeam ? self::TEAM : null);
+
+        if ($loadedVersionCarriesManual) {
+            // La version CHARGÉE du plan (dernière COMPLETED) porte la séance verrouillée à la main.
+            $loaded = (new Schedule)->setClubId($club->getId())->setSeasonId($season->getId())->setName('V1')->setStatus(ScheduleStatus::COMPLETED);
+            $this->linkSeededSchedule($loaded, $calendarEntryId);
+            $this->slot($club, $season, $loaded, LockLevel::HARD)->setLockOrigin(LockOrigin::MANUAL);
+        }
+
+        // La version régénérée du même plan, en cours de génération : c'est elle qui reçoit le résultat.
+        $regenerated = (new Schedule)->setClubId($club->getId())->setSeasonId($season->getId())->setName('V2')->setStatus(ScheduleStatus::GENERATING);
+        $this->linkSeededSchedule($regenerated, $calendarEntryId);
+        $this->em->flush();
+
+        if ('season' === $versionPlan && $loadedVersionCarriesManual) {
+            // Le HARD que le moteur renvoie est bien l'épingle de la version chargée, partie au moteur.
+            $pins = array_filter(
+                self::getContainer()->get(ScheduleConstraintBuilder::class)->buildForClubSeason($club->getId(), $season->getId())['slotTemplates'] ?? [],
+                static fn (mixed $pin): bool => \is_array($pin) && self::TEAM === ($pin['teamId'] ?? null) && 'HARD' === ($pin['lockLevel'] ?? null),
+            );
+            self::assertCount(1, $pins, 'décor : la séance verrouillée de la version chargée part au moteur en épingle HARD');
+        }
+
+        $this->importer->import($regenerated, ['slots' => [$this->engineSlot(LockLevel::HARD)]]);
+
+        $this->em->clear();
+        $slot = $this->onlySlot($regenerated);
+        self::assertSame(LockLevel::HARD, $slot->getLockLevel());
+        self::assertSame(
+            $expected,
+            $slot->getLockOrigin(),
+            'L\'origine RESERVATION se lit sur les réservations du plan de la séance, jamais sur celles d\'un autre plan.',
+        );
+    }
+
     protected function setUp(): void
     {
         self::bootKernel();
@@ -186,13 +268,32 @@ final class LockOriginProvenanceTest extends KernelTestCase
         return $schedule;
     }
 
-    private function reservation(Club $club, Season $season, ?string $schedulePlanId): void
+    /** Une période de vacances d'une semaine, son plan né du geste ({@see ProvisionsPeriodPlanTrait::planIdOf}). */
+    private function periodEntry(Club $club, Season $season, string $monday): CalendarEntry
+    {
+        $entry = (new CalendarEntry)
+            ->setClubId($club->getId())
+            ->setSeasonId($season->getId())
+            ->setKind(CalendarEntryKind::PERIOD)
+            ->setPeriodType(CalendarEntryPeriodType::HOLIDAY)
+            ->setStatus(CalendarEntryStatus::ACTIVE)
+            ->setIsDisruptive(false)
+            ->setTitle('Vacances ' . $monday)
+            ->setStartDate(new DateTimeImmutable($monday))
+            ->setEndDate(new DateTimeImmutable($monday . ' +6 days'));
+        $this->em->persist($entry);
+
+        return $entry;
+    }
+
+    /** @param ?string $teamId null = créneau LIBRE (réservé sans équipe) */
+    private function reservation(Club $club, Season $season, ?string $schedulePlanId, ?string $teamId = self::TEAM): void
     {
         $reservation = (new Reservation)
             ->setClubId($club->getId())
             ->setSeasonId($season->getId())
             ->setSchedulePlanId($schedulePlanId)
-            ->setTeamId(self::TEAM)
+            ->setTeamId($teamId)
             ->setVenueId(self::VENUE)
             ->setDayOfWeek(2)
             ->setStartTime(new DateTimeImmutable('18:00'))
