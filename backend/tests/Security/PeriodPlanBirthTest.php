@@ -156,6 +156,37 @@ final class PeriodPlanBirthTest extends WebTestCase
         self::assertNull($byKey['ageAscending']->getParams());
     }
 
+    /**
+     * PR 1b — une règle du club réglée sur « Ignorée » en saison reste ignorée sur le plan de période
+     * qui naît ensuite : la copie de naissance garde le cran OFF, elle ne le relève pas au défaut.
+     */
+    public function testARuleIgnoredInTheSeasonStaysIgnoredOnTheBornPlan(): void
+    {
+        [$user, $club, $season] = $this->createClubWithSeason();
+
+        $this->scopeGucToClub($club->getId());
+        foreach ([ImplicitRuleKey::AGE_ASCENDING, ImplicitRuleKey::SALARIE_DISTRIBUTION] as $ruleKey) {
+            $this->em->persist((new ImplicitRuleSetting)
+                ->setClubId($club->getId())
+                ->setSeasonId($season->getId())
+                ->setRuleKey($ruleKey)
+                ->setIntensity(ImplicitRuleIntensity::OFF));
+        }
+        $this->em->flush();
+
+        $planId = $this->adaptPeriod($user, $this->postPeriod($user, 'holiday', 'Vacances'));
+
+        $this->scopeGucToClub($club->getId());
+        $this->em->clear();
+        $byKey = [];
+        foreach ($this->em->getRepository(ImplicitRuleSetting::class)->findBy(['schedulePlanId' => $planId]) as $copy) {
+            $byKey[$copy->getRuleKey()->value] = $copy->getIntensity();
+        }
+        self::assertSame(ImplicitRuleIntensity::OFF, $byKey['ageAscending'] ?? null, 'l\'ordre des âges ignoré en saison reste ignoré sur la période');
+        self::assertSame(ImplicitRuleIntensity::OFF, $byKey['salarieDistribution'] ?? null, 'le salarié ignoré en saison reste ignoré sur la période');
+        self::assertSame(ImplicitRuleIntensity::HARD, $byKey['coachRestDay'] ?? null, 'témoin : une règle non réglée naît au défaut');
+    }
+
     public function testAdaptGestureBirthsAClosurePlan(): void
     {
         [$user, $club, $season] = $this->createClubWithSeason();

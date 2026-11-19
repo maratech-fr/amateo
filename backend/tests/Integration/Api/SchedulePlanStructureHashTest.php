@@ -9,6 +9,7 @@ use App\Entity\Club;
 use App\Entity\ClubUser;
 use App\Entity\Constraint;
 use App\Entity\PriorityTier;
+use App\Entity\Reservation;
 use App\Entity\Schedule;
 use App\Entity\SchedulePlan;
 use App\Entity\ScheduleSlotTemplate;
@@ -26,6 +27,7 @@ use App\Enum\ConstraintFamily;
 use App\Enum\ConstraintRuleType;
 use App\Enum\ConstraintScope;
 use App\Enum\LockLevel;
+use App\Enum\LockOrigin;
 use App\Enum\SchedulePlanType;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
@@ -141,6 +143,11 @@ final class SchedulePlanStructureHashTest extends WebTestCase
      * moteur) → `import` → la V+1 porte les mêmes HARD et devient la nouvelle source. Si la forme
      * canonique ne tenait pas, le hash servi (source = V+1) divergerait du snapshot figé (source = V)
      * et le bandeau « à régénérer » s'allumerait juste après la régénération — ce que ceci interdit.
+     *
+     * La séance du socle est RÉSERVÉE au socle avec une tolérance d'arrivée tardive de 10 min : la
+     * période n'a pas cette réservation (elle appartient au plan de saison), mais la séance transcrite
+     * porte ses 10 min et les envoie au moteur. Elle revient de la régénération avec ces 10 min, lues
+     * dans ce qui est parti au moteur — pas dans une réservation d'un autre plan.
      */
     public function testPeriodHashEqualsTheNextVersionSnapshotAfterRegeneratingWithLocks(): void
     {
@@ -149,7 +156,13 @@ final class SchedulePlanStructureHashTest extends WebTestCase
         $venue = $this->venue($club, $season, 'Gym');
 
         $socle = $this->socleVersion($club, $season);
-        $this->socleSlot($socle, $team, $venue, 1, '18:00');
+        $this->socleSlot($socle, $team, $venue, 1, '18:00')
+            ->setLockLevel(LockLevel::HARD)->setLockOrigin(LockOrigin::RESERVATION)->setCoachLateToleranceMinutes(10);
+        $this->em->persist((new Reservation)
+            ->setClubId($club->getId())->setSeasonId($season->getId())->setSchedulePlanId(null)
+            ->setTeamId($team->getId())->setVenueId($venue->getId())
+            ->setDayOfWeek(1)->setStartTime(new DateTimeImmutable('18:00'))->setDurationMinutes(90)
+            ->setCoachLateToleranceMinutes(10));
         $this->em->flush();
         $this->choosePlanVersion($socle);
 
@@ -203,6 +216,11 @@ final class SchedulePlanStructureHashTest extends WebTestCase
         $importer->import($v2, ['slots' => $engineSlots]);
         $v2->setStatus(ScheduleStatus::COMPLETED);
         $this->em->flush();
+
+        $reborn = $this->em->getRepository(ScheduleSlotTemplate::class)->findOneBy(['scheduleId' => $v2->getId(), 'teamId' => $team->getId()]);
+        self::assertInstanceOf(ScheduleSlotTemplate::class, $reborn);
+        self::assertSame(LockLevel::HARD, $reborn->getLockLevel());
+        self::assertSame(10, $reborn->getCoachLateToleranceMinutes(), 'la séance revient de la régénération avec la tolérance partie au moteur (10 min)');
 
         $served = $this->hashOf($user, $season, $planId);
         self::assertSame(
@@ -394,7 +412,7 @@ final class SchedulePlanStructureHashTest extends WebTestCase
         return $schedule;
     }
 
-    private function socleSlot(Schedule $socle, Team $team, Venue $venue, int $day, string $start): void
+    private function socleSlot(Schedule $socle, Team $team, Venue $venue, int $day, string $start): ScheduleSlotTemplate
     {
         $slot = (new ScheduleSlotTemplate)
             ->setClubId($socle->getClubId())->setSeasonId($socle->getSeasonId())
@@ -403,6 +421,8 @@ final class SchedulePlanStructureHashTest extends WebTestCase
             ->setDayOfWeek($day)->setStartTime(new DateTimeImmutable($start))
             ->setDurationMinutes(90)->setLockLevel(LockLevel::NONE);
         $this->em->persist($slot);
+
+        return $slot;
     }
 
     private function period(Club $club, Season $season): CalendarEntry

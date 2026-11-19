@@ -854,7 +854,6 @@
   "venues": [
     {
       "id": "gymnase-armand",
-      "name": "GYMNASE ARMAND",
       "matchWindows": [
         {
           "dayOfWeek": 6,
@@ -866,7 +865,6 @@
     },
     {
       "id": "gymnase-jeanne-desparmet-ruello",
-      "name": "GYMNASE JEANNE DESPARMET-RUELLO",
       "matchWindows": [
         {
           "dayOfWeek": 4,
@@ -893,7 +891,6 @@
     },
     {
       "id": "gymnase-mateo",
-      "name": "GYMNASE MATEO",
       "matchWindows": [
         {
           "dayOfWeek": 5,
@@ -915,7 +912,6 @@
     },
     {
       "id": "salle-annexe-de-barros",
-      "name": "SALLE ANNEXE DE BARROS",
       "matchWindows": [
         {
           "dayOfWeek": 6,
@@ -927,7 +923,6 @@
     },
     {
       "id": "salle-raphael-de-barros",
-      "name": "SALLE RAPHAEL DE BARROS",
       "matchWindows": [
         {
           "dayOfWeek": 4,
@@ -946,84 +941,72 @@
   "teams": [
     {
       "id": "b-charpennes-croix-luizet",
-      "name": "B CHARPENNES CROIX LUIZET",
       "leagueWindows": [],
       "habits": [],
       "coaches": []
     },
     {
       "id": "b-charpennes-croix-luizet-1",
-      "name": "B CHARPENNES CROIX LUIZET - 1",
       "leagueWindows": [],
       "habits": [],
       "coaches": []
     },
     {
       "id": "b-charpennes-croix-luizet-10",
-      "name": "B CHARPENNES CROIX LUIZET (10)",
       "leagueWindows": [],
       "habits": [],
       "coaches": []
     },
     {
       "id": "b-charpennes-croix-luizet-12",
-      "name": "B CHARPENNES CROIX LUIZET (12)",
       "leagueWindows": [],
       "habits": [],
       "coaches": []
     },
     {
       "id": "b-charpennes-croix-luizet-2",
-      "name": "B CHARPENNES CROIX LUIZET - 2",
       "leagueWindows": [],
       "habits": [],
       "coaches": []
     },
     {
       "id": "b-charpennes-croix-luizet-2-5",
-      "name": "B CHARPENNES CROIX LUIZET - 2 (5)",
       "leagueWindows": [],
       "habits": [],
       "coaches": []
     },
     {
       "id": "b-charpennes-croix-luizet-20",
-      "name": "B CHARPENNES CROIX LUIZET (20)",
       "leagueWindows": [],
       "habits": [],
       "coaches": []
     },
     {
       "id": "b-charpennes-croix-luizet-3",
-      "name": "B CHARPENNES CROIX LUIZET - 3",
       "leagueWindows": [],
       "habits": [],
       "coaches": []
     },
     {
       "id": "b-charpennes-croix-luizet-3-2",
-      "name": "B CHARPENNES CROIX LUIZET - 3 (2)",
       "leagueWindows": [],
       "habits": [],
       "coaches": []
     },
     {
       "id": "b-charpennes-croix-luizet-3-3",
-      "name": "B CHARPENNES CROIX LUIZET - 3 (3)",
       "leagueWindows": [],
       "habits": [],
       "coaches": []
     },
     {
       "id": "b-charpennes-croix-luizet-3-8",
-      "name": "B CHARPENNES CROIX LUIZET - 3 (8)",
       "leagueWindows": [],
       "habits": [],
       "coaches": []
     },
     {
       "id": "b-charpennes-croix-luizet-4",
-      "name": "B CHARPENNES CROIX LUIZET - 4",
       "leagueWindows": [],
       "habits": [],
       "coaches": []

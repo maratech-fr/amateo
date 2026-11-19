@@ -9,6 +9,7 @@ use App\Entity\Club;
 use App\Entity\ClubUser;
 use App\Entity\Coach;
 use App\Entity\Constraint;
+use App\Entity\ImplicitRuleSetting;
 use App\Entity\Reservation;
 use App\Entity\Season;
 use App\Entity\Team;
@@ -23,6 +24,8 @@ use App\Enum\CalendarEntryPeriodType;
 use App\Enum\ConstraintFamily;
 use App\Enum\ConstraintRuleType;
 use App\Enum\ConstraintScope;
+use App\Enum\ImplicitRuleIntensity;
+use App\Enum\ImplicitRuleKey;
 use App\Enum\SeasonStatus;
 use App\Enum\TeamCoachRole;
 use App\Enum\VenuePeriodMode;
@@ -30,6 +33,7 @@ use App\Tests\ProvisionsPeriodPlanTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
+use Lexik\Bundle\JWTAuthenticationBundle\Services\JWTTokenManagerInterface;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
@@ -874,6 +878,66 @@ final class ValidateConstraintsTest extends WebTestCase
         );
     }
 
+    /**
+     * PR 1b — le Récap annonce les règles du club réglées sur « Ignorée » : seulement celles qui
+     * s'appliquent par défaut (« jours d'affilée », éteinte par défaut, ne compte pas), dans l'ordre
+     * de l'enum, et la liste existe vide quand rien n'est ignoré.
+     */
+    public function testTheRecapListsTheIgnoredRulesOfTheSeason(): void
+    {
+        // Deux requêtes sur le pare-feu JWT sans session : `loginUser` ne tient qu'une requête,
+        // chaque appel porte donc son jeton Bearer.
+        $this->client->request('POST', '/api/constraints/validate', [], [], $this->bearer());
+        self::assertResponseStatusCodeSame(200);
+        self::assertSame([], json_decode((string) $this->client->getResponse()->getContent(), true)['ignoredRules'] ?? null, 'rien d\'ignoré : la liste existe, vide');
+
+        $this->storeRule(ImplicitRuleKey::AGE_ASCENDING, ImplicitRuleIntensity::OFF);
+        $this->storeRule(ImplicitRuleKey::MAX_CONSECUTIVE_DAYS, ImplicitRuleIntensity::OFF);
+        $this->storeRule(ImplicitRuleKey::COACH_REST_DAY, ImplicitRuleIntensity::OFF);
+        $this->storeRule(ImplicitRuleKey::SALARIE_DISTRIBUTION, ImplicitRuleIntensity::PREFERRED);
+
+        $this->client->request('POST', '/api/constraints/validate', [], [], $this->bearer());
+        self::assertResponseStatusCodeSame(200);
+        self::assertSame(['coachRestDay', 'ageAscending'], json_decode((string) $this->client->getResponse()->getContent(), true)['ignoredRules'] ?? null);
+    }
+
+    /** PR 1b — un Récap bloqué (422) annonce aussi les règles ignorées. */
+    public function testABlockedRecapStillListsTheIgnoredRules(): void
+    {
+        $this->constraint(['maxStartTime' => '10:00']);
+        $this->constraint(['minStartTime' => '12:00']);
+        $this->storeRule(ImplicitRuleKey::MAX_CONSECUTIVE_SESSIONS, ImplicitRuleIntensity::OFF);
+
+        $this->client->loginUser($this->user);
+        $this->client->request('POST', '/api/constraints/validate', [], [], []);
+
+        self::assertResponseStatusCodeSame(422);
+        self::assertSame(['maxConsecutiveSessions'], json_decode((string) $this->client->getResponse()->getContent(), true)['ignoredRules'] ?? null);
+    }
+
+    /**
+     * PR 1b — en période, le Récap lit les règles du plan : une règle ignorée pour la seule période y
+     * est annoncée, et pas au Récap de saison.
+     */
+    public function testThePeriodRecapListsTheRulesIgnoredForThatPeriodOnly(): void
+    {
+        $entry = $this->period(CalendarEntryPeriodType::HOLIDAY);
+        $planRow = $this->em->getRepository(ImplicitRuleSetting::class)->findOneBy([
+            'schedulePlanId' => $this->planIdOf($entry),
+            'ruleKey' => ImplicitRuleKey::SALARIE_DISTRIBUTION,
+        ]);
+        self::assertInstanceOf(ImplicitRuleSetting::class, $planRow, 'précondition : le plan de période porte sa copie des règles');
+        $planRow->setIntensity(ImplicitRuleIntensity::OFF);
+        $this->em->flush();
+
+        self::assertSame(['salarieDistribution'], $this->validateForPeriod($entry)['ignoredRules'] ?? null);
+
+        // Seconde requête : `loginUser` ne tient qu'une requête sur le pare-feu JWT, d'où le Bearer.
+        $this->client->request('POST', '/api/constraints/validate', [], [], $this->bearer());
+        self::assertResponseStatusCodeSame(200);
+        self::assertSame([], json_decode((string) $this->client->getResponse()->getContent(), true)['ignoredRules'] ?? null, 'la saison n\'ignore rien');
+    }
+
     protected function setUp(): void
     {
         $this->client = self::createClient();
@@ -918,6 +982,17 @@ final class ValidateConstraintsTest extends WebTestCase
         $this->season->setStatus(SeasonStatus::ACTIVE);
         $this->em->persist($this->season);
 
+        $this->em->flush();
+    }
+
+    private function storeRule(ImplicitRuleKey $ruleKey, ImplicitRuleIntensity $intensity): void
+    {
+        $setting = new ImplicitRuleSetting;
+        $setting->setClubId($this->club->getId());
+        $setting->setSeasonId($this->season->getId());
+        $setting->setRuleKey($ruleKey);
+        $setting->setIntensity($intensity);
+        $this->em->persist($setting);
         $this->em->flush();
     }
 
@@ -1299,6 +1374,12 @@ final class ValidateConstraintsTest extends WebTestCase
     }
 
     /** @return array<string, mixed> */
+    /** @return array{HTTP_AUTHORIZATION: string} */
+    private function bearer(): array
+    {
+        return ['HTTP_AUTHORIZATION' => 'Bearer ' . self::getContainer()->get(JWTTokenManagerInterface::class)->create($this->user)];
+    }
+
     private function validateForPeriod(CalendarEntry $entry): array
     {
         $this->client->loginUser($this->user);

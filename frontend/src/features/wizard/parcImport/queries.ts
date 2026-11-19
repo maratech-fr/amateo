@@ -139,6 +139,24 @@ export interface ParcImportDecision {
 export interface ParcImportResult {
   message?: string;
   recap?: Record<string, { crees: number; apparies: number; misAJour: number; ignores: number }>;
+  /**
+   * Plafond de séances par jour lu sur les cases importées, une entrée par fait CALCULÉ PAR LE
+   * SERVEUR : `raised` (plafond relevé, à l'écriture seulement), `capped` (au-delà de 4, le Récap
+   * demandera d'en retirer), `overlap` (deux cases se chevauchent ce jour-là). Optionnel : absent
+   * d'une réponse antérieure.
+   */
+  dailyCaps?: ParcImportDailyCap[];
+}
+
+export interface ParcImportDailyCap {
+  teamId: string;
+  teamName: string;
+  outcome: "raised" | "capped" | "overlap";
+  maxSessionsPerDay: number;
+  /** Jour ISO 1-7. */
+  day: number;
+  /** Nombre de cases de l'équipe ce jour-là. */
+  count: number;
 }
 
 /** La sélection envoyée à l'import : le parc collé + les décisions. */

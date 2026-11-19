@@ -22,6 +22,9 @@ export interface Team {
   level: TeamLevel | null;
   sessionsPerWeek: number;
   isActive: boolean;
+  /** Séances max le même jour pour cette équipe (1 à 4, 1 par défaut) — valeur de SAISON, lue par
+   *  le Récap, les gestes et le système. En période, la surcharge du plan peut la remplacer. */
+  maxSessionsPerDay: number;
   /** Équipe « en entente (CTC) » — repère visuel interne, aucun effet moteur (exposé par TeamResource). */
   isCtc?: boolean;
   /** Le/les partenaire(s) de l'entente, texte libre opaque ; null hors entente. */
@@ -60,6 +63,7 @@ export interface TeamPayload {
   gender?: Gender | null;
   level?: TeamLevel | null;
   sessionsPerWeek?: number;
+  maxSessionsPerDay?: number;
   isActive?: boolean;
   isCtc?: boolean;
   ctcPartner?: string | null;
@@ -286,6 +290,39 @@ export const updateSlot = (id: string, body: SlotPayload): Promise<VenueTraining
 export const deleteSlot = (id: string): Promise<void> => api.delete(`venue_training_slots/${id}`).then(() => undefined);
 
 /**
+ * Une OCCUPATION de gymnase : un moment où le gymnase n'est pas au club (« École », mardi
+ * 14:00-16:15), défini comme un créneau. Information seulement : elle ne change rien au planning.
+ * `schedulePlanId` null = grille de saison ; posé = la grille de ce plan de période.
+ */
+export interface VenueOccupancy {
+  id: string;
+  version: number;
+  venueId: string;
+  dayOfWeek: number;
+  startTime: string;
+  durationMinutes: number;
+  label: string;
+  schedulePlanId: string | null;
+}
+
+export interface VenueOccupancyPayload {
+  venueId: string;
+  dayOfWeek: number;
+  startTime: string;
+  durationMinutes: number;
+  label: string;
+  /** Posé à la création seulement : une occupation ne change jamais de couche. */
+  schedulePlanId?: string | null;
+}
+
+/** Les occupations d'une couche : la saison sans argument, sinon la grille de ce plan de période. */
+export const listVenueOccupancies = (schedulePlanId?: string): Promise<VenueOccupancy[]> =>
+  collectionAll<VenueOccupancy>("venue_occupancies", undefined === schedulePlanId ? undefined : { schedulePlanId });
+export const createVenueOccupancy = (body: VenueOccupancyPayload): Promise<VenueOccupancy> => api.post("venue_occupancies", { json: body }).json();
+export const updateVenueOccupancy = (id: string, body: VenueOccupancyPayload): Promise<VenueOccupancy> => api.put(`venue_occupancies/${id}`, { json: body }).json();
+export const deleteVenueOccupancy = (id: string): Promise<void> => api.delete(`venue_occupancies/${id}`).then(() => undefined);
+
+/**
  * #8 — le MODE d'un gymnase POUR une période. Réglage SPARSE : pas de ligne = « hériter »,
  * le défaut. Seuls les deux écarts sont stockés.
  *
@@ -350,6 +387,8 @@ export interface TeamPeriodOverride {
   teamId: string;
   isActive: boolean;
   sessionsPerWeek: number | null;
+  /** Séances max par jour pour cette période ; `null` = la valeur de saison de l'équipe. */
+  maxSessionsPerDay: number | null;
   /** Lot 9 — origine d'un override posé par un geste nommé (`mutualisation` = équipe activée par la
    *  mutualisation d'une case) ; `null` pour un réglage ordinaire du wizard. Le planning l'AFFICHE. */
   source: string | null;
@@ -360,6 +399,7 @@ export interface TeamPeriodOverridePayload {
   teamId: string;
   isActive: boolean;
   sessionsPerWeek?: number | null;
+  maxSessionsPerDay?: number | null;
 }
 
 export const listTeamPeriodOverrides = (schedulePlanId: string): Promise<TeamPeriodOverride[]> => collectionAll<TeamPeriodOverride>("team_period_overrides", { schedulePlanId });
@@ -777,8 +817,8 @@ export const deleteConstraint = (id: string): Promise<void> => api.delete(`const
  * le serveur (422). Voir `App\ApiResource\ImplicitRuleSettingResource`.
  */
 export type ImplicitRuleKey = "coachRestDay" | "salarieDistribution" | "maxConsecutiveSessions" | "ageAscending" | "maxConsecutiveDays";
-/** ⚠ `OFF` n'existe que pour les règles OPT-IN (P2-42) : la règle est proposée mais NON
- *  appliquée tant que le club ne l'active pas. Les règles historiques n'ont que 2 crans. */
+/** `OFF` = « Ignorée » : la règle n'est pas appliquée. Une règle OPT-IN (P2-42) y naît ; les autres
+ *  y sont réglées par le club. La présence d'un salarié n'accepte jamais `HARD` (422). */
 export type ImplicitRuleIntensity = "HARD" | "PREFERRED" | "OFF";
 
 export interface ImplicitRuleSetting {
@@ -834,8 +874,15 @@ export interface ValidateResult {
    * PR B ne renvoie pas la clé.
    */
   blockers?: string[];
-  /** Les réservations à retirer pour rendre à une équipe une seule séance par jour (Récap de saison). */
+  /** Les réservations bloquées parce que leur équipe a trop de séances ce jour-là (au-delà de son
+   *  plafond de séances par jour, Récap de saison). Disjointe de `overlappingReservationIds`. */
   doubledReservationIds?: string[];
+  /** Les réservations bloquées parce que leur créneau CHEVAUCHE une autre séance de la même équipe le
+   *  même jour. Le serveur donne la cause : l'écran ne la déduit jamais des heures. */
+  overlappingReservationIds?: string[];
+  /** Les règles du club réglées sur « Ignorée » pour ce qui sera généré, dans l'ordre du serveur.
+   *  Annoncées au Récap en bandeau neutre, jamais comptées parmi les alertes. */
+  ignoredRules?: ImplicitRuleKey[];
   /**
    * Avertissements formulés par le serveur — « "X" vise le gymnase Y, désactivé pour
    * cette période : elle ne sera pas appliquée ». Ils n'invalident RIEN (règle #8) et

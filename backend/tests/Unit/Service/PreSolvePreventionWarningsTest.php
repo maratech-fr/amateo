@@ -70,6 +70,15 @@ final class PreSolvePreventionWarningsTest extends TestCase
         yield '2 réservées, 1 manque' => [3, [1, 2], [5], 'U15 n\'autorise que des jours où aucun créneau ne lui est ouvert : 2 séances sont réservées, 1 séance manquera.'];
     }
 
+    /** @return iterable<string, array{string, list<string>}> */
+    public static function salarieSettings(): iterable
+    {
+        $alert = ['Aucun salarié n\'est disponible sur les créneaux du jeudi : Anna Martin et Ben Durand sont indisponibles ce jour-là.'];
+        yield 'Obligatoire stockée' => ['HARD', $alert];
+        yield 'Souhaitée' => ['PREFERRED', $alert];
+        yield 'Ignorée' => ['OFF', []];
+    }
+
     public function testAVenueWithoutAnySlotIsFlagged(): void
     {
         $found = $this->warnings->detect($this->payload(venues: [
@@ -286,6 +295,24 @@ final class PreSolvePreventionWarningsTest extends TestCase
             ['Aucun salarié n\'est disponible sur les créneaux du jeudi : Anna Martin et Ben Durand sont indisponibles ce jour-là.'],
             $this->employeeWarnings($found),
         );
+    }
+
+    /**
+     * PR 1b — l'alerte « aucun salarié disponible » du Récap se tait quand le club a ignoré la règle,
+     * et parle aux deux autres crans.
+     *
+     * @param list<string> $expected
+     */
+    #[DataProvider('salarieSettings')]
+    public function testTheEmployeeAlertFollowsTheSalarieSetting(string $intensity, array $expected): void
+    {
+        $payload = $this->employeesPayload(
+            employees: [$this->employee('anna', 'Anna', 'Martin'), $this->employee('ben', 'Ben', 'Durand')],
+            unavailable: [$this->coachUnavailable('anna', [4]), $this->coachUnavailable('ben', [4])],
+        );
+        $payload['implicitRules'] = ['salarieDistribution' => ['intensity' => $intensity]];
+
+        self::assertSame($expected, $this->employeeWarnings($this->warnings->detect($payload)));
     }
 
     /** Trois salariés se lisent comme une phrase : virgule, puis « et » avant le dernier. */
@@ -1414,6 +1441,37 @@ final class PreSolvePreventionWarningsTest extends TestCase
         ));
 
         self::assertContains($expected, $found);
+    }
+
+    /**
+     * À plafond 2, les jours ouverts comptent double : jours × plafond = demande se tait, un de moins alerte et dit le plafond.
+     * Plafond 1 : les phrases de {@see self::tooFewDays()}, inchangées.
+     */
+    public function testAtACapOfTwoOpenDaysCountTwiceAndTheWarningSaysTheCap(): void
+    {
+        $atThreshold = $this->warnings->detect($this->payload(
+            venues: [$this->venue('v1', 'Matéo', [1, 2, 3, 4, 5])],
+            teams: [[...$this->team('t1', 'U15', 4), 'maxSessionsPerDay' => 2]],
+            constraints: [$this->dayRule('TEAM', 't1', ['allowedDays' => [1, 2]])],
+        ));
+        self::assertSame([], array_values(array_filter($atThreshold, static fn (string $w): bool => str_contains($w, 'n\'ouvrent'))), '2 jours × 2 = 4 séances : rien à dire');
+
+        $oneShort = $this->warnings->detect($this->payload(
+            venues: [$this->venue('v1', 'Matéo', [1, 2, 3, 4, 5])],
+            teams: [[...$this->team('t1', 'U15', 5), 'maxSessionsPerDay' => 2]],
+            constraints: [$this->dayRule('TEAM', 't1', ['allowedDays' => [1, 2]])],
+        ));
+        self::assertContains('U15 demande 5 séances, mais ses règles n\'ouvrent que 2 jours, à 2 séances par jour au plus.', $oneShort);
+
+        $withReservation = $this->warnings->detect([
+            ...$this->payload(
+                venues: [$this->venue('v1', 'Matéo', [1, 2, 3])],
+                teams: [[...$this->team('t1', 'U15', 4), 'maxSessionsPerDay' => 2]],
+                constraints: [$this->dayRule('TEAM', 't1', ['allowedDays' => [1]])],
+            ),
+            'slotTemplates' => [$this->reservation('t1', 'v1', 3, '18:00')],
+        ]);
+        self::assertContains('U15 : il lui reste 3 séances à placer, mais ses règles n\'ouvrent qu\'un seul jour, à 2 séances par jour au plus.', $withReservation);
     }
 
     /** Une équipe déjà servie par ses réservations ne demande plus rien : réservée lundi et mardi, sa règle du lundi se tait. */

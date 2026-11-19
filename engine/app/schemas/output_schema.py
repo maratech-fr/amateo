@@ -138,7 +138,9 @@ class DiagnosticSchema(SerializableModel):
     severity: str
     # ``implicit_rule_not_honored`` porte la RÈGLE concernée (les 4 clés du bloc
     # ``implicitRules`` du contrat) pour que le front la surligne. Optionnel : les autres
-    # types de diagnostic ne le renseignent pas.
+    # types de diagnostic ne le renseignent pas. Entorse assumée (contrat 1.10) : l'annonce
+    # « deux séances à moins de 2 h d'écart » est un ``implicit_rule_not_honored`` SANS ``ruleKey`` —
+    # une règle fixe, non réglable par le club, donc sans lien « Ajuster ».
     rule_key: str | None = Field(default=None, alias="ruleKey")
     team_id: str | None = Field(default=None, alias="teamId")
     coach_id: str | None = Field(default=None, alias="coachId")

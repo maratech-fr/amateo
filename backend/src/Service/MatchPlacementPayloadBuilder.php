@@ -73,7 +73,7 @@ final class MatchPlacementPayloadBuilder
      * Elle DOIT valoir exactement la valeur du fichier — gardé par
      * `PayloadVersionMatchesContractVersionTest`.
      */
-    public const string CONTRACT_VERSION = '1.9';
+    public const string CONTRACT_VERSION = '1.12';
 
     /**
      * Budget du solveur PAR SEMAINE ISO (secondes). Depuis ENG-50 le moteur découpe la
@@ -263,9 +263,10 @@ final class MatchPlacementPayloadBuilder
         }
         $venueRows = [];
         foreach ($venues as $venue) {
+            // Contrat allégé (ENG-60) : ni le nom du gymnase ni celui de l'équipe ne partent, le
+            // moteur ne les lit pas (et les refuse).
             $venueRows[] = [
                 'id' => $venue->getId(),
-                'name' => $venue->getName(),
                 'matchWindows' => $windowsByVenue[$venue->getId()] ?? [],
                 'unavailabilities' => $unavailabilitiesByVenue[$venue->getId()] ?? [],
             ];
@@ -330,7 +331,6 @@ final class MatchPlacementPayloadBuilder
                 : MatchDurationProfile::fallback();
             $teamRows[] = [
                 'id' => $team->getId(),
-                'name' => $team->getName(),
                 'leagueWindows' => array_map(static fn (LeagueWindowInterface $w): array => [
                     'dayOfWeek' => $w->getDayOfWeek(),
                     'kickoffMin' => $w->getKickoffMin()->format('H:i'),
@@ -339,8 +339,8 @@ final class MatchPlacementPayloadBuilder
                 'habits' => $habitsByTeam[$team->getId()] ?? [],
                 'coaches' => $coachesByTeam[$team->getId()] ?? [],
                 'players' => $playerIdsByTeam[$team->getId()] ?? [],
+                // L'échauffement ne tient aucune fenêtre côté moteur : seule la durée du match part.
                 'matchMinutes' => $profile->matchMinutes,
-                'warmupMinutes' => $profile->warmupMinutes,
                 // P4-272 ④ — les gymnases INTERDITS à cette équipe (scope TEAM HARD). Le
                 // solveur les retire de son domaine ; trié pour un payload déterministe.
                 'forbiddenVenueIds' => $this->sortedKeys($forbiddenVenuesByTeam[$team->getId()] ?? []),

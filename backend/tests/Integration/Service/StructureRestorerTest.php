@@ -367,6 +367,41 @@ final class StructureRestorerTest extends KernelTestCase
         self::assertSame([], $this->staffLinesOf($wish), 'sa ligne effacée ne revient pas avec lui');
     }
 
+    /**
+     * Charger une version restaure le plafond de séances par jour de sa photo ; une photo prise avant que le champ existe (la clé
+     * manque) donne 1, le défaut de la propriété — jamais une erreur ni une valeur héritée de l'état courant.
+     */
+    public function testLoadingRestoresTheDailyCapAndAnOlderPhotoWithoutItGivesOne(): void
+    {
+        [$club, $season] = $this->seedClubSeason();
+        $team = $this->persistTeam($club, $season, 'SM1');
+        $team->setMaxSessionsPerDay(2);
+        $v1 = $this->makeSchedule($club, $season);
+        $this->em->flush();
+        $teamId = $team->getId();
+        $this->snapshotter->store($v1, $this->snapshotter->serialize($club->getId(), $season->getId()));
+        $photo = $this->restorer->readSnapshot($v1);
+
+        $team->setMaxSessionsPerDay(3);
+        $this->em->flush();
+        $this->restorer->apply($club->getId(), $season->getId(), $photo);
+        $this->em->clear();
+        self::assertSame(2, $this->em->getRepository(Team::class)->find($teamId)?->getMaxSessionsPerDay(), 'la valeur de la photo revient');
+
+        $older = array_map(
+            static fn (array $rows): array => array_map(static function (array $row): array {
+                unset($row['maxSessionsPerDay']);
+
+                return $row;
+            }, $rows),
+            $photo,
+        );
+        self::assertNotSame($photo, $older, 'la photo portait bien le champ : la retirer change quelque chose');
+        $this->restorer->apply($club->getId(), $season->getId(), $older);
+        $this->em->clear();
+        self::assertSame(1, $this->em->getRepository(Team::class)->find($teamId)?->getMaxSessionsPerDay(), 'photo sans le champ : 1 par défaut');
+    }
+
     protected function setUp(): void
     {
         self::bootKernel();

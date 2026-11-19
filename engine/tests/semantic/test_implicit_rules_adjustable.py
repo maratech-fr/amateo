@@ -24,7 +24,6 @@ from tests.support import make_payload, make_venue, solve_payload, team_coach
 def _team(team_id: str, *, sessions: int = 1, tier: int = 1, age_min: int | None = None) -> dict[str, Any]:
     team: dict[str, Any] = {
         "id": team_id,
-        "sportCategoryId": "cat",
         "priorityTierId": tier,
         "name": team_id,
         "sessionsPerWeek": sessions,
@@ -400,3 +399,63 @@ def test_hard_rest_day_bypassed_by_locks_is_diagnosed() -> None:
     assert all("n'a pas pu honorer" in w["message"] for w in warnings), (
         "le ton HARD-contournée doit être « le solveur n'a pas pu honorer », pas « assouplie par vous »"
     )
+
+
+# ===========================================================================
+# PR 1b — « Ignorée » (OFF) : la règle n'est ni appliquée ni signalée
+# ===========================================================================
+# Jumeau de pose (ni contrainte ni terme, règle par règle) :
+# ``test_implicit_rules_are_still_applied.py::test_an_ignored_rule_poses_neither_a_constraint_nor_a_term``.
+# Ici, l'effet vu par le club : le planning franchit la règle et rien ne le signale.
+
+
+def test_rest_day_ignored_works_the_coach_five_days_without_a_word() -> None:
+    result = solve_payload(_rest_day_payload(intensity="OFF", min_rest_days=None))
+    assert result["status"] == "completed"
+    assert _coach_weekdays(result, "c1") == {1, 2, 3, 4, 5}
+    assert _implicit_warnings(result, "coachRestDay") == []
+
+
+def test_chain_ignored_places_the_triple_without_a_word() -> None:
+    result = solve_payload(_chain_payload(intensity="OFF", max_consecutive=None, n_slots=3))
+    assert result["status"] == "completed"
+    assert _coach_monday_count(result) == 3
+    assert _implicit_warnings(result, "maxConsecutiveSessions") == []
+
+
+def test_age_ignored_tolerates_the_inversion_without_a_word() -> None:
+    result = solve_payload(_age_payload(intensity="OFF"))
+    assert result["status"] == "completed"
+    starts = _age_starts(result)
+    assert starts.get("young") == "19:00" and starts.get("old") == "17:00"
+    assert _implicit_warnings(result, "ageAscending") == []
+
+
+def test_salarie_ignored_raises_no_alert_on_a_day_without_one() -> None:
+    """Témoin aux deux autres crans : ``test_salarie_day_without_one_warns_at_both_settings``."""
+    result = solve_payload(_salarie_payload(intensity="OFF", friday_salarie=False))
+    assert result["status"] == "completed"
+    assert _implicit_warnings(result, "salarieDistribution") == []
+
+
+def test_the_two_hour_gap_is_still_announced_when_every_rule_is_ignored() -> None:
+    """L'écart de 2 h n'est pas une règle du club : ignorer les quatre règles réglables ne le tait pas
+    (PR 1a, ``test_max_sessions_per_day.py::test_evenings_only_one_day_places_both_sessions_and_announces_the_gap``)."""
+    team = {**_team("U15", sessions=2), "maxSessionsPerDay": 2}
+    payload = make_payload(
+        teams=[team],
+        venues=[make_venue("v", [(1, "17:00"), (1, "18:30"), (1, "20:00")], duration_minutes=90)],
+        timeout=10,
+    )
+    payload["implicitRules"] = {
+        key: {"intensity": "OFF"}
+        for key in ("coachRestDay", "salarieDistribution", "maxConsecutiveSessions", "ageAscending")
+    }
+    result = solve_payload(payload)
+    assert result["status"] == "completed"
+    gaps = [
+        d
+        for d in result["diagnostics"]
+        if d.get("type") == "implicit_rule_not_honored" and "à moins de 2 h d'écart" in str(d.get("message"))
+    ]
+    assert len(gaps) == 1, result["diagnostics"]

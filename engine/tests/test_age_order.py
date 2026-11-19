@@ -189,9 +189,7 @@ class TestAgeOrder:
         data = _load_fixture("age_order_club.json")
         data["teams"][1] = {
             "id": "u13f",
-            "sportCategoryId": "u13",
             "ageMin": 12,
-            "ageMax": 13,
             "priorityTierId": 3,
             "name": "U13 Women",
             "sessionsPerWeek": 1,

@@ -105,9 +105,10 @@ par un CRUD brut sur la ressource :
       (`violations`), **PAS de bouton de confirmation** (« Fermer » seul), et la grille
       **surligne** le conflit nommé (même chemin que le refus d'un move réel) ; le mode cible
       reste armé pour réessayer ailleurs.
-    - Un dry-run **refusé pour une raison MÉTIER** au transport (verrou `target_locked` posé
-      entre-temps, génération en cours 409) ferme la modale (`onError`, pas `onSuccess`) et
-      toaste le motif — le mode cible reste armé.
+    - Un dry-run **refusé pour une raison MÉTIER** au transport ferme la modale (`onError`, pas
+      `onSuccess`) : un refus codé (verrou `target_locked` posé entre-temps…) s'affiche dans la
+      fiche du créneau source (P4-474, ci-dessous), la génération en cours (409) reste un toast —
+      le mode cible reste armé (sauf `source_reserved`).
     - **`failed`** (incident terrain 2026-08-17, affiné P4-119 b le 2026-08-19) : l'essai lui-même
       **N'A PAS ABOUTI** — DISTINCT d'un `refused` : rien n'est tranché, donc la modale **RESTE
       OUVERTE** au lieu de se fermer en silence. **Trois causes NOMMÉES, jamais confondues**
@@ -267,6 +268,27 @@ par un CRUD brut sur la ressource :
   garantie : « Cliquez un créneau pour y fixer une équipe (verrou HARD, conservé à chaque
   régénération). » Cette phrase rend le MÊME bouton pour un overlay de PÉRIODE — la greffe des
   verrous hérités (§6.7 quater) la tient aussi pour une version NUE née de « Régénérer ».
+- **Avertir avant « Régénérer », refuser le déplacement d'une séance réservée** (D1, 2026-11-18) :
+  - **Dialogue d'avertissement** : si la version de DÉPART est marquée « modifiée à la main »
+    (`manuallyEditedSinceGeneration`, lue sur la version chargée en saison, sur la version source en
+    période — `loadedVersionOf`, jamais sur la version regardée), « Régénérer » ouvre d'abord
+    « Régénérer un planning modifié à la main ? » (« Régénérer quand même » / « Annuler ») ; confirmer
+    rejoue l'appel d'avant. Les deux dialogues déjà ouverts quand on regarde une autre version gagnent
+    une note (`regenerateLoadedEditedNote`). Jamais sur « Combler », jamais sur une version non
+    marquée. Le marqueur est par version : le dialogue s'ouvre aussi après une annulation de geste,
+    une mutualisation seule, ou quand tout ce qui a bougé est déjà verrouillé. Dans le dialogue de
+    période, le paragraphe du haut garde les étiquettes longues (« V2 — 18 nov. 16:22 ») et la note
+    dit « V2 ». Le bandeau « périmé » (`staleness.ts`) ne dit plus « Régénérez pour savoir s'il tient
+    encore » quand « modifié à la main » est une cause : « Régénérez seulement après avoir verrouillé
+    les séances que vous voulez garder : les autres peuvent changer de place ».
+  - **Refus d'une séance réservée** : `source_reserved` (422, `MoveSlotService`) — séance verrouillée
+    dont la réservation de la même équipe occupe la case exacte dans le plan de sa version ; le
+    bouton « Déplacer » reste actif, le refus parle (pas de « Déplacer et verrouiller »).
+  - **Un refus codé de déplacement, d'éviction ou d'échange s'affiche dans la fiche du créneau
+    source** (`SlotDetail`, P4-474 ; plus en toast) et le bloc se fait voir sans défilement manuel.
+    Refus lié à la cible : le mode « Choisir la case cible » reste armé ; `source_reserved` :
+    le mode se désarme (`useRetouchGestures`) ; `not_loaded_version` et « génération en cours »
+    restent un toast, hors de la fiche.
 - **Panneau latéral des verrous manuels + lentille** (**P2-31 PR 3, 2026-08-16 — lot SOLDÉ**) :
   la barre compacte de la grille (celle qui porte « Diagnostics du système ») gagne un bouton
   FRÈRE **« Verrous manuels (n) »** (icône `Lock`) comptant les créneaux `lockOrigin === "MANUAL"`
@@ -377,7 +399,7 @@ génération en cours ou sans version valide sélectionnée. **Outil d'appoint**
 complet) reste dans la barre d'outils à côté — le comblement ne le remplace pas, il évite un solve
 complet pour le cas courant (un gymnase a fermé, une équipe a repris son volume).
 
-**Blocages du Récap et alerte d'absence (2026-11-02).** Le serveur refuse `generate`/`regenerate`/`fill` en 422 `blocker: true` pour ce que le Récap dit voué à l'échec ; le wizard (`GenerateStep`, `WizardLayout`) désactive déjà le bouton avec `WIZARD_TEXTS.generationBlocked` quand le Récap a des blocages. Une version créée par le geste (`generateCreatedVersion`, `planning/lib/`) puis refusée en 4xx est supprimée (`DELETE /api/schedules/{id}`) avant que l'erreur remonte ; une version préexistante (`existingScheduleId`) n'est jamais supprimée. `PlacedAbsencesNotice` (« Une séance sans coach ») s'affiche dès qu'une version est affichée : `usePlacedConflicts(validScheduleId)` interroge `placed-conflicts?scheduleId=`, et un déplacement invalide le préfixe `["training","placed-conflicts"]`.
+**Blocages du Récap et alerte d'absence (2026-11-02).** Le serveur refuse `generate`/`regenerate`/`fill` en 422 `blocker: true` pour ce que le Récap dit voué à l'échec (sauf `fill` pour une équipe au-dessus de ses séances par ses séances verrouillées : il ne compte que les réservations) ; le wizard (`GenerateStep`, `WizardLayout`) désactive déjà le bouton avec `WIZARD_TEXTS.generationBlocked` quand le Récap a des blocages. Une version créée par le geste (`generateCreatedVersion`, `planning/lib/`) puis refusée en 4xx est supprimée (`DELETE /api/schedules/{id}`) avant que l'erreur remonte ; une version préexistante (`existingScheduleId`) n'est jamais supprimée. `PlacedAbsencesNotice` (« Une séance sans coach ») s'affiche dès qu'une version est affichée : `usePlacedConflicts(validScheduleId)` interroge `placed-conflicts?scheduleId=`, et un déplacement invalide le préfixe `["training","placed-conflicts"]`.
 
 **Le bilan par rang et les écarts NOMMÉS — `SocleDeviationPanel` (P2-44 PR-5, ADR-0004)** :
 sur une version `COMPLETED` d'un plan de **FERMETURE**, le panneau « **Bilan par rang** — semaine du

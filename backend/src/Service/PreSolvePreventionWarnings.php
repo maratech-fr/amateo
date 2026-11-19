@@ -6,6 +6,7 @@ namespace App\Service;
 
 use App\Enum\ConstraintFamily;
 use App\Enum\ConstraintScope;
+use App\Enum\RecapPinWording;
 
 /**
  * P4-57 — les préventions qu'on peut FAIRE AVANT de générer.
@@ -81,10 +82,12 @@ final readonly class PreSolvePreventionWarnings
      *                                                (calendarEntryId NULL) ; `false` = posée pour
      *                                                la période. Vide ⇒ aucune origine composée
      *                                                (la SERVABILITÉ reste calculée du payload seul).
+     * @param RecapPinWording      $wording           les mots des cases épinglées dans les phrases de groupe :
+     *                                                au comblement, ce sont les placements de la version source
      *
      * @return list<string>
      */
-    public function detectBlockers(array $payload, array $constraintOrigins = []): array
+    public function detectBlockers(array $payload, array $constraintOrigins = [], RecapPinWording $wording = RecapPinWording::RESERVED): array
     {
         $venues = $this->listOf($payload, 'venues');
         $teams = $this->listOf($payload, 'teams');
@@ -93,7 +96,7 @@ final readonly class PreSolvePreventionWarnings
         return [
             ...$this->forcedDaysWithoutCandidateSlot($teams, $venues, $constraints),
             ...$this->forcedDayEmptiedByClosingRules($payload, $teams, $venues, $constraints)['blockers'],
-            ...$this->sharedBlockWithoutCommonServableCase($payload, $venues, $teams, $constraints, $constraintOrigins),
+            ...$this->sharedBlockWithoutCommonServableCase($payload, $venues, $teams, $constraints, $constraintOrigins, $wording),
         ];
     }
 
@@ -191,9 +194,11 @@ final readonly class PreSolvePreventionWarnings
                 continue;
             }
 
-            if (\count($openDays) < $demand) {
+            // Une équipe à plafond P > 1 peut s'entraîner P fois chacun de ses jours ouverts.
+            $dailyCap = max(1, (int) ($team['maxSessionsPerDay'] ?? 1));
+            if (\count($openDays) * $dailyCap < $demand) {
                 $messages[] = \sprintf(
-                    0 === $reserved ? '%s demande %s, mais ses règles n\'ouvrent %s.' : '%s : il lui reste %s à placer, mais ses règles n\'ouvrent %s.',
+                    0 === $reserved ? '%s demande %s, mais ses règles n\'ouvrent %s%s.' : '%s : il lui reste %s à placer, mais ses règles n\'ouvrent %s%s.',
                     $this->nameOf($team),
                     $this->sessionCount($demand),
                     match (\count($openDays)) {
@@ -201,6 +206,7 @@ final readonly class PreSolvePreventionWarnings
                         1 => 'qu\'un seul jour',
                         default => 'que ' . \count($openDays) . ' jours',
                     },
+                    1 === $dailyCap ? '' : \sprintf(', à %d séances par jour au plus', $dailyCap),
                 );
             } elseif ([] === array_intersect_key($reachable, array_flip($openDays))) {
                 $messages[] = \sprintf(
@@ -406,7 +412,8 @@ final readonly class PreSolvePreventionWarnings
      * Un jour ouvré de la grille où aucun salarié ne peut venir sur aucun créneau : la règle « un
      * salarié présent chaque jour » ne pourra pas y être tenue. Même seuil (2 salariés) et mêmes
      * jours (lundi-vendredi) que le moteur. Un jour où un salarié est libre mais où rien n'est
-     * réservé ne dit rien : le solveur y reste libre.
+     * réservé ne dit rien : le solveur y reste libre. Règle réglée sur « Ignorée » (`OFF` dans le
+     * bloc `implicitRules` du payload) : rien à annoncer, le moteur ne la vise pas.
      *
      * @param array<string, mixed>       $payload
      * @param list<array<string, mixed>> $venues
@@ -416,6 +423,12 @@ final readonly class PreSolvePreventionWarnings
      */
     private function daysWithoutAnyAvailableEmployee(array $payload, array $venues, array $constraints): array
     {
+        $implicitRules = $payload['implicitRules'] ?? null;
+        $salarieRule = \is_array($implicitRules) ? ($implicitRules['salarieDistribution'] ?? null) : null;
+        if (\is_array($salarieRule) && 'OFF' === ($salarieRule['intensity'] ?? null)) {
+            return [];
+        }
+
         $employees = array_values(array_filter(
             $this->listOf($payload, 'coaches'),
             static fn (array $coach): bool => true === ($coach['isEmployee'] ?? false),
@@ -1061,7 +1074,7 @@ final readonly class PreSolvePreventionWarnings
      *
      * @return list<string>
      */
-    private function sharedBlockWithoutCommonServableCase(array $payload, array $venues, array $teams, array $constraints, array $constraintOrigins): array
+    private function sharedBlockWithoutCommonServableCase(array $payload, array $venues, array $teams, array $constraints, array $constraintOrigins, RecapPinWording $wording): array
     {
         $blocks = $this->listOf($payload, 'sharedBlocks');
         if ([] === $blocks) {
@@ -1136,7 +1149,11 @@ final readonly class PreSolvePreventionWarnings
                 continue;
             }
             $messages[] = \sprintf(
-                'Groupes %s : une seule case réservée les réunit, pour %d séances communes à placer — la génération échouera. Retirez une réservation ou ajustez les séances communes dans l\'assistant.',
+                match ($wording) {
+                    RecapPinWording::RESERVED => 'Groupes %s : une seule case réservée les réunit, pour %d séances communes à placer — la génération échouera. Retirez une réservation ou ajustez les séances communes dans l\'assistant.',
+                    RecapPinWording::RESERVED_OR_PLACED => 'Groupes %s : une seule case réservée les réunit, pour %d séances communes à placer — la génération échouera. Retirez une réservation, déplacez une séance de cette version, ou ajustez les séances communes dans l\'assistant.',
+                    RecapPinWording::PLACED => 'Groupes %s : une seule case placée les réunit, pour %d séances communes à placer — la génération échouera. Déplacez une séance de cette version ou ajustez les séances communes dans l\'assistant.',
+                },
                 implode(' et ', array_map(static fn (int $index): string => $groupNames($validBlocks[$index][0]), $nested)),
                 $sessions,
             );
@@ -1154,7 +1171,11 @@ final readonly class PreSolvePreventionWarnings
             $exclusiveKeys = array_values(array_filter($pinnedKeys, static fn (string $key): bool => 1 === \count($blocksByPinnedCase[$key])));
             if (\count($exclusiveKeys) > $commonSessions) {
                 $messages[] = \sprintf(
-                    'Groupe %s : réservé sur %d cases pour %s — la génération échouera. Retirez une réservation ou ajustez les séances communes dans l\'assistant.',
+                    match ($wording) {
+                        RecapPinWording::RESERVED => 'Groupe %s : réservé sur %d cases pour %s — la génération échouera. Retirez une réservation ou ajustez les séances communes dans l\'assistant.',
+                        RecapPinWording::RESERVED_OR_PLACED => 'Groupe %s : réservé sur %d cases pour %s — la génération échouera. Retirez une réservation, déplacez une séance de cette version, ou ajustez les séances communes dans l\'assistant.',
+                        RecapPinWording::PLACED => 'Groupe %s : placé sur %d cases pour %s — la génération échouera. Déplacez une séance de cette version ou ajustez les séances communes dans l\'assistant.',
+                    },
                     $groupNames($memberIds),
                     \count($exclusiveKeys),
                     1 === $commonSessions ? '1 séance commune' : $commonSessions . ' séances communes',
@@ -1197,7 +1218,9 @@ final readonly class PreSolvePreventionWarnings
                 : \sprintf(
                     'Groupe %s : %s%s où un coach du groupe est disponible, pour %s — la génération échouera.',
                     $names,
-                    0 === $reserved ? '' : (1 === $reserved ? '1 case réservée' : $reserved . ' cases réservées') . ' et ',
+                    0 === $reserved ? '' : (RecapPinWording::PLACED === $wording
+                        ? (1 === $reserved ? '1 case déjà placée' : $reserved . ' cases déjà placées')
+                        : (1 === $reserved ? '1 case réservée' : $reserved . ' cases réservées')) . ' et ',
                     0 === $free ? 'aucun créneau' : 'seulement ' . $slots,
                     $sessions,
                 );

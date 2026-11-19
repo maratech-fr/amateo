@@ -9,6 +9,7 @@ use App\Entity\ClubLeagueWindow;
 use App\Entity\Coach;
 use App\Entity\CoachPlayerMembership;
 use App\Entity\Constraint;
+use App\Entity\ImplicitRuleSetting;
 use App\Entity\MatchConstraint;
 use App\Entity\PriorityTier;
 use App\Entity\Schedule;
@@ -29,6 +30,8 @@ use App\Enum\CoachGender;
 use App\Enum\ConstraintFamily;
 use App\Enum\ConstraintRuleType;
 use App\Enum\ConstraintScope;
+use App\Enum\ImplicitRuleIntensity;
+use App\Enum\ImplicitRuleKey;
 use App\Enum\MatchWeek;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
@@ -51,7 +54,7 @@ use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
 /**
  * Season transition copy NR (spec transition-de-saison §2-3): the ENTRIES of
  * N are copied into N+1 with every cross-reference remapped, permanent
- * constraints only, lineage in parent_*_id, and NOTHING generated copied.
+ * constraints only, no link back to season N, and NOTHING generated copied.
  */
 #[Group('phase1')]
 #[Group('integration')]
@@ -84,9 +87,9 @@ final class SeasonTransitionServiceTest extends KernelTestCase
             $counts,
         );
 
-        // Venue lineage + slot remap.
+        // Venue copy + slot remap.
         $newVenues = $this->em->getRepository(Venue::class)->findBy(['seasonId' => $target->getId()], ['name' => 'ASC']);
-        self::assertSame([$refs['venueA']->getId(), $refs['venueB']->getId()], [$newVenues[0]->getParentVenueId(), $newVenues[1]->getParentVenueId()]);
+        self::assertCount(2, $newVenues);
         // P4-187a — les alias de salle confirmés suivent la copie N+1.
         self::assertSame(['gymnase mateo'], $newVenues[0]->getExternalLabels());
         self::assertSame([], $newVenues[1]->getExternalLabels());
@@ -167,7 +170,6 @@ final class SeasonTransitionServiceTest extends KernelTestCase
         $newTeams = $this->em->getRepository(Team::class)->findBy(['seasonId' => $target->getId()], ['name' => 'ASC']);
         self::assertSame('SM1', $newTeams[0]->getName());
         self::assertSame($newVenues[0]->getId(), $newTeams[0]->getForcedVenueId());
-        self::assertSame($refs['teamA']->getId(), $newTeams[0]->getParentTeamId());
         // Club-scoped referentials shared: same category/tier ids.
         self::assertSame($refs['teamA']->getSportCategoryId(), $newTeams[0]->getSportCategoryId());
 
@@ -234,8 +236,6 @@ final class SeasonTransitionServiceTest extends KernelTestCase
         // D-08 : `forcedVenueId` n'était PAS dans la liste de remap — la contrainte partait
         // en saison N+1 avec l'uuid du gymnase de l'ancienne saison, sans skip ni log.
         self::assertSame($newVenueB?->getId(), $copied[1]->getConfig()['forcedVenueId'], 'forcedVenueId doit être remappé comme les autres clés uuid.');
-        // Lineage.
-        self::assertSame($refs['coachConstraint']->getId(), $copied[0]->getParentConstraintId());
     }
 
     public function testDanglingConstraintReferencesAreSkippedNotPropagated(): void
@@ -354,6 +354,44 @@ final class SeasonTransitionServiceTest extends KernelTestCase
         $copiedAnna = $this->em->getRepository(Coach::class)->findOneBy(['seasonId' => $target->getId(), 'firstName' => 'Anna']);
         self::assertNotNull($copiedAnna);
         self::assertSame(CoachGender::FEMALE, $copiedAnna->getGender(), 'le genre du coach survit au passage de saison (P4-311)');
+    }
+
+    /** Le plafond de séances par jour est un réglage permanent de l'équipe : il suit la copie de la saison suivante. */
+    public function testTheTeamDailyCapSurvivesTheTransition(): void
+    {
+        [, $season] = $this->createClubGraph();
+        $sm1 = $this->em->getRepository(Team::class)->findOneBy(['seasonId' => $season->getId(), 'name' => 'SM1']);
+        self::assertInstanceOf(Team::class, $sm1);
+        $sm1->setMaxSessionsPerDay(2);
+        $this->em->flush();
+
+        $target = $this->service->transition($season);
+
+        $copied = $this->em->getRepository(Team::class)->findOneBy(['seasonId' => $target->getId(), 'name' => 'SM1']);
+        self::assertInstanceOf(Team::class, $copied);
+        self::assertSame(2, $copied->getMaxSessionsPerDay());
+    }
+
+    /** PR 1b — une règle du club réglée sur « Ignorée » le reste à la saison suivante. */
+    public function testAnIgnoredClubRuleSurvivesTheTransition(): void
+    {
+        [$club, $season] = $this->createClubGraph();
+        $this->em->persist((new ImplicitRuleSetting)
+            ->setClubId($club->getId())
+            ->setSeasonId($season->getId())
+            ->setRuleKey(ImplicitRuleKey::AGE_ASCENDING)
+            ->setIntensity(ImplicitRuleIntensity::OFF));
+        $this->em->flush();
+
+        $target = $this->service->transition($season);
+
+        $copied = $this->em->getRepository(ImplicitRuleSetting::class)->findOneBy([
+            'seasonId' => $target->getId(),
+            'schedulePlanId' => null,
+            'ruleKey' => ImplicitRuleKey::AGE_ASCENDING,
+        ]);
+        self::assertInstanceOf(ImplicitRuleSetting::class, $copied, 'le réglage de la règle suit la saison suivante');
+        self::assertSame(ImplicitRuleIntensity::OFF, $copied->getIntensity());
     }
 
     public function testCoachIsVehicledSurvivesTheTransition(): void

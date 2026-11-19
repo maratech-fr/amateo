@@ -45,7 +45,6 @@ _FR_DAYS = {1: "lundi", 2: "mardi", 3: "mercredi", 4: "jeudi", 5: "vendredi", 6:
 def _team(team_id: str = "t", sessions: int = 1) -> dict[str, Any]:
     return {
         "id": team_id,
-        "sportCategoryId": "cat",
         "priorityTierId": 3,
         "name": team_id,
         "sessionsPerWeek": sessions,

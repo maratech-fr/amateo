@@ -146,8 +146,8 @@ passer » est refusé.
 | Un gymnase ne dépasse jamais sa capacité | `add_room_at_most_one:284` | « au plus la CAPACITÉ », pas « une seule équipe » — la capacité se règle par créneau |
 | Un coach n'est jamais dans deux gymnases à la fois | `add_coach_at_most_one:311` | **venue-aware** : le MÊME gymnase est AUTORISÉ (D-14, arbitrage fondateur) |
 | Une personne ne peut pas encadrer et jouer en même temps | `add_coach_player_non_overlap:374` | coach-joueur, les deux rôles |
-| Une équipe n'a jamais deux séances en même temps | `add_team_no_overlap:745` | — |
-| Au plus une séance par jour et par équipe | `add_one_session_per_day_constraints` | **sans exception** — le levier d'exemption est retiré (P4-79, voir ci-dessous) |
+| Une équipe n'a jamais deux séances en même temps | `add_team_no_overlap:745` ; `add_team_self_no_overlap_constraints` (ses propres séances, plafond ≥ 2) | à plafond 1, le budget du jour interdit déjà le doublé ; à plafond ≥ 2, deux séances de l'équipe ne se chevauchent jamais |
+| Au plus une séance par jour et par équipe, sauf réglage de l'équipe | `add_one_session_per_day_constraints` | plafond `teams[].maxSessionsPerDay` (1 à 4, défaut 1, contrat 1.10) ; **sans autre exception** — le levier d'exemption est retiré (P4-79, voir ci-dessous). Le moteur cherche en plus (souple) 2 h entre deux séances d'une équipe à plafond ≥ 2 : `engine/docs/constraint-vocabulary.md` §Plafond de séances par jour |
 | Chaque coach garde un jour de repos | `add_coach_rest_day_constraints:452` | lundi→vendredi ; le week-end ne compte pas |
 
 ⚑ **Un créneau VERROUILLÉ est un FAIT du planning, pas une exception aux règles** (P4-97 + P4-97 bis) : il est **imposé** (le solveur ne le déplace ni ne le supprime) **et il
@@ -178,18 +178,18 @@ une séance JOUÉE ; deux coachs-joueurs sont présents les 5 soirs).
   coach** (`coachRestDay`, seuil `minRestDays` 1-4, défaut 1), **distribution des salariés**
   (`salarieDistribution`), **jamais N créneaux dos-à-dos** (`maxConsecutiveSessions`, seuil
   `maxConsecutive` 2-6, défaut 3 — coaché ET joué confondus), **âge croissant** (`ageAscending`).
-  ⚠ **`salarieDistribution` fait exception (2026-10-31)** : c'est un OBJECTIF quel que soit le cran stocké (le cran est sans effet, l'alerte dit un fait et ne bloque jamais — ADR-0001, amendement 2026-10-31).
-  Intensité **HARD** (bloque, comportement historique = défaut) ou **PREFERRED** (le solveur vise
+  ⚠ **`salarieDistribution` fait exception (2026-10-31)** : c'est un OBJECTIF à HARD comme à PREFERRED (l'alerte dit un fait et ne bloque jamais — ADR-0001, amendement 2026-10-31) ; le serveur n'en accepte que deux crans, PREFERRED (« Souhaitée ») ou OFF, et refuse HARD en 422 (`ImplicitRuleSettingStateProcessor`).
+  Intensité **HARD** (bloque, comportement historique = défaut), **PREFERRED** ou **OFF** (« Ignorée », contrat 1.11 : rien n'est posé ni diagnostiqué ; le résolveur envoie `OFF` explicite pour une règle historique — son absence vaudrait HARD — et omet seulement l'opt-in) (le solveur vise
   la règle via un littéral de violation AGRÉGÉ par entité, poids −6, preuve d'empilement dans
-  `objective.py` — jamais un terme par occurrence, qui pouvait supprimer des séances). Un cran
-  DÉSACTIVÉE est une **extension future**, coupée du lot sur smith.
+  `objective.py` — jamais un terme par occurrence, qui pouvait supprimer des séances). Le cran
+  « Ignorée » (OFF) éteint la règle ; le Récap l'annonce (`ignoredRules`).
   ⚠ **Bien-être PAR PÉRIODE** : la portée n'est PAS « club+saison » — `schedule_plan_id` sur
   `ImplicitRuleSetting` (ADR-0002 inv. 5) fixe la portée réelle au **plan** : NULL = la saison
   (base + repli des plans nés avant la fonctionnalité), un plan de période reçoit à sa NAISSANCE
   une **copie matérialisée** de ses 4 lignes — patron de la copie de grille (#8) — et une
   modification de la saison POSTÉRIEURE à la naissance ne redescend plus dans sa copie. Détail :
   ADR-0002.
-- **Violation TOUJOURS diagnostiquée**, quel que soit le cran (exigence fondateur) : type
+- **Violation diagnostiquée à tout cran sauf « Ignorée »** (exigence fondateur) : type
   `implicit_rule_not_honored` + `ruleKey`, détection post-solve inconditionnelle au **même grain
   que la pose** (coach MAIN — les ASSISTANT ne comptent pas — + séances jouées), textes
   différenciés : « règle assouplie par vous » (PREFERRED, informatif) vs « le solveur n'a pas pu

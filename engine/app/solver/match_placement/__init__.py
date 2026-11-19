@@ -10,7 +10,7 @@ la surface d'import byte-identique au module d'avant la découpe (noms publics E
 
 Les sous-modules forment un DAG simple assis sur les schémas ``match_input_schema`` : ``geometry``
 (constantes de durée D1/lot M, lecteurs d'horaire ``_minutes`` / ``_to_time`` / ``_iso_day``,
-prédicats de fenêtre ``_kick_in_club_rule`` / ``_kick_in_unavailability``, durées ``_durations`` et
+prédicats de fenêtre ``_kick_in_club_rule`` / ``_kick_in_unavailability``, durée ``_match_minutes`` et
 personnes ``_team_players``) · ``weights`` (les poids d'objectif SOFT, ADR-0003) · ``reasons``
 (table ``REASON_MESSAGES`` et reclassement ``_remaining_reason``) · ``budget`` (dépassement de
 build ``_BuildBudgetExceeded`` et réponse ``_too_large_result``) · ``candidates`` (seule arête
@@ -59,13 +59,7 @@ from .geometry import (
     DEFAULT_MATCH_MIN as DEFAULT_MATCH_MIN,
 )
 from .geometry import (
-    DEFAULT_WARMUP_MIN as DEFAULT_WARMUP_MIN,
-)
-from .geometry import (
     STEP_MIN as STEP_MIN,
-)
-from .geometry import (
-    _durations as _durations,
 )
 from .geometry import (
     _iso_day as _iso_day,
@@ -75,6 +69,9 @@ from .geometry import (
 )
 from .geometry import (
     _kick_in_unavailability as _kick_in_unavailability,
+)
+from .geometry import (
+    _match_minutes as _match_minutes,
 )
 from .geometry import (
     _minutes as _minutes,
@@ -243,14 +240,14 @@ def _place_matches(input_data: MatchPlacementInputSchema) -> dict[str, Any]:
     for match in fixed:
         if match.venue_id is None or match.kickoff is None:  # guarded by schema
             continue
-        match_min, _ = _durations(teams_by_id.get(match.team_id))
+        match_min = _match_minutes(teams_by_id.get(match.team_id))
         start = _minutes(match.kickoff)
         fixed_busy.setdefault((match.venue_id, match.match_date), []).append((start, start + match_min))
 
     intervals_by_group: dict[tuple[str, date], list[cp_model.IntervalVar]] = {}
     for match in solvable:
         _ensure_budget()
-        match_min, _ = _durations(teams_by_id.get(match.team_id))
+        match_min = _match_minutes(teams_by_id.get(match.team_id))
         for cand in candidates[match.id]:
             start = cand.kickoff_min
             busy = fixed_busy.get((cand.venue_id, match.match_date), [])
@@ -303,7 +300,7 @@ def _place_matches(input_data: MatchPlacementInputSchema) -> dict[str, Any]:
         }
         for match in sorted(solvable, key=lambda m: (m.match_date, m.team_id)):
             _ensure_budget()
-            match_min, _ = _durations(teams_by_id.get(match.team_id))
+            match_min = _match_minutes(teams_by_id.get(match.team_id))
             team = teams_by_id.get(match.team_id)
             habit = (
                 next((h for h in team.habits if h.day_of_week == _iso_day(match.match_date)), None) if team else None
@@ -360,7 +357,7 @@ def _place_matches(input_data: MatchPlacementInputSchema) -> dict[str, Any]:
     team_dates = {(m.team_id, m.match_date) for m in input_data.matches}
     protected: dict[tuple[str, date], set[tuple[int, int]]] = {}
     for habit_team in input_data.teams:
-        match_min, _ = _durations(habit_team)
+        match_min = _match_minutes(habit_team)
         for habit in habit_team.habits:
             if habit.venue_id is None:
                 continue
@@ -373,7 +370,7 @@ def _place_matches(input_data: MatchPlacementInputSchema) -> dict[str, Any]:
     for match in solvable:
         _ensure_budget()
         team = teams_by_id.get(match.team_id)
-        match_min, _ = _durations(team)
+        match_min = _match_minutes(team)
         team_habit: TeamHabitSchema | None = None
         if team is not None:
             team_habit = next((h for h in team.habits if h.day_of_week == _iso_day(match.match_date)), None)
@@ -485,8 +482,8 @@ def _place_matches(input_data: MatchPlacementInputSchema) -> dict[str, Any]:
     def _overlap_pairs(left: MatchSchema, right: MatchSchema, penalty: int, tag: str) -> None:
         if left.match_date != right.match_date:
             return
-        l_match, _ = _durations(teams_by_id.get(left.team_id))
-        r_match, _ = _durations(teams_by_id.get(right.team_id))
+        l_match = _match_minutes(teams_by_id.get(left.team_id))
+        r_match = _match_minutes(teams_by_id.get(right.team_id))
         for lc in candidates[left.id]:
             _ensure_budget()
             l_start, l_end = lc.kickoff_min, lc.kickoff_min + l_match
@@ -539,8 +536,8 @@ def _place_matches(input_data: MatchPlacementInputSchema) -> dict[str, Any]:
                 elif link.type == "BACK_TO_BACK" and left.match_date == right.match_date:
                     # Chained = same venue, MATCH windows contiguous: the right
                     # kicks off exactly when the left's match ends (or symmetric).
-                    l_match, _ = _durations(teams_by_id.get(left.team_id))
-                    r_match, _ = _durations(teams_by_id.get(right.team_id))
+                    l_match = _match_minutes(teams_by_id.get(left.team_id))
+                    r_match = _match_minutes(teams_by_id.get(right.team_id))
                     for lc in candidates[left.id]:
                         for rc in candidates[right.id]:
                             if lc.venue_id != rc.venue_id:
@@ -563,13 +560,13 @@ def _place_matches(input_data: MatchPlacementInputSchema) -> dict[str, Any]:
     groups: dict[tuple[str, date], list[tuple[cp_model.IntVar, int, int]]] = {}
     for match in solvable:
         _ensure_budget()
-        m_match, _ = _durations(teams_by_id.get(match.team_id))
+        m_match = _match_minutes(teams_by_id.get(match.team_id))
         for cand in candidates[match.id]:
             groups.setdefault((cand.venue_id, match.match_date), []).append((cand.var, cand.kickoff_min, m_match))
     fixed_by_group: dict[tuple[str, date], list[tuple[int, int]]] = {}
     for match in fixed:
         if match.venue_id is not None and match.kickoff is not None:
-            m_match, _ = _durations(teams_by_id.get(match.team_id))
+            m_match = _match_minutes(teams_by_id.get(match.team_id))
             fixed_by_group.setdefault((match.venue_id, match.match_date), []).append((_minutes(match.kickoff), m_match))
     for key, group_cands in groups.items():
         _ensure_budget()
@@ -636,7 +633,7 @@ def _place_matches(input_data: MatchPlacementInputSchema) -> dict[str, Any]:
     unchosen: list[MatchSchema] = []
     if solver_status in (cp_model.OPTIMAL, cp_model.FEASIBLE):
         for match in solvable:
-            match_min, _ = _durations(teams_by_id.get(match.team_id))
+            match_min = _match_minutes(teams_by_id.get(match.team_id))
             chosen = next((c for c in candidates[match.id] if solver.value(c.var) == 1), None)
             if chosen is not None:
                 placements.append(
@@ -656,7 +653,7 @@ def _place_matches(input_data: MatchPlacementInputSchema) -> dict[str, Any]:
         unchosen = list(solvable)
 
     for match in unchosen:
-        match_min, _ = _durations(teams_by_id.get(match.team_id))
+        match_min = _match_minutes(teams_by_id.get(match.team_id))
         slots = [(cand.venue_id, cand.kickoff_min) for cand in candidates[match.id]]
         reason = _remaining_reason(slots, match.match_date, match_min, final_busy)
         unplaced.append({"matchId": match.id, "reason": reason, "message": REASON_MESSAGES[reason]})

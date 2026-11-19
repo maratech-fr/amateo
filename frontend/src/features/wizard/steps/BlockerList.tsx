@@ -20,10 +20,10 @@ export function BlockerList({ blockers, className }: { blockers: string[]; class
   }
   return (
     <NoticeBanner tone="destructive" role="alert" className={className}>
-      <div className="flex items-center gap-2 text-sm font-medium text-destructive">
-        <AlertTriangle className="size-4" />À corriger avant de générer
+      <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+        <AlertTriangle className="size-4 text-destructive" />À corriger avant de générer
       </div>
-      <ul className="list-inside list-disc text-sm text-destructive">
+      <ul className="list-inside list-disc text-sm text-foreground">
         {blockers.map((b, i) => (
           <li key={`${i}-${b}`}>{b}</li>
         ))}

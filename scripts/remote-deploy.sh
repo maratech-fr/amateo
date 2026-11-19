@@ -15,6 +15,7 @@
 #      the new images BEFORE the migration proved itself)
 #   5. up -d --wait + health probes
 #   6. only then pin VERSION into .env.prod
+#   7. realign the schedule structure hashes (never fails the deploy)
 #
 # First install (no postgres data volume): nothing to protect — pull,
 # up -d --wait (init scripts create the cluster), then migrate via exec.
@@ -116,6 +117,16 @@ else
 fi
 
 echo "==> Deploy $VERSION OK"
+
+# 7. Réalignement des empreintes de planning après l'allègement du contrat moteur
+# (docs/ops/deploy.md) : sans lui, tout planning non validé paraît « périmé ». Le
+# signal du journal est `[OK]` devant « N schedule(s) pruned. ». La commande s'arrête
+# d'elle-même entre deux plannings (`--max-seconds`) : AUCUN `timeout` devant, il tuerait
+# le client sans arrêter PHP dans le conteneur. ⚠ set -e + trap ERR : un échec, un club
+# sauté ou l'échéance ne DOIVENT PAS faire échouer un deploy déjà réussi → `|| echo …`.
+# Retiré à la mise en prod de `main` qui supprime les colonnes mortes.
+"${COMPOSE[@]}" exec -T php-fpm php bin/console app:schedule:prune-unread-snapshot-fields --max-seconds=900 --no-interaction </dev/null \
+  || echo "==> ⚠ RÉALIGNEMENT DES PLANNINGS INCOMPLET (sans effet sur le déploiement). Relancer à la main jusqu'à [OK] : docker exec amateo-php-fpm php bin/console app:schedule:prune-unread-snapshot-fields" >&2
 
 # Nettoyage des images Docker inutilisées — SEULEMENT ici, après les sondes de
 # santé et la version persistée (deploy RÉUSSI). Sinon chaque release empile ses

@@ -131,16 +131,19 @@ quoi, par axe, et les angles morts : `docs/testing/test-coverage-map.md`.
   today`), PAS l'avancement : un plan futur DÉJÀ généré est balayé aussi. Corollaire : la grille
   copiée ne peut périmer en silence que pour une période **déjà commencée**. Même bascule emporte
   aussi la collecte de doléances des vacances à venir (`FutureHolidayCollectePurger`).
-- **Contrat backend⇄engine** : Pydantic ⇄ payload, `engine/CONTRACT_VERSION` (**1.9**, un seul
-  contrat pour `/generate` · `/place-matches` · `/validate-assignments`), **sync manuelle, pas de
-  codegen** — gardé par les 3 `*ContractSchemaTest`.
+- **Contrat backend⇄engine** : Pydantic ⇄ payload, `engine/CONTRACT_VERSION` (**1.12**, un seul
+  contrat pour `/generate` · `/place-matches` · `/validate-assignments`, **allégé** : un champ que le
+  solveur ne lit pas n'est ni envoyé ni accepté), **sync manuelle, pas de codegen** — gardé par les 3 `*ContractSchemaTest`.
 - **FFBB outbound** : hosts hard-codés (SSRF-safe), best-effort, le frontend n'appelle jamais FFBB.
   → `backend/docs/ffbb-api.md`.
 - **Solveur** : single-pass, budget adaptatif 60/180/600 s, INFEASIBLE → `status="failed"` +
   diagnostics expliqués ; **SEULE exception : « la réservation gagne »** — un verrou HARD qui
   contredit une règle l'emporte, le planning est produit et l'écart nommé. Aucun autre repli de
   relaxation. Ce que le Récap dit voué à l'échec est refusé 422 `blocker` AVANT le moteur, sur les
-  trois guichets de génération. → `docs/architecture/adr-0001-single-pass-solve.md`.
+  trois guichets de génération. Exception : une équipe au-dessus de son nombre de séances par ses
+  séances verrouillées est bloquée au Récap et refusée par `/generate` et `/regenerate`, pas par
+  `/fill` (au comblement seules les réservations comptent).
+  → `docs/architecture/adr-0001-single-pass-solve.md`.
 
 ## 7. Workflow rules (orchestrator)
 
@@ -196,6 +199,7 @@ prouve sur la stack d'épreuve, `make -C backend tests-complete` tourne en local
 2. `/plan` (agent `morpheus`, porte la checklist §9 — dont **contrats nouveaux** et **tableau
    comportement → scénario**, qui est le brief de `tank`, **carte des conséquences** et **parcours de bout en bout**) ; `smith`
    **obligatoire** si le plan touche moteur, génération, wizard ou axe §7.1, optionnel sinon. User valide.
+   **Plafond : 4 versions** (v1 → smith → v2 → … v4 = dernière, pas de v5) ; le reste ouvert devient question au fondateur ou limite écrite (2026-11-17).
 3. **Le contrat d'abord** : pour chaque décision de COMPORTEMENT, `tank` écrit le scénario Behat en
    français, ROUGE ; un test ne s'écrit jamais pour une couleur, un libellé ou un placement. `neo`
    implémente **strictement dans le scope** (zéro refactor opportuniste) jusqu'au vert et n'adapte un

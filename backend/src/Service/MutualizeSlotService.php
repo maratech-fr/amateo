@@ -173,11 +173,17 @@ final class MutualizeSlotService
                 if (null !== $conflict) {
                     throw new MutualizationRefusedException($conflict . '.');
                 }
-                // La séance désignée rejoint le jour de l'ancre : si l'équipe y garde une autre séance, elle en
-                // aurait deux. La fiche dit laquelle désigner à la place.
-                $sameDay = $this->teamCaseOccupancyGuard->otherSessionOnDay($schedule->getId(), $teamId, $dayOfWeek, [$replaced->getId()]);
+                // La séance désignée rejoint le jour de l'ancre, à la durée de la séance d'ancrage : elle ne doit
+                // ni chevaucher une autre séance de l'équipe (plafond ≥ 2), ni dépasser son plafond du jour. La
+                // fiche dit laquelle désigner à la place.
+                $overlap = $this->teamCaseOccupancyGuard->overlapSentence($schedule->getId(), $teamId, $dayOfWeek, $startTime, $durationMinutes, [$replaced->getId()]);
+                if (null !== $overlap) {
+                    throw new MutualizationRefusedException($overlap);
+                }
+                $sameDay = $this->teamCaseOccupancyGuard->dayCapReachedBy($schedule->getId(), $teamId, $dayOfWeek, [$replaced->getId()]);
                 if ($sameDay instanceof ScheduleSlotTemplate) {
-                    throw new MutualizationRefusedException($this->teamCaseOccupancyGuard->oneSessionPerDaySentence($teamId, $dayOfWeek) . ' ' . $this->teamCaseOccupancyGuard->designateThatSessionHint($sameDay));
+                    $cap = $this->teamCaseOccupancyGuard->dailyCap($schedule->getId(), $teamId);
+                    throw new MutualizationRefusedException($this->teamCaseOccupancyGuard->dayCapSentence($teamId, $dayOfWeek, $cap) . ' ' . (1 === $cap ? $this->teamCaseOccupancyGuard->designateThatSessionHint($sameDay) : \sprintf('Désignez l\'une de ses séances du %s comme séance remplacée.', TeamCaseOccupancyGuard::DAY_LABELS[$dayOfWeek] ?? 'jour ' . $dayOfWeek)));
                 }
                 $toMove[] = $replaced;
             }
@@ -392,10 +398,14 @@ final class MutualizeSlotService
             }
         }
 
-        // Seul le côté SOURCE change de jour : aucun de ses membres ne doit déjà s'entraîner le jour de la cible.
+        // Seul le côté SOURCE change de jour : chacun de ses membres s'y juge à la durée de la cible, à SON plafond.
         foreach ($sourceTeamIds as $teamId) {
-            if ($this->teamCaseOccupancyGuard->otherSessionOnDay($schedule->getId(), $teamId, $dayOfWeek, $involvedIds) instanceof ScheduleSlotTemplate) {
-                throw new MutualizationRefusedException($this->teamCaseOccupancyGuard->oneSessionPerDaySentence($teamId, $dayOfWeek));
+            $overlap = $this->teamCaseOccupancyGuard->overlapSentence($schedule->getId(), $teamId, $dayOfWeek, $startTime, $durationMinutes, $involvedIds);
+            if (null !== $overlap) {
+                throw new MutualizationRefusedException($overlap);
+            }
+            if ($this->teamCaseOccupancyGuard->dayCapReachedBy($schedule->getId(), $teamId, $dayOfWeek, $involvedIds) instanceof ScheduleSlotTemplate) {
+                throw new MutualizationRefusedException($this->teamCaseOccupancyGuard->dayCapSentence($teamId, $dayOfWeek, $this->teamCaseOccupancyGuard->dailyCap($schedule->getId(), $teamId)));
             }
         }
 

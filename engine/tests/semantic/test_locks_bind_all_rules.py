@@ -233,3 +233,65 @@ def test_forced_day_emptied_by_coach_unavailability_names_the_cause() -> None:
     assert result["status"] == "failed", result.get("diagnostics")
     named = [d for d in result["diagnostics"] if d["type"] == "day_constraint_conflict" and d.get("teamId") == "SF2"]
     assert named, result["diagnostics"]
+
+
+# --- PR 1a — diagnostic des verrous à plafond de séances par jour (A16) ----------------------
+# À plafond 2, deux verrous le même jour ne sont plus un conflit : seuls le dépassement du plafond
+# (T6) et le chevauchement (T6b) sont annoncés. Deux verrous collés : silence (Q2).
+
+
+def _capped_locks(locks: list[dict[str, Any]], venues: list[dict[str, Any]]) -> dict[str, Any]:
+    team = {**make_team("SF2", sessions_per_week=len(locks)), "maxSessionsPerDay": 2}
+    result = solve_payload(make_payload(teams=[team], venues=venues, slot_templates=locks))
+    assert result["status"] == "completed", result.get("diagnostics")
+    return result
+
+
+def _sf2_messages(result: dict[str, Any]) -> list[str]:
+    return [str(d["message"]) for d in result["diagnostics"] if d.get("teamId") == "SF2"]
+
+
+def test_cap_two_two_disjoint_locks_the_same_day_are_silent() -> None:
+    """Plafond 2 : deux verrous disjoints le jeudi ne sont pas un conflit."""
+    result = _capped_locks(
+        [_hard_lock("SF2", MATEO, THURSDAY, "09:00"), _hard_lock("SF2", MATEO, THURSDAY, "18:00")],
+        [make_venue(MATEO, [(THURSDAY, "09:00"), (THURSDAY, "18:00")])],
+    )
+    assert _sf2_messages(result) == []
+
+
+def test_cap_two_two_glued_locks_the_same_day_are_silent() -> None:
+    """Plafond 2 : deux verrous collés (18:00 puis 19:30) : ni conflit ni annonce d'écart."""
+    result = _capped_locks(
+        [_hard_lock("SF2", MATEO, THURSDAY, "18:00"), _hard_lock("SF2", MATEO, THURSDAY, "19:30")],
+        [make_venue(MATEO, [(THURSDAY, "18:00"), (THURSDAY, "19:30")])],
+    )
+    assert _sf2_messages(result) == []
+
+
+def test_cap_two_three_locks_the_same_day_name_the_excess() -> None:
+    """Plafond 2 : trois verrous le jeudi → T6, les séances en trop restent à arbitrer."""
+    result = _capped_locks(
+        [
+            _hard_lock("SF2", MATEO, THURSDAY, "09:00"),
+            _hard_lock("SF2", MATEO, THURSDAY, "14:00"),
+            _hard_lock("SF2", MATEO, THURSDAY, "18:00"),
+        ],
+        [make_venue(MATEO, [(THURSDAY, "09:00"), (THURSDAY, "14:00"), (THURSDAY, "18:00")])],
+    )
+    assert (
+        "SF2 a 3 séances le même jour (jeudi à 09:00, 14:00, 18:00) alors que 2 par jour sont permises pour "
+        "cette équipe : un créneau verrouillé prime, mais les séances en trop restent à arbitrer."
+    ) in _sf2_messages(result)
+
+
+def test_cap_two_two_overlapping_locks_name_the_overlap() -> None:
+    """Plafond 2 : deux verrous qui se chevauchent (deux gymnases) → T6b."""
+    result = _capped_locks(
+        [_hard_lock("SF2", MATEO, THURSDAY, "18:00"), _hard_lock("SF2", JDR, THURSDAY, "18:30")],
+        [make_venue(MATEO, [(THURSDAY, "18:00")]), make_venue(JDR, [(THURSDAY, "18:30")])],
+    )
+    assert (
+        "SF2 a deux séances verrouillées qui se chevauchent le jeudi (18:00 et 18:30) : un créneau verrouillé "
+        "prime, mais elle ne peut pas être aux deux."
+    ) in _sf2_messages(result)

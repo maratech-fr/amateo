@@ -167,22 +167,49 @@ export interface Schedule {
 export type ExportVenueScope = string | null;
 
 /** Queue a PDF export (async worker). Poll the schedule for pdfExportStatus/Url. */
-export const exportSchedulePdf = (id: string, venueId: ExportVenueScope, showCoaches = false): Promise<unknown> => {
+export const exportSchedulePdf = (id: string, venueId: ExportVenueScope, showCoaches = false, showOccupancies = false): Promise<unknown> => {
   // Le corps reste VIDE dans le cas par défaut (tous gymnases, sans coachs) : mêmes octets
-  // qu'avant. On n'ajoute `showCoaches` que s'il est coché (chantier E, lu fail-closed côté back).
-  const json: { venueId?: string; showCoaches?: boolean } = {};
+  // qu'avant. On n'ajoute `showCoaches` que s'il est coché (chantier E, lu fail-closed côté back),
+  // `showOccupancies` de même.
+  const json: { venueId?: string; showCoaches?: boolean; showOccupancies?: boolean } = {};
   if (null !== venueId) {
     json.venueId = venueId;
   }
   if (showCoaches) {
     json.showCoaches = true;
   }
+  if (showOccupancies) {
+    json.showOccupancies = true;
+  }
   return api.post(`schedules/${id}/export-pdf`, { json }).json();
 };
 
 /** Download the schedule as an .xlsx (synchronous stream). Returns the blob. */
-export const exportScheduleXlsx = async (id: string, venueId: ExportVenueScope): Promise<Blob> =>
-  api.post(`schedules/${id}/export-xlsx`, { json: null === venueId ? {} : { venueId } }).blob();
+export const exportScheduleXlsx = async (id: string, venueId: ExportVenueScope, showOccupancies = false): Promise<Blob> => {
+  const json: { venueId?: string; showOccupancies?: boolean } = {};
+  if (null !== venueId) {
+    json.venueId = venueId;
+  }
+  if (showOccupancies) {
+    json.showOccupancies = true;
+  }
+  return api.post(`schedules/${id}/export-xlsx`, { json }).blob();
+};
+
+/** Une occupation de gymnase, telle que le menu d'export la compte (un moment où le gymnase n'est pas au club). */
+export interface VenueOccupancy {
+  id: string;
+  venueId: string;
+  dayOfWeek: number;
+  startTime: string;
+  durationMinutes: number;
+  label: string;
+  schedulePlanId: string | null;
+}
+
+/** Les occupations de la couche affichée (saison si null) — celles d'un gymnase existant seulement. */
+export const getVenueOccupancies = (schedulePlanId: string | null): Promise<VenueOccupancy[]> =>
+  collectionAll<VenueOccupancy>("venue_occupancies", null === schedulePlanId ? undefined : { schedulePlanId });
 
 export interface Slot {
   id: string;
@@ -353,7 +380,10 @@ export interface Diagnostic {
   startTime: string | null;
   /** Clé de la règle implicite « bien-être » assouplie — renseignée SEULEMENT par un
    *  `implicit_rule_not_honored` (l'engine la porte, cf. contrat 2.7), null partout ailleurs.
-   *  Elle cible le réglage à ajuster dans le wizard (`?step=constraints&rule=<ruleKey>`). */
+   *  Elle cible le réglage à ajuster dans le wizard (`?step=constraints&rule=<ruleKey>`).
+   *  ⚠ Un `implicit_rule_not_honored` peut aussi arriver SANS `ruleKey` : il désigne alors une règle
+   *  fixe, non réglable (deux séances d'une équipe à moins de 2 h l'une de l'autre) — pas de lien
+   *  « Ajuster » à poser. */
   ruleKey: string | null;
   message: string;
   suggestions: unknown;

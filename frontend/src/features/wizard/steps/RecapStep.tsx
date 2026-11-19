@@ -20,6 +20,8 @@ import { coachTeamNames, countSlotsByVenue } from "../lib/summary";
 import { useStepValidation } from "../lib/useStepValidation";
 import { BlockerList } from "./BlockerList";
 import { VenueSwatch } from "@/shared/components/ui/venue-swatch";
+import { WELLBEING_RULES } from "../lib/implicitRules";
+import { WizardStepLink } from "../WizardStepLink";
 
 import { SectionCountTitle, SummaryRow, TeamTierAccordion } from "./StructureSummary";
 import { useActiveTeams, useActiveVenues, useGridSlots, usePriorityTiers, useReservations, useSharedTrainingBlocks, useWizardCoachPlayers, useWizardCoaches, useWizardConstraints, useWizardTeamCoaches, useWizardTeams, useWizardTeamTags, useWizardVenues } from "../queries";
@@ -38,6 +40,13 @@ import { AlertTriangle, Trash2 } from "lucide-react";
 import { ManagerOnly } from "@/shared/session/ManagerOnly";
 
 // Manager-facing labels for the FFBB play levels (mirrors the teams step).
+/** La cause d'une réservation bloquée, telle que le SERVEUR la donne (l'une de ses deux listes). */
+type BlockedCause = "tooMany" | "overlap" | null;
+
+function blockedLabel(cause: "tooMany" | "overlap", dayOfWeek: number): string {
+  return "overlap" === cause ? WIZARD_TEXTS.overlappingSessionSameDay(dayLabelLong(dayOfWeek)) : WIZARD_TEXTS.tooManySessionsSameDay(dayLabelLong(dayOfWeek));
+}
+
 /**
  * P4-44 / P2-37 D5 — une ligne de réservation. NON SERVIE (créneau déplacé/supprimé, gymnase
  * fermé sur la fenêtre ou ce jour-là, gymnase désactivé), elle se signale AVEC SON MOTIF ET
@@ -53,7 +62,7 @@ function ReservationRow({
   teamName,
   venueName,
   reason,
-  removable = false,
+  blocked = null,
   onRemove,
   busy,
 }: {
@@ -61,8 +70,8 @@ function ReservationRow({
   teamName: Map<string, string>;
   venueName: Map<string, string>;
   reason: string | null;
-  /** Le serveur la désigne pour une seconde séance le même jour : bien servie, mais à retirer. */
-  removable?: boolean;
+  /** Le serveur la désigne (trop de séances ce jour-là, ou chevauchement) : bien servie, mais à retirer. */
+  blocked?: BlockedCause;
   onRemove: () => void;
   busy: boolean;
 }) {
@@ -72,10 +81,10 @@ function ReservationRow({
 
   return (
     <SummaryRow
-      label={unserved ? <span className="text-destructive">{label} — {reason}</span> : removable ? <span>{label} — {WIZARD_TEXTS.secondSessionSameDay(dayLabelLong(reservation.dayOfWeek))}</span> : label}
+      label={unserved ? <span className="text-destructive">{label} — {reason}</span> : null !== blocked ? <span>{label} — {blockedLabel(blocked, reservation.dayOfWeek)}</span> : label}
       meta={<span className={unserved ? "text-destructive" : undefined}>{where}</span>}
       action={
-        unserved || removable ? (
+        unserved || null !== blocked ? (
           <ManagerOnly>
             <Button variant="ghost" size="icon" className="size-7" aria-label={WIZARD_TEXTS.removeReservationLabel(label, where)} disabled={busy} onClick={onRemove}>
               <Trash2 className="size-4" />
@@ -92,15 +101,15 @@ function ReservationRow({
  * fondent en CETTE ligne : membres nommés, retirés EN LOT (on ne retire pas une équipe d'un groupe,
  * on retire le groupe). Symétrique de {@link ReservationRow}, terminologie « entraînement mutualisé ».
  */
-function MutualisationRemovalRow({ label, where, reason, removable = false, dayOfWeek, onRemove, busy }: { label: string; where: string; reason: string | null; removable?: boolean; dayOfWeek: number; onRemove: () => void; busy: boolean }) {
+function MutualisationRemovalRow({ label, where, reason, blocked = null, dayOfWeek, onRemove, busy }: { label: string; where: string; reason: string | null; blocked?: BlockedCause; dayOfWeek: number; onRemove: () => void; busy: boolean }) {
   const unserved = null !== reason;
 
   return (
     <SummaryRow
-      label={unserved ? <span className="text-destructive">{label} — {reason}</span> : removable ? <span>{label} — {WIZARD_TEXTS.secondSessionSameDay(dayLabelLong(dayOfWeek))}</span> : label}
+      label={unserved ? <span className="text-destructive">{label} — {reason}</span> : null !== blocked ? <span>{label} — {blockedLabel(blocked, dayOfWeek)}</span> : label}
       meta={<span className={unserved ? "text-destructive" : undefined}>{where}</span>}
       action={
-        unserved || removable ? (
+        unserved || null !== blocked ? (
           <ManagerOnly>
             <Button variant="ghost" size="icon" className="size-7" aria-label={WIZARD_TEXTS.removeLotLabel(label, where)} disabled={busy} onClick={onRemove}>
               <Trash2 className="size-4" />
@@ -201,7 +210,10 @@ export function RecapStep() {
   // D2/D3 (lot 2) — le verdict du récap est la source UNIQUE : blocages (`errors`), warnings du
   // serveur, et notices de créneau partagé typées. Le footer « Continuer vers la génération » est
   // gaté par les mêmes `errors` ; l'accordéon d'alertes (plus bas) réunit les trois.
-  const { errors: blockers = [], warnings = [], notices = [], doubledReservationIds = [] } = useStepValidation("recap");
+  const { errors: blockers = [], warnings = [], notices = [], doubledReservationIds = [], overlappingReservationIds = [], ignoredRules = [] } = useStepValidation("recap");
+  // Les règles du club que le serveur dit ignorées, nommées par leur titre : un bandeau neutre qui
+  // informe, jamais compté parmi les alertes.
+  const ignoredRuleTitles = ignoredRules.map((ruleKey) => WELLBEING_RULES.find((rule) => rule.ruleKey === ruleKey)?.title ?? ruleKey);
 
   // Les équipes en pause : hors des compteurs (elles ne seront pas générées) mais
   // VISIBLES et barrées dans le détail — on doit voir ce qu'on a mis en pause.
@@ -295,8 +307,11 @@ export function RecapStep() {
   const lotByReservationId = new Map<string, PostedGroupLot>();
   const casesOfUnserved = new Map<string, typeof sortedReservations>();
   const doubledIds = new Set(doubledReservationIds);
+  const overlappingIds = new Set(overlappingReservationIds);
+  // Le serveur rend deux listes disjointes ; l'écran lit la cause, il ne la déduit jamais des heures.
+  const blockedOf = (id: string): BlockedCause => (overlappingIds.has(id) ? "overlap" : doubledIds.has(id) ? "tooMany" : null);
   for (const r of sortedReservations) {
-    if (!unservedIds.has(r.id) && !doubledIds.has(r.id)) {
+    if (!unservedIds.has(r.id) && null === blockedOf(r.id)) {
       continue;
     }
     const k = slotKey(r.venueId, r.dayOfWeek, r.startTime);
@@ -335,9 +350,9 @@ export function RecapStep() {
       }
       const lotName = lot.group.teamIds.map((id) => teamName.get(id) ?? "?").join(" + ");
       const where = `${venueName.get(r.venueId) ?? "?"} · ${dayLabel(r.dayOfWeek)} ${hhmm(r.startTime)}`;
-      return <MutualisationRemovalRow key={`lot-${r.id}`} label={lotName} where={where} reason={reservationReason(r)} removable={doubledIds.has(r.id)} dayOfWeek={r.dayOfWeek} onRemove={() => setPendingRemoval({ kind: "lot", lot, name: lotName, where })} busy={deleteReservation.isPending} />;
+      return <MutualisationRemovalRow key={`lot-${r.id}`} label={lotName} where={where} reason={reservationReason(r)} blocked={blockedOf(r.id)} dayOfWeek={r.dayOfWeek} onRemove={() => setPendingRemoval({ kind: "lot", lot, name: lotName, where })} busy={deleteReservation.isPending} />;
     }
-    return <ReservationRow key={r.id} reservation={r} teamName={teamName} venueName={venueName} reason={reservationReason(r)} removable={doubledIds.has(r.id)} onRemove={() => setPendingRemoval({ kind: "reservation", id: r.id, name: teamName.get(r.teamId) ?? "?", where: `${venueName.get(r.venueId) ?? "?"} · ${dayLabel(r.dayOfWeek)} ${hhmm(r.startTime)}` })} busy={deleteReservation.isPending} />;
+    return <ReservationRow key={r.id} reservation={r} teamName={teamName} venueName={venueName} reason={reservationReason(r)} blocked={blockedOf(r.id)} onRemove={() => setPendingRemoval({ kind: "reservation", id: r.id, name: teamName.get(r.teamId) ?? "?", where: `${venueName.get(r.venueId) ?? "?"} · ${dayLabel(r.dayOfWeek)} ${hhmm(r.startTime)}` })} busy={deleteReservation.isPending} />;
   };
   // Coaches split into staffing groups (Salariés / Coachs-joueurs / Bénévoles),
   // each shown under its own header (user request — same as the constraint tab).
@@ -442,6 +457,13 @@ export function RecapStep() {
         </AccordionSection>
       ) : notices.length > 0 ? (
         <div className="mb-4 space-y-2">{noticeBanners}</div>
+      ) : null}
+      {ignoredRules.length > 0 ? (
+        <NoticeBanner tone="muted" className="mb-4" message={WIZARD_TEXTS.ignoredRules(ignoredRuleTitles)}>
+          <WizardStepLink step="constraints" params={{ rule: ignoredRules[0] }} className="text-xs font-medium text-accent underline underline-offset-2 hover:text-accent">
+            {WIZARD_TEXTS.ignoredRulesLink}
+          </WizardStepLink>
+        </NoticeBanner>
       ) : null}
       {/* P4-107 (4ᵉ tranche) — la bande de cartes est BORNÉE : à 1920 chacune faisait ~460 px
           pour porter un nombre à deux chiffres, et l'œil devait parcourir toute la largeur pour

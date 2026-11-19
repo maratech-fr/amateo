@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\Deletion;
 
-use App\Entity\Coach;
 use App\Entity\CoachPlayerMembership;
 use App\Entity\CoachWish;
 use App\Entity\CoachWishMutualization;
@@ -20,8 +19,8 @@ use App\Entity\TeamLink;
 use App\Entity\TeamMatchHabit;
 use App\Entity\TeamPeriodOverride;
 use App\Entity\TeamTagAssignment;
-use App\Entity\Venue;
 use App\Entity\VenueMatchWindow;
+use App\Entity\VenueOccupancy;
 use App\Entity\VenuePeriodOverride;
 use App\Entity\VenueTrainingSlot;
 use App\Entity\VenueTravelTime;
@@ -91,7 +90,6 @@ final class CascadePlan
             // P2-51 — le bloc de mutualisation (SEULE notion de mutualisation depuis PR-7) meurt
             // ENTIER quand une équipe membre part : toutes ses lignes membres + le bloc lui-même.
             new SharedTrainingBlockPruneStep(new ImpactLabel('team_shared_block', 'bloc de mutualisation', 'blocs de mutualisation')),
-            new ClearFieldStep(Team::class, 'parentTeamId', new ImpactLabel('team_child', 'équipe rattachée qui perdra son équipe parente', 'équipes rattachées qui perdront leur équipe parente')),
         ];
     }
 
@@ -101,6 +99,8 @@ final class CascadePlan
         return [
             new DeleteByFieldStep(VenueTrainingSlot::class, 'venueId', new ImpactLabel('venue_slot', 'créneau de disponibilité', 'créneaux de disponibilité')),
             new DeleteByFieldStep(VenueMatchWindow::class, 'venueId', new ImpactLabel('venue_match_window', 'fenêtre de match', 'fenêtres de match')),
+            // Les occupations du gymnase (saison et périodes) partent avec lui.
+            new DeleteByFieldStep(VenueOccupancy::class, 'venueId', new ImpactLabel('venue_occupancy', 'occupation', 'occupations')),
             // P4-272 ④ — les INTERDICTIONS de gymnase pointant CE gymnase (scope TEAM,
             // venueId = ce gymnase ; les règles CLUB portent un venueId nul, jamais
             // touchées ici). Sans elle, l'interdiction pendrait sur un gymnase mort.
@@ -115,7 +115,6 @@ final class CascadePlan
             new DeleteByFieldStep(ScheduleDiagnostic::class, 'venueId', null),
             new ScopedConstraintStep(ConstraintScope::FACILITY, new ImpactLabel('venue_constraint', 'contrainte visant ce gymnase', 'contraintes visant ce gymnase')),
             new ClearFieldStep(Team::class, 'forcedVenueId', new ImpactLabel('venue_forced_team', 'équipe qui perdra son gymnase imposé', 'équipes qui perdront leur gymnase imposé')),
-            new ClearFieldStep(Venue::class, 'parentVenueId', new ImpactLabel('venue_child', 'sous-salle qui perdra son gymnase parent', 'sous-salles qui perdront leur gymnase parent')),
             // PR4 « fermetures à la source » (décision fondateur 2026-10-22) — un match à domicile
             // sans gymnase est rendu IMPOSSIBLE à la source : supprimer un gymnase porteur de
             // matchs est désormais REFUSÉ (`VenueStateProcessor::cascadeBeforeDelete`,
@@ -165,7 +164,6 @@ final class CascadePlan
             new CoachWishStaffLineStep,
             // #10 D2 — la demande de mutualisation SURVIT au coach supprimé, dé-attribuée (parité).
             new ClearFieldStep(CoachWishMutualization::class, 'coachId', new ImpactLabel('coach_mutualization', 'mutualisation qui perdra son auteur', 'mutualisations qui perdront leur auteur')),
-            new ClearFieldStep(Coach::class, 'parentCoachId', new ImpactLabel('coach_child', 'coach rattaché qui perdra son coach parent', 'coachs rattachés qui perdront leur coach parent')),
         ];
     }
 }

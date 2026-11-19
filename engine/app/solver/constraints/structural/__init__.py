@@ -54,6 +54,9 @@ from .overlap import (
 from .overlap import (
     add_team_no_overlap as add_team_no_overlap,
 )
+from .overlap import (
+    add_team_self_no_overlap_constraints as add_team_self_no_overlap_constraints,
+)
 from .pairing import (
     CaseBvars as CaseBvars,
 )

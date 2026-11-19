@@ -99,6 +99,7 @@ Messenger ; handler backend `ExportPdfHandler`).
   propre colonne Coach) : nom COURT (« Karim B. ») du coach posé sur la séance, sinon du 1ᵉʳ
   coach MAIN de l'équipe — aucun des deux → rien. Nom de fichier suffixé `-coaches` quand
   cochée (`lib/exportScopeToken.ts`, foyer partagé avec le polling de `useScheduleExport`).
+- **Case « Afficher les occupations »** : décochée par défaut, mémorisée **par club** (`lib/exportPrefs.ts`, clé `export-show-occupancies-<clubId>`, aussi honorée par l'export rapide du cockpit — `CompactExport`), **offerte seulement si la couche affichée porte au moins une occupation** (`PlanningPage` → `useVenueOccupancies(slotLayerId)` → `occupancyCount` d'`ExportMenu` ; sans occupation, l'export part sans l'option). Cochée : `{ showOccupancies: true }` dans le body du PDF **et** de l'Excel (`exportScheduleXlsx` envoie désormais un corps avec `venueId` et/ou l'option) ; nom de fichier PDF suffixé `-occupations` après `-coaches` (`exportScopeToken`). Aucun contrôle de rôle : un Membre l'y trouve et lit ainsi les occupations. Les écritures du Wizard invalident le compte du menu (clé `["venue-occupancies", …]`, distincte de celle du Wizard).
 
 ### 6.6 Multi-tenant transparent
 

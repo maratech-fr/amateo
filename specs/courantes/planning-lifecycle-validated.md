@@ -295,7 +295,8 @@ L'empreinte de structure ignore désormais l'id et l'ordre des lignes (placement
   du pointeur, re-pointage automatique à la complétion, parité `canLoadLocks` ⇄ verdict) ;
   `ScheduleConstraintBuilderOverlayTest` étendu (la greffe des HARD hérités, forme canonique,
   dédup par placement, un verrou repassé NONE ne revient pas) ; `LockOriginProvenanceTest` étendu
-  (un verrou MANUAL hérité ne dégrade jamais en UNKNOWN) ; `SchedulePlanStructureHashTest` étendu
+  (un verrou MANUAL hérité ne dégrade jamais en UNKNOWN ; l'origine RESERVATION ne se lit que sur
+  les réservations du plan de la séance, règle `backend/docs/generation-flow.md` §5.1) ; `SchedulePlanStructureHashTest` étendu
   (le hash tient le round-trip après une régénération qui fait survivre des verrous) ;
   `OverlayVersionsTest` (parité `isLockSource`/`hardLockCount` de la collection, batch, sans fuite
   inter-club). Feature Behat `un-verrou-est-souverain.feature` : 3 scénarios dédiés — deux

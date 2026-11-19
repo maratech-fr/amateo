@@ -8,13 +8,6 @@
         {
             "id": "2123146d-3a9b-4ff8-b226-49357d85507f",
             "name": "Debarros",
-            "isExternal": false,
-            "color": "#2E7D32",
-            "latitude": "45.7679900",
-            "longitude": "4.8885300",
-            "source": "fixture",
-            "externalRef": "166926603",
-            "parentVenueId": null,
             "trainingSlots": [
                 {
                     "dayOfWeek": 1,
@@ -99,13 +92,6 @@
         {
             "id": "37f266e0-6e94-445c-a01b-dc003568b521",
             "name": "Annexe",
-            "isExternal": false,
-            "color": "#66BB6A",
-            "latitude": "45.7629400",
-            "longitude": "4.9101400",
-            "source": "fixture",
-            "externalRef": "166926616",
-            "parentVenueId": null,
             "trainingSlots": [
                 {
                     "dayOfWeek": 1,
@@ -154,13 +140,6 @@
         {
             "id": "53f50455-56bc-4b9c-a907-8c3fde5f630b",
             "name": "Jean Vilar",
-            "isExternal": false,
-            "color": "#1A237E",
-            "latitude": "45.7792600",
-            "longitude": "4.9037700",
-            "source": "fixture",
-            "externalRef": "166926613",
-            "parentVenueId": null,
             "trainingSlots": [
                 {
                     "dayOfWeek": 2,
@@ -191,13 +170,6 @@
         {
             "id": "5823d0e1-621c-4046-9935-80c10c412400",
             "name": "Tonkin",
-            "isExternal": false,
-            "color": "#FB8C00",
-            "latitude": "45.7759100",
-            "longitude": "4.8647100",
-            "source": "fixture",
-            "externalRef": "166926601",
-            "parentVenueId": null,
             "trainingSlots": [
                 {
                     "dayOfWeek": 1,
@@ -234,13 +206,6 @@
         {
             "id": "6545698e-0822-4a1a-b077-e7f618bbb578",
             "name": "ADN",
-            "isExternal": false,
-            "color": "#FDD835",
-            "latitude": "45.7718400",
-            "longitude": "4.8767200",
-            "source": "fixture",
-            "externalRef": "6926617",
-            "parentVenueId": null,
             "trainingSlots": [
                 {
                     "dayOfWeek": 3,
@@ -265,13 +230,6 @@
         {
             "id": "7241628a-4aca-4169-9bab-7e47baccecad",
             "name": "Armand",
-            "isExternal": false,
-            "color": "#1E88E5",
-            "latitude": "45.7793500",
-            "longitude": "4.8860400",
-            "source": "fixture",
-            "externalRef": "166926610",
-            "parentVenueId": null,
             "trainingSlots": [
                 {
                     "dayOfWeek": 1,
@@ -362,13 +320,6 @@
         {
             "id": "8455e401-6f74-4f93-9724-af46e4f20306",
             "name": "JDR",
-            "isExternal": false,
-            "color": "#F8BBD0",
-            "latitude": "45.7649900",
-            "longitude": "4.9051000",
-            "source": "fixture",
-            "externalRef": "6926616",
-            "parentVenueId": null,
             "trainingSlots": [
                 {
                     "dayOfWeek": 2,
@@ -429,13 +380,6 @@
         {
             "id": "8463cb81-8e26-488e-9e62-0511ae84f675",
             "name": "Camus",
-            "isExternal": false,
-            "color": "#8E24AA",
-            "latitude": "45.7522200",
-            "longitude": "4.9141700",
-            "source": "fixture",
-            "externalRef": "166926606",
-            "parentVenueId": null,
             "trainingSlots": [
                 {
                     "dayOfWeek": 2,
@@ -460,13 +404,6 @@
         {
             "id": "fa0b9f9d-1cbc-4f70-a711-fa9af545a8b5",
             "name": "Matéo",
-            "isExternal": false,
-            "color": "#E53935",
-            "latitude": "45.7799900",
-            "longitude": "4.8847300",
-            "source": "fixture",
-            "externalRef": "166926608",
-            "parentVenueId": null,
             "trainingSlots": [
                 {
                     "dayOfWeek": 1,
@@ -612,703 +549,453 @@
     "teams": [
         {
             "id": "0622c485-0a70-4536-b6c3-8acefb24b5c3",
-            "sportCategoryId": "83233143-4fc4-4dcb-a276-4e2fbce8f206",
             "ageMin": null,
-            "ageMax": null,
             "priorityTierId": 5,
             "name": "Academie U13-U15",
-            "gender": null,
-            "level": "LOISIR_JEUNE",
             "sessionsPerWeek": 1,
             "matchDay": null,
-            "forcedVenueId": null,
-            "parentTeamId": null
+            "forcedVenueId": null
         },
         {
             "id": "0c394786-d9cc-4446-afa4-d93919f3a5a7",
-            "sportCategoryId": "b34c2bd1-1639-498b-b11f-239762e4a4f5",
             "ageMin": 22,
-            "ageMax": 99,
             "priorityTierId": 2,
             "name": "SM2",
-            "gender": "M",
-            "level": "REGIONAL",
             "sessionsPerWeek": 2,
             "matchDay": null,
-            "forcedVenueId": null,
-            "parentTeamId": null
+            "forcedVenueId": null
         },
         {
             "id": "0e66b6b7-1d9b-4319-8c22-1eef44a3a55b",
-            "sportCategoryId": "b34c2bd1-1639-498b-b11f-239762e4a4f5",
             "ageMin": 22,
-            "ageMax": 99,
             "priorityTierId": 4,
             "name": "SF3",
-            "gender": "F",
-            "level": "DEPARTEMENTAL",
             "sessionsPerWeek": 2,
             "matchDay": null,
-            "forcedVenueId": null,
-            "parentTeamId": null
+            "forcedVenueId": null
         },
         {
             "id": "1dc8f525-76ff-487d-87bd-70d3c01343a0",
-            "sportCategoryId": "83233143-4fc4-4dcb-a276-4e2fbce8f206",
             "ageMin": null,
-            "ageMax": null,
             "priorityTierId": 5,
             "name": "Loisir 1",
-            "gender": null,
-            "level": "LOISIR_ADULTE",
             "sessionsPerWeek": 1,
             "matchDay": null,
-            "forcedVenueId": null,
-            "parentTeamId": null
+            "forcedVenueId": null
         },
         {
             "id": "21cb5e0b-1da3-402b-9bc7-1ff9946c76af",
-            "sportCategoryId": "63a09d08-2763-46c7-b29c-b117c381a39c",
             "ageMin": 12,
-            "ageMax": 13,
             "priorityTierId": 3,
             "name": "U13M2",
-            "gender": "M",
-            "level": "DEPARTEMENTAL",
             "sessionsPerWeek": 3,
             "matchDay": null,
-            "forcedVenueId": null,
-            "parentTeamId": null
+            "forcedVenueId": null
         },
         {
             "id": "2a8de4fc-394a-42c8-a977-b07ec1181402",
-            "sportCategoryId": "f5a7bf39-1f18-40c4-aac9-68f568f80f9e",
             "ageMin": 16,
-            "ageMax": 18,
             "priorityTierId": 5,
             "name": "U18M Fays",
-            "gender": "M",
-            "level": "LOISIR_JEUNE",
             "sessionsPerWeek": 1,
             "matchDay": null,
-            "forcedVenueId": null,
-            "parentTeamId": null
+            "forcedVenueId": null
         },
         {
             "id": "2ae79624-4d31-4672-9503-7097b7814eb1",
-            "sportCategoryId": "83233143-4fc4-4dcb-a276-4e2fbce8f206",
             "ageMin": null,
-            "ageMax": null,
             "priorityTierId": 5,
             "name": "3x3",
-            "gender": "MIXTE",
-            "level": "LOISIR_ADULTE",
             "sessionsPerWeek": 1,
             "matchDay": null,
-            "forcedVenueId": null,
-            "parentTeamId": null
+            "forcedVenueId": null
         },
         {
             "id": "34ee9b39-fdff-4f95-8034-e7fa2e6ef4d8",
-            "sportCategoryId": "d320d161-e40d-40a0-adc5-0e072672f07a",
             "ageMin": 14,
-            "ageMax": 15,
             "priorityTierId": 2,
             "name": "U15F1",
-            "gender": "F",
-            "level": "REGIONAL",
             "sessionsPerWeek": 3,
             "matchDay": null,
-            "forcedVenueId": null,
-            "parentTeamId": null
+            "forcedVenueId": null
         },
         {
             "id": "3bf60e32-de16-414c-b98e-0afb4117a928",
-            "sportCategoryId": "d9099f26-6dfc-4275-ab85-c4280ff2be03",
             "ageMin": 8,
-            "ageMax": 9,
             "priorityTierId": 3,
             "name": "U9F1",
-            "gender": "F",
-            "level": "DEPARTEMENTAL",
             "sessionsPerWeek": 2,
             "matchDay": null,
-            "forcedVenueId": null,
-            "parentTeamId": null
+            "forcedVenueId": null
         },
         {
             "id": "41ab7fec-fd2c-4458-83cc-32a6f28a6fbc",
-            "sportCategoryId": "072b8488-12a9-493b-9eb9-2cb41666df05",
             "ageMin": 10,
-            "ageMax": 11,
             "priorityTierId": 3,
             "name": "U11M1",
-            "gender": "M",
-            "level": "REGIONAL",
             "sessionsPerWeek": 2,
             "matchDay": null,
-            "forcedVenueId": null,
-            "parentTeamId": null
+            "forcedVenueId": null
         },
         {
             "id": "44dfa833-0b06-4783-a336-1a3f5f33cc45",
-            "sportCategoryId": "63a09d08-2763-46c7-b29c-b117c381a39c",
             "ageMin": 12,
-            "ageMax": 13,
             "priorityTierId": 2,
             "name": "U13F1",
-            "gender": "F",
-            "level": "REGIONAL",
             "sessionsPerWeek": 3,
             "matchDay": null,
-            "forcedVenueId": null,
-            "parentTeamId": null
+            "forcedVenueId": null
         },
         {
             "id": "47dfed4d-d590-46dd-a4c3-94222d95f2bc",
-            "sportCategoryId": "83233143-4fc4-4dcb-a276-4e2fbce8f206",
             "ageMin": null,
-            "ageMax": null,
             "priorityTierId": 5,
             "name": "Loisir 2",
-            "gender": null,
-            "level": "LOISIR_ADULTE",
             "sessionsPerWeek": 1,
             "matchDay": null,
-            "forcedVenueId": null,
-            "parentTeamId": null
+            "forcedVenueId": null
         },
         {
             "id": "493d1245-e3c7-4c81-be71-784293d9b1a8",
-            "sportCategoryId": "f5a7bf39-1f18-40c4-aac9-68f568f80f9e",
             "ageMin": 16,
-            "ageMax": 18,
             "priorityTierId": 2,
             "name": "U18F1",
-            "gender": "F",
-            "level": "REGIONAL",
             "sessionsPerWeek": 3,
             "matchDay": null,
-            "forcedVenueId": null,
-            "parentTeamId": null
+            "forcedVenueId": null
         },
         {
             "id": "5245cb7a-2ebe-4070-a97d-3b58803b4584",
-            "sportCategoryId": "b34c2bd1-1639-498b-b11f-239762e4a4f5",
             "ageMin": 22,
-            "ageMax": 99,
             "priorityTierId": 1,
             "name": "SF1",
-            "gender": "F",
-            "level": "REGIONAL",
             "sessionsPerWeek": 2,
             "matchDay": null,
-            "forcedVenueId": null,
-            "parentTeamId": null
+            "forcedVenueId": null
         },
         {
             "id": "5327bf02-3fc6-4c5c-ab2d-3c405c18d61e",
-            "sportCategoryId": "625971f3-aec2-4dac-bce7-2154cb920bf3",
             "ageMin": 6,
-            "ageMax": 7,
             "priorityTierId": 5,
             "name": "Baby 1",
-            "gender": "MIXTE",
-            "level": "LOISIR_JEUNE",
             "sessionsPerWeek": 1,
             "matchDay": null,
-            "forcedVenueId": null,
-            "parentTeamId": null
+            "forcedVenueId": null
         },
         {
             "id": "58cd16dc-a4d4-4533-90d1-015b12f80c91",
-            "sportCategoryId": "f5a7bf39-1f18-40c4-aac9-68f568f80f9e",
             "ageMin": 16,
-            "ageMax": 18,
             "priorityTierId": 5,
             "name": "U18F Fays",
-            "gender": "F",
-            "level": "LOISIR_JEUNE",
             "sessionsPerWeek": 1,
             "matchDay": null,
-            "forcedVenueId": null,
-            "parentTeamId": null
+            "forcedVenueId": null
         },
         {
             "id": "5a6e1b21-b09d-44fe-b641-1aef11db620a",
-            "sportCategoryId": "b34c2bd1-1639-498b-b11f-239762e4a4f5",
             "ageMin": 22,
-            "ageMax": 99,
             "priorityTierId": 4,
             "name": "SM4",
-            "gender": "M",
-            "level": "DEPARTEMENTAL",
             "sessionsPerWeek": 1,
             "matchDay": null,
-            "forcedVenueId": null,
-            "parentTeamId": null
+            "forcedVenueId": null
         },
         {
             "id": "5b133669-3f8a-4fd3-abec-7ce5582e1a4a",
-            "sportCategoryId": "63a09d08-2763-46c7-b29c-b117c381a39c",
             "ageMin": 12,
-            "ageMax": 13,
             "priorityTierId": 3,
             "name": "U13F2",
-            "gender": "F",
-            "level": "DEPARTEMENTAL",
             "sessionsPerWeek": 3,
             "matchDay": null,
-            "forcedVenueId": null,
-            "parentTeamId": null
+            "forcedVenueId": null
         },
         {
             "id": "5cda9dd3-b353-4269-81bc-59b706fc0170",
-            "sportCategoryId": "83233143-4fc4-4dcb-a276-4e2fbce8f206",
             "ageMin": null,
-            "ageMax": null,
             "priorityTierId": 5,
             "name": "Mercredi Shark U9-U11",
-            "gender": null,
-            "level": "LOISIR_JEUNE",
             "sessionsPerWeek": 1,
             "matchDay": null,
-            "forcedVenueId": null,
-            "parentTeamId": null
+            "forcedVenueId": null
         },
         {
             "id": "66273b72-d447-4e09-ab2e-a89c14d4f8cd",
-            "sportCategoryId": "d320d161-e40d-40a0-adc5-0e072672f07a",
             "ageMin": 14,
-            "ageMax": 15,
             "priorityTierId": 5,
             "name": "Section J.Macé",
-            "gender": null,
-            "level": "LOISIR_JEUNE",
             "sessionsPerWeek": 3,
             "matchDay": null,
-            "forcedVenueId": null,
-            "parentTeamId": null
+            "forcedVenueId": null
         },
         {
             "id": "798fbf7d-ed65-4f14-b2ce-5092267dc1e9",
-            "sportCategoryId": "19506e84-fbe6-4654-82d7-e394b93a73ee",
             "ageMin": 3,
-            "ageMax": 5,
             "priorityTierId": 5,
             "name": "Micro Basket",
-            "gender": "MIXTE",
-            "level": "LOISIR_JEUNE",
             "sessionsPerWeek": 1,
             "matchDay": null,
-            "forcedVenueId": null,
-            "parentTeamId": null
+            "forcedVenueId": null
         },
         {
             "id": "7a5bb446-ba2c-4828-a6e6-132eb7382edc",
-            "sportCategoryId": "072b8488-12a9-493b-9eb9-2cb41666df05",
             "ageMin": 10,
-            "ageMax": 11,
             "priorityTierId": 4,
             "name": "U11M2",
-            "gender": "M",
-            "level": "REGIONAL",
             "sessionsPerWeek": 2,
             "matchDay": null,
-            "forcedVenueId": null,
-            "parentTeamId": null
+            "forcedVenueId": null
         },
         {
             "id": "7e823764-7aec-47af-8d4e-e956b438f978",
-            "sportCategoryId": "83233143-4fc4-4dcb-a276-4e2fbce8f206",
             "ageMin": null,
-            "ageMax": null,
             "priorityTierId": 5,
             "name": "Academie U18",
-            "gender": null,
-            "level": "LOISIR_JEUNE",
             "sessionsPerWeek": 1,
             "matchDay": null,
-            "forcedVenueId": null,
-            "parentTeamId": null
+            "forcedVenueId": null
         },
         {
             "id": "7ed3f110-3a62-43ff-92f2-915d8fe0e8cb",
-            "sportCategoryId": "d320d161-e40d-40a0-adc5-0e072672f07a",
             "ageMin": 14,
-            "ageMax": 15,
             "priorityTierId": 2,
             "name": "U15M1",
-            "gender": "M",
-            "level": "REGIONAL",
             "sessionsPerWeek": 3,
             "matchDay": null,
-            "forcedVenueId": null,
-            "parentTeamId": null
+            "forcedVenueId": null
         },
         {
             "id": "807e0a44-2e30-4eed-abab-16c24d733de0",
-            "sportCategoryId": "d9099f26-6dfc-4275-ab85-c4280ff2be03",
             "ageMin": 8,
-            "ageMax": 9,
             "priorityTierId": 4,
             "name": "U9M2",
-            "gender": "M",
-            "level": "DEPARTEMENTAL",
             "sessionsPerWeek": 2,
             "matchDay": null,
-            "forcedVenueId": null,
-            "parentTeamId": null
+            "forcedVenueId": null
         },
         {
             "id": "8a2a2d50-b290-4781-b604-9000daa49a01",
-            "sportCategoryId": "f5a7bf39-1f18-40c4-aac9-68f568f80f9e",
             "ageMin": 16,
-            "ageMax": 18,
             "priorityTierId": 4,
             "name": "U18F3",
-            "gender": "F",
-            "level": "DEPARTEMENTAL",
             "sessionsPerWeek": 2,
             "matchDay": null,
-            "forcedVenueId": null,
-            "parentTeamId": null
+            "forcedVenueId": null
         },
         {
             "id": "91373f8d-c7b7-4871-b0aa-508ca9e34286",
-            "sportCategoryId": "072b8488-12a9-493b-9eb9-2cb41666df05",
             "ageMin": 10,
-            "ageMax": 11,
             "priorityTierId": 4,
             "name": "U11F2",
-            "gender": "F",
-            "level": "DEPARTEMENTAL",
             "sessionsPerWeek": 2,
             "matchDay": null,
-            "forcedVenueId": null,
-            "parentTeamId": null
+            "forcedVenueId": null
         },
         {
             "id": "97761286-7ae5-4586-a449-2e1ac2c4a3f4",
-            "sportCategoryId": "f5a7bf39-1f18-40c4-aac9-68f568f80f9e",
             "ageMin": 16,
-            "ageMax": 18,
             "priorityTierId": 2,
             "name": "U18M1",
-            "gender": "M",
-            "level": "REGIONAL",
             "sessionsPerWeek": 3,
             "matchDay": null,
-            "forcedVenueId": null,
-            "parentTeamId": null
+            "forcedVenueId": null
         },
         {
             "id": "9ad7d487-6232-4470-adce-efd6c7870ad0",
-            "sportCategoryId": "2f71b2c8-3714-4a26-9c0a-cd7eaa04728e",
             "ageMin": 35,
-            "ageMax": 99,
             "priorityTierId": 5,
             "name": "Basket Santé",
-            "gender": "MIXTE",
-            "level": "LOISIR_ADULTE",
             "sessionsPerWeek": 1,
             "matchDay": null,
-            "forcedVenueId": null,
-            "parentTeamId": null
+            "forcedVenueId": null
         },
         {
             "id": "9c4452fa-1a53-46fb-abc0-378ba2273b8c",
-            "sportCategoryId": "f5a7bf39-1f18-40c4-aac9-68f568f80f9e",
             "ageMin": 16,
-            "ageMax": 18,
             "priorityTierId": 3,
             "name": "U18M2",
-            "gender": "M",
-            "level": "DEPARTEMENTAL",
             "sessionsPerWeek": 2,
             "matchDay": null,
-            "forcedVenueId": null,
-            "parentTeamId": null
+            "forcedVenueId": null
         },
         {
             "id": "9d47f599-fcb5-4264-81ad-270df50fcefd",
-            "sportCategoryId": "f5a7bf39-1f18-40c4-aac9-68f568f80f9e",
             "ageMin": 16,
-            "ageMax": 18,
             "priorityTierId": 3,
             "name": "U18F2",
-            "gender": "F",
-            "level": "DEPARTEMENTAL",
             "sessionsPerWeek": 2,
             "matchDay": null,
-            "forcedVenueId": null,
-            "parentTeamId": null
+            "forcedVenueId": null
         },
         {
             "id": "9fc06bda-871f-49f0-8e0e-40b8e45f5a03",
-            "sportCategoryId": "d9099f26-6dfc-4275-ab85-c4280ff2be03",
             "ageMin": 8,
-            "ageMax": 9,
             "priorityTierId": 3,
             "name": "U9M1",
-            "gender": "M",
-            "level": "DEPARTEMENTAL",
             "sessionsPerWeek": 2,
             "matchDay": null,
-            "forcedVenueId": null,
-            "parentTeamId": null
+            "forcedVenueId": null
         },
         {
             "id": "a0422e40-7d4d-4980-899c-77b6b570e53c",
-            "sportCategoryId": "b34c2bd1-1639-498b-b11f-239762e4a4f5",
             "ageMin": 22,
-            "ageMax": 99,
             "priorityTierId": 1,
             "name": "SM1",
-            "gender": "M",
-            "level": "REGIONAL",
             "sessionsPerWeek": 2,
             "matchDay": null,
-            "forcedVenueId": null,
-            "parentTeamId": null
+            "forcedVenueId": null
         },
         {
             "id": "adfe901a-dd66-4c2d-8a3c-ea9e2883d8c9",
-            "sportCategoryId": "83233143-4fc4-4dcb-a276-4e2fbce8f206",
             "ageMin": null,
-            "ageMax": null,
             "priorityTierId": 5,
             "name": "Academie U9-U11",
-            "gender": "MIXTE",
-            "level": "LOISIR_JEUNE",
             "sessionsPerWeek": 1,
             "matchDay": null,
-            "forcedVenueId": null,
-            "parentTeamId": null
+            "forcedVenueId": null
         },
         {
             "id": "b4369491-93ee-4488-8a16-11e3423c1182",
-            "sportCategoryId": "fe2dbaba-719f-42dc-a326-4fe2ae9b62f4",
             "ageMin": 19,
-            "ageMax": 21,
             "priorityTierId": 2,
             "name": "U21M1",
-            "gender": "M",
-            "level": "REGIONAL",
             "sessionsPerWeek": 2,
             "matchDay": null,
-            "forcedVenueId": null,
-            "parentTeamId": null
+            "forcedVenueId": null
         },
         {
             "id": "bba569e6-3c34-4709-84a5-5ffaa22aa920",
-            "sportCategoryId": "63a09d08-2763-46c7-b29c-b117c381a39c",
             "ageMin": 12,
-            "ageMax": 13,
             "priorityTierId": 4,
             "name": "U13F3",
-            "gender": "F",
-            "level": "DEPARTEMENTAL",
             "sessionsPerWeek": 2,
             "matchDay": null,
-            "forcedVenueId": null,
-            "parentTeamId": null
+            "forcedVenueId": null
         },
         {
             "id": "bdb9d8ba-c95d-4dad-8a21-2fa7aba2aee1",
-            "sportCategoryId": "63a09d08-2763-46c7-b29c-b117c381a39c",
             "ageMin": 12,
-            "ageMax": 13,
             "priorityTierId": 2,
             "name": "U13M1",
-            "gender": "M",
-            "level": "REGIONAL",
             "sessionsPerWeek": 3,
             "matchDay": null,
-            "forcedVenueId": null,
-            "parentTeamId": null
+            "forcedVenueId": null
         },
         {
             "id": "bf1cddd3-71b6-42a2-ac42-7b391389d5fa",
-            "sportCategoryId": "2f71b2c8-3714-4a26-9c0a-cd7eaa04728e",
             "ageMin": 35,
-            "ageMax": 99,
             "priorityTierId": 5,
             "name": "Veterans",
-            "gender": "M",
-            "level": "LOISIR_ADULTE",
             "sessionsPerWeek": 1,
             "matchDay": null,
-            "forcedVenueId": null,
-            "parentTeamId": null
+            "forcedVenueId": null
         },
         {
             "id": "bf81bf5f-1f68-4c81-bbb4-b1e8d5071038",
-            "sportCategoryId": "b34c2bd1-1639-498b-b11f-239762e4a4f5",
             "ageMin": 22,
-            "ageMax": 99,
             "priorityTierId": 5,
             "name": "Training Individuel",
-            "gender": "MIXTE",
-            "level": "LOISIR_ADULTE",
             "sessionsPerWeek": 1,
             "matchDay": null,
-            "forcedVenueId": null,
-            "parentTeamId": null
+            "forcedVenueId": null
         },
         {
             "id": "c2b67628-0c80-4646-ac66-04fdec5c064b",
-            "sportCategoryId": "83233143-4fc4-4dcb-a276-4e2fbce8f206",
             "ageMin": null,
-            "ageMax": null,
             "priorityTierId": 5,
             "name": "Loisir Feminine",
-            "gender": "F",
-            "level": "LOISIR_ADULTE",
             "sessionsPerWeek": 1,
             "matchDay": null,
-            "forcedVenueId": null,
-            "parentTeamId": null
+            "forcedVenueId": null
         },
         {
             "id": "c7125665-6440-4dfc-a5c8-5808d430e9e1",
-            "sportCategoryId": "d9099f26-6dfc-4275-ab85-c4280ff2be03",
             "ageMin": 8,
-            "ageMax": 9,
             "priorityTierId": 4,
             "name": "U9F2",
-            "gender": "F",
-            "level": "DEPARTEMENTAL",
             "sessionsPerWeek": 2,
             "matchDay": null,
-            "forcedVenueId": null,
-            "parentTeamId": null
+            "forcedVenueId": null
         },
         {
             "id": "cc459028-b824-4cb8-9474-1be840f29bb8",
-            "sportCategoryId": "072b8488-12a9-493b-9eb9-2cb41666df05",
             "ageMin": 10,
-            "ageMax": 11,
             "priorityTierId": 3,
             "name": "U11F1",
-            "gender": "F",
-            "level": "REGIONAL",
             "sessionsPerWeek": 2,
             "matchDay": null,
-            "forcedVenueId": null,
-            "parentTeamId": null
+            "forcedVenueId": null
         },
         {
             "id": "d9392725-7d25-411a-a03a-c4e808dd6658",
-            "sportCategoryId": "b34c2bd1-1639-498b-b11f-239762e4a4f5",
             "ageMin": 22,
-            "ageMax": 99,
             "priorityTierId": 2,
             "name": "SF2",
-            "gender": "F",
-            "level": "REGIONAL",
             "sessionsPerWeek": 2,
             "matchDay": null,
-            "forcedVenueId": null,
-            "parentTeamId": null
+            "forcedVenueId": null
         },
         {
             "id": "d98f20a0-c747-4c6d-ba92-71ebaa2425ac",
-            "sportCategoryId": "d320d161-e40d-40a0-adc5-0e072672f07a",
             "ageMin": 14,
-            "ageMax": 15,
             "priorityTierId": 3,
             "name": "U15F2",
-            "gender": "F",
-            "level": "DEPARTEMENTAL",
             "sessionsPerWeek": 2,
             "matchDay": null,
-            "forcedVenueId": null,
-            "parentTeamId": null
+            "forcedVenueId": null
         },
         {
             "id": "da085461-a075-4175-87e3-2a5d0470e6cc",
-            "sportCategoryId": "fe2dbaba-719f-42dc-a326-4fe2ae9b62f4",
             "ageMin": 19,
-            "ageMax": 21,
             "priorityTierId": 4,
             "name": "U21M2",
-            "gender": "M",
-            "level": "DEPARTEMENTAL",
             "sessionsPerWeek": 2,
             "matchDay": null,
-            "forcedVenueId": null,
-            "parentTeamId": null
+            "forcedVenueId": null
         },
         {
             "id": "dc5b4935-1bd6-434e-a315-bab429c124e0",
-            "sportCategoryId": "625971f3-aec2-4dac-bce7-2154cb920bf3",
             "ageMin": 6,
-            "ageMax": 7,
             "priorityTierId": 5,
             "name": "Baby 2",
-            "gender": "MIXTE",
-            "level": "LOISIR_JEUNE",
             "sessionsPerWeek": 1,
             "matchDay": null,
-            "forcedVenueId": null,
-            "parentTeamId": null
+            "forcedVenueId": null
         },
         {
             "id": "df07d50c-86dd-44f5-bae3-97b5223eec2a",
-            "sportCategoryId": "d320d161-e40d-40a0-adc5-0e072672f07a",
             "ageMin": 14,
-            "ageMax": 15,
             "priorityTierId": 4,
             "name": "U15F3",
-            "gender": "F",
-            "level": "DEPARTEMENTAL",
             "sessionsPerWeek": 2,
             "matchDay": null,
-            "forcedVenueId": null,
-            "parentTeamId": null
+            "forcedVenueId": null
         },
         {
             "id": "ebafbbba-380a-44b8-a3fd-5d8323aeb675",
-            "sportCategoryId": "83233143-4fc4-4dcb-a276-4e2fbce8f206",
             "ageMin": null,
-            "ageMax": null,
             "priorityTierId": 5,
             "name": "Loisir 3",
-            "gender": null,
-            "level": "LOISIR_ADULTE",
             "sessionsPerWeek": 1,
             "matchDay": null,
-            "forcedVenueId": null,
-            "parentTeamId": null
+            "forcedVenueId": null
         },
         {
             "id": "ebbb33c0-678a-4773-93e3-313722bb7437",
-            "sportCategoryId": "b34c2bd1-1639-498b-b11f-239762e4a4f5",
             "ageMin": 22,
-            "ageMax": 99,
             "priorityTierId": 3,
             "name": "SM3",
-            "gender": "M",
-            "level": "DEPARTEMENTAL",
             "sessionsPerWeek": 1,
             "matchDay": null,
-            "forcedVenueId": null,
-            "parentTeamId": null
+            "forcedVenueId": null
         },
         {
             "id": "f682b6a2-7914-4cc9-a7f7-8760011b06d4",
-            "sportCategoryId": "d320d161-e40d-40a0-adc5-0e072672f07a",
             "ageMin": 14,
-            "ageMax": 15,
             "priorityTierId": 3,
             "name": "U15M2",
-            "gender": "M",
-            "level": "DEPARTEMENTAL",
             "sessionsPerWeek": 2,
             "matchDay": null,
-            "forcedVenueId": null,
-            "parentTeamId": null
+            "forcedVenueId": null
         }
     ],
     "coaches": [
@@ -1317,208 +1004,182 @@
             "firstName": "Coach 05",
             "lastName": "",
             "maxDaysOverride": null,
-            "isEmployee": true,
-            "parentCoachId": null
+            "isEmployee": true
         },
         {
             "id": "1810d2c2-ffe0-4cff-8b84-ed81bb87c1ea",
             "firstName": "Coach 21",
             "lastName": "",
             "maxDaysOverride": null,
-            "isEmployee": true,
-            "parentCoachId": null
+            "isEmployee": true
         },
         {
             "id": "185314d3-92e5-4e8f-9462-df47939082e1",
             "firstName": "Coach 26",
             "lastName": "",
             "maxDaysOverride": null,
-            "isEmployee": false,
-            "parentCoachId": null
+            "isEmployee": false
         },
         {
             "id": "1c4ec1b1-a955-4e09-8250-f6d362bdcbe2",
             "firstName": "Coach 11",
             "lastName": "",
             "maxDaysOverride": null,
-            "isEmployee": true,
-            "parentCoachId": null
+            "isEmployee": true
         },
         {
             "id": "261e0252-911e-42bc-b419-7d2c7a5e8c22",
             "firstName": "Coach 17",
             "lastName": "",
             "maxDaysOverride": null,
-            "isEmployee": false,
-            "parentCoachId": null
+            "isEmployee": false
         },
         {
             "id": "32e619e7-0c05-495f-9463-8a2d82e5a2f4",
             "firstName": "Coach 10",
             "lastName": "",
             "maxDaysOverride": null,
-            "isEmployee": false,
-            "parentCoachId": null
+            "isEmployee": false
         },
         {
             "id": "3b4a0855-37ad-4467-8479-bd81aaa0d8c1",
             "firstName": "Coach 20",
             "lastName": "",
             "maxDaysOverride": null,
-            "isEmployee": false,
-            "parentCoachId": null
+            "isEmployee": false
         },
         {
             "id": "3bd80cd7-3d0b-4b9f-9cf4-c185bce7d607",
             "firstName": "Coach 08",
             "lastName": "",
             "maxDaysOverride": null,
-            "isEmployee": false,
-            "parentCoachId": null
+            "isEmployee": false
         },
         {
             "id": "3c09970d-cd2f-4aa2-9b8f-91b864dac6e0",
             "firstName": "Coach 02",
             "lastName": "",
             "maxDaysOverride": null,
-            "isEmployee": false,
-            "parentCoachId": null
+            "isEmployee": false
         },
         {
             "id": "3dcf9c78-f60f-4465-86b0-f847a90f1d34",
             "firstName": "Coach 03",
             "lastName": "",
             "maxDaysOverride": null,
-            "isEmployee": true,
-            "parentCoachId": null
+            "isEmployee": true
         },
         {
             "id": "4d388ee0-b98a-4c4d-a10c-a479d4b09ec3",
             "firstName": "Coach 06",
             "lastName": "",
             "maxDaysOverride": null,
-            "isEmployee": true,
-            "parentCoachId": null
+            "isEmployee": true
         },
         {
             "id": "5edde7a9-10fb-40bc-a761-a83e1b95be80",
             "firstName": "Coach 09",
             "lastName": "",
             "maxDaysOverride": null,
-            "isEmployee": false,
-            "parentCoachId": null
+            "isEmployee": false
         },
         {
             "id": "69b30a89-9ccc-4365-81d8-3a72b7ea5ead",
             "firstName": "Coach 13",
             "lastName": "",
             "maxDaysOverride": null,
-            "isEmployee": false,
-            "parentCoachId": null
+            "isEmployee": false
         },
         {
             "id": "77603dd0-15e4-4531-8e6f-9512157c07b7",
             "firstName": "Coach 04",
             "lastName": "",
             "maxDaysOverride": null,
-            "isEmployee": true,
-            "parentCoachId": null
+            "isEmployee": true
         },
         {
             "id": "77bbd815-05f9-4d90-9430-dd93e050a302",
             "firstName": "Coach 22",
             "lastName": "",
             "maxDaysOverride": null,
-            "isEmployee": false,
-            "parentCoachId": null
+            "isEmployee": false
         },
         {
             "id": "7bdc88c2-b6d2-4944-bead-3a72f993c9fe",
             "firstName": "Coach 12",
             "lastName": "",
             "maxDaysOverride": null,
-            "isEmployee": false,
-            "parentCoachId": null
+            "isEmployee": false
         },
         {
             "id": "98ab8e6a-1ff4-4c0c-af3c-b67fe78dbc55",
             "firstName": "Coach 07",
             "lastName": "",
             "maxDaysOverride": null,
-            "isEmployee": false,
-            "parentCoachId": null
+            "isEmployee": false
         },
         {
             "id": "a320678b-f50a-421c-8c3d-689c6478386d",
             "firstName": "Coach 25",
             "lastName": "",
             "maxDaysOverride": null,
-            "isEmployee": false,
-            "parentCoachId": null
+            "isEmployee": false
         },
         {
             "id": "b5ce2702-9187-4cde-81cc-acc117f28eda",
             "firstName": "Coach 16",
             "lastName": "",
             "maxDaysOverride": null,
-            "isEmployee": false,
-            "parentCoachId": null
+            "isEmployee": false
         },
         {
             "id": "b5d2125b-ccd1-4b6f-9c88-fcfb4c468afd",
             "firstName": "Coach 14",
             "lastName": "",
             "maxDaysOverride": null,
-            "isEmployee": false,
-            "parentCoachId": null
+            "isEmployee": false
         },
         {
             "id": "dfb04fa6-6cc8-4467-8a17-5f8839d74637",
             "firstName": "Coach 23",
             "lastName": "",
             "maxDaysOverride": null,
-            "isEmployee": false,
-            "parentCoachId": null
+            "isEmployee": false
         },
         {
             "id": "e17ca10a-bf85-4b11-b8ac-1a478bce5081",
             "firstName": "Coach 18",
             "lastName": "",
             "maxDaysOverride": null,
-            "isEmployee": false,
-            "parentCoachId": null
+            "isEmployee": false
         },
         {
             "id": "ec85a721-a4c1-45e8-98cf-64d621d94837",
             "firstName": "Coach 15",
             "lastName": "",
             "maxDaysOverride": null,
-            "isEmployee": false,
-            "parentCoachId": null
+            "isEmployee": false
         },
         {
             "id": "f4e98bc0-b34d-4103-8dae-aedc3d8a31e5",
             "firstName": "Coach 24",
             "lastName": "",
             "maxDaysOverride": null,
-            "isEmployee": false,
-            "parentCoachId": null
+            "isEmployee": false
         },
         {
             "id": "f85037c7-3bae-4985-919a-7f5b8611adba",
             "firstName": "Coach 19",
             "lastName": "",
             "maxDaysOverride": null,
-            "isEmployee": false,
-            "parentCoachId": null
+            "isEmployee": false
         },
         {
             "id": "f857a3fe-9c00-4477-b053-b4f964e8ab74",
             "firstName": "Coach 01",
             "lastName": "",
             "maxDaysOverride": null,
-            "isEmployee": false,
-            "parentCoachId": null
+            "isEmployee": false
         }
     ],
     "constraints": [

@@ -76,9 +76,9 @@ class PdfGenerator
     /**
      * @return array{pdf: string}
      */
-    public function generate(Schedule $schedule, ?string $venueId = null, bool $showCoaches = false): array
+    public function generate(Schedule $schedule, ?string $venueId = null, bool $showCoaches = false, bool $showOccupancies = false): array
     {
-        $data = $this->exportData->load($schedule, $venueId);
+        $data = $this->exportData->load($schedule, $venueId, $showOccupancies);
         // P3-20 — la vue « club » (matrice équipes × jours) est ce que le gestionnaire veut
         // EN IMAGE. On ne fabrique pas une 5ᵉ mise en forme pour ça : c'est la section 2 déjà
         // rendue ici qui est photographiée, le worker choisissant simplement quelle section
@@ -100,7 +100,9 @@ class PdfGenerator
         // polling saisirait la version SANS coachs rendue pour une autre demande du même planning.
         $scope = null === $venueId ? 'all' : substr($venueId, 0, 8);
         $coachSuffix = $showCoaches ? '-coaches' : '';
-        $pdfFilename = \sprintf('schedule-%s-%s%s.pdf', $schedule->getId(), $scope, $coachSuffix);
+        // « Afficher les occupations » distingue le fichier de la même façon, après `-coaches`.
+        $occupancySuffix = $showOccupancies ? '-occupations' : '';
+        $pdfFilename = \sprintf('schedule-%s-%s%s%s.pdf', $schedule->getId(), $scope, $coachSuffix, $occupancySuffix);
 
         // The Puppeteer worker (a separate container) both creates this dir and
         // writes the files, as its own uid — PHP only reads back the result, so we
@@ -215,6 +217,11 @@ class PdfGenerator
         foreach ($data->freeSlots as $window) {
             $present[$window->dayOfWeek][$window->venueId] = true;
         }
+        // Une occupation (option cochée) crée la colonne de son jour pour son gymnase, comme un
+        // créneau libre. Le provider ne rend que celles d'un gymnase présent par ailleurs.
+        foreach ($data->occupancies as $window) {
+            $present[$window->dayOfWeek][$window->venueId] = true;
+        }
         ksort($present);
         /** @var list<array{day:int,venueId:string}> $columns */
         $columns = [];
@@ -237,7 +244,7 @@ class PdfGenerator
             $prevDay = $col['day'];
         }
 
-        [$startMin, $endMin] = $this->timeBounds($slots, [...$data->emptySlots, ...$data->freeSlots]);
+        [$startMin, $endMin] = $this->timeBounds($slots, [...$data->emptySlots, ...$data->freeSlots, ...$data->occupancies]);
 
         // Index slots by column + start step. A step can hold MORE than one slot
         // (a split court runs two teams at the same time in the same gym), so we
@@ -265,9 +272,17 @@ class PdfGenerator
             $startStep = intdiv($this->minutesOf($window->startTime) - $startMin, self::STEP_MINUTES);
             $freeByColStep[$key][$startStep] = $window;
         }
+        // Occupations indexées col+step, comme les créneaux libres : aucune ne partage de temps avec
+        // une séance ou une fenêtre de la couche (écartées par le provider).
+        $occupancyByColStep = [];
+        foreach ($data->occupancies as $window) {
+            $key = $window->dayOfWeek . '|' . $window->venueId;
+            $startStep = intdiv($this->minutesOf($window->startTime) - $startMin, self::STEP_MINUTES);
+            $occupancyByColStep[$key][$startStep] = $window;
+        }
 
         $steps = max(1, intdiv($endMin - $startMin, self::STEP_MINUTES));
-        $rows = $this->buildRows($columns, $byColStep, $emptyByColStep, $freeByColStep, $startMin, $steps, $teamNames, $venues, $data->groupLabels, $dayStartCols, $data->coachShortNames, $showCoaches, $data->teamMainCoachIds, $data->teamCoachIds);
+        $rows = $this->buildRows($columns, $byColStep, $emptyByColStep, $freeByColStep, $startMin, $steps, $teamNames, $venues, $data->groupLabels, $dayStartCols, $data->coachShortNames, $showCoaches, $data->teamMainCoachIds, $data->teamCoachIds, $occupancyByColStep);
         $header = $this->buildHeader($columns, $venues, $dayStartCols);
 
         $scopeLabel = null === $venueId ? 'Tous les gymnases' : ($venues[$venueId]['name'] ?? 'Gymnase');
@@ -305,16 +320,17 @@ class PdfGenerator
      * @param list<array{day:int,venueId:string}>                   $columns
      * @param array<string, array<int, list<ScheduleSlotTemplate>>> $byColStep
      * @param array<string, array<int, ExportEmptyWindow>>          $emptyByColStep
-     * @param array<string, array<int, ExportReservedWindow>>       $freeByColStep    lot 4bis free slots
+     * @param array<string, array<int, ExportReservedWindow>>       $freeByColStep      lot 4bis free slots
      * @param array<string, string>                                 $teamNames
      * @param array<string, array{name:string,color:?string}>       $venues
-     * @param array<string, string>                                 $groupLabels      "venue|day|H:i" → label
-     * @param array<int, true>                                      $dayStartCols     column indices that open a new day
-     * @param array<string, string>                                 $coachShortNames  coachId → « Karim B. »
-     * @param array<string, string>                                 $teamMainCoachIds teamId → coachId du 1er MAIN
-     * @param array<string, list<string>>                           $teamCoachIds     teamId → tous ses coachs principaux
+     * @param array<string, string>                                 $groupLabels        "venue|day|H:i" → label
+     * @param array<int, true>                                      $dayStartCols       column indices that open a new day
+     * @param array<string, string>                                 $coachShortNames    coachId → « Karim B. »
+     * @param array<string, string>                                 $teamMainCoachIds   teamId → coachId du 1er MAIN
+     * @param array<string, list<string>>                           $teamCoachIds       teamId → tous ses coachs principaux
+     * @param array<string, array<int, ExportReservedWindow>>       $occupancyByColStep occupations (option cochée)
      */
-    private function buildRows(array $columns, array $byColStep, array $emptyByColStep, array $freeByColStep, int $startMin, int $steps, array $teamNames, array $venues, array $groupLabels, array $dayStartCols, array $coachShortNames = [], bool $showCoaches = false, array $teamMainCoachIds = [], array $teamCoachIds = []): string
+    private function buildRows(array $columns, array $byColStep, array $emptyByColStep, array $freeByColStep, int $startMin, int $steps, array $teamNames, array $venues, array $groupLabels, array $dayStartCols, array $coachShortNames = [], bool $showCoaches = false, array $teamMainCoachIds = [], array $teamCoachIds = [], array $occupancyByColStep = []): string
     {
         // covered[colIndex][step] = true when a rowspan from above occupies the cell.
         $covered = [];
@@ -351,6 +367,21 @@ class PdfGenerator
                             $covered[$colIndex][$step + $k] = true;
                         }
                         $cells .= $this->freeSlotCell($free, $span, $dayStart);
+
+                        continue;
+                    }
+                    // Une OCCUPATION ici (option cochée) → une case grise nommée par son motif.
+                    $occupancy = $occupancyByColStep[$colKey][$step] ?? null;
+                    if (null !== $occupancy) {
+                        $maxSpan = max(1, (int) ceil($occupancy->durationMinutes / self::STEP_MINUTES));
+                        $span = 1;
+                        while ($span < $maxSpan && !isset($covered[$colIndex][$step + $span]) && [] === ($byColStep[$colKey][$step + $span] ?? [])) {
+                            ++$span;
+                        }
+                        for ($k = 1; $k < $span; ++$k) {
+                            $covered[$colIndex][$step + $k] = true;
+                        }
+                        $cells .= $this->occupancyCell($occupancy, $span, $dayStart);
 
                         continue;
                     }
@@ -494,6 +525,21 @@ class PdfGenerator
             $span,
             htmlspecialchars($free->startTime->format('H:i')),
             htmlspecialchars($free->label),
+        );
+    }
+
+    /**
+     * La case d'une OCCUPATION : l'heure en tête, le motif dessous, sur un fond gris (le gymnase
+     * n'est pas au club). Le motif est du contenu club, échappé comme tout le reste du gabarit.
+     */
+    private function occupancyCell(ExportReservedWindow $occupancy, int $span, bool $dayStart): string
+    {
+        return \sprintf(
+            '<td class="%s" rowspan="%d"><div class="cell-time">%s</div><div class="entry"><span class="team">%s</span></div></td>',
+            $dayStart ? 'cell filled occupancy day-start' : 'cell filled occupancy',
+            $span,
+            htmlspecialchars($occupancy->startTime->format('H:i')),
+            htmlspecialchars($occupancy->label),
         );
     }
 
@@ -786,6 +832,8 @@ class PdfGenerator
                    fonce, distinct dune seance dequipe (qui porte la couleur du gymnase). */
                 td.filled.free { background: repeating-linear-gradient(45deg, #f0f0f0 0 5px, #e6e6e6 5px 10px); color: #444; }
                 td.filled.free .team { font-weight: 600; font-style: italic; }
+                td.filled.occupancy { background: repeating-linear-gradient(-45deg, #e4e4e4 0 5px, #d6d6d6 5px 10px); color: #333; border: 1px solid #9a9a9a; }
+                td.filled.occupancy .team { font-weight: 600; }
                 /* Midday break [12:00, 14:00): a rosé band on empty cells + gutter, with a
                    marked rule at its 12:00/14:00 edges — a real placement shows through in
                    its venue colour, same intent as the wizard slot grid. */

@@ -1,4 +1,6 @@
-export type WizardStepId = "teams" | "venues" | "coaches" | "constraints" | "recap" | "generate";
+import type { ImplicitRuleKey } from "../api";
+
+export type WizardStepId ="teams" | "venues" | "coaches" | "constraints" | "recap" | "generate";
 
 export interface StepDef {
   id: WizardStepId;
@@ -39,8 +41,14 @@ export interface StepValidation {
   /** Récap SEULEMENT (D2) : les créneaux partagés à signaler, typés (ton + texte). Absent
    *  ailleurs — les autres étapes n'en produisent pas. */
   notices?: RecapNotice[];
-  /** Récap SEULEMENT : les réservations que le serveur désigne pour une seconde séance le même jour. */
+  /** Récap SEULEMENT : les réservations que le serveur désigne parce que leur équipe a trop de
+   *  séances ce jour-là (au-delà de son plafond). Disjointe de `overlappingReservationIds`. */
   doubledReservationIds?: string[];
+  /** Récap SEULEMENT : les réservations que le serveur désigne parce que leur créneau chevauche une
+   *  autre séance de la même équipe le même jour. */
+  overlappingReservationIds?: string[];
+  /** Récap SEULEMENT : les règles du club réglées sur « Ignorée », dans l'ordre du serveur. */
+  ignoredRules?: ImplicitRuleKey[];
 }
 
 export const okValidation = (): StepValidation => ({ errors: [], warnings: [] });

@@ -64,7 +64,6 @@ def _venues() -> list[dict[str, Any]]:
     return [
         {
             "id": f"v{v}",
-            "name": f"Gymnase {v}",
             "matchWindows": [
                 {"dayOfWeek": 6, "start": "14:00", "end": "16:45"},
                 {"dayOfWeek": 7, "start": "09:00", "end": "11:45"},
@@ -92,7 +91,6 @@ def _teams() -> list[dict[str, Any]]:
         teams.append(
             {
                 "id": f"t{t}",
-                "name": f"Team {t}",
                 "leagueWindows": [],
                 "habits": [{"dayOfWeek": 6, "kickoff": "15:00", "venueId": f"v{t % N_VENUES}"}],
                 "coaches": [

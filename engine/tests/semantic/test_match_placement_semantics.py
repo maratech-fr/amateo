@@ -118,13 +118,11 @@ def wire_payload() -> dict[str, Any]:
         "venues": [
             {
                 "id": "mateo",
-                "name": "Mateo",
                 "matchWindows": [{"dayOfWeek": 6, "start": "13:00", "end": "22:30"}],
                 "unavailabilities": [],
             },
             {
                 "id": "armand",
-                "name": "Armand",
                 "matchWindows": [{"dayOfWeek": 6, "start": "13:00", "end": "22:30"}],
                 "unavailabilities": [{"startDate": "2026-10-01", "endDate": "2026-10-05"}],
             },
@@ -132,30 +130,26 @@ def wire_payload() -> dict[str, Any]:
         "teams": [
             {
                 "id": "pnm",
-                "name": "PNM",
                 "leagueWindows": [{"dayOfWeek": 6, "kickoffMin": "15:30", "kickoffMax": "21:00"}],
                 "habits": [{"dayOfWeek": 6, "kickoff": "15:30", "venueId": "mateo"}],
                 "coaches": [{"coachId": "emerick", "role": "MAIN"}],
             },
             {
                 "id": "sf1",
-                "name": "SF1",
                 "leagueWindows": [],
                 "habits": [{"dayOfWeek": 6, "kickoff": "20:30", "venueId": "mateo"}],
                 "coaches": [],
             },
-            {"id": "df2", "name": "DF2", "leagueWindows": [], "habits": [], "coaches": []},
+            {"id": "df2", "leagueWindows": [], "habits": [], "coaches": []},
             {
                 "id": "u13",
-                "name": "U13",
                 "leagueWindows": [{"dayOfWeek": 6, "kickoffMin": "13:00", "kickoffMax": "18:00"}],
                 "habits": [],
                 "coaches": [],
             },
-            {"id": "rm2", "name": "RM2", "leagueWindows": [], "habits": [], "coaches": []},
+            {"id": "rm2", "leagueWindows": [], "habits": [], "coaches": []},
             {
                 "id": "rf3",
-                "name": "RF3",
                 "leagueWindows": [],
                 "habits": [],
                 "coaches": [{"coachId": "emerick", "role": "MAIN"}],
@@ -186,7 +180,6 @@ def test_access_window_is_hard_no_kickoff_ever_leaks_out() -> None:
     payload["venues"] = [
         {
             "id": "mateo",
-            "name": "Mateo",
             "matchWindows": [{"dayOfWeek": 6, "start": "14:00", "end": "18:00"}],
             "unavailabilities": [],
         }
@@ -196,7 +189,6 @@ def test_access_window_is_hard_no_kickoff_ever_leaks_out() -> None:
     payload["teams"] = [
         {
             "id": "pnm",
-            "name": "PNM",
             "leagueWindows": [],
             "habits": [{"dayOfWeek": 6, "kickoff": "20:30", "venueId": "mateo"}],
             "coaches": [],
@@ -255,20 +247,18 @@ def test_ideal_slot_is_honoured_when_the_ab_partner_is_idle_across_two_weekends(
         "venues": [
             {
                 "id": "mateo",
-                "name": "Mateo",
                 "matchWindows": [{"dayOfWeek": 6, "start": "13:00", "end": "22:30"}],
                 "unavailabilities": [],
             },
             {
                 "id": "armand",
-                "name": "Armand",
                 "matchWindows": [{"dayOfWeek": 6, "start": "13:00", "end": "22:30"}],
                 "unavailabilities": [],
             },
         ],
         "teams": [
-            {"id": "sm1", "name": "SM1", "leagueWindows": [], "habits": ideal, "coaches": []},
-            {"id": "sm2", "name": "SM2", "leagueWindows": [], "habits": ideal, "coaches": []},
+            {"id": "sm1", "leagueWindows": [], "habits": ideal, "coaches": []},
+            {"id": "sm2", "leagueWindows": [], "habits": ideal, "coaches": []},
         ],
         "teamLinks": [],
         "trainingOccupancies": [],
@@ -305,12 +295,11 @@ def _one_team_payload(
         "venues": [
             {
                 "id": "mateo",
-                "name": "Mateo",
                 "matchWindows": [{"dayOfWeek": 6, "start": window[0], "end": window[1]}],
                 "unavailabilities": [],
             }
         ],
-        "teams": [{"id": "t1", "name": "T1", "leagueWindows": [], "habits": habits or [], "coaches": []}],
+        "teams": [{"id": "t1", "leagueWindows": [], "habits": habits or [], "coaches": []}],
         "teamLinks": [],
         "trainingOccupancies": [],
         "clubRules": club_rules or [],
@@ -413,7 +402,6 @@ def _coach_unavailability_payload(
         "venues": [
             {
                 "id": "mateo",
-                "name": "Mateo",
                 "matchWindows": [{"dayOfWeek": 6, "start": "13:00", "end": "22:30"}],
                 "unavailabilities": [],
             }
@@ -421,7 +409,6 @@ def _coach_unavailability_payload(
         "teams": [
             {
                 "id": "t1",
-                "name": "T1",
                 "leagueWindows": [],
                 "habits": [{"dayOfWeek": 6, "kickoff": habit_kickoff, "venueId": "mateo"}],
                 "coaches": [{"coachId": "c", "role": "MAIN"}],
@@ -562,7 +549,6 @@ def test_coach_unavailability_never_blocks_a_match_with_no_alternative() -> None
     payload["venues"] = [
         {
             "id": "mateo",
-            "name": "Mateo",
             "matchWindows": [{"dayOfWeek": 6, "start": "14:00", "end": "16:00"}],
             "unavailabilities": [],
         }
@@ -590,13 +576,11 @@ def test_forbidden_venue_is_never_chosen_even_when_it_holds_the_ideal() -> None:
         "venues": [
             {
                 "id": "mateo",
-                "name": "Mateo",
                 "matchWindows": [{"dayOfWeek": 6, "start": "13:00", "end": "22:30"}],
                 "unavailabilities": [],
             },
             {
                 "id": "armand",
-                "name": "Armand",
                 "matchWindows": [{"dayOfWeek": 6, "start": "13:00", "end": "22:30"}],
                 "unavailabilities": [],
             },
@@ -604,7 +588,6 @@ def test_forbidden_venue_is_never_chosen_even_when_it_holds_the_ideal() -> None:
         "teams": [
             {
                 "id": "t1",
-                "name": "T1",
                 "leagueWindows": [],
                 "habits": [{"dayOfWeek": 6, "kickoff": "20:30", "venueId": "mateo"}],
                 "coaches": [],
@@ -639,14 +622,11 @@ def test_forbidden_venue_leaving_no_other_names_team_venue_forbidden() -> None:
         "venues": [
             {
                 "id": "mateo",
-                "name": "Mateo",
                 "matchWindows": [{"dayOfWeek": 6, "start": "13:00", "end": "22:30"}],
                 "unavailabilities": [],
             }
         ],
-        "teams": [
-            {"id": "t1", "name": "T1", "leagueWindows": [], "habits": [], "coaches": [], "forbiddenVenueIds": ["mateo"]}
-        ],
+        "teams": [{"id": "t1", "leagueWindows": [], "habits": [], "coaches": [], "forbiddenVenueIds": ["mateo"]}],
         "teamLinks": [],
         "trainingOccupancies": [],
     }
@@ -679,14 +659,13 @@ def test_two_homes_sharing_an_ideal_slot_split_one_served_the_other_placed() -> 
         "venues": [
             {
                 "id": "mateo",
-                "name": "Mateo",
                 "matchWindows": [{"dayOfWeek": 6, "start": "13:00", "end": "22:30"}],
                 "unavailabilities": [],
             }
         ],
         "teams": [
-            {"id": "sm1", "name": "SM1", "leagueWindows": [], "habits": ideal, "coaches": []},
-            {"id": "sm2", "name": "SM2", "leagueWindows": [], "habits": ideal, "coaches": []},
+            {"id": "sm1", "leagueWindows": [], "habits": ideal, "coaches": []},
+            {"id": "sm2", "leagueWindows": [], "habits": ideal, "coaches": []},
         ],
         "teamLinks": [],
         "trainingOccupancies": [],
@@ -725,7 +704,6 @@ def test_warmup_only_overlap_is_no_longer_penalised_lot_m() -> None:
         "venues": [
             {
                 "id": "mateo",
-                "name": "Mateo",
                 "matchWindows": [{"dayOfWeek": 6, "start": "13:00", "end": "22:30"}],
                 "unavailabilities": [],
             }
@@ -733,14 +711,12 @@ def test_warmup_only_overlap_is_no_longer_penalised_lot_m() -> None:
         "teams": [
             {
                 "id": "t1",
-                "name": "T1",
                 "leagueWindows": [],
                 "habits": [],
                 "coaches": [{"coachId": "c", "role": "MAIN"}],
             },
             {
                 "id": "t2",
-                "name": "T2",
                 "leagueWindows": [],
                 "habits": [],
                 "coaches": [{"coachId": "c", "role": "MAIN"}],
@@ -776,7 +752,6 @@ def _real_overlap_payload(*, share_coach: bool) -> dict[str, Any]:
         "venues": [
             {
                 "id": "mateo",
-                "name": "Mateo",
                 "matchWindows": [{"dayOfWeek": 6, "start": "13:00", "end": "22:30"}],
                 "unavailabilities": [],
             }
@@ -784,7 +759,6 @@ def _real_overlap_payload(*, share_coach: bool) -> dict[str, Any]:
         "teams": [
             {
                 "id": "a",
-                "name": "A",
                 "leagueWindows": [],
                 "habits": [{"dayOfWeek": 6, "kickoff": "17:00", "venueId": "mateo"}],
                 "coaches": [{"coachId": "c", "role": "MAIN"}] if share_coach else [],
@@ -850,7 +824,6 @@ def test_a_saturated_venue_yields_venue_full_through_the_solver() -> None:
     payload["venues"] = [
         {
             "id": "mateo",
-            "name": "Mateo",
             "matchWindows": [{"dayOfWeek": 6, "start": "14:00", "end": "15:45"}],
             "unavailabilities": [],
         }
@@ -860,8 +833,8 @@ def test_a_saturated_venue_yields_venue_full_through_the_solver() -> None:
         {"id": "m-b", "teamId": "b", "date": SATURDAY, "kind": "TO_PLACE"},
     ]
     payload["teams"] = [
-        {"id": "a", "name": "A", "leagueWindows": [], "habits": [], "coaches": []},
-        {"id": "b", "name": "B", "leagueWindows": [], "habits": [], "coaches": []},
+        {"id": "a", "leagueWindows": [], "habits": [], "coaches": []},
+        {"id": "b", "leagueWindows": [], "habits": [], "coaches": []},
     ]
     payload["teamLinks"] = []
     payload["trainingOccupancies"] = []
@@ -920,14 +893,13 @@ def _opening_solve(
         "venues": [
             {
                 "id": "gym-b",
-                "name": "Gymnase B",
                 "matchWindows": (
                     [{"openingDate": OPENING_TUESDAY, "start": "20:00", "end": "23:00"}] if opening else []
                 ),
                 "unavailabilities": [],
             }
         ],
-        "teams": [{"id": "t1", "name": "T1", "leagueWindows": [], "habits": [], "coaches": [], **(team_over or {})}],
+        "teams": [{"id": "t1", "leagueWindows": [], "habits": [], "coaches": [], **(team_over or {})}],
         "clubRules": club_rules or [],
     }
     return solve_match_placement(MatchPlacementInputSchema.model_validate(payload))
@@ -1012,7 +984,6 @@ def _kickoff_of_u9(
     teams: list[dict[str, Any]] = [
         {
             "id": "u9",
-            "name": "U9",
             "leagueWindows": [],
             "habits": [{"dayOfWeek": 6, "kickoff": ideal, "venueId": "v"}],
             "coaches": u9_coaches,
@@ -1024,7 +995,6 @@ def _kickoff_of_u9(
         teams.append(
             {
                 "id": row["id"],
-                "name": row["id"],
                 "leagueWindows": [],
                 "habits": [],
                 "coaches": row["coaches"],
@@ -1051,14 +1021,12 @@ def _kickoff_of_u9(
         "venues": [
             {
                 "id": "v",
-                "name": "V",
                 "matchWindows": [{"dayOfWeek": 6, "start": first_kickoff, "end": "22:30"}],
                 "unavailabilities": [],
             },
             *[
                 {
                     "id": f"w{index}",
-                    "name": f"W{index}",
                     "matchWindows": [{"dayOfWeek": 6, "start": "08:00", "end": "23:00"}],
                     "unavailabilities": [],
                 }

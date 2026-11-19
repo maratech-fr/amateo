@@ -92,9 +92,6 @@ class CoachStateProcessor extends AbstractStateProcessor
         if (null !== $input->gender) {
             $entity->setGender(CoachGender::from($input->gender));
         }
-        if (null !== $input->parentCoachId) {
-            $entity->setParentCoachId($input->parentCoachId);
-        }
 
         return $entity;
     }
@@ -134,9 +131,6 @@ class CoachStateProcessor extends AbstractStateProcessor
         }
         if (null !== $input->gender) {
             $entity->setGender(CoachGender::from($input->gender));
-        }
-        if (null !== $input->parentCoachId) {
-            $entity->setParentCoachId($input->parentCoachId);
         }
     }
 

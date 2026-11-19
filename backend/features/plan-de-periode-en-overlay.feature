@@ -26,15 +26,22 @@ Fonctionnalité: Un plan de période se génère en overlay, sur sa propre grill
     Quand je lance le remplissage de la période
     Alors le remplissage aboutit et l'équipe au jour imposé garde sa séance ce jour-là
 
-  Scénario: Une fermeture obtient son planning ; la prolonger ne demande pas de le refaire
+  Scénario: Une fermeture obtient son planning sur sa propre grille, occupations comprises ; la prolonger ne demande pas de le refaire
     Prolonger une fermeture sans faire entrer ni sortir de contrainte datée ne change rien à ce que
     le système placerait : le planning ne se signale pas à régénérer.
+    La grille de la période est sa copie de celle de la saison, occupations comprises : la modifier ne touche pas la saison.
     Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur
     Et une période de fermeture à venir
+    Et l'occupation « École » posée dans la grille de saison
     Quand j'ouvre son plan de période puis je génère une version en overlay
     Alors la génération overlay aboutit avec le statut « COMPLETED »
     Quand je prolonge la fermeture de deux semaines
     Alors la période porte les nouvelles dates, son plan aussi, la version existe toujours et le planning n'est pas signalé à régénérer
+    Et le plan de période porte sa copie de l'occupation « École »
+    Quand je déplace celle de la période au vendredi
+    Alors celle de la saison n'a pas bougé
+    Quand je reprends la grille du planning de saison pour ce gymnase
+    Alors la période porte de nouveau l'occupation de la saison
 
   Scénario: Je re-date l'incident découpé : l'aperçu m'annonce ce qui change, je confirme
     Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur

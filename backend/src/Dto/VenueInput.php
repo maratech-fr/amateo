@@ -15,9 +15,6 @@ class VenueInput
     public ?string $name = null;
 
     #[Groups(['write'])]
-    public ?bool $isExternal = null;
-
-    #[Groups(['write'])]
     #[Assert\Length(max: 20, maxMessage: 'La couleur ne peut pas dépasser {{ limit }} caractères.')]
     public ?string $color = null;
 
@@ -49,9 +46,6 @@ class VenueInput
 
     #[Groups(['write'])]
     public ?bool $isActive = null;
-
-    #[Groups(['write'])]
-    public ?string $parentVenueId = null;
 
     #[Groups(['write'])]
     public ?bool $canSplit = null;

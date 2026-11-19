@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 
-import type { VenueTrainingSlot } from "../api";
+import type { VenueOccupancy, VenueTrainingSlot } from "../api";
 import { DURATIONS, durationOptions, toMinutes } from "./days";
-import { conflictMessage, findSlotConflict, pastMidnightMessage, slotPlacementError } from "./slotOverlap";
+import { conflictMessage, findSlotConflict, occupanciesOverlappingSlots, occupancyPlacementError, pastMidnightMessage, slotPlacementError } from "./slotOverlap";
 
 const slot = (over: Partial<VenueTrainingSlot>): VenueTrainingSlot =>
   ({ id: "s", venueId: "v", dayOfWeek: 1, startTime: "17:00", durationMinutes: 90, capacity: 1, ...over }) as VenueTrainingSlot;
@@ -92,22 +92,22 @@ describe("slotPlacementError — l'ordre des contrôles", () => {
     // (correctement — NaN n'est pas tardif), puis `findSlotConflict` comparait des NaN et
     // ne trouvait donc AUCUN chevauchement, et l'écriture partait avec `startTime: ""`
     // pour un 422 générique qui ne désigne aucun champ.
-    expect(slotPlacementError(others, 1, "", 90)).toMatch(/heure de début/i);
+    expect(slotPlacementError(others, 1, "", 90, [])).toMatch(/heure de début/i);
   });
 
   it("ne masque pas un chevauchement derrière une heure valide", () => {
-    expect(slotPlacementError(others, 1, "17:30", 30)).toMatch(/[Cc]hevauchement/);
+    expect(slotPlacementError(others, 1, "17:30", 30, [])).toMatch(/[Cc]hevauchement/);
   });
 
   it("laisse passer une pose valide", () => {
-    expect(slotPlacementError(others, 1, "19:00", 90)).toBeNull();
+    expect(slotPlacementError(others, 1, "19:00", 90, [])).toBeNull();
   });
 
   it("nomme la durée quand la pose franchirait minuit — sur TOUS les sites", () => {
     // Le message fut un temps surchargeable, la pose au clic en période imposant 90 min
     // sans offrir de sélecteur. P4-43 lui a donné sa barre « À poser » : les quatre sites
     // règlent la durée, le message par défaut est vrai partout, la surcharge est retirée.
-    expect(slotPlacementError([], 1, "22:45", 90)).toMatch(/ne peut pas durer 1h30 .*après minuit/);
+    expect(slotPlacementError([], 1, "22:45", 90, [])).toMatch(/ne peut pas durer 1h30 .*après minuit/);
   });
 });
 
@@ -122,5 +122,100 @@ describe("durationOptions", () => {
   it("ignore une durée absurde plutôt que de l'offrir", () => {
     expect(durationOptions(90, 0)).toEqual(DURATIONS);
     expect(durationOptions(90, Number.NaN)).toEqual(DURATIONS);
+  });
+});
+
+/**
+ * PR6 « occupations de gymnase » (plan v5 §5, §6 V2) — un créneau et une occupation ne se
+ * superposent jamais à la saisie, avec les règles de chevauchement de deux créneaux (bornes
+ * jointives acceptées, jour différent libre, minuit) ; chaque refus nomme ce qu'il heurte. Le
+ * serveur reste juge (jumeau : `backend/tests/Integration/Api/VenueOccupancyApiTest.php`, mêmes
+ * cas côté API, messages serveur distincts) ; ici le pré-contrôle de l'écran, foyer unique des
+ * quatre sites de pose.
+ */
+const occupancy = (over: Partial<VenueOccupancy>): VenueOccupancy =>
+  ({ id: "o", version: 0, venueId: "v", dayOfWeek: 2, startTime: "14:00", durationMinutes: 135, label: "École", schedulePlanId: null, ...over }) as VenueOccupancy;
+
+describe("slotPlacementError — un créneau ne se pose pas sur une occupation", () => {
+  const ecole = [occupancy({ id: "o1", dayOfWeek: 2, startTime: "14:00", durationMinutes: 135 })]; // mar 14:00–16:15
+
+  it("refuse un créneau qui entre dans l'occupation, en la nommant avec sa plage", () => {
+    const message = slotPlacementError([], 2, "15:00", 90, ecole);
+
+    expect(message).toContain("« École »");
+    expect(message).toContain("14:00–16:15");
+    expect(message).toMatch(/Un créneau et une occupation ne peuvent pas se superposer/);
+  });
+
+  it("laisse passer un créneau jointif (16:15) et un créneau d'un autre jour", () => {
+    expect(slotPlacementError([], 2, "16:15", 90, ecole)).toBeNull();
+    expect(slotPlacementError([], 2, "12:45", 75, ecole)).toBeNull();
+    expect(slotPlacementError([], 3, "15:00", 90, ecole)).toBeNull();
+  });
+
+  it("garde le message d'aujourd'hui pour un créneau sur un créneau, même quand le gymnase porte une occupation", () => {
+    const existing = slot({ id: "a", dayOfWeek: 2, startTime: "18:00", durationMinutes: 90 });
+
+    expect(slotPlacementError([existing], 2, "18:30", 60, ecole)).toBe(conflictMessage(existing));
+  });
+
+  it("dit minuit avant le chevauchement, comme pour deux créneaux", () => {
+    expect(slotPlacementError([], 2, "22:45", 150, [occupancy({ dayOfWeek: 2, startTime: "23:00", durationMinutes: 60 })])).toMatch(/après minuit/);
+  });
+});
+
+describe("occupancyPlacementError — une occupation ne se pose ni sur un créneau ni sur une autre occupation", () => {
+  const slots = [slot({ id: "a", dayOfWeek: 2, startTime: "18:00", durationMinutes: 90 })]; // mar 18:00–19:30
+  const others = [occupancy({ id: "o1", dayOfWeek: 2, startTime: "14:00", durationMinutes: 135 })]; // mar 14:00–16:15
+
+  it("refuse une occupation sur un créneau, en nommant la plage du créneau", () => {
+    const message = occupancyPlacementError(slots, [], 2, "18:30", 60);
+
+    expect(message).toContain("18:00–19:30");
+    expect(message).toMatch(/Un créneau et une occupation ne peuvent pas se superposer/);
+  });
+
+  it("refuse une occupation sur une autre occupation, en la nommant", () => {
+    const message = occupancyPlacementError([], others, 2, "15:00", 60);
+
+    expect(message).toContain("« École »");
+    expect(message).toContain("14:00–16:15");
+    expect(message).toMatch(/Deux occupations ne peuvent pas se superposer/);
+  });
+
+  it("laisse passer une occupation jointive d'un créneau ou d'une occupation, et un autre jour", () => {
+    expect(occupancyPlacementError(slots, others, 2, "16:15", 105)).toBeNull(); // 16:15–18:00, jointive des deux
+    expect(occupancyPlacementError(slots, others, 2, "19:30", 60)).toBeNull();
+    expect(occupancyPlacementError(slots, others, 4, "18:00", 90)).toBeNull();
+  });
+
+  it("une occupation qui franchirait minuit est refusée en nommant l'heure et la durée", () => {
+    expect(occupancyPlacementError([], [], 2, "22:45", 150)).toBe("Une occupation qui commence à 22:45 ne peut pas durer 2h30 : elle finirait après minuit.");
+  });
+
+  it("modifier une occupation sans la déplacer passe (l'appelant l'exclut de `otherOccupancies`)", () => {
+    expect(occupancyPlacementError(slots, [], 2, "14:00", 135)).toBeNull();
+  });
+});
+
+describe("occupanciesOverlappingSlots — ce que signale le bandeau (Q2 : les deux restent)", () => {
+  const slots = [slot({ id: "a", dayOfWeek: 2, startTime: "18:00", durationMinutes: 90 }), slot({ id: "b", dayOfWeek: 4, startTime: "17:00", durationMinutes: 60 })];
+
+  it("aucune quand rien ne partage de temps, bornes jointives et autre jour compris", () => {
+    const occs = [occupancy({ id: "o1", dayOfWeek: 2, startTime: "16:15", durationMinutes: 105 }), occupancy({ id: "o2", dayOfWeek: 3, startTime: "18:00", durationMinutes: 60 })];
+
+    expect(occupanciesOverlappingSlots(slots, occs)).toEqual([]);
+  });
+
+  it("une : l'occupation qui partage du temps avec un créneau du même jour", () => {
+    const occs = [occupancy({ id: "o1", dayOfWeek: 2, startTime: "18:00", durationMinutes: 60 }), occupancy({ id: "o2", dayOfWeek: 2, startTime: "14:00", durationMinutes: 60 })];
+
+    expect(occupanciesOverlappingSlots(slots, occs).map((o) => o.id)).toEqual(["o1"]);
+  });
+
+  it("deux, triées par jour puis par heure", () => {
+    const occs = [occupancy({ id: "jeudi", label: "Mairie", dayOfWeek: 4, startTime: "17:00", durationMinutes: 60 }), occupancy({ id: "mardi", dayOfWeek: 2, startTime: "18:00", durationMinutes: 60 })];
+
+    expect(occupanciesOverlappingSlots(slots, occs).map((o) => o.id)).toEqual(["mardi", "jeudi"]);
   });
 });

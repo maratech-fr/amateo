@@ -16,6 +16,7 @@ use App\Entity\ScheduleStructureSnapshot;
 use App\Entity\SharedTrainingBlock;
 use App\Entity\SharedTrainingBlockTeam;
 use App\Entity\TeamPeriodOverride;
+use App\Entity\VenueOccupancy;
 use App\Entity\VenuePeriodOverride;
 use App\Entity\VenueTrainingSlot;
 use App\Enum\ScheduleStatus;
@@ -106,7 +107,7 @@ final class OverlayManager
         // P2-51 — SharedTrainingBlockTeam (membres) avant SharedTrainingBlock (parent) : les deux
         // portent schedulePlanId (dénormalisé côté membre), la déclaration de période part avec le plan.
         // ImplicitRuleSetting : la copie des 4 règles bien-être matérialisée à la naissance du plan.
-        foreach ([TeamPeriodOverride::class, ConstraintPeriodOverride::class, VenueTrainingSlot::class, Reservation::class, VenuePeriodOverride::class, SharedTrainingBlockTeam::class, SharedTrainingBlock::class, ImplicitRuleSetting::class] as $class) {
+        foreach ([TeamPeriodOverride::class, ConstraintPeriodOverride::class, VenueTrainingSlot::class, Reservation::class, VenuePeriodOverride::class, SharedTrainingBlockTeam::class, SharedTrainingBlock::class, ImplicitRuleSetting::class, VenueOccupancy::class] as $class) {
             foreach ($this->entityManager->getRepository($class)->findBy(['schedulePlanId' => $schedulePlanId]) as $row) {
                 $this->entityManager->remove($row);
             }

@@ -63,8 +63,8 @@ class MatchVenueUnavailabilitySchema(SerializableModel):
 
 
 class MatchVenueSchema(SerializableModel):
+    # Contrat 1.12 : `name` (never read by the solver) left the contract.
     id: str
-    name: str = ""
     match_windows: list[MatchAccessWindowSchema] = Field(
         default_factory=list, alias="matchWindows", max_length=MAX_WINDOWS_PER_VENUE
     )
@@ -140,7 +140,6 @@ class TeamCoachRefSchema(SerializableModel):
 
 class MatchTeamSchema(SerializableModel):
     id: str
-    name: str = ""
     # [] = the team does not map to a league envelope → NO league HARD (the
     # backend already emitted an INFO diagnostic saying so).
     league_windows: list[LeagueKickoffWindowSchema] = Field(
@@ -155,12 +154,12 @@ class MatchTeamSchema(SerializableModel):
     # MatchConflictDetector), so a person appears here XOR in `coaches`. OMITTED ⇒
     # [] (an old payload keeps the coach-only behaviour).
     players: list[str] = Field(default_factory=list, max_length=MAX_PLAYERS_PER_TEAM)
-    # Per-category durations (P4-203) resolved by the backend
-    # (MatchDurationResolver). OMITTED ⇒ the documented defaults, so an old
+    # Per-category match duration (P4-203) resolved by the backend
+    # (MatchDurationResolver). OMITTED ⇒ the documented default (105), so an old
     # payload keeps the previous behaviour: the venue holds the match only
-    # ([kickoff, kickoff + matchMinutes]), the person window keeps the warm-up.
+    # ([kickoff, kickoff + matchMinutes]). Contrat 1.12 : `name` and `warmupMinutes`
+    # (never read by the solver) left the contract; `extra="forbid"` refuses them.
     match_minutes: int = Field(default=105, alias="matchMinutes", ge=1)
-    warmup_minutes: int = Field(default=30, alias="warmupMinutes", ge=0)
     # Venues this team is FORBIDDEN to play at (P4-272 ④ — scope TEAM HARD rules,
     # resolved by the backend). The solver removes them from the team's domain (see
     # _candidate_kickoffs); a domain emptied by them alone is `team_venue_forbidden`.
@@ -241,7 +240,7 @@ class MatchPlacementInputSchema(SerializableModel):
     # courant pour qu'aucun lecteur ne le prenne pour une version concurrente.
     # L'autorité reste `engine/CONTRACT_VERSION`, comparée au MAJOR à l'entrée ;
     # gardé par test_schema_version_defaults_match_contract_version.
-    version: str = "1.9"
+    version: str = "1.12"
     club_id: str = Field(alias="clubId")
     season_id: str = Field(alias="seasonId")
     solver_seed: int = Field(default=42, alias="solverSeed")

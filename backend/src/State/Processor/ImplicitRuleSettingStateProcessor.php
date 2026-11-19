@@ -113,7 +113,9 @@ final class ImplicitRuleSettingStateProcessor implements ProcessorInterface
             return; // matérialisation impossible (plan hors club/saison) — rien à réinitialiser
         }
         $seasonRow = $this->repository->findOneByScopeKey($clubId, $seasonId, null, $ruleKey);
-        $planRow->setIntensity($seasonRow instanceof ImplicitRuleSetting ? $seasonRow->getIntensity() : ImplicitRuleIntensity::HARD);
+        // À défaut de réglage de saison : le défaut, sauf pour le salarié, jamais obligatoire.
+        $fallback = ImplicitRuleKey::SALARIE_DISTRIBUTION === $ruleKey ? ImplicitRuleIntensity::PREFERRED : ImplicitRuleIntensity::HARD;
+        $planRow->setIntensity($seasonRow instanceof ImplicitRuleSetting ? $seasonRow->getIntensity() : $fallback);
         $planRow->setParams($seasonRow instanceof ImplicitRuleSetting ? $seasonRow->getParams() : null);
         $this->entityManager->flush();
     }
@@ -123,12 +125,11 @@ final class ImplicitRuleSettingStateProcessor implements ProcessorInterface
         $intensity = ImplicitRuleIntensity::tryFrom($input->intensity ?? '')
             ?? throw new UnprocessableEntityHttpException(\sprintf('« %s » n\'est pas une intensité connue. Valeurs acceptées : %s.', $input->intensity ?? '(absente)', implode(', ', ImplicitRuleIntensity::values())));
 
-        // P4-340 — OFF n'a de sens que pour une règle OPT-IN. Désactiver une règle historique
-        // serait un piège : le résolveur l'omettrait du payload et le moteur appliquerait alors son
-        // DÉFAUT HARD — le gestionnaire croirait l'avoir éteinte alors qu'elle s'imposerait quand
-        // même. On ferme la porte ici (422 français actionnable), seule maison backend du contrat.
-        if (ImplicitRuleIntensity::OFF === $intensity && !$ruleKey->isOptIn()) {
-            throw new UnprocessableEntityHttpException('Cette règle ne peut pas être désactivée : seule la règle « jours consécutifs d\'entraînement » est optionnelle.');
+        // La présence d'un salarié n'est jamais obligatoire : deux crans seulement, Souhaitée ou
+        // Ignorée. « Ignorée » (OFF) vaut pour toutes les règles : une règle historique part alors
+        // au moteur en OFF explicite (`ImplicitRuleResolver`), son absence y vaudrait HARD.
+        if (ImplicitRuleKey::SALARIE_DISTRIBUTION === $ruleKey && ImplicitRuleIntensity::HARD === $intensity) {
+            throw new UnprocessableEntityHttpException('La présence d\'un salarié ne peut pas être obligatoire : choisissez Souhaitée ou Ignorée.');
         }
 
         $params = $this->validateAndBuildParams($ruleKey, $input);

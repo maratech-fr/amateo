@@ -7,6 +7,7 @@ namespace App\Service;
 use App\Entity\CalendarEntry;
 use App\Entity\CoachPlayerMembership;
 use App\Entity\Constraint;
+use App\Entity\Reservation;
 use App\Entity\Schedule;
 use App\Entity\ScheduleSlotTemplate;
 use App\Entity\SharedTrainingBlock;
@@ -23,6 +24,7 @@ use App\Exception\EvictTargetLockedException;
 use App\Exception\EvictTargetMismatchException;
 use App\Exception\ScheduleGenerationInProgressException;
 use App\Exception\SlotUnavailableException;
+use App\Exception\SourceReservedException;
 use App\Exception\SwapCrossScheduleException;
 use App\Exception\SwapWithSelfException;
 use App\Exception\TeamAlreadyAtCaseException;
@@ -58,7 +60,7 @@ use Symfony\Contracts\HttpClient\Exception\TransportExceptionInterface;
 final class MoveSlotService
 {
     /** Contrat backend⇄engine du endpoint de validation (F2a). Un seul contrat, 3 endpoints. */
-    private const string CONTRACT_VERSION = '1.9';
+    private const string CONTRACT_VERSION = '1.12';
 
     /**
      * Budget SOLVEUR court PAR solve : la baseline est entièrement figée, le moteur ne place
@@ -95,6 +97,7 @@ final class MoveSlotService
 
     /**
      * @throws ScheduleGenerationInProgressException une génération tourne pour ce club (→ 409)
+     * @throws SourceReservedException               la séance est tenue par une réservation du plan (→ 422)
      * @throws SlotUnavailableException              aucune fenêtre de gymnase à la destination — cible
      *                                               inexistante ou jour fermé (→ 422 `slot_unavailable`)
      * @throws TeamAlreadyAtCaseException            l'équipe siège déjà à la cible, sans éviction (→ 422)
@@ -130,6 +133,9 @@ final class MoveSlotService
         if ($this->clubGenerationLock->isGenerating($slot->getClubId())) {
             throw new ScheduleGenerationInProgressException;
         }
+
+        // (1bis) Une séance que tient une réservation du plan ne se déplace pas d'ici (essai compris).
+        $this->assertSourceNotReserved($schedule, $slot);
 
         // (2) Baseline figée SANS la source → et la GRILLE de gymnase (`venues`) du MÊME payload,
         //     dont on tire la durée de la fenêtre. UN SEUL payload construit : tous les refus
@@ -182,8 +188,8 @@ final class MoveSlotService
             $startTime,
             $excludedSlotIds,
         );
-        // Deux séances le même jour sont impossibles : la case a parlé d'abord, le jour ensuite.
-        $this->teamCaseOccupancyGuard->assertTeamFreeOnDay($schedule->getId(), $slot->getTeamId(), $dayOfWeek, $excludedSlotIds);
+        // Le plafond de séances par jour (et, au-delà de 1, le chevauchement) : la case a parlé d'abord, le jour ensuite.
+        $this->teamCaseOccupancyGuard->assertTeamCanTrainThen($schedule->getId(), $slot->getTeamId(), $dayOfWeek, $startTime, $durationMinutes, $excludedSlotIds);
 
         // (3) Le candidat : l'équipe posée dans l'emplacement de destination, à la durée de la
         //     FENÊTRE. Le solveur ne lit pas `candidate.durationMinutes` (il dérive tout de la
@@ -334,8 +340,8 @@ final class MoveSlotService
             $dayOfWeek,
             $startTime,
         );
-        // « Placer une séance surnuméraire reste permis », mais jamais un jour où l'équipe s'entraîne déjà.
-        $this->teamCaseOccupancyGuard->assertTeamFreeOnDay($schedule->getId(), $teamId, $dayOfWeek);
+        // « Placer une séance surnuméraire reste permis », mais jamais au-delà du plafond du jour ni en chevauchement.
+        $this->teamCaseOccupancyGuard->assertTeamCanTrainThen($schedule->getId(), $teamId, $dayOfWeek, $startTime, $durationMinutes);
 
         // Contrat 2.18 : `candidates` est une LISTE (ici à UN élément — une création à la dérive) ;
         // aucune `references` (pas de source d'origine → « avant » = baseline nue).
@@ -416,6 +422,7 @@ final class MoveSlotService
      *
      * @throws ScheduleGenerationInProgressException une génération tourne pour ce club (→ 409)
      * @throws SlotUnavailableException              aucune séance de bloc à la source, ou fenêtre cible absente (→ 422)
+     * @throws SourceReservedException               un membre est tenu par une réservation du plan (→ 422)
      * @throws TeamAlreadyAtCaseException            un membre déplacé siège déjà à la case cible (→ 422)
      * @throws TeamAlreadyTrainsThatDayException     un membre déplacé s'entraîne déjà ce jour-là (→ 422)
      * @throws EvictTargetMismatchException          l'occupant à évincer ne siège pas à la cible, ou est une source du groupe (→ 422)
@@ -451,6 +458,9 @@ final class MoveSlotService
             // Aucun membre du bloc à cette case : il n'y a pas de séance de bloc à déplacer ici.
             throw new SlotUnavailableException;
         }
+
+        // (2bis) Un membre que tient une réservation du plan retient tout le groupe : rien ne bouge.
+        $this->assertSourceNotReserved($schedule, ...$sources);
 
         // (3) Baseline figée SANS les N sources (sinon chaque membre entrerait en conflit avec
         //     lui-même) + la grille de gymnase, d'où l'on tire la durée de la fenêtre CIBLE.
@@ -498,9 +508,9 @@ final class MoveSlotService
                 ' — déplacez-la ou retirez-la d\'abord.',
             );
         }
-        // Un groupe vaut une équipe : aucun membre ne doit déjà s'entraîner ce jour-là hors du geste.
+        // Un groupe vaut une équipe : chaque membre se juge à SON plafond du jour, hors du geste.
         foreach ($sources as $source) {
-            $this->teamCaseOccupancyGuard->assertTeamFreeOnDay($schedule->getId(), $source->getTeamId(), $dayOfWeek, $guardExcluded);
+            $this->teamCaseOccupancyGuard->assertTeamCanTrainThen($schedule->getId(), $source->getTeamId(), $dayOfWeek, $startTime, $durationMinutes, $guardExcluded);
         }
 
         // (4) UN verdict, N candidats : chaque membre posé à la case cible, chaque référence = sa
@@ -616,6 +626,7 @@ final class MoveSlotService
      * @throws ScheduleGenerationInProgressException une génération tourne pour ce club (→ 409)
      * @throws SwapCrossScheduleException            les deux créneaux ne sont pas du même planning (→ 422)
      * @throws SwapWithSelfException                 l'occupant est la source / une équipe déjà engagée côté source (→ 422)
+     * @throws SourceReservedException               la source est tenue par une réservation du plan (→ 422)
      * @throws EvictTargetLockedException            l'occupant ÉQUIPE est verrouillé, D4 (→ 422)
      * @throws SlotUnavailableException              aucune fenêtre de gymnase à l'une des deux cases (→ 422)
      * @throws TeamAlreadyAtCaseException            un côté déplacé siège déjà à la case d'arrivée (→ 422)
@@ -653,6 +664,8 @@ final class MoveSlotService
         // (2) Le côté SOURCE : une séance d'équipe (le seul créneau) OU une séance de groupe (les N
         //     membres du bloc qui siègent À LA CASE SOURCE partent ensemble, patron moveGroup()).
         $sources = $this->swapSourceSessions($schedule, $source);
+        // Une source que tient une réservation du plan ne s'échange pas d'ici.
+        $this->assertSourceNotReserved($schedule, ...$sources);
         $sourceIds = array_map(static fn (ScheduleSlotTemplate $s): string => $s->getId(), $sources);
         $sourceTeamIds = array_fill_keys(array_map(static fn (ScheduleSlotTemplate $s): string => $s->getTeamId(), $sources), true);
 
@@ -711,12 +724,12 @@ final class MoveSlotService
                 $guardExcluded,
             );
         }
-        // Chacun arrive sur le jour de l'autre : ni l'un ni l'autre ne s'y entraîne déjà hors du geste.
+        // Chacun arrive sur le jour de l'autre, jugé à la durée de la FENÊTRE où il atterrit.
         foreach ($sources as $sourceSlot) {
-            $this->teamCaseOccupancyGuard->assertTeamFreeOnDay($schedule->getId(), $sourceSlot->getTeamId(), $target->getDayOfWeek(), $guardExcluded);
+            $this->teamCaseOccupancyGuard->assertTeamCanTrainThen($schedule->getId(), $sourceSlot->getTeamId(), $target->getDayOfWeek(), $target->getStartTime(), $targetWindowDuration, $guardExcluded);
         }
         foreach ($targets as $targetSlot) {
-            $this->teamCaseOccupancyGuard->assertTeamFreeOnDay($schedule->getId(), $targetSlot->getTeamId(), $source->getDayOfWeek(), $guardExcluded);
+            $this->teamCaseOccupancyGuard->assertTeamCanTrainThen($schedule->getId(), $targetSlot->getTeamId(), $source->getDayOfWeek(), $source->getStartTime(), $sourceWindowDuration, $guardExcluded);
         }
 
         // Les DEUX cases, CAPTURÉES avant toute mutation : la source EST l'un des `$sources`, donc
@@ -1018,6 +1031,52 @@ final class MoveSlotService
 
         // Le créneau source EST membre de ce bloc à cette case : la liste n'est jamais vide.
         return [] === $sources ? [$source] : $sources;
+    }
+
+    /**
+     * Refuse le geste si une source est verrouillée (HARD) ET tenue par une réservation d'équipe du
+     * PLAN de sa version, à sa case exacte (même équipe, gymnase, jour, heure) — exactement ce que le
+     * retrait de cette réservation purgerait. Saison : réservations sans plan ; période : celles du
+     * plan de la période. L'origine du verrou n'est jamais lue (elle peut être fausse en période).
+     * Un créneau libre réservé (sans équipe) ne tient aucune séance. Rien n'est écrit.
+     *
+     * @throws SourceReservedException une source est tenue par une réservation du plan (→ 422 `source_reserved`)
+     */
+    private function assertSourceNotReserved(Schedule $schedule, ScheduleSlotTemplate ...$sources): void
+    {
+        $locked = array_filter($sources, static fn (ScheduleSlotTemplate $s): bool => LockLevel::HARD === $s->getLockLevel());
+        if ([] === $locked) {
+            return;
+        }
+
+        $period = !$this->schedulePlanProvisioner->isSeasonSchedule($schedule);
+        $reservations = $this->entityManager->getRepository(Reservation::class)->findBy([
+            'clubId' => $schedule->getClubId(),
+            'seasonId' => $schedule->getSeasonId(),
+            'schedulePlanId' => $period ? $schedule->getSchedulePlanId() : null,
+        ]);
+
+        $held = [];
+        foreach ($reservations as $reservation) {
+            $teamId = $reservation->getTeamId();
+            if (null === $teamId) {
+                continue;
+            }
+            $held[$teamId . '|' . $reservation->getVenueId() . '|' . $reservation->getDayOfWeek() . '|' . $reservation->getStartTime()->format('H:i')] = true;
+        }
+
+        foreach ($locked as $source) {
+            $case = $source->getTeamId() . '|' . $source->getVenueId() . '|' . $source->getDayOfWeek() . '|' . $source->getStartTime()->format('H:i');
+            if (!isset($held[$case])) {
+                continue;
+            }
+            if (null !== $source->getSharedTrainingBlockId()) {
+                throw SourceReservedException::forGroup($period);
+            }
+            $team = $this->entityManager->getRepository(Team::class)->find($source->getTeamId());
+
+            throw SourceReservedException::forTeam($team instanceof Team ? $team->getName() : 'Cette équipe', $period);
+        }
     }
 
     /**

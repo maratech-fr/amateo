@@ -10,7 +10,6 @@ from app.schemas.input_schema import ScheduleInputSchema
 def make_team(team_id: str, sessions_per_week: int) -> dict[str, object]:
     return {
         "id": team_id,
-        "sportCategoryId": "sc-1",
         "priorityTierId": 3,
         "name": team_id.replace("-", " ").title(),
         "sessionsPerWeek": sessions_per_week,

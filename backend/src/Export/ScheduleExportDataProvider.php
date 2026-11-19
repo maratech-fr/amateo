@@ -14,6 +14,7 @@ use App\Entity\SportCategory;
 use App\Entity\Team;
 use App\Entity\TeamCoach;
 use App\Entity\Venue;
+use App\Entity\VenueOccupancy;
 use App\Entity\VenueTrainingSlot;
 use App\Enum\TeamCoachRole;
 use App\Service\PlanVenueClosures;
@@ -35,7 +36,7 @@ final class ScheduleExportDataProvider
         private readonly PlanVenueClosures $planVenueClosures,
     ) {}
 
-    public function load(Schedule $schedule, ?string $venueId = null): ScheduleExportData
+    public function load(Schedule $schedule, ?string $venueId = null, bool $showOccupancies = false): ScheduleExportData
     {
         $criteria = ['scheduleId' => $schedule->getId()];
         if (null !== $venueId) {
@@ -197,7 +198,17 @@ final class ScheduleExportDataProvider
         // identity (that key) is what a placement shares with its window, so the export can title a
         // filled cell OR tag an empty one by looking the label up. Only labelled windows are kept.
         $groupLabels = [];
+        // Les séances placées ET toutes les fenêtres de la couche : ce qu'une occupation ne doit pas
+        // recouvrir pour être rendue (D12 — l'export ne nie jamais une séance, et le PDF range une
+        // case par colonne et par quart d'heure).
+        $occupancyBlockers = $occupants;
         foreach ($this->entityManager->getRepository(VenueTrainingSlot::class)->findBy($trainingCriteria) as $window) {
+            $occupancyBlockers[] = [
+                'venueId' => $window->getVenueId(),
+                'dayOfWeek' => $window->getDayOfWeek(),
+                'startTime' => $window->getStartTime()->format('H:i'),
+                'durationMinutes' => $window->getDurationMinutes(),
+            ];
             $key = $window->getVenueId() . '|' . $window->getDayOfWeek() . '|' . $window->getStartTime()->format('H:i');
             $label = $window->getGroupLabel();
             if (null !== $label && '' !== $label) {
@@ -236,7 +247,60 @@ final class ScheduleExportDataProvider
             $groupLabels[$key] = $label;
         }
 
-        return new ScheduleExportData($slots, $teamNames, $teamCategories, $venues, $coachNames, $emptySlots, $teamRanks, $groupLabels, $freeSlots, $coachShortNames, $teamMainCoachIds, $teamCoachIds);
+        $occupancies = $showOccupancies
+            ? $this->occupanciesOf($clubId, $seasonId, $layer, $venueId, $venues, $usedVenues, $hiddenVenueIds, $occupancyBlockers)
+            : [];
+
+        return new ScheduleExportData($slots, $teamNames, $teamCategories, $venues, $coachNames, $emptySlots, $teamRanks, $groupLabels, $freeSlots, $coachShortNames, $teamMainCoachIds, $teamCoachIds, $occupancies);
+    }
+
+    /**
+     * Les occupations de la couche exportée, rendues seulement si le gestionnaire l'a demandé. Une
+     * occupation suit le sort d'une fenêtre vide (D22) : à l'export d'ensemble, son gymnase doit être
+     * « utilisé » (séance placée ou créneau libre réservé — une occupation ne le rend jamais utilisé)
+     * et ni désactivé ni entièrement fermé pour la période ; l'export d'un seul gymnase les montre
+     * toutes. Jamais une dormante (gymnase absent), jamais une qui partage du temps avec une séance
+     * ou une fenêtre de la couche (D12).
+     *
+     * @param array<string, mixed>                                                                  $venues
+     * @param array<string, true>                                                                   $usedVenues
+     * @param array<string, mixed>                                                                  $hiddenVenueIds
+     * @param list<array{venueId: string, dayOfWeek: int, startTime: string, durationMinutes: int}> $blockers
+     *
+     * @return list<ExportReservedWindow>
+     */
+    private function occupanciesOf(string $clubId, string $seasonId, ?string $layer, ?string $venueId, array $venues, array $usedVenues, array $hiddenVenueIds, array $blockers): array
+    {
+        $criteria = ['clubId' => $clubId, 'seasonId' => $seasonId, 'schedulePlanId' => $layer];
+        if (null !== $venueId) {
+            $criteria['venueId'] = $venueId;
+        }
+
+        $occupancies = [];
+        foreach ($this->entityManager->getRepository(VenueOccupancy::class)->findBy($criteria, ['dayOfWeek' => 'ASC', 'startTime' => 'ASC']) as $occupancy) {
+            $occupancyVenueId = $occupancy->getVenueId();
+            if (!isset($venues[$occupancyVenueId])) {
+                continue;
+            }
+            if (null === $venueId && !isset($usedVenues[$occupancyVenueId])) {
+                continue;
+            }
+            if (isset($hiddenVenueIds[$occupancyVenueId])) {
+                continue;
+            }
+            $overlapsSomething = VenueWindowOccupancy::windowIsFilled([
+                'venueId' => $occupancyVenueId,
+                'dayOfWeek' => $occupancy->getDayOfWeek(),
+                'startTime' => $occupancy->getStartTime()->format('H:i'),
+                'durationMinutes' => $occupancy->getDurationMinutes(),
+            ], $blockers);
+            if ($overlapsSomething) {
+                continue;
+            }
+            $occupancies[] = new ExportReservedWindow($occupancyVenueId, $occupancy->getDayOfWeek(), $occupancy->getStartTime(), $occupancy->getDurationMinutes(), $occupancy->getLabel());
+        }
+
+        return $occupancies;
     }
 
     /**

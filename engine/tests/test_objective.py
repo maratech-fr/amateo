@@ -46,6 +46,10 @@ EXPECTED_WEIGHTS = {
     "consecutive_days_violation": -6,
     # V10 — malus par séance sous le quota hebdomadaire.
     "missing_session": -1000,
+    # V15 (PR 1a) — plafond de séances par jour : −10 par séance au-delà de la première du jour,
+    # −50 par séance commencée moins de 2 h après la fin d'une autre séance du jour.
+    "same_day": -10,
+    "same_day_gap": -50,
 }
 
 
@@ -57,7 +61,7 @@ class LevelTwoObjectiveTest(unittest.TestCase):
 
     def test_fixed_weights_and_formula_version_are_locked(self):
         self.assertEqual(EXPECTED_WEIGHTS, dict(LEVEL_2_OBJECTIVE_WEIGHTS))
-        self.assertEqual("T24_LEVEL_2_FIXED_WEIGHTS_V14", SCORE_FORMULA_VERSION)
+        self.assertEqual("T24_LEVEL_2_FIXED_WEIGHTS_V15", SCORE_FORMULA_VERSION)
 
         with self.assertRaises(TypeError):
             LEVEL_2_OBJECTIVE_WEIGHTS["S"] = 1

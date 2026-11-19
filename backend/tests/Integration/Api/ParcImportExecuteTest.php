@@ -96,6 +96,23 @@ final class ParcImportExecuteTest extends WebTestCase
         yield 'une chaîne non numérique (« abc ») n\'est pas un id de rang' => ['abc'];
     }
 
+    // ───────────────────────── Plafond de séances par jour relevé par l'import ─────────────────────────
+
+    /**
+     * Cases du lundi d'une équipe → plafond relevé et lignes `dailyCaps` : le nombre de cases deux à deux disjointes du jour le plus
+     * chargé (deux cases qui se touchent comptent 2), borné à 4 (`capped` au-delà) ; deux cases qui se chevauchent donnent `overlap`.
+     *
+     * @return iterable<string, array{list<array{0: string, 1: int}>, int, list<string>}>
+     */
+    public static function mondayCases(): iterable
+    {
+        yield 'deux cases disjointes' => [[['09:00', 90], ['18:00', 90]], 2, ['raised']];
+        yield 'deux cases collées' => [[['18:00', 90], ['19:30', 90]], 2, ['raised']];
+        yield 'deux cases qui se chevauchent' => [[['18:00', 90], ['18:30', 90]], 1, ['overlap']];
+        yield 'disjointe + chevauchement' => [[['09:00', 90], ['18:00', 90], ['18:30', 90]], 2, ['raised', 'overlap']];
+        yield 'cinq cases' => [[['08:00', 90], ['10:00', 90], ['12:00', 90], ['14:00', 90], ['18:00', 90]], 4, ['capped']];
+    }
+
     // ───────────────────────────── Gate (domaine sensible) ─────────────────────────────
 
     public function testNonManagerIsRefusedWithoutWriting(): void
@@ -1528,6 +1545,188 @@ final class ParcImportExecuteTest extends WebTestCase
         self::assertSame(5, $sm1->getSessionsPerWeek(), 'la valeur corrigée à la main (5) n\'est jamais écrasée par le recompte');
     }
 
+    /** L'import relève le plafond d'après les cases de l'équipe et le dit, ligne par ligne, dans `dailyCaps`. */
+    #[DataProvider('mondayCases')]
+    public function testMondayCasesRaiseTheDailyCapAndSayIt(array $cases, int $expectedCap, array $expectedOutcomes): void
+    {
+        [$status, $body] = $this->importAllCreatable($this->mondayParc($cases, ['SM1']));
+
+        self::assertSame(200, $status, (string) json_encode($body, \JSON_UNESCAPED_UNICODE));
+        self::assertSame($expectedCap, $this->capOf('SM1'));
+        $lines = $this->dailyCapLinesOf($body, 'SM1');
+        self::assertSame($expectedOutcomes, array_column($lines, 'outcome'));
+        foreach ($lines as $line) {
+            self::assertSame(1, $line['day'], 'le lundi');
+            self::assertSame($expectedCap, $line['maxSessionsPerDay']);
+        }
+        if (\in_array('capped', $expectedOutcomes, true)) {
+            self::assertSame(5, $lines[0]['count'], '5 cases le lundi');
+        }
+    }
+
+    /**
+     * Réimporter le même parc ne relève plus rien : les réservations déjà présentes, laissées décochées, n'annoncent
+     * rien (seules les lignes cochées comptent, décision fondateur 2026-11-17) ; cochées, elles redisent `overlap`
+     * sans `raised`. Jumeau Behat de la ligne décochée : `features/l-import-du-parc-en-un-geste.feature`.
+     */
+    public function testReimportingTheSameParcRaisesNothingAndRestatesTheStates(): void
+    {
+        $parc = $this->mondayParc([['09:00', 90], ['18:00', 90], ['18:30', 90]], ['SM1']);
+        [$first, $body] = $this->importAllCreatable($parc);
+        self::assertSame(200, $first);
+        self::assertSame(['raised', 'overlap'], array_column($this->dailyCapLinesOf($body, 'SM1'), 'outcome'));
+
+        // Une seule analyse (limiteur) : au réimport aucune réservation n'est « à créer », les laisser décochées
+        // revient à retirer leurs décisions.
+        $everyReservationChecked = $this->decisionsFromAnalysis($parc, checkEveryReservation: true);
+        $reservationsUnchecked = array_values(array_filter($everyReservationChecked, static fn (array $d): bool => 'reservations' !== $d['section']));
+        self::assertSame(3, \count($everyReservationChecked) - \count($reservationsUnchecked), 'les trois réservations du lundi');
+
+        [$second, $again] = $this->import($parc, $reservationsUnchecked);
+
+        self::assertSame(200, $second);
+        self::assertSame([], $this->dailyCapLinesOf($again, 'SM1'), 'réservations déjà présentes décochées : rien d\'annoncé');
+        self::assertSame(2, $this->capOf('SM1'));
+
+        [$third, $checked] = $this->import($parc, $everyReservationChecked);
+
+        self::assertSame(200, $third);
+        self::assertSame(['overlap'], array_column($this->dailyCapLinesOf($checked, 'SM1'), 'outcome'), 'cochées : l\'état est redit, rien n\'est relevé');
+        self::assertSame(2, $this->capOf('SM1'));
+    }
+
+    /** L'import ne baisse jamais un plafond : une équipe appariée à 3 garde 3 devant deux cases ; à 1, elle est relevée à 2. */
+    public function testAnAppariedTeamIsRaisedButNeverLowered(): void
+    {
+        $three = $this->makeTeam('SM1', sessionsPerWeek: 4);
+        $three->setMaxSessionsPerDay(3);
+        $this->makeTeam('SM2', sessionsPerWeek: 4);
+        $this->em->flush();
+
+        // Chaque équipe dans son gymnase : deux équipes sur la même case seraient une case partagée sans
+        // groupe, que l'import signale au lieu de l'écrire (rien ne serait relevé).
+        $cases = [];
+        foreach (['SM1' => 'Palais Neuf', 'SM2' => 'Salle Est'] as $team => $gym) {
+            foreach (['09:00', '18:00'] as $start) {
+                $cases[] = ['gymnase' => $gym, 'jour' => 1, 'debut' => $start, 'duree' => 90, 'equipes' => [$team]];
+            }
+        }
+        [$status, $body] = $this->importAllCreatable($this->parcWithCases($cases));
+
+        self::assertSame(200, $status, (string) json_encode($body, \JSON_UNESCAPED_UNICODE));
+        self::assertSame(3, $this->capOf('SM1'), 'jamais baissé');
+        self::assertSame([], $this->dailyCapLinesOf($body, 'SM1'));
+        self::assertSame(2, $this->capOf('SM2'), 'appariée, relevée');
+        self::assertSame(['raised'], array_column($this->dailyCapLinesOf($body, 'SM2'), 'outcome'));
+    }
+
+    /** Un doublé saisi à la main (réservations déjà en base, hors du parc) ne compte pas : seule compte une case du parc soumis. */
+    public function testAHandTypedDoubleIsNotCounted(): void
+    {
+        $team = $this->makeTeam('SM1', sessionsPerWeek: 3);
+        $venue = $this->makeVenue('Salle à la main');
+        foreach (['09:00', '12:00'] as $start) {
+            $this->makeSlot($venue->getId(), 1, $start);
+            $this->em->persist((new Reservation)->setClubId($this->club->getId())->setSeasonId($this->season->getId())->setTeamId($team->getId())
+                ->setVenueId($venue->getId())->setDayOfWeek(1)->setStartTime(new DateTimeImmutable($start))->setDurationMinutes(90));
+        }
+        $this->em->flush();
+
+        [$status, $body] = $this->importAllCreatable($this->mondayParc([['18:00', 90]], ['SM1']));
+
+        self::assertSame(200, $status, (string) json_encode($body, \JSON_UNESCAPED_UNICODE));
+        self::assertSame(1, $this->capOf('SM1'));
+        self::assertSame([], $this->dailyCapLinesOf($body, 'SM1'));
+    }
+
+    /** Une case de groupe compte pour chacun de ses membres : deux cases de groupe le lundi relèvent les deux équipes. */
+    public function testAGroupCaseCountsForEachMember(): void
+    {
+        $this->makeTeam('U9M1', sessionsPerWeek: 2);
+        $this->makeTeam('U11F2', sessionsPerWeek: 2);
+        $parc = $this->parcWithCases([
+            ['gymnase' => 'Palais Neuf', 'jour' => 1, 'debut' => '09:00', 'duree' => 90, 'equipes' => ['U9M1', 'U11F2'], 'groupe' => 'CEC'],
+            ['gymnase' => 'Palais Neuf', 'jour' => 1, 'debut' => '18:00', 'duree' => 90, 'equipes' => ['U9M1', 'U11F2'], 'groupe' => 'CEC'],
+        ]);
+
+        [$status, $body] = $this->importAllCreatable($parc);
+
+        self::assertSame(200, $status, (string) json_encode($body, \JSON_UNESCAPED_UNICODE));
+        self::assertSame(2, $this->capOf('U9M1'));
+        self::assertSame(2, $this->capOf('U11F2'));
+    }
+
+    /**
+     * NR isolation entre clubs : l'import n'écrit jamais l'équipe d'un AUTRE club. Ni par une cible forgée (refus, rien d'écrit),
+     * ni par homonymie (la ligne crée l'équipe de CE club, relevée, l'autre reste à 1).
+     */
+    public function testDailyCapRaiseNeverTouchesAnotherClubTeam(): void
+    {
+        $foreign = $this->seedForeignClubWithTeam('SM1');
+        $parc = $this->mondayParc([['09:00', 90], ['18:00', 90]], ['SM1']);
+
+        [$forged] = $this->import($parc, [
+            ['section' => 'equipes', 'index' => 0, 'coche' => true, 'cibleId' => $foreign['teamId']],
+            ['section' => 'reservations', 'index' => 0, 'coche' => true],
+            ['section' => 'reservations', 'index' => 1, 'coche' => true],
+        ]);
+        self::assertSame(422, $forged, 'une cible d\'un autre club est refusée');
+        self::assertSame(1, $this->foreignCapOf($foreign), 'cible forgée : l\'équipe de l\'autre club n\'est pas relevée');
+
+        [$status, $body] = $this->importAllCreatable($parc);
+        self::assertSame(200, $status, (string) json_encode($body, \JSON_UNESCAPED_UNICODE));
+        self::assertSame(2, $this->capOf('SM1'), 'l\'homonyme de ce club est créé et relevé');
+        self::assertSame(1, $this->foreignCapOf($foreign), 'homonymie : l\'équipe de l\'autre club reste à 1');
+    }
+
+    /**
+     * Une cible d'équipe d'une AUTRE SAISON du même club est refusée comme un id inexistant (même 422, même
+     * message : pas d'oracle) et l'équipe de l'autre saison n'est jamais relevée. Jumeau : la cible d'un autre
+     * club, {@see testDailyCapRaiseNeverTouchesAnotherClubTeam}.
+     */
+    public function testACibleIdFromAnotherSeasonOfTheSameClubIsRefusedLikeAnUnknownId(): void
+    {
+        $previousSeason = (new Season)
+            ->setClubId($this->club->getId())->setName('2025-2026')
+            ->setStartDate(new DateTimeImmutable('2025-07-01'))->setEndDate(new DateTimeImmutable('2026-06-30'))
+            ->setStatus(SeasonStatus::ARCHIVED)->setTransitionData([]);
+        $this->em->persist($previousSeason);
+        $this->em->flush();
+        $oldTeam = (new Team)
+            ->setClubId($this->club->getId())->setSeasonId($previousSeason->getId())
+            ->setSportCategoryId($this->uuid())->setPriorityTierId(3)
+            ->setName('SM1')->setSessionsPerWeek(2)->setIsActive(true);
+        $this->em->persist($oldTeam);
+        $this->em->flush();
+        $oldTeamId = $oldTeam->getId();
+        $teamsBefore = $this->rowCount('team');
+
+        $parc = $this->mondayParc([['09:00', 90], ['18:00', 90]], ['SM1']);
+        // Le reste du parc s'importerait : sans la garde de saison, l'équipe de l'autre saison serait relevée.
+        $decisionsTargeting = static fn (string $cibleId): array => [
+            ['section' => 'gymnases', 'index' => 0, 'coche' => true],
+            ['section' => 'equipes', 'index' => 0, 'coche' => true, 'cibleId' => $cibleId],
+            ['section' => 'creneaux', 'index' => 0, 'coche' => true],
+            ['section' => 'creneaux', 'index' => 1, 'coche' => true],
+            ['section' => 'reservations', 'index' => 0, 'coche' => true],
+            ['section' => 'reservations', 'index' => 1, 'coche' => true],
+        ];
+
+        [$otherSeason, $otherSeasonBody] = $this->import($parc, $decisionsTargeting($oldTeamId));
+        [$unknown, $unknownBody] = $this->import($parc, $decisionsTargeting($this->uuid()));
+
+        self::assertSame(422, $otherSeason, 'une équipe d\'une autre saison du club est refusée : ' . json_encode($otherSeasonBody, \JSON_UNESCAPED_UNICODE));
+        self::assertStringContainsString('Équipe introuvable', implode(' ', $otherSeasonBody['errors'] ?? []));
+        self::assertSame([$unknown, $unknownBody], [$otherSeason, $otherSeasonBody], 'même réponse qu\'un id inexistant : pas d\'oracle');
+        self::assertSame($teamsBefore, $this->rowCount('team'), 'rien écrit');
+
+        $this->em->clear();
+        $reloaded = $this->em->getRepository(Team::class)->find($oldTeamId);
+        self::assertInstanceOf(Team::class, $reloaded);
+        self::assertSame(1, $reloaded->getMaxSessionsPerDay(), 'l\'équipe de l\'autre saison n\'est pas relevée');
+        self::assertSame(2, $reloaded->getSessionsPerWeek(), 'ni ses séances');
+    }
+
     // ───────────────────────── Cap payant (grille 20 / 34 / 35+) ─────────────────────────
 
     /**
@@ -1709,6 +1908,20 @@ final class ParcImportExecuteTest extends WebTestCase
      */
     private function importAllCreatable(array $parc): array
     {
+        return $this->import($parc, $this->decisionsFromAnalysis($parc));
+    }
+
+    /**
+     * Décisions tirées de l'analyse HTTP : toutes les lignes « à créer » cochées ; `$checkEveryReservation` coche
+     * aussi les réservations déjà présentes (réimport où le gestionnaire recoche tout). Un appel au limiteur
+     * `parc_import` (5 par 15 min en test).
+     *
+     * @param array<string, mixed> $parc
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function decisionsFromAnalysis(array $parc, bool $checkEveryReservation = false): array
+    {
         // On passe par l'analyse HTTP pour obtenir les statuts dérivés et cocher les « à créer ».
         $this->client->request(
             'POST',
@@ -1724,7 +1937,11 @@ final class ParcImportExecuteTest extends WebTestCase
         $decisions = [];
         foreach ((array) ($analyze['sections'] ?? []) as $section => $lines) {
             foreach (\is_array($lines) ? $lines : [] as $i => $line) {
-                if (!\is_array($line) || 'aCreer' !== ($line['statut'] ?? null)) {
+                if (!\is_array($line)) {
+                    continue;
+                }
+                $everyReservation = $checkEveryReservation && 'reservations' === $section;
+                if (!$everyReservation && 'aCreer' !== ($line['statut'] ?? null)) {
                     continue;
                 }
                 $decision = ['section' => $section, 'index' => $i, 'coche' => true];
@@ -1738,7 +1955,65 @@ final class ParcImportExecuteTest extends WebTestCase
             }
         }
 
-        return $this->import($parc, $decisions);
+        return $decisions;
+    }
+
+    /**
+     * Un parc dont chaque case du lundi, au même gymnase neuf, porte les équipes données.
+     *
+     * @param list<array{0: string, 1: int}> $cases début et durée
+     * @param list<string>                   $teams
+     *
+     * @return array<string, mixed>
+     */
+    private function mondayParc(array $cases, array $teams): array
+    {
+        $parcCases = [];
+        foreach ($cases as [$start, $duration]) {
+            foreach ($teams as $team) {
+                $parcCases[] = ['gymnase' => 'Palais Neuf', 'jour' => 1, 'debut' => $start, 'duree' => $duration, 'equipes' => [$team]];
+            }
+        }
+
+        return $this->parcWithCases($parcCases);
+    }
+
+    /** Le plafond de séances par jour de l'équipe de CE club qui porte ce nom. */
+    private function capOf(string $teamName): int
+    {
+        $this->scopeGucToClub($this->club->getId());
+        $this->em->clear();
+        $team = $this->em->getRepository(Team::class)->findOneBy(['clubId' => $this->club->getId(), 'name' => $teamName]);
+        self::assertInstanceOf(Team::class, $team, $teamName . ' existe');
+
+        return $team->getMaxSessionsPerDay();
+    }
+
+    /** @param array{teamId: string, clubId: string} $foreign */
+    private function foreignCapOf(array $foreign): int
+    {
+        // Lecture SQL sous le GUC de l'autre club : le filtre Doctrine reste réglé sur le club de la dernière requête.
+        $this->scopeGucToClub($foreign['clubId']);
+        $cap = $this->em->getConnection()->fetchOne('SELECT max_sessions_per_day FROM team WHERE id = ?', [$foreign['teamId']]);
+        $this->scopeGucToClub($this->club->getId());
+        self::assertNotFalse($cap, 'l\'équipe de l\'autre club existe toujours');
+
+        return (int) $cap;
+    }
+
+    /**
+     * Les lignes `dailyCaps` de la réponse qui nomment cette équipe.
+     *
+     * @param array<string, mixed> $body
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function dailyCapLinesOf(array $body, string $teamName): array
+    {
+        self::assertArrayHasKey('dailyCaps', $body, 'la réponse d\'exécution porte `dailyCaps`');
+        self::assertIsArray($body['dailyCaps']);
+
+        return array_values(array_filter($body['dailyCaps'], static fn (mixed $line): bool => \is_array($line) && $teamName === ($line['teamName'] ?? null)));
     }
 
     private function makeVenue(string $name, bool $canSplit = false): Venue
@@ -1812,7 +2087,7 @@ final class ParcImportExecuteTest extends WebTestCase
     /**
      * Un club TIERS avec une équipe — pour prouver qu'un `cibleId` d'équipe hors tenant est refusé.
      *
-     * @return array{teamId: string}
+     * @return array{teamId: string, clubId: string}
      */
     private function seedForeignClubWithTeam(string $teamName): array
     {
@@ -1840,7 +2115,7 @@ final class ParcImportExecuteTest extends WebTestCase
 
         $this->scopeGucToClub($this->club->getId());
 
-        return ['teamId' => $team->getId()];
+        return ['teamId' => $team->getId(), 'clubId' => $otherClub->getId()];
     }
 
     /**

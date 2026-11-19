@@ -23,11 +23,13 @@ const DAY_LABELS = DAY_LABEL_LONG;
  * at entry time.
  *   1. A slot shared by more teams than the venue slot allows (canSplit + capacity).
  *   2. A team reserved more slots than its sessions/week.
- *   3. A team with two sessions on the same day.
+ *   3. A team with more sessions on the same day than its daily cap (`maxSessionsPerDay`, 1 by default).
  */
 export function computeReservationWarnings(reservations: Reservation[], teams: Team[], venues: Venue[], slots: VenueTrainingSlot[], blocks: BlockLike[] = []): string[] {
   const warnings: string[] = [];
   const teamName = new Map(teams.map((t) => [t.id, t.name]));
+  // Le plafond de séances par jour SERVI par l'API (valeur de saison ; 1 quand absent).
+  const teamDailyCap = new Map(teams.map((t) => [t.id, t.maxSessionsPerDay ?? 1]));
   const venueName = new Map(venues.map((v) => [v.id, v.name]));
   const venueSplit = new Map(venues.map((v) => [v.id, v.canSplit]));
   // D-02/D-03 : `slotKey` et la capacité effective viennent de `reservationSlots` — la porte
@@ -92,7 +94,7 @@ export function computeReservationWarnings(reservations: Reservation[], teams: T
       perDay.set(r.dayOfWeek, (perDay.get(r.dayOfWeek) ?? 0) + 1);
     }
     perDay.forEach((count, day) => {
-      if (2 <= count) {
+      if (count > (teamDailyCap.get(teamId) ?? 1)) {
         warnings.push(`${teamName.get(teamId) ?? "?"} : ${count} séances le même jour (${DAY_LABELS[day] ?? ""}).`);
       }
     });
@@ -355,7 +357,7 @@ export function useStepValidation(stepId: WizardStepId): StepValidation {
     // rien (règle #8), donc ils arrivent précisément avec `valid: true`. Pas de
     // `humanizeConstraintError` : le serveur nomme déjà la contrainte ET le gymnase,
     // l'humaniser effacerait ce qui permet d'agir. Le récap les rend dans son accordéon.
-    return { errors, warnings: constraintValidation?.warnings ?? [], notices, doubledReservationIds: constraintValidation?.doubledReservationIds ?? [], pending: constraintNeeded && constraintQuery.isLoading };
+    return { errors, warnings: constraintValidation?.warnings ?? [], notices, doubledReservationIds: constraintValidation?.doubledReservationIds ?? [], overlappingReservationIds: constraintValidation?.overlappingReservationIds ?? [], ignoredRules: constraintValidation?.ignoredRules ?? [], pending: constraintNeeded && constraintQuery.isLoading };
   }
   return okValidation();
 }

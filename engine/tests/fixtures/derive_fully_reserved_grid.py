@@ -146,7 +146,6 @@ def derive(snapshot: Mapping[str, Any]) -> dict[str, Any]:
         return {
             "id": teams[str(team["id"])],
             "name": str(team.get("category") or f"Équipe {index}"),
-            "sportCategoryId": "cat",  # requis par le contrat ; la valeur source est un identifiant, écartée
             "sessionsPerWeek": team["sessionsPerWeek"],
             "ageMin": team.get("ageMin"),
             "priorityTierId": team.get("priorityTierId"),
@@ -176,7 +175,6 @@ def derive(snapshot: Mapping[str, Any]) -> dict[str, Any]:
             "isEmployee": coach.get("isEmployee", False),
             "isVehicled": coach.get("isVehicled", False),
             "maxDaysOverride": coach.get("maxDaysOverride"),
-            "parentCoachId": _mapped(coaches, coach.get("parentCoachId"), "coaches"),
         }
 
     def constraint_out(index: int, row: Mapping[str, Any]) -> dict[str, Any]:
@@ -257,7 +255,6 @@ def derive(snapshot: Mapping[str, Any]) -> dict[str, Any]:
         "version": snapshot["version"],
         "clubId": "club-fully-reserved-grid",
         "seasonId": "season-1",
-        "scheduleName": None,
         "solverSeed": snapshot.get("solverSeed", 42),
         "solverTimeoutSeconds": snapshot.get("solverTimeoutSeconds", 60),
         "teams": each(raw_teams, team_out),

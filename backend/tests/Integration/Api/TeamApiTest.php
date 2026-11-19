@@ -7,17 +7,23 @@ namespace App\Tests\Integration\Api;
 use App\Entity\Club;
 use App\Entity\ClubUser;
 use App\Entity\PriorityTier;
+use App\Entity\Schedule;
+use App\Entity\ScheduleSlotTemplate;
 use App\Entity\Season;
 use App\Entity\Sport;
 use App\Entity\SportCategory;
 use App\Entity\Team;
 use App\Entity\User;
+use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
 use App\Enum\TeamLevel;
+use App\Service\SchedulePlanProvisioner;
+use App\Tests\ChoosesPlanVersionTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
 use Lexik\Bundle\JWTAuthenticationBundle\Services\JWTTokenManagerInterface;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
@@ -26,6 +32,7 @@ use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
 #[Group('integration')]
 final class TeamApiTest extends WebTestCase
 {
+    use ChoosesPlanVersionTrait;
     use TenantGucTrait;
 
     private EntityManagerInterface $em;
@@ -45,6 +52,14 @@ final class TeamApiTest extends WebTestCase
     private PriorityTier $priorityTier;
 
     private KernelBrowser $client;
+
+    /** @return iterable<string, array{int}> */
+    public static function outOfRangeDailyCaps(): iterable
+    {
+        yield '0' => [0];
+        yield '5' => [5];
+        yield '99' => [99];
+    }
 
     public function testCreateTeam(): void
     {
@@ -317,9 +332,8 @@ final class TeamApiTest extends WebTestCase
      * « level: null efface » ; or un PUT qui OMET `level` est indiscernable d'un PUT
      * qui l'efface (`?string` des deux côtés) : renommer une équipe par un client
      * minimal effaçait son niveau — donc son tag NIVEAU du payload solveur — en
-     * silence. Nouveau contrat, aligné sur forcedVenueId/matchDay/minSessionsOverride/
-     * parentTeamId : ABSENT (ou null) = ON GARDE. Effacer un niveau par l'API devient
-     * impossible — assumé.
+     * silence. Nouveau contrat, aligné sur forcedVenueId/matchDay/minSessionsOverride :
+     * ABSENT (ou null) = ON GARDE. Effacer un niveau par l'API devient impossible — assumé.
      */
     public function testAbsentLevelKeepsTheCurrentValueOnUpdate(): void
     {
@@ -348,6 +362,30 @@ final class TeamApiTest extends WebTestCase
         // `level` explicite atteint la garde (409) — le champ n'est pas devenu inerte.
     }
 
+    /**
+     * Un client qui envoie encore le lien de saison retiré (`parentTeamId`, ENG-60) reçoit la
+     * réponse normale : la clé est ignorée en silence, jamais servie en retour.
+     */
+    public function testARetiredSeasonLinkSentToTheApiIsIgnored(): void
+    {
+        $client = $this->client;
+        $client->loginUser($this->user);
+
+        $client->request('POST', '/api/teams', [], [], [
+            'CONTENT_TYPE' => 'application/ld+json',
+        ], json_encode([
+            'name' => 'U13 Filles 1',
+            'sportCategoryId' => $this->sportCategory->getId(),
+            'priorityTierId' => $this->priorityTier->getId(),
+            'parentTeamId' => '55555555-5555-4555-8555-555555555555',
+        ], \JSON_THROW_ON_ERROR));
+
+        self::assertResponseStatusCodeSame(201);
+        $data = json_decode((string) $client->getResponse()->getContent(), true);
+        self::assertSame('U13 Filles 1', $data['name']);
+        self::assertArrayNotHasKey('parentTeamId', $data, 'le lien de saison n\'est plus servi');
+    }
+
     public function testInvalidLevelIsRejected(): void
     {
         $client = $this->client;
@@ -363,6 +401,103 @@ final class TeamApiTest extends WebTestCase
         ], \JSON_THROW_ON_ERROR));
 
         self::assertResponseStatusCodeSame(422);
+    }
+
+    /** Le plafond de séances par jour est borné à 1..4 : hors bornes, 422 avec la phrase dite, rien n'est écrit. */
+    #[DataProvider('outOfRangeDailyCaps')]
+    public function testADailyCapOutsideOneToFourIsRefused(int $cap): void
+    {
+        $team = $this->createTeam('Bornée');
+
+        $this->putTeam($team, ['maxSessionsPerDay' => $cap]);
+
+        self::assertResponseStatusCodeSame(422);
+        self::assertStringContainsString('Le nombre de séances par jour doit être compris entre 1 et 4.', $this->responseText());
+        $this->em->clear();
+        self::assertSame(1, $this->em->getRepository(Team::class)->find($team->getId())?->getMaxSessionsPerDay());
+    }
+
+    /** Une équipe créée sans le champ s'entraîne au plus une fois par jour ; avec le champ, la valeur est écrite et relue. */
+    public function testADailyCapIsOneByDefaultAndWritableOnCreate(): void
+    {
+        foreach ([[[], 1], [['maxSessionsPerDay' => 3], 3]] as [$extra, $expected]) {
+            $this->client->request('POST', '/api/teams', [], [], $this->bearerHeaders(), json_encode([
+                'name' => 'Nouvelle ' . $expected,
+                'sportCategoryId' => $this->sportCategory->getId(),
+                'priorityTierId' => $this->priorityTier->getId(),
+                ...$extra,
+            ], \JSON_THROW_ON_ERROR));
+
+            self::assertResponseStatusCodeSame(201);
+            self::assertSame($expected, json_decode((string) $this->client->getResponse()->getContent(), true)['maxSessionsPerDay'] ?? null);
+        }
+    }
+
+    /** Un PUT qui ne porte pas le champ garde le plafond en place (renommer n'efface pas le réglage). */
+    public function testAbsentDailyCapKeepsTheCurrentValueOnUpdate(): void
+    {
+        $team = $this->createTeam('Deux par jour');
+        $this->putTeam($team, ['maxSessionsPerDay' => 2]);
+        self::assertResponseStatusCodeSame(200);
+
+        $this->putTeam($team, ['name' => 'Deux par jour, renommée']);
+
+        self::assertResponseStatusCodeSame(200);
+        self::assertSame(2, json_decode((string) $this->client->getResponse()->getContent(), true)['maxSessionsPerDay'] ?? null);
+    }
+
+    /**
+     * Planning de saison en vigueur : renvoyer la MÊME valeur est accepté (un formulaire qui renvoie tout ne casse pas), et créer une
+     * équipe reste libre. Rouvrir le planning puis changer la valeur : accepté. (Le refus d'un changement sous planning en vigueur est
+     * prouvé par le scénario `une-equipe-s-entraine-deux-fois-le-meme-jour.feature`.).
+     */
+    public function testUnderAValidatedSeasonPlanTheSameValueAndACreationPassAndReopeningFreesTheCap(): void
+    {
+        $team = $this->createTeam('Sous socle');
+        $this->putTeam($team, ['maxSessionsPerDay' => 2]);
+        self::assertResponseStatusCodeSame(200);
+        $plan = $this->settleSeasonPlan($this->season);
+
+        $this->putTeam($team, ['maxSessionsPerDay' => 2]);
+        self::assertResponseStatusCodeSame(200, 'même valeur sous planning en vigueur');
+
+        $this->client->request('POST', '/api/teams', [], [], $this->bearerHeaders(), json_encode([
+            'name' => 'Créée sous socle',
+            'sportCategoryId' => $this->sportCategory->getId(),
+            'priorityTierId' => $this->priorityTier->getId(),
+            'maxSessionsPerDay' => 2,
+        ], \JSON_THROW_ON_ERROR));
+        self::assertResponseStatusCodeSame(201, 'créer une équipe reste libre');
+
+        self::getContainer()->get(SchedulePlanProvisioner::class)->releaseSchedule($plan->getId());
+        $this->putTeam($team, ['maxSessionsPerDay' => 3]);
+        self::assertResponseStatusCodeSame(200, 'planning rouvert : le plafond se change');
+        self::assertSame(3, json_decode((string) $this->client->getResponse()->getContent(), true)['maxSessionsPerDay'] ?? null);
+    }
+
+    /**
+     * Hors planning en vigueur, baisser 2 → 1 n'est jamais refusé, même avec un doublé libre déjà placé ce jour-là dans la version
+     * chargée : le doublé reste jusqu'à la génération suivante.
+     */
+    public function testLoweringTheCapOverAPlacedDoubleIsAccepted(): void
+    {
+        $team = $this->createTeam('Doublée');
+        $this->putTeam($team, ['maxSessionsPerDay' => 2]);
+        self::assertResponseStatusCodeSame(200);
+        $schedule = (new Schedule)->setClubId($this->club->getId())->setSeasonId($this->season->getId())->setName('Chargée')->setStatus(ScheduleStatus::COMPLETED);
+        $this->linkSeededSchedule($schedule);
+        $this->em->flush();
+        foreach (['10:00', '18:00'] as $start) {
+            $this->em->persist((new ScheduleSlotTemplate)->setClubId($this->club->getId())->setSeasonId($this->season->getId())->setScheduleId($schedule->getId())
+                ->setTeamId($team->getId())->setVenueId($this->club->getId())->setDayOfWeek(1)->setStartTime(new DateTimeImmutable($start))->setDurationMinutes(90));
+        }
+        $this->em->flush();
+        $this->em->getConnection()->executeStatement('UPDATE season SET live_context_schedule_id = ? WHERE id = ?', [$schedule->getId(), $this->season->getId()]);
+
+        $this->putTeam($team, ['maxSessionsPerDay' => 1]);
+
+        self::assertResponseStatusCodeSame(200);
+        self::assertSame(1, json_decode((string) $this->client->getResponse()->getContent(), true)['maxSessionsPerDay'] ?? null);
     }
 
     protected function setUp(): void
@@ -547,6 +682,40 @@ final class TeamApiTest extends WebTestCase
         $this->em->flush();
 
         return $tier;
+    }
+
+    /**
+     * PUT minimal d'une équipe, plus les champs donnés.
+     *
+     * @param array<string, mixed> $extra
+     */
+    private function putTeam(Team $team, array $extra): void
+    {
+        $this->client->request('PUT', \sprintf('/api/teams/%s', $team->getId()), [], [], $this->bearerHeaders(), json_encode([
+            'name' => $team->getName(),
+            'sportCategoryId' => $this->sportCategory->getId(),
+            'priorityTierId' => $this->priorityTier->getId(),
+            ...$extra,
+        ], \JSON_THROW_ON_ERROR));
+    }
+
+    /**
+     * ⚠ Bearer à CHAQUE requête : le firewall est stateless, `loginUser` ne survit pas d'un appel au suivant.
+     *
+     * @return array<string, string>
+     */
+    private function bearerHeaders(): array
+    {
+        return [
+            'HTTP_AUTHORIZATION' => 'Bearer ' . self::getContainer()->get(JWTTokenManagerInterface::class)->create($this->user),
+            'CONTENT_TYPE' => 'application/ld+json',
+        ];
+    }
+
+    /** Le corps de la réponse, lettres accentuées en clair (pour chercher une phrase dans les violations). */
+    private function responseText(): string
+    {
+        return json_encode(json_decode((string) $this->client->getResponse()->getContent(), true), \JSON_UNESCAPED_UNICODE | \JSON_THROW_ON_ERROR);
     }
 
     private function createTeam(string $name): Team

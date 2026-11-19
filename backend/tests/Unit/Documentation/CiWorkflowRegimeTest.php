@@ -270,7 +270,8 @@ final class CiWorkflowRegimeTest extends TestCase
 
     private const string CONCURRENCY_CANCEL = '${{ github.ref != \'refs/heads/main\' }}';
 
-    private const string FILTERED_NR = 'testAMutualisationCorrectionWithATeamFromAnotherClubIsRefusedWritingNothing';
+    /** Les deux NR d'isolation de `ParcImportExecuteTest` (correction de mutualisation, relèvement du plafond par jour), en un seul `--filter`. */
+    private const string FILTERED_NR = '"testAMutualisationCorrectionWithATeamFromAnotherClubIsRefusedWritingNothing|testDailyCapRaiseNeverTouchesAnotherClubTeam"';
 
     /** Ids de steps lus par « Classify failure » du job e2e. */
     private const array E2E_STEP_IDS = ['prepull', 'buildengine', 'startservices', 'buildfrontend', 'playwright', 'a17'];

@@ -16,7 +16,6 @@ use Doctrine\ORM\Mapping as ORM;
 #[ORM\Index(name: 'idx_team_sport_category', columns: ['sport_category_id'])]
 #[ORM\Index(name: 'idx_team_priority_tier', columns: ['priority_tier_id'])]
 #[ORM\Index(name: 'idx_team_forced_venue', columns: ['forced_venue_id'])]
-#[ORM\Index(name: 'idx_team_parent', columns: ['parent_team_id'])]
 #[ORM\HasLifecycleCallbacks]
 class Team implements TenantOwnedInterface
 {
@@ -68,6 +67,14 @@ class Team implements TenantOwnedInterface
     #[ORM\Column(type: 'smallint')]
     private int $sessionsPerWeek = 2;
 
+    /**
+     * Séances au plus le même jour (1 à 4). Le défaut vit sur la PROPRIÉTÉ, jamais dans le
+     * constructeur : une équipe instanciée sans constructeur (photo de structure antérieure au
+     * champ) garde 1.
+     */
+    #[ORM\Column(type: 'smallint', options: ['default' => 1])]
+    private int $maxSessionsPerDay = 1;
+
     #[ORM\Column(type: 'smallint', nullable: true)]
     private ?int $minSessionsOverride = null;
 
@@ -79,9 +86,6 @@ class Team implements TenantOwnedInterface
 
     #[ORM\Column(type: 'boolean')]
     private bool $isActive = true;
-
-    #[ORM\Column(type: 'guid', nullable: true)]
-    private ?string $parentTeamId = null;
 
     /**
      * L'équipe est-elle déclarée « en entente (CTC) » ? Simple PERCEPTION INTERNE du club :
@@ -273,6 +277,18 @@ class Team implements TenantOwnedInterface
         return $this;
     }
 
+    public function getMaxSessionsPerDay(): int
+    {
+        return $this->maxSessionsPerDay;
+    }
+
+    public function setMaxSessionsPerDay(int $maxSessionsPerDay): self
+    {
+        $this->maxSessionsPerDay = $maxSessionsPerDay;
+
+        return $this;
+    }
+
     public function getMinSessionsOverride(): ?int
     {
         return $this->minSessionsOverride;
@@ -322,18 +338,6 @@ class Team implements TenantOwnedInterface
     public function setIsActive(bool $isActive): self
     {
         $this->isActive = $isActive;
-
-        return $this;
-    }
-
-    public function getParentTeamId(): ?string
-    {
-        return $this->parentTeamId;
-    }
-
-    public function setParentTeamId(?string $parentTeamId): self
-    {
-        $this->parentTeamId = $parentTeamId;
 
         return $this;
     }

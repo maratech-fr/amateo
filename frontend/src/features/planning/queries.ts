@@ -222,6 +222,18 @@ export function useTrainingSlots(schedulePlanId: string | null) {
   });
 }
 
+/**
+ * Les occupations de la couche affichée, pour le seul compte du menu d'export (la case
+ * « Afficher les occupations » n'existe que s'il y en a). Clé à part de celle du Wizard, que ses
+ * écritures invalident aussi ; fraîcheur par défaut.
+ */
+export function useVenueOccupancies(schedulePlanId: string | null) {
+  return useQuery({
+    queryKey: ["venue-occupancies", schedulePlanId ?? "season"],
+    queryFn: () => planningApi.getVenueOccupancies(schedulePlanId),
+  });
+}
+
 export function useCoaches() {
   return useQuery({ queryKey: ["coaches"], queryFn: planningApi.getCoaches, staleTime: 300_000 });
 }
@@ -538,7 +550,7 @@ export function useScheduleExport(scheduleId: string | null, exportName: string 
   const [busy, setBusy] = useState<ExportFormat | null>(null);
 
   const run = useCallback(
-    async (format: ExportFormat, venueId: planningApi.ExportVenueScope, showCoaches = false): Promise<void> => {
+    async (format: ExportFormat, venueId: planningApi.ExportVenueScope, showCoaches = false, showOccupancies = false): Promise<void> => {
       if (null === scheduleId || null !== busy) {
         return;
       }
@@ -546,18 +558,18 @@ export function useScheduleExport(scheduleId: string | null, exportName: string 
       setBusy(format);
       try {
         if ("xlsx" === format) {
-          const blob = await planningApi.exportScheduleXlsx(scheduleId, venueId);
+          const blob = await planningApi.exportScheduleXlsx(scheduleId, venueId, showOccupancies);
           download(URL.createObjectURL(blob), `${fileBase}.xlsx`);
           return;
         }
-        await planningApi.exportSchedulePdf(scheduleId, venueId, showCoaches);
+        await planningApi.exportSchedulePdf(scheduleId, venueId, showCoaches, showOccupancies);
         // The worker writes the file path with a scope suffix (-all / -<venueId8>), plus
         // -coaches when the coach names were requested (chantier E). The schedule row carries
         // a single, shared export URL, so only download once it matches THIS request's scope +
         // coach choice — guards against another in-flight export (other tab/scope/choice) whose
         // 'completed' + URL we'd otherwise grab. Le jeton DOIT refléter EXACTEMENT le nom de
         // fichier que le back écrit (`PdfGenerator::generate`), sinon le polling expire.
-        const scopeToken = exportScopeToken(venueId, showCoaches);
+        const scopeToken = exportScopeToken(venueId, showCoaches, showOccupancies);
         const deadline = Date.now() + EXPORT_TIMEOUT_MS;
         for (;;) {
           await sleep(EXPORT_POLL_MS);

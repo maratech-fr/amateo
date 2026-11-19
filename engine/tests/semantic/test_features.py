@@ -11,7 +11,6 @@ from tests.support import make_payload, make_venue, solve_payload, team_constrai
 def _team(team_id: str, *, sessions: int = 1, match_day: int | None = None) -> dict[str, Any]:
     team: dict[str, Any] = {
         "id": team_id,
-        "sportCategoryId": "cat",
         "priorityTierId": 3,
         "name": team_id,
         "sessionsPerWeek": sessions,
@@ -29,15 +28,15 @@ def _starts(result: dict[str, Any], team_id: str) -> set[str]:
     return {str(s["startTime"])[:5] for s in result["slots"] if s["teamId"] == team_id}
 
 
-def test_score_formula_version_is_v14() -> None:
-    assert SCORE_FORMULA_VERSION == "T24_LEVEL_2_FIXED_WEIGHTS_V14"
+def test_score_formula_version_is_v15() -> None:
+    assert SCORE_FORMULA_VERSION == "T24_LEVEL_2_FIXED_WEIGHTS_V15"
     result = solve_payload(
         make_payload(
             teams=[_team("t")],
             venues=[make_venue("v", [(2, "18:00")])],
         )
     )
-    assert result["metrics"]["scoreFormulaVersion"] == "T24_LEVEL_2_FIXED_WEIGHTS_V14"
+    assert result["metrics"]["scoreFormulaVersion"] == "T24_LEVEL_2_FIXED_WEIGHTS_V15"
 
 
 def test_match_day_rest_day_left_free_when_possible() -> None:

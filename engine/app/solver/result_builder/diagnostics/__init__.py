@@ -94,6 +94,9 @@ from .placement import (
     _diagnose_coach_overload as _diagnose_coach_overload,
 )
 from .placement import (
+    _diagnose_same_day_gap as _diagnose_same_day_gap,
+)
+from .placement import (
     _diagnose_unplaced as _diagnose_unplaced,
 )
 from .placement import (
@@ -188,6 +191,9 @@ def _generate_diagnostics(
         # équipe concernée, perdus nommés avec leur cause. Sur solve abouti seulement (il lit les
         # slots FINAUX) ; inerte si aucune référence KEEP n'est émise (byte-identique).
         diagnostics.extend(_diagnose_season_slots(model_data, slots))
+        # PR 1a — deux séances d'une équipe à moins de 2 h d'écart (plafond ≥ 2) : un avertissement
+        # par (équipe, jour), sur les slots FINAUX, verrous compris ; inerte à plafond 1.
+        diagnostics.extend(_diagnose_same_day_gap(model_data, slots))
     diagnostics.extend(
         _diagnose_conflicts(
             model_data,

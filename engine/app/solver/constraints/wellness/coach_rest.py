@@ -14,6 +14,7 @@ from ...compromise import FAMILY_IMPLICIT, CompromiseTermInfo
 from ..common import (
     COACH_REST_VIOLATION_WEIGHT,
     HARD,
+    OFF,
     PREFERRED,
     AssignmentVariable,
     BoolVarLike,
@@ -61,7 +62,12 @@ def add_coach_rest_day_constraints(
     is NOT posted, so a fully-locked coach never turns generation INFEASIBLE — the violation is
     left to the post-solve diagnostic (same discipline as 3c and the fully-locked 3d chain).
     PREFERRED still lights the literal in that case: the penalty is deserved, not phantom.
+
+    ``intensity=OFF`` (« Ignorée », contrat 1.11): nothing is posted, neither bound nor term.
     """
+
+    if intensity == OFF:
+        return 0
 
     # Build coach_id -> max_days_override map
     coach_max_days: dict[str, int | None] = {}

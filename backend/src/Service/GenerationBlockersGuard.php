@@ -9,7 +9,10 @@ use App\Entity\Constraint;
 use App\Entity\Reservation;
 use App\Entity\Schedule;
 use App\Entity\ScheduleSlotTemplate;
+use App\Entity\SharedTrainingBlockTeam;
 use App\Entity\Team;
+use App\Enum\LockLevel;
+use App\Enum\RecapPinWording;
 use App\Repository\ConstraintRepository;
 use App\Repository\TeamRepository;
 use Doctrine\ORM\EntityManagerInterface;
@@ -20,6 +23,7 @@ use Throwable;
  * Décision fondateur 2026-11-02 : ce que le Récap dit bloquant, les guichets `/generate`, `/regenerate` et
  * `/fill` le refusent aussi, sans passer par l'écran. Une seule liste, lue sur le payload que le solveur
  * recevrait, un seul texte. Un build qui lève ne ferme pas les guichets : le moteur tranche.
+ * Exception : au comblement, la sur-réservation ne compte que les réservations, pas les séances verrouillées.
  * Le coach à deux endroits a sa propre garde, {@see CoachInTwoPlacesGuard}.
  */
 final readonly class GenerationBlockersGuard
@@ -80,9 +84,9 @@ final readonly class GenerationBlockersGuard
                 );
             }
 
-            $first = $this->blockersFor($payload, $reservations, $constraints, !$this->schedulePlanProvisioner->isSeasonSchedule($schedule))[0] ?? null;
+            $schedulePlanId = $this->schedulePlanProvisioner->isSeasonSchedule($schedule) ? null : (string) $schedule->getSchedulePlanId();
 
-            return $fillSource instanceof Schedule && null !== $first ? $this->sayingThePinsComeFromTheSource($first, [] !== $reservations) : $first;
+            return $this->blockersFor($payload, $reservations, $constraints, $schedulePlanId, $fillSource instanceof Schedule)[0] ?? null;
         } catch (Throwable $exception) {
             $this->logger->error('Generation blockers skipped: payload build failed.', ['exception' => $exception]);
 
@@ -93,29 +97,39 @@ final readonly class GenerationBlockersGuard
     /**
      * Les blocages du Récap, dans son ordre.
      *
-     * @param array<string, mixed> $payload      le payload que le solveur recevra
-     * @param list<Reservation>    $reservations le périmètre EXACT qui partira au solveur
-     * @param list<Constraint>     $constraints  le jeu en vigueur : sur une période, leur origine se cite dans le motif
+     * @param array<string, mixed> $payload        le payload que le solveur recevra
+     * @param list<Reservation>    $reservations   le périmètre EXACT qui partira au solveur
+     * @param list<Constraint>     $constraints    le jeu en vigueur : sur une période, leur origine se cite dans le motif
+     * @param string|null          $schedulePlanId le plan de la période ; null = le socle
+     * @param bool                 $fill           comblement : les cases épinglées sont surtout les placements de la
+     *                                             version source, déjà tous épinglés ; seules les réservations comptent
      *
      * @return list<string>
      */
-    public function blockersFor(array $payload, array $reservations, array $constraints, bool $forPeriod): array
+    public function blockersFor(array $payload, array $reservations, array $constraints, ?string $schedulePlanId, bool $fill = false): array
     {
+        $forPeriod = null !== $schedulePlanId;
         // « Héritée, désactivable pour cette période » n'a de sens que sur une période.
         $constraintOrigins = [];
         foreach ($forPeriod ? $constraints : [] as $constraint) {
             // `true` = héritée du planning de saison, `false` = posée pour une période.
             $constraintOrigins[$constraint->getId()] = null === $constraint->getCalendarEntryId();
         }
+        // Comblement : le motif se dit avec les mots de ce geste, jamais « Retirez une réservation » s'il n'y en a aucune.
+        $wording = match (true) {
+            !$fill => RecapPinWording::RESERVED,
+            [] !== $reservations => RecapPinWording::RESERVED_OR_PLACED,
+            default => RecapPinWording::PLACED,
+        };
 
         return [
             ...$this->venueMinimumSaturation($payload)['blockers'],
             // ALIGN-09 — le gate prévient pour un risque, bloque pour une certitude.
-            ...$this->preventionWarnings->detectBlockers($payload, $constraintOrigins),
+            ...$this->preventionWarnings->detectBlockers($payload, $constraintOrigins, $wording),
             // P4-44 — une réservation qui ne retombe sur AUCUN créneau de la grille. Sur le socle, le
             // moteur PLACERAIT la séance à l'horaire mort et rendrait `completed` : on le nomme ici.
             ...$this->orphanReservationBlockers($reservations, $payload),
-            ...$this->overBookedTeamBlockers($reservations, $payload),
+            ...$this->overBookedTeamBlockers($reservations, $payload, $schedulePlanId, !$fill),
             // Une équipe ne s'entraîne qu'une fois par jour : la saison bloque, jamais une période ni le comblement.
             ...($forPeriod ? [] : $this->secondSessionSameDayDetector->detect($reservations)['blockers']),
         ];
@@ -135,7 +149,7 @@ final readonly class GenerationBlockersGuard
             $this->teamRepository->findBy(['clubId' => $clubId, 'seasonId' => $seasonId]),
         );
 
-        return $this->overBookedTeamBlockers($reservations, ['teams' => $teams]);
+        return $this->overBookedTeamBlockers($reservations, ['teams' => $teams], null, false);
     }
 
     /**
@@ -166,24 +180,6 @@ final readonly class GenerationBlockersGuard
         }
 
         return $result;
-    }
-
-    /**
-     * Comblement : les cases réunies sont surtout les placements de la version source, pas des réservations.
-     * Le motif du Récap se dit alors avec les mots de ce geste, jamais « Retirez une réservation » s'il n'y
-     * en a aucune.
-     */
-    private function sayingThePinsComeFromTheSource(string $message, bool $hasReservations): string
-    {
-        if ($hasReservations) {
-            return str_replace('Retirez une réservation ou ajustez', 'Retirez une réservation, déplacez une séance de cette version, ou ajustez', $message);
-        }
-
-        return str_replace(
-            ['Retirez une réservation ou ajustez', 'réservé sur', 'une seule case réservée', 'cases réservées', 'case réservée'],
-            ['Déplacez une séance de cette version ou ajustez', 'placé sur', 'une seule case placée', 'cases déjà placées', 'case déjà placée'],
-            $message,
-        );
     }
 
     /**
@@ -254,20 +250,34 @@ final readonly class GenerationBlockersGuard
      *
      * Le volume se lit sur le payload : c'est celui de la période (override compris) que le solveur recevra.
      *
-     * @param list<Reservation>    $reservations le périmètre EXACT qui partira au solveur
+     * Une séance verrouillée de la version chargée compte comme une réservation : le moteur la joue aussi, hors modèle.
+     * Elle est lue sur le payload (épingle HARD de `slotTemplates`), sauf celle posée sur la case (gymnase, jour,
+     * début) d'une réservation de la même équipe, qui n'est que cette réservation. Ce sont exactement les séances
+     * dont le déverrouillage fait baisser le compte : le motif les nomme. Trois cas gardent le comptage des seules
+     * réservations : le comblement (il épingle déjà tout le placé de sa source), le Récap sans payload, et une équipe
+     * membre d'un groupe de la portée, même en pause (les limites d'un groupe sont un autre chantier).
+     *
+     * @param list<Reservation>    $reservations   le périmètre EXACT qui partira au solveur
      * @param array<string, mixed> $payload
+     * @param string|null          $schedulePlanId la portée des groupes : le plan de la période ; null = le socle
+     * @param bool                 $countLocks     false au comblement et sans payload
      *
      * @return list<string>
      */
-    private function overBookedTeamBlockers(array $reservations, array $payload): array
+    private function overBookedTeamBlockers(array $reservations, array $payload, ?string $schedulePlanId, bool $countLocks): array
     {
-        if ([] === $reservations) {
-            return [];
-        }
-
         $countByTeam = [];
+        $reservedCases = [];
         foreach ($reservations as $reservation) {
             $countByTeam[$reservation->getTeamId()] = ($countByTeam[$reservation->getTeamId()] ?? 0) + 1;
+            if (null !== $reservation->getTeamId()) {
+                $reservedCases[$reservation->getTeamId()][$this->capacityMirror->key($reservation->getVenueId(), $reservation->getDayOfWeek(), $reservation->getStartTime()->format('H:i'))] = true;
+            }
+        }
+
+        $lockedByTeam = $countLocks ? $this->lockedSessionsByTeam($payload, $reservedCases) : [];
+        if ([] !== $lockedByTeam) {
+            $lockedByTeam = array_diff_key($lockedByTeam, $this->groupedTeamIds($payload, $schedulePlanId));
         }
 
         $blockers = [];
@@ -275,21 +285,142 @@ final readonly class GenerationBlockersGuard
             if (!\is_array($team)) {
                 continue;
             }
-            $reserved = $countByTeam[(string) ($team['id'] ?? '')] ?? 0;
+            $teamId = (string) ($team['id'] ?? '');
+            $reserved = $countByTeam[$teamId] ?? 0;
+            $locked = $lockedByTeam[$teamId] ?? [];
             $sessions = (int) ($team['sessionsPerWeek'] ?? 0);
-            if ($reserved <= $sessions) {
+            if ($reserved + \count($locked) <= $sessions) {
                 continue;
             }
-            $blockers[] = \sprintf(
-                '%s a %s pour %s par semaine : retirez %s, ou augmentez le nombre de séances de l\'équipe.',
-                (string) ($team['name'] ?? 'Cette équipe'),
-                $this->plural($reserved, 'réservation', 'réservations'),
-                $this->plural($sessions, 'séance', 'séances'),
-                $this->plural($reserved - $sessions, 'réservation', 'réservations'),
-            );
+            $blockers[] = [] === $locked
+                ? \sprintf(
+                    '%s a %s pour %s par semaine : retirez %s, ou augmentez le nombre de séances de l\'équipe.',
+                    (string) ($team['name'] ?? 'Cette équipe'),
+                    $this->plural($reserved, 'réservation', 'réservations'),
+                    $this->plural($sessions, 'séance', 'séances'),
+                    $this->plural($reserved - $sessions, 'réservation', 'réservations'),
+                )
+                : $this->overLockedSentence((string) ($team['name'] ?? 'Cette équipe'), $reserved, $locked, $sessions, null !== $schedulePlanId);
         }
 
         return $blockers;
+    }
+
+    /**
+     * « U13 a 1 réservation et 2 séances verrouillées (lundi 18:00-19:30 à Gymnase A, mercredi 17:00-18:30 à Gymnase B)
+     * pour 2 séances par semaine : retirez 1 réservation ou déverrouillez 1 de ces séances, ou augmentez le nombre de
+     * séances de l'équipe. ». Les réservations se disent en nombre, les séances verrouillées comptées se nomment.
+     *
+     * @param list<string> $locked les séances verrouillées comptées, déjà triées et dites
+     */
+    private function overLockedSentence(string $teamName, int $reserved, array $locked, int $sessions, bool $forPeriod): string
+    {
+        $lockedCount = \count($locked);
+        $excess = $reserved + $lockedCount - $sessions;
+        $unlock = 1 === $lockedCount ? 'déverrouillez cette séance' : null;
+        if (0 === $reserved) {
+            $remedy = $unlock ?? \sprintf('déverrouillez %d de ces séances', $excess);
+        } elseif (1 === $excess) {
+            $remedy = 'retirez 1 réservation ou ' . ($unlock ?? 'déverrouillez 1 de ces séances');
+        } else {
+            $remedy = \sprintf('retirez des réservations ou %s, %d en tout', $unlock ?? 'déverrouillez des séances de cette liste', $excess);
+        }
+
+        return \sprintf(
+            '%s a %s%s (%s) pour %s par semaine : %s, ou augmentez le nombre de séances de l\'équipe%s.',
+            $teamName,
+            0 === $reserved ? '' : $this->plural($reserved, 'réservation', 'réservations') . ' et ',
+            $this->plural($lockedCount, 'séance verrouillée', 'séances verrouillées'),
+            implode(', ', $locked),
+            $this->plural($sessions, 'séance', 'séances'),
+            $remedy,
+            $forPeriod ? ' pour cette période' : '',
+        );
+    }
+
+    /**
+     * Les séances verrouillées de chaque équipe qui comptent en plus de ses réservations, dites « lundi 18:00-19:30 à
+     * Gymnase A » et triées par jour, heure, gymnase. Une case comptée une fois.
+     *
+     * @param array<string, mixed>               $payload
+     * @param array<string, array<string, true>> $reservedCases équipe → cases de ses réservations
+     *
+     * @return array<string, list<string>>
+     */
+    private function lockedSessionsByTeam(array $payload, array $reservedCases): array
+    {
+        $venueNames = [];
+        foreach (\is_array($payload['venues'] ?? null) ? $payload['venues'] : [] as $venue) {
+            if (\is_array($venue)) {
+                $venueNames[(string) ($venue['id'] ?? '')] = (string) ($venue['name'] ?? ($venue['id'] ?? ''));
+            }
+        }
+
+        $byTeam = [];
+        foreach (\is_array($payload['slotTemplates'] ?? null) ? $payload['slotTemplates'] : [] as $pin) {
+            // Le payload de saison porte aussi les séances sans verrou de la version chargée.
+            if (!\is_array($pin) || LockLevel::HARD->value !== ($pin['lockLevel'] ?? null)) {
+                continue;
+            }
+            $teamId = (string) ($pin['teamId'] ?? '');
+            $venueId = (string) ($pin['venueId'] ?? '');
+            $startTime = (string) ($pin['startTime'] ?? '');
+            $key = $this->capacityMirror->key($venueId, (int) ($pin['dayOfWeek'] ?? 0), $startTime);
+            if ('' === $teamId || isset($reservedCases[$teamId][$key])) {
+                continue;
+            }
+            $start = $this->minutesOf($startTime);
+            $byTeam[$teamId][$key] = [
+                'day' => (int) ($pin['dayOfWeek'] ?? 0),
+                'start' => $start,
+                'venue' => $venueNames[$venueId] ?? 'ce gymnase',
+                'end' => $start + (int) ($pin['durationMinutes'] ?? 0),
+            ];
+        }
+
+        $said = [];
+        foreach ($byTeam as $teamId => $sessions) {
+            usort($sessions, static fn (array $a, array $b): int => [$a['day'], $a['start'], $a['venue']] <=> [$b['day'], $b['start'], $b['venue']]);
+            $said[(string) $teamId] = array_map(
+                fn (array $session): string => \sprintf('%s %s-%s à %s', self::DAY_NAMES[$session['day']] ?? 'ce jour', $this->clock($session['start']), $this->clock($session['end']), $session['venue']),
+                $sessions,
+            );
+        }
+
+        return $said;
+    }
+
+    /**
+     * Les équipes membres d'un groupe de la portée, même en pause : elles gardent le comptage des seules réservations.
+     *
+     * @param array<string, mixed> $payload
+     *
+     * @return array<string, true>
+     */
+    private function groupedTeamIds(array $payload, ?string $schedulePlanId): array
+    {
+        $clubId = (string) ($payload['clubId'] ?? '');
+        $seasonId = (string) ($payload['seasonId'] ?? '');
+        if ('' === $clubId || '' === $seasonId) {
+            return [];
+        }
+
+        $grouped = [];
+        foreach ($this->entityManager->getRepository(SharedTrainingBlockTeam::class)->findBy(['clubId' => $clubId, 'seasonId' => $seasonId, 'schedulePlanId' => $schedulePlanId]) as $member) {
+            $grouped[$member->getTeamId()] = true;
+        }
+
+        return $grouped;
+    }
+
+    private function minutesOf(string $time): int
+    {
+        return (int) substr($time, 0, 2) * 60 + (int) substr($time, 3, 2);
+    }
+
+    private function clock(int $minutes): string
+    {
+        return \sprintf('%02d:%02d', intdiv($minutes, 60), $minutes % 60);
     }
 
     /**

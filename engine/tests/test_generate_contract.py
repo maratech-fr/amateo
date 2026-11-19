@@ -1,13 +1,17 @@
 from __future__ import annotations
 
 import asyncio
+import copy
 from typing import Any
 
 import pytest
+from pydantic import BaseModel, ValidationError
 
 from app.main import build_schedule
 from app.schemas.input_schema import ScheduleInputSchema
+from app.schemas.match_input_schema import MatchPlacementInputSchema
 from app.schemas.output_schema import ScheduleOutputSchema
+from app.schemas.validate_input_schema import ValidateAssignmentsInputSchema
 
 
 class TestGenerateContract:
@@ -74,7 +78,6 @@ class TestGenerateContract:
                 "teams": [
                     {
                         "id": "team-a",
-                        "sportCategoryId": "sc-1",
                         "priorityTierId": 1,
                         "name": "Team A",
                         "sessionsPerWeek": 2,
@@ -109,7 +112,6 @@ class TestGenerateContract:
                 "teams": [
                     {
                         "id": "team-a",
-                        "sportCategoryId": "sc-1",
                         "priorityTierId": 1,
                         "name": "Team A",
                         "sessionsPerWeek": 1,
@@ -161,7 +163,6 @@ class TestGenerateContract:
                 "teams": [
                     {
                         "id": "team-a",
-                        "sportCategoryId": "sc-1",
                         "priorityTierId": 1,
                         "name": "Team A",
                         "sessionsPerWeek": 1,
@@ -314,7 +315,6 @@ class TestGenerateContract:
                 "teams": [
                     {
                         "id": "team-competitive",
-                        "sportCategoryId": "sc-1",
                         "priorityTierId": 1,
                         "name": "Team Competitive",
                         "sessionsPerWeek": 3,
@@ -361,7 +361,6 @@ class TestGenerateContract:
                 "teams": [
                     {
                         "id": "team-locked",
-                        "sportCategoryId": "sc-1",
                         "priorityTierId": 1,
                         "name": "Team Fully Locked",
                         "sessionsPerWeek": 1,
@@ -415,14 +414,12 @@ class TestGenerateContract:
                 "teams": [
                     {
                         "id": "team-a",
-                        "sportCategoryId": "sc-1",
                         "priorityTierId": 3,
                         "name": "Team A",
                         "sessionsPerWeek": 1,
                     },
                     {
                         "id": "team-b",
-                        "sportCategoryId": "sc-1",
                         "priorityTierId": 3,
                         "name": "Team B",
                         "sessionsPerWeek": 1,
@@ -512,11 +509,173 @@ class TestGenerateContract:
         le type de diagnostic `rule_sacrificed` (un verrou HARD rend une règle insatisfiable → le
         moteur produit le planning et nomme la règle relâchée, amendement ADR-0001), puis 1.8 → 1.9 —
         ouverture datée : `MatchAccessWindowSchema.openingDate` et `MatchSchema.importedVenueId` /
-        `importedKickoff`, champs additifs) et un payload qui
-        s'attribue cette version est recevable comme un payload qui n'annonce rien."""
+        `importedKickoff`, champs additifs, puis 1.9 → 1.10 — plafond de séances par jour :
+        `TeamSchema.maxSessionsPerDay`, champ additif, puis 1.10 → 1.11 — règles du club à trois
+        états : `OFF` accepté par l'intensité des quatre règles réglables, puis 1.11 → 1.12 — contrat
+        allégé : les champs que le moteur ne lit pas quittent le schéma et sont refusés, l'heure d'un
+        créneau de gymnase est vérifiée) et un payload qui s'attribue cette version est recevable comme
+        un payload qui n'annonce rien."""
         from app.main import read_contract_version
 
-        assert read_contract_version() == "1.9"
+        assert read_contract_version() == "1.12"
 
-        stamped = ScheduleInputSchema.model_validate({"clubId": "club-v", "seasonId": "season-v", "version": "1.9"})
-        assert stamped.version == "1.9"
+        stamped = ScheduleInputSchema.model_validate({"clubId": "club-v", "seasonId": "season-v", "version": "1.12"})
+        assert stamped.version == "1.12"
+
+
+# --- Contrat allégé (ENG-60) : un champ que le moteur ne lit pas ne voyage plus ---------------
+#
+# Promesse : sur les trois entrées du contrat (`/generate`, `/validate-assignments`,
+# `/place-matches`), un envoi sans les champs retirés est accepté, et chacun de ces champs, s'il
+# revient, est REFUSÉ (`extra="forbid"` → `ValidationError`, que FastAPI rend en 422). Le refus
+# est voulu : un champ mort qui reparaît dans l'envoi se voit tout de suite, au lieu de grossir
+# les snapshots et de périmer l'empreinte en silence. Exception à dessein : `sortOrder` d'une
+# contrainte reste TOLÉRÉ (le schéma des contraintes est en `extra="ignore"`). Jumeau côté
+# backend (l'envoi ne les porte plus) : `backend/tests/CrossStack/ContractSchemaTest.php`
+# (`UNREAD_KEYS`) et `MatchPlacementContractSchemaTest.php`.
+
+_TRAINING_SLOT: dict[str, Any] = {"dayOfWeek": 2, "startTime": "19:00", "durationMinutes": 90}
+
+_LEAN_TRAINING_PAYLOAD: dict[str, Any] = {
+    "clubId": "club-lean",
+    "seasonId": "season-lean",
+    "venues": [{"id": "v1", "name": "Gymnase Nord", "trainingSlots": [dict(_TRAINING_SLOT)]}],
+    "teams": [{"id": "t1", "priorityTierId": 1, "name": "U13F 1", "sessionsPerWeek": 2, "ageMin": 12}],
+    "coaches": [{"id": "c1", "firstName": "Camille", "lastName": "Martin"}],
+    "constraints": [
+        {
+            "id": "k1",
+            "scope": "TEAM",
+            "scopeTargetId": "t1",
+            "family": "TIME",
+            "ruleType": "PREFERRED",
+            "name": "Pas le vendredi",
+            "config": {},
+        }
+    ],
+}
+
+_CANDIDATE: dict[str, Any] = {
+    "teamId": "t1",
+    "venueId": "v1",
+    "dayOfWeek": 2,
+    "startTime": "19:00",
+    "durationMinutes": 90,
+}
+
+_LEAN_MATCH_PAYLOAD: dict[str, Any] = {
+    "clubId": "club-lean",
+    "seasonId": "season-lean",
+    "venues": [{"id": "v1"}],
+    "teams": [{"id": "t1", "matchMinutes": 90}],
+}
+
+
+def _lean(schema: type[BaseModel]) -> dict[str, Any]:
+    if schema is MatchPlacementInputSchema:
+        return copy.deepcopy(_LEAN_MATCH_PAYLOAD)
+    payload = copy.deepcopy(_LEAN_TRAINING_PAYLOAD)
+    if schema is ValidateAssignmentsInputSchema:
+        payload["candidates"] = [dict(_CANDIDATE)]
+    return payload
+
+
+_TRAINING_SCHEMAS = [ScheduleInputSchema, ValidateAssignmentsInputSchema]
+
+# (objet, clé, valeur plausible) — la recette des envois d'avant l'allègement.
+_UNREAD_TRAINING_FIELDS: list[tuple[str, str, Any]] = [
+    ("venues", "isExternal", False),
+    ("venues", "color", "#ff0000"),
+    ("venues", "latitude", "45.75"),
+    ("venues", "longitude", "4.85"),
+    ("venues", "source", "manual"),
+    ("venues", "externalRef", "ffbb-123"),
+    ("venues", "parentVenueId", "v0"),
+    ("teams", "sportCategoryId", "cat-u13"),
+    ("teams", "ageMax", 13),
+    ("teams", "gender", "F"),
+    ("teams", "level", "REGIONAL"),
+    ("teams", "parentTeamId", "t0"),
+    ("teams", "ffbbTeamId", "ffbb-t1"),
+    ("coaches", "parentCoachId", "c0"),
+]
+
+_UNREAD_MATCH_FIELDS: list[tuple[str, str, Any]] = [
+    ("venues", "name", "Gymnase Nord"),
+    ("teams", "name", "U13F 1"),
+    ("teams", "warmupMinutes", 30),
+]
+
+
+@pytest.mark.parametrize("schema", [*_TRAINING_SCHEMAS, MatchPlacementInputSchema], ids=lambda s: s.__name__)
+def test_a_lean_payload_without_the_unread_fields_is_accepted(schema: type[BaseModel]) -> None:
+    """Un envoi qui ne porte aucun champ retiré est recevable (dont une équipe sans `sportCategoryId`)."""
+    schema.model_validate(_lean(schema))
+
+
+@pytest.mark.parametrize(
+    ("schema", "obj", "key", "value"),
+    [
+        *[(schema, obj, key, value) for schema in _TRAINING_SCHEMAS for obj, key, value in _UNREAD_TRAINING_FIELDS],
+        *[(MatchPlacementInputSchema, obj, key, value) for obj, key, value in _UNREAD_MATCH_FIELDS],
+    ],
+    ids=lambda v: v.__name__ if isinstance(v, type) else str(v),
+)
+def test_an_unread_field_sent_again_is_refused(schema: type[BaseModel], obj: str, key: str, value: Any) -> None:
+    """Chaque champ retiré, s'il revient dans l'envoi, est refusé par le moteur (422)."""
+    payload = _lean(schema)
+    payload[obj][0][key] = value
+
+    with pytest.raises(ValidationError) as exc:
+        schema.model_validate(payload)
+
+    assert any(err["type"] == "extra_forbidden" and err["loc"][-1] == key for err in exc.value.errors()), exc.value
+
+
+def test_the_schedule_name_sent_again_is_refused() -> None:
+    """`scheduleName` (jamais envoyé, retiré du schéma) est refusé à la racine de `/generate`."""
+    payload = _lean(ScheduleInputSchema)
+    payload["scheduleName"] = "Saison 2026"
+
+    with pytest.raises(ValidationError):
+        ScheduleInputSchema.model_validate(payload)
+
+
+@pytest.mark.parametrize("schema", _TRAINING_SCHEMAS, ids=lambda s: s.__name__)
+def test_a_constraint_sort_order_stays_tolerated(schema: type[BaseModel]) -> None:
+    """`sortOrder` d'une contrainte ne part plus, mais un ancien envoi qui le porte reste recevable."""
+    payload = _lean(schema)
+    payload["constraints"][0]["sortOrder"] = 3
+
+    schema.model_validate(payload)
+
+
+# --- Heure d'un créneau de gymnase : refus d'une heure mal écrite (AUD-ENG-58) ---------------
+#
+# Promesse : une heure de créneau mal écrite est refusée à l'entrée (422) au lieu de casser le
+# solve plus loin (500). Le backend n'émet que `H:i` ; les secondes sont tolérées.
+
+
+@pytest.mark.parametrize("schema", _TRAINING_SCHEMAS, ids=lambda s: s.__name__)
+@pytest.mark.parametrize("start_time", ["25:00", "19h00", "", "7:5"])
+def test_a_malformed_training_slot_time_is_refused(schema: type[BaseModel], start_time: str) -> None:
+    """Une heure de créneau hors `HH:MM[:SS]` est refusée, sur `/generate` comme sur `/validate-assignments`."""
+    payload = _lean(schema)
+    payload["venues"][0]["trainingSlots"][0]["startTime"] = start_time
+
+    with pytest.raises(ValidationError) as exc:
+        schema.model_validate(payload)
+
+    assert any(err["loc"][-1] == "startTime" for err in exc.value.errors()), exc.value
+
+
+@pytest.mark.parametrize("schema", _TRAINING_SCHEMAS, ids=lambda s: s.__name__)
+@pytest.mark.parametrize("start_time", ["19:00", "19:00:00"])
+def test_a_well_formed_training_slot_time_is_accepted(schema: type[BaseModel], start_time: str) -> None:
+    """`HH:MM` et `HH:MM:SS` restent recevables."""
+    payload = _lean(schema)
+    payload["venues"][0]["trainingSlots"][0]["startTime"] = start_time
+
+    validated = schema.model_validate(payload)
+
+    assert validated.venues[0].training_slots[0].start_time == start_time  # type: ignore[attr-defined]

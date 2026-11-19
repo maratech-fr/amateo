@@ -38,8 +38,8 @@ export const PRODUCT_RULES: ImplicitRule[] = [
   },
   {
     id: "one-session-per-day",
-    title: "Au plus une séance par jour et par équipe",
-    detail: "Deux créneaux le même jour pour la même équipe ne sont jamais proposés.",
+    title: "Au plus une séance par jour et par équipe, sauf réglage de l'équipe",
+    detail: "Deux créneaux le même jour pour la même équipe ne sont jamais proposés, sauf si vous avez relevé son nombre de séances par jour (étape Équipes, bouton Liens de l'équipe, onglet « Séances par jour »).",
   },
   {
     id: "reservations-honored",

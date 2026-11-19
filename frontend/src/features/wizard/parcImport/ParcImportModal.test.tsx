@@ -2761,3 +2761,37 @@ describe("ParcImportModal — renommage au réimport : seul un nom saisi part", 
     });
   });
 });
+
+/**
+ * PROMESSE (PR 1a, plafond de séances par jour) : en fin d'import, le gestionnaire lit UNE ligne par
+ * entrée de `dailyCaps` servie par l'exécution (`raised` : plafond relevé d'après ses cases ;
+ * `capped` : au-delà de 4, le récapitulatif demandera d'en retirer ; `overlap` : deux cases se
+ * chevauchent) — une même équipe relevée ET en chevauchement porte deux lignes. Le front n'invente
+ * rien : il affiche ce que le serveur a calculé (`ParcImportExecuteTest`, cas A24).
+ */
+describe("ParcImportModal — fin d'import : une ligne par relevé du plafond de séances par jour", () => {
+  it("affiche une ligne par entrée de dailyCaps, deux pour une équipe relevée ET en chevauchement", async () => {
+    const user = userEvent.setup();
+    q.importResult.value = {
+      recap: { equipes: { crees: 0, apparies: 2, misAJour: 0, ignores: 0 } },
+      dailyCaps: [
+        { teamId: "ta", teamName: "Équipe Alpha", outcome: "raised", maxSessionsPerDay: 2, day: 1, count: 2 },
+        { teamId: "ta", teamName: "Équipe Alpha", outcome: "overlap", maxSessionsPerDay: 2, day: 1, count: 2 },
+        { teamId: "tb", teamName: "Équipe Bêta", outcome: "capped", maxSessionsPerDay: 4, day: 3, count: 5 },
+      ],
+    };
+    q.analysis.value = analysisOf({ gymnases: [mkLine(0, "Palais des Sports", "aCreer")] });
+    renderWithProviders(<ParcImportModal {...defaultProps} />);
+
+    await user.click(within(screen.getByRole("navigation")).getByRole("button", { name: (n: string) => n.includes(PARC_IMPORT_TEXTS.stepPaste) }));
+    fireEvent.change(screen.getByRole("textbox", { name: PARC_IMPORT_TEXTS.pasteLabel }), { target: { value: '{"format":"parc-v2","cases":[]}' } });
+    await user.click(screen.getByRole("button", { name: PARC_IMPORT_TEXTS.analyze }));
+    await visitAllSteps(user);
+    await user.click(screen.getByRole("button", { name: /Importer/ }));
+
+    await screen.findByText(PARC_IMPORT_TEXTS.sectionRecap(0, 2, 0, 0), { exact: false });
+    const linesOf = (name: string) => screen.getAllByRole("listitem").filter((li) => li.textContent?.includes(name));
+    expect(linesOf("Équipe Alpha")).toHaveLength(2);
+    expect(linesOf("Équipe Bêta")).toHaveLength(1);
+  });
+});

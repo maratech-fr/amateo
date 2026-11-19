@@ -5,9 +5,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { listboxTrigger, openListbox, pickListboxOption } from "@/test/pickListboxOption";
 import { renderWithProviders } from "@/test/utils";
 import { WIZARD_TEXTS } from "../texts";
+import { TEAMS_TEXTS } from "../texts/teams";
 
 import type { Constraint, ImplicitRuleSetting, SharedTrainingBlock } from "../api";
-import { isAlwaysObjective } from "@/shared/lib/implicitRules";
 import { PRODUCT_RULES, WELLBEING_RULES } from "../lib/implicitRules";
 
 const RESOLVED_IMPLICIT_RULES: ImplicitRuleSetting[] = [
@@ -1303,13 +1303,13 @@ describe("ConstraintsStep — période : choisir, nommer, atteindre", () => {
     expect(screen.queryByRole("group", { name: `Intensité — ${WELLBEING_RULES[0].title}` })).toBeNull();
   });
 
-  it("l'onglet « Bien-être » montre les 4 règles réglables avec leur sélecteur d'intensité (P2-28)", async () => {
+  it("l'onglet « Bien-être » montre chaque règle réglable avec son sélecteur d'intensité, salarié compris (P2-28, PR 1b)", async () => {
     const user = userEvent.setup();
     renderWithProviders(<ConstraintsStep />);
 
     await user.click(screen.getByRole("button", { name: "Bien-être" }));
 
-    for (const meta of WELLBEING_RULES.filter((rule) => !isAlwaysObjective(rule.ruleKey))) {
+    for (const meta of WELLBEING_RULES) {
       expect(screen.getByRole("group", { name: `Intensité — ${meta.title}` })).toBeInTheDocument();
     }
     // Les règles immuables ne sont PAS répétées ici.
@@ -1335,9 +1335,12 @@ describe("ConstraintsStep — période : choisir, nommer, atteindre", () => {
     expect(coachRule?.detail).toContain("MÊME gymnase");
     expect(coachRule?.detail).toContain("autorisées");
 
-    // Aucune règle du produit ne doit renvoyer vers un réglage inexistant.
+    // Aucune règle du produit ne renvoie vers un réglage inexistant : l'exception « séances par
+    // jour » nomme le bouton et l'onglet RÉELS, lus dans les clés que l'écran affiche
+    // (`TeamsStep.tsx` : aria-label `linksOfTeam`, `TeamLinksModal.tsx` : onglet `dailyCapTab`).
     const perDay = PRODUCT_RULES.find((r) => "one-session-per-day" === r.id);
-    expect(perDay?.detail).not.toMatch(/sauf si|autoris/i);
+    expect(perDay?.detail).toContain(TEAMS_TEXTS.linksOfTeam("l'équipe"));
+    expect(perDay?.detail).toContain(`« ${TEAMS_TEXTS.dailyCapTab} »`);
 
     // Le minimum de séances est une CIBLE, pas une loi (honnêteté du produit).
     const minimum = PRODUCT_RULES.find((r) => "team-minimum-target" === r.id);

@@ -26,6 +26,7 @@ from .common import (
     _fold_case_occupant_identity,
     _get,
     _intervals_overlap,
+    _max_sessions_per_day_by_team,
     _not_honored_warning,
     _scalar_id,
 )
@@ -607,6 +608,7 @@ def diagnose_candidate_conflicts(
     # --- Structural rules, checked against the FROZEN baseline occupancy. ---
     coach_working_days: dict[str, set[int]] = {cid: set() for cid in c_coaches}
     baseline_days_same_team: set[int] = set()
+    baseline_sessions_same_team_day = 0
 
     for slot in baseline_slots:
         s_team = str(slot["team_id"])
@@ -632,6 +634,7 @@ def diagnose_candidate_conflicts(
         # One session per day: same team already busy that day.
         if s_team == c_team and s_day == c_day:
             baseline_days_same_team.add(s_day)
+            baseline_sessions_same_team_day += 1
 
         if s_team == c_team and overlaps:
             _emit(
@@ -758,11 +761,20 @@ def diagnose_candidate_conflicts(
                     start_time=c_start_text,
                 )
 
-    # One session per day: mirror add_one_session_per_day (at most one per day).
-    if c_day in baseline_days_same_team:
+    # One session per day: mirror add_one_session_per_day (at most ``maxSessionsPerDay`` per day).
+    # PR 1a — même phrase que la garde backend (T4a à plafond 1, T4b au-delà) ; au plafond seulement.
+    # Un plafond baissé sous un doublé déjà en place : l'équipe a déjà atteint (dépassé) son plafond,
+    # toute séance de plus ce jour-là est refusée.
+    c_cap = _max_sessions_per_day_by_team(teams).get(c_team, 1)
+    if c_day in baseline_days_same_team and baseline_sessions_same_team_day >= c_cap:
         _emit(
             "one_session_per_day",
-            f"{_team(c_team)} s'entraîne déjà le {_day_label(c_day)} : une seule séance par jour.",
+            (
+                f"{_team(c_team)} s'entraîne déjà le {_day_label(c_day)} : une seule séance par jour."
+                if c_cap == 1
+                else f"{_team(c_team)} a déjà {baseline_sessions_same_team_day} séances le {_day_label(c_day)} : "
+                f"{c_cap} séances par jour au plus pour cette équipe."
+            ),
             team_id=c_team,
             day_of_week=c_day,
             start_time=c_start_text,

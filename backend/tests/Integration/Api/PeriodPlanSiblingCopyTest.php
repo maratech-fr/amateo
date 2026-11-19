@@ -17,6 +17,7 @@ use App\Entity\SharedTrainingBlockTeam;
 use App\Entity\TeamPeriodOverride;
 use App\Entity\User;
 use App\Entity\Venue;
+use App\Entity\VenueOccupancy;
 use App\Entity\VenuePeriodOverride;
 use App\Entity\VenueTrainingSlot;
 use App\Enum\ImplicitRuleIntensity;
@@ -38,6 +39,7 @@ use Lexik\Bundle\JWTAuthenticationBundle\Services\JWTTokenManagerInterface;
 use PHPUnit\Framework\Attributes\Group;
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
+use Symfony\Component\Uid\Uuid;
 
 /**
  * La COPIE SŒUR d'un plan de période (axe §7.1 *planning lifecycle*, fondateur 2026-10-27).
@@ -50,7 +52,7 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
  *   copyInto(string $sourcePlanId, string $targetEntryId) : copie la version POINTÉE du plan SOURCE
  *   dans le plan de l'entrée cible, EN DUR (aucun solve), V1 COMPLETED portant un MARQUEUR de
  *   provenance (`Schedule::solverVersion`), slots identiques (verrous à ORIGINE vraie RESERVATION/MANUAL),
- *   pose le pointeur (`choose`) ET la source de verrous (`pointLockSource`), et copie les 8 familles
+ *   pose le pointeur (`choose`) ET la source de verrous (`pointLockSource`), et copie les 9 familles
  *   ancrées-plan de {@see OverlayManager::purgePlanAnchoredSettings} ; la grille servie
  *   est celle du PLAN SOURCE (jamais celle de la saison). Source NON pointée → naissance VIDE annoncée
  *   (aucune version, le gestionnaire régénère).
@@ -67,7 +69,7 @@ final class PeriodPlanSiblingCopyTest extends WebTestCase
     use TenantGucTrait;
 
     /**
-     * Les 8 familles ancrées-plan (OverlayManager::purgePlanAnchoredSettings), dans leur ordre.
+     * Les 9 familles ancrées-plan (OverlayManager::purgePlanAnchoredSettings), dans leur ordre.
      *
      * @var list<class-string>
      */
@@ -80,6 +82,7 @@ final class PeriodPlanSiblingCopyTest extends WebTestCase
         SharedTrainingBlock::class,
         SharedTrainingBlockTeam::class,
         ImplicitRuleSetting::class,
+        VenueOccupancy::class,
     ];
 
     private const string TEAM_ID = '88888888-8888-4888-8888-888888888888';
@@ -90,7 +93,7 @@ final class PeriodPlanSiblingCopyTest extends WebTestCase
 
     private EntityManagerInterface $em;
 
-    /** La copie sœur reproduit la version pointée + les 8 familles + la grille DU PLAN source. */
+    /** La copie sœur reproduit la version pointée + les 9 familles + la grille DU PLAN source. */
     public function testPointedSourceIsCopiedWholesaleIntoTheSiblingPlan(): void
     {
         [$user, $club, $season] = $this->createClubWithSeason();
@@ -134,7 +137,7 @@ final class PeriodPlanSiblingCopyTest extends WebTestCase
         self::assertContains(LockOrigin::MANUAL->value, $this->distinctLockOrigins($club, $chosen), 'les verrous MANUAL de la source sont conservés');
         self::assertContains(LockOrigin::RESERVATION->value, $this->distinctLockOrigins($club, $chosen), 'les verrous RESERVATION de la source sont conservés');
 
-        // ── Les 8 familles ancrées-plan sont copiées sur le plan cible (grain par grain). ──
+        // ── Les 9 familles ancrées-plan sont copiées sur le plan cible (grain par grain). ──
         foreach (self::ANCHORED_FAMILIES as $family) {
             self::assertSame(
                 $this->countAnchored($club, $family, $sourcePlanId),
@@ -145,6 +148,31 @@ final class PeriodPlanSiblingCopyTest extends WebTestCase
 
         // ── La grille servie au plan cible est celle du PLAN SOURCE (jamais celle de la saison). ──
         self::assertSame($sourceGridDays, $this->gridDaysOf($club, $targetPlanId), 'la copie reprend la grille du PLAN source');
+    }
+
+    /** Le plafond de séances par jour réglé pour la période source suit dans le plan sœur : la copie reprend la VALEUR. */
+    public function testTheDailyCapOfThePeriodIsCopiedIntoTheSiblingPlan(): void
+    {
+        [$user, $club, $season] = $this->createClubWithSeason();
+        $venue = $this->venue($club, $season);
+        $this->seedSeasonGridSlot($club, $season, $venue->getId());
+        $sourceEntry = $this->adaptedPeriod($user, 'Barros (plafond)', '2026-03-02', '2026-03-15');
+        $sourcePlanId = $this->planIdOf($club, $sourceEntry);
+        $this->seedPointedVersionWithLockedSlots($club, $season, $sourcePlanId, $venue->getId());
+        $this->scopeGucToClub($club->getId());
+        $this->em->persist((new TeamPeriodOverride)->setClubId($club->getId())->setSeasonId($season->getId())->setSchedulePlanId($sourcePlanId)
+            ->setTeamId(self::TEAM_ID)->setIsActive(true)->setSessionsPerWeek(null)->setMaxSessionsPerDay(3));
+        $this->em->flush();
+        $targetEntry = $this->adaptedPeriod($user, 'Barros (plafond, après)', '2026-03-30', '2026-04-05');
+        $targetPlanId = $this->planIdOf($club, $targetEntry);
+
+        self::getContainer()->get(PeriodPlanSiblingCopier::class)->copyInto($sourcePlanId, $targetEntry);
+
+        $this->scopeGucToClub($club->getId());
+        $this->em->clear();
+        $copied = $this->em->getRepository(TeamPeriodOverride::class)->findOneBy(['schedulePlanId' => $targetPlanId, 'teamId' => self::TEAM_ID]);
+        self::assertInstanceOf(TeamPeriodOverride::class, $copied);
+        self::assertSame(3, $copied->getMaxSessionsPerDay());
     }
 
     /** Source NON pointée (espace de travail) → naissance VIDE : le plan cible reste sans version. */
@@ -259,6 +287,9 @@ final class PeriodPlanSiblingCopyTest extends WebTestCase
         $this->em->persist((new SharedTrainingBlockTeam)->setClubId($clubId)->setSeasonId($seasonId)->setSchedulePlanId($planId)->setBlockId($block->getId())->setTeamId(self::TEAM_ID));
         $this->em->flush();
 
+        // Une occupation propre au plan source, en plus de la copie de saison née avec lui.
+        $this->seedOccupancy($club, $season, $venueId, 5, '10:00', 'Mairie', $planId);
+
         // Déviation d'une règle bien-être DÉJÀ matérialisée par l'adaptation (pas d'insert : UPDATE).
         $rule = $this->em->getRepository(ImplicitRuleSetting::class)->findOneBy(['schedulePlanId' => $planId, 'ruleKey' => ImplicitRuleKey::COACH_REST_DAY]);
         if ($rule instanceof ImplicitRuleSetting) {
@@ -281,6 +312,24 @@ final class PeriodPlanSiblingCopyTest extends WebTestCase
             ->setSchedulePlanId(null);
         $this->em->persist($slot);
         $this->em->flush();
+
+        // Une occupation de saison, hors du créneau : copiée dans chaque plan à sa naissance. Le plan
+        // cible la porte donc AVANT la copie sœur — sans la purge, il porterait les deux jeux.
+        $this->seedOccupancy($club, $season, $venueId, 2, '14:00', 'École', null);
+    }
+
+    /**
+     * Une occupation posée en base (table `venue_occupancy`, colonnes du contrat du plan), dans la
+     * grille de saison (`$planId` nul) ou dans celle d'un plan de période.
+     */
+    private function seedOccupancy(Club $club, Season $season, string $venueId, int $day, string $start, string $label, ?string $planId): void
+    {
+        $this->scopeGucToClub($club->getId());
+        $this->em->getConnection()->executeStatement(
+            'INSERT INTO venue_occupancy (id, version, created_at, updated_at, club_id, season_id, venue_id, day_of_week, start_time, duration_minutes, label, schedule_plan_id)'
+            . ' VALUES (:id, 1, now(), now(), :club, :season, :venue, :day, :start, 120, :label, :plan)',
+            ['id' => Uuid::v4()->toRfc4122(), 'club' => $club->getId(), 'season' => $season->getId(), 'venue' => $venueId, 'day' => $day, 'start' => $start, 'label' => $label, 'plan' => $planId],
+        );
     }
 
     /** @param class-string $family */

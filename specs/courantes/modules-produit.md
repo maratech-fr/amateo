@@ -153,7 +153,7 @@ tranquille.
   `backend/src/ApiResource/CoachWishCampaignResource.php:40`.
 - Les souhaits cochés passent au planning d'un geste, en réglages de la semaine concernée — le
   gestionnaire relit avant de transférer — `backend/src/Controller/CoachWishTransferController.php`.
-- Les règles de bien-être se règlent d'un clic (Obligatoire ou Objectif) : chaque coach
+- Les règles de bien-être se règlent d'un clic (Obligatoire, Souhaitée ou Ignorée ; la présence d'un salarié n'est jamais obligatoire) : chaque coach
   garde un jour de repos par semaine ; un salarié est placé chaque jour où le club tourne
   (jamais bloquant, un jour sans salarié est signalé après coup) ; jamais trop de créneaux
   dos-à-dos pour une même personne, ni trop de jours d'affilée pour une équipe ; et les jeunes
@@ -161,7 +161,8 @@ tranquille.
   `backend/src/Enum/ImplicitRuleKey.php:83-90`, `frontend/src/features/wizard/lib/implicitRules.ts:60-70`.
 - Le récapitulatif dit ce qui bloquera AVANT de lancer la génération (« n blocages à corriger
   avant de générer »), et ce qu'il dit voué à l'échec est refusé avant même d'être envoyé au
-  calcul, quel que soit le chemin pris — `frontend/src/features/wizard/steps/RecapStep.tsx:201-204,425`,
+  calcul, quel que soit le chemin pris (une seule exception : le comblement ne compte pas les séances
+  verrouillées d'une équipe, que le récapitulatif compte) — `frontend/src/features/wizard/steps/RecapStep.tsx:201-204,425`,
   `backend/src/Service/GenerationBlockersGuard.php`. Il avertit aussi sans bloquer, par exemple
   quand un coach seul sur une équipe a plus de séances que de jours disponibles —
   `backend/src/Service/PreSolvePreventionWarnings.php:329`.

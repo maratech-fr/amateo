@@ -15,8 +15,11 @@ use RuntimeException;
  * providers scopés — backend/docs/TENANT.md).
  *
  * Prouve qu'un club ne voit RIEN d'un autre : il ne liste pas ses équipes, ne peut en lire une par
- * son id (404 « introuvable » — jamais 403, l'existence n'est pas révélée), ni la supprimer ; et
- * qu'un membre sans rôle de gestion ne modifie rien (403, SEC-07).
+ * son id (404 « introuvable » — jamais 403, l'existence n'est pas révélée), ni la supprimer ; même
+ * cloison pour les occupations de ses gymnases (ni liste, ni lecture, ni modification, ni
+ * suppression ; et ni pose ni déplacement d'une occupation dans un gymnase qui n'est pas le sien :
+ * « Gymnase inconnu pour ce club. ») ; et qu'un membre sans rôle de gestion ne modifie rien, ni
+ * équipe ni occupation (403, SEC-07).
  *
  * Le second club et le membre simple sont SEMÉS en base (club + saison + gestionnaire pour l'un,
  * adhésion « membre » pour l'autre) plutôt que par le rail d'inscription : deux vrais tenants sous
@@ -25,7 +28,29 @@ use RuntimeException;
  */
 final class TenantIsolationContext extends BaseContext
 {
+    use PosesVenueOccupancyTrait;
+
     private const string USER_EMAIL = 'dev-bccl@amateo.local';
+
+    // Occupation du club de démonstration, et ce que l'autre club en voit / peut en faire.
+    private string $venueA = '';
+
+    private string $occupancyA = '';
+
+    private int $occupancyListStatus = 0;
+
+    private bool $occupancyVisibleToB = true;
+
+    private int $occupancyReadStatus = 0;
+
+    private int $occupancyPutStatus = 0;
+
+    private int $occupancyDeleteStatus = 0;
+
+    // Gymnase et occupation propres à l'autre club (pour la tentative de déplacement).
+    private string $venueB = '';
+
+    private string $occupancyB = '';
 
     private string $tokenA = '';
 
@@ -134,6 +159,105 @@ final class TenantIsolationContext extends BaseContext
         }
     }
 
+    #[Given('une occupation posée par le club de démonstration dans l\'un de ses gymnases')]
+    public function uneOccupationPoseeParLeClubDeDemonstration(): void
+    {
+        $this->venueA = $this->seasonVenueOfClubA();
+        $free = $this->plageLibre($this->tokenA, $this->venueA, 60, [2, 1, 3, 4, 5, 6, 7]);
+        $posed = $this->poseOccupation($this->tokenA, $this->venueA, $free['day'], $free['start'], 60, 'École');
+        $id = $posed['json']['id'] ?? null;
+        if (201 !== $posed['status'] || !\is_string($id) || '' === $id) {
+            throw new RuntimeException(\sprintf('la pose de l\'occupation par le club de démonstration a répondu %d (201 attendu) — %s', $posed['status'], $this->messageDuRefus($posed['json'])));
+        }
+        $this->occupancyA = $id;
+
+        // Ce que l'autre club voit / peut faire — mesuré une fois, asserté ensuite.
+        $list = $this->apiGet(\sprintf('venue_occupancies?venueId=%s', $this->venueA), $this->tokenB);
+        $this->occupancyListStatus = $list['status'];
+        $this->occupancyVisibleToB = false;
+        foreach ($this->members($list['json']) as $o) {
+            if (($o['id'] ?? null) === $this->occupancyA) {
+                $this->occupancyVisibleToB = true;
+
+                break;
+            }
+        }
+
+        $this->occupancyReadStatus = $this->apiGet(\sprintf('venue_occupancies/%s', $this->occupancyA), $this->tokenB)['status'];
+        $this->occupancyPutStatus = $this->apiPut(\sprintf('venue_occupancies/%s', $this->occupancyA), [
+            'venueId' => $this->venueA,
+            'dayOfWeek' => $free['day'],
+            'startTime' => $free['start'],
+            'durationMinutes' => 60,
+            'label' => 'Réécrite par un autre club',
+        ], $this->tokenB)['status'];
+        $this->occupancyDeleteStatus = $this->apiDelete(\sprintf('venue_occupancies/%s', $this->occupancyA), $this->tokenB)['status'];
+    }
+
+    #[Then('l\'autre club ne voit pas cette occupation dans la liste de ce gymnase')]
+    public function lautreClubNeVoitPasLOccupation(): void
+    {
+        if (200 !== $this->occupancyListStatus) {
+            throw new RuntimeException(\sprintf('la liste des occupations, lue par l\'autre club, a répondu %d (200 attendu)', $this->occupancyListStatus));
+        }
+        if ($this->occupancyVisibleToB) {
+            throw new RuntimeException('l\'autre club voit une occupation qui ne lui appartient pas — fuite d\'isolement');
+        }
+    }
+
+    #[Then('l\'autre club ne peut ni lire, ni modifier, ni supprimer cette occupation : elle est introuvable')]
+    public function lautreClubNeTouchePasLOccupation(): void
+    {
+        $statuses = ['lire' => $this->occupancyReadStatus, 'modifier' => $this->occupancyPutStatus, 'supprimer' => $this->occupancyDeleteStatus];
+        foreach ($statuses as $gesture => $status) {
+            if (404 !== $status) {
+                throw new RuntimeException(\sprintf('%s l\'occupation d\'un autre club aurait dû être introuvable (404), obtenu %d (jamais 403 : l\'existence ne se révèle pas)', $gesture, $status));
+            }
+        }
+
+        // L'occupation est intacte, telle que son club la liste.
+        $own = $this->apiGet(\sprintf('venue_occupancies/%s', $this->occupancyA), $this->tokenA);
+        if (200 !== $own['status'] || 'École' !== ($own['json']['label'] ?? null)) {
+            throw new RuntimeException(\sprintf('l\'occupation du club de démonstration n\'est plus intacte après les tentatives de l\'autre club (HTTP %d, motif « %s »)', $own['status'], \is_string($own['json']['label'] ?? null) ? $own['json']['label'] : ''));
+        }
+    }
+
+    #[Then('/^l\'autre club ne peut ni poser ni déplacer une occupation dans ce gymnase : « (?P<message>.+) »$/u')]
+    public function lautreClubNePosePasDansCeGymnase(string $message): void
+    {
+        $body = ['venueId' => $this->venueA, 'dayOfWeek' => 7, 'startTime' => '08:00', 'durationMinutes' => 60, 'label' => 'Intrusion'];
+
+        $posed = $this->poseOccupation($this->tokenB, $this->venueA, 7, '08:00', 60, 'Intrusion');
+        $this->assertUnknownVenue('poser une occupation dans le gymnase d\'un autre club', $posed, $message);
+
+        // Le déplacement part d'une occupation légitime de l'autre club, dans son propre gymnase.
+        $venue = $this->apiPost('venues', ['name' => 'Gymnase de l\'autre club', 'source' => 'manual'], $this->tokenB);
+        $venueId = $venue['json']['id'] ?? null;
+        if (!\in_array($venue['status'], [200, 201], true) || !\is_string($venueId) || '' === $venueId) {
+            throw new RuntimeException(\sprintf('la création du gymnase de l\'autre club a répondu %d', $venue['status']));
+        }
+        $this->venueB = $venueId;
+        $own = $this->poseOccupation($this->tokenB, $this->venueB, 7, '08:00', 60, 'Mairie');
+        $ownId = $own['json']['id'] ?? null;
+        if (201 !== $own['status'] || !\is_string($ownId) || '' === $ownId) {
+            throw new RuntimeException(\sprintf('la pose d\'une occupation par l\'autre club dans son propre gymnase a répondu %d (201 attendu) — %s', $own['status'], $this->messageDuRefus($own['json'])));
+        }
+        $this->occupancyB = $ownId;
+
+        $moved = $this->apiPut(\sprintf('venue_occupancies/%s', $this->occupancyB), $body, $this->tokenB);
+        $this->assertUnknownVenue('déplacer une occupation dans le gymnase d\'un autre club', $moved, $message);
+    }
+
+    #[When('ce membre tente de poser une occupation dans un gymnase du club')]
+    public function ceMembreTenteDePoserUneOccupation(): void
+    {
+        // Corps VALIDE sur une plage libre (un membre lit tout) : c'est le refus de rôle (403) qu'on
+        // prouve, pas un 422 de forme ni de chevauchement.
+        $venue = $this->seasonVenueOfClubA();
+        $free = $this->plageLibre($this->memberToken, $venue, 60, [2, 1, 3, 4, 5, 6, 7]);
+        $this->memberWriteStatus = $this->poseOccupation($this->memberToken, $venue, $free['day'], $free['start'], 60, 'Écriture interdite')['status'];
+    }
+
     #[Given('le club de démonstration et l\'un de ses membres sans rôle de gestion')]
     public function leClubEtUnMembreSimple(): void
     {
@@ -189,6 +313,20 @@ final class TenantIsolationContext extends BaseContext
             $this->apiDelete(\sprintf('teams/%s', $this->teamA), $this->tokenA);
         }
 
+        // Occupations : celle de l'autre club par son propre jeton, puis toutes celles posées par le
+        // scénario (une occupation déjà partie répond 404, sans erreur), puis le gymnase de l'autre club.
+        if ('' !== $this->occupancyB) {
+            $this->apiDelete(\sprintf('venue_occupancies/%s', $this->occupancyB), $this->tokenB);
+        }
+        $this->retireOccupationsPosees($this->tokenA);
+        if ('' !== $this->venueB) {
+            $this->apiDelete(\sprintf('venues/%s', $this->venueB), $this->tokenB);
+            $this->dbalExec(\sprintf('DELETE FROM venue WHERE id=\'%s\'', $this->venueB), admin: true);
+        }
+        if ('' !== $this->clubIdB) {
+            $this->dbalExec(\sprintf('DELETE FROM audit_log WHERE club_id=\'%s\'', $this->clubIdB), admin: true);
+        }
+
         if ('' !== $this->memberUserId) {
             $this->dbalExec(\sprintf('DELETE FROM club_user WHERE user_id=\'%s\'', $this->memberUserId), admin: true);
             $this->dbalExec(\sprintf('DELETE FROM app_user WHERE id=\'%s\'', $this->memberUserId), admin: true);
@@ -239,6 +377,39 @@ final class TenantIsolationContext extends BaseContext
         $this->insertUser($this->userIdB, $email);
         $this->insertMembership($this->userIdB, $this->clubIdB, 'admin');
         $this->tokenB = $this->mintToken($email);
+    }
+
+    /** Un gymnase de la saison du club de démonstration qui porte des créneaux de saison (pointage). */
+    private function seasonVenueOfClubA(): string
+    {
+        $venue = $this->dbalScalar(
+            \sprintf(
+                'SELECT s.venue_id AS behatval FROM venue_training_slot s'
+                . ' JOIN schedule_plan p ON p.club_id = s.club_id AND p.season_id = s.season_id AND p.type = \'SEASON\''
+                . ' WHERE s.club_id = \'%s\' AND s.schedule_plan_id IS NULL ORDER BY s.venue_id LIMIT 1',
+                $this->clubIdA,
+            ),
+            admin: true,
+        );
+        if (1 !== preg_match('/^[0-9a-f-]{36}$/i', $venue)) {
+            throw new RuntimeException('aucun gymnase de saison avec des créneaux pour le club de démonstration — la base est-elle seedée ?');
+        }
+
+        return $venue;
+    }
+
+    /**
+     * @param array{status: int, json: array<mixed>} $response
+     */
+    private function assertUnknownVenue(string $gesture, array $response, string $message): void
+    {
+        if (422 !== $response['status']) {
+            throw new RuntimeException(\sprintf('%s aurait dû être refusé (422), obtenu %d', $gesture, $response['status']));
+        }
+        $served = $this->messageDuRefus($response['json']);
+        if ($served !== $message) {
+            throw new RuntimeException(\sprintf('%s est refusé avec « %s » (attendu « %s »)', $gesture, $served, $message));
+        }
     }
 
     private function insertUser(string $userId, string $email): void

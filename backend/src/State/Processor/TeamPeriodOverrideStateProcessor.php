@@ -88,6 +88,7 @@ class TeamPeriodOverrideStateProcessor extends AbstractStateProcessor
         }
         $entity->setIsActive($input->isActive);
         $entity->setSessionsPerWeek($input->sessionsPerWeek);
+        $entity->setMaxSessionsPerDay($input->maxSessionsPerDay);
 
         return $entity;
     }
@@ -101,6 +102,7 @@ class TeamPeriodOverrideStateProcessor extends AbstractStateProcessor
         // schedulePlanId + teamId identify the row — not remapped on edit.
         $entity->setIsActive($input->isActive);
         $entity->setSessionsPerWeek($input->sessionsPerWeek);
+        $entity->setMaxSessionsPerDay($input->maxSessionsPerDay);
     }
 
     /**

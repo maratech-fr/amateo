@@ -22,9 +22,11 @@ paths:
   `/place-matches`, `tests/perf/test_perf_place_matches.py`) ;
   `pytest-timeout` contre les solves fous. Les golden dépendent du **worker unique déterministe**
   (≤200 de complexité) — ne pas toucher `_adaptive_workers` sans les re-jouer.
-- Le contrat backend⇄engine est **synchronisé À LA MAIN** (`engine/CONTRACT_VERSION`, 1.9, un seul
+- Le contrat backend⇄engine est **synchronisé À LA MAIN** (`engine/CONTRACT_VERSION`, 1.12, un seul
   contrat pour `/generate`, `/place-matches` ET `/validate-assignments`) : toute modif des schemas
   Pydantic doit garder verts `ContractSchemaTest` + `MatchPlacementContractSchemaTest` +
-  `ValidateAssignmentsContractSchemaTest` côté backend.
+  `ValidateAssignmentsContractSchemaTest` côté backend. Le contrat est **allégé** : un champ que le
+  solveur ne lit pas n'est ni envoyé ni accepté (`extra="forbid"`, 422) ; en ajouter un, c'est
+  qu'une règle du solveur le lit, et il entre alors dans l'empreinte de structure.
 - L'engine tourne en uvicorn **sans reload** : après une modif de code, `docker compose restart
   engine` avant tout test end-to-end.

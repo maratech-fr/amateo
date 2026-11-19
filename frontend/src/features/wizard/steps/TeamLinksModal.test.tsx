@@ -60,6 +60,7 @@ const team = (over: Partial<Team> & Pick<Team, "id" | "name">): Team => ({
   gender: "M",
   level: null,
   sessionsPerWeek: 3,
+  maxSessionsPerDay: 1,
   isActive: true,
   ...over,
 });
@@ -279,7 +280,7 @@ describe("TeamLinksModal — onglet « Entente (CTC) » (D4)", () => {
   it("ajoute un 3ᵉ onglet « Entente (CTC) » APRÈS Passerelles · Mutualisation, inactif par défaut", () => {
     renderModal();
     const tabs = screen.getAllByRole("tab");
-    expect(tabs).toHaveLength(3);
+    expect(tabs).toHaveLength(4);
     expect(tabs[2]).toHaveAccessibleName(TEAMS_TEXTS.ctcTabLabel);
     expect(screen.getByRole("tab", { name: TEAMS_TEXTS.ctcTabLabel })).toHaveAttribute("aria-selected", "false");
   });

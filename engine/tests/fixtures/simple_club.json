@@ -44,35 +44,30 @@
   "teams": [
     {
       "id": "senior-m",
-      "sportCategoryId": "senior",
       "priorityTierId": 1,
       "name": "Senior Men",
       "sessionsPerWeek": 2
     },
     {
       "id": "u17-m",
-      "sportCategoryId": "u17",
       "priorityTierId": 2,
       "name": "U17 Men",
       "sessionsPerWeek": 2
     },
     {
       "id": "u15-m",
-      "sportCategoryId": "u15",
       "priorityTierId": 3,
       "name": "U15 Men",
       "sessionsPerWeek": 1
     },
     {
       "id": "u13-m",
-      "sportCategoryId": "u13",
       "priorityTierId": 4,
       "name": "U13 Men",
       "sessionsPerWeek": 1
     },
     {
       "id": "u11-m",
-      "sportCategoryId": "u11",
       "priorityTierId": 5,
       "name": "U11 Men",
       "sessionsPerWeek": 1

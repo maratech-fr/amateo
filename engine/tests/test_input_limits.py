@@ -24,7 +24,6 @@ from app.schemas.input_schema import (
 def _team(i: int) -> dict[str, object]:
     return {
         "id": f"t{i}",
-        "sportCategoryId": "sc-1",
         "priorityTierId": 1,
         "name": f"T{i}",
         "sessionsPerWeek": 2,

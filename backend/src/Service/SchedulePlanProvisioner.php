@@ -989,6 +989,23 @@ final class SchedulePlanProvisioner
     }
 
     /**
+     * Recopie les occupations de saison d'UN gymnase dans la grille d'un plan de période — le
+     * pendant de {@see copySeasonalSlotsForVenue} pour « Reprendre la grille » (VenuePeriodGrid).
+     * L'appelant a vidé les occupations du gymnase pour ce plan juste avant.
+     */
+    public function copySeasonalOccupanciesForVenue(string $schedulePlanId, string $venueId): void
+    {
+        $row = $this->entityManager->getConnection()->fetchAssociative(
+            'SELECT club_id, season_id FROM schedule_plan WHERE id = :pid',
+            ['pid' => $schedulePlanId],
+        );
+        if (false === $row) {
+            return;
+        }
+        $this->copySeasonalOccupancyRows($schedulePlanId, (string) $row['club_id'], (string) $row['season_id'], $venueId);
+    }
+
+    /**
      * Le repère daté d'une fenêtre, en clair — SOURCE UNIQUE réutilisée par la garde d'unicité
      * de fenêtre (P2-38 : nommer la fenêtre du plan déjà en place dans le 409). Délègue au même
      * {@see windowSuffix} que les noms de plan, pour que « du 20 octobre au 2 novembre » se lise
@@ -1216,6 +1233,8 @@ final class SchedulePlanProvisioner
         $this->entityManager->persist($plan);
         $this->entityManager->flush(); // l'id du plan doit exister avant les copies ci-dessous
         $this->copySeasonalSlots($plan);
+        // La grille de la période comprend ses occupations : copiées après les créneaux, sans contrôle.
+        $this->copySeasonalOccupancyRows($plan->getId(), (string) $plan->getClubId(), $plan->getSeasonId(), null);
         // D10 affinée (décision fondateur 2026-09-02) — un plan de FERMETURE hérite des blocs de
         // mutualisation du socle à sa naissance ; un plan de vacances (HOLIDAY) ne copie RIEN.
         if (SchedulePlanType::CLOSURE === $type) {
@@ -1261,6 +1280,28 @@ final class SchedulePlanProvisioner
         $params = ['planId' => $schedulePlanId, 'clubId' => $clubId, 'seasonId' => $seasonId];
         if (null !== $venueId) {
             $sql .= ' AND venue_id = :venueId';
+            $params['venueId'] = $venueId;
+        }
+        $this->entityManager->getConnection()->executeStatement($sql, $params);
+    }
+
+    /**
+     * La copie des occupations de saison dans la grille d'un plan de période, telles quelles et sans
+     * contrôle de chevauchement (un chevauchement de la saison est copié). Seules les occupations dont
+     * le gymnase EXISTE sont copiées : une occupation dormante (gymnase absent de la version chargée)
+     * reste en saison et revient avec son gymnase.
+     *
+     * @param string|null $venueId null = tous les gymnases
+     */
+    private function copySeasonalOccupancyRows(string $schedulePlanId, string $clubId, string $seasonId, ?string $venueId): void
+    {
+        $sql = 'INSERT INTO venue_occupancy (id, version, created_at, updated_at, club_id, season_id, venue_id, day_of_week, start_time, duration_minutes, label, schedule_plan_id) '
+            . 'SELECT gen_random_uuid(), 1, now(), now(), o.club_id, o.season_id, o.venue_id, o.day_of_week, o.start_time, o.duration_minutes, o.label, :planId '
+            . 'FROM venue_occupancy o WHERE o.club_id = :clubId AND o.season_id = :seasonId AND o.schedule_plan_id IS NULL '
+            . 'AND EXISTS (SELECT 1 FROM venue v WHERE v.id = o.venue_id)';
+        $params = ['planId' => $schedulePlanId, 'clubId' => $clubId, 'seasonId' => $seasonId];
+        if (null !== $venueId) {
+            $sql .= ' AND o.venue_id = :venueId';
             $params['venueId'] = $venueId;
         }
         $this->entityManager->getConnection()->executeStatement($sql, $params);

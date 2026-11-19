@@ -55,7 +55,7 @@ final class ScheduleConstraintBuilder
      * Elle DOIT valoir exactement la valeur du fichier — gardé par
      * `PayloadVersionMatchesContractVersionTest`.
      */
-    public const string CONTRACT_VERSION = '1.9';
+    public const string CONTRACT_VERSION = '1.12';
     private const CACHE_TTL_SECONDS = 14_400;
     private const DEFAULT_SOLVER_SEED = 42;
     /**
@@ -86,6 +86,14 @@ final class ScheduleConstraintBuilder
      * @var array<string, int>
      */
     private array $currentSessionOverrides = [];
+
+    /**
+     * teamId → séances max par jour surchargées pour la période, posé le temps d'un build de période
+     * (même cycle de vie que {@see $currentSessionOverrides}).
+     *
+     * @var array<string, int>
+     */
+    private array $currentMaxPerDayOverrides = [];
 
     /**
      * PR 6 (lot 8) — ids des équipes qui portent une contrainte « Garder ses créneaux de saison »
@@ -146,11 +154,12 @@ final class ScheduleConstraintBuilder
      * P2-9ter — la clé porte la SAISON : `buildForClubSeason` en reçoit une, et sans elle
      * un club à deux saisons se voyait resservir le payload de l'autre. Elle porte aussi la VERSION
      * dont le payload reprend les séances : obligatoire, un appelant qui l'oublie ne compile pas au lieu
-     * de lire le payload d'une autre version.
+     * de lire le payload d'une autre version. Elle porte enfin la version du CONTRAT : un payload mis en
+     * cache par le code d'avant une montée de contrat (champs retirés compris) n'est jamais resservi.
      */
     public static function cacheKey(string $clubId, string $seasonId, ?string $lockVersionId): string
     {
-        return \sprintf('club.%s.season.%s.version.%s.schedule_input', $clubId, $seasonId, $lockVersionId ?? 'none');
+        return \sprintf('club.%s.season.%s.version.%s.contract.%s.schedule_input', $clubId, $seasonId, $lockVersionId ?? 'none', self::CONTRACT_VERSION);
     }
 
     /**
@@ -178,8 +187,10 @@ final class ScheduleConstraintBuilder
      * n'est pas de la structure, sinon chaque montée de contrat ferait paraître tous les plannings périmés.
      *
      * Elle décrit des PLACEMENTS : ni l'id d'une ligne (une version régénérée réimporte ses verrous sous
-     * des ids neufs), ni l'ordre des lignes, et le même placement répété compte une fois. Changer cette
-     * recette impose de rejouer `app:schedule:dedupe-snapshot-pins`, qui recale les versions existantes.
+     * des ids neufs), ni l'ordre des lignes, et le même placement répété compte une fois. Les contraintes
+     * sont triées par id (puis par contenu) : l'ordre lu en base n'est pas de la structure. Changer cette
+     * recette impose de réaligner les versions existantes : `app:schedule:prune-unread-snapshot-fields`
+     * (allègement du contrat, tri des contraintes), `app:schedule:dedupe-snapshot-pins` (épingles).
      *
      * @param array<mixed> $payload
      */
@@ -210,8 +221,20 @@ final class ScheduleConstraintBuilder
                 $payload['slotTemplates'][] = $samePlacement[0];
             }
         }
+        if (\is_array($payload['constraints'] ?? null)) {
+            $constraints = array_values($payload['constraints']);
+            usort($constraints, static fn (mixed $a, mixed $b): int => strcmp(self::constraintSortId($a), self::constraintSortId($b))
+                ?: strcmp(json_encode($a, \JSON_THROW_ON_ERROR), json_encode($b, \JSON_THROW_ON_ERROR)));
+            $payload['constraints'] = $constraints;
+        }
 
         return hash('sha256', json_encode($payload, \JSON_THROW_ON_ERROR));
+    }
+
+    /** L'id d'une ligne de contrainte, en chaîne ; vide si la ligne n'en porte pas. */
+    private static function constraintSortId(mixed $constraint): string
+    {
+        return \is_array($constraint) && \is_scalar($constraint['id'] ?? null) ? (string) $constraint['id'] : '';
     }
 
     private static function formatNullableTime(?DateTimeInterface $time): ?string
@@ -265,6 +288,7 @@ final class ScheduleConstraintBuilder
         // end of buildForOverlay) so a prior overlay build that threw mid-payload on
         // the long-lived worker can never leak its overrides into a base generation.
         $this->currentSessionOverrides = [];
+        $this->currentMaxPerDayOverrides = [];
         $this->currentSeasonSlotKeepTeamIds = [];
 
         $payload = $this->buildPayload(
@@ -409,6 +433,7 @@ final class ScheduleConstraintBuilder
         $deactivatedTeamIds = $selection->deactivatedTeamIds;
         $disabledVenueIds = $selection->disabledVenueIds;
         $this->currentSessionOverrides = $selection->sessionOverrides;
+        $this->currentMaxPerDayOverrides = $selection->maxPerDayOverrides;
         $constraints = $selection->kept;
 
         // PR 6 (lot 8) — les équipes qui portent une contrainte « Garder ses créneaux de saison »
@@ -520,6 +545,7 @@ final class ScheduleConstraintBuilder
 
         $this->currentAvailabilitiesByVenue = [];
         $this->currentSessionOverrides = [];
+        $this->currentMaxPerDayOverrides = [];
         // ⚠ Ne PAS réinitialiser `currentSeasonSlotKeepTeamIds` ici : il est posé plus haut (depuis la
         // sélection) et le handler le LIT APRÈS le retour de `buildForOverlay` pour greffer les keep.
         // Les deux champs ci-dessus sont transients (consommés PENDANT buildPayload) ; celui-ci est un
@@ -622,6 +648,7 @@ final class ScheduleConstraintBuilder
         // instance can never leak a stale map into serializeVenue/serializeTeam.
         $this->currentAvailabilitiesByVenue = [];
         $this->currentSessionOverrides = [];
+        $this->currentMaxPerDayOverrides = [];
         $this->currentSeasonSlotKeepTeamIds = [];
 
         return $this->buildPayload(
@@ -1291,16 +1318,13 @@ final class ScheduleConstraintBuilder
     /** @return array<string, mixed> */
     private function serializeVenue(Venue $venue): array
     {
+        // Contrat allégé (ENG-60) — couleur, coordonnées, source, référence externe, « gymnase
+        // extérieur » et lien de saison ne partent plus : le solveur ne les lit pas. Le nom reste
+        // (diagnostics lisibles). Retirer un champ d'ici impose de réaligner les snapshots
+        // (`app:schedule:prune-unread-snapshot-fields`).
         return [
             'id' => $venue->getId(),
             'name' => $venue->getName(),
-            'isExternal' => $venue->getIsExternal(),
-            'color' => $venue->getColor(),
-            'latitude' => $venue->getLatitude(),
-            'longitude' => $venue->getLongitude(),
-            'source' => $venue->getSource(),
-            'externalRef' => $venue->getExternalRef(),
-            'parentVenueId' => $venue->getParentVenueId(),
             'trainingSlots' => $this->buildTrainingSlots($this->currentAvailabilitiesByVenue[$venue->getId()] ?? [], $venue->getCanSplit()),
         ];
     }
@@ -1383,19 +1407,21 @@ final class ScheduleConstraintBuilder
         // `Team.isActive` reste un attribut d'archivage SANS effet solveur. Les tags, eux, étaient
         // lus ici en SEULE lecture (jamais resynchronisés — c'est `TeamTagSyncListener` qui les tient
         // au write-path) : plus rien à relire puisqu'ils ne voyagent plus.
+        // Contrat 1.10 — séances max par jour, émis SEULEMENT au-delà de 1 : un club resté partout à
+        // 1 garde un payload (et une empreinte de structure) byte-identique à celui d'avant le champ.
+        $maxPerDay = $this->currentMaxPerDayOverrides[$team->getId()] ?? $team->getMaxSessionsPerDay();
+
+        // Contrat allégé (ENG-60) — catégorie, âge maximal, genre, niveau et lien de saison ne
+        // partent plus : le solveur ne les lit pas. `ageMin` et le nom restent.
         return [
             'id' => $team->getId(),
-            'sportCategoryId' => $team->getSportCategoryId(),
             'ageMin' => $sportCategory?->getAgeMin(),
-            'ageMax' => $sportCategory?->getAgeMax(),
             'priorityTierId' => $team->getPriorityTierId(),
             'name' => $team->getName(),
-            'gender' => $team->getGender()?->value,
-            'level' => $team->getLevel()?->value,
             'sessionsPerWeek' => $this->currentSessionOverrides[$team->getId()] ?? $team->getSessionsPerWeek(),
             'matchDay' => $this->deriveMatchDay($team, $seasonId),
             'forcedVenueId' => $team->getForcedVenueId(),
-            'parentTeamId' => $team->getParentTeamId(),
+            ...($maxPerDay > 1 ? ['maxSessionsPerDay' => $maxPerDay] : []),
         ];
     }
 
@@ -1457,7 +1483,6 @@ final class ScheduleConstraintBuilder
             // jamais lu par le moteur). La tolérance d'arrivée tardive est désormais portée par la
             // SÉANCE (`Reservation.coachLateToleranceMinutes` → slotTemplates), pas par la personne.
             'isEmployee' => $coach->isEmployee(),
-            'parentCoachId' => $coach->getParentCoachId(),
             // P2-53 RMM-8 PR-2 — statut véhiculé : décide du barème de trajet du coach
             // (véhiculé → voiture, sinon à pied) dans la règle implicite `travelTime`.
             'isVehicled' => $coach->isVehicled(),
@@ -1669,7 +1694,6 @@ final class ScheduleConstraintBuilder
                 'ruleType' => $constraint->getRuleType()->value,
                 'name' => $constraint->getName(),
                 'config' => $config,
-                'sortOrder' => $constraint->getSortOrder(),
                 'isActive' => $constraint->getIsActive(),
             ];
         }
@@ -1695,7 +1719,6 @@ final class ScheduleConstraintBuilder
             'ruleType' => $ruleType ?? $constraint->getRuleType()->value,
             'name' => $name ?? $constraint->getName(),
             'config' => $config,
-            'sortOrder' => $constraint->getSortOrder(),
             'isActive' => $constraint->getIsActive(),
         ];
     }

@@ -22,7 +22,6 @@ def _build_input() -> ScheduleInputSchema:
             "teams": [
                 {
                     "id": "team-1",
-                    "sportCategoryId": "sc-1",
                     "priorityTierId": 3,
                     "name": "Team 1",
                     "sessionsPerWeek": 1,

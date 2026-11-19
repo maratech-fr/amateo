@@ -212,7 +212,6 @@ def make_team(
 ) -> dict[str, Any]:
     team: dict[str, Any] = {
         "id": team_id,
-        "sportCategoryId": "cat",
         "priorityTierId": priority_tier_id,
         "name": team_id,
         "sessionsPerWeek": sessions_per_week,

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Service;
 
+use App\Entity\VenueOccupancy;
 use App\Entity\VenueTrainingSlot;
 use Doctrine\ORM\EntityManagerInterface;
 
@@ -45,6 +46,12 @@ final class VenuePeriodGrid
             $this->cascadeDeleter->purgeChildrenOfSlot($slot);
             $this->entityManager->remove($slot);
         }
+        // Les occupations du gymnase pour cette période suivent ses créneaux.
+        $occupancies = $this->entityManager->getRepository(VenueOccupancy::class)
+            ->findBy(['schedulePlanId' => $schedulePlanId, 'venueId' => $venueId]);
+        foreach ($occupancies as $occupancy) {
+            $this->entityManager->remove($occupancy);
+        }
         $this->entityManager->flush();
     }
 
@@ -71,6 +78,7 @@ final class VenuePeriodGrid
         $this->entityManager->wrapInTransaction(function () use ($schedulePlanId, $venueId): void {
             $this->clear($schedulePlanId, $venueId);
             $this->schedulePlanProvisioner->copySeasonalSlotsForVenue($schedulePlanId, $venueId);
+            $this->schedulePlanProvisioner->copySeasonalOccupanciesForVenue($schedulePlanId, $venueId);
         });
     }
 }

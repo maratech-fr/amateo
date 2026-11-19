@@ -39,6 +39,17 @@ final class ContractSchemaTest extends TestCase
     private const SEASON_ID = '22222222-2222-2222-2222-222222222222';
 
     /**
+     * Les champs que le moteur ne lit pas (ENG-60), par objet de l'envoi. Liste écrite ici, à part
+     * de la commande de réalignement : `seasonId` (racine) et les noms restent, à dessein.
+     */
+    private const UNREAD_KEYS = [
+        'venues' => ['isExternal', 'color', 'latitude', 'longitude', 'source', 'externalRef', 'parentVenueId'],
+        'teams' => ['sportCategoryId', 'ageMax', 'gender', 'level', 'parentTeamId'],
+        'coaches' => ['parentCoachId'],
+        'constraints' => ['sortOrder'],
+    ];
+
+    /**
      * D-17 — cette constante était une COPIE de celle d'`EngineClient`, et le test
      * s'en servait pour poster PUIS pour vérifier l'URL reçue : une tautologie. Passer
      * `EngineClient::ENGINE_URL` à un autre port laissait ces assertions vertes.
@@ -413,7 +424,17 @@ final class ContractSchemaTest extends TestCase
 
         self::assertArrayHasKey('id', $payload['venues'][0]);
         self::assertIsString($payload['venues'][0]['id']);
-        self::assertSame('manual', $payload['venues'][0]['source']);
+        // Contrat allégé (ENG-60) — le moteur ne lit aucun de ces champs : ils ne partent plus.
+        foreach (self::UNREAD_KEYS as $object => $keys) {
+            foreach ($keys as $key) {
+                self::assertArrayNotHasKey($key, $payload[$object][0], \sprintf('%s[0].%s ne doit plus partir au moteur', $object, $key));
+            }
+        }
+        // Les noms restent (diagnostics lisibles, Q2 = A) ; `ageMin` reste (lu par le moteur).
+        foreach (['venues', 'teams', 'constraints'] as $object) {
+            self::assertArrayHasKey('name', $payload[$object][0]);
+        }
+        self::assertArrayHasKey('ageMin', $payload['teams'][0]);
         // Contrat 1.3 (ENG-53) — `isActive` d'entité ne voyage plus (jamais lu par le solveur).
         self::assertArrayNotHasKey('isActive', $payload['venues'][0]);
         self::assertArrayHasKey('trainingSlots', $payload['venues'][0]);
@@ -436,7 +457,6 @@ final class ContractSchemaTest extends TestCase
         }
         self::assertArrayNotHasKey('availability', $payload['venues'][0]);
 
-        self::assertArrayHasKey('sportCategoryId', $payload['teams'][0]);
         self::assertSame(1, $payload['teams'][0]['priorityTierId']);
         self::assertSame(2, $payload['teams'][0]['sessionsPerWeek']);
         // Contrat 1.3 (ENG-53) — flags/champs d'entité morts retirés du fil (jamais lus).

@@ -383,7 +383,7 @@ Voici chaque panne possible, avec son symptôme, sa cause, sa vérification, sa 
 | | Détail |
 |---|---|
 | **Symptôme** | Le statut passe à `FAILED` avec un diagnostic `engine_rejected`, qui NOMME le(s) champ(s) en cause (ex. `implicitRules.maxConsecutiveDays.intensity`). |
-| **Cause** | Le moteur a répondu **422** à `POST /generate` (refus de CONTRAT Pydantic : un champ du payload hors contrat, p.ex. une intensité `OFF` sur une règle qui n'accepte que `HARD`/`PREFERRED`). `EngineClient::solve()` détecte ce 422 avant `toArray()` et lève `EngineRequestRejectedException` ; le handler pose un diagnostic lisible (champ nommé, jamais la valeur refusée, le message anglais de Pydantic ni l'URL du moteur). Déterministe : relancer la génération sans corriger la donnée source échoue à nouveau. |
+| **Cause** | Le moteur a répondu **422** à `POST /generate` (refus de CONTRAT Pydantic : un champ du payload hors contrat, p.ex. une valeur d'intensité hors `HARD`/`PREFERRED`/`OFF` sur une règle du club). `EngineClient::solve()` détecte ce 422 avant `toArray()` et lève `EngineRequestRejectedException` ; le handler pose un diagnostic lisible (champ nommé, jamais la valeur refusée, le message anglais de Pydantic ni l'URL du moteur). Déterministe : relancer la génération sans corriger la donnée source échoue à nouveau. |
 | **Vérification** | Le message du diagnostic nomme déjà le(s) champ(s) (`loc` Pydantic). |
 | **Correction** | Corriger la donnée source du champ nommé (ex. une opt-in résolue dans un état que le moteur refuse). |
 | **Prévention** | `ImplicitRulePayloadParityTest` (règles implicites) garde l'omission d'une opt-in résolue OFF du payload ; limité à `/generate` — un 422 sur `/place-matches`/`/validate-assignments` retombe en Cas 6 (`engine_failed`, roadmap P4-341). |
@@ -471,13 +471,13 @@ curl -X POST http://localhost:8080/api/schedules/a1b2c3d4-e5f6-7890-abcd-ef12345
   -H "Authorization: Bearer <ton-jwt>"
 ```
 
-Corps optionnel (lu à la main par `ExportPdfController`, jamais par un DTO d'API Platform — l'opération hérite du schéma générique `Schedule.ScheduleInput` de la ressource, qui ne décrit donc NI `venueId` NI `showCoaches` : `/api/docs` ne montre pas la vraie forme du corps de cette route) :
+Corps optionnel (lu à la main par `ExportPdfController`, jamais par un DTO d'API Platform — l'opération hérite du schéma générique `Schedule.ScheduleInput` de la ressource, qui ne décrit donc ni `venueId`, ni `showCoaches`, ni `showOccupancies` : `/api/docs` ne montre pas la vraie forme du corps de cette route) :
 
 ```json
-{ "venueId": "…", "showCoaches": true }
+{ "venueId": "…", "showCoaches": true, "showOccupancies": true }
 ```
 
-`venueId` scope l'export à un seul gymnase (absent/`null` = tous). `showCoaches` affiche le nom court des coachs dans la grille — lu **fail-closed**, seul le booléen strict `true` l'active (`App\Controller\ResolvesExportScopeTrait::resolveShowCoaches`) ; détail du rendu : `backend/docs/backend-controllers.md` § Export PDF / Excel.
+`venueId` scope l'export à un seul gymnase (absent/`null` = tous). `showCoaches` affiche le nom court des coachs dans la grille — lu **fail-closed**, seul le booléen strict `true` l'active (`App\Controller\ResolvesExportScopeTrait::resolveShowCoaches`) ; `showOccupancies` ajoute les occupations de gymnase de la couche exportée (même lecture fail-closed, `resolveShowOccupancies`) ; détail du rendu : `backend/docs/backend-controllers.md` § Export PDF / Excel.
 
 ### Comportement
 
@@ -719,9 +719,10 @@ SEASON, qui n'utilise pas ce pointeur) ou par « Charger » (`POST /api/schedule
 TOUJOURS de cette source ; si le gestionnaire regarde une AUTRE version, le front confirme avant
 (`PlanningPage.tsx`).
 
-À l'import du résultat, `ScheduleResultImporter` restaure l'origine `MANUAL` d'un verrou HARD
-hérité de la source (il ressortait en `UNKNOWN`, faussant le compteur « verrous posés » de la
-saison) ; `OrphanPinGuard` lit les mêmes verrous EFFECTIFS (la source, jamais la version nue en
+À l'enregistrement du résultat du moteur, `ScheduleResultImporter` restaure l'origine `MANUAL` d'un
+verrou HARD hérité de la source (il ressortait en `UNKNOWN`, faussant le compteur « verrous posés »
+de la saison) ; la règle d'origine (réservation bornée au plan de la séance) vit dans
+`generation-flow.md` §5.1 ; `OrphanPinGuard` lit les mêmes verrous EFFECTIFS (la source, jamais la version nue en
 cours de génération) pour refuser en 422 un épinglage qui ne retomberait plus sur aucun créneau de
 la grille.
 

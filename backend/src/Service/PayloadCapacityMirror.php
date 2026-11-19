@@ -263,7 +263,7 @@ final class PayloadCapacityMirror
         $pinnedKeys = [];
         /** @var array<string, array<string, true>> $pinTeamsByVenue venueId => équipe qui réserve => true */
         $pinTeamsByVenue = [];
-        /** @var array<string, array<string, array<int|string, true>>> $lockedDaysByVenueTeam venueId => teamId => day => true */
+        /** @var array<string, array<string, array<int|string, array<string, true>>>> $lockedDaysByVenueTeam venueId => teamId => day => heure => true */
         $lockedDaysByVenueTeam = [];
         foreach (\is_array($payload['slotTemplates'] ?? null) ? $payload['slotTemplates'] : [] as $pin) {
             if (!\is_array($pin) || 'HARD' !== ($pin['lockLevel'] ?? null)) {
@@ -275,7 +275,7 @@ final class PayloadCapacityMirror
             $pinTeamsByVenue[$pinVenueId][$pinTeamId] = true;
             $pinDay = $pin['dayOfWeek'] ?? null;
             if ('' !== $pinTeamId && null !== $pinDay) {
-                $lockedDaysByVenueTeam[$pinVenueId][$pinTeamId][$pinDay] = true;
+                $lockedDaysByVenueTeam[$pinVenueId][$pinTeamId][$pinDay][(string) ($pin['startTime'] ?? '')] = true;
             }
         }
 
@@ -302,9 +302,12 @@ final class PayloadCapacityMirror
         }
 
         $teamNames = [];
+        $dailyCaps = [];
         foreach (\is_array($payload['teams'] ?? null) ? $payload['teams'] : [] as $team) {
             if (\is_array($team)) {
                 $teamNames[(string) ($team['id'] ?? '')] = (string) ($team['name'] ?? ($team['id'] ?? ''));
+                // Contrat 1.10 : champ absent = 1 séance par jour.
+                $dailyCaps[(string) ($team['id'] ?? '')] = max(1, (int) ($team['maxSessionsPerDay'] ?? 1));
             }
         }
 
@@ -313,7 +316,12 @@ final class PayloadCapacityMirror
             $demand = 0;
             $teams = [];
             foreach ($minByTeam as $teamId => $min) {
-                $lockedDays = \count($lockedDaysByVenueTeam[$venueId][$teamId] ?? []);
+                // Crédit du plancher (miroir de `targeting.py`) : chaque jour compte au plus « plafond »
+                // verrous de l'équipe à ce gymnase — à plafond 1, les jours verrouillés distincts.
+                $lockedDays = 0;
+                foreach ($lockedDaysByVenueTeam[$venueId][$teamId] ?? [] as $locksOfDay) {
+                    $lockedDays += min(\count($locksOfDay), $dailyCaps[$teamId] ?? 1);
+                }
                 $remaining = max(0, $min - $lockedDays);
                 $demand += $remaining;
                 if ($remaining > 0) {

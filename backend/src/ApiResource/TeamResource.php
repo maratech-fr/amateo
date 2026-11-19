@@ -84,6 +84,9 @@ class TeamResource
     public int $sessionsPerWeek = 0;
 
     #[Groups(['read'])]
+    public int $maxSessionsPerDay = 1;
+
+    #[Groups(['read'])]
     public ?int $minSessionsOverride = null;
 
     #[Groups(['read'])]
@@ -94,9 +97,6 @@ class TeamResource
 
     #[Groups(['read'])]
     public bool $isActive = false;
-
-    #[Groups(['read'])]
-    public ?string $parentTeamId = null;
 
     /** Équipe déclarée « en entente (CTC) » — repère interne, aucun effet moteur. */
     #[Groups(['read'])]
@@ -120,11 +120,11 @@ class TeamResource
         $dto->gender = $entity->getGender();
         $dto->level = $entity->getLevel();
         $dto->sessionsPerWeek = $entity->getSessionsPerWeek();
+        $dto->maxSessionsPerDay = $entity->getMaxSessionsPerDay();
         $dto->minSessionsOverride = $entity->getMinSessionsOverride();
         $dto->matchDay = $entity->getMatchDay();
         $dto->forcedVenueId = $entity->getForcedVenueId();
         $dto->isActive = $entity->getIsActive();
-        $dto->parentTeamId = $entity->getParentTeamId();
         $dto->isCtc = $entity->getIsCtc();
         $dto->ctcPartner = $entity->getCtcPartner();
 

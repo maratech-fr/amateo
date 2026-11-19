@@ -41,7 +41,12 @@ export function stalenessMessage(opts: {
     return null;
   }
 
-  return `Depuis la génération de ce planning, ${joinCauses(causes)} : il est périmé — pas forcément faux, mais il décrit un état antérieur de vos données. Régénérez pour savoir s'il tient encore.`;
+  // Retouché à la main : régénérer peut déplacer ce qui n'est pas verrouillé — le bandeau le dit avant.
+  const advice = opts.manuallyEdited
+    ? "Régénérez seulement après avoir verrouillé les séances que vous voulez garder : les autres peuvent changer de place."
+    : "Régénérez pour savoir s'il tient encore.";
+
+  return `Depuis la génération de ce planning, ${joinCauses(causes)} : il est périmé — pas forcément faux, mais il décrit un état antérieur de vos données. ${advice}`;
 }
 
 /** « A » ou « A et B » — l'énumération française des causes. */

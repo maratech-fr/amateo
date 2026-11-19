@@ -1,7 +1,9 @@
 """NR — P4-55 / lot « règles implicites réglables ». L'écran ANNONCE six règles
 structurelles : elles doivent rester appliquées. Les 4 règles « bien-être » réglables
 (repos coach, distribution salariés, dos-à-dos, âge) restent APPELÉES quel que soit le
-réglage — le cran décide seulement HARD vs PREFERRED, jamais le silence.
+réglage. Le silence ne s'obtient jamais par l'absence (bloc absent = HARD) : seulement par un
+``OFF`` explicite, le cran « Ignorée » choisi par le gestionnaire (PR 1b, contrat 1.11), qui ne pose
+alors ni contrainte ni terme.
 
 Le wizard porte un encart « ce que le système applique déjà, sans que vous le saisissiez »
 (`frontend/src/features/wizard/steps/ImplicitRulesPanel.tsx`). Il affirme six comportements
@@ -35,6 +37,8 @@ import pytest
 
 from app.solver import constraints as C
 from app.solver.constraints import ResolvedImplicitRules, resolve_implicit_rules
+from app.solver.model import build_model
+from tests.support.pipeline import make_payload, make_team, make_venue
 
 # Les six fonctions correspondant, dans l'ordre, aux six entrées de `IMPLICIT_RULES`.
 # Le libellé est celui de l'encart : il rend la panne lisible sans ouvrir le frontend.
@@ -131,3 +135,79 @@ def test_the_four_adjustable_rules_are_called_according_to_the_setting() -> None
         assert spied.call_args.kwargs.get("intensity") == "PREFERRED", (
             f"`{function_name}` doit passer intensity='PREFERRED' quand le gestionnaire l'a réglé"
         )
+
+
+# ===========================================================================
+# PR 1b — « Ignorée » (OFF) : ni contrainte, ni terme, règle par règle
+# ===========================================================================
+
+# (clé du contrat, compteur de pose dans ``HardConstraintStats``, sous-genre du terme d'objectif)
+WELLNESS_RULES = [
+    ("coachRestDay", "coach_rest_day", "coach_rest"),
+    ("salarieDistribution", "salarie_distribution", "salarie"),
+    ("maxConsecutiveSessions", "max_consecutive_sessions", "chain"),
+    ("ageAscending", "age_ascending", "age"),
+]
+
+
+def _pose(rule_key: str, intensity: str | None) -> C.HardConstraintStats:
+    """Pose le niveau 1 sur un décor où les quatre règles ont matière à mordre : un coach salarié (sur
+    deux au club) encadre trois équipes d'âges différents, trois créneaux dos-à-dos chaque soir."""
+    payload = make_payload(
+        teams=[{**make_team(f"t-{age}"), "ageMin": age} for age in (10, 13, 16)],
+        venues=[make_venue("v", [(day, start) for day in range(1, 6) for start in ("17:00", "18:30", "20:00")])],
+        coaches=[{"id": cid, "firstName": cid, "lastName": "X", "isEmployee": True} for cid in ("c1", "c2")],
+    )
+    model = build_model(payload)
+    # Même forme que l'appel du pipeline (``main.py``) : horaires en minutes, coach principal.
+    assignments = []
+    for (team_id, venue_id, day, start), var in model.x.items():
+        hours, minutes = (int(part) for part in str(start).split(":"))
+        assignments.append(
+            {
+                "var": var,
+                "team_id": team_id,
+                "venue_id": venue_id,
+                "slot_id": f"{day}:{start}",
+                "start": hours * 60 + minutes,
+                "end": hours * 60 + minutes + 90,
+                "coach_id": "c1",
+            }
+        )
+    block = {} if intensity is None else {rule_key: {"intensity": intensity}}
+    return C.add_level_1_hard_constraints(
+        model,
+        assignments,
+        teams=payload["teams"],
+        coaches=payload["coaches"],
+        implicit_rules=resolve_implicit_rules(block),
+        team_coach_map={team["id"]: ["c1"] for team in payload["teams"]},
+    )
+
+
+def _terms_of(stats: C.HardConstraintStats, detail: str) -> list[Any]:
+    return [info for info in stats.implicit_soft_info if info.detail == detail]
+
+
+@pytest.mark.parametrize(("rule_key", "counter", "detail"), WELLNESS_RULES)
+def test_an_ignored_rule_poses_neither_a_constraint_nor_a_term(rule_key: str, counter: str, detail: str) -> None:
+    """Une règle réglée sur « Ignorée » ne pose rien : ni borne dure, ni terme d'objectif. Témoin : le
+    même décor, la règle au défaut (bloc absent = HARD), pose bien quelque chose."""
+    default = _pose(rule_key, None)
+    assert getattr(default, counter) > 0 or _terms_of(default, detail), (
+        f"témoin creux : {rule_key} ne pose rien au défaut"
+    )
+
+    ignored = _pose(rule_key, "OFF")
+    assert getattr(ignored, counter) == 0, f"{rule_key} ignorée pose encore {getattr(ignored, counter)} contrainte(s)"
+    assert _terms_of(ignored, detail) == [], f"{rule_key} ignorée pose encore un terme d'objectif"
+
+
+def test_the_absent_block_still_resolves_to_hard_and_off_only_when_written() -> None:
+    """« OFF » écrit éteint la règle ; l'absence vaut toujours Obligatoire (défaut HARD inchangé)."""
+    written = resolve_implicit_rules({key: {"intensity": "OFF"} for key, _c, _d in WELLNESS_RULES})
+    assert written.coach_rest_day_intensity == "OFF"
+    assert written.salarie_distribution_intensity == "OFF"
+    assert written.max_consecutive_sessions_intensity == "OFF"
+    assert written.age_ascending_intensity == "OFF"
+    assert resolve_implicit_rules({}) == ResolvedImplicitRules()

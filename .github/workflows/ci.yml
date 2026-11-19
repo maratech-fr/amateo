@@ -964,6 +964,13 @@ jobs:
           # sur une structure imbâtissable. Sans lui, l'empreinte mentirait en permanence — bouton
           # « Régénérer » grisé à tort ou jamais, bannière « à régénérer » muette ou criant sans cesse.
           FILES="$FILES tests/Integration/Api/SchedulePlanStructureHashTest.php"
+          # Axes generation pipeline + planning lifecycle : une génération de période (overlay et
+          # comblement) passe par le VRAI handler, moteur simulé — le snapshot figé porte les épingles
+          # du comblement, la version ne devient jamais celle du socle, une période disparue échoue
+          # nommément ; et la séance renvoyée HARD par le moteur garde la tolérance d'arrivée tardive
+          # partie au moteur, l'empreinte du plan restant égale au snapshotHash. Sans ce gate, la
+          # tolérance retomberait à 0 au comblement et « à régénérer » s'allumerait à tort.
+          FILES="$FILES tests/MessageHandler/OverlayGenerationTest.php"
           # P3-16 + DOC-2 (axes planning lifecycle + périmètre engagé) : supprimer une salle, une
           # équipe ou un coach détruit en cascade — et la modale annonçait, depuis le cache du
           # navigateur, une FRACTION de ce qui partait (2 familles sur 10 pour un gymnase, matchs
@@ -1176,6 +1183,11 @@ jobs:
           # réaligne les empreintes depuis les snapshots. Sans ce gate, tous les plannings pourraient
           # paraître périmés à tort, ou un planning vraiment périmé cesser de l'être.
           FILES="$FILES tests/Integration/Command/NormalizeTeamCoachSnapshotsCommandTest.php"
+          # Axes planning lifecycle + generation pipeline + tenant isolation : la commande lancée par la
+          # mise en prod retire du snapshot les champs que le moteur ne lit plus et recalcule l'empreinte
+          # triée. Sans ce gate, tous les plannings pourraient paraître périmés à tort, une version en
+          # cours être réécrite, ou un club être lu sous le contexte d'un autre.
+          FILES="$FILES tests/Integration/Command/PruneUnreadSnapshotFieldsCommandTest.php"
           # Lot 3B PR A (axes constraint semantics + backend↔engine contract) — « un coach suffit »
           # (Q4B) : dès qu'une séance a plusieurs coachs requis, UN coach disponible suffit, l'UNION des
           # coachs des membres servant une séance de BLOC. De bout en bout contre le VRAI moteur
@@ -1348,6 +1360,27 @@ jobs:
           # réservation retombe sur le mercredi. Sans ce gate, une régression qui cesserait d'écrire la
           # réservation (ou de la poser HARD au socle) passerait tous les checks requis.
           FILES="$FILES tests/CrossStack/ParcImportReservationSemanticsGateTest.php"
+          # NR d'axe BACKEND↔ENGINE CONTRACT (PR 1a, contrat 1.10, plafond de séances par jour) — le plafond
+          # part au moteur sous `teams[].maxSessionsPerDay` SEULEMENT quand la valeur effective dépasse 1 :
+          # un club resté partout à 1 garde un payload (et une empreinte) identique ; en période, la valeur
+          # de la période l'emporte, sinon celle de la saison ; le vrai moteur accepte le champ. Sans ce
+          # gate, un champ émis à 1 changerait l'empreinte de tous les clubs (régénérations forcées), ou un
+          # champ oublié laisserait le moteur à une séance par jour, en passant tous les checks requis.
+          FILES="$FILES tests/CrossStack/MaxSessionsPerDayPayloadParityTest.php"
+          # NR d'axes GENERATION PIPELINE + BACKEND↔ENGINE CONTRACT (lot double contexte, PR 6) — une
+          # OCCUPATION de gymnase n'informe que le lecteur : poser une occupation (saison ou plan de
+          # période) ne fait pas bouger l'empreinte de structure servie, donc n'entre pas dans l'envoi
+          # au moteur ; témoin : un créneau posé dans la même couche la fait bouger. Sans ce gate, une
+          # occupation glissée dans l'envoi périmerait les plannings et changerait le solve en passant
+          # tous les checks requis.
+          FILES="$FILES tests/Integration/Api/OccupancyStaysOutOfTheSolverTest.php"
+          # NR d'axe PLANNING LIFECYCLE (lot double contexte, PR 6) — les occupations suivent la vie
+          # des grilles : copiées à la naissance d'un plan de période, « Reprendre »/« Vider » limités au
+          # gymnase, copie sœur sans doublon (purge des réglages ancrés), cascade à la suppression du
+          # plan, intactes au chargement d'une version, dormantes avec leur gymnase, passage de saison,
+          # purge, impact de suppression d'un gymnase. Sans ce gate, un plan frère portant deux jeux
+          # d'occupations ou un chargement qui les efface passerait tous les checks requis.
+          FILES="$FILES tests/Integration/VenueOccupancyLifecycleTest.php"
           docker compose exec -T -e APP_ENV=test php-fpm sh -c "cd /app/backend && php -d memory_limit=1G vendor/bin/phpunit --group phase1 $FILES"
 
       # Axe tenant isolation (GO fondateur 2026-10-30, incident d'un club pilote, PR A import du parc) — la
@@ -1356,9 +1389,13 @@ jobs:
       # tenant est refusé 422 par la garde `ownedTeam`, rien écrit. Step FILTRÉ sur le seul test de
       # cet axe (la classe porte aussi des tests non bloquants). Sans ce gate, un élargissement du
       # canal fuiterait une équipe étrangère dans un bloc en passant tous les checks requis de `main`.
+      # Même axe, même classe (PR 1a, plafond de séances par jour) : le relèvement du plafond par l'import
+      # n'écrit JAMAIS l'équipe d'un autre club — ni par une cible forgée (422, rien écrit), ni par
+      # homonymie (l'équipe de ce club est créée et relevée, l'autre reste à 1). Sans ce gate, un
+      # relèvement qui chercherait l'équipe hors tenant passerait tous les checks requis de `main`.
       # Ancre YAML `&filtered_tenant_nr_run`, rejouée par alias dans `lot-gate`.
       - name: ParcImportCorrectionTenantNR
-        run: &filtered_tenant_nr_run docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Integration/Api/ParcImportExecuteTest.php --filter testAMutualisationCorrectionWithATeamFromAnotherClubIsRefusedWritingNothing'
+        run: &filtered_tenant_nr_run docker compose exec -T -e APP_ENV=test php-fpm sh -c 'cd /app/backend && php vendor/bin/phpunit tests/Integration/Api/ParcImportExecuteTest.php --filter "testAMutualisationCorrectionWithATeamFromAnotherClubIsRefusedWritingNothing|testDailyCapRaiseNeverTouchesAnotherClubTeam"'
 
       # Démonte TOUJOURS la stack du job (conteneurs, volumes, images locales, orphelins) — même
       # job rouge ou annulé en cours : le démon du runner auto-hébergé est partagé et persistant.

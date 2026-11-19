@@ -28,7 +28,7 @@ use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
  * NR BLOQUANT — axes backend↔engine contract + sémantique de contrainte (§7.1).
  *
  * Les 4 règles implicites « bien-être » sont réglables PAR PORTÉE (ADR-0002 inv. 5 — intensité
- * HARD/PREFERRED + seuils, contrat 2.7). Ce que le gestionnaire STOCKE doit être EXACTEMENT le
+ * HARD/PREFERRED/OFF + seuils ; OFF explicite depuis le contrat 1.11). Ce que le gestionnaire STOCKE doit être EXACTEMENT le
  * bloc `implicitRules` que le payload émet au solveur — DÉFAUTS RÉSOLUS compris. Le résolveur
  * (`ImplicitRuleResolver`) est la maison unique dont DÉRIVENT la collection GET et le payload.
  *
@@ -177,6 +177,68 @@ final class ImplicitRulePayloadParityTest extends KernelTestCase
         $payload = $this->builder->buildForClubSeason($club->getId(), $season->getId());
 
         self::assertSame(ImplicitRuleResolver::defaults(), $payload['implicitRules']);
+        // PR 1b — l'empreinte d'un club qui n'ignore aucune règle ne bouge pas : le bloc reste celui
+        // d'avant le cran « Ignorée », littéralement (un défaut qui glisserait vers OFF ou vers
+        // PREFERRED pour le salarié rougit ici, pas seulement dans `defaults()`).
+        self::assertSame([
+            'coachRestDay' => ['intensity' => 'HARD', 'minRestDays' => 1],
+            'salarieDistribution' => ['intensity' => 'HARD'],
+            'maxConsecutiveSessions' => ['intensity' => 'HARD', 'maxConsecutive' => 3],
+            'ageAscending' => ['intensity' => 'HARD'],
+        ], $payload['implicitRules']);
+    }
+
+    /**
+     * PR 1b (contrat 1.11) — une règle historique réglée sur « Ignorée » part au moteur en `OFF`
+     * EXPLICITE, seuil compris : son absence vaudrait Obligatoire côté moteur (défaut HARD), le
+     * gestionnaire croirait l'avoir éteinte alors qu'elle s'imposerait. Saison et période.
+     *
+     * Falsifié : un résolveur qui omet la règle OFF (comme l'optionnelle) ou la replie sur HARD rougit.
+     */
+    public function testAHistoricRuleStoredOffIsEmittedOffExplicitly(): void
+    {
+        [$club, $season] = $this->seed();
+
+        $this->store($club, $season, ImplicitRuleKey::COACH_REST_DAY, ImplicitRuleIntensity::OFF, null);
+        $this->store($club, $season, ImplicitRuleKey::SALARIE_DISTRIBUTION, ImplicitRuleIntensity::OFF, null);
+        $this->store($club, $season, ImplicitRuleKey::MAX_CONSECUTIVE_SESSIONS, ImplicitRuleIntensity::OFF, ['maxConsecutive' => 4]);
+        $this->store($club, $season, ImplicitRuleKey::AGE_ASCENDING, ImplicitRuleIntensity::OFF, null);
+        $this->em->flush();
+
+        $expected = [
+            'coachRestDay' => ['intensity' => 'OFF', 'minRestDays' => 1],
+            'salarieDistribution' => ['intensity' => 'OFF'],
+            'maxConsecutiveSessions' => ['intensity' => 'OFF', 'maxConsecutive' => 4],
+            'ageAscending' => ['intensity' => 'OFF'],
+        ];
+
+        $seasonPayload = $this->builder->buildForClubSeason($club->getId(), $season->getId());
+        self::assertSame($expected, $seasonPayload['implicitRules'], 'saison : chaque règle historique ignorée part en OFF explicite');
+        self::assertSame($this->resolver->resolve($club->getId(), $season->getId()), $seasonPayload['implicitRules']);
+
+        // La période née APRÈS le réglage copie la saison : elle émet les mêmes OFF.
+        $entry = $this->holidayPeriod($club, $season);
+        $planId = $this->planIdOf($entry);
+        $this->em->clear();
+        $periodPayload = $this->builder->buildForPeriodPlan($club->getId(), $season->getId(), $planId, $entry);
+        self::assertSame($expected, $periodPayload['implicitRules'], 'période : la copie de naissance émet les mêmes OFF explicites');
+    }
+
+    /**
+     * PR 1b — le salarié n'a que deux crans à l'écran, mais un cran HARD stocké part au moteur TEL
+     * QUEL (HARD et PREFERRED y sont le même objectif) : aucune réécriture côté payload, l'empreinte
+     * d'un club existant ne bouge pas. Né vert, garde de non-régression.
+     */
+    public function testASalarieRuleStoredHardIsEmittedAsIs(): void
+    {
+        [$club, $season] = $this->seed();
+
+        $this->store($club, $season, ImplicitRuleKey::SALARIE_DISTRIBUTION, ImplicitRuleIntensity::HARD, null);
+        $this->em->flush();
+
+        $payload = $this->builder->buildForClubSeason($club->getId(), $season->getId());
+
+        self::assertSame(['intensity' => 'HARD'], $payload['implicitRules']['salarieDistribution']);
     }
 
     /**

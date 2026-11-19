@@ -147,7 +147,7 @@ final class FillPreservesCopiesAndFillsGapsTest extends TestCase
             'seasonId' => 'season-fill',
             'solverSeed' => 42,
             'teams' => [
-                ['id' => self::TEAM, 'name' => 'FILL', 'sportCategoryId' => 'cat', 'priorityTierId' => 3, 'sessionsPerWeek' => 2],
+                ['id' => self::TEAM, 'name' => 'FILL', 'priorityTierId' => 3, 'sessionsPerWeek' => 2],
             ],
             'venues' => [
                 [

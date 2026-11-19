@@ -60,4 +60,19 @@ trait ResolvesExportScopeTrait
 
         return \is_array($body) && true === ($body['showCoaches'] ?? null);
     }
+
+    /**
+     * « Afficher les occupations » lu du corps sur le booléen STRICT `true` seul (même règle que
+     * les coachs) : décochée, absente ou mal formée, l'option rend le fichier d'aujourd'hui.
+     */
+    private function resolveShowOccupancies(RequestStack $requestStack): bool
+    {
+        $request = $requestStack->getCurrentRequest();
+        if (!$request instanceof Request) {
+            return false;
+        }
+        $body = json_decode($request->getContent() ?: '{}', true);
+
+        return \is_array($body) && true === ($body['showOccupancies'] ?? null);
+    }
 }

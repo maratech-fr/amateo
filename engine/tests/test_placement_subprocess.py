@@ -44,14 +44,13 @@ def _payload() -> MatchPlacementInputSchema:
             "venues": [
                 {
                     "id": "v1",
-                    "name": "Gymnase 1",
                     "matchWindows": [{"dayOfWeek": 6, "start": "14:00", "end": "20:00"}],
                     "unavailabilities": [],
                 }
             ],
             "teams": [
-                {"id": "t1", "name": "U13", "leagueWindows": [], "habits": [], "coaches": []},
-                {"id": "t2", "name": "U15", "leagueWindows": [], "habits": [], "coaches": []},
+                {"id": "t1", "leagueWindows": [], "habits": [], "coaches": []},
+                {"id": "t2", "leagueWindows": [], "habits": [], "coaches": []},
             ],
             "matches": [
                 {"id": "m1", "teamId": "t1", "date": SATURDAY, "kind": "TO_PLACE"},

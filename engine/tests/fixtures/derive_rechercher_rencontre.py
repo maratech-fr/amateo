@@ -121,16 +121,12 @@ def build() -> dict[str, object]:
     venues = [
         {
             "id": venue_id,
-            "name": venue_names[venue_id],
             "matchWindows": sorted(windows_by_venue[venue_id], key=lambda w: w["dayOfWeek"]),
             "unavailabilities": [],
         }
         for venue_id in sorted(venue_names)
     ]
-    teams = [
-        {"id": team_id, "name": team_names[team_id], "leagueWindows": [], "habits": [], "coaches": []}
-        for team_id in sorted(team_names)
-    ]
+    teams = [{"id": team_id, "leagueWindows": [], "habits": [], "coaches": []} for team_id in sorted(team_names)]
     # Duplicate FFBB match numbers across divisions would collide on id — assert uniqueness.
     ids = [m["id"] for m in matches]
     assert len(ids) == len(set(ids)), "match id collision — the (division, number) key is not unique"

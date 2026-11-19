@@ -200,7 +200,6 @@ final class EngagedTeamGuardTest extends WebTestCase
         $team->setForcedVenueId('44444444-4444-4444-8444-444444444444');
         $team->setMatchDay(5);
         $team->setMinSessionsOverride(3);
-        $team->setParentTeamId('55555555-5555-4555-8555-555555555555');
         $this->em->flush();
         $this->fixture($team, FixtureStatus::PLACED);
         $other = $this->otherTier();
@@ -222,14 +221,13 @@ final class EngagedTeamGuardTest extends WebTestCase
         self::assertSame('U15 Élite Filles', $fresh?->getName());
         self::assertSame($other->getId(), $fresh?->getPriorityTierId());
         // « Le reste se modifie librement » — encore faut-il que le reste SURVIVE. Le
-        // wizard n'envoie ni gymnase forcé, ni jour de match, ni plancher de séances, ni
-        // filiation de saison : un PUT qui les écrirait quand même les mettrait à NULL,
-        // et ces quatre champs partent DIRECTEMENT au solveur. Renommer une équipe
+        // wizard n'envoie ni gymnase forcé, ni jour de match, ni plancher de séances : un
+        // PUT qui les écrirait quand même les mettrait à NULL, et ces trois champs
+        // nourrissent DIRECTEMENT le solveur. Renommer une équipe
         // déplacerait alors ses séances dans n'importe quel gymnase, n'importe quel jour.
         self::assertSame('44444444-4444-4444-8444-444444444444', $fresh?->getForcedVenueId(), 'le gymnase forcé survit à un renommage');
         self::assertSame(5, $fresh?->getMatchDay(), 'le jour de match survit');
         self::assertSame(3, $fresh?->getMinSessionsOverride(), 'le plancher de séances survit');
-        self::assertSame('55555555-5555-4555-8555-555555555555', $fresh?->getParentTeamId(), 'la filiation de saison (posée par la transition N→N+1) survit');
     }
 
     public function testTheApiTellsTheClientWhichTeamsAreEngaged(): void

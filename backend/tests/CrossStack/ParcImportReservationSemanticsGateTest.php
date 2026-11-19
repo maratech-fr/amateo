@@ -19,6 +19,7 @@ use App\Enum\ConstraintScope;
 use App\Enum\SeasonStatus;
 use App\Service\ParcImport\ParcImportExecutor;
 use App\Service\ScheduleConstraintBuilder;
+use App\Service\SecondSessionSameDayDetector;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -113,6 +114,55 @@ final class ParcImportReservationSemanticsGateTest extends KernelTestCase
         $kept = $this->solve($this->build($club, $season));
         self::assertSame(1, $this->dayOfTeam($kept, $team->getId()), 'la réservation importée doit verrouiller la séance sur sa case (lundi), malgré la préférence mercredi');
         self::assertSame($venue->getId(), $this->venueOfTeam($kept, $team->getId()), 'la séance tombe sur le gymnase réservé');
+    }
+
+    /**
+     * PR 1a — un parc où une équipe a DEUX cases le lundi (09:00 et 18:00) : l'import relève son plafond à 2 séances par jour, le
+     * Récap ne bloque plus, le payload porte le plafond, et le VRAI moteur pose les deux séances sur les deux cases réservées du
+     * lundi (aucune séance manquante). Sans le relèvement, le Récap bloquerait « une seule séance par jour ».
+     */
+    public function testAParcDoubledOnMondayRaisesTheCapAndBothReservedSessionsAreHonoured(): void
+    {
+        [$club, $season] = $this->seed();
+        $venue = $this->venue($club, $season, 'Gymnase Matéo');
+        $this->trainingSlot($club, $season, $venue, 1, '09:00');
+        $this->trainingSlot($club, $season, $venue, 1, '18:00');
+        $this->trainingSlot($club, $season, $venue, 3, '18:00');
+        $team = $this->team($club, $season, 'SM1')->setSessionsPerWeek(2);
+        $this->em->flush();
+
+        $parc = [
+            'format' => 'parc-v2',
+            'gymnases' => [['nom' => 'Gymnase Matéo']],
+            'cases' => [
+                ['gymnase' => 'Gymnase Matéo', 'jour' => 1, 'debut' => '09:00', 'duree' => 90, 'equipes' => ['SM1']],
+                ['gymnase' => 'Gymnase Matéo', 'jour' => 1, 'debut' => '18:00', 'duree' => 90, 'equipes' => ['SM1']],
+            ],
+        ];
+        $this->scopeGucToClub($club->getId());
+        $this->executor->import($club, $season->getId(), $parc, [
+            ['section' => 'reservations', 'index' => 0, 'coche' => true],
+            ['section' => 'reservations', 'index' => 1, 'coche' => true],
+        ]);
+
+        $this->scopeGucToClub($club->getId());
+        $this->em->clear();
+        self::assertSame(2, $this->em->getRepository(Team::class)->find($team->getId())?->getMaxSessionsPerDay(), 'l\'import relève le plafond');
+        $reservations = $this->em->getRepository(Reservation::class)->findBy(['teamId' => $team->getId(), 'schedulePlanId' => null]);
+        self::assertCount(2, $reservations);
+        self::assertSame([], self::getContainer()->get(SecondSessionSameDayDetector::class)->detect($reservations)['blockers'], 'le Récap ne bloque plus');
+
+        $payload = $this->build($club, $season);
+        $teams = array_values(array_filter($payload['teams'], static fn (array $t): bool => $team->getId() === $t['id']));
+        self::assertSame(2, $teams[0]['maxSessionsPerDay'] ?? null, 'le payload porte le plafond relevé');
+
+        $result = $this->solve($payload);
+        $monday = array_values(array_filter($result['slots'], static fn (array $s): bool => $team->getId() === ($s['teamId'] ?? null)));
+        self::assertCount(2, $monday, 'les deux séances sont placées');
+        $starts = array_map(static fn (array $s): string => substr((string) $s['startTime'], 0, 5), $monday);
+        sort($starts);
+        self::assertSame(['09:00', '18:00'], $starts);
+        self::assertSame([1, 1], array_map(static fn (array $s): int => (int) $s['dayOfWeek'], $monday), 'les deux le lundi, sur les cases réservées');
     }
 
     protected function setUp(): void
