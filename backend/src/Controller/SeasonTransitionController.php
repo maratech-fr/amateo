@@ -7,10 +7,7 @@ namespace App\Controller;
 use App\Access\Audience;
 use App\Access\ClubFunction;
 use App\Access\Module;
-use App\Entity\ClubUser;
 use App\Entity\Season;
-use App\Entity\User;
-use App\Repository\ClubUserRepository;
 use App\Repository\SeasonRepository;
 use App\Service\SeasonAlreadyTransitionedException;
 use App\Service\SeasonTransitionService;
@@ -24,8 +21,8 @@ use Symfony\Component\Routing\Attribute\Route;
 
 /**
  * Season transition entry point (spec transition-de-saison §2): copies the
- * current season's ENTRIES into a fresh N+1 draft. Management-gated like
- * reset-season — preparing next season is a structural club action.
+ * current season's ENTRIES into a fresh N+1 draft. Réservé au gestionnaire (contrôle
+ * central, `ClubAccessListener`) — preparing next season is a structural club action.
  */
 #[AsController]
 #[Route('/api/seasons/{id}/transition', name: 'season_transition', methods: ['POST'])]
@@ -36,7 +33,6 @@ final class SeasonTransitionController extends AbstractController
 
     public function __construct(
         private readonly SeasonRepository $seasonRepository,
-        private readonly ClubUserRepository $clubUserRepository,
         private readonly SeasonTransitionService $transitionService,
         private readonly RequestStack $requestStack,
     ) {}
@@ -53,14 +49,6 @@ final class SeasonTransitionController extends AbstractController
         $source = $this->seasonRepository->find($id);
         if (!$source instanceof Season || $source->getClubId() !== $clubId) {
             return $this->json(['error' => 'Saison introuvable.'], Response::HTTP_NOT_FOUND);
-        }
-
-        $user = $this->getUser();
-        $membership = $user instanceof User
-            ? $this->clubUserRepository->findActiveMembership($user->getId(), $clubId)
-            : null;
-        if (!$membership instanceof ClubUser || !$membership->getRole()->isManager()) {
-            return $this->json(['error' => 'Cette action est réservée aux gestionnaires.'], Response::HTTP_FORBIDDEN);
         }
 
         try {

@@ -241,9 +241,8 @@ final class ClubInvitationController extends AbstractController
     }
 
     /**
-     * L'adhésion management ACTIVE de l'appelant dans le club de la requête, ou une
-     * réponse d'erreur. Patron MembershipController::requireActiveAdmin (copié, pas
-     * extrait — zéro refactor hors scope).
+     * L'appelant et le club de la requête, ou une réponse d'erreur. Le rôle de gestion est
+     * prouvé en amont par le contrôle central (`ClubAccessListener`).
      *
      * @return array{user: User, clubId: string}|JsonResponse
      */
@@ -256,11 +255,6 @@ final class ClubInvitationController extends AbstractController
 
         $clubId = $this->resolveCurrentClubId($this->requestStack);
         if (null === $clubId) {
-            return $this->json(['error' => 'Accès refusé.'], 403);
-        }
-
-        $membership = $this->clubUserRepository->findActiveMembership($user->getId(), $clubId);
-        if (!$membership instanceof ClubUser || !$membership->getRole()->isManager()) {
             return $this->json(['error' => 'Accès refusé.'], 403);
         }
 
