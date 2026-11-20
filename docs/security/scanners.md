@@ -16,8 +16,8 @@
 | **Semgrep** | motifs de sécurité dans le code (taint, injections, désérialisation) | chaque PR vers `main` (job `semgrep`, **BLOQUANT**, SEC-14) | l'inventaire initial est soldé — un nouveau finding est un vrai signal |
 | **Trivy** (build) | paquets OS des images prod (openssl, libc, nginx…) — l'angle mort de dependency-audit | chaque PR vers `main` (job `build-docker`, gate CRITICAL fixables) sur les **six** images que `deploy.yml` publie : php, nginx, frontend, postgres, engine, pdf-worker (garde `CiWorkflowRegimeTest`) | une image neuve ne doit pas naître trouée |
 | **Trivy** (hebdo) | CVE découvertes APRÈS le build sur les images ghcr publiées | lundi 06:00 UTC (`security-weekly.yml`, relançable à la main) | le monde bouge même quand l'image ne change pas ; il scanne les images **publiées** (`:latest`) : un correctif d'image ne le reverdit qu'au **prochain tag** |
-| **ZAP** | comportement de l'app qui tourne (headers, cookies, injections) vu de l'extérieur | **manuel, à chaque déploiement** (baseline, `docs/ops/deploy.md` §Rituel sécurité post-déploiement) ; scan actif réservé à une préprod avec un compte de test | lent et bruyant ; l'isolation multi-tenant est mieux testée par la suite phase1, qui comprend « ce club ne voit pas l'autre » — pas lui |
-| **Nuclei** | empreintes de failles connues sur un serveur EXPOSÉ (config nginx, TLS, panneaux oubliés) | **manuel, à chaque déploiement + mensuel**, sur la prod déployée | sa cible est ce que le monde extérieur voit du serveur |
+| **ZAP** | comportement de l'app qui tourne (headers, cookies, injections) vu de l'extérieur | **manuel, à chaque déploiement sauf correctif mineur** (baseline, `docs/ops/deploy.md` §Rituel sécurité post-déploiement) ; scan actif réservé à une préprod avec un compte de test | lent et bruyant ; l'isolation multi-tenant est mieux testée par la suite phase1, qui comprend « ce club ne voit pas l'autre » — pas lui |
+| **Nuclei** | empreintes de failles connues sur un serveur EXPOSÉ (config nginx, TLS, panneaux oubliés) | **manuel, à chaque déploiement sauf correctif mineur + mensuel**, sur la prod déployée | sa cible est ce que le monde extérieur voit du serveur |
 
 Rien n'est installé sur le poste : tout tourne en GitHub Actions ou via image Docker.
 
@@ -35,11 +35,12 @@ Rien n'est installé sur le poste : tout tourne en GitHub Actions ou via image D
   commentaire **inline `nosemgrep: <rule>` motivé** sur la ligne même. Ne jamais élargir
   pour faire passer la CI.
 
-## Rituel — ZAP + Nuclei à chaque déploiement
+## Rituel — ZAP + Nuclei à chaque déploiement, sauf correctif mineur
 
 Prod en ligne depuis le 2026-10-03. Ce rituel n'est plus un item de backlog : c'est un geste
 récurrent, à rejouer à **chaque déploiement** (`docs/ops/deploy.md` §Rituel sécurité
-post-déploiement), pas seulement avant la toute première mise en prod.
+post-déploiement), pas seulement avant la toute première mise en prod. Seul un correctif mineur
+en est dispensé (définition canonique : `docs/ops/deploy.md`, même section).
 
 ```bash
 # ZAP baseline (passif — aucune attaque, ~2 min)

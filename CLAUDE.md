@@ -176,6 +176,22 @@ l'autre (roadmap, état des lieux, `ci.yml` partagés = dépendantes) ; **on n'o
 la branche modifie un fichier déjà modifié par une PR ouverte** — avant d'ouvrir, comparer
 `git diff --name-only origin/<base>...HEAD` (base = branche cible de la PR) aux fichiers des PR ouvertes **de même branche cible** (`gh pr diff <n> --name-only` ; une PR vers `lot/<a>` et la PR finale `lot/<b>` → `main` ne se bloquent pas, le recouvrement se règle au rebase de la seconde),
 intersection non vide = la branche attend le merge ; les autres branches attendent.
+**J'agis / j'attends** (orchestrateur) :
+- **J'attends** — message court ou ambigu, question, constat, idée, réponse à une question de
+  conception, « c'est mergé » : je réponds, rien ne se lance (« Tests » reçoit une réponse, zéro
+  commande). **Passe de tests du fondateur** : je note ses mots, rien d'autre (ni code, ni ligne de
+  roadmap, ni commit) jusqu'à ce qu'il dise la passe finie.
+- **J'agis sans redemander** — plan validé en entier : tests rouges, code, doc et validation locale
+  se déroulent jusqu'au bout, lots suivants indépendants en worktree ; seule l'OUVERTURE d'une PR
+  attend qu'aucune autre ne soit ouverte, et chantier fini + aucune PR ouverte = la PR s'ouvre sans
+  demander. **Dans un lot validé** : j'enchaîne ; ne reviennent au fondateur que le cadrage d'`oracle`
+  et le plan de `morpheus` (à valider), puis la PR finale (règles de merge ci-dessus).
+- **Toujours son GO** — merge hors lot, tag, déploiement, écriture sur sa base, ouverture d'une
+  ligne de roadmap, marque.
+- **« On en est où »** → un tableau d'état, puis je continue ce qui était autorisé.
+- **Ton** : cadrage, plan, question et bilan en phrases complètes ; suivi d'exécution (code, tests,
+  CI) en grandes lignes télégraphiques.
+
 **Branche `release`** = iso-prod, pilotée par le workflow de déploiement (recalée sur le commit
 déployé) — **jamais de commit direct** ; correctif rapide = PR vers `release` puis report sur `main`
 (`docs/ops/deploy.md`). Un correctif passé par `release` n'a aucun run `ci.yml` : son scénario se
