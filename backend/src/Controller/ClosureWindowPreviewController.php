@@ -13,7 +13,6 @@ use App\Service\ClosurePinRemover;
 use App\Service\ClosureWindowApplier;
 use App\Service\ClosureWindowPlan;
 use App\Service\ClosureWindowPlanner;
-use App\Service\ManagementAccessGuard;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
@@ -47,7 +46,6 @@ final class ClosureWindowPreviewController extends AbstractController
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
         private readonly RequestStack $requestStack,
-        private readonly ManagementAccessGuard $managementAccessGuard,
         private readonly ClosureWindowPlanner $planner,
         private readonly ClosureWindowApplier $applier,
         private readonly ClosurePinRemover $closurePinRemover,
@@ -56,8 +54,6 @@ final class ClosureWindowPreviewController extends AbstractController
     #[Route('/api/schedule_plans/{id}/window-preview', name: 'api_schedule_plan_window_preview', methods: ['POST'])]
     public function __invoke(string $id, Request $request): JsonResponse
     {
-        $this->managementAccessGuard->assertManager(); // SEC-07
-
         try {
             $context = $this->entityManager->getRepository(SchedulePlan::class)->find($id);
         } catch (Throwable) {

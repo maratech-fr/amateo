@@ -10,7 +10,6 @@ use App\Access\Module;
 use App\Entity\Competition;
 use App\Entity\SharedCompetitionDeadline;
 use App\Repository\SharedCompetitionDeadlineRepository;
-use App\Service\ManagementAccessGuard;
 use App\Service\SeasonAccessGuard;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -47,7 +46,6 @@ final class CompetitionEntryDeadlinesController extends AbstractController
 {
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
-        private readonly ManagementAccessGuard $managementAccessGuard,
         private readonly SeasonAccessGuard $seasonAccessGuard,
         private readonly SharedCompetitionDeadlineRepository $sharedDeadlineRepository,
     ) {}
@@ -55,8 +53,6 @@ final class CompetitionEntryDeadlinesController extends AbstractController
     #[Route('/api/competitions/entry-deadlines', name: 'api_competition_entry_deadlines', methods: ['POST'])]
     public function __invoke(Request $request): JsonResponse
     {
-        // SEC-07 first so 403 wins over the 422/409s.
-        $this->managementAccessGuard->assertManager();
         $this->seasonAccessGuard->assertWritable($request);
 
         /** @var mixed $payload */

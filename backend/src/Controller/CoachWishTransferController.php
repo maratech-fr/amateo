@@ -9,7 +9,6 @@ use App\Access\ClubFunction;
 use App\Access\Module;
 use App\Exception\ScheduleGenerationInProgressException;
 use App\Service\CoachWishTransferService;
-use App\Service\ManagementAccessGuard;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
@@ -22,7 +21,7 @@ use Symfony\Component\Routing\Attribute\Route;
  * P2-63 PR 5 — « Transférer au planning » : convertit en masse les doléances COCHÉES par le
  * gestionnaire en réglages du plan de leur semaine ({@see CoachWishTransferService}).
  *
- * Geste GESTIONNAIRE seulement (SEC-07, `assertManager` FALSIFIÉE par un test d'abus) : la
+ * Geste GESTIONNAIRE seulement (déclaration « gestionnaire », refusée au Membre par `ClubAccessListener`) : la
  * page publique à jeton n'écrit que des souhaits, jamais un objet de plan (§3bis). 409 si une
  * génération tourne (Q-B). Écriture de COLLECTION : la saison courante gouverne
  * (`writeTargetSeasonId` → null, choix écrit — SeasonScopedWriteInterface).
@@ -35,7 +34,6 @@ final class CoachWishTransferController extends AbstractController implements Se
 
     public function __construct(
         private readonly RequestStack $requestStack,
-        private readonly ManagementAccessGuard $managementAccessGuard,
         private readonly CoachWishTransferService $transferService,
     ) {}
 
@@ -49,8 +47,6 @@ final class CoachWishTransferController extends AbstractController implements Se
     #[Route('/api/coach-wishes/transfer', name: 'api_coach_wishes_transfer', methods: ['POST'])]
     public function __invoke(Request $request): JsonResponse
     {
-        $this->managementAccessGuard->assertManager(); // SEC-07
-
         $clubId = $this->resolveCurrentClubId($this->requestStack);
         if (null === $clubId) {
             return $this->json(['error' => 'Club introuvable.'], Response::HTTP_FORBIDDEN);

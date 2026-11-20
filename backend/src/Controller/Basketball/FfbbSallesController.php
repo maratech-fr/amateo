@@ -10,7 +10,6 @@ use App\Access\Module;
 use App\Controller\ResolvesCurrentClubTrait;
 use App\Repository\ClubRepository;
 use App\Service\Basketball\FfbbApiClient;
-use App\Service\ManagementAccessGuard;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
@@ -47,15 +46,12 @@ final class FfbbSallesController extends AbstractController
     public function __construct(
         private readonly ClubRepository $clubRepository,
         private readonly FfbbApiClient $api,
-        private readonly ManagementAccessGuard $managementAccessGuard,
         private readonly RequestStack $requestStack,
     ) {}
 
     #[Route('/api/ffbb/salles', name: 'api_ffbb_salles', methods: ['GET'])]
     public function __invoke(Request $request): JsonResponse
     {
-        $this->managementAccessGuard->assertManager(); // SEC-07
-
         // Recherche par NOM (`q`) en ALTERNATIVE au code postal : le libellé de salle en
         // plein-texte fédéral (`mapSalle` inchangé). Best-effort 502 comme la voie CP.
         $name = trim((string) $request->query->get('q', ''));
@@ -108,8 +104,6 @@ final class FfbbSallesController extends AbstractController
     #[Route('/api/ffbb/salles-proches', name: 'api_ffbb_salles_proches', methods: ['GET'])]
     public function nearby(Request $request): JsonResponse
     {
-        $this->managementAccessGuard->assertManager(); // SEC-07
-
         $clubId = $this->resolveCurrentClubId($this->requestStack);
         $club = null !== $clubId ? $this->clubRepository->find($clubId) : null;
         $latitude = $club?->getLatitude();

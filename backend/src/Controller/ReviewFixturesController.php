@@ -10,7 +10,6 @@ use App\Access\Module;
 use App\Entity\Fixture;
 use App\Enum\FixtureHomeAway;
 use App\Enum\FixtureReviewState;
-use App\Service\ManagementAccessGuard;
 use App\Service\SeasonAccessGuard;
 use App\Service\SocleGuard;
 use DateTimeImmutable;
@@ -49,7 +48,6 @@ final class ReviewFixturesController extends AbstractController
 
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
-        private readonly ManagementAccessGuard $managementAccessGuard,
         private readonly SeasonAccessGuard $seasonAccessGuard,
         private readonly SocleGuard $socleGuard,
         private readonly ClockInterface $clock,
@@ -59,8 +57,6 @@ final class ReviewFixturesController extends AbstractController
     #[Route('/api/fixtures/review', name: 'api_fixtures_review', methods: ['POST'], priority: 10)]
     public function __invoke(Request $request): JsonResponse
     {
-        // SEC-07 first so 403 wins over the 409s (import idiom).
-        $this->managementAccessGuard->assertManager();
         $this->seasonAccessGuard->assertWritable($request);
         $this->socleGuard->assertSeasonPlanChosen($request->attributes->get('_season_id') ?? $request->headers->get('X-Season-Id'));
 

@@ -16,7 +16,6 @@ use App\Service\CoachInTwoPlacesGuard;
 use App\Service\DeploymentGate;
 use App\Service\GenerationBlockersGuard;
 use App\Service\GenerationComplexityGuard;
-use App\Service\ManagementAccessGuard;
 use App\Service\OrphanPinGuard;
 use App\Service\SchedulePlanProvisioner;
 use App\Service\SocleGuard;
@@ -46,7 +45,6 @@ final class GenerateScheduleController extends AbstractController implements Sea
         private EntityManagerInterface $entityManager,
         private MessageBusInterface $messageBus,
         private RequestStack $requestStack,
-        private readonly ManagementAccessGuard $managementAccessGuard,
         private readonly SocleGuard $socleGuard,
         private readonly SchedulePlanProvisioner $schedulePlanProvisioner,
         private readonly GenerationComplexityGuard $complexityGuard,
@@ -67,8 +65,6 @@ final class GenerateScheduleController extends AbstractController implements Sea
 
     public function __invoke(string $id): JsonResponse
     {
-        $this->managementAccessGuard->assertManager(); // SEC-07
-
         // P4-350 (axe generation pipeline) : une mise en production imminente GÈLE l'enfilage —
         // refus AVANT tout lookup/état/socle, uniforme sur les quatre guichets.
         if ($this->deploymentGate->isFrozen()) {

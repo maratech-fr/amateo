@@ -15,7 +15,6 @@ use App\Service\CoachInTwoPlacesGuard;
 use App\Service\DeploymentGate;
 use App\Service\GenerationBlockersGuard;
 use App\Service\GenerationComplexityGuard;
-use App\Service\ManagementAccessGuard;
 use App\Service\SchedulePlanProvisioner;
 use App\Service\SocleGuard;
 use App\Service\WriteTargetSeasonResolver;
@@ -54,7 +53,6 @@ final class RegenerateController extends AbstractController implements SeasonSco
         private readonly EntityManagerInterface $entityManager,
         private readonly MessageBusInterface $messageBus,
         private readonly RequestStack $requestStack,
-        private readonly ManagementAccessGuard $managementAccessGuard,
         private readonly GenerationComplexityGuard $complexityGuard,
         private readonly SchedulePlanProvisioner $schedulePlanProvisioner,
         private readonly SocleGuard $socleGuard,
@@ -74,8 +72,6 @@ final class RegenerateController extends AbstractController implements SeasonSco
     #[Route('/api/schedules/{id}/regenerate', name: 'api_schedule_regenerate', methods: ['POST'])]
     public function __invoke(string $id): JsonResponse
     {
-        $this->managementAccessGuard->assertManager(); // SEC-07
-
         // P4-350 (axe generation pipeline) : gel des guichets pendant une mise en production
         // imminente — refus AVANT tout lookup/état/socle.
         if ($this->deploymentGate->isFrozen()) {

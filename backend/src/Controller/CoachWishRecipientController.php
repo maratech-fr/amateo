@@ -14,7 +14,6 @@ use App\Service\CoachWishCampaignPresenter;
 use App\Service\CoachWishCampaignTokenSync;
 use App\Service\CoachWishPerimeter;
 use App\Service\CoachWishSeasonGuard;
-use App\Service\ManagementAccessGuard;
 use Doctrine\DBAL\LockMode;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
@@ -41,7 +40,6 @@ final class CoachWishRecipientController extends AbstractController
 
     public function __construct(
         private readonly RequestStack $requestStack,
-        private readonly ManagementAccessGuard $managementAccessGuard,
         private readonly EntityManagerInterface $entityManager,
         private readonly CoachWishPerimeter $perimeter,
         private readonly CoachWishCampaignTokenSync $tokenSync,
@@ -51,8 +49,6 @@ final class CoachWishRecipientController extends AbstractController
 
     public function __invoke(string $id, Request $request): JsonResponse
     {
-        $this->managementAccessGuard->assertManager();
-
         // Un identifiant malformé ne doit pas atteindre PostgreSQL : même réponse qu'une collecte inconnue.
         $campaign = Uuid::isValid($id) ? $this->entityManager->getRepository(CoachWishCampaign::class)->find($id) : null;
         $currentClubId = $this->resolveCurrentClubId($this->requestStack);

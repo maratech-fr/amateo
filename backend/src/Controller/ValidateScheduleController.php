@@ -14,7 +14,6 @@ use App\Entity\Season;
 use App\Enum\ScheduleStatus;
 use App\Service\FixtureVenueLossMarker;
 use App\Service\FutureHolidayCollectePurger;
-use App\Service\ManagementAccessGuard;
 use App\Service\OrphanedFixtureFinder;
 use App\Service\OverlayManager;
 use App\Service\ScheduleCapabilityResolver;
@@ -51,7 +50,6 @@ final class ValidateScheduleController extends AbstractController implements Sea
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
         private readonly RequestStack $requestStack,
-        private readonly ManagementAccessGuard $managementAccessGuard,
         private readonly OverlayManager $overlayManager,
         private readonly SchedulePlanProvisioner $schedulePlanProvisioner,
         private readonly ScheduleCapabilityResolver $capabilityResolver,
@@ -73,8 +71,6 @@ final class ValidateScheduleController extends AbstractController implements Sea
     #[Route('/api/schedules/{id}/validate', name: 'api_schedule_validate', methods: ['POST'])]
     public function __invoke(string $id): JsonResponse
     {
-        $this->managementAccessGuard->assertManager(); // SEC-07
-
         try {
             $schedule = $this->entityManager->getRepository(Schedule::class)->find($id);
         } catch (Throwable) {

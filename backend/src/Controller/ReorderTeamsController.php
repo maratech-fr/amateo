@@ -8,7 +8,6 @@ use App\Access\Audience;
 use App\Access\ClubFunction;
 use App\Access\Module;
 use App\Entity\Team;
-use App\Service\ManagementAccessGuard;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
@@ -31,7 +30,6 @@ final class ReorderTeamsController extends AbstractController implements SeasonS
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
         private readonly RequestStack $requestStack,
-        private readonly ManagementAccessGuard $managementAccessGuard,
     ) {}
 
     /**
@@ -47,8 +45,6 @@ final class ReorderTeamsController extends AbstractController implements SeasonS
     #[Route('/api/teams/reorder', name: 'api_teams_reorder', methods: ['POST'])]
     public function __invoke(Request $request): JsonResponse
     {
-        $this->managementAccessGuard->assertManager(); // SEC-07
-
         $data = json_decode($request->getContent(), true);
         $items = \is_array($data) ? ($data['items'] ?? $data) : null;
         if (!\is_array($items)) {

@@ -11,7 +11,6 @@ use App\Service\EntryDeadlineOutlook;
 use App\Service\FbiFixtureImporter;
 use App\Service\FriendlyAutoValidator;
 use App\Service\LeagueValidationOutlook;
-use App\Service\ManagementAccessGuard;
 use App\Service\MatchPlacementPayloadBuilder;
 use App\Service\SeasonAccessGuard;
 use App\Service\SocleGuard;
@@ -61,7 +60,6 @@ final class LeagueValidatedFixturesController extends AbstractController
     public function __construct(
         private readonly LeagueValidationOutlook $outlook,
         private readonly FriendlyAutoValidator $friendlyAutoValidator,
-        private readonly ManagementAccessGuard $managementAccessGuard,
         private readonly SeasonAccessGuard $seasonAccessGuard,
         private readonly SocleGuard $socleGuard,
         private readonly ClockInterface $clock,
@@ -83,8 +81,6 @@ final class LeagueValidatedFixturesController extends AbstractController
      */
     private function guard(Request $request): array
     {
-        // SEC : le 403 doit gagner sur les 409 (idiome import).
-        $this->managementAccessGuard->assertManager();
         $this->seasonAccessGuard->assertWritable($request);
 
         // Défense en profondeur (revue lot L) : l'isolation de saison ne doit PAS reposer
@@ -96,7 +92,7 @@ final class LeagueValidatedFixturesController extends AbstractController
         }
         $this->socleGuard->assertSeasonPlanChosen($seasonId);
 
-        // L'appelant est GESTIONNAIRE (assertManager ci-dessus), la saison écrivable et le
+        // L'appelant est GESTIONNAIRE (contrôle central, `ClubAccessListener`), la saison écrivable et le
         // socle en vigueur : les balayages peuvent écrire. Un Membre n'atteint jamais ce point.
         $clubId = $request->attributes->get('_club_id');
         $swept = $this->friendlyAutoValidator->sweep(\is_string($clubId) ? $clubId : null, $seasonId);

@@ -18,7 +18,6 @@ use App\Repository\ClubRepository;
 use App\Service\Basketball\EngagementLevelDeducer;
 use App\Service\Basketball\FbiDivisionSignature;
 use App\Service\Basketball\FfbbEngagementReader;
-use App\Service\ManagementAccessGuard;
 use App\Service\SeasonAccessGuard;
 use App\Service\SeasonResolver;
 use App\Service\SocleGuard;
@@ -68,7 +67,6 @@ final class FfbbEngagementsController extends AbstractController
         private readonly ClubRepository $clubRepository,
         private readonly RequestStack $requestStack,
         private readonly SeasonResolver $seasonResolver,
-        private readonly ManagementAccessGuard $managementAccessGuard,
         private readonly SeasonAccessGuard $seasonAccessGuard,
         private readonly SocleGuard $socleGuard,
         private readonly FfbbEngagementReader $reader,
@@ -80,8 +78,6 @@ final class FfbbEngagementsController extends AbstractController
     #[Route('/api/ffbb/engagements', name: 'api_ffbb_engagements', methods: ['GET'])]
     public function list(Request $request): JsonResponse
     {
-        $this->managementAccessGuard->assertManager(); // SEC-07
-
         [$clubCode, $seasonYear, $error] = $this->context($request);
         if ($error instanceof JsonResponse) {
             return $error;
@@ -229,8 +225,6 @@ final class FfbbEngagementsController extends AbstractController
     #[Route('/api/ffbb/engagements/confirm', name: 'api_ffbb_engagements_confirm', methods: ['POST'])]
     public function confirm(Request $request): JsonResponse
     {
-        // SEC-07 first so 403 wins over the 409s (import idiom).
-        $this->managementAccessGuard->assertManager();
         $this->seasonAccessGuard->assertWritable($request);
         $this->socleGuard->assertSeasonPlanChosen($request->attributes->get('_season_id') ?? $request->headers->get('X-Season-Id'));
 

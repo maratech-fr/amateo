@@ -9,7 +9,6 @@ use App\Access\ClubFunction;
 use App\Access\Module;
 use App\Entity\CalendarEntry;
 use App\Service\CalendarEntryRedatability;
-use App\Service\ManagementAccessGuard;
 use App\Service\SplitMotherRedatePlanner;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -44,7 +43,6 @@ final class RedatePreviewController extends AbstractController
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
         private readonly RequestStack $requestStack,
-        private readonly ManagementAccessGuard $managementAccessGuard,
         private readonly CalendarEntryRedatability $redatability,
         private readonly SplitMotherRedatePlanner $planner,
     ) {}
@@ -52,8 +50,6 @@ final class RedatePreviewController extends AbstractController
     #[Route('/api/calendar_entries/{id}/redate-preview', name: 'api_calendar_entry_redate_preview', methods: ['POST'])]
     public function __invoke(string $id, Request $request): JsonResponse
     {
-        $this->managementAccessGuard->assertManager();
-
         try {
             $entry = $this->entityManager->getRepository(CalendarEntry::class)->find($id);
         } catch (Throwable) {

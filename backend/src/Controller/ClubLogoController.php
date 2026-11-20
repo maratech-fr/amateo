@@ -8,7 +8,6 @@ use App\Access\Audience;
 use App\Access\ClubFunction;
 use App\Access\Module;
 use App\Repository\ClubRepository;
-use App\Service\ManagementAccessGuard;
 use App\Storage\LogoStorage;
 use App\Storage\LogoUrl;
 use Doctrine\ORM\EntityManagerInterface;
@@ -43,15 +42,12 @@ final class ClubLogoController extends AbstractController
         private readonly ClubRepository $clubRepository,
         private readonly EntityManagerInterface $entityManager,
         private readonly RequestStack $requestStack,
-        private readonly ManagementAccessGuard $managementAccessGuard,
     ) {}
 
     #[Route('/api/club/logo', name: 'club_logo_upload', methods: ['POST'])]
     #[ClubFunction(module: Module::CLUB, audience: Audience::MANAGER)]
     public function upload(): JsonResponse
     {
-        $this->managementAccessGuard->assertManager(); // SEC-07 (same surface as /club/appearance)
-
         $request = $this->requestStack->getCurrentRequest();
         $clubId = $this->resolveCurrentClubId($this->requestStack);
         if (!$request instanceof Request || null === $clubId) {
@@ -91,8 +87,6 @@ final class ClubLogoController extends AbstractController
     #[ClubFunction(module: Module::CLUB, audience: Audience::MANAGER)]
     public function delete(): JsonResponse
     {
-        $this->managementAccessGuard->assertManager(); // SEC-07
-
         $clubId = $this->resolveCurrentClubId($this->requestStack);
         if (null === $clubId) {
             return $this->json(['error' => 'No club in context.'], Response::HTTP_BAD_REQUEST);

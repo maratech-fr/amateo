@@ -11,7 +11,6 @@ use App\Entity\CalendarEntry;
 use App\Entity\Schedule;
 use App\Entity\Season;
 use App\Service\FutureHolidayCollectePurger;
-use App\Service\ManagementAccessGuard;
 use App\Service\OverlayManager;
 use App\Service\SchedulePlanProvisioner;
 use App\Service\WriteTargetSeasonResolver;
@@ -40,7 +39,6 @@ final class ReopenScheduleController extends AbstractController implements Seaso
         private readonly EntityManagerInterface $entityManager,
         private readonly RequestStack $requestStack,
         private readonly OverlayManager $overlayManager,
-        private readonly ManagementAccessGuard $managementAccessGuard,
         private readonly SchedulePlanProvisioner $schedulePlanProvisioner,
         private readonly WriteTargetSeasonResolver $writeTargetSeasonResolver,
         private readonly FutureHolidayCollectePurger $collectePurger,
@@ -57,8 +55,6 @@ final class ReopenScheduleController extends AbstractController implements Seaso
     #[Route('/api/schedules/{id}/reopen', name: 'api_schedule_reopen', methods: ['POST'])]
     public function __invoke(string $id): JsonResponse
     {
-        $this->managementAccessGuard->assertManager(); // SEC-07
-
         try {
             $schedule = $this->entityManager->getRepository(Schedule::class)->find($id);
         } catch (Throwable) {

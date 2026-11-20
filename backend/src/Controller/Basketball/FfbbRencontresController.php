@@ -19,7 +19,6 @@ use App\Service\Basketball\OpponentLocationResolver;
 use App\Service\FbiFixtureImporter;
 use App\Service\Geo\OpponentTravelResolver;
 use App\Service\Geo\OpponentVenueAutoLocator;
-use App\Service\ManagementAccessGuard;
 use App\Service\SeasonAccessGuard;
 use App\Service\SeasonResolver;
 use App\Service\SocleGuard;
@@ -76,7 +75,6 @@ final class FfbbRencontresController extends AbstractController
         private readonly ClubRepository $clubRepository,
         private readonly RequestStack $requestStack,
         private readonly SeasonResolver $seasonResolver,
-        private readonly ManagementAccessGuard $managementAccessGuard,
         private readonly SeasonAccessGuard $seasonAccessGuard,
         private readonly SocleGuard $socleGuard,
         private readonly FfbbRencontreReconciler $reconciler,
@@ -93,8 +91,6 @@ final class FfbbRencontresController extends AbstractController
     #[Route('/api/ffbb/rencontres', name: 'api_ffbb_rencontres', methods: ['GET'])]
     public function list(Request $request): JsonResponse
     {
-        $this->managementAccessGuard->assertManager(); // SEC-07
-
         [$clubCode, $seasonYear, $seasonId, $error] = $this->context($request);
         if ($error instanceof JsonResponse) {
             return $error;
@@ -114,9 +110,6 @@ final class FfbbRencontresController extends AbstractController
     #[Route('/api/ffbb/rencontres/apply', name: 'api_ffbb_rencontres_apply', methods: ['POST'])]
     public function apply(Request $request): JsonResponse
     {
-        // SEC-07 first so 403 wins over the 409s (import idiom): mgmt → archived
-        // (409) → context → socle (409).
-        $this->managementAccessGuard->assertManager();
         $this->seasonAccessGuard->assertWritable($request);
 
         [$clubCode, $seasonYear, $seasonId, $error] = $this->context($request);

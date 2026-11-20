@@ -8,7 +8,6 @@ use App\Access\Audience;
 use App\Access\ClubFunction;
 use App\Access\Module;
 use App\Repository\ClubRepository;
-use App\Service\ManagementAccessGuard;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
@@ -34,14 +33,11 @@ final class ClubAppearanceController extends AbstractController
         private readonly ClubRepository $clubRepository,
         private readonly EntityManagerInterface $entityManager,
         private readonly RequestStack $requestStack,
-        private readonly ManagementAccessGuard $managementAccessGuard,
     ) {}
 
     #[Route('/api/club/appearance', name: 'club_appearance', methods: ['PATCH'])]
     public function __invoke(): JsonResponse
     {
-        $this->managementAccessGuard->assertManager(); // SEC-07
-
         $request = $this->requestStack->getCurrentRequest();
         $clubId = $this->resolveCurrentClubId($this->requestStack);
         if (!$request instanceof Request || null === $clubId) {

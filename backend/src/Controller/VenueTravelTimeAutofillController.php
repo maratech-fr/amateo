@@ -11,7 +11,6 @@ use App\Entity\User;
 use App\Enum\TravelComputeScope;
 use App\Message\ComputeTravelTimesMessage;
 use App\Service\Geo\VenueTravelTimeAutofillService;
-use App\Service\ManagementAccessGuard;
 use App\Service\SeasonAccessGuard;
 use App\Service\TravelComputeLock;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
@@ -39,7 +38,6 @@ final class VenueTravelTimeAutofillController extends AbstractController
 
     public function __construct(
         private readonly VenueTravelTimeAutofillService $autofiller,
-        private readonly ManagementAccessGuard $managementAccessGuard,
         private readonly SeasonAccessGuard $seasonAccessGuard,
         private readonly RequestStack $requestStack,
         private readonly RateLimiterFactory $venueTravelTimeAutofillLimiter,
@@ -50,8 +48,6 @@ final class VenueTravelTimeAutofillController extends AbstractController
     #[Route('/api/venue-travel-times/autofill', name: 'api_venue_travel_times_autofill', methods: ['POST'])]
     public function __invoke(Request $request): JsonResponse
     {
-        // SEC-07 first so 403 wins over the 409/429.
-        $this->managementAccessGuard->assertManager();
         $this->seasonAccessGuard->assertWritable($request);
 
         $clubId = $this->resolveCurrentClubId($this->requestStack);

@@ -10,7 +10,6 @@ use App\Access\Module;
 use App\Controller\ResolvesCurrentClubTrait;
 use App\Repository\ClubRepository;
 use App\Service\Basketball\FfbbClubPopulator;
-use App\Service\ManagementAccessGuard;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\RequestStack;
@@ -33,15 +32,12 @@ final class FfbbImportController extends AbstractController
     public function __construct(
         private readonly ClubRepository $clubRepository,
         private readonly FfbbClubPopulator $populator,
-        private readonly ManagementAccessGuard $managementAccessGuard,
         private readonly RequestStack $requestStack,
     ) {}
 
     #[Route('/api/club/ffbb-import', name: 'club_ffbb_import', methods: ['POST'])]
     public function __invoke(): JsonResponse
     {
-        $this->managementAccessGuard->assertManager(); // SEC-07
-
         $clubId = $this->resolveCurrentClubId($this->requestStack);
         if (null === $clubId) {
             return $this->json(['error' => 'No club in context.'], Response::HTTP_BAD_REQUEST);

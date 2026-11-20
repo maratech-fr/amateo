@@ -11,7 +11,6 @@ use App\Entity\Season;
 use App\Entity\User;
 use App\Repository\FixtureRepository;
 use App\Service\Basketball\OpponentLocationResolver;
-use App\Service\ManagementAccessGuard;
 use App\Service\SeasonResolver;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
@@ -44,7 +43,6 @@ final class OpponentResolveController extends AbstractController
 
     public function __construct(
         private readonly OpponentLocationResolver $resolver,
-        private readonly ManagementAccessGuard $managementAccessGuard,
         private readonly SeasonResolver $seasonResolver,
         private readonly FixtureRepository $fixtures,
         private readonly RequestStack $requestStack,
@@ -54,9 +52,6 @@ final class OpponentResolveController extends AbstractController
     #[Route('/api/opponents/resolve', name: 'api_opponents_resolve', methods: ['POST'])]
     public function __invoke(Request $request): JsonResponse
     {
-        // SEC-07 first so 403 wins over the 422/429.
-        $this->managementAccessGuard->assertManager();
-
         $clubId = $this->resolveCurrentClubId($this->requestStack);
         $season = null === $clubId ? null : $this->seasonResolver->selectedOrCurrent($request, $clubId);
         if (null === $clubId || !$season instanceof Season) {

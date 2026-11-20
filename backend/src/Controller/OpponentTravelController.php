@@ -27,7 +27,6 @@ use App\Service\Geo\OpponentTravelFailureStore;
 use App\Service\Geo\OpponentTravelResolver;
 use App\Service\Geo\OpponentVenueLinkManager;
 use App\Service\Geo\TravelTimeCache;
-use App\Service\ManagementAccessGuard;
 use App\Service\OpponentPairingKey;
 use App\Service\SeasonResolver;
 use App\Service\TravelComputeLock;
@@ -80,7 +79,6 @@ final class OpponentTravelController extends AbstractController
         private readonly OpponentVenueLinkRepository $linkRepository,
         private readonly OpponentDirectoryEntryRepository $directory,
         private readonly OpponentVenueSuggestionRepository $suggestions,
-        private readonly ManagementAccessGuard $managementAccessGuard,
         private readonly OpponentTravelResolver $resolver,
         private readonly OpponentTravelFailureStore $failureStore,
         private readonly OpponentVenueLinkManager $linkManager,
@@ -140,8 +138,6 @@ final class OpponentTravelController extends AbstractController
     #[Route('/api/opponents/venue-links/{id}', name: 'api_opponents_venue_link_update', methods: ['PUT'])]
     public function repointLink(Request $request, string $id): JsonResponse
     {
-        $this->managementAccessGuard->assertManager(); // SEC-07
-
         [$clubId, $season, $error] = $this->context($request);
         if ($error instanceof JsonResponse) {
             return $error;
@@ -174,8 +170,6 @@ final class OpponentTravelController extends AbstractController
     #[Route('/api/opponents/venue-links/{id}', name: 'api_opponents_venue_link_delete', methods: ['DELETE'])]
     public function deleteLink(Request $request, string $id): JsonResponse
     {
-        $this->managementAccessGuard->assertManager(); // SEC-07
-
         [$clubId, $season, $error] = $this->context($request);
         if ($error instanceof JsonResponse) {
             return $error;
@@ -192,8 +186,6 @@ final class OpponentTravelController extends AbstractController
     #[Route('/api/opponents/travel/resolve', name: 'api_opponents_travel_resolve', methods: ['POST'])]
     public function resolve(Request $request): JsonResponse
     {
-        $this->managementAccessGuard->assertManager(); // SEC-07 first, so 403 wins.
-
         [$clubId, $season, $error] = $this->context($request);
         if ($error instanceof JsonResponse) {
             return $error;
@@ -228,8 +220,6 @@ final class OpponentTravelController extends AbstractController
     #[Route('/api/opponents/{code}/venue-suggestions', name: 'api_opponents_venue_suggestions', requirements: ['code' => self::CODE_RE], methods: ['GET'])]
     public function venueSuggestions(Request $request, string $code): JsonResponse
     {
-        $this->managementAccessGuard->assertManager(); // SEC-07 first, so 403 wins (A6).
-
         [$clubId, $season, $error] = $this->context($request);
         if ($error instanceof JsonResponse) {
             return $error;
@@ -255,8 +245,6 @@ final class OpponentTravelController extends AbstractController
      */
     private function writeLink(Request $request, string $code, bool $requireFbiLabel): JsonResponse
     {
-        $this->managementAccessGuard->assertManager(); // SEC-07
-
         [$clubId, $season, $error] = $this->context($request);
         if ($error instanceof JsonResponse) {
             return $error;
