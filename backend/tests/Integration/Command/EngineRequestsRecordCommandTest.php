@@ -37,7 +37,6 @@ use ReflectionClass;
 use ReflectionNamedType;
 use Symfony\Bundle\FrameworkBundle\Console\Application;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
-use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Tester\CommandTester;
 use Symfony\Contracts\Cache\ItemInterface;
 use Symfony\Contracts\Cache\TagAwareCacheInterface;
@@ -712,7 +711,7 @@ final class EngineRequestsRecordCommandTest extends KernelTestCase
      * La commande construite comme le conteneur la construit (services résolus par type), seul le
      * paramètre `$environment` imposé.
      */
-    private function commandIn(string $environment): Command
+    private function commandIn(string $environment): EngineRequestsRecordCommand
     {
         $constructor = new ReflectionClass(EngineRequestsRecordCommand::class)->getConstructor();
         self::assertNotNull($constructor);
