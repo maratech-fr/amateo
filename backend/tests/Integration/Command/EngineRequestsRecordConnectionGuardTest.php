@@ -150,6 +150,25 @@ final class EngineRequestsRecordConnectionGuardTest extends KernelTestCase
         self::assertSame([], $this->filesUnder($out), 'rien n\'est écrit');
     }
 
+    /**
+     * Une option invalide est refusée (sortie 2) AVANT que la connexion soit jugée : sous un rôle qui
+     * contourne la RLS, un `--club` invalide rend 2, pas 3. Jumeau de l'ordre 4 avant 2 :
+     * `EngineRequestsRecordCommandTest::testProductionIsRefusedBeforeEveryOtherRefusal`.
+     */
+    public function testAnInvalidOptionIsRefusedBeforeTheConnectionIsJudged(): void
+    {
+        $connection = $this->erEm()->getConnection();
+        $connection->executeStatement(\sprintf('SET LOCAL ROLE %s', self::ROLE_SUPER));
+
+        $out = $this->newOutDir();
+        $tester = $this->tester();
+        $code = $tester->execute(['--out' => $out, '--club' => ['../x']]);
+        $connection->executeStatement('RESET ROLE');
+
+        self::assertSame(2, $code, 'option invalide d\'abord, connexion ensuite. ' . $tester->getDisplay());
+        self::assertSame([], $this->filesUnder($out), 'rien n\'est écrit');
+    }
+
     public function testTheApplicationRoleRecords(): void
     {
         $connection = $this->erEm()->getConnection();

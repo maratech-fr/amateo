@@ -68,6 +68,52 @@ final class EngineRequestFingerprintTest extends TestCase
         yield 'clé inconnue' => ['nouveauChamp', 'SF2'];
     }
 
+    /** @return iterable<string, array{string}> */
+    public static function idsThatCarryAName(): iterable
+    {
+        yield 'nom d\'équipe' => ['U13 F'];
+        yield 'nom en capitales' => ['SM1'];
+        yield 'nom accentué' => ['Entraîneur'];
+        yield 'nom dans un id composé' => ['team-coach:Gymnase Nord'];
+    }
+
+    /**
+     * La désignation d'un élément de liste (chemin ET ligne d'ordre) ne laisse aucun nom en clair : un
+     * id qui n'est pas fait que d'UUID, de nombres et de mots d'identifiant est désigné par son empreinte.
+     */
+    #[DataProvider('idsThatCarryAName')]
+    public function testAnIdThatCarriesANameIsDesignatedByItsSha256(string $id): void
+    {
+        $designation = 'sha256:' . hash('sha256', $id);
+
+        $rendered = EngineRequestFingerprint::render(['coaches' => [['id' => $id, 'dayOfWeek' => 1]]]);
+
+        self::assertSame(
+            "coaches#order\t" . $designation . "\n"
+            . 'coaches[' . $designation . "].dayOfWeek\t1\n"
+            . 'coaches[' . $designation . "].id\t" . $designation . "\n",
+            $rendered,
+        );
+        self::assertStringNotContainsString($id, $rendered);
+    }
+
+    /** Les ids composés des constructeurs (`team-coach:<uuid>`, `priority-tier:<n>`, `<uuid>:<uuid>`) restent lisibles. */
+    public function testAComposedIdOfUuidsNumbersAndIdWordsStaysInClear(): void
+    {
+        $rendered = EngineRequestFingerprint::render(['constraints' => [
+            ['id' => 'team-coach:' . self::TEAM_A],
+            ['id' => 'priority-tier:2'],
+            ['id' => self::TEAM_A . ':' . self::TEAM_B],
+        ]]);
+
+        self::assertStringContainsString(
+            "constraints#order\tteam-coach:" . self::TEAM_A . ',priority-tier:2,' . self::TEAM_A . ':' . self::TEAM_B . "\n",
+            $rendered,
+        );
+        self::assertStringContainsString("\nconstraints[team-coach:" . self::TEAM_A . "].id\t", $rendered);
+        self::assertStringContainsString("\nconstraints[priority-tier:2].id\t", $rendered);
+    }
+
     public function testOneSortedLinePerLeafWithTabAndFinalNewline(): void
     {
         $rendered = EngineRequestFingerprint::render([

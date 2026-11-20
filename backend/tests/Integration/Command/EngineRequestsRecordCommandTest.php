@@ -31,6 +31,7 @@ use DateTimeImmutable;
 use FilesystemIterator;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
+use Psr\Cache\CacheItemPoolInterface;
 use RecursiveDirectoryIterator;
 use RecursiveIteratorIterator;
 use ReflectionClass;
@@ -65,8 +66,9 @@ use Symfony\Contracts\Cache\TagAwareCacheInterface;
  *   (`reason` = `socle_not_in_force`, `scope` = `season-<s>/plan-<p>`).
  *
  * Sorties : 0 ; 1 une demande atteignable n'a pas pu être composée (nommée) ; 2 `--club` n'est pas
- * un UUID ; 3 connexion sans sécurité par club (jumeau : `EngineRequestsRecordConnectionGuardTest`) ;
- * 4 environnement de production.
+ * un UUID, ou `--out` n'est pas un dossier absent ou vide ; 3 connexion sans sécurité par club
+ * (jumeau : `EngineRequestsRecordConnectionGuardTest`) ; 4 environnement de production. Les refus
+ * précèdent toute écriture, dans l'ordre 4, 2, 3.
  *
  * Décor : `EngineRequestDecorTrait` (identifiants fixes, horloge pinnée au lundi 2026-01-05). La
  * preuve que le fichier EST la demande du rail réel : il vaut l'empreinte des six corps de référence
@@ -92,6 +94,10 @@ final class EngineRequestsRecordCommandTest extends KernelTestCase
     private const string B_SOCLE = '5c4e0000-0000-4000-8000-000000000009';
     private const string B_FIXTURE = 'f1c70000-0000-4000-8000-000000000009';
     private const string B_TEAM_NAME = 'Équipe secrète du club B';
+
+    // Une seconde saison du club du décor : son id la fait enregistrer APRÈS la première.
+    private const string ER_SEASON_2 = '5ea50000-0000-4000-8000-000000000003';
+    private const string ER_SEASON_2_V1 = '5c4e0000-0000-4000-8000-000000000031';
 
     /** Tables qu'un enregistrement ne doit jamais toucher (lues sous la RLS du club du décor). */
     private const array TRACE_TABLES = [
@@ -145,9 +151,7 @@ final class EngineRequestsRecordCommandTest extends KernelTestCase
                 self::assertContains('teams[' . self::ER_TEAM_U17 . '].sessionsPerWeek' . "\t2", $diff['changed'][$regenerate]['plus']);
                 self::assertCount(1, array_filter($diff['changed'][$regenerate]['minus'], static fn (string $line): bool => str_starts_with($line, "teams#order\t")), 'l\'ordre des équipes change');
                 foreach ($diff['changed'] as $file => $lines) {
-                    foreach ([...$lines['minus'], ...$lines['plus']] as $line) {
-                        self::assertStringContainsString(self::ER_TEAM_U17, $line, $file . ' : chaque ligne changée nomme la nouvelle équipe (ses lignes, ou l\'ordre qui l\'inclut)');
-                    }
+                    self::assertEachChangedLineNames(self::ER_TEAM_U17, $lines, $file . ' : chaque ligne changée nomme la nouvelle équipe (ses lignes, ou l\'ordre qui l\'inclut)');
                 }
             },
             static function (self $t): void { $t->removeTeamU17(); },
@@ -171,12 +175,23 @@ final class EngineRequestsRecordCommandTest extends KernelTestCase
                 $placement = 'season-' . self::ER_SEASON . '/placement';
                 self::assertContains($placement . '/2026-01-19_2026-01-25', $diff['removed'], 'sa semaine n\'a plus rien à placer : sa demande disparaît');
                 self::assertArrayHasKey($placement . '/all', $diff['changed'], 'le placement du club entier change');
-                foreach ([...$diff['changed'][$placement . '/all']['minus'], ...$diff['changed'][$placement . '/all']['plus']] as $line) {
-                    self::assertStringContainsString(self::erId('f1c7', 2), $line, 'chaque ligne changée du placement nomme le match supprimé');
-                }
+                self::assertEachChangedLineNames(self::erId('f1c7', 2), $diff['changed'][$placement . '/all'], 'chaque ligne changée du placement nomme le match supprimé');
             },
             static function (self $t): void { $t->restoreFixture2(); },
         ];
+    }
+
+    /** @return iterable<string, array{callable(string): void}> */
+    public static function unusableOutFolders(): iterable
+    {
+        yield 'dossier non vide (reste d\'un enregistrement)' => [static function (string $out): void {
+            mkdir($out, 0o775, true);
+            file_put_contents($out . '/manifest.json', "reste\n");
+        }];
+        yield 'fichier au lieu d\'un dossier' => [static function (string $out): void {
+            mkdir(\dirname($out), 0o775, true);
+            file_put_contents($out, "reste\n");
+        }];
     }
 
     /** @return iterable<string, array{string}> */
@@ -185,6 +200,31 @@ final class EngineRequestsRecordCommandTest extends KernelTestCase
         yield 'remontée de dossier' => ['../x'];
         yield 'pas un uuid' => ['club-a'];
         yield 'uuid suivi d\'un chemin' => [self::ER_CLUB . '/../../etc'];
+    }
+
+    /**
+     * Chaque ligne changée nomme `$id` : elle le contient, OU c'est la ligne d'ordre d'une liste
+     * (`<liste>#order\t…`) dont la ligne d'ordre de l'AUTRE côté du diff le contient — l'ordre d'avant
+     * un ajout ne peut pas citer l'élément qui n'existe pas encore, ni l'ordre d'après une suppression
+     * l'élément disparu. Toute autre ligne qui ne le nomme pas fait échouer.
+     *
+     * @param array{minus: list<string>, plus: list<string>} $lines
+     */
+    private static function assertEachChangedLineNames(string $id, array $lines, string $message): void
+    {
+        foreach (['minus' => 'plus', 'plus' => 'minus'] as $side => $other) {
+            foreach ($lines[$side] as $line) {
+                if (str_contains($line, $id)) {
+                    continue;
+                }
+                $orderPrefix = 1 === preg_match('/\A[^\t]*#order\t/', $line, $match) ? $match[0] : null;
+                $named = null !== $orderPrefix && [] !== array_filter(
+                    $lines[$other],
+                    static fn (string $otherLine): bool => str_starts_with($otherLine, $orderPrefix) && str_contains($otherLine, $id),
+                );
+                self::assertTrue($named, \sprintf('%s — ligne « %s » (%s) : ni elle ni sa ligne d\'ordre de l\'autre côté ne nomment %s', $message, $line, $side, $id));
+            }
+        }
     }
 
     /**
@@ -453,6 +493,96 @@ final class EngineRequestsRecordCommandTest extends KernelTestCase
         self::assertSame(0, $control->execute(['--out' => $this->newOutDir(), '--club' => [self::ER_CLUB]]), 'témoin : la même construction hors production enregistre. ' . $control->getDisplay());
     }
 
+    /**
+     * Le refus de production passe avant tout autre refus : un `--club` invalide et un `--out` non vide
+     * en production rendent 4, pas 2 (ordre des refus : 4, puis 2, puis 3 — le 2 avant le 3 est prouvé
+     * par `EngineRequestsRecordConnectionGuardTest::testAnInvalidOptionIsRefusedBeforeTheConnectionIsJudged`).
+     */
+    public function testProductionIsRefusedBeforeEveryOtherRefusal(): void
+    {
+        $out = $this->newOutDir();
+        mkdir($out, 0o775, true);
+        file_put_contents($out . '/reste', "x\n");
+
+        $tester = new CommandTester($this->commandIn('prod'));
+        $code = $tester->execute(['--out' => $out, '--club' => ['../x']]);
+
+        self::assertSame(4, $code, 'production d\'abord, quelles que soient les options. ' . $tester->getDisplay());
+        self::assertSame(['reste' => "x\n"], $this->allFiles($out), 'rien n\'est écrit');
+    }
+
+    /**
+     * `--out` doit désigner un dossier absent ou vide : un reste d'enregistrement précédent fausserait
+     * `diff -r` (un fichier d'avant passerait pour une demande d'après). Refus en sortie 2, avant toute
+     * écriture ; ce qui était là reste à l'identique.
+     *
+     * @param callable(string): void $prepare
+     */
+    #[DataProvider('unusableOutFolders')]
+    public function testAnOutThatIsNotAnEmptyFolderIsRefusedBeforeAnyWrite(callable $prepare): void
+    {
+        $this->seedReachableDecor();
+        $out = $this->newOutDir();
+        $prepare($out);
+        $before = $this->allFiles(\dirname($out));
+
+        $tester = $this->tester();
+        $code = $tester->execute(['--out' => $out, '--club' => [self::ER_CLUB]]);
+
+        self::assertSame(2, $code, '--out inutilisable : sortie 2. ' . $tester->getDisplay());
+        self::assertSame($before, $this->allFiles(\dirname($out)), 'rien n\'est écrit, ce qui était là reste');
+    }
+
+    public function testAnEmptyOrAbsentOutFolderIsAccepted(): void
+    {
+        $this->seedReachableDecor();
+        $empty = $this->newOutDir();
+        mkdir($empty, 0o775, true);
+
+        $tester = $this->tester();
+        self::assertSame(0, $tester->execute(['--out' => $empty, '--club' => [self::ER_CLUB]]), 'dossier vide accepté. ' . $tester->getDisplay());
+        self::assertFileExists($empty . '/manifest.json');
+
+        // `recordOk` part d'un dossier qui n'existe pas encore (`newOutDir`).
+        self::assertFileExists($this->recordOk([self::ER_CLUB]) . '/manifest.json', 'dossier absent accepté, et créé');
+    }
+
+    /**
+     * Le cache `cache.schedule` ne garde pas la dernière demande composée d'un club : l'outil purge le
+     * tag du club à la FIN de chaque club, y compris quand une de ses demandes échoue (sortie 1). La
+     * dernière composition du club est la régénération de sa seconde saison (enregistrée après la
+     * première) : aucune purge d'avant-composition ne la suit. Témoin : la clé vérifiée est bien celle
+     * que le constructeur remplit.
+     */
+    public function testTheClubCacheIsPurgedAtTheEndOfTheClubEvenWhenOneOfItsRequestsFails(): void
+    {
+        $this->seedSocleInForce();
+        $periodPlanId = $this->seedEngineRequestPeriod();
+        $this->seedPeriodVersion(self::ER_PERIOD_P1, ScheduleStatus::DRAFT);
+        $secondPlanId = $this->seedSecondSeasonWithLoadedSocle();
+        // La période perd son entrée de calendrier : sa demande échoue (patron de
+        // `testARequestThatCannotBeComposedFailsAndIsNamed`).
+        $this->erEm()->flush();
+        $this->erEm()->getConnection()->executeStatement('DELETE FROM calendar_entry WHERE id = ?', [self::ER_ENTRY]);
+        $this->erEm()->clear();
+        $this->purgeEngineRequestCache();
+        $lastKey = ScheduleConstraintBuilder::cacheKey(self::ER_CLUB, self::ER_SEASON_2, self::ER_SEASON_2_V1);
+
+        $out = $this->newOutDir();
+        $tester = $this->tester();
+        $code = $tester->execute(['--out' => $out, '--club' => [self::ER_CLUB]]);
+
+        self::assertSame(1, $code, 'une demande du club échoue : sortie 1. ' . $tester->getDisplay());
+        self::assertStringContainsString('plan-' . $periodPlanId, $tester->getDisplay());
+        self::assertArrayHasKey('season-' . self::ER_SEASON_2 . '/plan-' . $secondPlanId . '/regenerate', $this->clubFiles($out, self::ER_CLUB), 'la seconde saison est composée, après l\'échec');
+        self::assertFalse($this->scheduleCachePool()->getItem($lastKey)->isHit(), 'la dernière demande composée du club ne reste pas dans le cache');
+
+        // Témoin : cette clé est celle que le constructeur remplit.
+        self::getContainer()->get(ScheduleConstraintBuilder::class)->buildForClubSeason(self::ER_CLUB, self::ER_SEASON_2, lockVersionId: self::ER_SEASON_2_V1);
+        self::assertTrue($this->scheduleCachePool()->getItem($lastKey)->isHit(), 'témoin : un build direct remplit la clé vérifiée');
+        $this->purgeEngineRequestCache();
+    }
+
     // ---- gestes (appelés par les fournisseurs de données) --------------------------------------
 
     public function setSessionsPerWeek(string $teamId, int $sessions): void
@@ -696,6 +826,44 @@ final class EngineRequestsRecordCommandTest extends KernelTestCase
         $em->flush();
 
         $this->scopeGucToClub(self::ER_CLUB);
+    }
+
+    /**
+     * La saison suivante du club du décor, avec un socle dont la version terminée est chargée : elle a
+     * une demande « Régénérer ». Rend l'id de son plan de socle.
+     */
+    private function seedSecondSeasonWithLoadedSocle(): string
+    {
+        $em = $this->erEm();
+        $this->scopeGucToClub(self::ER_CLUB);
+        $season = (new Season)->setId(self::ER_SEASON_2)->setClubId(self::ER_CLUB)->setName('2026-2027')
+            ->setStartDate(new DateTimeImmutable('2026-08-01'))->setEndDate(new DateTimeImmutable('2027-07-15'))
+            ->setStatus(SeasonStatus::DRAFT)->setTransitionData([]);
+        $em->persist($season);
+        $em->flush();
+        $provisioner = self::getContainer()->get(SchedulePlanProvisioner::class);
+        $provisioner->ensureSeasonPlan($season);
+        $em->flush();
+
+        $planId = $provisioner->ensureSeasonPlanId(self::ER_SEASON_2);
+        self::assertIsString($planId);
+        $version = (new Schedule)->setId(self::ER_SEASON_2_V1)->setClubId(self::ER_CLUB)->setSeasonId(self::ER_SEASON_2)
+            ->setName('Version 1')->setStatus(ScheduleStatus::COMPLETED)->setSchedulePlanId($planId);
+        $em->persist($version);
+        $provisioner->linkSchedule($version);
+        $em->flush();
+        $season->setLiveContextScheduleId(self::ER_SEASON_2_V1);
+        $em->flush();
+
+        return $planId;
+    }
+
+    private function scheduleCachePool(): CacheItemPoolInterface
+    {
+        $pool = self::getContainer()->get('cache.schedule');
+        self::assertInstanceOf(CacheItemPoolInterface::class, $pool);
+
+        return $pool;
     }
 
     // ---- outil ----------------------------------------------------------------------------------
