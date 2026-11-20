@@ -30,7 +30,13 @@ Fonctionnalité: Un club ne voit jamais les données d'un autre club
       | rouvrir un planning                          | Cette action est réservée aux gestionnaires. |
       | verrouiller une séance                       | Cette action est réservée aux gestionnaires. |
       | placer les matchs                            | Cette action est réservée aux gestionnaires. |
-      | importer les rencontres                      | Forbidden.                                   |
+      | importer les rencontres                      | Cette action est réservée aux gestionnaires. |
+      | importer des équipes                         | Cette action est réservée aux gestionnaires. |
       | envoyer les conflits aux coachs              | Cette action est réservée aux gestionnaires. |
       | lancer une collecte de doléances             | Cette action est réservée aux gestionnaires. |
       | régler l'horloge simulée                     | Cette action est réservée aux gestionnaires. |
+      | modifier une équipe                          | Cette action est réservée aux gestionnaires. |
+      | préparer la saison suivante                  | Cette action est réservée aux gestionnaires. |
+      | désactiver un membre                         | Cette action est réservée aux gestionnaires. |
+      | révoquer une invitation                      | Cette action est réservée aux gestionnaires. |
+      | exporter les données du club                 | Cette action est réservée aux gestionnaires. |
