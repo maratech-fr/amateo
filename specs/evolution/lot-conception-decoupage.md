@@ -130,6 +130,17 @@ peuvent avancer dans un espace de travail à part pendant qu'un lot principal at
     (`DeleteAccountController.php:47`) lisent celui de l'UTILISATEUR ; l'envoi des conflits
     (`ConflictCoachMailController.php:202`) et des liens de collecte
     (`CoachWishCampaignActionController.php:92`) lisent celui du CLUB.
+  - **Constats de la PR 2 du lot 2, à trancher ICI** (le lot 1 traite la préparation de la saison
+    suivante ; décision du fondateur : laissés tels quels dans la PR 2) :
+    - `POST /api/seasons` (`backend/src/ApiResource/SeasonResource.php:22-24`,
+      `State/Processor/SeasonStateProcessor.php:64-82`) crée une saison N+1 VIDE, à n'importe quelle
+      date, sans paiement ni date d'ouverture : la règle du 1er mai ne tient que sur le geste
+      « préparer » (`SeasonTransitionService::transition`, qui copie la structure). Le contrôle du
+      paiement est contourné de la même façon (pas une régression). Décision du lot 1 : à écrire ici.
+    - Dans `transition`, la garde de date passe avant le test du successeur (ordre : rôle, saison en
+      cours, date, paiement, successeur) : un club qui a déjà une saison suivante avant le 1er mai
+      reçoit le 409 « 1er mai » sans l'identifiant de la saison existante. Ne concerne que les
+      saisons créées par le point précédent ; se referme avec lui.
 - **Conditions d'entrée** (héritées du lot 0, [`lot-conception-filet.md`](lot-conception-filet.md)) :
   - **Automatiser la purge de `cache.schedule` au déploiement** : aujourd'hui une étape manuelle
     (`docs/ops/deploy.md`), acceptable pour le lot 0 seulement. Le déploiement programmé tourne sans
