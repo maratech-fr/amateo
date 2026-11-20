@@ -11,7 +11,6 @@ use App\Dto\VenueTravelRuleSettingInput;
 use App\Entity\VenueTravelRuleSetting;
 use App\Enum\VenueTravelRuleIntensity;
 use App\Repository\VenueTravelRuleSettingRepository;
-use App\Service\ManagementAccessGuard;
 use App\Service\SeasonAccessGuard;
 use App\Service\SeasonResolver;
 use Doctrine\ORM\EntityManagerInterface;
@@ -22,7 +21,8 @@ use Symfony\Component\HttpKernel\Exception\UnprocessableEntityHttpException;
 /**
  * Upsert (PUT) du levier de trajet — SINGLETON par club+saison (P2-53 RMM-8 PR-4).
  *
- * Écriture = management (403 AVANT le 409 de saison archivée, idiome AbstractStateProcessor).
+ * Écriture = management, refusée au Membre par le contrôle central (`ClubAccessListener`) avant
+ * le 409 de saison archivée.
  * L'intensité n'accepte que OFF|PREFERRED|MANDATORY ({@see VenueTravelRuleIntensity}) ; toute autre
  * valeur rend 422. Battement toléré (0-60) et temps par défaut (1-120) bornés par le DTO.
  *
@@ -36,7 +36,6 @@ final class VenueTravelRuleSettingStateProcessor implements ProcessorInterface
         private readonly VenueTravelRuleSettingRepository $repository,
         private readonly SeasonResolver $seasonResolver,
         private readonly SeasonAccessGuard $seasonAccessGuard,
-        private readonly ManagementAccessGuard $managementAccessGuard,
     ) {}
 
     public function process(mixed $data, Operation $operation, array $uriVariables = [], array $context = []): VenueTravelRuleSettingResource
@@ -48,8 +47,6 @@ final class VenueTravelRuleSettingStateProcessor implements ProcessorInterface
         }
         $request = $this->requestStack->getCurrentRequest();
 
-        // SEC-07 — management (403) AVANT saison archivée (409) : l'autorisation gagne.
-        $this->managementAccessGuard->assertManager();
         $this->seasonAccessGuard->assertWritable($request);
 
         [$clubId, $seasonId] = $this->resolveScope();

@@ -44,12 +44,6 @@ class SchedulePlanStateProcessor extends AbstractStateProcessor
         parent::__construct($entityManager, $requestStack, $seasonResolver, $seasonAccessGuard, $managementAccessGuard);
     }
 
-    /** SEC-07 : créer/renommer un planning est une écriture cockpit (management). */
-    protected function requiresManagementRole(): bool
-    {
-        return true;
-    }
-
     protected function getEntityClass(): string
     {
         return SchedulePlan::class;

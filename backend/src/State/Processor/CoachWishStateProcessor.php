@@ -32,11 +32,6 @@ class CoachWishStateProcessor extends AbstractStateProcessor
         return CoachWish::class;
     }
 
-    protected function requiresManagementRole(): bool
-    {
-        return true; // SEC-07
-    }
-
     /**
      * @param CoachWishInput $input
      */
