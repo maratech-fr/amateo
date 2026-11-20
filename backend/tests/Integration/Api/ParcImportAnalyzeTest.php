@@ -100,7 +100,7 @@ final class ParcImportAnalyzeTest extends WebTestCase
         [$status, $body] = $this->analyze($this->validParc(), token: $this->viewerToken());
 
         self::assertSame(403, $status);
-        self::assertSame(['error' => 'Forbidden.'], $body);
+        self::assertSame('Cette action est réservée aux gestionnaires.', $body['detail'] ?? null);
     }
 
     public function testSocleEnVigueurIsRefusedWith409(): void
