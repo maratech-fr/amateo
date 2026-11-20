@@ -58,36 +58,27 @@ make epreuve-up WT=<worktree> | epreuve-status | epreuve-down   # worktree : Beh
 Graphe des jobs, rôles et pièges : **`docs/testing/testing-strategy.md` §1** (canonique). Qui teste
 quoi, par axe, et les angles morts : `docs/testing/test-coverage-map.md`.
 
-- **Où tourne la CI** : le gate complet sur le pool des variables `CI_RUNS_ON` / `CI_RUNS_ON_HEAVY`
-  (la VM auto-hébergée du fondateur une fois posées, GitHub sinon) ; le gate de lot et le verdict de
-  `main` chez GitHub par défaut (`CI_RUNS_ON_LOT`, `CI_RUNS_ON_VERDICT` ; `docs/ops/ci-runner.md`) —
-  VM éteinte = checks « Queued », file de 24 h, seulement tant que les variables pointent vers elle.
-  Required checks de `main` : 15, dont **Preflight** (refuse les PR de fork), avec `strict`
-  (branche à jour) et `enforce_admins`.
+- **Où tourne la CI** : pool, variables de routage, VM éteinte = checks « Queued » (file de 24 h,
+  seulement tant que les variables pointent vers elle) : `docs/ops/ci-runner.md` §2 et § Branche
+  de lot. Required checks de `main` : la liste se lit par `gh pr checks <n> --required` ; `strict`
+  (branche à jour), `enforce_admins`, **Preflight** (refuse les PR de fork).
 - **Trois régimes, triés par l'événement et la branche CIBLE** (jamais par dossier touché) : PR vers
-  `main` = gate **complet** (les 15 checks requis plus « Engine Perf Gate », non requis) ; PR vers
-  `lot/<sujet>` = le seul job « Lot Gate » (gitleaks, moteur, front, PHPStan, liste bloquante — ni
-  Rector, Semgrep, Behat, e2e…) ; push `main` = le seul job « Main Verdict », qui prouve que la PR
-  mergée a joué le gate complet. Types d'événement et branches fermés, gardés par
-  `CiWorkflowRegimeTest`. Les rulesets `lot/**` vivent hors dépôt ; leur cible, les preuves faites et
-  les pièges : **`docs/ops/ci-runner.md` § Branche de lot**.
-- **Couverture et temps** : la couverture backend et front n'est plus dans le run de PR — elle se
-  mesure chaque lundi (`quality-weekly.yml`) contre `coverage-floor.json`, alarme sans blocage de
-  merge (lue par `make ci-mesure`) ; celle du moteur reste dans chaque run. Chaque suite a un
-  plafond de temps (`test-time-ceiling.json`) : il ne remonte que sur la ligne datée du fondateur
-  dans le corps de la PR. Détail : `docs/testing/testing-strategy.md` §1, `docs/ops/ci-runner.md`.
+  `main` = gate **complet** ; PR vers `lot/<sujet>` = le seul job « Lot Gate » (il ne joue ni `backend-tests`, ni Behat, ni e2e, ni Rector, ni Semgrep) ; push `main` = le
+  seul job « Main Verdict ». Gardés par `CiWorkflowRegimeTest`. Composition du Lot Gate, rulesets
+  `lot/**`, pièges : **`docs/ops/ci-runner.md` § Branche de lot** ; jobs : `docs/testing/testing-strategy.md` §1.
+- **Un plafond de temps de suite** (`test-time-ceiling.json`) ne remonte que sur la ligne datée du
+  fondateur dans le corps de la PR ; couverture hebdomadaire : `docs/testing/testing-strategy.md` §1.
 - **Bloquant = chemin listé dans le step `Blocking suite` (ou le step filtré) du job
   `blocking-tests` dans `.github/workflows/ci.yml`** — jamais l'annotation `#[Group('phase1')]`
   (bien plus de fichiers la portent que le step n'en liste). Un test annoté mais non listé tourne
-  dans `backend-tests` : après le gate, sans bloquer `build-docker`. « X est bloquant » se vérifie
-  dans `ci.yml`.
+  dans `backend-tests`, qui ne bloque pas `build-docker`. « X est bloquant » se vérifie dans `ci.yml`.
 - La liste de « quels tests gatent » vit dans **`docs/testing/blocking-tests.md`** — maison
   unique, gardée par `BlockingTestsListMatchesCiTest` (⇄ `ci.yml`, les deux sens). Ce que chaque
   test garde en détail : **son propre docblock**.
-- Jobs sans `needs` mais **required checks de `main`** : `rector` (style gate) ·
-  `dependency-audit` · `secrets-scan` · `semgrep` · `engine-semantics` (groupe `contract`
-  cross-stack) · `functional-tests` (Behat, Gherkin FR, une feature par promesse métier).
-  `build-docker` needs **[blocking-tests, engine-tests] only**.
+- Dans `ci.yml`, tout job du gate complet a `needs: preflight` ; seul `build-docker` attend en plus
+  `blocking-tests` et `engine-tests`. Les autres required checks (`rector`, `dependency-audit`,
+  `secrets-scan`, `semgrep`, `engine-semantics`, `functional-tests`, `backend-tests`, `frontend`…)
+  ne dépendent pas du gate bloquant.
 
 ## 5. Conventions (core — détail par zone dans `.claude/rules/`)
 
@@ -136,7 +127,8 @@ quoi, par axe, et les angles morts : `docs/testing/test-coverage-map.md`.
   solveur ne lit pas n'est ni envoyé ni accepté), **sync manuelle, pas de codegen** — gardé par les 3 `*ContractSchemaTest`.
 - **FFBB outbound** : hosts hard-codés (SSRF-safe), best-effort, le frontend n'appelle jamais FFBB.
   → `backend/docs/ffbb-api.md`.
-- **Solveur** : single-pass, budget adaptatif 60/180/600 s, INFEASIBLE → `status="failed"` +
+- **Solveur** : single-pass (aucune passe de relaxation ; le solve enchaîne placement puis bonus
+  d'enchaînement borné, `CHAINING_PHASE_MAX_SECONDS`), budget adaptatif 60/180/600 s, INFEASIBLE → `status="failed"` +
   diagnostics expliqués ; **SEULE exception : « la réservation gagne »** — un verrou HARD qui
   contredit une règle l'emporte, le planning est produit et l'écart nommé. Aucun autre repli de
   relaxation. Ce que le Récap dit voué à l'échec est refusé 422 `blocker` AVANT le moteur, sur les
@@ -182,9 +174,9 @@ intersection non vide = la branche attend le merge ; les autres branches attende
   commande). **Passe de tests du fondateur** : je note ses mots, rien d'autre (ni code, ni ligne de
   roadmap, ni commit) jusqu'à ce qu'il dise la passe finie.
 - **J'agis sans redemander** — plan validé en entier : tests rouges, code, doc et validation locale
-  se déroulent jusqu'au bout, lots suivants indépendants en worktree ; seule l'OUVERTURE d'une PR
-  attend qu'aucune autre ne soit ouverte, et chantier fini + aucune PR ouverte = la PR s'ouvre sans
-  demander. **Dans un lot validé** : j'enchaîne ; ne reviennent au fondateur que le cadrage d'`oracle`
+  se déroulent jusqu'au bout, lots suivants indépendants en worktree ; l'OUVERTURE d'une PR,
+  elle, suit la règle Git ci-dessus (une seule, deux si elles sont indépendantes et sans fichier commun) ;
+  chantier fini + règle respectée = la PR s'ouvre sans demander. **Dans un lot validé** : j'enchaîne ; ne reviennent au fondateur que le cadrage d'`oracle`
   et le plan de `morpheus` (à valider), puis la PR finale (règles de merge ci-dessus).
 - **Toujours son GO** — merge hors lot, tag, déploiement, écriture sur sa base, ouverture d'une
   ligne de roadmap, marque.
@@ -204,6 +196,10 @@ prouve sur la stack d'épreuve, `make -C backend tests-complete` tourne en local
   tests verts → `documentation-update` → PR → GO user. **Tout code applicatif passe par `neo`,
   dans les deux lanes** — l'orchestrateur ne code jamais ; en Light, pas de `tank`
   séparé (règle 2026-10-30). Zéro comportement, donc zéro test ; si un test s'impose, la voie est Full.
+- **PR de doc ou de consignes seules** (zéro code, quel que soit le nombre de fichiers) : `trinity`
+  en worktree → `make -C backend tests-complete` (gardes de documentation) → description de PR =
+  contrôle de complétude (skill `documentation-update` § Doc-only PRs) → GO du fondateur ; ni
+  `oracle`, ni `morpheus`, ni `tank`, ni `neo`.
 
 **Cycle full lane** :
 0. **Lire le CODE avant d'analyser** — tout constat vérifié (grep/read/test) et cité
@@ -225,22 +221,19 @@ prouve sur la stack d'épreuve, `make -C backend tests-complete` tourne en local
    un NR qui doit gater = step `ci.yml` **ET** ligne `docs/testing/blocking-tests.md`, même PR — sinon le dire.
 5. **« Résolu » ne se dit qu'après avoir JOUÉ les variantes du cas** (réservé, libre, période ; règle
    fondateur 2026-10-30) : une variante qui change le résultat devient une ligne d'`Exemples` du
-   scénario, pas un test de plus. **Tests verts en local avant de proposer le merge** : `/validation-runner` (suite ciblée +
-   contrats cross-zone). **Behat** : le gate est le job CI `functional-tests` ; la suite entière ne se rejoue pas en
-   local avant chaque PR (décision fondateur 2026-10-11). Le scénario du chantier, lui, se joue sur la
-   stack d'épreuve, par créneaux courts (`docs/testing/tests-par-parcours.md` §7) : rouge par `tank`,
-   vert par `neo`, falsifié par `tank`. Un correctif urgent suit le même contrat et prend la stack en
-   priorité : le chantier en cours la rend, le correctif joue rouge puis vert, le chantier la reprend.
-   Table feature↔zone pour diagnostiquer un Behat rouge en CI : `.claude/skills/validation-runner/SKILL.md`.
-   **Dans un lot, avant le merge d'une PR vers `lot/<sujet>`** (`backend-tests`, `functional-tests`
-   et `e2e` n'y tournent pas, §4) : `/validation-runner` ET `make -C backend tests-complete` verts en
-   local ; ET si le diff touche une zone couverte par un Behat ou un e2e (table feature↔zone du
-   skill `validation-runner`), ces features / specs se jouent sur la stack d'épreuve avant le merge
-   (décision fondateur 2026-11-10). Behat et e2e gatent ensuite à la PR finale → `main`. Un rouge à
-   la PR finale s'impute à l'un des squashs du lot : `git bisect` entre `merge-base lot main` et la
-   tête du lot ; le squash coupable nomme sa PR.
-   **Contrôle visuel** (agent `switch`) si le plan nomme des écrans dont l'apparence change :
-   captures sur un club de test du bac à sable + passe de design, AVANT de dire au user « prêt ».
+   scénario, pas un test de plus.
+   - **Tests verts en local avant de proposer le merge** : `/validation-runner` (suite ciblée +
+     contrats cross-zone). Table feature↔zone d'un Behat rouge en CI : `.claude/skills/validation-runner/SKILL.md`.
+   - **Behat** : le gate est le job CI `functional-tests` ; la suite entière ne se rejoue pas en
+     local avant chaque PR (décision fondateur 2026-10-11).
+   - **Le scénario du chantier** se joue sur la stack d'épreuve : rouge `tank`, vert `neo`, falsifié
+     `tank` (créneaux, correctif urgent prioritaire : `docs/testing/tests-par-parcours.md` §7).
+   - **Avant le merge d'une PR vers `lot/<sujet>`** : `/validation-runner` ET `make -C backend
+     tests-complete` verts en local, ET les features Behat / specs e2e de la zone touchée sur la
+     stack d'épreuve (décision fondateur 2026-11-10) ; un rouge à la PR finale se diagnostique par
+     `git bisect` (`docs/ops/ci-runner.md` § Branche de lot).
+   - **Contrôle visuel** (agent `switch`) si le plan nomme des écrans dont l'apparence change :
+     captures sur un club de test du bac à sable + passe de design, AVANT de dire au user « prêt ».
 6. Résumé (liste des détails tranchés par l'orchestrateur, pour que le fondateur puisse en contester un ;
    la part de test du diff, par `make ci-mesure PART=origin/<base>`) +
    **`documentation-update` (avant CHAQUE PR, les deux lanes)** — « rien d'impacté » se

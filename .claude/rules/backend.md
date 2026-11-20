@@ -5,6 +5,8 @@ paths:
 
 # Backend — conventions & pièges (chargé quand backend/ est touché)
 
+Ce fichier ne remplace pas `backend/AGENTS.md` : référence du domaine, à lire quand on touche le sujet.
+
 - **PHPStan level 8** (extensions Doctrine + Symfony) · **CS-Fixer** `@Symfony` + `@PHP84Migration`
   + risky + Yoda + strict comparisons + `fully_qualified_strict_types` avec `import_symbols`.
 - **Rector cible PHP 8.4** (aligné composer `>=8.4`) et son style **fait convention sur `src/` ET
@@ -38,3 +40,19 @@ paths:
   contourne silencieusement cette capacité pour tout club qui en dépend. Côté front, le même rôle
   est tenu par `shared/lib/clock.ts::todayISO` (jamais `new Date()`), cf. `.claude/rules/frontend.md`.
 - 🔴 **Une garde de sécurité dupliquée « en défense en profondeur » sur le MÊME chemin d'écriture peut rendre le NR intestable** — si la garde amont court-circuite le foyer qu'elle double, le test reste vert sans jamais atteindre ce foyer. Falsifier une garde, c'est la désactiver et vérifier le rouge — jamais seulement lire le code. Cas mesuré (`OpponentVenueSuggestionShareTest`, lot appariement gymnases, `93f36c29`→`5bfe2f92`) : un filtre contrôleur ajouté en ceinture rendait la garde manager intestable sur ce chemin, et le payload de test envoyait une référence qui ne résolvait fédéralement dans AUCUN des deux cas — le test restait vert les deux gardes désactivées.
+- ⚠ **Pièges qui faussent un résultat de test ou de manipulation** (détail du domaine : `backend/AGENTS.md`) :
+  - **Pool `cache.schedule`** (payloads solveur, purgé par `CacheInvalidationListener` sur les seuls
+    événements Doctrine ORM) : une écriture SQL brute (`dbalExec`, `UPDATE` à la main, `dbal:run-sql`)
+    ne l'invalide pas — `bin/console cache:pool:clear cache.schedule` avant une génération qui doit voir le changement.
+  - **Base de test avant PHPUnit** : `make db-init-test` une fois, puis `make phpunit`.
+  - **Cache figé sous le montage WSL2** : après un pull qui touche `src/ApiResource`/`src/Dto`,
+    `bin/console cache:clear` dans php-fpm ; l'opcache est au-dessus (`docker compose restart php-fpm`
+    avant `api:openapi:export`) ; le cache de métadonnées API Platform peut survivre à `cache:clear` :
+    `rm -rf var/cache/*` dans php-fpm, puis ré-export.
+  - **`BaseContext::dbalScalar` (Behat)** rend `''` sur un `SELECT` sans ligne : `''` veut dire « absent »,
+    jamais une valeur ; pour vérifier une absence, préférer `COUNT(*)` (toujours une ligne).
+  - **`messenger-worker` garde le code chargé à son démarrage** (sortie par `--time-limit=3600` ou
+    `cache:clear`, `restart: unless-stopped` le relance) : après un changement de handler/service de la
+    génération async, `docker compose restart messenger-worker`. `restart php-fpm` change son IP et
+    `nginx` garde l'ancienne (`upstream php_fpm`) : 502 sur `/api/*` — toute séquence de restart
+    backend finit par `nginx`, EN DERNIER.

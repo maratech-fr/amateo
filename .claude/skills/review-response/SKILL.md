@@ -33,8 +33,8 @@ en dépend. Sur #342, la moitié des 10 défauts du round 2 étaient nés des co
    appels intra-module).
 6. **Cadence** : round 1 = `/code-review` lancé par le fondateur seul, `/security-review`
    systématique sur la liste fermée (CLAUDE.md §7 étape 7) ; **tout round suivant exige le GO du fondateur** ; plafond
-   4 rounds/PR. Un défaut réel hors périmètre ne se corrige pas ici — il devient une ligne de
-   dette en roadmap.
+   4 rounds/PR. Un défaut réel hors périmètre ne se corrige pas dans la PR : on PROPOSE au fondateur
+   une ligne de dette (problème, preuve `fichier:ligne`, seau visé) — l'ouverture d'une ligne de
+   roadmap demande son GO (`CLAUDE.md` §7).
 
-Cadrage : une revue porte sur **le périmètre de la PR** — un défaut réel hors diff devient une
-ligne de dette en roadmap, il ne se corrige pas dans la PR.
+Cadrage : une revue porte sur **le périmètre de la PR**.

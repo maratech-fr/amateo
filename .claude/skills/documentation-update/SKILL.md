@@ -7,6 +7,10 @@ description: Refresh the living docs before opening a PR — general + per-subpr
 
 **Run before opening EVERY PR** (CLAUDE.md §7 step 6 — both lanes). The docs are alive: a PR that fixes, adds or removes something has documentation to update **somewhere**. Finding nothing is a conclusion you reach by looking, not an assumption you start from — and if you truly find nothing, say which files you checked and why they are unaffected.
 
+**Périmètre borné — une seule procédure pour la passe de doc.** La passe ne touche que les docs qui CITENT les fichiers du diff (`git diff --name-only origin/<base>...HEAD`, base = branche cible de la PR : `main`, ou `lot/<sujet>` ; puis grep de ces chemins et symboles dans `docs/`, `specs/`, `*/docs/`), plus `specs/evolution/roadmap.md` et `specs/courantes/etat-des-lieux.md`. Une dérive hors de ce périmètre se SIGNALE en une ligne dans le résumé, elle ne se corrige pas dans la passe.
+
+**Lignes de roadmap : on PROPOSE, on n'ouvre pas.** L'ouverture d'une ligne de roadmap demande le GO du fondateur (`CLAUDE.md` §7, « Toujours son GO ») : le skill la PROPOSE dans son résumé (problème, preuve `fichier:ligne`, seau visé) et le fondateur décide. Le DÉPLACEMENT d'un item livré (ligne retirée de la roadmap, trace dans l'état des lieux) reste automatique.
+
 Goal: a developer landing in `backend/` vs `engine/` vs `frontend/` grasps the scope, how work is done *there* (each zone works differently), and where the core-business docs live — and the evolution stays legible.
 
 **The two-file rule (refonte 2026-07-31) — never blur it:**
@@ -57,7 +61,7 @@ défaut historique du dépôt (mesuré le 2026-08-18 : ~4 000 lignes de doc de z
 
 **Ce que tu fais quand tu constates un fichier mal placé — et ce que tu ne fais PAS.**
 Tu le **SIGNALES** dans le résumé de changement (fichier, où il devrait vivre, pourquoi) et, si
-c'est structurant, tu ouvres une ligne P4 dans `roadmap.md`. **Tu ne le déplaces pas dans cette
+c'est structurant, tu PROPOSES une ligne P4 pour `roadmap.md` (le fondateur décide de l'ouvrir). **Tu ne le déplaces pas dans cette
 PR.** Ce skill tourne avant CHAQUE PR : y glisser des déplacements gonflerait des diffs sans
 rapport avec le sujet, casserait des références croisées en série, et rendrait la revue
 impossible. **Ranger est une migration one-shot, relue pour elle-même.** L'exception : le fichier
@@ -119,19 +123,19 @@ fusion, applique le test maison (`specs/evolution/duplications-de-verite.md`) :
    snapshot d'audit), cité depuis le code ou une décision comme référence historique, échappe à
    la règle 6 — ce n'est jamais une source de vérité sur l'état courant, seulement une trace.
 
-### Drift sweep (mandatory, cheap)
+### Drift sweep (mandatory, cheap, bounded)
 
-Before writing, for every doc file you are about to touch **and** the zone `AGENTS.md` of the affected zone(s):
+Before writing, for every doc file in the bounded scope above (the docs that cite the diff's files, the roadmap, the état des lieux) **and** the zone `AGENTS.md` of the affected zone(s) when the diff touches that zone:
 - extract its 3–6 strongest factual claims (priorities, statuses "stub/implemented", file paths, commands, versions);
 - verify each against the code;
-- fix anything wrong **even if unrelated to the current feature** — you are the last line of defence against rot.
+- fix anything wrong in those files **even if unrelated to the current feature**; drift found in a file outside the scope is reported in one line, not fixed.
 If the sweep finds more than trivial drift, say so in the change summary (it is a signal the docs were not maintained).
 
 ### Per-subproject README — required sections (adapt to the zone's real style)
 
 Each `<zone>/README.md` must let a newcomer answer "what is this, how do I work here, where's the hard stuff":
 1. **Scope & role** — 1–2 paragraphs: what this zone owns, its boundaries (what it must never do — e.g. engine never calls backend, frontend never calls engine directly).
-2. **Command recap** — the commands that matter *for this zone*, and the note that backend/engine run **inside Docker** while frontend dev runs **on the host**.
+2. **Command recap** — the commands that matter *for this zone*, and the note that backend, engine and frontend all run **inside Docker** (`CLAUDE.md` §3).
 3. **Project recap** — entry point(s), main structure, key mechanisms in one glance.
 4. **Structuring / business docs** — a pointer list to the docs that explain the core: e.g. backend → `scripts/generate-schedule.sh` (how to drive a generation), tenant isolation (`docs/TENANT.md`, `docs/RLS.md`), the constraints model, `docs/commands.md`, `docs/ffbb-api.md`; engine → `docs/business.md`, `docs/nominal-flow.md`, `docs/solver-errors.md`, `docs/constraint-vocabulary.md`; frontend → feature workflow (planning work-loop, wizard), component/UX conventions. Transverse vocabulary → `docs/glossary.md` (root).
 
@@ -152,13 +156,13 @@ Three buckets, distinct meaning — keep them true:
 
 **Closed decisions (`etat-des-lieux.md` §2).** When work settles a question **against** an obvious-looking option ("abandoned", "assumed as-is", "deliberately not done"), record it there with its *why*. This is not bookkeeping: an undocumented abandon gets re-proposed every few months. A closed decision is worth as much as a delivery.
 
-**Dette technique (same pipeline):** actionable debt lives as **P4-x backlog lines in the roadmap** (proof `file:line` required); deliberate "won't fix" keeps live in roadmap **§Dette — keeps délibérés** with their rationale. When a debt is resolved: same MOVE ritual. New debt found during any pass → new P4 line, never a separate file.
+**Dette technique (same pipeline):** actionable debt lives as **P4-x backlog lines in the roadmap** (proof `file:line` required); deliberate "won't fix" keeps live in roadmap **§Dette — keeps délibérés** with their rationale. When a debt is resolved: same MOVE ritual. New debt found during any pass → PROPOSE a P4 line in the summary (the founder decides to open it), never a separate file.
 
-**Graduation check (mandatory each run, opposable):** for **every item delivered this run**, either **name the `courantes/` file that receives the behaviour** (create or extend it in the same pass) or **state in the change summary why no graduation applies**. Silence is not an option — "updated the roadmap line" alone is the failure mode this check blocks (2026-07-06: school-holidays + public-holidays imports fully specced in roadmap notes, nothing in courantes, snapshot stale across 2 PRs). Then also sweep `specs/evolution/` for older delivered items (merged PR, code present) and graduate them. The audit found shipped features still sitting in evolution/ months later (DOC-04).
+**Graduation check (mandatory each run, opposable):** for **every item delivered this run**, either **name the `courantes/` file that receives the behaviour** (create or extend it in the same pass) or **state in the change summary why no graduation applies**. Silence is not an option — "updated the roadmap line" alone is the failure mode this check blocks (2026-07-06: school-holidays + public-holidays imports fully specced in roadmap notes, nothing in courantes, snapshot stale across 2 PRs). The check covers the items this PR delivers; `specs/evolution/` is not swept for older items in this pass (an older delivered item found on the way is reported in one line).
 
 **A roadmap line is a line, not a spec.** It holds the problem, its proof (`file:line`), the decision if one was taken, and the traps a future implementer would step into. If you are writing the *solution's* behavioural detail (filters, natural keys, endpoints, edge cases) into a roadmap line, stop: that content belongs in a `specs/evolution/` detail file while open, and in `courantes/` once delivered.
 
-**New open items.** A bug or a need surfaced by the founder or by a review gets a roadmap line **in the right bucket**, with a **verified** proof (`file:line`, read the code — never from memory), an impact and an effort. If the need is not yet framed, say so in the line rather than inventing a solution.
+**New open items.** A bug or a need surfaced by the founder or by a review is PROPOSED as a roadmap line **in the right bucket** (the founder decides to open it), with a **verified** proof (`file:line`, read the code — never from memory), an impact and an effort. If the need is not yet framed, say so in the line rather than inventing a solution.
 
 **API-change trigger:** if the work changed any API Platform resource, custom controller route, or DTO exposed over HTTP, regenerate `specs/courantes/openapi-snapshot.json` from the running backend and update `openapi-snapshot.meta.md` (SHA + date). A stale snapshot silently poisons the frontend type-gen pipeline. ⚠ A custom Symfony `#[Route]` is **invisible to the export** unless declared in a `CustomPathContributor` (`backend/src/OpenApi/PathContributor/`, one per domain, composed by `App\OpenApi\CustomRoutesOpenApiFactory` since P4-138, 2026-08-30 — adding to the factory file itself does nothing anymore) — a new custom route means an entry in its domain's contributor **plus** the regen; regenerating alone silently misses it.
 
@@ -170,12 +174,12 @@ No `archive/` bucket — nothing is lost (git + `initiales` hold the history). W
    zone → sa zone ; la couture → racine ; l'axe temps du produit → `specs/`). Pour les autres,
    note ce qui te saute aux yeux comme mal placé, **sans le déplacer** — ça part au résumé, et en
    ligne P4 si c'est structurant.
-2. **Drift sweep** on every doc you will touch + affected zone `AGENTS.md` (see above).
+2. **Drift sweep** on the bounded scope (see above).
 3. **READMEs** — refresh the root README and any affected `<zone>/README.md` per the required sections above.
 4. **CLAUDE.md** — update only non-obvious facts; keep it a short index — always-active rules only, the detail lives in `docs/`.
 5. **Zone docs** (`<zone>/docs`, `docs/project-map.md`, `docs/testing/`, `docs/technique/`) — update the affected deep-dives; add a how-to/business doc if a new structuring mechanism appeared.
 6. **ADR** — if a structural decision was made, add one and reference it in `docs/architecture/adr-index.md`.
-7. **specs/** — reconcile per the rules above: update stale `courantes`, **run the graduation check**, **run the MOVE** (roadmap line deleted + trace in `etat-des-lieux.md` §3 + map §1 refreshed), record any **closed decision** in §2, add roadmap lines for newly found open items, apply the API-change trigger, delete removed features, surface dead process notes for confirmation.
+7. **specs/** — reconcile per the rules above: update stale `courantes`, **run the graduation check**, **run the MOVE** (roadmap line deleted + trace in `etat-des-lieux.md` §3 + map §1 refreshed), record any **closed decision** in §2, propose roadmap lines for newly found open items (summary, not the file), apply the API-change trigger, delete removed features, surface dead process notes for confirmation.
 8. **Change summary** — list files touched, facts corrected by the drift sweep, and **one line per item delivered this run: → receiving courantes file, or the explicit reason no graduation applies**. Plus, systématiquement :
    - **la rotation** : quels fichiers vérifiés, ce qui était faux (ou « tout juste ») ;
    - **le mal placé** : fichier → où il devrait vivre → pourquoi (signalé, jamais déplacé ici) ;

@@ -864,7 +864,7 @@ describe("PeriodVenues — la grille de la période, gymnase par gymnase", () =>
   it("REFUSE d'enregistrer un créneau qui franchirait minuit, et ne l'envoie pas", async () => {
     // ⚠ Ce test garde le CÂBLAGE, pas la règle : `slotPlacementError` a ses propres tests
     // unitaires, mais on pouvait supprimer ses quatre appels sans qu'un seul test rougisse
-    // (revue #349 round 2, CLAUDE.md §7.2 pt 5). Il faut donc vérifier ici qu'un geste
+    // (revue #349 round 2). Il faut donc vérifier ici qu'un geste
     // réel est bloqué, pas seulement qu'une fonction pure rend le bon message.
     periodSlotOverride.value = [{ id: "ps1", venueId: "v1", dayOfWeek: 1, startTime: "20:00:00", durationMinutes: 90, capacity: 1, schedulePlanId: "plan-1" }];
     const user = userEvent.setup();
@@ -898,7 +898,7 @@ describe("PeriodVenues — la grille de la période, gymnase par gymnase", () =>
     // géométrie de la grille : rendre le dimanche posable au clic l'aurait laissé
     // inatteignable ici, et un créneau du dimanche s'y serait ouvert sur un champ VIDE.
     // La règle « les sept jours » vaut partout où un jour se choisit, pas seulement dans
-    // la grille (P4-37, CLAUDE.md §7.2 pt 1 : corriger la RÈGLE, pas le cas).
+    // la grille (P4-37 : corriger la RÈGLE, pas le cas).
     periodSlotOverride.value = [{ id: "ps1", venueId: "v1", dayOfWeek: 1, startTime: "20:00:00", durationMinutes: 90, capacity: 1, schedulePlanId: "plan-1" }];
     const user = userEvent.setup();
     render(<PeriodVenues calendarEntryId="e1" />);

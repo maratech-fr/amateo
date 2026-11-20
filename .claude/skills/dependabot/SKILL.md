@@ -61,7 +61,7 @@ version MAJEURE** attend la décision du fondateur sur sa fiche (étape 1, point
      DB) — `Integration` et `Contract` restent hors de vue par construction (cf. CLAUDE.md §10.1).
      Si le lot touche php-cs-fixer, phpstan ou rector, lancer AUSSI `make -C backend rector` : ces
      trois-là sont des gates CI distincts et peuvent rougir sur du code inchangé.
-   - `engine/` : dans le container — `make test` (ruff + mypy + bandit + pytest)
+   - `engine/` : dans le container — `make test` (ruff, `ruff format --check`, mypy, bandit, deptry, puis pytest — `engine/Makefile`)
    - `ci` (github-actions) : pas de tests locaux — vérifier que les versions d'actions existent et
      lire le diff (breaking inputs renommés/supprimés).
 4. Dépendance **runtime** backend ou engine touchée (pas dev-only) → redémarrer les containers
@@ -86,23 +86,27 @@ version MAJEURE** attend la décision du fondateur sur sa fiche (étape 1, point
 > **Surtout PAS un pin dans `composer.json`** : il traiterait le symptôme en laissant croire que les
 > transitifs ne sont pas couverts (CLAUDE.md §5, P4-31 — récidive constatée le 2026-07-29).
 2. Réparer **notre code** pour suivre la nouvelle API — jamais figer/downgrader la version pour
-   éviter la réparation, sauf si la migration dépasse ~1 h de travail ou touche un axe structurant
-   (§7.1 CLAUDE.md). Dans ce cas : commenter la PR avec le diagnostic, la laisser ouverte, la
-   signaler à l'utilisateur dans le bilan.
+   éviter la réparation. Qui répare : ce skill régénère lockfile et config lui-même ; toute
+   réparation de code de production ou de test se confie à `neo` (`CLAUDE.md` §7 : tout code
+   applicatif passe par lui), et à `tank` s'il faut écrire un test. Exception : si la migration
+   dépasse ~1 h de travail ou touche un axe structurant (§7.1 CLAUDE.md), commenter la PR avec le
+   diagnostic, la laisser ouverte, la signaler à l'utilisateur dans le bilan.
 3. Committer le correctif **sur la branche de la PR Dependabot** (préfixe `(IA Claude) `,
    **aucun trailer** — fondateur 2026-09-30) et pousser. Dependabot tolère les commits ajoutés à ses branches.
 4. Relancer la suite de la zone → verte.
 
 ## Étape 3 — Par PR : merger
 
-1. Suite de zone verte (et, pour une majeure, GO du fondateur sur sa fiche) →
+1. Suite de zone verte (et, pour une majeure, GO du fondateur sur sa fiche), puis lecture
+   COMPLÈTE de `gh pr checks <n>` (`CLAUDE.md` §7, règle Git : deux lignes « skipping » admises,
+   « Lot Gate » et « Main Verdict » ; toute autre bloque le merge ; le code retour ne compte pas) →
    `gh pr merge <n> --squash --delete-branch`. **Behat** : le merge attend
    en plus le job CI `functional-tests` vert (required check de `main`, CLAUDE.md §7 étape 5) —
    cohérent avec « Dependabot : merge autorisé si CI verte ».
 2. `git checkout main && git pull` avant la PR suivante (chaque verdict se rend sur main à jour).
-3. Pour les suites jouées en local (étape 1), le verdict local fait foi — la CI GitHub est un
-   double-contrôle qui ne les gate pas. Pour Behat seul, c'est l'inverse : la CI `functional-tests`
-   fait foi (ci-dessus).
+3. Rien ne se merge sans le gate complet vert : `main` a ses required checks avec `strict` et
+   `enforce_admins`. Les suites jouées en local (étape 1) servent à diagnostiquer et réparer avant
+   de pousser ; le verdict qui compte est celui des checks de la PR (Behat compris : `functional-tests`).
 
 ## Étape 4 — Bilan + journal des upgrades (obligatoire)
 
@@ -119,7 +123,9 @@ version MAJEURE** attend la décision du fondateur sur sa fiche (étape 1, point
    - **Adapté chez nous** — ce que l'upgrade a forcé à changer dans NOTRE code (ou « rien »).
    Ce journal se committe **dans la même PR** que les correctifs quand il y en a, sinon sur une
    branche doc dédiée. Une dette découverte au passage (paquet installé jamais utilisé, config
-   morte) → ligne P4 dans `specs/evolution/roadmap.md`, référencée depuis l'entrée.
+   morte) : PROPOSER une ligne de roadmap dans le bilan (problème, preuve `fichier:ligne`, seau visé) —
+   l'ouverture d'une ligne demande le GO du fondateur (`CLAUDE.md` §7) ; référencer la proposition
+   depuis l'entrée du journal.
 3. **Un lot qui change un CONTRAT PUBLIC laisse EN PLUS une ligne datée dans
    `specs/courantes/etat-des-lieux.md` §3** (AUD-DOC-42, 2026-09-18) — `docs/upgrades.md` seul ne
    suffit pas : ce fichier est le journal du *pourquoi technique*, l'état des lieux est celui du
@@ -136,9 +142,9 @@ version MAJEURE** attend la décision du fondateur sur sa fiche (étape 1, point
 - **Jamais** merger une montée de version majeure sans avoir présenté sa fiche (apport · changement
   pour nous · risque · qui est impacté) et reçu le GO du fondateur.
 - **Jamais** downgrader une dépendance de sécurité (les PRs `security` de Dependabot sont prioritaires — les traiter en premier, toutes zones confondues).
-- Backend/engine : tout se lance **dans les containers** (PHPUnit avec `APP_ENV=test`).
-- **Tout se lance dans les containers, frontend compris.** L'hôte n'a que Docker, Docker Compose et
-  Make — convention du dépôt (CLAUDE.md §10), et **toutes les cibles de `frontend/Makefile` passent par
+- **Tout se lance dans les containers, backend, engine et frontend compris** (PHPUnit avec
+  `APP_ENV=test`). L'hôte n'a que Docker, Docker Compose et
+  Make — convention du dépôt (CLAUDE.md §3), et **toutes les cibles de `frontend/Makefile` passent par
   `docker compose`, sans exception**. Tester le frontend sur l'hôte valide une version de Node qui
   n'est celle de personne : ni celle de la CI (runners `setup-node`), ni celle de l'image tooling —
   et fait conclure à tort qu'il faut agir sur le poste du fondateur (constaté 2026-07-29).
