@@ -119,7 +119,7 @@ transcription. Les trois issues restent atteignables : déplacer à la main, com
    (`0 === periodPlanVersions.length`) le fait disparaître de lui-même dès qu'une V1 existe.
 
 Une V1 transcrite `COMPLETED` est une version du plan comme une autre : elle est déjà éligible au
-repli générique de `GenerateScheduleHandler::resolvePreviousAssignmentSlots` (un solve complet
+repli générique de `EngineRequestComposer::resolvePreviousAssignmentSlots` (un solve complet
 volontaire ultérieur émet ses placements en `previousAssignments`), sans mécanisme dédié. NR :
 `CrossStack/PreviousAssignmentsPayloadParityTest` (step de `blocking-tests`) falsifie ce cas dans
 les deux sens : ni la séance « à replacer » filtrée à la transcription ni un créneau du socle ne

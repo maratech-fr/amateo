@@ -19,6 +19,8 @@ Ligne de roadmap : P1-6.
    sont verts ; pendant le lot ils ne bougent pas, sauf là où le fondateur a changé la règle.
 4. **Le moteur ne change dans aucun lot.** La demande qu'il reçoit est identique avant et après,
    club par club (§24, §27). C'est la preuve commune à tous les lots qui déplacent des données.
+   Une seule exception assumée, au lot 0 : les lectures des constructeurs de demande sont triées
+   par id, pour que la demande ne dépende plus de l'ordre physique de PostgreSQL.
 5. **Un lot = une branche `lot/<sujet>`**, des PR vers elle, une PR finale vers `main` sur le go du
    fondateur. Un chantier = une PR, deux au plus.
 6. **Les tests accrochés à l'ancienne structure ne sont pas portés un pour un** : on garde ce qui
@@ -52,7 +54,7 @@ flowchart LR
 
 | Lot | Ce que le gestionnaire voit changer | Poids | Sensible |
 |---|---|---|---|
-| 0 · Le filet | Rien | Léger | Non |
+| 0 · Le filet | Rien | Moyen | Génération |
 | 1 · Les déclarations communes | Rien | Moyen | Génération |
 | 2 · Droits, modules, crédits | Le comblement et le PDF comptent un crédit au bon moment ; le 1er mai bloque côté serveur | Moyen | Accès, démonstration |
 | 3 · Personnes et lieux au club | Un coach et un gymnase ne se ressaisissent plus d'une saison à l'autre | Lourd | Isolation, RGPD |
@@ -78,6 +80,10 @@ peuvent avancer dans un espace de travail à part pendant qu'un lot principal at
   - L'outil de preuve : pour chaque club, enregistrer la demande envoyée au moteur (socle, plans
     de période, placement des matchs) et la comparer au caractère près avant et après un lot ; sur
     les jeux de test et sur une copie de la production (§27).
+    - **PR 1 livrée — « Un seul compositeur, un ordre stable »** : la composition de la demande au
+      moteur est un seul service (`EngineRequestComposer`) et les lectures des constructeurs sont
+      triées par id ; des demandes de référence (`backend/tests/Fixtures/engine-requests/`) en
+      gardent le contenu.
   - L'inventaire des scénarios de comportement par domaine à refondre, et la liste des trous à
     combler avant chaque lot.
   - La mesure du temps de rendu du PDF du planning sur un grand club (réserve du §21).

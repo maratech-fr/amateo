@@ -17,7 +17,7 @@ Messenger Bus (async, transport Redis)
     ↓
 GenerateScheduleHandler (conteneur messenger-worker)
     ├─ 1. Verrou Redis (ClubGenerationLock)
-    ├─ 2. Validation + construction payload (ScheduleConstraintBuilder)
+    ├─ 2. Composition de la demande (EngineRequestComposer → ScheduleConstraintBuilder)
     ├─ 3. POST http://engine:8000/generate
     ├─ 4. Traitement réponse (ScheduleResultImporter)
     └─ 5. Notification temps réel (Mercure SSE)
@@ -107,9 +107,9 @@ Gardé par `RedeliveredGenerationTest` (bloquant, `docs/testing/blocking-tests.m
 
 ### 3b — Construction du payload (ScheduleConstraintBuilder)
 
-Le verrou acquis, `ScheduleConstraintBuilder` construit le payload JSON destiné au moteur.
+Le verrou acquis, `EngineRequestComposer::compose` (lecture seule : ni la version ni la base ne bougent ; il lève `EngineRequestNotComposable` si la période a disparu ou si la version de départ est introuvable) compose la demande destinée au moteur — l'entrée figée, puis les greffes de convergence — et rend un `ComposedEngineRequest` ; le handler en fige le snapshot, son empreinte et la greffe. Le payload lui-même est construit par `ScheduleConstraintBuilder`.
 
-> ⚠️ **Deux branches.** Ce qui suit décrit `buildForClubSeason` (plan de base). Le handler dérive la
+> ⚠️ **Deux branches.** Ce qui suit décrit `buildForClubSeason` (plan de base). Le compositeur dérive la
 > branche du **PLAN** (`SchedulePlanProvisioner::periodEntryIdOf`, ADR-0002 C4 — plus de
 > `Schedule.calendarEntryId`, colonne droppée) : si le plan de la version est une PÉRIODE, il
 > bascule sur `buildForOverlay` (adaptateur de `buildForPeriodPlan`), qui **contourne le cache
@@ -118,7 +118,7 @@ Le verrou acquis, `ScheduleConstraintBuilder` construit le payload JSON destiné
 > `buildForPeriodPlan` greffe en plus les verrous HARD **hérités** de la version SOURCE du plan —
 > lot verrous V1/V1bis, détail `backend/docs/schedule-generation-guide.md` §10. Détail dans `backend/AGENTS.md`.
 >
-> **Cas comblement (fill).** Sur une génération de comblement (`GenerateScheduleMessage::fillSourceScheduleId` posé), le handler greffe en plus, APRÈS le hash de snapshot (§3c), le bloc `socleReferenceAssignments` — les placements `{teamId, dayOfWeek, startTime}` (sans `venueId`) de la version **pointée** du plan SEASON (`GenerateScheduleHandler::socleReferenceSlots`, `ScheduleConstraintBuilder::withSocleReferenceAssignments`). Le solveur y répond par un bonus d'objectif de **phase 1** par tier (`add_socle_reference_bonus`, `SOCLE_REFERENCE_TIER_WEIGHTS`, engine `weights.py`) — détail : `backend/docs/backend-inventory.md` (section « Référence socle du comblement »).
+> **Cas comblement (fill).** Sur une génération de comblement (`GenerateScheduleMessage::fillSourceScheduleId` posé), le compositeur greffe en plus, APRÈS le hash de snapshot (§3c), le bloc `socleReferenceAssignments` — les placements `{teamId, dayOfWeek, startTime}` (sans `venueId`) de la version **pointée** du plan SEASON (`EngineRequestComposer::socleReferenceSlots`, `ScheduleConstraintBuilder::withSocleReferenceAssignments`). Le solveur y répond par un bonus d'objectif de **phase 1** par tier (`add_socle_reference_bonus`, `SOCLE_REFERENCE_TIER_WEIGHTS`, engine `weights.py`) — détail : `backend/docs/backend-inventory.md` (section « Référence socle du comblement »).
 
 Voici ce que fait la branche de base, dans l'ordre :
 
@@ -148,14 +148,14 @@ Le payload complet pèse généralement entre 50 et 200 Ko de JSON selon la tail
 
 ### 3c — Snapshot SHA-256
 
-Le payload construit **à ce stade** (avant la greffe de convergence ci-dessous) est hashé en SHA-256 par `ScheduleConstraintBuilder::structureHash` (maison unique de l'empreinte de structure, partagée avec `structureHashOfPlan`) : elle **ignore `version`** (un numéro de contrat n'est pas de la structure) et **les `slotTemplates` non HARD** (une séance NONE est un résultat du solveur, relu à la génération suivante ; le payload, lui, les garde). Elle **trie les `constraints` par id** : l'ordre lu en base n'est pas de la structure. Comme le payload n'envoie plus les champs que le solveur ne lit pas (contrat 1.12), ils n'entrent plus dans l'empreinte ; les noms, eux, y restent. « Régénérer » est grisé seulement si l'empreinte est égale ET que le planning n'a pas été modifié à la main. Le hash est stocké sur l'entité `Schedule` dans le champ `snapshotHash`, et le payload lui-même est conservé dans `snapshotData`.
+Le payload construit **à ce stade** (avant la greffe de convergence ci-dessous) est hashé en SHA-256 par `ScheduleConstraintBuilder::structureHash` (maison unique de l'empreinte de structure, partagée avec `structureHashOfPlan`) : elle **ignore `version`** (un numéro de contrat n'est pas de la structure) et **les `slotTemplates` non HARD** (une séance NONE est un résultat du solveur, relu à la génération suivante ; le payload, lui, les garde). Elle **trie les `constraints` par id** : l'ordre lu en base n'est pas de la structure. Le constructeur trie d'ailleurs ses lectures AVANT de sérialiser (contraintes, créneaux de gymnase de la saison ou de la période ; côté placement, `MatchPlacementPayloadBuilder` trie chacune des siennes) : sans `ORDER BY`, PostgreSQL rend l'ordre physique, qui change dès qu'une ligne est réécrite — la même donnée donne la même demande au moteur (`EngineRequestOrderIsStableTest`, `EngineRequestReferenceTest` contre les demandes de `backend/tests/Fixtures/engine-requests/`). Comme le payload n'envoie plus les champs que le solveur ne lit pas (contrat 1.12), ils n'entrent plus dans l'empreinte ; les noms, eux, y restent. « Régénérer » est grisé seulement si l'empreinte est égale ET que le planning n'a pas été modifié à la main. Le hash est stocké sur l'entité `Schedule` dans le champ `snapshotHash`, et le payload lui-même est conservé dans `snapshotData`.
 
 **À quoi ça sert ?**
 
 - **Debug** : si un utilisateur dit "la génération d'hier donnait un meilleur résultat", on peut comparer les hash pour voir si les données d'entrée ont changé (nouvelle équipe, nouvelle contrainte, nouvel entraîneur).
 - **Détection de changement** : c'est ce hash, recomparé à l'empreinte de structure PAR PLAN (`SchedulePlanProvisioner::structureHashOfPlan`, servie par `GET /api/schedule_plans/{id}/structure-hash`), qui alimente le garde « structure inchangée » (bouton Régénérer grisé, bandeau « à régénérer » de `/planning` — P4-266) — pas une optimisation future, un mécanisme déjà en place.
 
-⚠ **`snapshotData` seul n'est PAS ce qui a été envoyé au moteur.** Après le hash, le handler greffe `previousAssignments` (régénération) ou `socleReferenceAssignments` (comblement) — une préférence de CONVERGENCE, volontairement tenue HORS du hash pour ne jamais le faire diverger de l'empreinte de structure (`structureHashOfPlan`). Cette greffe est persistée à part (`Schedule.payloadGraft`, colonne `payload_graft`, extraite par différence de clés entre le payload post-greffe et `snapshotData`) : `Schedule::engineInput()` = `snapshotData` + `payloadGraft` est la **seule** reconstitution fidèle de l'entrée RÉELLE du solve — c'est elle que consomme `FeedbackController` pour un signalement, jamais `snapshotData` seul. Un planning `COMPLETED` généré avant cette colonne a `payload_graft` à `NULL` : le passé n'est pas reconstitué a posteriori (la greffe part de la dernière version `COMPLETED` du plan, qui devient CE planning une fois terminé — la rejouer le grefferait sur lui-même).
+⚠ **`snapshotData` seul n'est PAS ce qui a été envoyé au moteur.** Après le hash, le compositeur greffe `previousAssignments` (régénération) ou `socleReferenceAssignments` (comblement) — une préférence de CONVERGENCE, volontairement tenue HORS du hash pour ne jamais le faire diverger de l'empreinte de structure (`structureHashOfPlan`). Cette greffe est persistée à part (`Schedule.payloadGraft`, colonne `payload_graft`, extraite par différence de clés entre le payload post-greffe et `snapshotData`) : `Schedule::engineInput()` = `snapshotData` + `payloadGraft` est la **seule** reconstitution fidèle de l'entrée RÉELLE du solve — c'est elle que consomme `FeedbackController` pour un signalement, jamais `snapshotData` seul. Un planning `COMPLETED` généré avant cette colonne a `payload_graft` à `NULL` : le passé n'est pas reconstitué a posteriori (la greffe part de la dernière version `COMPLETED` du plan, qui devient CE planning une fois terminé — la rejouer le grefferait sur lui-même).
 
 ---
 
@@ -473,6 +473,7 @@ Le frontend utilise ce statut pour afficher des indicateurs visuels :
 | `GenerateScheduleMessage` | DTO du message async | — |
 | `GenerateScheduleHandler` | Worker qui orchestre les 5 étapes | `messenger-worker` |
 | `ClubGenerationLock` | Verrou Redis par club | `messenger-worker` |
+| `EngineRequestComposer` | Composition de la demande engine (`ComposedEngineRequest`) | `messenger-worker` |
 | `ScheduleConstraintBuilder` | Construction du payload engine | `messenger-worker` |
 | `ScheduleResultImporter` | Import des résultats du solveur | `messenger-worker` |
 | `Schedule` | Entité planning (statut, score, hash) | — |
