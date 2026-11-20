@@ -66,7 +66,7 @@ describe("SeasonTransitionBanner", () => {
   });
 
   it("hides for non-management members (the endpoint would 403 their CTA)", () => {
-    meData = { role: "editor", seasons: [season({})] };
+    meData = { role: "member", seasons: [season({})] };
     render(<SeasonTransitionBanner today={day("2026-06-20")} />);
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
   });

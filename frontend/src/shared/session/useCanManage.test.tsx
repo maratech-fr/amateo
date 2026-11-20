@@ -11,7 +11,7 @@ import { useCanManage } from "./queries";
 /**
  * Promesse (chantier « un Membre lit tout, ne modifie rien », PR 2) : `useCanManage()` est la
  * SEULE question d'affichage « ce compte peut-il modifier ? » — vrai pour une adhésion ACTIVE de
- * gestion (`admin`/`owner`, miroir `shared/lib/roles.ts`), faux pour un Membre, une adhésion non
+ * gestion (`admin`, miroir `shared/lib/roles.ts`), faux pour un Membre, une adhésion non
  * active ou une session pas encore chargée (on ne propose jamais un geste voué au 403).
  *
  * Le hook vit à côté de `useMe` (même module) : on le prouve sur le VRAI `useMe`, cache `["me"]`
@@ -38,8 +38,10 @@ describe("useCanManage — la question unique « peut-il modifier ? »", () => {
     expect(renderWithMe({ membershipStatus: "active", role: "admin" }).result.current).toBe(true);
   });
 
-  it("un owner actif (lu comme gestion) peut modifier", () => {
-    expect(renderWithMe({ membershipStatus: "active", role: "owner" }).result.current).toBe(true);
+  // Deux rôles seulement : une ancienne valeur `owner` (convertie en base) ne rouvre pas la main.
+  // Jumeau au niveau de la lib : `shared/lib/coachName.test.ts` (« rôles de gestion »).
+  it("une ancienne valeur owner, même active, ne peut pas modifier", () => {
+    expect(renderWithMe({ membershipStatus: "active", role: "owner" }).result.current).toBe(false);
   });
 
   it("un Membre actif ne peut pas modifier", () => {

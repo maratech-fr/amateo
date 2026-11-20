@@ -198,7 +198,7 @@ final class ClubApprovalFlowTest extends WebTestCase
         self::assertSame('Me connecter', $mails[0]->getHeaders()->getHeaderBody(EmailTemplateRenderer::CTA_LABEL_HEADER));
         $paul = $this->em->getRepository(ClubUser::class)->findOneBy(['clubId' => $clubId, 'userId' => $paulId]);
         self::assertInstanceOf(ClubUser::class, $paul);
-        self::assertSame('member', $paul->getRole(), 'le Membre restant reste Membre');
+        self::assertSame('member', $paul->getRole()->value, 'le Membre restant reste Membre');
         $this->deleteClubByAra($stubAra);
 
         // Transmise — club peuplé, une demande extérieure devient une adhésion pending.

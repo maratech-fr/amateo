@@ -262,7 +262,7 @@ final class SocleDeviationParityTest extends WebTestCase
         [, $club, $season, $planId, $period] = $this->closureScaffold('MEMBER', CalendarEntryPeriodType::CLOSURE, ScheduleStatus::COMPLETED, chooseSocle: true);
         unset($planId);
 
-        $member = $this->member($club->getId(), 'editor');
+        $member = $this->member($club->getId(), 'member');
         $body = $this->deviation($member, $club, $season, $period->getId());
         self::assertArrayHasKey('moved', $body);
         self::assertArrayHasKey('unplaced', $body);

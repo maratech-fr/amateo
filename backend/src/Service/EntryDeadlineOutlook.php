@@ -199,7 +199,7 @@ final class EntryDeadlineOutlook
     {
         $membership = $this->clubUserRepository->findActiveMembership($userId, $clubId);
 
-        return $membership instanceof ClubUser && $this->clubUserRepository->isManagementRole($membership->getRole());
+        return $membership instanceof ClubUser && $membership->getRole()->isManager();
     }
 
     /**

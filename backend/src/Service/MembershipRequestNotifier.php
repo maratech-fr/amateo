@@ -7,7 +7,6 @@ namespace App\Service;
 use App\Entity\Club;
 use App\Entity\ClubUser;
 use App\Entity\User;
-use App\Enum\ClubRole;
 use App\Mail\MailSafeName;
 use App\Repository\ClubUserRepository;
 use DateTimeImmutable;
@@ -96,7 +95,7 @@ final class MembershipRequestNotifier
             if (!$user instanceof User || !$club instanceof Club) {
                 return;
             }
-            $role = $this->clubUserRepository->isManagementRole($membership->getRole()) ? ClubRole::MANAGER : ClubRole::MEMBER;
+            $role = $membership->getRole();
             $this->mailer->send($this->mailBuilder->buildAccepted($user->getEmail(), $club, $user->getFirstName(), $role));
         } catch (Throwable $e) {
             $this->logger->warning('Membership accepted notice failed', ['clubId' => $membership->getClubId(), 'error' => $e->getMessage()]);

@@ -290,7 +290,7 @@ final class SlotRemovalTest extends WebTestCase
     {
         $ctx = $this->seedPeriod('m');
         $slot = $this->placeSlot($ctx, $ctx['teamId'], LockLevel::NONE);
-        $member = $this->createMember($ctx['clubId'], 'editor');
+        $member = $this->createMember($ctx['clubId'], 'member');
 
         $this->client->request('POST', '/api/schedule-slots/' . $slot->getId() . '/remove', [], [], $this->authHeaders($member) + ['CONTENT_TYPE' => 'application/json'], '{}');
         self::assertResponseStatusCodeSame(403);

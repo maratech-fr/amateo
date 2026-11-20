@@ -2289,7 +2289,7 @@ final class ParcImportExecuteTest extends WebTestCase
 
         $this->scopeGucToClub($this->club->getId());
         $cu = new ClubUser;
-        $cu->setClubId($this->club->getId())->setUserId($viewer->getId())->setRole('viewer')->setIsActive(true);
+        $cu->setClubId($this->club->getId())->setUserId($viewer->getId())->setRole('member')->setIsActive(true);
         $this->em->persist($cu);
         $this->em->flush();
 

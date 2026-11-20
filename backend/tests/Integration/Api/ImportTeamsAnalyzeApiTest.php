@@ -60,7 +60,7 @@ final class ImportTeamsAnalyzeApiTest extends WebTestCase
     public function testNonManagerRefusalIsIdentical(): void
     {
         [, $clubId] = $this->registerManager('IAB');
-        $editorToken = $this->addActiveMember($clubId, 'editor');
+        $editorToken = $this->addActiveMember($clubId, 'member');
 
         $this->assertIdenticalRefusal($clubId, $editorToken, 403);
     }

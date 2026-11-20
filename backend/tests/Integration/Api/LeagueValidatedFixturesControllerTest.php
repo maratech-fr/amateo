@@ -62,7 +62,7 @@ final class LeagueValidatedFixturesControllerTest extends WebTestCase
     public function testNonManagementMemberIs403(): void
     {
         [, $clubId] = $this->createClub();
-        $editorToken = $this->addMember($clubId, 'editor');
+        $editorToken = $this->addMember($clubId, 'member');
 
         $this->client->request('GET', '/api/fixtures/league-validation', [], [], ['HTTP_AUTHORIZATION' => 'Bearer ' . $editorToken]);
         self::assertResponseStatusCodeSame(403);

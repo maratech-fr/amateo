@@ -26,6 +26,7 @@ use App\Entity\User;
 use App\Entity\Venue;
 use App\Entity\VenueMatchWindow;
 use App\Entity\VenueTrainingSlot;
+use App\Enum\ClubRole;
 use App\Enum\CompetitionType;
 use App\Enum\ConstraintRuleType;
 use App\Enum\ConstraintScope;
@@ -311,7 +312,7 @@ final class LoadTestClubSeeder
             $clubUser = new ClubUser;
             $clubUser->setClubId($club->getId());
             $clubUser->setUserId($user->getId());
-            $clubUser->setRole('admin');
+            $clubUser->setRole(ClubRole::MANAGER);
             $clubUser->setIsActive(true);
             $manager->persist($clubUser);
         }

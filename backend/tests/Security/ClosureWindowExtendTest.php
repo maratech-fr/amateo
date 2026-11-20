@@ -525,7 +525,7 @@ final class ClosureWindowExtendTest extends WebTestCase
         $planId = $this->adaptPeriod($user, $rootId);
         $this->seedPointedVersionWithLockedSlots($club, $season, $planId);
 
-        $coach = $this->addMember($club, 'coach');
+        $coach = $this->addMember($club, 'member');
         $this->client->request('POST', '/api/schedule_plans/' . $planId . '/window-preview', [], [], $this->authHeaders($coach) + [
             'CONTENT_TYPE' => 'application/json',
         ], json_encode(['startDate' => $this->mon(-2), 'endDate' => $this->fri(6)], \JSON_THROW_ON_ERROR));

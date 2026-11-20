@@ -199,7 +199,7 @@ final class LoadLocksTest extends WebTestCase
         $this->em->persist((new ClubUser)->setClubId($this->club->getId())->setUserId($manager->getId())->setRole('admin')->setIsActive(true));
         // Un membre NON gestionnaire (coach) de CE club : adhésion unique active → le listener
         // tenant résout bien ce club, et assertManager refuse (403).
-        $this->em->persist((new ClubUser)->setClubId($this->club->getId())->setUserId($coach->getId())->setRole('coach')->setIsActive(true));
+        $this->em->persist((new ClubUser)->setClubId($this->club->getId())->setUserId($coach->getId())->setRole('member')->setIsActive(true));
         $this->season = (new Season)->setClubId($this->club->getId())->setName('2025-2026')
             ->setStartDate(new DateTimeImmutable('2025-09-01'))->setEndDate(new DateTimeImmutable('2026-06-30'))->setStatus(SeasonStatus::ACTIVE);
         $this->em->persist($this->season);

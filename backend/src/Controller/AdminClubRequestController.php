@@ -7,6 +7,7 @@ namespace App\Controller;
 use App\Entity\ClubCreationRequest;
 use App\Entity\SuperAdmin;
 use App\Entity\User;
+use App\Enum\ClubRole;
 use App\Repository\ClubCreationRequestRepository;
 use App\Repository\ClubRepository;
 use App\Security\AdminSessionCsrf;
@@ -178,10 +179,10 @@ final readonly class AdminClubRequestController
         // Chantier Membre : un club SANS gestionnaire actif ne se reprend que par l'approbation de
         // son adresse officielle — activer ici ferait entrer quelqu'un dans un club sans la preuve.
         // Lu par la porte ADMIN (même connexion que l'écriture) — prédicat de
-        // ClubUserRepository::hasActiveManager (rôles de gestion owner/admin).
+        // ClubUserRepository::hasActiveManager.
         $hasActiveManager = (int) $this->admin()->fetchOne(
-            'SELECT COUNT(*) FROM club_user WHERE club_id = :club AND is_active = true AND role IN (\'owner\', \'admin\')',
-            ['club' => $clubId],
+            'SELECT COUNT(*) FROM club_user WHERE club_id = :club AND is_active = true AND role = :role',
+            ['club' => $clubId, 'role' => ClubRole::MANAGER->value],
         ) > 0;
         if (!$hasActiveManager) {
             return new JsonResponse(['error' => 'La reprise d\'un club sans gestionnaire passe par l\'approbation du club.'], 409);

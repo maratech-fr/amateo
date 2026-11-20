@@ -374,7 +374,7 @@ final class MatchTenantIsolationTest extends WebTestCase
         $headers = $this->authHeaders($userA) + ['CONTENT_TYPE' => 'application/json'];
 
         // Écriture = management par défaut : un membre non-gestionnaire est refusé.
-        $editor = $this->createMember($clubA, 'editor');
+        $editor = $this->createMember($clubA, 'member');
         $this->client->request('POST', '/api/club_league_windows', [], [], $this->authHeaders($editor) + ['CONTENT_TYPE' => 'application/json'], json_encode([
             'category' => 'Seniors', 'level' => 'REGIONAL', 'gender' => null, 'dayOfWeek' => 6, 'kickoffMin' => '14:00', 'kickoffMax' => '18:00',
         ], \JSON_THROW_ON_ERROR));
@@ -427,7 +427,7 @@ final class MatchTenantIsolationTest extends WebTestCase
         $headers = $this->authHeaders($userA) + ['CONTENT_TYPE' => 'application/json'];
 
         // Écriture = management par défaut : un membre non-gestionnaire est refusé.
-        $editor = $this->createMember($clubA, 'editor');
+        $editor = $this->createMember($clubA, 'member');
         $this->client->request('POST', '/api/match_constraints', [], [], $this->authHeaders($editor) + ['CONTENT_TYPE' => 'application/json'], json_encode([
             'ruleType' => 'HARD', 'daysOfWeek' => [6], 'kickoffMax' => '21:00',
         ], \JSON_THROW_ON_ERROR));
@@ -528,7 +528,7 @@ final class MatchTenantIsolationTest extends WebTestCase
         $headers = $this->authHeaders($userA) + ['CONTENT_TYPE' => 'application/json'];
 
         // Écriture = management par défaut : un membre non-gestionnaire est refusé.
-        $editor = $this->createMember($clubA, 'editor');
+        $editor = $this->createMember($clubA, 'member');
         $this->client->request('POST', '/api/match_constraints', [], [], $this->authHeaders($editor) + ['CONTENT_TYPE' => 'application/json'], json_encode([
             'scope' => 'TEAM', 'scopeTargetId' => $teamA->getId(), 'venueId' => $venueA->getId(), 'ruleType' => 'HARD',
         ], \JSON_THROW_ON_ERROR));
@@ -597,7 +597,7 @@ final class MatchTenantIsolationTest extends WebTestCase
         $base = ['scope' => 'COACH', 'scopeTargetId' => $coachA->getId(), 'ruleType' => 'PREFERRED', 'daysOfWeek' => [6], 'kickoffMin' => '14:00', 'kickoffMax' => '16:00'];
 
         // Écriture = management par défaut : un membre non-gestionnaire est refusé.
-        $editor = $this->createMember($clubA, 'editor');
+        $editor = $this->createMember($clubA, 'member');
         $this->client->request('POST', '/api/match_constraints', [], [], $this->authHeaders($editor) + ['CONTENT_TYPE' => 'application/json'], json_encode($base, \JSON_THROW_ON_ERROR));
         self::assertResponseStatusCodeSame(403);
 
@@ -797,7 +797,7 @@ final class MatchTenantIsolationTest extends WebTestCase
     public function testOpponentVenueWritesAreManagementGated(): void
     {
         [$clubA, $userA] = $this->createClubUser('a');
-        $editor = $this->createMember($clubA, 'editor');
+        $editor = $this->createMember($clubA, 'member');
 
         // Un membre non-management ne peut pas apparier (403 gagne sur le 422).
         $this->client->request('POST', '/api/opponents/ORGX/venues', [], [], $this->authHeaders($editor) + ['CONTENT_TYPE' => 'application/json'], json_encode([
@@ -1003,7 +1003,7 @@ final class MatchTenantIsolationTest extends WebTestCase
     public function testConflictResolutionWritesAreManagementGated(): void
     {
         [$clubA] = $this->createClubUser('crg');
-        $editor = $this->createMember($clubA, 'editor');
+        $editor = $this->createMember($clubA, 'member');
         // Well-formed fingerprint (passes the route requirement) — the 403 must fire
         // before any flow/existence check.
         $fingerprint = 'AWAY_NO_FOOTPRINT:11111111-1111-4111-8111-111111111111';

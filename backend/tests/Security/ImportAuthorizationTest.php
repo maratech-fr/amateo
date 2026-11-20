@@ -55,9 +55,9 @@ final class ImportAuthorizationTest extends WebTestCase
     public function testImportAsOwnerReaches400WithoutFile(): void
     {
         [, , $clubA] = $this->register('IMPE');
-        $ownerToken = $this->addActiveMember($clubA, 'owner');
+        $ownerToken = $this->addActiveMember($clubA, 'admin');
 
-        // 'owner' is a management role → guard passed → 400 (no file), not 403.
+        // 'admin' is a management role → guard passed → 400 (no file), not 403.
         $this->client->request('POST', '/api/clubs/' . $clubA . '/import-teams', [], [], [
             'HTTP_AUTHORIZATION' => 'Bearer ' . $ownerToken,
         ]);
@@ -67,7 +67,7 @@ final class ImportAuthorizationTest extends WebTestCase
     public function testImportAsNonAdminMemberReturns403(): void
     {
         [, , $clubA] = $this->register('IMPD');
-        $editorToken = $this->addActiveMember($clubA, 'editor');
+        $editorToken = $this->addActiveMember($clubA, 'member');
 
         // Active member of the club, but not a management role → 403 (not 400).
         $this->client->request('POST', '/api/clubs/' . $clubA . '/import-teams', [], [], [

@@ -43,7 +43,7 @@ final class SeasonTransitionApiTest extends WebTestCase
 
     public function testNonManagementMemberIsForbidden(): void
     {
-        [$user, , $season] = $this->createClubUserSeason('coach');
+        [$user, , $season] = $this->createClubUserSeason('member');
 
         $this->client->request('POST', '/api/seasons/' . $season->getId() . '/transition', [], [], $this->authHeaders($user));
         self::assertResponseStatusCodeSame(403);

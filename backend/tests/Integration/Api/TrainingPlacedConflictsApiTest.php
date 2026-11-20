@@ -150,7 +150,7 @@ final class TrainingPlacedConflictsApiTest extends WebTestCase
     /** Tenant : la version d'un autre club et une version inexistante répondent pareil, 404. */
     public function testAVersionOfAnotherClubOrUnknownIs404(): void
     {
-        [$clubA] = $this->createClubWithConflict('owner');
+        [$clubA] = $this->createClubWithConflict('admin');
         [, $userB] = $this->createClubWithConflict('other', withConflict: false);
         $this->scopeGucToClub($clubA->getId());
         $foreign = $this->em->getRepository(Schedule::class)->findOneBy(['clubId' => $clubA->getId()]);

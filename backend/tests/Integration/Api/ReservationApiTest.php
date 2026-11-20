@@ -618,7 +618,7 @@ final class ReservationApiTest extends WebTestCase
         $cu = new ClubUser;
         $cu->setClubId($this->club->getId());
         $cu->setUserId($viewer->getId());
-        $cu->setRole('viewer');
+        $cu->setRole('member');
         $cu->setIsActive(true);
         $this->em->persist($cu);
         $this->em->flush();

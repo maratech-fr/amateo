@@ -54,7 +54,7 @@ final class OrphanAccountLifecycleTest extends WebTestCase
     public function testDeactivatingTheLastAccessNotifiesAndStamps(): void
     {
         [$managerToken, , $clubId] = $this->registerManager('ORPA');
-        $member = $this->insertMember($clubId, 'member-orpa-' . uniqid() . '@test.fr', 'editor', true, null);
+        $member = $this->insertMember($clubId, 'member-orpa-' . uniqid() . '@test.fr', 'member', true, null);
         $membershipId = $this->membershipId($clubId, $member->getId());
 
         $this->post('/api/memberships/' . $membershipId . '/deactivate', $managerToken);
@@ -70,7 +70,7 @@ final class OrphanAccountLifecycleTest extends WebTestCase
     public function testReactivationCancelsTheNoticeAndTheCronDoesNothing(): void
     {
         [$managerToken, , $clubId] = $this->registerManager('ORPB');
-        $member = $this->insertMember($clubId, 'member-orpb-' . uniqid() . '@test.fr', 'editor', false, new DateTimeImmutable);
+        $member = $this->insertMember($clubId, 'member-orpb-' . uniqid() . '@test.fr', 'member', false, new DateTimeImmutable);
         $this->stamp($member->getId(), '-31 days');
         $membershipId = $this->membershipId($clubId, $member->getId());
 
@@ -92,7 +92,7 @@ final class OrphanAccountLifecycleTest extends WebTestCase
     public function testCronAnonymizesAnOrphanThirtyDaysAfterTheNotice(): void
     {
         [, , $clubId] = $this->registerManager('ORPC');
-        $member = $this->insertMember($clubId, 'member-orpc-' . uniqid() . '@test.fr', 'editor', false, new DateTimeImmutable);
+        $member = $this->insertMember($clubId, 'member-orpc-' . uniqid() . '@test.fr', 'member', false, new DateTimeImmutable);
         $this->stamp($member->getId(), '-31 days');
 
         $this->runOrphanCron();
@@ -123,7 +123,7 @@ final class OrphanAccountLifecycleTest extends WebTestCase
     public function testAnOrphanIsNeverErasedWhileTheNoticeIsYoungerThanThirtyDays(): void
     {
         [, , $clubId] = $this->registerManager('ORPE');
-        $member = $this->insertMember($clubId, 'member-orpe-' . uniqid() . '@test.fr', 'editor', false, new DateTimeImmutable);
+        $member = $this->insertMember($clubId, 'member-orpe-' . uniqid() . '@test.fr', 'member', false, new DateTimeImmutable);
         $this->stamp($member->getId(), '-10 days');
 
         $this->runOrphanCron();
@@ -138,8 +138,8 @@ final class OrphanAccountLifecycleTest extends WebTestCase
     public function testPendingAndDemoAccountsAreNeverConcerned(): void
     {
         [, , $clubId] = $this->registerManager('ORPF');
-        $pending = $this->insertMember($clubId, 'member-orpf-' . uniqid() . '@test.fr', 'editor', false, null); // pending = deactivatedAt null
-        $demo = $this->insertMember($clubId, $this->demoAnimatorEmail(), 'editor', false, new DateTimeImmutable, isDemo: true);
+        $pending = $this->insertMember($clubId, 'member-orpf-' . uniqid() . '@test.fr', 'member', false, null); // pending = deactivatedAt null
+        $demo = $this->insertMember($clubId, $this->demoAnimatorEmail(), 'member', false, new DateTimeImmutable, isDemo: true);
 
         $notifier = $this->notifier();
         self::assertFalse($notifier->isOrphan($this->reload($pending)), 'une adhésion pending protège de la règle');
@@ -172,7 +172,7 @@ final class OrphanAccountLifecycleTest extends WebTestCase
     public function testPurgingAClubNotifiesItsNowOrphanedMembers(): void
     {
         [, , $clubId] = $this->registerManager('ORPH');
-        $member = $this->insertMember($clubId, 'member-orph-' . uniqid() . '@test.fr', 'editor', false, new DateTimeImmutable);
+        $member = $this->insertMember($clubId, 'member-orph-' . uniqid() . '@test.fr', 'member', false, new DateTimeImmutable);
 
         // Club orphelin, échéance passée, toutes adhésions inactives (comme après un effacement).
         $em = $this->em();
@@ -211,7 +211,7 @@ final class OrphanAccountLifecycleTest extends WebTestCase
     public function testClubDeletedNoticeLeavesOnlyAfterThePurgeCommitted(): void
     {
         [, , $clubId] = $this->registerManager('ORPC');
-        $member = $this->insertMember($clubId, 'member-orpc-' . uniqid() . '@test.fr', 'editor', false, new DateTimeImmutable);
+        $member = $this->insertMember($clubId, 'member-orpc-' . uniqid() . '@test.fr', 'member', false, new DateTimeImmutable);
 
         $em = $this->em();
         $club = $em->getRepository(Club::class)->find($clubId);
@@ -253,7 +253,7 @@ final class OrphanAccountLifecycleTest extends WebTestCase
         [$token, $userId, $clubId] = $this->registerManager('ORPI');
         // Une seconde adhésion DÉSACTIVÉE dans un autre club : le compte garde clubId actif.
         [, , $otherClubId] = $this->registerManager('ORPJ');
-        $this->insertMembershipFor($otherClubId, $userId, 'editor', false, new DateTimeImmutable);
+        $this->insertMembershipFor($otherClubId, $userId, 'member', false, new DateTimeImmutable);
         // Stamp posé à tort : l'adhésion active doit l'emporter (jamais orphelin).
         $this->stamp($userId, '-31 days');
 
@@ -277,7 +277,7 @@ final class OrphanAccountLifecycleTest extends WebTestCase
     public function testMeExposesTheDeletionDeadlineForADeactivatedStampedAccount(): void
     {
         [$managerToken, , $clubId] = $this->registerManager('ORPK');
-        $member = $this->insertMember($clubId, 'member-orpk-' . uniqid() . '@test.fr', 'editor', false, new DateTimeImmutable);
+        $member = $this->insertMember($clubId, 'member-orpk-' . uniqid() . '@test.fr', 'member', false, new DateTimeImmutable);
         $this->stamp($member->getId(), '-2 days');
         $memberToken = $this->tokenFor($member->getEmail());
 

@@ -212,8 +212,8 @@ final class PeriodReminderCommandTest extends KernelTestCase
         // Vacances d'hiver à J-30 de TODAY (15/01/2026), dans la saison 2025-2026 du club.
         $this->holiday($zone, '2026-02-14', '2026-03-01', 'Vacances d\'Hiver', 'hiver', '2025-2026');
         [$club, $season, $admin] = $this->seedClub('ROLE', $zone);
-        $this->addMember($club, 'editor@club.fr', 'editor', true);
-        $this->addMember($club, 'viewer@club.fr', 'viewer', true);
+        $this->addMember($club, 'editor@club.fr', 'member', true);
+        $this->addMember($club, 'viewer@club.fr', 'member', true);
         $this->addMember($club, 'inactive@club.fr', 'admin', false);
         $this->period($season, $this->plus(14));
         $this->em->flush();

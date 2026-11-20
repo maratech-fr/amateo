@@ -510,7 +510,7 @@ final class PublicRouteStaleJwtTest extends WebTestCase
             $membership = new ClubUser;
             $membership->setClubId($club->getId());
             $membership->setUserId($user->getId());
-            $membership->setRole('manager');
+            $membership->setRole('admin');
             $membership->setIsActive(true);
             $this->em->persist($membership);
             $this->em->flush();

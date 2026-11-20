@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Repository;
 
 use App\Entity\ClubUser;
+use App\Enum\ClubRole;
 use App\Service\TenantConnectionContext;
 use Doctrine\Bundle\DoctrineBundle\Repository\ServiceEntityRepository;
 use Doctrine\Persistence\ManagerRegistry;
@@ -14,13 +15,6 @@ use Doctrine\Persistence\ManagerRegistry;
  */
 final class ClubUserRepository extends ServiceEntityRepository
 {
-    /**
-     * Roles allowed to manage a club (edit settings, import). 'owner' is the
-     * highest role, 'admin' the operational one — both may manage. 'editor'
-     * and 'viewer' may not. Single source of truth for the management gate.
-     */
-    private const MANAGEMENT_ROLES = ['owner', 'admin'];
-
     public function __construct(ManagerRegistry $registry, private readonly TenantConnectionContext $tenantContext)
     {
         parent::__construct($registry, ClubUser::class);
@@ -115,11 +109,6 @@ final class ClubUserRepository extends ServiceEntityRepository
         return $rows;
     }
 
-    public function isManagementRole(string $role): bool
-    {
-        return \in_array($role, self::MANAGEMENT_ROLES, true);
-    }
-
     /**
      * P1-1 (PR B) — les ids des adhésions management ACTIVES du club, VERROUILLÉES
      * (`FOR UPDATE`). Sert l'invariant « au moins un gestionnaire actif » : deux
@@ -134,52 +123,46 @@ final class ClubUserRepository extends ServiceEntityRepository
      */
     public function lockActiveManagementIds(string $clubId): array
     {
-        $placeholders = implode(', ', array_fill(0, \count(self::MANAGEMENT_ROLES), '?'));
-
         /** @var list<string> $ids */
         $ids = $this->getEntityManager()->getConnection()->fetchFirstColumn(
-            'SELECT id FROM club_user WHERE club_id = ? AND is_active = true AND role IN (' . $placeholders . ') FOR UPDATE',
-            [$clubId, ...self::MANAGEMENT_ROLES],
+            'SELECT id FROM club_user WHERE club_id = ? AND is_active = true AND role = ? FOR UPDATE',
+            [$clubId, ClubRole::MANAGER->value],
         );
 
         return $ids;
     }
 
     /**
-     * Emails of a club's active managers (owner + admin). Raw DBAL like
+     * Emails of a club's active managers. Raw DBAL like
      * findActiveClubIds so the tenant_filter does not narrow the result — the
      * WHERE club_id already scopes it. Used by the reminder cron (no request
-     * tenant context). Editors/viewers and inactive memberships are excluded.
+     * tenant context). Members and inactive memberships are excluded.
      *
      * @return list<string>
      */
     public function findManagementEmails(string $clubId): array
     {
-        $placeholders = implode(', ', array_fill(0, \count(self::MANAGEMENT_ROLES), '?'));
-
         /** @var list<string> $emails */
         $emails = $this->getEntityManager()->getConnection()->fetchFirstColumn(
             'SELECT u.email FROM club_user cu JOIN app_user u ON u.id = cu.user_id '
-            . 'WHERE cu.club_id = ? AND cu.is_active = true AND cu.role IN (' . $placeholders . ')',
-            [$clubId, ...self::MANAGEMENT_ROLES],
+            . 'WHERE cu.club_id = ? AND cu.is_active = true AND cu.role = ?',
+            [$clubId, ClubRole::MANAGER->value],
         );
 
         return $emails;
     }
 
     /**
-     * Le club a-t-il au moins un GESTIONNAIRE actif (owner/admin) ? Prédicat unique de la règle
+     * Le club a-t-il au moins un GESTIONNAIRE actif ? Prédicat unique de la règle
      * « un club sans gestionnaire ferme » (un Membre actif seul ne retient pas le club). Raw DBAL
      * hors tenant : appelé par l'effacement, les crons et `/api/me`, sous des GUC variés.
      */
     public function hasActiveManager(string $clubId): bool
     {
-        $placeholders = implode(', ', array_fill(0, \count(self::MANAGEMENT_ROLES), '?'));
-
         $count = $this->tenantContext->runWithoutTenant(
             fn (): mixed => $this->getEntityManager()->getConnection()->fetchOne(
-                'SELECT COUNT(*) FROM club_user WHERE club_id = ? AND is_active = true AND role IN (' . $placeholders . ')',
-                [$clubId, ...self::MANAGEMENT_ROLES],
+                'SELECT COUNT(*) FROM club_user WHERE club_id = ? AND is_active = true AND role = ?',
+                [$clubId, ClubRole::MANAGER->value],
             ),
         );
 
@@ -214,16 +197,14 @@ final class ClubUserRepository extends ServiceEntityRepository
      */
     public function clubsWhereSoleActiveManager(string $userId): array
     {
-        $placeholders = implode(', ', array_fill(0, \count(self::MANAGEMENT_ROLES), '?'));
-
         /** @var list<array{id: string, name: string}> $rows */
         $rows = $this->tenantContext->runWithoutTenant(
             fn (): array => $this->getEntityManager()->getConnection()->fetchAllAssociative(
                 'SELECT c.id, c.name FROM club_user cu JOIN club c ON c.id = cu.club_id '
-                . 'WHERE cu.user_id = ? AND cu.is_active = true AND cu.role IN (' . $placeholders . ') '
+                . 'WHERE cu.user_id = ? AND cu.is_active = true AND cu.role = ? '
                 . 'AND NOT EXISTS (SELECT 1 FROM club_user o WHERE o.club_id = cu.club_id AND o.user_id <> cu.user_id '
-                . 'AND o.is_active = true AND o.role IN (' . $placeholders . ')) ORDER BY c.name ASC',
-                [$userId, ...self::MANAGEMENT_ROLES, ...self::MANAGEMENT_ROLES],
+                . 'AND o.is_active = true AND o.role = ?) ORDER BY c.name ASC',
+                [$userId, ClubRole::MANAGER->value, ClubRole::MANAGER->value],
             ),
         );
 

@@ -293,7 +293,7 @@ final class MatchVisitDeltaParityTest extends WebTestCase
     public function testMemberIsAllowed(): void
     {
         [$club] = $this->createClub('mem');
-        $member = $this->addMember($club, 'coach'); // rôle non-management
+        $member = $this->addMember($club, 'member'); // rôle non-management
 
         $out = $this->stamp($member);
         self::assertTrue($out['firstVisit'], 'le Membre stampe comme un gestionnaire');

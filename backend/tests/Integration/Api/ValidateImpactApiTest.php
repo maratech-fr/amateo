@@ -56,7 +56,7 @@ final class ValidateImpactApiTest extends WebTestCase
     /** LECTURE ouverte : un `viewer` (rôle non-management) lit l'impact — 200, jamais 403. */
     public function testANonManagerMemberCanReadTheImpact(): void
     {
-        [$user, $clubId, $schedule] = $this->seedClubWithSchedule('VIA', 'viewer');
+        [$user, $clubId, $schedule] = $this->seedClubWithSchedule('VIA', 'member');
 
         $this->request($user, $clubId, $schedule->getId());
 

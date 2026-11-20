@@ -129,7 +129,7 @@ final class MutualizeSlotApiTest extends WebTestCase
     {
         $ctx = $this->seedPeriod('c', capacity: 2);
         $source = $this->placeSlot($ctx, $ctx['teams']['source'], $ctx['case']);
-        $member = $this->createMember($ctx['clubId'], 'editor');
+        $member = $this->createMember($ctx['clubId'], 'member');
 
         $this->client->request('POST', '/api/schedule-slots/' . $source->getId() . '/mutualize', [], [], $this->authHeaders($member) + ['CONTENT_TYPE' => 'application/json'], json_encode([
             'teamIds' => [$ctx['teams']['source'], $ctx['teams']['joiner']], 'replacedSlotIds' => [],
@@ -590,7 +590,7 @@ final class MutualizeSlotApiTest extends WebTestCase
         $ctx = $this->seedPeriod('ac11', capacity: 2);
         $target = $this->placeSlot($ctx, $ctx['teams']['source'], $ctx['case']);
         $source = $this->placeSlot($ctx, $ctx['teams']['joiner'], $this->sourceCase($ctx));
-        $member = $this->createMember($ctx['clubId'], 'editor');
+        $member = $this->createMember($ctx['clubId'], 'member');
 
         $this->client->request('POST', '/api/schedule-slots/mutualize-at-case', [], [], $this->authHeaders($member) + ['CONTENT_TYPE' => 'application/json'], json_encode([
             'sourceSlotId' => $source->getId(), 'targetSlotId' => $target->getId(),

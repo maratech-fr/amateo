@@ -196,7 +196,7 @@ final class PlannedWindowsParityTest extends WebTestCase
         $p = $this->postPeriodDated($user, 'closure', 'Gymnase indisponible', '2026-10-19', '2026-10-25');
         $this->adaptPeriod($user, $p);
 
-        $member = $this->addMember($club, 'coach'); // rôle non-management
+        $member = $this->addMember($club, 'member'); // rôle non-management
         $windows = $this->plannedWindows($member, ['seasonId' => $season->getId(), 'start' => '2026-10-19', 'end' => '2026-10-25']);
         self::assertContains($p, $this->entryIds($windows), 'un membre lit le verdict comme un gestionnaire');
     }

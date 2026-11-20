@@ -58,7 +58,7 @@ const cancelManagerRequest = vi.fn();
 vi.mock("@/shared/session/queries", () => ({
   useMe: () => me,
   // Chantier Membre (PR 2) : la question « peut-il modifier ? » suit le rôle du `me` mocké.
-  useCanManage: () => "admin" === me.data.role || "owner" === me.data.role,
+  useCanManage: () => "admin" === me.data.role,
   useRequestManagerRole: () => ({ mutate: requestManagerRole, isPending: false }),
   useCancelManagerRequest: () => ({ mutate: cancelManagerRequest, isPending: false }),
 }));

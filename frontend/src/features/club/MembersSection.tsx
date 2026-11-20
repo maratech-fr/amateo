@@ -67,9 +67,6 @@ export function MembersSection() {
         <ul className="flex flex-col gap-2">
           {active.map((member) => {
             const selfIsOnlyManager = member.isSelf && isManagementRole(member.role) && visibleManagers === 1;
-            // 'owner' (hérité) se LIT gestionnaire mais n'est pas assignable : le
-            // sélecteur le représente comme « Gestionnaire » (admin) sans jamais
-            // muter tant que le gestionnaire ne choisit pas activement.
             const selectValue: AssignableRole = (ASSIGNABLE_ROLES as readonly string[]).includes(member.role) ? (member.role as AssignableRole) : "admin";
             const roleFieldId = `member-role-${member.id}`;
             return (

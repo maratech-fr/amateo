@@ -204,7 +204,7 @@ final class ManagementRoleTest extends WebTestCase
         $scheduleId = json_decode((string) $this->client->getResponse()->getContent(), true)['id'] ?? '';
         self::assertNotSame('', $scheduleId);
 
-        $editorToken = $this->addActiveMember($clubA, 'editor');
+        $editorToken = $this->addActiveMember($clubA, 'member');
         $this->client->request('DELETE', '/api/schedules/' . $scheduleId, [], [], [
             'HTTP_AUTHORIZATION' => 'Bearer ' . $editorToken,
         ]);
@@ -215,7 +215,7 @@ final class ManagementRoleTest extends WebTestCase
     public function testNonManagementMemberIsForbiddenOnApiPlatformWrites(string $method, string $url, string $body): void
     {
         [, , $clubA] = $this->register('MGC');
-        $editorToken = $this->addActiveMember($clubA, 'editor');
+        $editorToken = $this->addActiveMember($clubA, 'member');
 
         $this->client->request($method, $url, [], [], [
             'HTTP_AUTHORIZATION' => 'Bearer ' . $editorToken,
@@ -345,7 +345,7 @@ final class ManagementRoleTest extends WebTestCase
     public function testRenamingTheSeasonPlanIsManagementOnly(): void
     {
         [$adminToken, , $clubA] = $this->register('MGE');
-        $editorToken = $this->addActiveMember($clubA, 'editor');
+        $editorToken = $this->addActiveMember($clubA, 'member');
 
         // Le plan de la saison, tel que le frontend le lit.
         $this->client->request('GET', '/api/me', [], [], ['HTTP_AUTHORIZATION' => 'Bearer ' . $adminToken]);
@@ -390,7 +390,7 @@ final class ManagementRoleTest extends WebTestCase
     public function testNonManagementMemberIsForbidden(string $method, string $url): void
     {
         [, , $clubA] = $this->register('MGA');
-        $editorToken = $this->addActiveMember($clubA, 'editor');
+        $editorToken = $this->addActiveMember($clubA, 'member');
 
         $this->client->request($method, $url, [], [], [
             'HTTP_AUTHORIZATION' => 'Bearer ' . $editorToken,

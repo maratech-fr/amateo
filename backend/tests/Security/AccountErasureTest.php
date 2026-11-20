@@ -176,7 +176,7 @@ final class AccountErasureTest extends WebTestCase
         $em = $this->em();
         $clubId = $this->clubIdOf($userId);
 
-        $this->insertActiveMember($clubId, 'other-' . strtolower($email), 'editor');
+        $this->insertActiveMember($clubId, 'other-' . strtolower($email), 'member');
 
         $this->request('DELETE', '/api/me', $token, ['password' => 'Password123!']);
         self::assertResponseIsSuccessful();

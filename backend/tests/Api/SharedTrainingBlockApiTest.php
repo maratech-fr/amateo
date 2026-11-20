@@ -103,7 +103,7 @@ final class SharedTrainingBlockApiTest extends WebTestCase
         ], \JSON_THROW_ON_ERROR));
         self::assertResponseStatusCodeSame(201);
 
-        $member = $this->createMember($club, 'editor');
+        $member = $this->createMember($club, 'member');
         $this->client->request('GET', '/api/shared_training_blocks', [], [], $this->authHeaders($member));
         self::assertResponseStatusCodeSame(200);
         self::assertCount(1, $this->responseData()['member'] ?? []);
@@ -386,7 +386,7 @@ final class SharedTrainingBlockApiTest extends WebTestCase
         [$club, , $season] = $this->createClubUser('a');
         $t1 = $this->createTeam($club, $season, 'U9F1', 2);
         $t2 = $this->createTeam($club, $season, 'U9F2', 2);
-        $member = $this->createMember($club, 'editor');
+        $member = $this->createMember($club, 'member');
 
         $this->client->request('POST', '/api/shared_training_blocks', [], [], $this->authHeaders($member) + ['CONTENT_TYPE' => 'application/json'], json_encode([
             'schedulePlanId' => null, 'teamIds' => [$t1->getId(), $t2->getId()], 'commonSessions' => 1,

@@ -139,7 +139,7 @@ final class MembershipController extends AbstractController
             return $role;
         }
 
-        $target->setRole($role->value);
+        $target->setRole($role);
         $target->setIsActive(true);
         // P4-301 — regagner une adhésion active annule le préavis « compte sans club »
         // (foyer unique OrphanAccountNotifier::cancelFor ; flushé avec la ligne ci-dessous).
@@ -150,7 +150,7 @@ final class MembershipController extends AbstractController
         // le flush, best-effort).
         $this->membershipRequestNotifier->notifyAccepted($target);
 
-        return $this->json(['id' => $target->getId(), 'isActive' => true, 'role' => $target->getRole()]);
+        return $this->json(['id' => $target->getId(), 'isActive' => true, 'role' => $target->getRole()->value]);
     }
 
     #[Route('/api/memberships/{id}/reject', name: 'api_memberships_reject', methods: ['POST'])]
@@ -211,7 +211,7 @@ final class MembershipController extends AbstractController
             return $own;
         }
         [$membership, $user] = $own;
-        if ($this->clubUserRepository->isManagementRole($membership->getRole())) {
+        if ($membership->getRole()->isManager()) {
             return $this->json(['error' => 'Vous êtes déjà gestionnaire.'], 409);
         }
         [$status, $body] = $this->managerRoleRequests->request($membership, $user);
@@ -313,7 +313,7 @@ final class MembershipController extends AbstractController
         $this->orphanAccountNotifier->cancelFor($target->getUserId());
         $this->entityManager->flush();
 
-        return $this->json(['id' => $target->getId(), 'isActive' => true, 'role' => $target->getRole()]);
+        return $this->json(['id' => $target->getId(), 'isActive' => true, 'role' => $target->getRole()->value]);
     }
 
     /**
@@ -340,8 +340,8 @@ final class MembershipController extends AbstractController
             removesManagement: ClubRole::MANAGER !== $role,
             requireActive: false,
             mutate: function (ClubUser $target) use ($role, $admin, $source, &$promoted, &$requested): void {
-                $wasManager = $target->getIsActive() && $this->clubUserRepository->isManagementRole($target->getRole());
-                $target->setRole($role->value);
+                $wasManager = $target->getIsActive() && $target->getRole()->isManager();
+                $target->setRole($role);
                 if (ClubRole::MANAGER !== $role || $wasManager || !$target->getIsActive()) {
                     return;
                 }
@@ -397,7 +397,7 @@ final class MembershipController extends AbstractController
 
             return $this->json([
                 'id' => $target->getId(),
-                'role' => $target->getRole(),
+                'role' => $target->getRole()->value,
                 'isActive' => $target->getIsActive(),
                 'isSelf' => $target->getId() === $adminMembership->getId(),
             ]);
@@ -455,9 +455,7 @@ final class MembershipController extends AbstractController
         }
 
         $membership = $this->clubUserRepository->findActiveMembership($user->getId(), $clubId);
-        // isManagementRole (owner|admin), not a hardcoded 'admin' — an owner
-        // must be able to approve members too (review note, PR SEC-07).
-        if (!$membership instanceof ClubUser || !$this->clubUserRepository->isManagementRole($membership->getRole())) {
+        if (!$membership instanceof ClubUser || !$membership->getRole()->isManager()) {
             return $this->json(['error' => 'Accès refusé.'], 403);
         }
 
@@ -533,7 +531,7 @@ final class MembershipController extends AbstractController
                 'email' => $user->getEmail(),
                 'firstName' => $user->getFirstName(),
                 'lastName' => $user->getLastName(),
-                'role' => $membership->getRole(),
+                'role' => $membership->getRole()->value,
                 'isSelf' => $membership->getId() === $adminMembership->getId(),
                 // Chantier Membre (PR 3) — la demande à devenir gestionnaire (pastille + gestes),
                 // et sa transmission à l'adresse officielle après 14 jours sans réponse.

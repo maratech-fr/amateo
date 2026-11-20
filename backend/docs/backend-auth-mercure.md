@@ -121,7 +121,7 @@ superadmin n'a pas de tenant, §3 :
 **Accès API (SEC-01/02/04)** : `Club` GetCollection/Get/Put scopés aux memberships actifs
 (Post/Delete retirés) ; `User` self-only (Get/Put ; pas de collection ni Delete) ;
 `import-teams`/`import-teams/analyze` requièrent un membership de gestion sur le club du path
-(`ClubUserRepository::isManagementRole`, `TeamImportGate::gate`). Gardé par
+(`ClubRole::isManager()`, `TeamImportGate::gate`). Gardé par
 `ClubAccessTest`/`UserSelfOnlyTest`/`ImportAuthorizationTest`/`RlsIsolationTest` (blocking-tests).
 
 ---

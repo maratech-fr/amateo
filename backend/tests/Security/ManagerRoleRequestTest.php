@@ -88,7 +88,7 @@ final class ManagerRoleRequestTest extends WebTestCase
     {
         $club = $this->bareClub('RQML');
         $marc = $this->insertMember($club['clubId'], 'Marc', 'admin');
-        $sophie = $this->insertMember($club['clubId'], 'Sophie', 'owner');
+        $sophie = $this->insertMember($club['clubId'], 'Sophie', 'admin');
         $didier = $this->insertMember($club['clubId'], 'Didier', 'admin', active: false, deactivated: true);
         $kim = $this->insertMember($club['clubId'], 'Kim', 'member');
         $paul = $this->insertMember($club['clubId'], 'Paul', 'member');

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Entity;
 
+use App\Enum\ClubRole;
 use App\Repository\ClubUserRepository;
 use DateTimeImmutable;
 use Doctrine\ORM\Mapping as ORM;
@@ -36,8 +37,9 @@ class ClubUser implements TenantOwnedInterface
     #[ORM\Column(type: 'guid')]
     private string $userId;
 
-    #[ORM\Column(type: 'string', length: 20)]
-    private string $role;
+    /** Colonne fermée à deux valeurs (CHECK en base, migration Version20261120120000). */
+    #[ORM\Column(type: 'string', length: 20, enumType: ClubRole::class)]
+    private ClubRole $role;
 
     #[ORM\Column(type: 'datetime_immutable')]
     private DateTimeImmutable $joinedAt;
@@ -150,14 +152,15 @@ class ClubUser implements TenantOwnedInterface
         return $this;
     }
 
-    public function getRole(): string
+    public function getRole(): ClubRole
     {
         return $this->role;
     }
 
-    public function setRole(string $role): self
+    /** Une chaîne hors des deux valeurs lève (ValueError) : jamais un troisième rôle en mémoire. */
+    public function setRole(ClubRole|string $role): self
     {
-        $this->role = $role;
+        $this->role = $role instanceof ClubRole ? $role : ClubRole::from($role);
 
         return $this;
     }

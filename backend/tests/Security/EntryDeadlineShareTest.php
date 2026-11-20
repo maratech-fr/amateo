@@ -307,7 +307,7 @@ final class EntryDeadlineShareTest extends WebTestCase
     {
         [$club, $season] = $this->createClub('gm');
         $comp = $this->makeCompetition($season, 1, null);
-        $member = $this->addMember($club, 'coach'); // rôle non-management
+        $member = $this->addMember($club, 'member'); // rôle non-management
 
         [$status] = $this->postDeadlinesRaw($member, [$comp->getId()], '2026-09-10');
         self::assertSame(403, $status, 'la saisie bulk est management-only');

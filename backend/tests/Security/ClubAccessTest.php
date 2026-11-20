@@ -77,7 +77,7 @@ final class ClubAccessTest extends WebTestCase
     public function testPutOwnClubAsOwnerSucceeds(): void
     {
         [, , $clubA] = $this->register('CLBK');
-        $ownerToken = $this->addActiveMember($clubA, 'owner');
+        $ownerToken = $this->addActiveMember($clubA, 'admin');
 
         $this->request('PUT', '/api/clubs/' . $clubA, $ownerToken, [
             'name' => 'Owner Rename',
@@ -92,7 +92,7 @@ final class ClubAccessTest extends WebTestCase
     {
         [, , $clubA] = $this->register('CLBJ');
         // A second, active but NON-admin member of the same club.
-        $editorToken = $this->addActiveMember($clubA, 'editor');
+        $editorToken = $this->addActiveMember($clubA, 'member');
 
         $this->request('PUT', '/api/clubs/' . $clubA, $editorToken, [
             'name' => 'Editor Rename',

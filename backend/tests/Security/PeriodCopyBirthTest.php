@@ -224,7 +224,7 @@ final class PeriodCopyBirthTest extends WebTestCase
         $planId = $this->planIdOf($entry);
 
         // Rôle : un membre NON-management est refusé (403) avant tout effet.
-        $member = $this->member($club->getId(), 'editor');
+        $member = $this->member($club->getId(), 'member');
         $this->client->request('POST', '/api/schedule_plans/' . $planId . '/transcribe-from-socle', [], [], $this->headers($member, $club, $season));
         self::assertSame(403, $this->client->getResponse()->getStatusCode(), 'non-management → 403');
 

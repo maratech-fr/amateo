@@ -5,52 +5,51 @@ declare(strict_types=1);
 namespace App\Tests\CrossStack;
 
 use App\Enum\ClubRole;
-use App\Repository\ClubUserRepository;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
-use ReflectionClass;
 
 /**
- * D-32 — les rôles de gestion sont déclarés des deux côtés de la frontière.
+ * Le rôle qui gère est déclaré des deux côtés de la frontière, sur DEUX valeurs seulement.
  *
- * Le backend en est le juge (`ManagementAccessGuard`, SEC-07) ; le frontend en garde un
- * miroir pour ne pas OFFRIR un geste voué au 403. Le miroir est donc légitime — mais il
- * était réécrit inline dans deux écrans, et rien ne le reliait à sa source.
+ * Le backend en est le juge (`ClubRole::isManager()`, lu par `ManagementAccessGuard`) ; le
+ * frontend en garde un miroir d'affichage (`MANAGER_ROLE` de `shared/lib/roles.ts`, lu par
+ * `isManagementRole`) pour ne pas OFFRIR un geste voué au 403. Depuis la fermeture de la colonne
+ * `role` (admin, member), plus aucune liste de rôles de gestion n'existe : un seul rôle gère.
  *
  * ⚠ **Le sens dangereux est l'AJOUT.** Un rôle de gestion ajouté côté serveur et oublié
  * côté frontend : les écrans continuent de **masquer** une capacité que le backend autorise.
  * La fonctionnalité existe, elle est invisible, et **rien ne le signale** — aucune erreur, le
  * bouton n'est simplement pas là. Le retrait, lui, est bruyant : l'écran offre un geste que
  * l'API refuse, et le 403 se voit.
+ *
+ * Jumeau côté écran : `frontend/src/shared/lib/coachName.test.ts` (« rôles de gestion ») prouve
+ * que `isManagementRole` ne rend vrai que pour ce rôle.
  */
 #[Group('contract')]
 final class ManagementRolesMatchBackendTest extends TestCase
 {
     private const string FRONT_ROLES = __DIR__ . '/../../../frontend/src/shared/lib/roles.ts';
 
-    public function testTheFrontendMirrorsTheBackendRoles(): void
+    public function testTheFrontendManagerRoleIsTheOnlyBackendManagerRole(): void
     {
-        /** @var list<string> $backend */
-        $backend = new ReflectionClass(ClubUserRepository::class)->getConstant('MANAGEMENT_ROLES');
-        sort($backend);
+        $backend = array_values(array_map(
+            static fn (ClubRole $role): string => $role->value,
+            array_filter(ClubRole::cases(), static fn (ClubRole $role): bool => $role->isManager()),
+        ));
 
         $source = file_get_contents(self::FRONT_ROLES);
         self::assertIsString($source, \sprintf('Illisible : %s', self::FRONT_ROLES));
 
-        $found = preg_match('/MANAGEMENT_ROLES = \[(.*?)\]/s', $source, $matches);
-        self::assertSame(1, $found, 'La liste des rôles a disparu du frontend — si elle a changé de forme, mettre ce test à jour plutôt que de le retirer.');
+        $found = preg_match('/export const MANAGER_ROLE\b[^=]*=\s*"([a-z_]+)"/', $source, $matches);
+        self::assertSame(1, $found, 'Le rôle de gestion (MANAGER_ROLE) a disparu du frontend — si sa forme a changé, mettre ce test à jour plutôt que de le retirer.');
 
-        preg_match_all('/"([a-z_]+)"/', $matches[1], $front);
-        $frontRoles = $front[1];
-        sort($frontRoles);
-
-        self::assertSame($backend, $frontRoles, \sprintf(
-            "Le miroir frontend des rôles de gestion a dérivé du backend.\n"
-            . "Backend : %s\nFrontend : %s\n\n"
+        self::assertSame($backend, [$matches[1]], \sprintf(
+            "Le miroir frontend du rôle de gestion a dérivé du backend.\n"
+            . "Backend (ClubRole::isManager) : %s\nFrontend (MANAGER_ROLE) : %s\n\n"
             . "Un rôle ajouté côté serveur et oublié côté écran fait MASQUER une capacité que\n"
             . 'l\'API autorise : la fonctionnalité existe, elle est invisible, et rien ne le dit.',
             implode(', ', $backend),
-            implode(', ', $frontRoles),
+            $matches[1],
         ));
     }
 

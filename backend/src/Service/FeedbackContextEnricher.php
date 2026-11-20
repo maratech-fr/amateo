@@ -113,7 +113,7 @@ final readonly class FeedbackContextEnricher
         $membership = $this->clubUserRepository->findActiveMembership($userId, $clubId);
 
         $auto = [
-            'role' => $membership?->getRole(),
+            'role' => $membership?->getRole()->value,
             'season' => $season instanceof Season ? [
                 'id' => $season->getId(),
                 'name' => $season->getName(),

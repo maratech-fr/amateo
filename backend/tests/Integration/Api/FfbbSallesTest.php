@@ -122,7 +122,7 @@ final class FfbbSallesTest extends WebTestCase
 
     public function testManagementGate(): void
     {
-        $editorToken = $this->makeMember('editor');
+        $editorToken = $this->makeMember('member');
         $this->client->request('GET', '/api/ffbb/salles?postalCode=69100', [], [], [
             'HTTP_AUTHORIZATION' => 'Bearer ' . $editorToken,
         ]);

@@ -752,7 +752,7 @@ final class FfbbRencontresApiTest extends WebTestCase
         [, , $clubId] = $this->register('FRI');
         $this->useStubClubCode($clubId);
         $this->createTeam($clubId);
-        $editorToken = $this->addActiveMember($clubId, 'editor');
+        $editorToken = $this->addActiveMember($clubId, 'member');
 
         $this->client->request('GET', '/api/ffbb/rencontres', [], [], $this->auth($editorToken));
         self::assertResponseStatusCodeSame(403, 'the rencontre list leaks the club calendar — management only');

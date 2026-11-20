@@ -81,7 +81,7 @@ final class RgpdExportController extends AbstractController
         if (!$membership instanceof ClubUser) {
             return $this->json(['error' => 'Club not found.'], Response::HTTP_NOT_FOUND);
         }
-        if (!$this->clubUserRepository->isManagementRole($membership->getRole())) {
+        if (!$membership->getRole()->isManager()) {
             return $this->json(['error' => 'Forbidden.'], Response::HTTP_FORBIDDEN);
         }
 
