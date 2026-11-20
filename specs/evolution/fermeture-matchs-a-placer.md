@@ -70,8 +70,8 @@ Décisions du fondateur :
   `Security/ClosureImpactSaysTheSameEverywhereTest` (assertion :69 `preview.matchesToMove === saved.matchesToMove`,
   contredite par le besoin), `Integration/Service/VenueClosureImpactTest` :48-66 ; Behat
   `backend/features/une-fermeture-du-calendrier-s-applique-aux-matchs.feature:31-37` (le scénario « le radar signale
-  le match déjà dans ce gymnase » serait contredit). Rôle Membre : `AbstractStateProcessor.php:89 assertManager()`,
-  `ClosureWindowApplyController.php:67` ; gymnase étranger : `assertClosedVenueBelongsToTheClub`
+  le match déjà dans ce gymnase » serait contredit). Rôle Membre : refusé par le contrôle central
+  (`backend/src/Access/ClubAccessListener.php`) ; gymnase étranger : `assertClosedVenueBelongsToTheClub`
   (`ConstraintStateProcessor.php:229-238` → 422), NR `MatchTenantIsolationTest.php:240-271`.
 
 ### 1.3 Le plan final (plan d'origine + révision 1, tel que relu)

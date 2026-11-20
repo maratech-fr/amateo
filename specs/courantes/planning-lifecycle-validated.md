@@ -78,8 +78,8 @@ datée d'un autre moment n'alerte pas. Rendu : `PlacedAbsencesNotice` (`planning
 `warning`, « Une séance sans coach » / « N séances sans coach »), dès qu'une version est affichée, via `usePlacedConflicts(scheduleId)` (clé `["training","placed-conflicts", scheduleId ?? "season"]`,
 invalidée par préfixe après un déplacement).
 
-`GET /api/training/placed-conflicts` (club-scopé, réservé gestionnaire — SEC-07,
-`ManagementAccessGuard::assertManager()` tiré en premier) rend `{seasonPlanChosen, conflicts,
+`GET /api/training/placed-conflicts` (club-scopé, réservé gestionnaire — déclaré,
+refusé 403 au Membre par le contrôle central avant le contrôleur) rend `{seasonPlanChosen, conflicts,
 relays, absences}` : `seasonPlanChosen: false` (aucune version pointée) veut dire « pas de planning en
 vigueur à scanner » — `conflicts: []` n'y signifie alors **pas** « tout va bien ». Un relais toléré
 sort de `conflicts` et entre dans `relays` (`{personId, personName, dayOfWeek, lateMinutes,

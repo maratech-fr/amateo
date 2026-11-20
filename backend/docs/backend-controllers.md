@@ -55,13 +55,24 @@ est éclatée **par domaine** :
 - **Hors déclaration** : console (`/api/admin/`), dev (`/api/dev/`), routes publiques
   (`PublicApiRouteCatalog`) et routes du cadre d'API Platform.
 
-`AccessDeclarationResolver` lit la déclaration d'une requête routée. **Aucun écouteur ne la lit
-encore : le contrôle reste celui de la main** (`ManagementAccessGuard::assertManager()` en tête d'un
-contrôleur d'écriture, `requiresManagementRole()` pour un processor). La déclaration doit dire ce que
-le garde fait : le balayage joue un Membre sur chaque route et compare au public déclaré, d'après
-deux tables écrites à la main (`MemberWriteSweepTest::ROUTES` pour les écritures,
-`MANAGER_ONLY_READS` pour les lectures) — une nouvelle route gestionnaire s'inscrit donc dans la
-table qui la concerne ET porte sa déclaration.
+`ClubAccessListener` (`kernel.request`, priorité 4, requête principale seulement) décide : il ne
+contrôle que `^/api/`, dans l'ordre console → dev → cadre d'API Platform → publique → `api_login` →
+déclaration (`AccessDeclarationResolver`). Une route sans déclaration est refusée à tous (403) ; une
+fonction « gestionnaire » appelée par un Membre est refusée 403, `detail` = « Cette action est
+réservée aux gestionnaires. » (`ManagementAccessGuard::REFUSAL`), avant tout contrôleur : rien n'est
+lu ni écrit. La méthode est celle que le routeur a vue (`getMethod()`, en-tête de surcharge compris) :
+GET et HEAD lisent, le reste écrit. **Un nouveau contrôleur ne porte donc aucun garde de rôle : il
+se déclare, le balayage et l'écouteur font le reste** (`ManagementAccessGuard::assertManager()` et le
+défaut `requiresManagementRole()` de `AbstractStateProcessor` n'existent plus). Le balayage joue un
+Membre sur chaque route et compare au public déclaré, d'après deux tables écrites à la main
+(`MemberWriteSweepTest::ROUTES` pour les écritures, `MANAGER_ONLY_READS` pour les lectures) — une
+nouvelle route gestionnaire s'inscrit dans la table qui la concerne ET porte sa déclaration.
+
+Ce qui reste hors de l'écouteur, par nature : des gardes qui AIGUILLENT au lieu de refuser
+(`isManager()` : logo adverse non stocké en 404 pour le Membre, jetons personnels des coachs servis
+au gestionnaire seul, plafond de génération/placement dans `ClubQuotaSubscriber`) et les gardes qui
+portent sur le club de l'URL, pas celui de la session (`ClubStateProcessor`, les portes d'import
+`TeamImportGate`, `FixtureImportGate`, `ParcImportGate`).
 
 ### Authentification (`AuthController.php`)
 
@@ -124,7 +135,7 @@ opt-in par contrôleur.
 
 | Route | Méthode | Contrôleur | Description |
 |-------|---------|------------|-------------|
-| `/api/schedules/{id}/generate` | POST | `GenerateScheduleController` | Lance la génération asynchrone. Gate management (`assertManager`, SEC-07). Vérifie l'appartenance du schedule au club courant, **borne de complexité A10 pré-dispatch** (`GenerationComplexityGuard` : teams ≤200 · venues ≤50 · slots ≤3000 · contraintes permanentes ≤500 · teams×venues ≤2000 → **422** avant toute mise en queue, statut inchangé, #156), **coach seul à deux endroits en même temps** (`CoachInTwoPlacesGuard` → **422** nommant le coach et les deux gymnases ; même garde sur `/regenerate` et `/fill`, le Récap ne couvrant pas ces guichets), **blocages du Récap** (`GenerationBlockersGuard` → **422** `{error, blocker: true}`, motif du Récap tel quel, même garde sur `/regenerate` et `/fill`, sauf les séances verrouillées d'une équipe, que `/fill` ne compte pas ; détail : [`generation-flow.md`](generation-flow.md) §2.3), **épinglage orphelin sur un planning de période** (`OrphanPinGuard`, #8) : un verrou HARD ou une réservation qui ne retombe plus sur aucun créneau de la grille de la période (grille refaite : page blanche, recopie) → **422** nommant le gymnase, le jour et l'équipe. ⚠ **Un gymnase DÉSACTIVÉ ou EFFECTIVEMENT fermé-total sur la fenêtre en est exclu** : l'état EFFECTIF composé par `PlanVenueClosures::effectiveStateForPlan/Entry` (indisponibilité déclarée × masque manuel du plan — l'incident PRÉ-REMPLIT un défaut que le masque contredit jour par jour) détermine ce fermé-total, jamais la seule dérivation brute des dates fermées. Son épinglage est inerte (le solveur ne le verra jamais) et revient intact à la réactivation — refuser enfermait le gestionnaire sur un épinglage devenu invisible. **Un jour EFFECTIVEMENT fermé (par le défaut ou par un masque `CLOSED`) d'un gymnase par ailleurs ouvert reste bloquant** : là, la séance serait replacée ailleurs en silence, ce que ce garde existe pour empêcher ; un jour rouvert par le masque (`OPEN`) n'est plus une cause de blocage. Passe le statut à `PENDING`, marque `onboardingCompleted=true` à la première génération, dispatche `GenerateScheduleMessage`. Retourne 202. |
+| `/api/schedules/{id}/generate` | POST | `GenerateScheduleController` | Lance la génération asynchrone. Fonction gestionnaire (déclarée ; contrôle central). Vérifie l'appartenance du schedule au club courant, **borne de complexité A10 pré-dispatch** (`GenerationComplexityGuard` : teams ≤200 · venues ≤50 · slots ≤3000 · contraintes permanentes ≤500 · teams×venues ≤2000 → **422** avant toute mise en queue, statut inchangé, #156), **coach seul à deux endroits en même temps** (`CoachInTwoPlacesGuard` → **422** nommant le coach et les deux gymnases ; même garde sur `/regenerate` et `/fill`, le Récap ne couvrant pas ces guichets), **blocages du Récap** (`GenerationBlockersGuard` → **422** `{error, blocker: true}`, motif du Récap tel quel, même garde sur `/regenerate` et `/fill`, sauf les séances verrouillées d'une équipe, que `/fill` ne compte pas ; détail : [`generation-flow.md`](generation-flow.md) §2.3), **épinglage orphelin sur un planning de période** (`OrphanPinGuard`, #8) : un verrou HARD ou une réservation qui ne retombe plus sur aucun créneau de la grille de la période (grille refaite : page blanche, recopie) → **422** nommant le gymnase, le jour et l'équipe. ⚠ **Un gymnase DÉSACTIVÉ ou EFFECTIVEMENT fermé-total sur la fenêtre en est exclu** : l'état EFFECTIF composé par `PlanVenueClosures::effectiveStateForPlan/Entry` (indisponibilité déclarée × masque manuel du plan — l'incident PRÉ-REMPLIT un défaut que le masque contredit jour par jour) détermine ce fermé-total, jamais la seule dérivation brute des dates fermées. Son épinglage est inerte (le solveur ne le verra jamais) et revient intact à la réactivation — refuser enfermait le gestionnaire sur un épinglage devenu invisible. **Un jour EFFECTIVEMENT fermé (par le défaut ou par un masque `CLOSED`) d'un gymnase par ailleurs ouvert reste bloquant** : là, la séance serait replacée ailleurs en silence, ce que ce garde existe pour empêcher ; un jour rouvert par le masque (`OPEN`) n'est plus une cause de blocage. Passe le statut à `PENDING`, marque `onboardingCompleted=true` à la première génération, dispatche `GenerateScheduleMessage`. Retourne 202. |
 
 ### Cycle de vie du planning (pointeur du plan — ADR-0002)
 

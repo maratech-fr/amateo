@@ -39,8 +39,8 @@ Headers:
   ajoutez le numéro » sur un candidat qui n'est pas `housenumber`
   (`BanGeocodingClient::mapFeature`).
 
-**Proxy backend** : `GET /api/geocode?q=` (`GeocodeController`) — management-gated (SEC-07,
-`ManagementAccessGuard::assertManager`), 422 si la requête est vide/malformée, 502 nommé si le
+**Proxy backend** : `GET /api/geocode?q=` (`GeocodeController`) — réservé au gestionnaire (déclaration d'accès,
+contrôle central : 403 pour un Membre avant le contrôleur), 422 si la requête est vide/malformée, 502 nommé si le
 service est indisponible (best-effort : jamais un formulaire cassé). Le frontend n'appelle jamais
 directement api-adresse.data.gouv.fr (frontière §2 de `CLAUDE.md`). **Primitive front partagée** :
 `AddressGeocodeField` (`frontend/src/shared/components/ui/
@@ -459,7 +459,7 @@ corrige) à l'adresse fédérale de la salle :
 
 **Route** `GET /api/venues/geo-check` (`VenueGeoCheckController`, priority 10 — sinon `geo-check`
 serait avalé comme un `{id}` par la route item `/api/venues/{id}` d'API Platform, même piège que
-`/api/venues/fbi-labels`) : management-gated (`ManagementAccessGuard::assertManager`, SEC-07), club
+`/api/venues/fbi-labels`) : réservé au gestionnaire (déclaration d'accès, contrôle central), club
 et saison résolus depuis le contexte courant (jamais un `X-Club-Id` du front). **Lecture seule,
 aucune écriture** : le verdict est calculé côté serveur à chaque appel, jamais stocké. Réponse
 `list<{venueId, reason: "OTHER_STREET"|"FAR_FROM_ADDRESS", ffbbAddress, pointStreet: string|null,
