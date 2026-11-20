@@ -22,11 +22,11 @@ Vision produit : Amateo centralise la vie du club et remplace ce que le gestionn
 
 ## Ce que le code fait aujourd'hui (cadrage `oracle`)
 
-- Le coach est la personne : prénom, nom, e-mail, téléphone, genre, rattaché à la saison (`Coach.php:35-73`), recopié à « Préparer la saison suivante » (`SeasonTransitionService.php:279`). API : `CoachResource.php:24-31`. Saisie : Wizard, étape « Coachs » (`CoachesStep.tsx:172,450`).
+- Le coach est la personne : prénom, nom, e-mail, téléphone, genre, rattaché à la saison (`Coach.php:35-73`), recopié à « Préparer la saison suivante » (`SeasonTransitionService.php:286`). API : `CoachResource.php:24-31`. Saisie : Wizard, étape « Coachs » (`CoachesStep.tsx:172,450`).
 - Un salarié non coach n'existe pas ; contournement : un faux coach, qui entrerait dans la règle du solveur et l'avertissement d'avant génération (`PreSolvePreventionWarnings.php:412-453`).
 - L'indisponibilité d'un coach est une contrainte `COACH_AVAILABILITY` stricte, au nom généré (`ConstraintsStep.tsx:402-419`). La table a déjà une colonne `description` libre (`Entity/Constraint.php:46-47`, `ConstraintResource.php:48,101`) que le front ne connaît pas (`features/wizard/api.ts:756-765`).
 - Vue « par coach » : séances seulement, aucune activité hors équipe (`planning/lib/grid.ts:195`).
-- Modèle le plus proche, déjà rodé : les occupations de gymnase, information seulement (`Entity/VenueOccupancy.php`), copiées par plan de période et à la saison suivante (`SeasonTransitionService.php:230-239`).
+- Modèle le plus proche, déjà rodé : les occupations de gymnase, information seulement (`Entity/VenueOccupancy.php`), copiées par plan de période et à la saison suivante (`SeasonTransitionService.php:237-246`).
 - Exports : PDF (`PdfGenerator.php:141-158`) et Excel (`SpreadsheetGenerator.php:50`) ; aucun export par coach ni par salarié.
 - RGPD : les entités club sont rangées automatiquement ; une entité nouvelle fait échouer `RgpdExportCompletenessTest` et `PurgeCompletenessTest` tant qu'elle n'est pas rangée (`docs/security/rgpd.md:51-74`).
 
