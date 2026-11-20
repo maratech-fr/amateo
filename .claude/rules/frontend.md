@@ -77,7 +77,7 @@ paths:
 
 ## 2. Normes d'écran
 
-### Sans garde automatique — la revue seule les tient
+### Normes écrites en entier ici : aucune garde, ou une garde partielle, ne les tient
 
 - 🔴 **N1 : Enregistrer/Annuler d'une ligne en édition = TEXTE, jamais une icône seule** — patron
   `IdealSlotsEditor` (boutons `Enregistrer`/`Annuler` en texte) et le bouton d'enregistrement de
@@ -187,7 +187,8 @@ paths:
 - 🔴 **Toute pastille d'état = `StatusPill`** (`shared/components/ui/badge.tsx`), jamais un `<span>`
   arrondi recodé. Garde : `pillPrimitiveGuard.test.ts` (forme `rounded-full text-xs` + classe de TON
   sur une ligne ; les pastilles neutres `bg-muted`/`border-border` échappent à la garde, la revue les
-  tient ; exemptions nominatives dans le test).
+  tient ; exemptions nominatives dans le test). Hors portée délibérée : les quatre indices de chargement restés en TEXTE
+  (`ClubPage` § statistiques et § offres, `PeriodTeams`, `PeriodVenues`).
 - 🔴 **Un `onError` de mutation (toast d'erreur) vit UNE fois, au NIVEAU HOOK** (`useMutation({
   onError })`), jamais passé à `mutate(vars, { onError })` : le filet global `MutationCache.onError`
   (`shared/lib/queryClient.ts`) ne se désarme que sur le `onError` du hook, un toast posé au
@@ -201,6 +202,13 @@ paths:
   (`frontend/eslint.config.js`, `no-restricted-syntax`, `src/features/**` + `src/app/**`, admin
   exempté) — classe de largeur **littérale** sur ces composants, et `<select>` natif brut (utiliser
   `Select`/`TeamSelect`/`VenueSelect`) ; un `cn(...)`/variable échappe à l'AST, reste à la revue.
+- 🔴 **Une équipe « en entente (CTC) » porte `CtcMark`** (`shared/components/ui/ctc-mark.tsx`) DEVANT son
+  nom partout où il s'affiche comme étiquette (sélecteurs via `TeamSelect`) ; exclus : exports, pages
+  publiques à token, phrases/toasts/aria (nom nu), console admin. Garde : `ctcMarkGuard.test.ts`
+  (liste nominative `CTC_SURFACES` + balayage de complétude sur `teamLabel`).
+- 🔴 **Un contrôle segmenté = `SegmentedControl`** (`shared/components/ui/segmented-control.tsx`), jamais
+  un conteneur `bg-card p-0.5` fait main. Garde : `segmentedControlGuard.test.ts` (`src/features/**` et
+  `src/app/**`, admin exempté).
 - **A11Y : un bouton-icône = `<Button variant="ghost" size="icon-sm">`** (cible 36 px, WCAG 2.5.8),
   jamais un `<button>` brut `p-1` autour d'une icône. Garde : `iconTargetSizeGuard.test.ts` (liste
   nominative `SITES` : un site renommé = mise à jour mécanique, jamais suppression) ; l'en-tête de

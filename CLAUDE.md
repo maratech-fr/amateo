@@ -63,7 +63,7 @@ quoi, par axe, et les angles morts : `docs/testing/test-coverage-map.md`.
   de lot. Required checks de `main` : la liste se lit par `gh pr checks <n> --required` ; `strict`
   (branche à jour), `enforce_admins`, **Preflight** (refuse les PR de fork).
 - **Trois régimes, triés par l'événement et la branche CIBLE** (jamais par dossier touché) : PR vers
-  `main` = gate **complet** ; PR vers `lot/<sujet>` = le seul job « Lot Gate » ; push `main` = le
+  `main` = gate **complet** ; PR vers `lot/<sujet>` = le seul job « Lot Gate » (il ne joue ni `backend-tests`, ni Behat, ni e2e, ni Rector, ni Semgrep) ; push `main` = le
   seul job « Main Verdict ». Gardés par `CiWorkflowRegimeTest`. Composition du Lot Gate, rulesets
   `lot/**`, pièges : **`docs/ops/ci-runner.md` § Branche de lot** ; jobs : `docs/testing/testing-strategy.md` §1.
 - **Un plafond de temps de suite** (`test-time-ceiling.json`) ne remonte que sur la ligne datée du
@@ -174,9 +174,9 @@ intersection non vide = la branche attend le merge ; les autres branches attende
   commande). **Passe de tests du fondateur** : je note ses mots, rien d'autre (ni code, ni ligne de
   roadmap, ni commit) jusqu'à ce qu'il dise la passe finie.
 - **J'agis sans redemander** — plan validé en entier : tests rouges, code, doc et validation locale
-  se déroulent jusqu'au bout, lots suivants indépendants en worktree ; seule l'OUVERTURE d'une PR
-  suit la règle Git ci-dessus, et chantier fini + règle d'ouverture respectée = la PR s'ouvre sans
-  demander. **Dans un lot validé** : j'enchaîne ; ne reviennent au fondateur que le cadrage d'`oracle`
+  se déroulent jusqu'au bout, lots suivants indépendants en worktree ; l'OUVERTURE d'une PR,
+  elle, suit la règle Git ci-dessus (une seule, deux si elles sont indépendantes et sans fichier commun) ;
+  chantier fini + règle respectée = la PR s'ouvre sans demander. **Dans un lot validé** : j'enchaîne ; ne reviennent au fondateur que le cadrage d'`oracle`
   et le plan de `morpheus` (à valider), puis la PR finale (règles de merge ci-dessus).
 - **Toujours son GO** — merge hors lot, tag, déploiement, écriture sur sa base, ouverture d'une
   ligne de roadmap, marque.
