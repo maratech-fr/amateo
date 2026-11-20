@@ -169,7 +169,7 @@ export function PlacementPanel({
 }: PlacementPanelProps) {
   const { matchWindows, closures, holidays } = guards;
   const guardsReady = "ready" === guards.state;
-  // Masquer n'est légitime que pour un CHOIX (§7.2.3) : le sélecteur n'offre
+  // Masquer n'est légitime que pour un CHOIX : le sélecteur n'offre
   // que les gymnases de match — mais seulement si le club a déclaré des
   // fenêtres quelque part (sinon liste complète, donnée non adoptée). Tant que
   // les gardes ne sont pas prêtes, on garde la liste COMPLÈTE (ne jamais filtrer

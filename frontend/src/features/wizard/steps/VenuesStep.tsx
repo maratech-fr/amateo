@@ -577,7 +577,7 @@ function VenuesEditor() {
 
   // P1-4 PR B — un gymnase à fenêtre MATCH est légitime sans créneau
   // d'entraînement (loué pour les matchs seulement) : la règle l'épargne, ici
-  // comme au gate (useStepValidation — les deux sites bougent ensemble, §7.2).
+  // comme au gate (useStepValidation — les deux sites bougent ensemble).
   const matchVenues = matchVenueIds(matchWindowsQuery.data ?? []);
   // D-24 : le prédicat vient de la porte — les trois sites partagent la RÈGLE, pas le libellé.
   const emptyVenues = venuesWithoutSlot(venues, slots, matchVenues);

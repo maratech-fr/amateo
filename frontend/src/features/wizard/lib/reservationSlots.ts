@@ -123,7 +123,7 @@ export interface SharedSlotStatus {
 /**
  * Les créneaux partagés (capacité effective ≥ 2) qui méritent un mot au récap : non
  * réservés ou PARTIELLEMENT réservés. Un créneau plein n'apparaît pas. Règle extraite en
- * fonction pure (§7.2) : le test la falsifie sans monter l'écran.
+ * fonction pure : le test la falsifie sans monter l'écran.
  */
 export function sharedSlotStatuses(
   slots: VenueTrainingSlot[],
