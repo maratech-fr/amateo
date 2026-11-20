@@ -40,6 +40,7 @@ use App\Entity\VenueTrainingSlot;
 use App\Enum\CalendarEntryKind;
 use App\Enum\CalendarEntryPeriodType;
 use App\Enum\CalendarEntryStatus;
+use App\Enum\ClubRole;
 use App\Enum\ConstraintFamily;
 use App\Enum\ConstraintRuleType;
 use App\Enum\ConstraintScope;
@@ -376,7 +377,7 @@ final class BcclSeeder
             $clubUser = new ClubUser;
             $clubUser->setClubId($club->getId());
             $clubUser->setUserId($user->getId());
-            $clubUser->setRole('admin');
+            $clubUser->setRole(ClubRole::MANAGER);
             $clubUser->setIsActive(true);
             $manager->persist($clubUser);
         }
@@ -1967,7 +1968,7 @@ final class BcclSeeder
                 $clubUser = new ClubUser;
                 $clubUser->setClubId($club->getId());
                 $clubUser->setUserId($user->getId());
-                $clubUser->setRole('admin');
+                $clubUser->setRole(ClubRole::MANAGER);
                 $clubUser->setIsActive(true);
                 $manager->persist($clubUser);
                 $manager->flush();

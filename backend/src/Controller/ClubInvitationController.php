@@ -256,7 +256,7 @@ final class ClubInvitationController extends AbstractController
         }
 
         $membership = $this->clubUserRepository->findActiveMembership($user->getId(), $clubId);
-        if (!$membership instanceof ClubUser || !$this->clubUserRepository->isManagementRole($membership->getRole())) {
+        if (!$membership instanceof ClubUser || !$membership->getRole()->isManager()) {
             return $this->json(['error' => 'Accès refusé.'], 403);
         }
 

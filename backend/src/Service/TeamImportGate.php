@@ -58,7 +58,7 @@ final class TeamImportGate
         if (!$membership instanceof ClubUser) {
             return new JsonResponse(['error' => 'Club not found.'], Response::HTTP_NOT_FOUND);
         }
-        if (!$this->clubUserRepository->isManagementRole($membership->getRole())) {
+        if (!$membership->getRole()->isManager()) {
             return new JsonResponse(['error' => 'Forbidden.'], Response::HTTP_FORBIDDEN);
         }
 

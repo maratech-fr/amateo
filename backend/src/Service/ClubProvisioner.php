@@ -70,7 +70,7 @@ final class ClubProvisioner
         $clubUser = new ClubUser;
         $clubUser->setClubId($clubId);
         $clubUser->setUserId($userId);
-        $clubUser->setRole($role->value);
+        $clubUser->setRole($role);
         $clubUser->setIsActive($isActive);
         $this->entityManager->persist($clubUser);
 

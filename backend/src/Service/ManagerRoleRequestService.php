@@ -195,7 +195,7 @@ final class ManagerRoleRequestService
 
             return [200, [
                 'id' => $target->getId(),
-                'role' => $target->getRole(),
+                'role' => $target->getRole()->value,
                 'isActive' => $target->getIsActive(),
                 'isSelf' => $target->getId() === $admin->getId(),
             ]];
@@ -237,7 +237,7 @@ final class ManagerRoleRequestService
      */
     public function meState(ClubUser $membership, Club $club): ?array
     {
-        if (!$membership->getIsActive() || $this->clubUserRepository->isManagementRole($membership->getRole())) {
+        if (!$membership->getIsActive() || $membership->getRole()->isManager()) {
             return null;
         }
         $ara = $club->getFfbbClubCode();

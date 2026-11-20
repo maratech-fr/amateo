@@ -240,7 +240,7 @@ final class ClubApprovalService
                     // un autre club). Jamais une seconde ligne.
                     $row = $this->requesterRow($existing->getId(), $request->getUserId());
                     if (null !== $row) {
-                        if ($row['is_active'] && \in_array($row['role'], ['owner', 'admin'], true)) {
+                        if ($row['is_active'] && ClubRole::MANAGER->value === $row['role']) {
                             return ApprovalOutcome::NoOp; // déjà gestionnaire : le lien ne décide rien
                         }
                         if ($row['is_active'] && $row['requested'] && $row['escalated']) {

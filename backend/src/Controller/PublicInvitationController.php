@@ -250,11 +250,11 @@ final class PublicInvitationController extends AbstractController
     {
         $existing = $this->clubUserRepository->findOneBy(['clubId' => $clubId, 'userId' => $userId]);
         if ($existing instanceof ClubUser) {
-            $wasActiveManager = $existing->getIsActive() && $this->clubUserRepository->isManagementRole($existing->getRole());
+            $wasActiveManager = $existing->getIsActive() && $existing->getRole()->isManager();
             // Chantier Membre (PR 3) — une invitation ne RÉTROGRADE jamais : un gestionnaire actif
             // qui accepte une vieille invitation « Membre » le reste (le club ne se vide pas).
             if (!$wasActiveManager) {
-                $existing->setRole($role->value);
+                $existing->setRole($role);
             }
             if (!$wasActiveManager && ClubRole::MANAGER === $role) {
                 // Une invitation gestionnaire PROMEUT : la demande de rôle meurt (lien officiel

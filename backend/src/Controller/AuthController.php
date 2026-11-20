@@ -208,7 +208,7 @@ final class AuthController extends AbstractController
                 // principale ne sont PLUS exposés (décision fondateur 2026-08-04) :
                 // l'API FFBB ne les fournit pas, l'app ne les collecte plus, aucun
                 // écran ne les rend — les colonnes restent en base, données intactes.
-                if ($clubUser->getIsActive() && $this->clubUserRepository->isManagementRole($clubUser->getRole())) {
+                if ($clubUser->getIsActive() && $clubUser->getRole()->isManager()) {
                     $committee = null !== $clubEntity->getCommitteeCode()
                         ? $this->ffbbCommittees->findByCode($clubEntity->getCommitteeCode())
                         : null;
@@ -288,7 +288,7 @@ final class AuthController extends AbstractController
             'firstName' => $user->getFirstName(),
             'lastName' => $user->getLastName(),
             'membershipStatus' => $membershipStatus,
-            'role' => null !== $clubUser ? $clubUser->getRole() : null,
+            'role' => $clubUser?->getRole()->value,
             // P3-4 : sans membership, l'utilisateur peut porter une demande de
             // création en cours — le frontend affiche « demande transmise au club »
             // (et son issue) au lieu d'un état « aucun club » mensonger.

@@ -62,7 +62,7 @@ class ClubStateProcessor extends AbstractStateProcessor
         if (!$membership instanceof ClubUser) {
             throw new NotFoundHttpException('Ressource introuvable.');
         }
-        if (!$this->clubUserRepository->isManagementRole($membership->getRole())) {
+        if (!$membership->getRole()->isManager()) {
             throw new AccessDeniedHttpException('Accès refusé.');
         }
 

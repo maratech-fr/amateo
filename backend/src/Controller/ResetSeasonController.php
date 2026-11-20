@@ -52,7 +52,7 @@ final class ResetSeasonController extends AbstractController
         $membership = $user instanceof User
             ? $this->clubUserRepository->findActiveMembership($user->getId(), $clubId)
             : null;
-        if (!$membership instanceof ClubUser || !$this->clubUserRepository->isManagementRole($membership->getRole())) {
+        if (!$membership instanceof ClubUser || !$membership->getRole()->isManager()) {
             return $this->json(['error' => 'Cette action est réservée aux gestionnaires.'], Response::HTTP_FORBIDDEN);
         }
 
