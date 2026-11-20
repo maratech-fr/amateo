@@ -61,6 +61,45 @@ final class RlsIsolationTest extends KernelTestCase
         self::assertFalse((bool) $superuser, 'runtime connection must NOT be a superuser');
     }
 
+    /**
+     * Les rôles de sonde de `Integration/Command/EngineRequestsRecordConnectionGuardTest` (un SUPERUSER,
+     * un BYPASSRLS, un membre de `amateo_owner`, des policies `USING (true)`) vivent à l'échelle du
+     * CLUSTER, celui de la base de dev : une classe tuée avant son nettoyage ne laisse rien passer en
+     * silence — aucun rôle `engine_rec_probe_*`, aucune policy `engine_rec_probe*` ne survit à la suite.
+     */
+    public function testNoEngineRequestProbeRoleOrPolicyIsLeftBehind(): void
+    {
+        self::assertSame(
+            [],
+            $this->connection->fetchFirstColumn('SELECT rolname FROM pg_roles WHERE rolname LIKE \'engine\_rec\_probe%\' ORDER BY rolname'),
+            'rôle de sonde resté sur le cluster : le retirer (DROP OWNED BY puis DROP ROLE, connexion propriétaire)',
+        );
+        self::assertSame(
+            [],
+            $this->connection->fetchFirstColumn('SELECT tablename || \'.\' || policyname FROM pg_policies WHERE policyname LIKE \'engine\_rec\_probe%\' ORDER BY 1'),
+            'policy de sonde restée : la retirer (DROP POLICY, connexion propriétaire)',
+        );
+    }
+
+    /**
+     * Le rôle de l'application ne peut devenir (`SET ROLE`) aucun rôle qui contourne la sécurité par
+     * club : ni superuser, ni BYPASSRLS, ni membre de `amateo_owner` (la porte `admin_all`).
+     */
+    public function testTheApplicationRoleCannotBecomeARoleThatBypassesClubSecurity(): void
+    {
+        self::assertSame(
+            [],
+            $this->connection->fetchFirstColumn(
+                'SELECT r.rolname FROM pg_roles r '
+                . 'WHERE r.rolname <> current_user AND pg_has_role(current_user, r.oid, \'SET\') '
+                . 'AND (r.rolsuper OR r.rolbypassrls OR EXISTS ('
+                . 'SELECT 1 FROM pg_roles o WHERE o.rolname = \'amateo_owner\' AND pg_has_role(r.oid, o.oid, \'MEMBER\'))) '
+                . 'ORDER BY r.rolname',
+            ),
+            'le rôle de l\'application peut devenir un rôle qui contourne la RLS',
+        );
+    }
+
     public function testEveryClubIdTableIsUnderForcedRls(): void
     {
         // Coverage guard: the migration hardcodes the table list — a future

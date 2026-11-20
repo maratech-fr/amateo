@@ -24,6 +24,7 @@ use App\Enum\LockOrigin;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
 use App\Service\EngineRequestFingerprint;
+use App\Service\EngineRequestRecorder;
 use App\Service\ScheduleConstraintBuilder;
 use App\Service\SchedulePlanProvisioner;
 use App\Tests\EngineRequestDecorTrait;
@@ -36,6 +37,7 @@ use RecursiveDirectoryIterator;
 use RecursiveIteratorIterator;
 use ReflectionClass;
 use ReflectionNamedType;
+use RuntimeException;
 use Symfony\Bundle\FrameworkBundle\Console\Application;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 use Symfony\Component\Console\Tester\CommandTester;
@@ -200,6 +202,18 @@ final class EngineRequestsRecordCommandTest extends KernelTestCase
         yield 'remontée de dossier' => ['../x'];
         yield 'pas un uuid' => ['club-a'];
         yield 'uuid suivi d\'un chemin' => [self::ER_CLUB . '/../../etc'];
+    }
+
+    /** @return iterable<string, array{callable(string, string): void}> */
+    public static function symlinkedOutFolders(): iterable
+    {
+        yield 'lien vers un dossier vide' => [static function (string $link, string $target): void {
+            mkdir($target, 0o775, true);
+            symlink($target, $link);
+        }];
+        yield 'lien qui ne mène nulle part' => [static function (string $link, string $target): void {
+            symlink($target, $link);
+        }];
     }
 
     /**
@@ -583,6 +597,74 @@ final class EngineRequestsRecordCommandTest extends KernelTestCase
         $this->purgeEngineRequestCache();
     }
 
+    /**
+     * Une purge du cache qui échoue (Redis tombé) en fin de club ne laisse pas le club posé sur la
+     * connexion ni ses entités dans l'EntityManager : l'échec remonte, le relâchement a lieu quand même.
+     * Le recorder est construit comme le conteneur le construit, seul son cache remplacé par un cache
+     * dont `invalidateTags` lève.
+     */
+    public function testAFailingCachePurgeStillReleasesTheClubAndClearsTheEntityManager(): void
+    {
+        $em = $this->erEm();
+        $team = $em->getRepository(Team::class)->find(self::ER_TEAM_U13);
+        self::assertInstanceOf(Team::class, $team);
+        self::assertTrue($em->contains($team), 'témoin : une entité du club est gérée avant l\'enregistrement');
+        $this->clearGuc();
+
+        $recorder = $this->recorderWithCache($this->cacheThatCannotPurge());
+        try {
+            $recorder->requestsOfClub(self::ER_CLUB);
+            self::fail('l\'échec de la purge du cache doit remonter');
+        } catch (RuntimeException $failure) {
+            self::assertSame('Redis tombé', $failure->getMessage());
+        }
+
+        self::assertSame('', (string) $em->getConnection()->fetchOne('SELECT COALESCE(current_setting(\'app.club_id\', true), \'\')'), 'le club n\'est plus posé sur la connexion');
+        self::assertFalse($em->contains($team), 'l\'EntityManager est vidé : rien du club ne reste pour le suivant');
+    }
+
+    /**
+     * La racine `--out` naît en 0700 : les empreintes de prénoms se retrouvent par dictionnaire, les
+     * fichiers se traitent comme la base dont ils viennent (lisibles du seul propriétaire).
+     */
+    public function testTheOutFolderIsCreatedReadableByItsOwnerOnly(): void
+    {
+        $this->seedReachableDecor();
+
+        $out = $this->recordOk([self::ER_CLUB]);
+
+        clearstatcache();
+        self::assertSame('0700', \sprintf('%04o', fileperms($out) & 0o777), '--out créé en 0700');
+    }
+
+    /**
+     * Un `--out` qui est un lien symbolique est refusé (sortie 2) avant toute écriture : l'outil
+     * n'écrit jamais là où un lien le mènerait.
+     *
+     * @param callable(string, string): void $prepare
+     */
+    #[DataProvider('symlinkedOutFolders')]
+    public function testAnOutThatIsASymbolicLinkIsRefusedBeforeAnyWrite(callable $prepare): void
+    {
+        $this->seedReachableDecor();
+        $base = \dirname($this->newOutDir());
+        mkdir($base, 0o775, true);
+        $link = $base . '/out';
+        $target = $base . '/cible';
+        $prepare($link, $target);
+
+        $tester = $this->tester();
+        $code = $tester->execute(['--out' => $link, '--club' => [self::ER_CLUB]]);
+
+        self::assertSame(2, $code, '--out lien symbolique : sortie 2. ' . $tester->getDisplay());
+        self::assertTrue(is_link($link), 'le lien reste tel quel');
+        if (is_dir($target)) {
+            self::assertSame([], $this->allFiles($target), 'rien n\'est écrit au bout du lien');
+        } else {
+            self::assertFileDoesNotExist($target, 'le lien qui ne menait nulle part ne mène toujours nulle part');
+        }
+    }
+
     // ---- gestes (appelés par les fournisseurs de données) --------------------------------------
 
     public function setSessionsPerWeek(string $teamId, int $sessions): void
@@ -900,6 +982,30 @@ final class EngineRequestsRecordCommandTest extends KernelTestCase
         return $command;
     }
 
+    /** Le recorder construit comme le conteneur le construit (services résolus par type), seul son cache imposé. */
+    private function recorderWithCache(TagAwareCacheInterface $cache): EngineRequestRecorder
+    {
+        $constructor = new ReflectionClass(EngineRequestRecorder::class)->getConstructor();
+        self::assertNotNull($constructor);
+        $arguments = [];
+        foreach ($constructor->getParameters() as $parameter) {
+            $type = $parameter->getType();
+            self::assertInstanceOf(ReflectionNamedType::class, $type, 'paramètre ' . $parameter->getName() . ' : un service typé');
+            $arguments[] = TagAwareCacheInterface::class === $type->getName() ? $cache : self::getContainer()->get($type->getName());
+        }
+
+        return new EngineRequestRecorder(...$arguments);
+    }
+
+    /** Un cache dont la purge par tag échoue, comme quand Redis est tombé. */
+    private function cacheThatCannotPurge(): TagAwareCacheInterface
+    {
+        $cache = $this->createStub(TagAwareCacheInterface::class);
+        $cache->method('invalidateTags')->willThrowException(new RuntimeException('Redis tombé'));
+
+        return $cache;
+    }
+
     /**
      * @param list<string> $clubs
      */
@@ -1069,7 +1175,8 @@ final class EngineRequestsRecordCommandTest extends KernelTestCase
             return;
         }
         foreach (new RecursiveIteratorIterator(new RecursiveDirectoryIterator($dir, FilesystemIterator::SKIP_DOTS), RecursiveIteratorIterator::CHILD_FIRST) as $file) {
-            $file->isDir() ? rmdir((string) $file) : unlink((string) $file);
+            // Un lien (vers un dossier ou nulle part) se retire comme un fichier, sans suivre sa cible.
+            $file->isDir() && !$file->isLink() ? rmdir((string) $file) : unlink((string) $file);
         }
         rmdir($dir);
     }

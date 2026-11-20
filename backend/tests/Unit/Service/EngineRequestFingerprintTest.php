@@ -75,6 +75,43 @@ final class EngineRequestFingerprintTest extends TestCase
         yield 'nom en capitales' => ['SM1'];
         yield 'nom accentué' => ['Entraîneur'];
         yield 'nom dans un id composé' => ['team-coach:Gymnase Nord'];
+        // Un mot minuscule a la forme d'un mot d'identifiant (`team-coach`) : il reste un nom.
+        yield 'prénom en minuscules' => ['alix'];
+        yield 'catégorie en minuscules' => ['senior'];
+        yield 'gymnase en minuscules, avec un tiret' => ['gymnase-nord'];
+        yield 'préfixe connu suivi d\'un nom' => ['team-coach:alix'];
+        yield 'préfixe inconnu suivi d\'un UUID' => ['gymnase-nord:' . self::TEAM_A];
+        yield 'préfixe connu seul' => ['priority-tier'];
+        yield 'UUID suivi d\'un nom' => [self::TEAM_A . ':alix'];
+    }
+
+    /**
+     * Les seules formes d'id que les constructeurs de demande produisent aujourd'hui, et les seules qui
+     * restent en clair (tout autre id est désigné par son empreinte, `idsThatCarryAName`) : UUID, nombre, `team-coach:<uuid>`, `coach-player-unavailability:<uuid>`,
+     * `priority-tier:<n>` (`ScheduleConstraintBuilder.php:1563,1582,1608`), `<uuid>:<uuid>` (règle de
+     * club développée par équipe, `:1677,1697`), `<uuid>:<uuid>:<jour>:<hh>:<mm>` (affectation
+     * précédente, `:1139`).
+     *
+     * @return iterable<string, array{string}>
+     */
+    public static function idsOfTheRequestBuilders(): iterable
+    {
+        yield 'UUID' => [self::TEAM_A];
+        yield 'nombre' => ['42'];
+        yield 'entraîneur d\'équipe' => ['team-coach:' . self::TEAM_A];
+        yield 'indisponibilité d\'entraîneur joueur' => ['coach-player-unavailability:' . self::TEAM_A];
+        yield 'palier de priorité' => ['priority-tier:2'];
+        yield 'règle de club développée par équipe' => [self::TEAM_A . ':' . self::TEAM_B];
+        yield 'affectation précédente' => [self::TEAM_A . ':' . self::TEAM_B . ':1:19:30'];
+    }
+
+    #[DataProvider('idsOfTheRequestBuilders')]
+    public function testTheIdFormsOfTheRequestBuildersStayInClear(string $id): void
+    {
+        $rendered = EngineRequestFingerprint::render(['items' => [['id' => $id, 'dayOfWeek' => 1]]]);
+
+        self::assertStringStartsWith("items#order\t" . $id . "\n", $rendered, 'la ligne d\'ordre désigne l\'élément par son id en clair');
+        self::assertStringContainsString("\nitems[" . $id . "].dayOfWeek\t1\n", $rendered, 'le chemin désigne l\'élément par son id en clair');
     }
 
     /**
@@ -95,23 +132,6 @@ final class EngineRequestFingerprintTest extends TestCase
             $rendered,
         );
         self::assertStringNotContainsString($id, $rendered);
-    }
-
-    /** Les ids composés des constructeurs (`team-coach:<uuid>`, `priority-tier:<n>`, `<uuid>:<uuid>`) restent lisibles. */
-    public function testAComposedIdOfUuidsNumbersAndIdWordsStaysInClear(): void
-    {
-        $rendered = EngineRequestFingerprint::render(['constraints' => [
-            ['id' => 'team-coach:' . self::TEAM_A],
-            ['id' => 'priority-tier:2'],
-            ['id' => self::TEAM_A . ':' . self::TEAM_B],
-        ]]);
-
-        self::assertStringContainsString(
-            "constraints#order\tteam-coach:" . self::TEAM_A . ',priority-tier:2,' . self::TEAM_A . ':' . self::TEAM_B . "\n",
-            $rendered,
-        );
-        self::assertStringContainsString("\nconstraints[team-coach:" . self::TEAM_A . "].id\t", $rendered);
-        self::assertStringContainsString("\nconstraints[priority-tier:2].id\t", $rendered);
     }
 
     public function testOneSortedLinePerLeafWithTabAndFinalNewline(): void
