@@ -40,6 +40,32 @@ final class ImportAuthorizationTest extends WebTestCase
         self::assertResponseStatusCodeSame(404, 'a non-member must not learn the club exists');
     }
 
+    /**
+     * Un Membre (non gestionnaire) qui vise le club d'un AUTRE club est refusé par le contrôle
+     * central AVANT que le club de l'URL ne soit lu : 403 et le message du contrôle, le même pour
+     * un club existant et pour un identifiant inconnu (aucun oracle d'existence). Le gestionnaire
+     * garde son 404 ({@see testImportOnForeignClubReturns404}). Écart E3 voulu, PR 3b ; jumeau au
+     * club de la session : `ClubAccessListenerTest::testE4EveryHandGuardRefusalNowCarriesTheCentralDetail`.
+     */
+    public function testAMemberImportingOnAForeignClubIsRefusedBeforeTheClubIsRead(): void
+    {
+        [, , $clubA] = $this->register('IMPF');
+        $memberToken = $this->addActiveMember($clubA, 'member');
+        [, , $clubB] = $this->register('IMPG');
+
+        $served = [];
+        foreach ([$clubB, '22222222-2222-4222-8222-222222222222'] as $target) {
+            $this->client->request('POST', '/api/clubs/' . $target . '/import-teams', [], [], [
+                'HTTP_AUTHORIZATION' => 'Bearer ' . $memberToken,
+            ]);
+            self::assertResponseStatusCodeSame(403, 'un Membre visant un autre club est refusé par le contrôle central');
+            $body = json_decode((string) $this->client->getResponse()->getContent(), true);
+            self::assertSame('Cette action est réservée aux gestionnaires.', \is_array($body) ? ($body['detail'] ?? null) : null);
+            $served[] = (string) $this->client->getResponse()->getContent();
+        }
+        self::assertSame($served[0], $served[1], 'club existant et club inconnu doivent rendre le même refus');
+    }
+
     public function testImportAsActiveAdminReaches400WithoutFile(): void
     {
         [$tokenA, , $clubA] = $this->register('IMPC');

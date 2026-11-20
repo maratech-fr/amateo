@@ -162,8 +162,8 @@ final class ClubAccessListenerTest extends WebTestCase
         $undeclared->attributes->add(['_route' => 'test_hors_familles', '_controller' => 'App\Controller\HorsFamillesController', '_club_id' => $this->clubId]);
         self::assertSame(403, $this->runListener($undeclared, $manager, HttpKernelInterface::MAIN_REQUEST), 'une route hors des six familles passe le contrôle central');
 
-        self::assertNull($this->runListener($this->routed('GET', '/api/teams'), $member, HttpKernelInterface::MAIN_REQUEST), 'témoin : une lecture « membre » est refusée au Membre');
-        self::assertNull($this->runListener($this->routed('POST', '/api/seasons/' . self::UNKNOWN . '/transition'), $manager, HttpKernelInterface::MAIN_REQUEST), 'témoin : une fonction « gestionnaire » est refusée au gestionnaire');
+        self::assertNull($this->runListener($this->routed('GET', '/api/teams'), $member, HttpKernelInterface::MAIN_REQUEST), 'témoin : une lecture « membre » doit passer pour un Membre');
+        self::assertNull($this->runListener($this->routed('POST', '/api/seasons/' . self::UNKNOWN . '/transition'), $manager, HttpKernelInterface::MAIN_REQUEST), 'témoin : une fonction « gestionnaire » doit passer pour un gestionnaire');
         self::assertSame(403, $this->runListener($this->routed('POST', '/api/seasons/' . self::UNKNOWN . '/transition'), $member, HttpKernelInterface::MAIN_REQUEST), 'témoin : le harnais voit le refus d\'un Membre');
     }
 
@@ -188,7 +188,8 @@ final class ClubAccessListenerTest extends WebTestCase
     /**
      * `X-HTTP-Method-Override` (honoré par Symfony sur un POST) ne fait jamais passer un Membre :
      * POST « inviter » déguisé en GET reste une fonction « gestionnaire » (la lecture des
-     * invitations l'est aussi) → refusé, aucune invitation, aucun mail ; POST déguisé en DELETE sur
+     * invitations l'est aussi) → refusé, aucune invitation, aucun mail ; POST déguisé en GET sur une
+     * lecture « membre » → servi en lecture (la méthode lue est bien la méthode routée) ; POST déguisé en DELETE sur
      * une équipe → refusé (403, ou 405 si l'en-tête est désactivé), l'équipe est intacte.
      */
     public function testTheMethodOverrideHeaderNeverLetsAMemberThrough(): void
@@ -200,6 +201,12 @@ final class ClubAccessListenerTest extends WebTestCase
         $this->asMemberWith('POST', '/api/invitations', '{"email":"intrus@test.fr","role":"admin"}', ['HTTP_X-HTTP-Method-Override' => 'GET']);
         $this->assertRefusedByTheCentralControl('POST /api/invitations déguisé en GET');
         self::assertSame([], $this->messagesSentByLastRequest(), 'un mail d\'invitation est parti');
+
+        // Témoin de la source de la méthode : POST déguisé en GET sur une lecture « membre » est
+        // servi comme la lecture que le routeur a vue. Lire la méthode réelle (`getRealMethod()`)
+        // y verrait une écriture et refuserait à tort : seul ce témoin le voit.
+        $this->asMemberWith('POST', '/api/teams', null, ['HTTP_X-HTTP-Method-Override' => 'GET']);
+        self::assertResponseStatusCodeSame(200, 'POST déguisé en GET sur une lecture « membre » : la déclaration lue n\'est pas celle de la méthode routée');
 
         $this->asMemberWith('POST', '/api/teams/' . $this->ids['team'], null, ['HTTP_X-HTTP-Method-Override' => 'DELETE']);
         self::assertContains($this->client->getResponse()->getStatusCode(), [403, 405], 'POST déguisé en DELETE par un Membre : ' . mb_substr((string) $this->client->getResponse()->getContent(), 0, 300));

@@ -71,6 +71,9 @@ final class ConflictCoachMailApiTest extends WebTestCase
 
     private const string PREVIEW_URL = '/api/fixtures/conflicts/mail-coaches/preview';
 
+    /** Le refus du contrôle central, écrit à la main. */
+    private const string MANAGER_ONLY = 'Cette action est réservée aux gestionnaires.';
+
     private KernelBrowser $client;
 
     private EntityManagerInterface $em;
@@ -844,7 +847,12 @@ final class ConflictCoachMailApiTest extends WebTestCase
         self::assertSame(SocleGuard::SEASON_PLAN_REQUIRED_MESSAGE, $this->json()['detail'] ?? null);
     }
 
-    /** Saison archivée : 409 en lecture seule, AVANT le contrôle de rôle (même pour un Membre). */
+    /**
+     * Saison gelée à la main : le gestionnaire reçoit 409 « lecture seule » sur l'envoi et sur
+     * l'aperçu (sinon l'aperçu répondrait 200 sur une saison en lecture seule) ; le Membre, lui, est
+     * refusé par le contrôle central AVANT toute lecture de la saison : 403 et le message du
+     * contrôle (écart E2 voulu, PR 3b — jumeau : `ClubAccessListenerTest::testE2AMemberMailingCoachesOnAFrozenSeasonIsRefusedNot409`).
+     */
     public function testArchivedSeasonIsReadonly(): void
     {
         $this->aiglons();
@@ -860,22 +868,24 @@ final class ConflictCoachMailApiTest extends WebTestCase
         self::assertQueuedEmailCount(0);
 
         $this->post(as: $member);
-        self::assertResponseStatusCodeSame(409, 'le 409 du noyau passe avant le 403 du contrôleur');
+        self::assertResponseStatusCodeSame(403, 'le Membre est refusé par le contrôle central, avant la garde de saison');
+        self::assertSame(self::MANAGER_ONLY, $this->json()['detail'] ?? null);
+        self::assertQueuedEmailCount(0);
 
-        // Saison gelée À LA MAIN : l'aperçu refuse au même rang que l'envoi (409 avant le 403) —
-        // sinon il répondrait 200 sur une saison en lecture seule.
         $this->preview();
         self::assertResponseStatusCodeSame(409);
         self::assertSame('Cette saison est archivée — elle est en lecture seule.', $this->json()['detail'] ?? null);
         $this->preview(as: $member);
-        self::assertResponseStatusCodeSame(409, 'saison gelée : le 409 de l\'aperçu passe avant le 403 du Membre');
+        self::assertResponseStatusCodeSame(403, 'saison gelée : l\'aperçu reste refusé au Membre par le contrôle central');
+        self::assertSame(self::MANAGER_ONLY, $this->json()['detail'] ?? null);
     }
 
     /**
      * Saison archivée PAR LE CALENDRIER (une saison plus récente est en cours) : le garde du noyau
-     * refuse l'aperçu (GET compris) comme l'envoi, 409 avant le 403, même pour un Membre.
+     * refuse l'aperçu (GET compris) au gestionnaire en 409 « lecture seule » ; le Membre est refusé
+     * avant, par le contrôle central, en 403 (écart E2 voulu, PR 3b).
      */
-    public function testACalendarArchivedSeasonRefusesThePreviewBeforeTheRole(): void
+    public function testACalendarArchivedSeasonRefusesThePreviewToTheManagerAndTheRoleToTheMember(): void
     {
         $this->aiglons();
         $member = $this->member('member');
@@ -886,7 +896,8 @@ final class ConflictCoachMailApiTest extends WebTestCase
         self::assertResponseStatusCodeSame(409);
         self::assertStringContainsString('lecture seule', (string) ($this->json()['detail'] ?? ''));
         $this->preview(season: $past, as: $member);
-        self::assertResponseStatusCodeSame(409, 'le 409 du noyau passe avant le 403 du contrôleur, aperçu compris');
+        self::assertResponseStatusCodeSame(403, 'le Membre est refusé par le contrôle central, avant la garde de saison');
+        self::assertSame(self::MANAGER_ONLY, $this->json()['detail'] ?? null);
     }
 
     /** Aucune saison résolue : 422 « Aucune saison sélectionnée. ». */
