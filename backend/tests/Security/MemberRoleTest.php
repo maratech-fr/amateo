@@ -344,6 +344,11 @@ final class MemberRoleTest extends WebTestCase
      * Témoin : la même ligne avec `admin` puis `member` passe — le refus vient bien de la
      * contrainte CHECK (SQLSTATE 23514), pas d'une clé étrangère ni d'un NOT NULL.
      * Falsification : contraintes retirées (`down()` de la migration) → les inserts passent, rouge.
+     *
+     * Rôle ABSENT : un CHECK laisse passer NULL (son test vaut « inconnu », pas « faux ») et la
+     * garde `NOT IN` de la migration ne voit pas un NULL ; seul le NOT NULL de la colonne
+     * (SQLSTATE 23502) empêche une adhésion sans rôle. Falsification : `ALTER COLUMN role DROP
+     * NOT NULL` → l'insert passe, rouge.
      */
     public function testTheDatabaseAcceptsOnlyTheTwoRoles(): void
     {
@@ -361,11 +366,11 @@ final class MemberRoleTest extends WebTestCase
             [$userId, 'roles-' . $userId . '@test.fr'],
         );
 
-        $insertMembership = static fn (string $role): int => $admin->executeStatement(
+        $insertMembership = static fn (?string $role): int => $admin->executeStatement(
             'INSERT INTO club_user (id, created_at, updated_at, club_id, user_id, role, joined_at, is_active) VALUES (gen_random_uuid(), now(), now(), ?, ?, ?, now(), true)',
             [$clubId, $userId, $role],
         );
-        $insertInvitation = static fn (string $role): int => $admin->executeStatement(
+        $insertInvitation = static fn (?string $role): int => $admin->executeStatement(
             'INSERT INTO club_invitation (id, club_id, email, role, token_hash, expires_at, created_at, invited_by_user_id) VALUES (gen_random_uuid(), ?, ?, ?, md5(random()::text), now() + interval \'7 days\', now(), ?)',
             [$clubId, 'invite-' . bin2hex(random_bytes(4)) . '@test.fr', $role, $userId],
         );
@@ -374,6 +379,7 @@ final class MemberRoleTest extends WebTestCase
             foreach (['owner', 'editor', 'viewer', 'coach'] as $refused) {
                 self::assertSame('23514', $this->sqlStateOf($admin, static fn (): int => $insert($refused)), \sprintf('%s.role = « %s » doit être refusé par la contrainte CHECK', $table, $refused));
             }
+            self::assertSame('23502', $this->sqlStateOf($admin, static fn (): int => $insert(null)), \sprintf('%s.role absent (NULL) doit être refusé par le NOT NULL : le CHECK, lui, laisse passer NULL', $table));
             foreach (ClubRole::cases() as $accepted) {
                 self::assertNull($this->sqlStateOf($admin, static fn (): int => $insert($accepted->value)), \sprintf('témoin : %s.role = « %s » passe', $table, $accepted->value));
             }
