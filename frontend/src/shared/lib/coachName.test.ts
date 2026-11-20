@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { COACH_UNKNOWN, coachFullName, coachNameParts, coachShortName } from "./coachName";
-import { isManagementRole, MANAGEMENT_ROLES } from "./roles";
+import { isManagementRole } from "./roles";
 
 /**
  * D-33 — trois formatages coexistaient, dont deux SANS `.trim()` : un coach sans nom de
@@ -62,19 +62,21 @@ describe("coachNameParts — les deux moitiés du nom (D5)", () => {
 });
 
 /**
- * D-32 — la liste des rôles de gestion était réécrite dans deux écrans. Le sens dangereux
- * est l'AJOUT : un rôle ajouté côté serveur et oublié ici, et les écrans continuent de
- * masquer une capacité que le backend autorise — invisible, sans erreur.
+ * Deux rôles seulement (admin, member) : seul le Gestionnaire se voit offrir les gestes de
+ * gestion. Une ancienne valeur (`owner`, convertie en base) ne rouvre jamais la main à l'écran.
+ * Jumeau serveur : `backend/tests/CrossStack/ManagementRolesMatchBackendTest.php` (le rôle de
+ * gestion du front est le seul que `ClubRole::isManager()` reconnaît).
  */
-describe("rôles de gestion (miroir d'affichage, D-32)", () => {
-  it("reflète MANAGEMENT_ROLES du backend", () => {
-    expect([...MANAGEMENT_ROLES]).toEqual(["owner", "admin"]);
-    expect(isManagementRole("owner")).toBe(true);
+describe("rôles de gestion (miroir d'affichage, deux rôles)", () => {
+  it("seul le Gestionnaire (admin) gère", () => {
     expect(isManagementRole("admin")).toBe(true);
+    expect(isManagementRole("member")).toBe(false);
   });
 
-  it("refuse tout autre rôle, y compris l'absence de rôle", () => {
-    expect(isManagementRole("coach")).toBe(false);
+  it("refuse toute autre valeur — ancienne (owner, editor, viewer) ou inventée — et l'absence de rôle", () => {
+    for (const role of ["owner", "editor", "viewer", "coach"]) {
+      expect(isManagementRole(role)).toBe(false);
+    }
     expect(isManagementRole(null)).toBe(false);
     expect(isManagementRole(undefined)).toBe(false);
   });

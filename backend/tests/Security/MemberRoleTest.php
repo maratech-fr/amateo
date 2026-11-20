@@ -6,10 +6,14 @@ namespace App\Tests\Security;
 
 use App\Entity\ClubUser;
 use App\Entity\User;
+use App\Enum\ClubRole;
 use App\Tests\StartsFreshBrowserSession;
 use App\Tests\VerifiesRegistration;
 use DateTimeImmutable;
+use Doctrine\DBAL\Connection;
+use Doctrine\DBAL\Exception\DriverException;
 use Doctrine\ORM\EntityManagerInterface;
+use Doctrine\Persistence\ManagerRegistry;
 use Lexik\Bundle\JWTAuthenticationBundle\Services\JWTTokenManagerInterface;
 use PHPUnit\Framework\Attributes\Group;
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
@@ -34,6 +38,19 @@ use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
  *    DERNIER gestionnaire → 409, y compris sur soi-même ;
  *  - P4-77 — un compte EFFACÉ (RGPD, `User::anonymizedAt`) ne se réactive ni ne s'approuve :
  *    ressusciter une identité anonymisée est refusé (409), la réactivation normale intacte.
+ *  - Lot 2 PR 1 — la colonne `role` est FERMÉE à deux valeurs : la base refuse toute autre
+ *    valeur (anciennes `owner`/`editor`/`viewer` comprises) dans `club_user` ET
+ *    `club_invitation`, l'API refuse en 422, et l'adhésion se lit en `ClubRole`.
+ *
+ * La conversion des anciennes lignes (owner → admin, editor/viewer → member, invitations en
+ * attente comprises, refus sur valeur inconnue) est le jumeau de migration
+ * {@see \App\Tests\Integration\Migration\ClubRoleClosingMigrationTest} : il prouve ce que
+ * DEVIENT une ancienne ligne ; ce test prouve ce que fait chacune des deux valeurs (un `admin`
+ * gère : testChangeRoleValidatesAndTakesEffect ; un `member` lit sans modifier :
+ * testMemberReadsEverythingButCannotPilotMemberships ; une invitation `member` s'accepte :
+ * ClubInvitationTest::testAcceptCancelsAnOrphanNotice). La chaîne entière ne tient pas dans
+ * un seul test : la migration joue sur la connexion `admin`, l'API sur `default`, deux
+ * transactions DAMA qui ne se voient pas.
  */
 #[Group('phase1')]
 #[Group('integration')]
@@ -106,11 +123,14 @@ final class MemberRoleTest extends WebTestCase
         [$adminToken, , $clubA] = $this->register('MRC');
         [$victimToken, , $victimId] = $this->makeMembership($clubA, 'admin', isActive: true);
 
-        // Rôle requis / hors enum → 422 (jamais persisté).
+        // Rôle requis / hors enum → 422 (jamais persisté). Les trois anciennes valeurs
+        // (owner, editor, viewer) sont hors liste comme n'importe quel libellé inventé.
         $this->post('/api/memberships/' . $victimId . '/role', $adminToken, '');
         self::assertResponseStatusCodeSame(422, 'changer un rôle sans corps → 422 (rôle requis)');
-        $this->post('/api/memberships/' . $victimId . '/role', $adminToken, '{"role":"coach"}');
-        self::assertResponseStatusCodeSame(422, 'rôle hors enum → 422');
+        foreach (['coach', 'owner', 'editor', 'viewer'] as $outOfList) {
+            $this->post('/api/memberships/' . $victimId . '/role', $adminToken, json_encode(['role' => $outOfList], \JSON_THROW_ON_ERROR));
+            self::assertResponseStatusCodeSame(422, \sprintf('rôle « %s » hors liste → 422', $outOfList));
+        }
 
         // Rétrogradation effective : la victime (2e gestionnaire) devient membre et
         // perd l'accès au pilotage — on vérifie l'EFFET, pas seulement le 200.
@@ -301,6 +321,50 @@ final class MemberRoleTest extends WebTestCase
         self::assertResponseIsSuccessful('un compte vivant se réactive comme avant');
     }
 
+    /**
+     * La base n'accepte que les deux rôles : une ancienne valeur (owner, editor, viewer) ou un
+     * libellé inventé ne peut plus entrer dans `club_user` ni dans `club_invitation`, quel que
+     * soit l'écrivain (SQL brut compris), donc aucun code ne relira jamais un troisième rôle.
+     *
+     * Témoin : la même ligne avec `admin` puis `member` passe — le refus vient bien de la
+     * contrainte CHECK (SQLSTATE 23514), pas d'une clé étrangère ni d'un NOT NULL.
+     * Falsification : contraintes retirées (`down()` de la migration) → les inserts passent, rouge.
+     */
+    public function testTheDatabaseAcceptsOnlyTheTwoRoles(): void
+    {
+        $admin = self::getContainer()->get(ManagerRegistry::class)->getConnection('admin');
+        self::assertInstanceOf(Connection::class, $admin);
+
+        $clubId = $this->uuid();
+        $admin->executeStatement(
+            'INSERT INTO club (id, created_at, updated_at, name, slug, timezone, locale, onboarding_completed, generation_count_season) VALUES (?, now(), now(), ?, ?, \'Europe/Paris\', \'fr\', true, 0)',
+            [$clubId, 'Rôles ' . $clubId, 'roles-' . $clubId],
+        );
+        $userId = $this->uuid();
+        $admin->executeStatement(
+            'INSERT INTO app_user (id, created_at, updated_at, email, password_hash, first_name, last_name) VALUES (?, now(), now(), ?, \'x\', \'R\', \'Ole\')',
+            [$userId, 'roles-' . $userId . '@test.fr'],
+        );
+
+        $insertMembership = static fn (string $role): int => $admin->executeStatement(
+            'INSERT INTO club_user (id, created_at, updated_at, club_id, user_id, role, joined_at, is_active) VALUES (gen_random_uuid(), now(), now(), ?, ?, ?, now(), true)',
+            [$clubId, $userId, $role],
+        );
+        $insertInvitation = static fn (string $role): int => $admin->executeStatement(
+            'INSERT INTO club_invitation (id, club_id, email, role, token_hash, expires_at, created_at, invited_by_user_id) VALUES (gen_random_uuid(), ?, ?, ?, md5(random()::text), now() + interval \'7 days\', now(), ?)',
+            [$clubId, 'invite-' . bin2hex(random_bytes(4)) . '@test.fr', $role, $userId],
+        );
+
+        foreach (['club_user' => $insertMembership, 'club_invitation' => $insertInvitation] as $table => $insert) {
+            foreach (['owner', 'editor', 'viewer', 'coach'] as $refused) {
+                self::assertSame('23514', $this->sqlStateOf($admin, static fn () => $insert($refused)), \sprintf('%s.role = « %s » doit être refusé par la contrainte CHECK', $table, $refused));
+            }
+            foreach (ClubRole::cases() as $accepted) {
+                self::assertNull($this->sqlStateOf($admin, static fn () => $insert($accepted->value)), \sprintf('témoin : %s.role = « %s » passe', $table, $accepted->value));
+            }
+        }
+    }
+
     public function testPublicTokenRoutesStayReachable(): void
     {
         // Les pages publiques à token (le token EST l'identité) répondent 404
@@ -343,7 +407,7 @@ final class MemberRoleTest extends WebTestCase
         \assert($em instanceof EntityManagerInterface);
         $membership = $em->getRepository(ClubUser::class)->findOneBy(['userId' => $me['id'], 'clubId' => $me['club']['id']]);
         \assert($membership instanceof ClubUser);
-        self::assertSame('admin', $membership->getRole(), 'le créateur du club naît Gestionnaire');
+        self::assertSame(ClubRole::MANAGER, $membership->getRole(), 'le créateur du club naît Gestionnaire (l\'adhésion se lit en ClubRole)');
 
         // SEC-16 : le cookie JWT posé par la vérification serait rejoué sur les
         // requêtes suivantes et pourrait l'emporter sur un Bearer d'AUTRE identité —
@@ -451,5 +515,32 @@ final class MemberRoleTest extends WebTestCase
     private function nilUuid(): string
     {
         return '11111111-1111-4111-8111-111111111111';
+    }
+
+    private function uuid(): string
+    {
+        $bytes = random_bytes(16);
+        $bytes[6] = \chr((\ord($bytes[6]) & 0x0F) | 0x40);
+        $bytes[8] = \chr((\ord($bytes[8]) & 0x3F) | 0x80);
+
+        return vsprintf('%s%s-%s-%s-%s-%s%s%s', str_split(bin2hex($bytes), 4));
+    }
+
+    /**
+     * Joue une écriture dans un point de sauvegarde annulé et rend le SQLSTATE de son refus, ou
+     * null si elle passe. Le point de sauvegarde garde la transaction utilisable après un refus.
+     */
+    private function sqlStateOf(Connection $connection, callable $write): ?string
+    {
+        $connection->beginTransaction();
+        try {
+            $write();
+
+            return null;
+        } catch (DriverException $refusal) {
+            return $refusal->getSQLState();
+        } finally {
+            $connection->rollBack();
+        }
     }
 }
