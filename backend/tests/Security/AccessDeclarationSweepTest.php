@@ -25,14 +25,19 @@ use App\Controller\VenuePeriodGridActionController;
 use App\Entity\Club;
 use App\Entity\Season;
 use App\Entity\SubscriptionPlan;
+use App\Entity\User;
+use App\Enum\ClubRole;
 use App\Security\PublicApiRouteCatalog;
+use App\Service\ClubInvitationManager;
 use App\Service\PlanEntitlements;
 use App\Service\TenantConnectionContext;
 use App\Tests\ChoosesPlanVersionTrait;
 use App\Tests\MemberReadOnlyDecorTrait;
 use App\Tests\StartsFreshBrowserSession;
 use App\Tests\VerifiesRegistration;
+use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
+use Lexik\Bundle\JWTAuthenticationBundle\Services\JWTTokenManagerInterface;
 use PHPUnit\Framework\Attributes\Group;
 use ReflectionClass;
 use ReflectionClassConstant;
@@ -40,7 +45,9 @@ use ReflectionMethod;
 use ReflectionParameter;
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
+use Symfony\Component\Finder\Finder;
 use Symfony\Component\HttpFoundation\Request;
+use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
 use Symfony\Component\Routing\Route;
 use Symfony\Component\Routing\RouterInterface;
 
@@ -69,6 +76,10 @@ use Symfony\Component\Routing\RouterInterface;
  *  5. RÉSOLUTION — une route d'API Platform sert la déclaration de sa ressource ; les quatorze
  *     opérations à contrôleur maison servent celle du CONTRÔLEUR (jamais celle de la ressource) ;
  *     les deux opérations non exposées sont nommées et non jouées.
+ *  6. COMPTE SANS CLUB — chaque route « compte » est jouée par un compte sans aucune adhésion et
+ *     répond le statut écrit dans `ACCOUNT_FUNCTIONS_WITHOUT_CLUB` (jamais le 404 « pas de club »).
+ *  7. UN SEUL PUBLIC PAR CIBLE — aucune classe ni méthode ne porte une déclaration de club ET
+ *     `#[AccountFunction]`.
  * Les tables de ce test sont écrites à la main, jamais dérivées des déclarations ; une ligne sans
  * route au routeur rougit.
  *
@@ -191,6 +202,27 @@ final class AccessDeclarationSweepTest extends WebTestCase
         'teams' => 'team', 'users' => 'member_user', 'venue_match_windows' => 'venue_match_window',
         'venue_occupancies' => 'venue_occupancy', 'venue_period_overrides' => 'venue_period_override', 'venues' => 'venue',
         'venue_training_slots' => 'slot', 'venue_travel_rule_settings' => 'travel_rule', 'venue_travel_times' => 'venue_travel_time',
+    ];
+
+    /**
+     * Ce qu'une fonction « compte » répond à un compte SANS AUCUNE adhésion, à la main :
+     * `MÉTHODE chemin` => [chemin joué, corps, statut attendu]. Jouées dans cet ordre (le mot de
+     * passe change avant l'effacement, qui clôt). L'acceptation d'invitation est jouée par un
+     * second compte sans club, à l'adresse invitée (`{invitation_token}`). Une route déclarée
+     * `#[AccountFunction]` absente d'ici rougit : une fonction de compte se prouve indépendante du club.
+     */
+    private const array ACCOUNT_FUNCTIONS_WITHOUT_CLUB = [
+        'GET /api/me' => ['/api/me', null, 200],
+        'PATCH /api/me' => ['/api/me', '{"firstName":"Sans"}', 200],
+        'GET /api/me/export' => ['/api/me/export', null, 200],
+        'GET /api/release-notes' => ['/api/release-notes', null, 200],
+        'POST /api/release-notes/seen' => ['/api/release-notes/seen', null, 204],
+        'GET /api/deployment-notice' => ['/api/deployment-notice', null, 200],
+        'POST /api/me/email' => ['/api/me/email', '{"currentPassword":"Password123!","email":"{new_email}"}', 200],
+        'DELETE /api/me/email' => ['/api/me/email', null, 200],
+        'POST /api/me/password' => ['/api/me/password', '{"currentPassword":"Password123!","newPassword":"Password456!Sans"}', 200],
+        'POST /api/invitations/{token}/accept' => ['/api/invitations/{invitation_token}/accept', null, 200],
+        'DELETE /api/me' => ['/api/me', '{"password":"Password456!Sans"}', 200],
     ];
 
     private const string MAIN_CONTROLLER = 'api_platform.symfony.main_controller';
@@ -407,9 +439,133 @@ final class AccessDeclarationSweepTest extends WebTestCase
         self::assertSame([], $wrong, "Routes de club où le Membre ne rencontre pas la déclaration :\n  - " . implode("\n  - ", $wrong));
     }
 
+    /**
+     * Une fonction déclarée « compte » ne dépend d'aucun club : un compte sans aucune adhésion la
+     * joue et obtient le statut écrit à la main (jamais le 404 « pas de club »). Le sens inverse
+     * (déclarée « club » mais jouable sans club) n'est pas une faute.
+     */
+    public function testAnAccountFunctionAnswersAnAccountWithoutAnyClub(): void
+    {
+        $this->registerManager('acc');
+        $resolver = $this->resolver();
+        $declared = [];
+        foreach ($this->apiRoutes() as $name => $route) {
+            foreach ($this->methods($route) as $method) {
+                if (null === $this->outsideFamily($name, $route, $method) && $resolver->for($this->requestFor($name, $route, $method)) instanceof AccountFunction) {
+                    $declared[] = $method . ' ' . $this->bare($route);
+                }
+            }
+        }
+
+        [$soloId, $soloToken] = $this->accountWithoutClub();
+        [$invitedId, $invitedToken, $invitedEmail] = $this->accountWithoutClub();
+        $this->ids['new_email'] = 'nouvelle' . substr(md5(uniqid('', true)), 0, 8) . '@test.fr';
+        $manager = self::getContainer()->get(ClubInvitationManager::class);
+        \assert($manager instanceof ClubInvitationManager);
+        $em = self::getContainer()->get(EntityManagerInterface::class);
+        \assert($em instanceof EntityManagerInterface);
+        self::getContainer()->get(TenantConnectionContext::class)->setClubId($this->clubId);
+        $this->ids['invitation_token'] = $manager->issue($this->clubId, $invitedEmail, ClubRole::MEMBER, $this->managerUserId);
+        $em->flush();
+        self::getContainer()->get(TenantConnectionContext::class)->clear();
+
+        $wrong = [];
+        foreach (array_diff($declared, array_keys(self::ACCOUNT_FUNCTIONS_WITHOUT_CLUB)) as $key) {
+            [$method, $path] = explode(' ', $key, 2);
+            $this->asAccount($soloId, $soloToken, $method, $this->fill($path), '{}');
+            $wrong[] = \sprintf('%s : déclarée « compte », absente de la liste des fonctions de compte — sans club elle répond %d %s', $key, $this->client->getResponse()->getStatusCode(), mb_substr((string) $this->client->getResponse()->getContent(), 0, 200));
+        }
+        foreach (array_diff(array_keys(self::ACCOUNT_FUNCTIONS_WITHOUT_CLUB), $declared) as $key) {
+            $wrong[] = $key . ' : ligne de la liste qui n\'est pas une route déclarée « compte »';
+        }
+        foreach (self::ACCOUNT_FUNCTIONS_WITHOUT_CLUB as $key => [$path, $body, $expected]) {
+            if (!\in_array($key, $declared, true)) {
+                continue;
+            }
+            [$method] = explode(' ', $key, 2);
+            $invited = str_contains($path, '{invitation_token}');
+            $this->asAccount($invited ? $invitedId : $soloId, $invited ? $invitedToken : $soloToken, $method, $this->fill($path), null === $body ? null : $this->fill($body));
+            $status = $this->client->getResponse()->getStatusCode();
+            if ($expected !== $status) {
+                $wrong[] = \sprintf('%s → %d sans club, %d attendu %s', $key, $status, $expected, mb_substr((string) $this->client->getResponse()->getContent(), 0, 200));
+            }
+        }
+
+        self::assertSame([], $wrong, "Fonctions « compte » qui dépendent d'un club :\n  - " . implode("\n  - ", $wrong));
+    }
+
+    /**
+     * Une cible (classe ou méthode) ne porte qu'UN public : jamais une déclaration de club
+     * (`ClubFunction`/`ClubResource`) ET `AccountFunction` ensemble — le lecteur prendrait la
+     * première en silence. Une méthode qui surcharge sa classe reste permise.
+     */
+    public function testNoTargetCarriesBothAClubAndAnAccountDeclaration(): void
+    {
+        $both = [];
+        $seen = 0;
+        $finder = new Finder()->files()->in(\dirname(__DIR__, 2) . '/src')->name('*.php');
+        foreach ($finder as $file) {
+            $class = 'App\\' . str_replace(['/', '.php'], ['\\', ''], $file->getRelativePathname());
+            if (!class_exists($class)) {
+                continue;
+            }
+            $reflection = new ReflectionClass($class);
+            foreach ([$reflection, ...$reflection->getMethods()] as $target) {
+                if ($target instanceof ReflectionMethod && $target->getDeclaringClass()->getName() !== $class) {
+                    continue;
+                }
+                $club = \count($target->getAttributes(ClubFunction::class)) + \count($target->getAttributes(ClubResource::class));
+                $account = \count($target->getAttributes(AccountFunction::class));
+                $seen += $club + $account;
+                if ($club + $account > 1) {
+                    $both[] = $target instanceof ReflectionMethod ? $class . '::' . $target->getName() : $class;
+                }
+            }
+        }
+
+        self::assertGreaterThan(50, $seen, 'témoin : le balayage lit des déclarations');
+        self::assertSame([], $both, "Cibles à deux publics :\n  - " . implode("\n  - ", $both));
+    }
+
     protected function setUp(): void
     {
         $this->client = self::createClient();
+    }
+
+    /**
+     * Un compte vérifié, sans AUCUNE adhésion, et son jeton.
+     *
+     * @return array{0: string, 1: string, 2: string} [id, jeton, adresse]
+     */
+    private function accountWithoutClub(): array
+    {
+        $container = self::getContainer();
+        $em = $container->get(EntityManagerInterface::class);
+        \assert($em instanceof EntityManagerInterface);
+        $hasher = $container->get(UserPasswordHasherInterface::class);
+        \assert($hasher instanceof UserPasswordHasherInterface);
+        $user = new User;
+        $user->setEmail('sansclub' . substr(md5(uniqid('', true)), 0, 8) . '@test.fr');
+        $user->setFirstName('Lou');
+        $user->setLastName('Sansclub');
+        $user->setPasswordHash($hasher->hashPassword($user, 'Password123!'));
+        $user->setEmailVerifiedAt(new DateTimeImmutable);
+        $em->persist($user);
+        $em->flush();
+        $token = $container->get(JWTTokenManagerInterface::class)->create($user);
+
+        return [$user->getId(), $token, $user->getEmail()];
+    }
+
+    private function asAccount(string $userId, string $token, string $method, string $url, ?string $body): void
+    {
+        $this->resetBucket('limiter.api', 'api-user-' . $userId);
+        $this->resetBucket('limiter.feedback', $userId);
+        $this->startFreshBrowserSession($this->client);
+        $this->client->request($method, $url, [], [], [
+            'HTTP_AUTHORIZATION' => 'Bearer ' . $token,
+            'CONTENT_TYPE' => 'application/json',
+        ], $body);
     }
 
     /**
