@@ -6,457 +6,257 @@ paths:
 # Frontend — conventions & pièges (chargé quand frontend/ est touché)
 
 > **Ce fichier ne remplace pas [`frontend/AGENTS.md`](../../frontend/AGENTS.md)** (frontières,
-> routage, état serveur/client, primitives, a11y). Il porte **seulement ce qui, non
-> su, rend un test VERT à tort** — parce que ces règles-là doivent être en contexte sans que
-> personne ait à penser à les chercher.
+> routage, état serveur/client, primitives, a11y). Il porte **seulement ce qui, non su, rend un test
+> VERT à tort** — ces règles-là doivent être en contexte sans que personne ait à les chercher.
 >
-> Une norme d'écran nouvelle ne naît plus avec sa garde statique. Une garde statique neuve n'entre
-> que pour la sécurité ou un geste destructeur.
+> Trois parties : (1) les pièges qui rendent un test vert à tort ; (2) les normes d'écran — celles
+> gardées par un test tiennent en deux lignes (règle, foyer, garde), celles qui n'ont aucune garde
+> restent complètes ; (3) le rôle Membre. Une norme d'écran nouvelle ne naît plus avec sa garde
+> statique : une garde statique neuve n'entre que pour la sécurité ou un geste destructeur.
 
-- 🔴 **Le front n'invente JAMAIS une règle métier — il AFFICHE celle que le backend a calculée.**
-  Toute logique qui répond « qu'est-ce qui s'applique / que fait le solveur / ce geste est-il
-  permis » n'existe **qu'une fois**. Trois régimes, un seul interdit : **(1) le backend dit** —
-  supprimer la redérivation, afficher la réponse (le défaut) ; **(2) miroir déclaré** — la
-  duplication est assumée (réactivité sans aller-retour réseau), **déclarée en tête de fichier**
-  ET gardée par un **test de parité** (patron : `CoachDoubleBookingDetector` ⇄
-  `wizard/lib/coachDoubleBooking.ts` ; côté cross-stack `PayloadCapacityMirror` +
-  `CapacityMirrorParityTest` ; côté cockpit `App\Service\HolidayWorkweekRule` ⇄
-  `cockpit/lib/holidayWorkweek.ts`, parité `HolidayWorkweekMirrorParityTest`, D4 2026-09-04 ;
-  `App\Service\WeekSegmentationRule` ⇄ `cockpit/lib/weekSegmentation.ts`, parité
-  `WeekSegmentationMirrorParityTest`, découpage début·milieu·fin, 2026-09-05 ; côté matchs
-  `MatchConflictDetector::kickoffInsideLeagueWindow` ⇄ `matches/lib/envelope.ts::
-  kickoffInsideLeagueWindow` (enveloppe ligue, intervalle fermé sur le jour), parité
-  `LeagueEnvelopeMirrorParityTest`/`leagueEnvelope.parity.test.ts`, FRT-32 2026-09-18 ; côté wizard
-  `App\Service\ReservationGroupOccupancy::matchingBlock` (règle b réciproque de
-  `reservedSetMatchesABlock`) ⇄ `wizard/lib/blockOccupancy.ts::completeBlockOnCase` (une case dont
-  l'ensemble réservé == les membres d'un bloc est BLOC-COMPLÈTE, « Complet · Groupe … », jamais
-  « 2/1 »), parité `ReservationBlockOccupancyMirrorParityTest`/`blockOccupancy.parity.test.ts`, #12
-  2026-10-22) ;
-  **(3) redérivation silencieuse** — ❌ interdite. Signe d'alerte :
-  un `switch`/chaîne de conditions sur les valeurs d'un **enum métier partagé** (`scope`,
-  `ruleType`, `family`, `lockLevel`, `status`…) pour **décider d'un comportement** (pas pour
-  choisir un libellé — ça, c'est de la présentation, cf. `matches/lib/diagnostic.ts`). Cas fondateur
-  du **2026-08-12** : `applicableConstraints` faisait `case "CLUB": return true` alors que
-  `ScheduleConstraintBuilder.php:846-870` éclate une `CLUB+targetTag` en N contraintes TEAM — le
-  wrap affichait une règle sur une équipe à qui le solveur ne l'applique jamais.
-  **Gardé depuis le 2026-08-12 par `FrontRederivationRegistryTest`** (CrossStack, groupe
-  `contract`) : registre des miroirs déclarés (entrée sans parité → rouge) + détecteur des
-  `switch` décideurs sur les enums de CONTRAINTE (module non déclaré → rouge, nommé). La largeur
-  du détecteur est un CHOIX documenté (`POLICED_ENUMS`) ; le registre, lui, tient tous les miroirs.
-- 🔴 **Réutiliser le PARTAGÉ avant d'écrire du neuf — jamais réinventer un élément qui existe déjà.**
-  Avant de coder un état de chargement / vide / erreur, un bouton, une modale, un badge, une
-  pastille, un formulaire : **chercher la primitive partagée** et l'utiliser telle quelle.
-  Les maisons uniques (extensible) : **chargement** — `FullPageSpinner` (chargement de PAGE,
-  standard `cockpit`/`planning`/`profile`/`club`), `Spinner` (inline, dans un bouton),
-  `EmptyHint`/`EmptyBlock`/`EmptyState` (vide), `LoadErrorHint`+`readState` (échec de lecture avec
-  retry — **jamais rendre un échec comme du vide** ; gardé contre la Nᵉ récidive par
-  `frontend/src/test/readStateGuard.test.ts`, liste NOMINATIVE des pages de route de `app/routes.tsx`
-  référençant le patron + exemptions motivées + complétude, patron `pageHeaderGuard.test.ts`,
-  UXS-09/10), `ActionVeil` (voile de navigation/sauvegarde global — `app/ActionVeil.tsx`) ;
-  **primitives** `shared/components/ui/*` (Button, Modal, Select, Input, Card, StepRail, Menu APG,
-  **Listbox** — sélecteur riche à choix unique (couleur/icône, compte, sous-ligne, option
-  désactivée motivée), patron APG, P4-164 PR-1, maison des sélecteurs qui dépassent le `<select>`
-  natif, recherche intégrée au panneau au-delà de 8 options réelles (P4-198) —, **StatusPill** — la pastille partagée, icône + texte, variantes warning/accent/accent-solid/neutral,
-  P4-173 puis P4-177, `accent-solid` (fond accent PLEIN, un badge mis en avant plutôt qu'un état)
-  PR 5/7 série « uniformité des écrans » —, **DayMultiPicker** — le sélecteur multi-jours partagé
-  (`<fieldset>`/`<legend>`, boutons `aria-pressed`, libellé court visible + nom accessible complet,
-  `tone` accent/destructive), PR 6/7 série « uniformité des écrans » —, VenueSwatch…) ; `SourceBadge` (AUTO/MANUEL) est désormais lui aussi une maison
-  unique — `features/matches/SourceBadge.tsx` (P4-177, adossée à `StatusPill`), consommée par
-  `TravelMatrixModal.tsx` et `OpponentsPage.tsx` (ex-`OpponentTravelCard.tsx`, absorbée le
-  2026-09-19 — les deux copies locales d'origine ont disparu) ;
-  `FilterToggle` (`shared/components/ui/filter-toggle.tsx`, P4-207) est la maison unique de la case
-  à cocher d'un filtre d'affichage — née du patron inline de `ReviewQueue.tsx`, qui l'utilise
-  désormais pour ses deux interrupteurs (« Afficher les traitées », « Masquer les extérieurs »,
-  UXC-21, lot audit 2026-09-18) : plus aucune copie locale du patron ; sa sœur `FilterChip`
-  (`shared/components/ui/filter-chip.tsx`, P4-216, 2026-09-22) est la maison unique de la PUCE de
-  filtre `aria-pressed` bordée à compteur (icône optionnelle) — consommée par les chips
-  « Familles » (Calendrier + Conflits) et « Traitement » (Conflits) de `features/matches`.
-  N'absorbe QUE ce contrat exact : ni les interrupteurs `role="switch"` (sémantique a11y
-  différente), ni les contrôles SEGMENTÉS — ceux-ci ont depuis leur propre maison **`SegmentedControl`**
-  (`shared/components/ui/segmented-control.tsx`, UXC-28, audit 2026-10-03) : rangée de boutons nus
-  dans UN conteneur bordé (`role="group"` nommé, segments `aria-pressed`, 36 px), union discriminée
-  `mode="single"|"multiple"`, compteur par segment optionnel — vues planning, axe équipe/coach/
-  gymnase, « Période », pivot « Regrouper par », filtre adversaires, « Types ». Gardé par
-  `frontend/src/test/segmentedControlGuard.test.ts` (un conteneur `bg-card`+`p-0.5` fait main rougit) ; `snapshotFile`
-  (`shared/lib/fileSnapshot.ts`, P3-7) est la maison unique du snapshot mémoire d'un `File` avant
-  envoi — ferme le piège `ERR_UPLOAD_FILE_CHANGED` (fichier relu sur disque à l'envoi, déguisé en
-  « Problème de connexion ») — consommée par `TeamsImportModal.tsx` et `ImportFbiDialog.tsx` ;
-  **couleurs/espacements** = tokens du thème (`text-warning`,
-  `text-muted-foreground`, `bg-muted`, `border-border`…), **jamais un `#hex`** ni une classe sans
-  jeton (`text-warning-foreground` était un no-op, P4-130). `PRODUCT_ACCENT` (`shared/lib/product.ts`)
-  est la SEULE maison d'un hex d'accent produit ; les valeurs statiques d'accent d'`index.css` sont
-  la sortie EXACTE de sa dérivation, gardée par `src/test/accentTokenParity.test.ts` — **on ne les
-  édite jamais à la main, on les recalcule** (`specs/courantes/identite-visuelle-produit.md`).
-  `BrandIcon` (`shared/components/ui/brand-icon.tsx`) est la première exception admise à « jamais
-  un `#hex` » **en composant React** (ses trois arcs) ; `BrandSplash`
-  (`shared/components/ui/brand-splash.tsx`, P4-252) en est une seconde — les MÊMES trois teintes du
-  mark, recopiées pour dessiner l'icône + le « eo » teal du splash de connexion animé — et les
-  **SVG d'asset statiques de marque** (`public/brand/*.svg` — `favicon.svg`,
-  `fond-light.svg`/`fond-dark.svg`, P5-16) une troisième, pour la même raison : un fichier servi tel
-  quel n'a pas de jeton de thème à consommer.
-  `BrandMark` (`shared/components/ui/brand-mark.tsx`), le logo COMPLET
-  (icône + mot) posé partout où le produit se nomme comme MARQUE (login/inscription, écrans
-  système, console admin — jamais pour une mention dans une phrase), n'en porte aucune : le mot
-  hérite `currentColor`, un seul ton dans tous les thèmes (un second ton teal codé en dur tombait
-  sous la barre de contraste sur fond clair, retiré). `CtcMark` (`shared/components/ui/ctc-mark.tsx`,
-  chantier D) est la maison unique du pictogramme d'une équipe « en entente (CTC) » (poignée de
-  main + nom accessible « Entente (CTC) avec {partenaire} ») — posé DEVANT le nom d'équipe partout
-  où il s'affiche (grilles, listes, options de `TeamSelect`), sauf exports/pages publiques à
-  token/phrases-toasts/console admin ; gardé par `frontend/src/test/ctcMarkGuard.test.ts` (liste
-  NOMINATIVE des surfaces + balayage de complétude sur le jeton `teamLabel`, patron
-  `pageHeaderGuard`/`readStateGuard`).
-- 🔴 **Tout écran principal rend `PageHeader`** (`shared/components/ui/page-header.tsx`) —
-  jamais un `<h1` brut : trait `border-accent` + titre à gauche, bouton « Signaler » TOUJOURS
-  visible à droite, gardé par `frontend/src/test/pageHeaderGuard.test.ts` (liste nominative des
-  pages principales + exemptions `<h1` nominatives). Le canal feedback (`FeedbackButton`,
-  `FeedbackDialog`) vit dans `shared/feedback/` avec la
-  brique, une primitive `shared/` ne remontant jamais vers une feature (AUD-FRT-21).
-- 🔴 **Heure affichée = « 21:00 », durée affichée = « 1h30 » — deux foyers uniques, jamais
-  fabriqués à la main** (normes d'uniformité des écrans, GO fondateur sur captures A/B,
-  2026-09-30) : toute heure de pendule passe par `shared/lib/time.ts::formatMinutes` (jamais
-  `frClock` — supprimé — ni un « 21h »/« 09h » assemblé à la main) ; toute durée de créneau passe
-  par `shared/lib/duration.ts::formatDuration`, forme COMPACTE (jamais la forme aérée
-  `time.formatDurationMinutes` — supprimée). Gardé par
-  `frontend/src/test/timeFormatGuard.test.ts` (grep statique des sources `src/**`, zéro exemption
-  nominative). Hors portée, délibérément : les durées ÉCOULÉES/CUMULÉES de la console superadmin
-  et des gymnases (`venueStats.formatHours`), et les exemples rédigés des bulles d'aide.
-- 🔴 **Enregistrer/Annuler d'une ligne en édition = TEXTE, jamais une icône seule (N1) ; toute
-  suppression passe par une confirmation, jamais un clic direct (N2)** — mêmes normes fondateur
-  du 2026-09-30, PR 2/7 de la série « uniformité des écrans ». N1 : patron `IdealSlotsEditor`
-  (boutons `Enregistrer`/`Annuler` en texte) et le bouton d'enregistrement de `ConstraintsStep`.
-  N2 : `ConfirmDialog` avant suppression d'un créneau idéal, d'une fenêtre d'accès match
-  (`MatchWindowsEditor`), d'une passerelle (`TeamLinksSection`), d'une indisponibilité de gymnase
-  (`VenueClosureCard`), d'une réservation ou d'un lot mutualisé au récap (`RecapStep`) et
-  d'une doléance coach (`CoachWishesModal`, PR 5/7) — seule exception : retirer une pastille de
-  LIAISON coach/joueur↔équipe (`CoachesStep`) reste immédiate, geste réversible sans conséquence.
-  `WeekWorkbench` (suppression de match) est une exemption légitime du garde, pas une lacune : ses
-  deux chemins de suppression confirment déjà DANS leurs enfants (`AwayList`, `PlacementPanel`).
-  N2 gardé par `frontend/src/test/deleteConfirmGuard.test.ts` (grep statique `src/features/**` : un
-  fichier qui lie ET invoque un `useDelete…` sans référencer `ConfirmDialog`/`DeleteConfirm`
-  rougit, sauf exemption nominative motivée) ; N1 n'a pas de garde automatique, seulement la revue.
-- 🔴 **Un bouton d'AJOUT porte toujours un libellé VISIBLE, jamais une icône « + » seule** (P4-285,
-  décision fondateur 2026-10-07, famille « uniformité des écrans ») : patron `ConstraintsPage`
-  (`<Button size="sm"><Plus className="size-3.5" />Ajouter …</Button>`), texte = nom accessible
-  (pas d'`aria-label` redondant). Variante DISCRÈTE `variant="ghost"` (sans bordure) sur une ligne
-  de tableau (`OpponentsPage`) ; le save/cancel d'un formulaire d'ajout retombe sur N1 (texte —
-  `IdealSlotsEditor`). Gardé par `frontend/src/test/addButtonLabelGuard.test.ts` (scan par ÉLÉMENT
-  JSX de `src/features/**`+`src/app/**` hors admin : un `<Button>` `size="icon"`/`"icon-sm"` dont
-  l'`aria-label` commence par « Ajouter » rougit). Exception admise : quand une LIGNE DE TABLEAU doit
-  tenir à 360 px, le libellé peut être masqué VISUELLEMENT sous le palier conteneur (`<span className="sr-only
-  @md:not-sr-only">`, icône « + » seule en dessous) — le nom accessible est CONSERVÉ (le texte reste dans le
-  DOM), le bouton n'est pas `size="icon"`, donc le garde reste vert (patron `OpponentsPage`, reflow 360 px).
-  Variante SŒUR en rangée de FORMULAIRE desktop (patron `VenuesStep`, D10 2026-10-26) : quand une
-  ligne d'ajout `flex` SANS `flex-wrap` déborde à l'étroit à cause d'un libellé long, on RACCOURCIT
-  le texte visible à un verbe (« Ajouter ») et on reporte le complément dans un `<span className="sr-only">`
-  PERMANENT (pas conditionnel), le bouton prenant `shrink-0` — le nom accessible COMPLET
-  (« Ajouter un gymnase ») est préservé. ⚠ Le calcul du nom accessible en jsdom ROGNE l'espace de
-  tête du span sr-only et ne sépare pas le texte voisin du span : intercaler un séparateur explicite
-  `{" "}` entre le libellé court et le span, sinon le nom sort collé (« Ajouterun gymnase »).
-- 🔴 **Tout bandeau d'information passe par `NoticeBanner`** (`shared/components/ui/notice-banner.tsx`
-  — fond opaque `bg-surface-<ton>`, bordure, rayon, padding, texte `text-foreground`), jamais une
-  boîte faite main (série « uniformité des écrans », PR 4/7, 2026-10-01 — les bandeaux de
-  Planning/Matchs/Assistant/Cockpit ont été ramenés dessus ; portée étendue à `src/shared/**`
-  au reliquat UX de l'audit 2026-10-03, UXC-27 — `CreditsBanner`). Gardé par
-  `frontend/src/test/bannerPrimitiveGuard.test.ts` (grep statique `src/features/**` ET
-  `src/shared/**` hors console admin : un `role="status"`/`"alert"` + une classe de bordure de
-  ton sur la MÊME ligne hors `NoticeBanner` rougit).
-- 🔴 **Toute pastille d'état passe par `StatusPill`** (`shared/components/ui/badge.tsx` — icône +
-  texte, bordure + fond teinté, variantes warning/accent/accent-solid/neutral), jamais un
-  `<span>` arrondi recodé à la main (série « uniformité des écrans », PR 5/7, 2026-10-01 —
-  `SocleDeviationPanel`, `ToReplaceList` et les pastilles accent plein de `ClubPage`/
-  `MembersSection`/`ReconciliationView` ramenées dessus ; au passage, les derniers états vide/
-  échec/chargement faits main de `PendingMembersSection`/`ClubPage`/`ReleaseNotesPage`/
-  `ConfigurationPage` migrent sur `EmptyHint`/`LoadErrorHint`/`Spinner`). Gardé par
-  `frontend/src/test/pillPrimitiveGuard.test.ts` (grep statique `src/features/**` : une ligne
-  portant à la fois la FORME d'une pastille (`rounded-full` + `text-xs`) ET une classe de TON
-  (teinte/bordure warning|destructive|accent|success, ou une surface `bg-surface-*`) hors
-  `StatusPill` rougit — les pastilles NEUTRES `bg-muted`/`border-border` ne sont PAS attrapées,
-  largeur de grep documentée, leur passage relève de la revue). Exemptions nominatives :
-  `features/admin/**` (console superadmin, hors écrans de l'app club), `CoachesStep` (pastilles de
-  LIAISON coach/joueur↔équipe, hors contrat StatusPill), `CampaignDialog` (puces de FILTRE
-  interactives, relèvent de `FilterChip`), `DriftBanner` (bouton-bascule, pas une pastille d'état).
-  Hors portée, délibérément : les quatre indices de chargement restés en TEXTE (`ClubPage` §
-  statistiques et § offres, `PeriodTeams`, `PeriodVenues`).
-- 🔴 **Le toast d'erreur d'une mutation vit UNE fois, au NIVEAU HOOK** (`useMutation({ onError })`),
-  jamais passé à `mutate(vars, { onError })` (FRT-38, 2026-10-06). Le filet global
-  `MutationCache.onError` (`shared/lib/queryClient.ts`) ne se DÉSARME que sur
-  `mutation.options.onError` (niveau hook) : un `onError` de niveau `mutate()` ne le voit pas, donc
-  un toast d'erreur posé là en fait DEUX (ou double le toast du hook). Gardé par
-  `frontend/src/test/mutateOnErrorToastGuard.test.ts` (grep statique `src/features/**`+`src/app/**` :
-  un `onError` passé à `.mutate(`/`.mutateAsync(` dont le CORPS référence `toast.` rougit — un
-  `onError` qui ne fait que poser de l'état local, p.ex. `setError`, ou appelle un handler NOMMÉ
-  n'est PAS attrapé). Exemptions nominatives motivées : `useRetouchGestures.ts` (patron
-  split-feedback documenté `planning/queries.ts:51-74` — le hook TAIT les erreurs MÉTIER pour que la
-  page les toaste avec CONTEXTE : noms d'équipes, timeout nommé, surlignage ; ses toasts mutate-level
-  sont CONDITIONNÉS au métier — sur transport le site se tait et laisse le hook toaster une seule fois) et `AdminDashboardPage.tsx` (messages contextuels runtime
-  `job.label`/`club.name`). Les messages SERVEUR passent par `errorMessage()` (patron UXS-13).
-- 🔴 **La largeur d'un sélecteur passe par `wrapperClassName`, jamais `className`** (`Select`,
-  `Listbox`, `TeamSelect`, `VenueSelect` — PR 3/7 de la série « uniformité des sélecteurs »,
-  2026-10-01) : le contrôle intérieur (`<select>`/trigger) est toujours `w-full`, une classe
-  `w-`/`min-w-`/`max-w-`/`flex-`/`shrink-`/`grow-`/`basis-` posée en `className` le vise, jamais
-  la boîte que la ligne flex mesure. Gardé par ESLint (`frontend/eslint.config.js`,
-  `no-restricted-syntax` sur `src/features/**`/`src/app/**`, admin exempté) en deux volets : un
-  `<select>` JSX natif brut est interdit (utiliser `Select`, ou `TeamSelect`/`VenueSelect` pour un
-  picker d'équipe/gymnase), et une classe de largeur **littérale** en `className` sur ces quatre
-  composants rougit — un `cn(...)`/une variable n'est pas couvert par l'AST (choix documenté,
-  reste à la revue).
-- 🔴 **Hauteur d'un contrôle de ligne = 36 px (`h-9`) ; la variante dense est NOMMÉE, jamais une
-  classe forcée** (série « uniformité des écrans », PR 7/7, 2026-10-01) : `Input`/`Select`
-  rendent `h-9` par défaut, `Button` `default`/`icon` restent à 40 px (CTA pleine page, pied de
-  modale) et une ligne dense prend `size="sm"` ou le nouveau `size="icon-sm"` (36 px, bouton-icône
-  de ligne). La variante compacte `compact` (`h-8`, prop sur `Input`/`Select`) est réservée aux
-  TABLEAUX denses (`TeamsStep`, `PeriodTeams`, `RedateEventsDialog`) — jamais mélangée à du `h-9`
-  dans la même ligne. Les rares `<textarea>` (pas de `<input>` nu dans `features/`) passent par
-  `FIELD_CLASS` (`shared/components/ui/field.ts`), le foyer unique de la classe de champ natif,
-  même apparence que `Input` sans la hauteur (multi-lignes). Gardé par ESLint
-  (`frontend/eslint.config.js`, `no-restricted-syntax` sur `src/features/**`/`src/app/**`, admin
-  exempté) : une classe `h-7`/`h-8`/`h-10`/`h-11` littérale en `className` sur
-  `Button`/`Input`/`Select`/`Listbox`/`TeamSelect`/`VenueSelect` rougit (`h-7` = 28 px ajouté au
-  reliquat UXC-29 de l'audit 2026-10-03 : les puces de filtre et segments étaient sous la norme) —
-  même limite que la règle
-  de largeur (PR 3/7) : un `cn(...)`/une variable/un template literal n'est pas couvert par l'AST,
-  reste à la revue. **Ligne d'ajout/édition dont l'action ne tient pas sur une ligne à 1280 px →
-  DEUX rangées structurées** (jamais un bouton d'action orphelin tombé par `flex-wrap`) : rangée 1
-  = la sélection, rangée 2 = les valeurs + le bouton d'action à droite — patron `RuleFields`/
-  `CoachFields` de `features/matches/ConstraintsPage.tsx` (règle de club, indisponibilité coach),
-  décision fondateur 2026-10-01. Plus de NR e2e sur ce patron (le spec
-  `layout-inline-rows` est retiré : la mesure en pixels n'est plus automatique) ; le builder de contraintes du wizard
-  (`ConstraintsStep`) partage le même risque et a été rallié au même patron.
-- **A11Y : un bouton-icône (fermeture, navigation, repli) = `<Button variant="ghost" size="icon-sm">`**
-  (cible 36 px), jamais un `<button>` brut `p-1` autour d'une icône `size-4` (24 px, sous la
-  norme WCAG 2.5.8). Gardé par `frontend/src/test/iconTargetSizeGuard.test.ts` (statique, liste
-  nominative `SITES` : un site renommé = mise à jour mécanique, jamais une suppression ; les
-  autres boutons-icônes restent à la revue) ; le DOM de l'en-tête de `Modal` l'est par
-  `shared/components/ui/modal-signaler.test.tsx`.
-- **Textes visibles du flux de retouche : « le système », jamais « moteur »/« solveur »**
-  (`docs/glossary.md`). Gardé par `frontend/src/test/engineWordGuard.test.ts` (commentaires
-  exclus) sur `planning/texts.ts`, `EvictConfirmDialog.tsx`, `ActionVeil.tsx`,
-  `useRetouchGestures.ts` et `planning/api.ts`.
-- 🔴 **La raison d'une désactivation doit être DÉCOUVRABLE au clavier/lecteur d'écran, pas qu'au
-  survol** (A11Y-30, audit 2026-10-03) : un `<button disabled>` natif sort de l'ordre de tabulation,
-  son `title`/`aria-describedby` ne sont jamais annoncés. Quand un bouton est désactivé POUR UN
-  MOTIF, passer la raison en **prop `disabledReason`** de `Button` (`shared/components/ui/button.tsx`) —
-  il rend alors `aria-disabled` (focalisable), pose `title` (souris) + `aria-describedby`→`<span
-  sr-only>` (clavier/AT), et neutralise le clic ; garder `disabled` à côté pour la condition. Un
-  `title={cond ? raison : undefined}` sur un bouton `disabled` est le vieil anti-patron. Exception
-  LÉGITIME : quand la raison est déjà en CLAIR à côté (texte visible — `WeekPickerDialog`), ne PAS
-  doubler avec `disabledReason`. Hors portée du mécanisme : `<select>`/`<option>`/`<input>` désactivés
-  (pas de `disabledReason`), à traiter autrement. Pas de garde automatique fiable (un `title`
-  d'action n'est pas une raison) — la revue tient la règle.
-- 🔴 **Un bouton d'action en LISTE porte un nom accessible CONTEXTUALISÉ, jamais un verbe nu
-  répété** (A11Y-28, audit 2026-10-03) : `aria-label={`Supprimer l'équipe ${name}`}`, pas
-  `aria-label="Supprimer"` dix fois de suite (un lecteur d'écran ne saurait pas laquelle). Gardé par
-  `frontend/src/test/genericAccessibleNameGuard.test.ts` (`aria-label` littéral « Supprimer »/
-  « Modifier »/« Retirer »/« Éditer » nu dans `features/**`/`app/**` rougit).
-- 🔴 **Tout choix de jours passe par `DayMultiPicker`, tout libellé de jour par `shared/lib/days.ts`**
-  (`shared/components/ui/day-multi-picker.tsx` — PR 6/7 série « uniformité des écrans »,
-  2026-10-01) : maison unique du sélecteur multi-jours (patron APG toggle button, `<fieldset>`/
-  `<legend>` nommant le groupe, libellé COURT visible « Lun », nom accessible COMPLET « lundi »,
-  `tone` `accent`/`destructive` pour la polarité de l'état pressé, valeurs ISO 1-7 inchangées
-  côté API) et du libellé de jour (`DAYS`, `dayLabelShort`, `dayLabelLong`, `dayLabelLongCap`) —
-  absorbe les tables locales dispersées (wizard, matchs, doléances, club, gymnases, créneaux
-  idéaux), germe exact du bug D-22 (une copie de table « s'arrêtait au samedi »). Gardé par
-  `frontend/src/test/dayPickerGuard.test.ts` (grep statique `src/features/**`/`src/app/**` : un
-  triplet de libellés de jours consécutifs littéraux hors `shared/lib/days.ts` rougit, exemptions
-  nominatives motivées) — hors portée délibérée : les lettres seules d'un en-tête de calendrier
-  (`MonthCalendar`, pas une table de libellés). Contrat `markedDays` : `markedDays` + `markedReason` REPÈRENT des jours (bordure pointillée `warning`, `aria-describedby` + `title` portant le motif) sans toucher à la sélection ni au clic ; sans `markedReason`, rien n'est marqué (un repère s'explique) ; un jour désactivé n'est jamais repéré. `Tabs` (`shared/components/ui/tabs.tsx`) accepte `listClassName`, ajoutée à la barre APRÈS la peau (la barre garde `flex flex-wrap` par défaut ; p. ex. `flex-nowrap overflow-x-auto` pour une ligne qui défile plutôt que de passer à la ligne, hub des doléances).
-- 🔴 **Un écran MIGRÉ affiche ses textes depuis le `texts.ts` de sa feature — jamais un littéral FR
-  en dur** (textes centralisés, fondation PR7, 2026-10-14) : maison unique
-  `features/<feature>/texts.ts` (scission `texts/<écran>.ts` au-delà de ~300 lignes),
-  `export const <FEATURE>_TEXTS = { … } as const satisfies Record<string, string | ((...args:
-  never[]) => string)>`, clés camelCase par INTENTION, interpolation par fonctions typées (pluriels
-  compris). **JAMAIS comme valeur** : un libellé de jour (→ `shared/lib/days.ts`), une heure/durée
-  (→ `shared/lib/time.ts`/`duration.ts`), la marque (→ `shared/lib/product.ts`), un identifiant
-  interne — ni une DONNÉE (titre d'entrée, label servi) qui vient du serveur. Pas de lib i18n (une
-  typo de clé = erreur `tsc`). Gardé par `frontend/src/test/hardcodedTextGuard.test.ts` (liste
-  nominative `MIGRATED_FILES` : dans un écran listé, un nœud texte JSX littéral ≥ 3 lettres, ou un
-  littéral FR dans `title=`/`aria-label=`/`placeholder=`/`message=`/`label=`/`legend=`/`description=`/`confirmLabel=`/`confirmPhrase=`, rougit ; largeur
-  documentée, exemptions ≤ 5 motivées ; `texts.ts` hors portée). **`MIGRATED_FILES` est gelée** : la liste ne
-  grandit plus, un écran qui y figure reste policé. Côté test : un test vérifie
-  la CLÉ (`getByText(PLANNING_TEXTS.evictTitle)`), jamais la phrase recopiée ; nouvelle assertion →
-  viser d'abord `getByRole(…, { name })`. Vague 1 (PR7) : cockpit `RadarPanel`/`DayDialog`, planning
-  `PlanningPage`/`SlotDetail`/`DiagnosticsPanel`/`EvictConfirmDialog` (littéraux et messages de repli dans `PLANNING_TEXTS`), matchs `ConflictLine`, assistant
-  `SlotReservationModal`/`ConstraintsStep`/`RecapStep`. Depuis (progressif, lot 5) : matchs
-  `OpponentsPage`/`FfbbEngagementsDialog`, cockpit `WeekPickerDialog`, wizard `VenuesStep`, matchs
-  `ExportMatchesDialog` (export des matchs pour les parents, née migrée dans
-  `features/matches/texts/export.ts`, `MATCHES_EXPORT_TEXTS`), puis
-  (D4, 2026-10-26) wizard `TeamsStep`/`TeamLinksModal` — scindés dans leur propre
-  `features/wizard/texts/teams.ts` (`TEAMS_TEXTS`) plutôt que le `texts.ts` commun de la feature
-  (le volume de l'étape Équipes dépassait le seuil de scission), puis (finitions, 2026-11-02, migrés dans le même lot) matchs `EntryDeadlinesEditor` (`features/matches/texts/entryDeadlines.ts`), matchs `TeamLinksSection` (`features/matches/texts/teamLinks.ts`) et wizard `TeamsImportModal` (`features/wizard/texts/teamsImport.ts`) — trois entrées de `MIGRATED_FILES`. La
-  **console superadmin** (`features/admin/**`) a sa propre maison SCINDÉE par module —
-  `features/admin/texts/<module>.ts` (pas un `texts.ts` unique), **entièrement migrée**
-  (P4-346, PR A + PR B, 2026-10-19) : `texts/dashboard.ts` (`ADMIN_DASHBOARD_TEXTS`) couvre
-  `AdminDashboardPage`/`AdminShell`/`AdminLoginPage`/`AdminAuthLayout`/`tabs/tabsConfig`/les
-  toasts de `queries.ts` ; `texts/sections.ts` (`ADMIN_SECTIONS_TEXTS`) les 9 sections
-  (`features/admin/sections/*`) ; `texts/journaux.ts` (`ADMIN_JOURNAUX_TEXTS`) les 3
-  sous-onglets de `features/admin/Journaux/*`. Un libellé dérivé d'un enum métier (statut
-  déploiement/conteneur, bucket de capacité, sujet/statut de signalement, sévérité d'erreur
-  système) passe par une fonction typée du module (`deploymentStatusLabel`,
-  `containerStatusLabel`, `capacityBucketLabel`, `feedbackTopicLabel`/`feedbackStatusLabel`,
-  `auditStatusLabel`, `systemErrorSeverityLabel`) — la table clé→libellé reste un littéral
-  `as const` INLINE dans la fonction, pas un module à part : plus aucun écran de la console
-  superadmin n'a de littéral FR en dur.
-- 🔴 **Un changement d'apparence VOULU sur un des 9 écrans de `visual-reference.spec.ts`
-  (login, register, planning semaine, matchs calendrier/semaine type/contraintes club, club,
-  wizard coachs/contraintes) exige une re-baseline** — procédure et commande unique :
-  `docs/testing/testing-strategy.md` §1. Un rouge `toHaveScreenshot` sur ce spec sans changement
-  d'apparence voulu est une régression, pas une image à régénérer.
-- 🔴 **Les racines de shell ne portent plus `bg-background` depuis le fond d'écran commun**
-  (P5-16, `AppLayout.tsx`/`AuthLayout.tsx`) : le fond commun vit sur `body` (`index.css`), et une
-  racine qui poserait `bg-background` par-dessus le masquerait entièrement. L'en-tête d'`AppLayout`
-  et les cartes restent OPAQUES (`bg-background`/`bg-card` posés dessus, pas sur la racine) — le
-  fond ne vit que dans les zones vides. Un écran qui veut au contraire un fond NU (déjà chargé
-  visuellement, ou système) pose `bg-background` sur sa PROPRE section, pas sur un shell partagé —
-  patron `GenerationScene.tsx` (racine `bg-background`, décor déjà dense) et `system-screen.tsx`
-  (inchangé, hors lot).
-- 🔴 **Toute surface qui porte du texte est opaque** (P4-265) : `bg-card` ou un jeton
-  `--surface-warning|accent|destructive|muted` (`color-mix` sur `--card`, `index.css`) — jamais une
-  teinte `bg-<jeton>/NN` comme fond AU REPOS (deux `background-color` Tailwind ne se composent pas,
-  et une teinte seule laisse traverser le fond à motifs). La surbrillance garde sa teinte `/NN`,
-  toujours préfixée (`hover:bg-accent/10`) : seul le repos devient plein. **Le texte posé sur une
-  surface teintée reste `text-foreground`** (jamais `text-warning`/`text-accent`, sous l'AA sur leur
-  propre teinte). Gardé par `frontend/src/test/surfaceOpacityGuard.test.ts` (portée
-  `shared/components/ui/*.tsx`, ≤ 5 exemptions nominatives). **Un CONTRÔLE DE SAISIE partagé**
-  (champ, sélecteur, zone de texte) est soumis à une contrainte PLUS STRICTE (retour terrain
-  2026-09-27, même fichier de garde, liste nominative `INPUT_CONTROL_FILES` — `input.tsx`,
-  `select.tsx`, `listbox.tsx`, `password-input.tsx`, `team-select.tsx`, `venue-select.tsx`,
-  `new-password-fields.tsx`) : `bg-transparent` au repos y tombe aussi (pas seulement une teinte
-  `/NN`), car un champ transparent sur le fond à motifs du body rend son `placeholder` illisible —
-  contrairement à un bouton `ghost`/`outline`, qui reste transparent (il vit sur une surface déjà
-  opaque).
-  Recoder à la main un spinner nu, un
-  encart d'erreur, une pastille inline **là où la primitive existe** = incohérence UX (« même
-  chose, au même endroit, de la même façon » — famille UXC de l'audit). Cas fondateur du
-  **2026-08-28** : `MatchesPage` rendait un `<Spinner>` nu dans un `py-16` (demi-page) là où ses
-  4 pages sœurs utilisent `FullPageSpinner` — ramené sur la primitive. Si la primitive **manque**,
-  l'AJOUTER au partagé (une seule maison), pas en faire une variante locale.
+## 1. Pièges qui rendent un test vert à tort
+
 - 🔴 **L'image tooling COPIE le code — la rebâtir AVANT tout test**, sinon la suite valide une
   version périmée et passe : `docker compose --profile tools build frontend-tooling`
-  (`make -C frontend install` le fait). **Deux faux verts dans la même session le 2026-08-11.**
-  ⚠ **`docker compose --profile tools run frontend-tooling …` NE rebâtit PAS** — `run` démarre
-  l'image telle qu'elle est. C'est le piège : la commande a l'air de « lancer les tests sur le
-  code », elle les lance sur la dernière image CUITE. Repris une 3ᵉ fois le 2026-08-21.
-  **Le signal qui le trahit, à connaître par cœur** : vous ajoutez N tests, et le total
-  affiché ne bouge pas (« Tests 119 passed » avant ET après en avoir écrit deux). Un compte
-  INCHANGÉ après un ajout ne veut jamais dire « mes tests passent » — il veut dire **« mes tests
-  n'existent pas dans l'image »**. Même chose pour une correction de source : un test qui reste
-  rouge/vert *à l'identique* après une modification qui aurait dû le retourner accuse l'image,
-  pas le code. Lisez le COMPTE avant de lire le verdict.
-- 🔴 **Le service `frontend` (Nginx :8081) sert un `dist` CUIT dans son image** — pas de bind
-  mount. Un `vite build` dans le conteneur tooling est jeté. Avant un e2e qui doit voir ta
-  modification : `docker compose build frontend && docker compose up -d --force-recreate frontend`.
-  Seul `frontend-dev` (profil `dev`, :5173) monte `./frontend` — c'est le hot-reload, pas la cible
-  des e2e.
-- 🔴 **Jamais `tsc --noEmit`** : le `tsconfig.json` racine est un fichier *solution*
-  (`"files": []` + `references`), donc `--noEmit` voit **zéro fichier**, sort 0 sans rien vérifier,
-  et la CI (`tsc -b`) échoue sur ce qu'il a sauté. `make -C frontend lint` fait `tsc -b --force` —
-  le `--force` est requis (un `tsbuildinfo` périmé court-circuite le contrôle). `tests/e2e/` et
-  `playwright.config.ts` sont désormais couverts eux aussi (`tsconfig.e2e.json`, référencé depuis
-  le fichier solution racine, P4-257, 2026-09-25) — avant ce lot ils n'étaient couverts par
-  **aucun** des deux autres projets (`tsconfig.app.json` n'`include` que `src`, `tsconfig.node.json`
-  que `vite.config.ts`/`tooling`), si bien qu'un spec Playwright appelant une API inexistante
-  passait le lint vert et ne se révélait qu'en CI.
-- 🔴 **axe SAUTE un sous-arbre `inert` — un scan d'a11y sur un écran voilé ne vérifie RIEN.**
-  Découvert le 2026-08-21 en différant le blocage du voile (lot C) : le scan de contraste
-  « wizard · gymnases » tournait pendant que le voile rendait le contenu `inert`, donc axe ne
-  regardait aucun élément de cet écran — **vert, et vide**. Le voile n'est que le cas le plus
-  récent : toute modale, tout `inert`, tout `aria-hidden` posé le temps d'un chargement produit le
-  même faux vert. **Avant un scan axe, attendre que l'écran soit RENDU À L'UTILISATEUR** (helper
-  `settleVeil` dans `tests/e2e/support.ts`). ⚠ Corollaire déjà vérifié : la couleur mesurée en
-  pleine transition n'est pas la couleur finale — la surbrillance d'étape passait par un
-  `text-muted-foreground` sur `bg-muted` à **3,93** avant de se poser sur sa vraie valeur AA. Un
-  scan trop tôt échoue pour une couleur qui n'existe qu'un instant ; un scan sur un sous-arbre
-  inert réussit sans rien lire. Les deux mentent. ⚠ Le même `inert` ment aussi à un `toBeVisible` —
-  il ne teste QUE la présence dans le DOM/CSS, pas l'`inert`. Seule une **action pointeur** (un
-  `click`) le révèle : Playwright la fait échouer avec « intercepts pointer events » sur l'overlay,
-  puis timeout quand l'élément visé se détache au retrait du voile. D'où le patron
-  `landOnMatchesCalendar` (`tests/e2e/support.ts`) : `settleVeil` encadre la SEULE action pointeur
-  du helper, pas ses lectures `toBeVisible`.
+  (`make -C frontend install` le fait). ⚠ `docker compose --profile tools run frontend-tooling …`
+  NE rebâtit PAS : `run` démarre la dernière image CUITE. **Le signal qui le trahit** : vous ajoutez
+  N tests et le total affiché ne bouge pas. Un compte INCHANGÉ après un ajout veut dire « mes tests
+  n'existent pas dans l'image », jamais « mes tests passent » ; de même, un test qui reste rouge/vert
+  à l'identique après une modification qui aurait dû le retourner accuse l'image, pas le code.
+  Lire le COMPTE avant de lire le verdict.
+- 🔴 **Le service `frontend` (Nginx :8081) sert un `dist` CUIT dans son image** — pas de bind mount.
+  Un `vite build` dans le conteneur tooling est jeté. Avant un e2e qui doit voir ta modification :
+  `docker compose build frontend && docker compose up -d --force-recreate frontend`. Seul
+  `frontend-dev` (profil `dev`, :5173) monte `./frontend` : hot-reload, pas la cible des e2e.
+- 🔴 **Jamais `tsc --noEmit`** : le `tsconfig.json` racine est un fichier *solution* (`"files": []` +
+  `references`), donc `--noEmit` voit **zéro fichier**, sort 0 sans rien vérifier, et la CI (`tsc -b`)
+  échoue sur ce qu'il a sauté. `make -C frontend lint` fait `tsc -b --force` — le `--force` est requis
+  (un `tsbuildinfo` périmé court-circuite le contrôle). `tests/e2e/` et `playwright.config.ts` sont
+  couverts par `tsconfig.e2e.json`, référencé depuis le fichier solution.
+- 🔴 **axe SAUTE un sous-arbre `inert` — un scan d'a11y sur un écran voilé ne vérifie RIEN**
+  (vert, et vide) ; idem pour toute modale, tout `inert`, tout `aria-hidden` posé le temps d'un
+  chargement. **Avant un scan axe, attendre que l'écran soit RENDU À L'UTILISATEUR** (`settleVeil`,
+  `tests/e2e/support.ts`). ⚠ Un scan trop tôt mesure la couleur d'une transition, qui n'existe qu'un
+  instant : il échoue pour rien. ⚠ `inert` ment aussi à `toBeVisible` (présence DOM/CSS seulement) :
+  seule une **action pointeur** (`click`) le révèle (« intercepts pointer events », puis timeout).
+  Patron `landOnMatchesCalendar` (`support.ts`) : `settleVeil` encadre la SEULE action pointeur du
+  helper, pas ses lectures `toBeVisible`.
 - 🔴 **jsdom n'a AUCUN moteur de mise en page** : `boundingBox`, `scrollHeight` et
-  `getBoundingClientRect` y valent 0. Le **contraste** et le **reflow** (WCAG 1.4.10) ne se testent
-  qu'en **Playwright**. Un test jsdom sur ces sujets est vert par construction — il n'atteste rien.
-  C'est pour ça que `frontend/src/test/textOpacityGuard.test.ts` (A11Y-22, 2026-09-18) existe : un
-  garde STATIQUE (grep des sources `.tsx` sur `text-<jeton>/NN`/`opacity-[3-6]0`) qui rougit dans
-  Vitest, avant le scan de contraste Playwright — sans lui une régression d'opacité sur du texte
-  resterait verte jusqu'au prochain `a11y-contrast.spec.ts`.
-- 🔴 **Toute classe `animate-*` porte `motion-reduce:animate-none`, tout `.css` qui anime a un volet
-  `prefers-reduced-motion`** (A11Y-31, WCAG 2.3.3 · audit 2026-10-03) : une animation est du confort,
-  jamais de l'information, et doit s'effacer pour qui a demandé « moins de mouvement ». Gardé par
-  `frontend/src/test/motionReduceGuard.test.ts` (grep statique `src/**`, patron `textOpacityGuard`) : une
-  classe `animate-<x>` (hors `animate-none`) sur une ligne `.tsx` sans `motion-reduce:`, ou un fichier
-  `.css` de `src/` qui déclare `animation:` sans requête `prefers-reduced-motion`, rougit dans Vitest —
-  AVANT le scan Playwright, car jsdom n'a ni moteur de layout ni `matchMedia`. Un site animé borné
-  AUTREMENT (JS `matchMedia` comme `brand-splash`, bloc CSS frère) entre dans `TSX_EXEMPTIONS` (≤ 5).
-- 🔴 **Un scan a11y authentifié sur `/matchs` ne peint RIEN si le club seedé CI n'a aucune
-  `Fixture`** — `app:bccl:seed` ne pose que des `TeamMatchHabit` (créneaux idéaux), jamais de
-  rencontre : l'écran rend un `EmptyState` (« Aucun match importé »), le scan tourne sur du vide et
-  son témoin rougit avant même d'atteindre le contraste. `tests/e2e/a11y-contrast.spec.ts`
-  (2026-09-18) POSTe désormais son propre amical HOME placé avant de scanner, nettoyé en `finally`
-  — patron à reprendre pour tout nouveau scan sur un écran sans donnée garantie par le seed ou
-  l'onboarding. Chaque écran authentifié désigne en outre son PROPRE témoin de contenu rendu
-  (grille week-end / région nommée / carte `[data-slot-id]` / `h1`) plutôt qu'un témoin global
-  (`shadow-sm`/`role=region`/testid) — `/planning` (`WeekGrid`) ne porte AUCUN des trois, un témoin
-  global le déclarait « vide » alors qu'il était peint.
-- 🔴 **Tout « aujourd'hui » passe par `shared/lib/clock.ts`, jamais `new Date()`** — seule maison
-  qui compose l'override dev (`?today=`) et l'horloge simulée SERVEUR d'un club démo
-  (`/api/me` → `club.simulatedToday`, posée/décidée côté back par `App\Clock\ClubClock`, la seule
-  capacité à décider si un club a une horloge active — réservée à un compte DÉMO, 2026-10-02).
-  Un composant React qui LIT la date **en rendu** utilise `useTodayISO()`/`useTodayDate()`
-  (réactifs, `useSyncExternalStore` — ils se recalent quand la date serveur arrive après le
-  premier rendu) ; `todayISO()`/`todayDate()` restent pour une lib pure hors rendu React.
-- 🔴 **Le survol d'un fond `bg-accent` plein n'est jamais une `opacity`** — c'est le jeton
-  `bg-accent-hover` (`--accent-hover`, `accentHoverForMode` dans `shared/lib/color.ts`, posé par
-  `useApplyClubTheme` à côté de `--accent`/`--accent-foreground`). `hover:opacity-90` compositait
-  l'accent OPAQUE vers la surface : en clair le fond s'éclaircissait pendant que le texte blanc
-  restait blanc, cassant l'AA (blanc/accent 4,85 → 4,26, sous 4,5:1 — la puce « Amical » pressée de
-  `/matchs`, 2026-09-18). `destructive` (`bg-destructive`) et l'avatar de `ClubPage` (`bg-muted`)
-  restent sur `opacity-90`, délibérément hors scope (ex-P4-244, fermé sans correctif au triage
-  roadmap 2026-09-25) — même piège à surveiller si un futur fond plein en hérite.
-- 🔴 **Aucune chaîne n'est injectée comme HTML, et `@tiptap/*` ne sort pas de
-  `features/admin/releaseNoteEditor/`** — le corps riche d'une note est rendu chez tous les clubs :
-  `shared/components/ui/rich-text.tsx` construit des éléments React, jamais `dangerouslySetInnerHTML`,
-  `.innerHTML =`, `getHTML(`, `srcDoc` hors `sandbox=""` (gardé par `src/test/noInnerHtmlGuard.test.ts`,
-  zéro exemption). Le bleu des notes est le jeton de texte `text-info` (`--info`), gardé AA par
-  `a11y-contrast.spec.ts`. → `docs/security/rich-content.md`.
-- **Un test front s'écrit pour ce que seul l'écran porte : un geste, une donnée affichée, un état lié à une règle métier, et tout bug corrigé côté écran — jamais pour une classe, une couleur, un libellé ou un placement.** Il s'écrit RED avant l'implémentation
-  ([`../../frontend/docs/frontend-strategy.md`](../../frontend/docs/frontend-strategy.md) §1) ; un composant de pure présentation naît sans test, prouvé par capture.
-- **Passe de design `ui-ux-pro-max`** (dans un agent — elle ne MESURE rien, mais elle TRANCHE une
-  décision contre son corpus) dès qu'un écran naît, change d'apparence, **ou qu'une décision
-  d'INTERACTION est arrêtée** : ce qui bloque, ce qui attend, ce qui prend le focus, ce qui
-  s'annonce à un lecteur d'écran, ce dont on peut sortir. **Public ET interne.** Se lance **AVANT**
-  que la décision soit figée — même doc, règle du 2026-08-11 **élargie le 2026-08-21** (le lot C a
-  falsifié les deux bornes d'origine : écran interne, défauts non visuels).
-- **Muter la PROD, pas le mock** : un test qui n'exerce que son double ne garde rien.
-  `readState`/`PeriodAnchor` pour react-query (« vacuité crédible » — `AGENTS.md` §readState).
-  **Un mock doit envoyer ce que l'API envoie** : un champ de date mocké respecte le format que
-  l'API sert vraiment (`*Date`/`*Deadline` → `Y-m-d`, `*At` → RFC 3339) — gardé par
-  `backend/tests/CrossStack/FrontMockDateFormatMatchesContractTest.php`, détail
-  [`../../docs/testing/testing-strategy.md`](../../docs/testing/testing-strategy.md) §2.
-- **Tout tourne dans Docker**, frontend compris : toutes les cibles de `frontend/Makefile` passent par
-  `docker compose`, sans exception. Tester sur l'hôte valide une version de Node qui n'est celle de
-  personne.
+  `getBoundingClientRect` y valent 0 (ni `matchMedia`). Le **contraste** et le **reflow** (WCAG
+  1.4.10) ne se testent qu'en **Playwright** ; un test jsdom sur ces sujets est vert par
+  construction. D'où les gardes statiques `textOpacityGuard.test.ts` (grep `.tsx` sur
+  `text-<jeton>/NN`, `opacity-[3-6]0`) et `motionReduceGuard.test.ts`, qui rougissent dans Vitest
+  avant le scan Playwright.
+- 🔴 **Un scan a11y authentifié sur un écran sans donnée ne peint RIEN** : le club seedé CI n'a
+  aucune `Fixture`, donc `/matchs` rend un `EmptyState` et le scan tourne sur du vide.
+  `tests/e2e/a11y-contrast.spec.ts` POSTe son propre amical HOME avant de scanner, nettoyé en
+  `finally` — patron pour tout écran sans donnée garantie par le seed. Chaque écran authentifié
+  désigne son PROPRE témoin de contenu rendu (grille week-end / région nommée / carte
+  `[data-slot-id]` / `h1`), pas un témoin global (`/planning` n'en porte aucun des globaux).
 - ⚠ **Un e2e qui passe sans avoir rien mis à l'épreuve est un faux vert** : quand un scénario peut
-  devenir vide (une modale trop courte pour déborder, une liste vide), lui donner un **témoin** qui
-  ÉCHOUE en le disant — cf. `tests/e2e/modal-reachability.spec.ts`.
-- ⚠ **Une spec e2e qui pose une date calendaire EN DUR est une bombe à retardement** — elle
-  tourne rouge dès que l'horloge réelle la dépasse (le jour/mois visé devient « passé », plus
-  cliquable ou plus dans la vue par défaut). Calculer la fenêtre depuis `new Date()` plutôt
-  qu'une constante calendaire, et l'écarter des vacances scolaires quand le geste testé en
-  dépend (`ClosureSegmentation` retire les semaines de vacances avant de découper début·milieu·
-  fin — une fenêtre qui en chevauche une fausse l'aperçu). Maison unique des helpers, jamais
-  réécrits spec par spec : `tests/e2e/support.ts` (`firstHolidayFreeMonday`,
-  `schoolHolidayWindows` — feed serveur `GET /api/school-holidays`, jamais un calendrier recopié
-  en dur —, `isoLocal`, `frMonthLabel`), repris par `redate-closure.spec.ts`/`mutualize.spec.ts` (P4-353, 2026-10-25) ;
-  `matches.spec.ts` calcule aussi sa fenêtre depuis aujourd'hui, mais via un helper LOCAL
-  `futureSaturday` (P4-360, 2026-10-25) plutôt que `support.ts` — pas de vacances scolaires en
-  jeu ici, seulement la contrainte propre à la vue Semaine (navigation limitée aux week-ends qui
-  PORTENT une rencontre, `weekendGrid.ts`).
+  devenir vide (modale trop courte pour déborder, liste vide), lui donner un **témoin** qui ÉCHOUE
+  en le disant — cf. `tests/e2e/modal-reachability.spec.ts`.
+- ⚠ **Une spec e2e qui pose une date calendaire EN DUR rougit dès que l'horloge la dépasse.**
+  Calculer la fenêtre depuis `new Date()`, et l'écarter des vacances scolaires quand le geste en
+  dépend (`ClosureSegmentation` retire les semaines de vacances avant de découper début·milieu·fin).
+  Helpers uniques, jamais réécrits spec par spec : `tests/e2e/support.ts` (`firstHolidayFreeMonday`,
+  `schoolHolidayWindows` — feed serveur `GET /api/school-holidays`, jamais un calendrier recopié —,
+  `isoLocal`, `frMonthLabel`). `matches.spec.ts` garde un helper LOCAL `futureSaturday` : la vue
+  Semaine ne navigue que sur les week-ends qui PORTENT une rencontre.
+- **Muter la PROD, pas le mock** : un test qui n'exerce que son double ne garde rien
+  (`readState`/`PeriodAnchor` pour react-query — `AGENTS.md` §readState). **Un mock envoie ce que
+  l'API envoie** : un champ de date mocké respecte le format servi (`*Date`/`*Deadline` → `Y-m-d`,
+  `*At` → RFC 3339), gardé par `backend/tests/CrossStack/FrontMockDateFormatMatchesContractTest.php`
+  ([`testing-strategy.md`](../../docs/testing/testing-strategy.md) §2).
 - **Superadmin : jamais de login dans une spec** — le projet Playwright `setup`
-  (`tests/e2e/superadmin.setup.ts`) fige UNE session par run (`storageState`), réutilisée sans
-  retry par le projet `superadmin` ; un login par spec, multiplié par les retries, brûle le
-  quota `admin_auth` (5/15 min par IP) et déguise un 429 en régression produit (P4-201).
+  (`tests/e2e/superadmin.setup.ts`) fige UNE session par run (`storageState`), réutilisée sans retry
+  par le projet `superadmin` ; un login par spec, multiplié par les retries, brûle le quota
+  `admin_auth` (5/15 min par IP) et déguise un 429 en régression produit.
+- **Tout tourne dans Docker**, frontend compris : toutes les cibles de `frontend/Makefile` passent par
+  `docker compose`. Tester sur l'hôte valide une version de Node qui n'est celle de personne.
 
-## Rôle Membre — écrans en consultation
+## 2. Normes d'écran
+
+### Sans garde automatique — la revue seule les tient
+
+- 🔴 **N1 : Enregistrer/Annuler d'une ligne en édition = TEXTE, jamais une icône seule** — patron
+  `IdealSlotsEditor` (boutons `Enregistrer`/`Annuler` en texte) et le bouton d'enregistrement de
+  `ConstraintsStep`.
+- 🔴 **La raison d'une désactivation doit être DÉCOUVRABLE au clavier/lecteur d'écran, pas qu'au
+  survol** : un `<button disabled>` natif sort de l'ordre de tabulation, son `title`/
+  `aria-describedby` ne sont jamais annoncés. Quand un bouton est désactivé POUR UN MOTIF, passer la
+  raison en **prop `disabledReason`** de `Button` (`shared/components/ui/button.tsx`) : `aria-disabled`
+  (focalisable), `title` (souris) + `aria-describedby`→`<span sr-only>` (clavier/AT), clic neutralisé ;
+  garder `disabled` à côté pour la condition. Un `title={cond ? raison : undefined}` sur un bouton
+  `disabled` est l'anti-patron. Exception : raison déjà en CLAIR à côté (texte visible,
+  `WeekPickerDialog`). Hors portée : `<select>`/`<option>`/`<input>` désactivés.
+- 🔴 **Hauteur d'un contrôle de ligne = 36 px (`h-9`), variante dense NOMMÉE, jamais une classe forcée** :
+  `Input`/`Select` rendent `h-9`, `Button` `default`/`icon` restent à 40 px (CTA pleine page, pied de
+  modale), une ligne dense prend `size="sm"` ou `size="icon-sm"` ; `compact` (`h-8`, prop d'`Input`/
+  `Select`) est réservée aux TABLEAUX denses, jamais mélangée à du `h-9` dans la même ligne.
+  Les `<textarea>` passent par `FIELD_CLASS` (`shared/components/ui/field.ts`). ESLint
+  (`frontend/eslint.config.js`, `no-restricted-syntax`, `src/features/**` + `src/app/**`, admin
+  exempté) refuse une classe `h-7`/`h-8`/`h-10`/`h-11` LITTÉRALE en `className` sur
+  `Button`/`Input`/`Select`/`Listbox`/`TeamSelect`/`VenueSelect` ; un `cn(...)`/variable/template
+  literal échappe à l'AST — reste à la revue. **Ligne d'ajout/édition dont l'action ne tient pas sur
+  une ligne à 1280 px → DEUX rangées** (jamais un bouton d'action orphelin tombé par `flex-wrap`) :
+  rangée 1 = la sélection, rangée 2 = les valeurs + le bouton d'action à droite (patron
+  `RuleFields`/`CoachFields` de `features/matches/ConstraintsPage.tsx`) ; pas de NR e2e, la mesure en
+  pixels n'est pas automatique.
+- 🔴 **Un bouton d'AJOUT porte un libellé VISIBLE** (garde : `addButtonLabelGuard.test.ts`, qui ne
+  voit que `size="icon"`/`"icon-sm"` + `aria-label` « Ajouter … »). Patron `ConstraintsPage`
+  (`<Button size="sm"><Plus className="size-3.5" />Ajouter …</Button>`, pas d'`aria-label` redondant),
+  `variant="ghost"` sur une ligne de tableau (`OpponentsPage`). Ligne de TABLEAU à tenir à 360 px : libellé
+  masqué VISUELLEMENT sous le palier conteneur (`<span className="sr-only @md:not-sr-only">`), nom
+  accessible conservé. Rangée de FORMULAIRE `flex` sans `flex-wrap` qui déborde (patron `VenuesStep`) :
+  texte visible raccourci à un verbe (« Ajouter ») + complément dans un `<span className="sr-only">`
+  PERMANENT, bouton `shrink-0`. ⚠ jsdom rogne l'espace de tête du span sr-only : intercaler `{" "}`
+  entre le libellé court et le span, sinon le nom sort collé (« Ajouterun gymnase »).
+- 🔴 **Un changement d'apparence VOULU sur un des 9 écrans de `visual-reference.spec.ts` (login,
+  register, planning semaine, matchs calendrier/semaine type/contraintes club, club, wizard
+  coachs/contraintes) exige une re-baseline** — procédure et commande unique :
+  `docs/testing/testing-strategy.md` §1. Un rouge `toHaveScreenshot` sans changement d'apparence voulu
+  est une régression, pas une image à régénérer.
+- 🔴 **Les racines de shell ne portent pas `bg-background`** : le fond commun vit sur `body`
+  (`index.css`), une racine qui poserait `bg-background` le masquerait. L'en-tête d'`AppLayout` et les
+  cartes restent OPAQUES (`bg-background`/`bg-card` posés dessus). Un écran qui veut un fond NU pose
+  `bg-background` sur sa PROPRE section (patron `GenerationScene.tsx`, `system-screen.tsx`).
+- 🔴 **Le survol d'un fond `bg-accent` plein n'est jamais une `opacity`** : c'est `bg-accent-hover`
+  (`--accent-hover`, `accentHoverForMode` dans `shared/lib/color.ts`, posé par `useApplyClubTheme`).
+  `hover:opacity-90` composite l'accent vers la surface : le fond s'éclaircit, le texte blanc reste
+  blanc, l'AA casse (blanc/accent 4,85 → 4,26). `bg-destructive` et l'avatar de `ClubPage` (`bg-muted`)
+  restent sur `opacity-90` — même piège si un futur fond plein en hérite.
+- 🔴 **Tout « aujourd'hui » passe par `shared/lib/clock.ts`, jamais `new Date()`** — seule maison qui
+  compose l'override dev (`?today=`) et l'horloge simulée SERVEUR d'un club démo (`/api/me` →
+  `club.simulatedToday`, décidée côté back par `App\Clock\ClubClock`). Un composant qui LIT la date
+  **en rendu** utilise `useTodayISO()`/`useTodayDate()` (réactifs : ils se recalent quand la date
+  serveur arrive après le premier rendu) ; `todayISO()`/`todayDate()` pour une lib pure hors rendu.
+- 🔴 **Le front n'invente JAMAIS une règle métier — il AFFICHE celle que le backend a calculée.**
+  Toute logique qui répond « qu'est-ce qui s'applique / que fait le solveur / ce geste est-il permis »
+  n'existe **qu'une fois**. Trois régimes : **(1) le backend dit** — supprimer la redérivation,
+  afficher la réponse (le défaut) ; **(2) miroir déclaré** — duplication assumée (réactivité sans
+  aller-retour), **déclarée en tête de fichier** ET gardée par un **test de parité** (patron :
+  `CoachDoubleBookingDetector` ⇄ `wizard/lib/coachDoubleBooking.ts` ; cross-stack
+  `PayloadCapacityMirror` + `CapacityMirrorParityTest`) ; **(3) redérivation silencieuse** — ❌
+  interdite. Signe d'alerte : un `switch`/chaîne de conditions sur les valeurs d'un **enum métier
+  partagé** (`scope`, `ruleType`, `family`, `lockLevel`, `status`…) pour **décider d'un
+  comportement** (pas pour choisir un libellé, ça c'est de la présentation, cf.
+  `matches/lib/diagnostic.ts`). Garde : `FrontRederivationRegistryTest` (CrossStack, groupe
+  `contract`) — son registre (`backend/tests/CrossStack/FrontRederivationRegistryTest.php`) porte
+  TOUS les miroirs front déclarés (fichier front, règle décidée, vérité backend, test de parité ;
+  entrée sans parité → rouge) et un détecteur de `switch` décideurs sur les enums de CONTRAINTE
+  (module non déclaré → rouge) dont la largeur est un CHOIX documenté (`POLICED_ENUMS`).
+
+### Gardées par un test (règle · foyer · garde)
+
+- 🔴 **Réutiliser le PARTAGÉ avant d'écrire du neuf** : chercher la primitive avant de coder un état
+  de chargement / vide / erreur, un bouton, une modale, un badge, une pastille, un formulaire ; si
+  elle **manque**, l'AJOUTER au partagé (une seule maison), jamais une variante locale. Recoder à la
+  main un spinner nu, un encart d'erreur, une pastille inline là où la primitive existe est une
+  incohérence (une page de liste rendait un `<Spinner>` nu en demi-page là où ses sœurs utilisent
+  `FullPageSpinner`). **Le catalogue des primitives vit dans
+  [`frontend/docs/frontend-components.md`](../../frontend/docs/frontend-components.md) §3**
+  (maison unique). Contrats à connaître ici : **jamais rendre un échec de lecture comme du vide** —
+  `LoadErrorHint` + `readState`, gardé par `frontend/src/test/readStateGuard.test.ts` (liste
+  nominative des pages de route de `app/routes.tsx`) ; `Spinner` inline / `FullPageSpinner` de page ;
+  `snapshotFile` (`shared/lib/fileSnapshot.ts`) fige un `File` en mémoire avant envoi
+  (`ERR_UPLOAD_FILE_CHANGED` déguisé en « Problème de connexion »).
+- 🔴 **Couleurs = tokens du thème** (`text-warning`, `text-muted-foreground`, `bg-muted`,
+  `border-border`…), jamais un `#hex` ni une classe sans jeton. `PRODUCT_ACCENT`
+  (`shared/lib/product.ts`) est la SEULE maison d'un hex d'accent produit ; les accents statiques
+  d'`index.css` sont sa sortie EXACTE — **on ne les édite pas à la main, on les recalcule** — gardé par
+  `src/test/accentTokenParity.test.ts` (`specs/courantes/identite-visuelle-produit.md`). Exceptions au
+  « jamais un `#hex` » : `BrandIcon`, `BrandSplash`, les SVG statiques `public/brand/*.svg` ; `BrandMark`
+  (logo complet : login, écrans système, console admin — jamais une mention dans une phrase) n'en
+  porte aucune, le mot hérite `currentColor`.
+- 🔴 **Tout écran principal rend `PageHeader`** (`shared/components/ui/page-header.tsx`), jamais un
+  `<h1` brut ; « Signaler » toujours visible. Garde : `pageHeaderGuard.test.ts`. Une primitive
+  `shared/` ne remonte jamais vers une feature (le canal feedback vit dans `shared/feedback/`).
+- 🔴 **Heure = « 21:00 », durée = « 1h30 » — jamais fabriquées à la main** : heure par
+  `shared/lib/time.ts::formatMinutes`, durée de créneau par `shared/lib/duration.ts::formatDuration`
+  (forme compacte). Garde : `timeFormatGuard.test.ts` (aucune exemption). Hors portée : durées
+  écoulées/cumulées de la console superadmin et des gymnases, exemples des bulles d'aide.
+- 🔴 **Toute suppression passe par une confirmation, jamais un clic direct (N2)** — `ConfirmDialog` /
+  `DeleteConfirm`. Garde : `deleteConfirmGuard.test.ts` (un fichier de `src/features/**` qui lie ET
+  invoque un `useDelete…` sans `ConfirmDialog`/`DeleteConfirm` rougit ; exemptions nominatives
+  motivées dans le test). Reste immédiat : retirer une pastille de LIAISON coach/joueur↔équipe
+  (`CoachesStep`).
+- 🔴 **Tout bandeau d'information = `NoticeBanner`** (`shared/components/ui/notice-banner.tsx`), jamais
+  une boîte faite main. Garde : `bannerPrimitiveGuard.test.ts` (`src/features/**` et `src/shared/**`
+  hors admin).
+- 🔴 **Toute pastille d'état = `StatusPill`** (`shared/components/ui/badge.tsx`), jamais un `<span>`
+  arrondi recodé. Garde : `pillPrimitiveGuard.test.ts` (forme `rounded-full text-xs` + classe de TON
+  sur une ligne ; les pastilles neutres `bg-muted`/`border-border` échappent à la garde, la revue les
+  tient ; exemptions nominatives dans le test).
+- 🔴 **Un `onError` de mutation (toast d'erreur) vit UNE fois, au NIVEAU HOOK** (`useMutation({
+  onError })`), jamais passé à `mutate(vars, { onError })` : le filet global `MutationCache.onError`
+  (`shared/lib/queryClient.ts`) ne se désarme que sur le `onError` du hook, un toast posé au
+  `mutate()` en fait DEUX. Les messages SERVEUR passent par `errorMessage()`. Garde :
+  `mutateOnErrorToastGuard.test.ts` (un `onError` de `.mutate(`/`.mutateAsync(` dont le corps
+  référence `toast.` rougit ; un `onError` qui pose de l'état local ou appelle un handler NOMMÉ n'est
+  pas attrapé ; exemptions nominatives motivées dans le test).
+- 🔴 **La largeur d'un sélecteur passe par `wrapperClassName`, jamais `className`** (`Select`,
+  `Listbox`, `TeamSelect`, `VenueSelect`) : le contrôle intérieur est toujours `w-full`, une classe de
+  largeur/flex en `className` le vise, pas la boîte que la ligne flex mesure. Garde : ESLint
+  (`frontend/eslint.config.js`, `no-restricted-syntax`, `src/features/**` + `src/app/**`, admin
+  exempté) — classe de largeur **littérale** sur ces composants, et `<select>` natif brut (utiliser
+  `Select`/`TeamSelect`/`VenueSelect`) ; un `cn(...)`/variable échappe à l'AST, reste à la revue.
+- **A11Y : un bouton-icône = `<Button variant="ghost" size="icon-sm">`** (cible 36 px, WCAG 2.5.8),
+  jamais un `<button>` brut `p-1` autour d'une icône. Garde : `iconTargetSizeGuard.test.ts` (liste
+  nominative `SITES` : un site renommé = mise à jour mécanique, jamais suppression) ; l'en-tête de
+  `Modal` : `shared/components/ui/modal-signaler.test.tsx`.
+- **Textes visibles du flux de retouche : « le système », jamais « moteur »/« solveur »**
+  (`docs/glossary.md`). Garde : `engineWordGuard.test.ts` (fichiers nommés dans le test).
+- 🔴 **Un bouton d'action en LISTE porte un nom accessible CONTEXTUALISÉ** (`aria-label={`Supprimer
+  l'équipe ${name}`}`), jamais un verbe nu répété. Garde : `genericAccessibleNameGuard.test.ts`
+  (`aria-label` littéral « Supprimer »/« Modifier »/« Retirer »/« Éditer » nu).
+- 🔴 **Tout choix de jours = `DayMultiPicker`** (`shared/components/ui/day-multi-picker.tsx`), **tout
+  libellé de jour = `shared/lib/days.ts`** (`DAYS`, `dayLabelShort`, `dayLabelLong`,
+  `dayLabelLongCap`). Garde : `dayPickerGuard.test.ts` (triplet de jours consécutifs littéraux hors
+  `days.ts`). Contrat `markedDays` : `markedDays` + `markedReason` REPÈRENT des jours (bordure
+  pointillée `warning`, `aria-describedby` + `title` = motif) sans toucher sélection ni clic ; sans
+  `markedReason`, rien n'est marqué ; un jour désactivé n'est jamais repéré.
+- 🔴 **Un écran MIGRÉ affiche ses textes depuis le `texts.ts` de sa feature — jamais un littéral FR en
+  dur** : `features/<feature>/texts.ts` (scission `texts/<écran>.ts` au-delà de ~300 lignes ; console
+  superadmin : `features/admin/texts/<module>.ts`), `export const <FEATURE>_TEXTS = { … } as const
+  satisfies Record<string, string | ((...args: never[]) => string)>`, clés camelCase par INTENTION,
+  interpolation par fonctions typées. **JAMAIS comme valeur** : un libellé de jour
+  (→ `shared/lib/days.ts`), une heure/durée (→ `time.ts`/`duration.ts`), la marque
+  (→ `shared/lib/product.ts`), un identifiant interne, une DONNÉE servie par le serveur. Pas de lib
+  i18n (une typo de clé = erreur `tsc`). Un libellé dérivé d'un enum métier passe par une fonction
+  typée du module, table clé→libellé `as const` INLINE. Garde : `hardcodedTextGuard.test.ts` (liste
+  nominative `MIGRATED_FILES` : nœud texte JSX littéral ≥ 3 lettres ou littéral FR dans un attribut
+  de texte rougit ; `texts.ts` hors portée). **`MIGRATED_FILES` est gelée** : la liste ne grandit
+  plus, un écran qui y figure reste policé. Côté test : viser la CLÉ
+  (`getByText(PLANNING_TEXTS.evictTitle)`), jamais la phrase recopiée ; nouvelle assertion → viser
+  d'abord `getByRole(…, { name })`.
+- 🔴 **Toute surface qui porte du texte est opaque** : `bg-card` ou un jeton
+  `--surface-warning|accent|destructive|muted` (`index.css`), jamais une teinte `bg-<jeton>/NN` au
+  REPOS (deux `background-color` Tailwind ne se composent pas, le fond à motifs traverse) ; la
+  surbrillance garde `/NN` préfixée (`hover:bg-accent/10`). **Le texte sur surface teintée reste
+  `text-foreground`**. Un **contrôle de saisie partagé** (champ, sélecteur, zone de texte) est plus
+  strict : `bg-transparent` au repos y tombe aussi (placeholder illisible sur le fond à motifs).
+  Garde : `surfaceOpacityGuard.test.ts` (`shared/components/ui/*.tsx` ; liste `INPUT_CONTROL_FILES` ;
+  exemptions nominatives dans le test).
+- 🔴 **Toute classe `animate-*` porte `motion-reduce:animate-none`, tout `.css` qui anime a un volet
+  `prefers-reduced-motion`** (WCAG 2.3.3). Garde : `motionReduceGuard.test.ts` (exemption nominative
+  `TSX_EXEMPTIONS` pour un site borné AUTREMENT, p. ex. JS `matchMedia`).
+- 🔴 **Aucune chaîne n'est injectée comme HTML, et `@tiptap/*` ne sort pas de
+  `features/admin/releaseNoteEditor/`** : `shared/components/ui/rich-text.tsx` construit des éléments
+  React, jamais `dangerouslySetInnerHTML`, `.innerHTML =`, `getHTML(`, `srcDoc` hors `sandbox=""`.
+  Garde : `noInnerHtmlGuard.test.ts` (zéro exemption). Le bleu des notes = jeton `text-info`, gardé AA
+  par `a11y-contrast.spec.ts`. → `docs/security/rich-content.md`.
+- **Un test front s'écrit pour ce que seul l'écran porte : un geste, une donnée affichée, un état lié
+  à une règle métier, tout bug corrigé côté écran — jamais pour une classe, une couleur, un libellé ou
+  un placement.** RED avant l'implémentation
+  ([`frontend-strategy.md`](../../frontend/docs/frontend-strategy.md) §1) ; un composant de pure
+  présentation naît sans test, prouvé par capture.
+- **Passe de design `ui-ux-pro-max`** (dans un agent : elle ne MESURE rien, elle TRANCHE contre son
+  corpus) dès qu'un écran naît, change d'apparence, **ou qu'une décision d'INTERACTION est arrêtée**
+  (ce qui bloque, ce qui attend, ce qui prend le focus, ce qui s'annonce à un lecteur d'écran, ce dont
+  on peut sortir). **Public ET interne.** Se lance **AVANT** que la décision soit figée.
+
+## 3. Rôle Membre — écrans en consultation
 
 Un Membre lit tout, ne modifie rien : le serveur refuse (403), l'écran n'offre même pas le geste.
 Primitives dans `src/shared/session/` et `shared/components/ui/`, jamais réécrites écran par écran :
@@ -479,7 +279,7 @@ Primitives dans `src/shared/session/` et `shared/components/ui/`, jamais réécr
   danger du profil (avertissement = `me.soleManagerClubs`, jamais redérivé ; liste des Membres lue
   seulement si `useCanManage()` : jamais de 403 pour un Membre sur `/profile`).
 - `ClubApprovalPage` (page publique d'approbation) : textes dans `features/auth/texts.ts`, variantes
-  par `kind` (`create` / `reprise` / `promotion`) ; un lien `superseded` n'y dit plus « refusée ».
+  par `kind` (`create` / `reprise` / `promotion`) ; un lien `superseded` n'y dit pas « refusée ».
 - ⚠ **Chaque écran lit `useCanManage` lui-même** : jamais d'état de rôle passé en prop depuis un
   parent, jamais un garde global — un écran oublié rend un 403 dans un toast, c'est le signal.
 - Un Membre ne déclenche aucun appel sortant : les requêtes FFBB, géocodage et contrôle de
