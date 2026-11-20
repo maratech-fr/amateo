@@ -375,7 +375,7 @@ final class DemoRetainedClubReclaimTest extends WebTestCase
         );
         $this->admin()->executeStatement(
             'INSERT INTO club_user (id, version, created_at, updated_at, joined_at, club_id, user_id, role, is_active) VALUES (:id, 1, NOW(), NOW(), NOW(), :club, :user, :role, TRUE)',
-            ['id' => Uuid::v4()->toRfc4122(), 'club' => $clubId, 'user' => $ownerUserId, 'role' => 'manager'],
+            ['id' => Uuid::v4()->toRfc4122(), 'club' => $clubId, 'user' => $ownerUserId, 'role' => 'admin'],
         );
 
         return $clubId;

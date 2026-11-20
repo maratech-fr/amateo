@@ -393,7 +393,7 @@ final class LeagueWindowSuggestionShareTest extends WebTestCase
     public function testApplyIsForbiddenToNonManagement(): void
     {
         [$club] = $this->makeClub($this->code($this->uniqueLigue(), '0069'));
-        $member = $this->addMember($club, 'coach');
+        $member = $this->addMember($club, 'member');
 
         $this->client->request('POST', '/api/league-window-suggestions/apply', [], [], $this->authHeaders($member) + ['CONTENT_TYPE' => 'application/json'], json_encode([
             'combinations' => [['category' => 'U13', 'level' => 'DEPARTEMENTAL', 'gender' => null, 'dayOfWeek' => 6]],

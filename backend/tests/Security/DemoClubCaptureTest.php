@@ -177,7 +177,7 @@ final class DemoClubCaptureTest extends WebTestCase
             $membership = new ClubUser;
             $membership->setClubId($club->getId());
             $membership->setUserId($manager->getId());
-            $membership->setRole('manager');
+            $membership->setRole('admin');
             $membership->setIsActive(true);
             $em->persist($membership);
             $em->flush();
@@ -285,7 +285,7 @@ final class DemoClubCaptureTest extends WebTestCase
             $membership = new ClubUser;
             $membership->setClubId($club->getId());
             $membership->setUserId($animator->getId());
-            $membership->setRole('manager');
+            $membership->setRole('admin');
             $membership->setIsActive(true);
             $em->persist($membership);
             $em->flush();

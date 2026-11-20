@@ -534,7 +534,7 @@ final class PeriodPlanBirthTest extends WebTestCase
         [$user, $club] = $this->createClubWithSeason();
         $entryId = $this->postPeriod($user, 'holiday', 'Vacances');
 
-        $coach = $this->addMember($club, 'coach');
+        $coach = $this->addMember($club, 'member');
         $this->client->request('POST', '/api/schedule_plans', [], [], $this->authHeaders($coach) + [
             'CONTENT_TYPE' => 'application/json',
         ], json_encode(['calendarEntryId' => $entryId], \JSON_THROW_ON_ERROR));

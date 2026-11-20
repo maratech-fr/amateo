@@ -481,7 +481,7 @@ final class CoachWishTransferTest extends WebTestCase
         // Abus §3bis #5 — garde SEC-07 FALSIFIÉE : un membre NON-gestionnaire est refusé 403,
         // et rien n'est écrit. (La retirer ferait passer ce 403 à 200.)
         $wish = $this->createWish($this->teamS->getId(), $this->coach->getId(), slots: 2);
-        $coachToken = $this->tokenForRole('coach');
+        $coachToken = $this->tokenForRole('member');
 
         $this->client->request('POST', '/api/coach-wishes/transfer', [], [], [
             'HTTP_X-Season-Id' => $this->season->getId(),
