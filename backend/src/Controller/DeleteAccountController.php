@@ -28,7 +28,6 @@ use Symfony\Component\Routing\Attribute\Route;
  * (AccountErasureService).
  */
 #[AsController]
-#[AccountFunction]
 final class DeleteAccountController extends AbstractController
 {
     public function __construct(
@@ -37,6 +36,7 @@ final class DeleteAccountController extends AbstractController
         private readonly AuditTrail $auditTrail,
     ) {}
 
+    #[AccountFunction]
     #[Route('/api/me', name: 'api_me_delete', methods: ['DELETE'])]
     public function __invoke(Request $request): JsonResponse
     {

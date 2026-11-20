@@ -25,7 +25,6 @@ use Symfony\Component\Routing\Attribute\Route;
  * firewall API suffit. Seules les notes publiées sortent — un brouillon reste
  * invisible.
  */
-#[AccountFunction]
 final class ReleaseNotesController extends AbstractController
 {
     public function __construct(
@@ -34,6 +33,7 @@ final class ReleaseNotesController extends AbstractController
         private readonly ClockInterface $clock,
     ) {}
 
+    #[AccountFunction]
     #[Route('/api/release-notes', name: 'api_release_notes_list', methods: ['GET'])]
     public function list(): JsonResponse
     {
@@ -64,6 +64,7 @@ final class ReleaseNotesController extends AbstractController
     }
 
     /** Marquer le journal comme lu jusqu'à maintenant (self-only par construction). */
+    #[AccountFunction]
     #[Route('/api/release-notes/seen', name: 'api_release_notes_seen', methods: ['POST'])]
     public function markSeen(): JsonResponse
     {

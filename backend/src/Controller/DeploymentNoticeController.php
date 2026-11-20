@@ -22,11 +22,11 @@ use Symfony\Component\Routing\Attribute\Route;
  * un gestionnaire de club n'a pas à la connaître. `scheduled_deployment` est GLOBALE (jamais
  * scopée tenant) : le club la lit par sa connexion applicative ; le firewall API suffit.
  */
-#[AccountFunction]
 final class DeploymentNoticeController extends AbstractController
 {
     public function __construct(private readonly ScheduledDeploymentRepository $deployments) {}
 
+    #[AccountFunction]
     #[Route('/api/deployment-notice', name: 'api_deployment_notice', methods: ['GET'])]
     public function notice(): JsonResponse
     {
