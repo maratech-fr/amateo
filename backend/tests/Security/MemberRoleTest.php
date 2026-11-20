@@ -321,6 +321,20 @@ final class MemberRoleTest extends WebTestCase
         self::assertResponseIsSuccessful('un compte vivant se réactive comme avant');
     }
 
+    /** Le créateur d'un club naît Gestionnaire, et l'adhésion se lit en `ClubRole`, jamais en chaîne libre. */
+    public function testTheClubCreatorIsBornManagerReadAsAClubRole(): void
+    {
+        [, , , $selfMembership] = $this->register('MRG');
+
+        $em = self::getContainer()->get(EntityManagerInterface::class);
+        \assert($em instanceof EntityManagerInterface);
+        $membership = $em->find(ClubUser::class, $selfMembership);
+        self::assertInstanceOf(ClubUser::class, $membership);
+        self::assertSame(ClubRole::MANAGER, $membership->getRole(), 'le créateur du club naît Gestionnaire, lu en ClubRole');
+        self::assertTrue($membership->getRole()->isManager(), 'ClubRole::isManager() : le Gestionnaire gère');
+        self::assertFalse(ClubRole::MEMBER->isManager(), 'ClubRole::isManager() : le Membre ne gère pas');
+    }
+
     /**
      * La base n'accepte que les deux rôles : une ancienne valeur (owner, editor, viewer) ou un
      * libellé inventé ne peut plus entrer dans `club_user` ni dans `club_invitation`, quel que
@@ -407,7 +421,6 @@ final class MemberRoleTest extends WebTestCase
         \assert($em instanceof EntityManagerInterface);
         $membership = $em->getRepository(ClubUser::class)->findOneBy(['userId' => $me['id'], 'clubId' => $me['club']['id']]);
         \assert($membership instanceof ClubUser);
-        self::assertSame(ClubRole::MANAGER, $membership->getRole(), 'le créateur du club naît Gestionnaire (l\'adhésion se lit en ClubRole)');
 
         // SEC-16 : le cookie JWT posé par la vérification serait rejoué sur les
         // requêtes suivantes et pourrait l'emporter sur un Bearer d'AUTRE identité —
