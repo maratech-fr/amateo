@@ -10,7 +10,6 @@ use App\Access\Module;
 use App\Entity\Reservation;
 use App\Entity\SharedTrainingBlock;
 use App\Entity\SharedTrainingBlockTeam;
-use App\Service\ManagementAccessGuard;
 use App\Service\PlanVenueClosures;
 use App\Service\ReservationGroupOccupancy;
 use App\State\Processor\AssertsSchedulePlanExistsTrait;
@@ -37,7 +36,7 @@ use Symfony\Component\Routing\Attribute\Route;
  *
  * Gardes RÉUTILISÉES (jamais réécrites) : `AssertsSchedulePlanExistsTrait` (ancre de plan +
  * filet de la course FK), `PlanVenueClosures::assertVenueOpenForPlan` (gymnase fermé), le défaut
- * de rôle d'`AbstractStateProcessor` (SEC-07, via `ManagementAccessGuard`) et le garde de saison
+ * de rôle (déclaration « gestionnaire », contrôle central) et le garde de saison
  * archivée (`SeasonScopedWriteInterface`) — parité stricte avec `POST /reservations`.
  *
  * P2-51 PR-7 — le rail vise le {@see SharedTrainingBlock}, SEULE notion de mutualisation (le modèle
@@ -52,7 +51,6 @@ final class GroupReservationController extends AbstractController implements Sea
 
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
-        private readonly ManagementAccessGuard $managementAccessGuard,
         private readonly PlanVenueClosures $planVenueClosures,
         private readonly ReservationGroupOccupancy $reservationGroupOccupancy,
     ) {}
@@ -70,10 +68,6 @@ final class GroupReservationController extends AbstractController implements Sea
     #[Route('/api/reservations/group', name: 'api_reservations_group', methods: ['POST'])]
     public function __invoke(Request $request): JsonResponse
     {
-        // SEC-07 — parité stricte avec POST /reservations : le processor unitaire passe par le
-        // défaut management d'AbstractStateProcessor. On réplique CE seul gate, rien de plus.
-        $this->managementAccessGuard->assertManager();
-
         $data = json_decode($request->getContent(), true);
         if (!\is_array($data)) {
             return $this->json(['error' => 'Invalid JSON body.'], Response::HTTP_BAD_REQUEST);

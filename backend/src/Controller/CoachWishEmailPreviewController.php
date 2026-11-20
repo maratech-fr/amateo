@@ -14,7 +14,6 @@ use App\Entity\User;
 use App\Mail\EmailTemplateRenderer;
 use App\Service\BrandAssets;
 use App\Service\CoachWishMailBuilder;
-use App\Service\ManagementAccessGuard;
 use App\Service\ProductIdentity;
 use App\Storage\LogoStorage;
 use Doctrine\ORM\EntityManagerInterface;
@@ -29,7 +28,7 @@ use Symfony\Component\Uid\Uuid;
 /**
  * L'APERÇU de l'e-mail du lien coach (D1) — ce que le gestionnaire verra partir à l'envoi
  * INITIAL, rendu dans la fenêtre de campagne avant d'envoyer. Même patron que
- * {@see CoachWishCampaignActionController} : assertManager (SEC-07), club résolu depuis la
+ * {@see CoachWishCampaignActionController} : réservé au gestionnaire, club résolu depuis la
  * ligne (jamais du corps), lecture bornée au tenant par la RLS.
  *
  * On construit le mail EXACT via {@see CoachWishMailBuilder::buildCoachLink}, mais avec un
@@ -41,7 +40,7 @@ use Symfony\Component\Uid\Uuid;
  *
  * 404 byte-identique pour une campagne inconnue OU d'un autre club (la RLS la rend déjà
  * invisible ; la comparaison explicite est le filet, et renvoie le MÊME 404 — jamais 403 — pour
- * ne pas révéler l'existence d'une campagne d'autrui). Non-gestionnaire → 403 (assertManager).
+ * ne pas révéler l'existence d'une campagne d'autrui). Non-gestionnaire → 403 (contrôle central).
  */
 #[AsController]
 #[ClubFunction(module: Module::PLANNING, audience: Audience::MANAGER)]
@@ -61,7 +60,6 @@ final class CoachWishEmailPreviewController extends AbstractController
 
     public function __construct(
         private readonly RequestStack $requestStack,
-        private readonly ManagementAccessGuard $managementAccessGuard,
         private readonly EntityManagerInterface $entityManager,
         private readonly CoachWishMailBuilder $mailBuilder,
         private readonly EmailTemplateRenderer $renderer,
@@ -73,8 +71,6 @@ final class CoachWishEmailPreviewController extends AbstractController
     #[Route('/api/coach_wish_campaigns/{id}/email-preview', name: 'coach_wish_campaign_email_preview', methods: ['GET'])]
     public function __invoke(string $id): JsonResponse
     {
-        $this->managementAccessGuard->assertManager(); // SEC-07
-
         // Un identifiant malformé rend le même 404 qu'une collecte d'un autre club, jamais un 500.
         $campaign = Uuid::isValid($id) ? $this->entityManager->getRepository(CoachWishCampaign::class)->find($id) : null;
         $currentClubId = $this->resolveCurrentClubId($this->requestStack);

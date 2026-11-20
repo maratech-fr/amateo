@@ -12,7 +12,6 @@ use App\Entity\Season;
 use App\Enum\FbiCorrectionCloseSource;
 use App\Repository\FbiCorrectionRepository;
 use App\Service\FbiCorrectionLedger;
-use App\Service\ManagementAccessGuard;
 use App\Service\SeasonAccessGuard;
 use App\Service\SeasonResolver;
 use DateTimeImmutable;
@@ -52,7 +51,6 @@ final class FbiCorrectionController extends AbstractController
         private readonly SeasonResolver $seasonResolver,
         private readonly FbiCorrectionRepository $repository,
         private readonly FbiCorrectionLedger $ledger,
-        private readonly ManagementAccessGuard $managementAccessGuard,
         private readonly SeasonAccessGuard $seasonAccessGuard,
         private readonly ClockInterface $clock,
     ) {}
@@ -82,7 +80,6 @@ final class FbiCorrectionController extends AbstractController
     #[Route('/api/fixtures/fbi-corrections/{id}/close', name: 'api_fixture_fbi_correction_close', requirements: ['id' => self::UUID_REQUIREMENT], methods: ['POST'], priority: 10)]
     public function close(Request $request, string $id): JsonResponse
     {
-        $this->managementAccessGuard->assertManager(); // SEC-07 first, so 403 wins.
         $this->seasonAccessGuard->assertWritable($request);
 
         // Tenant/season filtered — une entrée étrangère est invisible → 404.
@@ -100,7 +97,6 @@ final class FbiCorrectionController extends AbstractController
     #[Route('/api/fixtures/fbi-corrections/{id}/reopen', name: 'api_fixture_fbi_correction_reopen', requirements: ['id' => self::UUID_REQUIREMENT], methods: ['POST'], priority: 10)]
     public function reopen(Request $request, string $id): JsonResponse
     {
-        $this->managementAccessGuard->assertManager();
         $this->seasonAccessGuard->assertWritable($request);
 
         $entry = $this->repository->findOneBy(['id' => $id]);

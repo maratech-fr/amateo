@@ -8,7 +8,6 @@ use App\Access\Audience;
 use App\Access\ClubFunction;
 use App\Access\Module;
 use App\Service\Geo\VenueGeoCheck;
-use App\Service\ManagementAccessGuard;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
@@ -34,7 +33,6 @@ final class VenueGeoCheckController extends AbstractController
 
     public function __construct(
         private readonly VenueGeoCheck $venueGeoCheck,
-        private readonly ManagementAccessGuard $managementAccessGuard,
         private readonly RequestStack $requestStack,
     ) {}
 
@@ -43,8 +41,6 @@ final class VenueGeoCheckController extends AbstractController
     #[Route('/api/venues/geo-check', name: 'api_venues_geo_check', methods: ['GET'], priority: 10)]
     public function __invoke(Request $request): JsonResponse
     {
-        $this->managementAccessGuard->assertManager(); // SEC-07
-
         $clubId = $this->resolveCurrentClubId($this->requestStack);
         $seasonId = $request->attributes->get('_season_id') ?? $request->headers->get('X-Season-Id');
         if (null === $clubId || !\is_string($seasonId) || '' === $seasonId) {

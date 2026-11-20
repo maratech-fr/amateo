@@ -16,7 +16,6 @@ use App\Exception\ImportRejectedException;
 use App\Service\Basketball\VenueExternalLabelAttacher;
 use App\Service\Basketball\VenueLabelInventory;
 use App\Service\Basketball\VenueLabelNormalizer;
-use App\Service\ManagementAccessGuard;
 use App\Service\SeasonResolver;
 use App\Service\WriteTargetSeasonResolver;
 use Doctrine\ORM\EntityManagerInterface;
@@ -58,7 +57,6 @@ final class VenueExternalLabelController extends AbstractController implements S
 
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
-        private readonly ManagementAccessGuard $managementAccessGuard,
         private readonly VenueLabelNormalizer $labelNormalizer,
         private readonly WriteTargetSeasonResolver $writeTargetSeasonResolver,
         private readonly RequestStack $requestStack,
@@ -82,7 +80,7 @@ final class VenueExternalLabelController extends AbstractController implements S
     /**
      * Inventaire agrégé « libellé de salle FBI/FFBB → gymnase » de la saison
      * courante du club : lecture ouverte à tout membre authentifié (pas
-     * {@see ManagementAccessGuard} — c'est un état, pas un geste), le club et la
+     * de garde « gestionnaire » — c'est un état, pas un geste), le club et la
      * saison viennent du contexte serveur. Alimente l'écran de ré-affectation
      * (E2). `priority: 10` : cette route statique doit gagner sur la route item
      * `/api/venues/{id}` d'API Platform, qui avalerait sinon « fbi-labels » comme
@@ -107,8 +105,6 @@ final class VenueExternalLabelController extends AbstractController implements S
     #[Route('/api/venues/{id}/external-labels', name: 'api_venue_external_labels_attach', methods: ['POST'])]
     public function attach(string $id, Request $request): JsonResponse
     {
-        $this->managementAccessGuard->assertManager(); // SEC-07
-
         $venue = $this->ownedVenue($id);
         if (!$venue instanceof Venue) {
             // Un gymnase d'un autre club est invisible → 404 byte-identique.
@@ -171,8 +167,6 @@ final class VenueExternalLabelController extends AbstractController implements S
     #[Route('/api/venues/{id}/external-labels/{label}', name: 'api_venue_external_labels_detach', methods: ['DELETE'])]
     public function detach(string $id, string $label): Response
     {
-        $this->managementAccessGuard->assertManager(); // SEC-07
-
         $venue = $this->ownedVenue($id);
         if (!$venue instanceof Venue) {
             return $this->json(['error' => 'Gymnase introuvable.'], Response::HTTP_NOT_FOUND);

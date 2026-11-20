@@ -934,6 +934,11 @@ jobs:
           # cadre, publique, compte, club) ; chaque route de club déclare son public, et un Membre
           # aux ids réels d'un club payant, non démo, socle en vigueur rencontre ce qu'elle déclare.
           FILES="$FILES tests/Security/AccessDeclarationSweepTest.php"
+          # Axe auth & memberships : le contrôle central (`ClubAccessListener`, kernel.request
+          # priorité 4) refuse au Membre toute fonction « gestionnaire » avant tout contrôleur,
+          # refuse une route hors des six familles, ignore les sous-requêtes d'erreur, ne cède pas
+          # à `X-HTTP-Method-Override`, et laisse au gestionnaire les corps d'erreur de l'API.
+          FILES="$FILES tests/Security/ClubAccessListenerTest.php"
           # P2-8 PR A (axe planning lifecycle) : PARITÉ capacité affichée == verdict du refus.
           # Le bloc `capabilities` sérialisé sur chaque Schedule est calculé par le MÊME code que
           # les gardes d'écriture (ScheduleCapabilityResolver) — canDelete/canValidate/

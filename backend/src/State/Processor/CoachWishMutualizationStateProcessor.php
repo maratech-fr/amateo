@@ -30,11 +30,6 @@ class CoachWishMutualizationStateProcessor extends AbstractStateProcessor
         return CoachWishMutualization::class;
     }
 
-    protected function requiresManagementRole(): bool
-    {
-        return true; // SEC-07
-    }
-
     /**
      * @param CoachWishMutualizationInput $input
      */

@@ -14,7 +14,6 @@ use App\Enum\LockLevel;
 use App\Enum\ScheduleStatus;
 use App\Service\AuditTrail;
 use App\Service\ClubGenerationLock;
-use App\Service\ManagementAccessGuard;
 use App\Service\SchedulePlanProvisioner;
 use App\Service\WriteTargetSeasonResolver;
 use Doctrine\ORM\EntityManagerInterface;
@@ -49,7 +48,6 @@ final class LoadLocksController extends AbstractController implements SeasonScop
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
         private readonly RequestStack $requestStack,
-        private readonly ManagementAccessGuard $managementAccessGuard,
         private readonly SchedulePlanProvisioner $schedulePlanProvisioner,
         private readonly ClubGenerationLock $clubGenerationLock,
         private readonly WriteTargetSeasonResolver $writeTargetSeasonResolver,
@@ -67,8 +65,6 @@ final class LoadLocksController extends AbstractController implements SeasonScop
     #[Route('/api/schedules/{id}/load-locks', name: 'api_schedule_load_locks', methods: ['POST'])]
     public function __invoke(string $id): JsonResponse
     {
-        $this->managementAccessGuard->assertManager(); // SEC-07
-
         try {
             $source = $this->entityManager->getRepository(Schedule::class)->find($id);
         } catch (Throwable) {

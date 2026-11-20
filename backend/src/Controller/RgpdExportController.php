@@ -27,7 +27,7 @@ use Symfony\Component\Routing\Attribute\Route;
  * - GET /api/me/export : ses propres données de compte (self-only, aucun id).
  * - GET /api/club/export : le workspace du club COURANT (tenant résolu du JWT
  *   par le listener — pas d'id de chemin), réservé aux rôles management
- *   (SEC-07) : c'est le club, responsable de traitement de ses données, qui
+ *   (déclaration « gestionnaire », contrôle central) : c'est le club, responsable de traitement de ses données, qui
  *   exerce la portabilité — pas n'importe quel membre.
  */
 #[AsController]
@@ -81,14 +81,11 @@ final class RgpdExportController extends AbstractController
             return $this->json(['error' => 'Club not found.'], Response::HTTP_NOT_FOUND);
         }
 
-        // Même sémantique que les autres écritures/gates club (SEC-04/07) :
-        // pas de membership actif → 404 ; membre non-management → 403.
+        // Pas de membership actif → 404. Le Membre non gestionnaire est refusé (403) en amont par
+        // le contrôle central (`ClubAccessListener`), avant d'entamer son seau d'export.
         $membership = $this->clubUserRepository->findActiveMembership($user->getId(), $clubId);
         if (!$membership instanceof ClubUser) {
             return $this->json(['error' => 'Club not found.'], Response::HTTP_NOT_FOUND);
-        }
-        if (!$membership->getRole()->isManager()) {
-            return $this->json(['error' => 'Forbidden.'], Response::HTTP_FORBIDDEN);
         }
 
         $data = $this->exportService->exportClub($clubId);

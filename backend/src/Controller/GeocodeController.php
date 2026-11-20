@@ -8,7 +8,6 @@ use App\Access\Audience;
 use App\Access\ClubFunction;
 use App\Access\Module;
 use App\Service\Geo\BanGeocodingClient;
-use App\Service\ManagementAccessGuard;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
@@ -31,14 +30,11 @@ final class GeocodeController extends AbstractController
 {
     public function __construct(
         private readonly BanGeocodingClient $geocoder,
-        private readonly ManagementAccessGuard $managementAccessGuard,
     ) {}
 
     #[Route('/api/geocode', name: 'api_geocode', methods: ['GET'])]
     public function __invoke(Request $request): JsonResponse
     {
-        $this->managementAccessGuard->assertManager(); // SEC-07
-
         $query = (string) $request->query->get('q', '');
         if (!BanGeocodingClient::isValidQuery($query)) {
             return $this->json(['error' => 'Renseignez une adresse à rechercher (3 à 200 caractères).'], Response::HTTP_UNPROCESSABLE_ENTITY);
@@ -62,8 +58,6 @@ final class GeocodeController extends AbstractController
     #[Route('/api/geocode/reverse', name: 'api_geocode_reverse', methods: ['GET'])]
     public function reverse(Request $request): JsonResponse
     {
-        $this->managementAccessGuard->assertManager(); // SEC-07
-
         $latRaw = (string) $request->query->get('lat', '');
         $lonRaw = (string) $request->query->get('lon', '');
         if (!is_numeric($latRaw) || !is_numeric($lonRaw)) {

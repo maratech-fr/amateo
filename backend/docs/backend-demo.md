@@ -239,7 +239,7 @@ NR bloquant
 **Widget d'horloge du compte démo** (`POST /api/club/clock`, `ClubClockController`, front
 `app/DemoClockWidget.tsx`) : le gestionnaire d'un club démo pose/relâche lui-même l'horloge depuis
 l'en-tête de l'app, sans passer par la console. Tenant résolu SERVEUR depuis le JWT (`_club_id`),
-réservé au rôle MANAGER (`ManagementAccessGuard::assertManager`, 403 sinon) ; le club résolu est
+réservé au rôle MANAGER (déclaration d'accès, contrôle central : 403 sinon) ; le club résolu est
 ensuite vérifié `is_demo` — un vrai club est **refusé en 403**, avant toute lecture du corps.
 Même forme de corps que les routes console (`{date}` xor `{clear:true}`, date qui se relit à
 l'identique, `2026-02-31` refusé ⇒ 422), même vidage de boîte au `clear` via la maison unique

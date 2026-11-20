@@ -14,7 +14,6 @@ use App\Enum\ImplicitRuleIntensity;
 use App\Enum\ImplicitRuleKey;
 use App\Repository\ImplicitRuleSettingRepository;
 use App\Service\ImplicitRuleResolver;
-use App\Service\ManagementAccessGuard;
 use App\Service\SeasonAccessGuard;
 use App\Service\SeasonResolver;
 use App\State\Provider\ReadsUuidQueryParamTrait;
@@ -27,7 +26,8 @@ use Symfony\Component\HttpKernel\Exception\UnprocessableEntityHttpException;
 /**
  * Upsert (PUT) et réinitialisation (DELETE) d'un réglage de règle implicite, PAR `ruleKey`.
  *
- * Écriture = management (403 AVANT le 409 de saison archivée, idiome AbstractStateProcessor).
+ * Écriture = management, refusée au Membre par le contrôle central (`ClubAccessListener`) avant
+ * le 409 de saison archivée.
  * Les seuils sont bornés et le couple règle↔seuil vérifié ici (message 422 français
  * actionnable, sans identifiant interne) : ce que le moteur accepte a UNE maison côté backend,
  * l'enum `ImplicitRuleKey`.
@@ -46,15 +46,12 @@ final class ImplicitRuleSettingStateProcessor implements ProcessorInterface
         private readonly ImplicitRuleResolver $resolver,
         private readonly SeasonResolver $seasonResolver,
         private readonly SeasonAccessGuard $seasonAccessGuard,
-        private readonly ManagementAccessGuard $managementAccessGuard,
     ) {}
 
     public function process(mixed $data, Operation $operation, array $uriVariables = [], array $context = []): ?ImplicitRuleSettingResource
     {
         $request = $this->requestStack->getCurrentRequest();
 
-        // SEC-07 — management (403) AVANT saison archivée (409) : l'autorisation gagne.
-        $this->managementAccessGuard->assertManager();
         $this->seasonAccessGuard->assertWritable($request);
 
         [$clubId, $seasonId] = $this->resolveScope();

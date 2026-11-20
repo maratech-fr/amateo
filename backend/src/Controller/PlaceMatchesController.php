@@ -18,7 +18,6 @@ use App\Repository\MatchPlacementRunRepository;
 use App\Service\DeploymentGate;
 use App\Service\FriendlyAutoValidator;
 use App\Service\LeagueValidationOutlook;
-use App\Service\ManagementAccessGuard;
 use App\Service\MatchPlacementLock;
 use App\Service\MatchPlacementPayloadBuilder;
 use App\Service\PlacementConflictText;
@@ -79,7 +78,6 @@ final class PlaceMatchesController extends AbstractController
         private readonly EntityManagerInterface $entityManager,
         private readonly RequestStack $requestStack,
         private readonly SeasonResolver $seasonResolver,
-        private readonly ManagementAccessGuard $managementAccessGuard,
         private readonly DeploymentGate $deploymentGate,
         private readonly SeasonAccessGuard $seasonAccessGuard,
         private readonly SocleGuard $socleGuard,
@@ -109,8 +107,6 @@ final class PlaceMatchesController extends AbstractController
             return $this->json(['error' => 'No club in context.'], Response::HTTP_BAD_REQUEST);
         }
 
-        // SEC-07 first so 403 wins over the 409s (import idiom).
-        $this->managementAccessGuard->assertManager();
         // P4-350 (axe generation pipeline) : gel des guichets pendant une mise en production
         // imminente — AVANT la garde saison/socle, uniforme avec les trois autres portes de solve.
         if ($this->deploymentGate->isFrozen()) {

@@ -111,6 +111,32 @@ final class AccessDeclarationSweepTest extends WebTestCase
         'api_login' => 'porte json_login de son propre pare-feu `login` : aucun contrôleur, exclue du catalogue par construction (PublicApiRouteCatalog, docblock)',
     ];
 
+    /**
+     * Les routes sous un motif de `PublicApiRouteCatalog`, à la main (`MÉTHODE chemin`, sans
+     * `.{_format}`) => pourquoi elle est ouverte à un anonyme, jamais contrôlée par le rôle.
+     */
+    private const array PUBLIC_ROUTES = [
+        'GET /api/club-approvals/{token}' => 'page publique à token : validation d\'un club',
+        'POST /api/club-approvals/{token}' => 'page publique à token : validation d\'un club',
+        'GET /api/coach-wishes/public/{token}' => 'page publique à token : doléances d\'un coach',
+        'POST /api/coach-wishes/public/{token}' => 'page publique à token : doléances d\'un coach',
+        'GET /api/invitations/public/{token}' => 'page publique à token : invitation',
+        'POST /api/invitations/public/{token}/accept' => 'page publique à token : invitation',
+        'GET /api/clubs/{clubId}/logo' => 'logo du club, servi aux pages publiques et aux mails',
+        'GET /api/ffbb-logos/{scope}/{code}' => 'logos FFBB stockés, servis aux pages publiques',
+        'GET /api/docs' => 'documentation de l\'API',
+        'GET /api/health' => 'sonde de santé',
+        'GET /api/register/club-lookup' => 'inscription',
+        'GET /api/register/config' => 'inscription',
+        'POST /api/register' => 'inscription',
+        'POST /api/register/verify' => 'inscription',
+        'POST /api/dev/demo-register' => 'inscription de démonstration',
+        'POST /api/password/forgot' => 'mot de passe oublié',
+        'POST /api/password/reset' => 'mot de passe oublié',
+        'POST /api/me/email/confirm' => 'confirmation d\'adresse par lien',
+        'POST /api/logout' => 'déconnexion, même d\'une session morte',
+    ];
+
     /** Les quatorze opérations d'API servies par un contrôleur maison : nom de route => contrôleur. */
     private const array CUSTOM_CONTROLLER_OPERATIONS = [
         'import_teams' => ImportController::class,
@@ -525,6 +551,45 @@ final class AccessDeclarationSweepTest extends WebTestCase
 
         self::assertGreaterThan(50, $seen, 'témoin : le balayage lit des déclarations');
         self::assertSame([], $both, "Cibles à deux publics :\n  - " . implode("\n  - ", $both));
+    }
+
+    /**
+     * Aucune route de club ni de compte ne se cache sous un motif public : une route qui tombe sous
+     * `PublicApiRouteCatalog` (miroir des `PUBLIC_ACCESS` de `security.yaml`, motifs larges
+     * `^/api/password`, `^/api/register`, `^/api/docs`, `^/api/health`…) est sautée par le contrôle
+     * central ET ouverte à un anonyme par le pare-feu — plus aucune garde à la main ne la rattraperait.
+     * Mesuré sur le chemin de chaque route du routeur, méthode par méthode (comme le pare-feu) :
+     * (1) aucune route publique ne résout de déclaration `ClubFunction`/`ClubResource`/`AccountFunction` ;
+     * (2) les routes publiques sont EXACTEMENT `PUBLIC_ROUTES`, écrite à la main — une route nouvelle
+     * sous un préfixe public, déclarée ou non, rougit et se classe consciemment.
+     * Le cas (1) recoupe la ligne « famille ET déclarée » de
+     * `testEveryApiRouteFallsInExactlyOneFamily` ; il est nommé ici pour la revue de sécurité de la
+     * PR 3b, le cas (2) n'existe que là.
+     */
+    public function testNoClubOrAccountRouteHidesUnderAPublicPattern(): void
+    {
+        $resolver = $this->resolver();
+        $declared = [];
+        $public = [];
+        foreach ($this->apiRoutes() as $name => $route) {
+            foreach ($this->methods($route) as $method) {
+                if (!PublicApiRouteCatalog::matches($this->samplePath($route), $method)) {
+                    continue;
+                }
+                $key = $method . ' ' . $this->bare($route);
+                $public[] = $key;
+                $declaration = $resolver->for($this->requestFor($name, $route, $method));
+                if (null !== $declaration) {
+                    $declared[] = \sprintf('%s (%s) : sous un motif public, déclarée %s', $key, $name, $declaration::class);
+                }
+            }
+        }
+        sort($public);
+        $expected = array_keys(self::PUBLIC_ROUTES);
+        sort($expected);
+
+        self::assertSame([], $declared, "Routes de club ou de compte sous un motif public (sautées par le contrôle central, ouvertes à un anonyme) :\n  - " . implode("\n  - ", $declared));
+        self::assertSame($expected, $public, 'les routes sous un motif public ont changé : à gauche PUBLIC_ROUTES, à droite le routeur');
     }
 
     protected function setUp(): void

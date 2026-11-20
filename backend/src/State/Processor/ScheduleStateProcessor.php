@@ -42,12 +42,6 @@ class ScheduleStateProcessor extends AbstractStateProcessor
         parent::__construct($entityManager, $requestStack, $seasonResolver, $seasonAccessGuard, $managementAccessGuard);
     }
 
-    /** SEC-07: schedule create/rename/delete is cockpit management surface. */
-    protected function requiresManagementRole(): bool
-    {
-        return true;
-    }
-
     protected function getEntityClass(): string
     {
         return Schedule::class;

@@ -12,7 +12,6 @@ use App\Enum\SchedulePlanType;
 use App\Service\ClosurePinRemover;
 use App\Service\ClosureWindowApplier;
 use App\Service\ClosureWindowPlanner;
-use App\Service\ManagementAccessGuard;
 use App\Service\PeriodWindowUniquenessGuard;
 use App\Service\SchedulePlanProvisioner;
 use App\Service\WriteTargetSeasonResolver;
@@ -48,7 +47,6 @@ final class ClosureWindowApplyController extends AbstractController implements S
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
         private readonly RequestStack $requestStack,
-        private readonly ManagementAccessGuard $managementAccessGuard,
         private readonly SchedulePlanProvisioner $schedulePlanProvisioner,
         private readonly ClosureWindowPlanner $planner,
         private readonly ClosureWindowApplier $applier,
@@ -68,8 +66,6 @@ final class ClosureWindowApplyController extends AbstractController implements S
     #[Route('/api/schedule_plans/{id}/window', name: 'api_schedule_plan_window', methods: ['POST'])]
     public function __invoke(string $id, Request $request): JsonResponse
     {
-        $this->managementAccessGuard->assertManager(); // SEC-07
-
         /** @var array<string, mixed> $body */
         $body = json_decode((string) $request->getContent(), true) ?: [];
         $previewToken = $body['previewToken'] ?? null;

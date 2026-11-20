@@ -8,7 +8,6 @@ use App\Access\Audience;
 use App\Access\ClubFunction;
 use App\Access\Module;
 use App\Enum\SchedulePlanType;
-use App\Service\ManagementAccessGuard;
 use App\Service\SchedulePlanProvisioner;
 use App\Service\VenuePeriodGrid;
 use App\Service\WriteTargetSeasonResolver;
@@ -45,7 +44,6 @@ final class VenuePeriodGridActionController extends AbstractController implement
 
     public function __construct(
         private readonly RequestStack $requestStack,
-        private readonly ManagementAccessGuard $managementAccessGuard,
         private readonly SchedulePlanProvisioner $schedulePlanProvisioner,
         private readonly VenuePeriodGrid $venuePeriodGrid,
         private readonly WriteTargetSeasonResolver $writeTargetSeasonResolver,
@@ -66,8 +64,6 @@ final class VenuePeriodGridActionController extends AbstractController implement
 
     public function __invoke(): JsonResponse
     {
-        $this->managementAccessGuard->assertManager(); // SEC-07
-
         $request = $this->requestStack->getCurrentRequest();
         $payload = $this->decode($request);
         $schedulePlanId = $payload['schedulePlanId'] ?? null;

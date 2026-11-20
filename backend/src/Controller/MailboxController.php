@@ -24,7 +24,7 @@ use Symfony\Component\Routing\Attribute\Route;
  *
  * Tenant pur : le club vient du JWT (`_club_id` posé par TenantFilterListener), jamais d'un
  * input ; la RLS + le filtre explicite par clubId bornent la lecture au tenant courant. Aucune
- * garde « gestionnaire » (ManagementAccessGuard) — tout membre connecté du club lit sa boîte.
+ * garde « gestionnaire » — tout membre connecté du club lit sa boîte.
  * Un club SANS horloge n'a jamais de ligne : l'écran et l'entrée de nav restent vides/masqués
  * côté front, piloté par `me.club.simulatedToday`.
  */

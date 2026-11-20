@@ -5,10 +5,10 @@ declare(strict_types=1);
 namespace App\Controller;
 
 use App\Access\Audience;
+use App\Access\ClubAccessListener;
 use App\Access\ClubFunction;
 use App\Access\Module;
 use App\Service\LeagueWindowSuggestionService;
-use App\Service\ManagementAccessGuard;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
@@ -21,7 +21,7 @@ use Symfony\Component\Routing\Attribute\Route;
  * instance fédérale (comité / ligue / fédération) plus le repli fédéral, l'ensemble
  * MASQUÉ des combinaisons déjà identiques à sa copie. La lecture (GET) est ouverte à tout
  * membre actif (un Membre voit les propositions) ; l'application (POST) reste réservée au
- * gestionnaire ({@see ManagementAccessGuard}). Aucune plage n'est
+ * gestionnaire ({@see ClubAccessListener}). Aucune plage n'est
  * jamais fournie par le client : « Appliquer » RECALCULE la suggestion côté serveur.
  */
 #[ClubFunction(module: Module::MATCHES, audience: Audience::MANAGER)]
@@ -31,7 +31,6 @@ final class LeagueWindowSuggestionsController extends AbstractController
 
     public function __construct(
         private readonly LeagueWindowSuggestionService $service,
-        private readonly ManagementAccessGuard $managementGuard,
         private readonly RequestStack $requestStack,
     ) {}
 
@@ -50,8 +49,6 @@ final class LeagueWindowSuggestionsController extends AbstractController
     #[Route('/api/league-window-suggestions/apply', name: 'api_league_window_suggestions_apply', methods: ['POST'])]
     public function apply(Request $request): JsonResponse
     {
-        $this->managementGuard->assertManager();
-
         $clubId = $this->resolveCurrentClubId($this->requestStack);
         if (null === $clubId) {
             return $this->json(['error' => 'No club in context.'], Response::HTTP_BAD_REQUEST);

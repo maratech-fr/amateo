@@ -15,7 +15,6 @@ use App\Service\CoachInTwoPlacesGuard;
 use App\Service\DeploymentGate;
 use App\Service\GenerationBlockersGuard;
 use App\Service\GenerationComplexityGuard;
-use App\Service\ManagementAccessGuard;
 use App\Service\OrphanPinGuard;
 use App\Service\SchedulePlanProvisioner;
 use App\Service\SocleGuard;
@@ -67,7 +66,6 @@ final class FillPeriodPlanController extends AbstractController implements Seaso
         private readonly EntityManagerInterface $entityManager,
         private readonly MessageBusInterface $messageBus,
         private readonly RequestStack $requestStack,
-        private readonly ManagementAccessGuard $managementAccessGuard,
         private readonly SchedulePlanProvisioner $schedulePlanProvisioner,
         private readonly SocleGuard $socleGuard,
         private readonly GenerationComplexityGuard $complexityGuard,
@@ -89,8 +87,6 @@ final class FillPeriodPlanController extends AbstractController implements Seaso
     #[Route('/api/schedules/{id}/fill', name: 'api_schedule_fill', methods: ['POST'])]
     public function __invoke(string $id): JsonResponse
     {
-        $this->managementAccessGuard->assertManager(); // SEC-07
-
         // P4-350 (axe generation pipeline) : gel des guichets pendant une mise en production
         // imminente — le refus de gel précède la garde « période » et tout le reste.
         if ($this->deploymentGate->isFrozen()) {

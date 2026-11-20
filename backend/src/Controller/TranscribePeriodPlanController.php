@@ -8,7 +8,6 @@ use App\Access\Audience;
 use App\Access\ClubFunction;
 use App\Access\Module;
 use App\Enum\SchedulePlanType;
-use App\Service\ManagementAccessGuard;
 use App\Service\PeriodPlanTranscriber;
 use App\Service\SchedulePlanProvisioner;
 use App\Service\SocleGuard;
@@ -40,7 +39,6 @@ final class TranscribePeriodPlanController extends AbstractController implements
 
     public function __construct(
         private readonly RequestStack $requestStack,
-        private readonly ManagementAccessGuard $managementAccessGuard,
         private readonly SchedulePlanProvisioner $schedulePlanProvisioner,
         private readonly SocleGuard $socleGuard,
         private readonly PeriodPlanTranscriber $transcriber,
@@ -58,8 +56,6 @@ final class TranscribePeriodPlanController extends AbstractController implements
     #[Route('/api/schedule_plans/{id}/transcribe-from-socle', name: 'api_schedule_plan_transcribe_from_socle', methods: ['POST'])]
     public function __invoke(string $id): JsonResponse
     {
-        $this->managementAccessGuard->assertManager(); // SEC-07
-
         // Contexte du plan en SQL brut (filter-free) : RLS scope le club, un plan d'un autre club
         // rend null. Le contrôleur re-vérifie le club en défense (tenant).
         $context = $this->schedulePlanProvisioner->fetchPlanContext($id);

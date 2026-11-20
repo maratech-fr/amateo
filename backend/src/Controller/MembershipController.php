@@ -460,8 +460,9 @@ final class MembershipController extends AbstractController
             return $this->json(['error' => 'Accès refusé.'], 403);
         }
 
+        // Le rôle de gestion est prouvé en amont par le contrôle central (`ClubAccessListener`).
         $membership = $this->clubUserRepository->findActiveMembership($user->getId(), $clubId);
-        if (!$membership instanceof ClubUser || !$membership->getRole()->isManager()) {
+        if (!$membership instanceof ClubUser) {
             return $this->json(['error' => 'Accès refusé.'], 403);
         }
 

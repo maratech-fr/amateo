@@ -10,7 +10,6 @@ use App\Access\Module;
 use App\Entity\Schedule;
 use App\Entity\Season;
 use App\Enum\ScheduleStatus;
-use App\Service\ManagementAccessGuard;
 use App\Service\ScheduleCapabilityResolver;
 use App\Service\SchedulePlanProvisioner;
 use App\Service\SocleGuard;
@@ -43,7 +42,6 @@ final class RegenerateFromVersionController extends AbstractController implement
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
         private readonly RequestStack $requestStack,
-        private readonly ManagementAccessGuard $managementAccessGuard,
         private readonly StructureRestorer $structureRestorer,
         private readonly SchedulePlanProvisioner $schedulePlanProvisioner,
         private readonly SocleGuard $socleGuard,
@@ -62,8 +60,6 @@ final class RegenerateFromVersionController extends AbstractController implement
     #[Route('/api/schedules/{id}/regenerate-from', name: 'api_schedule_regenerate_from', methods: ['POST'])]
     public function __invoke(string $id): JsonResponse
     {
-        $this->managementAccessGuard->assertManager(); // SEC-07
-
         try {
             $source = $this->entityManager->getRepository(Schedule::class)->find($id);
         } catch (Throwable) {

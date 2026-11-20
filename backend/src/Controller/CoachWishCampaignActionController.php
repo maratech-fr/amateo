@@ -17,7 +17,6 @@ use App\Repository\CoachWishTokenRepository;
 use App\Service\CoachWishCampaignPresenter;
 use App\Service\CoachWishMailBuilder;
 use App\Service\CoachWishSeasonGuard;
-use App\Service\ManagementAccessGuard;
 use DateTimeZone;
 use Doctrine\ORM\EntityManagerInterface;
 use InvalidArgumentException;
@@ -56,7 +55,6 @@ final class CoachWishCampaignActionController extends AbstractController
 
     public function __construct(
         private readonly RequestStack $requestStack,
-        private readonly ManagementAccessGuard $managementAccessGuard,
         private readonly EntityManagerInterface $entityManager,
         private readonly CoachWishTokenRepository $tokenRepository,
         private readonly CoachWishMailBuilder $mailBuilder,
@@ -69,8 +67,6 @@ final class CoachWishCampaignActionController extends AbstractController
 
     public function __invoke(string $id): JsonResponse
     {
-        $this->managementAccessGuard->assertManager(); // SEC-07
-
         // Un identifiant malformé rend le même 404 qu'une collecte d'un autre club, jamais un 500.
         $campaign = Uuid::isValid($id) ? $this->entityManager->getRepository(CoachWishCampaign::class)->find($id) : null;
         // Le club vient de la LIGNE, jamais du corps — un id d'un autre club est déjà
@@ -237,7 +233,7 @@ final class CoachWishCampaignActionController extends AbstractController
         $periodTitle = $entry?->getTitle() ?? 'la période';
 
         // Formule A (D1) : le corps et l'expéditeur portent le PRÉNOM du gestionnaire qui
-        // déclenche CET envoi/relance — le `getUser()` courant, après assertManager (SEC-07).
+        // déclenche CET envoi/relance — le `getUser()` courant, gestionnaire prouvé par le contrôle central.
         $user = $this->getUser();
         $senderFirstName = $user instanceof User ? $user->getFirstName() : '';
 

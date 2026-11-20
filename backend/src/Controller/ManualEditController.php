@@ -26,7 +26,6 @@ use App\Exception\SwapWithSelfException;
 use App\Exception\TeamAlreadyAtCaseException;
 use App\Exception\TeamAlreadyTrainsThatDayException;
 use App\Service\ClubGenerationLock;
-use App\Service\ManagementAccessGuard;
 use App\Service\ManualEditService;
 use App\Service\MoveSlotService;
 use App\Service\MutualizeSlotService;
@@ -49,7 +48,6 @@ final class ManualEditController extends AbstractController implements SeasonSco
     public function __construct(
         private EntityManagerInterface $entityManager,
         private ManualEditService $manualEditService,
-        private readonly ManagementAccessGuard $managementAccessGuard,
         private readonly LoggerInterface $logger,
         private readonly MoveSlotService $moveSlotService,
         private readonly MutualizeSlotService $mutualizeSlotService,
@@ -97,7 +95,6 @@ final class ManualEditController extends AbstractController implements SeasonSco
     #[Route('/api/schedule-slots/{id}/manual-edit/lock', name: 'api_manual_edit_lock', methods: ['POST'])]
     public function applyLock(string $id, Request $request): JsonResponse
     {
-        $this->managementAccessGuard->assertManager(); // SEC-07
         $slot = $this->findSlot($id);
 
         if (!$slot instanceof ScheduleSlotTemplate) {
@@ -153,7 +150,6 @@ final class ManualEditController extends AbstractController implements SeasonSco
     #[Route('/api/schedule-slots/{id}/move', name: 'api_schedule_slot_move', methods: ['POST'])]
     public function move(string $id, Request $request): JsonResponse
     {
-        $this->managementAccessGuard->assertManager(); // SEC-07
         $slot = $this->findSlot($id);
 
         if (!$slot instanceof ScheduleSlotTemplate) {
@@ -303,8 +299,6 @@ final class ManualEditController extends AbstractController implements SeasonSco
     #[Route('/api/schedules/{id}/place-slot', name: 'api_schedule_place_slot', methods: ['POST'])]
     public function placeSlot(string $id, Request $request): JsonResponse
     {
-        $this->managementAccessGuard->assertManager(); // SEC-07
-
         $schedule = $this->findSchedule($id);
         if (!$schedule instanceof Schedule) {
             return $this->json(['error' => 'Planning introuvable.'], Response::HTTP_NOT_FOUND);
@@ -437,8 +431,6 @@ final class ManualEditController extends AbstractController implements SeasonSco
     #[Route('/api/schedule-slots/move-group', name: 'api_schedule_slot_move_group', methods: ['POST'])]
     public function moveGroup(Request $request): JsonResponse
     {
-        $this->managementAccessGuard->assertManager(); // SEC-07
-
         $data = json_decode($request->getContent(), true);
         if (!\is_array($data)) {
             return $this->json(['error' => 'Invalid JSON body.'], Response::HTTP_BAD_REQUEST);
@@ -599,8 +591,6 @@ final class ManualEditController extends AbstractController implements SeasonSco
     #[Route('/api/schedule-slots/swap', name: 'api_schedule_slot_swap', methods: ['POST'])]
     public function swap(Request $request): JsonResponse
     {
-        $this->managementAccessGuard->assertManager(); // SEC-07
-
         $data = json_decode($request->getContent(), true);
         if (!\is_array($data)) {
             return $this->json(['error' => 'Invalid JSON body.'], Response::HTTP_BAD_REQUEST);
@@ -721,7 +711,6 @@ final class ManualEditController extends AbstractController implements SeasonSco
     #[Route('/api/schedule-slots/{id}/remove', name: 'api_schedule_slot_remove', methods: ['POST'])]
     public function remove(string $id, Request $request): JsonResponse
     {
-        $this->managementAccessGuard->assertManager(); // SEC-07
         $slot = $this->findSlot($id);
 
         if (!$slot instanceof ScheduleSlotTemplate) {
@@ -762,8 +751,6 @@ final class ManualEditController extends AbstractController implements SeasonSco
     #[Route('/api/schedule-slots/remove-group', name: 'api_schedule_slot_remove_group', methods: ['POST'])]
     public function removeGroup(Request $request): JsonResponse
     {
-        $this->managementAccessGuard->assertManager(); // SEC-07
-
         $data = json_decode($request->getContent(), true);
         if (!\is_array($data)) {
             return $this->json(['error' => 'Invalid JSON body.'], Response::HTTP_BAD_REQUEST);
@@ -829,7 +816,6 @@ final class ManualEditController extends AbstractController implements SeasonSco
     #[Route('/api/schedule-slots/{id}/mutualize', name: 'api_schedule_slot_mutualize', methods: ['POST'])]
     public function mutualize(string $id, Request $request): JsonResponse
     {
-        $this->managementAccessGuard->assertManager(); // SEC-07
         $slot = $this->findSlot($id);
 
         if (!$slot instanceof ScheduleSlotTemplate) {
@@ -899,8 +885,6 @@ final class ManualEditController extends AbstractController implements SeasonSco
     #[Route('/api/schedule-slots/mutualize-at-case', name: 'api_schedule_slot_mutualize_at_case', methods: ['POST'])]
     public function mutualizeAtCase(Request $request): JsonResponse
     {
-        $this->managementAccessGuard->assertManager(); // SEC-07
-
         $data = json_decode($request->getContent(), true);
         if (!\is_array($data)) {
             return $this->json(['error' => 'Invalid JSON body.'], Response::HTTP_BAD_REQUEST);

@@ -15,7 +15,6 @@ use App\Enum\FixtureStatus;
 use App\Exception\ImportRejectedException;
 use App\Service\FbiCorrectionLedger;
 use App\Service\FbiFixtureImporter;
-use App\Service\ManagementAccessGuard;
 use App\Service\SeasonAccessGuard;
 use App\Service\SocleGuard;
 use DateMalformedStringException;
@@ -54,7 +53,6 @@ final class ReviewFixtureDeviationController extends AbstractController
 
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
-        private readonly ManagementAccessGuard $managementAccessGuard,
         private readonly SeasonAccessGuard $seasonAccessGuard,
         private readonly SocleGuard $socleGuard,
         private readonly FbiFixtureImporter $importer,
@@ -66,7 +64,6 @@ final class ReviewFixtureDeviationController extends AbstractController
     #[Route('/api/fixtures/review/deviations', name: 'api_fixtures_review_deviations', methods: ['POST'], priority: 10)]
     public function __invoke(Request $request): JsonResponse
     {
-        $this->managementAccessGuard->assertManager();
         $this->seasonAccessGuard->assertWritable($request);
         $this->socleGuard->assertSeasonPlanChosen($request->attributes->get('_season_id') ?? $request->headers->get('X-Season-Id'));
 

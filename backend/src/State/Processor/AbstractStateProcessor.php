@@ -84,10 +84,9 @@ abstract class AbstractStateProcessor implements ProcessorInterface
         $clubId = $request?->attributes->get('_club_id');
         $seasonId = $request?->attributes->get('_season_id') ?? $request?->headers->get('X-Season-Id');
 
-        // SEC-07 — before the season guard so 403 wins over 409 (Import idiom).
-        if ($this->requiresManagementRole()) {
-            $this->managementAccessGuard->assertManager();
-        }
+        // Le rôle est contrôlé avant tout contrôleur par `App\Access\ClubAccessListener`, d'après
+        // la déclaration `#[ClubResource]` de la ressource : aucun Membre n'arrive ici pour une
+        // écriture « gestionnaire ».
 
         // Archived-season writes are refused (409). Only season-scoped entities
         // are gated — Club/User/Season carry no seasonId and stay editable.
@@ -115,21 +114,6 @@ abstract class AbstractStateProcessor implements ProcessorInterface
         }
 
         return $data;
-    }
-
-    /**
-     * P1-1: the club role model is in place — every API Platform write is
-     * management by default. Any POST/PUT/PATCH/DELETE requires an owner/admin
-     * membership (ManagementAccessGuard). Wizard/cockpit entities are all
-     * management-sensitive, so this is the correct default; a processor only
-     * opts OUT explicitly, with its reason.
-     *
-     * (The former opt-in `true` overrides on the six cockpit processors are now
-     * redundant but kept — removing them is out of this PR's scope.)
-     */
-    protected function requiresManagementRole(): bool
-    {
-        return true;
     }
 
     /**

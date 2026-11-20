@@ -13,7 +13,6 @@ use App\Message\ComputeTravelTimesMessage;
 use App\Repository\ClubRepository;
 use App\Repository\ClubTravelCacheRepository;
 use App\Service\Geo\BanGeocodingClient;
-use App\Service\ManagementAccessGuard;
 use App\Service\SeasonResolver;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
@@ -48,7 +47,6 @@ final class ClubSiegeController extends AbstractController
         private readonly ClubRepository $clubRepository,
         private readonly EntityManagerInterface $entityManager,
         private readonly RequestStack $requestStack,
-        private readonly ManagementAccessGuard $managementAccessGuard,
         private readonly BanGeocodingClient $geocoder,
         private readonly SeasonResolver $seasonResolver,
         private readonly MessageBusInterface $messageBus,
@@ -58,8 +56,6 @@ final class ClubSiegeController extends AbstractController
     #[Route('/api/club/siege', name: 'club_siege', methods: ['PATCH'])]
     public function __invoke(): JsonResponse
     {
-        $this->managementAccessGuard->assertManager(); // SEC-07
-
         $request = $this->requestStack->getCurrentRequest();
         $clubId = $this->resolveCurrentClubId($this->requestStack);
         if (!$request instanceof Request || null === $clubId) {

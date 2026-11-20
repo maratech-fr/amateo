@@ -10,7 +10,6 @@ use App\Access\Module;
 use App\Entity\Club;
 use App\Entity\SchedulePlan;
 use App\Service\ClubDay;
-use App\Service\ManagementAccessGuard;
 use App\Service\PeriodPlanAlertResolver;
 use App\Service\SchedulePlanProvisioner;
 use App\Service\WriteTargetSeasonResolver;
@@ -39,7 +38,6 @@ final class SchedulePlanAlertSeenController extends AbstractController implement
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
         private readonly RequestStack $requestStack,
-        private readonly ManagementAccessGuard $managementAccessGuard,
         private readonly SchedulePlanProvisioner $schedulePlanProvisioner,
         private readonly WriteTargetSeasonResolver $writeTargetSeasonResolver,
         private readonly ClubDay $clubDay,
@@ -55,8 +53,6 @@ final class SchedulePlanAlertSeenController extends AbstractController implement
     #[Route('/api/schedule_plans/{id}/alert-seen', name: 'api_schedule_plan_alert_seen', methods: ['POST'])]
     public function __invoke(string $id, Request $request): JsonResponse
     {
-        $this->managementAccessGuard->assertManager();
-
         try {
             $plan = $this->entityManager->getRepository(SchedulePlan::class)->find($id);
         } catch (Throwable) {

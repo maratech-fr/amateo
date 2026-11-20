@@ -50,11 +50,6 @@ class CoachWishCampaignStateProcessor extends AbstractStateProcessor
         return CoachWishCampaign::class;
     }
 
-    protected function requiresManagementRole(): bool
-    {
-        return true; // SEC-07
-    }
-
     /**
      * @param CoachWishCampaignInput $input
      */

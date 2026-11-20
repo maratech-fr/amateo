@@ -21,7 +21,6 @@ use App\Service\ConflictCoachMailBuilder;
 use App\Service\ConflictCoachMailing;
 use App\Service\ConflictFeedAssembler;
 use App\Service\ConflictMailingLock;
-use App\Service\ManagementAccessGuard;
 use App\Service\SeasonResolver;
 use App\Service\SocleGuard;
 use App\Support\FrenchNameOrder;
@@ -73,7 +72,6 @@ final class ConflictCoachMailController extends AbstractController implements Se
     public function __construct(
         private readonly RequestStack $requestStack,
         private readonly EntityManagerInterface $entityManager,
-        private readonly ManagementAccessGuard $managementAccessGuard,
         private readonly SeasonResolver $seasonResolver,
         private readonly SocleGuard $socleGuard,
         private readonly ConflictMailingLock $lock,
@@ -195,8 +193,6 @@ final class ConflictCoachMailController extends AbstractController implements Se
         if ($frozen instanceof JsonResponse) {
             return $frozen;
         }
-
-        $this->managementAccessGuard->assertManager();
 
         $club = null !== $clubId ? $this->entityManager->getRepository(Club::class)->find($clubId) : null;
         if (!$club instanceof Club) {

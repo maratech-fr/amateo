@@ -10,7 +10,6 @@ use App\Access\Module;
 use App\Entity\Club;
 use App\Service\ClubDay;
 use App\Service\ClubMailboxPurgerInterface;
-use App\Service\ManagementAccessGuard;
 use App\Service\PeriodPlanAutoValidator;
 use App\Service\SeasonResolver;
 use DateTimeImmutable;
@@ -48,7 +47,6 @@ final class ClubClockController extends AbstractController
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
         private readonly RequestStack $requestStack,
-        private readonly ManagementAccessGuard $managementAccessGuard,
         private readonly ClubMailboxPurgerInterface $mailboxPurger,
         private readonly SeasonResolver $seasonResolver,
         // BCK-34 — bornes de l'horloge simulée : la saison « en cours » se dérive du
@@ -63,10 +61,6 @@ final class ClubClockController extends AbstractController
     #[Route('/api/club/clock', name: 'api_club_clock', methods: ['POST'])]
     public function __invoke(Request $request): JsonResponse
     {
-        // SEC-07 : réservé aux gestionnaires (403 sinon). L'appartenance active au club de
-        // contexte est déjà prouvée par le listener tenant (le club vient du JWT — AUD-SEC-25).
-        $this->managementAccessGuard->assertManager();
-
         $clubId = $this->resolveCurrentClubId($this->requestStack);
         $club = null === $clubId ? null : $this->entityManager->getRepository(Club::class)->find($clubId);
         if (!$club instanceof Club) {

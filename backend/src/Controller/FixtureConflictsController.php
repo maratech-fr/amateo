@@ -21,7 +21,6 @@ use App\Service\ClubDay;
 use App\Service\ConflictCoachMailing;
 use App\Service\ConflictFeedAssembler;
 use App\Service\FbiCorrectionLedger;
-use App\Service\ManagementAccessGuard;
 use App\Service\SeasonResolver;
 use DateTimeImmutable;
 use DateTimeInterface;
@@ -62,7 +61,6 @@ final class FixtureConflictsController extends AbstractController
         private readonly RequestStack $requestStack,
         private readonly SeasonResolver $seasonResolver,
         private readonly ConflictFeedAssembler $feedAssembler,
-        private readonly ManagementAccessGuard $managementAccessGuard,
         private readonly ConflictResolutionRepository $resolutionRepository,
         private readonly ConflictMailingRepository $mailingRepository,
         private readonly ConflictCoachMailing $coachMailing,
@@ -125,8 +123,6 @@ final class FixtureConflictsController extends AbstractController
     #[Route('/api/fixtures/conflicts/{fingerprint}/resolution', name: 'api_fixture_conflict_resolution_put', requirements: ['fingerprint' => self::FINGERPRINT_REQUIREMENT], methods: ['PUT'], priority: 10)]
     public function putResolution(Request $request, string $fingerprint): JsonResponse
     {
-        $this->managementAccessGuard->assertManager(); // SEC-07 first, so 403 wins.
-
         $clubId = $this->resolveCurrentClubId($this->requestStack);
         if (null === $clubId) {
             return $this->json(['error' => 'No club in context.'], Response::HTTP_BAD_REQUEST);
@@ -195,7 +191,7 @@ final class FixtureConflictsController extends AbstractController
         }
 
         $user = $this->getUser();
-        \assert($user instanceof User); // assertManager() proved an active management membership.
+        \assert($user instanceof User); // le contrôle central a prouvé une adhésion de gestion active.
 
         $row = $this->resolutionRepository->findOneByFingerprint($season->getId(), $fingerprint)
             ?? (new ConflictResolution)
@@ -248,8 +244,6 @@ final class FixtureConflictsController extends AbstractController
     #[Route('/api/fixtures/conflicts/{fingerprint}/resolution', name: 'api_fixture_conflict_resolution_delete', requirements: ['fingerprint' => self::FINGERPRINT_REQUIREMENT], methods: ['DELETE'], priority: 10)]
     public function deleteResolution(string $fingerprint): Response
     {
-        $this->managementAccessGuard->assertManager(); // SEC-07
-
         $clubId = $this->resolveCurrentClubId($this->requestStack);
         if (null === $clubId) {
             return $this->json(['error' => 'No club in context.'], Response::HTTP_BAD_REQUEST);

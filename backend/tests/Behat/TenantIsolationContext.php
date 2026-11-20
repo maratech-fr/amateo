@@ -269,9 +269,10 @@ final class TenantIsolationContext extends BaseContext
     /**
      * Chaque geste d'écriture du gestionnaire, tenté par un membre simple : refusé 403 ET avec son
      * MESSAGE (un 403 sans le bon motif pourrait venir d'ailleurs — un crédit épuisé, une garde de
-     * démonstration). Les gestes qui visent un planning, une séance ou une collecte portent un
-     * identifiant inconnu : la garde de rôle passe AVANT la lecture, et si elle tombait, la
-     * réponse serait un 404, jamais une écriture sur le club de démonstration partagé. Le
+     * démonstration). Les gestes qui visent un planning, une séance, une collecte, une équipe, une
+     * saison, une adhésion ou une invitation portent un identifiant inconnu : le contrôle central
+     * passe AVANT toute lecture (un Membre reçoit 403, jamais le 404 de la ligne absente), et s'il
+     * tombait, la réponse serait un 404, jamais une écriture sur le club de démonstration partagé. Le
      * placement vise un week-end passé (rien à placer) pour la même raison.
      */
     #[Then('/^chacun de ces gestes lui est refusé \\(403\\), avec ce message :$/u')]
@@ -457,6 +458,12 @@ final class TenantIsolationContext extends BaseContext
             'verrouiller une séance' => $this->apiPost(\sprintf('schedule-slots/%s/manual-edit/lock', $unknown), ['lockLevel' => 'HARD'], $this->memberToken),
             'placer les matchs' => $this->apiPost('fixtures/place', ['from' => '2020-01-04', 'to' => '2020-01-05'], $this->memberToken),
             'importer les rencontres' => $this->apiPost('fixtures/import', [], $this->memberToken),
+            'importer des équipes' => $this->apiPost(\sprintf('clubs/%s/import-teams', $this->clubIdA), [], $this->memberToken),
+            'modifier une équipe' => $this->apiPut(\sprintf('teams/%s', $unknown), ['name' => 'Écriture interdite'], $this->memberToken),
+            'préparer la saison suivante' => $this->apiPost(\sprintf('seasons/%s/transition', $unknown), [], $this->memberToken),
+            'désactiver un membre' => $this->apiPost(\sprintf('memberships/%s/deactivate', $unknown), [], $this->memberToken),
+            'révoquer une invitation' => $this->apiDelete(\sprintf('invitations/%s', $unknown), $this->memberToken),
+            'exporter les données du club' => $this->apiGet('club/export', $this->memberToken),
             'envoyer les conflits aux coachs' => $this->apiPost('fixtures/conflicts/mail-coaches', [], $this->memberToken),
             'lancer une collecte de doléances' => $this->apiPost(\sprintf('coach_wish_campaigns/%s/send-links', $unknown), [], $this->memberToken),
             'régler l\'horloge simulée' => $this->apiPost('club/clock', ['date' => '2027-01-04'], $this->memberToken),

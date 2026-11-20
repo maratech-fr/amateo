@@ -14,7 +14,6 @@ use App\Message\ComputeTravelTimesMessage;
 use App\Repository\FixtureRepository;
 use App\Service\Basketball\OpponentLocationResolver;
 use App\Service\Geo\OpponentVenueAutoLocator;
-use App\Service\ManagementAccessGuard;
 use App\Service\SeasonResolver;
 use App\Service\TravelComputeLock;
 use Psr\Log\LoggerInterface;
@@ -46,7 +45,7 @@ use Throwable;
  * il compose trois services que ce dernier ne connaît pas et n'a aucune donnée en
  * commun avec le CRUD de trajet ; le garder à part évite d'alourdir son constructeur.
  *
- * `assertManager()` d'abord (403 souverain). Cap dur AVANT tout réseau (au-delà de
+ * Rôle refusé avant tout par le contrôle central (403 souverain). Cap dur AVANT tout réseau (au-delà de
  * {@see MAX_DISTINCT} adversaires distincts → 422 parlant, aucun jeton brûlé) ; puis un
  * limiteur PAR UTILISATEUR dédié (`opponent_refresh`, la route déclenche une rafale
  * d'appels sortants FFBB/BAN/IGN). Chaque passe est INDÉPENDANTE : l'échec de l'une
@@ -76,7 +75,6 @@ final class OpponentRefreshController extends AbstractController
     public function __construct(
         private readonly OpponentLocationResolver $locationResolver,
         private readonly OpponentVenueAutoLocator $venueAutoLocator,
-        private readonly ManagementAccessGuard $managementAccessGuard,
         private readonly SeasonResolver $seasonResolver,
         private readonly FixtureRepository $fixtures,
         private readonly RequestStack $requestStack,
@@ -90,9 +88,6 @@ final class OpponentRefreshController extends AbstractController
     #[Route('/api/opponents/refresh', name: 'api_opponents_refresh', methods: ['POST'])]
     public function __invoke(Request $request): JsonResponse
     {
-        // SEC-07 first so 403 wins over the 422/429.
-        $this->managementAccessGuard->assertManager();
-
         $clubId = $this->resolveCurrentClubId($this->requestStack);
         $season = null === $clubId ? null : $this->seasonResolver->selectedOrCurrent($request, $clubId);
         if (null === $clubId || !$season instanceof Season) {

@@ -109,16 +109,22 @@ services:
 ## Security Considerations
 
 - Defence in depth is real now: Doctrine filter (layer 2) **and** RLS (layer 3). Keep `TenantIsolationTest`, `TenantJwtIsolationTest` and `RlsIsolationTest` green — they are the blocking guards.
-- **Role layer on top of the membership (P1-1):** every API Platform write is
-  **management-only by default** — `AbstractStateProcessor::requiresManagementRole()` defaults to `true`
-  (`ManagementAccessGuard`, SEC-07) — no resource opts out of it (the former `UserStateProcessor`
-  exception was retired with `PUT /api/users`, nettoyage API : `User` is now read-only, edited via
-  `PATCH /api/me`). Custom write controllers carry their own guard (same SEC-07 rule). A
-  non-management member reads everything, writes nothing. Guarded by `ManagementRoleTest`
-  (blocking gate step). The sweep `MemberWriteSweepTest` compares the router to a named table in both
-  directions (every `^/api/` write is decided: 403, open with its dedicated test, or out of club
-  scope) and `MemberReadsAreSideEffectFreeTest` proves the opened reads write and send nothing.
-  Every route also declares its module and audience (`#[ClubFunction]`, `#[ClubResource]`, `#[AccountFunction]`, `src/Access/`) — convention and sweep: `backend/docs/backend-controllers.md` § Déclarer l'accès d'une route; the hand-written guards still decide.
+- **Role layer on top of the membership (P1-1):** the role is decided **centrally**. Every `^/api/`
+  route declares its module and audience (`#[ClubFunction]`, `#[ClubResource]`, `#[AccountFunction]`,
+  `src/Access/`) and `ClubAccessListener` (`kernel.request`, **priority 4**, main request only;
+  `backend/src/Access/ClubAccessListener.php`) answers 403 to a member calling a manager function,
+  and to everyone for a route with no declaration, before any controller runs. Listener order on
+  `kernel.request`: router 32, firewall 8, tenant 7, rate limit 6, caps 5, access control 4 — the
+  tenant (club and season on the request) and the caps must have run, the controller must not have.
+  No `assertManager()` and no management default in `AbstractStateProcessor` remain; what is left in
+  code are guards that *route* (not-stored opponent logo → 404, coach personal links served to the
+  manager only, generation/placement cap) and guards on the club named by the URL (`ClubStateProcessor`,
+  the import gates). A non-management member reads everything, writes nothing. Guarded by
+  `ClubAccessListenerTest`, `ManagementRoleTest` (blocking gate steps). The sweep `MemberWriteSweepTest`
+  compares the router to a named table in both directions (every `^/api/` write is decided: 403, open
+  with its dedicated test, or out of club scope), `AccessDeclarationSweepTest` plays a member on every
+  declared route, and `MemberReadsAreSideEffectFreeTest` proves the opened reads write and send nothing.
+  Convention: `backend/docs/backend-controllers.md` § Déclarer l'accès d'une route.
   A member never triggers an outbound call (FFBB, geocoding stay manager-only; an unstored opponent
   logo is not downloaded for them) and never receives a coach's personal wish link.
   A member asks to become a manager through the member-open `POST|DELETE /api/memberships/me/manager-request`; the manager-only `POST …/{id}/manager-request/refuse` and the role selector decide (`ManagerRoleRequestTest`, blocking gate step). The official-address approval of an escalated request promotes the requester with a raw UPDATE **outside the tenant filter but under `setClubId(club)`** (RLS is `FORCE` on `club_user`; exactly one row must be touched, else it throws) — same pattern as the win-back `reprise`.

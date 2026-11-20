@@ -13,7 +13,6 @@ use App\Service\ManagementAccessGuard;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\RequestStack;
-use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
 
 /**
  * @extends AbstractStateProvider<CoachWishCampaign, CoachWishCampaignResource>
@@ -46,12 +45,7 @@ class CoachWishCampaignStateProvider extends AbstractStateProvider
      */
     public function provide(Operation $operation, array $uriVariables = [], array $context = []): object|array|null
     {
-        try {
-            $this->managementAccessGuard->assertManager();
-            $this->includeTokens = true;
-        } catch (AccessDeniedHttpException) {
-            $this->includeTokens = false;
-        }
+        $this->includeTokens = $this->managementAccessGuard->isManager();
 
         return parent::provide($operation, $uriVariables, $context);
     }

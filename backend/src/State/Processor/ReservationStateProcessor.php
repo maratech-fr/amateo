@@ -129,13 +129,8 @@ class ReservationStateProcessor extends AbstractStateProcessor
     protected function createEntityFromInput(object $input): Reservation
     {
         // clubId + seasonId are set by AbstractStateProcessor from the tenant/season
-        // context. ⚠ Le gate management S'APPLIQUE bien ici : aucune surcharge de
-        // `requiresManagementRole()` ⇒ le défaut `true` d'AbstractStateProcessor:127
-        // gate l'écriture. L'ancien commentaire disait « No SEC-07 management gate »,
-        // ce qui se lisait « route ouverte » alors qu'il voulait dire « pas de
-        // surcharge EXPLICITE » — sur un sujet d'autorisation, la nuance décidait mal
-        // (relevé en livrant le rail de groupe, P2-46 PR-2 : c'est la parité avec
-        // cette route qui a imposé d'y poser `assertManager()`).
+        // context. L'écriture est « gestionnaire » par la déclaration `#[ClubResource]` de la
+        // ressource, refusée au Membre par le contrôle central (`ClubAccessListener`).
         // Lot 4bis — XOR team_id/label : une réservation cible SOIT une équipe, SOIT un créneau
         // LIBRE nommé, jamais les deux ni aucun. Tranché ICI (422 nommé via refuse), là où le
         // gestionnaire comprend son geste — le DTO ne porte que Length(max) sur le libellé.
