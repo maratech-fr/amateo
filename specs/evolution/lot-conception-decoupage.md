@@ -137,11 +137,15 @@ peuvent avancer dans un espace de travail à part pendant qu'un lot principal at
     un tiers) ; un seul contrôle ; la condition « socle validé » portée par le module (§8).
   - La règle unique du crédit : pris quand la sortie est obtenue ; le comblement en consomme un.
   - Deux rôles seulement, colonne fermée (§9).
+    - **PR 1 livrée — « Deux rôles, colonne fermée »** : `club_user.role` et `club_invitation.role`
+      n'acceptent que `admin` et `member` (CHECK, migration `Version20261120120000`) ;
+      `ClubRole::isManager()` remplace la liste `MANAGEMENT_ROLES` et `isManagementRole`.
   - Le régime de démonstration déclaré une fois (§10).
   - La règle du 1er mai côté serveur.
-- **Supprime** : les listes de noms de routes, les appels à la main du contrôle gestionnaire et du
-  socle validé, les dix-neuf exceptions de démonstration écrites une par une.
-- **Dépend de** : lot 0.
+- **Supprime** : les deux listes de noms de routes des crédits (celle du débit selon la décision de
+  cadrage du lot), les appels à la main du contrôle gestionnaire et 8 des 21 appels à la main du socle
+  validé, 8 des exceptions de démonstration écrites une par une (6 autres regroupées en une règle).
+- **Dépend de** : rien.
 - **Preuve** : scénarios d'accès par rôle et par offre ; revue de sécurité obligatoire (accès,
   démonstration).
 
