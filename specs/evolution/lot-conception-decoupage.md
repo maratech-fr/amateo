@@ -1,8 +1,8 @@
 # Lot conception : découpage en lots de travail
 
 **Statut : découpage validé par le fondateur le 2026-11-20 (ordre, premier lot de côté, cadrage).
-Aucun plan n'est écrit.** Rien n'est codé. Ce document dit **quoi dans quel ordre** ; le
-**comment** de chaque lot est le travail de son plan (`morpheus`, puis `smith`).
+Le lot 0 est livré en trois PR ; le lot 2 a livré sa PR 1 (voir §6).** Ce document dit **quoi dans
+quel ordre** ; le **comment** de chaque lot est le travail de son plan (`morpheus`, puis `smith`).
 
 Source : [`conception-cible.md`](conception-cible.md) (les numéros « § » ci-dessous y renvoient).
 Constats : [`../audit/CONCEPTION-2026-11-19-claude-fable-5-2.md`](../audit/CONCEPTION-2026-11-19-claude-fable-5-2.md),
@@ -302,6 +302,8 @@ peuvent avancer dans un espace de travail à part pendant qu'un lot principal at
 
 ## 6. Où en est chaque lot
 
-Ce document porte la fiche de chaque lot (contenu, ce qu'il supprime, dépendances, preuve). **Aucun
-plan n'est écrit.** Un plan s'écrit lot par lot, dans un fichier à lui (`specs/evolution/`), et se
+Ce document porte la fiche de chaque lot (contenu, ce qu'il supprime, dépendances, preuve).
+**Le lot 0 est livré en trois PR** (compositeur, scénarios, enregistreur) la mesure du PDF restant
+une procédure à jouer ([`lot-conception-filet.md`](lot-conception-filet.md) §8) ; **le lot 2 a livré sa PR 1** (deux rôles) ; les
+autres lots n'ont pas de plan écrit. Un plan s'écrit lot par lot, dans un fichier à lui (`specs/evolution/`), et se
 valide en entier avant tout code.

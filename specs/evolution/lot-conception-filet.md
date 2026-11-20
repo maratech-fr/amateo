@@ -19,7 +19,8 @@ demande est identique, club par club ; une différence est nommée par son chemi
 php bin/console app:engine-requests:record --out=<dossier> [--club=<uuid>]…
 ```
 
-- `--out` (requis) : dossier absent ou vide.
+- `--out` (requis) : dossier absent ou vide, jamais un lien symbolique. Une racine créée par l'outil
+  naît en `0700` ; un dossier existant et vide garde ses droits.
 - `--club` (répétable) : sans lui, tous les clubs de la base.
 - Source : `backend/src/Command/EngineRequestsRecordCommand.php`, `Service/EngineRequestRecorder.php`
   (quelles demandes), `Service/EngineRequestFingerprint.php` (format). Fiche de commande :
@@ -31,12 +32,12 @@ Codes de sortie (les refus 2, 3 et 4 précèdent toute écriture ; 4 précède l
 |---|---|
 | 0 | Enregistré |
 | 1 | Une demande atteignable n'a pas pu être composée (nommée, par club et par clé) ; le reste est écrit |
-| 2 | Option invalide : `--out` absent, fichier ou dossier non vide ; `--club` n'est pas un UUID |
+| 2 | Option invalide : `--out` absent, lien symbolique, fichier ou dossier non vide ; `--club` n'est pas un UUID |
 | 3 | La sécurité par club (RLS) n'est pas effective sur la connexion : rôle superuser, `bypassrls`, membre de `amateo_owner`, ou la sonde voit des lignes sans club posé |
 | 4 | Environnement de production |
 
 L'outil ne persiste rien et ne flush pas : il pose le club sur la connexion comme les workers, compose,
-vide l'EntityManager après chaque club. Il purge le tag de cache `cache.schedule` du club avant
+vide l'EntityManager après chaque club. Le club est relâché même si la purge échoue. Il purge le tag de cache `cache.schedule` du club avant
 chaque construction et à la fin du club — le payload du socle est servi du cache (4 h,
 `ScheduleConstraintBuilder.php:59`) et une écriture SQL brute, comme une migration, ne l'invalide
 pas.
@@ -47,8 +48,9 @@ Une demande = un fichier de texte. Une ligne par feuille, `<chemin>\t<valeur>`, 
 (ordre d'octets), saut de ligne final.
 
 - **Désignation par id** : un élément de liste se nomme par son `id` — `teams[<uuid>].sessionsPerWeek`.
-  Un id répété dans la liste : `<id>#1`, `<id>#2`. Sans id : son index. Un id qui n'assemble pas
-  que des UUID, nombres et mots minuscules est désigné par son `sha256:`.
+  Un id répété dans la liste : `<id>#1`, `<id>#2`. Sans id : son index. Un id n'est écrit en clair que s'il est
+  un UUID, un nombre, ou un préfixe connu (`team-coach`, `coach-player-unavailability`,
+  `priority-tier`) suivi d'UUID ou de nombres ; tout autre id est désigné par son `sha256:`.
 - **`#order`** : une ligne `<chemin>#order` par liste porte l'ordre des éléments. Un changement de
   contenu ne se noie donc jamais dans un décalage d'index, et un changement d'ordre ne touche que
   cette ligne.
@@ -97,17 +99,20 @@ Une migration qui ne toucherait que ces demandes ne se verrait pas dans `diff -r
 Autres limites :
 
 - **`/validate-assignments` n'est pas enregistré.**
-- **« Jamais en production » (code 4) ne protège pas** contre un processus de développement branché
-  par `DATABASE_URL` sur la base de production.
-- **Les empreintes de chaînes courtes** (prénoms, noms d'équipe) se retrouvent par dictionnaire : les
-  fichiers se traitent comme la copie de production dont ils viennent.
+- **« Jamais en production » (code 4) ne repose que sur l'environnement** : il ne protège ni d'un
+  processus de développement branché par `DATABASE_URL` sur la base de production, ni d'un `APP_ENV`
+  autre que `prod` sur la machine de production.
+- **Les empreintes ne sont pas salées** : une chaîne courte (prénom, nom d'équipe) se retrouve par
+  dictionnaire ; les fichiers se traitent comme la base dont ils viennent.
+- **En `-vvv`**, une exception de base de données peut afficher du SQL.
+- **La classe de test de garde de la connexion** (`EngineRequestsRecordConnectionGuardTest`) crée des
+  rôles à l'échelle du cluster PostgreSQL : elle refuse de tourner hors d'une base `*_test`.
 - **Une demande de placement dépend de la date du jour** : enregistrer « avant » et « après » le même
   jour, ou à horloge figée.
 - Une équipe nommée **exactement comme une valeur d'énumération** de la liste fermée reste en clair.
-  Un **id d'élément fait d'un seul mot minuscule** resterait en clair (`EngineRequestFingerprint.php`,
-  `ID_WORD`) ; aucun constructeur n'en produit aujourd'hui.
-- La sonde du code 3 ne lit que `team`, `fixture`, `schedule` et `schedule_plan`
-  (`EngineRequestRecorder::PROBE_TABLES`) : une table de club hors RLS n'est pas vue.
+- La sonde du code 3 lit toutes les tables du schéma `public` qui ont une colonne `club_id` et la RLS,
+  sauf `club_user`, `coach_wish_token` et `club_invitation` (lecture hybride,
+  `Security/RlsIsolationTest.php:174-180`) : une table de club sans RLS n'est pas vue.
 - Le tri par id des lectures des constructeurs ([`etat-des-lieux.md`](../courantes/etat-des-lieux.md) §2) est l'unique exception à
   « la demande est identique avant et après » ; son effet sur le moteur n'est pas connu au-delà de
   la mesure faite avant le merge de ce lot.
