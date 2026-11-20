@@ -477,5 +477,5 @@ avant son renouvellement empêche tout déploiement, d'où la réserve. Le compt
   (`docs/ops/deploy.md`).
 - **Fin de lot** : `RoadmapIdentityTest` (dans `backend-tests`) ne tourne plus qu'à la PR finale ;
   un rouge de fin de lot se diagnostique par `git bisect` entre `merge-base lot main` et la tête du
-  lot (`CLAUDE.md` §7 étape 5). Un correctif urgent passe par une PR vers `release`
+  lot (`CLAUDE.md` §7 étape 5) ; le squash coupable nomme sa PR. Un correctif urgent passe par une PR vers `release`
   (`docs/ops/deploy.md`) puis report sur `main` ; le rebase final le ramène dans le lot.

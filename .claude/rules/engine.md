@@ -5,6 +5,8 @@ paths:
 
 # Engine — conventions & pièges (chargé quand engine/ est touché)
 
+Ce fichier ne remplace pas `engine/AGENTS.md` : référence du domaine, à lire quand on touche le sujet.
+
 - **ruff** : line 120, py314, double quotes, LF. **`ruff format` fait convention et est GARDÉ**
   (`ruff format --check` dans `make lint`/`make test` et le job CI Engine Tests, P4-64) —
   `make format` est donc sans danger, il ne churne rien.
@@ -22,7 +24,7 @@ paths:
   `/place-matches`, `tests/perf/test_perf_place_matches.py`) ;
   `pytest-timeout` contre les solves fous. Les golden dépendent du **worker unique déterministe**
   (≤200 de complexité) — ne pas toucher `_adaptive_workers` sans les re-jouer.
-- Le contrat backend⇄engine est **synchronisé À LA MAIN** (`engine/CONTRACT_VERSION`, 1.12, un seul
+- Le contrat backend⇄engine est **synchronisé À LA MAIN** (`engine/CONTRACT_VERSION`, un seul
   contrat pour `/generate`, `/place-matches` ET `/validate-assignments`) : toute modif des schemas
   Pydantic doit garder verts `ContractSchemaTest` + `MatchPlacementContractSchemaTest` +
   `ValidateAssignmentsContractSchemaTest` côté backend. Le contrat est **allégé** : un champ que le

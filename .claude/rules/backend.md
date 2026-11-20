@@ -5,6 +5,8 @@ paths:
 
 # Backend — conventions & pièges (chargé quand backend/ est touché)
 
+Ce fichier ne remplace pas `backend/AGENTS.md` : référence du domaine, à lire quand on touche le sujet.
+
 - **PHPStan level 8** (extensions Doctrine + Symfony) · **CS-Fixer** `@Symfony` + `@PHP84Migration`
   + risky + Yoda + strict comparisons + `fully_qualified_strict_types` avec `import_symbols`.
 - **Rector cible PHP 8.4** (aligné composer `>=8.4`) et son style **fait convention sur `src/` ET
