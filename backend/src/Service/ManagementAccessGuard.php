@@ -9,53 +9,39 @@ use App\Entity\User;
 use App\Repository\ClubUserRepository;
 use Symfony\Bundle\SecurityBundle\Security;
 use Symfony\Component\HttpFoundation\RequestStack;
-use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
 
 /**
- * SEC-07: authorization guard for management-only write endpoints.
+ * Le rôle de l'appelant dans le club de la session : gestionnaire ou non.
  *
- * The tenant listener already proved the caller holds an *active* membership on
- * the current club (the club is derived from the JWT membership — AUD-SEC-25).
- * This guard adds the missing
- * layer for the write choke points that only compared the club id
- * (validate/reopen/manual-edit/generate/reorder/appearance):
- * the membership must be a **management** role (`ClubRole::isManager()`).
+ * Le refus d'une fonction « gestionnaire » à un Membre est posé UNE fois, par le contrôle central
+ * (`App\Access\ClubAccessListener`), avant tout contrôleur. Ce service ne refuse plus rien : il
+ * répond à la question pour le contrôle central et pour les quelques lectures qui AIGUILLENT
+ * selon le rôle (logo adverse non stocké, liens des coachs d'une collecte, caps du club) au lieu
+ * de refuser.
  *
- * Benign today (every member is `admin`), but it is the boundary that keeps the
- * cockpit closed to the forthcoming non-management `coach` role. Mirrors
- * SeasonAccessGuard: a single injectable choke point instead of the idiom
- * duplicated across controllers.
- *
- * 403 (not 404): membership existence is guaranteed by the listener, so the
- * only failure here is a member whose role is not management.
- *
- * Known, accepted ordering quirk (review finding): on the custom controllers,
- * the archived-season 409 (kernel listener) fires before this in-controller
- * 403, so a non-manager probing an archived season sees 409 first. Not an info
- * leak — any active member can already read the season's archived state — and
- * inverting it would mean moving this guard into the kernel layer for no
- * security gain. In AbstractStateProcessor the order IS 403-before-409.
+ * Gestionnaire = adhésion ACTIVE au club posé par le locataire (`_club_id`) et rôle de gestion
+ * (`ClubRole::isManager()`). Sans club posé, sans utilisateur ou sans adhésion active : non.
  */
 final class ManagementAccessGuard
 {
+    /** Le message du refus d'une fonction « gestionnaire ». */
+    public const string REFUSAL = 'Cette action est réservée aux gestionnaires.';
+
     public function __construct(
         private readonly Security $security,
         private readonly RequestStack $requestStack,
         private readonly ClubUserRepository $clubUserRepository,
     ) {}
 
-    public function assertManager(): void
+    public function isManager(): bool
     {
-        $request = $this->requestStack->getCurrentRequest();
-        $clubId = $request?->attributes->get('_club_id');
+        $clubId = $this->requestStack->getCurrentRequest()?->attributes->get('_club_id');
 
         $user = $this->security->getUser();
         $membership = ($user instanceof User && \is_string($clubId) && '' !== $clubId)
             ? $this->clubUserRepository->findActiveMembership($user->getId(), $clubId)
             : null;
 
-        if (!$membership instanceof ClubUser || !$membership->getRole()->isManager()) {
-            throw new AccessDeniedHttpException('Cette action est réservée aux gestionnaires.');
-        }
+        return $membership instanceof ClubUser && $membership->getRole()->isManager();
     }
 }

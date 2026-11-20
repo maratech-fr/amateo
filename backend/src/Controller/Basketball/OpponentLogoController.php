@@ -18,7 +18,6 @@ use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\DependencyInjection\Attribute\Autowire;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpKernel\Attribute\AsController;
-use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
 use Symfony\Component\RateLimiter\RateLimiterFactory;
 use Symfony\Component\Routing\Attribute\Route;
 
@@ -91,9 +90,7 @@ final class OpponentLogoController extends AbstractController
     private function rehost(string $code): string|Response
     {
         // Seul un gestionnaire déclenche un téléchargement : un Membre n'appelle jamais l'extérieur.
-        try {
-            $this->managementAccessGuard->assertManager();
-        } catch (AccessDeniedHttpException) {
+        if (!$this->managementAccessGuard->isManager()) {
             return new Response('', Response::HTTP_NOT_FOUND);
         }
 

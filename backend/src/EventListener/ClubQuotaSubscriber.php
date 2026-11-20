@@ -7,7 +7,6 @@ namespace App\EventListener;
 use App\Service\ManagementAccessGuard;
 use Symfony\Component\EventDispatcher\EventSubscriberInterface;
 use Symfony\Component\HttpKernel\Event\RequestEvent;
-use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
 use Symfony\Component\HttpKernel\Exception\TooManyRequestsHttpException;
 use Symfony\Component\HttpKernel\KernelEvents;
 use Symfony\Component\RateLimiter\RateLimiterFactory;
@@ -39,7 +38,7 @@ use Symfony\Component\RateLimiter\RateLimiterFactory;
  * avant le contrôleur : une demande refusée (409 compris) reste une demande.
  *
  * ⚠ Un solve — génération OU placement des matchs — n'est compté que pour un GESTIONNAIRE actif :
- * le refus 403 d'un Membre (garde du contrôleur, en aval) ne doit jamais entamer le cap du club —
+ * le refus 403 d'un Membre (contrôle central, priorité 4, en aval) ne doit jamais entamer le cap du club —
  * sinon dix clics d'un Membre priveraient le club de génération ou de placement
  * (`MemberReadsAreSideEffectFreeTest`). Les exports, ouverts à tout membre, restent comptés pour
  * tous.
@@ -105,8 +104,8 @@ final class ClubQuotaSubscriber implements EventSubscriberInterface
             return;
         }
 
-        if (($limiter === $this->scheduleGenerationLimiter || $limiter === $this->matchPlacementLimiter) && !$this->isManager()) {
-            return; // le contrôleur refusera (403) sans rien consommer du cap du club
+        if (($limiter === $this->scheduleGenerationLimiter || $limiter === $this->matchPlacementLimiter) && !$this->managementAccessGuard->isManager()) {
+            return; // le contrôle central refusera (403) sans rien consommer du cap du club
         }
 
         $limit = $limiter->create('club-' . $clubId)->consume(1);
@@ -114,17 +113,6 @@ final class ClubQuotaSubscriber implements EventSubscriberInterface
             $retryAfter = max(1, $limit->getRetryAfter()->getTimestamp() - time());
 
             throw new TooManyRequestsHttpException($retryAfter, \sprintf('Quota du club atteint pour cette opération. Réessayez dans %d minute(s).', (int) ceil($retryAfter / 60)));
-        }
-    }
-
-    private function isManager(): bool
-    {
-        try {
-            $this->managementAccessGuard->assertManager();
-
-            return true;
-        } catch (AccessDeniedHttpException) {
-            return false;
         }
     }
 }
