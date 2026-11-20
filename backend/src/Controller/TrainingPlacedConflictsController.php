@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace App\Controller;
 
+use App\Access\Audience;
+use App\Access\ClubFunction;
+use App\Access\Module;
 use App\Entity\Schedule;
 use App\Entity\Season;
 use App\Service\PlacedSessionPersonConflictDetector;
@@ -31,6 +34,7 @@ use Symfony\Component\Uid\Uuid;
  * (gardé par TrainingPlacedConflictsApiTest). Lecture pure, ouverte à tout membre actif du club :
  * un Membre consulte le radar (MemberReadsAreSideEffectFreeTest).
  */
+#[ClubFunction(module: Module::PLANNING, audience: Audience::MEMBER)]
 final class TrainingPlacedConflictsController extends AbstractController
 {
     use ResolvesCurrentClubTrait;

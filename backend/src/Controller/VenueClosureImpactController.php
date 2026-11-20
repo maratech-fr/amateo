@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace App\Controller;
 
+use App\Access\Audience;
+use App\Access\ClubFunction;
+use App\Access\Module;
 use App\Entity\CalendarEntry;
 use App\Entity\Season;
 use App\Entity\Venue;
@@ -30,6 +33,7 @@ use Throwable;
  * Tenant : le gymnase et l'entrée se lisent sous le filtre du club courant — un gymnase ou une
  * entrée d'un autre club est INCONNU (404), jamais un chiffre sur ses données.
  */
+#[ClubFunction(module: Module::PLANNING, audience: Audience::MEMBER)]
 final class VenueClosureImpactController extends AbstractController
 {
     use ResolvesCurrentClubTrait;

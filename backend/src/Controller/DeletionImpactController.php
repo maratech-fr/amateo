@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace App\Controller;
 
+use App\Access\Audience;
+use App\Access\ClubFunction;
+use App\Access\Module;
 use App\Deletion\DeletionImpact;
 use App\Deletion\DeletionImpactCounter;
 use App\Entity\Coach;
@@ -30,6 +33,7 @@ use Symfony\Component\Routing\Attribute\Route;
  * doit posséder l'entité) EN PLUS de RLS et du filtre Doctrine — même défense en profondeur
  * que les contrôleurs d'export.
  */
+#[ClubFunction(module: Module::PLANNING, audience: Audience::MEMBER)]
 final class DeletionImpactController extends AbstractController
 {
     use ResolvesCurrentClubTrait;

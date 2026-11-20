@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace App\Controller;
 
+use App\Access\Audience;
+use App\Access\ClubFunction;
+use App\Access\Module;
 use App\Service\Geo\VenueGeoCheck;
 use App\Service\ManagementAccessGuard;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
@@ -24,6 +27,7 @@ use Symfony\Component\Routing\Attribute\Route;
  * côté serveur, le front l'AFFICHE sans rien recalculer.
  */
 #[AsController]
+#[ClubFunction(module: Module::PLANNING, audience: Audience::MANAGER)]
 final class VenueGeoCheckController extends AbstractController
 {
     use ResolvesCurrentClubTrait;

@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace App\Controller;
 
+use App\Access\Audience;
+use App\Access\ClubFunction;
+use App\Access\Module;
 use App\Entity\ClubLeagueWindow;
 use App\Entity\LeagueWindowInterface;
 use App\Entity\SportCategory;
@@ -30,6 +33,7 @@ use Symfony\Component\Routing\Attribute\Route;
  * and the graded diagnostic use. The join exists in ONE place; the frontend
  * looks it up instead of re-deriving it (absent team = unmapped = advisory).
  */
+#[ClubFunction(module: Module::MATCHES, audience: Audience::MEMBER)]
 final class LeagueMatchWindowsController extends AbstractController
 {
     use ResolvesCurrentClubTrait;

@@ -8,6 +8,9 @@ use ApiPlatform\Metadata\ApiResource;
 use ApiPlatform\Metadata\Get;
 use ApiPlatform\Metadata\Post;
 use ApiPlatform\Metadata\Put;
+use App\Access\Audience;
+use App\Access\ClubResource as ClubResourceDeclaration;
+use App\Access\Module;
 use App\Dto\ClubInput;
 use App\Entity\Club;
 use App\State\Processor\ClubStateProcessor;
@@ -60,6 +63,7 @@ use Symfony\Component\Serializer\Attribute\Groups;
         name: 'parc_import',
     ),
 ], input: ClubInput::class, provider: ClubStateProvider::class, processor: ClubStateProcessor::class)]
+#[ClubResourceDeclaration(module: Module::CLUB, read: Audience::MEMBER, write: Audience::MANAGER)]
 class ClubResource
 {
     #[Groups(['read'])]

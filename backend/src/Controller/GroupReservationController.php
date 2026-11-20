@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace App\Controller;
 
+use App\Access\Audience;
+use App\Access\ClubFunction;
+use App\Access\Module;
 use App\Entity\Reservation;
 use App\Entity\SharedTrainingBlock;
 use App\Entity\SharedTrainingBlockTeam;
@@ -42,6 +45,7 @@ use Symfony\Component\Routing\Attribute\Route;
  * `sharedTrainingBlockId` ; garde `assertBlockReservationAllowed` + atomicité N-réservations/1-flush.
  */
 #[AsController]
+#[ClubFunction(module: Module::PLANNING, audience: Audience::MANAGER)]
 final class GroupReservationController extends AbstractController implements SeasonScopedWriteInterface
 {
     use AssertsSchedulePlanExistsTrait;

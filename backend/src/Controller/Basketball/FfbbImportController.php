@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace App\Controller\Basketball;
 
+use App\Access\Audience;
+use App\Access\ClubFunction;
+use App\Access\Module;
 use App\Controller\ResolvesCurrentClubTrait;
 use App\Repository\ClubRepository;
 use App\Service\Basketball\FfbbClubPopulator;
@@ -22,6 +25,7 @@ use Throwable;
  * Management-gated (SEC-07). Intended re-use: the forthcoming superadmin refresh.
  */
 #[AsController]
+#[ClubFunction(module: Module::CLUB, audience: Audience::MANAGER)]
 final class FfbbImportController extends AbstractController
 {
     use ResolvesCurrentClubTrait;

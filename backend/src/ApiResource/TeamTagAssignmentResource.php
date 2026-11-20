@@ -7,6 +7,9 @@ namespace App\ApiResource;
 use ApiPlatform\Metadata\ApiResource;
 use ApiPlatform\Metadata\Get;
 use ApiPlatform\Metadata\GetCollection;
+use App\Access\Audience;
+use App\Access\ClubResource;
+use App\Access\Module;
 use App\Entity\TeamTagAssignment;
 use App\State\Provider\TeamTagAssignmentStateProvider;
 use DateTimeImmutable;
@@ -16,6 +19,7 @@ use Symfony\Component\Serializer\Attribute\Groups;
     new GetCollection,
     new Get,
 ], paginationEnabled: true, paginationItemsPerPage: 30, provider: TeamTagAssignmentStateProvider::class)]
+#[ClubResource(module: Module::PLANNING, read: Audience::MEMBER, write: Audience::MANAGER)]
 class TeamTagAssignmentResource
 {
     #[Groups(['read'])]

@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace App\Controller;
 
+use App\Access\Audience;
+use App\Access\ClubFunction;
+use App\Access\Module;
 use App\Entity\Team;
 use App\Service\ManagementAccessGuard;
 use Doctrine\ORM\EntityManagerInterface;
@@ -20,6 +23,7 @@ use Throwable;
  * transaction. Replaces the N-concurrent-PUT approach of the sort UI, which raced
  * on Team's optimistic-lock version and dropped updates. See TeamsStep sort mode.
  */
+#[ClubFunction(module: Module::PLANNING, audience: Audience::MANAGER)]
 final class ReorderTeamsController extends AbstractController implements SeasonScopedWriteInterface
 {
     use ResolvesCurrentClubTrait;

@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace App\Controller;
 
+use App\Access\Audience;
+use App\Access\ClubFunction;
+use App\Access\Module;
 use App\Entity\Season;
 use App\Entity\User;
 use App\Repository\FixtureRepository;
@@ -31,6 +34,7 @@ use Symfony\Component\Routing\Attribute\Route;
  * panne réseau ne casse jamais la réponse, l'adversaire reste juste non localisé.
  */
 #[AsController]
+#[ClubFunction(module: Module::MATCHES, audience: Audience::MANAGER)]
 final class OpponentResolveController extends AbstractController
 {
     use ResolvesCurrentClubTrait;

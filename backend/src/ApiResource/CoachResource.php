@@ -13,6 +13,9 @@ use ApiPlatform\Metadata\Get;
 use ApiPlatform\Metadata\GetCollection;
 use ApiPlatform\Metadata\Post;
 use ApiPlatform\Metadata\Put;
+use App\Access\Audience;
+use App\Access\ClubResource;
+use App\Access\Module;
 use App\Dto\CoachInput;
 use App\Entity\Coach;
 use App\State\Processor\CoachStateProcessor;
@@ -29,6 +32,7 @@ use Symfony\Component\Serializer\Attribute\Groups;
 ], input: CoachInput::class, paginationEnabled: true, paginationItemsPerPage: 30, provider: CoachStateProvider::class, processor: CoachStateProcessor::class)]
 #[ApiFilter(BooleanFilter::class, properties: ['isActive'])]
 #[ApiFilter(SearchFilter::class, properties: ['seasonId' => 'exact'])]
+#[ClubResource(module: Module::PLANNING, read: Audience::MEMBER, write: Audience::MANAGER)]
 class CoachResource
 {
     #[Groups(['read'])]

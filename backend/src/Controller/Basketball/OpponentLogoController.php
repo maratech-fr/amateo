@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace App\Controller\Basketball;
 
+use App\Access\Audience;
+use App\Access\ClubFunction;
+use App\Access\Module;
 use App\Entity\User;
 use App\Repository\OpponentDirectoryEntryRepository;
 use App\Service\Basketball\FfbbLogoFetcherInterface;
@@ -43,6 +46,7 @@ use Symfony\Component\Routing\Attribute\Route;
  * (`MemberReadsAreSideEffectFreeTest`). Le logo arrivera au prochain affichage d'un gestionnaire.
  */
 #[AsController]
+#[ClubFunction(module: Module::MATCHES, audience: Audience::MEMBER)]
 final class OpponentLogoController extends AbstractController
 {
     /** TTL du marqueur d'échec (BCK-37) : un code dont le téléchargement a échoué n'est pas re-tenté pendant ce délai. */

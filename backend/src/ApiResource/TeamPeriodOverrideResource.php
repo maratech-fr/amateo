@@ -12,6 +12,9 @@ use ApiPlatform\Metadata\Get;
 use ApiPlatform\Metadata\GetCollection;
 use ApiPlatform\Metadata\Post;
 use ApiPlatform\Metadata\Put;
+use App\Access\Audience;
+use App\Access\ClubResource;
+use App\Access\Module;
 use App\Dto\TeamPeriodOverrideInput;
 use App\Entity\TeamPeriodOverride;
 use App\State\Processor\TeamPeriodOverrideStateProcessor;
@@ -32,6 +35,7 @@ use Symfony\Component\Serializer\Attribute\Groups;
     new Delete,
 ], input: TeamPeriodOverrideInput::class, paginationEnabled: false, provider: TeamPeriodOverrideStateProvider::class, processor: TeamPeriodOverrideStateProcessor::class)]
 #[ApiFilter(SearchFilter::class, properties: ['schedulePlanId' => 'exact', 'teamId' => 'exact'])]
+#[ClubResource(module: Module::PLANNING, read: Audience::MEMBER, write: Audience::MANAGER)]
 class TeamPeriodOverrideResource
 {
     #[Groups(['read'])]

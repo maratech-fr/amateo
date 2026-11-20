@@ -1,7 +1,7 @@
 # Lot conception : découpage en lots de travail
 
 **Statut : découpage validé par le fondateur le 2026-11-20 (ordre, premier lot de côté, cadrage).
-Le lot 0 est livré en trois PR ; le lot 2 a livré ses PR 1 et 2 (voir §6).** Ce document dit **quoi dans
+Le lot 0 est livré en trois PR ; le lot 2 a livré ses PR 1, 2 et 3a (voir §6).** Ce document dit **quoi dans
 quel ordre** ; le **comment** de chaque lot est le travail de son plan (`morpheus`, puis `smith`).
 
 Source : [`conception-cible.md`](conception-cible.md) (les numéros « § » ci-dessous y renvoient).
@@ -164,6 +164,11 @@ peuvent avancer dans un espace de travail à part pendant qu'un lot principal at
     - **PR 1 livrée — « Deux rôles, colonne fermée »** : `club_user.role` et `club_invitation.role`
       n'acceptent que `admin` et `member` (CHECK, migration `Version20261120120000`) ;
       `ClubRole::isManager()` remplace la liste `MANAGEMENT_ROLES` et `isManagementRole`.
+    - **PR 3a livrée — « Chaque fonction se déclare »** : chaque route de club porte son module et
+      son public (`#[ClubFunction]`, `#[ClubResource]`, `#[AccountFunction]`, `backend/src/Access/`),
+      balayée par `AccessDeclarationSweepTest` ; aucun écouteur ne lit encore les déclarations, les
+      gardes à la main décident. La PR 3b branche le contrôle central
+      (convention : `backend/docs/backend-controllers.md` § Déclarer l'accès d'une route).
   - Le régime de démonstration déclaré une fois (§10).
   - La règle du 1er mai côté serveur.
     - **PR 2 livrée — « Le 1er mai côté serveur »** : la bascule vers la saison suivante est refusée
@@ -318,6 +323,6 @@ peuvent avancer dans un espace de travail à part pendant qu'un lot principal at
 
 Ce document porte la fiche de chaque lot (contenu, ce qu'il supprime, dépendances, preuve).
 **Le lot 0 est livré en trois PR** (compositeur, scénarios, enregistreur) la mesure du PDF restant
-une procédure à jouer ([`lot-conception-filet.md`](lot-conception-filet.md) §8) ; **le lot 2 a livré ses PR 1 et 2** (deux rôles ; le 1er mai côté serveur) ; les
+une procédure à jouer ([`lot-conception-filet.md`](lot-conception-filet.md) §8) ; **le lot 2 a livré ses PR 1, 2 et 3a** (deux rôles ; le 1er mai côté serveur ; les déclarations d'accès) ; les
 autres lots n'ont pas de plan écrit. Un plan s'écrit lot par lot, dans un fichier à lui (`specs/evolution/`), et se
 valide en entier avant tout code.

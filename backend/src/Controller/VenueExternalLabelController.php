@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace App\Controller;
 
+use App\Access\Audience;
+use App\Access\ClubFunction;
+use App\Access\Module;
 use App\Entity\Fixture;
 use App\Entity\Season;
 use App\Entity\Venue;
@@ -48,6 +51,7 @@ use Symfony\Component\Routing\Attribute\Route;
  * {@see SeasonScopedWriteInterface} (409 si la saison du gymnase est archivée).
  */
 #[AsController]
+#[ClubFunction(module: Module::MATCHES, audience: Audience::MANAGER)]
 final class VenueExternalLabelController extends AbstractController implements SeasonScopedWriteInterface
 {
     use ResolvesCurrentClubTrait;
@@ -85,6 +89,7 @@ final class VenueExternalLabelController extends AbstractController implements S
      * un uuid (→ 404), même idiome que {@see FixtureConflictsController}.
      */
     #[Route('/api/venues/fbi-labels', name: 'api_venue_fbi_labels', methods: ['GET'], priority: 10)]
+    #[ClubFunction(module: Module::MATCHES, audience: Audience::MEMBER)]
     public function inventory(): JsonResponse
     {
         $clubId = $this->resolveCurrentClubId($this->requestStack);

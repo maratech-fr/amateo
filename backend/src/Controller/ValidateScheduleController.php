@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace App\Controller;
 
+use App\Access\Audience;
+use App\Access\ClubFunction;
+use App\Access\Module;
 use App\Entity\CalendarEntry;
 use App\Entity\Fixture;
 use App\Entity\Schedule;
@@ -40,6 +43,7 @@ use Throwable;
  * generating blocks the choice (409) — a running solve cannot be deleted out
  * from under the worker.
  */
+#[ClubFunction(module: Module::PLANNING, audience: Audience::MANAGER)]
 final class ValidateScheduleController extends AbstractController implements SeasonScopedWriteInterface
 {
     use ResolvesCurrentClubTrait;

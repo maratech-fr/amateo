@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace App\Controller;
 
+use App\Access\Audience;
+use App\Access\ClubFunction;
+use App\Access\Module;
 use App\Entity\Schedule;
 use App\Service\PdfGenerator;
 use Doctrine\ORM\EntityManagerInterface;
@@ -32,6 +35,7 @@ use Symfony\Component\Routing\Attribute\Route;
  * décompté : le re-téléchargement n'est pas une sortie produite (hors `CreditBudgetSubscriber`).
  */
 #[AsController]
+#[ClubFunction(module: Module::PLANNING, audience: Audience::MEMBER)]
 final class ExportPdfDownloadController extends AbstractController
 {
     use ResolvesCurrentClubTrait;

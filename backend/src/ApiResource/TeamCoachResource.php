@@ -9,6 +9,9 @@ use ApiPlatform\Metadata\Delete;
 use ApiPlatform\Metadata\Get;
 use ApiPlatform\Metadata\GetCollection;
 use ApiPlatform\Metadata\Post;
+use App\Access\Audience;
+use App\Access\ClubResource;
+use App\Access\Module;
 use App\Dto\TeamCoachInput;
 use App\Entity\TeamCoach;
 use App\Enum\TeamCoachRole;
@@ -24,6 +27,7 @@ use Symfony\Component\Serializer\Attribute\Groups;
     new Post,
     new Delete,
 ], input: TeamCoachInput::class, paginationEnabled: true, paginationItemsPerPage: 30, provider: TeamCoachStateProvider::class, processor: TeamCoachStateProcessor::class)]
+#[ClubResource(module: Module::PLANNING, read: Audience::MEMBER, write: Audience::MANAGER)]
 class TeamCoachResource
 {
     #[Groups(['read'])]

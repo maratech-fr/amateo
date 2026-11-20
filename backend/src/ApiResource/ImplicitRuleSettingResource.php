@@ -10,6 +10,9 @@ use ApiPlatform\Metadata\Delete;
 use ApiPlatform\Metadata\Get;
 use ApiPlatform\Metadata\GetCollection;
 use ApiPlatform\Metadata\Put;
+use App\Access\Audience;
+use App\Access\ClubResource;
+use App\Access\Module;
 use App\Dto\ImplicitRuleSettingInput;
 use App\Enum\ImplicitRuleIntensity;
 use App\Enum\ImplicitRuleKey;
@@ -31,6 +34,7 @@ use Symfony\Component\Serializer\Attribute\Groups;
     new Put,
     new Delete,
 ], input: ImplicitRuleSettingInput::class, paginationEnabled: false, provider: ImplicitRuleSettingStateProvider::class, processor: ImplicitRuleSettingStateProcessor::class)]
+#[ClubResource(module: Module::PLANNING, read: Audience::MEMBER, write: Audience::MANAGER)]
 class ImplicitRuleSettingResource
 {
     #[ApiProperty(identifier: true)]

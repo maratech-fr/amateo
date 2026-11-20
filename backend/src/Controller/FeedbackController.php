@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace App\Controller;
 
+use App\Access\Audience;
+use App\Access\ClubFunction;
+use App\Access\Module;
 use App\Entity\Feedback;
 use App\Entity\Schedule;
 use App\Entity\ScheduleDiagnostic;
@@ -44,6 +47,7 @@ use Throwable;
  * un planning peut disparaître entre-temps.
  */
 #[AsController]
+#[ClubFunction(module: Module::CLUB, audience: Audience::MEMBER)]
 final class FeedbackController extends AbstractController
 {
     use ResolvesCurrentClubTrait;

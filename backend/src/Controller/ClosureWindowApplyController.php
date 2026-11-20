@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace App\Controller;
 
+use App\Access\Audience;
+use App\Access\ClubFunction;
+use App\Access\Module;
 use App\Entity\SchedulePlan;
 use App\Enum\SchedulePlanType;
 use App\Service\ClosurePinRemover;
@@ -37,6 +40,7 @@ use Throwable;
  * l'appliqué (même {@see ClosureWindowPlanner}). SeasonScopedWriteInterface → 409 saison archivée.
  */
 #[AsController]
+#[ClubFunction(module: Module::PLANNING, audience: Audience::MANAGER)]
 final class ClosureWindowApplyController extends AbstractController implements SeasonScopedWriteInterface
 {
     use ResolvesCurrentClubTrait;

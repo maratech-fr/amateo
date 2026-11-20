@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace App\Controller;
 
+use App\Access\Audience;
+use App\Access\ClubFunction;
+use App\Access\Module;
 use App\Service\EntryDeadlineOutlook;
 use App\Service\FbiFixtureImporter;
 use App\Service\FriendlyAutoValidator;
@@ -52,6 +55,7 @@ use Symfony\Component\Routing\Attribute\Route;
  * écrivable + saison résolue + socle pointé.
  */
 #[AsController]
+#[ClubFunction(module: Module::MATCHES, audience: Audience::MANAGER)]
 final class LeagueValidatedFixturesController extends AbstractController
 {
     public function __construct(

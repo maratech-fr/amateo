@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace App\Controller;
 
+use App\Access\Audience;
+use App\Access\ClubFunction;
+use App\Access\Module;
 use App\Entity\CoachWishCampaign;
 use App\Entity\Team;
 use App\Entity\TeamCoach;
@@ -31,6 +34,7 @@ use Symfony\Component\Uid\Uuid;
  * saison gelée en 409. Une campagne d'un autre club répond comme une campagne inconnue.
  */
 #[AsController]
+#[ClubFunction(module: Module::PLANNING, audience: Audience::MANAGER)]
 final class CoachWishRecipientController extends AbstractController
 {
     use ResolvesCurrentClubTrait;

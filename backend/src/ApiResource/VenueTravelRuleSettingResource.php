@@ -8,6 +8,9 @@ use ApiPlatform\Metadata\ApiProperty;
 use ApiPlatform\Metadata\ApiResource;
 use ApiPlatform\Metadata\Get;
 use ApiPlatform\Metadata\Put;
+use App\Access\Audience;
+use App\Access\ClubResource;
+use App\Access\Module;
 use App\Dto\VenueTravelRuleSettingInput;
 use App\Enum\VenueTravelRuleIntensity;
 use App\State\Processor\VenueTravelRuleSettingStateProcessor;
@@ -27,6 +30,7 @@ use Symfony\Component\Serializer\Attribute\Groups;
     new Get,
     new Put,
 ], input: VenueTravelRuleSettingInput::class, paginationEnabled: false, provider: VenueTravelRuleSettingStateProvider::class, processor: VenueTravelRuleSettingStateProcessor::class)]
+#[ClubResource(module: Module::PLANNING, read: Audience::MEMBER, write: Audience::MANAGER)]
 class VenueTravelRuleSettingResource
 {
     /** L'identifiant fixe — le nom de la règle gouvernée (contrat moteur `travelTime`). */

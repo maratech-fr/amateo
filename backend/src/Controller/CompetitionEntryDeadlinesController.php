@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace App\Controller;
 
+use App\Access\Audience;
+use App\Access\ClubFunction;
+use App\Access\Module;
 use App\Entity\Competition;
 use App\Entity\SharedCompetitionDeadline;
 use App\Repository\SharedCompetitionDeadlineRepository;
@@ -39,6 +42,7 @@ use Symfony\Component\Routing\Attribute\Route;
  * transaction).
  */
 #[AsController]
+#[ClubFunction(module: Module::MATCHES, audience: Audience::MANAGER)]
 final class CompetitionEntryDeadlinesController extends AbstractController
 {
     public function __construct(

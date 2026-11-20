@@ -4,6 +4,10 @@ declare(strict_types=1);
 
 namespace App\Controller;
 
+use App\Access\AccountFunction;
+use App\Access\Audience;
+use App\Access\ClubFunction;
+use App\Access\Module;
 use App\Entity\ClubUser;
 use App\Entity\User;
 use App\Enum\AuditAction;
@@ -40,6 +44,7 @@ final class RgpdExportController extends AbstractController
     ) {}
 
     #[Route('/api/me/export', name: 'api_me_export', methods: ['GET'])]
+    #[AccountFunction]
     public function exportMe(): JsonResponse
     {
         $user = $this->getUser();
@@ -59,6 +64,7 @@ final class RgpdExportController extends AbstractController
     }
 
     #[Route('/api/club/export', name: 'api_club_export', methods: ['GET'])]
+    #[ClubFunction(module: Module::CLUB, audience: Audience::MANAGER)]
     public function exportClub(): JsonResponse
     {
         $user = $this->getUser();

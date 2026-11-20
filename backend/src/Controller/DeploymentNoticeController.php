@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Controller;
 
+use App\Access\AccountFunction;
 use App\Entity\ScheduledDeployment;
 use App\Entity\User;
 use App\Repository\ScheduledDeploymentRepository;
@@ -25,6 +26,7 @@ final class DeploymentNoticeController extends AbstractController
 {
     public function __construct(private readonly ScheduledDeploymentRepository $deployments) {}
 
+    #[AccountFunction]
     #[Route('/api/deployment-notice', name: 'api_deployment_notice', methods: ['GET'])]
     public function notice(): JsonResponse
     {

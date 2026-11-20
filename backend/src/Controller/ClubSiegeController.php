@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace App\Controller;
 
+use App\Access\Audience;
+use App\Access\ClubFunction;
+use App\Access\Module;
 use App\Entity\Season;
 use App\Enum\TravelComputeScope;
 use App\Message\ComputeTravelTimesMessage;
@@ -36,6 +39,7 @@ use Throwable;
  * {@see GeocodeController}). Management-gated (SEC-07).
  */
 #[AsController]
+#[ClubFunction(module: Module::CLUB, audience: Audience::MANAGER)]
 final class ClubSiegeController extends AbstractController
 {
     use ResolvesCurrentClubTrait;

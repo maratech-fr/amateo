@@ -10,6 +10,9 @@ use ApiPlatform\Metadata\Get;
 use ApiPlatform\Metadata\GetCollection;
 use ApiPlatform\Metadata\Post;
 use ApiPlatform\Metadata\Put;
+use App\Access\Audience;
+use App\Access\ClubResource;
+use App\Access\Module;
 use App\Dto\SharedTrainingBlockInput;
 use App\Entity\SharedTrainingBlock;
 use App\State\Processor\SharedTrainingBlockStateProcessor;
@@ -32,6 +35,7 @@ use Symfony\Component\Serializer\Attribute\Groups;
     new Put,
     new Delete,
 ], input: SharedTrainingBlockInput::class, paginationEnabled: false, provider: SharedTrainingBlockStateProvider::class, processor: SharedTrainingBlockStateProcessor::class)]
+#[ClubResource(module: Module::PLANNING, read: Audience::MEMBER, write: Audience::MANAGER)]
 class SharedTrainingBlockResource
 {
     #[Groups(['read'])]

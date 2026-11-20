@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace App\Controller;
 
+use App\Access\Audience;
+use App\Access\ClubFunction;
+use App\Access\Module;
 use App\Entity\Schedule;
 use App\Entity\ScheduleSlotTemplate;
 use App\Entity\SharedTrainingBlock;
@@ -40,6 +43,7 @@ use Symfony\Component\Routing\Attribute\Route;
 use Symfony\Contracts\HttpClient\Exception\TransportExceptionInterface;
 use Throwable;
 
+#[ClubFunction(module: Module::PLANNING, audience: Audience::MANAGER)]
 final class ManualEditController extends AbstractController implements SeasonScopedWriteInterface
 {
     public function __construct(

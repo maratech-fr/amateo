@@ -13,6 +13,9 @@ use ApiPlatform\Metadata\Get;
 use ApiPlatform\Metadata\GetCollection;
 use ApiPlatform\Metadata\Post;
 use ApiPlatform\Metadata\Put;
+use App\Access\Audience;
+use App\Access\ClubResource;
+use App\Access\Module;
 use App\Dto\TeamInput;
 use App\Entity\Team;
 use App\Enum\Gender;
@@ -33,6 +36,7 @@ use Symfony\Component\Serializer\Attribute\Groups;
 // API Platform's built-in Doctrine filters) — documented AND functional (BCK-05).
 #[ApiFilter(BooleanFilter::class, properties: ['isActive'])]
 #[ApiFilter(SearchFilter::class, properties: ['seasonId' => 'exact'])]
+#[ClubResource(module: Module::PLANNING, read: Audience::MEMBER, write: Audience::MANAGER)]
 class TeamResource
 {
     #[Groups(['read'])]

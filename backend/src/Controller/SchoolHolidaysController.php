@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace App\Controller;
 
+use App\Access\Audience;
+use App\Access\ClubFunction;
+use App\Access\Module;
 use App\Entity\SchoolHolidayPeriod;
 use App\Repository\ClubRepository;
 use App\Repository\SchoolHolidayPeriodRepository;
@@ -21,6 +24,7 @@ use Symfony\Component\Routing\Attribute\Route;
  * (from/to query, defaulting to the active season). zone null → empty items
  * (the frontend shows a "renseigner la zone" CTA).
  */
+#[ClubFunction(module: Module::PLANNING, audience: Audience::MEMBER)]
 final class SchoolHolidaysController extends AbstractController
 {
     use ResolvesCurrentClubTrait;

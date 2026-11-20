@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace App\Controller;
 
+use App\Access\Audience;
+use App\Access\ClubFunction;
+use App\Access\Module;
 use App\Entity\Club;
 use App\Entity\SchedulePlan;
 use App\Service\ClubDay;
@@ -28,6 +31,7 @@ use Throwable;
  * inconnu est refusé (422). SeasonScopedWriteInterface → 409 sur une saison archivée.
  */
 #[AsController]
+#[ClubFunction(module: Module::PLANNING, audience: Audience::MANAGER)]
 final class SchedulePlanAlertSeenController extends AbstractController implements SeasonScopedWriteInterface
 {
     use ResolvesCurrentClubTrait;

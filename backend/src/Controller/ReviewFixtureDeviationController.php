@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace App\Controller;
 
+use App\Access\Audience;
+use App\Access\ClubFunction;
+use App\Access\Module;
 use App\Entity\FbiCorrection;
 use App\Entity\Fixture;
 use App\Enum\FbiCorrectionField;
@@ -40,6 +43,7 @@ use Symfony\Component\Routing\Attribute\Route;
  * Une rencontre d'un autre club est invisible (filtres tenant) → 404 byte-identique.
  */
 #[AsController]
+#[ClubFunction(module: Module::MATCHES, audience: Audience::MANAGER)]
 final class ReviewFixtureDeviationController extends AbstractController
 {
     private const FIELDS = ['date', 'kickoff', 'venue'];

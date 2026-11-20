@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace App\Controller;
 
+use App\Access\Audience;
+use App\Access\ClubFunction;
+use App\Access\Module;
 use App\Entity\Club;
 use App\Entity\FbiIngestion;
 use App\Entity\Season;
@@ -30,6 +33,7 @@ use Symfony\Component\Routing\Attribute\Route;
  * (`Y-m-d`, jour civil du club) date le titre « Matchs - (Dernier import FBI jj/mm/aaaa) ».
  */
 #[AsController]
+#[ClubFunction(module: Module::MATCHES, audience: Audience::MEMBER)]
 final class FbiIngestionFreshnessController extends AbstractController
 {
     use ResolvesCurrentClubTrait;

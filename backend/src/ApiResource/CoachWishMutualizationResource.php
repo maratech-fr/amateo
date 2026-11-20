@@ -12,6 +12,9 @@ use ApiPlatform\Metadata\Get;
 use ApiPlatform\Metadata\GetCollection;
 use ApiPlatform\Metadata\Post;
 use ApiPlatform\Metadata\Put;
+use App\Access\Audience;
+use App\Access\ClubResource;
+use App\Access\Module;
 use App\Dto\CoachWishMutualizationInput;
 use App\Entity\CoachWishMutualization;
 use App\State\Processor\CoachWishMutualizationStateProcessor;
@@ -32,6 +35,7 @@ use Symfony\Component\Serializer\Attribute\Groups;
     new Delete,
 ], input: CoachWishMutualizationInput::class, paginationEnabled: false, provider: CoachWishMutualizationStateProvider::class, processor: CoachWishMutualizationStateProcessor::class)]
 #[ApiFilter(SearchFilter::class, properties: ['calendarEntryId' => 'exact', 'teamId' => 'exact'])]
+#[ClubResource(module: Module::PLANNING, read: Audience::MEMBER, write: Audience::MANAGER)]
 class CoachWishMutualizationResource
 {
     #[Groups(['read'])]

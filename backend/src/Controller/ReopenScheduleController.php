@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace App\Controller;
 
+use App\Access\Audience;
+use App\Access\ClubFunction;
+use App\Access\Module;
 use App\Entity\CalendarEntry;
 use App\Entity\Schedule;
 use App\Entity\Season;
@@ -28,6 +31,7 @@ use Throwable;
  * period overlays exist destroys them (inv. 14) — guarded by a 409 the client
  * confirms with {"confirmDeleteOverlays": true}. See planning-lifecycle-validated.md.
  */
+#[ClubFunction(module: Module::PLANNING, audience: Audience::MANAGER)]
 final class ReopenScheduleController extends AbstractController implements SeasonScopedWriteInterface
 {
     use ResolvesCurrentClubTrait;

@@ -7,6 +7,9 @@ namespace App\ApiResource;
 use ApiPlatform\Metadata\ApiProperty;
 use ApiPlatform\Metadata\ApiResource;
 use ApiPlatform\Metadata\GetCollection;
+use App\Access\Audience;
+use App\Access\ClubResource;
+use App\Access\Module;
 use App\State\Provider\VenueClosureStateProvider;
 use Symfony\Component\Serializer\Attribute\Groups;
 
@@ -20,6 +23,7 @@ use Symfony\Component\Serializer\Attribute\Groups;
 #[ApiResource(shortName: 'VenueClosure', operations: [
     new GetCollection,
 ], paginationEnabled: false, provider: VenueClosureStateProvider::class)]
+#[ClubResource(module: Module::PLANNING, read: Audience::MEMBER, write: Audience::MANAGER)]
 class VenueClosureResource
 {
     /** L'id de la contrainte `venue_closed` qui porte la fermeture — identifiant de la ligne. */

@@ -10,6 +10,9 @@ use ApiPlatform\Metadata\Get;
 use ApiPlatform\Metadata\GetCollection;
 use ApiPlatform\Metadata\Post;
 use ApiPlatform\Metadata\Put;
+use App\Access\Audience;
+use App\Access\ClubResource;
+use App\Access\Module;
 use App\Dto\CreatePeriodPlanInput;
 use App\Dto\SchedulePlanInput;
 use App\Entity\SchedulePlan;
@@ -43,6 +46,7 @@ use Symfony\Component\Serializer\Attribute\Groups;
     new Post(input: CreatePeriodPlanInput::class),
     new Put,
 ], input: SchedulePlanInput::class, paginationEnabled: false, provider: SchedulePlanStateProvider::class, processor: SchedulePlanStateProcessor::class)]
+#[ClubResource(module: Module::PLANNING, read: Audience::MEMBER, write: Audience::MANAGER)]
 class SchedulePlanResource
 {
     #[Groups(['read'])]

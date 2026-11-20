@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace App\Controller;
 
+use App\Access\Audience;
+use App\Access\ClubFunction;
+use App\Access\Module;
 use App\Entity\CalendarEntry;
 use App\Entity\SchedulePlan;
 use App\Entity\SchoolHolidayPeriod;
@@ -39,6 +42,7 @@ use Symfony\Component\Routing\Attribute\Route;
  * VenueUsageCalculator. Défaut de plage = la saison entière ; from/to invalides
  * → 400 (patron de SchoolHolidaysController).
  */
+#[ClubFunction(module: Module::PLANNING, audience: Audience::MEMBER)]
 final class VenueUsageStatsController extends AbstractController
 {
     use ResolvesCurrentClubTrait;

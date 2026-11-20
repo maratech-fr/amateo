@@ -12,6 +12,9 @@ use ApiPlatform\Metadata\Get;
 use ApiPlatform\Metadata\GetCollection;
 use ApiPlatform\Metadata\Post;
 use ApiPlatform\Metadata\Put;
+use App\Access\Audience;
+use App\Access\ClubResource;
+use App\Access\Module;
 use App\Dto\ConstraintInput;
 use App\Entity\Constraint;
 use App\State\Processor\ConstraintStateProcessor;
@@ -27,6 +30,7 @@ use Symfony\Component\Serializer\Attribute\Groups;
     new Delete,
 ], input: ConstraintInput::class, paginationEnabled: true, paginationItemsPerPage: 30, provider: ConstraintStateProvider::class, processor: ConstraintStateProcessor::class)]
 #[ApiFilter(SearchFilter::class, properties: ['scope' => 'exact', 'family' => 'exact', 'ruleType' => 'exact'])]
+#[ClubResource(module: Module::PLANNING, read: Audience::MEMBER, write: Audience::MANAGER)]
 class ConstraintResource
 {
     #[Groups(['read'])]

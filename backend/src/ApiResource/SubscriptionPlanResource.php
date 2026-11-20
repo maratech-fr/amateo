@@ -7,6 +7,9 @@ namespace App\ApiResource;
 use ApiPlatform\Metadata\ApiResource;
 use ApiPlatform\Metadata\Get;
 use ApiPlatform\Metadata\GetCollection;
+use App\Access\Audience;
+use App\Access\ClubResource;
+use App\Access\Module;
 use App\Entity\SubscriptionPlan;
 use App\State\Provider\SubscriptionPlanStateProvider;
 use DateTimeImmutable;
@@ -20,6 +23,7 @@ use Symfony\Component\Serializer\Attribute\Groups;
     new GetCollection,
     new Get,
 ], paginationEnabled: true, paginationItemsPerPage: 30, provider: SubscriptionPlanStateProvider::class)]
+#[ClubResource(module: Module::CLUB, read: Audience::MEMBER, write: Audience::MANAGER)]
 class SubscriptionPlanResource
 {
     #[Groups(['read'])]

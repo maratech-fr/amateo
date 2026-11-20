@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace App\Controller;
 
+use App\Access\Audience;
+use App\Access\ClubFunction;
+use App\Access\Module;
 use App\Entity\MatchPlacementRun;
 use App\Repository\MatchPlacementRunRepository;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
@@ -21,6 +24,7 @@ use Symfony\Component\Routing\Attribute\Route;
  * un autre club ne voit jamais ce run — il reçoit `{run: null}`, jamais la donnée d'autrui.
  */
 #[AsController]
+#[ClubFunction(module: Module::MATCHES, audience: Audience::MEMBER)]
 final class PlacementRunController extends AbstractController
 {
     use ResolvesCurrentClubTrait;

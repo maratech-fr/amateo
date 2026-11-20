@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace App\Controller;
 
+use App\Access\Audience;
+use App\Access\ClubFunction;
+use App\Access\Module;
 use App\Entity\MatchConstraint;
 use App\Entity\Team;
 use App\Entity\TeamMatchHabit;
@@ -23,6 +26,7 @@ use Symfony\Component\Routing\Attribute\Route;
  * Semaine type / créneaux idéaux (`byHabit`). Scopé club+saison par les filtres
  * Doctrine ; le croisement vit dans {@see ClubRuleCoherenceChecker}.
  */
+#[ClubFunction(module: Module::MATCHES, audience: Audience::MEMBER)]
 final class ClubRuleCoherenceController extends AbstractController
 {
     use ResolvesCurrentClubTrait;

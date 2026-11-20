@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace App\Controller;
 
+use App\Access\Audience;
+use App\Access\ClubFunction;
+use App\Access\Module;
 use App\Entity\ClubUser;
 use App\Entity\Season;
 use App\Entity\User;
@@ -26,6 +29,7 @@ use Symfony\Component\Routing\Attribute\Route;
  */
 #[AsController]
 #[Route('/api/seasons/{id}/transition', name: 'season_transition', methods: ['POST'])]
+#[ClubFunction(module: Module::CLUB, audience: Audience::MANAGER)]
 final class SeasonTransitionController extends AbstractController
 {
     use ResolvesCurrentClubTrait;

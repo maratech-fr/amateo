@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace App\Controller;
 
+use App\Access\Audience;
+use App\Access\ClubFunction;
+use App\Access\Module;
 use App\Entity\Club;
 use App\Entity\MatchPlacementRun;
 use App\Entity\Season;
@@ -60,6 +63,7 @@ use Throwable;
  * décompté par le worker au COMPLETED, plus par ce contrôleur.
  */
 #[AsController]
+#[ClubFunction(module: Module::MATCHES, audience: Audience::MANAGER)]
 final class PlaceMatchesController extends AbstractController
 {
     use ResolvesCurrentClubTrait;

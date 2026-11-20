@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace App\Controller;
 
+use App\Access\Audience;
+use App\Access\ClubFunction;
+use App\Access\Module;
 use App\Entity\CalendarEntry;
 use App\Entity\Constraint;
 use App\Entity\Reservation;
@@ -39,6 +42,7 @@ use Throwable;
  * over the club's constraints so the wizard can flag gross errors (a coach who
  * "starts after he ends", contradictory HARD rules…) BEFORE generating.
  */
+#[ClubFunction(module: Module::PLANNING, audience: Audience::MEMBER)]
 final class ValidateConstraintsController extends AbstractController
 {
     use ResolvesCurrentClubTrait;

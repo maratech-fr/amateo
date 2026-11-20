@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace App\Controller;
 
+use App\Access\Audience;
+use App\Access\ClubFunction;
+use App\Access\Module;
 use App\Entity\Club;
 use App\Exception\ImportRejectedException;
 use App\Service\Fbi\FbiExportFreshnessGuard;
@@ -30,6 +33,7 @@ use Symfony\Component\HttpKernel\Exception\HttpException;
  * mappings. Same gate as the import (byte-identical refusals).
  */
 #[AsController]
+#[ClubFunction(module: Module::MATCHES, audience: Audience::MANAGER)]
 final class ImportFixturesAnalyzeController extends AbstractController
 {
     /** Même règle que `ImportController` : aucun détail d'origine dans la réponse (P4-5). */

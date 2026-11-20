@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace App\Controller;
 
+use App\Access\Audience;
+use App\Access\ClubFunction;
+use App\Access\Module;
 use App\Enum\SchedulePlanType;
 use App\Service\ManagementAccessGuard;
 use App\Service\PeriodPlanTranscriber;
@@ -30,6 +33,7 @@ use Symfony\Component\Routing\Attribute\Route;
  * réponse porte la liste « à replacer » : le front ne redérive rien.
  */
 #[AsController]
+#[ClubFunction(module: Module::PLANNING, audience: Audience::MANAGER)]
 final class TranscribePeriodPlanController extends AbstractController implements SeasonScopedWriteInterface
 {
     use ResolvesCurrentClubTrait;

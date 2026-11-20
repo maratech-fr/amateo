@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace App\Controller;
 
+use App\Access\Audience;
+use App\Access\ClubFunction;
+use App\Access\Module;
 use App\Entity\Club;
 use App\Service\ParcImport\ParcImportAnalyzer;
 use App\Service\ParcImport\ParcImportGate;
@@ -27,6 +30,7 @@ use Symfony\Component\HttpKernel\Attribute\AsController;
  * désérialisation d'API Platform. Les refus octets (413) et dénombrement (422) suivent la gate.
  */
 #[AsController]
+#[ClubFunction(module: Module::CLUB, audience: Audience::MANAGER)]
 final class ParcImportAnalyzeController extends AbstractController
 {
     /** Bornes d'abus (cadrage G2) — le corps est refusé AVANT le parse au-delà de la taille. */

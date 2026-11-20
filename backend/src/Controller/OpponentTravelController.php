@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace App\Controller;
 
+use App\Access\Audience;
+use App\Access\ClubFunction;
+use App\Access\Module;
 use App\Entity\ClubTravelCache;
 use App\Entity\OpponentDirectoryEntry;
 use App\Entity\OpponentVenueLink;
@@ -61,6 +64,7 @@ use Symfony\Component\Routing\Attribute\Route;
  *   l'adversaire (partagé, « un compte, jamais un qui »).
  */
 #[AsController]
+#[ClubFunction(module: Module::MATCHES, audience: Audience::MANAGER)]
 final class OpponentTravelController extends AbstractController
 {
     use ResolvesCurrentClubTrait;
@@ -90,6 +94,7 @@ final class OpponentTravelController extends AbstractController
     ) {}
 
     #[Route('/api/opponents/travel', name: 'api_opponents_travel_list', methods: ['GET'])]
+    #[ClubFunction(module: Module::MATCHES, audience: Audience::MEMBER)]
     public function list(Request $request): JsonResponse
     {
         [$clubId, $season, $error] = $this->context($request);

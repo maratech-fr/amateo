@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace App\Controller;
 
+use App\Access\Audience;
+use App\Access\ClubFunction;
+use App\Access\Module;
 use App\Entity\Club;
 use App\Exception\ImportRejectedException;
 use App\Service\Basketball\FfbbExcelImporter;
@@ -20,6 +23,7 @@ use Symfony\Component\HttpKernel\Attribute\AsController;
 use Symfony\Component\HttpKernel\Exception\HttpException;
 
 #[AsController]
+#[ClubFunction(module: Module::CLUB, audience: Audience::MANAGER)]
 final class ImportController extends AbstractController
 {
     /**

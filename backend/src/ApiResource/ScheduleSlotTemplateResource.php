@@ -9,6 +9,9 @@ use ApiPlatform\Metadata\ApiFilter;
 use ApiPlatform\Metadata\ApiResource;
 use ApiPlatform\Metadata\Get;
 use ApiPlatform\Metadata\GetCollection;
+use App\Access\Audience;
+use App\Access\ClubResource;
+use App\Access\Module;
 use App\Entity\ScheduleSlotTemplate;
 use App\Enum\LockLevel;
 use App\Enum\LockOrigin;
@@ -23,6 +26,7 @@ use Symfony\Component\Serializer\Attribute\Groups;
     new Get,
 ], paginationEnabled: true, paginationItemsPerPage: 30, provider: ScheduleSlotTemplateStateProvider::class)]
 #[ApiFilter(SearchFilter::class, properties: ['scheduleId' => 'exact'])]
+#[ClubResource(module: Module::PLANNING, read: Audience::MEMBER, write: Audience::MANAGER)]
 class ScheduleSlotTemplateResource
 {
     #[Groups(['read'])]

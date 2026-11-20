@@ -12,6 +12,9 @@ use ApiPlatform\Metadata\Get;
 use ApiPlatform\Metadata\GetCollection;
 use ApiPlatform\Metadata\Post;
 use ApiPlatform\Metadata\Put;
+use App\Access\Audience;
+use App\Access\ClubResource;
+use App\Access\Module;
 use App\Dto\TeamMatchHabitInput;
 use App\Entity\TeamMatchHabit;
 use App\State\Processor\TeamMatchHabitStateProcessor;
@@ -28,6 +31,7 @@ use Symfony\Component\Serializer\Attribute\Groups;
     new Delete,
 ], input: TeamMatchHabitInput::class, paginationEnabled: true, paginationItemsPerPage: 50, provider: TeamMatchHabitStateProvider::class, processor: TeamMatchHabitStateProcessor::class)]
 #[ApiFilter(SearchFilter::class, properties: ['teamId' => 'exact', 'seasonId' => 'exact'])]
+#[ClubResource(module: Module::MATCHES, read: Audience::MEMBER, write: Audience::MANAGER)]
 class TeamMatchHabitResource
 {
     #[Groups(['read'])]

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Controller;
 
+use App\Access\AccountFunction;
 use App\Entity\User;
 use App\Enum\AuditAction;
 use App\Service\AccountErasureService;
@@ -35,6 +36,7 @@ final class DeleteAccountController extends AbstractController
         private readonly AuditTrail $auditTrail,
     ) {}
 
+    #[AccountFunction]
     #[Route('/api/me', name: 'api_me_delete', methods: ['DELETE'])]
     public function __invoke(Request $request): JsonResponse
     {

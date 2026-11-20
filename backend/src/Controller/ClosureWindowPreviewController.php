@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace App\Controller;
 
+use App\Access\Audience;
+use App\Access\ClubFunction;
+use App\Access\Module;
 use App\Entity\SchedulePlan;
 use App\Enum\SchedulePlanType;
 use App\Service\ClosurePinRemover;
@@ -36,6 +39,7 @@ use Throwable;
  * d'existence, patron {@see SchedulePlanStructureHashController}).
  */
 #[AsController]
+#[ClubFunction(module: Module::PLANNING, audience: Audience::MANAGER)]
 final class ClosureWindowPreviewController extends AbstractController
 {
     use ResolvesCurrentClubTrait;

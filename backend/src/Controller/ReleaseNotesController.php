@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Controller;
 
+use App\Access\AccountFunction;
 use App\Entity\ReleaseNote;
 use App\Entity\User;
 use App\Repository\ReleaseNoteRepository;
@@ -32,6 +33,7 @@ final class ReleaseNotesController extends AbstractController
         private readonly ClockInterface $clock,
     ) {}
 
+    #[AccountFunction]
     #[Route('/api/release-notes', name: 'api_release_notes_list', methods: ['GET'])]
     public function list(): JsonResponse
     {
@@ -62,6 +64,7 @@ final class ReleaseNotesController extends AbstractController
     }
 
     /** Marquer le journal comme lu jusqu'à maintenant (self-only par construction). */
+    #[AccountFunction]
     #[Route('/api/release-notes/seen', name: 'api_release_notes_seen', methods: ['POST'])]
     public function markSeen(): JsonResponse
     {
