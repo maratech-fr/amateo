@@ -7,6 +7,7 @@ namespace App\Tests\Security;
 use App\Entity\ClubUser;
 use App\Entity\User;
 use App\Enum\ClubRole;
+use App\Tests\Integration\Migration\ClubRoleClosingMigrationTest;
 use App\Tests\StartsFreshBrowserSession;
 use App\Tests\VerifiesRegistration;
 use DateTimeImmutable;
@@ -44,7 +45,7 @@ use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
  *
  * La conversion des anciennes lignes (owner → admin, editor/viewer → member, invitations en
  * attente comprises, refus sur valeur inconnue) est le jumeau de migration
- * {@see \App\Tests\Integration\Migration\ClubRoleClosingMigrationTest} : il prouve ce que
+ * {@see ClubRoleClosingMigrationTest} : il prouve ce que
  * DEVIENT une ancienne ligne ; ce test prouve ce que fait chacune des deux valeurs (un `admin`
  * gère : testChangeRoleValidatesAndTakesEffect ; un `member` lit sans modifier :
  * testMemberReadsEverythingButCannotPilotMemberships ; une invitation `member` s'accepte :
@@ -371,10 +372,10 @@ final class MemberRoleTest extends WebTestCase
 
         foreach (['club_user' => $insertMembership, 'club_invitation' => $insertInvitation] as $table => $insert) {
             foreach (['owner', 'editor', 'viewer', 'coach'] as $refused) {
-                self::assertSame('23514', $this->sqlStateOf($admin, static fn () => $insert($refused)), \sprintf('%s.role = « %s » doit être refusé par la contrainte CHECK', $table, $refused));
+                self::assertSame('23514', $this->sqlStateOf($admin, static fn (): int => $insert($refused)), \sprintf('%s.role = « %s » doit être refusé par la contrainte CHECK', $table, $refused));
             }
             foreach (ClubRole::cases() as $accepted) {
-                self::assertNull($this->sqlStateOf($admin, static fn () => $insert($accepted->value)), \sprintf('témoin : %s.role = « %s » passe', $table, $accepted->value));
+                self::assertNull($this->sqlStateOf($admin, static fn (): int => $insert($accepted->value)), \sprintf('témoin : %s.role = « %s » passe', $table, $accepted->value));
             }
         }
     }

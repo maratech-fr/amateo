@@ -75,9 +75,9 @@ final class ClubRoleClosingMigrationTest extends KernelTestCase
 
             $this->play('up');
 
-            self::assertSame('23514', $this->sqlStateOf(fn () => $this->membership($clubId, $userIds[0], 'owner')), 'après up(), club_user refuse « owner » (CHECK)');
-            self::assertSame('23514', $this->sqlStateOf(fn () => $this->invitation($clubId, $userIds[0], 'editor')), 'après up(), club_invitation refuse « editor » (CHECK)');
-            self::assertNull($this->sqlStateOf(fn () => $this->membership($clubId, $userIds[0], 'member')), 'témoin : « member » passe');
+            self::assertSame('23514', $this->sqlStateOf(fn (): string => $this->membership($clubId, $userIds[0], 'owner')), 'après up(), club_user refuse « owner » (CHECK)');
+            self::assertSame('23514', $this->sqlStateOf(fn (): string => $this->invitation($clubId, $userIds[0], 'editor')), 'après up(), club_invitation refuse « editor » (CHECK)');
+            self::assertNull($this->sqlStateOf(fn (): string => $this->membership($clubId, $userIds[0], 'member')), 'témoin : « member » passe');
         });
     }
 
@@ -118,8 +118,8 @@ final class ClubRoleClosingMigrationTest extends KernelTestCase
             $this->play('down');
 
             self::assertSame('admin', $this->roleOf('club_user', $owner), 'down() ne restaure pas « owner » : la conversion est sans retour');
-            self::assertNull($this->sqlStateOf(fn () => $this->membership($clubId, $userIds[1], 'viewer')), 'down() retire la contrainte de club_user');
-            self::assertNull($this->sqlStateOf(fn () => $this->invitation($clubId, $userIds[1], 'viewer')), 'down() retire la contrainte de club_invitation');
+            self::assertNull($this->sqlStateOf(fn (): string => $this->membership($clubId, $userIds[1], 'viewer')), 'down() retire la contrainte de club_user');
+            self::assertNull($this->sqlStateOf(fn (): string => $this->invitation($clubId, $userIds[1], 'viewer')), 'down() retire la contrainte de club_invitation');
         });
     }
 
