@@ -90,7 +90,7 @@ export function useCampaignSettings({
 
   // P3-13/P3-15 (c) — on ne sollicite un coach que pour ce qu'il reste à vivre : les
   // semaines RÉVOLUES étaient proposées ET cochées par défaut. Même règle et même foyer
-  // que le radar (`isActionableWeek`), pas une seconde implémentation (CLAUDE.md §7.2).
+  // que le radar (`isActionableWeek`), pas une seconde implémentation.
   // ⚠ Une semaine ENTAMÉE reste offerte (revue #344) : une vacance qui démarre un samedi
   // n'aurait plus pu faire l'objet d'aucune collecte dès le lundi suivant, pour des
   // séances pourtant toutes à venir — et rien d'autre dans l'app ne crée une campagne.

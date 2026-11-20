@@ -152,7 +152,7 @@ export function weeksCovering(start: string, end: string, season: { startDate: s
  * la fin dit s'il reste quelque chose à y faire. Ce sont deux questions différentes.
  *
  * Fonctions PURES, hors React : les tests d'écran mockent les hooks et ne garderaient que
- * le câblage (leçon P2-15 / CLAUDE.md §7.2).
+ * le câblage (leçon P2-15).
  */
 export function isActionableWeek(week: WeekWindow, today: string): boolean {
   return week.endDate >= today;
@@ -173,7 +173,7 @@ export function actionableWeeks(weeks: WeekWindow[], today: string): WeekWindow[
  * création produisait un plan de semaine que le radar filtrait ensuite partout. Un
  * artefact sans carte, sans puce et sans retour possible.
  *
- * Une règle vaut à TOUS ses sites, sinon les écrans se contredisent (CLAUDE.md §7.2 pt 1).
+ * Une règle vaut à TOUS ses sites, sinon les écrans se contredisent.
  */
 export function periodWeeksToAdjust(
   start: string,

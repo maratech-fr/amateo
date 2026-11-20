@@ -16,7 +16,7 @@ const noop = () => {};
 /**
  * P4-43. Ce composant n'avait AUCUN test : on pouvait en retirer l'état actif, l'attribut
  * `aria-expanded` ou la sortie du voile de l'ordre de tabulation sans qu'une seule
- * assertion rougisse (CLAUDE.md §7.2 pt 5).
+ * assertion rougisse.
  */
 describe("ResourceFilter — un filtre posé doit se voir", () => {
   it("porte l'accent quand une sélection est active, et pas quand elle est vide", () => {

@@ -42,8 +42,8 @@ import { describe, expect, it } from "vitest";
  * qui tient ce reliquat. Élargir la largeur = décision, pas un ajout silencieux.
  *
  * PORTÉE = EXCLUSIVEMENT les fichiers de `MIGRATED_FILES`. `texts.ts` est HORS portée par
- * construction (c'est LUI qui détient les littéraux, une seule fois). Un écran entre dans
- * `MIGRATED_FILES` quand sa PR le migre (règle `.claude/rules/frontend.md`).
+ * construction (c'est LUI qui détient les littéraux, une seule fois). `MIGRATED_FILES` est
+ * gelée : la liste ne grandit plus, un écran qui y figure reste policé (règle `.claude/rules/frontend.md`).
  */
 const SRC_ROOT = join(import.meta.dirname, "..");
 
