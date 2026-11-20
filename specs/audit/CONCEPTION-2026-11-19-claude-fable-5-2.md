@@ -1,6 +1,6 @@
 # Audit de conception d'Amateo — 2026-11-19
 
-> Brief : [`specs/evolution/lot-conception.md`](../evolution/lot-conception.md) (ligne de roadmap P1-1).
+> Brief : [`specs/evolution/lot-conception.md`](../evolution/lot-conception.md) (ligne de roadmap P1-6).
 > Question posée : nos fondations sont-elles solides, et comment les rendre modulables pour que les
 > évolutions à venir ne coûtent pas « un bras » ?
 > Lecture seule : rien n'a été codé ni exécuté. **Le découpage en lots de travail se décide après

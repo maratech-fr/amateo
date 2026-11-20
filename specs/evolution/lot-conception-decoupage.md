@@ -7,7 +7,7 @@ Aucun plan n'est écrit.** Rien n'est codé. Ce document dit **quoi dans quel or
 Source : [`conception-cible.md`](conception-cible.md) (les numéros « § » ci-dessous y renvoient).
 Constats : [`../audit/CONCEPTION-2026-11-19-claude-fable-5-2.md`](../audit/CONCEPTION-2026-11-19-claude-fable-5-2.md),
 [`../audit/EPARPILLEMENT-2026-11-20-claude-fable-5-2.md`](../audit/EPARPILLEMENT-2026-11-20-claude-fable-5-2.md).
-Ligne de roadmap : P1-1.
+Ligne de roadmap : P1-6.
 
 ## 1. Les règles du découpage
 

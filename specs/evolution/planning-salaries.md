@@ -1,6 +1,6 @@
 # Planning des salariés (P4-613)
 
-**Statut : besoin validé, décisions prises, EN ATTENTE du lot conception** ([`lot-conception.md`](lot-conception.md), P1-1) : le fondateur veut une **Personne avec rôles** (coach, salarié) avant de bâtir ce module. Plan non commencé ; `morpheus` n'est pas lancé. Citations `fichier:ligne` du cadrage `oracle` du 2026-11-19 : à relire à la source au plan.
+**Statut : besoin validé, décisions prises, EN ATTENTE du lot conception** ([`lot-conception.md`](lot-conception.md), P1-6) : le fondateur veut une **Personne avec rôles** (coach, salarié) avant de bâtir ce module. Plan non commencé ; `morpheus` n'est pas lancé. Citations `fichier:ligne` du cadrage `oracle` du 2026-11-19 : à relire à la source au plan.
 
 ## Le besoin
 

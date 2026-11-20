@@ -2,7 +2,7 @@
 
 **Audit rendu le 2026-11-19 : [`specs/audit/CONCEPTION-2026-11-19-claude-fable-5-2.md`](../audit/CONCEPTION-2026-11-19-claude-fable-5-2.md)** (verdicts par objet, modèle cible, briques et dépendances, confrontation des ADR). Prochaine étape : le fondateur valide ou conteste la cible (§10 de l'audit), puis décide le découpage en lots.
 
-**Statut : décidé le 2026-11-19, priorité absolue, audit rendu, cible à valider.** Ligne de roadmap : P1-1. Ce fichier est le brief de départ de l'audit (`Fable 5.2`). **Le découpage en lots de travail se décide APRÈS l'audit** (fondateur, 2026-11-19) : tout ce qui parle de PR, d'étapes ou d'ordre de refonte ci-dessous est une hypothèse, pas un plan. Seul cadre posé : un lot conception prioritaire, et trois besoins de planning (bac à sable, semaines A/B, salariés) en attente.
+**Statut : décidé le 2026-11-19, priorité absolue, audit rendu, cible à valider.** Ligne de roadmap : P1-6. Ce fichier est le brief de départ de l'audit (`Fable 5.2`). **Le découpage en lots de travail se décide APRÈS l'audit** (fondateur, 2026-11-19) : tout ce qui parle de PR, d'étapes ou d'ordre de refonte ci-dessous est une hypothèse, pas un plan. Seul cadre posé : un lot conception prioritaire, et trois besoins de planning (bac à sable, semaines A/B, salariés) en attente.
 
 ## Pourquoi
 

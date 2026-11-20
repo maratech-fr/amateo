@@ -1,6 +1,6 @@
 # Planning bac à sable : un socle d'essai indépendant
 
-**Statut : besoin validé, direction tranchée, EN ATTENTE du lot conception** ([`lot-conception.md`](lot-conception.md), P1-1 : la structure attachée à la saison est le couplage à défaire d'abord) ; plan non commencé, `morpheus` non lancé. Matière de départ pour le cycle complet (`/plan` par `morpheus`, `smith` obligatoire : génération, isolation entre clubs, cycle de vie du planning, ADR-0002). Les citations `fichier:ligne` viennent du cadrage `oracle` du 2026-11-19 : à relire à la source au plan.
+**Statut : besoin validé, direction tranchée, EN ATTENTE du lot conception** ([`lot-conception.md`](lot-conception.md), P1-6 : la structure attachée à la saison est le couplage à défaire d'abord) ; plan non commencé, `morpheus` non lancé. Matière de départ pour le cycle complet (`/plan` par `morpheus`, `smith` obligatoire : génération, isolation entre clubs, cycle de vie du planning, ADR-0002). Les citations `fichier:ligne` viennent du cadrage `oracle` du 2026-11-19 : à relire à la source au plan.
 
 ## Le besoin
 
