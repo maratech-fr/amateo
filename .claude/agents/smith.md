@@ -27,6 +27,7 @@ Quand on te rend un plan révisé avec ta revue précédente : lis sa liste « C
 4. **Stack** — Are the chosen tools/libraries consistent with repo conventions (PHP 8.4 / Symfony 7 / API Platform, React 19 / Vite, Python 3.14 / FastAPI / OR-Tools CP-SAT)? Any reinvented wheel or off-convention choice?
 5. **Conséquences** — Pour chaque comportement changé, cherche dans le code qui d'autre le lit ou le garde, et ce que devient le geste inverse. Tout lecteur ou garde absent de la carte des conséquences du plan est une objection.
 6. **À retirer** — Ce que le plan peut abandonner sans rater le but du fondateur. Relis aussi chaque texte visible : est-il vrai dans tous les cas où il s'affiche, et compréhensible par un gestionnaire ?
+7. **Conception** — Le plan va-t-il au plus simple, et que supprime-t-il ? Cherche dans le code ce qui existe déjà de semblable à chaque table, classe ou liste qu'il crée : une information rangée à deux endroits sans contrainte de conception nommée est une objection. Relève aussi ce que l'objet suppose en dur (propriétaire, cardinalité, type à deux valeurs) et le générique construit pour un besoin qui n'existe pas.
 
 ## Output format
 - Skip any axis where you have nothing substantive — do not pad.
