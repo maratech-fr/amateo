@@ -34,8 +34,12 @@ final class EngineRequestFingerprint
     private const string DATE = '/\A\d{4}-\d{2}-\d{2}\z/';
     private const string CONTRACT_VERSION = '/\A\d+(\.\d+)+\z/';
 
-    /** Mots d'un identifiant composé (`team-coach:<uuid>`, `<uuid>:<uuid>:1:19:30`). */
-    private const string ID_WORD = '/\A[a-z]+(-[a-z]+)*\z/';
+    /**
+     * Préfixes d'un identifiant composé des constructeurs de demande (`team-coach:<uuid>`,
+     * `priority-tier:<n>`) : liste FERMÉE, admis en tête seulement — un mot minuscule a la forme d'un
+     * préfixe et peut être un prénom.
+     */
+    private const array ID_PREFIXES = ['team-coach', 'coach-player-unavailability', 'priority-tier'];
 
     /** Valeurs littérales des constructeurs de demande, hors énumérations PHP. */
     private const array LITERALS = ['TEAM_COACH', 'COACH_PLAYER_UNAVAILABILITY', 'PRIORITY_TIER', 'TO_PLACE', 'AWAY', 'FIXED'];
@@ -124,13 +128,17 @@ final class EngineRequestFingerprint
     }
 
     /**
-     * Un id désigne en clair s'il ne fait qu'assembler des valeurs en clair (UUID, nombres, heures)
-     * et des mots d'identifiant (`team-coach`) ; sinon c'est son empreinte qui le désigne.
+     * Un id désigne en clair s'il ne fait qu'assembler des UUID et des nombres, précédés au plus d'un
+     * préfixe connu (`team-coach`) suivi d'au moins une partie ; sinon c'est son empreinte qui le désigne.
      */
     private static function idDesignation(string $id): string
     {
-        foreach (explode(':', $id) as $part) {
-            if (1 !== preg_match(self::UUID, $part) && !ctype_digit($part) && 1 !== preg_match(self::ID_WORD, $part)) {
+        $parts = explode(':', $id);
+        if (\count($parts) > 1 && \in_array($parts[0], self::ID_PREFIXES, true)) {
+            array_shift($parts);
+        }
+        foreach ($parts as $part) {
+            if (1 !== preg_match(self::UUID, $part) && !ctype_digit($part)) {
                 return 'sha256:' . hash('sha256', $id);
             }
         }

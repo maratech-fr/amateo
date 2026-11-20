@@ -26,7 +26,7 @@ use Symfony\Component\DependencyInjection\Attribute\Autowire;
  * l'arbre comparé : `{"clubs": [{"clubId", "requests": [clés], "skipped": [{"scope", "reason"}]}]}`.
  *
  * Sorties : 0 ; 1 une demande atteignable n'a pas pu être composée (nommée) ; 2 `--club` n'est pas un
- * UUID, ou `--out` n'est pas un dossier vide ; 3 la sécurité par club n'est pas effective sur la
+ * UUID, ou `--out` n'est pas un dossier absent ou vide, ou est un lien symbolique ; 3 la sécurité par club n'est pas effective sur la
  * connexion ; 4 environnement de production. Les refus précèdent toute écriture.
  *
  * Limite : le refus de production ne protège pas d'un processus de développement branché par
@@ -77,6 +77,11 @@ final class EngineRequestsRecordCommand extends Command
 
             return self::EXIT_INVALID_OPTION;
         }
+        if (is_link($out)) {
+            $io->error('--out ne doit pas être un lien symbolique : l\'outil n\'écrit jamais là où un lien le mènerait.');
+
+            return self::EXIT_INVALID_OPTION;
+        }
         if (file_exists($out) && (!is_dir($out) || [] !== array_diff((array) scandir($out), ['.', '..']))) {
             $io->error('--out doit désigner un dossier absent ou vide : un reste d\'enregistrement fausserait la comparaison.');
 
@@ -112,6 +117,14 @@ final class EngineRequestsRecordCommand extends Command
     /** @param list<string> $clubIds */
     private function record(SymfonyStyle $io, string $out, array $clubIds): int
     {
+        // La racine naît lisible du seul propriétaire, quel que soit l'umask (les empreintes de prénoms
+        // se retrouvent par dictionnaire) ; un dossier vide choisi par l'opérateur garde ses droits.
+        if (!is_dir($out)) {
+            if (!mkdir($out, 0o700, true) && !is_dir($out)) {
+                throw new RuntimeException(\sprintf('Dossier impossible à créer : %s', $out));
+            }
+            chmod($out, 0o700);
+        }
         $manifest = [];
         $failed = [];
         foreach ($clubIds as $clubId) {

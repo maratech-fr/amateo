@@ -43,8 +43,20 @@ final readonly class EngineRequestRecorder
 {
     public const string SKIP_SOCLE_NOT_IN_FORCE = 'socle_not_in_force';
 
-    /** Tables de club que la sonde lit sans club posé : elles doivent paraître vides. */
-    private const array PROBE_TABLES = ['team', 'fixture', 'schedule', 'schedule_plan'];
+    /**
+     * La sonde lit, sans club posé, toutes les tables de club sous RLS (lues dans le catalogue) : elles
+     * doivent paraître vides. Sauf ces tables, lisibles sans club par dérogation (lecture hybride :
+     * bootstrap du club depuis les appartenances, jetons publics qui PORTENT le club —
+     * `Security/RlsIsolationTest`).
+     */
+    private const array PROBE_EXEMPT_TABLES = ['club_user', 'coach_wish_token', 'club_invitation'];
+
+    private const string CLUB_TABLES = <<<'SQL'
+        SELECT c.relname FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = 'public' AND c.relkind IN ('r', 'p') AND c.relrowsecurity
+          AND EXISTS (SELECT 1 FROM pg_attribute a WHERE a.attrelid = c.oid AND a.attname = 'club_id' AND NOT a.attisdropped)
+        ORDER BY c.relname
+        SQL;
 
     public function __construct(
         private EntityManagerInterface $entityManager,
@@ -83,7 +95,11 @@ final readonly class EngineRequestRecorder
         if (true === $role['owner']) {
             return \sprintf('le rôle %s est membre de amateo_owner : la sécurité par club ne s\'applique pas', $name);
         }
-        foreach (self::PROBE_TABLES as $table) {
+        foreach ($connection->fetchFirstColumn(self::CLUB_TABLES) as $table) {
+            $table = (string) $table;
+            if (\in_array($table, self::PROBE_EXEMPT_TABLES, true)) {
+                continue;
+            }
             if (false !== $connection->fetchOne(\sprintf('SELECT 1 FROM %s LIMIT 1', $connection->quoteSingleIdentifier($table)))) {
                 return \sprintf('la sonde lit des lignes de la table %s sans club posé : la sécurité par club n\'est pas effective', $table);
             }
@@ -112,9 +128,13 @@ final readonly class EngineRequestRecorder
 
             return $recorded;
         } finally {
-            $this->purgeCache($clubId);
-            $this->entityManager->clear();
-            $this->tenantConnectionContext->clear();
+            // Une purge qui échoue (Redis tombé) remonte, mais le club est relâché quand même.
+            try {
+                $this->purgeCache($clubId);
+            } finally {
+                $this->entityManager->clear();
+                $this->tenantConnectionContext->clear();
+            }
         }
     }
 
