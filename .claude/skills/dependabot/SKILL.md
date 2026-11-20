@@ -86,11 +86,11 @@ version MAJEURE** attend la décision du fondateur sur sa fiche (étape 1, point
 > **Surtout PAS un pin dans `composer.json`** : il traiterait le symptôme en laissant croire que les
 > transitifs ne sont pas couverts (CLAUDE.md §5, P4-31 — récidive constatée le 2026-07-29).
 2. Réparer **notre code** pour suivre la nouvelle API — jamais figer/downgrader la version pour
-   éviter la réparation, sauf si la migration dépasse ~1 h de travail ou touche un axe structurant
-   (§7.1 CLAUDE.md). Ce skill régénère lockfile et config lui-même ; toute réparation de code de
-   production ou de test se confie à `neo` (`CLAUDE.md` §7 : tout code applicatif passe par lui), et
-   à `tank` s'il faut écrire un test. Dans ce cas : commenter la PR avec le diagnostic, la laisser ouverte, la
-   signaler à l'utilisateur dans le bilan.
+   éviter la réparation. Qui répare : ce skill régénère lockfile et config lui-même ; toute
+   réparation de code de production ou de test se confie à `neo` (`CLAUDE.md` §7 : tout code
+   applicatif passe par lui), et à `tank` s'il faut écrire un test. Exception : si la migration
+   dépasse ~1 h de travail ou touche un axe structurant (§7.1 CLAUDE.md), commenter la PR avec le
+   diagnostic, la laisser ouverte, la signaler à l'utilisateur dans le bilan.
 3. Committer le correctif **sur la branche de la PR Dependabot** (préfixe `(IA Claude) `,
    **aucun trailer** — fondateur 2026-09-30) et pousser. Dependabot tolère les commits ajoutés à ses branches.
 4. Relancer la suite de la zone → verte.
