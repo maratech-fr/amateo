@@ -998,9 +998,13 @@ règle d'écriture des migrations) ; plus de `schema_filter` dans `doctrine.yaml
 - **Retour arrière** : le code d'avant ne lit déjà plus la table. Restaurer le dump d'avant migration
   (ci-dessus) ne sert que si l'on veut les anciennes lignes ; `down()` ne les rend pas.
 
-### Rituel sécurité post-déploiement (ZAP + Nuclei) — obligatoire à CHAQUE déploiement
+### Rituel sécurité post-déploiement (ZAP + Nuclei) — obligatoire sauf correctif mineur
 
-Une fois le déploiement vert, rejouer le rituel décrit dans
+**Correctif mineur** (seul cas dispensé) : aucun changement d'authentification, de dépendance,
+d'infrastructure ou de configuration serveur, ni de surface exposée (route publique nouvelle). Un
+seul de ces changements rend le rituel obligatoire.
+
+Une fois le déploiement vert (hors correctif mineur), rejouer le rituel décrit dans
 [`docs/security/scanners.md`](../security/scanners.md) §Rituel (commandes ZAP baseline + Nuclei
 contre l'hôte exposé). Résultat à consigner dans la même note que le déploiement (canal de suivi
 du fondateur) ; un finding ouvre une ligne de roadmap (sévérité par le barème `/audit`) plutôt
