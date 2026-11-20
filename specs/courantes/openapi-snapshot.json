@@ -3664,6 +3664,13 @@
                                                 "null"
                                             ]
                                         },
+                                        "seasonPreparationOpensOn": {
+                                            "type": [
+                                                "string",
+                                                "null"
+                                            ],
+                                            "format": "date"
+                                        },
                                         "managerRequest": {
                                             "type": [
                                                 "object",

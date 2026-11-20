@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Tests\Integration\Controller;
 
 use App\Clock\DevClockStore;
+use App\Service\SeasonResolver;
 use App\Tests\VerifiesRegistration;
 use DateTimeImmutable;
 use PHPUnit\Framework\Attributes\Group;
@@ -39,6 +40,9 @@ final class SeasonClockThreadingTest extends WebTestCase
         $this->request('POST', '/api/dev/mark-season-paid', $token);
         self::assertResponseStatusCodeSame(200);
 
+        // La saison suivante ne se prépare qu'à partir du 1er mai : on se place au 15 mai de la
+        // saison en cours pour la préparer (sans cela, rouge de novembre à avril).
+        $this->pin(new DateTimeImmutable(\sprintf('%d-05-15T12:00:00Z', SeasonResolver::seasonYear(new DateTimeImmutable('today')) + 1)));
         $this->request('POST', '/api/seasons/' . $sourceId . '/transition', $token);
         self::assertResponseStatusCodeSame(201);
 

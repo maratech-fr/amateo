@@ -8,6 +8,7 @@ import { useSeasonStore } from "@/shared/stores/seasonStore";
 import { useTransitionUiStore } from "@/shared/stores/transitionUiStore";
 import { useWizardStore } from "@/features/wizard/store";
 import { SeasonSelector } from "./SeasonSelector";
+import { localIso, seasonYearOf } from "./seasonTransition";
 
 let meData: Partial<MeResponse> | undefined;
 const transitionMock = vi.fn();
@@ -44,7 +45,12 @@ const day = (iso: string): Date => new Date(`${iso}T12:00:00`);
 
 // Par défaut on se place DANS la fenêtre où « Préparer la saison suivante » est
 // proposé (saison courante 2025-2026 → [1er mai 2026, 15 juil 2026]).
+// Le serveur sert la date d'ouverture (`seasonPreparationOpensOn`) : le 1er mai qui suit le
+// pivot du 15 juillet de la saison du jour. Le mock l'envoie comme l'API, sauf si le test la fixe.
 function renderSelector(today: Date = day("2026-06-01")) {
+  if (undefined !== meData && undefined === meData.seasonPreparationOpensOn) {
+    meData = { ...meData, seasonPreparationOpensOn: `${seasonYearOf(localIso(today)) + 1}-05-01` };
+  }
   queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={queryClient}>
@@ -225,6 +231,18 @@ describe("SeasonSelector", () => {
     renderSelector(day("2026-04-15"));
     await userEvent.click(screen.getByRole("button", { name: "Saison de travail" }));
     expect(screen.queryByText("Préparer la saison suivante…")).not.toBeInTheDocument();
+  });
+
+  // Le menu s'ouvre à la date SERVIE (le serveur seul tient la borne basse), jamais à une date
+  // recalculée à l'écran. Jumeau serveur : `la-saison-suivante-se-prepare-a-partir-du-1er-mai.feature`.
+  it.each([
+    ["2026-05-05", false],
+    ["2026-05-10", true],
+  ])("offers « Préparer la saison suivante » from the served opening date (served 2026-05-10, today %s → %s)", async (today, offered) => {
+    meData = { currentSeasonId: "sN", seasons: [season({})], seasonPreparationOpensOn: "2026-05-10" };
+    renderSelector(day(today));
+    await userEvent.click(screen.getByRole("button", { name: "Saison de travail" }));
+    expect(screen.queryAllByRole("menuitem", { name: /Préparer la saison suivante/ })).toHaveLength(offered ? 1 : 0);
   });
 
   it("hides « Préparer la saison suivante » after the season has ended", async () => {

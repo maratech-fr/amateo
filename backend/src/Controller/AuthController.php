@@ -27,6 +27,7 @@ use App\Service\Registration\EmailVerificationService;
 use App\Service\Registration\RegisterService;
 use App\Service\SchedulePlanProvisioner;
 use App\Service\SeasonResolver;
+use App\Service\SeasonTransitionService;
 use DateTimeImmutable;
 use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
 use Doctrine\ORM\EntityManagerInterface;
@@ -78,6 +79,7 @@ final class AuthController extends AbstractController
         private readonly RegisterService $registerService,
         private readonly EmailVerificationService $emailVerificationService,
         private readonly ManagerRoleRequestService $managerRoleRequests,
+        private readonly SeasonTransitionService $seasonTransitionService,
     ) {}
 
     #[Route('/api/register', name: 'api_register', methods: ['POST'])]
@@ -158,6 +160,7 @@ final class AuthController extends AbstractController
         $seasonPlan = null;
         $seasons = [];
         $currentSeasonId = null;
+        $seasonPreparationOpensOn = null;
         if (null !== $clubUser) {
             // P1-1 (PR B) : `isActive=false` recouvre DEUX états distincts —
             // en attente d'approbation (jamais entré) vs désactivé (sorti). Le
@@ -241,6 +244,12 @@ final class AuthController extends AbstractController
                 $now = $this->clock->now();
                 $current = SeasonResolver::currentAmong($allSeasons, $now);
                 $currentSeasonId = $current?->getId();
+                // La date d'ouverture de la préparation de la saison suivante (à l'horloge du
+                // club) ; null sans saison en cours. Aucun verdict : paiement et offre restent
+                // deux refus distincts, dits au moment du geste.
+                $seasonPreparationOpensOn = $current instanceof Season
+                    ? $this->seasonTransitionService->preparationOpensOn(DateTimeImmutable::createFromInterface($now))->format('Y-m-d')
+                    : null;
 
                 // The gates (cockpit/wizard) follow the SELECTED season
                 // (X-Season-Id → _season_id, validated by the listener), not
@@ -316,6 +325,7 @@ final class AuthController extends AbstractController
             'hasGenerated' => null !== $clubEntity && $clubEntity->getGenerationCountSeason() > 0,
             'seasons' => $seasons,
             'currentSeasonId' => $currentSeasonId,
+            'seasonPreparationOpensOn' => $seasonPreparationOpensOn,
         ]);
     }
 

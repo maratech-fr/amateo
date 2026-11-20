@@ -33,6 +33,7 @@ use App\Tests\Behat\PeriodLockSmallClubContext;
 use App\Tests\Behat\PeriodOverlayContext;
 use App\Tests\Behat\PlacedPersonConflictContext;
 use App\Tests\Behat\SeasonGenerationContext;
+use App\Tests\Behat\SeasonPreparationDateContext;
 use App\Tests\Behat\SeasonTransitionContext;
 use App\Tests\Behat\SeasonWorkLoopContext;
 use App\Tests\Behat\SmallClubSmokeContext;
@@ -253,6 +254,11 @@ return (new Config)
                 new Suite('saison-suivante')
                     ->withPaths('%paths.base%/features/preparer-la-saison-suivante-reprend-la-structure.feature')
                     ->withContexts(SeasonTransitionContext::class),
+            )
+            ->withSuite(
+                new Suite('premier-mai')
+                    ->withPaths('%paths.base%/features/la-saison-suivante-se-prepare-a-partir-du-1er-mai.feature')
+                    ->withContexts(SeasonPreparationDateContext::class),
             )
             ->withSuite(
                 new Suite('suppression-en-cascade')

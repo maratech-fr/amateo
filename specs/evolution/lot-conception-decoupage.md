@@ -1,7 +1,7 @@
 # Lot conception : découpage en lots de travail
 
 **Statut : découpage validé par le fondateur le 2026-11-20 (ordre, premier lot de côté, cadrage).
-Le lot 0 est livré en trois PR ; le lot 2 a livré sa PR 1 (voir §6).** Ce document dit **quoi dans
+Le lot 0 est livré en trois PR ; le lot 2 a livré ses PR 1 et 2 (voir §6).** Ce document dit **quoi dans
 quel ordre** ; le **comment** de chaque lot est le travail de son plan (`morpheus`, puis `smith`).
 
 Source : [`conception-cible.md`](conception-cible.md) (les numéros « § » ci-dessous y renvoient).
@@ -130,6 +130,17 @@ peuvent avancer dans un espace de travail à part pendant qu'un lot principal at
     (`DeleteAccountController.php:47`) lisent celui de l'UTILISATEUR ; l'envoi des conflits
     (`ConflictCoachMailController.php:202`) et des liens de collecte
     (`CoachWishCampaignActionController.php:92`) lisent celui du CLUB.
+  - **Constats de la PR 2 du lot 2, à trancher ICI** (le lot 1 traite la préparation de la saison
+    suivante ; décision du fondateur : laissés tels quels dans la PR 2) :
+    - `POST /api/seasons` (`backend/src/ApiResource/SeasonResource.php:22-24`,
+      `State/Processor/SeasonStateProcessor.php:64-82`) crée une saison N+1 VIDE, à n'importe quelle
+      date, sans paiement ni date d'ouverture : la règle du 1er mai ne tient que sur le geste
+      « préparer » (`SeasonTransitionService::transition`, qui copie la structure). Le contrôle du
+      paiement est contourné de la même façon (pas une régression). Décision du lot 1 : à écrire ici.
+    - Dans `transition`, la garde de date passe avant le test du successeur (ordre : rôle, saison en
+      cours, date, paiement, successeur) : un club qui a déjà une saison suivante avant le 1er mai
+      reçoit le 409 « 1er mai » sans l'identifiant de la saison existante. Ne concerne que les
+      saisons créées par le point précédent ; se referme avec lui.
 - **Conditions d'entrée** (héritées du lot 0, [`lot-conception-filet.md`](lot-conception-filet.md)) :
   - **Automatiser la purge de `cache.schedule` au déploiement** : aujourd'hui une étape manuelle
     (`docs/ops/deploy.md`), acceptable pour le lot 0 seulement. Le déploiement programmé tourne sans
@@ -155,6 +166,9 @@ peuvent avancer dans un espace de travail à part pendant qu'un lot principal at
       `ClubRole::isManager()` remplace la liste `MANAGEMENT_ROLES` et `isManagementRole`.
   - Le régime de démonstration déclaré une fois (§10).
   - La règle du 1er mai côté serveur.
+    - **PR 2 livrée — « Le 1er mai côté serveur »** : la bascule vers la saison suivante est refusée
+      409 avant le 1er mai (`SeasonTransitionService::preparationOpensOn`), `/api/me` sert la date
+      (`seasonPreparationOpensOn`) ; la borne haute reste à l'écran.
 - **Supprime** : les deux listes de noms de routes des crédits (celle du débit selon la décision de
   cadrage du lot), les appels à la main du contrôle gestionnaire et 8 des 21 appels à la main du socle
   validé, 8 des exceptions de démonstration écrites une par une (6 autres regroupées en une règle).
@@ -304,6 +318,6 @@ peuvent avancer dans un espace de travail à part pendant qu'un lot principal at
 
 Ce document porte la fiche de chaque lot (contenu, ce qu'il supprime, dépendances, preuve).
 **Le lot 0 est livré en trois PR** (compositeur, scénarios, enregistreur) la mesure du PDF restant
-une procédure à jouer ([`lot-conception-filet.md`](lot-conception-filet.md) §8) ; **le lot 2 a livré sa PR 1** (deux rôles) ; les
+une procédure à jouer ([`lot-conception-filet.md`](lot-conception-filet.md) §8) ; **le lot 2 a livré ses PR 1 et 2** (deux rôles ; le 1er mai côté serveur) ; les
 autres lots n'ont pas de plan écrit. Un plan s'écrit lot par lot, dans un fichier à lui (`specs/evolution/`), et se
 valide en entier avant tout code.

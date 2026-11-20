@@ -71,7 +71,7 @@ final class SeasonTransitionServiceTest extends KernelTestCase
     {
         [$club, $season, $refs] = $this->createClubGraph();
 
-        $target = $this->service->transition($season);
+        $target = $this->service->transition($season, $this->inPreparationWindow());
 
         // Season shell: dates +1 year, draft, gates null, lineage in transitionData.
         self::assertSame($club->getId(), $target->getClubId());
@@ -207,7 +207,7 @@ final class SeasonTransitionServiceTest extends KernelTestCase
         $this->em->persist($opening);
         $this->em->flush();
 
-        $target = $this->service->transition($season);
+        $target = $this->service->transition($season, $this->inPreparationWindow());
 
         $copied = $this->em->getRepository(VenueMatchWindow::class)->findBy(['seasonId' => $target->getId()]);
         self::assertCount(1, $copied, 'seule la ligne du samedi suit');
@@ -219,7 +219,7 @@ final class SeasonTransitionServiceTest extends KernelTestCase
     {
         [, $season, $refs] = $this->createClubGraph();
 
-        $target = $this->service->transition($season);
+        $target = $this->service->transition($season, $this->inPreparationWindow());
 
         $copied = $this->em->getRepository(Constraint::class)->findBy(['seasonId' => $target->getId()], ['name' => 'ASC']);
         // The dated constraint (calendarEntryId set) is NOT copied.
@@ -265,7 +265,7 @@ final class SeasonTransitionServiceTest extends KernelTestCase
         $this->em->persist($ghostConfig);
         $this->em->flush();
 
-        $target = $this->service->transition($season);
+        $target = $this->service->transition($season, $this->inPreparationWindow());
 
         $copiedNames = array_map(
             static fn (Constraint $c): string => $c->getName(),
@@ -299,7 +299,7 @@ final class SeasonTransitionServiceTest extends KernelTestCase
         $this->em->persist($ghostBan);
         $this->em->flush();
 
-        $target = $this->service->transition($season);
+        $target = $this->service->transition($season, $this->inPreparationWindow());
 
         // La cible : seule l'interdiction légitime (équipe réelle) a été recopiée.
         $copiedBans = $this->em->getRepository(MatchConstraint::class)->findBy(['seasonId' => $target->getId(), 'scope' => ConstraintScope::TEAM]);
@@ -326,7 +326,7 @@ final class SeasonTransitionServiceTest extends KernelTestCase
         $this->em->persist($ghost);
         $this->em->flush();
 
-        $target = $this->service->transition($season);
+        $target = $this->service->transition($season, $this->inPreparationWindow());
 
         // La cible : seule l'indisponibilité légitime (coach réel) a été recopiée.
         $copied = $this->em->getRepository(MatchConstraint::class)->findBy(['seasonId' => $target->getId(), 'scope' => ConstraintScope::COACH]);
@@ -337,7 +337,7 @@ final class SeasonTransitionServiceTest extends KernelTestCase
     {
         [, $season] = $this->createClubGraph();
 
-        $target = $this->service->transition($season);
+        $target = $this->service->transition($season, $this->inPreparationWindow());
 
         self::assertCount(0, $this->em->getRepository(Schedule::class)->findBy(['seasonId' => $target->getId()]));
     }
@@ -349,7 +349,7 @@ final class SeasonTransitionServiceTest extends KernelTestCase
         // jamais retomber à UNSPECIFIED au passage de saison. Anna est posée FEMALE.
         [, $season] = $this->createClubGraph();
 
-        $target = $this->service->transition($season);
+        $target = $this->service->transition($season, $this->inPreparationWindow());
 
         $copiedAnna = $this->em->getRepository(Coach::class)->findOneBy(['seasonId' => $target->getId(), 'firstName' => 'Anna']);
         self::assertNotNull($copiedAnna);
@@ -365,7 +365,7 @@ final class SeasonTransitionServiceTest extends KernelTestCase
         $sm1->setMaxSessionsPerDay(2);
         $this->em->flush();
 
-        $target = $this->service->transition($season);
+        $target = $this->service->transition($season, $this->inPreparationWindow());
 
         $copied = $this->em->getRepository(Team::class)->findOneBy(['seasonId' => $target->getId(), 'name' => 'SM1']);
         self::assertInstanceOf(Team::class, $copied);
@@ -383,7 +383,7 @@ final class SeasonTransitionServiceTest extends KernelTestCase
             ->setIntensity(ImplicitRuleIntensity::OFF));
         $this->em->flush();
 
-        $target = $this->service->transition($season);
+        $target = $this->service->transition($season, $this->inPreparationWindow());
 
         $copied = $this->em->getRepository(ImplicitRuleSetting::class)->findOneBy([
             'seasonId' => $target->getId(),
@@ -401,7 +401,7 @@ final class SeasonTransitionServiceTest extends KernelTestCase
         // jamais retomber à false au passage de saison. Anna est posée véhiculée.
         [, $season] = $this->createClubGraph();
 
-        $target = $this->service->transition($season);
+        $target = $this->service->transition($season, $this->inPreparationWindow());
 
         $copiedAnna = $this->em->getRepository(Coach::class)->findOneBy(['seasonId' => $target->getId(), 'firstName' => 'Anna']);
         self::assertNotNull($copiedAnna);
@@ -436,7 +436,7 @@ final class SeasonTransitionServiceTest extends KernelTestCase
         // for the target season references the COPIED entities, never season-N ids.
         [$club, $season, $refs] = $this->createClubGraph();
 
-        $target = $this->service->transition($season);
+        $target = $this->service->transition($season, $this->inPreparationWindow());
 
         $builder = self::getContainer()->get(ScheduleConstraintBuilder::class);
         $payload = $builder->buildForClubSeason($club->getId(), $target->getId());
@@ -460,10 +460,10 @@ final class SeasonTransitionServiceTest extends KernelTestCase
     public function testRerunReturnsConflictWithTheExistingSuccessor(): void
     {
         [, $season] = $this->createClubGraph();
-        $target = $this->service->transition($season);
+        $target = $this->service->transition($season, $this->inPreparationWindow());
 
         try {
-            $this->service->transition($season);
+            $this->service->transition($season, $this->inPreparationWindow());
             self::fail('Expected SeasonAlreadyTransitionedException');
         } catch (SeasonAlreadyTransitionedException $e) {
             self::assertSame($target->getId(), $e->getExistingSeasonId());
@@ -477,8 +477,28 @@ final class SeasonTransitionServiceTest extends KernelTestCase
         $past = $this->createSeason($club, SeasonResolver::seasonYear($season->getStartDate()) - 1);
         $this->em->flush();
 
+        // Le 30 avril, AVANT la fenêtre : la saison se vérifie avant la date, le motif dit donc que
+        // c'est la saison qui est refusée (une date vérifiée d'abord dirait « à partir du 1er mai »).
         $this->expectException(ConflictHttpException::class);
-        $this->service->transition($past);
+        $this->expectExceptionMessage('Seule la saison en cours peut être basculée.');
+        $this->service->transition($past, $this->inPreparationWindow()->setDate(SeasonResolver::seasonYear(new DateTimeImmutable('today')) + 1, 4, 30));
+    }
+
+    /**
+     * Avant le 1er mai, la date refuse AVANT le paiement : un club qui n'a pas réglé la saison
+     * suivante s'entend dire « à partir du 1er mai », pas « payez ». La date elle-même est la
+     * promesse de `features/la-saison-suivante-se-prepare-a-partir-du-1er-mai.feature`, dont les
+     * clubs ont tous payé (l'ordre des deux refus y est invisible).
+     */
+    public function testBeforeMayTheDateRefusesBeforeThePayment(): void
+    {
+        [$club, $season] = $this->createClubGraph();
+        $club->setPaidSeasonYear(null);
+        $this->em->flush();
+
+        $this->expectException(ConflictHttpException::class);
+        $this->expectExceptionMessage('La saison suivante se prépare à partir du 1er mai.');
+        $this->service->transition($season, $this->inPreparationWindow()->setDate(SeasonResolver::seasonYear(new DateTimeImmutable('today')) + 1, 4, 30));
     }
 
     protected function setUp(): void
@@ -486,6 +506,15 @@ final class SeasonTransitionServiceTest extends KernelTestCase
         self::bootKernel();
         $this->em = self::getContainer()->get(EntityManagerInterface::class);
         $this->service = self::getContainer()->get(SeasonTransitionService::class);
+    }
+
+    /**
+     * Le 15 mai de la saison créée par {@see self::createClubGraph()} : la saison suivante ne se
+     * prépare qu'à partir du 1er mai, et l'horloge réelle tomberait hors fenêtre de novembre à avril.
+     */
+    private function inPreparationWindow(): DateTimeImmutable
+    {
+        return new DateTimeImmutable(\sprintf('%d-05-15', SeasonResolver::seasonYear(new DateTimeImmutable('today')) + 1));
     }
 
     /**

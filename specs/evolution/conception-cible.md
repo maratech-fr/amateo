@@ -205,7 +205,7 @@ Aujourd'hui « a-t-on le droit ? » se pose de cinq façons à des endroits diff
 défaut commun pour les écritures d'API, un appel à la main dans 46 contrôleurs), l'état (« socle
 validé », appel à la main dans 17 fichiers), l'offre (un seul service, `PlanEntitlements.php:71-104`,
 propre), les crédits (deux listes de noms de routes qui divergent,
-`CreditBudgetSubscriber.php:44-72`), la date (1er mai, à l'écran seulement).
+`CreditBudgetSubscriber.php:44-72`), la date (1er mai, tenue par le serveur pour la seule bascule de saison, `SeasonTransitionService.php:75-80`).
 
 1. **Un module est un objet déclaré.** Planning, matchs, et demain salariés ou essai. Chaque
    fonction de l'application dit une fois à quel module elle appartient, si elle lit ou écrit, et
@@ -260,7 +260,7 @@ a une fenêtre de connexion. L'horloge simulée n'est permise qu'à un club de d
 **Le régime de démonstration se déclare une fois**, et le contrôle unique des droits (§8) le lit.
 Il dit trois familles de règles :
 
-- tout est ouvert : ni crédit, ni plafond, ni paiement (`SeasonTransitionService.php:90-92`) ;
+- tout est ouvert : ni crédit, ni plafond, ni paiement (`SeasonTransitionService.php:97-99`) ;
 - rien ne sort vers un tiers : aucun mail à un coach, aucune invitation, aucun lien de doléance
   (`ConflictCoachMailController.php:201-202`) ;
 - le compte est protégé : il ne se supprime pas, et sa fenêtre se juge sur l'heure réelle

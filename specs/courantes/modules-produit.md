@@ -104,7 +104,15 @@ tranquille.
 - À partir du 1er mai et jusqu'à la fin de la saison en cours, « Préparer la saison suivante »
   copie vos gymnases, vos équipes, vos coachs et vos règles permanentes dans une saison à part,
   librement modifiable — la saison en cours n'est pas touchée, et le planning généré n'est pas
-  copié (il se génère dans la nouvelle saison) — `frontend/src/app/SeasonSelector.tsx:51-56,159,166`.
+  copié (il se génère dans la nouvelle saison) — `frontend/src/app/SeasonSelector.tsx:51-58,159`.
+- Le serveur tient la date : avant le 1er mai, la bascule est refusée 409 (« La saison suivante
+  se prépare à partir du 1er mai. »), même à un appel direct, à l'horloge du club (simulée pour un
+  club de démonstration) — `SeasonTransitionService::preparationOpensOn`. `GET /api/me` sert cette
+  date (`seasonPreparationOpensOn`, `null` sans saison en cours) ; le serveur ne tient que la
+  borne basse, la borne haute (fin de saison, 15 juillet au plus tard) et le seuil du bandeau
+  (le 15 du mois d'ouverture) se calculent à l'écran (`seasonPrepWindow`,
+  `frontend/src/app/seasonTransition.ts`). Un club qui n'a rien préparé avant le 15 juillet ne
+  prépare jamais la saison qui vient de commencer : il saute à la suivante, dès le 1er mai.
 - Un rappel par e-mail aux gestionnaires tant que la saison suivante n'est pas préparée : vers le
   15 mai, vers le 15 juin et vers le 1er juillet (échéance : le 15 juillet) —
   `backend/src/Command/TransitionReminderCommand.php:30-34,48`.

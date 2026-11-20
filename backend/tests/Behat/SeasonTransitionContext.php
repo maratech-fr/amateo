@@ -20,10 +20,13 @@ use RuntimeException;
  * support réel `app:clubs:set-plan --plan=essentiel --paid-season=next` : la bascule exige que la
  * saison suivante soit réglée (`SeasonTransitionService::transition`). Le club de démonstration
  * partagé n'est jamais touché. Le compte de chaque table est un POINTAGE SQL par saison (admin).
+ * La bascule n'ouvre qu'au 1er mai : l'horloge de dev se fige dans la fenêtre
+ * ({@see SeasonCalendarDayTrait}) — la date elle-même est la promesse de `SeasonPreparationDateContext`.
  * Plus bas : `Integration/Service/SeasonTransitionServiceTest` (remappage des clés de gymnase).
  */
 final class SeasonTransitionContext extends BaseContext
 {
+    use SeasonCalendarDayTrait;
     use SmallClubFixtureTrait;
 
     /** Libellé lu par un humain → table et filtre du pointage. */
@@ -59,6 +62,13 @@ final class SeasonTransitionContext extends BaseContext
         if ('' === $this->currentSeasonId) {
             throw new RuntimeException('le petit club n\'a pas de saison en cours');
         }
+    }
+
+    /** La saison suivante ne se prépare qu'à partir du 1er mai : le scénario se place dans la fenêtre. */
+    #[Given('/^nous sommes le (?P<day>.+)$/u')]
+    public function nousSommesLe(string $day): void
+    {
+        $this->pinDevClock($this->seasonDay($day), $this->smallClubToken);
     }
 
     #[Given('/^une règle qui impose le « (?P<venue>[^»]+) » à l\'équipe « (?P<team>[^»]+) »$/u')]
@@ -188,6 +198,7 @@ final class SeasonTransitionContext extends BaseContext
     #[AfterScenario]
     public function nettoyer(): void
     {
+        $this->releaseDevClock($this->smallClubToken);
         $this->teardownSmallClub();
     }
 

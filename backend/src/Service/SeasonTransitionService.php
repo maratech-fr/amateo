@@ -72,6 +72,13 @@ final class SeasonTransitionService
             throw new ConflictHttpException('Seule la saison en cours peut être basculée.');
         }
 
+        // La saison suivante se prépare à partir du 1er mai (borne BASSE seule : la borne haute du
+        // 15 juillet reste à l'écran). Un club qui n'a rien préparé avant le pivot attend le 1er mai
+        // suivant. « Aujourd'hui » vient de l'horloge du club (simulée pour un club de démonstration).
+        if ($today < $this->preparationOpensOn($today)) {
+            throw new ConflictHttpException('La saison suivante se prépare à partir du 1er mai.');
+        }
+
         // P1-5 (décision fondateur 2026-08-04) — l'abonnement se paie PAR SAISON :
         // la bascule vers N+1 exige que N+1 soit réglée. Le gate est LA BASCULE,
         // pas la génération — générer sa saison suivante dès mai puis résilier
@@ -123,6 +130,15 @@ final class SeasonTransitionService
 
             return $this->copy($source, $today);
         });
+    }
+
+    /**
+     * Le jour où la saison suivante s'ouvre à la préparation : le 1er mai qui précède le pivot à
+     * venir, soit `(année de saison d'aujourd'hui + 1)-05-01`. Servi par `/api/me`.
+     */
+    public function preparationOpensOn(DateTimeImmutable $today): DateTimeImmutable
+    {
+        return $today->setTime(0, 0)->setDate(SeasonResolver::seasonYear($today) + 1, 5, 1);
     }
 
     /**

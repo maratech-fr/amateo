@@ -15,7 +15,7 @@ Le bac à sable est un **socle de saison indépendant, relié à rien**, qui par
 3. **Un seul planning d'essai par saison**, avec plusieurs versions (générer, comparer, charger à l'intérieur de l'essai).
 4. **Chaque génération consomme un crédit** (pool du club), sans autre plafond.
 5. **Rien n'en sort** : ni export PDF/xlsx, ni report vers un plan réel, ni lien avec le réel. Écrit et assumé.
-6. **Grisé au 1er mai**, à l'ouverture de « Préparer la saison suivante » (`specs/courantes/modules-produit.md` §4) : pour tester la saison suivante, on la prépare, et elle est payante. Les données sont gardées. La coupure est une règle **serveur** (génération et lecture), lue sur `ClubClock` ; la règle du 1er mai n'existe aujourd'hui que côté écran (`frontend/src/app/SeasonSelector.tsx:51-56`, `seasonTransition.ts:41-56`). À confirmer au plan : « grisé » = lecture seule.
+6. **Grisé au 1er mai**, à l'ouverture de « Préparer la saison suivante » (`specs/courantes/modules-produit.md` §4) : pour tester la saison suivante, on la prépare, et elle est payante. Les données sont gardées. La coupure est une règle **serveur** (génération et lecture), lue sur `ClubClock` ; le 1er mai n'est tenu côté serveur que pour la bascule de saison (`SeasonTransitionService::preparationOpensOn`), pas pour la génération ni la lecture. À confirmer au plan : « grisé » = lecture seule.
 7. **Aucun envoi de mail** : l'essai n'a ni module matchs ni vacances (les conflits envoyés aux coachs et les doléances n'existent que là).
 
 **Pourquoi le 1er mai** : sans coupure, un club qui ne renouvelle pas fabriquerait le planning de la saison suivante dans l'essai avant de partir. Effacer les données au 1er mai ne protège pas (l'export précède l'effacement) ; l'absence d'export et de report ferme le reste.
@@ -24,14 +24,14 @@ Le bac à sable est un **socle de saison indépendant, relié à rien**, qui par
 
 - Types de plan : `SEASON`, `CLOSURE`, `HOLIDAY` (`backend/src/Enum/SchedulePlanType.php:15-17`). Le plan SEASON pointé est le calendrier (`SchedulePlan.php:31-35`).
 - La structure appartient à la **saison**, pas au plan : `ScheduleConstraintBuilder::buildForClubSeason` (`ScheduleConstraintBuilder.php:251`), photo de structure sur 10 familles (`StructureSnapshotter.php:52-63`).
-- Seul modèle de copie : `SeasonTransitionService::copy` (`SeasonTransitionService.php:150-209`), sans lien avec la source (`:39-40`) ; la bascule exige la saison suivante payée (`:93-95`).
+- Seul modèle de copie : `SeasonTransitionService::copy` (`SeasonTransitionService.php:157-216`), sans lien avec la source (`:39-40`) ; la bascule exige la saison suivante payée (`:100-102`) et n'ouvre qu'à partir du 1er mai (`:75-80`).
 - Rail « travailler dans une autre saison » : en-tête `X-Season-Id` (`TenantFilterListener.php:96,263`, `seasonStore.ts:6`) ; `SeasonResolver::currentAmong` choisit la saison courante parmi **toutes** celles du club (`SeasonResolver.php:67-107`) ; 45 fichiers appellent `seasonsForClub`, `currentSeason` ou `selectedOrCurrent`.
 - Crédits : pool commun du club (`PlanEntitlements.php:83,126`), consommés par `generate`, `regenerate` et les exports (`CreditBudgetSubscriber.php:46-55`).
 
 ## Ce qui coince, à écrire au plan
 
 1. **Une saison d'essai ne doit jamais devenir « la saison courante »** : chaque lecteur de « les saisons du club » (45 fichiers) est un oubli possible, donc une fuite ou un faux calendrier.
-2. **La coupure du 1er mai est à faire côté serveur** ; sinon le contournement passe par l'API.
+2. **La coupure de l'essai au 1er mai est à faire côté serveur** (la bascule de saison tient déjà la date) ; sinon le contournement passe par l'API.
 3. **Copie sans lien d'origine** : acceptable ici, puisqu'il n'y a pas de report.
 4. **Périmètre engagé** : une équipe copiée porte-t-elle son engagement ? Peut-on la supprimer dans l'essai ? À trancher.
 5. **Les adresses mail des coachs copiés** : sans mail dans l'essai, rien ne part, mais le garde doit être posé côté serveur.

@@ -55,6 +55,30 @@ final class CustomRoutesOpenApiTest extends KernelTestCase
     }
 
     /**
+     * Le contrat PUBLIÉ de `/api/me` annonce la date d'ouverture de la saison suivante
+     * (`seasonPreparationOpensOn`, chaîne `Y-m-d` ou null), dans le contrat vivant ET dans le
+     * snapshot dont le front tire ses types. Le comportement (refus avant la date, date servie)
+     * est prouvé par `features/la-saison-suivante-se-prepare-a-partir-du-1er-mai.feature`.
+     */
+    public function testMeDocumentsTheSeasonPreparationOpeningDate(): void
+    {
+        self::bootKernel();
+        $factory = self::getContainer()->get(OpenApiFactoryInterface::class);
+        $operation = $factory()->getPaths()->getPath('/api/me')?->getGet();
+        self::assertNotNull($operation, '/api/me must document its GET');
+        $ok = ($operation->getResponses() ?? [])['200'] ?? null;
+        self::assertNotNull($ok);
+        $live = $ok->getContent()['application/json']['schema']['properties']['seasonPreparationOpensOn'] ?? null;
+        self::assertIsArray($live, '/api/me documents seasonPreparationOpensOn');
+        self::assertSame(['string', 'null'], $live['type'] ?? null, 'seasonPreparationOpensOn is a Y-m-d string or null');
+
+        $snapshot = json_decode((string) file_get_contents(__DIR__ . '/../../../specs/courantes/openapi-snapshot.json'), true, 512, \JSON_THROW_ON_ERROR);
+        self::assertIsArray($snapshot);
+        $published = $snapshot['paths']['/api/me']['get']['responses']['200']['content']['application/json']['schema']['properties']['seasonPreparationOpensOn'] ?? null;
+        self::assertIsArray($published, 'the OpenAPI snapshot carries seasonPreparationOpensOn — regenerate it (api:openapi:export)');
+    }
+
+    /**
      * Lot prod Matchs PR 2 — le contrat PUBLIÉ de « marquer comme vu » porte le troisième geste :
      * `scope` ne vaut que `away` (le client ne peut rien demander d'autre), et la raison d'une
      * rencontre sautée dit ce qu'elle signifie désormais — un écart ARBITRABLE, pas toute trace.

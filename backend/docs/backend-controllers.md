@@ -476,7 +476,7 @@ Détail : [`vacances-scolaires-jours-feries.md`] et roadmap. Bascule de saison a
 
 | Route | Méthode | Contrôleur | Description |
 |-------|---------|------------|-------------|
-| `/api/seasons/{id}/transition` | POST | `SeasonTransitionController` | Déclenche la bascule vers une nouvelle saison (recap + re-datation, `SeasonTransitionService`). |
+| `/api/seasons/{id}/transition` | POST | `SeasonTransitionController` | Déclenche la bascule vers une nouvelle saison (recap + re-datation, `SeasonTransitionService`) ; refusée 409 avant le 1er mai (date servie par `GET /api/me` : `seasonPreparationOpensOn`). |
 
 ### Health check
 
