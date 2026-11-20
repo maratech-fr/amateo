@@ -484,6 +484,23 @@ final class SeasonTransitionServiceTest extends KernelTestCase
         $this->service->transition($past, $this->inPreparationWindow()->setDate(SeasonResolver::seasonYear(new DateTimeImmutable('today')) + 1, 4, 30));
     }
 
+    /**
+     * Avant le 1er mai, la date refuse AVANT le paiement : un club qui n'a pas réglé la saison
+     * suivante s'entend dire « à partir du 1er mai », pas « payez ». La date elle-même est la
+     * promesse de `features/la-saison-suivante-se-prepare-a-partir-du-1er-mai.feature`, dont les
+     * clubs ont tous payé (l'ordre des deux refus y est invisible).
+     */
+    public function testBeforeMayTheDateRefusesBeforeThePayment(): void
+    {
+        [$club, $season] = $this->createClubGraph();
+        $club->setPaidSeasonYear(null);
+        $this->em->flush();
+
+        $this->expectException(ConflictHttpException::class);
+        $this->expectExceptionMessage('La saison suivante se prépare à partir du 1er mai.');
+        $this->service->transition($season, $this->inPreparationWindow()->setDate(SeasonResolver::seasonYear(new DateTimeImmutable('today')) + 1, 4, 30));
+    }
+
     protected function setUp(): void
     {
         self::bootKernel();
