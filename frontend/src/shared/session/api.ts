@@ -177,6 +177,12 @@ export interface MeResponse {
   /** All the club's seasons, startDate ASC. */
   seasons: MeSeason[];
   currentSeasonId: string | null;
+  /**
+   * Date (Y-m-d) d'ouverture de la préparation de la saison suivante, à l'horloge du club : le
+   * serveur refuse la bascule avant. Null sans saison en cours. Aucun verdict « ouvert » :
+   * paiement et offre restent des refus distincts, dits au moment du geste.
+   */
+  seasonPreparationOpensOn: string | null;
 }
 
 export function getMe(): Promise<MeResponse> {

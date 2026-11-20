@@ -143,6 +143,9 @@ final readonly class AccountSessionPaths implements CustomPathContributor
                             // P4-301 — échéance (Y-m-d) de suppression d'un compte sans club
                             // (préavis + 30 j) ; null si aucun préavis en cours ou compte actif.
                             'accountDeletionScheduledFor' => ['type' => ['string', 'null']],
+                            // Date (Y-m-d) d'ouverture de la préparation de la saison suivante, à
+                            // l'horloge du club ; null sans saison en cours. Aucun verdict « ouvert ».
+                            'seasonPreparationOpensOn' => ['type' => ['string', 'null'], 'format' => 'date'],
                             // Chantier Membre (PR 3) — la demande du Membre à devenir gestionnaire.
                             'managerRequest' => ['type' => ['object', 'null'], 'properties' => [
                                 'status' => ['type' => 'string', 'enum' => ['pending', 'club_pending', 'expired', 'refused']],

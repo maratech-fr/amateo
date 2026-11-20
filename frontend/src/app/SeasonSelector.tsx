@@ -48,12 +48,14 @@ export function SeasonSelector({ today = todayDate() }: { today?: Date } = {}) {
   const currentSeasonId = me?.currentSeasonId ?? null;
   const selected = seasons.find((s) => s.id === selectedSeasonId) ?? seasons.find((s) => s.id === currentSeasonId) ?? null;
 
-  // « Préparer la saison suivante » n'est proposé que du 1er mai à la fin de la
-  // saison courante (retour fondateur 2026-07-19 : trop tôt en pleine saison).
+  // « Préparer la saison suivante » n'est proposé que de la date d'ouverture SERVIE
+  // (`seasonPreparationOpensOn`, le serveur refuse avant) à la fin de la saison courante.
+  // Sans date servie (pas de saison en cours), l'entrée n'est pas proposée.
   // Gaté sur la DATE seule (inWindow) — pas sur successorExists : préparer une 2ᵉ
   // fois réutilise gracieusement le brouillon existant (409 serveur → bascule),
   // flux conçu et couvert par l'e2e. Fenêtre PARTAGÉE avec la bannière (ancre today).
-  const { inWindow: canPrepareNextSeason } = seasonPrepWindow(localIso(today), seasons, "05-01");
+  const opensOn = me?.seasonPreparationOpensOn ?? null;
+  const canPrepareNextSeason = null !== opensOn && seasonPrepWindow(localIso(today), seasons, opensOn).inWindow;
 
   // Stale persisted selection (season purged / other club): reset to current.
   const staleSelection = null !== selectedSeasonId && seasons.length > 0 && !seasons.some((s) => s.id === selectedSeasonId);

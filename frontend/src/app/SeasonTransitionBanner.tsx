@@ -9,7 +9,8 @@ import { frDayMonth, localIso, seasonPrepWindow } from "./seasonTransition";
 import { isManagementRole } from "@/shared/lib/roles";
 
 /**
- * Permanent anticipation banner (transition P2-PR2): from May 15 until the
+ * Permanent anticipation banner (transition P2-PR2): from the 15th of the served
+ * opening month (`seasonPreparationOpensOn`, May 1 → May 15) until the
  * current season's real end (fallback July-15 pivot for a dormant club), while
  * NO season N+1 exists, nudge the manager to prepare the next season — window
  * shared with the SeasonSelector via seasonPrepWindow. Entirely derived from
@@ -32,15 +33,18 @@ export function SeasonTransitionBanner({ today }: { today?: Date } = {}) {
   // Preparing a season is a management action (the endpoint 403s otherwise) —
   // never nag members who cannot act on the nudge.
   const isManagement = isManagementRole(me?.role);
-  if (undefined === current || !isManagement) {
+  const opensOn = me?.seasonPreparationOpensOn ?? null;
+  if (undefined === current || !isManagement || null === opensOn) {
     return null;
   }
 
   // Fenêtre PARTAGÉE avec le sélecteur (revue D : logique unique, plus de
   // divergence). Ancrée sur AUJOURD'HUI (nudge un club dormant avant chaque pivot) ;
-  // bannière = à partir du 15 mai. La deadline affichée est la borne réelle (fin de
-  // saison), plus le 15 juillet codé en dur (revue D F2).
-  const { inWindow, successorExists, deadline } = seasonPrepWindow(localIso(effectiveToday), seasons, "05-15");
+  // bannière = à partir du 15 du mois de la date d'ouverture servie (le menu propose déjà
+  // de préparer avant, le bandeau ne relance qu'ensuite). La deadline affichée est la borne
+  // réelle (fin de saison), plus le 15 juillet codé en dur (revue D F2).
+  const bannerFrom = `${opensOn.slice(0, 7)}-15`;
+  const { inWindow, successorExists, deadline } = seasonPrepWindow(localIso(effectiveToday), seasons, bannerFrom);
   // La bannière (nag) se masque hors fenêtre ET quand un successeur existe déjà.
   if (!inWindow || successorExists) {
     return null;
