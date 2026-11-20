@@ -675,14 +675,14 @@ noms de classes exacts : [`generation-flow.md`](generation-flow.md) §1 « Vue d
 ### Injection du placement précédent (après le hash de snapshot)
 
 Entre la construction du payload et l'appel au moteur (`generation-flow.md` §3b/§3c),
-`GenerateScheduleHandler` greffe un bloc `previousAssignments` (terme de **stabilité** moteur : à score égal, le
+`EngineRequestComposer` greffe un bloc `previousAssignments` (terme de **stabilité** moteur : à score égal, le
 solveur garde une équipe sur son créneau précédent plutôt que d'en tirer un autre au hasard —
 avec en plus une **proximité** de poids 9 dans le placement lui-même : une règle saisie ≥ 10
 prime, le confort interne cède, ADR-0001) —
 **après** avoir figé `snapshotData`/`snapshotHash`, jamais avant :
 
 1. Le payload est construit et **caché** par club+saison (`ScheduleConstraintBuilder::buildForClubSeason`/`buildForPeriodPlan`) et son hash (`snapshotHash`, comparé à l'empreinte de structure servie par `GET /api/schedule_plans/{id}/structure-hash` pour griser « Régénérer » et afficher le bandeau « à régénérer » — P4-266) est calculé.
-2. **Ensuite seulement**, `GenerateScheduleHandler::resolvePreviousAssignmentSlots()` retrouve la source : la version explicitement **regardée** (`GenerateScheduleMessage::sourceScheduleId`, posé par `RegenerateController` — « Régénérer » depuis une version précise) sinon la dernière version `COMPLETED` du **même** plan (`/generate` initial, qui ne connaît pas de source), sinon rien (première génération). La source est toujours de la même lignée que `schedule.schedulePlanId` (ADR-0002 — jamais le socle sous un overlay).
+2. **Ensuite seulement**, `EngineRequestComposer::resolvePreviousAssignmentSlots()` retrouve la source : la version explicitement **regardée** (`GenerateScheduleMessage::sourceScheduleId`, posé par `RegenerateController` — « Régénérer » depuis une version précise) sinon la dernière version `COMPLETED` du **même** plan (`/generate` initial, qui ne connaît pas de source), sinon rien (première génération). La source est toujours de la même lignée que `schedule.schedulePlanId` (ADR-0002 — jamais le socle sous un overlay).
 3. `ScheduleConstraintBuilder::withPreviousAssignments()` sérialise les créneaux de la source (`{teamId, venueId, dayOfWeek, startTime}`, HARD compris — un créneau HARD n'a pas de variable côté solveur, le terme de stabilité le saute sans double paiement) et les ajoute au payload **déjà construit**, sans toucher `snapshotData`/`snapshotHash`.
 
 Pourquoi cet ordre est **la seule option correcte** : le précédent est une préférence de

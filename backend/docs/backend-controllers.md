@@ -125,7 +125,7 @@ opt-in par contrôleur.
 | `/api/schedule_plans/{id}/structure-hash` | GET | `SchedulePlanStructureHashController` | **L'empreinte de structure COURANTE, PAR PLAN** (P4-266) — généralise l'ex-`currentStructureHash` (qui ne vivait que sur `/api/me`, SEASON seul) à N'IMPORTE QUEL plan via `SchedulePlanProvisioner::structureHashOfPlan` : SEASON rehache `ScheduleConstraintBuilder::buildForClubSeason` ; PÉRIODE rehache `ScheduleConstraintBuilder::buildForPeriodPlan` avec la MÊME sélection que `PeriodPlanTranscriber` (celle qui pose `snapshotHash` à la naissance/transcription) — jamais un second calcul divergent. Rend `{"currentStructureHash": string\|null}` — `null` propre si le plan a disparu, n'a pas d'entrée de calendrier, ou si le build lève. Route de **LECTURE pure**, ouverte au Membre (pas de gate management, patron `CalendarEntryConflictsController`). **404 byte-identique** (jamais 403) pour un plan inconnu ET pour un plan d'un autre club — jamais un oracle d'existence ; un id malformé (`22P02` sur la colonne `uuid`) est attrapé et rendu comme le même 404. **Alimente le bandeau « à régénérer » et le grisage de « Régénérer » de `/planning`** (`PlanningPage.tsx`, comparaison au `snapshotHash` de la version affichée) — les drapeaux `*SinceGeneration`/les listeners qui les posaient et `SchedulePlanResource.staleness` sont SUPPRIMÉS, §Cycle de vie et §11bis/§12 de `backend-inventory.md`. NR bloquant `Api/SchedulePlanStructureHashTest`. |
 
 **Placement précédent émis au moteur (terme de stabilité ; aussi proximité de placement côté moteur, poids 9)** :
-`GenerateScheduleHandler::resolvePreviousAssignmentSlots()` retrouve la source — `sourceScheduleId`
+`EngineRequestComposer::resolvePreviousAssignmentSlots()` retrouve la source — `sourceScheduleId`
 explicite s'il est posé (regénération d'une version précise) et de la même lignée
 (`schedulePlanId`, sinon ignoré — jamais le socle sous un overlay, ADR-0002), sinon repli sur la
 dernière version `COMPLETED` du même plan (hors la version en cours), sinon aucun précédent
@@ -141,7 +141,7 @@ l'y inclure le ferait diverger à chaque régénération, dé-grisant en permane
 les deux sens ; `snapshotHash` reste structure-only).
 
 **Référence socle du comblement** : en mode **fill seulement**
-(`GenerateScheduleHandler`, branche `else` du `if (!$isFill)` qui pose `previousAssignments`),
+(`EngineRequestComposer::compose`, branche `else` du `if (!$isFill)` qui pose `previousAssignments`),
 `socleReferenceSlots()` lit les `ScheduleSlotTemplate` de la version **pointée** du plan SEASON
 (`SchedulePlanProvisioner::chosenOfSeasonPlan`) et `ScheduleConstraintBuilder::withSocleReferenceAssignments()`
 les sérialise, **filtrés au roster de la sélection de période** et **dédupliqués** par

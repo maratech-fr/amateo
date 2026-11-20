@@ -115,31 +115,33 @@ final class MatchPlacementPayloadBuilder
      */
     public function build(Club $club, ?string $seasonId, ?array $window = null): array
     {
+        // Lectures triées par id : sans ORDER BY, PostgreSQL rend l'ordre physique, qui change dès
+        // qu'une ligne est réécrite — la même donnée doit donner la même demande au moteur.
         /** @var list<Fixture> $fixtures */
-        $fixtures = $this->entityManager->getRepository(Fixture::class)->findBy([]);
+        $fixtures = $this->entityManager->getRepository(Fixture::class)->findBy([], ['id' => 'ASC']);
         /** @var list<Team> $teams */
-        $teams = $this->entityManager->getRepository(Team::class)->findBy([]);
+        $teams = $this->entityManager->getRepository(Team::class)->findBy([], ['id' => 'ASC']);
         /** @var list<SportCategory> $categories */
-        $categories = $this->entityManager->getRepository(SportCategory::class)->findBy([]);
+        $categories = $this->entityManager->getRepository(SportCategory::class)->findBy([], ['id' => 'ASC']);
         /** @var list<Venue> $venues */
-        $venues = $this->entityManager->getRepository(Venue::class)->findBy([]);
+        $venues = $this->entityManager->getRepository(Venue::class)->findBy([], ['id' => 'ASC']);
         /** @var list<VenueMatchWindow> $matchWindows */
-        $matchWindows = $this->entityManager->getRepository(VenueMatchWindow::class)->findBy([]);
+        $matchWindows = $this->entityManager->getRepository(VenueMatchWindow::class)->findBy([], ['id' => 'ASC']);
         /** @var list<TeamMatchHabit> $habits */
-        $habits = $this->entityManager->getRepository(TeamMatchHabit::class)->findBy([]);
+        $habits = $this->entityManager->getRepository(TeamMatchHabit::class)->findBy([], ['id' => 'ASC']);
         /** @var list<TeamLink> $teamLinks */
-        $teamLinks = $this->entityManager->getRepository(TeamLink::class)->findBy([]);
+        $teamLinks = $this->entityManager->getRepository(TeamLink::class)->findBy([], ['id' => 'ASC']);
         // L'ordre de lien départage qui tient une séance ou un match, ici et côté moteur.
         /** @var list<TeamCoach> $teamCoaches */
         $teamCoaches = $this->entityManager->getRepository(TeamCoach::class)->findBy([], ['createdAt' => 'ASC', 'id' => 'ASC']);
         /** @var list<CoachPlayerMembership> $playerMemberships */
-        $playerMemberships = $this->entityManager->getRepository(CoachPlayerMembership::class)->findBy([]);
+        $playerMemberships = $this->entityManager->getRepository(CoachPlayerMembership::class)->findBy([], ['id' => 'ASC']);
         // P4-272 ① — la COPIE club de l'enveloppe ligue (scopée club+saison par les
         // filtres Doctrine). C'est la MAISON UNIQUE de lecture au placement : le
         // catalogue global ne sert plus qu'à semer cette copie. Copie VIDE = zéro
         // règle de ligue (aucun HARD, un seul diagnostic club plus bas).
         /** @var list<ClubLeagueWindow> $clubWindows */
-        $clubWindows = $this->entityManager->getRepository(ClubLeagueWindow::class)->findBy([]);
+        $clubWindows = $this->entityManager->getRepository(ClubLeagueWindow::class)->findBy([], ['id' => 'ASC']);
         // P4-272 ③ — les RÈGLES DE MATCH du club (scope CLUB), émises en bloc
         // top-level `clubRules`. Une règle HARD est HONORÉE par le solveur (le
         // coup d'envoi doit tomber dans la fourchette les jours couverts), une
@@ -147,12 +149,12 @@ final class MatchPlacementPayloadBuilder
         // (structurel : jamais confiés au solveur). Scopé club+saison par les
         // filtres Doctrine.
         /** @var list<MatchConstraint> $clubRules */
-        $clubRules = $this->entityManager->getRepository(MatchConstraint::class)->findBy(['scope' => ConstraintScope::CLUB]);
+        $clubRules = $this->entityManager->getRepository(MatchConstraint::class)->findBy(['scope' => ConstraintScope::CLUB], ['id' => 'ASC']);
         // P4-272 ④ — les INTERDICTIONS de gymnase par équipe (scope TEAM, toujours HARD).
         // Émises par équipe dans teams[].forbiddenVenueIds : le solveur retire ces gymnases
         // du domaine de l'équipe. Scopé club+saison par les filtres Doctrine.
         /** @var list<MatchConstraint> $teamVenueBans */
-        $teamVenueBans = $this->entityManager->getRepository(MatchConstraint::class)->findBy(['scope' => ConstraintScope::TEAM]);
+        $teamVenueBans = $this->entityManager->getRepository(MatchConstraint::class)->findBy(['scope' => ConstraintScope::TEAM], ['id' => 'ASC']);
         $forbiddenVenuesByTeam = [];
         foreach ($teamVenueBans as $ban) {
             // Défensif : seule une règle HARD portant équipe + gymnase interdit compte
@@ -169,7 +171,7 @@ final class MatchPlacementPayloadBuilder
         // un candidat dont le coup d'envoi tombe dans la plage d'un coach de l'équipe, sans
         // jamais bloquer. Scopé club+saison par les filtres Doctrine.
         /** @var list<MatchConstraint> $coachUnavailabilities */
-        $coachUnavailabilities = $this->entityManager->getRepository(MatchConstraint::class)->findBy(['scope' => ConstraintScope::COACH]);
+        $coachUnavailabilities = $this->entityManager->getRepository(MatchConstraint::class)->findBy(['scope' => ConstraintScope::COACH], ['id' => 'ASC']);
         $coachUnavailabilityRows = [];
         foreach ($coachUnavailabilities as $unavailability) {
             // Défensif : un coach est requis (le processeur l'exige) ; une ligne sans cible

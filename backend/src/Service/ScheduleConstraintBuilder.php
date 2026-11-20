@@ -270,14 +270,14 @@ final class ScheduleConstraintBuilder
 
         // Base plan only: dated constraints (attached to a CalendarEntry period)
         // are excluded from generation. See specs/courantes/calendar-entry-modele-donnees.md §c.
-        $constraints = $em->getRepository(Constraint::class)->findPermanentByClubSeason($clubId, $seasonId);
+        $constraints = $this->sortedById($em->getRepository(Constraint::class)->findPermanentByClubSeason($clubId, $seasonId));
 
         // Pre-load venue availabilities to avoid N+1 queries in serializeVenue().
         // Base plan only: SEASONAL slots (calendarEntryId IS NULL) — a period's own
         // slots (a gym lent for a window) must never leak into the base generation.
         $availabilitiesByVenue = [];
         if ($this->venueTrainingSlotRepository instanceof VenueTrainingSlotRepository) {
-            $rows = $this->venueTrainingSlotRepository->findBy(['clubId' => $clubId, 'seasonId' => $seasonId, 'schedulePlanId' => null]);
+            $rows = $this->venueTrainingSlotRepository->findBy(['clubId' => $clubId, 'seasonId' => $seasonId, 'schedulePlanId' => null], ['id' => 'ASC']);
             foreach ($rows as $row) {
                 $availabilitiesByVenue[$row->getVenueId()][] = $row;
             }
@@ -434,7 +434,7 @@ final class ScheduleConstraintBuilder
         $disabledVenueIds = $selection->disabledVenueIds;
         $this->currentSessionOverrides = $selection->sessionOverrides;
         $this->currentMaxPerDayOverrides = $selection->maxPerDayOverrides;
-        $constraints = $selection->kept;
+        $constraints = $this->sortedById($selection->kept);
 
         // PR 6 (lot 8) — les équipes qui portent une contrainte « Garder ses créneaux de saison »
         // ACTIVE pour ce plan, extraites de la sélection déjà calculée (pas de requête de plus). Le
@@ -469,7 +469,7 @@ final class ScheduleConstraintBuilder
         // jours FERMÉS uniquement (day-précis) — le reste passe.
         $availabilitiesByVenue = [];
         if ($this->venueTrainingSlotRepository instanceof VenueTrainingSlotRepository) {
-            foreach ($this->venueTrainingSlotRepository->findBy(['schedulePlanId' => $schedulePlanId]) as $row) {
+            foreach ($this->venueTrainingSlotRepository->findBy(['schedulePlanId' => $schedulePlanId], ['id' => 'ASC']) as $row) {
                 $rowVenueId = $row->getVenueId();
                 if (isset($disabledVenueIds[$rowVenueId])) {
                     continue; // gymnase désactivé : il ne sert pas cette période
@@ -1307,6 +1307,21 @@ final class ScheduleConstraintBuilder
             ['clubId' => $clubId, 'seasonId' => $seasonId],
             ['id' => 'ASC'],
         );
+    }
+
+    /**
+     * Contraintes triées par id : sans ORDER BY, PostgreSQL rend l'ordre physique, qui change dès
+     * qu'une ligne est réécrite — la même donnée doit donner la même demande au moteur.
+     *
+     * @param array<Constraint> $constraints
+     *
+     * @return list<Constraint>
+     */
+    private function sortedById(array $constraints): array
+    {
+        usort($constraints, static fn (Constraint $a, Constraint $b): int => strcmp($a->getId(), $b->getId()));
+
+        return $constraints;
     }
 
     /** @return array<ScheduleSlotTemplate> */
