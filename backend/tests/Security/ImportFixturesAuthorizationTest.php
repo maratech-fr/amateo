@@ -65,7 +65,7 @@ final class ImportFixturesAuthorizationTest extends WebTestCase
     {
         [, , $clubA] = $this->register('FIXD');
         $this->createTeam($clubA);
-        $editorToken = $this->addActiveMember($clubA, 'editor');
+        $editorToken = $this->addActiveMember($clubA, 'member');
 
         $this->client->request('POST', '/api/fixtures/import', [], [], [
             'HTTP_AUTHORIZATION' => 'Bearer ' . $editorToken,
@@ -79,7 +79,7 @@ final class ImportFixturesAuthorizationTest extends WebTestCase
         // (divisions, teams) — management only, byte-identical refusals.
         [, , $clubA] = $this->register('FIXF');
         $this->createTeam($clubA);
-        $editorToken = $this->addActiveMember($clubA, 'editor');
+        $editorToken = $this->addActiveMember($clubA, 'member');
 
         $this->client->request('POST', '/api/fixtures/import/analyze', [], [], [
             'HTTP_AUTHORIZATION' => 'Bearer ' . $editorToken,

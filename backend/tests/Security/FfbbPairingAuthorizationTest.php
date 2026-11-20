@@ -56,7 +56,7 @@ final class FfbbPairingAuthorizationTest extends WebTestCase
     public function testListAsNonAdminMemberReturns403(): void
     {
         [, , $clubA] = $this->register('FFPA');
-        $editorToken = $this->addActiveMember($clubA, 'editor');
+        $editorToken = $this->addActiveMember($clubA, 'member');
 
         $this->client->request('GET', '/api/ffbb/engagements', [], [], [
             'HTTP_AUTHORIZATION' => 'Bearer ' . $editorToken,
@@ -67,7 +67,7 @@ final class FfbbPairingAuthorizationTest extends WebTestCase
     public function testConfirmAsNonAdminMemberReturns403(): void
     {
         [, , $clubA] = $this->register('FFPB');
-        $editorToken = $this->addActiveMember($clubA, 'editor');
+        $editorToken = $this->addActiveMember($clubA, 'member');
 
         $this->client->request('POST', '/api/ffbb/engagements/confirm', [], [], [
             'HTTP_AUTHORIZATION' => 'Bearer ' . $editorToken, 'CONTENT_TYPE' => 'application/json',

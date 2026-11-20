@@ -59,7 +59,7 @@ final class XlsxImportRateLimitTest extends WebTestCase
         // en 403 sans jamais consommer le budget — même à la 6e requête, jamais 429.
         [, $clubId] = $this->registerManager('RLB');
         $this->settleClubSocle($clubId);
-        $editorToken = $this->addActiveMember($clubId, 'editor');
+        $editorToken = $this->addActiveMember($clubId, 'member');
 
         for ($i = 1; $i <= 6; ++$i) {
             $this->postImport($editorToken);

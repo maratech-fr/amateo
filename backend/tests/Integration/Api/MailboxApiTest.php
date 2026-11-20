@@ -96,7 +96,7 @@ final class MailboxApiTest extends WebTestCase
 
         $this->scopeGucToClub($club->getId());
         // Simple MEMBRE (viewer), pas gestionnaire : la boîte est lisible par tout membre.
-        $this->em->persist((new ClubUser)->setClubId($club->getId())->setUserId($user->getId())->setRole('viewer')->setIsActive(true));
+        $this->em->persist((new ClubUser)->setClubId($club->getId())->setUserId($user->getId())->setRole('member')->setIsActive(true));
         $this->em->flush();
 
         return [$club->getId(), $user];

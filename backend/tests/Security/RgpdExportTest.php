@@ -186,7 +186,7 @@ final class RgpdExportTest extends WebTestCase
         $clubA = $this->clubIdOf($userA);
 
         // Un editor actif du même club : accès au club mais pas à l'export.
-        $editorToken = $this->createActiveMemberWithToken($clubA, 'editor-' . strtolower($emailA), 'editor');
+        $editorToken = $this->createActiveMemberWithToken($clubA, 'editor-' . strtolower($emailA), 'member');
 
         $this->client->request('GET', '/api/club/export', [], [], ['HTTP_AUTHORIZATION' => 'Bearer ' . $editorToken]);
         self::assertResponseStatusCodeSame(403);

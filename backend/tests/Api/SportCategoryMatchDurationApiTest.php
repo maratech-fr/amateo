@@ -58,7 +58,7 @@ final class SportCategoryMatchDurationApiTest extends WebTestCase
     {
         [$club, $user] = $this->createClubUser('b');
         $sport = $this->sport();
-        $member = $this->createMember($club, 'editor');
+        $member = $this->createMember($club, 'member');
 
         $this->client->request('POST', '/api/sport_categories', [], [], $this->authHeaders($member) + ['CONTENT_TYPE' => 'application/json'], json_encode([
             'sportId' => $sport->getId(), 'name' => 'U13', 'matchMinutes' => 90,

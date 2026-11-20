@@ -149,7 +149,7 @@ final class DemoRetainedClubReclaimTest extends WebTestCase
         $membership = $this->em->getRepository(ClubUser::class)->findOneBy(['clubId' => $retainedId, 'userId' => $userId]);
         self::assertInstanceOf(ClubUser::class, $membership);
         self::assertTrue($membership->getIsActive(), 'le repreneur est gestionnaire ACTIF');
-        self::assertSame(ClubRole::MANAGER->value, $membership->getRole());
+        self::assertSame(ClubRole::MANAGER->value, $membership->getRole()->value);
     }
 
     public function testARealClubOfTheSameCodeKeepsPriorityOverARetainedDemo(): void

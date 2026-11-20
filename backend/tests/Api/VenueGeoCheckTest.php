@@ -73,7 +73,7 @@ final class VenueGeoCheckTest extends WebTestCase
     public function testAnotherClubNeverSeesTheGym(): void
     {
         // Club A a le gymnase mal placé ; le gestionnaire du club B ne doit voir que les siens (aucun).
-        [$clubA, , $seasonA] = $this->createClubUser('owner');
+        [$clubA, , $seasonA] = $this->createClubUser('admin');
         $this->ffbbVenue($clubA, $seasonA, 'Gymnase A', '900000001', '45.0010000', '4.0010000');
 
         [, $userB] = $this->createClubUser('other');

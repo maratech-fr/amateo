@@ -290,7 +290,7 @@ final class ClockedClubMailInterceptTest extends WebTestCase
         $this->em->flush();
 
         $this->scopeGucToClub($clubId);
-        $this->em->persist((new ClubUser)->setClubId($clubId)->setUserId($user->getId())->setRole('viewer')->setIsActive(true));
+        $this->em->persist((new ClubUser)->setClubId($clubId)->setUserId($user->getId())->setRole('member')->setIsActive(true));
         $this->em->flush();
         $this->guc->clear();
 

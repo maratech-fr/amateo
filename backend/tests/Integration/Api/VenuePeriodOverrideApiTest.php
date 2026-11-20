@@ -645,7 +645,7 @@ final class VenuePeriodOverrideApiTest extends WebTestCase
     {
         // SEC-07 — les actions de grille sont DESTRUCTIVES : un membre non-management
         // (editor) doit \u00eatre refus\u00e9 en 403, comme la suppression d'un planning.
-        $editor = $this->addActiveMember('editor');
+        $editor = $this->addActiveMember('member');
         $this->client->request('POST', $route, [], [], $editor, json_encode([
             'schedulePlanId' => $this->planId,
             'venueId' => $this->venueA->getId(),

@@ -348,7 +348,7 @@ final class CoachWishCampaignActionsTest extends WebTestCase
         $user->setPasswordHash($hasher->hashPassword($user, 'Password123!'));
         $this->em->persist($user);
         $this->em->flush();
-        $this->em->persist((new ClubUser)->setClubId($this->club->getId())->setUserId($user->getId())->setRole('editor')->setIsActive(true));
+        $this->em->persist((new ClubUser)->setClubId($this->club->getId())->setUserId($user->getId())->setRole('member')->setIsActive(true));
         $this->em->flush();
         $jwt = self::getContainer()->get(JWTTokenManagerInterface::class)->create($user);
 

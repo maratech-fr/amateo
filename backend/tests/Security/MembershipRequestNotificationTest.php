@@ -87,7 +87,7 @@ final class MembershipRequestNotificationTest extends WebTestCase
     {
         $club = $this->managedClub('NTFA');
         $sophie = $this->insertMember($club['clubId'], 'Sophie', 'admin');
-        $olivier = $this->insertMember($club['clubId'], 'Olivier', 'owner');
+        $olivier = $this->insertMember($club['clubId'], 'Olivier', 'admin');
         $paul = $this->insertMember($club['clubId'], 'Paul', 'member');
         $didier = $this->insertMember($club['clubId'], 'Didier', 'admin', active: false, deactivated: true);
 

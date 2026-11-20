@@ -132,7 +132,7 @@ final class TransitionReminderCommandTest extends KernelTestCase
     public function testOnlyManagementRolesAreEmailed(): void
     {
         [$club, , $admin] = $this->seedClub('ROLE');
-        $this->addMember($club, 'editor-trans@club.fr', 'editor', true);
+        $this->addMember($club, 'editor-trans@club.fr', 'member', true);
         $this->addMember($club, 'inactive-trans@club.fr', 'admin', false);
 
         $this->runCommand(self::IN_BUCKET_61);

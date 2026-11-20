@@ -31,10 +31,10 @@ final class ClubUserManagementEmailsTest extends KernelTestCase
     public function testReturnsActiveManagersOnly(): void
     {
         $club = $this->club('MG1');
-        $this->member($club, 'owner@c.fr', 'owner', true);
+        $this->member($club, 'owner@c.fr', 'admin', true);
         $this->member($club, 'admin@c.fr', 'admin', true);
-        $this->member($club, 'editor@c.fr', 'editor', true);
-        $this->member($club, 'viewer@c.fr', 'viewer', true);
+        $this->member($club, 'editor@c.fr', 'member', true);
+        $this->member($club, 'viewer@c.fr', 'member', true);
         $this->member($club, 'exadmin@c.fr', 'admin', false);
 
         // The cron has no tenant context → query under an empty GUC.
@@ -60,7 +60,7 @@ final class ClubUserManagementEmailsTest extends KernelTestCase
     public function testNoManagerReturnsEmpty(): void
     {
         $club = $this->club('MG3');
-        $this->member($club, 'viewer@c.fr', 'viewer', true);
+        $this->member($club, 'viewer@c.fr', 'member', true);
 
         $this->clearGuc();
         self::assertSame([], $this->repo->findManagementEmails($club->getId()));

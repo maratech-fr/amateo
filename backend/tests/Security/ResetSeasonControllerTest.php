@@ -160,7 +160,7 @@ final class ResetSeasonControllerTest extends WebTestCase
     public function testResetRequiresAManagementRole(): void
     {
         [, , $clubId] = $this->register('RSTB');
-        $editorToken = $this->addActiveMember($clubId, 'editor');
+        $editorToken = $this->addActiveMember($clubId, 'member');
 
         // Active member of the club, but not a management role → 403.
         $this->client->request('DELETE', '/api/reset-season', [], [], ['HTTP_AUTHORIZATION' => 'Bearer ' . $editorToken]);
@@ -170,7 +170,7 @@ final class ResetSeasonControllerTest extends WebTestCase
     public function testResetAsOwnerIsAllowed(): void
     {
         [, , $clubId] = $this->register('RSTC');
-        $ownerToken = $this->addActiveMember($clubId, 'owner');
+        $ownerToken = $this->addActiveMember($clubId, 'admin');
 
         $this->client->request('DELETE', '/api/reset-season', [], [], ['HTTP_AUTHORIZATION' => 'Bearer ' . $ownerToken]);
         self::assertResponseIsSuccessful();

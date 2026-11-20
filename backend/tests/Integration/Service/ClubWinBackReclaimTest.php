@@ -82,7 +82,7 @@ final class ClubWinBackReclaimTest extends KernelTestCase
         $rows = $em->getRepository(ClubUser::class)->findBy(['clubId' => $clubId, 'userId' => $member->getId()]);
         self::assertCount(1, $rows, 'la reprise ne doit pas créer de seconde adhésion (contrainte unique)');
         self::assertTrue($rows[0]->getIsActive(), 'l\'adhésion reprise est active');
-        self::assertSame(ClubRole::MANAGER->value, $rows[0]->getRole(), 'le repreneur est promu Gestionnaire');
+        self::assertSame(ClubRole::MANAGER->value, $rows[0]->getRole()->value, 'le repreneur est promu Gestionnaire');
     }
 
     private function newUser(string $prefix): User

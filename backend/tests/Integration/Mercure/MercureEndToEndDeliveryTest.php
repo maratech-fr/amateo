@@ -100,7 +100,7 @@ final class MercureEndToEndDeliveryTest extends WebTestCase
      */
     public function testASubscriberOfAnotherClubNeverReceivesAClubsPrivateUpdates(): void
     {
-        [$tokenA, $clubA] = $this->memberOfAFreshClub('owner');
+        [$tokenA, $clubA] = $this->memberOfAFreshClub('admin');
         [$tokenB] = $this->memberOfAFreshClub('intruder');
         $this->fetchSubscriberToken($tokenA); // réchauffe la route pour A (jeton non utilisé ici)
         $intruder = $this->fetchSubscriberToken($tokenB);

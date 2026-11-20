@@ -111,7 +111,7 @@ final class ClubInvitationTest extends WebTestCase
         $memberships = $this->membershipsFor($clubA, $user->getId());
         self::assertCount(1, $memberships);
         self::assertTrue($memberships[0]->getIsActive());
-        self::assertSame(ClubRole::MANAGER->value, $memberships[0]->getRole());
+        self::assertSame(ClubRole::MANAGER->value, $memberships[0]->getRole()->value);
 
         // Rejouer le même jeton → 404, aucune seconde adhésion.
         $this->publicAccept($raw, ['firstName' => 'Paul', 'lastName' => 'Durand', 'password' => 'Password123!', 'consent' => true]);
@@ -135,7 +135,7 @@ final class ClubInvitationTest extends WebTestCase
         self::assertCount(1, $memberships, 'la pending est absorbée, jamais une seconde ligne club_user');
         self::assertTrue($memberships[0]->getIsActive());
         self::assertNull($memberships[0]->getDeactivatedAt());
-        self::assertSame(ClubRole::MANAGER->value, $memberships[0]->getRole());
+        self::assertSame(ClubRole::MANAGER->value, $memberships[0]->getRole()->value);
     }
 
     public function testConnectedUserWhoseEmailIsNotTheInvitedAddressIsRefused(): void

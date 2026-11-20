@@ -86,7 +86,7 @@ final class ClubWeekendAlternatesTest extends WebTestCase
 
         $this->scopeGucToClub($this->club->getId());
         $this->makeMembership($this->admin, 'admin');
-        $this->makeMembership($this->editor, 'editor');
+        $this->makeMembership($this->editor, 'member');
         $this->em->flush();
     }
 

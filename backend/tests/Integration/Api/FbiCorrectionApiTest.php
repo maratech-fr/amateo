@@ -99,7 +99,7 @@ final class FbiCorrectionApiTest extends WebTestCase
     {
         [$club, , $season] = $this->createClubUser('fm');
         $entry = $this->seedOpen($club, $season, FbiCorrectionField::KICKOFF, '15:30', '17:00');
-        $member = $this->createMember($club, 'editor');
+        $member = $this->createMember($club, 'member');
 
         $this->client->request('POST', '/api/fixtures/fbi-corrections/' . $entry->getId() . '/close', [], [], $this->authHeaders($member));
         self::assertResponseStatusCodeSame(403);

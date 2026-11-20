@@ -145,7 +145,7 @@ final class CoachWishMutualizationApiTest extends WebTestCase
         $viewer->setPasswordHash($hasher->hashPassword($viewer, 'Password123!'));
         $this->em->persist($viewer);
         $this->em->flush();
-        $this->em->persist((new ClubUser)->setClubId($this->club->getId())->setUserId($viewer->getId())->setRole('editor')->setIsActive(true));
+        $this->em->persist((new ClubUser)->setClubId($this->club->getId())->setUserId($viewer->getId())->setRole('member')->setIsActive(true));
         $this->em->flush();
         $jwt = self::getContainer()->get(JWTTokenManagerInterface::class)->create($viewer);
 
