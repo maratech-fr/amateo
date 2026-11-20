@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Tests\Security;
 
+use App\Access\AccessDeclarationResolver;
+use App\Access\ClubFunction;
 use App\Entity\ClubUser;
 use App\Entity\User;
 use App\EventListener\ClubQuotaSubscriber;
@@ -19,7 +21,10 @@ use Symfony\Component\HttpKernel\Event\RequestEvent;
 use Symfony\Component\HttpKernel\Exception\TooManyRequestsHttpException;
 use Symfony\Component\HttpKernel\HttpKernelInterface;
 use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
+use Symfony\Component\RateLimiter\RateLimiterFactory;
+use Symfony\Component\Routing\RouterInterface;
 use Symfony\Component\Yaml\Yaml;
+use UnitEnum;
 
 /**
  * P4-45 — les caps métier comptent PAR CLUB, pas par gestionnaire.
@@ -103,9 +108,10 @@ final class ClubQuotaTest extends WebTestCase
     /**
      * ⚠ Le trou que l'item de roadmap ne voyait pas : il ne parlait que de `POST /generate`.
      *
-     * `/regenerate`, `/regenerate-from` et `/fill` (le comblement d'une période, P2-44)
-     * déclenchent un solve tout autant — et ce sont ELLES que le work-loop emprunte, donc
-     * l'usage réel. Un cap posé sur la seule première route se contourne sans même le vouloir.
+     * `/regenerate` et `/fill` (le comblement d'une période, P2-44) déclenchent un solve tout
+     * autant — et ce sont ELLES que le work-loop emprunte, donc l'usage réel. Un cap posé sur la
+     * seule première route se contourne sans même le vouloir. (« Charger une version »,
+     * `/regenerate-from`, ne lance aucun calcul : hors du seau, décision fondateur Q13.)
      */
     public function testRegenerateRoutesDrawFromTheSameBudget(): void
     {
@@ -116,8 +122,80 @@ final class ClubQuotaTest extends WebTestCase
         }
 
         self::assertSame(429, $this->call($token, 'POST', '/api/schedules/00000000-0000-4000-8000-000000000001/regenerate'), '/regenerate doit puiser dans le même seau que /generate');
-        self::assertSame(429, $this->call($token, 'POST', '/api/schedules/00000000-0000-4000-8000-000000000001/regenerate-from'), '/regenerate-from aussi');
         self::assertSame(429, $this->call($token, 'POST', '/api/schedules/00000000-0000-4000-8000-000000000001/fill'), '/fill (comblement de période) puise dans le même seau : c\'est un 4e déclencheur de solve');
+    }
+
+    /**
+     * Q13 — « Charger une version » (`/regenerate-from`) restaure une structure sans lancer de calcul :
+     * elle n'entame jamais le plafond de 5 générations par heure du club, même appelée plus de 5 fois.
+     */
+    public function testLoadingAVersionNeverDrawsFromTheGenerationBudget(): void
+    {
+        [$token, $clubId] = $this->registerClub('QL');
+
+        for ($i = 0; $i < self::GENERATION_LIMIT + 1; ++$i) {
+            self::assertNotSame(429, $this->call($token, 'POST', '/api/schedules/00000000-0000-4000-8000-000000000001/regenerate-from'), 'charger une version n\'est jamais refusé par le plafond de génération');
+        }
+
+        self::assertSame(self::GENERATION_LIMIT, $this->remainingTokens('limiter.schedule_generation', $clubId), 'le seau de génération du club est intact après des chargements');
+    }
+
+    /**
+     * Toute fonction de club déclarée comme une sortie qui mobilise une ressource partagée — un solve
+     * (génération, régénération, comblement), un placement de matchs, un rendu PDF (planning, matchs)
+     * — puise dans un seau du club : le seau vide, elle répond 429. Lu sur les DÉCLARATIONS du routeur,
+     * pas sur une liste à la main : une sortie déclarée demain ne peut pas échapper au plafond. Le
+     * tableur (rendu en mémoire, sans worker) n'a pas de seau, à dessein.
+     */
+    public function testEveryDeclaredSolveOrRenderDrawsFromAClubBucket(): void
+    {
+        $buckets = [
+            'SOLVE' => 'limiter.schedule_generation',
+            'MATCH_PLACEMENT' => 'limiter.match_placement',
+            'PLANNING_PDF' => 'limiter.schedule_pdf_export',
+            'MATCHES_PDF' => 'limiter.fixtures_pdf_export',
+        ];
+        $declared = $this->routesDeclaringAnOutput();
+        foreach (['generate_schedule', 'api_schedule_regenerate', 'api_schedule_fill', 'api_fixtures_place', 'export_pdf', 'api_fixtures_export_pdf'] as $witness) {
+            self::assertArrayHasKey($witness, $declared, \sprintf('témoin : %s se déclare comme une sortie', $witness));
+        }
+
+        $escaping = [];
+        foreach ($declared as $name => [$path, $output]) {
+            if (!isset($buckets[$output])) {
+                continue;
+            }
+            [$token, $clubId] = $this->registerClub('QS');
+            $this->emptyBucket($buckets[$output], $clubId);
+            $status = $this->call($token, 'POST', $path);
+            if (429 !== $status) {
+                $escaping[] = \sprintf('%s (%s, sortie %s) : seau %s vide, répond %d', $name, $path, $output, $buckets[$output], $status);
+            }
+        }
+
+        self::assertSame([], $escaping, "Sorties déclarées qui échappent au plafond du club :\n  - " . implode("\n  - ", $escaping));
+    }
+
+    /**
+     * E9 — un club Découverte À SEC qui a aussi atteint son plafond horaire reçoit d'abord le 429
+     * « réessayez » (le plafond se juge avant le contrôle central), puis, la fenêtre passée, le 403
+     * des crédits. Avant le lot 2, les deux écouteurs tiraient à la même priorité : l'ordre n'était
+     * pas garanti.
+     */
+    public function testAnExhaustedClubAtItsHourlyCapIsToldToWaitThenToUpgrade(): void
+    {
+        [$token, $clubId] = $this->registerClub('QE');
+        $this->exhaustCredits($clubId);
+        $this->emptyBucket('limiter.schedule_generation', $clubId);
+
+        self::assertSame(429, $this->generate($token), 'plafond atteint ET pool vide : le plafond répond le premier');
+
+        $limiter = self::getContainer()->get('limiter.schedule_generation');
+        \assert($limiter instanceof RateLimiterFactory);
+        $limiter->create('club-' . $clubId)->reset();
+
+        self::assertSame(403, $this->generate($token), 'la fenêtre passée, le pool vide répond');
+        self::assertStringContainsString('gratuites', (string) $this->client->getResponse()->getContent(), 'le 403 est celui des crédits');
     }
 
     /** La borne de production de l'export des matchs : assez pour 25 équipes et des reprises, décidée ici. */
@@ -192,6 +270,64 @@ final class ClubQuotaTest extends WebTestCase
         $request->attributes->set('_club_id', $clubId);
 
         return new RequestEvent(self::$kernel, $request, HttpKernelInterface::MAIN_REQUEST);
+    }
+
+    /**
+     * Les routes POST `^/api/` dont la fonction de club déclare une sortie, avec un chemin jouable
+     * (chaque paramètre remplacé par un UUID bidon : le plafond se compte avant le contrôleur).
+     *
+     * @return array<string, array{0: string, 1: string}> nom de route → [chemin, nom de la sortie]
+     */
+    private function routesDeclaringAnOutput(): array
+    {
+        $router = self::getContainer()->get(RouterInterface::class);
+        \assert($router instanceof RouterInterface);
+        $resolver = new AccessDeclarationResolver;
+        $out = [];
+        foreach ($router->getRouteCollection()->all() as $name => $route) {
+            if (!str_starts_with($route->getPath(), '/api/') || !\in_array('POST', $route->getMethods(), true)) {
+                continue;
+            }
+            $path = (string) preg_replace('/\{[^}]+\}/', '00000000-0000-4000-8000-000000000001', str_replace('.{_format}', '', $route->getPath()));
+            $request = Request::create($path, 'POST');
+            $request->attributes->add($route->getDefaults());
+            $request->attributes->set('_route', $name);
+            $declaration = $resolver->for($request);
+            if (!$declaration instanceof ClubFunction) {
+                continue;
+            }
+            $output = get_object_vars($declaration)['output'] ?? null;
+            if ($output instanceof UnitEnum) {
+                $out[$name] = [$path, $output->name];
+            }
+        }
+
+        return $out;
+    }
+
+    private function emptyBucket(string $limiterId, string $clubId): void
+    {
+        $limiter = self::getContainer()->get($limiterId);
+        \assert($limiter instanceof RateLimiterFactory);
+        $bucket = $limiter->create('club-' . $clubId);
+        $bucket->consume($bucket->consume(0)->getRemainingTokens());
+    }
+
+    private function remainingTokens(string $limiterId, string $clubId): int
+    {
+        $limiter = self::getContainer()->get($limiterId);
+        \assert($limiter instanceof RateLimiterFactory);
+
+        return $limiter->create('club-' . $clubId)->consume(0)->getRemainingTokens();
+    }
+
+    /** Le pool Découverte du club inscrit (10 crédits) est entièrement utilisé. */
+    private function exhaustCredits(string $clubId): void
+    {
+        $em = self::getContainer()->get(EntityManagerInterface::class);
+        \assert($em instanceof EntityManagerInterface);
+        $em->getConnection()->executeStatement('UPDATE club SET output_credits_used = 10 WHERE id = :id', ['id' => $clubId]);
+        $em->clear();
     }
 
     private function generate(string $token): int
