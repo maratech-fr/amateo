@@ -930,6 +930,10 @@ jobs:
           # les lectures sortantes (FFBB, géocodage) restent fermées sans appel parti ; le lien
           # personnel d'un coach n'est jamais servi au Membre ; « Générer » refusé ne coûte rien au club.
           FILES="$FILES tests/Security/MemberReadsAreSideEffectFreeTest.php"
+          # Axe auth & memberships : chaque route `^/api/` tombe dans une seule famille (console, dev,
+          # cadre, publique, compte, club) ; chaque route de club déclare son public, et un Membre
+          # aux ids réels d'un club payant, non démo, socle en vigueur rencontre ce qu'elle déclare.
+          FILES="$FILES tests/Security/AccessDeclarationSweepTest.php"
           # P2-8 PR A (axe planning lifecycle) : PARITÉ capacité affichée == verdict du refus.
           # Le bloc `capabilities` sérialisé sur chaque Schedule est calculé par le MÊME code que
           # les gardes d'écriture (ScheduleCapabilityResolver) — canDelete/canValidate/
