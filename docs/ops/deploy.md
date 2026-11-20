@@ -848,6 +848,23 @@ gardé.
 
 Vert dans *Actions → Deploy* = en prod.
 
+### Étape post-déploiement OBLIGATOIRE — purger le cache des demandes au moteur après une migration de données
+
+Après toute migration qui réécrit une table lue par le constructeur de demande au moteur, le payload
+du socle reste servi du pool `cache.schedule` pendant 4 h (`ScheduleConstraintBuilder.php:59`, lecture
+`:260-268`) : une écriture SQL de migration ne l'invalide pas. **Juste après le succès de
+`scripts/remote-deploy.sh`** (il migre, puis recrée les services), à la main, par celui qui déploie :
+
+```bash
+docker exec amateo-php-fpm php bin/console cache:pool:clear cache.schedule
+```
+
+Acceptable tant qu'un humain déploie. Le déploiement programmé (§ *Mise en prod programmée*) tourne
+sans personne, et l'ancienne stack sert encore entre la migration et le redémarrage : l'automatiser
+est une condition d'entrée du lot 1 de la conception
+([`lot-conception-decoupage.md`](../../specs/evolution/lot-conception-decoupage.md)). L'outil qui
+compare les demandes avant/après une migration : [`lot-conception-filet.md`](../../specs/evolution/lot-conception-filet.md).
+
 ### Étape post-déploiement OBLIGATOIRE — réparer les empreintes des plannings (version « réservation souveraine » ; REJOUER avec la version « version chargée »)
 
 ⚠ **À rejouer au déploiement de « version chargée »** : l'empreinte `ScheduleConstraintBuilder::structureHash`

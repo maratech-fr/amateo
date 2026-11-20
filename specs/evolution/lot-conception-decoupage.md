@@ -91,6 +91,11 @@ peuvent avancer dans un espace de travail à part pendant qu'un lot principal at
       matchs gardé par le socle ; le refus d'écrire du membre est une ligne de tableau par geste
       dans `un-club-ne-voit-jamais-un-autre-club.feature`. Ce que chacune prouve :
       `docs/testing/test-coverage-map.md` § Structure du club, § Offre Découverte, § Sécurité.
+    - **PR 3 livrée — « La demande s'enregistre »** : la commande
+      `app:engine-requests:record` enregistre par club les demandes que le moteur recevrait, sous
+      forme d'empreintes comparables par `diff -r`. Ce qu'elle couvre, ses trous, la procédure de
+      copie de la production et la règle de purge du cache au déploiement :
+      [`lot-conception-filet.md`](lot-conception-filet.md).
   - L'inventaire des scénarios de comportement par domaine à refondre, et la liste des trous à
     combler avant chaque lot.
   - La mesure du temps de rendu du PDF du planning sur un grand club (réserve du §21).
@@ -125,6 +130,14 @@ peuvent avancer dans un espace de travail à part pendant qu'un lot principal at
     (`DeleteAccountController.php:47`) lisent celui de l'UTILISATEUR ; l'envoi des conflits
     (`ConflictCoachMailController.php:202`) et des liens de collecte
     (`CoachWishCampaignActionController.php:92`) lisent celui du CLUB.
+- **Conditions d'entrée** (héritées du lot 0, [`lot-conception-filet.md`](lot-conception-filet.md)) :
+  - **Automatiser la purge de `cache.schedule` au déploiement** : aujourd'hui une étape manuelle
+    (`docs/ops/deploy.md`), acceptable pour le lot 0 seulement. Le déploiement programmé tourne sans
+    personne, et l'ancienne stack tourne encore entre la migration et le redémarrage des services.
+  - **La procédure de copie de la production** (§7 du filet) est la preuve de ce lot : accord du
+    fondateur à chaque restauration, restauration qui garde les droits d'`amateo_app` et la RLS,
+    dump effacé à la fin. Les trous de l'enregistrement (§6 du filet) sont à relire avant de
+    conclure « demande identique ».
 - **Supprime** : les listes tenues à la main (sept d'effacement, cinq de copie), les calculs
   d'horaires réécrits, les tables d'étiquettes (96 et 411 lignes en production).
 - **Dépend de** : lot 0.
