@@ -44,11 +44,19 @@ use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
  * identiques (assertSame, ordre des listes compris). Le cache du socle est purgé avant chaque
  * composition — sinon la seconde lirait le cache et le test serait vert sans rien prouver.
  *
- * ⚠ La réécriture est un DELETE suivi de la réinsertion des mêmes lignes (ordre d'id décroissant),
- * dans une seule instruction. Un `UPDATE … SET id = id` ne suffit PAS : c'est une mise à jour HOT,
- * la ligne change de place dans la page mais l'entrée d'index pointe toujours sur l'ancienne
- * position — or toutes ces lectures passent par l'index du club (RLS), l'ordre lu ne bouge donc
- * pas et le test serait vert sans rien prouver (constaté au premier essai). Le test vérifie que
+ * ⚠ Les lectures se font ici dans l'ordre PHYSIQUE (parcours d'index coupés pour la transaction du
+ * test : restent le parcours séquentiel et le parcours bitmap, qui rendent tous deux les lignes dans
+ * l'ordre de leur emplacement). Sans cela, l'ordre lu dépend du plan que choisit PostgreSQL d'après
+ * les statistiques laissées par les tests précédents : par l'index `uniq_reservation_case_team`
+ * (club, saison, plan, …), les deux réservations sortent dans l'ordre de leur clé, qu'aucune
+ * réécriture ne change, et la précondition tombait selon l'ordre de la suite (constaté en suite
+ * complète, jamais seul).
+ *
+ * La réécriture est un DELETE suivi de la réinsertion des mêmes lignes dans l'ordre INVERSE de
+ * l'ordre lu, dans une seule instruction. Un `UPDATE … SET id = id` ne suffit PAS : mise à jour HOT,
+ * la ligne garde sa place apparente. PostgreSQL choisit seul la page d'une ligne insérée : si la
+ * page visée se remplit au milieu de la réinsertion, la suite peut atterrir plus haut dans la table
+ * et l'ordre ne pas s'inverser — d'où, au plus, quelques réécritures de plus. Le test vérifie que
  * l'ordre de lecture de chaque table d'au moins deux lignes a bien changé : sans ce changement, un
  * vert ne prouverait rien.
  *
@@ -80,8 +88,12 @@ final class EngineRequestOrderIsStableTest extends KernelTestCase
         MatchConstraint::class,
     ];
 
+    /** Réécritures au plus par table avant de conclure que l'ordre physique ne bouge pas. */
+    private const int MAX_REWRITES = 5;
+
     public function testRewritingTheRowsIdenticallyLeavesTheThreeRequestsUnchanged(): void
     {
+        $this->readInPhysicalOrder();
         $before = $this->composeAll();
         $moved = $this->rewriteRowsOfEachTable();
         $after = $this->composeAll();
@@ -132,6 +144,7 @@ final class EngineRequestOrderIsStableTest extends KernelTestCase
         $em->flush();
         $em->clear();
         $this->scopeGucToClub(self::ER_CLUB);
+        $this->assertReadsInPhysicalOrder();
         $builder = self::getContainer()->get(ScheduleConstraintBuilder::class);
 
         $this->purgeEngineRequestCache();
@@ -151,8 +164,27 @@ final class EngineRequestOrderIsStableTest extends KernelTestCase
     }
 
     /**
-     * Réécrit à l'identique les lignes du club de chaque table lue (DELETE puis réinsertion, ids
-     * décroissants) et vérifie que l'ordre de lecture sans ORDER BY a changé.
+     * Coupe les parcours d'index pour la transaction du test (DAMA la tient ouverte, SET LOCAL meurt
+     * au rollback) : toute lecture sans ORDER BY suit alors l'ordre physique des lignes.
+     */
+    private function readInPhysicalOrder(): void
+    {
+        $connection = $this->erEm()->getConnection();
+        $connection->executeStatement('SET LOCAL enable_indexscan = off');
+        $connection->executeStatement('SET LOCAL enable_indexonlyscan = off');
+        $this->assertReadsInPhysicalOrder();
+    }
+
+    /** Hors transaction, SET LOCAL ne tiendrait pas : on le relit avant chaque composition. */
+    private function assertReadsInPhysicalOrder(): void
+    {
+        $connection = $this->erEm()->getConnection();
+        self::assertSame(['off', 'off'], [$connection->fetchOne('SHOW enable_indexscan'), $connection->fetchOne('SHOW enable_indexonlyscan')], 'les parcours d\'index doivent rester coupés pour la transaction du test');
+    }
+
+    /**
+     * Réécrit à l'identique les lignes du club de chaque table lue (DELETE puis réinsertion dans
+     * l'ordre inverse de l'ordre lu) et vérifie que l'ordre de lecture sans ORDER BY a changé.
      *
      * @return list<string> les tables dont l'ordre de lecture a effectivement changé
      */
@@ -163,16 +195,20 @@ final class EngineRequestOrderIsStableTest extends KernelTestCase
         $moved = [];
         foreach (self::REWRITTEN as $class) {
             $table = $connection->quoteSingleIdentifier($em->getClassMetadata($class)->getTableName());
-            $count = (int) $connection->fetchOne("SELECT COUNT(*) FROM {$table} WHERE club_id = :c", ['c' => self::ER_CLUB]);
-            self::assertGreaterThan(0, $count, $class . ' : le décor doit remplir cette table');
-            $readBefore = $connection->fetchFirstColumn("SELECT id FROM {$table} WHERE club_id = :c", ['c' => self::ER_CLUB]);
-            $connection->executeStatement(
-                "WITH gone AS (DELETE FROM {$table} WHERE club_id = :c RETURNING *) INSERT INTO {$table} SELECT * FROM gone ORDER BY id DESC",
-                ['c' => self::ER_CLUB],
-            );
-            $readAfter = $connection->fetchFirstColumn("SELECT id FROM {$table} WHERE club_id = :c", ['c' => self::ER_CLUB]);
+            $read = "SELECT id FROM {$table} WHERE club_id = :c";
+            $readBefore = $connection->fetchFirstColumn($read, ['c' => self::ER_CLUB]);
+            self::assertNotSame([], $readBefore, $class . ' : le décor doit remplir cette table');
+            $attempts = 0;
+            do {
+                // Réinsertion dans l'ordre inverse de l'ordre lu au départ : `array_position` rend le rang.
+                $connection->executeStatement(
+                    "WITH gone AS (DELETE FROM {$table} WHERE club_id = :c RETURNING *) INSERT INTO {$table} SELECT * FROM gone ORDER BY array_position(CAST(:reversed AS uuid[]), gone.id)",
+                    ['c' => self::ER_CLUB, 'reversed' => '{' . implode(',', array_reverse($readBefore)) . '}'],
+                );
+                $readAfter = $connection->fetchFirstColumn($read, ['c' => self::ER_CLUB]);
+            } while ($readAfter === $readBefore && \count($readBefore) >= 2 && ++$attempts < self::MAX_REWRITES);
             self::assertEqualsCanonicalizing($readBefore, $readAfter, $class . ' : la réécriture ne perd, n\'ajoute ni ne change aucune ligne');
-            if ($count >= 2) {
+            if (\count($readBefore) >= 2) {
                 self::assertNotSame($readBefore, $readAfter, $class . ' : la réécriture doit changer l\'ordre des lignes lues sans ORDER BY');
                 $moved[] = $class;
             }
