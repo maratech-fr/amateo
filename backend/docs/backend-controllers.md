@@ -39,6 +39,30 @@ est éclatée **par domaine** :
   `CustomPathContributor` de domaine (ou à `UncoveredCustomPaths` si aucun domaine n'existe
   encore) — **plus jamais à `CustomRoutesOpenApiFactory`**, qui ne fait que composer.
 
+### Déclarer l'accès d'une route (`src/Access/`)
+
+**Chaque route `^/api/` se déclare** ; une route sans déclaration fait rougir
+`Security/AccessDeclarationSweepTest` (bloquant) :
+
+- **Route de club servie par un contrôleur** : `#[ClubFunction(Module::…, Audience::MEMBER|MANAGER)]`
+  sur la classe ou sur la méthode (celle de la méthode l'emporte). Le public s'écrit toujours, il ne
+  se déduit jamais de la méthode HTTP. Modules : `Module::CLUB`, `PLANNING`, `MATCHES` (les doléances
+  des coachs sont du Planning).
+- **Ressource de club d'API Platform** (classe de `src/ApiResource/`) : `#[ClubResource(module, read,
+  write)]`, le public des lectures et celui des écritures. Elle ne vaut que pour les opérations
+  servies par API Platform : une opération à contrôleur maison sert la déclaration de son contrôleur.
+- **Fonction du compte connecté** (profil, nouveautés, effacement, hors module) : `#[AccountFunction]`.
+- **Hors déclaration** : console (`/api/admin/`), dev (`/api/dev/`), routes publiques
+  (`PublicApiRouteCatalog`) et routes du cadre d'API Platform.
+
+`AccessDeclarationResolver` lit la déclaration d'une requête routée. **Aucun écouteur ne la lit
+encore : le contrôle reste celui de la main** (`ManagementAccessGuard::assertManager()` en tête d'un
+contrôleur d'écriture, `requiresManagementRole()` pour un processor). La déclaration doit dire ce que
+le garde fait : le balayage joue un Membre sur chaque route et compare au public déclaré, d'après
+deux tables écrites à la main (`MemberWriteSweepTest::ROUTES` pour les écritures,
+`MANAGER_ONLY_READS` pour les lectures) — une nouvelle route gestionnaire s'inscrit donc dans la
+table qui la concerne ET porte sa déclaration.
+
 ### Authentification (`AuthController.php`)
 
 | Route | Méthode | Description |
