@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace App\Controller;
 
+use App\Access\Audience;
+use App\Access\ClubFunction;
+use App\Access\Module;
 use App\Entity\Club;
 use App\Entity\ConflictMailing;
 use App\Entity\ConflictResolution;
@@ -43,6 +46,7 @@ use Symfony\Component\Routing\Attribute\Route;
  * Doctrine club+season filters apply automatically — a club only ever sees its
  * own conflicts (guarded by FixtureConflictsApiTest).
  */
+#[ClubFunction(module: Module::MATCHES, audience: Audience::MANAGER)]
 final class FixtureConflictsController extends AbstractController
 {
     use ResolvesCurrentClubTrait;
@@ -70,6 +74,7 @@ final class FixtureConflictsController extends AbstractController
     // priority > 0: this static path must win over API Platform's /api/fixtures/{id}
     // item route, which would otherwise swallow "conflicts" as an (invalid) uuid.
     #[Route('/api/fixtures/conflicts', name: 'api_fixture_conflicts', methods: ['GET'], priority: 10)]
+    #[ClubFunction(module: Module::MATCHES, audience: Audience::MEMBER)]
     public function conflicts(): JsonResponse
     {
         $clubId = $this->resolveCurrentClubId($this->requestStack);

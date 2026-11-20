@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace App\Controller;
 
+use App\Access\Audience;
+use App\Access\ClubFunction;
+use App\Access\Module;
 use App\Entity\Season;
 use App\Entity\User;
 use App\Service\EntryDeadlineOutlook;
@@ -24,6 +27,7 @@ use Symfony\Component\Routing\Attribute\Route;
  * club/season/user context and whether the season is writable.
  */
 #[AsController]
+#[ClubFunction(module: Module::MATCHES, audience: Audience::MEMBER)]
 final class EntryDeadlineOutlookController extends AbstractController
 {
     use ResolvesCurrentClubTrait;

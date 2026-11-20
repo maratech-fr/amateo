@@ -9,6 +9,9 @@ use ApiPlatform\Metadata\Get;
 use ApiPlatform\Metadata\GetCollection;
 use ApiPlatform\Metadata\Post;
 use ApiPlatform\Metadata\Put;
+use App\Access\Audience;
+use App\Access\ClubResource;
+use App\Access\Module;
 use App\Dto\SportCategoryInput;
 use App\Entity\SportCategory;
 use App\Service\MatchDurationProfile;
@@ -24,6 +27,7 @@ use Symfony\Component\Serializer\Attribute\Groups;
     new Post,
     new Put,
 ], input: SportCategoryInput::class, paginationEnabled: true, paginationItemsPerPage: 30, provider: SportCategoryStateProvider::class, processor: SportCategoryStateProcessor::class)]
+#[ClubResource(module: Module::CLUB, read: Audience::MEMBER, write: Audience::MANAGER)]
 class SportCategoryResource
 {
     #[Groups(['read'])]

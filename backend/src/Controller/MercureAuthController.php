@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace App\Controller;
 
+use App\Access\Audience;
+use App\Access\ClubFunction;
+use App\Access\Module;
 use App\Mercure\MercureTopic;
 use DateTimeImmutable;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
@@ -51,6 +54,7 @@ use Symfony\Component\Routing\Attribute\Route;
  * environnement. TTL court : l'EventSource se reconnecte, le front rappelle
  * cette route.
  */
+#[ClubFunction(module: Module::CLUB, audience: Audience::MEMBER)]
 final class MercureAuthController extends AbstractController
 {
     use ResolvesCurrentClubTrait;

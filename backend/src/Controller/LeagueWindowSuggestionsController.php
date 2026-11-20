@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace App\Controller;
 
+use App\Access\Audience;
+use App\Access\ClubFunction;
+use App\Access\Module;
 use App\Service\LeagueWindowSuggestionService;
 use App\Service\ManagementAccessGuard;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
@@ -21,6 +24,7 @@ use Symfony\Component\Routing\Attribute\Route;
  * gestionnaire ({@see ManagementAccessGuard}). Aucune plage n'est
  * jamais fournie par le client : « Appliquer » RECALCULE la suggestion côté serveur.
  */
+#[ClubFunction(module: Module::MATCHES, audience: Audience::MANAGER)]
 final class LeagueWindowSuggestionsController extends AbstractController
 {
     use ResolvesCurrentClubTrait;
@@ -32,6 +36,7 @@ final class LeagueWindowSuggestionsController extends AbstractController
     ) {}
 
     #[Route('/api/league-window-suggestions', name: 'api_league_window_suggestions', methods: ['GET'])]
+    #[ClubFunction(module: Module::MATCHES, audience: Audience::MEMBER)]
     public function suggestions(): JsonResponse
     {
         $clubId = $this->resolveCurrentClubId($this->requestStack);

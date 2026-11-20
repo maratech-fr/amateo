@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace App\Controller;
 
+use App\Access\Audience;
+use App\Access\ClubFunction;
+use App\Access\Module;
 use App\Entity\Club;
 use App\Exception\ImportRejectedException;
 use App\Service\Basketball\FfbbExcelImporter;
@@ -28,6 +31,7 @@ use Symfony\Component\HttpKernel\Exception\HttpException;
  * chosen « rows ». Same gate as the import (byte-identical refusals).
  */
 #[AsController]
+#[ClubFunction(module: Module::CLUB, audience: Audience::MANAGER)]
 final class ImportTeamsAnalyzeController extends AbstractController
 {
     /** Même règle que `ImportController` : aucun détail d'origine dans la réponse (P4-5). */

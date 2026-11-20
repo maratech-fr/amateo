@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace App\Controller;
 
+use App\Access\Audience;
+use App\Access\ClubFunction;
+use App\Access\Module;
 use App\Entity\MatchModuleVisit;
 use App\Entity\Season;
 use App\Entity\User;
@@ -45,6 +48,7 @@ use Symfony\Component\Routing\Attribute\Route;
  * planning (décision fondateur).
  */
 #[AsController]
+#[ClubFunction(module: Module::MATCHES, audience: Audience::MEMBER)]
 final class MatchModuleVisitController extends AbstractController
 {
     use ResolvesCurrentClubTrait;

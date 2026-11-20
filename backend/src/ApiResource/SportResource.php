@@ -6,6 +6,9 @@ namespace App\ApiResource;
 
 use ApiPlatform\Metadata\ApiResource;
 use ApiPlatform\Metadata\Get;
+use App\Access\Audience;
+use App\Access\ClubResource;
+use App\Access\Module;
 use App\Entity\Sport;
 use App\State\Provider\SportStateProvider;
 use DateTimeImmutable;
@@ -19,6 +22,7 @@ use Symfony\Component\Serializer\Attribute\Groups;
 #[ApiResource(shortName: 'Sport', operations: [
     new Get,
 ], provider: SportStateProvider::class)]
+#[ClubResource(module: Module::CLUB, read: Audience::MEMBER, write: Audience::MANAGER)]
 class SportResource
 {
     #[Groups(['read'])]

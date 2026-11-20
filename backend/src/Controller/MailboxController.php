@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace App\Controller;
 
+use App\Access\Audience;
+use App\Access\ClubFunction;
+use App\Access\Module;
 use App\Entity\ClubMailboxMessage;
 use App\Repository\ClubMailboxMessageRepository;
 use DateTimeInterface;
@@ -26,6 +29,7 @@ use Symfony\Component\Routing\Attribute\Route;
  * côté front, piloté par `me.club.simulatedToday`.
  */
 #[AsController]
+#[ClubFunction(module: Module::CLUB, audience: Audience::MEMBER)]
 final class MailboxController extends AbstractController
 {
     use ResolvesCurrentClubTrait;

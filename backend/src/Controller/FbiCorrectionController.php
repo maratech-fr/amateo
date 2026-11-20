@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace App\Controller;
 
+use App\Access\Audience;
+use App\Access\ClubFunction;
+use App\Access\Module;
 use App\Entity\FbiCorrection;
 use App\Entity\Season;
 use App\Enum\FbiCorrectionCloseSource;
@@ -33,6 +36,7 @@ use Symfony\Component\Routing\Attribute\Route;
  *
  * Une entrée d'un autre club est invisible (filtres tenant) → 404 byte-identique.
  */
+#[ClubFunction(module: Module::MATCHES, audience: Audience::MANAGER)]
 final class FbiCorrectionController extends AbstractController
 {
     use ResolvesCurrentClubTrait;
@@ -55,6 +59,7 @@ final class FbiCorrectionController extends AbstractController
 
     // priority > 0: the static path must win over API Platform's /api/fixtures/{id}.
     #[Route('/api/fixtures/fbi-corrections', name: 'api_fixture_fbi_corrections', methods: ['GET'], priority: 10)]
+    #[ClubFunction(module: Module::MATCHES, audience: Audience::MEMBER)]
     public function list(): JsonResponse
     {
         $clubId = $this->resolveCurrentClubId($this->requestStack);

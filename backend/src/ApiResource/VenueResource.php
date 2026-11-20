@@ -13,6 +13,9 @@ use ApiPlatform\Metadata\Get;
 use ApiPlatform\Metadata\GetCollection;
 use ApiPlatform\Metadata\Post;
 use ApiPlatform\Metadata\Put;
+use App\Access\Audience;
+use App\Access\ClubResource;
+use App\Access\Module;
 use App\Dto\VenueInput;
 use App\Entity\Venue;
 use App\State\Processor\VenueStateProcessor;
@@ -29,6 +32,7 @@ use Symfony\Component\Serializer\Attribute\Groups;
 ], input: VenueInput::class, paginationEnabled: true, paginationItemsPerPage: 30, provider: VenueStateProvider::class, processor: VenueStateProcessor::class)]
 #[ApiFilter(BooleanFilter::class, properties: ['isActive'])]
 #[ApiFilter(SearchFilter::class, properties: ['seasonId' => 'exact'])]
+#[ClubResource(module: Module::PLANNING, read: Audience::MEMBER, write: Audience::MANAGER)]
 class VenueResource
 {
     #[Groups(['read'])]

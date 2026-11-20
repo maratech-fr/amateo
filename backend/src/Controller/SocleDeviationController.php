@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace App\Controller;
 
+use App\Access\Audience;
+use App\Access\ClubFunction;
+use App\Access\Module;
 use App\Entity\CalendarEntry;
 use App\Entity\Schedule;
 use App\Enum\CalendarEntryPeriodType;
@@ -50,6 +53,7 @@ use Throwable;
  *    pointée. Refus FRANC, pas du code mort.
  */
 #[AsController]
+#[ClubFunction(module: Module::PLANNING, audience: Audience::MEMBER)]
 final class SocleDeviationController extends AbstractController
 {
     use ResolvesCurrentClubTrait;

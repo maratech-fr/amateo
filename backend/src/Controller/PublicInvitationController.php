@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Controller;
 
+use App\Access\AccountFunction;
 use App\Entity\Club;
 use App\Entity\ClubInvitation;
 use App\Entity\ClubUser;
@@ -194,6 +195,7 @@ final class PublicInvitationController extends AbstractController
     }
 
     #[Route('/api/invitations/{token}/accept', name: 'api_invitations_accept', methods: ['POST'])]
+    #[AccountFunction]
     public function acceptAsConnectedUser(string $token): JsonResponse
     {
         $user = $this->getUser();

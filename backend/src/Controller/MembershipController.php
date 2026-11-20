@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace App\Controller;
 
+use App\Access\Audience;
+use App\Access\ClubFunction;
+use App\Access\Module;
 use App\Entity\ClubUser;
 use App\Entity\User;
 use App\Enum\AuditAction;
@@ -33,6 +36,7 @@ use Symfony\Component\Routing\Attribute\Route;
  * désactivation réversible, et l'invariant « au moins un gestionnaire actif »
  * tenu SOUS VERROU pour qu'aucune course ne laisse un club sans pilote.
  */
+#[ClubFunction(module: Module::CLUB, audience: Audience::MANAGER)]
 final class MembershipController extends AbstractController
 {
     use ResolvesCurrentClubTrait;
@@ -204,6 +208,7 @@ final class MembershipController extends AbstractController
      * (club géré : ses gestionnaires décident ; club sans gestionnaire : l'adresse officielle).
      */
     #[Route('/api/memberships/me/manager-request', name: 'api_memberships_manager_request', methods: ['POST'])]
+    #[ClubFunction(module: Module::CLUB, audience: Audience::MEMBER)]
     public function requestManagerRole(): JsonResponse
     {
         $own = $this->requireActiveOwnMembership();
@@ -221,6 +226,7 @@ final class MembershipController extends AbstractController
 
     /** Le Membre annule sa demande (stamp effacé, demandes officielles vivantes closes). */
     #[Route('/api/memberships/me/manager-request', name: 'api_memberships_manager_request_cancel', methods: ['DELETE'])]
+    #[ClubFunction(module: Module::CLUB, audience: Audience::MEMBER)]
     public function cancelManagerRequest(): JsonResponse
     {
         $own = $this->requireActiveOwnMembership();

@@ -10,6 +10,9 @@ use ApiPlatform\Metadata\Get;
 use ApiPlatform\Metadata\GetCollection;
 use ApiPlatform\Metadata\Patch;
 use ApiPlatform\Metadata\Post;
+use App\Access\Audience;
+use App\Access\ClubResource;
+use App\Access\Module;
 use App\Dto\ReservationInput;
 use App\Dto\ReservationToleranceInput;
 use App\Entity\Reservation;
@@ -26,6 +29,7 @@ use Symfony\Component\Serializer\Attribute\Groups;
     new Patch(inputFormats: ['json' => ['application/merge-patch+json']], input: ReservationToleranceInput::class),
     new Delete,
 ], input: ReservationInput::class, paginationEnabled: true, paginationItemsPerPage: 100, provider: ReservationStateProvider::class, processor: ReservationStateProcessor::class)]
+#[ClubResource(module: Module::PLANNING, read: Audience::MEMBER, write: Audience::MANAGER)]
 class ReservationResource
 {
     #[Groups(['read'])]

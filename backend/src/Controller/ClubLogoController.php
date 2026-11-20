@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace App\Controller;
 
+use App\Access\Audience;
+use App\Access\ClubFunction;
+use App\Access\Module;
 use App\Repository\ClubRepository;
 use App\Service\ManagementAccessGuard;
 use App\Storage\LogoStorage;
@@ -44,6 +47,7 @@ final class ClubLogoController extends AbstractController
     ) {}
 
     #[Route('/api/club/logo', name: 'club_logo_upload', methods: ['POST'])]
+    #[ClubFunction(module: Module::CLUB, audience: Audience::MANAGER)]
     public function upload(): JsonResponse
     {
         $this->managementAccessGuard->assertManager(); // SEC-07 (same surface as /club/appearance)
@@ -84,6 +88,7 @@ final class ClubLogoController extends AbstractController
     }
 
     #[Route('/api/club/logo', name: 'club_logo_delete', methods: ['DELETE'])]
+    #[ClubFunction(module: Module::CLUB, audience: Audience::MANAGER)]
     public function delete(): JsonResponse
     {
         $this->managementAccessGuard->assertManager(); // SEC-07

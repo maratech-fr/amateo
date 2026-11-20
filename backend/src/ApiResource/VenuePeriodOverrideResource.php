@@ -12,6 +12,9 @@ use ApiPlatform\Metadata\Get;
 use ApiPlatform\Metadata\GetCollection;
 use ApiPlatform\Metadata\Post;
 use ApiPlatform\Metadata\Put;
+use App\Access\Audience;
+use App\Access\ClubResource;
+use App\Access\Module;
 use App\Dto\VenuePeriodOverrideInput;
 use App\Entity\VenuePeriodOverride;
 use App\State\Processor\VenuePeriodOverrideStateProcessor;
@@ -55,6 +58,7 @@ use Symfony\Component\Serializer\Attribute\Groups;
     ),
 ], input: VenuePeriodOverrideInput::class, paginationEnabled: false, provider: VenuePeriodOverrideStateProvider::class, processor: VenuePeriodOverrideStateProcessor::class)]
 #[ApiFilter(SearchFilter::class, properties: ['schedulePlanId' => 'exact', 'venueId' => 'exact'])]
+#[ClubResource(module: Module::PLANNING, read: Audience::MEMBER, write: Audience::MANAGER)]
 class VenuePeriodOverrideResource
 {
     #[Groups(['read'])]

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Controller;
 
+use App\Access\AccountFunction;
 use App\Entity\Basketball\FfbbCommittee;
 use App\Entity\Basketball\FfbbLeague;
 use App\Entity\ClubCreationRequest;
@@ -136,6 +137,7 @@ final class AuthController extends AbstractController
     }
 
     #[Route('/api/me', name: 'api_me', methods: ['GET'])]
+    #[AccountFunction]
     public function me(Request $request): JsonResponse
     {
         $user = $this->getUser();
@@ -331,6 +333,7 @@ final class AuthController extends AbstractController
 
     /** Update the connected user's own profile (self-only by construction — SEC-02). */
     #[Route('/api/me', name: 'api_me_update', methods: ['PATCH'])]
+    #[AccountFunction]
     public function updateMe(Request $request): JsonResponse
     {
         $user = $this->getUser();
@@ -388,6 +391,7 @@ final class AuthController extends AbstractController
 
     /** Change the connected user's password (requires the current one). */
     #[Route('/api/me/password', name: 'api_me_password', methods: ['POST'])]
+    #[AccountFunction]
     public function changePassword(Request $request): JsonResponse
     {
         $user = $this->getUser();
@@ -430,6 +434,7 @@ final class AuthController extends AbstractController
      * UserChecker exige emailVerifiedAt, qu'on ne touche pas).
      */
     #[Route('/api/me/email', name: 'api_me_email_request', methods: ['POST'])]
+    #[AccountFunction]
     public function requestEmailChange(Request $request): JsonResponse
     {
         $user = $this->getUser();
@@ -568,6 +573,7 @@ final class AuthController extends AbstractController
 
     /** P4-74 — annuler la demande : efface l'adresse en attente et ses tokens. */
     #[Route('/api/me/email', name: 'api_me_email_cancel', methods: ['DELETE'])]
+    #[AccountFunction]
     public function cancelEmailChange(): JsonResponse
     {
         $user = $this->getUser();

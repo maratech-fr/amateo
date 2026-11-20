@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace App\Controller;
 
+use App\Access\Audience;
+use App\Access\ClubFunction;
+use App\Access\Module;
 use App\Entity\ClubUser;
 use App\Entity\User;
 use App\Enum\AuditAction;
@@ -20,6 +23,7 @@ use Symfony\Component\Routing\Attribute\Route;
 
 #[AsController]
 #[Route('/api/reset-season', name: 'reset_season', methods: ['DELETE'])]
+#[ClubFunction(module: Module::CLUB, audience: Audience::MANAGER)]
 final class ResetSeasonController extends AbstractController
 {
     use ResolvesCurrentClubTrait;

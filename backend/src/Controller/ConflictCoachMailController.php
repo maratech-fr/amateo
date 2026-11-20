@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace App\Controller;
 
+use App\Access\Audience;
+use App\Access\ClubFunction;
+use App\Access\Module;
 use App\Entity\Club;
 use App\Entity\Coach;
 use App\Entity\ConflictMailing;
@@ -60,6 +63,7 @@ use Throwable;
  * Limites déclarées : le verrou ne protège que les envois SIMULTANÉS ; mails enfilés puis échec
  * de l'écriture → 500, ni reçu ni mémoire écrits, un nouveau clic renvoie les listes.
  */
+#[ClubFunction(module: Module::MATCHES, audience: Audience::MANAGER)]
 final class ConflictCoachMailController extends AbstractController implements SeasonScopedWriteInterface
 {
     use ResolvesCurrentClubTrait;

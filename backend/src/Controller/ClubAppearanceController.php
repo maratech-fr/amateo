@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace App\Controller;
 
+use App\Access\Audience;
+use App\Access\ClubFunction;
+use App\Access\Module;
 use App\Repository\ClubRepository;
 use App\Service\ManagementAccessGuard;
 use Doctrine\ORM\EntityManagerInterface;
@@ -20,6 +23,7 @@ use Symfony\Component\Routing\Attribute\Route;
  * "club management" screen can save the accent without the generic Club
  * resource's NotBlank fields (name/slug/timezone…). Logo upload lands here later.
  */
+#[ClubFunction(module: Module::CLUB, audience: Audience::MANAGER)]
 final class ClubAppearanceController extends AbstractController
 {
     use ResolvesCurrentClubTrait;

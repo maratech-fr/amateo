@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace App\Controller\Basketball;
 
+use App\Access\Audience;
+use App\Access\ClubFunction;
+use App\Access\Module;
 use App\Controller\ResolvesCurrentClubTrait;
 use App\Entity\Season;
 use App\Enum\TravelComputeScope;
@@ -53,6 +56,7 @@ use Throwable;
  * create colliding on the partial unique index surfaces as a clean 409.
  */
 #[AsController]
+#[ClubFunction(module: Module::MATCHES, audience: Audience::MANAGER)]
 final class FfbbRencontresController extends AbstractController
 {
     use ResolvesCurrentClubTrait;

@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace App\Controller;
 
+use App\Access\Audience;
+use App\Access\ClubFunction;
+use App\Access\Module;
 use App\Entity\CalendarEntry;
 use App\Entity\Club;
 use App\Entity\Coach;
@@ -46,6 +49,7 @@ use Throwable;
  * (Assert\Email sur CoachInput) fait foi, ceci n'est que le filet.
  */
 #[AsController]
+#[ClubFunction(module: Module::PLANNING, audience: Audience::MANAGER)]
 final class CoachWishCampaignActionController extends AbstractController
 {
     use ResolvesCurrentClubTrait;

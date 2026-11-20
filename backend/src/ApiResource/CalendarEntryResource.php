@@ -11,6 +11,9 @@ use ApiPlatform\Metadata\Get;
 use ApiPlatform\Metadata\GetCollection;
 use ApiPlatform\Metadata\Post;
 use ApiPlatform\Metadata\Put;
+use App\Access\Audience;
+use App\Access\ClubResource;
+use App\Access\Module;
 use App\Dto\CalendarEntryInput;
 use App\Entity\CalendarEntry;
 use App\State\Processor\CalendarEntryStateProcessor;
@@ -25,6 +28,7 @@ use Symfony\Component\Serializer\Attribute\Groups;
     new Put,
     new Delete,
 ], input: CalendarEntryInput::class, paginationEnabled: true, paginationItemsPerPage: 30, provider: CalendarEntryStateProvider::class, processor: CalendarEntryStateProcessor::class)]
+#[ClubResource(module: Module::PLANNING, read: Audience::MEMBER, write: Audience::MANAGER)]
 class CalendarEntryResource
 {
     #[Groups(['read'])]

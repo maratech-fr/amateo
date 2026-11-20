@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace App\Controller;
 
+use App\Access\Audience;
+use App\Access\ClubFunction;
+use App\Access\Module;
 use App\Entity\PublicHoliday;
 use App\Service\ClubPublicHolidays;
 use App\Service\SeasonResolver;
@@ -21,6 +24,7 @@ use Symfony\Component\Routing\Attribute\Route;
  * a null zone still returns the NATIONAL fériés (they apply to every club).
  * Display-only — never consumed by the solver.
  */
+#[ClubFunction(module: Module::PLANNING, audience: Audience::MEMBER)]
 final class PublicHolidaysController extends AbstractController
 {
     use ResolvesCurrentClubTrait;

@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace App\Controller;
 
+use App\Access\Audience;
+use App\Access\ClubFunction;
+use App\Access\Module;
 use App\Enum\SchedulePlanType;
 use App\Service\ManagementAccessGuard;
 use App\Service\SchedulePlanProvisioner;
@@ -35,6 +38,7 @@ use Symfony\Component\HttpKernel\Attribute\AsController;
  * l'UI qui l'annonce avant.
  */
 #[AsController]
+#[ClubFunction(module: Module::PLANNING, audience: Audience::MANAGER)]
 final class VenuePeriodGridActionController extends AbstractController implements SeasonScopedWriteInterface
 {
     use ResolvesCurrentClubTrait;

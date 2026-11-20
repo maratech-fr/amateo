@@ -9,6 +9,9 @@ use ApiPlatform\Metadata\ApiResource;
 use ApiPlatform\Metadata\Get;
 use ApiPlatform\Metadata\GetCollection;
 use ApiPlatform\Metadata\Post;
+use App\Access\Audience;
+use App\Access\ClubResource;
+use App\Access\Module;
 use App\Dto\SeasonInput;
 use App\Entity\Season;
 use App\State\Processor\SeasonStateProcessor;
@@ -23,6 +26,7 @@ use Symfony\Component\Serializer\Attribute\Groups;
     new Get,
     new Post,
 ], input: SeasonInput::class, paginationEnabled: true, paginationItemsPerPage: 30, provider: SeasonStateProvider::class, processor: SeasonStateProcessor::class)]
+#[ClubResource(module: Module::CLUB, read: Audience::MEMBER, write: Audience::MANAGER)]
 class SeasonResource
 {
     #[Groups(['read'])]

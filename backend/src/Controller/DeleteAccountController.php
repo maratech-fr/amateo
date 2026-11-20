@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Controller;
 
+use App\Access\AccountFunction;
 use App\Entity\User;
 use App\Enum\AuditAction;
 use App\Service\AccountErasureService;
@@ -27,6 +28,7 @@ use Symfony\Component\Routing\Attribute\Route;
  * (AccountErasureService).
  */
 #[AsController]
+#[AccountFunction]
 final class DeleteAccountController extends AbstractController
 {
     public function __construct(

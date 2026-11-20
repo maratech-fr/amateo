@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace App\Controller;
 
+use App\Access\Audience;
+use App\Access\ClubFunction;
+use App\Access\Module;
 use App\Entity\Club;
 use App\Entity\ClubInvitation;
 use App\Entity\ClubUser;
@@ -33,6 +36,7 @@ use Symfony\Component\Routing\Attribute\Route;
  * 422 clair (l'appelant est gestionnaire de SON club, le silence serait de l'ergonomie
  * perdue sans gain anti-énumération).
  */
+#[ClubFunction(module: Module::CLUB, audience: Audience::MANAGER)]
 final class ClubInvitationController extends AbstractController
 {
     use ResolvesCurrentClubTrait;

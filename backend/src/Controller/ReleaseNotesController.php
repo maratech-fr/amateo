@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Controller;
 
+use App\Access\AccountFunction;
 use App\Entity\ReleaseNote;
 use App\Entity\User;
 use App\Repository\ReleaseNoteRepository;
@@ -24,6 +25,7 @@ use Symfony\Component\Routing\Attribute\Route;
  * firewall API suffit. Seules les notes publiées sortent — un brouillon reste
  * invisible.
  */
+#[AccountFunction]
 final class ReleaseNotesController extends AbstractController
 {
     public function __construct(

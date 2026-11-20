@@ -12,6 +12,9 @@ use ApiPlatform\Metadata\Get;
 use ApiPlatform\Metadata\GetCollection;
 use ApiPlatform\Metadata\Post;
 use ApiPlatform\Metadata\Put;
+use App\Access\Audience;
+use App\Access\ClubResource;
+use App\Access\Module;
 use App\Dto\VenueOccupancyInput;
 use App\Entity\VenueOccupancy;
 use App\State\Processor\VenueOccupancyStateProcessor;
@@ -31,6 +34,7 @@ use Symfony\Component\Serializer\Attribute\Groups;
     new Delete,
 ], input: VenueOccupancyInput::class, paginationEnabled: true, paginationItemsPerPage: 30, provider: VenueOccupancyStateProvider::class, processor: VenueOccupancyStateProcessor::class)]
 #[ApiFilter(SearchFilter::class, properties: ['venueId' => 'exact', 'schedulePlanId' => 'exact'])]
+#[ClubResource(module: Module::PLANNING, read: Audience::MEMBER, write: Audience::MANAGER)]
 class VenueOccupancyResource
 {
     #[Groups(['read'])]

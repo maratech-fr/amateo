@@ -10,6 +10,9 @@ use ApiPlatform\Metadata\Get;
 use ApiPlatform\Metadata\GetCollection;
 use ApiPlatform\Metadata\Post;
 use ApiPlatform\Metadata\Put;
+use App\Access\Audience;
+use App\Access\ClubResource;
+use App\Access\Module;
 use App\Dto\ClubLeagueWindowInput;
 use App\Entity\ClubLeagueWindow;
 use App\State\Processor\ClubLeagueWindowStateProcessor;
@@ -31,6 +34,7 @@ use Symfony\Component\Serializer\Attribute\Groups;
     new Put,
     new Delete,
 ], input: ClubLeagueWindowInput::class, paginationEnabled: false, provider: ClubLeagueWindowStateProvider::class, processor: ClubLeagueWindowStateProcessor::class)]
+#[ClubResource(module: Module::MATCHES, read: Audience::MEMBER, write: Audience::MANAGER)]
 class ClubLeagueWindowResource
 {
     #[Groups(['read'])]

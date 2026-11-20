@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace App\Controller;
 
+use App\Access\Audience;
+use App\Access\ClubFunction;
+use App\Access\Module;
 use App\Entity\Club;
 use App\Service\ClubDay;
 use App\Service\ClubMailboxPurgerInterface;
@@ -37,6 +40,7 @@ use Throwable;
  * maison unique {@see ClubMailboxPurgerInterface}. Après l'écriture, le front invalide `/api/me`
  * (→ `clock.ts`) et tous les écrans datés se recalent.
  */
+#[ClubFunction(module: Module::CLUB, audience: Audience::MANAGER)]
 final class ClubClockController extends AbstractController
 {
     use ResolvesCurrentClubTrait;

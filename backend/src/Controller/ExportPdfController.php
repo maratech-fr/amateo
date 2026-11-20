@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace App\Controller;
 
+use App\Access\Audience;
+use App\Access\ClubFunction;
+use App\Access\Module;
 use App\Entity\Schedule;
 use App\Message\ExportPdfMessage;
 use Doctrine\ORM\EntityManagerInterface;
@@ -15,6 +18,7 @@ use Symfony\Component\HttpKernel\Attribute\AsController;
 use Symfony\Component\Messenger\MessageBusInterface;
 
 #[AsController]
+#[ClubFunction(module: Module::PLANNING, audience: Audience::MEMBER)]
 final class ExportPdfController extends AbstractController
 {
     use ResolvesCurrentClubTrait;

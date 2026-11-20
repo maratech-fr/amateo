@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace App\Controller;
 
+use App\Access\Audience;
+use App\Access\ClubFunction;
+use App\Access\Module;
 use App\Entity\CalendarEntry;
 use App\Entity\Constraint;
 use App\Entity\ScheduleSlotTemplate;
@@ -34,6 +37,7 @@ use Symfony\Component\Routing\Attribute\Route;
  * returned with the concrete conflicting dates.
  * See accueil-cockpit-temporel.md §6 (état intermédiaire, palier A).
  */
+#[ClubFunction(module: Module::PLANNING, audience: Audience::MEMBER)]
 final class CalendarEntryConflictsController extends AbstractController
 {
     use ResolvesCurrentClubTrait;

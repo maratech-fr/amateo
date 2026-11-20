@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace App\Controller\Basketball;
 
+use App\Access\Audience;
+use App\Access\ClubFunction;
+use App\Access\Module;
 use App\Controller\ResolvesCurrentClubTrait;
 use App\Entity\Competition;
 use App\Entity\Fixture;
@@ -55,6 +58,7 @@ use Throwable;
  * @phpstan-import-type Signature from FbiDivisionSignature
  */
 #[AsController]
+#[ClubFunction(module: Module::MATCHES, audience: Audience::MANAGER)]
 final class FfbbEngagementsController extends AbstractController
 {
     use ResolvesCurrentClubTrait;

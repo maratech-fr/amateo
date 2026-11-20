@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace App\Controller;
 
+use App\Access\Audience;
+use App\Access\ClubFunction;
+use App\Access\Module;
 use App\Entity\CalendarEntry;
 use App\Entity\Club;
 use App\Entity\CoachWishCampaign;
@@ -41,6 +44,7 @@ use Symfony\Component\Uid\Uuid;
  * ne pas révéler l'existence d'une campagne d'autrui). Non-gestionnaire → 403 (assertManager).
  */
 #[AsController]
+#[ClubFunction(module: Module::PLANNING, audience: Audience::MANAGER)]
 final class CoachWishEmailPreviewController extends AbstractController
 {
     use ResolvesCurrentClubTrait;

@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace App\Controller;
 
+use App\Access\Audience;
+use App\Access\ClubFunction;
+use App\Access\Module;
 use App\Entity\CalendarEntry;
 use App\Service\CalendarEntryRedatability;
 use App\Service\ManagementAccessGuard;
@@ -33,6 +36,7 @@ use Throwable;
  * 422 aussi si l'entrée n'est PAS une mère découpée (le seul cas où l'aperçu a un sens).
  */
 #[AsController]
+#[ClubFunction(module: Module::PLANNING, audience: Audience::MANAGER)]
 final class RedatePreviewController extends AbstractController
 {
     use ResolvesCurrentClubTrait;

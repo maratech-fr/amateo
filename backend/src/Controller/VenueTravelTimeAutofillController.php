@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace App\Controller;
 
+use App\Access\Audience;
+use App\Access\ClubFunction;
+use App\Access\Module;
 use App\Entity\User;
 use App\Enum\TravelComputeScope;
 use App\Message\ComputeTravelTimesMessage;
@@ -29,6 +32,7 @@ use Symfony\Component\Routing\Attribute\Route;
  * dédié PAR UTILISATEUR (la route déclenche une rafale d'appels sortants).
  */
 #[AsController]
+#[ClubFunction(module: Module::PLANNING, audience: Audience::MANAGER)]
 final class VenueTravelTimeAutofillController extends AbstractController
 {
     use ResolvesCurrentClubTrait;

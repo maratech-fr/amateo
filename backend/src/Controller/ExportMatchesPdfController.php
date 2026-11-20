@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace App\Controller;
 
+use App\Access\Audience;
+use App\Access\ClubFunction;
+use App\Access\Module;
 use App\Entity\Season;
 use App\Entity\Team;
 use App\Export\MatchesExportDataProvider;
@@ -27,6 +30,7 @@ use Symfony\Component\Uid\Uuid;
  * livré. Tout membre y accède, comme à l'export du planning : aucune garde gestionnaire ici.
  */
 #[AsController]
+#[ClubFunction(module: Module::MATCHES, audience: Audience::MEMBER)]
 final class ExportMatchesPdfController extends AbstractController
 {
     use ResolvesCurrentClubTrait;

@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace App\Controller;
 
+use App\Access\Audience;
+use App\Access\ClubFunction;
+use App\Access\Module;
 use App\Entity\Schedule;
 use App\Service\OrphanedFixtureFinder;
 use Doctrine\ORM\EntityManagerInterface;
@@ -32,6 +35,7 @@ use Throwable;
  * AUCUN identifiant interne servi — seulement deux comptes.
  */
 #[AsController]
+#[ClubFunction(module: Module::PLANNING, audience: Audience::MEMBER)]
 final class ValidateImpactController extends AbstractController
 {
     use ResolvesCurrentClubTrait;

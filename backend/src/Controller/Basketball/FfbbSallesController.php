@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace App\Controller\Basketball;
 
+use App\Access\Audience;
+use App\Access\ClubFunction;
+use App\Access\Module;
 use App\Controller\ResolvesCurrentClubTrait;
 use App\Repository\ClubRepository;
 use App\Service\Basketball\FfbbApiClient;
@@ -27,6 +30,7 @@ use Throwable;
  * autres routes FFBB ; best-effort : 502 nommé, jamais un geste cassé.
  */
 #[AsController]
+#[ClubFunction(module: Module::PLANNING, audience: Audience::MANAGER)]
 final class FfbbSallesController extends AbstractController
 {
     use ResolvesCurrentClubTrait;

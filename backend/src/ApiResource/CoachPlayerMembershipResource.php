@@ -9,6 +9,9 @@ use ApiPlatform\Metadata\Delete;
 use ApiPlatform\Metadata\Get;
 use ApiPlatform\Metadata\GetCollection;
 use ApiPlatform\Metadata\Post;
+use App\Access\Audience;
+use App\Access\ClubResource;
+use App\Access\Module;
 use App\Dto\CoachPlayerMembershipInput;
 use App\Entity\CoachPlayerMembership;
 use App\State\Processor\CoachPlayerMembershipStateProcessor;
@@ -23,6 +26,7 @@ use Symfony\Component\Serializer\Attribute\Groups;
     new Post,
     new Delete,
 ], input: CoachPlayerMembershipInput::class, paginationEnabled: true, paginationItemsPerPage: 30, provider: CoachPlayerMembershipStateProvider::class, processor: CoachPlayerMembershipStateProcessor::class)]
+#[ClubResource(module: Module::PLANNING, read: Audience::MEMBER, write: Audience::MANAGER)]
 class CoachPlayerMembershipResource
 {
     #[Groups(['read'])]

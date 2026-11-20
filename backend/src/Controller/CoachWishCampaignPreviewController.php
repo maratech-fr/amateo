@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace App\Controller;
 
+use App\Access\Audience;
+use App\Access\ClubFunction;
+use App\Access\Module;
 use App\Entity\Coach;
 use App\Entity\CoachWishCampaign;
 use App\Service\CoachWishFormPresenter;
@@ -36,6 +39,7 @@ use Symfony\Component\Uid\Uuid;
  *    hors périmètre).
  */
 #[AsController]
+#[ClubFunction(module: Module::PLANNING, audience: Audience::MEMBER)]
 final class CoachWishCampaignPreviewController extends AbstractController
 {
     use ResolvesCurrentClubTrait;

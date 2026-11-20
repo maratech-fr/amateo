@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace App\Controller;
 
+use App\Access\Audience;
+use App\Access\ClubFunction;
+use App\Access\Module;
 use App\Exception\ScheduleGenerationInProgressException;
 use App\Service\CoachWishTransferService;
 use App\Service\ManagementAccessGuard;
@@ -25,6 +28,7 @@ use Symfony\Component\Routing\Attribute\Route;
  * (`writeTargetSeasonId` → null, choix écrit — SeasonScopedWriteInterface).
  */
 #[AsController]
+#[ClubFunction(module: Module::PLANNING, audience: Audience::MANAGER)]
 final class CoachWishTransferController extends AbstractController implements SeasonScopedWriteInterface
 {
     use ResolvesCurrentClubTrait;

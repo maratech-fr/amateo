@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace App\Controller;
 
+use App\Access\Audience;
+use App\Access\ClubFunction;
+use App\Access\Module;
 use App\Entity\Season;
 use App\Entity\User;
 use App\Enum\TravelComputeScope;
@@ -51,6 +54,7 @@ use Throwable;
  * `/opponents/travel/resolve`) restent en place (compat).
  */
 #[AsController]
+#[ClubFunction(module: Module::MATCHES, audience: Audience::MANAGER)]
 final class OpponentRefreshController extends AbstractController
 {
     use ResolvesCurrentClubTrait;

@@ -11,6 +11,9 @@ use ApiPlatform\Metadata\ApiResource;
 use ApiPlatform\Metadata\Get;
 use ApiPlatform\Metadata\GetCollection;
 use ApiPlatform\Metadata\Post;
+use App\Access\Audience;
+use App\Access\ClubResource;
+use App\Access\Module;
 use App\Dto\CompetitionInput;
 use App\Entity\Competition;
 use App\Entity\SharedCompetitionDeadline;
@@ -28,6 +31,7 @@ use Symfony\Component\Serializer\Attribute\Groups;
     new Post,
 ], input: CompetitionInput::class, paginationEnabled: true, paginationItemsPerPage: 50, provider: CompetitionStateProvider::class, processor: CompetitionStateProcessor::class)]
 #[ApiFilter(SearchFilter::class, properties: ['seasonId' => 'exact', 'teamId' => 'exact'])]
+#[ClubResource(module: Module::MATCHES, read: Audience::MEMBER, write: Audience::MANAGER)]
 class CompetitionResource
 {
     #[Groups(['read'])]

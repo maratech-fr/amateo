@@ -15,6 +15,9 @@ use ApiPlatform\Metadata\Post;
 use ApiPlatform\Metadata\Put;
 use ApiPlatform\OpenApi\Model\Operation as OpenApiOperation;
 use ApiPlatform\OpenApi\Model\RequestBody as OpenApiRequestBody;
+use App\Access\Audience;
+use App\Access\ClubResource;
+use App\Access\Module;
 use App\Dto\FixtureInput;
 use App\Entity\Fixture;
 use App\Enum\FixtureUnplacedReason;
@@ -76,6 +79,7 @@ use Symfony\Component\Serializer\Attribute\Groups;
     ),
 ], input: FixtureInput::class, paginationEnabled: true, paginationItemsPerPage: 100, provider: FixtureStateProvider::class, processor: FixtureStateProcessor::class)]
 #[ApiFilter(SearchFilter::class, properties: ['seasonId' => 'exact', 'teamId' => 'exact', 'competitionId' => 'exact', 'homeAway' => 'exact', 'status' => 'exact'])]
+#[ClubResource(module: Module::MATCHES, read: Audience::MEMBER, write: Audience::MANAGER)]
 class FixtureResource
 {
     #[Groups(['read'])]

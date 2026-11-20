@@ -12,6 +12,9 @@ use ApiPlatform\Metadata\Get;
 use ApiPlatform\Metadata\GetCollection;
 use ApiPlatform\Metadata\Post;
 use ApiPlatform\Metadata\Put;
+use App\Access\Audience;
+use App\Access\ClubResource;
+use App\Access\Module;
 use App\Dto\TeamLinkInput;
 use App\Entity\TeamLink;
 use App\State\Processor\TeamLinkStateProcessor;
@@ -28,6 +31,7 @@ use Symfony\Component\Serializer\Attribute\Groups;
     new Delete,
 ], input: TeamLinkInput::class, paginationEnabled: true, paginationItemsPerPage: 50, provider: TeamLinkStateProvider::class, processor: TeamLinkStateProcessor::class)]
 #[ApiFilter(SearchFilter::class, properties: ['seasonId' => 'exact'])]
+#[ClubResource(module: Module::PLANNING, read: Audience::MEMBER, write: Audience::MANAGER)]
 class TeamLinkResource
 {
     #[Groups(['read'])]

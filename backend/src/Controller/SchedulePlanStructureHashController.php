@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace App\Controller;
 
+use App\Access\Audience;
+use App\Access\ClubFunction;
+use App\Access\Module;
 use App\Service\SchedulePlanProvisioner;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
@@ -29,6 +32,7 @@ use Throwable;
  * colonne guid) est attrapé et rendu comme le même 404.
  */
 #[AsController]
+#[ClubFunction(module: Module::PLANNING, audience: Audience::MEMBER)]
 final class SchedulePlanStructureHashController extends AbstractController
 {
     use ResolvesCurrentClubTrait;

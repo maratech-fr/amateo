@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace App\Controller;
 
+use App\Access\Audience;
+use App\Access\ClubFunction;
+use App\Access\Module;
 use App\Entity\Fixture;
 use App\Enum\FixtureHomeAway;
 use App\Enum\FixtureReviewState;
@@ -38,6 +41,7 @@ use Symfony\Component\Routing\Attribute\Route;
  * équipe d'un autre club est invisible, donc ignorée (jamais d'écriture cross-club).
  */
 #[AsController]
+#[ClubFunction(module: Module::MATCHES, audience: Audience::MANAGER)]
 final class ReviewFixturesController extends AbstractController
 {
     /** Une saison de club tient en quelques centaines de rencontres : au-delà, geste d'équipe. */

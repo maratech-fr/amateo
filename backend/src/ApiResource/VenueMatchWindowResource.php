@@ -11,6 +11,9 @@ use ApiPlatform\Metadata\Delete;
 use ApiPlatform\Metadata\Get;
 use ApiPlatform\Metadata\GetCollection;
 use ApiPlatform\Metadata\Post;
+use App\Access\Audience;
+use App\Access\ClubResource;
+use App\Access\Module;
 use App\Dto\VenueMatchWindowInput;
 use App\Entity\VenueMatchWindow;
 use App\State\Processor\VenueMatchWindowStateProcessor;
@@ -27,6 +30,7 @@ use Symfony\Component\Serializer\Attribute\Groups;
     new Delete,
 ], input: VenueMatchWindowInput::class, paginationEnabled: true, paginationItemsPerPage: 30, provider: VenueMatchWindowStateProvider::class, processor: VenueMatchWindowStateProcessor::class)]
 #[ApiFilter(SearchFilter::class, properties: ['venueId' => 'exact', 'seasonId' => 'exact'])]
+#[ClubResource(module: Module::MATCHES, read: Audience::MEMBER, write: Audience::MANAGER)]
 class VenueMatchWindowResource
 {
     #[Groups(['read'])]

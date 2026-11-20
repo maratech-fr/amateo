@@ -12,6 +12,9 @@ use ApiPlatform\Metadata\Get;
 use ApiPlatform\Metadata\GetCollection;
 use ApiPlatform\Metadata\Post;
 use ApiPlatform\Metadata\Put;
+use App\Access\Audience;
+use App\Access\ClubResource;
+use App\Access\Module;
 use App\Dto\ConstraintPeriodOverrideInput;
 use App\Entity\ConstraintPeriodOverride;
 use App\State\Processor\ConstraintPeriodOverrideStateProcessor;
@@ -32,6 +35,7 @@ use Symfony\Component\Serializer\Attribute\Groups;
     new Delete,
 ], input: ConstraintPeriodOverrideInput::class, paginationEnabled: false, provider: ConstraintPeriodOverrideStateProvider::class, processor: ConstraintPeriodOverrideStateProcessor::class)]
 #[ApiFilter(SearchFilter::class, properties: ['schedulePlanId' => 'exact', 'constraintId' => 'exact'])]
+#[ClubResource(module: Module::PLANNING, read: Audience::MEMBER, write: Audience::MANAGER)]
 class ConstraintPeriodOverrideResource
 {
     #[Groups(['read'])]

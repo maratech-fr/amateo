@@ -12,6 +12,9 @@ use ApiPlatform\Metadata\Get;
 use ApiPlatform\Metadata\GetCollection;
 use ApiPlatform\Metadata\Post;
 use ApiPlatform\Metadata\Put;
+use App\Access\Audience;
+use App\Access\ClubResource;
+use App\Access\Module;
 use App\Dto\CoachWishCampaignInput;
 use App\State\Processor\CoachWishCampaignStateProcessor;
 use App\State\Provider\CoachWishCampaignStateProvider;
@@ -55,6 +58,7 @@ use Symfony\Component\Serializer\Attribute\Groups;
     ),
 ], input: CoachWishCampaignInput::class, paginationEnabled: false, provider: CoachWishCampaignStateProvider::class, processor: CoachWishCampaignStateProcessor::class)]
 #[ApiFilter(SearchFilter::class, properties: ['calendarEntryId' => 'exact'])]
+#[ClubResource(module: Module::PLANNING, read: Audience::MEMBER, write: Audience::MANAGER)]
 class CoachWishCampaignResource
 {
     #[Groups(['read'])]

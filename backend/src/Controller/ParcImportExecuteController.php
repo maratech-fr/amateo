@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace App\Controller;
 
+use App\Access\Audience;
+use App\Access\ClubFunction;
+use App\Access\Module;
 use App\Entity\Club;
 use App\Service\ParcImport\ParcImportExecutor;
 use App\Service\ParcImport\ParcImportGate;
@@ -33,6 +36,7 @@ use Symfony\Component\HttpKernel\Exception\UnprocessableEntityHttpException;
  * invalide au moment de l'écriture → 422 `{errors: […]}` nommant la ligne, rien écrit.
  */
 #[AsController]
+#[ClubFunction(module: Module::CLUB, audience: Audience::MANAGER)]
 final class ParcImportExecuteController extends AbstractController
 {
     /** Bornes d'abus (cadrage G2) — le corps est refusé AVANT le parse au-delà de la taille. */

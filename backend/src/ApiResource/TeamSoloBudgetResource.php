@@ -7,6 +7,9 @@ namespace App\ApiResource;
 use ApiPlatform\Metadata\ApiProperty;
 use ApiPlatform\Metadata\ApiResource;
 use ApiPlatform\Metadata\GetCollection;
+use App\Access\Audience;
+use App\Access\ClubResource;
+use App\Access\Module;
 use App\Service\SoloBudget;
 use App\State\Provider\TeamSoloBudgetStateProvider;
 use Symfony\Component\Serializer\Attribute\Groups;
@@ -21,6 +24,7 @@ use Symfony\Component\Serializer\Attribute\Groups;
 #[ApiResource(shortName: 'TeamSoloBudget', operations: [
     new GetCollection,
 ], paginationEnabled: false, provider: TeamSoloBudgetStateProvider::class)]
+#[ClubResource(module: Module::PLANNING, read: Audience::MEMBER, write: Audience::MANAGER)]
 class TeamSoloBudgetResource
 {
     /** L'équipe — identifiant de la ligne dans la portée demandée. */
