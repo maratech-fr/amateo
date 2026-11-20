@@ -4,10 +4,10 @@ declare(strict_types=1);
 
 namespace App\Tests\Behat;
 
+use Behat\Gherkin\Node\TableNode;
 use Behat\Hook\AfterScenario;
 use Behat\Step\Given;
 use Behat\Step\Then;
-use Behat\Step\When;
 use RuntimeException;
 
 /**
@@ -18,8 +18,9 @@ use RuntimeException;
  * son id (404 « introuvable » — jamais 403, l'existence n'est pas révélée), ni la supprimer ; même
  * cloison pour les occupations de ses gymnases (ni liste, ni lecture, ni modification, ni
  * suppression ; et ni pose ni déplacement d'une occupation dans un gymnase qui n'est pas le sien :
- * « Gymnase inconnu pour ce club. ») ; et qu'un membre sans rôle de gestion ne modifie rien, ni
- * équipe ni occupation (403, SEC-07).
+ * « Gymnase inconnu pour ce club. ») ; et qu'un membre sans rôle de gestion ne modifie rien : chaque
+ * geste d'écriture du gestionnaire lui est refusé 403 avec son motif (SEC-07). Ce que le membre
+ * LIT et EXPORTE vit dans `un-membre-lit-le-gestionnaire-ecrit.feature` (MemberReadOnlyContext).
  *
  * Le second club et le membre simple sont SEMÉS en base (club + saison + gestionnaire pour l'un,
  * adhésion « membre » pour l'autre) plutôt que par le rail d'inscription : deux vrais tenants sous
@@ -79,8 +80,6 @@ final class TenantIsolationContext extends BaseContext
     private int $readStatus = 0;
 
     private int $deleteStatus = 0;
-
-    private int $memberWriteStatus = 0;
 
     #[Given('le club de démonstration et un autre club, chacun connecté')]
     public function lesDeuxClubsConnectes(): void
@@ -248,16 +247,6 @@ final class TenantIsolationContext extends BaseContext
         $this->assertUnknownVenue('déplacer une occupation dans le gymnase d\'un autre club', $moved, $message);
     }
 
-    #[When('ce membre tente de poser une occupation dans un gymnase du club')]
-    public function ceMembreTenteDePoserUneOccupation(): void
-    {
-        // Corps VALIDE sur une plage libre (un membre lit tout) : c'est le refus de rôle (403) qu'on
-        // prouve, pas un 422 de forme ni de chevauchement.
-        $venue = $this->seasonVenueOfClubA();
-        $free = $this->plageLibre($this->memberToken, $venue, 60, [2, 1, 3, 4, 5, 6, 7]);
-        $this->memberWriteStatus = $this->poseOccupation($this->memberToken, $venue, $free['day'], $free['start'], 60, 'Écriture interdite')['status'];
-    }
-
     #[Given('le club de démonstration et l\'un de ses membres sans rôle de gestion')]
     public function leClubEtUnMembreSimple(): void
     {
@@ -277,27 +266,27 @@ final class TenantIsolationContext extends BaseContext
         $this->memberToken = $this->mintToken($email);
     }
 
-    #[When('ce membre tente de créer une équipe')]
-    public function ceMembreTenteDeCreerUneEquipe(): void
+    /**
+     * Chaque geste d'écriture du gestionnaire, tenté par un membre simple : refusé 403 ET avec son
+     * MESSAGE (un 403 sans le bon motif pourrait venir d'ailleurs — un crédit épuisé, une garde de
+     * démonstration). Les gestes qui visent un planning, une séance ou une collecte portent un
+     * identifiant inconnu : la garde de rôle passe AVANT la lecture, et si elle tombait, la
+     * réponse serait un 404, jamais une écriture sur le club de démonstration partagé. Le
+     * placement vise un week-end passé (rien à placer) pour la même raison.
+     */
+    #[Then('/^chacun de ces gestes lui est refusé \\(403\\), avec ce message :$/u')]
+    public function chacunDeCesGestesLuiEstRefuse(TableNode $table): void
     {
-        // Corps VALIDE (catégorie réelle) pour que la requête franchisse la validation du DTO et
-        // atteigne le gate de rôle : c'est le refus MANAGEMENT (403) qu'on veut prouver, pas un 422
-        // de forme. Un membre lit tout, donc il peut lire les catégories.
-        $categories = $this->apiGet('sport_categories', $this->memberToken);
-        $category = $this->members($categories['json'])[0]['id'] ?? null;
-        if (!\is_string($category) || '' === $category) {
-            throw new RuntimeException('aucune catégorie sportive lisible par le membre');
+        $failures = [];
+        foreach ($table->getColumnsHash() as $row) {
+            $response = $this->memberAttempts($row['geste']);
+            $served = $this->refusalText($response['json']);
+            if (403 !== $response['status'] || $served !== $row['message']) {
+                $failures[] = \sprintf('« %s » : %d « %s » (attendu 403 « %s »)', $row['geste'], $response['status'], $served, $row['message']);
+            }
         }
-
-        $result = $this->apiPost('teams', ['name' => 'Écriture interdite', 'sportCategoryId' => $category, 'priorityTierId' => 1, 'sessionsPerWeek' => 1], $this->memberToken);
-        $this->memberWriteStatus = $result['status'];
-    }
-
-    #[Then('la modification lui est refusée')]
-    public function laModificationLuiEstRefusee(): void
-    {
-        if (403 !== $this->memberWriteStatus) {
-            throw new RuntimeException(\sprintf('un membre sans rôle de gestion aurait dû se voir refuser l\'écriture (403), obtenu %d', $this->memberWriteStatus));
+        if ([] !== $failures) {
+            throw new RuntimeException("un membre sans rôle de gestion n'est pas refusé comme attendu :\n" . implode("\n", $failures));
         }
     }
 
@@ -450,6 +439,71 @@ final class TenantIsolationContext extends BaseContext
         $members = $json['member'] ?? $json;
 
         return array_values(array_filter(\is_array($members) ? $members : [], 'is_array'));
+    }
+
+    /** @return array{status: int, json: array<mixed>} */
+    private function memberAttempts(string $gesture): array
+    {
+        $unknown = $this->uuid();
+
+        return match ($gesture) {
+            'créer une équipe' => $this->apiPost('teams', ['name' => 'Écriture interdite', 'sportCategoryId' => $this->memberReadableCategory(), 'priorityTierId' => 1, 'sessionsPerWeek' => 1], $this->memberToken),
+            'poser une occupation dans un gymnase du club' => $this->memberPosesOccupation(),
+            'générer un planning' => $this->apiPost(\sprintf('schedules/%s/generate', $unknown), [], $this->memberToken),
+            'régénérer un planning' => $this->apiPost(\sprintf('schedules/%s/regenerate', $unknown), [], $this->memberToken),
+            'combler un planning de période' => $this->apiPost(\sprintf('schedules/%s/fill', $unknown), [], $this->memberToken),
+            'valider un planning' => $this->apiPost(\sprintf('schedules/%s/validate', $unknown), [], $this->memberToken),
+            'rouvrir un planning' => $this->apiPost(\sprintf('schedules/%s/reopen', $unknown), [], $this->memberToken),
+            'verrouiller une séance' => $this->apiPost(\sprintf('schedule-slots/%s/manual-edit/lock', $unknown), ['lockLevel' => 'HARD'], $this->memberToken),
+            'placer les matchs' => $this->apiPost('fixtures/place', ['from' => '2020-01-04', 'to' => '2020-01-05'], $this->memberToken),
+            'importer les rencontres' => $this->apiPost('fixtures/import', [], $this->memberToken),
+            'envoyer les conflits aux coachs' => $this->apiPost('fixtures/conflicts/mail-coaches', [], $this->memberToken),
+            'lancer une collecte de doléances' => $this->apiPost(\sprintf('coach_wish_campaigns/%s/send-links', $unknown), [], $this->memberToken),
+            'régler l\'horloge simulée' => $this->apiPost('club/clock', ['date' => '2027-01-04'], $this->memberToken),
+            default => throw new RuntimeException(\sprintf('geste « %s » inconnu du scénario', $gesture)),
+        };
+    }
+
+    /** Corps VALIDE (catégorie réelle) : c'est le refus de rôle qu'on prouve, pas un 422 de forme. */
+    private function memberReadableCategory(): string
+    {
+        $categories = $this->apiGet('sport_categories', $this->memberToken);
+        $category = $this->members($categories['json'])[0]['id'] ?? null;
+        if (!\is_string($category) || '' === $category) {
+            throw new RuntimeException('aucune catégorie sportive lisible par le membre');
+        }
+
+        return $category;
+    }
+
+    /**
+     * Corps VALIDE sur une plage libre (un membre lit tout) : c'est le refus de rôle qu'on prouve,
+     * pas un 422 de forme ni de chevauchement.
+     *
+     * @return array{status: int, json: array<mixed>}
+     */
+    private function memberPosesOccupation(): array
+    {
+        $venue = $this->seasonVenueOfClubA();
+        $free = $this->plageLibre($this->memberToken, $venue, 60, [2, 1, 3, 4, 5, 6, 7]);
+
+        return $this->poseOccupation($this->memberToken, $venue, $free['day'], $free['start'], 60, 'Écriture interdite');
+    }
+
+    /**
+     * Le motif d'un refus, où que la route le range : violations (API Platform), `detail`
+     * (exception HTTP) ou `error` (réponse JSON écrite par le contrôleur).
+     *
+     * @param array<mixed> $json
+     */
+    private function refusalText(array $json): string
+    {
+        $text = $this->messageDuRefus($json);
+        if ('' !== $text) {
+            return $text;
+        }
+
+        return \is_string($json['error'] ?? null) ? $json['error'] : '';
     }
 
     private function uuid(): string

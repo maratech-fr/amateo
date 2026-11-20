@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Tests\Behat\CategoryRuleContext;
 use App\Tests\Behat\ClosurePinsSmallClubContext;
 use App\Tests\Behat\ClosureStraddleContext;
 use App\Tests\Behat\CoachLateRelayContext;
@@ -11,7 +12,10 @@ use App\Tests\Behat\ConflictsToCoachesContext;
 use App\Tests\Behat\ConflictTruthContext;
 use App\Tests\Behat\ConstraintHonoredContext;
 use App\Tests\Behat\DailyCapSmallClubContext;
+use App\Tests\Behat\DeletionCascadeContext;
+use App\Tests\Behat\DemoRegimeContext;
 use App\Tests\Behat\DemoRetainedContext;
+use App\Tests\Behat\DiscoveryCreditContext;
 use App\Tests\Behat\ExportContext;
 use App\Tests\Behat\FbiCorrectionContext;
 use App\Tests\Behat\FbiErrorLedgerContext;
@@ -19,7 +23,9 @@ use App\Tests\Behat\FixtureReviewContext;
 use App\Tests\Behat\InvitationContext;
 use App\Tests\Behat\LeagueValidationContext;
 use App\Tests\Behat\LockContext;
+use App\Tests\Behat\MatchesAwaitSocleContext;
 use App\Tests\Behat\MatchPlacementContext;
+use App\Tests\Behat\MemberReadOnlyContext;
 use App\Tests\Behat\OnboardingContext;
 use App\Tests\Behat\ParcImportContext;
 use App\Tests\Behat\PeriodAutoValidationContext;
@@ -27,6 +33,7 @@ use App\Tests\Behat\PeriodLockSmallClubContext;
 use App\Tests\Behat\PeriodOverlayContext;
 use App\Tests\Behat\PlacedPersonConflictContext;
 use App\Tests\Behat\SeasonGenerationContext;
+use App\Tests\Behat\SeasonTransitionContext;
 use App\Tests\Behat\SeasonWorkLoopContext;
 use App\Tests\Behat\SmallClubSmokeContext;
 use App\Tests\Behat\SoclePlansContext;
@@ -241,5 +248,40 @@ return (new Config)
                 new Suite('invitation')
                     ->withPaths('%paths.base%/features/une-invitation-fait-entrer-dans-le-club.feature')
                     ->withContexts(InvitationContext::class),
+            )
+            ->withSuite(
+                new Suite('saison-suivante')
+                    ->withPaths('%paths.base%/features/preparer-la-saison-suivante-reprend-la-structure.feature')
+                    ->withContexts(SeasonTransitionContext::class),
+            )
+            ->withSuite(
+                new Suite('suppression-en-cascade')
+                    ->withPaths('%paths.base%/features/supprimer-emporte-ce-qui-en-depend.feature')
+                    ->withContexts(DeletionCascadeContext::class),
+            )
+            ->withSuite(
+                new Suite('regle-de-categorie')
+                    ->withPaths('%paths.base%/features/une-regle-de-categorie-suit-ses-equipes.feature')
+                    ->withContexts(CategoryRuleContext::class),
+            )
+            ->withSuite(
+                new Suite('membre-lecteur')
+                    ->withPaths('%paths.base%/features/un-membre-lit-le-gestionnaire-ecrit.feature')
+                    ->withContexts(MemberReadOnlyContext::class),
+            )
+            ->withSuite(
+                new Suite('credits-decouverte')
+                    ->withPaths('%paths.base%/features/en-decouverte-une-sortie-coute-un-credit.feature')
+                    ->withContexts(DiscoveryCreditContext::class),
+            )
+            ->withSuite(
+                new Suite('demo-sans-envoi')
+                    ->withPaths('%paths.base%/features/le-club-de-demonstration-n-envoie-rien-a-un-tiers.feature')
+                    ->withContexts(DemoRegimeContext::class),
+            )
+            ->withSuite(
+                new Suite('matchs-apres-socle')
+                    ->withPaths('%paths.base%/features/les-matchs-attendent-le-planning-de-saison.feature')
+                    ->withContexts(MatchesAwaitSocleContext::class),
             ),
     );
