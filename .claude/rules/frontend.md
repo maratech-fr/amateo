@@ -259,7 +259,7 @@ paths:
   un placement.** RED avant l'implémentation
   ([`frontend-strategy.md`](../../frontend/docs/frontend-strategy.md) §1) ; un composant de pure
   présentation naît sans test, prouvé par capture.
-- **Passe de design `ui-ux-pro-max`** (dans un agent : elle ne MESURE rien, elle TRANCHE contre son
+- **Passe de design `ui-ux-pro-max`** (skill lancé par l'agent `switch` : elle ne MESURE rien, elle TRANCHE contre son
   corpus) dès qu'un écran naît, change d'apparence, **ou qu'une décision d'INTERACTION est arrêtée**
   (ce qui bloque, ce qui attend, ce qui prend le focus, ce qui s'annonce à un lecteur d'écran, ce dont
   on peut sortir). **Public ET interne.** Se lance **AVANT** que la décision soit figée.

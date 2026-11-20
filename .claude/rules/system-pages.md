@@ -69,7 +69,7 @@ paths:
   sur clair / clair sur sombre) : le bouton plein a ses **propres** tokens fond/texte pour rester
   contrasté dans les deux sens — ne pas peindre du blanc sur un accent clair.
 - **Passe de design obligatoire** dès qu'on remanie l'apparence — ce sont des pages **publiques** :
-  agent `ui-ux-pro-max`, bornée à l'apparence, elle ne valide rien. ⚠ **Le contraste WCAG se
+  skill `ui-ux-pro-max`, lancé par l'agent `switch`, bornée à l'apparence, elle ne valide rien. ⚠ **Le contraste WCAG se
   vérifie dans un vrai navigateur**, dans les DEUX thèmes (jsdom n'atteste rien).
 - ⚠ **Le bloc `/config.js` DOIT vivre dans un `route {}`.** Hors `route`, Caddy réordonne les
   directives selon SON ordre canonique, où **`rewrite` passe AVANT `handle`** : le rewrite global

@@ -202,7 +202,7 @@ paths:
   et aiguille par domaine (`docs/ops/Caddyfile.example` — `file_server` pour la page, `reverse_proxy`
   pour l'app). Les deux nginx du compose écoutent en 80 DERRIÈRE lui.
 - **Passe de design obligatoire** dès qu'on remanie l'apparence — c'est une page **publique** :
-  agent `ui-ux-pro-max`, bornée à l'apparence, elle ne valide rien
+  skill `ui-ux-pro-max`, lancé par l'agent `switch`, bornée à l'apparence, elle ne valide rien
   (`../../frontend/docs/frontend-strategy.md`, règle du 2026-08-11).
 - ⚠ **Le contraste WCAG se vérifie dans un vrai navigateur**, jamais à l'œil ni en jsdom — les
   couleurs sont en `oklch`, la conversion vers sRGB passe par un canvas (P5-5 a corrigé des
