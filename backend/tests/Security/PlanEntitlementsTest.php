@@ -12,11 +12,11 @@ use App\Entity\SportCategory;
 use App\Entity\SubscriptionPlan;
 use App\Entity\Team;
 use App\Entity\User;
+use App\Enum\ClubRole;
 use App\Enum\SeasonStatus;
-use App\EventListener\CreditBudgetSubscriber;
 use App\Exception\ImportRejectedException;
 use App\Service\Basketball\FfbbExcelImporter;
-use App\Service\OutputCreditLedger;
+use App\Service\ManagementAccessGuard;
 use App\Service\PlanEntitlements;
 use App\Service\SeasonResolver;
 use App\Tests\ChoosesPlanVersionTrait;
@@ -35,6 +35,10 @@ use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpKernel\Event\ResponseEvent;
 use Symfony\Component\HttpKernel\HttpKernelInterface;
+use Symfony\Component\HttpKernel\KernelEvents;
+use Symfony\Component\RateLimiter\RateLimiterFactory;
+use Symfony\Component\Routing\RouterInterface;
+use Symfony\Contracts\EventDispatcher\EventDispatcherInterface;
 
 /**
  * NR P1-3 PR B — LE modèle d'offres, gardé. Deux axes structurants (§7.1) :
@@ -50,11 +54,14 @@ use Symfony\Component\HttpKernel\HttpKernelInterface;
  *
  * Plus l'invisibilité de la bêta (superadmin-only) jusqu'en GET item (finding revue sécu).
  *
- * L'ENFORCEMENT du décompte vit dans {@see CreditBudgetSubscriber} : le refus (kernel.request)
- * s'observe par HTTP réel (il précède le contrôleur, donc AUCUN moteur n'est touché) ; le
- * décompte (kernel.response, 2xx) s'observe en pilotant le subscriber sur une réponse
- * synthétique — car les 4 routes de sortie appellent toutes le moteur/worker en cas de 2xx
- * (transport `sync://` en test), inatteignable ici.
+ * Le refus « crédits épuisés » vit dans le contrôle central (`ClubAccessListener`, kernel.request
+ * priorité 4, APRÈS le rôle) : il s'observe par HTTP réel (il précède le contrôleur, AUCUN moteur
+ * n'est touché). Le décompte à la RÉPONSE ne vaut que pour les sorties synchrones (tableur, PDF des
+ * matchs) : il s'observe en envoyant une réponse synthétique à TOUS les écouteurs de
+ * `kernel.response` (le 2xx réel toucherait le worker de rendu). Une sortie asynchrone (solve,
+ * placement, PDF du planning) se décompte à l'obtention, dans le worker :
+ * `MessageHandler/GenerationCreditIsPartOfTheResultTest`, `PlacementCreditIsPartOfTheResultTest`,
+ * `PdfCreditIsTakenOnDeliveryTest`.
  */
 #[Group('phase1')]
 #[Group('integration')]
@@ -93,6 +100,58 @@ final class PlanEntitlementsTest extends WebTestCase
         self::assertSame(403, $this->post($ctx['user'], '/api/schedules/' . self::DUMMY_SCHEDULE_ID . '/export-xlsx'), 'exporter un XLSX sans crédit doit être refusé');
         // Même livrable de sortie : sans cette route dans le pool, l'export des matchs contournerait le mur.
         self::assertSame(403, $this->post($ctx['user'], '/api/fixtures/export-pdf'), 'exporter les matchs sans crédit doit être refusé');
+        // Le comblement d'une période lance un solve : c'est une sortie payante, refusée avant la file.
+        self::assertSame(403, $this->post($ctx['user'], '/api/schedules/' . self::DUMMY_SCHEDULE_ID . '/fill'), 'combler sans crédit doit être refusé avant la mise en file');
+        self::assertStringContainsString('gratuites', (string) $this->client->getResponse()->getContent(), 'le refus du comblement porte le message des crédits');
+        self::assertSame(403, $this->post($ctx['user'], '/api/schedules/' . self::DUMMY_SCHEDULE_ID . '/regenerate'), 'régénérer sans crédit doit être refusé');
+    }
+
+    /**
+     * « Charger une version » ne lance aucun calcul : ce n'est pas une sortie, un club à sec la garde
+     * (décision fondateur Q13). Le refus éventuel vient du contrôleur (404 sur un id inconnu), jamais
+     * du mur des crédits.
+     */
+    public function testLoadingAVersionIsNotAnOutput(): void
+    {
+        $ctx = $this->seedClub(credits: 10);
+
+        self::assertNotSame(403, $this->post($ctx['user'], '/api/schedules/' . self::DUMMY_SCHEDULE_ID . '/regenerate-from'), 'charger une version n\'est jamais refusé par le mur des crédits');
+    }
+
+    /**
+     * E10 — un Membre d'un club Découverte À SEC qui appelle une sortie réservée au gestionnaire
+     * reçoit le refus du RÔLE, pas celui des crédits : le rôle se juge d'abord (avant le lot 2, le
+     * mur des crédits répondait le premier).
+     */
+    public function testAMemberOfAnExhaustedClubIsRefusedForTheRoleNotTheCredits(): void
+    {
+        $ctx = $this->seedClub(credits: 10);
+        $member = $this->addActiveMember($ctx['club']->getId());
+
+        foreach (['/api/schedules/' . self::DUMMY_SCHEDULE_ID . '/generate', '/api/schedules/' . self::DUMMY_SCHEDULE_ID . '/fill', '/api/fixtures/place'] as $uri) {
+            self::assertSame(403, $this->post($member, $uri), $uri . ' : un Membre est refusé');
+            $body = $this->readableBody();
+            self::assertStringContainsString(ManagementAccessGuard::REFUSAL, $body, $uri . ' : le refus nomme le rôle');
+            self::assertStringNotContainsString('gratuites', $body, $uri . ' : le refus ne parle pas des crédits');
+        }
+    }
+
+    /**
+     * Un Membre qui lance le comblement est refusé (403) sans rien entamer : ni crédit du club, ni
+     * une unité du plafond horaire de génération du club.
+     */
+    public function testAMemberLaunchingTheFillTakesNeitherACreditNorTheHourlyCap(): void
+    {
+        $ctx = $this->seedClub(credits: 0);
+        $member = $this->addActiveMember($ctx['club']->getId());
+        $bucket = 'club-' . $ctx['club']->getId();
+
+        self::assertSame(403, $this->post($member, '/api/schedules/' . self::DUMMY_SCHEDULE_ID . '/fill'), 'combler est réservé au gestionnaire');
+        self::assertStringContainsString(ManagementAccessGuard::REFUSAL, $this->readableBody());
+        self::assertSame(0, $this->creditsOf($ctx['club']->getId()), 'le refus d\'un Membre ne prend aucun crédit');
+        $limiter = self::getContainer()->get('limiter.schedule_generation');
+        \assert($limiter instanceof RateLimiterFactory);
+        self::assertSame(5, $limiter->create($bucket)->consume(0)->getRemainingTokens(), 'le refus d\'un Membre n\'entame pas le plafond du club');
     }
 
     /** L'export des matchs consomme le pool commun au succès seulement : un refus 422 ne brûle rien. */
@@ -202,24 +261,29 @@ final class PlanEntitlementsTest extends WebTestCase
 
     // ──────────────────────── Pool de crédits — décompte (subscriber) ────────────────────────
 
-    /** Un 2xx (202 accepté) décompte ; un refus amont (409 socle) ne brûle rien. */
+    /**
+     * Le crédit se prend quand la sortie est OBTENUE : une demande acceptée (202 mise en file) ne
+     * décompte rien — génération, régénération, comblement, placement, PDF du planning se décomptent
+     * dans le worker, à l'obtention. Seules les sorties synchrones (tableur, PDF des matchs) se
+     * décomptent à la réponse, au 2xx seulement ; un refus amont (409, 422) ne brûle rien.
+     */
     public function testAcceptedDispatchDecrementsButUpstreamRefusalDoesNot(): void
     {
         $ctx = $this->seedClub(credits: 0);
 
-        $this->fireResponse($ctx, 'generate_schedule', 409); // 409 SocleGuard en amont
-        self::assertSame(0, $this->creditsOf($ctx['club']->getId()), 'un 409 amont ne doit rien décompter');
+        foreach (['generate_schedule', 'api_schedule_regenerate', 'api_schedule_fill', 'api_fixtures_place', 'export_pdf'] as $queued) {
+            $this->fireResponse($ctx, $queued, 202);
+            self::assertSame(0, $this->creditsOf($ctx['club']->getId()), $queued . ' : une demande mise en file (202) ne décompte rien, le crédit se prend à l\'obtention');
+        }
 
-        $this->fireResponse($ctx, 'generate_schedule', 202); // dispatch accepté = LA sortie
-        self::assertSame(1, $this->creditsOf($ctx['club']->getId()), 'un 202 accepté décompte une sortie');
+        $this->fireResponse($ctx, 'export_xlsx', 409);
+        $this->fireResponse($ctx, 'export_xlsx', 422);
+        self::assertSame(0, $this->creditsOf($ctx['club']->getId()), 'un refus amont d\'une sortie synchrone ne décompte rien');
 
-        // L'export PDF (202) décompte aussi à la réponse. Le PLACEMENT, lui, N'EST PLUS décompté
-        // à la réponse (son 202 = sortie enfilée, pas produite) : le worker le décompte au
-        // COMPLETED (couvert par PlaceMatchesHandlerTest) — firer sa réponse ne doit rien brûler.
-        $this->fireResponse($ctx, 'api_fixtures_place', 202);
-        self::assertSame(1, $this->creditsOf($ctx['club']->getId()), 'le 202 du placement ne décompte pas à la réponse');
-        $this->fireResponse($ctx, 'export_pdf', 202);
-        self::assertSame(2, $this->creditsOf($ctx['club']->getId()), 'chaque sortie synchrone réussie consomme un crédit');
+        $this->fireResponse($ctx, 'export_xlsx', 200);
+        self::assertSame(1, $this->creditsOf($ctx['club']->getId()), 'le tableur servi décompte à la réponse');
+        $this->fireResponse($ctx, 'api_fixtures_export_pdf', 200);
+        self::assertSame(2, $this->creditsOf($ctx['club']->getId()), 'le PDF des matchs servi décompte à la réponse');
     }
 
     /** Payant, bêta et démo : jamais bridés (outputBudget), jamais décomptés, jamais refusés business. */
@@ -234,8 +298,8 @@ final class PlanEntitlementsTest extends WebTestCase
         foreach (['essentiel', 'club', 'grand-club', 'beta'] as $code) {
             $paid = $this->seedClub($code, credits: 50);
             self::assertFalse($entitlements->outputBudget($paid['club'], $paid['season'])['restricted'], \sprintf('l\'offre %s n\'est jamais bridée', $code));
-            // Une sortie réussie ne décompte pas une offre non bridée.
-            $this->fireResponse($paid, 'generate_schedule', 202);
+            // Une sortie servie ne décompte pas une offre non bridée.
+            $this->fireResponse($paid, 'export_xlsx', 200);
             self::assertSame(50, $this->creditsOf($paid['club']->getId()), \sprintf('%s ne décompte jamais', $code));
             // Et la porte HTTP n'oppose pas de refus business (403) à un plein compteur.
             self::assertNotSame(403, $this->post($paid['user'], '/api/schedules/' . self::DUMMY_SCHEDULE_ID . '/generate'), \sprintf('%s ne doit jamais être refusé business', $code));
@@ -549,10 +613,35 @@ final class PlanEntitlementsTest extends WebTestCase
         return $user;
     }
 
-    /** Pilote le subscriber sur une réponse synthétique (le 2xx réel toucherait le moteur). */
+    /** Une sortie synchrone servie (le tableur) : elle décompte à la réponse. */
     private function consumeOneCredit(string $clubId, string $seasonId): void
     {
-        $this->fireResponseFor($clubId, $seasonId, 'generate_schedule', 202);
+        $this->fireResponseFor($clubId, $seasonId, 'export_xlsx', 200);
+    }
+
+    /** Un Membre ACTIF (rôle hors gestion) du club, avec son compte. */
+    private function addActiveMember(string $clubId): User
+    {
+        $hasher = self::getContainer()->get('security.user_password_hasher');
+        $uid = uniqid('', true);
+
+        $user = new User;
+        $user->setEmail('pe-member-' . $uid . '@test.com');
+        $user->setFirstName('Membre');
+        $user->setLastName('Club');
+        $user->setPasswordHash($hasher->hashPassword($user, 'pass'));
+        $this->em->persist($user);
+        $this->em->flush();
+
+        $membership = new ClubUser;
+        $membership->setClubId($clubId);
+        $membership->setUserId($user->getId());
+        $membership->setRole(ClubRole::MEMBER->value);
+        $membership->setIsActive(true);
+        $this->em->persist($membership);
+        $this->em->flush();
+
+        return $user;
     }
 
     /** @param array{user: User, club: Club, season: Season} $ctx */
@@ -561,22 +650,28 @@ final class PlanEntitlementsTest extends WebTestCase
         $this->fireResponseFor($ctx['club']->getId(), $ctx['season']->getId(), $route, $status);
     }
 
+    /**
+     * Une réponse synthétique de la route nommée, envoyée à TOUS les écouteurs de `kernel.response`
+     * (quel que soit celui qui décompte) : la requête porte ce que le routeur et le locataire y
+     * posent (`_route`, `_controller`, la ressource, `_club_id`, `_season_id`).
+     */
     private function fireResponseFor(string $clubId, string $seasonId, string $route, int $status): void
     {
-        $this->scopeGucToClub($clubId); // le subscriber lit la Season (RLS)
-        $subscriber = new CreditBudgetSubscriber(
-            self::getContainer()->get(PlanEntitlements::class),
-            $this->em,
-            new OutputCreditLedger($this->em->getConnection()),
-        );
+        $this->scopeGucToClub($clubId); // l'écouteur lit la Season (RLS)
+        $router = self::getContainer()->get(RouterInterface::class);
+        \assert($router instanceof RouterInterface);
+        $compiled = $router->getRouteCollection()->get($route);
+        self::assertNotNull($compiled, \sprintf('la route %s existe', $route));
+        $path = $router->generate($route, str_contains($compiled->getPath(), '{id}') ? ['id' => self::DUMMY_SCHEDULE_ID] : []);
 
-        $request = new Request;
-        $request->attributes->set('_route', $route);
+        $request = Request::create($path, 'POST');
+        $request->attributes->add($router->matchRequest($request));
         $request->attributes->set('_club_id', $clubId);
         $request->attributes->set('_season_id', $seasonId);
 
-        $event = new ResponseEvent(self::$kernel, $request, HttpKernelInterface::MAIN_REQUEST, new Response('', $status));
-        $subscriber->onKernelResponse($event);
+        $dispatcher = self::getContainer()->get('event_dispatcher');
+        \assert($dispatcher instanceof EventDispatcherInterface);
+        $dispatcher->dispatch(new ResponseEvent(self::$kernel, $request, HttpKernelInterface::MAIN_REQUEST, new Response('', $status)), KernelEvents::RESPONSE);
 
         // L'incrément est un UPDATE SQL brut : il court-circuite l'EM. En PROD chaque requête
         // a un EM neuf ; ici le kernel de test est partagé entre seed et requête HTTP, donc on
