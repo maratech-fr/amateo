@@ -53,6 +53,7 @@ dépôt**.
   (connexion → saisie → déclenchement → vérité). Une feature = une promesse métier.
 - **Ne doit jamais** : porter à lui seul une logique à nombreux cas (→ test nommé par le plan), ni préparer son décor par SQL
   direct (sauf nettoyage/pointage), ni dépendre d'une API externe réelle (FFBB).
+- ⚠ **Piège Gherkin** : une ligne de description libre sous `Scénario:` ne commence jamais par un mot-clé d'étape (`Quand`, `Et`, `Alors`, `Étant donné`, `Soit`, `Mais`, `Lorsque`, `Donc`) — le parseur la lit comme une étape : zéro scénario joué, suite rouge, que Behat attrape seul (`vendor/bin/behat --dry-run <feature>` la détecte sans stack).
 - **Exemple** : `generation-du-planning-de-saison.feature` (le seul smoke plein format A→Z).
 
 ### E2E Playwright (`frontend/tests/e2e/`, vraie stack)
@@ -369,6 +370,7 @@ ne part jamais sans remplaçant cité.
   uniques par run + DELETE API en `finally` ; `storageState` superadmin unique par run (jamais de
   login par spec → quota `admin_auth`) ; jamais `networkidle` (SSE) ni `waitForTimeout` à sec ;
   re-baseline visuelle par `visual-baselines.yml`.
+- **Locators scopés** : un nom générique (`.first()`, `link /^Importer/`) prend le premier élément de la PAGE, pas de la zone visée → scoper au conteneur (`<nav>` nommé, `aria-controls`) ; les options d'une liste déroulante vivent dans un portail : `page.getByRole("listbox").getByRole("option")`. Un compteur lu avant la fin de sa requête rend 0 en silence : attendre sa forme finale. Changer les DÉFAUTS d'un écran casse les scénarios qui créent des données « neutres » : chercher aussi les contrôles supprimés. Le témoin positif se choisit écran par écran, prouvé `fichier:ligne`.
 - **Pièges d'image** : l'image tooling COPIE le code (la rebâtir avant Vitest) ; le service
   `frontend` :8081 sert un `dist` CUIT (rebuild + recreate avant un e2e qui doit voir la modif).
 

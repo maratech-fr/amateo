@@ -392,6 +392,12 @@ survive is naturally bounded by a modal's lifetime.
     Optional arguments: `SPEC=` (paths relative to `/app/frontend`), `GREP=` (Playwright regex),
     `REPEAT=1..10`, `RETRIES=0..2`, `IGNORE_SNAPSHOTS=1` — hard caps checked when the Makefile
     loads; details in `docs/testing/testing-strategy.md`.
+14. **A link that must arrive with filters carries them in the URL, and the URL wins over the
+    store.** The target screen seeds its store from the URL in an effect (Calendrier:
+    `useCalendarUrlSync`); state set in the store before navigating is overwritten by that seed.
+    Build the query with the pure encode functions and navigate to `{ pathname, search }`. Test the
+    EFFECT, not the call site: the navigation target (`location.search`) AND the target screen
+    rendered at that URL with a deliberately contrary store — red on the old code.
 
 ---
 
