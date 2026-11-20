@@ -358,7 +358,6 @@ final class CreditsContext extends BaseContext
         if (202 !== $launched['status']) {
             throw new RuntimeException(\sprintf('la demande d\'export a répondu %d (202 attendu)', $launched['status']));
         }
-        $this->waitUntilPdfSettles($this->drafts['A']);
     }
 
     #[Then('le fichier est prêt et le club n\'a utilisé aucun crédit de plus, sans plafond')]

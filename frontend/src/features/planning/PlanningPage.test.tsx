@@ -198,7 +198,8 @@ vi.mock("@/features/planning/lib/scheduleStream", () => ({
 }));
 
 const { meState, renameSpy, plansState, conflictsState, reservationsState, teamOverridesState, capacityState, capacityGateEnabled } = vi.hoisted(() => ({
-  meState: { chosenScheduleId: null as string | null, canManage: true },
+  // Lot 2 PR 4 : les droits de l'offre servis par `/api/me` (`club.entitlements`) ; absents = non résolus.
+  meState: { chosenScheduleId: null as string | null, canManage: true, entitlements: undefined as Record<string, unknown> | undefined },
   renameSpy: vi.fn(),
   // Typé sur le VRAI contrat : un type inline recopié laisserait passer un champ ajouté à
   // `SchedulePlan` sans que ces fixtures soient recalées (revue #339 round 3).
@@ -276,7 +277,7 @@ function makeConflicts(partial: Partial<EntryConflictsResponse> = {}): EntryConf
 vi.mock("@/shared/session/queries", () => ({
   useMe: () => ({
     data: {
-      id: "u1", membershipStatus: "active", role: "admin", club: { id: "c", name: "C" },
+      id: "u1", membershipStatus: "active", role: "admin", club: { id: "c", name: "C", entitlements: meState.entitlements },
       seasonPlan: { id: "plan-1", name: "Planning A", chosenScheduleId: meState.chosenScheduleId, hasFinishedVersion: true },
       seasons: [{ id: "sn1", name: "2025-2026", startDate: "2025-09-01", endDate: "2026-06-30", isCurrent: true, isReadonly: false }], currentSeasonId: "sn1",
     },
@@ -296,6 +297,7 @@ const workVersion: Schedule[] = [{ id: SID, name: "Planning A", status: "COMPLET
 beforeEach(() => {
   meState.chosenScheduleId = null;
   meState.canManage = true;
+  meState.entitlements = undefined;
   renameSpy.mockClear();
   plansState.plans = [];
   conflictsState.data = undefined;
@@ -3238,6 +3240,57 @@ describe("PlanningPage — séances sans coach sur la version affichée", () => 
 
     await vi.waitFor(() => expect(vi.mocked(getPlacedConflicts)).toHaveBeenCalled());
     expect(screen.queryByText(/sans coach/)).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * Promesse (lot 2 PR 4) : le comblement est une sortie payante en Découverte — son bouton porte le
+ * solde servi (« Combler automatiquement (N) »), à 0 il est désactivé et dit pourquoi ; hors
+ * Découverte bridée (offre payante, bêta, démo : `creditsMax` nul), aucun compteur. Solde et verdict
+ * viennent du SERVEUR (`/api/me`) ; le refus 403 reste la garde (`PlanEntitlementsTest`).
+ */
+describe("PlanningPage — « Combler automatiquement » porte le solde de crédits", () => {
+  const decouverte = (used: number) => ({ planCode: "decouverte", planName: "Découverte", maxTeams: null, teamsUsed: 1, creditsMax: 10, creditsUsed: used, canGenerate: used < 10, canPlaceMatches: used < 10, canExportPdf: used < 10, seasonTransition: false });
+
+  function renderPeriodAdrift() {
+    vi.mocked(listSchedules).mockResolvedValue([
+      { id: SID, name: "Reprise été V1", status: "COMPLETED", score: null, createdAt: "2026-01-01T00:00:00Z", updatedAt: "2026-01-01T00:00:00Z", planType: "HOLIDAY", schedulePlanId: "ete-plan" },
+    ]);
+    plansState.plans = [{ id: "ete-plan", type: "HOLIDAY", name: "Reprise d'été", startDate: "2026-08-17", calendarEntryId: "e-ete", chosenScheduleId: null, teamSelectionInitialized: true }];
+    vi.mocked(getTeams).mockResolvedValue([{ id: "team-1", name: "U11", sportCategoryId: "cat-1", priorityTierId: 1, tierOrder: 0, sessionsPerWeek: 2 }]);
+    vi.mocked(fillSchedule).mockResolvedValue({ id: "sched-fill" });
+    usePlanningStore.setState({ selectedScheduleId: SID, viewMode: "gymnase" });
+    renderWithProviders(<PlanningPage />);
+  }
+
+  it("Découverte, 3 crédits restants : « Combler automatiquement (3) », actif", async () => {
+    const user = userEvent.setup();
+    meState.entitlements = decouverte(7);
+    renderPeriodAdrift();
+
+    await user.click(await screen.findByRole("button", { name: `${PLANNING_TEXTS.fillAutomatically} (3)` }));
+
+    await vi.waitFor(() => expect(vi.mocked(fillSchedule)).toHaveBeenCalledWith(SID));
+  });
+
+  it("Découverte, 0 crédit : « Combler automatiquement (0) » désactivé, la raison dite", async () => {
+    const user = userEvent.setup();
+    meState.entitlements = decouverte(10);
+    renderPeriodAdrift();
+
+    const button = await screen.findByRole("button", { name: `${PLANNING_TEXTS.fillAutomatically} (0)` });
+    expect(button).toHaveAttribute("aria-disabled", "true");
+    expect(button).toHaveAccessibleDescription(PLANNING_TEXTS.fillNoCreditLeft);
+    await user.click(button);
+
+    expect(vi.mocked(fillSchedule)).not.toHaveBeenCalled();
+  });
+
+  it("offre payante, bêta ou démo (aucun pool) : le bouton n'a pas de compteur", async () => {
+    meState.entitlements = { ...decouverte(0), planCode: "essentiel", planName: "Essentiel", creditsMax: null };
+    renderPeriodAdrift();
+
+    expect(await screen.findByRole("button", { name: PLANNING_TEXTS.fillAutomatically })).toBeEnabled();
   });
 });
 

@@ -56,4 +56,17 @@ describe("CreditBadge", () => {
     expect(link.getAttribute("aria-label")).toMatch(/3 sur 10/);
     expect(link.getAttribute("aria-label")).toMatch(/crédit/i);
   });
+
+  /**
+   * Lot 2 PR 4, décision fondateur Q4 — combler un planning de période est désormais une sortie
+   * payante : l'explication de la pastille (survol et lecteur d'écran) nomme le comblement parmi
+   * ce qui consomme un crédit, sinon le solde baisse sans que rien ne l'ait annoncé.
+   */
+  it("l'explication de la pastille nomme le comblement parmi ce qui coûte un crédit", () => {
+    credits.current = view(3);
+    renderBadge();
+    const link = screen.getByRole("link");
+    expect(link.getAttribute("title")).toMatch(/combl/i);
+    expect(link).toHaveAccessibleName(/combl/i);
+  });
 });

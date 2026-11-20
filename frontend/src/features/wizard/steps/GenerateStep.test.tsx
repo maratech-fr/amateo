@@ -293,6 +293,43 @@ describe("GenerateStep — un run FAILED survit au retour sur l'étape (dérivé
   });
 });
 
+/**
+ * Lot 2 PR 4 — le crédit d'une génération se prend quand la version est PRÊTE : à la fin d'une
+ * génération de période comme de saison, l'étape relit le solde (`["me"]`), sinon la pastille et
+ * « Combler automatiquement (N) » montreraient un solde d'avant la sortie.
+ */
+describe("GenerateStep — le solde se relit à la fin d'une génération", () => {
+  function renderWithSpy() {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const invalidate = vi.spyOn(qc, "invalidateQueries");
+    render(
+      <QueryClientProvider client={qc}>
+        <GenerateStep />
+      </QueryClientProvider>,
+    );
+    return invalidate;
+  }
+
+  it("mode période : une version de la période terminée relit le solde", async () => {
+    h.mode = "period";
+    h.entryId = "entry-1";
+    h.planId = "plan-p";
+    h.schedules = [{ id: "ov-1", status: "COMPLETED", createdAt: "2026-09-10T00:00:00Z", planType: "CLOSURE", schedulePlanId: "plan-p" }];
+
+    const invalidate = renderWithSpy();
+
+    await waitFor(() => expect(invalidate).toHaveBeenCalledWith({ queryKey: ["me"] }));
+  });
+
+  it("mode saison : une version de saison terminée relit le solde (NR)", async () => {
+    h.schedules = [{ id: "s-1", status: "COMPLETED", createdAt: "2026-09-10T00:00:00Z", planType: "SEASON", schedulePlanId: "season-plan" }];
+
+    const invalidate = renderWithSpy();
+
+    await waitFor(() => expect(invalidate).toHaveBeenCalledWith({ queryKey: ["me"] }));
+  });
+});
+
 describe("GenerateStep — mode saison : rien ne change (NR)", () => {
   it("l'écran embarqué de saison n'a pas de portée (scopePlanId nul)", () => {
     h.mode = "season";

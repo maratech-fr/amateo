@@ -709,4 +709,33 @@ describe("planning queries — useScheduleExport : le polling ne retient que l'U
       vi.useRealTimers();
     }
   });
+
+  /**
+   * Lot 2 PR 4 — le crédit du PDF se prend quand le fichier est LIVRÉ (dans le worker), plus à la
+   * demande : une fois le fichier téléchargé, l'écran relit le solde (`["me"]`) — sinon la pastille
+   * resterait sur le solde d'avant l'export.
+   */
+  it("PDF livré → le solde de crédits se relit", async () => {
+    vi.useFakeTimers();
+    try {
+      const client = makeClient();
+      const invalidate = vi.spyOn(client, "invalidateQueries");
+      vi.mocked(planningApi.exportSchedulePdf).mockResolvedValue({});
+      vi.mocked(planningApi.getSchedule).mockResolvedValueOnce(completed("/api/schedules/sched-1/export-pdf/schedule-sched-1-all.pdf"));
+
+      const { result } = renderHook(() => useScheduleExport("sched-1", "mon-planning"), { wrapper: wrapperFor(client) });
+
+      let finished!: Promise<void>;
+      await act(async () => {
+        finished = result.current.run("pdf", null);
+        await vi.advanceTimersByTimeAsync(1500);
+      });
+      await finished;
+
+      expect(download).toHaveBeenCalledTimes(1);
+      expect(invalidate).toHaveBeenCalledWith({ queryKey: ["me"] });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
