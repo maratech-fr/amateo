@@ -88,7 +88,7 @@ export function computeReservationWarnings(reservations: Reservation[], teams: T
     // quitté cet écran : c'est une INCOHÉRENCE, plus un avertissement, et le verdict est
     // rendu par le SERVEUR (`ValidateConstraintsController::overBookedTeamBlockers`, où
     // vivent déjà les bloqueurs). Le laisser ici en warning ferait deux vérités : l'écran
-    // dirait « à surveiller » pendant que la porte refuse de s'ouvrir (§7.2 pt 2).
+    // dirait « à surveiller » pendant que la porte refuse de s'ouvrir.
     const perDay = new Map<number, number>();
     for (const r of group) {
       perDay.set(r.dayOfWeek, (perDay.get(r.dayOfWeek) ?? 0) + 1);

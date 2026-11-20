@@ -11,7 +11,7 @@ use DateTimeImmutable;
  * THE rule « which training calendar applies on a given date » (ADR-0002),
  * extracted from MatchConflictDetector so every consumer shares one truth
  * (P1-4 PR B: the venue-unavailability impact needs it too — two copies of a
- * capture rule inevitably diverge, §7.2.1).
+ * capture rule inevitably diverge).
  *
  * An active period covering the date CAPTURES it — its overlay (may be null →
  * no training at all, a closure) wins. Several periods may cover the same date

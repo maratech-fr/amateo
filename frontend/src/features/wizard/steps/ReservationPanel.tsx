@@ -142,7 +142,7 @@ export function ReservationPanel({
           bloquent PLUS la génération (`OrphanPinGuard` les ignore : le solveur ne les
           verra jamais) et elles sont CONSERVÉES — réactiver rend la saisie telle quelle.
           L'écran reste atteignable pour le geste CORRECTIF (retirer), fermé au geste
-          fautif (ajouter) : §7.2 pt 3. L'ancien texte annonçait un blocage qui n'existe
+          fautif (ajouter). L'ancien texte annonçait un blocage qui n'existe
           plus — le laisser aurait fait courir le gestionnaire après un faux problème. */}
       {/* P2-37 D6 — deux motifs, deux textes : entièrement fermé (fermeture datée, on ajuste la
           fermeture) vs désactivé « override » (on réactive le gymnase). Les deux conservent les

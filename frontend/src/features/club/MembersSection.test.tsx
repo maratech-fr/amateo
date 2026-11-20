@@ -7,7 +7,7 @@ import type { MembersResponse } from "@/features/auth/api";
 
 // On mocke le module API VOISIN (auth/api) et on monte les VRAIS hooks react-query
 // (queries.ts) sur un QueryClient réel — le test garde donc la logique de lecture,
-// d'invalidation et de restitution d'erreur, pas seulement le câblage (règle §7.2).
+// d'invalidation et de restitution d'erreur, pas seulement le câblage.
 const api = vi.hoisted(() => ({
   getMembers: vi.fn<() => Promise<MembersResponse>>(),
   changeMemberRole: vi.fn().mockResolvedValue({}),

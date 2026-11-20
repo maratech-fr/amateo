@@ -12,7 +12,7 @@ import { slotKey } from "./reservationSlots";
  * hors grille n'a aucune case où s'afficher. Le récap est le seul endroit qui les liste
  * (il boucle sur les réservations), c'est donc là que le geste correctif doit vivre.
  *
- * Fonction PURE : la règle se teste pour elle-même, pas à travers un écran (§7.2 pt 5).
+ * Fonction PURE : la règle se teste pour elle-même, pas à travers un écran.
  *
  * ⚠️ MIROIR DÉCLARÉ (régime 2, P4-88) — DEUX prédicats, tous deux en parité MÉCANIQUE avec
  * `App\Service\OrphanPinGuard` (cas partagés `orphanReservations.parity.json`, gardés par
