@@ -4,18 +4,18 @@ declare(strict_types=1);
 
 namespace App\MessageHandler;
 
-use App\Entity\CalendarEntry;
 use App\Entity\Club;
 use App\Entity\Schedule;
-use App\Entity\ScheduleSlotTemplate;
 use App\Entity\Season;
 use App\Enum\ScheduleDiagnosticSeverity;
 use App\Enum\ScheduleStatus;
+use App\Exception\EngineRequestNotComposable;
 use App\Exception\EngineRequestRejectedException;
 use App\Message\GenerateScheduleMessage;
 use App\Service\ClubGenerationLock;
 use App\Service\DevScheduleReportWriter;
 use App\Service\EngineClient;
+use App\Service\EngineRequestComposer;
 use App\Service\ScheduleConstraintBuilder;
 use App\Service\ScheduleDiagnosticsRecorder;
 use App\Service\SchedulePlanProvisioner;
@@ -27,7 +27,6 @@ use App\Service\StructureSnapshotter;
 use App\Service\TenantConnectionContext;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
-use LogicException;
 use Psr\Log\LoggerInterface;
 use Symfony\Component\Messenger\Attribute\AsMessageHandler;
 use Symfony\Component\Messenger\Exception\RecoverableMessageHandlingException;
@@ -62,9 +61,15 @@ final class GenerateScheduleHandler
      */
     private const int LOCK_TTL_MARGIN_SECONDS = 60;
 
+    private EngineRequestComposer $requestComposer;
+
+    /**
+     * `$requestComposer` est injecté par le conteneur ; absent (handler construit à la main par un
+     * test), il est composé sur le même constructeur de contraintes et le même provisionneur.
+     */
     public function __construct(
         private EntityManagerInterface $entityManager,
-        private ScheduleConstraintBuilder $constraintBuilder,
+        ScheduleConstraintBuilder $constraintBuilder,
         private ScheduleResultImporter $resultImporter,
         private EngineClient $engineClient,
         private ScheduleProgressPublisher $progressPublisher,
@@ -77,7 +82,10 @@ final class GenerateScheduleHandler
         private ?LoggerInterface $logger = null,
         private ?DevScheduleReportWriter $devReportWriter = null,
         private ?SolverMetricsRecorder $metricsRecorder = null,
-    ) {}
+        ?EngineRequestComposer $requestComposer = null,
+    ) {
+        $this->requestComposer = $requestComposer ?? new EngineRequestComposer($entityManager, $constraintBuilder, $schedulePlanProvisioner);
+    }
 
     public function __invoke(GenerateScheduleMessage $message): void
     {
@@ -213,16 +221,12 @@ final class GenerateScheduleHandler
 
     private function generate(Schedule $schedule, GenerateScheduleMessage $message): void
     {
-        // Overlay (palier B): build from the period entry instead of the base plan.
-        // ADR-0002 C4 : le type de build se dérive du PLAN (plan.type), plus de
-        // Schedule.calendarEntryId. Un schedule sans plan LÈVE (periodEntryIdOf) —
-        // une version sans plan ne doit pas exister (ruling 2026-07-17) ; l'exception
-        // remonte à handleUnexpectedFailure → échec terminal, jamais un build socle muet.
-        $overlayEntry = null;
-        $overlayEntryId = $this->schedulePlanProvisioner->periodEntryIdOf($schedule);
-        if (null !== $overlayEntryId) {
-            $overlayEntry = $this->entityManager->getRepository(CalendarEntry::class)->find($overlayEntryId);
-            if (!$overlayEntry instanceof CalendarEntry) {
+        // La demande au moteur (entrée figée + greffes de convergence) : `EngineRequestComposer`.
+        // Ses deux refus nommés deviennent ici des échecs terminaux.
+        try {
+            $composed = $this->requestComposer->compose($schedule, $message->getSourceScheduleId(), $message->getFillSourceScheduleId());
+        } catch (EngineRequestNotComposable $notComposable) {
+            if (EngineRequestNotComposable::OVERLAY_ENTRY_MISSING === $notComposable->reason) {
                 // The period was deleted between queueing and running — fail terminally.
                 $this->failSchedule($schedule, 'overlay_entry_missing', 'The overlay period no longer exists.');
                 $this->metricsRecorder?->record($schedule);
@@ -231,104 +235,30 @@ final class GenerateScheduleHandler
 
                 return;
             }
+
+            $failure = 'La version de départ de cette génération n\'existe plus. Relancez la régénération.';
+            $this->failSchedule($schedule, 'source_version_missing', $failure);
+            $this->metricsRecorder?->record($schedule);
+            $this->entityManager->flush();
+            $this->progressPublisher->publishSafely($schedule, ['warnings' => [$failure]]);
+
+            return;
         }
 
-        // Plan de saison : on repart de la version que la régénération a nommée. Si elle a disparu
-        // (supprimée entre la mise en file et le solve), repartir d'une autre serait un mensonge : échec
-        // nommé. Sans source explicite (première génération), le builder lit la version chargée.
-        $sourceId = $message->getSourceScheduleId();
-        if (!$overlayEntry instanceof CalendarEntry && null !== $sourceId) {
-            $source = $this->findSchedule($sourceId);
-            if (!$source instanceof Schedule || $source->getSchedulePlanId() !== $schedule->getSchedulePlanId()) {
-                $failure = 'La version de départ de cette génération n\'existe plus. Relancez la régénération.';
-                $this->failSchedule($schedule, 'source_version_missing', $failure);
-                $this->metricsRecorder?->record($schedule);
-                $this->entityManager->flush();
-                $this->progressPublisher->publishSafely($schedule, ['warnings' => [$failure]]);
-
-                return;
-            }
-        }
-
-        $scheduleInput = $overlayEntry instanceof CalendarEntry
-            ? $this->constraintBuilder->buildForOverlay($schedule, $overlayEntry)
-            : $this->buildFrozenSnapshot($schedule, $sourceId);
-
-        // P2-44 PR-3 (comblement) — solve PARTIEL : les placements de la version SOURCE de la
-        // période sont épinglés HARD dans le payload (jamais persistés en base), seuls les trous
-        // (équipes sous leur volume de séances) restent à placer. Injecté AVANT le hash de
-        // snapshot : contrairement à `previousAssignments` (préférence de convergence), ces
-        // épingles SONT l'entrée figée du solve — le snapshot doit les porter, comme il porte les
-        // verrous d'un overlay ordinaire. N'a lieu que sur un plan de période (overlayEntry).
-        $fillSourceId = $message->getFillSourceScheduleId();
-        $isFill = null !== $fillSourceId && $overlayEntry instanceof CalendarEntry;
-        if ($isFill) {
-            $scheduleInput = $this->constraintBuilder->withPinnedAssignments(
-                $scheduleInput,
-                $this->pinnedSourceSlots((string) $fillSourceId, $schedule),
-            );
-        }
+        $snapshot = $composed->snapshot;
+        $scheduleInput = $composed->input;
 
         // P5-10 — la taille du payload (métrique de capacité). Le hash, lui, passe par la maison unique
         // de l'empreinte, qui ignore les séances NONE.
-        $encodedSnapshot = json_encode($scheduleInput, \JSON_THROW_ON_ERROR);
+        $encodedSnapshot = json_encode($snapshot, \JSON_THROW_ON_ERROR);
         $payloadBytes = \strlen($encodedSnapshot);
         $schedule
             ->setStatus(ScheduleStatus::GENERATING)
             // Dernier passage gagne (retries de verrou) : sémantique voulue.
             ->setSolveStartedAt(new DateTimeImmutable)
             ->setSolverTimeoutSeconds($message->getTimeoutSeconds())
-            ->setSnapshotData($scheduleInput)
-            ->setSnapshotHash(ScheduleConstraintBuilder::structureHash($scheduleInput));
-
-        // P3-21 — le placement PRÉCÉDENT (terme de stabilité moteur) est greffé sur l'entrée
-        // du solveur APRÈS le snapshot (data + hash), jamais avant : le précédent est une
-        // préférence de CONVERGENCE, pas une donnée de STRUCTURE. L'inclure dans
-        // `snapshotHash` (ou dans `snapshotData`, gardée alignée sur le hash) le ferait
-        // diverger de l'empreinte de structure (`SchedulePlanProvisioner::structureHashOfPlan`,
-        // recalculée SANS lui) à CHAQUE régénération, cassant en silence le garde « structure inchangée »
-        // (bouton Régénérer grisé, signal « structure modifiée » du cockpit). Seul
-        // `$scheduleInput`, l'entrée réelle envoyée au moteur, le porte.
-        //
-        // P2-44 PR-3 — sauté en mode comblement : le fill épingle DÉJÀ tout le placé en HARD
-        // (ci-dessus), et un HARD n'a pas de variable côté moteur — le terme de stabilité serait
-        // un no-op sur les épingles et n'a aucun placement « précédent » à faire converger pour
-        // les trous (jamais placés). L'ajouter ne ferait que doubler les mêmes placements.
-        if (!$isFill) {
-            $scheduleInput = $this->constraintBuilder->withPreviousAssignments(
-                $scheduleInput,
-                $this->resolvePreviousAssignmentSlots($schedule, $message),
-            );
-
-            // PR 6 (lot 8) — « Garder ses créneaux de saison » : en génération PLEINE d'un plan de
-            // PÉRIODE, les équipes qui portent la contrainte SEASON_SLOTS reçoivent, en keep, les
-            // placements de la version pointée du socle (jour+heure+gymnase) — le moteur garde alors
-            // leur créneau de saison (préférence très forte). Comme `previousAssignments` : APRÈS le
-            // hash (convergence, pas structure). Les équipes « garder » sont lues de la sélection déjà
-            // résolue par `buildForOverlay` (zéro requête de plus). Aucune SEASON_SLOTS, ou plan SEASON
-            // (socle lui-même, jamais de keep) ⇒ clé absente, chemin byte-identique.
-            if ($overlayEntry instanceof CalendarEntry) {
-                $keepTeamIds = $this->constraintBuilder->lastSeasonSlotKeepTeamIds();
-                if ([] !== $keepTeamIds) {
-                    $scheduleInput = $this->constraintBuilder->withSeasonSlotKeepReferences(
-                        $scheduleInput,
-                        $this->socleReferenceSlots($schedule),
-                        $keepTeamIds,
-                    );
-                }
-            }
-        } else {
-            // PR-3 (comblement) — RÉFÉRENCE de comblement : les placements de la version POINTÉE du
-            // socle (plan SEASON) sont émis pour que le solveur GARDE le jour+heure de référence des
-            // séances comblées (gymnase libre). Comme `previousAssignments` : APRÈS le hash (une
-            // préférence de convergence, pas une donnée de structure — sinon `snapshotHash`
-            // divergerait de l'empreinte de structure). Distinct des épingles HARD (`withPinnedAssignments`,
-            // AVANT le hash) : celles-ci FIGENT le déjà-placé, la référence ORIENTE les trous.
-            $scheduleInput = $this->constraintBuilder->withSocleReferenceAssignments(
-                $scheduleInput,
-                $this->socleReferenceSlots($schedule),
-            );
-        }
+            ->setSnapshotData($snapshot)
+            ->setSnapshotHash(ScheduleConstraintBuilder::structureHash($snapshot));
 
         // Geste 2 — figer la GREFFE de convergence pour que `Schedule::engineInput()` reste
         // fidèle à ce qui PART au moteur, sans jamais toucher au hash. Extraction par DIFFÉRENCE
@@ -350,8 +280,8 @@ final class GenerateScheduleHandler
         // season-scoped; overlays get their own tier later). Non-fatal: a read
         // failure cannot poison the EntityManager, nothing is written yet.
         $structureData = null;
-        if (!$overlayEntry instanceof CalendarEntry) {
-            // null === overlayEntry ⟺ plan SEASON (le socle) : la photo D2 est saison-scopée.
+        if ($composed->isSeasonPlan) {
+            // plan SEASON (le socle) : la photo D2 est saison-scopée.
             try {
                 $structureData = $this->structureSnapshotter->serialize($schedule->getClubId(), $schedule->getSeasonId());
             } catch (Throwable $e) {
@@ -423,9 +353,9 @@ final class GenerateScheduleHandler
 
         // Persist the result BEFORE notifying: a COMPLETED solve must be durable
         // even if Mercure is momentarily down (publish is best-effort below).
-        // « socle ? » est déjà connu ici (null === overlayEntry) — on le passe pour
+        // « socle ? » est déjà connu ici (`isSeasonPlan` de la demande composée) — on le passe pour
         // éviter de re-lire le plan à la complétion (C4 / code-review).
-        $this->applyEngineResult($schedule, $result, !$overlayEntry instanceof CalendarEntry);
+        $this->applyEngineResult($schedule, $result, $composed->isSeasonPlan);
         $this->metricsRecorder?->record($schedule, $result, $payloadBytes);
         $this->entityManager->flush();
 
@@ -469,118 +399,6 @@ final class GenerateScheduleHandler
         return $schedule instanceof Schedule ? $schedule : null;
     }
 
-    /** @return array<string, mixed> */
-    private function buildFrozenSnapshot(Schedule $schedule, ?string $lockVersionId): array
-    {
-        return $this->constraintBuilder->buildForClubSeason(
-            $schedule->getClubId(),
-            $schedule->getSeasonId(),
-            lockVersionId: $lockVersionId,
-        );
-    }
-
-    /**
-     * P3-21 — les placements de la version « précédente » à faire converger (terme de
-     * stabilité). Source EXPLICITE d'abord (`sourceScheduleId` = la version chargée d'où
-     * part la régénération) ; à défaut, repli sur la dernière version
-     * COMPLETED du MÊME plan. Aucune ⇒ première génération : bloc vide.
-     *
-     * La source est TOUJOURS de la MÊME lignée (le même `schedulePlanId`) : ADR-0002 —
-     * jamais le socle pour un overlay, ni l'inverse. Pour une source explicite, on le VÉRIFIE
-     * (défense en profondeur contre un id incohérent) ; pour le repli, la requête est déjà
-     * bornée au plan.
-     *
-     * @return array<ScheduleSlotTemplate>
-     */
-    private function resolvePreviousAssignmentSlots(Schedule $schedule, GenerateScheduleMessage $message): array
-    {
-        $sourceId = $message->getSourceScheduleId();
-        if (null === $sourceId) {
-            $source = $this->latestCompletedOfPlan($schedule);
-        } else {
-            $source = $this->findSchedule($sourceId);
-            // Même lignée obligatoire : une source d'un autre plan (le socle sous un overlay,
-            // p.ex.) donnerait un précédent hors sujet. Incohérence ⇒ pas de précédent.
-            if (!$source instanceof Schedule || $source->getSchedulePlanId() !== $schedule->getSchedulePlanId()) {
-                $source = null;
-            }
-        }
-
-        if (!$source instanceof Schedule) {
-            return [];
-        }
-
-        return $this->entityManager->getRepository(ScheduleSlotTemplate::class)->findBy(
-            ['scheduleId' => $source->getId()],
-            ['id' => 'ASC'],
-        );
-    }
-
-    /**
-     * P2-44 PR-3 (comblement) — les placements de la version SOURCE à épingler HARD dans le
-     * payload du solve partiel. Même lignée obligatoire (même `schedulePlanId`) : le contrôleur
-     * l'a déjà garanti, on le RE-vérifie en défense — une source d'un autre plan (le socle sous
-     * un overlay) épinglerait le mauvais planning ; incohérence ⇒ aucune épingle (le solve
-     * repartirait de zéro plutôt que de figer des placements étrangers).
-     *
-     * @return array<ScheduleSlotTemplate>
-     */
-    private function pinnedSourceSlots(string $sourceScheduleId, Schedule $target): array
-    {
-        $source = $this->findSchedule($sourceScheduleId);
-        if (!$source instanceof Schedule || $source->getSchedulePlanId() !== $target->getSchedulePlanId()) {
-            return [];
-        }
-
-        return $this->entityManager->getRepository(ScheduleSlotTemplate::class)->findBy(
-            ['scheduleId' => $source->getId()],
-            ['id' => 'ASC'],
-        );
-    }
-
-    /**
-     * PR-3 (comblement) — les placements de la version POINTÉE du socle (plan SEASON de la saison),
-     * RÉFÉRENCE du comblement émise au moteur en `socleReferenceAssignments`. En comblement le socle
-     * est GARANTI en vigueur (SocleGuard, `FillPeriodPlanController`) : le pointeur est non-null.
-     * « Et si le socle n'a pas de version ? » est un cas IMPOSSIBLE en fill (CLAUDE.md §6) — pas un
-     * repli à écrire : on échoue BRUYAMMENT (le plan passe FAILED avec ce message) plutôt que de
-     * combler en silence sans référence.
-     *
-     * @return array<ScheduleSlotTemplate>
-     */
-    private function socleReferenceSlots(Schedule $schedule): array
-    {
-        $socleScheduleId = $this->schedulePlanProvisioner->chosenOfSeasonPlan($schedule->getSeasonId());
-        if (null === $socleScheduleId) {
-            throw new LogicException(\sprintf('Comblement du plan %s sans version pointée du socle : SocleGuard aurait dû refuser le fill en amont.', $schedule->getId()));
-        }
-
-        return $this->entityManager->getRepository(ScheduleSlotTemplate::class)->findBy(
-            ['scheduleId' => $socleScheduleId],
-            ['id' => 'ASC'],
-        );
-    }
-
-    /**
-     * La dernière version COMPLETED du plan de `$schedule`, hors la version en cours de
-     * génération (numérotation linéaire `versionNumber` — la V la plus haute finie).
-     */
-    private function latestCompletedOfPlan(Schedule $schedule): ?Schedule
-    {
-        $candidates = $this->entityManager->getRepository(Schedule::class)->findBy(
-            ['schedulePlanId' => $schedule->getSchedulePlanId(), 'status' => ScheduleStatus::COMPLETED],
-            ['versionNumber' => 'DESC'],
-        );
-
-        foreach ($candidates as $candidate) {
-            if ($candidate->getId() !== $schedule->getId()) {
-                return $candidate;
-            }
-        }
-
-        return null;
-    }
-
     /** @param array<string, mixed> $result */
     private function applyEngineResult(Schedule $schedule, array $result, bool $isSeasonPlan): void
     {
@@ -607,7 +425,7 @@ final class GenerateScheduleHandler
         // An overlay (period plan) must NEVER become the season baseline nor the
         // season's loaded context (both are season-plan concepts). ADR-0002 C4 :
         // « socle ? » = plan.type === SEASON, déjà résolu au début de generate()
-        // (null === overlayEntry) et passé ici — zéro lecture de plan à la complétion.
+        // (`ComposedEngineRequest::isSeasonPlan`) et passé ici — zéro lecture de plan à la complétion.
         if ($isSeasonPlan) {
             $this->anchorSeasonToCompletedPlan($schedule);
         } else {
