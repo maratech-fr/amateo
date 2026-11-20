@@ -84,6 +84,13 @@ peuvent avancer dans un espace de travail à part pendant qu'un lot principal at
       moteur est un seul service (`EngineRequestComposer`) et les lectures des constructeurs sont
       triées par id ; des demandes de référence (`backend/tests/Fixtures/engine-requests/`) en
       gardent le contenu.
+    - **PR 2 livrée — « Les scénarios des lots 1 et 2 »** : sept features Behat, un décor dédié
+      chacune, décrivent le comportement ACTUEL des domaines que les lots 1 et 2 refondent :
+      saison suivante, suppression en cascade, règle de catégorie (étiquettes), membre sans rôle de
+      gestion en lecture, crédits de l'offre Découverte, club de démonstration sans envoi, module
+      matchs gardé par le socle ; le refus d'écrire du membre est une ligne de tableau par geste
+      dans `un-club-ne-voit-jamais-un-autre-club.feature`. Ce que chacune prouve :
+      `docs/testing/test-coverage-map.md` § Structure du club, § Offre Découverte, § Sécurité.
   - L'inventaire des scénarios de comportement par domaine à refondre, et la liste des trous à
     combler avant chaque lot.
   - La mesure du temps de rendu du PDF du planning sur un grand club (réserve du §21).
@@ -100,6 +107,24 @@ peuvent avancer dans un espace de travail à part pendant qu'un lot principal at
   - Le créneau de semaine : un seul objet, le jour de 1 à 7, un seul endroit pour le chevauchement
     et les conversions (§11).
   - Les étiquettes calculées à la lecture ; leurs deux tables disparaissent (§12).
+- **Constats des scénarios du lot 0 à trancher ici** (vérifiés dans le code ; les scénarios
+  décrivent l'actuel) :
+  - Supprimer un gymnase n'emporte pas une règle qui le nomme dans sa configuration
+    (`forbiddenVenueId`…) : `backend/src/Deletion/ScopedConstraintStep.php:36-50` compare la portée
+    et la cible (`scope`, `scopeTargetId`), jamais la configuration. Scénario volontairement NON
+    écrit : la règle à tenir est une décision du lot.
+  - « Préparer la saison suivante » une seconde fois est refusé 409 avec un message en anglais,
+    « A next season already exists for this club. »
+    (`backend/src/Service/SeasonAlreadyTransitionedException.php:19`) ; l'identifiant de la saison
+    déjà préparée est dans la réponse (`SeasonTransitionController.php:69`).
+  - L'import des rencontres refusé à un membre sans rôle de gestion répond
+    `{"error":"Forbidden."}` (`backend/src/Service/FixtureImportGate.php:60`), pas le message des
+    autres gestes du gestionnaire ; le lot 2 (PR 3b, écart E4) l'harmonise.
+  - Le drapeau de démonstration n'est pas lu au même endroit selon le geste : l'invitation
+    (`ClubInvitationController.php:75`, `:104`) et la suppression de compte
+    (`DeleteAccountController.php:47`) lisent celui de l'UTILISATEUR ; l'envoi des conflits
+    (`ConflictCoachMailController.php:202`) et des liens de collecte
+    (`CoachWishCampaignActionController.php:92`) lisent celui du CLUB.
 - **Supprime** : les listes tenues à la main (sept d'effacement, cinq de copie), les calculs
   d'horaires réécrits, les tables d'étiquettes (96 et 411 lignes en production).
 - **Dépend de** : lot 0.
