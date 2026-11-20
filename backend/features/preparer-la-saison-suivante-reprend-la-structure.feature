@@ -7,6 +7,7 @@ Fonctionnalité: Préparer la saison suivante reprend la structure du club
 
   Scénario: La saison suivante reprend la structure, une seule fois, sans toucher la saison en cours
     Étant donné un petit club dont l'offre Essentiel règle aussi la saison suivante
+    Et nous sommes le 15 mai de la saison en cours
     Et une règle qui impose le « Gymnase Nord » à l'équipe « U13M1 »
     Quand je prépare la saison suivante
     # Règles : les cinq règles semées à l'inscription du club, plus celle qui impose un gymnase.

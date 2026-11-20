@@ -264,7 +264,9 @@ final class VenueOccupancyLifecycleTest extends WebTestCase
         $this->scopeGucToClub($this->club->getId());
         $season = $this->em->getRepository(Season::class)->find($this->season->getId());
         self::assertInstanceOf(Season::class, $season);
-        $target = self::getContainer()->get(SeasonTransitionService::class)->transition($season);
+        // Le 15 mai de la saison en cours : la saison suivante ne se prépare qu'à partir du 1er mai.
+        $inWindow = new DateTimeImmutable(\sprintf('%d-05-15', SeasonResolver::seasonYear(new DateTimeImmutable('today')) + 1));
+        $target = self::getContainer()->get(SeasonTransitionService::class)->transition($season, $inWindow);
 
         $this->scopeGucToClub($this->club->getId());
         $copiedVenue = (string) $this->em->getConnection()->fetchOne('SELECT id FROM venue WHERE season_id = :s AND name = :n', ['s' => $target->getId(), 'n' => $kept->getName()]);

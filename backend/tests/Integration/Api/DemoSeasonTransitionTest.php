@@ -4,8 +4,11 @@ declare(strict_types=1);
 
 namespace App\Tests\Integration\Api;
 
+use App\Clock\DevClockStore;
 use App\Entity\Club;
+use App\Service\SeasonResolver;
 use App\Tests\VerifiesRegistration;
+use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
 use PHPUnit\Framework\Attributes\Group;
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
@@ -33,11 +36,13 @@ final class DemoSeasonTransitionTest extends WebTestCase
         $me = $this->request('GET', '/api/me', $token);
         $seasonId = $me['seasons'][0]['id'];
         $clubId = $me['club']['id'];
+        $this->pinInPreparationWindow();
 
         // TÉMOIN — club réel, rien payé : le gate P1-5 refuse. Sans ce cas, le
         // vert du suivant pourrait venir d'un gate globalement mort.
-        $this->request('POST', '/api/seasons/' . $seasonId . '/transition', $token);
+        $refused = $this->request('POST', '/api/seasons/' . $seasonId . '/transition', $token);
         self::assertResponseStatusCodeSame(409);
+        self::assertStringContainsString('n\'est pas réglée', (string) ($refused['error'] ?? ''), 'le témoin refuse pour le paiement, pas pour une autre précondition');
 
         // Le flag démo — posé en SQL : aucun parcours utilisateur ne peut le faire,
         // c'est la commande support qui le pose en prod (app:demo:create).
@@ -54,6 +59,24 @@ final class DemoSeasonTransitionTest extends WebTestCase
     protected function setUp(): void
     {
         $this->client = self::createClient();
+    }
+
+    protected function tearDown(): void
+    {
+        // Jamais une horloge figée laissée aux tests suivants.
+        self::getContainer()->get(DevClockStore::class)->set(null);
+        parent::tearDown();
+    }
+
+    /**
+     * La saison suivante ne se prépare qu'à partir du 1er mai : l'horloge se fige au 15 mai de la
+     * saison en cours, pour les deux appels (seul le drapeau démo change entre eux), APRÈS
+     * l'inscription (qui vit à l'heure réelle). La date suivie par l'horloge simulée d'un club démo
+     * est la promesse de `features/la-saison-suivante-se-prepare-a-partir-du-1er-mai.feature`.
+     */
+    private function pinInPreparationWindow(): void
+    {
+        self::getContainer()->get(DevClockStore::class)->set(new DateTimeImmutable(\sprintf('%d-05-15T09:00:00', SeasonResolver::seasonYear(new DateTimeImmutable('today')) + 1)));
     }
 
     /** Même idiome que SeasonClockThreadingTest : register + verify → JWT. */

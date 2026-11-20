@@ -17,17 +17,37 @@ async function markNextSeasonPaid(page: import("@playwright/test").Page): Promis
   expect(response.ok()).toBeTruthy();
 }
 
-// « Préparer la saison suivante » n'est proposé que du 1er mai (année 2) à la fin de
-// la saison courante (P2-5 D). On fige l'horloge NAVIGATEUR au 1er juin de l'année 2
-// de la saison courante (dérivée du pivot 15 juil, comme côté serveur) pour être
-// DANS la fenêtre — le serveur, lui, garde sa vraie date (le flux de transition est
-// indépendant de l'horloge client).
+// « Préparer la saison suivante » n'est proposé, et accepté par le serveur, qu'à partir du
+// 1er mai (année 2) de la saison courante. On fige les DEUX horloges au 1er juin de l'année 2
+// (dérivée du pivot 15 juil, comme côté serveur) pour être DANS la fenêtre : le navigateur
+// (le menu s'affiche) et le serveur (la bascule est acceptée, `/api/me` sert la date
+// d'ouverture). L'horloge serveur est GLOBALE (`/api/dev/clock`, dev seulement) : elle se fige
+// après l'inscription (qui vit à l'heure réelle) et se relâche en fin de test, même en échec —
+// les specs tournent en série (`playwright.config.ts`), aucune autre ne la voit.
+let inWindow = new Date();
+let serverClockPinned = false;
+
 test.beforeEach(async ({ page }) => {
   const now = new Date();
   const pivotPassed = now.getMonth() > 6 || (6 === now.getMonth() && now.getDate() >= 15);
   const seasonYear = pivotPassed ? now.getFullYear() : now.getFullYear() - 1;
-  await page.clock.setFixedTime(new Date(Date.UTC(seasonYear + 1, 5, 1, 12, 0, 0)));
+  inWindow = new Date(Date.UTC(seasonYear + 1, 5, 1, 12, 0, 0));
+  await page.clock.setFixedTime(inWindow);
 });
+
+test.afterEach(async ({ page }) => {
+  if (serverClockPinned) {
+    const released = await page.request.post("/api/dev/clock", { data: { at: null } });
+    serverClockPinned = false;
+    expect(released.ok(), "l'horloge serveur doit être relâchée, sinon elle fausse les specs suivantes").toBeTruthy();
+  }
+});
+
+async function pinServerClockInWindow(page: import("@playwright/test").Page): Promise<void> {
+  const pinned = await page.request.post("/api/dev/clock", { data: { at: inWindow.toISOString() } });
+  expect(pinned.ok()).toBeTruthy();
+  serverClockPinned = true;
+}
 
 /**
  * **La transition de saison, de bout en bout (parcours « transition-de-saison » gardé, fusion 4→1).**
@@ -47,6 +67,7 @@ test("la transition de saison : refus impayé → payer → préparer + recondui
   // (l'ancien test « re-dater » tenait déjà inscription + 2 cycles en 30 s).
   test.setTimeout(60_000);
   await registerClub(page);
+  await pinServerClockInWindow(page);
 
   const selectorTrigger = page.getByRole("button", { name: "Saison de travail" });
   await expect(selectorTrigger).toBeVisible({ timeout: 15_000 });

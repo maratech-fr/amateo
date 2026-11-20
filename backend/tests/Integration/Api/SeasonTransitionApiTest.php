@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Tests\Integration\Api;
 
+use App\Clock\DevClockStore;
 use App\Entity\Club;
 use App\Entity\ClubUser;
 use App\Entity\Season;
@@ -113,6 +114,8 @@ final class SeasonTransitionApiTest extends WebTestCase
 
         $this->client->request('POST', '/api/seasons/' . $past->getId() . '/transition', [], [], $this->authHeaders($user));
         self::assertResponseStatusCodeSame(409);
+        // La date refuse aussi en 409 : le motif dit que c'est la saison qui est refusée.
+        self::assertSame('Seule la saison en cours peut être basculée.', $this->responseData()['error'] ?? null);
     }
 
     public function testForeignSeasonIsNotFound(): void
@@ -168,10 +171,23 @@ final class SeasonTransitionApiTest extends WebTestCase
         self::assertCount(1, $this->responseData()['member'] ?? []);
     }
 
+    /**
+     * La saison suivante ne se prépare qu'à partir du 1er mai : l'horloge se fige au 15 mai de la
+     * saison en cours (sans elle, ces tests rougiraient de novembre à avril). La date elle-même est
+     * la promesse de `features/la-saison-suivante-se-prepare-a-partir-du-1er-mai.feature`.
+     */
     protected function setUp(): void
     {
         $this->client = self::createClient();
         $this->em = self::getContainer()->get(EntityManagerInterface::class);
+        self::getContainer()->get(DevClockStore::class)->set(new DateTimeImmutable(\sprintf('%d-05-15T09:00:00', SeasonResolver::seasonYear(new DateTimeImmutable('today')) + 1)));
+    }
+
+    protected function tearDown(): void
+    {
+        // Jamais une horloge figée laissée aux tests suivants.
+        self::getContainer()->get(DevClockStore::class)->set(null);
+        parent::tearDown();
     }
 
     /**
