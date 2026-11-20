@@ -477,10 +477,11 @@ final class SeasonTransitionServiceTest extends KernelTestCase
         $past = $this->createSeason($club, SeasonResolver::seasonYear($season->getStartDate()) - 1);
         $this->em->flush();
 
-        // Dans la fenêtre : le refus vient de la saison, pas de la date (elle refuse aussi en 409).
+        // Le 30 avril, AVANT la fenêtre : la saison se vérifie avant la date, le motif dit donc que
+        // c'est la saison qui est refusée (une date vérifiée d'abord dirait « à partir du 1er mai »).
         $this->expectException(ConflictHttpException::class);
         $this->expectExceptionMessage('Seule la saison en cours peut être basculée.');
-        $this->service->transition($past, $this->inPreparationWindow());
+        $this->service->transition($past, $this->inPreparationWindow()->setDate(SeasonResolver::seasonYear(new DateTimeImmutable('today')) + 1, 4, 30));
     }
 
     protected function setUp(): void
