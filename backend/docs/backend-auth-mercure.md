@@ -72,8 +72,8 @@ que par `XlsxUploadGuard` — ce n'est pas un upload de fichier mais un texte JS
 porte le limiteur `coach_wish_send` **par club** (clubId, pas par utilisateur) — 200/24 h en prod,
 `sliding_window`, consommé pour le nombre EXACT de destinataires de la requête AVANT l'envoi ;
 partagé entre envoi initial, relance et renvoi ciblé (même clé club). Un club de DÉMONSTRATION est
-refusé 403 avant toute résolution de destinataires (patron des autres gestes de compte interdits
-aux démos). **Tous les limiteurs `rate_limiter` sont désormais ATOMIQUES** : `backend/config/
+refusé 403 avant toute résolution de destinataires, comme un compte de démonstration (contrôle
+central, `ClubFunction::$thirdParty`, `backend-controllers.md` § Déclarer l'accès d'une route). **Tous les limiteurs `rate_limiter` sont désormais ATOMIQUES** : `backend/config/
 packages/lock.yaml` câble `framework.lock` sur un store Redis PARTAGÉ (`%env(REDIS_URL)%`, même
 DSN que le cache) — jusque-là `symfony/lock` était absent, `lock_factory: auto` se résolvait à
 `null` : AUCUN verrou, et `SlidingWindowLimiter::reserve()` faisait une lecture-puis-écriture non
