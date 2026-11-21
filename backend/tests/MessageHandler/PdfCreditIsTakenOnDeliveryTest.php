@@ -23,11 +23,13 @@ use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
 use PHPUnit\Framework\Attributes\Group;
 use ReflectionClassConstant;
+use RuntimeException;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 use Symfony\Component\HttpClient\MockHttpClient;
 use Symfony\Component\HttpClient\Response\MockResponse;
 use Symfony\Component\Mercure\HubInterface;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
+use Throwable;
 
 /**
  * Abus « plusieurs sorties sur un crédit » et « fichier livré remplacé par un rendu refusé » — le
@@ -57,6 +59,9 @@ final class PdfCreditIsTakenOnDeliveryTest extends KernelTestCase
     private array $renderedNames = [];
 
     private bool $workerFails = false;
+
+    /** Vrai : le hub Mercure lève à chaque publication (panne Mercure). */
+    private bool $hubFails = false;
 
     /** @var list<string> les plannings créés : leurs fichiers sont retirés en fin de test */
     private array $scheduleIds = [];
@@ -168,12 +173,60 @@ final class PdfCreditIsTakenOnDeliveryTest extends KernelTestCase
         self::assertSame(0, $this->creditsOf($club->getId()), 'une offre payante n\'est jamais décomptée');
     }
 
+    /**
+     * Mercure en panne à la publication de fin : la demande coûte UN crédit et le message est
+     * acquitté du premier coup — sinon Messenger le rejoue (`messenger.yaml`, transport `async`,
+     * `max_retries: 3`) et chaque reprise refait le rendu et reprend un crédit. Le worker est joué
+     * comme Messenger le joue : une exception qui sort du handler vaut une nouvelle tentative.
+     */
+    public function testAMercureOutageAfterDeliveryCostsOneCreditAndAcksTheMessage(): void
+    {
+        [$club, $season] = $this->seedClub(credits: 3);
+        $schedule = $this->seedSchedule($club->getId(), $season);
+        $this->hubFails = true;
+
+        $attempts = $this->exportAsMessengerWould($club->getId(), $schedule);
+
+        self::assertSame(1, $attempts, 'le message est acquitté au premier passage : une panne Mercure n\'est pas une raison de rejouer');
+        self::assertCount(1, $this->renderedNames, 'le rendu n\'est fait qu\'une fois');
+        self::assertSame(4, $this->creditsOf($club->getId()), 'une demande, un crédit, même Mercure en panne');
+        self::assertSame('completed', $this->pdfStatusOf($club->getId(), $schedule), 'le fichier est livré : le statut en base dit « prêt », l\'écran converge au sondage');
+        self::assertSame('%PDF rendu n°1', $this->finalContent($schedule, 'all'));
+    }
+
+    /**
+     * Redélivrance du MÊME message après livraison (worker tué entre le commit et l'acquittement) :
+     * le planning est déjà « prêt » sous ce périmètre, rien n'est rendu de nouveau, aucun crédit
+     * n'est repris, le fichier livré reste celui du premier rendu. Le club a encore des crédits :
+     * c'est la garde qui protège, pas le pool plein. Jumeaux sur les rails de solve :
+     * `RedeliveredGenerationTest::testARedeliveredCompletedScheduleTakesNoSecondCredit`,
+     * `RedeliveredPlacementTest::testASolvedRunRedeliveredTakesNoSecondCredit`.
+     */
+    public function testARedeliveredDeliveredPdfTakesNoSecondCredit(): void
+    {
+        [$club, $season] = $this->seedClub(credits: 3);
+        $schedule = $this->seedSchedule($club->getId(), $season);
+
+        $this->export($club->getId(), $schedule);
+        self::assertSame(4, $this->creditsOf($club->getId()), 'témoin : la première livraison prend son crédit');
+        $deliveredUrl = $this->pdfUrlOf($club->getId(), $schedule);
+
+        $this->redeliver($club->getId(), $schedule);
+
+        self::assertCount(1, $this->renderedNames, 'la redélivrance ne refait pas le rendu');
+        self::assertSame(4, $this->creditsOf($club->getId()), 'la redélivrance d\'un PDF livré ne reprend jamais un crédit');
+        self::assertSame('completed', $this->pdfStatusOf($club->getId(), $schedule));
+        self::assertSame($deliveredUrl, $this->pdfUrlOf($club->getId(), $schedule));
+        self::assertSame('%PDF rendu n°1', $this->finalContent($schedule, 'all'), 'le fichier livré n\'est pas remplacé');
+    }
+
     protected function setUp(): void
     {
         self::bootKernel();
         $this->em = self::getContainer()->get(EntityManagerInterface::class);
         $this->renderedNames = [];
         $this->workerFails = false;
+        $this->hubFails = false;
         $this->scheduleIds = [];
         if (!is_dir(PdfGenerator::outputDir())) {
             @mkdir(PdfGenerator::outputDir(), 0o775, true);
@@ -193,11 +246,45 @@ final class PdfCreditIsTakenOnDeliveryTest extends KernelTestCase
     /** Le geste de l'écran (le contrôleur pose « en attente »), puis le worker traite le message. */
     private function export(string $clubId, string $scheduleId, ?string $venueId = null): void
     {
+        $this->request($clubId, $scheduleId);
+        $this->work($clubId, $scheduleId, $venueId);
+    }
+
+    /** Le geste de l'écran, puis le worker traite le message comme Messenger : rejoué tant qu'il lève, 1 + 3 reprises au plus. */
+    private function exportAsMessengerWould(string $clubId, string $scheduleId): int
+    {
+        $this->request($clubId, $scheduleId);
+        for ($attempt = 1; $attempt <= 4; ++$attempt) {
+            try {
+                $this->work($clubId, $scheduleId);
+
+                return $attempt;
+            } catch (Throwable) {
+                $this->em->clear();
+            }
+        }
+
+        return $attempt - 1;
+    }
+
+    /** Le même message relu par le worker, sans nouveau geste de l'écran (worker tué avant l'acquittement). */
+    private function redeliver(string $clubId, string $scheduleId): void
+    {
+        $this->em->clear();
+        $this->work($clubId, $scheduleId);
+    }
+
+    /** Le contrôleur pose « en attente » avant de mettre le message en file. */
+    private function request(string $clubId, string $scheduleId): void
+    {
         $this->scopeGucToClub($clubId);
         $this->em->getConnection()->executeStatement('UPDATE schedule SET pdf_export_status = \'pending\' WHERE id = :id', ['id' => $scheduleId]);
         $this->em->clear();
         $this->clearGuc();
+    }
 
+    private function work(string $clubId, string $scheduleId, ?string $venueId = null): void
+    {
         $worker = new MockHttpClient(function (string $method, string $url, array $options): MockResponse {
             $payload = json_decode((string) $options['body'], true, flags: \JSON_THROW_ON_ERROR);
             \assert(\is_array($payload) && \is_string($payload['filename'] ?? null));
@@ -210,7 +297,7 @@ final class PdfCreditIsTakenOnDeliveryTest extends KernelTestCase
             return new MockResponse((string) json_encode(['success' => true]));
         });
         $hub = $this->createMock(HubInterface::class);
-        $hub->method('publish')->willReturn('id');
+        $hub->method('publish')->willReturnCallback(fn (): string => $this->hubFails ? throw new RuntimeException('Mercure injoignable (simulé)') : 'id');
 
         $pdf = $this->buildWithDoubles(PdfGenerator::class, [HttpClientInterface::class => $worker, EntityManagerInterface::class => $this->em]);
         $handler = $this->buildWithDoubles(ExportPdfHandler::class, [PdfGenerator::class => $pdf, HubInterface::class => $hub, EntityManagerInterface::class => $this->em]);

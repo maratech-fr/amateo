@@ -143,9 +143,9 @@ final class ClubQuotaTest extends WebTestCase
     /**
      * Toute fonction de club déclarée comme une sortie qui mobilise une ressource partagée — un solve
      * (génération, régénération, comblement), un placement de matchs, un rendu PDF (planning, matchs)
-     * — puise dans un seau du club : le seau vide, elle répond 429. Lu sur les DÉCLARATIONS du routeur,
-     * pas sur une liste à la main : une sortie déclarée demain ne peut pas échapper au plafond. Le
-     * tableur (rendu en mémoire, sans worker) n'a pas de seau, à dessein.
+     * — ou un crédit Découverte que tout Membre peut dépenser (le tableur) puise dans un seau du club :
+     * le seau vide, elle répond 429. Lu sur les DÉCLARATIONS du routeur, pas sur une liste à la main :
+     * une sortie déclarée demain ne peut pas échapper au plafond. Aucune sortie sans seau.
      */
     public function testEveryDeclaredSolveOrRenderDrawsFromAClubBucket(): void
     {
@@ -154,15 +154,18 @@ final class ClubQuotaTest extends WebTestCase
             'MATCH_PLACEMENT' => 'limiter.match_placement',
             'PLANNING_PDF' => 'limiter.schedule_pdf_export',
             'MATCHES_PDF' => 'limiter.fixtures_pdf_export',
+            'PLANNING_XLSX' => 'limiter.schedule_xlsx_export',
         ];
         $declared = $this->routesDeclaringAnOutput();
-        foreach (['generate_schedule', 'api_schedule_regenerate', 'api_schedule_fill', 'api_fixtures_place', 'export_pdf', 'api_fixtures_export_pdf'] as $witness) {
+        foreach (['generate_schedule', 'api_schedule_regenerate', 'api_schedule_fill', 'api_fixtures_place', 'export_pdf', 'api_fixtures_export_pdf', 'export_xlsx'] as $witness) {
             self::assertArrayHasKey($witness, $declared, \sprintf('témoin : %s se déclare comme une sortie', $witness));
         }
 
         $escaping = [];
         foreach ($declared as $name => [$path, $output]) {
             if (!isset($buckets[$output])) {
+                $escaping[] = \sprintf('%s (%s, sortie %s) : aucun seau de club', $name, $path, $output);
+
                 continue;
             }
             [$token, $clubId] = $this->registerClub('QS');
@@ -196,6 +199,44 @@ final class ClubQuotaTest extends WebTestCase
 
         self::assertSame(403, $this->generate($token), 'la fenêtre passée, le pool vide répond');
         self::assertStringContainsString('gratuites', (string) $this->client->getResponse()->getContent(), 'le 403 est celui des crédits');
+    }
+
+    /**
+     * La borne de production de l'export tableur du planning : 10 par heure et par club, comme le
+     * PDF du planning. Le tableur est ouvert à tout Membre et prend un crédit Découverte du club : sans
+     * seau, un Membre viderait le pool du club en quelques secondes.
+     */
+    public function testThePlanningSpreadsheetCapIsTheOneWeDecided(): void
+    {
+        $config = Yaml::parseFile(__DIR__ . '/../../config/packages/rate_limiter.yaml');
+        self::assertIsArray($config);
+
+        $export = $config['framework']['rate_limiter']['schedule_xlsx_export'] ?? null;
+        self::assertIsArray($export, 'Le cap d\'export tableur manque à rate_limiter.yaml.');
+        self::assertSame('sliding_window', $export['policy'] ?? null);
+        self::assertSame(10, $export['limit'] ?? null);
+        self::assertSame('1 hour', $export['interval'] ?? null);
+    }
+
+    /**
+     * Un Membre exporte le tableur 10 fois dans l'heure, le 11ᵉ est refusé 429 ; le seau est celui du
+     * CLUB : un gestionnaire du même club est refusé à son tour. L'identifiant n'a pas besoin
+     * d'exister : le plafond se compte avant le contrôleur (404 ensuite, sans crédit pris). Le crédit
+     * d'un export tableur réussi d'un Membre reste pris (`PlanEntitlementsTest`).
+     */
+    public function testAMemberCannotExportTheSpreadsheetMoreThanTenTimesAnHour(): void
+    {
+        [$managerToken, $clubId] = $this->registerClub('QX');
+        $member = $this->addActiveMember($clubId, 'member');
+        $uri = '/api/schedules/00000000-0000-4000-8000-000000000001/export-xlsx';
+
+        $statuses = [];
+        for ($i = 0; $i < 10; ++$i) {
+            $statuses[] = $this->call($member, 'POST', $uri);
+        }
+        self::assertNotContains(429, $statuses, 'les 10 premiers exports de l\'heure passent');
+        self::assertSame(429, $this->call($member, 'POST', $uri), 'le 11ᵉ export tableur de l\'heure est refusé');
+        self::assertSame(429, $this->call($managerToken, 'POST', $uri), 'le seau est celui du club : un gestionnaire ne le rouvre pas');
     }
 
     /** La borne de production de l'export des matchs : assez pour 25 équipes et des reprises, décidée ici. */
@@ -375,8 +416,8 @@ final class ClubQuotaTest extends WebTestCase
         return [$token, $me['club']['id']];
     }
 
-    /** Un second gestionnaire ACTIF du même club, avec son propre JWT. */
-    private function addActiveMember(string $clubId): string
+    /** Un second membre ACTIF du même club (gestionnaire par défaut), avec son propre JWT. */
+    private function addActiveMember(string $clubId, string $role = 'admin'): string
     {
         $container = self::getContainer();
         $em = $container->get(EntityManagerInterface::class);
@@ -395,7 +436,7 @@ final class ClubQuotaTest extends WebTestCase
         $membership = new ClubUser;
         $membership->setClubId($clubId);
         $membership->setUserId($user->getId());
-        $membership->setRole('admin');
+        $membership->setRole($role);
         $membership->setIsActive(true);
         $em->persist($membership);
         $em->flush();
