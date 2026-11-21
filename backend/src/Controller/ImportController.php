@@ -23,7 +23,7 @@ use Symfony\Component\HttpKernel\Attribute\AsController;
 use Symfony\Component\HttpKernel\Exception\HttpException;
 
 #[AsController]
-#[ClubFunction(module: Module::CLUB, audience: Audience::MANAGER)]
+#[ClubFunction(module: Module::PLANNING, audience: Audience::MANAGER)]
 final class ImportController extends AbstractController
 {
     /**

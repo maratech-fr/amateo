@@ -25,6 +25,10 @@ use Symfony\Component\RateLimiter\RateLimiterFactory;
  *
  * Returns the tenant Club on success, or the error JsonResponse to relay —
  * the two controllers must answer byte-identically on every refusal.
+ *
+ * Le 409 du socle de l'import de rencontres reste ICI, pas au contrôle central : les deux
+ * contrôleurs d'import ne déclarent pas `refusedWhenModuleClosed` (lot 2, PR 5 — l'un des 13
+ * contrôles de socle laissés hors périmètre, assumés).
  */
 final class FixtureImportGate
 {

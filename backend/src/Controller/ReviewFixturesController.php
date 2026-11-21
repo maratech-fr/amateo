@@ -11,7 +11,6 @@ use App\Entity\Fixture;
 use App\Enum\FixtureHomeAway;
 use App\Enum\FixtureReviewState;
 use App\Service\SeasonAccessGuard;
-use App\Service\SocleGuard;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
@@ -40,7 +39,7 @@ use Symfony\Component\Routing\Attribute\Route;
  * équipe d'un autre club est invisible, donc ignorée (jamais d'écriture cross-club).
  */
 #[AsController]
-#[ClubFunction(module: Module::MATCHES, audience: Audience::MANAGER)]
+#[ClubFunction(module: Module::MATCHES, audience: Audience::MANAGER, refusedWhenModuleClosed: true)]
 final class ReviewFixturesController extends AbstractController
 {
     /** Une saison de club tient en quelques centaines de rencontres : au-delà, geste d'équipe. */
@@ -49,7 +48,6 @@ final class ReviewFixturesController extends AbstractController
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
         private readonly SeasonAccessGuard $seasonAccessGuard,
-        private readonly SocleGuard $socleGuard,
         private readonly ClockInterface $clock,
     ) {}
 
@@ -58,7 +56,6 @@ final class ReviewFixturesController extends AbstractController
     public function __invoke(Request $request): JsonResponse
     {
         $this->seasonAccessGuard->assertWritable($request);
-        $this->socleGuard->assertSeasonPlanChosen($request->attributes->get('_season_id') ?? $request->headers->get('X-Season-Id'));
 
         $body = json_decode($request->getContent(), true);
         if (!\is_array($body)) {

@@ -333,15 +333,12 @@ final class AuthController extends AbstractController
 
     /** Update the connected user's own profile (self-only by construction — SEC-02). */
     #[Route('/api/me', name: 'api_me_update', methods: ['PATCH'])]
-    #[AccountFunction]
+    #[AccountFunction(protectedInDemo: true)]
     public function updateMe(Request $request): JsonResponse
     {
         $user = $this->getUser();
         if (!$user instanceof User) {
             return $this->json(['error' => 'Unauthorized'], 401);
-        }
-        if (($demoRefusal = $this->refuseDemoMutation($user)) instanceof JsonResponse) {
-            return $demoRefusal;
         }
 
         $data = json_decode($request->getContent(), true);
@@ -391,15 +388,12 @@ final class AuthController extends AbstractController
 
     /** Change the connected user's password (requires the current one). */
     #[Route('/api/me/password', name: 'api_me_password', methods: ['POST'])]
-    #[AccountFunction]
+    #[AccountFunction(protectedInDemo: true)]
     public function changePassword(Request $request): JsonResponse
     {
         $user = $this->getUser();
         if (!$user instanceof User) {
             return $this->json(['error' => 'Unauthorized'], 401);
-        }
-        if (($demoRefusal = $this->refuseDemoMutation($user)) instanceof JsonResponse) {
-            return $demoRefusal;
         }
 
         $data = json_decode($request->getContent(), true);
@@ -434,15 +428,12 @@ final class AuthController extends AbstractController
      * UserChecker exige emailVerifiedAt, qu'on ne touche pas).
      */
     #[Route('/api/me/email', name: 'api_me_email_request', methods: ['POST'])]
-    #[AccountFunction]
+    #[AccountFunction(protectedInDemo: true)]
     public function requestEmailChange(Request $request): JsonResponse
     {
         $user = $this->getUser();
         if (!$user instanceof User) {
             return $this->json(['error' => 'Unauthorized'], 401);
-        }
-        if (($demoRefusal = $this->refuseDemoMutation($user)) instanceof JsonResponse) {
-            return $demoRefusal;
         }
 
         // Anti-abus : borne PAR UTILISATEUR — la route envoie un mail vers une
@@ -589,18 +580,6 @@ final class AuthController extends AbstractController
     }
 
     /** P4-74 — l'adresse est-elle déjà revendiquée (active ou en attente) par un AUTRE compte ? */
-    /**
-     * SEC-28 — un compte de DÉMONSTRATION ne peut pas être modifié : changement de
-     * prénom/nom, d'e-mail, de mot de passe et suppression sont refusés (403). Retourne
-     * la réponse de refus, ou null pour un compte ordinaire (geste inchangé).
-     */
-    private function refuseDemoMutation(User $user): ?JsonResponse
-    {
-        return $user->isDemo()
-            ? $this->json(['error' => 'Ce compte de démonstration ne peut pas être modifié.'], 403)
-            : null;
-    }
-
     private function emailIsClaimedByAnother(string $email, string $selfId): bool
     {
         $repo = $this->entityManager->getRepository(User::class);

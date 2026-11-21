@@ -22,7 +22,6 @@ use App\Service\ConflictCoachMailing;
 use App\Service\ConflictFeedAssembler;
 use App\Service\ConflictMailingLock;
 use App\Service\SeasonResolver;
-use App\Service\SocleGuard;
 use App\Support\FrenchNameOrder;
 use DateTimeImmutable;
 use DateTimeInterface;
@@ -35,7 +34,6 @@ use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\RequestStack;
 use Symfony\Component\HttpFoundation\Response;
-use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
 use Symfony\Component\Mailer\MailerInterface;
 use Symfony\Component\RateLimiter\RateLimiterFactory;
 use Symfony\Component\Routing\Attribute\Route;
@@ -51,9 +49,10 @@ use Throwable;
  * `GET …/mail-coaches/preview` ({@see preview}) dit AVANT l'envoi, coach par coach, ce que le POST
  * fera — même calcul ({@see prepare}).
  *
- * Ordre des refus : 409 saison archivée (noyau, {@see SeasonScopedWriteInterface}, AVANT
- * l'action, GET compris) → 409 saison gelée à la main → 403 gestionnaire → 403 démo → 409 socle
- * non choisi → (POST) 409 envoi déjà en cours (verrou club, relâché en `finally` sur tout chemin) →
+ * Ordre des refus : contrôle central (`ClubAccessListener` : 403 gestionnaire → 403 démo, envoi à
+ * un tiers → 409 socle non choisi, module Matchs fermé) → 409 saison archivée (noyau,
+ * {@see SeasonScopedWriteInterface}, AVANT l'action, GET compris) → 409 saison gelée à la main →
+ * (POST) 409 envoi déjà en cours (verrou club, relâché en `finally` sur tout chemin) →
  * 422 saison introuvable → (POST) 422 option invalide → 422 rien à envoyer → 422 rien de nouveau →
  * 429 plafond (consommé pour le nombre EXACT de mails à enfiler, lot refusé en bloc) → envois
  * best-effort → reçus par conflit + mémoire + ligne « Envoyé le … », en UNE transaction,
@@ -62,7 +61,7 @@ use Throwable;
  * Limites déclarées : le verrou ne protège que les envois SIMULTANÉS ; mails enfilés puis échec
  * de l'écriture → 500, ni reçu ni mémoire écrits, un nouveau clic renvoie les listes.
  */
-#[ClubFunction(module: Module::MATCHES, audience: Audience::MANAGER)]
+#[ClubFunction(module: Module::MATCHES, audience: Audience::MANAGER, thirdParty: true, refusedWhenModuleClosed: true)]
 final class ConflictCoachMailController extends AbstractController implements SeasonScopedWriteInterface
 {
     use ResolvesCurrentClubTrait;
@@ -73,7 +72,6 @@ final class ConflictCoachMailController extends AbstractController implements Se
         private readonly RequestStack $requestStack,
         private readonly EntityManagerInterface $entityManager,
         private readonly SeasonResolver $seasonResolver,
-        private readonly SocleGuard $socleGuard,
         private readonly ConflictMailingLock $lock,
         private readonly ConflictFeedAssembler $feedAssembler,
         private readonly ConflictCoachMailing $coachMailing,
@@ -179,9 +177,8 @@ final class ConflictCoachMailController extends AbstractController implements Se
     }
 
     /**
-     * Les refus communs à l'aperçu et à l'envoi, dans leur ordre : 409 saison gelée à la main →
-     * 403 gestionnaire → 400 sans club → 403 démo → 409 socle (le 409 du calendrier est passé avant,
-     * au noyau).
+     * Les refus communs à l'aperçu et à l'envoi, après ceux du contrôle central : 409 saison gelée
+     * à la main → 400 sans club (le 409 du calendrier est passé avant, au noyau).
      *
      * @return JsonResponse|array{0: Club, 1: Season|null}
      */
@@ -197,17 +194,6 @@ final class ConflictCoachMailController extends AbstractController implements Se
         $club = null !== $clubId ? $this->entityManager->getRepository(Club::class)->find($clubId) : null;
         if (!$club instanceof Club) {
             return $this->json(['error' => 'No club in context.'], Response::HTTP_BAD_REQUEST);
-        }
-        // Anti-hameçonnage : un compte de démonstration n'e-maille jamais un tiers.
-        if ($club->isDemo()) {
-            return $this->json(['error' => 'Envoi d\'e-mails indisponible en démonstration.'], Response::HTTP_FORBIDDEN);
-        }
-
-        // 409 du garde du socle, rendu en `{detail}` quel que soit l'Accept (l'écran lit `detail`).
-        try {
-            $this->socleGuard->assertSeasonPlanChosen($season?->getId());
-        } catch (ConflictHttpException $refusal) {
-            return $this->json(['detail' => $refusal->getMessage()], Response::HTTP_CONFLICT);
         }
 
         return [$club, $season];

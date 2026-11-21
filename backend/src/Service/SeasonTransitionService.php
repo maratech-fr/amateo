@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Service;
 
+use App\Access\DemoRegime;
 use App\Entity\Club;
 use App\Entity\ClubLeagueWindow;
 use App\Entity\Coach;
@@ -52,6 +53,7 @@ final class SeasonTransitionService
         private readonly SchedulePlanProvisioner $schedulePlanProvisioner,
         private readonly ConstraintConfigValidator $constraintConfigValidator,
         private readonly ClubLeagueWindowSeeder $clubLeagueWindowSeeder,
+        private readonly DemoRegime $demoRegime,
     ) {}
 
     /**
@@ -96,7 +98,7 @@ final class SeasonTransitionService
         // P2-4 (fondateur 2026-08-07) — un club de DÉMONSTRATION a un abonnement
         // illimité : la bascule de saison se montre en rendez-vous (souvent sous
         // horloge simulée), jamais bloquée par un paiement qui n'existe pas.
-        $isDemo = $club instanceof Club && $club->isDemo();
+        $isDemo = $club instanceof Club && $this->demoRegime->isUnlimited($club);
         if (!$club instanceof Club || (!$isDemo && ($club->getPaidSeasonYear() ?? \PHP_INT_MIN) < $targetYear)) {
             throw new ConflictHttpException(\sprintf('La saison %d-%d n\'est pas réglée — la bascule est réservée aux saisons payées.', $targetYear, $targetYear + 1));
         }
