@@ -4,9 +4,32 @@ declare(strict_types=1);
 
 namespace App\Tests\Security;
 
+use App\Entity\CalendarEntry;
+use App\Entity\Club;
+use App\Entity\Coach;
+use App\Entity\CoachWish;
+use App\Entity\HolidayReminderLog;
+use App\Entity\Season;
+use App\Entity\Sport;
+use App\Entity\SportCategory;
+use App\Entity\Team;
+use App\Entity\TeamCoach;
 use App\Entity\TenantOwnedInterface;
+use App\Entity\Venue;
+use App\Entity\VenueTrainingSlot;
+use App\Enum\AuditAction;
+use App\Enum\CalendarEntryKind;
+use App\Enum\CalendarEntryPeriodType;
+use App\Enum\SeasonStatus;
+use App\Enum\TeamCoachRole;
 use App\Service\ErasedClubPurger;
 use App\Service\SeasonDataPurger;
+use App\Structure\Family;
+use App\Structure\FamilyCatalog;
+use App\Tests\CapturesDeletedTablesTrait;
+use App\Tests\TenantGucTrait;
+use DateTimeImmutable;
+use Doctrine\ORM\EntityManagerInterface;
 use PHPUnit\Framework\Attributes\Group;
 use ReflectionClass;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
@@ -18,25 +41,45 @@ use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
  * pour l'effacement, c'est une donnée personnelle qui reste alors qu'on l'a promise
  * détruite. `opponent_travel` (P2-54) était exactement dans ce cas au 2026-09-18.
  *
- * Ce test ne recopie aucune liste — il DÉRIVE des constantes des deux purgers et
- * exige que toute entité tenant soit, pour chaque chemin, purgée ou nommément exclue
- * AVEC sa raison. Une entité tenant nouvelle tombe donc en échec par défaut, ce qui
- * est le bon défaut pour une purge légale (patron {@see RgpdExportCompletenessTest}).
+ * Ce test ne recopie aucune liste — il DÉRIVE de la déclaration des familles (`FamilyCatalog`,
+ * lot conception 1 PR 4b) et exige que toute entité tenant soit, pour chaque chemin, purgée ou
+ * déclarée épargnée AVEC sa raison. Une entité tenant nouvelle tombe donc en échec par défaut, ce
+ * qui est le bon défaut pour une purge légale (patron {@see RgpdExportCompletenessTest}).
+ *
+ * Il exige aussi que les purges FASSENT ce que le catalogue dit (les `DELETE` réellement exécutés)
+ * et qu'aucun purgeur ne tienne plus sa propre liste. Le compte rendu de l'effacement
+ * (`CLUB_PURGED`, `rowsDeleted`) compte chaque ligne effacée.
+ *
+ * Angle jumeau, cité : `Security/FamilyDeclarationSweepTest` (la déclaration elle-même) et
+ * `Integration/PurgeOrderRespectsForeignKeysTest` (l'ordre exécuté contre les clés réelles).
  */
 #[Group('phase1')]
 final class PurgeCompletenessTest extends KernelTestCase
 {
+    use CapturesDeletedTablesTrait;
+    use TenantGucTrait;
+
+    /**
+     * Effacée par la saison seule, hors du catalogue : sans `club_id` (clé par saison, uuid propre
+     * au club), elle n'entre pas dans `FamilyCatalog::purgedWithSeason()` (`SeasonDataPurger::purge`).
+     */
+    private const string PURGED_BY_SEASON_ALONE = HolidayReminderLog::class;
+
+    /** Les listes que les purgeurs tenaient à la main avant la déclaration des familles. */
+    private const array RETIRED_LISTS = [
+        SeasonDataPurger::class => ['PURGED_VIA_PARENT', 'PURGED_BY_CLUB_SEASON', 'EXCLUDED_FROM_SEASON_PURGE'],
+        ErasedClubPurger::class => ['PURGED_BY_CLUB', 'EXCLUDED_FROM_ERASURE'],
+    ];
+
     /**
      * Purge de SAISON (SeasonDataPurger) : toute entité tenant doit être purgée via
-     * son parent, par club+saison, traitée à part, ou exclue nommément avec sa raison.
+     * son propriétaire, par club+saison, traitée à part, ou déclarée épargnée avec sa raison.
      */
     public function testEveryTenantOwnedEntityIsSeasonPurgedOrExcludedOnPurpose(): void
     {
-        $season = new ReflectionClass(SeasonDataPurger::class);
-
         $covered = array_flip(array_merge(
             $this->seasonPurgeCoverage(),
-            array_keys($season->getConstant('EXCLUDED_FROM_SEASON_PURGE')),
+            $this->keptTables(static fn (Family $family): ?string => $family->keptAtSeasonPurge),
         ));
 
         $unaccounted = [];
@@ -50,30 +93,22 @@ final class PurgeCompletenessTest extends KernelTestCase
         self::assertSame([], $unaccounted, \sprintf(
             "Ces tables tenant ne sont NI purgées par SeasonDataPurger NI exclues nommément :\n  - %s\n"
             . "Une purge de saison (rétention / reset) les laisserait EN SILENCE — la commande rend un succès.\n"
-            . "Deux issues, jamais l'oubli : les faire entrer dans une des boucles de purge, ou les ajouter à\n"
-            . 'SeasonDataPurger::EXCLUDED_FROM_SEASON_PURGE AVEC la raison qui le justifie.',
+            . "Deux issues, jamais l'oubli : déclarer la famille de sorte que le catalogue la purge, ou la\n"
+            . 'déclarer épargnée (#[Family(keptAtSeasonPurge: …)]) AVEC la raison qui le justifie.',
             implode("\n  - ", $unaccounted),
         ));
-
-        /** @var array<string, string> $excluded */
-        $excluded = $season->getConstant('EXCLUDED_FROM_SEASON_PURGE');
-        foreach ($excluded as $table => $reason) {
-            self::assertNotSame('', trim($reason), \sprintf('L\'exclusion de « %s » doit porter sa raison.', $table));
-        }
     }
 
     /**
      * Effacement RGPD (ErasedClubPurger) : toute entité tenant doit être purgée par la
-     * couverture de saison (itérée sur chaque saison), par club, ou exclue nommément.
+     * couverture de saison (itérée sur chaque saison), par club, ou déclarée épargnée.
      */
     public function testEveryTenantOwnedEntityIsErasedOrExcludedOnPurpose(): void
     {
-        $erased = new ReflectionClass(ErasedClubPurger::class);
-
         $covered = array_flip(array_merge(
             $this->seasonPurgeCoverage(),
-            $this->tablesOf($erased->getConstant('PURGED_BY_CLUB')),
-            array_keys($erased->getConstant('EXCLUDED_FROM_ERASURE')),
+            $this->tablesOf($this->catalog()->purgedWithClub()),
+            $this->keptTables(static fn (Family $family): ?string => $family->keptAtErasure),
         ));
 
         $unaccounted = [];
@@ -87,37 +122,225 @@ final class PurgeCompletenessTest extends KernelTestCase
         self::assertSame([], $unaccounted, \sprintf(
             "Ces tables tenant ne sont NI effacées par ErasedClubPurger NI exclues nommément :\n  - %s\n"
             . "L'effacement RGPD (art. 17) les GARDERAIT en base — donnée personnelle promise détruite.\n"
-            . 'Issue : les purger (par saison ou par club), ou les ajouter à ErasedClubPurger::EXCLUDED_FROM_ERASURE AVEC la raison.',
+            . 'Issue : les purger (par saison ou par club), ou déclarer la famille épargnée (#[Family(keptAtErasure: …)]) AVEC la raison.',
             implode("\n  - ", $unaccounted),
         ));
-
-        /** @var array<string, string> $excluded */
-        $excluded = $erased->getConstant('EXCLUDED_FROM_ERASURE');
-        foreach ($excluded as $table => $reason) {
-            self::assertNotSame('', trim($reason), \sprintf('L\'exclusion de « %s » doit porter sa raison.', $table));
-        }
     }
 
     /**
-     * Les tables couvertes par une purge de saison : via parent, par club+saison,
+     * Une seule maison : les listes que les purgeurs tenaient à la main ont disparu, la purge lit
+     * la déclaration des familles. Une liste revenue dériverait du catalogue en silence.
+     */
+    public function testThePurgersNoLongerHoldTheirOwnLists(): void
+    {
+        $stillThere = [];
+        foreach (self::RETIRED_LISTS as $purger => $constants) {
+            foreach ($constants as $constant) {
+                if (new ReflectionClass($purger)->hasConstant($constant)) {
+                    $stillThere[] = $purger . '::' . $constant;
+                }
+            }
+        }
+
+        self::assertSame([], $stillThere, "Ces listes doublent la déclaration des familles (FamilyCatalog) :\n  - " . implode("\n  - ", $stillThere));
+    }
+
+    /**
+     * « Réinitialiser la saison » efface exactement les familles que le catalogue range dans la
+     * purge de saison, plus la seule effacée par la saison seule — ni plus, ni moins — et garde la
+     * ligne de saison.
+     */
+    public function testTheSeasonResetDeletesExactlyTheCatalogFamilies(): void
+    {
+        [$club, $season] = $this->clubWithSeason('Remise');
+        $purger = self::getContainer()->get(SeasonDataPurger::class);
+
+        $executed = $this->deletedTablesDuring(static fn (): int => $purger->purge($club->getId(), $season->getId()));
+
+        self::assertSame($this->sortedUnique($this->seasonPurgeTables()), $this->sortedUnique($executed));
+    }
+
+    /**
+     * L'effacement d'un club efface exactement, pour chaque saison, les familles de la purge de
+     * saison et la ligne de saison, puis les familles que le catalogue efface avec le club ; son
+     * compte rendu `CLUB_PURGED` compte chaque ligne effacée (11 sur ce décor : 2 saisons, 8 lignes
+     * de saison dont une doléance purgée par son entrée de calendrier, 1 catégorie du club).
+     */
+    public function testTheErasureDeletesExactlyTheCatalogFamiliesAndCountsEveryRow(): void
+    {
+        [$club, $season] = $this->clubWithSeason('Effacement');
+        $this->decorOfElevenRows($club, $season);
+        $purger = self::getContainer()->get(ErasedClubPurger::class);
+
+        $deleted = 0;
+        $executed = $this->deletedTablesDuring(static function () use ($purger, $club, &$deleted): void {
+            $deleted = $purger->purge($club);
+        });
+
+        $expected = [...$this->seasonPurgeTables(), 'season', ...$this->tablesOf($this->catalog()->purgedWithClub())];
+        self::assertSame($this->sortedUnique($expected), $this->sortedUnique($executed));
+
+        self::assertSame(11, $deleted, 'le nombre rendu compte chaque ligne effacée');
+        $details = self::getContainer()->get(EntityManagerInterface::class)->getConnection()->fetchOne(
+            'SELECT details FROM audit_log WHERE club_id = :club AND action = :action',
+            ['club' => $club->getId(), 'action' => AuditAction::CLUB_PURGED->value],
+        );
+        self::assertIsString($details, 'l\'effacement écrit son compte rendu');
+        self::assertSame(['rowsDeleted' => 11], json_decode($details, true, 512, \JSON_THROW_ON_ERROR));
+    }
+
+    protected function setUp(): void
+    {
+        self::bootKernel();
+    }
+
+    /**
+     * Les tables couvertes par une purge de saison : via le propriétaire, par club+saison,
      * ou traitées à part (avec raison).
      *
      * @return list<string>
      */
     private function seasonPurgeCoverage(): array
     {
-        $season = new ReflectionClass(SeasonDataPurger::class);
-
-        /** @var array<class-string, array{0: string, 1: class-string}> $viaParent */
-        $viaParent = $season->getConstant('PURGED_VIA_PARENT');
-        /** @var list<class-string> $byClubSeason */
-        $byClubSeason = $season->getConstant('PURGED_BY_CLUB_SEASON');
+        $catalog = $this->catalog();
 
         return array_merge(
-            $this->tablesOf(array_keys($viaParent)),
-            $this->tablesOf($byClubSeason),
-            array_keys($season->getConstant('HANDLED_APART')),
+            $this->tablesOf(array_keys($catalog->purgedViaOwner())),
+            $this->tablesOf($catalog->purgedWithSeason()),
+            array_keys(new ReflectionClass(SeasonDataPurger::class)->getConstant('HANDLED_APART')),
         );
+    }
+
+    /**
+     * Les tables qu'une purge de saison efface : via le propriétaire, par club+saison, et la seule
+     * effacée par la saison seule.
+     *
+     * @return list<string>
+     */
+    private function seasonPurgeTables(): array
+    {
+        $catalog = $this->catalog();
+
+        return [
+            ...$this->tablesOf(array_keys($catalog->purgedViaOwner())),
+            ...$this->tablesOf($catalog->purgedWithSeason()),
+            ...$this->tablesOf([self::PURGED_BY_SEASON_ALONE]),
+        ];
+    }
+
+    /**
+     * Les tables des familles déclarées épargnées, chacune avec une raison non vide.
+     *
+     * @param callable(Family): ?string $reasonOf
+     *
+     * @return list<string>
+     */
+    private function keptTables(callable $reasonOf): array
+    {
+        $catalog = $this->catalog();
+        $kept = [];
+        foreach ($catalog->all() as $class) {
+            $reason = $reasonOf($catalog->of($class));
+            if (null === $reason) {
+                continue;
+            }
+            self::assertNotSame('', trim($reason), \sprintf('L\'exclusion de « %s » doit porter sa raison.', $class));
+            $kept[] = $class;
+        }
+
+        return $this->tablesOf($kept);
+    }
+
+    /**
+     * @param list<string> $tables
+     *
+     * @return list<string>
+     */
+    private function sortedUnique(array $tables): array
+    {
+        $tables = array_values(array_unique($tables));
+        sort($tables);
+
+        return $tables;
+    }
+
+    private function catalog(): FamilyCatalog
+    {
+        return self::getContainer()->get(FamilyCatalog::class);
+    }
+
+    /** @return array{0: Club, 1: Season} */
+    private function clubWithSeason(string $name): array
+    {
+        $em = self::getContainer()->get(EntityManagerInterface::class);
+        $uid = uniqid('', true);
+        $club = (new Club)->setName($name . ' ' . $uid)->setSlug('purge-' . $uid)->setTimezone('Europe/Paris')->setLocale('fr')
+            ->setOnboardingCompleted(true)->setFfbbClubCode('PCT' . strtoupper(substr(md5($uid), 0, 9)));
+        $em->persist($club);
+        $em->flush();
+        $this->scopeGucToClub($club->getId());
+
+        $season = $this->season($club, 2025);
+        $em->flush();
+
+        return [$club, $season];
+    }
+
+    private function season(Club $club, int $startYear): Season
+    {
+        $season = (new Season)->setClubId($club->getId())->setName($startYear . '-' . ($startYear + 1))
+            ->setStartDate(new DateTimeImmutable($startYear . '-09-01'))->setEndDate(new DateTimeImmutable(($startYear + 1) . '-06-30'))
+            ->setStatus(SeasonStatus::ACTIVE);
+        self::getContainer()->get(EntityManagerInterface::class)->persist($season);
+
+        return $season;
+    }
+
+    /**
+     * Neuf lignes de plus que la saison déjà là : une seconde saison et son équipe ; dans la
+     * première, une équipe, un coach et leur lien, un gymnase et son créneau de saison, une entrée
+     * de calendrier et la doléance qui en dépend ; une catégorie du club. Aucune ligne qu'une clé
+     * étrangère emporterait d'elle-même : le compte ne dépend pas de l'ordre de purge.
+     */
+    private function decorOfElevenRows(Club $club, Season $season): void
+    {
+        $em = self::getContainer()->get(EntityManagerInterface::class);
+        $clubId = $club->getId();
+        $seasonId = $season->getId();
+
+        $previous = $this->season($club, 2024);
+        $em->flush();
+        $em->persist($this->team($clubId, $previous->getId()));
+
+        $team = $this->team($clubId, $seasonId);
+        $coach = (new Coach)->setClubId($clubId)->setSeasonId($seasonId)->setFirstName('Alex')->setLastName('Martin');
+        $venue = (new Venue)->setClubId($clubId)->setSeasonId($seasonId)->setName('Coubertin')->setSource('manual');
+        $entry = (new CalendarEntry)->setClubId($clubId)->setSeasonId($seasonId)->setKind(CalendarEntryKind::PERIOD)
+            ->setPeriodType(CalendarEntryPeriodType::HOLIDAY)->setTitle('Pâques')
+            ->setStartDate(new DateTimeImmutable('2026-04-06'))->setEndDate(new DateTimeImmutable('2026-04-19'));
+        foreach ([$team, $coach, $venue, $entry] as $row) {
+            $em->persist($row);
+        }
+        $em->flush();
+
+        $em->persist((new TeamCoach)->setClubId($clubId)->setSeasonId($seasonId)->setTeamId($team->getId())
+            ->setCoachId($coach->getId())->setRole(TeamCoachRole::MAIN));
+        $em->persist((new VenueTrainingSlot)->setClubId($clubId)->setSeasonId($seasonId)->setVenueId($venue->getId())
+            ->setDayOfWeek(1)->setStartTime(new DateTimeImmutable('18:00'))->setDurationMinutes(90)->setCapacity(1));
+        $em->persist((new CoachWish)->setClubId($clubId)->setSeasonId($seasonId)->setCalendarEntryId($entry->getId())
+            ->setWeekStart(new DateTimeImmutable('2026-04-06'))->setTeamId($team->getId())->setSlotsWanted(1));
+
+        $sport = $em->getRepository(Sport::class)->findOneBy([]) ?? (new Sport)->setName('Basket ' . $clubId)->setSlug('basket-' . $clubId)->setIsActive(true);
+        $em->persist($sport);
+        $em->persist((new SportCategory)->setClubId($clubId)->setSportId($sport->getId())->setName('U13 ' . $clubId));
+        $em->flush();
+        $em->clear();
+    }
+
+    private function team(string $clubId, string $seasonId): Team
+    {
+        return (new Team)->setClubId($clubId)->setSeasonId($seasonId)->setName('U13 F1')
+            ->setSportCategoryId('99999999-9999-4999-8999-999999999999')->setPriorityTierId(1)->setSessionsPerWeek(1);
     }
 
     /**
@@ -127,7 +350,6 @@ final class PurgeCompletenessTest extends KernelTestCase
      */
     private function tablesOf(array $entityClasses): array
     {
-        self::bootKernel();
         $factory = self::getContainer()->get('doctrine')->getManager()->getMetadataFactory();
 
         return array_map(
@@ -141,7 +363,6 @@ final class PurgeCompletenessTest extends KernelTestCase
     {
         $tables = [];
 
-        self::bootKernel();
         $factory = self::getContainer()->get('doctrine')->getManager()->getMetadataFactory();
         foreach ($factory->getAllMetadata() as $metadata) {
             if (is_a($metadata->getName(), TenantOwnedInterface::class, true)) {
