@@ -136,9 +136,14 @@ final class ConstraintConfigValidatorTest extends TestCase
         foreach ([ScheduleConstraintBuilder::class, PeriodConstraintSelector::class] as $reader) {
             $source = file_get_contents(new ReflectionClass($reader)->getFileName() ?: '');
             self::assertIsString($source);
-            self::assertStringContainsString('uuidKeys()', $source, "{$reader} doit lire les clés de gymnase du validateur");
+            // L'APPEL (`->uuidKeys()`), pas une mention en commentaire.
+            self::assertStringContainsString('->uuidKeys()', $source, "{$reader} doit appeler la liste des clés de gymnase du validateur");
             self::assertStringNotContainsString('VENUE_CONFIG_KEYS', $source, "{$reader} ne doit plus nommer la copie retirée");
-            self::assertStringNotContainsString('\'setVenueId\'', $source, "{$reader} ne doit plus porter la clé fantôme");
+            // Une copie écrite à la main nomme forcément ces clés (`'forcedVenueId'` sert aussi au
+            // gymnase imposé de la fiche d'équipe : il n'est pas un indice).
+            foreach (['setVenueId', 'preferredVenueId', 'minAtVenueId', 'forbiddenVenueId'] as $key) {
+                self::assertStringNotContainsString("'{$key}'", $source, "{$reader} ne doit tenir aucune copie de la liste (« {$key} » écrit en dur)");
+            }
         }
     }
 

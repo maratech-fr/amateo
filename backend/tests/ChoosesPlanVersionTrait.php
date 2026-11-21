@@ -90,9 +90,8 @@ trait ChoosesPlanVersionTrait
     }
 
     /**
-     * Le plan SEASON vide qu'une vraie saison possède dès sa naissance — les 4
-     * chemins de création le posent (register, POST /api/seasons, transition N+1,
-     * reset). Un test qui persiste une Season à la main court-circuite ce geste
+     * Le plan SEASON vide qu'une vraie saison possède dès sa naissance — les trois
+     * chemins qui le posent (register, transition N+1, reset). Un test qui persiste une Season à la main court-circuite ce geste
      * et obtiendrait une saison SANS plan, état qui n'existe pas en production.
      */
     private function provisionSeasonPlan(Season $season): void

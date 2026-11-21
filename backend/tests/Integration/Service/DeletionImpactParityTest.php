@@ -638,6 +638,14 @@ final class DeletionImpactParityTest extends KernelTestCase
         $team = $this->team($club, $season, forcedVenueId: $other->getId());
         $named = $this->venueRule($club, $season, $team, $venue);
         $elsewhere = $this->venueRule($club, $season, $team, $other);
+        // Une règle qui VISE ce gymnase et le nomme aussi dans son réglage : annoncée une seule
+        // fois, sous « contrainte visant ce gymnase », jamais deux.
+        $aimed = (new Constraint)->setClubId($club->getId())->setSeasonId($season->getId())
+            ->setName('Coubertin · au moins une séance')->setScope(ConstraintScope::FACILITY)->setScopeTargetId($venue->getId())
+            ->setFamily(ConstraintFamily::FACILITY)->setRuleType(ConstraintRuleType::PREFERRED)
+            ->setConfig(['minAtVenueId' => $venue->getId(), 'minAtVenueCount' => 1])->setIsActive(true);
+        $this->em->persist($aimed);
+        $this->em->flush();
         $periodPlan = (new SchedulePlan)->setClubId($club->getId())->setSeasonId($season->getId())
             ->setType(SchedulePlanType::CLOSURE)->setName('Reprise')
             ->setStartDate(new DateTimeImmutable('2026-02-16'))->setEndDate(new DateTimeImmutable('2026-02-28'));
@@ -652,7 +660,9 @@ final class DeletionImpactParityTest extends KernelTestCase
         $naming = array_values(array_filter($impact->lines, static fn (array $line): bool => 'contrainte qui nomme ce gymnase' === $line['one']));
         self::assertCount(1, $naming, 'la suppression annonce une ligne « contrainte qui nomme ce gymnase »');
         self::assertSame('contraintes qui nomment ce gymnase', $naming[0]['many']);
-        self::assertSame(1, $naming[0]['count'], 'seule la règle qui nomme CE gymnase est comptée');
+        self::assertSame(1, $naming[0]['count'], 'seule la règle qui nomme CE gymnase est comptée, pas celle qui le vise déjà');
+        $aimedLines = array_values(array_filter($impact->lines, static fn (array $line): bool => 'venue_constraint' === $line['key']));
+        self::assertSame(1, $aimedLines[0]['count'] ?? 0, 'la règle qui vise le gymnase reste annoncée par sa propre ligne');
 
         self::getContainer()->get(EntityCascadeDeleter::class)->purgeChildrenOfVenue($venue);
         $this->em->flush();
@@ -661,6 +671,45 @@ final class DeletionImpactParityTest extends KernelTestCase
         self::assertNull($this->em->getRepository(Constraint::class)->find($named), 'la règle qui nomme le gymnase part avec lui');
         self::assertNull($this->em->getRepository(ConstraintPeriodOverride::class)->find($override->getId()), 'sa bascule de période part avec elle');
         self::assertNotNull($this->em->getRepository(Constraint::class)->find($elsewhere), 'une règle qui nomme un autre gymnase reste');
+        self::assertNull($this->em->getRepository(Constraint::class)->find($aimed->getId()), 'la règle qui vise le gymnase part aussi');
+    }
+
+    /**
+     * Isolation (abus) — supprimer un gymnase n'annonce ni n'efface une règle d'un AUTRE club, ni
+     * d'une AUTRE saison du même club, même si son réglage porte la même valeur d'identifiant : la
+     * requête de `VenueConfigConstraintStep` lit le `config` en SQL brut, bornée par club et saison.
+     */
+    public function testDeletingAVenueNeverReachesARuleOfAnotherClubOrAnotherSeason(): void
+    {
+        [$other, $otherSeason] = $this->seed();
+        $otherTeam = $this->team($other, $otherSeason, forcedVenueId: '11111111-1111-4111-8111-111111111111');
+
+        [$club, $season] = $this->seed();
+        $venue = $this->venue($club, $season, 'Coubertin');
+        $team = $this->team($club, $season, forcedVenueId: $venue->getId());
+        $named = $this->venueRule($club, $season, $team, $venue);
+        $nextSeason = (new Season)->setClubId($club->getId())->setName('2026-2027')
+            ->setStartDate(new DateTimeImmutable('2026-09-01'))->setEndDate(new DateTimeImmutable('2027-06-30'))->setStatus(SeasonStatus::ACTIVE);
+        $this->em->persist($nextSeason);
+        $this->em->flush();
+        $nextSeasonRule = $this->venueRule($club, $nextSeason, $team, $venue);
+
+        $this->scopeGucToClub($other->getId());
+        $foreignRule = $this->venueRule($other, $otherSeason, $otherTeam, $venue);
+        $this->scopeGucToClub($club->getId());
+
+        $impact = self::getContainer()->get(DeletionImpactCounter::class)->forVenue($venue);
+        $naming = array_values(array_filter($impact->lines, static fn (array $line): bool => 'contrainte qui nomme ce gymnase' === $line['one']));
+        self::assertSame(1, $naming[0]['count'] ?? 0, 'seule la règle de CE club et de CETTE saison est annoncée');
+
+        self::getContainer()->get(EntityCascadeDeleter::class)->purgeChildrenOfVenue($venue);
+        $this->em->flush();
+        $this->em->clear();
+
+        self::assertNull($this->em->getRepository(Constraint::class)->find($named), 'la règle de la saison du gymnase part');
+        self::assertNotNull($this->em->getRepository(Constraint::class)->find($nextSeasonRule), 'une règle d\'une autre saison du club reste');
+        $this->scopeGucToClub($other->getId());
+        self::assertNotNull($this->em->getRepository(Constraint::class)->find($foreignRule), 'la règle d\'un autre club reste');
     }
 
     public function testDeletingAVenueAnnouncesAndDeletesItsTravelTimes(): void
