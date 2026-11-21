@@ -33,9 +33,9 @@ use Symfony\Component\RateLimiter\RateLimiterFactory;
  * déclarée demain ne peut pas y échapper. « Charger une version » (`/regenerate-from`) ne lance
  * aucun calcul : elle ne déclare pas de sortie et n'entame pas le cap.
  *
- * ⚠ L'export **XLSX n'est pas capté** : il se génère en mémoire, sans worker. Le PDF, lui,
- * mobilise Puppeteer. Le limiteur global suffit à borner un abus de XLSX ; lui coller un cap
- * horaire gênerait un usage légitime pour rien.
+ * ⚠ L'export **tableur** a son seau (`schedule_xlsx_export`, 10/h comme le PDF du planning) : il se
+ * génère en mémoire, sans worker, mais il est ouvert à tout Membre et prend un crédit Découverte du
+ * club — sans seau, un Membre viderait le pool du club en quelques secondes.
  *
  * ⚠ Le placement automatique des matchs a son PROPRE seau (`match_placement`) : un run mobilise le
  * solveur jusqu'à 45 min, et il ne doit ni manger le budget de génération ni l'inverse. Compté
@@ -59,6 +59,7 @@ final class ClubQuotaSubscriber implements EventSubscriberInterface
         private readonly ManagementAccessGuard $managementAccessGuard,
         private readonly RateLimiterFactory $matchPlacementLimiter,
         private readonly AccessDeclarationResolver $resolver,
+        private readonly RateLimiterFactory $scheduleXlsxExportLimiter,
     ) {}
 
     /** @return array<string, array{0: string, 1: int}> */
@@ -84,7 +85,8 @@ final class ClubQuotaSubscriber implements EventSubscriberInterface
             Output::PLANNING_PDF => $this->schedulePdfExportLimiter,
             Output::MATCHES_PDF => $this->fixturesPdfExportLimiter,
             Output::MATCH_PLACEMENT => $this->matchPlacementLimiter,
-            Output::PLANNING_XLSX, null => null,
+            Output::PLANNING_XLSX => $this->scheduleXlsxExportLimiter,
+            null => null,
         };
 
         if (!$limiter instanceof RateLimiterFactory) {
