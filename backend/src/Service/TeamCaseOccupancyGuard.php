@@ -10,8 +10,8 @@ use App\Entity\Team;
 use App\Entity\Venue;
 use App\Exception\TeamAlreadyAtCaseException;
 use App\Exception\TeamAlreadyTrainsThatDayException;
+use App\Support\WeeklySlot;
 use DateTimeImmutable;
-use DateTimeInterface;
 use Doctrine\ORM\EntityManagerInterface;
 
 /**
@@ -161,11 +161,11 @@ final class TeamCaseOccupancyGuard
         if ($this->dailyCap($scheduleId, $teamId) < 2) {
             return null;
         }
-        $from = $this->minutesOf($startTime);
+        $from = WeeklySlot::minutesOf($startTime);
         $to = $from + $durationMinutes;
         foreach ($this->otherSessionsOnDay($scheduleId, $teamId, $dayOfWeek, $excludedSlotIds) as $slot) {
-            $slotFrom = $this->minutesOf($slot->getStartTime());
-            if ($from < $slotFrom + $slot->getDurationMinutes() && $slotFrom < $to) {
+            $slotFrom = WeeklySlot::minutesOf($slot->getStartTime());
+            if (WeeklySlot::intervalsOverlap($from, $to, $slotFrom, $slotFrom + $slot->getDurationMinutes())) {
                 return \sprintf('%s a déjà une séance qui chevauche ce créneau le %s.', $this->teamName($teamId), self::DAY_LABELS[$dayOfWeek] ?? 'jour ' . $dayOfWeek);
             }
         }
@@ -210,11 +210,6 @@ final class TeamCaseOccupancyGuard
     private function teamName(string $teamId): string
     {
         return $this->entityManager->getRepository(Team::class)->find($teamId)?->getName() ?? 'Cette équipe';
-    }
-
-    private function minutesOf(DateTimeInterface $time): int
-    {
-        return (int) $time->format('G') * 60 + (int) $time->format('i');
     }
 
     private function sentence(string $teamId, string $venueId, int $dayOfWeek, DateTimeImmutable $startTime): string

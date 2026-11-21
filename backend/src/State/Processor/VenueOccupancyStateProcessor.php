@@ -13,6 +13,7 @@ use App\Service\SeasonAccessGuard;
 use App\Service\SeasonResolver;
 use App\Service\VenueGridConflict;
 use App\Service\VenueGridOverlap;
+use App\Support\WeeklySlot;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\HttpFoundation\RequestStack;
@@ -117,8 +118,8 @@ class VenueOccupancyStateProcessor extends AbstractStateProcessor
         }
         $entity->setLabel($this->validLabel($input->label));
 
-        $start = (int) $entity->getStartTime()->format('G') * 60 + (int) $entity->getStartTime()->format('i');
-        if ($start + $entity->getDurationMinutes() > 24 * 60) {
+        $start = WeeklySlot::minutesOf($entity->getStartTime());
+        if ($start + $entity->getDurationMinutes() > WeeklySlot::MINUTES_PER_DAY) {
             $this->refuse('Une occupation doit se terminer dans sa journée : celle-ci déborderait après minuit.');
         }
 

@@ -14,6 +14,7 @@ use App\Enum\AuditAction;
 use App\Service\PlanVenueClosures;
 use App\Service\ReservationGroupOccupancy;
 use App\Service\ReservationRemoval;
+use App\Support\WeeklySlot;
 use DateTimeImmutable;
 use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
@@ -221,8 +222,8 @@ class ReservationStateProcessor extends AbstractStateProcessor
         if (!$startTime instanceof DateTimeImmutable) {
             return;
         }
-        $startMinutes = (int) $startTime->format('H') * 60 + (int) $startTime->format('i');
-        if ($startMinutes + $durationMinutes > 24 * 60) {
+        $startMinutes = WeeklySlot::minutesOf($startTime);
+        if ($startMinutes + $durationMinutes > WeeklySlot::MINUTES_PER_DAY) {
             $this->refuse(\sprintf(
                 'Un créneau qui commence à %s ne peut pas durer %d minutes : il finirait après minuit.',
                 $startTime->format('H:i'),
