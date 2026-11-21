@@ -16,7 +16,7 @@ final class SeasonAlreadyTransitionedException extends ConflictHttpException
     public function __construct(
         private readonly string $existingSeasonId,
     ) {
-        parent::__construct('A next season already exists for this club.');
+        parent::__construct('La saison suivante existe déjà.');
     }
 
     public function getExistingSeasonId(): string

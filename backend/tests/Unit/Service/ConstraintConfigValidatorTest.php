@@ -6,9 +6,12 @@ namespace App\Tests\Unit\Service;
 
 use App\Enum\ConstraintFamily;
 use App\Service\ConstraintConfigValidator;
+use App\Service\PeriodConstraintSelector;
+use App\Service\ScheduleConstraintBuilder;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
+use ReflectionClass;
 
 /**
  * SEC-13 — la liste blanche du `config`, éprouvée sur les cas qui l'ont motivée.
@@ -117,6 +120,31 @@ final class ConstraintConfigValidatorTest extends TestCase
         self::assertNotContains('startDate', $engineKeys['FACILITY']);
         self::assertNotContains('endDate', $engineKeys['FACILITY']);
         self::assertContains('minAtVenueId', $engineKeys['FACILITY']);
+    }
+
+    /**
+     * Lot conception 1, PR 5 — les clés de `config` qui nomment un gymnase sont UNE liste, celle du
+     * validateur : le constructeur de la demande et le sélecteur de période la lisent et n'en
+     * tiennent plus de copie (la copie portait `setVenueId`, une clé que rien n'écrit ni ne lit).
+     * Une règle qui nomme un gymnase désactivé s'écarte donc au même jeu de clés que celui accepté.
+     */
+    public function testTheVenueKeysAreTheValidatorsOnlyListReadByTheBuilderAndThePeriodSelector(): void
+    {
+        self::assertSame(['forbiddenVenueId', 'forcedVenueId', 'minAtVenueId', 'preferredVenueId'], $this->validator->uuidKeys());
+        self::assertFalse(new ReflectionClass(ScheduleConstraintBuilder::class)->hasConstant('VENUE_CONFIG_KEYS'), 'la copie des clés de gymnase du constructeur doit disparaître');
+
+        foreach ([ScheduleConstraintBuilder::class, PeriodConstraintSelector::class] as $reader) {
+            $source = file_get_contents(new ReflectionClass($reader)->getFileName() ?: '');
+            self::assertIsString($source);
+            // L'APPEL (`->uuidKeys()`), pas une mention en commentaire.
+            self::assertStringContainsString('->uuidKeys()', $source, "{$reader} doit appeler la liste des clés de gymnase du validateur");
+            self::assertStringNotContainsString('VENUE_CONFIG_KEYS', $source, "{$reader} ne doit plus nommer la copie retirée");
+            // Une copie écrite à la main nomme forcément ces clés (`'forcedVenueId'` sert aussi au
+            // gymnase imposé de la fiche d'équipe : il n'est pas un indice).
+            foreach (['setVenueId', 'preferredVenueId', 'minAtVenueId', 'forbiddenVenueId'] as $key) {
+                self::assertStringNotContainsString("'{$key}'", $source, "{$reader} ne doit tenir aucune copie de la liste (« {$key} » écrit en dur)");
+            }
+        }
     }
 
     protected function setUp(): void

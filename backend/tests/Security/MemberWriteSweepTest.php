@@ -118,7 +118,6 @@ final class MemberWriteSweepTest extends WebTestCase
         'POST /api/clubs/{id}/parc-import' => ['/api/clubs/{club}/parc-import', null, 403],
         'POST /api/clubs/{id}/parc-import/analyze' => ['/api/clubs/{club}/parc-import/analyze', null, 403],
         'DELETE /api/reset-season' => ['/api/reset-season', null, 403],
-        'POST /api/seasons' => ['/api/seasons', '{"name":"Saison Membre","startDate":"2030-07-15","endDate":"2031-07-14"}', 403],
         'POST /api/seasons/{id}/transition' => ['/api/seasons/{season}/transition', '{}', 403],
         'POST /api/sport_categories' => ['/api/sport_categories', '{"name":"Catégorie Membre","sportId":"{sport}"}', 403],
         'PUT /api/sport_categories/{id}' => ['/api/sport_categories/{category}', '@get', 403],

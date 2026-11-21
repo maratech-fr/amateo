@@ -54,6 +54,7 @@ final class PeriodConstraintSelector
         private readonly TeamTagResolver $tagResolver,
         private readonly PlanVenueClosures $planVenueClosures,
         private readonly LoggerInterface $logger,
+        private readonly ConstraintConfigValidator $configValidator,
     ) {}
 
     /**
@@ -258,7 +259,7 @@ final class PeriodConstraintSelector
     /**
      * L'id du gymnase désactivé que cette contrainte NOMME, ou null. Les deux façons de
      * nommer un gymnase sont celles du builder : le scope FACILITY, et les clés de config
-     * de `ScheduleConstraintBuilder::VENUE_CONFIG_KEYS` (source unique).
+     * du validateur (`ConstraintConfigValidator::uuidKeys()`, liste unique que le builder lit aussi).
      *
      * @param array<string, true> $disabledVenueIds
      */
@@ -270,7 +271,7 @@ final class PeriodConstraintSelector
         }
 
         $config = $constraint->getConfig();
-        foreach (ScheduleConstraintBuilder::VENUE_CONFIG_KEYS as $venueKey) {
+        foreach ($this->configValidator->uuidKeys() as $venueKey) {
             $venueId = $config[$venueKey] ?? null;
             if (\is_string($venueId) && isset($disabledVenueIds[$venueId])) {
                 return $venueId;

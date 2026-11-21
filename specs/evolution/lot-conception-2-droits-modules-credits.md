@@ -1,7 +1,7 @@
 # Lot 2 · Droits, modules, crédits : plan d'exécution (tel que livré)
 
 **Statut : version finale (v4 sur 4) ; plafond atteint. Plan validé par le fondateur le 2026-11-21 avec ses seize
-décisions (§13). PR 1, 2, 3a, 3b et 4 livrées (#1423, #1425, #1426, #1427, #1428) ; il reste la PR 5.**
+décisions (§13). Lot LIVRÉ sur `lot/conception` (non déployé) : PR 1, 2, 3a, 3b, 4 et 5 (#1423, #1425, #1426, #1427, #1428, #1433).**
 Lane **Full**. Branche cible : `lot/conception` ; une PR vers elle ne joue que « Lot Gate », qui rejoue le step
 `Blocking suite` (`docs/ops/ci-runner.md` § Branche de lot) : ni Behat, ni e2e, ni `backend-tests`. Avant chaque
 merge : `make -C backend tests-complete` et les features/specs de la zone sur la stack d'épreuve.
@@ -13,8 +13,8 @@ troisième ne remet pas l'architecture en cause. Ce qui restait ouvert est deven
 du §14.
 
 Les `fichier:ligne` ci-dessous datent du plan ; **les sections des PR 1 à 4 décrivent ce qui a été décidé et livré,
-et leurs lignes ont bougé avec le code livré** (à relire avant de s'en servir). Les consignes de la PR 5 (§5, fin) ont
-été vérifiées dans le code au 2026-11-21.
+et leurs lignes ont bougé avec le code livré** (à relire avant de s'en servir). Les consignes de la PR 5 (§5, fin), faites,
+ont été vérifiées dans le code au 2026-11-21.
 
 ---
 
@@ -326,7 +326,7 @@ blocage → 0 crédit (Q1 (a)) ; PDF à l'obtention, échec → 0 ; deux PDF pou
 reste ; offre payante, bêta, démo : jamais. NR de la perte provoqué **par le registre de crédits** (double qui lève à
 `settle`) pour la génération et pour le placement ; `PlanEntitlementsTest`, `ClubQuotaTest` réécrits ou étendus.
 
-### PR 5 · Le module matchs porte le socle ; la démonstration est déclarée — À FAIRE
+### PR 5 · Le module matchs porte le socle ; la démonstration est déclarée — FAITE
 
 **Change**
 - Le module matchs dit sa condition ; une fonction dit si elle est refusée module fermé (explicite, faux par défaut).

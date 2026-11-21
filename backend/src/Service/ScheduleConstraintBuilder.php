@@ -43,12 +43,6 @@ use Symfony\Contracts\Cache\ItemInterface;
 final class ScheduleConstraintBuilder
 {
     /**
-     * Les clés de `config` qui nomment un gymnase. Partagées avec le gate pré-solve
-     * (ValidateConstraintsController) : les deux doivent voir le MÊME jeu de contraintes,
-     * sans quoi le récap annonce applicable ce que le solveur ne recevra pas.
-     */
-    public const VENUE_CONFIG_KEYS = ['forcedVenueId', 'preferredVenueId', 'minAtVenueId', 'forbiddenVenueId', 'setVenueId'];
-    /**
      * Version du CONTRAT backend⇄engine que ce payload s'attribue. Ce n'est pas
      * une version « de schéma » indépendante : c'est la MÊME chose que
      * `engine/CONTRACT_VERSION`, que l'engine compare au champ `version` reçu.
@@ -573,10 +567,14 @@ final class ScheduleConstraintBuilder
         // Miroir du filtre équipes, côté GYMNASES : une contrainte qui nomme un gymnase
         // absent du payload est un id fantôme. Le gestionnaire en est AVERTI au récap
         // (ValidateConstraintsController) — ignorer sans le dire était le défaut de #285.
+        // Les clés qui nomment un gymnase sont celles du validateur (`uuidKeys()`), liste
+        // unique partagée avec le sélecteur de période : le récap et le solveur voient le
+        // MÊME jeu de contraintes.
         if ([] !== $disabledVenueIds) {
+            $venueKeys = new ConstraintConfigValidator()->uuidKeys();
             $payload['constraints'] = array_values(array_filter(
                 $payload['constraints'],
-                static function (mixed $row) use ($disabledVenueIds): bool {
+                static function (mixed $row) use ($disabledVenueIds, $venueKeys): bool {
                     if (!\is_array($row)) {
                         return true;
                     }
@@ -585,7 +583,7 @@ final class ScheduleConstraintBuilder
                         return false;
                     }
                     $config = \is_array($row['config'] ?? null) ? $row['config'] : [];
-                    foreach (self::VENUE_CONFIG_KEYS as $venueKey) {
+                    foreach ($venueKeys as $venueKey) {
                         if (isset($disabledVenueIds[(string) ($config[$venueKey] ?? '')])) {
                             return false;
                         }
