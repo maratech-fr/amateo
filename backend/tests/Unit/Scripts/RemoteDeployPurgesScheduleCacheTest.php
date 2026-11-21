@@ -18,7 +18,7 @@ use Symfony\Component\Process\Process;
  * Le script réel tourne, `docker` et `curl` remplacés par des doublures qui journalisent leurs
  * appels : les deux branches (installation existante, première installation) sont jouées pour de bon,
  * et le code de sortie lu est celui du script. Jumeau statique du câblage voisin :
- * `RemoteDeployRealignsSnapshotsTest`. Purge manuelle documentée : `docs/ops/deploy.md`.
+ * `RemoteDeployRealignsSnapshotsTest`. Recours manuel sur alerte : `docs/ops/deploy.md`.
  * Annoté `phase1` comme son jumeau, NON listé dans « Blocking suite » : il tourne dans `backend-tests`.
  */
 #[Group('phase1')]
