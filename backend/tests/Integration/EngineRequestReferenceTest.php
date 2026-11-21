@@ -33,6 +33,7 @@ use App\Service\SolverMetricsMapper;
 use App\Service\StructureSnapshotter;
 use App\Service\TenantConnectionContext;
 use App\Tests\EngineRequestDecorTrait;
+use App\Tests\EngineRequestGroupRulesDecorTrait;
 use DateTimeImmutable;
 use PHPUnit\Framework\Attributes\Group;
 use Psr\Clock\ClockInterface;
@@ -47,9 +48,9 @@ use Symfony\Contracts\Cache\TagAwareCacheInterface;
 
 /**
  * Promesse : la demande que le moteur reçoit ne change pas quand on réorganise le code qui la compose.
- * Six demandes réelles — le corps HTTP que le moteur simulé reçoit, sur le rail réel (handler de
+ * Des demandes réelles — le corps HTTP que le moteur simulé reçoit, sur le rail réel (handler de
  * génération ou de placement, `EngineClient` réel, `MockHttpClient`) — sont comparées à l'octet
- * (assertSame sur le JSON décodé, ordre des listes et des clés compris) à six fichiers de référence
+ * (assertSame sur le JSON décodé, ordre des listes et des clés compris) aux fichiers de référence
  * de `tests/Fixtures/engine-requests/` :
  *
  *   1. socle, première génération d'un brouillon (aucune version chargée) ;
@@ -57,11 +58,17 @@ use Symfony\Contracts\Cache\TagAwareCacheInterface;
  *   3. période générée sur place, avec un verrou sur la version et « garder ses créneaux de saison » ;
  *   4. période comblée (épingles de la version chargée de la période, référence du socle) ;
  *   5. placement des matchs, club entier ;
- *   6. placement des matchs sur une fenêtre (une semaine).
+ *   6. placement des matchs sur une fenêtre (une semaine) ;
+ *   7. socle aux règles de groupe sous leurs trois formes, et une équipe sans habitude au jour de
+ *      match enregistré (`EngineRequestGroupRulesDecorTrait`) ;
+ *   8. période générée sur place, avec une règle de groupe datée.
  *
- * Aux quatre cas de génération, la demande se recoupe avec ce qui est écrit en base : l'empreinte
+ * Bloquant (step `Blocking suite` de `ci.yml`, `docs/testing/blocking-tests.md`) : le « Lot Gate »
+ * d'une branche de lot ne joue que la suite bloquante.
+ *
+ * Aux cas de génération (1 à 4, 7, 8), la demande se recoupe avec ce qui est écrit en base : l'empreinte
  * `snapshotHash` vaut `structureHash(snapshotData)`, les clés de la greffe `payloadGraft` sont
- * exactement celles attendues, et le corps reçu vaut `engineInput()` relu en base. Aux cas 1 à 3,
+ * exactement celles attendues, et le corps reçu vaut `engineInput()` relu en base. Aux cas 1 à 3, 7 et 8,
  * `snapshotHash` vaut aussi `structureHashOfPlan(plan)` (le signal « structure modifiée » ne ment pas
  * sur une version fraîche). Au cas 4 (comblement), la relation constatée est AUSSI l'égalité, mais par
  * un autre chemin : les épingles du comblement (tout le placé de la version source, en HARD) sont
@@ -84,12 +91,13 @@ use Symfony\Contracts\Cache\TagAwareCacheInterface;
  * VOULU de la demande, nommé dans la PR. Sans fichier, le test est rouge et dit comment capturer.
  *
  * Jumeau : `EngineRequestOrderIsStableTest` garde l'ORDRE des listes face à l'ordre physique des
- * lignes ; celui-ci fige le CONTENU des six demandes.
+ * lignes ; celui-ci fige le CONTENU des demandes de référence.
  */
 #[Group('integration')]
 final class EngineRequestReferenceTest extends KernelTestCase
 {
     use EngineRequestDecorTrait;
+    use EngineRequestGroupRulesDecorTrait;
 
     private const string REFERENCE_DIR = __DIR__ . '/../Fixtures/engine-requests';
 
@@ -179,6 +187,51 @@ final class EngineRequestReferenceTest extends KernelTestCase
         $body = $this->runPlacement(['from' => '2026-01-12', 'to' => '2026-01-18']);
 
         $this->assertReference('placement-6-fenetre', $body);
+    }
+
+    /**
+     * Les groupes que le lot des déclarations communes déplace : trois règles de club (deux groupes
+     * croisés, une exclusion seule, l'ancienne forme à un groupe) éclatées par équipe, et le jour de
+     * match enregistré d'une équipe sans habitude (5 enregistré, 6 émis).
+     */
+    public function testSocleWithGroupRulesAndARecordedMatchDay(): void
+    {
+        $this->seedEngineRequestTeamGroups();
+        $this->seedEngineRequestSeasonGroupRules();
+        $this->seedSocleVersion(self::ER_SOCLE_V1, ScheduleStatus::DRAFT);
+
+        $run = $this->runGeneration(self::ER_SOCLE_V1);
+
+        self::assertSame([
+            self::ER_RULE_TWO_TAGS => [self::ER_TEAM_U15],
+            self::ER_RULE_EXCLUDE => [self::ER_TEAM_SM1],
+            self::ER_RULE_LEGACY_TAG => [self::ER_TEAM_U13],
+        ], $this->groupRuleRows($run['body'], [self::ER_RULE_TWO_TAGS, self::ER_RULE_EXCLUDE, self::ER_RULE_LEGACY_TAG]), 'chaque règle de groupe vise ses seules équipes');
+        $this->assertReference('socle-7-regles-de-groupe-et-jour-de-match', $run['body']);
+        $this->assertGenerationCoherence($run['body'], $run['schedule'], null);
+        $this->assertSnapshotMatchesPlanStructure($run['schedule']);
+    }
+
+    /** Un plan de période généré sur place, avec une règle de groupe datée de la fermeture. */
+    public function testPeriodWithAGroupRule(): void
+    {
+        $this->seedEngineRequestTeamGroups();
+        $this->seedEngineRequestSeasonGroupRules();
+        $this->seedSocleInForce();
+        $this->seedEngineRequestPeriod();
+        $this->seedEngineRequestPeriodGroupRule();
+        $this->seedPeriodVersion(self::ER_PERIOD_P1, ScheduleStatus::DRAFT);
+
+        $run = $this->runGeneration(self::ER_PERIOD_P1);
+
+        self::assertSame(
+            [self::ER_RULE_PERIOD_GROUP => [self::ER_TEAM_U13]],
+            $this->groupRuleRows($run['body'], [self::ER_RULE_PERIOD_GROUP]),
+            'la règle de groupe datée vise ses seules équipes',
+        );
+        $this->assertReference('periode-8-regle-de-groupe', $run['body']);
+        $this->assertGenerationCoherence($run['body'], $run['schedule'], ['socleReferenceAssignments']);
+        $this->assertSnapshotMatchesPlanStructure($run['schedule']);
     }
 
     /**

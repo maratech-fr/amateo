@@ -28,6 +28,7 @@ use App\Service\EngineRequestRecorder;
 use App\Service\ScheduleConstraintBuilder;
 use App\Service\SchedulePlanProvisioner;
 use App\Tests\EngineRequestDecorTrait;
+use App\Tests\EngineRequestGroupRulesDecorTrait;
 use DateTimeImmutable;
 use FilesystemIterator;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -73,7 +74,7 @@ use Symfony\Contracts\Cache\TagAwareCacheInterface;
  * précèdent toute écriture, dans l'ordre 4, 2, 3.
  *
  * Décor : `EngineRequestDecorTrait` (identifiants fixes, horloge pinnée au lundi 2026-01-05). La
- * preuve que le fichier EST la demande du rail réel : il vaut l'empreinte des six corps de référence
+ * preuve que le fichier EST la demande du rail réel : il vaut l'empreinte des corps de référence
  * de `tests/Fixtures/engine-requests/`, captés sur le moteur simulé par `EngineRequestReferenceTest`.
  * Pas de purge du cache ici avant d'enregistrer : la purge est le travail de l'outil.
  */
@@ -81,6 +82,7 @@ use Symfony\Contracts\Cache\TagAwareCacheInterface;
 final class EngineRequestsRecordCommandTest extends KernelTestCase
 {
     use EngineRequestDecorTrait;
+    use EngineRequestGroupRulesDecorTrait;
 
     private const string REFERENCE_DIR = __DIR__ . '/../../Fixtures/engine-requests';
 
@@ -119,6 +121,8 @@ final class EngineRequestsRecordCommandTest extends KernelTestCase
         yield 'période générée sur place' => ['periode-3'];
         yield 'période comblée' => ['periode-4'];
         yield 'placement, club entier et semaine' => ['placement'];
+        yield 'socle aux règles de groupe et au jour de match enregistré' => ['socle-7'];
+        yield 'période à la règle de groupe' => ['periode-8'];
     }
 
     /** @return iterable<string, array{callable, callable, callable}> */
@@ -242,7 +246,7 @@ final class EngineRequestsRecordCommandTest extends KernelTestCase
     }
 
     /**
-     * La demande enregistrée EST celle que le moteur reçoit : chacun des six corps captés sur le rail
+     * La demande enregistrée EST celle que le moteur reçoit : chacun des corps de référence captés sur le rail
      * réel (handler + `EngineClient` + moteur simulé) a pour empreinte le fichier de sa clé.
      */
     #[DataProvider('referenceCases')]
@@ -833,6 +837,21 @@ final class EngineRequestsRecordCommandTest extends KernelTestCase
                     'season-' . self::ER_SEASON . '/placement/all' => 'placement-5-club-entier',
                     'season-' . self::ER_SEASON . '/placement/2026-01-12_2026-01-18' => 'placement-6-fenetre',
                 ];
+            case 'socle-7':
+                $this->seedEngineRequestTeamGroups();
+                $this->seedEngineRequestSeasonGroupRules();
+                $this->seedSocleVersion(self::ER_SOCLE_V1, ScheduleStatus::DRAFT);
+
+                return [$socle() . '/version-' . self::ER_SOCLE_V1 . '.generate' => 'socle-7-regles-de-groupe-et-jour-de-match'];
+            case 'periode-8':
+                $this->seedEngineRequestTeamGroups();
+                $this->seedEngineRequestSeasonGroupRules();
+                $this->seedSocleInForce();
+                $planId = $this->seedEngineRequestPeriod();
+                $this->seedEngineRequestPeriodGroupRule();
+                $this->seedPeriodVersion(self::ER_PERIOD_P1, ScheduleStatus::DRAFT);
+
+                return ['season-' . self::ER_SEASON . '/plan-' . $planId . '/version-' . self::ER_PERIOD_P1 . '.generate' => 'periode-8-regle-de-groupe'];
         }
 
         self::fail('cas inconnu : ' . $case);
