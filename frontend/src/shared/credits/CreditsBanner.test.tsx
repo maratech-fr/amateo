@@ -49,6 +49,30 @@ describe("CreditsBanner", () => {
     expect(screen.getByRole("button", { name: "Masquer l'alerte crédits" })).toBeInTheDocument();
   });
 
+  /**
+   * Contrôle visuel lot 2 PR 4 — le bandeau d'urgence dit ce qui consomme un crédit : le comblement
+   * en fait partie (aligné sur l'explication de la pastille, `CreditBadge.test.tsx`), sinon le solde
+   * baisse sur un geste que rien n'a annoncé.
+   */
+  it("à ≤ 3 : le bandeau nomme le comblement parmi ce qui consomme un crédit", () => {
+    credits.current = view(3);
+    renderBanner();
+    expect(screen.getByRole("alert")).toHaveTextContent(/combl/i);
+  });
+
+  it("à ≤ 3 : le compteur du bandeau s'accorde (1 crédit, 2 crédits)", () => {
+    credits.current = view(1);
+    const { rerender } = renderBanner();
+    expect(screen.getByRole("alert")).toHaveTextContent(/\b1 crédit gratuit\b(?!s)/);
+    credits.current = view(2);
+    rerender(
+      <MemoryRouter>
+        <CreditsBanner />
+      </MemoryRouter>,
+    );
+    expect(screen.getByRole("alert")).toHaveTextContent(/\b2 crédits gratuits\b/);
+  });
+
   it("une fois fermé, ne se ré-affiche pas au même solde mais REVIENT quand il baisse", async () => {
     const user = userEvent.setup();
     credits.current = view(3);

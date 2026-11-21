@@ -3268,7 +3268,9 @@ describe("PlanningPage — « Combler automatiquement » porte le solde de créd
     meState.entitlements = decouverte(7);
     renderPeriodAdrift();
 
-    await user.click(await screen.findByRole("button", { name: `${PLANNING_TEXTS.fillAutomatically} (3)` }));
+    const button = await screen.findByRole("button", { name: `${PLANNING_TEXTS.fillAutomatically} (3)` });
+    expect(screen.getByText(PLANNING_TEXTS.fillHint)).toBeVisible();
+    await user.click(button);
 
     await vi.waitFor(() => expect(vi.mocked(fillSchedule)).toHaveBeenCalledWith(SID));
   });
@@ -3286,11 +3288,29 @@ describe("PlanningPage — « Combler automatiquement » porte le solde de créd
     expect(vi.mocked(fillSchedule)).not.toHaveBeenCalled();
   });
 
+  /**
+   * Contrôle visuel lot 2 PR 4 — la raison du blocage s'écrit EN CLAIR à côté du bouton, pas
+   * seulement au survol (`title`) ni pour un lecteur d'écran (le `<span sr-only>` de
+   * `disabledReason`, que ce test écarte) ; le texte d'aide du cas nominal lui laisse la place.
+   */
+  it("Découverte, 0 crédit : la raison se lit à côté du bouton, à la place du texte d'aide", async () => {
+    meState.entitlements = decouverte(10);
+    renderPeriodAdrift();
+
+    await screen.findByRole("button", { name: `${PLANNING_TEXTS.fillAutomatically} (0)` });
+    const shown = screen.getAllByText(PLANNING_TEXTS.fillNoCreditLeft).filter((el) => !el.classList.contains("sr-only"));
+    expect(shown).toHaveLength(1);
+    expect(shown[0]).toBeVisible();
+    expect(screen.queryByText(PLANNING_TEXTS.fillHint)).not.toBeInTheDocument();
+  });
+
   it("offre payante, bêta ou démo (aucun pool) : le bouton n'a pas de compteur", async () => {
     meState.entitlements = { ...decouverte(0), planCode: "essentiel", planName: "Essentiel", creditsMax: null };
     renderPeriodAdrift();
 
     expect(await screen.findByRole("button", { name: PLANNING_TEXTS.fillAutomatically })).toBeEnabled();
+    expect(screen.getByText(PLANNING_TEXTS.fillHint)).toBeVisible();
+    expect(screen.queryByText(PLANNING_TEXTS.fillNoCreditLeft)).not.toBeInTheDocument();
   });
 });
 

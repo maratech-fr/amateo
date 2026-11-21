@@ -42,10 +42,16 @@ describe("CreditBadge", () => {
     expect(pill.querySelector(".text-warning")).not.toBeNull();
   });
 
-  it("accorde le singulier à 1 crédit restant", () => {
-    credits.current = view(1);
+  // Accord français : 0 et 1 au singulier, le pluriel à partir de 2 (contrôle visuel lot 2 PR 4 :
+  // la pastille affichait « 0 crédits »).
+  it.each([
+    [0, "Découverte · 0 crédit"],
+    [1, "Découverte · 1 crédit"],
+    [2, "Découverte · 2 crédits"],
+  ])("accorde le compteur à %i crédit(s) restant(s)", (remaining, label) => {
+    credits.current = view(remaining);
     renderBadge();
-    expect(screen.getByText("Découverte · 1 crédit")).toBeInTheDocument();
+    expect(screen.getByText(label)).toBeInTheDocument();
   });
 
   it("s'enveloppe d'un lien vers /club, dont l'aria-label conserve l'explication crédits", () => {
