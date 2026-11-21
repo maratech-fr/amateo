@@ -77,6 +77,7 @@ final class VerifyStoredTeamTagsCommandTest extends KernelTestCase
         yield 'rattachement à une étiquette hors catalogue' => ['assignment-outside-catalog'];
         yield 'règle qui vise un nom hors catalogue' => ['rule-outside-catalog'];
         yield 'équipe dont la catégorie n\'existe plus' => ['category-gone'];
+        yield 'rattachement d\'une équipe qui n\'existe plus' => ['team-gone'];
     }
 
     public function testASaneBaseExitsZeroAcrossEverySeason(): void
@@ -100,6 +101,7 @@ final class VerifyStoredTeamTagsCommandTest extends KernelTestCase
             'assignment-outside-catalog' => $this->assignToNewTag($this->activeTeam, 'MAISON'),
             'rule-outside-catalog' => $this->ruleTargeting('MAISON'),
             'category-gone' => $this->dropCategoryOf($this->archivedTeam),
+            'team-gone' => $this->assignVanishedTeam(),
         };
 
         $tester = $this->runCommand();
@@ -238,13 +240,39 @@ final class VerifyStoredTeamTagsCommandTest extends KernelTestCase
         return $this->storedTags[$name]->getId();
     }
 
-    /** @return string l'identifiant de l'étiquette hors catalogue */
+    /**
+     * Distinct de l'écart « étiquette hors catalogue », qui nomme l'étiquette : ici c'est le
+     * RATTACHEMENT qui doit être désigné.
+     *
+     * @return string l'identifiant du rattachement à l'étiquette hors catalogue
+     */
     private function assignToNewTag(Team $team, string $tagName): string
     {
         $this->storeTag($tagName);
-        $this->assign($team, $tagName);
+        $assignment = new TeamTagAssignment;
+        $assignment->setClubId($this->club->getId());
+        $assignment->setTeamId($team->getId());
+        $assignment->setTagId($this->storedTags[$tagName]->getId());
+        $assignment->setSeasonId($team->getSeasonId());
+        $this->em->persist($assignment);
+        $this->em->flush();
 
-        return $this->storedTags[$tagName]->getId();
+        return $assignment->getId();
+    }
+
+    /** @return string l'identifiant de l'équipe disparue que le rattachement désigne encore */
+    private function assignVanishedTeam(): string
+    {
+        $vanished = '00000000-0000-4000-8000-00000000dead';
+        $assignment = new TeamTagAssignment;
+        $assignment->setClubId($this->club->getId());
+        $assignment->setTeamId($vanished);
+        $assignment->setTagId($this->storedTags['U13']->getId());
+        $assignment->setSeasonId($this->archived->getId());
+        $this->em->persist($assignment);
+        $this->em->flush();
+
+        return $vanished;
     }
 
     /** @return string l'identifiant de la règle */
@@ -264,13 +292,19 @@ final class VerifyStoredTeamTagsCommandTest extends KernelTestCase
         return $rule->getId();
     }
 
-    /** @return string l'identifiant de l'équipe dont la catégorie a disparu */
+    /**
+     * L'écart de rattachements de l'équipe nomme déjà l'équipe : c'est la CATÉGORIE disparue qui
+     * doit être désignée, sans quoi ce contrôle pourrait manquer sans que le cas rougisse.
+     *
+     * @return string l'identifiant de la catégorie disparue
+     */
     private function dropCategoryOf(Team $team): string
     {
-        $this->em->getConnection()->executeStatement('DELETE FROM sport_category WHERE id = :id', ['id' => $team->getSportCategoryId()]);
+        $categoryId = $team->getSportCategoryId();
+        $this->em->getConnection()->executeStatement('DELETE FROM sport_category WHERE id = :id', ['id' => $categoryId]);
         $this->em->clear();
 
-        return $team->getId();
+        return $categoryId;
     }
 
     private function season(string $name, string $start, string $end, SeasonStatus $status): Season
