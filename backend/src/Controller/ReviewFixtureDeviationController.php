@@ -16,7 +16,6 @@ use App\Exception\ImportRejectedException;
 use App\Service\FbiCorrectionLedger;
 use App\Service\FbiFixtureImporter;
 use App\Service\SeasonAccessGuard;
-use App\Service\SocleGuard;
 use DateMalformedStringException;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -42,7 +41,7 @@ use Symfony\Component\Routing\Attribute\Route;
  * Une rencontre d'un autre club est invisible (filtres tenant) → 404 byte-identique.
  */
 #[AsController]
-#[ClubFunction(module: Module::MATCHES, audience: Audience::MANAGER)]
+#[ClubFunction(module: Module::MATCHES, audience: Audience::MANAGER, refusedWhenModuleClosed: true)]
 final class ReviewFixtureDeviationController extends AbstractController
 {
     private const FIELDS = ['date', 'kickoff', 'venue'];
@@ -54,7 +53,6 @@ final class ReviewFixtureDeviationController extends AbstractController
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
         private readonly SeasonAccessGuard $seasonAccessGuard,
-        private readonly SocleGuard $socleGuard,
         private readonly FbiFixtureImporter $importer,
         private readonly FbiCorrectionLedger $ledger,
         private readonly ClockInterface $clock,
@@ -65,7 +63,6 @@ final class ReviewFixtureDeviationController extends AbstractController
     public function __invoke(Request $request): JsonResponse
     {
         $this->seasonAccessGuard->assertWritable($request);
-        $this->socleGuard->assertSeasonPlanChosen($request->attributes->get('_season_id') ?? $request->headers->get('X-Season-Id'));
 
         $body = json_decode($request->getContent(), true);
         if (!\is_array($body)) {

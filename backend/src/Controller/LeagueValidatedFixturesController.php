@@ -13,7 +13,6 @@ use App\Service\FriendlyAutoValidator;
 use App\Service\LeagueValidationOutlook;
 use App\Service\MatchPlacementPayloadBuilder;
 use App\Service\SeasonAccessGuard;
-use App\Service\SocleGuard;
 use DateTimeImmutable;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\Clock\ClockInterface;
@@ -51,17 +50,17 @@ use Symfony\Component\Routing\Attribute\Route;
  * championnats et compté dans `swept`.
  *
  * Gardes AVANT tout balayage, patron {@see ReviewFixturesController} : management + saison
- * écrivable + saison résolue + socle pointé.
+ * écrivable + saison résolue ; le socle pointé est exigé avant elles (module Matchs fermé sans
+ * lui, `ClubAccessListener`).
  */
 #[AsController]
-#[ClubFunction(module: Module::MATCHES, audience: Audience::MANAGER)]
+#[ClubFunction(module: Module::MATCHES, audience: Audience::MANAGER, refusedWhenModuleClosed: true)]
 final class LeagueValidatedFixturesController extends AbstractController
 {
     public function __construct(
         private readonly LeagueValidationOutlook $outlook,
         private readonly FriendlyAutoValidator $friendlyAutoValidator,
         private readonly SeasonAccessGuard $seasonAccessGuard,
-        private readonly SocleGuard $socleGuard,
         private readonly ClockInterface $clock,
     ) {}
 
@@ -90,7 +89,6 @@ final class LeagueValidatedFixturesController extends AbstractController
         if (!\is_string($seasonId) || '' === $seasonId) {
             throw new ConflictHttpException('Aucune saison active : impossible de valider les rencontres en lot.');
         }
-        $this->socleGuard->assertSeasonPlanChosen($seasonId);
 
         // L'appelant est GESTIONNAIRE (contrôle central, `ClubAccessListener`), la saison écrivable et le
         // socle en vigueur : les balayages peuvent écrire. Un Membre n'atteint jamais ce point.

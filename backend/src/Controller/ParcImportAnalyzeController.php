@@ -30,7 +30,7 @@ use Symfony\Component\HttpKernel\Attribute\AsController;
  * désérialisation d'API Platform. Les refus octets (413) et dénombrement (422) suivent la gate.
  */
 #[AsController]
-#[ClubFunction(module: Module::CLUB, audience: Audience::MANAGER)]
+#[ClubFunction(module: Module::PLANNING, audience: Audience::MANAGER)]
 final class ParcImportAnalyzeController extends AbstractController
 {
     /** Bornes d'abus (cadrage G2) — le corps est refusé AVANT le parse au-delà de la taille. */

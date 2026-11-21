@@ -36,7 +36,7 @@ use Symfony\Component\HttpKernel\Exception\UnprocessableEntityHttpException;
  * invalide au moment de l'écriture → 422 `{errors: […]}` nommant la ligne, rien écrit.
  */
 #[AsController]
-#[ClubFunction(module: Module::CLUB, audience: Audience::MANAGER)]
+#[ClubFunction(module: Module::PLANNING, audience: Audience::MANAGER)]
 final class ParcImportExecuteController extends AbstractController
 {
     /** Bornes d'abus (cadrage G2) — le corps est refusé AVANT le parse au-delà de la taille. */

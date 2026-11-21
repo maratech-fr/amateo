@@ -36,18 +36,15 @@ final class DeleteAccountController extends AbstractController
         private readonly AuditTrail $auditTrail,
     ) {}
 
-    #[AccountFunction]
+    // SEC-28 — un compte de démonstration ne se supprime pas (il est pérenne et partagé par tous
+    // les rendez-vous) : refusé par le contrôle central, AVANT toute lecture du corps.
+    #[AccountFunction(protectedInDemo: true)]
     #[Route('/api/me', name: 'api_me_delete', methods: ['DELETE'])]
     public function __invoke(Request $request): JsonResponse
     {
         $user = $this->getUser();
         if (!$user instanceof User) {
             return $this->json(['error' => 'Unauthorized'], 401);
-        }
-        // SEC-28 — un compte de démonstration ne se supprime pas (il est pérenne et
-        // partagé par tous les rendez-vous). Refus AVANT toute lecture du corps.
-        if ($user->isDemo()) {
-            return $this->json(['error' => 'Ce compte de démonstration ne peut pas être modifié.'], 403);
         }
 
         $data = json_decode($request->getContent(), true);

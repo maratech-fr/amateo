@@ -25,7 +25,6 @@ use App\Service\PlacementConflictText;
 use App\Service\PlanEntitlements;
 use App\Service\SeasonAccessGuard;
 use App\Service\SeasonResolver;
-use App\Service\SocleGuard;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
 use Psr\Log\LoggerInterface;
@@ -44,10 +43,11 @@ use Throwable;
 
 /**
  * POST /api/fixtures/place — « Placer automatiquement » (P1-4 PR D, ADR-0003).
- * Rail ASYNCHRONE (patron de la génération) : le contrôleur garde toutes ses gardes
- * (SEC-07 → socle 409 → saison archivée 409 → fenêtre Découverte 403), balaie « Déjà dans
- * FBI » les domiciles datés des championnats commencés (après les gardes de saison et de
- * socle, avant de décider quoi placer), prend le verrou
+ * Rail ASYNCHRONE (patron de la génération) : passé le contrôle central (rôle, module Matchs
+ * fermé sans socle 409, crédit — `ClubAccessListener`), le contrôleur garde les siennes
+ * (saison archivée 409 → fenêtre Découverte 403), balaie « Déjà dans
+ * FBI » les domiciles datés des championnats commencés (après la garde de saison, avant de
+ * décider quoi placer), prend le verrou
  * anti-double-demande, ENFILE un {@see PlaceMatchesMessage} et répond 202 avec l'id du
  * run. Le worker ({@see PlaceMatchesHandler}) solve, applique, décompte
  * le crédit au SUCCÈS et pousse la bascule terminale sur `/clubs/{clubId}/placement`.
@@ -63,7 +63,7 @@ use Throwable;
  * décompté par le worker au COMPLETED, plus par ce contrôleur.
  */
 #[AsController]
-#[ClubFunction(module: Module::MATCHES, audience: Audience::MANAGER, output: Output::MATCH_PLACEMENT)]
+#[ClubFunction(module: Module::MATCHES, audience: Audience::MANAGER, output: Output::MATCH_PLACEMENT, refusedWhenModuleClosed: true)]
 final class PlaceMatchesController extends AbstractController
 {
     use ResolvesCurrentClubTrait;
@@ -81,7 +81,6 @@ final class PlaceMatchesController extends AbstractController
         private readonly SeasonResolver $seasonResolver,
         private readonly DeploymentGate $deploymentGate,
         private readonly SeasonAccessGuard $seasonAccessGuard,
-        private readonly SocleGuard $socleGuard,
         private readonly FriendlyAutoValidator $friendlyAutoValidator,
         private readonly LeagueValidationOutlook $leagueValidationOutlook,
         private readonly MatchPlacementLock $lock,
@@ -114,7 +113,6 @@ final class PlaceMatchesController extends AbstractController
             return $this->json(['error' => DeploymentGate::FREEZE_MESSAGE], Response::HTTP_CONFLICT);
         }
         $this->seasonAccessGuard->assertWritable($request);
-        $this->socleGuard->assertSeasonPlanChosen($request->attributes->get('_season_id') ?? $request->headers->get('X-Season-Id'));
 
         // Balayage « Déjà dans FBI » AVANT de décider quoi placer (gardes passées : gestionnaire,
         // hors gel, saison écrivable, socle en vigueur) : une page montée avant que le

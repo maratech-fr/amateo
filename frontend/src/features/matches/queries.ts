@@ -284,7 +284,8 @@ export function useClearConflictResolution() {
  * ni à la navigation boucle⇄configuration (même montage de layout) — un seul POST.
  * Le bandeau résumé et les chips « Nouveau » lisent tous CE cache (même clé), donc
  * un seul appel les nourrit tous. `retry: false` : un badge raté n'est pas une
- * erreur à réessayer, la prochaine visite le rejouera.
+ * erreur à réessayer, la prochaine visite le rejouera. Télémétrie sans effet visible : un
+ * refus du serveur ne toaste jamais (`meta.silentFailure`).
  */
 export function useModuleVisit(enabled = true) {
   return useQuery({
@@ -294,6 +295,7 @@ export function useModuleVisit(enabled = true) {
     staleTime: Infinity,
     gcTime: Infinity,
     retry: false,
+    meta: { silentFailure: true },
   });
 }
 
