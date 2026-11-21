@@ -11,6 +11,7 @@ use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
 use App\Message\ExportPdfMessage;
 use App\MessageHandler\ExportPdfHandler;
+use App\Service\OutputCreditLedger;
 use App\Service\PdfGenerator;
 use App\Service\TenantConnectionContext;
 use App\Tests\ChoosesPlanVersionTrait;
@@ -82,7 +83,7 @@ final class ExportPdfHandlerRlsTest extends KernelTestCase
         $this->clearGuc();
 
         $pdfGenerator = $this->createMock(PdfGenerator::class);
-        $pdfGenerator->method('generate')->willReturn(['pdf' => '/exports/x.pdf']);
+        $pdfGenerator->method('renderPending')->willReturn(['pending' => 'x-tmp.pdf', 'filename' => 'x.pdf', 'url' => '/exports/x.pdf']);
         $hub = $this->createMock(HubInterface::class);
         $hub->method('publish')->willReturnCallback(static fn (Update $u): string => 'id');
 
@@ -91,6 +92,7 @@ final class ExportPdfHandlerRlsTest extends KernelTestCase
             $pdfGenerator,
             $hub,
             $container->get(TenantConnectionContext::class),
+            $container->get(OutputCreditLedger::class),
         );
 
         $handler(new ExportPdfMessage(scheduleId: $schedule->getId(), clubId: $club->getId()));
@@ -108,9 +110,9 @@ final class ExportPdfHandlerRlsTest extends KernelTestCase
     /**
      * Chantier E — le handler TRANSMET « afficher le nom des coachs » du message au générateur.
      * Sans ce relais, la case cochée n'atteindrait jamais le PDF : la grille resterait muette malgré
-     * l'option. `PdfGenerator` est mocké ; on capture l'argument passé à `generate`.
+     * l'option. `PdfGenerator` est mocké ; on capture l'argument passé à `renderPending`.
      *
-     * ⚠ Signature PROPOSÉE : `generate(Schedule, ?venueId, bool $showCoaches)`. NEO l'adapte
+     * ⚠ Signature : `renderPending(Schedule, ?venueId, bool $showCoaches, bool $showOccupancies)`. NEO l'adapte
      * mécaniquement ; le relais message → générateur est la promesse.
      */
     public function testHandlerForwardsShowCoachesToTheGenerator(): void
@@ -152,17 +154,17 @@ final class ExportPdfHandlerRlsTest extends KernelTestCase
 
         $captured = null;
         $pdfGenerator = $this->createMock(PdfGenerator::class);
-        $pdfGenerator->method('generate')->willReturnCallback(
-            function (Schedule $schedule, ?string $venueId = null, bool $showCoaches = false) use (&$captured): array {
+        $pdfGenerator->method('renderPending')->willReturnCallback(
+            function (Schedule $schedule, ?string $venueId, bool $showCoaches) use (&$captured): array {
                 $captured = $showCoaches;
 
-                return ['pdf' => '/exports/x.pdf'];
+                return ['pending' => 'x-tmp.pdf', 'filename' => 'x.pdf', 'url' => '/exports/x.pdf'];
             },
         );
         $hub = $this->createMock(HubInterface::class);
         $hub->method('publish')->willReturnCallback(static fn (Update $u): string => 'id');
 
-        $handler = new ExportPdfHandler($em, $pdfGenerator, $hub, $container->get(TenantConnectionContext::class));
+        $handler = new ExportPdfHandler($em, $pdfGenerator, $hub, $container->get(TenantConnectionContext::class), $container->get(OutputCreditLedger::class));
         $handler(new ExportPdfMessage(scheduleId: $scheduleId, clubId: $club->getId(), showCoaches: true));
 
         self::assertTrue($captured, 'le handler doit relayer showCoaches=true du message au générateur');
