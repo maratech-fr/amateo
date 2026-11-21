@@ -25,6 +25,7 @@ use App\MessageHandler\GenerateScheduleHandler;
 use App\Service\ClubGenerationLock;
 use App\Service\DiagnosticMessageBuilder;
 use App\Service\EngineClient;
+use App\Service\OutputCreditLedger;
 use App\Service\RequestIdContext;
 use App\Service\ScheduleConstraintBuilder;
 use App\Service\ScheduleDiagnosticsRecorder;
@@ -314,6 +315,7 @@ final class SocleReferencePayloadParityTest extends KernelTestCase
             $container->get(TenantConnectionContext::class),
             $container->get(StructureSnapshotter::class),
             $container->get(SchedulePlanProvisioner::class),
+            $container->get(OutputCreditLedger::class),
         );
 
         $handler(new GenerateScheduleMessage(

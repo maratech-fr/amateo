@@ -95,12 +95,6 @@ final class GenerationCreditIsPartOfTheResultTest extends KernelTestCase
         yield 'démonstration' => [null, true];
     }
 
-    /** @return array<string, mixed> */
-    private function completed(): array
-    {
-        return ['status' => 'completed', 'score' => 0, 'slots' => [], 'diagnostics' => []];
-    }
-
     /** Une version prête a pris un crédit, celui du club du message ; le voisin n'a rien perdu. */
     public function testACompletedSolveTakesOneCreditOfTheMessageClub(): void
     {
@@ -199,6 +193,12 @@ final class GenerationCreditIsPartOfTheResultTest extends KernelTestCase
         self::bootKernel();
         $this->em = self::getContainer()->get(EntityManagerInterface::class);
         $this->engineCalls = 0;
+    }
+
+    /** @return array<string, mixed> */
+    private function completed(): array
+    {
+        return ['status' => 'completed', 'score' => 0, 'slots' => [], 'diagnostics' => []];
     }
 
     /** @param array<string, mixed>|null $engineBody null = le moteur ne répond pas (erreur de transport) */

@@ -6,7 +6,6 @@ namespace App\MessageHandler;
 
 use App\Entity\Club;
 use App\Entity\MatchPlacementRun;
-use App\Entity\Season;
 use App\Entity\User;
 use App\Enum\MatchPlacementRunStatus;
 use App\Message\PlaceMatchesMessage;
@@ -18,7 +17,6 @@ use App\Service\MatchPlacementResultApplier;
 use App\Service\OutputCreditLedger;
 use App\Service\PlacementRunEmailBuilder;
 use App\Service\PlacementRunFailureNotifier;
-use App\Service\PlanEntitlements;
 use App\Service\TenantConnectionContext;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -51,7 +49,7 @@ use Throwable;
  *  - **Transitions terminales conditionnelles** : COMPLETED/FAILED seulement depuis RUNNING
  *    (relecture fraîche, puis `@Version` au flush) — un handler dont le run a été déclaré échoué
  *    pendant son solve est un PERDANT : il n'écrit rien, ne décompte rien, ne publie rien. Les
- *    placements et le COMPLETED s'écrivent dans UNE transaction ; crédit et Mercure après commit.
+ *    placements, le COMPLETED et le crédit s'écrivent dans UNE transaction ; Mercure après commit.
  *    Invariant : un seul consommateur du transport `async` à la fois.
  *
  * L'exception est ACQUITTÉE (jamais rejouée) : un run FAILED est un fait d'exploitation, pas
@@ -81,7 +79,6 @@ final class PlaceMatchesHandler
         private readonly MatchPlacementResultApplier $applier,
         private readonly MatchPlacementProgressPublisher $publisher,
         private readonly OutputCreditLedger $creditLedger,
-        private readonly PlanEntitlements $planEntitlements,
         private readonly ClockInterface $clock,
         private readonly MailerInterface $mailer,
         private readonly PlacementRunEmailBuilder $emailBuilder,
@@ -154,7 +151,7 @@ final class PlaceMatchesHandler
             $built = $this->payloadBuilder->build($this->clubOf($run), $message->getSeasonId(), $message->getWindow());
 
             if (0 === $built['toPlaceCount']) {
-                $this->complete($run, [], static fn (array $outcome): array => [
+                $this->complete($run, $clubId, [], static fn (array $outcome): array => [
                     'placed' => 0,
                     'skipped' => 0,
                     'unplaced' => [],
@@ -181,7 +178,7 @@ final class PlaceMatchesHandler
             /** @var list<array{matchId: string, reason: string, message: string}> $unplaced */
             $unplaced = $result['unplaced'] ?? [];
 
-            $this->complete($run, $placements, static fn (array $outcome): array => [
+            $this->complete($run, $clubId, $placements, static fn (array $outcome): array => [
                 'placed' => $outcome['applied'],
                 'skipped' => $outcome['skipped'],
                 'unplaced' => $unplaced,
@@ -200,15 +197,15 @@ final class PlaceMatchesHandler
     }
 
     /**
-     * Applique les placements ET pose COMPLETED dans UNE transaction (jamais des matchs posés par
+     * Applique les placements, pose COMPLETED et prend le crédit dans UNE transaction (jamais des matchs posés par
      * un run que l'écran dira échoué), seulement si le run est encore RUNNING en base. Puis, après
-     * commit : crédit Découverte, bascule Mercure, e-mail de fin. Un perdant (run passé terminal
+     * commit : bascule Mercure, e-mail de fin. Un perdant (run passé terminal
      * par un autre écrivain pendant le solve) n'écrit rien et ne dit rien.
      *
      * @param list<array{matchId: string, venueId: string, kickoff: string}>    $placements
      * @param callable(array{applied: int, skipped: int}): array<string, mixed> $resultOf
      */
-    private function complete(MatchPlacementRun $run, array $placements, callable $resultOf): void
+    private function complete(MatchPlacementRun $run, string $clubId, array $placements, callable $resultOf): void
     {
         if (!$this->isStill($run, MatchPlacementRunStatus::RUNNING)) {
             return;
@@ -225,6 +222,9 @@ final class PlaceMatchesHandler
             $result = $resultOf($outcome);
             $run->setStatus(MatchPlacementRunStatus::COMPLETED)->setFinishedAt($this->now())->setResultData($result);
             $this->entityManager->flush();
+            // Le crédit fait partie du résultat : pris dans la MÊME transaction, sur le club du
+            // message. Une erreur du registre annule placements et statut (run « échoué »).
+            $this->creditLedger->settle($clubId, $run->getSeasonId());
             $connection->commit();
         } catch (OptimisticLockException $exception) {
             $this->rollBack();
@@ -237,7 +237,6 @@ final class PlaceMatchesHandler
             throw $exception;
         }
 
-        $this->consumeCreditIfRestricted($run);
         $this->publisher->publishTerminal((string) $run->getClubId(), $run->getId(), MatchPlacementRunStatus::COMPLETED->value);
         $this->emailManagerIfRunWasLong($run, $result);
     }
@@ -346,19 +345,6 @@ final class PlaceMatchesHandler
             $this->fail($run, $message, $run->getStatus());
         } catch (Throwable) {
             // Impossible d'enregistrer l'échec (connexion perdue) : rien de plus à faire.
-        }
-    }
-
-    private function consumeCreditIfRestricted(MatchPlacementRun $run): void
-    {
-        $club = $this->clubOf($run);
-        $seasonId = $run->getSeasonId();
-        $season = null !== $seasonId ? $this->entityManager->getRepository(Season::class)->find($seasonId) : null;
-        if (!$season instanceof Season) {
-            return;
-        }
-        if ($this->planEntitlements->outputBudget($club, $season)['restricted']) {
-            $this->creditLedger->consume((string) $run->getClubId());
         }
     }
 

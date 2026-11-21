@@ -33,7 +33,6 @@ use App\Service\MatchPlacementResultApplier;
 use App\Service\OutputCreditLedger;
 use App\Service\PlacementRunEmailBuilder;
 use App\Service\PlacementRunFailureNotifier;
-use App\Service\PlanEntitlements;
 use App\Service\RequestIdContext;
 use App\Service\SeasonResolver;
 use App\Service\TenantConnectionContext;
@@ -349,7 +348,6 @@ final class PlaceMatchesHandlerTest extends WebTestCase
             $container->get(MatchPlacementResultApplier::class),
             new MatchPlacementProgressPublisher($spyHub),
             $container->get(OutputCreditLedger::class),
-            $container->get(PlanEntitlements::class),
             $container->get(ClockInterface::class),
             $spyMailer,
             $container->get(PlacementRunEmailBuilder::class),

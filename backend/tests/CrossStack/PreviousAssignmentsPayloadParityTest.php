@@ -21,6 +21,7 @@ use App\MessageHandler\GenerateScheduleHandler;
 use App\Service\ClubGenerationLock;
 use App\Service\DiagnosticMessageBuilder;
 use App\Service\EngineClient;
+use App\Service\OutputCreditLedger;
 use App\Service\PeriodPlanTranscriber;
 use App\Service\RequestIdContext;
 use App\Service\ScheduleConstraintBuilder;
@@ -315,6 +316,7 @@ final class PreviousAssignmentsPayloadParityTest extends KernelTestCase
             $container->get(TenantConnectionContext::class),
             $container->get(StructureSnapshotter::class),
             $container->get(SchedulePlanProvisioner::class),
+            $container->get(OutputCreditLedger::class),
         );
 
         $handler(new GenerateScheduleMessage(scheduleId: $scheduleId, clubId: $clubId, sourceScheduleId: $sourceScheduleId));

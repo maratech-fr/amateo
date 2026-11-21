@@ -16,6 +16,7 @@ use App\Service\ClubGenerationLock;
 use App\Service\DevScheduleReportWriter;
 use App\Service\EngineClient;
 use App\Service\EngineRequestComposer;
+use App\Service\OutputCreditLedger;
 use App\Service\ScheduleConstraintBuilder;
 use App\Service\ScheduleDiagnosticsRecorder;
 use App\Service\SchedulePlanProvisioner;
@@ -79,6 +80,7 @@ final class GenerateScheduleHandler
         private TenantConnectionContext $tenantConnectionContext,
         private StructureSnapshotter $structureSnapshotter,
         private SchedulePlanProvisioner $schedulePlanProvisioner,
+        private OutputCreditLedger $creditLedger,
         private ?LoggerInterface $logger = null,
         private ?DevScheduleReportWriter $devReportWriter = null,
         private ?SolverMetricsRecorder $metricsRecorder = null,
@@ -355,9 +357,32 @@ final class GenerateScheduleHandler
         // even if Mercure is momentarily down (publish is best-effort below).
         // « socle ? » est déjà connu ici (`isSeasonPlan` de la demande composée) — on le passe pour
         // éviter de re-lire le plan à la complétion (C4 / code-review).
-        $this->applyEngineResult($schedule, $result, $composed->isSeasonPlan);
-        $this->metricsRecorder?->record($schedule, $result, $payloadBytes);
-        $this->entityManager->flush();
+        //
+        // Le crédit fait partie du résultat (décision fondateur Q16 a) : import des créneaux (son
+        // flush devient une transaction imbriquée), statut et crédit s'écrivent dans UNE transaction
+        // tenue sur la connexion (pas `wrapInTransaction`, qui fermerait l'EM sur une erreur du
+        // registre : le FAILED du filet doit encore pouvoir s'écrire). Une erreur du registre annule
+        // tout — la version finit « échouée », sans crédit. Un flush ORM en échec ferme l'EM : la
+        // version reste « en cours » jusqu'au rattrapage, comme avant. Photo de structure et Mercure
+        // restent APRÈS le commit, hors transaction.
+        $connection = $this->entityManager->getConnection();
+        $connection->beginTransaction();
+
+        try {
+            $this->applyEngineResult($schedule, $result, $composed->isSeasonPlan);
+            $this->metricsRecorder?->record($schedule, $result, $payloadBytes);
+            $this->entityManager->flush();
+            if (ScheduleStatus::COMPLETED === $schedule->getStatus()) {
+                $this->creditLedger->settle($message->getClubId(), $schedule->getSeasonId());
+            }
+            $connection->commit();
+        } catch (Throwable $exception) {
+            if ($connection->isTransactionActive()) {
+                $connection->rollBack();
+            }
+
+            throw $exception;
+        }
 
         // planning-versions D2 (phase 2/2): store the photo ONLY on a COMPLETED
         // plan — a FAILED regeneration must never overwrite the photo of the
