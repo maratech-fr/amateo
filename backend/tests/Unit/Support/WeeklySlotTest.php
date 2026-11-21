@@ -37,8 +37,8 @@ final class WeeklySlotTest extends TestCase
 
     public function testMondayIsOneAndSundayIsSeven(): void
     {
-        self::assertSame(1, (new WeeklySlot(1, 0, 1))->day, 'lundi = 1');
-        self::assertSame(7, (new WeeklySlot(7, 1439, 1))->day, 'dimanche = 7, dernière minute du jour comprise');
+        self::assertSame(1, new WeeklySlot(1, 0, 1)->day, 'lundi = 1');
+        self::assertSame(7, new WeeklySlot(7, 1439, 1)->day, 'dimanche = 7, dernière minute du jour comprise');
     }
 
     #[DataProvider('daysOutsideTheWeek')]

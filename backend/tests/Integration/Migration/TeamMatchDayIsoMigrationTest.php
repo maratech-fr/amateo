@@ -77,7 +77,9 @@ final class TeamMatchDayIsoMigrationTest extends KernelTestCase
             $after['Team'][0]['matchDay'] = 6;
             $after['Team'][2]['matchDay'] = 7;
             self::assertEquals($after, $this->photoData($photo), 'dans la photo, seul le jour de match des équipes bouge (+1) ; null reste null ; l\'ordre des équipes est gardé ; le jour d\'un créneau ne bouge pas');
-            self::assertSame(['team-sat', 'team-unset', 'team-sun'], array_column($this->photoData($photo)['Team'], 'id'), 'l\'ordre des équipes de la photo est gardé');
+            $teams = $this->photoData($photo)['Team'] ?? null;
+            self::assertIsArray($teams);
+            self::assertSame(['team-sat', 'team-unset', 'team-sun'], array_column($teams, 'id'), 'l\'ordre des équipes de la photo est gardé');
             self::assertEquals(['Venue' => [['id' => 'venue-2', 'name' => 'Gymnase Sud']]], $this->photoData($withoutTeams), 'une photo sans équipe est intacte');
         });
     }
@@ -159,7 +161,7 @@ final class TeamMatchDayIsoMigrationTest extends KernelTestCase
         return $id;
     }
 
-    /** @return array<string, list<array<string, mixed>>> */
+    /** @return array<mixed> */
     private function photoData(string $photoId): array
     {
         $data = $this->admin->fetchOne('SELECT data FROM schedule_structure_snapshot WHERE id = ?', [$photoId]);
@@ -167,7 +169,6 @@ final class TeamMatchDayIsoMigrationTest extends KernelTestCase
         $decoded = json_decode($data, true, 512, \JSON_THROW_ON_ERROR);
         self::assertIsArray($decoded);
 
-        /** @var array<string, list<array<string, mixed>>> $decoded */
         return $decoded;
     }
 
