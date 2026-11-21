@@ -13,6 +13,7 @@ use App\Service\PdfGenerator;
 use App\Service\TenantConnectionContext;
 use Doctrine\ORM\EntityManagerInterface;
 use LogicException;
+use Psr\Log\LoggerInterface;
 use Symfony\Component\Mercure\HubInterface;
 use Symfony\Component\Messenger\Attribute\AsMessageHandler;
 use Throwable;
@@ -26,6 +27,7 @@ final readonly class ExportPdfHandler
         private HubInterface $hub,
         private TenantConnectionContext $tenantConnectionContext,
         private OutputCreditLedger $creditLedger,
+        private ?LoggerInterface $logger = null,
     ) {}
 
     public function __invoke(ExportPdfMessage $message): void
@@ -64,6 +66,16 @@ final readonly class ExportPdfHandler
             return;
         }
 
+        // Redélivrance d'une demande déjà livrée (worker tué ou exception entre le commit et
+        // l'acquittement) : ni rendu ni crédit, l'écran reçoit le fichier livré. Le statut seul ne
+        // le dit pas — une NOUVELLE demande trouve elle aussi le planning « prêt ».
+        $requestId = $message->getRequestId();
+        if (null !== $requestId && $requestId === $schedule->getPdfExportRequestId()) {
+            $this->publishProgress($schedule);
+
+            return;
+        }
+
         $schedule->setPdfExportStatus('generating');
         $this->entityManager->flush();
 
@@ -78,7 +90,7 @@ final readonly class ExportPdfHandler
             return;
         }
 
-        $this->deliver($schedule, $clubId, $rendered);
+        $this->deliver($schedule, $clubId, $rendered, $requestId);
         $this->entityManager->flush();
         $this->publishProgress($schedule);
     }
@@ -89,11 +101,12 @@ final readonly class ExportPdfHandler
      * pris. Pool vidé entre la demande et la livraison : le rendu temporaire est jeté, le fichier
      * final et l'URL déjà livrés restent ; le statut revient à « prêt » s'il existe une URL livrée,
      * à « échec » sinon. Sûr tant qu'un seul consommateur traite la file (lecture de l'URL sans
-     * verrou, un seul rendu d'un même nom final à la fois).
+     * verrou, un seul rendu d'un même nom final à la fois). L'identifiant de la demande est posé
+     * avec l'URL : c'est lui que la garde de redélivrance relit.
      *
      * @param array{pending: string, filename: string, url: string} $rendered
      */
-    private function deliver(Schedule $schedule, string $clubId, array $rendered): void
+    private function deliver(Schedule $schedule, string $clubId, array $rendered, ?string $requestId): void
     {
         $connection = $this->entityManager->getConnection();
         $connection->beginTransaction();
@@ -110,6 +123,7 @@ final readonly class ExportPdfHandler
             $this->pdfGenerator->deliver($rendered['pending'], $rendered['filename']);
             $schedule->setPdfExportStatus('completed');
             $schedule->setPdfExportUrl($rendered['url']);
+            $schedule->setPdfExportRequestId($requestId);
             $this->entityManager->flush();
             $connection->commit();
         } catch (Throwable $exception) {
@@ -132,6 +146,11 @@ final readonly class ExportPdfHandler
         return $schedule instanceof Schedule ? $schedule : null;
     }
 
+    /**
+     * Publication de fin, APRÈS le commit : best-effort. Une panne Mercure qui sortirait du
+     * handler ferait rejouer le message par Messenger (nouveau rendu, nouveau crédit) ; le statut
+     * en base fait foi, l'écran converge au sondage.
+     */
     private function publishProgress(Schedule $schedule): void
     {
         $topic = MercureTopic::for($schedule->getClubId(), $schedule->getId());
@@ -139,9 +158,16 @@ final readonly class ExportPdfHandler
             throw new LogicException('Schedule Mercure topic cannot be empty.');
         }
 
-        $this->hub->publish(ClubTopicUpdate::private($topic, json_encode([
-            'pdfExportStatus' => $schedule->getPdfExportStatus(),
-            'pdfExportUrl' => $schedule->getPdfExportUrl(),
-        ], \JSON_THROW_ON_ERROR)));
+        try {
+            $this->hub->publish(ClubTopicUpdate::private($topic, json_encode([
+                'pdfExportStatus' => $schedule->getPdfExportStatus(),
+                'pdfExportUrl' => $schedule->getPdfExportUrl(),
+            ], \JSON_THROW_ON_ERROR)));
+        } catch (Throwable $exception) {
+            $this->logger?->warning('Mercure PDF export publish failed (best-effort)', [
+                'scheduleId' => $schedule->getId(),
+                'exception' => $exception,
+            ]);
+        }
     }
 }

@@ -154,6 +154,14 @@ class Schedule implements TenantOwnedInterface
     #[ORM\Column(type: 'string', length: 2048, nullable: true)]
     private ?string $pdfExportUrl = null;
 
+    /**
+     * Identifiant de la demande PDF dont le fichier a été livré en dernier (posé avec l'URL, dans
+     * la transaction du crédit) : un message Messenger relu qui porte cet identifiant n'est ni
+     * rendu ni décompté une seconde fois. Null : rien de livré depuis la colonne.
+     */
+    #[ORM\Column(type: 'string', length: 32, nullable: true)]
+    private ?string $pdfExportRequestId = null;
+
     public function __construct()
     {
         $this->id = $this->newUuid();
@@ -516,6 +524,18 @@ class Schedule implements TenantOwnedInterface
     public function setPdfExportUrl(?string $pdfExportUrl): self
     {
         $this->pdfExportUrl = $pdfExportUrl;
+
+        return $this;
+    }
+
+    public function getPdfExportRequestId(): ?string
+    {
+        return $this->pdfExportRequestId;
+    }
+
+    public function setPdfExportRequestId(?string $pdfExportRequestId): self
+    {
+        $this->pdfExportRequestId = $pdfExportRequestId;
 
         return $this;
     }

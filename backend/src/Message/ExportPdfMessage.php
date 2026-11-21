@@ -23,6 +23,11 @@ final readonly class ExportPdfMessage
         private ?bool $showCoaches = false,
         // « Afficher les occupations » : même garde legacy (un message enfilé avant ce champ → false).
         private ?bool $showOccupancies = false,
+        // Identifiant de la demande, posé par le contrôleur à chaque geste : un message relu par
+        // Messenger porte le MÊME, une nouvelle demande un autre. Le handler le compare à celui de
+        // la dernière livraison du planning pour ne jamais rendre ni décompter deux fois la même
+        // demande. Null : message enfilé avant ce champ (même garde legacy), jamais vu comme relu.
+        private ?string $requestId = null,
     ) {}
 
     public function getScheduleId(): string
@@ -51,5 +56,11 @@ final readonly class ExportPdfMessage
     {
         // ?? guards the uninitialized-readonly case of a legacy payload (see getClubId()).
         return $this->showOccupancies ?? false;
+    }
+
+    public function getRequestId(): ?string
+    {
+        // ?? guards the uninitialized-readonly case of a legacy payload (see getClubId()).
+        return $this->requestId ?? null;
     }
 }

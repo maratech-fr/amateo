@@ -63,6 +63,7 @@ final class ExportPdfController extends AbstractController
                 venueId: $venueId,
                 showCoaches: $showCoaches,
                 showOccupancies: $this->resolveShowOccupancies($this->requestStack),
+                requestId: bin2hex(random_bytes(16)),
             ),
         );
 

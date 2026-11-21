@@ -207,11 +207,11 @@ final class PdfCreditIsTakenOnDeliveryTest extends KernelTestCase
         [$club, $season] = $this->seedClub(credits: 3);
         $schedule = $this->seedSchedule($club->getId(), $season);
 
-        $this->export($club->getId(), $schedule);
+        $requestId = $this->export($club->getId(), $schedule);
         self::assertSame(4, $this->creditsOf($club->getId()), 'témoin : la première livraison prend son crédit');
         $deliveredUrl = $this->pdfUrlOf($club->getId(), $schedule);
 
-        $this->redeliver($club->getId(), $schedule);
+        $this->redeliver($club->getId(), $schedule, $requestId);
 
         self::assertCount(1, $this->renderedNames, 'la redélivrance ne refait pas le rendu');
         self::assertSame(4, $this->creditsOf($club->getId()), 'la redélivrance d\'un PDF livré ne reprend jamais un crédit');
@@ -232,11 +232,11 @@ final class PdfCreditIsTakenOnDeliveryTest extends KernelTestCase
         [$club, $season, $venueId] = $this->seedClub(credits: 0, planCode: 'essentiel');
         $schedule = $this->seedSchedule($club->getId(), $season);
 
-        $this->request($club->getId(), $schedule);
-        $this->request($club->getId(), $schedule);
-        $this->work($club->getId(), $schedule);
+        $first = $this->request($club->getId(), $schedule);
+        $second = $this->request($club->getId(), $schedule);
+        $this->work($club->getId(), $schedule, null, $first);
         $this->em->clear();
-        $this->work($club->getId(), $schedule, $venueId);
+        $this->work($club->getId(), $schedule, $venueId, $second);
 
         self::assertCount(2, $this->renderedNames, 'les deux demandes sont rendues');
         self::assertSame('%PDF rendu n°1', $this->finalContent($schedule, 'all'), 'le premier périmètre est livré');
@@ -268,20 +268,22 @@ final class PdfCreditIsTakenOnDeliveryTest extends KernelTestCase
         parent::tearDown();
     }
 
-    /** Le geste de l'écran (le contrôleur pose « en attente »), puis le worker traite le message. */
-    private function export(string $clubId, string $scheduleId, ?string $venueId = null): void
+    /** Le geste de l'écran (le contrôleur pose « en attente »), puis le worker traite le message ; rend l'identifiant de la demande. */
+    private function export(string $clubId, string $scheduleId, ?string $venueId = null): string
     {
-        $this->request($clubId, $scheduleId);
-        $this->work($clubId, $scheduleId, $venueId);
+        $requestId = $this->request($clubId, $scheduleId);
+        $this->work($clubId, $scheduleId, $venueId, $requestId);
+
+        return $requestId;
     }
 
     /** Le geste de l'écran, puis le worker traite le message comme Messenger : rejoué tant qu'il lève, 1 + 3 reprises au plus. */
     private function exportAsMessengerWould(string $clubId, string $scheduleId): int
     {
-        $this->request($clubId, $scheduleId);
+        $requestId = $this->request($clubId, $scheduleId);
         for ($attempt = 1; $attempt <= 4; ++$attempt) {
             try {
-                $this->work($clubId, $scheduleId);
+                $this->work($clubId, $scheduleId, null, $requestId);
 
                 return $attempt;
             } catch (Throwable) {
@@ -293,22 +295,24 @@ final class PdfCreditIsTakenOnDeliveryTest extends KernelTestCase
     }
 
     /** Le même message relu par le worker, sans nouveau geste de l'écran (worker tué avant l'acquittement). */
-    private function redeliver(string $clubId, string $scheduleId): void
+    private function redeliver(string $clubId, string $scheduleId, string $requestId): void
     {
         $this->em->clear();
-        $this->work($clubId, $scheduleId);
+        $this->work($clubId, $scheduleId, null, $requestId);
     }
 
-    /** Le contrôleur pose « en attente » avant de mettre le message en file. */
-    private function request(string $clubId, string $scheduleId): void
+    /** Le contrôleur pose « en attente » avant de mettre le message en file, sous un nouvel identifiant de demande. */
+    private function request(string $clubId, string $scheduleId): string
     {
         $this->scopeGucToClub($clubId);
         $this->em->getConnection()->executeStatement('UPDATE schedule SET pdf_export_status = \'pending\' WHERE id = :id', ['id' => $scheduleId]);
         $this->em->clear();
         $this->clearGuc();
+
+        return bin2hex(random_bytes(16));
     }
 
-    private function work(string $clubId, string $scheduleId, ?string $venueId = null): void
+    private function work(string $clubId, string $scheduleId, ?string $venueId, string $requestId): void
     {
         $worker = new MockHttpClient(function (string $method, string $url, array $options): MockResponse {
             $payload = json_decode((string) $options['body'], true, flags: \JSON_THROW_ON_ERROR);
@@ -327,7 +331,7 @@ final class PdfCreditIsTakenOnDeliveryTest extends KernelTestCase
         $pdf = $this->buildWithDoubles(PdfGenerator::class, [HttpClientInterface::class => $worker, EntityManagerInterface::class => $this->em]);
         $handler = $this->buildWithDoubles(ExportPdfHandler::class, [PdfGenerator::class => $pdf, HubInterface::class => $hub, EntityManagerInterface::class => $this->em]);
 
-        $handler(new ExportPdfMessage(scheduleId: $scheduleId, clubId: $clubId, venueId: $venueId));
+        $handler(new ExportPdfMessage(scheduleId: $scheduleId, clubId: $clubId, venueId: $venueId, requestId: $requestId));
     }
 
     private function finalName(string $scheduleId, string $scope): string
