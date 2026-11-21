@@ -34,7 +34,7 @@ use Symfony\Component\HttpClient\Response\MockResponse;
  * l'autre — d'où ce garde, miroir exact de `frontend/.../lib/exportScopeToken.test.ts` (le même
  * jeton côté front, falsifié des deux sens là-bas).
  *
- * On exerce le VRAI chemin : `generate()` rend l'URL publique qui se termine par le nom du
+ * On exerce le VRAI chemin : `renderPending()` rend l'URL publique qui se termine par le nom du
  * fichier. Le worker Puppeteer est doublé (MockHttpClient : « success »), le reste est réel.
  */
 #[Group('integration')]
@@ -51,8 +51,8 @@ final class PdfExportFilenameTest extends KernelTestCase
         $schedule = $this->makeSchedule($club, $season);
         $generator = $this->generator();
 
-        $optedIn = $generator->generate($schedule, null, true)['pdf'];
-        $optedOut = $generator->generate($schedule, null, false)['pdf'];
+        $optedIn = $generator->renderPending($schedule, null, true, false)['url'];
+        $optedOut = $generator->renderPending($schedule, null, false, false)['url'];
 
         self::assertStringEndsWith('-all-coaches.pdf', $optedIn, 'coché → le nom de fichier porte -coaches, que le polling front attend (scopeToken)');
         self::assertStringEndsWith('-all.pdf', $optedOut, 'décoché → le suffixe de portée seul');
@@ -60,7 +60,7 @@ final class PdfExportFilenameTest extends KernelTestCase
     }
 
     /**
-     * P4-357 — le rendu ne se sert plus par une URL statique publique (`/exports/…`) : `generate()`
+     * P4-357 — le rendu ne se sert plus par une URL statique publique (`/exports/…`) : `renderPending()`
      * produit l'URL de la route AUTHENTIFIÉE `GET /api/schedules/{id}/export-pdf/{filename}`. Le nom
      * de fichier (donc le JETON de fin `-all` / `-all-coaches.pdf` que le polling front compare,
      * `url.endsWith(scopeToken)`) est INCHANGÉ — seul le préfixe de l'URL bascule. Les deux bouts se
@@ -74,8 +74,8 @@ final class PdfExportFilenameTest extends KernelTestCase
         $schedule = $this->makeSchedule($club, $season);
         $prefix = \sprintf('/api/schedules/%s/export-pdf/', $schedule->getId());
 
-        $optedIn = $this->generator()->generate($schedule, null, true)['pdf'];
-        $optedOut = $this->generator()->generate($schedule, null, false)['pdf'];
+        $optedIn = $this->generator()->renderPending($schedule, null, true, false)['url'];
+        $optedOut = $this->generator()->renderPending($schedule, null, false, false)['url'];
 
         self::assertStringStartsWith($prefix, $optedIn, 'le rendu se télécharge par la route authentifiée, pas par /exports statique');
         self::assertStringStartsWith($prefix, $optedOut, 'même route authentifiée sans coachs');
