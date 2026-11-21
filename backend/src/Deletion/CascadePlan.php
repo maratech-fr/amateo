@@ -114,6 +114,9 @@ final class CascadePlan
             new DeleteByFieldStep(ScheduleSlotTemplate::class, 'venueId', new ImpactLabel('venue_slot_template', 'séance placée dans vos plannings', 'séances placées dans vos plannings')),
             new DeleteByFieldStep(ScheduleDiagnostic::class, 'venueId', null),
             new ScopedConstraintStep(ConstraintScope::FACILITY, new ImpactLabel('venue_constraint', 'contrainte visant ce gymnase', 'contraintes visant ce gymnase')),
+            // Les règles dont un réglage NOMME ce gymnase (« impose ce gymnase »…) partent avec lui,
+            // leurs bascules de période avant elles : laissées, elles sortaient l'équipe du planning.
+            new VenueConfigConstraintStep(new ImpactLabel('venue_config_constraint', 'contrainte qui nomme ce gymnase', 'contraintes qui nomment ce gymnase')),
             new ClearFieldStep(Team::class, 'forcedVenueId', new ImpactLabel('venue_forced_team', 'équipe qui perdra son gymnase imposé', 'équipes qui perdront leur gymnase imposé')),
             // PR4 « fermetures à la source » (décision fondateur 2026-10-22) — un match à domicile
             // sans gymnase est rendu IMPOSSIBLE à la source : supprimer un gymnase porteur de

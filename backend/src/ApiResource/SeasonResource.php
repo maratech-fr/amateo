@@ -8,7 +8,6 @@ use ApiPlatform\Metadata\ApiProperty;
 use ApiPlatform\Metadata\ApiResource;
 use ApiPlatform\Metadata\Get;
 use ApiPlatform\Metadata\GetCollection;
-use ApiPlatform\Metadata\Post;
 use App\Access\Audience;
 use App\Access\ClubResource;
 use App\Access\Module;
@@ -19,12 +18,11 @@ use App\State\Provider\SeasonStateProvider;
 use DateTimeImmutable;
 use Symfony\Component\Serializer\Attribute\Groups;
 
-// PUT/DELETE retirés (nettoyage API) : non appelés par le front. Le POST (création de
-// saison) reste — il sert de fixture à plusieurs tests et provisionne le plan SEASON.
+// Lecture seule. Une saison naît à la création du club ou par « préparer la saison
+// suivante » (`POST /api/seasons/{id}/transition`), jamais par une création directe.
 #[ApiResource(shortName: 'Season', operations: [
     new GetCollection,
     new Get,
-    new Post,
 ], input: SeasonInput::class, paginationEnabled: true, paginationItemsPerPage: 30, provider: SeasonStateProvider::class, processor: SeasonStateProcessor::class)]
 #[ClubResource(module: Module::CLUB, read: Audience::MEMBER, write: Audience::MANAGER)]
 class SeasonResource
