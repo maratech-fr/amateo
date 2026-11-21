@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace App\Entity;
 
 use App\Repository\PublicHolidayRepository;
+use App\Structure\Family;
+use App\Structure\Level;
 use DateTimeImmutable;
 use Doctrine\ORM\Mapping as ORM;
 
@@ -21,6 +23,7 @@ use Doctrine\ORM\Mapping as ORM;
  * The DB column is `holiday_date` (`date` is a reserved SQL word).
  * See specs/evolution/roadmap.md §2.
  */
+#[Family(Level::PLATFORM)]
 #[ORM\Entity(repositoryClass: PublicHolidayRepository::class)]
 #[ORM\Table(name: 'public_holiday')]
 #[ORM\UniqueConstraint(name: 'uniq_public_holiday_zone_date', columns: ['zone', 'holiday_date'])]

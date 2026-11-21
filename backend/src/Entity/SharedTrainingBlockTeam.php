@@ -4,6 +4,10 @@ declare(strict_types=1);
 
 namespace App\Entity;
 
+use App\Structure\Family;
+use App\Structure\Level;
+use App\Structure\OnDelete;
+use App\Structure\RefersTo;
 use Doctrine\ORM\Mapping as ORM;
 
 /**
@@ -16,6 +20,7 @@ use Doctrine\ORM\Mapping as ORM;
  * blocs — l'unicité porte sur le couple ``(block_id, team_id)`` (pas de doublon DANS un bloc),
  * JAMAIS sur ``team_id`` seul (contrairement à la contrainte historique du modèle groupe).
  */
+#[Family(Level::SEASON)]
 #[ORM\Entity]
 #[ORM\Table(name: 'shared_training_block_team')]
 #[ORM\UniqueConstraint(name: 'uniq_shared_training_block_team', columns: ['block_id', 'team_id'])]
@@ -35,12 +40,15 @@ class SharedTrainingBlockTeam implements TenantOwnedInterface
 
     /** Dénormalisé du bloc : NULL = socle saison, non-null = plan de période (ADR-0002). */
     #[ORM\Column(type: 'guid', nullable: true)]
+    #[RefersTo(SchedulePlan::class, OnDelete::DELETE)]
     private ?string $schedulePlanId = null;
 
     #[ORM\Column(type: 'guid')]
+    #[RefersTo(SharedTrainingBlock::class, OnDelete::DELETE)]
     private string $blockId;
 
     #[ORM\Column(type: 'guid')]
+    #[RefersTo(Team::class, OnDelete::DELETE)]
     private string $teamId;
 
     public function __construct()

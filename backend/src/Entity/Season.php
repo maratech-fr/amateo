@@ -6,9 +6,14 @@ namespace App\Entity;
 
 use App\Enum\SeasonStatus;
 use App\Repository\SeasonRepository;
+use App\Structure\Family;
+use App\Structure\Level;
+use App\Structure\OnDelete;
+use App\Structure\RefersTo;
 use DateTimeImmutable;
 use Doctrine\ORM\Mapping as ORM;
 
+#[Family(Level::CLUB)]
 #[ORM\Entity(repositoryClass: SeasonRepository::class)]
 #[ORM\Table(name: 'season')]
 #[ORM\Index(name: 'idx_season_club_status', columns: ['club_id', 'status'])]
@@ -55,6 +60,7 @@ class Season implements TenantOwnedInterface
      * baseline: this tracks "what am I working on now", not "the main plan".
      */
     #[ORM\Column(type: 'guid', nullable: true)]
+    #[RefersTo(Schedule::class, OnDelete::CLEAR)]
     private ?string $liveContextScheduleId = null;
 
     /** @var array<string, mixed> */

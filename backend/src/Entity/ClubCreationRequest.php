@@ -5,6 +5,10 @@ declare(strict_types=1);
 namespace App\Entity;
 
 use App\Repository\ClubCreationRequestRepository;
+use App\Structure\Family;
+use App\Structure\Level;
+use App\Structure\OnDelete;
+use App\Structure\RefersTo;
 use DateTimeImmutable;
 use Doctrine\ORM\Mapping as ORM;
 
@@ -21,6 +25,7 @@ use Doctrine\ORM\Mapping as ORM;
  * CoachWishToken : page publique sans compte, pas d'endpoint de listing, 404
  * byte-identique pour inconnu et malformé).
  */
+#[Family(Level::PLATFORM)]
 #[ORM\Entity(repositoryClass: ClubCreationRequestRepository::class)]
 #[ORM\Table(name: 'club_creation_request')]
 #[ORM\Index(name: 'idx_club_creation_request_ara', columns: ['ara'])]
@@ -44,6 +49,7 @@ class ClubCreationRequest
     private string $token;
 
     #[ORM\Column(type: 'guid')]
+    #[RefersTo(User::class, OnDelete::CUSTOM, 'à l\'effacement du compte, ses demandes vivantes passent à l\'état annulé (AccountErasureService)')]
     private string $userId;
 
     #[ORM\Column(type: 'string', length: 20)]

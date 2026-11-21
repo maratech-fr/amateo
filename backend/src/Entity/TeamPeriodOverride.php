@@ -4,6 +4,10 @@ declare(strict_types=1);
 
 namespace App\Entity;
 
+use App\Structure\Family;
+use App\Structure\Level;
+use App\Structure\OnDelete;
+use App\Structure\RefersTo;
 use DateTimeImmutable;
 use Doctrine\ORM\Mapping as ORM;
 
@@ -14,6 +18,7 @@ use Doctrine\ORM\Mapping as ORM;
  * to drop deactivated teams and override sessions-per-week; the base plan (and the
  * Team's seasonal fields) are never touched.
  */
+#[Family(Level::PLAN)]
 #[ORM\Entity]
 #[ORM\Table(name: 'team_period_override')]
 #[ORM\UniqueConstraint(name: 'uniq_team_period_override', columns: ['schedule_plan_id', 'team_id'])]
@@ -47,9 +52,11 @@ class TeamPeriodOverride implements TenantOwnedInterface
      * que `calendarEntryId` ne saurait pas distinguer.
      */
     #[ORM\Column(type: 'guid')]
+    #[RefersTo(SchedulePlan::class, OnDelete::DELETE)]
     private string $schedulePlanId;
 
     #[ORM\Column(type: 'guid')]
+    #[RefersTo(Team::class, OnDelete::DELETE)]
     private string $teamId;
 
     /** false = the team does NOT train during this period. */

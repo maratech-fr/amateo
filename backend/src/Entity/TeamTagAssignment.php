@@ -5,9 +5,14 @@ declare(strict_types=1);
 namespace App\Entity;
 
 use App\Repository\TeamTagAssignmentRepository;
+use App\Structure\Family;
+use App\Structure\Level;
+use App\Structure\OnDelete;
+use App\Structure\RefersTo;
 use DateTimeImmutable;
 use Doctrine\ORM\Mapping as ORM;
 
+#[Family(Level::SEASON)]
 #[ORM\Entity(repositoryClass: TeamTagAssignmentRepository::class)]
 #[ORM\Table(name: 'team_tag_assignment')]
 #[ORM\Index(name: 'idx_team_tag_assignment_team', columns: ['team_id'])]
@@ -52,9 +57,11 @@ class TeamTagAssignment implements TenantOwnedInterface
     private string $clubId;
 
     #[ORM\Column(type: 'guid')]
+    #[RefersTo(Team::class, OnDelete::DELETE)]
     private string $teamId;
 
     #[ORM\Column(type: 'guid')]
+    #[RefersTo(TeamTag::class, OnDelete::DELETE)]
     private string $tagId;
 
     #[ORM\Column(type: 'guid')]

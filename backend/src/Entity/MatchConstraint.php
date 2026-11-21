@@ -7,6 +7,10 @@ namespace App\Entity;
 use App\Enum\ConstraintRuleType;
 use App\Enum\ConstraintScope;
 use App\Repository\MatchConstraintRepository;
+use App\Structure\Family;
+use App\Structure\Level;
+use App\Structure\OnDelete;
+use App\Structure\RefersTo;
 use DateTimeImmutable;
 use Doctrine\ORM\Mapping as ORM;
 
@@ -34,6 +38,7 @@ use Doctrine\ORM\Mapping as ORM;
  * peut s'interdire plusieurs gymnases), et deux règles club peuvent se recouvrir sans
  * être un doublon.
  */
+#[Family(Level::SEASON)]
 #[ORM\Entity(repositoryClass: MatchConstraintRepository::class)]
 #[ORM\Table(name: 'match_constraint')]
 #[ORM\Index(name: 'idx_match_constraint_club_season', columns: ['club_id', 'season_id'])]
@@ -65,6 +70,8 @@ class MatchConstraint implements TenantOwnedInterface
     private ConstraintScope $scope = ConstraintScope::CLUB;
 
     #[ORM\Column(type: 'guid', nullable: true)]
+    #[RefersTo(Team::class, OnDelete::DELETE)]
+    #[RefersTo(Coach::class, OnDelete::DELETE)]
     private ?string $scopeTargetId = null;
 
     #[ORM\Column(length: 20, enumType: ConstraintRuleType::class)]
@@ -85,6 +92,7 @@ class MatchConstraint implements TenantOwnedInterface
     private ?DateTimeImmutable $kickoffMax = null;
 
     #[ORM\Column(type: 'guid', nullable: true)]
+    #[RefersTo(Venue::class, OnDelete::DELETE)]
     private ?string $venueId = null;
 
     public function __construct()

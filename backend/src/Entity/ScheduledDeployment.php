@@ -6,6 +6,8 @@ namespace App\Entity;
 
 use App\Enum\DeploymentStatus;
 use App\Repository\ScheduledDeploymentRepository;
+use App\Structure\Family;
+use App\Structure\Level;
 use DateTimeImmutable;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Mapping as ORM;
@@ -20,6 +22,7 @@ use Doctrine\ORM\Mapping as ORM;
  * Un seul déploiement ACTIF (`scheduled`|`dispatched`) à la fois — garanti par un index unique
  * PARTIEL sur `status`.
  */
+#[Family(Level::PLATFORM)]
 #[ORM\Entity(repositoryClass: ScheduledDeploymentRepository::class)]
 #[ORM\Table(name: 'scheduled_deployment')]
 #[ORM\HasLifecycleCallbacks]

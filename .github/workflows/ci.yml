@@ -1317,6 +1317,12 @@ jobs:
           # fait rougir. Non bloquant jusqu'ici (tournait dans backend-tests, après le gate) : promu
           # step NOMMÉ car il garde une promesse LÉGALE (une donnée personnelle promise détruite).
           FILES="$FILES tests/Security/PurgeCompletenessTest.php"
+          # Axe tenant isolation (lot conception 1, PR 4a) — chaque famille d'objets se déclare une fois :
+          # toute entité porte #[Family], toute colonne guid hors id/clubId/seasonId porte #[RefersTo],
+          # aucun cycle entre références « meurt avec », le catalogue rend ce qui est déclaré et range
+          # l'enfant avant son parent. Les purges de saison et l'effacement RGPD liront ce catalogue
+          # (PR 4b) : sans ce gate, une entité neuve non déclarée y échapperait en silence.
+          FILES="$FILES tests/Security/FamilyDeclarationSweepTest.php"
           # Axe tenant isolation (BCK-03/BCK-38) — garde de COMPLÉTUDE du marqueur tenant : l'ensemble
           # des entités qui implémentent TenantOwnedInterface DOIT être exactement l'ensemble des
           # entités portant une colonne club_id. Les gardes applicatives (providers/processors) keyent

@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace App\Entity;
 
 use App\Repository\ClubMailboxMessageRepository;
+use App\Structure\Family;
+use App\Structure\Level;
 use DateTimeImmutable;
 use Doctrine\ORM\Mapping as ORM;
 
@@ -24,6 +26,7 @@ use Doctrine\ORM\Mapping as ORM;
  * (RlsIsolationTest / ReadOnlyRoleTest la découvrent dynamiquement). Vidée au reset de la démo
  * et à la désactivation de l'horloge (purge prospect = CASCADE sur club_id).
  */
+#[Family(Level::CLUB, keptAtSeasonPurge: 'club-scoped SANS saison (boîte d\'un club à horloge simulée, P4-16) — porte de sortie ErasedClubPurger ; vidée aussi en direct au reset/désactivation de l\'horloge')]
 #[ORM\Entity(repositoryClass: ClubMailboxMessageRepository::class)]
 #[ORM\Table(name: 'club_mailbox_message')]
 #[ORM\Index(name: 'idx_club_mailbox_message_club_created', columns: ['club_id', 'created_at'])]

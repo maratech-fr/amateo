@@ -8,6 +8,10 @@ use App\Enum\FbiCorrectionCloseSource;
 use App\Enum\FbiCorrectionField;
 use App\Repository\FbiCorrectionRepository;
 use App\Service\SeasonDataPurger;
+use App\Structure\Family;
+use App\Structure\Level;
+use App\Structure\OnDelete;
+use App\Structure\RefersTo;
 use DateTimeImmutable;
 use Doctrine\ORM\Mapping as ORM;
 
@@ -31,6 +35,7 @@ use Doctrine\ORM\Mapping as ORM;
  * AUCUNE trace exploitable (la décision ne s'écrivait que comme un retrait d'écart) —
  * le registre ne se peuple donc que par les arbitrages À VENIR, jamais rétroactivement.
  */
+#[Family(Level::SEASON)]
 #[ORM\Entity(repositoryClass: FbiCorrectionRepository::class)]
 #[ORM\Table(name: 'fbi_correction')]
 // Une seule entrée OUVERTE par (club, saison, rencontre, champ) — un re-dépôt du même
@@ -62,6 +67,7 @@ class FbiCorrection implements TenantOwnedInterface
     private string $seasonId;
 
     #[ORM\Column(type: 'guid')]
+    #[RefersTo(Fixture::class, OnDelete::KEEP, 'un match ne part qu\'avec son équipe, ce que la garde du périmètre engagé refuse : l\'entrée part avec la saison')]
     private string $fixtureId;
 
     #[ORM\Column(length: 20, enumType: FbiCorrectionField::class)]
@@ -99,6 +105,7 @@ class FbiCorrection implements TenantOwnedInterface
 
     /** L'utilisateur qui a tranché « garder l'appli » (ouvert l'entrée). */
     #[ORM\Column(type: 'guid')]
+    #[RefersTo(User::class, OnDelete::KEEP, 'un compte n\'est jamais supprimé : son effacement l\'anonymise (AccountErasureService)')]
     private string $decidedBy;
 
     /** Dernière fois qu'un dépôt a RE-VU cet écart dans FBI (FBI affiche toujours l'ancienne valeur). */

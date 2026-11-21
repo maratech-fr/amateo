@@ -11,6 +11,8 @@ use App\Service\ErasedClubPurger;
 use App\Service\Geo\TravelTimeCache;
 use App\Service\OpponentTravelProjection;
 use App\Service\SeasonDataPurger;
+use App\Structure\Family;
+use App\Structure\Level;
 use DateTimeImmutable;
 use Doctrine\ORM\Mapping as ORM;
 
@@ -44,6 +46,7 @@ use Doctrine\ORM\Mapping as ORM;
  * sortie est l'effacement RGPD du club ({@see ErasedClubPurger::PURGED_BY_CLUB},
  * qui décrémente d'abord le compteur partagé des liens MANUAL).
  */
+#[Family(Level::CLUB, keptAtSeasonPurge: 'club-scoped SANS saison (un libellé désigne le même gymnase d\'une saison à l\'autre — amendement 2026-09-20) : une purge de saison ne le touche jamais, sa porte de sortie est ErasedClubPurger (qui décrémente d\'abord le compteur partagé des liens MANUAL)')]
 #[ORM\Entity(repositoryClass: OpponentVenueLinkRepository::class)]
 #[ORM\Table(name: 'opponent_venue_link')]
 #[ORM\UniqueConstraint(name: 'uniq_opponent_venue_link', columns: ['club_id', 'opponent_organisme_code', 'fbi_label_norm'])]

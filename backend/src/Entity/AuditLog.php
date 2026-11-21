@@ -4,6 +4,10 @@ declare(strict_types=1);
 
 namespace App\Entity;
 
+use App\Structure\Family;
+use App\Structure\Level;
+use App\Structure\OnDelete;
+use App\Structure\RefersTo;
 use DateTimeImmutable;
 use Doctrine\ORM\Mapping as ORM;
 use Symfony\Component\Uid\Uuid;
@@ -21,6 +25,7 @@ use Symfony\Component\Uid\Uuid;
  * tenant — invisibles sous un GUC club, lisibles via la connexion admin.
  * details = jsonb MINIMAL et SANS PII (jamais d'email/nom — des ids).
  */
+#[Family(Level::CLUB, keptAtSeasonPurge: 'accountability : rétention propre (app:audit:purge) ; l\'effacement écrit une ligne d\'audit APRÈS la purge', keptAtErasure: 'accountability : l\'effacement du club ÉCRIT lui-même une ligne d\'audit (CLUB_PURGED) — le journal a sa propre rétention (app:audit:purge)')]
 #[ORM\Entity]
 #[ORM\Table(name: 'audit_log')]
 #[ORM\Index(name: 'idx_audit_log_occurred_at', columns: ['occurred_at'])]
@@ -35,6 +40,7 @@ class AuditLog implements TenantOwnedInterface
     private DateTimeImmutable $occurredAt;
 
     #[ORM\Column(type: 'guid', nullable: true)]
+    #[RefersTo(User::class, OnDelete::KEEP, 'un compte n\'est jamais supprimé : son effacement l\'anonymise (AccountErasureService)')]
     private ?string $actorUserId = null;
 
     #[ORM\Column(type: 'guid', nullable: true)]

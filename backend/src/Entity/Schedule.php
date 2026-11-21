@@ -6,9 +6,14 @@ namespace App\Entity;
 
 use App\Enum\ScheduleStatus;
 use App\Repository\ScheduleRepository;
+use App\Structure\Family;
+use App\Structure\Level;
+use App\Structure\OnDelete;
+use App\Structure\RefersTo;
 use DateTimeImmutable;
 use Doctrine\ORM\Mapping as ORM;
 
+#[Family(Level::PLAN)]
 #[ORM\Entity(repositoryClass: ScheduleRepository::class)]
 #[ORM\Table(name: 'schedule')]
 #[ORM\Index(name: 'idx_schedule_club_season', columns: ['club_id', 'season_id'])]
@@ -52,6 +57,7 @@ class Schedule implements TenantOwnedInterface
      * colonne qui scelle l'invariant, et les gardes défensives sur null restent utiles.
      */
     #[ORM\Column(type: 'guid', nullable: false)]
+    #[RefersTo(SchedulePlan::class, OnDelete::DELETE)]
     private string $schedulePlanId;
 
     /**

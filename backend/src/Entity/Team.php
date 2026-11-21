@@ -7,9 +7,14 @@ namespace App\Entity;
 use App\Enum\Gender;
 use App\Enum\TeamLevel;
 use App\Repository\TeamRepository;
+use App\Structure\Family;
+use App\Structure\Level;
+use App\Structure\OnDelete;
+use App\Structure\RefersTo;
 use DateTimeImmutable;
 use Doctrine\ORM\Mapping as ORM;
 
+#[Family(Level::SEASON)]
 #[ORM\Entity(repositoryClass: TeamRepository::class)]
 #[ORM\Table(name: 'team')]
 #[ORM\Index(name: 'idx_team_club_season', columns: ['club_id', 'season_id'])]
@@ -43,6 +48,7 @@ class Team implements TenantOwnedInterface
     private string $seasonId;
 
     #[ORM\Column(type: 'guid')]
+    #[RefersTo(SportCategory::class, OnDelete::KEEP, 'aucune route ne supprime une catégorie : elle part avec le club')]
     private string $sportCategoryId;
 
     #[ORM\Column(type: 'integer')]
@@ -82,6 +88,7 @@ class Team implements TenantOwnedInterface
     private ?int $matchDay = null;
 
     #[ORM\Column(type: 'guid', nullable: true)]
+    #[RefersTo(Venue::class, OnDelete::CLEAR)]
     private ?string $forcedVenueId = null;
 
     #[ORM\Column(type: 'boolean')]

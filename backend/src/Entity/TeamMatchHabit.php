@@ -6,6 +6,10 @@ namespace App\Entity;
 
 use App\Enum\MatchWeek;
 use App\Repository\TeamMatchHabitRepository;
+use App\Structure\Family;
+use App\Structure\Level;
+use App\Structure\OnDelete;
+use App\Structure\RefersTo;
 use DateTimeImmutable;
 use Doctrine\ORM\Mapping as ORM;
 
@@ -26,6 +30,7 @@ use Doctrine\ORM\Mapping as ORM;
  * yet), and the away-kickoff estimation that feeds the conflict radar.
  * Copied on season transition (habits renew with the season, `week` carried).
  */
+#[Family(Level::SEASON)]
 #[ORM\Entity(repositoryClass: TeamMatchHabitRepository::class)]
 #[ORM\Table(name: 'team_match_habit')]
 #[ORM\UniqueConstraint(name: 'uniq_team_match_habit_team', columns: ['club_id', 'season_id', 'team_id'])]
@@ -55,6 +60,7 @@ class TeamMatchHabit implements TenantOwnedInterface
     private string $seasonId;
 
     #[ORM\Column(type: 'guid')]
+    #[RefersTo(Team::class, OnDelete::DELETE)]
     private string $teamId;
 
     /** ISO 1 (Monday) .. 7 (Sunday). */
@@ -67,6 +73,7 @@ class TeamMatchHabit implements TenantOwnedInterface
 
     /** Habitual HOME venue — null when the habit is day+time only. */
     #[ORM\Column(type: 'guid', nullable: true)]
+    #[RefersTo(Venue::class, OnDelete::KEEP, 'la suppression d\'un gymnase ne touche pas l\'habitude (absente de CascadePlan::forVenue)')]
     private ?string $venueId = null;
 
     /**

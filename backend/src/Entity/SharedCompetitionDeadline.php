@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace App\Entity;
 
 use App\Repository\SharedCompetitionDeadlineRepository;
+use App\Structure\Family;
+use App\Structure\Level;
 use DateTimeImmutable;
 use Doctrine\ORM\Mapping as ORM;
 
@@ -36,6 +38,7 @@ use Doctrine\ORM\Mapping as ORM;
  * re-passer la revue — l'appariement auto-déclaré deviendrait le vecteur de
  * fuite de ce qu'on y ajouterait.
  */
+#[Family(Level::PLATFORM)]
 #[ORM\Entity(repositoryClass: SharedCompetitionDeadlineRepository::class)]
 #[ORM\Table(name: 'shared_competition_deadline')]
 #[ORM\UniqueConstraint(name: 'uniq_shared_competition_deadline_ffbb', columns: ['ffbb_competition_id'])]

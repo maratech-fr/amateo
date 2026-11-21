@@ -8,9 +8,14 @@ use App\Enum\ConstraintFamily;
 use App\Enum\ConstraintRuleType;
 use App\Enum\ConstraintScope;
 use App\Repository\ConstraintRepository;
+use App\Structure\Family;
+use App\Structure\Level;
+use App\Structure\OnDelete;
+use App\Structure\RefersTo;
 use DateTimeImmutable;
 use Doctrine\ORM\Mapping as ORM;
 
+#[Family(Level::SEASON)]
 #[ORM\Entity(repositoryClass: ConstraintRepository::class)]
 #[ORM\Table(name: '`constraint`')]
 #[ORM\Index(name: 'idx_constraint_club_season', columns: ['club_id', 'season_id'])]
@@ -50,6 +55,9 @@ class Constraint implements TenantOwnedInterface
     private ConstraintScope $scope;
 
     #[ORM\Column(type: 'guid', nullable: true)]
+    #[RefersTo(Team::class, OnDelete::DELETE)]
+    #[RefersTo(Coach::class, OnDelete::DELETE)]
+    #[RefersTo(Venue::class, OnDelete::DELETE)]
     private ?string $scopeTargetId = null;
 
     #[ORM\Column(length: 20, enumType: ConstraintFamily::class)]
@@ -77,6 +85,7 @@ class Constraint implements TenantOwnedInterface
      * ConstraintRepository::findPermanentByClubSeason). null = permanent constraint.
      */
     #[ORM\Column(type: 'guid', nullable: true)]
+    #[RefersTo(CalendarEntry::class, OnDelete::DELETE)]
     private ?string $calendarEntryId = null;
 
     #[ORM\Column(type: 'boolean', options: ['default' => true])]

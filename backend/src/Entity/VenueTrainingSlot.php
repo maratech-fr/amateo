@@ -5,9 +5,14 @@ declare(strict_types=1);
 namespace App\Entity;
 
 use App\Repository\VenueTrainingSlotRepository;
+use App\Structure\Family;
+use App\Structure\Level;
+use App\Structure\OnDelete;
+use App\Structure\RefersTo;
 use DateTimeImmutable;
 use Doctrine\ORM\Mapping as ORM;
 
+#[Family(Level::SEASON)]
 #[ORM\Entity(repositoryClass: VenueTrainingSlotRepository::class)]
 #[ORM\Table(name: 'venue_training_slot')]
 #[ORM\Index(name: 'idx_venue_training_slot_club_venue', columns: ['club_id', 'venue_id'])]
@@ -35,6 +40,7 @@ class VenueTrainingSlot implements TenantOwnedInterface
     private string $seasonId;
 
     #[ORM\Column(type: 'guid')]
+    #[RefersTo(Venue::class, OnDelete::DELETE)]
     private string $venueId;
 
     #[ORM\Column(type: 'smallint')]
@@ -70,6 +76,7 @@ class VenueTrainingSlot implements TenantOwnedInterface
      * SEASON : la structure n'est pas un réglage de période).
      */
     #[ORM\Column(type: 'guid', nullable: true)]
+    #[RefersTo(SchedulePlan::class, OnDelete::DELETE)]
     private ?string $schedulePlanId = null;
 
     public function __construct()

@@ -5,6 +5,10 @@ declare(strict_types=1);
 namespace App\Entity;
 
 use App\Repository\ClubInvitationRepository;
+use App\Structure\Family;
+use App\Structure\Level;
+use App\Structure\OnDelete;
+use App\Structure\RefersTo;
 use DateTimeImmutable;
 use Doctrine\ORM\Mapping as ORM;
 
@@ -26,6 +30,7 @@ use Doctrine\ORM\Mapping as ORM;
  * patron EmailVerifier::consume) — après entrée dans le club, l'invitation disparaît
  * du listing, l'invité étant désormais visible dans les membres.
  */
+#[Family(Level::CLUB, keptAtSeasonPurge: 'club-scoped SANS saison (invitation nominative à rejoindre le club, P4-299 : indépendante de toute saison) — une purge de saison ne doit jamais balayer une invitation en attente ; porte de sortie ErasedClubPurger')]
 #[ORM\Entity(repositoryClass: ClubInvitationRepository::class)]
 #[ORM\Table(name: 'club_invitation')]
 #[ORM\Index(name: 'idx_club_invitation_club', columns: ['club_id'])]
@@ -60,6 +65,7 @@ class ClubInvitation implements TenantOwnedInterface
 
     /** Le gestionnaire émetteur — trace, jamais exposé publiquement. */
     #[ORM\Column(type: 'guid')]
+    #[RefersTo(User::class, OnDelete::KEEP, 'un compte n\'est jamais supprimé : son effacement l\'anonymise (AccountErasureService)')]
     private string $invitedByUserId;
 
     public function __construct()

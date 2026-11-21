@@ -5,9 +5,12 @@ declare(strict_types=1);
 namespace App\Entity;
 
 use App\Repository\SportRepository;
+use App\Structure\Family;
+use App\Structure\Level;
 use DateTimeImmutable;
 use Doctrine\ORM\Mapping as ORM;
 
+#[Family(Level::PLATFORM)]
 #[ORM\Entity(repositoryClass: SportRepository::class)]
 #[ORM\Table(name: 'sport')]
 #[ORM\UniqueConstraint(name: 'uniq_sport_slug', columns: ['slug'])]

@@ -6,6 +6,10 @@ namespace App\Entity;
 
 use App\Enum\CompetitionType;
 use App\Repository\CompetitionRepository;
+use App\Structure\Family;
+use App\Structure\Level;
+use App\Structure\OnDelete;
+use App\Structure\RefersTo;
 use DateTimeImmutable;
 use Doctrine\ORM\Mapping as ORM;
 
@@ -15,6 +19,7 @@ use Doctrine\ORM\Mapping as ORM;
  * Season-scoped, tenant-owned. Friendly matches carry no competition (a Fixture
  * with a null competitionId).
  */
+#[Family(Level::SEASON)]
 #[ORM\Entity(repositoryClass: CompetitionRepository::class)]
 #[ORM\Table(name: 'competition')]
 #[ORM\Index(name: 'idx_competition_club_season', columns: ['club_id', 'season_id'])]
@@ -48,6 +53,7 @@ class Competition implements TenantOwnedInterface
     private string $seasonId;
 
     #[ORM\Column(type: 'guid')]
+    #[RefersTo(Team::class, OnDelete::DELETE)]
     private string $teamId;
 
     #[ORM\Column(type: 'string', length: 180)]

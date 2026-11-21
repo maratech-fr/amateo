@@ -4,6 +4,10 @@ declare(strict_types=1);
 
 namespace App\Entity;
 
+use App\Structure\Family;
+use App\Structure\Level;
+use App\Structure\OnDelete;
+use App\Structure\RefersTo;
 use DateTimeImmutable;
 use Doctrine\ORM\Mapping as ORM;
 
@@ -22,6 +26,7 @@ use Doctrine\ORM\Mapping as ORM;
  * requête publique n'a pas de JWT). La table est sous RLS HYBRIDE (SELECT ouvert pour le
  * lookup pré-GUC, écritures tenant — cf. la migration).
  */
+#[Family(Level::SEASON, keptAtSeasonPurge: 'part par la FK ON DELETE CASCADE de sa campagne (jamais supprimé directement)', keptAtErasure: 'part par la FK ON DELETE CASCADE de sa campagne (supprimée avec chaque saison par SeasonDataPurger)')]
 #[ORM\Entity]
 #[ORM\Table(name: 'coach_wish_token')]
 #[ORM\UniqueConstraint(name: 'uniq_coach_wish_token_value', columns: ['token'])]
@@ -37,9 +42,11 @@ class CoachWishToken implements TenantOwnedInterface
     private string $token;
 
     #[ORM\Column(type: 'guid')]
+    #[RefersTo(CoachWishCampaign::class, OnDelete::DELETE)]
     private string $campaignId;
 
     #[ORM\Column(type: 'guid')]
+    #[RefersTo(Coach::class, OnDelete::DELETE)]
     private string $coachId;
 
     #[ORM\Column(type: 'guid')]

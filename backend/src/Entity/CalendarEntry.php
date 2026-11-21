@@ -8,6 +8,10 @@ use App\Enum\CalendarEntryKind;
 use App\Enum\CalendarEntryPeriodType;
 use App\Enum\CalendarEntryStatus;
 use App\Repository\CalendarEntryRepository;
+use App\Structure\Family;
+use App\Structure\Level;
+use App\Structure\OnDelete;
+use App\Structure\RefersTo;
 use DateTimeImmutable;
 use Doctrine\ORM\Mapping as ORM;
 
@@ -20,6 +24,7 @@ use Doctrine\ORM\Mapping as ORM;
  * version is the plan's chosenScheduleId, no longer a pointer on the entry.
  * See specs/courantes/calendar-entry-modele-donnees.md.
  */
+#[Family(Level::SEASON)]
 #[ORM\Entity(repositoryClass: CalendarEntryRepository::class)]
 #[ORM\Table(name: 'calendar_entry')]
 #[ORM\Index(name: 'idx_calendar_entry_club_season', columns: ['club_id', 'season_id'])]
@@ -67,6 +72,7 @@ class CalendarEntry implements TenantOwnedInterface
     private ?CalendarEntryPeriodType $periodType = null;
 
     #[ORM\Column(type: 'guid', nullable: true)]
+    #[RefersTo(SchoolHolidayPeriod::class, OnDelete::KEEP, 'calendrier scolaire de plateforme, jamais supprimé par un club : la référence n\'est pas suivie')]
     private ?string $schoolHolidayId = null;
 
     // Découpage à la semaine (P2-5 E1, fondateur 2026-07-18) : une entrée ENFANT
@@ -74,6 +80,7 @@ class CalendarEntry implements TenantOwnedInterface
     // propre plan par le rail existant (1 entrée = 1 plan). Un seul niveau — un
     // enfant n'est jamais parent. null = entrée racine (mère ou période simple).
     #[ORM\Column(type: 'guid', nullable: true)]
+    #[RefersTo(self::class, OnDelete::DELETE)]
     private ?string $parentEntryId = null;
 
     #[ORM\Column(length: 20, enumType: CalendarEntryStatus::class, options: ['default' => 'active'])]

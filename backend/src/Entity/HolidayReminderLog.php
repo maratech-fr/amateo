@@ -5,6 +5,10 @@ declare(strict_types=1);
 namespace App\Entity;
 
 use App\Repository\HolidayReminderLogRepository;
+use App\Structure\Family;
+use App\Structure\Level;
+use App\Structure\OnDelete;
+use App\Structure\RefersTo;
 use DateTimeImmutable;
 use Doctrine\ORM\Mapping as ORM;
 
@@ -15,6 +19,7 @@ use Doctrine\ORM\Mapping as ORM;
  * transition_reminder_log). Written by {@see HolidayReminderLogRepository::markSent} with
  * INSERT … ON CONFLICT DO NOTHING, never persist+flush; purged with the season.
  */
+#[Family(Level::SEASON)]
 #[ORM\Entity(repositoryClass: HolidayReminderLogRepository::class)]
 #[ORM\Table(name: 'holiday_reminder_log')]
 #[ORM\UniqueConstraint(name: 'uniq_holiday_reminder', columns: ['season_id', 'school_holiday_id', 'threshold'])]
@@ -28,6 +33,7 @@ class HolidayReminderLog
     private string $seasonId;
 
     #[ORM\Column(type: 'guid')]
+    #[RefersTo(SchoolHolidayPeriod::class, OnDelete::KEEP, 'calendrier scolaire de plateforme, jamais supprimé par un club : la référence n\'est pas suivie')]
     private string $schoolHolidayId;
 
     /** Milestone bucket the reminder was sent for: 30, 14 or 7 days before the holiday. */

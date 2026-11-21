@@ -4,6 +4,10 @@ declare(strict_types=1);
 
 namespace App\Entity;
 
+use App\Structure\Family;
+use App\Structure\Level;
+use App\Structure\OnDelete;
+use App\Structure\RefersTo;
 use DateTimeImmutable;
 use Doctrine\ORM\Mapping as ORM;
 
@@ -16,6 +20,7 @@ use Doctrine\ORM\Mapping as ORM;
  * elles, restent ancrées à la période et SURVIVENT à la suppression de la campagne :
  * annuler une collecte n'efface pas la todo-list.
  */
+#[Family(Level::SEASON)]
 #[ORM\Entity]
 #[ORM\Table(name: 'coach_wish_campaign')]
 #[ORM\UniqueConstraint(name: 'uniq_coach_wish_campaign_entry', columns: ['calendar_entry_id'])]
@@ -42,6 +47,7 @@ class CoachWishCampaign implements TenantOwnedInterface
 
     /** La période MÈRE des vacances (kind=PERIOD, periodType=HOLIDAY, parentEntryId=null). */
     #[ORM\Column(type: 'guid')]
+    #[RefersTo(CalendarEntry::class, OnDelete::DELETE, owner: true)]
     private string $calendarEntryId;
 
     /** Date limite : au-delà, les liens coachs sont morts (410). Extensible → ils revivent. */

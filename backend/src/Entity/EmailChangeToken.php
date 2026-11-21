@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace App\Entity;
 
 use App\Repository\EmailChangeTokenRepository;
+use App\Structure\Family;
+use App\Structure\Level;
 use DateTimeImmutable;
 use Doctrine\ORM\Mapping as ORM;
 
@@ -19,6 +21,7 @@ use Doctrine\ORM\Mapping as ORM;
  * sha256 hash stored (never the raw), TTL, single-use — so the mechanism is
  * reused without overloading the register token with a purpose flag.
  */
+#[Family(Level::PLATFORM)]
 #[ORM\Entity(repositoryClass: EmailChangeTokenRepository::class)]
 #[ORM\Table(name: 'email_change_token')]
 #[ORM\UniqueConstraint(name: 'uniq_email_change_hashed_token', columns: ['hashed_token'])]

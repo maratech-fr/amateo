@@ -5,6 +5,10 @@ declare(strict_types=1);
 namespace App\Entity;
 
 use App\Enum\VenuePeriodMode;
+use App\Structure\Family;
+use App\Structure\Level;
+use App\Structure\OnDelete;
+use App\Structure\RefersTo;
 use DateTimeImmutable;
 use Doctrine\ORM\Mapping as ORM;
 
@@ -27,6 +31,7 @@ use Doctrine\ORM\Mapping as ORM;
  * Dans tous les cas le planning principal n'est JAMAIS modifié : c'est l'overlay de
  * période qui lit ces lignes, la structure saisonnière reste intacte.
  */
+#[Family(Level::PLAN)]
 #[ORM\Entity]
 #[ORM\Table(name: 'venue_period_override')]
 #[ORM\UniqueConstraint(name: 'uniq_venue_period_override', columns: ['schedule_plan_id', 'venue_id'])]
@@ -60,9 +65,11 @@ class VenuePeriodOverride implements TenantOwnedInterface
      * que `calendarEntryId` ne saurait pas distinguer.
      */
     #[ORM\Column(type: 'guid')]
+    #[RefersTo(SchedulePlan::class, OnDelete::DELETE)]
     private string $schedulePlanId;
 
     #[ORM\Column(type: 'guid')]
+    #[RefersTo(Venue::class, OnDelete::DELETE)]
     private string $venueId;
 
     #[ORM\Column(length: 16, nullable: true, enumType: VenuePeriodMode::class)]

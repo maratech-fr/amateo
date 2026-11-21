@@ -6,6 +6,8 @@ namespace App\Entity;
 
 use App\Repository\ClubTravelCacheRepository;
 use App\Service\Geo\IgnRoutingClient;
+use App\Structure\Family;
+use App\Structure\Level;
 use DateTimeImmutable;
 use Doctrine\ORM\Mapping as ORM;
 
@@ -24,6 +26,7 @@ use Doctrine\ORM\Mapping as ORM;
  * plus tard). Pas de source AUTO/MANUAL : un MANUAL est un CHOIX de gymnase, pas une
  * distance — il n'entre pas ici, seul le trajet calculé le fait.
  */
+#[Family(Level::CLUB, keptAtSeasonPurge: 'club-scoped sans saison (un trajet est une constante, jamais lié à une saison) — porte de sortie ErasedClubPurger')]
 #[ORM\Entity(repositoryClass: ClubTravelCacheRepository::class)]
 #[ORM\Table(name: 'club_travel_cache')]
 #[ORM\UniqueConstraint(name: 'uniq_club_travel_cache_key', columns: ['club_id', 'profile', 'origin_lat', 'origin_lon', 'dest_lat', 'dest_lon'])]

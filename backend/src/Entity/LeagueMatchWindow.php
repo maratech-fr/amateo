@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace App\Entity;
 
 use App\Repository\LeagueMatchWindowRepository;
+use App\Structure\Family;
+use App\Structure\Level;
 use DateTimeImmutable;
 use Doctrine\ORM\Mapping as ORM;
 
@@ -24,6 +26,7 @@ use Doctrine\ORM\Mapping as ORM;
  * genders. `dayOfWeek` 1=Monday..7=Sunday. `kickoffMin`/`kickoffMax` bound the
  * tip-off, NOT a match duration.
  */
+#[Family(Level::PLATFORM)]
 #[ORM\Entity(repositoryClass: LeagueMatchWindowRepository::class)]
 #[ORM\Table(name: 'league_match_window')]
 #[ORM\UniqueConstraint(name: 'uniq_league_match_window', columns: ['league', 'category', 'level', 'gender', 'day_of_week', 'kickoff_min'])]

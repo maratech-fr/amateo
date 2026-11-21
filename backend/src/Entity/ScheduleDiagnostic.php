@@ -6,9 +6,14 @@ namespace App\Entity;
 
 use App\Enum\ScheduleDiagnosticSeverity;
 use App\Repository\ScheduleDiagnosticRepository;
+use App\Structure\Family;
+use App\Structure\Level;
+use App\Structure\OnDelete;
+use App\Structure\RefersTo;
 use DateTimeImmutable;
 use Doctrine\ORM\Mapping as ORM;
 
+#[Family(Level::VERSION)]
 #[ORM\Entity(repositoryClass: ScheduleDiagnosticRepository::class)]
 #[ORM\Table(name: 'schedule_diagnostic')]
 #[ORM\Index(name: 'idx_schedule_diagnostic_club_season', columns: ['club_id', 'season_id'])]
@@ -40,6 +45,7 @@ class ScheduleDiagnostic implements TenantOwnedInterface
     private string $seasonId;
 
     #[ORM\Column(type: 'guid')]
+    #[RefersTo(Schedule::class, OnDelete::DELETE)]
     private string $scheduleId;
 
     #[ORM\Column(type: 'string', length: 50)]
@@ -49,12 +55,15 @@ class ScheduleDiagnostic implements TenantOwnedInterface
     private ScheduleDiagnosticSeverity $severity;
 
     #[ORM\Column(type: 'guid', nullable: true)]
+    #[RefersTo(Team::class, OnDelete::DELETE)]
     private ?string $teamId = null;
 
     #[ORM\Column(type: 'guid', nullable: true)]
+    #[RefersTo(Coach::class, OnDelete::DELETE)]
     private ?string $coachId = null;
 
     #[ORM\Column(type: 'guid', nullable: true)]
+    #[RefersTo(Venue::class, OnDelete::DELETE)]
     private ?string $venueId = null;
 
     // Only a `conflict` (of 11 diagnostic types) pinpoints a slot: it carries the

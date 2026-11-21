@@ -6,6 +6,8 @@ namespace App\Entity;
 
 use App\Enum\OpponentLocationPrecision;
 use App\Repository\OpponentDirectoryEntryRepository;
+use App\Structure\Family;
+use App\Structure\Level;
 use DateTimeImmutable;
 use Doctrine\ORM\Mapping as ORM;
 
@@ -33,6 +35,7 @@ use Doctrine\ORM\Mapping as ORM;
  * hors-tenant, un vecteur de fuite entre clubs. Données FÉDÉRALES PUBLIQUES
  * seulement (nom, ville, code postal, coordonnées, libellé de salle).
  */
+#[Family(Level::PLATFORM)]
 #[ORM\Entity(repositoryClass: OpponentDirectoryEntryRepository::class)]
 #[ORM\Table(name: 'opponent_directory')]
 #[ORM\UniqueConstraint(name: 'uniq_opponent_directory_code', columns: ['ffbb_organisme_code'])]

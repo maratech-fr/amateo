@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace App\Entity;
 
 use App\Repository\EmailVerificationTokenRepository;
+use App\Structure\Family;
+use App\Structure\Level;
 use DateTimeImmutable;
 use Doctrine\ORM\Mapping as ORM;
 
@@ -15,6 +17,7 @@ use Doctrine\ORM\Mapping as ORM;
  * intent (ffbb code + optional club name) rides on the token until then. The
  * raw token is emailed; only its sha256 hash is stored.
  */
+#[Family(Level::PLATFORM)]
 #[ORM\Entity(repositoryClass: EmailVerificationTokenRepository::class)]
 #[ORM\Table(name: 'email_verification_token')]
 #[ORM\UniqueConstraint(name: 'uniq_email_verification_hashed_token', columns: ['hashed_token'])]

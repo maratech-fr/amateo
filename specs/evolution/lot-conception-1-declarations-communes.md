@@ -401,6 +401,32 @@ Avec l'accord du fondateur (F11). Détail au §11. Seul un écart **attribué à
 - **Tests** : `PurgeCompletenessTest` (relit le catalogue, reste bloquant),
   `tests/Integration/PurgeOrderRespectsForeignKeysTest.php` (neuf, lit `pg_constraint`), un cas de
   complétude dans `DeletionImpactParityTest` (`TeamTagAssignment.teamId` y figure par son étape).
+- **Constats de la 4a à reprendre en 4b** (vérifiés dans le code ; aucune décision nouvelle, ce sont des
+  conditions de la PR) :
+  1. **`PurgeOrderRespectsForeignKeysTest` ne se contente pas de l'absence de violation.** Aucune clé
+     étrangère déclarée n'est `RESTRICT` ni `NO ACTION` (`OnDelete` ne connaît que `DELETE`, `CLEAR`, `CUSTOM`,
+     `KEEP` ; aucune occurrence dans `backend/migrations/`) : une mauvaise
+     permutation ne lèverait donc jamais d'erreur et un test « aucune violation » resterait vert. Il exige, pour
+     chaque clé `CASCADE` vers une table purgée avec la saison, que l'enfant passe avant son parent dans l'ordre
+     réellement exécuté (`childrenFirst`, `FamilyCatalog.php`).
+  2. **`owner: true` n'est gardé que par `FamilyCatalogMatchesPurgeListsTest::testPurgedViaOwnerIsThePurgeByTheParent`**,
+     supprimé en 4b ; `FamilyDeclarationSweepTest` ne lit pas `owner`. La 4b livre un remplaçant qui fige les cinq
+     propriétaires : `ConstraintConflict.scheduleId` (Schedule), `PeriodReminderLog`, `CoachWish`,
+     `CoachWishCampaign`, `CoachWishMutualization` (chacun par `calendarEntryId`, CalendarEntry).
+  3. **L'ordre entre les deux boucles est conservé** : les enfants via propriétaire (sans `club_id` ni
+     `season_id`) avant la boucle par club + saison qui emporte `CalendarEntry` et `Schedule`
+     (`SeasonDataPurger::purge`, boucle `PURGED_VIA_PARENT` puis boucle `PURGED_BY_CLUB_SEASON`) ; un ordre
+     alphabétique global les mélangerait.
+  4. **`TransitionReminderLog` est à trancher** : `Level::SEASON`, `season_id` sans `club_id`, absent de toute liste
+     de purge (`SeasonDataPurger`, `ErasedClubPurger`), alors que `HolidayReminderLog`, de même forme, est vidé
+     par `season_id` seul. `purgedWithSeason()` exige `clubId` ET `seasonId` : ni l'un ni l'autre n'y entre.
+  5. **Les raisons de `HANDLED_APART` n'ont pas de place dans l'attribut** : `team_tag_assignment` (purgé par
+     `season_id` seul bien qu'il porte `club_id`), `season` (ligne pivot supprimée sous condition), et l'effacement
+     de `HolidayReminderLog` par saison seule. La 4b décide où elles vivent (attribut étendu, ou constante
+     conservée) ; une raison ne se perd pas.
+  6. **`Season` est de niveau club mais sort de `purgedWithClub()`** par la constante `SEASON_PIVOT`, parce que sa
+     ligne est supprimée par la purge de saison (`$deleteSeasonRow`). La 4b décide si cette exception reste une
+     constante du catalogue ou devient une déclaration.
 
 ### PR 5 · « Les constats tranchés »
 
@@ -547,7 +573,7 @@ Classement de `OpponentDirectoryEntry`, `OpponentVenueSuggestion`, `SharedCompet
 | 15 | 3 | La commande de contrôle sort 0 sur une base saine et 1 en désignant une équipe dont l'enregistré diffère, saison archivée comprise | `tests/Integration/Command/VerifyStoredTeamTagsCommandTest.php` |
 | 16 | 3 | Le contrat d'API figé suit : trois champs et une route en moins | `OpenApiSnapshotMatchesTheLiveContractTest` ; `TsFieldsMatchOpenApiSchemaTest` vert sans toucher l'écran |
 | 17 | 4a | Toute entité porte `#[Family]` ; toute colonne `guid` hors `id`, `clubId`, `seasonId` porte `#[RefersTo]` ; aucun cycle « meurt avec » ; le catalogue rend les familles des trois constantes de purge | `tests/Security/FamilyDeclarationSweepTest.php` (bloquant) ; `tests/Integration/FamilyCatalogMatchesPurgeListsTest.php` |
-| 18 | 4b | Toute donnée d'un club est purgée ou exclue avec sa raison ; aucune suppression ne heurte une clé réelle | `PurgeCompletenessTest` (bloquant) ; `tests/Integration/PurgeOrderRespectsForeignKeysTest.php` |
+| 18 | 4b | Toute donnée d'un club est purgée ou exclue avec sa raison ; aucune suppression ne heurte une clé réelle | `PurgeCompletenessTest` (bloquant) ; `tests/Integration/PurgeOrderRespectsForeignKeysTest.php` (exige l'enfant avant son parent pour chaque `CASCADE`, pas la seule absence d'erreur) ; un test qui fige les cinq propriétaires `owner: true` (§4, constat 2) |
 | 19 | 4b | Remettre la saison à zéro efface toute la structure et garde club, gestionnaire et saison | `supprimer-emporte-ce-qui-en-depend.feature`, deux dernières étapes, **inchangées** |
 | 20 | 4b | Toute colonne qui désigne une équipe, un gymnase, un coach ou un créneau est dans `CascadePlan`, ou déclarée conservée avec sa raison | Cas neuf dans `DeletionImpactParityTest` |
 | 21 | 5 | Supprimer un gymnase emporte les contraintes qui le nomment, et l'annonce | `supprimer-emporte-ce-qui-en-depend.feature` : « Et l'équipe « U15M1 » a une règle qui lui impose le « Gymnase Nord » » ; « Alors la suppression du « Gymnase Nord » annonce 1 contrainte qui nomme ce gymnase » ; « Et plus aucune règle ne nomme le « Gymnase Nord » » ; parité dans `DeletionImpactParityTest` |
@@ -655,6 +681,9 @@ Les décisions FN1, F0, F0b, FB1, F7… sont prises (§13). Restent les cas où 
   au fondateur.
 - **Un fichier de référence ou de cas de miroir devrait changer** : retour au fondateur.
 - **Un cycle « meurt avec » trouvé par le balayage de la PR 4a** : retour au fondateur.
+- **PR 4b : le sort de `TransitionReminderLog`** (purgé avec la saison, ou conservé avec sa raison), l'emplacement
+  des raisons de `HANDLED_APART` et le statut de `Season` dans `purgedWithClub()` (§4, constats 4 à 6) : à
+  trancher dans le plan de la 4b, retour au fondateur si le choix change ce qu'une purge efface.
 
 ## 13. Décisions du fondateur (2026-11-21, « tout reco » sur la version allégée) et mesures
 

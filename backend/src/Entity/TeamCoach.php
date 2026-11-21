@@ -6,9 +6,14 @@ namespace App\Entity;
 
 use App\Enum\TeamCoachRole;
 use App\Repository\TeamCoachRepository;
+use App\Structure\Family;
+use App\Structure\Level;
+use App\Structure\OnDelete;
+use App\Structure\RefersTo;
 use DateTimeImmutable;
 use Doctrine\ORM\Mapping as ORM;
 
+#[Family(Level::SEASON)]
 #[ORM\Entity(repositoryClass: TeamCoachRepository::class)]
 #[ORM\Table(name: 'team_coach')]
 #[ORM\Index(name: 'idx_team_coach_club_season', columns: ['club_id', 'season_id'])]
@@ -39,9 +44,11 @@ class TeamCoach implements TenantOwnedInterface
     private string $seasonId;
 
     #[ORM\Column(type: 'guid')]
+    #[RefersTo(Team::class, OnDelete::DELETE)]
     private string $teamId;
 
     #[ORM\Column(type: 'guid')]
+    #[RefersTo(Coach::class, OnDelete::DELETE)]
     private string $coachId;
 
     #[ORM\Column(length: 20, enumType: TeamCoachRole::class)]

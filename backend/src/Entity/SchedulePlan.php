@@ -6,6 +6,10 @@ namespace App\Entity;
 
 use App\Enum\SchedulePlanType;
 use App\Service\SchedulePlanProvisioner;
+use App\Structure\Family;
+use App\Structure\Level;
+use App\Structure\OnDelete;
+use App\Structure\RefersTo;
 use DateTimeImmutable;
 use Doctrine\ORM\Mapping as ORM;
 
@@ -34,6 +38,7 @@ use Doctrine\ORM\Mapping as ORM;
  * same question (Season.baselineScheduleId, VALIDATED/ARCHIVED statuses) are
  * gone — two truths is what made them diverge.
  */
+#[Family(Level::SEASON)]
 #[ORM\Entity]
 #[ORM\Table(name: 'schedule_plan')]
 #[ORM\Index(name: 'idx_schedule_plan_club_season', columns: ['club_id', 'season_id'])]
@@ -79,10 +84,12 @@ class SchedulePlan implements TenantOwnedInterface
 
     /** Set on CLOSURE/HOLIDAY plans — the period this plan adjusts. null on SEASON. */
     #[ORM\Column(type: 'guid', nullable: true)]
+    #[RefersTo(CalendarEntry::class, OnDelete::DELETE)]
     private ?string $calendarEntryId = null;
 
     /** The validated version ("le pointeur"). null = espace de travail. */
     #[ORM\Column(type: 'guid', nullable: true)]
+    #[RefersTo(Schedule::class, OnDelete::CLEAR)]
     private ?string $chosenScheduleId = null;
 
     /**
@@ -95,6 +102,7 @@ class SchedulePlan implements TenantOwnedInterface
      * pointeur, le repli reprend la main.
      */
     #[ORM\Column(type: 'guid', nullable: true)]
+    #[RefersTo(Schedule::class, OnDelete::CLEAR)]
     private ?string $lockSourceScheduleId = null;
 
     /**

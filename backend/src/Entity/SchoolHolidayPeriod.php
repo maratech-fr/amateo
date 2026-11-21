@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace App\Entity;
 
 use App\Repository\SchoolHolidayPeriodRepository;
+use App\Structure\Family;
+use App\Structure\Level;
 use DateTimeImmutable;
 use Doctrine\ORM\Mapping as ORM;
 
@@ -18,6 +20,7 @@ use Doctrine\ORM\Mapping as ORM;
  * holidayType is an OPEN slug (métropole + overseas labels differ).
  * See specs/courantes/accueil-cockpit-temporel.md §4bis.
  */
+#[Family(Level::PLATFORM)]
 #[ORM\Entity(repositoryClass: SchoolHolidayPeriodRepository::class)]
 #[ORM\Table(name: 'school_holiday_period')]
 #[ORM\UniqueConstraint(name: 'uniq_school_holiday_zone_type_year', columns: ['zone', 'holiday_type', 'school_year'])]

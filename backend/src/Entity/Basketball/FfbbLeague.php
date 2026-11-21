@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace App\Entity\Basketball;
 
 use App\Repository\Basketball\FfbbLeagueRepository;
+use App\Structure\Family;
+use App\Structure\Level;
 use DateTimeImmutable;
 use Doctrine\ORM\Mapping as ORM;
 
@@ -17,6 +19,7 @@ use Doctrine\ORM\Mapping as ORM;
  * (does not implement TenantOwnedInterface) and is therefore outside RLS, like
  * the `club`/`user` tables. See specs/evolution/import-ffbb-autofill.md §4.
  */
+#[Family(Level::PLATFORM)]
 #[ORM\Entity(repositoryClass: FfbbLeagueRepository::class)]
 #[ORM\Table(name: 'ffbb_league')]
 #[ORM\UniqueConstraint(name: 'uniq_ffbb_league_code', columns: ['code'])]
