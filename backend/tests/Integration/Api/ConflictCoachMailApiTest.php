@@ -812,7 +812,11 @@ final class ConflictCoachMailApiTest extends WebTestCase
         self::assertResponseStatusCodeSame(403, 'l\'aperçu de l\'envoi reste réservé au gestionnaire');
     }
 
-    /** Un club de démonstration n'e-maille jamais un tiers : 403, message nommé, aucun mail. */
+    /**
+     * Un club de démonstration n'e-maille jamais un tiers : 403, message nommé, aucun mail. Le
+     * texte se lit en `detail` ou en `error` : le refus vient du contrôle central depuis le lot 2
+     * (PR 5), l'écran lit l'un ou l'autre.
+     */
     public function testDemoClubNeverMails(): void
     {
         $this->aiglons();
@@ -823,12 +827,12 @@ final class ConflictCoachMailApiTest extends WebTestCase
         $this->client->enableProfiler();
         $this->post();
         self::assertResponseStatusCodeSame(403);
-        self::assertSame('Envoi d\'e-mails indisponible en démonstration.', $this->json()['error'] ?? null);
+        self::assertSame('Envoi d\'e-mails indisponible en démonstration.', $this->json()['detail'] ?? $this->json()['error'] ?? null);
         self::assertQueuedEmailCount(0);
 
         $this->preview();
         self::assertResponseStatusCodeSame(403, 'l\'aperçu est refusé à la démo, comme l\'envoi');
-        self::assertSame('Envoi d\'e-mails indisponible en démonstration.', $this->json()['error'] ?? null);
+        self::assertSame('Envoi d\'e-mails indisponible en démonstration.', $this->json()['detail'] ?? $this->json()['error'] ?? null);
     }
 
     /** Sans planning de saison choisi, rien ne part : 409 du garde du socle, lu en `detail`. */
@@ -883,14 +887,16 @@ final class ConflictCoachMailApiTest extends WebTestCase
     /**
      * Saison archivée PAR LE CALENDRIER (une saison plus récente est en cours) : le garde du noyau
      * refuse l'aperçu (GET compris) au gestionnaire en 409 « lecture seule » ; le Membre est refusé
-     * avant, par le contrôle central, en 403 (écart E2 voulu, PR 3b).
+     * avant, par le contrôle central, en 403 (écart E2 voulu, PR 3b). La saison N-1 a son planning de
+     * saison en vigueur : sans lui, le module Matchs fermé répondrait le premier (409 du socle, écart
+     * E8 voulu, lot 2 PR 5 — `ClubAccessListenerTest::testE8EachClosedModuleFunctionOnAnArchivedSeasonAnswersTheSocle`).
      */
     public function testACalendarArchivedSeasonRefusesThePreviewToTheManagerAndTheRoleToTheMember(): void
     {
         $this->aiglons();
         $member = $this->member('member');
         $this->scopeGucToClub($this->club->getId());
-        $past = $this->newSeason(SeasonResolver::seasonYear(new DateTimeImmutable('today')) - 1, false);
+        $past = $this->newSeason(SeasonResolver::seasonYear(new DateTimeImmutable('today')) - 1, true);
 
         $this->preview(season: $past);
         self::assertResponseStatusCodeSame(409);

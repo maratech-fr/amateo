@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Tests\Security;
 
+use App\Entity\Club;
 use App\Entity\Season;
 use App\Entity\User;
 use App\Enum\SeasonStatus;
@@ -55,6 +56,10 @@ use Symfony\Component\Security\Core\Authentication\Token\UsernamePasswordToken;
  *  - E4 : le refus porte `detail` = « Cette action est réservée aux gestionnaires. » là où les
  *    gardes à la main rendaient `{"error":"Accès refusé."|"Forbidden."}` ; E5 : la tentative d'un
  *    Membre n'entame plus son seau `rgpd_export`.
+ *  - lot 2, PR 5 : l'ORDRE rôle (403) → démonstration (403) → module Matchs fermé (409) → crédit
+ *    (403), et les écarts E6 (envoi aux coachs sur saison gelée : démonstration ou socle avant la
+ *    saison archivée), E7 (rencontres de la fédération sans code FFBB : socle avant le 422), E8 (les
+ *    huit fonctions du module sur une saison archivée sans socle : socle avant la saison archivée).
  * Les oracles (statuts, message) sont écrits à la main, jamais lus dans le code de production.
  *
  * FALSIFICATION (à jouer après l'implémentation, consignée au rapport de la PR 3b) : écouteur
@@ -82,6 +87,12 @@ final class ClubAccessListenerTest extends WebTestCase
     private const string REFUSAL = 'Cette action est réservée aux gestionnaires.';
 
     private const string ARCHIVED = 'Cette saison est archivée — elle est en lecture seule.';
+
+    /** Le refus du module Matchs fermé (garde du socle), écrit à la main. */
+    private const string SOCLE = 'Validez le planning de saison avant de créer un match ou un planning de période.';
+
+    /** Le refus d'un envoi aux coachs en démonstration, écrit à la main (texte gardé, décision Q12). */
+    private const string DEMO_MAIL = 'Envoi d\'e-mails indisponible en démonstration.';
 
     private const string LISTENER = 'App\Access\ClubAccessListener';
 
@@ -336,9 +347,160 @@ final class ClubAccessListenerTest extends WebTestCase
         self::assertSame(10, $this->remaining('limiter.rgpd_export', $this->memberUserId), 'la tentative d\'un Membre a entamé son seau d\'export');
     }
 
+    /**
+     * Ordre du contrôle central (lot 2, PR 5) : rôle (403) → démonstration (403) → module fermé
+     * (409) → crédit (403). Sur un club neuf, Découverte, sans planning de saison en vigueur :
+     *  - module fermé avant crédit : à sec (10/10), placer les matchs répond le 409 du socle, pas le
+     *    403 des crédits (avant la PR 5 : 403 des crédits) — rien en file, aucun crédit ;
+     *  - témoins, module fermé : la visite du module (télémétrie, Membre) et la liste des rencontres
+     *    répondent — aucune lecture nouvelle n'est fermée (décision Q9 (a)) ;
+     *  - démonstration avant module fermé : le club passé en démonstration, son gestionnaire reçoit
+     *    le refus de démonstration pour l'envoi des conflits ;
+     *  - rôle avant démonstration : un Membre du même club reçoit le refus du rôle.
+     */
+    public function testTheOrderIsRoleThenDemoThenClosedModuleThenCredit(): void
+    {
+        $this->decor();
+        $this->updateClub(static function (Club $club): void {
+            $club->setOutputCreditsUsed(10);
+        });
+        $saturday = new DateTimeImmutable('next saturday')->format('Y-m-d');
+        $sunday = new DateTimeImmutable('next saturday +1 day')->format('Y-m-d');
+
+        $this->asManager('POST', '/api/fixtures/place', json_encode(['from' => $saturday, 'to' => $sunday], \JSON_THROW_ON_ERROR));
+        $this->assertSocleRefusal('module fermé avant crédit : POST /api/fixtures/place, club à sec sans socle');
+        self::assertSame([], $this->messagesSentByLastRequest(), 'un placement refusé est parti en file');
+        self::assertSame(10, $this->creditsUsed(), 'un placement refusé a pris un crédit');
+
+        $this->asMember('POST', '/api/matches/module-visit');
+        self::assertResponseIsSuccessful('module fermé : la visite du module (télémétrie) reste servie au Membre');
+        $this->asMember('GET', '/api/fixtures');
+        self::assertResponseStatusCodeSame(200, 'module fermé : la liste des rencontres reste lisible');
+
+        $this->turnIntoDemo();
+        $this->asManager('POST', '/api/fixtures/conflicts/mail-coaches', '{}');
+        $this->assertDemoRefusal('démonstration avant module fermé : POST /api/fixtures/conflicts/mail-coaches');
+
+        $this->asMember('POST', '/api/fixtures/conflicts/mail-coaches', '{}');
+        $this->assertRefusedByTheCentralControl('rôle avant démonstration : un Membre du club démo');
+    }
+
+    /**
+     * E6 — `ConflictCoachMailController`, gestionnaire, saison courante gelée à la main : sans socle,
+     * 409 du socle en `detail` (avant : 409 « saison archivée ») ; club passé en démonstration, 403
+     * de démonstration (avant : 409 « saison archivée »). Aucun mail.
+     */
+    public function testE6MailingCoachesOnAFrozenSeasonAnswersTheSocleThenTheDemoBeforeTheArchive(): void
+    {
+        $this->decor();
+        $this->freezeCurrentSeason();
+
+        $this->asManager('POST', '/api/fixtures/conflicts/mail-coaches', '{}');
+        $this->assertSocleRefusal('E6 saison gelée, sans socle');
+        self::assertSame([], $this->messagesSentByLastRequest(), 'un mail aux coachs est parti');
+
+        $this->turnIntoDemo();
+        $this->asManager('POST', '/api/fixtures/conflicts/mail-coaches', '{}');
+        $this->assertDemoRefusal('E6 saison gelée, club démo');
+        self::assertSame([], $this->messagesSentByLastRequest(), 'un mail aux coachs est parti');
+    }
+
+    /** E7 — `GET /api/ffbb/rencontres`, club sans code FFBB et sans socle : avant 422, après 409 du socle. */
+    public function testE7FederationRencontresOfAClubWithoutCodeAndWithoutSocleAnswerTheSocle(): void
+    {
+        $this->decor();
+        $this->updateClub(static function (Club $club): void {
+            $club->setFfbbClubCode(null);
+        });
+
+        $this->asManager('GET', '/api/ffbb/rencontres', null);
+        $this->assertSocleRefusal('E7 GET /api/ffbb/rencontres sans code FFBB');
+    }
+
+    /**
+     * E8 — les huit fonctions du module Matchs (neuf routes), gestionnaire, saison archivée (N-1,
+     * sans planning de saison) : chacune répond le 409 du socle (avant : 409 « saison archivée » là
+     * où la garde de saison passait la première).
+     */
+    public function testE8EachClosedModuleFunctionOnAnArchivedSeasonAnswersTheSocle(): void
+    {
+        $this->decor();
+        $past = $this->pastSeason();
+
+        $wrong = [];
+        foreach ([
+            ['POST', '/api/ffbb/engagements/confirm', '{}'],
+            ['GET', '/api/ffbb/rencontres', null],
+            ['POST', '/api/ffbb/rencontres/apply', '{"decisions":[],"creations":[]}'],
+            ['POST', '/api/fixtures/conflicts/mail-coaches', '{}'],
+            ['GET', '/api/fixtures/conflicts/mail-coaches/preview', null],
+            ['GET', '/api/fixtures/league-validation', null],
+            ['POST', '/api/fixtures/place', '{}'],
+            ['POST', '/api/fixtures/review', '{"scope":"away"}'],
+            ['POST', '/api/fixtures/review/deviations', '{}'],
+        ] as [$method, $url, $body]) {
+            $this->asManager($method, $url, $body, ['HTTP_X-Season-Id' => $past]);
+            $status = $this->client->getResponse()->getStatusCode();
+            if (409 !== $status || self::SOCLE !== ($this->body()['detail'] ?? null)) {
+                $wrong[] = \sprintf('%s %s → %d %s', $method, $url, $status, mb_substr((string) $this->client->getResponse()->getContent(), 0, 200));
+            }
+        }
+
+        self::assertSame([], $wrong, "Saison archivée sans socle : le 409 du socle est attendu en premier :\n  - " . implode("\n  - ", $wrong));
+    }
+
     protected function setUp(): void
     {
         $this->client = self::createClient();
+    }
+
+    private function assertSocleRefusal(string $what): void
+    {
+        $excerpt = mb_substr((string) $this->client->getResponse()->getContent(), 0, 400);
+        self::assertSame(409, $this->client->getResponse()->getStatusCode(), $what . ' → ' . $excerpt);
+        self::assertSame(self::SOCLE, $this->body()['detail'] ?? null, $what . ' : le refus ne porte pas le message du socle en `detail` → ' . $excerpt);
+    }
+
+    /** Le texte de démonstration, lu en `detail` ou en `error` (l'écran lit l'un ou l'autre). */
+    private function assertDemoRefusal(string $what): void
+    {
+        $excerpt = mb_substr((string) $this->client->getResponse()->getContent(), 0, 400);
+        self::assertSame(403, $this->client->getResponse()->getStatusCode(), $what . ' → ' . $excerpt);
+        $body = $this->body();
+        self::assertSame(self::DEMO_MAIL, $body['detail'] ?? $body['error'] ?? null, $what . ' → ' . $excerpt);
+    }
+
+    /** @param callable(Club): void $change */
+    private function updateClub(callable $change): void
+    {
+        $em = $this->em();
+        self::getContainer()->get(TenantConnectionContext::class)->setClubId($this->clubId);
+        $club = $em->find(Club::class, $this->clubId);
+        self::assertInstanceOf(Club::class, $club);
+        $change($club);
+        $em->flush();
+        self::getContainer()->get(TenantConnectionContext::class)->clear();
+    }
+
+    /** Le club et son gestionnaire passent en démonstration (fenêtre du compte ouverte). */
+    private function turnIntoDemo(): void
+    {
+        $this->updateClub(static function (Club $club): void {
+            $club->setIsDemo(true);
+        });
+        $manager = $this->user($this->managerUserId);
+        $manager->setIsDemo(true);
+        $manager->setDemoActiveUntil(new DateTimeImmutable('+1 day'));
+        $this->em()->flush();
+    }
+
+    private function creditsUsed(): int
+    {
+        self::getContainer()->get(TenantConnectionContext::class)->setClubId($this->clubId);
+        $used = $this->em()->getConnection()->fetchOne('SELECT output_credits_used FROM club WHERE id = ?', [$this->clubId]);
+        self::getContainer()->get(TenantConnectionContext::class)->clear();
+
+        return (int) $used;
     }
 
     /** Club né par l'inscription, une équipe, un Membre actif. */

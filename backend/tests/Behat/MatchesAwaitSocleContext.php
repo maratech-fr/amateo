@@ -14,9 +14,12 @@ use DateTimeZone;
 use RuntimeException;
 
 /**
- * Promesse : tant que le planning de saison n'est pas validé, importer les rencontres, placer les
- * matchs et envoyer les conflits aux coachs sont refusés avec leur motif (`SocleGuard`) ; une fois
- * validé, ces refus tombent. En Découverte, un placement refusé ne coûte rien, un placement abouti
+ * Promesse : tant que le planning de saison n'est pas validé, le module des matchs refuse avec son
+ * motif (`SocleGuard`) l'import des rencontres et ses huit fonctions fermées (décision Q9 (a), lot 2
+ * PR 5 : placer, envoyer les conflits et son aperçu, confirmer les engagements, lire et appliquer
+ * les rencontres de la fédération, lire les domiciles à valider, revoir les rencontres et leurs
+ * écarts) ; une fois validé, ces refus tombent — les trois gestes de la fédération ne sont pas
+ * rejoués après la validation : ils appelleraient la fédération réelle. En Découverte, un placement refusé ne coûte rien, un placement abouti
  * coûte un crédit — décompté par le worker au COMPLETED (`PlaceMatchesHandler`), pas au 202.
  *
  * Décor DÉDIÉ et léger ({@see SmallClubFixtureTrait::registerSmallClub} : club neuf, offre
@@ -169,6 +172,13 @@ final class MatchesAwaitSocleContext extends BaseContext
             'importer les rencontres' => $this->apiPost('fixtures/import', [], $this->smallClubToken),
             'placer les matchs du week-end' => $this->apiPost('fixtures/place', ['from' => $this->saturday, 'to' => $sunday], $this->smallClubToken),
             'envoyer les conflits aux coachs' => $this->apiPost('fixtures/conflicts/mail-coaches', [], $this->smallClubToken),
+            'prévisualiser l\'envoi des conflits aux coachs' => $this->apiGet('fixtures/conflicts/mail-coaches/preview', $this->smallClubToken),
+            'confirmer les engagements de la fédération' => $this->apiPost('ffbb/engagements/confirm', [], $this->smallClubToken),
+            'lire les rencontres de la fédération' => $this->apiGet('ffbb/rencontres', $this->smallClubToken),
+            'appliquer les rencontres de la fédération' => $this->apiPost('ffbb/rencontres/apply', ['decisions' => [], 'creations' => []], $this->smallClubToken),
+            'lire les domiciles à valider auprès de la ligue' => $this->apiGet('fixtures/league-validation', $this->smallClubToken),
+            'revoir les rencontres à l\'extérieur' => $this->apiPost('fixtures/review', ['scope' => 'away'], $this->smallClubToken),
+            'revoir les écarts d\'une rencontre' => $this->apiPost('fixtures/review/deviations', [], $this->smallClubToken),
             default => throw new RuntimeException(\sprintf('geste « %s » inconnu du scénario', $gesture)),
         };
     }

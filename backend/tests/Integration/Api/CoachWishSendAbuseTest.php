@@ -123,7 +123,8 @@ final class CoachWishSendAbuseTest extends WebTestCase
         $this->client->enableProfiler();
         $this->client->request('POST', $this->sendLinksUrl(), [], [], $this->headers(), '{}');
         self::assertResponseStatusCodeSame(403);
-        $error = (string) ($this->lastJson()['error'] ?? '');
+        // Lu en `detail` ou en `error` : le refus vient du contrôle central depuis le lot 2 (PR 5).
+        $error = (string) ($this->lastJson()['detail'] ?? $this->lastJson()['error'] ?? '');
         self::assertStringContainsString('indisponible en démonstration', $error);
         self::assertQueuedEmailCount(0);
 
