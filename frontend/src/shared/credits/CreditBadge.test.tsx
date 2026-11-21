@@ -10,6 +10,7 @@ const credits = vi.hoisted(() => ({ current: null as CreditsView | null }));
 vi.mock("./useCredits", () => ({ useCredits: () => credits.current }));
 
 import { CreditBadge } from "./CreditBadge";
+import { CREDITS_TEXTS } from "./texts";
 
 const view = (remaining: number): CreditsView => ({ max: 10, used: 10 - remaining, remaining, canGenerate: remaining > 0, canPlaceMatches: remaining > 0, canExportPdf: remaining > 0 });
 
@@ -74,5 +75,18 @@ describe("CreditBadge", () => {
     const link = screen.getByRole("link");
     expect(link.getAttribute("title")).toMatch(/combl/i);
     expect(link).toHaveAccessibleName(/combl/i);
+  });
+
+  /**
+   * Contrôle visuel lot 2 PR 4 — l'explication de la pastille est la phrase simple validée pour un
+   * gestionnaire non technique, tenue par la clé `CREDITS_TEXTS.badgeTooltip` (maison unique des
+   * textes de crédits) : la même au survol et dans l'annonce du lien.
+   */
+  it("l'explication de la pastille vient de la clé de texte des crédits, au survol comme à l'annonce", () => {
+    credits.current = view(3);
+    renderBadge();
+    const link = screen.getByRole("link");
+    expect(link).toHaveAttribute("title", CREDITS_TEXTS.badgeTooltip);
+    expect(link.getAttribute("aria-label")).toContain(CREDITS_TEXTS.badgeTooltip);
   });
 });
