@@ -80,6 +80,22 @@ final class VerifyStoredTeamTagsCommandTest extends KernelTestCase
         yield 'rattachement d\'une équipe qui n\'existe plus' => ['team-gone'];
     }
 
+    /**
+     * Un `--club` mal formé ou inconnu est refusé proprement, sortie non nulle, sans lever
+     * l'erreur de la base (colonne uuid) ni lire quoi que ce soit.
+     */
+    public function testAMalformedOrUnknownClubIsRefusedCleanly(): void
+    {
+        foreach (['pas-un-uuid', '00000000-0000-4000-8000-000000000000'] as $club) {
+            $tester = new CommandTester(new Application(self::$kernel)->find('app:team-tags:verify-stored'));
+            $status = $tester->execute(['--club' => [$club]]);
+
+            self::assertNotSame(0, $status, \sprintf('« %s » doit être refusé', $club));
+            self::assertStringContainsString('not found', $tester->getDisplay());
+            self::assertStringNotContainsString('SQLSTATE', $tester->getDisplay());
+        }
+    }
+
     public function testASaneBaseExitsZeroAcrossEverySeason(): void
     {
         $tester = $this->runCommand();

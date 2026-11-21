@@ -18,6 +18,7 @@ use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Style\SymfonyStyle;
+use Symfony\Component\Uid\Uuid;
 
 /**
  * Contrôle, en lecture seule, que les étiquettes ENREGISTRÉES (`team_tag`,
@@ -59,7 +60,9 @@ final class VerifyStoredTeamTagsCommand extends Command
             : $requested;
 
         foreach ($requested as $clubId) {
-            if (!$this->entityManager->getRepository(Club::class)->find($clubId) instanceof Club) {
+            // Forme vérifiée AVANT la lecture : un identifiant mal formé ferait lever PostgreSQL
+            // (colonne uuid) au lieu d'un refus propre.
+            if (!Uuid::isValid($clubId) || !$this->entityManager->getRepository(Club::class)->find($clubId) instanceof Club) {
                 $io->error(\sprintf('Club %s not found.', $clubId));
 
                 return Command::FAILURE;

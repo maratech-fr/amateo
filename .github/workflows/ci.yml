@@ -957,6 +957,10 @@ jobs:
           # homonyme non-système, l'unicité en base (P4-64), et depuis P4-50 le fait qu'éditer
           # une `SportCategory` retague ses équipes.
           FILES="$FILES tests/Security/TeamTagScopeTest.php"
+          # Isolation entre clubs : les rattachements d'étiquettes lus par l'écran sont calculés
+          # et l'identifiant « U13 » est le même partout — la liste d'un club ne porte jamais
+          # l'équipe d'un autre, ni par la saison d'un autre club (chemin HTTP, filtre et RLS).
+          FILES="$FILES tests/Security/TeamTagAssignmentReadIsolationTest.php"
           # F1 (axes planning lifecycle + constraint semantics) : la PROVENANCE d'un verrou de
           # créneau est VRAIE. Un verrou né d'une réservation se lit RESERVATION, un épinglage
           # manuel MANUAL, et un verrou d'origine indécidable UNKNOWN — jamais deviné. Sans ce

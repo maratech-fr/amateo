@@ -203,6 +203,14 @@ services:
         tags:
             - { name: kernel.event_subscriber }
 
+    # Le mémo « nom → équipes » de TeamTagResolver est vidé entre deux messages du worker
+    # (ResetServicesListener ne vide que les services tagués kernel.reset). Posé ici en clair
+    # plutôt que laissé à l'autoconfiguration de ResetInterface : sans lui, une génération
+    # servirait à la suivante les groupes d'avant une édition.
+    App\Service\TeamTagResolver:
+        tags:
+            - { name: kernel.reset, method: reset }
+
     # P4-16 / P2-4 — l'horloge d'un club : date simulée par club (club.simulated_today).
     # Décoration du service `clock` : TOUT consommateur de ClockInterface la
     # traverse. Hors requête (workers/crons/commandes) ou hors club (routes
