@@ -8,7 +8,13 @@ use Attribute;
 
 /**
  * Une fonction du compte de l'utilisateur connecté (son profil, ses nouveautés, l'effacement de
- * son compte), hors de tout module de club. Sur la classe ou sur la méthode.
+ * son compte), hors de tout module de club. Sur la classe ou sur la méthode. Un geste qui modifie
+ * le compte le dit (`protectedInDemo`) : refusé à un compte de démonstration.
  */
 #[Attribute(Attribute::TARGET_CLASS | Attribute::TARGET_METHOD)]
-final readonly class AccountFunction {}
+final readonly class AccountFunction
+{
+    public function __construct(
+        public bool $protectedInDemo = false,
+    ) {}
+}

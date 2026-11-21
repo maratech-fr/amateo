@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Service;
 
+use App\Access\DemoRegime;
 use App\Entity\Club;
 use App\Entity\ClubCreationRequest;
 use App\Entity\ClubUser;
@@ -52,6 +53,7 @@ final class ManagerRoleRequestService
         private readonly MembershipRequestNotifier $notifier,
         private readonly RateLimiterFactory $managerRoleRequestUserLimiter,
         private readonly RateLimiterFactory $managerRoleRequestOfficialLimiter,
+        private readonly DemoRegime $demoRegime,
         // Horloge RÉELLE : les délais (14 jours, 30 jours) sont des durées de sécurité, jamais
         // l'« aujourd'hui » simulé d'un club démo (les clubs démo ne demandent d'ailleurs rien).
         #[Autowire(service: 'app.clock.real')]
@@ -73,7 +75,7 @@ final class ManagerRoleRequestService
         $result = $this->entityManager->wrapInTransaction(function () use ($membership, $user, $club, &$after): array {
             $this->lock($club->getId(), $user->getId());
             $ara = $club->getFfbbClubCode();
-            if ($club->isDemo() || null === $ara || '' === $ara) {
+            if ($this->demoRegime->forbidsThirdPartySend($club, null) || null === $ara || '' === $ara) {
                 return [409, ['error' => 'Cette demande n\'est pas possible pour ce club.']];
             }
             $this->entityManager->refresh($membership);

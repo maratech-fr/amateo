@@ -42,6 +42,9 @@ use Throwable;
  * Division↔team mappings (multipart field « mappings », JSON). The persisted
  * mappings are created first, then every resolvable row is created/updated.
  * The dialog obtained the mapping table from /api/fixtures/import/analyze.
+ *
+ * Pas de `refusedWhenModuleClosed` : le 409 du socle de l'import de rencontres reste dans
+ * {@see FixtureImportGate} (lot 2, PR 5 — contrôle de socle hors périmètre, assumé).
  */
 #[AsController]
 #[ClubFunction(module: Module::MATCHES, audience: Audience::MANAGER)]

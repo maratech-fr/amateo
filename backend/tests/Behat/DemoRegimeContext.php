@@ -12,8 +12,9 @@ use Behat\Step\When;
 use RuntimeException;
 
 /**
- * Promesse : un club de démonstration n'envoie rien à un tiers (conflits aux coachs, invitation,
- * liens de collecte de doléances) et son compte ne se supprime pas ; l'horloge simulée est
+ * Promesse : un club de démonstration n'envoie rien à un tiers (conflits aux coachs, invitation
+ * nouvelle ou renvoyée, liens et relance de collecte de doléances) et son compte ne se supprime pas ;
+ * le refus vient du contrôle central depuis le lot 2 (PR 5), les trois textes sont gardés ; l'horloge simulée est
  * réservée à la démonstration — refusée au gestionnaire d'un club réel PARCE QUE le club n'est pas
  * en démonstration (le même gestionnaire la règle une fois le club passé en démonstration), pas
  * à cause de son rôle (le refus par rôle, lui, est prouvé dans `un-club-ne-voit-jamais-un-autre-club`).
@@ -34,6 +35,13 @@ final class DemoRegimeContext extends BaseContext
     private string $coachEmail = '';
 
     private string $inviteeEmail = '';
+
+    private string $pendingInviteeEmail = '';
+
+    private string $pendingInvitationId = '';
+
+    /** @var array<string, int> e-mails déjà reçus par adresse, relevés au passage en démonstration */
+    private array $mailsBeforeDemo = [];
 
     /** @var array{status: int, json: array<mixed>} */
     private array $clock = ['status' => 0, 'json' => []];
@@ -85,6 +93,26 @@ final class DemoRegimeContext extends BaseContext
         $this->campaignId = $this->smallClubStringField($campaign['json'], 'id');
     }
 
+    #[Given('une invitation en attente, envoyée quand le club était réel')]
+    public function uneInvitationEnAttente(): void
+    {
+        $this->pendingInviteeEmail = 'attente-demo-' . strtolower($this->smallClubAra) . '@fonctionnel.test';
+        $invitation = $this->apiPost('invitations', ['email' => $this->pendingInviteeEmail, 'role' => 'member'], $this->smallClubToken);
+        if (201 !== $invitation['status']) {
+            throw new RuntimeException(\sprintf('l\'invitation du club réel a répondu %d (201 attendu) : %s', $invitation['status'], json_encode($invitation['json'], \JSON_UNESCAPED_UNICODE)));
+        }
+        $this->pendingInvitationId = $this->smallClubStringField($invitation['json'], 'id');
+
+        // Le mail part par la file (worker) : on attend qu'il soit arrivé avant tout relevé.
+        $deadline = time() + 60;
+        while (0 === $this->mailCountTo($this->pendingInviteeEmail)) {
+            if (time() >= $deadline) {
+                throw new RuntimeException('l\'invitation du club réel n\'est pas arrivée dans le webmail de test en 60 s');
+            }
+            sleep(1);
+        }
+    }
+
     #[When('je règle l\'horloge simulée du club')]
     public function jeRegleLHorloge(): void
     {
@@ -105,6 +133,9 @@ final class DemoRegimeContext extends BaseContext
     {
         $this->dbalExec(\sprintf('UPDATE club SET is_demo = true WHERE id=\'%s\'', $this->smallClubId), admin: true);
         $this->dbalExec(\sprintf('UPDATE app_user SET is_demo = true WHERE id=\'%s\'', $this->smallClubUserId), admin: true);
+        foreach ($this->watchedAddresses() as $address) {
+            $this->mailsBeforeDemo[$address] = $this->mailCountTo($address);
+        }
     }
 
     #[Then('/^chacun de ces envois m\'est refusé \(403\), avec ce message :$/u')]
@@ -124,15 +155,16 @@ final class DemoRegimeContext extends BaseContext
         }
     }
 
-    #[Then('aucun e-mail n\'est parti vers le coach ni vers la personne invitée')]
-    public function aucunEmailNEstParti(): void
+    #[Then('aucun nouvel e-mail n\'est parti vers le coach ni vers les personnes invitées')]
+    public function aucunNouvelEmailNEstParti(): void
     {
-        $mailpit = rtrim((string) (getenv('BEHAT_MAILPIT_BASE') ?: 'http://mailpit:8025'), '/');
-        foreach ([$this->coachEmail, $this->inviteeEmail] as $address) {
-            $search = $this->httpGet($mailpit . '/api/v1/search?query=' . rawurlencode('to:' . $address));
-            $total = $search['json']['messages_count'] ?? null;
-            if (200 !== $search['status'] || 0 !== $total) {
-                throw new RuntimeException(\sprintf('le webmail de test compte %s e-mail(s) vers %s (attendu 0)', json_encode($total), $address));
+        if (1 !== ($this->mailsBeforeDemo[$this->pendingInviteeEmail] ?? null)) {
+            throw new RuntimeException(\sprintf('témoin : l\'invitation du club réel devait être dans le webmail de test (%s e-mail relevé)', json_encode($this->mailsBeforeDemo[$this->pendingInviteeEmail] ?? null)));
+        }
+        foreach ($this->watchedAddresses() as $address) {
+            $now = $this->mailCountTo($address);
+            if ($now !== ($this->mailsBeforeDemo[$address] ?? -1)) {
+                throw new RuntimeException(\sprintf('en démonstration, %d e-mail(s) de plus sont partis vers %s', $now - ($this->mailsBeforeDemo[$address] ?? 0), $address));
             }
         }
     }
@@ -151,6 +183,25 @@ final class DemoRegimeContext extends BaseContext
         $this->teardownSmallClub();
     }
 
+    /** @return list<string> le coach et les deux personnes invitées */
+    private function watchedAddresses(): array
+    {
+        return [$this->coachEmail, $this->inviteeEmail, $this->pendingInviteeEmail];
+    }
+
+    /** Les e-mails reçus par une adresse dans le webmail de test (Mailpit). */
+    private function mailCountTo(string $address): int
+    {
+        $mailpit = rtrim((string) (getenv('BEHAT_MAILPIT_BASE') ?: 'http://mailpit:8025'), '/');
+        $search = $this->httpGet($mailpit . '/api/v1/search?query=' . rawurlencode('to:' . $address));
+        $total = $search['json']['messages_count'] ?? null;
+        if (200 !== $search['status'] || !\is_int($total)) {
+            throw new RuntimeException(\sprintf('le webmail de test ne répond pas pour %s (%d)', $address, $search['status']));
+        }
+
+        return $total;
+    }
+
     /** @return array{status: int, json: array<mixed>} */
     private function attempt(string $gesture): array
     {
@@ -158,6 +209,8 @@ final class DemoRegimeContext extends BaseContext
             'envoyer les conflits aux coachs' => $this->apiPost('fixtures/conflicts/mail-coaches', [], $this->smallClubToken),
             'inviter quelqu\'un dans le club' => $this->apiPost('invitations', ['email' => $this->inviteeEmail], $this->smallClubToken),
             'envoyer les liens de la collecte de doléances' => $this->apiPost(\sprintf('coach_wish_campaigns/%s/send-links', $this->campaignId), [], $this->smallClubToken),
+            'relancer les coachs de la collecte de doléances' => $this->apiPost(\sprintf('coach_wish_campaigns/%s/remind', $this->campaignId), [], $this->smallClubToken),
+            'renvoyer l\'invitation en attente' => $this->apiPost(\sprintf('invitations/%s/resend', $this->pendingInvitationId), [], $this->smallClubToken),
             'supprimer mon compte' => $this->apiDelete('me', $this->smallClubToken),
             default => throw new RuntimeException(\sprintf('envoi « %s » inconnu du scénario', $gesture)),
         };

@@ -21,7 +21,6 @@ use App\Service\Geo\OpponentTravelResolver;
 use App\Service\Geo\OpponentVenueAutoLocator;
 use App\Service\SeasonAccessGuard;
 use App\Service\SeasonResolver;
-use App\Service\SocleGuard;
 use App\Service\TravelComputeLock;
 use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
 use Psr\Log\LoggerInterface;
@@ -50,12 +49,12 @@ use Throwable;
  *   import, and creates the chosen rencontres (idempotent). Writes a dated
  *   FFBB_API ingestion (never a freshness deposit, never a trace).
  *
- * Management-gated (SEC-07) + socle chosen (match-module writes) + season writable
- * on apply. Best-effort on the FFBB side: 502, never a broken gesture. A concurrent
+ * Management-gated (SEC-07) + refused while the matches module is closed (no socle in
+ * force, `ClubAccessListener`) + season writable on apply. Best-effort on the FFBB side: 502, never a broken gesture. A concurrent
  * create colliding on the partial unique index surfaces as a clean 409.
  */
 #[AsController]
-#[ClubFunction(module: Module::MATCHES, audience: Audience::MANAGER)]
+#[ClubFunction(module: Module::MATCHES, audience: Audience::MANAGER, refusedWhenModuleClosed: true)]
 final class FfbbRencontresController extends AbstractController
 {
     use ResolvesCurrentClubTrait;
@@ -76,7 +75,6 @@ final class FfbbRencontresController extends AbstractController
         private readonly RequestStack $requestStack,
         private readonly SeasonResolver $seasonResolver,
         private readonly SeasonAccessGuard $seasonAccessGuard,
-        private readonly SocleGuard $socleGuard,
         private readonly FfbbRencontreReconciler $reconciler,
         private readonly OpponentLocationResolver $opponentResolver,
         private readonly OpponentVenueAutoLocator $venueAutoLocator,
@@ -91,12 +89,11 @@ final class FfbbRencontresController extends AbstractController
     #[Route('/api/ffbb/rencontres', name: 'api_ffbb_rencontres', methods: ['GET'])]
     public function list(Request $request): JsonResponse
     {
-        [$clubCode, $seasonYear, $seasonId, $error] = $this->context($request);
+        [$clubCode, $seasonYear, , $error] = $this->context($request);
         if ($error instanceof JsonResponse) {
             return $error;
         }
         \assert(null !== $clubCode && null !== $seasonYear);
-        $this->socleGuard->assertSeasonPlanChosen($seasonId);
 
         try {
             $result = $this->reconciler->analyze($clubCode, $seasonYear);
@@ -117,7 +114,6 @@ final class FfbbRencontresController extends AbstractController
             return $error;
         }
         \assert(!\in_array(null, [$clubCode, $seasonYear, $seasonId], true));
-        $this->socleGuard->assertSeasonPlanChosen($seasonId);
 
         $clubId = $this->resolveCurrentClubId($this->requestStack) ?? '';
 

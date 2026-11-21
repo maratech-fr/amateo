@@ -87,7 +87,9 @@ final class PlanEntitlementsTest extends WebTestCase
     /** Découverte à 10/10 : les TROIS sortes de sortie sont refusées AVANT le solve, avec message. */
     public function testDecouverteExhaustedRefusesEveryOutputRoute(): void
     {
-        $ctx = $this->seedClub(credits: 10); // Découverte, pool = maxGenerations = 10
+        // Découverte, pool = maxGenerations = 10. Socle en vigueur : sans lui, le module Matchs fermé
+        // répondrait le premier au placement (409, ordre du contrôle central — ClubAccessListenerTest).
+        $ctx = $this->seedClub(credits: 10, settleSocle: true);
 
         $generate = $this->post($ctx['user'], '/api/schedules/' . self::DUMMY_SCHEDULE_ID . '/generate');
         self::assertSame(403, $generate, 'générer sans crédit doit être refusé (403) avant le solve');

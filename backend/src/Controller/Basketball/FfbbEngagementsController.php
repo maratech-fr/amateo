@@ -20,7 +20,6 @@ use App\Service\Basketball\FbiDivisionSignature;
 use App\Service\Basketball\FfbbEngagementReader;
 use App\Service\SeasonAccessGuard;
 use App\Service\SeasonResolver;
-use App\Service\SocleGuard;
 use App\Service\TeamTagService;
 use Doctrine\DBAL\ArrayParameterType;
 use Doctrine\ORM\EntityManagerInterface;
@@ -51,8 +50,8 @@ use Throwable;
  *   re-read — never from the client. Not pairing a row = not sending it: the
  *   absence of a link IS the state (nothing modelled).
  *
- * Management-gated (SEC-07) + season writable + socle chosen (match-module
- * writes). Best-effort on the FFBB side: 502, never a broken gesture.
+ * Management-gated (SEC-07) + season writable ; the confirm is refused while the
+ * matches module is closed (no socle in force, `ClubAccessListener`). Best-effort on the FFBB side: 502, never a broken gesture.
  *
  * @phpstan-import-type Signature from FbiDivisionSignature
  */
@@ -68,7 +67,6 @@ final class FfbbEngagementsController extends AbstractController
         private readonly RequestStack $requestStack,
         private readonly SeasonResolver $seasonResolver,
         private readonly SeasonAccessGuard $seasonAccessGuard,
-        private readonly SocleGuard $socleGuard,
         private readonly FfbbEngagementReader $reader,
         private readonly FbiDivisionSignature $divisionSignature,
         private readonly EngagementLevelDeducer $levelDeducer,
@@ -223,10 +221,10 @@ final class FfbbEngagementsController extends AbstractController
     }
 
     #[Route('/api/ffbb/engagements/confirm', name: 'api_ffbb_engagements_confirm', methods: ['POST'])]
+    #[ClubFunction(module: Module::MATCHES, audience: Audience::MANAGER, refusedWhenModuleClosed: true)]
     public function confirm(Request $request): JsonResponse
     {
         $this->seasonAccessGuard->assertWritable($request);
-        $this->socleGuard->assertSeasonPlanChosen($request->attributes->get('_season_id') ?? $request->headers->get('X-Season-Id'));
 
         [$clubCode, $seasonYear, $error] = $this->context($request);
         if ($error instanceof JsonResponse) {

@@ -31,7 +31,7 @@ use Symfony\Component\HttpKernel\Exception\HttpException;
  * chosen « rows ». Same gate as the import (byte-identical refusals).
  */
 #[AsController]
-#[ClubFunction(module: Module::CLUB, audience: Audience::MANAGER)]
+#[ClubFunction(module: Module::PLANNING, audience: Audience::MANAGER)]
 final class ImportTeamsAnalyzeController extends AbstractController
 {
     /** Même règle que `ImportController` : aucun détail d'origine dans la réponse (P4-5). */

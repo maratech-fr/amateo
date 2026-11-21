@@ -48,11 +48,13 @@ use PHPUnit\Framework\Attributes\Group;
 use ReflectionClass;
 use ReflectionClassConstant;
 use ReflectionMethod;
+use ReflectionNamedType;
 use ReflectionParameter;
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 use Symfony\Component\Finder\Finder;
 use Symfony\Component\HttpFoundation\Request;
+use Symfony\Component\Mailer\MailerInterface;
 use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
 use Symfony\Component\Routing\Route;
 use Symfony\Component\Routing\RouterInterface;
@@ -86,6 +88,15 @@ use Symfony\Component\Routing\RouterInterface;
  *     répond le statut écrit dans `ACCOUNT_FUNCTIONS_WITHOUT_CLUB` (jamais le 404 « pas de club »).
  *  7. UN SEUL PUBLIC PAR CIBLE — aucune classe ni méthode ne porte une déclaration de club ET
  *     `#[AccountFunction]`.
+ *  8. MODULES (lot 2, PR 5) — chaque classe déclarante est dans le module que `MODULE_OF` lui donne.
+ *  9. MODULE FERMÉ — seules les huit fonctions de `REFUSED_WHEN_MODULE_CLOSED` le déclarent.
+ * 10. DÉMONSTRATION — les envois à un tiers sont exactement `THIRD_PARTY`, les gestes de compte
+ *     protégés exactement `PROTECTED_IN_DEMO` ; et, joués dans un club passé en démonstration,
+ *     chaque envoi à un tiers est refusé sans qu'aucun message ne parte (abus).
+ * 11. ENVOIS STRUCTURELS — toute route d'un contrôleur de club qui injecte de quoi envoyer est dans
+ *     `THIRD_PARTY` ou dans `MAIL_EXEMPTIONS` (raison écrite).
+ * 12. DÉCLARATIONS SCINDÉES — dans une classe à drapeau de démonstration ou de module fermé, chaque
+ *     déclaration de méthode est dans `SPLIT_DECLARATIONS`.
  * Les tables de ce test sont écrites à la main, jamais dérivées des déclarations ; une ligne sans
  * route au routeur rougit.
  *
@@ -257,6 +268,144 @@ final class AccessDeclarationSweepTest extends WebTestCase
         'DELETE /api/me' => ['/api/me', '{"password":"Password456!Sans"}', 200],
     ];
 
+    /**
+     * L'ORACLE DES MODULES, à la main : chaque classe qui déclare une fonction de club (contrôleur
+     * maison, ou ressource d'API Platform pour ses opérations sans contrôleur maison), rangée dans son
+     * module, sous `App\`. Une classe nouvelle sans ligne rougit : elle se classe consciemment.
+     * Choix écrits (lot 2, PR 5) : les imports d'équipes et de parc sont du Planning, comme les
+     * équipes et les gymnases qu'ils alimentent (`TeamResource`, `VenueResource`) ; l'impact d'une
+     * fermeture de gymnase (`VenueClosureImpactController`, `VenueClosureResource`) et l'impact d'une
+     * suppression (`DeletionImpactController`) restent du Planning — ce sont des gestes du Planning
+     * dont la réponse COMPTE aussi les matchs touchés ; les ranger sous Matchs priverait de cet
+     * avertissement un club dont le module Matchs serait fermé.
+     */
+    private const array MODULE_OF = [
+        'club' => [
+            'ApiResource\ClubResource', 'ApiResource\SeasonResource', 'ApiResource\SportCategoryResource', 'ApiResource\SportResource',
+            'ApiResource\SubscriptionPlanResource', 'ApiResource\UserResource',
+            'Controller\Basketball\FfbbImportController', 'Controller\ClubAppearanceController', 'Controller\ClubClockController',
+            'Controller\ClubInvitationController', 'Controller\ClubLogoController', 'Controller\ClubShortNameController',
+            'Controller\ClubSiegeController', 'Controller\FeedbackController', 'Controller\MailboxController',
+            'Controller\MembershipController', 'Controller\MercureAuthController', 'Controller\ResetSeasonController',
+            'Controller\RgpdExportController', 'Controller\SeasonTransitionController',
+        ],
+        'matches' => [
+            'ApiResource\ClubLeagueWindowResource', 'ApiResource\CompetitionResource', 'ApiResource\FixtureResource',
+            'ApiResource\MatchConstraintResource', 'ApiResource\TeamMatchHabitResource', 'ApiResource\VenueMatchWindowResource',
+            'Controller\Basketball\FfbbEngagementsController', 'Controller\Basketball\FfbbRencontresController',
+            'Controller\Basketball\OpponentLogoController', 'Controller\ClubRuleCoherenceController',
+            'Controller\CompetitionEntryDeadlinesController', 'Controller\ConflictCoachMailController',
+            'Controller\EntryDeadlineOutlookController', 'Controller\ExportMatchesPdfController', 'Controller\FbiCorrectionController',
+            'Controller\FbiIngestionFreshnessController', 'Controller\FixtureConflictsController',
+            'Controller\ImportFixturesAnalyzeController', 'Controller\ImportFixturesController', 'Controller\LeagueMatchWindowsController',
+            'Controller\LeagueValidatedFixturesController', 'Controller\LeagueWindowSuggestionsController',
+            'Controller\MatchModuleVisitController', 'Controller\OpponentRefreshController', 'Controller\OpponentResolveController',
+            'Controller\OpponentTravelController', 'Controller\PlaceMatchesController', 'Controller\PlacementRunController',
+            'Controller\ReviewFixtureDeviationController', 'Controller\ReviewFixturesController', 'Controller\VenueExternalLabelController',
+        ],
+        'planning' => [
+            'ApiResource\CalendarEntryResource', 'ApiResource\CoachPlayerMembershipResource', 'ApiResource\CoachResource',
+            'ApiResource\CoachWishCampaignResource', 'ApiResource\CoachWishMutualizationResource', 'ApiResource\CoachWishResource',
+            'ApiResource\ConstraintPeriodOverrideResource', 'ApiResource\ConstraintResource', 'ApiResource\ImplicitRuleSettingResource',
+            'ApiResource\PriorityTierResource', 'ApiResource\ReservationResource', 'ApiResource\ScheduleDiagnosticResource',
+            'ApiResource\SchedulePlanResource', 'ApiResource\ScheduleResource', 'ApiResource\ScheduleSlotTemplateResource',
+            'ApiResource\SharedTrainingBlockResource', 'ApiResource\TeamCoachResource', 'ApiResource\TeamLinkResource',
+            'ApiResource\TeamPeriodOverrideResource', 'ApiResource\TeamResource', 'ApiResource\TeamSoloBudgetResource',
+            'ApiResource\TeamTagAssignmentResource', 'ApiResource\TeamTagResource', 'ApiResource\VenueClosureResource',
+            'ApiResource\VenueOccupancyResource', 'ApiResource\VenuePeriodOverrideResource', 'ApiResource\VenueResource',
+            'ApiResource\VenueTrainingSlotResource', 'ApiResource\VenueTravelRuleSettingResource', 'ApiResource\VenueTravelTimeResource',
+            'Controller\Basketball\FfbbSallesController', 'Controller\CalendarEntryConflictsController',
+            'Controller\ClosureWindowApplyController', 'Controller\ClosureWindowPreviewController',
+            'Controller\CoachWishCampaignActionController', 'Controller\CoachWishCampaignPreviewController',
+            'Controller\CoachWishEmailPreviewController', 'Controller\CoachWishRecipientController', 'Controller\CoachWishTransferController',
+            'Controller\DeletionImpactController', 'Controller\ExportPdfController', 'Controller\ExportPdfDownloadController',
+            'Controller\ExportXlsxController', 'Controller\FillPeriodPlanController', 'Controller\GenerateScheduleController',
+            'Controller\GeocodeController', 'Controller\GroupReservationController', 'Controller\ImportController',
+            'Controller\ImportTeamsAnalyzeController', 'Controller\LoadLocksController', 'Controller\ManualEditController',
+            'Controller\ParcImportAnalyzeController', 'Controller\ParcImportExecuteController', 'Controller\PlannedWindowsController',
+            'Controller\PublicHolidaysController', 'Controller\RedatePreviewController', 'Controller\RegenerateController',
+            'Controller\RegenerateFromVersionController', 'Controller\ReopenScheduleController', 'Controller\ReorderTeamsController',
+            'Controller\SchedulePlanAlertSeenController', 'Controller\SchedulePlanStructureHashController',
+            'Controller\SchoolHolidaysController', 'Controller\SocleDeviationController', 'Controller\TrainingPlacedConflictsController',
+            'Controller\TranscribePeriodPlanController', 'Controller\ValidateConstraintsController', 'Controller\ValidateImpactController',
+            'Controller\ValidateScheduleController', 'Controller\VenueClosureImpactController', 'Controller\VenueGeoCheckController',
+            'Controller\VenuePeriodGridActionController', 'Controller\VenueTravelTimeAutofillController',
+            'Controller\VenueUsageStatsController',
+        ],
+    ];
+
+    /**
+     * Les fonctions refusées module Matchs fermé (aucun planning de saison en vigueur), à la main :
+     * les huit fonctions de la décision Q9 (a) — huit appels au garde du socle retirés des contrôleurs,
+     * neuf routes (l'envoi des conflits et son aperçu partagent leur garde). Aucune lecture nouvelle
+     * n'est fermée : la liste des engagements, les rencontres, la visite du module ne le sont pas.
+     */
+    private const array REFUSED_WHEN_MODULE_CLOSED = [
+        'POST /api/ffbb/engagements/confirm', 'GET /api/ffbb/rencontres', 'POST /api/ffbb/rencontres/apply',
+        'POST /api/fixtures/conflicts/mail-coaches', 'GET /api/fixtures/conflicts/mail-coaches/preview',
+        'GET /api/fixtures/league-validation', 'POST /api/fixtures/place', 'POST /api/fixtures/review',
+        'POST /api/fixtures/review/deviations',
+    ];
+
+    /**
+     * Les fonctions qui envoient à un tiers, à la main : `MÉTHODE chemin` => [chemin joué, corps,
+     * texte du refus en démonstration] (trois textes gardés, décision Q12). L'aperçu de l'envoi aux
+     * coachs n'envoie rien mais partage le refus de l'envoi (comportement d'avant la PR 5, gardé).
+     */
+    private const array THIRD_PARTY = [
+        'POST /api/fixtures/conflicts/mail-coaches' => ['/api/fixtures/conflicts/mail-coaches', [], 'Envoi d\'e-mails indisponible en démonstration.'],
+        'GET /api/fixtures/conflicts/mail-coaches/preview' => ['/api/fixtures/conflicts/mail-coaches/preview', null, 'Envoi d\'e-mails indisponible en démonstration.'],
+        'POST /api/coach_wish_campaigns/{id}/send-links' => ['/api/coach_wish_campaigns/{coach_wish_campaign}/send-links', [], 'Envoi d\'e-mails indisponible en démonstration.'],
+        'POST /api/coach_wish_campaigns/{id}/remind' => ['/api/coach_wish_campaigns/{coach_wish_campaign}/remind', [], 'Envoi d\'e-mails indisponible en démonstration.'],
+        'POST /api/invitations' => ['/api/invitations', ['email' => '{invitee}', 'role' => 'member'], 'Un compte de démonstration ne peut pas inviter.'],
+        'POST /api/invitations/{id}/resend' => ['/api/invitations/{invitation}/resend', [], 'Un compte de démonstration ne peut pas inviter.'],
+    ];
+
+    /**
+     * Les fonctions de compte protégées en démonstration, à la main (« Ce compte de démonstration ne
+     * peut pas être modifié. ») ; jouées par `DemoWindowTest::testDemoAccountCannotMutateItsProfileNorDeleteItself`.
+     * Annuler un changement d'adresse en attente ne l'est pas (comportement d'avant la PR 5).
+     */
+    private const array PROTECTED_IN_DEMO = ['PATCH /api/me', 'POST /api/me/password', 'POST /api/me/email', 'DELETE /api/me'];
+
+    /**
+     * Les routes d'un contrôleur de club QUI PEUT ENVOYER (il injecte `MailerInterface`, un
+     * `*Notifier`, un `*Mailer` ou un `*Mailing`) et qui ne sont pas dans `THIRD_PARTY`, chacune avec
+     * sa raison écrite à la main. Un envoi ajouté à un contrôleur de club sans passer par l'une des
+     * deux listes rougit `testEveryClubControllerThatCanSendIsDeclaredOrExempted`. Portée : l'injection
+     * DIRECTE dans le contrôleur ; un envoi caché derrière un service tiers lui échappe.
+     */
+    private const array MAIL_EXEMPTIONS = [
+        'GET /api/invitations' => 'lecture, n\'envoie rien',
+        'DELETE /api/invitations/{id}' => 'révocation, n\'envoie rien',
+        'POST /api/feedback' => 'le retour part à l\'éditeur du produit, jamais à un tiers du club',
+        'GET /api/fixtures/conflicts' => 'lecture : `ConflictCoachMailing` n\'y sert qu\'à compter',
+        'PUT /api/fixtures/conflicts/{fingerprint}/resolution' => '`ConflictCoachMailing` n\'y sert qu\'à compter, n\'envoie rien',
+        'DELETE /api/fixtures/conflicts/{fingerprint}/resolution' => '`ConflictCoachMailing` n\'y sert qu\'à compter, n\'envoie rien',
+        'GET /api/memberships' => 'lecture, n\'envoie rien',
+        'GET /api/memberships/pending' => 'lecture, n\'envoie rien',
+        'POST /api/memberships/{id}/approve' => 'pré-existant, comportement démo à trancher (mail d\'acceptation au membre)',
+        'POST /api/memberships/{id}/reject' => 'pré-existant, comportement démo à trancher (mail de refus au demandeur)',
+        'POST /api/memberships/{id}/role' => 'pré-existant, comportement démo à trancher (mail « rôle accordé » au membre)',
+        'POST /api/memberships/{id}/deactivate' => 'pré-existant, comportement démo à trancher (mail « accès retiré » au membre)',
+        'POST /api/memberships/{id}/manager-request/refuse' => 'pré-existant, comportement démo à trancher (mail de refus de la demande de rôle)',
+        'POST /api/memberships/me/manager-request' => 'un club de démonstration est refusé 409 par ManagerRoleRequestService (DemoRegime) avant tout envoi',
+        'DELETE /api/memberships/me/manager-request' => 'annulation, n\'envoie rien',
+        'POST /api/memberships/{id}/reactivate' => 'réactivation, n\'envoie rien (annule un envoi programmé)',
+    ];
+
+    /**
+     * Une déclaration de MÉTHODE remplace celle de la classe, sans rien en hériter
+     * (`AccessDeclarationResolver::declarationOn`) : dans une classe où `thirdParty` ou
+     * `refusedWhenModuleClosed` est déclaré, chaque `#[ClubFunction]` de méthode est écrit ici, à la
+     * main, avec sa raison — un drapeau perdu par une méthode nouvelle rougit.
+     */
+    private const array SPLIT_DECLARATIONS = [
+        'App\Controller\Basketball\FfbbEngagementsController::confirm' => 'seule la confirmation se ferme module fermé ; la liste des engagements reste ouverte',
+        'App\Controller\ClubInvitationController::create' => 'inviter envoie à un tiers ; lister et révoquer n\'envoient rien',
+        'App\Controller\ClubInvitationController::resend' => 'renvoyer envoie à un tiers ; lister et révoquer n\'envoient rien',
+    ];
+
     private const string MAIN_CONTROLLER = 'api_platform.symfony.main_controller';
 
     private const string NOT_EXPOSED_CONTROLLER = 'api_platform.action.not_exposed';
@@ -270,20 +419,34 @@ final class AccessDeclarationSweepTest extends WebTestCase
         self::assertSame(self::FRAMEWORK_ROUTES_WITHOUT_RESOURCE, AccessDeclarationResolver::FRAMEWORK_ROUTES);
 
         // Public obligatoire, aucun défaut tiré de la méthode HTTP : module et public n'ont pas de
-        // valeur par défaut. Seule la sortie payante d'une fonction (`output`) est optionnelle, nulle
-        // par défaut : une fonction qui ne produit rien ne la dit pas.
-        foreach ([ClubFunction::class => ['module', 'audience', 'output'], ClubResource::class => ['module', 'read', 'write']] as $attribute => $expected) {
-            $params = new ReflectionMethod($attribute, '__construct')->getParameters();
+        // valeur par défaut. Ce qu'une fonction FAIT EN PLUS se dit seulement quand c'est vrai : la
+        // sortie payante (`output`, nulle par défaut), l'envoi à un tiers (`thirdParty`) et le refus
+        // module fermé (`refusedWhenModuleClosed`), faux par défaut — une fonction qui ne fait rien de
+        // tel ne le dit pas. Une fonction de compte n'est protégée en démonstration que si elle le dit.
+        $defaults = ['output' => null, 'thirdParty' => false, 'refusedWhenModuleClosed' => false, 'protectedInDemo' => false];
+        foreach ([
+            ClubFunction::class => ['module', 'audience', 'output', 'thirdParty', 'refusedWhenModuleClosed'],
+            ClubResource::class => ['module', 'read', 'write'],
+            AccountFunction::class => ['protectedInDemo'],
+        ] as $attribute => $expected) {
+            $params = new ReflectionClass($attribute)->getConstructor()?->getParameters() ?? [];
             self::assertSame($expected, array_map(static fn (ReflectionParameter $p): string => $p->getName(), $params), $attribute);
             foreach ($params as $param) {
-                if ('output' === $param->getName()) {
-                    self::assertTrue($param->isOptional() && null === $param->getDefaultValue(), 'ClubFunction::$output est nulle par défaut');
+                if (\array_key_exists($param->getName(), $defaults)) {
+                    self::assertTrue($param->isOptional() && $defaults[$param->getName()] === $param->getDefaultValue(), \sprintf('%s::$%s vaut %s par défaut', $attribute, $param->getName(), var_export($defaults[$param->getName()], true)));
 
                     continue;
                 }
                 self::assertFalse($param->isOptional(), \sprintf('%s::$%s a une valeur par défaut', $attribute, $param->getName()));
             }
         }
+
+        // Le module dit sa condition : seul le module Matchs exige le socle en vigueur.
+        $requires = [];
+        foreach (Module::cases() as $module) {
+            $requires[$module->value] = new ReflectionMethod(Module::class, 'requiresSocleInForce')->invoke($module);
+        }
+        self::assertSame(['club' => false, 'planning' => false, 'matches' => true], $requires, 'Module::requiresSocleInForce() : seul Matchs se ferme sans socle en vigueur');
     }
 
     /**
@@ -466,6 +629,247 @@ final class AccessDeclarationSweepTest extends WebTestCase
         foreach ($oracle as $key) {
             self::assertArrayHasKey($key, $clubReads, \sprintf('%s : ligne de l\'oracle qui n\'est pas une lecture de club', $key));
         }
+    }
+
+    /**
+     * Chaque fonction de club est rangée dans le module que `MODULE_OF` (à la main) lui donne : la
+     * table est la vérité, jamais dérivée des déclarations ; une classe absente ou en trop rougit.
+     */
+    public function testEveryClubFunctionSitsInTheModuleTheHandTableNames(): void
+    {
+        $resolver = $this->resolver();
+        $declared = [];
+        $split = [];
+        foreach ($this->apiRoutes() as $name => $route) {
+            foreach ($this->methods($route) as $method) {
+                if (null !== $this->outsideFamily($name, $route, $method)) {
+                    continue;
+                }
+                $declaration = $resolver->for($this->requestFor($name, $route, $method));
+                if (!$declaration instanceof ClubFunction && !$declaration instanceof ClubResource) {
+                    continue;
+                }
+                $class = substr($this->declaringClass($route), \strlen('App\\'));
+                if (isset($declared[$class]) && $declared[$class] !== $declaration->module->value) {
+                    $split[] = \sprintf('%s : deux modules (%s, %s)', $class, $declared[$class], $declaration->module->value);
+                }
+                $declared[$class] = $declaration->module->value;
+            }
+        }
+        ksort($declared);
+        $expected = [];
+        foreach (self::MODULE_OF as $module => $classes) {
+            foreach ($classes as $class) {
+                $expected[$class] = $module;
+            }
+        }
+        ksort($expected);
+
+        self::assertSame([], $split, "Une classe, un module :\n  - " . implode("\n  - ", $split));
+        self::assertSame($expected, $declared, 'modules déclarés ≠ MODULE_OF (à gauche la table écrite à la main, à droite les déclarations)');
+    }
+
+    /**
+     * Le module Matchs fermé (aucun planning de saison en vigueur) refuse EXACTEMENT les huit
+     * fonctions de `REFUSED_WHEN_MODULE_CLOSED` (neuf routes) : la déclaration le dit, explicitement,
+     * sur une fonction du module Matchs ; aucune autre fonction ne le dit.
+     */
+    public function testOnlyTheEightMatchFunctionsAreRefusedWhenTheModuleIsClosed(): void
+    {
+        $resolver = $this->resolver();
+        $refused = [];
+        $wrong = [];
+        foreach ($this->apiRoutes() as $name => $route) {
+            foreach ($this->methods($route) as $method) {
+                if (null !== $this->outsideFamily($name, $route, $method)) {
+                    continue;
+                }
+                $declaration = $resolver->for($this->requestFor($name, $route, $method));
+                if (true !== (null === $declaration ? null : (get_object_vars($declaration)['refusedWhenModuleClosed'] ?? null))) {
+                    continue;
+                }
+                $key = $method . ' ' . $this->bare($route);
+                $refused[] = $key;
+                if (!$declaration instanceof ClubFunction || Module::MATCHES !== $declaration->module) {
+                    $wrong[] = $key . ' : le refus module fermé se déclare sur une fonction du module Matchs';
+                }
+            }
+        }
+        $refused = array_values(array_unique($refused));
+        sort($refused);
+        $expected = self::REFUSED_WHEN_MODULE_CLOSED;
+        sort($expected);
+
+        self::assertSame([], $wrong, "Refus module fermé mal placés :\n  - " . implode("\n  - ", $wrong));
+        self::assertSame($expected, $refused, 'fonctions refusées module fermé ≠ REFUSED_WHEN_MODULE_CLOSED (à gauche la table, à droite les déclarations)');
+    }
+
+    /**
+     * Ce qui sort vers un tiers et ce qui modifie un compte se déclarent : les fonctions de club
+     * `thirdParty` sont EXACTEMENT `THIRD_PARTY`, les fonctions de compte `protectedInDemo`
+     * EXACTEMENT `PROTECTED_IN_DEMO` — les deux tables écrites à la main.
+     */
+    public function testThirdPartySendsAndDemoProtectedAccountGesturesAreExactlyTheHandTables(): void
+    {
+        $resolver = $this->resolver();
+        $thirdParty = [];
+        $protected = [];
+        foreach ($this->apiRoutes() as $name => $route) {
+            foreach ($this->methods($route) as $method) {
+                if (null !== $this->outsideFamily($name, $route, $method)) {
+                    continue;
+                }
+                $declaration = $resolver->for($this->requestFor($name, $route, $method));
+                $said = null === $declaration ? [] : get_object_vars($declaration);
+                $key = $method . ' ' . $this->bare($route);
+                if (true === ($said['thirdParty'] ?? null)) {
+                    $thirdParty[] = $key;
+                }
+                if (true === ($said['protectedInDemo'] ?? null)) {
+                    $protected[] = $key;
+                }
+            }
+        }
+        $thirdParty = array_values(array_unique($thirdParty));
+        sort($thirdParty);
+        $protected = array_values(array_unique($protected));
+        sort($protected);
+        $expectedThirdParty = array_keys(self::THIRD_PARTY);
+        sort($expectedThirdParty);
+        $expectedProtected = self::PROTECTED_IN_DEMO;
+        sort($expectedProtected);
+
+        self::assertSame($expectedThirdParty, $thirdParty, 'fonctions déclarées « envoi à un tiers » ≠ THIRD_PARTY');
+        self::assertSame($expectedProtected, $protected, 'fonctions de compte protégées en démonstration ≠ PROTECTED_IN_DEMO');
+    }
+
+    /**
+     * ABUS — en démonstration, rien ne part vers un tiers. Le club du balayage (payant, socle en
+     * vigueur, un coach joignable par e-mail, une collecte de doléances ouverte, une invitation en
+     * attente) passe en démonstration avec son gestionnaire ; chaque fonction de `THIRD_PARTY`, jouée
+     * par ce gestionnaire aux ids réels et au corps valide, répond 403 avec son texte et ne fait
+     * partir aucun message. Témoin positif, avant la bascule : la même invitation part (201, un mail
+     * vu par le transport). Le texte se lit en `detail` ou en `error` (l'écran lit l'un ou l'autre).
+     * Angle jumeau, cité : `features/le-club-de-demonstration-n-envoie-rien-a-un-tiers.feature`
+     * (le webmail de test) — l'abus de démonstration est un point sensible.
+     */
+    public function testInDemoNoThirdPartyFunctionLetsAMessageLeave(): void
+    {
+        $this->seedPayingClubWithMember();
+        $coach = $this->api($this->managerToken, 'GET', '/api/coaches/' . $this->ids['coach']);
+        $this->api($this->managerToken, 'PUT', '/api/coaches/' . $this->ids['coach'], ['email' => 'coach-demo-' . substr(md5(uniqid('', true)), 0, 6) . '@test.fr'] + $coach);
+        self::assertResponseIsSuccessful('décor : le coach reçoit une adresse');
+
+        $this->ids['invitee'] = 'invite-demo-' . substr(md5(uniqid('', true)), 0, 6) . '@test.fr';
+        $pending = $this->api($this->managerToken, 'POST', '/api/invitations', ['email' => 'attente-' . $this->ids['invitee'], 'role' => 'member']);
+        self::assertResponseStatusCodeSame(201, 'témoin : un club réel invite');
+        self::assertNotSame([], $this->messagesSentByLastRequest(), 'témoin : le transport voit le mail d\'invitation d\'un club réel');
+        $this->ids['invitation'] = (string) $pending['id'];
+
+        $em = self::getContainer()->get(EntityManagerInterface::class);
+        \assert($em instanceof EntityManagerInterface);
+        self::getContainer()->get(TenantConnectionContext::class)->setClubId($this->clubId);
+        $club = $em->find(Club::class, $this->clubId);
+        self::assertInstanceOf(Club::class, $club);
+        $club->setIsDemo(true);
+        $manager = $em->find(User::class, $this->managerUserId);
+        self::assertInstanceOf(User::class, $manager);
+        $manager->setIsDemo(true);
+        $manager->setDemoActiveUntil(new DateTimeImmutable('+1 day'));
+        $em->flush();
+        self::getContainer()->get(TenantConnectionContext::class)->clear();
+
+        $wrong = [];
+        foreach (self::THIRD_PARTY as $key => [$path, $body, $message]) {
+            [$method] = explode(' ', $key, 2);
+            $this->resetClubBuckets();
+            $this->resetBucket('limiter.invitation_send', $this->managerUserId);
+            $served = $this->api($this->managerToken, $method, $this->fill($path), null === $body ? null : array_map(fn (mixed $v): mixed => \is_string($v) ? $this->fill($v) : $v, $body));
+            $status = $this->client->getResponse()->getStatusCode();
+            $text = $served['detail'] ?? $served['error'] ?? null;
+            $sent = $this->messagesSentByLastRequest();
+            if (403 !== $status || $message !== $text || [] !== $sent) {
+                $wrong[] = \sprintf('%s → %d « %s », %d message(s) parti(s) (attendu 403 « %s », aucun)', $key, $status, \is_string($text) ? $text : '', \count($sent), $message);
+            }
+        }
+
+        self::assertSame([], $wrong, "En démonstration, une fonction qui envoie à un tiers n'est pas refusée :\n  - " . implode("\n  - ", $wrong));
+    }
+
+    /**
+     * CONTRÔLE STRUCTUREL de l'abus « en démonstration, rien ne part vers un tiers » : la liste
+     * `THIRD_PARTY` est écrite à la main, donc un envoi nouveau pourrait l'éviter. Toute route d'un
+     * contrôleur de club qui injecte de quoi envoyer (`MailerInterface`, `*Notifier`, `*Mailer`,
+     * `*Mailing`) est soit dans `THIRD_PARTY` (refusée en démonstration), soit dans `MAIL_EXEMPTIONS`
+     * avec sa raison ; une exemption qui ne désigne plus une telle route rougit aussi.
+     */
+    public function testEveryClubControllerThatCanSendIsDeclaredOrExempted(): void
+    {
+        $resolver = $this->resolver();
+        $sending = [];
+        foreach ($this->apiRoutes() as $name => $route) {
+            foreach ($this->methods($route) as $method) {
+                if (null !== $this->outsideFamily($name, $route, $method)) {
+                    continue;
+                }
+                if (!$resolver->for($this->requestFor($name, $route, $method)) instanceof ClubFunction) {
+                    continue;
+                }
+                $class = $this->declaringClass($route);
+                if (class_exists($class) && $this->canSend($class)) {
+                    $sending[] = $method . ' ' . $this->bare($route);
+                }
+            }
+        }
+        $sending = array_values(array_unique($sending));
+        sort($sending);
+
+        $undeclared = array_values(array_diff($sending, array_keys(self::THIRD_PARTY), array_keys(self::MAIL_EXEMPTIONS)));
+        $staleExemptions = array_values(array_diff(array_keys(self::MAIL_EXEMPTIONS), $sending));
+
+        self::assertNotSame([], $sending, 'témoin : le balayage trouve des contrôleurs de club qui envoient');
+        self::assertSame([], $undeclared, "Routes d'un contrôleur de club qui peut envoyer, ni dans THIRD_PARTY ni dans MAIL_EXEMPTIONS :\n  - " . implode("\n  - ", $undeclared));
+        self::assertSame([], $staleExemptions, "Exemptions qui ne désignent plus une route d'un contrôleur qui envoie :\n  - " . implode("\n  - ", $staleExemptions));
+    }
+
+    /**
+     * Une déclaration de méthode ne garde rien de celle de la classe : dans une classe qui déclare
+     * `thirdParty` ou `refusedWhenModuleClosed` (sur elle-même ou sur une méthode), chaque
+     * `#[ClubFunction]` de méthode est exactement une ligne de `SPLIT_DECLARATIONS`.
+     */
+    public function testNoMethodDeclarationSilentlyDropsADemoOrClosedModuleFlag(): void
+    {
+        $split = [];
+        $finder = new Finder()->files()->in(\dirname(__DIR__, 2) . '/src/Controller')->name('*.php');
+        foreach ($finder as $file) {
+            $class = 'App\\Controller\\' . str_replace(['/', '.php'], ['\\', ''], $file->getRelativePathname());
+            if (!class_exists($class)) {
+                continue;
+            }
+            $reflection = new ReflectionClass($class);
+            $methods = [];
+            $flagged = false;
+            foreach ([$reflection, ...$reflection->getMethods()] as $target) {
+                if ($target instanceof ReflectionMethod && $target->getDeclaringClass()->getName() !== $class) {
+                    continue;
+                }
+                foreach ($target->getAttributes(ClubFunction::class) as $attribute) {
+                    $declaration = $attribute->newInstance();
+                    $flagged = $flagged || $declaration->thirdParty || $declaration->refusedWhenModuleClosed;
+                    if ($target instanceof ReflectionMethod) {
+                        $methods[] = $class . '::' . $target->getName();
+                    }
+                }
+            }
+            if ($flagged) {
+                array_push($split, ...$methods);
+            }
+        }
+        sort($split);
+        $expected = array_keys(self::SPLIT_DECLARATIONS);
+        sort($expected);
+
+        self::assertSame($expected, $split, 'déclarations de méthode dans une classe qui porte un drapeau de démonstration ou de module fermé ≠ SPLIT_DECLARATIONS (à gauche la table, à droite le code)');
     }
 
     public function testTheMemberMeetsEveryClubRouteAsItIsDeclared(): void
@@ -861,6 +1265,32 @@ final class AccessDeclarationSweepTest extends WebTestCase
         return [] === $account ? null : $account[0]->newInstance();
     }
 
+    /** Le constructeur du contrôleur injecte-t-il de quoi envoyer un message ? */
+    private function canSend(string $class): bool
+    {
+        foreach (new ReflectionClass($class)->getConstructor()?->getParameters() ?? [] as $param) {
+            $type = $param->getType();
+            $name = $type instanceof ReflectionNamedType ? $type->getName() : '';
+            if (MailerInterface::class === $name || 1 === preg_match('/(Notifier|Mailer|Mailing)$/', $name)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /** La classe dont la déclaration vaut pour la route : la ressource d'API Platform, ou le contrôleur maison. */
+    private function declaringClass(Route $route): string
+    {
+        $controller = (string) $route->getDefault('_controller');
+        $resource = (string) $route->getDefault('_api_resource_class');
+        if (str_starts_with($resource, 'App\\') && \in_array($controller, [self::MAIN_CONTROLLER, self::NOT_EXPOSED_CONTROLLER], true)) {
+            return $resource;
+        }
+
+        return $this->controllerClass($controller);
+    }
+
     private function controllerClass(string $controller): string
     {
         return explode('::', $controller, 2)[0];
@@ -928,7 +1358,7 @@ final class AccessDeclarationSweepTest extends WebTestCase
         $routes = $this->apiRoutes();
         $keys = $this->routesByKey();
         $dead = [];
-        foreach ([...array_keys(self::MANAGER_ONLY_READS), ...array_keys(self::READ_PLAY), ...array_keys(self::READS_WITHOUT_ROW)] as $key) {
+        foreach ([...array_keys(self::MANAGER_ONLY_READS), ...array_keys(self::READ_PLAY), ...array_keys(self::READS_WITHOUT_ROW), ...self::REFUSED_WHEN_MODULE_CLOSED, ...array_keys(self::THIRD_PARTY), ...self::PROTECTED_IN_DEMO] as $key) {
             if (!isset($keys[$key])) {
                 $dead[] = $key;
             }

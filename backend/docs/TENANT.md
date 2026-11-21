@@ -116,9 +116,15 @@ services:
   and to everyone for a route with no declaration, before any controller runs. Listener order on
   `kernel.request`: router 32, firewall 8, tenant 7, rate limit 6, caps 5, access control 4 — the
   tenant (club and season on the request) and the caps must have run, the controller must not have.
-  The «credits exhausted» refusal of a Discovery club is part of access control (after the role
-  check), not a separate listener; the credit itself is taken when the output is obtained
-  (`kernel.response` for a synchronous output, the result transaction in the worker).
+  Inside that one listener the refusals come in a fixed order, read from the function's declaration:
+  role (403) → demonstration (403: a third-party send, `ClubFunction::$thirdParty`, from a demo club
+  **or** a demo account, `DemoRegime::forbidsThirdPartySend`; an account gesture flagged
+  `AccountFunction::$protectedInDemo` from a demo account) → module closed (409, `SocleGuard` text:
+  `ClubFunction::$refusedWhenModuleClosed` on a module that `Module::requiresSocleInForce()`, i.e.
+  Matches only) → credits (403, Discovery club at zero). A member therefore gets the role refusal,
+  never the demo, socle or credit one. The credit itself is taken when the output is obtained
+  (`kernel.response` for a synchronous output, the result transaction in the worker). Complete
+  catalogue and limits: `backend/docs/backend-controllers.md` § Déclarer l'accès d'une route.
   No `assertManager()` and no management default in `AbstractStateProcessor` remain; what is left in
   code are guards that *route* (not-stored opponent logo → 404, coach personal links served to the
   manager only, generation/placement cap) and guards on the club named by the URL (`ClubStateProcessor`,

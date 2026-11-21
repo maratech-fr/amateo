@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Service;
 
+use App\Access\DemoRegime;
 use App\Entity\Club;
 use App\Entity\Season;
 use App\Entity\SubscriptionPlan;
@@ -34,6 +35,7 @@ final readonly class PlanEntitlements
     public function __construct(
         private SubscriptionPlanRepository $plans,
         private EntityManagerInterface $entityManager,
+        private DemoRegime $demoRegime,
     ) {}
 
     /**
@@ -75,7 +77,7 @@ final readonly class PlanEntitlements
 
         // Découverte effective = le seul régime bridé. Un club démo n'est JAMAIS
         // bridé, quelle que soit son offre effective.
-        $restricted = !$club->isDemo() && self::DECOUVERTE_CODE === $effective?->getCode();
+        $restricted = !$this->demoRegime->isUnlimited($club) && self::DECOUVERTE_CODE === $effective?->getCode();
 
         // $restricted implique une offre effective non-nulle (code === decouverte),
         // narrowing que PHPStan suit depuis la condition ci-dessus.
@@ -116,7 +118,7 @@ final readonly class PlanEntitlements
         $effective = $this->effectivePlan($club, $season, $decouverte);
 
         // Même narrowing que forClub : $restricted vrai implique $effective non-null.
-        $restricted = !$club->isDemo() && self::DECOUVERTE_CODE === $effective?->getCode();
+        $restricted = !$this->demoRegime->isUnlimited($club) && self::DECOUVERTE_CODE === $effective?->getCode();
         $max = $restricted ? $effective->getMaxGenerations() : 0;
 
         return [
@@ -133,7 +135,7 @@ final readonly class PlanEntitlements
      */
     public function teamCap(Club $club, Season $season): ?int
     {
-        if ($club->isDemo()) {
+        if ($this->demoRegime->isUnlimited($club)) {
             return null;
         }
         $decouverte = $this->plans->findOneBy(['code' => self::DECOUVERTE_CODE]);
@@ -160,7 +162,7 @@ final readonly class PlanEntitlements
      */
     public function teamCapExceededMessage(Club $club, Season $season, int $additional = 1): ?string
     {
-        if ($club->isDemo()) {
+        if ($this->demoRegime->isUnlimited($club)) {
             return null;
         }
         $decouverte = $this->plans->findOneBy(['code' => self::DECOUVERTE_CODE]);

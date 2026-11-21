@@ -46,9 +46,12 @@ use Throwable;
  *
  * Les adresses passent un dernier filtre de forme (D8) — la validation de saisie
  * (Assert\Email sur CoachInput) fait foi, ceci n'est que le filet.
+ *
+ * Envoi à un tiers (`thirdParty`) : refusé à un club de démonstration par le contrôle central
+ * (`ClubAccessListener`), avant la collecte et la saison (anti-hameçonnage).
  */
 #[AsController]
-#[ClubFunction(module: Module::PLANNING, audience: Audience::MANAGER)]
+#[ClubFunction(module: Module::PLANNING, audience: Audience::MANAGER, thirdParty: true)]
 final class CoachWishCampaignActionController extends AbstractController
 {
     use ResolvesCurrentClubTrait;
@@ -83,14 +86,6 @@ final class CoachWishCampaignActionController extends AbstractController
         // publique (le read-only n'est PAS posé sur le statut au roulement du 15-juillet).
         if ($this->seasonGuard->isReadonly($campaign)) {
             return $this->json(['error' => 'Cette saison est archivée — elle est en lecture seule.'], Response::HTTP_CONFLICT);
-        }
-
-        // Anti-hameçonnage (P4-316) : un compte de DÉMONSTRATION ne doit jamais e-mailer un tiers
-        // (geste de compte interdit aux démos, patron ClubInvitationController). L'envoi réel de
-        // liens/relances est refusé — aucune adresse de coach n'est démarchée sous un club démo.
-        $club = $this->entityManager->getRepository(Club::class)->find((string) $campaign->getClubId());
-        if ($club instanceof Club && $club->isDemo()) {
-            return $this->json(['error' => 'Envoi d\'e-mails indisponible en démonstration.'], Response::HTTP_FORBIDDEN);
         }
 
         if ('remind_coach_wish_campaign' === $request?->attributes->get('_route')) {

@@ -144,11 +144,17 @@ d'activation ci-dessous — il vaut `true` en PERMANENCE pour un compte démo (a
 fenêtre ouverte ou non, posé à la création (`DemoCreateCommand`, `DevDemoRegisterController`,
 `DemoSeedCommand`) et backfillé sur les comptes existants par adresse
 (`Version20261004150000`). Remplace la reconnaissance historique **par adresse** sur les gestes
-d'identité : `UserChecker::checkPostAuth` (gate connexion hors fenêtre), `AuthController::
-updateMe/changePassword/requestEmailChange` et `DeleteAccountController` (`refuseDemoMutation()`,
-403 « Ce compte de démonstration ne peut pas être modifié. ») refusent désormais sur CE drapeau —
+d'identité : `UserChecker::checkPostAuth` (gate connexion hors fenêtre) et le contrôle central
+(`ClubAccessListener`, d'après `#[AccountFunction(protectedInDemo: true)]` sur `AuthController::
+updateMe/changePassword/requestEmailChange` et `DeleteAccountController` ; 403 « Ce compte de
+démonstration ne peut pas être modifié. ») refusent sur CE drapeau —
 un compte démo ne peut ni changer de prénom/nom/e-mail/mot de passe ni se supprimer, et il est
-hors de la règle des comptes orphelins (`OrphanAccountNotifier`). Côté écran, le profil d'un
+hors de la règle des comptes orphelins (`OrphanAccountNotifier`). Les lectures des drapeaux
+`Club::isDemo` / `User::isDemo` dans les gestes du club et du compte passent par `App\Access\DemoRegime`
+(`src/Access/DemoRegime.php`) : droits pleins du club démo, envoi à un tiers refusé depuis un club OU
+un compte démo (mails aux coachs, liens et relance de doléances, invitations), protection du compte.
+Hors de cette maison, volontairement : traitements de nuit, console, cycle de vie de la démo, horloge
+simulée, `/api/me`. Détail et ordre des refus : `backend-controllers.md` § Déclarer l'accès d'une route. Côté écran, le profil d'un
 compte démo est en lecture seule (bandeau, `frontend/src/features/profile/ProfilePage.tsx`),
 depuis `/api/me.isDemo`.
 

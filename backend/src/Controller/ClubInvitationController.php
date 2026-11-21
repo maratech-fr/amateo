@@ -30,8 +30,8 @@ use Symfony\Component\Routing\Attribute\Route;
  * Les écritures sont club-scoped : le GUC tenant est posé par TenantFilterListener depuis
  * le club de la requête, la RLS borne d'elle-même la portée.
  *
- * Un gestionnaire d'un compte de DÉMONSTRATION ne peut pas inviter (geste de compte
- * interdit aux démos, SEC-28) ; une adresse de compte démo ne peut pas être invitée (un
+ * En DÉMONSTRATION, inviter et renvoyer une invitation sont refusés (envoi à un tiers,
+ * `thirdParty`, contrôle central — SEC-28) : aucune invitation ne naît sous horloge simulée ; une adresse de compte démo ne peut pas être invitée (un
  * compte démo ne gagne aucune adhésion réelle). Une adresse déjà membre ACTIF du club →
  * 422 clair (l'appelant est gestionnaire de SON club, le silence serait de l'ergonomie
  * perdue sans gain anti-énumération).
@@ -66,6 +66,7 @@ final class ClubInvitationController extends AbstractController
     }
 
     #[Route('/api/invitations', name: 'api_invitations_create', methods: ['POST'])]
+    #[ClubFunction(module: Module::CLUB, audience: Audience::MANAGER, thirdParty: true)]
     public function create(Request $request): JsonResponse
     {
         $admin = $this->requireActiveAdmin();
@@ -73,12 +74,6 @@ final class ClubInvitationController extends AbstractController
             return $admin;
         }
         $actingUser = $admin['user'];
-
-        // Geste de compte interdit aux comptes de démonstration (SEC-28) : un gestionnaire
-        // démo ne peut pas inviter — aucune invitation ne naît donc sous horloge simulée.
-        if ($actingUser->isDemo()) {
-            return $this->json(['error' => 'Un compte de démonstration ne peut pas inviter.'], 403);
-        }
 
         if (!$this->invitationSendLimiter->create($actingUser->getId())->consume(1)->isAccepted()) {
             return $this->json(['error' => 'Trop d\'invitations envoyées — réessayez dans un moment.'], 429);
@@ -135,6 +130,7 @@ final class ClubInvitationController extends AbstractController
     }
 
     #[Route('/api/invitations/{id}/resend', name: 'api_invitations_resend', methods: ['POST'])]
+    #[ClubFunction(module: Module::CLUB, audience: Audience::MANAGER, thirdParty: true)]
     public function resend(string $id, Request $request): JsonResponse
     {
         $admin = $this->requireActiveAdmin();
@@ -142,9 +138,6 @@ final class ClubInvitationController extends AbstractController
             return $admin;
         }
         $actingUser = $admin['user'];
-        if ($actingUser->isDemo()) {
-            return $this->json(['error' => 'Un compte de démonstration ne peut pas inviter.'], 403);
-        }
 
         $invitation = $this->resolveForClub($id, (string) $admin['clubId']);
         if (!$invitation instanceof ClubInvitation) {
