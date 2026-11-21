@@ -1,8 +1,9 @@
 # Lot conception : découpage en lots de travail
 
 **Statut : découpage validé par le fondateur le 2026-11-20 (ordre, premier lot de côté, cadrage).
-Le lot 0 est livré en trois PR ; le lot 2 a livré ses PR 1, 2, 3a, 3b et 4 (reste la PR 5) ; les lots 1 et 2 ont
-chacun leur plan écrit, validé en version finale (voir §6).** Ce document dit **quoi dans quel ordre** ; le **comment**
+Le lot 0 est livré en trois PR ; le lot 2 a livré ses PR 1, 2, 3a, 3b et 4 (reste la PR 5) ; les lots 1, 2 et 3 ont
+chacun leur plan écrit, validé en version finale (voir §6). Déploiement unique (fondateur, 2026-11-21) : tout le lot
+conception part en une seule mise en production, à la fin, depuis `lot/conception`.** Ce document dit **quoi dans quel ordre** ; le **comment**
 de chaque lot est le travail de son plan (`morpheus`, puis `smith`).
 
 Source : [`conception-cible.md`](conception-cible.md) (les numéros « § » ci-dessous y renvoient).
@@ -22,8 +23,10 @@ Ligne de roadmap : P1-6.
    club par club (§24, §27). C'est la preuve commune à tous les lots qui déplacent des données.
    Une seule exception assumée, au lot 0 : les lectures des constructeurs de demande sont triées
    par id, pour que la demande ne dépende plus de l'ordre physique de PostgreSQL.
-5. **Un lot = une branche `lot/<sujet>`**, des PR vers elle, une PR finale vers `main` sur le go du
-   fondateur. Un chantier = une PR, deux au plus.
+5. **Le lot conception = une branche `lot/conception`**, des PR vers elle (une seule branche pour tous les lots,
+   décision du fondateur du 2026-11-21), une PR finale vers `main` sur le go du fondateur, **une seule mise en
+   production pour l'ensemble**, à la main, site fermé (procédure dans `docs/ops/deploy.md`, écrite par la dernière
+   PR avant la PR finale). Un chantier = une PR, deux au plus.
 6. **Les tests accrochés à l'ancienne structure ne sont pas portés un pour un** : on garde ce qui
    protège une promesse, on supprime le reste.
 
@@ -107,7 +110,7 @@ peuvent avancer dans un espace de travail à part pendant qu'un lot principal at
 ### Lot 1 · Les déclarations communes
 
 - **Plan d'exécution** : [`lot-conception-1-declarations-communes.md`](lot-conception-1-declarations-communes.md)
-  (version allégée, adoptée le 2026-11-21).
+  (version allégée, adoptée le 2026-11-21). Le lot 1 n'a pas de mise en production à lui (déploiement unique).
 - **Contenu**
   - La déclaration unique des familles d'objets : à quel niveau elle vit, froide ou libre, recopiée
     à la saison suivante, présente dans une version, effacée avec quoi (§1 principe 5, §26). **Dans ce
@@ -115,8 +118,8 @@ peuvent avancer dans un espace de travail à part pendant qu'un lot principal at
     lit ; un test signale toute famille non déclarée.
   - Le créneau de semaine : un seul objet, le jour de 1 à 7, un seul endroit pour le chevauchement
     et les conversions (§11).
-  - Les étiquettes calculées à la lecture (§12) ; leurs deux tables disparaissent une release plus
-    tard, à la première PR du lot 3.
+  - Les étiquettes calculées à la lecture (§12) ; leurs deux tables disparaissent à la première PR du lot 3,
+    dans la même mise en production.
 - **Constats des scénarios du lot 0 à trancher ici** (vérifiés dans le code ; les scénarios
   décrivent l'actuel) :
   - Supprimer un gymnase n'emporte pas une règle qui le nomme dans sa configuration
@@ -207,13 +210,16 @@ peuvent avancer dans un espace de travail à part pendant qu'un lot principal at
   - Effacer une personne l'anonymise (§9).
   - « Préparer la saison suivante » ne recopie plus les personnes ni les lieux.
   - Conversion : 52 coachs, 18 gymnases, sans fusion (§27).
+- **Plan d'exécution** : [`lot-conception-3-personnes-et-lieux.md`](lot-conception-3-personnes-et-lieux.md)
+  (version finale, validée par le fondateur le 2026-11-21 ; six PR).
 - **Condition d'entrée** (lot 1, [plan](lot-conception-1-declarations-communes.md) §4) : **la première PR du
-  lot supprime les deux tables d'étiquettes** (`team_tag`, `team_tag_assignment`, migration irréversible), et
-  ne s'ouvre qu'une fois la release du lot 1 en production. Y entre aussi la fermeture du cache des demandes
-  par une époque dans la clé.
+  lot supprime les deux tables d'étiquettes** (`team_tag`, `team_tag_assignment`, migration irréversible),
+  **dans la même mise en production que le lot 1** (déploiement unique : plus de « une release d'écart », plus de
+  branche `lot/personnes-lieux`) ; elle s'ouvre quand le lot 1 est mergé sur `lot/conception`. Y entre aussi la
+  fermeture du cache des demandes par une époque dans la clé.
 - **Supprime** : la recopie des coachs et des gymnases chaque saison, le barème de trajet par
   saison, les deux tables d'étiquettes.
-- **Dépend de** : lot 1.
+- **Dépend de** : lot 1 (mergé sur `lot/conception`, pas déployé : une seule mise en production à la fin).
 - **Preuve** : demande au moteur identique (les identifiants envoyés ne changent pas) ; revue de
   sécurité obligatoire (isolation entre clubs, données personnelles).
 
@@ -230,7 +236,7 @@ peuvent avancer dans un espace de travail à part pendant qu'un lot principal at
 - **Supprime** : la bifurcation « plan nul = socle » (une douzaine de fichiers), les trois tables
   d'exception de période, le second constructeur, quatre des cinq routines de copie, le drapeau de
   tri d'équipes.
-- **Dépend de** : lot 3.
+- **Dépend de** : lot 3 (mergé sur `lot/conception`, pas déployé).
 - **Preuve** : demande au moteur identique pour le socle et pour chaque plan de période. Deux
   chantiers : déplacer les données à comportement égal, puis retirer les mécanismes d'exception.
 
@@ -349,8 +355,17 @@ peuvent avancer dans un espace de travail à part pendant qu'un lot principal at
 Ce document porte la fiche de chaque lot (contenu, ce qu'il supprime, dépendances, preuve).
 **Le lot 0 est livré en trois PR** (compositeur, scénarios, enregistreur) la mesure du PDF restant
 une procédure à jouer ([`lot-conception-filet.md`](lot-conception-filet.md) §8) ; **le lot 2 a livré ses PR 1, 2, 3a, 3b et 4** (deux rôles ; le 1er mai côté serveur ; les déclarations d'accès ; le contrôle central ; les crédits à l'obtention), il
-reste sa PR 5 ; **le lot 1 n'a livré aucune PR** (plan écrit, version allégée, exécution à partir de sa PR 1). Les plans
-des lots 1 et 2 sont dans [`lot-conception-1-declarations-communes.md`](lot-conception-1-declarations-communes.md) et
-[`lot-conception-2-droits-modules-credits.md`](lot-conception-2-droits-modules-credits.md) ; les autres lots n'ont pas de
+reste sa PR 5 ; **le lot 1 a livré ses PR 1 et 2** (purge du cache au déploiement ; créneau de semaine), le reste suit ; **le lot 3
+n'a livré aucune PR** (plan écrit, version finale). Les plans des lots 1, 2 et 3 sont dans
+[`lot-conception-1-declarations-communes.md`](lot-conception-1-declarations-communes.md),
+[`lot-conception-2-droits-modules-credits.md`](lot-conception-2-droits-modules-credits.md) et
+[`lot-conception-3-personnes-et-lieux.md`](lot-conception-3-personnes-et-lieux.md) ; les autres lots n'ont pas de
 plan écrit. Un plan s'écrit lot par lot, dans un fichier à lui (`specs/evolution/`), et se valide en entier avant tout
 code. Une seule PR est ouverte à la fois sur `lot/conception` (les lots 1 et 2 modifient ce fichier et l'état des lieux).
+
+**Jalons de la mise en production unique** (décision du fondateur, 2026-11-21) : (1) copie de production n° 1, avant le
+merge de la PR 3 du lot 1 ; (2) la dernière PR avant la PR finale écrit dans `docs/ops/deploy.md` la procédure de mise
+en production manuelle, site fermé (ordre des migrations de tous les lots, vérifications, retour arrière = restauration
+de la sauvegarde d'avant, correction en avant après réouverture), relue par le fondateur ; (3) copie de production n° 2 =
+rejeu de TOUTES les migrations ensemble ; (4) PR finale `lot/conception` → `main`, GO du fondateur ; (5) mise en
+production. Chaque copie de production se fait après accord du fondateur.

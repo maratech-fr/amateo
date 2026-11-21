@@ -52,8 +52,8 @@ trancher, une condition d'entrée :
    famille non déclarée.
 2. **Créneau de semaine** : un seul objet, jour de 1 à 7, un seul endroit pour le chevauchement et
    les conversions.
-3. **Étiquettes** : calculées à la lecture ; les deux tables disparaissent **une release plus tard**
-   (première PR du lot 3, §4).
+3. **Étiquettes** : calculées à la lecture ; les deux tables disparaissent à la première PR du lot 3, dans la
+   **même mise en production** (§4).
 4. **Constats** : gymnase supprimé et règle qui le nomme ; message anglais ; drapeau démo (fermé par
    le lot 2) ; `POST /api/seasons`.
 5. **Condition d'entrée** : purge de `cache.schedule` automatisée au déploiement.
@@ -227,9 +227,11 @@ figée d'une version.
   (`tests/EngineRequestDecorTrait.php` : ni `targetTag`, ni `setMatchDay`, ni `TeamTag`).
   `EngineRequestReferenceTest` n'est pas bloquant ; « Lot Gate » ne joue que la suite bloquante.
 - **Sur les clubs seedés, la comparaison avant/après ne prouve rien pour les PR 2 et 3.**
-- Retour arrière en production : on redéploie le tag précédent, jamais un `down()`
-  (`docs/ops/migration-rollback-drill.md:63`). **Toute la branche `lot/conception` part en une release**
-  (lots 0, 1 et 2 ensemble).
+- **Déploiement unique** (décision du fondateur, 2026-11-21) : tout le lot conception part en **une seule mise en
+  production**, à la fin, depuis `lot/conception`, sur GO du fondateur ; aucune release du lot 1 isolée. Mise en
+  production manuelle, site fermé, une seule procédure pour tous les lots, écrite dans `docs/ops/deploy.md` par la
+  dernière PR avant la PR finale ; retour arrière = restauration de la sauvegarde d'avant, correction en avant après
+  réouverture (plan du lot 3, §6). On ne fait jamais un `down()` (`docs/ops/migration-rollback-drill.md:63`).
 - **Lecture de la production** : un club par appel (`scripts/prod-read.sh:46-55`), clé déverrouillée par
   le fondateur (`:34-36`), sécurité par club sans porte globale (`docs/security/rls.md:78-82`).
 - **« Charger » se joue déjà en Behat** sur un petit club avec une génération :
@@ -280,15 +282,14 @@ côté écran.
 2. **Supprime dans ce lot** : l'écouteur, la commande de rattrapage, toute l'écriture
    (`TeamTagService.php:59-133`, `:245-423`), les deux dépôts, le bloc `Seed/BcclSeeder.php:1141-1148`.
    **Garde** : `ageBracketsFor`, `isYouthTeam`.
-3. **Ne change pas dans ce lot, pour que revenir au tag précédent reste sûr** :
+3. **Ne change pas dans ce lot** :
    - `StructureSnapshotter` et `StructureRestorer` **ne sont pas modifiés**. La photo continue d'écrire
      ses dix familles, catégories et rattachements compris ; « Charger » les efface et les réinsère
-     comme aujourd'hui. L'ancien code, après un retour arrière, retrouve dans toute photo ce qu'il
-     efface.
+     comme aujourd'hui.
    - Les rattachements d'étiquettes sont **supprimés avec leur équipe**, mais sans être annoncés
-     (étape muette de `CascadePlan`), pour qu'aucun rattachement orphelin ne soit pris pour une équipe
-     vivante par l'ancien code après un retour arrière.
-   - Les deux tables et leurs entités restent ; elles partent à la première PR du lot 3 (§4).
+     (étape muette de `CascadePlan`).
+   - Les deux tables et leurs entités restent jusqu'à la première PR du lot 3 (§4), qui les supprime dans la
+     même mise en production.
 4. **Limite écrite** (décision du 2026-11-21) : « Jusqu'au lot 5, charger une version remet les
    catégories du club dans l'état de cette version : une durée de match modifiée depuis revient à sa
    valeur d'alors, et une catégorie créée depuis par un import disparaît. » Avec le calcul à la lecture,
@@ -304,8 +305,11 @@ côté écran.
 
 ## 4. Découpage en PR
 
-Ordre : 1 → 2 → *copie de production n° 1* → 3 → 4a → 4b → 5 → *copie de production n° 2* → **PR finale
-`lot/conception` → `main`** (GO du fondateur) → *mise en production* → première PR du lot 3 (les tables).
+Ordre : 1 → 2 → *copie de production n° 1* → 3 → 4a → 4b → 5, sur `lot/conception`, sans mise en production à
+la fin du lot : le lot 1 ne part qu'avec tous les autres (déploiement unique, décision du fondateur du 2026-11-21).
+La première PR du lot 3 (les tables) suit sur la même branche. La *copie de production n° 2* (rejeu de toutes les
+migrations des lots ensemble) précède la **PR finale `lot/conception` → `main`** (GO du fondateur), puis la mise en
+production unique.
 
 ### PR 1 · « Le cache se purge seul, la référence voit ce que le lot déplace »
 
@@ -337,9 +341,10 @@ Ordre : 1 → 2 → *copie de production n° 1* → 3 → 4a → 4b → 5 → *c
 - **Migration, en une fois** (décision F9, mesure en production = 0 sur table ET photos) : `team.match_day
   + 1` là où il est renseigné, et la même conversion dans les photos (`schedule_structure_snapshot.data`,
   clé `Team[].matchDay`).
-- **Trois cas, tous sans effet puisque la mesure vaut 0** : pendant la bascule, l'ancien code ajouterait
-  `+1` à une valeur convertie ; après un retour au tag précédent, il le ferait durablement et refuserait 7 ;
-  une génération en cours pendant la migration enregistrerait une photo au jour non converti. Si une
+- **Deux cas, sans effet puisque la mesure vaut 0** : pendant la bascule, l'ancien code ajouterait
+  `+1` à une valeur convertie ; une génération en cours pendant la migration enregistrerait une photo au jour
+  non converti. (Un retour arrière restaure la sauvegarde d'avant : aucun ancien code ne relit des données
+  converties.) Si une
   mesure refaite avant la migration n'est plus nulle : retour au fondateur.
 - **Texte** (API seule) : « Le jour de match doit être compris entre 1 (lundi) et 7 (dimanche). »
 - **Preuve** : le décor de la référence 7 passe de 5 à 6 ; le fichier de référence ne change pas.
@@ -416,27 +421,19 @@ Avec l'accord du fondateur (F11). Détail au §11. Seul un écart **attribué à
 
 ### Hors lot 1 · les deux tables d'étiquettes (première PR du lot 3)
 
-- **Où elle vit** : première PR du lot 3, condition d'entrée écrite dans sa fiche. Elle ne s'ouvre qu'une
-  fois la release du lot 1 en production (décision F7 : deux releases, car supprimer une table lue par la
-  release précédente est interdit, `docs/ops/deploy.md:1160-1165`).
+- **Où elle vit** : première PR du lot 3, condition d'entrée écrite dans sa fiche. Elle supprime les tables dans
+  **la même mise en production** que le lot 1 (décision du 2026-11-21 : déploiement unique ; la dérogation à
+  `docs/ops/deploy.md` § « Règle d'écriture des migrations » est portée par la procédure unique, plan du lot 3, §6).
 - **Contenu** : `DROP TABLE team_tag_assignment, team_tag` ; entités, entrées de purge, étape muette de
   `CascadePlan`, rattachements dans la photo et la restauration, commande de contrôle : retirés ;
   `RlsIsolationTest` prend `team` pour étalon. Migration déclarée irréversible.
 
-### Retour arrière de la release du lot (écrit dans `docs/ops/deploy.md` par la PR 3)
+### Retour arrière : une seule procédure pour tout le lot conception
 
-La release contient les PR 2, 3, 4b et 5 du lot 1, avec ce que les lots 0 et 2 y ont mis (hors de ce plan).
-Revenir au tag précédent :
-
-| PR | Ce que l'ancien code retrouve | Geste à faire |
-|---|---|---|
-| 2 | Des jours de match convertis | Aucun, la mesure valait 0 ; sinon ne pas revenir sans restaurer la sauvegarde |
-| 3 | Des tables que plus rien n'a tenues ; aucun rattachement orphelin (étape muette) | **Jouer `app:team-tags:resync` avec l'ancienne image aussitôt** ; jusque-là, une règle de groupe peut viser l'ancien jeu d'équipes |
-| 4b | Aucun format changé | Aucun |
-| 5 | Des règles déjà parties avec leur gymnase ; la route de création de saison revient | Aucun |
-
-Après la suppression des tables (lot 3) : revenir d'un cran reste possible ; revenir avant la release du lot
-exige de restaurer la sauvegarde d'avant migration (`remote-deploy.sh:69-74`).
+Le lot 1 n'a pas de mise en production ni de retour arrière à lui. La procédure de mise en production du lot
+conception tout entier (ordre des migrations de tous les lots, vérifications, critère de retour arrière =
+restauration de la sauvegarde d'avant, correction en avant après réouverture) est écrite dans `docs/ops/deploy.md`
+par la dernière PR avant la PR finale, relue par le fondateur (plan du lot 3, §6). Aucune PR du lot 1 n'y écrit.
 
 ## 5. Contrats nouveaux
 
@@ -567,17 +564,17 @@ prouvées par les lignes 12 et 21.
 | Comportement | Qui écrit | Qui lit | Garde avant | Garde après |
 |---|---|---|---|---|
 | Code de sortie de `remote-deploy.sh` | Le script | `deploy.yml` : levée de la maintenance ; recalage de `release` | Les étapes d'après-succès n'échouent jamais | Inchangé (déploiement marqué réussi, alerte au journal) |
-| Photo d'une version | `StructureSnapshotter.php:74-85` | La restauration du code en place **et celle de la release précédente après un retour arrière** | 10 familles écrites, 10 relues | **Inchangé** |
-| Étiquettes d'une équipe | Avant : `TeamTagSyncListener.php:65-124`. Après : personne | `TeamTagResolver.php:235-298` → constructeur, sélecteur de période, saisie de règle ; `FfbbEngagementsController.php:172`, `:338` ; écran ; **l'ancien code après un retour arrière** | Filtre de club, RLS, filtre de saison à l'écriture | Filtre de club et RLS sur `team` et `sport_category` ; plus de frontière de saison ; tables tenues sans orphelin jusqu'à leur suppression |
+| Photo d'une version | `StructureSnapshotter.php:74-85` | La restauration du code en place | 10 familles écrites, 10 relues | **Inchangé** |
+| Étiquettes d'une équipe | Avant : `TeamTagSyncListener.php:65-124`. Après : personne | `TeamTagResolver.php:235-298` → constructeur, sélecteur de période, saisie de règle ; `FfbbEngagementsController.php:172`, `:338` ; écran | Filtre de club, RLS, filtre de saison à l'écriture | Filtre de club et RLS sur `team` et `sport_category` ; plus de frontière de saison ; tables tenues sans orphelin jusqu'à leur suppression (PR 1 du lot 3) |
 | « Charger » → catégories du club → groupes de l'autre saison | `StructureRestorer.php:274`, `:104-118`, pour tout le club | Toutes les saisons, par les étiquettes ; le module matchs, par les durées | Le défaut est masqué par les étiquettes enregistrées | **Limite écrite (§14), levée au lot 5** : plus de masque, le groupe d'âge d'une catégorie disparue manque |
-| Rattachements à la suppression d'une équipe | `CascadePlan.php:78` | `DeletionImpactCounter` → `delete-confirm.tsx:89-91` ; l'ancien `tagTeamIds` après retour arrière | Supprimés et annoncés | Supprimés, non annoncés |
+| Rattachements à la suppression d'une équipe | `CascadePlan.php:78` | `DeletionImpactCounter` → `delete-confirm.tsx:89-91` | Supprimés et annoncés | Supprimés, non annoncés |
 | Empreinte de structure d'un plan | `SchedulePlanProvisioner::structureHashOfPlan` | `GET /api/schedule_plans/{id}/structure-hash` → `staleness.ts` | Bouge quand une étiquette est réécrite | Bouge dès qu'une catégorie change, pour toute saison qui a une règle de groupe |
 | Cache de la demande | `ScheduleConstraintBuilder.php:260-268`, `:328-333` (à relire) | Les trois guichets | Invalidation par club | Inchangé |
 | Suppression d'un gymnase | `EntityCascadeDeleter` | `DeletionImpactCounter` | Refus si un match y est placé (`VenueStateProcessor.php:58-60`) ; gymnase imposé de l'équipe vidé | Idem, puis les règles qui le nomment partent |
 | Règles qui nomment un gymnase inactif | — | `ScheduleConstraintBuilder.php:577-598`, `PeriodConstraintSelector.php:273` | Cinq clés d'un côté, quatre de l'autre | Une liste, quatre clés |
 | Purges de saison et de club | `SeasonDataPurger.php:225-310`, `ErasedClubPurger.php:125-206` | `ResetSeasonController`, `PurgeSeasonsCommand`, `app:clubs:purge-erased` | Constantes ordonnées à la main | Catalogue, ordre dérivé, test contre les clés réelles |
 | Contrat d'API figé | `openapi-snapshot.json` | `OpenApiSnapshotMatchesTheLiveContractTest`, `TsFieldsMatchOpenApiSchemaTest` | — | Régénéré aux PR 2, 3, 5 |
-| Jour de match | `TeamStateProcessor.php:103`, `:197-198` | `ScheduleConstraintBuilder.php:1437`, `deriveMatchDay` → moteur ; photo ; l'ancien code après retour arrière | 0 à 6, `+1` à l'émission | 1 à 7, aucune conversion |
+| Jour de match | `TeamStateProcessor.php:103`, `:197-198` | `ScheduleConstraintBuilder.php:1437`, `deriveMatchDay` → moteur ; photo | 0 à 6, `+1` à l'émission | 1 à 7, aucune conversion |
 | Naissance d'une saison | `SeasonTransitionService.php:183-193`, `ClubProvisioner`, `SeasonStateProcessor.php:48-59` | `SeasonResolver`, sélecteur de saison | Date et paiement sur « préparer » seulement | Une seule porte après l'inscription |
 
 ## 9. Parcours de bout en bout
@@ -592,8 +589,6 @@ prouvées par les lignes 12 et 21.
     rien ne se voit.
   - *Après ce lot* (limite écrite, §14) : elles perdent leur groupe d'âge ; « Groupe Baby · pas après 18:30 »
     ne les vise plus ; aucun message. Levé au lot 5, où une version ne touche plus que son plan.
-- **Charger après un retour au tag précédent** : l'ancien code efface catégories et rattachements, puis
-  retrouve les deux dans la photo, que le nouveau code a continué d'écrire.
 - **Modifier le nom ou les âges d'une catégorie** : aucun écran, `PUT /api/sport_categories/{id}` ou support.
 - **Supprimer une équipe.** La fenêtre liste séances, réservations, liens, sans « étiquettes ». Annuler : rien
   ne part.
@@ -626,7 +621,8 @@ Membre ne prépare pas la saison (`un-club-ne-voit-jamais-un-autre-club.feature:
    PR 1, à l'octet, bloquant depuis la PR 1. Aucune PR ne modifie un fichier de référence.
 2. **Sur la stack d'épreuve** : la comparaison avant/après sur les clubs seedés ne prouve rien pour les PR 2
    et 3 ; jouée pour les PR 4b et 5 seulement.
-3. **Copie de production n° 1, avant le merge de la PR 3**, accord du fondateur. Trois enregistrements sur
+3. **Copie de production n° 1, avant le merge de la PR 3**, accord du fondateur (l'une des deux copies de
+   production de tout le lot conception, plan du lot 3, §6). Trois enregistrements sur
    la même copie, le même jour :
    - **A** : au commit de `lot/conception` qui précède la première PR du lot 1.
    - **B** : à la tête de `lot/conception` (elle contient la PR 2 et tout ce que le lot 2 a mergé entre-temps),
@@ -636,7 +632,9 @@ Membre ne prépare pas la saison (`un-club-ne-voit-jamais-un-autre-club.feature:
      s'il n'est pas vide, on rejoue l'enregistrement commit par commit ; un écart né d'une PR du lot 2 revient
      au lot 2 et n'arrête pas la PR 3.
    - `app:team-tags:verify-stored` avec le code C : sortie 0 attendue, toutes saisons.
-4. **Copie de production n° 2, avant la PR finale vers `main`**, accord du fondateur : la preuve du lot entier.
+4. **Copie de production n° 2 = rejeu de TOUTES les migrations des lots ensemble, avant la PR finale
+   `lot/conception` → `main`** (qui n'est plus la fin du lot 1 : elle ferme le lot conception entier), accord du
+   fondateur : la preuve de l'ensemble, lot 1 compris ; elle ne figure pas parmi les étapes du lot 1.
 5. **Ce que les trous du filet obligent à écrire** dans chaque compte rendu : la liste des plans de période
    sautés (`manifest.json`), dont la preuve est la référence 8 ; une requête prouvant qu'aucune version n'est
    en attente ou en cours ; pour `/validate-assignments` et la fenêtre de placement libre, non enregistrés, la
@@ -667,11 +665,11 @@ Les décisions FN1, F0, F0b, FB1, F7… sont prises (§13). Restent les cas où 
 | F3 | Drapeau démo | **Constat fermé par le lot 2** (PR 5), accepté explicitement |
 | F4 | `POST /api/seasons` | **Route retirée** |
 | F5 | Que déclare-t-on par famille | **Seulement ce qu'une purge lit** |
-| F7 | Étiquettes en deux mises en production | **Deux releases** ; les tables partent à la première PR du lot 3 |
-| F8 | Quand `lot/conception` part vers `main` | **PR finale après la PR 5 du lot 1** |
+| F7 | Étiquettes en deux mises en production | **Levée le 2026-11-21 (déploiement unique)** : les tables partent à la première PR du lot 3, dans la même mise en production que le lot 1 |
+| F8 | Quand `lot/conception` part vers `main` | **Levée le 2026-11-21** : une seule PR finale, à la fin du lot conception entier, après la copie n° 2 |
 | F9 | Jour de match de l'équipe | **Converti en 1 à 7** (mesure = 0 sur table et photos) |
 | F10 | Ligne « N étiquettes » | **Retirée** |
-| F11 | Copies de la production | **Accord du fondateur à chaque restauration** : la copie n° 1 avant le merge de la PR 3, la n° 2 avant la PR finale |
+| F11 | Copies de la production | **Accord du fondateur à chaque restauration** : la copie n° 1 avant le merge de la PR 3, la n° 2 (rejeu de toutes les migrations) avant la PR finale du lot conception |
 
 **Mesures en production, faites en lecture seule le 2026-11-21** (quatre clubs réels, un club de démonstration
 écarté ; comptes et identifiants seulement). Tous à 0 comme attendu :
@@ -707,18 +705,15 @@ Pour mémoire, la procédure : clé déverrouillée par le fondateur (`ssh-add -
    leur groupe d'âge sans message.
 3. **Aucun écran ne modifie une catégorie** : seul l'API (`PUT /api/sport_categories/{id}`) ; la décision « une
    catégorie modifiée vaut pour toutes les saisons » n'a donc pas de geste d'écran à surveiller.
-4. **Après un retour au tag précédent, tant que `app:team-tags:resync` n'est pas joué** : une règle de groupe
-   peut viser le jeu d'équipes d'avant la release ; la commande ne traite que les saisons actives et en
-   préparation.
-5. **Après la suppression des tables (lot 3)** : pas de retour avant la release du lot sans restaurer la
-   sauvegarde.
+4. **Retour arrière** : un seul geste, la restauration de la sauvegarde d'avant (plan du lot 3, §6).
 6. **Les équipes déjà sans catégorie en base** sont mesurées (0 aujourd'hui), pas réparées.
 7. **`/validate-assignments` et la fenêtre de placement libre** n'ont aucun avant/après enregistré.
 8. **Un club de démonstration dont l'horloge est ramenée avant le 1er mai** après avoir préparé sa saison reçoit
    « La saison suivante se prépare à partir du 1er mai. » sans la saison désignée.
 9. **Un club sans équipe qui crée une règle de groupe par l'API** reçoit un autre message de refus (§10).
 10. **Les références rangées dans du JSON** ne sont pas vues par la déclaration.
-11. **Le retour arrière de ce que les lots 0 et 2 ont mis dans la même release** n'est pas décrit par ce plan.
+11. **Le retour arrière de ce que les lots 0 et 2 ont mis dans la même mise en production** n'est pas décrit par ce
+    plan : c'est celui de la procédure unique.
 
 ## 15. Checklist de cadrage
 
@@ -745,7 +740,7 @@ Pour mémoire, la procédure : clé déverrouillée par le fondateur (`ssh-add -
   à chaque PR). Aucune demande de relèvement ; le scénario de petit club avec génération n'est plus nécessaire
   (« Charger » n'est plus modifié).
 - **Documentation** : `lot-conception-decoupage.md` (fiche du lot 1 ; conditions d'entrée des lots 3 et 5),
-  `etat-des-lieux.md`, `lot-conception-filet.md` §9, `docs/ops/deploy.md` (purge ; retour arrière de la release),
+  `etat-des-lieux.md`, `lot-conception-filet.md` §9, `docs/ops/deploy.md` (purge seulement ; la procédure de mise en production unique est écrite par la dernière PR avant la PR finale),
   `blocking-tests.md`, `test-coverage-map.md`, `docs/security/rls.md`, `docs/security/rgpd.md:73`,
   `backend/docs/backend-inventory.md:112`, `backend/docs/commands.md`, `backend/docs/constraints.md`,
   `backend/docs/constraint-config-keys.md`, `backend/docs/TENANT.md`, `docs/glossary.md`, `openapi-snapshot.json`,
