@@ -22,5 +22,5 @@ Fonctionnalité: Préparer la saison suivante reprend la structure du club
     Et la règle de la saison suivante impose le « Gymnase Nord » de la saison suivante, pas celui de la saison en cours
     Et la saison en cours a gardé toute sa structure
     Quand je prépare la saison suivante une seconde fois
-    Alors c'est refusé : « A next season already exists for this club. », et la saison suivante déjà préparée est désignée
+    Alors c'est refusé : « La saison suivante existe déjà. », et la saison suivante déjà préparée est désignée
     Et le club n'a que deux saisons

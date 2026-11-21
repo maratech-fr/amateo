@@ -135,7 +135,6 @@ final class ManagementRoleTest extends WebTestCase
             ['POST', '/api/venues', '{"name":"NR Gym","source":"manual"}'],
             ['POST', '/api/constraints', '{"name":"NR","scope":"CLUB","family":"DAY","ruleType":"HARD","config":{"forbiddenDays":[6]},"isActive":true,"sortOrder":1}'],
             ['POST', '/api/calendar_entries', '{"kind":"event","title":"NR","startDate":"2027-01-10","endDate":"2027-01-10"}'],
-            ['POST', '/api/seasons', '{"name":"NR Saison","startDate":"2030-07-15","endDate":"2031-07-14"}'],
             ['POST', '/api/team_period_overrides', '{"schedulePlanId":"' . $uuid . '","teamId":"' . $uuid . '"}'],
             // P2-53 RMM-8 — le CRUD de la matrice de trajet passe au data-provider géré (deux
             // uuids valides-en-forme atteignent le processor, qui 403 un non-management).

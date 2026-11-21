@@ -123,6 +123,47 @@ final class DeletionCascadeContext extends BaseContext
         }
     }
 
+    /**
+     * Posée APRÈS la génération du décor : la règle ne change rien aux séances que les étapes
+     * suivantes comptent ; elle n'existe que pour être nommée par la suppression du gymnase.
+     */
+    #[Given('/^l\'équipe « (?P<team>[^»]+) » a une règle qui lui impose le « (?P<venue>[^»]+) »$/u')]
+    public function uneRegleQuiImposeLeGymnase(string $team, string $venue): void
+    {
+        $this->ruleIds['gymnase imposé'] = $this->createdId($this->apiPost('constraints', [
+            'name' => $team . ' · s\'entraîne au ' . $venue, 'scope' => 'TEAM', 'scopeTargetId' => $this->smallClubTeamIds[$team],
+            'family' => 'FACILITY', 'ruleType' => 'HARD', 'config' => ['forcedVenueId' => $this->smallClubVenueIds[$venue]], 'isActive' => true,
+        ], $this->smallClubToken), 'règle qui impose le ' . $venue . ' à ' . $team);
+    }
+
+    /** Ce que la fenêtre de suppression du gymnase affiche : la ligne servie par `/deletion-impact`, au texte près. */
+    #[Then('/^la suppression du « (?P<venue>[^»]+) » annonce (?P<count>\d+) (?P<label>contraintes? qu.+)$/u')]
+    public function laSuppressionDuGymnaseAnnonce(string $venue, string $count, string $label): void
+    {
+        $impact = $this->apiGet(\sprintf('venues/%s/deletion-impact', $this->smallClubVenueIds[$venue]), $this->smallClubToken);
+        if (200 !== $impact['status']) {
+            throw new RuntimeException(\sprintf('l\'annonce de suppression du %s a répondu %d : %s', $venue, $impact['status'], json_encode($impact['json'], \JSON_UNESCAPED_UNICODE)));
+        }
+        $expected = (int) $count;
+        $lines = \is_array($impact['json']['lines'] ?? null) ? $impact['json']['lines'] : [];
+        foreach ($lines as $line) {
+            if (\is_array($line) && ($line[1 === $expected ? 'one' : 'many'] ?? null) === $label && ($line['count'] ?? null) === $expected) {
+                return;
+            }
+        }
+
+        throw new RuntimeException(\sprintf('la suppression du %s n\'annonce pas « %d %s » ; lignes servies : %s', $venue, $expected, $label, json_encode($lines, \JSON_UNESCAPED_UNICODE)));
+    }
+
+    #[Then('/^plus aucune règle ne nomme le « (?P<venue>[^»]+) »$/u')]
+    public function plusAucuneRegleNeNommeLeGymnase(string $venue): void
+    {
+        $this->assertNone([
+            'règle qui impose le gymnase' => ['constraint', \sprintf('id=\'%s\'', $this->ruleIds['gymnase imposé'])],
+            'règle dont un réglage nomme le gymnase' => ['constraint', \sprintf('season_id=\'%s\' AND config::text LIKE \'%%%s%%\'', $this->seasonId, $this->smallClubVenueIds[$venue])],
+        ], 'après la suppression du ' . $venue);
+    }
+
     #[When('/^je supprime l\'équipe « (?P<team>[^»]+) »$/u')]
     public function jeSupprimeLEquipe(string $team): void
     {

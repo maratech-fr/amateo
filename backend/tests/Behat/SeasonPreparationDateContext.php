@@ -24,7 +24,8 @@ use RuntimeException;
  * --paid-season=next` (patron {@see SeasonTransitionContext}) ; la saison réglée d'un club en
  * retard (deux saisons plus loin, ce que la commande ne sait pas dire) et le drapeau démo sont
  * des POINTAGES SQL. La date : horloge de dev globale pour un club réel, horloge simulée du
- * club (`POST /api/club/clock`) pour un club de démonstration.
+ * club (`POST /api/club/clock`) pour un club de démonstration. Abus : une saison créée par
+ * `POST /api/seasons` (deux dates, ni date d'ouverture ni paiement) est refusée, la route n'existe plus.
  *
  * Plus bas : `Integration/Api/SeasonTransitionApiTest`, `Integration/Service/SeasonTransitionServiceTest`
  * (la copie, à une date figée dans la fenêtre).
@@ -92,6 +93,25 @@ final class SeasonPreparationDateContext extends BaseContext
         $served = $this->prepared['json']['error'] ?? '';
         if (409 !== $this->prepared['status'] || $served !== $message) {
             throw new RuntimeException(\sprintf('préparer la saison suivante a répondu %d « %s » (attendu 409 « %s »)', $this->prepared['status'], \is_string($served) ? $served : json_encode($this->prepared['json'], \JSON_UNESCAPED_UNICODE), $message));
+        }
+    }
+
+    /** L'appel direct que plus aucun écran ne fait : une saison décrite par ses deux dates seulement. */
+    #[When('je crée une saison par l\'API, avec ses deux dates')]
+    public function jeCreeUneSaisonParLApi(): void
+    {
+        $year = SeasonResolver::seasonYear(new DateTimeImmutable('today')) + 1;
+        $this->prepared = $this->apiPost('seasons', [
+            'name' => \sprintf('%d-%d', $year, $year + 1), 'startDate' => \sprintf('%d-09-01', $year), 'endDate' => \sprintf('%d-06-30', $year + 1),
+        ], $this->smallClubToken);
+    }
+
+    /** 405 : le routeur répond avant tout contrôle d'accès, la route de création n'existe plus. */
+    #[Then('l\'API répond que cette création n\'existe pas')]
+    public function lApiRepondQueCetteCreationNExistePas(): void
+    {
+        if (405 !== $this->prepared['status']) {
+            throw new RuntimeException(\sprintf('créer une saison par l\'API a répondu %d (405 attendu : la route est retirée) : %s', $this->prepared['status'], json_encode($this->prepared['json'], \JSON_UNESCAPED_UNICODE)));
         }
     }
 

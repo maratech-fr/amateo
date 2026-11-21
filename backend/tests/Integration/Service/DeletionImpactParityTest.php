@@ -15,6 +15,8 @@ use App\Entity\CalendarEntry;
 use App\Entity\Club;
 use App\Entity\Coach;
 use App\Entity\CoachWish;
+use App\Entity\Constraint;
+use App\Entity\ConstraintPeriodOverride;
 use App\Entity\Fixture;
 use App\Entity\MatchConstraint;
 use App\Entity\Reservation;
@@ -31,6 +33,7 @@ use App\Entity\VenueTrainingSlot;
 use App\Entity\VenueTravelTime;
 use App\Enum\CalendarEntryKind;
 use App\Enum\CalendarEntryPeriodType;
+use App\Enum\ConstraintFamily;
 use App\Enum\ConstraintRuleType;
 use App\Enum\ConstraintScope;
 use App\Enum\FixtureHomeAway;
@@ -620,6 +623,46 @@ final class DeletionImpactParityTest extends KernelTestCase
         self::assertNotNull($this->em->getRepository(MatchConstraint::class)->find($clubRule->getId()), 'la règle de club ne part JAMAIS avec un gymnase');
     }
 
+    /**
+     * Lot conception 1, PR 5 (décision F1) — une règle dont un réglage NOMME le gymnase (ici « impose
+     * ce gymnase » à une équipe) part avec lui, annoncée « contrainte qui nomme ce gymnase », sa
+     * bascule de période avec elle ; une règle qui nomme un AUTRE gymnase reste. Sans cette étape,
+     * la règle orpheline sortait l'équipe du planning. Le geste vu par le gestionnaire :
+     * `supprimer-emporte-ce-qui-en-depend.feature`.
+     */
+    public function testDeletingAVenueAnnouncesAndDeletesTheConstraintsThatNameIt(): void
+    {
+        [$club, $season] = $this->seed();
+        $venue = $this->venue($club, $season, 'Coubertin');
+        $other = $this->venue($club, $season, 'Debarros');
+        $team = $this->team($club, $season, forcedVenueId: $other->getId());
+        $named = $this->venueRule($club, $season, $team, $venue);
+        $elsewhere = $this->venueRule($club, $season, $team, $other);
+        $periodPlan = (new SchedulePlan)->setClubId($club->getId())->setSeasonId($season->getId())
+            ->setType(SchedulePlanType::CLOSURE)->setName('Reprise')
+            ->setStartDate(new DateTimeImmutable('2026-02-16'))->setEndDate(new DateTimeImmutable('2026-02-28'));
+        $this->em->persist($periodPlan);
+        $this->em->flush();
+        $override = (new ConstraintPeriodOverride)->setClubId($club->getId())->setSeasonId($season->getId())
+            ->setSchedulePlanId($periodPlan->getId())->setConstraintId($named)->setIsActive(false);
+        $this->em->persist($override);
+        $this->em->flush();
+
+        $impact = self::getContainer()->get(DeletionImpactCounter::class)->forVenue($venue);
+        $naming = array_values(array_filter($impact->lines, static fn (array $line): bool => 'contrainte qui nomme ce gymnase' === $line['one']));
+        self::assertCount(1, $naming, 'la suppression annonce une ligne « contrainte qui nomme ce gymnase »');
+        self::assertSame('contraintes qui nomment ce gymnase', $naming[0]['many']);
+        self::assertSame(1, $naming[0]['count'], 'seule la règle qui nomme CE gymnase est comptée');
+
+        self::getContainer()->get(EntityCascadeDeleter::class)->purgeChildrenOfVenue($venue);
+        $this->em->flush();
+        $this->em->clear();
+
+        self::assertNull($this->em->getRepository(Constraint::class)->find($named), 'la règle qui nomme le gymnase part avec lui');
+        self::assertNull($this->em->getRepository(ConstraintPeriodOverride::class)->find($override->getId()), 'sa bascule de période part avec elle');
+        self::assertNotNull($this->em->getRepository(Constraint::class)->find($elsewhere), 'une règle qui nomme un autre gymnase reste');
+    }
+
     public function testDeletingAVenueAnnouncesAndDeletesItsTravelTimes(): void
     {
         [$club, $season] = $this->seed();
@@ -924,6 +967,19 @@ final class DeletionImpactParityTest extends KernelTestCase
         $this->em->flush();
 
         return $team;
+    }
+
+    /** Une règle « l'équipe s'entraîne à ce gymnase » et son id. */
+    private function venueRule(Club $club, Season $season, Team $team, Venue $venue): string
+    {
+        $rule = (new Constraint)->setClubId($club->getId())->setSeasonId($season->getId())
+            ->setName($team->getName() . ' · ' . $venue->getName())->setScope(ConstraintScope::TEAM)->setScopeTargetId($team->getId())
+            ->setFamily(ConstraintFamily::FACILITY)->setRuleType(ConstraintRuleType::HARD)
+            ->setConfig(['forcedVenueId' => $venue->getId()])->setIsActive(true);
+        $this->em->persist($rule);
+        $this->em->flush();
+
+        return $rule->getId();
     }
 
     /** Une réservation de socle et son id (pour la retrouver après le clear de l'EM). */
