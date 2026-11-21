@@ -185,6 +185,27 @@ final class RedeliveredPlacementTest extends KernelTestCase
         self::assertNull($this->placementLockValue($clubId), 'verrou rendu à la fin');
     }
 
+    /**
+     * Le run PENDING résolu prend son crédit ; la relecture du MÊME message une fois le run terminé
+     * n'en prend pas un second. Jumeau sur le rail de la génération :
+     * `RedeliveredGenerationTest::testARedeliveredCompletedScheduleTakesNoSecondCredit`.
+     */
+    public function testASolvedRunRedeliveredTakesNoSecondCredit(): void
+    {
+        [$clubId, $seasonId, $userId, $fixtureId, $venueId] = $this->seed();
+        $run = $this->seedRun($clubId, $seasonId, $userId, MatchPlacementRunStatus::PENDING);
+        $token = $this->holdPlacementLock($clubId, 600);
+        $message = $this->message($run, $clubId, $seasonId, $token);
+
+        $this->runHandler($message, $this->placing($fixtureId, $venueId));
+        self::assertSame(MatchPlacementRunStatus::COMPLETED, $this->reloadRun($run, $clubId)->getStatus(), 'témoin : le premier passage termine le run');
+        self::assertSame(1, $this->creditsUsed($clubId), 'le run terminé a pris un crédit');
+
+        $this->runHandler($message, $this->placing($fixtureId, $venueId));
+        self::assertSame(1, $this->engineCalls, 'la relecture ne re-solve pas');
+        self::assertSame(1, $this->creditsUsed($clubId), 'la relecture d\'un run terminé ne prend jamais un second crédit');
+    }
+
     public function testPendingRunRearmsItsLockToTheFullBudget(): void
     {
         [$clubId, $seasonId, $userId, $fixtureId, $venueId] = $this->seed();

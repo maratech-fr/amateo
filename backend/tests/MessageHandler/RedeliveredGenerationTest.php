@@ -13,23 +13,17 @@ use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
 use App\Message\GenerateScheduleMessage;
 use App\MessageHandler\GenerateScheduleHandler;
-use App\Service\ClubGenerationLock;
-use App\Service\DiagnosticMessageBuilder;
+use App\Service\DevScheduleReportWriter;
 use App\Service\EngineClient;
 use App\Service\RequestIdContext;
-use App\Service\ScheduleConstraintBuilder;
-use App\Service\ScheduleDiagnosticsRecorder;
 use App\Service\SchedulePlanProvisioner;
 use App\Service\ScheduleProgressPublisher;
-use App\Service\ScheduleResultImporter;
-use App\Service\SolverMetricsMapper;
-use App\Service\SolverMetricsRecorder;
-use App\Service\StructureSnapshotter;
-use App\Service\TenantConnectionContext;
+use App\Tests\BuildsServiceWithDoublesTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
 use PHPUnit\Framework\Attributes\Group;
+use Psr\Log\LoggerInterface;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 use Symfony\Component\HttpClient\MockHttpClient;
 use Symfony\Component\HttpClient\Response\MockResponse;
@@ -43,7 +37,8 @@ use Symfony\Component\Mercure\HubInterface;
  * comprises. SEUL le statut COMPLETED bloque ; tout autre statut passe (une génération
  * légitime pose PENDING avant le dispatch — CLAUDE.md §6, gestes vérifiés dans les trois
  * dispatchers). Deux témoins pour que le test ne puisse pas passer pour la mauvaise raison :
- * l'APPEL moteur (le travail interdit) et le DÉGÂT (une retouche manuelle écrasée).
+ * l'APPEL moteur (le travail interdit) et le DÉGÂT (une retouche manuelle écrasée) ; plus le
+ * CRÉDIT : la relecture ne reprend jamais un second crédit (club Découverte non démo, `plan_id` NULL).
  *
  * Harnais dupliqué de {@see GenerateScheduleFailureTest} (base réelle, MockHttpClient) —
  * duplication assumée : l'extraire serait un refactor hors scope.
@@ -52,6 +47,7 @@ use Symfony\Component\Mercure\HubInterface;
 #[Group('integration')]
 final class RedeliveredGenerationTest extends KernelTestCase
 {
+    use BuildsServiceWithDoublesTrait;
     use TenantGucTrait;
 
     private const string SENTINEL_TEAM = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
@@ -117,6 +113,24 @@ final class RedeliveredGenerationTest extends KernelTestCase
         self::assertSame(3, $survivor->getDayOfWeek());
         self::assertSame('19:30', $survivor->getStartTime()->format('H:i'));
         self::assertSame(LockLevel::NONE, $survivor->getLockLevel());
+    }
+
+    /**
+     * Témoin de CRÉDIT — le solve d'un PENDING prend son crédit (club Découverte non démo), et la
+     * redélivrance du même message après COMPLETED n'en prend pas un second : le crédit fait partie
+     * du résultat livré, il ne se reprend pas à la relecture. Jumeau sur le rail du placement :
+     * `RedeliveredPlacementTest::testASolvedRunRedeliveredTakesNoSecondCredit`.
+     */
+    public function testARedeliveredCompletedScheduleTakesNoSecondCredit(): void
+    {
+        [$em, $club, $schedule] = $this->seedSchedule('redeliver-credit', ScheduleStatus::PENDING);
+        $scheduleId = $schedule->getId();
+
+        self::assertSame(1, $this->runHandler($em, $club->getId(), $scheduleId), 'témoin : le premier passage résout');
+        self::assertSame(1, $this->creditsOf($em, $club->getId()), 'la version prête a pris un crédit');
+
+        self::assertSame(0, $this->runHandler($em, $club->getId(), $scheduleId), 'la redélivrance ne re-solve pas');
+        self::assertSame(1, $this->creditsOf($em, $club->getId()), 'une redélivrance d\'un COMPLETED ne prend jamais un second crédit');
     }
 
     /**
@@ -208,7 +222,6 @@ final class RedeliveredGenerationTest extends KernelTestCase
 
     private function runHandler(EntityManagerInterface $em, string $clubId, string $scheduleId): int
     {
-        $container = self::getContainer();
         $hub = $this->createMock(HubInterface::class);
         $hub->method('publish')->willReturn('id');
 
@@ -221,25 +234,23 @@ final class RedeliveredGenerationTest extends KernelTestCase
             return new MockResponse($engineResult, ['http_code' => 200]);
         });
 
-        $handler = new GenerateScheduleHandler(
-            $em,
-            $container->get(ScheduleConstraintBuilder::class),
-            $container->get(ScheduleResultImporter::class),
-            new EngineClient($client, new RequestIdContext),
-            new ScheduleProgressPublisher($hub),
-            new ScheduleDiagnosticsRecorder($em, $container->get(DiagnosticMessageBuilder::class)),
-            new SolverMetricsMapper,
-            $container->get(ClubGenerationLock::class),
-            $container->get(TenantConnectionContext::class),
-            $container->get(StructureSnapshotter::class),
-            $container->get(SchedulePlanProvisioner::class),
-            null,
-            null,
-            $container->get(SolverMetricsRecorder::class),
-        );
+        // Construit par TYPE : le moteur simulé, le hub espion, l'EM du test ; le reste vient du
+        // conteneur (registre de crédits compris), quel que soit l'ordre des arguments.
+        $handler = $this->buildWithDoubles(GenerateScheduleHandler::class, [
+            EntityManagerInterface::class => $em,
+            EngineClient::class => new EngineClient($client, new RequestIdContext),
+            ScheduleProgressPublisher::class => new ScheduleProgressPublisher($hub),
+            DevScheduleReportWriter::class => null,
+            LoggerInterface::class => null,
+        ]);
 
         $handler(new GenerateScheduleMessage(scheduleId: $scheduleId, clubId: $clubId));
 
         return $requestCount;
+    }
+
+    private function creditsOf(EntityManagerInterface $em, string $clubId): int
+    {
+        return (int) $em->getConnection()->fetchOne('SELECT output_credits_used FROM club WHERE id = :id', ['id' => $clubId]);
     }
 }

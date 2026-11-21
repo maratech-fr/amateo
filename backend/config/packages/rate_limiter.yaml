@@ -234,9 +234,14 @@ framework:
             policy: 'sliding_window'
             limit: 5
             interval: '1 hour'
-        # 10/h : le rendu PDF mobilise un worker Puppeteer. L'XLSX n'est PAS capté (généré
-        # en mémoire, sans worker) — le limiteur global suffit à en borner un abus.
+        # 10/h : le rendu PDF mobilise un worker Puppeteer.
         schedule_pdf_export:
+            policy: 'sliding_window'
+            limit: 10
+            interval: '1 hour'
+        # 10/h, comme le PDF du planning : le tableur est ouvert à tout Membre et prend un crédit
+        # Découverte du club — sans seau, un Membre viderait le pool du club en quelques secondes.
+        schedule_xlsx_export:
             policy: 'sliding_window'
             limit: 10
             interval: '1 hour'

@@ -1148,8 +1148,8 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
               <Button
                 size="sm"
                 variant="outline"
-                disabled={null === validScheduleId || fillMutation.isPending || notLoaded}
-                disabledReason={gesturesBlockedReason ?? undefined}
+                disabled={null === validScheduleId || fillMutation.isPending || notLoaded || (null !== credits && !credits.canGenerate)}
+                disabledReason={gesturesBlockedReason ?? (null !== credits && !credits.canGenerate ? PLANNING_TEXTS.fillNoCreditLeft : undefined)}
                 onClick={() => {
                   if (null === validScheduleId) {
                     return;
@@ -1167,9 +1167,9 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
                 }}
               >
                 <Sparkles className="size-4" />
-                {PLANNING_TEXTS.fillAutomatically}
+                {`${PLANNING_TEXTS.fillAutomatically}${null !== credits ? ` (${credits.remaining})` : ""}`}
               </Button>
-              <span className="text-xs text-muted-foreground">{PLANNING_TEXTS.fillHint}</span>
+              <span className="text-xs text-muted-foreground">{null !== credits && !credits.canGenerate ? PLANNING_TEXTS.fillNoCreditLeft : PLANNING_TEXTS.fillHint}</span>
               {null !== fillBlocker && fillBlocker.scheduleId === validScheduleId ? (
                 <NoticeBanner tone="warning" role="alert" className="w-full" message={PLANNING_TEXTS.fillBlocked(fillBlocker.reason)}>
                   <Button

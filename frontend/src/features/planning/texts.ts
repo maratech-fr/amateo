@@ -36,6 +36,7 @@ export const PLANNING_TEXTS = {
   earlierVersionNotice: "Vous regardez une version antérieure du planning.",
   openLatestVersion: "Ouvrir la dernière version",
   fillAutomatically: "Combler automatiquement",
+  fillNoCreditLeft: "Vos crédits gratuits sont épuisés.",
   fillHint: "Place les séances à replacer sans toucher au reste du planning.",
   ignore: "Ignorer",
   diagnosticsSystemTitle: "Diagnostics du système",

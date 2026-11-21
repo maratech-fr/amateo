@@ -26,7 +26,7 @@ Le bac à sable est un **socle de saison indépendant, relié à rien**, qui par
 - La structure appartient à la **saison**, pas au plan : `ScheduleConstraintBuilder::buildForClubSeason` (`ScheduleConstraintBuilder.php:251`), photo de structure sur 10 familles (`StructureSnapshotter.php:52-63`).
 - Seul modèle de copie : `SeasonTransitionService::copy` (`SeasonTransitionService.php:157-216`), sans lien avec la source (`:39-40`) ; la bascule exige la saison suivante payée (`:100-102`) et n'ouvre qu'à partir du 1er mai (`:75-80`).
 - Rail « travailler dans une autre saison » : en-tête `X-Season-Id` (`TenantFilterListener.php:96,263`, `seasonStore.ts:6`) ; `SeasonResolver::currentAmong` choisit la saison courante parmi **toutes** celles du club (`SeasonResolver.php:67-107`) ; 45 fichiers appellent `seasonsForClub`, `currentSeason` ou `selectedOrCurrent`.
-- Crédits : pool commun du club (`PlanEntitlements.php:83,126`), consommés par `generate`, `regenerate` et les exports (`CreditBudgetSubscriber.php:46-55`).
+- Crédits : pool commun du club (`PlanEntitlements.php:83,126`), consommés par `generate`, `regenerate`, le comblement et les exports (sorties déclarées, `backend/src/Access/Output.php`).
 
 ## Ce qui coince, à écrire au plan
 

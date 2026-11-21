@@ -1,7 +1,7 @@
 # Lot conception : découpage en lots de travail
 
 **Statut : découpage validé par le fondateur le 2026-11-20 (ordre, premier lot de côté, cadrage).
-Le lot 0 est livré en trois PR ; le lot 2 a livré ses PR 1, 2, 3a et 3b (voir §6).** Ce document dit **quoi dans
+Le lot 0 est livré en trois PR ; le lot 2 a livré ses PR 1, 2, 3a, 3b et 4 (voir §6).** Ce document dit **quoi dans
 quel ordre** ; le **comment** de chaque lot est le travail de son plan (`morpheus`, puis `smith`).
 
 Source : [`conception-cible.md`](conception-cible.md) (les numéros « § » ci-dessous y renvoient).
@@ -157,6 +157,11 @@ peuvent avancer dans un espace de travail à part pendant qu'un lot principal at
   - Le module déclaré une fois par fonction (module, lecture ou écriture, sortie payante, envoi à
     un tiers) ; un seul contrôle ; la condition « socle validé » portée par le module (§8).
   - La règle unique du crédit : pris quand la sortie est obtenue ; le comblement en consomme un.
+    - **PR 4 livrée — « Les crédits »** : la sortie payante se déclare (`ClubFunction::$output`,
+      `backend/src/Access/Output.php`) ; le refus « crédits épuisés » rejoint le contrôle central ;
+      génération et placement prennent le crédit dans la transaction de leur résultat, le PDF du
+      planning par un crédit strict à la livraison ; une génération qui n'aboutit pas ne coûte rien ;
+      le comblement est payant (décision et écarts E9, E10 : `etat-des-lieux.md` §2).
   - Deux rôles seulement, colonne fermée (§9).
     - **PR 1 livrée — « Deux rôles, colonne fermée »** : `club_user.role` et `club_invitation.role`
       n'acceptent que `admin` et `member` (CHECK, migration `Version20261120120000`) ;
@@ -323,6 +328,6 @@ peuvent avancer dans un espace de travail à part pendant qu'un lot principal at
 
 Ce document porte la fiche de chaque lot (contenu, ce qu'il supprime, dépendances, preuve).
 **Le lot 0 est livré en trois PR** (compositeur, scénarios, enregistreur) la mesure du PDF restant
-une procédure à jouer ([`lot-conception-filet.md`](lot-conception-filet.md) §8) ; **le lot 2 a livré ses PR 1, 2, 3a et 3b** (deux rôles ; le 1er mai côté serveur ; les déclarations d'accès ; le contrôle central) ; les
+une procédure à jouer ([`lot-conception-filet.md`](lot-conception-filet.md) §8) ; **le lot 2 a livré ses PR 1, 2, 3a, 3b et 4** (deux rôles ; le 1er mai côté serveur ; les déclarations d'accès ; le contrôle central ; les crédits à l'obtention) ; les
 autres lots n'ont pas de plan écrit. Un plan s'écrit lot par lot, dans un fichier à lui (`specs/evolution/`), et se
 valide en entier avant tout code.

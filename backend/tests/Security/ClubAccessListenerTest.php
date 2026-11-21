@@ -91,7 +91,8 @@ final class ClubAccessListenerTest extends WebTestCase
 
     /**
      * La place de l'écouteur : `kernel.request` priorité 4, sous tous ceux qui préparent la requête
-     * (routeur, pare-feu, locataire, débit, caps, crédit) ; aucune place sur `kernel.controller`,
+     * (routeur, pare-feu, locataire, débit, caps ; le refus « crédits épuisés » vit dans l'écouteur
+     * lui-même, après le rôle) ; aucune place sur `kernel.controller`,
      * où vit la garde « saison archivée » — il passe donc avant elle et avant tout contrôleur.
      */
     public function testTheListenerRunsOnKernelRequestAfterTheTenantAndBeforeAnyController(): void
@@ -109,7 +110,6 @@ final class ClubAccessListenerTest extends WebTestCase
             'App\EventListener\TenantFilterListener' => 'le locataire (adhésion, saison, `_club_id`)',
             'App\EventListener\ApiRateLimitSubscriber' => 'le débit',
             'App\EventListener\ClubQuotaSubscriber' => 'les caps du club',
-            'App\EventListener\CreditBudgetSubscriber' => 'le crédit (jusqu\'à la PR 4)',
         ];
         foreach ($upstream as $class => $role) {
             $listeners = $this->listenersOf(KernelEvents::REQUEST, $class);

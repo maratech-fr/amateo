@@ -73,7 +73,19 @@ describe("invalidationKeysFor — FRT-04", () => {
       ["slots", "s1"],
       ["diagnostics", "s1"],
       ["calendar-entries", "impact"],
+      ["me"],
     ]);
+  });
+
+  /**
+   * Lot 2 PR 4 — le crédit d'une génération se prend quand la version est PRÊTE (dans le worker),
+   * plus à la demande : seul l'événement terminal dit que le solde a pu bouger. Il relit donc
+   * `["me"]` (pastille, « Régénérer (N) », « Combler automatiquement (N) ») ; un avancement non.
+   */
+  it("un statut terminal relit le solde de crédits (clé me), un avancement non", () => {
+    expect(invalidationKeysFor({ scheduleId: "s1", status: "COMPLETED", terminal: true })).toContainEqual(["me"]);
+    expect(invalidationKeysFor({ scheduleId: "s1", status: "FAILED", terminal: true })).toContainEqual(["me"]);
+    expect(invalidationKeysFor({ scheduleId: "s1", status: "GENERATING", terminal: false })).not.toContainEqual(["me"]);
   });
 
   /**
@@ -95,6 +107,7 @@ describe("invalidationKeysFor — FRT-04", () => {
       ["slots"],
       ["diagnostics"],
       ["calendar-entries", "impact"],
+      ["me"],
     ]);
   });
 });
@@ -165,7 +178,7 @@ describe("acquireScheduleStream — FRT-04", () => {
     FakeEventSource.instances[0]!.onmessage?.({ data: JSON.stringify({ scheduleId: "s1", status: "COMPLETED" }) } as MessageEvent<string>);
 
     const keys = vi.mocked(queryClient.invalidateQueries).mock.calls.map(([filter]) => filter?.queryKey);
-    expect(keys).toEqual([["schedules"], ["wizard", "schedule_status", "s1"], ["slots", "s1"], ["diagnostics", "s1"], ["calendar-entries", "impact"]]);
+    expect(keys).toEqual([["schedules"], ["wizard", "schedule_status", "s1"], ["slots", "s1"], ["diagnostics", "s1"], ["calendar-entries", "impact"], ["me"]]);
     release();
   });
 

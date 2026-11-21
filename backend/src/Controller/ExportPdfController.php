@@ -7,6 +7,7 @@ namespace App\Controller;
 use App\Access\Audience;
 use App\Access\ClubFunction;
 use App\Access\Module;
+use App\Access\Output;
 use App\Entity\Schedule;
 use App\Message\ExportPdfMessage;
 use Doctrine\ORM\EntityManagerInterface;
@@ -18,7 +19,7 @@ use Symfony\Component\HttpKernel\Attribute\AsController;
 use Symfony\Component\Messenger\MessageBusInterface;
 
 #[AsController]
-#[ClubFunction(module: Module::PLANNING, audience: Audience::MEMBER)]
+#[ClubFunction(module: Module::PLANNING, audience: Audience::MEMBER, output: Output::PLANNING_PDF)]
 final class ExportPdfController extends AbstractController
 {
     use ResolvesCurrentClubTrait;
@@ -62,6 +63,7 @@ final class ExportPdfController extends AbstractController
                 venueId: $venueId,
                 showCoaches: $showCoaches,
                 showOccupancies: $this->resolveShowOccupancies($this->requestStack),
+                requestId: bin2hex(random_bytes(16)),
             ),
         );
 

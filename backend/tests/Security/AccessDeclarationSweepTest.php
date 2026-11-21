@@ -10,10 +10,13 @@ use App\Access\Audience;
 use App\Access\ClubFunction;
 use App\Access\ClubResource;
 use App\Access\Module;
+use App\Access\Output;
 use App\Controller\CoachWishCampaignActionController;
 use App\Controller\CoachWishRecipientController;
+use App\Controller\ExportMatchesPdfController;
 use App\Controller\ExportPdfController;
 use App\Controller\ExportXlsxController;
+use App\Controller\FillPeriodPlanController;
 use App\Controller\GenerateScheduleController;
 use App\Controller\ImportController;
 use App\Controller\ImportFixturesAnalyzeController;
@@ -21,6 +24,9 @@ use App\Controller\ImportFixturesController;
 use App\Controller\ImportTeamsAnalyzeController;
 use App\Controller\ParcImportAnalyzeController;
 use App\Controller\ParcImportExecuteController;
+use App\Controller\PlaceMatchesController;
+use App\Controller\RegenerateController;
+use App\Controller\RegenerateFromVersionController;
 use App\Controller\VenuePeriodGridActionController;
 use App\Entity\Club;
 use App\Entity\Season;
@@ -263,14 +269,70 @@ final class AccessDeclarationSweepTest extends WebTestCase
         self::assertSame(['MEMBER', 'MANAGER'], array_map(static fn (Audience $a): string => $a->name, Audience::cases()));
         self::assertSame(self::FRAMEWORK_ROUTES_WITHOUT_RESOURCE, AccessDeclarationResolver::FRAMEWORK_ROUTES);
 
-        // Public obligatoire, aucun défaut tiré de la méthode HTTP : aucun paramètre optionnel.
-        foreach ([ClubFunction::class => ['module', 'audience'], ClubResource::class => ['module', 'read', 'write']] as $attribute => $expected) {
+        // Public obligatoire, aucun défaut tiré de la méthode HTTP : module et public n'ont pas de
+        // valeur par défaut. Seule la sortie payante d'une fonction (`output`) est optionnelle, nulle
+        // par défaut : une fonction qui ne produit rien ne la dit pas.
+        foreach ([ClubFunction::class => ['module', 'audience', 'output'], ClubResource::class => ['module', 'read', 'write']] as $attribute => $expected) {
             $params = new ReflectionMethod($attribute, '__construct')->getParameters();
             self::assertSame($expected, array_map(static fn (ReflectionParameter $p): string => $p->getName(), $params), $attribute);
             foreach ($params as $param) {
+                if ('output' === $param->getName()) {
+                    self::assertTrue($param->isOptional() && null === $param->getDefaultValue(), 'ClubFunction::$output est nulle par défaut');
+
+                    continue;
+                }
                 self::assertFalse($param->isOptional(), \sprintf('%s::$%s a une valeur par défaut', $attribute, $param->getName()));
             }
         }
+    }
+
+    /**
+     * Les sorties payantes se DÉCLARENT sur la fonction, et la déclaration est cohérente : les cinq
+     * sorties du contrat, deux seulement réglées à la réponse (tableur, PDF des matchs — rendus dans
+     * la requête), les trois autres dans le worker, à l'obtention ; exactement les sept fonctions qui
+     * produisent quelque chose en portent une, chacune la sienne, et « Charger une version » n'en
+     * porte pas (aucun calcul, décision fondateur Q13). Une sortie se déclare sur une écriture de
+     * club : jamais sur une lecture, une ressource ou une fonction de compte.
+     */
+    public function testOutputsAreDeclaredOnExactlyTheFunctionsThatProduceOne(): void
+    {
+        self::assertSame(['SOLVE', 'MATCH_PLACEMENT', 'PLANNING_PDF', 'PLANNING_XLSX', 'MATCHES_PDF'], array_map(static fn (Output $o): string => $o->name, Output::cases()), 'les cinq sorties du contrat');
+        $settled = array_values(array_map(static fn (Output $o): string => $o->name, array_filter(Output::cases(), static fn (Output $o): bool => $o->settledAtResponse())));
+        self::assertSame(['PLANNING_XLSX', 'MATCHES_PDF'], $settled, 'seules les sorties rendues dans la requête se règlent à la réponse');
+
+        $declared = [];
+        $wrong = [];
+        $resolver = $this->resolver();
+        foreach ($this->apiRoutes() as $name => $route) {
+            foreach ($this->methods($route) as $method) {
+                $declaration = $resolver->for($this->requestFor($name, $route, $method));
+                $output = null === $declaration ? null : (get_object_vars($declaration)['output'] ?? null);
+                if (!$output instanceof Output) {
+                    continue;
+                }
+                $controller = $this->controllerClass((string) $route->getDefault('_controller'));
+                $declared[$controller] = $output->name;
+                if (!$declaration instanceof ClubFunction || \in_array($method, ['GET', 'HEAD'], true)) {
+                    $wrong[] = \sprintf('%s %s (%s) : une sortie se déclare sur une écriture de club', $method, $route->getPath(), $name);
+                }
+            }
+        }
+        ksort($declared);
+
+        $expected = [
+            ExportMatchesPdfController::class => 'MATCHES_PDF',
+            ExportPdfController::class => 'PLANNING_PDF',
+            ExportXlsxController::class => 'PLANNING_XLSX',
+            FillPeriodPlanController::class => 'SOLVE',
+            GenerateScheduleController::class => 'SOLVE',
+            PlaceMatchesController::class => 'MATCH_PLACEMENT',
+            RegenerateController::class => 'SOLVE',
+        ];
+        ksort($expected);
+
+        self::assertSame([], $wrong, "Sorties mal placées :\n  - " . implode("\n  - ", $wrong));
+        self::assertSame($expected, $declared, 'les fonctions qui produisent une sortie, et la sortie de chacune');
+        self::assertArrayNotHasKey(RegenerateFromVersionController::class, $declared, '« Charger une version » ne lance aucun calcul : ce n\'est pas une sortie');
     }
 
     public function testEveryApiRouteFallsInExactlyOneFamily(): void

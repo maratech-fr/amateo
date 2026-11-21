@@ -11,6 +11,7 @@ use App\Tests\Behat\ConflictResolutionContext;
 use App\Tests\Behat\ConflictsToCoachesContext;
 use App\Tests\Behat\ConflictTruthContext;
 use App\Tests\Behat\ConstraintHonoredContext;
+use App\Tests\Behat\CreditsContext;
 use App\Tests\Behat\DailyCapSmallClubContext;
 use App\Tests\Behat\DeletionCascadeContext;
 use App\Tests\Behat\DemoRegimeContext;
@@ -279,6 +280,11 @@ return (new Config)
                 new Suite('credits-decouverte')
                     ->withPaths('%paths.base%/features/en-decouverte-une-sortie-coute-un-credit.feature')
                     ->withContexts(DiscoveryCreditContext::class),
+            )
+            ->withSuite(
+                new Suite('credit-a-l-obtention')
+                    ->withPaths('%paths.base%/features/un-credit-se-prend-quand-la-sortie-est-obtenue.feature')
+                    ->withContexts(CreditsContext::class),
             )
             ->withSuite(
                 new Suite('demo-sans-envoi')

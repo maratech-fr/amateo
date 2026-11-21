@@ -102,9 +102,9 @@ final readonly class PlanEntitlements
     }
 
     /**
-     * P1-3 PR B — le budget de SORTIE (pool de crédits) de l'offre effective, consommé par
-     * `CreditBudgetSubscriber`. Une seule source pour « le club est-il bridé ? » et « combien
-     * de crédits ? » — le subscriber ne réplique pas la règle.
+     * P1-3 PR B — le budget de SORTIE (pool de crédits) de l'offre effective, lu par le
+     * contrôle central (`ClubAccessListener`) et le registre (`OutputCreditLedger`). Une seule source pour « le club est-il bridé ? » et « combien
+     * de crédits ? » — aucun ne réplique la règle.
      *
      * @return array{restricted: bool, max: int, used: int}
      *                                                      restricted = régime Découverte bridé (offre effective Découverte, club NON démo, pool > 0) ;

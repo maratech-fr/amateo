@@ -13,7 +13,7 @@ use RuntimeException;
 /**
  * Promesse : en offre Découverte, chaque sortie (planning en tableur, matchs en PDF) coûte un
  * crédit du pool du club, consulter ne coûte rien, à zéro la sortie est refusée avec son motif ;
- * un club de démonstration n'est jamais décompté (`CreditBudgetSubscriber`, `PlanEntitlements`).
+ * un club de démonstration n'est jamais décompté (`OutputCreditLedger`, `PlanEntitlements`).
  *
  * Décor DÉDIÉ : un club inscrit par l'API ({@see SmallClubFixtureTrait::registerSmallClub}) naît en
  * Découverte (`club.plan_id` NULL). Aucune génération : le planning exporté est un brouillon vide.

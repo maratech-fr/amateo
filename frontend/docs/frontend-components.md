@@ -131,7 +131,8 @@ En-tête, de gauche à droite :
     Libellé « Découverte · N crédits » (accord singulier/pluriel), `StatusPill` variante
     `warning` **permanente** (l'ancien seuil ≤ 5 crédits a disparu — l'ambre marque l'offre,
     plus le solde), enveloppée d'un `Link` vers `/club` (le seul écran où consulter/faire
-    évoluer l'offre).
+    évoluer l'offre). L'infobulle dit ce qui coûte un crédit : une sortie OBTENUE (génération,
+    comblement, placement de matchs, export) ; ajuster et consulter sont gratuits.
 - `DemoBadge` (`app/DemoBadge.tsx`) — juste après `BetaBadge`/`CreditBadge`, dans la même grappe :
   elle S'AJOUTE aux pastilles d'offre plutôt que d'en remplacer une. Lit `club.isDemo` (`/api/me`,
   jamais recalculé) ; `null` pour tout vrai club. `StatusPill` variante `neutral`, texte « Démo » —

@@ -1111,6 +1111,17 @@ jobs:
           # autre → « remplacé ») ; un perdant n'écrit rien (placements + COMPLETED d'un seul bloc).
           # Sans ce gate, une redélivrance relance un solve en double ou écrase un résultat livré.
           FILES="$FILES tests/MessageHandler/RedeliveredPlacementTest.php"
+          # Lot 2 PR 4 (axe generation pipeline) — le crédit d'un solve fait partie de son résultat
+          # (décision fondateur Q16 a) : version prête = +1 au club du message, version échouée = 0 ;
+          # le registre de crédits en panne (vraie erreur SQL) annule TOUT le résultat — version
+          # « échouée », créneaux d'avant intacts, compteur inchangé, message acquitté ; deux solves
+          # sur deux saisons dépassent le pool (Q2). Sans ce gate, une version se livre sans crédit
+          # (sortie gratuite) ou un crédit se prend sans version.
+          FILES="$FILES tests/MessageHandler/GenerationCreditIsPartOfTheResultTest.php"
+          # Lot 2 PR 4 (axe generation pipeline) — le jumeau sur le rail du placement : le crédit se
+          # prend DANS la transaction des placements ; registre en panne → run « échoué », aucun
+          # placement posé, jamais annoncé « terminé ». Sans ce gate, un run se termine sans crédit.
+          FILES="$FILES tests/MessageHandler/PlacementCreditIsPartOfTheResultTest.php"
           # P4-512 (axes generation pipeline + tenant isolation) — le rattrapage des placements laissés
           # en vol : au démarrage du worker, tout RUNNING est orphelin ; worker vivant (commande), un
           # RUNNING n'est déclaré mort que verrou disparu ET démarré depuis plus de 5 min ; un PENDING

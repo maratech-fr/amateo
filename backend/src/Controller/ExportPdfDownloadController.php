@@ -32,7 +32,7 @@ use Symfony\Component\Routing\Attribute\Route;
  * `..%2f…` et un nom hors motif n'atteignent jamais le contrôleur) ET le préfixe `schedule-{id}-`
  * (le nom d'un autre planning glissé sous le `{id}` du sien est refusé) — puis le chemin résolu
  * est CONFINÉ au répertoire de rendus (patron `PurgeExportsCommand::deleteInside`). Aucun crédit
- * décompté : le re-téléchargement n'est pas une sortie produite (hors `CreditBudgetSubscriber`).
+ * décompté : le re-téléchargement n'est pas une sortie produite (aucune sortie déclarée).
  */
 #[AsController]
 #[ClubFunction(module: Module::PLANNING, audience: Audience::MEMBER)]

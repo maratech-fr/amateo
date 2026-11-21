@@ -391,7 +391,7 @@ n'est touchée par ce lot — le front consomme la route `POST
 l'écran embarqué (`PlanningPage`), dès que la dérive `driftEntries` (le prédicat SERVI, jamais
 recomposé — même donnée que le bandeau existant) est non vide, un bouton `outline` (icône
 `Sparkles`) apparaît à côté des « séances à replacer » : « Combler automatiquement ». Le clic
-appelle `useFillSchedule` (`queries.ts`), miroir strict de `useRegenerate` — POST
+appelle `useFillSchedule` (`queries.ts`). Le comblement est payant : le libellé porte le solde (« Combler automatiquement (N) », club Découverte bridé seulement) et le bouton se désactive à zéro crédit (`PLANNING_TEXTS.fillNoCreditLeft`) ; le solde (`["me"]`) se relit à l'événement terminal de la génération (`scheduleStream`) et à la livraison d'un PDF. Le hook est le miroir strict de `useRegenerate` — POST
 `schedules/{id}/fill`, invalide `["schedules"]`, sélectionne la V+1 créée en `onSuccess`. Un refus
 serveur (409 non-période/version choisie/génération en cours, 422 complexité/épinglage orphelin,
 429 quota club) est **affiché** via `errorMessage`/toast, jamais muet — sauf le 422 `blocker: true` (blocage du Récap) : pas de toast, `PlanningPage` pose le motif (`fillBlocker`, propre à la version affichée, effacé au clic suivant) dans un bandeau « Le comblement n'a pas été lancé : {motif} » avec le bouton « Voir le Récapitulatif » (`startPeriodMode(calendarEntryId)` puis `/wizard?step=recap`). Désactivé pendant une

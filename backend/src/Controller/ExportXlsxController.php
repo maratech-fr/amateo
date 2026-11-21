@@ -7,6 +7,7 @@ namespace App\Controller;
 use App\Access\Audience;
 use App\Access\ClubFunction;
 use App\Access\Module;
+use App\Access\Output;
 use App\Entity\Schedule;
 use App\Service\SchedulePlanProvisioner;
 use App\Service\SpreadsheetGenerator;
@@ -24,7 +25,7 @@ use Symfony\Component\HttpKernel\Attribute\AsController;
  * download instead of going through the async PDF worker queue.
  */
 #[AsController]
-#[ClubFunction(module: Module::PLANNING, audience: Audience::MEMBER)]
+#[ClubFunction(module: Module::PLANNING, audience: Audience::MEMBER, output: Output::PLANNING_XLSX)]
 final class ExportXlsxController extends AbstractController
 {
     use ResolvesCurrentClubTrait;

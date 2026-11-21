@@ -12,8 +12,10 @@ use App\Entity\User;
 use App\Entity\Venue;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
+use App\Message\ExportPdfMessage;
 use App\Service\SchedulePlanProvisioner;
 use App\Tests\ChoosesPlanVersionTrait;
+use App\Tests\MessageHandler\PdfCreditIsTakenOnDeliveryTest;
 use App\Tests\Security\ExportPdfDownloadIsolationTest;
 use App\Tests\TenantGucTrait;
 use App\Tests\VerifiesRegistration;
@@ -23,6 +25,7 @@ use Lexik\Bundle\JWTAuthenticationBundle\Services\JWTTokenManagerInterface;
 use PHPUnit\Framework\Attributes\Group;
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
+use Symfony\Component\Messenger\Transport\TransportInterface;
 
 /**
  * The schedule export endpoints (PDF async + XLSX sync) are authenticated,
@@ -161,6 +164,45 @@ final class ExportScheduleTest extends WebTestCase
         self::assertStringContainsString('no-store', $cacheControl, 'une réponse nominative ne doit jamais être stockée en cache');
         self::assertStringContainsString('private', $cacheControl, 'jamais mise en cache partagée');
         self::assertStringNotContainsString('public', $cacheControl, 'jamais « public »');
+    }
+
+    /**
+     * Chaque geste « Exporter en PDF » met en file un message sous son PROPRE identifiant de demande
+     * (32 caractères hexadécimaux) : c'est lui que la garde de redélivrance du handler compare à la
+     * dernière livraison ({@see PdfCreditIsTakenOnDeliveryTest}, qui fabrique ses identifiants
+     * elle-même). Sans identifiant posé ici, tout message serait legacy et
+     * une redélivrance referait le rendu et reprendrait un crédit.
+     */
+    public function testEachPdfExportGestureQueuesItsOwnRequestId(): void
+    {
+        [$club, $user, $season] = $this->seedClub('rid');
+        $scheduleId = $this->seedSchedule($club, $season)->getId();
+        $token = self::getContainer()->get(JWTTokenManagerInterface::class)->create($user);
+        $this->em->clear();
+
+        $this->requestAs($token, '/api/schedules/' . $scheduleId . '/export-pdf', '{}');
+        self::assertResponseStatusCodeSame(202);
+        $this->requestAs($token, '/api/schedules/' . $scheduleId . '/export-pdf', '{}');
+        self::assertResponseStatusCodeSame(202);
+
+        $requestIds = [];
+        $transport = self::getContainer()->get('messenger.transport.async');
+        \assert($transport instanceof TransportInterface);
+        for ($i = 0; $i < 5000 && \count($requestIds) < 2; ++$i) {
+            foreach ($transport->get() as $envelope) {
+                $message = $envelope->getMessage();
+                $transport->ack($envelope);
+                if ($message instanceof ExportPdfMessage && $message->getScheduleId() === $scheduleId) {
+                    $requestIds[] = $message->getRequestId();
+                }
+            }
+        }
+
+        self::assertCount(2, $requestIds, 'témoin : les deux messages du planning sont lus sur le transport');
+        foreach ($requestIds as $requestId) {
+            self::assertMatchesRegularExpression('/^[0-9a-f]{32}$/', (string) $requestId, 'chaque message porte un identifiant de demande');
+        }
+        self::assertNotSame($requestIds[0], $requestIds[1], 'deux gestes, deux identifiants : une nouvelle demande n\'est jamais prise pour une redélivrance');
     }
 
     protected function setUp(): void

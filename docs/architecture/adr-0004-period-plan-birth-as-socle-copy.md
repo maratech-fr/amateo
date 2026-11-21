@@ -86,8 +86,8 @@ déjà-épinglé) et le remplace par une **référence socle** : les placements
 `{teamId, dayOfWeek, startTime}` — sans `venueId` — de la version pointée du plan SEASON sont émis
 au moteur (`socleReferenceAssignments`) comme bonus de placement par tier, sans jamais entrer dans
 le hash de snapshot. Verrou de génération, Mercure, import : réutilisés tels quels. Zéro changement
-moteur, contrat backend⇄engine intact. Quotas : `ClubQuotaSubscriber` couvre 4 routes de solve
-(`generate`/`regenerate`/`regenerate-from`/`fill`). Écran : bouton « Combler automatiquement »
+moteur, contrat backend⇄engine intact. Quotas : `ClubQuotaSubscriber` lit la sortie déclarée `Output::SOLVE`
+(`generate`/`regenerate`/`fill` ; « Charger une version » n'en déclare pas) ; le comblement prend un crédit Découverte comme une génération. Écran : bouton « Combler automatiquement »
 (`PlanningPage`, visible dès qu'une dérive porte des séances « à replacer »).
 
 NR sémantique (groupe `contract`, job `engine-semantics`) :

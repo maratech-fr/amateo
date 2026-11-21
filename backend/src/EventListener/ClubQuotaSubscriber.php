@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace App\EventListener;
 
+use App\Access\AccessDeclarationResolver;
+use App\Access\ClubFunction;
+use App\Access\Output;
 use App\Service\ManagementAccessGuard;
 use Symfony\Component\EventDispatcher\EventSubscriberInterface;
 use Symfony\Component\HttpKernel\Event\RequestEvent;
@@ -24,14 +27,15 @@ use Symfony\Component\RateLimiter\RateLimiterFactory;
  *    de CPU) et le worker Puppeteer. Un club ne doit pas obtenir **trois fois** le budget du
  *    solveur parce qu'il a trois gestionnaires : c'est le club qui consomme, pas la personne.
  *
- * ⚠ **Le cap de génération couvre les QUATRE routes qui déclenchent un solve**, pas seulement
- * `/generate`. `/regenerate`, `/regenerate-from` et `/fill` (le comblement d'une période, P2-44)
- * en lancent un tout autant — et c'est par elles que passe le work-loop, donc l'usage réel. Ne
- * capper que `/generate` aurait donné une borne qu'on contourne sans même le vouloir.
+ * ⚠ **Le seau se lit sur la sortie DÉCLARÉE de la fonction** (`ClubFunction::$output`), jamais sur
+ * une liste de routes : toute fonction qui déclare un solve (`/generate`, `/regenerate`, `/fill` —
+ * le work-loop passe par les deux dernières) puise dans le cap de génération, et une sortie
+ * déclarée demain ne peut pas y échapper. « Charger une version » (`/regenerate-from`) ne lance
+ * aucun calcul : elle ne déclare pas de sortie et n'entame pas le cap.
  *
- * ⚠ L'export **XLSX n'est pas capté** : il se génère en mémoire, sans worker. Le PDF, lui,
- * mobilise Puppeteer. Le limiteur global suffit à borner un abus de XLSX ; lui coller un cap
- * horaire gênerait un usage légitime pour rien.
+ * ⚠ L'export **tableur** a son seau (`schedule_xlsx_export`, 10/h comme le PDF du planning) : il se
+ * génère en mémoire, sans worker, mais il est ouvert à tout Membre et prend un crédit Découverte du
+ * club — sans seau, un Membre viderait le pool du club en quelques secondes.
  *
  * ⚠ Le placement automatique des matchs a son PROPRE seau (`match_placement`) : un run mobilise le
  * solveur jusqu'à 45 min, et il ne doit ni manger le budget de génération ni l'inverse. Compté
@@ -48,26 +52,14 @@ use Symfony\Component\RateLimiter\RateLimiterFactory;
  */
 final class ClubQuotaSubscriber implements EventSubscriberInterface
 {
-    /** Les routes qui déclenchent un solve — toutes, pas seulement la première. */
-    private const array SOLVE_ROUTES = [
-        'generate_schedule',
-        'api_schedule_regenerate',
-        'api_schedule_regenerate_from',
-        'api_schedule_fill',
-    ];
-
-    private const string EXPORT_PDF_ROUTE = 'export_pdf';
-
-    private const string MATCHES_EXPORT_ROUTE = 'api_fixtures_export_pdf';
-
-    private const string PLACE_ROUTE = 'api_fixtures_place';
-
     public function __construct(
         private readonly RateLimiterFactory $scheduleGenerationLimiter,
         private readonly RateLimiterFactory $schedulePdfExportLimiter,
         private readonly RateLimiterFactory $fixturesPdfExportLimiter,
         private readonly ManagementAccessGuard $managementAccessGuard,
         private readonly RateLimiterFactory $matchPlacementLimiter,
+        private readonly AccessDeclarationResolver $resolver,
+        private readonly RateLimiterFactory $scheduleXlsxExportLimiter,
     ) {}
 
     /** @return array<string, array{0: string, 1: int}> */
@@ -83,14 +75,18 @@ final class ClubQuotaSubscriber implements EventSubscriberInterface
         }
 
         $request = $event->getRequest();
-        $route = (string) $request->attributes->get('_route');
+        $declaration = $this->resolver->for($request);
+        $output = $declaration instanceof ClubFunction && !\in_array($request->getMethod(), ['GET', 'HEAD'], true)
+            ? $declaration->output
+            : null;
 
-        $limiter = match (true) {
-            \in_array($route, self::SOLVE_ROUTES, true) => $this->scheduleGenerationLimiter,
-            self::EXPORT_PDF_ROUTE === $route => $this->schedulePdfExportLimiter,
-            self::MATCHES_EXPORT_ROUTE === $route => $this->fixturesPdfExportLimiter,
-            self::PLACE_ROUTE === $route => $this->matchPlacementLimiter,
-            default => null,
+        $limiter = match ($output) {
+            Output::SOLVE => $this->scheduleGenerationLimiter,
+            Output::PLANNING_PDF => $this->schedulePdfExportLimiter,
+            Output::MATCHES_PDF => $this->fixturesPdfExportLimiter,
+            Output::MATCH_PLACEMENT => $this->matchPlacementLimiter,
+            Output::PLANNING_XLSX => $this->scheduleXlsxExportLimiter,
+            null => null,
         };
 
         if (!$limiter instanceof RateLimiterFactory) {

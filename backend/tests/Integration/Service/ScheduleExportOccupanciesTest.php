@@ -67,7 +67,7 @@ use Symfony\Component\Routing\RouterInterface;
  * ⚠ Seams PROPOSÉS (option A), adaptables mécaniquement par NEO : `ScheduleExportDataProvider::load(
  * Schedule, ?string, bool $showOccupancies)`, `ScheduleExportData::$occupancies`
  * (`list<ExportReservedWindow>`, le libellé de chaque fenêtre étant le MOTIF nu), `PdfGenerator::
- * buildHtml` lu par réflexion (même patron que `PdfGridCoachNameTest`), `PdfGenerator::generate(...,
+ * buildHtml` lu par réflexion (même patron que `PdfGridCoachNameTest`), `PdfGenerator::renderPending(...,
  * $showCoaches, $showOccupancies)`, `SpreadsheetGenerator::generate(Schedule, ?string, bool)`.
  */
 #[Group('integration')]
@@ -329,9 +329,9 @@ final class ScheduleExportOccupanciesTest extends WebTestCase
         $version = $this->seasonVersion();
         $generator = $this->pdfGenerator();
 
-        $both = $generator->generate($version, null, true, true)['pdf'];
-        $only = $generator->generate($version, null, false, true)['pdf'];
-        $none = $generator->generate($version, null, false, false)['pdf'];
+        $both = $generator->renderPending($version, null, true, true)['url'];
+        $only = $generator->renderPending($version, null, false, true)['url'];
+        $none = $generator->renderPending($version, null, false, false)['url'];
 
         self::assertStringEndsWith('-all-coaches-occupations.pdf', $both, '-occupations vient après -coaches');
         self::assertStringEndsWith('-all-occupations.pdf', $only);

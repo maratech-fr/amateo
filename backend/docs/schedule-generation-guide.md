@@ -133,7 +133,7 @@ Remplace `a1b2c3d4-...` par l'UUID retourné à l'étape précédente.
 
 ### Ce qui peut être refusé tout de suite
 
-Plusieurs gardes s'arrêtent **avant** la mise en file : rien n'est créé, aucun diagnostic n'est écrit, tu reçois l'erreur dans la réponse. Les trois du tableau sont les plus fréquents en dev ; s'y ajoutent les **caps métier par club** (offres/quotas/crédits — gardés par `Security/ClubQuotaTest` et `Security/PlanEntitlementsTest`) et, pour une génération de PÉRIODE, `SocleGuard` (pas de solve de période sans socle EN VIGUEUR — ADR-0002).
+Plusieurs gardes s'arrêtent **avant** la mise en file : rien n'est créé, aucun diagnostic n'est écrit, tu reçois l'erreur dans la réponse. Les trois du tableau sont les plus fréquents en dev ; s'y ajoutent les **caps métier par club** (offres/quotas/crédits — gardés par `Security/ClubQuotaTest` et `Security/PlanEntitlementsTest`) ; le refus « crédits épuisés » (403, club Découverte à sec) se juge au contrôle central avant la mise en file, mais le crédit ne se prend qu'à l'obtention de la version, dans la transaction du résultat — une génération qui échoue n'en coûte aucun et, pour une génération de PÉRIODE, `SocleGuard` (pas de solve de période sans socle EN VIGUEUR — ADR-0002).
 
 | Code | Cause | Que faire |
 |------|-------|-----------|

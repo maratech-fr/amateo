@@ -23,7 +23,6 @@ use App\Service\MatchPlacementResultApplier;
 use App\Service\OutputCreditLedger;
 use App\Service\PlacementRunEmailBuilder;
 use App\Service\PlacementRunFailureNotifier;
-use App\Service\PlanEntitlements;
 use App\Service\RequestIdContext;
 use App\Service\ScheduleConstraintBuilder;
 use App\Service\ScheduleDiagnosticsRecorder;
@@ -270,6 +269,7 @@ final class EngineRequestReferenceTest extends KernelTestCase
             $container->get(TenantConnectionContext::class),
             $container->get(StructureSnapshotter::class),
             $container->get(SchedulePlanProvisioner::class),
+            $container->get(OutputCreditLedger::class),
         );
         $handler(new GenerateScheduleMessage(
             scheduleId: $scheduleId,
@@ -328,7 +328,6 @@ final class EngineRequestReferenceTest extends KernelTestCase
             $container->get(MatchPlacementResultApplier::class),
             new MatchPlacementProgressPublisher($hub),
             $container->get(OutputCreditLedger::class),
-            $container->get(PlanEntitlements::class),
             $container->get(ClockInterface::class),
             $mailer,
             $container->get(PlacementRunEmailBuilder::class),

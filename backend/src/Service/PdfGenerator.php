@@ -20,6 +20,7 @@ use RuntimeException;
 use Symfony\Contracts\HttpClient\Exception\ExceptionInterface as HttpClientExceptionInterface;
 use Symfony\Contracts\HttpClient\Exception\TransportExceptionInterface;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
+use Throwable;
 
 /**
  * Renders a weekly training schedule as a landscape grid (days × venues, time
@@ -74,9 +75,14 @@ class PdfGenerator
     }
 
     /**
-     * @return array{pdf: string}
+     * Rend le planning sous un nom TEMPORAIRE (le nom final suivi de `-tmp` et de 32 caractères
+     * hexadécimaux aléatoires : impossible à deviner, reconnu par la purge) ; rien n'est écrit sous
+     * le nom final. La livraison ({@see deliver()}) renomme vers `filename` une fois le crédit pris ;
+     * un rendu refusé se jette ({@see discard()}) — le fichier déjà livré n'est jamais remplacé.
+     *
+     * @return array{pending: string, filename: string, url: string}
      */
-    public function generate(Schedule $schedule, ?string $venueId = null, bool $showCoaches = false, bool $showOccupancies = false): array
+    public function renderPending(Schedule $schedule, ?string $venueId, bool $showCoaches, bool $showOccupancies): array
     {
         $data = $this->exportData->load($schedule, $venueId, $showOccupancies);
         // P3-20 — la vue « club » (matrice équipes × jours) est ce que le gestionnaire veut
@@ -102,7 +108,9 @@ class PdfGenerator
         $coachSuffix = $showCoaches ? '-coaches' : '';
         // « Afficher les occupations » distingue le fichier de la même façon, après `-coaches`.
         $occupancySuffix = $showOccupancies ? '-occupations' : '';
-        $pdfFilename = \sprintf('schedule-%s-%s%s%s.pdf', $schedule->getId(), $scope, $coachSuffix, $occupancySuffix);
+        $base = \sprintf('schedule-%s-%s%s%s', $schedule->getId(), $scope, $coachSuffix, $occupancySuffix);
+        $pdfFilename = $base . '.pdf';
+        $pendingFilename = \sprintf('%s-tmp%s.pdf', $base, bin2hex(random_bytes(16)));
 
         // The Puppeteer worker (a separate container) both creates this dir and
         // writes the files, as its own uid — PHP only reads back the result, so we
@@ -114,15 +122,42 @@ class PdfGenerator
             // Puppeteer (`footerTemplate`). Construit ici, côté backend : le worker
             // reste bête, il ne fait que le câbler. Le nom vient de `ProductIdentity`
             // (jamais un littéral de marque), l'icône est inlinée en data URI.
-            $this->callWorker($html, $pdfFilename, $this->buildFooterTemplate());
+            $this->callWorker($html, $pendingFilename, $this->buildFooterTemplate());
         } catch (TransportExceptionInterface $e) {
+            $this->discard($pendingFilename);
+
             throw new RuntimeException('PDF worker unreachable: ' . $e->getMessage(), $e->getCode(), $e);
+        } catch (Throwable $e) {
+            $this->discard($pendingFilename);
+
+            throw $e;
         }
 
         // P4-357 — l'URL de téléchargement est la route AUTHENTIFIÉE confinée au club, plus une
         // adresse statique publique. Le NOM de fichier (donc le jeton `-<scope>[-coaches].pdf`
-        // que le polling front compare par `endsWith`) est INCHANGÉ : seul le préfixe bascule.
-        return ['pdf' => \sprintf('/api/schedules/%s/export-pdf/%s', $schedule->getId(), $pdfFilename)];
+        // que le polling front compare par `endsWith`) est le nom FINAL : seul le préfixe bascule.
+        return [
+            'pending' => $pendingFilename,
+            'filename' => $pdfFilename,
+            'url' => \sprintf('/api/schedules/%s/export-pdf/%s', $schedule->getId(), $pdfFilename),
+        ];
+    }
+
+    /** Livre un rendu temporaire sous son nom final (renommage dans le répertoire des rendus). */
+    public function deliver(string $pending, string $filename): void
+    {
+        if (!@rename($this->pathOf($pending), $this->pathOf($filename))) {
+            throw new RuntimeException('PDF render could not be delivered.');
+        }
+    }
+
+    /** Jette un rendu temporaire refusé ; absent, rien à faire. */
+    public function discard(string $pending): void
+    {
+        $path = $this->pathOf($pending);
+        if (is_file($path)) {
+            @unlink($path);
+        }
     }
 
     /**
@@ -136,6 +171,12 @@ class PdfGenerator
         } catch (HttpClientExceptionInterface $e) {
             throw new RuntimeException('PDF worker unreachable: ' . $e->getMessage(), $e->getCode(), $e);
         }
+    }
+
+    /** Un nom de rendu, confiné au répertoire des rendus (jamais un chemin). */
+    private function pathOf(string $filename): string
+    {
+        return self::OUTPUT_DIR . '/' . basename($filename);
     }
 
     private function callWorker(string $html, string $filename, string $footerTemplate, bool $landscape = true, bool $multiSection = true): void
