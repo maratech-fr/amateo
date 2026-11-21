@@ -505,6 +505,16 @@ final class ScheduleConstraintBuilderTest extends TestCase
             static fn (mixed $id): ?SportCategory => \is_string($id) ? ($categories[$id] ?? null) : null,
         );
 
-        return new ScheduleConstraintBuilder($this->logger, $this->entityManager, null, null, new TeamTagResolver($this->entityManager, $this->logger, new TeamTagService($this->entityManager)));
+        $resolver = new TeamTagResolver($this->entityManager, $this->logger, new TeamTagService($this->entityManager));
+        // Garde du décor : chaque groupe déclaré vaut EXACTEMENT ses équipes une fois calculé —
+        // sinon un cas vérifierait un décor dérivé de travers, pas le builder.
+        $computed = $resolver->teamIdsByTag('club-1', 'season-1');
+        foreach ($teamsByTag as $name => $teamIds) {
+            sort($teamIds);
+            self::assertSame($teamIds, $computed[$name] ?? [], \sprintf('décor : le groupe %s calculé diffère du groupe déclaré', $name));
+        }
+        $resolver->reset();
+
+        return new ScheduleConstraintBuilder($this->logger, $this->entityManager, null, null, $resolver);
     }
 }
