@@ -245,6 +245,74 @@ final class PdfCreditIsTakenOnDeliveryTest extends KernelTestCase
         self::assertStringEndsWith('-' . substr($venueId, 0, 8) . '.pdf', (string) $this->pdfUrlOf($club->getId(), $schedule), 'l\'URL est celle de la dernière livraison');
     }
 
+    /**
+     * Une livraison refusée (pool vidé) ne prend pas la place de la livraison réussie dans la garde
+     * de redélivrance : l'identifiant enregistré reste celui de la demande dont le fichier est livré,
+     * et ce message-là relu n'est ni rendu ni décompté. Le pendant refusé de
+     * {@see testARedeliveredDeliveredPdfTakesNoSecondCredit}.
+     */
+    public function testARefusedDeliveryNeverTakesTheDeliveredRequestsPlaceInTheRedeliveryGuard(): void
+    {
+        [$club, $season] = $this->seedClub(credits: 9);
+        $schedule = $this->seedSchedule($club->getId(), $season);
+
+        $delivered = $this->export($club->getId(), $schedule);
+        $refused = $this->export($club->getId(), $schedule);
+        self::assertNotSame($delivered, $refused);
+        self::assertSame(10, $this->creditsOf($club->getId()), 'témoin : la seconde demande a été refusée au pool');
+
+        self::assertSame($delivered, $this->pdfRequestIdOf($club->getId(), $schedule), 'l\'identifiant enregistré est celui du fichier livré, pas celui de la demande refusée');
+        $this->redeliver($club->getId(), $schedule, $delivered);
+        self::assertCount(2, $this->renderedNames, 'le message livré, relu, n\'est pas rendu une troisième fois');
+        self::assertSame('%PDF rendu n°1', $this->finalContent($schedule, 'all'));
+    }
+
+    /**
+     * Un message enfilé avant l'identifiant de demande (legacy, `requestId` absent) n'est jamais pris
+     * pour une redélivrance — ni sur un planning jamais livré (colonne vide), ni après une livraison
+     * legacy : il est rendu et livré.
+     */
+    public function testALegacyMessageWithoutRequestIdIsNeverTakenForARedelivery(): void
+    {
+        [$club, $season] = $this->seedClub(credits: 0, planCode: 'essentiel');
+        $schedule = $this->seedSchedule($club->getId(), $season);
+
+        $this->request($club->getId(), $schedule);
+        $this->work($club->getId(), $schedule, null, null);
+        $this->em->clear();
+        $this->request($club->getId(), $schedule);
+        $this->work($club->getId(), $schedule, null, null);
+
+        self::assertCount(2, $this->renderedNames, 'les deux messages legacy sont rendus');
+        self::assertSame('%PDF rendu n°2', $this->finalContent($schedule, 'all'), 'le second est livré');
+        self::assertSame('completed', $this->pdfStatusOf($club->getId(), $schedule));
+    }
+
+    /**
+     * COMPORTEMENT ACTUEL FIGÉ, pas une promesse décidée : deux onglets, même planning, même
+     * périmètre, club Découverte à qui il reste PLUSIEURS crédits — les deux demandes sont rendues,
+     * la seconde remplace le fichier de la première et prend un second crédit. La promesse « un seul
+     * fichier, un seul crédit » ne vaut que quand il reste UN crédit
+     * ({@see testOneCreditSameScopeTheDeliveredFileIsNotReplaced}). Si ce test rougit, le
+     * comportement a changé : une décision du fondateur doit l'avoir voulu, le test s'adapte alors.
+     */
+    public function testTwoTabsSameScopeWithSeveralCreditsLeftTakeTwoCreditsToday(): void
+    {
+        [$club, $season] = $this->seedClub(credits: 3);
+        $schedule = $this->seedSchedule($club->getId(), $season);
+
+        $first = $this->request($club->getId(), $schedule);
+        $second = $this->request($club->getId(), $schedule);
+        $this->work($club->getId(), $schedule, null, $first);
+        $this->em->clear();
+        $this->work($club->getId(), $schedule, null, $second);
+
+        self::assertCount(2, $this->renderedNames, 'aujourd\'hui : les deux demandes sont rendues');
+        self::assertSame('%PDF rendu n°2', $this->finalContent($schedule, 'all'), 'aujourd\'hui : le second rendu remplace le fichier du premier');
+        self::assertSame(5, $this->creditsOf($club->getId()), 'aujourd\'hui : deux crédits pris pour deux onglets');
+        self::assertSame('completed', $this->pdfStatusOf($club->getId(), $schedule));
+    }
+
     protected function setUp(): void
     {
         self::bootKernel();
@@ -312,7 +380,8 @@ final class PdfCreditIsTakenOnDeliveryTest extends KernelTestCase
         return bin2hex(random_bytes(16));
     }
 
-    private function work(string $clubId, string $scheduleId, ?string $venueId, string $requestId): void
+    /** `$requestId` null : un message legacy, enfilé avant que le contrôleur ne pose l'identifiant. */
+    private function work(string $clubId, string $scheduleId, ?string $venueId, ?string $requestId): void
     {
         $worker = new MockHttpClient(function (string $method, string $url, array $options): MockResponse {
             $payload = json_decode((string) $options['body'], true, flags: \JSON_THROW_ON_ERROR);
@@ -365,6 +434,11 @@ final class PdfCreditIsTakenOnDeliveryTest extends KernelTestCase
     private function pdfUrlOf(string $clubId, string $scheduleId): ?string
     {
         return $this->scheduleOf($clubId, $scheduleId)->getPdfExportUrl();
+    }
+
+    private function pdfRequestIdOf(string $clubId, string $scheduleId): ?string
+    {
+        return $this->scheduleOf($clubId, $scheduleId)->getPdfExportRequestId();
     }
 
     private function scheduleOf(string $clubId, string $scheduleId): Schedule
