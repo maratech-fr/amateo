@@ -19,6 +19,7 @@ use Symfony\Component\Process\Process;
  * appels : les deux branches (installation existante, première installation) sont jouées pour de bon,
  * et le code de sortie lu est celui du script. Jumeau statique du câblage voisin :
  * `RemoteDeployRealignsSnapshotsTest`. Purge manuelle documentée : `docs/ops/deploy.md`.
+ * Annoté `phase1` comme son jumeau, NON listé dans « Blocking suite » : il tourne dans `backend-tests`.
  */
 #[Group('phase1')]
 final class RemoteDeployPurgesScheduleCacheTest extends TestCase

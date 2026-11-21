@@ -64,7 +64,8 @@ use Symfony\Contracts\Cache\TagAwareCacheInterface;
  *   8. période générée sur place, avec une règle de groupe datée.
  *
  * Bloquant (step `Blocking suite` de `ci.yml`, `docs/testing/blocking-tests.md`) : le « Lot Gate »
- * d'une branche de lot ne joue que la suite bloquante.
+ * d'une branche de lot ne joue que la suite bloquante. Le groupe `phase1` est requis : le step lance
+ * `phpunit --group phase1 <fichiers>`, un fichier listé sans ce groupe n'y jouerait aucun test.
  *
  * Aux cas de génération (1 à 4, 7, 8), la demande se recoupe avec ce qui est écrit en base : l'empreinte
  * `snapshotHash` vaut `structureHash(snapshotData)`, les clés de la greffe `payloadGraft` sont
@@ -93,6 +94,7 @@ use Symfony\Contracts\Cache\TagAwareCacheInterface;
  * Jumeau : `EngineRequestOrderIsStableTest` garde l'ORDRE des listes face à l'ordre physique des
  * lignes ; celui-ci fige le CONTENU des demandes de référence.
  */
+#[Group('phase1')]
 #[Group('integration')]
 final class EngineRequestReferenceTest extends KernelTestCase
 {
