@@ -91,7 +91,7 @@ final class RemoteDeployPurgesScheduleCacheTest extends TestCase
 
     protected function tearDown(): void
     {
-        (new Process(['rm', '-rf', $this->dir]))->run();
+        new Process(['rm', '-rf', $this->dir])->run();
     }
 
     /** @return array{exit: int|null, stdout: string, stderr: string} */
