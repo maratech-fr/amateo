@@ -135,6 +135,8 @@ export function GenerateStep() {
     if (periodMode) {
       void queryClient.invalidateQueries({ queryKey: ["calendar-entries"] });
       void queryClient.invalidateQueries({ queryKey: ["schedules"] });
+      // Le crédit d'une génération de période se prend aussi quand la version est prête.
+      void queryClient.invalidateQueries({ queryKey: ["me"] });
     } else {
       // Season : on libère le scheduleId LOCAL (l'écran d'échec/attente se dérive désormais de la
       // LISTE, plus de ce state) et on rafraîchit le solde de crédits.

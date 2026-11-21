@@ -78,6 +78,9 @@ export function invalidationKeysFor(event: ScheduleStreamEvent): QueryKey[] {
       // bannière « périmé par une fermeture » se relit) ; préfixe : la version ne sait pas quelle
       // fermeture la gouverne.
       ["calendar-entries", "impact"],
+      // Le crédit d'une génération se prend quand la version est prête : seul l'événement
+      // terminal dit que le solde a pu bouger (pastille, « Régénérer (N) », « Combler (N) »).
+      ["me"],
     );
   }
 

@@ -5,7 +5,7 @@ import { StatusPill } from "@/shared/components/ui/badge";
 
 import { useCredits } from "./useCredits";
 
-const TOOLTIP = "Une génération, un placement de matchs ou un export consomme 1 crédit — ajuster et consulter sont gratuits.";
+const TOOLTIP = "Une génération, un comblement de planning de période, un placement de matchs ou un export obtenu consomme 1 crédit — ajuster et consulter sont gratuits.";
 
 /**
  * P1-3 §4bis pt 1 — la pastille d'OFFRE du club dans le shell, cas Découverte bridée SEULEMENT

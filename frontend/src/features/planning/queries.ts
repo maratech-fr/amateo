@@ -547,6 +547,7 @@ const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms
  * generic "planning" (founder feedback 2026-07-18).
  */
 export function useScheduleExport(scheduleId: string | null, exportName: string | null = null) {
+  const queryClient = useQueryClient();
   const [busy, setBusy] = useState<ExportFormat | null>(null);
 
   const run = useCallback(
@@ -568,7 +569,7 @@ export function useScheduleExport(scheduleId: string | null, exportName: string 
         // a single, shared export URL, so only download once it matches THIS request's scope +
         // coach choice — guards against another in-flight export (other tab/scope/choice) whose
         // 'completed' + URL we'd otherwise grab. Le jeton DOIT refléter EXACTEMENT le nom de
-        // fichier que le back écrit (`PdfGenerator::generate`), sinon le polling expire.
+        // fichier que le back écrit (`PdfGenerator::renderPending`), sinon le polling expire.
         const scopeToken = exportScopeToken(venueId, showCoaches, showOccupancies);
         const deadline = Date.now() + EXPORT_TIMEOUT_MS;
         for (;;) {
@@ -580,6 +581,8 @@ export function useScheduleExport(scheduleId: string | null, exportName: string 
           const url = schedule.pdfExportUrl;
           if ("completed" === schedule.pdfExportStatus && null != url && url.endsWith(scopeToken)) {
             download(url, `${fileBase}.${format}`);
+            // Le crédit du PDF se prend à la livraison (worker) : le solde se relit.
+            void queryClient.invalidateQueries({ queryKey: ["me"] });
             return;
           }
         }
@@ -589,7 +592,7 @@ export function useScheduleExport(scheduleId: string | null, exportName: string 
         setBusy(null);
       }
     },
-    [scheduleId, busy, exportName],
+    [scheduleId, busy, exportName, queryClient],
   );
 
   return { run, busy };
