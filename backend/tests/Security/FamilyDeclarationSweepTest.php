@@ -26,7 +26,8 @@ use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
  *  1. toute entité porte `#[Family]`, et le catalogue rend exactement l'ensemble des entités ;
  *  2. toute colonne `guid` hors `id`, `clubId`, `seasonId` porte au moins un `#[RefersTo]` ;
  *     `#[RefersTo]` ne se pose que sur une colonne `guid`, jamais sur ces trois-là, vise une famille
- *     déclarée, et porte sa raison quand il dit KEEP ou CUSTOM ;
+ *     déclarée, et porte sa raison quand il dit KEEP ou CUSTOM ; seule exception, nommée avec sa
+ *     raison : une colonne qui désigne une table hors Doctrine (`NON_DOCTRINE_TARGETS`) ;
  *  3. aucun cycle entre références « la ligne meurt avec sa cible » (DELETE) — une auto-référence
  *     n'en est pas un : une famille s'efface en une seule requête, elle n'impose aucun ordre entre
  *     familles ; un cycle trouvé ici est un retour au fondateur (plan du lot 1, §12) ;
@@ -41,6 +42,17 @@ final class FamilyDeclarationSweepTest extends KernelTestCase
 {
     /** Les trois colonnes que le niveau de la famille porte : jamais une référence. */
     private const array LEVEL_COLUMNS = ['id', 'clubId', 'seasonId'];
+
+    /**
+     * Colonnes `guid` qui désignent une table HORS Doctrine : aucune famille ne peut être leur cible.
+     * Égalité stricte dans les deux sens : une ligne qui ne désigne plus une colonne `guid` sans
+     * `#[RefersTo]` rougit.
+     *
+     * @var array<string, string> Classe::$champ => raison
+     */
+    private const array NON_DOCTRINE_TARGETS = [
+        'App\Entity\ScheduledDeployment::$createdBy' => 'id d\'un super-admin : la table super_admin est tenue en DBAL, SuperAdmin n\'est pas une entité Doctrine',
+    ];
 
     public function testEveryEntityDeclaresItsFamilyAndTheCatalogListsExactlyThem(): void
     {
@@ -70,6 +82,7 @@ final class FamilyDeclarationSweepTest extends KernelTestCase
         $misplaced = [];
         $unknownTarget = [];
         $withoutReason = [];
+        $exemptionsInUse = [];
         foreach ($entities as $class) {
             $metadata = $em->getClassMetadata($class);
             foreach (new ReflectionClass($class)->getProperties() as $property) {
@@ -78,7 +91,11 @@ final class FamilyDeclarationSweepTest extends KernelTestCase
                 $declarations = $this->refersToOf($property);
 
                 if ($isGuid && !\in_array($field, self::LEVEL_COLUMNS, true) && [] === $declarations) {
-                    $missing[] = $class . '::$' . $field;
+                    if (isset(self::NON_DOCTRINE_TARGETS[$class . '::$' . $field])) {
+                        $exemptionsInUse[] = $class . '::$' . $field;
+                    } else {
+                        $missing[] = $class . '::$' . $field;
+                    }
                 }
                 if ([] !== $declarations && (!$isGuid || \in_array($field, self::LEVEL_COLUMNS, true))) {
                     $misplaced[] = $class . '::$' . $field;
@@ -98,6 +115,13 @@ final class FamilyDeclarationSweepTest extends KernelTestCase
             "Ces colonnes guid désignent un autre objet sans le déclarer (#[RefersTo]) :\n  - %s",
             implode("\n  - ", $missing),
         ));
+        $exemptions = array_keys(self::NON_DOCTRINE_TARGETS);
+        sort($exemptions);
+        sort($exemptionsInUse);
+        self::assertSame($exemptions, $exemptionsInUse, 'NON_DOCTRINE_TARGETS ne nomme que des colonnes guid sans #[RefersTo], toutes encore présentes.');
+        foreach (self::NON_DOCTRINE_TARGETS as $column => $reason) {
+            self::assertNotSame('', trim($reason), 'Exemption sans raison : ' . $column);
+        }
         self::assertSame([], $misplaced, \sprintf(
             "#[RefersTo] ne se pose que sur une colonne guid, jamais sur id, clubId ni seasonId :\n  - %s",
             implode("\n  - ", $misplaced),
