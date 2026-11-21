@@ -1,8 +1,9 @@
 # Lot conception : découpage en lots de travail
 
 **Statut : découpage validé par le fondateur le 2026-11-20 (ordre, premier lot de côté, cadrage).
-Le lot 0 est livré en trois PR ; le lot 2 a livré ses PR 1, 2, 3a, 3b et 4 (voir §6).** Ce document dit **quoi dans
-quel ordre** ; le **comment** de chaque lot est le travail de son plan (`morpheus`, puis `smith`).
+Le lot 0 est livré en trois PR ; le lot 2 a livré ses PR 1, 2, 3a, 3b et 4 (reste la PR 5) ; les lots 1 et 2 ont
+chacun leur plan écrit, validé en version finale (voir §6).** Ce document dit **quoi dans quel ordre** ; le **comment**
+de chaque lot est le travail de son plan (`morpheus`, puis `smith`).
 
 Source : [`conception-cible.md`](conception-cible.md) (les numéros « § » ci-dessous y renvoient).
 Constats : [`../audit/CONCEPTION-2026-11-19-claude-fable-5-2.md`](../audit/CONCEPTION-2026-11-19-claude-fable-5-2.md),
@@ -105,13 +106,17 @@ peuvent avancer dans un espace de travail à part pendant qu'un lot principal at
 
 ### Lot 1 · Les déclarations communes
 
+- **Plan d'exécution** : [`lot-conception-1-declarations-communes.md`](lot-conception-1-declarations-communes.md)
+  (version allégée, adoptée le 2026-11-21).
 - **Contenu**
   - La déclaration unique des familles d'objets : à quel niveau elle vit, froide ou libre, recopiée
-    à la saison suivante, présente dans une version, effacée avec quoi (§1 principe 5, §26). Les
-    listes d'effacement et de copie la lisent ; un test signale toute famille non déclarée.
+    à la saison suivante, présente dans une version, effacée avec quoi (§1 principe 5, §26). **Dans ce
+    lot, seules les listes d'effacement (saison, club) la lisent** ; chaque lot suivant ajoute ce qu'il
+    lit ; un test signale toute famille non déclarée.
   - Le créneau de semaine : un seul objet, le jour de 1 à 7, un seul endroit pour le chevauchement
     et les conversions (§11).
-  - Les étiquettes calculées à la lecture ; leurs deux tables disparaissent (§12).
+  - Les étiquettes calculées à la lecture (§12) ; leurs deux tables disparaissent une release plus
+    tard, à la première PR du lot 3.
 - **Constats des scénarios du lot 0 à trancher ici** (vérifiés dans le code ; les scénarios
   décrivent l'actuel) :
   - Supprimer un gymnase n'emporte pas une règle qui le nomme dans sa configuration
@@ -123,10 +128,11 @@ peuvent avancer dans un espace de travail à part pendant qu'un lot principal at
     (`backend/src/Service/SeasonAlreadyTransitionedException.php:19`) ; l'identifiant de la saison
     déjà préparée est dans la réponse (`SeasonTransitionController.php:69`).
   - Le drapeau de démonstration n'est pas lu au même endroit selon le geste : l'invitation
-    (`ClubInvitationController.php:75`, `:104`) et la suppression de compte
-    (`DeleteAccountController.php:47`) lisent celui de l'UTILISATEUR ; l'envoi des conflits
+    (`ClubInvitationController.php:79`, `:108`) et la suppression de compte
+    (`DeleteAccountController.php:49`) lisent celui de l'UTILISATEUR ; l'envoi des conflits
     (`ConflictCoachMailController.php:202`) et des liens de collecte
-    (`CoachWishCampaignActionController.php:92`) lisent celui du CLUB.
+    (`CoachWishCampaignActionController.php:92`) lisent celui du CLUB. **Constat fermé par la
+    PR 5 du lot 2** (régime de démonstration déclaré une fois), accepté par le fondateur.
   - **Constats de la PR 2 du lot 2, à trancher ICI** (le lot 1 traite la préparation de la saison
     suivante ; décision du fondateur : laissés tels quels dans la PR 2) :
     - `POST /api/seasons` (`backend/src/ApiResource/SeasonResource.php:22-24`,
@@ -146,13 +152,19 @@ peuvent avancer dans un espace de travail à part pendant qu'un lot principal at
     fondateur à chaque restauration, restauration qui garde les droits d'`amateo_app` et la RLS,
     dump effacé à la fin. Les trous de l'enregistrement (§6 du filet) sont à relire avant de
     conclure « demande identique ».
-- **Supprime** : les listes tenues à la main (sept d'effacement, cinq de copie), les calculs
-  d'horaires réécrits, les tables d'étiquettes (96 et 411 lignes en production).
+- **Supprime** : les trois listes d'effacement de saison et de club (remplacées par la déclaration),
+  les calculs d'horaires réécrits. Les autres listes (copie, photo, restauration…) meurent avec le lot
+  qui les réécrit ; les tables d'étiquettes (96 et 411 lignes en production) partent à la première PR
+  du lot 3.
+- **Ne fait pas** : changer « Charger » (retourne au lot 5, limite écrite dans le plan).
 - **Dépend de** : lot 0.
 - **Preuve** : demande au moteur identique.
 
 ### Lot 2 · Droits, modules, crédits
 
+- **Plan d'exécution** : [`lot-conception-2-droits-modules-credits.md`](lot-conception-2-droits-modules-credits.md)
+  (version finale ; reste la PR 5 : module matchs porte « socle validé », régime de démonstration déclaré une
+  fois).
 - **Contenu**
   - Le module déclaré une fois par fonction (module, lecture ou écriture, sortie payante, envoi à
     un tiers) ; un seul contrôle ; la condition « socle validé » portée par le module (§8).
@@ -174,7 +186,7 @@ peuvent avancer dans un espace de travail à part pendant qu'un lot principal at
       `ClubAccessListener` (`kernel.request`, priorité 4) refuse 403 un Membre sur une fonction
       « gestionnaire » ; `assertManager()` et le défaut de `AbstractStateProcessor` sont supprimés
       (décision et écarts E1 à E5 : `etat-des-lieux.md` §2).
-  - Le régime de démonstration déclaré une fois (§10).
+  - Le régime de démonstration déclaré une fois (§10). **PR 5, à faire.**
   - La règle du 1er mai côté serveur.
     - **PR 2 livrée — « Le 1er mai côté serveur »** : la bascule vers la saison suivante est refusée
       409 avant le 1er mai (`SeasonTransitionService::preparationOpensOn`), `/api/me` sert la date
@@ -195,8 +207,12 @@ peuvent avancer dans un espace de travail à part pendant qu'un lot principal at
   - Effacer une personne l'anonymise (§9).
   - « Préparer la saison suivante » ne recopie plus les personnes ni les lieux.
   - Conversion : 52 coachs, 18 gymnases, sans fusion (§27).
+- **Condition d'entrée** (lot 1, [plan](lot-conception-1-declarations-communes.md) §4) : **la première PR du
+  lot supprime les deux tables d'étiquettes** (`team_tag`, `team_tag_assignment`, migration irréversible), et
+  ne s'ouvre qu'une fois la release du lot 1 en production. Y entre aussi la fermeture du cache des demandes
+  par une époque dans la clé.
 - **Supprime** : la recopie des coachs et des gymnases chaque saison, le barème de trajet par
-  saison.
+  saison, les deux tables d'étiquettes.
 - **Dépend de** : lot 1.
 - **Preuve** : demande au moteur identique (les identifiants envoyés ne changent pas) ; revue de
   sécurité obligatoire (isolation entre clubs, données personnelles).
@@ -229,6 +245,10 @@ peuvent avancer dans un espace de travail à part pendant qu'un lot principal at
   - « Préparer la saison suivante » : tout est repris, par la déclaration du lot 1 (§15).
   - Les matchs et le radar lisent ce qui est en vigueur par une seule porte (§17).
   - L'état visible « des modifications attendent la validation » (§19).
+- **Condition d'entrée** (décision du 2026-11-21, [plan du lot 1](lot-conception-1-declarations-communes.md) §3.3) :
+  le lot 1 ne change pas « Charger ». Jusqu'au lot 5, charger une version remet les catégories du club dans
+  l'état de cette version : une durée de match modifiée depuis revient à sa valeur d'alors, et une catégorie
+  créée depuis par un import disparaît. Le lot 5 met fin à cela (une version ne touche que son plan, §15).
 - **Supprime** : la photo de structure et sa restauration, la seconde définition de « Charger », la
   purge des doléances à la validation du socle.
 - **Dépend de** : lot 4.
@@ -328,6 +348,9 @@ peuvent avancer dans un espace de travail à part pendant qu'un lot principal at
 
 Ce document porte la fiche de chaque lot (contenu, ce qu'il supprime, dépendances, preuve).
 **Le lot 0 est livré en trois PR** (compositeur, scénarios, enregistreur) la mesure du PDF restant
-une procédure à jouer ([`lot-conception-filet.md`](lot-conception-filet.md) §8) ; **le lot 2 a livré ses PR 1, 2, 3a, 3b et 4** (deux rôles ; le 1er mai côté serveur ; les déclarations d'accès ; le contrôle central ; les crédits à l'obtention) ; les
-autres lots n'ont pas de plan écrit. Un plan s'écrit lot par lot, dans un fichier à lui (`specs/evolution/`), et se
-valide en entier avant tout code.
+une procédure à jouer ([`lot-conception-filet.md`](lot-conception-filet.md) §8) ; **le lot 2 a livré ses PR 1, 2, 3a, 3b et 4** (deux rôles ; le 1er mai côté serveur ; les déclarations d'accès ; le contrôle central ; les crédits à l'obtention), il
+reste sa PR 5 ; **le lot 1 n'a livré aucune PR** (plan écrit, version allégée, exécution à partir de sa PR 1). Les plans
+des lots 1 et 2 sont dans [`lot-conception-1-declarations-communes.md`](lot-conception-1-declarations-communes.md) et
+[`lot-conception-2-droits-modules-credits.md`](lot-conception-2-droits-modules-credits.md) ; les autres lots n'ont pas de
+plan écrit. Un plan s'écrit lot par lot, dans un fichier à lui (`specs/evolution/`), et se valide en entier avant tout
+code. Une seule PR est ouverte à la fois sur `lot/conception` (les lots 1 et 2 modifient ce fichier et l'état des lieux).
