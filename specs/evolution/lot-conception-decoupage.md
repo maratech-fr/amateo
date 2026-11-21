@@ -1,7 +1,7 @@
 # Lot conception : découpage en lots de travail
 
 **Statut : découpage validé par le fondateur le 2026-11-20 (ordre, premier lot de côté, cadrage).
-Le lot 0 est livré en trois PR ; le lot 2 a livré ses PR 1, 2, 3a, 3b et 4 (reste la PR 5) ; les lots 1, 2 et 3 ont
+Le lot 0 est livré en trois PR ; le lot 2 est livré sur `lot/conception`, non déployé ; les lots 1, 2 et 3 ont
 chacun leur plan écrit, validé en version finale (voir §6). Déploiement unique (fondateur, 2026-11-21) : tout le lot
 conception part en une seule mise en production, à la fin, depuis `lot/conception`.** Ce document dit **quoi dans quel ordre** ; le **comment**
 de chaque lot est le travail de son plan (`morpheus`, puis `smith`).
@@ -156,8 +156,7 @@ peuvent avancer dans un espace de travail à part pendant qu'un lot principal at
 ### Lot 2 · Droits, modules, crédits
 
 - **Plan d'exécution** : [`lot-conception-2-droits-modules-credits.md`](lot-conception-2-droits-modules-credits.md)
-  (version finale ; reste la PR 5 : module matchs porte « socle validé », régime de démonstration déclaré une
-  fois).
+  (version finale ; livré sur `lot/conception`, non déployé).
 - **Contenu**
   - Le module déclaré une fois par fonction (module, lecture ou écriture, sortie payante, envoi à
     un tiers) ; un seul contrôle ; la condition « socle validé » portée par le module (§8).
@@ -179,7 +178,7 @@ peuvent avancer dans un espace de travail à part pendant qu'un lot principal at
       `ClubAccessListener` (`kernel.request`, priorité 4) refuse 403 un Membre sur une fonction
       « gestionnaire » ; `assertManager()` et le défaut de `AbstractStateProcessor` sont supprimés
       (décision et écarts E1 à E5 : `etat-des-lieux.md` §2).
-  - Le régime de démonstration déclaré une fois (§10). **PR 5, à faire.**
+  - Le régime de démonstration déclaré une fois (§10). **Livré (PR 5).**
   - La règle du 1er mai côté serveur.
     - **PR 2 livrée — « Le 1er mai côté serveur »** : la bascule vers la saison suivante est refusée
       409 avant le 1er mai (`SeasonTransitionService::preparationOpensOn`), `/api/me` sert la date
@@ -344,8 +343,7 @@ peuvent avancer dans un espace de travail à part pendant qu'un lot principal at
 
 Ce document porte la fiche de chaque lot (contenu, ce qu'il supprime, dépendances, preuve).
 **Le lot 0 est livré en trois PR** (compositeur, scénarios, enregistreur) la mesure du PDF restant
-une procédure à jouer ([`lot-conception-filet.md`](lot-conception-filet.md) §8) ; **le lot 2 a livré ses PR 1, 2, 3a, 3b et 4** (deux rôles ; le 1er mai côté serveur ; les déclarations d'accès ; le contrôle central ; les crédits à l'obtention), il
-reste sa PR 5 ; **le lot 1 est livré sur `lot/conception`, non déployé** (PR 1 à 5 : purge du cache au déploiement ; créneau de semaine ; étiquettes calculées à la lecture ; familles déclarées et purges qui les lisent ; constats tranchés) ; **le lot 3
+une procédure à jouer ([`lot-conception-filet.md`](lot-conception-filet.md) §8) ; **le lot 2 est livré sur `lot/conception`, non déployé** (deux rôles ; le 1er mai côté serveur ; les déclarations d'accès ; le contrôle central ; les crédits à l'obtention ; le module matchs qui porte le socle et le régime de démonstration déclaré une fois) ; **le lot 1 est livré sur `lot/conception`, non déployé** (PR 1 à 5 : purge du cache au déploiement ; créneau de semaine ; étiquettes calculées à la lecture ; familles déclarées et purges qui les lisent ; constats tranchés) ; **le lot 3
 n'a livré aucune PR** (plan écrit, version finale). Les plans des lots 1, 2 et 3 sont dans
 [`lot-conception-1-declarations-communes.md`](lot-conception-1-declarations-communes.md),
 [`lot-conception-2-droits-modules-credits.md`](lot-conception-2-droits-modules-credits.md) et
