@@ -116,6 +116,9 @@ services:
   and to everyone for a route with no declaration, before any controller runs. Listener order on
   `kernel.request`: router 32, firewall 8, tenant 7, rate limit 6, caps 5, access control 4 — the
   tenant (club and season on the request) and the caps must have run, the controller must not have.
+  The «credits exhausted» refusal of a Discovery club is part of access control (after the role
+  check), not a separate listener; the credit itself is taken when the output is obtained
+  (`kernel.response` for a synchronous output, the result transaction in the worker).
   No `assertManager()` and no management default in `AbstractStateProcessor` remain; what is left in
   code are guards that *route* (not-stored opponent logo → 404, coach personal links served to the
   manager only, generation/placement cap) and guards on the club named by the URL (`ClubStateProcessor`,

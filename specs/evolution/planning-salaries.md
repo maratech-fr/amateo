@@ -16,7 +16,7 @@ Vision produit : Amateo centralise la vie du club et remplace ce que le gestionn
 2. **Semaine type seulement** : un jour, une heure de début, une durée, un nom, attribué à un salarié ou à « tous ». Pas de date précise (une mairie ponctuelle est hors périmètre).
 3. **Séances rapatriées** : lues depuis le socle en vigueur, en lecture, sans copie. Pas les plans de période ni de vacances.
 4. **Les coachs salariés apparaissent d'office** (case « salarié » du coach : `Coach.php:56-57`) ; un salarié non coach a sa propre fiche. La case « salarié » et la règle du solveur « un salarié présent chaque jour ouvré » (`engine/app/solver/constraints/wellness/salarie.py:39-75`) ne changent pas.
-5. **Export PDF** de la semaine type des salariés. Un crédit Découverte, comme les autres exports (`CreditBudgetSubscriber.php:46-55`) : à confirmer au plan.
+5. **Export PDF** de la semaine type des salariés. Un crédit Découverte, comme les autres exports (sortie déclarée, `backend/src/Access/Output.php`) : à confirmer au plan.
 6. **Droits** : le gestionnaire construit le planning, les Membres (lecture seule) le consultent.
 7. **Modèle** : une Personne qui porte des rôles ; « salarié » est un rôle avec ses propres caractéristiques (voir lot conception). Champs d'une fiche proposés : prénom, nom, poste facultatif, sans e-mail ni téléphone (à confirmer).
 

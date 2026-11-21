@@ -403,7 +403,7 @@ extérieur hors fenêtre est omis (depuis ③ le solveur ignore son empreinte pe
 que sa date). En offre Découverte (mode restreint, `PlanEntitlements::outputBudget()['restricted']`,
 club non démo, pool > 0), le placement automatique se fait UNIQUEMENT semaine par semaine : un appel
 sans fenêtre, ou avec une fenêtre de plus de 7 jours calendaires, est refusé 403 — défense SERVEUR
-derrière le bouton global désactivé (§5) ; 1 clic reste 1 crédit (`CreditBudgetSubscriber`, inchangé).
+derrière le bouton global désactivé (§5) ; 1 clic reste 1 crédit, pris dans la transaction du résultat (`OutputCreditLedger`).
 
 **Jours fériés (PR2, décision fondateur 2026-10-27, livré au palier 1.7 — numéro courant : `CLAUDE.md`)** : le payload porte
 `publicHolidays` (dates du territoire du club, national ∪ zone, résolues par la même maison

@@ -182,8 +182,8 @@ dates égales), « Regrouper par » **Équipe | Jour**, case « Matchs à domici
 « Télécharger le PDF » (`POST /api/fixtures/export-pdf`, rail synchrone,
 `ExportMatchesPdfController`). **Tout membre exporte**, pas seulement le gestionnaire (parité avec
 l'export du planning) ; l'export consomme un crédit selon les règles existantes (Découverte :
-mention dans la fenêtre, bouton désactivé à zéro ; le crédit ne se décompte qu'au 200, donc jamais
-sans fichier livré — `CreditBudgetSubscriber`) et passe par un limiteur dédié `fixtures_pdf_export`
+mention dans la fenêtre, bouton désactivé à zéro ; le crédit ne se décompte qu'à la réponse 2xx, donc jamais
+sans fichier livré — `ClubAccessListener::onKernelResponse`) et passe par un limiteur dédié `fixtures_pdf_export`
 (60 par heure et par club, distinct du limiteur de l'export du planning). Pré-remplissage de la
 fenêtre : `lib/exportRange.ts` (ce qui est à l'écran — semaine, mois, phase —, sinon le mois en cours).
 

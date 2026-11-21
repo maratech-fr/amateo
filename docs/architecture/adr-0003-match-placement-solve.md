@@ -219,7 +219,7 @@ semaine sans jamais remettre en jeu un placement déjà posé ailleurs, gardé p
 `PlanEntitlements::outputBudget()['restricted']`, club non démo, pool > 0), c'est la SEULE fenêtre
 admise : le contrôleur refuse 403 un appel sans fenêtre ou dont l'écart `from`→`to` dépasse 6 jours
 (une semaine calendaire) — défense serveur derrière le bouton global désactivé côté front, 1 clic =
-1 crédit inchangé (`CreditBudgetSubscriber`).
+1 crédit, pris à l'obtention du résultat (`OutputCreditLedger`).
 
 ### 6. Le backend PROJETTE, l'engine reste plat
 
