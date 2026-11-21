@@ -201,8 +201,8 @@ cache est directionnel, la matrice non) — profils `car`/`pedestrian`. Les inst
 dans `Version20260920120000::seedStatements()`, rejouées à l'identique par `ClubTravelCacheSeedTest`
 (aucune dérive possible entre la migration et ce que le test vérifie).
 
-**Complétude RGPD** : `ErasedClubPurger::PURGED_BY_CLUB` (effacement d'un compte → purge par
-`clubId`), `SeasonDataPurger::EXCLUDED_FROM_SEASON_PURGE` (club-scoped SANS saison, une purge de
+**Complétude RGPD** : `ErasedClubPurger` (effacement d'un compte → purge par `clubId`,
+`FamilyCatalog::purgedWithClub()`), `#[Family(keptAtSeasonPurge: …)]` (club-scoped SANS saison, une purge de
 saison ne le touche pas), `RgpdExportService::EXCLUDED_FROM_EXPORT` (donnée d'établissement
 RECOMPUTABLE, sans PII — retirée de l'export de portabilité). Détail : `docs/security/rgpd.md` §2.
 

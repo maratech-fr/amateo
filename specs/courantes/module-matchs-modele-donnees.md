@@ -257,8 +257,8 @@ recopiées dans le catalogue PARTAGÉ `OpponentVenueSuggestion` (donnée propre 
 **Le trajet n'y est PAS** : c'est une CONSTANTE lue depuis `ClubTravelCache` (siège du club →
 gymnase, § « Cache de trajets et calcul asynchrone » ci-dessous), jamais dupliquée par lien.
 **Purge** : club-scoped SANS saison → une purge de SAISON ne le touche jamais
-(`SeasonDataPurger::EXCLUDED_FROM_SEASON_PURGE`), sa seule porte de sortie est l'effacement RGPD du
-club (`ErasedClubPurger::PURGED_BY_CLUB`, qui décrémente d'abord le compteur partagé des liens
+(déclaration `#[Family(keptAtSeasonPurge: …)]`), sa seule porte de sortie est l'effacement RGPD du
+club (`ErasedClubPurger`, par `FamilyCatalog::purgedWithClub()`, qui décrémente d'abord le compteur partagé des liens
 MANUAL).
 
 **Auto-localisation depuis le libellé du fichier** (`OpponentVenueAutoLocator`, égalité STRICTE
@@ -474,8 +474,8 @@ d'une entrée : un dépôt qui montre toujours l'ancienne valeur ne recrée pas 
 montre une TROISIÈME valeur la ferme ET rouvre un écart normal à arbitrer ; le gestionnaire peut
 aussi la cocher « Corrigé dans FBI » (`closed_by=manual`, réouvrable **< 24 h**, `POST
 …/{id}/reopen`, 409 au-delà ou sur une fermeture non manuelle). Une entrée FERMÉE reste en base
-(trace), jamais rendue par la liste — purgée avec la saison (`SeasonDataPurger::
-PURGED_BY_CLUB_SEASON`). **Registre à ZÉRO au départ** : les « garder l'appli » passés n'ont laissé
+(trace), jamais rendue par la liste — purgée avec la saison (`SeasonDataPurger`, par
+`FamilyCatalog::purgedWithSeason()`). **Registre à ZÉRO au départ** : les « garder l'appli » passés n'ont laissé
 aucune trace exploitable, il ne se peuple que par les arbitrages à VENIR (décision fermée,
 `etat-des-lieux.md` §2). API : `GET /api/fixtures/fbi-corrections` (membre, entrées ouvertes du
 club+saison) ; `POST …/{id}/close` (gestionnaire + saison écrivable) ; `POST …/{id}/reopen`.

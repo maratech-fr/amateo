@@ -8,16 +8,12 @@ use App\Entity\Season;
 use Doctrine\ORM\EntityManagerInterface;
 use LogicException;
 use ReflectionClass;
-use Symfony\Component\DependencyInjection\Attribute\Autoconfigure;
 
 /**
  * Lit les déclarations `#[Family]` et `#[RefersTo]` des entités Doctrine et en rend les listes que
- * les purges tiennent aujourd'hui à la main (`SeasonDataPurger`, `ErasedClubPurger`). Aucun appelant
- * de production dans ce lot : les purgeurs le liront à leur tour (lot conception 1, PR 4b).
- *
- * Public : aucun service ne le consomme encore, le conteneur le retirerait sinon.
+ * les purges suivent : `SeasonDataPurger` (purgedViaOwner, purgedWithSeason) et `ErasedClubPurger`
+ * (purgedWithClub). Les purgeurs ne tiennent plus de liste propre.
  */
-#[Autoconfigure(public: true)]
 final class FamilyCatalog
 {
     /**
