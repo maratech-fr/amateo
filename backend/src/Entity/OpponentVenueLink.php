@@ -10,7 +10,6 @@ use App\Service\Basketball\VenueLabelNormalizer;
 use App\Service\ErasedClubPurger;
 use App\Service\Geo\TravelTimeCache;
 use App\Service\OpponentTravelProjection;
-use App\Service\SeasonDataPurger;
 use App\Structure\Family;
 use App\Structure\Level;
 use DateTimeImmutable;
@@ -42,9 +41,9 @@ use Doctrine\ORM\Mapping as ORM;
  * MANUAL n'est jamais écrasé par une passe AUTO.
  *
  * Purge : club-scoped SANS saison → une purge de SAISON ne le touche jamais
- * ({@see SeasonDataPurger::EXCLUDED_FROM_SEASON_PURGE}) ; sa seule porte de
- * sortie est l'effacement RGPD du club ({@see ErasedClubPurger::PURGED_BY_CLUB},
- * qui décrémente d'abord le compteur partagé des liens MANUAL).
+ * (`keptAtSeasonPurge` ci-dessous) ; sa seule porte de sortie est l'effacement RGPD
+ * du club ({@see ErasedClubPurger}, par `FamilyCatalog::purgedWithClub()`, qui
+ * décrémente d'abord le compteur partagé des liens MANUAL).
  */
 #[Family(Level::CLUB, keptAtSeasonPurge: 'club-scoped SANS saison (un libellé désigne le même gymnase d\'une saison à l\'autre — amendement 2026-09-20) : une purge de saison ne le touche jamais, sa porte de sortie est ErasedClubPurger (qui décrémente d\'abord le compteur partagé des liens MANUAL)')]
 #[ORM\Entity(repositoryClass: OpponentVenueLinkRepository::class)]

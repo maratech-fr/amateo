@@ -5,7 +5,12 @@ declare(strict_types=1);
 namespace App\Tests\Integration\Service;
 
 use App\Deletion\CascadePlan;
+use App\Deletion\CascadeStep;
+use App\Deletion\ClearFieldStep;
+use App\Deletion\DeleteByFieldStep;
 use App\Deletion\DeletionImpactCounter;
+use App\Deletion\ScopedConstraintStep;
+use App\Deletion\SharedTrainingBlockPruneStep;
 use App\Entity\CalendarEntry;
 use App\Entity\Club;
 use App\Entity\Coach;
@@ -39,7 +44,10 @@ use App\Enum\TeamCoachRole;
 use App\Service\EntityCascadeDeleter;
 use App\Service\FixtureVenueLossMarker;
 use App\Service\OrphanedFixtureFinder;
+use App\Structure\FamilyCatalog;
+use App\Structure\OnDelete;
 use App\Tests\ChoosesPlanVersionTrait;
+use App\Tests\RealForeignKeysTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -74,6 +82,7 @@ use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 final class DeletionImpactParityTest extends KernelTestCase
 {
     use ChoosesPlanVersionTrait;
+    use RealForeignKeysTrait;
     use TenantGucTrait;
 
     /**
@@ -105,6 +114,61 @@ final class DeletionImpactParityTest extends KernelTestCase
         // Égalité STRICTE : une étape muette non listée est un oubli d'annonce ; une étape
         // listée qui a gagné un libellé doit sortir de la liste. Les deux sens rougissent.
         self::assertSame($expected, $silent, 'toute étape sans libellé doit être déclarée muette nommément');
+    }
+
+    /**
+     * Lot conception 1, PR 4b — toute colonne déclarée (`#[RefersTo]`) vers une équipe, un gymnase,
+     * un coach ou un créneau est traitée à la suppression de sa cible du geste qu'elle déclare :
+     * une étape de `CascadePlan` l'efface (DELETE) ou la vide (CLEAR), ou une clé étrangère réelle
+     * `ON DELETE CASCADE` l'efface ; sinon elle se déclare conservée (KEEP) ou traitée ailleurs
+     * (CUSTOM), avec sa raison (`FamilyDeclarationSweepTest` exige la raison). Une colonne neuve vers
+     * l'une de ces quatre familles sans son étape rougit : elle pendrait sur un objet supprimé.
+     */
+    public function testEveryColumnPointingAtATeamVenueCoachOrSlotIsHandledByThePlan(): void
+    {
+        $catalog = self::getContainer()->get(FamilyCatalog::class);
+        $cascades = [];
+        foreach ($this->realForeignKeys() as $key) {
+            if ('c' === $key['onDelete']) {
+                $cascades[$key['child'] . '.' . $key['column'] . '→' . $key['parent']] = true;
+            }
+        }
+
+        $plans = [Team::class => CascadePlan::forTeam(), Venue::class => CascadePlan::forVenue(), Coach::class => CascadePlan::forCoach(), VenueTrainingSlot::class => CascadePlan::forSlot()];
+        $checked = [];
+        $unhandled = [];
+        foreach ($plans as $target => $steps) {
+            $handled = [];
+            foreach ($steps as $step) {
+                $handled += $this->columnsHandledBy($step);
+            }
+            foreach ($catalog->referencesTo($target) as $reference) {
+                if (\in_array($reference['onDelete'], [OnDelete::KEEP, OnDelete::CUSTOM], true)) {
+                    continue;
+                }
+                $column = $this->shortName($reference['class']) . '.' . $reference['field'];
+                $checked[$this->shortName($target)][] = $column;
+                if (($handled[$column] ?? null) === $reference['onDelete']) {
+                    continue;
+                }
+                $metadata = $this->em->getClassMetadata($reference['class']);
+                $foreignKey = $metadata->getTableName() . '.' . $metadata->getColumnName($reference['field']) . '→' . $this->em->getClassMetadata($target)->getTableName();
+                if (OnDelete::DELETE === $reference['onDelete'] && isset($cascades[$foreignKey])) {
+                    continue;
+                }
+                $unhandled[] = \sprintf('%s → %s (%s)', $column, $this->shortName($target), $reference['onDelete']->name);
+            }
+        }
+
+        // Témoins positifs : sans colonne vers ces familles, l'assertion serait vide.
+        self::assertNotEmpty($checked['Team'] ?? [], 'aucune colonne ne désigne une équipe : le test ne prouverait rien');
+        self::assertNotEmpty($checked['Venue'] ?? [], 'aucune colonne ne désigne un gymnase');
+        self::assertNotEmpty($checked['Coach'] ?? [], 'aucune colonne ne désigne un coach');
+        self::assertSame([], $unhandled, \sprintf(
+            "Ces colonnes désignent un objet supprimable sans que sa suppression les traite comme elles le déclarent :\n  - %s\n"
+            . 'Issue : une étape de CascadePlan (annoncée), ou #[RefersTo(…, OnDelete::KEEP|CUSTOM, raison)].',
+            implode("\n  - ", $unhandled),
+        ));
     }
 
     public function testNoDestructionEscapesThePlan(): void
@@ -729,6 +793,32 @@ final class DeletionImpactParityTest extends KernelTestCase
     {
         self::bootKernel();
         $this->em = self::getContainer()->get(EntityManagerInterface::class);
+    }
+
+    /**
+     * Les colonnes qu'une étape traite, et comment. Les étapes composées qui effacent par une
+     * colonne la nomment ici ; celles qui travaillent dans du JSON ou par case n'en traitent aucune.
+     *
+     * @return array<string, OnDelete> « Entité.champ » => geste
+     */
+    private function columnsHandledBy(CascadeStep $step): array
+    {
+        if ($step instanceof ScopedConstraintStep) {
+            return ['Constraint.scopeTargetId' => OnDelete::DELETE];
+        }
+        if ($step instanceof SharedTrainingBlockPruneStep) {
+            return ['SharedTrainingBlockTeam.teamId' => OnDelete::DELETE];
+        }
+        if (!$step instanceof DeleteByFieldStep && !$step instanceof ClearFieldStep) {
+            return [];
+        }
+
+        return [$this->describe($step) => $step instanceof DeleteByFieldStep ? OnDelete::DELETE : OnDelete::CLEAR];
+    }
+
+    private function shortName(string $class): string
+    {
+        return substr((string) strrchr('\\' . $class, '\\'), 1);
     }
 
     private function describe(object $step): string

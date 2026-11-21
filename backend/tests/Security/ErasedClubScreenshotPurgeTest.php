@@ -25,7 +25,7 @@ use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
  * effacé ne doit garder AUCUNE donnée personnelle, image comprise.
  *
  * `PurgeCompletenessTest` garde la COMPLÉTUDE table par table (la ligne `feedback` est dans
- * `PURGED_BY_CLUB`) ; ce test-ci garde le BLOB, invisible à ce balayage de tables.
+ * `FamilyCatalog::purgedWithClub()`) ; ce test-ci garde le BLOB, invisible à ce balayage de tables.
  *
  * Falsifiable : sans suppression du blob par le purger, la capture reste lisible après
  * l'effacement (ROUGE).

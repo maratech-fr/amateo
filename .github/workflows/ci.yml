@@ -1311,12 +1311,19 @@ jobs:
           FILES="$FILES tests/Security/ClubActivityTraceTest.php"
           # Axe tenant isolation (BCK-24/BCK-38) — garde de COMPLÉTUDE des purges : toute entité
           # tenant doit être purgée (par saison, par club) ou nommément exclue AVEC sa raison, pour
-          # la rétention/reset de saison ET pour l'effacement RGPD (art. 17). Le test DÉRIVE des
-          # constantes des deux purgers — une entité tenant nouvelle tombe en échec par défaut.
+          # la rétention/reset de saison ET pour l'effacement RGPD (art. 17). Le test DÉRIVE de la
+          # déclaration des familles (FamilyCatalog) — une entité tenant nouvelle tombe en échec par
+          # défaut — et exige que les purges exécutent ce que le catalogue dit, sans liste à elles.
           # Falsifié : une table tenant NI purgée NI exclue (comme opponent_travel au 2026-09-18)
           # fait rougir. Non bloquant jusqu'ici (tournait dans backend-tests, après le gate) : promu
           # step NOMMÉ car il garde une promesse LÉGALE (une donnée personnelle promise détruite).
           FILES="$FILES tests/Security/PurgeCompletenessTest.php"
+          # Axe tenant isolation (lot conception 1, PR 4b) — l'ordre RÉELLEMENT exécuté par l'effacement
+          # d'un club efface chaque enfant avant le parent que sa clé étrangère réelle (pg_constraint)
+          # lui lie, et chaque famille purgée par son propriétaire avant lui. Les clés étant toutes
+          # CASCADE ou SET NULL, un mauvais ordre ne lève aucune erreur : la cascade emporte l'enfant
+          # hors de la purge et de son compte rendu. Même raison de promotion que PurgeCompletenessTest.
+          FILES="$FILES tests/Integration/PurgeOrderRespectsForeignKeysTest.php"
           # Axe tenant isolation (lot conception 1, PR 4a) — chaque famille d'objets se déclare une fois :
           # toute entité porte #[Family], toute colonne guid hors id/clubId/seasonId porte #[RefersTo],
           # aucun cycle entre références « meurt avec », le catalogue rend ce qui est déclaré et range

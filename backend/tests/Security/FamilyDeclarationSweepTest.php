@@ -4,6 +4,13 @@ declare(strict_types=1);
 
 namespace App\Tests\Security;
 
+use App\Entity\CalendarEntry;
+use App\Entity\CoachWish;
+use App\Entity\CoachWishCampaign;
+use App\Entity\CoachWishMutualization;
+use App\Entity\ConstraintConflict;
+use App\Entity\PeriodReminderLog;
+use App\Entity\Schedule;
 use App\Structure\Family;
 use App\Structure\FamilyCatalog;
 use App\Structure\OnDelete;
@@ -35,7 +42,7 @@ use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
  *     enfant avant le parent dont il meurt.
  *
  * Angle jumeau, cité : `PurgeCompletenessTest` (toute entité tenant purgée ou exclue avec sa raison,
- * lu dans les constantes des purgers) — ici la déclaration, là la couverture de la purge.
+ * et la purge exécute ce que le catalogue dit) — ici la déclaration, là la couverture de la purge.
  */
 #[Group('phase1')]
 final class FamilyDeclarationSweepTest extends KernelTestCase
@@ -192,6 +199,28 @@ final class FamilyDeclarationSweepTest extends KernelTestCase
             "FamilyCatalog::purgedWithSeason() efface un parent avant l'enfant qui meurt avec lui :\n  - %s",
             implode("\n  - ", $inverted),
         ));
+    }
+
+    /**
+     * `owner: true` décide de la boucle par laquelle une famille quitte la purge de saison (par la
+     * saison de son propriétaire, avant lui) : les cinq propriétaires sont figés ici, nommément. En
+     * ajouter, en retirer ou en déplacer un change ce qu'une purge efface, et se décide en changeant
+     * cette liste. Remplace `FamilyCatalogMatchesPurgeListsTest::testPurgedViaOwnerIsThePurgeByTheParent`
+     * (lot conception 1, PR 4b).
+     */
+    public function testTheFamiliesPurgedThroughTheirOwnerAreTheFiveKnown(): void
+    {
+        $expected = [
+            CoachWish::class => ['calendarEntryId', CalendarEntry::class],
+            CoachWishCampaign::class => ['calendarEntryId', CalendarEntry::class],
+            CoachWishMutualization::class => ['calendarEntryId', CalendarEntry::class],
+            ConstraintConflict::class => ['scheduleId', Schedule::class],
+            PeriodReminderLog::class => ['calendarEntryId', CalendarEntry::class],
+        ];
+        $actual = $this->catalog()->purgedViaOwner();
+        ksort($actual);
+
+        self::assertSame($expected, $actual);
     }
 
     public function testAnUndeclaredClassIsRefusedLoudly(): void
