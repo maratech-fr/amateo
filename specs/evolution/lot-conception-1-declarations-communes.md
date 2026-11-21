@@ -280,14 +280,14 @@ côté écran.
 1. **Le plus simple** : les deux routes de lecture gardent leur forme, servies par le calcul ; aucun
    fichier de `frontend/`. `TeamTagResolver::teamIdsByTagName` et `TagTeamIdsMirrorParityTest` restent.
 2. **Supprime dans ce lot** : l'écouteur, la commande de rattrapage, toute l'écriture
-   (`TeamTagService.php:59-133`, `:245-423`), les deux dépôts, le bloc `Seed/BcclSeeder.php:1141-1148`.
+   (`TeamTagService.php:59-133`, `:245-423`), le bloc `Seed/BcclSeeder.php:1141-1148`.
    **Garde** : `ageBracketsFor`, `isYouthTeam`.
 3. **Ne change pas dans ce lot** :
    - `StructureSnapshotter` et `StructureRestorer` **ne sont pas modifiés**. La photo continue d'écrire
      ses dix familles, catégories et rattachements compris ; « Charger » les efface et les réinsère
      comme aujourd'hui.
-   - Les rattachements d'étiquettes sont **supprimés avec leur équipe**, mais sans être annoncés
-     (étape muette de `CascadePlan`).
+   - La suppression d'une équipe n'est pas modifiée ; l'étape de `CascadePlan` et sa ligne « N étiquettes »
+     partent à la PR 1 du lot 3.
    - Les deux tables et leurs entités restent jusqu'à la première PR du lot 3 (§4), qui les supprime dans la
      même mise en production.
 4. **Limite écrite** (décision du 2026-11-21) : « Jusqu'au lot 5, charger une version remet les
@@ -365,25 +365,24 @@ Avec l'accord du fondateur (F11). Détail au §11. Seul un écart **attribué à
 - **Étiquettes** : `TeamTagResolver` calcule « nom → équipes » ; les deux routes sont servies par le calcul ;
   l'écouteur et la commande de rattrapage disparaissent ; les deux tables et leurs entités restent. Une
   commande de contrôle jetable compare l'enregistré au calculé (§5).
-- **Suppression d'une équipe** : l'étape `CascadePlan.php:78` reste et devient **muette** (plus de libellé) :
-  les rattachements partent avec l'équipe, rien n'est annoncé (décision F10 : la ligne « N étiquettes »
-  quitte la fenêtre).
 - **« Charger » n'est pas modifié** (décision du 2026-11-21) : la PR écrit la limite du §3.3 point 4 dans
   `etat-des-lieux.md` §2 et en condition d'entrée du lot 5.
 - **Fichiers** : `Service/TeamTagService.php`, `Service/TeamTagResolver.php`, `ApiResource/TeamTag*Resource.php`,
   `State/Provider/TeamTag*StateProvider.php` (sans `AbstractStateProvider::provideItem`),
-  `ConstraintStateProcessor.php:319-323`, `Deletion/CascadePlan.php:78`, `Seed/BcclSeeder.php:1141-1148`,
-  `Command/VerifyStoredTeamTagsCommand.php` (neuf), `specs/courantes/openapi-snapshot.json` ; supprimés :
-  `TeamTagSyncListener.php`, `ResyncTeamTagsCommand.php`, les deux dépôts ; commentaires à réécrire :
-  `SeasonTransitionService.php:598-611` et son docblock de classe, `CacheInvalidationListener.php:99`,
-  `DeleteByFieldStep.php:14`. **Non modifiés : `StructureRestorer.php`, `StructureSnapshotter.php`,
-  `FfbbEngagementsController.php`.** **Aucun fichier de `frontend/`.**
-- **Tests** : §7. Fichiers : `TeamTagScopeTest`, `DeletionImpactParityTest` (dont `SILENT_STEPS`, `:86`),
-  `tests/Behat/CategoryRuleContext.php`, `une-regle-de-categorie-suit-ses-equipes.feature`,
+  `ConstraintStateProcessor.php:319-323`, `Seed/BcclSeeder.php:1141-1148`,
+  `Command/VerifyStoredTeamTagsCommand.php` (neuf), `EventListener/TeamTagMemoResetListener.php` (neuf),
+  `config/services.yaml` (`kernel.reset` sur `TeamTagResolver`), `specs/courantes/openapi-snapshot.json` ;
+  supprimés : `TeamTagSyncListener.php`, `ResyncTeamTagsCommand.php` ; commentaires à réécrire :
+  `SeasonTransitionService.php:598-611` et son docblock de classe, `CacheInvalidationListener.php:99`.
+  **Non modifiés : `StructureRestorer.php`, `StructureSnapshotter.php`, `CascadePlan.php`,
+  `DeleteByFieldStep.php`, les dépôts, `FfbbEngagementsController.php`.** **Aucun fichier de `frontend/`.**
+- **Tests** : §7. Fichiers : `TeamTagScopeTest`, `TeamTagAssignmentReadIsolationTest` (neuf),
+  `TeamTagResolverMemoResetTest` (neuf), `VerifyStoredTeamTagsCommandTest` (neuf), `TeamTagServiceTest`,
+  `FfbbLevelAlignmentTest`, `ScheduleConstraintBuilderTest` et ses variantes (`AgeFields`, `CtcNeutrality`,
+  `Overlay`), `tests/Behat/CategoryRuleContext.php`, `une-regle-de-categorie-suit-ses-equipes.feature`,
   `AccessDeclarationSweepTest.php:233`, `:708`, `OpenApiSnapshotMatchesTheLiveContractTest`,
   `TsFieldsMatchOpenApiSchemaTest` (à relire), `SeasonTransitionServiceTest:187-191`, `:713-720` (à relire),
-  `ResyncTeamTagsCommandTest` (supprimé), `PeriodGatePayloadParityTest`, `ScheduleConstraintBuilderOverlayTest`,
-  `PeriodConstraintSelectorTest`.
+  `ResyncTeamTagsCommandTest` (supprimé), `PeriodGatePayloadParityTest`.
 
 ### PR 4a · « Chaque famille se déclare, aucun comportement ne change »
 
@@ -401,7 +400,7 @@ Avec l'accord du fondateur (F11). Détail au §11. Seul un écart **attribué à
 - **Fichiers** : `SeasonDataPurger.php`, `ErasedClubPurger.php`, l'ADR, `adr-index.md`.
 - **Tests** : `PurgeCompletenessTest` (relit le catalogue, reste bloquant),
   `tests/Integration/PurgeOrderRespectsForeignKeysTest.php` (neuf, lit `pg_constraint`), un cas de
-  complétude dans `DeletionImpactParityTest` (`TeamTagAssignment.teamId` y figure par son étape muette).
+  complétude dans `DeletionImpactParityTest` (`TeamTagAssignment.teamId` y figure par son étape).
 
 ### PR 5 · « Les constats tranchés »
 
@@ -424,8 +423,14 @@ Avec l'accord du fondateur (F11). Détail au §11. Seul un écart **attribué à
 - **Où elle vit** : première PR du lot 3, condition d'entrée écrite dans sa fiche. Elle supprime les tables dans
   **la même mise en production** que le lot 1 (décision du 2026-11-21 : déploiement unique ; la dérogation à
   `docs/ops/deploy.md` § « Règle d'écriture des migrations » est portée par la procédure unique, plan du lot 3, §6).
-- **Contenu** : `DROP TABLE team_tag_assignment, team_tag` ; entités, entrées de purge, étape muette de
-  `CascadePlan`, rattachements dans la photo et la restauration, commande de contrôle : retirés ;
+- **Contenu** : `DROP TABLE team_tag_assignment, team_tag` ; entités, dépôts (`Repository/TeamTag*`), entrées de
+  purge, étape de `CascadePlan` et sa ligne « N étiquettes » (F10), `DeleteByFieldStep.php:14` (commentaire),
+  `DeletionImpactParityTest`/`SILENT_STEPS`, rattachements dans la photo et la restauration, commande de
+  contrôle : retirés ; à recaler : `ReadOnlyRoleTest.php:135-140` et `:287-325` (lisent `team_tag`),
+  `scripts/prod-read.sh:54`, `docs/ops/deploy.md:474` (exemples sur `team_tag`),
+  `PurgeSeasonsCommandTest.php:81`, `:206-213` ; cas de test neuf : « Charger une photo d'avant qui porte
+  encore la clé `TeamTagAssignment` réussit après suppression de l'entité » (`StructureRestorer.php:104-105`
+  ignore une clé inconnue) ;
   `RlsIsolationTest` prend `team` pour étalon. Migration déclarée irréversible.
 
 ### Retour arrière : une seule procédure pour tout le lot conception
@@ -513,7 +518,7 @@ d'aujourd'hui, pour mémoire (décision F5 : on ne déclare que ce qu'une purge 
 | `Fixture`, `Competition`, `MatchModuleVisit`, `MatchPlacementRun`, `ConflictResolution`, `ConflictMailReceipt`, `ConflictMailing`, `FbiIngestion`, `FbiCorrection`, `HolidayReminderLog` | Saison | Non | Non | La saison ; match et engagement : l'équipe |
 | `SportCategory` | Club | Reste | Écrite et relue (inchangé dans ce lot) | Le club |
 | `TeamTag` | Club | Reste | Non | Le club ; supprimée au lot 3 |
-| `TeamTagAssignment` | Saison | Non | Oui, jusqu'à la suppression des tables | La saison, l'équipe (sans annonce) ; supprimée au lot 3 |
+| `TeamTagAssignment` | Saison | Non | Oui, jusqu'à la suppression des tables | La saison, l'équipe ; supprimée au lot 3 |
 | `ClubUser`, `Feedback`, `SolverMetric`, `ClubTravelCache`, `OpponentVenueLink`, `ClubMailboxMessage`, `ClubInvitation` | Club | Reste | Non | Le club |
 | `AuditLog` | Club | Reste | Non | Jamais par la purge (`ErasedClubPurger.php:56`) |
 | `Season` | Club | Non | Non | Le club ; gardée par la remise à zéro |
@@ -537,9 +542,8 @@ Classement de `OpponentDirectoryEntry`, `OpponentVenueSuggestion`, `SharedCompet
 | 9 | 3 | La règle « les U13 ne commencent pas avant 19:30 » part pour les trois équipes U13 et aucune autre, et la génération l'honore | Même feature, étapes inchangées ; références 7 et 8 inchangées |
 | 10 | 3 | Une catégorie modifiée change les groupes de toutes les saisons qui l'emploient ; une version non validée s'y dit périmée ; un planning validé ne dit rien | `TeamTagScopeTest`, cas neuf à deux saisons |
 | 11 | 3 | Les étiquettes d'un club ne contiennent jamais une équipe d'un autre club, bien que l'identifiant « U13 » soit le même partout (abus) | `TeamTagScopeTest::testTagsNeverCarryAnotherClubsTeam` (bloquant) |
-| 12 | 3 | Supprimer une équipe n'annonce plus d'étiquettes, **supprime toujours ses rattachements**, et annonce le reste comme avant | `DeletionImpactParityTest` (bloquant) ; `TeamTagAssignment.teamId` entre dans `SILENT_STEPS` (`:86`) |
 | 13 | 3 | Une règle qui cible un groupe inconnu est refusée : « Le groupe « X » n'existe pas dans ce club. » | Test existant du refus, à localiser (`ConstraintStateProcessor.php:319-323`) |
-| 14 | 3 | Un jeune reste reconnu pour l'alignement de niveau FFBB | `tests/Security/FfbbLevelAlignmentTest.php`, inchangé |
+| 14 | 3 | Un jeune reste reconnu pour l'alignement de niveau FFBB | `tests/Security/FfbbLevelAlignmentTest.php`, relu sur le calculé |
 | 15 | 3 | La commande de contrôle sort 0 sur une base saine et 1 en désignant une équipe dont l'enregistré diffère, saison archivée comprise | `tests/Integration/Command/VerifyStoredTeamTagsCommandTest.php` |
 | 16 | 3 | Le contrat d'API figé suit : trois champs et une route en moins | `OpenApiSnapshotMatchesTheLiveContractTest` ; `TsFieldsMatchOpenApiSchemaTest` vert sans toucher l'écran |
 | 17 | 4a | Toute entité porte `#[Family]` ; toute colonne `guid` hors `id`, `clubId`, `seasonId` porte `#[RefersTo]` ; aucun cycle « meurt avec » ; le catalogue rend les familles des trois constantes de purge | `tests/Security/FamilyDeclarationSweepTest.php` (bloquant) ; `tests/Integration/FamilyCatalogMatchesPurgeListsTest.php` |
@@ -549,7 +553,7 @@ Classement de `OpponentDirectoryEntry`, `OpponentVenueSuggestion`, `SharedCompet
 | 21 | 5 | Supprimer un gymnase emporte les contraintes qui le nomment, et l'annonce | `supprimer-emporte-ce-qui-en-depend.feature` : « Et l'équipe « U15M1 » a une règle qui lui impose le « Gymnase Nord » » ; « Alors la suppression du « Gymnase Nord » annonce 1 contrainte qui nomme ce gymnase » ; « Et plus aucune règle ne nomme le « Gymnase Nord » » ; parité dans `DeletionImpactParityTest` |
 | 22 | 5 | Préparer une seconde fois : « La saison suivante existe déjà. », saison désignée | `preparer-la-saison-suivante-reprend-la-structure.feature`, ligne du message |
 | 23 | 5 | Aucune saison ne naît hors de « préparer » (abus) | `la-saison-suivante-se-prepare-a-partir-du-1er-mai.feature`, scénario neuf « Créer une saison par l'API est refusé » ; lignes retirées de `ManagementRoleTest:138` et `MemberWriteSweepTest:121` |
-| 24 | lot 3 | Les deux tables d'étiquettes n'existent plus ; l'isolation reste prouvée ; photo et restauration perdent la famille ensemble | `RlsIsolationTest` (bloquant), étalon `team` ; `StructureFamiliesStayInSyncTest` reste vert |
+| 24 | lot 3 | Les deux tables d'étiquettes n'existent plus ; l'isolation reste prouvée ; photo et restauration perdent la famille ensemble ; supprimer une équipe n'annonce plus d'étiquettes et ne laisse aucun rattachement ; charger une photo d'avant qui porte encore la clé `TeamTagAssignment` réussit | `RlsIsolationTest` (bloquant), étalon `team` ; `StructureFamiliesStayInSyncTest` reste vert ; `DeletionImpactParityTest` (bloquant) ; cas de test « Charger » d'avant |
 
 Restent verts sans modification, à chaque PR : `preparer-la-saison-suivante-reprend-la-structure.feature`
 (tableau de comptes de copie existant), `OverlayManagerBlockPurgeTest`, les six références d'origine,
@@ -567,7 +571,7 @@ prouvées par les lignes 12 et 21.
 | Photo d'une version | `StructureSnapshotter.php:74-85` | La restauration du code en place | 10 familles écrites, 10 relues | **Inchangé** |
 | Étiquettes d'une équipe | Avant : `TeamTagSyncListener.php:65-124`. Après : personne | `TeamTagResolver.php:235-298` → constructeur, sélecteur de période, saisie de règle ; `FfbbEngagementsController.php:172`, `:338` ; écran | Filtre de club, RLS, filtre de saison à l'écriture | Filtre de club et RLS sur `team` et `sport_category` ; plus de frontière de saison ; tables tenues sans orphelin jusqu'à leur suppression (PR 1 du lot 3) |
 | « Charger » → catégories du club → groupes de l'autre saison | `StructureRestorer.php:274`, `:104-118`, pour tout le club | Toutes les saisons, par les étiquettes ; le module matchs, par les durées | Le défaut est masqué par les étiquettes enregistrées | **Limite écrite (§14), levée au lot 5** : plus de masque, le groupe d'âge d'une catégorie disparue manque |
-| Rattachements à la suppression d'une équipe | `CascadePlan.php:78` | `DeletionImpactCounter` → `delete-confirm.tsx:89-91` | Supprimés et annoncés | Supprimés, non annoncés |
+| Rattachements à la suppression d'une équipe | `CascadePlan.php:78` | `DeletionImpactCounter` → `delete-confirm.tsx:89-91` | Supprimés et annoncés | Inchangé dans le lot 1 ; étape et ligne « N étiquettes » retirées à la PR 1 du lot 3 (tables supprimées) |
 | Empreinte de structure d'un plan | `SchedulePlanProvisioner::structureHashOfPlan` | `GET /api/schedule_plans/{id}/structure-hash` → `staleness.ts` | Bouge quand une étiquette est réécrite | Bouge dès qu'une catégorie change, pour toute saison qui a une règle de groupe |
 | Cache de la demande | `ScheduleConstraintBuilder.php:260-268`, `:328-333` (à relire) | Les trois guichets | Invalidation par club | Inchangé |
 | Suppression d'un gymnase | `EntityCascadeDeleter` | `DeletionImpactCounter` | Refus si un match y est placé (`VenueStateProcessor.php:58-60`) ; gymnase imposé de l'équipe vidé | Idem, puis les règles qui le nomment partent |
@@ -590,8 +594,8 @@ prouvées par les lignes 12 et 21.
   - *Après ce lot* (limite écrite, §14) : elles perdent leur groupe d'âge ; « Groupe Baby · pas après 18:30 »
     ne les vise plus ; aucun message. Levé au lot 5, où une version ne touche plus que son plan.
 - **Modifier le nom ou les âges d'une catégorie** : aucun écran, `PUT /api/sport_categories/{id}` ou support.
-- **Supprimer une équipe.** La fenêtre liste séances, réservations, liens, sans « étiquettes ». Annuler : rien
-  ne part.
+- **Supprimer une équipe.** Inchangé dans le lot 1 ; à la PR 1 du lot 3, la fenêtre liste séances, réservations,
+  liens, sans « étiquettes ». Annuler : rien ne part.
 - **Supprimer un gymnase nommé par une règle.** Wizard, contraintes : « U15M1 s'entraîne au Gymnase Nord »
   (permis : `ConstraintStateProcessor.php:354-372`). Wizard, gymnases : supprimer ; la fenêtre annonce « 1
   contrainte qui nomme ce gymnase ». Confirmer : la règle part. Annuler : rien. Variante période : la bascule de
@@ -606,7 +610,7 @@ prouvées par les lignes 12 et 21.
 | Une catégorie modifiée vaut pour toutes les saisons ; les versions non validées s'y disent périmées | Décision F0 ; ligne 10 |
 | Une équipe aux étiquettes enregistrées périmées, ou sans catégorie, est lue autrement | `app:team-tags:verify-stored` sur la copie de production n° 1 |
 | Couleur ou axe d'une étiquette différents du catalogue ; étiquette ou règle hors catalogue | Même commande ; mesures du §13 |
-| La ligne « N étiquettes » quitte la fenêtre de suppression | Voulu (F10) ; ligne 12 |
+| La ligne « N étiquettes » quitte la fenêtre de suppression | Voulu (F10), à la PR 1 du lot 3 ; ligne 24 |
 | Un club sans équipe qui crée une règle de groupe par l'API reçoit « Le ciblage « U13 » ne désigne aucune équipe cette saison… » au lieu de « Le groupe « U13 » n'existe pas dans ce club. » | Limite écrite (§14) |
 | « Charger » une version ancienne rend un autre jour de match | Ligne 5 |
 | Un écart de lecture d'heure après unification | Ligne 3 ; miroirs inchangés |
@@ -742,7 +746,7 @@ Pour mémoire, la procédure : clé déverrouillée par le fondateur (`ssh-add -
 - **Documentation** : `lot-conception-decoupage.md` (fiche du lot 1 ; conditions d'entrée des lots 3 et 5),
   `etat-des-lieux.md`, `lot-conception-filet.md` §9, `docs/ops/deploy.md` (purge seulement ; la procédure de mise en production unique est écrite par la dernière PR avant la PR finale),
   `blocking-tests.md`, `test-coverage-map.md`, `docs/security/rls.md`, `docs/security/rgpd.md:73`,
-  `backend/docs/backend-inventory.md:112`, `backend/docs/commands.md`, `backend/docs/constraints.md`,
+  `backend/docs/backend-inventory.md:112`, `backend/docs/constraints.md`,
   `backend/docs/constraint-config-keys.md`, `backend/docs/TENANT.md`, `docs/glossary.md`, `openapi-snapshot.json`,
   ADR neuf et `adr-index.md`, `backend/AGENTS.md`, `.claude/rules/backend.md`. (Numéros de ligne de cette liste :
   à relire.)
