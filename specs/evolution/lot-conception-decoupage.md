@@ -145,9 +145,9 @@ peuvent avancer dans un espace de travail à part pendant qu'un lot principal at
       reçoit le 409 « 1er mai » sans l'identifiant de la saison existante. Ne concerne que les
       saisons créées par le point précédent ; se referme avec lui.
 - **Conditions d'entrée** (héritées du lot 0, [`lot-conception-filet.md`](lot-conception-filet.md)) :
-  - **Automatiser la purge de `cache.schedule` au déploiement** : aujourd'hui une étape manuelle
-    (`docs/ops/deploy.md`), acceptable pour le lot 0 seulement. Le déploiement programmé tourne sans
-    personne, et l'ancienne stack tourne encore entre la migration et le redémarrage des services.
+  - **Purge de `cache.schedule` au déploiement automatisée** (PR 1 du lot) : `scripts/remote-deploy.sh`
+    la lance après « Deploy … OK » ; un échec laisse le déploiement réussi, avec une alerte au journal
+    et la commande à relancer à la main (`docs/ops/deploy.md`).
   - **La procédure de copie de la production** (§7 du filet) est la preuve de ce lot : accord du
     fondateur à chaque restauration, restauration qui garde les droits d'`amateo_app` et la RLS,
     dump effacé à la fin. Les trous de l'enregistrement (§6 du filet) sont à relire avant de

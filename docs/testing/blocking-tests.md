@@ -409,6 +409,14 @@ cascade à la suppression du plan, saison intacte à la validation/réouverture 
 chargement d'une version, dormantes avec leur gymnase, passage de saison, purge de saison, impact de
 suppression d'un gymnase. Chute attendue si l'occupation sort de la purge des réglages ancrés [cas
 plan frère] ou si le chargement d'une version les efface) ·
+`Integration/EngineRequestReferenceTest` (axes *generation pipeline* + *backend↔engine contract*, lot
+conception 1 PR 1 — la demande que le moteur reçoit ne change pas quand on réorganise le code qui la
+compose : le corps reçu par un moteur simulé, sur le rail réel [handler de génération ou de placement,
+`EngineClient` réel], est comparé à l'octet aux références de `tests/Fixtures/engine-requests/` — socle
+brouillon et régénéré, période sur place et comblée, placement club entier et sur une semaine, règles de
+groupe sous leurs trois formes avec le jour de match enregistré d'une équipe sans habitude, règle de
+groupe datée d'un plan de période. Chute attendue si une règle de groupe vise d'autres équipes ou si le
+jour de match émis change ; le Lot Gate ne joue que cette suite) ·
 `Integration/Api/ParcImportExecuteTest` (axe *tenant isolation*, GO fondateur 2026-10-30 — incident
 d'un club pilote, PR A import du parc : la redéfinition de la composition d'une séance commune par le canal
 `corrections.equipes` [liste ≥ 2 d'UUID d'équipe DU CLUB, ou `import:<index>` vers une ligne Équipes

@@ -14,7 +14,8 @@
 #      running untouched — without --no-deps compose would recreate them on
 #      the new images BEFORE the migration proved itself)
 #   5. up -d --wait + health probes
-#   6. only then pin VERSION into .env.prod
+#   6. only then pin VERSION into .env.prod, then purge the cache.schedule pool
+#      (both branches; never fails the deploy)
 #   7. realign the schedule structure hashes (never fails the deploy)
 #
 # First install (no postgres data volume): nothing to protect — pull,
@@ -117,6 +118,14 @@ else
 fi
 
 echo "==> Deploy $VERSION OK"
+
+# Purge du cache des demandes au moteur (docs/ops/deploy.md) : une écriture SQL de
+# migration n'invalide pas le pool `cache.schedule`, et l'ancienne stack a pu y remettre
+# une demande d'avant la migration entre `migrate` et `up -d --wait`. Après le `fi` :
+# couvre l'installation existante ET la première installation. ⚠ set -e + trap ERR : un
+# échec ne DOIT PAS faire échouer un deploy déjà réussi → `|| echo …` (alerte, pas d'exit).
+"${COMPOSE[@]}" exec -T php-fpm php bin/console cache:pool:clear cache.schedule </dev/null \
+  || echo "==> ⚠ CACHE DES DEMANDES NON PURGÉ (sans effet sur le déploiement) : une demande au moteur peut dater d'avant la migration pendant 4 h au plus. Relancer à la main : docker exec amateo-php-fpm php bin/console cache:pool:clear cache.schedule" >&2
 
 # 7. Réalignement des empreintes de planning après l'allègement du contrat moteur
 # (docs/ops/deploy.md) : sans lui, tout planning non validé paraît « périmé ». Le

@@ -176,12 +176,9 @@ reçois le fichier » et « tout en file » (lot 10).
 ## 9. Règle de purge du cache au déploiement
 
 Après toute migration qui réécrit une table lue par le constructeur de demande, le payload du socle
-reste servi du cache pendant 4 h (`ScheduleConstraintBuilder.php:59`, lecture `:260-268`). Étape
-manuelle, écrite dans [`deploy.md`](../../docs/ops/deploy.md) § « Étape post-déploiement
-OBLIGATOIRE — purger le cache des demandes au moteur » : `bin/console cache:pool:clear cache.schedule`,
-exécutée **À LA MAIN** par celui qui déploie, juste après le succès de `scripts/remote-deploy.sh`.
-
-**Acceptable pour le lot 0 SEULEMENT.** Au lot 1 c'est une condition d'entrée à automatiser (fiche
-du lot 1 dans `lot-conception-decoupage.md`) : le déploiement programmé tourne sans personne, et
-l'ancienne stack tourne encore entre la migration et le redémarrage des services
-(`scripts/remote-deploy.sh`, `migrate` puis `up -d --wait`).
+reste servi du cache pendant 4 h (`ScheduleConstraintBuilder.php:59`, lecture `:260-268`).
+**Automatisée** : `scripts/remote-deploy.sh` lance `bin/console cache:pool:clear cache.schedule`
+après « Deploy … OK », dans ses deux branches. Un échec ne fait pas échouer le déploiement : il écrit
+une alerte au journal, et la purge se relance alors à la main ([`deploy.md`](../../docs/ops/deploy.md)
+§ « Purge du cache des demandes au moteur »). Limite : le cache peut rester périmé 4 h au plus quand
+l'alerte passe inaperçue.

@@ -1401,6 +1401,12 @@ jobs:
           # purge, impact de suppression d'un gymnase. Sans ce gate, un plan frère portant deux jeux
           # d'occupations ou un chargement qui les efface passerait tous les checks requis.
           FILES="$FILES tests/Integration/VenueOccupancyLifecycleTest.php"
+          # NR d'axes GENERATION PIPELINE + BACKEND↔ENGINE CONTRACT (lot conception 1, PR 1) — la demande
+          # au moteur ne change pas quand on réorganise le code qui la compose : des demandes réelles
+          # (socle, période, comblement, placement, règles de groupe, jour de match enregistré) figées à
+          # l'octet contre tests/Fixtures/engine-requests/. Le Lot Gate ne joue que cette suite : sans ce
+          # gate, une PR de lot qui changerait la demande en silence passerait tous ses checks.
+          FILES="$FILES tests/Integration/EngineRequestReferenceTest.php"
           docker compose exec -T -e APP_ENV=test php-fpm sh -c "cd /app/backend && php -d memory_limit=1G vendor/bin/phpunit --group phase1 $FILES"
 
       # Axe tenant isolation (GO fondateur 2026-10-30, incident d'un club pilote, PR A import du parc) — la
