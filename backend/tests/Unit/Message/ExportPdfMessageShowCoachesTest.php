@@ -48,4 +48,16 @@ final class ExportPdfMessageShowCoachesTest extends TestCase
 
         self::assertFalse($legacy->getShowCoaches(), 'un message legacy (champ absent) vaut « ne pas afficher les coachs »');
     }
+
+    /**
+     * Même garde legacy pour l'identifiant de demande : un message enfilé avant lui se lit `null`
+     * (jamais pris pour une redélivrance, `PdfCreditIsTakenOnDeliveryTest::testALegacyMessageWithoutRequestIdIsNeverTakenForARedelivery`),
+     * jamais une exception qui ferait planter le worker au déploiement.
+     */
+    public function testALegacyPayloadWithoutTheRequestIdReadsAsNull(): void
+    {
+        $legacy = new ReflectionClass(ExportPdfMessage::class)->newInstanceWithoutConstructor();
+
+        self::assertNull($legacy->getRequestId());
+    }
 }
