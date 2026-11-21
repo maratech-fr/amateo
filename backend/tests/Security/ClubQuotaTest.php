@@ -265,8 +265,11 @@ final class ClubQuotaTest extends WebTestCase
 
     private function exportRequestEvent(string $clubId): RequestEvent
     {
-        $request = new Request;
-        $request->attributes->set('_route', 'api_fixtures_export_pdf');
+        // Ce que le routeur pose (`_route`, `_controller`) : le seau se lit sur la sortie déclarée.
+        $router = self::getContainer()->get(RouterInterface::class);
+        \assert($router instanceof RouterInterface);
+        $request = Request::create('/api/fixtures/export-pdf', 'POST');
+        $request->attributes->add($router->matchRequest($request));
         $request->attributes->set('_club_id', $clubId);
 
         return new RequestEvent(self::$kernel, $request, HttpKernelInterface::MAIN_REQUEST);
