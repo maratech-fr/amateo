@@ -71,11 +71,17 @@ Les deux purgers ne tiennent **aucune liste propre** : ils lisent la déclaratio
 - purge de saison (`SeasonDataPurger`) : `FamilyCatalog::purgedViaOwner()` (familles résolues
   par la saison de leur propriétaire, effacées d'abord), puis `::purgedWithSeason()` (par
   `club_id`+`season_id`, chaque enfant avant le parent dont il meurt) ; `SeasonDataPurger::HANDLED_APART`
-  garde les cas particuliers (`team_tag_assignment` bornée par la saison seule, la ligne `Season`
-  elle-même) ; une famille épargnée porte `#[Family(keptAtSeasonPurge: …)]`.
+  garde les cas particuliers (`team_tag_assignment` et `holiday_reminder_log` bornées par la saison
+  seule, la ligne `Season` elle-même) ; une famille épargnée porte `#[Family(keptAtSeasonPurge: …)]`.
 - effacement du club (`ErasedClubPurger`) : chaque saison par la purge ci-dessus, puis
   `FamilyCatalog::purgedWithClub()` (niveau club, par `club_id`) ; une famille épargnée porte
   `#[Family(keptAtErasure: …)]` (`audit_log`, `coach_wish_token`).
+- filet du catalogue : une famille de niveau club, saison, plan ou version qui n'entre dans
+  aucune de ces listes, ne déclare aucune épargne et n'est pas un cas nommé (`Season`,
+  `HANDLED_APART`, `FamilyCatalog::OUTSIDE_THE_PURGE_LOOPS` : `club`, `transition_reminder_log`)
+  fait lever une `LogicException` qui la nomme — par exemple une famille qui désignerait son club
+  par une association plutôt que par une colonne `clubId`, et sortirait sinon de l'effacement en
+  silence.
 
 Le compte rendu d'audit (`CLUB_PURGED` / `SEASON_RESET`, `rowsDeleted`) compte chaque ligne
 effacée, créneaux et occupations d'un plan de période compris (l'ordre de purge les efface avant

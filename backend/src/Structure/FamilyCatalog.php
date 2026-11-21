@@ -4,7 +4,10 @@ declare(strict_types=1);
 
 namespace App\Structure;
 
+use App\Entity\Club;
 use App\Entity\Season;
+use App\Entity\TransitionReminderLog;
+use App\Service\SeasonDataPurger;
 use Doctrine\ORM\EntityManagerInterface;
 use LogicException;
 use ReflectionClass;
@@ -25,8 +28,25 @@ final class FamilyCatalog
     /** Niveaux dont les familles portent `clubId` + `seasonId` et suivent la purge de saison. */
     private const array SEASON_LEVELS = [Level::SEASON, Level::PLAN, Level::VERSION];
 
+    /** Niveaux dont une famille doit être purgée, épargnée avec sa raison, ou nommée ici. */
+    private const array TENANT_LEVELS = [Level::CLUB, Level::SEASON, Level::PLAN, Level::VERSION];
+
+    /**
+     * Familles de niveau tenant qu'aucune boucle de purge n'efface et qui ne déclarent pas
+     * d'épargne — chacune nommée avec sa raison (les tables traitées à part par la purge de saison
+     * se lisent dans {@see SeasonDataPurger::HANDLED_APART}).
+     *
+     * @var array<class-string, string>
+     */
+    private const array OUTSIDE_THE_PURGE_LOOPS = [
+        Club::class => 'la racine du tenant : l\'effacement GARDE la fiche (identité publique FFBB) et en vide l\'état d\'abonnement et le siège',
+        TransitionReminderLog::class => 'journal d\'envoi des rappels de bascule, clé par saison sans club_id : jamais purgé aujourd\'hui (comportement conservé)',
+    ];
+
     /** @var array<class-string, Family>|null */
     private ?array $families = null;
+
+    private bool $tenantFamiliesAccountedFor = false;
 
     /** @var list<array{class: class-string, field: string, refersTo: RefersTo}>|null */
     private ?array $references = null;
@@ -60,19 +80,9 @@ final class FamilyCatalog
      */
     public function purgedWithSeason(): array
     {
-        $viaOwner = $this->purgedViaOwner();
-        $candidates = [];
-        foreach ($this->families() as $class => $family) {
-            if (\in_array($family->level, self::SEASON_LEVELS, true)
-                && $this->hasColumns($class, 'clubId', 'seasonId')
-                && !isset($viaOwner[$class])
-                && null === $family->keptAtSeasonPurge
-            ) {
-                $candidates[] = $class;
-            }
-        }
+        $this->assertEveryTenantFamilyIsAccountedFor();
 
-        return $this->childrenFirst($candidates);
+        return $this->seasonFamilies();
     }
 
     /**
@@ -105,18 +115,9 @@ final class FamilyCatalog
      */
     public function purgedWithClub(): array
     {
-        $purged = [];
-        foreach ($this->families() as $class => $family) {
-            if (Level::CLUB === $family->level
-                && self::SEASON_PIVOT !== $class
-                && $this->hasColumns($class, 'clubId')
-                && null === $family->keptAtErasure
-            ) {
-                $purged[] = $class;
-            }
-        }
+        $this->assertEveryTenantFamilyIsAccountedFor();
 
-        return $purged;
+        return $this->clubFamilies();
     }
 
     /**
@@ -136,6 +137,78 @@ final class FamilyCatalog
         }
 
         return $found;
+    }
+
+    /** @return list<class-string> */
+    private function seasonFamilies(): array
+    {
+        $viaOwner = $this->purgedViaOwner();
+        $candidates = [];
+        foreach ($this->families() as $class => $family) {
+            if (\in_array($family->level, self::SEASON_LEVELS, true)
+                && $this->hasColumns($class, 'clubId', 'seasonId')
+                && !isset($viaOwner[$class])
+                && null === $family->keptAtSeasonPurge
+            ) {
+                $candidates[] = $class;
+            }
+        }
+
+        return $this->childrenFirst($candidates);
+    }
+
+    /** @return list<class-string> */
+    private function clubFamilies(): array
+    {
+        $purged = [];
+        foreach ($this->families() as $class => $family) {
+            if (Level::CLUB === $family->level
+                && self::SEASON_PIVOT !== $class
+                && $this->hasColumns($class, 'clubId')
+                && null === $family->keptAtErasure
+            ) {
+                $purged[] = $class;
+            }
+        }
+
+        return $purged;
+    }
+
+    /**
+     * Une famille de niveau club, saison, plan ou version que ni la purge de saison ni
+     * l'effacement n'emporte, qui ne déclare aucune épargne, n'a pas de propriétaire et n'est pas
+     * un cas nommé, survivrait en silence à l'effacement RGPD — par exemple une famille qui désigne
+     * son club par une association plutôt que par une colonne `clubId`. On refuse plutôt que d'omettre.
+     */
+    private function assertEveryTenantFamilyIsAccountedFor(): void
+    {
+        if ($this->tenantFamiliesAccountedFor) {
+            return;
+        }
+
+        $accounted = array_fill_keys([
+            ...$this->seasonFamilies(),
+            ...$this->clubFamilies(),
+            ...array_keys($this->purgedViaOwner()),
+            ...array_keys(self::OUTSIDE_THE_PURGE_LOOPS),
+            self::SEASON_PIVOT,
+        ], true);
+        $handledApart = SeasonDataPurger::HANDLED_APART;
+
+        foreach ($this->families() as $class => $family) {
+            if (!\in_array($family->level, self::TENANT_LEVELS, true)
+                || isset($accounted[$class])
+                || null !== $family->keptAtSeasonPurge
+                || null !== $family->keptAtErasure
+                || isset($handledApart[$this->entityManager->getClassMetadata($class)->getTableName()])
+            ) {
+                continue;
+            }
+
+            throw new LogicException(\sprintf('%s (niveau %s) n\'entre dans aucune purge : ni la purge de saison (colonnes clubId + seasonId), ni l\'effacement (colonne clubId), ni par un propriétaire, et ne déclare aucune épargne (#[Family(keptAtSeasonPurge: …, keptAtErasure: …)]).', $class, $family->level->name));
+        }
+
+        $this->tenantFamiliesAccountedFor = true;
     }
 
     /** @return array<class-string, Family> */

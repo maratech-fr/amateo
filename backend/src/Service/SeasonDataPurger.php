@@ -40,6 +40,7 @@ final class SeasonDataPurger
      */
     public const HANDLED_APART = [
         'team_tag_assignment' => 'purgé par season_id seul (BCK-11 : porte un club_id mais le périmètre reste la saison, RLS borne le club)',
+        'holiday_reminder_log' => 'sans club_id ni RLS, clé par saison (uuid propre au club) : vidé par season_id seul, le palier repart après un reset',
         'season' => 'la ligne pivot elle-même — supprimée conditionnellement ($deleteSeasonRow : purge de rétention / effacement, jamais le reset)',
     ];
 

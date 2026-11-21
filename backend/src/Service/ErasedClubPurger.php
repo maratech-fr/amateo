@@ -165,14 +165,6 @@ final class ErasedClubPurger
     }
 
     /**
-     * P4-209(b) — décrémente le compteur PARTAGÉ pour chaque appariement MANUAL du club
-     * qui épingle un gymnase fédéral (`venue_external_ref` non nul), AVANT que la purge ne
-     * supprime ces liens. Sémantique identique à l'ancien décrément d'opponent_travel
-     * (MANUAL + ref effectif seuls ; le décrément est idempotent, GREATEST(0, …)). SQL brut :
-     * les lignes sont supprimées en DQL de masse juste après, on ne veut pas d'entités
-     * gérées. Tourne sous le GUC du club (RLS borne la table tenant).
-     */
-    /**
      * Détruit les captures d'écran (blobs hors table) des signalements du club, AVANT le DELETE
      * de masse de leurs lignes. Tourne sous le GUC du club (RLS borne la table tenant) ; on ne
      * lit que les ids des lignes porteuses d'une capture (`has_screenshot = TRUE`).
@@ -190,6 +182,14 @@ final class ErasedClubPurger
         }
     }
 
+    /**
+     * P4-209(b) — décrémente le compteur PARTAGÉ pour chaque appariement MANUAL du club
+     * qui épingle un gymnase fédéral (`venue_external_ref` non nul), AVANT que la purge ne
+     * supprime ces liens. Sémantique identique à l'ancien décrément d'opponent_travel
+     * (MANUAL + ref effectif seuls ; le décrément est idempotent, GREATEST(0, …)). SQL brut :
+     * les lignes sont supprimées en DQL de masse juste après, on ne veut pas d'entités
+     * gérées. Tourne sous le GUC du club (RLS borne la table tenant).
+     */
     private function decrementSharedVenueChoices(string $clubId): void
     {
         /** @var list<array{opponent_organisme_code: string, venue_external_ref: string}> $rows */
