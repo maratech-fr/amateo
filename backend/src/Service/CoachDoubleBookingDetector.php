@@ -15,6 +15,7 @@ use App\Entity\Venue;
 use App\Entity\VenueTravelTime;
 use App\Enum\ConstraintFamily;
 use App\Enum\TeamCoachRole;
+use App\Support\WeeklySlot;
 use Doctrine\ORM\EntityManagerInterface;
 
 /**
@@ -89,8 +90,7 @@ final class CoachDoubleBookingDetector
             && $a['teamId'] !== $b['teamId']
             && $a['venueId'] !== $b['venueId']
             && $a['dayOfWeek'] === $b['dayOfWeek']
-            && $a['startMinutes'] < $b['startMinutes'] + $b['durationMinutes']
-            && $b['startMinutes'] < $a['startMinutes'] + $a['durationMinutes'];
+            && WeeklySlot::intervalsOverlap($a['startMinutes'], $a['startMinutes'] + $a['durationMinutes'], $b['startMinutes'], $b['startMinutes'] + $b['durationMinutes']);
     }
 
     /**
@@ -338,8 +338,7 @@ final class CoachDoubleBookingDetector
                     continue; // même gymnase = la séance qu'il ouvre, pas un empêchement
                 }
                 $start = $booking['startMinutes'];
-                $end = $start + $booking['durationMinutes'];
-                if ($start < $windowEnd && $windowStart < $end) {
+                if (WeeklySlot::intervalsOverlap($start, $start + $booking['durationMinutes'], $windowStart, $windowEnd)) {
                     $busyElsewhere = true;
                     break;
                 }
@@ -473,8 +472,7 @@ final class CoachDoubleBookingDetector
     private static function overlaps(array $a, array $b): bool
     {
         return $a['dayOfWeek'] === $b['dayOfWeek']
-            && $a['startMinutes'] < $b['startMinutes'] + $b['durationMinutes']
-            && $b['startMinutes'] < $a['startMinutes'] + $a['durationMinutes'];
+            && WeeklySlot::intervalsOverlap($a['startMinutes'], $a['startMinutes'] + $a['durationMinutes'], $b['startMinutes'], $b['startMinutes'] + $b['durationMinutes']);
     }
 
     /**
@@ -1008,7 +1006,7 @@ final class CoachDoubleBookingDetector
     /** La case (gymnase, jour, minute de début) d'une réservation — clé de co-localisation. */
     private function caseKey(Reservation $reservation): string
     {
-        $start = (int) $reservation->getStartTime()->format('H') * 60 + (int) $reservation->getStartTime()->format('i');
+        $start = WeeklySlot::minutesOf($reservation->getStartTime());
 
         return $reservation->getVenueId() . '|' . $reservation->getDayOfWeek() . '|' . $start;
     }
@@ -1022,7 +1020,7 @@ final class CoachDoubleBookingDetector
      */
     private function coachBlockedDuring(string $coachId, Reservation $reservation, array $blocked): bool
     {
-        $start = (int) $reservation->getStartTime()->format('H') * 60 + (int) $reservation->getStartTime()->format('i');
+        $start = WeeklySlot::minutesOf($reservation->getStartTime());
         $end = $start + $reservation->getDurationMinutes();
         foreach ($blocked[$coachId] ?? [] as [$day, $fromMinutes, $untilMinutes]) {
             if ($day !== $reservation->getDayOfWeek() || $start >= $untilMinutes || $fromMinutes >= $end) {
@@ -1048,8 +1046,7 @@ final class CoachDoubleBookingDetector
         return $a['teamId'] !== $b['teamId']
             && $a['venueId'] !== $b['venueId']
             && $a['dayOfWeek'] === $b['dayOfWeek']
-            && $a['startMinutes'] < $b['startMinutes'] + $b['durationMinutes']
-            && $b['startMinutes'] < $a['startMinutes'] + $a['durationMinutes'];
+            && WeeklySlot::intervalsOverlap($a['startMinutes'], $a['startMinutes'] + $a['durationMinutes'], $b['startMinutes'], $b['startMinutes'] + $b['durationMinutes']);
     }
 
     /**
@@ -1063,7 +1060,7 @@ final class CoachDoubleBookingDetector
             'teamId' => $reservation->getTeamId() ?? '',
             'venueId' => $reservation->getVenueId(),
             'dayOfWeek' => $reservation->getDayOfWeek(),
-            'startMinutes' => (int) $reservation->getStartTime()->format('H') * 60 + (int) $reservation->getStartTime()->format('i'),
+            'startMinutes' => WeeklySlot::minutesOf($reservation->getStartTime()),
             'durationMinutes' => $reservation->getDurationMinutes(),
         ];
     }
@@ -1207,7 +1204,7 @@ final class CoachDoubleBookingDetector
 
     private function startMinutesOf(Reservation $reservation): int
     {
-        return (int) $reservation->getStartTime()->format('H') * 60 + (int) $reservation->getStartTime()->format('i');
+        return WeeklySlot::minutesOf($reservation->getStartTime());
     }
 
     /**

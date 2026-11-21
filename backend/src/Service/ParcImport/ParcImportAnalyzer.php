@@ -18,6 +18,7 @@ use App\Service\PlanEntitlements;
 use App\Service\ReservationGroupOccupancy;
 use App\Service\SoloBudget;
 use App\Service\SoloReservationBudget;
+use App\Support\WeeklySlot;
 use Doctrine\ORM\EntityManagerInterface;
 
 /**
@@ -845,8 +846,7 @@ final class ParcImportAnalyzer
             }
             if ($other['venueKey'] === $window['venueKey']
                 && $other['day'] === $window['day']
-                && $window['start'] < $other['end']
-                && $other['start'] < $window['end']) {
+                && WeeklySlot::intervalsOverlap($window['start'], $window['end'], $other['start'], $other['end'])) {
                 return true;
             }
         }

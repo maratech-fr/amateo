@@ -10,6 +10,7 @@ use App\Entity\ScheduleSlotTemplate;
 use App\Entity\Team;
 use App\Entity\Venue;
 use App\Enum\LockLevel;
+use App\Support\WeeklySlot;
 use DateTimeImmutable;
 use DateTimeInterface;
 use Doctrine\ORM\EntityManagerInterface;
@@ -166,7 +167,7 @@ final readonly class SecondSessionSameDayDetector
     private function overlapsAny(array $place, array $others): bool
     {
         foreach ($others as $other) {
-            if ($place['from'] < $other['to'] && $other['from'] < $place['to']) {
+            if (WeeklySlot::intervalsOverlap($place['from'], $place['to'], $other['from'], $other['to'])) {
                 return true;
             }
         }
@@ -337,7 +338,7 @@ final readonly class SecondSessionSameDayDetector
         $from = $start->format('H:i');
         $to = DateTimeImmutable::createFromInterface($start)->modify(\sprintf('+%d minutes', $durationMinutes))->format('H:i');
 
-        $minutes = (int) $start->format('G') * 60 + (int) $start->format('i');
+        $minutes = WeeklySlot::minutesOf($start);
 
         return ['start' => $from, 'venue' => $venueNames[$venueId], 'text' => \sprintf('%s-%s à %s', $from, $to, $venueNames[$venueId]), 'from' => $minutes, 'to' => $minutes + $durationMinutes];
     }

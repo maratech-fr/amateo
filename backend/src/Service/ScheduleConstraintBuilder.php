@@ -1455,11 +1455,9 @@ final class ScheduleConstraintBuilder
      * `max(habitudes ∪ rotations)` sur les données migrées, chaque membre de rotation étant
      * devenu une habitude le MÊME jour).
      *
-     * Repli — équipe SANS habitude : le champ déclaré `Team.matchDay`, stocké 0-based (0 = lundi,
-     * `TeamInput` valide 0..6), CONVERTI en ISO (+1) pour alimenter la MÊME formule moteur (sans
-     * conversion, un `matchDay=5` samedi produisait un repos samedi au lieu de dimanche — bug
-     * dormant). Sans champ déclaré non plus → null (comportement d'aujourd'hui). Le champ n'est
-     * PAS supprimé (repli legacy, zéro migration, conversion à l'émission SEULE).
+     * Repli — équipe SANS habitude : le champ déclaré `Team.matchDay`, stocké de 1 (lundi) à 7
+     * (dimanche) comme le moteur le lit (`TeamInput` valide 1..7), émis TEL QUEL. Sans champ déclaré
+     * non plus → null.
      */
     private function deriveMatchDay(Team $team, string $seasonId): ?int
     {
@@ -1477,10 +1475,8 @@ final class ScheduleConstraintBuilder
             return max($days);
         }
 
-        // Repli legacy : champ déclaré 0-based (0 = lundi) → ISO (+1) ; null reste null.
-        $declared = $team->getMatchDay();
-
-        return null === $declared ? null : $declared + 1;
+        // Repli : le champ déclaré, déjà de 1 à 7 ; null reste null.
+        return $team->getMatchDay();
     }
 
     /** @return array<string, mixed> */

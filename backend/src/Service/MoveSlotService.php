@@ -29,6 +29,7 @@ use App\Exception\SwapCrossScheduleException;
 use App\Exception\SwapWithSelfException;
 use App\Exception\TeamAlreadyAtCaseException;
 use App\Exception\TeamAlreadyTrainsThatDayException;
+use App\Support\WeeklySlot;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
 use InvalidArgumentException;
@@ -977,7 +978,7 @@ final class MoveSlotService
             'teamId' => $slot->getTeamId(),
             'venueId' => $slot->getVenueId(),
             'dayOfWeek' => $slot->getDayOfWeek(),
-            'startMinutes' => (int) $slot->getStartTime()->format('H') * 60 + (int) $slot->getStartTime()->format('i'),
+            'startMinutes' => WeeklySlot::minutesOf($slot->getStartTime()),
             'durationMinutes' => $slot->getDurationMinutes(),
         ];
         $playing = [];
@@ -1351,10 +1352,10 @@ final class MoveSlotService
     /** Deux fenêtres [start, start+durée[ (minutes depuis minuit) se chevauchent-elles ? */
     private function overlaps(DateTimeImmutable $startA, int $durationA, DateTimeImmutable $startB, int $durationB): bool
     {
-        $aStart = (int) $startA->format('G') * 60 + (int) $startA->format('i');
-        $bStart = (int) $startB->format('G') * 60 + (int) $startB->format('i');
+        $aStart = WeeklySlot::minutesOf($startA);
+        $bStart = WeeklySlot::minutesOf($startB);
 
-        return $aStart < $bStart + $durationB && $bStart < $aStart + $durationA;
+        return WeeklySlot::intervalsOverlap($aStart, $aStart + $durationA, $bStart, $bStart + $durationB);
     }
 
     /**

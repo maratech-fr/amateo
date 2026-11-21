@@ -67,11 +67,10 @@
 > **`matchDay` DÉRIVÉ (« le repos suit l'image »)** : le backend n'émet plus le champ
 > déclaré brut. `matchDay = max(jours ISO des habitudes de l'équipe ∪ jours ISO des rotations dont
 > elle est membre)` — le DERNIER jour de match de la semaine, car le repos qui compte est celui
-> d'après lui. Sans image (ni habitude ni rotation), repli sur le champ déclaré `Team.matchDay`
-> **converti 0-based → ISO (+1)** : le moteur calcule `rest_day = match_day % 7 + 1`, juste en ISO
-> seulement (sans conversion, un samedi déclaré donnait un repos samedi au lieu de dimanche). Sans
-> rien → `null`. La valeur émise reste ISO 1..7 ; conversion à l'émission seule, zéro migration, le
-> champ déclaré survit en repli legacy.
+> d'après lui. Sans image (ni habitude ni rotation), repli sur le champ déclaré `Team.matchDay`,
+> **enregistré de 1 (lundi) à 7 (dimanche)** (`TeamInput` refuse le reste) et émis tel quel : le
+> moteur calcule `rest_day = match_day % 7 + 1`, juste dans cette numérotation seulement. Sans rien →
+> `null`.
 
 ## Synthèse des trous restants (❌ / 🟡)
 

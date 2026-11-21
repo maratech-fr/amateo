@@ -47,8 +47,8 @@ class TeamInput
     #[Groups(['write'])]
     public ?int $maxSessionsPerDay = null;
 
-    // Day-of-week 0..6 (0 = Monday). Rejects the "matchDay = 99" the audit flagged.
-    #[Assert\Range(min: 0, max: 6)]
+    // Jour de la semaine de 1 (lundi) à 7 (dimanche), la numérotation que le moteur lit.
+    #[Assert\Range(notInRangeMessage: 'Le jour de match doit être compris entre 1 (lundi) et 7 (dimanche).', min: 1, max: 7)]
     #[Groups(['write'])]
     public ?int $matchDay = null;
 
