@@ -7,6 +7,10 @@ namespace App\Entity;
 use App\Enum\ImplicitRuleIntensity;
 use App\Enum\ImplicitRuleKey;
 use App\Repository\ImplicitRuleSettingRepository;
+use App\Structure\Family;
+use App\Structure\Level;
+use App\Structure\OnDelete;
+use App\Structure\RefersTo;
 use DateTimeImmutable;
 use Doctrine\ORM\Mapping as ORM;
 
@@ -24,6 +28,7 @@ use Doctrine\ORM\Mapping as ORM;
  * (`ImplicitRuleResolver` : `resolve` pour la saison, `resolveForPlan` pour un plan). Unicité
  * (club, saison, plan, règle) avec NULLS NOT DISTINCT (la migration porte le prédicat exact).
  */
+#[Family(Level::SEASON)]
 #[ORM\Entity(repositoryClass: ImplicitRuleSettingRepository::class)]
 #[ORM\Table(name: 'implicit_rule_setting')]
 // Colonnes de l'unicité seulement — le NULLS NOT DISTINCT (indispensable pour que deux réglages
@@ -62,6 +67,7 @@ class ImplicitRuleSetting implements TenantOwnedInterface
      * emporte ses lignes par la purge applicative, pas par une cascade base.
      */
     #[ORM\Column(type: 'guid', nullable: true)]
+    #[RefersTo(SchedulePlan::class, OnDelete::DELETE)]
     private ?string $schedulePlanId = null;
 
     #[ORM\Column(length: 40, enumType: ImplicitRuleKey::class)]

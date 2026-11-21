@@ -4,6 +4,10 @@ declare(strict_types=1);
 
 namespace App\Entity;
 
+use App\Structure\Family;
+use App\Structure\Level;
+use App\Structure\OnDelete;
+use App\Structure\RefersTo;
 use DateTimeImmutable;
 use Doctrine\ORM\Mapping as ORM;
 
@@ -17,6 +21,7 @@ use Doctrine\ORM\Mapping as ORM;
  * (unique), replaced on regeneration; purged with the schedule's artifacts and
  * by SeasonDataPurger.
  */
+#[Family(Level::VERSION)]
 #[ORM\Entity]
 #[ORM\Table(name: 'schedule_structure_snapshot')]
 #[ORM\UniqueConstraint(name: 'uniq_structure_snapshot_schedule', columns: ['schedule_id'])]
@@ -41,6 +46,7 @@ class ScheduleStructureSnapshot implements TenantOwnedInterface
     private string $seasonId;
 
     #[ORM\Column(type: 'guid')]
+    #[RefersTo(Schedule::class, OnDelete::DELETE)]
     private string $scheduleId;
 
     /** @var array<string, list<array<string, mixed>>> entity family (short class name) → serialized rows */

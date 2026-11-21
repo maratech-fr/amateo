@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace App\Entity;
 
 use App\Repository\ClubLeagueWindowRepository;
+use App\Structure\Family;
+use App\Structure\Level;
 use DateTimeImmutable;
 use Doctrine\ORM\Mapping as ORM;
 
@@ -29,6 +31,7 @@ use Doctrine\ORM\Mapping as ORM;
  * tip-off, NOT a match duration. Copied on season transition (the manager's
  * corrections renew with the season, like habits / access windows).
  */
+#[Family(Level::SEASON)]
 #[ORM\Entity(repositoryClass: ClubLeagueWindowRepository::class)]
 #[ORM\Table(name: 'club_league_window')]
 #[ORM\UniqueConstraint(name: 'uniq_club_league_window', columns: ['club_id', 'season_id', 'category', 'level', 'gender', 'day_of_week', 'kickoff_min'])]

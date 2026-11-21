@@ -4,6 +4,10 @@ declare(strict_types=1);
 
 namespace App\Entity;
 
+use App\Structure\Family;
+use App\Structure\Level;
+use App\Structure\OnDelete;
+use App\Structure\RefersTo;
 use DateTimeImmutable;
 use Doctrine\ORM\Mapping as ORM;
 
@@ -25,6 +29,7 @@ use Doctrine\ORM\Mapping as ORM;
  * `coachId` est NULLABLE : supprimer un coach DÉ-ATTRIBUE sa doléance (l'info d'équipe
  * reste utile au plan) plutôt que de la détruire.
  */
+#[Family(Level::SEASON)]
 #[ORM\Entity]
 #[ORM\Table(name: 'coach_wish')]
 #[ORM\UniqueConstraint(name: 'uniq_coach_wish', columns: ['calendar_entry_id', 'team_id', 'week_start'])]
@@ -52,6 +57,7 @@ class CoachWish implements TenantOwnedInterface
 
     /** La MÈRE des vacances (kind=PERIOD, periodType=HOLIDAY, parentEntryId=null). */
     #[ORM\Column(type: 'guid')]
+    #[RefersTo(CalendarEntry::class, OnDelete::DELETE, owner: true)]
     private string $calendarEntryId;
 
     /** Le lundi de la semaine visée (une doléance = une équipe × une semaine). */
@@ -59,10 +65,12 @@ class CoachWish implements TenantOwnedInterface
     private DateTimeImmutable $weekStart;
 
     #[ORM\Column(type: 'guid')]
+    #[RefersTo(Team::class, OnDelete::DELETE)]
     private string $teamId;
 
     /** null = doléance dé-attribuée (le coach a été supprimé). */
     #[ORM\Column(type: 'guid', nullable: true)]
+    #[RefersTo(Coach::class, OnDelete::CLEAR)]
     private ?string $coachId = null;
 
     /** Nombre de créneaux souhaités cette semaine ; 0 = « rien ». */

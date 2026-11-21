@@ -4,6 +4,10 @@ declare(strict_types=1);
 
 namespace App\Entity;
 
+use App\Structure\Family;
+use App\Structure\Level;
+use App\Structure\OnDelete;
+use App\Structure\RefersTo;
 use DateTimeImmutable;
 use Doctrine\ORM\Mapping as ORM;
 
@@ -27,6 +31,7 @@ use Doctrine\ORM\Mapping as ORM;
  * nettoyée de ce tableau (il n'a aucune intégrité référentielle, aucun effet solveur) — elle
  * est simplement ignorée à l'affichage, qui résout les ids en noms depuis les équipes vivantes.
  */
+#[Family(Level::SEASON)]
 #[ORM\Entity]
 #[ORM\Table(name: 'coach_wish_mutualization')]
 #[ORM\UniqueConstraint(name: 'uniq_coach_wish_mutualization', columns: ['calendar_entry_id', 'team_id'])]
@@ -54,13 +59,16 @@ class CoachWishMutualization implements TenantOwnedInterface
 
     /** La MÈRE des vacances (kind=PERIOD, periodType=HOLIDAY, parentEntryId=null). */
     #[ORM\Column(type: 'guid')]
+    #[RefersTo(CalendarEntry::class, OnDelete::DELETE, owner: true)]
     private string $calendarEntryId;
 
     #[ORM\Column(type: 'guid')]
+    #[RefersTo(Team::class, OnDelete::DELETE)]
     private string $teamId;
 
     /** null = demande dé-attribuée (le coach a été supprimé). */
     #[ORM\Column(type: 'guid', nullable: true)]
+    #[RefersTo(Coach::class, OnDelete::CLEAR)]
     private ?string $coachId = null;
 
     /**

@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace App\Entity;
 
 use App\Repository\ReleaseNoteRepository;
+use App\Structure\Family;
+use App\Structure\Level;
 use DateTimeImmutable;
 use Doctrine\ORM\Mapping as ORM;
 
@@ -22,6 +24,7 @@ use Doctrine\ORM\Mapping as ORM;
  * `body`. A formatted note carries `bodyRich` (whitelisted ProseMirror JSON) and `body`
  * is then its server-derived plain-text mirror.
  */
+#[Family(Level::PLATFORM)]
 #[ORM\Entity(repositoryClass: ReleaseNoteRepository::class)]
 #[ORM\Table(name: 'release_note')]
 #[ORM\Index(name: 'idx_release_note_published_at', columns: ['published_at'])]

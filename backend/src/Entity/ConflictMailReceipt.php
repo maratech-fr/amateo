@@ -7,6 +7,10 @@ namespace App\Entity;
 use App\Repository\ConflictMailReceiptRepository;
 use App\Service\ConflictCoachMailing;
 use App\Service\SeasonDataPurger;
+use App\Structure\Family;
+use App\Structure\Level;
+use App\Structure\OnDelete;
+use App\Structure\RefersTo;
 use DateTimeImmutable;
 use Doctrine\ORM\Mapping as ORM;
 
@@ -21,6 +25,7 @@ use Doctrine\ORM\Mapping as ORM;
  * ({@see ConflictMailReceiptRepository}) dans la même transaction que la mémoire
  * {@see ConflictMailing} ; purgée avec la saison ({@see SeasonDataPurger}).
  */
+#[Family(Level::SEASON)]
 #[ORM\Entity(repositoryClass: ConflictMailReceiptRepository::class)]
 #[ORM\Table(name: 'conflict_mail_receipt')]
 #[ORM\UniqueConstraint(name: 'uniq_conflict_mail_receipt', columns: ['club_id', 'season_id', 'fingerprint', 'coach_id'])]
@@ -41,6 +46,7 @@ class ConflictMailReceipt implements TenantOwnedInterface
     private string $fingerprint;
 
     #[ORM\Column(type: 'guid')]
+    #[RefersTo(Coach::class, OnDelete::DELETE)]
     private string $coachId;
 
     #[ORM\Column(type: 'string', length: 40)]

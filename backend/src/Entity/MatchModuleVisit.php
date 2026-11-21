@@ -5,6 +5,10 @@ declare(strict_types=1);
 namespace App\Entity;
 
 use App\Repository\MatchModuleVisitRepository;
+use App\Structure\Family;
+use App\Structure\Level;
+use App\Structure\OnDelete;
+use App\Structure\RefersTo;
 use DateTimeImmutable;
 use Doctrine\ORM\Mapping as ORM;
 
@@ -28,6 +32,7 @@ use Doctrine\ORM\Mapping as ORM;
  * elle est SUPPRIMÉE au DELETE de compte (AccountErasureService), et exportée dans
  * la portabilité RGPD (horodatages = donnée personnelle).
  */
+#[Family(Level::SEASON)]
 #[ORM\Entity(repositoryClass: MatchModuleVisitRepository::class)]
 #[ORM\Table(name: 'match_module_visit')]
 #[ORM\UniqueConstraint(name: 'uniq_match_module_visit_scope', columns: ['club_id', 'season_id', 'user_id'])]
@@ -48,6 +53,7 @@ class MatchModuleVisit implements TenantOwnedInterface
     private string $seasonId;
 
     #[ORM\Column(type: 'guid')]
+    #[RefersTo(User::class, OnDelete::CUSTOM, 'à l\'effacement du compte, ses visites sont supprimées dans chaque club d\'adhésion (AccountErasureService)')]
     private string $userId;
 
     /**

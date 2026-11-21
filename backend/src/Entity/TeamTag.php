@@ -6,9 +6,12 @@ namespace App\Entity;
 
 use App\Enum\TeamTagAxis;
 use App\Repository\TeamTagRepository;
+use App\Structure\Family;
+use App\Structure\Level;
 use DateTimeImmutable;
 use Doctrine\ORM\Mapping as ORM;
 
+#[Family(Level::CLUB, keptAtSeasonPurge: 'club-scoped sans saison — porte de sortie ErasedClubPurger')]
 #[ORM\Entity(repositoryClass: TeamTagRepository::class)]
 #[ORM\Table(name: 'team_tag')]
 #[ORM\Index(name: 'idx_team_tag_club', columns: ['club_id'])]

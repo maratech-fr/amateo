@@ -7,9 +7,14 @@ namespace App\Entity;
 use App\Enum\LockLevel;
 use App\Enum\LockOrigin;
 use App\Repository\ScheduleSlotTemplateRepository;
+use App\Structure\Family;
+use App\Structure\Level;
+use App\Structure\OnDelete;
+use App\Structure\RefersTo;
 use DateTimeImmutable;
 use Doctrine\ORM\Mapping as ORM;
 
+#[Family(Level::VERSION)]
 #[ORM\Entity(repositoryClass: ScheduleSlotTemplateRepository::class)]
 #[ORM\Table(name: 'schedule_slot_template')]
 // Une équipe ne siège JAMAIS deux fois à la même case dans une version de plan (règle fondateur) ;
@@ -45,15 +50,19 @@ class ScheduleSlotTemplate implements TenantOwnedInterface
     private string $seasonId;
 
     #[ORM\Column(type: 'guid')]
+    #[RefersTo(Schedule::class, OnDelete::DELETE)]
     private string $scheduleId;
 
     #[ORM\Column(type: 'guid')]
+    #[RefersTo(Team::class, OnDelete::DELETE)]
     private string $teamId;
 
     #[ORM\Column(type: 'guid')]
+    #[RefersTo(Venue::class, OnDelete::DELETE)]
     private string $venueId;
 
     #[ORM\Column(type: 'guid', nullable: true)]
+    #[RefersTo(Coach::class, OnDelete::CLEAR)]
     private ?string $coachId = null;
 
     #[ORM\Column(type: 'smallint')]
@@ -94,6 +103,7 @@ class ScheduleSlotTemplate implements TenantOwnedInterface
      * survit jamais à son bloc.
      */
     #[ORM\Column(type: 'guid', nullable: true)]
+    #[RefersTo(SharedTrainingBlock::class, OnDelete::DELETE)]
     private ?string $sharedTrainingBlockId = null;
 
     public function __construct()

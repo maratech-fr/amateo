@@ -5,6 +5,10 @@ declare(strict_types=1);
 namespace App\Entity;
 
 use App\Repository\VenueOccupancyRepository;
+use App\Structure\Family;
+use App\Structure\Level;
+use App\Structure\OnDelete;
+use App\Structure\RefersTo;
 use DateTimeImmutable;
 use Doctrine\ORM\Mapping as ORM;
 
@@ -22,6 +26,7 @@ use Doctrine\ORM\Mapping as ORM;
  * `venueId` : une occupation dont le gymnase est absent de la version chargée DORT (en base,
  * absente de la liste) et revient avec lui.
  */
+#[Family(Level::SEASON)]
 #[ORM\Entity(repositoryClass: VenueOccupancyRepository::class)]
 #[ORM\Table(name: 'venue_occupancy')]
 #[ORM\Index(name: 'idx_venue_occupancy_club_venue', columns: ['club_id', 'venue_id'])]
@@ -50,6 +55,7 @@ class VenueOccupancy implements TenantOwnedInterface
     private string $seasonId;
 
     #[ORM\Column(type: 'guid')]
+    #[RefersTo(Venue::class, OnDelete::DELETE)]
     private string $venueId;
 
     #[ORM\Column(type: 'smallint')]
@@ -65,6 +71,7 @@ class VenueOccupancy implements TenantOwnedInterface
     private string $label = '';
 
     #[ORM\Column(type: 'guid', nullable: true)]
+    #[RefersTo(SchedulePlan::class, OnDelete::DELETE)]
     private ?string $schedulePlanId = null;
 
     public function __construct()

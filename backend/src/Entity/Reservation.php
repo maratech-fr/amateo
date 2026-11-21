@@ -5,6 +5,10 @@ declare(strict_types=1);
 namespace App\Entity;
 
 use App\Repository\ReservationRepository;
+use App\Structure\Family;
+use App\Structure\Level;
+use App\Structure\OnDelete;
+use App\Structure\RefersTo;
 use DateTimeImmutable;
 use Doctrine\ORM\Mapping as ORM;
 
@@ -24,6 +28,7 @@ use Doctrine\ORM\Mapping as ORM;
  * créneau supprimé si 0). Il compte dans la CAPACITÉ (règle (e)), mais est ignoré du budget solo,
  * de la case bloc-complète, du double-booking coach, des doléances et des matchs.
  */
+#[Family(Level::SEASON)]
 #[ORM\Entity(repositoryClass: ReservationRepository::class)]
 #[ORM\Table(name: 'reservation')]
 #[ORM\Index(name: 'idx_reservation_club_season', columns: ['club_id', 'season_id'])]
@@ -62,6 +67,7 @@ class Reservation implements TenantOwnedInterface
      * inv. 6), qui alimente la génération du socle.
      */
     #[ORM\Column(type: 'guid', nullable: true)]
+    #[RefersTo(SchedulePlan::class, OnDelete::DELETE)]
     private ?string $schedulePlanId = null;
 
     /**
@@ -70,6 +76,7 @@ class Reservation implements TenantOwnedInterface
      * libres (team_id NULL) de la même case/portée — « un max par case » gardé par la base.
      */
     #[ORM\Column(type: 'guid', nullable: true)]
+    #[RefersTo(Team::class, OnDelete::DELETE)]
     private ?string $teamId = null;
 
     /**
@@ -80,6 +87,7 @@ class Reservation implements TenantOwnedInterface
     private ?string $label = null;
 
     #[ORM\Column(type: 'guid')]
+    #[RefersTo(Venue::class, OnDelete::DELETE)]
     private string $venueId;
 
     #[ORM\Column(type: 'smallint')]

@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace App\Entity\Basketball;
 
 use App\Repository\Basketball\FfbbCommitteeRepository;
+use App\Structure\Family;
+use App\Structure\Level;
 use DateTimeImmutable;
 use Doctrine\ORM\Mapping as ORM;
 
@@ -16,6 +18,7 @@ use Doctrine\ORM\Mapping as ORM;
  * GLOBAL reference data: NO club_id, NOT tenant-owned (outside RLS), like
  * `club`/`user`. See specs/evolution/import-ffbb-autofill.md §4.
  */
+#[Family(Level::PLATFORM)]
 #[ORM\Entity(repositoryClass: FfbbCommitteeRepository::class)]
 #[ORM\Table(name: 'ffbb_committee')]
 #[ORM\UniqueConstraint(name: 'uniq_ffbb_committee_code', columns: ['code'])]

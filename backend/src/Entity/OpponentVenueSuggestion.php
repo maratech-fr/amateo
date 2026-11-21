@@ -6,6 +6,8 @@ namespace App\Entity;
 
 use App\Enum\OpponentVenueSuggestionSource;
 use App\Repository\OpponentVenueSuggestionRepository;
+use App\Structure\Family;
+use App\Structure\Level;
 use DateTimeImmutable;
 use Doctrine\ORM\Mapping as ORM;
 
@@ -33,6 +35,7 @@ use Doctrine\ORM\Mapping as ORM;
  * FFBB_API vient du calendrier fédéral. Tout ajout de donnée non fédérale-publique
  * ferait de ce partage hors-tenant un vecteur de fuite entre clubs.
  */
+#[Family(Level::PLATFORM)]
 #[ORM\Entity(repositoryClass: OpponentVenueSuggestionRepository::class)]
 #[ORM\Table(name: 'opponent_venue_suggestion')]
 class OpponentVenueSuggestion

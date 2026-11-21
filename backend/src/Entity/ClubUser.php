@@ -6,9 +6,14 @@ namespace App\Entity;
 
 use App\Enum\ClubRole;
 use App\Repository\ClubUserRepository;
+use App\Structure\Family;
+use App\Structure\Level;
+use App\Structure\OnDelete;
+use App\Structure\RefersTo;
 use DateTimeImmutable;
 use Doctrine\ORM\Mapping as ORM;
 
+#[Family(Level::CLUB, keptAtSeasonPurge: 'club-scoped sans saison — porte de sortie ErasedClubPurger')]
 #[ORM\Entity(repositoryClass: ClubUserRepository::class)]
 #[ORM\Table(name: 'club_user')]
 #[ORM\Index(name: 'idx_club_user_club', columns: ['club_id'])]
@@ -35,6 +40,7 @@ class ClubUser implements TenantOwnedInterface
     private string $clubId;
 
     #[ORM\Column(type: 'guid')]
+    #[RefersTo(User::class, OnDelete::CUSTOM, 'à l\'effacement du compte, l\'adhésion est désactivée, jamais supprimée (AccountErasureService)')]
     private string $userId;
 
     /** Colonne fermée à deux valeurs (CHECK en base, migration Version20261120120000). */

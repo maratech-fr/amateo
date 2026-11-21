@@ -6,6 +6,10 @@ namespace App\Entity;
 
 use App\Enum\VenueTravelTimeSource;
 use App\Repository\VenueTravelTimeRepository;
+use App\Structure\Family;
+use App\Structure\Level;
+use App\Structure\OnDelete;
+use App\Structure\RefersTo;
 use DateTimeImmutable;
 use Doctrine\ORM\Mapping as ORM;
 
@@ -30,6 +34,7 @@ use Doctrine\ORM\Mapping as ORM;
  * portent une valeur que quand la minute correspondante est renseignée. Une
  * valeur MANUAL n'est JAMAIS écrasée par l'autofill.
  */
+#[Family(Level::SEASON)]
 #[ORM\Entity(repositoryClass: VenueTravelTimeRepository::class)]
 #[ORM\Table(name: 'venue_travel_time')]
 #[ORM\UniqueConstraint(name: 'uniq_venue_travel_time_couple', columns: ['club_id', 'season_id', 'venue_a_id', 'venue_b_id'])]
@@ -65,9 +70,11 @@ class VenueTravelTime implements TenantOwnedInterface
      * `venueAId` as `venue_aid`, not the `venue_a_id` the migration creates.
      */
     #[ORM\Column(name: 'venue_a_id', type: 'guid')]
+    #[RefersTo(Venue::class, OnDelete::DELETE)]
     private string $venueAId;
 
     #[ORM\Column(name: 'venue_b_id', type: 'guid')]
+    #[RefersTo(Venue::class, OnDelete::DELETE)]
     private string $venueBId;
 
     #[ORM\Column(name: 'driving_minutes', type: 'smallint', nullable: true)]

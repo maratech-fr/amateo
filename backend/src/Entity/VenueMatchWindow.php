@@ -6,6 +6,10 @@ namespace App\Entity;
 
 use App\Repository\VenueMatchWindowRepository;
 use App\Service\MatchConflictDetector;
+use App\Structure\Family;
+use App\Structure\Level;
+use App\Structure\OnDelete;
+use App\Structure\RefersTo;
 use DateTimeImmutable;
 use Doctrine\ORM\Mapping as ORM;
 
@@ -22,6 +26,7 @@ use Doctrine\ORM\Mapping as ORM;
  * fact of one day, never copied, and it does not make a club « adopt » the
  * access windows ({@see MatchConflictDetector::hasWeeklyAccess}).
  */
+#[Family(Level::SEASON)]
 #[ORM\Entity(repositoryClass: VenueMatchWindowRepository::class)]
 #[ORM\Table(name: 'venue_match_window')]
 #[ORM\Index(name: 'idx_venue_match_window_club_season', columns: ['club_id', 'season_id'])]
@@ -50,6 +55,7 @@ class VenueMatchWindow implements TenantOwnedInterface
     private string $seasonId;
 
     #[ORM\Column(type: 'guid')]
+    #[RefersTo(Venue::class, OnDelete::DELETE)]
     private string $venueId;
 
     /**

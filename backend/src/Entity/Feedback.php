@@ -5,6 +5,10 @@ declare(strict_types=1);
 namespace App\Entity;
 
 use App\Repository\FeedbackRepository;
+use App\Structure\Family;
+use App\Structure\Level;
+use App\Structure\OnDelete;
+use App\Structure\RefersTo;
 use DateTimeImmutable;
 use Doctrine\ORM\Mapping as ORM;
 
@@ -24,6 +28,7 @@ use Doctrine\ORM\Mapping as ORM;
  * `status` (untreated/treated) et `treatedAt` sont le rail de traitement côté
  * console superadmin — écrits là, en lecture seule ici.
  */
+#[Family(Level::CLUB, keptAtSeasonPurge: 'club-scoped sans saison — porte de sortie ErasedClubPurger')]
 #[ORM\Entity(repositoryClass: FeedbackRepository::class)]
 #[ORM\Table(name: 'feedback')]
 #[ORM\Index(name: 'idx_feedback_club_created', columns: ['club_id', 'created_at'])]
@@ -46,6 +51,7 @@ class Feedback implements TenantOwnedInterface
     private string $clubId;
 
     #[ORM\Column(type: 'guid')]
+    #[RefersTo(User::class, OnDelete::KEEP, 'un compte n\'est jamais supprimé : son effacement l\'anonymise (AccountErasureService)')]
     private string $userId;
 
     #[ORM\Column(type: 'string', length: 40)]

@@ -5,6 +5,10 @@ declare(strict_types=1);
 namespace App\Entity;
 
 use App\Repository\PeriodReminderLogRepository;
+use App\Structure\Family;
+use App\Structure\Level;
+use App\Structure\OnDelete;
+use App\Structure\RefersTo;
 use DateTimeImmutable;
 use Doctrine\ORM\Mapping as ORM;
 
@@ -15,6 +19,7 @@ use Doctrine\ORM\Mapping as ORM;
  * school_holiday_period reference table). Lets a missed daily run catch up
  * (window match) without ever re-sending the same milestone.
  */
+#[Family(Level::SEASON)]
 #[ORM\Entity(repositoryClass: PeriodReminderLogRepository::class)]
 #[ORM\Table(name: 'period_reminder_log')]
 #[ORM\UniqueConstraint(name: 'uniq_period_reminder', columns: ['calendar_entry_id', 'threshold'])]
@@ -25,6 +30,7 @@ class PeriodReminderLog
     private string $id;
 
     #[ORM\Column(type: 'guid')]
+    #[RefersTo(CalendarEntry::class, OnDelete::DELETE, owner: true)]
     private string $calendarEntryId;
 
     /** Milestone bucket the reminder was sent for: 14, 7 or 3. */

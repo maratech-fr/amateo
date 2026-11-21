@@ -5,9 +5,12 @@ declare(strict_types=1);
 namespace App\Entity;
 
 use App\Repository\SubscriptionPlanRepository;
+use App\Structure\Family;
+use App\Structure\Level;
 use DateTimeImmutable;
 use Doctrine\ORM\Mapping as ORM;
 
+#[Family(Level::PLATFORM)]
 #[ORM\Entity(repositoryClass: SubscriptionPlanRepository::class)]
 #[ORM\Table(name: 'subscription_plan')]
 #[ORM\HasLifecycleCallbacks]

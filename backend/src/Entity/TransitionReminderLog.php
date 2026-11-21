@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace App\Entity;
 
 use App\Repository\TransitionReminderLogRepository;
+use App\Structure\Family;
+use App\Structure\Level;
 use DateTimeImmutable;
 use Doctrine\ORM\Mapping as ORM;
 
@@ -15,6 +17,7 @@ use Doctrine\ORM\Mapping as ORM;
  * pattern as period_reminder_log). Lets a missed run catch up (bucket match)
  * without ever re-sending the same milestone.
  */
+#[Family(Level::SEASON)]
 #[ORM\Entity(repositoryClass: TransitionReminderLogRepository::class)]
 #[ORM\Table(name: 'transition_reminder_log')]
 #[ORM\UniqueConstraint(name: 'uniq_transition_reminder', columns: ['season_id', 'threshold'])]

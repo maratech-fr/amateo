@@ -7,6 +7,10 @@ namespace App\Entity;
 use App\Repository\ConflictMailingRepository;
 use App\Service\ConflictCoachMailing;
 use App\Service\SeasonDataPurger;
+use App\Structure\Family;
+use App\Structure\Level;
+use App\Structure\OnDelete;
+use App\Structure\RefersTo;
 use DateTimeImmutable;
 use Doctrine\ORM\Mapping as ORM;
 
@@ -24,6 +28,7 @@ use Doctrine\ORM\Mapping as ORM;
  * Écrite seulement quand au moins un mail a été enfilé, par upsert SQL
  * ({@see ConflictMailingRepository::upsert}) ; purgée avec la saison ({@see SeasonDataPurger}).
  */
+#[Family(Level::SEASON)]
 #[ORM\Entity(repositoryClass: ConflictMailingRepository::class)]
 #[ORM\Table(name: 'conflict_mailing')]
 #[ORM\UniqueConstraint(name: 'uniq_conflict_mailing_club_season', columns: ['club_id', 'season_id'])]
@@ -43,6 +48,7 @@ class ConflictMailing implements TenantOwnedInterface
     private DateTimeImmutable $sentAt;
 
     #[ORM\Column(type: 'guid', nullable: true)]
+    #[RefersTo(User::class, OnDelete::KEEP, 'un compte n\'est jamais supprimé : son effacement l\'anonymise (AccountErasureService)')]
     private ?string $sentByUserId = null;
 
     /** @var list<string> */

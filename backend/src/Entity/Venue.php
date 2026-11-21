@@ -6,9 +6,12 @@ namespace App\Entity;
 
 use App\Repository\VenueRepository;
 use App\Service\Basketball\VenueLabelNormalizer;
+use App\Structure\Family;
+use App\Structure\Level;
 use DateTimeImmutable;
 use Doctrine\ORM\Mapping as ORM;
 
+#[Family(Level::SEASON)]
 #[ORM\Entity(repositoryClass: VenueRepository::class)]
 #[ORM\Table(name: 'venue')]
 #[ORM\Index(name: 'idx_venue_club_season', columns: ['club_id', 'season_id'])]

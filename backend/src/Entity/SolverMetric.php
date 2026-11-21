@@ -5,6 +5,10 @@ declare(strict_types=1);
 namespace App\Entity;
 
 use App\Repository\SolverMetricRepository;
+use App\Structure\Family;
+use App\Structure\Level;
+use App\Structure\OnDelete;
+use App\Structure\RefersTo;
 use DateTimeImmutable;
 use Doctrine\ORM\Mapping as ORM;
 
@@ -18,6 +22,7 @@ use Doctrine\ORM\Mapping as ORM;
  * `scheduleId` peut donc nommer un planning supprimé — assumé, on ne joint plus :
  * les dimensions d'analyse (planType, tailles) sont dénormalisées à la capture.
  */
+#[Family(Level::CLUB, keptAtSeasonPurge: 'club-scoped sans saison — porte de sortie ErasedClubPurger (télémétrie append-only, décision fondateur 2026-07-18)')]
 #[ORM\Entity(repositoryClass: SolverMetricRepository::class)]
 #[ORM\Table(name: 'solver_metrics')]
 #[ORM\Index(name: 'idx_solver_metrics_club_created', columns: ['club_id', 'created_at'])]
@@ -30,6 +35,7 @@ class SolverMetric implements TenantOwnedInterface
     private string $id;
 
     #[ORM\Column(type: 'guid')]
+    #[RefersTo(Schedule::class, OnDelete::KEEP, 'télémétrie append-only : survit à sa version, dimensions dénormalisées à la capture')]
     private string $scheduleId;
 
     #[ORM\Column(type: 'guid')]

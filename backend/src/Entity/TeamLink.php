@@ -7,6 +7,10 @@ namespace App\Entity;
 use App\Enum\TeamLinkIntensity;
 use App\Enum\TeamLinkType;
 use App\Repository\TeamLinkRepository;
+use App\Structure\Family;
+use App\Structure\Level;
+use App\Structure\OnDelete;
+use App\Structure\RefersTo;
 use DateTimeImmutable;
 use Doctrine\ORM\Mapping as ORM;
 
@@ -23,6 +27,7 @@ use Doctrine\ORM\Mapping as ORM;
  * Cross-module by design (neutral name): matches consume it first, the
  * training solver later (vision). Copied on season transition.
  */
+#[Family(Level::SEASON)]
 #[ORM\Entity(repositoryClass: TeamLinkRepository::class)]
 #[ORM\Table(name: 'team_link')]
 #[ORM\UniqueConstraint(name: 'uniq_team_link_couple', columns: ['club_id', 'season_id', 'team_a_id', 'team_b_id'])]
@@ -58,9 +63,11 @@ class TeamLink implements TenantOwnedInterface
      * `teamAId` as `team_aid`, not the `team_a_id` the migration creates.
      */
     #[ORM\Column(name: 'team_a_id', type: 'guid')]
+    #[RefersTo(Team::class, OnDelete::DELETE)]
     private string $teamAId;
 
     #[ORM\Column(name: 'team_b_id', type: 'guid')]
+    #[RefersTo(Team::class, OnDelete::DELETE)]
     private string $teamBId;
 
     #[ORM\Column(length: 20, enumType: TeamLinkType::class)]

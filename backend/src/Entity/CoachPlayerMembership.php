@@ -5,9 +5,14 @@ declare(strict_types=1);
 namespace App\Entity;
 
 use App\Repository\CoachPlayerMembershipRepository;
+use App\Structure\Family;
+use App\Structure\Level;
+use App\Structure\OnDelete;
+use App\Structure\RefersTo;
 use DateTimeImmutable;
 use Doctrine\ORM\Mapping as ORM;
 
+#[Family(Level::SEASON)]
 #[ORM\Entity(repositoryClass: CoachPlayerMembershipRepository::class)]
 #[ORM\Table(name: 'coach_player_membership')]
 #[ORM\Index(name: 'idx_coach_player_membership_club_season', columns: ['club_id', 'season_id'])]
@@ -37,9 +42,11 @@ class CoachPlayerMembership implements TenantOwnedInterface
     private string $seasonId;
 
     #[ORM\Column(type: 'guid')]
+    #[RefersTo(Coach::class, OnDelete::DELETE)]
     private string $coachId;
 
     #[ORM\Column(type: 'guid')]
+    #[RefersTo(Team::class, OnDelete::DELETE)]
     private string $teamId;
 
     #[ORM\Column(type: 'string', length: 120, nullable: true)]

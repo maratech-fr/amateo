@@ -4,6 +4,10 @@ declare(strict_types=1);
 
 namespace App\Entity;
 
+use App\Structure\Family;
+use App\Structure\Level;
+use App\Structure\OnDelete;
+use App\Structure\RefersTo;
 use DateTimeImmutable;
 use Doctrine\ORM\Mapping as ORM;
 
@@ -14,6 +18,7 @@ use Doctrine\ORM\Mapping as ORM;
  * usual". Used by the overlay build to drop deactivated constraints; the base plan
  * (and the Constraint's own isActive) are never touched.
  */
+#[Family(Level::PLAN)]
 #[ORM\Entity]
 #[ORM\Table(name: 'constraint_period_override')]
 #[ORM\UniqueConstraint(name: 'uniq_constraint_period_override', columns: ['schedule_plan_id', 'constraint_id'])]
@@ -47,9 +52,11 @@ class ConstraintPeriodOverride implements TenantOwnedInterface
      * que `calendarEntryId` ne saurait pas distinguer.
      */
     #[ORM\Column(type: 'guid')]
+    #[RefersTo(SchedulePlan::class, OnDelete::DELETE)]
     private string $schedulePlanId;
 
     #[ORM\Column(type: 'guid')]
+    #[RefersTo(Constraint::class, OnDelete::DELETE)]
     private string $constraintId;
 
     /** false = the constraint does NOT apply during this period. */

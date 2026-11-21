@@ -6,9 +6,12 @@ namespace App\Entity;
 
 use App\Enum\CoachGender;
 use App\Repository\CoachRepository;
+use App\Structure\Family;
+use App\Structure\Level;
 use DateTimeImmutable;
 use Doctrine\ORM\Mapping as ORM;
 
+#[Family(Level::SEASON)]
 #[ORM\Entity(repositoryClass: CoachRepository::class)]
 #[ORM\Table(name: 'coach')]
 #[ORM\Index(name: 'idx_coach_club_season', columns: ['club_id', 'season_id'])]

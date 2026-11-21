@@ -6,9 +6,14 @@ namespace App\Entity;
 
 use App\Enum\Gender;
 use App\Repository\SportCategoryRepository;
+use App\Structure\Family;
+use App\Structure\Level;
+use App\Structure\OnDelete;
+use App\Structure\RefersTo;
 use DateTimeImmutable;
 use Doctrine\ORM\Mapping as ORM;
 
+#[Family(Level::CLUB, keptAtSeasonPurge: 'club-scoped sans saison — porte de sortie ErasedClubPurger')]
 #[ORM\Entity(repositoryClass: SportCategoryRepository::class)]
 #[ORM\Table(name: 'sport_category')]
 #[ORM\Index(name: 'idx_sport_category_sport', columns: ['sport_id'])]
@@ -34,6 +39,7 @@ class SportCategory implements TenantOwnedInterface
     private ?string $clubId = null;
 
     #[ORM\Column(type: 'guid')]
+    #[RefersTo(Sport::class, OnDelete::KEEP, 'référentiel de plateforme, jamais supprimé : la référence n\'est pas suivie')]
     private string $sportId;
 
     #[ORM\Column(type: 'string', length: 120)]

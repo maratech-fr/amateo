@@ -5,9 +5,12 @@ declare(strict_types=1);
 namespace App\Entity;
 
 use App\Repository\PriorityTierRepository;
+use App\Structure\Family;
+use App\Structure\Level;
 use DateTimeImmutable;
 use Doctrine\ORM\Mapping as ORM;
 
+#[Family(Level::PLATFORM)]
 #[ORM\Entity(repositoryClass: PriorityTierRepository::class)]
 #[ORM\Table(name: 'priority_tier')]
 #[ORM\HasLifecycleCallbacks]

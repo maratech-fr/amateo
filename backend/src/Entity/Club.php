@@ -5,9 +5,14 @@ declare(strict_types=1);
 namespace App\Entity;
 
 use App\Repository\ClubRepository;
+use App\Structure\Family;
+use App\Structure\Level;
+use App\Structure\OnDelete;
+use App\Structure\RefersTo;
 use DateTimeImmutable;
 use Doctrine\ORM\Mapping as ORM;
 
+#[Family(Level::CLUB)]
 #[ORM\Entity(repositoryClass: ClubRepository::class)]
 #[ORM\Table(name: 'club')]
 #[ORM\Index(name: 'idx_club_slug', columns: ['slug'])]
@@ -53,6 +58,7 @@ class Club
     // la lecture (PlanEntitlements) — une offre payante/bêta dont paidSeasonYear
     // est périmé retombe sur Découverte sans qu'on touche ce champ.
     #[ORM\Column(type: 'guid', nullable: true)]
+    #[RefersTo(SubscriptionPlan::class, OnDelete::CLEAR)]
     private ?string $planId = null;
 
     // P1-3 — crédits de SORTIE consommés (offre Découverte : pool club de 10,
@@ -90,6 +96,7 @@ class Club
     // depuis leurs SportCategory, un club sans catégorie reste null. Aucune logique
     // multi-sport ouverte (roadmap : « attendre une vraie demande »).
     #[ORM\Column(type: 'guid', nullable: true)]
+    #[RefersTo(Sport::class, OnDelete::KEEP, 'référentiel de plateforme, jamais supprimé : la référence n\'est pas suivie')]
     private ?string $sportId = null;
 
     #[ORM\Column(type: 'string', length: 10)]

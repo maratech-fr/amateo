@@ -10,6 +10,10 @@ use App\Enum\FixtureReviewState;
 use App\Enum\FixtureStatus;
 use App\Enum\FixtureUnplacedReason;
 use App\Repository\FixtureRepository;
+use App\Structure\Family;
+use App\Structure\Level;
+use App\Structure\OnDelete;
+use App\Structure\RefersTo;
 use DateTimeImmutable;
 use Doctrine\ORM\Mapping as ORM;
 
@@ -25,6 +29,7 @@ use Doctrine\ORM\Mapping as ORM;
  * @phpstan-type PendingDeviation array{field: 'date'|'kickoff'|'venue', appValue: string|null, sourceValue: string|null, channel: 'FBI_XLSX'|'FFBB_API', seenAt: string, autoApplied: bool, appliedAt?: string|null}
  * @phpstan-type FbiEcho array{field: string, value: string, at: string}
  */
+#[Family(Level::SEASON)]
 #[ORM\Entity(repositoryClass: FixtureRepository::class)]
 #[ORM\Table(name: 'fixture')]
 #[ORM\Index(name: 'idx_fixture_club_season', columns: ['club_id', 'season_id'])]
@@ -65,10 +70,12 @@ class Fixture implements TenantOwnedInterface
     private string $seasonId;
 
     #[ORM\Column(type: 'guid')]
+    #[RefersTo(Team::class, OnDelete::DELETE)]
     private string $teamId;
 
     /** Null = friendly (no FFBB competition/phase). */
     #[ORM\Column(type: 'guid', nullable: true)]
+    #[RefersTo(Competition::class, OnDelete::DELETE)]
     private ?string $competitionId = null;
 
     #[ORM\Column(type: 'date_immutable')]
@@ -85,6 +92,7 @@ class Fixture implements TenantOwnedInterface
 
     /** Home only: the venue that receives the match. */
     #[ORM\Column(type: 'guid', nullable: true)]
+    #[RefersTo(Venue::class, OnDelete::CUSTOM, 'supprimer un gymnase porteur de matchs est refusé (VenueStateProcessor) ; la validation d\'un planning dépointe le match (FixtureVenueLossMarker)')]
     private ?string $venueId = null;
 
     /** Home: the placed kickoff. Away: the estimated kickoff (or null). */

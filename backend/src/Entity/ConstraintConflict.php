@@ -5,9 +5,14 @@ declare(strict_types=1);
 namespace App\Entity;
 
 use App\Repository\ConstraintConflictRepository;
+use App\Structure\Family;
+use App\Structure\Level;
+use App\Structure\OnDelete;
+use App\Structure\RefersTo;
 use DateTimeImmutable;
 use Doctrine\ORM\Mapping as ORM;
 
+#[Family(Level::VERSION)]
 #[ORM\Entity(repositoryClass: ConstraintConflictRepository::class)]
 #[ORM\Table(name: 'constraint_conflict')]
 #[ORM\Index(name: 'idx_constraint_conflict_schedule', columns: ['schedule_id'])]
@@ -29,6 +34,7 @@ class ConstraintConflict
     private DateTimeImmutable $updatedAt;
 
     #[ORM\Column(type: 'guid')]
+    #[RefersTo(Schedule::class, OnDelete::DELETE, owner: true)]
     private string $scheduleId;
 
     /** @var list<string> */

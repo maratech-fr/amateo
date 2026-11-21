@@ -8,6 +8,10 @@ use App\Enum\ConflictResolutionStatus;
 use App\Repository\ConflictResolutionRepository;
 use App\Service\ConflictFingerprinter;
 use App\Service\SeasonDataPurger;
+use App\Structure\Family;
+use App\Structure\Level;
+use App\Structure\OnDelete;
+use App\Structure\RefersTo;
 use DateTimeImmutable;
 use Doctrine\ORM\Mapping as ORM;
 
@@ -27,6 +31,7 @@ use Doctrine\ORM\Mapping as ORM;
  * Un couple (club, saison, empreinte) = une ligne (unique). Patron structurel des
  * entités tenant season-scoped du module (uuid, version, timestamps, RLS).
  */
+#[Family(Level::SEASON)]
 #[ORM\Entity(repositoryClass: ConflictResolutionRepository::class)]
 #[ORM\Table(name: 'conflict_resolution')]
 #[ORM\UniqueConstraint(name: 'uniq_conflict_resolution_fingerprint', columns: ['club_id', 'season_id', 'fingerprint'])]
@@ -65,6 +70,7 @@ class ConflictResolution implements TenantOwnedInterface
 
     /** L'utilisateur qui a posé (ou modifié) le statut. */
     #[ORM\Column(name: 'updated_by', type: 'guid')]
+    #[RefersTo(User::class, OnDelete::KEEP, 'un compte n\'est jamais supprimé : son effacement l\'anonymise (AccountErasureService)')]
     private string $updatedBy;
 
     public function __construct()

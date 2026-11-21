@@ -86,7 +86,8 @@ Les ressources sont définies dans `backend/src/ApiResource/` (liste exhaustive 
 avec attributs `#[ApiResource]` déclarant les opérations CRUD standard
 (`GetCollection`, `Get`, `Post`, `Put`, `Delete`), un `provider` et un `processor` personnalisés,
 et une pagination explicite (détail et exceptions au défaut 30/page : §6). Les entités
-Doctrine correspondantes vivent dans `backend/src/Entity/` et utilisent des UUID string.
+Doctrine correspondantes vivent dans `backend/src/Entity/`, utilisent des UUID string et déclarent
+leur famille (`#[Family]`, `#[RefersTo]` : règle dans [`backend/AGENTS.md`](../AGENTS.md) §3b).
 
 | # | Resource (shortName) | Endpoint | Description | Notes |
 |---|----------------------|---------|-------------|-------|

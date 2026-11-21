@@ -6,6 +6,10 @@ namespace App\Entity;
 
 use App\Enum\MatchPlacementRunStatus;
 use App\Repository\MatchPlacementRunRepository;
+use App\Structure\Family;
+use App\Structure\Level;
+use App\Structure\OnDelete;
+use App\Structure\RefersTo;
 use DateTimeImmutable;
 use Doctrine\ORM\Mapping as ORM;
 
@@ -27,6 +31,7 @@ use Doctrine\ORM\Mapping as ORM;
  * d'un run déjà terminé, et l'événement Mercure `/clubs/{clubId}/placement` le réveille
  * à la bascule terminale.
  */
+#[Family(Level::SEASON)]
 #[ORM\Entity(repositoryClass: MatchPlacementRunRepository::class)]
 #[ORM\Table(name: 'match_placement_run')]
 #[ORM\Index(name: 'idx_match_placement_run_club_season', columns: ['club_id', 'season_id'])]
@@ -48,6 +53,7 @@ class MatchPlacementRun implements TenantOwnedInterface
     private ?string $seasonId;
 
     #[ORM\Column(type: 'guid')]
+    #[RefersTo(User::class, OnDelete::KEEP, 'un compte n\'est jamais supprimé : son effacement l\'anonymise (AccountErasureService)')]
     private string $requestedByUserId;
 
     #[ORM\Column(type: 'string', length: 16, enumType: MatchPlacementRunStatus::class)]
