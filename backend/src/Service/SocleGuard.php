@@ -25,7 +25,13 @@ final class SocleGuard
         private readonly SchedulePlanProvisioner $schedulePlanProvisioner,
     ) {}
 
-    /** @throws ConflictHttpException tant que le plan de saison n'a pas de version choisie */
+    /**
+     * Limite (héritée) : une saison `null` (aucune saison résolue) LAISSE PASSER — ce garde ne
+     * refuse rien sans saison ; c'est au contrôleur appelé ensuite de refuser seul (le contrôle
+     * central l'appelle avec `_season_id`, qui peut manquer).
+     *
+     * @throws ConflictHttpException tant que le plan de saison n'a pas de version choisie
+     */
     public function assertSeasonPlanChosen(?string $seasonId): void
     {
         if (null === $seasonId) {

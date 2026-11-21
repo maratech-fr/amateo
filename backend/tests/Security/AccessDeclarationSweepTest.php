@@ -48,11 +48,13 @@ use PHPUnit\Framework\Attributes\Group;
 use ReflectionClass;
 use ReflectionClassConstant;
 use ReflectionMethod;
+use ReflectionNamedType;
 use ReflectionParameter;
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 use Symfony\Component\Finder\Finder;
 use Symfony\Component\HttpFoundation\Request;
+use Symfony\Component\Mailer\MailerInterface;
 use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
 use Symfony\Component\Routing\Route;
 use Symfony\Component\Routing\RouterInterface;
@@ -91,6 +93,10 @@ use Symfony\Component\Routing\RouterInterface;
  * 10. DÉMONSTRATION — les envois à un tiers sont exactement `THIRD_PARTY`, les gestes de compte
  *     protégés exactement `PROTECTED_IN_DEMO` ; et, joués dans un club passé en démonstration,
  *     chaque envoi à un tiers est refusé sans qu'aucun message ne parte (abus).
+ * 11. ENVOIS STRUCTURELS — toute route d'un contrôleur de club qui injecte de quoi envoyer est dans
+ *     `THIRD_PARTY` ou dans `MAIL_EXEMPTIONS` (raison écrite).
+ * 12. DÉCLARATIONS SCINDÉES — dans une classe à drapeau de démonstration ou de module fermé, chaque
+ *     déclaration de méthode est dans `SPLIT_DECLARATIONS`.
  * Les tables de ce test sont écrites à la main, jamais dérivées des déclarations ; une ligne sans
  * route au routeur rougit.
  *
@@ -361,6 +367,44 @@ final class AccessDeclarationSweepTest extends WebTestCase
      * Annuler un changement d'adresse en attente ne l'est pas (comportement d'avant la PR 5).
      */
     private const array PROTECTED_IN_DEMO = ['PATCH /api/me', 'POST /api/me/password', 'POST /api/me/email', 'DELETE /api/me'];
+
+    /**
+     * Les routes d'un contrôleur de club QUI PEUT ENVOYER (il injecte `MailerInterface`, un
+     * `*Notifier`, un `*Mailer` ou un `*Mailing`) et qui ne sont pas dans `THIRD_PARTY`, chacune avec
+     * sa raison écrite à la main. Un envoi ajouté à un contrôleur de club sans passer par l'une des
+     * deux listes rougit `testEveryClubControllerThatCanSendIsDeclaredOrExempted`. Portée : l'injection
+     * DIRECTE dans le contrôleur ; un envoi caché derrière un service tiers lui échappe.
+     */
+    private const array MAIL_EXEMPTIONS = [
+        'GET /api/invitations' => 'lecture, n\'envoie rien',
+        'DELETE /api/invitations/{id}' => 'révocation, n\'envoie rien',
+        'POST /api/feedback' => 'le retour part à l\'éditeur du produit, jamais à un tiers du club',
+        'GET /api/fixtures/conflicts' => 'lecture : `ConflictCoachMailing` n\'y sert qu\'à compter',
+        'PUT /api/fixtures/conflicts/{fingerprint}/resolution' => '`ConflictCoachMailing` n\'y sert qu\'à compter, n\'envoie rien',
+        'DELETE /api/fixtures/conflicts/{fingerprint}/resolution' => '`ConflictCoachMailing` n\'y sert qu\'à compter, n\'envoie rien',
+        'GET /api/memberships' => 'lecture, n\'envoie rien',
+        'GET /api/memberships/pending' => 'lecture, n\'envoie rien',
+        'POST /api/memberships/{id}/approve' => 'pré-existant, comportement démo à trancher (mail d\'acceptation au membre)',
+        'POST /api/memberships/{id}/reject' => 'pré-existant, comportement démo à trancher (mail de refus au demandeur)',
+        'POST /api/memberships/{id}/role' => 'pré-existant, comportement démo à trancher (mail « rôle accordé » au membre)',
+        'POST /api/memberships/{id}/deactivate' => 'pré-existant, comportement démo à trancher (mail « accès retiré » au membre)',
+        'POST /api/memberships/{id}/manager-request/refuse' => 'pré-existant, comportement démo à trancher (mail de refus de la demande de rôle)',
+        'POST /api/memberships/me/manager-request' => 'un club de démonstration est refusé 409 par ManagerRoleRequestService (DemoRegime) avant tout envoi',
+        'DELETE /api/memberships/me/manager-request' => 'annulation, n\'envoie rien',
+        'POST /api/memberships/{id}/reactivate' => 'réactivation, n\'envoie rien (annule un envoi programmé)',
+    ];
+
+    /**
+     * Une déclaration de MÉTHODE remplace celle de la classe, sans rien en hériter
+     * (`AccessDeclarationResolver::declarationOn`) : dans une classe où `thirdParty` ou
+     * `refusedWhenModuleClosed` est déclaré, chaque `#[ClubFunction]` de méthode est écrit ici, à la
+     * main, avec sa raison — un drapeau perdu par une méthode nouvelle rougit.
+     */
+    private const array SPLIT_DECLARATIONS = [
+        'App\Controller\Basketball\FfbbEngagementsController::confirm' => 'seule la confirmation se ferme module fermé ; la liste des engagements reste ouverte',
+        'App\Controller\ClubInvitationController::create' => 'inviter envoie à un tiers ; lister et révoquer n\'envoient rien',
+        'App\Controller\ClubInvitationController::resend' => 'renvoyer envoie à un tiers ; lister et révoquer n\'envoient rien',
+    ];
 
     private const string MAIN_CONTROLLER = 'api_platform.symfony.main_controller';
 
@@ -750,6 +794,82 @@ final class AccessDeclarationSweepTest extends WebTestCase
         }
 
         self::assertSame([], $wrong, "En démonstration, une fonction qui envoie à un tiers n'est pas refusée :\n  - " . implode("\n  - ", $wrong));
+    }
+
+    /**
+     * CONTRÔLE STRUCTUREL de l'abus « en démonstration, rien ne part vers un tiers » : la liste
+     * `THIRD_PARTY` est écrite à la main, donc un envoi nouveau pourrait l'éviter. Toute route d'un
+     * contrôleur de club qui injecte de quoi envoyer (`MailerInterface`, `*Notifier`, `*Mailer`,
+     * `*Mailing`) est soit dans `THIRD_PARTY` (refusée en démonstration), soit dans `MAIL_EXEMPTIONS`
+     * avec sa raison ; une exemption qui ne désigne plus une telle route rougit aussi.
+     */
+    public function testEveryClubControllerThatCanSendIsDeclaredOrExempted(): void
+    {
+        $resolver = $this->resolver();
+        $sending = [];
+        foreach ($this->apiRoutes() as $name => $route) {
+            foreach ($this->methods($route) as $method) {
+                if (null !== $this->outsideFamily($name, $route, $method)) {
+                    continue;
+                }
+                if (!$resolver->for($this->requestFor($name, $route, $method)) instanceof ClubFunction) {
+                    continue;
+                }
+                $class = $this->declaringClass($route);
+                if (class_exists($class) && $this->canSend($class)) {
+                    $sending[] = $method . ' ' . $this->bare($route);
+                }
+            }
+        }
+        $sending = array_values(array_unique($sending));
+        sort($sending);
+
+        $undeclared = array_values(array_diff($sending, array_keys(self::THIRD_PARTY), array_keys(self::MAIL_EXEMPTIONS)));
+        $staleExemptions = array_values(array_diff(array_keys(self::MAIL_EXEMPTIONS), $sending));
+
+        self::assertNotSame([], $sending, 'témoin : le balayage trouve des contrôleurs de club qui envoient');
+        self::assertSame([], $undeclared, "Routes d'un contrôleur de club qui peut envoyer, ni dans THIRD_PARTY ni dans MAIL_EXEMPTIONS :\n  - " . implode("\n  - ", $undeclared));
+        self::assertSame([], $staleExemptions, "Exemptions qui ne désignent plus une route d'un contrôleur qui envoie :\n  - " . implode("\n  - ", $staleExemptions));
+    }
+
+    /**
+     * Une déclaration de méthode ne garde rien de celle de la classe : dans une classe qui déclare
+     * `thirdParty` ou `refusedWhenModuleClosed` (sur elle-même ou sur une méthode), chaque
+     * `#[ClubFunction]` de méthode est exactement une ligne de `SPLIT_DECLARATIONS`.
+     */
+    public function testNoMethodDeclarationSilentlyDropsADemoOrClosedModuleFlag(): void
+    {
+        $split = [];
+        $finder = new Finder()->files()->in(\dirname(__DIR__, 2) . '/src/Controller')->name('*.php');
+        foreach ($finder as $file) {
+            $class = 'App\\Controller\\' . str_replace(['/', '.php'], ['\\', ''], $file->getRelativePathname());
+            if (!class_exists($class)) {
+                continue;
+            }
+            $reflection = new ReflectionClass($class);
+            $methods = [];
+            $flagged = false;
+            foreach ([$reflection, ...$reflection->getMethods()] as $target) {
+                if ($target instanceof ReflectionMethod && $target->getDeclaringClass()->getName() !== $class) {
+                    continue;
+                }
+                foreach ($target->getAttributes(ClubFunction::class) as $attribute) {
+                    $declaration = $attribute->newInstance();
+                    $flagged = $flagged || $declaration->thirdParty || $declaration->refusedWhenModuleClosed;
+                    if ($target instanceof ReflectionMethod) {
+                        $methods[] = $class . '::' . $target->getName();
+                    }
+                }
+            }
+            if ($flagged) {
+                array_push($split, ...$methods);
+            }
+        }
+        sort($split);
+        $expected = array_keys(self::SPLIT_DECLARATIONS);
+        sort($expected);
+
+        self::assertSame($expected, $split, 'déclarations de méthode dans une classe qui porte un drapeau de démonstration ou de module fermé ≠ SPLIT_DECLARATIONS (à gauche la table, à droite le code)');
     }
 
     public function testTheMemberMeetsEveryClubRouteAsItIsDeclared(): void
@@ -1143,6 +1263,20 @@ final class AccessDeclarationSweepTest extends WebTestCase
         $account = $target->getAttributes(AccountFunction::class);
 
         return [] === $account ? null : $account[0]->newInstance();
+    }
+
+    /** Le constructeur du contrôleur injecte-t-il de quoi envoyer un message ? */
+    private function canSend(string $class): bool
+    {
+        foreach (new ReflectionClass($class)->getConstructor()?->getParameters() ?? [] as $param) {
+            $type = $param->getType();
+            $name = $type instanceof ReflectionNamedType ? $type->getName() : '';
+            if (MailerInterface::class === $name || 1 === preg_match('/(Notifier|Mailer|Mailing)$/', $name)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /** La classe dont la déclaration vaut pour la route : la ressource d'API Platform, ou le contrôleur maison. */

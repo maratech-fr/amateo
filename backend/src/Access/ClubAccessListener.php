@@ -59,7 +59,11 @@ final class ClubAccessListener implements EventSubscriberInterface
     /** Refus d'un envoi à un tiers en démonstration, par défaut (mails aux coachs). */
     private const string DEMO_MAIL_REFUSAL = 'Envoi d\'e-mails indisponible en démonstration.';
 
-    /** Les fonctions dont le refus en démonstration a son propre texte (décision Q12 : trois textes gardés). */
+    /**
+     * Les fonctions dont le refus en démonstration a son propre texte (décision Q12 : trois textes
+     * gardés), par CLASSE de contrôleur : une nouvelle route `thirdParty` d'une classe déjà présente
+     * hérite du texte de la classe.
+     */
     private const array DEMO_SEND_REFUSALS = [
         ClubInvitationController::class => 'Un compte de démonstration ne peut pas inviter.',
     ];
@@ -131,7 +135,10 @@ final class ClubAccessListener implements EventSubscriberInterface
         if ($declaration instanceof ClubFunction && $declaration->thirdParty) {
             $club = $this->clubOf($request);
             $user = $this->security->getUser();
-            if ($club instanceof Club && $this->demoRegime->forbidsThirdPartySend($club, $user instanceof User ? $user : null)) {
+            $user = $user instanceof User ? $user : null;
+            // Fermé par défaut : sans club résolu, un compte de démonstration est refusé quand même
+            // (sinon le refus du rôle, déjà passé, ou le contrôleur décide).
+            if ($this->demoRegime->forbidsThirdPartySend($club, $user)) {
                 throw new AccessDeniedHttpException($this->demoSendRefusal($request));
             }
         }

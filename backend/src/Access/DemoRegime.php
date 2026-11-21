@@ -25,11 +25,12 @@ final readonly class DemoRegime
 
     /**
      * Rien ne part vers un tiers (mail aux coachs, invitation) depuis un club de démonstration,
-     * ni depuis un compte de démonstration.
+     * ni depuis un compte de démonstration. Club introuvable : seul le compte décide (fermé par
+     * défaut pour un compte de démonstration).
      */
-    public function forbidsThirdPartySend(Club $club, ?User $user): bool
+    public function forbidsThirdPartySend(?Club $club, ?User $user): bool
     {
-        return $club->isDemo() || (true === $user?->isDemo());
+        return (true === $club?->isDemo()) || (true === $user?->isDemo());
     }
 
     /** Un compte de démonstration ne se modifie pas et ne se supprime pas. */

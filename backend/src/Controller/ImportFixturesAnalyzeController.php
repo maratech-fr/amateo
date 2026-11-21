@@ -31,6 +31,9 @@ use Symfony\Component\HttpKernel\Exception\HttpException;
  * dialog renders the mapping table from this, pre-filled where the mapping is
  * known, then posts the SAME file to /api/fixtures/import with the completed
  * mappings. Same gate as the import (byte-identical refusals).
+ *
+ * Pas de `refusedWhenModuleClosed` : le 409 du socle de l'import de rencontres reste dans
+ * {@see FixtureImportGate} (lot 2, PR 5 — contrôle de socle hors périmètre, assumé).
  */
 #[AsController]
 #[ClubFunction(module: Module::MATCHES, audience: Audience::MANAGER)]
