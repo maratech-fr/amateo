@@ -15,6 +15,7 @@ use App\Enum\SeasonStatus;
 use App\Message\ExportPdfMessage;
 use App\Service\SchedulePlanProvisioner;
 use App\Tests\ChoosesPlanVersionTrait;
+use App\Tests\MessageHandler\PdfCreditIsTakenOnDeliveryTest;
 use App\Tests\Security\ExportPdfDownloadIsolationTest;
 use App\Tests\TenantGucTrait;
 use App\Tests\VerifiesRegistration;
@@ -168,8 +169,8 @@ final class ExportScheduleTest extends WebTestCase
     /**
      * Chaque geste « Exporter en PDF » met en file un message sous son PROPRE identifiant de demande
      * (32 caractères hexadécimaux) : c'est lui que la garde de redélivrance du handler compare à la
-     * dernière livraison ({@see \App\Tests\MessageHandler\PdfCreditIsTakenOnDeliveryTest}, qui
-     * fabrique ses identifiants elle-même). Sans identifiant posé ici, tout message serait legacy et
+     * dernière livraison ({@see PdfCreditIsTakenOnDeliveryTest}, qui fabrique ses identifiants
+     * elle-même). Sans identifiant posé ici, tout message serait legacy et
      * une redélivrance referait le rendu et reprendrait un crédit.
      */
     public function testEachPdfExportGestureQueuesItsOwnRequestId(): void
