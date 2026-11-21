@@ -15,11 +15,9 @@ L'**exécution commence par la PR 1**, une fois ses rouges écrits par `tank`.
    fichiers de suivi (`lot-conception-decoupage.md`, `etat-des-lieux.md`) : avant d'ouvrir,
    `git diff --name-only origin/lot/conception...HEAD` contre `gh pr diff <n> --name-only` des PR
    ouvertes sur la même base.
-2. **Recouvrements avec le lot 2.** Sa PR 5 (module matchs, régime de démonstration) est en cours et
-   touche `ClubAccessListener`, `lot-conception-decoupage.md`, `etat-des-lieux.md`,
-   `docs/testing/blocking-tests.md`, `backend/behat.dist.php`. Les PR 1, 3 et 4a du lot 1 attendent
-   son merge (même fichiers de suivi, même balayage d'accès). `ClubAccessListener` et
-   `ClubQuotaSubscriber` ne sont pas touchés par le lot 1.
+2. **Le lot 1 est livré sur `lot/conception`** (non déployé : une seule mise en production, à la fin) :
+   PR 1, 2, 3, 4a, 4b et 5 ; la PR 5 clôt le lot. Le lot 2 avait livré sa PR 5 (module matchs, régime de
+   démonstration) avant l'ouverture des PR 1, 3 et 4a.
 3. **Ce que les lots 0 et 2 ont déjà livré** (lu dans le dépôt le 2026-11-21) :
    - Lot 0 : `EngineRequestComposer` (un seul compositeur, lectures triées par id) ; six demandes de
      référence dans `backend/tests/Fixtures/engine-requests/` (socle 1 et 2, période 3 et 4,
@@ -419,7 +417,7 @@ Avec l'accord du fondateur (F11). Détail au §11. Seul un écart **attribué à
 - **Constat annexe (hors périmètre)** : `ConflictMailReceipt.coachId` et `CoachWishToken.coachId` sont effacés
   par cascade à la suppression d'un coach mais ne sont pas annoncés dans sa fenêtre de suppression.
 
-### PR 5 · « Les constats tranchés »
+### PR 5 · « Les constats tranchés » (livrée)
 
 - **Gymnase** (décision F1 : **la règle part avec son gymnase, annoncée**) : étape
   `VenueConfigConstraintStep` dans `CascadePlan::forVenue()`. Une seule liste de clés :
@@ -434,6 +432,16 @@ Avec l'accord du fondateur (F11). Détail au §11. Seul un écart **attribué à
   `ScheduleConstraintBuilder.php:50`, `:589`, `PeriodConstraintSelector.php:261-273`,
   `SeasonAlreadyTransitionedException.php`, `ApiResource/SeasonResource.php`,
   `State/Processor/SeasonStateProcessor.php`, `openapi-snapshot.json`.
+- **Tests** : `DeletionImpactParityTest` (bloquant : la règle qui nomme le gymnase part, annoncée une fois, bascule
+  de période comprise ; une règle qui nomme un autre gymnase, d'un autre club ou d'une autre saison reste) ;
+  `supprimer-emporte-ce-qui-en-depend.feature` ; `ConstraintConfigValidatorTest` (la liste unique) ;
+  `la-saison-suivante-se-prepare-a-partir-du-1er-mai.feature` (la création directe répond 405).
+- **Limites écrites** : l'ordre bascules-puis-contraintes de `VenueConfigConstraintStep` n'est gardé par aucun test
+  (aucune clé étrangère `constraint_period_override` → `constraint` ne le ferait rougir) ; la borne club de sa
+  requête SQL n'est prouvée que par la RLS (ceinture), la borne saison l'est par le test d'isolation.
+- **Constat annexe (hors périmètre, nettoyage ultérieur à proposer)** : `SeasonStateProcessor`
+  (`createEntityFromInput`, `updateEntityFromInput`), l'`input: SeasonInput::class` de `SeasonResource` et
+  `Dto/SeasonInput.php` ne servent plus à rien depuis le retrait de la route.
 
 ### Hors lot 1 · les deux tables d'étiquettes (première PR du lot 3)
 
@@ -509,7 +517,7 @@ FamilyCatalog::purgedWithClub(): list<class-string>
 FamilyCatalog::referencesTo(string $entityClass): list<array{class: class-string, field: string, onDelete: OnDelete}>
 ```
 PR 5 : `App\Deletion\VenueConfigConstraintStep implements CascadeStep` ; `POST /api/seasons` → 405 (le routeur
-répond avant le contrôle d'accès ; à relire contre `ClubAccessListener`) ; `POST /api/seasons/{id}/transition`
+répond avant le contrôle d'accès ; prouvé par la feature du 1er mai) ; `POST /api/seasons/{id}/transition`
 avec successeur → 409 `{error: "La saison suivante existe déjà.", existingSeasonId}`.
 
 ## 6. Table des familles

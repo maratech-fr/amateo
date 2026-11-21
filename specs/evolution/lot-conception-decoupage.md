@@ -122,31 +122,21 @@ peuvent avancer dans un espace de travail à part pendant qu'un lot principal at
     dans la même mise en production.
 - **Constats des scénarios du lot 0 à trancher ici** (vérifiés dans le code ; les scénarios
   décrivent l'actuel) :
-  - Supprimer un gymnase n'emporte pas une règle qui le nomme dans sa configuration
-    (`forbiddenVenueId`…) : `backend/src/Deletion/ScopedConstraintStep.php:36-50` compare la portée
-    et la cible (`scope`, `scopeTargetId`), jamais la configuration. Scénario volontairement NON
-    écrit : la règle à tenir est une décision du lot.
-  - « Préparer la saison suivante » une seconde fois est refusé 409 avec un message en anglais,
-    « A next season already exists for this club. »
-    (`backend/src/Service/SeasonAlreadyTransitionedException.php:19`) ; l'identifiant de la saison
-    déjà préparée est dans la réponse (`SeasonTransitionController.php:69`).
+  - Supprimer un gymnase emporte, annoncée, la règle qui le nomme dans sa configuration
+    (`forbiddenVenueId`…) : `VenueConfigConstraintStep` (PR 5), une seule liste de clés
+    (`ConstraintConfigValidator::uuidKeys()`).
+  - « Préparer la saison suivante » une seconde fois est refusé 409, « La saison suivante existe déjà. »
+    (`SeasonAlreadyTransitionedException`), l'identifiant de la saison déjà préparée dans la réponse.
   - Le drapeau de démonstration n'est pas lu au même endroit selon le geste : l'invitation
     (`ClubInvitationController.php:79`, `:108`) et la suppression de compte
     (`DeleteAccountController.php:49`) lisent celui de l'UTILISATEUR ; l'envoi des conflits
     (`ConflictCoachMailController.php:202`) et des liens de collecte
     (`CoachWishCampaignActionController.php:92`) lisent celui du CLUB. **Constat fermé par la
     PR 5 du lot 2** (régime de démonstration déclaré une fois), accepté par le fondateur.
-  - **Constats de la PR 2 du lot 2, à trancher ICI** (le lot 1 traite la préparation de la saison
-    suivante ; décision du fondateur : laissés tels quels dans la PR 2) :
-    - `POST /api/seasons` (`backend/src/ApiResource/SeasonResource.php:22-24`,
-      `State/Processor/SeasonStateProcessor.php:64-82`) crée une saison N+1 VIDE, à n'importe quelle
-      date, sans paiement ni date d'ouverture : la règle du 1er mai ne tient que sur le geste
-      « préparer » (`SeasonTransitionService::transition`, qui copie la structure). Le contrôle du
-      paiement est contourné de la même façon (pas une régression). Décision du lot 1 : à écrire ici.
-    - Dans `transition`, la garde de date passe avant le test du successeur (ordre : rôle, saison en
-      cours, date, paiement, successeur) : un club qui a déjà une saison suivante avant le 1er mai
-      reçoit le 409 « 1er mai » sans l'identifiant de la saison existante. Ne concerne que les
-      saisons créées par le point précédent ; se referme avec lui.
+  - **Constats de la PR 2 du lot 2, tranchés par la PR 5 du lot 1** : `POST /api/seasons` est retiré (405, la
+    ressource `Season` est en lecture seule) ; la garde de date de `transition` garde son ordre (rôle, saison en
+    cours, date, paiement, successeur), le cas d'un successeur déjà préparé avant le 1er mai ne reste possible que
+    pour un club de démonstration dont l'horloge est ramenée en arrière.
 - **Conditions d'entrée** (héritées du lot 0, [`lot-conception-filet.md`](lot-conception-filet.md)) :
   - **Purge de `cache.schedule` au déploiement automatisée** (PR 1 du lot) : `scripts/remote-deploy.sh`
     la lance après « Deploy … OK » ; un échec laisse le déploiement réussi, avec une alerte au journal
@@ -355,7 +345,7 @@ peuvent avancer dans un espace de travail à part pendant qu'un lot principal at
 Ce document porte la fiche de chaque lot (contenu, ce qu'il supprime, dépendances, preuve).
 **Le lot 0 est livré en trois PR** (compositeur, scénarios, enregistreur) la mesure du PDF restant
 une procédure à jouer ([`lot-conception-filet.md`](lot-conception-filet.md) §8) ; **le lot 2 a livré ses PR 1, 2, 3a, 3b et 4** (deux rôles ; le 1er mai côté serveur ; les déclarations d'accès ; le contrôle central ; les crédits à l'obtention), il
-reste sa PR 5 ; **le lot 1 a livré ses PR 1 et 2** (purge du cache au déploiement ; créneau de semaine), le reste suit ; **le lot 3
+reste sa PR 5 ; **le lot 1 est livré sur `lot/conception`, non déployé** (PR 1 à 5 : purge du cache au déploiement ; créneau de semaine ; étiquettes calculées à la lecture ; familles déclarées et purges qui les lisent ; constats tranchés) ; **le lot 3
 n'a livré aucune PR** (plan écrit, version finale). Les plans des lots 1, 2 et 3 sont dans
 [`lot-conception-1-declarations-communes.md`](lot-conception-1-declarations-communes.md),
 [`lot-conception-2-droits-modules-credits.md`](lot-conception-2-droits-modules-credits.md) et
