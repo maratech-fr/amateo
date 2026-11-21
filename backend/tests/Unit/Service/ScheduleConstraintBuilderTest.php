@@ -41,44 +41,6 @@ final class ScheduleConstraintBuilderTest extends TestCase
 
     private LoggerInterface&MockObject $logger;
 
-    public function testResolveTagFiltersByClubId(): void
-    {
-        $seasonId = 'season-1';
-        $club1Id = 'club-1';
-        $tag = (new TeamTag)
-            ->setId('tag-jeune-club-1')
-            ->setClubId($club1Id)
-            ->setName('JEUNE');
-
-        $this->teamTagRepository->expects(self::once())
-            ->method('findOneBy')
-            ->with(self::callback(static fn (array $criteria): bool => 'JEUNE' === ($criteria['name'] ?? null)
-                    && $club1Id === ($criteria['clubId'] ?? null)))
-            ->willReturn($tag);
-
-        $this->teamTagAssignmentRepository->method('findBy')->willReturnCallback(
-            static function (array $criteria): array {
-                if ('tag-jeune-club-1' !== ($criteria['tagId'] ?? null)) {
-                    return [];
-                }
-
-                $first = (new TeamTagAssignment)
-                    ->setTeamId('team-a')
-                    ->setTagId('tag-jeune-club-1')
-                    ->setSeasonId('season-1');
-                $second = (new TeamTagAssignment)
-                    ->setTeamId('team-b')
-                    ->setTagId('tag-jeune-club-1')
-                    ->setSeasonId('season-1');
-
-                return [$first, $second];
-            },
-        );
-
-        $club1TeamIds = $this->invokeResolveTagToTeamIds('JEUNE', $seasonId, $club1Id);
-        self::assertSame(['team-a', 'team-b'], $club1TeamIds);
-    }
-
     public function testResolveTagLogsWarningWhenNotFound(): void
     {
         $seasonId = 'season-1';
@@ -87,17 +49,18 @@ final class ScheduleConstraintBuilderTest extends TestCase
         $this->teamTagRepository->method('findOneBy')->willReturn(null);
         // PSR-3 (revue #340 round 2) : le MESSAGE porte des placeholders stables — un
         // message unique par tag/club casserait le regroupement des agrégateurs de logs.
-        // Les VALEURS vivent dans le contexte : c'est lui qu'on vérifie.
+        // Les VALEURS vivent dans le contexte : c'est lui qu'on vérifie. Le nom est HORS du
+        // catalogue fermé des étiquettes : un nom du catalogue est toujours connu.
         $this->logger->expects(self::once())
             ->method('warning')
             ->with(
                 self::callback(static fn (string $message): bool => str_contains($message, '{targetTag}') && str_contains($message, '{clubId}')),
-                self::callback(static fn (array $context): bool => 'JEUNE' === ($context['targetTag'] ?? null)
+                self::callback(static fn (array $context): bool => 'GROUPE_INCONNU' === ($context['targetTag'] ?? null)
                         && $clubId === ($context['clubId'] ?? null)
                         && $seasonId === ($context['seasonId'] ?? null)),
             );
 
-        $result = $this->invokeResolveTagToTeamIds('JEUNE', $seasonId, $clubId);
+        $result = $this->invokeResolveTagToTeamIds('GROUPE_INCONNU', $seasonId, $clubId);
 
         self::assertSame([], $result);
     }

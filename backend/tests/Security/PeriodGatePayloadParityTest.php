@@ -15,8 +15,6 @@ use App\Entity\Sport;
 use App\Entity\SportCategory;
 use App\Entity\Team;
 use App\Entity\TeamPeriodOverride;
-use App\Entity\TeamTag;
-use App\Entity\TeamTagAssignment;
 use App\Entity\User;
 use App\Entity\Venue;
 use App\Entity\VenuePeriodOverride;
@@ -27,7 +25,9 @@ use App\Enum\CalendarEntryStatus;
 use App\Enum\ConstraintFamily;
 use App\Enum\ConstraintRuleType;
 use App\Enum\ConstraintScope;
+use App\Enum\Gender;
 use App\Enum\SeasonStatus;
+use App\Enum\TeamLevel;
 use App\Enum\VenuePeriodMode;
 use App\Service\PeriodConstraintSelection;
 use App\Service\PeriodConstraintSelector;
@@ -165,7 +165,7 @@ final class PeriodGatePayloadParityTest extends WebTestCase
      * Cibler PLUSIEURS tags (INTERSECTION) ou en EXCLURE (UNION soustraite) : le gate
      * (sélecteur) et le payload (builder) résolvent désormais via `TeamTagResolver::
      * resolveConstraintTeamIds`, une seule maison. Ce test le PROUVE de bout en bout —
-     * `targetTags: [G1,G2] excludeTags: [EXCL]` ne retient QUE l'équipe des deux tags de
+     * `targetTags: [U11,FEMININE] excludeTags: [COMPETITION]` ne retient QUE l'équipe des deux tags de
      * cible et hors du tag exclu, à l'identique des deux côtés, et sans qu'aucune clé de tag
      * ne parte au moteur (contrat 2.7 inchangé, D11).
      */
@@ -190,7 +190,7 @@ final class PeriodGatePayloadParityTest extends WebTestCase
             $payload['constraints'],
             static fn (mixed $row): bool => \is_array($row) && str_starts_with((string) $row['id'], $constraintId . ':'),
         ));
-        self::assertCount(1, $teamRows, 'une seule équipe : (G1 ∩ G2) − EXCL');
+        self::assertCount(1, $teamRows, 'une seule équipe : (U11 ∩ FEMININE) − COMPETITION');
         self::assertSame($teamAId, $teamRows[0]['scopeTargetId'], 'l\'équipe des deux tags de cible, hors du tag exclu');
         foreach (['targetTag', 'targetTags', 'excludeTags'] as $tagKey) {
             self::assertArrayNotHasKey($tagKey, $teamRows[0]['config'], 'aucune clé de tag ne part au moteur (D11)');
@@ -658,9 +658,8 @@ final class PeriodGatePayloadParityTest extends WebTestCase
     }
 
     /**
-     * Une scène minimale à tags MANUELS (noms neutres G1/G2/EXCL) : l'intersection et
-     * l'exclusion se prouvent sans dépendre de la dérivation d'âge/niveau. Équipe A porte
-     * G1+G2 ; B porte G1 seul ; C porte G1+G2+EXCL.
+     * Une scène minimale à trois groupes du catalogue, dérivés des équipes : A porte
+     * U11+FEMININE ; B porte U11 seul ; C porte U11+FEMININE+COMPETITION.
      *
      * @return array{0: Club, 1: Season, 2: CalendarEntry, 3: string, 4: string, 5: string}
      */
@@ -717,35 +716,16 @@ final class PeriodGatePayloadParityTest extends WebTestCase
         }
         $this->em->flush();
 
+        // Les trois groupes se dérivent des équipes (les étiquettes se calculent à la lecture) :
+        // U11 = toutes ; FEMININE = A et C ; COMPETITION = C seule (niveau non loisir).
         $teamA = $this->team($club, $season, $category, 'Équipe A');
         $teamB = $this->team($club, $season, $category, 'Équipe B');
         $teamC = $this->team($club, $season, $category, 'Équipe C');
-
-        // Tags manuels et leurs assignations. Les tags dérivés du listener existent aussi
-        // (U11…) mais on ne les vise pas : la résolution ne touche que G1/G2/EXCL.
-        $assign = function (Team $team, TeamTag $tag) use ($club, $season): void {
-            $a = new TeamTagAssignment;
-            $a->setClubId($club->getId());
-            $a->setTeamId($team->getId());
-            $a->setTagId($tag->getId());
-            $a->setSeasonId($season->getId());
-            $this->em->persist($a);
-        };
-        $tags = [];
-        foreach (['G1', 'G2', 'EXCL'] as $name) {
-            $tag = new TeamTag;
-            $tag->setClubId($club->getId());
-            $tag->setName($name);
-            $this->em->persist($tag);
-            $tags[$name] = $tag;
-        }
+        $teamA->setGender(Gender::F);
+        $teamB->setGender(Gender::M);
+        $teamC->setGender(Gender::F);
+        $teamC->setLevel(TeamLevel::REGIONAL);
         $this->em->flush();
-        $assign($teamA, $tags['G1']);
-        $assign($teamA, $tags['G2']);
-        $assign($teamB, $tags['G1']);
-        $assign($teamC, $tags['G1']);
-        $assign($teamC, $tags['G2']);
-        $assign($teamC, $tags['EXCL']);
 
         $entry = new CalendarEntry;
         $entry->setClubId($club->getId());
@@ -762,14 +742,14 @@ final class PeriodGatePayloadParityTest extends WebTestCase
 
         $planId = $this->planIdOf($entry);
 
-        // (G1 ∩ G2) − EXCL = A seule (B manque G2, C est exclue).
+        // (U11 ∩ FEMININE) − COMPETITION = A seule (B n'est pas féminine, C est exclue).
         $constraint = $this->constraint(
             $club,
             $season,
             ConstraintScope::CLUB,
             null,
             ConstraintFamily::DAY,
-            ['targetTags' => ['G1', 'G2'], 'excludeTags' => ['EXCL'], 'forbiddenDays' => [3]],
+            ['targetTags' => ['U11', 'FEMININE'], 'excludeTags' => ['COMPETITION'], 'forbiddenDays' => [3]],
             null,
             ConstraintRuleType::PREFERRED,
         );
@@ -854,36 +834,15 @@ final class PeriodGatePayloadParityTest extends WebTestCase
         $venueOpen = $this->venue($club, $season, 'Gymnase ouvert');
         $venueDisabled = $this->venue($club, $season, 'Gymnase fermé pour période');
 
-        // Le tag et son assignation : SEULE l'équipe en pause est taguée — le cas exact de
-        // la divergence n° 2 (CLUB+tag HARD à gymnase dédié, toutes taguées en pause).
-        $tag = new TeamTag;
-        $tag->setClubId($club->getId());
-        $tag->setName('PARITE');
-        $this->em->persist($tag);
+        // Deux groupes du catalogue, dérivés des équipes (les étiquettes se calculent à la
+        // lecture). FEMININE : SEULE l'équipe en pause — le cas exact de la divergence n° 2
+        // (CLUB+tag HARD à gymnase dédié, toutes taguées en pause). MASCULINE : TOUTES les
+        // équipes actives (la seule active du club) — le cas revue #340 round 2 : sans équipe
+        // active HORS du tag, les lignes « interdit hors tag » n'existent pas, l'entité ne doit
+        // PAS être gardée.
+        $teamPaused->setGender(Gender::F);
+        $teamActive->setGender(Gender::M);
         $this->em->flush();
-        $assignment = new TeamTagAssignment;
-        // BCK-11 : la table est tenant + RLS — une ligne sans club_id est refusée
-        // par PostgreSQL, plus seulement invisible.
-        $assignment->setClubId($club->getId());
-        $assignment->setTeamId($teamPaused->getId());
-        $assignment->setTagId($tag->getId());
-        $assignment->setSeasonId($season->getId());
-        $this->em->persist($assignment);
-
-        // Second tag : il couvre TOUTES les équipes actives (la seule active du club).
-        // Le cas revue #340 round 2 : sans équipe active HORS du tag, les lignes
-        // « interdit hors tag » n'existent pas — l'entité ne doit PAS être gardée.
-        $allTag = new TeamTag;
-        $allTag->setClubId($club->getId());
-        $allTag->setName('TOUTES');
-        $this->em->persist($allTag);
-        $this->em->flush();
-        $allAssignment = new TeamTagAssignment;
-        $allAssignment->setClubId($club->getId());
-        $allAssignment->setTeamId($teamActive->getId());
-        $allAssignment->setTagId($allTag->getId());
-        $allAssignment->setSeasonId($season->getId());
-        $this->em->persist($allAssignment);
 
         $entry = new CalendarEntry;
         $entry->setClubId($club->getId());
@@ -930,17 +889,17 @@ final class PeriodGatePayloadParityTest extends WebTestCase
             // par équipe (aucune taguée active), l'entité ne produit plus rien. Sa clé
             // secondaire nommant le gymnase désactivé (preferredVenueId), elle sort AVEC cette
             // raison. (Avant D1 elle était GARDÉE pour cette seule exclusivité implicite.)
-            'tagHardVenue' => $this->constraint($club, $season, ConstraintScope::CLUB, null, ConstraintFamily::FACILITY, ['targetTag' => 'PARITE', 'forcedVenueId' => $venueOpen->getId(), 'preferredVenueId' => $venueDisabled->getId()], null)->getId(),
+            'tagHardVenue' => $this->constraint($club, $season, ConstraintScope::CLUB, null, ConstraintFamily::FACILITY, ['targetTag' => 'FEMININE', 'forcedVenueId' => $venueOpen->getId(), 'preferredVenueId' => $venueDisabled->getId()], null)->getId(),
             // Gardée : datée valide de l'équipe active.
             'datedOk' => $this->constraint($club, $season, ConstraintScope::TEAM, $teamActive->getId(), ConstraintFamily::TIME, ['maxStartTime' => '21:00'], $entry->getId())->getId(),
             // Sortie AVEC warning gymnase : tag couvrant TOUTES les actives, mais sa clé
             // secondaire (minAtVenueId) nomme le gymnase désactivé → les lignes par équipe
             // meurent → ZÉRO ligne, drop annoncé.
-            'tagAllActive' => $this->constraint($club, $season, ConstraintScope::CLUB, null, ConstraintFamily::FACILITY, ['targetTag' => 'TOUTES', 'forcedVenueId' => $venueOpen->getId(), 'minAtVenueId' => $venueDisabled->getId()], null)->getId(),
+            'tagAllActive' => $this->constraint($club, $season, ConstraintScope::CLUB, null, ConstraintFamily::FACILITY, ['targetTag' => 'MASCULINE', 'forcedVenueId' => $venueOpen->getId(), 'minAtVenueId' => $venueDisabled->getId()], null)->getId(),
             // Sortie AVEC warning (revue #340 round 1) : DATÉE CLUB+tag dont le tag ne vise
             // plus aucune équipe active, sans gymnase dédié (PREFERRED) — un geste explicite
             // du gestionnaire pour la période ne s'évapore jamais en silence (#8).
-            'datedInertTag' => $this->constraint($club, $season, ConstraintScope::CLUB, null, ConstraintFamily::TIME, ['targetTag' => 'PARITE', 'maxStartTime' => '18:00'], $entry->getId(), ConstraintRuleType::PREFERRED)->getId(),
+            'datedInertTag' => $this->constraint($club, $season, ConstraintScope::CLUB, null, ConstraintFamily::TIME, ['targetTag' => 'FEMININE', 'maxStartTime' => '18:00'], $entry->getId(), ConstraintRuleType::PREFERRED)->getId(),
             // Sortie (divergence n° 1 alignée) : datée de l'équipe EN PAUSE, config invalide
             // À DESSEIN (famille TIME sans clé) — si le gate la validait encore, son erreur
             // ferait échouer le récap sur une règle que le solveur ne verra jamais.
