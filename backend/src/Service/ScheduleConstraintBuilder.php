@@ -117,9 +117,8 @@ final class ScheduleConstraintBuilder
      * backend↔engine payload SHAPE without a database. Forcing them non-nullable
      * would only push mocks into that critical test for zero prod benefit.
      *
-     * P2-9ter : `TeamTagService` a été RETIRÉ d'ici — le builder ne synchronise
-     * plus les tags, il les lit (cf. serializeTeam). Le service reste injecté
-     * dans `TeamTagSyncListener`, qui les maintient au write-path.
+     * Les étiquettes se calculent à la lecture : le builder les obtient du
+     * résolveur (`TeamTagResolver`), jamais d'une table.
      */
     public function __construct(
         private readonly LoggerInterface $logger,
@@ -1419,9 +1418,8 @@ final class ScheduleConstraintBuilder
         // Contrat 1.3 (ENG-53) — `tags`, `minSessionsOverride` et `isActive` d'entité ont quitté le
         // payload : aucun n'était lu par le solveur. La désactivation qui compte passe par les
         // overrides de période (`deactivatedTeamIds`), qui filtrent l'équipe du payload en amont ;
-        // `Team.isActive` reste un attribut d'archivage SANS effet solveur. Les tags, eux, étaient
-        // lus ici en SEULE lecture (jamais resynchronisés — c'est `TeamTagSyncListener` qui les tient
-        // au write-path) : plus rien à relire puisqu'ils ne voyagent plus.
+        // `Team.isActive` reste un attribut d'archivage SANS effet solveur. Les tags ne voyagent
+        // plus : ils ne servent qu'à éclater les règles de groupe (`TeamTagResolver`).
         // Contrat 1.10 — séances max par jour, émis SEULEMENT au-delà de 1 : un club resté partout à
         // 1 garde un payload (et une empreinte de structure) byte-identique à celui d'avant le champ.
         $maxPerDay = $this->currentMaxPerDayOverrides[$team->getId()] ?? $team->getMaxSessionsPerDay();

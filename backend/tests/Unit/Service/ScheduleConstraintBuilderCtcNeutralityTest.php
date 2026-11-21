@@ -7,8 +7,6 @@ namespace App\Tests\Unit\Service;
 use App\Entity\SportCategory;
 use App\Entity\Team;
 use App\Entity\TeamMatchHabit;
-use App\Entity\TeamTag;
-use App\Entity\TeamTagAssignment;
 use App\Service\ScheduleConstraintBuilder;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\EntityRepository;
@@ -95,16 +93,14 @@ final class ScheduleConstraintBuilderCtcNeutralityTest extends TestCase
         $logger = $this->createMock(LoggerInterface::class);
 
         // Patron ScheduleConstraintBuilderAgeFieldsTest : serializeTeam lit SportCategory (âges) et
-        // deriveMatchDay lit TeamMatchHabit ; les repos de tags doivent répondre (findBy vide) sinon
-        // getRepository rend null et le build lève un TypeError.
+        // deriveMatchDay lit TeamMatchHabit (findBy vide) ; sans eux getRepository rend null et le
+        // build lève un TypeError.
         $sportCategoryRepository->method('find')->willReturn(null);
         $emptyRepository = $this->createMock(EntityRepository::class);
         $emptyRepository->method('findBy')->willReturn([]);
 
         $this->entityManager->method('getRepository')->willReturnMap([
             [SportCategory::class, $sportCategoryRepository],
-            [TeamTagAssignment::class, $emptyRepository],
-            [TeamTag::class, $emptyRepository],
             [TeamMatchHabit::class, $emptyRepository],
         ]);
 

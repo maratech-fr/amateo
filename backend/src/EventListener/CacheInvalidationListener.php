@@ -20,7 +20,7 @@ use Symfony\Component\Messenger\Event\WorkerMessageHandledEvent;
 /**
  * Purge le cache du payload solveur (`cache.schedule`) quand une entité métier
  * d'un club change — par TAG club, ce qui couvre toutes les saisons d'un coup
- * (`SportCategory`/`TeamTag` alimentent le payload sans porter de `seasonId`).
+ * (`SportCategory` alimente le payload sans porter de `seasonId`).
  *
  * P2-12 (2026-08-04) : le pool `cache.tenant` et les clés `tenant_data`/
  * `schedule_snapshot` ont été SUPPRIMÉS — aucun writer nulle part, le listener
@@ -96,9 +96,9 @@ class CacheInvalidationListener
             // rien n'invaliderait. Supprimable un déploiement plus tard.
             $this->scheduleCachePool->deleteItem(\sprintf('club.%s.schedule_input', $clubId));
             // Le payload solveur : purgé par TAG, toutes saisons du club d'un coup.
-            // Indispensable — `SportCategory` et `TeamTag` alimentent le payload mais ne
-            // portent PAS de `seasonId`, donc aucune clé par saison ne serait devinable
-            // depuis l'entité éditée.
+            // Indispensable — `SportCategory` alimente le payload (âges, et les étiquettes
+            // qui éclatent les règles de groupe se calculent depuis elle) mais ne porte PAS
+            // de `seasonId` : aucune clé par saison ne serait devinable depuis l'entité éditée.
             $this->scheduleCachePool->invalidateTags([ScheduleConstraintBuilder::cacheTag((string) $clubId)]);
         }
 

@@ -9,7 +9,6 @@ use App\Dto\ConstraintInput;
 use App\Entity\Constraint;
 use App\Entity\ConstraintPeriodOverride;
 use App\Entity\Team;
-use App\Entity\TeamTag;
 use App\Entity\Venue;
 use App\Enum\ConstraintFamily;
 use App\Enum\ConstraintRuleType;
@@ -21,6 +20,7 @@ use App\Service\SchedulePlanProvisioner;
 use App\Service\SeasonAccessGuard;
 use App\Service\SeasonResolver;
 use App\Service\TeamTagResolver;
+use App\Service\TeamTagService;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\HttpFoundation\RequestStack;
 use Symfony\Component\HttpKernel\Exception\UnprocessableEntityHttpException;
@@ -40,6 +40,7 @@ class ConstraintStateProcessor extends AbstractStateProcessor
         private readonly TeamTagResolver $tagResolver,
         private readonly ClosurePinRemover $closurePinRemover,
         private readonly SchedulePlanProvisioner $schedulePlanProvisioner,
+        private readonly TeamTagService $tagService,
     ) {
         parent::__construct($entityManager, $requestStack, $seasonResolver, $seasonAccessGuard, $managementAccessGuard);
     }
@@ -292,9 +293,9 @@ class ConstraintStateProcessor extends AbstractStateProcessor
      * rétro-compat stricte — un tag inconnu y reste un NO-OP + warning au build. La nouvelle
      * forme seule (présence de `targetTags`/`excludeTags`) déclenche ce contrôle.
      *
-     * Comme `assertVenuesExist`, on s'appuie sur le `TenantFilter` (listener priorité 7,
-     * après le firewall) : la lecture est déjà bornée au club courant, un tag d'un autre
-     * club se signale INCONNU, jamais « interdit ».
+     * Un groupe est un nom du catalogue fermé, le même pour tous les clubs : il est connu même
+     * quand aucune étiquette n'est enregistrée (elles se calculent à la lecture). Le refus
+     * « ne désigne aucune équipe » couvre alors le club sans équipe dans ce groupe.
      *
      * @param array<string, mixed> $config
      */
@@ -316,9 +317,9 @@ class ConstraintStateProcessor extends AbstractStateProcessor
             return;
         }
 
-        // Groupe inconnu du club → 422 (le TenantFilter borne au club courant).
+        // Nom hors du catalogue → 422.
         foreach ([...TeamTagResolver::targetTagNames($config), ...TeamTagResolver::excludeTagNames($config)] as $tagName) {
-            if (!$this->entityManager->getRepository(TeamTag::class)->findOneBy(['name' => $tagName]) instanceof TeamTag) {
+            if (!$this->tagService->isCatalogName($tagName)) {
                 throw new UnprocessableEntityHttpException(\sprintf('Le groupe « %s » n\'existe pas dans ce club.', $tagName));
             }
         }

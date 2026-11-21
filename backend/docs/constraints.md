@@ -101,7 +101,7 @@ Le champ `ruleType` (enum `ConstraintRuleType`) définit comment le solveur trai
 
 Quand le scope est `CLUB`, la contrainte s'applique par défaut à **toutes** les équipes du club. Pour cibler un sous-ensemble, on utilise la clé `config.targetTag`.
 
-Une contrainte `CLUB` avec `config.targetTag = "JEUNE"` s'applique uniquement aux équipes portant le tag `JEUNE`. Ces tags sont générés automatiquement par `TeamTagService` à partir des caractéristiques de l'équipe (âge, genre, niveau).
+Une contrainte `CLUB` avec `config.targetTag = "JEUNE"` s'applique uniquement aux équipes portant le tag `JEUNE`. Ces tags sont calculés à la lecture par `TeamTagService` à partir des caractéristiques de l'équipe (âge, genre, niveau) — rien ne les enregistre.
 
 **Tags système disponibles :**
 
@@ -147,7 +147,7 @@ Cette contrainte utilise le scope `CLUB` combiné au tag `JEUNE`. Dans la base d
 }
 ```
 
-Mais avant d'envoyer le payload au moteur de calcul, le backend résout ce tag. `ScheduleConstraintBuilder` interroge les tables `TeamTag` et `TeamTagAssignment` pour trouver toutes les équipes taguées `JEUNE` dans la saison active (par exemple : U9M, U9F, U11M, U11F, U13M1, U13M2, U13F, U15M, U15F). Pour chacune de ces équipes, il génère une contrainte individuelle de scope `TEAM`.
+Mais avant d'envoyer le payload au moteur de calcul, le backend résout ce tag. `ScheduleConstraintBuilder` calcule (par `TeamTagResolver`) toutes les équipes qui portent `JEUNE` dans la saison active (par exemple : U9M, U9F, U11M, U11F, U13M1, U13M2, U13F, U15M, U15F). Pour chacune de ces équipes, il génère une contrainte individuelle de scope `TEAM`.
 
 Le moteur ne voit jamais `targetTag`. Il reçoit huit contraintes `TEAM` distinctes, chacune avec `maxStartTime: "19:30"`. Cette résolution garantit que le solveur travaille avec des entités concrètes, pas avec des abstractions de tag.
 
@@ -195,22 +195,22 @@ Le mécanisme de résolution des tags est un passage obligé entre la saisie uti
 
 L'administrateur du BCCL crée une contrainte `CLUB` avec `targetTag = "JEUNE"`. Il n'a pas besoin de lister manuellement les 8 équipes jeunes. Le tag fait le travail.
 
-**Étape 2 — Génération automatique des tags**
+**Étape 2 — Les tags se calculent à la lecture**
 
-`TeamTagService` s'exécute régulièrement (ou à la création/modification d'une équipe) pour maintenir les tags à jour. Il inspecte chaque équipe et lui attribue des tags système. **`syncTeamTags` court-circuite si l'ensemble de tags désiré est identique à l'existant** (retour terrain 2026-09-27) : sans ce garde, un delete+recreate systématique du MÊME ensemble (rejoué à chaque écriture de `Team`, y compris depuis `TeamTagSyncListener::categoryUpdated` sur un simple changement de durée de match) écrivait des `TeamTagAssignment` pour rien, ce qui faisait diverger l'empreinte de structure pour rien (bannière « à régénérer » à tort — P4-266). La comparaison porte sur l'ENSEMBLE d'ids désiré vs existant, jamais sur un filtre de champs (`determineTagNames` reste libre d'évoluer sans faire revivre le bug) :
+Rien n'enregistre les tags : `TeamTagService::tagNamesOf` les calcule à l'instant depuis la catégorie (lue en base), le sexe et le niveau de l'équipe, sur un catalogue fermé de noms (`TeamTagService::catalog`, identique pour tous les clubs). Modifier une catégorie déplace donc ses équipes dans toutes les saisons du club, sans écriture :
 
-- Une équipe U13F se voit attribuer `JEUNE`, `U13`, `FEMININE`.
-- Une équipe SM1 se voit attribuer `SENIOR`, `MASCULINE` (plus un tag niveau si défini).
+- Une équipe U13F porte `JEUNE`, `U13`, `FEMININE`.
+- Une équipe SM1 porte `ADULTE`, `SENIOR`, `MASCULINE` (plus un tag niveau si défini).
 
-Ces assignations sont stockées dans `TeamTagAssignment`, liant `Team` + `TeamTag` + `Season`.
+Une équipe dont la catégorie n'existe plus n'a aucun groupe d'âge, sans message.
 
 **Étape 3 — Résolution au moment de la génération**
 
 Quand `GenerateScheduleHandler` déclenche la construction du payload, `ScheduleConstraintBuilder` parcourt toutes les contraintes `CLUB` avec un `targetTag`. Pour chacune :
 
 1. Il lit la valeur de `targetTag` (ex: `"JEUNE"`).
-2. Il cherche le `TeamTag` correspondant pour le club.
-3. Il récupère toutes les `TeamTagAssignment` actives pour ce tag et la saison en cours.
+2. Un nom hors du catalogue ne désigne aucune équipe (avertissement au journal).
+3. `TeamTagResolver::teamIdsByTag` calcule les équipes du club ET de la saison qui portent ce nom (mémo par message, clé club + saison).
 4. Pour chaque équipe trouvée, il crée une contrainte `TEAM` individuelle avec les mêmes `family`, `ruleType` et `config` (sans le `targetTag`).
 
 **Étape 4 — Payload envoyé au moteur**

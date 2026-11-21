@@ -7,21 +7,24 @@ namespace App\Tests\Unit\Service;
 use App\Entity\Constraint;
 use App\Entity\PriorityTier;
 use App\Entity\Reservation;
+use App\Entity\SportCategory;
 use App\Entity\Team;
 use App\Entity\TeamCoach;
-use App\Entity\TeamTag;
-use App\Entity\TeamTagAssignment;
 use App\Entity\VenueTrainingSlot;
 use App\Enum\ConstraintFamily;
 use App\Enum\ConstraintRuleType;
 use App\Enum\ConstraintScope;
+use App\Enum\Gender;
 use App\Enum\TeamCoachRole;
+use App\Enum\TeamLevel;
 use App\Service\PreSolvePreventionWarnings;
 use App\Service\ScheduleConstraintBuilder;
 use App\Service\TeamTagResolver;
+use App\Service\TeamTagService;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\EntityRepository;
+use LogicException;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\LoggerInterface;
@@ -33,11 +36,11 @@ final class ScheduleConstraintBuilderTest extends TestCase
 
     private EntityManagerInterface&MockObject $entityManager;
 
-    /** @var EntityRepository<TeamTag>&MockObject */
-    private EntityRepository&MockObject $teamTagRepository;
+    /** @var EntityRepository<Team>&MockObject */
+    private EntityRepository&MockObject $teamRepository;
 
-    /** @var EntityRepository<TeamTagAssignment>&MockObject */
-    private EntityRepository&MockObject $teamTagAssignmentRepository;
+    /** @var EntityRepository<SportCategory>&MockObject */
+    private EntityRepository&MockObject $sportCategoryRepository;
 
     private LoggerInterface&MockObject $logger;
 
@@ -46,7 +49,6 @@ final class ScheduleConstraintBuilderTest extends TestCase
         $seasonId = 'season-1';
         $clubId = 'club-1';
 
-        $this->teamTagRepository->method('findOneBy')->willReturn(null);
         // PSR-3 (revue #340 round 2) : le MESSAGE porte des placeholders stables — un
         // message unique par tag/club casserait le regroupement des agrégateurs de logs.
         // Les VALEURS vivent dans le contexte : c'est lui qu'on vérifie. Le nom est HORS du
@@ -181,7 +183,6 @@ final class ScheduleConstraintBuilderTest extends TestCase
         // Review NR: a HARD "prefer venue" on a tag resolving to ZERO teams used
         // to skip the positive constraints but still run the "forbidden outside
         // the tag" loop — banning the venue for EVERY team of the club.
-        $this->teamTagRepository->method('findOneBy')->willReturn(null);
 
         $constraint = (new Constraint)
             ->setId('c-tag')
@@ -204,11 +205,7 @@ final class ScheduleConstraintBuilderTest extends TestCase
         // FORCE le groupe sur le gymnase et NE RÉSERVE RIEN aux autres équipes — plus
         // aucune ligne `forbiddenVenueId` implicite « interdit hors tag ». Une exclusivité,
         // si elle est voulue, se saisit ; elle ne se déduit pas d'un « impose ».
-        $tag = (new TeamTag)->setId('tag-fem')->setClubId('club-1')->setName('FEMININE');
-        $this->teamTagRepository->method('findOneBy')->willReturn($tag);
-        $this->teamTagAssignmentRepository->method('findBy')->willReturn([
-            (new TeamTagAssignment)->setTeamId('team-a')->setTagId('tag-fem')->setSeasonId('season-1'),
-        ]);
+        $this->builder = $this->builderWithTagSets(['FEMININE' => ['team-a']]);
 
         $constraint = (new Constraint)
             ->setId('c-impose')
@@ -402,19 +399,19 @@ final class ScheduleConstraintBuilderTest extends TestCase
     protected function setUp(): void
     {
         $this->entityManager = $this->createMock(EntityManagerInterface::class);
-        $this->teamTagRepository = $this->createMock(EntityRepository::class);
-        $this->teamTagAssignmentRepository = $this->createMock(EntityRepository::class);
+        $this->teamRepository = $this->createMock(EntityRepository::class);
+        $this->sportCategoryRepository = $this->createMock(EntityRepository::class);
         $this->logger = $this->createMock(LoggerInterface::class);
 
         $this->entityManager->method('getRepository')->willReturnMap([
-            [TeamTag::class, $this->teamTagRepository],
-            [TeamTagAssignment::class, $this->teamTagAssignmentRepository],
+            [Team::class, $this->teamRepository],
+            [SportCategory::class, $this->sportCategoryRepository],
         ]);
 
         // P2-14 : la résolution de tag vit dans TeamTagResolver (source unique) — le
         // builder ne fait que déléguer. On lui passe un résolveur bâti sur le MÊME EM
         // mocké : les attentes de repository ci-dessus restent le contrat testé.
-        $this->builder = new ScheduleConstraintBuilder($this->logger, $this->entityManager, null, null, new TeamTagResolver($this->entityManager, $this->logger));
+        $this->builder = new ScheduleConstraintBuilder($this->logger, $this->entityManager, null, null, new TeamTagResolver($this->entityManager, $this->logger, new TeamTagService($this->entityManager)));
     }
 
     private function team(string $id): Team
@@ -460,41 +457,54 @@ final class ScheduleConstraintBuilderTest extends TestCase
     /**
      * P2-29 — un résolveur bâti sur un EM mocké dont chaque tag NOMMÉ renvoie un jeu
      * d'équipes distinct, pour éprouver l'intersection et l'exclusion au niveau du builder.
+     * Les étiquettes se calculent à la lecture : chaque équipe reçoit la catégorie, le sexe et
+     * le niveau qui lui font porter exactement les groupes demandés.
      *
      * @param array<string, list<string>> $teamsByTag nom de tag => teamIds
      */
     private function builderWithTagSets(array $teamsByTag): ScheduleConstraintBuilder
     {
-        $tagIdByName = [];
-        foreach (array_keys($teamsByTag) as $name) {
-            $tagIdByName[$name] = 'tag-' . $name;
+        $namesByTeam = [];
+        foreach ($teamsByTag as $name => $teamIds) {
+            foreach ($teamIds as $teamId) {
+                $namesByTeam[$teamId][] = $name;
+            }
         }
 
-        $this->teamTagRepository->method('findOneBy')->willReturnCallback(
-            static function (array $criteria) use ($tagIdByName): ?TeamTag {
-                $name = $criteria['name'] ?? null;
-                if (!\is_string($name) || !isset($tagIdByName[$name])) {
-                    return null;
-                }
+        $teams = [];
+        $categories = [];
+        foreach ($namesByTeam as $teamId => $names) {
+            $unsupported = array_diff($names, ['ADULTE', 'BABY', 'COMPETITION', 'LOISIR_ADULTE', 'FEMININE']);
+            if ([] !== $unsupported) {
+                throw new LogicException(\sprintf('groupe non décrit par ce décor : %s', implode(', ', $unsupported)));
+            }
+            $category = new SportCategory;
+            $category->setId('cat-' . $teamId);
+            $category->setName('Catégorie');
+            $category->setAgeMin(\in_array('ADULTE', $names, true) ? 19 : null);
+            $category->setAgeMax(\in_array('ADULTE', $names, true) ? 99 : (\in_array('BABY', $names, true) ? 5 : null));
+            $categories[$category->getId()] = $category;
 
-                return (new TeamTag)->setId($tagIdByName[$name])->setClubId('club-1')->setName($name);
-            },
+            $team = $this->team($teamId);
+            $team->setClubId('club-1');
+            $team->setSeasonId('season-1');
+            $team->setSportCategoryId($category->getId());
+            $team->setGender(\in_array('FEMININE', $names, true) ? Gender::F : null);
+            $team->setLevel(match (true) {
+                \in_array('LOISIR_ADULTE', $names, true) => TeamLevel::LOISIR_ADULTE,
+                \in_array('COMPETITION', $names, true) => TeamLevel::REGIONAL,
+                default => null,
+            });
+            $teams[] = $team;
+        }
+
+        $this->teamRepository->method('findBy')->willReturnCallback(
+            static fn (array $criteria): array => 'club-1' === ($criteria['clubId'] ?? null) && 'season-1' === ($criteria['seasonId'] ?? null) ? $teams : [],
         );
-        $this->teamTagAssignmentRepository->method('findBy')->willReturnCallback(
-            static function (array $criteria) use ($teamsByTag, $tagIdByName): array {
-                $tagId = $criteria['tagId'] ?? null;
-                $name = array_search($tagId, $tagIdByName, true);
-                if (false === $name) {
-                    return [];
-                }
-
-                return array_map(
-                    static fn (string $teamId): TeamTagAssignment => (new TeamTagAssignment)->setTeamId($teamId)->setTagId((string) $tagId)->setSeasonId('season-1'),
-                    $teamsByTag[$name],
-                );
-            },
+        $this->sportCategoryRepository->method('find')->willReturnCallback(
+            static fn (mixed $id): ?SportCategory => \is_string($id) ? ($categories[$id] ?? null) : null,
         );
 
-        return new ScheduleConstraintBuilder($this->logger, $this->entityManager, null, null, new TeamTagResolver($this->entityManager, $this->logger));
+        return new ScheduleConstraintBuilder($this->logger, $this->entityManager, null, null, new TeamTagResolver($this->entityManager, $this->logger, new TeamTagService($this->entityManager)));
     }
 }

@@ -30,8 +30,6 @@ use App\Entity\TeamCoach;
 use App\Entity\TeamLink;
 use App\Entity\TeamMatchHabit;
 use App\Entity\TeamPeriodOverride;
-use App\Entity\TeamTag;
-use App\Entity\TeamTagAssignment;
 use App\Entity\User;
 use App\Entity\Venue;
 use App\Entity\VenueMatchWindow;
@@ -1127,25 +1125,6 @@ final class BcclSeeder
             }
         }
         $manager->flush();
-
-        // --- Tags MAISON retirés (lot tags PR 4) ------------------------------------------
-        // COMPETITION et SENIOR_COMPETITION étaient deux tags MAISON créés en dépannage quand
-        // une contrainte ne pouvait cibler QU'UN tag. Les cibles multiples existent désormais :
-        //   • COMPETITION est devenu un tag SYSTÈME (dérivé du niveau non-loisir par
-        //     TeamTagService::determineTagNames) — le sync d'équipe le crée et l'assigne aux 32
-        //     équipes en compétition. Plus aucun geste maison à faire : le bloc de création a
-        //     disparu, la règle du week-end continue de le cibler par son nom (désormais système).
-        //   • SENIOR_COMPETITION disparaît : sa règle des 18h50 se ré-exprime en cible combinée
-        //     « ADULTE sauf LOISIR_ADULTE » (voir plus bas). On purge donc le tag maison ET ses
-        //     assignations, pour qu'un reseed en append ne laisse pas un tag orphelin en base.
-        $seniorCompTag = $manager->getRepository(TeamTag::class)->findOneBy(['clubId' => $club->getId(), 'name' => 'SENIOR_COMPETITION']);
-        if ($seniorCompTag instanceof TeamTag) {
-            foreach ($manager->getRepository(TeamTagAssignment::class)->findBy(['tagId' => $seniorCompTag->getId()]) as $assignment) {
-                $manager->remove($assignment);
-            }
-            $manager->remove($seniorCompTag);
-            $manager->flush();
-        }
 
         // --- TIME (heures de début, portée club par tranche d'âge) ---
         $addConstraint('Groupe EMB (U9-U11) · pas après 17:30', ConstraintScope::CLUB, null, ConstraintFamily::TIME, ConstraintRuleType::HARD, ['maxStartTime' => '17:30', 'targetTag' => 'EMB']);
