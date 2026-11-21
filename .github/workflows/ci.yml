@@ -1048,7 +1048,7 @@ jobs:
           # (aide visuelle qui ne voyage pas) et SANS suppléance (rotations supprimées, toutes les
           # habitudes voyagent). Falsifié dans les deux sens (habitude stockée émise sans le tag,
           # habitude d'un autre club ne fuit pas ; matchDay dérivé = jour ISO de l'habitude, repli
-          # champ déclaré 0-based→ISO, null sans image).
+          # champ déclaré, compté de 1 à 7, émis tel quel ; null sans image).
           FILES="$FILES tests/CrossStack/HabitPayloadParityTest.php"
           # P4-240 ③ (axes backend↔engine contract + auth & memberships) : ce qui est STOCKÉ (les
           # memberships coach↔équipe ACTIFS) == le bloc `teams[].players` émis au solveur de placement,

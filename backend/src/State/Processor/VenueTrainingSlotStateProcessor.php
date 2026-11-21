@@ -15,6 +15,7 @@ use App\Service\SeasonAccessGuard;
 use App\Service\SeasonResolver;
 use App\Service\VenueGridConflict;
 use App\Service\VenueGridOverlap;
+use App\Support\WeeklySlot;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\HttpFoundation\RequestStack;
@@ -236,7 +237,7 @@ class VenueTrainingSlotStateProcessor extends AbstractStateProcessor
         // `minutesOf` plutôt qu'un second calcul : `validateNoOverlap` lit déjà l'heure de
         // début par ce chemin, et deux façons de convertir la même valeur finissent par
         // diverger — c'est le motif de duplication que P4-37 a soldé côté front.
-        if ($this->minutesOf($entity) + $entity->getDurationMinutes() > 24 * 60) {
+        if ($this->minutesOf($entity) + $entity->getDurationMinutes() > WeeklySlot::MINUTES_PER_DAY) {
             $this->refuse('Un créneau doit se terminer dans sa journée : celui-ci déborderait après minuit.');
         }
     }
@@ -323,6 +324,6 @@ class VenueTrainingSlotStateProcessor extends AbstractStateProcessor
 
     private function minutesOf(VenueTrainingSlot $slot): int
     {
-        return (int) $slot->getStartTime()->format('H') * 60 + (int) $slot->getStartTime()->format('i');
+        return WeeklySlot::minutesOf($slot->getStartTime());
     }
 }

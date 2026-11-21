@@ -36,7 +36,7 @@ use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
  * - une habitude stockée DOIT apparaître (mêmes jour/heure/gymnase, jamais le tag `week`) ;
  * - une habitude d'un AUTRE club NE doit PAS fuir (RLS — un builder aveugle au tenant échoue) ;
  * - le `matchDay` émis au `/generate` == le jour ISO de l'habitude, repli champ déclaré
- *   `Team.matchDay` converti 0-based→ISO, sans habitude ni champ déclaré = null inchangé.
+ *   `Team.matchDay` (déjà de 1 à 7) émis tel quel, sans habitude ni champ déclaré = null inchangé.
  */
 #[Group('phase1')]
 #[Group('integration')]
@@ -127,20 +127,24 @@ final class HabitPayloadParityTest extends KernelTestCase
     }
 
     /**
-     * Sans image : repli sur le champ déclaré `Team.matchDay`, 0-based (0 = lundi) CONVERTI en
-     * ISO (+1). Un builder qui émettrait la valeur brute (5) au lieu de 6 échoue — c'est le bug
-     * dormant (formule moteur `match_day % 7 + 1` juste en ISO seulement).
+     * Sans image : repli sur le champ déclaré `Team.matchDay`, compté de 1 (lundi) à 7 (dimanche) comme
+     * le moteur le lit (`match_day % 7 + 1`), émis TEL QUEL. Un builder qui ajouterait encore 1 (l'ancien
+     * comptage de 0 à 6) enverrait 7 pour un samedi, donc un repos le lundi au lieu du dimanche, et 8
+     * pour un dimanche, hors de la semaine.
      */
-    public function testDeclaredFieldFallbackIsConvertedZeroBasedToIso(): void
+    public function testDeclaredFieldFallbackIsEmittedAsStored(): void
     {
         [$club, $season] = $this->seedClub();
-        $team = $this->team($club, $season);
-        $team->setMatchDay(5); // 0-based : 5 = samedi.
+        $saturday = $this->team($club, $season);
+        $saturday->setMatchDay(6);
+        $sunday = $this->team($club, $season);
+        $sunday->setMatchDay(7);
         $this->em->flush();
 
         $payload = $this->generatePayload($club, $season);
 
-        self::assertSame(6, $this->emittedMatchDay($payload, $team->getId()), 'champ déclaré 5 (0-based samedi) → ISO 6');
+        self::assertSame(6, $this->emittedMatchDay($payload, $saturday->getId()), 'samedi enregistré 6 → 6 envoyé');
+        self::assertSame(7, $this->emittedMatchDay($payload, $sunday->getId()), 'dimanche enregistré 7 → 7 envoyé');
     }
 
     /**

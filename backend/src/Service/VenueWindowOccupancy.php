@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Service;
 
+use App\Support\WeeklySlot;
+
 /**
  * Décide si une FENÊTRE de gymnase (créneau de grille) est OCCUPÉE par au moins une séance.
  *
@@ -32,34 +34,18 @@ final class VenueWindowOccupancy
      */
     public static function windowIsFilled(array $window, array $occupants): bool
     {
-        $windowStart = self::startMinutes($window['startTime']);
+        $windowStart = WeeklySlot::minutesOf($window['startTime']);
         $windowEnd = $windowStart + $window['durationMinutes'];
         foreach ($occupants as $occupant) {
             if ($occupant['venueId'] !== $window['venueId'] || $occupant['dayOfWeek'] !== $window['dayOfWeek']) {
                 continue;
             }
-            $start = self::startMinutes($occupant['startTime']);
-            if (self::overlaps($start, $start + $occupant['durationMinutes'], $windowStart, $windowEnd)) {
+            $start = WeeklySlot::minutesOf($occupant['startTime']);
+            if (WeeklySlot::intervalsOverlap($start, $start + $occupant['durationMinutes'], $windowStart, $windowEnd)) {
                 return true;
             }
         }
 
         return false;
-    }
-
-    /** Deux intervalles de minutes demi-ouverts `[aStart, aEnd)` et `[bStart, bEnd)` s'intersectent. */
-    public static function overlaps(int $aStart, int $aEnd, int $bStart, int $bEnd): bool
-    {
-        return $aStart < $bEnd && $bStart < $aEnd;
-    }
-
-    /** « H:i » / « H:i:s » → minutes depuis minuit (les secondes sont ignorées, comme à l'écran). */
-    private static function startMinutes(string $time): int
-    {
-        $parts = explode(':', $time);
-        $hours = (int) $parts[0];
-        $minutes = (int) ($parts[1] ?? '0');
-
-        return $hours * 60 + $minutes;
     }
 }

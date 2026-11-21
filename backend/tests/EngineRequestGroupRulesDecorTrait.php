@@ -24,7 +24,9 @@ use PHPUnit\Framework\Assert;
  *   - U13 F, départemental : JEUNE, U13, FEMININE, DEPARTEMENTAL, COMPETITION ;
  *   - U15 M, régional : JEUNE, U15, MASCULINE, REGIONAL, COMPETITION ;
  *   - SM1, senior masculin régional : ADULTE, SENIOR, MASCULINE, REGIONAL, COMPETITION ; jour de
- *     match enregistré 5 (samedi, compté de 0), sans habitude de match.
+ *     match enregistré 6 (samedi, compté de 1 à 7), sans habitude de match. La référence 7 a été captée
+ *     quand ce jour s'enregistrait 5 (compté de 0) et partait 6 : elle n'a pas bougé, la demande au
+ *     moteur est la même.
  *
  * Consommé par `Integration/EngineRequestReferenceTest` (références 7 et 8) et
  * `Integration/Command/EngineRequestsRecordCommandTest`.
@@ -64,7 +66,7 @@ trait EngineRequestGroupRulesDecorTrait
         foreach ([
             [self::ER_TEAM_U13, self::ER_CATEGORY_U13, Gender::F, TeamLevel::DEPARTEMENTAL, null],
             [self::ER_TEAM_U15, self::ER_CATEGORY_U15, Gender::M, TeamLevel::REGIONAL, null],
-            [self::ER_TEAM_SM1, self::ER_CATEGORY_SENIOR, Gender::M, TeamLevel::REGIONAL, 5],
+            [self::ER_TEAM_SM1, self::ER_CATEGORY_SENIOR, Gender::M, TeamLevel::REGIONAL, 6],
         ] as [$teamId, $categoryId, $gender, $level, $matchDay]) {
             $team = $em->getRepository(Team::class)->find($teamId);
             Assert::assertInstanceOf(Team::class, $team);

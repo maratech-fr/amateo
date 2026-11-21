@@ -13,6 +13,7 @@ use App\Entity\SharedTrainingBlockTeam;
 use App\Service\PlanVenueClosures;
 use App\Service\ReservationGroupOccupancy;
 use App\State\Processor\AssertsSchedulePlanExistsTrait;
+use App\Support\WeeklySlot;
 use DateTimeImmutable;
 use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
 use Doctrine\ORM\EntityManagerInterface;
@@ -117,7 +118,7 @@ final class GroupReservationController extends AbstractController implements Sea
         }
         // Borne haute = la journée : début + durée ≤ minuit (24:00 pile autorisé), en parité avec
         // `ReservationStateProcessor::assertEndsWithinDay` et la saisie « Autre… » du front.
-        if (((int) $startTime->format('H')) * 60 + ((int) $startTime->format('i')) + $durationMinutes > 24 * 60) {
+        if (WeeklySlot::minutesOf($startTime) + $durationMinutes > WeeklySlot::MINUTES_PER_DAY) {
             return $this->json(['error' => \sprintf('Un créneau qui commence à %s ne peut pas durer %d minutes : il finirait après minuit.', $startTime->format('H:i'), $durationMinutes)], Response::HTTP_UNPROCESSABLE_ENTITY);
         }
 

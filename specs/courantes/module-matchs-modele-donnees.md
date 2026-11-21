@@ -137,7 +137,8 @@ vigueur, il n'a rien à comparer.
   (`ScheduleConstraintBuilder::deriveMatchDay`, `POST /generate`) émet le DERNIER jour ISO de match
   de la semaine — le repos qui compte est celui d'après lui (`rest_day = match_day % 7 + 1`,
   `engine/app/solver/objective/terms/rhythm.py`) — pour le bonus SOFT « jour de repos après un match ».
-  Sans habitude, repli sur le champ déclaré `Team.matchDay` (0-based, converti en ISO à l'émission).
+  Sans habitude, repli sur le champ déclaré `Team.matchDay` (de 1, lundi, à 7, dimanche, émis tel
+  quel ; `Version20261121130000` a converti l'ancien comptage de 0).
 - **`VenueMatchWindow`** (jour ISO + plage horaire, gymnase = « de match » ssi ≥ 1 fenêtre — aucun
   booléen sur `Venue`) (l'ancienne entité `VenueUnavailability` est retirée : une indisponibilité de gymnase est une fermeture du calendrier, voir plus bas ; sa table est supprimée par `Version20261108120000`, `docs/ops/deploy.md`). **8ᵉ ligne « Jours fériés » (PR2, Q1 option c,
   décision fondateur 2026-10-27, migration `Version20261027120000`)** : `dayOfWeek` devient

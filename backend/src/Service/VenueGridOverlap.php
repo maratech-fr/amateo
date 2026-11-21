@@ -6,6 +6,7 @@ namespace App\Service;
 
 use App\Entity\VenueOccupancy;
 use App\Entity\VenueTrainingSlot;
+use App\Support\WeeklySlot;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
 
@@ -63,17 +64,12 @@ final readonly class VenueGridOverlap
     /** @param VenueGridConflict::SLOT|VenueGridConflict::OCCUPANCY $kind */
     private function conflict(string $kind, int $dayOfWeek, DateTimeImmutable $otherStartTime, int $otherDuration, ?string $label, int $start, int $end): ?VenueGridConflict
     {
-        $otherStart = (int) $otherStartTime->format('G') * 60 + (int) $otherStartTime->format('i');
+        $otherStart = WeeklySlot::minutesOf($otherStartTime);
         $otherEnd = $otherStart + $otherDuration;
-        if ($start >= $otherEnd || $otherStart >= $end) {
+        if (!WeeklySlot::intervalsOverlap($start, $end, $otherStart, $otherEnd)) {
             return null;
         }
 
-        return new VenueGridConflict($kind, $dayOfWeek, $this->clock($otherStart), $this->clock($otherEnd), $label);
-    }
-
-    private function clock(int $minutes): string
-    {
-        return \sprintf('%02d:%02d', intdiv($minutes, 60), $minutes % 60);
+        return new VenueGridConflict($kind, $dayOfWeek, WeeklySlot::clock($otherStart), WeeklySlot::clock($otherEnd), $label);
     }
 }
