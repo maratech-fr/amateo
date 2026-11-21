@@ -27,6 +27,7 @@ use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\DBAL\Connection;
 use Doctrine\ORM\EntityManagerInterface;
+use LogicException;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
 use Psr\Log\LoggerInterface;
@@ -78,13 +79,35 @@ final class GenerationCreditIsPartOfTheResultTest extends KernelTestCase
 
     private int $engineCalls = 0;
 
+    /** @return iterable<string, array{0: array<string, mixed>|null, 1: int}> */
+    public static function failedSolves(): iterable
+    {
+        yield 'impossible pour le solveur' => [['status' => 'infeasible', 'score' => 0, 'slots' => [], 'diagnostics' => []], 200];
+        yield 'moteur muet (transport)' => [null, 200];
+        yield 'moteur en panne (500)' => [['detail' => 'boom'], 500];
+    }
+
+    /** @return iterable<string, array{0: string|null, 1: bool}> */
+    public static function neverRestricted(): iterable
+    {
+        yield 'offre Essentiel réglée' => ['essentiel', false];
+        yield 'bêta réglée' => ['beta', false];
+        yield 'démonstration' => [null, true];
+    }
+
+    /** @return array<string, mixed> */
+    private function completed(): array
+    {
+        return ['status' => 'completed', 'score' => 0, 'slots' => [], 'diagnostics' => []];
+    }
+
     /** Une version prête a pris un crédit, celui du club du message ; le voisin n'a rien perdu. */
     public function testACompletedSolveTakesOneCreditOfTheMessageClub(): void
     {
         [$club, , $schedule] = $this->seedClubWithPendingSchedule(credits: 3);
         [$neighbour] = $this->seedClubWithPendingSchedule(credits: 3);
 
-        $this->runHandler($club->getId(), $schedule->getId(), self::completed());
+        $this->runHandler($club->getId(), $schedule->getId(), $this->completed());
 
         self::assertSame(ScheduleStatus::COMPLETED, $this->statusOf($club->getId(), $schedule->getId()));
         self::assertSame(4, $this->creditsOf($club->getId()), 'une version prête prend un crédit du club du message');
@@ -102,7 +125,7 @@ final class GenerationCreditIsPartOfTheResultTest extends KernelTestCase
         $sentinelId = $this->seedSentinelSlot($club->getId(), $season->getId(), $schedule->getId());
 
         try {
-            $this->runHandler($club->getId(), $schedule->getId(), self::completed(), $this->ledgerWhoseSqlFails());
+            $this->runHandler($club->getId(), $schedule->getId(), $this->completed(), $this->ledgerWhoseSqlFails());
         } catch (Throwable $escaped) {
             self::fail(\sprintf('le message doit être acquitté (aucune exception ne sort du handler) — reçu %s : %s', $escaped::class, $escaped->getMessage()));
         }
@@ -141,14 +164,6 @@ final class GenerationCreditIsPartOfTheResultTest extends KernelTestCase
         self::assertSame(3, $this->creditsOf($club->getId()), 'une génération échouée laisse le solde intact');
     }
 
-    /** @return iterable<string, array{0: array<string, mixed>|null, 1: int}> */
-    public static function failedSolves(): iterable
-    {
-        yield 'impossible pour le solveur' => [['status' => 'infeasible', 'score' => 0, 'slots' => [], 'diagnostics' => []], 200];
-        yield 'moteur muet (transport)' => [null, 200];
-        yield 'moteur en panne (500)' => [['detail' => 'boom'], 500];
-    }
-
     /**
      * Q2 — deux solves sur deux saisons, compteur à 9 sur 10 : les deux versions aboutissent et le
      * compteur passe à 11. Le décompte du solve n'est pas strict : aucun résultat calculé n'est rendu
@@ -159,8 +174,8 @@ final class GenerationCreditIsPartOfTheResultTest extends KernelTestCase
         [$club, , $current] = $this->seedClubWithPendingSchedule(credits: 9);
         $next = $this->seedPendingScheduleInANewSeason($club->getId());
 
-        $this->runHandler($club->getId(), $current->getId(), self::completed());
-        $this->runHandler($club->getId(), $next->getId(), self::completed());
+        $this->runHandler($club->getId(), $current->getId(), $this->completed());
+        $this->runHandler($club->getId(), $next->getId(), $this->completed());
 
         self::assertSame(ScheduleStatus::COMPLETED, $this->statusOf($club->getId(), $current->getId()));
         self::assertSame(ScheduleStatus::COMPLETED, $this->statusOf($club->getId(), $next->getId()), 'le second solve aboutit malgré le pool franchi');
@@ -173,18 +188,10 @@ final class GenerationCreditIsPartOfTheResultTest extends KernelTestCase
     {
         [$club, , $schedule] = $this->seedClubWithPendingSchedule(credits: 50, planCode: $planCode, isDemo: $isDemo);
 
-        $this->runHandler($club->getId(), $schedule->getId(), self::completed());
+        $this->runHandler($club->getId(), $schedule->getId(), $this->completed());
 
         self::assertSame(ScheduleStatus::COMPLETED, $this->statusOf($club->getId(), $schedule->getId()), 'témoin : la version est prête');
         self::assertSame(50, $this->creditsOf($club->getId()), 'un club non bridé n\'est jamais décompté');
-    }
-
-    /** @return iterable<string, array{0: string|null, 1: bool}> */
-    public static function neverRestricted(): iterable
-    {
-        yield 'offre Essentiel réglée' => ['essentiel', false];
-        yield 'bêta réglée' => ['beta', false];
-        yield 'démonstration' => [null, true];
     }
 
     protected function setUp(): void
@@ -192,12 +199,6 @@ final class GenerationCreditIsPartOfTheResultTest extends KernelTestCase
         self::bootKernel();
         $this->em = self::getContainer()->get(EntityManagerInterface::class);
         $this->engineCalls = 0;
-    }
-
-    /** @return array<string, mixed> */
-    private static function completed(): array
-    {
-        return ['status' => 'completed', 'score' => 0, 'slots' => [], 'diagnostics' => []];
     }
 
     /** @param array<string, mixed>|null $engineBody null = le moteur ne répond pas (erreur de transport) */
@@ -239,7 +240,7 @@ final class GenerationCreditIsPartOfTheResultTest extends KernelTestCase
         $fail = static function () use ($real): never {
             $real->executeStatement('SELECT 1 / 0');
 
-            throw new \LogicException('inatteignable : la division par zéro a levé');
+            throw new LogicException('inatteignable : la division par zéro a levé');
         };
         $connection = $this->createMock(Connection::class);
         foreach (['executeStatement', 'executeQuery', 'fetchOne', 'fetchAssociative', 'fetchAllAssociative', 'fetchFirstColumn'] as $method) {
