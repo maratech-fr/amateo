@@ -220,6 +220,31 @@ final class PdfCreditIsTakenOnDeliveryTest extends KernelTestCase
         self::assertSame('%PDF rendu n°1', $this->finalContent($schedule, 'all'), 'le fichier livré n\'est pas remplacé');
     }
 
+    /**
+     * Deux demandes VRAIMENT coup sur coup (les deux gestes de l'écran avant que le worker ne traite
+     * le premier message, comme en file réelle) sur le même planning, deux périmètres, offre payante :
+     * les deux fichiers sont rendus et livrés. Le second message trouve le planning déjà « prêt »
+     * (le premier vient de livrer) : ce n'est pas une redélivrance, une garde qui ne lirait que le
+     * statut le sauterait à tort. Le pendant de {@see testARedeliveredDeliveredPdfTakesNoSecondCredit}.
+     */
+    public function testTwoQueuedRequestsOnTwoScopesAreBothDeliveredForAPaidClub(): void
+    {
+        [$club, $season, $venueId] = $this->seedClub(credits: 0, planCode: 'essentiel');
+        $schedule = $this->seedSchedule($club->getId(), $season);
+
+        $this->request($club->getId(), $schedule);
+        $this->request($club->getId(), $schedule);
+        $this->work($club->getId(), $schedule);
+        $this->em->clear();
+        $this->work($club->getId(), $schedule, $venueId);
+
+        self::assertCount(2, $this->renderedNames, 'les deux demandes sont rendues');
+        self::assertSame('%PDF rendu n°1', $this->finalContent($schedule, 'all'), 'le premier périmètre est livré');
+        self::assertSame('%PDF rendu n°2', $this->finalContent($schedule, substr($venueId, 0, 8)), 'le second périmètre est livré aussi');
+        self::assertSame('completed', $this->pdfStatusOf($club->getId(), $schedule));
+        self::assertStringEndsWith('-' . substr($venueId, 0, 8) . '.pdf', (string) $this->pdfUrlOf($club->getId(), $schedule), 'l\'URL est celle de la dernière livraison');
+    }
+
     protected function setUp(): void
     {
         self::bootKernel();
