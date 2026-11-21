@@ -624,24 +624,18 @@ final class ScheduleConstraintBuilderOverlayTest extends KernelTestCase
         $team = $this->team($club, $season, 'SM1');
         $this->em->flush();
 
-        // Un tag que `determineTagNames` ne dériverait JAMAIS de cette équipe : s'il
-        // survit, c'est que personne ne l'a resynchronisé.
-        // ⚠ Le fixture s'appuie sur le fait que `team()` ne pose ni genre ni niveau et
-        // pointe une SportCategory inexistante — l'équipe ne dérive donc AUCUN tag
-        // système, et l'assertion exacte plus bas est légitime. Ajouter un genre au
-        // helper ferait tomber ce test pour une raison sans rapport avec la règle gardée.
-        // ⚠ On RÉUTILISE le tag U13 que le listener vient de créer, on n'en sème pas un
-        // second. `getOrCreateSystemTags` pose les 22 tags système à CHAQUE écriture d'équipe
-        // — créer un tag n'est pas l'assigner. Ce fixture en créait donc un DOUBLON sans le
-        // savoir ; l'index unique de P4-64 l'a révélé. La règle gardée ici est inchangée :
-        // c'est l'ASSIGNATION ci-dessous que `determineTagNames` ne dériverait jamais.
-        $tag = $this->em->getRepository(TeamTag::class)->findOneBy(['clubId' => $club->getId(), 'name' => 'U13']);
-        // ⚠ Pas de repli `?? new TeamTag` (revue #356) : il serait INATTEIGNABLE, et le jour
-        // où le listener cesserait de semer U13 il créerait le tag à la main — le test
-        // resterait vert en n'exerçant plus un tag semé par le listener, c'est-à-dire le
-        // « fixture qui vérifie ses propres fixtures » que ce fichier dénonce plus bas.
-        self::assertInstanceOf(TeamTag::class, $tag, 'garde du fixture : le listener doit avoir semé U13');
+        // Une ligne enregistrée que le calcul ne dériverait JAMAIS de cette équipe (elle n'a
+        // ni genre, ni niveau, ni catégorie existante) : si elle survit au build, personne
+        // ne l'a réécrite. Les deux tables n'ont plus d'écrivain depuis la PR 3 du lot
+        // conception 1 et partent à la première PR du lot 3 — ce test part avec elles.
         // BCK-11 : tenant + RLS, une ligne sans club_id est refusée en base.
+        $this->em->getConnection()->executeStatement(
+            'DELETE FROM team_tag WHERE club_id = :club AND name = \'U13\'',
+            ['club' => $club->getId()],
+        );
+        $tag = (new TeamTag)->setClubId($club->getId())->setName('U13')->setIsSystem(true);
+        $this->em->persist($tag);
+        $this->em->flush();
         $this->em->persist((new TeamTagAssignment)->setClubId($team->getClubId())->setTagId($tag->getId())->setTeamId($team->getId())->setSeasonId($season->getId()));
         $this->em->flush();
 
@@ -663,32 +657,6 @@ final class ScheduleConstraintBuilderOverlayTest extends KernelTestCase
         $this->em->flush();
 
         self::assertSame($before, $this->assignmentIdsOf($team->getId(), $season->getId()), 'construire un payload ne doit RIEN écrire');
-    }
-
-    /**
-     * P2-9ter NR-1bis — le write-path écrit VRAIMENT les tags.
-     *
-     * ⚠ Ce test est le pendant obligatoire de NR-1. Rendre le build en lecture seule
-     * fait de `TeamTagSyncListener` le SEUL writer des `TeamTagAssignment` : si ce
-     * listener n'écrit pas, plus aucune équipe n'a de tags et toute contrainte CLUB
-     * ciblant un tag cesse silencieusement de viser qui que ce soit (axe constraint
-     * semantics). Le défaut existait réellement — `syncTeamTags` ne flushe pas ses
-     * `persist`, et en `postFlush` le flush appelant est déjà terminé : créer une équipe
-     * produisait 21 `team_tag` et 0 `team_tag_assignment`. Il était masqué parce que le
-     * builder rappelait `syncTeamTags` à chaque génération.
-     */
-    public function testCreatingATeamActuallyWritesItsTagAssignments(): void
-    {
-        [$club, $season] = $this->seed();
-        $team = $this->team($club, $season, 'U13F');
-        $team->setGender(Gender::F);
-        $this->em->flush();
-
-        self::assertNotSame(
-            [],
-            $this->assignmentIdsOf($team->getId(), $season->getId()),
-            'créer une équipe doit lui poser ses tags système — sinon le build en lecture seule n’a plus rien à lire',
-        );
     }
 
     /**
@@ -877,13 +845,10 @@ final class ScheduleConstraintBuilderOverlayTest extends KernelTestCase
         $entry = $this->holidayPeriod($club, $season);
         $this->teamOverride($club, $season, $entry, $paused, false, null); // en pause
 
-        // A club-wide constraint targeting a tag BOTH teams carry → expands per-team.
-        $tag = (new TeamTag)->setClubId($club->getId())->setName('loisir')->setIsSystem(false);
-        $this->em->persist($tag);
-        $this->em->flush();
-        foreach ([$active, $paused] as $t) {
-            $this->em->persist((new TeamTagAssignment)->setClubId($t->getClubId())->setTagId($tag->getId())->setTeamId($t->getId())->setSeasonId($season->getId()));
-        }
+        // A club-wide constraint targeting a tag BOTH teams carry → expands per-team. The tag is
+        // derived from the teams (FEMININE), never written by hand.
+        $active->setGender(Gender::F);
+        $paused->setGender(Gender::F);
         $c = new Constraint;
         $c->setClubId($club->getId());
         $c->setSeasonId($season->getId());
@@ -891,7 +856,7 @@ final class ScheduleConstraintBuilderOverlayTest extends KernelTestCase
         $c->setScope(ConstraintScope::CLUB);
         $c->setFamily(ConstraintFamily::TIME);
         $c->setRuleType(ConstraintRuleType::HARD);
-        $c->setConfig(['targetTag' => 'loisir']);
+        $c->setConfig(['targetTag' => 'FEMININE']);
         $this->em->persist($c);
         $schedule = $this->overlaySchedule($club, $season, $entry);
         $this->em->flush();

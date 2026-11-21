@@ -34,7 +34,8 @@ avec le nom de la clé et les réglages acceptés pour la famille.
 > période** (`PeriodConstraintSelector::clubTagVerdict`) passent par ce foyer — leur parité est un
 > step bloquant (`PeriodGatePayloadParityTest`). **Le contrat moteur ne bouge pas** : les 3 clés de
 > tag sont retirées à la sérialisation, le moteur ne reçoit que des contraintes d'ÉQUIPE résolues.
-> Refus à l'écriture (422) : tag inconnu du club · `targetTags ∩ excludeTags` non vide · mélange
+> Refus à l'écriture (422) : nom hors du catalogue fermé des tags (`TeamTagService::catalog`, le même
+> pour tous les clubs — un nom du catalogue est connu même sans rien d'enregistré) · `targetTags ∩ excludeTags` non vide · mélange
 > `targetTag`+`targetTags` · résolution VIDE sur la saison courante · **clé de tag sur la famille
 > `COACH_AVAILABILITY`** (ALIGN-21 : la résolution ne produit que des lignes d'ÉQUIPE — une
 > disponibilité coach ciblée par groupe serait acceptée puis sans effet ni avertissement ; une

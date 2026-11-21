@@ -45,7 +45,7 @@ All services share the Docker network `amateo_network`.
 | `Message/` + `MessageHandler/` | async messages + handlers (generate, PDF export) |
 | `Service/` | business services (snapshot builder, result importer, PDF, FFBB importer, locks…) |
 | `Repository/` | Doctrine repositories |
-| `EventListener/` | tenant/season resolution (`TenantFilterListener`) + the security-bearing subscribers: `ApiRateLimitSubscriber` (SEC-11), `SeasonReadonlyGuardListener` (409 on an archived season), `AdminAuditSubscriber` (SA0 fail-closed audit), `Login{Success,Failure}Listener`; plus `CacheInvalidationListener`, `ScheduleGenerationFailureListener`, `TeamTagSyncListener`, `{Messenger,CronRunner}HealthSubscriber` |
+| `EventListener/` | tenant/season resolution (`TenantFilterListener`) + the security-bearing subscribers: `ApiRateLimitSubscriber` (SEC-11), `SeasonReadonlyGuardListener` (409 on an archived season), `AdminAuditSubscriber` (SA0 fail-closed audit), `Login{Success,Failure}Listener`; plus `CacheInvalidationListener`, `ScheduleGenerationFailureListener`, `{Messenger,CronRunner}HealthSubscriber` |
 | `Doctrine/Filter/` | `TenantFilter` (SQL-level tenant scoping) |
 | `State/`, `Dto/`, `Enum/`, `DataFixtures/`, `Command/` | supporting code |
 

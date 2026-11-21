@@ -25317,73 +25317,6 @@
                 ]
             }
         },
-        "/api/team_tag_assignments/{id}": {
-            "get": {
-                "operationId": "api_team_tag_assignments_id_get",
-                "tags": [
-                    "TeamTagAssignment"
-                ],
-                "responses": {
-                    "200": {
-                        "description": "TeamTagAssignment resource",
-                        "content": {
-                            "application/ld+json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/TeamTagAssignment.jsonld"
-                                }
-                            },
-                            "application/json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/TeamTagAssignment"
-                                }
-                            },
-                            "text/html": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/TeamTagAssignment.html"
-                                }
-                            }
-                        }
-                    },
-                    "404": {
-                        "description": "Not found",
-                        "content": {
-                            "application/ld+json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/Error.jsonld"
-                                }
-                            },
-                            "application/problem+json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/Error"
-                                }
-                            },
-                            "application/json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/Error"
-                                }
-                            }
-                        },
-                        "links": {}
-                    }
-                },
-                "summary": "Retrieves a TeamTagAssignment resource.",
-                "description": "Retrieves a TeamTagAssignment resource.",
-                "parameters": [
-                    {
-                        "name": "id",
-                        "in": "path",
-                        "description": "TeamTagAssignment identifier",
-                        "required": true,
-                        "deprecated": false,
-                        "schema": {
-                            "type": "string"
-                        },
-                        "style": "simple",
-                        "explode": false
-                    }
-                ]
-            }
-        },
         "/api/teams/reorder": {
             "post": {
                 "operationId": "postApiTeamsReorder",
@@ -37050,8 +36983,8 @@
                         ]
                     },
                     "matchDay": {
-                        "minimum": 0,
-                        "maximum": 6,
+                        "minimum": 1,
+                        "maximum": 7,
                         "type": [
                             "integer",
                             "null"
@@ -38238,22 +38171,11 @@
             },
             "TeamTag": {
                 "type": "object",
+                "description": "Un groupe du catalogue ferm\u00e9 des \u00e9tiquettes \u2014 servi par le calcul, rien n'est lu en base.\nL'identifiant EST le nom (\u00ab U13 \u00bb), le m\u00eame pour tous les clubs.",
                 "properties": {
                     "id": {
                         "default": "",
                         "type": "string"
-                    },
-                    "version": {
-                        "default": 0,
-                        "type": "integer"
-                    },
-                    "createdAt": {
-                        "type": "string",
-                        "format": "date-time"
-                    },
-                    "updatedAt": {
-                        "type": "string",
-                        "format": "date-time"
                     },
                     "name": {
                         "default": "",
@@ -38266,11 +38188,11 @@
                         ]
                     },
                     "isSystem": {
-                        "default": false,
+                        "default": true,
                         "type": "boolean"
                     },
                     "axis": {
-                        "description": "GENRE / NIVEAU / AGE \u2014 the axis grouping the constraint target picker (null when unclassified).",
+                        "description": "GENRE / NIVEAU / AGE \u2014 the axis grouping the constraint target picker.",
                         "type": [
                             "string",
                             "null"
@@ -38280,22 +38202,11 @@
             },
             "TeamTag.html": {
                 "type": "object",
+                "description": "Un groupe du catalogue ferm\u00e9 des \u00e9tiquettes \u2014 servi par le calcul, rien n'est lu en base.\nL'identifiant EST le nom (\u00ab U13 \u00bb), le m\u00eame pour tous les clubs.",
                 "properties": {
                     "id": {
                         "default": "",
                         "type": "string"
-                    },
-                    "version": {
-                        "default": 0,
-                        "type": "integer"
-                    },
-                    "createdAt": {
-                        "type": "string",
-                        "format": "date-time"
-                    },
-                    "updatedAt": {
-                        "type": "string",
-                        "format": "date-time"
                     },
                     "name": {
                         "default": "",
@@ -38308,11 +38219,11 @@
                         ]
                     },
                     "isSystem": {
-                        "default": false,
+                        "default": true,
                         "type": "boolean"
                     },
                     "axis": {
-                        "description": "GENRE / NIVEAU / AGE \u2014 the axis grouping the constraint target picker (null when unclassified).",
+                        "description": "GENRE / NIVEAU / AGE \u2014 the axis grouping the constraint target picker.",
                         "type": [
                             "string",
                             "null"
@@ -38332,18 +38243,6 @@
                                 "default": "",
                                 "type": "string"
                             },
-                            "version": {
-                                "default": 0,
-                                "type": "integer"
-                            },
-                            "createdAt": {
-                                "type": "string",
-                                "format": "date-time"
-                            },
-                            "updatedAt": {
-                                "type": "string",
-                                "format": "date-time"
-                            },
                             "name": {
                                 "default": "",
                                 "type": "string"
@@ -38355,11 +38254,11 @@
                                 ]
                             },
                             "isSystem": {
-                                "default": false,
+                                "default": true,
                                 "type": "boolean"
                             },
                             "axis": {
-                                "description": "GENRE / NIVEAU / AGE \u2014 the axis grouping the constraint target picker (null when unclassified).",
+                                "description": "GENRE / NIVEAU / AGE \u2014 the axis grouping the constraint target picker.",
                                 "type": [
                                     "string",
                                     "null"
@@ -38367,26 +38266,16 @@
                             }
                         }
                     }
-                ]
+                ],
+                "description": "Un groupe du catalogue ferm\u00e9 des \u00e9tiquettes \u2014 servi par le calcul, rien n'est lu en base.\nL'identifiant EST le nom (\u00ab U13 \u00bb), le m\u00eame pour tous les clubs."
             },
             "TeamTagAssignment": {
                 "type": "object",
+                "description": "Le rattachement d'une \u00e9quipe de la saison \u00e0 un groupe du catalogue \u2014 CALCUL\u00c9 \u00e0 la lecture\ndepuis sa cat\u00e9gorie, son sexe et son niveau. Identifiant `<teamId>:<NOM>`, `tagId` = le nom.\nPas de route d'un rattachement seul : la collection est la seule lecture.",
                 "properties": {
                     "id": {
                         "default": "",
                         "type": "string"
-                    },
-                    "version": {
-                        "default": 0,
-                        "type": "integer"
-                    },
-                    "createdAt": {
-                        "type": "string",
-                        "format": "date-time"
-                    },
-                    "updatedAt": {
-                        "type": "string",
-                        "format": "date-time"
                     },
                     "teamId": {
                         "default": "",
@@ -38404,22 +38293,11 @@
             },
             "TeamTagAssignment.html": {
                 "type": "object",
+                "description": "Le rattachement d'une \u00e9quipe de la saison \u00e0 un groupe du catalogue \u2014 CALCUL\u00c9 \u00e0 la lecture\ndepuis sa cat\u00e9gorie, son sexe et son niveau. Identifiant `<teamId>:<NOM>`, `tagId` = le nom.\nPas de route d'un rattachement seul : la collection est la seule lecture.",
                 "properties": {
                     "id": {
                         "default": "",
                         "type": "string"
-                    },
-                    "version": {
-                        "default": 0,
-                        "type": "integer"
-                    },
-                    "createdAt": {
-                        "type": "string",
-                        "format": "date-time"
-                    },
-                    "updatedAt": {
-                        "type": "string",
-                        "format": "date-time"
                     },
                     "teamId": {
                         "default": "",
@@ -38447,18 +38325,6 @@
                                 "default": "",
                                 "type": "string"
                             },
-                            "version": {
-                                "default": 0,
-                                "type": "integer"
-                            },
-                            "createdAt": {
-                                "type": "string",
-                                "format": "date-time"
-                            },
-                            "updatedAt": {
-                                "type": "string",
-                                "format": "date-time"
-                            },
                             "teamId": {
                                 "default": "",
                                 "type": "string"
@@ -38473,7 +38339,8 @@
                             }
                         }
                     }
-                ]
+                ],
+                "description": "Le rattachement d'une \u00e9quipe de la saison \u00e0 un groupe du catalogue \u2014 CALCUL\u00c9 \u00e0 la lecture\ndepuis sa cat\u00e9gorie, son sexe et son niveau. Identifiant `<teamId>:<NOM>`, `tagId` = le nom.\nPas de route d'un rattachement seul : la collection est la seule lecture."
             },
             "User": {
                 "type": "object",
@@ -40455,11 +40322,11 @@
         },
         {
             "name": "TeamTagAssignment",
-            "description": "Resource 'TeamTagAssignment' operations."
+            "description": "Le rattachement d'une \u00e9quipe de la saison \u00e0 un groupe du catalogue \u2014 CALCUL\u00c9 \u00e0 la lecture\ndepuis sa cat\u00e9gorie, son sexe et son niveau. Identifiant `<teamId>:<NOM>`, `tagId` = le nom.\nPas de route d'un rattachement seul : la collection est la seule lecture."
         },
         {
             "name": "TeamTag",
-            "description": "Resource 'TeamTag' operations."
+            "description": "Un groupe du catalogue ferm\u00e9 des \u00e9tiquettes \u2014 servi par le calcul, rien n'est lu en base.\nL'identifiant EST le nom (\u00ab U13 \u00bb), le m\u00eame pour tous les clubs."
         },
         {
             "name": "User",

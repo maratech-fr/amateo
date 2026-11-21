@@ -83,7 +83,7 @@ use Symfony\Component\Routing\RouterInterface;
  *     « gestionnaire » y figure, et inversement.
  *  5. RÉSOLUTION — une route d'API Platform sert la déclaration de sa ressource ; les quatorze
  *     opérations à contrôleur maison servent celle du CONTRÔLEUR (jamais celle de la ressource) ;
- *     les deux opérations non exposées sont nommées et non jouées.
+ *     les opérations non exposées sont nommées et non jouées.
  *  6. COMPTE SANS CLUB — chaque route « compte » est jouée par un compte sans aucune adhésion et
  *     répond le statut écrit dans `ACCOUNT_FUNCTIONS_WITHOUT_CLUB` (jamais le 404 « pas de club »).
  *  7. UN SEUL PUBLIC PAR CIBLE — aucune classe ni méthode ne porte une déclaration de club ET
@@ -176,6 +176,7 @@ final class AccessDeclarationSweepTest extends WebTestCase
     private const array NOT_EXPOSED = [
         '_api_/venue_closures/{id}{._format}_get' => 'App\ApiResource\VenueClosureResource',
         '_api_/team_solo_budgets/{teamId}{._format}_get' => 'App\ApiResource\TeamSoloBudgetResource',
+        '_api_/team_tag_assignments/{id}{._format}_get' => 'App\ApiResource\TeamTagAssignmentResource',
     ];
 
     /**

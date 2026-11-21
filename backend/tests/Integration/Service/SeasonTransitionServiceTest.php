@@ -184,10 +184,9 @@ final class SeasonTransitionServiceTest extends KernelTestCase
         $newMembership = $this->em->getRepository(CoachPlayerMembership::class)->findOneBy(['seasonId' => $target->getId()]);
         self::assertSame($newTeams[1]->getId(), $newMembership?->getTeamId());
 
-        // Team tags are NOT copied by the transition — TeamTagSyncListener
-        // re-derives the SYSTEM tags for the copied teams on its own, and
-        // custom tags are intentionally left out (ephemeral pre-existing
-        // behaviour). So the custom tag from N must NOT appear in N+1.
+        // Team tags are NOT copied by the transition — they are computed at read
+        // time from each copied team's category, gender and level, and a stored
+        // row (no writer since lot conception 1, PR 3) never crosses to N+1.
         $customInTarget = $this->em->getRepository(TeamTagAssignment::class)->findOneBy(['seasonId' => $target->getId(), 'tagId' => $refs['tag']->getId()]);
         self::assertNull($customInTarget);
     }

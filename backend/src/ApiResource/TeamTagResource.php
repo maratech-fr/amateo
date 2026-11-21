@@ -10,11 +10,14 @@ use ApiPlatform\Metadata\GetCollection;
 use App\Access\Audience;
 use App\Access\ClubResource;
 use App\Access\Module;
-use App\Entity\TeamTag;
+use App\Enum\TeamTagAxis;
 use App\State\Provider\TeamTagStateProvider;
-use DateTimeImmutable;
 use Symfony\Component\Serializer\Attribute\Groups;
 
+/**
+ * Un groupe du catalogue fermé des étiquettes — servi par le calcul, rien n'est lu en base.
+ * L'identifiant EST le nom (« U13 »), le même pour tous les clubs.
+ */
 #[ApiResource(shortName: 'TeamTag', operations: [
     new GetCollection,
     new Get,
@@ -26,38 +29,26 @@ class TeamTagResource
     public string $id = '';
 
     #[Groups(['read'])]
-    public int $version = 0;
-
-    #[Groups(['read'])]
-    public DateTimeImmutable $createdAt;
-
-    #[Groups(['read'])]
-    public DateTimeImmutable $updatedAt;
-
-    #[Groups(['read'])]
     public string $name = '';
 
     #[Groups(['read'])]
     public ?string $color = null;
 
     #[Groups(['read'])]
-    public bool $isSystem = false;
+    public bool $isSystem = true;
 
-    /** GENRE / NIVEAU / AGE — the axis grouping the constraint target picker (null when unclassified). */
+    /** GENRE / NIVEAU / AGE — the axis grouping the constraint target picker. */
     #[Groups(['read'])]
     public ?string $axis = null;
 
-    public static function fromEntity(TeamTag $entity): self
+    public static function fromCatalog(string $name, string $color, TeamTagAxis $axis): self
     {
         $dto = new self;
-        $dto->id = $entity->getId();
-        $dto->version = $entity->getVersion();
-        $dto->createdAt = $entity->getCreatedAt();
-        $dto->updatedAt = $entity->getUpdatedAt();
-        $dto->name = $entity->getName();
-        $dto->color = $entity->getColor();
-        $dto->isSystem = $entity->getIsSystem();
-        $dto->axis = $entity->getAxis()?->value;
+        $dto->id = $name;
+        $dto->name = $name;
+        $dto->color = $color;
+        $dto->isSystem = true;
+        $dto->axis = $axis->value;
 
         return $dto;
     }

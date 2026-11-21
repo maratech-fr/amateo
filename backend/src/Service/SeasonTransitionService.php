@@ -35,8 +35,8 @@ use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
  * of season N into a fresh N+1 — venues, slots, coaches, teams, links and
  * PERMANENT constraints — never a generated plan (no
  * Schedule/SlotTemplate/Diagnostic and no CalendarEntry: events are re-dated
- * by the P2 guided review). System team tags re-derive on their own via
- * TeamTagSyncListener (see the flush note below).
+ * by the P2 guided review). Team tags are computed at read time from the
+ * copied teams (see the note below).
  * The copy is a starting point, fully editable via the existing wizard;
  * no link is kept back to season N.
  *
@@ -597,20 +597,9 @@ final class SeasonTransitionService
             'transitionedTo' => $target->getId(),
         ]));
 
-        // Team tags are NOT copied: persisting the copied teams fires
-        // TeamTagSyncListener, which re-derives them for N+1 on its own. Tags
-        // are DERIVED data — copying them would duplicate a computation, not
-        // preserve a decision.
-        //
-        // ⚑ P4-50 (a), clos le 2026-08-11: this note used to say custom-tag
-        // assignments were "intentionally left out" pending a roadmap fix. That
-        // framed a blocker for a feature that does not exist. NOTHING in the
-        // product creates a custom tag: TeamTag::setIsSystem() has no caller,
-        // the sole writer (TeamTagService::insertMissingSystemTags) hardcodes
-        // is_system = true, and both TeamTagResource and
-        // TeamTagAssignmentResource expose Get/GetCollection only — no POST to
-        // create a tag, none to assign one. Only a hand-written INSERT could
-        // produce one. Re-open the question the day a screen creates them.
+        // Team tags are NOT copied: they are computed at read time from each
+        // copied team's category, gender and level (TeamTagService::tagNamesOf).
+        // Nothing stores them, and the closed catalogue has no custom tag.
 
         $this->entityManager->flush();
 

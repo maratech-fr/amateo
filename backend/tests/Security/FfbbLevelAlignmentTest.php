@@ -11,13 +11,12 @@ use App\Entity\Season;
 use App\Entity\Sport;
 use App\Entity\SportCategory;
 use App\Entity\Team;
-use App\Entity\TeamTag;
-use App\Entity\TeamTagAssignment;
 use App\Enum\CompetitionType;
 use App\Enum\FixtureHomeAway;
 use App\Enum\SeasonStatus;
 use App\Enum\TeamLevel;
 use App\Service\SeasonResolver;
+use App\Service\TeamTagService;
 use App\Tests\ChoosesPlanVersionTrait;
 use App\Tests\Double\FfbbHttpClientStub;
 use App\Tests\TenantGucTrait;
@@ -220,20 +219,19 @@ final class FfbbLevelAlignmentTest extends WebTestCase
         ], json_encode(['pairings' => $pairings], \JSON_THROW_ON_ERROR));
     }
 
-    /** @return list<string> */
+    /**
+     * Les étiquettes CALCULÉES de l'équipe relue (lot conception 1, PR 3 : rien ne les enregistre
+     * plus) — celles que les règles de groupe et les routes de lecture voient.
+     *
+     * @return list<string>
+     */
     private function tagNamesOf(string $teamId): array
     {
-        $this->scopeGucToClub($this->em->getRepository(Team::class)->find($teamId)?->getClubId() ?? '');
-        $assignments = $this->em->getRepository(TeamTagAssignment::class)->findBy(['teamId' => $teamId]);
-        $names = [];
-        foreach ($assignments as $assignment) {
-            $tag = $this->em->getRepository(TeamTag::class)->find($assignment->getTagId());
-            if ($tag instanceof TeamTag) {
-                $names[] = $tag->getName();
-            }
-        }
+        $team = $this->em->getRepository(Team::class)->find($teamId);
+        self::assertInstanceOf(Team::class, $team);
+        $this->scopeGucToClub($team->getClubId());
 
-        return $names;
+        return self::getContainer()->get(TeamTagService::class)->tagNamesOf($team);
     }
 
     private function setTeamLevel(Team $team, TeamLevel $level): void

@@ -5,24 +5,26 @@ declare(strict_types=1);
 namespace App\Tests\Security;
 
 use App\Entity\Club;
+use App\Entity\Constraint;
 use App\Entity\PriorityTier;
 use App\Entity\Season;
 use App\Entity\Sport;
 use App\Entity\SportCategory;
 use App\Entity\Team;
-use App\Entity\TeamTag;
+use App\Enum\ConstraintFamily;
+use App\Enum\ConstraintRuleType;
+use App\Enum\ConstraintScope;
 use App\Enum\SeasonStatus;
 use App\Enum\TeamLevel;
-use App\Enum\TeamTagAxis;
+use App\EventListener\CacheInvalidationListener;
+use App\Service\ScheduleConstraintBuilder;
 use App\Service\TeamTagResolver;
-use App\Service\TeamTagService;
+use App\Service\TenantDoctrineScope;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
 use Doctrine\ORM\EntityManagerInterface;
 use PHPUnit\Framework\Attributes\Group;
-use ReflectionClass;
-use ReflectionMethod;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 use Symfony\Component\Uid\Uuid;
 
@@ -225,156 +227,32 @@ final class TeamTagScopeTest extends KernelTestCase
      * assignations se répartissaient entre les deux lignes : une contrainte ciblant ce tag
      * n'atteignait qu'une partie des équipes, **sans erreur ni warning** — le tag était bien
      * trouvé. C'est le pire mode de panne, et aucun test ne le couvrait.
+     *
+     * La table n'a plus d'écrivain (lot conception 1, PR 3) mais garde ses lignes jusqu'à sa
+     * suppression (première PR du lot 3) : l'index garde ce qu'elle contient. Le test pose
+     * lui-même les deux lignes — aucune n'est plus semée par une écriture d'équipe.
      */
     public function testDatabaseRefusesTwoTagsWithTheSameNameInAClub(): void
     {
         $this->scopeGucToClub($this->club->getId());
 
-        // Le tag BABY existe déjà (posé par la dérivation au setUp) : le ré-insérer doit
-        // heurter `uniq_team_tag_club_name`.
         $this->expectException(UniqueConstraintViolationException::class);
-        $this->em->getConnection()->executeStatement(
-            'INSERT INTO team_tag (id, version, created_at, updated_at, club_id, name, color, is_system, axis)'
-            . ' VALUES (:id, 1, NOW(), NOW(), :club, \'BABY\', \'#F5A9C8\', true, \'AGE\')',
-            ['id' => Uuid::v4()->toRfc4122(), 'club' => $this->club->getId()],
-        );
-    }
-
-    /**
-     * NR — revue #356, LE défaut le plus grave du lot : lecture et écriture doivent s'accorder.
-     *
-     * L'arbitre d'écriture est `ON CONFLICT (club_id, name)`, qui ne regarde PAS `is_system`.
-     * Tant que les lectures filtraient sur ce drapeau, une ligne homonyme non-système était
-     * invisible à la lecture, avalée à l'insertion, absente de la relecture — et
-     * `syncTeamTags` sautait l'assignation APRÈS avoir supprimé les anciennes. Éditer une
-     * équipe DÉTRUISAIT donc son assignation sans jamais la recréer, en silence, et une
-     * contrainte ciblant ce tag n'atteignait plus personne.
-     */
-    public function testANonSystemTagWithASystemNameIsUsedInsteadOfBeingLost(): void
-    {
-        $this->scopeGucToClub($this->club->getId());
-
-        // On remplace le U13 système par un homonyme NON système — l'état que la migration
-        // elle-même peut produire en gardant la ligne la plus ancienne.
-        $this->em->getConnection()->executeStatement(
-            'UPDATE team_tag SET is_system = false WHERE club_id = :club AND name = \'U13\'',
-            ['club' => $this->club->getId()],
-        );
-        $this->em->clear();
-
-        $equipe = $this->createTeamInCategory('U13 bis', 12, 13);
-
-        self::assertContains(
-            $equipe->getId(),
-            $this->resolver->tagTeamIds('U13', $this->season->getId(), $this->club->getId()),
-            'le tag homonyme doit être RÉUTILISÉ, pas ignoré — sinon l\'assignation disparaît sans bruit',
-        );
-    }
-
-    /**
-     * NR — P4-64. LE chemin de conflit, atteint pour de vrai (revue #356).
-     *
-     * Le test précédent tournait sur un club déjà semé : `$manquants` y était vide,
-     * `insertMissingSystemTags` n'était JAMAIS appelé, et l'assertion « l'EM reste ouvert »
-     * était vraie par vacuité. Retirer `ON CONFLICT DO NOTHING` laissait toute la suite verte.
-     *
-     * On appelle donc la méthode DIRECTEMENT, sur un club dont les tags existent déjà : chaque
-     * ligne de l'INSERT entre alors en conflit. C'est le seul moyen d'atteindre ce chemin de
-     * façon déterministe — une vraie course entre deux transactions ne se scripte pas. La
-     * réflexion est le prix ; en échange le test exerce le VRAI SQL contre le VRAI Postgres.
-     */
-    public function testInsertingAlreadyExistingSystemTagsIsAConflictFreeNoOp(): void
-    {
-        $this->scopeGucToClub($this->club->getId());
-        $avant = $this->countTags();
-
-        $methode = new ReflectionMethod(TeamTagService::class, 'insertMissingSystemTags');
-        $service = self::getContainer()->get(TeamTagService::class);
-
-        // Les mêmes noms qu'en base, avec des ids NEUFS : sans `ON CONFLICT DO NOTHING`,
-        // Postgres lève une violation d'unicité et ce test rougit.
-        $methode->invoke($service, $this->club->getId(), ['BABY' => '#F5A9C8', 'EMB' => '#45B7D1']);
-
-        self::assertSame($avant, $this->countTags(), 'aucune ligne ajoutée : le conflit est un no-op');
-        self::assertTrue($this->em->isOpen(), 'l\'EntityManager reste ouvert — c\'est tout l\'intérêt du SQL natif');
-    }
-
-    /**
-     * NR — P4-64. La liste de colonnes écrite à la main dans `insertMissingSystemTags` doit
-     * rester alignée sur l'entité (revue #356 : le docblock promettait ce test, il n'existait
-     * pas).
-     *
-     * Sans lui, ajouter une colonne NOT NULL à `team_tag` laisse la suite unitaire verte — elle
-     * mocke la connexion — et casse en production à la première écriture d'équipe d'un club
-     * neuf, qui n'obtient alors AUCUN tag système.
-     */
-    public function testTheInsertColumnListMatchesTheEntityMapping(): void
-    {
-        // ⚠ On lit la constante que le SQL UTILISE, pas une liste recopiée ici (revue #356).
-        // La première version de ce test comparait deux copies : retirer une colonne de
-        // l'INSERT le laissait vert — exactement le défaut qu'il était censé fermer.
-        /** @var list<string> $insertees */
-        $insertees = new ReflectionClass(TeamTagService::class)->getConstant('INSERT_COLUMNS');
-        $colonnesEntite = $this->em->getClassMetadata(TeamTag::class)->getColumnNames();
-
-        self::assertSame(
-            [],
-            array_values(array_diff($colonnesEntite, $insertees)),
-            'colonne(s) de team_tag absente(s) de INSERT_COLUMNS — une NOT NULL ferait échouer toute écriture',
-        );
-        self::assertSame(
-            [],
-            array_values(array_diff($insertees, $colonnesEntite)),
-            'colonne insérée qui n\'existe plus au mapping',
-        );
-    }
-
-    /**
-     * NR — revue #356 : le `true` de `is_system` est un littéral dans une chaîne SQL, que rien
-     * n'assertait. L'écrire `false` ferait naître tous les tags système en non-système sans
-     * qu'un test rougisse — les lectures ne filtrent plus sur ce drapeau (correctif round 1),
-     * donc la panne ne se verrait que sur les écrans qui distinguent système et personnalisé.
-     */
-    public function testInsertedSystemTagsAreFlaggedAsSystem(): void
-    {
-        $this->scopeGucToClub($this->club->getId());
-
-        $tag = $this->em->getRepository(TeamTag::class)
-            ->findOneBy(['clubId' => $this->club->getId(), 'name' => 'BABY']);
-
-        self::assertInstanceOf(TeamTag::class, $tag);
-        self::assertTrue($tag->getIsSystem(), 'un tag semé par insertMissingSystemTags est SYSTÈME');
-        self::assertSame(TeamTagAxis::AGE, $tag->getAxis(), 'et il naît avec son axe');
-    }
-
-    /**
-     * NR — P4-64, l'autre moitié : la garde ne doit pas transformer la course en 500.
-     *
-     * ⚠ Ce test n'emprunte PAS le chemin d'insertion (revue #356) : sur un club déjà semé
-     * `$manquants` est vide et `insertMissingSystemTags` n'est jamais appelé. Il garde
-     * l'IDEMPOTENCE d'ensemble — rejouer la dérivation n'ajoute ni ne perd de tag, et
-     * l'EntityManager reste ouvert. Le chemin de conflit lui-même est gardé par
-     * `testInsertingAlreadyExistingSystemTagsIsAConflictFreeNoOp`.
-     */
-    public function testResyncingAnAlreadySeededClubIsAQuietNoOp(): void
-    {
-        $avant = $this->countSystemTags();
-
-        // Une écriture de Team de plus → le listener rejoue `syncTeamTags`, donc
-        // `getOrCreateSystemTags`, sur un club qui a déjà tous ses tags.
-        $this->createTeamInCategory('U15', 14, 15);
-
-        self::assertSame($avant, $this->countSystemTags(), 'aucun tag système en double, aucun tag perdu');
-        self::assertTrue($this->em->isOpen(), 'l\'EntityManager doit rester ouvert — un flush en violation le fermerait');
+        foreach ([1, 2] as $_) {
+            $this->em->getConnection()->executeStatement(
+                'INSERT INTO team_tag (id, version, created_at, updated_at, club_id, name, color, is_system, axis)'
+                . ' VALUES (:id, 1, NOW(), NOW(), :club, \'BABY\', \'#F5A9C8\', true, \'AGE\')',
+                ['id' => Uuid::v4()->toRfc4122(), 'club' => $this->club->getId()],
+            );
+        }
     }
 
     /**
      * NR — P4-50 (b). ÉDITER LA CATÉGORIE DOIT DÉPLACER LES ÉQUIPES, pas les laisser en arrière.
      *
-     * Les tags sont dérivés du NOM et des bornes d'âge de la `SportCategory`
-     * (`TeamTagService::determineTagNames`), mais `TeamTagSyncListener` n'écoutait que
-     * `Team` : corriger une catégorie — geste normal, on ne retouche pas les équipes —
-     * laissait leurs tags périmés, et aucun écran ne le disait.
+     * Les tags sont dérivés du NOM et des bornes d'âge de la `SportCategory` : corriger une
+     * catégorie — geste normal, on ne retouche pas les équipes — doit déplacer ses équipes
+     * sans qu'aucune ne soit réécrite (le calcul se fait à la lecture depuis la PR 3 du lot
+     * conception 1 ; avant, un écouteur réécrivait les rattachements).
      *
      * Le scénario est celui du terrain : la catégorie a été créée « U11 » par erreur, elle
      * est en réalité U13. Après correction, une contrainte « groupe U13 » DOIT atteindre
@@ -383,9 +261,8 @@ final class TeamTagScopeTest extends KernelTestCase
      * diagnostic, planning faux : le pire mode de panne.
      *
      * ⚠ Les quatre assertions comptent, et les NÉGATIVES autant que les positives. Un
-     * correctif qui ajouterait les nouveaux tags sans retirer les anciens (par exemple en
-     * n'appelant pas `syncTeamTags`, qui purge d'abord) laisserait l'équipe dans les DEUX
-     * groupes — vert sur les positives seules.
+     * correctif qui ajouterait les nouveaux tags sans retirer les anciens laisserait l'équipe
+     * dans les DEUX groupes — vert sur les positives seules.
      */
     public function testEditingACategoryRetagsItsTeams(): void
     {
@@ -427,6 +304,143 @@ final class TeamTagScopeTest extends KernelTestCase
             $equipe,
             $this->resolver->tagTeamIds('EMB', $this->season->getId(), $this->club->getId()),
             'l\'ancienne tranche doit être retirée elle aussi',
+        );
+    }
+
+    /**
+     * NR (sens des contraintes, décision F0 du lot conception 1) — une catégorie modifiée
+     * change les groupes de TOUTES les saisons qui l'emploient, et la saison qui n'est pas celle
+     * de la requête voit son empreinte de structure bouger : une version non validée s'y dit
+     * périmée (`staleness.ts` ; un planning validé ne porte aucun bandeau, règle d'écran inchangée).
+     *
+     * La catégorie appartient au club, sans saison ; l'édition arrive par une requête d'UNE saison,
+     * que `TenantDoctrineScope::scopeSeason` pose ici comme `TenantFilterListener` le fait. Une
+     * étiquette ENREGISTRÉE au fil des écritures ne suivait que la saison de la requête : la saison
+     * suivante gardait l'ancien groupe, la règle « U13 » y ratait l'équipe, sans message.
+     */
+    public function testEditingACategoryRegroupsItsTeamsInEverySeasonAndMovesTheirFingerprint(): void
+    {
+        $this->scopeGucToClub($this->club->getId());
+        $next = new Season;
+        $next->setClubId($this->club->getId());
+        $next->setName('2026-2027');
+        $next->setStartDate(new DateTimeImmutable('2026-09-01'));
+        $next->setEndDate(new DateTimeImmutable('2027-06-30'));
+        $next->setStatus(SeasonStatus::DRAFT);
+        $this->em->persist($next);
+        $this->em->flush();
+
+        $nextTeam = new Team;
+        $nextTeam->setClubId($this->club->getId());
+        $nextTeam->setSeasonId($next->getId());
+        $nextTeam->setSportCategoryId($this->teams['U11']->getSportCategoryId());
+        $nextTeam->setPriorityTierId($this->priorityTier->getId());
+        $nextTeam->setName('U11 saison suivante');
+        $nextTeam->setSessionsPerWeek(1);
+        $nextTeam->setIsActive(true);
+        $this->em->persist($nextTeam);
+
+        $rule = new Constraint;
+        $rule->setClubId($this->club->getId());
+        $rule->setSeasonId($next->getId());
+        $rule->setName('Groupe U13 · pas avant 19:30');
+        $rule->setScope(ConstraintScope::CLUB);
+        $rule->setFamily(ConstraintFamily::TIME);
+        $rule->setRuleType(ConstraintRuleType::HARD);
+        $rule->setConfig(['targetTags' => ['U13'], 'minStartTime' => '19:30']);
+        $this->em->persist($rule);
+        $this->em->flush();
+
+        $builder = self::getContainer()->get(ScheduleConstraintBuilder::class);
+        $before = $builder->buildForClubSeason($this->club->getId(), $next->getId());
+        self::assertNotContains($nextTeam->getId(), $this->ruleTargets($before, $rule->getId()), 'témoin : U11, l\'équipe n\'est pas visée par la règle des U13');
+
+        $scope = self::getContainer()->get(TenantDoctrineScope::class);
+        $scope->scopeSeason($this->season->getId());
+        $category = $this->em->getRepository(SportCategory::class)->find($this->teams['U11']->getSportCategoryId());
+        self::assertInstanceOf(SportCategory::class, $category);
+        $category->setName('U13');
+        $category->setAgeMin(12);
+        $category->setAgeMax(13);
+        $this->em->flush();
+        $this->em->getFilters()->disable('season_filter');
+        // Fin de la requête d'édition : le cache des demandes du club est purgé.
+        self::getContainer()->get(CacheInvalidationListener::class)->flushInvalidations();
+        $this->resolver->reset();
+
+        self::assertContains($nextTeam->getId(), $this->resolver->tagTeamIds('U13', $next->getId(), $this->club->getId()), 'la saison suivante suit la catégorie modifiée');
+        self::assertNotContains($nextTeam->getId(), $this->resolver->tagTeamIds('U11', $next->getId(), $this->club->getId()), 'et quitte l\'ancien groupe');
+
+        $after = $builder->buildForClubSeason($this->club->getId(), $next->getId());
+        self::assertContains($nextTeam->getId(), $this->ruleTargets($after, $rule->getId()), 'la règle des U13 vise désormais l\'équipe de la saison suivante');
+        self::assertNotSame(
+            ScheduleConstraintBuilder::structureHash($before),
+            ScheduleConstraintBuilder::structureHash($after),
+            'l\'empreinte de la saison suivante bouge : une version non validée s\'y dit périmée',
+        );
+    }
+
+    /**
+     * NR BLOQUANT — ISOLATION ENTRE CLUBS (abus). L'identifiant d'une étiquette est son nom
+     * (« U13 »), le même pour tous les clubs (lot conception 1, PR 3) : le groupe « U13 » d'un club
+     * ne contient jamais l'équipe d'un autre, ni par le mémo d'un processus qui a servi l'autre
+     * club, ni par une saison d'un autre club demandée en son nom.
+     */
+    public function testTagsNeverCarryAnotherClubsTeam(): void
+    {
+        $uid = uniqid('', true);
+        $other = new Club;
+        $other->setName('Autre club');
+        $other->setSlug('tag-scope-autre-' . $uid);
+        $other->setTimezone('Europe/Paris');
+        $other->setLocale('fr');
+        $other->setOnboardingCompleted(true);
+        $this->em->persist($other);
+        $this->em->flush();
+
+        $this->scopeGucToClub($other->getId());
+        $otherSeason = new Season;
+        $otherSeason->setClubId($other->getId());
+        $otherSeason->setName('2025-2026');
+        $otherSeason->setStartDate(new DateTimeImmutable('2025-09-01'));
+        $otherSeason->setEndDate(new DateTimeImmutable('2026-06-30'));
+        $otherSeason->setStatus(SeasonStatus::ACTIVE);
+        $this->em->persist($otherSeason);
+        $otherCategory = new SportCategory;
+        $otherCategory->setClubId($other->getId());
+        $otherCategory->setSportId($this->sport->getId());
+        $otherCategory->setName('U13');
+        $otherCategory->setAgeMin(12);
+        $otherCategory->setAgeMax(13);
+        $otherCategory->setIsCustom(false);
+        $otherCategory->setSortOrder(0);
+        $this->em->persist($otherCategory);
+        $this->em->flush();
+        $otherTeam = new Team;
+        $otherTeam->setClubId($other->getId());
+        $otherTeam->setSeasonId($otherSeason->getId());
+        $otherTeam->setSportCategoryId($otherCategory->getId());
+        $otherTeam->setPriorityTierId($this->priorityTier->getId());
+        $otherTeam->setName('U13 de l\'autre club');
+        $otherTeam->setSessionsPerWeek(1);
+        $otherTeam->setIsActive(true);
+        $this->em->persist($otherTeam);
+        $this->em->flush();
+
+        // Le processus sert d'abord l'autre club (un worker enchaîne les messages).
+        $this->resolver->reset();
+        self::assertSame([$otherTeam->getId()], $this->resolver->tagTeamIds('U13', $otherSeason->getId(), $other->getId()), 'témoin : l\'autre club a bien son U13');
+
+        $this->scopeGucToClub($this->club->getId());
+        self::assertSame(
+            [$this->teams['U13']->getId()],
+            $this->resolver->tagTeamIds('U13', $this->season->getId(), $this->club->getId()),
+            'le U13 de ce club : son équipe, jamais celle de l\'autre club',
+        );
+        self::assertSame(
+            [],
+            $this->resolver->tagTeamIds('U13', $otherSeason->getId(), $this->club->getId()),
+            'une saison de l\'autre club demandée au nom de ce club ne rend aucune équipe',
         );
     }
 
@@ -503,27 +517,30 @@ final class TeamTagScopeTest extends KernelTestCase
         $this->resolver->reset();
     }
 
-    private function countTags(): int
+    /**
+     * Les équipes visées par une règle de groupe dans une demande au moteur : la règle y est
+     * éclatée en une ligne par équipe (`<id de règle>:<id d'équipe>`).
+     *
+     * @param array<string, mixed> $payload
+     *
+     * @return list<string>
+     */
+    private function ruleTargets(array $payload, string $ruleId): array
     {
-        $this->scopeGucToClub($this->club->getId());
+        $targets = [];
+        foreach (\is_array($payload['constraints'] ?? null) ? $payload['constraints'] : [] as $row) {
+            if (\is_array($row) && str_starts_with((string) ($row['id'] ?? ''), $ruleId . ':')) {
+                $targets[] = (string) ($row['scopeTargetId'] ?? '');
+            }
+        }
 
-        return \count($this->em->getRepository(TeamTag::class)->findBy(['clubId' => $this->club->getId()]));
-    }
-
-    private function countSystemTags(): int
-    {
-        $this->scopeGucToClub($this->club->getId());
-
-        return \count($this->em->getRepository(TeamTag::class)->findBy([
-            'clubId' => $this->club->getId(),
-            'isSystem' => true,
-        ]));
+        return $targets;
     }
 
     /**
-     * Crée la catégorie et son équipe. Les tags sont DÉRIVÉS : `TeamTagSyncListener`
-     * les pose au postFlush de la Team — on ne les écrit jamais à la main, sans quoi le
-     * test vérifierait ses propres fixtures au lieu de la règle.
+     * Crée la catégorie et son équipe. Les tags sont DÉRIVÉS de la catégorie, du sexe et du
+     * niveau — on ne les écrit jamais à la main, sans quoi le test vérifierait ses propres
+     * fixtures au lieu de la règle.
      */
     private function createTeamInCategory(string $categoryName, ?int $ageMin, ?int $ageMax, ?TeamLevel $level = null): Team
     {

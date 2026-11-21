@@ -13,13 +13,19 @@ use RuntimeException;
 /**
  * Promesse : une règle écrite pour une catégorie (CLUB + `targetTags`) suit ses équipes — une
  * équipe qui change de catégorie change d'étiquette, et la génération honore la règle pour toutes
- * les équipes du groupe et seulement pour elles.
+ * les équipes du groupe et seulement pour elles. Les étiquettes se CALCULENT à la lecture (lot
+ * conception 1, PR 3) : on les lit par les deux routes que l'écran lit (`/api/team_tags`,
+ * `/api/team_tag_assignments`), et rien ne s'écrit dans `team_tag` ni `team_tag_assignment`.
  *
  * Décor DÉDIÉ et léger ({@see SmallClubFixtureTrait::registerSmallClub}, 4 équipes, 2 gymnases de
  * 9 créneaux) ; catégories du catalogue semé à l'inscription (« U13 », « U15 », « Senior »). Le
  * « seulement pour elles » se lit dans la demande FIGÉE au moteur (`schedule.snapshot_data`) : la
  * règle de groupe y est éclatée en une ligne par équipe (`<id de règle>:<id d'équipe>`). Plus bas :
- * `TeamTagResolver` (foyer unique de la résolution) et `PeriodGatePayloadParityTest`.
+ * `TeamTagResolver` (foyer unique de la résolution), `TeamTagScopeTest` et
+ * `PeriodGatePayloadParityTest`.
+ *
+ * ⚠ L'étape « aucune étiquette n'est enregistrée » lit les deux tables : elle part avec elles
+ * (première PR du lot 3, qui les supprime).
  */
 final class CategoryRuleContext extends BaseContext
 {
@@ -33,6 +39,9 @@ final class CategoryRuleContext extends BaseContext
     private string $scheduleId = '';
 
     private string $status = '';
+
+    /** @var array{status: int, json: array<mixed>} */
+    private array $ruleResponse = ['status' => 0, 'json' => []];
 
     #[Given('un petit club de deux équipes U13, une équipe U15 « U15 A » et une équipe senior, sur deux gymnases')]
     public function unPetitClub(): void
@@ -91,6 +100,41 @@ final class CategoryRuleContext extends BaseContext
         $tags = $this->tagsOf($this->smallClubTeamIds[$team]);
         if (!\in_array($gained, $tags, true) || \in_array($lost, $tags, true)) {
             throw new RuntimeException(\sprintf('%s porte les étiquettes [%s] (attendu %s, sans %s)', $team, implode(', ', $tags), $gained, $lost));
+        }
+    }
+
+    #[Then('aucune étiquette n\'est enregistrée pour le club')]
+    public function aucuneEtiquetteEnregistree(): void
+    {
+        foreach (['team_tag', 'team_tag_assignment'] as $table) {
+            $rows = (int) $this->dbalScalar(\sprintf('SELECT COUNT(*) AS behatval FROM %s WHERE club_id=\'%s\'', $table, $this->smallClubId), admin: true);
+            if (0 !== $rows) {
+                throw new RuntimeException(\sprintf('%d ligne(s) écrite(s) dans %s pour le club : les étiquettes doivent se calculer à la lecture, jamais s\'enregistrer', $rows, $table));
+            }
+        }
+    }
+
+    #[Given('un club qui n\'a encore aucune équipe')]
+    public function unClubSansEquipe(): void
+    {
+        $this->registerSmallClub();
+    }
+
+    #[When('/^j\'écris une règle pour le groupe « (?P<group>[^»]+) »$/u')]
+    public function jEcrisUneRegleDeGroupe(string $group): void
+    {
+        $this->ruleResponse = $this->apiPost('constraints', [
+            'name' => 'Groupe ' . $group . ' · pas avant 19:30', 'scope' => 'CLUB', 'family' => 'TIME', 'ruleType' => 'HARD',
+            'config' => ['targetTags' => [$group], 'minStartTime' => '19:30'], 'isActive' => true,
+        ], $this->smallClubToken);
+    }
+
+    #[Then('/^la règle est refusée : « (?P<refusal>.+) »$/u')]
+    public function laRegleEstRefusee(string $refusal): void
+    {
+        $body = (string) json_encode($this->ruleResponse['json'], \JSON_UNESCAPED_UNICODE | \JSON_UNESCAPED_SLASHES);
+        if (422 !== $this->ruleResponse['status'] || !str_contains($body, $refusal)) {
+            throw new RuntimeException(\sprintf('la règle a répondu %d : %s (attendu 422 « %s »)', $this->ruleResponse['status'], $body, $refusal));
         }
     }
 
@@ -155,15 +199,57 @@ final class CategoryRuleContext extends BaseContext
         return [$this->smallClubTeamIds['U13 A'], $this->smallClubTeamIds['U13 B'], $this->smallClubTeamIds['U15 A']];
     }
 
-    /** @return list<string> */
+    /**
+     * Les étiquettes d'une équipe telles que l'écran les lit : les rattachements de
+     * `/api/team_tag_assignments` (toutes les pages), dont le `tagId` se résout en nom par
+     * `/api/team_tags` — la jointure même de `shared/lib/tagTeamIds.ts`.
+     *
+     * @return list<string>
+     */
     private function tagsOf(string $teamId): array
     {
-        $raw = $this->dbalScalar(\sprintf(
-            'SELECT string_agg(t.name, \',\') AS behatval FROM team_tag_assignment a JOIN team_tag t ON t.id = a.tag_id WHERE a.team_id=\'%s\'',
-            $teamId,
-        ), admin: true);
+        $nameById = [];
+        foreach ($this->allPages('team_tags') as $tag) {
+            if (\is_string($tag['id'] ?? null) && \is_string($tag['name'] ?? null)) {
+                $nameById[$tag['id']] = $tag['name'];
+            }
+        }
+        $names = [];
+        foreach ($this->allPages('team_tag_assignments') as $assignment) {
+            if (($assignment['teamId'] ?? null) !== $teamId) {
+                continue;
+            }
+            $tagId = $assignment['tagId'] ?? null;
+            if (!\is_string($tagId) || !isset($nameById[$tagId])) {
+                throw new RuntimeException(\sprintf('le rattachement %s désigne une étiquette que /api/team_tags ne rend pas', json_encode($assignment, \JSON_UNESCAPED_UNICODE)));
+            }
+            $names[] = $nameById[$tagId];
+        }
 
-        return '' === $raw ? [] : explode(',', $raw);
+        return $names;
+    }
+
+    /** @return list<array<mixed>> */
+    private function allPages(string $collection): array
+    {
+        $items = [];
+        for ($page = 1; $page <= 50; ++$page) {
+            $response = $this->apiGet(\sprintf('%s?page=%d', $collection, $page), $this->smallClubToken);
+            if (200 !== $response['status']) {
+                throw new RuntimeException(\sprintf('GET /api/%s a répondu %d', $collection, $response['status']));
+            }
+            $members = $response['json']['member'] ?? [];
+            if (!\is_array($members) || [] === $members) {
+                return $items;
+            }
+            foreach ($members as $member) {
+                if (\is_array($member)) {
+                    $items[] = $member;
+                }
+            }
+        }
+
+        throw new RuntimeException(\sprintf('/api/%s rend plus de 50 pages', $collection));
     }
 
     /** @param list<string> $ids */

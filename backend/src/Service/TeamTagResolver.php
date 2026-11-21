@@ -4,8 +4,7 @@ declare(strict_types=1);
 
 namespace App\Service;
 
-use App\Entity\TeamTag;
-use App\Entity\TeamTagAssignment;
+use App\Entity\Team;
 use Doctrine\ORM\EntityManagerInterface;
 use Psr\Log\LoggerInterface;
 use Symfony\Contracts\Service\ResetInterface;
@@ -31,12 +30,13 @@ final class TeamTagResolver implements ResetInterface
      */
     public const array TAG_CONFIG_KEYS = ['targetTag', 'targetTags', 'excludeTags'];
 
-    /** @var array<string, list<string>> mémo par MESSAGE/REQUÊTE — la sélection ET la sérialisation résolvent les mêmes tags */
+    /** @var array<string, array<string, list<string>>> mémo par MESSAGE/REQUÊTE, clé club + saison — la sélection ET la sérialisation résolvent les mêmes tags */
     private array $memo = [];
 
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
         private readonly LoggerInterface $logger,
+        private readonly TeamTagService $tagService,
     ) {}
 
     /**
@@ -227,19 +227,15 @@ final class TeamTagResolver implements ResetInterface
      * donc l'ordre des lignes `constraints` du payload — et le hash calculé dessus. Le
      * `teamId` est STABLE (une équipe n'est pas recréée), contrairement à l'id d'assignation.
      *
-     * Tag inconnu → liste vide + warning : la contrainte ne produira aucune ligne, et le
-     * silence est exactement ce que la série ENGINE a soldé.
+     * Nom hors du catalogue → liste vide + warning : la contrainte ne produira aucune ligne, et
+     * le silence est exactement ce que la série ENGINE a soldé. Nom du catalogue qu'aucune
+     * équipe de la saison ne porte → liste vide, sans warning.
      *
      * @return list<string>
      */
     public function tagTeamIds(string $targetTag, string $seasonId, string $clubId): array
     {
-        $memoKey = $clubId . '|' . $seasonId . '|' . $targetTag;
-        if (isset($this->memo[$memoKey])) {
-            return $this->memo[$memoKey];
-        }
-        $tag = $this->entityManager->getRepository(TeamTag::class)->findOneBy(['name' => $targetTag, 'clubId' => $clubId]);
-        if (!$tag instanceof TeamTag) {
+        if (!$this->tagService->isCatalogName($targetTag)) {
             // Placeholders PSR-3, pas d'interpolation : un message unique par tag/club
             // casserait le regroupement/dédoublonnage des agrégateurs de logs.
             $this->logger->warning(
@@ -247,16 +243,44 @@ final class TeamTagResolver implements ResetInterface
                 ['targetTag' => $targetTag, 'clubId' => $clubId, 'seasonId' => $seasonId],
             );
 
-            return $this->memo[$memoKey] = [];
+            return [];
         }
 
-        $teamIds = [];
-        foreach ($this->entityManager->getRepository(TeamTagAssignment::class)->findBy(['tagId' => $tag->getId(), 'seasonId' => $seasonId]) as $assignment) {
-            $teamIds[] = $assignment->getTeamId();
-        }
-        sort($teamIds);
+        return $this->teamIdsByTag($clubId, $seasonId)[$targetTag] ?? [];
+    }
 
-        return $this->memo[$memoKey] = $teamIds;
+    /**
+     * « Nom du catalogue → équipes qui le portent », calculé depuis les équipes du club ET de
+     * la saison (catégorie, sexe, niveau lus à l'instant). Un nom qu'aucune équipe ne porte est
+     * absent de la carte.
+     *
+     * ⚠ La clé du mémo est le COUPLE club + saison, et la lecture borne explicitement les deux :
+     * l'identifiant d'une étiquette (« U13 ») est le même pour tous les clubs, et un worker sert
+     * plusieurs clubs d'un message à l'autre. Une clé sur la saison seule, ou une lecture qui
+     * s'en remettrait au filtre de tenant, ferait entrer l'équipe d'un club dans le groupe d'un
+     * autre (`TeamTagScopeTest::testTagsNeverCarryAnotherClubsTeam`).
+     *
+     * @return array<string, list<string>> nom => teamIds triés
+     */
+    public function teamIdsByTag(string $clubId, string $seasonId): array
+    {
+        $memoKey = $clubId . '|' . $seasonId;
+        if (isset($this->memo[$memoKey])) {
+            return $this->memo[$memoKey];
+        }
+
+        $byName = [];
+        foreach ($this->entityManager->getRepository(Team::class)->findBy(['clubId' => $clubId, 'seasonId' => $seasonId]) as $team) {
+            foreach (array_unique($this->tagService->tagNamesOf($team)) as $name) {
+                $byName[$name][] = $team->getId();
+            }
+        }
+        foreach ($byName as $name => $teamIds) {
+            sort($teamIds);
+            $byName[$name] = $teamIds;
+        }
+
+        return $this->memo[$memoKey] = $byName;
     }
 
     /**
@@ -266,8 +290,7 @@ final class TeamTagResolver implements ResetInterface
      * (`$seasonTeamIds`), moins les exclus. Passe par le foyer pur `intersectMinusExclude`,
      * comme le gate — d'où la parité.
      *
-     * Résolution vide (typo, équipes désactivées, tags non ré-appliqués après bascule de
-     * saison) : liste vide, gérée en NO-OP par ses appelants (le builder saute la contrainte,
+     * Résolution vide (typo, aucune équipe de la saison dans le groupe) : liste vide, gérée en NO-OP par ses appelants (le builder saute la contrainte,
      * le gate la déclare cachée) — jamais un ban tous-clubs.
      *
      * @param array<string, mixed> $config
