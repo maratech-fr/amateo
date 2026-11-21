@@ -848,22 +848,26 @@ gardé.
 
 Vert dans *Actions → Deploy* = en prod.
 
-### Étape post-déploiement OBLIGATOIRE — purger le cache des demandes au moteur après une migration de données
+### Purge du cache des demandes au moteur — automatique, à relancer seulement sur alerte
 
 Après toute migration qui réécrit une table lue par le constructeur de demande au moteur, le payload
 du socle reste servi du pool `cache.schedule` pendant 4 h (`ScheduleConstraintBuilder.php:59`, lecture
-`:260-268`) : une écriture SQL de migration ne l'invalide pas. **Juste après le succès de
-`scripts/remote-deploy.sh`** (il migre, puis recrée les services), à la main, par celui qui déploie :
+`:260-268`) : une écriture SQL de migration ne l'invalide pas, et l'ancienne stack peut y remettre une
+demande d'avant la migration entre `migrate` et le redémarrage des services.
+**`scripts/remote-deploy.sh` purge le pool lui-même**, juste après « ==> Deploy … OK » (sondes de santé
+passées, version écrite), dans les deux branches (installation existante et première installation) —
+le déploiement programmé, qui tourne sans personne, est couvert.
+
+Un échec de la purge **ne fait pas échouer le déploiement** (il reste marqué réussi) : il écrit au
+journal du déploiement l'alerte « ==> ⚠ CACHE DES DEMANDES NON PURGÉ (sans effet sur le déploiement) »,
+et le cache peut alors rester périmé 4 h au plus. Sur cette alerte seulement, à la main :
 
 ```bash
 docker exec amateo-php-fpm php bin/console cache:pool:clear cache.schedule
 ```
 
-Acceptable tant qu'un humain déploie. Le déploiement programmé (§ *Mise en prod programmée*) tourne
-sans personne, et l'ancienne stack sert encore entre la migration et le redémarrage : l'automatiser
-est une condition d'entrée du lot 1 de la conception
-([`lot-conception-decoupage.md`](../../specs/evolution/lot-conception-decoupage.md)). L'outil qui
-compare les demandes avant/après une migration : [`lot-conception-filet.md`](../../specs/evolution/lot-conception-filet.md).
+Gardé par `backend/tests/Unit/Scripts/RemoteDeployPurgesScheduleCacheTest.php`. L'outil qui compare
+les demandes avant/après une migration : [`lot-conception-filet.md`](../../specs/evolution/lot-conception-filet.md).
 
 ### Étape post-déploiement OBLIGATOIRE — réparer les empreintes des plannings (version « réservation souveraine » ; REJOUER avec la version « version chargée »)
 
