@@ -7,6 +7,7 @@ namespace App\Controller;
 use App\Access\Audience;
 use App\Access\ClubFunction;
 use App\Access\Module;
+use App\Access\Output;
 use App\Entity\Club;
 use App\Entity\Schedule;
 use App\Enum\ScheduleStatus;
@@ -34,7 +35,7 @@ use Symfony\Component\Messenger\MessageBusInterface;
 use Throwable;
 
 #[AsController]
-#[ClubFunction(module: Module::PLANNING, audience: Audience::MANAGER)]
+#[ClubFunction(module: Module::PLANNING, audience: Audience::MANAGER, output: Output::SOLVE)]
 final class GenerateScheduleController extends AbstractController implements SeasonScopedWriteInterface
 {
     use ResolvesCurrentClubTrait;

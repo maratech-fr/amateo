@@ -7,6 +7,7 @@ namespace App\Controller;
 use App\Access\Audience;
 use App\Access\ClubFunction;
 use App\Access\Module;
+use App\Access\Output;
 use App\Entity\Schedule;
 use App\Enum\ScheduleStatus;
 use App\Message\GenerateScheduleMessage;
@@ -53,7 +54,7 @@ use Throwable;
  * (`ClubQuotaSubscriber`, route `api_schedule_fill`).
  */
 #[AsController]
-#[ClubFunction(module: Module::PLANNING, audience: Audience::MANAGER)]
+#[ClubFunction(module: Module::PLANNING, audience: Audience::MANAGER, output: Output::SOLVE)]
 final class FillPeriodPlanController extends AbstractController implements SeasonScopedWriteInterface
 {
     use ResolvesCurrentClubTrait;

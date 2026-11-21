@@ -7,6 +7,7 @@ namespace App\Controller;
 use App\Access\Audience;
 use App\Access\ClubFunction;
 use App\Access\Module;
+use App\Access\Output;
 use App\Entity\Season;
 use App\Entity\Team;
 use App\Export\MatchesExportDataProvider;
@@ -26,11 +27,11 @@ use Symfony\Component\Uid\Uuid;
 
 /**
  * La liste des matchs d'une équipe ou du club, de la date A à la date B, pour les parents. Rail
- * SYNCHRONE : le crédit se décompte au 200 (`CreditBudgetSubscriber`), donc jamais sans fichier
+ * SYNCHRONE : le crédit se décompte au 200 (`ClubAccessListener`, sortie réglée à la réponse), donc jamais sans fichier
  * livré. Tout membre y accède, comme à l'export du planning : aucune garde gestionnaire ici.
  */
 #[AsController]
-#[ClubFunction(module: Module::MATCHES, audience: Audience::MEMBER)]
+#[ClubFunction(module: Module::MATCHES, audience: Audience::MEMBER, output: Output::MATCHES_PDF)]
 final class ExportMatchesPdfController extends AbstractController
 {
     use ResolvesCurrentClubTrait;
