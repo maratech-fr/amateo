@@ -113,6 +113,9 @@ final class StructureSnapshotterTest extends KernelTestCase
         self::assertSame(90, $data['VenueTrainingSlot'][0]['durationMinutes']);
         self::assertCount(1, $data['Coach']);
         self::assertSame($coach->getPersonId(), $data['Coach'][0]['personId']);
+        // Lot 3 PR 2b : la photo ne porte que l'identifiant de la personne, jamais son identité, qui vit
+        // une seule fois sur sa fiche au club.
+        self::assertSame([], array_intersect(['firstName', 'lastName', 'email', 'phone', 'gender'], array_keys($data['Coach'][0])), 'aucune donnée d\'identité dans la ligne de coach de la photo');
         self::assertCount(1, $data['TeamCoach']);
         self::assertSame('MAIN', $data['TeamCoach'][0]['role']);
     }
