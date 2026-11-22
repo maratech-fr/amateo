@@ -8,7 +8,6 @@ use App\Tests\Security\PersonPlaceTenantIsolationTest;
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Exception\DriverException;
 use Doctrine\DBAL\Schema\Schema;
-use Doctrine\Migrations\Exception\AbortMigration;
 use Doctrine\Persistence\ManagerRegistry;
 use DoctrineMigrations\Version20261122140000;
 use PHPUnit\Framework\Attributes\Group;
@@ -149,8 +148,12 @@ final class PersonConversionMigrationTest extends KernelTestCase
                 // Sabotage posé dès la naissance de la table : la fiche de « Perdu » n'est jamais écrite.
                 $this->play(sabotage: true);
                 self::fail('une fiche manquante doit arrêter la migration');
-            } catch (AbortMigration|DriverException) {
-                $this->addToAssertionCount(1);
+            } catch (DriverException $stop) {
+                // C'est le contrôle de comptage qui arrête (RAISE EXCEPTION, SQLSTATE P0001), avant toute
+                // clé étrangère : sans lui, la pose de la clé composée arrêterait aussi (23503), et ce test
+                // resterait vert le contrôle retiré.
+                self::assertSame('P0001', $stop->getSQLState(), 'le contrôle de comptage de la migration arrête la conversion');
+                self::assertStringContainsString('Conversion des coachs en personnes', $stop->getMessage());
             }
         });
     }
