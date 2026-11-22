@@ -17,6 +17,7 @@ use App\Entity\OpponentDirectoryEntry;
 use App\Entity\OpponentVenueLink;
 use App\Entity\OpponentVenueSuggestion;
 use App\Entity\Person;
+use App\Entity\Place;
 use App\Entity\PriorityTier;
 use App\Entity\Reservation;
 use App\Entity\Schedule;
@@ -73,6 +74,7 @@ use App\Service\SeasonResolver;
 use App\Storage\LogoStorage;
 use App\Storage\LogoUrl;
 use App\Structure\PersonDirectory;
+use App\Structure\PlaceDirectory;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
 use finfo;
@@ -113,6 +115,7 @@ final class BcclSeeder
         private readonly OverlayManager $overlayManager,
         private readonly ClubLeagueWindowSeeder $clubLeagueWindowSeeder,
         private readonly PersonDirectory $personDirectory,
+        private readonly PlaceDirectory $placeDirectory,
         private readonly ClubSubscriptionWriter $subscriptionWriter,
         private readonly ClubSubscriptionRepository $subscriptions,
     ) {}
@@ -416,8 +419,11 @@ final class BcclSeeder
             ]);
             if ($existing instanceof Venue) {
                 $venue = $existing;
+                $place = $this->placeDirectory->of($venue);
             } else {
-                $venue = new Venue;
+                $place = (new Place)->setClubId($club->getId());
+                $manager->persist($place);
+                $venue = new Venue($place);
                 $venue->setClubId($club->getId());
                 $venue->setSeasonId($season->getId());
                 $venue->setName($vd['name']);
@@ -429,8 +435,8 @@ final class BcclSeeder
             $venue->setColor($vd['color']);
             $venue->setCanSplit($vd['canSplit']);
             $venue->setExternalRef($vd['ref']);
-            $venue->setLatitude($vd['lat']);
-            $venue->setLongitude($vd['lng']);
+            $place->setLatitude($vd['lat']);
+            $place->setLongitude($vd['lng']);
             $venues[$vd['var']] = $venue;
         }
         $manager->flush();

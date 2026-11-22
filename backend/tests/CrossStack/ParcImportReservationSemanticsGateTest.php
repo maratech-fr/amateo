@@ -20,6 +20,7 @@ use App\Enum\SeasonStatus;
 use App\Service\ParcImport\ParcImportExecutor;
 use App\Service\ScheduleConstraintBuilder;
 use App\Service\SecondSessionSameDayDetector;
+use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -64,6 +65,7 @@ use Symfony\Contracts\HttpClient\Exception\TransportExceptionInterface;
 #[Group('contract')]
 final class ParcImportReservationSemanticsGateTest extends KernelTestCase
 {
+    use CreatesPeopleAndPlacesTrait;
     use TenantGucTrait;
 
     private const string ENGINE_URL = 'http://engine:8000/generate';
@@ -254,7 +256,7 @@ final class ParcImportReservationSemanticsGateTest extends KernelTestCase
 
     private function venue(Club $club, Season $season, string $name): Venue
     {
-        $venue = (new Venue)->setClubId($club->getId())->setSeasonId($season->getId())->setName($name)->setSource('manual');
+        $venue = $this->newVenue($club->getId(), $season->getId(), $name);
         $this->em->persist($venue);
 
         return $venue;

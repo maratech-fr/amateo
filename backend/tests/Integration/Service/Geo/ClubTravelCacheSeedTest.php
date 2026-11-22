@@ -6,12 +6,12 @@ namespace App\Tests\Integration\Service\Geo;
 
 use App\Entity\Club;
 use App\Entity\Season;
-use App\Entity\Venue;
 use App\Entity\VenueTravelTime;
 use App\Enum\SeasonStatus;
 use App\Enum\VenueTravelTimeSource;
 use App\Service\Geo\IgnRoutingClient;
 use App\Service\Geo\TravelTimeCache;
+use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -33,6 +33,7 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 #[Group('integration')]
 final class ClubTravelCacheSeedTest extends WebTestCase
 {
+    use CreatesPeopleAndPlacesTrait;
     use TenantGucTrait;
 
     private EntityManagerInterface $em;
@@ -95,8 +96,10 @@ final class ClubTravelCacheSeedTest extends WebTestCase
         $season->setStatus(SeasonStatus::ACTIVE);
         $this->em->persist($season);
 
-        $venueA = (new Venue)->setClubId($club->getId())->setSeasonId($season->getId())->setName('Gymnase A')->setSource('manual')->setLatitude('45.10000')->setLongitude('4.10000');
-        $venueB = (new Venue)->setClubId($club->getId())->setSeasonId($season->getId())->setName('Gymnase B')->setSource('manual')->setLatitude('45.20000')->setLongitude('4.20000');
+        $venueA = $this->newVenue($club->getId(), $season->getId(), 'Gymnase A');
+        $this->placeOf($venueA)->setLatitude('45.10000')->setLongitude('4.10000');
+        $venueB = $this->newVenue($club->getId(), $season->getId(), 'Gymnase B');
+        $this->placeOf($venueB)->setLatitude('45.20000')->setLongitude('4.20000');
         $this->em->persist($venueA);
         $this->em->persist($venueB);
         $this->em->flush();

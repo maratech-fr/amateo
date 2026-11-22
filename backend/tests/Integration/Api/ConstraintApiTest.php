@@ -20,6 +20,7 @@ use App\Enum\ConstraintRuleType;
 use App\Enum\ConstraintScope;
 use App\Enum\Gender;
 use App\Enum\SeasonStatus;
+use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\CreatesPeriodPlanTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
@@ -33,6 +34,7 @@ use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
 #[Group('integration')]
 final class ConstraintApiTest extends WebTestCase
 {
+    use CreatesPeopleAndPlacesTrait;
     use CreatesPeriodPlanTrait;
     use TenantGucTrait;
 
@@ -739,11 +741,7 @@ final class ConstraintApiTest extends WebTestCase
 
     private function createVenue(): Venue
     {
-        $venue = new Venue;
-        $venue->setClubId($this->club->getId());
-        $venue->setSeasonId($this->season->getId());
-        $venue->setName('Gymnase D1 ' . uniqid('', true));
-        $venue->setSource('manual');
+        $venue = $this->newVenue($this->club->getId(), $this->season->getId(), 'Gymnase D1 ' . uniqid('', true));
         $this->em->persist($venue);
         $this->em->flush();
 

@@ -69,7 +69,7 @@ final class StructureRestorerTest extends KernelTestCase
         [$club, $season] = $this->seedClubSeason();
         // State A: 1 team + 1 venue + 1 permanent constraint. Capture it on V1.
         $teamA = $this->persistTeam($club, $season, 'SM1');
-        $venueA = (new Venue)->setClubId($club->getId())->setSeasonId($season->getId())->setName('Gymnase A')->setSource('manual');
+        $venueA = $this->newVenue($club->getId(), $season->getId(), 'Gymnase A');
         $constraintA = (new Constraint)->setClubId($club->getId())->setSeasonId($season->getId())
             ->setName('SM1 mardi')->setScope(ConstraintScope::TEAM)->setScopeTargetId($teamA->getId())
             ->setFamily(ConstraintFamily::DAY)->setRuleType(ConstraintRuleType::HARD)->setConfig(['days' => [2]]);
@@ -110,7 +110,7 @@ final class StructureRestorerTest extends KernelTestCase
         [$club, $season] = $this->seedClubSeason();
         $this->persistTeam($club, $season, 'SM1');
         // A venue that IS part of the photo — its dated closure must survive.
-        $venue = (new Venue)->setClubId($club->getId())->setSeasonId($season->getId())->setName('Gym')->setSource('manual');
+        $venue = $this->newVenue($club->getId(), $season->getId(), 'Gym');
         $this->em->persist($venue);
         $this->em->flush();
         $v1 = $this->makeSchedule($club, $season);
@@ -220,7 +220,7 @@ final class StructureRestorerTest extends KernelTestCase
         $this->snapshotter->store($v1, $this->snapshotter->serialize($club->getId(), $season->getId()));
 
         // Puis : un gymnase et un match domicile DÉCLARÉ posé dessus, avec son heure.
-        $venue = (new Venue)->setClubId($club->getId())->setSeasonId($season->getId())->setName('Gymnase X')->setSource('manual');
+        $venue = $this->newVenue($club->getId(), $season->getId(), 'Gymnase X');
         $this->em->persist($venue);
         $this->em->flush();
         $venueId = $venue->getId();

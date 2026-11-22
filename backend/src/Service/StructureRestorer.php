@@ -9,6 +9,7 @@ use App\Deletion\DeletionTarget;
 use App\Entity\Coach;
 use App\Entity\CoachPlayerMembership;
 use App\Entity\Constraint;
+use App\Entity\Place;
 use App\Entity\Reservation;
 use App\Entity\Schedule;
 use App\Entity\ScheduleStructureSnapshot;
@@ -99,6 +100,7 @@ final class StructureRestorer
         // the identity map — re-inserting the SAME ids would raise an identity
         // collision. Detach everything first.
         $this->entityManager->clear();
+        $data = $this->withVenuesOnAPlaceOfTheClub($clubId, $data);
 
         foreach (self::FAMILY_CLASS as $family => $entityClass) {
             foreach ($data[$family] ?? [] as $rowData) {
@@ -170,6 +172,45 @@ final class StructureRestorer
         }
         if (isset($data['Constraint'])) {
             $data['Constraint'] = array_values(array_filter($data['Constraint'], static fn (array $row): bool => ConstraintScope::COACH->value !== ($row['scope'] ?? null) || isset($keptIds[(string) ($row['scopeTargetId'] ?? '')])));
+        }
+
+        return $data;
+    }
+
+    /**
+     * Un gymnase de la photo revient sur son lieu au club, adresse et position comprises (elles ne
+     * sont pas dans la photo). Si ce lieu n'existe plus dans CE club (balayé, ou désignant le lieu
+     * d'un autre club), le gymnase revient quand même, avec ses créneaux, sur un lieu NEUF sans
+     * adresse : jamais un gymnase perdu. La recherche des lieux est bornée par le club en clause
+     * explicite (filtres désactivés ici). Les lieux neufs sont persistés avant les gymnases.
+     *
+     * @param array<string, list<array<string, mixed>>> $data
+     *
+     * @return array<string, list<array<string, mixed>>>
+     */
+    private function withVenuesOnAPlaceOfTheClub(string $clubId, array $data): array
+    {
+        $rows = $data['Venue'] ?? [];
+        $placeIds = array_values(array_filter(array_column($rows, 'placeId'), \is_string(...)));
+        /** @var list<string> $known */
+        $known = [] === $placeIds ? [] : $this->entityManager
+            ->createQuery('SELECT p.id FROM App\Entity\Place p WHERE p.clubId = :c AND p.id IN (:ids)')
+            ->setParameter('c', $clubId)
+            ->setParameter('ids', $placeIds)
+            ->getSingleColumnResult();
+        $known = array_flip($known);
+
+        foreach ($rows as $i => $row) {
+            $placeId = $row['placeId'] ?? null;
+            if (\is_string($placeId) && isset($known[$placeId])) {
+                continue;
+            }
+            $place = (new Place)->setClubId($clubId);
+            $this->entityManager->persist($place);
+            $rows[$i]['placeId'] = $place->getId();
+        }
+        if (isset($data['Venue'])) {
+            $data['Venue'] = $rows;
         }
 
         return $data;

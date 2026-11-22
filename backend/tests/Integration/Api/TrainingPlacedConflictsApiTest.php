@@ -255,7 +255,7 @@ final class TrainingPlacedConflictsApiTest extends WebTestCase
         }
         $gymIds = [];
         foreach (['Gymnase A', 'Gymnase B'] as $name) {
-            $venue = (new Venue)->setClubId($clubId)->setSeasonId($seasonId)->setName($name)->setSource('manual');
+            $venue = $this->newVenue($clubId, $seasonId, $name);
             $this->em->persist($venue);
             $this->em->flush();
             $gymIds[] = $venue->getId();

@@ -31,6 +31,7 @@ use App\Enum\VenuePeriodMode;
 use App\Service\PeriodPlanTranscriber;
 use App\Service\SchedulePlanProvisioner;
 use App\Tests\ChoosesPlanVersionTrait;
+use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\ProvisionsPeriodPlanTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
@@ -75,6 +76,7 @@ use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
 final class SocleDeviationParityTest extends WebTestCase
 {
     use ChoosesPlanVersionTrait;
+    use CreatesPeopleAndPlacesTrait;
     use ProvisionsPeriodPlanTrait;
     use TenantGucTrait;
 
@@ -1275,12 +1277,7 @@ final class SocleDeviationParityTest extends WebTestCase
 
     private function venue(Club $club, Season $season, string $name): Venue
     {
-        $venue = new Venue;
-        $venue->setClubId($club->getId());
-        $venue->setSeasonId($season->getId());
-        $venue->setName($name);
-        $venue->setSource('manual');
-        $venue->setCanSplit(false);
+        $venue = $this->newVenue($club->getId(), $season->getId(), $name)->setCanSplit(false);
         $this->em->persist($venue);
         $this->em->flush();
 

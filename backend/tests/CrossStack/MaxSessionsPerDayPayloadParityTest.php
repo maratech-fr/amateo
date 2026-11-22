@@ -11,12 +11,12 @@ use App\Entity\Season;
 use App\Entity\Team;
 use App\Entity\TeamPeriodOverride;
 use App\Entity\User;
-use App\Entity\Venue;
 use App\Entity\VenueTrainingSlot;
 use App\Enum\CalendarEntryKind;
 use App\Enum\CalendarEntryPeriodType;
 use App\Enum\SeasonStatus;
 use App\Service\ScheduleConstraintBuilder;
+use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\ProvisionsPeriodPlanTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
@@ -42,6 +42,7 @@ use Symfony\Contracts\HttpClient\Exception\TransportExceptionInterface;
 #[Group('contract')]
 final class MaxSessionsPerDayPayloadParityTest extends KernelTestCase
 {
+    use CreatesPeopleAndPlacesTrait;
     use ProvisionsPeriodPlanTrait;
     use TenantGucTrait;
 
@@ -208,7 +209,7 @@ final class MaxSessionsPerDayPayloadParityTest extends KernelTestCase
         $this->em->persist($season);
         $this->em->flush();
 
-        $venue = (new Venue)->setClubId($club->getId())->setSeasonId($season->getId())->setName('Gymnase Matéo')->setSource('manual');
+        $venue = $this->newVenue($club->getId(), $season->getId(), 'Gymnase Matéo');
         $this->em->persist($venue);
         $this->em->flush();
         foreach ([[1, '09:00'], [1, '18:00'], [3, '09:00'], [3, '18:00']] as [$day, $start]) {

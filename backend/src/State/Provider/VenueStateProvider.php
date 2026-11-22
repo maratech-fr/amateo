@@ -4,15 +4,28 @@ declare(strict_types=1);
 
 namespace App\State\Provider;
 
+use ApiPlatform\State\Pagination\Pagination;
 use App\ApiResource\VenueResource;
 use App\Entity\Venue;
+use App\Structure\PlaceDirectory;
+use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\QueryBuilder;
+use Symfony\Component\HttpFoundation\RequestStack;
 
 /**
  * @extends AbstractStateProvider<Venue, VenueResource>
  */
 class VenueStateProvider extends AbstractStateProvider
 {
+    public function __construct(
+        EntityManagerInterface $entityManager,
+        RequestStack $requestStack,
+        Pagination $pagination,
+        private readonly PlaceDirectory $placeDirectory,
+    ) {
+        parent::__construct($entityManager, $requestStack, $pagination);
+    }
+
     protected function getEntityClass(): string
     {
         return Venue::class;
@@ -34,6 +47,6 @@ class VenueStateProvider extends AbstractStateProvider
      */
     protected function mapEntityToOutput(object $entity): VenueResource
     {
-        return VenueResource::fromEntity($entity);
+        return VenueResource::fromEntity($entity, $this->placeDirectory->of($entity));
     }
 }

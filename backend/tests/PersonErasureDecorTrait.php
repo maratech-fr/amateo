@@ -13,6 +13,7 @@ use App\Entity\CoachWishCampaign;
 use App\Entity\Constraint;
 use App\Entity\Feedback;
 use App\Entity\Person;
+use App\Entity\Place;
 use App\Entity\Schedule;
 use App\Entity\ScheduleDiagnostic;
 use App\Entity\ScheduleSlotTemplate;
@@ -288,7 +289,9 @@ trait PersonErasureDecorTrait
     private function erasureVenue(Club $club, Season $season): Venue
     {
         $em = static::getContainer()->get(EntityManagerInterface::class);
-        $venue = (new Venue)->setClubId($club->getId())->setSeasonId($season->getId())->setName('Gymnase Nord')->setSource('manual');
+        $place = (new Place)->setClubId($club->getId());
+        $em->persist($place);
+        $venue = new Venue($place)->setClubId($club->getId())->setSeasonId($season->getId())->setName('Gymnase Nord')->setSource('manual');
         $em->persist($venue);
         $em->flush();
         foreach ([1, 2, 3, 4] as $day) {

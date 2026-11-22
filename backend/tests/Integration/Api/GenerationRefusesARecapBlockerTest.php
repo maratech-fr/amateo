@@ -19,7 +19,6 @@ use App\Entity\Team;
 use App\Entity\TeamCoach;
 use App\Entity\TeamPeriodOverride;
 use App\Entity\User;
-use App\Entity\Venue;
 use App\Entity\VenueTrainingSlot;
 use App\Enum\CalendarEntryKind;
 use App\Enum\CalendarEntryPeriodType;
@@ -141,7 +140,7 @@ final class GenerationRefusesARecapBlockerTest extends WebTestCase
     public function testASeasonCounterRefusesTwoOverlappingReservationsUnderACapOfTwo(string $counter, ScheduleStatus $status): void
     {
         $ctx = $this->seedGroup(coachesAvailable: true);
-        $other = (new Venue)->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])->setName('Gymnase Deux')->setSource('manual');
+        $other = $this->newVenue($ctx['clubId'], $ctx['seasonId'], 'Gymnase Deux');
         $this->em->persist($other);
         $this->em->flush();
         $this->em->persist((new VenueTrainingSlot)->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])->setVenueId($other->getId())
@@ -618,7 +617,7 @@ final class GenerationRefusesARecapBlockerTest extends WebTestCase
         $this->em->flush();
         $seasonId = $season->getId();
 
-        $venue = (new Venue)->setClubId($clubId)->setSeasonId($seasonId)->setName('Gymnase Un')->setSource('manual');
+        $venue = $this->newVenue($clubId, $seasonId, 'Gymnase Un');
         $this->em->persist($venue);
         $this->em->flush();
         foreach ([2, 3] as $day) {

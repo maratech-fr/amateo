@@ -9,6 +9,7 @@ use App\Dto\DiagnosticCause;
 use App\Entity\Coach;
 use App\Entity\Constraint;
 use App\Entity\Person;
+use App\Entity\Place;
 use App\Entity\Schedule;
 use App\Entity\ScheduleDiagnostic;
 use App\Entity\Team;
@@ -355,7 +356,7 @@ final class ContractSchemaTest extends TestCase
     /** @param list<TeamCoach> $teamCoaches */
     private function buildPayload(array $teamCoaches = []): array
     {
-        $venue = (new Venue)
+        $venue = new Venue((new Place)->setClubId(self::CLUB_ID))
             ->setId('venue-1')
             ->setClubId(self::CLUB_ID)
             ->setSeasonId(self::SEASON_ID)

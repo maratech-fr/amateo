@@ -1049,12 +1049,7 @@ final class ValidateConstraintsTest extends WebTestCase
     /** Persist a minimal venue scoped to the test club/season, return its id. */
     private function venue(string $name): string
     {
-        $venue = new Venue;
-        $venue->setClubId($this->club->getId());
-        $venue->setSeasonId($this->season->getId());
-        $venue->setName($name);
-        $venue->setCanSplit(false);
-        $venue->setSource('manual');
+        $venue = $this->newVenue($this->club->getId(), $this->season->getId(), $name)->setCanSplit(false);
         $this->em->persist($venue);
         $this->em->flush();
 

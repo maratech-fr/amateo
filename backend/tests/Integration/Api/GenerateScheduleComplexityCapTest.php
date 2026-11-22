@@ -14,6 +14,7 @@ use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
 use App\Service\GenerationComplexityGuard;
 use App\Tests\ChoosesPlanVersionTrait;
+use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -32,6 +33,7 @@ use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
 final class GenerateScheduleComplexityCapTest extends WebTestCase
 {
     use ChoosesPlanVersionTrait;
+    use CreatesPeopleAndPlacesTrait;
     use TenantGucTrait;
 
     private EntityManagerInterface $em;
@@ -45,12 +47,7 @@ final class GenerateScheduleComplexityCapTest extends WebTestCase
         [$user, $club, $season] = $this->seed('CAP1');
         // One venue over the cap (cheapest cap to trip: venues need no FK beyond club/season).
         for ($i = 0; $i <= GenerationComplexityGuard::MAX_VENUES; ++$i) {
-            $venue = new Venue;
-            $venue->setClubId($club->getId());
-            $venue->setSeasonId($season->getId());
-            $venue->setName('Gym ' . $i);
-            $venue->setSource('manual');
-            $venue->setIsActive(true);
+            $venue = $this->newVenue($club->getId(), $season->getId(), 'Gym ' . $i)->setIsActive(true);
             $this->em->persist($venue);
         }
         $this->em->flush();

@@ -7,6 +7,7 @@ namespace App\Export;
 use App\Entity\Club;
 use App\Entity\Competition;
 use App\Entity\Fixture;
+use App\Entity\Place;
 use App\Entity\Season;
 use App\Entity\Team;
 use App\Entity\Venue;
@@ -18,6 +19,7 @@ use App\Service\Basketball\FbiDivisionSignature;
 use App\Service\ClubDay;
 use App\Service\OpponentTravelProjection;
 use App\Storage\LogoStorage;
+use App\Structure\PlaceDirectory;
 use App\Support\FrenchNameOrder;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -40,6 +42,7 @@ final readonly class MatchesExportDataProvider
         private FbiDivisionSignature $divisionSignature,
         private ClubDay $clubDay,
         private LogoStorage $logoStorage,
+        private PlaceDirectory $placeDirectory,
     ) {}
 
     public function load(string $clubId, Season $season, DateTimeImmutable $from, DateTimeImmutable $to, ?Team $team, bool $homeOnly = false, string $groupBy = 'team'): MatchesExportData
@@ -54,6 +57,7 @@ final readonly class MatchesExportDataProvider
         $fixtures = $this->fixtureRepository->findBySeasonBetween($seasonId, $from, $to, $team?->getId());
         $friendlyCompetitionIds = $this->friendlyCompetitionIds($seasonId);
         $venues = $this->venuesById($clubId, $seasonId);
+        $venuePlaces = $this->placeDirectory->forVenues($venues);
         $linkedPlaces = $this->travelProjection->linkedPlaceByFixtureId($fixtures);
         $travels = $this->travelProjection->awayTravelByFixtureId($seasonId, $fixtures);
 
@@ -80,7 +84,7 @@ final readonly class MatchesExportDataProvider
                 $competitionId = $fixture->getCompetitionId();
                 $friendly = null === $competitionId || isset($friendlyCompetitionIds[$competitionId]);
                 $place = match ($where) {
-                    'home' => $this->homePlace($fixture, $venues),
+                    'home' => $this->homePlace($fixture, $venues, $venuePlaces),
                     'away' => $this->awayPlace($linkedPlaces[$fixture->getId()] ?? null, $travels[$fixture->getId()]['oneWayMinutes'] ?? null),
                     default => null,
                 };
@@ -196,8 +200,11 @@ final readonly class MatchesExportDataProvider
         return FixtureHomeAway::AWAY === $fixture->getHomeAway() ? 'away' : 'home';
     }
 
-    /** @param array<string, Venue> $venues */
-    private function homePlace(Fixture $fixture, array $venues): ?MatchesExportPlace
+    /**
+     * @param array<string, Venue> $venues
+     * @param array<string, Place> $venuePlaces lieu de chaque gymnase, clé = identifiant du gymnase
+     */
+    private function homePlace(Fixture $fixture, array $venues, array $venuePlaces): ?MatchesExportPlace
     {
         $venueId = $fixture->getVenueId();
         $venue = null === $venueId ? null : ($venues[$venueId] ?? null);
@@ -205,7 +212,7 @@ final readonly class MatchesExportDataProvider
             return null;
         }
 
-        return new MatchesExportPlace(name: $venue->getName(), address: $venue->getAddress(), travelMinutes: null);
+        return new MatchesExportPlace(name: $venue->getName(), address: $venuePlaces[$venue->getId()]->getAddress(), travelMinutes: null);
     }
 
     /** @param array{venueLabel: string, address: ?string, postalCode: ?string, city: ?string}|null $link */

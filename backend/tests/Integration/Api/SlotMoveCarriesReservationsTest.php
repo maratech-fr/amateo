@@ -9,9 +9,9 @@ use App\Entity\ClubUser;
 use App\Entity\Reservation;
 use App\Entity\Season;
 use App\Entity\User;
-use App\Entity\Venue;
 use App\Entity\VenueTrainingSlot;
 use App\Enum\SeasonStatus;
+use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -35,6 +35,7 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 #[Group('integration')]
 final class SlotMoveCarriesReservationsTest extends WebTestCase
 {
+    use CreatesPeopleAndPlacesTrait;
     use TenantGucTrait;
 
     private KernelBrowser $client;
@@ -118,8 +119,7 @@ final class SlotMoveCarriesReservationsTest extends WebTestCase
     /** @return array{0: string, 1: string} [slotId, reservationId] */
     private function slotWithReservation(int $dayOfWeek, string $start): array
     {
-        $venue = (new Venue)->setClubId($this->club->getId())->setSeasonId($this->season->getId())
-            ->setName('Matéo')->setSource('manual');
+        $venue = $this->newVenue($this->club->getId(), $this->season->getId(), 'Matéo');
         $this->em->persist($venue);
         $this->em->flush();
 

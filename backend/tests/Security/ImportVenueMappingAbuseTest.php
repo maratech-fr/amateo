@@ -20,6 +20,7 @@ use App\Service\Fbi\FbiDeviationService;
 use App\Service\FbiFixtureImporter;
 use App\Service\SeasonResolver;
 use App\Tests\ChoosesPlanVersionTrait;
+use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\Integration\Service\ImportVenueRequiredTest;
 use App\Tests\TenantGucTrait;
 use App\Tests\VerifiesRegistration;
@@ -52,6 +53,7 @@ use Symfony\Component\HttpFoundation\File\UploadedFile;
 final class ImportVenueMappingAbuseTest extends WebTestCase
 {
     use ChoosesPlanVersionTrait;
+    use CreatesPeopleAndPlacesTrait;
     use TenantGucTrait;
     use VerifiesRegistration;
 
@@ -470,11 +472,7 @@ final class ImportVenueMappingAbuseTest extends WebTestCase
         $this->scopeGucToClub($clubId);
         $season = $this->em->getRepository(Season::class)->findOneBy(['clubId' => $clubId]);
         self::assertInstanceOf(Season::class, $season);
-        $venue = new Venue;
-        $venue->setClubId($clubId);
-        $venue->setSeasonId($season->getId());
-        $venue->setName($name);
-        $venue->setSource('manual');
+        $venue = $this->newVenue($clubId, $season->getId(), $name);
         if ([] !== $aliases) {
             $venue->setExternalLabels($aliases);
         }
@@ -501,11 +499,7 @@ final class ImportVenueMappingAbuseTest extends WebTestCase
         $past->setTransitionData([]);
         $this->em->persist($past);
 
-        $venue = new Venue;
-        $venue->setClubId($clubId);
-        $venue->setSeasonId($past->getId());
-        $venue->setName($name);
-        $venue->setSource('manual');
+        $venue = $this->newVenue($clubId, $past->getId(), $name);
         $this->em->persist($venue);
         $this->em->flush();
 

@@ -21,6 +21,7 @@ use App\Service\SeasonTransitionService;
 use App\Service\StructureRestorer;
 use App\Service\StructureSnapshotter;
 use App\Tests\ChoosesPlanVersionTrait;
+use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\Support\SubscribesClub;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
@@ -59,6 +60,7 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 final class VenueOccupancyLifecycleTest extends WebTestCase
 {
     use ChoosesPlanVersionTrait;
+    use CreatesPeopleAndPlacesTrait;
     use SubscribesClub;
     use TenantGucTrait;
 
@@ -369,7 +371,7 @@ final class VenueOccupancyLifecycleTest extends WebTestCase
     private function venue(string $name): Venue
     {
         $this->scopeGucToClub($this->club->getId());
-        $venue = (new Venue)->setClubId($this->club->getId())->setSeasonId($this->season->getId())->setName($name)->setSource('manual');
+        $venue = $this->newVenue($this->club->getId(), $this->season->getId(), $name);
         $this->em->persist($venue);
         $this->em->flush();
         $this->seasonSlot($venue, 1, '18:00');

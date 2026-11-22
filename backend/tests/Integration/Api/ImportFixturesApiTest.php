@@ -15,6 +15,7 @@ use App\Entity\Team;
 use App\Entity\Venue;
 use App\Enum\FixtureStatus;
 use App\Tests\ChoosesPlanVersionTrait;
+use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\TenantGucTrait;
 use App\Tests\VerifiesRegistration;
 use App\Tests\WritesFbiExports;
@@ -38,6 +39,7 @@ use ZipArchive;
 final class ImportFixturesApiTest extends WebTestCase
 {
     use ChoosesPlanVersionTrait;
+    use CreatesPeopleAndPlacesTrait;
     use TenantGucTrait;
     use VerifiesRegistration;
     use WritesFbiExports;
@@ -295,12 +297,7 @@ final class ImportFixturesApiTest extends WebTestCase
         $this->scopeGucToClub($clubId);
         $season = $this->em->getRepository(Season::class)->findOneBy(['clubId' => $clubId]);
         self::assertNotNull($season);
-        $venue = new Venue;
-        $venue->setClubId($clubId);
-        $venue->setSeasonId($season->getId());
-        $venue->setName('Gymnase Matéo');
-        $venue->setSource('manual');
-        $venue->setExternalLabels(['gymnase mateo']);
+        $venue = $this->newVenue($clubId, $season->getId(), 'Gymnase Matéo')->setExternalLabels(['gymnase mateo']);
         $this->em->persist($venue);
         $this->em->flush();
 
@@ -539,11 +536,7 @@ final class ImportFixturesApiTest extends WebTestCase
         $this->scopeGucToClub($clubId);
         $season = $this->em->getRepository(Season::class)->findOneBy(['clubId' => $clubId]);
         self::assertNotNull($season);
-        $venue = new Venue;
-        $venue->setClubId($clubId);
-        $venue->setSeasonId($season->getId());
-        $venue->setName($name);
-        $venue->setSource('manual');
+        $venue = $this->newVenue($clubId, $season->getId(), $name);
         $this->em->persist($venue);
         $this->em->flush();
 
@@ -568,11 +561,7 @@ final class ImportFixturesApiTest extends WebTestCase
         $fixture = $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => $externalRef]);
         self::assertNotNull($fixture, 'imported fixture must exist');
         $this->scopeGucToClub($fixture->getClubId());
-        $venue = new Venue;
-        $venue->setClubId($fixture->getClubId());
-        $venue->setSeasonId($fixture->getSeasonId());
-        $venue->setName($venueName);
-        $venue->setSource('manual');
+        $venue = $this->newVenue($fixture->getClubId(), $fixture->getSeasonId(), $venueName);
         $this->em->persist($venue);
         $fixture->setVenueId($venue->getId());
         $this->em->flush();

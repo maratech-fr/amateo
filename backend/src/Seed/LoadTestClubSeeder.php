@@ -12,6 +12,7 @@ use App\Entity\Competition;
 use App\Entity\Fixture;
 use App\Entity\MatchConstraint;
 use App\Entity\Person;
+use App\Entity\Place;
 use App\Entity\PriorityTier;
 use App\Entity\Schedule;
 use App\Entity\ScheduleSlotTemplate;
@@ -348,7 +349,9 @@ final class LoadTestClubSeeder
             $name = \sprintf('Gymnase Charge %d-%d', $index, $k + 1);
             $venue = $manager->getRepository(Venue::class)->findOneBy(['clubId' => $clubId, 'name' => $name]);
             if (!$venue instanceof Venue) {
-                $venue = new Venue;
+                $place = (new Place)->setClubId($clubId);
+                $manager->persist($place);
+                $venue = new Venue($place);
                 $venue->setClubId($clubId);
                 $venue->setSeasonId($seasonId);
                 $venue->setName($name);

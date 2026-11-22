@@ -110,7 +110,7 @@ final class RecapReservedGroupIsNotAFailureTest extends WebTestCase
         [$user, $club, $season, $category] = $this->seedClubSeason();
         $teamA = $this->team($club, $season, $category, 'A');
         $teamB = $this->team($club, $season, $category, 'B');
-        $venue = (new Venue)->setClubId($club->getId())->setSeasonId($season->getId())->setName('Nord')->setSource('manual');
+        $venue = $this->newVenue($club->getId(), $season->getId(), 'Nord');
         $this->em->persist($venue);
         $this->em->flush();
         $this->seasonSlot($club, $season, $venue);

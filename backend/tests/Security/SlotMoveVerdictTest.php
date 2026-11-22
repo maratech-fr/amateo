@@ -16,7 +16,6 @@ use App\Entity\Sport;
 use App\Entity\SportCategory;
 use App\Entity\Team;
 use App\Entity\TeamCoach;
-use App\Entity\Venue;
 use App\Entity\VenueTrainingSlot;
 use App\Enum\LockLevel;
 use App\Enum\LockOrigin;
@@ -978,7 +977,7 @@ final class SlotMoveVerdictTest extends KernelTestCase
 
         $venueIds = [];
         foreach (['Gymnase Un', 'Gymnase Deux'] as $name) {
-            $venue = (new Venue)->setClubId($clubId)->setSeasonId($seasonId)->setName($name)->setSource('manual');
+            $venue = $this->newVenue($clubId, $seasonId, $name);
             $this->em->persist($venue);
             $this->em->flush();
             $venueIds[] = $venue->getId();

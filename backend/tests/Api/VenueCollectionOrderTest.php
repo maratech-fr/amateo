@@ -7,6 +7,7 @@ namespace App\Tests\Api;
 use App\Entity\Season;
 use App\Entity\Venue;
 use App\Service\TenantConnectionContext;
+use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\VerifiesRegistration;
 use Doctrine\ORM\EntityManagerInterface;
 use PHPUnit\Framework\Attributes\Group;
@@ -24,6 +25,7 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 #[Group('integration')]
 final class VenueCollectionOrderTest extends WebTestCase
 {
+    use CreatesPeopleAndPlacesTrait;
     use VerifiesRegistration;
 
     private KernelBrowser $client;
@@ -60,11 +62,7 @@ final class VenueCollectionOrderTest extends WebTestCase
         $season = $em->getRepository(Season::class)->findOneBy(['clubId' => $clubId]);
         self::assertInstanceOf(Season::class, $season, 'register must have created a season');
 
-        $venue = new Venue;
-        $venue->setClubId($clubId);
-        $venue->setSeasonId($season->getId());
-        $venue->setName($name);
-        $venue->setSource('manual');
+        $venue = $this->newVenue($clubId, $season->getId(), $name);
         $em->persist($venue);
         $em->flush();
     }

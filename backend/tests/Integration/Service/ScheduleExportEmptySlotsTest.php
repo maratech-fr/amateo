@@ -29,6 +29,7 @@ use App\Enum\VenuePeriodMode;
 use App\Export\ExportEmptyWindow;
 use App\Export\ScheduleExportDataProvider;
 use App\Tests\ChoosesPlanVersionTrait;
+use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -48,6 +49,7 @@ use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 final class ScheduleExportEmptySlotsTest extends KernelTestCase
 {
     use ChoosesPlanVersionTrait;
+    use CreatesPeopleAndPlacesTrait;
     use TenantGucTrait;
 
     private EntityManagerInterface $em;
@@ -57,12 +59,7 @@ final class ScheduleExportEmptySlotsTest extends KernelTestCase
     public function testEachLayerExportsItsOwnEmptySlotsOnly(): void
     {
         [$club, $season] = $this->seed();
-        $venue = new Venue;
-        $venue->setClubId($club->getId());
-        $venue->setSeasonId($season->getId());
-        $venue->setName('Barros');
-        $venue->setCanSplit(false);
-        $venue->setSource('manual');
+        $venue = $this->newVenue($club->getId(), $season->getId(), 'Barros')->setCanSplit(false);
         $this->em->persist($venue);
 
         // Un créneau de saison, vide (aucune séance placée dessus).
@@ -492,12 +489,7 @@ final class ScheduleExportEmptySlotsTest extends KernelTestCase
 
     private function makeVenue(Club $club, Season $season, string $name): Venue
     {
-        $venue = new Venue;
-        $venue->setClubId($club->getId());
-        $venue->setSeasonId($season->getId());
-        $venue->setName($name);
-        $venue->setCanSplit(false);
-        $venue->setSource('manual');
+        $venue = $this->newVenue($club->getId(), $season->getId(), $name)->setCanSplit(false);
         $this->em->persist($venue);
 
         return $venue;

@@ -8,6 +8,7 @@ use App\Entity\Club;
 use App\Entity\Coach;
 use App\Entity\Fixture;
 use App\Entity\Person;
+use App\Entity\Place;
 use App\Entity\Season;
 use App\Entity\Team;
 use App\Entity\Venue;
@@ -452,7 +453,7 @@ final class ConflictCoachMailBuilderTest extends TestCase
         $this->u15 = new Team()->setName('U15');
         $this->sm2 = new Team()->setName('SM2');
         $this->u13a = new Team()->setName('U13A');
-        $this->nord = new Venue()->setName('Gymnase Nord');
+        $this->nord = new Venue(new Place)->setName('Gymnase Nord');
     }
 
     private function builder(): ConflictCoachMailBuilder

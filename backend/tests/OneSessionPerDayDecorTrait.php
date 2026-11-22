@@ -7,6 +7,7 @@ namespace App\Tests;
 use App\Entity\CalendarEntry;
 use App\Entity\Club;
 use App\Entity\ClubUser;
+use App\Entity\Place;
 use App\Entity\Reservation;
 use App\Entity\Schedule;
 use App\Entity\ScheduleSlotTemplate;
@@ -180,7 +181,9 @@ trait OneSessionPerDayDecorTrait
 
         $venueIds = [];
         foreach (['Armand', 'JDR'] as $name) {
-            $venue = (new Venue)->setClubId($clubId)->setSeasonId($seasonId)->setName($name)->setSource('manual');
+            $place = (new Place)->setClubId($clubId);
+            $this->em->persist($place);
+            $venue = new Venue($place)->setClubId($clubId)->setSeasonId($seasonId)->setName($name)->setSource('manual');
             $this->em->persist($venue);
             $this->em->flush();
             $venueIds[$name] = $venue->getId();

@@ -21,6 +21,7 @@ use App\Service\ParcImport\ParcImportGate;
 use App\Service\ParcImport\TeamNameInterpreter;
 use App\Service\SeasonResolver;
 use App\Tests\ChoosesPlanVersionTrait;
+use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\CrossStack\ParcImportReservationSemanticsGateTest;
 use App\Tests\Integration\Service\FfbbExcelImporterTest;
 use App\Tests\Support\SubscribesClub;
@@ -67,6 +68,7 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 final class ParcImportExecuteTest extends WebTestCase
 {
     use ChoosesPlanVersionTrait;
+    use CreatesPeopleAndPlacesTrait;
     use SubscribesClub;
     use TenantGucTrait;
     /** La date d'`updated_at` posée au décor d'un groupe : tout `touch()` la dépasse. */
@@ -2020,9 +2022,7 @@ final class ParcImportExecuteTest extends WebTestCase
     private function makeVenue(string $name, bool $canSplit = false): Venue
     {
         $this->scopeGucToClub($this->club->getId());
-        $venue = (new Venue)
-            ->setClubId($this->club->getId())->setSeasonId($this->season->getId())
-            ->setName($name)->setSource('manual')->setIsActive(true)->setCanSplit($canSplit);
+        $venue = $this->newVenue($this->club->getId(), $this->season->getId(), $name)->setIsActive(true)->setCanSplit($canSplit);
         $this->em->persist($venue);
         $this->em->flush();
 
@@ -2074,9 +2074,7 @@ final class ParcImportExecuteTest extends WebTestCase
         $this->em->persist($otherSeason);
         $this->em->flush();
 
-        $venue = (new Venue)
-            ->setClubId($otherClub->getId())->setSeasonId($otherSeason->getId())
-            ->setName($venueName)->setSource('manual')->setIsActive(true);
+        $venue = $this->newVenue($otherClub->getId(), $otherSeason->getId(), $venueName)->setIsActive(true);
         $this->em->persist($venue);
         $this->em->flush();
 

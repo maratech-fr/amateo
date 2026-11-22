@@ -28,6 +28,7 @@ use App\Repository\FixtureRepository;
 use App\Service\Basketball\VenueLabelNormalizer;
 use App\Service\Geo\IgnRoutingClient;
 use App\Service\Geo\TravelTimeCache;
+use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -49,6 +50,7 @@ use Symfony\Component\HttpFoundation\RequestStack;
 #[Group('integration')]
 final class MatchesExportDataProviderTest extends KernelTestCase
 {
+    use CreatesPeopleAndPlacesTrait;
     use TenantGucTrait;
 
     private const float SIEGE_LAT = 45.70;
@@ -692,12 +694,8 @@ final class MatchesExportDataProviderTest extends KernelTestCase
 
     private function venue(string $name, ?string $address): Venue
     {
-        $venue = new Venue;
-        $venue->setClubId($this->club->getId());
-        $venue->setSeasonId($this->season->getId());
-        $venue->setName($name);
-        $venue->setAddress($address);
-        $venue->setSource('manual');
+        $venue = $this->newVenue($this->club->getId(), $this->season->getId(), $name);
+        $this->placeOf($venue)->setAddress($address);
         $this->em->persist($venue);
         $this->em->flush();
 

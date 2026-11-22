@@ -8,13 +8,22 @@ use App\Repository\VenueRepository;
 use App\Service\Basketball\VenueLabelNormalizer;
 use App\Structure\Family;
 use App\Structure\Level;
+use App\Structure\OnDelete;
+use App\Structure\PlaceDirectory;
+use App\Structure\RefersTo;
 use DateTimeImmutable;
 use Doctrine\ORM\Mapping as ORM;
 
+/**
+ * Le gymnase d'une saison : nom, couleur, terrain divisible, numéro fédéral et libellés FBI. Son
+ * adresse et sa position vivent sur le lieu au club ({@see Place}) que `placeId` désigne, et se lisent
+ * par {@see PlaceDirectory}, jamais ici. Un lieu a au plus un gymnase par saison (`uniq_venue_season_place`).
+ */
 #[Family(Level::SEASON)]
 #[ORM\Entity(repositoryClass: VenueRepository::class)]
 #[ORM\Table(name: 'venue')]
 #[ORM\Index(name: 'idx_venue_club_season', columns: ['club_id', 'season_id'])]
+#[ORM\UniqueConstraint(name: 'uniq_venue_season_place', columns: ['season_id', 'place_id'])]
 #[ORM\HasLifecycleCallbacks]
 class Venue implements TenantOwnedInterface
 {
@@ -41,21 +50,26 @@ class Venue implements TenantOwnedInterface
     #[ORM\Column(type: 'string', length: 180)]
     private string $name;
 
+    /**
+     * Le lieu du gymnase au club (adresse, position). Clé étrangère composée `(place_id, club_id)` →
+     * `place (id, club_id)`, posée à la main en migration (invisible de Doctrine), `ON DELETE RESTRICT`.
+     */
+    #[ORM\Column(type: 'guid')]
+    #[RefersTo(Place::class, OnDelete::CUSTOM, 'un lieu pointé par un gymnase ne s\'efface pas (ON DELETE RESTRICT) : le gymnase part d\'abord, le lieu sans gymnase est balayé par UnusedIdentitySweeper')]
+    private string $placeId;
+
+    /**
+     * Le lieu passé à la création ou au changement de lieu, tant que ce gymnase n'a pas été relu de
+     * la base (non mappé) : {@see PlaceDirectory} le lit sans requête. Un gymnase chargé par Doctrine
+     * ne le porte pas.
+     */
+    private ?Place $place = null;
+
     #[ORM\Column(type: 'boolean', options: ['default' => false])]
     private bool $canSplit = false;
 
     #[ORM\Column(type: 'string', length: 20, nullable: true)]
     private ?string $color = null;
-
-    #[ORM\Column(type: 'decimal', precision: 10, scale: 7, nullable: true)]
-    private ?string $latitude = null;
-
-    #[ORM\Column(type: 'decimal', precision: 10, scale: 7, nullable: true)]
-    private ?string $longitude = null;
-
-    /** P2-53 RMM-8 — l'adresse saisie qu'on géocode (BAN) en lat/long ci-dessus. */
-    #[ORM\Column(type: 'string', length: 255, nullable: true)]
-    private ?string $address = null;
 
     #[ORM\Column(type: 'string', length: 20)]
     private string $source;
@@ -76,12 +90,35 @@ class Venue implements TenantOwnedInterface
     #[ORM\Column(type: 'boolean')]
     private bool $isActive = true;
 
-    public function __construct()
+    public function __construct(Place $place)
     {
         $this->id = $this->newUuid();
         $now = new DateTimeImmutable;
         $this->createdAt = $now;
         $this->updatedAt = $now;
+        $this->moveToPlace($place);
+    }
+
+    public function getPlaceId(): string
+    {
+        return $this->placeId;
+    }
+
+    /** Le gymnase devient l'usage d'un autre lieu du club (dissociation de sa salle fédérale, « Charger »). */
+    public function moveToPlace(Place $place): self
+    {
+        $this->placeId = $place->getId();
+        $this->place = $place;
+
+        return $this;
+    }
+
+    /**
+     * @internal lu par {@see PlaceDirectory} seulement — tout autre lecteur passe par lui
+     */
+    public function placeGivenAtCreation(): ?Place
+    {
+        return $this->place;
     }
 
     public function getId(): string
@@ -192,42 +229,6 @@ class Venue implements TenantOwnedInterface
     public function setCanSplit(bool $canSplit): self
     {
         $this->canSplit = $canSplit;
-
-        return $this;
-    }
-
-    public function getLatitude(): ?string
-    {
-        return $this->latitude;
-    }
-
-    public function setLatitude(?string $latitude): self
-    {
-        $this->latitude = $latitude;
-
-        return $this;
-    }
-
-    public function getLongitude(): ?string
-    {
-        return $this->longitude;
-    }
-
-    public function setLongitude(?string $longitude): self
-    {
-        $this->longitude = $longitude;
-
-        return $this;
-    }
-
-    public function getAddress(): ?string
-    {
-        return $this->address;
-    }
-
-    public function setAddress(?string $address): self
-    {
-        $this->address = $address;
 
         return $this;
     }

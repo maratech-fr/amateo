@@ -19,13 +19,13 @@ use App\Entity\Sport;
 use App\Entity\SportCategory;
 use App\Entity\Team;
 use App\Entity\User;
-use App\Entity\Venue;
 use App\Enum\CompetitionType;
 use App\Enum\FixtureHomeAway;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
 use App\Service\SeasonResolver;
 use App\Tests\ChoosesPlanVersionTrait;
+use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -68,6 +68,7 @@ use Symfony\Component\Uid\Uuid;
 final class DeploymentImminentFreezeTest extends WebTestCase
 {
     use ChoosesPlanVersionTrait;
+    use CreatesPeopleAndPlacesTrait;
     use TenantGucTrait;
 
     /** Le message de refus EXACT — zéro interpolation, zéro oracle de déploiement. */
@@ -310,7 +311,7 @@ final class DeploymentImminentFreezeTest extends WebTestCase
         $team = (new Team)->setClubId($this->club->getId())->setSeasonId($this->season->getId())->setSportCategoryId($category->getId())
             ->setPriorityTierId(3)->setName('U15')->setSessionsPerWeek(2)->setIsActive(true);
         $this->em->persist($team);
-        $venue = (new Venue)->setClubId($this->club->getId())->setSeasonId($this->season->getId())->setName('Gymnase gel')->setSource('manual');
+        $venue = $this->newVenue($this->club->getId(), $this->season->getId(), 'Gymnase gel');
         $this->em->persist($venue);
         $competition = (new Competition)->setClubId($this->club->getId())->setSeasonId($this->season->getId())->setTeamId($team->getId())
             ->setName('Championnat gel')->setCompetitionType(CompetitionType::CHAMPIONSHIP)->setEntryDeadline(new DateTimeImmutable('2020-09-10'));

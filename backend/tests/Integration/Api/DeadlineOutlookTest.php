@@ -21,6 +21,7 @@ use App\Enum\FixtureStatus;
 use App\Enum\SeasonStatus;
 use App\Service\SeasonResolver;
 use App\Tests\ChoosesPlanVersionTrait;
+use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -42,6 +43,7 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 final class DeadlineOutlookTest extends WebTestCase
 {
     use ChoosesPlanVersionTrait;
+    use CreatesPeopleAndPlacesTrait;
     use TenantGucTrait;
 
     private KernelBrowser $client;
@@ -296,11 +298,7 @@ final class DeadlineOutlookTest extends WebTestCase
 
     private function createVenue(string $clubId, string $seasonId): Venue
     {
-        $venue = new Venue;
-        $venue->setClubId($clubId);
-        $venue->setSeasonId($seasonId);
-        $venue->setName('Mateo');
-        $venue->setSource('manual');
+        $venue = $this->newVenue($clubId, $seasonId, 'Mateo');
         $this->em->persist($venue);
         $this->em->flush();
 

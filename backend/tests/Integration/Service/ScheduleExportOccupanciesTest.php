@@ -35,6 +35,7 @@ use App\Service\SchedulePlanProvisioner;
 use App\Service\SpreadsheetGenerator;
 use App\Storage\LogoStorage;
 use App\Tests\ChoosesPlanVersionTrait;
+use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -74,6 +75,7 @@ use Symfony\Component\Routing\RouterInterface;
 final class ScheduleExportOccupanciesTest extends WebTestCase
 {
     use ChoosesPlanVersionTrait;
+    use CreatesPeopleAndPlacesTrait;
     use TenantGucTrait;
 
     private KernelBrowser $client;
@@ -436,12 +438,7 @@ final class ScheduleExportOccupanciesTest extends WebTestCase
 
     private function makeVenue(string $name): Venue
     {
-        $venue = new Venue;
-        $venue->setClubId($this->club->getId());
-        $venue->setSeasonId($this->season->getId());
-        $venue->setName($name);
-        $venue->setCanSplit(false);
-        $venue->setSource('manual');
+        $venue = $this->newVenue($this->club->getId(), $this->season->getId(), $name)->setCanSplit(false);
         $this->em->persist($venue);
         $this->em->flush();
 

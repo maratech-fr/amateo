@@ -20,6 +20,7 @@ use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
 use App\Service\TrainingCalendarContext;
 use App\Tests\ChoosesPlanVersionTrait;
+use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\ProvisionsPeriodPlanTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
@@ -40,6 +41,7 @@ use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 final class TrainingCalendarContextTest extends KernelTestCase
 {
     use ChoosesPlanVersionTrait;
+    use CreatesPeopleAndPlacesTrait;
     use ProvisionsPeriodPlanTrait;
     use TenantGucTrait;
 
@@ -147,8 +149,7 @@ final class TrainingCalendarContextTest extends KernelTestCase
 
     private function venue(string $name): Venue
     {
-        $venue = (new Venue)->setClubId($this->club->getId())->setSeasonId($this->season->getId())
-            ->setName($name)->setSource('manual')->setIsActive(true);
+        $venue = $this->newVenue($this->club->getId(), $this->season->getId(), $name)->setIsActive(true);
         $this->em->persist($venue);
         $this->em->flush();
 

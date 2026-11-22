@@ -7,12 +7,20 @@ namespace App\State\Processor;
 use App\ApiResource\VenueResource;
 use App\Dto\VenueInput;
 use App\Entity\Fixture;
+use App\Entity\Place;
 use App\Entity\Venue;
 use App\Entity\VenueTrainingSlot;
 use App\Entity\VenueTravelTime;
 use App\Enum\TravelComputeScope;
 use App\Message\ComputeTravelTimesMessage;
+use App\Service\ManagementAccessGuard;
+use App\Service\SeasonAccessGuard;
+use App\Service\SeasonResolver;
 use App\Service\TravelComputeLock;
+use App\Structure\PlaceDirectory;
+use DateTimeImmutable;
+use Doctrine\ORM\EntityManagerInterface;
+use Symfony\Component\HttpFoundation\RequestStack;
 use Symfony\Component\Messenger\MessageBusInterface;
 use Symfony\Contracts\Service\Attribute\Required;
 
@@ -26,13 +34,25 @@ class VenueStateProcessor extends AbstractStateProcessor
     private ?TravelComputeLock $travelComputeLock = null;
 
     /**
-     * Le club+saison dont la matrice de trajet doit être RE-CALCULÉE après le flush, posé par
-     * {@see updateEntityFromInput} quand la position d'un gymnase a réellement changé (lot G).
-     * Consommé et remis à null par {@see afterPersist}. Jamais posé à la création (POST).
+     * Le lieu dont les matrices de trajet doivent être RE-CALCULÉES après le flush, posé par
+     * {@see updateEntityFromInput} quand la position d'un gymnase a réellement changé (lot G) : la
+     * position vit sur le lieu, elle vaut pour chaque saison où ce lieu a un gymnase. Consommé et
+     * remis à null par {@see afterPersist}. Jamais posé à la création (POST).
      *
-     * @var array{0: string, 1: string}|null
+     * @var array{0: string, 1: string}|null [club, lieu]
      */
     private ?array $pendingTravelRecompute = null;
+
+    public function __construct(
+        EntityManagerInterface $entityManager,
+        RequestStack $requestStack,
+        SeasonResolver $seasonResolver,
+        SeasonAccessGuard $seasonAccessGuard,
+        ManagementAccessGuard $managementAccessGuard,
+        private readonly PlaceDirectory $placeDirectory,
+    ) {
+        parent::__construct($entityManager, $requestStack, $seasonResolver, $seasonAccessGuard, $managementAccessGuard);
+    }
 
     #[Required]
     public function setTravelRecomputeDeps(MessageBusInterface $messageBus, TravelComputeLock $travelComputeLock): void
@@ -67,21 +87,23 @@ class VenueStateProcessor extends AbstractStateProcessor
      */
     protected function createEntityFromInput(object $input): Venue
     {
-        $entity = new Venue;
+        // Tout gymnase créé reçoit un lieu neuf au club de la requête (le gymnase reçoit le même club
+        // dans processPost), avec l'adresse et la position fournies ; le lieu est persisté avant le
+        // gymnase qui le pointe.
+        $place = new Place;
+        $clubId = $this->requestStack->getCurrentRequest()?->attributes->get('_club_id');
+        if (\is_string($clubId)) {
+            $place->setClubId($clubId);
+        }
+        $this->writePosition($place, $input);
+        $this->entityManager->persist($place);
+
+        $entity = new Venue($place);
         if (null !== $input->name) {
             $entity->setName($input->name);
         }
         if (null !== $input->color) {
             $entity->setColor($input->color);
-        }
-        if (null !== $input->latitude) {
-            $entity->setLatitude($input->latitude);
-        }
-        if (null !== $input->longitude) {
-            $entity->setLongitude($input->longitude);
-        }
-        if (null !== $input->address) {
-            $entity->setAddress('' === trim($input->address) ? null : $input->address);
         }
         if (null !== $input->source) {
             $entity->setSource($input->source);
@@ -108,15 +130,19 @@ class VenueStateProcessor extends AbstractStateProcessor
         // Lu AVANT toute mutation : c'est l'état d'origine du gymnase qui dit si on est sur une
         // transition « divisible » true→false (celle qui peut rendre des créneaux incohérents).
         $wasSplit = $entity->getCanSplit();
+        // Adresse et position vivent sur le lieu du gymnase au club : les écrire les corrige pour
+        // toutes les saisons où ce lieu a un gymnase.
+        $place = $this->placeDirectory->of($entity);
         // Lot G — la POSITION d'origine, pour détecter un vrai changement de coordonnées après coup.
-        $oldLatitude = $entity->getLatitude();
-        $oldLongitude = $entity->getLongitude();
+        $before = [$place->getAddress(), $place->getLatitude(), $place->getLongitude()];
         // Dissocier de la salle FFBB (`externalRef` vide) ramène le gymnase à l'état d'un gymnase qu'on
-        // vient de créer : seul le nom reste. Une valeur fournie dans le même PUT l'emporte, juste après.
+        // vient de créer : seul le nom reste. Il passe sur un lieu NEUF, sans adresse : le lieu qu'il
+        // quitte, et les gymnases des autres saisons qui le pointent, ne bougent pas (décision 2 du
+        // lot 3, A). Une valeur fournie dans le même PUT l'emporte, juste après.
         if ('' === $input->externalRef) {
-            $entity->setAddress(null);
-            $entity->setLatitude(null);
-            $entity->setLongitude(null);
+            $place = (new Place)->setClubId($entity->getClubId());
+            $this->entityManager->persist($place);
+            $entity->moveToPlace($place);
         }
         if (null !== $input->name) {
             $entity->setName($input->name);
@@ -124,27 +150,22 @@ class VenueStateProcessor extends AbstractStateProcessor
         if (null !== $input->color) {
             $entity->setColor($input->color);
         }
-        if (null !== $input->latitude) {
-            $entity->setLatitude($input->latitude);
-        }
-        if (null !== $input->longitude) {
-            $entity->setLongitude($input->longitude);
-        }
-        // Une adresse vide efface l'adresse (saisie manuelle des coordonnées, lot E : « Position
-        // saisie à la main » sans adresse) ; sinon on pose l'adresse fournie.
-        if (null !== $input->address) {
-            $entity->setAddress('' === trim($input->address) ? null : $input->address);
+        $this->writePosition($place, $input);
+        // La ligne du gymnase est touchée quand son lieu change, pour que sa version change avec lui
+        // (If-Match de l'écran).
+        if ($before !== [$place->getAddress(), $place->getLatitude(), $place->getLongitude()]) {
+            $entity->setUpdatedAt(new DateTimeImmutable);
         }
 
         // Lot G — la position a-t-elle RÉELLEMENT changé ? (Nom/couleur/autre champ seul ⇒ non.) On
-        // ne re-calcule que vers une position complète (les deux coordonnées posées). Le club+saison
-        // est mémorisé ; le dispatch (sous garde matrice + verrou) part APRÈS le flush, dans
+        // ne re-calcule que vers une position complète (les deux coordonnées posées). Le club et le
+        // lieu sont mémorisés ; le dispatch (sous garde matrice + verrou) part APRÈS le flush, dans
         // `afterPersist`.
-        $newLatitude = $entity->getLatitude();
-        $newLongitude = $entity->getLongitude();
-        $coordsChanged = $oldLatitude !== $newLatitude || $oldLongitude !== $newLongitude;
+        $newLatitude = $place->getLatitude();
+        $newLongitude = $place->getLongitude();
+        $coordsChanged = $before[1] !== $newLatitude || $before[2] !== $newLongitude;
         if ($coordsChanged && null !== $newLatitude && null !== $newLongitude) {
-            $this->pendingTravelRecompute = [$entity->getClubId(), $entity->getSeasonId()];
+            $this->pendingTravelRecompute = [$entity->getClubId(), $place->getId()];
         }
         // Une dissociation qui laisse le gymnase sans position efface ses temps de trajet, saisies à la
         // main comprises. Une position fournie dans le même PUT suit le chemin ci-dessus.
@@ -180,13 +201,14 @@ class VenueStateProcessor extends AbstractStateProcessor
      */
     protected function mapEntityToOutput(object $entity): VenueResource
     {
-        return VenueResource::fromEntity($entity);
+        return VenueResource::fromEntity($entity, $this->placeDirectory->of($entity));
     }
 
     /**
      * Lot G — après le flush d'un PUT qui a DÉPLACÉ un gymnase (coordonnées changées, posé par
-     * {@see updateEntityFromInput}), on relance le calcul ASYNCHRONE de la matrice de trajet — mais
-     * SEULEMENT si le club a DÉJÀ au moins une ligne de matrice pour la saison (opt-in respecté :
+     * {@see updateEntityFromInput}), on relance le calcul ASYNCHRONE de la matrice de trajet de chaque
+     * saison où son lieu a un gymnase — mais SEULEMENT si le club a DÉJÀ au moins une ligne de matrice
+     * pour cette saison (opt-in respecté :
      * jamais faire naître une matrice sur un simple déplacement). Les AUTO du couple impliquant ce
      * gymnase sont recalculés (nouvelles coordonnées ⇒ MISS du cache — indexé par coordonnées —, donc
      * appel IGN), les MANUAL préservés (garanti par l'autofill), les autres couples retombant sur le
@@ -200,14 +222,39 @@ class VenueStateProcessor extends AbstractStateProcessor
         if (null === $pending || !$this->messageBus instanceof MessageBusInterface || !$this->travelComputeLock instanceof TravelComputeLock) {
             return;
         }
-        [$clubId, $seasonId] = $pending;
-        if (0 === $this->entityManager->getRepository(VenueTravelTime::class)->count(['clubId' => $clubId, 'seasonId' => $seasonId])) {
-            return; // opt-in : pas de matrice ⇒ on n'en crée pas une sur un déplacement.
-        }
+        [$clubId, $placeId] = $pending;
         if ($this->travelComputeLock->isHeld($clubId)) {
             return;
         }
-        $this->messageBus->dispatch(new ComputeTravelTimesMessage($clubId, $seasonId, TravelComputeScope::VENUE_MATRIX));
+        /** @var list<string> $seasonIds */
+        $seasonIds = $this->entityManager->createQuery('SELECT DISTINCT v.seasonId FROM App\Entity\Venue v WHERE v.clubId = :c AND v.placeId = :p ORDER BY v.seasonId')
+            ->setParameter('c', $clubId)
+            ->setParameter('p', $placeId)
+            ->getSingleColumnResult();
+        foreach ($seasonIds as $seasonId) {
+            if (0 === $this->entityManager->getRepository(VenueTravelTime::class)->count(['clubId' => $clubId, 'seasonId' => $seasonId])) {
+                continue; // opt-in : pas de matrice ⇒ on n'en crée pas une sur un déplacement.
+            }
+            $this->messageBus->dispatch(new ComputeTravelTimesMessage($clubId, $seasonId, TravelComputeScope::VENUE_MATRIX));
+        }
+    }
+
+    /**
+     * Adresse et position d'un PUT ou d'un POST, posées sur le lieu (null = inchangé). Une adresse vide
+     * efface l'adresse (saisie manuelle des coordonnées, lot E : « Position saisie à la main » sans
+     * adresse) ; sinon on pose l'adresse fournie.
+     */
+    private function writePosition(Place $place, VenueInput $input): void
+    {
+        if (null !== $input->latitude) {
+            $place->setLatitude($input->latitude);
+        }
+        if (null !== $input->longitude) {
+            $place->setLongitude($input->longitude);
+        }
+        if (null !== $input->address) {
+            $place->setAddress('' === trim($input->address) ? null : $input->address);
+        }
     }
 
     /**

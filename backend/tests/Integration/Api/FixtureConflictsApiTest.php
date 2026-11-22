@@ -834,11 +834,7 @@ final class FixtureConflictsApiTest extends WebTestCase
         $season->setTransitionData([]);
         $this->em->persist($season);
 
-        $venue = new Venue;
-        $venue->setClubId($club->getId());
-        $venue->setSeasonId($season->getId());
-        $venue->setName('Gymnase Coubertin');
-        $venue->setSource('manual');
+        $venue = $this->newVenue($club->getId(), $season->getId(), 'Gymnase Coubertin');
         $this->em->persist($venue);
         $this->em->flush();
 

@@ -10,12 +10,12 @@ use App\Entity\Schedule;
 use App\Entity\Season;
 use App\Entity\Team;
 use App\Entity\User;
-use App\Entity\Venue;
 use App\Entity\VenueTrainingSlot;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
 use App\Service\SeasonResolver;
 use App\Tests\ChoosesPlanVersionTrait;
+use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -34,6 +34,7 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 final class GenerateEndpointLoadedVersionTest extends WebTestCase
 {
     use ChoosesPlanVersionTrait;
+    use CreatesPeopleAndPlacesTrait;
     use TenantGucTrait;
 
     private KernelBrowser $client;
@@ -104,7 +105,7 @@ final class GenerateEndpointLoadedVersionTest extends WebTestCase
 
         $this->em->persist((new Team)->setClubId($this->club->getId())->setSeasonId($this->season->getId())->setName('U15')
             ->setSportCategoryId('cccccccc-cccc-4ccc-8ccc-cccccccccccc')->setPriorityTierId(1)->setSessionsPerWeek(1));
-        $venue = (new Venue)->setClubId($this->club->getId())->setSeasonId($this->season->getId())->setName('G')->setCanSplit(false)->setSource('manual');
+        $venue = $this->newVenue($this->club->getId(), $this->season->getId(), 'G')->setCanSplit(false);
         $this->em->persist($venue);
         $this->em->flush();
         $this->em->persist((new VenueTrainingSlot)->setClubId($this->club->getId())->setSeasonId($this->season->getId())->setVenueId($venue->getId())

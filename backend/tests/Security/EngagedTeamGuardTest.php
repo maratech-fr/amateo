@@ -13,13 +13,13 @@ use App\Entity\Sport;
 use App\Entity\SportCategory;
 use App\Entity\Team;
 use App\Entity\User;
-use App\Entity\Venue;
 use App\Enum\FixtureHomeAway;
 use App\Enum\FixtureStatus;
 use App\Enum\FixtureUnplacedReason;
 use App\Enum\SeasonStatus;
 use App\Enum\TeamLevel;
 use App\Service\FixtureVenueLossMarker;
+use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -44,6 +44,7 @@ use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
 #[Group('integration')]
 final class EngagedTeamGuardTest extends WebTestCase
 {
+    use CreatesPeopleAndPlacesTrait;
     use TenantGucTrait;
 
     private EntityManagerInterface $em;
@@ -394,7 +395,7 @@ final class EngagedTeamGuardTest extends WebTestCase
         $client = $this->client;
         $team = $this->createTeam('U18 dont la salle est convoitée');
         $this->scopeGucToClub($this->club->getId());
-        $venue = (new Venue)->setClubId($this->club->getId())->setSeasonId($this->season->getId())->setName('Gymnase convoité')->setSource('manual');
+        $venue = $this->newVenue($this->club->getId(), $this->season->getId(), 'Gymnase convoité');
         $this->em->persist($venue);
         $this->em->flush();
         $fixture = $this->fixture($team, FixtureStatus::SUBMITTED);

@@ -7,6 +7,7 @@ namespace App\Tests;
 use App\Entity\Coach;
 use App\Entity\Constraint;
 use App\Entity\Person;
+use App\Entity\Place;
 use App\Entity\Schedule;
 use App\Entity\SchedulePlan;
 use App\Entity\Season;
@@ -62,7 +63,9 @@ trait EngineRequestTravelDecorTrait
     private function seedEngineRequestTravelOfCurrentSeason(): void
     {
         $em = $this->erEm();
-        $em->persist((new Venue)->setId(self::ER_VENUE_EST)->setClubId(self::ER_CLUB)->setSeasonId(self::ER_SEASON)
+        $place = (new Place)->setClubId(self::ER_CLUB);
+        $em->persist($place);
+        $em->persist(new Venue($place)->setId(self::ER_VENUE_EST)->setClubId(self::ER_CLUB)->setSeasonId(self::ER_SEASON)
             ->setName('Gymnase Est')->setCanSplit(false)->setSource('manual'));
         foreach ([[7, 2, '19:30'], [8, 5, '18:00']] as [$n, $day, $time]) {
             $em->persist((new VenueTrainingSlot)->setId(self::erId('a7a1', $n))->setClubId(self::ER_CLUB)->setSeasonId(self::ER_SEASON)
@@ -101,7 +104,9 @@ trait EngineRequestTravelDecorTrait
             [self::ER_NEXT_VENUE_NORD, 'Gymnase Nord', true],
             [self::ER_NEXT_VENUE_EST, 'Gymnase Est', false],
         ] as [$venueId, $name, $canSplit]) {
-            $em->persist((new Venue)->setId($venueId)->setClubId(self::ER_CLUB)->setSeasonId(self::ER_NEXT_SEASON)
+            $place = (new Place)->setClubId(self::ER_CLUB);
+            $em->persist($place);
+            $em->persist(new Venue($place)->setId($venueId)->setClubId(self::ER_CLUB)->setSeasonId(self::ER_NEXT_SEASON)
                 ->setName($name)->setCanSplit($canSplit)->setSource('manual'));
         }
         foreach ([

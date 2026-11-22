@@ -15,7 +15,6 @@ use App\Entity\Season;
 use App\Entity\SharedTrainingBlock;
 use App\Entity\SharedTrainingBlockTeam;
 use App\Entity\User;
-use App\Entity\Venue;
 use App\Entity\VenueTrainingSlot;
 use App\Enum\ConstraintFamily;
 use App\Enum\ConstraintRuleType;
@@ -28,6 +27,7 @@ use App\Enum\SeasonStatus;
 use App\Service\ClosureSegmentation;
 use App\Service\ScheduleConstraintBuilder;
 use App\Service\SeasonResolver;
+use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -63,6 +63,7 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 #[Group('integration')]
 final class PeriodPlanBirthTest extends WebTestCase
 {
+    use CreatesPeopleAndPlacesTrait;
     use TenantGucTrait;
 
     private KernelBrowser $client;
@@ -723,11 +724,7 @@ final class PeriodPlanBirthTest extends WebTestCase
         $this->scopeGucToClub($club->getId());
         // Un vrai gymnase : le payload de base sérialise les créneaux PAR gymnase,
         // un venueId fantôme rendrait l'assertion vide (donc verte à tort).
-        $venue = new Venue;
-        $venue->setClubId($club->getId());
-        $venue->setSeasonId($season->getId());
-        $venue->setName('Gymnase du NR');
-        $venue->setSource('manual');
+        $venue = $this->newVenue($club->getId(), $season->getId(), 'Gymnase du NR');
         $this->em->persist($venue);
         $this->em->flush();
         $venueId = $venue->getId();
@@ -792,11 +789,7 @@ final class PeriodPlanBirthTest extends WebTestCase
         [$user, $club, $season] = $this->createClubWithSeason();
 
         $this->scopeGucToClub($club->getId());
-        $venue = new Venue;
-        $venue->setClubId($club->getId());
-        $venue->setSeasonId($season->getId());
-        $venue->setName('Gymnase du libellé');
-        $venue->setSource('manual');
+        $venue = $this->newVenue($club->getId(), $season->getId(), 'Gymnase du libellé');
         $this->em->persist($venue);
 
         // Un créneau SAISONNIER mutualisé et NOMMÉ (capacité 2, libellé « CEC3 »).

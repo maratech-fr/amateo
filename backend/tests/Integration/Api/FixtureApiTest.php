@@ -11,6 +11,7 @@ use App\Entity\Competition;
 use App\Entity\Constraint;
 use App\Entity\Fixture;
 use App\Entity\OpponentVenueLink;
+use App\Entity\Place;
 use App\Entity\PublicHoliday;
 use App\Entity\Season;
 use App\Entity\User;
@@ -30,6 +31,7 @@ use App\Service\Geo\IgnRoutingClient;
 use App\Service\Geo\TravelTimeCache;
 use App\Service\SeasonResolver;
 use App\Tests\ChoosesPlanVersionTrait;
+use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -48,6 +50,7 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 final class FixtureApiTest extends WebTestCase
 {
     use ChoosesPlanVersionTrait;
+    use CreatesPeopleAndPlacesTrait;
     use TenantGucTrait;
 
     private const TEAM_ID = '11111111-1111-4111-8111-111111111111';
@@ -548,11 +551,7 @@ final class FixtureApiTest extends WebTestCase
     public function testMovingToAnotherVenueIsGuardedAgain(): void
     {
         [$id, $body] = $this->placedOutOfAccess();
-        $other = new Venue;
-        $other->setClubId($this->club->getId());
-        $other->setSeasonId($this->season->getId());
-        $other->setName('Gymnase Autre');
-        $other->setSource('manual');
+        $other = $this->newVenue($this->club->getId(), $this->season->getId(), 'Gymnase Autre');
         $this->em->persist($other);
         $this->em->flush();
 
@@ -940,7 +939,9 @@ final class FixtureApiTest extends WebTestCase
         if (null !== $this->em->find(Venue::class, self::VENUE_ID)) {
             return;
         }
-        $venue = new Venue;
+        $place = (new Place)->setClubId($this->club->getId());
+        $this->em->persist($place);
+        $venue = new Venue($place);
         $venue->setId(self::VENUE_ID);
         $venue->setClubId($this->club->getId());
         $venue->setSeasonId($this->season->getId());

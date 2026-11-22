@@ -29,6 +29,7 @@ use App\Service\LeagueValidationOutlook;
 use App\Service\MatchPlacementPayloadBuilder;
 use App\Service\SeasonResolver;
 use App\Tests\ChoosesPlanVersionTrait;
+use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\Integration\Api\LeagueValidatedFixturesControllerTest;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
@@ -67,6 +68,7 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 final class ImportLeagueAutoValidationTest extends WebTestCase
 {
     use ChoosesPlanVersionTrait;
+    use CreatesPeopleAndPlacesTrait;
     use TenantGucTrait;
 
     /** Un samedi FUTUR : un championnat non commencé (aucune échéance, aucun match joué). */
@@ -490,12 +492,7 @@ final class ImportLeagueAutoValidationTest extends WebTestCase
 
     private function createVenueWithAlias(string $clubId, string $seasonId, string $name, string $normalizedAlias): Venue
     {
-        $venue = new Venue;
-        $venue->setClubId($clubId);
-        $venue->setSeasonId($seasonId);
-        $venue->setName($name);
-        $venue->setSource('manual');
-        $venue->setExternalLabels([$normalizedAlias]);
+        $venue = $this->newVenue($clubId, $seasonId, $name)->setExternalLabels([$normalizedAlias]);
         $this->em->persist($venue);
         $this->em->flush();
 

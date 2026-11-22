@@ -8,9 +8,9 @@ use App\Entity\Club;
 use App\Entity\ClubUser;
 use App\Entity\Season;
 use App\Entity\User;
-use App\Entity\Venue;
 use App\Enum\SeasonStatus;
 use App\Tests\ChoosesPlanVersionTrait;
+use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\CreatesPeriodPlanTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
@@ -39,6 +39,7 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 final class VenueOccupancyApiTest extends WebTestCase
 {
     use ChoosesPlanVersionTrait;
+    use CreatesPeopleAndPlacesTrait;
     use CreatesPeriodPlanTrait;
     use TenantGucTrait;
 
@@ -460,9 +461,7 @@ final class VenueOccupancyApiTest extends WebTestCase
     private function createVenue(?string $name = null, bool $canSplit = false): string
     {
         $this->scopeGucToClub($this->club->getId());
-        $venue = (new Venue)
-            ->setClubId($this->club->getId())->setSeasonId($this->season->getId())
-            ->setName($name ?? 'Gymnase ' . uniqid())->setSource('manual')->setIsActive(true)->setCanSplit($canSplit);
+        $venue = $this->newVenue($this->club->getId(), $this->season->getId(), $name ?? 'Gymnase ' . uniqid())->setIsActive(true)->setCanSplit($canSplit);
         $this->em->persist($venue);
         $this->em->flush();
 
@@ -487,9 +486,7 @@ final class VenueOccupancyApiTest extends WebTestCase
         $this->em->persist($season);
         $this->em->flush();
 
-        $venue = (new Venue)
-            ->setClubId($club->getId())->setSeasonId($season->getId())
-            ->setName('Gymnase étranger')->setSource('manual')->setIsActive(true)->setCanSplit(false);
+        $venue = $this->newVenue($club->getId(), $season->getId(), 'Gymnase étranger')->setIsActive(true)->setCanSplit(false);
         $this->em->persist($venue);
         $this->em->flush();
 

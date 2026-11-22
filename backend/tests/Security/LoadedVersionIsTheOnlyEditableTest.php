@@ -12,7 +12,6 @@ use App\Entity\ScheduleSlotTemplate;
 use App\Entity\Season;
 use App\Entity\Team;
 use App\Entity\User;
-use App\Entity\Venue;
 use App\Enum\CalendarEntryKind;
 use App\Enum\CalendarEntryPeriodType;
 use App\Enum\LockLevel;
@@ -21,6 +20,7 @@ use App\Enum\SeasonStatus;
 use App\Service\SchedulePlanProvisioner;
 use App\Service\SeasonResolver;
 use App\Tests\ChoosesPlanVersionTrait;
+use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -56,6 +56,7 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 final class LoadedVersionIsTheOnlyEditableTest extends WebTestCase
 {
     use ChoosesPlanVersionTrait;
+    use CreatesPeopleAndPlacesTrait;
     use TenantGucTrait;
 
     private const array GUICHETS = ['lock', 'move', 'place-slot', 'move-group', 'swap', 'remove', 'remove-group', 'mutualize', 'mutualize-at-case'];
@@ -379,7 +380,7 @@ final class LoadedVersionIsTheOnlyEditableTest extends WebTestCase
         $this->em->flush();
         $this->provisionSeasonPlan($this->season);
 
-        $venue = (new Venue)->setClubId($this->club->getId())->setSeasonId($this->season->getId())->setName('G')->setCanSplit(false)->setSource('manual');
+        $venue = $this->newVenue($this->club->getId(), $this->season->getId(), 'G')->setCanSplit(false);
         $this->em->persist($venue);
         $teamA = $this->team('A');
         $teamB = $this->team('B');
