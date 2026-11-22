@@ -166,7 +166,16 @@ Ordre : 1 → 2a → 2b → 3 → 4 → 5, sur `lot/conception`, une PR ouverte 
 - **Fichiers** : `Structure/PersonDirectory.php`, `Structure/PersonIdentity.php` (neufs), les fichiers du relevé du §2.
 - **Tests** : ligne 4. `/security-review` : oui (horloge simulée).
 
-### PR 2b · « La personne au club »
+### PR 2b · « La personne au club » — LIVRÉE (2026-11-22)
+- **Livré** : `Entity/Person.php` et `Structure/UnusedIdentitySweeper.php` (neufs), `migrations/Version20261122140000.php` (irréversible ; clé composée `(person_id, club_id)` `RESTRICT`, `UNIQUE (id, club_id)`, `UNIQUE (season_id, person_id)`, RLS sur le patron de `Version20261110120000`), `Coach` sans accesseur d'identité (`personId`), `PersonDirectory` qui lit `person` (`personOf` rend la fiche à écrire), `CoachStateProcessor` (écrit la fiche, touche la ligne), copie de saison (réutilise la fiche), `StructureRestorer` (une ligne de photo sans fiche dans le club n'est pas réinsérée, ni ses liens, ni ses règles), les deux seeds, `ErasedClubPurger`, les trois appelants du balayage. Bloquant ajouté : `Security/PersonPlaceTenantIsolationTest` (`ci.yml` et `blocking-tests.md`). Doc : ADR-0006, `rgpd.md`, `rls.md`, `TENANT.md`, `backend/AGENTS.md` (3c, 16), `glossary.md`, `backend-inventory.md`, `test-coverage-map.md`.
+- **Écarts au plan, écrits** :
+  - `UnusedIdentitySweeper` n'est PAS appelé par `SeasonDataPurger` mais par ses trois appelants : `ResetSeasonController`, `ResetClubSeasonCommand`, `PurgeSeasonsCommand` (hors `--dry-run`, seulement si une saison a été purgée).
+  - `rowsDeleted` d'une remise à zéro exclut les fiches balayées ; celui de l'effacement du club les compte (famille de niveau club).
+  - Les défauts `new PersonDirectory` des cinq classes construites à la main sont gardés : l'EntityManager de `PersonDirectory` est nullable, et un coach relu de la base y lève une `LogicException` (un coach construit avec sa fiche, `new Coach($person)`, se lit sans base).
+  - `ErasedClubPurger` efface désormais les lignes de saison dont la saison n'existe plus (`season_id` sans clé étrangère), enfant avant parent, avant les familles de club : sans cela un coach orphelin retiendrait sa fiche (`RESTRICT`). Les familles `purgedViaOwner()` d'une saison disparue ne sont pas traitées.
+  - Les 20 coachs de production sans nom de famille sont acceptés (nom de famille vide permis).
+- **Contrainte de livraison** : la 2b et la PR 3 (`app:people:erase`) partent en production **ensemble** (déploiement unique) ; avant la PR 3, aucune commande n'efface une personne, et `schedule.snapshot_data` garde prénom et nom.
+- **Plan d'origine** (le détail livré ci-dessus fait foi) :
 - `person`, `coach.person_id`, conversion une personne par ligne de coach, sans fusion, identifiants de `coach` inchangés ; colonnes d'identité supprimées ; la migration s'annule si les comptes diffèrent. `PersonDirectory` lit `person`.
 - Photos existantes nettoyées : identité retirée, identifiant de personne ajouté ; une ligne de coach qui n'existe plus est retirée.
 - `PUT /api/coaches/{id}` écrit la personne et touche la ligne. La saison suivante réutilise la personne.

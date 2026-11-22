@@ -40,6 +40,7 @@ use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
 use App\Enum\TeamCoachRole;
 use App\Tests\ChoosesPlanVersionTrait;
+use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -61,6 +62,7 @@ use Symfony\Component\Uid\Uuid;
 final class CascadeDeleteApiTest extends WebTestCase
 {
     use ChoosesPlanVersionTrait;
+    use CreatesPeopleAndPlacesTrait;
     use TenantGucTrait;
 
     private KernelBrowser $client;
@@ -412,8 +414,7 @@ final class CascadeDeleteApiTest extends WebTestCase
 
     private function persistCoach(): Coach
     {
-        $coach = (new Coach)->setClubId($this->club->getId())->setSeasonId($this->season->getId())
-            ->setFirstName('Jean')->setLastName('Coach');
+        $coach = $this->newCoach($this->club->getId(), $this->season->getId(), 'Jean', 'Coach');
         $this->em->persist($coach);
         $this->em->flush();
 

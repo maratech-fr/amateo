@@ -22,9 +22,10 @@ use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
  * chaque enfant avant le parent dont il meurt », lu dans l'ordre RÉELLEMENT exécuté par
  * l'effacement d'un club (qui purge chaque saison puis le club), contre les clés étrangères réelles.
  *
- * Pourquoi l'ordre et pas « aucune erreur » : en base, toute clé étrangère est `ON DELETE CASCADE`
- * ou `SET NULL`, aucune `RESTRICT` ni `NO ACTION`. Un parent effacé avant son enfant ne lève donc
- * rien : la cascade emporte l'enfant en silence, hors de la purge et de son compte rendu. Le test
+ * Pourquoi l'ordre et pas « aucune erreur » : en base, presque toute clé étrangère est `ON DELETE
+ * CASCADE` ou `SET NULL` (seule `RESTRICT` : `fk_coach_person_club`, du coach vers sa fiche de
+ * personne). Un parent effacé avant son enfant ne lève donc en général rien : la cascade emporte
+ * l'enfant en silence, hors de la purge et de son compte rendu. Le test
  * exige, pour chaque clé qui fait mourir l'enfant ou qui bloquerait (CASCADE, RESTRICT, NO ACTION)
  * entre deux tables que la purge vise, que le `DELETE` de l'enfant précède celui du parent. Une clé
  * `SET NULL` n'impose aucun ordre (c'est elle qui rompt le cycle plan ↔ version).

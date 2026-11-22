@@ -21,6 +21,7 @@ use App\Enum\CalendarEntryPeriodType;
 use App\Enum\SchedulePlanType;
 use App\Enum\SeasonStatus;
 use App\Enum\TeamCoachRole;
+use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -38,6 +39,9 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 #[Group('phase1')]
 final class CoachWishCampaignApiTest extends WebTestCase
 {
+    use CreatesPeopleAndPlacesTrait {
+        newCoach as private newPersonCoach;
+    }
     use TenantGucTrait;
 
     private KernelBrowser $client;
@@ -628,8 +632,7 @@ final class CoachWishCampaignApiTest extends WebTestCase
 
     private function newCoach(string $first, string $last): Coach
     {
-        $coach = (new Coach)->setClubId($this->club->getId())->setSeasonId($this->season->getId())
-            ->setFirstName($first)->setLastName($last);
+        $coach = $this->newPersonCoach($this->club->getId(), $this->season->getId(), $first, $last);
         $this->em->persist($coach);
 
         return $coach;

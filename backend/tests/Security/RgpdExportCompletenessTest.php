@@ -61,6 +61,15 @@ final class RgpdExportCompletenessTest extends KernelTestCase
         ));
     }
 
+    /**
+     * Lot 3, PR 2b — nom, mail et téléphone d'un coach vivent sur sa fiche de personne : la fiche sort
+     * dans l'export, jamais traitée à part ni exclue (l'exclure ferait disparaître l'identité de l'export).
+     */
+    public function testThePersonRecordIsExported(): void
+    {
+        self::assertContains('person', $this->exportService()->clubScopedTables(), 'la fiche de personne sort dans l\'export des données du club');
+    }
+
     /** Une exclusion sans raison écrite n'est pas une décision — c'est un oubli déguisé. */
     public function testEveryExclusionCarriesAReason(): void
     {

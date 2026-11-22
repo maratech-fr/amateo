@@ -34,6 +34,7 @@ use App\Enum\TeamCoachRole;
 use App\Service\CoachDoubleBookingDetector;
 use App\Service\PlacedSessionPersonConflictDetector;
 use App\Tests\ChoosesPlanVersionTrait;
+use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -69,6 +70,7 @@ use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 final class PlacedSessionPersonConflictDetectorTest extends KernelTestCase
 {
     use ChoosesPlanVersionTrait;
+    use CreatesPeopleAndPlacesTrait;
     use TenantGucTrait;
 
     private EntityManagerInterface $em;
@@ -881,7 +883,7 @@ final class PlacedSessionPersonConflictDetectorTest extends KernelTestCase
      */
     private function createCoach(array $ctx, string $firstName): string
     {
-        $coach = (new Coach)->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])->setFirstName($firstName)->setLastName('Dupont');
+        $coach = $this->newCoach($ctx['clubId'], $ctx['seasonId'], $firstName, 'Dupont');
         $this->em->persist($coach);
         $this->em->flush();
 

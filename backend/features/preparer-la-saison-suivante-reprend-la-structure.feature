@@ -4,6 +4,8 @@ Fonctionnalité: Préparer la saison suivante reprend la structure du club
   ses coachs et leurs affectations, ses gymnases et leurs créneaux, ses règles. Une règle qui
   nomme un gymnase nomme celui de la nouvelle saison, jamais l'ancien. Le geste ne se rejoue
   pas : la saison suivante existe déjà, on la désigne. Et la saison en cours n'est pas touchée.
+  Les coachs des deux saisons sont les mêmes personnes : corriger le téléphone d'un coach dans
+  une saison le corrige dans l'autre, mais le retirer d'une saison ne le retire pas de l'autre.
 
   Scénario: La saison suivante reprend la structure, une seule fois, sans toucher la saison en cours
     Étant donné un petit club dont l'offre Essentiel règle aussi la saison suivante
@@ -24,3 +26,10 @@ Fonctionnalité: Préparer la saison suivante reprend la structure du club
     Quand je prépare la saison suivante une seconde fois
     Alors c'est refusé : « La saison suivante existe déjà. », et la saison suivante déjà préparée est désignée
     Et le club n'a que deux saisons
+    # Le nom, le mail et le téléphone d'un coach vivent une fois, au club : sa fiche de personne.
+    # Le coach d'une saison est le rôle de cette personne cette saison-là.
+    Et les 4 coachs de la saison suivante sont les mêmes personnes que ceux de la saison en cours
+    Quand je corrige le téléphone de « Camille » dans la saison suivante
+    Alors « Camille » a ce téléphone dans la saison en cours
+    Quand je supprime le coach « Camille » de la saison suivante
+    Alors « Camille » entraîne toujours ses équipes dans la saison en cours

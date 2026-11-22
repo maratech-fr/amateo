@@ -109,6 +109,13 @@ services:
 ## Security Considerations
 
 - Defence in depth is real now: Doctrine filter (layer 2) **and** RLS (layer 3). Keep `TenantIsolationTest`, `TenantJwtIsolationTest` and `RlsIsolationTest` green — they are the blocking guards.
+- **Identity of a coach lives on `person`, read through `PersonDirectory`.** `person` is a plain tenant
+  table (club-scoped filter + RLS, `Entity/Person.php`, `TenantOwnedInterface`); `coach.person_id` is a
+  COMPOSITE foreign key `(person_id, club_id)` → `person (id, club_id)` so a coach can never point at another
+  club's record (a foreign-key check ignores RLS). Every identity read goes through
+  `App\Structure\PersonDirectory`, bounded by the club; `emailsOfClub` runs raw SQL on `person` with the
+  club in an explicit clause, under RLS. Guarded by `PersonPlaceTenantIsolationTest` (blocking gate step);
+  detail: `docs/security/rls.md` § `person`.
 - **Role layer on top of the membership (P1-1):** the role is decided **centrally**. Every `^/api/`
   route declares its module and audience (`#[ClubFunction]`, `#[ClubResource]`, `#[AccountFunction]`,
   `src/Access/`) and `ClubAccessListener` (`kernel.request`, **priority 4**, main request only;

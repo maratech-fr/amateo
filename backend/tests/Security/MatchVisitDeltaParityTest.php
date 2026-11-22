@@ -22,6 +22,7 @@ use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
 use App\Enum\TeamCoachRole;
 use App\Service\SeasonResolver;
+use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\DBAL\Connection;
@@ -58,6 +59,7 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 #[Group('security')]
 final class MatchVisitDeltaParityTest extends WebTestCase
 {
+    use CreatesPeopleAndPlacesTrait;
     use TenantGucTrait;
 
     private KernelBrowser $client;
@@ -653,11 +655,7 @@ final class MatchVisitDeltaParityTest extends WebTestCase
     private function coachOnTeams(string $suffix, Season $season, array $teamIds): string
     {
         $this->scopeGucToClub($season->getClubId());
-        $coach = new Coach;
-        $coach->setClubId($season->getClubId());
-        $coach->setSeasonId($season->getId());
-        $coach->setFirstName('Coach');
-        $coach->setLastName($suffix);
+        $coach = $this->newCoach($season->getClubId(), $season->getId(), 'Coach', $suffix);
         $this->em->persist($coach);
         $this->em->flush();
 

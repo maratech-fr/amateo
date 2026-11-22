@@ -1154,7 +1154,7 @@ final class BcclSeederIdempotenceTest extends KernelTestCase
         $sm1 = (string) $this->connection->fetchOne('SELECT id FROM team WHERE club_id = ? AND name = ?', [$clubId, 'SM1']);
         $sm2 = (string) $this->connection->fetchOne('SELECT id FROM team WHERE club_id = ? AND name = ?', [$clubId, 'SM2']);
         $coach11 = (string) $this->connection->fetchOne(
-            'SELECT id FROM coach WHERE club_id = ? AND first_name = ? AND last_name = ?',
+            'SELECT c.id FROM coach c JOIN person p ON p.id = c.person_id AND p.club_id = c.club_id WHERE c.club_id = ? AND p.first_name = ? AND p.last_name = ?',
             [$clubId, 'Coach 11', ''],
         );
         $jdrId = (string) $this->connection->fetchOne('SELECT id FROM venue WHERE club_id = ? AND name = ?', [$clubId, 'JDR']);

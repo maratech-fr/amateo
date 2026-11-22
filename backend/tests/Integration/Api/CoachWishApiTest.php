@@ -17,6 +17,7 @@ use App\Enum\CalendarEntryKind;
 use App\Enum\CalendarEntryPeriodType;
 use App\Enum\SeasonStatus;
 use App\Enum\TeamCoachRole;
+use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -33,6 +34,7 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 #[Group('phase1')]
 final class CoachWishApiTest extends WebTestCase
 {
+    use CreatesPeopleAndPlacesTrait;
     use TenantGucTrait;
 
     private KernelBrowser $client;
@@ -113,7 +115,7 @@ final class CoachWishApiTest extends WebTestCase
 
     public function testAStaffLineOutsideTheTeamIsRefusedWithoutWriting(): void
     {
-        $stranger = (new Coach)->setClubId($this->club->getId())->setSeasonId($this->season->getId())->setFirstName('Zoé')->setLastName('Hors');
+        $stranger = $this->newCoach($this->club->getId(), $this->season->getId(), 'Zoé', 'Hors');
         $this->em->persist($stranger);
         $this->em->flush();
 
@@ -301,8 +303,7 @@ final class CoachWishApiTest extends WebTestCase
         $this->team = (new Team)->setClubId($this->club->getId())->setSeasonId($this->season->getId())
             ->setSportCategoryId('11111111-1111-4111-8111-111111111111')->setPriorityTierId(1)->setName('SM1');
         $this->em->persist($this->team);
-        $this->coach = (new Coach)->setClubId($this->club->getId())->setSeasonId($this->season->getId())
-            ->setFirstName('Maxime')->setLastName('Durand');
+        $this->coach = $this->newCoach($this->club->getId(), $this->season->getId(), 'Maxime', 'Durand');
         $this->em->persist($this->coach);
         $this->em->flush();
 
@@ -313,7 +314,7 @@ final class CoachWishApiTest extends WebTestCase
 
     private function linkedCoach(string $firstName, TeamCoachRole $role): Coach
     {
-        $coach = (new Coach)->setClubId($this->club->getId())->setSeasonId($this->season->getId())->setFirstName($firstName)->setLastName('Test');
+        $coach = $this->newCoach($this->club->getId(), $this->season->getId(), $firstName, 'Test');
         $this->em->persist($coach);
         $this->em->flush();
         $this->em->persist((new TeamCoach)->setClubId($this->club->getId())->setSeasonId($this->season->getId())

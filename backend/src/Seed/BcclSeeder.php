@@ -15,6 +15,7 @@ use App\Entity\ImplicitRuleSetting;
 use App\Entity\OpponentDirectoryEntry;
 use App\Entity\OpponentVenueLink;
 use App\Entity\OpponentVenueSuggestion;
+use App\Entity\Person;
 use App\Entity\PriorityTier;
 use App\Entity\Reservation;
 use App\Entity\Schedule;
@@ -782,7 +783,11 @@ final class BcclSeeder
             $writtenLastName = $profile->coachNames[$position]['lastName'] ?? $coachData['lastName'];
             ++$position;
             $existing = null;
-            foreach ($manager->getRepository(Coach::class)->findBy(['clubId' => $club->getId(), 'firstName' => $writtenFirstName]) as $candidate) {
+            /** @var list<Coach> $candidates */
+            $candidates = $manager->createQuery('SELECT c FROM App\Entity\Coach c JOIN App\Entity\Person p WITH p.id = c.personId AND p.clubId = c.clubId WHERE c.clubId = :club AND p.firstName = :first')
+                ->setParameters(['club' => $club->getId(), 'first' => $writtenFirstName])
+                ->getResult();
+            foreach ($candidates as $candidate) {
                 if (isset($claimedCoachIds[$candidate->getId()])) {
                     continue;
                 }
@@ -795,14 +800,14 @@ final class BcclSeeder
                 // Keep an already-seeded coach in sync with the data (e.g. a
                 // last name added later) — append mode reuses the row, so
                 // without this the rename would never reach the DB.
-                $existing->setLastName($coachData['lastName']);
+                $this->personDirectory->personOf($existing)->setLastName($coachData['lastName']);
                 $coaches[$key] = $existing;
             } else {
-                $coach = new Coach;
+                $person = (new Person)->setClubId($club->getId())->setFirstName($coachData['firstName'])->setLastName($coachData['lastName']);
+                $manager->persist($person);
+                $coach = new Coach($person);
                 $coach->setClubId($club->getId());
                 $coach->setSeasonId($season->getId());
-                $coach->setFirstName($coachData['firstName']);
-                $coach->setLastName($coachData['lastName']);
                 $coach->setIsActive(true);
                 $manager->persist($coach);
                 $coaches[$key] = $coach;
@@ -828,8 +833,7 @@ final class BcclSeeder
                 $key = $coachData['key'];
                 $replacement = $profile->coachNames[$position] ?? null;
                 if (null !== $replacement && isset($coaches[$key])) {
-                    $coaches[$key]->setFirstName($replacement['firstName']);
-                    $coaches[$key]->setLastName($replacement['lastName']);
+                    $this->personDirectory->personOf($coaches[$key])->setFirstName($replacement['firstName'])->setLastName($replacement['lastName']);
                 }
                 ++$position;
             }

@@ -35,6 +35,7 @@ use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
 use App\Enum\TeamCoachRole;
 use App\Tests\ChoosesPlanVersionTrait;
+use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\ProvisionsPeriodPlanTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
@@ -56,6 +57,7 @@ use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
 final class RecapReservedGroupIsNotAFailureTest extends WebTestCase
 {
     use ChoosesPlanVersionTrait;
+    use CreatesPeopleAndPlacesTrait;
     use ProvisionsPeriodPlanTrait;
     use TenantGucTrait;
 
@@ -276,7 +278,7 @@ final class RecapReservedGroupIsNotAFailureTest extends WebTestCase
 
     private function absentCoachOf(Club $club, Season $season, Team $team, string $firstName, string $lastName): void
     {
-        $coach = (new Coach)->setClubId($club->getId())->setSeasonId($season->getId())->setFirstName($firstName)->setLastName($lastName);
+        $coach = $this->newCoach($club->getId(), $season->getId(), $firstName, $lastName);
         $this->em->persist($coach);
         $this->em->flush();
 

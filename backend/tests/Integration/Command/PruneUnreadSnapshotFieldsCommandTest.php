@@ -7,7 +7,6 @@ namespace App\Tests\Integration\Command;
 use App\Command\PruneUnreadSnapshotFieldsCommand;
 use App\Entity\CalendarEntry;
 use App\Entity\Club;
-use App\Entity\Coach;
 use App\Entity\Constraint;
 use App\Entity\Schedule;
 use App\Entity\Season;
@@ -26,6 +25,7 @@ use App\Service\ClubGenerationLock;
 use App\Service\ScheduleConstraintBuilder;
 use App\Service\SchedulePlanProvisioner;
 use App\Tests\ChoosesPlanVersionTrait;
+use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\ProvisionsPeriodPlanTrait;
 use App\Tests\TenantGucTrait;
 use Closure;
@@ -65,6 +65,7 @@ use Symfony\Component\Console\Tester\CommandTester;
 final class PruneUnreadSnapshotFieldsCommandTest extends KernelTestCase
 {
     use ChoosesPlanVersionTrait;
+    use CreatesPeopleAndPlacesTrait;
     use ProvisionsPeriodPlanTrait;
     use TenantGucTrait;
 
@@ -783,7 +784,7 @@ final class PruneUnreadSnapshotFieldsCommandTest extends KernelTestCase
         $this->em->persist((new Venue)->setClubId($club->getId())->setSeasonId($season->getId())->setName('Gymnase Nord')
             ->setCanSplit(false)->setSource('manual'));
         $team = $this->persistTeam($club->getId(), $season->getId(), 'Seniors A');
-        $coach = (new Coach)->setClubId($club->getId())->setSeasonId($season->getId())->setFirstName('Karim')->setLastName('Benali');
+        $coach = $this->newCoach($club->getId(), $season->getId(), 'Karim', 'Benali');
         $this->em->persist($coach);
         $this->em->flush();
         $this->em->persist((new TeamCoach)->setClubId($club->getId())->setSeasonId($season->getId())

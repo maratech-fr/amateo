@@ -16,6 +16,7 @@ use App\Enum\ConstraintRuleType;
 use App\Enum\ConstraintScope;
 use App\Enum\SeasonStatus;
 use App\Service\MatchPlacementPayloadBuilder;
+use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -42,6 +43,7 @@ use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 #[Group('integration')]
 final class CoachUnavailabilityPayloadParityTest extends KernelTestCase
 {
+    use CreatesPeopleAndPlacesTrait;
     use TenantGucTrait;
 
     private EntityManagerInterface $em;
@@ -177,8 +179,7 @@ final class CoachUnavailabilityPayloadParityTest extends KernelTestCase
 
     private function coach(Club $club, Season $season, string $firstName, string $lastName): Coach
     {
-        $coach = (new Coach)->setClubId($club->getId())->setSeasonId($season->getId())
-            ->setFirstName($firstName)->setLastName($lastName)->setIsActive(true);
+        $coach = $this->newCoach($club->getId(), $season->getId(), $firstName, $lastName)->setIsActive(true);
         $this->em->persist($coach);
 
         return $coach;

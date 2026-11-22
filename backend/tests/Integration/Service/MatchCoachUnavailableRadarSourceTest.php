@@ -21,6 +21,7 @@ use App\Enum\SeasonStatus;
 use App\Enum\TeamCoachRole;
 use App\Service\ConflictRadarLoader;
 use App\Service\MatchConflictDetector;
+use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -52,6 +53,7 @@ use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 #[Group('integration')]
 final class MatchCoachUnavailableRadarSourceTest extends KernelTestCase
 {
+    use CreatesPeopleAndPlacesTrait;
     use TenantGucTrait;
 
     private EntityManagerInterface $em;
@@ -169,9 +171,7 @@ final class MatchCoachUnavailableRadarSourceTest extends KernelTestCase
     private function makeCoach(Club $club, Season $season, string $lastName): Coach
     {
         $this->scopeGucToClub($club->getId());
-        $coach = (new Coach)
-            ->setClubId($club->getId())->setSeasonId($season->getId())
-            ->setFirstName('Coach')->setLastName($lastName . ' ' . substr(uniqid('', true), -6));
+        $coach = $this->newCoach($club->getId(), $season->getId(), 'Coach', $lastName . ' ' . substr(uniqid('', true), -6));
         $this->em->persist($coach);
 
         return $coach;

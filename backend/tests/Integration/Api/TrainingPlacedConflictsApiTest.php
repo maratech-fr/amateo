@@ -26,6 +26,7 @@ use App\Enum\SeasonStatus;
 use App\Enum\TeamCoachRole;
 use App\Service\SeasonResolver;
 use App\Tests\ChoosesPlanVersionTrait;
+use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -43,6 +44,7 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 final class TrainingPlacedConflictsApiTest extends WebTestCase
 {
     use ChoosesPlanVersionTrait;
+    use CreatesPeopleAndPlacesTrait;
     use TenantGucTrait;
 
     private KernelBrowser $client;
@@ -258,7 +260,7 @@ final class TrainingPlacedConflictsApiTest extends WebTestCase
             $this->em->flush();
             $gymIds[] = $venue->getId();
         }
-        $coach = (new Coach)->setClubId($clubId)->setSeasonId($seasonId)->setFirstName('Anna')->setLastName('Dupont');
+        $coach = $this->newCoach($clubId, $seasonId, 'Anna', 'Dupont');
         $this->em->persist($coach);
         $this->em->flush();
 

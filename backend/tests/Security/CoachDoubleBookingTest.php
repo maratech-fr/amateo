@@ -24,6 +24,7 @@ use App\Enum\ConstraintScope;
 use App\Enum\SeasonStatus;
 use App\Enum\TeamCoachRole;
 use App\Service\CoachDoubleBookingDetector;
+use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -59,6 +60,7 @@ use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 #[Group('integration')]
 final class CoachDoubleBookingTest extends KernelTestCase
 {
+    use CreatesPeopleAndPlacesTrait;
     use TenantGucTrait;
 
     private EntityManagerInterface $em;
@@ -574,7 +576,7 @@ final class CoachDoubleBookingTest extends KernelTestCase
 
     private function createCoach(string $clubId, string $seasonId, string $firstName): string
     {
-        $coach = (new Coach)->setClubId($clubId)->setSeasonId($seasonId)->setFirstName($firstName)->setLastName('Dupont');
+        $coach = $this->newCoach($clubId, $seasonId, $firstName, 'Dupont');
         $this->em->persist($coach);
         $this->em->flush();
 

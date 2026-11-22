@@ -46,6 +46,7 @@ use App\Service\Geo\IgnRoutingClient;
 use App\Service\Geo\TravelTimeCache;
 use App\Service\SeasonResolver;
 use App\Tests\ChoosesPlanVersionTrait;
+use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\Integration\Api\ConflictCoachMailApiTest;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
@@ -67,6 +68,7 @@ use Symfony\Component\Mime\RawMessage;
 final class MatchTenantIsolationTest extends WebTestCase
 {
     use ChoosesPlanVersionTrait;
+    use CreatesPeopleAndPlacesTrait;
     use TenantGucTrait;
 
     private KernelBrowser $client;
@@ -1410,8 +1412,7 @@ final class MatchTenantIsolationTest extends WebTestCase
     private function createCoach(Club $club, Season $season, string $firstName): Coach
     {
         $this->scopeGucToClub($club->getId());
-        $coach = (new Coach)->setClubId($club->getId())->setSeasonId($season->getId())
-            ->setFirstName($firstName)->setLastName('Coach')->setIsActive(true);
+        $coach = $this->newCoach($club->getId(), $season->getId(), $firstName, 'Coach')->setIsActive(true);
         $this->em->persist($coach);
         $this->em->flush();
 
@@ -1589,7 +1590,7 @@ final class MatchTenantIsolationTest extends WebTestCase
     private function soloCoachInConflict(Club $club, Season $season, string $email): Coach
     {
         $coach = $this->createCoach($club, $season, 'Solo');
-        $coach->setEmail($email);
+        $this->personOf($coach)->setEmail($email);
         $teams = [$this->createTeam($club, $season, 'U15'), $this->createTeam($club, $season, 'SM2')];
         $this->scopeGucToClub($club->getId());
         foreach ($teams as $i => $team) {

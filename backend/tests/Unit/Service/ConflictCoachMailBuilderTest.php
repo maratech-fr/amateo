@@ -7,6 +7,7 @@ namespace App\Tests\Unit\Service;
 use App\Entity\Club;
 use App\Entity\Coach;
 use App\Entity\Fixture;
+use App\Entity\Person;
 use App\Entity\Season;
 use App\Entity\Team;
 use App\Entity\Venue;
@@ -21,6 +22,7 @@ use App\Service\ConflictCoachMailBuilder;
 use App\Service\Conflicts\ConflictMoments;
 use App\Service\ProductIdentity;
 use App\Storage\LogoStorage;
+use App\Structure\PersonDirectory;
 use App\Tests\Integration\Api\ConflictCoachMailApiTest;
 use DateTimeImmutable;
 use DOMDocument;
@@ -135,7 +137,7 @@ final class ConflictCoachMailBuilderTest extends TestCase
     /** Une coach qui joue lit « joueuse ». */
     public function testThePlayerWordFollowsTheCoachsGender(): void
     {
-        $this->karim->setGender(CoachGender::FEMALE);
+        new PersonDirectory()->personOf($this->karim)->setGender(CoachGender::FEMALE);
 
         self::assertStringContainsString('SM2 (joueuse)', (string) $this->conflicts([$this->matchMatch()])->getTextBody());
     }
@@ -189,7 +191,7 @@ final class ConflictCoachMailBuilderTest extends TestCase
     {
         $this->u15->setName('<script>alert(1)</script>');
         $this->nord->setName('<b>Nord</b>');
-        $this->karim->setFirstName('<i>Karim</i>');
+        new PersonDirectory()->personOf($this->karim)->setFirstName('<i>Karim</i>');
         $hostile = $this->matchMatch(left: ['opponentLabel' => '"><img src=x onerror=alert(2)>'], right: ['opponentPlace' => '<u>Lyon</u>']);
 
         $html = (string) $this->conflicts([$hostile, $this->matchTraining()])->getHtmlBody();
@@ -424,7 +426,7 @@ final class ConflictCoachMailBuilderTest extends TestCase
     /** Genre non renseigné : « joueur », comme la référence — jamais l'écriture « joueur·euse ». */
     public function testAnUnspecifiedGenderReadsJoueur(): void
     {
-        $this->karim->setGender(CoachGender::UNSPECIFIED);
+        new PersonDirectory()->personOf($this->karim)->setGender(CoachGender::UNSPECIFIED);
         $email = $this->conflicts([$this->matchMatch()]);
 
         self::assertStringContainsString('SM2 (joueur)', (string) $email->getTextBody());
@@ -446,7 +448,7 @@ final class ConflictCoachMailBuilderTest extends TestCase
     {
         $this->club = new Club()->setName('Les Aiglons de Villefranche')->setShortName('AIGLONS');
         $this->season = new Season()->setName('2025-2026');
-        $this->karim = new Coach()->setFirstName('Karim')->setLastName('Benali')->setEmail('karim@aiglons.test')->setGender(CoachGender::MALE);
+        $this->karim = new Coach((new Person)->setClubId($this->club->getId())->setFirstName('Karim')->setLastName('Benali')->setEmail('karim@aiglons.test')->setGender(CoachGender::MALE))->setClubId($this->club->getId());
         $this->u15 = new Team()->setName('U15');
         $this->sm2 = new Team()->setName('SM2');
         $this->u13a = new Team()->setName('U13A');

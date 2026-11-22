@@ -7,12 +7,14 @@ namespace App\Tests\Integration\Service;
 use App\Entity\CalendarEntry;
 use App\Entity\Club;
 use App\Entity\Coach;
+use App\Entity\CoachPlayerMembership;
 use App\Entity\CoachWish;
 use App\Entity\CoachWishCampaign;
 use App\Entity\CoachWishToken;
 use App\Entity\Constraint;
 use App\Entity\ConstraintPeriodOverride;
 use App\Entity\Fixture;
+use App\Entity\Person;
 use App\Entity\Schedule;
 use App\Entity\Season;
 use App\Entity\Team;
@@ -31,6 +33,8 @@ use App\Enum\TeamCoachRole;
 use App\Service\SchedulePlanProvisioner;
 use App\Service\StructureRestorer;
 use App\Service\StructureSnapshotter;
+use App\Structure\PersonDirectory;
+use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\ProvisionsPeriodPlanTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
@@ -48,6 +52,7 @@ use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 #[Group('integration')]
 final class StructureRestorerTest extends KernelTestCase
 {
+    use CreatesPeopleAndPlacesTrait;
     use ProvisionsPeriodPlanTrait;
 
     use TenantGucTrait;
@@ -255,8 +260,8 @@ final class StructureRestorerTest extends KernelTestCase
         // « Charger » supprime les coachs : la clé étrangère emporte les jetons. La règle les recrée.
         [$club, $season] = $this->seedClubSeason();
         $team = $this->persistTeam($club, $season, 'U11M1');
-        $maxime = (new Coach)->setClubId($club->getId())->setSeasonId($season->getId())->setFirstName('Maxime')->setLastName('Durand');
-        $julie = (new Coach)->setClubId($club->getId())->setSeasonId($season->getId())->setFirstName('Julie')->setLastName('Petit');
+        $maxime = $this->newCoach($club->getId(), $season->getId(), 'Maxime', 'Durand');
+        $julie = $this->newCoach($club->getId(), $season->getId(), 'Julie', 'Petit');
         $this->em->persist($maxime);
         $this->em->persist($julie);
         $this->em->flush();
@@ -447,6 +452,156 @@ final class StructureRestorerTest extends KernelTestCase
         self::assertNotNull($this->em->getRepository(Team::class)->find($teamId), 'avec son identifiant d\'origine');
     }
 
+    /**
+     * Décision 1 du lot 3 (A) : supprimer un coach garde sa fiche au club ; « Charger » une version où il
+     * entraînait le ramène sur cette fiche, même identifiant, nom et téléphone compris, avec ses liens.
+     */
+    public function testLoadingBringsBackADeletedCoachOnHisRecord(): void
+    {
+        [$club, $season] = $this->seedClubSeason();
+        $team = $this->persistTeam($club, $season, 'U13M1');
+        $paul = $this->newCoach($club->getId(), $season->getId(), 'Paul', 'Martin');
+        $this->personOf($paul)->setPhone('0601020304');
+        $this->em->flush();
+        $link = $this->persistLink($club, $season, $team, $paul);
+        $v1 = $this->makeSchedule($club, $season);
+        $this->em->flush();
+        $this->snapshotter->store($v1, $this->snapshotter->serialize($club->getId(), $season->getId()));
+        [$paulId, $personId] = [$paul->getId(), $paul->getPersonId()];
+
+        $this->em->remove($link);
+        $this->em->remove($paul);
+        $this->em->flush();
+        $this->restorer->apply($club->getId(), $season->getId(), $this->restorer->readSnapshot($v1));
+        $this->em->clear();
+
+        $back = $this->em->getRepository(Coach::class)->find($paulId);
+        self::assertInstanceOf(Coach::class, $back, 'le coach supprimé revient avec son identifiant');
+        self::assertSame($personId, $back->getPersonId(), 'il revient sur sa fiche, jamais sur une copie');
+        $identity = self::getContainer()->get(PersonDirectory::class)->of($back);
+        self::assertSame(['Paul Martin', '0601020304'], [$identity->fullName(), $identity->phone], 'nom et téléphone reviennent avec lui');
+        self::assertNotNull($this->em->getRepository(TeamCoach::class)->findOneBy(['coachId' => $paulId, 'teamId' => $team->getId()]), 'et son lien d\'équipe');
+    }
+
+    /** Un coach ajouté après la version quitte la saison au chargement ; sa fiche reste au club (décision 1, A). */
+    public function testLoadingRemovesACoachAddedSinceAndKeepsHisRecord(): void
+    {
+        [$club, $season] = $this->seedClubSeason();
+        $v1 = $this->makeSchedule($club, $season);
+        $this->em->flush();
+        $this->snapshotter->store($v1, $this->snapshotter->serialize($club->getId(), $season->getId()));
+        $karim = $this->newCoach($club->getId(), $season->getId(), 'Karim', 'Benali');
+        $this->em->flush();
+        [$karimId, $personId] = [$karim->getId(), $karim->getPersonId()];
+
+        $this->restorer->apply($club->getId(), $season->getId(), $this->restorer->readSnapshot($v1));
+        $this->em->clear();
+
+        self::assertNull($this->em->getRepository(Coach::class)->find($karimId), 'le coach ajouté depuis quitte la saison');
+        self::assertNotNull($this->em->getRepository(Person::class)->find($personId), 'sa fiche reste au club jusqu\'à la purge de la saison');
+    }
+
+    /**
+     * Une ligne de photo dont la personne n'existe plus (effacée) n'est pas réinsérée, ni ses liens
+     * d'équipe, ni ses règles ; la recherche de la fiche est bornée par le club : une ligne qui
+     * pointerait la fiche d'un autre club n'est pas réinsérée non plus (abus). Le reste revient.
+     */
+    public function testLoadingNeverBringsBackACoachWhosePersonIsGoneNorHisLinksNorHisRules(): void
+    {
+        $uid = uniqid('', true);
+        $otherClub = (new Club)->setName('Autre ' . $uid)->setSlug('autre-' . $uid)->setTimezone('Europe/Paris')->setLocale('fr')->setOnboardingCompleted(true);
+        $this->em->persist($otherClub);
+        $this->em->flush();
+        $this->scopeGucToClub($otherClub->getId());
+        $foreign = $this->newCoach($otherClub->getId(), '44444444-4444-4444-8444-444444444444', 'Inès', 'Durand');
+        $this->em->flush();
+        $foreignPersonId = $foreign->getPersonId();
+
+        [$club, $season] = $this->seedClubSeason();
+        $team = $this->persistTeam($club, $season, 'U13M1');
+        $paul = $this->newCoach($club->getId(), $season->getId(), 'Paul', 'Martin');
+        $anna = $this->newCoach($club->getId(), $season->getId(), 'Anna', 'Petit');
+        $this->em->flush();
+        $paulLink = $this->persistLink($club, $season, $team, $paul);
+        $this->persistLink($club, $season, $team, $anna);
+        $paulRule = (new Constraint)->setClubId($club->getId())->setSeasonId($season->getId())
+            ->setName('Paul Martin · indispo lundi')->setScope(ConstraintScope::COACH)->setScopeTargetId($paul->getId())
+            ->setFamily(ConstraintFamily::COACH_AVAILABILITY)->setRuleType(ConstraintRuleType::HARD)->setConfig(['unavailableDays' => [1]]);
+        $this->em->persist($paulRule);
+        $v1 = $this->makeSchedule($club, $season);
+        $this->em->flush();
+        $photo = $this->snapshotter->serialize($club->getId(), $season->getId());
+        $forgedId = '55555555-5555-4555-8555-555555555555';
+        $forged = $photo['Coach'][0];
+        $forged['id'] = $forgedId;
+        $forged['personId'] = $foreignPersonId;
+        $photo['Coach'][] = $forged;
+        $this->snapshotter->store($v1, $photo);
+        [$paulId, $annaId, $paulPerson] = [$paul->getId(), $anna->getId(), $this->personOf($paul)];
+
+        $this->em->remove($paulRule);
+        $this->em->remove($paulLink);
+        $this->em->remove($paul);
+        $this->em->flush();
+        $this->em->remove($paulPerson);
+        $this->em->flush();
+        $this->restorer->apply($club->getId(), $season->getId(), $this->restorer->readSnapshot($v1));
+        $this->em->clear();
+
+        self::assertNull($this->em->getRepository(Coach::class)->find($paulId), 'une personne disparue ne revient pas');
+        self::assertNull($this->em->getRepository(TeamCoach::class)->findOneBy(['coachId' => $paulId]), 'ni ses liens d\'équipe');
+        self::assertSame([], $this->em->getRepository(Constraint::class)->findBy(['seasonId' => $season->getId(), 'scopeTargetId' => $paulId]), 'ni ses règles');
+        self::assertNull($this->em->getRepository(Coach::class)->find($forgedId), 'une ligne qui pointe la fiche d\'un autre club n\'est pas réinsérée');
+        self::assertNotNull($this->em->getRepository(Coach::class)->find($annaId), 'témoin : le reste de la photo revient');
+        self::assertNotNull($this->em->getRepository(TeamCoach::class)->findOneBy(['coachId' => $annaId]), 'témoin : avec ses liens');
+    }
+
+    /**
+     * Une photo dont les liens d'équipe et de joueur et les règles de portée coach citent un coach
+     * absent de ses lignes `Coach` (photo nettoyée par la migration Version20261122140000, qui retire
+     * la ligne d'un coach disparu sans toucher ses liens) ne réinsère aucun de ces liens orphelins
+     * au « Charger » : aucune clé étrangère ne les refuserait. Jumeau, cité :
+     * `Migration/PersonConversionMigrationTest::testPhotosDropTheLinksAndRulesOfACoachThatNoLongerExists`
+     * (la photo nettoyée à la source) ; ici le filet du chargement, pour toute photo.
+     */
+    public function testLoadingNeverReinsertsLinksOrRulesOfACoachAbsentFromThePhoto(): void
+    {
+        [$club, $season] = $this->seedClubSeason();
+        $team = $this->persistTeam($club, $season, 'U13M1');
+        $paul = $this->newCoach($club->getId(), $season->getId(), 'Paul', 'Martin');
+        $anna = $this->newCoach($club->getId(), $season->getId(), 'Anna', 'Petit');
+        $this->em->flush();
+        $paulLink = $this->persistLink($club, $season, $team, $paul);
+        $this->persistLink($club, $season, $team, $anna);
+        $paulPlayer = (new CoachPlayerMembership)->setClubId($club->getId())->setSeasonId($season->getId())
+            ->setCoachId($paul->getId())->setTeamId($team->getId());
+        $paulRule = (new Constraint)->setClubId($club->getId())->setSeasonId($season->getId())
+            ->setName('Paul Martin · indispo lundi')->setScope(ConstraintScope::COACH)->setScopeTargetId($paul->getId())
+            ->setFamily(ConstraintFamily::COACH_AVAILABILITY)->setRuleType(ConstraintRuleType::HARD)->setConfig(['unavailableDays' => [1]]);
+        $this->em->persist($paulPlayer);
+        $this->em->persist($paulRule);
+        $v1 = $this->makeSchedule($club, $season);
+        $this->em->flush();
+        [$paulId, $annaId] = [$paul->getId(), $anna->getId()];
+        $photo = $this->snapshotter->serialize($club->getId(), $season->getId());
+        $photo['Coach'] = array_values(array_filter($photo['Coach'], static fn (array $row): bool => $paulId !== $row['id']));
+        self::assertNotEmpty(array_filter($photo['TeamCoach'], static fn (array $row): bool => $paulId === $row['coachId']), 'témoin : la photo garde le lien du coach absent');
+        $this->snapshotter->store($v1, $photo);
+
+        $this->em->remove($paulRule);
+        $this->em->remove($paulPlayer);
+        $this->em->remove($paulLink);
+        $this->em->remove($paul);
+        $this->em->flush();
+        $this->restorer->apply($club->getId(), $season->getId(), $this->restorer->readSnapshot($v1));
+        $this->em->clear();
+
+        self::assertNull($this->em->getRepository(TeamCoach::class)->findOneBy(['coachId' => $paulId]), 'aucun lien d\'équipe vers un coach absent de la photo');
+        self::assertNull($this->em->getRepository(CoachPlayerMembership::class)->findOneBy(['coachId' => $paulId]), 'aucun lien de joueur vers un coach absent de la photo');
+        self::assertSame([], $this->em->getRepository(Constraint::class)->findBy(['seasonId' => $season->getId(), 'scopeTargetId' => $paulId]), 'aucune règle de portée coach vers un coach absent de la photo');
+        self::assertNotNull($this->em->getRepository(TeamCoach::class)->findOneBy(['coachId' => $annaId]), 'témoin : le lien d\'un coach de la photo revient');
+    }
+
     protected function setUp(): void
     {
         self::bootKernel();
@@ -484,10 +639,20 @@ final class StructureRestorerTest extends KernelTestCase
 
     private function persistCoach(Club $club, Season $season, string $firstName): Coach
     {
-        $coach = (new Coach)->setClubId($club->getId())->setSeasonId($season->getId())->setFirstName($firstName)->setLastName('Test');
+        $coach = $this->newCoach($club->getId(), $season->getId(), $firstName, 'Test');
         $this->em->persist($coach);
 
         return $coach;
+    }
+
+    private function persistLink(Club $club, Season $season, Team $team, Coach $coach): TeamCoach
+    {
+        $link = (new TeamCoach)->setClubId($club->getId())->setSeasonId($season->getId())
+            ->setTeamId($team->getId())->setCoachId($coach->getId())->setRole(TeamCoachRole::MAIN);
+        $this->em->persist($link);
+        $this->em->flush();
+
+        return $link;
     }
 
     private function persistHoliday(Club $club, Season $season): CalendarEntry

@@ -18,6 +18,7 @@ use App\Enum\CalendarEntryKind;
 use App\Enum\CalendarEntryPeriodType;
 use App\Enum\SeasonStatus;
 use App\Enum\TeamCoachRole;
+use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -36,6 +37,7 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 #[Group('phase1')]
 final class CoachWishCampaignActionsTest extends WebTestCase
 {
+    use CreatesPeopleAndPlacesTrait;
     use TenantGucTrait;
 
     private KernelBrowser $client;
@@ -263,7 +265,7 @@ final class CoachWishCampaignActionsTest extends WebTestCase
 
         // 422 : un adjoint n'est jamais destinataire.
         $this->scopeGucToClub($this->club->getId());
-        $assistant = (new Coach)->setClubId($this->club->getId())->setSeasonId($this->season->getId())->setFirstName('Benoît')->setLastName('Roux');
+        $assistant = $this->newCoach($this->club->getId(), $this->season->getId(), 'Benoît', 'Roux');
         $this->em->persist($assistant);
         $this->em->flush();
         $this->em->persist((new TeamCoach)->setClubId($this->club->getId())->setSeasonId($this->season->getId())
@@ -406,7 +408,7 @@ final class CoachWishCampaignActionsTest extends WebTestCase
     {
         // Un coach HORS du périmètre de la campagne → 404.
         $this->scopeGucToClub($this->club->getId());
-        $stranger = (new Coach)->setClubId($this->club->getId())->setSeasonId($this->season->getId())->setFirstName('Zoé')->setLastName('Hors');
+        $stranger = $this->newCoach($this->club->getId(), $this->season->getId(), 'Zoé', 'Hors');
         $this->em->persist($stranger);
         $this->em->flush();
 
@@ -473,10 +475,9 @@ final class CoachWishCampaignActionsTest extends WebTestCase
         $team = (new Team)->setClubId($this->club->getId())->setSeasonId($this->season->getId())
             ->setSportCategoryId('11111111-1111-4111-8111-111111111111')->setPriorityTierId(1)->setName('SM1');
         $this->em->persist($team);
-        $this->withEmail = (new Coach)->setClubId($this->club->getId())->setSeasonId($this->season->getId())
-            ->setFirstName('Maxime')->setLastName('Durand')->setEmail('maxime@test.com');
-        $this->noEmail = (new Coach)->setClubId($this->club->getId())->setSeasonId($this->season->getId())
-            ->setFirstName('Mara')->setLastName('Petit');
+        $this->withEmail = $this->newCoach($this->club->getId(), $this->season->getId(), 'Maxime', 'Durand');
+        $this->personOf($this->withEmail)->setEmail('maxime@test.com');
+        $this->noEmail = $this->newCoach($this->club->getId(), $this->season->getId(), 'Mara', 'Petit');
         $this->em->persist($this->withEmail);
         $this->em->persist($this->noEmail);
         $this->em->flush();
