@@ -135,6 +135,7 @@ gate, un signalement ferait fuiter les données d'un autre club dans la console 
 `Security/SeasonReadonlyTest` (saison archivée → 409) ·
 `Security/MatchTenantIsolationTest` (entités match tenant+season) ·
 `Security/TenantCacheIsolationTest` (cache scopé club) ·
+`Unit/Service/ScheduleCacheKeyEpochTest` (axe *generation pipeline* : la clé du cache des demandes au moteur porte l'époque du schéma, empreinte des noms de fichiers de migrations ; une demande mise en cache par un code aux migrations différentes n'est jamais resservie, même quand la migration ajoutée porte une date plus ancienne que la dernière) ·
 `MessageHandler/ComputeTravelTimesHandlerTest` (worker de calcul des trajets : GUC posé/clear, verrou, jamais la ligne d'un autre club) ·
 `Queue/ConcurrentGenerationTest` (verrou de génération) ·
 `CrossStack/ContractSchemaTest` (contrat backend⇄engine ; garde aussi

@@ -681,6 +681,12 @@ jobs:
           FILES="$FILES tests/Security/SeasonReadonlyTest.php"
           FILES="$FILES tests/Security/MatchTenantIsolationTest.php"
           FILES="$FILES tests/Security/TenantCacheIsolationTest.php"
+          # NR d'axe GENERATION PIPELINE (lot conception 3, PR 1) — la clé du cache des demandes au
+          # moteur porte l'époque du schéma (empreinte des noms de fichiers de migrations) : une demande
+          # mise en cache par un code aux migrations différentes n'est jamais resservie, même quand la
+          # migration ajoutée porte une date ancienne. Sans ce gate, un « plus grand numéro » à la place
+          # de l'empreinte resservirait au moteur une demande composée sur l'ancien schéma.
+          FILES="$FILES tests/Unit/Service/ScheduleCacheKeyEpochTest.php"
           FILES="$FILES tests/MessageHandler/ComputeTravelTimesHandlerTest.php"
           FILES="$FILES tests/Queue/ConcurrentGenerationTest.php"
           FILES="$FILES tests/CrossStack/ContractSchemaTest.php"
