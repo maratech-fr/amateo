@@ -105,8 +105,9 @@ l'animateur, provisioning, populate FFBB + import des équipes engagées, best-e
 vit dans `DemoClubMaterializer::materialize()` (`src/Service/DemoClubMaterializer.php`). Trois
 contrôleurs relaient ces gestes en environnement e2e/test/démo : `POST /api/dev/approve-club-request`
 (`DevClubApprovalController`, approuve la demande PENDING de l'appelant) et
-`POST /api/dev/mark-season-paid` (`DevSeasonPaymentController`, marque payée la saison SUIVANTE
-du club courant — respecte l'horloge simulée) restent gardés `%kernel.debug%` seul (404 en prod).
+`POST /api/dev/mark-season-paid` (`DevSeasonPaymentController`, écrit une ligne d'abonnement Bêta
+réglée pour la saison SUIVANTE du club courant, par `ClubSubscriptionWriter` — respecte l'horloge simulée ;
+la réponse reste `{paidSeasonYear}`) restent gardés `%kernel.debug%` seul (404 en prod).
 **`POST /api/dev/demo-register`** (`DevDemoRegisterController`) — le raccourci « effet waouw » :
 appelé par `RegisterPage` juste APRÈS le 202 neutre du vrai register (rail register/verify
 byte-intact), il fait naître le club DU PROSPECT depuis le formulaire réel plutôt qu'un terminal,

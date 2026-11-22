@@ -31,6 +31,35 @@ Le motif normal est une policy unique `tenant_isolation FOR ALL`. Quatre tables 
 >
 > **Les deux couches tiennent partout (SEC-12).** GUC posé, `club_user` et `coach_wish_token` sont étanches au niveau base comme les autres : une requête native ou un `createQuery` filtre désactivé ne fuiterait plus que dans la fenêtre pré-GUC (où il n'y a par construction aucun tenant à protéger — et où le code filtre par `user_id`/token). Comportement gardé par `testClubUserSelectIsTenantScopedOnceGucIsSet`, `testRunWithoutTenantSeesAcrossClubsThenRestoresGuc`, `testFindActiveClubIdsStaysCrossClubWithGucSet` et `testClubUserRemainsReadableWithoutGuc` (le bootstrap pré-GUC, inchangé). Ce que le test de portée n'assure pas : la justesse *sémantique* du canon (portée par les tests comportementaux) ni un prédicat équivalent écrit autrement (échoue volontairement — fail-noisy).
 
+## `club_subscription` — le motif normal, mais le rôle applicatif ne l'écrit jamais
+
+`club_subscription` (l'abonnement d'un club, une ligne par club et par saison ; `Version20261123120000`)
+porte le motif normal (`ENABLE` + `FORCE`, `tenant_isolation`, `admin_all`, `readonly_tenant` + `GRANT SELECT`
+à `amateo_read`) avec une différence : **`INSERT` et `UPDATE` sont RETIRÉS au rôle applicatif**, qui garde
+`SELECT` et `DELETE` (l'effacement du club emporte les lignes, `ErasedClubPurger`). **Seule la connexion
+propriétaire (`admin`) écrit une ligne**, par un écrivain unique : `ClubSubscriptionWriter`, qui ne laisse
+aucun appelant choisir la connexion.
+
+**Pourquoi** : l'offre d'un club donne des droits (cap d'équipes, crédits, bascule de saison). Une policy
+tenant seule laisserait une requête applicative du club s'attribuer l'offre qu'elle veut sur SA ligne ; la
+base ne l'accepte donc pas, quelle que soit la couche applicative. Le `REVOKE` est nécessaire parce que
+l'`ALTER DEFAULT PRIVILEGES` de `Version20260703120000` confère `INSERT`/`UPDATE` au rôle applicatif sur toute
+table neuve, et qu'un `GRANT` restreint ne les retire pas (même patron que `Version20260828170000`).
+Gardé par `RlsIsolationTest::testTheApplicationRoleCanNeitherCreateNorChangeASubscriptionLineEvenOnItsOwnClub`
+(locataire posé compris) et `ReadOnlyRoleTest`.
+
+**Lecture** : `ClubSubscriptionRepository::forSeasonYear` est une requête NATIVE (la ligne ne s'écrit que
+par SQL, jamais par l'ORM : une instance de l'identity map serait périmée après un geste du support). Le
+filtre Doctrine `tenant_filter` ne s'applique pas à une requête native ; la lecture est bornée par la clause
+`club_id` de la requête ET par la RLS.
+
+**Environnement de test** : le rôle applicatif ne reçoit jamais `INSERT`/`UPDATE` non plus dans les tests. Le
+double `tests/Double/SameTransactionClubSubscriptionWriter` (substitué à l'écrivain par
+`config/services_test.yaml`) écrit par la fonction `SECURITY DEFINER` `amateo_test_record_club_subscription`,
+qui n'existe que dans une base dont le nom finit par `_test` (le double refuse de la créer ailleurs) et
+qu'aucune migration ne crée. Conduite des tests : `docs/testing/testing-strategy.md` § Double de l'écrivain
+d'abonnement.
+
 ## `person` — le motif normal, plus une clé étrangère composée
 
 `person` (la fiche d'identité d'un coach, ADR-0006 ; `Version20261122140000`) suit le motif normal :

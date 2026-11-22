@@ -138,10 +138,11 @@ réutilisent ni le firewall ni le JWT club :
   RFC 3339 — `2026-11-10T23:30:00+00:00`), saison courante, volumétrie active
   de la saison et indicateurs solveur sur 30 jours. `limit` est borné à 100 et `query` à
   100 caractères. **L'offre est rendue en DEUX vérités distinctes depuis A1 (2026-08-11)** :
-  `plan` (l'offre STOCKÉE — `{code, name}` ou null) et `effectivePlan` (l'offre qui
-  S'APPLIQUE, calculée par la même règle que `PlanEntitlements` : payante/bêta effective
-  seulement si `paidSeasonYear` couvre l'année-pivot de la saison courante, sinon
-  Découverte ; club sans saison → pivot sur l'horloge réelle). `paidSeasonYear` est exposé.
+  `plan` (l'offre de la ligne d'abonnement de la saison courante — `{code, name}` ou null) et
+  `effectivePlan` (l'offre qui S'APPLIQUE, calculée par la même règle que `PlanEntitlements` :
+  payante/bêta effective seulement si cette ligne est réglée, sinon Découverte ; club sans
+  saison → pivot sur l'horloge réelle). `paidSeasonYear` est la dernière année réglée,
+  toutes lignes du club confondues.
   ⚑ L'ancien champ `planId` (uuid typé `number` côté front — doublement faux) est SUPPRIMÉ :
   le badge console affiche l'effective, avec un sous-texte quand la stockée diverge
   (« Bêta posée — saison non réglée »). Un club démo n'a AUCUN cas spécial ici : badge =
@@ -341,23 +342,23 @@ schéma, jamais d'une liste en dur.
 Les actions livrées sont `ffbb-resync` (P2-18, 2026-08-04 : ré-importe
 l'identité FFBB du club — nom, coordonnées, logo, comité/ligue — le même `FfbbClubPopulator`
 en mode refresh que le bouton de la fiche club ; échec FRANC si l'organisme est introuvable,
-jamais un succès silencieux), `mark-next-season-paid` (P1-5, 2026-08-04 :
-enregistre le paiement de la saison SUIVANTE — l'abonnement se paie par saison — et
-ouvre le gate de bascule ; idempotente, le marqueur ne recule jamais), `reset-current-season` (vide la saison
+jamais un succès silencieux), `reset-current-season` (vide la saison
 courante — le club repart au wizard, la saison et le club survivent) et
 `purge-old-seasons` (supprime les saisons au-delà de la rétention).
 
 **Attribution d'offres (A3, 2026-08-11)** : une **seule** entrée `set-plan` (« Offre »)
 remplace les six `set-plan-*` figées. Son schéma d'arguments fermé porte `plan` (enum des
 codes d'offre — `decouverte`…`beta`, miroir de `SetClubPlanCommand`) et `paidSeason`
-(enum `current|next`, la saison encaissée). Règle fondateur portée par le schéma, pas par
+(enum `current|next`, la saison réglée). Il n'existe pas d'action « marquer la saison suivante
+payée » : « Offre » avec `paidSeason=next` règle la saison suivante. Règle fondateur portée par le schéma, pas par
 un `if` du contrôleur : `paidSeason` est **requis** pour toute offre payante (Bêta
-comprise — sans marqueur elle naît expirée) et **interdit** sur `decouverte` (rien à
-encaisser). Avec `paidSeason`, la commande pose l'offre ET marque la saison encaissée dans
-la MÊME transaction (pivot sur `simulated_today` pour un club démo, D6). `reset-credits` (ré-ouvre
+comprise — une offre payante se règle toujours pour une saison) et **interdit** sur
+`decouverte` (rien à encaisser, écrite sur la saison en cours). La commande écrit la ligne
+d'abonnement de cette seule saison (`ClubSubscriptionWriter`, connexion propriétaire — pivot
+sur `simulated_today` pour un club démo, D6). `reset-credits` (ré-ouvre
 le pool de crédits de sortie du plan Découverte) reste une entrée à part. C'est la **seule
 porte d'attribution** d'une offre — l'offre Bêta n'a aucun autre chemin par construction,
-et le paiement v1 (virement) se matérialise par `set-plan` (offre + saison encaissée)
+et le paiement v1 (virement) se matérialise par `set-plan` (offre + saison réglée)
 directement.
 
 **Arbitrages P3-4 (PR B, 2026-08-05)** : `GET /api/admin/club-requests` liste les demandes
