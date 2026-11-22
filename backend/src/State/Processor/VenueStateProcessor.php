@@ -226,15 +226,18 @@ class VenueStateProcessor extends AbstractStateProcessor
         if ($this->travelComputeLock->isHeld($clubId)) {
             return;
         }
+        // SQL brut : le `season_filter` épinglerait la lecture ORM à la saison de la requête, or le lieu
+        // vaut pour toutes les saisons où il a un gymnase. Borne de club explicite sur les deux tables
+        // (et RLS). Opt-in : seule une saison qui a déjà au moins une ligne de matrice est recalculée.
         /** @var list<string> $seasonIds */
-        $seasonIds = $this->entityManager->createQuery('SELECT DISTINCT v.seasonId FROM App\Entity\Venue v WHERE v.clubId = :c AND v.placeId = :p ORDER BY v.seasonId')
-            ->setParameter('c', $clubId)
-            ->setParameter('p', $placeId)
-            ->getSingleColumnResult();
+        $seasonIds = $this->entityManager->getConnection()->fetchFirstColumn(
+            'SELECT DISTINCT v.season_id FROM venue v'
+            . ' WHERE v.club_id = :c AND v.place_id = :p'
+            . ' AND EXISTS (SELECT 1 FROM venue_travel_time t WHERE t.club_id = :c AND t.season_id = v.season_id)'
+            . ' ORDER BY v.season_id',
+            ['c' => $clubId, 'p' => $placeId],
+        );
         foreach ($seasonIds as $seasonId) {
-            if (0 === $this->entityManager->getRepository(VenueTravelTime::class)->count(['clubId' => $clubId, 'seasonId' => $seasonId])) {
-                continue; // opt-in : pas de matrice ⇒ on n'en crée pas une sur un déplacement.
-            }
             $this->messageBus->dispatch(new ComputeTravelTimesMessage($clubId, $seasonId, TravelComputeScope::VENUE_MATRIX));
         }
     }
