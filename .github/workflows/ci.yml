@@ -699,6 +699,12 @@ jobs:
           # COMPOSÉE avec le club). Sans ce gate, une clé simple person_id → person(id) laisserait un
           # coach du club A désigner la fiche du club B : une vérification de clé étrangère ignore la RLS.
           FILES="$FILES tests/Security/PersonPlaceTenantIsolationTest.php"
+          # Test d'abus RGPD (lot conception 3, PR 3) — après l'effacement d'une personne (art. 17),
+          # aucune colonne vue par son club ne garde son nom, son mail, son téléphone ni son commentaire
+          # (demande figée, photo, diagnostics, signalements dont celui d'un échec de génération, boîte
+          # d'un club de démonstration), et « Charger » une version d'avant ne la ramène pas. Sans ce
+          # gate, une copie oubliée d'un nom partirait en production sans que rien ne rougisse.
+          FILES="$FILES tests/Security/PersonErasureLeavesNoTraceTest.php"
           # P4-16 — un club à horloge simulée n'envoie JAMAIS de vrai e-mail : il est rangé
           # dans sa boîte, l'enfilage est rejeté, et un autre club ne voit jamais cette boîte
           # (RLS). Sans ce gate BLOQUANT, une régression du listener d'interception enverrait

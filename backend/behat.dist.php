@@ -32,6 +32,7 @@ use App\Tests\Behat\ParcImportContext;
 use App\Tests\Behat\PeriodAutoValidationContext;
 use App\Tests\Behat\PeriodLockSmallClubContext;
 use App\Tests\Behat\PeriodOverlayContext;
+use App\Tests\Behat\PersonErasureContext;
 use App\Tests\Behat\PlacedPersonConflictContext;
 use App\Tests\Behat\SeasonGenerationContext;
 use App\Tests\Behat\SeasonPreparationDateContext;
@@ -266,6 +267,11 @@ return (new Config)
                 new Suite('suppression-en-cascade')
                     ->withPaths('%paths.base%/features/supprimer-emporte-ce-qui-en-depend.feature')
                     ->withContexts(DeletionCascadeContext::class),
+            )
+            ->withSuite(
+                new Suite('effacement-personne')
+                    ->withPaths('%paths.base%/features/effacer-une-personne-efface-tout.feature')
+                    ->withContexts(PersonErasureContext::class),
             )
             ->withSuite(
                 new Suite('regle-de-categorie')

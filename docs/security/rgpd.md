@@ -109,9 +109,41 @@ Le nom, le mail, le téléphone et le genre d'un coach vivent sur `person`, une 
   familles `purgedWithSeason()` y passent, pas les `purgedViaOwner()` d'une saison disparue.
 - **Export** : `person` sort dans l'export des données du club (dérivée de `TenantOwnedInterface`, jamais
   exclue) — gardé par `RgpdExportCompletenessTest::testThePersonRecordIsExported`.
-- **Effacer UNE personne** n'a pas encore de mécanisme : aucune commande n'efface une personne seule, et
-  `schedule.snapshot_data` (la demande figée de chaque version) garde prénom et nom jusqu'à la PR 3 du lot
-  conception. Les deux livraisons partent ensemble en production (déploiement unique du lot).
+- **Effacer UNE personne** (art. 17) : commande de support `app:people:erase` (`App\Command\ErasePersonCommand`,
+  options dans `backend/docs/commands.md`), aucune route ni écran avant le lot 6. `App\Structure\PersonEraser`
+  joue tout dans une transaction, sous le contexte du club, toutes saisons du club (lecture seule comprise,
+  décision 5A). Ce qui est **effacé** : la fiche `person` et ses rôles `coach` (cascade de suppression
+  d'un coach), le commentaire de ses doléances, ses jetons de collecte (resynchronisés), ses diagnostics qui
+  portent l'identifiant d'un de ses rôles, sa ligne, ses liens d'équipe et ses règles dans les photos de
+  versions (`schedule_structure_snapshot`), les messages de la boîte d'un club de démonstration qui lui sont
+  adressés (`ClubMailboxMessage`), les PDF stockés des versions du club (`PdfGenerator::deleteRendersOf`)
+  et l'adresse de rendu remise à vide sur la version et la saison, le cache des demandes du club
+  (`cache.schedule`). Les séances restent, sans coach.
+  - **Ce qui est remplacé par « Personne supprimée »** (`PersonEraser::PLACEHOLDER`), par une seule règle :
+    **par identifiant** (ligne de ses rôles dans une demande figée, nom de ses règles de portée coach,
+    libellé de tout tableau portant `constraintId` d'une de ses règles) ; **par texte** (demandes figées
+    dont l'empreinte est réalignée, diagnostics, contexte des signalements, génération en échec comprise,
+    sujet et corps des autres messages de la boîte de démonstration) : son nom composé « prénom nom », mot
+    entier, casse ignorée. **Un nom réduit à un seul mot n'est JAMAIS remplacé par texte** (il se
+    retrouverait dans le nom d'une autre personne). Ses règles sont relevées par identifiant AVANT la
+    cascade : leur nom exact est remplacé dans les diagnostics et signalements même sans son nom composé
+    (« Indispo Camille mardi »). Une homonyme exacte du même club garde fiche, rôle, règles et ligne ;
+    aucun autre club n'est lu. Une erreur du moteur d'expressions annule la transaction.
+  - **Verrous** : `ClubGenerationLock` et `MatchPlacementLock` du club sont pris ; tenus, l'effacement est
+    refusé (`PersonErasureBlockedException`, rien ne bouge, code retour 1). Les fichiers PDF et le cache,
+    hors base, sont traités après la validation ; un arrêt entre les deux se rattrape par
+    `app:people:erase --club <uuid> --sweep-files`.
+  - **Audit** : `AuditAction::PERSON_ERASED` (`person.erased`), identifiants et comptes seuls, jamais un nom
+    ni une adresse ; **acteur non tracé** (la commande de support n'a pas d'utilisateur connecté).
+  - **Limites écrites (non nettoyé)** : `feedback.message` (texte libre du signalement) et les règles
+    d'équipe ou de club nommées à la main avec le nom ; la capture d'écran d'un signalement (purgée à 90
+    jours) ; `constraint_conflict` (hors périmètre : rien ne l'écrit) ; le prénom seul dans les textes
+    libres et dans le récapitulatif de la boîte de démonstration (données fictives) ; un export PDF en cours
+    pendant l'effacement peut recréer un fichier (relancer `--sweep-files`, ou arrêter le worker avant) ;
+    logs, Sentry, messages Messenger en échec et caches autres que `cache.schedule`, non vérifiés ; les
+    mails déjà partis et les sauvegardes jusqu'à leur rotation (§4).
+  - Preuve : `Security/PersonErasureLeavesNoTraceTest` (bloquant) et la feature
+    `effacer-une-personne-efface-tout.feature` (suite Behat `effacement-personne`).
 
 ## 3. Mécanismes clés (pointeurs code)
 

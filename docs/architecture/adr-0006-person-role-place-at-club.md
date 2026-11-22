@@ -27,7 +27,8 @@ ses copies. L'adresse et la position d'un gymnase, et le barème de trajet entre
 4. **Une fiche sans rôle reste au club jusqu'à la purge de sa saison** (décision fondateur 2026-11-21, option A) :
    supprimer un coach garde sa fiche, « Charger » une version d'avant la ramène dessus. `UnusedIdentitySweeper`
    la balaie après la remise à zéro et la purge de rétention ; l'effacement du club emporte toutes les fiches
-   (`#[Family(Level::CLUB)]`).
+   (`#[Family(Level::CLUB)]`). L'effacement d'UNE personne à sa demande se fait
+   par la commande de support `app:people:erase` (`PersonEraser`, `docs/security/rgpd.md` § La fiche de personne).
 5. **La saison suivante réutilise la fiche** : seul le rôle se recopie. Une correction d'identité vaut dans
    toutes les saisons, passées comprises (lecture seule directe inchangée).
 6. **Même patron pour le lieu** (adresse, position d'un gymnase) et le temps de trajet entre deux lieux :
