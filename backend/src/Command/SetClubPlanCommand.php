@@ -14,6 +14,7 @@ use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Style\SymfonyStyle;
+use Symfony\Component\Uid\Uuid;
 
 /**
  * SA4 / P1-3 — le geste « Offre » du support : écrit la ligne d'abonnement de UNE saison du club
@@ -58,6 +59,11 @@ final class SetClubPlanCommand extends Command
         $planCode = $input->getOption('plan');
         if (!\is_string($clubId) || '' === $clubId) {
             $io->error('--club <id> is required.');
+
+            return Command::FAILURE;
+        }
+        if (!Uuid::isValid($clubId)) {
+            $io->error(\sprintf('--club must be a club id (UUID), got "%s".', $clubId));
 
             return Command::FAILURE;
         }

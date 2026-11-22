@@ -8,6 +8,7 @@ use App\Service\ClubSubscriptionWriter;
 use App\Tests\Support\SubscribesClub;
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\DriverManager;
+use LogicException;
 
 /**
  * L'écrivain de l'abonnement en environnement de test : la règle est celle de
@@ -27,7 +28,8 @@ use Doctrine\DBAL\DriverManager;
  * l'écrivain réel, inchangé.
  *
  * Le rôle applicatif ne reçoit jamais `INSERT` ni `UPDATE` sur `club_subscription` : la fonction
- * n'existe que dans la base de test, aucune migration ne la crée, et
+ * n'existe que dans la base de test — le double refuse de la créer (`LogicException`) dans une base
+ * dont le nom ne finit pas par `_test` —, aucune migration ne la crée, et
  * `RlsIsolationTest::testTheApplicationRoleCanNeitherCreateNorChangeASubscriptionLineEvenOnItsOwnClub`
  * prouve le refus d'une écriture directe. Décor des tests : {@see SubscribesClub}.
  */
@@ -75,7 +77,8 @@ final readonly class SameTransactionClubSubscriptionWriter extends ClubSubscript
 
     /**
      * Crée la fonction d'écriture une fois par processus, par une connexion propriétaire NEUVE (hors
-     * DAMA, en autocommit) : elle doit être visible de la transaction de test en cours.
+     * DAMA, en autocommit) : elle doit être visible de la transaction de test en cours. Refus si la
+     * base n'est pas une base de test (`current_database()` sans suffixe `_test`).
      *
      * @param array<string, mixed> $ownerParams
      */
@@ -92,6 +95,10 @@ final readonly class SameTransactionClubSubscriptionWriter extends ClubSubscript
         );
         $owner = DriverManager::getConnection(array_intersect_key($ownerParams, array_flip(['driver', 'host', 'port', 'user', 'password', 'dbname', 'charset', 'serverVersion'])));
         try {
+            $database = (string) $owner->fetchOne('SELECT current_database()');
+            if (!str_ends_with($database, '_test')) {
+                throw new LogicException(\sprintf('Refus de créer la fonction %s : la base « %s » n\'est pas une base de test (suffixe « _test » attendu).', self::FUNCTION_NAME, $database));
+            }
             $owner->executeStatement(\sprintf(
                 'CREATE OR REPLACE FUNCTION public.%s(p_club_id uuid, p_season_year integer, p_plan_code text, p_origin text) RETURNS integer'
                 . ' LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp'

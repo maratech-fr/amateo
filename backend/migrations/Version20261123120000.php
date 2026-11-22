@@ -20,7 +20,9 @@ use Doctrine\Migrations\AbstractMigration;
  * commencé : sa première saison). Un club en Découverte, ou dont l'offre n'a pas d'année réglée,
  * n'a pas de ligne. Seul écart : un club en Découverte marqué « saison suivante payée » pouvait
  * basculer, il ne le peut plus. La date de règlement des lignes converties est celle de la
- * conversion. La migration ne s'arrête sur aucune donnée : elle écrit son décompte.
+ * conversion. La migration ne s'arrête sur aucune donnée : elle écrit son décompte, dont la liste
+ * (identifiants seulement) des clubs réglés au-delà de la saison suivante, qui perdent ces saisons
+ * et se rejouent à la main.
  *
  * Accès : RLS du patron Version20261122140000 (ENABLE/FORCE, `tenant_isolation`, `admin_all`,
  * `readonly_tenant` + GRANT SELECT au rôle de lecture). Un seul écrivain au sens de la base : le
@@ -38,6 +40,14 @@ final class Version20261123120000 extends AbstractMigration
 
     /** L'année de saison d'une date (pivot du 15 juillet), miroir SQL de `SeasonResolver::seasonYear`. */
     private const string SEASON_YEAR_OF_START = '(EXTRACT(YEAR FROM s.start_date)::int - CASE WHEN to_char(s.start_date, \'MM-DD\') < \'07-15\' THEN 1 ELSE 0 END)';
+
+    /** Les clubs à convertir (état d'avant la migration) : offre stockée non Découverte, année réglée posée. */
+    private const string PAYING_CLUBS = <<<'SQL'
+        SELECT c.id AS club_id, c.plan_id, c.paid_season_year
+        FROM club c
+        JOIN subscription_plan p ON p.id = c.plan_id
+        WHERE p.code <> 'decouverte' AND c.paid_season_year IS NOT NULL
+        SQL;
 
     public function getDescription(): string
     {
@@ -107,15 +117,11 @@ final class Version20261123120000 extends AbstractMigration
     private function convertedYears(): string
     {
         $seasonYear = self::SEASON_YEAR_OF_START;
-        $clockYear = '(EXTRACT(YEAR FROM CURRENT_DATE)::int - CASE WHEN to_char(CURRENT_DATE, \'MM-DD\') < \'07-15\' THEN 1 ELSE 0 END)';
+        $paying = self::PAYING_CLUBS;
+        $nextYear = $this->nextYearOfPayingClub();
 
         return <<<SQL
-            WITH paying AS (
-                SELECT c.id AS club_id, c.plan_id, c.paid_season_year
-                FROM club c
-                JOIN subscription_plan p ON p.id = c.plan_id
-                WHERE p.code <> 'decouverte' AND c.paid_season_year IS NOT NULL
-            )
+            WITH paying AS ($paying)
             SELECT paying.club_id, $seasonYear AS season_year, paying.plan_id
             FROM paying
             JOIN season s ON s.club_id = paying.club_id
@@ -123,25 +129,55 @@ final class Version20261123120000 extends AbstractMigration
             UNION
             SELECT paying.club_id, next_year.season_year, paying.plan_id
             FROM paying
-            CROSS JOIN LATERAL (
-                SELECT GREATEST(
-                    $clockYear,
-                    COALESCE((
-                        SELECT MIN($seasonYear) FROM season s
-                        WHERE s.club_id = paying.club_id
-                        HAVING bool_and(s.start_date > CURRENT_DATE)
-                    ), $clockYear)
-                ) + 1 AS season_year
-            ) next_year
+            CROSS JOIN LATERAL ($nextYear) next_year
             WHERE next_year.season_year <= paying.paid_season_year
             SQL;
     }
 
-    /** Le décompte, écrit avant la conversion : clubs convertis, lignes, clubs en Découverte marqués réglés pour une saison à venir. */
+    /**
+     * Les clubs payants dont l'année réglée dépasse l'année « suivante » convertie : la conversion
+     * ne garde que la saison en cours et la suivante, ils perdent une saison réglée (à rejouer à la
+     * main par le support). Identifiants de club seulement.
+     */
+    private function clubsLosingAPaidSeason(): string
+    {
+        $paying = self::PAYING_CLUBS;
+        $nextYear = $this->nextYearOfPayingClub();
+
+        return <<<SQL
+            WITH paying AS ($paying)
+            SELECT paying.club_id
+            FROM paying
+            CROSS JOIN LATERAL ($nextYear) next_year
+            WHERE paying.paid_season_year > next_year.season_year
+            ORDER BY paying.club_id
+            SQL;
+    }
+
+    /** L'année « suivante » d'un club de `paying` : celle que la bascule créera. */
+    private function nextYearOfPayingClub(): string
+    {
+        $seasonYear = self::SEASON_YEAR_OF_START;
+        $clockYear = '(EXTRACT(YEAR FROM CURRENT_DATE)::int - CASE WHEN to_char(CURRENT_DATE, \'MM-DD\') < \'07-15\' THEN 1 ELSE 0 END)';
+
+        return <<<SQL
+            SELECT GREATEST(
+                $clockYear,
+                COALESCE((
+                    SELECT MIN($seasonYear) FROM season s
+                    WHERE s.club_id = paying.club_id
+                    HAVING bool_and(s.start_date > CURRENT_DATE)
+                ), $clockYear)
+            ) + 1 AS season_year
+            SQL;
+    }
+
+    /** Le décompte, écrit avant la conversion : clubs convertis, lignes, clubs qui perdent une saison réglée, clubs en Découverte marqués réglés pour une saison à venir. */
     private function writeTally(): void
     {
         $clubs = (int) $this->connection->fetchOne(\sprintf('SELECT COUNT(DISTINCT club_id) FROM (%s) years', $this->convertedYears()));
         $lines = (int) $this->connection->fetchOne(\sprintf('SELECT COUNT(*) FROM (%s) years', $this->convertedYears()));
+        $losing = array_map(strval(...), $this->connection->fetchFirstColumn($this->clubsLosingAPaidSeason()));
         $seasonYear = self::SEASON_YEAR_OF_START;
         $decouverteAhead = (int) $this->connection->fetchOne(<<<SQL
             SELECT COUNT(*)
@@ -153,5 +189,10 @@ final class Version20261123120000 extends AbstractMigration
             SQL);
 
         $this->write(\sprintf('Abonnement par saison : %d club(s) converti(s), %d ligne(s) ; %d club(s) en Découverte marqué(s) réglé(s) pour une saison à venir (sans ligne).', $clubs, $lines, $decouverteAhead));
+        $this->write(\sprintf(
+            'Abonnement par saison : %d club(s) réglé(s) au-delà de la saison suivante, saisons perdues à rejouer à la main (app:clubs:set-plan)%s',
+            \count($losing),
+            [] === $losing ? '.' : ' : ' . implode(', ', $losing) . '.',
+        ));
     }
 }
