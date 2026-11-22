@@ -13,6 +13,7 @@ use App\Mail\EmailTemplateRenderer;
 use App\Repository\ClubMailboxMessageRepository;
 use App\Service\PlacementRunEmailBuilder;
 use App\Service\TenantConnectionContext;
+use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -46,6 +47,7 @@ use Symfony\Component\Uid\Uuid;
 #[Group('integration')]
 final class ClockedClubMailInterceptTest extends WebTestCase
 {
+    use CreatesPeopleAndPlacesTrait;
     use TenantGucTrait;
 
     private const CLOCK = '2026-12-24';
@@ -101,6 +103,37 @@ final class ClockedClubMailInterceptTest extends WebTestCase
 
         self::assertSame([], $this->queuedEmails());
         self::assertSame(1, $this->mailbox->countForClub($clubId), 'un e-mail métier vers un coach du club est capté');
+    }
+
+    /**
+     * Lot 3, PR 2b — l'adresse d'un coach vit sur sa fiche de personne au club : un e-mail métier adressé
+     * à cette adresse, depuis un club à horloge simulée, reste dans la boîte, jamais envoyé.
+     */
+    public function testBusinessMailToTheAddressOnACoachsPersonRecordIsBoxed(): void
+    {
+        [$clubId] = $this->seedClockedClub();
+        $address = $this->coachWithPersonEmail($clubId, 'fiche-' . bin2hex(random_bytes(3)) . '@club.fr');
+
+        $this->sendBusinessAs($clubId, $address, 'Vos disponibilités', 'Merci de répondre.');
+
+        self::assertSame([], $this->queuedEmails(), 'l\'adresse de la fiche est une adresse du club : rien ne part');
+        self::assertSame(1, $this->mailbox->countForClub($clubId), 'l\'e-mail est rangé dans la boîte du club');
+    }
+
+    /**
+     * L'adresse de la fiche d'une personne d'un AUTRE club n'est pas une adresse du club à horloge : la
+     * lecture des adresses est bornée par le club. L'e-mail part réel, rien n'entre dans la boîte.
+     */
+    public function testBusinessMailToThePersonRecordOfAnotherClubIsNeverBoxed(): void
+    {
+        [$clockedId] = $this->seedClockedClub();
+        [$otherId] = $this->seedClockedClub(withClock: false);
+        $foreign = $this->coachWithPersonEmail($otherId, 'ailleurs-' . bin2hex(random_bytes(3)) . '@autre-club.fr');
+
+        $this->sendBusinessAs($clockedId, $foreign, 'Vos disponibilités', 'Merci de répondre.');
+
+        self::assertCount(1, $this->queuedEmails(), 'une adresse d\'un autre club n\'est jamais captée par la boîte');
+        self::assertSame(0, $this->mailbox->countForClub($clockedId), 'rien en boîte');
     }
 
     public function testBusinessMailPersonalTokenLinkIsMaskedInTheBox(): void
@@ -279,6 +312,19 @@ final class ClockedClubMailInterceptTest extends WebTestCase
         $this->em->flush();
 
         return [$club->getId(), $member->getEmail(), $coachEmail, $member];
+    }
+
+    /** Un coach du club dont l'adresse est portée par sa fiche de personne ; rend l'adresse. */
+    private function coachWithPersonEmail(string $clubId, string $email): string
+    {
+        $this->scopeGucToClub($clubId);
+        $coach = $this->newCoach($clubId, Uuid::v4()->toRfc4122(), 'Fiche', 'Adresse');
+        $this->em->flush();
+        $this->personOf($coach)->setEmail($email);
+        $this->em->flush();
+        $this->guc->clear();
+
+        return $email;
     }
 
     private function addMember(string $clubId, string $email): User

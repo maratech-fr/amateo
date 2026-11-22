@@ -263,6 +263,22 @@ final class DeletionCascadeContext extends BaseContext
         }
     }
 
+    /** Décision 1 du lot 3 (A) : supprimer le coach garde la fiche de la personne, sans rôle, jusqu'à la purge de la saison. */
+    #[Then('/^la fiche de « (?P<coach>[^»]+) » existe toujours dans le club$/u')]
+    public function laFicheExisteToujours(string $coach): void
+    {
+        if (1 !== $this->count('person', \sprintf('club_id=\'%s\' AND first_name=\'%s\'', $this->smallClubId, $coach))) {
+            throw new RuntimeException(\sprintf('la fiche de %s a disparu avec son rôle de coach', $coach));
+        }
+    }
+
+    /** La remise à zéro balaie les fiches que plus aucun rôle ne pointe. */
+    #[Then('le club n\'a plus aucune fiche de personne')]
+    public function leClubNAPlusAucuneFiche(): void
+    {
+        $this->assertNone(['fiche de personne' => ['person', \sprintf('club_id=\'%s\'', $this->smallClubId)]], 'le club remis à zéro');
+    }
+
     #[When('je remets la saison à zéro')]
     public function jeRemetsLaSaisonAZero(): void
     {

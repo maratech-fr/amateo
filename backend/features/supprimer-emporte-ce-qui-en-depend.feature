@@ -19,6 +19,8 @@ Fonctionnalité: Supprimer emporte ce qui en dépend, et rien d'autre
     Quand je supprime le coach « Camille »
     Alors « Camille » n'a plus ni lien d'équipe, ni indisponibilité
     Et l'équipe « U15M1 » garde ses séances, sans coach nommé
+    # La fiche de la personne reste au club jusqu'à la purge de la saison : « Charger » une version d'avant la ramène.
+    Et la fiche de « Camille » existe toujours dans le club
     Et la suppression du « Gymnase Nord » annonce 1 contrainte qui nomme ce gymnase
     Quand je supprime le gymnase « Gymnase Nord »
     Alors le « Gymnase Nord » n'a plus ni créneau, ni séance, ni règle
@@ -26,4 +28,5 @@ Fonctionnalité: Supprimer emporte ce qui en dépend, et rien d'autre
     Et le « Gymnase Sud » garde ses créneaux et ses séances
     Quand je remets la saison à zéro
     Alors la saison n'a plus ni équipe, ni coach, ni gymnase, ni créneau, ni règle, ni réservation, ni séance
+    Et le club n'a plus aucune fiche de personne
     Et le club existe toujours, avec sa saison, et j'en suis toujours le gestionnaire

@@ -146,6 +146,7 @@ message d'avant à l'octet près) ·
 `CrossStack/PayloadVersionMatchesContractVersionTest` (la version que le payload s'attribue == `engine/CONTRACT_VERSION`, égalité STRICTE — la dérive avait vécu deux bumps en silence) ·
 `CrossStack/ValidateAssignmentsContractSchemaTest` (contrat du verdict `/validate-assignments`) ·
 `Security/RlsIsolationTest` (RLS en base) ·
+`Security/PersonPlaceTenantIsolationTest` (axe *tenant isolation*, lot conception 3 PR 2b — la fiche d'une personne appartient à son club : sous la RLS de la connexion de l'application, un autre club ne la lit pas, ne la modifie pas, ne l'efface pas, et la porte de lecture de l'identité ne rend aucune adresse d'un autre club ; un coach ne pointe que la fiche d'une personne de son club, par une clé étrangère COMPOSÉE `(person_id, club_id) → person (id, club_id)` ON DELETE RESTRICT [une clé simple laisserait passer la fiche d'un autre club : une vérification de clé étrangère ignore la RLS] ; au plus un rôle coach par personne et par saison. Les lieux y entrent à la PR 4) ·
 `Integration/Mail/ClockedClubMailInterceptTest` (P4-16 : un club à horloge SIMULÉE n'envoie JAMAIS de
 vrai e-mail — à l'enfilage, l'e-mail d'un club à horloge active est rangé dans sa boîte et l'événement
 rejeté [aucun `SendEmailMessage` enfilé], un club SANS horloge enfile normalement [rien en boîte], et
