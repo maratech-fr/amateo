@@ -136,6 +136,50 @@ final class PersonConversionMigrationTest extends KernelTestCase
         });
     }
 
+    /**
+     * La ligne d'un coach qui n'existe plus sort de la photo AVEC ses liens d'équipe et de joueur et
+     * ses règles de portée coach : sinon « Charger » cette version réinsérerait des liens vers un coach
+     * absent. Jumeau, cité : `Service/StructureRestorerTest::testLoadingNeverReinsertsLinksOrRulesOfACoachAbsentFromThePhoto`
+     * (le filet du chargement, pour toute photo) ; ici la photo nettoyée à la source.
+     */
+    public function testPhotosDropTheLinksAndRulesOfACoachThatNoLongerExists(): void
+    {
+        $this->inRolledBackTransaction(function (): void {
+            $this->restorePreConversionSchema();
+            [$clubA, , $season1] = $this->clubsAndSeasons();
+            $paul = $this->coach($clubA, $season1, 'Paul', 'Martin', null, null, 'MALE');
+            $ghost = $this->uuid();
+            $team = $this->uuid();
+            $paulLink = ['id' => $this->uuid(), 'clubId' => $clubA, 'seasonId' => $season1, 'teamId' => $team, 'coachId' => $paul, 'role' => 'MAIN'];
+            $teamRule = ['id' => $this->uuid(), 'clubId' => $clubA, 'seasonId' => $season1, 'scope' => 'TEAM', 'scopeTargetId' => $team];
+            $photo = $this->photo($clubA, $season1, [
+                'Coach' => [
+                    $this->photoCoach($paul, $clubA, $season1, 'Paul', 'Martin', 'paul@club.fr', '0601020304', 'MALE'),
+                    $this->photoCoach($ghost, $clubA, $season1, 'Fantôme', 'Parti', 'parti@club.fr', '0700000000', 'FEMALE'),
+                ],
+                'TeamCoach' => [
+                    $paulLink,
+                    ['id' => $this->uuid(), 'clubId' => $clubA, 'seasonId' => $season1, 'teamId' => $team, 'coachId' => $ghost, 'role' => 'MAIN'],
+                ],
+                'CoachPlayerMembership' => [
+                    ['id' => $this->uuid(), 'clubId' => $clubA, 'seasonId' => $season1, 'teamId' => $team, 'coachId' => $ghost, 'isActive' => true],
+                ],
+                'Constraint' => [
+                    $teamRule,
+                    ['id' => $this->uuid(), 'clubId' => $clubA, 'seasonId' => $season1, 'scope' => 'COACH', 'scopeTargetId' => $ghost],
+                ],
+            ]);
+
+            $this->play();
+
+            $data = json_decode((string) $this->admin->fetchOne('SELECT data FROM schedule_structure_snapshot WHERE id = ?', [$photo]), true, 512, \JSON_THROW_ON_ERROR);
+            self::assertIsArray($data);
+            self::assertEquals([$paulLink], $data['TeamCoach'], 'le lien d\'équipe du coach disparu sort de la photo, celui de Paul reste');
+            self::assertEquals([], $data['CoachPlayerMembership'], 'le lien de joueur du coach disparu sort de la photo');
+            self::assertEquals([$teamRule], $data['Constraint'], 'la règle de portée coach du coach disparu sort, la règle d\'équipe reste');
+        });
+    }
+
     public function testAPersonMissingAfterConversionStopsTheMigration(): void
     {
         $this->inRolledBackTransaction(function (): void {
