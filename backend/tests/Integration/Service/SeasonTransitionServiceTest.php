@@ -20,8 +20,6 @@ use App\Entity\Team;
 use App\Entity\TeamCoach;
 use App\Entity\TeamLink;
 use App\Entity\TeamMatchHabit;
-use App\Entity\TeamTag;
-use App\Entity\TeamTagAssignment;
 use App\Entity\Venue;
 use App\Entity\VenueMatchWindow;
 use App\Entity\VenueTrainingSlot;
@@ -183,12 +181,6 @@ final class SeasonTransitionServiceTest extends KernelTestCase
         self::assertSame('2025-09-15', $newLink?->getCreatedAt()->format('Y-m-d'));
         $newMembership = $this->em->getRepository(CoachPlayerMembership::class)->findOneBy(['seasonId' => $target->getId()]);
         self::assertSame($newTeams[1]->getId(), $newMembership?->getTeamId());
-
-        // Team tags are NOT copied by the transition — they are computed at read
-        // time from each copied team's category, gender and level, and a stored
-        // row (no writer since lot conception 1, PR 3) never crosses to N+1.
-        $customInTarget = $this->em->getRepository(TeamTagAssignment::class)->findOneBy(['seasonId' => $target->getId(), 'tagId' => $refs['tag']->getId()]);
-        self::assertNull($customInTarget);
     }
 
     /** D12 : la convention mairie se renouvelle, un fait daté non : une ouverture n'existe pas la saison suivante. */
@@ -709,21 +701,6 @@ final class SeasonTransitionServiceTest extends KernelTestCase
         $membership->setIsActive(true);
         $this->em->persist($membership);
 
-        $tag = new TeamTag;
-        $tag->setClubId($club->getId());
-        $tag->setName('JEUNE-' . substr($uid, -4));
-        $tag->setIsSystem(false);
-        $this->em->persist($tag);
-        $this->em->flush();
-
-        $assignment = new TeamTagAssignment;
-        // BCK-11 : tenant + RLS, une ligne sans club_id est refusée en base.
-        $assignment->setClubId($teamA->getClubId());
-        $assignment->setSeasonId($season->getId());
-        $assignment->setTeamId($teamA->getId());
-        $assignment->setTagId($tag->getId());
-        $this->em->persist($assignment);
-
         $coachConstraint = new Constraint;
         $coachConstraint->setClubId($club->getId());
         $coachConstraint->setSeasonId($season->getId());
@@ -789,7 +766,6 @@ final class SeasonTransitionServiceTest extends KernelTestCase
             'venueB' => $venueB,
             'teamA' => $teamA,
             'coachConstraint' => $coachConstraint,
-            'tag' => $tag,
         ]];
     }
 

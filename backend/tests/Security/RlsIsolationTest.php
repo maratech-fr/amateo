@@ -27,6 +27,14 @@ final class RlsIsolationTest extends KernelTestCase
     private const CLUB_B = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
 
     /**
+     * Une équipe semée en SQL brut : `team` est l'étalon des tests de ce fichier (son prédicat
+     * `tenant_isolation` est le canon, et ses lignes portent les preuves de comportement). Saison et
+     * catégorie sont des guids nus, sans clé étrangère : un guid neuf suffit.
+     */
+    private const string INSERT_TEAM_SQL = 'INSERT INTO team (id, version, created_at, updated_at, club_id, season_id, sport_category_id, priority_tier_id, name, sessions_per_week, is_active)'
+        . ' VALUES (gen_random_uuid(), 1, now(), now(), ?, gen_random_uuid(), gen_random_uuid(), 1, ?, 1, true)';
+
+    /**
      * SQL prédicat identifiant les tables portant une colonne club_id, PARTAGÉ par
      * les deux tests de portée RLS (SEC-12 #4 : une seule source d'énumération,
      * sinon un correctif appliqué d'un côté laisse l'autre aveugle). Suppose les
@@ -139,15 +147,15 @@ final class RlsIsolationTest extends KernelTestCase
         //    comportementaux voisins (testGucScoped* / testCrossTenant* / testInsert*),
         //    jamais par celui-ci.
 
-        // D1 : le canon est LU À L'EXÉCUTION depuis team_tag.tenant_isolation, jamais
+        // D1 : le canon est LU À L'EXÉCUTION depuis team.tenant_isolation, jamais
         // une chaîne en dur — PostgreSQL reformate les prédicats (casts ::text,
         // parenthèses ajoutées), donc pg_policies.qual ne ressemble pas à ce
-        // qu'écrivent les migrations. team_tag est l'étalon : son isolation est déjà
+        // qu'écrivent les migrations. team est l'étalon : son isolation est déjà
         // prouvée par les tests comportementaux de ce fichier.
         $canon = $this->connection->fetchOne(
-            'SELECT qual FROM pg_policies WHERE schemaname = \'public\' AND tablename = \'team_tag\' AND policyname = \'tenant_isolation\'',
+            'SELECT qual FROM pg_policies WHERE schemaname = \'public\' AND tablename = \'team\' AND policyname = \'tenant_isolation\'',
         );
-        self::assertIsString($canon, 'canon policy team_tag.tenant_isolation must exist');
+        self::assertIsString($canon, 'canon policy team.tenant_isolation must exist');
         self::assertNotSame('', $canon, 'canon predicate must not be empty — sinon le test se compare à du néant');
         self::assertNotSame('true', $canon, 'canon predicate must not be USING (true) — sinon le test ne prouve plus rien');
         // Le canon doit RÉELLEMENT scoper sur le GUC. Sans ça il pourrait dégénérer
@@ -360,7 +368,7 @@ final class RlsIsolationTest extends KernelTestCase
 
         $this->guc->setClubId(self::CLUB_A);
         /** @var list<string> $clubIds */
-        $clubIds = $this->connection->fetchFirstColumn('SELECT DISTINCT club_id FROM team_tag');
+        $clubIds = $this->connection->fetchFirstColumn('SELECT DISTINCT club_id FROM team');
 
         self::assertSame([self::CLUB_A], $clubIds, 'club A must only ever see its own rows');
     }
@@ -370,7 +378,7 @@ final class RlsIsolationTest extends KernelTestCase
         $this->seedTwoClubsWithOneTeamEach();
 
         $this->guc->clear();
-        self::assertSame(0, (int) $this->connection->fetchOne('SELECT count(*) FROM team_tag'), 'no GUC → fail-closed, zero rows, no error');
+        self::assertSame(0, (int) $this->connection->fetchOne('SELECT count(*) FROM team'), 'no GUC → fail-closed, zero rows, no error');
     }
 
     public function testClubMailboxMessageIsTenantIsolated(): void
@@ -378,7 +386,7 @@ final class RlsIsolationTest extends KernelTestCase
         // P4-16 — la boîte aux lettres d'un club à horloge simulée est une table tenant comme
         // les autres : sous le GUC d'un AUTRE club elle rend 0 ligne, et un UPDATE/DELETE
         // cross-club n'en touche aucune. Prouvé en SQL brut sur la connexion runtime (aucune
-        // couche applicative) — le même durcissement DB que team_tag.
+        // couche applicative) — le même durcissement DB que team.
         $this->seedTwoClubsWithOneTeamEach();
 
         $this->guc->setClubId(self::CLUB_A);
@@ -405,11 +413,11 @@ final class RlsIsolationTest extends KernelTestCase
 
         $this->guc->setClubId(self::CLUB_A);
         $updated = $this->connection->executeStatement(
-            'UPDATE team_tag SET name = ? WHERE club_id = ?',
+            'UPDATE team SET name = ? WHERE club_id = ?',
             ['pwned', self::CLUB_B],
         );
         $deleted = $this->connection->executeStatement(
-            'DELETE FROM team_tag WHERE club_id = ?',
+            'DELETE FROM team WHERE club_id = ?',
             [self::CLUB_B],
         );
 
@@ -544,7 +552,7 @@ final class RlsIsolationTest extends KernelTestCase
                     [$clubId, 'Admin Probe ' . $tag, 'admin-probe-' . strtolower($tag) . '-' . substr(md5($clubId), 0, 6), 'Europe/Paris', 'fr'],
                 );
                 $admin->executeStatement(
-                    'INSERT INTO team_tag (id, version, created_at, updated_at, club_id, name, is_system) VALUES (gen_random_uuid(), 1, now(), now(), ?, ?, false)',
+                    self::INSERT_TEAM_SQL,
                     [$clubId, 'Team ' . $tag],
                 );
             }
@@ -557,21 +565,21 @@ final class RlsIsolationTest extends KernelTestCase
             );
             self::assertSame(
                 2,
-                (int) $admin->fetchOne('SELECT count(*) FROM team_tag WHERE club_id IN (?, ?)', [$clubA, $clubB]),
+                (int) $admin->fetchOne('SELECT count(*) FROM team WHERE club_id IN (?, ?)', [$clubA, $clubB]),
                 'porte admin : le rôle propriétaire non-superuser voit les DEUX clubs sous FORCE RLS',
             );
             $admin->executeStatement(
-                'INSERT INTO team_tag (id, version, created_at, updated_at, club_id, name, is_system) VALUES (gen_random_uuid(), 1, now(), now(), ?, ?, false)',
+                self::INSERT_TEAM_SQL,
                 [$clubB, 'admin-cross-insert'],
             );
             self::assertSame(
                 1,
-                $admin->executeStatement('UPDATE team_tag SET name = ? WHERE club_id = ?', ['admin-cross-update', $clubA]),
+                $admin->executeStatement('UPDATE team SET name = ? WHERE club_id = ?', ['admin-cross-update', $clubA]),
                 'porte admin : UPDATE cross-club passe',
             );
             self::assertSame(
                 1,
-                $admin->executeStatement('DELETE FROM team_tag WHERE club_id = ? AND name = ?', [$clubB, 'admin-cross-insert']),
+                $admin->executeStatement('DELETE FROM team WHERE club_id = ? AND name = ?', [$clubB, 'admin-cross-insert']),
                 'porte admin : DELETE cross-club passe',
             );
 
@@ -579,7 +587,7 @@ final class RlsIsolationTest extends KernelTestCase
             $admin->executeStatement('SET LOCAL ROLE amateo_app');
             $admin->executeStatement('SELECT set_config(?, ?, true)', ['app.club_id', $clubA]);
             /** @var list<string> $visible */
-            $visible = $admin->fetchFirstColumn('SELECT DISTINCT club_id FROM team_tag WHERE club_id IN (?, ?)', [$clubA, $clubB]);
+            $visible = $admin->fetchFirstColumn('SELECT DISTINCT club_id FROM team WHERE club_id IN (?, ?)', [$clubA, $clubB]);
             self::assertSame([$clubA], $visible, 'amateo_app posé sur A ne voit que A — la porte admin n\'a pas ouvert amateo_app');
 
             // INSERT cross-club rejeté par WITH CHECK — contenu dans un savepoint pour
@@ -588,7 +596,7 @@ final class RlsIsolationTest extends KernelTestCase
             $admin->beginTransaction();
             try {
                 $admin->executeStatement(
-                    'INSERT INTO team_tag (id, version, created_at, updated_at, club_id, name, is_system) VALUES (gen_random_uuid(), 1, now(), now(), ?, ?, false)',
+                    self::INSERT_TEAM_SQL,
                     [$clubB, 'app-user-smuggle'],
                 );
                 $admin->commit();
@@ -675,10 +683,10 @@ final class RlsIsolationTest extends KernelTestCase
 
     private function insertTeam(string $clubId, string $name): void
     {
-        // team_tag is the leanest club-scoped table (no FK chain) — the policy
+        // team is a club-scoped table without foreign key (season, category: bare guids) — the policy
         // template is identical on every tenant table.
         $this->connection->executeStatement(
-            'INSERT INTO team_tag (id, version, created_at, updated_at, club_id, name, is_system) VALUES (gen_random_uuid(), 1, now(), now(), ?, ?, false)',
+            self::INSERT_TEAM_SQL,
             [$clubId, $name],
         );
     }

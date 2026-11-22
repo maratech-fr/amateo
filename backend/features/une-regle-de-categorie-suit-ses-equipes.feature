@@ -11,7 +11,6 @@ Fonctionnalité: Une règle de catégorie suit ses équipes
     Et une règle de groupe : les U13 ne commencent pas avant 19:30
     Quand l'équipe « U15 A » passe en catégorie U13
     Alors « U15 A » porte l'étiquette U13 et plus l'étiquette U15
-    Et aucune étiquette n'est enregistrée pour le club
     Quand je génère le planning de saison
     Alors la génération aboutit
     Et aucune séance des trois équipes U13 ne commence avant 19:30

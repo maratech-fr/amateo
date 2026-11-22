@@ -38,6 +38,10 @@ final class ReadOnlyRoleTest extends KernelTestCase
     private const string CLUB_A = '11111111-1111-4111-8111-aaaaaaaaaaaa';
     private const string CLUB_B = '22222222-2222-4222-8222-bbbbbbbbbbbb';
 
+    /** Une équipe semée en SQL brut (étalon `team`, comme `RlsIsolationTest`) ; saison et catégorie sont des guids nus. */
+    private const string INSERT_TEAM_SQL = 'INSERT INTO team (id, version, created_at, updated_at, club_id, season_id, sport_category_id, priority_tier_id, name, sessions_per_week, is_active)'
+        . ' VALUES (gen_random_uuid(), 1, now(), now(), ?, gen_random_uuid(), gen_random_uuid(), 1, ?, 1, true)';
+
     /**
      * Même énumération des tables club_id que RlsIsolationTest / la migration :
      * table ordinaire 'r' + partitionnée 'p', colonne club_id vivante.
@@ -132,12 +136,12 @@ final class ReadOnlyRoleTest extends KernelTestCase
         );
         self::assertNotEmpty($rows, 'expected policies on club_id tables');
 
-        // Canon lu à l'exécution (team_tag.tenant_isolation), comme RlsIsolationTest :
+        // Canon lu à l'exécution (team.tenant_isolation), comme RlsIsolationTest :
         // la policy readonly_tenant DOIT porter ce même prédicat.
         $canon = $this->connection->fetchOne(
-            'SELECT qual FROM pg_policies WHERE schemaname = \'public\' AND tablename = \'team_tag\' AND policyname = \'tenant_isolation\'',
+            'SELECT qual FROM pg_policies WHERE schemaname = \'public\' AND tablename = \'team\' AND policyname = \'tenant_isolation\'',
         );
-        self::assertIsString($canon, 'canon policy team_tag.tenant_isolation must exist');
+        self::assertIsString($canon, 'canon policy team.tenant_isolation must exist');
         self::assertStringContainsString('current_setting', $canon, 'canon must reference the GUC');
 
         $clubIdTables = $this->clubIdTables();
@@ -284,14 +288,14 @@ final class ReadOnlyRoleTest extends KernelTestCase
         $admin->beginTransaction();
         try {
             // Semis comme amateo_owner (superuser bypass en dev/test) : deux clubs,
-            // un team_tag chacun. club n'a pas de club_id → pas de RLS.
+            // une équipe chacun. club n'a pas de club_id → pas de RLS.
             foreach ([self::CLUB_A => 'RA', self::CLUB_B => 'RB'] as $clubId => $tag) {
                 $admin->executeStatement(
                     'INSERT INTO club (id, version, created_at, updated_at, name, slug, timezone, locale, onboarding_completed, generation_count_season) VALUES (?, 1, now(), now(), ?, ?, ?, ?, true, 0)',
                     [$clubId, 'RO Probe ' . $tag, 'ro-probe-' . strtolower($tag) . '-' . substr(md5($clubId), 0, 6), 'Europe/Paris', 'fr'],
                 );
                 $admin->executeStatement(
-                    'INSERT INTO team_tag (id, version, created_at, updated_at, club_id, name, is_system) VALUES (gen_random_uuid(), 1, now(), now(), ?, ?, false)',
+                    self::INSERT_TEAM_SQL,
                     [$clubId, 'Team ' . $tag],
                 );
             }
@@ -306,23 +310,23 @@ final class ReadOnlyRoleTest extends KernelTestCase
             // Contexte club A → ne voit QUE A (aide de scoping).
             $admin->executeStatement('SELECT set_config(?, ?, true)', ['app.club_id', self::CLUB_A]);
             /** @var list<string> $visible */
-            $visible = $admin->fetchFirstColumn('SELECT DISTINCT club_id FROM team_tag WHERE club_id IN (?, ?)', [self::CLUB_A, self::CLUB_B]);
+            $visible = $admin->fetchFirstColumn('SELECT DISTINCT club_id FROM team WHERE club_id IN (?, ?)', [self::CLUB_A, self::CLUB_B]);
             self::assertSame([self::CLUB_A], $visible, 'lecture seule posée sur A ne voit que A');
 
             // Aucun contexte (chaîne vide, comme clear()) → fail-closed, 0 ligne, pas d'erreur.
             $admin->executeStatement('SELECT set_config(?, ?, true)', ['app.club_id', '']);
             self::assertSame(
                 0,
-                (int) $admin->fetchOne('SELECT count(*) FROM team_tag WHERE club_id IN (?, ?)', [self::CLUB_A, self::CLUB_B]),
+                (int) $admin->fetchOne('SELECT count(*) FROM team WHERE club_id IN (?, ?)', [self::CLUB_A, self::CLUB_B]),
                 'sans contexte club, la lecture seule ne voit 0 ligne (fail-closed via NULLIF)',
             );
 
             // Écritures REFUSÉES au niveau privilège (aucun GRANT DML), chacune isolée
             // dans un savepoint pour ne pas empoisonner la transaction externe.
             $admin->executeStatement('SELECT set_config(?, ?, true)', ['app.club_id', self::CLUB_A]);
-            self::assertTrue($this->writeIsRejected($admin, 'INSERT INTO team_tag (id, version, created_at, updated_at, club_id, name, is_system) VALUES (gen_random_uuid(), 1, now(), now(), ?, ?, false)', [self::CLUB_A, 'ro-insert']), 'INSERT doit être refusé à amateo_read (lecture seule)');
-            self::assertTrue($this->writeIsRejected($admin, 'UPDATE team_tag SET name = ? WHERE club_id = ?', ['ro-update', self::CLUB_A]), 'UPDATE doit être refusé à amateo_read (lecture seule)');
-            self::assertTrue($this->writeIsRejected($admin, 'DELETE FROM team_tag WHERE club_id = ?', [self::CLUB_A]), 'DELETE doit être refusé à amateo_read (lecture seule)');
+            self::assertTrue($this->writeIsRejected($admin, self::INSERT_TEAM_SQL, [self::CLUB_A, 'ro-insert']), 'INSERT doit être refusé à amateo_read (lecture seule)');
+            self::assertTrue($this->writeIsRejected($admin, 'UPDATE team SET name = ? WHERE club_id = ?', ['ro-update', self::CLUB_A]), 'UPDATE doit être refusé à amateo_read (lecture seule)');
+            self::assertTrue($this->writeIsRejected($admin, 'DELETE FROM team WHERE club_id = ?', [self::CLUB_A]), 'DELETE doit être refusé à amateo_read (lecture seule)');
         } finally {
             $admin->executeStatement('RESET ROLE');
             $admin->rollBack();
