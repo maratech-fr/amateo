@@ -1,7 +1,7 @@
 # Lot 8 · L'abonnement : plan d'exécution
 
 **Statut : version finale (v2 sur 4, validée par `smith`). Plan validé par le fondateur le 2026-11-22 avec ses six
-décisions (§12). PR 1 livrée sur `lot/conception` (non déployée) ; PR 2 et PR 3 à faire.** Voie **Full**. Branche cible : `lot/conception` ; une PR
+décisions (§12). PR 1 et PR 2 livrées sur `lot/conception` (non déployées) ; PR 3 à faire.** Voie **Full**. Branche cible : `lot/conception` ; une PR
 vers elle ne joue que « Lot Gate » (`docs/ops/ci-runner.md` § Branche de lot) : ni Behat, ni e2e, ni `backend-tests`. Avant
 chaque merge : `make -C backend tests-complete` et les features/specs de la zone sur la stack d'épreuve. Exécutant :
 `neo`, après les rouges de `tank`. Pas d'`oracle` (décision du fondateur, [`lot-conception-decoupage.md`](lot-conception-decoupage.md) §5.3).
@@ -137,6 +137,14 @@ Ordre : PR 1, PR 2, PR 3. La scission est réelle : la PR 1 change où vit l'abo
 - Un trait `tests/Support/SubscribesClub.php` pose une ligne par l'écrivain ; `neo` y bascule mécaniquement les fichiers de C29.
 
 ### PR 2 · « Une offre payante, trois paliers » (`neo`, backend et écrans)
+
+**Livrée sur `lot/conception`, avec ces écarts au plan** :
+- Défaut FERMÉ du plafond : une ligne d'une offre à paliers dont le palier est absent ou n'est pas de cette offre se lit Découverte (`PlanEntitlements::readLine`), jamais « sans plafond ».
+- Le rôle applicatif perd `INSERT`, `UPDATE`, `DELETE` et `TRUNCATE` sur `subscription_plan` ET `subscription_plan_tier` (la garde de `RlsIsolationTest` vaut pour toute table de plateforme) ; `priority_tier`, dont aucune migration ne sème les rangs, y reste une exclusion nommée.
+- Intégrité en base : clé composite `(tier_id, plan_id)` et déclencheur « offre à paliers ⇒ palier » sur `club_subscription`.
+- Des migrations antérieures appelaient `throwIrreversibleMigration(` (inexistante) au lieu de `throwIrreversibleMigrationException(` : corrigées. `migrations/` est hors du périmètre de PHPStan ; `MigrationsCallOnlyExistingMethodsTest` en tient lieu.
+- Limite : pour un club de démonstration à date simulée, la console calcule « aujourd'hui » sur l'horloge réelle, donc `nextSubscription` peut différer de l'année que `set-plan --paid-season next` écrit (`specs/courantes/superadmin-auth.md`).
+- Le double de test porte le palier (fonction à cinq arguments, l'ancienne supprimée : `docs/testing/testing-strategy.md`).
 
 **Change**
 - Migration : la ligne Essentiel devient l'offre payante unique ; trois paliers créés, lisibles par le rôle de lecture ; les lignes Club et Grand club passent à cette offre avec leur palier ; les deux offres partent ; `max_teams` quitte l'offre.
