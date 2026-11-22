@@ -174,6 +174,8 @@ final class OfferTiersMigrationTest extends KernelTestCase
      */
     private function restorePreMigrationState(): void
     {
+        $this->admin->executeStatement('DROP TRIGGER IF EXISTS trg_club_subscription_tier_required ON club_subscription');
+        $this->admin->executeStatement('DROP FUNCTION IF EXISTS club_subscription_tier_required()');
         $this->admin->executeStatement('DROP TABLE IF EXISTS subscription_plan_tier CASCADE');
         if ([] !== $this->columns('club_subscription', ['tier_id'])) {
             $this->admin->executeStatement('ALTER TABLE club_subscription DROP COLUMN tier_id');

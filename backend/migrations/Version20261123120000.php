@@ -105,7 +105,7 @@ final class Version20261123120000 extends AbstractMigration
 
     public function down(Schema $schema): void
     {
-        $this->throwIrreversibleMigration(
+        $this->throwIrreversibleMigrationException(
             'Les deux champs du club ne se recréent pas depuis les lignes par saison sans perte (une saison réglée n\'en couvre plus d\'autre). Retour arrière : restaurer la sauvegarde d\'avant migration.',
         );
     }

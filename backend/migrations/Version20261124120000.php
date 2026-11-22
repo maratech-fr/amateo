@@ -19,8 +19,11 @@ use Doctrine\Migrations\AbstractMigration;
  * Club et Grand club partent ; le plafond quitte l'offre (`subscription_plan.max_teams`).
  *
  * Accès : la table des paliers n'a pas de `club_id` (référentiel de plateforme, pas de RLS) ;
- * lisible par le rôle de lecture, à côté de `subscription_plan`. Le rôle applicatif reçoit les
- * droits par défaut de Version20260703120000, comme `subscription_plan`.
+ * lisible par le rôle de lecture, à côté de `subscription_plan`. Le rôle applicatif LIT les deux
+ * catalogues et n'en écrit aucun (INSERT, UPDATE, DELETE, TRUNCATE retirés).
+ *
+ * Intégrité, en base : le palier d'une ligne appartient à son offre (clé composite) et une offre
+ * qui porte des paliers exige un palier (déclencheur).
  *
  * Part dans la mise en production unique du lot conception, site fermé. Irréversible.
  */
@@ -75,14 +78,46 @@ final class Version20261124120000 extends AbstractMigration
         $this->addSql('DELETE FROM subscription_plan WHERE id IN (:club, :grandClub)', ['club' => self::CLUB_PLAN, 'grandClub' => self::GRAND_CLUB_PLAN]);
         $this->addSql('ALTER TABLE subscription_plan DROP max_teams');
 
+        // Le palier d'une ligne appartient à SON offre (clé composite : vérifiée à l'insertion, à la
+        // modification du palier ET au changement d'offre) ; une offre qui porte des paliers exige un
+        // palier (déclencheur : une contrainte CHECK ne lit pas une autre table). Posés après la
+        // conversion, qui les respecte.
+        $this->addSql('ALTER TABLE subscription_plan_tier ADD CONSTRAINT uniq_subscription_plan_tier_of_plan UNIQUE (id, plan_id)');
+        $this->addSql('ALTER TABLE club_subscription ADD CONSTRAINT fk_club_subscription_tier_of_plan FOREIGN KEY (tier_id, plan_id) REFERENCES subscription_plan_tier (id, plan_id) ON DELETE RESTRICT');
+        $this->addSql(<<<'SQL'
+            CREATE FUNCTION club_subscription_tier_required() RETURNS trigger
+            LANGUAGE plpgsql SET search_path = pg_catalog, public, pg_temp
+            AS $fn$
+            BEGIN
+                IF NEW.tier_id IS NULL AND EXISTS (SELECT 1 FROM subscription_plan_tier WHERE plan_id = NEW.plan_id) THEN
+                    RAISE EXCEPTION 'club_subscription: the offer % has tiers, the line needs one of them', NEW.plan_id USING ERRCODE = 'check_violation';
+                END IF;
+                RETURN NEW;
+            END
+            $fn$
+            SQL);
+        $this->addSql('CREATE TRIGGER trg_club_subscription_tier_required BEFORE INSERT OR UPDATE OF plan_id, tier_id ON club_subscription FOR EACH ROW EXECUTE FUNCTION club_subscription_tier_required()');
+
         if ((bool) $this->connection->fetchOne('SELECT 1 FROM pg_roles WHERE rolname = \'amateo_read\'')) {
             $this->addSql('GRANT SELECT ON public.subscription_plan_tier TO amateo_read');
+        }
+
+        // Les deux catalogues (offres, paliers) sont lus par tous les clubs : le rôle applicatif les
+        // LIT seulement. L'`ALTER DEFAULT PRIVILEGES` de Version20260703120000 lui confère l'écriture,
+        // un GRANT restreint ne la retire pas (patron du REVOKE de Version20261123120000). Seule la
+        // connexion propriétaire (migrations, support) les écrit.
+        $appRole = $this->connection->fetchOne('SELECT rolname FROM pg_roles WHERE rolname IN (\'app_user\', \'amateo_app\') ORDER BY (rolname = \'amateo_app\') DESC LIMIT 1');
+        if (\is_string($appRole)) {
+            foreach (['subscription_plan', 'subscription_plan_tier'] as $table) {
+                $this->addSql(\sprintf('REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON public.%s FROM %s', $table, $appRole));
+                $this->addSql(\sprintf('GRANT SELECT ON public.%s TO %s', $table, $appRole));
+            }
         }
     }
 
     public function down(Schema $schema): void
     {
-        $this->throwIrreversibleMigration(
+        $this->throwIrreversibleMigrationException(
             'Les offres Club et Grand club ne se recréent pas depuis les paliers sans réécrire les lignes. Retour arrière : restaurer la sauvegarde d\'avant migration.',
         );
     }

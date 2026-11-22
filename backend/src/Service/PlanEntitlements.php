@@ -213,23 +213,41 @@ final readonly class PlanEntitlements
      */
     private function effective(Club $club, Season $season, ?SubscriptionPlan $decouverte): array
     {
-        $line = $this->subscriptions->forSeasonYear($club->getId(), SeasonResolver::seasonYear($season->getStartDate()));
-        $plan = $line instanceof ClubSubscription ? $this->plans->find($line->getPlanId()) : null;
-        if (!$plan instanceof SubscriptionPlan || self::DECOUVERTE_CODE === $this->effectiveCodeOf($line)) {
-            return [$decouverte, null];
-        }
-        $tierId = $line->getTierId();
-
-        return [$plan, null === $tierId ? null : $this->tiers->find($tierId)];
+        return $this->readLine($this->subscriptions->forSeasonYear($club->getId(), SeasonResolver::seasonYear($season->getStartDate())))
+            ?? [$decouverte, null];
     }
 
     private function effectiveCodeOf(?ClubSubscription $line): string
     {
+        $read = $this->readLine($line);
+
+        return null === $read ? self::DECOUVERTE_CODE : $read[0]->getCode();
+    }
+
+    /**
+     * La lecture d'une ligne : son offre et son palier, ou null quand elle se lit Découverte — pas de
+     * ligne, offre introuvable, ligne Découverte ou non réglée, et (défaut FERMÉ) une offre à paliers
+     * dont la ligne n'a pas de palier lisible de CETTE offre : sans palier réel, jamais « sans plafond ».
+     * Une offre sans palier (Bêta) se lit sans palier.
+     *
+     * @return array{0: SubscriptionPlan, 1: ?SubscriptionPlanTier}|null
+     */
+    private function readLine(?ClubSubscription $line): ?array
+    {
         if (!$line instanceof ClubSubscription) {
-            return self::DECOUVERTE_CODE;
+            return null;
+        }
+        $plan = $this->plans->find($line->getPlanId());
+        if (!$plan instanceof SubscriptionPlan || self::DECOUVERTE_CODE === self::effectivePlanCode($plan->getCode(), $line->isPaid())) {
+            return null;
+        }
+        $tierId = $line->getTierId();
+        $tier = null === $tierId ? null : $this->tiers->find($tierId);
+        if ($tier instanceof SubscriptionPlanTier && $tier->getPlanId() === $plan->getId()) {
+            return [$plan, $tier];
         }
 
-        return self::effectivePlanCode($this->plans->find($line->getPlanId())?->getCode(), $line->isPaid());
+        return 0 === $this->tiers->count(['planId' => $plan->getId()]) ? [$plan, null] : null;
     }
 
     /** 0 en base = illimité → null côté lecture. */
