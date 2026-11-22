@@ -80,15 +80,13 @@ final class SeasonTransitionApiTest extends WebTestCase
         self::assertResponseStatusCodeSame(409);
         self::assertStringContainsString('n\'est pas réglée', (string) $this->responseData()['error']);
 
-        // Le geste support (SA4) : « Marquer la saison suivante payée » ouvre le gate.
-        $tester = new CommandTester(new Application(self::$kernel)->find('app:clubs:mark-next-season-paid'));
-        self::assertSame(Command::SUCCESS, $tester->execute(['--club' => $club->getId()]));
+        // Le geste support « Offre », saison suivante (le geste « Marquer la saison suivante payée »
+        // est retiré, décision du 2026-11-22) : la ligne réglée de la saison suivante ouvre le gate.
+        $tester = new CommandTester(new Application(self::$kernel)->find('app:clubs:set-plan'));
+        self::assertSame(Command::SUCCESS, $tester->execute(['--club' => $club->getId(), '--plan' => 'essentiel', '--paid-season' => 'next']), $tester->getDisplay());
 
         $this->client->request('POST', '/api/seasons/' . $season->getId() . '/transition', [], [], $auth);
         self::assertResponseStatusCodeSame(201);
-
-        // Idempotent, et le marqueur ne recule jamais.
-        self::assertSame(Command::SUCCESS, $tester->execute(['--club' => $club->getId()]));
     }
 
     public function testRerunConflictsWithTheExistingSuccessorId(): void

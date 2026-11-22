@@ -20,6 +20,7 @@ use App\Service\ManagementAccessGuard;
 use App\Service\PlanEntitlements;
 use App\Service\SeasonResolver;
 use App\Tests\ChoosesPlanVersionTrait;
+use App\Tests\Support\SubscribesClub;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -68,6 +69,7 @@ use Symfony\Contracts\EventDispatcher\EventDispatcherInterface;
 final class PlanEntitlementsTest extends WebTestCase
 {
     use ChoosesPlanVersionTrait;
+    use SubscribesClub;
     use TenantGucTrait;
 
     /** Un id de planning bidon suffit : le refus se joue AVANT le contrôleur (comme ClubQuotaTest). */
@@ -210,6 +212,26 @@ final class PlanEntitlementsTest extends WebTestCase
         $this->consumeOneCredit($neighbour['club']->getId(), $neighbour['season']->getId());
         self::assertSame(1, $this->creditsOf($neighbour['club']->getId()));
         self::assertSame(10, $this->creditsOf($exhausted['club']->getId()), 'le compteur d\'un club ne bouge pas quand un AUTRE club consomme');
+    }
+
+    /**
+     * Isolation (lot 8, PR 1) : la ligne d'abonnement d'un club ne donne rien à un autre, même pour la
+     * même année de saison. Témoin : la même ligne lève bien la bride du club qu'elle vise — sinon le
+     * refus du voisin ne prouverait rien.
+     */
+    public function testOneClubsSubscriptionLineGivesNothingToAnotherClub(): void
+    {
+        $entitlements = self::getContainer()->get(PlanEntitlements::class);
+        \assert($entitlements instanceof PlanEntitlements);
+        $subscribed = $this->seedClub(credits: 10);
+        $other = $this->seedClub(credits: 10);
+        $this->subscribeClub($subscribed['club']->getId(), SeasonResolver::seasonYear($subscribed['season']->getStartDate()), 'beta');
+
+        self::assertFalse($entitlements->outputBudget($subscribed['club'], $subscribed['season'])['restricted'], 'témoin : la ligne Bêta du club lève sa bride');
+        self::assertNotSame(403, $this->post($subscribed['user'], '/api/schedules/' . self::DUMMY_SCHEDULE_ID . '/generate'), 'témoin : le club réglé n\'est pas refusé business');
+
+        self::assertTrue($entitlements->outputBudget($other['club'], $other['season'])['restricted'], 'la ligne d\'un AUTRE club, même saison, ne lève pas la bride');
+        self::assertSame(403, $this->post($other['user'], '/api/schedules/' . self::DUMMY_SCHEDULE_ID . '/generate'), 'un club sans ligne reste en Découverte, crédits épuisés : refusé');
     }
 
     // ─────────── Placement week-end par week-end en mode restreint (P4-240 ④) ───────────

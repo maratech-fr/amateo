@@ -16,14 +16,17 @@ use RuntimeException;
  * Promesse : la saison suivante se prépare à partir du 1er mai, date tenue par le SERVEUR —
  * avant, un appel direct est refusé (409, message exact) et aucune saison ne naît ; un club
  * de démonstration suit la même date à son horloge simulée ; un club qui n'a rien préparé
- * avant le 15 juillet attend le 1er mai suivant ; `/api/me` annonce la date d'ouverture.
+ * avant le 15 juillet attend le 1er mai suivant ; `/api/me` annonce la date d'ouverture ; un club
+ * réel ne prépare que la saison qu'il a réglée d'une offre payante (une ligne Découverte, même
+ * marquée réglée, ne l'ouvre jamais ; le texte du refus nomme la saison due).
  *
  * Un décor JETABLE par scénario ({@see SmallClubFixtureTrait::registerSmallClub}, inscription
  * seule : la bascule ne lit que la saison), jamais le club de démonstration partagé. Le club
- * réel sort de Découverte par le geste support réel `app:clubs:set-plan --plan=essentiel
- * --paid-season=next` (patron {@see SeasonTransitionContext}) ; la saison réglée d'un club en
- * retard (deux saisons plus loin, ce que la commande ne sait pas dire) et le drapeau démo sont
- * des POINTAGES SQL. La date : horloge de dev globale pour un club réel, horloge simulée du
+ * réel sort de Découverte par le geste support réel `app:clubs:set-plan --plan=… --paid-season=…`
+ * (patron {@see SeasonTransitionContext}) ; la ligne d'un club en retard (deux saisons plus loin,
+ * ce que la commande ne sait pas dire à la date réelle), la ligne Découverte marquée réglée
+ * (qu'aucun geste n'écrit plus) et le drapeau démo sont des POINTAGES SQL sur la connexion
+ * propriétaire. La date : horloge de dev globale pour un club réel, horloge simulée du
  * club (`POST /api/club/clock`) pour un club de démonstration. Abus : une saison créée par
  * `POST /api/seasons` (deux dates, ni date d'ouverture ni paiement) est refusée, la route n'existe plus.
  *
@@ -61,9 +64,54 @@ final class SeasonPreparationDateContext extends BaseContext
         }
         $this->runConsole(['php', 'bin/console', 'app:clubs:set-plan', '--club=' . $this->smallClubId, '--plan=essentiel', '--paid-season=next']);
         if (str_starts_with($kind, 'réel en retard')) {
-            $paid = SeasonResolver::seasonYear(new DateTimeImmutable('today')) + 2;
-            $this->dbalExec(\sprintf('UPDATE club SET paid_season_year = %d WHERE id=\'%s\'', $paid, $this->smallClubId), admin: true);
+            $this->pointSubscriptionLine(SeasonResolver::seasonYear(new DateTimeImmutable('today')) + 2, 'essentiel');
         }
+    }
+
+    #[Given('/^un petit club réel dont (?P<paid>la saison suivante est réglée en bêta|seule la saison en cours est réglée en bêta|la saison suivante est posée en Découverte, marquée réglée|rien n\'est réglé)$/u')]
+    public function unPetitClubReelDont(string $paid): void
+    {
+        $this->registerSmallClub();
+        $this->currentSeasonId = $this->dbalScalar(\sprintf('SELECT id AS behatval FROM season WHERE club_id=\'%s\'', $this->smallClubId), admin: true);
+        if ('' === $this->currentSeasonId) {
+            throw new RuntimeException('le petit club n\'a pas de saison en cours');
+        }
+        $this->releaseDevClock($this->smallClubToken);
+
+        if ('la saison suivante est réglée en bêta' === $paid) {
+            $this->runConsole(['php', 'bin/console', 'app:clubs:set-plan', '--club=' . $this->smallClubId, '--plan=beta', '--paid-season=next']);
+        } elseif ('seule la saison en cours est réglée en bêta' === $paid) {
+            $this->runConsole(['php', 'bin/console', 'app:clubs:set-plan', '--club=' . $this->smallClubId, '--plan=beta', '--paid-season=current']);
+        } elseif ('la saison suivante est posée en Découverte, marquée réglée' === $paid) {
+            // Le cas qu'ouvrait « Marquer la saison suivante payée » sur un club en Découverte :
+            // aucun geste ne l'écrit plus, la règle de la bascule doit le refuser quand même.
+            $this->pointSubscriptionLine(SeasonResolver::seasonYear(new DateTimeImmutable('today')) + 1, 'decouverte');
+        }
+    }
+
+    /** Le texte du refus est celui d'avant la ligne par saison : il nomme la saison due. */
+    #[Then('c\'est refusé : la saison suivante n\'est pas réglée')]
+    public function cEstRefuseLaSaisonSuivanteNEstPasReglee(): void
+    {
+        $target = SeasonResolver::seasonYear(new DateTimeImmutable('today')) + 1;
+        $expected = \sprintf('La saison %d-%d n\'est pas réglée — la bascule est réservée aux saisons payées.', $target, $target + 1);
+        $served = $this->prepared['json']['error'] ?? '';
+        if (409 !== $this->prepared['status'] || $served !== $expected) {
+            throw new RuntimeException(\sprintf('préparer la saison suivante a répondu %d « %s » (attendu 409 « %s »)', $this->prepared['status'], \is_string($served) ? $served : json_encode($this->prepared['json'], \JSON_UNESCAPED_UNICODE), $expected));
+        }
+        $this->leClubNATouJoursQuUneSaison();
+    }
+
+    /** Pointage : une ligne d'abonnement réglée, écrite par la connexion propriétaire (seule à pouvoir l'écrire). */
+    private function pointSubscriptionLine(int $seasonYear, string $planCode): void
+    {
+        $this->dbalExec(\sprintf(
+            'INSERT INTO club_subscription (id, club_id, season_year, plan_id, paid_at, origin, created_at, updated_at)'
+            . ' SELECT gen_random_uuid(), \'%s\', %d, id, now(), \'support\', now(), now() FROM subscription_plan WHERE code=\'%s\'',
+            $this->smallClubId,
+            $seasonYear,
+            $planCode,
+        ), admin: true);
     }
 
     #[Given('/^nous sommes le (?P<day>.+)$/u')]

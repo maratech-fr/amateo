@@ -39,6 +39,7 @@ use App\Tests\Behat\SeasonTransitionContext;
 use App\Tests\Behat\SeasonWorkLoopContext;
 use App\Tests\Behat\SmallClubSmokeContext;
 use App\Tests\Behat\SoclePlansContext;
+use App\Tests\Behat\SubscriptionBySeasonContext;
 use App\Tests\Behat\TeamsImportContext;
 use App\Tests\Behat\TenantIsolationContext;
 use App\Tests\Behat\TrainingBlockContext;
@@ -280,6 +281,11 @@ return (new Config)
                 new Suite('credits-decouverte')
                     ->withPaths('%paths.base%/features/en-decouverte-une-sortie-coute-un-credit.feature')
                     ->withContexts(DiscoveryCreditContext::class),
+            )
+            ->withSuite(
+                new Suite('abonnement-par-saison')
+                    ->withPaths('%paths.base%/features/l-abonnement-se-regle-par-saison.feature')
+                    ->withContexts(SubscriptionBySeasonContext::class),
             )
             ->withSuite(
                 new Suite('credit-a-l-obtention')
