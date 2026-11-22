@@ -8,6 +8,7 @@ use App\Tests\Security\PlanEntitlementsTest;
 use App\Tests\Security\SubscriptionPlanAttributionTest;
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Schema\Schema;
+use Doctrine\Migrations\Exception\IrreversibleMigration;
 use Doctrine\Persistence\ManagerRegistry;
 use DoctrineMigrations\Version20261124120000;
 use PHPUnit\Framework\Attributes\Group;
@@ -128,6 +129,22 @@ final class OfferTiersMigrationTest extends KernelTestCase
             );
             self::assertSame([], $this->columns('subscription_plan', ['max_teams']), 'le plafond quitte l\'offre');
         });
+    }
+
+    /**
+     * La fusion ne se défait pas : `down()` refuse de jouer, sans planifier une seule requête (les
+     * offres Club et Grand club ne se recréent pas depuis les paliers ; le retour arrière est la
+     * sauvegarde d'avant migration).
+     */
+    public function testTheFusionIsIrreversible(): void
+    {
+        $migration = new Version20261124120000($this->admin, new NullLogger);
+        try {
+            $migration->down(new Schema);
+            self::fail('down() doit refuser : la fusion des offres est irréversible');
+        } catch (IrreversibleMigration) {
+        }
+        self::assertSame([], $migration->getSql(), 'le refus ne planifie aucune requête');
     }
 
     protected function setUp(): void
