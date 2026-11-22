@@ -18,6 +18,7 @@ use App\Entity\VenueTravelTime;
 use App\Enum\SeasonStatus;
 use App\Enum\TeamCoachRole;
 use App\Service\ScheduleConstraintBuilder;
+use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -59,6 +60,7 @@ use Symfony\Contracts\HttpClient\Exception\TransportExceptionInterface;
 #[Group('contract')]
 final class CoachLateToleranceSemanticsGateTest extends KernelTestCase
 {
+    use CreatesPeopleAndPlacesTrait;
     use TenantGucTrait;
 
     private const string ENGINE_URL = 'http://engine:8000/generate';
@@ -270,9 +272,7 @@ final class CoachLateToleranceSemanticsGateTest extends KernelTestCase
 
     private function coach(Club $club, Season $season, string $firstName, bool $vehicled): Coach
     {
-        $coach = (new Coach)
-            ->setClubId($club->getId())->setSeasonId($season->getId())
-            ->setFirstName($firstName)->setLastName('Test')->setIsActive(true)->setIsVehicled($vehicled);
+        $coach = $this->newCoach($club->getId(), $season->getId(), $firstName, 'Test')->setIsActive(true)->setIsVehicled($vehicled);
         $this->em->persist($coach);
 
         return $coach;

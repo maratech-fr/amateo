@@ -264,11 +264,7 @@ final class PurgeSeasonsCommandTest extends KernelTestCase
         $this->em->flush();
         $this->oldCampaignId = $campaign->getId();
 
-        $coach = new Coach;
-        $coach->setClubId($club->getId());
-        $coach->setSeasonId($old->getId());
-        $coach->setFirstName('Vieux');
-        $coach->setLastName('Coach');
+        $coach = $this->newCoach($club->getId(), $old->getId(), 'Vieux', 'Coach');
         $this->em->persist($coach);
         $this->em->flush();
 
@@ -291,11 +287,7 @@ final class PurgeSeasonsCommandTest extends KernelTestCase
     private function receiptCoachId(Club $club, Season $season): string
     {
         $this->scopeGucToClub($club->getId());
-        $coach = new Coach;
-        $coach->setClubId($club->getId());
-        $coach->setSeasonId($season->getId());
-        $coach->setFirstName('Reçu');
-        $coach->setLastName('Coach');
+        $coach = $this->newCoach($club->getId(), $season->getId(), 'Reçu', 'Coach');
         $this->em->persist($coach);
         $this->em->flush();
 

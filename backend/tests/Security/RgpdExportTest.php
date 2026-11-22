@@ -20,6 +20,7 @@ use App\Enum\SeasonStatus;
 use App\Service\SchedulePlanProvisioner;
 use App\Service\StructureSnapshotter;
 use App\Storage\FeedbackScreenshotStorage;
+use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\ProvisionsPeriodPlanTrait;
 use App\Tests\TenantGucTrait;
 use App\Tests\VerifiesRegistration;
@@ -42,6 +43,7 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 #[Group('integration')]
 final class RgpdExportTest extends WebTestCase
 {
+    use CreatesPeopleAndPlacesTrait;
     use ProvisionsPeriodPlanTrait;
     use TenantGucTrait;
     use VerifiesRegistration;
@@ -101,7 +103,7 @@ final class RgpdExportTest extends WebTestCase
         $this->scopeGucToClub($clubId);
         $em = $this->em();
         $team = (new Team)->setClubId($clubId)->setSeasonId($seasonId)->setSportCategoryId('11111111-1111-4111-8111-111111111111')->setPriorityTierId(1)->setName('U15');
-        $coach = (new Coach)->setClubId($clubId)->setSeasonId($seasonId)->setFirstName('Parti')->setLastName('Test');
+        $coach = $this->newCoach($clubId, $seasonId, 'Parti', 'Test');
         $entry = (new CalendarEntry)->setClubId($clubId)->setSeasonId($seasonId)->setKind(CalendarEntryKind::PERIOD)
             ->setPeriodType(CalendarEntryPeriodType::HOLIDAY)->setTitle('Pâques')
             ->setStartDate(new DateTimeImmutable('2026-04-06'))->setEndDate(new DateTimeImmutable('2026-04-19'));
@@ -264,7 +266,7 @@ final class RgpdExportTest extends WebTestCase
         $em->flush();
         $snapshotter = self::getContainer()->get(StructureSnapshotter::class);
         $snapshotter->store($version, $snapshotter->serialize($clubId, $seasonId));
-        $karim = (new Coach)->setClubId($clubId)->setSeasonId($seasonId)->setFirstName('Karim')->setLastName('Test');
+        $karim = $this->newCoach($clubId, $seasonId, 'Karim', 'Test');
         $em->persist($karim);
         $em->flush();
         $ids = [$token, $clubId, $seasonId, $version->getId(), $karim->getId()];
@@ -420,11 +422,7 @@ final class RgpdExportTest extends WebTestCase
     {
         $this->scopeGucToClub($clubId);
         $em = $this->em();
-        $coach = new Coach;
-        $coach->setClubId($clubId);
-        $coach->setSeasonId($seasonId);
-        $coach->setFirstName($name);
-        $coach->setLastName('Test');
+        $coach = $this->newCoach($clubId, $seasonId, $name, 'Test');
         $em->persist($coach);
         $em->flush();
         $em->clear();

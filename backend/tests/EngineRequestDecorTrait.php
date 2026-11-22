@@ -15,6 +15,7 @@ use App\Entity\Competition;
 use App\Entity\Constraint;
 use App\Entity\Fixture;
 use App\Entity\MatchConstraint;
+use App\Entity\Person;
 use App\Entity\Reservation;
 use App\Entity\Schedule;
 use App\Entity\SchedulePlan;
@@ -193,10 +194,12 @@ trait EngineRequestDecorTrait
                 ->setSessionsPerWeek(2)->setIsActive(true));
         }
 
-        $em->persist((new Coach)->setId(self::ER_COACH_A)->setClubId(self::ER_CLUB)->setSeasonId(self::ER_SEASON)
-            ->setFirstName('Alix')->setLastName('Entraîneur'));
-        $em->persist((new Coach)->setId(self::ER_COACH_B)->setClubId(self::ER_CLUB)->setSeasonId(self::ER_SEASON)
-            ->setFirstName('Bao')->setLastName('Entraîneur'));
+        $alix = (new Person)->setClubId(self::ER_CLUB)->setFirstName('Alix')->setLastName('Entraîneur');
+        $bao = (new Person)->setClubId(self::ER_CLUB)->setFirstName('Bao')->setLastName('Entraîneur');
+        $em->persist($alix);
+        $em->persist($bao);
+        $em->persist(new Coach($alix)->setId(self::ER_COACH_A)->setClubId(self::ER_CLUB)->setSeasonId(self::ER_SEASON));
+        $em->persist(new Coach($bao)->setId(self::ER_COACH_B)->setClubId(self::ER_CLUB)->setSeasonId(self::ER_SEASON));
         $em->flush();
 
         foreach ([[1, self::ER_TEAM_U13, self::ER_COACH_A], [2, self::ER_TEAM_U15, self::ER_COACH_A], [3, self::ER_TEAM_SM1, self::ER_COACH_B]] as [$n, $teamId, $coachId]) {

@@ -26,6 +26,7 @@ use App\Enum\SeasonStatus;
 use App\Enum\VenuePeriodMode;
 use App\Service\SchedulePlanProvisioner;
 use App\Tests\ChoosesPlanVersionTrait;
+use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -47,6 +48,7 @@ use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
 final class ValidateScheduleTest extends WebTestCase
 {
     use ChoosesPlanVersionTrait;
+    use CreatesPeopleAndPlacesTrait;
     use TenantGucTrait;
 
     private EntityManagerInterface $em;
@@ -538,7 +540,7 @@ final class ValidateScheduleTest extends WebTestCase
      */
     private function seedCollecte(Club $club, Season $season, string $motherId, int $wishCount): array
     {
-        $coach = (new Coach)->setClubId($club->getId())->setSeasonId($season->getId())->setFirstName('Maxime')->setLastName('Durand');
+        $coach = $this->newCoach($club->getId(), $season->getId(), 'Maxime', 'Durand');
         $this->em->persist($coach);
 
         $campaign = (new CoachWishCampaign)->setClubId($club->getId())->setSeasonId($season->getId())

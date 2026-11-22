@@ -13,6 +13,7 @@ use App\Entity\ConflictResolution;
 use App\Entity\FbiCorrection;
 use App\Entity\Fixture;
 use App\Entity\OpponentDirectoryEntry;
+use App\Entity\Person;
 use App\Entity\Season;
 use App\Entity\TeamCoach;
 use App\Entity\User;
@@ -25,6 +26,7 @@ use App\Enum\OpponentLocationPrecision;
 use App\Enum\SeasonStatus;
 use App\Enum\TeamCoachRole;
 use App\Service\SeasonResolver;
+use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
@@ -43,6 +45,7 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 #[Group('integration')]
 final class FixtureConflictsApiTest extends WebTestCase
 {
+    use CreatesPeopleAndPlacesTrait;
     use TenantGucTrait;
 
     private KernelBrowser $client;
@@ -615,11 +618,7 @@ final class FixtureConflictsApiTest extends WebTestCase
         $season->setTransitionData([]);
         $this->em->persist($season);
 
-        $coach = new Coach;
-        $coach->setClubId($club->getId());
-        $coach->setSeasonId($season->getId());
-        $coach->setFirstName('Coach');
-        $coach->setLastName($suffix);
+        $coach = $this->newCoach($club->getId(), $season->getId(), 'Coach', $suffix);
         $this->em->persist($coach);
         $this->em->flush();
 
@@ -667,11 +666,9 @@ final class FixtureConflictsApiTest extends WebTestCase
         $seasonId = $this->em->getRepository(Season::class)->findOneBy(['clubId' => $club->getId()])?->getId();
         self::assertNotNull($seasonId);
 
-        $coach = new Coach;
-        $coach->setClubId($club->getId());
-        $coach->setSeasonId($seasonId);
-        $coach->setFirstName('Second');
-        $coach->setLastName('Coach');
+        $person = (new Person)->setClubId($club->getId())->setFirstName('Second')->setLastName('Coach');
+        $this->em->persist($person);
+        $coach = new Coach($person)->setClubId($club->getId())->setSeasonId($seasonId);
         $this->em->persist($coach);
         $this->em->flush();
 
@@ -750,11 +747,7 @@ final class FixtureConflictsApiTest extends WebTestCase
         $season->setTransitionData([]);
         $this->em->persist($season);
 
-        $coach = new Coach;
-        $coach->setClubId($club->getId());
-        $coach->setSeasonId($season->getId());
-        $coach->setFirstName('Coach');
-        $coach->setLastName($suffix);
+        $coach = $this->newCoach($club->getId(), $season->getId(), 'Coach', $suffix);
         $this->em->persist($coach);
         $this->em->flush();
 

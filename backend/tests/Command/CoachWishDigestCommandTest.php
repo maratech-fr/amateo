@@ -25,6 +25,8 @@ use App\Service\ClubDay;
 use App\Service\CoachWishMailBuilder;
 use App\Service\CoachWishPerimeter;
 use App\Service\TenantConnectionContext;
+use App\Structure\PersonDirectory;
+use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -46,6 +48,7 @@ use Symfony\Component\Mime\RawMessage;
 #[Group('integration')]
 final class CoachWishDigestCommandTest extends KernelTestCase
 {
+    use CreatesPeopleAndPlacesTrait;
     use TenantGucTrait;
 
     private const TODAY = '2026-02-01';
@@ -190,7 +193,7 @@ final class CoachWishDigestCommandTest extends KernelTestCase
         $this->token($campaign, $club, 'Maxime', respondedAt: new DateTimeImmutable('2026-01-31 18:00:00'));
 
         // Un coach avec token mais SANS TeamCoach dans le périmètre → hors périmètre.
-        $ghost = (new Coach)->setClubId($club->getId())->setSeasonId($season->getId())->setFirstName('Fantome')->setLastName('X');
+        $ghost = $this->newCoach($club->getId(), $season->getId(), 'Fantome', 'X');
         $this->em->persist($ghost);
         $this->em->flush();
         $this->em->persist((new CoachWishToken)->setCampaignId($campaign->getId())->setCoachId($ghost->getId())->setClubId($club->getId())->markResponded(new DateTimeImmutable('2026-01-31 19:00:00')));
@@ -259,8 +262,7 @@ final class CoachWishDigestCommandTest extends KernelTestCase
 
     private function token(CoachWishCampaign $campaign, Club $club, string $firstName, ?DateTimeImmutable $respondedAt): CoachWishToken
     {
-        $coach = (new Coach)->setClubId($club->getId())->setSeasonId($campaign->getSeasonId())
-            ->setFirstName($firstName)->setLastName('Durand');
+        $coach = $this->newCoach($club->getId(), $campaign->getSeasonId(), $firstName, 'Durand');
         $this->em->persist($coach);
         $this->em->flush();
 
@@ -303,6 +305,7 @@ final class CoachWishDigestCommandTest extends KernelTestCase
             $container->get(CoachWishPerimeter::class),
             $container->get(ClockInterface::class),
             $container->get(ClubDay::class),
+            $container->get(PersonDirectory::class),
         );
 
         $tester = new CommandTester($command);

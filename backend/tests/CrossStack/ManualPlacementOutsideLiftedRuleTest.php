@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace App\Tests\CrossStack;
 
 use App\Entity\Club;
-use App\Entity\Coach;
 use App\Entity\Constraint;
 use App\Entity\PriorityTier;
 use App\Entity\Reservation;
@@ -28,6 +27,7 @@ use App\Enum\SeasonStatus;
 use App\Enum\TeamCoachRole;
 use App\Service\MoveSlotService;
 use App\Tests\ChoosesPlanVersionTrait;
+use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -48,6 +48,7 @@ use Throwable;
 final class ManualPlacementOutsideLiftedRuleTest extends KernelTestCase
 {
     use ChoosesPlanVersionTrait;
+    use CreatesPeopleAndPlacesTrait;
     use TenantGucTrait;
 
     private const int MONDAY = 1;
@@ -138,7 +139,7 @@ final class ManualPlacementOutsideLiftedRuleTest extends KernelTestCase
             $team = (new Team)->setClubId($clubId)->setSeasonId($seasonId)->setSportCategoryId($category->getId())
                 ->setPriorityTierId($tier->getId())->setName($name)->setSessionsPerWeek(1);
             $this->em->persist($team);
-            $coach = (new Coach)->setClubId($clubId)->setSeasonId($seasonId)->setFirstName('Coach')->setLastName($name);
+            $coach = $this->newCoach($clubId, $seasonId, 'Coach', $name);
             $this->em->persist($coach);
             $this->em->flush();
             $this->em->persist((new TeamCoach)->setClubId($clubId)->setSeasonId($seasonId)->setTeamId($team->getId())->setCoachId($coach->getId())->setRole(TeamCoachRole::MAIN));

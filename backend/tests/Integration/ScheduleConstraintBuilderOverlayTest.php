@@ -37,6 +37,7 @@ use App\Enum\VenuePeriodMode;
 use App\Service\CoachWishTransferService;
 use App\Service\PeriodConstraintSelector;
 use App\Service\ScheduleConstraintBuilder;
+use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\CrossStack\CoachWishUnavailabilityGateTest;
 use App\Tests\ProvisionsPeriodPlanTrait;
 use App\Tests\TenantGucTrait;
@@ -57,6 +58,7 @@ use Symfony\Contracts\Cache\CacheInterface;
 #[Group('integration')]
 final class ScheduleConstraintBuilderOverlayTest extends KernelTestCase
 {
+    use CreatesPeopleAndPlacesTrait;
     use ProvisionsPeriodPlanTrait;
 
     use TenantGucTrait;
@@ -540,7 +542,7 @@ final class ScheduleConstraintBuilderOverlayTest extends KernelTestCase
     {
         [$club, $season] = $this->seed();
         $team = $this->team($club, $season, 'U15');
-        $coach = (new Coach)->setClubId($club->getId())->setSeasonId($season->getId())->setFirstName('Karim')->setLastName('Benali');
+        $coach = $this->newCoach($club->getId(), $season->getId(), 'Karim', 'Benali');
         $this->em->persist($coach);
         $this->em->flush();
         $this->em->persist((new TeamCoach)->setClubId($club->getId())->setSeasonId($season->getId())

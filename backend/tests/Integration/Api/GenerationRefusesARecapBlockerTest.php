@@ -35,6 +35,7 @@ use App\Service\GenerationBlockersGuard;
 use App\Service\ScheduleConstraintBuilder;
 use App\Service\SchedulePlanProvisioner;
 use App\Tests\ChoosesPlanVersionTrait;
+use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\CrossStack\SharedBlockPreSolveMirrorParityTest;
 use App\Tests\Security\RecapReservedGroupIsNotAFailureTest;
 use App\Tests\TenantGucTrait;
@@ -63,6 +64,7 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 final class GenerationRefusesARecapBlockerTest extends WebTestCase
 {
     use ChoosesPlanVersionTrait;
+    use CreatesPeopleAndPlacesTrait;
     use TenantGucTrait;
 
     private const string UNSERVABLE = 'aucun créneau où au moins un coach du groupe n\'est disponible pour une séance commune — la génération échouera.';
@@ -629,7 +631,7 @@ final class GenerationRefusesARecapBlockerTest extends WebTestCase
         foreach (['U11 A' => 'Ana', 'U11 B' => 'Bea'] as $teamName => $coachName) {
             $team = (new Team)->setClubId($clubId)->setSeasonId($seasonId)->setName($teamName)->setSessionsPerWeek(1)
                 ->setSportCategoryId('cccccccc-cccc-4ccc-8ccc-cccccccccccc')->setPriorityTierId(1);
-            $coach = (new Coach)->setClubId($clubId)->setSeasonId($seasonId)->setFirstName($coachName)->setLastName('Berger');
+            $coach = $this->newCoach($clubId, $seasonId, $coachName, 'Berger');
             $this->em->persist($team);
             $this->em->persist($coach);
             $this->em->flush();

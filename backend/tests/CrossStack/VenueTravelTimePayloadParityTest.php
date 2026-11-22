@@ -14,6 +14,7 @@ use App\Enum\SeasonStatus;
 use App\Enum\VenueTravelRuleIntensity;
 use App\Enum\VenueTravelTimeSource;
 use App\Service\ScheduleConstraintBuilder;
+use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -39,6 +40,7 @@ use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 #[Group('integration')]
 final class VenueTravelTimePayloadParityTest extends KernelTestCase
 {
+    use CreatesPeopleAndPlacesTrait;
     use TenantGucTrait;
 
     private EntityManagerInterface $em;
@@ -258,13 +260,8 @@ final class VenueTravelTimePayloadParityTest extends KernelTestCase
 
     private function coach(Club $club, Season $season, bool $vehicled): Coach
     {
-        $coach = new Coach;
-        $coach->setClubId($club->getId());
-        $coach->setSeasonId($season->getId());
-        $coach->setFirstName('C');
-        $coach->setLastName(substr($this->uuid(), 0, 6));
-        $coach->setIsActive(true);
-        $coach->setIsVehicled($vehicled);
+        $coach = $this->newCoach($club->getId(), $season->getId(), 'C', substr($this->uuid(), 0, 6));
+        $coach->setIsActive(true)->setIsVehicled($vehicled);
         $this->em->persist($coach);
 
         return $coach;

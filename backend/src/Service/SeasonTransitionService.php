@@ -287,21 +287,16 @@ final class SeasonTransitionService
 
         $coachMap = [];
         foreach ($this->rows(Coach::class, $clubId, $sourceId) as $coach) {
-            $copy = new Coach;
+            // La saison suivante réutilise la fiche de la personne (nom, mail, téléphone, genre) :
+            // seul le rôle de la saison se recopie.
+            $copy = new Coach($this->personDirectory->personOf($coach));
             $copy->setClubId($clubId);
             $copy->setSeasonId($target->getId());
-            $person = $this->personDirectory->of($coach);
-            $copy->setFirstName($person->firstName);
-            $copy->setLastName($person->lastName);
-            $copy->setEmail($person->email);
-            $copy->setPhone($person->phone);
             $copy->setMaxDaysOverride($coach->getMaxDaysOverride());
             $copy->setIsActive($coach->getIsActive());
             $copy->setIsEmployee($coach->isEmployee());
-            // P4-311 — le genre (accord des libellés désignant la personne) et la case
-            // « véhiculé » (le coach peut transporter) sont des attributs permanents du coach :
-            // ils suivent la copie N+1 comme les autres champs saisis.
-            $copy->setGender($person->gender);
+            // La case « véhiculé » (le coach peut transporter) suit la copie N+1 comme les autres
+            // options du rôle.
             $copy->setIsVehicled($coach->isVehicled());
             $this->entityManager->persist($copy);
             $coachMap[$coach->getId()] = $copy->getId();

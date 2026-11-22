@@ -259,8 +259,8 @@ final class StructureRestorerTest extends KernelTestCase
         // « Charger » supprime les coachs : la clé étrangère emporte les jetons. La règle les recrée.
         [$club, $season] = $this->seedClubSeason();
         $team = $this->persistTeam($club, $season, 'U11M1');
-        $maxime = (new Coach)->setClubId($club->getId())->setSeasonId($season->getId())->setFirstName('Maxime')->setLastName('Durand');
-        $julie = (new Coach)->setClubId($club->getId())->setSeasonId($season->getId())->setFirstName('Julie')->setLastName('Petit');
+        $maxime = $this->newCoach($club->getId(), $season->getId(), 'Maxime', 'Durand');
+        $julie = $this->newCoach($club->getId(), $season->getId(), 'Julie', 'Petit');
         $this->em->persist($maxime);
         $this->em->persist($julie);
         $this->em->flush();
@@ -592,7 +592,7 @@ final class StructureRestorerTest extends KernelTestCase
 
     private function persistCoach(Club $club, Season $season, string $firstName): Coach
     {
-        $coach = (new Coach)->setClubId($club->getId())->setSeasonId($season->getId())->setFirstName($firstName)->setLastName('Test');
+        $coach = $this->newCoach($club->getId(), $season->getId(), $firstName, 'Test');
         $this->em->persist($coach);
 
         return $coach;

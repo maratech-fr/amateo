@@ -308,7 +308,7 @@ final class ClockedClubMailInterceptTest extends WebTestCase
 
         $this->scopeGucToClub($club->getId());
         $coachEmail = 'coach-' . $suffix . '@club.fr';
-        $this->em->persist((new Coach)->setClubId($club->getId())->setSeasonId(Uuid::v4()->toRfc4122())->setFirstName('C')->setLastName('H')->setEmail($coachEmail));
+        $this->personOf($this->newCoach($club->getId(), Uuid::v4()->toRfc4122(), 'C', 'H'))->setEmail($coachEmail);
         $this->em->flush();
 
         return [$club->getId(), $member->getEmail(), $coachEmail, $member];

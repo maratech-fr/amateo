@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace App\Tests\Unit\Service;
 
 use App\Entity\Coach;
+use App\Entity\Person;
 use App\Service\ConflictCoachMailing;
+use App\Structure\PersonDirectory;
 use App\Tests\Integration\Api\ConflictCoachMailApiTest;
 use DateTimeImmutable;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -219,8 +221,8 @@ final class ConflictCoachMailingTest extends TestCase
     /** Un coach sans adresse (ou adresse invalide) reste à prévenir en mémoire, mais n'active pas le bouton. */
     public function testACoachWithoutAValidAddressIsClearedButNotPending(): void
     {
-        $this->karim->setEmail(null);
-        $this->emma->setEmail('pas-une-adresse');
+        new PersonDirectory()->personOf($this->karim)->setEmail(null);
+        new PersonDirectory()->personOf($this->emma)->setEmail('pas-une-adresse');
 
         $plan = $this->plan([], memory: [$this->karim->getId(), $this->emma->getId()]);
 
@@ -237,7 +239,7 @@ final class ConflictCoachMailingTest extends TestCase
      */
     public function testRecipientCountIsWhoWillActuallyReceiveAnEmail(): void
     {
-        $this->emma->setEmail(null);
+        new PersonDirectory()->personOf($this->emma)->setEmail(null);
         $conflict = $this->matchMatch($this->karim->getId(), self::U15, self::SM2);
 
         $plan = $this->plan([$conflict], memory: [$this->lea->getId()]);
@@ -550,7 +552,7 @@ final class ConflictCoachMailingTest extends TestCase
 
     private function coach(string $first, string $last, ?string $email): Coach
     {
-        return new Coach()->setFirstName($first)->setLastName($last)->setEmail($email);
+        return new Coach((new Person)->setFirstName($first)->setLastName($last)->setEmail($email));
     }
 
     /** @return array<string, mixed> */

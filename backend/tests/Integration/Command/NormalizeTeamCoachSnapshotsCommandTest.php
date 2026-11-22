@@ -21,6 +21,7 @@ use App\Service\ClubGenerationLock;
 use App\Service\ScheduleConstraintBuilder;
 use App\Service\SchedulePlanProvisioner;
 use App\Tests\ChoosesPlanVersionTrait;
+use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\ProvisionsPeriodPlanTrait;
 use App\Tests\TenantGucTrait;
 use Closure;
@@ -53,6 +54,7 @@ use Symfony\Component\Console\Tester\CommandTester;
 final class NormalizeTeamCoachSnapshotsCommandTest extends KernelTestCase
 {
     use ChoosesPlanVersionTrait;
+    use CreatesPeopleAndPlacesTrait;
     use ProvisionsPeriodPlanTrait;
     use TenantGucTrait;
 
@@ -549,7 +551,7 @@ final class NormalizeTeamCoachSnapshotsCommandTest extends KernelTestCase
         $this->em->flush();
 
         $team = $this->persistTeam($club->getId(), $season->getId(), 'Seniors A');
-        $coach = (new Coach)->setClubId($club->getId())->setSeasonId($season->getId())->setFirstName('Karim')->setLastName('Benali');
+        $coach = $this->newCoach($club->getId(), $season->getId(), 'Karim', 'Benali');
         $this->em->persist($coach);
         $this->em->flush();
         $this->em->persist((new TeamCoach)->setClubId($club->getId())->setSeasonId($season->getId())

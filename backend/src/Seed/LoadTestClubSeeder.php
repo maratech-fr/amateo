@@ -11,6 +11,7 @@ use App\Entity\CoachPlayerMembership;
 use App\Entity\Competition;
 use App\Entity\Fixture;
 use App\Entity\MatchConstraint;
+use App\Entity\Person;
 use App\Entity\PriorityTier;
 use App\Entity\Schedule;
 use App\Entity\ScheduleSlotTemplate;
@@ -455,13 +456,16 @@ final class LoadTestClubSeeder
         for ($k = 0; $k < $coachCount; ++$k) {
             $firstName = self::COACH_FIRST_NAMES[$k % \count(self::COACH_FIRST_NAMES)];
             $lastName = self::COACH_LAST_NAMES[$k % \count(self::COACH_LAST_NAMES)];
-            $coach = $manager->getRepository(Coach::class)->findOneBy(['clubId' => $clubId, 'seasonId' => $seasonId, 'firstName' => $firstName, 'lastName' => $lastName]);
+            $coach = $manager->createQuery('SELECT c FROM App\Entity\Coach c JOIN App\Entity\Person p WITH p.id = c.personId AND p.clubId = c.clubId WHERE c.clubId = :club AND c.seasonId = :season AND p.firstName = :first AND p.lastName = :last')
+                ->setParameters(['club' => $clubId, 'season' => $seasonId, 'first' => $firstName, 'last' => $lastName])
+                ->setMaxResults(1)
+                ->getOneOrNullResult();
             if (!$coach instanceof Coach) {
-                $coach = new Coach;
+                $person = (new Person)->setClubId($clubId)->setFirstName($firstName)->setLastName($lastName);
+                $manager->persist($person);
+                $coach = new Coach($person);
                 $coach->setClubId($clubId);
                 $coach->setSeasonId($seasonId);
-                $coach->setFirstName($firstName);
-                $coach->setLastName($lastName);
                 $coach->setIsActive(true);
                 $manager->persist($coach);
             }
