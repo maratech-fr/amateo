@@ -1,7 +1,7 @@
 # Lot conception : découpage en lots de travail
 
 **Statut : découpage validé par le fondateur le 2026-11-20 (ordre, premier lot de côté, cadrage).
-Le lot 0 est livré en trois PR ; le lot 2 est livré sur `lot/conception`, non déployé ; les lots 1, 2 et 3 ont
+Le lot 0 est livré en trois PR ; le lot 2 est livré sur `lot/conception`, non déployé ; les lots 1, 2, 3, 4 et 8 ont
 chacun leur plan écrit, validé en version finale (voir §6). Déploiement unique (fondateur, 2026-11-21) : tout le lot
 conception part en une seule mise en production, à la fin, depuis `lot/conception`.** Ce document dit **quoi dans quel ordre** ; le **comment**
 de chaque lot est le travail de son plan (`morpheus`, puis `smith`).
@@ -214,6 +214,15 @@ peuvent avancer dans un espace de travail à part pendant qu'un lot principal at
 
 ### Lot 4 · Le plan porte ses données
 
+- **Plan d'exécution** : [`lot-conception-4-le-plan-porte-ses-donnees.md`](lot-conception-4-le-plan-porte-ses-donnees.md)
+  (version finale, validée par le fondateur le 2026-11-22 ; six PR). S'exécute après le lot 3 entier.
+- **Écart à cette fiche (E1, validé par le fondateur en validant le plan)** : une contrainte reste rangée à la saison (son
+  identifiant part au moteur) ; le plan porte la liste de celles qu'il applique. « Les contraintes appartiennent au plan »
+  n'est donc pas fait par ce lot (lots 5 et 9). Les autres écarts à la cible (E2 à E6) sont au §3.7 du plan.
+- **Décision du fondateur (2026-11-22)** : un plan de vacances déjà commencé garde ce qu'il avait à sa création (séances,
+  plafond par jour, règles de bien-être), tant que le gestionnaire ne le change pas dans ce plan ; à l'écran, les équipes
+  dont le socle a changé depuis y apparaissent avec un réglage propre : seul changement visible du lot, hors information
+  (la pré-sélection des équipes d'un plan de vacances se fait à sa création).
 - **Contenu**
   - Le socle devient un plan comme les autres : grille, occupations, réservations, mutualisations,
     réglages des règles, contraintes, passerelles, règle de trajet, composition (participation,
@@ -283,13 +292,20 @@ peuvent avancer dans un espace de travail à part pendant qu'un lot principal at
 
 ### Lot 8 · L'abonnement
 
+- **Plan d'exécution** : [`lot-conception-8-abonnement.md`](lot-conception-8-abonnement.md) (version finale,
+  validée par le fondateur le 2026-11-22 avec ses six décisions, §12 du plan ; trois PR).
 - **Contenu**
-  - La ligne d'abonnement par club et par saison ; une offre payante à trois paliers ; la place du
-    prix ; au-dessus du palier, plus de sorties (§7).
-  - Les actions de support écrivent cette ligne (§24).
-  - Conversion : 4 lignes.
+  - La ligne d'abonnement par club et par saison ; une offre payante (« Offre complète ») à trois paliers (jusqu'à
+    20 équipes, de 21 à 34, 35 et plus) ; la place du prix, sans écran ; au-dessus du palier, plus de sorties (§7).
+  - Les actions de support écrivent cette ligne (§24) ; chaque saison a son offre ; le bouton « Marquer la saison
+    suivante payée » est retiré, le geste « Offre » fait offre, palier et saison.
+  - Toutes les équipes comptent pour le palier, désactivées comprises ; au-dessus du palier : un bandeau permanent et le
+    refus au clic, les boutons ne sont pas grisés.
+  - Conversion : 3 lignes (les clubs en Bêta ; un club en Découverte n'a pas de ligne), à confirmer par la mesure du
+    plan (§8).
 - **Supprime** : l'offre et la dernière saison réglée sur le club, deux des trois offres payantes.
-- **Dépend de** : lot 2.
+- **Dépend de** : lot 2. S'exécute après la PR 1 du lot 3 (une seule PR ouverte à la fois : les deux lots modifient
+  `SeasonTransitionService.php`, `ErasedClubPurger.php`, l'état des lieux et ce fichier).
 - **Preuve** : scénarios d'offre effective et de dépassement.
 
 ### Lot 9 · Les règles
@@ -344,10 +360,12 @@ peuvent avancer dans un espace de travail à part pendant qu'un lot principal at
 Ce document porte la fiche de chaque lot (contenu, ce qu'il supprime, dépendances, preuve).
 **Le lot 0 est livré en trois PR** (compositeur, scénarios, enregistreur) la mesure du PDF restant
 une procédure à jouer ([`lot-conception-filet.md`](lot-conception-filet.md) §8) ; **le lot 2 est livré sur `lot/conception`, non déployé** (deux rôles ; le 1er mai côté serveur ; les déclarations d'accès ; le contrôle central ; les crédits à l'obtention ; le module matchs qui porte le socle et le régime de démonstration déclaré une fois) ; **le lot 1 est livré sur `lot/conception`, non déployé** (PR 1 à 5 : purge du cache au déploiement ; créneau de semaine ; étiquettes calculées à la lecture ; familles déclarées et purges qui les lisent ; constats tranchés) ; **le lot 3
-n'a livré aucune PR** (plan écrit, version finale). Les plans des lots 1, 2 et 3 sont dans
+n'a livré aucune PR** (plan écrit, version finale) ; **le lot 4 est planifié** (plan écrit, validé le 2026-11-22, aucune PR) : il s'exécute après le lot 3 entier ; **le lot 8 est planifié** (plan écrit, validé le 2026-11-22, aucune PR) : il s'exécute après la PR 1 du lot 3, pour ne pas ouvrir deux PR sur `SeasonTransitionService.php`, `ErasedClubPurger.php`, l'état des lieux et ce fichier. Les plans des lots 1, 2, 3, 4 et 8 sont dans
 [`lot-conception-1-declarations-communes.md`](lot-conception-1-declarations-communes.md),
-[`lot-conception-2-droits-modules-credits.md`](lot-conception-2-droits-modules-credits.md) et
-[`lot-conception-3-personnes-et-lieux.md`](lot-conception-3-personnes-et-lieux.md) ; les autres lots n'ont pas de
+[`lot-conception-2-droits-modules-credits.md`](lot-conception-2-droits-modules-credits.md),
+[`lot-conception-3-personnes-et-lieux.md`](lot-conception-3-personnes-et-lieux.md),
+[`lot-conception-4-le-plan-porte-ses-donnees.md`](lot-conception-4-le-plan-porte-ses-donnees.md) et
+[`lot-conception-8-abonnement.md`](lot-conception-8-abonnement.md) ; les autres lots n'ont pas de
 plan écrit. Un plan s'écrit lot par lot, dans un fichier à lui (`specs/evolution/`), et se valide en entier avant tout
 code. Une seule PR est ouverte à la fois sur `lot/conception` (les lots 1 et 2 modifient ce fichier et l'état des lieux).
 
@@ -356,4 +374,4 @@ merge de la PR 3 du lot 1 ; (2) la dernière PR avant la PR finale écrit dans `
 en production manuelle, site fermé (ordre des migrations de tous les lots, vérifications, retour arrière = restauration
 de la sauvegarde d'avant, correction en avant après réouverture), relue par le fondateur ; (3) copie de production n° 2 =
 rejeu de TOUTES les migrations ensemble ; (4) PR finale `lot/conception` → `main`, GO du fondateur ; (5) mise en
-production. Chaque copie de production se fait après accord du fondateur.
+production. Chaque copie de production se fait après accord du fondateur. La migration du lot 8 y est rejouée avec les autres ; son décompte doit donner les mêmes nombres que la mesure de `link` (plan du lot 8, §8).
