@@ -19,6 +19,7 @@ use App\Service\Basketball\TeamCreationSuggester;
 use App\Service\PlanEntitlements;
 use App\Service\SeasonResolver;
 use App\Service\SportCategoryResolver;
+use App\Tests\Support\SubscribesClub;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -48,6 +49,7 @@ use Throwable;
 #[Group('integration')]
 final class FfbbExcelImporterTest extends KernelTestCase
 {
+    use SubscribesClub;
     use TenantGucTrait;
 
     private const CLUB_CODE = 'ARA0069036';
@@ -235,8 +237,8 @@ final class FfbbExcelImporterTest extends KernelTestCase
             ->setMaxTeams(1)->setMaxVenues(0)->setMaxGenerations(0);
         $this->em->persist($plan);
         $pivot = SeasonResolver::seasonYear(new DateTimeImmutable);
-        $this->club->setPlanId($plan->getId())->setPaidSeasonYear($pivot);
         $this->em->flush();
+        $this->subscribeClub($this->club->getId(), $pivot, $plan->getCode());
 
         $file = $this->xlsx([
             ['SM1', 'Seniors', '1', self::CLUB_CODE . ' - MON CLUB'],   // ligne 2

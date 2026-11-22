@@ -131,13 +131,16 @@ final class AdminClubActionTest extends WebTestCase
         $executor = self::getContainer()->get(RecordingAdminJobExecutor::class);
         $executor->reset();
 
-        // Le catalogue tient 6 entrées : une SEULE « Offre » à schéma (l'entrée
-        // reset-generation-quota, qui « réussissait » à ne rien débloquer, a été retirée).
+        // Le catalogue tient 5 entrées : une SEULE « Offre » à schéma (l'entrée
+        // reset-generation-quota, qui « réussissait » à ne rien débloquer, a été retirée ;
+        // « Marquer la saison suivante payée » aussi : elle ne disait ni l'offre ni la saison
+        // et ouvrait la bascule d'un club en Découverte — décision du 2026-11-22).
         $this->client->request('GET', '/api/admin/actions');
         self::assertResponseIsSuccessful();
         $items = $this->responseBody()['items'];
-        self::assertCount(6, $items);
+        self::assertCount(5, $items);
         $byKey = array_column($items, null, 'key');
+        self::assertArrayNotHasKey('mark-next-season-paid', $byKey, 'le renouvellement passe par le seul geste « Offre »');
         self::assertArrayHasKey('set-plan', $byKey);
         self::assertArrayNotHasKey('set-plan-essentiel', $byKey, 'les entrées set-plan-* figées ont disparu');
         // Le schéma d'arguments est servi (les pickers du front en dérivent).

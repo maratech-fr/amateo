@@ -612,11 +612,74 @@ final class RlsIsolationTest extends KernelTestCase
         }
     }
 
+    /**
+     * Abus (lot 8, PR 1) : l'abonnement n'a qu'un écrivain au sens de la BASE, la connexion
+     * propriétaire. Le rôle applicatif lit la ligne de SON club et la supprime (effacement du club),
+     * mais ne peut ni en créer ni en modifier une — locataire posé sur son propre club compris : une
+     * faille applicative (route oubliée, injection) ne peut pas s'offrir une saison réglée.
+     *
+     * Même mécanique que {@see self::testAdminDoorLetsOwnerCrossClubsWhileAppUserStaysScoped} : tout sur la
+     * connexion admin, `SET LOCAL ROLE amateo_app`, chaque tentative dans un savepoint. Le refus attendu
+     * est le refus de PRIVILÈGE (SQLSTATE 42501), jamais une autre erreur : la même requête, jouée par
+     * le propriétaire, passe (témoin que le SQL est bien formé).
+     */
+    public function testTheApplicationRoleCanNeitherCreateNorChangeASubscriptionLineEvenOnItsOwnClub(): void
+    {
+        $clubId = '33333333-3333-4333-8333-333333333333';
+        $insertLine = 'INSERT INTO club_subscription (id, club_id, season_year, plan_id, paid_at, origin, created_at, updated_at)'
+            . ' SELECT gen_random_uuid(), ?, ?, id, now(), \'support\', now(), now() FROM subscription_plan WHERE code = \'beta\'';
+        $admin = $this->adminConnection();
+
+        $admin->beginTransaction();
+        try {
+            $admin->executeStatement(
+                'INSERT INTO club (id, version, created_at, updated_at, name, slug, timezone, locale, onboarding_completed, generation_count_season) VALUES (?, 1, now(), now(), ?, ?, ?, ?, true, 0)',
+                [$clubId, 'Abonnement RLS', 'abonnement-rls-' . substr(md5($clubId), 0, 6), 'Europe/Paris', 'fr'],
+            );
+            // Témoin : le propriétaire écrit la ligne avec la requête même que le rôle applicatif tentera.
+            self::assertSame(1, $admin->executeStatement($insertLine, [$clubId, 2026]), 'le propriétaire écrit la ligne : la requête est bien formée');
+
+            $admin->executeStatement('SET LOCAL ROLE amateo_app');
+            $admin->executeStatement('SELECT set_config(?, ?, true)', ['app.club_id', $clubId]);
+
+            self::assertSame(1, (int) $admin->fetchOne('SELECT count(*) FROM club_subscription WHERE club_id = ?', [$clubId]), 'le rôle applicatif lit la ligne de son club (l\'offre se lit à chaque requête)');
+            self::assertSame('42501', $this->sqlStateOf($admin, $insertLine, [$clubId, 2027]), 'le rôle applicatif ne peut pas CRÉER une ligne, même pour son propre club');
+            self::assertSame('42501', $this->sqlStateOf($admin, 'UPDATE club_subscription SET season_year = season_year + 1, paid_at = now() WHERE club_id = ?', [$clubId]), 'le rôle applicatif ne peut pas MODIFIER une ligne, même de son propre club');
+            self::assertSame(1, $admin->executeStatement('DELETE FROM club_subscription WHERE club_id = ?', [$clubId]), 'le rôle applicatif supprime la ligne de son club : l\'effacement du club passe par lui');
+        } finally {
+            // Annuler d'abord (le SET LOCAL ROLE part avec), puis RESET : un RESET dans une
+            // transaction avortée masquerait la vraie erreur.
+            $admin->rollBack();
+            $admin->executeStatement('RESET ROLE');
+        }
+    }
+
     protected function setUp(): void
     {
         self::bootKernel();
         $this->connection = self::getContainer()->get(Connection::class);
         $this->guc = self::getContainer()->get(TenantConnectionContext::class);
+    }
+
+    /**
+     * Joue une écriture dans un savepoint et rend le SQLSTATE de son refus ('' si elle passe) :
+     * l'abort PostgreSQL ne doit pas empoisonner la transaction externe.
+     *
+     * @param list<mixed> $params
+     */
+    private function sqlStateOf(Connection $connection, string $sql, array $params): string
+    {
+        $connection->beginTransaction();
+        try {
+            $connection->executeStatement($sql, $params);
+            $connection->commit();
+
+            return '';
+        } catch (DriverException $refused) {
+            $connection->rollBack();
+
+            return (string) $refused->getSQLState();
+        }
     }
 
     private function adminConnection(): Connection

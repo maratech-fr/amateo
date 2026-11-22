@@ -302,15 +302,27 @@ final class AdminMonitoringClubsPlanTest extends KernelTestCase
         $name = $this->tag . ' ' . $suffix;
 
         $this->admin->executeStatement(<<<'SQL'
-            INSERT INTO club (id, created_at, updated_at, name, slug, plan_id, paid_season_year, generation_count_season, timezone, locale, onboarding_completed)
-            VALUES (:id, NOW(), NOW(), :name, :slug, :plan_id, :paid, 0, 'Europe/Paris', 'fr', TRUE)
+            INSERT INTO club (id, created_at, updated_at, name, slug, generation_count_season, timezone, locale, onboarding_completed)
+            VALUES (:id, NOW(), NOW(), :name, :slug, 0, 'Europe/Paris', 'fr', TRUE)
             SQL, [
             'id' => $clubId,
             'name' => $name,
             'slug' => strtolower($this->tag . '-' . $suffix),
-            'plan_id' => $planId,
-            'paid' => $paidSeasonYear,
         ]);
+
+        // L'offre posée = la ligne d'abonnement de la saison du club, réglée si l'année réglée la couvre
+        // (une ligne non réglée ne s'écrit plus par l'écrivain : pointage direct sur la connexion propriétaire).
+        if (null !== $planId) {
+            $this->admin->executeStatement(<<<'SQL'
+                INSERT INTO club_subscription (id, club_id, season_year, plan_id, paid_at, origin, created_at, updated_at)
+                VALUES (gen_random_uuid(), :club_id, :year, :plan_id, CASE WHEN :paid THEN NOW() END, 'seed', NOW(), NOW())
+                SQL, [
+                'club_id' => $clubId,
+                'year' => $year,
+                'plan_id' => $planId,
+                'paid' => null !== $paidSeasonYear && $paidSeasonYear >= $year,
+            ], ['paid' => ParameterType::BOOLEAN]);
+        }
 
         $this->admin->executeStatement(<<<'SQL'
             INSERT INTO season (id, created_at, updated_at, club_id, name, start_date, end_date, status, transition_data)

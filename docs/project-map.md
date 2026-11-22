@@ -50,7 +50,7 @@ All services share the Docker network `amateo_network`.
 | `State/`, `Dto/`, `Enum/`, `DataFixtures/`, `Command/` | supporting code |
 
 ### 2.2 Domain entities (core)
-- **Club** — root tenant: `slug` (unique), `ffbbClubCode`, `planId`, `billingCycle`, `timezone`, `locale`, `onboardingCompleted`.
+- **Club** — root tenant: `slug` (unique), `ffbbClubCode`, `billingCycle`, `timezone`, `locale`, `onboardingCompleted`.
 - **User** (global) + **ClubUser** (membership junction: `clubId`, `userId`, `role`, `isActive`; unique `(clubId,userId)`) — access control pivot. **SuperAdmin** est une identité d'exploitation séparée, hors tenant, chargée uniquement par le firewall stateful `/api/admin/**` après mot de passe + TOTP.
 - **Season** — per-club: dates, `status`, `transitionData`.
 - **Team** — per-club-season: `sportCategoryId`, `priorityTierId`, `level`, `gender`, `size`, `sessionsPerWeek`, `forcedVenueId`.

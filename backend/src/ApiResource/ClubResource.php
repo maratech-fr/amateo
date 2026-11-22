@@ -89,9 +89,6 @@ class ClubResource
     public string $slug = '';
 
     #[Groups(['read'])]
-    public ?string $planId = null;
-
-    #[Groups(['read'])]
     public ?string $billingCycle = null;
 
     #[Groups(['read'])]
@@ -142,7 +139,6 @@ class ClubResource
         $dto->name = $entity->getName();
         $dto->shortName = $entity->getShortName();
         $dto->slug = $entity->getSlug();
-        $dto->planId = $entity->getPlanId();
         $dto->billingCycle = $entity->getBillingCycle();
         $dto->planExpiresAt = $entity->getPlanExpiresAt();
         $dto->generationCountSeason = $entity->getGenerationCountSeason();

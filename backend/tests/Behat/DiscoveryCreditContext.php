@@ -16,7 +16,7 @@ use RuntimeException;
  * un club de démonstration n'est jamais décompté (`OutputCreditLedger`, `PlanEntitlements`).
  *
  * Décor DÉDIÉ : un club inscrit par l'API ({@see SmallClubFixtureTrait::registerSmallClub}) naît en
- * Découverte (`club.plan_id` NULL). Aucune génération : le planning exporté est un brouillon vide.
+ * Découverte (aucune ligne d'abonnement). Aucune génération : le planning exporté est un brouillon vide.
  * Le compteur se lit comme le lit l'écran, sur `/api/me` (`club.entitlements`). Passer le club en
  * démonstration est un pointage SQL (`club.is_demo`), patron de `DemoRetainedContext`.
  * Le placement (abouti : un crédit, refusé : aucun) : {@see MatchesAwaitSocleContext}.

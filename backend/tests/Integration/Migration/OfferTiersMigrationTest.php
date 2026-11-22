@@ -110,9 +110,28 @@ final class OfferTiersMigrationTest extends KernelTestCase
     {
         $this->admin->beginTransaction();
         try {
+            $this->restoreClubSubscriptionFields();
             $scenario();
         } finally {
             $this->admin->rollBack();
+        }
+    }
+
+    /**
+     * Cette migration lit et écrit `club.plan_id` / `club.paid_season_year`, que la ligne d'abonnement
+     * par saison supprime ensuite (`Version20261123120000`) : sur une base à jour, on les rétablit
+     * dans la transaction annulée, sous leurs noms d'origine (`Version20260810120000`).
+     */
+    private function restoreClubSubscriptionFields(): void
+    {
+        $present = $this->admin->fetchFirstColumn('SELECT column_name FROM information_schema.columns WHERE table_schema = \'public\' AND table_name = \'club\' AND column_name IN (\'plan_id\', \'paid_season_year\')');
+        if (!\in_array('plan_id', $present, true)) {
+            $this->admin->executeStatement('ALTER TABLE club ADD plan_id UUID DEFAULT NULL');
+            $this->admin->executeStatement('ALTER TABLE club ADD CONSTRAINT fk_club_plan FOREIGN KEY (plan_id) REFERENCES subscription_plan (id) ON DELETE SET NULL');
+            $this->admin->executeStatement('CREATE INDEX idx_club_plan_id ON club (plan_id)');
+        }
+        if (!\in_array('paid_season_year', $present, true)) {
+            $this->admin->executeStatement('ALTER TABLE club ADD paid_season_year INT DEFAULT NULL');
         }
     }
 

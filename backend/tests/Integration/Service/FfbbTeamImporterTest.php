@@ -9,7 +9,6 @@ use App\Entity\PriorityTier;
 use App\Entity\Season;
 use App\Entity\Sport;
 use App\Entity\SportCategory;
-use App\Entity\SubscriptionPlan;
 use App\Entity\Team;
 use App\Enum\Gender;
 use App\Enum\SeasonStatus;
@@ -19,6 +18,7 @@ use App\Service\Basketball\FfbbTeamImporter;
 use App\Service\Basketball\TeamCreationSuggester;
 use App\Service\PlanEntitlements;
 use App\Service\SeasonResolver;
+use App\Tests\Support\SubscribesClub;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -50,6 +50,7 @@ use Symfony\Component\HttpClient\Response\MockResponse;
 #[Group('integration')]
 final class FfbbTeamImporterTest extends KernelTestCase
 {
+    use SubscribesClub;
     use TenantGucTrait;
 
     private const CLUB_CODE = 'ARA0069036';
@@ -133,10 +134,7 @@ final class FfbbTeamImporterTest extends KernelTestCase
     public function testAClubOfferImportsUpToItsCapOf34(): void
     {
         $this->seedPriorityTiers();
-        $plan = $this->em->getRepository(SubscriptionPlan::class)->findOneBy(['code' => 'club']);
-        self::assertInstanceOf(SubscriptionPlan::class, $plan);
-        $this->club->setPlanId($plan->getId())->setPaidSeasonYear(SeasonResolver::seasonYear(new DateTimeImmutable));
-        $this->em->flush();
+        $this->subscribeClub($this->club->getId(), SeasonResolver::seasonYear(new DateTimeImmutable), 'club');
 
         $engagements = [];
         for ($i = 1; $i <= 36; ++$i) {

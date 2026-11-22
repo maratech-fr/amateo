@@ -21,7 +21,9 @@ use App\Enum\AuditAction;
 use App\Enum\CalendarEntryKind;
 use App\Enum\CalendarEntryPeriodType;
 use App\Enum\SeasonStatus;
+use App\Enum\SubscriptionOrigin;
 use App\Enum\TeamCoachRole;
+use App\Service\ClubSubscriptionWriter;
 use App\Service\ErasedClubPurger;
 use App\Service\SeasonDataPurger;
 use App\Structure\Family;
@@ -195,6 +197,32 @@ final class PurgeCompletenessTest extends KernelTestCase
         );
         self::assertIsString($details, 'l\'effacement écrit son compte rendu');
         self::assertSame(['rowsDeleted' => 13], json_decode($details, true, 512, \JSON_THROW_ON_ERROR));
+    }
+
+    /**
+     * L'abonnement (lot 8, PR 1) : la purge d'une saison garde ses lignes (clé par année, pas par
+     * saison), l'effacement du club les emporte toutes — « seule l'identité FFBB survit ». Angle :
+     * l'EFFET en base, pas l'instruction exécutée — le rôle applicatif ne supprime une ligne que sous
+     * le locataire du club (RLS), un `DELETE` capturé par le test ci-dessus peut ne rien effacer.
+     */
+    public function testTheErasureRemovesEverySubscriptionLineWhileASeasonPurgeKeepsThem(): void
+    {
+        [$club, $season] = $this->clubWithSeason('Abonnement');
+        $writer = self::getContainer()->get(ClubSubscriptionWriter::class);
+        \assert($writer instanceof ClubSubscriptionWriter);
+        $writer->record($club->getId(), 2025, 'beta', SubscriptionOrigin::SEED);
+        $writer->record($club->getId(), 2026, 'beta', SubscriptionOrigin::SEED);
+        $lines = static fn (): int => (int) self::getContainer()->get(EntityManagerInterface::class)->getConnection()->fetchOne(
+            'SELECT COUNT(*) FROM club_subscription WHERE club_id = :club',
+            ['club' => $club->getId()],
+        );
+        self::assertSame(2, $lines(), 'témoin : les deux lignes sont écrites et lisibles');
+
+        self::getContainer()->get(SeasonDataPurger::class)->purge($club->getId(), $season->getId());
+        self::assertSame(2, $lines(), 'la purge d\'une saison ne retire pas ce qui a été réglé');
+
+        self::getContainer()->get(ErasedClubPurger::class)->purge($club);
+        self::assertSame(0, $lines(), 'l\'effacement du club emporte toutes ses lignes d\'abonnement');
     }
 
     /**

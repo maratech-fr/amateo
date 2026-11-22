@@ -11,7 +11,6 @@ use App\Entity\Reservation;
 use App\Entity\Season;
 use App\Entity\SharedTrainingBlock;
 use App\Entity\SharedTrainingBlockTeam;
-use App\Entity\SubscriptionPlan;
 use App\Entity\Team;
 use App\Entity\User;
 use App\Entity\Venue;
@@ -24,6 +23,7 @@ use App\Service\SeasonResolver;
 use App\Tests\ChoosesPlanVersionTrait;
 use App\Tests\CrossStack\ParcImportReservationSemanticsGateTest;
 use App\Tests\Integration\Service\FfbbExcelImporterTest;
+use App\Tests\Support\SubscribesClub;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -67,6 +67,7 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 final class ParcImportExecuteTest extends WebTestCase
 {
     use ChoosesPlanVersionTrait;
+    use SubscribesClub;
     use TenantGucTrait;
     /** La date d'`updated_at` posée au décor d'un groupe : tout `touch()` la dépasse. */
     private const string BLOCK_PAST_UPDATE = '2020-01-01 00:00:00+00';
@@ -2299,10 +2300,7 @@ final class ParcImportExecuteTest extends WebTestCase
     /** Pose l'offre Club, réglée pour la saison du test (offre effective = Club). */
     private function giveClubOffer(): void
     {
-        $plan = $this->em->getRepository(SubscriptionPlan::class)->findOneBy(['code' => 'club']);
-        self::assertInstanceOf(SubscriptionPlan::class, $plan);
-        $this->club->setPlanId($plan->getId())->setPaidSeasonYear(SeasonResolver::seasonYear($this->season->getStartDate()));
-        $this->em->flush();
+        $this->subscribeClub($this->club->getId(), SeasonResolver::seasonYear($this->season->getStartDate()), 'club');
     }
 
     private function rowCount(string $table): int
