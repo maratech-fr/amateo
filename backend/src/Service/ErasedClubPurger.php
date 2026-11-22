@@ -20,7 +20,7 @@ use Doctrine\ORM\EntityManagerInterface;
  * Vide TOUTES les données d'exploitation du tenant : chaque saison via
  * SeasonDataPurger (ligne Season incluse), puis les familles de niveau club que la
  * déclaration range dans l'effacement ({@see FamilyCatalog::purgedWithClub()} — étiquettes,
- * catégories, adhésions, télémétrie, signalements…), effacées par clubId. Une famille
+ * catégories, adhésions, lignes d'abonnement, télémétrie, signalements…), effacées par clubId. Une famille
  * épargnée l'est par sa déclaration (#[Family(keptAtErasure: …)]), raison comprise.
  * Le compte rendu CLUB_PURGED (`rowsDeleted`) compte chaque ligne effacée, y compris les
  * créneaux et occupations d'un plan de période que la cascade emportait autrefois hors du compte.
@@ -123,9 +123,10 @@ final class ErasedClubPurger
 
         // 3. La fiche club survit (identité publique FFBB : nom, code, logo,
         //    ligue/comité, contacts FFBB) — mais l'état d'ABONNEMENT n'est pas
-        //    de l'identité publique : plan, cycle de facturation et compteurs
-        //    sont remis à zéro (revue sécurité PR-1 — « seule l'identité FFBB
-        //    survit » doit être vrai à la lettre).
+        //    de l'identité publique : cycle de facturation et compteurs sont
+        //    remis à zéro, les lignes d'abonnement par saison sont parties avec
+        //    les familles de club ci-dessus (revue sécurité PR-1 — « seule
+        //    l'identité FFBB survit » doit être vrai à la lettre).
         //
         //    RGPD-02 (lot robustesse) — l'adresse du SIÈGE n'est PAS de l'identité
         //    publique FFBB : c'est la localisation opérationnelle saisie par le
@@ -137,7 +138,6 @@ final class ErasedClubPurger
             $club->setErasureScheduledAt(null);
             $club->setUnsubscribedAt(new DateTimeImmutable);
             $club->setOnboardingCompleted(false);
-            $club->setPlanId(null);
             $club->setBillingCycle(null);
             $club->setPlanExpiresAt(null);
             $club->setGenerationCountSeason(0);

@@ -36,6 +36,14 @@ services:
     App\Tests\Double\RecordingAdminJobExecutor:
         public: true
 
+    # Abonnement par saison — l'écrivain réel écrit par la connexion propriétaire, dont la
+    # transaction de test (DAMA) ne voit pas un club semé par la connexion applicative : le
+    # double écrit dans la transaction qui voit le club (tests/Support/SubscribesClub.php).
+    App\Service\ClubSubscriptionWriter:
+        class: App\Tests\Double\SameTransactionClubSubscriptionWriter
+        autowire: true
+        public: true
+
     # Console démo : le reset endpoint ne lance jamais le sous-processus seed réel en test.
     App\Service\DemoResetRunnerInterface:
         alias: App\Tests\Double\RecordingDemoResetRunner

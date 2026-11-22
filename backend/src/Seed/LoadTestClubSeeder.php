@@ -18,7 +18,6 @@ use App\Entity\ScheduleSlotTemplate;
 use App\Entity\Season;
 use App\Entity\Sport;
 use App\Entity\SportCategory;
-use App\Entity\SubscriptionPlan;
 use App\Entity\Team;
 use App\Entity\TeamCoach;
 use App\Entity\TeamLink;
@@ -39,11 +38,13 @@ use App\Enum\LockLevel;
 use App\Enum\MatchWeek;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
+use App\Enum\SubscriptionOrigin;
 use App\Enum\TeamCoachRole;
 use App\Enum\TeamLevel;
 use App\Enum\TeamLinkType;
 use App\Service\Basketball\CategoryCatalog;
 use App\Service\ClubLeagueWindowSeeder;
+use App\Service\ClubSubscriptionWriter;
 use App\Service\ScheduleConstraintBuilder;
 use App\Service\SchedulePlanProvisioner;
 use App\Service\SeasonResolver;
@@ -112,6 +113,7 @@ final class LoadTestClubSeeder
         private readonly UserPasswordHasherInterface $passwordHasher,
         private readonly SchedulePlanProvisioner $schedulePlanProvisioner,
         private readonly ClubLeagueWindowSeeder $clubLeagueWindowSeeder,
+        private readonly ClubSubscriptionWriter $subscriptionWriter,
     ) {}
 
     /**
@@ -190,12 +192,8 @@ final class LoadTestClubSeeder
         $manager->persist($club);
         $manager->flush();
 
-        $beta = $manager->getRepository(SubscriptionPlan::class)->findOneBy(['code' => 'beta']);
-        if ($beta instanceof SubscriptionPlan) {
-            $club->setPlanId($beta->getId());
-            $club->setPaidSeasonYear(SeasonResolver::seasonYear(new DateTimeImmutable));
-        }
-        $manager->flush();
+        // En Bêta, réglée pour la saison en cours, par le seul écrivain de l'abonnement.
+        $this->subscriptionWriter->record($club->getId(), SeasonResolver::seasonYear(new DateTimeImmutable), 'beta', SubscriptionOrigin::SEED);
 
         return $club;
     }

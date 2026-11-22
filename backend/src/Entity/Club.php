@@ -53,14 +53,6 @@ class Club
     #[ORM\Column(type: 'string', length: 20, nullable: true)]
     private ?string $shortName = null;
 
-    // P1-3 — offre souscrite : FK UUID (nullable) vers subscription_plan. null =
-    // offre Découverte (le défaut de tout compte). L'offre EFFECTIVE se calcule à
-    // la lecture (PlanEntitlements) — une offre payante/bêta dont paidSeasonYear
-    // est périmé retombe sur Découverte sans qu'on touche ce champ.
-    #[ORM\Column(type: 'guid', nullable: true)]
-    #[RefersTo(SubscriptionPlan::class, OnDelete::CLEAR)]
-    private ?string $planId = null;
-
     // P1-3 — crédits de SORTIE consommés (offre Découverte : pool club de 10,
     // partagé entre gestionnaires). Décompté par l'enforcement (PR B) ; posé à 0
     // par défaut, remis à 0 par l'action superadmin app:clubs:reset-credits.
@@ -112,16 +104,6 @@ class Club
     // moteur. Décoché, les créneaux restés en B ne sont pas réécrits (réversible).
     #[ORM\Column(type: 'boolean', options: ['default' => false])]
     private bool $weekendAlternates = false;
-
-    // P1-5 — l'abonnement se paie PAR SAISON (décision fondateur 2026-08-04) :
-    // l'année-pivot de la DERNIÈRE saison réglée (2026 = saison 2026-2027). La
-    // bascule vers la saison N+1 exige paidSeasonYear >= N+1 — le gate est la
-    // BASCULE, pas la génération : préparer la saison suivante dès mai sans la
-    // payer était la fuite. Posée à l'inscription (saison de naissance couverte),
-    // avancée par l'action support « Marquer la saison suivante payée » en
-    // attendant le paiement en ligne (P1-3).
-    #[ORM\Column(type: 'integer', nullable: true)]
-    private ?int $paidSeasonYear = null;
 
     // P2-21 lot A : non-null = les équipes de ce club ont été créées par l'import
     // FFBB à l'onboarding. Vérité SERVEUR qui gate la modale « équipes importées »
@@ -364,18 +346,6 @@ class Club
         return $this->shortName ?? $this->name;
     }
 
-    public function getPlanId(): ?string
-    {
-        return $this->planId;
-    }
-
-    public function setPlanId(?string $planId): self
-    {
-        $this->planId = $planId;
-
-        return $this;
-    }
-
     public function getOutputCreditsUsed(): int
     {
         return $this->outputCreditsUsed;
@@ -504,18 +474,6 @@ class Club
     public function isOnboardingCompleted(): bool
     {
         return $this->onboardingCompleted;
-    }
-
-    public function getPaidSeasonYear(): ?int
-    {
-        return $this->paidSeasonYear;
-    }
-
-    public function setPaidSeasonYear(?int $paidSeasonYear): self
-    {
-        $this->paidSeasonYear = $paidSeasonYear;
-
-        return $this;
     }
 
     public function getFfbbTeamsImportedAt(): ?DateTimeImmutable

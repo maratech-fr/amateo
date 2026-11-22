@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Service;
 
 use DateTimeImmutable;
+use Doctrine\DBAL\ArrayParameterType;
 use Doctrine\DBAL\Connection;
 use Doctrine\Persistence\ManagerRegistry;
 use Symfony\Component\Clock\ClockInterface;
@@ -239,7 +240,6 @@ final readonly class AdminMonitoringService
                 c.slug,
                 c.ffbb_club_code,
                 c.is_demo::int AS is_demo,
-                c.paid_season_year,
                 c.billing_cycle,
                 c.generation_count_season,
                 c.created_at,
@@ -248,8 +248,6 @@ final readonly class AdminMonitoringService
                 c.onboarding_completed::int AS onboarding_completed,
                 c.ffbb_teams_imported_at,
                 c.output_credits_used,
-                stored_plan.code AS plan_code,
-                stored_plan.name AS plan_name,
                 current_season.id AS season_id,
                 current_season.name AS season_name,
                 current_season.status AS season_status,
@@ -270,7 +268,6 @@ final readonly class AdminMonitoringService
                 (season_plan.chosen_schedule_id IS NOT NULL)::int AS socle_chosen,
                 season_plan.first_chosen_at AS season_first_chosen_at
             FROM selected_clubs c
-            LEFT JOIN subscription_plan stored_plan ON stored_plan.id = c.plan_id
             LEFT JOIN LATERAL (
                 -- Même règle que clubSizes : dans le creux d'été, la saison déjà commencée
                 -- (peuplée) plutôt que la future vide.
@@ -334,8 +331,10 @@ final readonly class AdminMonitoringService
             ? ['code' => 'decouverte', 'name' => 'Découverte']
             : ['code' => (string) $decouverteRow['code'], 'name' => (string) $decouverteRow['name']];
 
+        $lines = $this->subscriptionLines(array_map(static fn (array $row): string => (string) $row['id'], $rows));
+
         return [
-            'items' => array_map(fn (array $row): array => $this->club($row, $decouverte), $rows),
+            'items' => array_map(fn (array $row): array => $this->club($row, $lines[(string) $row['id']] ?? [], $decouverte), $rows),
             'pagination' => [
                 'page' => $page,
                 'limit' => $limit,
@@ -347,17 +346,48 @@ final readonly class AdminMonitoringService
     }
 
     /**
-     * @param array<string, mixed>              $row
-     * @param array{code: string, name: string} $decouverte socle Découverte (nom affiché en repli)
+     * Les lignes d'abonnement des clubs de la page, en UNE requête : club => année => ligne.
+     *
+     * @param list<string> $clubIds
+     *
+     * @return array<string, array<int, array{code: string, name: string, paid: bool}>>
+     */
+    private function subscriptionLines(array $clubIds): array
+    {
+        if ([] === $clubIds) {
+            return [];
+        }
+        $rows = $this->connection()->fetchAllAssociative(
+            'SELECT cs.club_id, cs.season_year, (cs.paid_at IS NOT NULL)::int AS paid, p.code, p.name'
+            . ' FROM club_subscription cs JOIN subscription_plan p ON p.id = cs.plan_id WHERE cs.club_id IN (:clubIds)',
+            ['clubIds' => $clubIds],
+            ['clubIds' => ArrayParameterType::STRING],
+        );
+        $lines = [];
+        foreach ($rows as $row) {
+            $lines[(string) $row['club_id']][$this->integer($row, 'season_year')] = [
+                'code' => (string) $row['code'],
+                'name' => (string) $row['name'],
+                'paid' => 1 === $this->integer($row, 'paid'),
+            ];
+        }
+
+        return $lines;
+    }
+
+    /**
+     * @param array<string, mixed>                                      $row
+     * @param array<int, array{code: string, name: string, paid: bool}> $lines      les lignes d'abonnement du club, par année de saison
+     * @param array{code: string, name: string}                         $decouverte socle Découverte (nom affiché en repli)
      *
      * @return array<string, mixed>
      */
-    private function club(array $row, array $decouverte): array
+    private function club(array $row, array $lines, array $decouverte): array
     {
         $generations = $this->integer($row, 'generations');
         $infeasible = $this->integer($row, 'infeasible');
-        $storedCode = $this->nullableString($row, 'plan_code');
-        $storedName = $this->nullableString($row, 'plan_name');
+        $line = $lines[$this->pivotYear($row)] ?? null;
+        $paidYears = array_keys(array_filter($lines, static fn (array $candidate): bool => $candidate['paid']));
 
         return [
             'id' => (string) $row['id'],
@@ -365,11 +395,11 @@ final readonly class AdminMonitoringService
             'slug' => (string) $row['slug'],
             'ffbbClubCode' => $this->nullableString($row, 'ffbb_club_code'),
             'isDemo' => (bool) ($row['is_demo'] ?? false),
-            // Offre STOCKÉE (plan_id résolu) vs paidSeasonYear vs offre EFFECTIVE calculée
-            // ci-dessous — la console affiche l'effective, jamais un binaire sur le stocké.
-            'plan' => null === $storedCode ? null : ['code' => $storedCode, 'name' => (string) $storedName],
-            'paidSeasonYear' => $this->nullableInteger($row, 'paid_season_year'),
-            'effectivePlan' => $this->effectivePlan($row, $storedCode, $storedName, $decouverte),
+            // Offre de la ligne de la saison en cours vs dernière saison réglée vs offre EFFECTIVE
+            // calculée ci-dessous — la console affiche l'effective, jamais un binaire sur la ligne.
+            'plan' => null === $line ? null : ['code' => $line['code'], 'name' => $line['name']],
+            'paidSeasonYear' => [] === $paidYears ? null : max($paidYears),
+            'effectivePlan' => $this->effectivePlan($line, $decouverte),
             'billingCycle' => $this->nullableString($row, 'billing_cycle'),
             'generationCountSeason' => $this->integer($row, 'generation_count_season'),
             // RFC 3339, comme l'annonce l'OpenAPI (`date-time`) — jamais la forme brute PostgreSQL.
@@ -472,27 +502,33 @@ final readonly class AdminMonitoringService
     }
 
     /**
-     * L'offre EFFECTIVE d'une ligne, via la MAISON UNIQUE `PlanEntitlements::effectivePlanCode`
-     * (miroir SQL interdit — la règle pivot vit en un seul endroit ; `AdminMonitoringClubsPlanTest`
-     * casse si les deux divergent). Année-pivot depuis la saison courante ; club SANS saison → pivot
-     * sur l'horloge réelle (D1). AUCUN cas démo (D2) : le badge dit la vérité comptable, le chip
-     * « Démo » voisin porte déjà « droits pleins ».
+     * L'année de la saison en cours d'un club : celle de sa saison courante ; club SANS saison →
+     * l'horloge réelle (D1).
      *
-     * @param array<string, mixed>              $row
-     * @param array{code: string, name: string} $decouverte
+     * @param array<string, mixed> $row
+     */
+    private function pivotYear(array $row): int
+    {
+        $seasonStart = $this->nullableString($row, 'season_start_date');
+
+        return SeasonResolver::seasonYear(null === $seasonStart ? $this->clock->now() : new DateTimeImmutable($seasonStart));
+    }
+
+    /**
+     * L'offre EFFECTIVE de la ligne de la saison en cours, via la MAISON UNIQUE
+     * `PlanEntitlements::effectivePlanCode` (miroir SQL interdit — la règle vit en un seul endroit ;
+     * `AdminMonitoringClubsPlanTest` casse si les deux divergent). AUCUN cas démo (D2) : le badge
+     * dit la vérité comptable, le chip « Démo » voisin porte déjà « droits pleins ».
+     *
+     * @param array{code: string, name: string, paid: bool}|null $line
+     * @param array{code: string, name: string}                  $decouverte
      *
      * @return array{code: string, name: string}
      */
-    private function effectivePlan(array $row, ?string $storedCode, ?string $storedName, array $decouverte): array
+    private function effectivePlan(?array $line, array $decouverte): array
     {
-        $seasonStart = $this->nullableString($row, 'season_start_date');
-        $pivotDate = null === $seasonStart ? $this->clock->now() : new DateTimeImmutable($seasonStart);
-        $pivotYear = SeasonResolver::seasonYear($pivotDate);
-
-        $effectiveCode = PlanEntitlements::effectivePlanCode($storedCode, $this->nullableInteger($row, 'paid_season_year'), $pivotYear);
-
-        return null !== $storedCode && $effectiveCode === $storedCode
-            ? ['code' => $storedCode, 'name' => (string) $storedName]
+        return null !== $line && PlanEntitlements::effectivePlanCode($line['code'], $line['paid']) === $line['code']
+            ? ['code' => $line['code'], 'name' => $line['name']]
             : $decouverte;
     }
 

@@ -6,6 +6,7 @@ namespace App\Seed;
 
 use App\Entity\CalendarEntry;
 use App\Entity\Club;
+use App\Entity\ClubSubscription;
 use App\Entity\ClubUser;
 use App\Entity\Coach;
 use App\Entity\CoachPlayerMembership;
@@ -25,7 +26,6 @@ use App\Entity\SharedTrainingBlock;
 use App\Entity\SharedTrainingBlockTeam;
 use App\Entity\Sport;
 use App\Entity\SportCategory;
-use App\Entity\SubscriptionPlan;
 use App\Entity\Team;
 use App\Entity\TeamCoach;
 use App\Entity\TeamLink;
@@ -54,13 +54,16 @@ use App\Enum\OpponentVenueLinkSource;
 use App\Enum\OpponentVenueSuggestionSource;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
+use App\Enum\SubscriptionOrigin;
 use App\Enum\TeamCoachRole;
 use App\Enum\TeamLevel;
 use App\Enum\TeamLinkType;
 use App\Enum\VenuePeriodMode;
+use App\Repository\ClubSubscriptionRepository;
 use App\Repository\SchoolHolidayPeriodRepository;
 use App\Service\Basketball\CategoryCatalog;
 use App\Service\ClubLeagueWindowSeeder;
+use App\Service\ClubSubscriptionWriter;
 use App\Service\LeagueResolver;
 use App\Service\OverlayManager;
 use App\Service\ScheduleConstraintBuilder;
@@ -110,6 +113,8 @@ final class BcclSeeder
         private readonly OverlayManager $overlayManager,
         private readonly ClubLeagueWindowSeeder $clubLeagueWindowSeeder,
         private readonly PersonDirectory $personDirectory,
+        private readonly ClubSubscriptionWriter $subscriptionWriter,
+        private readonly ClubSubscriptionRepository $subscriptions,
     ) {}
 
     public function run(EntityManagerInterface $manager, BcclSeedProfile $profile): Club
@@ -186,25 +191,19 @@ final class BcclSeeder
         if (null === $club->getLongitude()) {
             $club->setLongitude(4.88467);
         }
-        // P1-3 — le club dev/démo vit en Bêta (tout illimité) : « les tests sont de
-        // facto en bêta » (fondateur). Only-fill-when-empty, comme les champs ci-dessus.
-        if (null === $club->getPlanId()) {
-            $beta = $manager->getRepository(SubscriptionPlan::class)->findOneBy(['code' => 'beta']);
-            if ($beta instanceof SubscriptionPlan) {
-                $club->setPlanId($beta->getId());
-                // L'attribution est en DEUX gestes (set-plan + saison réglée) :
-                // sans paidSeasonYear, la bêta naît EXPIRÉE → Découverte effective
-                // → les smokes décomptent le pool puis se font refuser à 10.
-                // Constaté sur la PR B ; le seeder fait donc les deux gestes.
-                if (null === $club->getPaidSeasonYear()) {
-                    $club->setPaidSeasonYear(SeasonResolver::seasonYear(new DateTimeImmutable));
-                }
-            }
-        }
         $manager->flush();
 
         $clubId = $club->getId();
         $manager->getConnection()->executeStatement('SELECT set_config(\'app.club_id\', ?, false)', [$clubId]);
+
+        // P1-3 — le club dev/démo vit en Bêta (tout illimité) : « les tests sont de facto en
+        // bêta » (fondateur). Une ligne réglée pour la saison en cours, par le seul écrivain de
+        // l'abonnement ; only-fill-when-empty (lue sous le locataire posé ci-dessus), comme les
+        // champs ci-dessus : une offre déjà posée par le support n'est pas écrasée.
+        $seasonYear = SeasonResolver::seasonYear(new DateTimeImmutable);
+        if (!$this->subscriptions->forSeasonYear($clubId, $seasonYear) instanceof ClubSubscription) {
+            $this->subscriptionWriter->record($clubId, $seasonYear, 'beta', SubscriptionOrigin::SEED);
+        }
 
         // Default club logo (optional asset): store the bytes + point logoUrl at
         // the public serve route, mirroring ClubLogoController — including its

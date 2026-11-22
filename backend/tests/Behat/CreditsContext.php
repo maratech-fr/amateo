@@ -531,9 +531,19 @@ final class CreditsContext extends BaseContext
     {
         $start = $this->dbalScalar(\sprintf('SELECT MIN(start_date)::text AS behatval FROM season WHERE club_id=\'%s\'', $this->smallClubId), admin: true);
         $year = SeasonResolver::seasonYear(new DateTimeImmutable('' === $start ? 'today' : $start));
-        $plan = null === $planCode ? 'NULL' : \sprintf('(SELECT id FROM subscription_plan WHERE code=\'%s\')', $planCode);
-        $paid = null === $planCode ? 'NULL' : (string) $year;
-        $this->dbalExec(\sprintf('UPDATE club SET plan_id=%s, paid_season_year=%s, is_demo=%s WHERE id=\'%s\'', $plan, $paid, $isDemo ? 'true' : 'false', $this->smallClubId), admin: true);
+        // La ligne d'abonnement de la saison du club, écrite par la connexion propriétaire (seule à
+        // pouvoir l'écrire) ; aucune ligne = Découverte.
+        $this->dbalExec(\sprintf('DELETE FROM club_subscription WHERE club_id=\'%s\'', $this->smallClubId), admin: true);
+        if (null !== $planCode) {
+            $this->dbalExec(\sprintf(
+                'INSERT INTO club_subscription (id, club_id, season_year, plan_id, paid_at, origin, created_at, updated_at)'
+                . ' SELECT gen_random_uuid(), \'%s\', %d, id, now(), \'seed\', now(), now() FROM subscription_plan WHERE code=\'%s\'',
+                $this->smallClubId,
+                $year,
+                $planCode,
+            ), admin: true);
+        }
+        $this->dbalExec(\sprintf('UPDATE club SET is_demo=%s WHERE id=\'%s\'', $isDemo ? 'true' : 'false', $this->smallClubId), admin: true);
     }
 
     private function countSchedules(): int

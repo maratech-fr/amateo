@@ -9,7 +9,6 @@ use App\Entity\Schedule;
 use App\Entity\ScheduleDiagnostic;
 use App\Entity\ScheduleSlotTemplate;
 use App\Entity\Season;
-use App\Entity\SubscriptionPlan;
 use App\Enum\LockLevel;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
@@ -23,6 +22,7 @@ use App\Service\SchedulePlanProvisioner;
 use App\Service\ScheduleProgressPublisher;
 use App\Service\SeasonResolver;
 use App\Tests\BuildsServiceWithDoublesTrait;
+use App\Tests\Support\SubscribesClub;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\DBAL\Connection;
@@ -67,6 +67,7 @@ use Throwable;
 final class GenerationCreditIsPartOfTheResultTest extends KernelTestCase
 {
     use BuildsServiceWithDoublesTrait;
+    use SubscribesClub;
     use TenantGucTrait;
 
     private const string INTERNAL_ERROR = 'Schedule generation failed unexpectedly. Please regenerate.';
@@ -320,11 +321,7 @@ final class GenerationCreditIsPartOfTheResultTest extends KernelTestCase
 
         $year = SeasonResolver::seasonYear(new DateTimeImmutable('today'));
         if (null !== $planCode) {
-            $plan = $this->em->getRepository(SubscriptionPlan::class)->findOneBy(['code' => $planCode]);
-            self::assertInstanceOf(SubscriptionPlan::class, $plan, \sprintf('l\'offre « %s » est seedée', $planCode));
-            $club->setPlanId($plan->getId());
-            $club->setPaidSeasonYear($year);
-            $this->em->flush();
+            $this->subscribeClub($club->getId(), $year, $planCode);
         }
 
         $season = $this->seedSeason($club->getId(), $year);

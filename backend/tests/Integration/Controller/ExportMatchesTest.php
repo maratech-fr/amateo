@@ -8,7 +8,6 @@ use App\Entity\Club;
 use App\Entity\ClubUser;
 use App\Entity\Fixture;
 use App\Entity\Season;
-use App\Entity\SubscriptionPlan;
 use App\Entity\Team;
 use App\Entity\User;
 use App\Enum\ClubRole;
@@ -18,6 +17,7 @@ use App\Service\BrandAssets;
 use App\Service\PdfGenerator;
 use App\Service\ProductIdentity;
 use App\Service\SeasonResolver;
+use App\Tests\Support\SubscribesClub;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -42,6 +42,7 @@ use Symfony\Contracts\HttpClient\ResponseInterface;
 #[Group('integration')]
 final class ExportMatchesTest extends WebTestCase
 {
+    use SubscribesClub;
     use TenantGucTrait;
 
     private const string URI = '/api/fixtures/export-pdf';
@@ -439,12 +440,6 @@ final class ExportMatchesTest extends WebTestCase
         $club->setLocale('fr');
         $club->setOnboardingCompleted(true);
         $club->setOutputCreditsUsed($credits);
-        if (null !== $planCode) {
-            $plan = $this->em->getRepository(SubscriptionPlan::class)->findOneBy(['code' => $planCode]);
-            \assert($plan instanceof SubscriptionPlan);
-            $club->setPlanId($plan->getId());
-            $club->setPaidSeasonYear($this->year);
-        }
         $this->em->persist($club);
 
         $user = new User;
@@ -454,6 +449,9 @@ final class ExportMatchesTest extends WebTestCase
         $user->setPasswordHash($hasher->hashPassword($user, 'pass'));
         $this->em->persist($user);
         $this->em->flush();
+        if (null !== $planCode) {
+            $this->subscribeClub($club->getId(), $this->year, $planCode);
+        }
 
         $this->scopeGucToClub($club->getId());
 

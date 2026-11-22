@@ -1,8 +1,7 @@
 # Lot 8 · L'abonnement : plan d'exécution
 
 **Statut : version finale (v2 sur 4, validée par `smith`). Plan validé par le fondateur le 2026-11-22 avec ses six
-décisions (§12). Aucune PR livrée ; l'exécution commence par la PR 1, une fois ses rouges écrits par `tank` et la mesure
-de `link` (§8) faite, et seulement après la PR 1 du lot 3 (§0).** Voie **Full**. Branche cible : `lot/conception` ; une PR
+décisions (§12). PR 1 livrée sur `lot/conception` (non déployée) ; PR 2 et PR 3 à faire.** Voie **Full**. Branche cible : `lot/conception` ; une PR
 vers elle ne joue que « Lot Gate » (`docs/ops/ci-runner.md` § Branche de lot) : ni Behat, ni e2e, ni `backend-tests`. Avant
 chaque merge : `make -C backend tests-complete` et les features/specs de la zone sur la stack d'épreuve. Exécutant :
 `neo`, après les rouges de `tank`. Pas d'`oracle` (décision du fondateur, [`lot-conception-decoupage.md`](lot-conception-decoupage.md) §5.3).
@@ -94,6 +93,13 @@ L'horloge est celle du club (simulée pour une démonstration), lue par `ClockIn
 Ordre : PR 1, PR 2, PR 3. La scission est réelle : la PR 1 change où vit l'abonnement sans toucher un écran ; la PR 2 change le contrat d'API et deux écrans ; la PR 3 ajoute un refus. Une seule PR ouverte à la fois sur `lot/conception` : le lot 3 touche aussi `SeasonTransitionService.php`, `ErasedClubPurger.php`, `etat-des-lieux.md` et la fiche du découpage.
 
 ### PR 1 · « L'abonnement est une ligne par saison » (`neo`, backend seul)
+
+**Livrée sur `lot/conception`, avec ces écarts au plan** :
+- La conversion garde la saison en cours et la suivante seulement : un club réglé plus de deux saisons d'avance perd l'année au-delà de « suivante ». La migration écrit ces clubs (identifiants) dans son décompte, pour un rejeu à la main par `app:clubs:set-plan`.
+- La date de règlement d'une ligne convertie est celle de la conversion.
+- `ClubSubscriptionRepository::forSeasonYear` est une requête native, bornée par la clause `club_id` et par la RLS.
+- Pour les tests, `config/services_test.yaml` substitue à l'écrivain le double `tests/Double/SameTransactionClubSubscriptionWriter` (`docs/testing/testing-strategy.md`).
+- Noms de colonnes de §3 inchangés.
 
 **Change**
 - Migration (connexion `admin`) : crée la table, ses policies et ses droits ; convertit ; supprime les deux colonnes. Irréversible.
