@@ -126,7 +126,7 @@ final class ExportMatchesTest extends WebTestCase
 
     public function testAMemberOfAPaidOfferExportsWithoutCounting(): void
     {
-        $ctx = $this->seedClub(role: ClubRole::MEMBER, planCode: 'essentiel');
+        $ctx = $this->seedClub(role: ClubRole::MEMBER, planCode: 'complete', tierCode: 'palier-1');
         $this->workerWrites();
 
         $this->export($ctx['user'], $this->november());
@@ -428,7 +428,7 @@ final class ExportMatchesTest extends WebTestCase
     }
 
     /** @return array{user: User, club: Club, season: Season, team: Team} */
-    private function seedClub(ClubRole $role = ClubRole::MANAGER, int $credits = 0, ?string $planCode = null, bool $withSeason = true): array
+    private function seedClub(ClubRole $role = ClubRole::MANAGER, int $credits = 0, ?string $planCode = null, bool $withSeason = true, ?string $tierCode = null): array
     {
         $uid = uniqid('', true);
         $hasher = self::getContainer()->get('security.user_password_hasher');
@@ -450,7 +450,7 @@ final class ExportMatchesTest extends WebTestCase
         $this->em->persist($user);
         $this->em->flush();
         if (null !== $planCode) {
-            $this->subscribeClub($club->getId(), $this->year, $planCode);
+            $this->subscribeClub($club->getId(), $this->year, $planCode, $tierCode);
         }
 
         $this->scopeGucToClub($club->getId());

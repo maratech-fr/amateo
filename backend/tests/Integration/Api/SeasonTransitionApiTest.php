@@ -76,7 +76,7 @@ final class SeasonTransitionApiTest extends WebTestCase
         // Club en règle pour SA saison seulement : la suivante n'est pas payée → 409 qui NOMME
         // la saison due.
         $this->em->getConnection()->executeStatement('DELETE FROM club_subscription WHERE club_id = ?', [$club->getId()]);
-        $this->subscribeClub($club->getId(), SeasonResolver::seasonYear($season->getStartDate()), 'essentiel');
+        $this->subscribeClub($club->getId(), SeasonResolver::seasonYear($season->getStartDate()), 'complete', 'palier-1');
 
         $this->client->request('POST', '/api/seasons/' . $season->getId() . '/transition', [], [], $auth);
         self::assertResponseStatusCodeSame(409);
@@ -85,7 +85,7 @@ final class SeasonTransitionApiTest extends WebTestCase
         // Le geste support « Offre », saison suivante (le geste « Marquer la saison suivante payée »
         // est retiré, décision du 2026-11-22) : la ligne réglée de la saison suivante ouvre le gate.
         $tester = new CommandTester(new Application(self::$kernel)->find('app:clubs:set-plan'));
-        self::assertSame(Command::SUCCESS, $tester->execute(['--club' => $club->getId(), '--plan' => 'essentiel', '--paid-season' => 'next']), $tester->getDisplay());
+        self::assertSame(Command::SUCCESS, $tester->execute(['--club' => $club->getId(), '--plan' => 'complete', '--tier' => 'palier-1', '--paid-season' => 'next']), $tester->getDisplay());
 
         $this->client->request('POST', '/api/seasons/' . $season->getId() . '/transition', [], [], $auth);
         self::assertResponseStatusCodeSame(201);

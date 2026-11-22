@@ -1104,7 +1104,7 @@ final class AccessDeclarationSweepTest extends WebTestCase
     }
 
     /**
-     * Le décor du balayage, puis le club rendu PAYANT (offre « grand-club » réglée pour la saison
+     * Le décor du balayage, puis le club rendu PAYANT (offre complète au palier 3, réglée pour la saison
      * courante — pointage SQL autorisé par la charte : l'offre payante ne s'achète pas par l'API),
      * un Membre actif et les ids que les tables lisent. Témoins : pas démo, pas bridé, socle en
      * vigueur (le gestionnaire lit une route gardée par le socle).
@@ -1126,13 +1126,14 @@ final class AccessDeclarationSweepTest extends WebTestCase
         self::getContainer()->get(TenantConnectionContext::class)->setClubId($this->clubId);
         $club = $em->find(Club::class, $this->clubId);
         self::assertInstanceOf(Club::class, $club);
-        $plan = $em->getRepository(SubscriptionPlan::class)->findOneBy(['code' => 'grand-club']);
+        $plan = $em->getRepository(SubscriptionPlan::class)->findOneBy(['code' => 'complete']);
         self::assertInstanceOf(SubscriptionPlan::class, $plan);
         $season = $em->find(Season::class, $this->ids['season']);
         self::assertInstanceOf(Season::class, $season);
         $seasonYear = SeasonResolver::seasonYear($season->getStartDate());
-        $this->subscribeClub($this->clubId, $seasonYear, $plan->getCode());
-        $this->subscribeClub($this->clubId, $seasonYear + 1, $plan->getCode());
+        // Palier 3 : aucun plafond d'équipes, comme l'ancien Grand club.
+        $this->subscribeClub($this->clubId, $seasonYear, $plan->getCode(), 'palier-3');
+        $this->subscribeClub($this->clubId, $seasonYear + 1, $plan->getCode(), 'palier-3');
 
         $entitlements = self::getContainer()->get(PlanEntitlements::class);
         \assert($entitlements instanceof PlanEntitlements);

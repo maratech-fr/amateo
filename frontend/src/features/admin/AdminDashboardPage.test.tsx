@@ -99,8 +99,10 @@ const clubs: AdminClubsResponse = {
       slug: "basket-club-des-lacs",
       ffbbClubCode: "ARA001",
       isDemo: false,
-      plan: null,
-      paidSeasonYear: null,
+      // Lot 8, PR 2 : aucune ligne d'abonnement (Découverte), ni pour la saison en cours ni pour la suivante.
+      subscription: null,
+      nextSubscription: null,
+      teamsCounted: 12,
       effectivePlan: { code: "decouverte", name: "Découverte" },
       billingCycle: null,
       generationCountSeason: 3,
@@ -182,10 +184,20 @@ const actions: AdminActionsResponse = {
           required: true,
           choices: [
             { value: "decouverte", label: "Découverte" },
-            { value: "essentiel", label: "Essentiel" },
-            { value: "club", label: "Club" },
-            { value: "grand-club", label: "Grand club" },
+            { value: "complete", label: "Offre complète" },
             { value: "beta", label: "Bêta" },
+          ],
+        },
+        // Lot 8, PR 2 : le palier, exigé pour l'offre complète, interdit sur Découverte et Bêta.
+        {
+          key: "tier",
+          label: "Palier",
+          required: false,
+          gate: { argument: "plan", forbiddenValues: ["decouverte", "beta"] },
+          choices: [
+            { value: "palier-1", label: "Palier 1 (jusqu'à 20 équipes)" },
+            { value: "palier-2", label: "Palier 2 (21 à 34 équipes)" },
+            { value: "palier-3", label: "Palier 3 (35 équipes et plus)" },
           ],
         },
         {
@@ -312,17 +324,15 @@ describe("AdminDashboardPage", () => {
           ...clubs.items[0],
           id: "club-beta-unpaid",
           name: "BCCL (Bêta non réglée)",
-          // Offre Bêta POSÉE mais saison non réglée → effective = Découverte.
-          plan: { code: "beta", name: "Bêta" },
-          paidSeasonYear: null,
+          // Ligne Bêta de la saison en cours, NON réglée → effective = Découverte.
+          subscription: { seasonYear: 2026, planCode: "beta", planName: "Bêta", tierCode: null, paidAt: null, origin: "conversion" },
           effectivePlan: { code: "decouverte", name: "Découverte" },
         },
         {
           ...clubs.items[0],
           id: "club-beta-paid",
           name: "Club Bêta réglé",
-          plan: { code: "beta", name: "Bêta" },
-          paidSeasonYear: 2026,
+          subscription: { seasonYear: 2026, planCode: "beta", planName: "Bêta", tierCode: null, paidAt: "2026-09-02T10:00:00+00:00", origin: "support" },
           effectivePlan: { code: "beta", name: "Bêta" },
         },
       ],
@@ -334,11 +344,60 @@ describe("AdminDashboardPage", () => {
 
     expect(await screen.findByText("BCCL (Bêta non réglée)")).toBeInTheDocument();
     // Le badge de l'offre non réglée dit l'EFFECTIVE (Découverte), jamais « Payant ».
-    expect(screen.getByText("Découverte")).toBeInTheDocument();
-    expect(screen.getByText(ADMIN_DASHBOARD_TEXTS.clubPlanDiverges("Bêta"))).toBeInTheDocument();
+    const unpaidRow = screen.getByText("BCCL (Bêta non réglée)").closest("tr") as HTMLElement;
+    expect(within(unpaidRow).getByText("Découverte")).toBeInTheDocument();
     expect(screen.queryByText("Payant")).not.toBeInTheDocument();
-    // L'offre réglée affiche « Bêta » (badge seul, aucun sous-texte de divergence).
-    expect(screen.getByText("Bêta")).toBeInTheDocument();
+    // L'offre réglée affiche « Bêta ».
+    const paidRow = screen.getByText("Club Bêta réglé").closest("tr") as HTMLElement;
+    expect(within(paidRow).getAllByText(/Bêta/).length).toBeGreaterThanOrEqual(1);
+  });
+
+  /**
+   * Lot 8, PR 2 — la ligne d'un club dit, telles que le serveur les sert, l'offre de la saison en
+   * cours, la date de son règlement, le nombre d'équipes que le PLAFOND compte (`teamsCounted`, pas
+   * le volume d'équipes actives), et la saison suivante quand elle a sa ligne. Témoin : sans ligne de
+   * saison suivante, la saison suivante n'apparaît pas.
+   */
+  it("shows the season's subscription, its payment date, the teams the cap counts and the next season (lot 8)", async () => {
+    const tiered: AdminClubsResponse = {
+      items: [
+        {
+          ...clubs.items[0],
+          id: "club-tiered",
+          name: "Club au palier 2",
+          subscription: { seasonYear: 2026, planCode: "complete", planName: "Offre complète", tierCode: "palier-2", paidAt: "2027-05-12T10:00:00+00:00", origin: "support" },
+          nextSubscription: { seasonYear: 2027, planCode: "complete", planName: "Offre complète", tierCode: "palier-1", paidAt: "2027-05-20T10:00:00+00:00", origin: "support" },
+          teamsCounted: 28,
+          effectivePlan: { code: "complete", name: "Offre complète" },
+        },
+        {
+          ...clubs.items[0],
+          id: "club-single",
+          name: "Club sans saison suivante",
+          subscription: { seasonYear: 2026, planCode: "complete", planName: "Offre complète", tierCode: "palier-1", paidAt: "2026-09-02T10:00:00+00:00", origin: "support" },
+          nextSubscription: null,
+          teamsCounted: 17,
+          effectivePlan: { code: "complete", name: "Offre complète" },
+        },
+      ],
+      pagination: { page: 1, limit: 25, total: 2, pages: 1 },
+      metricsWindowDays: 30,
+    };
+    mockClubs.mockReset().mockResolvedValue(tiered);
+    renderWithProviders(<AdminDashboardPage />, { route: "/admin?tab=clubs" });
+
+    const row = (await screen.findByText("Club au palier 2")).closest("tr") as HTMLElement;
+    // Les équipes que le plafond compte (28), distinctes du volume d'équipes actives (12).
+    expect(row.textContent).toMatch(/\b28\b/);
+    // La date du règlement de la saison en cours (le format du jour n'est pas la promesse).
+    expect(row.textContent).toMatch(/12(\/05\/| mai )2027/);
+    // La saison suivante, réglée à part : son année et son offre.
+    expect(row.textContent).toContain("2027-2028");
+    expect(within(row).getAllByText(/Offre complète/).length).toBeGreaterThanOrEqual(2);
+
+    const single = screen.getByText("Club sans saison suivante").closest("tr") as HTMLElement;
+    expect(single.textContent).toMatch(/\b17\b/);
+    expect(single.textContent).not.toContain("2027-2028");
   });
 
   it("renders the usage stats: plans by type, time-to-close and club sizes (SA2-stats)", async () => {
@@ -437,29 +496,58 @@ describe("AdminDashboardPage", () => {
     // Le picker d'offre n'offre QUE les codes servis par le schéma (aucune liste en dur).
     const planPicker = screen.getByLabelText("Offre", { selector: "select" });
     const planOptions = within(planPicker).getAllByRole("option").map((option) => option.textContent);
-    expect(planOptions).toEqual([ADMIN_DASHBOARD_TEXTS.clubActionArgPlaceholder, "Découverte", "Essentiel", "Club", "Grand club", "Bêta"]);
+    expect(planOptions).toEqual([ADMIN_DASHBOARD_TEXTS.clubActionArgPlaceholder, "Découverte", "Offre complète", "Bêta"]);
 
-    // Tant que l'offre n'est pas choisie, pas de sélecteur de saison ; le bouton reste bloqué.
+    // Tant que l'offre n'est pas choisie, ni palier ni saison ; le bouton reste bloqué.
+    expect(screen.queryByLabelText("Palier")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("Saison encaissée")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: ADMIN_DASHBOARD_TEXTS.clubActionExecute })).toBeDisabled();
 
-    await user.selectOptions(planPicker, "essentiel");
-    // Offre payante → la saison encaissée APPARAÎT et devient exigée : soumission
-    // impossible tant qu'elle n'est pas choisie.
+    await user.selectOptions(planPicker, "complete");
+    // Offre complète → le palier ET la saison encaissée APPARAISSENT et deviennent exigés :
+    // soumission impossible tant que l'un manque.
+    const tierPicker = screen.getByLabelText("Palier", { selector: "select" });
     const seasonPicker = screen.getByLabelText("Saison encaissée", { selector: "select" });
     expect(screen.getByRole("button", { name: ADMIN_DASHBOARD_TEXTS.clubActionExecute })).toBeDisabled();
     await user.selectOptions(seasonPicker, "next");
+    expect(screen.getByRole("button", { name: ADMIN_DASHBOARD_TEXTS.clubActionExecute })).toBeDisabled();
+    await user.selectOptions(tierPicker, "palier-2");
     expect(screen.getByRole("button", { name: ADMIN_DASHBOARD_TEXTS.clubActionExecute })).toBeEnabled();
 
-    // Popup de confirmation OBLIGATOIRE, nommant l'offre et la saison, avant tout envoi.
+    // Popup de confirmation OBLIGATOIRE, nommant l'offre, le palier et la saison, avant tout envoi.
     await user.click(screen.getByRole("button", { name: ADMIN_DASHBOARD_TEXTS.clubActionExecute }));
     const confirm = await screen.findByRole("dialog", { name: ADMIN_DASHBOARD_TEXTS.clubActionConfirmTitle("Offre") });
-    expect(within(confirm).getByText(/Essentiel/)).toBeInTheDocument();
+    expect(within(confirm).getByText(/Offre complète/)).toBeInTheDocument();
+    expect(within(confirm).getByText(/Palier 2/)).toBeInTheDocument();
     expect(within(confirm).getByText(/Saison suivante/)).toBeInTheDocument();
     expect(mockRunClubAction).not.toHaveBeenCalled();
 
     await user.click(within(confirm).getByRole("button", { name: ADMIN_DASHBOARD_TEXTS.clubActionConfirmAttribution }));
-    await waitFor(() => expect(mockRunClubAction).toHaveBeenCalledWith("club-1", "set-plan", "csrf-123", { plan: "essentiel", paidSeason: "next" }));
+    await waitFor(() => expect(mockRunClubAction).toHaveBeenCalledWith("club-1", "set-plan", "csrf-123", { plan: "complete", tier: "palier-2", paidSeason: "next" }));
+  });
+
+  /** Lot 8, PR 2 — la Bêta n'a pas de palier : le sélecteur n'apparaît pas et le palier n'est jamais envoyé. */
+  it("hides the tier selector for Bêta and never sends a tier (lot 8)", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<AdminDashboardPage />, { route: "/admin?tab=clubs" });
+
+    await user.click(await screen.findByRole("button", { name: ADMIN_DASHBOARD_TEXTS.clubRowActions }));
+    await user.click(await screen.findByRole("button", { name: /^Offre/ }));
+    const planPicker = screen.getByLabelText("Offre", { selector: "select" });
+
+    // Témoin : l'offre complète fait apparaître le palier…
+    await user.selectOptions(planPicker, "complete");
+    expect(screen.getByLabelText("Palier", { selector: "select" })).toBeInTheDocument();
+    // … la Bêta le retire, même après qu'un palier a été choisi.
+    await user.selectOptions(screen.getByLabelText("Palier", { selector: "select" }), "palier-1");
+    await user.selectOptions(planPicker, "beta");
+    expect(screen.queryByLabelText("Palier")).not.toBeInTheDocument();
+    await user.selectOptions(screen.getByLabelText("Saison encaissée", { selector: "select" }), "current");
+
+    await user.click(screen.getByRole("button", { name: ADMIN_DASHBOARD_TEXTS.clubActionExecute }));
+    const confirm = await screen.findByRole("dialog", { name: ADMIN_DASHBOARD_TEXTS.clubActionConfirmTitle("Offre") });
+    await user.click(within(confirm).getByRole("button", { name: ADMIN_DASHBOARD_TEXTS.clubActionConfirmAttribution }));
+    await waitFor(() => expect(mockRunClubAction).toHaveBeenCalledWith("club-1", "set-plan", "csrf-123", { plan: "beta", paidSeason: "current" }));
   });
 
   it("hides the season selector for Découverte and never sends it (A3)", async () => {

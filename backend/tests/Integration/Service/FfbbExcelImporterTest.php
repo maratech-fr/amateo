@@ -10,6 +10,7 @@ use App\Entity\Season;
 use App\Entity\Sport;
 use App\Entity\SportCategory;
 use App\Entity\SubscriptionPlan;
+use App\Entity\SubscriptionPlanTier;
 use App\Entity\Team;
 use App\Enum\Gender;
 use App\Enum\SeasonStatus;
@@ -231,14 +232,17 @@ final class FfbbExcelImporterTest extends KernelTestCase
 
     public function testOfferCapCountsOnlyTheSelectedNewRows(): void
     {
-        // Offre à cap = 1 équipe : cocher 2 lignes neuves franchit le cap (refus
-        // tout-ou-rien), en cocher 1 passe — le cap se compte sur la SÉLECTION neuve.
-        $plan = (new SubscriptionPlan)->setCode('cap1-' . uniqid('', true))->setName('Cap 1')
-            ->setMaxTeams(1)->setMaxVenues(0)->setMaxGenerations(0);
-        $this->em->persist($plan);
+        // Palier à plafond = 1 équipe (palier de test de l'offre complète) : cocher 2 lignes neuves
+        // franchit le plafond (refus tout-ou-rien), en cocher 1 passe — le plafond se compte sur la
+        // SÉLECTION neuve.
+        $complete = $this->em->getRepository(SubscriptionPlan::class)->findOneBy(['code' => 'complete']);
+        self::assertInstanceOf(SubscriptionPlan::class, $complete);
+        $tier = (new SubscriptionPlanTier)->setPlanId($complete->getId())->setCode('cap1-' . uniqid('', true))
+            ->setPosition(99)->setMaxTeams(1);
+        $this->em->persist($tier);
         $pivot = SeasonResolver::seasonYear(new DateTimeImmutable);
         $this->em->flush();
-        $this->subscribeClub($this->club->getId(), $pivot, $plan->getCode());
+        $this->subscribeClub($this->club->getId(), $pivot, 'complete', $tier->getCode());
 
         $file = $this->xlsx([
             ['SM1', 'Seniors', '1', self::CLUB_CODE . ' - MON CLUB'],   // ligne 2

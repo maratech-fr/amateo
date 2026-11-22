@@ -18,8 +18,8 @@ Fonctionnalité: En Découverte, une sortie coûte un crédit
     Alors j'ai utilisé 2 crédits sur 10
     Quand j'exporte le planning en tableur 8 fois
     Alors j'ai utilisé 10 crédits sur 10
-    Et exporter le planning en tableur m'est refusé (403) : « Les 10 générations gratuites de votre club sont utilisées — l'offre Essentiel les rend illimitées. »
-    Et générer le planning m'est refusé (403) : « Les 10 générations gratuites de votre club sont utilisées — l'offre Essentiel les rend illimitées. »
+    Et exporter le planning en tableur m'est refusé (403) : « Les 10 générations gratuites de votre club sont utilisées — l'offre complète les rend illimitées. »
+    Et générer le planning m'est refusé (403) : « Les 10 générations gratuites de votre club sont utilisées — l'offre complète les rend illimitées. »
 
   Scénario: Un club de démonstration n'est jamais décompté
     Étant donné un club inscrit en offre Découverte, avec 10 crédits et aucun d'utilisé
