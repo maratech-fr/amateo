@@ -8,6 +8,7 @@ use App\Entity\Club;
 use App\Entity\Coach;
 use App\Structure\PersonDirectory;
 use App\Tests\CreatesPeopleAndPlacesTrait;
+use App\Tests\Security\PersonPlaceTenantIsolationTest;
 use App\Tests\TenantGucTrait;
 use Doctrine\ORM\EntityManagerInterface;
 use LogicException;
@@ -21,7 +22,7 @@ use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
  * pas celle du club du coach lève aussi, jamais rendue.
  *
  * Second angle, nommé, de l'axe *tenant isolation* : la base garde déjà la frontière (RLS de `person`
- * et clé composée, {@see \App\Tests\Security\PersonPlaceTenantIsolationTest}) ; ici, la vérification
+ * et clé composée, {@see PersonPlaceTenantIsolationTest}) ; ici, la vérification
  * applicative de `PersonDirectory::personOf`, que la clé composée rend inatteignable par une écriture.
  */
 #[Group('integration')]
