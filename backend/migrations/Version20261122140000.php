@@ -14,7 +14,7 @@ use Doctrine\Migrations\AbstractMigration;
  * Conversion : une fiche par ligne de coach, SANS fusion (deux coachs homonymes donnent deux fiches),
  * identifiants de `coach` inchangés. Les colonnes d'identité quittent `coach`. Les photos de versions
  * (`schedule_structure_snapshot.data`) perdent l'identité et gagnent `personId` ; la ligne d'un coach qui
- * n'existe plus en sort. La migration s'arrête (exception PostgreSQL) si une fiche manque à l'appel.
+ * n'existe plus en sort, avec ses liens d'équipe et de joueur et ses règles de portée coach. La migration s'arrête (exception PostgreSQL) si une fiche manque à l'appel.
  *
  * Clé étrangère COMPOSÉE `(person_id, club_id)` → `person (id, club_id)`, `ON DELETE RESTRICT`, posée à la
  * main (invisible de Doctrine) : une clé simple laisserait un coach du club A désigner la fiche du club B,
@@ -75,6 +75,36 @@ final class Version20261122140000 extends AbstractMigration
             )::json
             WHERE jsonb_typeof(s.data::jsonb -> 'Coach') = 'array'
             SQL);
+
+        // Photos : les liens d'équipe et de joueur et les règles de portée coach qui citent un coach sorti
+        // de la photo (absent de ses lignes `Coach` nettoyées ci-dessus) en sortent aussi ; « Charger » les
+        // réinsérerait sinon, aucune clé étrangère ne les refusant.
+        foreach (['TeamCoach' => 'coachId', 'CoachPlayerMembership' => 'coachId', 'Constraint' => 'scopeTargetId'] as $family => $coachField) {
+            $keeps = \sprintf(
+                'EXISTS (SELECT 1 FROM jsonb_array_elements(COALESCE(s.data::jsonb -> \'Coach\', \'[]\'::jsonb)) AS k(coach) WHERE k.coach ->> \'id\' = e.elem ->> \'%s\')',
+                $coachField,
+            );
+            if ('Constraint' === $family) {
+                $keeps = \sprintf('(e.elem ->> \'scope\' IS DISTINCT FROM \'COACH\' OR %s)', $keeps);
+            }
+            $this->addSql(\sprintf(
+                <<<'SQL'
+                    UPDATE schedule_structure_snapshot s
+                    SET data = jsonb_set(
+                      s.data::jsonb,
+                      '{%1$s}',
+                      COALESCE((
+                        SELECT jsonb_agg(e.elem ORDER BY e.ord)
+                        FROM jsonb_array_elements(s.data::jsonb -> '%1$s') WITH ORDINALITY AS e(elem, ord)
+                        WHERE %2$s
+                      ), '[]'::jsonb)
+                    )::json
+                    WHERE jsonb_typeof(s.data::jsonb -> '%1$s') = 'array'
+                    SQL,
+                $family,
+                $keeps,
+            ));
+        }
 
         $this->addSql('ALTER TABLE coach DROP first_name, DROP last_name, DROP email, DROP phone, DROP gender');
 

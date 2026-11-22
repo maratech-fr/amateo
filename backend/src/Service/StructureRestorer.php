@@ -151,27 +151,25 @@ final class StructureRestorer
         $known = array_flip($known);
 
         $kept = [];
-        $gone = [];
+        $keptIds = [];
         foreach ($rows as $row) {
             $personId = $row['personId'] ?? null;
             if (\is_string($personId) && isset($known[$personId])) {
                 $kept[] = $row;
-            } else {
-                $gone[(string) ($row['id'] ?? '')] = true;
+                $keptIds[(string) ($row['id'] ?? '')] = true;
             }
         }
-        if ([] === $gone) {
-            return $data;
-        }
-
         $data['Coach'] = $kept;
+
+        // Tout lien ou règle qui cite un coach absent des lignes `Coach` gardées (fiche disparue, ou
+        // ligne déjà retirée de la photo) part avec lui : aucune clé étrangère ne le refuserait.
         foreach (['TeamCoach', 'CoachPlayerMembership'] as $family) {
             if (isset($data[$family])) {
-                $data[$family] = array_values(array_filter($data[$family], static fn (array $row): bool => !isset($gone[(string) ($row['coachId'] ?? '')])));
+                $data[$family] = array_values(array_filter($data[$family], static fn (array $row): bool => isset($keptIds[(string) ($row['coachId'] ?? '')])));
             }
         }
         if (isset($data['Constraint'])) {
-            $data['Constraint'] = array_values(array_filter($data['Constraint'], static fn (array $row): bool => ConstraintScope::COACH->value !== ($row['scope'] ?? null) || !isset($gone[(string) ($row['scopeTargetId'] ?? '')])));
+            $data['Constraint'] = array_values(array_filter($data['Constraint'], static fn (array $row): bool => ConstraintScope::COACH->value !== ($row['scope'] ?? null) || isset($keptIds[(string) ($row['scopeTargetId'] ?? '')])));
         }
 
         return $data;

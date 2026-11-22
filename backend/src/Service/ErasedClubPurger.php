@@ -106,6 +106,12 @@ final class ErasedClubPurger
         // garde la ligne `feedback` ; ce geste garde le blob, invisible à ce balayage de tables.
         $this->deleteFeedbackScreenshots($clubId);
 
+        // Les lignes de saison dont la saison n'existe plus : `season_id` n'a aucune clé
+        // étrangère, aucune purge de saison ne les voit. Effacées par clubId, enfant avant
+        // parent, AVANT les familles de club (un coach orphelin retiendrait sa fiche de
+        // personne, clé RESTRICT).
+        $deleted += $this->deleteSeasonRowsWithoutSeason($clubId);
+
         foreach ($this->familyCatalog->purgedWithClub() as $entityClass) {
             $deleted += (int) $this->entityManager->createQueryBuilder()
                 ->delete($entityClass, 'e')
@@ -162,6 +168,32 @@ final class ErasedClubPurger
         foreach ($memberUserIds as $userId) {
             $this->orphanAccountNotifier->notifyClubDeleted($userId);
         }
+    }
+
+    /**
+     * Efface, pour chaque famille de la purge de saison ({@see FamilyCatalog::purgedWithSeason()},
+     * enfant avant parent), les lignes du club dont la saison n'est plus en base.
+     */
+    private function deleteSeasonRowsWithoutSeason(string $clubId): int
+    {
+        $seasons = $this->entityManager->createQueryBuilder()
+            ->select('s.id')
+            ->from(Season::class, 's')
+            ->where('s.clubId = :clubId')
+            ->getDQL();
+
+        $deleted = 0;
+        foreach ($this->familyCatalog->purgedWithSeason() as $entityClass) {
+            $deleted += (int) $this->entityManager->createQueryBuilder()
+                ->delete($entityClass, 'e')
+                ->where('e.clubId = :clubId')
+                ->andWhere(\sprintf('e.seasonId NOT IN (%s)', $seasons))
+                ->setParameter('clubId', $clubId)
+                ->getQuery()
+                ->execute();
+        }
+
+        return $deleted;
     }
 
     /**
