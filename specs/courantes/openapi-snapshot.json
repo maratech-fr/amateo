@@ -1736,21 +1736,69 @@
                                                     "isDemo": {
                                                         "type": "boolean"
                                                     },
-                                                    "plan": {
+                                                    "subscription": {
                                                         "type": "object",
                                                         "nullable": true,
                                                         "properties": {
-                                                            "code": {
+                                                            "seasonYear": {
+                                                                "type": "integer"
+                                                            },
+                                                            "planCode": {
                                                                 "type": "string"
                                                             },
-                                                            "name": {
+                                                            "planName": {
                                                                 "type": "string"
+                                                            },
+                                                            "tierCode": {
+                                                                "type": "string",
+                                                                "nullable": true
+                                                            },
+                                                            "paidAt": {
+                                                                "type": "string",
+                                                                "format": "date-time",
+                                                                "nullable": true
+                                                            },
+                                                            "origin": {
+                                                                "type": "string",
+                                                                "enum": [
+                                                                    "support",
+                                                                    "conversion",
+                                                                    "seed"
+                                                                ]
                                                             }
                                                         }
                                                     },
-                                                    "paidSeasonYear": {
-                                                        "type": "integer",
-                                                        "nullable": true
+                                                    "nextSubscription": {
+                                                        "type": "object",
+                                                        "nullable": true,
+                                                        "properties": {
+                                                            "seasonYear": {
+                                                                "type": "integer"
+                                                            },
+                                                            "planCode": {
+                                                                "type": "string"
+                                                            },
+                                                            "planName": {
+                                                                "type": "string"
+                                                            },
+                                                            "tierCode": {
+                                                                "type": "string",
+                                                                "nullable": true
+                                                            },
+                                                            "paidAt": {
+                                                                "type": "string",
+                                                                "format": "date-time",
+                                                                "nullable": true
+                                                            },
+                                                            "origin": {
+                                                                "type": "string",
+                                                                "enum": [
+                                                                    "support",
+                                                                    "conversion",
+                                                                    "seed"
+                                                                ]
+                                                            }
+                                                        }
                                                     },
                                                     "effectivePlan": {
                                                         "type": "object",
@@ -1762,6 +1810,9 @@
                                                                 "type": "string"
                                                             }
                                                         }
+                                                    },
+                                                    "teamsCounted": {
+                                                        "type": "integer"
                                                     },
                                                     "billingCycle": {
                                                         "type": "string",
@@ -36512,10 +36563,6 @@
                         "default": "",
                         "type": "string"
                     },
-                    "maxTeams": {
-                        "default": 0,
-                        "type": "integer"
-                    },
                     "maxVenues": {
                         "default": 0,
                         "type": "integer"
@@ -36531,6 +36578,23 @@
                                 "string",
                                 "null"
                             ]
+                        }
+                    },
+                    "tiers": {
+                        "description": "Les paliers de l'offre, rang\u00e9s par position ; vide pour une offre sans palier. Plafond\nd'\u00e9quipes `maxTeams` (0 = illimit\u00e9) ; le prix d'un palier n'est jamais servi.",
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "anyOf": [
+                                    {
+                                        "type": "integer"
+                                    },
+                                    {
+                                        "type": "string"
+                                    }
+                                ]
+                            }
                         }
                     }
                 }
@@ -36562,10 +36626,6 @@
                         "default": "",
                         "type": "string"
                     },
-                    "maxTeams": {
-                        "default": 0,
-                        "type": "integer"
-                    },
                     "maxVenues": {
                         "default": 0,
                         "type": "integer"
@@ -36581,6 +36641,23 @@
                                 "string",
                                 "null"
                             ]
+                        }
+                    },
+                    "tiers": {
+                        "description": "Les paliers de l'offre, rang\u00e9s par position ; vide pour une offre sans palier. Plafond\nd'\u00e9quipes `maxTeams` (0 = illimit\u00e9) ; le prix d'un palier n'est jamais servi.",
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "anyOf": [
+                                    {
+                                        "type": "integer"
+                                    },
+                                    {
+                                        "type": "string"
+                                    }
+                                ]
+                            }
                         }
                     }
                 }
@@ -36617,10 +36694,6 @@
                                 "default": "",
                                 "type": "string"
                             },
-                            "maxTeams": {
-                                "default": 0,
-                                "type": "integer"
-                            },
                             "maxVenues": {
                                 "default": 0,
                                 "type": "integer"
@@ -36636,6 +36709,23 @@
                                         "string",
                                         "null"
                                     ]
+                                }
+                            },
+                            "tiers": {
+                                "description": "Les paliers de l'offre, rang\u00e9s par position ; vide pour une offre sans palier. Plafond\nd'\u00e9quipes `maxTeams` (0 = illimit\u00e9) ; le prix d'un palier n'est jamais servi.",
+                                "type": "array",
+                                "items": {
+                                    "type": "object",
+                                    "additionalProperties": {
+                                        "anyOf": [
+                                            {
+                                                "type": "integer"
+                                            },
+                                            {
+                                                "type": "string"
+                                            }
+                                        ]
+                                    }
                                 }
                             }
                         }

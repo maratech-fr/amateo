@@ -176,6 +176,17 @@ export interface AdminHealthResponse {
   externalDependencies: AdminHealthExternalDependency[];
 }
 
+/** L'abonnement d'un club pour une saison (année = début de la saison, 2026 = 2026-2027). */
+interface AdminClubSubscription {
+  seasonYear: number;
+  planCode: string;
+  planName: string;
+  tierCode: string | null;
+  /** RFC 3339 ; null = non réglée. */
+  paidAt: string | null;
+  origin: string;
+}
+
 export interface AdminClub {
   id: string;
   name: string;
@@ -183,11 +194,14 @@ export interface AdminClub {
   ffbbClubCode: string | null;
   /** P2-4 — club de démonstration : badgé dans la liste, exclu des KPI. */
   isDemo: boolean;
-  /** Offre STOCKÉE (plan_id résolu) : null en Découverte par défaut. */
-  plan: { code: string; name: string } | null;
-  paidSeasonYear: number | null;
+  /** Ligne d'abonnement de la saison en cours (null : aucune ligne, Découverte). */
+  subscription: AdminClubSubscription | null;
+  /** Ligne d'abonnement de la saison suivante, si elle a été réglée à part. */
+  nextSubscription: AdminClubSubscription | null;
   /** Offre EFFECTIVE calculée côté backend (règle pivot) — ce que la console affiche. */
   effectivePlan: { code: string; name: string };
+  /** Équipes de la saison en cours que le plafond du palier compte (désactivées comprises). */
+  teamsCounted: number;
   billingCycle: string | null;
   generationCountSeason: number;
   createdAt: string;

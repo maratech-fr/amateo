@@ -104,11 +104,11 @@ final class AdminMonitoringClubsPlanTest extends KernelTestCase
         self::assertArrayNotHasKey('paidSeasonYear', $tiered, '`paidSeasonYear` ne sert plus');
         self::assertSame(
             ['seasonYear' => $year, 'planCode' => 'complete', 'planName' => 'Offre complète', 'tierCode' => 'palier-2', 'origin' => 'seed'],
-            self::picked($tiered['subscription'], ['seasonYear', 'planCode', 'planName', 'tierCode', 'origin']),
+            $this->picked($tiered['subscription'], ['seasonYear', 'planCode', 'planName', 'tierCode', 'origin']),
             'la saison en cours : offre, palier et origine',
         );
         self::assertIsString($tiered['subscription']['paidAt'], 'la date de règlement est servie');
-        self::assertSame(['seasonYear' => $year + 1, 'planCode' => 'complete', 'tierCode' => 'palier-1'], self::picked($tiered['nextSubscription'], ['seasonYear', 'planCode', 'tierCode']), 'la saison suivante, réglée à part, a sa propre ligne');
+        self::assertSame(['seasonYear' => $year + 1, 'planCode' => 'complete', 'tierCode' => 'palier-1'], $this->picked($tiered['nextSubscription'], ['seasonYear', 'planCode', 'tierCode']), 'la saison suivante, réglée à part, a sa propre ligne');
         self::assertSame(3, $tiered['teamsCounted'], 'trois équipes de la saison en cours, la désactivée comprise ; pas celle d\'une autre saison');
 
         self::assertNull($byName[$this->tag . ' single']['nextSubscription'], 'témoin : sans ligne de saison suivante, rien n\'est servi');
@@ -326,6 +326,24 @@ final class AdminMonitoringClubsPlanTest extends KernelTestCase
         parent::tearDown();
     }
 
+    /**
+     * Les clés nommées, dans l'ordre donné : l'ordre de sérialisation n'est pas le contrat.
+     *
+     * @param array<string, mixed> $row
+     * @param list<string>         $keys
+     *
+     * @return array<string, mixed>
+     */
+    private function picked(array $row, array $keys): array
+    {
+        $out = [];
+        foreach ($keys as $key) {
+            $out[$key] = \array_key_exists($key, $row) ? $row[$key] : '(absent)';
+        }
+
+        return $out;
+    }
+
     private function planId(string $code): string
     {
         $id = $this->admin->fetchOne('SELECT id FROM subscription_plan WHERE code = :code', ['code' => $code]);
@@ -390,24 +408,6 @@ final class AdminMonitoringClubsPlanTest extends KernelTestCase
             INSERT INTO team (id, version, created_at, updated_at, club_id, season_id, sport_category_id, priority_tier_id, name, sessions_per_week, is_active)
             VALUES (gen_random_uuid(), 1, NOW(), NOW(), :club, COALESCE(CAST(:season AS uuid), gen_random_uuid()), gen_random_uuid(), 1, 'Équipe comptée', 1, :active)
             SQL, ['club' => $clubId, 'season' => $seasonId, 'active' => $isActive], ['active' => ParameterType::BOOLEAN]);
-    }
-
-    /**
-     * Les clés nommées, dans l'ordre donné : l'ordre de sérialisation n'est pas le contrat.
-     *
-     * @param array<string, mixed> $row
-     * @param list<string>         $keys
-     *
-     * @return array<string, mixed>
-     */
-    private static function picked(array $row, array $keys): array
-    {
-        $out = [];
-        foreach ($keys as $key) {
-            $out[$key] = \array_key_exists($key, $row) ? $row[$key] : '(absent)';
-        }
-
-        return $out;
     }
 
     private function service(DateTimeImmutable $now): AdminMonitoringService

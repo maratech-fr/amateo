@@ -213,7 +213,14 @@ export const ADMIN_DASHBOARD_TEXTS = {
   clubNoSeason: "Aucune saison",
   clubRowActions: "Actions",
   clubToggleDetail: (expanded: boolean, name: string) => `${expanded ? "Masquer" : "Afficher"} le détail de ${name}`,
-  clubPlanDiverges: (planName: string) => `${planName} posée — saison non réglée`,
+  // Abonnement de la saison en cours / suivante (lignes servies par le backend, jamais redérivées).
+  clubTierLabel: (tierCode: string) => tierCode.replace(/^palier-(\d+)$/, "Palier $1"),
+  clubTeamsCounted: (n: number) => `${n} équipe${n > 1 ? "s" : ""} comptée${n > 1 ? "s" : ""}`,
+  clubSubscriptionLine: (planName: string, tierLabel: string | null, teamsCounted: string) => [planName, tierLabel, teamsCounted].filter((part) => null !== part).join(" · "),
+  clubSubscriptionPaid: (date: string, origin: string) => `réglée le ${date} (${origin})`,
+  clubSubscriptionUnpaid: "non réglée",
+  clubNextSubscription: (season: string, planName: string, tierLabel: string | null, paid: boolean) =>
+    `${season} : ${[planName, tierLabel].filter((part) => null !== part).join(" · ")}, ${paid ? "réglée" : "non réglée"}`,
   clubGenerationCount: (n: number) => `${n} génération${n > 1 ? "s" : ""}`,
   clubCreatedAt: (date: string) => `Créé le ${date}`,
   clubTeamsCoaches: (teams: number, coaches: number) => `${teams} équipes · ${coaches} coachs`,

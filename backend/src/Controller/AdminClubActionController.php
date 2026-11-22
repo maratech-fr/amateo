@@ -69,7 +69,7 @@ final readonly class AdminClubActionController
                     array_values($argument->choices),
                 ),
             ];
-            // Présence conditionnelle (set-plan.paidSeason) : la console masque le picker
+            // Présence conditionnelle (set-plan.tier, set-plan.paidSeason) : la console masque le picker
             // quand le gate tombe dans forbiddenValues, et l'exige sinon.
             if ($argument->isConditional()) {
                 $row['gate'] = ['argument' => $argument->gateArgument, 'forbiddenValues' => $argument->forbiddenWhenGateIn];

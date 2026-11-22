@@ -171,7 +171,6 @@ const jobs: AdminJobsResponse = {
 const actions: AdminActionsResponse = {
   items: [
     { key: "ffbb-resync", label: "Resynchroniser depuis la FFBB", description: "Ré-importe l’identité FFBB du club.", dangerous: false, arguments: [] },
-    { key: "mark-next-season-paid", label: "Marquer la saison suivante payée", description: "Enregistre le paiement de la saison suivante.", dangerous: false, arguments: [] },
     {
       key: "set-plan",
       label: "Offre",
@@ -475,14 +474,14 @@ describe("AdminDashboardPage", () => {
     await waitFor(() => expect(mockRunClubAction).toHaveBeenCalledWith("club-1", "reset-current-season", "csrf-123"));
   });
 
-  it("lists the full closed catalogue (7 items) in the support-actions modal (A3)", async () => {
+  it("lists the full closed catalogue (5 items) in the support-actions modal (A3)", async () => {
     const user = userEvent.setup();
     renderWithProviders(<AdminDashboardPage />, { route: "/admin?tab=clubs" });
 
     await user.click(await screen.findByRole("button", { name: ADMIN_DASHBOARD_TEXTS.clubRowActions }));
     const dialog = await screen.findByRole("dialog", { name: ADMIN_DASHBOARD_TEXTS.clubActionsModalTitle("Basket Club des Lacs") });
-    // Le catalogue est FERMÉ : exactement 6 entrées, dont l'unique bouton « Offre » (A3).
-    expect(within(dialog).getAllByRole("listitem")).toHaveLength(6);
+    // Le catalogue est FERMÉ : exactement 5 entrées, dont l'unique bouton « Offre » (A3).
+    expect(within(dialog).getAllByRole("listitem")).toHaveLength(5);
     expect(within(dialog).getByRole("button", { name: /^Offre/ })).toBeInTheDocument();
   });
 

@@ -168,7 +168,7 @@ final class AdminClubActionTest extends WebTestCase
         self::assertSame($this->adminId, $executor->calls[0]['superAdminId']);
         self::assertSame(
             ['--club' => $clubId, '--paid-season' => 'next', '--plan' => 'complete', '--tier' => 'palier-2'],
-            self::sortedByKey($executor->calls[0]['arguments']),
+            $this->sortedByKey($executor->calls[0]['arguments']),
             'l\'offre complète part avec son palier et sa saison, rien d\'autre',
         );
 
@@ -176,7 +176,7 @@ final class AdminClubActionTest extends WebTestCase
         $executor->reset();
         $this->postAction($clubId, 'set-plan', ['plan' => 'beta', 'paidSeason' => 'current'], $csrfToken);
         self::assertResponseIsSuccessful();
-        self::assertSame(['--club' => $clubId, '--paid-season' => 'current', '--plan' => 'beta'], self::sortedByKey($executor->calls[0]['arguments'] ?? []), 'témoin : la Bêta sans palier passe le schéma');
+        self::assertSame(['--club' => $clubId, '--paid-season' => 'current', '--plan' => 'beta'], $this->sortedByKey($executor->calls[0]['arguments'] ?? []), 'témoin : la Bêta sans palier passe le schéma');
 
         // Abus de palier (lot 8, PR 2) → 400, rien exécuté. Chaque corps est par ailleurs complet :
         // le SEUL défaut est le palier — interdit sur Découverte et Bêta, absent ou hors enum sur
@@ -354,6 +354,20 @@ final class AdminClubActionTest extends WebTestCase
     }
 
     /**
+     * Les arguments CLI triés par option : l'ordre des options suit le schéma, que le test ne fige pas.
+     *
+     * @param array<array-key, mixed> $arguments
+     *
+     * @return array<array-key, mixed>
+     */
+    private function sortedByKey(array $arguments): array
+    {
+        ksort($arguments);
+
+        return $arguments;
+    }
+
+    /**
      * Seed via l'EM RUNTIME (pas la connexion admin) : les commandes reset-season lisent
      * tout par la porte runtime (club + seasons sous RLS/GUC) — sous le wrapper
      * transactionnel des tests, seule la même connexion voit ses écritures non commitées.
@@ -377,20 +391,6 @@ final class AdminClubActionTest extends WebTestCase
         $em->flush();
 
         return [$club->getId(), $season->getId()];
-    }
-
-    /**
-     * Les arguments CLI triés par option : l'ordre des options suit le schéma, que le test ne fige pas.
-     *
-     * @param array<array-key, mixed> $arguments
-     *
-     * @return array<array-key, mixed>
-     */
-    private static function sortedByKey(array $arguments): array
-    {
-        ksort($arguments);
-
-        return $arguments;
     }
 
     /**

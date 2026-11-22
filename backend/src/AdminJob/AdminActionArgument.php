@@ -14,8 +14,9 @@ namespace App\AdminJob;
  *  - $gateArgument === null → the argument is unconditionally REQUIRED ;
  *  - $gateArgument !== null → the argument is FORBIDDEN (400 if present) when the
  *    gate argument holds a value in $forbiddenWhenGateIn, and REQUIRED otherwise.
- * The one live rule is set-plan's `paidSeason` (required for every paid offer,
- * forbidden for `decouverte`).
+ * The live rules are set-plan's `paidSeason` (required for every paid offer,
+ * forbidden for `decouverte`) and `tier` (required for `complete`, forbidden for
+ * `decouverte` and `beta`).
  */
 final readonly class AdminActionArgument
 {

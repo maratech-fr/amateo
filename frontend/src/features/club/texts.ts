@@ -75,6 +75,16 @@ export const CLUB_TEXTS = {
   yourOffer: "Votre offre",
   offersLoadError: "Les offres n'ont pas pu être chargées.",
   offersLoading: "Chargement des offres…",
+  offerWithTier: (planName: string, tierName: string) => `${planName} · ${tierName}`,
+  offerTeamsCount: (used: number, max: number) => `${used}/${max} équipes`,
+  offerFree: "Gratuit",
+  offerOnRequest: "Sur demande",
+  offerNoTeamLimit: "Toutes vos équipes, sans limite",
+  tierName: (position: number) => `Palier ${position}`,
+  tierUpTo: (max: number) => `Jusqu'à ${max} équipes`,
+  tierRange: (min: number, max: number) => `De ${min} à ${max} équipes`,
+  tierFrom: (min: number) => `${min} équipes et plus`,
+  tierLine: (tierName: string, capacity: string) => `${tierName} · ${capacity}`,
 
   // ExportClubSection
   exportIntro: "Téléchargez une copie complète des données du club (saisons, équipes, coachs, gymnases, contraintes, plannings, matchs…) au format JSON — conformité RGPD (portabilité).",

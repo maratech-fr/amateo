@@ -33,7 +33,7 @@ import { readFailed, readLoading } from "@/shared/lib/readState";
 import { cn } from "@/shared/lib/utils";
 import { extractPalette } from "@/shared/lib/palette";
 
-import type { SubscriptionPlan, UsageDayHours } from "./api";
+import type { SubscriptionPlan, SubscriptionPlanTier, UsageDayHours } from "./api";
 import { LogoCropper } from "./LogoCropper";
 import { formatHours } from "./lib/venueStats";
 import { useDeleteLogo, useDownloadClubExport, useFfbbImport, useResetClub, useSubscriptionPlans, useUpdateAppearance, useUpdateShortName, useUpdateSiege, useUploadLogo, useVenueUsageStats } from "./queries";
@@ -667,43 +667,51 @@ function ExportClubSection() {
   );
 }
 
-/** Paliers triés pour l'affichage : Découverte d'abord, puis payants par cap
- *  d'équipes croissant (0 = illimité → en dernier). */
+/** Offres pour l'affichage : Découverte d'abord, puis l'offre payante. */
 function sortPlans(plans: SubscriptionPlan[]): SubscriptionPlan[] {
-  const rank = (p: SubscriptionPlan): number => ("decouverte" === p.code ? -1 : 0 === p.maxTeams ? Number.MAX_SAFE_INTEGER : p.maxTeams);
-  return [...plans].sort((a, b) => rank(a) - rank(b));
+  return [...plans].sort((a, b) => ("decouverte" === b.code ? 1 : 0) - ("decouverte" === a.code ? 1 : 0));
 }
 
-/** Capacité en équipes d'un palier, en clair (convention 0 = illimité). */
-function planCapacityLabel(plan: SubscriptionPlan): string {
-  if ("decouverte" === plan.code) {
-    return "Toutes vos équipes, sans limite";
-  }
-  return 0 === plan.maxTeams ? "Équipes illimitées" : `Jusqu'à ${plan.maxTeams} équipes`;
+/** Paliers d'une offre, rangés par la position servie. */
+function sortTiers(tiers: SubscriptionPlanTier[]): SubscriptionPlanTier[] {
+  return [...tiers].sort((a, b) => a.position - b.position);
 }
 
 /**
- * P1-3 §4bis pt 5 — section « Offre » (management). Offre courante (nom du palier ;
- * pour un payant « X/Y équipes »), grille des paliers « sur demande » (bêta absente
- * du catalogue), et pour Découverte le solde de crédits. Rendue pour TOUTES les
- * offres — payant/bêta la voient aussi ; seuls les mécanismes de crédits
- * (badge/bandeau/coûts) sont réservés à Découverte.
+ * Capacité d'un palier, en clair, depuis les plafonds servis (0 = illimité) : « Jusqu'à 20 »
+ * pour le premier, « De 21 à 34 » ensuite, « 35 et plus » pour le palier sans limite.
+ */
+function tierCapacityLabel(tier: SubscriptionPlanTier, previous: SubscriptionPlanTier | undefined): string {
+  const min = undefined === previous ? null : previous.maxTeams + 1;
+  if (0 === tier.maxTeams) {
+    return null === min ? CLUB_TEXTS.offerNoTeamLimit : CLUB_TEXTS.tierFrom(min);
+  }
+  return null === min ? CLUB_TEXTS.tierUpTo(tier.maxTeams) : CLUB_TEXTS.tierRange(min, tier.maxTeams);
+}
+
+/**
+ * P1-3 §4bis pt 5 — section « Offre » (management). Offre courante (son nom, et son palier ;
+ * avec un plafond « X/Y équipes »), carte Découverte et carte de l'offre payante avec ses
+ * paliers « sur demande » (bêta absente du catalogue), et pour Découverte le solde de crédits.
+ * Rendue pour TOUTES les offres — payant/bêta la voient aussi ; seuls les mécanismes de
+ * crédits (badge/bandeau/coûts) sont réservés à Découverte.
  */
 function OfferSection({ me }: { me: MeResponse }) {
   const plansQuery = useSubscriptionPlans();
   const credits = useCredits();
   const entitlements = me.club?.entitlements;
+  const currentTier = (plansQuery.data ?? []).flatMap((plan) => plan.tiers).find((tier) => tier.code === entitlements?.tierCode);
 
   return (
     <div className="space-y-4">
       {undefined !== entitlements ? (
         <div className="rounded-lg border border-accent/40 bg-surface-accent p-3">
           <p className="text-xs text-muted-foreground">{CLUB_TEXTS.yourOffer}</p>
-          <p className="text-base font-semibold">{entitlements.planName}</p>
+          <p className="text-base font-semibold">
+            {undefined === currentTier ? entitlements.planName : CLUB_TEXTS.offerWithTier(entitlements.planName, CLUB_TEXTS.tierName(currentTier.position))}
+          </p>
           {null !== entitlements.maxTeams ? (
-            <p className="text-sm text-muted-foreground">
-              {entitlements.teamsUsed}/{entitlements.maxTeams} équipes
-            </p>
+            <p className="text-sm text-muted-foreground">{CLUB_TEXTS.offerTeamsCount(entitlements.teamsUsed, entitlements.maxTeams)}</p>
           ) : null}
           {null !== credits ? (
             <p className="text-sm text-muted-foreground">
@@ -721,16 +729,38 @@ function OfferSection({ me }: { me: MeResponse }) {
         <div className="grid gap-2 sm:grid-cols-2">
           {sortPlans(plansQuery.data ?? []).map((plan) => {
             const current = undefined !== entitlements && plan.code === entitlements.planCode;
+            const tiers = sortTiers(plan.tiers);
+            // Une offre à paliers : marquée par la rangée de son palier, pas par sa carte.
+            const cardMarked = current && 0 === tiers.length;
             return (
               <div key={plan.id} className={cn("rounded-lg border p-3", current ? "border-accent bg-surface-accent" : "border-border bg-card")}>
                 <div className="flex items-center justify-between gap-2">
                   <p className="font-medium">{plan.name}</p>
-                  {current ? <StatusPill variant="accent-solid">{CLUB_TEXTS.yourOffer}</StatusPill> : null}
+                  {cardMarked ? <StatusPill variant="accent-solid">{CLUB_TEXTS.yourOffer}</StatusPill> : null}
                 </div>
-                <p className="text-sm text-muted-foreground">{planCapacityLabel(plan)}</p>
-                {/* Aucun montant dans l'app (décision fondateur) : « sur demande » partout,
-                    sauf le gratuit qui n'a pas de tarif. */}
-                <p className="mt-1 text-sm font-medium text-accent">{"decouverte" === plan.code ? "Gratuit" : "Sur demande"}</p>
+                {0 === tiers.length ? (
+                  <>
+                    <p className="text-sm text-muted-foreground">{"decouverte" === plan.code ? CLUB_TEXTS.offerNoTeamLimit : null}</p>
+                    {/* Aucun montant dans l'app (décision fondateur) : « sur demande » partout,
+                        sauf le gratuit qui n'a pas de tarif. */}
+                    <p className="mt-1 text-sm font-medium text-accent">{"decouverte" === plan.code ? CLUB_TEXTS.offerFree : CLUB_TEXTS.offerOnRequest}</p>
+                  </>
+                ) : (
+                  <ul aria-label={plan.name} className="mt-2 space-y-1.5">
+                    {tiers.map((tier, index) => {
+                      const tierCurrent = current && tier.code === entitlements?.tierCode;
+                      return (
+                        <li key={tier.code} className="flex flex-wrap items-center justify-between gap-2 text-sm">
+                          <span className="text-muted-foreground">{CLUB_TEXTS.tierLine(CLUB_TEXTS.tierName(tier.position), tierCapacityLabel(tier, tiers[index - 1]))}</span>
+                          <span className="flex items-center gap-2">
+                            {tierCurrent ? <StatusPill variant="accent-solid">{CLUB_TEXTS.yourOffer}</StatusPill> : null}
+                            <span className="font-medium text-accent">{CLUB_TEXTS.offerOnRequest}</span>
+                          </span>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
               </div>
             );
           })}

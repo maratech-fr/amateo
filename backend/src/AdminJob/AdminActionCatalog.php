@@ -33,10 +33,12 @@ final readonly class AdminActionCatalog
                 'Attribue une offre au club pour une saison, en cours ou suivante, et la marque réglée. Découverte se pose seule, sur la saison en cours.',
                 'app:clubs:set-plan',
                 dangerous: false,
-                // Schéma FERMÉ : le plan (enum des codes d'offre, miroir de SetClubPlanCommand)
-                // et la saison encaissée (enum current|next). Règle fondateur portée par le
-                // schéma : `paidSeason` est REQUIS pour toute offre payante (Bêta comprise —
-                // une offre payante se règle toujours pour une saison) et INTERDIT sur Découverte.
+                // Schéma FERMÉ : le plan (enum des codes d'offre, miroir de SetClubPlanCommand),
+                // le palier (enum des paliers de l'offre complète) et la saison encaissée (enum
+                // current|next). Règles portées par le schéma : `tier` est REQUIS pour l'offre
+                // complète et INTERDIT sur Découverte et Bêta (qui n'ont pas de palier) ;
+                // `paidSeason` est REQUIS pour toute offre payante (Bêta comprise — une offre
+                // payante se règle toujours pour une saison) et INTERDIT sur Découverte.
                 argumentSchema: new AdminActionArgumentSchema([
                     new AdminActionArgument(
                         'plan',
@@ -44,11 +46,21 @@ final readonly class AdminActionCatalog
                         '--plan',
                         [
                             'decouverte' => 'Découverte',
-                            'essentiel' => 'Essentiel',
-                            'club' => 'Club',
-                            'grand-club' => 'Grand club',
+                            'complete' => 'Offre complète',
                             'beta' => 'Bêta',
                         ],
+                    ),
+                    new AdminActionArgument(
+                        'tier',
+                        'Palier',
+                        '--tier',
+                        [
+                            'palier-1' => 'Palier 1 (jusqu\'à 20 équipes)',
+                            'palier-2' => 'Palier 2 (21 à 34 équipes)',
+                            'palier-3' => 'Palier 3 (35 équipes et plus)',
+                        ],
+                        gateArgument: 'plan',
+                        forbiddenWhenGateIn: ['decouverte', 'beta'],
                     ),
                     new AdminActionArgument(
                         'paidSeason',

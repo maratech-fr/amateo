@@ -10,7 +10,11 @@ use Doctrine\DBAL\Connection;
 use Doctrine\Persistence\ManagerRegistry;
 use Symfony\Component\Clock\ClockInterface;
 
-/** Read-only cross-tenant aggregates, deliberately executed through the admin connection. */
+/**
+ * Read-only cross-tenant aggregates, deliberately executed through the admin connection.
+ *
+ * @phpstan-type SubscriptionLine array{code: string, name: string, paid: bool, paidAt: ?string, origin: string, tierCode: ?string}
+ */
 final readonly class AdminMonitoringService
 {
     private const METRICS_WINDOW_DAYS = 30;
@@ -253,6 +257,7 @@ final readonly class AdminMonitoringService
                 current_season.status AS season_status,
                 current_season.start_date AS season_start_date,
                 COALESCE(volumes.teams, 0) AS teams,
+                COALESCE(volumes.teams_counted, 0) AS teams_counted,
                 COALESCE(volumes.venues, 0) AS venues,
                 COALESCE(volumes.coaches, 0) AS coaches,
                 COALESCE(volumes.constraints, 0) AS constraints,
@@ -280,6 +285,8 @@ final readonly class AdminMonitoringService
             LEFT JOIN LATERAL (
                 SELECT
                     (SELECT COUNT(*) FROM team t WHERE t.season_id = current_season.id AND t.is_active = TRUE) AS teams,
+                    -- Ce que le plafond du palier compte : toutes les équipes, désactivées comprises.
+                    (SELECT COUNT(*) FROM team t WHERE t.season_id = current_season.id) AS teams_counted,
                     (SELECT COUNT(*) FROM venue v WHERE v.season_id = current_season.id AND v.is_active = TRUE) AS venues,
                     (SELECT COUNT(*) FROM coach co WHERE co.season_id = current_season.id AND co.is_active = TRUE) AS coaches,
                     (SELECT COUNT(*) FROM "constraint" cn WHERE cn.season_id = current_season.id AND cn.is_active = TRUE) AS constraints
@@ -350,7 +357,7 @@ final readonly class AdminMonitoringService
      *
      * @param list<string> $clubIds
      *
-     * @return array<string, array<int, array{code: string, name: string, paid: bool}>>
+     * @return array<string, array<int, SubscriptionLine>>
      */
     private function subscriptionLines(array $clubIds): array
     {
@@ -358,8 +365,9 @@ final readonly class AdminMonitoringService
             return [];
         }
         $rows = $this->connection()->fetchAllAssociative(
-            'SELECT cs.club_id, cs.season_year, (cs.paid_at IS NOT NULL)::int AS paid, p.code, p.name'
-            . ' FROM club_subscription cs JOIN subscription_plan p ON p.id = cs.plan_id WHERE cs.club_id IN (:clubIds)',
+            'SELECT cs.club_id, cs.season_year, (cs.paid_at IS NOT NULL)::int AS paid, cs.paid_at, cs.origin, p.code, p.name, t.code AS tier_code'
+            . ' FROM club_subscription cs JOIN subscription_plan p ON p.id = cs.plan_id LEFT JOIN subscription_plan_tier t ON t.id = cs.tier_id'
+            . ' WHERE cs.club_id IN (:clubIds)',
             ['clubIds' => $clubIds],
             ['clubIds' => ArrayParameterType::STRING],
         );
@@ -369,6 +377,9 @@ final readonly class AdminMonitoringService
                 'code' => (string) $row['code'],
                 'name' => (string) $row['name'],
                 'paid' => 1 === $this->integer($row, 'paid'),
+                'paidAt' => $this->nullableRfc3339($row, 'paid_at'),
+                'origin' => (string) $row['origin'],
+                'tierCode' => $this->nullableString($row, 'tier_code'),
             ];
         }
 
@@ -376,9 +387,9 @@ final readonly class AdminMonitoringService
     }
 
     /**
-     * @param array<string, mixed>                                      $row
-     * @param array<int, array{code: string, name: string, paid: bool}> $lines      les lignes d'abonnement du club, par année de saison
-     * @param array{code: string, name: string}                         $decouverte socle Découverte (nom affiché en repli)
+     * @param array<string, mixed>              $row
+     * @param array<int, SubscriptionLine>      $lines      les lignes d'abonnement du club, par année de saison
+     * @param array{code: string, name: string} $decouverte socle Découverte (nom affiché en repli)
      *
      * @return array<string, mixed>
      */
@@ -386,8 +397,10 @@ final readonly class AdminMonitoringService
     {
         $generations = $this->integer($row, 'generations');
         $infeasible = $this->integer($row, 'infeasible');
-        $line = $lines[$this->pivotYear($row)] ?? null;
-        $paidYears = array_keys(array_filter($lines, static fn (array $candidate): bool => $candidate['paid']));
+        $year = $this->pivotYear($row);
+        // « Suivante » = l'année que la bascule créera (règle de l'écrivain de l'abonnement).
+        $nextYear = max($year + 1, SeasonResolver::seasonYear($this->clock->now()) + 1);
+        $line = $lines[$year] ?? null;
 
         return [
             'id' => (string) $row['id'],
@@ -395,11 +408,14 @@ final readonly class AdminMonitoringService
             'slug' => (string) $row['slug'],
             'ffbbClubCode' => $this->nullableString($row, 'ffbb_club_code'),
             'isDemo' => (bool) ($row['is_demo'] ?? false),
-            // Offre de la ligne de la saison en cours vs dernière saison réglée vs offre EFFECTIVE
-            // calculée ci-dessous — la console affiche l'effective, jamais un binaire sur la ligne.
-            'plan' => null === $line ? null : ['code' => $line['code'], 'name' => $line['name']],
-            'paidSeasonYear' => [] === $paidYears ? null : max($paidYears),
+            // La ligne d'abonnement de la saison en cours et celle de la suivante (null sans ligne),
+            // puis l'offre EFFECTIVE de la saison en cours — la console affiche l'effective, jamais
+            // un binaire sur la ligne.
+            'subscription' => $this->subscription($year, $line),
+            'nextSubscription' => $this->subscription($nextYear, $lines[$nextYear] ?? null),
             'effectivePlan' => $this->effectivePlan($line, $decouverte),
+            // Ce que le plafond du palier compte : toutes les équipes de la saison en cours.
+            'teamsCounted' => $this->integer($row, 'teams_counted'),
             'billingCycle' => $this->nullableString($row, 'billing_cycle'),
             'generationCountSeason' => $this->integer($row, 'generation_count_season'),
             // RFC 3339, comme l'annonce l'OpenAPI (`date-time`) — jamais la forme brute PostgreSQL.
@@ -520,8 +536,8 @@ final readonly class AdminMonitoringService
      * `AdminMonitoringClubsPlanTest` casse si les deux divergent). AUCUN cas démo (D2) : le badge
      * dit la vérité comptable, le chip « Démo » voisin porte déjà « droits pleins ».
      *
-     * @param array{code: string, name: string, paid: bool}|null $line
-     * @param array{code: string, name: string}                  $decouverte
+     * @param SubscriptionLine|null             $line
+     * @param array{code: string, name: string} $decouverte
      *
      * @return array{code: string, name: string}
      */
@@ -530,6 +546,25 @@ final readonly class AdminMonitoringService
         return null !== $line && PlanEntitlements::effectivePlanCode($line['code'], $line['paid']) === $line['code']
             ? ['code' => $line['code'], 'name' => $line['name']]
             : $decouverte;
+    }
+
+    /**
+     * La ligne d'abonnement d'une saison telle que la console l'affiche ; null sans ligne.
+     *
+     * @param SubscriptionLine|null $line
+     *
+     * @return array{seasonYear: int, planCode: string, planName: string, tierCode: ?string, paidAt: ?string, origin: string}|null
+     */
+    private function subscription(int $seasonYear, ?array $line): ?array
+    {
+        return null === $line ? null : [
+            'seasonYear' => $seasonYear,
+            'planCode' => $line['code'],
+            'planName' => $line['name'],
+            'tierCode' => $line['tierCode'],
+            'paidAt' => $line['paidAt'],
+            'origin' => $line['origin'],
+        ];
     }
 
     private function connection(): Connection

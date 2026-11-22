@@ -14,6 +14,7 @@ use App\Tests\Support\SubscribesClub;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
+use Lexik\Bundle\JWTAuthenticationBundle\Services\JWTTokenManagerInterface;
 use PHPUnit\Framework\Attributes\Group;
 use Symfony\Bundle\FrameworkBundle\Console\Application;
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
@@ -150,7 +151,7 @@ final class SubscriptionPlanAttributionTest extends WebTestCase
             self::assertArrayNotHasKey('annualPrice', $offer);
             foreach ($offer['tiers'] as $tier) {
                 ++$tierCount;
-                self::assertSame(['code', 'maxTeams', 'position'], self::sortedKeys($tier), \sprintf('le palier %s ne sert que code, position et plafond — jamais son prix', (string) $tier['code']));
+                self::assertSame(['code', 'maxTeams', 'position'], $this->sortedKeys($tier), \sprintf('le palier %s ne sert que code, position et plafond — jamais son prix', (string) $tier['code']));
             }
         }
         self::assertSame(3, $tierCount, 'témoin : les trois paliers sont servis, la boucle a bien lu chacun');
@@ -239,18 +240,26 @@ final class SubscriptionPlanAttributionTest extends WebTestCase
         foreach ([['complete', 'palier-2', 'Offre complète', 34], ['beta', null, 'Bêta', null]] as [$plan, $tier, $name, $cap]) {
             [$user, $club] = $this->seedClub();
             $this->subscribeClub($club->getId(), 2026, $plan, $tier);
-            $this->client->loginUser($user);
 
-            $this->client->request('GET', '/api/me');
+            // Deux identités dans le même test : `loginUser` ne tient que jusqu'à la première
+            // requête (le noyau se réinitialise entre deux requêtes) ; chaque identité porte donc
+            // son jeton en Bearer.
+            $this->client->request('GET', '/api/me', [], [], ['HTTP_AUTHORIZATION' => 'Bearer ' . self::getContainer()->get(JWTTokenManagerInterface::class)->create($user)]);
             self::assertResponseIsSuccessful();
             $entitlements = json_decode((string) $this->client->getResponse()->getContent(), true, 512, \JSON_THROW_ON_ERROR)['club']['entitlements'];
 
             self::assertSame(
                 ['planCode' => $plan, 'planName' => $name, 'tierCode' => $tier, 'maxTeams' => $cap],
-                ['planCode' => $entitlements['planCode'], 'planName' => $entitlements['planName'], 'tierCode' => \array_key_exists('tierCode', $entitlements) ? $entitlements['tierCode'] : 'absent','maxTeams' => $entitlements['maxTeams']],
+                ['planCode' => $entitlements['planCode'], 'planName' => $entitlements['planName'], 'tierCode' => \array_key_exists('tierCode', $entitlements) ? $entitlements['tierCode'] : 'absent', 'maxTeams' => $entitlements['maxTeams']],
                 \sprintf('%s : offre, palier et plafond servis pour la saison lue', $plan),
             );
         }
+    }
+
+    protected function setUp(): void
+    {
+        $this->client = self::createClient();
+        $this->em = self::getContainer()->get(EntityManagerInterface::class);
     }
 
     /**
@@ -258,18 +267,12 @@ final class SubscriptionPlanAttributionTest extends WebTestCase
      *
      * @return list<string>
      */
-    private static function sortedKeys(array $row): array
+    private function sortedKeys(array $row): array
     {
         $keys = array_map(strval(...), array_keys($row));
         sort($keys);
 
         return $keys;
-    }
-
-    protected function setUp(): void
-    {
-        $this->client = self::createClient();
-        $this->em = self::getContainer()->get(EntityManagerInterface::class);
     }
 
     /** @return array{0: User, 1: Club} */
