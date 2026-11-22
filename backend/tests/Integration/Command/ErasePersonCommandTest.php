@@ -8,6 +8,10 @@ use App\Entity\Coach;
 use App\Entity\Feedback;
 use App\Entity\Person;
 use App\Entity\Schedule;
+use App\Service\ClubGenerationLock;
+use App\Service\MatchPlacementLock;
+use App\Service\PdfGenerator;
+use App\Structure\PersonEraser;
 use App\Tests\Integration\Structure\PersonEraserTest;
 use App\Tests\PersonErasureDecorTrait;
 use App\Tests\Security\PersonErasureLeavesNoTraceTest;
@@ -126,6 +130,72 @@ final class ErasePersonCommandTest extends KernelTestCase
         self::assertSame(0, (int) $this->decorConnection()->fetchOne('SELECT COUNT(*) FROM audit_log WHERE action = ? AND club_id = ?', ['person.erased', $this->decor['club']]), 'aucune trace d\'effacement');
     }
 
+    /**
+     * Une génération ou un placement de matchs en cours dans le club (son verrou tenu) refuse
+     * l'effacement : code 1, rien ne bouge, sinon le run en cours réécrirait son nom après la
+     * validation. Jumeau, les verrous tenus pendant l'écriture et rendus :
+     * {@see PersonEraserTest::testTheErasureHoldsTheClubLocksWhileWritingAndGivesThemBackAfterSuccessAndFailure}.
+     */
+    public function testAGenerationOrPlacementInProgressRefusesTheErasureAndNothingMoves(): void
+    {
+        $this->seedErasureDecor();
+        $locks = [
+            'génération' => self::getContainer()->get(ClubGenerationLock::class),
+            'placement de matchs' => self::getContainer()->get(MatchPlacementLock::class),
+        ];
+
+        foreach ($locks as $run => $lock) {
+            $token = $lock->acquire($this->decor['club'], 60);
+            self::assertNotNull($token, 'témoin : le verrou de ' . $run . ' est pris');
+
+            try {
+                $tester = $this->runErase(['--club' => $this->decor['club'], '--coach' => $this->decor['coach']]);
+            } finally {
+                $lock->release($this->decor['club'], $token);
+            }
+
+            self::assertSame(1, $tester->getStatusCode(), 'un(e) ' . $run . ' en cours refuse l\'effacement : code 1');
+            $this->scopeGucToClub($this->decor['club']);
+            self::assertNotNull($this->em->find(Person::class, $this->decor['person']), 'sa fiche reste (' . $run . ')');
+            self::assertNotNull($this->em->find(Coach::class, $this->decor['coach']), 'son rôle reste (' . $run . ')');
+            self::assertFileExists($this->decor['pdfV1'], 'les PDF restent (' . $run . ')');
+            self::assertSame(0, (int) $this->decorConnection()->fetchOne('SELECT COUNT(*) FROM audit_log WHERE action = ? AND club_id = ?', ['person.erased', $this->decor['club']]), 'aucune trace d\'effacement (' . $run . ')');
+            $this->em->clear();
+        }
+    }
+
+    /**
+     * Reprise après un arrêt entre la validation et la suppression des fichiers : la personne est déjà
+     * effacée (« introuvable » par son rôle), ses PDF sont restés sur le disque. `--sweep-files` balaie
+     * les rendus de chaque planning du club, vue club et vues par gymnase, et ne touche à aucun fichier
+     * d'un autre club.
+     */
+    public function testTheFileSweepResumesAfterAStopBetweenCommitAndFileDeletionAndTouchesOnlyTheClub(): void
+    {
+        $this->seedErasureDecor();
+        $this->scopeGucToClub($this->decor['club']);
+        self::getContainer()->get(PersonEraser::class)->erase($this->decor['club'], $this->decor['person']);
+        $this->em->clear();
+        $left = [];
+        foreach ([$this->decor['v1'] => ['all', 'venue-nord'], $this->decor['v0'] => ['all']] as $scheduleId => $views) {
+            foreach ($views as $view) {
+                $left[] = $this->leftBehindRender((string) $scheduleId, $view);
+            }
+        }
+        self::assertSame(1, $this->runErase(['--club' => $this->decor['club'], '--coach' => $this->decor['coach']])->getStatusCode(), 'témoin : rejouée par son rôle, la commande ne la trouve plus');
+        foreach ($left as $path) {
+            self::assertFileExists($path, 'témoin : le rendu est resté sur le disque');
+        }
+
+        $tester = $this->runErase(['--club' => $this->decor['club'], '--sweep-files' => true]);
+
+        self::assertSame(0, $tester->getStatusCode(), 'la reprise du balayage réussit : code 0');
+        foreach ($left as $path) {
+            self::assertFileDoesNotExist($path, 'le rendu resté sur le disque est supprimé');
+        }
+        self::assertFileExists($this->decor['pdfB'], 'le PDF d\'un autre club reste sur le disque');
+    }
+
     protected function setUp(): void
     {
         self::bootKernel();
@@ -147,5 +217,15 @@ final class ErasePersonCommandTest extends KernelTestCase
         $this->em->clear();
 
         return $tester;
+    }
+
+    /** Un rendu laissé sur le disque (`schedule-<id>-<vue>.pdf`), retiré en fin de test s'il reste. */
+    private function leftBehindRender(string $scheduleId, string $view): string
+    {
+        $path = PdfGenerator::outputDir() . '/schedule-' . $scheduleId . '-' . $view . '.pdf';
+        file_put_contents($path, "%PDF-1.4\n%%EOF\n");
+        $this->decorFiles[] = $path;
+
+        return $path;
     }
 }

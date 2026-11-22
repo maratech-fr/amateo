@@ -381,7 +381,7 @@ trait PersonErasureDecorTrait
         file_put_contents($path, "%PDF-1.4\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF\n");
         $this->decorFiles[] = $path;
         $url = \sprintf('/api/schedules/%s/export-pdf/%s', $schedule->getId(), $filename);
-        $schedule->setPdfExportStatus('completed')->setPdfExportUrl($url);
+        $schedule->setPdfExportStatus('completed')->setPdfExportUrl($url)->setPdfExportRequestId(bin2hex(random_bytes(16)));
         $season?->setExportPdfUrl($url);
         static::getContainer()->get(EntityManagerInterface::class)->flush();
 

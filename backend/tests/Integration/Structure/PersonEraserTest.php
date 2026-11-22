@@ -24,6 +24,8 @@ use App\Enum\ConstraintRuleType;
 use App\Enum\ConstraintScope;
 use App\Enum\ScheduleDiagnosticSeverity;
 use App\Enum\TeamCoachRole;
+use App\Service\ClubGenerationLock;
+use App\Service\MatchPlacementLock;
 use App\Service\ScheduleConstraintBuilder;
 use App\Service\StructureSnapshotter;
 use App\Structure\PersonEraser;
@@ -39,6 +41,7 @@ use LogicException;
 use PHPUnit\Framework\Attributes\Group;
 use RuntimeException;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
+use Throwable;
 
 /**
  * Effacer une personne (lot conception 3, PR 3, `PersonEraser`) retire ce qui vient d'elle de chaque
@@ -60,12 +63,19 @@ final class PersonEraserTest extends KernelTestCase
 
     private EntityManagerInterface $em;
 
-    /** Étape 7 : les PDF stockés du club partent du disque, leur adresse est remise à vide ; ceux d'un autre club restent. */
+    /**
+     * Étape 7 : les PDF stockés du club partent du disque, leur adresse est remise à vide avec
+     * l'identifiant de la demande livrée (sans quoi la demande relue serait tenue pour déjà rendue et
+     * le PDF jamais refabriqué) ; ceux d'un autre club restent.
+     */
     public function testTheStoredPdfsOfTheClubAreDeletedAndTheirAddressesClearedThoseOfAnotherClubStay(): void
     {
         $this->seedErasureDecor();
         [$v1File, $v0File, $bFile] = [$this->decor['pdfV1'], $this->decor['pdfV0'], $this->decor['pdfB']];
         self::assertFileExists($v1File, 'témoin : le PDF de la version en cours est sur le disque');
+        $this->scopeGucToClub($this->decor['club']);
+        self::assertNotNull($this->em->find(Schedule::class, $this->decor['v1'])?->getPdfExportRequestId(), 'témoin : la version porte l\'identifiant de la demande livrée');
+        $this->em->clear();
 
         $this->erase();
 
@@ -75,6 +85,7 @@ final class PersonEraserTest extends KernelTestCase
             $schedule = $this->em->find(Schedule::class, $this->decor[$key]);
             self::assertInstanceOf(Schedule::class, $schedule);
             self::assertNull($schedule->getPdfExportUrl(), 'l\'adresse du PDF est remise à vide sur la version ' . $key);
+            self::assertNull($schedule->getPdfExportRequestId(), 'l\'identifiant de la demande livrée aussi, sur la version ' . $key);
             self::assertNotSame('completed', $schedule->getPdfExportStatus(), 'la version ne se dit plus « PDF prêt » : il se refabrique à la demande');
         }
         self::assertNull($this->em->find(Season::class, $this->decor['current'])?->getExportPdfUrl(), 'le PDF épinglé sur la saison est désépinglé');
@@ -532,6 +543,114 @@ final class PersonEraserTest extends KernelTestCase
         self::assertSame(2, (int) $connection->fetchOne('SELECT COUNT(*) FROM coach WHERE person_id = ?', [$this->decor['person']]), 'ses deux rôles restent');
         self::assertSame($this->decor['comment'], $connection->fetchOne('SELECT comment FROM coach_wish WHERE id = ?', [$this->decor['wish']]), 'le commentaire de sa doléance reste');
         self::assertFileExists($this->decor['pdfV1'], 'le PDF reste sur le disque');
+    }
+
+    /**
+     * Une erreur du moteur d'expressions pendant le remplacement du nom (ici la limite de retour
+     * arrière épuisée, forcée après le retrait de sa fiche) ne vide pas le texte en silence : elle
+     * remonte et la transaction est annulée, le diagnostic qui la cite garde son texte.
+     */
+    public function testAPatternFailureWhileReplacingHerNameAbortsTheErasureInsteadOfBlankingTheText(): void
+    {
+        $this->seedErasureDecor();
+        $failPatternsOnceHerRecordIsGone = new class {
+            private bool $personRemoved = false;
+
+            public function onFlush(OnFlushEventArgs $args): void
+            {
+                foreach ($args->getObjectManager()->getUnitOfWork()->getScheduledEntityDeletions() as $entity) {
+                    $this->personRemoved = $this->personRemoved || $entity instanceof Person;
+                }
+            }
+
+            public function postFlush(): void
+            {
+                if ($this->personRemoved) {
+                    ini_set('pcre.jit', '0');
+                    ini_set('pcre.backtrack_limit', '1');
+                }
+            }
+        };
+        $events = $this->em->getEventManager();
+        $events->addEventListener([Events::onFlush, Events::postFlush], $failPatternsOnceHerRecordIsGone);
+        $this->scopeGucToClub($this->decor['club']);
+        $thrown = null;
+
+        try {
+            self::getContainer()->get(PersonEraser::class)->erase($this->decor['club'], $this->decor['person']);
+        } catch (Throwable $failure) {
+            $thrown = $failure;
+        } finally {
+            ini_restore('pcre.backtrack_limit');
+            ini_restore('pcre.jit');
+            $events->removeEventListener([Events::onFlush, Events::postFlush], $failPatternsOnceHerRecordIsGone);
+        }
+
+        self::assertNotNull($thrown, 'l\'erreur du remplacement remonte au lieu de rendre un texte vide');
+        $this->em->clear();
+        $this->scopeGucToClub($this->decor['club']);
+        $connection = $this->em->getConnection();
+        self::assertSame(1, (int) $connection->fetchOne('SELECT COUNT(*) FROM person WHERE id = ?', [$this->decor['person']]), 'la transaction est annulée : sa fiche reste');
+        self::assertSame('SM1 : créneau partagé avec ' . $this->decor['fullName'] . ' (U13M1)', $connection->fetchOne('SELECT message FROM schedule_diagnostic WHERE id = ?', [$this->decor['citedDiagnostic']]), 'le diagnostic qui la cite garde son texte, jamais vidé');
+        self::assertFileExists($this->decor['pdfV1'], 'le PDF reste sur le disque');
+    }
+
+    /**
+     * L'effacement tient les verrous de génération et de placement du club pendant qu'il écrit (une
+     * génération lancée en même temps réécrirait son nom après la validation), et les rend après un
+     * succès comme après un échec. Jumeau à la porte du support, verrou déjà tenu :
+     * {@see ErasePersonCommandTest::testAGenerationOrPlacementInProgressRefusesTheErasureAndNothingMoves}.
+     */
+    public function testTheErasureHoldsTheClubLocksWhileWritingAndGivesThemBackAfterSuccessAndFailure(): void
+    {
+        $this->seedErasureDecor();
+        $generationLock = self::getContainer()->get(ClubGenerationLock::class);
+        $placementLock = self::getContainer()->get(MatchPlacementLock::class);
+        $clubId = $this->decor['club'];
+        $probe = new class($generationLock, $placementLock, $clubId) {
+            /** @var list<array{bool, bool}> */
+            public array $seen = [];
+            public bool $fail = false;
+
+            public function __construct(private readonly ClubGenerationLock $generation, private readonly MatchPlacementLock $placement, private readonly string $clubId) {}
+
+            public function onFlush(OnFlushEventArgs $args): void
+            {
+                $this->seen[] = [$this->generation->isGenerating($this->clubId), $this->placement->isHeld($this->clubId)];
+                if ($this->fail) {
+                    throw new RuntimeException('panne simulée pendant l\'effacement');
+                }
+            }
+        };
+        $events = $this->em->getEventManager();
+        $events->addEventListener([Events::onFlush], $probe);
+
+        try {
+            $probe->fail = true;
+            $this->scopeGucToClub($clubId);
+
+            try {
+                self::getContainer()->get(PersonEraser::class)->erase($clubId, $this->decor['person']);
+                self::fail('la panne simulée remonte');
+            } catch (RuntimeException $failure) {
+                self::assertSame('panne simulée pendant l\'effacement', $failure->getMessage());
+            }
+            self::assertSame([[true, true]], $probe->seen, 'pendant l\'écriture, les deux verrous du club sont tenus');
+            self::assertFalse($generationLock->isGenerating($clubId), 'après un échec, le verrou de génération est rendu');
+            self::assertFalse($placementLock->isHeld($clubId), 'après un échec, le verrou de placement est rendu');
+
+            $probe->fail = false;
+            $probe->seen = [];
+            $this->em->clear();
+            $this->erase();
+            self::assertNotSame([], $probe->seen, 'témoin : l\'effacement a écrit');
+            self::assertSame(array_fill(0, \count($probe->seen), [true, true]), $probe->seen, 'à chaque écriture, les deux verrous du club sont tenus');
+            self::assertNull($this->em->find(Person::class, $this->decor['person']), 'témoin : sa fiche est effacée');
+            self::assertFalse($generationLock->isGenerating($clubId), 'après un succès, le verrou de génération est rendu');
+            self::assertFalse($placementLock->isHeld($clubId), 'après un succès, le verrou de placement est rendu');
+        } finally {
+            $events->removeEventListener([Events::onFlush], $probe);
+        }
     }
 
     protected function setUp(): void
