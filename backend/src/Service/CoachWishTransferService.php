@@ -14,6 +14,7 @@ use App\Enum\ConstraintFamily;
 use App\Enum\ConstraintRuleType;
 use App\Enum\ConstraintScope;
 use App\Exception\ScheduleGenerationInProgressException;
+use App\Structure\PersonDirectory;
 use Doctrine\DBAL\Exception\ForeignKeyConstraintViolationException;
 use Doctrine\DBAL\LockMode;
 use Doctrine\ORM\EntityManagerInterface;
@@ -64,6 +65,7 @@ final class CoachWishTransferService
         private readonly ClubGenerationLock $clubGenerationLock,
         private readonly SchedulePlanProvisioner $schedulePlanProvisioner,
         private readonly PlanTeamSelectionSeeder $planTeamSelectionSeeder,
+        private readonly PersonDirectory $personDirectory,
     ) {}
 
     /**
@@ -340,7 +342,7 @@ final class CoachWishTransferService
     private function coachAvailabilityName(string $coachId, string $teamId): string
     {
         $coach = $this->entityManager->getRepository(Coach::class)->find($coachId);
-        $name = $coach instanceof Coach ? trim($coach->getFirstName() . ' ' . $coach->getLastName()) : '';
+        $name = $coach instanceof Coach ? $this->personDirectory->of($coach)->fullName() : '';
         $team = $this->entityManager->getRepository(Team::class)->find($teamId);
         $source = $team instanceof Team ? \sprintf('doléances %s', $team->getName()) : 'doléances';
 

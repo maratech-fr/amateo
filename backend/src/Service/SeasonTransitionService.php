@@ -25,6 +25,7 @@ use App\Entity\VenueTravelRuleSetting;
 use App\Entity\VenueTravelTime;
 use App\Enum\ConstraintScope;
 use App\Enum\SeasonStatus;
+use App\Structure\PersonDirectory;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\Clock\ClockInterface;
@@ -54,6 +55,7 @@ final class SeasonTransitionService
         private readonly ConstraintConfigValidator $constraintConfigValidator,
         private readonly ClubLeagueWindowSeeder $clubLeagueWindowSeeder,
         private readonly DemoRegime $demoRegime,
+        private readonly PersonDirectory $personDirectory,
     ) {}
 
     /**
@@ -288,17 +290,18 @@ final class SeasonTransitionService
             $copy = new Coach;
             $copy->setClubId($clubId);
             $copy->setSeasonId($target->getId());
-            $copy->setFirstName($coach->getFirstName());
-            $copy->setLastName($coach->getLastName());
-            $copy->setEmail($coach->getEmail());
-            $copy->setPhone($coach->getPhone());
+            $person = $this->personDirectory->of($coach);
+            $copy->setFirstName($person->firstName);
+            $copy->setLastName($person->lastName);
+            $copy->setEmail($person->email);
+            $copy->setPhone($person->phone);
             $copy->setMaxDaysOverride($coach->getMaxDaysOverride());
             $copy->setIsActive($coach->getIsActive());
             $copy->setIsEmployee($coach->isEmployee());
             // P4-311 — le genre (accord des libellés désignant la personne) et la case
             // « véhiculé » (le coach peut transporter) sont des attributs permanents du coach :
             // ils suivent la copie N+1 comme les autres champs saisis.
-            $copy->setGender($coach->getGender());
+            $copy->setGender($person->gender);
             $copy->setIsVehicled($coach->isVehicled());
             $this->entityManager->persist($copy);
             $coachMap[$coach->getId()] = $copy->getId();

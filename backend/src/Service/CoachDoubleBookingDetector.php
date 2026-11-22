@@ -15,6 +15,7 @@ use App\Entity\Venue;
 use App\Entity\VenueTravelTime;
 use App\Enum\ConstraintFamily;
 use App\Enum\TeamCoachRole;
+use App\Structure\PersonDirectory;
 use App\Support\WeeklySlot;
 use Doctrine\ORM\EntityManagerInterface;
 
@@ -68,6 +69,7 @@ final class CoachDoubleBookingDetector
 
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
+        private readonly PersonDirectory $personDirectory,
     ) {}
 
     /**
@@ -1079,7 +1081,7 @@ final class CoachDoubleBookingDetector
 
         $coach = [];
         foreach ([] === $coachIds ? [] : $this->entityManager->getRepository(Coach::class)->findBy(['id' => $coachIds]) as $entity) {
-            $coach[$entity->getId()] = trim($entity->getFirstName() . ' ' . $entity->getLastName());
+            $coach[$entity->getId()] = $this->personDirectory->of($entity)->fullName();
         }
         $team = [];
         foreach ([] === $teamIds ? [] : $this->entityManager->getRepository(Team::class)->findBy(['id' => $teamIds]) as $entity) {
@@ -1168,7 +1170,7 @@ final class CoachDoubleBookingDetector
         $names = [];
         $vehicled = [];
         foreach ($this->entityManager->getRepository(Coach::class)->findBy(['clubId' => $clubId, 'seasonId' => $seasonId]) as $coach) {
-            $names[$coach->getId()] = trim($coach->getFirstName() . ' ' . $coach->getLastName());
+            $names[$coach->getId()] = $this->personDirectory->of($coach)->fullName();
             $vehicled[$coach->getId()] = $coach->isVehicled();
         }
 

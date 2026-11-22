@@ -15,6 +15,7 @@ use App\Service\ClubDay;
 use App\Service\CoachWishMailBuilder;
 use App\Service\CoachWishPerimeter;
 use App\Service\TenantConnectionContext;
+use App\Structure\PersonDirectory;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\Clock\ClockInterface;
@@ -59,6 +60,7 @@ final class CoachWishDigestCommand extends Command
         private readonly CoachWishPerimeter $perimeter,
         private readonly ClockInterface $clock,
         private readonly ClubDay $clubDay,
+        private readonly PersonDirectory $personDirectory = new PersonDirectory,
     ) {
         parent::__construct();
     }
@@ -245,7 +247,7 @@ final class CoachWishDigestCommand extends Command
             if (!$coach instanceof Coach) {
                 continue;
             }
-            $name = trim($coach->getFirstName() . ' ' . $coach->getLastName());
+            $name = $this->personDirectory->of($coach)->fullName();
             $respondedAt = $token->getRespondedAt();
             if (null === $respondedAt) {
                 $silent[] = $name;

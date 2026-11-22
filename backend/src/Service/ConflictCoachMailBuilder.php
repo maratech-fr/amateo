@@ -15,6 +15,8 @@ use App\Mail\ClubBusinessMail;
 use App\Mail\ClubMailMetadata;
 use App\Mail\EmailTemplateRenderer;
 use App\Service\Conflicts\ConflictMoments;
+use App\Structure\PersonDirectory;
+use App\Structure\PersonIdentity;
 use DateTimeImmutable;
 use Symfony\Component\Mime\Address;
 use Symfony\Component\Mime\Email;
@@ -67,6 +69,7 @@ final class ConflictCoachMailBuilder
         // Expéditeur unique (P5-15) — le défaut ne sert qu'aux tests unitaires.
         private readonly MailFrom $mailFrom = new MailFrom,
         private readonly ProductIdentity $productIdentity = new ProductIdentity,
+        private readonly PersonDirectory $personDirectory = new PersonDirectory,
     ) {}
 
     /**
@@ -88,7 +91,7 @@ final class ConflictCoachMailBuilder
             ? \sprintf('Un conflit vous concerne — %s', $label)
             : \sprintf('%d conflits vous concernent — %s', $count, $label);
 
-        $greeting = \sprintf('Bonjour %s,', $coach->getFirstName());
+        $greeting = \sprintf('Bonjour %s,', $this->personDirectory->of($coach)->firstName);
         $intro = \sprintf(
             '%s (%s) vous informe, à titre indicatif, des conflits de personnes sur un match, datés d\'aujourd\'hui ou à venir, qui vous concernent pour la saison %s, au %s.',
             $senderFirstName,
@@ -135,7 +138,7 @@ final class ConflictCoachMailBuilder
     {
         $label = $club->emailLabel();
         $paragraphs = [
-            \sprintf('Bonjour %s,', $coach->getFirstName()),
+            \sprintf('Bonjour %s,', $this->personDirectory->of($coach)->firstName),
             \sprintf(
                 'Les conflits qui vous avaient été signalés ne sont plus d\'actualité au %s : aucun conflit de personne sur un match, daté d\'aujourd\'hui ou à venir, ne vous concerne pour la saison %s. %s (%s) vous en informe.',
                 $clubToday->format('d/m/Y'),
@@ -187,9 +190,9 @@ final class ConflictCoachMailBuilder
     {
         $type = \is_string($conflict['type'] ?? null) ? $conflict['type'] : '';
         $personId = \is_string($conflict['coachId'] ?? null) ? $conflict['coachId'] : '';
-        $person = $coaches[$personId] ?? null;
-        $personName = $person instanceof Coach ? $this->shortName($person) : 'Un coach';
-        $gender = $person instanceof Coach ? $person->getGender() : CoachGender::UNSPECIFIED;
+        $person = isset($coaches[$personId]) ? $this->personDirectory->of($coaches[$personId]) : null;
+        $personName = $person instanceof PersonIdentity ? $this->shortName($person) : 'Un coach';
+        $gender = $person instanceof PersonIdentity ? $person->gender : CoachGender::UNSPECIFIED;
 
         $blocks = [];
         $line = [];
@@ -524,10 +527,10 @@ final class ConflictCoachMailBuilder
     }
 
     /** « Karim B. » : le prénom et l'initiale du nom. */
-    private function shortName(Coach $coach): string
+    private function shortName(PersonIdentity $person): string
     {
-        $first = trim($coach->getFirstName());
-        $initial = mb_strtoupper(mb_substr(trim($coach->getLastName()), 0, 1));
+        $first = trim($person->firstName);
+        $initial = mb_strtoupper(mb_substr(trim($person->lastName), 0, 1));
 
         return '' === $initial ? $first : \sprintf('%s %s.', $first, $initial);
     }

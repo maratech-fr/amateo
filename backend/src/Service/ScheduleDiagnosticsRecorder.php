@@ -11,6 +11,7 @@ use App\Entity\ScheduleDiagnostic;
 use App\Entity\Team;
 use App\Entity\Venue;
 use App\Enum\ScheduleDiagnosticSeverity;
+use App\Structure\PersonDirectory;
 use Doctrine\ORM\EntityManagerInterface;
 
 /**
@@ -23,6 +24,7 @@ final class ScheduleDiagnosticsRecorder
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
         private readonly DiagnosticMessageBuilder $diagnosticMessageBuilder,
+        private readonly PersonDirectory $personDirectory = new PersonDirectory,
     ) {}
 
     /** Remove diagnostics from previous generation runs of this schedule. */
@@ -273,7 +275,7 @@ final class ScheduleDiagnosticsRecorder
 
         $coachNames = [];
         foreach ($this->entityManager->getRepository(Coach::class)->findBy($criteria) as $coach) {
-            $coachNames[$coach->getId()] = trim($coach->getFirstName() . ' ' . $coach->getLastName());
+            $coachNames[$coach->getId()] = $this->personDirectory->of($coach)->fullName();
         }
 
         $venueNames = [];

@@ -17,6 +17,7 @@ use App\Entity\Venue;
 use App\Entity\VenueTrainingSlot;
 use App\Enum\ConstraintFamily;
 use App\Enum\LockLevel;
+use App\Structure\PersonDirectory;
 use DateTimeImmutable;
 use DateTimeInterface;
 use Doctrine\ORM\EntityManagerInterface;
@@ -37,6 +38,7 @@ final class DevScheduleReportWriter
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
         private readonly KernelInterface $kernel,
+        private readonly PersonDirectory $personDirectory,
     ) {}
 
     /**
@@ -75,7 +77,7 @@ final class DevScheduleReportWriter
         }
         $coachNames = [];
         foreach ($this->entityManager->getRepository(Coach::class)->findBy(['clubId' => $clubId, 'seasonId' => $seasonId]) as $coach) {
-            $coachNames[$coach->getId()] = trim($coach->getFirstName() . ' ' . $coach->getLastName());
+            $coachNames[$coach->getId()] = $this->personDirectory->of($coach)->fullName();
         }
 
         $summaryLines = [
@@ -314,7 +316,7 @@ final class DevScheduleReportWriter
 
         $coachNames = [];
         foreach ($this->entityManager->getRepository(Coach::class)->findBy($criteria) as $coach) {
-            $coachNames[$coach->getId()] = trim($coach->getFirstName() . ' ' . $coach->getLastName());
+            $coachNames[$coach->getId()] = $this->personDirectory->of($coach)->fullName();
         }
 
         // Build team → coaches map from TeamCoach (names for display, IDs for player matching)
