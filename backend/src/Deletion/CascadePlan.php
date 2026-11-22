@@ -18,7 +18,6 @@ use App\Entity\TeamCoach;
 use App\Entity\TeamLink;
 use App\Entity\TeamMatchHabit;
 use App\Entity\TeamPeriodOverride;
-use App\Entity\TeamTagAssignment;
 use App\Entity\VenueMatchWindow;
 use App\Entity\VenueOccupancy;
 use App\Entity\VenuePeriodOverride;
@@ -74,8 +73,6 @@ final class CascadePlan
             // les matchs partiront avec l'équipe au lieu de pendre sur un team_id mort.
             new DeleteByFieldStep(Fixture::class, 'teamId', new ImpactLabel('team_fixture', 'match', 'matchs')),
             new DeleteByFieldStep(Competition::class, 'teamId', new ImpactLabel('team_competition', 'engagement en compétition', 'engagements en compétition')),
-            // TeamTagAssignment porte un season_id mais AUCUN club_id (scopé par la saison).
-            new DeleteByFieldStep(TeamTagAssignment::class, 'teamId', new ImpactLabel('team_tag', 'étiquette', 'étiquettes'), clubScoped: false),
             new DeleteByFieldStep(TeamPeriodOverride::class, 'teamId', new ImpactLabel('team_period_override', 'réglage de période', 'réglages de période')),
             // #10 — sans équipe, une doléance n'a plus de sens : elle part.
             new DeleteByFieldStep(CoachWish::class, 'teamId', new ImpactLabel('team_coach_wish', 'demande de coach', 'demandes de coach')),

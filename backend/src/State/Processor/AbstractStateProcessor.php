@@ -180,7 +180,7 @@ abstract class AbstractStateProcessor implements ProcessorInterface
         try {
             $this->entityManager->flush();
         } catch (UniqueConstraintViolationException) {
-            // P4-67 — les contraintes d'unicité en base (Competition, TeamTag…)
+            // P4-67 — les contraintes d'unicité en base (Competition…)
             // transforment un doublon en erreur SQL : la nommer en 409 plutôt
             // que de laisser fuir un 500 (le doublon vient toujours du client —
             // double-clic, re-soumission).

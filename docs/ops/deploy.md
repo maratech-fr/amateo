@@ -471,7 +471,7 @@ clubs, **PAS une frontière** — l'opérateur peut poser n'importe quel club) :
 
 ```bash
 scripts/prod-read.sh "SELECT id, name FROM club ORDER BY name;"
-scripts/prod-read.sh --club "<uuid|nom>" "SELECT * FROM team_tag;"   # pose SET app.club_id
+scripts/prod-read.sh --club "<uuid|nom>" "SELECT * FROM venue;"      # pose SET app.club_id
 echo "SELECT count(*) FROM team;" | scripts/prod-read.sh --csv        # requête sur stdin, sortie CSV
 ```
 

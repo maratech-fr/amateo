@@ -6,7 +6,6 @@ namespace App\Service;
 
 use App\Entity\HolidayReminderLog;
 use App\Entity\Season;
-use App\Entity\TeamTagAssignment;
 use App\Structure\FamilyCatalog;
 use Doctrine\ORM\EntityManagerInterface;
 
@@ -39,7 +38,6 @@ final class SeasonDataPurger
      * @var array<string, string> table => comment / pourquoi
      */
     public const HANDLED_APART = [
-        'team_tag_assignment' => 'purgé par season_id seul (BCK-11 : porte un club_id mais le périmètre reste la saison, RLS borne le club)',
         'holiday_reminder_log' => 'sans club_id ni RLS, clé par saison (uuid propre au club) : vidé par season_id seul, le palier repart après un reset',
         'season' => 'la ligne pivot elle-même — supprimée conditionnellement ($deleteSeasonRow : purge de rétention / effacement, jamais le reset)',
     ];
@@ -77,15 +75,6 @@ final class SeasonDataPurger
             $deleted += $this->deleteBySubQuery($entityClass, $parentRefField, $parentClass, $clubId, $seasonId);
         }
 
-        // BCK-11 : la table porte désormais un club_id ; la purge reste par saison
-        // (c'est son périmètre), et RLS borne la requête au club courant.
-        $deleted += (int) $this->entityManager->createQueryBuilder()
-            ->delete(TeamTagAssignment::class, 'e')
-            ->where('e.seasonId = :seasonId')
-            ->setParameter('seasonId', $seasonId)
-            ->getQuery()
-            ->execute();
-
         // Journal des rappels de vacances scolaires : sans club_id ni RLS, clé par saison (uuid
         // propre au club) — vidé par saison, le palier repart après un reset.
         $deleted += (int) $this->entityManager->createQueryBuilder()
@@ -101,8 +90,7 @@ final class SeasonDataPurger
         // liens, qui survivent au changement de saison) mais dans ErasedClubPurger, la
         // seule porte de sortie d'un lien.
         // Les familles bornées par (club, saison), chaque enfant avant le parent dont il meurt
-        // (FamilyCatalog::purgedWithSeason). TeamTagAssignment y figure aussi : déjà vidée par
-        // la saison ci-dessus, ce second DELETE n'efface rien.
+        // (FamilyCatalog::purgedWithSeason).
         foreach ($this->familyCatalog->purgedWithSeason() as $entityClass) {
             $deleted += $this->deleteByClubSeason($entityClass, $clubId, $seasonId);
         }

@@ -10,8 +10,8 @@ use Doctrine\ORM\QueryBuilder;
 /**
  * Étape la plus courante : « toutes les lignes de X dont le champ Y vaut l'id supprimé
  * partent ». Reprend mot pour mot le `deleteByField` historique d'`EntityCascadeDeleter`,
- * bornes comprises (saison toujours, club sauf pour les tables scopées par la seule saison
- * comme `TeamTagAssignment`).
+ * bornes comprises (saison toujours, club sauf pour une table scopée par la seule saison ;
+ * aucune étape ne l'est aujourd'hui).
  */
 final readonly class DeleteByFieldStep implements CascadeStep
 {

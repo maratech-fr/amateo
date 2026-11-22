@@ -155,10 +155,6 @@ final class RgpdExportService
             ['cid' => $clubId],
         );
 
-        // (team_tag_assignment passait ici par une jointure saison « faute de club_id » —
-        // elle en a un depuis BCK-11, 2026-08-07 : la boucle générique la sert désormais,
-        // et le contournement est retiré avec son commentaire devenu faux.)
-
         // Memberships du club (qui a accès) — sans données de compte au-delà
         // de l'email (les comptes appartiennent à leurs titulaires).
         $data['members'] = $connection->fetchAllAssociative(
