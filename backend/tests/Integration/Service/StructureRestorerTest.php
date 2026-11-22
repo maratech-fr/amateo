@@ -20,6 +20,7 @@ use App\Entity\Season;
 use App\Entity\Team;
 use App\Entity\TeamCoach;
 use App\Entity\Venue;
+use App\Entity\VenueTrainingSlot;
 use App\Enum\CalendarEntryKind;
 use App\Enum\CalendarEntryPeriodType;
 use App\Enum\ConstraintFamily;
@@ -586,6 +587,64 @@ final class StructureRestorerTest extends KernelTestCase
             [$place->getAddress(), $place->getLatitude(), $place->getLongitude()],
             'adresse et position reviennent avec lui',
         );
+    }
+
+    /**
+     * Lot 3, PR 4 (ambiguïté 2) : « Charger » une version dont le lieu d'un gymnase a été balayé depuis
+     * ramène le gymnase quand même, même identifiant, avec ses créneaux, sur un lieu NEUF du club, sans
+     * adresse ni position (elles sont parties avec le lieu) : jamais un gymnase perdu. Une ligne de
+     * photo qui désigne le lieu d'un autre club (abus) revient de même sur un lieu neuf du club, jamais
+     * sur le lieu étranger.
+     */
+    public function testLoadingAVenueWhosePlaceIsGoneBringsItBackWithItsSlotsOnANewBlankPlace(): void
+    {
+        $uid = uniqid('', true);
+        $otherClub = (new Club)->setName('Autre ' . $uid)->setSlug('autre-' . $uid)->setTimezone('Europe/Paris')->setLocale('fr')->setOnboardingCompleted(true);
+        $this->em->persist($otherClub);
+        $this->em->flush();
+        $this->scopeGucToClub($otherClub->getId());
+        $foreign = $this->newVenue($otherClub->getId(), '44444444-4444-4444-8444-444444444444', 'Salle étrangère');
+        $this->em->flush();
+        $foreignPlaceId = $foreign->getPlaceId();
+
+        [$club, $season] = $this->seedClubSeason();
+        $nord = $this->newVenue($club->getId(), $season->getId(), 'Gymnase Nord');
+        $sud = $this->newVenue($club->getId(), $season->getId(), 'Gymnase Sud');
+        $this->em->flush();
+        $this->placeOf($nord)->setAddress('12 rue du Nord, 69100 Villeurbanne')->setLatitude('45.7700000')->setLongitude('4.8800000');
+        $slot = (new VenueTrainingSlot)->setClubId($club->getId())->setSeasonId($season->getId())->setVenueId($nord->getId())
+            ->setDayOfWeek(2)->setStartTime(new DateTimeImmutable('18:00'))->setDurationMinutes(90)->setCapacity(1);
+        $this->em->persist($slot);
+        $v1 = $this->makeSchedule($club, $season);
+        $this->em->flush();
+        $photo = $this->snapshotter->serialize($club->getId(), $season->getId());
+        foreach ($photo['Venue'] as $i => $row) {
+            if ($sud->getId() === $row['id']) {
+                $photo['Venue'][$i]['placeId'] = $foreignPlaceId;
+            }
+        }
+        $this->snapshotter->store($v1, $photo);
+        [$nordId, $sudId, $slotId, $oldPlace] = [$nord->getId(), $sud->getId(), $slot->getId(), $this->placeOf($nord)];
+
+        $this->em->remove($slot);
+        $this->em->remove($nord);
+        $this->em->flush();
+        $this->em->remove($oldPlace);
+        $this->em->flush();
+        $this->restorer->apply($club->getId(), $season->getId(), $this->restorer->readSnapshot($v1));
+        $this->em->clear();
+
+        $back = $this->em->getRepository(Venue::class)->find($nordId);
+        self::assertInstanceOf(Venue::class, $back, 'le gymnase dont le lieu est parti revient, même identifiant');
+        self::assertNotSame($oldPlace->getId(), $back->getPlaceId(), 'sur un lieu neuf, le lieu balayé ne renaît pas');
+        $place = self::getContainer()->get(PlaceDirectory::class)->of($back);
+        self::assertSame([$club->getId(), null, null, null], [$place->getClubId(), $place->getAddress(), $place->getLatitude(), $place->getLongitude()], 'un lieu du club, sans adresse ni position');
+        self::assertNotNull($this->em->getRepository(VenueTrainingSlot::class)->find($slotId), 'avec ses créneaux');
+
+        $forged = $this->em->getRepository(Venue::class)->find($sudId);
+        self::assertInstanceOf(Venue::class, $forged, 'la ligne qui désignait le lieu d\'un autre club revient aussi');
+        self::assertNotSame($foreignPlaceId, $forged->getPlaceId(), 'jamais sur le lieu de l\'autre club');
+        self::assertSame($club->getId(), self::getContainer()->get(PlaceDirectory::class)->of($forged)->getClubId(), 'sur un lieu neuf du club');
     }
 
     /**
