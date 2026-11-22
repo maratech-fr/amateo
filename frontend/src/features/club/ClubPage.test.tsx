@@ -429,7 +429,8 @@ describe("ClubPage", () => {
     expect(rows).toHaveLength(3);
     // Rangées dans l'ordre des positions, malgré un catalogue servi dans le désordre.
     expect(rows[0].textContent).toMatch(/\b20\b/);
-    expect(rows[1].textContent).toMatch(/\b34\b/);
+    // « de 21 à 34 » finit la plage : textContent la colle à « Sur demande » (pas de \b après 34).
+    expect(rows[1].textContent).toMatch(/\b34(?!\d)/);
     expect(rows[2].textContent).not.toMatch(/\b(20|34)\b/);
     // Seule la rangée du palier 2 est celle du club.
     expect(within(rows[0]).queryByText(CLUB_TEXTS.yourOffer)).toBeNull();

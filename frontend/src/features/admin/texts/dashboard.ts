@@ -214,7 +214,8 @@ export const ADMIN_DASHBOARD_TEXTS = {
   clubRowActions: "Actions",
   clubToggleDetail: (expanded: boolean, name: string) => `${expanded ? "Masquer" : "Afficher"} le détail de ${name}`,
   // Abonnement de la saison en cours / suivante (lignes servies par le backend, jamais redérivées).
-  clubTierLabel: (tierCode: string) => tierCode.replace(/^palier-(\d+)$/, "Palier $1"),
+  // Espace insécable : « Palier N » ne se coupe jamais en fin de ligne (colonne Offre étroite).
+  clubTierLabel: (tierCode: string) => tierCode.replace(/^palier-(\d+)$/, "Palier $1"),
   clubTeamsCounted: (n: number) => `${n} équipe${n > 1 ? "s" : ""} comptée${n > 1 ? "s" : ""}`,
   clubSubscriptionLine: (planName: string, tierLabel: string | null, teamsCounted: string) => [planName, tierLabel, teamsCounted].filter((part) => null !== part).join(" · "),
   clubSubscriptionPaid: (date: string, origin: string) => `réglée le ${date} (${origin})`,

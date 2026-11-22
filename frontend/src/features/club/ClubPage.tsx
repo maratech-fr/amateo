@@ -678,8 +678,8 @@ function sortTiers(tiers: SubscriptionPlanTier[]): SubscriptionPlanTier[] {
 }
 
 /**
- * Capacité d'un palier, en clair, depuis les plafonds servis (0 = illimité) : « Jusqu'à 20 »
- * pour le premier, « De 21 à 34 » ensuite, « 35 et plus » pour le palier sans limite.
+ * Capacité d'un palier, en clair, depuis les plafonds servis (0 = illimité) : « jusqu'à 20 équipes »
+ * pour le premier, « de 21 à 34 » ensuite, « 35 et plus » pour le palier sans limite.
  */
 function tierCapacityLabel(tier: SubscriptionPlanTier, previous: SubscriptionPlanTier | undefined): string {
   const min = undefined === previous ? null : previous.maxTeams + 1;
@@ -726,7 +726,9 @@ function OfferSection({ me }: { me: MeResponse }) {
       ) : readLoading(plansQuery) ? (
         <p className="text-sm text-muted-foreground">{CLUB_TEXTS.offersLoading}</p>
       ) : (
-        <div className="grid gap-2 sm:grid-cols-2">
+        // Carte payante plus large : sa rangée courante (pastille + libellé + « Sur demande ») tient
+        // sur une ligne à 1280 px, palier 1 compris.
+        <div className="grid gap-2 sm:grid-cols-[2fr_3fr]">
           {sortPlans(plansQuery.data ?? []).map((plan) => {
             const current = undefined !== entitlements && plan.code === entitlements.planCode;
             const tiers = sortTiers(plan.tiers);
@@ -750,12 +752,18 @@ function OfferSection({ me }: { me: MeResponse }) {
                     {tiers.map((tier, index) => {
                       const tierCurrent = current && tier.code === entitlements?.tierCode;
                       return (
-                        <li key={tier.code} className="flex flex-wrap items-center justify-between gap-2 text-sm">
-                          <span className="text-muted-foreground">{CLUB_TEXTS.tierLine(CLUB_TEXTS.tierName(tier.position), tierCapacityLabel(tier, tiers[index - 1]))}</span>
-                          <span className="flex items-center gap-2">
-                            {tierCurrent ? <StatusPill variant="accent-solid">{CLUB_TEXTS.yourOffer}</StatusPill> : null}
-                            <span className="font-medium text-accent">{CLUB_TEXTS.offerOnRequest}</span>
+                        // Une rangée, deux colonnes : la pastille du palier courant précède le libellé,
+                        // « Sur demande » reste à droite ; hauteur commune (min-h-6) pastille ou non.
+                        <li key={tier.code} className="grid min-h-6 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 text-sm">
+                          <span className="flex min-w-0 items-center gap-2">
+                            {tierCurrent ? (
+                              <StatusPill variant="accent-solid" className="shrink-0">
+                                {CLUB_TEXTS.yourOffer}
+                              </StatusPill>
+                            ) : null}
+                            <span className="text-muted-foreground">{CLUB_TEXTS.tierLine(CLUB_TEXTS.tierName(tier.position), tierCapacityLabel(tier, tiers[index - 1]))}</span>
                           </span>
+                          <span className="font-medium whitespace-nowrap text-accent">{CLUB_TEXTS.offerOnRequest}</span>
                         </li>
                       );
                     })}

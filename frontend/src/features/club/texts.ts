@@ -81,9 +81,9 @@ export const CLUB_TEXTS = {
   offerOnRequest: "Sur demande",
   offerNoTeamLimit: "Toutes vos équipes, sans limite",
   tierName: (position: number) => `Palier ${position}`,
-  tierUpTo: (max: number) => `Jusqu'à ${max} équipes`,
-  tierRange: (min: number, max: number) => `De ${min} à ${max} équipes`,
-  tierFrom: (min: number) => `${min} équipes et plus`,
+  tierUpTo: (max: number) => `jusqu'à ${max} équipes`,
+  tierRange: (min: number, max: number) => `de ${min} à ${max}`,
+  tierFrom: (min: number) => `${min} et plus`,
   tierLine: (tierName: string, capacity: string) => `${tierName} · ${capacity}`,
 
   // ExportClubSection
