@@ -6,6 +6,7 @@ namespace App\Tests\Support;
 
 use App\Enum\SubscriptionOrigin;
 use App\Service\ClubSubscriptionWriter;
+use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 
 /**
  * Décor de test : règle l'offre d'un club pour UNE saison, par le seul écrivain de l'abonnement
@@ -17,7 +18,7 @@ use App\Service\ClubSubscriptionWriter;
  * de test, une ligne écrite ici n'est visible que des lectures faites sur cette même connexion, et
  * le club visé doit lui-même y être visible (clé étrangère vers `club`).
  *
- * @phpstan-require-extends \Symfony\Bundle\FrameworkBundle\Test\KernelTestCase
+ * @phpstan-require-extends KernelTestCase
  */
 trait SubscribesClub
 {

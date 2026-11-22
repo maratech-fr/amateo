@@ -102,18 +102,6 @@ final class SeasonPreparationDateContext extends BaseContext
         $this->leClubNATouJoursQuUneSaison();
     }
 
-    /** Pointage : une ligne d'abonnement réglée, écrite par la connexion propriétaire (seule à pouvoir l'écrire). */
-    private function pointSubscriptionLine(int $seasonYear, string $planCode): void
-    {
-        $this->dbalExec(\sprintf(
-            'INSERT INTO club_subscription (id, club_id, season_year, plan_id, paid_at, origin, created_at, updated_at)'
-            . ' SELECT gen_random_uuid(), \'%s\', %d, id, now(), \'support\', now(), now() FROM subscription_plan WHERE code=\'%s\'',
-            $this->smallClubId,
-            $seasonYear,
-            $planCode,
-        ), admin: true);
-    }
-
     #[Given('/^nous sommes le (?P<day>.+)$/u')]
     public function nousSommesLe(string $day): void
     {
@@ -207,5 +195,17 @@ final class SeasonPreparationDateContext extends BaseContext
     {
         $this->releaseDevClock($this->smallClubToken);
         $this->teardownSmallClub();
+    }
+
+    /** Pointage : une ligne d'abonnement réglée, écrite par la connexion propriétaire (seule à pouvoir l'écrire). */
+    private function pointSubscriptionLine(int $seasonYear, string $planCode): void
+    {
+        $this->dbalExec(\sprintf(
+            'INSERT INTO club_subscription (id, club_id, season_year, plan_id, paid_at, origin, created_at, updated_at)'
+            . ' SELECT gen_random_uuid(), \'%s\', %d, id, now(), \'support\', now(), now() FROM subscription_plan WHERE code=\'%s\'',
+            $this->smallClubId,
+            $seasonYear,
+            $planCode,
+        ), admin: true);
     }
 }
