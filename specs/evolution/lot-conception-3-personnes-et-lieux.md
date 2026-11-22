@@ -1,8 +1,8 @@
 # Lot 3 · Personnes et lieux au club : plan d'exécution
 
 **Statut : version finale (v4 sur 4) ; plafond atteint. Plan validé par le fondateur le 2026-11-21 avec ses sept
-décisions (§11). Aucune PR livrée ; l'exécution commence par la PR 1, une fois ses rouges écrits par `tank` et les
-sept mesures de `link` (§12) faites.** Voie **Full**. Branche cible : `lot/conception` (aucune branche
+décisions (§11). PR 1 livrée (2026-11-22) ; les suivantes s'exécutent dans l'ordre du §4, rouges de `tank` d'abord.**
+Voie **Full**. Branche cible : `lot/conception` (aucune branche
 `lot/personnes-lieux`) ; une PR vers elle ne joue que « Lot Gate » (`docs/ops/ci-runner.md` § Branche de lot) : ni
 Behat, ni e2e, ni `backend-tests`. Avant chaque merge : `make -C backend tests-complete` et les features/specs de la
 zone sur la stack d'épreuve. Exécutant : `neo`, après les rouges de `tank`.
@@ -137,7 +137,15 @@ endroits, lignes de test) sont des constats datés du 2026-11-21 : le balayage e
 
 Ordre : 1 → 2a → 2b → 3 → 4 → 5, sur `lot/conception`, une PR ouverte à la fois, avant les lots suivants. Le lot 3 n'a ni copie de production ni mise en production à lui : la **copie de production n° 2** (rejeu de toutes les migrations des lots ensemble) vient avant la PR finale `lot/conception` → `main` (GO du fondateur), puis la **mise en production unique**, site fermé (§6, §10). Exécutant : `neo`, après les rouges de `tank`.
 
-### PR 1 · « L'entrée du lot »
+### PR 1 · « L'entrée du lot » — LIVRÉE (2026-11-22)
+- **Livré** : `Support/SchemaEpoch.php` (neuf), `migrations/Version20261122120000.php` (supprime `team_tag_assignment` puis `team_tag`, irréversible), clé du cache `…contract.<c>.epoch.<e>.schedule_input` (`ScheduleConstraintBuilder::cacheKey`), deux références moteur (`socle-9-trajets-saison-suivante.json`, `periode-10-trajets.json`) et leur décor (`EngineRequestTravelDecorTrait`, `EngineRequestReferenceTest`), tests de `tank` : `Unit/Service/ScheduleCacheKeyEpochTest` (bloquant, `docs/testing/blocking-tests.md`), recalage de `TeamTagScopeTest`, `ReadOnlyRoleTest`, `RlsIsolationTest`, `PurgeSeasonsCommandTest`, `StructureRestorerTest`, `CategoryRuleContext`. Doc : `rgpd.md`, `rls.md`, `TENANT.md`, `backend-inventory.md`, `scripts/prod-read.sh`, `deploy.md`.
+- **Limites écrites** :
+  - L'époque se calcule sur les NOMS de fichiers : une migration corrigée sans être renommée ne change pas l'époque (cohérent avec « migrations immuables une fois livrées »). Elle ne couvre pas un changement de code sans migration : `CONTRACT_VERSION` et le TTL de 4 h le couvrent.
+  - La migration supprime des tables que la production lit encore : **déploiement unique, site fermé, obligatoire** (§6) ; sans retour arrière par `down()` (sauvegarde d'avant migration).
+  - L'étalon `team` de `RlsIsolationTest` n'est pas falsifiable sans DDL (désactiver sa policy exige de modifier le schéma).
+  - `Version20261108120000::down()` lit encore `team_tag` (prédicat de référence) mais est inatteignable : la migration suivante est irréversible.
+  - `DeleteByFieldStep::$clubScoped` (`DeleteByFieldStep.php:26`) n'a plus d'appelant qui le passe à `false` : nettoyage ultérieur à proposer.
+- **Plan d'origine** (le détail livré ci-dessus fait foi) :
 - Supprime `team_tag` et `team_tag_assignment`, leurs entités, leurs dépôts (`Repository/TeamTag*`), entrées de purge, étape de `CascadePlan` et sa ligne « N étiquettes » (F10, `CascadePlan.php:78`, commentaire de `DeleteByFieldStep.php:14`), `DeletionImpactParityTest` et `SILENT_STEPS` (recalés), famille dans la photo et la restauration, commande `app:team-tags:verify-stored` et `VerifyStoredTeamTagsCommandTest`. Recale les tests et scripts qui lisent les deux tables : `TeamTagAssignmentReadIsolationTest`, `TeamTagScopeTest`, `CategoryRuleContext` (« aucune étiquette n'est enregistrée »), `ReadOnlyRoleTest.php:135-140` et `:287-325`, `PurgeSeasonsCommandTest.php:81`, `:206-213`, `scripts/prod-read.sh:54`, `docs/ops/deploy.md:474`. Cas de test neuf : « Charger une photo d'avant qui porte encore la clé `TeamTagAssignment` réussit après suppression de l'entité » (`StructureRestorer.php:104-105` ignore une clé inconnue). Condition d'entrée : **dans la même mise en production que le lot 1**, aucune release d'écart (décision du 2026-11-21 ; l'ancienne règle « deux releases » du plan du lot 1 est levée). `RlsIsolationTest` prend `team` pour étalon ; `VenueUnavailabilityDropMigrationTest` lit le même étalon : retiré si sa migration est en production, sinon recalé.
 - Époque dans la clé du cache.
 - **Deux références captées sur le code d'avant** :

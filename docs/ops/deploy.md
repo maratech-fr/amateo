@@ -857,6 +857,9 @@ demande d'avant la migration entre `migrate` et le redémarrage des services.
 **`scripts/remote-deploy.sh` purge le pool lui-même**, juste après « ==> Deploy … OK » (sondes de santé
 passées, version écrite), dans les deux branches (installation existante et première installation) —
 le déploiement programmé, qui tourne sans personne, est couvert.
+La clé du cache porte en plus l'époque du schéma (`Support/SchemaEpoch`, empreinte des noms de fichiers de
+migration) : le code d'après une migration ne relit jamais une demande mise en cache par celui d'avant ; la
+purge reste la ceinture contre une migration corrigée sans être renommée.
 
 Un échec de la purge **ne fait pas échouer le déploiement** (il reste marqué réussi) : il écrit au
 journal du déploiement l'alerte « ==> ⚠ CACHE DES DEMANDES NON PURGÉ (sans effet sur le déploiement) »,
