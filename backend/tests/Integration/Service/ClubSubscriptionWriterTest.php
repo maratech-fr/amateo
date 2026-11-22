@@ -7,6 +7,7 @@ namespace App\Tests\Integration\Service;
 use App\Enum\SubscriptionOrigin;
 use App\Service\ClubSubscriptionWriter;
 use Doctrine\DBAL\Connection;
+use Doctrine\DBAL\Exception\DriverException;
 use Doctrine\DBAL\Exception\ForeignKeyConstraintViolationException;
 use Doctrine\Persistence\ManagerRegistry;
 use InvalidArgumentException;
@@ -89,6 +90,72 @@ final class ClubSubscriptionWriterTest extends KernelTestCase
         );
     }
 
+    /**
+     * Lot 8, PR 2 (revue de sécurité) — la BASE, et pas seulement l'écrivain, refuse une ligne dont le
+     * palier ne va pas avec l'offre : une offre à paliers sans palier (lue comme « illimité » avant le
+     * durcissement), ou un palier qui appartient à une AUTRE offre, ne s'écrit ni ne s'obtient par
+     * modification, même par la connexion propriétaire (support, SQL à la main). Témoins, par la même
+     * requête : chaque offre avec l'un de SES paliers, la Bêta sans palier.
+     *
+     * Angle nommé : la contrainte en base, sans l'écrivain ({@see self::testTheWriterRequiresTheTierOfTheCompleteOfferAndRefusesOneElsewhere}
+     * garde le refus de l'écrivain). Le mécanisme (clé composite, CHECK, déclencheur) est libre ; seul
+     * le refus compte.
+     */
+    public function testTheDatabaseRefusesALineWhoseTierDoesNotBelongToItsOffer(): void
+    {
+        $clubId = $this->club();
+        $suffix = bin2hex(random_bytes(4));
+        $otherPlan = 'sonde-' . $suffix;
+        $otherTier = 'sonde-palier-' . $suffix;
+        // Une seconde offre à paliers, pour qu'un palier puisse appartenir à « une autre offre ».
+        $this->admin->executeStatement(
+            'INSERT INTO subscription_plan (id, version, created_at, updated_at, code, name, max_venues, max_generations, features) VALUES (gen_random_uuid(), 1, now(), now(), ?, ?, 0, 0, \'[]\')',
+            [$otherPlan, 'Offre sonde ' . $suffix],
+        );
+        $this->admin->executeStatement(
+            'INSERT INTO subscription_plan_tier (id, created_at, updated_at, plan_id, code, position, max_teams, price_cents) SELECT gen_random_uuid(), now(), now(), id, ?, 1, 5, NULL FROM subscription_plan WHERE code = ?',
+            [$otherTier, $otherPlan],
+        );
+        $insertLine = 'INSERT INTO club_subscription (id, club_id, season_year, plan_id, tier_id, paid_at, origin, created_at, updated_at)'
+            . ' VALUES (gen_random_uuid(), ?, ?, (SELECT id FROM subscription_plan WHERE code = ?), (SELECT id FROM subscription_plan_tier WHERE code = ?), now(), \'support\', now(), now())';
+
+        $year = 2030;
+        foreach ([
+            'offre complète sans palier' => ['complete', null],
+            'offre complète, palier d\'une autre offre' => ['complete', $otherTier],
+            'autre offre à paliers sans palier' => [$otherPlan, null],
+            'autre offre, palier de l\'offre complète' => [$otherPlan, 'palier-1'],
+            'Bêta, palier de l\'offre complète' => ['beta', 'palier-1'],
+        ] as $case => [$planCode, $tierCode]) {
+            self::assertTrue($this->isRefused($insertLine, [$clubId, (string) ++$year, $planCode, $tierCode]), $case . ' : la base refuse la ligne');
+        }
+        self::assertSame([], $this->linesOf($clubId), 'aucun refus n\'a laissé de ligne');
+
+        // Témoins : la même requête passe pour chaque offre avec l'un de SES paliers, et la Bêta sans palier.
+        $this->admin->executeStatement($insertLine, [$clubId, '2026', 'complete', 'palier-1']);
+        $this->admin->executeStatement($insertLine, [$clubId, '2027', $otherPlan, $otherTier]);
+        $this->admin->executeStatement($insertLine, [$clubId, '2028', 'beta', null]);
+        self::assertSame(
+            [[2026, 'complete', 'palier-1'], [2027, $otherPlan, $otherTier], [2028, 'beta', null]],
+            $this->linesOf($clubId),
+            'témoins : chaque offre avec son palier, la Bêta sans palier',
+        );
+
+        foreach ([
+            'retirer le palier d\'une ligne de l\'offre complète' => ['UPDATE club_subscription SET tier_id = NULL WHERE club_id = ? AND season_year = 2026', [$clubId]],
+            'donner à l\'offre complète le palier d\'une autre offre' => ['UPDATE club_subscription SET tier_id = (SELECT id FROM subscription_plan_tier WHERE code = ?) WHERE club_id = ? AND season_year = 2026', [$otherTier, $clubId]],
+            'passer une ligne de l\'offre complète à une autre offre en gardant son palier' => ['UPDATE club_subscription SET plan_id = (SELECT id FROM subscription_plan WHERE code = ?) WHERE club_id = ? AND season_year = 2026', [$otherPlan, $clubId]],
+            'donner un palier à la Bêta' => ['UPDATE club_subscription SET tier_id = (SELECT id FROM subscription_plan_tier WHERE code = \'palier-1\') WHERE club_id = ? AND season_year = 2028', [$clubId]],
+        ] as $case => [$sql, $parameters]) {
+            self::assertTrue($this->isRefused($sql, $parameters), $case . ' : la base refuse la modification');
+        }
+        self::assertSame(
+            [[2026, 'complete', 'palier-1'], [2027, $otherPlan, $otherTier], [2028, 'beta', null]],
+            $this->linesOf($clubId),
+            'aucune modification refusée n\'a changé une ligne',
+        );
+    }
+
     protected function setUp(): void
     {
         self::bootKernel();
@@ -113,6 +180,26 @@ final class ClubSubscriptionWriterTest extends KernelTestCase
 
             return false;
         } catch (ForeignKeyConstraintViolationException) {
+            return true;
+        } finally {
+            $this->admin->rollBack();
+        }
+    }
+
+    /**
+     * L'écriture dans un point de sauvegarde : refusée par la base (toute erreur du pilote) ou non.
+     * Les témoins jouent la même requête : une erreur de forme se verrait chez eux.
+     *
+     * @param list<string|null> $parameters
+     */
+    private function isRefused(string $sql, array $parameters): bool
+    {
+        $this->admin->beginTransaction();
+        try {
+            $this->admin->executeStatement($sql, $parameters);
+
+            return false;
+        } catch (DriverException) {
             return true;
         } finally {
             $this->admin->rollBack();

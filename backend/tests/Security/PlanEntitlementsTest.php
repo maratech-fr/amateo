@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Tests\Security;
 
+use App\Access\DemoRegime;
 use App\Entity\Club;
 use App\Entity\ClubUser;
 use App\Entity\Season;
@@ -15,6 +16,9 @@ use App\Entity\User;
 use App\Enum\ClubRole;
 use App\Enum\SeasonStatus;
 use App\Exception\ImportRejectedException;
+use App\Repository\ClubSubscriptionRepository;
+use App\Repository\SubscriptionPlanRepository;
+use App\Repository\SubscriptionPlanTierRepository;
 use App\Service\Basketball\FfbbExcelImporter;
 use App\Service\ManagementAccessGuard;
 use App\Service\PlanEntitlements;
@@ -23,7 +27,10 @@ use App\Tests\ChoosesPlanVersionTrait;
 use App\Tests\Support\SubscribesClub;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
+use Doctrine\DBAL\Connection;
+use Doctrine\ORM\EntityManager;
 use Doctrine\ORM\EntityManagerInterface;
+use Doctrine\Persistence\ManagerRegistry;
 use Lexik\Bundle\JWTAuthenticationBundle\Services\JWTTokenManagerInterface;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
@@ -439,6 +446,84 @@ final class PlanEntitlementsTest extends WebTestCase
 
             $status = $this->postJson($ctx['user'], '/api/teams', ['name' => 'T51', 'sportCategoryId' => $this->categoryId, 'priorityTierId' => 1]);
             self::assertSame(201, $status, \sprintf('%s %s crée sa 51ᵉ équipe sans refus', $code, $tier ?? '(sans palier)'));
+        }
+    }
+
+    /**
+     * Lot 8, PR 2 (revue de sécurité) — défaut FERMÉ : une ligne réglée sur l'offre complète dont le
+     * palier manque (palier vide, ou palier introuvable) se lit Découverte — crédits bridés, bascule
+     * fermée, saison non réglée —, jamais « offre complète sans plafond ». Le palier 3 réel (0 = illimité)
+     * reste, lui, illimité et non bridé.
+     *
+     * La base refuse une telle ligne (`Integration/Service/ClubSubscriptionWriterTest::testTheDatabaseRefusesALineWhoseTierDoesNotBelongToItsOffer`) :
+     * ce test prouve la seconde ceinture, le code. La ligne est donc forgée sur la connexion
+     * propriétaire, ses contraintes neutralisées dans la transaction du test (CHECK retirés,
+     * déclencheurs et clés étrangères suspendus par `session_replication_role`), tout annulé à la fin ;
+     * `PlanEntitlements` y lit par un gestionnaire d'entités ouvert sur cette même connexion (la
+     * connexion applicative ne verrait pas la ligne non validée). Témoins, par le même montage : les
+     * paliers 1 et 3 se lisent (sans eux, « aucune ligne lue » passerait pour Découverte).
+     */
+    public function testATieredOfferLineWithoutItsTierReadsAsDecouverteNeverUnlimited(): void
+    {
+        $admin = self::getContainer()->get(ManagerRegistry::class)->getConnection('admin');
+        \assert($admin instanceof Connection);
+        $admin->beginTransaction();
+        try {
+            $admin->executeStatement('SET LOCAL lock_timeout = \'5s\'');
+            foreach ($admin->fetchFirstColumn('SELECT conname FROM pg_constraint WHERE conrelid = \'club_subscription\'::regclass AND contype = \'c\'') as $check) {
+                $admin->executeStatement(\sprintf('ALTER TABLE club_subscription DROP CONSTRAINT %s', $admin->quoteSingleIdentifier((string) $check)));
+            }
+            $admin->executeStatement('SET LOCAL session_replication_role = replica');
+
+            $adminEm = new EntityManager($admin, $this->em->getConfiguration());
+            $registry = $this->createStub(ManagerRegistry::class);
+            $registry->method('getManagerForClass')->willReturn($adminEm);
+            $plans = new SubscriptionPlanRepository($registry);
+            $entitlements = new PlanEntitlements($plans, $adminEm, new DemoRegime, new ClubSubscriptionRepository($registry), new SubscriptionPlanTierRepository($registry));
+
+            $decouverte = $plans->findOneBy(['code' => 'decouverte']);
+            self::assertInstanceOf(SubscriptionPlan::class, $decouverte);
+            self::assertGreaterThan(0, $decouverte->getMaxGenerations(), 'témoin : Découverte a un pool de crédits, donc une bride');
+
+            $forge = static function (string $tierSql) use ($admin, $adminEm): array {
+                $clubId = (string) $admin->fetchOne('SELECT gen_random_uuid()::text');
+                $suffix = bin2hex(random_bytes(4));
+                $admin->executeStatement(
+                    'INSERT INTO club (id, version, created_at, updated_at, name, slug, timezone, locale, onboarding_completed, generation_count_season, is_demo) VALUES (?, 1, now(), now(), ?, ?, \'Europe/Paris\', \'fr\', true, 0, false)',
+                    [$clubId, 'Sans palier ' . $suffix, 'sans-palier-' . $suffix],
+                );
+                $season = new Season()->setStartDate(new DateTimeImmutable('2030-09-01'));
+                $admin->executeStatement(
+                    'INSERT INTO club_subscription (id, club_id, season_year, plan_id, tier_id, paid_at, origin, created_at, updated_at)'
+                    . ' VALUES (gen_random_uuid(), ?, ?, (SELECT id FROM subscription_plan WHERE code = \'complete\'), ' . $tierSql . ', now(), \'support\', now(), now())',
+                    [$clubId, SeasonResolver::seasonYear($season->getStartDate())],
+                );
+                $club = $adminEm->find(Club::class, $clubId);
+                self::assertInstanceOf(Club::class, $club);
+
+                return [$club, $season];
+            };
+
+            // Témoins : les paliers réels se lisent — palier 1 plafonné à 20, palier 3 illimité et non bridé.
+            [$club, $season] = $forge('(SELECT id FROM subscription_plan_tier WHERE code = \'palier-1\')');
+            self::assertSame(20, $entitlements->teamCap($club, $season), 'témoin : la ligne forgée est lue, le palier 1 plafonne à 20');
+            [$club, $season] = $forge('(SELECT id FROM subscription_plan_tier WHERE code = \'palier-3\')');
+            $read = $entitlements->forClub($club, $season);
+            self::assertSame(['complete', 'palier-3', null], [$read['planCode'], $read['tierCode'], $read['maxTeams']], 'le palier 3 réel reste l\'offre complète, sans plafond');
+            self::assertFalse($entitlements->outputBudget($club, $season)['restricted'], 'le palier 3 réel n\'est pas bridé');
+
+            foreach (['palier vide' => 'NULL', 'palier introuvable' => 'gen_random_uuid()'] as $case => $tierSql) {
+                [$club, $season] = $forge($tierSql);
+                $read = $entitlements->forClub($club, $season);
+                self::assertSame('decouverte', $read['planCode'], $case . ' : la ligne se lit Découverte, jamais l\'offre complète');
+                self::assertNull($read['tierCode'], $case . ' : aucun palier lu');
+                self::assertSame($decouverte->getMaxGenerations(), $read['creditsMax'], $case . ' : les crédits sont ceux de Découverte, bornés');
+                self::assertFalse($read['seasonTransition'], $case . ' : la bascule reste fermée');
+                self::assertTrue($entitlements->outputBudget($club, $season)['restricted'], $case . ' : les sorties sont bridées comme en Découverte');
+                self::assertFalse($entitlements->isSeasonPaid($club->getId(), SeasonResolver::seasonYear($season->getStartDate())), $case . ' : la saison ne compte pas comme réglée');
+            }
+        } finally {
+            $admin->rollBack();
         }
     }
 

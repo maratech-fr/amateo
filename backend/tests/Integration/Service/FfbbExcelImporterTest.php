@@ -9,8 +9,6 @@ use App\Entity\PriorityTier;
 use App\Entity\Season;
 use App\Entity\Sport;
 use App\Entity\SportCategory;
-use App\Entity\SubscriptionPlan;
-use App\Entity\SubscriptionPlanTier;
 use App\Entity\Team;
 use App\Enum\Gender;
 use App\Enum\SeasonStatus;
@@ -232,32 +230,27 @@ final class FfbbExcelImporterTest extends KernelTestCase
 
     public function testOfferCapCountsOnlyTheSelectedNewRows(): void
     {
-        // Palier à plafond = 1 équipe (palier de test de l'offre complète) : cocher 2 lignes neuves
-        // franchit le plafond (refus tout-ou-rien), en cocher 1 passe — le plafond se compte sur la
-        // SÉLECTION neuve.
-        $complete = $this->em->getRepository(SubscriptionPlan::class)->findOneBy(['code' => 'complete']);
-        self::assertInstanceOf(SubscriptionPlan::class, $complete);
-        $tier = (new SubscriptionPlanTier)->setPlanId($complete->getId())->setCode('cap1-' . uniqid('', true))
-            ->setPosition(99)->setMaxTeams(1);
-        $this->em->persist($tier);
-        $pivot = SeasonResolver::seasonYear(new DateTimeImmutable);
-        $this->em->flush();
-        $this->subscribeClub($this->club->getId(), $pivot, 'complete', $tier->getCode());
+        // Palier 1 de l'offre complète, plafond 20 : cocher les 21 lignes neuves franchit le plafond
+        // (refus tout-ou-rien), en cocher 20 passe — le plafond se compte sur la SÉLECTION neuve.
+        // Le palier est celui du catalogue : le rôle applicatif n'écrit pas les paliers (lot 8, PR 2,
+        // `RlsIsolationTest::testTheApplicationRoleNeverWritesAPlatformReferenceTable`).
+        $this->subscribeClub($this->club->getId(), SeasonResolver::seasonYear(new DateTimeImmutable), 'complete', 'palier-1');
 
-        $file = $this->xlsx([
-            ['SM1', 'Seniors', '1', self::CLUB_CODE . ' - MON CLUB'],   // ligne 2
-            ['SM2', 'Seniors', '2', self::CLUB_CODE . ' - MON CLUB'],   // ligne 3
-        ]);
+        $rows = [];
+        foreach (range(1, 21) as $number) {
+            $rows[] = ['SM' . $number, 'Seniors', (string) $number, self::CLUB_CODE . ' - MON CLUB'];   // lignes 2 à 22
+        }
+        $file = $this->xlsx($rows);
 
         try {
-            $this->importer()->import($file, $this->club->getId(), $this->seasonId, [2, 3]);
-            self::fail('deux équipes cochées pour un cap de 1 doivent être refusées');
+            $this->importer()->import($file, $this->club->getId(), $this->seasonId, range(2, 22));
+            self::fail('21 équipes cochées pour un plafond de 20 doivent être refusées');
         } catch (ImportRejectedException) {
         }
         self::assertCount(0, $this->em->getRepository(Team::class)->findBy(['clubId' => $this->club->getId()]), 'tout-ou-rien : rien créé');
 
-        $result = $this->importer()->import($file, $this->club->getId(), $this->seasonId, [3]);
-        self::assertSame(['created' => 1, 'skipped' => 0, 'errors' => []], $result);
+        $result = $this->importer()->import($file, $this->club->getId(), $this->seasonId, range(3, 22));
+        self::assertSame(['created' => 20, 'skipped' => 0, 'errors' => []], $result);
     }
 
     public function testAnalyzeSuggestsRankFromCategoryAndNumberAndGenderFromName(): void
