@@ -75,6 +75,23 @@ class PdfGenerator
     }
 
     /**
+     * Supprime du disque tous les rendus d'un planning : vue club, vues par gymnase et rendus
+     * temporaires (`schedule-{id}-…`). Un identifiant qui n'est pas un uuid ne supprime rien : il
+     * entre dans le motif de recherche, il ne doit jamais pouvoir sortir du répertoire.
+     */
+    public static function deleteRendersOf(string $scheduleId): void
+    {
+        if (1 !== preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i', $scheduleId)) {
+            return;
+        }
+        foreach (glob(self::OUTPUT_DIR . '/schedule-' . $scheduleId . '-*') ?: [] as $path) {
+            if (is_file($path)) {
+                @unlink($path);
+            }
+        }
+    }
+
+    /**
      * Rend le planning sous un nom TEMPORAIRE (le nom final suivi de `-tmp` et de 32 caractères
      * hexadécimaux aléatoires : impossible à deviner, reconnu par la purge) ; rien n'est écrit sous
      * le nom final. La livraison ({@see deliver()}) renomme vers `filename` une fois le crédit pris ;

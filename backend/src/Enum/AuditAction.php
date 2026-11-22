@@ -41,4 +41,7 @@ enum AuditAction: string
     case MEMBERSHIP_ROLE_REQUEST_ESCALATED = 'membership.role_request_escalated';
     case MEMBERSHIP_ROLE_GRANTED = 'membership.role_granted';
     case MEMBERSHIP_ROLE_REFUSED = 'membership.role_refused';
+    // Lot conception 3 — l'effacement d'une personne (RGPD, art. 17) par la commande de support
+    // `app:people:erase`. Détails = identifiant de la fiche, identifiants des rôles retirés, comptes.
+    case PERSON_ERASED = 'person.erased';
 }
