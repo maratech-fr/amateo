@@ -6,6 +6,7 @@ namespace App\Tests\Integration\Service;
 
 use App\Entity\Club;
 use App\Entity\Coach;
+use App\Entity\Person;
 use App\Structure\PersonDirectory;
 use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\Security\PersonPlaceTenantIsolationTest;
@@ -49,6 +50,20 @@ final class PersonDirectoryTest extends KernelTestCase
 
         $this->expectException(LogicException::class);
         self::getContainer()->get(PersonDirectory::class)->of($coach);
+    }
+
+    /**
+     * Une fiche EN MÉMOIRE (`new Coach($person)`, lue sans requête) d'un autre club que le coach n'est
+     * jamais rendue non plus. Jumeau du cas relu de la base, {@see testARecordThatIsNotOfTheCoachClubIsNeverReturned} :
+     * la condition de club est la même, mais la fiche arrive par l'autre branche de `personOf`.
+     */
+    public function testARecordGivenInMemoryThatIsNotOfTheCoachClubIsNeverReturned(): void
+    {
+        $person = (new Person)->setClubId('11111111-1111-4111-8111-111111111111')->setFirstName('Paul')->setLastName('Martin');
+
+        self::assertSame('Paul Martin', new PersonDirectory()->of(new Coach($person)->setClubId('11111111-1111-4111-8111-111111111111'))->fullName(), 'témoin : même club, la fiche en mémoire se lit sans base');
+        $this->expectException(LogicException::class);
+        new PersonDirectory()->of(new Coach($person)->setClubId('99999999-9999-4999-8999-999999999999'));
     }
 
     protected function setUp(): void
