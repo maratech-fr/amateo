@@ -222,7 +222,12 @@ final class SeasonTransitionContext extends BaseContext
     public function jeCorrigeLeTelephone(string $coach): void
     {
         $nextCoach = $this->coachOfSeason($coach, $this->nextSeasonId);
-        $updated = $this->apiPut(\sprintf('coaches/%s', $nextCoach['id']), ['phone' => self::CORRECTED_PHONE], $this->smallClubToken, ['X-Season-Id' => $this->nextSeasonId]);
+        // L'écran renvoie la fiche telle qu'il l'a lue, téléphone corrigé.
+        $updated = $this->apiPut(\sprintf('coaches/%s', $nextCoach['id']), [
+            'firstName' => $nextCoach['firstName'],
+            'lastName' => $nextCoach['lastName'] ?? '',
+            'phone' => self::CORRECTED_PHONE,
+        ], $this->smallClubToken, ['X-Season-Id' => $this->nextSeasonId]);
         if (200 !== $updated['status']) {
             throw new RuntimeException(\sprintf('corriger le téléphone de %s a répondu %d (200 attendu) : %s', $coach, $updated['status'], json_encode($updated['json'], \JSON_UNESCAPED_UNICODE)));
         }
