@@ -51,7 +51,7 @@
 #   scripts/prod-read.sh "SELECT id, name FROM club ORDER BY name;"
 #   scripts/prod-read.sh --club "BCCL" "SELECT count(*) FROM team;"
 #   scripts/prod-read.sh --csv --club 550e8400-e29b-41d4-a716-446655440000 \
-#       "SELECT name FROM team_tag;"
+#       "SELECT name FROM venue;"
 set -euo pipefail
 
 readonly SSH_ALIAS="amateo-prod-read"

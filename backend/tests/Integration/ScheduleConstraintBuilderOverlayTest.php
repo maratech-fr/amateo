@@ -18,8 +18,6 @@ use App\Entity\Season;
 use App\Entity\Team;
 use App\Entity\TeamCoach;
 use App\Entity\TeamPeriodOverride;
-use App\Entity\TeamTag;
-use App\Entity\TeamTagAssignment;
 use App\Entity\User;
 use App\Entity\Venue;
 use App\Entity\VenuePeriodOverride;
@@ -606,60 +604,6 @@ final class ScheduleConstraintBuilderOverlayTest extends KernelTestCase
     }
 
     /**
-     * P2-9ter NR-1 — LE garde du lot : construire un payload ne DOIT rien écrire.
-     *
-     * Le builder appelait `TeamTagService::syncTeamTags` en pleine sérialisation : il
-     * SUPPRIMAIT les `TeamTagAssignment` de l'équipe puis les recréait, avec un `flush()`
-     * intermédiaire qui rendait les suppressions définitives. Ouvrir le récap (qui ne
-     * flushe jamais) effaçait donc les tags de la dernière équipe — la perte de données
-     * qui a fait échouer la 3e tentative du volet capacité.
-     *
-     * ⚠ L'assertion porte sur les **id**, pas sur un décompte : une suppression suivie
-     * d'une recréation laisse le compte à 1 tout en changeant l'UUID. Un `assertCount`
-     * serait donc vert alors que la donnée d'origine a bien été détruite.
-     */
-    public function testBuildNeverWritesTeamTagAssignments(): void
-    {
-        [$club, $season] = $this->seed();
-        $team = $this->team($club, $season, 'SM1');
-        $this->em->flush();
-
-        // Une ligne enregistrée que le calcul ne dériverait JAMAIS de cette équipe (elle n'a
-        // ni genre, ni niveau, ni catégorie existante) : si elle survit au build, personne
-        // ne l'a réécrite. Les deux tables n'ont plus d'écrivain depuis la PR 3 du lot
-        // conception 1 et partent à la première PR du lot 3 — ce test part avec elles.
-        // BCK-11 : tenant + RLS, une ligne sans club_id est refusée en base.
-        $this->em->getConnection()->executeStatement(
-            'DELETE FROM team_tag WHERE club_id = :club AND name = \'U13\'',
-            ['club' => $club->getId()],
-        );
-        $tag = (new TeamTag)->setClubId($club->getId())->setName('U13')->setIsSystem(true);
-        $this->em->persist($tag);
-        $this->em->flush();
-        $this->em->persist((new TeamTagAssignment)->setClubId($team->getClubId())->setTagId($tag->getId())->setTeamId($team->getId())->setSeasonId($season->getId()));
-        $this->em->flush();
-
-        $before = $this->assignmentIdsOf($team->getId(), $season->getId());
-        self::assertCount(1, $before, 'garde du test lui-même : l’assignation semée doit exister');
-
-        // Le cache est servi AVANT tout calcul : sans ce purge, un hit rendrait le test
-        // creux — vert sans avoir jamais exécuté serializeTeam.
-        self::getContainer()->get('cache.schedule')->invalidateTags([ScheduleConstraintBuilder::cacheTag($club->getId())]);
-
-        // Contrat 1.3 (ENG-53) — le champ `tags` a quitté le payload moteur (jamais lu par le
-        // solveur ; les tags servent encore à la résolution `targetTag` → contraintes TEAM, via
-        // TeamTagResolver, gardée ailleurs). Ce test ne garde plus que l'INVARIANT « construire ne
-        // doit RIEN écrire » — l'ancien foyer de la perte de données (serializeTeam resync).
-        $this->builder->buildForClubSeason($club->getId(), $season->getId());
-
-        // Reproduit le flush que fait GenerateScheduleHandler après le build : si le
-        // build avait laissé des remove/persist en attente, ils partiraient ICI.
-        $this->em->flush();
-
-        self::assertSame($before, $this->assignmentIdsOf($team->getId(), $season->getId()), 'construire un payload ne doit RIEN écrire');
-    }
-
-    /**
      * V1 (NR, axes constraint semantics + planning lifecycle) — LES VERROUS D'UNE PÉRIODE SURVIVENT
      * À « RÉGÉNÉRER ». Une version NUE n'a aucun slotTemplate propre : le builder GREFFE les HARD de
      * la version SOURCE du plan, en forme CANONIQUE (id dérivé du PLACEMENT, suggestion à null), pour
@@ -1189,26 +1133,6 @@ final class ScheduleConstraintBuilderOverlayTest extends KernelTestCase
             ->setStartTime(new DateTimeImmutable($start))
             ->setDurationMinutes(90);
         $this->em->persist($reservation);
-    }
-
-    /**
-     * Les id des assignations de tags d'une équipe, en SQL brut et triés.
-     *
-     * Lecture hors ORM délibérée : l'UnitOfWork rendrait des entités déjà chargées, donc
-     * un test vert alors que la base a bougé. `team_tag_assignment` ne porte pas de
-     * policy RLS, la lecture est directe.
-     *
-     * @return list<string>
-     */
-    private function assignmentIdsOf(string $teamId, string $seasonId): array
-    {
-        /** @var list<string> $ids */
-        $ids = $this->em->getConnection()->executeQuery(
-            'SELECT id FROM team_tag_assignment WHERE team_id = :team AND season_id = :season ORDER BY id',
-            ['team' => $teamId, 'season' => $seasonId],
-        )->fetchFirstColumn();
-
-        return $ids;
     }
 
     private function team(Club $club, Season $season, string $name): Team

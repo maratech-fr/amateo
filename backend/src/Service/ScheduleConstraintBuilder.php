@@ -30,6 +30,7 @@ use App\Enum\LockOrigin;
 use App\Enum\VenueTravelRuleIntensity;
 use App\Repository\VenueTrainingSlotRepository;
 use App\Repository\VenueTravelRuleSettingRepository;
+use App\Support\SchemaEpoch;
 use DateTimeInterface;
 use Doctrine\ORM\EntityManagerInterface;
 use LogicException;
@@ -148,19 +149,21 @@ final class ScheduleConstraintBuilder
      * un club à deux saisons se voyait resservir le payload de l'autre. Elle porte aussi la VERSION
      * dont le payload reprend les séances : obligatoire, un appelant qui l'oublie ne compile pas au lieu
      * de lire le payload d'une autre version. Elle porte enfin la version du CONTRAT : un payload mis en
-     * cache par le code d'avant une montée de contrat (champs retirés compris) n'est jamais resservi.
+     * cache par le code d'avant une montée de contrat (champs retirés compris) n'est jamais resservi. Et
+     * l'ÉPOQUE du schéma ({@see SchemaEpoch}) : un payload mis en cache par un code aux migrations différentes
+     * n'est jamais resservi non plus, même quand la migration ajoutée porte une date ancienne.
      */
     public static function cacheKey(string $clubId, string $seasonId, ?string $lockVersionId): string
     {
-        return \sprintf('club.%s.season.%s.version.%s.contract.%s.schedule_input', $clubId, $seasonId, $lockVersionId ?? 'none', self::CONTRACT_VERSION);
+        return \sprintf('club.%s.season.%s.version.%s.contract.%s.epoch.%s.schedule_input', $clubId, $seasonId, $lockVersionId ?? 'none', self::CONTRACT_VERSION, SchemaEpoch::current());
     }
 
     /**
      * Le tag porté par TOUTES les entrées payload d'un club, saisons confondues.
      *
      * ⚠ C'est ce qui rend la clé par saison SÛRE. `CacheInvalidationListener` purge par
-     * CLUB, or deux entités du payload (`SportCategory`, `TeamTag`) portent un `clubId`
-     * mais AUCUN `seasonId` : les éditer ne pourrait plus viser aucune clé. Le listener
+     * CLUB, or une entité du payload (`SportCategory`) porte un `clubId` mais AUCUN
+     * `seasonId` : l'éditer ne pourrait viser aucune clé. Le listener
      * invalide donc ce tag plutôt que de reconstruire une clé — d'où source unique, et
      * plus de « changer la clé d'un seul côté casse l'invalidation en silence ».
      */

@@ -12,10 +12,8 @@ use Doctrine\ORM\Query\Filter\SQLFilter;
  * `season_id = ?` to every query on entities that own a `season_id` column.
  *
  * Same fail-secure, column-based idiom as TenantFilter: entities without a
- * season_id column (Season itself, Club, ClubUser, TeamTag, SportCategory…)
- * are untouched, so seasons stay listable for the season selector. As a
- * bonus this also bounds TeamTagAssignment (season_id, no club_id), which
- * the tenant filter cannot see.
+ * season_id column (Season itself, Club, ClubUser, SportCategory…)
+ * are untouched, so seasons stay listable for the season selector.
  *
  * Season isolation is an intra-club correctness boundary (a rolled-over club
  * must never mix N-1/N/N+1 rows), not the security tenant boundary — that one

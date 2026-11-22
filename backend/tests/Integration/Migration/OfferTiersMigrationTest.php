@@ -27,7 +27,7 @@ use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
  * - `down()` : réinsère « sans-limite », remet Club 30 et Grand club 50, ne redéplace aucun club.
  *
  * On joue les requêtes de `getSql()` sur la connexion `admin` (celle des migrations) dans une
- * transaction ANNULÉE en `finally` (patron VenueUnavailabilityDropMigrationTest). Chaque cas
+ * transaction ANNULÉE en `finally` (le DDL PostgreSQL est transactionnel). Chaque cas
  * commence par `down()` : il rend l'état d'avant la migration quel que soit l'état de la base de test.
  *
  * La RÈGLE vivante (caps servis, refus nommés) est prouvée par {@see PlanEntitlementsTest} et

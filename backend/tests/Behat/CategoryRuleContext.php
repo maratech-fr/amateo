@@ -14,8 +14,8 @@ use RuntimeException;
  * Promesse : une règle écrite pour une catégorie (CLUB + `targetTags`) suit ses équipes — une
  * équipe qui change de catégorie change d'étiquette, et la génération honore la règle pour toutes
  * les équipes du groupe et seulement pour elles. Les étiquettes se CALCULENT à la lecture (lot
- * conception 1, PR 3) : on les lit par les deux routes que l'écran lit (`/api/team_tags`,
- * `/api/team_tag_assignments`), et rien ne s'écrit dans `team_tag` ni `team_tag_assignment`.
+ * conception 1, PR 3), aucune table ne les stocke : on les lit par les deux routes que l'écran lit
+ * (`/api/team_tags`, `/api/team_tag_assignments`).
  *
  * Décor DÉDIÉ et léger ({@see SmallClubFixtureTrait::registerSmallClub}, 4 équipes, 2 gymnases de
  * 9 créneaux) ; catégories du catalogue semé à l'inscription (« U13 », « U15 », « Senior »). Le
@@ -23,9 +23,6 @@ use RuntimeException;
  * règle de groupe y est éclatée en une ligne par équipe (`<id de règle>:<id d'équipe>`). Plus bas :
  * `TeamTagResolver` (foyer unique de la résolution), `TeamTagScopeTest` et
  * `PeriodGatePayloadParityTest`.
- *
- * ⚠ L'étape « aucune étiquette n'est enregistrée » lit les deux tables : elle part avec elles
- * (première PR du lot 3, qui les supprime).
  */
 final class CategoryRuleContext extends BaseContext
 {
@@ -100,17 +97,6 @@ final class CategoryRuleContext extends BaseContext
         $tags = $this->tagsOf($this->smallClubTeamIds[$team]);
         if (!\in_array($gained, $tags, true) || \in_array($lost, $tags, true)) {
             throw new RuntimeException(\sprintf('%s porte les étiquettes [%s] (attendu %s, sans %s)', $team, implode(', ', $tags), $gained, $lost));
-        }
-    }
-
-    #[Then('aucune étiquette n\'est enregistrée pour le club')]
-    public function aucuneEtiquetteEnregistree(): void
-    {
-        foreach (['team_tag', 'team_tag_assignment'] as $table) {
-            $rows = (int) $this->dbalScalar(\sprintf('SELECT COUNT(*) AS behatval FROM %s WHERE club_id=\'%s\'', $table, $this->smallClubId), admin: true);
-            if (0 !== $rows) {
-                throw new RuntimeException(\sprintf('%d ligne(s) écrite(s) dans %s pour le club : les étiquettes doivent se calculer à la lecture, jamais s\'enregistrer', $rows, $table));
-            }
         }
     }
 

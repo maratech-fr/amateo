@@ -402,6 +402,51 @@ final class StructureRestorerTest extends KernelTestCase
         self::assertSame(1, $this->em->getRepository(Team::class)->find($teamId)?->getMaxSessionsPerDay(), 'photo sans le champ : 1 par défaut');
     }
 
+    /**
+     * Charger une version dont la photo a été prise quand les étiquettes s'enregistraient encore (la photo porte la clé
+     * `TeamTagAssignment`) réussit après la suppression des deux tables : la clé, que plus rien ne sait relire, est ignorée,
+     * et le reste de la photo revient. Les deux photos de production d'avant le lot conception portent cette clé.
+     */
+    public function testLoadingAnOlderPhotoThatStillCarriesStoredTagsSucceedsOnceTheTablesAreGone(): void
+    {
+        // Témoin : le cas ne prouve quelque chose qu'une fois l'entité et les deux tables supprimées ; tant qu'elles
+        // existent, la clé est encore connue du restaurateur et le chargement réussirait pour une autre raison.
+        self::assertFalse(class_exists('App\Entity\TeamTagAssignment'), 'l\'entité des rattachements d\'étiquettes est supprimée');
+        self::assertFalse(class_exists('App\Entity\TeamTag'), 'l\'entité des étiquettes est supprimée');
+        foreach (['team_tag', 'team_tag_assignment'] as $table) {
+            self::assertNull($this->em->getConnection()->fetchOne('SELECT to_regclass(?)', ['public.' . $table]), \sprintf('la table %s n\'existe plus', $table));
+        }
+
+        [$club, $season] = $this->seedClubSeason();
+        $team = $this->persistTeam($club, $season, 'U13 F');
+        $v1 = $this->makeSchedule($club, $season);
+        $this->em->flush();
+        $teamId = $team->getId();
+        $photo = $this->snapshotter->serialize($club->getId(), $season->getId());
+        $photo['TeamTagAssignment'] = [[
+            'id' => '7a900000-0000-4000-8000-000000000001',
+            'version' => 1,
+            'createdAt' => '2026-09-01T10:00:00+00:00',
+            'updatedAt' => '2026-09-01T10:00:00+00:00',
+            'clubId' => $club->getId(),
+            'seasonId' => $season->getId(),
+            'teamId' => $teamId,
+            'tagId' => '7a900000-0000-4000-8000-000000000002',
+        ]];
+        $this->snapshotter->store($v1, $photo);
+
+        $this->em->remove($team);
+        $this->em->flush();
+        $this->restorer->apply($club->getId(), $season->getId(), $this->restorer->readSnapshot($v1));
+        $this->em->clear();
+
+        self::assertSame(['U13 F'], array_map(
+            static fn (Team $t): string => $t->getName(),
+            $this->em->getRepository(Team::class)->findBy(['seasonId' => $season->getId()]),
+        ), 'l\'équipe de la photo revient, la clé des étiquettes enregistrées est ignorée');
+        self::assertNotNull($this->em->getRepository(Team::class)->find($teamId), 'avec son identifiant d\'origine');
+    }
+
     protected function setUp(): void
     {
         self::bootKernel();

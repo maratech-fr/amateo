@@ -21,8 +21,6 @@ use Doctrine\ORM\EntityManagerInterface;
  * cette version — une durée de match modifiée depuis revient à sa valeur d'alors, et une
  * catégorie créée depuis par un import disparaît. Les équipes qui la portaient n'ont alors plus
  * de groupe d'âge, sans message (`StructureRestorer` efface et réinsère les catégories).
- * « Charger » réinsère aussi les rattachements de la photo dans `team_tag_assignment` : la
- * table n'est plus lue par personne, c'est sans effet jusqu'à sa suppression (lot 3).
  */
 final class TeamTagService
 {

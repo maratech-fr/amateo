@@ -12,7 +12,6 @@ use App\Entity\Schedule;
 use App\Entity\SportCategory;
 use App\Entity\Team;
 use App\Entity\TeamCoach;
-use App\Entity\TeamTagAssignment;
 use App\Entity\Venue;
 use App\Entity\VenueTrainingSlot;
 use BackedEnum;
@@ -59,7 +58,6 @@ final class StructureSnapshotter
         CoachPlayerMembership::class,
         Constraint::class,
         Reservation::class,
-        TeamTagAssignment::class,
     ];
 
     public function __construct(
@@ -115,9 +113,7 @@ final class StructureSnapshotter
      */
     private function loadFamily(string $entityClass, string $clubId, string $seasonId): array
     {
-        // SportCategory is club-scoped but season-less — le seul cas particulier
-        // qui reste. TeamTagAssignment en était un second (season-scoped, club-less)
-        // jusqu'à BCK-11 : il porte son `club_id` et suit le cas général.
+        // SportCategory is club-scoped but season-less — le seul cas particulier.
         $criteria = match ($entityClass) {
             SportCategory::class => ['clubId' => $clubId],
             default => ['clubId' => $clubId, 'seasonId' => $seasonId],

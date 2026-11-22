@@ -1,0 +1,307 @@
+{
+    "version": "1.12",
+    "clubId": "c10b0000-0000-4000-8000-000000000001",
+    "seasonId": "5ea50000-0000-4000-8000-000000000001",
+    "solverSeed": 42,
+    "solverTimeoutSeconds": 650,
+    "venues": [
+        {
+            "id": "be0e0000-0000-4000-8000-000000000001",
+            "name": "Gymnase Nord",
+            "trainingSlots": [
+                {
+                    "dayOfWeek": 1,
+                    "startTime": "18:00",
+                    "durationMinutes": 90,
+                    "capacity": 2
+                },
+                {
+                    "dayOfWeek": 1,
+                    "startTime": "19:30",
+                    "durationMinutes": 90,
+                    "capacity": 2
+                },
+                {
+                    "dayOfWeek": 3,
+                    "startTime": "18:00",
+                    "durationMinutes": 90,
+                    "capacity": 2
+                },
+                {
+                    "dayOfWeek": 4,
+                    "startTime": "18:00",
+                    "durationMinutes": 90,
+                    "capacity": 2
+                }
+            ]
+        },
+        {
+            "id": "be0e0000-0000-4000-8000-000000000002",
+            "name": "Gymnase Sud",
+            "trainingSlots": [
+                {
+                    "dayOfWeek": 2,
+                    "startTime": "18:00",
+                    "durationMinutes": 90,
+                    "capacity": 1
+                },
+                {
+                    "dayOfWeek": 4,
+                    "startTime": "19:30",
+                    "durationMinutes": 90,
+                    "capacity": 1
+                }
+            ]
+        },
+        {
+            "id": "be0e0000-0000-4000-8000-000000000003",
+            "name": "Gymnase Est",
+            "trainingSlots": [
+                {
+                    "dayOfWeek": 2,
+                    "startTime": "19:30",
+                    "durationMinutes": 90,
+                    "capacity": 1
+                },
+                {
+                    "dayOfWeek": 5,
+                    "startTime": "18:00",
+                    "durationMinutes": 90,
+                    "capacity": 1
+                }
+            ]
+        }
+    ],
+    "teams": [
+        {
+            "id": "7ea00000-0000-4000-8000-000000000001",
+            "ageMin": null,
+            "priorityTierId": 3,
+            "name": "U13 F",
+            "sessionsPerWeek": 2,
+            "matchDay": null,
+            "forcedVenueId": null
+        },
+        {
+            "id": "7ea00000-0000-4000-8000-000000000002",
+            "ageMin": null,
+            "priorityTierId": 2,
+            "name": "U15 M",
+            "sessionsPerWeek": 2,
+            "matchDay": null,
+            "forcedVenueId": null
+        },
+        {
+            "id": "7ea00000-0000-4000-8000-000000000003",
+            "ageMin": null,
+            "priorityTierId": 1,
+            "name": "SM1",
+            "sessionsPerWeek": 2,
+            "matchDay": null,
+            "forcedVenueId": null
+        }
+    ],
+    "coaches": [
+        {
+            "id": "c0ac0000-0000-4000-8000-000000000001",
+            "firstName": "Alix",
+            "lastName": "Entraîneur",
+            "maxDaysOverride": null,
+            "isEmployee": true,
+            "isVehicled": true
+        },
+        {
+            "id": "c0ac0000-0000-4000-8000-000000000002",
+            "firstName": "Bao",
+            "lastName": "Entraîneur",
+            "maxDaysOverride": null,
+            "isEmployee": false,
+            "isVehicled": false
+        }
+    ],
+    "constraints": [
+        {
+            "id": "team-coach:7c0a0000-0000-4000-8000-000000000001",
+            "teamId": "7ea00000-0000-4000-8000-000000000001",
+            "type": "TEAM_COACH",
+            "value": "c0ac0000-0000-4000-8000-000000000001",
+            "metadata": {
+                "coachId": "c0ac0000-0000-4000-8000-000000000001",
+                "role": "MAIN"
+            }
+        },
+        {
+            "id": "team-coach:7c0a0000-0000-4000-8000-000000000002",
+            "teamId": "7ea00000-0000-4000-8000-000000000002",
+            "type": "TEAM_COACH",
+            "value": "c0ac0000-0000-4000-8000-000000000001",
+            "metadata": {
+                "coachId": "c0ac0000-0000-4000-8000-000000000001",
+                "role": "MAIN"
+            }
+        },
+        {
+            "id": "team-coach:7c0a0000-0000-4000-8000-000000000003",
+            "teamId": "7ea00000-0000-4000-8000-000000000003",
+            "type": "TEAM_COACH",
+            "value": "c0ac0000-0000-4000-8000-000000000002",
+            "metadata": {
+                "coachId": "c0ac0000-0000-4000-8000-000000000002",
+                "role": "MAIN"
+            }
+        },
+        {
+            "id": "coach-player-unavailability:3e3b0000-0000-4000-8000-000000000001",
+            "teamId": "7ea00000-0000-4000-8000-000000000003",
+            "type": "COACH_PLAYER_UNAVAILABILITY",
+            "severity": "HARD",
+            "value": "c0ac0000-0000-4000-8000-000000000001",
+            "metadata": {
+                "coachId": "c0ac0000-0000-4000-8000-000000000001",
+                "teamId": "7ea00000-0000-4000-8000-000000000003",
+                "position": null,
+                "isActive": true
+            }
+        },
+        {
+            "id": "c0570000-0000-4000-8000-000000000001",
+            "scope": "TEAM",
+            "scopeTargetId": "7ea00000-0000-4000-8000-000000000001",
+            "family": "TIME",
+            "ruleType": "PREFERRED",
+            "name": "Contrainte 1",
+            "config": {
+                "minStartTime": "18:00"
+            },
+            "isActive": true
+        },
+        {
+            "id": "c0570000-0000-4000-8000-000000000002",
+            "scope": "TEAM",
+            "scopeTargetId": "7ea00000-0000-4000-8000-000000000002",
+            "family": "DAY",
+            "ruleType": "PREFERRED",
+            "name": "Contrainte 2",
+            "config": {
+                "preferredDays": [
+                    1,
+                    3
+                ]
+            },
+            "isActive": true
+        },
+        {
+            "id": "c0570000-0000-4000-8000-000000000003",
+            "scope": "TEAM",
+            "scopeTargetId": "7ea00000-0000-4000-8000-000000000003",
+            "family": "FACILITY",
+            "ruleType": "PREFERRED",
+            "name": "Contrainte 3",
+            "config": {
+                "preferredVenueId": "be0e0000-0000-4000-8000-000000000001"
+            },
+            "isActive": true
+        },
+        {
+            "id": "c0570000-0000-4000-8000-000000000004",
+            "scope": "COACH",
+            "scopeTargetId": "c0ac0000-0000-4000-8000-000000000002",
+            "family": "COACH_AVAILABILITY",
+            "ruleType": "HARD",
+            "name": "Contrainte 4",
+            "config": {
+                "unavailableDays": [
+                    5
+                ]
+            },
+            "isActive": true
+        },
+        {
+            "id": "c0570000-0000-4000-8000-000000000006",
+            "scope": "TEAM",
+            "scopeTargetId": "7ea00000-0000-4000-8000-000000000002",
+            "family": "DAY",
+            "ruleType": "PREFERRED",
+            "name": "Contrainte 6",
+            "config": {
+                "forbiddenDays": [
+                    2
+                ]
+            },
+            "isActive": true
+        }
+    ],
+    "slotTemplates": [
+        {
+            "id": "e5e00000-0000-4000-8000-000000000002",
+            "teamId": "7ea00000-0000-4000-8000-000000000002",
+            "venueId": "be0e0000-0000-4000-8000-000000000001",
+            "coachId": null,
+            "dayOfWeek": 3,
+            "startTime": "18:00:00",
+            "durationMinutes": 90,
+            "lockLevel": "HARD",
+            "coachLateToleranceMinutes": 0,
+            "pendingConstraintSuggestion": null
+        }
+    ],
+    "implicitRules": {
+        "coachRestDay": {
+            "intensity": "HARD",
+            "minRestDays": 1
+        },
+        "salarieDistribution": {
+            "intensity": "HARD"
+        },
+        "maxConsecutiveSessions": {
+            "intensity": "HARD",
+            "maxConsecutive": 3
+        },
+        "ageAscending": {
+            "intensity": "HARD"
+        },
+        "travelTime": {
+            "intensity": "PREFERRED",
+            "defaultMinutes": 20,
+            "toleranceMinutes": 20
+        }
+    },
+    "sharedBlocks": [],
+    "teamLinks": [
+        {
+            "id": "11c00000-0000-4000-8000-000000000001",
+            "teamAId": "7ea00000-0000-4000-8000-000000000001",
+            "teamBId": "7ea00000-0000-4000-8000-000000000002",
+            "intensity": "PREFERRED"
+        }
+    ],
+    "venueTravelTimes": [
+        {
+            "venueAId": "be0e0000-0000-4000-8000-000000000001",
+            "venueBId": "be0e0000-0000-4000-8000-000000000002",
+            "drivingMinutes": 12,
+            "walkingMinutes": 30
+        },
+        {
+            "venueAId": "be0e0000-0000-4000-8000-000000000001",
+            "venueBId": "be0e0000-0000-4000-8000-000000000003",
+            "drivingMinutes": 8,
+            "walkingMinutes": 20
+        },
+        {
+            "venueAId": "be0e0000-0000-4000-8000-000000000002",
+            "venueBId": "be0e0000-0000-4000-8000-000000000003",
+            "drivingMinutes": null,
+            "walkingMinutes": null
+        }
+    ],
+    "socleReferenceAssignments": [
+        {
+            "teamId": "7ea00000-0000-4000-8000-000000000001",
+            "dayOfWeek": 1,
+            "startTime": "18:00:00",
+            "venueId": "be0e0000-0000-4000-8000-000000000001",
+            "keep": true
+        }
+    ]
+}

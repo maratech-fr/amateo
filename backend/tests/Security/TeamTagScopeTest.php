@@ -22,11 +22,9 @@ use App\Service\TeamTagResolver;
 use App\Service\TenantDoctrineScope;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
-use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
 use Doctrine\ORM\EntityManagerInterface;
 use PHPUnit\Framework\Attributes\Group;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
-use Symfony\Component\Uid\Uuid;
 
 /**
  * NR BLOQUANT — SÉMANTIQUE DE CONTRAINTE (axe structurant §7.1).
@@ -217,33 +215,6 @@ final class TeamTagScopeTest extends KernelTestCase
         // LEGACY : `targetTag` singulier reste équivalent à `targetTags: [x]` (rétro-compat).
         $legacy = $this->resolver->resolveConstraintTeamIds(['targetTag' => 'ADULTE'], $seasonId, $clubId, $base);
         self::assertContains($sante->getId(), $legacy, 'sans exclusion, ADULTE couvre AUSSI le Basket Santé');
-    }
-
-    /**
-     * NR — P4-64. LA garde : la base refuse deux tags de même nom dans un club.
-     *
-     * Sans elle, deux écritures de `Team` concurrentes inséraient le tag deux fois, et
-     * `TeamTagResolver::tagTeamIds` (`findOneBy`) en choisissait **une** pendant que les
-     * assignations se répartissaient entre les deux lignes : une contrainte ciblant ce tag
-     * n'atteignait qu'une partie des équipes, **sans erreur ni warning** — le tag était bien
-     * trouvé. C'est le pire mode de panne, et aucun test ne le couvrait.
-     *
-     * La table n'a plus d'écrivain (lot conception 1, PR 3) mais garde ses lignes jusqu'à sa
-     * suppression (première PR du lot 3) : l'index garde ce qu'elle contient. Le test pose
-     * lui-même les deux lignes — aucune n'est plus semée par une écriture d'équipe.
-     */
-    public function testDatabaseRefusesTwoTagsWithTheSameNameInAClub(): void
-    {
-        $this->scopeGucToClub($this->club->getId());
-
-        $this->expectException(UniqueConstraintViolationException::class);
-        foreach ([1, 2] as $_) {
-            $this->em->getConnection()->executeStatement(
-                'INSERT INTO team_tag (id, version, created_at, updated_at, club_id, name, color, is_system, axis)'
-                . ' VALUES (:id, 1, NOW(), NOW(), :club, \'BABY\', \'#F5A9C8\', true, \'AGE\')',
-                ['id' => Uuid::v4()->toRfc4122(), 'club' => $this->club->getId()],
-            );
-        }
     }
 
     /**

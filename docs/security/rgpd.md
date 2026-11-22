@@ -71,8 +71,8 @@ Les deux purgers ne tiennent **aucune liste propre** : ils lisent la déclaratio
 - purge de saison (`SeasonDataPurger`) : `FamilyCatalog::purgedViaOwner()` (familles résolues
   par la saison de leur propriétaire, effacées d'abord), puis `::purgedWithSeason()` (par
   `club_id`+`season_id`, chaque enfant avant le parent dont il meurt) ; `SeasonDataPurger::HANDLED_APART`
-  garde les cas particuliers (`team_tag_assignment` et `holiday_reminder_log` bornées par la saison
-  seule, la ligne `Season` elle-même) ; une famille épargnée porte `#[Family(keptAtSeasonPurge: …)]`.
+  garde les cas particuliers (`holiday_reminder_log` bornée par la saison seule, la ligne
+  `Season` elle-même) ; une famille épargnée porte `#[Family(keptAtSeasonPurge: …)]`.
 - effacement du club (`ErasedClubPurger`) : chaque saison par la purge ci-dessus, puis
   `FamilyCatalog::purgedWithClub()` (niveau club, par `club_id`) ; une famille épargnée porte
   `#[Family(keptAtErasure: …)]` (`audit_log`, `coach_wish_token`).

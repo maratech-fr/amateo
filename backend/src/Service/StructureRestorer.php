@@ -15,7 +15,6 @@ use App\Entity\ScheduleStructureSnapshot;
 use App\Entity\SportCategory;
 use App\Entity\Team;
 use App\Entity\TeamCoach;
-use App\Entity\TeamTagAssignment;
 use App\Entity\TenantOwnedInterface;
 use App\Entity\Venue;
 use App\Entity\VenueTrainingSlot;
@@ -55,7 +54,6 @@ final class StructureRestorer
         'CoachPlayerMembership' => CoachPlayerMembership::class,
         'Constraint' => Constraint::class,
         'Reservation' => Reservation::class,
-        'TeamTagAssignment' => TeamTagAssignment::class,
     ];
 
     public function __construct(
@@ -260,9 +258,6 @@ final class StructureRestorer
     {
         $this->deleteFamily(TeamCoach::class, $clubId, $seasonId);
         $this->deleteFamily(CoachPlayerMembership::class, $clubId, $seasonId);
-        // BCK-11 : borné au club depuis que la table porte son `club_id` (il
-        // valait `null` ici tant qu'elle n'en avait pas).
-        $this->deleteFamily(TeamTagAssignment::class, $clubId, $seasonId);
         $this->deleteFamily(Reservation::class, $clubId, $seasonId, permanentOnly: true);
         $this->deleteFamily(Constraint::class, $clubId, $seasonId, permanentOnly: true);
         $this->deleteFamily(Team::class, $clubId, $seasonId);

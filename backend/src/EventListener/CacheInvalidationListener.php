@@ -89,12 +89,6 @@ class CacheInvalidationListener
     public function flushInvalidations(): void
     {
         foreach (array_keys($this->pendingInvalidations) as $clubId) {
-            // TRANSITION DE DÉPLOIEMENT — l'ANCIENNE clé du payload (sans saison,
-            // écrite par le code d'avant P2-9ter). Plus produite, mais des entrées
-            // survivent jusqu'à 4 h (TTL) : un conteneur encore sur l'ancien code
-            // (déploiement en cours, rollback) servirait un payload périmé que plus
-            // rien n'invaliderait. Supprimable un déploiement plus tard.
-            $this->scheduleCachePool->deleteItem(\sprintf('club.%s.schedule_input', $clubId));
             // Le payload solveur : purgé par TAG, toutes saisons du club d'un coup.
             // Indispensable — `SportCategory` alimente le payload (âges, et les étiquettes
             // qui éclatent les règles de groupe se calculent depuis elle) mais ne porte PAS

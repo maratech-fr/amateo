@@ -29,6 +29,7 @@ use App\Service\ScheduleConstraintBuilder;
 use App\Service\SchedulePlanProvisioner;
 use App\Tests\EngineRequestDecorTrait;
 use App\Tests\EngineRequestGroupRulesDecorTrait;
+use App\Tests\EngineRequestTravelDecorTrait;
 use DateTimeImmutable;
 use FilesystemIterator;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -83,6 +84,7 @@ final class EngineRequestsRecordCommandTest extends KernelTestCase
 {
     use EngineRequestDecorTrait;
     use EngineRequestGroupRulesDecorTrait;
+    use EngineRequestTravelDecorTrait;
 
     private const string REFERENCE_DIR = __DIR__ . '/../../Fixtures/engine-requests';
 
@@ -123,6 +125,8 @@ final class EngineRequestsRecordCommandTest extends KernelTestCase
         yield 'placement, club entier et semaine' => ['placement'];
         yield 'socle aux règles de groupe et au jour de match enregistré' => ['socle-7'];
         yield 'période à la règle de groupe' => ['periode-8'];
+        yield 'socle de la saison suivante, aux trajets rangés à l\'envers' => ['socle-9'];
+        yield 'période aux trajets' => ['periode-10'];
     }
 
     /** @return iterable<string, array{callable, callable, callable}> */
@@ -852,6 +856,18 @@ final class EngineRequestsRecordCommandTest extends KernelTestCase
                 $this->seedPeriodVersion(self::ER_PERIOD_P1, ScheduleStatus::DRAFT);
 
                 return ['season-' . self::ER_SEASON . '/plan-' . $planId . '/version-' . self::ER_PERIOD_P1 . '.generate' => 'periode-8-regle-de-groupe'];
+            case 'socle-9':
+                $this->seedEngineRequestTravelOfCurrentSeason();
+                $version = $this->seedEngineRequestNextSeason();
+
+                return ['season-' . self::ER_NEXT_SEASON . '/plan-' . $version->getSchedulePlanId() . '/version-' . self::ER_NEXT_SOCLE_V1 . '.generate' => 'socle-9-trajets-saison-suivante'];
+            case 'periode-10':
+                $this->seedEngineRequestTravelOfCurrentSeason();
+                $this->seedSocleInForce();
+                $planId = $this->seedEngineRequestPeriod();
+                $this->seedPeriodVersion(self::ER_PERIOD_P1, ScheduleStatus::DRAFT);
+
+                return ['season-' . self::ER_SEASON . '/plan-' . $planId . '/version-' . self::ER_PERIOD_P1 . '.generate' => 'periode-10-trajets'];
         }
 
         self::fail('cas inconnu : ' . $case);

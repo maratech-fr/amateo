@@ -14,8 +14,6 @@ use App\Entity\CoachWishToken;
 use App\Entity\ScheduleStructureSnapshot;
 use App\Entity\Season;
 use App\Entity\Team;
-use App\Entity\TeamTag;
-use App\Entity\TeamTagAssignment;
 use App\Enum\CalendarEntryKind;
 use App\Enum\CalendarEntryPeriodType;
 use App\Enum\SeasonStatus;
@@ -75,10 +73,9 @@ final class PurgeSeasonsCommandTest extends KernelTestCase
         $this->em->clear();
         $this->scopeGucToClub($club->getId());
 
-        // N-2 (old) purged, row and children gone (team + its tag assignment).
+        // N-2 (old) purged, row and children gone.
         self::assertNull($this->em->getRepository(Season::class)->find($old->getId()));
         self::assertCount(0, $this->em->getRepository(Team::class)->findBy(['seasonId' => $old->getId()]));
-        self::assertCount(0, $this->em->getRepository(TeamTagAssignment::class)->findBy(['seasonId' => $old->getId()]));
         // #10 — la doléance coach de la saison purgée est partie.
         self::assertNull($this->em->getRepository(CoachWish::class)->find($this->oldWishId));
         self::assertNull($this->em->getRepository(CoachWishCampaign::class)->find($this->oldCampaignId), 'la campagne de collecte N-2 est purgée');
@@ -200,23 +197,6 @@ final class PurgeSeasonsCommandTest extends KernelTestCase
         $team->setSessionsPerWeek(2);
         $team->setIsActive(true);
         $this->em->persist($team);
-
-        // A tag assignment in the N-2 season — the outlier table (season_id,
-        // no club_id) SeasonDataPurger must delete by season.
-        $tag = new TeamTag;
-        $tag->setClubId($club->getId());
-        $tag->setName('CUSTOM-' . substr($uid, -4));
-        $tag->setIsSystem(false);
-        $this->em->persist($tag);
-        $this->em->flush();
-
-        $assignment = new TeamTagAssignment;
-        // BCK-11 : tenant + RLS, une ligne sans club_id est refusée en base.
-        $assignment->setClubId($team->getClubId());
-        $assignment->setSeasonId($old->getId());
-        $assignment->setTeamId($team->getId());
-        $assignment->setTagId($tag->getId());
-        $this->em->persist($assignment);
         $this->em->flush();
 
         // #10 — une doléance coach dans la saison N-2, ancrée à une entrée vacances : la
