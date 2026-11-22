@@ -15,6 +15,7 @@ use App\Entity\User;
 use App\Enum\CalendarEntryKind;
 use App\Enum\CalendarEntryPeriodType;
 use App\Enum\SeasonStatus;
+use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -32,6 +33,7 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 #[Group('phase1')]
 final class CoachWishMutualizationApiTest extends WebTestCase
 {
+    use CreatesPeopleAndPlacesTrait;
     use TenantGucTrait;
 
     private KernelBrowser $client;
@@ -180,8 +182,7 @@ final class CoachWishMutualizationApiTest extends WebTestCase
 
         $this->team = $this->newTeam('SM1');
         $this->partner = $this->newTeam('SF1');
-        $this->coach = (new Coach)->setClubId($this->club->getId())->setSeasonId($this->season->getId())
-            ->setFirstName('Maxime')->setLastName('Durand');
+        $this->coach = $this->newCoach($this->club->getId(), $this->season->getId(), 'Maxime', 'Durand');
         $this->em->persist($this->coach);
         $this->em->flush();
 

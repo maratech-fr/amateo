@@ -4,17 +4,26 @@ declare(strict_types=1);
 
 namespace App\Entity;
 
-use App\Enum\CoachGender;
 use App\Repository\CoachRepository;
 use App\Structure\Family;
 use App\Structure\Level;
+use App\Structure\OnDelete;
+use App\Structure\PersonDirectory;
+use App\Structure\RefersTo;
 use DateTimeImmutable;
 use Doctrine\ORM\Mapping as ORM;
 
+/**
+ * Le rôle coach d'une personne du club pour une saison : options de planning (plafond de jours,
+ * salarié, véhiculé, actif). L'identité (nom, mail, téléphone, genre) vit sur la fiche
+ * {@see Person} que `personId` désigne, et se lit par {@see PersonDirectory}, jamais ici.
+ * Une personne a au plus un rôle coach par saison (`uniq_coach_season_person`).
+ */
 #[Family(Level::SEASON)]
 #[ORM\Entity(repositoryClass: CoachRepository::class)]
 #[ORM\Table(name: 'coach')]
 #[ORM\Index(name: 'idx_coach_club_season', columns: ['club_id', 'season_id'])]
+#[ORM\UniqueConstraint(name: 'uniq_coach_season_person', columns: ['season_id', 'person_id'])]
 #[ORM\HasLifecycleCallbacks]
 class Coach implements TenantOwnedInterface
 {
@@ -38,17 +47,19 @@ class Coach implements TenantOwnedInterface
     #[ORM\Column(type: 'guid')]
     private string $seasonId;
 
-    #[ORM\Column(type: 'string', length: 120)]
-    private string $firstName;
+    /**
+     * La fiche de la personne. Clé étrangère composée `(person_id, club_id)` → `person (id, club_id)`,
+     * posée à la main en migration (invisible de Doctrine), `ON DELETE RESTRICT`.
+     */
+    #[ORM\Column(type: 'guid')]
+    #[RefersTo(Person::class, OnDelete::CUSTOM, 'une fiche pointée par un rôle ne s\'efface pas (ON DELETE RESTRICT) : le rôle part d\'abord, la fiche sans rôle est balayée par UnusedIdentitySweeper')]
+    private string $personId;
 
-    #[ORM\Column(type: 'string', length: 120)]
-    private string $lastName;
-
-    #[ORM\Column(type: 'string', length: 180, nullable: true)]
-    private ?string $email = null;
-
-    #[ORM\Column(type: 'string', length: 40, nullable: true)]
-    private ?string $phone = null;
+    /**
+     * La fiche passée à la création, tant que ce coach n'a pas été relu de la base (non mappée) :
+     * {@see PersonDirectory} la lit sans requête. Un coach chargé par Doctrine ne la porte pas.
+     */
+    private ?Person $person = null;
 
     #[ORM\Column(type: 'smallint', nullable: true)]
     private ?int $maxDaysOverride = null;
@@ -67,20 +78,14 @@ class Coach implements TenantOwnedInterface
     #[ORM\Column(type: 'boolean', options: ['default' => false])]
     private bool $isVehicled = false;
 
-    /**
-     * P4-311 — genre pour accorder les libellés désignant la personne (joueur·euse…).
-     * Non nulle, défaut UNSPECIFIED (double forme) : rien à saisir à la création, les
-     * coachs existants deviennent « non précisé ». Jamais envoyé au moteur (présentation).
-     */
-    #[ORM\Column(length: 12, enumType: CoachGender::class, options: ['default' => 'UNSPECIFIED'])]
-    private CoachGender $gender = CoachGender::UNSPECIFIED;
-
-    public function __construct()
+    public function __construct(Person $person)
     {
         $this->id = $this->newUuid();
         $now = new DateTimeImmutable;
         $this->createdAt = $now;
         $this->updatedAt = $now;
+        $this->personId = $person->getId();
+        $this->person = $person;
     }
 
     public function getId(): string
@@ -154,52 +159,19 @@ class Coach implements TenantOwnedInterface
         return $this;
     }
 
-    public function getFirstName(): string
+    public function getPersonId(): string
     {
-        return $this->firstName;
+        return $this->personId;
     }
 
-    public function setFirstName(string $firstName): self
+    /**
+     * La fiche passée au constructeur, ou null si ce coach a été relu de la base.
+     *
+     * @internal lue par {@see PersonDirectory} seulement — tout autre lecteur passe par lui
+     */
+    public function personGivenAtCreation(): ?Person
     {
-        $this->firstName = $firstName;
-
-        return $this;
-    }
-
-    public function getLastName(): string
-    {
-        return $this->lastName;
-    }
-
-    public function setLastName(string $lastName): self
-    {
-        $this->lastName = $lastName;
-
-        return $this;
-    }
-
-    public function getEmail(): ?string
-    {
-        return $this->email;
-    }
-
-    public function setEmail(?string $email): self
-    {
-        $this->email = $email;
-
-        return $this;
-    }
-
-    public function getPhone(): ?string
-    {
-        return $this->phone;
-    }
-
-    public function setPhone(?string $phone): self
-    {
-        $this->phone = $phone;
-
-        return $this;
+        return $this->person;
     }
 
     public function getMaxDaysOverride(): ?int
@@ -251,18 +223,6 @@ class Coach implements TenantOwnedInterface
     public function setIsVehicled(bool $isVehicled): self
     {
         $this->isVehicled = $isVehicled;
-
-        return $this;
-    }
-
-    public function getGender(): CoachGender
-    {
-        return $this->gender;
-    }
-
-    public function setGender(CoachGender $gender): self
-    {
-        $this->gender = $gender;
 
         return $this;
     }

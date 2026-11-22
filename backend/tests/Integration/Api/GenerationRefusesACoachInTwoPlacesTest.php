@@ -28,6 +28,7 @@ use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
 use App\Enum\TeamCoachRole;
 use App\Tests\ChoosesPlanVersionTrait;
+use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\Security\CoachDoubleBookingTest;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
@@ -54,6 +55,7 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 final class GenerationRefusesACoachInTwoPlacesTest extends WebTestCase
 {
     use ChoosesPlanVersionTrait;
+    use CreatesPeopleAndPlacesTrait;
     use TenantGucTrait;
 
     private EntityManagerInterface $em;
@@ -217,7 +219,7 @@ final class GenerationRefusesACoachInTwoPlacesTest extends WebTestCase
     /** @param array{clubId: string, seasonId: string} $ctx */
     private function addMainCoach(array $ctx, string $firstName, string $teamName): void
     {
-        $coach = (new Coach)->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])->setFirstName($firstName)->setLastName('Morel');
+        $coach = $this->newCoach($ctx['clubId'], $ctx['seasonId'], $firstName, 'Morel');
         $this->em->persist($coach);
         $this->em->flush();
         $team = $this->em->getRepository(Team::class)->findOneBy(['seasonId' => $ctx['seasonId'], 'name' => $teamName]);
@@ -229,7 +231,7 @@ final class GenerationRefusesACoachInTwoPlacesTest extends WebTestCase
     /** @param array{clubId: string, seasonId: string} $ctx */
     private function makeCoachUnavailableFrom(array $ctx, string $firstName, string $from): void
     {
-        $coach = $this->em->getRepository(Coach::class)->findOneBy(['seasonId' => $ctx['seasonId'], 'firstName' => $firstName]);
+        $coach = $this->em->createQuery('SELECT c FROM App\Entity\Coach c JOIN App\Entity\Person p WITH p.id = c.personId WHERE c.seasonId = :season AND p.firstName = :first')->setParameters(['season' => $ctx['seasonId'], 'first' => $firstName])->getOneOrNullResult();
         self::assertInstanceOf(Coach::class, $coach);
         $constraint = new Constraint;
         $constraint->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId']);
@@ -309,7 +311,7 @@ final class GenerationRefusesACoachInTwoPlacesTest extends WebTestCase
             $this->em->persist($venue);
             $venues[] = $venue;
         }
-        $coach = (new Coach)->setClubId($clubId)->setSeasonId($seasonId)->setFirstName('Ana')->setLastName('Berger');
+        $coach = $this->newCoach($clubId, $seasonId, 'Ana', 'Berger');
         $this->em->persist($coach);
         $this->em->flush();
 

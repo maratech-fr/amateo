@@ -14,7 +14,9 @@ use RuntimeException;
 /**
  * Promesse : préparer la saison suivante reprend la structure du club (équipes, coachs et
  * affectations, gymnases et créneaux, règles), une règle qui nomme un gymnase nomme celui de la
- * nouvelle saison, le geste ne se rejoue pas, et la saison en cours reste intacte.
+ * nouvelle saison, le geste ne se rejoue pas, et la saison en cours reste intacte. Les coachs des deux
+ * saisons sont les mêmes personnes (lot 3, PR 2b) : une correction d'identité vaut pour les deux, un
+ * retrait de la saison suivante ne touche pas la saison en cours.
  *
  * Décor DÉDIÉ ({@see SmallClubFixtureTrait}, sans génération) passé hors Découverte par le geste
  * support réel `app:clubs:set-plan --plan=essentiel --paid-season=next` : la bascule exige que la
@@ -38,6 +40,8 @@ final class SeasonTransitionContext extends BaseContext
         'créneaux de gymnase' => 'venue_training_slot',
         'règles' => 'constraint',
     ];
+
+    private const string CORRECTED_PHONE = '0612345678';
 
     private string $currentSeasonId = '';
 
@@ -195,11 +199,95 @@ final class SeasonTransitionContext extends BaseContext
         }
     }
 
+    /** Pointage : chaque coach de la saison suivante pointe la fiche d'un coach de la saison en cours, et le club n'a pas de fiche en plus. */
+    #[Then('/^les (?P<count>\d+) coachs de la saison suivante sont les mêmes personnes que ceux de la saison en cours$/u')]
+    public function lesCoachsSontLesMemesPersonnes(string $count): void
+    {
+        $shared = $this->dbalScalar(\sprintf(
+            'SELECT COUNT(*) AS behatval FROM coach n JOIN coach c ON c.person_id = n.person_id AND c.season_id=\'%s\' WHERE n.season_id=\'%s\'',
+            $this->currentSeasonId,
+            $this->nextSeasonId,
+        ), admin: true);
+        if ($count !== $shared) {
+            throw new RuntimeException(\sprintf('%s coachs de la saison suivante sont des personnes de la saison en cours (attendu %s)', $shared, $count));
+        }
+        $people = $this->dbalScalar(\sprintf('SELECT COUNT(*) AS behatval FROM person WHERE club_id=\'%s\'', $this->smallClubId), admin: true);
+        if ($count !== $people) {
+            throw new RuntimeException(\sprintf('le club porte %s fiches de personne pour %s coachs (une fiche par personne attendue)', $people, $count));
+        }
+    }
+
+    /** Le geste de l'étape Coachs du wizard, dans la saison suivante : `PUT /api/coaches/{id}`. */
+    #[When('/^je corrige le téléphone de « (?P<coach>[^»]+) » dans la saison suivante$/u')]
+    public function jeCorrigeLeTelephone(string $coach): void
+    {
+        $nextCoach = $this->coachOfSeason($coach, $this->nextSeasonId);
+        // L'écran renvoie la fiche telle qu'il l'a lue, téléphone corrigé.
+        $updated = $this->apiPut(\sprintf('coaches/%s', $nextCoach['id']), [
+            'firstName' => $nextCoach['firstName'],
+            'lastName' => $nextCoach['lastName'] ?? '',
+            'phone' => self::CORRECTED_PHONE,
+        ], $this->smallClubToken, ['X-Season-Id' => $this->nextSeasonId]);
+        if (200 !== $updated['status']) {
+            throw new RuntimeException(\sprintf('corriger le téléphone de %s a répondu %d (200 attendu) : %s', $coach, $updated['status'], json_encode($updated['json'], \JSON_UNESCAPED_UNICODE)));
+        }
+    }
+
+    #[Then('/^« (?P<coach>[^»]+) » a ce téléphone dans la saison en cours$/u')]
+    public function aCeTelephoneDansLaSaisonEnCours(string $coach): void
+    {
+        $phone = $this->coachOfSeason($coach, $this->currentSeasonId)['phone'] ?? null;
+        if (self::CORRECTED_PHONE !== $phone) {
+            throw new RuntimeException(\sprintf('dans la saison en cours, %s a le téléphone « %s » (attendu « %s », corrigé dans la saison suivante)', $coach, \is_string($phone) ? $phone : '', self::CORRECTED_PHONE));
+        }
+    }
+
+    #[When('/^je supprime le coach « (?P<coach>[^»]+) » de la saison suivante$/u')]
+    public function jeSupprimeLeCoachDeLaSaisonSuivante(string $coach): void
+    {
+        $nextCoach = $this->coachOfSeason($coach, $this->nextSeasonId);
+        $deleted = $this->apiDelete(\sprintf('coaches/%s', $nextCoach['id']), $this->smallClubToken, ['X-Season-Id' => $this->nextSeasonId]);
+        if (204 !== $deleted['status']) {
+            throw new RuntimeException(\sprintf('supprimer %s de la saison suivante a répondu %d (204 attendu) : %s', $coach, $deleted['status'], json_encode($deleted['json'], \JSON_UNESCAPED_UNICODE)));
+        }
+    }
+
+    #[Then('/^« (?P<coach>[^»]+) » entraîne toujours ses équipes dans la saison en cours$/u')]
+    public function entraineToujoursSesEquipes(string $coach): void
+    {
+        $current = $this->coachOfSeason($coach, $this->currentSeasonId);
+        $teams = $this->dbalScalar(\sprintf('SELECT COUNT(*) AS behatval FROM team_coach WHERE coach_id=\'%s\'', $current['id']), admin: true);
+        if ('2' !== $teams) {
+            throw new RuntimeException(\sprintf('dans la saison en cours, %s entraîne %s équipes (attendu 2, SM1 et U13M1)', $coach, $teams));
+        }
+        if (self::CORRECTED_PHONE !== ($current['phone'] ?? null)) {
+            throw new RuntimeException(\sprintf('dans la saison en cours, %s a perdu son téléphone avec son retrait de la saison suivante', $coach));
+        }
+    }
+
     #[AfterScenario]
     public function nettoyer(): void
     {
         $this->releaseDevClock($this->smallClubToken);
         $this->teardownSmallClub();
+    }
+
+    /**
+     * Le coach d'une saison, lu comme l'écran le lit : `GET /api/coaches` dans cette saison (`X-Season-Id`).
+     *
+     * @return array<mixed>
+     */
+    private function coachOfSeason(string $firstName, string $seasonId): array
+    {
+        $listed = $this->apiGet('coaches', $this->smallClubToken, ['X-Season-Id' => $seasonId]);
+        $members = \is_array($listed['json']['member'] ?? null) ? $listed['json']['member'] : [];
+        foreach ($members as $member) {
+            if (\is_array($member) && ($member['firstName'] ?? null) === $firstName && \is_string($member['id'] ?? null)) {
+                return $member;
+            }
+        }
+
+        throw new RuntimeException(\sprintf('aucun coach « %s » dans la saison %s (HTTP %d)', $firstName, $seasonId, $listed['status']));
     }
 
     /** @return array<string, int> libellé → nombre de lignes de la saison */

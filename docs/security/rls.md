@@ -31,6 +31,17 @@ Le motif normal est une policy unique `tenant_isolation FOR ALL`. Quatre tables 
 >
 > **Les deux couches tiennent partout (SEC-12).** GUC posé, `club_user` et `coach_wish_token` sont étanches au niveau base comme les autres : une requête native ou un `createQuery` filtre désactivé ne fuiterait plus que dans la fenêtre pré-GUC (où il n'y a par construction aucun tenant à protéger — et où le code filtre par `user_id`/token). Comportement gardé par `testClubUserSelectIsTenantScopedOnceGucIsSet`, `testRunWithoutTenantSeesAcrossClubsThenRestoresGuc`, `testFindActiveClubIdsStaysCrossClubWithGucSet` et `testClubUserRemainsReadableWithoutGuc` (le bootstrap pré-GUC, inchangé). Ce que le test de portée n'assure pas : la justesse *sémantique* du canon (portée par les tests comportementaux) ni un prédicat équivalent écrit autrement (échoue volontairement — fail-noisy).
 
+## `person` — le motif normal, plus une clé étrangère composée
+
+`person` (la fiche d'identité d'un coach, ADR-0006 ; `Version20261122140000`) suit le motif normal :
+`ENABLE` + `FORCE`, `tenant_isolation FOR ALL TO amateo_app`, `admin_all` (`amateo_owner`) et
+`readonly_tenant` (`amateo_read`, comme `coach` avant elle). Sa particularité est la clé qui la désigne :
+`coach (person_id, club_id)` → `person (id, club_id)`, `ON DELETE RESTRICT`, posée à la main (invisible de
+Doctrine, `migration-diff` propose de la DROPper : ne jamais committer ce DROP), adossée à
+`UNIQUE (id, club_id)`. **Pourquoi composée** : une vérification de clé étrangère ignore la RLS, donc une
+clé simple `person_id → person(id)` laisserait un coach du club A désigner la fiche du club B. Gardé par
+`tests/Security/PersonPlaceTenantIsolationTest.php` (SQL brut sur `amateo_app`, step bloquant).
+
 ## Porte superadmin (supervision développeur)
 
 La porte admin (P5-7, `Version20260813130000`) est **portée par des policies, plus par le

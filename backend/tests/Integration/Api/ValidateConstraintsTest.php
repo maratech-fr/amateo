@@ -29,6 +29,7 @@ use App\Enum\ImplicitRuleKey;
 use App\Enum\SeasonStatus;
 use App\Enum\TeamCoachRole;
 use App\Enum\VenuePeriodMode;
+use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\ProvisionsPeriodPlanTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
@@ -46,6 +47,7 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 #[Group('phase1')]
 final class ValidateConstraintsTest extends WebTestCase
 {
+    use CreatesPeopleAndPlacesTrait;
     use ProvisionsPeriodPlanTrait;
 
     use TenantGucTrait;
@@ -1239,9 +1241,8 @@ final class ValidateConstraintsTest extends WebTestCase
 
     private function coachOnly(string $firstName, bool $vehicled = false): string
     {
-        $coach = new Coach;
-        $coach->setClubId($this->club->getId())->setSeasonId($this->season->getId());
-        $coach->setFirstName($firstName)->setLastName('Dupont')->setIsVehicled($vehicled);
+        $coach = $this->newCoach($this->club->getId(), $this->season->getId(), $firstName, 'Dupont');
+        $coach->setIsVehicled($vehicled);
         $this->em->persist($coach);
         $this->em->flush();
 
@@ -1298,11 +1299,7 @@ final class ValidateConstraintsTest extends WebTestCase
     /** Un coach MAIN pour l'équipe, retourne son id. */
     private function mainCoach(string $teamId, string $firstName): string
     {
-        $coach = new Coach;
-        $coach->setClubId($this->club->getId());
-        $coach->setSeasonId($this->season->getId());
-        $coach->setFirstName($firstName);
-        $coach->setLastName('Dupont');
+        $coach = $this->newCoach($this->club->getId(), $this->season->getId(), $firstName, 'Dupont');
         $this->em->persist($coach);
         $this->em->flush();
 

@@ -11,6 +11,7 @@ use App\Entity\Feedback;
 use App\Entity\Season;
 use App\Entity\User;
 use App\Mail\EmailTemplateRenderer;
+use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\TenantGucTrait;
 use App\Tests\VerifiesRegistration;
 use DateTimeImmutable;
@@ -41,6 +42,7 @@ use Symfony\Component\Mime\Email;
 #[Group('integration')]
 final class AccountErasureTest extends WebTestCase
 {
+    use CreatesPeopleAndPlacesTrait;
     use TenantGucTrait;
     use VerifiesRegistration;
 
@@ -597,11 +599,7 @@ final class AccountErasureTest extends WebTestCase
         // RLS : l'INSERT direct exige le GUC du club (WITH CHECK policy).
         $this->scopeGucToClub($clubId);
         $em = $this->em();
-        $coach = new Coach;
-        $coach->setClubId($clubId);
-        $coach->setSeasonId($seasonId);
-        $coach->setFirstName($name);
-        $coach->setLastName('Test');
+        $coach = $this->newCoach($clubId, $seasonId, $name, 'Test');
         $em->persist($coach);
         $em->flush();
         $em->clear();

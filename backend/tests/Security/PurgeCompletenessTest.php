@@ -6,9 +6,9 @@ namespace App\Tests\Security;
 
 use App\Entity\CalendarEntry;
 use App\Entity\Club;
-use App\Entity\Coach;
 use App\Entity\CoachWish;
 use App\Entity\HolidayReminderLog;
+use App\Entity\Person;
 use App\Entity\Season;
 use App\Entity\Sport;
 use App\Entity\SportCategory;
@@ -27,6 +27,7 @@ use App\Service\SeasonDataPurger;
 use App\Structure\Family;
 use App\Structure\FamilyCatalog;
 use App\Tests\CapturesDeletedTablesTrait;
+use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -57,6 +58,7 @@ use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 final class PurgeCompletenessTest extends KernelTestCase
 {
     use CapturesDeletedTablesTrait;
+    use CreatesPeopleAndPlacesTrait;
     use TenantGucTrait;
 
     /**
@@ -163,13 +165,14 @@ final class PurgeCompletenessTest extends KernelTestCase
     /**
      * L'effacement d'un club efface exactement, pour chaque saison, les familles de la purge de
      * saison et la ligne de saison, puis les familles que le catalogue efface avec le club ; son
-     * compte rendu `CLUB_PURGED` compte chaque ligne effacée (11 sur ce décor : 2 saisons, 8 lignes
-     * de saison dont une doléance purgée par son entrée de calendrier, 1 catégorie du club).
+     * compte rendu `CLUB_PURGED` compte chaque ligne effacée (13 sur ce décor : 2 saisons, 8 lignes
+     * de saison dont une doléance purgée par son entrée de calendrier, 1 catégorie du club, 2 fiches
+     * de personne dont une sans rôle, gardée après la suppression de son coach).
      */
     public function testTheErasureDeletesExactlyTheCatalogFamiliesAndCountsEveryRow(): void
     {
         [$club, $season] = $this->clubWithSeason('Effacement');
-        $this->decorOfElevenRows($club, $season);
+        $this->decorOfThirteenRows($club, $season);
         $purger = self::getContainer()->get(ErasedClubPurger::class);
 
         $deleted = 0;
@@ -180,13 +183,54 @@ final class PurgeCompletenessTest extends KernelTestCase
         $expected = [...$this->seasonPurgeTables(), 'season', ...$this->tablesOf($this->catalog()->purgedWithClub())];
         self::assertSame($this->sortedUnique($expected), $this->sortedUnique($executed));
 
-        self::assertSame(11, $deleted, 'le nombre rendu compte chaque ligne effacée');
+        self::assertSame(13, $deleted, 'le nombre rendu compte chaque ligne effacée');
+        $people = (int) self::getContainer()->get(EntityManagerInterface::class)->getConnection()->fetchOne(
+            'SELECT COUNT(*) FROM person WHERE club_id = :club',
+            ['club' => $club->getId()],
+        );
+        self::assertSame(0, $people, 'l\'effacement du club emporte toutes ses fiches de personne, celle sans rôle comprise');
         $details = self::getContainer()->get(EntityManagerInterface::class)->getConnection()->fetchOne(
             'SELECT details FROM audit_log WHERE club_id = :club AND action = :action',
             ['club' => $club->getId(), 'action' => AuditAction::CLUB_PURGED->value],
         );
         self::assertIsString($details, 'l\'effacement écrit son compte rendu');
-        self::assertSame(['rowsDeleted' => 11], json_decode($details, true, 512, \JSON_THROW_ON_ERROR));
+        self::assertSame(['rowsDeleted' => 13], json_decode($details, true, 512, \JSON_THROW_ON_ERROR));
+    }
+
+    /**
+     * L'effacement emporte aussi les lignes de saison dont la saison n'existe plus : `season_id` n'a
+     * aucune clé étrangère, un coach (et son équipe, leur lien) d'une saison disparue n'est vu par
+     * aucune purge de saison. Sans cela, la fiche de personne qu'il pointe ne s'efface pas (clé
+     * `fk_coach_person_club`, ON DELETE RESTRICT) et le club ne s'efface jamais ; sans la clé, la
+     * donnée survivrait en silence. Règle lue sur toutes les familles de la purge de saison.
+     */
+    public function testTheErasureAlsoRemovesSeasonRowsWhoseSeasonIsGone(): void
+    {
+        [$club] = $this->clubWithSeason('Orpheline');
+        $em = self::getContainer()->get(EntityManagerInterface::class);
+        $clubId = $club->getId();
+        $vanishedSeasonId = '66666666-6666-4666-8666-666666666666';
+        $team = $this->team($clubId, $vanishedSeasonId);
+        $coach = $this->newCoach($clubId, $vanishedSeasonId, 'Saison', 'Disparue');
+        $em->persist($team);
+        $em->flush();
+        $em->persist((new TeamCoach)->setClubId($clubId)->setSeasonId($vanishedSeasonId)->setTeamId($team->getId())
+            ->setCoachId($coach->getId())->setRole(TeamCoachRole::MAIN));
+        $em->flush();
+        $em->clear();
+        $connection = $em->getConnection();
+        self::assertSame(1, (int) $connection->fetchOne('SELECT COUNT(*) FROM coach WHERE club_id = :club', ['club' => $clubId]), 'témoin : le coach orphelin de saison est en base');
+
+        self::getContainer()->get(ErasedClubPurger::class)->purge($club);
+
+        $left = [];
+        foreach ([...$this->tablesOf($this->catalog()->purgedWithSeason()), 'person'] as $table) {
+            $count = (int) $connection->fetchOne(\sprintf('SELECT COUNT(*) FROM %s WHERE club_id = :club', $connection->quoteIdentifier($table)), ['club' => $clubId]);
+            if ($count > 0) {
+                $left[] = \sprintf('%s (%d)', $table, $count);
+            }
+        }
+        self::assertSame([], $left, "L'effacement du club laisse des lignes de saison dont la saison n'existe plus :\n  - " . implode("\n  - ", $left));
     }
 
     protected function setUp(): void
@@ -297,12 +341,13 @@ final class PurgeCompletenessTest extends KernelTestCase
     }
 
     /**
-     * Neuf lignes de plus que la saison déjà là : une seconde saison et son équipe ; dans la
-     * première, une équipe, un coach et leur lien, un gymnase et son créneau de saison, une entrée
-     * de calendrier et la doléance qui en dépend ; une catégorie du club. Aucune ligne qu'une clé
-     * étrangère emporterait d'elle-même : le compte ne dépend pas de l'ordre de purge.
+     * Onze lignes de plus que la saison déjà là : une seconde saison et son équipe ; dans la
+     * première, une équipe, un coach (sa fiche de personne comprise) et leur lien, un gymnase et son
+     * créneau de saison, une entrée de calendrier et la doléance qui en dépend ; une catégorie du
+     * club ; la fiche sans rôle d'un ancien coach. Aucune ligne qu'une clé étrangère emporterait
+     * d'elle-même : le compte ne dépend pas de l'ordre de purge.
      */
-    private function decorOfElevenRows(Club $club, Season $season): void
+    private function decorOfThirteenRows(Club $club, Season $season): void
     {
         $em = self::getContainer()->get(EntityManagerInterface::class);
         $clubId = $club->getId();
@@ -313,7 +358,8 @@ final class PurgeCompletenessTest extends KernelTestCase
         $em->persist($this->team($clubId, $previous->getId()));
 
         $team = $this->team($clubId, $seasonId);
-        $coach = (new Coach)->setClubId($clubId)->setSeasonId($seasonId)->setFirstName('Alex')->setLastName('Martin');
+        $coach = $this->newCoach($clubId, $seasonId, 'Alex', 'Martin');
+        $em->persist((new Person)->setClubId($clubId)->setFirstName('Ancien')->setLastName('Coach'));
         $venue = (new Venue)->setClubId($clubId)->setSeasonId($seasonId)->setName('Coubertin')->setSource('manual');
         $entry = (new CalendarEntry)->setClubId($clubId)->setSeasonId($seasonId)->setKind(CalendarEntryKind::PERIOD)
             ->setPeriodType(CalendarEntryPeriodType::HOLIDAY)->setTitle('Pâques')

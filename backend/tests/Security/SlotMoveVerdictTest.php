@@ -39,6 +39,7 @@ use App\Service\SchedulePlanProvisioner;
 use App\Service\ScheduleProgressPublisher;
 use App\Service\TeamCaseOccupancyGuard;
 use App\Tests\ChoosesPlanVersionTrait;
+use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -84,6 +85,7 @@ use Symfony\Component\Mercure\HubInterface;
 final class SlotMoveVerdictTest extends KernelTestCase
 {
     use ChoosesPlanVersionTrait;
+    use CreatesPeopleAndPlacesTrait;
     use TenantGucTrait;
 
     private const string ACCEPT = '{"valid":true,"violations":[],"metrics":{"solver_version":"cp-sat","nb_variables":0,"nb_constraints":0,"wall_time_ms":0}}';
@@ -830,7 +832,7 @@ final class SlotMoveVerdictTest extends KernelTestCase
      */
     private function seedMainCoach(array $ctx, string $teamId, string $firstName): string
     {
-        $coach = (new Coach)->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])->setFirstName($firstName)->setLastName('Test');
+        $coach = $this->newCoach($ctx['clubId'], $ctx['seasonId'], $firstName, 'Test');
         $this->em->persist($coach);
         $this->em->flush();
         $this->em->persist((new TeamCoach)->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])->setTeamId($teamId)->setCoachId($coach->getId())->setRole(TeamCoachRole::MAIN));

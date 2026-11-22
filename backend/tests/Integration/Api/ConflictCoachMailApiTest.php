@@ -24,7 +24,9 @@ use App\Service\ConflictCoachMailing;
 use App\Service\ConflictMailingLock;
 use App\Service\SeasonResolver;
 use App\Service\SocleGuard;
+use App\Structure\PersonDirectory;
 use App\Tests\ChoosesPlanVersionTrait;
+use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\TenantGucTrait;
 use App\Tests\Unit\Service\ConflictCoachMailBuilderTest;
 use App\Tests\Unit\Service\ConflictCoachMailingTest;
@@ -65,6 +67,7 @@ use Symfony\Component\Uid\Uuid;
 final class ConflictCoachMailApiTest extends WebTestCase
 {
     use ChoosesPlanVersionTrait;
+    use CreatesPeopleAndPlacesTrait;
     use TenantGucTrait;
 
     private const string URL = '/api/fixtures/conflicts/mail-coaches';
@@ -370,7 +373,7 @@ final class ConflictCoachMailApiTest extends WebTestCase
         foreach ([$this->karim, $this->emma] as $coach) {
             \assert($coach instanceof Coach);
             $rows = $this->receipts($coach);
-            self::assertSame($fingerprints, array_keys($rows), \sprintf('%s détient un reçu par conflit envoyé', $coach->getFirstName()));
+            self::assertSame($fingerprints, array_keys($rows), \sprintf('%s détient un reçu par conflit envoyé', self::getContainer()->get(PersonDirectory::class)->of($coach)->firstName));
             self::assertMatchesRegularExpression('/^[0-9a-f]{40}$/', (string) array_values($rows)[0], 'le reçu porte le digest du contenu affiché');
         }
         self::assertSame([], array_values(array_diff($this->receiptCoachIds(), $this->memory())), 'tout coach ayant un reçu est en mémoire');
@@ -1083,8 +1086,8 @@ final class ConflictCoachMailApiTest extends WebTestCase
     private function coach(string $first, string $last, ?string $email): Coach
     {
         $this->scopeGucToClub($this->club->getId());
-        $coach = new Coach()->setClubId($this->club->getId())->setSeasonId($this->season->getId())
-            ->setFirstName($first)->setLastName($last)->setEmail($email)->setIsActive(true);
+        $coach = $this->newCoach($this->club->getId(), $this->season->getId(), $first, $last)->setIsActive(true);
+        $this->personOf($coach)->setEmail($email);
         $this->em->persist($coach);
         $this->em->flush();
 
@@ -1236,7 +1239,7 @@ final class ConflictCoachMailApiTest extends WebTestCase
     private function setEmail(Coach $coach, ?string $email): void
     {
         $this->scopeGucToClub($this->club->getId());
-        $this->em->getConnection()->executeStatement('UPDATE coach SET email = :e WHERE id = :id', ['e' => $email, 'id' => $coach->getId()]);
+        $this->em->getConnection()->executeStatement('UPDATE person SET email = :e WHERE id = :id', ['e' => $email, 'id' => $coach->getPersonId()]);
     }
 
     private function member(string $role): User
@@ -1351,7 +1354,7 @@ final class ConflictCoachMailApiTest extends WebTestCase
                 return $row;
             }
         }
-        self::fail(\sprintf('%s absent de l\'aperçu (%s)', $coach->getFirstName(), mb_substr((string) json_encode($preview), 0, 300)));
+        self::fail(\sprintf('%s absent de l\'aperçu (%s)', self::getContainer()->get(PersonDirectory::class)->of($coach)->firstName, mb_substr((string) json_encode($preview), 0, 300)));
     }
 
     /**

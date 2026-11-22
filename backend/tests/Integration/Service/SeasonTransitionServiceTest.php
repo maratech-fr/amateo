@@ -41,7 +41,9 @@ use App\Service\ScheduleConstraintBuilder;
 use App\Service\SeasonAlreadyTransitionedException;
 use App\Service\SeasonResolver;
 use App\Service\SeasonTransitionService;
+use App\Structure\PersonDirectory;
 use App\Tests\ChoosesPlanVersionTrait;
+use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -59,6 +61,7 @@ use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
 final class SeasonTransitionServiceTest extends KernelTestCase
 {
     use ChoosesPlanVersionTrait;
+    use CreatesPeopleAndPlacesTrait;
     use TenantGucTrait;
 
     private EntityManagerInterface $em;
@@ -173,9 +176,11 @@ final class SeasonTransitionServiceTest extends KernelTestCase
 
         // Links remapped on BOTH ends.
         $newLink = $this->em->getRepository(TeamCoach::class)->findOneBy(['seasonId' => $target->getId()]);
-        $newCoaches = $this->em->getRepository(Coach::class)->findBy(['seasonId' => $target->getId()], ['firstName' => 'ASC']);
         self::assertSame($newTeams[0]->getId(), $newLink?->getTeamId());
-        self::assertSame($newCoaches[0]->getId(), $newLink?->getCoachId());
+        self::assertSame($this->copiedCoach($target, $refs['anna'])->getId(), $newLink?->getCoachId());
+        // Lot 3, PR 2b — la saison suivante réutilise les mêmes personnes : un rôle neuf par coach, aucune fiche neuve.
+        self::assertNotSame($refs['anna']->getId(), $this->copiedCoach($target, $refs['anna'])->getId(), 'le rôle de la saison suivante est une ligne neuve');
+        self::assertSame(2, (int) $this->em->getConnection()->fetchOne('SELECT COUNT(*) FROM person WHERE club_id = ?', [$club->getId()]), 'préparer la saison suivante ne crée aucune fiche de personne');
         // Le destinataire choisi et l'ordre de liaison passent à la saison suivante (premier lié = défaut).
         self::assertTrue($newLink?->isWishRecipient(), 'le choix du gestionnaire est mémorisé d\'une saison à l\'autre');
         self::assertSame('2025-09-15', $newLink?->getCreatedAt()->format('Y-m-d'));
@@ -217,11 +222,11 @@ final class SeasonTransitionServiceTest extends KernelTestCase
         self::assertCount(3, $copied);
         self::assertSame(['Coach indispo', 'Salle imposée', 'Salle interdite'], [$copied[0]->getName(), $copied[1]->getName(), $copied[2]->getName()]);
 
-        $newCoach = $this->em->getRepository(Coach::class)->findOneBy(['seasonId' => $target->getId(), 'firstName' => 'Anna']);
+        $newCoach = $this->copiedCoach($target, $refs['anna']);
         $newVenueB = $this->em->getRepository(Venue::class)->findOneBy(['seasonId' => $target->getId(), 'name' => 'Gym B']);
 
         // scopeTargetId remapped per scope; config id keys remapped too.
-        self::assertSame($newCoach?->getId(), $copied[0]->getScopeTargetId());
+        self::assertSame($newCoach->getId(), $copied[0]->getScopeTargetId());
         self::assertArrayNotHasKey('coachId', $copied[0]->getConfig(), 'La cible du coach est le scope (SEC-13), jamais le config.');
         self::assertSame($newVenueB?->getId(), $copied[2]->getConfig()['forbiddenVenueId']);
         // D-08 : `forcedVenueId` n'était PAS dans la liste de remap — la contrainte partait
@@ -336,15 +341,14 @@ final class SeasonTransitionServiceTest extends KernelTestCase
     public function testCoachGenderSurvivesTheTransition(): void
     {
         // P4-311 — le genre saisi (accord des libellés désignant LA personne) est un
-        // attribut PERMANENT du coach : il doit suivre la copie N+1 comme phone/isEmployee,
-        // jamais retomber à UNSPECIFIED au passage de saison. Anna est posée FEMALE.
-        [, $season] = $this->createClubGraph();
+        // attribut PERMANENT : il vit sur la fiche de la personne (lot 3, PR 2b), que le rôle
+        // de la saison suivante pointe, jamais retombé à UNSPECIFIED. Anna est posée FEMALE.
+        [, $season, $refs] = $this->createClubGraph();
 
         $target = $this->service->transition($season, $this->inPreparationWindow());
 
-        $copiedAnna = $this->em->getRepository(Coach::class)->findOneBy(['seasonId' => $target->getId(), 'firstName' => 'Anna']);
-        self::assertNotNull($copiedAnna);
-        self::assertSame(CoachGender::FEMALE, $copiedAnna->getGender(), 'le genre du coach survit au passage de saison (P4-311)');
+        $copiedAnna = $this->copiedCoach($target, $refs['anna']);
+        self::assertSame(CoachGender::FEMALE, self::getContainer()->get(PersonDirectory::class)->of($copiedAnna)->gender, 'le genre du coach survit au passage de saison (P4-311)');
     }
 
     /** Le plafond de séances par jour est un réglage permanent de l'équipe : il suit la copie de la saison suivante. */
@@ -390,12 +394,11 @@ final class SeasonTransitionServiceTest extends KernelTestCase
         // P4-311 — la case « véhiculé » (le coach peut transporter : attribut métier qui
         // pèse sur l'affectation) est permanente : elle suit la copie N+1 comme phone/genre,
         // jamais retomber à false au passage de saison. Anna est posée véhiculée.
-        [, $season] = $this->createClubGraph();
+        [, $season, $refs] = $this->createClubGraph();
 
         $target = $this->service->transition($season, $this->inPreparationWindow());
 
-        $copiedAnna = $this->em->getRepository(Coach::class)->findOneBy(['seasonId' => $target->getId(), 'firstName' => 'Anna']);
-        self::assertNotNull($copiedAnna);
+        $copiedAnna = $this->copiedCoach($target, $refs['anna']);
         self::assertTrue($copiedAnna->isVehicled(), 'la case véhiculé du coach survit au passage de saison (P4-311)');
     }
 
@@ -432,7 +435,7 @@ final class SeasonTransitionServiceTest extends KernelTestCase
         $builder = self::getContainer()->get(ScheduleConstraintBuilder::class);
         $payload = $builder->buildForClubSeason($club->getId(), $target->getId());
 
-        $newCoach = $this->em->getRepository(Coach::class)->findOneBy(['seasonId' => $target->getId(), 'firstName' => 'Anna']);
+        $newCoach = $this->copiedCoach($target, $refs['anna']);
         $newTeams = $this->em->getRepository(Team::class)->findBy(['seasonId' => $target->getId()], ['name' => 'ASC']);
 
         $payloadTeamIds = array_column($payload['teams'], 'id');
@@ -444,7 +447,7 @@ final class SeasonTransitionServiceTest extends KernelTestCase
             static fn (array $c): bool => 'Coach indispo' === ($c['name'] ?? null),
         ));
         self::assertNotEmpty($coachConstraints);
-        self::assertSame($newCoach?->getId(), $coachConstraints[0]['scopeTargetId']);
+        self::assertSame($newCoach->getId(), $coachConstraints[0]['scopeTargetId']);
         self::assertArrayNotHasKey('coachId', $coachConstraints[0]['config'] ?? [], 'SEC-13 : la cible du coach est le scope.');
     }
 
@@ -515,7 +518,7 @@ final class SeasonTransitionServiceTest extends KernelTestCase
      * membership, 3 constraints (COACH scoped + config.coachId, FACILITY
      * config.forbiddenVenueId, 1 DATED excluded) and 1 generated Schedule.
      *
-     * @return array{0: Club, 1: Season, 2: array<string, object>}
+     * @return array{0: Club, 1: Season, 2: array{venueA: Venue, venueB: Venue, teamA: Team, coachConstraint: Constraint, anna: Coach, bob: Coach}}
      */
     private function createClubGraph(): array
     {
@@ -766,7 +769,18 @@ final class SeasonTransitionServiceTest extends KernelTestCase
             'venueB' => $venueB,
             'teamA' => $teamA,
             'coachConstraint' => $coachConstraint,
+            'anna' => $anna,
+            'bob' => $bob,
         ]];
+    }
+
+    /** Le rôle coach de la saison `$target` que tient la personne de `$source` (lot 3, PR 2b : la même fiche, jamais une copie). */
+    private function copiedCoach(Season $target, Coach $source): Coach
+    {
+        $copied = $this->em->getRepository(Coach::class)->findOneBy(['seasonId' => $target->getId(), 'personId' => $source->getPersonId()]);
+        self::assertInstanceOf(Coach::class, $copied, 'la saison suivante donne un rôle coach à la même personne');
+
+        return $copied;
     }
 
     private function minimalClub(): Club
@@ -818,14 +832,10 @@ final class SeasonTransitionServiceTest extends KernelTestCase
 
     private function coach(Club $club, Season $season, string $firstName, CoachGender $gender = CoachGender::UNSPECIFIED, bool $isVehicled = false): Coach
     {
-        $coach = new Coach;
-        $coach->setClubId($club->getId());
-        $coach->setSeasonId($season->getId());
-        $coach->setFirstName($firstName);
-        $coach->setLastName('Test');
-        $coach->setGender($gender);
+        $coach = $this->newCoach($club->getId(), $season->getId(), $firstName, 'Test');
         $coach->setIsVehicled($isVehicled);
-        $this->em->persist($coach);
+        $this->em->flush();
+        $this->personOf($coach)->setGender($gender);
         $this->em->flush();
 
         return $coach;

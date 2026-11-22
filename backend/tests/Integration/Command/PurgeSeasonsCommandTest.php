@@ -11,6 +11,7 @@ use App\Entity\Coach;
 use App\Entity\CoachWish;
 use App\Entity\CoachWishCampaign;
 use App\Entity\CoachWishToken;
+use App\Entity\Person;
 use App\Entity\ScheduleStructureSnapshot;
 use App\Entity\Season;
 use App\Entity\Team;
@@ -18,6 +19,7 @@ use App\Enum\CalendarEntryKind;
 use App\Enum\CalendarEntryPeriodType;
 use App\Enum\SeasonStatus;
 use App\Service\SeasonResolver;
+use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -35,6 +37,7 @@ use Symfony\Component\Uid\Uuid;
 #[Group('integration')]
 final class PurgeSeasonsCommandTest extends KernelTestCase
 {
+    use CreatesPeopleAndPlacesTrait;
     use TenantGucTrait;
 
     private EntityManagerInterface $em;
@@ -141,6 +144,32 @@ final class PurgeSeasonsCommandTest extends KernelTestCase
         self::assertSame(1, $count($current), 'ceux de la saison courante restent');
     }
 
+    /**
+     * Lot 3, PR 2b (décision 1, A) — la fiche d'une personne qui n'entraînait plus que dans la saison
+     * purgée part avec elle ; la fiche d'une personne qui entraîne encore dans une saison gardée reste,
+     * son rôle de la saison gardée intact.
+     */
+    public function testThePersonRecordOfACoachOnlyInThePurgedSeasonGoesAndASharedOneStays(): void
+    {
+        [$club, $seasons] = $this->createClubWithSeasons();
+        [$old, , $current] = $seasons;
+        $leaving = $this->newCoach($club->getId(), $old->getId(), 'Ancien', 'Seulement');
+        $staying = $this->newCoach($club->getId(), $old->getId(), 'Toujours', 'Là');
+        $this->em->flush();
+        $stayingNow = new Coach($this->personOf($staying))->setClubId($club->getId())->setSeasonId($current->getId());
+        $this->em->persist($stayingNow);
+        $this->em->flush();
+        [$leavingPerson, $stayingPerson, $stayingNowId] = [$leaving->getPersonId(), $staying->getPersonId(), $stayingNow->getId()];
+
+        $this->runPurge(['--club' => $club->getId(), '--date' => $this->purgeDate()])->assertCommandIsSuccessful();
+        $this->em->clear();
+        $this->scopeGucToClub($club->getId());
+
+        self::assertNull($this->em->getRepository(Person::class)->find($leavingPerson), 'la fiche sans rôle dans une saison gardée part avec la saison purgée');
+        self::assertNotNull($this->em->getRepository(Person::class)->find($stayingPerson), 'la fiche d\'une personne qui entraîne encore reste');
+        self::assertSame($stayingPerson, $this->em->getRepository(Coach::class)->find($stayingNowId)?->getPersonId(), 'son rôle de la saison en cours la pointe toujours');
+    }
+
     protected function setUp(): void
     {
         self::bootKernel();
@@ -235,11 +264,7 @@ final class PurgeSeasonsCommandTest extends KernelTestCase
         $this->em->flush();
         $this->oldCampaignId = $campaign->getId();
 
-        $coach = new Coach;
-        $coach->setClubId($club->getId());
-        $coach->setSeasonId($old->getId());
-        $coach->setFirstName('Vieux');
-        $coach->setLastName('Coach');
+        $coach = $this->newCoach($club->getId(), $old->getId(), 'Vieux', 'Coach');
         $this->em->persist($coach);
         $this->em->flush();
 
@@ -262,11 +287,7 @@ final class PurgeSeasonsCommandTest extends KernelTestCase
     private function receiptCoachId(Club $club, Season $season): string
     {
         $this->scopeGucToClub($club->getId());
-        $coach = new Coach;
-        $coach->setClubId($club->getId());
-        $coach->setSeasonId($season->getId());
-        $coach->setFirstName('Reçu');
-        $coach->setLastName('Coach');
+        $coach = $this->newCoach($club->getId(), $season->getId(), 'Reçu', 'Coach');
         $this->em->persist($coach);
         $this->em->flush();
 

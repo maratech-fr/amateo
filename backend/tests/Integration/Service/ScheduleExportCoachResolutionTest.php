@@ -6,6 +6,7 @@ namespace App\Tests\Integration\Service;
 
 use App\Entity\Club;
 use App\Entity\Coach;
+use App\Entity\Person;
 use App\Entity\Schedule;
 use App\Entity\Season;
 use App\Entity\TeamCoach;
@@ -179,14 +180,14 @@ final class ScheduleExportCoachResolutionTest extends KernelTestCase
 
     private function makeCoach(Club $club, Season $season, string $first, string $last, ?string $id = null): string
     {
-        $coach = new Coach;
+        $person = (new Person)->setClubId($club->getId())->setFirstName($first)->setLastName($last);
+        $this->em->persist($person);
+        $coach = new Coach($person);
         if (null !== $id) {
             $coach->setId($id);
         }
         $coach->setClubId($club->getId());
         $coach->setSeasonId($season->getId());
-        $coach->setFirstName($first);
-        $coach->setLastName($last);
         $this->em->persist($coach);
 
         return $coach->getId();

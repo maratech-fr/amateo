@@ -11,6 +11,7 @@ use App\Service\AuditTrail;
 use App\Service\SeasonDataPurger;
 use App\Service\SeasonResolver;
 use App\Service\TenantConnectionContext;
+use App\Structure\UnusedIdentitySweeper;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
@@ -39,6 +40,7 @@ final class ResetClubSeasonCommand extends Command
         private readonly TenantConnectionContext $tenantConnectionContext,
         private readonly SeasonResolver $seasonResolver,
         private readonly SeasonDataPurger $seasonDataPurger,
+        private readonly UnusedIdentitySweeper $unusedIdentitySweeper,
         private readonly AuditTrail $auditTrail,
     ) {
         parent::__construct();
@@ -91,6 +93,8 @@ final class ResetClubSeasonCommand extends Command
             }
 
             $deleted = $this->seasonDataPurger->purge($clubId, $current->getId(), deleteSeasonRow: false);
+            // Les fiches de personne que plus aucun rôle ne désigne partent avec la saison remise à zéro.
+            $this->unusedIdentitySweeper->sweep($clubId);
             $this->auditTrail->record(AuditAction::SEASON_RESET, null, $clubId, 'Season', $current->getId(), ['rowsDeleted' => $deleted, 'source' => 'cli']);
             $io->success(\sprintf('Season %s of club %s wiped (%d rows) — Season row kept, the club restarts at the wizard.', $current->getName(), $clubId, $deleted));
 

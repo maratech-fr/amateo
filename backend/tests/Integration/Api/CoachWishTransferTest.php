@@ -27,6 +27,7 @@ use App\Enum\SeasonStatus;
 use App\Enum\TeamCoachRole;
 use App\Service\ClubGenerationLock;
 use App\Service\CoachWishTransferService;
+use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\CrossStack\CoachWishUnavailabilityGateTest;
 use App\Tests\ProvisionsPeriodPlanTrait;
 use App\Tests\TenantGucTrait;
@@ -56,6 +57,7 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 #[Group('phase1')]
 final class CoachWishTransferTest extends WebTestCase
 {
+    use CreatesPeopleAndPlacesTrait;
     use ProvisionsPeriodPlanTrait;
     use TenantGucTrait;
 
@@ -586,8 +588,7 @@ final class CoachWishTransferTest extends WebTestCase
 
     private function coachNamed(string $first, string $last): Coach
     {
-        $coach = (new Coach)->setClubId($this->club->getId())->setSeasonId($this->season->getId())
-            ->setFirstName($first)->setLastName($last);
+        $coach = $this->newCoach($this->club->getId(), $this->season->getId(), $first, $last);
         $this->em->persist($coach);
         $this->em->flush();
 

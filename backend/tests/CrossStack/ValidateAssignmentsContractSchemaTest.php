@@ -6,6 +6,7 @@ namespace App\Tests\CrossStack;
 
 use App\Entity\Coach;
 use App\Entity\Constraint;
+use App\Entity\Person;
 use App\Entity\Team;
 use App\Entity\Venue;
 use App\Enum\ConstraintFamily;
@@ -125,12 +126,10 @@ final class ValidateAssignmentsContractSchemaTest extends TestCase
             ->setSource('manual')
             ->setIsActive(true);
 
-        $coach = (new Coach)
+        $coach = new Coach((new Person)->setClubId(self::CLUB_ID)->setFirstName('Coach')->setLastName('One'))
             ->setId('coach-1')
             ->setClubId(self::CLUB_ID)
             ->setSeasonId(self::SEASON_ID)
-            ->setFirstName('Coach')
-            ->setLastName('One')
             ->setIsActive(true);
 
         $team = (new Team)

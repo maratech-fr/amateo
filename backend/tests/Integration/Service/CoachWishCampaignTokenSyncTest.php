@@ -17,6 +17,7 @@ use App\Enum\CalendarEntryPeriodType;
 use App\Enum\SeasonStatus;
 use App\Enum\TeamCoachRole;
 use App\Service\CoachWishCampaignTokenSync;
+use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -34,6 +35,7 @@ use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 #[Group('integration')]
 final class CoachWishCampaignTokenSyncTest extends KernelTestCase
 {
+    use CreatesPeopleAndPlacesTrait;
     use TenantGucTrait;
 
     private EntityManagerInterface $em;
@@ -248,7 +250,7 @@ final class CoachWishCampaignTokenSyncTest extends KernelTestCase
 
     private function coach(string $firstName): Coach
     {
-        $coach = (new Coach)->setClubId($this->club->getId())->setSeasonId($this->season->getId())->setFirstName($firstName)->setLastName('Test');
+        $coach = $this->newCoach($this->club->getId(), $this->season->getId(), $firstName, 'Test');
         $this->em->persist($coach);
         $this->em->flush();
 

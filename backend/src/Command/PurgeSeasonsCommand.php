@@ -11,6 +11,7 @@ use App\Service\AuditTrail;
 use App\Service\SeasonDataPurger;
 use App\Service\SeasonResolver;
 use App\Service\TenantConnectionContext;
+use App\Structure\UnusedIdentitySweeper;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\Clock\ClockInterface;
@@ -45,6 +46,7 @@ final class PurgeSeasonsCommand extends Command
         private readonly TenantConnectionContext $tenantConnectionContext,
         private readonly SeasonResolver $seasonResolver,
         private readonly SeasonDataPurger $seasonDataPurger,
+        private readonly UnusedIdentitySweeper $unusedIdentitySweeper,
         private readonly AuditTrail $auditTrail,
         private readonly ClockInterface $clock,
     ) {
@@ -139,6 +141,10 @@ final class PurgeSeasonsCommand extends Command
                 $this->auditTrail->record(AuditAction::SEASON_PURGED, null, $clubId, 'Season', $season->getId());
             }
             ++$purged;
+        }
+        // Les fiches de personne qui n'avaient plus de rôle que dans les saisons purgées partent avec elles.
+        if ($purged > 0 && !$dryRun) {
+            $this->unusedIdentitySweeper->sweep($clubId);
         }
 
         return $purged;

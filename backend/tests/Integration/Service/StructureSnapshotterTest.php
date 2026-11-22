@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace App\Tests\Integration\Service;
 
 use App\Entity\Club;
-use App\Entity\Coach;
 use App\Entity\Constraint;
 use App\Entity\Reservation;
 use App\Entity\Schedule;
@@ -23,6 +22,7 @@ use App\Enum\SeasonStatus;
 use App\Enum\TeamCoachRole;
 use App\Service\StructureSnapshotter;
 use App\Tests\ChoosesPlanVersionTrait;
+use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\CreatesPeriodPlanTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
@@ -41,6 +41,7 @@ use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 final class StructureSnapshotterTest extends KernelTestCase
 {
     use ChoosesPlanVersionTrait;
+    use CreatesPeopleAndPlacesTrait;
     use CreatesPeriodPlanTrait;
     use TenantGucTrait;
 
@@ -73,8 +74,7 @@ final class StructureSnapshotterTest extends KernelTestCase
         $slot = (new VenueTrainingSlot)->setClubId($club->getId())->setSeasonId($season->getId())
             ->setVenueId('22222222-2222-4222-8222-222222222222')->setDayOfWeek(2)
             ->setStartTime(new DateTimeImmutable('18:00'))->setDurationMinutes(90)->setCapacity(1);
-        $coach = (new Coach)->setClubId($club->getId())->setSeasonId($season->getId())
-            ->setFirstName('Jean')->setLastName('Coach');
+        $coach = $this->newCoach($club->getId(), $season->getId(), 'Jean', 'Coach');
         foreach ([$team, $venue, $permanent, $dated, $overlayReservation, $baseReservation, $slot, $coach] as $e) {
             $this->em->persist($e);
         }
@@ -112,7 +112,10 @@ final class StructureSnapshotterTest extends KernelTestCase
         self::assertCount(1, $data['VenueTrainingSlot']);
         self::assertSame(90, $data['VenueTrainingSlot'][0]['durationMinutes']);
         self::assertCount(1, $data['Coach']);
-        self::assertSame('Jean', $data['Coach'][0]['firstName']);
+        self::assertSame($coach->getPersonId(), $data['Coach'][0]['personId']);
+        // Lot 3 PR 2b : la photo ne porte que l'identifiant de la personne, jamais son identité, qui vit
+        // une seule fois sur sa fiche au club.
+        self::assertSame([], array_intersect(['firstName', 'lastName', 'email', 'phone', 'gender'], array_keys($data['Coach'][0])), 'aucune donnée d\'identité dans la ligne de coach de la photo');
         self::assertCount(1, $data['TeamCoach']);
         self::assertSame('MAIN', $data['TeamCoach'][0]['role']);
     }

@@ -50,6 +50,7 @@ use App\Service\OrphanedFixtureFinder;
 use App\Structure\FamilyCatalog;
 use App\Structure\OnDelete;
 use App\Tests\ChoosesPlanVersionTrait;
+use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\RealForeignKeysTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
@@ -85,6 +86,7 @@ use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 final class DeletionImpactParityTest extends KernelTestCase
 {
     use ChoosesPlanVersionTrait;
+    use CreatesPeopleAndPlacesTrait;
     use RealForeignKeysTrait;
     use TenantGucTrait;
 
@@ -440,8 +442,7 @@ final class DeletionImpactParityTest extends KernelTestCase
         $team = $this->team($club, $season, forcedVenueId: $venue->getId());
         $schedule = $this->schedule($club, $season);
 
-        $coach = (new Coach)->setClubId($club->getId())->setSeasonId($season->getId())
-            ->setFirstName('Alex')->setLastName('Martin')->setIsActive(true);
+        $coach = $this->newCoach($club->getId(), $season->getId(), 'Alex', 'Martin')->setIsActive(true);
         $this->em->persist($coach);
         $this->em->flush();
 
@@ -488,8 +489,8 @@ final class DeletionImpactParityTest extends KernelTestCase
         [$club, $season] = $this->seed();
         $venue = $this->venue($club, $season, 'Matéo');
         $team = $this->team($club, $season, forcedVenueId: $venue->getId());
-        $gone = (new Coach)->setClubId($club->getId())->setSeasonId($season->getId())->setFirstName('Alex')->setLastName('Martin');
-        $stays = (new Coach)->setClubId($club->getId())->setSeasonId($season->getId())->setFirstName('Emma')->setLastName('Morel');
+        $gone = $this->newCoach($club->getId(), $season->getId(), 'Alex', 'Martin');
+        $stays = $this->newCoach($club->getId(), $season->getId(), 'Emma', 'Morel');
         $entry = (new CalendarEntry)->setClubId($club->getId())->setSeasonId($season->getId())
             ->setKind(CalendarEntryKind::PERIOD)->setPeriodType(CalendarEntryPeriodType::HOLIDAY)->setTitle('Pâques')
             ->setStartDate(new DateTimeImmutable('2026-04-06'))->setEndDate(new DateTimeImmutable('2026-04-19'));
@@ -520,8 +521,7 @@ final class DeletionImpactParityTest extends KernelTestCase
     public function testDeletingACoachAnnouncesAndDeletesItsUnavailability(): void
     {
         [$club, $season] = $this->seed();
-        $coach = (new Coach)->setClubId($club->getId())->setSeasonId($season->getId())
-            ->setFirstName('Alex')->setLastName('Martin')->setIsActive(true);
+        $coach = $this->newCoach($club->getId(), $season->getId(), 'Alex', 'Martin')->setIsActive(true);
         $this->em->persist($coach);
         $this->em->flush();
 

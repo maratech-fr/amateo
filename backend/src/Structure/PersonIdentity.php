@@ -21,6 +21,16 @@ final readonly class PersonIdentity
         public CoachGender $gender,
     ) {}
 
+    /** Même identité, champ par champ (deux lectures rendent deux objets distincts). */
+    public function equals(self $other): bool
+    {
+        return $this->firstName === $other->firstName
+            && $this->lastName === $other->lastName
+            && $this->email === $other->email
+            && $this->phone === $other->phone
+            && $this->gender === $other->gender;
+    }
+
     /** « Prénom Nom », sans espace au bord quand l'un des deux est vide. */
     public function fullName(): string
     {

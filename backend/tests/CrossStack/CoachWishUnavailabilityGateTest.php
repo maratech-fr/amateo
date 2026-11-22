@@ -25,6 +25,7 @@ use App\Enum\SeasonStatus;
 use App\Enum\TeamCoachRole;
 use App\Service\CoachWishTransferService;
 use App\Service\ScheduleConstraintBuilder;
+use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\ProvisionsPeriodPlanTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
@@ -60,6 +61,7 @@ use Symfony\Contracts\HttpClient\Exception\TransportExceptionInterface;
 #[Group('contract')]
 final class CoachWishUnavailabilityGateTest extends KernelTestCase
 {
+    use CreatesPeopleAndPlacesTrait;
     use ProvisionsPeriodPlanTrait;
     use TenantGucTrait;
 
@@ -248,10 +250,8 @@ final class CoachWishUnavailabilityGateTest extends KernelTestCase
 
         $teamA = $this->team('A');
         $teamB = $this->team('B');
-        $sebastien = (new Coach)->setClubId($this->club->getId())->setSeasonId($this->season->getId())
-            ->setFirstName('Sébastien')->setLastName('Test')->setIsActive(true)->setIsVehicled(false);
-        $benoit = (new Coach)->setClubId($this->club->getId())->setSeasonId($this->season->getId())
-            ->setFirstName('Benoît')->setLastName('Roux')->setIsActive(true)->setIsVehicled(false);
+        $sebastien = $this->newCoach($this->club->getId(), $this->season->getId(), 'Sébastien', 'Test')->setIsActive(true)->setIsVehicled(false);
+        $benoit = $this->newCoach($this->club->getId(), $this->season->getId(), 'Benoît', 'Roux')->setIsActive(true)->setIsVehicled(false);
         $this->em->persist($sebastien);
         $this->em->persist($benoit);
         $this->em->flush();
@@ -301,8 +301,7 @@ final class CoachWishUnavailabilityGateTest extends KernelTestCase
 
     private function coach(string $firstName, string $lastName): Coach
     {
-        $coach = (new Coach)->setClubId($this->club->getId())->setSeasonId($this->season->getId())
-            ->setFirstName($firstName)->setLastName($lastName)->setIsActive(true);
+        $coach = $this->newCoach($this->club->getId(), $this->season->getId(), $firstName, $lastName)->setIsActive(true);
         $this->em->persist($coach);
         $this->em->flush();
 

@@ -7,12 +7,14 @@ namespace App\State\Processor;
 use App\ApiResource\CoachResource;
 use App\Dto\CoachInput;
 use App\Entity\Coach;
+use App\Entity\Person;
 use App\Enum\CoachGender;
 use App\Service\CoachWishCampaignTokenSync;
 use App\Service\ManagementAccessGuard;
 use App\Service\SeasonAccessGuard;
 use App\Service\SeasonResolver;
 use App\Structure\PersonDirectory;
+use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\HttpFoundation\RequestStack;
 
@@ -64,18 +66,19 @@ class CoachStateProcessor extends AbstractStateProcessor
      */
     protected function createEntityFromInput(object $input): Coach
     {
-        $entity = new Coach;
-        if (null !== $input->firstName) {
-            $entity->setFirstName($input->firstName);
+        // L'identité va sur une fiche de personne neuve, au club de la requête (le coach reçoit le
+        // même club dans processPost) ; la fiche est persistée avant le coach qui la pointe.
+        $person = new Person;
+        $clubId = $this->requestStack->getCurrentRequest()?->attributes->get('_club_id');
+        if (\is_string($clubId)) {
+            $person->setClubId($clubId);
         }
         // last_name is NOT NULL in the schema; a coach may have only a first name.
-        $entity->setLastName($input->lastName ?? '');
-        if (null !== $input->email) {
-            $entity->setEmail($input->email);
-        }
-        if (null !== $input->phone) {
-            $entity->setPhone($input->phone);
-        }
+        $this->writeIdentity($person, $input);
+        $person->setLastName($input->lastName ?? '');
+        $this->entityManager->persist($person);
+
+        $entity = new Coach($person);
         if (null !== $input->maxDaysOverride) {
             // P4-51 — 0 = « retirer le plafond ». Le PUT étant partiel (null = inchangé),
             // null ne peut pas porter le retrait : sans ce cas, un champ vidé à l'écran
@@ -90,9 +93,6 @@ class CoachStateProcessor extends AbstractStateProcessor
         }
         if (null !== $input->isVehicled) {
             $entity->setIsVehicled($input->isVehicled);
-        }
-        if (null !== $input->gender) {
-            $entity->setGender(CoachGender::from($input->gender));
         }
 
         return $entity;
@@ -104,17 +104,16 @@ class CoachStateProcessor extends AbstractStateProcessor
      */
     protected function updateEntityFromInput(object $entity, object $input): void
     {
-        if (null !== $input->firstName) {
-            $entity->setFirstName($input->firstName);
-        }
+        // L'identité s'écrit sur la fiche de la personne (elle vaut pour toutes ses saisons) ; la
+        // ligne du coach est touchée pour que sa version change avec elle (If-Match de l'écran).
+        $person = $this->personDirectory->personOf($entity);
+        $before = $this->personDirectory->of($entity);
+        $this->writeIdentity($person, $input);
         if (null !== $input->lastName) {
-            $entity->setLastName($input->lastName);
+            $person->setLastName($input->lastName);
         }
-        if (null !== $input->email) {
-            $entity->setEmail($input->email);
-        }
-        if (null !== $input->phone) {
-            $entity->setPhone($input->phone);
+        if (!$before->equals($this->personDirectory->of($entity))) {
+            $entity->setUpdatedAt(new DateTimeImmutable);
         }
         if (null !== $input->maxDaysOverride) {
             // P4-51 — 0 = « retirer le plafond ». Le PUT étant partiel (null = inchangé),
@@ -131,9 +130,6 @@ class CoachStateProcessor extends AbstractStateProcessor
         if (null !== $input->isVehicled) {
             $entity->setIsVehicled($input->isVehicled);
         }
-        if (null !== $input->gender) {
-            $entity->setGender(CoachGender::from($input->gender));
-        }
     }
 
     /**
@@ -142,5 +138,22 @@ class CoachStateProcessor extends AbstractStateProcessor
     protected function mapEntityToOutput(object $entity): CoachResource
     {
         return CoachResource::fromEntity($entity, $this->personDirectory->of($entity));
+    }
+
+    /** Prénom, mail, téléphone, genre : null = inchangé (le nom de famille, l'appelant le décide). */
+    private function writeIdentity(Person $person, CoachInput $input): void
+    {
+        if (null !== $input->firstName) {
+            $person->setFirstName($input->firstName);
+        }
+        if (null !== $input->email) {
+            $person->setEmail($input->email);
+        }
+        if (null !== $input->phone) {
+            $person->setPhone($input->phone);
+        }
+        if (null !== $input->gender) {
+            $person->setGender(CoachGender::from($input->gender));
+        }
     }
 }

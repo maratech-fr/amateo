@@ -15,6 +15,7 @@ use App\Entity\User;
 use App\Enum\CalendarEntryKind;
 use App\Enum\CalendarEntryPeriodType;
 use App\Enum\SeasonStatus;
+use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -33,6 +34,7 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 #[Group('phase1')]
 final class CoachWishEmailPreviewTest extends WebTestCase
 {
+    use CreatesPeopleAndPlacesTrait;
     use TenantGucTrait;
 
     private KernelBrowser $client;
@@ -150,8 +152,8 @@ final class CoachWishEmailPreviewTest extends WebTestCase
             ->setStartDate(new DateTimeImmutable('2025-09-01'))->setEndDate(new DateTimeImmutable('2026-06-30'))->setStatus(SeasonStatus::ACTIVE);
         $this->em->persist($this->season);
 
-        $coach = (new Coach)->setClubId($this->club->getId())->setSeasonId($this->season->getId())
-            ->setFirstName('Maxime')->setLastName('Durand')->setEmail('maxime@test.com');
+        $coach = $this->newCoach($this->club->getId(), $this->season->getId(), 'Maxime', 'Durand');
+        $this->personOf($coach)->setEmail('maxime@test.com');
         $this->em->persist($coach);
 
         $this->mother = (new CalendarEntry)->setClubId($this->club->getId())->setSeasonId($this->season->getId())

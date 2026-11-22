@@ -23,6 +23,7 @@ use App\Enum\CalendarEntryPeriodType;
 use App\Enum\SeasonStatus;
 use App\Enum\TeamCoachRole;
 use App\Service\CoachWishTransferService;
+use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -39,6 +40,7 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 #[Group('phase1')]
 final class PublicCoachWishTest extends WebTestCase
 {
+    use CreatesPeopleAndPlacesTrait;
     use TenantGucTrait;
 
     private KernelBrowser $client;
@@ -233,7 +235,7 @@ final class PublicCoachWishTest extends WebTestCase
         // coach (Julie) pour (équipe × semaine) est signalée `byAnotherCoach` à Maxime, pour le
         // prévenir que son envoi remplacera celle de Julie. On n'expose JAMAIS le prénom ni l'id
         // de Julie : juste sa saisie déjà pré-remplie + le booléen.
-        $julie = (new Coach)->setClubId($this->club->getId())->setSeasonId($this->season->getId())->setFirstName('Julie')->setLastName('Martin');
+        $julie = $this->newCoach($this->club->getId(), $this->season->getId(), 'Julie', 'Martin');
         $this->em->persist($julie);
         $this->em->flush();
         $wish = (new CoachWish)->setCalendarEntryId($this->mother->getId())->setTeamId($this->team->getId())
@@ -754,7 +756,7 @@ final class PublicCoachWishTest extends WebTestCase
         $this->em->persist($this->season);
 
         $this->team = $this->newTeam('SM1');
-        $this->coach = (new Coach)->setClubId($this->club->getId())->setSeasonId($this->season->getId())->setFirstName('Maxime')->setLastName('Durand');
+        $this->coach = $this->newCoach($this->club->getId(), $this->season->getId(), 'Maxime', 'Durand');
         $this->em->persist($this->coach);
         $this->em->flush();
         $this->em->persist((new TeamCoach)->setClubId($this->club->getId())->setSeasonId($this->season->getId())->setTeamId($this->team->getId())->setCoachId($this->coach->getId())->setRole(TeamCoachRole::MAIN));
@@ -786,7 +788,7 @@ final class PublicCoachWishTest extends WebTestCase
     private function unlinkedCoach(string $firstName): Coach
     {
         $this->scopeGucToClub($this->club->getId());
-        $coach = (new Coach)->setClubId($this->club->getId())->setSeasonId($this->season->getId())->setFirstName($firstName)->setLastName('Test');
+        $coach = $this->newCoach($this->club->getId(), $this->season->getId(), $firstName, 'Test');
         $this->em->persist($coach);
         $this->em->flush();
 
@@ -795,7 +797,8 @@ final class PublicCoachWishTest extends WebTestCase
 
     private function staffMember(string $firstName, TeamCoachRole $role, ?string $email): Coach
     {
-        $coach = $this->unlinkedCoach($firstName)->setEmail($email);
+        $coach = $this->unlinkedCoach($firstName);
+        $this->personOf($coach)->setEmail($email);
         $this->em->persist((new TeamCoach)->setClubId($this->club->getId())->setSeasonId($this->season->getId())
             // Date explicite : la colonne est à la seconde, le lien du setUp et celui-ci tomberaient à égalité.
             ->setTeamId($this->team->getId())->setCoachId($coach->getId())->setRole($role)->setCreatedAt(new DateTimeImmutable('+1 day')));
@@ -825,7 +828,7 @@ final class PublicCoachWishTest extends WebTestCase
         [$clubId, $teamId] = $this->seedIntruderClub();
         $this->scopeGucToClub($clubId);
         $seasonId = $this->em->getConnection()->fetchOne('SELECT season_id FROM team WHERE id = :id', ['id' => $teamId]);
-        $coach = (new Coach)->setClubId($clubId)->setSeasonId((string) $seasonId)->setFirstName('Intrus')->setLastName('Test');
+        $coach = $this->newCoach($clubId, (string) $seasonId, 'Intrus', 'Test');
         $this->em->persist($coach);
         $this->em->flush();
         $this->scopeGucToClub($this->club->getId());

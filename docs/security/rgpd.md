@@ -19,7 +19,7 @@
 |------------|---------|-------------|-------|-------------------|-----------|
 | Compte gestionnaire | User : email, prénom/nom, hash | contrat | activité + 24 mois (préavis à 23) — **comptes `is_demo` hors rétention** (P4-304 : une horloge simulée souvent passée les ferait paraître inactifs dès leur création) | `app:users:purge-inactive` (cron horaire) — anonymisation | `InactiveUsersRetentionTest` |
 | Compte jamais vérifié | User non vérifié + token | contrat (précontractuel) | 7 jours | `app:users:purge-unverified` (cron) | — |
-| Données du club | Coach (email/tél, **genre** — donnée ordinaire, PAS une catégorie particulière art. 9), équipes, plannings, contraintes | contrat (via le club) | saison courante + N-1 | `app:seasons:purge` (cron, grâce 30 j post-bascule) ; suppression manuelle par le club (cascade, auditée) | `AccountErasureTest` (d) |
+| Données du club | Fiche de personne `person` (prénom, nom, email/tél, **genre** — donnée ordinaire, PAS une catégorie particulière art. 9) et son rôle coach de saison (`coach`), équipes, plannings, contraintes | contrat (via le club) | saison courante + N-1 ; une fiche dont le dernier rôle a disparu reste au club jusqu'au prochain balayage (remise à zéro ou purge de rétention) | `app:seasons:purge` (cron, grâce 30 j post-bascule) puis `UnusedIdentitySweeper` ; suppression manuelle par le club (cascade, auditée) | `AccountErasureTest` (d), `PurgeCompletenessTest` |
 | Effacement de compte | anonymisation immédiate + purge du club resté sans gestionnaire | obligation légale (art. 17) | grâce 30 j (annulable, revalidée) | `DELETE /api/me` → `app:clubs:purge-erased` — **l'identité publique FFBB du club survit** | `AccountErasureTest` |
 | Compte sans club (P4-301) | `User.orphanNoticeSentAt` — un compte ORPHELIN (zéro adhésion active/pending, zéro demande de création de club encore vivante — prédicat unique `OrphanAccountNotifier::isOrphan`) | obligation légale (art. 17 — « garder un utilisateur relié à aucun club n'a aucun intérêt », décision fondateur 2026-10-04) | préavis par email puis grâce 30 j (annulable par toute réactivation d'accès, jamais par une simple connexion) ; comptes démo exclus | déclencheurs immédiats (désactivation/refus d'adhésion/refus de création/purge de club) best-effort via `OrphanAccountNotifier` + cron quotidien `app:users:purge-orphaned` (couvre aussi le stock au déploiement : mail PUIS 30 j, jamais supprimé sans mail) → anonymisation par `AccountErasureService` (même routine que `DELETE /api/me`) | `OrphanAccountLifecycleTest` |
 | Portabilité | export JSON compte / workspace club — **périmètre DÉRIVÉ** des entités `TenantOwnedInterface`, plus recopié (D-01) | obligation légale (art. 20) | à la demande (10/h par user) | `GET /api/me/export`, `GET /api/club/export` (management) | `RgpdExportTest` + **`RgpdExportCompletenessTest`** |
@@ -89,6 +89,28 @@ leur plan, là où sa cascade les emportait hors du compte).
 
 Une entité tenant nouvelle fait **échouer** ce test tant qu'elle n'est pas explicitement
 couverte ou exclue — le même défaut par défaut que pour l'export.
+
+### La fiche de personne (`person`)
+
+Le nom, le mail, le téléphone et le genre d'un coach vivent sur `person`, une fois, au club
+(ADR-0006) ; la ligne `coach` n'est que le rôle d'une saison. Ce que cela change pour les droits :
+
+- **Conservation** : supprimer un coach garde sa fiche (« Charger » une version d'avant la ramène
+  dessus). `App\Structure\UnusedIdentitySweeper::sweep($clubId)` supprime les fiches sans aucun
+  `coach` ; il est appelé après la purge, par ses trois seuls appelants : `ResetSeasonController`
+  (remise à zéro HTTP), `ResetClubSeasonCommand`, `PurgeSeasonsCommand` (hors `--dry-run`, et
+  seulement si une saison a été purgée). Il n'est pas dans `SeasonDataPurger`. Le nombre de fiches
+  balayées n'entre PAS dans le `rowsDeleted` d'une remise à zéro ; celui de l'effacement du club
+  compte les fiches (famille de niveau club, `FamilyCatalog::purgedWithClub()`).
+- **Effacement du club** : `ErasedClubPurger` efface d'abord, par `club_id`, les lignes de saison dont la
+  saison n'existe plus (`season_id` n'a aucune clé étrangère : aucune purge de saison ne les voit) ; sans
+  cela un coach orphelin retiendrait sa fiche (clé `RESTRICT`) et le club ne s'effacerait pas. Seules les
+  familles `purgedWithSeason()` y passent, pas les `purgedViaOwner()` d'une saison disparue.
+- **Export** : `person` sort dans l'export des données du club (dérivée de `TenantOwnedInterface`, jamais
+  exclue) — gardé par `RgpdExportCompletenessTest::testThePersonRecordIsExported`.
+- **Effacer UNE personne** n'a pas encore de mécanisme : aucune commande n'efface une personne seule, et
+  `schedule.snapshot_data` (la demande figée de chaque version) garde prénom et nom jusqu'à la PR 3 du lot
+  conception. Les deux livraisons partent ensemble en production (déploiement unique du lot).
 
 ## 3. Mécanismes clés (pointeurs code)
 

@@ -6,6 +6,7 @@ namespace App\Tests;
 
 use App\Entity\Coach;
 use App\Entity\Constraint;
+use App\Entity\Person;
 use App\Entity\Schedule;
 use App\Entity\SchedulePlan;
 use App\Entity\Season;
@@ -118,10 +119,14 @@ trait EngineRequestTravelDecorTrait
                 ->setSportCategoryId(self::ER_CATEGORY)->setPriorityTierId($tier)->setName($name)
                 ->setSessionsPerWeek(2)->setIsActive(true));
         }
-        $em->persist((new Coach)->setId(self::ER_NEXT_COACH_A)->setClubId(self::ER_CLUB)->setSeasonId(self::ER_NEXT_SEASON)
-            ->setFirstName('Alix')->setLastName('Entraîneur')->setIsEmployee(true)->setIsVehicled(true));
-        $em->persist((new Coach)->setId(self::ER_NEXT_COACH_B)->setClubId(self::ER_CLUB)->setSeasonId(self::ER_NEXT_SEASON)
-            ->setFirstName('Bao')->setLastName('Entraîneur')->setIsEmployee(false)->setIsVehicled(false));
+        $alix = (new Person)->setClubId(self::ER_CLUB)->setFirstName('Alix')->setLastName('Entraîneur');
+        $bao = (new Person)->setClubId(self::ER_CLUB)->setFirstName('Bao')->setLastName('Entraîneur');
+        $em->persist($alix);
+        $em->persist($bao);
+        $em->persist(new Coach($alix)->setId(self::ER_NEXT_COACH_A)->setClubId(self::ER_CLUB)->setSeasonId(self::ER_NEXT_SEASON)
+            ->setIsEmployee(true)->setIsVehicled(true));
+        $em->persist(new Coach($bao)->setId(self::ER_NEXT_COACH_B)->setClubId(self::ER_CLUB)->setSeasonId(self::ER_NEXT_SEASON)
+            ->setIsEmployee(false)->setIsVehicled(false));
         $em->flush();
         foreach ([[21, self::ER_NEXT_TEAM_U13, self::ER_NEXT_COACH_A], [22, self::ER_NEXT_TEAM_SM1, self::ER_NEXT_COACH_B]] as [$n, $teamId, $coachId]) {
             $em->persist((new TeamCoach)->setId(self::erId('7c0a', $n))->setClubId(self::ER_CLUB)->setSeasonId(self::ER_NEXT_SEASON)

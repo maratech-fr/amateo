@@ -17,6 +17,7 @@ use App\Enum\CalendarEntryKind;
 use App\Enum\CalendarEntryPeriodType;
 use App\Enum\SeasonStatus;
 use App\Enum\TeamCoachRole;
+use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\Integration\Service\CoachWishCampaignTokenSyncTest;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
@@ -44,6 +45,9 @@ use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 #[Group('integration')]
 final class CoachWishStaffUnavailabilityMigrationTest extends KernelTestCase
 {
+    use CreatesPeopleAndPlacesTrait {
+        newCoach as private newPersonCoach;
+    }
     use TenantGucTrait;
 
     private EntityManagerInterface $em;
@@ -206,7 +210,7 @@ final class CoachWishStaffUnavailabilityMigrationTest extends KernelTestCase
 
     private function newCoach(string $firstName): Coach
     {
-        $coach = (new Coach)->setClubId($this->club->getId())->setSeasonId($this->season->getId())->setFirstName($firstName)->setLastName('Test');
+        $coach = $this->newPersonCoach($this->club->getId(), $this->season->getId(), $firstName, 'Test');
         $this->em->persist($coach);
         $this->em->flush();
 

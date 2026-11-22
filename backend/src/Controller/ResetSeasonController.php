@@ -12,6 +12,7 @@ use App\Enum\AuditAction;
 use App\Service\AuditTrail;
 use App\Service\SeasonAccessGuard;
 use App\Service\SeasonDataPurger;
+use App\Structure\UnusedIdentitySweeper;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\RequestStack;
@@ -29,6 +30,7 @@ final class ResetSeasonController extends AbstractController
     public function __construct(
         private readonly RequestStack $requestStack,
         private readonly SeasonDataPurger $seasonDataPurger,
+        private readonly UnusedIdentitySweeper $unusedIdentitySweeper,
         private readonly SeasonAccessGuard $seasonAccessGuard,
         private readonly AuditTrail $auditTrail,
     ) {}
@@ -55,6 +57,8 @@ final class ResetSeasonController extends AbstractController
         // Wipe the season's contents but KEEP the Season row (the club keeps
         // its current season, only re-emptied).
         $deleted = $this->seasonDataPurger->purge($clubId, $seasonId, deleteSeasonRow: false);
+        // Les fiches de personne que plus aucun rôle ne désigne partent avec la saison remise à zéro.
+        $this->unusedIdentitySweeper->sweep($clubId);
         $this->auditTrail->record(AuditAction::SEASON_RESET, $user instanceof User ? $user->getId() : null, $clubId, 'Season', $seasonId, ['rowsDeleted' => $deleted]);
 
         return $this->json([

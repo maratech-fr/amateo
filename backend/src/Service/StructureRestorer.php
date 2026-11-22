@@ -91,6 +91,7 @@ final class StructureRestorer
     public function apply(string $clubId, string $seasonId, array $data): void
     {
         $this->disableTenantFilters($this->entityManager);
+        $data = $this->withoutCoachesWhosePersonIsGone($clubId, $data);
         $this->assertRestoreKeepsEngagedTeams($clubId, $seasonId, $data);
         $this->eraseStaffLinesOfCoachesAbsentFromPhoto($clubId, $seasonId, $data);
         $this->wipeStructure($clubId, $seasonId);
@@ -125,6 +126,53 @@ final class StructureRestorer
         // La règle du destinataire les recrée dans les collectes ouvertes (les anciens liens sont perdus).
         $this->coachWishTokenSync->syncSeason($clubId, $seasonId);
         $this->entityManager->flush();
+    }
+
+    /**
+     * Une ligne de coach de la photo dont la fiche de personne n'existe plus dans CE club (effacée,
+     * ou désignant la fiche d'un autre club) n'est pas réinsérée, ni ses liens d'équipe et de
+     * joueur, ni ses règles de portée coach : elle est traitée comme absente de la photo. La
+     * recherche des fiches est bornée par le club en clause explicite (filtres désactivés ici).
+     *
+     * @param array<string, list<array<string, mixed>>> $data
+     *
+     * @return array<string, list<array<string, mixed>>>
+     */
+    private function withoutCoachesWhosePersonIsGone(string $clubId, array $data): array
+    {
+        $rows = $data['Coach'] ?? [];
+        $personIds = array_values(array_filter(array_column($rows, 'personId'), \is_string(...)));
+        /** @var list<string> $known */
+        $known = [] === $personIds ? [] : $this->entityManager
+            ->createQuery('SELECT p.id FROM App\Entity\Person p WHERE p.clubId = :c AND p.id IN (:ids)')
+            ->setParameter('c', $clubId)
+            ->setParameter('ids', $personIds)
+            ->getSingleColumnResult();
+        $known = array_flip($known);
+
+        $kept = [];
+        $keptIds = [];
+        foreach ($rows as $row) {
+            $personId = $row['personId'] ?? null;
+            if (\is_string($personId) && isset($known[$personId])) {
+                $kept[] = $row;
+                $keptIds[(string) ($row['id'] ?? '')] = true;
+            }
+        }
+        $data['Coach'] = $kept;
+
+        // Tout lien ou règle qui cite un coach absent des lignes `Coach` gardées (fiche disparue, ou
+        // ligne déjà retirée de la photo) part avec lui : aucune clé étrangère ne le refuserait.
+        foreach (['TeamCoach', 'CoachPlayerMembership'] as $family) {
+            if (isset($data[$family])) {
+                $data[$family] = array_values(array_filter($data[$family], static fn (array $row): bool => isset($keptIds[(string) ($row['coachId'] ?? '')])));
+            }
+        }
+        if (isset($data['Constraint'])) {
+            $data['Constraint'] = array_values(array_filter($data['Constraint'], static fn (array $row): bool => ConstraintScope::COACH->value !== ($row['scope'] ?? null) || isset($keptIds[(string) ($row['scopeTargetId'] ?? '')])));
+        }
+
+        return $data;
     }
 
     /**

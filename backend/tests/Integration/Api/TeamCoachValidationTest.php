@@ -11,6 +11,7 @@ use App\Entity\Season;
 use App\Entity\Team;
 use App\Entity\User;
 use App\Enum\SeasonStatus;
+use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -28,6 +29,7 @@ use Symfony\Component\Uid\Uuid;
 #[Group('integration')]
 final class TeamCoachValidationTest extends WebTestCase
 {
+    use CreatesPeopleAndPlacesTrait;
     use TenantGucTrait;
 
     private KernelBrowser $client;
@@ -77,7 +79,7 @@ final class TeamCoachValidationTest extends WebTestCase
         $this->em->flush();
         $team = (new Team)->setClubId($this->club->getId())->setSeasonId($season->getId())
             ->setSportCategoryId('11111111-1111-4111-8111-111111111111')->setPriorityTierId(1)->setName('SM1');
-        $coach = (new Coach)->setClubId($this->club->getId())->setSeasonId($season->getId())->setFirstName('Karim')->setLastName('Benali');
+        $coach = $this->newCoach($this->club->getId(), $season->getId(), 'Karim', 'Benali');
         $this->em->persist($team);
         $this->em->persist($coach);
         $this->em->flush();
