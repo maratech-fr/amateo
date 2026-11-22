@@ -1134,6 +1134,7 @@ final class ScheduleConstraintBuilderOverlayTest extends KernelTestCase
             ->setDurationMinutes(90);
         $this->em->persist($reservation);
     }
+
     private function team(Club $club, Season $season, string $name): Team
     {
         $team = new Team;
