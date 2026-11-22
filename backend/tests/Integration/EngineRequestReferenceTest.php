@@ -34,6 +34,7 @@ use App\Service\StructureSnapshotter;
 use App\Service\TenantConnectionContext;
 use App\Tests\EngineRequestDecorTrait;
 use App\Tests\EngineRequestGroupRulesDecorTrait;
+use App\Tests\EngineRequestTravelDecorTrait;
 use DateTimeImmutable;
 use PHPUnit\Framework\Attributes\Group;
 use Psr\Clock\ClockInterface;
@@ -61,15 +62,18 @@ use Symfony\Contracts\Cache\TagAwareCacheInterface;
  *   6. placement des matchs sur une fenêtre (une semaine) ;
  *   7. socle aux règles de groupe sous leurs trois formes, et une équipe sans habitude au jour de
  *      match enregistré (`EngineRequestGroupRulesDecorTrait`) ;
- *   8. période générée sur place, avec une règle de groupe datée.
+ *   8. période générée sur place, avec une règle de groupe datée ;
+ *   9. socle de la saison SUIVANTE d'un club à deux saisons, aux temps de trajet, un couple rangé à l'envers
+ *      d'une saison à l'autre (`EngineRequestTravelDecorTrait`) ;
+ *  10. période générée sur place, aux temps de trajet de la saison en cours.
  *
  * Bloquant (step `Blocking suite` de `ci.yml`, `docs/testing/blocking-tests.md`) : le « Lot Gate »
  * d'une branche de lot ne joue que la suite bloquante. Le groupe `phase1` est requis : le step lance
  * `phpunit --group phase1 <fichiers>`, un fichier listé sans ce groupe n'y jouerait aucun test.
  *
- * Aux cas de génération (1 à 4, 7, 8), la demande se recoupe avec ce qui est écrit en base : l'empreinte
+ * Aux cas de génération (1 à 4, 7 à 10), la demande se recoupe avec ce qui est écrit en base : l'empreinte
  * `snapshotHash` vaut `structureHash(snapshotData)`, les clés de la greffe `payloadGraft` sont
- * exactement celles attendues, et le corps reçu vaut `engineInput()` relu en base. Aux cas 1 à 3, 7 et 8,
+ * exactement celles attendues, et le corps reçu vaut `engineInput()` relu en base. Aux cas 1 à 3 et 7 à 10,
  * `snapshotHash` vaut aussi `structureHashOfPlan(plan)` (le signal « structure modifiée » ne ment pas
  * sur une version fraîche). Au cas 4 (comblement), la relation constatée est AUSSI l'égalité, mais par
  * un autre chemin : les épingles du comblement (tout le placé de la version source, en HARD) sont
@@ -100,6 +104,7 @@ final class EngineRequestReferenceTest extends KernelTestCase
 {
     use EngineRequestDecorTrait;
     use EngineRequestGroupRulesDecorTrait;
+    use EngineRequestTravelDecorTrait;
 
     private const string REFERENCE_DIR = __DIR__ . '/../Fixtures/engine-requests';
 
@@ -232,6 +237,54 @@ final class EngineRequestReferenceTest extends KernelTestCase
             'la règle de groupe datée vise ses seules équipes',
         );
         $this->assertReference('periode-8-regle-de-groupe', $run['body']);
+        $this->assertGenerationCoherence($run['body'], $run['schedule'], ['socleReferenceAssignments']);
+        $this->assertSnapshotMatchesPlanStructure($run['schedule']);
+    }
+
+    /**
+     * Le socle de la saison SUIVANTE d'un club à deux saisons, aux temps de trajet saisis : seuls les couples de cette
+     * saison partent, rangés selon les identifiants de ses gymnases — Nord–Sud y est rangé Sud d'abord, à l'envers de la
+     * saison en cours —, avec un couple sans minutes ; les coachs portent leurs statuts salarié et véhiculé.
+     */
+    public function testNextSeasonSocleWithTravelTimesStoredTheOtherWayRound(): void
+    {
+        $this->seedEngineRequestTravelOfCurrentSeason();
+        $version = $this->seedEngineRequestNextSeason();
+
+        $run = $this->runGeneration($version->getId());
+
+        self::assertSame(self::ER_NEXT_SEASON, $run['body']['seasonId'] ?? null, 'la demande est celle de la saison suivante');
+        self::assertSame([
+            [self::ER_NEXT_VENUE_SUD, self::ER_NEXT_VENUE_NORD, 15, 35],
+            [self::ER_NEXT_VENUE_SUD, self::ER_NEXT_VENUE_EST, null, null],
+            [self::ER_NEXT_VENUE_NORD, self::ER_NEXT_VENUE_EST, 9, 22],
+        ], $this->travelRows($run['body']), 'les trois couples de la saison suivante, et aucun de la saison en cours');
+        self::assertSame(
+            [[self::ER_NEXT_COACH_A, true, true], [self::ER_NEXT_COACH_B, false, false]],
+            array_map(static fn (array $c): array => [$c['id'] ?? null, $c['isEmployee'] ?? null, $c['isVehicled'] ?? null], \is_array($run['body']['coaches'] ?? null) ? $run['body']['coaches'] : []),
+            'un coach salarié véhiculé, un non véhiculé',
+        );
+        $this->assertReference('socle-9-trajets-saison-suivante', $run['body']);
+        $this->assertGenerationCoherence($run['body'], $run['schedule'], null);
+        $this->assertSnapshotMatchesPlanStructure($run['schedule']);
+    }
+
+    /** Un plan de période généré sur place, aux temps de trajet de la saison en cours. */
+    public function testPeriodWithTravelTimes(): void
+    {
+        $this->seedEngineRequestTravelOfCurrentSeason();
+        $this->seedSocleInForce();
+        $this->seedEngineRequestPeriod();
+        $this->seedPeriodVersion(self::ER_PERIOD_P1, ScheduleStatus::DRAFT);
+
+        $run = $this->runGeneration(self::ER_PERIOD_P1);
+
+        self::assertSame([
+            [self::ER_VENUE_NORD, self::ER_VENUE_SUD, 12, 30],
+            [self::ER_VENUE_NORD, self::ER_VENUE_EST, 8, 20],
+            [self::ER_VENUE_SUD, self::ER_VENUE_EST, null, null],
+        ], $this->travelRows($run['body']), 'les trois couples de la saison, triés par gymnases');
+        $this->assertReference('periode-10-trajets', $run['body']);
         $this->assertGenerationCoherence($run['body'], $run['schedule'], ['socleReferenceAssignments']);
         $this->assertSnapshotMatchesPlanStructure($run['schedule']);
     }
