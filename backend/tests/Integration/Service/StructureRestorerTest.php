@@ -34,6 +34,7 @@ use App\Service\SchedulePlanProvisioner;
 use App\Service\StructureRestorer;
 use App\Service\StructureSnapshotter;
 use App\Structure\PersonDirectory;
+use App\Structure\PlaceDirectory;
 use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\ProvisionsPeriodPlanTrait;
 use App\Tests\TenantGucTrait;
@@ -554,6 +555,37 @@ final class StructureRestorerTest extends KernelTestCase
         self::assertNull($this->em->getRepository(Coach::class)->find($forgedId), 'une ligne qui pointe la fiche d\'un autre club n\'est pas réinsérée');
         self::assertNotNull($this->em->getRepository(Coach::class)->find($annaId), 'témoin : le reste de la photo revient');
         self::assertNotNull($this->em->getRepository(TeamCoach::class)->findOneBy(['coachId' => $annaId]), 'témoin : avec ses liens');
+    }
+
+    /**
+     * Lot 3, PR 4 : supprimer un gymnase garde son lieu au club (même règle que la fiche d'un coach) ;
+     * « Charger » une version où il servait le ramène sur ce lieu, même identifiant, adresse et position
+     * comprises — l'adresse n'est plus dans la photo, elle est relue sur le lieu.
+     */
+    public function testLoadingBringsBackADeletedVenueWithItsAddress(): void
+    {
+        [$club, $season] = $this->seedClubSeason();
+        $nord = $this->newVenue($club->getId(), $season->getId(), 'Gymnase Nord');
+        $this->placeOf($nord)->setAddress('12 rue du Nord, 69100 Villeurbanne')->setLatitude('45.7700000')->setLongitude('4.8800000');
+        $v1 = $this->makeSchedule($club, $season);
+        $this->em->flush();
+        $this->snapshotter->store($v1, $this->snapshotter->serialize($club->getId(), $season->getId()));
+        [$nordId, $placeId] = [$nord->getId(), $nord->getPlaceId()];
+
+        $this->em->remove($nord);
+        $this->em->flush();
+        $this->restorer->apply($club->getId(), $season->getId(), $this->restorer->readSnapshot($v1));
+        $this->em->clear();
+
+        $back = $this->em->getRepository(Venue::class)->find($nordId);
+        self::assertInstanceOf(Venue::class, $back, 'le gymnase supprimé revient avec son identifiant');
+        self::assertSame($placeId, $back->getPlaceId(), 'il revient sur son lieu, jamais sur une copie');
+        $place = self::getContainer()->get(PlaceDirectory::class)->of($back);
+        self::assertSame(
+            ['12 rue du Nord, 69100 Villeurbanne', '45.7700000', '4.8800000'],
+            [$place->getAddress(), $place->getLatitude(), $place->getLongitude()],
+            'adresse et position reviennent avec lui',
+        );
     }
 
     /**
