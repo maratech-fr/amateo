@@ -11,6 +11,7 @@ use App\Entity\Competition;
 use App\Entity\FbiCorrection;
 use App\Entity\FbiIngestion;
 use App\Entity\Fixture;
+use App\Entity\Place;
 use App\Entity\Season;
 use App\Entity\Sport;
 use App\Entity\SportCategory;
@@ -26,7 +27,6 @@ use App\Enum\SeasonStatus;
 use App\Service\Basketball\FfbbRencontreReconciler;
 use App\Service\SeasonResolver;
 use App\Tests\ChoosesPlanVersionTrait;
-use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\Double\FfbbHttpClientStub;
 use App\Tests\TenantGucTrait;
 use App\Tests\VerifiesRegistration;
@@ -56,7 +56,6 @@ use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
 final class FfbbRencontresApiTest extends WebTestCase
 {
     use ChoosesPlanVersionTrait;
-    use CreatesPeopleAndPlacesTrait;
     use TenantGucTrait;
     use VerifiesRegistration;
 
@@ -1016,7 +1015,9 @@ final class FfbbRencontresApiTest extends WebTestCase
 
     private function aVenue(string $clubId, string $seasonId): string
     {
-        $venue = $this->newVenue($clubId, $seasonId, 'GYMNASE APP');
+        $place = (new Place)->setClubId($clubId);
+        $this->em->persist($place);
+        $venue = new Venue($place)->setClubId($clubId)->setSeasonId($seasonId)->setName('GYMNASE APP')->setSource('manual');
         $this->em->persist($venue);
         $this->em->flush();
 
@@ -1031,7 +1032,9 @@ final class FfbbRencontresApiTest extends WebTestCase
     private function venueWithAlias(string $clubId, string $seasonId, string $name, array $aliases): string
     {
         $this->scopeGucToClub($clubId);
-        $venue = $this->newVenue($clubId, $seasonId, $name)->setExternalLabels($aliases);
+        $place = (new Place)->setClubId($clubId);
+        $this->em->persist($place);
+        $venue = new Venue($place)->setClubId($clubId)->setSeasonId($seasonId)->setName($name)->setSource('manual')->setExternalLabels($aliases);
         $this->em->persist($venue);
         $this->em->flush();
 

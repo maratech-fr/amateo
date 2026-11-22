@@ -8,6 +8,7 @@ use App\Clock\DevClockStore;
 use App\Entity\Competition;
 use App\Entity\FbiIngestion;
 use App\Entity\Fixture;
+use App\Entity\Place;
 use App\Entity\Season;
 use App\Entity\Sport;
 use App\Entity\SportCategory;
@@ -15,7 +16,6 @@ use App\Entity\Team;
 use App\Entity\Venue;
 use App\Enum\FixtureStatus;
 use App\Tests\ChoosesPlanVersionTrait;
-use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\TenantGucTrait;
 use App\Tests\VerifiesRegistration;
 use App\Tests\WritesFbiExports;
@@ -39,7 +39,6 @@ use ZipArchive;
 final class ImportFixturesApiTest extends WebTestCase
 {
     use ChoosesPlanVersionTrait;
-    use CreatesPeopleAndPlacesTrait;
     use TenantGucTrait;
     use VerifiesRegistration;
     use WritesFbiExports;
@@ -297,7 +296,9 @@ final class ImportFixturesApiTest extends WebTestCase
         $this->scopeGucToClub($clubId);
         $season = $this->em->getRepository(Season::class)->findOneBy(['clubId' => $clubId]);
         self::assertNotNull($season);
-        $venue = $this->newVenue($clubId, $season->getId(), 'Gymnase Matéo')->setExternalLabels(['gymnase mateo']);
+        $place = (new Place)->setClubId($clubId);
+        $this->em->persist($place);
+        $venue = new Venue($place)->setClubId($clubId)->setSeasonId($season->getId())->setName('Gymnase Matéo')->setSource('manual')->setExternalLabels(['gymnase mateo']);
         $this->em->persist($venue);
         $this->em->flush();
 
@@ -536,7 +537,9 @@ final class ImportFixturesApiTest extends WebTestCase
         $this->scopeGucToClub($clubId);
         $season = $this->em->getRepository(Season::class)->findOneBy(['clubId' => $clubId]);
         self::assertNotNull($season);
-        $venue = $this->newVenue($clubId, $season->getId(), $name);
+        $place = (new Place)->setClubId($clubId);
+        $this->em->persist($place);
+        $venue = new Venue($place)->setClubId($clubId)->setSeasonId($season->getId())->setName($name)->setSource('manual');
         $this->em->persist($venue);
         $this->em->flush();
 
@@ -561,7 +564,9 @@ final class ImportFixturesApiTest extends WebTestCase
         $fixture = $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => $externalRef]);
         self::assertNotNull($fixture, 'imported fixture must exist');
         $this->scopeGucToClub($fixture->getClubId());
-        $venue = $this->newVenue($fixture->getClubId(), $fixture->getSeasonId(), $venueName);
+        $place = (new Place)->setClubId($fixture->getClubId());
+        $this->em->persist($place);
+        $venue = new Venue($place)->setClubId($fixture->getClubId())->setSeasonId($fixture->getSeasonId())->setName($venueName)->setSource('manual');
         $this->em->persist($venue);
         $fixture->setVenueId($venue->getId());
         $this->em->flush();
