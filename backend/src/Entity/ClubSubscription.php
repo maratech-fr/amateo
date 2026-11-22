@@ -25,7 +25,7 @@ use Doctrine\ORM\Mapping as ORM;
  * lit (sous le locataire, RLS) et la supprime à l'effacement du club. La ligne garde le dernier état
  * seulement : la suite des gestes se lit dans l'historique des actions de la console.
  */
-#[Family(Level::CLUB)]
+#[Family(Level::CLUB, keptAtSeasonPurge: 'abonnement du club, clé par année de saison et non par saison : la purge d\'une saison ne retire pas ce qui a été réglé ; porte de sortie ErasedClubPurger')]
 #[ORM\Entity(repositoryClass: ClubSubscriptionRepository::class, readOnly: true)]
 #[ORM\Table(name: 'club_subscription')]
 #[ORM\UniqueConstraint(name: 'uniq_club_subscription_season', columns: ['club_id', 'season_year'])]
