@@ -8,6 +8,7 @@ use App\Service\ScheduleConstraintBuilder;
 use App\Support\SchemaEpoch;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
+use Symfony\Component\Process\Process;
 
 /**
  * Promesse : une demande au moteur mise en cache par un code qui n'a pas les mêmes migrations n'est jamais resservie,
@@ -71,6 +72,45 @@ final class ScheduleCacheKeyEpochTest extends TestCase
             $key,
             'la clé d\'avant l\'époque n\'est plus celle qu\'on lit',
         );
+    }
+
+    /**
+     * Une image livrée sans ses migrations refuse de calculer l'époque : l'empreinte d'une liste vide serait la même
+     * d'un code à l'autre, et le cache resservirait les demandes d'un autre schéma. Le vrai fichier de `SchemaEpoch`
+     * est copié dans un arbre jetable (son dossier de migrations est relatif à lui) et joué dans un processus à part :
+     * vide, il refuse ; avec un fichier (témoin du montage), il rend une époque.
+     */
+    public function testAnImageWithoutItsMigrationsRefusesToComputeAnEpoch(): void
+    {
+        $root = sys_get_temp_dir() . '/schema-epoch-' . bin2hex(random_bytes(6));
+        mkdir($root . '/src/Support', 0o700, true);
+        mkdir($root . '/migrations', 0o700);
+        copy(__DIR__ . '/../../../src/Support/SchemaEpoch.php', $root . '/src/Support/SchemaEpoch.php');
+
+        try {
+            self::assertSame('refus', $this->epochIn($root), 'dossier de migrations vide : LogicException');
+
+            touch($root . '/migrations/Version20260101000000.php');
+            self::assertMatchesRegularExpression('/^[0-9a-f]{12}$/', $this->epochIn($root), 'témoin : avec une migration, le même montage rend une époque');
+        } finally {
+            array_map(unlink(...), [...glob($root . '/migrations/*') ?: [], $root . '/src/Support/SchemaEpoch.php']);
+            rmdir($root . '/migrations');
+            rmdir($root . '/src/Support');
+            rmdir($root . '/src');
+            rmdir($root);
+        }
+    }
+
+    private function epochIn(string $root): string
+    {
+        $process = new Process([\PHP_BINARY, '-r', \sprintf(
+            'require %s; try { echo App\Support\SchemaEpoch::current(); } catch (LogicException) { echo "refus"; }',
+            var_export($root . '/src/Support/SchemaEpoch.php', true),
+        )]);
+        $process->run();
+        self::assertTrue($process->isSuccessful(), $process->getErrorOutput());
+
+        return $process->getOutput();
     }
 
     /** @return list<string> */
