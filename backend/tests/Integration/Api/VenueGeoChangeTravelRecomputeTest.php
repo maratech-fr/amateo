@@ -6,8 +6,10 @@ namespace App\Tests\Integration\Api;
 
 use App\Entity\Club;
 use App\Entity\ClubUser;
+use App\Entity\Place;
 use App\Entity\Season;
 use App\Entity\User;
+use App\Entity\Venue;
 use App\Entity\VenueTravelTime;
 use App\Enum\SeasonStatus;
 use App\Enum\TravelComputeScope;
@@ -52,6 +54,34 @@ final class VenueGeoChangeTravelRecomputeTest extends WebTestCase
         self::assertInstanceOf(ComputeTravelTimesMessage::class, $messages[0]);
         self::assertSame(TravelComputeScope::VENUE_MATRIX, $messages[0]->getScope());
         self::assertSame($club->getId(), $messages[0]->getClubId());
+    }
+
+    /**
+     * Lot 3, PR 4 : la position vit sur le lieu au club. Déplacer le gymnase d'une saison déplace aussi
+     * celui de chaque autre saison qui pointe le même lieu : le calcul repart pour CHAQUE saison qui a
+     * une matrice, et pour elle seule (une saison sans matrice reste sans matrice).
+     */
+    public function testMovingAPlaceSharedBySeasonsRecomputesEachSeasonThatHasAMatrix(): void
+    {
+        [$user, $club, $season] = $this->seed();
+        $venueId = $this->createVenue($user, '45.7000000', '4.8000000');
+        $this->matrixRow($club, $season, $venueId, 'bbbbbbbb-0000-4000-8000-000000000004');
+        $venue = $this->em->find(Venue::class, $venueId);
+        self::assertInstanceOf(Venue::class, $venue);
+        $place = $this->em->find(Place::class, $venue->getPlaceId());
+        self::assertInstanceOf(Place::class, $place);
+        $withMatrix = $this->otherSeason($club, $place, 'Saison suivante', '+1 year');
+        $this->matrixRow($club, $withMatrix, 'cccccccc-0000-4000-8000-000000000005', 'bbbbbbbb-0000-4000-8000-000000000005');
+        $this->otherSeason($club, $place, 'Saison passée', '-1 year');
+        $this->reset();
+
+        $this->put($user, $venueId, '45.7654321', '4.8765432');
+
+        $seasons = array_map(static fn (ComputeTravelTimesMessage $m): string => $m->getSeasonId(), $this->dispatched());
+        sort($seasons);
+        $expected = [$season->getId(), $withMatrix->getId()];
+        sort($expected);
+        self::assertSame($expected, $seasons, 'un recalcul par saison du lieu qui a une matrice, aucun pour la saison sans matrice');
     }
 
     public function testIdenticalCoordinatesDispatchNothing(): void
@@ -126,6 +156,20 @@ final class VenueGeoChangeTravelRecomputeTest extends WebTestCase
         $row->setClubId($club->getId())->setSeasonId($season->getId())->setVenueAId($vA)->setVenueBId($vB);
         $this->em->persist($row);
         $this->em->flush();
+    }
+
+    /** Une autre saison du club, décalée de `$shift`, dont un gymnase est l'usage du même lieu. */
+    private function otherSeason(Club $club, Place $place, string $name, string $shift): Season
+    {
+        $year = SeasonResolver::seasonYear(new DateTimeImmutable($shift));
+        $season = (new Season)->setClubId($club->getId())->setName($name)
+            ->setStartDate(new DateTimeImmutable($year . '-08-01'))->setEndDate(new DateTimeImmutable(($year + 1) . '-07-15'))
+            ->setStatus(SeasonStatus::ACTIVE);
+        $this->em->persist($season);
+        $this->em->persist(new Venue($place)->setClubId($club->getId())->setSeasonId($season->getId())->setName('Gymnase G')->setSource('manual'));
+        $this->em->flush();
+
+        return $season;
     }
 
     /** @return list<ComputeTravelTimesMessage> */
