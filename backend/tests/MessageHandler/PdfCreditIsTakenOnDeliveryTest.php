@@ -8,7 +8,6 @@ use App\Command\PurgeExportsCommand;
 use App\Entity\Club;
 use App\Entity\Schedule;
 use App\Entity\Season;
-use App\Entity\SubscriptionPlan;
 use App\Entity\Venue;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
@@ -18,6 +17,7 @@ use App\Service\PdfGenerator;
 use App\Service\SchedulePlanProvisioner;
 use App\Service\SeasonResolver;
 use App\Tests\BuildsServiceWithDoublesTrait;
+use App\Tests\Support\SubscribesClub;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -51,6 +51,7 @@ use Throwable;
 final class PdfCreditIsTakenOnDeliveryTest extends KernelTestCase
 {
     use BuildsServiceWithDoublesTrait;
+    use SubscribesClub;
     use TenantGucTrait;
 
     private EntityManagerInterface $em;
@@ -479,11 +480,7 @@ final class PdfCreditIsTakenOnDeliveryTest extends KernelTestCase
 
         $year = SeasonResolver::seasonYear(new DateTimeImmutable('today'));
         if (null !== $planCode) {
-            $plan = $this->em->getRepository(SubscriptionPlan::class)->findOneBy(['code' => $planCode]);
-            \assert($plan instanceof SubscriptionPlan);
-            $club->setPlanId($plan->getId());
-            $club->setPaidSeasonYear($year);
-            $this->em->flush();
+            $this->subscribeClub($club->getId(), $year, $planCode);
         }
 
         $this->scopeGucToClub($club->getId());

@@ -21,6 +21,7 @@ use App\Service\SeasonTransitionService;
 use App\Service\StructureRestorer;
 use App\Service\StructureSnapshotter;
 use App\Tests\ChoosesPlanVersionTrait;
+use App\Tests\Support\SubscribesClub;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -58,6 +59,7 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 final class VenueOccupancyLifecycleTest extends WebTestCase
 {
     use ChoosesPlanVersionTrait;
+    use SubscribesClub;
     use TenantGucTrait;
 
     private KernelBrowser $client;
@@ -336,8 +338,6 @@ final class VenueOccupancyLifecycleTest extends WebTestCase
         $club = (new Club)->setName('Club occupations')->setSlug('occ-life-' . $uid)
             ->setTimezone('Europe/Paris')->setLocale('fr')->setOnboardingCompleted(true)
             ->setFfbbClubCode('OCC' . strtoupper(substr(md5($uid), 0, 10)));
-        // Le passage de saison exige la saison suivante réglée : en règle très loin (le gate a ses tests).
-        $club->setPaidSeasonYear(9999);
         $this->em->persist($club);
 
         $user = new User;
@@ -347,6 +347,8 @@ final class VenueOccupancyLifecycleTest extends WebTestCase
         $user->setPasswordHash(self::getContainer()->get('security.user_password_hasher')->hashPassword($user, 'pass'));
         $this->em->persist($user);
         $this->em->flush();
+        // Le passage de saison exige la saison suivante réglée : elle l'est (le gate a ses tests).
+        $this->subscribeClub($club->getId(), SeasonResolver::seasonYear(new DateTimeImmutable('today')) + 1, 'beta');
 
         $this->scopeGucToClub($club->getId());
         $this->em->persist((new ClubUser)->setClubId($club->getId())->setUserId($user->getId())->setRole('admin')->setIsActive(true));

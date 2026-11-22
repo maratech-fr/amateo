@@ -44,6 +44,7 @@ use App\Service\SeasonTransitionService;
 use App\Structure\PersonDirectory;
 use App\Tests\ChoosesPlanVersionTrait;
 use App\Tests\CreatesPeopleAndPlacesTrait;
+use App\Tests\Support\SubscribesClub;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -62,6 +63,7 @@ final class SeasonTransitionServiceTest extends KernelTestCase
 {
     use ChoosesPlanVersionTrait;
     use CreatesPeopleAndPlacesTrait;
+    use SubscribesClub;
     use TenantGucTrait;
 
     private EntityManagerInterface $em;
@@ -487,8 +489,7 @@ final class SeasonTransitionServiceTest extends KernelTestCase
     public function testBeforeMayTheDateRefusesBeforeThePayment(): void
     {
         [$club, $season] = $this->createClubGraph();
-        $club->setPaidSeasonYear(null);
-        $this->em->flush();
+        $this->em->getConnection()->executeStatement('DELETE FROM club_subscription WHERE club_id = ?', [$club->getId()]);
 
         $this->expectException(ConflictHttpException::class);
         $this->expectExceptionMessage('La saison suivante se prépare à partir du 1er mai.');
@@ -531,8 +532,6 @@ final class SeasonTransitionServiceTest extends KernelTestCase
         $club->setLocale('fr');
         $club->setOnboardingCompleted(true);
         $club->setFfbbClubCode('TRA' . strtoupper(substr(md5($uid), 0, 10)));
-        // P1-5 : en règle très loin — ces tests couvrent la copie, pas le gate.
-        $club->setPaidSeasonYear(9999);
         $this->em->persist($club);
 
         $sport = new Sport;
@@ -540,6 +539,8 @@ final class SeasonTransitionServiceTest extends KernelTestCase
         $sport->setSlug('basket-' . $uid);
         $this->em->persist($sport);
         $this->em->flush();
+        // P1-5 : la saison que la bascule crée est réglée — ces tests couvrent la copie, pas le gate.
+        $this->subscribeClub($club->getId(), SeasonResolver::seasonYear(new DateTimeImmutable('today')) + 1, 'beta');
 
         $this->scopeGucToClub($club->getId());
 
@@ -793,12 +794,12 @@ final class SeasonTransitionServiceTest extends KernelTestCase
         $club->setLocale('fr');
         $club->setOnboardingCompleted(true);
         $club->setFfbbClubCode('JUN' . strtoupper(substr(md5($uid), 0, 10)));
-        // P1-5 : ces tests couvrent la COPIE, pas le gate de paiement — club
-        // réputé en règle très loin (le gate a ses propres tests, ApiTest).
-        $club->setPaidSeasonYear(9999);
         $this->em->persist($club);
         $this->em->flush();
         $this->scopeGucToClub($club->getId());
+        // P1-5 : ces tests couvrent la COPIE, pas le gate de paiement — la saison 2026-2027, que
+        // crée la bascule de juin 2026, est réglée (le gate a ses propres tests, ApiTest).
+        $this->subscribeClub($club->getId(), 2026, 'beta');
 
         return $club;
     }

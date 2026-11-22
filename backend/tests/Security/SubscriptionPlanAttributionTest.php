@@ -10,6 +10,7 @@ use App\Entity\Season;
 use App\Entity\User;
 use App\Enum\SeasonStatus;
 use App\Service\PlanEntitlements;
+use App\Tests\Support\SubscribesClub;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -34,6 +35,7 @@ use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
 #[Group('integration')]
 final class SubscriptionPlanAttributionTest extends WebTestCase
 {
+    use SubscribesClub;
     use TenantGucTrait;
 
     private const string ESSENTIEL_ID = '00000000-0000-4000-8000-000000000002';
@@ -122,12 +124,10 @@ final class SubscriptionPlanAttributionTest extends WebTestCase
         $clubId = $club->getId();
 
         $tester = new CommandTester(new Application(self::$kernel)->find('app:clubs:set-plan'));
-        $exit = $tester->execute(['--club' => $clubId, '--plan' => 'essentiel']);
+        $exit = $tester->execute(['--club' => $clubId, '--plan' => 'essentiel', '--paid-season' => 'current']);
         self::assertSame(0, $exit, $tester->getDisplay());
 
-        $this->em->clear();
-        $reloaded = $this->em->getRepository(Club::class)->find($clubId);
-        self::assertSame(self::ESSENTIEL_ID, $reloaded?->getPlanId(), 'l\'attribution écrit la FK offre');
+        self::assertSame(self::ESSENTIEL_ID, $this->em->getConnection()->fetchOne('SELECT plan_id::text FROM club_subscription WHERE club_id = ?', [$clubId]), 'l\'attribution écrit la FK offre');
     }
 
     public function testExpiredPaidOfferFallsBackToDecouverte(): void
@@ -136,9 +136,8 @@ final class SubscriptionPlanAttributionTest extends WebTestCase
         \assert($entitlements instanceof PlanEntitlements);
 
         $season = (new Season)->setStartDate(new DateTimeImmutable('2026-09-01'));
-        $club = (new Club)
-            ->setPlanId(self::ESSENTIEL_ID)
-            ->setPaidSeasonYear(2024); // < seasonYear(2026-09-01) = 2026 → périmé
+        [, $club] = $this->seedClub();
+        $this->subscribeClub($club->getId(), 2024, 'essentiel'); // < seasonYear(2026-09-01) = 2026 → périmé
 
         $result = $entitlements->forClub($club, $season);
 
@@ -182,7 +181,7 @@ final class SubscriptionPlanAttributionTest extends WebTestCase
             self::assertArrayHasKey($key, $entitlements, "entitlements.$key manque");
         }
 
-        // Club fraîchement seedé (planId null) → offre Découverte par défaut.
+        // Club fraîchement seedé (aucune ligne d'abonnement) → offre Découverte par défaut.
         self::assertSame('decouverte', $entitlements['planCode']);
         self::assertSame(10, $entitlements['creditsMax']);
     }

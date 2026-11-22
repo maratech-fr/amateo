@@ -28836,12 +28836,6 @@
                         "default": "",
                         "type": "string"
                     },
-                    "planId": {
-                        "type": [
-                            "string",
-                            "null"
-                        ]
-                    },
                     "billingCycle": {
                         "type": [
                             "string",
@@ -29047,12 +29041,6 @@
                         "default": "",
                         "type": "string"
                     },
-                    "planId": {
-                        "type": [
-                            "string",
-                            "null"
-                        ]
-                    },
                     "billingCycle": {
                         "type": [
                             "string",
@@ -29167,12 +29155,6 @@
                             "slug": {
                                 "default": "",
                                 "type": "string"
-                            },
-                            "planId": {
-                                "type": [
-                                    "string",
-                                    "null"
-                                ]
                             },
                             "billingCycle": {
                                 "type": [

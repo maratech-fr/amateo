@@ -6,17 +6,26 @@ namespace App\Tests\Support;
 
 use App\Enum\SubscriptionOrigin;
 use App\Service\ClubSubscriptionWriter;
+use App\Tests\Double\SameTransactionClubSubscriptionWriter;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 
 /**
  * Décor de test : règle l'offre d'un club pour UNE saison, par le seul écrivain de l'abonnement
- * ({@see ClubSubscriptionWriter}, connexion propriétaire) — jamais par un accesseur du club ni par
- * un `INSERT` à la main. Une ligne Découverte s'écrit non réglée, toute autre réglée à l'instant
- * (règle de l'écrivain).
+ * ({@see ClubSubscriptionWriter}) — jamais par un accesseur du club ni par un `INSERT` à la main.
+ * Une ligne Découverte s'écrit non réglée, toute autre réglée à l'instant (règle de l'écrivain).
  *
- * ⚠ L'écrivain passe par la connexion `admin` : sous DAMA, chaque connexion a sa propre transaction
- * de test, une ligne écrite ici n'est visible que des lectures faites sur cette même connexion, et
- * le club visé doit lui-même y être visible (clé étrangère vers `club`).
+ * ⚠ Sous DAMA, chaque connexion a sa propre transaction de test : l'écrivain réel écrit par la
+ * connexion propriétaire, qui ne voit pas un club semé par l'ORM (clé étrangère vers `club` en
+ * échec, 23503), et une ligne qu'il écrirait resterait invisible des lecteurs de l'application.
+ * Choix retenu : en environnement de test, le service est le double
+ * {@see SameTransactionClubSubscriptionWriter} (`config/services_test.yaml`) — même règle, mais
+ * quand le club est visible de la connexion applicative, la ligne s'écrit DANS sa transaction, par
+ * une fonction `SECURITY DEFINER` propre à la base de test (détenue par le propriétaire, EXECUTE au
+ * seul rôle applicatif, créée par le double, jamais par une migration). Un club semé par la
+ * connexion propriétaire passe par l'écrivain réel. Le rôle applicatif ne reçoit jamais `INSERT`
+ * ni `UPDATE` sur la table, en production comme en test (refus prouvé par `RlsIsolationTest`).
+ * Écartés : partager la connexion DAMA (les deux connexions n'ont pas le même rôle de connexion),
+ * un décor commité (il ne pourrait pas désigner un club semé non commité).
  *
  * @phpstan-require-extends KernelTestCase
  */

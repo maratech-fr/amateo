@@ -6,19 +6,21 @@ namespace App\Service;
 
 use App\Access\DemoRegime;
 use App\Entity\Club;
+use App\Entity\ClubSubscription;
 use App\Entity\Season;
 use App\Entity\SubscriptionPlan;
 use App\Entity\Team;
+use App\Repository\ClubSubscriptionRepository;
 use App\Repository\SubscriptionPlanRepository;
 use Doctrine\ORM\EntityManagerInterface;
 
 /**
- * P1-3 PR A — l'offre EFFECTIVE d'un club, calculée à la LECTURE (pas de cron, pas
- * d'état stocké). Grille des offres : specs/courantes/etat-des-lieux.md §1.11 (décision
- * fermée 2026-11-11 : Essentiel ≤ 20, Club ≤ 34, Grand club illimité). Règles :
- *   - `planId` null → Découverte (le défaut de tout compte) ;
- *   - offre payante/bêta dont `paidSeasonYear` < année-pivot de la saison courante
- *     → retombe sur Découverte (expiration) ;
+ * P1-3 PR A — l'offre EFFECTIVE d'un club pour une saison, calculée à la LECTURE (pas de
+ * cron). Grille des offres : specs/courantes/etat-des-lieux.md §1.11 (décision fermée
+ * 2026-11-11 : Essentiel ≤ 20, Club ≤ 34, Grand club illimité). Règles :
+ *   - l'offre d'une saison ne dépend que de SA ligne d'abonnement ({@see ClubSubscription},
+ *     clé club + année de la saison lue) : aucune ligne, ligne Découverte ou ligne non réglée
+ *     → Découverte ; régler une saison ne couvre aucune autre ;
  *   - club `isDemo` → droits pleins TOUJOURS (exempt de tout gate).
  *
  * Rend le socle de droits (DTO tableau) consommé par /api/me — l'ENFORCEMENT
@@ -36,24 +38,31 @@ final readonly class PlanEntitlements
         private SubscriptionPlanRepository $plans,
         private EntityManagerInterface $entityManager,
         private DemoRegime $demoRegime,
+        private ClubSubscriptionRepository $subscriptions,
     ) {}
 
     /**
-     * La règle PURE de l'offre effective (code seul, sur primitives) — MAISON UNIQUE,
-     * partagée avec `AdminMonitoringService` (badge de la console SA). Découverte si
-     * l'offre stockée est absente ou déjà Découverte ; sinon l'offre stockée SI elle est
-     * réglée pour la saison courante (`paidSeasonYear >= année-pivot`), Découverte sinon
-     * (expiration). Miroir du narratif de `effectivePlan()` juste dessous.
+     * La règle PURE de l'offre effective d'une saison (code seul, sur primitives) — MAISON
+     * UNIQUE, partagée avec `AdminMonitoringService` (badge de la console SA) et la bascule.
+     * Découverte si la saison n'a pas de ligne, si sa ligne est Découverte ou si elle n'est pas
+     * réglée ; sinon l'offre de la ligne.
      */
-    public static function effectivePlanCode(?string $storedCode, ?int $paidSeasonYear, int $pivotYear): string
+    public static function effectivePlanCode(?string $lineCode, bool $paid): string
     {
-        if (null === $storedCode || self::DECOUVERTE_CODE === $storedCode) {
+        if (null === $lineCode || self::DECOUVERTE_CODE === $lineCode || !$paid) {
             return self::DECOUVERTE_CODE;
         }
 
-        // Offre payante/bêta : effective seulement si la saison courante est réglée
-        // (même règle d'année-pivot que SeasonTransitionService). Sinon → Découverte.
-        return ($paidSeasonYear ?? \PHP_INT_MIN) < $pivotYear ? self::DECOUVERTE_CODE : $storedCode;
+        return $lineCode;
+    }
+
+    /**
+     * La saison d'année $seasonYear est-elle réglée d'une offre autre que Découverte ? C'est ce
+     * qu'exige la bascule vers elle : une ligne Découverte, même réglée, ne l'ouvre jamais.
+     */
+    public function isSeasonPaid(string $clubId, int $seasonYear): bool
+    {
+        return self::DECOUVERTE_CODE !== $this->effectiveCodeOf($this->subscriptions->forSeasonYear($clubId, $seasonYear));
     }
 
     /**
@@ -206,22 +215,22 @@ final readonly class PlanEntitlements
 
     private function effectivePlan(Club $club, Season $season, ?SubscriptionPlan $decouverte): ?SubscriptionPlan
     {
-        $planId = $club->getPlanId();
-        if (null === $planId) {
+        $line = $this->subscriptions->forSeasonYear($club->getId(), SeasonResolver::seasonYear($season->getStartDate()));
+        $plan = $line instanceof ClubSubscription ? $this->plans->find($line->getPlanId()) : null;
+        if (!$plan instanceof SubscriptionPlan || self::DECOUVERTE_CODE === $this->effectiveCodeOf($line)) {
             return $decouverte;
         }
 
-        $plan = $this->plans->find($planId);
-        if (!$plan instanceof SubscriptionPlan) {
-            return $decouverte;
+        return $plan;
+    }
+
+    private function effectiveCodeOf(?ClubSubscription $line): string
+    {
+        if (!$line instanceof ClubSubscription) {
+            return self::DECOUVERTE_CODE;
         }
 
-        $pivot = SeasonResolver::seasonYear($season->getStartDate());
-        $effectiveCode = self::effectivePlanCode($plan->getCode(), $club->getPaidSeasonYear(), $pivot);
-
-        // Le code reste stocké (Découverte stockée, ou payant/bêta encore réglé) → l'entité
-        // stockée ; sinon (expiration) le socle Découverte.
-        return $effectiveCode === $plan->getCode() ? $plan : $decouverte;
+        return self::effectivePlanCode($this->plans->find($line->getPlanId())?->getCode(), $line->isPaid());
     }
 
     /** 0 en base = illimité → null côté lecture. */

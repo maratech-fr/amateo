@@ -89,10 +89,8 @@ final class ClubProvisioner
         // 2026-2027 en cours, pas une saison future. Fenêtre alignée sur le pivot
         // (15/07 → 14/07), nom « 2026-2027 » (décision fondateur 2026-07-24 :
         // jamais « 2026 » seul — ambigu sur une saison à cheval).
+        // L'inscription n'écrit aucune ligne d'abonnement : sans ligne, le club est en Découverte.
         $seasonYear = SeasonResolver::seasonYear(new DateTimeImmutable);
-        // P1-5 : la saison de naissance est réputée couverte par l'inscription —
-        // la SUIVANTE exigera le paiement (gate de bascule, SeasonTransitionService).
-        $club->setPaidSeasonYear($seasonYear);
         $season = new Season;
         $season->setClubId($club->getId());
         $season->setName(SeasonResolver::defaultSeasonName(new DateTimeImmutable($seasonYear . '-07-15')));

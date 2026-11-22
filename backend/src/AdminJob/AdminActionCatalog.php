@@ -28,22 +28,15 @@ final readonly class AdminActionCatalog
                 dangerous: false,
             ),
             new AdminActionDefinition(
-                'mark-next-season-paid',
-                'Marquer la saison suivante payée',
-                'Enregistre le paiement de la SAISON SUIVANTE du club (abonnement par saison) : ouvre le gate de bascule. Idempotent — le marqueur ne recule jamais.',
-                'app:clubs:mark-next-season-paid',
-                dangerous: false,
-            ),
-            new AdminActionDefinition(
                 'set-plan',
                 'Offre',
-                'Attribue une offre au club et, pour toute offre payante, marque la saison encaissée — une offre payante retombe sur Découverte tant que la saison n\'est pas réglée. Découverte se pose seule (aucune saison à encaisser).',
+                'Attribue une offre au club pour une saison, en cours ou suivante, et la marque réglée. Découverte se pose seule, sur la saison en cours.',
                 'app:clubs:set-plan',
                 dangerous: false,
                 // Schéma FERMÉ : le plan (enum des codes d'offre, miroir de SetClubPlanCommand)
                 // et la saison encaissée (enum current|next). Règle fondateur portée par le
                 // schéma : `paidSeason` est REQUIS pour toute offre payante (Bêta comprise —
-                // sans marqueur elle naît expirée) et INTERDIT sur Découverte.
+                // une offre payante se règle toujours pour une saison) et INTERDIT sur Découverte.
                 argumentSchema: new AdminActionArgumentSchema([
                     new AdminActionArgument(
                         'plan',

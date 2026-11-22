@@ -227,9 +227,12 @@ final class PlanEntitlementsTest extends WebTestCase
         $other = $this->seedClub(credits: 10);
         $this->subscribeClub($subscribed['club']->getId(), SeasonResolver::seasonYear($subscribed['season']->getStartDate()), 'beta');
 
+        // La ligne se lit sous le locataire du club lu (RLS), comme dans toute requête.
+        $this->scopeGucToClub($subscribed['club']->getId());
         self::assertFalse($entitlements->outputBudget($subscribed['club'], $subscribed['season'])['restricted'], 'témoin : la ligne Bêta du club lève sa bride');
         self::assertNotSame(403, $this->post($subscribed['user'], '/api/schedules/' . self::DUMMY_SCHEDULE_ID . '/generate'), 'témoin : le club réglé n\'est pas refusé business');
 
+        $this->scopeGucToClub($other['club']->getId());
         self::assertTrue($entitlements->outputBudget($other['club'], $other['season'])['restricted'], 'la ligne d\'un AUTRE club, même saison, ne lève pas la bride');
         self::assertSame(403, $this->post($other['user'], '/api/schedules/' . self::DUMMY_SCHEDULE_ID . '/generate'), 'un club sans ligne reste en Découverte, crédits épuisés : refusé');
     }
@@ -552,9 +555,7 @@ final class PlanEntitlementsTest extends WebTestCase
 
         if (null !== $planCode) {
             // Offre attribuée ET saison courante réglée → l'offre effective est bien la payante.
-            $club->setPlanId($this->planByCode($planCode)->getId());
-            $club->setPaidSeasonYear($year);
-            $this->em->flush();
+            $this->subscribeClub($club->getId(), $year, $planCode);
         }
 
         if ($teamCount > 0) {

@@ -56,6 +56,7 @@ final class SeasonTransitionService
         private readonly ClubLeagueWindowSeeder $clubLeagueWindowSeeder,
         private readonly DemoRegime $demoRegime,
         private readonly PersonDirectory $personDirectory,
+        private readonly PlanEntitlements $planEntitlements,
     ) {}
 
     /**
@@ -84,11 +85,10 @@ final class SeasonTransitionService
         }
 
         // P1-5 (décision fondateur 2026-08-04) — l'abonnement se paie PAR SAISON :
-        // la bascule vers N+1 exige que N+1 soit réglée. Le gate est LA BASCULE,
-        // pas la génération — générer sa saison suivante dès mai puis résilier
-        // était la fuite. Marqueur avancé par l'action support « Marquer la
-        // saison suivante payée » (paiement en ligne : P1-3). Fail-closed : un
-        // marqueur absent (club d'avant le backfill) bloque aussi.
+        // la bascule vers N+1 exige la ligne d'abonnement de N+1, réglée, d'une offre
+        // autre que Découverte (une ligne Découverte n'ouvre jamais la bascule). Le gate
+        // est LA BASCULE, pas la génération — générer sa saison suivante dès mai puis
+        // résilier était la fuite. Ligne écrite par le geste « Offre » du support.
         // MÊME année cible que copy() — un club dormant bascule vers l'année de
         // « demain », pas vers source+1 : le gate doit exiger le paiement de la
         // saison qui sera réellement créée.
@@ -101,7 +101,7 @@ final class SeasonTransitionService
         // illimité : la bascule de saison se montre en rendez-vous (souvent sous
         // horloge simulée), jamais bloquée par un paiement qui n'existe pas.
         $isDemo = $club instanceof Club && $this->demoRegime->isUnlimited($club);
-        if (!$club instanceof Club || (!$isDemo && ($club->getPaidSeasonYear() ?? \PHP_INT_MIN) < $targetYear)) {
+        if (!$club instanceof Club || (!$isDemo && !$this->planEntitlements->isSeasonPaid($clubId, $targetYear))) {
             throw new ConflictHttpException(\sprintf('La saison %d-%d n\'est pas réglée — la bascule est réservée aux saisons payées.', $targetYear, $targetYear + 1));
         }
 

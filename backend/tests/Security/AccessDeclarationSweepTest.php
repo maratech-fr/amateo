@@ -36,10 +36,12 @@ use App\Enum\ClubRole;
 use App\Security\PublicApiRouteCatalog;
 use App\Service\ClubInvitationManager;
 use App\Service\PlanEntitlements;
+use App\Service\SeasonResolver;
 use App\Service\TenantConnectionContext;
 use App\Tests\ChoosesPlanVersionTrait;
 use App\Tests\MemberReadOnlyDecorTrait;
 use App\Tests\StartsFreshBrowserSession;
+use App\Tests\Support\SubscribesClub;
 use App\Tests\VerifiesRegistration;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -112,6 +114,7 @@ final class AccessDeclarationSweepTest extends WebTestCase
     use ChoosesPlanVersionTrait;
     use MemberReadOnlyDecorTrait;
     use StartsFreshBrowserSession;
+    use SubscribesClub;
     use VerifiesRegistration;
 
     /** Les cinq routes du cadre sans classe de ressource, nommées par le contrat du lecteur. */
@@ -1127,9 +1130,9 @@ final class AccessDeclarationSweepTest extends WebTestCase
         self::assertInstanceOf(SubscriptionPlan::class, $plan);
         $season = $em->find(Season::class, $this->ids['season']);
         self::assertInstanceOf(Season::class, $season);
-        $club->setPlanId($plan->getId());
-        $club->setPaidSeasonYear((int) $season->getStartDate()->format('Y') + 1);
-        $em->flush();
+        $seasonYear = SeasonResolver::seasonYear($season->getStartDate());
+        $this->subscribeClub($this->clubId, $seasonYear, $plan->getCode());
+        $this->subscribeClub($this->clubId, $seasonYear + 1, $plan->getCode());
 
         $entitlements = self::getContainer()->get(PlanEntitlements::class);
         \assert($entitlements instanceof PlanEntitlements);

@@ -4,10 +4,10 @@ declare(strict_types=1);
 
 namespace App\Command;
 
-use App\Service\SeasonResolver;
+use App\Enum\SubscriptionOrigin;
+use App\Repository\SubscriptionPlanRepository;
+use App\Service\ClubSubscriptionWriter;
 use DateTimeImmutable;
-use Doctrine\DBAL\Connection;
-use Doctrine\Persistence\ManagerRegistry;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
@@ -16,34 +16,31 @@ use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Style\SymfonyStyle;
 
 /**
- * SA4 / P1-3 — attribution superadmin d'une OFFRE à un club (virement encaissé →
- * offre posée). Cible un plan par son CODE stable (`decouverte`, `essentiel`,
- * `club`, `grand-club`, `beta`) : l'UI console liste dynamiquement
- * une entrée figée PAR offre (AdminActionCatalog).
+ * SA4 / P1-3 — le geste « Offre » du support : écrit la ligne d'abonnement de UNE saison du club
+ * (offre par son CODE stable, `decouverte`, `essentiel`, `club`, `grand-club`, `beta`), par le seul
+ * écrivain ({@see ClubSubscriptionWriter}, connexion propriétaire). Aucune autre saison ne bouge.
  *
- * Une offre payante n'ouvre le droit qu'avec une saison réglée : `--paid-season`
- * (`current`|`next`) pose l'offre ET marque la saison encaissée dans la MÊME
- * transaction — sans elle, l'offre retombe sur Découverte à la lecture (invariant
- * PlanEntitlements). `--paid-season` est INTERDIT avec `decouverte` (rien à encaisser).
- * Sans l'option, comportement historique : l'offre seule (voie CLI directe, ex.
- * repasser un club en Découverte).
+ * Une offre payante (Bêta comprise) exige `--paid-season` (`current`|`next`) et se règle à l'instant
+ * pour cette saison. Découverte refuse `--paid-season` : elle s'écrit sur la saison en cours, non
+ * réglée. Un refus n'écrit rien.
  *
- * Horloge démo (D6, décision fondateur) : le pivot d'encaissement lit `simulated_today`
- * du club cible quand il est de DÉMONSTRATION (même patron que MarkNextSeasonPaidCommand),
- * jamais l'horloge réelle — sinon la démo de bascule ment.
- *
- * Connexion PAR DÉFAUT (même patron que MarkNextSeasonPaidCommand) : `club` n'a pas de
- * colonne club_id, donc pas de policy RLS — l'UPDATE ciblé par id passe, et le rail
- * SA4 gate déjà l'accès.
+ * Les deux années sont celles que lisent l'écran et la bascule (règle de l'écrivain) : « en cours »
+ * = l'année de la saison courante du club, ou l'année d'horloge s'il n'a pas de saison ; « suivante »
+ * = l'année que la bascule créera. L'horloge est celle du club : un club de démonstration épinglé
+ * (`simulated_today`) pivote sur cette date, jamais sur le temps réel (D6).
  */
 #[AsCommand(
     name: 'app:clubs:set-plan',
-    description: 'Assign a subscription offer (by code) to a club. Support action.',
+    description: 'Assign a subscription offer (by code) to a club for one season. Support action.',
 )]
 final class SetClubPlanCommand extends Command
 {
-    public function __construct(private readonly ManagerRegistry $managerRegistry)
-    {
+    private const string DECOUVERTE_CODE = 'decouverte';
+
+    public function __construct(
+        private readonly ClubSubscriptionWriter $subscriptionWriter,
+        private readonly SubscriptionPlanRepository $plans,
+    ) {
         parent::__construct();
     }
 
@@ -51,7 +48,7 @@ final class SetClubPlanCommand extends Command
     {
         $this->addOption('club', null, InputOption::VALUE_REQUIRED, 'Target club id (required).');
         $this->addOption('plan', null, InputOption::VALUE_REQUIRED, 'Offer code (decouverte|essentiel|club|grand-club|beta).');
-        $this->addOption('paid-season', null, InputOption::VALUE_REQUIRED, 'Mark a season as paid alongside the offer (current|next). Forbidden with decouverte.');
+        $this->addOption('paid-season', null, InputOption::VALUE_REQUIRED, 'Season the offer is paid for (current|next). Required for a paid offer, forbidden with decouverte.');
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
@@ -76,75 +73,37 @@ final class SetClubPlanCommand extends Command
 
             return Command::FAILURE;
         }
-        if (null !== $paidSeason && 'decouverte' === $planCode) {
+        if (null !== $paidSeason && self::DECOUVERTE_CODE === $planCode) {
             $io->error('--paid-season is not allowed with the free "decouverte" offer (nothing to collect).');
 
             return Command::FAILURE;
         }
-
-        $connection = $this->connection();
-        $planId = $connection->fetchOne(
-            'SELECT id FROM subscription_plan WHERE code = :code',
-            ['code' => $planCode],
-        );
-        if (false === $planId) {
+        if (null === $this->plans->findOneBy(['code' => $planCode])) {
             $io->error(\sprintf('Unknown offer code "%s".', $planCode));
 
             return Command::FAILURE;
         }
+        if (null === $paidSeason && self::DECOUVERTE_CODE !== $planCode) {
+            $io->error(\sprintf('--paid-season is required with the paid offer "%s" (current|next).', $planCode));
 
-        // Sans encaissement : l'offre seule (voie CLI directe historique).
-        if (null === $paidSeason) {
-            $updated = $connection->executeStatement(
-                'UPDATE club SET plan_id = :planId WHERE id = :id',
-                ['planId' => $planId, 'id' => $clubId],
-            );
-            if (0 === $updated) {
-                $io->error(\sprintf('Club %s not found.', $clubId));
-
-                return Command::FAILURE;
-            }
-
-            $io->success(\sprintf('Offer "%s" assigned to club %s.', $planCode, $clubId));
-
-            return Command::SUCCESS;
+            return Command::FAILURE;
         }
 
-        // Encaissement : offre + saison réglée dans la MÊME transaction. Le pivot lit
-        // simulated_today du club démo (D6), sinon l'horloge réelle. Une valeur non-NULL
-        // n'existe QUE pour un club is_demo (ClubClockCommand ne l'écrit que là).
-        // transactional() relaie le code de retour de la closure (int) — offre + marqueur
-        // dans la MÊME transaction : un échec de l'un annule l'autre.
-        return $connection->transactional(function (Connection $tx) use ($io, $clubId, $planId, $planCode, $paidSeason): int {
-            $pin = $tx->fetchOne(
-                'SELECT CASE WHEN is_demo AND simulated_today IS NOT NULL THEN simulated_today END FROM club WHERE id = :id',
-                ['id' => $clubId],
-            );
-            if (false === $pin) {
-                $io->error(\sprintf('Club %s not found.', $clubId));
+        $today = $this->subscriptionWriter->today($clubId);
+        if (!$today instanceof DateTimeImmutable) {
+            $io->error(\sprintf('Club %s not found.', $clubId));
 
-                return Command::FAILURE;
-            }
-            $pivot = null === $pin ? new DateTimeImmutable : new DateTimeImmutable((string) $pin);
-            $year = SeasonResolver::seasonYear($pivot) + ('next' === $paidSeason ? 1 : 0);
+            return Command::FAILURE;
+        }
+        $years = $this->subscriptionWriter->seasonYears($clubId, $today);
+        $year = 'next' === $paidSeason ? $years['next'] : $years['current'];
 
-            // GREATEST : le marqueur d'encaissement ne recule jamais (monotone, idempotent).
-            $tx->executeStatement(
-                'UPDATE club SET plan_id = :planId, paid_season_year = GREATEST(COALESCE(paid_season_year, 0), :year) WHERE id = :id',
-                ['planId' => $planId, 'year' => $year, 'id' => $clubId],
-            );
+        $this->subscriptionWriter->record($clubId, $year, $planCode, SubscriptionOrigin::SUPPORT);
 
-            $io->success(\sprintf('Offer "%s" assigned to club %s — season %d-%d marked as paid.', $planCode, $clubId, $year, $year + 1));
+        $io->success(null === $paidSeason
+            ? \sprintf('Offer "%s" assigned to club %s for season %d-%d.', $planCode, $clubId, $year, $year + 1)
+            : \sprintf('Offer "%s" assigned to club %s — season %d-%d marked as paid.', $planCode, $clubId, $year, $year + 1));
 
-            return Command::SUCCESS;
-        });
-    }
-
-    private function connection(): Connection
-    {
-        $connection = $this->managerRegistry->getConnection();
-        \assert($connection instanceof Connection);
-
-        return $connection;
+        return Command::SUCCESS;
     }
 }

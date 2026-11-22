@@ -11,7 +11,6 @@ use App\Entity\Reservation;
 use App\Entity\Season;
 use App\Entity\SharedTrainingBlock;
 use App\Entity\SharedTrainingBlockTeam;
-use App\Entity\SubscriptionPlan;
 use App\Entity\Team;
 use App\Entity\User;
 use App\Entity\Venue;
@@ -20,6 +19,7 @@ use App\Service\ParcImport\ParcImportGate;
 use App\Service\SeasonResolver;
 use App\Tests\ChoosesPlanVersionTrait;
 use App\Tests\Integration\Service\FfbbExcelImporterTest;
+use App\Tests\Support\SubscribesClub;
 use App\Tests\TenantGucTrait;
 use App\Tests\Unit\ParcImport\ParcPayloadValidatorTest;
 use App\Tests\Unit\ParcImport\TeamLabelMatcherTest;
@@ -68,6 +68,7 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 final class ParcImportAnalyzeTest extends WebTestCase
 {
     use ChoosesPlanVersionTrait;
+    use SubscribesClub;
     use TenantGucTrait;
 
     private const string FIXTURES = __DIR__ . '/../../Fixtures/parc/';
@@ -1230,10 +1231,7 @@ final class ParcImportAnalyzeTest extends WebTestCase
     /** Pose l'offre Club, réglée pour la saison du test (offre effective = Club). */
     private function giveClubOffer(): void
     {
-        $plan = $this->em->getRepository(SubscriptionPlan::class)->findOneBy(['code' => 'club']);
-        self::assertInstanceOf(SubscriptionPlan::class, $plan);
-        $this->club->setPlanId($plan->getId())->setPaidSeasonYear(SeasonResolver::seasonYear($this->season->getStartDate()));
-        $this->em->flush();
+        $this->subscribeClub($this->club->getId(), SeasonResolver::seasonYear($this->season->getStartDate()), 'club');
     }
 
     private function makeVenue(string $name): Venue

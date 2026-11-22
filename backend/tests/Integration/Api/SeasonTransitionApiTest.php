@@ -11,6 +11,7 @@ use App\Entity\Season;
 use App\Entity\User;
 use App\Enum\SeasonStatus;
 use App\Service\SeasonResolver;
+use App\Tests\Support\SubscribesClub;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -30,6 +31,7 @@ use Symfony\Component\Console\Tester\CommandTester;
 #[Group('integration')]
 final class SeasonTransitionApiTest extends WebTestCase
 {
+    use SubscribesClub;
     use TenantGucTrait;
 
     private KernelBrowser $client;
@@ -71,10 +73,10 @@ final class SeasonTransitionApiTest extends WebTestCase
         [$user, $club, $season] = $this->createClubUserSeason('admin');
         $auth = $this->authHeaders($user);
 
-        // Club en règle pour SA saison seulement (l'état d'une inscription) :
-        // la suivante n'est pas payée → 409 qui NOMME la saison due.
-        $club->setPaidSeasonYear(SeasonResolver::seasonYear($season->getStartDate()));
-        $this->em->flush();
+        // Club en règle pour SA saison seulement : la suivante n'est pas payée → 409 qui NOMME
+        // la saison due.
+        $this->em->getConnection()->executeStatement('DELETE FROM club_subscription WHERE club_id = ?', [$club->getId()]);
+        $this->subscribeClub($club->getId(), SeasonResolver::seasonYear($season->getStartDate()), 'essentiel');
 
         $this->client->request('POST', '/api/seasons/' . $season->getId() . '/transition', [], [], $auth);
         self::assertResponseStatusCodeSame(409);
@@ -203,10 +205,6 @@ final class SeasonTransitionApiTest extends WebTestCase
         $club->setLocale('fr');
         $club->setOnboardingCompleted(true);
         $club->setFfbbClubCode('TRB' . strtoupper(substr(md5($uid), 0, 10)));
-        // P1-5 : en règle très loin par défaut — le gate de paiement a ses
-        // propres tests (testTransitionIsGatedOnThePaidSeason), les autres
-        // couvrent auth/copie/redatage.
-        $club->setPaidSeasonYear(9999);
         $this->em->persist($club);
 
         $user = new User;
@@ -216,6 +214,10 @@ final class SeasonTransitionApiTest extends WebTestCase
         $user->setPasswordHash($hasher->hashPassword($user, 'pass'));
         $this->em->persist($user);
         $this->em->flush();
+        // P1-5 : la saison que la bascule crée est réglée par défaut — le gate de paiement a ses
+        // propres tests (testTransitionIsGatedOnThePaidSeason), les autres couvrent
+        // auth/copie/redatage.
+        $this->subscribeClub($club->getId(), SeasonResolver::seasonYear(new DateTimeImmutable('today')) + 1, 'beta');
 
         $this->scopeGucToClub($club->getId());
 
