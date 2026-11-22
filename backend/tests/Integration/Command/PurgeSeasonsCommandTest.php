@@ -156,7 +156,7 @@ final class PurgeSeasonsCommandTest extends KernelTestCase
         $leaving = $this->newCoach($club->getId(), $old->getId(), 'Ancien', 'Seulement');
         $staying = $this->newCoach($club->getId(), $old->getId(), 'Toujours', 'Là');
         $this->em->flush();
-        $stayingNow = (new Coach($this->personOf($staying)))->setClubId($club->getId())->setSeasonId($current->getId());
+        $stayingNow = new Coach($this->personOf($staying))->setClubId($club->getId())->setSeasonId($current->getId());
         $this->em->persist($stayingNow);
         $this->em->flush();
         [$leavingPerson, $stayingPerson, $stayingNowId] = [$leaving->getPersonId(), $staying->getPersonId(), $stayingNow->getId()];

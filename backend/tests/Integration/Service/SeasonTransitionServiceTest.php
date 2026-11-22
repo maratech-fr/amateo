@@ -399,7 +399,7 @@ final class SeasonTransitionServiceTest extends KernelTestCase
         $target = $this->service->transition($season, $this->inPreparationWindow());
 
         $copiedAnna = $this->copiedCoach($target, $refs['anna']);
-        self::assertTrue($copiedAnna->isVehicled(),'la case véhiculé du coach survit au passage de saison (P4-311)');
+        self::assertTrue($copiedAnna->isVehicled(), 'la case véhiculé du coach survit au passage de saison (P4-311)');
     }
 
     public function testCanPrepareNextSeasonInJuneFromASettledCurrentSeason(): void

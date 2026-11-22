@@ -23,7 +23,7 @@ trait CreatesPeopleAndPlacesTrait
     private function newCoach(string $clubId, string $seasonId, string $firstName = 'Test', string $lastName = 'Coach'): Coach
     {
         $person = (new Person)->setClubId($clubId)->setFirstName($firstName)->setLastName($lastName);
-        $coach = (new Coach($person))->setClubId($clubId)->setSeasonId($seasonId);
+        $coach = new Coach($person)->setClubId($clubId)->setSeasonId($seasonId);
 
         if (static::$booted) {
             $em = static::getContainer()->get(EntityManagerInterface::class);
