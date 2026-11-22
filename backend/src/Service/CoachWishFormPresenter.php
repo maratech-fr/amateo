@@ -11,6 +11,7 @@ use App\Entity\CoachWishCampaign;
 use App\Entity\CoachWishMutualization;
 use App\Entity\Team;
 use App\Entity\TeamLink;
+use App\Structure\PersonDirectory;
 use Doctrine\ORM\EntityManagerInterface;
 
 /**
@@ -32,6 +33,7 @@ final class CoachWishFormPresenter
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
         private readonly CoachWishPerimeter $perimeter,
+        private readonly PersonDirectory $personDirectory,
     ) {}
 
     /**
@@ -138,7 +140,7 @@ final class CoachWishFormPresenter
         }
 
         return [
-            'coachFirstName' => $coach->getFirstName(),
+            'coachFirstName' => $this->personDirectory->of($coach)->firstName,
             'periodTitle' => $entry?->getTitle() ?? '',
             'periodStart' => $entry?->getStartDate()->format('Y-m-d'),
             'periodEnd' => $entry?->getEndDate()->format('Y-m-d'),

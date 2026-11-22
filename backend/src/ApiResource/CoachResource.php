@@ -20,6 +20,7 @@ use App\Dto\CoachInput;
 use App\Entity\Coach;
 use App\State\Processor\CoachStateProcessor;
 use App\State\Provider\CoachStateProvider;
+use App\Structure\PersonIdentity;
 use DateTimeImmutable;
 use Symfony\Component\Serializer\Attribute\Groups;
 
@@ -76,22 +77,23 @@ class CoachResource
     #[Groups(['read'])]
     public string $gender = 'UNSPECIFIED';
 
-    public static function fromEntity(Coach $entity): self
+    /** L'identité vient de `PersonDirectory`, jamais de la ligne du coach. */
+    public static function fromEntity(Coach $entity, PersonIdentity $person): self
     {
         $dto = new self;
         $dto->id = $entity->getId();
         $dto->version = $entity->getVersion();
         $dto->createdAt = $entity->getCreatedAt();
         $dto->updatedAt = $entity->getUpdatedAt();
-        $dto->firstName = $entity->getFirstName();
-        $dto->lastName = $entity->getLastName();
-        $dto->email = $entity->getEmail();
-        $dto->phone = $entity->getPhone();
+        $dto->firstName = $person->firstName;
+        $dto->lastName = $person->lastName;
+        $dto->email = $person->email;
+        $dto->phone = $person->phone;
         $dto->maxDaysOverride = $entity->getMaxDaysOverride();
         $dto->isActive = $entity->getIsActive();
         $dto->isEmployee = $entity->isEmployee();
         $dto->isVehicled = $entity->isVehicled();
-        $dto->gender = $entity->getGender()->value;
+        $dto->gender = $person->gender->value;
 
         return $dto;
     }

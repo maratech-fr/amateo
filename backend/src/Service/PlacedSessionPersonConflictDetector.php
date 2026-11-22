@@ -18,6 +18,7 @@ use App\Entity\Venue;
 use App\Entity\VenueTravelTime;
 use App\Enum\TeamCoachRole;
 use App\Repository\ConstraintRepository;
+use App\Structure\PersonDirectory;
 use Doctrine\ORM\EntityManagerInterface;
 
 /**
@@ -68,6 +69,7 @@ final class PlacedSessionPersonConflictDetector
         private readonly ConstraintRepository $constraintRepository,
         private readonly PeriodConstraintSelector $periodConstraintSelector,
         private readonly CoachDoubleBookingDetector $coachDoubleBookingDetector,
+        private readonly PersonDirectory $personDirectory,
     ) {}
 
     /**
@@ -410,7 +412,7 @@ final class PlacedSessionPersonConflictDetector
         $names = [];
         $vehicled = [];
         foreach ($this->entityManager->getRepository(Coach::class)->findBy($scope) as $coach) {
-            $names[$coach->getId()] = trim($coach->getFirstName() . ' ' . $coach->getLastName());
+            $names[$coach->getId()] = $this->personDirectory->of($coach)->fullName();
             $vehicled[$coach->getId()] = $coach->isVehicled();
         }
 
@@ -567,7 +569,7 @@ final class PlacedSessionPersonConflictDetector
 
         $coach = [];
         foreach ([] === $personIds ? [] : $this->entityManager->getRepository(Coach::class)->findBy(['id' => $personIds]) as $entity) {
-            $coach[$entity->getId()] = trim($entity->getFirstName() . ' ' . $entity->getLastName());
+            $coach[$entity->getId()] = $this->personDirectory->of($entity)->fullName();
         }
         $team = [];
         foreach ([] === $teamIds ? [] : $this->entityManager->getRepository(Team::class)->findBy(['id' => $teamIds]) as $entity) {

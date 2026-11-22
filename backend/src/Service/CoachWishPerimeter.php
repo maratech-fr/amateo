@@ -10,6 +10,7 @@ use App\Entity\CoachWishCampaign;
 use App\Entity\CoachWishToken;
 use App\Entity\TeamCoach;
 use App\Enum\TeamCoachRole;
+use App\Structure\PersonDirectory;
 use Doctrine\ORM\EntityManagerInterface;
 
 /**
@@ -28,6 +29,7 @@ final class CoachWishPerimeter
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
         private readonly ClubDay $clubDay,
+        private readonly PersonDirectory $personDirectory,
     ) {}
 
     /**
@@ -118,10 +120,11 @@ final class CoachWishPerimeter
             foreach ($links as $link) {
                 $coach = $coachById[$link->getCoachId()] ?? null;
                 if ($role === $link->getRole() && $coach instanceof Coach) {
+                    $person = $this->personDirectory->of($coach);
                     $staff[$link->getTeamId()][] = [
                         'coachId' => $coach->getId(),
-                        'firstName' => $coach->getFirstName(),
-                        'lastName' => $coach->getLastName(),
+                        'firstName' => $person->firstName,
+                        'lastName' => $person->lastName,
                         'role' => TeamCoachRole::MAIN === $role ? 'MAIN' : 'ASSISTANT',
                     ];
                 }

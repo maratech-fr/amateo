@@ -11,6 +11,7 @@ use App\Entity\ClubMailboxMessage;
 use App\Mail\ClubBusinessMail;
 use App\Repository\ClubMailboxMessageRepository;
 use App\Service\ClubDay;
+use App\Structure\PersonDirectory;
 use DateTimeImmutable;
 use Doctrine\DBAL\Connection;
 use Doctrine\ORM\EntityManagerInterface;
@@ -68,6 +69,7 @@ final readonly class ClockedClubMailInterceptor implements EventSubscriberInterf
         private ClubDay $clubDay,
         private ClubMailboxMessageRepository $mailbox,
         private LoggerInterface $logger,
+        private PersonDirectory $personDirectory,
     ) {}
 
     /**
@@ -157,7 +159,7 @@ final readonly class ClockedClubMailInterceptor implements EventSubscriberInterf
     /**
      * Les e-mails NORMALISÉS autorisés à capter pour ce club : membres ACTIFS + coachs du club.
      * Lu sous le GUC déjà posé (RLS borne `club_user`/`coach` au club), filtre club_id explicite
-     * en ceinture. `app_user` est global (pas de RLS).
+     * en ceinture ; les adresses des coachs viennent de {@see PersonDirectory::emailsOfClub}. `app_user` est global (pas de RLS).
      *
      * @return array<string, true>
      */
@@ -168,11 +170,7 @@ final readonly class ClockedClubMailInterceptor implements EventSubscriberInterf
             'SELECT u.email FROM app_user u JOIN club_user cu ON cu.user_id = u.id WHERE cu.club_id = ? AND cu.is_active = true',
             [$clubId],
         );
-        /** @var list<mixed> $coaches */
-        $coaches = $this->connection->fetchFirstColumn(
-            'SELECT email FROM coach WHERE club_id = ? AND email IS NOT NULL',
-            [$clubId],
-        );
+        $coaches = $this->personDirectory->emailsOfClub($clubId);
 
         $set = [];
         foreach ([...$members, ...$coaches] as $email) {

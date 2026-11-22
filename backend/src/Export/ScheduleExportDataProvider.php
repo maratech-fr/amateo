@@ -20,6 +20,7 @@ use App\Enum\TeamCoachRole;
 use App\Service\PlanVenueClosures;
 use App\Service\SchedulePlanProvisioner;
 use App\Service\VenueWindowOccupancy;
+use App\Structure\PersonDirectory;
 use App\Support\CoachShortName;
 use Doctrine\ORM\EntityManagerInterface;
 
@@ -34,6 +35,7 @@ final class ScheduleExportDataProvider
         private readonly EntityManagerInterface $entityManager,
         private readonly SchedulePlanProvisioner $schedulePlanProvisioner,
         private readonly PlanVenueClosures $planVenueClosures,
+        private readonly PersonDirectory $personDirectory,
     ) {}
 
     public function load(Schedule $schedule, ?string $venueId = null, bool $showOccupancies = false): ScheduleExportData
@@ -91,11 +93,12 @@ final class ScheduleExportDataProvider
         // depuis LES MÊMES coachs tenant-scopés. Un coach sans nom n'entre pas dans la map courte
         // (CoachShortName rend null) → sa ligne est omise à l'export (« pas de coach → rien »).
         $coachShortNames = [];
-        foreach ($this->entityManager->getRepository(Coach::class)->findBy(['clubId' => $clubId, 'seasonId' => $seasonId]) as $coach) {
-            $coachNames[$coach->getId()] = trim(\sprintf('%s %s', $coach->getFirstName(), $coach->getLastName()));
-            $shortName = CoachShortName::from($coach->getFirstName(), $coach->getLastName());
+        $people = $this->personDirectory->forCoaches($this->entityManager->getRepository(Coach::class)->findBy(['clubId' => $clubId, 'seasonId' => $seasonId]));
+        foreach ($people as $coachId => $person) {
+            $coachNames[$coachId] = $person->fullName();
+            $shortName = CoachShortName::from($person->firstName, $person->lastName);
             if (null !== $shortName) {
-                $coachShortNames[$coach->getId()] = $shortName;
+                $coachShortNames[$coachId] = $shortName;
             }
         }
 

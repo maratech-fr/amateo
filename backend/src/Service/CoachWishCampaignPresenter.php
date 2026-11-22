@@ -9,6 +9,7 @@ use App\Entity\Coach;
 use App\Entity\CoachWish;
 use App\Entity\CoachWishCampaign;
 use App\Entity\CoachWishToken;
+use App\Structure\PersonDirectory;
 use DateTimeInterface;
 use Doctrine\ORM\EntityManagerInterface;
 
@@ -25,6 +26,7 @@ final class CoachWishCampaignPresenter
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
         private readonly CoachWishPerimeter $perimeter,
+        private readonly PersonDirectory $personDirectory,
     ) {}
 
     /**
@@ -76,11 +78,12 @@ final class CoachWishCampaignPresenter
             if (null !== $respondedAt) {
                 ++$responded;
             }
+            $person = $this->personDirectory->of($coach);
             $row = [
                 'coachId' => $coachId,
-                'firstName' => $coach->getFirstName(),
-                'lastName' => $coach->getLastName(),
-                'email' => $coach->getEmail(),
+                'firstName' => $person->firstName,
+                'lastName' => $person->lastName,
+                'email' => $person->email,
                 'respondedAt' => $respondedAt?->format(DateTimeInterface::ATOM),
                 'sentAt' => $token->getSentAt()?->format(DateTimeInterface::ATOM),
                 'teamIds' => $token->getTeamIds(),
@@ -124,7 +127,8 @@ final class CoachWishCampaignPresenter
             foreach ($entry['candidateCoachIds'] as $coachId) {
                 $coach = $coachById[$coachId] ?? null;
                 if ($coach instanceof Coach) {
-                    $candidates[] = ['coachId' => $coachId, 'firstName' => $coach->getFirstName(), 'lastName' => $coach->getLastName()];
+                    $person = $this->personDirectory->of($coach);
+                    $candidates[] = ['coachId' => $coachId, 'firstName' => $person->firstName, 'lastName' => $person->lastName];
                 }
             }
             $teams[] = ['teamId' => (string) $teamId, 'recipientCoachId' => $entry['recipientCoachId'], 'candidates' => $candidates];

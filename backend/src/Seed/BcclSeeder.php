@@ -68,6 +68,7 @@ use App\Service\SchoolZoneResolver;
 use App\Service\SeasonResolver;
 use App\Storage\LogoStorage;
 use App\Storage\LogoUrl;
+use App\Structure\PersonDirectory;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
 use finfo;
@@ -107,6 +108,7 @@ final class BcclSeeder
         private readonly SchoolHolidayPeriodRepository $schoolHolidayRepository,
         private readonly OverlayManager $overlayManager,
         private readonly ClubLeagueWindowSeeder $clubLeagueWindowSeeder,
+        private readonly PersonDirectory $personDirectory,
     ) {}
 
     public function run(EntityManagerInterface $manager, BcclSeedProfile $profile): Club
@@ -784,7 +786,7 @@ final class BcclSeeder
                 if (isset($claimedCoachIds[$candidate->getId()])) {
                     continue;
                 }
-                if (!$existing instanceof Coach || $candidate->getLastName() === $writtenLastName) {
+                if (!$existing instanceof Coach || $this->personDirectory->of($candidate)->lastName === $writtenLastName) {
                     $existing = $candidate;
                 }
             }
@@ -1094,14 +1096,14 @@ final class BcclSeeder
         // wizard, à purger pour qu'un reseed en append ne garde pas la ligne d'avant.
         $staleNames[] = 'U18F2 · préfère ' . $venues['vArmand']->getName();
         foreach ([$coach10, $coach06, $coach05, $coach21] as $coach) {
-            $staleNames[] = \sprintf('%s - Indisponible le vendredi', $coach->getFirstName());
+            $staleNames[] = \sprintf('%s - Indisponible le vendredi', $this->personDirectory->of($coach)->firstName);
         }
         foreach ([$coach03, $coach11] as $coach) {
-            $staleNames[] = \sprintf('%s - Indisponible le jeudi', $coach->getFirstName());
+            $staleNames[] = \sprintf('%s - Indisponible le jeudi', $this->personDirectory->of($coach)->firstName);
         }
         // Ancienne indispo coach du jeudi retirée de la base (Coach 04) — nom dérivé
         // de l'entité pour suivre l'anonymisation du profil démo.
-        $staleNames[] = \sprintf('%s - Indisponible le jeudi', $coach04->getFirstName());
+        $staleNames[] = \sprintf('%s - Indisponible le jeudi', $this->personDirectory->of($coach04)->firstName);
         // « <équipe> - Pas d'entraînement le mercredi » : la base réelle n'en a aucune
         // (le CEC du mercredi a disparu, les jeunes s'entraînent ce jour-là).
         foreach (['U11F1', 'U11F2', 'U11M2', 'U9M1', 'U9M2', 'U9F1', 'U9F2'] as $teamName) {
@@ -3113,7 +3115,7 @@ final class BcclSeeder
     {
         return \sprintf(
             '%s · indispo %s',
-            trim($coach->getFirstName() . ' ' . $coach->getLastName()),
+            $this->personDirectory->of($coach)->fullName(),
             implode(', ', array_map($this->dayLong(...), $days)),
         );
     }
