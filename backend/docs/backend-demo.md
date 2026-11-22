@@ -319,7 +319,7 @@ e-mail est rangé dans sa « boîte » plutôt que parti.
   quoi un membre connecté d'un club à horloge pouvait capter dans la boîte le lien de reset d'un
   utilisateur d'un AUTRE club (`POST /api/password/forgot` est public mais le GUC est posé dès
   qu'un JWT est présent). Deuxième garde : **tous** les destinataires (To/Cc/Cci) doivent
-  appartenir au club du GUC (membre actif `club_user`→`app_user.email`, ou `coach.email` — les
+  appartenir au club du GUC (membre actif `club_user`→`app_user.email`, ou l'adresse d'un coach lue par `PersonDirectory::emailsOfClub` — les
   campagnes de vœux partent vers des coachs non-utilisateurs), comparaison normalisée ; un
   destinataire hors club ⇒ envoi réel + warning sans contenu. Le club courant vient du GUC
   `app.club_id` lu en SQL brut (`current_setting`), jamais d'un header ; hors contexte club le GUC
