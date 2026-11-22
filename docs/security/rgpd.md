@@ -19,7 +19,7 @@
 |------------|---------|-------------|-------|-------------------|-----------|
 | Compte gestionnaire | User : email, prénom/nom, hash | contrat | activité + 24 mois (préavis à 23) — **comptes `is_demo` hors rétention** (P4-304 : une horloge simulée souvent passée les ferait paraître inactifs dès leur création) | `app:users:purge-inactive` (cron horaire) — anonymisation | `InactiveUsersRetentionTest` |
 | Compte jamais vérifié | User non vérifié + token | contrat (précontractuel) | 7 jours | `app:users:purge-unverified` (cron) | — |
-| Données du club | Fiche de personne `person` (prénom, nom, email/tél, **genre** — donnée ordinaire, PAS une catégorie particulière art. 9) et son rôle coach de saison (`coach`), équipes, plannings, contraintes | contrat (via le club) | saison courante + N-1 ; une fiche dont le dernier rôle a disparu reste au club jusqu'au prochain balayage (remise à zéro ou purge de rétention) | `app:seasons:purge` (cron, grâce 30 j post-bascule) puis `UnusedIdentitySweeper` ; suppression manuelle par le club (cascade, auditée) | `AccountErasureTest` (d), `PurgeCompletenessTest` |
+| Données du club | Fiche de personne `person` (prénom, nom, email/tél, **genre** — donnée ordinaire, PAS une catégorie particulière art. 9) et son rôle coach de saison (`coach`), lieu d'un gymnase (`place`, adresse et position — donnée d'établissement), équipes, plannings, contraintes | contrat (via le club) | saison courante + N-1 ; une fiche dont le dernier rôle a disparu, un lieu dont le dernier gymnase a disparu, restent au club jusqu'au prochain balayage (remise à zéro ou purge de rétention) | `app:seasons:purge` (cron, grâce 30 j post-bascule) puis `UnusedIdentitySweeper` ; suppression manuelle par le club (cascade, auditée) | `AccountErasureTest` (d), `PurgeCompletenessTest` |
 | Effacement de compte | anonymisation immédiate + purge du club resté sans gestionnaire | obligation légale (art. 17) | grâce 30 j (annulable, revalidée) | `DELETE /api/me` → `app:clubs:purge-erased` — **l'identité publique FFBB du club survit** | `AccountErasureTest` |
 | Compte sans club (P4-301) | `User.orphanNoticeSentAt` — un compte ORPHELIN (zéro adhésion active/pending, zéro demande de création de club encore vivante — prédicat unique `OrphanAccountNotifier::isOrphan`) | obligation légale (art. 17 — « garder un utilisateur relié à aucun club n'a aucun intérêt », décision fondateur 2026-10-04) | préavis par email puis grâce 30 j (annulable par toute réactivation d'accès, jamais par une simple connexion) ; comptes démo exclus | déclencheurs immédiats (désactivation/refus d'adhésion/refus de création/purge de club) best-effort via `OrphanAccountNotifier` + cron quotidien `app:users:purge-orphaned` (couvre aussi le stock au déploiement : mail PUIS 30 j, jamais supprimé sans mail) → anonymisation par `AccountErasureService` (même routine que `DELETE /api/me`) | `OrphanAccountLifecycleTest` |
 | Portabilité | export JSON compte / workspace club — **périmètre DÉRIVÉ** des entités `TenantOwnedInterface`, plus recopié (D-01) | obligation légale (art. 20) | à la demande (10/h par user) | `GET /api/me/export`, `GET /api/club/export` (management) | `RgpdExportTest` + **`RgpdExportCompletenessTest`** |
@@ -144,6 +144,26 @@ Le nom, le mail, le téléphone et le genre d'un coach vivent sur `person`, une 
     mails déjà partis et les sauvegardes jusqu'à leur rotation (§4).
   - Preuve : `Security/PersonErasureLeavesNoTraceTest` (bloquant) et la feature
     `effacer-une-personne-efface-tout.feature` (suite Behat `effacement-personne`).
+
+### Le lieu d'un gymnase (`place`)
+
+L'adresse et la position d'un gymnase vivent sur `place`, une fois, au club (ADR-0006) ; la ligne `venue` n'est
+que l'usage du lieu dans une saison. C'est une donnée d'établissement, pas une donnée de personne ; elle suit
+pourtant la même vie que la fiche :
+
+- **Conservation** : supprimer un gymnase garde son lieu (« Charger » une version d'avant le ramène dessus,
+  adresse comprise). `UnusedIdentitySweeper::sweep($clubId)` supprime aussi les lieux sans aucun `venue`, aux
+  trois mêmes appelants que les fiches (`ResetSeasonController`, `ResetClubSeasonCommand`, `PurgeSeasonsCommand`) ;
+  sa lecture SQL porte le club en clause explicite. Un lieu balayé ne se retrouve pas : « Charger » une version qui
+  le désigne encore recrée le gymnase sur un lieu neuf sans adresse (`StructureRestorer`).
+- **Effacement du club** : `Place` est de niveau club (`FamilyCatalog::purgedWithClub()`), `ErasedClubPurger` le
+  compte comme toute ligne effacée ; le gymnase d'une saison disparue part avant son lieu (clé `RESTRICT`),
+  par la même purge des lignes de saison orphelines que pour les coachs. Gardé par
+  `PurgeCompletenessTest` (lieu sans gymnase compris).
+- **Export** : `place` sort dans l'export des données du club (dérivée de `TenantOwnedInterface`, jamais exclue) —
+  gardé par `RgpdExportCompletenessTest::testThePlaceIsExported`.
+- **Correction partagée** : corriger l'adresse dans une saison la corrige pour toutes les saisons qui désignent le
+  lieu, une saison passée archivée comprise (limite écrite, `docs/architecture/adr-0006-person-role-place-at-club.md`).
 
 ## 3. Mécanismes clés (pointeurs code)
 
