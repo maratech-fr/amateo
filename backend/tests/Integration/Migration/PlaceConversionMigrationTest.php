@@ -130,6 +130,42 @@ final class PlaceConversionMigrationTest extends KernelTestCase
         });
     }
 
+    /**
+     * Ambiguïté 1 du plan : la ligne de photo d'un gymnase qui n'existe plus (supprimé depuis) reçoit un
+     * lieu créé depuis l'adresse et la position que la photo portait, dans le club de la photo, sous un
+     * identifiant déterministe (md5 de la photo et de la ligne : rejouer donne le même) ; « Charger » la
+     * ramène sans rien perdre. Une ligne qui porte l'identifiant d'un gymnase d'un AUTRE club est traitée
+     * de même : elle ne pointe jamais le lieu de l'autre club (abus, axe *tenant isolation*).
+     */
+    public function testAPhotoRowWhoseVenueIsGoneGetsAPlaceMadeFromThePhoto(): void
+    {
+        $this->inRolledBackTransaction(function (): void {
+            $this->restorePreConversionSchema();
+            [$clubA, $clubB, $season1] = $this->clubsAndSeasons();
+            $foreign = $this->venue($clubB, $season1, 'Salle Sud', '3 avenue du Sud, 38000 Grenoble', '45.1800000', '5.7200000');
+            $gone = $this->uuid();
+            $photo = $this->photo($clubA, $season1, [
+                'Venue' => [$this->photoVenue($gone, $clubA, $season1), $this->photoVenue($foreign, $clubA, $season1)],
+            ]);
+
+            $this->play();
+
+            $data = json_decode((string) $this->admin->fetchOne('SELECT data FROM schedule_structure_snapshot WHERE id = ?', [$photo]), true, 512, \JSON_THROW_ON_ERROR);
+            self::assertIsArray($data);
+            self::assertCount(2, $data['Venue'], 'aucune ligne de la photo ne se perd');
+            foreach ($data['Venue'] as $row) {
+                $expected = vsprintf('%s%s-%s-%s-%s-%s%s%s', str_split(md5($photo . ':' . $row['id']), 4));
+                self::assertSame($expected, $row['placeId'] ?? null, \sprintf('la ligne %s pointe le lieu tiré de la photo et de la ligne', $row['id']));
+                self::assertSame(
+                    ['club_id' => $clubA, 'address' => '12 rue du Nord, 69100 Villeurbanne', 'latitude' => '45.7700000', 'longitude' => '4.8800000'],
+                    $this->admin->fetchAssociative('SELECT club_id, address, latitude::text AS latitude, longitude::text AS longitude FROM place WHERE id = ?', [$expected]),
+                    'le lieu porte l\'adresse et la position de la photo, dans le club de la photo',
+                );
+            }
+            self::assertNotSame($this->placeIdOf($foreign), $data['Venue'][1]['placeId'], 'jamais le lieu du gymnase de l\'autre club');
+        });
+    }
+
     public function testAPlaceMissingAfterConversionStopsTheMigration(): void
     {
         $this->inRolledBackTransaction(function (): void {
