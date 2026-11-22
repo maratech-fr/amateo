@@ -113,6 +113,7 @@ final class SeasonTransitionContext extends BaseContext
     {
         $linked = $this->apiPut(\sprintf('venues/%s', $this->smallClubVenueIds[$venue]), [
             'name' => $venue,
+            'source' => 'manual', // l'écran envoie toujours « manual » (`wizard/api.ts::updateVenue`)
             'externalRef' => 'SALLE-TEST-NORD',
             'address' => self::LINKED_ADDRESS,
             'latitude' => '45.7700000',
@@ -332,6 +333,7 @@ final class SeasonTransitionContext extends BaseContext
         $nextVenue = $this->venueOfSeason($venue, $this->nextSeasonId);
         $updated = $this->apiPut(\sprintf('venues/%s', $nextVenue['id']), [
             'name' => $venue,
+            'source' => 'manual',
             'address' => self::CORRECTED_ADDRESS,
         ], $this->smallClubToken, ['X-Season-Id' => $this->nextSeasonId]);
         if (200 !== $updated['status']) {
@@ -359,6 +361,7 @@ final class SeasonTransitionContext extends BaseContext
         $nextVenue = $this->venueOfSeason($venue, $this->nextSeasonId);
         $dissociated = $this->apiPut(\sprintf('venues/%s', $nextVenue['id']), [
             'name' => $venue,
+            'source' => 'manual',
             'externalRef' => '',
         ], $this->smallClubToken, ['X-Season-Id' => $this->nextSeasonId]);
         if (200 !== $dissociated['status']) {
