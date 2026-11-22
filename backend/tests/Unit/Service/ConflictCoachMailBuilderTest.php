@@ -448,7 +448,7 @@ final class ConflictCoachMailBuilderTest extends TestCase
     {
         $this->club = new Club()->setName('Les Aiglons de Villefranche')->setShortName('AIGLONS');
         $this->season = new Season()->setName('2025-2026');
-        $this->karim = new Coach((new Person)->setFirstName('Karim')->setLastName('Benali')->setEmail('karim@aiglons.test')->setGender(CoachGender::MALE));
+        $this->karim = new Coach((new Person)->setClubId($this->club->getId())->setFirstName('Karim')->setLastName('Benali')->setEmail('karim@aiglons.test')->setGender(CoachGender::MALE))->setClubId($this->club->getId());
         $this->u15 = new Team()->setName('U15');
         $this->sm2 = new Team()->setName('SM2');
         $this->u13a = new Team()->setName('U13A');

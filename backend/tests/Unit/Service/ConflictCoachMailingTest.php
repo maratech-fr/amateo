@@ -552,7 +552,7 @@ final class ConflictCoachMailingTest extends TestCase
 
     private function coach(string $first, string $last, ?string $email): Coach
     {
-        return new Coach((new Person)->setFirstName($first)->setLastName($last)->setEmail($email));
+        return new Coach((new Person)->setClubId('club-1')->setFirstName($first)->setLastName($last)->setEmail($email))->setClubId('club-1');
     }
 
     /** @return array<string, mixed> */

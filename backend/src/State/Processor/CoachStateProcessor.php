@@ -112,7 +112,7 @@ class CoachStateProcessor extends AbstractStateProcessor
         if (null !== $input->lastName) {
             $person->setLastName($input->lastName);
         }
-        if ($before !== $this->personDirectory->of($entity)) {
+        if (!$before->equals($this->personDirectory->of($entity))) {
             $entity->setUpdatedAt(new DateTimeImmutable);
         }
         if (null !== $input->maxDaysOverride) {

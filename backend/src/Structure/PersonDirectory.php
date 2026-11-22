@@ -20,7 +20,7 @@ use LogicException;
  * clause explicite.
  *
  * Un coach tout juste construit (`new Coach($person)`) porte sa fiche en mémoire : elle est lue sans
- * requête. L'EntityManager n'est absent que dans les tests unitaires qui construisent un lecteur à
+ * requête, sous la même condition de club. L'EntityManager n'est absent que dans les tests unitaires qui construisent un lecteur à
  * la main (défaut `new PersonDirectory` de cinq classes) : un coach relu de la base y lève une
  * `LogicException`, jamais une identité inventée ; en application, l'autowiring le fournit.
  */
@@ -42,10 +42,7 @@ final readonly class PersonDirectory
     public function personOf(Coach $coach): Person
     {
         $given = $coach->personGivenAtCreation();
-        if ($given instanceof Person) {
-            return $given;
-        }
-        $person = $this->entityManager()->find(Person::class, $coach->getPersonId());
+        $person = $given instanceof Person ? $given : $this->entityManager()->find(Person::class, $coach->getPersonId());
         if (!$person instanceof Person || $person->getClubId() !== $coach->getClubId()) {
             throw new LogicException(\sprintf('Le coach %s ne désigne aucune fiche de personne de son club.', $coach->getId()));
         }
