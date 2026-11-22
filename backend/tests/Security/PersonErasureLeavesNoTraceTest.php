@@ -109,7 +109,7 @@ final class PersonErasureLeavesNoTraceTest extends KernelTestCase
         $uid = $this->decor['uid'];
         $firstNameOnly = 'Indispo ' . self::ERASED_FIRST_NAME . ' mardi ' . $uid;
         $initial = 'Indispo C. ' . $this->decor['lastName'];
-        $teamRuleName = 'Créneau de ' . self::ERASED_FIRST_NAME . ' pour U13 ' . $uid;
+        $teamRuleName = 'Creneau de ' . self::ERASED_FIRST_NAME . ' pour U13 ' . $uid;
         $twinRuleName = 'Indispo ' . self::ERASED_FIRST_NAME . ' jeudi ' . $uid;
         $twin = $this->newCoach($this->decor['club'], $this->decor['current'], self::ERASED_FIRST_NAME, 'Autre' . ucfirst($uid));
         $this->em->flush();
@@ -156,6 +156,10 @@ final class PersonErasureLeavesNoTraceTest extends KernelTestCase
         foreach (['schedule_diagnostic.causes', 'schedule_diagnostic.message', 'schedule_diagnostic.suggestions', 'feedback.context'] as $column) {
             self::assertContains($column, $before, 'témoin : le balayage trouve le nom de ses règles dans ' . $column . ' avant l\'effacement');
         }
+        $teamBefore = explode(', ', $this->tracesSeenByClub($this->decor['club'], [$teamRuleName]));
+        foreach (['constraint.name', 'schedule_diagnostic.causes', 'schedule_diagnostic.message', 'schedule_diagnostic.suggestions', 'feedback.context'] as $column) {
+            self::assertContains($column, $teamBefore, 'témoin : le balayage trouve la règle d\'équipe dans ' . $column . ' avant l\'effacement');
+        }
         $this->em->clear();
 
         $this->scopeGucToClub($this->decor['club']);
@@ -176,6 +180,44 @@ final class PersonErasureLeavesNoTraceTest extends KernelTestCase
         self::assertInstanceOf(ScheduleDiagnostic::class, $other);
         self::assertSame('Bloquée par ' . $firstNameOnly, $other->getMessage(), 'le diagnostic de l\'autre club n\'est pas réécrit');
         self::assertSame($firstNameOnly, $other->getCauses()[0]['label'] ?? null, 'ni sa cause');
+    }
+
+    /**
+     * Un nom accentué (« Hélène Bérard-… ») ne survit à l'effacement dans aucune colonne `json`, et le
+     * balayage l'y voit d'abord : Doctrine l'y écrit en « Hélène », un balayage du texte brut
+     * rendrait un zéro aveugle ({@see PersonTraceSweep}).
+     */
+    public function testAnAccentedNameLeavesNoTraceInJsonColumnsEither(): void
+    {
+        $this->seedErasureDecor();
+        $this->scopeGucToClub($this->decor['club']);
+        $lastName = 'Bérard-' . ucfirst(strtr($this->decor['uid'], '0123456789', 'ghijklmnop'));
+        $fullName = 'Hélène ' . $lastName;
+        $helene = $this->newCoach($this->decor['club'], $this->decor['current'], 'Hélène', $lastName);
+        $this->em->flush();
+        $personId = $helene->getPersonId();
+
+        $diagnostic = $this->em->find(ScheduleDiagnostic::class, $this->decor['citedDiagnostic']);
+        self::assertInstanceOf(ScheduleDiagnostic::class, $diagnostic);
+        $diagnostic->setMessage('SM1 : créneau partagé avec ' . $fullName)->setSuggestions(['Prévenir ' . $fullName])
+            ->setCauses([['kind' => 'team', 'label' => $fullName . ' indisponible', 'count' => 1]]);
+        $feedback = $this->em->find(Feedback::class, $this->decor['feedbackNamed']);
+        self::assertInstanceOf(Feedback::class, $feedback);
+        $feedback->setContext(($feedback->getContext() ?? []) + ['note' => 'cite ' . $fullName]);
+        $this->em->flush();
+        $this->em->clear();
+
+        $before = explode(', ', $this->tracesSeenByClub($this->decor['club'], [$fullName, $lastName]));
+        foreach (['person.last_name', 'schedule_diagnostic.message', 'schedule_diagnostic.causes', 'schedule_diagnostic.suggestions', 'feedback.context'] as $column) {
+            self::assertContains($column, $before, 'témoin : le balayage trouve le nom accentué dans ' . $column . ' avant l\'effacement');
+        }
+        $this->em->clear();
+
+        $this->scopeGucToClub($this->decor['club']);
+        self::getContainer()->get(PersonEraser::class)->erase($this->decor['club'], $personId);
+        $this->em->clear();
+
+        self::assertSame('', $this->tracesSeenByClub($this->decor['club'], [$fullName, $lastName]), 'aucune colonne du club, json comprise, ne garde le nom accentué');
     }
 
     protected function setUp(): void

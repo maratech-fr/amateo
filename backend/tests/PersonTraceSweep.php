@@ -18,6 +18,10 @@ use InvalidArgumentException;
  * rôle ne peut pas lire est sautée (`has_table_privilege`), sans faire échouer la requête. Un appelant
  * prouve donc d'abord que le balayage TROUVE la trace avant l'effacement : un zéro sans ce témoin ne
  * prouve rien.
+ *
+ * Une colonne `json` se lit par `::jsonb::text` : Doctrine l'écrit sans `JSON_UNESCAPED_UNICODE`, son
+ * texte brut porte donc « Hélène » et un nom accentué n'y serait jamais trouvé ; `jsonb`
+ * rend les caractères décodés.
  */
 final class PersonTraceSweep
 {
@@ -43,7 +47,7 @@ final class PersonTraceSweep
             WHERE c.table_schema = 'public'
               AND c.data_type IN ('text', 'character varying', 'character', 'json', 'jsonb', 'ARRAY')
               AND has_table_privilege(quote_ident(c.table_schema) || '.' || quote_ident(c.table_name), 'SELECT')
-              AND (xpath('/row/n/text()', query_to_xml(format('SELECT count(*) AS n FROM %I.%I WHERE %I::text ILIKE ANY (%L::text[])', c.table_schema, c.table_name, c.column_name, '{$array}'), false, true, '')))[1]::text::int > 0
+              AND (xpath('/row/n/text()', query_to_xml(format('SELECT count(*) AS n FROM %I.%I WHERE %I::%s ILIKE ANY (%L::text[])', c.table_schema, c.table_name, c.column_name, CASE WHEN c.data_type = 'json' THEN 'jsonb::text' ELSE 'text' END, '{$array}'), false, true, '')))[1]::text::int > 0
             SQL;
     }
 }
