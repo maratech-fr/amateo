@@ -115,6 +115,22 @@ final class SubscriptionLineMigrationTest extends KernelTestCase
         });
     }
 
+    /**
+     * Un club dont la PREMIÈRE saison n'a pas commencé : « suivante » se compte depuis elle
+     * (`année en cours + 1`), pas depuis l'horloge — l'année réglée au-delà de sa première saison
+     * garde sa ligne, sinon le club perdrait la bascule qu'il avait payée.
+     */
+    public function testAClubWhoseFirstSeasonHasNotStartedKeepsTheSeasonAfterIt(): void
+    {
+        $this->inRolledBackTransaction(function (): void {
+            $this->insertClub(self::SUBJECT_CLUB, self::BETA_PLAN, $this->year + 2, [$this->year + 1]);
+
+            $this->playUp();
+
+            self::assertSame([$this->year + 1, $this->year + 2], array_column($this->linesOf(self::SUBJECT_CLUB), 'season_year'), 'la première saison (à venir) ET celle qui la suit, réglée, reçoivent leur ligne');
+        });
+    }
+
     /** L'écart écrit : un club en Découverte marqué « saison suivante payée » n'a pas de ligne, la bascule lui est fermée. */
     public function testADecouverteClubMarkedNextSeasonPaidGetsNoLine(): void
     {

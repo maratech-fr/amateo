@@ -237,6 +237,30 @@ final class PlanEntitlementsTest extends WebTestCase
         self::assertSame(403, $this->post($other['user'], '/api/schedules/' . self::DUMMY_SCHEDULE_ID . '/generate'), 'un club sans ligne reste en Découverte, crédits épuisés : refusé');
     }
 
+    /**
+     * Isolation, second angle (lot 8, PR 1) : la lecture de la ligne NOMME le club lu, en plus de la
+     * RLS — sous le locataire du club réglé, la ligne d'un autre club ne se lit pas. Le jumeau
+     * {@see self::testOneClubsSubscriptionLineGivesNothingToAnotherClub} lit chaque club sous son
+     * propre locataire : il reste vert tant que la RLS tient seule (falsifié : clause `club_id` de
+     * `ClubSubscriptionRepository::forSeasonYear` coupée, il passe) ; celui-ci rougit. La couche RLS
+     * a sa garde structurelle : `RlsIsolationTest::testEveryClubIdTableIsUnderForcedRls`.
+     */
+    public function testTheSubscriptionReadNamesTheClubEvenUnderAnotherClubsTenant(): void
+    {
+        $entitlements = self::getContainer()->get(PlanEntitlements::class);
+        \assert($entitlements instanceof PlanEntitlements);
+        $subscribed = $this->seedClub(credits: 0);
+        $other = $this->seedClub(credits: 0);
+        $year = SeasonResolver::seasonYear($subscribed['season']->getStartDate());
+        $this->subscribeClub($subscribed['club']->getId(), $year, 'beta');
+
+        // Le locataire posé est celui du club réglé : sa ligne est visible de la RLS.
+        $this->scopeGucToClub($subscribed['club']->getId());
+        self::assertTrue($entitlements->isSeasonPaid($subscribed['club']->getId(), $year), 'témoin : la ligne Bêta du club réglé se lit sous son locataire');
+        self::assertFalse($entitlements->isSeasonPaid($other['club']->getId(), $year), 'la ligne visible sous ce locataire est celle d\'un AUTRE club : elle ne règle rien pour le club lu');
+        self::assertTrue($entitlements->outputBudget($other['club'], $other['season'])['restricted'], 'l\'autre club reste bridé (Découverte), même lu sous le locataire du club réglé');
+    }
+
     // ─────────── Placement week-end par week-end en mode restreint (P4-240 ④) ───────────
 
     /**
