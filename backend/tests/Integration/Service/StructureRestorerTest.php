@@ -7,6 +7,7 @@ namespace App\Tests\Integration\Service;
 use App\Entity\CalendarEntry;
 use App\Entity\Club;
 use App\Entity\Coach;
+use App\Entity\CoachPlayerMembership;
 use App\Entity\CoachWish;
 use App\Entity\CoachWishCampaign;
 use App\Entity\CoachWishToken;
@@ -553,6 +554,52 @@ final class StructureRestorerTest extends KernelTestCase
         self::assertNull($this->em->getRepository(Coach::class)->find($forgedId), 'une ligne qui pointe la fiche d\'un autre club n\'est pas réinsérée');
         self::assertNotNull($this->em->getRepository(Coach::class)->find($annaId), 'témoin : le reste de la photo revient');
         self::assertNotNull($this->em->getRepository(TeamCoach::class)->findOneBy(['coachId' => $annaId]), 'témoin : avec ses liens');
+    }
+
+    /**
+     * Une photo dont les liens d'équipe et de joueur et les règles de portée coach citent un coach
+     * absent de ses lignes `Coach` (photo nettoyée par la migration Version20261122140000, qui retire
+     * la ligne d'un coach disparu sans toucher ses liens) ne réinsère aucun de ces liens orphelins
+     * au « Charger » : aucune clé étrangère ne les refuserait. Jumeau, cité :
+     * `Migration/PersonConversionMigrationTest::testPhotosDropTheLinksAndRulesOfACoachThatNoLongerExists`
+     * (la photo nettoyée à la source) ; ici le filet du chargement, pour toute photo.
+     */
+    public function testLoadingNeverReinsertsLinksOrRulesOfACoachAbsentFromThePhoto(): void
+    {
+        [$club, $season] = $this->seedClubSeason();
+        $team = $this->persistTeam($club, $season, 'U13M1');
+        $paul = $this->newCoach($club->getId(), $season->getId(), 'Paul', 'Martin');
+        $anna = $this->newCoach($club->getId(), $season->getId(), 'Anna', 'Petit');
+        $this->em->flush();
+        $paulLink = $this->persistLink($club, $season, $team, $paul);
+        $this->persistLink($club, $season, $team, $anna);
+        $paulPlayer = (new CoachPlayerMembership)->setClubId($club->getId())->setSeasonId($season->getId())
+            ->setCoachId($paul->getId())->setTeamId($team->getId());
+        $paulRule = (new Constraint)->setClubId($club->getId())->setSeasonId($season->getId())
+            ->setName('Paul Martin · indispo lundi')->setScope(ConstraintScope::COACH)->setScopeTargetId($paul->getId())
+            ->setFamily(ConstraintFamily::COACH_AVAILABILITY)->setRuleType(ConstraintRuleType::HARD)->setConfig(['unavailableDays' => [1]]);
+        $this->em->persist($paulPlayer);
+        $this->em->persist($paulRule);
+        $v1 = $this->makeSchedule($club, $season);
+        $this->em->flush();
+        [$paulId, $annaId] = [$paul->getId(), $anna->getId()];
+        $photo = $this->snapshotter->serialize($club->getId(), $season->getId());
+        $photo['Coach'] = array_values(array_filter($photo['Coach'], static fn (array $row): bool => $paulId !== $row['id']));
+        self::assertNotEmpty(array_filter($photo['TeamCoach'], static fn (array $row): bool => $paulId === $row['coachId']), 'témoin : la photo garde le lien du coach absent');
+        $this->snapshotter->store($v1, $photo);
+
+        $this->em->remove($paulRule);
+        $this->em->remove($paulPlayer);
+        $this->em->remove($paulLink);
+        $this->em->remove($paul);
+        $this->em->flush();
+        $this->restorer->apply($club->getId(), $season->getId(), $this->restorer->readSnapshot($v1));
+        $this->em->clear();
+
+        self::assertNull($this->em->getRepository(TeamCoach::class)->findOneBy(['coachId' => $paulId]), 'aucun lien d\'équipe vers un coach absent de la photo');
+        self::assertNull($this->em->getRepository(CoachPlayerMembership::class)->findOneBy(['coachId' => $paulId]), 'aucun lien de joueur vers un coach absent de la photo');
+        self::assertSame([], $this->em->getRepository(Constraint::class)->findBy(['seasonId' => $season->getId(), 'scopeTargetId' => $paulId]), 'aucune règle de portée coach vers un coach absent de la photo');
+        self::assertNotNull($this->em->getRepository(TeamCoach::class)->findOneBy(['coachId' => $annaId]), 'témoin : le lien d\'un coach de la photo revient');
     }
 
     protected function setUp(): void
