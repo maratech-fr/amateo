@@ -610,6 +610,7 @@ final class PersonEraserTest extends KernelTestCase
         $probe = new class($generationLock, $placementLock, $clubId) {
             /** @var list<array{bool, bool}> */
             public array $seen = [];
+
             public bool $fail = false;
 
             public function __construct(private readonly ClubGenerationLock $generation, private readonly MatchPlacementLock $placement, private readonly string $clubId) {}
