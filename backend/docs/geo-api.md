@@ -198,8 +198,9 @@ sous `amateo_owner`, qui contourne la RLS des tables sources) : rétro-alimente 
 `opponent_travel.travel_minutes` (siège ACTUEL du club → lieu adverse effectif, override sinon
 annuaire) et (2) `venue_travel_time` conduite/marche entre deux gymnases, **dans les deux sens** (le
 cache est directionnel, la matrice non) — profils `car`/`pedestrian`. Les instructions SQL vivent
-dans `Version20260920120000::seedStatements()`, rejouées à l'identique par `ClubTravelCacheSeedTest`
-(aucune dérive possible entre la migration et ce que le test vérifie).
+dans `Version20260920120000::seedStatements()` (jouée une fois, en production ; elle lit les colonnes
+de position de `venue` d'avant le lot 3). Le cache reste alimenté par l'autofill de la matrice :
+`VenueTravelTimeAutofillCacheTest`.
 
 **Complétude RGPD** : `ErasedClubPurger` (effacement d'un compte → purge par `clubId`,
 `FamilyCatalog::purgedWithClub()`), `#[Family(keptAtSeasonPurge: …)]` (club-scoped SANS saison, une purge de
