@@ -197,6 +197,42 @@ final class PurgeCompletenessTest extends KernelTestCase
         self::assertSame(['rowsDeleted' => 13], json_decode($details, true, 512, \JSON_THROW_ON_ERROR));
     }
 
+    /**
+     * L'effacement emporte aussi les lignes de saison dont la saison n'existe plus : `season_id` n'a
+     * aucune clé étrangère, un coach (et son équipe, leur lien) d'une saison disparue n'est vu par
+     * aucune purge de saison. Sans cela, la fiche de personne qu'il pointe ne s'efface pas (clé
+     * `fk_coach_person_club`, ON DELETE RESTRICT) et le club ne s'efface jamais ; sans la clé, la
+     * donnée survivrait en silence. Règle lue sur toutes les familles de la purge de saison.
+     */
+    public function testTheErasureAlsoRemovesSeasonRowsWhoseSeasonIsGone(): void
+    {
+        [$club] = $this->clubWithSeason('Orpheline');
+        $em = self::getContainer()->get(EntityManagerInterface::class);
+        $clubId = $club->getId();
+        $vanishedSeasonId = '66666666-6666-4666-8666-666666666666';
+        $team = $this->team($clubId, $vanishedSeasonId);
+        $coach = $this->newCoach($clubId, $vanishedSeasonId, 'Saison', 'Disparue');
+        $em->persist($team);
+        $em->flush();
+        $em->persist((new TeamCoach)->setClubId($clubId)->setSeasonId($vanishedSeasonId)->setTeamId($team->getId())
+            ->setCoachId($coach->getId())->setRole(TeamCoachRole::MAIN));
+        $em->flush();
+        $em->clear();
+        $connection = $em->getConnection();
+        self::assertSame(1, (int) $connection->fetchOne('SELECT COUNT(*) FROM coach WHERE club_id = :club', ['club' => $clubId]), 'témoin : le coach orphelin de saison est en base');
+
+        self::getContainer()->get(ErasedClubPurger::class)->purge($club);
+
+        $left = [];
+        foreach ([...$this->tablesOf($this->catalog()->purgedWithSeason()), 'person'] as $table) {
+            $count = (int) $connection->fetchOne(\sprintf('SELECT COUNT(*) FROM %s WHERE club_id = :club', $connection->quoteIdentifier($table)), ['club' => $clubId]);
+            if ($count > 0) {
+                $left[] = \sprintf('%s (%d)', $table, $count);
+            }
+        }
+        self::assertSame([], $left, "L'effacement du club laisse des lignes de saison dont la saison n'existe plus :\n  - " . implode("\n  - ", $left));
+    }
+
     protected function setUp(): void
     {
         self::bootKernel();
