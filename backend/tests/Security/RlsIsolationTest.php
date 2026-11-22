@@ -647,8 +647,10 @@ final class RlsIsolationTest extends KernelTestCase
             self::assertSame('42501', $this->sqlStateOf($admin, 'UPDATE club_subscription SET season_year = season_year + 1, paid_at = now() WHERE club_id = ?', [$clubId]), 'le rôle applicatif ne peut pas MODIFIER une ligne, même de son propre club');
             self::assertSame(1, $admin->executeStatement('DELETE FROM club_subscription WHERE club_id = ?', [$clubId]), 'le rôle applicatif supprime la ligne de son club : l\'effacement du club passe par lui');
         } finally {
-            $admin->executeStatement('RESET ROLE');
+            // Annuler d'abord (le SET LOCAL ROLE part avec), puis RESET : un RESET dans une
+            // transaction avortée masquerait la vraie erreur.
             $admin->rollBack();
+            $admin->executeStatement('RESET ROLE');
         }
     }
 
