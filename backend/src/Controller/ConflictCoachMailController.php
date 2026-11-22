@@ -22,6 +22,7 @@ use App\Service\ConflictCoachMailing;
 use App\Service\ConflictFeedAssembler;
 use App\Service\ConflictMailingLock;
 use App\Service\SeasonResolver;
+use App\Structure\PersonDirectory;
 use App\Support\FrenchNameOrder;
 use DateTimeImmutable;
 use DateTimeInterface;
@@ -82,6 +83,7 @@ final class ConflictCoachMailController extends AbstractController implements Se
         private readonly ClockInterface $clock,
         private readonly ClubDay $clubDay,
         private readonly RateLimiterFactory $conflictMailSendLimiter,
+        private readonly PersonDirectory $personDirectory,
     ) {}
 
     /** Écriture de COLLECTION : la saison du header (ou courante) gouverne. */
@@ -314,7 +316,7 @@ final class ConflictCoachMailController extends AbstractController implements Se
         /** @var array<string, array<string, string>> $sentLists coach → empreinte → digest de ce qui lui est parti */
         $sentLists = [];
         foreach ($toSend as ['coach' => $coach, 'kind' => $kind]) {
-            $to = (string) $coach->getEmail();
+            $to = (string) $this->personDirectory->of($coach)->email;
             try {
                 if ('conflicts' === $kind) {
                     $list = $plan['byCoach'][$coach->getId()];
@@ -397,10 +399,11 @@ final class ConflictCoachMailController extends AbstractController implements Se
      */
     private function previewRow(Coach $coach, string $kind, int $conflictCount, bool $receiptKnown, int $newCount, int $changedCount, int $alreadySentCount, ?DateTimeImmutable $lastSentAt): array
     {
-        $valid = ConflictCoachMailing::hasValidAddress($coach);
+        $person = $this->personDirectory->of($coach);
+        $valid = ConflictCoachMailing::hasValidAddress($person);
 
         return $this->person($coach) + [
-            'email' => $coach->getEmail(),
+            'email' => $person->email,
             'hasValidAddress' => $valid,
             'kind' => $kind,
             'receiptKnown' => $receiptKnown,
@@ -422,7 +425,7 @@ final class ConflictCoachMailController extends AbstractController implements Se
      */
     private function route(Coach $coach, string $kind, array &$toSend, array &$skipped): void
     {
-        if (ConflictCoachMailing::hasValidAddress($coach)) {
+        if (ConflictCoachMailing::hasValidAddress($this->personDirectory->of($coach))) {
             $toSend[] = ['coach' => $coach, 'kind' => $kind];
 
             return;
@@ -459,6 +462,8 @@ final class ConflictCoachMailController extends AbstractController implements Se
     /** @return array{coachId: string, firstName: string, lastName: string} */
     private function person(Coach $coach): array
     {
-        return ['coachId' => $coach->getId(), 'firstName' => $coach->getFirstName(), 'lastName' => $coach->getLastName()];
+        $person = $this->personDirectory->of($coach);
+
+        return ['coachId' => $coach->getId(), 'firstName' => $person->firstName, 'lastName' => $person->lastName];
     }
 }

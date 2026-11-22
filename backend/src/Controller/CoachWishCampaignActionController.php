@@ -17,6 +17,8 @@ use App\Repository\CoachWishTokenRepository;
 use App\Service\CoachWishCampaignPresenter;
 use App\Service\CoachWishMailBuilder;
 use App\Service\CoachWishSeasonGuard;
+use App\Structure\PersonDirectory;
+use App\Structure\PersonIdentity;
 use DateTimeZone;
 use Doctrine\ORM\EntityManagerInterface;
 use InvalidArgumentException;
@@ -66,6 +68,7 @@ final class CoachWishCampaignActionController extends AbstractController
         private readonly ClockInterface $clock,
         private readonly CoachWishSeasonGuard $seasonGuard,
         private readonly RateLimiterFactory $coachWishSendLimiter,
+        private readonly PersonDirectory $personDirectory,
     ) {}
 
     public function __invoke(string $id): JsonResponse
@@ -179,7 +182,7 @@ final class CoachWishCampaignActionController extends AbstractController
      *
      * @param list<string>|null $onlyCoachIds
      *
-     * @return list<array{token: CoachWishToken, coach: Coach, email: string}>
+     * @return list<array{token: CoachWishToken, person: PersonIdentity, email: string}>
      */
     private function eligibleRecipients(CoachWishCampaign $campaign, bool $isReminder, ?array $onlyCoachIds): array
     {
@@ -202,12 +205,16 @@ final class CoachWishCampaignActionController extends AbstractController
             }
 
             $coach = $this->entityManagerCoach($token->getCoachId());
-            $email = $coach?->getEmail();
-            if (!$coach instanceof Coach || null === $email || false === filter_var($email, \FILTER_VALIDATE_EMAIL)) {
+            if (!$coach instanceof Coach) {
+                continue;
+            }
+            $person = $this->personDirectory->of($coach);
+            $email = $person->email;
+            if (null === $email || false === filter_var($email, \FILTER_VALIDATE_EMAIL)) {
                 continue; // pas d'email exploitable → badge « pas d'email » côté écran.
             }
 
-            $recipients[] = ['token' => $token, 'coach' => $coach, 'email' => $email];
+            $recipients[] = ['token' => $token, 'person' => $person, 'email' => $email];
         }
 
         return $recipients;
@@ -218,7 +225,7 @@ final class CoachWishCampaignActionController extends AbstractController
      * d'envois réussis. Best-effort : un échec SMTP n'empêche pas les autres (le coach en échec
      * garde `sentAt` null — sa ligne reste « à envoyer »).
      *
-     * @param list<array{token: CoachWishToken, coach: Coach, email: string}> $recipients
+     * @param list<array{token: CoachWishToken, person: PersonIdentity, email: string}> $recipients
      */
     private function sendToRecipients(CoachWishCampaign $campaign, array $recipients, bool $isReminder): int
     {
@@ -235,9 +242,8 @@ final class CoachWishCampaignActionController extends AbstractController
         $sent = 0;
         foreach ($recipients as $recipient) {
             $token = $recipient['token'];
-            $coach = $recipient['coach'];
             try {
-                $this->mailer->send($this->mailBuilder->buildCoachLink($recipient['email'], $coach->getFirstName(), $clubName, $campaign, $periodTitle, $token->getToken(), $senderFirstName, $isReminder, $club, \count($token->getTeamIds())));
+                $this->mailer->send($this->mailBuilder->buildCoachLink($recipient['email'], $recipient['person']->firstName, $clubName, $campaign, $periodTitle, $token->getToken(), $senderFirstName, $isReminder, $club, \count($token->getTeamIds())));
                 $token->markSent($this->clock->now());
                 ++$sent;
             } catch (Throwable) {

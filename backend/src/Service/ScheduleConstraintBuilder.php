@@ -30,6 +30,7 @@ use App\Enum\LockOrigin;
 use App\Enum\VenueTravelRuleIntensity;
 use App\Repository\VenueTrainingSlotRepository;
 use App\Repository\VenueTravelRuleSettingRepository;
+use App\Structure\PersonDirectory;
 use App\Support\SchemaEpoch;
 use DateTimeInterface;
 use Doctrine\ORM\EntityManagerInterface;
@@ -142,6 +143,8 @@ final class ScheduleConstraintBuilder
         // mémoire ne connaît aucun plan) — un build de période sans lui n'hérite d'aucun verrou.
         #[Autowire(lazy: true)]
         private readonly ?SchedulePlanProvisioner $schedulePlanProvisioner = null,
+        // L'identité des coachs (prénom, nom) se lit par la porte unique, mode léger compris.
+        private readonly PersonDirectory $personDirectory = new PersonDirectory,
     ) {}
 
     /**
@@ -1481,10 +1484,12 @@ final class ScheduleConstraintBuilder
     /** @return array<string, mixed> */
     private function serializeCoach(Coach $coach): array
     {
+        $person = $this->personDirectory->of($coach);
+
         return [
             'id' => $coach->getId(),
-            'firstName' => $coach->getFirstName(),
-            'lastName' => $coach->getLastName(),
+            'firstName' => $person->firstName,
+            'lastName' => $person->lastName,
             // Contrat 1.3 (RGPD-03) — `email`/`phone` du coach ne voyagent plus : le solveur ne les
             // lisait jamais, ils n'ont donc plus à partir ni à se dupliquer dans les snapshots et les
             // feedbacks. `isActive` d'entité (jamais lu) retiré avec eux (ENG-53).

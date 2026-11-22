@@ -7,6 +7,8 @@ namespace App\Service;
 use App\Controller\ConflictCoachMailController;
 use App\Controller\FixtureConflictsController;
 use App\Entity\Coach;
+use App\Structure\PersonDirectory;
+use App\Structure\PersonIdentity;
 use DateTimeImmutable;
 
 /**
@@ -29,10 +31,14 @@ final class ConflictCoachMailing
     /** Les familles qui portent une personne sur un match — les seules envoyées. */
     public const array MAILED_FAMILIES = ['MATCH_MATCH', 'MATCH_TRAINING', 'MATCH_COACH_UNAVAILABLE'];
 
+    public function __construct(
+        private readonly PersonDirectory $personDirectory = new PersonDirectory,
+    ) {}
+
     /** Une adresse que l'envoi accepte (le filet de forme, la saisie fait foi). */
-    public static function hasValidAddress(Coach $coach): bool
+    public static function hasValidAddress(PersonIdentity $person): bool
     {
-        $email = $coach->getEmail();
+        $email = $person->email;
 
         return null !== $email && false !== filter_var($email, \FILTER_VALIDATE_EMAIL);
     }
@@ -204,7 +210,7 @@ final class ConflictCoachMailing
                 continue;
             }
             $cleared[] = $coachId;
-            if (self::hasValidAddress($coachesById[$coachId])) {
+            if (self::hasValidAddress($this->personDirectory->of($coachesById[$coachId]))) {
                 ++$pending;
             }
         }
@@ -214,7 +220,7 @@ final class ConflictCoachMailing
         // ce qui partira vraiment (nouveau ou modifié, ou tout renvoyé).
         $listed = 0;
         foreach (array_keys($byCoach) as $coachId) {
-            if (self::hasValidAddress($coachesById[$coachId])) {
+            if (self::hasValidAddress($this->personDirectory->of($coachesById[$coachId]))) {
                 ++$listed;
             }
         }

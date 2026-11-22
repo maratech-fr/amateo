@@ -12,6 +12,7 @@ use App\Service\CoachWishCampaignTokenSync;
 use App\Service\ManagementAccessGuard;
 use App\Service\SeasonAccessGuard;
 use App\Service\SeasonResolver;
+use App\Structure\PersonDirectory;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\HttpFoundation\RequestStack;
 
@@ -27,6 +28,7 @@ class CoachStateProcessor extends AbstractStateProcessor
         SeasonAccessGuard $seasonAccessGuard,
         ManagementAccessGuard $managementAccessGuard,
         private readonly CoachWishCampaignTokenSync $tokenSync,
+        private readonly PersonDirectory $personDirectory,
     ) {
         parent::__construct($entityManager, $requestStack, $seasonResolver, $seasonAccessGuard, $managementAccessGuard);
     }
@@ -139,6 +141,6 @@ class CoachStateProcessor extends AbstractStateProcessor
      */
     protected function mapEntityToOutput(object $entity): CoachResource
     {
-        return CoachResource::fromEntity($entity);
+        return CoachResource::fromEntity($entity, $this->personDirectory->of($entity));
     }
 }

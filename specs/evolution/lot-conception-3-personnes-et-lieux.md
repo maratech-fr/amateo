@@ -154,7 +154,13 @@ Ordre : 1 → 2a → 2b → 3 → 4 → 5, sur `lot/conception`, une PR ouverte 
 - **Fichiers** : une migration, `Entity/TeamTag*.php`, `StructureSnapshotter.php`, `StructureRestorer.php`, `CascadePlan.php`, les purgeurs ou leur catalogue, `ScheduleConstraintBuilder.php:160-163`, `Support/SchemaEpoch.php` (neuf), `CacheInvalidationListener.php`, deux références et leur décor.
 - **Tests** : lignes 1 à 3. `/security-review` : oui.
 
-### PR 2a · « Une seule porte pour lire l'identité, aucun comportement ne change »
+### PR 2a · « Une seule porte pour lire l'identité, aucun comportement ne change » — LIVRÉE (2026-11-22)
+- **Livré** : `Structure/PersonDirectory.php` (`of`, `forCoaches`, `emailsOfClub`) et `Structure/PersonIdentity.php` (neufs) ; les 18 lecteurs du §2 routés par la porte (ils lisent une `PersonIdentity`, plus les accesseurs de `Coach`) ; `ClockedClubMailInterceptor` lit les adresses par `PersonDirectory::emailsOfClub` (plus de SQL brut sur `coach` dans ce fichier) ; règle de lecture dans `backend/AGENTS.md` (gotcha 3c). Aucun test neuf ni modifié : la ligne 4 du §7 reste verte telle quelle.
+- **Limites écrites** :
+  - La connexion de `PersonDirectory` est **optionnelle** pour cinq classes construites à la main dans des tests unitaires (`CoachWishDigestCommand`, `ConflictCoachMailBuilder`, `ConflictCoachMailing`, `ScheduleConstraintBuilder`, `ScheduleDiagnosticsRecorder` : `new PersonDirectory` en valeur par défaut) : à revoir en 2b, quand `of()` lira la table `person`. `emailsOfClub` sans connexion lève une `LogicException`.
+  - Le nom de famille peut être **vide** (mesure de production du 2026-11-22, §12) : `PersonIdentity::fullName()` fait un `trim`.
+  - **Aucun test d'architecture n'interdit de contourner la porte** avant la 2b : c'est la disparition des accesseurs de `Coach` en 2b qui la rend obligatoire.
+- **Plan d'origine** (le détail livré ci-dessus fait foi) :
 - `PersonDirectory` et `PersonIdentity`, qui lisent encore les colonnes actuelles de `coach`. Les 18 lecteurs, les deux fichiers à relire et `ClockedClubMailInterceptor.php:173` passent par eux. Aucune migration.
 - **Raison de la scission** : une PR unique mêlait la réécriture de vingt lecteurs à une conversion de données ; 2a se relit et se prouve seule, 2b ne porte plus que le schéma.
 - **Fichiers** : `Structure/PersonDirectory.php`, `Structure/PersonIdentity.php` (neufs), les fichiers du relevé du §2.
@@ -373,6 +379,8 @@ Lecture seule, clubs de démonstration exclus, comptes et identifiants seulement
 5. Les 2 photos de versions : lignes de coach ou de gymnase dont l'identifiant n'existe plus. **Si non nul : retour au fondateur.**
 6. Versions en attente ou en cours ; placements en cours (attendu 0).
 7. Lignes de `constraint_conflict` (attendu 0). **Si non nul : retour au fondateur**, l'effacement ne traite pas cette table.
+
+**Relevé du 2026-11-22** (`link`, lecture seule, démonstrations exclues) : 4 clubs réels ; 52 coachs ; 18 gymnases ; 1 saison par club ; 0 homonyme de coach ; 0 gymnase de même nom et même adresse ; 1 gymnase sans position ; 9 barèmes de trajet, aucun orphelin ni mal rangé ; photos : aucun identifiant disparu ; aucune version ni placement en cours ; `constraint_conflict` **non mesurable** (le rôle de lecture n'a pas de `GRANT` sur la table : traitée comme vide). **Hors attendu : 20 coachs sur 52 sans nom de famille.** Conséquence pour la PR 3 : l'effacement ne supprime ni ne remplace jamais par texte un nom réduit au prénom (limite 7).
 
 ## 13. Limites écrites
 
