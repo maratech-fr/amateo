@@ -57,13 +57,15 @@ final class TeamCapContext extends BaseContext
     /** @var array{status: int, json: array<mixed>} */
     private array $lastResponse = ['status' => 0, 'json' => []];
 
-    #[Given('le petit club, son planning de saison généré et validé, un PDF de ce planning déjà produit et un planning en brouillon')]
+    /**
+     * Aucun brouillon à côté : la validation retire les autres versions de saison, et un planning en
+     * vigueur refuse d'en créer une (`SocleGuard::assertSeasonPlanNotChosen`). « Générer » vise donc
+     * le planning de saison : le contrôle central refuse avant le contrôleur.
+     */
+    #[Given('le petit club, son planning de saison généré et validé, et un PDF de ce planning déjà produit')]
     public function lePetitClubAvecSocleEtPdf(): void
     {
         $this->buildSmallClub();
-        // Le brouillon naît AVANT la validation : un planning de saison en vigueur refuse toute
-        // nouvelle version (`SocleGuard::assertSeasonPlanNotChosen`).
-        $this->draftId = $this->smallClubStringField($this->apiPost('schedules', ['name' => 'Brouillon', 'status' => 'DRAFT'], $this->smallClubToken)['json'], 'id');
         $this->socleId = $this->generateAndValidateSmallClubSocle();
         $launched = $this->apiPost(\sprintf('schedules/%s/export-pdf', $this->socleId), [], $this->smallClubToken);
         if (202 !== $launched['status']) {
@@ -192,11 +194,10 @@ final class TeamCapContext extends BaseContext
         if ($this->schedulesBefore !== $schedules || $this->runsBefore !== $runs) {
             throw new RuntimeException(\sprintf('un refus ne fait naître ni version ni placement : versions %d → %d, placements %d → %d', $this->schedulesBefore, $schedules, $this->runsBefore, $runs));
         }
-        $draft = $this->smallClubStringField($this->apiGet(\sprintf('schedules/%s', $this->draftId), $this->smallClubToken)['json'], 'status');
-        if ('DRAFT' !== $draft) {
-            throw new RuntimeException(\sprintf('le brouillon refusé à la génération ne part pas au calcul : statut « %s » (DRAFT attendu)', $draft));
-        }
         $socle = $this->apiGet(\sprintf('schedules/%s', $this->socleId), $this->smallClubToken)['json'];
+        if ('COMPLETED' !== ($socle['status'] ?? null) || !$this->smallClubSocleIsChosen($this->socleId)) {
+            throw new RuntimeException(\sprintf('les solves refusés ne touchent pas le planning de saison : il reste COMPLETED et en vigueur — statut « %s »', \is_string($socle['status'] ?? null) ? $socle['status'] : ''));
+        }
         if ('completed' !== ($socle['pdfExportStatus'] ?? null) || $this->pdfUrl !== ($socle['pdfExportUrl'] ?? null)) {
             throw new RuntimeException(\sprintf('l\'export PDF refusé ne relance aucun rendu : le PDF déjà produit reste servi — obtenu %s', $this->encoded(['status' => $socle['pdfExportStatus'] ?? null, 'url' => $socle['pdfExportUrl'] ?? null])));
         }

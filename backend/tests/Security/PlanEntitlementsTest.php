@@ -643,26 +643,23 @@ final class PlanEntitlementsTest extends WebTestCase
      */
     public function testTheOverrunMessageNamesCountAndCapAndNeverConcernsAnUncappedClub(): void
     {
-        $entitlements = self::getContainer()->get(PlanEntitlements::class);
-        \assert($entitlements instanceof PlanEntitlements);
-
         $over = $this->seedClub('complete', credits: 0, teamCount: 21, tierCode: 'palier-1');
-        self::assertSame($this->overrunMessage(21, 20), $entitlements->teamCapMessage($over['club'], $over['season']), 'palier 1, 21 équipes : dépassement');
+        self::assertSame($this->overrunMessage(21, 20), $this->teamCapMessageOutsideRequest($over['club'], $over['season']), 'palier 1, 21 équipes : dépassement');
         self::assertSame($this->overrunMessage(21, 20), $this->meEntitlements($over['user'])['teamCapMessage'] ?? null, '/api/me sert le message du dépassement');
         $over2 = $this->seedClub('complete', credits: 0, teamCount: 35, tierCode: 'palier-2');
-        self::assertSame($this->overrunMessage(35, 34), $entitlements->teamCapMessage($over2['club'], $over2['season']), 'palier 2, 35 équipes : dépassement');
+        self::assertSame($this->overrunMessage(35, 34), $this->teamCapMessageOutsideRequest($over2['club'], $over2['season']), 'palier 2, 35 équipes : dépassement');
 
         $atCap = $this->seedClub('complete', credits: 0, teamCount: 20, tierCode: 'palier-1', inactiveTeams: 2);
-        self::assertNull($entitlements->teamCapMessage($atCap['club'], $atCap['season']), 'palier 1, 20 équipes : pas de dépassement');
+        self::assertNull($this->teamCapMessageOutsideRequest($atCap['club'], $atCap['season']), 'palier 1, 20 équipes : pas de dépassement');
         $me = $this->meEntitlements($atCap['user']);
         self::assertTrue(\array_key_exists('teamCapMessage', $me) && null === $me['teamCapMessage'], '/api/me sert teamCapMessage: null sans dépassement');
         self::assertNotSame(403, $this->post($atCap['user'], '/api/schedules/' . self::DUMMY_SCHEDULE_ID . '/generate'), 'à la limite du palier, les sorties restent ouvertes');
         $atCap2 = $this->seedClub('complete', credits: 0, teamCount: 34, tierCode: 'palier-2');
-        self::assertNull($entitlements->teamCapMessage($atCap2['club'], $atCap2['season']), 'palier 2, 34 équipes : pas de dépassement');
+        self::assertNull($this->teamCapMessageOutsideRequest($atCap2['club'], $atCap2['season']), 'palier 2, 34 équipes : pas de dépassement');
 
         foreach (['palier 3' => ['complete', 'palier-3', false], 'Bêta' => ['beta', null, false], 'Découverte' => [null, null, false], 'démonstration au palier 1' => ['complete', 'palier-1', true]] as $case => [$plan, $tier, $demo]) {
             $ctx = $this->seedClub($plan, credits: 0, teamCount: 21, isDemo: $demo, tierCode: $tier);
-            self::assertNull($entitlements->teamCapMessage($ctx['club'], $ctx['season']), $case . ', 21 équipes : jamais concerné');
+            self::assertNull($this->teamCapMessageOutsideRequest($ctx['club'], $ctx['season']), $case . ', 21 équipes : jamais concerné');
             self::assertNotSame(403, $this->post($ctx['user'], '/api/schedules/' . self::DUMMY_SCHEDULE_ID . '/generate'), $case . ' : jamais refusé pour le palier');
         }
     }
@@ -783,6 +780,11 @@ final class PlanEntitlementsTest extends WebTestCase
         self::assertSame(200, $this->postJson($ctx['user'], '/api/schedules/' . $scheduleA->getId() . '/export-xlsx', [], $headerA), 'A garde ses sorties : son tableur est servi');
 
         // Témoin : sous l'en-tête de B, la saison qui dépasse son palier, chaque sortie est refusée.
+        // Le plafond horaire des solves (5/h par club en test) passe avant le contrôle central : les
+        // trois solves demandés sous l'en-tête de A l'ont entamé ; on remet le seau DU club à zéro.
+        $limiter = self::getContainer()->get('limiter.schedule_generation');
+        \assert($limiter instanceof RateLimiterFactory);
+        $limiter->create('club-' . $clubId)->reset();
         foreach ($this->outputRequests($scheduleB->getId(), $seasonB) as $output => [$uri, $body]) {
             $this->em->clear();
             self::assertSame(403, $this->postJson($ctx['user'], $uri, $body, ['HTTP_X_SEASON_ID' => $seasonB->getId()]), $output . ' : sous l\'en-tête de B, refusé pour le palier');
@@ -1096,6 +1098,28 @@ final class PlanEntitlementsTest extends WebTestCase
             'régénérer le planning' => ['/api/schedules/' . $scheduleId . '/regenerate', []],
             'générer le planning' => ['/api/schedules/' . $scheduleId . '/generate', []],
         ];
+    }
+
+    /**
+     * `teamCapMessage` lu hors requête, comme le lit un appel neuf en production. Le noyau de test est
+     * partagé : une requête précédente laisse le filtre de locataire et le filtre de saison actifs sur
+     * son gestionnaire d'entités, et le compte d'équipes d'un autre club y vaudrait 0 (un « null »
+     * qui ne prouverait rien). On les coupe, puis on lit sous le locataire du club (RLS).
+     */
+    private function teamCapMessageOutsideRequest(Club $club, Season $season): ?string
+    {
+        $em = self::getContainer()->get(EntityManagerInterface::class);
+        \assert($em instanceof EntityManagerInterface);
+        foreach (['tenant_filter', 'season_filter'] as $filter) {
+            if ($em->getFilters()->isEnabled($filter)) {
+                $em->getFilters()->disable($filter);
+            }
+        }
+        $this->scopeGucToClub($club->getId());
+        $entitlements = self::getContainer()->get(PlanEntitlements::class);
+        \assert($entitlements instanceof PlanEntitlements);
+
+        return $entitlements->teamCapMessage($club, $season);
     }
 
     /** Le `detail` du dernier refus (problème JSON), ou '' s'il n'y en a pas. */

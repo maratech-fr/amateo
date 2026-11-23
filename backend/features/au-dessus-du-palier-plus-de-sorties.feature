@@ -11,7 +11,7 @@ Fonctionnalité: Au-dessus du palier, plus de sorties
   palier 3 et un club de démonstration ne sont jamais concernés.
 
   Scénario: Au palier 1 avec 21 équipes, aucune sortie n'est servie, et seul le palier rouvre quand les équipes jouent
-    Étant donné le petit club, son planning de saison généré et validé, un PDF de ce planning déjà produit et un planning en brouillon
+    Étant donné le petit club, son planning de saison généré et validé, et un PDF de ce planning déjà produit
     Et le club compte 21 équipes, dont 3 désactivées
     Quand le support règle l'offre complète au palier 1 pour la saison en cours
     Alors le club est prévenu : « Votre club compte 21 équipes, votre palier en permet 20. Les générations, le placement des matchs et les exports sont suspendus : supprimez des équipes qui n'ont pas de match, ou changez de palier. »
