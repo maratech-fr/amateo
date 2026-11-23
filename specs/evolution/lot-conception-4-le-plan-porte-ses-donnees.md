@@ -1,7 +1,7 @@
 # Lot 4 · Le plan porte ses données : plan d'exécution
 
 **Statut : version finale (v3 sur 4, après deux passes de `smith`). Plan validé par le fondateur le 2026-11-22 avec sa
-décision (§10) et l'écart E1 (§3.7). Aucune PR livrée ; le lot 4 s'exécute après le lot 3 entier, une fois les mesures
+décision (§10) et l'écart E1 (§3.7). PR 1 livrée (le filet, écarts ci-dessous) ; les PR suivantes restent à faire, une fois les mesures
 de `link` (§6) faites.** Voie **Full**. Branche cible : `lot/conception` (une PR ouverte à la fois ; « Lot Gate » seul :
 `docs/ops/ci-runner.md` § Branche de lot ; avant chaque merge : `make -C backend tests-complete` + features et specs de la
 zone sur la stack d'épreuve). Exécutant : `neo`, après les rouges de `tank`. Cadrage : la conception validée en tient lieu
@@ -136,9 +136,17 @@ Une ligne par (plan de période, contrainte permanente) avec « s'applique ». P
 
 Ordre 1 → 2 → 3a → 3b → 4 → 5. Raison : chaque conversion prouvée seule, et la taille.
 
-### PR 1 · « Le filet du lot » (aucun comportement ne change)
+### PR 1 · « Le filet du lot » (aucun comportement ne change) — livrée
 - Références captées sur le code d'avant : `socle-11-socle-complet.json` ; `periode-12-vacances-reglages.json` (équipe écartée, séances propres, plafond propre, règle d'équipe recochée, règle de club décochée, gymnase hors service, masque de jour, contrainte datée sur l'entrée mère, équipe créée après la naissance) ; `periode-13-fermeture-reglages.json` (groupes hérités, règle décochée, « grille ressaisie », contrainte et équipe créées après la naissance) ; `validation-14-deplacement-socle.json`, `validation-15-deplacement-periode.json`.
 - **La chaîne de conversion, un seul test** (`tests/Integration/Migration/Lot4MigrationChainTest.php`) : une base dédiée, créée depuis un schéma figé d'avant le lot (`tests/Fixtures/lot-4/schema-avant.sql`, table des versions de migration comprise), reçoit le décor des quinze références écrit en SQL dans ce schéma (`decor-avant.sql`), joue toutes les migrations jusqu'à la tête, puis compose les quinze demandes avec le code de la tête et les compare aux fichiers de référence. **Choix contre la limite écrite** : la copie de production ne peut pas prouver ces conversions (aucun plan de période en cours, six plans passés dont on ne sait pas s'ils ont une demande enregistrable, mesure 10) ; seul ce décor porte les réglages de période. En PR 1 la chaîne joue zéro migration du lot ; **elle en joue une de plus à chaque PR, et c'est `tank` qui la tient verte**. Ajoutée au step `Blocking suite` et à `blocking-tests.md`. Son coût se mesure en PR 1 ; si la base dédiée ne peut pas être créée en CI ou coûte trop, repli écrit : la chaîne se joue sur la stack d'épreuve avant chaque merge, et le plan le dit comme limite.
+- **Écarts au plan, tels que livrés** :
+  - `decor-avant.sql` n'est pas écrit à la main : il est **capté** sous `LOT4_DECOR_CAPTURE=1`, une fois, sur le code d'avant le lot, par le décor des références (`EngineRequestRunnerTrait`), et ne se recapture jamais.
+  - `schema-avant.sql` est un `pg_dump` du schéma migré d'avant le lot (table des versions comprise).
+  - **Une base par référence**, copiée d'un modèle (schéma + décor chargés une fois), puis migrée ; la chaîne ne touche jamais la base de test elle-même. `LOT_MIGRATIONS` nomme les migrations jouées, vide en PR 1.
+  - Les rails `runGeneration`, `runPlacement` et `assertReference` quittent `EngineRequestReferenceTest` pour `tests/EngineRequestRunnerTrait.php`, partagé avec la chaîne.
+  - Le décor des références 12 et 13 reçoit des ajouts (`EngineRequestPlanSettingsDecorTrait`).
+  - Nouveau pas Behat « je génère une version de la fermeture » : le scénario « Une règle de saison ajoutée après la naissance d'une fermeture entre dans sa génération » (`plan-de-periode-en-overlay.feature`) prouve que la règle de saison ajoutée après la naissance du plan y entre.
+  - Le gate : `Lot4MigrationChainTest` est dans le step `Blocking suite` de `ci.yml` et dans `docs/testing/blocking-tests.md`.
 - Première mesure des plafonds (`make ci-mesure PART=origin/lot/conception`).
 - Tests : lignes 1 à 3. `/security-review` : non.
 

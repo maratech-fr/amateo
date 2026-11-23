@@ -4,46 +4,19 @@ declare(strict_types=1);
 
 namespace App\Tests\Integration;
 
-use App\Entity\Club;
-use App\Entity\MatchPlacementRun;
 use App\Entity\Schedule;
 use App\Enum\LockLevel;
 use App\Enum\ScheduleStatus;
-use App\Message\GenerateScheduleMessage;
-use App\Message\PlaceMatchesMessage;
-use App\MessageHandler\GenerateScheduleHandler;
-use App\MessageHandler\PlaceMatchesHandler;
-use App\Service\ClubGenerationLock;
-use App\Service\DiagnosticMessageBuilder;
-use App\Service\EngineClient;
-use App\Service\MatchPlacementLock;
-use App\Service\MatchPlacementPayloadBuilder;
-use App\Service\MatchPlacementProgressPublisher;
-use App\Service\MatchPlacementResultApplier;
-use App\Service\OutputCreditLedger;
-use App\Service\PlacementRunEmailBuilder;
-use App\Service\PlacementRunFailureNotifier;
-use App\Service\RequestIdContext;
 use App\Service\ScheduleConstraintBuilder;
-use App\Service\ScheduleDiagnosticsRecorder;
 use App\Service\SchedulePlanProvisioner;
-use App\Service\ScheduleProgressPublisher;
-use App\Service\ScheduleResultImporter;
-use App\Service\SolverMetricsMapper;
-use App\Service\StructureSnapshotter;
-use App\Service\TenantConnectionContext;
 use App\Tests\EngineRequestDecorTrait;
 use App\Tests\EngineRequestGroupRulesDecorTrait;
+use App\Tests\EngineRequestPlanSettingsDecorTrait;
+use App\Tests\EngineRequestRunnerTrait;
 use App\Tests\EngineRequestTravelDecorTrait;
-use DateTimeImmutable;
+use App\Tests\Integration\Migration\Lot4MigrationChainTest;
 use PHPUnit\Framework\Attributes\Group;
-use Psr\Clock\ClockInterface;
-use Psr\Log\NullLogger;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
-use Symfony\Component\HttpClient\MockHttpClient;
-use Symfony\Component\HttpClient\Response\MockResponse;
-use Symfony\Component\Mailer\MailerInterface;
-use Symfony\Component\Mercure\HubInterface;
 use Symfony\Contracts\Cache\ItemInterface;
 use Symfony\Contracts\Cache\TagAwareCacheInterface;
 
@@ -65,15 +38,21 @@ use Symfony\Contracts\Cache\TagAwareCacheInterface;
  *   8. période générée sur place, avec une règle de groupe datée ;
  *   9. socle de la saison SUIVANTE d'un club à deux saisons, aux temps de trajet, un couple rangé à l'envers
  *      d'une saison à l'autre (`EngineRequestTravelDecorTrait`) ;
- *  10. période générée sur place, aux temps de trajet de la saison en cours.
+ *  10. période générée sur place, aux temps de trajet de la saison en cours ;
+ *  11 à 15. ce que le lot 4 range dans le plan (`EngineRequestPlanSettingsDecorTrait`) : le socle complet,
+ *      un plan de vacances et un plan de fermeture réglés, le verdict d'un déplacement dans le socle et
+ *      dans une période (`/validate-assignments`).
+ *
+ * Jumeau de conversion : {@see Lot4MigrationChainTest} compare aux MÊMES fichiers les demandes composées
+ * sur ce décor écrit en SQL dans le schéma d'avant le lot 4, une fois toutes les migrations jouées.
  *
  * Bloquant (step `Blocking suite` de `ci.yml`, `docs/testing/blocking-tests.md`) : le « Lot Gate »
  * d'une branche de lot ne joue que la suite bloquante. Le groupe `phase1` est requis : le step lance
  * `phpunit --group phase1 <fichiers>`, un fichier listé sans ce groupe n'y jouerait aucun test.
  *
- * Aux cas de génération (1 à 4, 7 à 10), la demande se recoupe avec ce qui est écrit en base : l'empreinte
+ * Aux cas de génération (1 à 4, 7 à 13), la demande se recoupe avec ce qui est écrit en base : l'empreinte
  * `snapshotHash` vaut `structureHash(snapshotData)`, les clés de la greffe `payloadGraft` sont
- * exactement celles attendues, et le corps reçu vaut `engineInput()` relu en base. Aux cas 1 à 3 et 7 à 10,
+ * exactement celles attendues, et le corps reçu vaut `engineInput()` relu en base. Aux cas 1 à 3 et 7 à 13,
  * `snapshotHash` vaut aussi `structureHashOfPlan(plan)` (le signal « structure modifiée » ne ment pas
  * sur une version fraîche). Au cas 4 (comblement), la relation constatée est AUSSI l'égalité, mais par
  * un autre chemin : les épingles du comblement (tout le placé de la version source, en HARD) sont
@@ -104,9 +83,9 @@ final class EngineRequestReferenceTest extends KernelTestCase
 {
     use EngineRequestDecorTrait;
     use EngineRequestGroupRulesDecorTrait;
+    use EngineRequestPlanSettingsDecorTrait;
+    use EngineRequestRunnerTrait;
     use EngineRequestTravelDecorTrait;
-
-    private const string REFERENCE_DIR = __DIR__ . '/../Fixtures/engine-requests';
 
     public function testSocleFirstGenerationOfADraft(): void
     {
@@ -289,6 +268,81 @@ final class EngineRequestReferenceTest extends KernelTestCase
         $this->assertSnapshotMatchesPlanStructure($run['schedule']);
     }
 
+    /** Le socle dont chaque famille ancrée au plan a sa ligne, et une équipe ses séances et son plafond propres. */
+    public function testCompleteSocle(): void
+    {
+        $this->seedEngineRequestCompleteSocle();
+        $this->seedSocleVersion(self::ER_SOCLE_V1, ScheduleStatus::DRAFT);
+
+        $run = $this->runGeneration(self::ER_SOCLE_V1);
+
+        self::assertSame([[self::ER_BLOCK_SOCLE, [self::ER_TEAM_U15, self::ER_TEAM_SM1]]], $this->blockRows($run['body']), 'le groupe mutualisé du socle part au moteur');
+        $this->assertReference('socle-11-socle-complet', $run['body']);
+        $this->assertGenerationCoherence($run['body'], $run['schedule'], null);
+        $this->assertSnapshotMatchesPlanStructure($run['schedule']);
+    }
+
+    /** La semaine-enfant d'un plan de vacances réglé (équipes, règles, gymnases), une équipe créée après sa naissance. */
+    public function testHolidayPlanWithItsSettings(): void
+    {
+        $this->seedSocleInForce();
+        $this->seedEngineRequestHolidaySettings();
+        $this->erVersion(self::ER_HOLIDAY_V1, self::ER_HOLIDAY_WEEK, ScheduleStatus::DRAFT, []);
+
+        $run = $this->runGeneration(self::ER_HOLIDAY_V1);
+
+        self::assertSame(
+            [self::ER_TEAM_U15, self::ER_TEAM_SM1, self::ER_TEAM_U17_HOLIDAY],
+            array_column(\is_array($run['body']['teams'] ?? null) ? $run['body']['teams'] : [], 'id'),
+            'U13 écartée ; U17, créée après la naissance, participe',
+        );
+        $this->assertReference('periode-12-vacances-reglages', $run['body']);
+        $this->assertGenerationCoherence($run['body'], $run['schedule'], null);
+        $this->assertSnapshotMatchesPlanStructure($run['schedule']);
+    }
+
+    /** Un plan de fermeture réglé : groupe hérité, règle décochée, grille ressaisie, contrainte et équipe créées après. */
+    public function testClosurePlanWithItsSettings(): void
+    {
+        $this->seedSocleInForce();
+        $this->seedEngineRequestClosureSettings();
+        $this->erVersion(self::ER_CLOSURE_V1, self::ER_CLOSURE_SETTINGS, ScheduleStatus::DRAFT, []);
+
+        $run = $this->runGeneration(self::ER_CLOSURE_V1);
+
+        self::assertSame([[self::ER_BLOCK_CLOSURE, [self::ER_TEAM_U15, self::ER_TEAM_SM1]]], $this->blockRows($run['body']), 'la fermeture porte le groupe hérité du socle');
+        self::assertContains(self::ER_TEAM_U17_CLOSURE, array_column(\is_array($run['body']['teams'] ?? null) ? $run['body']['teams'] : [], 'id'), 'U17, créée après la naissance, participe');
+        $this->assertReference('periode-13-fermeture-reglages', $run['body']);
+        $this->assertGenerationCoherence($run['body'], $run['schedule'], null);
+        $this->assertSnapshotMatchesPlanStructure($run['schedule']);
+    }
+
+    /** Le verdict d'un déplacement dans le socle : U15 du mercredi 18:00 au lundi 19:30, au Nord. */
+    public function testValidationOfAMoveInTheSocle(): void
+    {
+        $this->seedSocleInForce();
+
+        $body = $this->runMoveValidation(self::erId('5107', 2), [1, '19:30', self::ER_VENUE_NORD]);
+
+        $this->assertReference('validation-14-deplacement-socle', $body);
+    }
+
+    /** Le verdict d'un déplacement dans un plan de fermeture : SM1 du jeudi au lundi 18:00, au Nord. */
+    public function testValidationOfAMoveInAPeriod(): void
+    {
+        $this->seedSocleInForce();
+        $planId = $this->seedEngineRequestPeriod();
+        $this->seedPeriodVersion(self::ER_PERIOD_P1, ScheduleStatus::COMPLETED, [
+            [11, self::ER_TEAM_U15, self::ER_VENUE_NORD, 1, '19:30', LockLevel::HARD],
+            [12, self::ER_TEAM_SM1, self::ER_VENUE_NORD, 4, '18:00', LockLevel::NONE],
+        ]);
+        self::getContainer()->get(SchedulePlanProvisioner::class)->pointLockSource($planId, self::ER_PERIOD_P1);
+
+        $body = $this->runMoveValidation(self::erId('5107', 12), [1, '18:00', self::ER_VENUE_NORD]);
+
+        $this->assertReference('validation-15-deplacement-periode', $body);
+    }
+
     /**
      * Falsification de la purge du cache : une valeur DIFFÉRENTE amorcée sous la clé exacte du
      * payload de socle est (a) servie par le constructeur si l'on ne purge pas — le piège est réel —
@@ -338,153 +392,6 @@ final class EngineRequestReferenceTest extends KernelTestCase
     }
 
     /**
-     * Le handler de génération réel, avec un `EngineClient` réel sur un moteur simulé qui capture le
-     * corps reçu et renvoie, comme le vrai, les verrous HARD reçus.
-     *
-     * @return array{body: array<string, mixed>, schedule: Schedule}
-     */
-    private function runGeneration(string $scheduleId, ?string $sourceScheduleId = null, ?string $fillSourceScheduleId = null): array
-    {
-        $em = $this->erEm();
-        $em->flush();
-        $em->clear();
-        $this->clearGuc();
-        $this->purgeEngineRequestCache();
-
-        $captured = null;
-        $engine = new MockHttpClient(static function (string $method, string $url, array $options) use (&$captured): MockResponse {
-            $captured = json_decode((string) ($options['body'] ?? ''), true, 512, \JSON_THROW_ON_ERROR);
-            $pins = array_values(array_filter(
-                \is_array($captured) && \is_array($captured['slotTemplates'] ?? null) ? $captured['slotTemplates'] : [],
-                static fn (mixed $pin): bool => \is_array($pin) && 'HARD' === ($pin['lockLevel'] ?? null),
-            ));
-
-            return new MockResponse(json_encode(['status' => 'completed', 'score' => 0, 'slots' => $pins, 'diagnostics' => []], \JSON_THROW_ON_ERROR), ['http_code' => 200]);
-        });
-
-        $container = self::getContainer();
-        $hub = $this->createMock(HubInterface::class);
-        $hub->method('publish')->willReturn('id');
-        $handler = new GenerateScheduleHandler(
-            $em,
-            $container->get(ScheduleConstraintBuilder::class),
-            $container->get(ScheduleResultImporter::class),
-            new EngineClient($engine, new RequestIdContext),
-            new ScheduleProgressPublisher($hub),
-            new ScheduleDiagnosticsRecorder($em, $container->get(DiagnosticMessageBuilder::class)),
-            new SolverMetricsMapper,
-            $container->get(ClubGenerationLock::class),
-            $container->get(TenantConnectionContext::class),
-            $container->get(StructureSnapshotter::class),
-            $container->get(SchedulePlanProvisioner::class),
-            $container->get(OutputCreditLedger::class),
-        );
-        $handler(new GenerateScheduleMessage(
-            scheduleId: $scheduleId,
-            clubId: self::ER_CLUB,
-            sourceScheduleId: $sourceScheduleId,
-            fillSourceScheduleId: $fillSourceScheduleId,
-        ));
-
-        self::assertIsArray($captured, 'le moteur simulé doit avoir reçu une demande');
-        $this->scopeGucToClub(self::ER_CLUB);
-        $em->clear();
-        $schedule = $em->getRepository(Schedule::class)->find($scheduleId);
-        self::assertInstanceOf(Schedule::class, $schedule);
-        self::assertSame(ScheduleStatus::COMPLETED, $schedule->getStatus(), 'la génération simulée doit aboutir');
-
-        return ['body' => $captured, 'schedule' => $schedule];
-    }
-
-    /**
-     * Le handler de placement réel (worker), `EngineClient` réel sur un moteur simulé qui capture.
-     *
-     * @param array{from: string, to: string}|null $window
-     *
-     * @return array<string, mixed>
-     */
-    private function runPlacement(?array $window): array
-    {
-        $em = $this->erEm();
-        $em->flush();
-        $run = new MatchPlacementRun(self::ER_CLUB, self::ER_SEASON, self::ER_USER, new DateTimeImmutable(self::ER_TODAY));
-        $em->persist($run);
-        $em->flush();
-        $em->clear();
-        $this->clearGuc();
-
-        $container = self::getContainer();
-        $lock = $container->get(MatchPlacementLock::class);
-        $token = $lock->acquire(self::ER_CLUB, 120);
-        self::assertIsString($token, 'le verrou de placement du club de référence doit être libre');
-
-        $captured = null;
-        $engine = new MockHttpClient(static function (string $method, string $url, array $options) use (&$captured): MockResponse {
-            $captured = json_decode((string) ($options['body'] ?? ''), true, 512, \JSON_THROW_ON_ERROR);
-
-            return new MockResponse(json_encode(['status' => 'completed', 'placements' => [], 'unplaced' => [], 'diagnostics' => [], 'metrics' => ['budget_seconds' => 35]], \JSON_THROW_ON_ERROR), ['http_code' => 200]);
-        });
-        $hub = $this->createMock(HubInterface::class);
-        $hub->method('publish')->willReturn('id');
-        $mailer = $this->createMock(MailerInterface::class);
-        $handler = new PlaceMatchesHandler(
-            $container->get(TenantConnectionContext::class),
-            $em,
-            $lock,
-            $container->get(MatchPlacementPayloadBuilder::class),
-            new EngineClient($engine, new RequestIdContext),
-            $container->get(MatchPlacementResultApplier::class),
-            new MatchPlacementProgressPublisher($hub),
-            $container->get(OutputCreditLedger::class),
-            $container->get(ClockInterface::class),
-            $mailer,
-            $container->get(PlacementRunEmailBuilder::class),
-            new PlacementRunFailureNotifier($em, $mailer, $container->get(PlacementRunEmailBuilder::class), new NullLogger),
-            new NullLogger,
-        );
-
-        try {
-            $handler(new PlaceMatchesMessage(
-                runId: $run->getId(),
-                clubId: self::ER_CLUB,
-                seasonId: self::ER_SEASON,
-                weeksCount: 1,
-                lockToken: $token,
-                window: $window,
-            ));
-        } finally {
-            $lock->release(self::ER_CLUB, $token);
-        }
-        $this->scopeGucToClub(self::ER_CLUB);
-
-        self::assertIsArray($captured, 'le moteur simulé doit avoir reçu une demande de placement');
-
-        return $captured;
-    }
-
-    /**
-     * Compare le corps reçu au fichier de référence (ou le capture, sous `ENGINE_REQUEST_CAPTURE=1`).
-     *
-     * @param array<string, mixed> $body
-     */
-    private function assertReference(string $name, array $body): void
-    {
-        $this->assertEveryUuidIsFixed($body, $name);
-        $path = self::REFERENCE_DIR . '/' . $name . '.json';
-
-        if ('1' === getenv('ENGINE_REQUEST_CAPTURE')) {
-            if (!is_dir(self::REFERENCE_DIR)) {
-                mkdir(self::REFERENCE_DIR, 0o775, true);
-            }
-            file_put_contents($path, json_encode($body, \JSON_PRETTY_PRINT | \JSON_UNESCAPED_SLASHES | \JSON_UNESCAPED_UNICODE | \JSON_PRESERVE_ZERO_FRACTION | \JSON_THROW_ON_ERROR) . "\n");
-        }
-
-        self::assertFileExists($path, \sprintf('référence %s absente : la capturer avec ENGINE_REQUEST_CAPTURE=1, sur un code dont EngineRequestOrderIsStableTest est vert', $name));
-        $reference = json_decode((string) file_get_contents($path), true, 512, \JSON_THROW_ON_ERROR);
-        self::assertSame($reference, $body, \sprintf('la demande %s n\'est plus celle de la référence', $name));
-    }
-
-    /**
      * @param array<string, mixed> $body
      * @param list<string>|null    $graftKeys
      */
@@ -520,5 +427,20 @@ final class EngineRequestReferenceTest extends KernelTestCase
 
             return $value;
         });
+    }
+
+    /**
+     * Les groupes mutualisés de la demande : [id, équipes membres].
+     *
+     * @param array<string, mixed> $body
+     *
+     * @return list<array{0: mixed, 1: mixed}>
+     */
+    private function blockRows(array $body): array
+    {
+        return array_map(
+            static fn (array $block): array => [$block['id'] ?? null, $block['teamIds'] ?? null],
+            array_values(array_filter(\is_array($body['sharedBlocks'] ?? null) ? $body['sharedBlocks'] : [], \is_array(...))),
+        );
     }
 }
