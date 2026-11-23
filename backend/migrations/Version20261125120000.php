@@ -132,7 +132,7 @@ final class Version20261125120000 extends AbstractMigration
 
     public function down(Schema $schema): void
     {
-        $this->throwIrreversibleMigration(
+        $this->throwIrreversibleMigrationException(
             'Les colonnes d\'adresse et de position de venue supprimées ne se recréent pas depuis les lieux sans risque. Retour arrière : restaurer la sauvegarde d\'avant migration.',
         );
     }
