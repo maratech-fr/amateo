@@ -523,13 +523,13 @@ final class SeasonTransitionContext extends BaseContext
         sort($ids, \SORT_STRING);
         $listed = $this->apiGet('venue_travel_times', $this->smallClubToken, ['X-Season-Id' => $seasonId]);
         $members = \is_array($listed['json']['member'] ?? null) ? $listed['json']['member'] : [];
-        foreach ($members as $member) {
-            if (\is_array($member) && [$member['venueAId'] ?? null, $member['venueBId'] ?? null] === $ids) {
-                return ['id' => $member['id'] ?? null, 'venueAId' => $ids[0], 'venueBId' => $ids[1], 'drivingMinutes' => $member['drivingMinutes'] ?? null];
-            }
+        $matches = array_values(array_filter($members, static fn (mixed $member): bool => \is_array($member) && [$member['venueAId'] ?? null, $member['venueBId'] ?? null] === $ids));
+        // Une seule valeur par couple : deux lignes servies pour la même paire seraient une recopie.
+        if (1 === \count($matches) && \is_array($matches[0])) {
+            return ['id' => $matches[0]['id'] ?? null, 'venueAId' => $ids[0], 'venueBId' => $ids[1], 'drivingMinutes' => $matches[0]['drivingMinutes'] ?? null];
         }
 
-        throw new RuntimeException(\sprintf('aucun trajet %s – %s rangé %s dans la saison %s (HTTP %d) : %s', $a, $b, json_encode($ids), $seasonId, $listed['status'], json_encode($members, \JSON_UNESCAPED_UNICODE)));
+        throw new RuntimeException(\sprintf('%d trajet(s) %s – %s rangé(s) %s dans la saison %s, un seul attendu (HTTP %d) : %s', \count($matches), $a, $b, json_encode($ids), $seasonId, $listed['status'], json_encode($members, \JSON_UNESCAPED_UNICODE)));
     }
 
     /** @return array<string, int> libellé → nombre de lignes de la saison */
