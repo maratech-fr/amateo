@@ -32,8 +32,10 @@ use Symfony\Component\HttpKernel\KernelEvents;
  *  3. module fermé (409, message de {@see SocleGuard}) — une fonction refusée module fermé
  *     (`ClubFunction::$refusedWhenModuleClosed`) d'un module qui exige le socle en vigueur
  *     ({@see Module::requiresSocleInForce()}), saison lue sur `_season_id` ;
- *  4. crédit (403) — une sortie payante (`ClubFunction::$output`) d'un club Découverte à sec.
- * Un Membre reçoit donc le refus du rôle, jamais celui de la démonstration ou des crédits.
+ *  4. palier (403, message de {@see PlanEntitlements::teamCapMessage()}) — une sortie
+ *     (`ClubFunction::$output`) d'une saison qui compte plus d'équipes que son palier ;
+ *  5. crédit (403) — une sortie payante (`ClubFunction::$output`) d'un club Découverte à sec.
+ * Un Membre reçoit donc le refus du rôle, jamais celui de la démonstration, du palier ou des crédits.
  * Une fonction « compte » (`#[AccountFunction]`) ne dépend d'aucun club : seul son refus en
  * démonstration (`protectedInDemo`) se décide ici.
  *
@@ -149,7 +151,12 @@ final class ClubAccessListener implements EventSubscriberInterface
         }
 
         if ($this->outputOf($declaration, $method) instanceof Output) {
-            $budget = $this->budgetFor($request);
+            $scope = $this->clubAndSeasonOf($request);
+            $teamCapMessage = null === $scope ? null : $this->planEntitlements->teamCapMessage(...$scope);
+            if (null !== $teamCapMessage) {
+                throw new AccessDeniedHttpException($teamCapMessage);
+            }
+            $budget = null === $scope ? null : $this->planEntitlements->outputBudget(...$scope);
             if (null !== $budget && $budget['restricted'] && $budget['used'] >= $budget['max']) {
                 throw new AccessDeniedHttpException(\sprintf('Les %d générations gratuites de votre club sont utilisées — l\'offre complète les rend illimitées.', $budget['max']));
             }
@@ -236,10 +243,12 @@ final class ClubAccessListener implements EventSubscriberInterface
     }
 
     /**
-     * @return array{restricted: bool, max: int, used: int}|null null = pas de club ou de saison
-     *                                                           résolu : rien à borner ici
+     * Le club et la saison de la REQUÊTE (`_club_id`, `_season_id`) : c'est cette saison qui juge le
+     * palier et le crédit, pour toutes les sorties.
+     *
+     * @return array{0: Club, 1: Season}|null null = pas de club ou de saison résolu : rien à borner ici
      */
-    private function budgetFor(Request $request): ?array
+    private function clubAndSeasonOf(Request $request): ?array
     {
         $clubId = $request->attributes->get('_club_id');
         $seasonId = $request->attributes->get('_season_id');
@@ -253,6 +262,6 @@ final class ClubAccessListener implements EventSubscriberInterface
             return null;
         }
 
-        return $this->planEntitlements->outputBudget($club, $season);
+        return [$club, $season];
     }
 }
