@@ -16,7 +16,7 @@ datés : le balayage et `grep` font foi, pas le chiffre.
 ## 0. Ce qui est livré et ce qui ne l'est pas
 
 - **Lots 0, 1 et 2 livrés** sur `lot/conception` (non déployés) ; le lot 8 ne dépend que du lot 2.
-- **Lot 3** : plan écrit et validé, aucune PR livrée. Le lot 3 modifie aussi `SeasonTransitionService.php`,
+- **Lot 3** : PR 1, 2a, 2b et 3 livrées sur `lot/conception` ; PR 4 et 5 à faire. Le lot 3 modifie aussi `SeasonTransitionService.php`,
   `ErasedClubPurger.php`, `etat-des-lieux.md` et la fiche du découpage : **le lot 8 s'exécute après la PR 1 du lot 3**,
   pour qu'une seule PR soit ouverte à la fois sur ces fichiers.
 - **Déploiement unique** : tout le lot conception part en une seule mise en production, à la fin, depuis

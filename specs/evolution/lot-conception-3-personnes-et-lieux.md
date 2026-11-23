@@ -184,7 +184,16 @@ Ordre : 1 → 2a → 2b → 3 → 4 → 5, sur `lot/conception`, une PR ouverte 
 - **Fichiers** : `Entity/Person.php`, `Structure/UnusedIdentitySweeper.php` (neufs), `Entity/Coach.php`, une migration, `CoachStateProcessor.php`, `Structure/PersonDirectory.php`, `SeasonTransitionService.php:284-303`, `StructureRestorer.php`, `SeasonDataPurger.php`, `ErasedClubPurger.php`, `ResetSeasonController.php`, `Command/ResetClubSeasonCommand.php`, `Seed/BcclSeeder.php:785-801`, `Seed/LoadTestClubSeeder.php:458-463`, `backend/AGENTS.md` ; 51 fichiers de test adaptés mécaniquement.
 - **Tests** : lignes 5 à 15. `/security-review` : oui.
 
-### PR 3 · « Effacer une personne »
+### PR 3 · « Effacer une personne » — LIVRÉE (2026-11-22)
+- **Livré** : `Structure/PersonEraser.php`, `Structure/PersonErasureBlockedException.php`, `Command/ErasePersonCommand.php` (neufs), `PdfGenerator::deleteRendersOf`, `AuditAction::PERSON_ERASED` ; suite Behat `effacement-personne`. Bloquant ajouté : `Security/PersonErasureLeavesNoTraceTest` (`ci.yml` et `blocking-tests.md`). Doc : `rgpd.md`, `commands.md`, `backend-demo.md`, `test-coverage-map.md`, `validation-runner`. `StructureRestorer.php` et `CoachWishCampaignTokenSync.php` n'ont pas changé.
+- **Écarts au plan, écrits** :
+  - Remplacement du nom COMPOSÉ dans les textes libres (mot entier, casse ignorée) ; un nom d'un seul mot n'est jamais remplacé par texte (limite 7).
+  - Ses règles sont relevées PAR IDENTIFIANT avant la cascade : leur nom exact est remplacé dans les diagnostics et les signalements même sans son nom composé.
+  - Option `--sweep-files` (`--club` seul) : reprise de la suppression des PDF après un arrêt entre la validation et les fichiers.
+  - Verrous de génération et de placement du club pris pendant l'effacement ; refus (code 1, rien ne bouge) s'ils sont tenus.
+  - L'identifiant de la demande PDF livrée est remis à vide avec l'adresse (sinon la demande relue serait tenue pour déjà rendue).
+  - Audit sans acteur (commande de support).
+- **Plan d'origine** (le détail livré ci-dessus fait foi) :
 `PersonEraser`, dans une transaction, pour chaque saison du club, lecture seule comprise (décision 5) :
 1. vide le commentaire des doléances dont elle est l'auteur ;
 2. joue la cascade de suppression du coach et supprime la ligne ; liens de collecte et reçus partent par clé étrangère ;
@@ -399,7 +408,7 @@ Lecture seule, clubs de démonstration exclus, comptes et identifiants seulement
 4. **Ce que l'effacement ne nettoie pas** : un texte libre saisi par le gestionnaire ailleurs que sur la fiche (une règle d'équipe nommée à la main, le message d'un signalement) ; la capture d'écran d'un signalement (purgée à 90 jours) ; les mails déjà partis aux gestionnaires et aux coachs (récapitulatifs de collecte, mails de conflits), qui sont hors de la base et ne se rappellent pas ; les sauvegardes jusqu'à leur rotation (`docs/security/rgpd.md` §4).
 5. **Deux gestionnaires qui corrigent la même fiche depuis deux saisons** : le dernier écrit gagne.
 6. **Un nom, une adresse ou un temps de trajet corrigés font paraître « périmées » les versions non validées de toutes les saisons du club.** Levé au lot 5.
-7. **Un nom d'un seul mot** (« Paul », sans nom de famille) est remplacé partout où il apparaît dans les diagnostics, les signalements et la boîte de démonstration du club, y compris à l'intérieur d'un autre nom.
+7. **Un nom réduit à un seul mot** (« Paul », sans nom de famille) n'est JAMAIS remplacé par texte (il se retrouverait dans le nom d'une autre personne) : le remplacement par identifiant (ligne de ses rôles, nom de ses règles) vaut, le prénom seul reste dans les textes libres, les diagnostics, les signalements et la boîte de démonstration.
 8. **`constraint_conflict` n'est pas traitée par l'effacement** : rien ne l'écrit (§2), la mesure 7 le vérifie.
 9. **La preuve de l'effacement** : la ligne 16 prouve par les gestes ; la ligne 17 ne prouve que le relevé du §2, et deux cas ne sont joués que là : le signalement né d'une génération en échec, le récapitulatif de fin de collecte.
 10. **Après « Dissocier » puis « Annuler »** (décision 2, option A) : deux lieux à la même adresse, sans geste pour les réunir, jusqu'à la purge de la saison la plus ancienne.
