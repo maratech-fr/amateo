@@ -4,17 +4,13 @@ declare(strict_types=1);
 
 namespace App\Tests\Integration\Api;
 
-use App\Entity\CalendarEntry;
 use App\Entity\Club;
 use App\Entity\ClubUser;
 use App\Entity\SchedulePlan;
 use App\Entity\Season;
 use App\Entity\User;
-use App\Enum\CalendarEntryKind;
-use App\Enum\CalendarEntryPeriodType;
 use App\Enum\SchedulePlanType;
 use App\Enum\SeasonStatus;
-use App\Service\SchedulePlanProvisioner;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -75,42 +71,6 @@ final class TeamPeriodOverrideApiTest extends WebTestCase
         $body = json_decode((string) $this->client->getResponse()->getContent(), true);
         self::assertTrue($body['isActive']);
         self::assertSame(3, $body['sessionsPerWeek']);
-    }
-
-    public function testDuplicateOverrideIsRejectedWithValidationNotServerError(): void
-    {
-        $this->post(['schedulePlanId' => $this->planId, 'teamId' => self::TEAM, 'isActive' => false, 'sessionsPerWeek' => null]);
-        self::assertResponseStatusCodeSame(201);
-
-        // A second POST for the same (period, team) → clean 422, not a 500 from the DB unique index.
-        $this->post(['schedulePlanId' => $this->planId, 'teamId' => self::TEAM, 'isActive' => true, 'sessionsPerWeek' => 2]);
-        self::assertResponseStatusCodeSame(422);
-        // P4-126 — le motif voyage jusque dans le corps (un 422 muet rendrait `violations: []`).
-        self::assertStringContainsString('Cette équipe a déjà un réglage pour cette période — modifiez-le.', (string) $this->client->getResponse()->getContent());
-    }
-
-    /**
-     * ADR-0002 lot C: the seed guard lives on the PLAN (inv. 5 — the settings hang off
-     * the plan, not off the calendar event), so the first override marks the plan.
-     */
-    public function testFirstOverrideMarksThePlanTeamSelectionInitialized(): void
-    {
-        $entry = (new CalendarEntry)->setClubId($this->club->getId())->setSeasonId($this->season->getId())
-            ->setKind(CalendarEntryKind::PERIOD)->setPeriodType(CalendarEntryPeriodType::HOLIDAY)->setTitle('Reprise')
-            ->setStartDate(new DateTimeImmutable('2026-01-05'))->setEndDate(new DateTimeImmutable('2026-01-11'));
-        $this->em->persist($entry);
-        $this->em->flush();
-        // En prod le geste (POST /api/calendar_entries) crée le plan ; l'entrée est
-        // fabriquée à la main ici, on rejoue donc le geste explicitement.
-        $planId = self::getContainer()->get(SchedulePlanProvisioner::class)->provisionPeriodPlan($entry->getId());
-        self::assertIsString($planId);
-        self::assertFalse($this->planById($planId)->isTeamSelectionInitialized(), 'a fresh plan is not yet configured');
-
-        $this->post(['schedulePlanId' => $planId, 'teamId' => self::TEAM, 'isActive' => false, 'sessionsPerWeek' => null]);
-        self::assertResponseStatusCodeSame(201);
-
-        $this->client->request('GET', '/api/schedule_plans/' . $planId, [], [], $this->headers());
-        self::assertTrue(json_decode((string) $this->client->getResponse()->getContent(), true)['teamSelectionInitialized'], 'the first override marks the plan configured');
     }
 
     /**
@@ -202,15 +162,6 @@ final class TeamPeriodOverrideApiTest extends WebTestCase
         $this->em->persist($plan);
         $this->em->flush();
         $this->planId = $plan->getId();
-    }
-
-    private function planById(string $planId): SchedulePlan
-    {
-        $this->em->clear();
-        $plan = $this->em->getRepository(SchedulePlan::class)->find($planId);
-        self::assertInstanceOf(SchedulePlan::class, $plan);
-
-        return $plan;
     }
 
     /**

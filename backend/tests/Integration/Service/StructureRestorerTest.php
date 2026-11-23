@@ -21,7 +21,7 @@ use App\Entity\Schedule;
 use App\Entity\Season;
 use App\Entity\Team;
 use App\Entity\TeamCoach;
-use App\Entity\TeamPeriodOverride;
+use App\Entity\PlanTeam;
 use App\Entity\Venue;
 use App\Entity\VenueTrainingSlot;
 use App\Enum\CalendarEntryKind;
@@ -34,11 +34,13 @@ use App\Enum\FixtureStatus;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
 use App\Enum\TeamCoachRole;
+use App\Service\EntityCascadeDeleter;
 use App\Service\SchedulePlanProvisioner;
 use App\Service\StructureRestorer;
 use App\Service\StructureSnapshotter;
 use App\Structure\PersonDirectory;
 use App\Structure\PlaceDirectory;
+use App\Tests\ComposesPlanTeamsTrait;
 use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\ProvisionsPeriodPlanTrait;
 use App\Tests\SeasonPlanOf;
@@ -59,6 +61,7 @@ use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
 #[Group('integration')]
 final class StructureRestorerTest extends KernelTestCase
 {
+    use ComposesPlanTeamsTrait;
     use CreatesPeopleAndPlacesTrait;
     use ProvisionsPeriodPlanTrait;
 
@@ -380,38 +383,138 @@ final class StructureRestorerTest extends KernelTestCase
     }
 
     /**
-     * Charger une version restaure le plafond de séances par jour de sa photo ; une photo prise avant que le champ existe (la clé
-     * manque) donne 1, le défaut de la propriété — jamais une erreur ni une valeur héritée de l'état courant.
+     * Lot 4, PR 3a (ligne 15 du plan, a) : « Charger » une version du socle rend à chaque équipe les séances et le plafond
+     * par jour de la photo, sur sa ligne du plan de saison — la valeur saisie depuis s'en va.
+     * (Remplace le cas d'avant le lot où le plafond vivait sur l'équipe et une photo sans le champ donnait 1 : les photos
+     * sont converties par la migration, `Lot4MigrationChainTest::testTheConversionMovesThePhotoTeamSettingsOntoTheSoclePlan`.)
      */
-    public function testLoadingRestoresTheDailyCapAndAnOlderPhotoWithoutItGivesOne(): void
+    public function testLoadingGivesEachTeamBackTheSessionsAndDailyCapOfThePhoto(): void
+    {
+        [$club, $season] = $this->seedClubSeason();
+        $seasonPlan = $this->seasonPlanIdOf($season);
+        $team = $this->persistTeam($club, $season, 'SM1');
+        $this->em->flush();
+        $this->setSocleTeam($season->getId(), $team->getId(), 2, 2);
+        $v1 = $this->makeSchedule($club, $season);
+        $this->em->flush();
+        $this->snapshotter->store($v1, $this->snapshotter->serialize($club->getId(), $season->getId()));
+
+        $this->teamLine($seasonPlan, $team->getId())->setSessionsPerWeek(3)->setMaxSessionsPerDay(3);
+        $this->em->flush();
+        $this->restorer->apply($club->getId(), $season->getId(), $this->restorer->readSnapshot($v1));
+        $this->em->clear();
+
+        self::assertSame(['participates' => true, 'sessionsPerWeek' => 2, 'maxSessionsPerDay' => 2, 'source' => null], $this->lineRow($seasonPlan, $team->getId()), 'les séances et le plafond de la photo reviennent sur la ligne du socle');
+    }
+
+    /**
+     * Lot 4, PR 3a : une photo restée à l'ancien format (séances sur les lignes `Team`, aucune ligne `PlanTeam`) est
+     * refusée, et rien de la structure n'est effacé : la conversion des photos a échoué, la charger laisserait le socle
+     * sans ses séances.
+     */
+    public function testAPhotoWhoseTeamsStillCarryTheirSessionsIsRefused(): void
     {
         [$club, $season] = $this->seedClubSeason();
         $team = $this->persistTeam($club, $season, 'SM1');
-        $team->setMaxSessionsPerDay(2);
+        $this->em->flush();
+        $this->setSocleTeam($season->getId(), $team->getId(), 2);
         $v1 = $this->makeSchedule($club, $season);
         $this->em->flush();
-        $teamId = $team->getId();
-        $this->snapshotter->store($v1, $this->snapshotter->serialize($club->getId(), $season->getId()));
-        $photo = $this->restorer->readSnapshot($v1);
+        $photo = $this->snapshotter->serialize($club->getId(), $season->getId());
+        self::assertNotSame([], $photo['PlanTeam'] ?? [], 'témoin : la photo d\'aujourd\'hui porte les lignes du socle');
+        unset($photo['PlanTeam']);
+        $photo['Team'][0]['sessionsPerWeek'] = 2;
+        $photo['Team'][0]['maxSessionsPerDay'] = 1;
+        $this->snapshotter->store($v1, $photo);
 
-        $team->setMaxSessionsPerDay(3);
+        try {
+            $this->restorer->apply($club->getId(), $season->getId(), $this->restorer->readSnapshot($v1));
+            self::fail('une photo à l\'ancien format doit être refusée');
+        } catch (ConflictHttpException) {
+        }
+        $this->em->clear();
+
+        self::assertNotNull($this->em->getRepository(Team::class)->find($team->getId()), 'les équipes ne sont pas effacées');
+        self::assertSame(2, $this->lineRow($this->seasonPlanIdOf($season), $team->getId())['sessionsPerWeek'] ?? null, 'la ligne du socle est intacte');
+    }
+
+    /**
+     * Lot 4, PR 3a (ligne 15, b) : la ligne du socle réinsérée depuis la photo n'est pas doublée par la porte qui pose
+     * les lignes manquantes — une ligne par plan et par équipe, après le chargement comme avant.
+     */
+    public function testTheReinsertedSocleLineIsNotDoubled(): void
+    {
+        [$club, $season] = $this->seedClubSeason();
+        $team = $this->persistTeam($club, $season, 'SM1');
         $this->em->flush();
-        $this->restorer->apply($club->getId(), $season->getId(), $photo);
-        $this->em->clear();
-        self::assertSame(2, $this->em->getRepository(Team::class)->find($teamId)?->getMaxSessionsPerDay(), 'la valeur de la photo revient');
+        $this->setSocleTeam($season->getId(), $team->getId(), 2);
+        $v1 = $this->makeSchedule($club, $season);
+        $this->em->flush();
+        $this->snapshotter->store($v1, $this->snapshotter->serialize($club->getId(), $season->getId()));
+        $holiday = $this->persistHoliday($club, $season);
+        $this->planIdOf($holiday);
+        $this->layTeamLines($season->getId());
+        self::assertSame(2, $this->lineCountOf($team->getId()), 'témoin : une ligne au socle, une dans les vacances');
 
-        $older = array_map(
-            static fn (array $rows): array => array_map(static function (array $row): array {
-                unset($row['maxSessionsPerDay']);
-
-                return $row;
-            }, $rows),
-            $photo,
-        );
-        self::assertNotSame($photo, $older, 'la photo portait bien le champ : la retirer change quelque chose');
-        $this->restorer->apply($club->getId(), $season->getId(), $older);
+        $this->restorer->apply($club->getId(), $season->getId(), $this->restorer->readSnapshot($v1));
         $this->em->clear();
-        self::assertSame(1, $this->em->getRepository(Team::class)->find($teamId)?->getMaxSessionsPerDay(), 'photo sans le champ : 1 par défaut');
+
+        self::assertSame(2, $this->lineCountOf($team->getId()), 'toujours une ligne par plan : celle du socle n\'est pas doublée');
+    }
+
+    /**
+     * Lot 4, PR 3a (ligne 15, c) : une équipe supprimée depuis la photo, ramenée par « Charger », retrouve sa ligne dans
+     * chaque plan de période, qui participe, aux valeurs de son socle ramené.
+     */
+    public function testATeamBroughtBackByLoadingGetsItsLineInEveryPeriodPlan(): void
+    {
+        [$club, $season] = $this->seedClubSeason();
+        $team = $this->persistTeam($club, $season, 'U13 F');
+        $this->em->flush();
+        $teamId = $team->getId();
+        $this->setSocleTeam($season->getId(), $teamId, 3, 2);
+        $v1 = $this->makeSchedule($club, $season);
+        $this->em->flush();
+        $this->snapshotter->store($v1, $this->snapshotter->serialize($club->getId(), $season->getId()));
+        $holiday = $this->persistHoliday($club, $season);
+        $holidayPlan = $this->planIdOf($holiday);
+        self::getContainer()->get(EntityCascadeDeleter::class)->purgeChildrenOfTeam($team);
+        $this->em->remove($team);
+        $this->em->flush();
+        self::assertSame(0, $this->lineCountOf($teamId), 'témoin : supprimée, elle n\'a plus aucune ligne');
+
+        $this->restorer->apply($club->getId(), $season->getId(), $this->restorer->readSnapshot($v1));
+        $this->em->clear();
+
+        self::assertSame(['participates' => true, 'sessionsPerWeek' => 3, 'maxSessionsPerDay' => 2, 'source' => null], $this->lineRow($holidayPlan, $teamId), 'ramenée, elle a sa ligne dans les vacances, aux valeurs de son socle');
+        self::assertSame(2, $this->lineCountOf($teamId), 'une ligne au socle, une dans les vacances');
+    }
+
+    /**
+     * Lot 4, PR 3a (ligne 15, d) : une équipe créée après la photo, retirée par « Charger », perd ses lignes dans chaque
+     * plan, période comprise — aucune ligne ne survit à son équipe.
+     */
+    public function testATeamRemovedByLoadingLosesItsLinesInEveryPlan(): void
+    {
+        [$club, $season] = $this->seedClubSeason();
+        $v1 = $this->makeSchedule($club, $season);
+        $this->em->flush();
+        $this->snapshotter->store($v1, $this->snapshotter->serialize($club->getId(), $season->getId()));
+        $holiday = $this->persistHoliday($club, $season);
+        $holidayPlan = $this->planIdOf($holiday);
+        $team = $this->persistTeam($club, $season, 'Créée depuis');
+        $this->em->flush();
+        $teamId = $team->getId();
+        $this->setSocleTeam($season->getId(), $teamId, 2);
+        $this->teamLine($holidayPlan, $teamId)->setParticipating(false);
+        $this->em->flush();
+        self::assertSame(2, $this->lineCountOf($teamId), 'témoin : une ligne au socle, une (réglée) dans les vacances');
+
+        $this->restorer->apply($club->getId(), $season->getId(), $this->restorer->readSnapshot($v1));
+        $this->em->clear();
+
+        self::assertNull($this->em->getRepository(Team::class)->find($teamId), 'la photo ne porte pas l\'équipe');
+        self::assertSame(0, $this->lineCountOf($teamId), 'ses lignes partent avec elle, celle des vacances comprise');
     }
 
     /**
@@ -787,12 +890,12 @@ final class StructureRestorerTest extends KernelTestCase
         $periodPlan = $this->planIdOf($holiday);
         $this->persistSlot($club, $season, $venue, $periodPlan, 3, '10:00');
         $this->persistReservation($club, $season, $team, $venue, $periodPlan, 3, '10:00');
-        $this->em->persist((new TeamPeriodOverride)->setClubId($club->getId())->setSeasonId($season->getId())
-            ->setSchedulePlanId($periodPlan)->setTeamId($team->getId())->setSessionsPerWeek(1));
+        $this->layTeamLines($season->getId());
+        $this->teamLine($periodPlan, $team->getId())->setSessionsPerWeek(1);
         $this->em->flush();
         $before = $this->periodPlanRows($periodPlan);
         self::assertNotSame([], $before[VenueTrainingSlot::class], 'témoin : le plan de période a sa grille');
-        self::assertNotSame([], $before[TeamPeriodOverride::class], 'témoin : le plan de période a un réglage d\'équipe');
+        self::assertNotSame([], $before[PlanTeam::class], 'témoin : le plan de période a un réglage d\'équipe');
 
         $this->restorer->apply($club->getId(), $season->getId(), $this->restorer->readSnapshot($v1));
         $this->em->clear();
@@ -993,7 +1096,7 @@ final class StructureRestorerTest extends KernelTestCase
     {
         $connection = $this->em->getConnection();
         $rows = [];
-        foreach ([VenueTrainingSlot::class, Reservation::class, TeamPeriodOverride::class, ImplicitRuleSetting::class] as $class) {
+        foreach ([VenueTrainingSlot::class, Reservation::class, PlanTeam::class, ImplicitRuleSetting::class] as $class) {
             $table = $this->em->getClassMetadata($class)->getTableName();
             $rows[$class] = $connection->fetchAllAssociative(\sprintf('SELECT * FROM %s WHERE schedule_plan_id = ? ORDER BY id', $table), [$planId]);
         }

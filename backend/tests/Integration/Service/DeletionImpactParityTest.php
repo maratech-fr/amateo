@@ -46,9 +46,11 @@ use App\Enum\TeamCoachRole;
 use App\Service\EntityCascadeDeleter;
 use App\Service\FixtureVenueLossMarker;
 use App\Service\OrphanedFixtureFinder;
+use App\Service\SchedulePlanProvisioner;
 use App\Structure\FamilyCatalog;
 use App\Structure\OnDelete;
 use App\Tests\ChoosesPlanVersionTrait;
+use App\Tests\ComposesPlanTeamsTrait;
 use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\RealForeignKeysTrait;
 use App\Tests\SeasonPlanOf;
@@ -87,6 +89,7 @@ use Symfony\Component\Uid\Uuid;
 final class DeletionImpactParityTest extends KernelTestCase
 {
     use ChoosesPlanVersionTrait;
+    use ComposesPlanTeamsTrait;
     use CreatesPeopleAndPlacesTrait;
     use RealForeignKeysTrait;
     use TenantGucTrait;
@@ -312,6 +315,48 @@ final class DeletionImpactParityTest extends KernelTestCase
      * tombe et RIEN de plus : `team_shared_block` = les blocs où elle FIGURE (pas les autres) →
      * tous détruits, avec toutes leurs lignes (survivants compris) ; un bloc sans elle ne bouge pas.
      */
+    /**
+     * Lot 4, PR 3a (ligne 22 du plan) : la fenêtre de suppression d'une équipe n'annonce que ses réglages de période qui
+     * diffèrent du socle — écartée des vacances, oui ; laissée comme le socle dans la fermeture, non — et la suppression
+     * emporte toutes ses lignes, celle du socle comprise, sans toucher celles d'une autre équipe.
+     */
+    public function testDeletingATeamAnnouncesOnlyThePeriodSettingsThatDifferFromTheSocleAndDeletesEveryLine(): void
+    {
+        [$club, $season] = $this->seed();
+        $venue = $this->venue($club, $season, 'Matéo');
+        $doomed = $this->team($club, $season, forcedVenueId: $venue->getId());
+        $other = $this->team($club, $season, forcedVenueId: $venue->getId());
+        $provisioner = self::getContainer()->get(SchedulePlanProvisioner::class);
+        $plans = [];
+        foreach ([[CalendarEntryPeriodType::HOLIDAY, '2025-12-22', '2025-12-28'], [CalendarEntryPeriodType::CLOSURE, '2025-11-03', '2025-11-09']] as [$type, $start, $end]) {
+            $entry = (new CalendarEntry)->setClubId($club->getId())->setSeasonId($season->getId())->setKind(CalendarEntryKind::PERIOD)
+                ->setPeriodType($type)->setTitle($type->value)->setStartDate(new DateTimeImmutable($start))->setEndDate(new DateTimeImmutable($end));
+            $this->em->persist($entry);
+            $this->em->flush();
+            $plans[$type->value] = (string) $provisioner->provisionPeriodPlan($entry->getId());
+        }
+        $this->setSocleTeam($season->getId(), $doomed->getId(), 2);
+        $this->setSocleTeam($season->getId(), $other->getId(), 2);
+        $this->teamLine($plans[CalendarEntryPeriodType::HOLIDAY->value], $doomed->getId())->setParticipating(false);
+        $this->teamLine($plans[CalendarEntryPeriodType::HOLIDAY->value], $other->getId())->setParticipating(false);
+        $this->em->flush();
+        self::assertSame(3, $this->lineCountOf($doomed->getId()), 'témoin : socle, vacances et fermeture');
+
+        $impact = self::getContainer()->get(DeletionImpactCounter::class)->forTeam($doomed);
+        $announced = [];
+        foreach ($impact->lines as $line) {
+            $announced[$line['key']] = $line['count'];
+        }
+        self::assertSame(1, $announced['team_period_override'] ?? 0, 'seul le réglage qui diffère du socle est annoncé : « 1 réglage de période »');
+
+        self::getContainer()->get(EntityCascadeDeleter::class)->purgeChildrenOfTeam($doomed);
+        $this->em->flush();
+        $this->em->clear();
+
+        self::assertSame(0, $this->lineCountOf($doomed->getId()), 'toutes ses lignes partent, celle du socle comprise');
+        self::assertSame(3, $this->lineCountOf($other->getId()), 'les lignes d\'une autre équipe restent');
+    }
+
     public function testDeletingATeamKillsEveryBlockItBelongsToEntirely(): void
     {
         [$club, $season] = $this->seed();

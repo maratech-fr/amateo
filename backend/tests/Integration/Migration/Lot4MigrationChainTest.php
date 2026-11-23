@@ -340,6 +340,13 @@ final class Lot4MigrationChainTest extends KernelTestCase
         $openedHoliday = (string) $admin->fetchOne('SELECT id FROM schedule_plan WHERE season_id = ? AND type = ? AND team_selection_initialized', [self::DECOR_SEASON, 'HOLIDAY']);
         self::assertNotSame('', $openedHoliday, 'témoin : le décor a un plan de vacances déjà ouvert');
         [$withVersion, $withoutVersion] = $this->addTwoNeverOpenedHolidayPlans($admin, $openedHoliday);
+        // Le référentiel des rangs, tel qu'en production (S, A, B, C, D) : le schéma figé l'a vide.
+        $admin->executeStatement(
+            'INSERT INTO priority_tier (id, version, created_at, updated_at, label, name, color, or_tools_weight, default_min_sessions)'
+            . ' VALUES (1, 1, now(), now(), \'S\', \'Elite\', \'#FFD700\', 10000, 3), (2, 1, now(), now(), \'A\', \'Régional+\', \'#C0C0C0\', 1000, 2),'
+            . ' (3, 1, now(), now(), \'B\', \'Régional\', \'#CD7F32\', 100, 2), (4, 1, now(), now(), \'C\', \'Départemental\', \'#3498DB\', 10, 2),'
+            . ' (5, 1, now(), now(), \'D\', \'Loisir\', \'#95A5A6\', 1, 1) ON CONFLICT (id) DO NOTHING',
+        );
         $teams = $admin->fetchAllAssociativeIndexed('SELECT id, sessions_per_week, max_sessions_per_day FROM team WHERE season_id = ? ORDER BY id', [self::DECOR_SEASON]);
         self::assertSame(array_values(self::DECOR_TEAMS), array_keys($teams), 'témoin : les quatre équipes du décor');
         $plans = (int) $admin->fetchOne('SELECT COUNT(*) FROM schedule_plan WHERE season_id = ?', [self::DECOR_SEASON]);
