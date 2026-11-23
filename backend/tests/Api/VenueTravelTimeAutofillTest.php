@@ -6,10 +6,10 @@ namespace App\Tests\Api;
 
 use App\Entity\Club;
 use App\Entity\ClubUser;
+use App\Entity\PlaceTravelTime;
 use App\Entity\Season;
 use App\Entity\User;
 use App\Entity\Venue;
-use App\Entity\VenueTravelTime;
 use App\Enum\SeasonStatus;
 use App\Enum\VenueTravelTimeSource;
 use App\Service\Geo\IgnRoutingClient;
@@ -56,9 +56,7 @@ final class VenueTravelTimeAutofillTest extends WebTestCase
 
         // Une valeur MANUAL POSÉE d'avance sur la voiture du couple A–B, walking laissé nul.
         [$lo, $hi] = $this->normalize($a->getId(), $b->getId());
-        $manual = (new VenueTravelTime)
-            ->setClubId($club->getId())->setSeasonId($season->getId())
-            ->setVenueAId($lo)->setVenueBId($hi)
+        $manual = PlaceTravelTime::between($club->getId(), $a->getPlaceId(), $b->getPlaceId())
             ->setDrivingMinutes(15)->setDrivingSource(VenueTravelTimeSource::MANUAL);
         $this->em->persist($manual);
         $this->em->flush();
@@ -87,6 +85,48 @@ final class VenueTravelTimeAutofillTest extends WebTestCase
         self::assertSame(VenueTravelTimeSource::AUTO, $ac->getDrivingSource());
         self::assertSame(IgnRoutingHttpClientStub::WALKING_MINUTES, $ac->getWalkingMinutes());
         self::assertSame(VenueTravelTimeSource::AUTO, $ac->getWalkingSource());
+    }
+
+    /**
+     * Lot 3, PR 5 : le temps de trajet vit au club, entre deux lieux. Une minute saisie à la main dans la saison en
+     * cours n'est jamais écrasée par le calcul lancé depuis la saison suivante, qui ne fait que remplir le mode laissé
+     * vide, sur la MÊME ligne : les deux saisons lisent la même valeur.
+     */
+    public function testAValueEnteredByHandSurvivesTheComputationLaunchedFromAnotherSeason(): void
+    {
+        [$club, $user, $current] = $this->createClubUser('seasons');
+        $year = SeasonResolver::seasonYear(new DateTimeImmutable('today')) + 1;
+        $next = (new Season)->setClubId($club->getId())->setName((string) $year)
+            ->setStartDate(new DateTimeImmutable($year . '-08-01'))->setEndDate(new DateTimeImmutable(($year + 1) . '-07-15'))
+            ->setStatus(SeasonStatus::DRAFT)->setTransitionData([]);
+        $this->em->persist($next);
+        $this->em->flush();
+        $a = $this->geoVenue($club, $current, 'A', '45.750000', '4.850000');
+        $b = $this->geoVenue($club, $current, 'B', '45.760000', '4.860000');
+        $nextA = $this->venueOnPlaceOf($a, $next);
+        $nextB = $this->venueOnPlaceOf($b, $next);
+
+        $this->client->request('POST', '/api/venue_travel_times', [], [], $this->authHeaders($user) + ['CONTENT_TYPE' => 'application/json', 'HTTP_X-Season-Id' => $current->getId()], json_encode([
+            'venueAId' => $a->getId(), 'venueBId' => $b->getId(), 'drivingMinutes' => 15,
+        ], \JSON_THROW_ON_ERROR));
+        self::assertResponseStatusCodeSame(201);
+        $manualId = $this->responseData()['id'] ?? null;
+
+        $this->scopeGucToClub($club->getId());
+        self::getContainer()->get(VenueTravelTimeAutofillService::class)->autofill($club->getId(), $next->getId());
+        $this->em->clear();
+
+        $this->client->request('GET', '/api/venue_travel_times', [], [], $this->authHeaders($user) + ['HTTP_X-Season-Id' => $next->getId()]);
+        self::assertResponseIsSuccessful();
+        $rows = $this->responseData()['member'] ?? [];
+        self::assertIsArray($rows);
+        self::assertCount(1, $rows, 'un seul couple, celui des deux lieux');
+        [$lo, $hi] = $this->normalize($nextA->getId(), $nextB->getId());
+        self::assertSame(
+            ['id' => $manualId, 'venueAId' => $lo, 'venueBId' => $hi, 'drivingMinutes' => 15, 'drivingSource' => 'MANUAL', 'walkingMinutes' => IgnRoutingHttpClientStub::WALKING_MINUTES, 'walkingSource' => 'AUTO'],
+            array_map(static fn (string $field): mixed => $rows[0][$field] ?? null, ['id' => 'id', 'venueAId' => 'venueAId', 'venueBId' => 'venueBId', 'drivingMinutes' => 'drivingMinutes', 'drivingSource' => 'drivingSource', 'walkingMinutes' => 'walkingMinutes', 'walkingSource' => 'walkingSource']),
+            'la saisie à la main de la saison en cours survit au calcul de la suivante ; seul le mode vide est rempli, sur la même ligne',
+        );
     }
 
     public function testTheEndpointQueuesTheComputationInsteadOfRunningItInline(): void
@@ -187,20 +227,26 @@ final class VenueTravelTimeAutofillTest extends WebTestCase
         return strcasecmp($x, $y) > 0 ? [$y, $x] : [$x, $y];
     }
 
-    private function travelRow(Club $club, string $lo, string $hi): VenueTravelTime
+    private function travelRow(Club $club, string $lo, string $hi): PlaceTravelTime
     {
         $row = $this->travelRowOrNull($club, $lo, $hi);
-        self::assertInstanceOf(VenueTravelTime::class, $row);
+        self::assertInstanceOf(PlaceTravelTime::class, $row);
 
         return $row;
     }
 
-    private function travelRowOrNull(Club $club, string $lo, string $hi): ?VenueTravelTime
+    /** Le temps au club entre les lieux des deux gymnases (lot 3, PR 5). */
+    private function travelRowOrNull(Club $club, string $lo, string $hi): ?PlaceTravelTime
     {
         $this->scopeGucToClub($club->getId());
         $this->em->clear();
+        $venueA = $this->em->find(Venue::class, $lo);
+        $venueB = $this->em->find(Venue::class, $hi);
+        self::assertInstanceOf(Venue::class, $venueA);
+        self::assertInstanceOf(Venue::class, $venueB);
+        $couple = PlaceTravelTime::between($club->getId(), $venueA->getPlaceId(), $venueB->getPlaceId());
 
-        return $this->em->getRepository(VenueTravelTime::class)->findOneBy(['venueAId' => $lo, 'venueBId' => $hi]);
+        return $this->em->getRepository(PlaceTravelTime::class)->findOneBy(['placeAId' => $couple->getPlaceAId(), 'placeBId' => $couple->getPlaceBId()]);
     }
 
     private function geoVenue(Club $club, Season $season, string $name, ?string $latitude, ?string $longitude): Venue
@@ -212,6 +258,18 @@ final class VenueTravelTimeAutofillTest extends WebTestCase
         $this->em->flush();
 
         return $venue;
+    }
+
+    /** Le gymnase d'une autre saison, au même lieu que `$venue` (le geste « Préparer la saison suivante » le reprend ainsi). */
+    private function venueOnPlaceOf(Venue $venue, Season $season): Venue
+    {
+        $this->scopeGucToClub($venue->getClubId());
+        $sibling = new Venue($this->placeOf($venue))->setClubId($venue->getClubId())->setSeasonId($season->getId())
+            ->setName($venue->getName())->setSource('manual');
+        $this->em->persist($sibling);
+        $this->em->flush();
+
+        return $sibling;
     }
 
     /**

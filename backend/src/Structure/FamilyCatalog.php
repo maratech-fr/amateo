@@ -109,7 +109,8 @@ final class FamilyCatalog
 
     /**
      * Les familles de niveau club effacées par `clubId` à l'effacement du club : toutes celles qui
-     * portent la colonne, sauf celles que l'effacement épargne et la ligne pivot de la saison.
+     * portent la colonne, sauf celles que l'effacement épargne et la ligne pivot de la saison, chaque
+     * enfant avant le parent dont il meurt (références DELETE).
      *
      * @return list<class-string>
      */
@@ -171,7 +172,8 @@ final class FamilyCatalog
             }
         }
 
-        return $purged;
+        // Chaque enfant avant le parent dont il meurt : un temps de trajet avant ses lieux.
+        return $this->childrenFirst($purged);
     }
 
     /**

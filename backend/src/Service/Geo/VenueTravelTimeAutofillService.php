@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace App\Service\Geo;
 
 use App\Entity\Place;
+use App\Entity\PlaceTravelTime;
 use App\Entity\Venue;
-use App\Entity\VenueTravelTime;
 use App\Enum\VenueTravelTimeSource;
 use App\Structure\PlaceDirectory;
 use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
@@ -67,8 +67,14 @@ final class VenueTravelTimeAutofillService
      */
     public function autofill(string $clubId, string $seasonId, ?callable $onProgress = null, ?float $budgetSeconds = null): array
     {
-        // RLS + the Doctrine tenant/season filters already scope this, but the
-        // explicit clubId/seasonId is defence in depth and makes the query intent plain.
+        // Les temps vivent au club : le calcul vise une saison NOMMÉE, qui peut ne pas être celle
+        // qu'une requête en cours a posée sur le `season_filter` (il épinglerait la lecture des
+        // gymnases à cette autre saison). Chaque lecture nomme club et saison ; filtre de club et RLS
+        // restent posés. Pas de réactivation (patron SeasonTransitionService).
+        $filters = $this->entityManager->getFilters();
+        if ($filters->isEnabled('season_filter')) {
+            $filters->disable('season_filter');
+        }
         /** @var list<Venue> $venues */
         $venues = $this->entityManager->getRepository(Venue::class)->findBy(['clubId' => $clubId, 'seasonId' => $seasonId]);
         // Deterministic pairing order (venueAId < venueBId is derived from this).
@@ -134,12 +140,12 @@ final class VenueTravelTimeAutofillService
             $row = $existing[$key] ?? null;
 
             if ($pair['drivingNeeded'] && null !== $drivingValue) {
-                $row ??= $this->newRow($clubId, $seasonId, $a->getId(), $b->getId());
+                $row ??= $this->newRow($clubId, $a, $b);
                 $row->setDrivingMinutes($drivingValue)->setDrivingSource(VenueTravelTimeSource::AUTO);
                 $wrote = true;
             }
             if ($pair['walkingNeeded'] && null !== $walkingValue) {
-                $row ??= $this->newRow($clubId, $seasonId, $a->getId(), $b->getId());
+                $row ??= $this->newRow($clubId, $a, $b);
                 $row->setWalkingMinutes($walkingValue)->setWalkingSource(VenueTravelTimeSource::AUTO);
                 $wrote = true;
             }
@@ -311,27 +317,25 @@ final class VenueTravelTimeAutofillService
     }
 
     /**
-     * @return array<string, VenueTravelTime> keyed by "venueAId|venueBId"
+     * Les temps au club servis pour la saison (les deux lieux y ont un gymnase), nommés par ses gymnases.
+     *
+     * @return array<string, PlaceTravelTime> keyed by "venueAId|venueBId"
      */
     private function existingByCouple(string $clubId, string $seasonId): array
     {
+        $repository = $this->entityManager->getRepository(PlaceTravelTime::class);
         $map = [];
-        /** @var list<VenueTravelTime> $rows */
-        $rows = $this->entityManager->getRepository(VenueTravelTime::class)->findBy(['clubId' => $clubId, 'seasonId' => $seasonId]);
-        foreach ($rows as $row) {
-            $map[$row->getVenueAId() . '|' . $row->getVenueBId()] = $row;
+        foreach ($repository->forSeason($clubId, $seasonId) as $served) {
+            $map[$served['venueAId'] . '|' . $served['venueBId']] = $served['row'];
         }
 
         return $map;
     }
 
-    private function newRow(string $clubId, string $seasonId, string $venueAId, string $venueBId): VenueTravelTime
+    /** Un temps neuf au club, entre les lieux des deux gymnases. */
+    private function newRow(string $clubId, Venue $a, Venue $b): PlaceTravelTime
     {
-        return (new VenueTravelTime)
-            ->setClubId($clubId)
-            ->setSeasonId($seasonId)
-            ->setVenueAId($venueAId)
-            ->setVenueBId($venueBId);
+        return PlaceTravelTime::between($clubId, $a->getPlaceId(), $b->getPlaceId());
     }
 
     private function isGeolocated(Venue $venue): bool

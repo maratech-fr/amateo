@@ -243,7 +243,7 @@ final class PlacedPersonConflictContext extends BaseContext
             $this->apiDelete(\sprintf('constraints/%s', $this->offConstraintId), $this->token);
         }
         foreach ($this->travelRowIds as $travelId) {
-            $this->dbalExec(\sprintf('DELETE FROM venue_travel_time WHERE id=\'%s\'', $travelId), admin: true);
+            $this->dbalExec(\sprintf('DELETE FROM place_travel_time WHERE id=\'%s\'', $travelId), admin: true);
         }
         if ('' !== $this->adjointLinkId) {
             $this->apiDelete(\sprintf('team_coaches/%s', $this->adjointLinkId), $this->token);
@@ -330,20 +330,21 @@ final class PlacedPersonConflictContext extends BaseContext
         $this->slotIds[] = $id;
     }
 
-    /** Un barème de trajet à pied entre deux gymnases (couple trié venue_a_id < venue_b_id). */
+    /** Un temps de trajet à vélo entre deux gymnases, au club entre leurs LIEUX (lot 3, PR 5 ; plus petit lieu d'abord). */
     private function travelRow(string $venueIdA, string $venueIdB, int $walking): void
     {
-        [$a, $b] = $venueIdA < $venueIdB ? [$venueIdA, $venueIdB] : [$venueIdB, $venueIdA];
+        $placeOf = fn (string $venueId): string => $this->dbalScalar(\sprintf('SELECT place_id AS behatval FROM venue WHERE id=\'%s\'', $venueId), admin: true);
+        $places = [$placeOf($venueIdA), $placeOf($venueIdB)];
+        sort($places, \SORT_STRING);
         $id = $this->uuid();
         $this->dbalExec(
             \sprintf(
-                'INSERT INTO venue_travel_time (id, version, created_at, updated_at, club_id, season_id, venue_a_id, venue_b_id, walking_minutes)'
-                . ' VALUES (\'%s\', 1, now(), now(), \'%s\', \'%s\', \'%s\', \'%s\', %d)',
+                'INSERT INTO place_travel_time (id, version, created_at, updated_at, club_id, place_a_id, place_b_id, walking_minutes)'
+                . ' VALUES (\'%s\', 1, now(), now(), \'%s\', \'%s\', \'%s\', %d)',
                 $id,
                 $this->clubId,
-                $this->seasonId,
-                $a,
-                $b,
+                $places[0],
+                $places[1],
                 $walking,
             ),
             admin: true,

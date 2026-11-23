@@ -19,7 +19,8 @@ use RuntimeException;
  * retrait de la saison suivante ne touche pas la saison en cours. Les gymnases des deux saisons sont
  * aux mêmes lieux (PR 4) : une adresse corrigée vaut pour les deux ; dissocier un gymnase de sa salle
  * fédérale dans la saison suivante le passe sur un lieu neuf et laisse la saison en cours intacte
- * (décision 2, A).
+ * (décision 2, A). Le temps de trajet entre deux gymnases est celui de leurs lieux (PR 5) : une seule valeur, servie
+ * dans chaque saison rangée selon les gymnases de cette saison, corrigée dans l'une, lue corrigée dans l'autre.
  *
  * Décor DÉDIÉ ({@see SmallClubFixtureTrait}, sans génération) passé hors Découverte par le geste
  * support réel `app:clubs:set-plan --plan=complete --tier=palier-1 --paid-season=next` : la bascule exige que la
@@ -50,7 +51,8 @@ final class SeasonTransitionContext extends BaseContext
 
     private const string CORRECTED_ADDRESS = '14 rue du Nord, 69100 Villeurbanne';
 
-    private const int DRIVING_MINUTES = 12;
+    /** Les minutes en voiture du trajet Nord–Sud, saisies au décor, puis corrigées dans la saison suivante. */
+    private int $drivingMinutes = 0;
 
     /** @var array<string, mixed> le « Gymnase Nord » de la saison en cours tel que l'écran le lit, juste avant la dissociation */
     private array $currentNordBeforeDissociation = [];
@@ -136,6 +138,7 @@ final class SeasonTransitionContext extends BaseContext
         if (201 !== $created['status']) {
             throw new RuntimeException(\sprintf('saisir le trajet %s – %s a répondu %d (201 attendu) : %s', $a, $b, $created['status'], json_encode($created['json'], \JSON_UNESCAPED_UNICODE)));
         }
+        $this->drivingMinutes = (int) $minutes;
     }
 
     #[When('je prépare la saison suivante')]
@@ -350,6 +353,48 @@ final class SeasonTransitionContext extends BaseContext
         }
     }
 
+    /**
+     * Lot 3, PR 5 : une seule valeur au club, sans recopie — la fenêtre des trajets de chaque saison sert la MÊME ligne
+     * (même identifiant, mêmes minutes), rangée selon les gymnases de cette saison.
+     */
+    #[Then('/^le temps de trajet entre le « (?P<a>[^»]+) » et le « (?P<b>[^»]+) » est le même dans les deux saisons$/u')]
+    public function leTempsDeTrajetEstLeMemeDansLesDeuxSaisons(string $a, string $b): void
+    {
+        $current = $this->travelTimeOfSeason($a, $b, $this->currentSeasonId);
+        $next = $this->travelTimeOfSeason($a, $b, $this->nextSeasonId);
+        if ($current['id'] !== $next['id']) {
+            throw new RuntimeException(\sprintf('le trajet %s – %s est une copie par saison (« %s » dans la saison en cours, « %s » dans la suivante), une seule valeur au club attendue', $a, $b, json_encode($current['id']), json_encode($next['id'])));
+        }
+        if ($this->drivingMinutes !== $current['drivingMinutes'] || $this->drivingMinutes !== $next['drivingMinutes']) {
+            throw new RuntimeException(\sprintf('le trajet %s – %s vaut %s minutes dans la saison en cours et %s dans la suivante (attendu %d dans les deux)', $a, $b, json_encode($current['drivingMinutes']), json_encode($next['drivingMinutes']), $this->drivingMinutes));
+        }
+    }
+
+    /** Le geste de la fenêtre des trajets, dans la saison suivante : `PUT /api/venue_travel_times/{id}`, couple nommé par les gymnases de cette saison. */
+    #[When('/^je le corrige à (?P<minutes>\d+) minutes en voiture dans la saison suivante$/u')]
+    public function jeCorrigeLeTempsDeTrajet(string $minutes): void
+    {
+        $row = $this->travelTimeOfSeason('Gymnase Nord', 'Gymnase Sud', $this->nextSeasonId);
+        $updated = $this->apiPut(\sprintf('venue_travel_times/%s', $row['id']), [
+            'venueAId' => $row['venueAId'],
+            'venueBId' => $row['venueBId'],
+            'drivingMinutes' => (int) $minutes,
+        ], $this->smallClubToken, ['X-Season-Id' => $this->nextSeasonId]);
+        if (200 !== $updated['status']) {
+            throw new RuntimeException(\sprintf('corriger le trajet Nord – Sud dans la saison suivante a répondu %d (200 attendu) : %s', $updated['status'], json_encode($updated['json'], \JSON_UNESCAPED_UNICODE)));
+        }
+        $this->drivingMinutes = (int) $minutes;
+    }
+
+    #[Then('/^il vaut (?P<minutes>\d+) minutes en voiture dans la saison en cours$/u')]
+    public function ilVautDansLaSaisonEnCours(string $minutes): void
+    {
+        $current = $this->travelTimeOfSeason('Gymnase Nord', 'Gymnase Sud', $this->currentSeasonId);
+        if ((int) $minutes !== $current['drivingMinutes']) {
+            throw new RuntimeException(\sprintf('dans la saison en cours, le trajet Nord – Sud vaut %s minutes (attendu %s, corrigé dans la saison suivante)', json_encode($current['drivingMinutes']), $minutes));
+        }
+    }
+
     /** Le geste « Dissocier de sa salle FFBB » de l'étape Gymnases (`VenuesStep.tsx::confirmDissociate`), dans la saison suivante. */
     #[When('/^je dissocie le « (?P<venue>[^»]+) » de sa salle fédérale dans la saison suivante$/u')]
     public function jeDissocieLeGymnase(string $venue): void
@@ -380,8 +425,8 @@ final class SeasonTransitionContext extends BaseContext
             }
         }
         $minutes = $this->drivingMinutesFrom($this->smallClubVenueIds[$venue], $this->currentSeasonId);
-        if ([self::DRIVING_MINUTES] !== $minutes) {
-            throw new RuntimeException(\sprintf('dans la saison en cours, les temps de trajet du %s sont %s (attendu [%d], saisis avant la dissociation)', $venue, json_encode($minutes), self::DRIVING_MINUTES));
+        if ([$this->drivingMinutes] !== $minutes) {
+            throw new RuntimeException(\sprintf('dans la saison en cours, les temps de trajet du %s sont %s (attendu [%d], saisis avant la dissociation)', $venue, json_encode($minutes), $this->drivingMinutes));
         }
     }
 
@@ -451,7 +496,8 @@ final class SeasonTransitionContext extends BaseContext
      */
     private function drivingMinutesFrom(string $venueId, string $seasonId): array
     {
-        $listed = $this->apiGet(\sprintf('venue_travel_times?seasonId=%s', $seasonId), $this->smallClubToken, ['X-Season-Id' => $seasonId]);
+        // Comme l'écran (`wizard/api.ts::listVenueTravelTimes`) : la saison voyage par l'en-tête seul.
+        $listed = $this->apiGet('venue_travel_times', $this->smallClubToken, ['X-Season-Id' => $seasonId]);
         $members = \is_array($listed['json']['member'] ?? null) ? $listed['json']['member'] : [];
         $minutes = [];
         foreach ($members as $member) {
@@ -461,6 +507,29 @@ final class SeasonTransitionContext extends BaseContext
         }
 
         return $minutes;
+    }
+
+    /**
+     * Le trajet entre deux gymnases d'une saison, lu comme la fenêtre des trajets le lit dans cette saison
+     * (`GET /api/venue_travel_times`, `X-Season-Id`). Le couple servi est rangé selon les identifiants des gymnases
+     * DE CETTE SAISON (plus petit d'abord) : une ligne rangée autrement, ou nommant un gymnase d'une autre saison,
+     * n'est pas trouvée.
+     *
+     * @return array{id: mixed, venueAId: string, venueBId: string, drivingMinutes: mixed}
+     */
+    private function travelTimeOfSeason(string $a, string $b, string $seasonId): array
+    {
+        $ids = [(string) $this->venueOfSeason($a, $seasonId)['id'], (string) $this->venueOfSeason($b, $seasonId)['id']];
+        sort($ids, \SORT_STRING);
+        $listed = $this->apiGet('venue_travel_times', $this->smallClubToken, ['X-Season-Id' => $seasonId]);
+        $members = \is_array($listed['json']['member'] ?? null) ? $listed['json']['member'] : [];
+        $matches = array_values(array_filter($members, static fn (mixed $member): bool => \is_array($member) && [$member['venueAId'] ?? null, $member['venueBId'] ?? null] === $ids));
+        // Une seule valeur par couple : deux lignes servies pour la même paire seraient une recopie.
+        if (1 === \count($matches) && \is_array($matches[0])) {
+            return ['id' => $matches[0]['id'] ?? null, 'venueAId' => $ids[0], 'venueBId' => $ids[1], 'drivingMinutes' => $matches[0]['drivingMinutes'] ?? null];
+        }
+
+        throw new RuntimeException(\sprintf('%d trajet(s) %s – %s rangé(s) %s dans la saison %s, un seul attendu (HTTP %d) : %s', \count($matches), $a, $b, json_encode($ids), $seasonId, $listed['status'], json_encode($members, \JSON_UNESCAPED_UNICODE)));
     }
 
     /** @return array<string, int> libellé → nombre de lignes de la saison */

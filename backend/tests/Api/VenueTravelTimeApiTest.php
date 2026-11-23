@@ -6,6 +6,7 @@ namespace App\Tests\Api;
 
 use App\Entity\Club;
 use App\Entity\ClubUser;
+use App\Entity\Place;
 use App\Entity\Season;
 use App\Entity\User;
 use App\Entity\Venue;
@@ -17,6 +18,7 @@ use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
 use Lexik\Bundle\JWTAuthenticationBundle\Services\JWTTokenManagerInterface;
 use PHPUnit\Framework\Attributes\Group;
+use ReflectionProperty;
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 
@@ -24,7 +26,8 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
  * P2-53 RMM-8 (PR-1) — CRUD du barème de trajet entre deux gymnases : le couple est
  * NORMALISÉ (venueAId < venueBId), UNIQUE, une valeur saisie pose MANUAL, la lecture
  * est ouverte au Membre, et les refus de saisie sont NOMMÉS (422 gymnase
- * étranger/identique/hors bornes, doublon de paire).
+ * étranger/identique/hors bornes, doublon de paire). Lot 3, PR 5 : la valeur vit au club, entre deux lieux ;
+ * chaque saison la sert rangée selon ses propres gymnases, et une saison archivée ne l'écrit pas.
  */
 #[Group('integration')]
 final class VenueTravelTimeApiTest extends WebTestCase
@@ -128,10 +131,147 @@ final class VenueTravelTimeApiTest extends WebTestCase
         self::assertCount(1, $rows, 'la lecture reste ouverte au Membre non-management');
     }
 
+    /**
+     * Lot 3, PR 5 : un temps de trajet vit une fois, au club, entre deux LIEUX ; chaque saison le sert rangé selon
+     * SES gymnases (plus petit identifiant d'abord), même quand ce rangement s'inverse d'une saison à l'autre. Un
+     * temps dont un lieu n'a pas de gymnase dans la saison demandée n'y est pas servi.
+     */
+    public function testEachSeasonServesTheClubTravelTimeOrderedByItsOwnVenues(): void
+    {
+        [$club, $user, $current] = $this->createClubUser('a');
+        $next = $this->addSeason($club, 1);
+        // Lieu de Nord < lieu de Sud, fixés : en base le couple se range Nord d'abord, quoi qu'il arrive.
+        $placeNord = $this->place($club, '00000000-0000-4000-8000-' . substr(bin2hex(random_bytes(6)), 0, 12));
+        $placeSud = $this->place($club, 'ffffffff-0000-4000-8000-' . substr(bin2hex(random_bytes(6)), 0, 12));
+        $placeEst = $this->place($club);
+        // Saison en cours : Nord < Sud. Saison suivante : mêmes lieux, mais Sud < Nord (le couple s'y range à l'envers
+        // de son rangement en base : seul un rangement par les gymnases de la saison le sert Sud d'abord).
+        [$lo, $hi] = $this->orderedIds();
+        $nord = $this->venueOn($placeNord, $club, $current, $lo, 'Nord');
+        $sud = $this->venueOn($placeSud, $club, $current, $hi, 'Sud');
+        $est = $this->venueOn($placeEst, $club, $current, $this->uuid(), 'Est');
+        [$nextLo, $nextHi] = $this->orderedIds();
+        $nextSud = $this->venueOn($placeSud, $club, $next, $nextLo, 'Sud');
+        $nextNord = $this->venueOn($placeNord, $club, $next, $nextHi, 'Nord');
+
+        $headers = $this->authHeaders($user) + ['CONTENT_TYPE' => 'application/json', 'HTTP_X-Season-Id' => $current->getId()];
+        $this->client->request('POST', '/api/venue_travel_times', [], [], $headers, json_encode(['venueAId' => $nord->getId(), 'venueBId' => $sud->getId(), 'drivingMinutes' => 15], \JSON_THROW_ON_ERROR));
+        self::assertResponseStatusCodeSame(201);
+        $created = $this->responseData();
+        // Est n'a de gymnase que dans la saison en cours : ce couple-là ne doit pas paraître dans la suivante.
+        $this->client->request('POST', '/api/venue_travel_times', [], [], $headers, json_encode(['venueAId' => $nord->getId(), 'venueBId' => $est->getId(), 'drivingMinutes' => 8], \JSON_THROW_ON_ERROR));
+        self::assertResponseStatusCodeSame(201);
+
+        $this->client->request('GET', '/api/venue_travel_times', [], [], $this->authHeaders($user) + ['HTTP_X-Season-Id' => $next->getId()]);
+        self::assertResponseIsSuccessful();
+        $rows = $this->responseData()['member'] ?? [];
+        self::assertIsArray($rows);
+        self::assertCount(1, $rows, 'la saison suivante ne sert que le couple dont les deux lieux y ont un gymnase');
+        self::assertSame(
+            ['id' => $created['id'], 'venueAId' => $nextSud->getId(), 'venueBId' => $nextNord->getId(), 'drivingMinutes' => 15],
+            ['id' => $rows[0]['id'] ?? null, 'venueAId' => $rows[0]['venueAId'] ?? null, 'venueBId' => $rows[0]['venueBId'] ?? null, 'drivingMinutes' => $rows[0]['drivingMinutes'] ?? null],
+            'la même valeur, sans recopie, rangée selon les gymnases de la saison suivante (Sud d\'abord)',
+        );
+        self::assertSame([$nord->getId(), $sud->getId()], [$created['venueAId'] ?? null, $created['venueBId'] ?? null], 'témoin : la saison en cours la range Nord d\'abord');
+    }
+
+    /**
+     * Lot 3, PR 5 (abus) : un temps de trajet ne s'écrit jamais depuis une saison archivée, ni en création ni en
+     * correction, même si les deux lieux ont un gymnase dans une saison ouverte. Témoin : la même écriture depuis
+     * la saison en cours passe.
+     */
+    public function testATravelTimeIsNeverWrittenFromAnArchivedSeason(): void
+    {
+        [$club, $user, $current] = $this->createClubUser('a');
+        $past = $this->addSeason($club, -1);
+        [$placeA, $placeB] = [$this->place($club), $this->place($club)];
+        $a = $this->venueOn($placeA, $club, $current, $this->uuid(), 'Coubertin');
+        $b = $this->venueOn($placeB, $club, $current, $this->uuid(), 'Debarros');
+        $pastA = $this->venueOn($placeA, $club, $past, $this->uuid(), 'Coubertin');
+        $pastB = $this->venueOn($placeB, $club, $past, $this->uuid(), 'Debarros');
+        $json = ['CONTENT_TYPE' => 'application/json'];
+
+        $this->client->request('POST', '/api/venue_travel_times', [], [], $this->authHeaders($user) + $json + ['HTTP_X-Season-Id' => $past->getId()], json_encode(['venueAId' => $pastA->getId(), 'venueBId' => $pastB->getId(), 'drivingMinutes' => 10], \JSON_THROW_ON_ERROR));
+        self::assertResponseStatusCodeSame(409, 'créer un temps de trajet depuis une saison archivée est refusé');
+
+        $this->client->request('POST', '/api/venue_travel_times', [], [], $this->authHeaders($user) + $json + ['HTTP_X-Season-Id' => $current->getId()], json_encode(['venueAId' => $a->getId(), 'venueBId' => $b->getId(), 'drivingMinutes' => 12], \JSON_THROW_ON_ERROR));
+        self::assertResponseStatusCodeSame(201, 'témoin : la même création depuis la saison en cours passe');
+        $id = $this->responseData()['id'] ?? null;
+        self::assertIsString($id);
+
+        $this->client->request('PUT', '/api/venue_travel_times/' . $id, [], [], $this->authHeaders($user) + $json + ['HTTP_X-Season-Id' => $past->getId()], json_encode(['venueAId' => $pastA->getId(), 'venueBId' => $pastB->getId(), 'drivingMinutes' => 40], \JSON_THROW_ON_ERROR));
+        self::assertResponseStatusCodeSame(409, 'corriger un temps de trajet depuis une saison archivée est refusé');
+
+        $this->client->request('GET', '/api/venue_travel_times/' . $id, [], [], $this->authHeaders($user) + ['HTTP_X-Season-Id' => $current->getId()]);
+        self::assertResponseIsSuccessful();
+        self::assertSame(12, $this->responseData()['drivingMinutes'] ?? null, 'la valeur n\'a pas bougé');
+    }
+
     protected function setUp(): void
     {
         $this->client = self::createClient();
         $this->em = self::getContainer()->get(EntityManagerInterface::class);
+    }
+
+    /** Une saison de plus du club, décalée de `$offset` ans de la saison en cours (−1 : archivée, +1 : la suivante). */
+    private function addSeason(Club $club, int $offset): Season
+    {
+        $this->scopeGucToClub($club->getId());
+        $year = SeasonResolver::seasonYear(new DateTimeImmutable('today')) + $offset;
+        $season = new Season;
+        $season->setClubId($club->getId());
+        $season->setName((string) $year);
+        $season->setStartDate(new DateTimeImmutable($year . '-08-01'));
+        $season->setEndDate(new DateTimeImmutable(($year + 1) . '-07-15'));
+        $season->setStatus($offset > 0 ? SeasonStatus::DRAFT : SeasonStatus::ACTIVE);
+        $season->setTransitionData([]);
+        $this->em->persist($season);
+        $this->em->flush();
+
+        return $season;
+    }
+
+    /** Un lieu du club, à l'identifiant choisi quand le rangement du couple en base doit être fixé. */
+    private function place(Club $club, ?string $id = null): Place
+    {
+        $this->scopeGucToClub($club->getId());
+        $place = (new Place)->setClubId($club->getId());
+        if (null !== $id) {
+            new ReflectionProperty(Place::class, 'id')->setValue($place, $id);
+        }
+        $this->em->persist($place);
+        $this->em->flush();
+
+        return $place;
+    }
+
+    /** Le gymnase d'une saison sur un lieu donné, à l'identifiant choisi (pour fixer le rangement du couple). */
+    private function venueOn(Place $place, Club $club, Season $season, string $id, string $name): Venue
+    {
+        $this->scopeGucToClub($club->getId());
+        $venue = new Venue($place)->setId($id)->setClubId($club->getId())->setSeasonId($season->getId())->setName($name)->setSource('manual');
+        $this->em->persist($venue);
+        $this->em->flush();
+
+        return $venue;
+    }
+
+    /** @return array{0: string, 1: string} deux identifiants neufs, le plus petit d'abord */
+    private function orderedIds(): array
+    {
+        $ids = [$this->uuid(), $this->uuid()];
+        sort($ids, \SORT_STRING);
+
+        return [$ids[0], $ids[1]];
+    }
+
+    private function uuid(): string
+    {
+        $bytes = random_bytes(16);
+        $bytes[6] = \chr((\ord($bytes[6]) & 0x0F) | 0x40);
+        $bytes[8] = \chr((\ord($bytes[8]) & 0x3F) | 0x80);
+
+        return vsprintf('%s%s-%s-%s-%s-%s%s%s', str_split(bin2hex($bytes), 4));
     }
 
     private function createVenue(Club $club, Season $season, string $name): Venue

@@ -123,6 +123,11 @@ services:
   `App\Structure\PlaceDirectory`, bounded by the club; the raw SQL on `place` / `venue` (sweep, travel recompute)
   carries the club in an explicit clause. Guarded by `PersonPlaceTenantIsolationTest`; detail:
   `docs/security/rls.md` § `place`.
+- **The travel time between two places lives on `place_travel_time`.** Same pattern: a plain tenant table
+  (`Entity/PlaceTravelTime.php`, filter + RLS) with two COMPOSITE foreign keys `(place_a_id, club_id)` /
+  `(place_b_id, club_id)` → `place (id, club_id)`, so a travel time can never link the places of two clubs. Served
+  per season by `PlaceTravelTimeRepository::forSeason` (raw SQL with club and season in an explicit clause).
+  Guarded by `PersonPlaceTenantIsolationTest`; detail: `docs/security/rls.md` § `place_travel_time`.
 - **Role layer on top of the membership (P1-1):** the role is decided **centrally**. Every `^/api/`
   route declares its module and audience (`#[ClubFunction]`, `#[ClubResource]`, `#[AccountFunction]`,
   `src/Access/`) and `ClubAccessListener` (`kernel.request`, **priority 4**, main request only;

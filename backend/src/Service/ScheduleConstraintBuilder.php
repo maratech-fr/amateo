@@ -8,6 +8,7 @@ use App\Entity\CalendarEntry;
 use App\Entity\Coach;
 use App\Entity\CoachPlayerMembership;
 use App\Entity\Constraint;
+use App\Entity\PlaceTravelTime;
 use App\Entity\PriorityTier;
 use App\Entity\Reservation;
 use App\Entity\Schedule;
@@ -22,12 +23,12 @@ use App\Entity\TeamMatchHabit;
 use App\Entity\Venue;
 use App\Entity\VenueTrainingSlot;
 use App\Entity\VenueTravelRuleSetting;
-use App\Entity\VenueTravelTime;
 use App\Enum\ConstraintFamily;
 use App\Enum\ConstraintScope;
 use App\Enum\LockLevel;
 use App\Enum\LockOrigin;
 use App\Enum\VenueTravelRuleIntensity;
+use App\Repository\PlaceTravelTimeRepository;
 use App\Repository\VenueTrainingSlotRepository;
 use App\Repository\VenueTravelRuleSettingRepository;
 use App\Structure\PersonDirectory;
@@ -313,10 +314,11 @@ final class ScheduleConstraintBuilder
             // ancré au plan) — la même déclaration nourrit socle et périodes. Filtrée au roster
             // dans serializeTeamLinks. Inerte en PR-1 (le moteur l'accepte, ne la consomme pas).
             teamLinks: $em->getRepository(TeamLink::class)->findBy(['clubId' => $clubId, 'seasonId' => $seasonId], ['id' => 'ASC']),
-            // P2-53 RMM-8 — matrice de trajet : STRUCTURE de club+saison (patron TeamLink), la
-            // même nourrit socle et périodes. Triée à la sérialisation ; sa présence (≥1 ligne)
-            // active la règle implicite `travelTime` (opt-in au premier geste).
-            venueTravelTimes: $em->getRepository(VenueTravelTime::class)->findBy(['clubId' => $clubId, 'seasonId' => $seasonId], ['id' => 'ASC']),
+            // P2-53 RMM-8 — matrice de trajet : temps au club entre deux lieux (lot 3, PR 5), servis
+            // pour la saison (les deux lieux y ont un gymnase), nommés par ses gymnases ; la même
+            // nourrit socle et périodes. Triée à la sérialisation ; sa présence (≥1 ligne) active la
+            // règle implicite `travelTime` (opt-in au premier geste).
+            venueTravelTimes: $this->travelTimesOfSeason($clubId, $seasonId, $em),
         );
 
         $this->currentAvailabilitiesByVenue = [];
@@ -535,7 +537,7 @@ final class ScheduleConstraintBuilder
             // P2-53 RMM-8 — matrice de trajet : STRUCTURE de club+saison, mêmes lignes que le
             // socle (jamais une copie ancrée au plan) — le trajet entre deux gymnases ne change
             // pas parce qu'on est en période. Sa présence active `travelTime` (opt-in).
-            venueTravelTimes: $em->getRepository(VenueTravelTime::class)->findBy(['clubId' => $clubId, 'seasonId' => $seasonId], ['id' => 'ASC']),
+            venueTravelTimes: $this->travelTimesOfSeason($clubId, $seasonId, $em),
             // ADR-0002 inv. 5 — le bloc `implicitRules` résout la COPIE de CE plan (repli saison
             // si legacy), jamais la portée saison directement : c'est ce que buildForClubSeason
             // (plan null) fait, ici on porte la période.
@@ -675,18 +677,18 @@ final class ScheduleConstraintBuilder
     }
 
     /**
-     * @param array<Venue>                 $venues
-     * @param array<Team>                  $teams
-     * @param array<Coach>                 $coaches
-     * @param array<TeamCoach>             $teamCoaches
-     * @param array<CoachPlayerMembership> $coachPlayerMemberships
-     * @param array<ScheduleSlotTemplate>  $slotTemplates
-     * @param array<PriorityTier>          $priorityTiers
-     * @param array<Constraint>            $constraints
-     * @param array<Reservation>           $reservations           persistent team→slot HARD pins (base/overlay)
-     * @param array<SharedTrainingBlock>   $sharedBlocks           P2-51 mutualisation blocks (base: plan NULL / period: = planId)
-     * @param array<TeamLink>              $teamLinks              lot PASSERELLES — club+season bridges (roster-filtered)
-     * @param array<VenueTravelTime>       $venueTravelTimes       P2-53 RMM-8 — travel matrix rows (club+season, symmetric)
+     * @param array<Venue>                                                          $venues
+     * @param array<Team>                                                           $teams
+     * @param array<Coach>                                                          $coaches
+     * @param array<TeamCoach>                                                      $teamCoaches
+     * @param array<CoachPlayerMembership>                                          $coachPlayerMemberships
+     * @param array<ScheduleSlotTemplate>                                           $slotTemplates
+     * @param array<PriorityTier>                                                   $priorityTiers
+     * @param array<Constraint>                                                     $constraints
+     * @param array<Reservation>                                                    $reservations           persistent team→slot HARD pins (base/overlay)
+     * @param array<SharedTrainingBlock>                                            $sharedBlocks           P2-51 mutualisation blocks (base: plan NULL / period: = planId)
+     * @param array<TeamLink>                                                       $teamLinks              lot PASSERELLES — club+season bridges (roster-filtered)
+     * @param list<array{row: PlaceTravelTime, venueAId: string, venueBId: string}> $venueTravelTimes       P2-53 RMM-8 — temps de trajet servis pour la saison (PlaceTravelTimeRepository::forSeason)
      *
      * @return array<string, mixed>
      */
@@ -1242,25 +1244,25 @@ final class ScheduleConstraintBuilder
 
     /**
      * Sérialise la matrice de trajet en `{venueAId, venueBId, drivingMinutes, walkingMinutes}`,
-     * TRIÉE par (venueAId, venueBId) — tri déterministe pour un payload stable. Les lignes sont
-     * déjà normalisées venueAId < venueBId à la saisie (VenueTravelTimeStateProcessor) ; on ne
-     * filtre PAS au roster des gymnases (la matrice est une STRUCTURE de club+saison, comme les
-     * passerelles côté équipes — le moteur ne lit un couple que si les deux gymnases portent des
-     * séances). Les minutes NULLABLES passent telles quelles : le moteur applique le défaut 20.
+     * TRIÉE par (venueAId, venueBId) — tri déterministe pour un payload stable. Les couples sont
+     * nommés par les gymnases de la saison et rangés selon eux, venueAId < venueBId
+     * ({@see PlaceTravelTimeRepository::forSeason}) ; on ne filtre PAS au roster des gymnases (le
+     * moteur ne lit un couple que si les deux gymnases portent des séances). Les minutes NULLABLES
+     * passent telles quelles : le moteur applique le défaut 20.
      *
-     * @param array<VenueTravelTime> $rows
+     * @param list<array{row: PlaceTravelTime, venueAId: string, venueBId: string}> $rows
      *
      * @return array<int, array{venueAId: string, venueBId: string, drivingMinutes: ?int, walkingMinutes: ?int}>
      */
     private function serializeVenueTravelTimes(array $rows): array
     {
         $result = [];
-        foreach ($rows as $row) {
+        foreach ($rows as $served) {
             $result[] = [
-                'venueAId' => $row->getVenueAId(),
-                'venueBId' => $row->getVenueBId(),
-                'drivingMinutes' => $row->getDrivingMinutes(),
-                'walkingMinutes' => $row->getWalkingMinutes(),
+                'venueAId' => $served['venueAId'],
+                'venueBId' => $served['venueBId'],
+                'drivingMinutes' => $served['row']->getDrivingMinutes(),
+                'walkingMinutes' => $served['row']->getWalkingMinutes(),
             ];
         }
 
@@ -1310,6 +1312,14 @@ final class ScheduleConstraintBuilder
             ['clubId' => $clubId, 'seasonId' => $seasonId],
             ['id' => 'ASC'],
         );
+    }
+
+    /** @return list<array{row: PlaceTravelTime, venueAId: string, venueBId: string}> */
+    private function travelTimesOfSeason(string $clubId, string $seasonId, EntityManagerInterface $em): array
+    {
+        $repository = $em->getRepository(PlaceTravelTime::class);
+
+        return $repository->forSeason($clubId, $seasonId);
     }
 
     /**

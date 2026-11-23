@@ -6,12 +6,14 @@ namespace App\Tests\Integration\Api;
 
 use App\Entity\Club;
 use App\Entity\ClubUser;
+use App\Entity\Place;
+use App\Entity\PlaceTravelTime;
 use App\Entity\Season;
 use App\Entity\User;
 use App\Entity\Venue;
-use App\Entity\VenueTravelTime;
 use App\Enum\SeasonStatus;
 use App\Enum\VenueTravelTimeSource;
+use App\Repository\PlaceTravelTimeRepository;
 use App\Service\SeasonResolver;
 use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\TenantGucTrait;
@@ -127,6 +129,32 @@ final class VenueDetachFfbbApiTest extends WebTestCase
         self::assertCount(1, $this->timesOf($other), 'le couple des deux autres gymnases garde son temps');
     }
 
+    /**
+     * Lot 3, PR 5 : dissocier en fournissant une position dans le même PUT (le toast « Annuler » d'une association)
+     * passe le gymnase sur un lieu neuf ; ses temps de trajet de la saison l'y suivent, minutes et origine comprises,
+     * saisie à la main comprise. Jumeau : {@see testDetachErasesOnlyTheTravelTimesOfThatVenueWithoutRecomputing}
+     * (sans position, les temps ne suivent pas).
+     */
+    public function testDetachWithAPositionInTheSamePutKeepsTheTravelTimesOfThatVenue(): void
+    {
+        [$user, $club, $season] = $this->seed();
+        $venueId = $this->createAnchoredVenue($user);
+        $other = 'bbbbbbbb-0000-4000-8000-000000000006';
+        $this->matrixRow($club, $season, $venueId, $other, VenueTravelTimeSource::MANUAL);
+
+        $this->put($user, $venueId, ['name' => 'Gymnase G', 'externalRef' => '', 'address' => '2 rue Basse', 'latitude' => '45.1000000', 'longitude' => '4.1000000']);
+
+        $this->scopeGucToClub($club->getId());
+        $this->em->clear();
+        $times = $this->timesOf($venueId);
+        self::assertCount(1, $times, 'le temps du gymnase le suit sur son lieu neuf');
+        self::assertSame(
+            [12, VenueTravelTimeSource::MANUAL, 40, VenueTravelTimeSource::MANUAL],
+            [$times[0]->getDrivingMinutes(), $times[0]->getDrivingSource(), $times[0]->getWalkingMinutes(), $times[0]->getWalkingSource()],
+            'minutes et origine intactes, la saisie à la main comprise',
+        );
+    }
+
     public function testRenamingKeepsTheTravelTimes(): void
     {
         [$user, $club, $season] = $this->seed();
@@ -215,30 +243,50 @@ final class VenueDetachFfbbApiTest extends WebTestCase
 
     private function matrixRow(Club $club, Season $season, string $venueA, string $venueB, VenueTravelTimeSource $source): void
     {
-        if (strcasecmp($venueA, $venueB) > 0) {
-            [$venueA, $venueB] = [$venueB, $venueA];
-        }
         $this->scopeGucToClub($club->getId());
-        $row = new VenueTravelTime;
-        $row->setClubId($club->getId())->setSeasonId($season->getId())->setVenueAId($venueA)->setVenueBId($venueB);
+        $row = PlaceTravelTime::between($club->getId(), $this->placeIdOf($club, $season, $venueA), $this->placeIdOf($club, $season, $venueB));
         $row->setDrivingMinutes(12)->setDrivingSource($source)->setWalkingMinutes(40)->setWalkingSource($source);
         $this->em->persist($row);
         $this->em->flush();
     }
 
+    /** Le lieu du gymnase de la saison à cet identifiant, créé sur un lieu neuf s'il n'existe pas encore. */
+    private function placeIdOf(Club $club, Season $season, string $venueId): string
+    {
+        $venue = $this->em->find(Venue::class, $venueId);
+        if (!$venue instanceof Venue) {
+            $place = (new Place)->setClubId($club->getId());
+            $this->em->persist($place);
+            $venue = new Venue($place)->setId($venueId)->setClubId($club->getId())->setSeasonId($season->getId())->setName('Gymnase ' . substr($venueId, 0, 8))->setSource('manual');
+            $this->em->persist($venue);
+            $this->em->flush();
+        }
+
+        return $venue->getPlaceId();
+    }
+
     /**
-     * Les lignes de ce gymnase qui portent encore un temps : effacer peut supprimer la ligne ou la
-     * vider, seul compte qu'aucun temps ni aucune origine ne survive.
+     * Les temps que la saison du gymnase lui sert et qui portent encore un temps : effacer peut supprimer
+     * la ligne ou la vider, seul compte qu'aucun temps ni aucune origine ne survive.
      *
-     * @return list<VenueTravelTime>
+     * @return list<PlaceTravelTime>
      */
     private function timesOf(string $venueId): array
     {
-        $repository = $this->em->getRepository(VenueTravelTime::class);
+        $venue = $this->em->find(Venue::class, $venueId);
+        self::assertInstanceOf(Venue::class, $venue);
+        $repository = $this->em->getRepository(PlaceTravelTime::class);
+        self::assertInstanceOf(PlaceTravelTimeRepository::class, $repository);
+        $rows = [];
+        foreach ($repository->forSeason($venue->getClubId(), $venue->getSeasonId()) as $served) {
+            if (\in_array($venueId, [$served['venueAId'], $served['venueBId']], true)) {
+                $rows[] = $served['row'];
+            }
+        }
 
         return array_values(array_filter(
-            [...$repository->findBy(['venueAId' => $venueId]), ...$repository->findBy(['venueBId' => $venueId])],
-            static fn (VenueTravelTime $row): bool => null !== $row->getDrivingMinutes() || null !== $row->getWalkingMinutes() || $row->getDrivingSource() instanceof VenueTravelTimeSource || $row->getWalkingSource() instanceof VenueTravelTimeSource,
+            $rows,
+            static fn (PlaceTravelTime $row): bool => null !== $row->getDrivingMinutes() || null !== $row->getWalkingMinutes() || $row->getDrivingSource() instanceof VenueTravelTimeSource || $row->getWalkingSource() instanceof VenueTravelTimeSource,
         ));
     }
 

@@ -1,7 +1,7 @@
 # Lot 3 · Personnes et lieux au club : plan d'exécution
 
 **Statut : version finale (v4 sur 4) ; plafond atteint. Plan validé par le fondateur le 2026-11-21 avec ses sept
-décisions (§11). PR 1, 2a, 2b, 3 et 4 livrées ; la PR 5 reste à faire ; elle s'exécute dans l'ordre du §4, rouges de `tank` d'abord.**
+décisions (§11). PR 1, 2a, 2b, 3, 4 et 5 livrées : le lot 3 est livré sur `lot/conception`, non déployé.**
 Voie **Full**. Branche cible : `lot/conception` (aucune branche
 `lot/personnes-lieux`) ; une PR vers elle ne joue que « Lot Gate » (`docs/ops/ci-runner.md` § Branche de lot) : ni
 Behat, ni e2e, ni `backend-tests`. Avant chaque merge : `make -C backend tests-complete` et les features/specs de la
@@ -225,12 +225,17 @@ Ordre : 1 → 2a → 2b → 3 → 4 → 5, sur `lot/conception`, une PR ouverte 
 - **Fichiers** : `Entity/Place.php`, `Structure/PlaceDirectory.php` (neufs), `Entity/Venue.php`, une migration, `VenueStateProcessor.php:70-84`, `:112-153`, `ApiResource/VenueResource.php`, `Service/Geo/VenueGeoCheck.php`, `Export/MatchesExportDataProvider.php:208`, `Service/ParcImport/ParcImportExecutor.php:258`, `SeasonTransitionService.php:195-214`, `StructureRestorer.php`, purgeurs, les deux seeds.
 - **Tests** : lignes 20 à 25. `/security-review` : oui.
 
-### PR 5 · « Les temps de trajet au club »
+### PR 5 · « Les temps de trajet au club » — LIVRÉE (2026-11-23), dernière du lot
+- **Livré** : `Entity/PlaceTravelTime.php`, `Repository/PlaceTravelTimeRepository.php` (neufs ; `forSeason`), `migrations/Version20261126120000.php` (irréversible ; conversion ligne à ligne, contrôle de comptage qui arrête la migration, clés composées `(place_a_id, club_id)` et `(place_b_id, club_id)` `ON DELETE CASCADE`, RLS sur le patron de `place`), `Entity/VenueTravelTime.php` et son dépôt supprimés, `ScheduleConstraintBuilder`, `VenueTravelTimeResource` / `VenueTravelTimeStateProvider` / `VenueTravelTimeStateProcessor`, `VenueTravelTimeAutofillService`, `VenueStateProcessor` (dissociation, recalcul), `SeasonTransitionService` (plus de recopie), `CascadePlan` (plus d'étape de barème), `CoachDoubleBookingDetector`, `PlacedSessionPersonConflictDetector`. Bloquant étendu : `Security/PersonPlaceTenantIsolationTest` (`blocking-tests.md`). Doc : ADR-0006, `rls.md`, `TENANT.md`, `backend/AGENTS.md`, `backend-inventory.md`, `geo-api.md`, `glossary.md`.
+- **Écarts au plan, écrits** :
+  - Dissocier un gymnase de sa salle fédérale reporte sur le lieu neuf des copies des couples que sa saison servait ; le lieu quitté garde les siens pour les autres saisons. Les copies sont vides si le gymnase reste sans position, elles gardent les valeurs si une position arrive dans le même PUT (choix non tranché par le plan, à confirmer par le fondateur).
+  - L'écriture est refusée 409 quand la saison de la requête est archivée (le temps ne porte plus de saison : la garde est posée sur la saison de la requête).
+  - La demande au moteur reste identique à l'octet pour la saison demandée (`CrossStack/VenueTravelTimePayloadParityTest`).
+- **Plan d'origine** (le détail livré ci-dessus fait foi) :
 - `place_travel_time`, conversion ligne à ligne, `venue_travel_time` supprimée.
 - Le constructeur émet, pour la saison demandée, les couples dont les deux lieux ont un gymnase cette saison, rangés selon les identifiants de gymnases de cette saison, triés comme aujourd'hui. L'API range de même.
 - Écriture refusée si la saison de la requête est en lecture seule. Une valeur saisie à la main n'est jamais écrasée par le calcul.
 - Supprimer un gymnase n'annonce plus et ne supprime plus de barème.
-- **Fichiers** : `Entity/PlaceTravelTime.php`, `Repository/PlaceTravelTimeRepository.php` (neufs), `Entity/VenueTravelTime.php`, `Repository/VenueTravelTimeRepository.php` (supprimés), une migration, `ScheduleConstraintBuilder.php:320`, `:539`, `:1252-1270`, `ApiResource/VenueTravelTimeResource.php`, `State/Processor/VenueTravelTimeStateProcessor.php`, `State/Provider/VenueTravelTimeStateProvider.php`, `Controller/VenueTravelTimeAutofillController.php`, `Service/Geo/VenueTravelTimeAutofillService.php`, le traitement en file du calcul des trajets, `VenueStateProcessor.php:219-225`, `SeasonTransitionService.php:488-511`, `CascadePlan.php:111-112`, `Service/SeasonDataPurger.php`, `CoachDoubleBookingDetector.php`, `PlacedSessionPersonConflictDetector.php`, `Seed/LoadTestClubSeeder.php`.
 - **Tests** : lignes 26 à 32. `/security-review` : oui (isolation, appel sortant IGN).
 
 **Raison du découpage** : la PR d'entrée est imposée par le lot 1 ; la personne tient en deux PR (2a, 2b) parce qu'une seule serait trop grosse à relire ; l'effacement est un chantier à lui ; lieu et trajets, une PR chacun.

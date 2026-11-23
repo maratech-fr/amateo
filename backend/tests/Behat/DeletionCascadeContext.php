@@ -14,7 +14,8 @@ use RuntimeException;
  * Promesse : supprimer une équipe (sans compétition), un gymnase ou un coach emporte ce qui ne
  * vit que par lui — séances, réservations, règles qui le VISENT (portée + cible), liens — et laisse
  * le reste du club tel quel ; la remise à zéro de la saison efface la structure et garde le club,
- * sa saison et son gestionnaire.
+ * sa saison et son gestionnaire. Le temps de trajet entre deux lieux (lot 3, PR 5) n'est ni annoncé ni emporté par la
+ * suppression d'un gymnase ; il part avec le lieu, à la remise à zéro.
  *
  * Décor DÉDIÉ et léger ({@see SmallClubFixtureTrait::registerSmallClub}, puis 3 équipes, 2 gymnases
  * de 6 créneaux, 2 coachs par l'API), une génération du socle (non validé). Les vérités sont des
@@ -137,6 +138,37 @@ final class DeletionCascadeContext extends BaseContext
             'name' => $team . ' · s\'entraîne au ' . $venue, 'scope' => 'TEAM', 'scopeTargetId' => $this->smallClubTeamIds[$team],
             'family' => 'FACILITY', 'ruleType' => 'HARD', 'config' => ['forcedVenueId' => $this->smallClubVenueIds[$venue]], 'isActive' => true,
         ], $this->smallClubToken), 'règle qui impose le ' . $venue . ' à ' . $team);
+    }
+
+    /** La fenêtre des trajets : une durée saisie à la main (`POST /api/venue_travel_times`), posée après la génération du décor. */
+    #[Given('/^le trajet entre le « (?P<a>[^»]+) » et le « (?P<b>[^»]+) » est saisi à (?P<minutes>\d+) minutes en voiture$/u')]
+    public function leTrajetEstSaisi(string $a, string $b, string $minutes): void
+    {
+        $this->createdId($this->apiPost('venue_travel_times', [
+            'venueAId' => $this->smallClubVenueIds[$a],
+            'venueBId' => $this->smallClubVenueIds[$b],
+            'drivingMinutes' => (int) $minutes,
+        ], $this->smallClubToken), \sprintf('trajet %s – %s', $a, $b));
+    }
+
+    /**
+     * Lot 3, PR 5 : le temps de trajet est celui des deux lieux, au club ; la fenêtre de suppression d'un gymnase
+     * n'annonce plus aucun barème. Témoin : la ligne « contrainte qui nomme ce gymnase » est servie par la même réponse.
+     */
+    #[Then('/^la suppression du « (?P<venue>[^»]+) » n\'annonce aucun barème de trajet$/u')]
+    public function laSuppressionNAnnonceAucunBareme(string $venue): void
+    {
+        $impact = $this->apiGet(\sprintf('venues/%s/deletion-impact', $this->smallClubVenueIds[$venue]), $this->smallClubToken);
+        $lines = \is_array($impact['json']['lines'] ?? null) ? $impact['json']['lines'] : [];
+        if (200 !== $impact['status'] || [] === $lines) {
+            throw new RuntimeException(\sprintf('l\'annonce de suppression du %s a répondu %d sans ligne (témoin : la règle qui le nomme doit y être) : %s', $venue, $impact['status'], json_encode($impact['json'], \JSON_UNESCAPED_UNICODE)));
+        }
+        foreach ($lines as $line) {
+            // Tout libellé qui parle de trajet, quel que soit son mot (« barème », « temps ») : aucun ne doit être servi.
+            if (\is_array($line) && (str_contains((string) ($line['one'] ?? ''), 'trajet') || str_contains((string) ($line['many'] ?? ''), 'trajet'))) {
+                throw new RuntimeException(\sprintf('la suppression du %s annonce encore « %s %s » ; lignes servies : %s', $venue, json_encode($line['count'] ?? null), $line['many'] ?? '', json_encode($lines, \JSON_UNESCAPED_UNICODE)));
+            }
+        }
     }
 
     /** Ce que la fenêtre de suppression du gymnase affiche : la ligne servie par `/deletion-impact`, au texte près. */
@@ -283,21 +315,40 @@ final class DeletionCascadeContext extends BaseContext
         $this->assertNone(['fiche de personne' => ['person', \sprintf('club_id=\'%s\'', $this->smallClubId)]], 'le club remis à zéro');
     }
 
-    /** Lot 3, PR 4 : supprimer un gymnase garde son lieu, sans gymnase, jusqu'à la purge de la saison (même règle que la fiche d'un coach). */
-    #[Then('/^le lieu du « (?P<venue>[^»]+) » existe toujours dans le club$/u')]
-    public function leLieuExisteToujours(string $venue): void
+    /**
+     * Lot 3, PR 4 : supprimer un gymnase garde son lieu, sans gymnase, jusqu'à la purge de la saison (même règle que la
+     * fiche d'un coach). PR 5 : le temps de trajet entre ce lieu et celui de l'autre gymnase reste au club, minutes
+     * comprises (pointage : aucun gymnase de la saison ne relie plus ce lieu, l'API de la saison ne le montre donc pas).
+     */
+    #[Then('/^le lieu du « (?P<venue>[^»]+) » existe toujours dans le club, avec son temps de trajet jusqu\'au « (?P<other>[^»]+) »$/u')]
+    public function leLieuExisteToujours(string $venue, string $other): void
     {
         $placeId = $this->placeIds[$venue] ?? '';
         if ('' === $placeId || 1 !== $this->count('place', \sprintf('id=\'%s\' AND club_id=\'%s\'', $placeId, $this->smallClubId))) {
             throw new RuntimeException(\sprintf('le lieu du %s a disparu avec le gymnase (lieu relu avant la suppression : « %s »)', $venue, $placeId));
         }
+        $otherPlace = $this->dbalScalar(\sprintf('SELECT place_id AS behatval FROM venue WHERE id=\'%s\'', $this->smallClubVenueIds[$other]), admin: true);
+        $minutes = $this->dbalScalar(\sprintf(
+            'SELECT driving_minutes AS behatval FROM place_travel_time WHERE club_id=\'%s\' AND ((place_a_id=\'%s\' AND place_b_id=\'%s\') OR (place_a_id=\'%s\' AND place_b_id=\'%s\'))',
+            $this->smallClubId,
+            $placeId,
+            $otherPlace,
+            $otherPlace,
+            $placeId,
+        ), admin: true);
+        if ('12' !== $minutes) {
+            throw new RuntimeException(\sprintf('le temps de trajet entre le lieu du %s et celui du %s vaut « %s » après la suppression du gymnase (attendu 12, saisi avant)', $venue, $other, $minutes));
+        }
     }
 
-    /** La remise à zéro balaie les lieux que plus aucun gymnase ne désigne. */
-    #[Then('le club n\'a plus aucun lieu')]
+    /** La remise à zéro balaie les lieux que plus aucun gymnase ne désigne ; leurs temps de trajet partent avec eux. */
+    #[Then('le club n\'a plus aucun lieu, ni temps de trajet')]
     public function leClubNAPlusAucunLieu(): void
     {
-        $this->assertNone(['lieu' => ['place', \sprintf('club_id=\'%s\'', $this->smallClubId)]], 'le club remis à zéro');
+        $this->assertNone([
+            'lieu' => ['place', \sprintf('club_id=\'%s\'', $this->smallClubId)],
+            'temps de trajet' => ['place_travel_time', \sprintf('club_id=\'%s\'', $this->smallClubId)],
+        ], 'le club remis à zéro');
     }
 
     #[When('je remets la saison à zéro')]

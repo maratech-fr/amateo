@@ -9,6 +9,7 @@ use App\Entity\Club;
 use App\Entity\ClubUser;
 use App\Entity\Coach;
 use App\Entity\CoachWish;
+use App\Entity\PlaceTravelTime;
 use App\Entity\Reservation;
 use App\Entity\Season;
 use App\Entity\SharedTrainingBlock;
@@ -18,7 +19,6 @@ use App\Entity\TeamCoach;
 use App\Entity\User;
 use App\Entity\Venue;
 use App\Entity\VenueTrainingSlot;
-use App\Entity\VenueTravelTime;
 use App\Enum\CalendarEntryKind;
 use App\Enum\CalendarEntryPeriodType;
 use App\Enum\SeasonStatus;
@@ -259,9 +259,7 @@ final class CoachWishUnavailabilityGateTest extends KernelTestCase
         $this->link($teamB, $sebastien, TeamCoachRole::MAIN);
         $this->link($teamB, $benoit, TeamCoachRole::ASSISTANT);
 
-        [$low, $high] = $gym1->getId() < $gym2->getId() ? [$gym1->getId(), $gym2->getId()] : [$gym2->getId(), $gym1->getId()];
-        $this->em->persist((new VenueTravelTime)->setClubId($this->club->getId())->setSeasonId($this->season->getId())
-            ->setVenueAId($low)->setVenueBId($high)->setWalkingMinutes(15));
+        $this->em->persist(PlaceTravelTime::between($this->club->getId(), $gym1->getPlaceId(), $gym2->getPlaceId())->setWalkingMinutes(15));
 
         $this->reservation($teamB, $gym2, self::TUESDAY, '20:00', tolerance: 30);
 
