@@ -16,6 +16,7 @@ const base: ClubEntitlements = {
   canPlaceMatches: true,
   canExportPdf: true,
   seasonTransition: false,
+  teamCapMessage: null,
 };
 
 describe("deriveCredits", () => {
