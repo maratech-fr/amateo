@@ -69,7 +69,7 @@ final class NestedBlockOccupantFoldParityTest extends KernelTestCase
         $occupantCount = new ReflectionMethod($occupancy, 'occupantCount');
         $occupantCount->setAccessible(true);
         $teamSet = [$t1->getId() => true, $t2->getId() => true, $t3->getId() => true];
-        $backendOccupants = $occupantCount->invoke($occupancy, $teamSet, null);
+        $backendOccupants = $occupantCount->invoke($occupancy, $teamSet, SeasonPlanOf::id(self::getContainer(), $season->getId()));
         self::assertSame(
             1,
             $backendOccupants,

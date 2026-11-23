@@ -109,7 +109,7 @@ final class ParcImportReservationSemanticsGateTest extends KernelTestCase
 
         // L'import a posé une réservation HARD du SOCLE (schedulePlanId null) sur la case lundi 18:00.
         $this->scopeGucToClub($club->getId());
-        $reservation = $this->reservationOf($team->getId(), $venue->getId(), 1, '18:00');
+        $reservation = $this->reservationOf($season, $team->getId(), $venue->getId(), 1, '18:00');
         self::assertInstanceOf(Reservation::class, $reservation, 'l\'import doit écrire la réservation cochée');
         self::assertSame(SeasonPlanOf::id(self::getContainer(), $reservation->getSeasonId()), $reservation->getSchedulePlanId(), 'la réservation importée est un verrou HARD du socle');
 
@@ -192,14 +192,14 @@ final class ParcImportReservationSemanticsGateTest extends KernelTestCase
         return $this->builder->buildForClubSeason($club->getId(), $season->getId());
     }
 
-    private function reservationOf(string $teamId, string $venueId, int $day, string $start): ?Reservation
+    private function reservationOf(Season $season, string $teamId, string $venueId, int $day, string $start): ?Reservation
     {
         /** @var list<Reservation> $rows */
         $rows = $this->em->getRepository(Reservation::class)->findBy([
             'teamId' => $teamId,
             'venueId' => $venueId,
             'dayOfWeek' => $day,
-            'schedulePlanId' => null,
+            'schedulePlanId' => SeasonPlanOf::id(self::getContainer(), $season->getId()),
         ]);
         foreach ($rows as $reservation) {
             if ($reservation->getStartTime()->format('H:i') === $start) {
