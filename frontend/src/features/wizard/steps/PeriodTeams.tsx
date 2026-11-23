@@ -124,7 +124,7 @@ function PeriodTeamsPanel({ calendarEntryId, schedulePlanId }: { calendarEntryId
   // (active + seasonal session count + seasonal daily cap) — keeps the table sparse. The body is
   // built by `periodOverrideBody` (full replacement: a gesture on one field never drops the others,
   // e.g. un/re-checking a team keeps its period daily cap). Returns the mutation promise so batch
-  // actions (seed / ramp) can await the whole set.
+  // actions (the ramp presets) can await the whole set.
   /**
    * Rend `null` quand il n'y a RIEN à écrire (l'état voulu est déjà celui de la saison,
    * sans override) — à distinguer d'une écriture réussie : `Promise.allSettled` ne voit
@@ -171,7 +171,7 @@ function PeriodTeamsPanel({ calendarEntryId, schedulePlanId }: { calendarEntryId
       // une période intouchée. Un succès qui ment est pire qu'une erreur.
       if (0 === writes.length) {
         // Rien à écrire D'APRÈS LA CARTE LOCALE. Elle peut être périmée (un refetch
-        // d'invalidation raté après le seed laisse un [] pré-seed en cache) : on ne
+        // d'invalidation raté après une écriture laisse une liste obsolète en cache) : on ne
         // dit donc pas « appliquée », on constate — et on RESYNCHRONISE pour que la
         // carte re-reflète le serveur au prochain geste.
         toast.success("Aucune modification à enregistrer");

@@ -23,10 +23,10 @@ use DateTimeImmutable;
 use Symfony\Component\Serializer\Attribute\Groups;
 
 /**
- * Le réglage d'une équipe pour une période : la ligne de l'équipe dans le plan de période (lot 4, PR 3a), vue de l'écran
- * comme un réglage épars. La liste ne rend que les lignes qui diffèrent du socle ; `null` en sortie = la valeur de la
- * saison. Publier le réglage d'un couple (plan, équipe) met sa ligne à jour ; le supprimer rend à la ligne les valeurs
- * du socle. Le socle ne se règle jamais par cette route.
+ * Le réglage d'une équipe pour une période : la ligne de l'équipe dans le plan de période, vue de l'écran comme un
+ * réglage épars. La liste ne rend que les lignes qui diffèrent de la saison ou qu'un geste nommé a posées ; `null` en
+ * sortie = la valeur de la saison. Publier le réglage d'un couple (plan, équipe) met sa ligne à jour ; le supprimer rend
+ * à la ligne les valeurs de la saison. La saison ne se règle jamais par cette route.
  */
 #[ApiResource(shortName: 'TeamPeriodOverride', operations: [
     new GetCollection,

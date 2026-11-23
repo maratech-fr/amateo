@@ -9,9 +9,10 @@ use App\Entity\Team;
 use App\Plans\PlanComposition;
 
 /**
- * La RÈGLE du tri d'équipes par défaut d'un plan de période de REPRISE (décision fondateur 2026-10-10). Depuis le
- * lot 4 (PR 3a), la pré-sélection se pose à la naissance du plan, par le serveur seul
- * ({@see PlanComposition::ensureLines}) : l'écran n'écrit plus rien à l'ouverture de l'étape Équipes. Règle (E3) :
+ * La RÈGLE du tri d'équipes par défaut d'un plan de période de REPRISE (décision fondateur 2026-10-10), pure : malgré
+ * son nom, la classe n'écrit rien. La pré-sélection se pose à la naissance du plan, par la seule porte des lignes
+ * ({@see PlanComposition::ensureLines}), qui lit cette règle ; l'écran n'écrit rien à l'ouverture de l'étape Équipes.
+ * Règle (E3) :
  *  - REPRISE (holiday) : seuls les 2 premiers RANGS (par id de rang croissant : S puis A) reprennent ; REPLI sur le
  *    meilleur rang réellement présent si aucune équipe en S/A (un petit club tout en loisir ne reprend jamais
  *    « personne ») ;
