@@ -194,9 +194,9 @@ final class PurgeCompletenessTest extends KernelTestCase
     /**
      * L'effacement d'un club efface exactement, pour chaque saison, les familles de la purge de
      * saison et la ligne de saison, puis les familles que le catalogue efface avec le club ; son
-     * compte rendu `CLUB_PURGED` compte chaque ligne effacée (16 sur ce décor : 2 saisons, 9 lignes
+     * compte rendu `CLUB_PURGED` compte chaque ligne effacée (17 sur ce décor : 2 saisons, 10 lignes
      * de saison dont une doléance purgée par son entrée de calendrier et le plan de saison que porte le
-     * créneau depuis le lot 4, 1 catégorie du club, 2 fiches
+     * créneau depuis le lot 4 et la ligne de l'équipe dans ce plan, 1 catégorie du club, 2 fiches
      * de personne dont une sans rôle, gardée après la suppression de son coach, 2 lieux dont un sans
      * gymnase, gardé après la suppression du sien — lot 3, PR 4).
      */
@@ -214,8 +214,9 @@ final class PurgeCompletenessTest extends KernelTestCase
         $expected = [...$this->seasonPurgeTables(), 'season', ...$this->tablesOf($this->catalog()->purgedWithClub())];
         self::assertSame($this->sortedUnique($expected), $this->sortedUnique($executed));
 
-        // Lot 4 : le créneau du décor porte le plan de saison, né avec lui — une ligne de plus (16).
-        self::assertSame(16, $deleted, 'le nombre rendu compte chaque ligne effacée');
+        // Lot 4 : le créneau du décor porte le plan de saison, né avec lui — une ligne de plus (16) ; PR 3a : l'équipe du
+        // décor a sa ligne dans ce plan — une de plus (17).
+        self::assertSame(17, $deleted, 'le nombre rendu compte chaque ligne effacée');
         $people = (int) self::getContainer()->get(EntityManagerInterface::class)->getConnection()->fetchOne(
             'SELECT COUNT(*) FROM person WHERE club_id = :club',
             ['club' => $club->getId()],
@@ -231,7 +232,7 @@ final class PurgeCompletenessTest extends KernelTestCase
             ['club' => $club->getId(), 'action' => AuditAction::CLUB_PURGED->value],
         );
         self::assertIsString($details, 'l\'effacement écrit son compte rendu');
-        self::assertSame(['rowsDeleted' => 16], json_decode($details, true, 512, \JSON_THROW_ON_ERROR));
+        self::assertSame(['rowsDeleted' => 17], json_decode($details, true, 512, \JSON_THROW_ON_ERROR));
     }
 
     /**
