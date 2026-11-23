@@ -6,6 +6,12 @@ services:
         autowire: true
         autoconfigure: true
 
+    # Lot 4, PR 2 — fil-piège : en test, toute requête qui cherche « schedule_plan_id IS [NOT] NULL »
+    # lève (chaque ligne du socle porte le plan de saison ; une telle recherche rendrait une liste
+    # vide sans erreur). Les migrations y échappent. Prouvé par NullPlanTripwireTest.
+    App\Tests\Doctrine\NullPlanTripwireMiddleware:
+        tags: ['doctrine.middleware']
+
     # P1-4 PR F — integration tests must never hit the real federation: the
     # FFBB client rides a deterministic stub (one engagement for ARA0000001).
     App\Tests\Double\FfbbHttpClientStub: ~

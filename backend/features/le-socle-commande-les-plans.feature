@@ -24,6 +24,13 @@ Fonctionnalité: Le planning de saison commande les plannings de période
     Quand je valide le planning de saison
     Alors la collecte et ses doléances des vacances à venir ont disparu
 
+  Scénario: Le planning de saison et les vacances ont chacun leur grille
+    Les vacances naissent avec une copie de la grille du planning de saison ; ensuite chacun garde la sienne.
+    Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur
+    Et des vacances à venir, adaptées sur la grille du planning de saison
+    Alors la grille des vacances est celle du planning de saison
+    Et modifier la grille du planning de saison ne change pas la grille des vacances
+
   Scénario: Sans planning de saison en vigueur, ouvrir un planning de période est refusé
     Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur
     Et le planning de saison n'est plus en vigueur

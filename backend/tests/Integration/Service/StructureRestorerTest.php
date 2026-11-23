@@ -14,11 +14,14 @@ use App\Entity\CoachWishToken;
 use App\Entity\Constraint;
 use App\Entity\ConstraintPeriodOverride;
 use App\Entity\Fixture;
+use App\Entity\ImplicitRuleSetting;
 use App\Entity\Person;
+use App\Entity\Reservation;
 use App\Entity\Schedule;
 use App\Entity\Season;
 use App\Entity\Team;
 use App\Entity\TeamCoach;
+use App\Entity\TeamPeriodOverride;
 use App\Entity\Venue;
 use App\Entity\VenueTrainingSlot;
 use App\Enum\CalendarEntryKind;
@@ -43,6 +46,7 @@ use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
 use PHPUnit\Framework\Attributes\Group;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
+use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
 
 /**
  * planning-versions D3 (§7.1 planning lifecycle + tenant isolation): restore the
@@ -693,6 +697,138 @@ final class StructureRestorerTest extends KernelTestCase
         self::assertNotNull($this->em->getRepository(TeamCoach::class)->findOneBy(['coachId' => $annaId]), 'témoin : le lien d\'un coach de la photo revient');
     }
 
+    /**
+     * Lot 4, PR 2 (a) : « Charger » une version du socle ramène sa grille et ses réservations, et elles portent le
+     * plan de saison — la grille et les réservations modifiées depuis la photo s'en vont.
+     */
+    public function testLoadingBringsTheSocleGridAndReservationsBackOnTheSeasonPlan(): void
+    {
+        [$club, $season] = $this->seedClubSeason();
+        $seasonPlan = $this->seasonPlanIdOf($season);
+        $team = $this->persistTeam($club, $season, 'SM1');
+        $venue = $this->newVenue($club->getId(), $season->getId(), 'Gymnase Nord');
+        $this->em->persist($venue);
+        $this->em->flush();
+        $photographed = $this->persistSlot($club, $season, $venue, $seasonPlan, 2, '18:00');
+        $reservation = $this->persistReservation($club, $season, $team, $venue, $seasonPlan, 2, '18:00');
+        $v1 = $this->makeSchedule($club, $season);
+        $this->em->flush();
+        $this->snapshotter->store($v1, $this->snapshotter->serialize($club->getId(), $season->getId()));
+
+        $this->em->remove($photographed);
+        $this->em->remove($reservation);
+        $this->persistSlot($club, $season, $venue, $seasonPlan, 4, '20:00');
+        $this->em->flush();
+
+        $this->restorer->apply($club->getId(), $season->getId(), $this->restorer->readSnapshot($v1));
+        $this->em->clear();
+
+        self::assertSame([$photographed->getId()], $this->idsOf(VenueTrainingSlot::class, $season, $seasonPlan), 'la grille de la photo revient sur le plan de saison, le créneau ajouté depuis s\'en va');
+        self::assertSame([$reservation->getId()], $this->idsOf(Reservation::class, $season, $seasonPlan), 'la réservation de la photo revient sur le plan de saison');
+    }
+
+    /**
+     * Lot 4, PR 2 (b) : une photo prise avant le lot (ses lignes de socle à plan nul), convertie comme la migration
+     * la convertit (plan nul → plan de saison), est exactement la photo que le code prend aujourd'hui, et se charge.
+     */
+    public function testAPhotoConvertedByTheMigrationLoads(): void
+    {
+        [$club, $season] = $this->seedClubSeason();
+        $seasonPlan = $this->seasonPlanIdOf($season);
+        $team = $this->persistTeam($club, $season, 'SM1');
+        $venue = $this->newVenue($club->getId(), $season->getId(), 'Gymnase Nord');
+        $this->em->persist($venue);
+        $this->em->flush();
+        $slot = $this->persistSlot($club, $season, $venue, $seasonPlan, 2, '18:00');
+        $reservation = $this->persistReservation($club, $season, $team, $venue, $seasonPlan, 2, '18:00');
+        $v1 = $this->makeSchedule($club, $season);
+        $this->em->flush();
+
+        $today = $this->snapshotter->serialize($club->getId(), $season->getId());
+        self::assertNotSame([], $today['VenueTrainingSlot'] ?? [], 'la photo du socle porte sa grille');
+        self::assertNotSame([], $today['Reservation'] ?? [], 'la photo du socle porte ses réservations');
+        $beforeTheLot = $this->withPlanOnSocleRows($today, null);
+        $converted = $this->withPlanOnSocleRows($beforeTheLot, $seasonPlan);
+        self::assertSame($today, $converted, 'la photo convertie est celle que le code prend aujourd\'hui');
+        $this->snapshotter->store($v1, $converted);
+
+        $this->em->remove($slot);
+        $this->em->remove($reservation);
+        $this->em->flush();
+        $this->restorer->apply($club->getId(), $season->getId(), $this->restorer->readSnapshot($v1));
+        $this->em->clear();
+
+        self::assertSame([$slot->getId()], $this->idsOf(VenueTrainingSlot::class, $season, $seasonPlan), 'la grille de la photo convertie revient');
+        self::assertSame([$reservation->getId()], $this->idsOf(Reservation::class, $season, $seasonPlan), 'la réservation de la photo convertie revient');
+    }
+
+    /**
+     * Lot 4, PR 2 (c) : « Charger » une version du socle ne change aucun réglage d'un plan de période — sa grille, ses
+     * réservations, ses réglages d'équipes et ses règles de bien-être restent ligne pour ligne.
+     * Angle jumeau, cité : `RegenerateFromVersionTest::testLoadVersionKeepsPeriodTrainingSlots` (le créneau de
+     * période survit, par la route) ; ici toutes les familles du plan, ligne pour ligne.
+     */
+    public function testLoadingTheSocleChangesNoSettingOfAPeriodPlan(): void
+    {
+        [$club, $season] = $this->seedClubSeason();
+        $seasonPlan = $this->seasonPlanIdOf($season);
+        $team = $this->persistTeam($club, $season, 'SM1');
+        $venue = $this->newVenue($club->getId(), $season->getId(), 'Gymnase Nord');
+        $this->em->persist($venue);
+        $this->em->flush();
+        $this->persistSlot($club, $season, $venue, $seasonPlan, 2, '18:00');
+        $v1 = $this->makeSchedule($club, $season);
+        $this->em->flush();
+        $this->snapshotter->store($v1, $this->snapshotter->serialize($club->getId(), $season->getId()));
+
+        $holiday = $this->persistHoliday($club, $season);
+        $this->em->flush();
+        $periodPlan = $this->planIdOf($holiday);
+        $this->persistSlot($club, $season, $venue, $periodPlan, 3, '10:00');
+        $this->persistReservation($club, $season, $team, $venue, $periodPlan, 3, '10:00');
+        $this->em->persist((new TeamPeriodOverride)->setClubId($club->getId())->setSeasonId($season->getId())
+            ->setSchedulePlanId($periodPlan)->setTeamId($team->getId())->setSessionsPerWeek(1));
+        $this->em->flush();
+        $before = $this->periodPlanRows($periodPlan);
+        self::assertNotSame([], $before[VenueTrainingSlot::class], 'témoin : le plan de période a sa grille');
+        self::assertNotSame([], $before[TeamPeriodOverride::class], 'témoin : le plan de période a un réglage d\'équipe');
+
+        $this->restorer->apply($club->getId(), $season->getId(), $this->restorer->readSnapshot($v1));
+        $this->em->clear();
+
+        self::assertSame($before, $this->periodPlanRows($periodPlan), 'aucun réglage du plan de période n\'a changé');
+    }
+
+    /**
+     * Lot 4, PR 2 (d) : une photo restée à l'ancien format (une ligne de socle à plan nul) est refusée, et rien de la
+     * structure n'est effacé : la conversion des photos a échoué, la charger écrirait une ligne sans plan.
+     */
+    public function testAPhotoInTheOldFormatIsRefused(): void
+    {
+        [$club, $season] = $this->seedClubSeason();
+        $seasonPlan = $this->seasonPlanIdOf($season);
+        $team = $this->persistTeam($club, $season, 'SM1');
+        $venue = $this->newVenue($club->getId(), $season->getId(), 'Gymnase Nord');
+        $this->em->persist($venue);
+        $this->em->flush();
+        $slot = $this->persistSlot($club, $season, $venue, $seasonPlan, 2, '18:00');
+        $v1 = $this->makeSchedule($club, $season);
+        $this->em->flush();
+        $photo = $this->snapshotter->serialize($club->getId(), $season->getId());
+        $photo['VenueTrainingSlot'] = [['schedulePlanId' => null] + $this->serializedSlot($photo, $slot->getId())];
+        $this->snapshotter->store($v1, $photo);
+
+        try {
+            $this->restorer->apply($club->getId(), $season->getId(), $this->restorer->readSnapshot($v1));
+            self::fail('une photo à l\'ancien format doit être refusée');
+        } catch (ConflictHttpException) {
+        }
+        $this->em->clear();
+
+        self::assertSame([$slot->getId()], $this->idsOf(VenueTrainingSlot::class, $season, $seasonPlan), 'la grille du socle n\'est pas effacée');
+        self::assertNotNull($this->em->getRepository(Team::class)->find($team->getId()), 'les équipes ne sont pas effacées');
+    }
+
     protected function setUp(): void
     {
         self::bootKernel();
@@ -774,6 +910,94 @@ final class StructureRestorerTest extends KernelTestCase
         self::assertInstanceOf(CoachWish::class, $wish, 'la doléance survit au chargement');
 
         return $wish->getStaffUnavailability();
+    }
+
+    private function persistSlot(Club $club, Season $season, Venue $venue, string $planId, int $day, string $time): VenueTrainingSlot
+    {
+        $slot = (new VenueTrainingSlot)->setClubId($club->getId())->setSeasonId($season->getId())->setVenueId($venue->getId())
+            ->setDayOfWeek($day)->setStartTime(new DateTimeImmutable($time))->setDurationMinutes(90)->setCapacity(1)
+            ->setSchedulePlanId($planId);
+        $this->em->persist($slot);
+        $this->em->flush();
+
+        return $slot;
+    }
+
+    private function persistReservation(Club $club, Season $season, Team $team, Venue $venue, string $planId, int $day, string $time): Reservation
+    {
+        $reservation = (new Reservation)->setClubId($club->getId())->setSeasonId($season->getId())->setTeamId($team->getId())
+            ->setVenueId($venue->getId())->setDayOfWeek($day)->setStartTime(new DateTimeImmutable($time))->setDurationMinutes(90)
+            ->setSchedulePlanId($planId);
+        $this->em->persist($reservation);
+        $this->em->flush();
+
+        return $reservation;
+    }
+
+    /**
+     * @param class-string<VenueTrainingSlot|Reservation> $entityClass
+     *
+     * @return list<string>
+     */
+    private function idsOf(string $entityClass, Season $season, string $planId): array
+    {
+        $ids = array_map(
+            static fn (VenueTrainingSlot|Reservation $row): string => $row->getId(),
+            $this->em->getRepository($entityClass)->findBy(['seasonId' => $season->getId(), 'schedulePlanId' => $planId]),
+        );
+        sort($ids);
+
+        return $ids;
+    }
+
+    /**
+     * La photo dont chaque ligne de socle (grille, réservation) porte `$planId`.
+     *
+     * @param array<string, list<array<string, mixed>>> $photo
+     *
+     * @return array<string, list<array<string, mixed>>>
+     */
+    private function withPlanOnSocleRows(array $photo, ?string $planId): array
+    {
+        foreach (['VenueTrainingSlot', 'Reservation'] as $family) {
+            foreach ($photo[$family] ?? [] as $i => $row) {
+                $photo[$family][$i]['schedulePlanId'] = $planId;
+            }
+        }
+
+        return $photo;
+    }
+
+    /**
+     * @param array<string, list<array<string, mixed>>> $photo
+     *
+     * @return array<string, mixed>
+     */
+    private function serializedSlot(array $photo, string $slotId): array
+    {
+        foreach ($photo['VenueTrainingSlot'] ?? [] as $row) {
+            if ($slotId === ($row['id'] ?? null)) {
+                return $row;
+            }
+        }
+        self::fail('la photo du socle porte le créneau');
+    }
+
+    /**
+     * Toutes les lignes que porte un plan de période, champ par champ, par famille.
+     *
+     * @return array<class-string, list<array<string, mixed>>>
+     */
+    private function periodPlanRows(string $planId): array
+    {
+        $connection = $this->em->getConnection();
+        $rows = [];
+        foreach ([VenueTrainingSlot::class, Reservation::class, TeamPeriodOverride::class, ImplicitRuleSetting::class] as $class) {
+            $table = $this->em->getClassMetadata($class)->getTableName();
+            $rows[$class] = $connection->fetchAllAssociative(\sprintf('SELECT * FROM %s WHERE schedule_plan_id = ? ORDER BY id', $table), [$planId]);
+        }
+
+        return $rows;
     }
 
     private function makeSchedule(Club $club, Season $season): Schedule

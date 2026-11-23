@@ -27,6 +27,7 @@ Fonctionnalité: Préparer la saison suivante reprend la structure du club
       | gymnases                  | 3      |
       | créneaux de gymnase       | 36     |
       | règles                    | 6      |
+    Et la grille reprise est celle du planning de saison de la saison suivante
     Et la règle de la saison suivante impose le « Gymnase Nord » de la saison suivante, pas celui de la saison en cours
     Et la saison en cours a gardé toute sa structure
     Quand je prépare la saison suivante une seconde fois

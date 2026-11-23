@@ -11,6 +11,7 @@ use App\Entity\User;
 use App\Entity\Venue;
 use App\Entity\VenueTrainingSlot;
 use App\Enum\SeasonStatus;
+use App\Service\SchedulePlanProvisioner;
 use App\Service\TenantConnectionContext;
 use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\CreatesPeriodPlanTrait;
@@ -362,6 +363,39 @@ final class VenueTrainingSlotApiTest extends WebTestCase
         ], \JSON_THROW_ON_ERROR));
         self::assertResponseStatusCodeSame(422);
         self::assertStringContainsString('Le libellé de groupe appartient au planning de saison.', (string) $this->client->getResponse()->getContent());
+    }
+
+    /**
+     * Lot 4, PR 2 : un créneau du socle porte le plan de saison, et c'est la nature du plan — pas « un plan est
+     * posé » — qui décide du libellé de groupe. Éditer un créneau du socle pour lui poser un libellé reste permis ;
+     * le refus sur un créneau de période est gardé juste au-dessus.
+     */
+    public function testASocleSlotCarryingTheSeasonPlanAcceptsAGroupLabel(): void
+    {
+        $venue = $this->createVenue(true);
+        $seasonPlan = self::getContainer()->get(SchedulePlanProvisioner::class)->ensureSeasonPlanId($this->season->getId());
+        self::assertIsString($seasonPlan);
+        $slot = (new VenueTrainingSlot)->setClubId($this->club->getId())->setSeasonId($this->season->getId())->setVenueId($venue->getId())
+            ->setDayOfWeek(2)->setStartTime(new DateTimeImmutable('20:00'))->setDurationMinutes(90)->setCapacity(2)
+            ->setSchedulePlanId($seasonPlan);
+        $this->em->persist($slot);
+        $this->em->flush();
+
+        $this->client->request('PUT', '/api/venue_training_slots/' . $slot->getId(), [], [], [
+            'HTTP_AUTHORIZATION' => 'Bearer ' . $this->token,
+            'CONTENT_TYPE' => 'application/ld+json',
+        ], json_encode([
+            'venueId' => $venue->getId(),
+            'dayOfWeek' => 2,
+            'startTime' => '20:00',
+            'durationMinutes' => 90,
+            'capacity' => 2,
+            'groupLabel' => 'CEC3',
+        ], \JSON_THROW_ON_ERROR));
+
+        self::assertResponseStatusCodeSame(200, (string) $this->client->getResponse()->getContent());
+        $this->em->clear();
+        self::assertSame('CEC3', $this->em->getRepository(VenueTrainingSlot::class)->find($slot->getId())?->getGroupLabel(), 'le créneau du socle porte son libellé');
     }
 
     protected function setUp(): void

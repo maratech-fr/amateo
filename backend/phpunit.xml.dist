@@ -18,6 +18,7 @@
     <testsuites>
         <testsuite name="Unit">
             <directory>tests/Unit</directory>
+            <directory>tests/Architecture</directory>
             <directory>tests/Logging</directory>
             <directory>tests/Messenger</directory>
         </testsuite>
