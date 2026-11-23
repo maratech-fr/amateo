@@ -429,7 +429,20 @@ change ou si un réglage de période n'entre plus dans la demande ; le Lot Gate 
 des quinze références, écrit en SQL dans le schéma figé d'avant le lot 4 [`tests/Fixtures/lot-4/`], chargé
 dans une base dédiée par référence, donne les mêmes demandes une fois toutes les migrations jouées ; la
 chaîne joue exactement les migrations du lot qu'elle nomme. Chute attendue si une migration du lot change
-une donnée lue par la demande, ou si une migration est jouée sans être nommée) ·
+une donnée lue par la demande, ou si une migration est jouée sans être nommée ; PR 2 : la conversion pose le
+plan de saison sur chaque ligne du socle des six familles, rend la colonne obligatoire avec une clé en cascade,
+crée le plan de saison qui manque, déplace le pointeur de version chargée sur le plan, convertit les photos,
+fige les règles de bien-être d'un plan de vacances ancien, et s'annule sur un décor où une ligne porte déjà le
+plan de saison) ·
+`Integration/Service/LoadedVersionPointerTest` (axe *planning lifecycle*, lot conception 4 PR 2 — la version
+chargée du socle est rangée sur son plan de saison, un seul pointeur pour tous les plans : « Charger » et une
+génération terminée la déplacent, et seule la version que le plan pointe se modifie [409
+`not_loaded_version` ailleurs]. Chute attendue si un écrivain ou un lecteur reste sur un pointeur de saison) ·
+`Architecture/NoNullPlanBranchTest` (axe *generation pipeline*, lot conception 4 PR 2 — aucune forme de
+« plan nul » dans `backend/src` : valeur nulle, même conditionnelle, sur une clé `schedulePlanId`, `IS [NOT]
+NULL` sur la colonne ou sur l'ancre de `StructureAnchor`, déclaration nullable hors de la frontière de l'API ;
+chaque forme est éprouvée sur un extrait positif et une forme propre passe. Chute attendue si une recherche
+du socle redevient « plan nul », qui rendrait une liste vide sans erreur) ·
 `Integration/Api/ParcImportExecuteTest` (axe *tenant isolation*, GO fondateur 2026-10-30 — incident
 d'un club pilote, PR A import du parc : la redéfinition de la composition d'une séance commune par le canal
 `corrections.equipes` [liste ≥ 2 d'UUID d'équipe DU CLUB, ou `import:<index>` vers une ligne Équipes

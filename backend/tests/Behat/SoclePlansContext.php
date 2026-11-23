@@ -339,8 +339,9 @@ final class SoclePlansContext extends BaseContext
         $this->addedSocleSlotId = $this->idOf($slot, 'créneau de saison');
 
         $added = \sprintf('%s|7|07:00|60|1', $venueId);
-        if (!\in_array($added, $this->gridOf(''), true)) {
-            throw new RuntimeException('le créneau ajouté devrait figurer dans la grille du planning de saison');
+        $socle = $this->gridOf('');
+        if (!\in_array($added, $socle, true)) {
+            throw new RuntimeException(\sprintf('le créneau ajouté (%s) devrait figurer dans la grille du planning de saison (%d créneaux lus)', $added, \count($socle)));
         }
         if ($holidayBefore !== $this->gridOf($this->holidayPlanId)) {
             throw new RuntimeException('ajouter un créneau au planning de saison a changé la grille des vacances — chacun devrait garder la sienne');
@@ -468,8 +469,8 @@ final class SoclePlansContext extends BaseContext
                 $start = \is_string($slot['startTime'] ?? null) ? $slot['startTime'] : '';
                 $grid[] = \sprintf('%s|%s|%s|%s|%s', \is_string($slot['venueId'] ?? null) ? $slot['venueId'] : '', \is_int($slot['dayOfWeek'] ?? null) ? $slot['dayOfWeek'] : '', 1 === preg_match('/T?(\d{2}:\d{2})/', $start, $m) ? $m[1] : $start, \is_int($slot['durationMinutes'] ?? null) ? $slot['durationMinutes'] : '', \is_int($slot['capacity'] ?? null) ? $slot['capacity'] : '');
             }
-            $total = $response['json']['totalItems'] ?? null;
-            if ([] === $members || (\is_int($total) && \count($grid) >= $total)) {
+            // Jusqu'à la page vide : `totalItems` de cette liste ne compte que la page (30 lus, 82 en base).
+            if ([] === $members) {
                 break;
             }
         }
