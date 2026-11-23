@@ -335,11 +335,11 @@ modèle — ils ne correspondent plus à une section de ce document (l'historiqu
     du payload priment ; un verrou repassé NONE ne revient pas). La version SOURCE d'un plan (SEASON
     comme PÉRIODE, maison unique `SchedulePlanProvisioner::lockSourceScheduleIdOfPlan`) est le
     pointeur `schedule_plan.lock_source_schedule_id` s'il désigne une version COMPLETED existante
-    du même plan, sinon sa dernière version COMPLETED. Pour une PÉRIODE, ce pointeur se pose de deux
+    du même plan, sinon sa dernière version COMPLETED. Ce pointeur est le seul de version chargée, socle comme période ; il se pose de deux
     façons : automatiquement (chaque version qui vient de COMPLETED devient la source) ou par
-    « Charger » (`POST /api/schedules/{id}/load-locks`, réservé à un plan de période **non validé** —
-    un plan SEASON garde son propre « Charger cette version », `RegenerateFromVersionController`,
-    qui restaure une structure et ne pose jamais ce pointeur). Régénérer en REGARDANT une autre
+    « Charger » (période : `POST /api/schedules/{id}/load-locks`, réservé à un plan **non validé** ;
+    socle : « Charger cette version », `RegenerateFromVersionController`, qui restaure en plus la
+    structure d'une photo). Régénérer en REGARDANT une autre
     version que la source ne change pas la source retenue — le front confirme avant (« vous
     regardez la version N, les données en cours sont celles de la version M… »). `ScheduleResource`
     expose `isLockSource`/`hardLockCount` ; `OrphanPinGuard` et `ScheduleResultImporter` (origine
@@ -358,7 +358,7 @@ correspondance pour relire du code ou des specs antérieurs.
 | `Season.planningName` | `Plan.name` |
 | `CalendarEntry.overlayScheduleId` (1:1) | `Plan.chosenScheduleId` (N plans par entry via `Plan.calendarEntryId`) |
 | `Schedule.status VALIDATED` + `ARCHIVED` (validation archive les frères) | supprimés — valider = pointer + **supprimer** les autres versions |
-| `Season.liveContextScheduleId` | ★ conservée (version dont la photo est chargée) — hors du Plan |
+| `Season.liveContextScheduleId` | ★ conservée (version dont la photo est chargée), rangée sur le plan : `SchedulePlan.lockSourceScheduleId` (colonne `lock_source_schedule_id`) |
 | `Season.socleValidatedAt` (gate cockpit, sticky) | dérivé : plan SEASON a ≥ 1 version terminée |
 | Réglages sur `calendarEntryId` (overrides, créneaux, seed flag) | re-keyés sur `planId` (**C2/C3** dans le code) ; les contraintes datées du FAIT restent au calendrier (inv. 5) |
 | « V3 » dérivé de l'ordre de création | `Schedule.versionNumber` stocké côté serveur (les libellés du front dérivent encore de l'ordre de création — voir Questions ouvertes) |
