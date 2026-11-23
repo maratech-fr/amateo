@@ -93,6 +93,11 @@ final class PeriodOverlayContext extends BaseContext
     /** @var array{id: string, dayOfWeek: int, startTime: string, durationMinutes: int, label: string}|null */
     private ?array $seasonOccupancy = null;
 
+    /** La règle de saison « pas le vendredi » posée après la naissance du plan de fermeture, et son équipe. */
+    private string $fridayRuleId = '';
+
+    private string $fridayRuleTeamId = '';
+
     /** Jour et début où la copie de la période a été déplacée. */
     private int $movedDay = 0;
 
@@ -176,6 +181,90 @@ final class PeriodOverlayContext extends BaseContext
     {
         if ($statut !== $this->overlayStatus) {
             throw new RuntimeException(\sprintf('statut attendu « %s », obtenu « %s »', $statut, $this->overlayStatus));
+        }
+    }
+
+    /** La fermeture et son plan, nés par les gestes du gestionnaire (créer la période, puis l'adapter). */
+    #[Given('une fermeture déjà créée')]
+    public function uneFermetureDejaCreee(): void
+    {
+        $this->entryId = $this->createClosurePeriod($this->holidayFreeMonday(49, 7), 'Fermeture née avant la règle');
+        $plan = $this->apiPost('schedule_plans', ['calendarEntryId' => $this->entryId], $this->token);
+        $this->redatePlanId = $this->idOf($plan, 'plan de période');
+    }
+
+    /** Une règle de SAISON (sans période) : pas le vendredi, pour une équipe qui s'y entraîne dans le socle. */
+    #[When('j\'ajoute la règle de saison « pas le vendredi »')]
+    public function jAjouteLaRegleDeSaisonPasLeVendredi(): void
+    {
+        $this->fridayRuleTeamId = $this->dbalScalar(
+            \sprintf(
+                'SELECT t.team_id AS behatval FROM schedule_slot_template t JOIN schedule_plan p ON p.chosen_schedule_id = t.schedule_id'
+                . ' WHERE p.club_id=\'%s\' AND p.type=\'SEASON\' AND t.team_id IS NOT NULL ORDER BY (t.day_of_week = 5) DESC, t.id LIMIT 1',
+                $this->clubId,
+            ),
+            admin: true,
+        );
+        if ('' === $this->fridayRuleTeamId) {
+            throw new RuntimeException('aucune séance dans le planning de saison en vigueur — la base est-elle seedée ?');
+        }
+
+        $created = $this->apiPost('constraints', [
+            'name' => 'Pas le vendredi (règle de saison posée après la fermeture)',
+            'scope' => 'TEAM',
+            'scopeTargetId' => $this->fridayRuleTeamId,
+            'family' => 'DAY',
+            'ruleType' => 'HARD',
+            'config' => ['forbiddenDays' => [5]],
+            'isActive' => true,
+        ], $this->token);
+        $this->fridayRuleId = $this->idOf($created, 'règle « pas le vendredi »');
+    }
+
+    #[When('je génère une version de la fermeture')]
+    public function jeGenereUneVersionDeLaFermeture(): void
+    {
+        $version = $this->apiPost('schedules', ['schedulePlanId' => $this->redatePlanId, 'status' => 'DRAFT'], $this->token);
+        $this->redateVersionId = $this->idOf($version, 'version de la fermeture');
+
+        $launched = $this->apiPost(\sprintf('schedules/%s/generate', $this->redateVersionId), [], $this->token);
+        if (202 !== $launched['status']) {
+            throw new RuntimeException(\sprintf('le déclenchement de la génération de la fermeture a répondu %d (202 attendu)', $launched['status']));
+        }
+        $this->overlayStatus = $this->pollUntilTerminal($this->redateVersionId);
+    }
+
+    /**
+     * La règle part au moteur avec la demande de la fermeture (lue dans la demande enregistrée de la version), et
+     * l'équipe n'a aucune séance le vendredi ; témoin : elle a au moins une séance dans la fermeture.
+     */
+    #[Then('la génération de la fermeture respecte « pas le vendredi »')]
+    public function laGenerationDeLaFermetureRespectePasLeVendredi(): void
+    {
+        if ('COMPLETED' !== $this->overlayStatus) {
+            throw new RuntimeException(\sprintf('la génération de la fermeture n\'a pas abouti (statut « %s »)', $this->overlayStatus));
+        }
+        $sent = $this->dbalScalar(
+            \sprintf('SELECT count(*) AS behatval FROM schedule WHERE id=\'%s\' AND snapshot_data::text LIKE \'%%%s%%\'', $this->redateVersionId, $this->fridayRuleId),
+            admin: true,
+        );
+        if ('1' !== $sent) {
+            throw new RuntimeException('la règle « pas le vendredi » n\'est pas partie au moteur avec la demande de la fermeture');
+        }
+        $sessions = $this->dbalScalar(
+            \sprintf(
+                'SELECT count(*) || \'|\' || count(*) FILTER (WHERE day_of_week = 5) AS behatval FROM schedule_slot_template WHERE schedule_id=\'%s\' AND team_id=\'%s\'',
+                $this->redateVersionId,
+                $this->fridayRuleTeamId,
+            ),
+            admin: true,
+        );
+        [$total, $friday] = array_map(intval(...), explode('|', $sessions) + [1 => '0']);
+        if (0 === $total) {
+            throw new RuntimeException('l\'équipe de la règle n\'a aucune séance dans la fermeture : le témoin ne prouve rien');
+        }
+        if (0 !== $friday) {
+            throw new RuntimeException(\sprintf('l\'équipe de la règle a %d séance(s) le vendredi dans la fermeture', $friday));
         }
     }
 
@@ -608,6 +697,10 @@ final class PeriodOverlayContext extends BaseContext
 
         if ('' !== $this->forcedConstraintId) {
             $this->apiDelete(\sprintf('constraints/%s', $this->forcedConstraintId), $this->token);
+        }
+
+        if ('' !== $this->fridayRuleId) {
+            $this->apiDelete(\sprintf('constraints/%s', $this->fridayRuleId), $this->token);
         }
 
         if ('' !== $this->entryId) {

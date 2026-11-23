@@ -421,8 +421,15 @@ compose : le corps reçu par un moteur simulé, sur le rail réel [handler de g�
 `EngineClient` réel], est comparé à l'octet aux références de `tests/Fixtures/engine-requests/` — socle
 brouillon et régénéré, période sur place et comblée, placement club entier et sur une semaine, règles de
 groupe sous leurs trois formes avec le jour de match enregistré d'une équipe sans habitude, règle de
-groupe datée d'un plan de période. Chute attendue si une règle de groupe vise d'autres équipes ou si le
-jour de match émis change ; le Lot Gate ne joue que cette suite) ·
+groupe datée d'un plan de période, temps de trajet, puis ce que le lot 4 range dans le plan [socle complet,
+plan de vacances et plan de fermeture réglés, verdict `/validate-assignments` d'un déplacement dans le socle
+et dans une période]. Chute attendue si une règle de groupe vise d'autres équipes, si le jour de match émis
+change ou si un réglage de période n'entre plus dans la demande ; le Lot Gate ne joue que cette suite) ·
+`Integration/Migration/Lot4MigrationChainTest` (axe *generation pipeline*, lot conception 4 PR 1 — le décor
+des quinze références, écrit en SQL dans le schéma figé d'avant le lot 4 [`tests/Fixtures/lot-4/`], chargé
+dans une base dédiée par référence, donne les mêmes demandes une fois toutes les migrations jouées ; la
+chaîne joue exactement les migrations du lot qu'elle nomme. Chute attendue si une migration du lot change
+une donnée lue par la demande, ou si une migration est jouée sans être nommée) ·
 `Integration/Api/ParcImportExecuteTest` (axe *tenant isolation*, GO fondateur 2026-10-30 — incident
 d'un club pilote, PR A import du parc : la redéfinition de la composition d'une séance commune par le canal
 `corrections.equipes` [liste ≥ 2 d'UUID d'équipe DU CLUB, ou `import:<index>` vers une ligne Équipes
