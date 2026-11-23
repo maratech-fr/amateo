@@ -13,6 +13,7 @@ use App\Entity\VenueTravelTime;
 use App\Enum\SeasonStatus;
 use App\Enum\VenueTravelTimeSource;
 use App\Service\SeasonResolver;
+use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -38,6 +39,7 @@ use Symfony\Component\Messenger\Transport\InMemory\InMemoryTransport;
 #[Group('integration')]
 final class VenueDetachFfbbApiTest extends WebTestCase
 {
+    use CreatesPeopleAndPlacesTrait;
     use TenantGucTrait;
 
     private const array ANCHOR = ['externalRef' => '166900042', 'address' => '10 rue du Stade', 'latitude' => '45.7000000', 'longitude' => '4.8000000'];
@@ -56,9 +58,9 @@ final class VenueDetachFfbbApiTest extends WebTestCase
         $venue = $this->reload($club, $venueId);
         self::assertSame('Gymnase G', $venue->getName());
         self::assertNull($venue->getExternalRef());
-        self::assertNull($venue->getAddress());
-        self::assertNull($venue->getLatitude());
-        self::assertNull($venue->getLongitude());
+        self::assertNull($this->placeOf($venue)->getAddress());
+        self::assertNull($this->placeOf($venue)->getLatitude());
+        self::assertNull($this->placeOf($venue)->getLongitude());
     }
 
     public function testValuesProvidedInTheSamePutWinOverTheClearing(): void
@@ -70,9 +72,9 @@ final class VenueDetachFfbbApiTest extends WebTestCase
 
         $venue = $this->reload($club, $venueId);
         self::assertNull($venue->getExternalRef());
-        self::assertSame('2 rue Basse', $venue->getAddress());
-        self::assertSame('45.1000000', $venue->getLatitude());
-        self::assertSame('4.1000000', $venue->getLongitude());
+        self::assertSame('2 rue Basse', $this->placeOf($venue)->getAddress());
+        self::assertSame('45.1000000', $this->placeOf($venue)->getLatitude());
+        self::assertSame('4.1000000', $this->placeOf($venue)->getLongitude());
     }
 
     public function testUndoRestoresTheAnchorAfterADetach(): void
@@ -85,9 +87,9 @@ final class VenueDetachFfbbApiTest extends WebTestCase
 
         $venue = $this->reload($club, $venueId);
         self::assertSame(self::ANCHOR['externalRef'], $venue->getExternalRef());
-        self::assertSame(self::ANCHOR['address'], $venue->getAddress());
-        self::assertSame(self::ANCHOR['latitude'], $venue->getLatitude());
-        self::assertSame(self::ANCHOR['longitude'], $venue->getLongitude());
+        self::assertSame(self::ANCHOR['address'], $this->placeOf($venue)->getAddress());
+        self::assertSame(self::ANCHOR['latitude'], $this->placeOf($venue)->getLatitude());
+        self::assertSame(self::ANCHOR['longitude'], $this->placeOf($venue)->getLongitude());
     }
 
     public function testPutWithoutExternalRefKeepsTheAnchor(): void
@@ -100,9 +102,9 @@ final class VenueDetachFfbbApiTest extends WebTestCase
         $venue = $this->reload($club, $venueId);
         self::assertSame('Gymnase renommé', $venue->getName());
         self::assertSame(self::ANCHOR['externalRef'], $venue->getExternalRef());
-        self::assertSame(self::ANCHOR['address'], $venue->getAddress());
-        self::assertSame(self::ANCHOR['latitude'], $venue->getLatitude());
-        self::assertSame(self::ANCHOR['longitude'], $venue->getLongitude());
+        self::assertSame(self::ANCHOR['address'], $this->placeOf($venue)->getAddress());
+        self::assertSame(self::ANCHOR['latitude'], $this->placeOf($venue)->getLatitude());
+        self::assertSame(self::ANCHOR['longitude'], $this->placeOf($venue)->getLongitude());
     }
 
     public function testDetachErasesOnlyTheTravelTimesOfThatVenueWithoutRecomputing(): void

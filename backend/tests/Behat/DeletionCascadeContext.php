@@ -36,6 +36,9 @@ final class DeletionCascadeContext extends BaseContext
     /** @var array<string, string> type de règle → id */
     private array $ruleIds = [];
 
+    /** @var array<string, string> nom du gymnase → id de son lieu, relu juste avant sa suppression */
+    private array $placeIds = [];
+
     #[Given('un petit club de trois équipes sans compétition, deux gymnases et deux coachs, dont le planning de saison est généré')]
     public function unPetitClubDeTroisEquipes(): void
     {
@@ -199,6 +202,7 @@ final class DeletionCascadeContext extends BaseContext
     #[When('/^je supprime le gymnase « (?P<venue>[^»]+) »$/u')]
     public function jeSupprimeLeGymnase(string $venue): void
     {
+        $this->placeIds[$venue] = $this->dbalScalar(\sprintf('SELECT place_id AS behatval FROM venue WHERE id=\'%s\'', $this->smallClubVenueIds[$venue]), admin: true);
         $this->sudSessionsBefore = $this->count('schedule_slot_template', \sprintf('schedule_id=\'%s\' AND venue_id=\'%s\' AND team_id IS NOT NULL', $this->scheduleId, $this->smallClubVenueIds['Gymnase Sud']));
         $this->assertDeleted($this->apiDelete(\sprintf('venues/%s', $this->smallClubVenueIds[$venue]), $this->smallClubToken), 'le ' . $venue);
     }
@@ -277,6 +281,23 @@ final class DeletionCascadeContext extends BaseContext
     public function leClubNAPlusAucuneFiche(): void
     {
         $this->assertNone(['fiche de personne' => ['person', \sprintf('club_id=\'%s\'', $this->smallClubId)]], 'le club remis à zéro');
+    }
+
+    /** Lot 3, PR 4 : supprimer un gymnase garde son lieu, sans gymnase, jusqu'à la purge de la saison (même règle que la fiche d'un coach). */
+    #[Then('/^le lieu du « (?P<venue>[^»]+) » existe toujours dans le club$/u')]
+    public function leLieuExisteToujours(string $venue): void
+    {
+        $placeId = $this->placeIds[$venue] ?? '';
+        if ('' === $placeId || 1 !== $this->count('place', \sprintf('id=\'%s\' AND club_id=\'%s\'', $placeId, $this->smallClubId))) {
+            throw new RuntimeException(\sprintf('le lieu du %s a disparu avec le gymnase (lieu relu avant la suppression : « %s »)', $venue, $placeId));
+        }
+    }
+
+    /** La remise à zéro balaie les lieux que plus aucun gymnase ne désigne. */
+    #[Then('le club n\'a plus aucun lieu')]
+    public function leClubNAPlusAucunLieu(): void
+    {
+        $this->assertNone(['lieu' => ['place', \sprintf('club_id=\'%s\'', $this->smallClubId)]], 'le club remis à zéro');
     }
 
     #[When('je remets la saison à zéro')]

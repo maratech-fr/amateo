@@ -26,6 +26,7 @@ use App\Entity\VenueTravelTime;
 use App\Enum\ConstraintScope;
 use App\Enum\SeasonStatus;
 use App\Structure\PersonDirectory;
+use App\Structure\PlaceDirectory;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\Clock\ClockInterface;
@@ -56,6 +57,7 @@ final class SeasonTransitionService
         private readonly ClubLeagueWindowSeeder $clubLeagueWindowSeeder,
         private readonly DemoRegime $demoRegime,
         private readonly PersonDirectory $personDirectory,
+        private readonly PlaceDirectory $placeDirectory,
         private readonly PlanEntitlements $planEntitlements,
     ) {}
 
@@ -198,15 +200,14 @@ final class SeasonTransitionService
 
         $venueMap = [];
         foreach ($this->rows(Venue::class, $clubId, $sourceId) as $venue) {
-            $copy = new Venue;
+            // Le gymnase de la saison suivante est l'usage du même lieu : adresse et position ne se
+            // recopient pas, elles vivent une fois au club.
+            $copy = new Venue($this->placeDirectory->of($venue));
             $copy->setClubId($clubId);
             $copy->setSeasonId($target->getId());
             $copy->setName($venue->getName());
             $copy->setColor($venue->getColor());
             $copy->setCanSplit($venue->getCanSplit());
-            $copy->setLatitude($venue->getLatitude());
-            $copy->setLongitude($venue->getLongitude());
-            $copy->setAddress($venue->getAddress());
             $copy->setSource($venue->getSource());
             $copy->setExternalRef($venue->getExternalRef());
             // P4-187a — les alias de salle confirmés sont une convention permanente

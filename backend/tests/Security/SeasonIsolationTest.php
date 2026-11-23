@@ -12,6 +12,7 @@ use App\Entity\Venue;
 use App\Enum\SeasonStatus;
 use App\EventListener\TenantFilterListener;
 use App\Service\SeasonResolver;
+use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -33,6 +34,7 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 #[Group('integration')]
 final class SeasonIsolationTest extends WebTestCase
 {
+    use CreatesPeopleAndPlacesTrait;
     use TenantGucTrait;
 
     private KernelBrowser $client;
@@ -282,11 +284,7 @@ final class SeasonIsolationTest extends WebTestCase
     private function createVenue(Club $club, Season $season, string $name): Venue
     {
         $this->scopeGucToClub($club->getId());
-        $venue = new Venue;
-        $venue->setClubId($club->getId());
-        $venue->setSeasonId($season->getId());
-        $venue->setName($name);
-        $venue->setSource('manual');
+        $venue = $this->newVenue($club->getId(), $season->getId(), $name);
         $this->em->persist($venue);
         $this->em->flush();
 

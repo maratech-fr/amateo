@@ -14,7 +14,6 @@ use App\Entity\Sport;
 use App\Entity\SportCategory;
 use App\Entity\Team;
 use App\Entity\User;
-use App\Entity\Venue;
 use App\Entity\VenueMatchWindow;
 use App\Enum\CompetitionType;
 use App\Enum\FixtureHomeAway;
@@ -36,6 +35,7 @@ use App\Service\PlacementRunFailureNotifier;
 use App\Service\RequestIdContext;
 use App\Service\SeasonResolver;
 use App\Service\TenantConnectionContext;
+use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\DBAL\Connection;
@@ -63,6 +63,7 @@ use Symfony\Component\Mime\RawMessage;
 #[Group('integration')]
 final class PlaceMatchesHandlerTest extends WebTestCase
 {
+    use CreatesPeopleAndPlacesTrait;
     use TenantGucTrait;
 
     private EntityManagerInterface $em;
@@ -445,11 +446,7 @@ final class PlaceMatchesHandlerTest extends WebTestCase
         $team->setIsActive(true);
         $this->em->persist($team);
 
-        $venue = new Venue;
-        $venue->setClubId($club->getId());
-        $venue->setSeasonId($season->getId());
-        $venue->setName('Mateo');
-        $venue->setSource('manual');
+        $venue = $this->newVenue($club->getId(), $season->getId(), 'Mateo');
         $this->em->persist($venue);
         $this->em->flush();
 

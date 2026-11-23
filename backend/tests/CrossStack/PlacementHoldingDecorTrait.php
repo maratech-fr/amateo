@@ -9,6 +9,7 @@ use App\Entity\CoachPlayerMembership;
 use App\Entity\Competition;
 use App\Entity\Constraint;
 use App\Entity\Fixture;
+use App\Entity\Place;
 use App\Entity\Schedule;
 use App\Entity\SchedulePlan;
 use App\Entity\ScheduleSlotTemplate;
@@ -87,7 +88,9 @@ trait PlacementHoldingDecorTrait
         $this->friday = $this->fridayFromNow(1);
         $this->scheduleId = $this->pointedVersion($this->seasonPlanIdOf($this->season));
 
-        $venue = new Venue;
+        $place = (new Place)->setClubId($this->club->getId());
+        $this->em->persist($place);
+        $venue = new Venue($place);
         $venue->setClubId($this->club->getId());
         $venue->setSeasonId($this->season->getId());
         $venue->setName('Gymnase de test');

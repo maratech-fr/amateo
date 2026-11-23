@@ -27,6 +27,7 @@ use App\MessageHandler\PlaceMatchesHandler;
 use App\Service\MatchPlacementPayloadBuilder;
 use App\Service\SeasonResolver;
 use App\Tests\ChoosesPlanVersionTrait;
+use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -52,6 +53,7 @@ use Symfony\Component\Messenger\Transport\InMemory\InMemoryTransport;
 final class LeagueValidatedFixturesControllerTest extends WebTestCase
 {
     use ChoosesPlanVersionTrait;
+    use CreatesPeopleAndPlacesTrait;
     use TenantGucTrait;
 
     private KernelBrowser $client;
@@ -694,11 +696,7 @@ final class LeagueValidatedFixturesControllerTest extends WebTestCase
 
     private function createVenue(string $clubId, string $seasonId): Venue
     {
-        $venue = new Venue;
-        $venue->setClubId($clubId);
-        $venue->setSeasonId($seasonId);
-        $venue->setName('Mateo');
-        $venue->setSource('manual');
+        $venue = $this->newVenue($clubId, $seasonId, 'Mateo');
         $this->em->persist($venue);
         $this->em->flush();
 

@@ -6,6 +6,7 @@ namespace App\Service\ParcImport;
 
 use App\Controller\GroupReservationController;
 use App\Entity\Club;
+use App\Entity\Place;
 use App\Entity\PriorityTier;
 use App\Entity\Reservation;
 use App\Entity\Season;
@@ -255,7 +256,10 @@ final class ParcImportExecutor
                 $this->fail('gymnases', $i, 'appariement ambigu — choisissez le gymnase à apparier dans l\'aperçu, ou corrigez le nom.');
             }
 
-            $venue = (new Venue)
+            // Un gymnase créé reçoit un lieu neuf au club, sans adresse (l'import ne la connaît pas).
+            $place = (new Place)->setClubId($club->getId());
+            $this->entityManager->persist($place);
+            $venue = new Venue($place)
                 ->setClubId($club->getId())
                 ->setSeasonId($seasonId)
                 ->setName($nom)

@@ -8,6 +8,7 @@ use App\Entity\CalendarEntry;
 use App\Entity\Club;
 use App\Entity\ClubUser;
 use App\Entity\Fixture;
+use App\Entity\Place;
 use App\Entity\Schedule;
 use App\Entity\SchedulePlan;
 use App\Entity\Season;
@@ -27,6 +28,7 @@ use App\Enum\TeamLevel;
 use App\Service\SchedulePlanProvisioner;
 use App\Service\StructureSnapshotter;
 use App\Tests\ChoosesPlanVersionTrait;
+use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\CreatesPeriodPlanTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
@@ -46,6 +48,7 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 final class RegenerateFromVersionTest extends WebTestCase
 {
     use ChoosesPlanVersionTrait;
+    use CreatesPeopleAndPlacesTrait;
     use CreatesPeriodPlanTrait;
     use TenantGucTrait;
 
@@ -92,7 +95,9 @@ final class RegenerateFromVersionTest extends WebTestCase
         $this->persistTeam('SM1');
         // A venue captured in the snapshot so it survives the restore (else the
         // period slot on it would be purged as dangling — the sibling guard).
-        $venue = (new Venue)->setId('11111111-1111-4111-8111-111111111111')
+        $place = (new Place)->setClubId($this->club->getId());
+        $this->em->persist($place);
+        $venue = new Venue($place)->setId('11111111-1111-4111-8111-111111111111')
             ->setClubId($this->club->getId())->setSeasonId($this->season->getId())->setName('Gym')->setCanSplit(false)->setSource('manual');
         $this->em->persist($venue);
         $v1 = $this->makeSchedule(ScheduleStatus::COMPLETED, null);
@@ -254,9 +259,7 @@ final class RegenerateFromVersionTest extends WebTestCase
         $snapshotter->store($v1, $snapshotter->serialize($this->club->getId(), $this->season->getId()));
 
         // Un gymnase né APRÈS la photo, et un match posé dedans.
-        $venue = (new Venue)
-            ->setClubId($this->club->getId())->setSeasonId($this->season->getId())
-            ->setName('Halle B')->setCanSplit(false)->setSource('manual');
+        $venue = $this->newVenue($this->club->getId(), $this->season->getId(), 'Halle B')->setCanSplit(false);
         $this->em->persist($venue);
         $this->em->flush();
         $venueId = $venue->getId();

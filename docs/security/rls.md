@@ -95,6 +95,19 @@ Doctrine, `migration-diff` propose de la DROPper : ne jamais committer ce DROP),
 clé simple `person_id → person(id)` laisserait un coach du club A désigner la fiche du club B. Gardé par
 `tests/Security/PersonPlaceTenantIsolationTest.php` (SQL brut sur `amateo_app`, step bloquant).
 
+## `place` — le motif normal, plus une clé étrangère composée
+
+`place` (le lieu d'un gymnase au club : adresse et position, ADR-0006 ; `Version20261125120000`) suit le même
+motif que `person` : `ENABLE` + `FORCE`, `tenant_isolation FOR ALL TO amateo_app`, `admin_all` (`amateo_owner`)
+et `readonly_tenant` (`amateo_read`, comme `venue` avant elle). La clé qui la désigne est COMPOSÉE :
+`venue (place_id, club_id)` → `place (id, club_id)` (`fk_venue_place_club`), `ON DELETE RESTRICT`, posée à la
+main (invisible de Doctrine : ne jamais committer le DROP que propose `migration-diff`), adossée à
+`UNIQUE (id, club_id)`. Une vérification de clé étrangère ignore la RLS : une clé simple `place_id → place(id)`
+laisserait un gymnase du club A désigner le lieu du club B. `UNIQUE (season_id, place_id)` : au plus un gymnase
+par lieu et par saison. Gardé par `tests/Security/PersonPlaceTenantIsolationTest.php` (SQL brut sur `amateo_app`,
+step bloquant). Deux lectures SQL brutes contournent l'ORM et portent donc le club en clause explicite :
+`UnusedIdentitySweeper` (balayage) et `VenueStateProcessor::afterPersist` (saisons où le lieu a un gymnase).
+
 ## Porte superadmin (supervision développeur)
 
 La porte admin (P5-7, `Version20260813130000`) est **portée par des policies, plus par le

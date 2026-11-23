@@ -196,7 +196,7 @@ final class CoachUnavailabilityPayloadParityTest extends KernelTestCase
 
     private function venue(Club $club, Season $season, string $name): Venue
     {
-        $venue = (new Venue)->setClubId($club->getId())->setSeasonId($season->getId())->setName($name)->setSource('manual');
+        $venue = $this->newVenue($club->getId(), $season->getId(), $name);
         $this->em->persist($venue);
 
         return $venue;

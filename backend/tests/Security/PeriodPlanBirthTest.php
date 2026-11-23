@@ -9,6 +9,7 @@ use App\Entity\Club;
 use App\Entity\ClubUser;
 use App\Entity\Constraint;
 use App\Entity\ImplicitRuleSetting;
+use App\Entity\Place;
 use App\Entity\Schedule;
 use App\Entity\SchedulePlan;
 use App\Entity\Season;
@@ -723,11 +724,9 @@ final class PeriodPlanBirthTest extends WebTestCase
         $this->scopeGucToClub($club->getId());
         // Un vrai gymnase : le payload de base sérialise les créneaux PAR gymnase,
         // un venueId fantôme rendrait l'assertion vide (donc verte à tort).
-        $venue = new Venue;
-        $venue->setClubId($club->getId());
-        $venue->setSeasonId($season->getId());
-        $venue->setName('Gymnase du NR');
-        $venue->setSource('manual');
+        $place = (new Place)->setClubId($club->getId());
+        $this->em->persist($place);
+        $venue = new Venue($place)->setClubId($club->getId())->setSeasonId($season->getId())->setName('Gymnase du NR')->setSource('manual');
         $this->em->persist($venue);
         $this->em->flush();
         $venueId = $venue->getId();
@@ -792,11 +791,9 @@ final class PeriodPlanBirthTest extends WebTestCase
         [$user, $club, $season] = $this->createClubWithSeason();
 
         $this->scopeGucToClub($club->getId());
-        $venue = new Venue;
-        $venue->setClubId($club->getId());
-        $venue->setSeasonId($season->getId());
-        $venue->setName('Gymnase du libellé');
-        $venue->setSource('manual');
+        $place = (new Place)->setClubId($club->getId());
+        $this->em->persist($place);
+        $venue = new Venue($place)->setClubId($club->getId())->setSeasonId($season->getId())->setName('Gymnase du libellé')->setSource('manual');
         $this->em->persist($venue);
 
         // Un créneau SAISONNIER mutualisé et NOMMÉ (capacité 2, libellé « CEC3 »).

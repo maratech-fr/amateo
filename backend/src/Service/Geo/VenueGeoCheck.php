@@ -6,6 +6,7 @@ namespace App\Service\Geo;
 
 use App\Entity\Venue;
 use App\Service\Basketball\FfbbSalleAddressResolver;
+use App\Structure\PlaceDirectory;
 use Doctrine\ORM\EntityManagerInterface;
 use Throwable;
 
@@ -45,6 +46,7 @@ final class VenueGeoCheck
         private readonly EntityManagerInterface $entityManager,
         private readonly FfbbSalleAddressResolver $salleAddressResolver,
         private readonly BanGeocodingClient $ban,
+        private readonly PlaceDirectory $placeDirectory = new PlaceDirectory,
     ) {}
 
     /**
@@ -74,8 +76,9 @@ final class VenueGeoCheck
     private function checkVenue(Venue $venue): ?array
     {
         $externalRef = $venue->getExternalRef();
-        $latRaw = $venue->getLatitude();
-        $lonRaw = $venue->getLongitude();
+        $place = $this->placeDirectory->of($venue);
+        $latRaw = $place->getLatitude();
+        $lonRaw = $place->getLongitude();
         if (null === $externalRef || '' === $externalRef || null === $latRaw || null === $lonRaw) {
             return null; // pas ancré FFBB, ou pas géolocalisé → rien à vérifier
         }

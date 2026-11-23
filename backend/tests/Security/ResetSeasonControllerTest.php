@@ -16,6 +16,7 @@ use App\Enum\CalendarEntryKind;
 use App\Enum\CalendarEntryPeriodType;
 use App\Enum\ScheduleStatus;
 use App\Tests\ChoosesPlanVersionTrait;
+use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\TenantGucTrait;
 use App\Tests\VerifiesRegistration;
 use DateTimeImmutable;
@@ -36,6 +37,7 @@ use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
 final class ResetSeasonControllerTest extends WebTestCase
 {
     use ChoosesPlanVersionTrait;
+    use CreatesPeopleAndPlacesTrait;
     use TenantGucTrait;
     use VerifiesRegistration;
 
@@ -68,11 +70,7 @@ final class ResetSeasonControllerTest extends WebTestCase
         self::assertInstanceOf(Season::class, $season);
 
         // Venue + its weekly slot (venueId is a plain string column, no FK cascade).
-        $venue = new Venue;
-        $venue->setClubId($clubId);
-        $venue->setSeasonId($season->getId());
-        $venue->setName('Gymnase');
-        $venue->setSource('manual');
+        $venue = $this->newVenue($clubId, $season->getId(), 'Gymnase');
         $em->persist($venue);
         $em->flush();
         $slot = new VenueTrainingSlot;
@@ -189,11 +187,7 @@ final class ResetSeasonControllerTest extends WebTestCase
         self::assertInstanceOf(Season::class, $season);
 
         for ($i = 0; $i < $count; ++$i) {
-            $venue = new Venue;
-            $venue->setClubId($clubId);
-            $venue->setSeasonId($season->getId());
-            $venue->setName(\sprintf('Gymnase %d', $i));
-            $venue->setSource('manual');
+            $venue = $this->newVenue($clubId, $season->getId(), \sprintf('Gymnase %d', $i));
             $em->persist($venue);
         }
         $em->flush();

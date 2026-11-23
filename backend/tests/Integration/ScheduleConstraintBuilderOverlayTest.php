@@ -11,6 +11,7 @@ use App\Entity\Coach;
 use App\Entity\CoachWish;
 use App\Entity\Constraint;
 use App\Entity\ConstraintPeriodOverride;
+use App\Entity\Place;
 use App\Entity\Reservation;
 use App\Entity\Schedule;
 use App\Entity\ScheduleSlotTemplate;
@@ -971,7 +972,9 @@ final class ScheduleConstraintBuilderOverlayTest extends KernelTestCase
 
     private function venue(Club $club, Season $season, string $id, string $name): Venue
     {
-        $venue = new Venue;
+        $place = (new Place)->setClubId($club->getId());
+        $this->em->persist($place);
+        $venue = new Venue($place);
         $venue->setId($id);
         $venue->setClubId($club->getId());
         $venue->setSeasonId($season->getId());

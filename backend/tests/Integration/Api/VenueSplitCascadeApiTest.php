@@ -16,6 +16,7 @@ use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
 use App\State\Processor\VenueStateProcessor;
 use App\Tests\ChoosesPlanVersionTrait;
+use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\CreatesPeriodPlanTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
@@ -40,6 +41,7 @@ use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
 final class VenueSplitCascadeApiTest extends WebTestCase
 {
     use ChoosesPlanVersionTrait;
+    use CreatesPeopleAndPlacesTrait;
     use CreatesPeriodPlanTrait;
     use TenantGucTrait;
 
@@ -212,13 +214,7 @@ final class VenueSplitCascadeApiTest extends WebTestCase
 
     private function createVenue(bool $canSplit): Venue
     {
-        $venue = new Venue;
-        $venue->setClubId($this->club->getId());
-        $venue->setSeasonId($this->season->getId());
-        $venue->setName('Gymnase');
-        $venue->setSource('manual');
-        $venue->setIsActive(true);
-        $venue->setCanSplit($canSplit);
+        $venue = $this->newVenue($this->club->getId(), $this->season->getId(), 'Gymnase')->setIsActive(true)->setCanSplit($canSplit);
 
         $this->em->persist($venue);
         $this->em->flush();

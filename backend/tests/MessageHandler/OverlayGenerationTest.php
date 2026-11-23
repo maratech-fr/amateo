@@ -7,6 +7,7 @@ namespace App\Tests\MessageHandler;
 use App\Entity\CalendarEntry;
 use App\Entity\Club;
 use App\Entity\Constraint;
+use App\Entity\Place;
 use App\Entity\Schedule;
 use App\Entity\ScheduleDiagnostic;
 use App\Entity\SchedulePlan;
@@ -77,7 +78,9 @@ final class OverlayGenerationTest extends KernelTestCase
 
         // P2-5 5b : le gym fermé (toute la fenêtre — config sans dates) perd ses
         // créneaux du snapshot gelé. Un venue + créneau saisonnier pour le vérifier.
-        $venue = new Venue;
+        $place = (new Place)->setClubId($club->getId());
+        $em->persist($place);
+        $venue = new Venue($place);
         $venue->setId(self::VENUE_CLOSED);
         $venue->setClubId($club->getId());
         $venue->setSeasonId($season->getId());
@@ -159,7 +162,9 @@ final class OverlayGenerationTest extends KernelTestCase
 
         // Un gymnase ACTIF (dans le roster de la période) pour porter le placement copié.
         $activeVenueId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
-        $venue = new Venue;
+        $place = (new Place)->setClubId($club->getId());
+        $em->persist($place);
+        $venue = new Venue($place);
         $venue->setId($activeVenueId);
         $venue->setClubId($club->getId());
         $venue->setSeasonId($season->getId());
@@ -289,7 +294,9 @@ final class OverlayGenerationTest extends KernelTestCase
         [$em, $club, $season, $entry] = $this->seedClosureOverlay('ov-graft');
 
         $activeVenueId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
-        $venue = new Venue;
+        $place = (new Place)->setClubId($club->getId());
+        $em->persist($place);
+        $venue = new Venue($place);
         $venue->setId($activeVenueId);
         $venue->setClubId($club->getId());
         $venue->setSeasonId($season->getId());

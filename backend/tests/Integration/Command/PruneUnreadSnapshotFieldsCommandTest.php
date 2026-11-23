@@ -8,6 +8,7 @@ use App\Command\PruneUnreadSnapshotFieldsCommand;
 use App\Entity\CalendarEntry;
 use App\Entity\Club;
 use App\Entity\Constraint;
+use App\Entity\Place;
 use App\Entity\Schedule;
 use App\Entity\Season;
 use App\Entity\Team;
@@ -781,7 +782,9 @@ final class PruneUnreadSnapshotFieldsCommandTest extends KernelTestCase
         $this->em->persist($season);
         $this->em->flush();
 
-        $this->em->persist((new Venue)->setClubId($club->getId())->setSeasonId($season->getId())->setName('Gymnase Nord')
+        $place = (new Place)->setClubId($club->getId());
+        $this->em->persist($place);
+        $this->em->persist(new Venue($place)->setClubId($club->getId())->setSeasonId($season->getId())->setName('Gymnase Nord')
             ->setCanSplit(false)->setSource('manual'));
         $team = $this->persistTeam($club->getId(), $season->getId(), 'Seniors A');
         $coach = $this->newCoach($club->getId(), $season->getId(), 'Karim', 'Benali');

@@ -50,7 +50,7 @@ porte « Recommandé », un score < 0.4 porte « correspondance approximative »
 candidat FÉDÉRAL choisi au caller via `onPick`, jamais d'écriture avant le clic. Deux consommateurs :
 - **`VenueGeocodeField`** (`frontend/src/features/wizard/steps/VenueGeocodeField.tsx`, wrapper
   mince) — fiche d'un gymnase de l'étape Gymnases, écrit
-  `address`+`latitude`+`longitude` sur le gymnase (PUT partiel, coordonnées du candidat client).
+  `address`+`latitude`+`longitude` sur le gymnase (PUT partiel, qui les écrit sur son lieu ; coordonnées du candidat client).
   Détail écran : `frontend/docs/frontend-wizard.md` §Gymnases.
 - **`ClubSiegeSubsection`** (`frontend/src/features/club/ClubPage.tsx`) — section « Siège du club »
   de la page Club, écrit via `PATCH /api/club/siege` (`ClubSiegeController`, § ci-dessous) qui
@@ -198,8 +198,9 @@ sous `amateo_owner`, qui contourne la RLS des tables sources) : rétro-alimente 
 `opponent_travel.travel_minutes` (siège ACTUEL du club → lieu adverse effectif, override sinon
 annuaire) et (2) `venue_travel_time` conduite/marche entre deux gymnases, **dans les deux sens** (le
 cache est directionnel, la matrice non) — profils `car`/`pedestrian`. Les instructions SQL vivent
-dans `Version20260920120000::seedStatements()`, rejouées à l'identique par `ClubTravelCacheSeedTest`
-(aucune dérive possible entre la migration et ce que le test vérifie).
+dans `Version20260920120000::seedStatements()` (jouée une fois, en production ; elle lit les colonnes
+de position de `venue` d'avant le lot 3). Le cache reste alimenté par l'autofill de la matrice :
+`VenueTravelTimeAutofillCacheTest`.
 
 **Complétude RGPD** : `ErasedClubPurger` (effacement d'un compte → purge par `clubId`,
 `FamilyCatalog::purgedWithClub()`), `#[Family(keptAtSeasonPurge: …)]` (club-scoped SANS saison, une purge de
@@ -224,10 +225,13 @@ gymnases à router. Le calcul (adversaires ET matrice de gymnases) part donc au 
   `PATCH /api/club/siege` quand le siège bouge réellement, et (lot G, 2026-09-30)
   `PUT /api/venues/{id}` quand la position d'un gymnase change RÉELLEMENT (`VenueStateProcessor::
   afterPersist`) — sous DEUX gardes : opt-in (le club a **déjà** ≥1 ligne de matrice pour la saison
-  — un simple déplacement ne fait jamais naître une matrice) et verrou non tenu. Les `AUTO` du
+  — un simple déplacement ne fait jamais naître une matrice) et verrou non tenu. La position vit sur le
+  lieu, partagé entre les saisons : un message part pour **chaque saison où ce lieu a un gymnase et qui a
+  déjà une matrice** (lecture SQL, hors `season_filter` qui épinglerait la saison de la requête ; club en
+  clause explicite). Les `AUTO` du
   couple impliquant ce gymnase se recalculent (nouvelles coordonnées ⇒ MISS du cache, indexé par
   coordonnées, ⇒ appel IGN) ; les `MANUAL` ne bougent jamais ; les autres couples retombent sur le
-  cache. ****Dissociation** (finitions PR D, 2026-10-30) : `PUT /api/venues/{id}` avec `externalRef: ""` stocke la référence FFBB à null, efface adresse et GPS et VIDE les lignes de matrice du gymnase (saisies manuelles comprises) sans les supprimer, pour que le recalcul reste opt-in ; une valeur fournie dans le même PUT l'emporte (`VenueStateProcessor`). Toast front dédié depuis P4-279 (2026-10-16)** : tant que l'écran Gymnases du wizard
+  cache. ****Dissociation** (finitions PR D, 2026-10-30) : `PUT /api/venues/{id}` avec `externalRef: ""` stocke la référence FFBB à null, passe le gymnase de CETTE saison sur un lieu neuf, sans adresse ni GPS (le lieu quitté et les gymnases des autres saisons ne bougent pas), et VIDE les lignes de matrice du gymnase (saisies manuelles comprises) sans les supprimer, pour que le recalcul reste opt-in ; une valeur fournie dans le même PUT l'emporte (`VenueStateProcessor`). Toast front dédié depuis P4-279 (2026-10-16)** : tant que l'écran Gymnases du wizard
   reste ouvert, il écoute le même flux `club:{id}:travel` (pas d'écoute globale ailleurs dans
   l'app) et toaste « Trajets recalculés. » à la transition terminale — sauf si la matrice
   (`TravelMatrixModal`) est déjà ouverte, qui montre sa propre jauge (`frontend/AGENTS.md`).
@@ -302,7 +306,7 @@ TROTTINETTE** (décision fondateur 2026-09-30, remplace la marche) — la colonn
 leur nom technique `walking*`/`pedestrian` (contrat, entité, cache), seul le SENS change :
 
 1. Le serveur relit **venues + géolocalisations EN BASE** (jamais les valeurs du client) et forme
-   les paires non ordonnées de gymnases géolocalisés (`latitude`/`longitude` non nuls).
+   les paires non ordonnées de gymnases géolocalisés (`latitude`/`longitude` non nuls sur leur lieu, lu par `PlaceDirectory`).
 2. **Cap dur : 120 paires** (`VenueTravelTimeAutofillService::MAX_AUTOFILL_PAIRS`) — au-delà, 422
    nommé (`AutofillCapExceededException`), rien n'est appelé côté IGN. Pour 16 gymnases
    (16×15/2=120), c'est la limite ; au-delà, saisie manuelle.

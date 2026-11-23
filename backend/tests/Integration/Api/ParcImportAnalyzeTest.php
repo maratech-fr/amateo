@@ -18,6 +18,7 @@ use App\Enum\SeasonStatus;
 use App\Service\ParcImport\ParcImportGate;
 use App\Service\SeasonResolver;
 use App\Tests\ChoosesPlanVersionTrait;
+use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\Integration\Service\FfbbExcelImporterTest;
 use App\Tests\Support\SubscribesClub;
 use App\Tests\TenantGucTrait;
@@ -68,6 +69,7 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 final class ParcImportAnalyzeTest extends WebTestCase
 {
     use ChoosesPlanVersionTrait;
+    use CreatesPeopleAndPlacesTrait;
     use SubscribesClub;
     use TenantGucTrait;
 
@@ -1236,9 +1238,7 @@ final class ParcImportAnalyzeTest extends WebTestCase
     private function makeVenue(string $name): Venue
     {
         $this->scopeGucToClub($this->club->getId());
-        $venue = (new Venue)
-            ->setClubId($this->club->getId())->setSeasonId($this->season->getId())
-            ->setName($name)->setSource('manual')->setIsActive(true)->setCanSplit(false);
+        $venue = $this->newVenue($this->club->getId(), $this->season->getId(), $name)->setIsActive(true)->setCanSplit(false);
         $this->em->persist($venue);
         $this->em->flush();
 
@@ -1318,9 +1318,7 @@ final class ParcImportAnalyzeTest extends WebTestCase
         $this->em->persist($otherSeason);
         $this->em->flush();
 
-        $venue = (new Venue)
-            ->setClubId($otherClub->getId())->setSeasonId($otherSeason->getId())
-            ->setName($venueName)->setSource('manual')->setIsActive(true);
+        $venue = $this->newVenue($otherClub->getId(), $otherSeason->getId(), $venueName)->setIsActive(true);
         $this->em->persist($venue);
         $team = (new Team)
             ->setClubId($otherClub->getId())->setSeasonId($otherSeason->getId())

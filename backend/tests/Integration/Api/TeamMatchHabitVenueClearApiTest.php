@@ -9,8 +9,8 @@ use App\Entity\ClubUser;
 use App\Entity\Season;
 use App\Entity\Team;
 use App\Entity\User;
-use App\Entity\Venue;
 use App\Enum\SeasonStatus;
+use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -30,6 +30,7 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 #[Group('integration')]
 final class TeamMatchHabitVenueClearApiTest extends WebTestCase
 {
+    use CreatesPeopleAndPlacesTrait;
     use TenantGucTrait;
 
     private KernelBrowser $client;
@@ -145,11 +146,7 @@ final class TeamMatchHabitVenueClearApiTest extends WebTestCase
 
     private function venue(): string
     {
-        $venue = (new Venue)
-            ->setClubId($this->club->getId())
-            ->setSeasonId($this->season->getId())
-            ->setName('V' . substr($this->uuid(), 0, 6))
-            ->setSource('manual');
+        $venue = $this->newVenue($this->club->getId(), $this->season->getId(), 'V' . substr($this->uuid(), 0, 6));
         $this->em->persist($venue);
         $this->em->flush();
 

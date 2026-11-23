@@ -26,7 +26,10 @@ Fonctionnalité: Supprimer emporte ce qui en dépend, et rien d'autre
     Alors le « Gymnase Nord » n'a plus ni créneau, ni séance, ni règle
     Et plus aucune règle ne nomme le « Gymnase Nord »
     Et le « Gymnase Sud » garde ses créneaux et ses séances
+    # Le lieu du gymnase reste au club jusqu'à la purge de la saison : « Charger » une version d'avant le ramène avec son adresse.
+    Et le lieu du « Gymnase Nord » existe toujours dans le club
     Quand je remets la saison à zéro
     Alors la saison n'a plus ni équipe, ni coach, ni gymnase, ni créneau, ni règle, ni réservation, ni séance
     Et le club n'a plus aucune fiche de personne
+    Et le club n'a plus aucun lieu
     Et le club existe toujours, avec sa saison, et j'en suis toujours le gestionnaire

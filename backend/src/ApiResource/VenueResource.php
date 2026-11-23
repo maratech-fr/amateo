@@ -17,6 +17,7 @@ use App\Access\Audience;
 use App\Access\ClubResource;
 use App\Access\Module;
 use App\Dto\VenueInput;
+use App\Entity\Place;
 use App\Entity\Venue;
 use App\State\Processor\VenueStateProcessor;
 use App\State\Provider\VenueStateProvider;
@@ -86,7 +87,7 @@ class VenueResource
     #[Groups(['read'])]
     public bool $canSplit = false;
 
-    public static function fromEntity(Venue $entity): self
+    public static function fromEntity(Venue $entity, Place $place): self
     {
         $dto = new self;
         $dto->id = $entity->getId();
@@ -95,9 +96,9 @@ class VenueResource
         $dto->updatedAt = $entity->getUpdatedAt();
         $dto->name = $entity->getName();
         $dto->color = $entity->getColor();
-        $dto->latitude = $entity->getLatitude();
-        $dto->longitude = $entity->getLongitude();
-        $dto->address = $entity->getAddress();
+        $dto->latitude = $place->getLatitude();
+        $dto->longitude = $place->getLongitude();
+        $dto->address = $place->getAddress();
         $dto->source = $entity->getSource();
         $dto->externalRef = $entity->getExternalRef();
         $dto->externalLabels = $entity->getExternalLabels();

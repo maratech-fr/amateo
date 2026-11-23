@@ -8,6 +8,7 @@ use App\Clock\DevClockStore;
 use App\Entity\CalendarEntry;
 use App\Entity\Club;
 use App\Entity\ClubUser;
+use App\Entity\Place;
 use App\Entity\Reservation;
 use App\Entity\Schedule;
 use App\Entity\ScheduleSlotTemplate;
@@ -111,8 +112,12 @@ trait ClosurePinDecorTrait
         $em->flush();
         $this->provisionSeasonPlan($season);
 
-        $mistral = (new Venue)->setClubId($club->getId())->setSeasonId($season->getId())->setName('Mistral')->setSource('manual')->setIsActive(true);
-        $brel = (new Venue)->setClubId($club->getId())->setSeasonId($season->getId())->setName('Brel')->setSource('manual')->setIsActive(true);
+        $place = (new Place)->setClubId($club->getId());
+        $em->persist($place);
+        $mistral = new Venue($place)->setClubId($club->getId())->setSeasonId($season->getId())->setName('Mistral')->setSource('manual')->setIsActive(true);
+        $place = (new Place)->setClubId($club->getId());
+        $em->persist($place);
+        $brel = new Venue($place)->setClubId($club->getId())->setSeasonId($season->getId())->setName('Brel')->setSource('manual')->setIsActive(true);
         $em->persist($mistral);
         $em->persist($brel);
         $sm1 = $this->decorTeam($club, $season, 'SM1', 1);

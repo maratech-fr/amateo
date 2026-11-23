@@ -13,7 +13,6 @@ use App\Entity\ScheduleSlotTemplate;
 use App\Entity\Season;
 use App\Entity\Team;
 use App\Entity\User;
-use App\Entity\Venue;
 use App\Entity\VenueTrainingSlot;
 use App\Enum\CalendarEntryKind;
 use App\Enum\CalendarEntryPeriodType;
@@ -39,6 +38,7 @@ use App\Service\SolverMetricsRecorder;
 use App\Service\StructureSnapshotter;
 use App\Service\TenantConnectionContext;
 use App\Tests\ChoosesPlanVersionTrait;
+use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -76,6 +76,7 @@ use Symfony\Component\Mercure\HubInterface;
 final class LoadedVersionLocksOnlyTest extends WebTestCase
 {
     use ChoosesPlanVersionTrait;
+    use CreatesPeopleAndPlacesTrait;
     use TenantGucTrait;
 
     private const int MON = 1;
@@ -556,7 +557,7 @@ final class LoadedVersionLocksOnlyTest extends WebTestCase
     /** @param list<array{0:int,1:string}> $windows */
     private function venue(string $name, array $windows): string
     {
-        $venue = (new Venue)->setClubId($this->club->getId())->setSeasonId($this->season->getId())->setName($name)->setCanSplit(false)->setSource('manual');
+        $venue = $this->newVenue($this->club->getId(), $this->season->getId(), $name)->setCanSplit(false);
         $this->em->persist($venue);
         $this->em->flush();
         foreach ($windows as [$day, $time]) {

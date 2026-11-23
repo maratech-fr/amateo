@@ -7,6 +7,7 @@ namespace App\Tests\Integration;
 use App\Entity\CalendarEntry;
 use App\Entity\Club;
 use App\Entity\ClubUser;
+use App\Entity\Place;
 use App\Entity\Reservation;
 use App\Entity\Schedule;
 use App\Entity\ScheduleSlotTemplate;
@@ -516,7 +517,9 @@ final class ReservationPinsNotDoubledTest extends KernelTestCase
 
     private function venue(Club $club, Season $season): void
     {
-        $venue = (new Venue)->setClubId($club->getId())->setSeasonId($season->getId())->setName('Gymnase')
+        $place = (new Place)->setClubId($club->getId());
+        $this->em->persist($place);
+        $venue = new Venue($place)->setClubId($club->getId())->setSeasonId($season->getId())->setName('Gymnase')
             ->setCanSplit(false)->setSource('manual');
         $venue->setId(self::VENUE_ID);
         $this->em->persist($venue);

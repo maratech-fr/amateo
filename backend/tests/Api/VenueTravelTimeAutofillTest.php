@@ -16,6 +16,7 @@ use App\Service\Geo\IgnRoutingClient;
 use App\Service\Geo\VenueTravelTimeAutofillService;
 use App\Service\SeasonResolver;
 use App\Service\TravelComputeLock;
+use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\Double\IgnRoutingHttpClientStub;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
@@ -39,6 +40,7 @@ use Symfony\Component\Clock\MockClock;
 #[Group('integration')]
 final class VenueTravelTimeAutofillTest extends WebTestCase
 {
+    use CreatesPeopleAndPlacesTrait;
     use TenantGucTrait;
 
     private KernelBrowser $client;
@@ -204,13 +206,8 @@ final class VenueTravelTimeAutofillTest extends WebTestCase
     private function geoVenue(Club $club, Season $season, string $name, ?string $latitude, ?string $longitude): Venue
     {
         $this->scopeGucToClub($club->getId());
-        $venue = new Venue;
-        $venue->setClubId($club->getId());
-        $venue->setSeasonId($season->getId());
-        $venue->setName($name);
-        $venue->setSource('manual');
-        $venue->setLatitude($latitude);
-        $venue->setLongitude($longitude);
+        $venue = $this->newVenue($club->getId(), $season->getId(), $name);
+        $this->placeOf($venue)->setLatitude($latitude)->setLongitude($longitude);
         $this->em->persist($venue);
         $this->em->flush();
 

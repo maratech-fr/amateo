@@ -30,6 +30,7 @@ use App\Repository\FbiIngestionRepository;
 use App\Service\Basketball\VenueLabelNormalizer;
 use App\Service\FbiFixtureImporter;
 use App\Service\SeasonResolver;
+use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
@@ -51,6 +52,7 @@ use Throwable;
 #[Group('integration')]
 final class FbiFixtureImporterTest extends KernelTestCase
 {
+    use CreatesPeopleAndPlacesTrait;
     use TenantGucTrait;
 
     private const CLUB_NAME = 'BC Testville';
@@ -3320,11 +3322,7 @@ final class FbiFixtureImporterTest extends KernelTestCase
     {
         $season = $this->em->getRepository(Season::class)->findOneBy(['clubId' => $this->club->getId()]);
         self::assertNotNull($season);
-        $venue = new Venue;
-        $venue->setClubId($this->club->getId());
-        $venue->setSeasonId($season->getId());
-        $venue->setName($name);
-        $venue->setSource('manual');
+        $venue = $this->newVenue($this->club->getId(), $season->getId(), $name);
         $this->em->persist($venue);
         $this->em->flush();
 

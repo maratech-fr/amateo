@@ -7,6 +7,7 @@ namespace App\Tests\Integration;
 use App\Entity\Club;
 use App\Entity\ClubUser;
 use App\Entity\Constraint;
+use App\Entity\Place;
 use App\Entity\Schedule;
 use App\Entity\ScheduleSlotTemplate;
 use App\Entity\Season;
@@ -220,7 +221,9 @@ final class HardLockSurvivesPayloadTest extends KernelTestCase
 
     private function venue(Club $club, Season $season, string $id, string $name): void
     {
-        $venue = new Venue;
+        $place = (new Place)->setClubId($club->getId());
+        $this->em->persist($place);
+        $venue = new Venue($place);
         $venue->setId($id);
         $venue->setClubId($club->getId());
         $venue->setSeasonId($season->getId());

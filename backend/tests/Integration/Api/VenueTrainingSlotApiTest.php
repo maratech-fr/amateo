@@ -12,6 +12,7 @@ use App\Entity\Venue;
 use App\Entity\VenueTrainingSlot;
 use App\Enum\SeasonStatus;
 use App\Service\TenantConnectionContext;
+use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\CreatesPeriodPlanTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
@@ -26,6 +27,7 @@ use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
 #[Group('phase1')]
 final class VenueTrainingSlotApiTest extends WebTestCase
 {
+    use CreatesPeopleAndPlacesTrait;
     use CreatesPeriodPlanTrait;
     use TenantGucTrait;
 
@@ -478,13 +480,7 @@ final class VenueTrainingSlotApiTest extends WebTestCase
 
     private function createVenue(bool $canSplit): Venue
     {
-        $venue = new Venue;
-        $venue->setClubId($this->club->getId());
-        $venue->setSeasonId($this->season->getId());
-        $venue->setName('Venue ' . uniqid());
-        $venue->setSource('manual');
-        $venue->setIsActive(true);
-        $venue->setCanSplit($canSplit);
+        $venue = $this->newVenue($this->club->getId(), $this->season->getId(), 'Venue ' . uniqid())->setIsActive(true)->setCanSplit($canSplit);
 
         $this->em->persist($venue);
         $this->em->flush();

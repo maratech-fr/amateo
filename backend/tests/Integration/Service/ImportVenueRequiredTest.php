@@ -25,6 +25,7 @@ use App\Service\FbiFixtureImporter;
 use App\Service\MatchPlacementPayloadBuilder;
 use App\Service\SeasonResolver;
 use App\Tests\ChoosesPlanVersionTrait;
+use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -77,6 +78,7 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 final class ImportVenueRequiredTest extends WebTestCase
 {
     use ChoosesPlanVersionTrait;
+    use CreatesPeopleAndPlacesTrait;
     use TenantGucTrait;
 
     /** Un samedi FUTUR : un championnat non commencé (aucune échéance, aucun match joué). */
@@ -581,11 +583,7 @@ final class ImportVenueRequiredTest extends WebTestCase
 
     private function createVenue(string $clubId, string $seasonId, string $name): Venue
     {
-        $venue = new Venue;
-        $venue->setClubId($clubId);
-        $venue->setSeasonId($seasonId);
-        $venue->setName($name);
-        $venue->setSource('manual');
+        $venue = $this->newVenue($clubId, $seasonId, $name);
         $this->em->persist($venue);
         $this->em->flush();
 

@@ -16,6 +16,7 @@ use App\Enum\SeasonStatus;
 use App\Service\MatchPlacementPayloadBuilder;
 use App\Service\ScheduleConstraintBuilder;
 use App\Service\SeasonResolver;
+use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -42,6 +43,7 @@ use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 #[Group('integration')]
 final class HabitPayloadParityTest extends KernelTestCase
 {
+    use CreatesPeopleAndPlacesTrait;
     use TenantGucTrait;
 
     private EntityManagerInterface $em;
@@ -231,11 +233,7 @@ final class HabitPayloadParityTest extends KernelTestCase
 
     private function venue(Club $club, Season $season): Venue
     {
-        $venue = new Venue;
-        $venue->setClubId($club->getId());
-        $venue->setSeasonId($season->getId());
-        $venue->setName('V' . substr($this->uuid(), 0, 6));
-        $venue->setSource('manual');
+        $venue = $this->newVenue($club->getId(), $season->getId(), 'V' . substr($this->uuid(), 0, 6));
         $this->em->persist($venue);
 
         return $venue;

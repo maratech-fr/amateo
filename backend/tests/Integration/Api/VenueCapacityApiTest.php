@@ -12,6 +12,7 @@ use App\Entity\Venue;
 use App\Enum\SeasonStatus;
 use App\Service\SeasonResolver;
 use App\Tests\ChoosesPlanVersionTrait;
+use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -29,6 +30,7 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 final class VenueCapacityApiTest extends WebTestCase
 {
     use ChoosesPlanVersionTrait;
+    use CreatesPeopleAndPlacesTrait;
     use TenantGucTrait;
 
     private KernelBrowser $client;
@@ -214,11 +216,7 @@ final class VenueCapacityApiTest extends WebTestCase
 
     private function createVenue(Club $club, Season $season): Venue
     {
-        $venue = new Venue;
-        $venue->setClubId($club->getId());
-        $venue->setSeasonId($season->getId());
-        $venue->setName('Gymnase Armand');
-        $venue->setSource('manual');
+        $venue = $this->newVenue($club->getId(), $season->getId(), 'Gymnase Armand');
         $this->em->persist($venue);
         $this->em->flush();
 

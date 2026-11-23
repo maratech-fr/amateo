@@ -29,6 +29,7 @@ use App\Enum\VenuePeriodMode;
 use App\Service\OrphanPinGuard;
 use App\Service\SchedulePlanProvisioner;
 use App\Tests\ChoosesPlanVersionTrait;
+use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\ProvisionsPeriodPlanTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
@@ -56,6 +57,7 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 final class OrphanPinGuardTest extends WebTestCase
 {
     use ChoosesPlanVersionTrait;
+    use CreatesPeopleAndPlacesTrait;
     use ProvisionsPeriodPlanTrait;
     use TenantGucTrait;
 
@@ -451,8 +453,7 @@ final class OrphanPinGuardTest extends WebTestCase
         $this->em->persist($this->season);
         $this->em->flush();
 
-        $this->venue = (new Venue)->setClubId($this->club->getId())->setSeasonId($this->season->getId())
-            ->setName('Halle Coubertin')->setSource('manual')->setIsActive(true);
+        $this->venue = $this->newVenue($this->club->getId(), $this->season->getId(), 'Halle Coubertin')->setIsActive(true);
         $this->em->persist($this->venue);
         // Grille de SAISON : un seul créneau, mardi 18:00 — la période en héritera.
         $this->em->persist((new VenueTrainingSlot)->setClubId($this->club->getId())->setSeasonId($this->season->getId())

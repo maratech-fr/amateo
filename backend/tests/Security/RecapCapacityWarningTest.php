@@ -24,6 +24,7 @@ use App\Enum\CalendarEntryKind;
 use App\Enum\CalendarEntryPeriodType;
 use App\Enum\CalendarEntryStatus;
 use App\Enum\SeasonStatus;
+use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\ProvisionsPeriodPlanTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
@@ -50,6 +51,7 @@ use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
 #[Group('security')]
 final class RecapCapacityWarningTest extends WebTestCase
 {
+    use CreatesPeopleAndPlacesTrait;
     use ProvisionsPeriodPlanTrait;
     use TenantGucTrait;
 
@@ -356,11 +358,7 @@ final class RecapCapacityWarningTest extends WebTestCase
 
     private function venue(Club $club, Season $season, string $name = 'Gymnase capacité'): Venue
     {
-        $venue = new Venue;
-        $venue->setClubId($club->getId());
-        $venue->setSeasonId($season->getId());
-        $venue->setName($name);
-        $venue->setSource('manual');
+        $venue = $this->newVenue($club->getId(), $season->getId(), $name);
         // canSplit : les capacités > 1 des créneaux comptent (sinon bridées à 1 — c'est
         // exactement le réglage que la tentative n° 2 avait raté en recalculant à la main).
         $venue->setCanSplit(true);

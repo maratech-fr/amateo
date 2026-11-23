@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace App\Service\Geo;
 
+use App\Entity\Place;
 use App\Entity\Venue;
 use App\Entity\VenueTravelTime;
 use App\Enum\VenueTravelTimeSource;
+use App\Structure\PlaceDirectory;
 use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
 use Doctrine\ORM\EntityManagerInterface;
 
@@ -51,6 +53,8 @@ final class VenueTravelTimeAutofillService
         // Cache-first (C4) : optionnel (défaut null) pour ne pas casser les sites de test ;
         // en prod, le conteneur l'autowire.
         private readonly ?TravelTimeCache $travelCache = null,
+        // Position des gymnases, lue sur leur lieu au club ; optionnel pour les mêmes sites de test.
+        private readonly ?PlaceDirectory $placeDirectory = null,
     ) {}
 
     /**
@@ -290,10 +294,10 @@ final class VenueTravelTimeAutofillService
             $a = $pair['a'];
             $b = $pair['b'];
             $key = $a->getId() . '|' . $b->getId();
-            $startLat = (float) $a->getLatitude();
-            $startLon = (float) $a->getLongitude();
-            $endLat = (float) $b->getLatitude();
-            $endLon = (float) $b->getLongitude();
+            $startLat = (float) $this->placeOf($a)->getLatitude();
+            $startLon = (float) $this->placeOf($a)->getLongitude();
+            $endLat = (float) $this->placeOf($b)->getLatitude();
+            $endLon = (float) $this->placeOf($b)->getLongitude();
 
             if ($pair['drivingNeeded']) {
                 $jobs[] = ['key' => $key . '|' . IgnRoutingClient::PROFILE_CAR, 'profile' => IgnRoutingClient::PROFILE_CAR, 'startLat' => $startLat, 'startLon' => $startLon, 'endLat' => $endLat, 'endLon' => $endLon];
@@ -332,6 +336,13 @@ final class VenueTravelTimeAutofillService
 
     private function isGeolocated(Venue $venue): bool
     {
-        return null !== $venue->getLatitude() && null !== $venue->getLongitude();
+        $place = $this->placeOf($venue);
+
+        return null !== $place->getLatitude() && null !== $place->getLongitude();
+    }
+
+    private function placeOf(Venue $venue): Place
+    {
+        return ($this->placeDirectory ?? new PlaceDirectory($this->entityManager))->of($venue);
     }
 }

@@ -22,6 +22,7 @@ use App\Enum\FixtureUnplacedReason;
 use App\Enum\SeasonStatus;
 use App\Service\SeasonResolver;
 use App\Tests\ChoosesPlanVersionTrait;
+use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -38,6 +39,7 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 final class FixtureReviewApiTest extends WebTestCase
 {
     use ChoosesPlanVersionTrait;
+    use CreatesPeopleAndPlacesTrait;
     use TenantGucTrait;
 
     private KernelBrowser $client;
@@ -914,11 +916,7 @@ final class FixtureReviewApiTest extends WebTestCase
     private function unplacedVenueDeviatedFixture(Club $club, Season $season, Team $team, string $venueName): array
     {
         $this->scopeGucToClub($club->getId());
-        $venue = new Venue;
-        $venue->setClubId($club->getId());
-        $venue->setSeasonId($season->getId());
-        $venue->setName($venueName);
-        $venue->setSource('manual');
+        $venue = $this->newVenue($club->getId(), $season->getId(), $venueName);
         $this->em->persist($venue);
 
         $fixture = new Fixture;
@@ -956,11 +954,7 @@ final class FixtureReviewApiTest extends WebTestCase
     private function unplacedVenueDeviatedFixtureWithLabel(Club $club, Season $season, Team $team, string $venueName, string $sourceLabel, string $ref = 'RBK1'): array
     {
         $this->scopeGucToClub($club->getId());
-        $venue = new Venue;
-        $venue->setClubId($club->getId());
-        $venue->setSeasonId($season->getId());
-        $venue->setName($venueName);
-        $venue->setSource('manual');
+        $venue = $this->newVenue($club->getId(), $season->getId(), $venueName);
         $this->em->persist($venue);
 
         $fixture = new Fixture;
@@ -1006,11 +1000,7 @@ final class FixtureReviewApiTest extends WebTestCase
         $past->setTransitionData([]);
         $this->em->persist($past);
 
-        $venue = new Venue;
-        $venue->setClubId($club->getId());
-        $venue->setSeasonId($past->getId());
-        $venue->setName($name);
-        $venue->setSource('manual');
+        $venue = $this->newVenue($club->getId(), $past->getId(), $name);
         $this->em->persist($venue);
         $this->em->flush();
 
@@ -1021,12 +1011,7 @@ final class FixtureReviewApiTest extends WebTestCase
     private function createAliasedVenue(Club $club, Season $season, string $name, array $aliases): string
     {
         $this->scopeGucToClub($club->getId());
-        $venue = new Venue;
-        $venue->setClubId($club->getId());
-        $venue->setSeasonId($season->getId());
-        $venue->setName($name);
-        $venue->setSource('manual');
-        $venue->setExternalLabels($aliases);
+        $venue = $this->newVenue($club->getId(), $season->getId(), $name)->setExternalLabels($aliases);
         $this->em->persist($venue);
         $this->em->flush();
 
