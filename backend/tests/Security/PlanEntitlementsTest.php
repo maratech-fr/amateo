@@ -7,6 +7,9 @@ namespace App\Tests\Security;
 use App\Access\DemoRegime;
 use App\Entity\Club;
 use App\Entity\ClubUser;
+use App\Entity\Competition;
+use App\Entity\Fixture;
+use App\Entity\Schedule;
 use App\Entity\Season;
 use App\Entity\Sport;
 use App\Entity\SportCategory;
@@ -14,15 +17,22 @@ use App\Entity\SubscriptionPlan;
 use App\Entity\Team;
 use App\Entity\User;
 use App\Enum\ClubRole;
+use App\Enum\CompetitionType;
+use App\Enum\FixtureHomeAway;
+use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
 use App\Exception\ImportRejectedException;
 use App\Repository\ClubSubscriptionRepository;
 use App\Repository\SubscriptionPlanRepository;
 use App\Repository\SubscriptionPlanTierRepository;
 use App\Service\Basketball\FfbbExcelImporter;
+use App\Service\BrandAssets;
 use App\Service\ManagementAccessGuard;
+use App\Service\PdfGenerator;
 use App\Service\PlanEntitlements;
+use App\Service\ProductIdentity;
 use App\Service\SeasonResolver;
+use App\Service\SocleGuard;
 use App\Tests\ChoosesPlanVersionTrait;
 use App\Tests\Support\SubscribesClub;
 use App\Tests\TenantGucTrait;
@@ -35,18 +45,23 @@ use Lexik\Bundle\JWTAuthenticationBundle\Services\JWTTokenManagerInterface;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 use PHPUnit\Framework\Attributes\Group;
+use ReflectionClass;
 use Symfony\Bundle\FrameworkBundle\Console\Application;
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 use Symfony\Component\Console\Tester\CommandTester;
+use Symfony\Component\HttpClient\MockHttpClient;
+use Symfony\Component\HttpClient\Response\MockResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpKernel\Event\ResponseEvent;
 use Symfony\Component\HttpKernel\HttpKernelInterface;
 use Symfony\Component\HttpKernel\KernelEvents;
+use Symfony\Component\Messenger\Transport\InMemory\InMemoryTransport;
 use Symfony\Component\RateLimiter\RateLimiterFactory;
 use Symfony\Component\Routing\RouterInterface;
 use Symfony\Contracts\EventDispatcher\EventDispatcherInterface;
+use Symfony\Contracts\HttpClient\ResponseInterface;
 
 /**
  * NR P1-3 PR B — LE modèle d'offres, gardé. Deux axes structurants (§7.1) :
@@ -59,7 +74,12 @@ use Symfony\Contracts\EventDispatcher\EventDispatcherInterface;
  *    portes de création (lot 8, PR 2) : Découverte et Bêta n'ont pas de palier (aucun plafond),
  *    le palier 1 refuse au-delà de 20 et le palier 2 au-delà de 34 en annonçant le palier suivant,
  *    le palier 3 n'a aucun plafond ; les équipes désactivées comptent ; l'import Excel au-delà du
- *    palier est refusé avec décompte.
+ *    palier est refusé avec décompte ;
+ *  · au-dessus du palier, plus de sorties (lot 8, PR 3) : les sept fonctions à sortie refusées 403
+ *    avec le message du dépassement, rien en file ; le rôle et le module fermé répondent avant le
+ *    palier ; consulter, charger une version et télécharger un PDF produit restent ouverts ; la
+ *    saison qui juge est celle de la requête (abus de saison). L'enchaînement de bout en bout :
+ *    `features/au-dessus-du-palier-plus-de-sorties.feature`.
  *
  * Plus l'invisibilité de la bêta (superadmin-only) jusqu'en GET item (finding revue sécu).
  *
@@ -91,6 +111,9 @@ final class PlanEntitlementsTest extends WebTestCase
     private array $tempFiles = [];
 
     private ?string $categoryId = null;
+
+    /** @var list<string> le HTML reçu par le double du worker de rendu, dans l'ordre */
+    private array $renderedHtml = [];
 
     // ─────────────────────────── Pool de crédits — refus (HTTP) ───────────────────────────
 
@@ -582,6 +605,191 @@ final class PlanEntitlementsTest extends WebTestCase
         self::assertSame(33, $this->teamCountOf($ctx['club']->getId(), $ctx['season']->getId()), 'rien n\'est écrit : l\'import est tout-ou-rien');
     }
 
+    // ──────────────── Au-dessus du palier, plus de sorties (lot 8, PR 3) ────────────────
+
+    /**
+     * Au palier 1 avec 21 équipes (dont 3 désactivées, elles comptent — décision Q2), les SEPT
+     * fonctions à sortie sont refusées 403 avec le message du dépassement, et rien ne part : le
+     * brouillon visé par « Générer » reste DRAFT, aucune version, aucun run de placement, aucun
+     * message de placement en file. Le tableur passe en premier : tant que le refus manque, c'est lui
+     * qui rougit, sans rien envoyer au moteur.
+     */
+    public function testAboveItsTierEveryOutputIsRefusedAndNothingIsQueued(): void
+    {
+        $ctx = $this->seedClub('complete', credits: 0, teamCount: 21, settleSocle: true, tierCode: 'palier-1', inactiveTeams: 3);
+        $draft = $this->seedSchedule($ctx['season'], ScheduleStatus::DRAFT);
+        $schedulesBefore = $this->countForClub('schedule', $ctx['club']->getId());
+
+        foreach ($this->outputRequests($draft->getId(), $ctx['season']) as $output => [$uri, $body]) {
+            self::assertSame(403, $this->postJson($ctx['user'], $uri, $body), $output . ' : au-dessus du palier, la sortie est refusée');
+            self::assertSame($this->overrunMessage(21, 20), $this->refusalDetail(), $output . ' : le refus porte le message du dépassement');
+            if ('placer les matchs' === $output) {
+                $transport = self::getContainer()->get('messenger.transport.placement_in_memory');
+                \assert($transport instanceof InMemoryTransport);
+                self::assertCount(0, $transport->getSent(), 'un placement refusé ne part pas en file');
+            }
+        }
+
+        self::assertSame('DRAFT', $this->em->getConnection()->fetchOne('SELECT status FROM schedule WHERE id = :id', ['id' => $draft->getId()]), 'la génération refusée ne passe pas le brouillon en file (PENDING)');
+        self::assertSame($schedulesBefore, $this->countForClub('schedule', $ctx['club']->getId()), 'aucune version ne naît d\'un refus (régénérer, combler)');
+        self::assertSame(0, $this->countForClub('match_placement_run', $ctx['club']->getId()), 'aucun run de placement ne naît d\'un refus');
+    }
+
+    /**
+     * Le message du dépassement, que `/api/me` sert à chaque écran : il dit le compte et le plafond
+     * (21 sur 20, 35 sur 34) ; à la limite exacte du palier (20 au palier 1, 34 au palier 2) il n'y a
+     * pas de dépassement ; Découverte, la Bêta, le palier 3 et la démonstration ne sont jamais
+     * concernés, même à 21 équipes.
+     */
+    public function testTheOverrunMessageNamesCountAndCapAndNeverConcernsAnUncappedClub(): void
+    {
+        $entitlements = self::getContainer()->get(PlanEntitlements::class);
+        \assert($entitlements instanceof PlanEntitlements);
+
+        $over = $this->seedClub('complete', credits: 0, teamCount: 21, tierCode: 'palier-1');
+        self::assertSame($this->overrunMessage(21, 20), $entitlements->teamCapMessage($over['club'], $over['season']), 'palier 1, 21 équipes : dépassement');
+        self::assertSame($this->overrunMessage(21, 20), $this->meEntitlements($over['user'])['teamCapMessage'] ?? null, '/api/me sert le message du dépassement');
+        $over2 = $this->seedClub('complete', credits: 0, teamCount: 35, tierCode: 'palier-2');
+        self::assertSame($this->overrunMessage(35, 34), $entitlements->teamCapMessage($over2['club'], $over2['season']), 'palier 2, 35 équipes : dépassement');
+
+        $atCap = $this->seedClub('complete', credits: 0, teamCount: 20, tierCode: 'palier-1', inactiveTeams: 2);
+        self::assertNull($entitlements->teamCapMessage($atCap['club'], $atCap['season']), 'palier 1, 20 équipes : pas de dépassement');
+        $me = $this->meEntitlements($atCap['user']);
+        self::assertTrue(\array_key_exists('teamCapMessage', $me) && null === $me['teamCapMessage'], '/api/me sert teamCapMessage: null sans dépassement');
+        self::assertNotSame(403, $this->post($atCap['user'], '/api/schedules/' . self::DUMMY_SCHEDULE_ID . '/generate'), 'à la limite du palier, les sorties restent ouvertes');
+        $atCap2 = $this->seedClub('complete', credits: 0, teamCount: 34, tierCode: 'palier-2');
+        self::assertNull($entitlements->teamCapMessage($atCap2['club'], $atCap2['season']), 'palier 2, 34 équipes : pas de dépassement');
+
+        foreach (['palier 3' => ['complete', 'palier-3', false], 'Bêta' => ['beta', null, false], 'Découverte' => [null, null, false], 'démonstration au palier 1' => ['complete', 'palier-1', true]] as $case => [$plan, $tier, $demo]) {
+            $ctx = $this->seedClub($plan, credits: 0, teamCount: 21, isDemo: $demo, tierCode: $tier);
+            self::assertNull($entitlements->teamCapMessage($ctx['club'], $ctx['season']), $case . ', 21 équipes : jamais concerné');
+            self::assertNotSame(403, $this->post($ctx['user'], '/api/schedules/' . self::DUMMY_SCHEDULE_ID . '/generate'), $case . ' : jamais refusé pour le palier');
+        }
+    }
+
+    /**
+     * Ordre du contrôle central : un Membre reçoit le refus du RÔLE sur les sorties de gestionnaire
+     * (générer, régénérer, combler, placer) ; les exports lui sont ouverts, donc le palier les lui
+     * refuse comme à tous ; et `/api/me` lui sert le message, pour le bandeau de chaque membre.
+     */
+    public function testAMemberAboveTheTierGetsTheRoleRefusalOnManagingAndTheTierRefusalOnExports(): void
+    {
+        $ctx = $this->seedClub('complete', credits: 0, teamCount: 21, settleSocle: true, tierCode: 'palier-1');
+        $member = $this->addActiveMember($ctx['club']->getId());
+
+        self::assertSame($this->overrunMessage(21, 20), $this->meEntitlements($member)['teamCapMessage'] ?? null, 'un Membre est prévenu comme le gestionnaire');
+        foreach ($this->outputRequests(self::DUMMY_SCHEDULE_ID, $ctx['season']) as $output => [$uri, $body]) {
+            self::assertSame(403, $this->postJson($member, $uri, $body), $output . ' : refusé à un Membre au-dessus du palier');
+            $expected = \in_array($output, ['générer le planning', 'régénérer le planning', 'combler le planning', 'placer les matchs'], true)
+                ? ManagementAccessGuard::REFUSAL
+                : $this->overrunMessage(21, 20);
+            self::assertSame($expected, $this->refusalDetail(), $output . ' : le rôle se juge avant le palier');
+        }
+    }
+
+    /**
+     * Le module fermé répond avant le palier : sans planning de saison en vigueur, placer les matchs
+     * au-dessus du palier rend le 409 du socle, pas le refus du palier.
+     */
+    public function testAClosedModuleAnswersBeforeTheTier(): void
+    {
+        $ctx = $this->seedClub('complete', credits: 0, teamCount: 21, tierCode: 'palier-1');
+
+        self::assertSame(409, $this->post($ctx['user'], '/api/fixtures/place'), 'module fermé : 409 avant le palier');
+        self::assertStringContainsString(SocleGuard::SEASON_PLAN_REQUIRED_MESSAGE, $this->readableBody(), 'le refus est celui du socle');
+    }
+
+    /**
+     * Au-dessus du palier, ce qui n'est pas une sortie reste ouvert : consulter, charger une version
+     * (aucun calcul : le refus éventuel vient du contrôleur, jamais du palier), télécharger un PDF
+     * déjà produit.
+     */
+    public function testConsultingLoadingAndDownloadingAProducedPdfStayOpenAboveTheTier(): void
+    {
+        $ctx = $this->seedClub('complete', credits: 0, teamCount: 21, tierCode: 'palier-1');
+        $schedule = $this->seedSchedule($ctx['season'], ScheduleStatus::COMPLETED);
+        $filename = \sprintf('schedule-%s-all.pdf', $schedule->getId());
+        $this->writeRender($filename);
+        $headers = $this->authHeaders($ctx['user']);
+
+        $this->client->request('GET', '/api/schedules', [], [], $headers);
+        self::assertSame(200, $this->client->getResponse()->getStatusCode(), 'consulter reste ouvert');
+        self::assertNotSame(403, $this->post($ctx['user'], '/api/schedules/' . self::DUMMY_SCHEDULE_ID . '/regenerate-from'), 'charger une version n\'est jamais refusé par le palier');
+        $this->client->request('GET', \sprintf('/api/schedules/%s/export-pdf/%s', $schedule->getId(), $filename), [], [], $headers);
+        self::assertSame(200, $this->client->getResponse()->getStatusCode(), 'un PDF déjà produit se télécharge au-dessus du palier');
+
+        // Témoin : le même club, au même instant, est bien refusé sur une sortie.
+        self::assertSame(403, $this->post($ctx['user'], '/api/schedules/' . $schedule->getId() . '/export-xlsx'), 'témoin : le club est au-dessus de son palier');
+    }
+
+    /**
+     * Abus de saison : la saison qui juge est celle de la requête, et la sortie produite est celle de
+     * la même saison. Club en Bêta sur sa saison en cours (A), au palier 1 avec 21 équipes sur la
+     * saison suivante préparée (B). L'en-tête de A ne sert jamais une sortie de B : un planning de B
+     * nommé rend 404 (filtre de saison), le placement ne prend aucun match de B, le PDF des matchs ne
+     * contient que ceux de A ; A garde ses sorties. Lève le « non vérifié » du plan (placement et PDF
+     * des matchs bornés à la saison de la requête). Témoin : sous l'en-tête de B, les sept sorties sont
+     * refusées pour le palier.
+     */
+    public function testAnEarlierSeasonHeaderNeverServesAnOutputOfTheSeasonAboveItsTier(): void
+    {
+        // Le double du worker de rendu doit survivre d'une requête à l'autre.
+        $this->client->disableReboot();
+        $this->renderMatchesPdfInMemory();
+
+        $ctx = $this->seedClub('beta', credits: 0, settleSocle: true);
+        $clubId = $ctx['club']->getId();
+        $seasonA = $ctx['season'];
+        $year = SeasonResolver::seasonYear($seasonA->getStartDate());
+        $seasonB = new Season()
+            ->setClubId($clubId)
+            ->setName((string) ($year + 1))
+            ->setStartDate(new DateTimeImmutable(($year + 1) . '-08-01'))
+            ->setEndDate(new DateTimeImmutable(($year + 2) . '-07-15'))
+            ->setStatus(SeasonStatus::ACTIVE)
+            ->setTransitionData([]);
+        $this->em->persist($seasonB);
+        $this->em->flush();
+        $this->subscribeClub($clubId, $year + 1, 'complete', 'palier-1');
+        $this->seedTeams($clubId, $seasonB->getId(), 21);
+        $this->settleSeasonPlan($seasonB);
+        $scheduleA = $this->seedSchedule($seasonA, ScheduleStatus::COMPLETED);
+        $scheduleB = $this->seedSchedule($seasonB, ScheduleStatus::DRAFT);
+        $this->seedMatch($clubId, $seasonA, 'Adversaire de la saison en cours', FixtureHomeAway::AWAY);
+        $this->seedMatch($clubId, $seasonB, 'Adversaire de la saison suivante', FixtureHomeAway::HOME);
+        $schedulesBefore = $this->countForClub('schedule', $clubId);
+        $headerA = ['HTTP_X_SEASON_ID' => $seasonA->getId()];
+
+        foreach ($this->outputRequests($scheduleB->getId(), $seasonA) as $output => [$uri, $body]) {
+            // Sans reboot, le gestionnaire d'entités est partagé : vidé, il relit comme en production
+            // (une entité semée restée en mémoire passerait à côté du filtre de saison).
+            $this->em->clear();
+            $status = $this->postJson($ctx['user'], $uri, $body, $headerA);
+            if ('placer les matchs' === $output) {
+                self::assertSame(200, $status, 'placer sous l\'en-tête de A ne prend aucun match de B');
+                self::assertSame('Aucun match à placer.', $this->json()['message'] ?? null, 'le seul match à placer est celui de B : il n\'entre pas dans la sortie de A');
+            } elseif ('exporter les matchs en PDF' === $output) {
+                self::assertSame(200, $status, 'A (Bêta) garde ses sorties : le PDF de ses matchs est servi');
+                self::assertStringContainsString('Adversaire de la saison en cours', $this->lastRenderedHtml(), 'le PDF contient les matchs de A');
+                self::assertStringNotContainsString('Adversaire de la saison suivante', $this->lastRenderedHtml(), 'le PDF ne contient aucun match de B');
+            } else {
+                self::assertSame(404, $status, $output . ' : un planning de B nommé sous l\'en-tête de A est introuvable');
+            }
+        }
+        self::assertSame(0, $this->countForClub('match_placement_run', $clubId), 'aucun run de placement sous l\'en-tête de A');
+        self::assertSame($schedulesBefore, $this->countForClub('schedule', $clubId), 'aucune version née sous l\'en-tête de A');
+        self::assertSame('DRAFT', $this->em->getConnection()->fetchOne('SELECT status FROM schedule WHERE id = :id', ['id' => $scheduleB->getId()]), 'le planning de B n\'est pas parti au calcul');
+        $this->em->clear();
+        self::assertSame(200, $this->postJson($ctx['user'], '/api/schedules/' . $scheduleA->getId() . '/export-xlsx', [], $headerA), 'A garde ses sorties : son tableur est servi');
+
+        // Témoin : sous l'en-tête de B, la saison qui dépasse son palier, chaque sortie est refusée.
+        foreach ($this->outputRequests($scheduleB->getId(), $seasonB) as $output => [$uri, $body]) {
+            $this->em->clear();
+            self::assertSame(403, $this->postJson($ctx['user'], $uri, $body, ['HTTP_X_SEASON_ID' => $seasonB->getId()]), $output . ' : sous l\'en-tête de B, refusé pour le palier');
+            self::assertSame($this->overrunMessage(21, 20), $this->refusalDetail(), $output . ' : le refus porte le message du dépassement de B');
+        }
+    }
+
     // ─────────────────────────────── Bêta invisible en GET item ───────────────────────────────
 
     /** La bêta est superadmin-only : 404 en GET item (pas seulement masquée de la collection). */
@@ -612,6 +820,12 @@ final class PlanEntitlementsTest extends WebTestCase
             @unlink($file);
         }
         parent::tearDown();
+    }
+
+    /** Le message du dépassement de palier, tel que le contrat du lot 8 (PR 3) l'écrit. */
+    private function overrunMessage(int $teams, int $cap): string
+    {
+        return \sprintf('Votre club compte %d équipes, votre palier en permet %d. Les générations, le placement des matchs et les exports sont suspendus : supprimez des équipes qui n\'ont pas de match, ou changez de palier.', $teams, $cap);
     }
 
     /**
@@ -851,12 +1065,155 @@ final class PlanEntitlementsTest extends WebTestCase
         return $this->client->getResponse()->getStatusCode();
     }
 
-    /** @param array<string, mixed> $payload */
-    private function postJson(User $user, string $uri, array $payload): int
+    /**
+     * @param array<string, mixed>  $payload
+     * @param array<string, string> $headers en-têtes serveur de plus (ex. `HTTP_X_SEASON_ID`)
+     */
+    private function postJson(User $user, string $uri, array $payload, array $headers = []): int
     {
-        $this->client->request('POST', $uri, [], [], $this->authHeaders($user) + ['CONTENT_TYPE' => 'application/json'], json_encode($payload, \JSON_THROW_ON_ERROR));
+        $this->client->request('POST', $uri, [], [], $this->authHeaders($user) + $headers + ['CONTENT_TYPE' => 'application/json'], [] === $payload ? '{}' : json_encode($payload, \JSON_THROW_ON_ERROR));
 
         return $this->client->getResponse()->getStatusCode();
+    }
+
+    /**
+     * Les sept fonctions à sortie, sur le planning nommé. Le tableur en premier : tant que le refus
+     * du palier manque, c'est lui qui rougit, sans qu'une génération parte. Le PDF des matchs couvre
+     * novembre de la saison donnée.
+     *
+     * @return array<string, array{0: string, 1: array<string, mixed>}>
+     */
+    private function outputRequests(string $scheduleId, Season $season): array
+    {
+        $year = SeasonResolver::seasonYear($season->getStartDate());
+
+        return [
+            'exporter le planning en tableur' => ['/api/schedules/' . $scheduleId . '/export-xlsx', []],
+            'exporter le planning en PDF' => ['/api/schedules/' . $scheduleId . '/export-pdf', []],
+            'exporter les matchs en PDF' => ['/api/fixtures/export-pdf', ['from' => $year . '-11-01', 'to' => $year . '-11-30', 'teamId' => null]],
+            'placer les matchs' => ['/api/fixtures/place', []],
+            'combler le planning' => ['/api/schedules/' . $scheduleId . '/fill', []],
+            'régénérer le planning' => ['/api/schedules/' . $scheduleId . '/regenerate', []],
+            'générer le planning' => ['/api/schedules/' . $scheduleId . '/generate', []],
+        ];
+    }
+
+    /** Le `detail` du dernier refus (problème JSON), ou '' s'il n'y en a pas. */
+    private function refusalDetail(): string
+    {
+        $detail = $this->json()['detail'] ?? '';
+
+        return \is_string($detail) ? $detail : '';
+    }
+
+    /** @return array<mixed> */
+    private function json(): array
+    {
+        $decoded = json_decode((string) $this->client->getResponse()->getContent(), true);
+
+        return \is_array($decoded) ? $decoded : [];
+    }
+
+    /** @return array<mixed> les droits de l'offre que `/api/me` sert à cet utilisateur */
+    private function meEntitlements(User $user): array
+    {
+        $this->client->request('GET', '/api/me', [], [], $this->authHeaders($user));
+        self::assertSame(200, $this->client->getResponse()->getStatusCode(), '/api/me répond');
+        $club = $this->json()['club'] ?? null;
+        $entitlements = \is_array($club) ? ($club['entitlements'] ?? null) : null;
+        self::assertIsArray($entitlements, '/api/me sert les droits de l\'offre');
+
+        return $entitlements;
+    }
+
+    private function countForClub(string $table, string $clubId): int
+    {
+        return (int) $this->em->getConnection()->fetchOne(\sprintf('SELECT COUNT(*) FROM %s WHERE club_id = :club', $table), ['club' => $clubId]);
+    }
+
+    /** Une version de la saison, liée à son plan comme la production au POST. */
+    private function seedSchedule(Season $season, ScheduleStatus $status): Schedule
+    {
+        $this->scopeGucToClub($season->getClubId());
+        $schedule = (new Schedule)
+            ->setClubId($season->getClubId())
+            ->setSeasonId($season->getId())
+            ->setName('Version ' . $status->value)
+            ->setStatus($status);
+        $this->linkSeededSchedule($schedule);
+        $this->em->flush();
+
+        return $schedule;
+    }
+
+    /** Un match de championnat d'une équipe de la saison (créée si la saison n'en a pas), en novembre de l'année de la saison en cours. */
+    private function seedMatch(string $clubId, Season $season, string $opponent, FixtureHomeAway $homeAway): void
+    {
+        $this->scopeGucToClub($clubId);
+        $teamId = $this->em->getConnection()->fetchOne('SELECT id FROM team WHERE club_id = :club AND season_id = :season ORDER BY name LIMIT 1', ['club' => $clubId, 'season' => $season->getId()]);
+        if (!\is_string($teamId)) {
+            $this->seedTeams($clubId, $season->getId(), 1);
+            $teamId = (string) $this->em->getConnection()->fetchOne('SELECT id FROM team WHERE club_id = :club AND season_id = :season', ['club' => $clubId, 'season' => $season->getId()]);
+        }
+        $competition = (new Competition)
+            ->setClubId($clubId)
+            ->setSeasonId($season->getId())
+            ->setTeamId($teamId)
+            ->setName('Championnat')
+            ->setCompetitionType(CompetitionType::CHAMPIONSHIP);
+        $this->em->persist($competition);
+        $this->em->flush();
+
+        $fixture = new Fixture;
+        $fixture->setClubId($clubId);
+        $fixture->setSeasonId($season->getId());
+        $fixture->setTeamId($teamId);
+        $fixture->setCompetitionId($competition->getId());
+        $fixture->setMatchDate(new DateTimeImmutable(SeasonResolver::seasonYear(new DateTimeImmutable('today')) . '-11-14'));
+        $fixture->setHomeAway($homeAway);
+        $fixture->setOpponentLabel($opponent);
+        $this->em->persist($fixture);
+        $this->em->flush();
+    }
+
+    /** Écrit un rendu minimal mais valide (entête %PDF) dans le répertoire réel des exports. */
+    private function writeRender(string $filename): void
+    {
+        if (!is_dir(PdfGenerator::outputDir())) {
+            @mkdir(PdfGenerator::outputDir(), 0o775, true);
+        }
+        $path = PdfGenerator::outputDir() . '/' . $filename;
+        file_put_contents($path, "%PDF-1.4\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF\n");
+        $this->tempFiles[] = $path;
+    }
+
+    /**
+     * Le worker de rendu remplacé par un double qui écrit un PDF factice et garde le HTML reçu
+     * (patron `Integration/Controller/ExportMatchesTest`) : le PDF des matchs se lit sans navigateur.
+     */
+    private function renderMatchesPdfInMemory(): void
+    {
+        $reflection = new ReflectionClass(PdfGenerator::class);
+        $pdf = $reflection->newInstanceWithoutConstructor();
+        $reflection->getProperty('httpClient')->setValue($pdf, new MockHttpClient(function (string $method, string $url, array $options): ResponseInterface {
+            $payload = json_decode((string) $options['body'], true);
+            \assert(\is_array($payload));
+            $this->renderedHtml[] = (string) ($payload['html'] ?? '');
+            if (!is_dir(PdfGenerator::outputDir())) {
+                @mkdir(PdfGenerator::outputDir(), 0o775, true);
+            }
+            file_put_contents(PdfGenerator::outputDir() . '/' . $payload['filename'], '%PDF-1.4 test');
+
+            return new MockResponse((string) json_encode(['success' => true]));
+        }));
+        $reflection->getProperty('brandAssets')->setValue($pdf, new BrandAssets);
+        $reflection->getProperty('productIdentity')->setValue($pdf, new ProductIdentity(productName: 'Zephyr'));
+        self::getContainer()->set(PdfGenerator::class, $pdf);
+    }
+
+    private function lastRenderedHtml(): string
+    {
+        return [] === $this->renderedHtml ? '' : $this->renderedHtml[array_key_last($this->renderedHtml)];
     }
 
     /** Le corps de la dernière réponse, ré-encodé lisible (accents et apostrophes non échappés). */
