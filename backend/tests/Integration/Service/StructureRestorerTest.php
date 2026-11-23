@@ -16,12 +16,12 @@ use App\Entity\ConstraintPeriodOverride;
 use App\Entity\Fixture;
 use App\Entity\ImplicitRuleSetting;
 use App\Entity\Person;
+use App\Entity\PlanTeam;
 use App\Entity\Reservation;
 use App\Entity\Schedule;
 use App\Entity\Season;
 use App\Entity\Team;
 use App\Entity\TeamCoach;
-use App\Entity\PlanTeam;
 use App\Entity\Venue;
 use App\Entity\VenueTrainingSlot;
 use App\Enum\CalendarEntryKind;
@@ -386,7 +386,7 @@ final class StructureRestorerTest extends KernelTestCase
      * Lot 4, PR 3a (ligne 15 du plan, a) : « Charger » une version du socle rend à chaque équipe les séances et le plafond
      * par jour de la photo, sur sa ligne du plan de saison — la valeur saisie depuis s'en va.
      * (Remplace le cas d'avant le lot où le plafond vivait sur l'équipe et une photo sans le champ donnait 1 : les photos
-     * sont converties par la migration, `Lot4MigrationChainTest::testTheConversionMovesThePhotoTeamSettingsOntoTheSoclePlan`.)
+     * sont converties par la migration, `Lot4MigrationChainTest::testTheConversionMovesThePhotoTeamSettingsOntoTheSoclePlan`.).
      */
     public function testLoadingGivesEachTeamBackTheSessionsAndDailyCapOfThePhoto(): void
     {

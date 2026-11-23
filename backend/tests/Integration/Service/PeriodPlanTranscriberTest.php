@@ -51,6 +51,11 @@ final class PeriodPlanTranscriberTest extends KernelTestCase
         self::assertSame(['SM1' => 2, 'U15' => 3], $this->sessionsOf($result->scheduleId, $decor), 'la version transcrite reprend toutes les séances du socle, la séance ajoutée à la main de U15 comprise');
     }
 
+    protected function setUp(): void
+    {
+        self::bootKernel();
+    }
+
     /**
      * @param array{sm1: string, u15: string} $decor
      *
@@ -64,10 +69,5 @@ final class PeriodPlanTranscriberTest extends KernelTestCase
             'SM1' => \count($repository->findBy(['scheduleId' => $scheduleId, 'teamId' => $decor['sm1']])),
             'U15' => \count($repository->findBy(['scheduleId' => $scheduleId, 'teamId' => $decor['u15']])),
         ];
-    }
-
-    protected function setUp(): void
-    {
-        self::bootKernel();
     }
 }

@@ -165,7 +165,7 @@ final class PlanCompositionTenantIsolationTest extends WebTestCase
 
     /**
      * @param array{club: Club, user: User, season: Season, holiday: string, team: string} $as
-     * @param array<string, mixed>                                                          $body
+     * @param array<string, mixed>                                                         $body
      */
     private function post(array $as, array $body): void
     {
@@ -206,7 +206,7 @@ final class PlanCompositionTenantIsolationTest extends WebTestCase
 
     /**
      * Un compte lu sous le contexte de chacun des deux clubs, additionné : ce qu'une écriture fautive aurait laissé,
-     * quel que soit le club qu'elle porte. (La connexion d'administration ne voit pas la transaction du test.)
+     * quel que soit le club qu'elle porte. (La connexion d'administration ne voit pas la transaction du test.).
      *
      * @param list<string> $params
      */
