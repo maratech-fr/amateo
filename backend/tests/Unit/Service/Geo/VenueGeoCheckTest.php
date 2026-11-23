@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Tests\Unit\Service\Geo;
 
+use App\Entity\Place;
 use App\Entity\Venue;
 use App\Service\Basketball\FfbbApiClient;
 use App\Service\Basketball\FfbbSalleAddressResolver;
@@ -138,14 +139,12 @@ final class VenueGeoCheckTest extends TestCase
         ?array $forwardFeature,
         bool $forwardThrows = false,
     ): array {
-        $venue = (new Venue)
+        $venue = new Venue((new Place)->setClubId('club-1')->setLatitude(self::VENUE_LAT)->setLongitude(self::VENUE_LON))
             ->setClubId('club-1')
             ->setSeasonId('season-1')
             ->setName('Zola')
             ->setSource('manual')
-            ->setExternalRef('166900001')
-            ->setLatitude(self::VENUE_LAT)
-            ->setLongitude(self::VENUE_LON);
+            ->setExternalRef('166900001');
 
         $repo = $this->createMock(EntityRepository::class);
         $repo->method('findBy')->willReturn([$venue]);

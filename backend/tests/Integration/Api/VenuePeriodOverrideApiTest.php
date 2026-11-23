@@ -25,6 +25,7 @@ use App\Enum\LockLevel;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
 use App\Service\SchedulePlanProvisioner;
+use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\ProvisionsPeriodPlanTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
@@ -52,6 +53,7 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 #[Group('integration')]
 final class VenuePeriodOverrideApiTest extends WebTestCase
 {
+    use CreatesPeopleAndPlacesTrait;
     use ProvisionsPeriodPlanTrait;
     use TenantGucTrait;
 
@@ -761,8 +763,7 @@ final class VenuePeriodOverrideApiTest extends WebTestCase
 
     private function venue(string $name): Venue
     {
-        $venue = (new Venue)->setClubId($this->club->getId())->setSeasonId($this->season->getId())
-            ->setName($name)->setSource('manual')->setIsActive(true);
+        $venue = $this->newVenue($this->club->getId(), $this->season->getId(), $name)->setIsActive(true);
         $this->em->persist($venue);
         $this->em->flush();
 

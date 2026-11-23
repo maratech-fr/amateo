@@ -14,7 +14,6 @@ use App\Entity\SharedTrainingBlockTeam;
 use App\Entity\Sport;
 use App\Entity\SportCategory;
 use App\Entity\Team;
-use App\Entity\Venue;
 use App\Entity\VenueTrainingSlot;
 use App\Enum\LockLevel;
 use App\Enum\LockOrigin;
@@ -35,6 +34,7 @@ use App\Service\SchedulePlanProvisioner;
 use App\Service\ScheduleProgressPublisher;
 use App\Service\TeamCaseOccupancyGuard;
 use App\Tests\ChoosesPlanVersionTrait;
+use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -67,6 +67,7 @@ use Symfony\Component\Mercure\HubInterface;
 final class SlotMoveGroupVerdictTest extends KernelTestCase
 {
     use ChoosesPlanVersionTrait;
+    use CreatesPeopleAndPlacesTrait;
     use TenantGucTrait;
 
     private const string ACCEPT = '{"valid":true,"violations":[],"metrics":{"solver_version":"cp-sat","nb_variables":0,"nb_constraints":0,"wall_time_ms":0}}';
@@ -533,7 +534,7 @@ final class SlotMoveGroupVerdictTest extends KernelTestCase
 
         $venueIds = [];
         foreach (['Gymnase Un', 'Gymnase Deux'] as $name) {
-            $venue = (new Venue)->setClubId($clubId)->setSeasonId($seasonId)->setName($name)->setSource('manual');
+            $venue = $this->newVenue($clubId, $seasonId, $name);
             $this->em->persist($venue);
             $this->em->flush();
             $venueIds[] = $venue->getId();

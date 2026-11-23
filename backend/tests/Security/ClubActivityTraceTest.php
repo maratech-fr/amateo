@@ -11,7 +11,6 @@ use App\Entity\Schedule;
 use App\Entity\Season;
 use App\Entity\Team;
 use App\Entity\User;
-use App\Entity\Venue;
 use App\Entity\VenueTrainingSlot;
 use App\Enum\CalendarEntryKind;
 use App\Enum\CalendarEntryPeriodType;
@@ -20,6 +19,7 @@ use App\Enum\SeasonStatus;
 use App\Service\SchedulePlanProvisioner;
 use App\Service\SeasonResolver;
 use App\Tests\ChoosesPlanVersionTrait;
+use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\DBAL\Connection;
@@ -57,6 +57,7 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 final class ClubActivityTraceTest extends WebTestCase
 {
     use ChoosesPlanVersionTrait;
+    use CreatesPeopleAndPlacesTrait;
     use TenantGucTrait;
 
     /** Adresses de `.env.test` (`APP_ACTIVITY_EXCLUDED_EMAILS`) : la 1ʳᵉ y est en casse mixte, la 2ᵉ précédée d'une espace. */
@@ -276,7 +277,7 @@ final class ClubActivityTraceTest extends WebTestCase
 
         $this->em->persist((new Team)->setClubId($club->getId())->setSeasonId($season->getId())->setName('U15')
             ->setSportCategoryId('cccccccc-cccc-4ccc-8ccc-cccccccccccc')->setPriorityTierId(1)->setSessionsPerWeek(1));
-        $venue = (new Venue)->setClubId($club->getId())->setSeasonId($season->getId())->setName('G')->setCanSplit(false)->setSource('manual');
+        $venue = $this->newVenue($club->getId(), $season->getId(), 'G')->setCanSplit(false);
         $this->em->persist($venue);
         $this->em->flush();
         $this->em->persist((new VenueTrainingSlot)->setClubId($club->getId())->setSeasonId($season->getId())->setVenueId($venue->getId())

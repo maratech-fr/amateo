@@ -16,6 +16,7 @@ use App\Entity\Constraint;
 use App\Entity\Fixture;
 use App\Entity\MatchConstraint;
 use App\Entity\Person;
+use App\Entity\Place;
 use App\Entity\Reservation;
 use App\Entity\Schedule;
 use App\Entity\SchedulePlan;
@@ -170,9 +171,13 @@ trait EngineRequestDecorTrait
         $em->persist((new SportCategory)->setId(self::ER_CATEGORY)->setClubId(self::ER_CLUB)->setSportId($sport->getId())
             ->setName('Catégorie de référence')->setMatchMinutes(80)->setWarmupMinutes(30));
 
-        $em->persist((new Venue)->setId(self::ER_VENUE_NORD)->setClubId(self::ER_CLUB)->setSeasonId(self::ER_SEASON)
+        $place = (new Place)->setClubId(self::ER_CLUB);
+        $em->persist($place);
+        $em->persist(new Venue($place)->setId(self::ER_VENUE_NORD)->setClubId(self::ER_CLUB)->setSeasonId(self::ER_SEASON)
             ->setName('Gymnase Nord')->setCanSplit(true)->setSource('manual'));
-        $em->persist((new Venue)->setId(self::ER_VENUE_SUD)->setClubId(self::ER_CLUB)->setSeasonId(self::ER_SEASON)
+        $place = (new Place)->setClubId(self::ER_CLUB);
+        $em->persist($place);
+        $em->persist(new Venue($place)->setId(self::ER_VENUE_SUD)->setClubId(self::ER_CLUB)->setSeasonId(self::ER_SEASON)
             ->setName('Gymnase Sud')->setCanSplit(false)->setSource('manual'));
 
         foreach ([

@@ -7,8 +7,8 @@ namespace App\Tests\Api;
 use App\Entity\Season;
 use App\Entity\SportCategory;
 use App\Entity\Team;
-use App\Entity\Venue;
 use App\Service\TenantConnectionContext;
+use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\VerifiesRegistration;
 use Doctrine\ORM\EntityManagerInterface;
 use PHPUnit\Framework\Attributes\Group;
@@ -25,6 +25,7 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 #[Group('integration')]
 final class CollectionPaginationTest extends WebTestCase
 {
+    use CreatesPeopleAndPlacesTrait;
     use VerifiesRegistration;
 
     private KernelBrowser $client;
@@ -104,11 +105,7 @@ final class CollectionPaginationTest extends WebTestCase
         self::assertInstanceOf(Season::class, $season, 'register must have created a season');
 
         for ($i = 0; $i < $count; ++$i) {
-            $venue = new Venue;
-            $venue->setClubId($clubId);
-            $venue->setSeasonId($season->getId());
-            $venue->setName(\sprintf('Gymnase %02d', $i));
-            $venue->setSource('manual');
+            $venue = $this->newVenue($clubId, $season->getId(), \sprintf('Gymnase %02d', $i));
             $em->persist($venue);
         }
         $em->flush();

@@ -14,11 +14,11 @@ use App\Entity\Sport;
 use App\Entity\SportCategory;
 use App\Entity\Team;
 use App\Entity\User;
-use App\Entity\Venue;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
 use App\Enum\TeamLevel;
 use App\Tests\ChoosesPlanVersionTrait;
+use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -38,6 +38,7 @@ use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
 final class VenueUsageStatsApiTest extends WebTestCase
 {
     use ChoosesPlanVersionTrait;
+    use CreatesPeopleAndPlacesTrait;
     use TenantGucTrait;
 
     private EntityManagerInterface $em;
@@ -175,7 +176,7 @@ final class VenueUsageStatsApiTest extends WebTestCase
         $this->em->flush();
         $seasonId = $season->getId();
 
-        $venue = (new Venue)->setClubId($clubId)->setSeasonId($seasonId)->setName($venueName)->setSource('manual');
+        $venue = $this->newVenue($clubId, $seasonId, $venueName);
         $this->em->persist($venue);
 
         $sport = (new Sport)->setName('Basketball')->setSlug('bball-' . strtolower($suffix))->setIsActive(true);

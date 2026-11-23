@@ -116,6 +116,13 @@ services:
   `App\Structure\PersonDirectory`, bounded by the club; `emailsOfClub` runs raw SQL on `person` with the
   club in an explicit clause, under RLS. Guarded by `PersonPlaceTenantIsolationTest` (blocking gate step);
   detail: `docs/security/rls.md` § `person`.
+- **Address and position of a venue live on `place`, read through `PlaceDirectory`.** Same pattern as
+  `person`: `place` is a plain tenant table (`Entity/Place.php`, `TenantOwnedInterface`, filter + RLS);
+  `venue.place_id` is a COMPOSITE foreign key `(place_id, club_id)` → `place (id, club_id)`, so a venue can never
+  point at another club's place. A place is shared by the venues of several seasons. Every read goes through
+  `App\Structure\PlaceDirectory`, bounded by the club; the raw SQL on `place` / `venue` (sweep, travel recompute)
+  carries the club in an explicit clause. Guarded by `PersonPlaceTenantIsolationTest`; detail:
+  `docs/security/rls.md` § `place`.
 - **Role layer on top of the membership (P1-1):** the role is decided **centrally**. Every `^/api/`
   route declares its module and audience (`#[ClubFunction]`, `#[ClubResource]`, `#[AccountFunction]`,
   `src/Access/`) and `ClubAccessListener` (`kernel.request`, **priority 4**, main request only;

@@ -1,7 +1,7 @@
 # ADR-0006 — Personne, rôle et lieu au club : l'identité vit une fois, au club ; la saison ne porte que le rôle
 
-- **Status**: accepted — Date: 2026-11-22 (lot conception, lot 3). La moitié « personne » est en place ; la moitié « lieu »
-  (et ses temps de trajet) est décidée et pas encore livrée : elle suit le même patron.
+- **Status**: accepted — Date: 2026-11-22 (lot conception, lot 3). Les moitiés « personne » et « lieu » sont en place ;
+  les temps de trajet entre deux lieux, décidés sur le même patron, ne le sont pas encore.
 
 ## Contexte
 
@@ -31,8 +31,20 @@ ses copies. L'adresse et la position d'un gymnase, et le barème de trajet entre
    par la commande de support `app:people:erase` (`PersonEraser`, `docs/security/rgpd.md` § La fiche de personne).
 5. **La saison suivante réutilise la fiche** : seul le rôle se recopie. Une correction d'identité vaut dans
    toutes les saisons, passées comprises (lecture seule directe inchangée).
-6. **Même patron pour le lieu** (adresse, position d'un gymnase) et le temps de trajet entre deux lieux :
-   table au club, ligne de saison conservée comme usage, clés composées avec le club.
+6. **Même patron pour le lieu** : `App\Entity\Place` (table `place`, `TenantOwnedInterface`) porte l'adresse et
+   la position (latitude, longitude) d'un gymnase, une fois, au club ; `venue` reste la ligne de la saison, l'usage
+   du lieu cette saison-là, et le pointe par `venue.place_id`. Clé étrangère COMPOSÉE `fk_venue_place_club`
+   `(place_id, club_id)` → `place (id, club_id)`, `ON DELETE RESTRICT`, posée à la main ; `UNIQUE (season_id,
+   place_id)` : au plus un gymnase par lieu et par saison. Un lieu est PARTAGÉ entre les saisons : la saison
+   suivante réutilise le lieu (`SeasonTransitionService`), elle ne recopie ni adresse ni position. Une seule porte
+   de lecture, `App\Structure\PlaceDirectory` (`of`, `forVenues`), bornée par le club ; `Venue` n'a plus
+   d'accesseur d'adresse ni de position. Tout gymnase créé reçoit un lieu neuf. « Dissocier » de la salle fédérale
+   passe le gymnase de CETTE saison sur un lieu neuf sans adresse (décision 2, A) : le lieu qu'il quitte, et les
+   gymnases des autres saisons qui le pointent, ne bougent pas. Un lieu sans gymnase reste jusqu'à la purge de
+   sa saison, puis `UnusedIdentitySweeper` le balaie ; l'effacement du club emporte tous les lieux
+   (`#[Family(Level::CLUB)]`). « Charger » remet un gymnase supprimé sur son lieu, adresse comprise.
+7. **Le temps de trajet entre deux lieux** suivra le même patron (table au club, clés composées avec le club) :
+   pas encore livré, `venue_travel_time` reste par saison et par gymnase.
 
 ## Conséquences
 
@@ -43,8 +55,15 @@ ses copies. L'adresse et la position d'un gymnase, et le barème de trajet entre
   respecte (`PurgeOrderRespectsForeignKeysTest`).
 - Pas de fusion à la conversion : deux coachs homonymes donnent deux fiches ; reconnaître une même personne
   entre saisons n'est pas codé.
-- Effacer UNE personne (cascade, remplacement de son nom dans les textes figés) est un chantier distinct
-  (PR 3 du lot) ; avant lui, aucune commande n'efface une personne seule.
+- **Le lieu est partagé, donc sa correction vaut pour toutes les saisons** (décision 7A, aucune garde « saison
+  close » sur le lieu) : corriger l'adresse d'un gymnase dans la saison en cours corrige aussi le lieu qu'une saison
+  passée archivée désigne ; l'archive n'est pas figée sur les adresses d'alors. Le recalcul des trajets qui suit un
+  déplacement vaut pour chaque saison où le lieu a un gymnase et qui a déjà une matrice.
+- **Un lieu balayé perd son adresse pour de bon** : si une version ancienne désigne encore un lieu que le balayage
+  a supprimé (plus aucun gymnase dessus), « Charger » recrée le gymnase et ses créneaux sur un lieu NEUF, sans
+  adresse (`StructureRestorer`) : jamais un gymnase perdu, mais l'adresse est à ressaisir.
+- Effacer UNE personne (cascade, remplacement de son nom dans les textes figés) est le rôle de la commande
+  `app:people:erase` (PR 3 du lot).
 
 ## Alternatives écartées
 

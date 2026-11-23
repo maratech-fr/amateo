@@ -19,7 +19,6 @@ use App\Entity\Sport;
 use App\Entity\SportCategory;
 use App\Entity\Team;
 use App\Entity\TeamCoach;
-use App\Entity\Venue;
 use App\Entity\VenueTravelTime;
 use App\Enum\CalendarEntryKind;
 use App\Enum\CalendarEntryPeriodType;
@@ -808,7 +807,7 @@ final class PlacedSessionPersonConflictDetectorTest extends KernelTestCase
 
         $gymIds = [];
         foreach (['Gymnase A', 'Gymnase B'] as $name) {
-            $venue = (new Venue)->setClubId($clubId)->setSeasonId($seasonId)->setName($name)->setSource('manual');
+            $venue = $this->newVenue($clubId, $seasonId, $name);
             $this->em->persist($venue);
             $this->em->flush();
             $gymIds[] = $venue->getId();
@@ -871,7 +870,7 @@ final class PlacedSessionPersonConflictDetectorTest extends KernelTestCase
      */
     private function thirdGym(array $ctx): string
     {
-        $venue = (new Venue)->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])->setName('Gymnase C')->setSource('manual');
+        $venue = $this->newVenue($ctx['clubId'], $ctx['seasonId'], 'Gymnase C');
         $this->em->persist($venue);
         $this->em->flush();
 

@@ -17,7 +17,6 @@ use App\Entity\SharedTrainingBlockTeam;
 use App\Entity\Team;
 use App\Entity\TeamCoach;
 use App\Entity\User;
-use App\Entity\Venue;
 use App\Entity\VenueTrainingSlot;
 use App\Enum\CalendarEntryKind;
 use App\Enum\CalendarEntryPeriodType;
@@ -307,7 +306,7 @@ final class GenerationRefusesACoachInTwoPlacesTest extends WebTestCase
 
         $venues = [];
         foreach (['Gymnase Un', 'Gymnase Deux'] as $name) {
-            $venue = (new Venue)->setClubId($clubId)->setSeasonId($seasonId)->setName($name)->setSource('manual');
+            $venue = $this->newVenue($clubId, $seasonId, $name);
             $this->em->persist($venue);
             $venues[] = $venue;
         }

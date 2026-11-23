@@ -12,7 +12,6 @@ use App\Entity\SchedulePlan;
 use App\Entity\ScheduleSlotTemplate;
 use App\Entity\Season;
 use App\Entity\Team;
-use App\Entity\Venue;
 use App\Enum\CalendarEntryKind;
 use App\Enum\CalendarEntryPeriodType;
 use App\Enum\ConstraintFamily;
@@ -35,6 +34,7 @@ use App\Service\ScheduleResultImporter;
 use App\Service\SolverMetricsMapper;
 use App\Service\StructureSnapshotter;
 use App\Service\TenantConnectionContext;
+use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\ProvisionsPeriodPlanTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
@@ -69,6 +69,7 @@ use Symfony\Component\Mercure\HubInterface;
 #[Group('integration')]
 final class SocleReferencePayloadParityTest extends KernelTestCase
 {
+    use CreatesPeopleAndPlacesTrait;
     use ProvisionsPeriodPlanTrait;
     use TenantGucTrait;
 
@@ -429,12 +430,7 @@ final class SocleReferencePayloadParityTest extends KernelTestCase
 
         $venueIds = [];
         foreach (['A', 'B'] as $name) {
-            $venue = new Venue;
-            $venue->setClubId($club->getId());
-            $venue->setSeasonId($season->getId());
-            $venue->setName('Gymnase ' . $name);
-            $venue->setCanSplit(false);
-            $venue->setSource('manual');
+            $venue = $this->newVenue($club->getId(), $season->getId(), 'Gymnase ' . $name)->setCanSplit(false);
             $this->em->persist($venue);
             $venueIds[] = $venue->getId();
         }

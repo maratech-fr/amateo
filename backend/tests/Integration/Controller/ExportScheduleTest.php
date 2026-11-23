@@ -9,12 +9,12 @@ use App\Entity\ClubUser;
 use App\Entity\Schedule;
 use App\Entity\Season;
 use App\Entity\User;
-use App\Entity\Venue;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
 use App\Message\ExportPdfMessage;
 use App\Service\SchedulePlanProvisioner;
 use App\Tests\ChoosesPlanVersionTrait;
+use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\MessageHandler\PdfCreditIsTakenOnDeliveryTest;
 use App\Tests\Security\ExportPdfDownloadIsolationTest;
 use App\Tests\TenantGucTrait;
@@ -40,6 +40,7 @@ use Symfony\Component\Messenger\Transport\TransportInterface;
 final class ExportScheduleTest extends WebTestCase
 {
     use ChoosesPlanVersionTrait;
+    use CreatesPeopleAndPlacesTrait;
     use TenantGucTrait;
     use VerifiesRegistration;
 
@@ -100,11 +101,7 @@ final class ExportScheduleTest extends WebTestCase
         // Un gymnase d'un AUTRE club — inséré sous le GUC de CET autre club (RLS WITH CHECK).
         [$clubB, , $seasonB] = $this->seedClub('vb');
         $this->scopeGucToClub($clubB->getId());
-        $foreignVenue = new Venue;
-        $foreignVenue->setClubId($clubB->getId());
-        $foreignVenue->setSeasonId($seasonB->getId());
-        $foreignVenue->setName('Gym étranger');
-        $foreignVenue->setSource('manual');
+        $foreignVenue = $this->newVenue($clubB->getId(), $seasonB->getId(), 'Gym étranger');
         $this->em->persist($foreignVenue);
         $this->em->flush();
         $foreignVenueId = $foreignVenue->getId();

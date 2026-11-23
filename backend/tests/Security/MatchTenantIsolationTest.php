@@ -1398,11 +1398,7 @@ final class MatchTenantIsolationTest extends WebTestCase
     private function createVenue(Club $club, Season $season, string $name): Venue
     {
         $this->scopeGucToClub($club->getId());
-        $venue = new Venue;
-        $venue->setClubId($club->getId());
-        $venue->setSeasonId($season->getId());
-        $venue->setName($name);
-        $venue->setSource('manual');
+        $venue = $this->newVenue($club->getId(), $season->getId(), $name);
         $this->em->persist($venue);
         $this->em->flush();
 

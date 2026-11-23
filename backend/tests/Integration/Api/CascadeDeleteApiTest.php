@@ -324,8 +324,7 @@ final class CascadeDeleteApiTest extends WebTestCase
     {
         [$otherClub, $otherSeason] = $this->createOtherClub();
         $this->scopeGucToClub($otherClub->getId());
-        $venue = (new Venue)->setClubId($otherClub->getId())->setSeasonId($otherSeason->getId())
-            ->setName('Chez B')->setSource('manual');
+        $venue = $this->newVenue($otherClub->getId(), $otherSeason->getId(), 'Chez B');
         $this->em->persist($venue);
         $this->em->flush();
         $fixtureId = $this->persistHomeFixture($venue->getId(), FixtureStatus::PLACED, $otherClub, $otherSeason);
@@ -456,8 +455,7 @@ final class CascadeDeleteApiTest extends WebTestCase
 
     private function persistVenue(string $name): Venue
     {
-        $venue = (new Venue)->setClubId($this->club->getId())->setSeasonId($this->season->getId())
-            ->setName($name)->setSource('manual');
+        $venue = $this->newVenue($this->club->getId(), $this->season->getId(), $name);
         $this->em->persist($venue);
         $this->em->flush();
 

@@ -12,6 +12,7 @@ use App\Entity\Venue;
 use App\Enum\SeasonStatus;
 use App\Service\Geo\VenueGeoCheck;
 use App\Service\SeasonResolver;
+use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -29,6 +30,7 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 #[Group('integration')]
 final class VenueGeoCheckTest extends WebTestCase
 {
+    use CreatesPeopleAndPlacesTrait;
     use TenantGucTrait;
 
     private KernelBrowser $client;
@@ -107,14 +109,8 @@ final class VenueGeoCheckTest extends WebTestCase
     private function ffbbVenue(Club $club, Season $season, string $name, ?string $externalRef, ?string $latitude, ?string $longitude): Venue
     {
         $this->scopeGucToClub($club->getId());
-        $venue = new Venue;
-        $venue->setClubId($club->getId());
-        $venue->setSeasonId($season->getId());
-        $venue->setName($name);
-        $venue->setSource('manual');
-        $venue->setExternalRef($externalRef);
-        $venue->setLatitude($latitude);
-        $venue->setLongitude($longitude);
+        $venue = $this->newVenue($club->getId(), $season->getId(), $name)->setExternalRef($externalRef);
+        $this->placeOf($venue)->setLatitude($latitude)->setLongitude($longitude);
         $this->em->persist($venue);
         $this->em->flush();
 

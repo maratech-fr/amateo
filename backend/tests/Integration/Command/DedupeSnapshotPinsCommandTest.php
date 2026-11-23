@@ -7,6 +7,7 @@ namespace App\Tests\Integration\Command;
 use App\Command\DedupeSnapshotPinsCommand;
 use App\Entity\CalendarEntry;
 use App\Entity\Club;
+use App\Entity\Place;
 use App\Entity\Reservation;
 use App\Entity\Schedule;
 use App\Entity\ScheduleSlotTemplate;
@@ -348,7 +349,9 @@ final class DedupeSnapshotPinsCommandTest extends KernelTestCase
         $this->em->flush();
 
         $this->seedTeam($club->getId(), $season->getId(), self::TEAM_ID, 'Seniors A');
-        $venue = (new Venue)->setClubId($club->getId())->setSeasonId($season->getId())->setName('Platane')
+        $place = (new Place)->setClubId($club->getId());
+        $this->em->persist($place);
+        $venue = new Venue($place)->setClubId($club->getId())->setSeasonId($season->getId())->setName('Platane')
             ->setCanSplit(false)->setSource('manual');
         $venue->setId(self::VENUE_ID);
         $this->em->persist($venue);

@@ -19,6 +19,7 @@ use App\Enum\SeasonStatus;
 use App\Service\ReservationGroupOccupancy;
 use App\Service\SeasonResolver;
 use App\Tests\ChoosesPlanVersionTrait;
+use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\CreatesPeriodPlanTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
@@ -47,6 +48,7 @@ use Symfony\Component\HttpKernel\Exception\UnprocessableEntityHttpException;
 final class GroupReservationApiTest extends WebTestCase
 {
     use ChoosesPlanVersionTrait;
+    use CreatesPeopleAndPlacesTrait;
     use CreatesPeriodPlanTrait;
     use TenantGucTrait;
 
@@ -618,10 +620,7 @@ final class GroupReservationApiTest extends WebTestCase
 
     private function venueFor(Club $club, Season $season, bool $canSplit): Venue
     {
-        $venue = (new Venue)
-            ->setClubId($club->getId())->setSeasonId($season->getId())
-            ->setName('Gym ' . substr($this->uuid(), 0, 6))
-            ->setSource('manual')->setCanSplit($canSplit);
+        $venue = $this->newVenue($club->getId(), $season->getId(), 'Gym ' . substr($this->uuid(), 0, 6))->setCanSplit($canSplit);
         $this->em->persist($venue);
 
         return $venue;

@@ -11,8 +11,8 @@ habitudes/passerelles/`opponent_venue_link`/`club_travel_cache`/`ConflictResolut
 table tenant du module). **NR tenant GATANT (chemin du step `Blocking suite` de `ci.yml` +
 `docs/testing/blocking-tests.md`)** : `MessageHandler/ComputeTravelTimesHandlerTest` (GUC posé/
 clear, verrou, jamais la ligne d'un autre club). Cache de trajets : `TravelTimeCacheTest` (clé
-arrondie, jamais recalculé, profils séparés), `ClubTravelCacheSeedTest` (rejoue le seed de la
-migration verbatim, zéro dérive). Client IGN : `IgnRoutingClientTest` (pacing 1/s, 429 réessayé,
+arrondie, jamais recalculé, profils séparés), `VenueTravelTimeAutofillCacheTest` (un trajet de la
+matrice entre dans le cache et ne repart pas vers IGN). Client IGN : `IgnRoutingClientTest` (pacing 1/s, 429 réessayé,
 journalisé). Progression Mercure : `TravelProgressPublisherTest`. Logo fédéral :
 `OpponentLogoApiTest` (401 anonyme, 404, MIME, Cache-Control, code invalide). Contrats cross-stack
 (groupe `contract`) : `MatchPlacementContractSchemaTest`,

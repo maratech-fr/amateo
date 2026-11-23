@@ -8,6 +8,7 @@ use App\Clock\DevClockStore;
 use App\Entity\Competition;
 use App\Entity\FbiIngestion;
 use App\Entity\Fixture;
+use App\Entity\Place;
 use App\Entity\Season;
 use App\Entity\Sport;
 use App\Entity\SportCategory;
@@ -295,12 +296,9 @@ final class ImportFixturesApiTest extends WebTestCase
         $this->scopeGucToClub($clubId);
         $season = $this->em->getRepository(Season::class)->findOneBy(['clubId' => $clubId]);
         self::assertNotNull($season);
-        $venue = new Venue;
-        $venue->setClubId($clubId);
-        $venue->setSeasonId($season->getId());
-        $venue->setName('Gymnase Matéo');
-        $venue->setSource('manual');
-        $venue->setExternalLabels(['gymnase mateo']);
+        $place = (new Place)->setClubId($clubId);
+        $this->em->persist($place);
+        $venue = new Venue($place)->setClubId($clubId)->setSeasonId($season->getId())->setName('Gymnase Matéo')->setSource('manual')->setExternalLabels(['gymnase mateo']);
         $this->em->persist($venue);
         $this->em->flush();
 
@@ -539,11 +537,9 @@ final class ImportFixturesApiTest extends WebTestCase
         $this->scopeGucToClub($clubId);
         $season = $this->em->getRepository(Season::class)->findOneBy(['clubId' => $clubId]);
         self::assertNotNull($season);
-        $venue = new Venue;
-        $venue->setClubId($clubId);
-        $venue->setSeasonId($season->getId());
-        $venue->setName($name);
-        $venue->setSource('manual');
+        $place = (new Place)->setClubId($clubId);
+        $this->em->persist($place);
+        $venue = new Venue($place)->setClubId($clubId)->setSeasonId($season->getId())->setName($name)->setSource('manual');
         $this->em->persist($venue);
         $this->em->flush();
 
@@ -568,11 +564,9 @@ final class ImportFixturesApiTest extends WebTestCase
         $fixture = $this->em->getRepository(Fixture::class)->findOneBy(['externalRef' => $externalRef]);
         self::assertNotNull($fixture, 'imported fixture must exist');
         $this->scopeGucToClub($fixture->getClubId());
-        $venue = new Venue;
-        $venue->setClubId($fixture->getClubId());
-        $venue->setSeasonId($fixture->getSeasonId());
-        $venue->setName($venueName);
-        $venue->setSource('manual');
+        $place = (new Place)->setClubId($fixture->getClubId());
+        $this->em->persist($place);
+        $venue = new Venue($place)->setClubId($fixture->getClubId())->setSeasonId($fixture->getSeasonId())->setName($venueName)->setSource('manual');
         $this->em->persist($venue);
         $fixture->setVenueId($venue->getId());
         $this->em->flush();

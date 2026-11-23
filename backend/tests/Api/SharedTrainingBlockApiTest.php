@@ -20,6 +20,7 @@ use App\Entity\Venue;
 use App\Enum\SchedulePlanType;
 use App\Enum\SeasonStatus;
 use App\Service\SeasonResolver;
+use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -36,6 +37,7 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 #[Group('integration')]
 final class SharedTrainingBlockApiTest extends WebTestCase
 {
+    use CreatesPeopleAndPlacesTrait;
     use TenantGucTrait;
 
     private KernelBrowser $client;
@@ -488,11 +490,7 @@ final class SharedTrainingBlockApiTest extends WebTestCase
     private function createVenue(Club $club, Season $season, string $name): Venue
     {
         $this->scopeGucToClub($club->getId());
-        $venue = (new Venue)
-            ->setClubId($club->getId())
-            ->setSeasonId($season->getId())
-            ->setName($name)
-            ->setSource('manual');
+        $venue = $this->newVenue($club->getId(), $season->getId(), $name);
         $this->em->persist($venue);
         $this->em->flush();
 

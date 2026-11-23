@@ -22,6 +22,7 @@ use App\Enum\FixtureStatus;
 use App\Enum\SeasonStatus;
 use App\Service\MatchPlacementPayloadBuilder;
 use App\Service\SeasonResolver;
+use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -39,6 +40,7 @@ use Symfony\Contracts\HttpClient\Exception\TransportExceptionInterface;
 #[Group('integration')]
 final class MatchPlacementContractSchemaTest extends KernelTestCase
 {
+    use CreatesPeopleAndPlacesTrait;
     use TenantGucTrait;
 
     private const ENGINE_URL = 'http://engine:8000/place-matches';
@@ -506,11 +508,7 @@ final class MatchPlacementContractSchemaTest extends KernelTestCase
         $competition->setCompetitionType(CompetitionType::CHAMPIONSHIP);
         $em->persist($competition);
 
-        $venue = new Venue;
-        $venue->setClubId($club->getId());
-        $venue->setSeasonId($season->getId());
-        $venue->setName('Mateo');
-        $venue->setSource('manual');
+        $venue = $this->newVenue($club->getId(), $season->getId(), 'Mateo');
         $em->persist($venue);
         $em->flush();
 

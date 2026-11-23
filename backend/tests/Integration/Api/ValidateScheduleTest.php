@@ -16,7 +16,6 @@ use App\Entity\Schedule;
 use App\Entity\Season;
 use App\Entity\SolverMetric;
 use App\Entity\User;
-use App\Entity\Venue;
 use App\Entity\VenuePeriodOverride;
 use App\Entity\VenueTrainingSlot;
 use App\Enum\CalendarEntryKind;
@@ -293,12 +292,7 @@ final class ValidateScheduleTest extends WebTestCase
         $v1 = $this->createSchedule($season, ScheduleStatus::COMPLETED);
         $this->choosePlanVersion($v1);
 
-        $venue = new Venue;
-        $venue->setClubId($club->getId());
-        $venue->setSeasonId($season->getId());
-        $venue->setName('Barros');
-        $venue->setCanSplit(false);
-        $venue->setSource('manual');
+        $venue = $this->newVenue($club->getId(), $season->getId(), 'Barros')->setCanSplit(false);
         $this->em->persist($venue);
         $seasonal = $this->slot($club, $season, $venue->getId(), null);
         $this->em->flush();

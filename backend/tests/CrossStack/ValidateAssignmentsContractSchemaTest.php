@@ -7,6 +7,7 @@ namespace App\Tests\CrossStack;
 use App\Entity\Coach;
 use App\Entity\Constraint;
 use App\Entity\Person;
+use App\Entity\Place;
 use App\Entity\Team;
 use App\Entity\Venue;
 use App\Enum\ConstraintFamily;
@@ -118,7 +119,7 @@ final class ValidateAssignmentsContractSchemaTest extends TestCase
      */
     private function buildPayload(): array
     {
-        $venue = (new Venue)
+        $venue = new Venue((new Place)->setClubId(self::CLUB_ID))
             ->setId('venue-1')
             ->setClubId(self::CLUB_ID)
             ->setSeasonId(self::SEASON_ID)

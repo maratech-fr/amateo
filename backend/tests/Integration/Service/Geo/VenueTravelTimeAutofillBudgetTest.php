@@ -6,10 +6,10 @@ namespace App\Tests\Integration\Service\Geo;
 
 use App\Entity\Club;
 use App\Entity\Season;
-use App\Entity\Venue;
 use App\Enum\SeasonStatus;
 use App\Service\Geo\IgnRoutingClient;
 use App\Service\Geo\VenueTravelTimeAutofillService;
+use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\Double\SteppingClock;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
@@ -33,6 +33,7 @@ use Symfony\Component\HttpClient\Response\MockResponse;
 #[Group('integration')]
 final class VenueTravelTimeAutofillBudgetTest extends WebTestCase
 {
+    use CreatesPeopleAndPlacesTrait;
     use TenantGucTrait;
 
     private EntityManagerInterface $em;
@@ -112,13 +113,8 @@ final class VenueTravelTimeAutofillBudgetTest extends WebTestCase
         $this->em->flush();
 
         for ($i = 0; $i < $count; ++$i) {
-            $venue = new Venue;
-            $venue->setClubId($club->getId());
-            $venue->setSeasonId($season->getId());
-            $venue->setName('Gymnase ' . $i);
-            $venue->setSource('manual');
-            $venue->setLatitude(\sprintf('45.%06d', 700000 + $i));
-            $venue->setLongitude(\sprintf('4.%06d', 800000 + $i));
+            $venue = $this->newVenue($club->getId(), $season->getId(), 'Gymnase ' . $i);
+            $this->placeOf($venue)->setLatitude(\sprintf('45.%06d', 700000 + $i))->setLongitude(\sprintf('4.%06d', 800000 + $i));
             $this->em->persist($venue);
         }
         $this->em->flush();

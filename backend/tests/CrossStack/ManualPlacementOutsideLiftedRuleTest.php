@@ -113,7 +113,7 @@ final class ManualPlacementOutsideLiftedRuleTest extends KernelTestCase
         $this->em->flush();
         $seasonId = $season->getId();
 
-        $venue = (new Venue)->setClubId($clubId)->setSeasonId($seasonId)->setName('Gymnase Centre')->setSource('manual');
+        $venue = $this->newVenue($clubId, $seasonId, 'Gymnase Centre');
         $this->em->persist($venue);
         $this->em->flush();
         foreach ([[self::MONDAY, '18:00'], [self::MONDAY, '19:30'], [self::FRIDAY, '18:00']] as [$day, $start]) {

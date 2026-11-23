@@ -12,9 +12,11 @@ use App\Entity\CoachWish;
 use App\Entity\CoachWishCampaign;
 use App\Entity\CoachWishToken;
 use App\Entity\Person;
+use App\Entity\Place;
 use App\Entity\ScheduleStructureSnapshot;
 use App\Entity\Season;
 use App\Entity\Team;
+use App\Entity\Venue;
 use App\Enum\CalendarEntryKind;
 use App\Enum\CalendarEntryPeriodType;
 use App\Enum\SeasonStatus;
@@ -168,6 +170,31 @@ final class PurgeSeasonsCommandTest extends KernelTestCase
         self::assertNull($this->em->getRepository(Person::class)->find($leavingPerson), 'la fiche sans rôle dans une saison gardée part avec la saison purgée');
         self::assertNotNull($this->em->getRepository(Person::class)->find($stayingPerson), 'la fiche d\'une personne qui entraîne encore reste');
         self::assertSame($stayingPerson, $this->em->getRepository(Coach::class)->find($stayingNowId)?->getPersonId(), 'son rôle de la saison en cours la pointe toujours');
+    }
+
+    /**
+     * Lot 3, PR 4 — même règle pour le lieu d'un gymnase : le lieu qui ne servait plus que dans la
+     * saison purgée part avec elle ; le lieu d'un gymnase de saison gardée reste, son gymnase intact.
+     */
+    public function testThePlaceOfAVenueOnlyInThePurgedSeasonGoesAndASharedOneStays(): void
+    {
+        [$club, $seasons] = $this->createClubWithSeasons();
+        [$old, , $current] = $seasons;
+        $leaving = $this->newVenue($club->getId(), $old->getId(), 'Ancien gymnase');
+        $staying = $this->newVenue($club->getId(), $old->getId(), 'Gymnase Nord');
+        $this->em->flush();
+        $stayingNow = new Venue($this->placeOf($staying))->setClubId($club->getId())->setSeasonId($current->getId())->setName('Gymnase Nord')->setSource('manual');
+        $this->em->persist($stayingNow);
+        $this->em->flush();
+        [$leavingPlace, $stayingPlace, $stayingNowId] = [$leaving->getPlaceId(), $staying->getPlaceId(), $stayingNow->getId()];
+
+        $this->runPurge(['--club' => $club->getId(), '--date' => $this->purgeDate()])->assertCommandIsSuccessful();
+        $this->em->clear();
+        $this->scopeGucToClub($club->getId());
+
+        self::assertNull($this->em->getRepository(Place::class)->find($leavingPlace), 'le lieu sans gymnase dans une saison gardée part avec la saison purgée');
+        self::assertNotNull($this->em->getRepository(Place::class)->find($stayingPlace), 'le lieu d\'un gymnase de saison gardée reste');
+        self::assertSame($stayingPlace, $this->em->getRepository(Venue::class)->find($stayingNowId)?->getPlaceId(), 'son gymnase de la saison en cours le pointe toujours');
     }
 
     protected function setUp(): void

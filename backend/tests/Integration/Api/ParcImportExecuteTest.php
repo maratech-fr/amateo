@@ -6,6 +6,7 @@ namespace App\Tests\Integration\Api;
 
 use App\Entity\Club;
 use App\Entity\ClubUser;
+use App\Entity\Place;
 use App\Entity\PriorityTier;
 use App\Entity\Reservation;
 use App\Entity\Season;
@@ -21,6 +22,7 @@ use App\Service\ParcImport\ParcImportGate;
 use App\Service\ParcImport\TeamNameInterpreter;
 use App\Service\SeasonResolver;
 use App\Tests\ChoosesPlanVersionTrait;
+use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\CrossStack\ParcImportReservationSemanticsGateTest;
 use App\Tests\Integration\Service\FfbbExcelImporterTest;
 use App\Tests\Support\SubscribesClub;
@@ -67,6 +69,7 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 final class ParcImportExecuteTest extends WebTestCase
 {
     use ChoosesPlanVersionTrait;
+    use CreatesPeopleAndPlacesTrait;
     use SubscribesClub;
     use TenantGucTrait;
     /** La date d'`updated_at` posée au décor d'un groupe : tout `touch()` la dépasse. */
@@ -175,6 +178,10 @@ final class ParcImportExecuteTest extends WebTestCase
 
         $venue = $this->em->getRepository(Venue::class)->findOneBy(['clubId' => $this->club->getId(), 'name' => 'Palais Neuf']);
         self::assertInstanceOf(Venue::class, $venue);
+        // Lot 3, PR 4 : le gymnase créé est l'usage d'un lieu neuf du club, sans adresse (le fichier n'en porte pas).
+        $place = $this->em->find(Place::class, $venue->getPlaceId());
+        self::assertInstanceOf(Place::class, $place, 'le gymnase dérivé reçoit son lieu');
+        self::assertSame([$this->club->getId(), null, null, null], [$place->getClubId(), $place->getAddress(), $place->getLatitude(), $place->getLongitude()], 'un lieu du club, sans adresse ni position');
         $slot = $this->em->getRepository(VenueTrainingSlot::class)->findOneBy(['clubId' => $this->club->getId(), 'venueId' => $venue->getId()]);
         self::assertInstanceOf(VenueTrainingSlot::class, $slot);
         self::assertSame(75, $slot->getDurationMinutes(), 'la durée de la case est transportée au créneau');
@@ -2019,9 +2026,7 @@ final class ParcImportExecuteTest extends WebTestCase
     private function makeVenue(string $name, bool $canSplit = false): Venue
     {
         $this->scopeGucToClub($this->club->getId());
-        $venue = (new Venue)
-            ->setClubId($this->club->getId())->setSeasonId($this->season->getId())
-            ->setName($name)->setSource('manual')->setIsActive(true)->setCanSplit($canSplit);
+        $venue = $this->newVenue($this->club->getId(), $this->season->getId(), $name)->setIsActive(true)->setCanSplit($canSplit);
         $this->em->persist($venue);
         $this->em->flush();
 
@@ -2073,9 +2078,7 @@ final class ParcImportExecuteTest extends WebTestCase
         $this->em->persist($otherSeason);
         $this->em->flush();
 
-        $venue = (new Venue)
-            ->setClubId($otherClub->getId())->setSeasonId($otherSeason->getId())
-            ->setName($venueName)->setSource('manual')->setIsActive(true);
+        $venue = $this->newVenue($otherClub->getId(), $otherSeason->getId(), $venueName)->setIsActive(true);
         $this->em->persist($venue);
         $this->em->flush();
 

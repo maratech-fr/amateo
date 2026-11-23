@@ -17,7 +17,6 @@ use App\Entity\Sport;
 use App\Entity\SportCategory;
 use App\Entity\Team;
 use App\Entity\TeamCoach;
-use App\Entity\Venue;
 use App\Enum\ConstraintFamily;
 use App\Enum\ConstraintRuleType;
 use App\Enum\ConstraintScope;
@@ -438,7 +437,7 @@ final class CoachDoubleBookingTest extends KernelTestCase
 
         $venueIds = [];
         foreach (['Gymnase Un', 'Gymnase Deux'] as $name) {
-            $venue = (new Venue)->setClubId($clubId)->setSeasonId($seasonId)->setName($name)->setSource('manual');
+            $venue = $this->newVenue($clubId, $seasonId, $name);
             $this->em->persist($venue);
             $this->em->flush();
             $venueIds[] = $venue->getId();
@@ -567,7 +566,7 @@ final class CoachDoubleBookingTest extends KernelTestCase
      */
     private function thirdVenue(array $ctx): string
     {
-        $venue = (new Venue)->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])->setName('Gymnase Trois')->setSource('manual');
+        $venue = $this->newVenue($ctx['clubId'], $ctx['seasonId'], 'Gymnase Trois');
         $this->em->persist($venue);
         $this->em->flush();
 

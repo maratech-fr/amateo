@@ -17,6 +17,7 @@ use App\Enum\SeasonStatus;
 use App\Service\ClubGenerationLock;
 use App\Service\SchedulePlanProvisioner;
 use App\Tests\ChoosesPlanVersionTrait;
+use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\CreatesPeriodPlanTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
@@ -74,6 +75,7 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 final class GridLockAuditTest extends WebTestCase
 {
     use ChoosesPlanVersionTrait;
+    use CreatesPeopleAndPlacesTrait;
     use CreatesPeriodPlanTrait;
     use TenantGucTrait;
 
@@ -425,8 +427,7 @@ final class GridLockAuditTest extends WebTestCase
     private function createVenue(): Venue
     {
         $this->scopeGucToClub($this->club->getId());
-        $venue = (new Venue)->setClubId($this->club->getId())->setSeasonId($this->season->getId())
-            ->setName('Venue ' . uniqid())->setSource('manual')->setIsActive(true)->setCanSplit(false);
+        $venue = $this->newVenue($this->club->getId(), $this->season->getId(), 'Venue ' . uniqid())->setIsActive(true)->setCanSplit(false);
         $this->em->persist($venue);
         $this->em->flush();
 

@@ -8,7 +8,6 @@ use App\Command\PurgeExportsCommand;
 use App\Entity\Club;
 use App\Entity\Schedule;
 use App\Entity\Season;
-use App\Entity\Venue;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
 use App\Message\ExportPdfMessage;
@@ -17,6 +16,7 @@ use App\Service\PdfGenerator;
 use App\Service\SchedulePlanProvisioner;
 use App\Service\SeasonResolver;
 use App\Tests\BuildsServiceWithDoublesTrait;
+use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\Support\SubscribesClub;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
@@ -51,6 +51,7 @@ use Throwable;
 final class PdfCreditIsTakenOnDeliveryTest extends KernelTestCase
 {
     use BuildsServiceWithDoublesTrait;
+    use CreatesPeopleAndPlacesTrait;
     use SubscribesClub;
     use TenantGucTrait;
 
@@ -493,11 +494,7 @@ final class PdfCreditIsTakenOnDeliveryTest extends KernelTestCase
         $season->setTransitionData([]);
         $this->em->persist($season);
 
-        $venue = new Venue;
-        $venue->setClubId($club->getId());
-        $venue->setSeasonId($season->getId());
-        $venue->setName('Gymnase Nord');
-        $venue->setSource('manual');
+        $venue = $this->newVenue($club->getId(), $season->getId(), 'Gymnase Nord');
         $this->em->persist($venue);
         $this->em->flush();
         $this->clearGuc();

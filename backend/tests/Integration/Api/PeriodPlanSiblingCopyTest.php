@@ -31,6 +31,7 @@ use App\Service\OverlayManager;
 use App\Service\PeriodPlanSiblingCopier;
 use App\Service\SchedulePlanProvisioner;
 use App\Tests\ChoosesPlanVersionTrait;
+use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\Security\PeriodCopyBirthTest;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
@@ -66,6 +67,7 @@ use Symfony\Component\Uid\Uuid;
 final class PeriodPlanSiblingCopyTest extends WebTestCase
 {
     use ChoosesPlanVersionTrait;
+    use CreatesPeopleAndPlacesTrait;
     use TenantGucTrait;
 
     /**
@@ -431,11 +433,7 @@ final class PeriodPlanSiblingCopyTest extends WebTestCase
     private function venue(Club $club, Season $season): Venue
     {
         $this->scopeGucToClub($club->getId());
-        $venue = new Venue;
-        $venue->setClubId($club->getId());
-        $venue->setSeasonId($season->getId());
-        $venue->setName('Gymnase de la copie');
-        $venue->setSource('manual');
+        $venue = $this->newVenue($club->getId(), $season->getId(), 'Gymnase de la copie');
         $this->em->persist($venue);
         $this->em->flush();
 

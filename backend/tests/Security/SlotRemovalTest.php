@@ -17,7 +17,6 @@ use App\Entity\Sport;
 use App\Entity\SportCategory;
 use App\Entity\Team;
 use App\Entity\User;
-use App\Entity\Venue;
 use App\Entity\VenueTrainingSlot;
 use App\Enum\CalendarEntryKind;
 use App\Enum\CalendarEntryPeriodType;
@@ -33,6 +32,7 @@ use App\Service\ClubGenerationLock;
 use App\Service\ScheduleConstraintBuilder;
 use App\Service\SchedulePlanProvisioner;
 use App\Tests\ChoosesPlanVersionTrait;
+use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\CreatesPeriodPlanTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
@@ -69,6 +69,7 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 final class SlotRemovalTest extends WebTestCase
 {
     use ChoosesPlanVersionTrait;
+    use CreatesPeopleAndPlacesTrait;
     use CreatesPeriodPlanTrait;
     use TenantGucTrait;
 
@@ -391,7 +392,7 @@ final class SlotRemovalTest extends WebTestCase
         $this->em->flush();
         $this->provisionSeasonPlan($season);
 
-        $venue = (new Venue)->setClubId($club->getId())->setSeasonId($season->getId())->setName('Gymnase ' . $suffix)->setSource('manual');
+        $venue = $this->newVenue($club->getId(), $season->getId(), 'Gymnase ' . $suffix);
         $this->em->persist($venue);
 
         $sport = (new Sport)->setName('Basket ' . $uid)->setSlug('basket-' . $uid)->setIsActive(true);

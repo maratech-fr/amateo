@@ -7,6 +7,7 @@ namespace App\Tests\Security;
 use App\Controller\VenueExternalLabelController;
 use App\Entity\Club;
 use App\Entity\Fixture;
+use App\Entity\Place;
 use App\Entity\Season;
 use App\Entity\Sport;
 use App\Entity\SportCategory;
@@ -470,11 +471,9 @@ final class ImportVenueMappingAbuseTest extends WebTestCase
         $this->scopeGucToClub($clubId);
         $season = $this->em->getRepository(Season::class)->findOneBy(['clubId' => $clubId]);
         self::assertInstanceOf(Season::class, $season);
-        $venue = new Venue;
-        $venue->setClubId($clubId);
-        $venue->setSeasonId($season->getId());
-        $venue->setName($name);
-        $venue->setSource('manual');
+        $place = (new Place)->setClubId($clubId);
+        $this->em->persist($place);
+        $venue = new Venue($place)->setClubId($clubId)->setSeasonId($season->getId())->setName($name)->setSource('manual');
         if ([] !== $aliases) {
             $venue->setExternalLabels($aliases);
         }
@@ -501,11 +500,9 @@ final class ImportVenueMappingAbuseTest extends WebTestCase
         $past->setTransitionData([]);
         $this->em->persist($past);
 
-        $venue = new Venue;
-        $venue->setClubId($clubId);
-        $venue->setSeasonId($past->getId());
-        $venue->setName($name);
-        $venue->setSource('manual');
+        $place = (new Place)->setClubId($clubId);
+        $this->em->persist($place);
+        $venue = new Venue($place)->setClubId($clubId)->setSeasonId($past->getId())->setName($name)->setSource('manual');
         $this->em->persist($venue);
         $this->em->flush();
 

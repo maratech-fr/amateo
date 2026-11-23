@@ -14,7 +14,6 @@ use App\Entity\Sport;
 use App\Entity\SportCategory;
 use App\Entity\Team;
 use App\Entity\User;
-use App\Entity\Venue;
 use App\Entity\VenueMatchWindow;
 use App\Enum\CompetitionType;
 use App\Enum\FixtureHomeAway;
@@ -30,6 +29,7 @@ use App\Service\PlacementRunFailureNotifier;
 use App\Service\RequestIdContext;
 use App\Service\SeasonResolver;
 use App\Tests\BuildsServiceWithDoublesTrait;
+use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\PlacementLockProbeTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
@@ -75,6 +75,7 @@ use Symfony\Component\Mime\RawMessage;
 final class RedeliveredPlacementTest extends KernelTestCase
 {
     use BuildsServiceWithDoublesTrait;
+    use CreatesPeopleAndPlacesTrait;
     use PlacementLockProbeTrait;
     use TenantGucTrait;
 
@@ -520,11 +521,7 @@ final class RedeliveredPlacementTest extends KernelTestCase
         $team->setIsActive(true);
         $this->em->persist($team);
 
-        $venue = new Venue;
-        $venue->setClubId($club->getId());
-        $venue->setSeasonId($season->getId());
-        $venue->setName('Mateo');
-        $venue->setSource('manual');
+        $venue = $this->newVenue($club->getId(), $season->getId(), 'Mateo');
         $this->em->persist($venue);
         $this->em->flush();
 

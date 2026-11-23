@@ -8,6 +8,7 @@ use App\Command\EngineRequestsRecordCommand;
 use App\Entity\Club;
 use App\Entity\Competition;
 use App\Entity\Fixture;
+use App\Entity\Place;
 use App\Entity\Schedule;
 use App\Entity\SchedulePlan;
 use App\Entity\ScheduleSlotTemplate;
@@ -898,7 +899,9 @@ final class EngineRequestsRecordCommandTest extends KernelTestCase
         self::assertInstanceOf(SportCategory::class, $categoryA);
         $em->persist((new SportCategory)->setId(self::B_CATEGORY)->setClubId(self::B_CLUB)->setSportId($categoryA->getSportId())
             ->setName('Catégorie B')->setMatchMinutes(80)->setWarmupMinutes(30));
-        $em->persist((new Venue)->setId(self::B_VENUE)->setClubId(self::B_CLUB)->setSeasonId(self::B_SEASON)
+        $place = (new Place)->setClubId(self::B_CLUB);
+        $em->persist($place);
+        $em->persist(new Venue($place)->setId(self::B_VENUE)->setClubId(self::B_CLUB)->setSeasonId(self::B_SEASON)
             ->setName('Gymnase B')->setCanSplit(false)->setSource('manual'));
         $em->persist((new VenueTrainingSlot)->setId(self::erId('a7a1', 9))->setClubId(self::B_CLUB)->setSeasonId(self::B_SEASON)
             ->setVenueId(self::B_VENUE)->setDayOfWeek(2)->setStartTime(new DateTimeImmutable('18:00'))

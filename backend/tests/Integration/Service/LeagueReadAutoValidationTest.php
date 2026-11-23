@@ -25,6 +25,7 @@ use App\Service\FbiFixtureImporter;
 use App\Service\MatchPlacementPayloadBuilder;
 use App\Service\SeasonResolver;
 use App\Tests\ChoosesPlanVersionTrait;
+use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\Integration\Api\LeagueValidatedFixturesControllerTest;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
@@ -61,6 +62,7 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 final class LeagueReadAutoValidationTest extends WebTestCase
 {
     use ChoosesPlanVersionTrait;
+    use CreatesPeopleAndPlacesTrait;
     use TenantGucTrait;
 
     /** Décalages (jours) des 11 domiciles FUTURS par rapport au jour de lecture. */
@@ -602,12 +604,7 @@ final class LeagueReadAutoValidationTest extends WebTestCase
     private function createVenueWithAlias(string $clubId, string $seasonId, string $name, string $normalizedAlias): Venue
     {
         $this->scopeGucToClub($clubId);
-        $venue = new Venue;
-        $venue->setClubId($clubId);
-        $venue->setSeasonId($seasonId);
-        $venue->setName($name);
-        $venue->setSource('manual');
-        $venue->setExternalLabels([$normalizedAlias]);
+        $venue = $this->newVenue($clubId, $seasonId, $name)->setExternalLabels([$normalizedAlias]);
         $this->em->persist($venue);
         $this->em->flush();
 

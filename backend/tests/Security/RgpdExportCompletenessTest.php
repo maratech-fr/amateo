@@ -70,6 +70,15 @@ final class RgpdExportCompletenessTest extends KernelTestCase
         self::assertContains('person', $this->exportService()->clubScopedTables(), 'la fiche de personne sort dans l\'export des données du club');
     }
 
+    /**
+     * Lot 3, PR 4 — l'adresse et la position d'un gymnase vivent sur son lieu au club : le lieu sort dans
+     * l'export, comme la fiche de personne (l'exclure ferait disparaître l'adresse des gymnases de l'export).
+     */
+    public function testThePlaceIsExported(): void
+    {
+        self::assertContains('place', $this->exportService()->clubScopedTables(), 'le lieu sort dans l\'export des données du club');
+    }
+
     /** Une exclusion sans raison écrite n'est pas une décision — c'est un oubli déguisé. */
     public function testEveryExclusionCarriesAReason(): void
     {

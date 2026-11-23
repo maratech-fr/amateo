@@ -1,7 +1,7 @@
 # Lot 3 · Personnes et lieux au club : plan d'exécution
 
 **Statut : version finale (v4 sur 4) ; plafond atteint. Plan validé par le fondateur le 2026-11-21 avec ses sept
-décisions (§11). PR 1 livrée (2026-11-22) ; les suivantes s'exécutent dans l'ordre du §4, rouges de `tank` d'abord.**
+décisions (§11). PR 1, 2a, 2b, 3 et 4 livrées ; la PR 5 reste à faire ; elle s'exécute dans l'ordre du §4, rouges de `tank` d'abord.**
 Voie **Full**. Branche cible : `lot/conception` (aucune branche
 `lot/personnes-lieux`) ; une PR vers elle ne joue que « Lot Gate » (`docs/ops/ci-runner.md` § Branche de lot) : ni
 Behat, ni e2e, ni `backend-tests`. Avant chaque merge : `make -C backend tests-complete` et les features/specs de la
@@ -208,7 +208,15 @@ Ordre : 1 → 2a → 2b → 3 → 4 → 5, sur `lot/conception`, une PR ouverte 
 - **Fichiers** : `Structure/PersonEraser.php`, `Command/ErasePersonCommand.php` (neufs), `StructureRestorer.php`, `Service/CoachWishCampaignTokenSync.php`, le service de stockage des rendus PDF, catalogue d'audit.
 - **Tests** : lignes 16 à 19. `/security-review` : oui (RGPD, démonstration).
 
-### PR 4 · « Le lieu au club »
+### PR 4 · « Le lieu au club » — LIVRÉE (2026-11-23)
+- **Livré** : `Entity/Place.php`, `Structure/PlaceDirectory.php` (neufs), `migrations/Version20261125120000.php` (irréversible ; clé composée `fk_venue_place_club` `RESTRICT`, `UNIQUE (id, club_id)`, `UNIQUE (season_id, place_id)`, RLS sur le patron de `person`), `Entity/Venue.php` (`placeId`, sans accesseur d'adresse), `VenueStateProcessor`, `VenueResource`/`VenueStateProvider`, `VenueGeoCheck`, `VenueTravelTimeAutofillService`, `MatchesExportDataProvider`, `ParcImportExecutor`, `SeasonTransitionService`, `StructureRestorer`, `UnusedIdentitySweeper` (les lieux), les deux seeds. Bloquant étendu : `Security/PersonPlaceTenantIsolationTest` (`ci.yml` et `blocking-tests.md`). Doc : ADR-0006, `rgpd.md`, `rls.md`, `TENANT.md`, `backend/AGENTS.md` (3d, 16), `glossary.md`, `backend-inventory.md`, `geo-api.md`, `test-coverage-map.md`.
+- **Écarts au plan, écrits** :
+  - Le recalcul des trajets après un déplacement part pour CHAQUE saison où le lieu a un gymnase et qui a déjà une matrice (lecture SQL hors `season_filter`, club en clause explicite).
+  - La migration crée, pour la ligne de photo d'un gymnase qui n'existe plus, un lieu depuis l'adresse et la position de la photo.
+  - « Charger » sur un lieu balayé recrée le gymnase sur un lieu NEUF sans adresse : jamais un gymnase perdu, mais l'adresse est à ressaisir (limite).
+  - `ClubTravelCacheSeedTest` est retiré avec le filet `VenueTravelTimeAutofillCacheTest` (il rejouait les colonnes de `venue` qui n'existent plus) ; le commentaire de `Version20260920120000`, livrée, n'est pas modifié.
+  - La saison passée archivée suit la correction d'adresse (décision 7A, aucune garde « saison close » sur le lieu).
+- **Plan d'origine** (le détail livré ci-dessus fait foi) :
 - `place`, `venue.place_id`, conversion un lieu par gymnase, sans fusion ; trois colonnes supprimées ; vérification de compte. Photos : identifiant de lieu ajouté, adresse retirée.
 - `PUT /api/venues/{id}` écrit le lieu ; la saison suivante le réutilise. Tout gymnase créé reçoit un lieu neuf : avec l'adresse fournie depuis l'étape Gymnases, sans adresse depuis l'import du parc, comme aujourd'hui.
 - **Dissocier** (décision 2, A) : le gymnase de cette saison passe sur un lieu neuf sans adresse ; la saison en cours garde tout.

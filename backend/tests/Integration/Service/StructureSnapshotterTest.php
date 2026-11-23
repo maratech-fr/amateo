@@ -12,7 +12,6 @@ use App\Entity\ScheduleStructureSnapshot;
 use App\Entity\Season;
 use App\Entity\Team;
 use App\Entity\TeamCoach;
-use App\Entity\Venue;
 use App\Entity\VenueTrainingSlot;
 use App\Enum\ConstraintFamily;
 use App\Enum\ConstraintRuleType;
@@ -55,7 +54,7 @@ final class StructureSnapshotterTest extends KernelTestCase
         $team = (new Team)->setClubId($club->getId())->setSeasonId($season->getId())
             ->setSportCategoryId('33333333-3333-3333-3333-333333333333')->setPriorityTierId(2)
             ->setName('SM1')->setSessionsPerWeek(3)->setIsActive(true);
-        $venue = (new Venue)->setClubId($club->getId())->setSeasonId($season->getId())->setName('Gymnase A')->setSource('manual');
+        $venue = $this->newVenue($club->getId(), $season->getId(), 'Gymnase A');
         $permanent = (new Constraint)->setClubId($club->getId())->setSeasonId($season->getId())
             ->setName('SM1 mardi')->setScope(ConstraintScope::TEAM)->setScopeTargetId('11111111-1111-4111-8111-111111111111')
             ->setFamily(ConstraintFamily::DAY)->setRuleType(ConstraintRuleType::HARD)->setConfig(['days' => [2]]);
@@ -99,6 +98,10 @@ final class StructureSnapshotterTest extends KernelTestCase
         self::assertSame(2, $data['Team'][0]['priorityTierId']);
         self::assertCount(1, $data['Venue']);
         self::assertSame('Gymnase A', $data['Venue'][0]['name']);
+        // Lot 3 PR 4 : la photo ne porte que l'identifiant du lieu, jamais son adresse ni sa position, qui
+        // vivent une seule fois sur le lieu au club.
+        self::assertSame($venue->getPlaceId(), $data['Venue'][0]['placeId'] ?? null, 'la ligne de gymnase de la photo pointe son lieu');
+        self::assertSame([], array_intersect(['address', 'latitude', 'longitude'], array_keys($data['Venue'][0])), 'aucune adresse ni position dans la ligne de gymnase de la photo');
         // Only the PERMANENT constraint is structure; the dated one is calendar.
         self::assertCount(1, $data['Constraint']);
         self::assertSame('SM1 mardi', $data['Constraint'][0]['name']);
