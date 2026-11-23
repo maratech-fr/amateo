@@ -22,7 +22,9 @@ Ligne de roadmap : P1-6.
 4. **Le moteur ne change dans aucun lot.** La demande qu'il reçoit est identique avant et après,
    club par club (§24, §27). C'est la preuve commune à tous les lots qui déplacent des données.
    Une seule exception assumée, au lot 0 : les lectures des constructeurs de demande sont triées
-   par id, pour que la demande ne dépende plus de l'ordre physique de PostgreSQL.
+   par id, pour que la demande ne dépende plus de l'ordre physique de PostgreSQL. Deux exceptions de plus sont décidées
+   pour le lot 7 (2026-11-23) : les amicaux et les domiciles de coupe ne sont plus confiés au placement automatique
+   (§3, lot 7).
 5. **Le lot conception = une branche `lot/conception`**, des PR vers elle (une seule branche pour tous les lots,
    décision du fondateur du 2026-11-21), une PR finale vers `main` sur le go du fondateur, **une seule mise en
    production pour l'ensemble**, à la main, site fermé (procédure dans `docs/ops/deploy.md`, écrite par la dernière
@@ -276,6 +278,15 @@ peuvent avancer dans un espace de travail à part pendant qu'un lot principal at
 
 ### Lot 7 · Les matchs
 
+- **Plan d'exécution** : [`lot-conception-7-les-matchs.md`](lot-conception-7-les-matchs.md) (version finale, validée par
+  le fondateur le 2026-11-23 avec ses décisions Q1 à Q10, §13 du plan ; neuf PR). S'exécute après le lot 4.
+- **Écarts à cette fiche (validés avec le plan)** : une compétition ne porte aucune règle propre (jours, heures, durée) :
+  la seule règle par nature est la borne des coupes, 08:00 à 21:00, en constante (E1 du plan, reprise en ligne de
+  roadmap après le lot conception) ; une division neuve jouée par deux équipes donne une compétition par équipe, et la
+  séparation compétition / engagement ne se voit que sur « Amicaux » (Q8) ; les fenêtres de ligue ne sont plus appliquées
+  aux coupes ; le repli de ligue est dit par un bandeau (PR 5). **Deux exceptions à la règle 4 du §1** : les matchs d'une
+  compétition amicale (Q6) et les domiciles de coupe (Q7) ne sont plus confiés au système de placement ; la demande au
+  moteur est identique pour tout le reste.
 - **Contenu**
   - Compétition et engagement séparés ; la nature écrite une fois, amical compris ; la compétition
     « Amicaux » d'office (§18).
@@ -287,8 +298,10 @@ peuvent avancer dans un espace de travail à part pendant qu'un lot principal at
   - Conversion : 150 compétitions, 677 matchs, 5 compétitions à passer en nature amicale (§27).
 - **Supprime** : la nature relue dans les libellés (six endroits), le cas « match sans
   compétition », les listes de types de conflit recopiées.
-- **Dépend de** : lot 1. Indépendant des lots 3 à 6.
-- **Preuve** : demande de placement au moteur identique ; scénarios d'import et de placement.
+- **Dépend de** : lot 1. Indépendant des lots 3 à 6 pour le code ; **s'exécute après le lot 4** (décision du fondateur,
+  2026-11-23).
+- **Preuve** : demande de placement au moteur identique, hors les deux exceptions ci-dessus ; scénarios d'import et de
+  placement.
 
 ### Lot 8 · L'abonnement
 
@@ -360,11 +373,12 @@ peuvent avancer dans un espace de travail à part pendant qu'un lot principal at
 Ce document porte la fiche de chaque lot (contenu, ce qu'il supprime, dépendances, preuve).
 **Le lot 0 est livré en trois PR** (compositeur, scénarios, enregistreur) la mesure du PDF restant
 une procédure à jouer ([`lot-conception-filet.md`](lot-conception-filet.md) §8) ; **le lot 2 est livré sur `lot/conception`, non déployé** (deux rôles ; le 1er mai côté serveur ; les déclarations d'accès ; le contrôle central ; les crédits à l'obtention ; le module matchs qui porte le socle et le régime de démonstration déclaré une fois) ; **le lot 1 est livré sur `lot/conception`, non déployé** (PR 1 à 5 : purge du cache au déploiement ; créneau de semaine ; étiquettes calculées à la lecture ; familles déclarées et purges qui les lisent ; constats tranchés) ; **le lot 3
-est livré sur `lot/conception`, non déployé** (PR 1, 2a, 2b, 3, 4 et 5 : « L'entrée du lot » : tables d'étiquettes supprimées, époque du schéma dans la clé du cache ; une seule porte de lecture de l'identité ; la personne au club ; effacer une personne par `app:people:erase` ; le lieu au club ; les temps de trajet au club) ; **le lot 4 est en cours** (plan écrit, validé le 2026-11-22 ; PR 1 livrée : le filet, quinze références de demande au moteur et la chaîne de conversion sur base dédiée) : il s'exécute après le lot 3 entier ; **le lot 8 a livré ses trois PR** (une ligne d'abonnement par club et par saison ; une offre payante, trois paliers ; au-dessus du palier, plus de sorties) : il s'est exécuté après la PR 1 du lot 3, pour ne pas ouvrir deux PR sur `SeasonTransitionService.php`, `ErasedClubPurger.php`, l'état des lieux et ce fichier. Les plans des lots 1, 2, 3, 4 et 8 sont dans
+est livré sur `lot/conception`, non déployé** (PR 1, 2a, 2b, 3, 4 et 5 : « L'entrée du lot » : tables d'étiquettes supprimées, époque du schéma dans la clé du cache ; une seule porte de lecture de l'identité ; la personne au club ; effacer une personne par `app:people:erase` ; le lieu au club ; les temps de trajet au club) ; **le lot 4 est en cours** (plan écrit, validé le 2026-11-22 ; PR 1 livrée : le filet, quinze références de demande au moteur et la chaîne de conversion sur base dédiée) : il s'exécute après le lot 3 entier ; **le lot 8 a livré ses trois PR** (une ligne d'abonnement par club et par saison ; une offre payante, trois paliers ; au-dessus du palier, plus de sorties) : il s'est exécuté après la PR 1 du lot 3, pour ne pas ouvrir deux PR sur `SeasonTransitionService.php`, `ErasedClubPurger.php`, l'état des lieux et ce fichier. **Le lot 7 est planifié** (plan écrit, validé le 2026-11-23, aucune PR) : il s'exécute après le lot 4. Les plans des lots 1, 2, 3, 4, 7 et 8 sont dans
 [`lot-conception-1-declarations-communes.md`](lot-conception-1-declarations-communes.md),
 [`lot-conception-2-droits-modules-credits.md`](lot-conception-2-droits-modules-credits.md),
 [`lot-conception-3-personnes-et-lieux.md`](lot-conception-3-personnes-et-lieux.md),
-[`lot-conception-4-le-plan-porte-ses-donnees.md`](lot-conception-4-le-plan-porte-ses-donnees.md) et
+[`lot-conception-4-le-plan-porte-ses-donnees.md`](lot-conception-4-le-plan-porte-ses-donnees.md),
+[`lot-conception-7-les-matchs.md`](lot-conception-7-les-matchs.md) et
 [`lot-conception-8-abonnement.md`](lot-conception-8-abonnement.md) ; les autres lots n'ont pas de
 plan écrit. Un plan s'écrit lot par lot, dans un fichier à lui (`specs/evolution/`), et se valide en entier avant tout
 code. Une seule PR est ouverte à la fois sur `lot/conception` (les lots 1 et 2 modifient ce fichier et l'état des lieux).
