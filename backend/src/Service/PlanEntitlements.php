@@ -79,7 +79,8 @@ final readonly class PlanEntitlements
      *     canGenerate: bool,
      *     canPlaceMatches: bool,
      *     canExportPdf: bool,
-     *     seasonTransition: bool
+     *     seasonTransition: bool,
+     *     teamCapMessage: string|null
      * }
      */
     public function forClub(Club $club, Season $season): array
@@ -113,6 +114,9 @@ final readonly class PlanEntitlements
             // Bascule de saison : ouverte en payant/bêta courant ou en démo, fermée
             // en Découverte effective (le seul interrupteur fermé du gratuit).
             'seasonTransition' => !$restricted,
+            // Au-dessus du palier, plus de sorties : le message que chaque écran affiche. Les
+            // `can*` ne passent pas à faux (le refus se dit au clic, décision Q5).
+            'teamCapMessage' => $this->teamCapMessage($club, $season),
         ];
     }
 
@@ -155,6 +159,26 @@ final readonly class PlanEntitlements
         [, $tier] = $this->effective($club, $season, $decouverte);
 
         return $this->unlimitedToNull($tier?->getMaxTeams() ?? 0);
+    }
+
+    /**
+     * Le message du DÉPASSEMENT de palier : la saison compte plus d'équipes (désactivées comprises)
+     * que son palier n'en permet. Null sans dépassement, et jamais pour un club sans plafond
+     * (Découverte, Bêta, palier 3, démonstration). Lu par le contrôle central, qui refuse alors
+     * toute sortie, et par `/api/me` pour le bandeau.
+     */
+    public function teamCapMessage(Club $club, Season $season): ?string
+    {
+        $cap = $this->teamCap($club, $season);
+        if (null === $cap) {
+            return null;
+        }
+        $used = $this->teamsUsed($club, $season);
+        if ($used <= $cap) {
+            return null;
+        }
+
+        return \sprintf('Votre club compte %d équipes, votre palier en permet %d. Les générations, le placement des matchs et les exports sont suspendus : supprimez des équipes qui n\'ont pas de match, ou changez de palier.', $used, $cap);
     }
 
     /** Places d'équipes restantes avant le cap ; null si illimité (aucun cap). */

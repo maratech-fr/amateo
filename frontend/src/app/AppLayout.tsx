@@ -14,6 +14,7 @@ import { buttonVariants } from "@/shared/components/ui/button-variants";
 import { Menu, MenuItem } from "@/shared/components/ui/menu";
 import { CreditBadge } from "@/shared/credits/CreditBadge";
 import { CreditsBanner } from "@/shared/credits/CreditsBanner";
+import { TeamCapBanner } from "@/shared/credits/TeamCapBanner";
 import { DeploymentNoticeBanner } from "@/shared/deployment/DeploymentNoticeBanner";
 import { ClubClosingBanner } from "@/shared/session/ClubClosingBanner";
 import { useApplyClubTheme } from "@/shared/hooks/useApplyClubTheme";
@@ -211,6 +212,7 @@ export function AppLayout() {
         <ReadonlySeasonBanner />
         <SeasonTransitionBanner />
         <CreditsBanner />
+        <TeamCapBanner />
         <DeploymentNoticeBanner />
         <Outlet />
       </main>

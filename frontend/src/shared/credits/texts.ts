@@ -8,4 +8,6 @@ export const CREDITS_TEXTS = {
   /** Bandeau d'urgence (1 à 3 crédits restants), compteur accordé. */
   urgencyBanner: (remaining: number): string =>
     `Il ne vous reste que ${remaining} ${remaining > 1 ? "crédits gratuits" : "crédit gratuit"} : chaque génération, comblement de planning de période, placement de matchs ou export en consomme un.`,
+  /** Lien du bandeau de dépassement de palier (`TeamCapBanner.tsx`) vers la section Offre de `/club`. */
+  offersLink: "Voir les offres",
 } as const satisfies Record<string, string | ((...args: never[]) => string)>;

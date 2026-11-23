@@ -1,7 +1,7 @@
 # Lot 8 · L'abonnement : plan d'exécution
 
 **Statut : version finale (v2 sur 4, validée par `smith`). Plan validé par le fondateur le 2026-11-22 avec ses six
-décisions (§12). PR 1 et PR 2 livrées sur `lot/conception` (non déployées) ; PR 3 à faire.** Voie **Full**. Branche cible : `lot/conception` ; une PR
+décisions (§12). PR 1, PR 2 et PR 3 livrées sur `lot/conception` (non déployées) : le lot 8 est livré.** Voie **Full**. Branche cible : `lot/conception` ; une PR
 vers elle ne joue que « Lot Gate » (`docs/ops/ci-runner.md` § Branche de lot) : ni Behat, ni e2e, ni `backend-tests`. Avant
 chaque merge : `make -C backend tests-complete` et les features/specs de la zone sur la stack d'épreuve. Exécutant :
 `neo`, après les rouges de `tank`. Pas d'`oracle` (décision du fondateur, [`lot-conception-decoupage.md`](lot-conception-decoupage.md) §5.3).

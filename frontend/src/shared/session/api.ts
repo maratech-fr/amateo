@@ -57,6 +57,8 @@ export interface ClubEntitlements {
   canPlaceMatches: boolean;
   canExportPdf: boolean;
   seasonTransition: boolean;
+  /** Message du dépassement de palier (sorties suspendues), servi tel quel ; null sans dépassement. */
+  teamCapMessage: string | null;
 }
 
 /** FFBB institutional contact block (lot C) — league or committee. */
