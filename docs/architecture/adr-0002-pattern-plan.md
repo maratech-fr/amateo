@@ -161,11 +161,12 @@ Schedule (= Version)                    ← existant, recentré
      (motif nommant la fermeture) ; fin de l'ancienne exception P2-37 D4 (gymnase fermé toute la
      période = inerte).
 5. **Les réglages de période s'accrochent au Plan** (pas au déclencheur calendrier) :
-   coches équipes (`TeamPeriodOverride`), contraintes gardées/enlevées
+   composition d'équipes (une ligne `PlanTeam` par équipe : participation, séances, plafond par
+   jour, figées à la naissance du plan), contraintes gardées/enlevées
    (`ConstraintPeriodOverride`), sa grille de gymnases (`VenueTrainingSlot` scopé période —
    une COPIE du modèle de saison, cf. plus bas dans ce même invariant, #8) et ses modes de
    gymnase (`VenuePeriodOverride`),
-   réservations, flag de seed (`teamSelectionInitialized`) →
+   réservations →
    **re-keyés `calendarEntryId` → `planId`**. Chaque plan-semaine a SES réglages.
 
    **Exception : les contraintes datées restent sur `CalendarEntry`.** Elles décrivent le
@@ -249,8 +250,8 @@ puis le gestionnaire décide » : le fait existe avant tout plan, et parfois san
   périodes (closure/holiday/cutoff/mutualisation) ; l'affichage cockpit + radar ; le lien
   vacances scolaires (`schoolHolidayId`, zone) et les relances ; les contraintes **datées
   du fait** (« Barros fermé ») qui alimentent le radar de conflits.
-- **Perd** (part au Plan) : `overlayScheduleId` (pointeur), `teamSelectionInitialized`
-  (seed), la relation 1:1 avec un planning (→ 0..N plans par entry), et l'accroche des
+- **Perd** (part au Plan) : `overlayScheduleId` (pointeur), le drapeau de pré-sélection
+  d'équipes (la pré-sélection se pose à la naissance du plan), la relation 1:1 avec un planning (→ 0..N plans par entry), et l'accroche des
   réglages de période.
 
 ### Vocabulaire (fait foi — à reporter dans `docs/glossary.md` à l'implémentation)

@@ -25,7 +25,7 @@ fichier/classe interne (`frontend/src/features/wizard/steps/SharedTrainingBlockP
   groupe », c'est une somme (`backend/src/State/Processor/SharedTrainingBlockStateProcessor.php:28-30`) :
   pour chaque équipe, la **Σ** des `commonSessions` de tous ses blocs de MÊME portée (le bloc écrit
   compris) ne doit jamais dépasser son nombre de séances hebdomadaires EFFECTIVES
-  (`EffectiveTeamSessions`, override de période inclus) — gardé par
+  (la ligne `PlanTeam` du plan lu : socle ou période) — gardé par
   `SharedTrainingBlockStateProcessor::assertBlockValid`,
   `backend/src/State/Processor/SharedTrainingBlockStateProcessor.php:192-220`.
 - **Mort du bloc** : supprimer une équipe membre détruit le bloc **ENTIER** (toutes ses lignes
@@ -70,8 +70,8 @@ quand la page le fournit — désactivé AVEC MOTIF (découvrable au clavier) si
 - pour chaque équipe rejoignante **DÉJÀ placée** : la séance qu'elle désigne (`replacedSlotIds` —
   choix conscient du gestionnaire s'il y en a plusieurs) est DÉPLACÉE sur la case et verrouillée
   HARD/MANUAL ;
-- pour chaque équipe rejoignante **à 0 séance** dans le plan : un override de période l'ACTIVE
-  (`TeamPeriodOverride.isActive=true`, `sessionsPerWeek=1`, `source='mutualisation'`) et une séance
+- pour chaque équipe rejoignante **à 0 séance** dans le plan : la ligne `PlanTeam` de l'équipe dans ce plan l'ACTIVE
+  (`participates=true`, `sessionsPerWeek=1`, `source='mutualisation'`) et une séance
   NEUVE naît sur la case, verrouillée ;
 - toutes les séances liées au bloc (`ScheduleSlotTemplate.sharedTrainingBlockId`, FK CASCADE).
 
