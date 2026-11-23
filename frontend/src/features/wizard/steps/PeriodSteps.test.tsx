@@ -289,16 +289,17 @@ describe("PeriodTeams — default team selection (E3) + toggles", () => {
     ];
   };
 
-  it("reprise (holiday): seeds Fanion + importantes active, deactivates the rest", () => {
-    // Unique id: the module-level "already seeded" set persists across tests.
-    entryState.data = { periodType: "holiday" };
-    withThreeTiers();
-    render(<PeriodTeams calendarEntryId="fresh-holiday" />);
-    // t3 (rang B, sous les importantes) passe en pause ; t1 (Fanion) et t2 (importante) gardés.
-    expect(createOverride).toHaveBeenCalledWith({ schedulePlanId: "plan-1", teamId: "t3", isActive: false });
-    expect(createOverride).toHaveBeenCalledTimes(1);
-  });
-
+  // Lot 4, PR 3a : la pré-sélection des vacances est posée par le serveur à la naissance du plan ; l'écran n'écrit
+  // plus rien à l'ouverture. Les cas d'amorçage d'ici sont partis, chacun gardé ailleurs :
+  //  - « Fanion + importantes gardées, le reste en pause » → `backend/tests/Integration/Plans/PlanBirthTeamDefaultTest.php`
+  //    ::testAHolidayPlanIsBornWithTheFlagshipAndImportantTeams ;
+  //  - « garder par RANG, pas par position » → `backend/tests/Unit/Service/PlanTeamSelectionSeederTest.php`
+  //    ::testRankIsByIdNotByOccupation ;
+  //  - « sans Fanion ni importante, le meilleur rang présent » → PlanBirthTeamDefaultTest
+  //    ::testWithoutFlagshipNorImportantTeamsTheBestRankPresentIsKept et PlanTeamSelectionSeederTest
+  //    ::testEmptyTopRanksFallBackToBestPresentRank ;
+  //  - « pas de second amorçage au re-rendu » → sans objet : `PeriodTeams.test.tsx`, « un plan jamais ouvert, sans
+  //    réglage, avec une équipe de rang D : aucune écriture à l'ouverture ».
   it("T5 — un GET d'overrides en échec n'écrit RIEN en arrière-plan (seed muselé)", () => {
     // Le piège : sur une query en ERREUR, `overrides` vaut `[]` et `isLoading` est faux —
     // le seed passait donc toutes ses gardes et désactivait la moitié du club PENDANT que
@@ -365,49 +366,6 @@ describe("PeriodTeams — default team selection (E3) + toggles", () => {
     planState.data = { id: "plan-1" }; // e.g. manager reset it to all-active, then reloaded
     render(<PeriodTeams calendarEntryId="already-init" />);
     expect(createOverride).not.toHaveBeenCalled();
-  });
-
-  it("does NOT re-seed on a re-render (idempotent — guards the removed retry double-write)", () => {
-    entryState.data = { periodType: "holiday" };
-    withThreeTiers();
-    const { rerender } = render(<PeriodTeams calendarEntryId="fresh-holiday-2" />);
-    expect(createOverride).toHaveBeenCalledTimes(1);
-    // A re-render (effect re-runs) must not fire a second seed for the claimed period.
-    rerender(<PeriodTeams calendarEntryId="fresh-holiday-2" />);
-    expect(createOverride).toHaveBeenCalledTimes(1);
-  });
-
-  it("reprise: garde les rangs S+A par RANG même quand le Fanion est vide (pas par position)", () => {
-    // Aucune équipe Fanion (rang S/1) ; A (t2) + B (t3) occupés. Un slice() positionnel des
-    // groupes garderait A ET B (groups=[A,B]) ; le fix garde par RANG → A actif, B en pause.
-    entryState.data = { periodType: "holiday" };
-    teamsState.data = [T2, T3];
-    tiersState.data = [
-      { id: 1, label: "S", name: "Fanion", color: null },
-      { id: 2, label: "A", name: "Importante", color: null },
-      { id: 3, label: "B", name: "Loisir", color: null },
-    ];
-    render(<PeriodTeams calendarEntryId="fresh-holiday-no-fanion" />);
-    expect(createOverride).toHaveBeenCalledWith({ schedulePlanId: "plan-1", teamId: "t3", isActive: false });
-    expect(createOverride).toHaveBeenCalledTimes(1); // t2 (rang A) reste actif
-  });
-
-  it("reprise: un club SANS Fanion ni importante ne voit pas tout le monde désactivé (garde-fou top rang présent)", () => {
-    // Club tout en loisir : rangs B (t3) + C (t4), aucun S/A. Le fixe {S,A} éteindrait TOUT ;
-    // le garde-fou garde le meilleur rang présent (B) et ne met en pause que C.
-    entryState.data = { periodType: "holiday" };
-    const tB = { ...T2, id: "tB", name: "Loisir 1", priorityTierId: 3 };
-    const tC = { ...T2, id: "tC", name: "Loisir 2", priorityTierId: 4 };
-    teamsState.data = [tB, tC];
-    tiersState.data = [
-      { id: 1, label: "S", name: "Fanion", color: null },
-      { id: 2, label: "A", name: "Importante", color: null },
-      { id: 3, label: "B", name: "Moyenne", color: null },
-      { id: 4, label: "C", name: "De base", color: null },
-    ];
-    render(<PeriodTeams calendarEntryId="fresh-holiday-loisir" />);
-    expect(createOverride).toHaveBeenCalledWith({ schedulePlanId: "plan-1", teamId: "tC", isActive: false });
-    expect(createOverride).toHaveBeenCalledTimes(1); // tB (meilleur rang présent) reste actif
   });
 
   it("fermeture: une équipe hors des rangs chargés (data drift) reste active — jamais désactivée", () => {

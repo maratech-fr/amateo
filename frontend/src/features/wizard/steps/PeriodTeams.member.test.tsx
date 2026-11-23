@@ -1,4 +1,5 @@
 import { act, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { renderWithProviders } from "@/test/utils";
@@ -7,11 +8,11 @@ import type { Team } from "../api";
 
 /**
  * PROMESSE (chantier Membre, PR 2) : ouvrir l'étape Équipes d'une PÉRIODE ne fait écrire un Membre
- * NULLE PART. Pour un gestionnaire, la première ouverture d'une période de reprise « amorce » la
- * sélection (POST d'overrides `isActive:false` sur les rangs bas — `PeriodTeams.tsx`, effet
- * d'amorçage) ; pour un Membre, l'amorçage ne part jamais (`|| !canManage`) — sinon chaque
- * consultation tenterait une écriture (refusée 403 côté serveur, et un toast d'erreur à l'écran).
- * Témoin gestionnaire : même décor, l'amorçage part.
+ * NULLE PART. Depuis le lot 4 (PR 3a), la pré-sélection d'un plan de vacances est posée par le serveur à sa
+ * naissance et l'écran n'écrit plus rien à l'ouverture, pour personne (`PeriodTeams.test.tsx`, « aucune écriture
+ * à l'ouverture ») ; le Membre reste le cas gardé ici, parce qu'il ne doit jamais écrire.
+ * Témoin gestionnaire : même décor, le geste de décocher une équipe écrit par le hook observé — sans quoi
+ * « aucune écriture » ne prouverait rien.
  */
 
 const h = vi.hoisted(() => ({ canManage: true, create: vi.fn(() => Promise.resolve({})) }));
@@ -51,11 +52,16 @@ beforeEach(() => {
 });
 
 describe("PeriodTeams — l'amorçage de la sélection n'est jamais déclenché par un Membre", () => {
-  it("témoin gestionnaire : la première ouverture d'une reprise amorce la sélection", async () => {
+  it("témoin gestionnaire : décocher une équipe des vacances écrit son réglage", async () => {
+    const user = userEvent.setup();
     renderWithProviders(<PeriodTeams calendarEntryId="entry-1" />);
     await act(async () => {
       await Promise.resolve();
     });
+    expect(h.create).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole("checkbox", { name: /^U9 / }));
+
     expect(h.create).toHaveBeenCalledWith(expect.objectContaining({ schedulePlanId: "plan-1", teamId: "t-c", isActive: false }));
   });
 
