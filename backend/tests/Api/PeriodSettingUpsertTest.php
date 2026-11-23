@@ -53,6 +53,11 @@ final class PeriodSettingUpsertTest extends WebTestCase
 
     public function testPublishingTheSameTeamSettingTwiceUpdatesIt(): void
     {
+        // Une ligne égale au socle, sans origine, n'est pas un réglage : la liste ne la rend pas (§5 du plan).
+        $this->client->request('GET', '/api/team_period_overrides?schedulePlanId=' . $this->holiday, [], [], $this->headers());
+        self::assertResponseIsSuccessful();
+        self::assertSame([], json_decode((string) $this->client->getResponse()->getContent(), true)['member'] ?? null, 'avant toute publication, aucun réglage listé');
+
         $first = $this->publish(['schedulePlanId' => $this->holiday, 'teamId' => $this->teamId, 'isActive' => true, 'sessionsPerWeek' => 1]);
         $second = $this->publish(['schedulePlanId' => $this->holiday, 'teamId' => $this->teamId, 'isActive' => true, 'sessionsPerWeek' => 1, 'maxSessionsPerDay' => 2]);
 
