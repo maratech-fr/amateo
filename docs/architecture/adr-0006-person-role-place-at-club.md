@@ -62,8 +62,8 @@ ses copies. L'adresse et la position d'un gymnase, et le barème de trajet entre
 - **Un lieu balayé perd son adresse pour de bon** : si une version ancienne désigne encore un lieu que le balayage
   a supprimé (plus aucun gymnase dessus), « Charger » recrée le gymnase et ses créneaux sur un lieu NEUF, sans
   adresse (`StructureRestorer`) : jamais un gymnase perdu, mais l'adresse est à ressaisir.
-- Effacer UNE personne (cascade, remplacement de son nom dans les textes figés) est un chantier distinct
-  (PR 3 du lot) ; avant lui, aucune commande n'efface une personne seule.
+- Effacer UNE personne (cascade, remplacement de son nom dans les textes figés) est le rôle de la commande
+  `app:people:erase` (PR 3 du lot).
 
 ## Alternatives écartées
 
