@@ -20,9 +20,10 @@ use PHPUnit\Framework\Assert;
 trait ComposesPlanTeamsTrait
 {
     /** Pose les lignes qui manquent dans chaque plan de la saison, comme le fait chaque créateur. */
-    private function layTeamLines(string $seasonId): void
+    /** @param array<string, array{sessionsPerWeek?: int, maxSessionsPerDay?: int}> $socleValues ce que le créateur a saisi, par équipe */
+    private function layTeamLines(string $seasonId, array $socleValues = []): void
     {
-        static::getContainer()->get(PlanComposition::class)->ensureLines($seasonId);
+        static::getContainer()->get(PlanComposition::class)->ensureLines($seasonId, $socleValues);
         static::getContainer()->get(EntityManagerInterface::class)->flush();
     }
 
@@ -35,10 +36,15 @@ trait ComposesPlanTeamsTrait
         return $lines[$teamId];
     }
 
-    /** Les séances et le plafond du socle d'une équipe, comme le gestionnaire les saisit à l'étape Équipes. */
+    /**
+     * Les séances et le plafond du socle d'une équipe, comme le gestionnaire les saisit à l'étape Équipes. Une équipe
+     * sans lignes les reçoit à ces valeurs, comme d'un créateur : ses lignes de période naissent aux mêmes valeurs.
+     * Une équipe qui a déjà ses lignes ne change qu'au socle (ses lignes de période gardent leurs valeurs de naissance,
+     * décision du §10).
+     */
     private function setSocleTeam(string $seasonId, string $teamId, int $sessionsPerWeek, int $maxSessionsPerDay = 1): void
     {
-        $this->layTeamLines($seasonId);
+        $this->layTeamLines($seasonId, [$teamId => ['sessionsPerWeek' => $sessionsPerWeek, 'maxSessionsPerDay' => $maxSessionsPerDay]]);
         $this->teamLine(SeasonPlanOf::id(static::getContainer(), $seasonId), $teamId)
             ->setSessionsPerWeek($sessionsPerWeek)
             ->setMaxSessionsPerDay($maxSessionsPerDay);
