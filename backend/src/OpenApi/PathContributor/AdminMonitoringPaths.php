@@ -219,15 +219,13 @@ final readonly class AdminMonitoringPaths implements CustomPathContributor
                                 'slug' => ['type' => 'string'],
                                 'ffbbClubCode' => ['type' => 'string', 'nullable' => true],
                                 'isDemo' => ['type' => 'boolean'],
-                                'plan' => ['type' => 'object', 'nullable' => true, 'properties' => [
-                                    'code' => ['type' => 'string'],
-                                    'name' => ['type' => 'string'],
-                                ]],
-                                'paidSeasonYear' => ['type' => 'integer', 'nullable' => true],
+                                'subscription' => $this->subscriptionLineSchema(),
+                                'nextSubscription' => $this->subscriptionLineSchema(),
                                 'effectivePlan' => ['type' => 'object', 'properties' => [
                                     'code' => ['type' => 'string'],
                                     'name' => ['type' => 'string'],
                                 ]],
+                                'teamsCounted' => ['type' => 'integer'],
                                 'billingCycle' => ['type' => 'string', 'nullable' => true],
                                 'generationCountSeason' => ['type' => 'integer'],
                                 'createdAt' => ['type' => 'string', 'format' => 'date-time'],
@@ -298,6 +296,27 @@ final readonly class AdminMonitoringPaths implements CustomPathContributor
                 'visits' => ['type' => 'integer'],
                 'pageviews' => ['type' => 'integer'],
                 'trend' => ['type' => 'integer'],
+            ],
+        ];
+    }
+
+    /**
+     * La ligne d'abonnement d'une saison (null sans ligne).
+     *
+     * @return array<string, mixed>
+     */
+    private function subscriptionLineSchema(): array
+    {
+        return [
+            'type' => 'object',
+            'nullable' => true,
+            'properties' => [
+                'seasonYear' => ['type' => 'integer'],
+                'planCode' => ['type' => 'string'],
+                'planName' => ['type' => 'string'],
+                'tierCode' => ['type' => 'string', 'nullable' => true],
+                'paidAt' => ['type' => 'string', 'format' => 'date-time', 'nullable' => true],
+                'origin' => ['type' => 'string', 'enum' => ['support', 'conversion', 'seed']],
             ],
         ];
     }

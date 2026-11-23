@@ -22,7 +22,7 @@ Fonctionnalité: Un crédit se prend quand la sortie est obtenue
     Quand j'exporte le planning de saison en tableur 8 fois
     Alors j'ai utilisé 10 crédits sur 10
     Quand je tente de combler le planning de la fermeture
-    Alors c'est refusé (403) : « Les 10 générations gratuites de votre club sont utilisées — l'offre Essentiel les rend illimitées. »
+    Alors c'est refusé (403) : « Les 10 générations gratuites de votre club sont utilisées — l'offre complète les rend illimitées. »
     Et aucune version n'est née du refus
     Et j'ai utilisé 10 crédits sur 10
 
@@ -54,7 +54,7 @@ Fonctionnalité: Un crédit se prend quand la sortie est obtenue
 
   Scénario: Une offre payante, la bêta ou la démonstration ne décomptent jamais un PDF obtenu
     Étant donné un club inscrit en offre Découverte, à qui il reste un seul crédit
-    Quand le club passe à l'offre Essentiel, réglée pour la saison
+    Quand le club passe à l'offre complète au palier 1, réglée pour la saison
     Et j'exporte le planning A en PDF
     Alors le fichier est prêt et le club n'a utilisé aucun crédit de plus, sans plafond
     Quand le club passe à la bêta, réglée pour la saison

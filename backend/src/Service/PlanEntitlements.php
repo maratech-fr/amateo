@@ -9,18 +9,22 @@ use App\Entity\Club;
 use App\Entity\ClubSubscription;
 use App\Entity\Season;
 use App\Entity\SubscriptionPlan;
+use App\Entity\SubscriptionPlanTier;
 use App\Entity\Team;
 use App\Repository\ClubSubscriptionRepository;
 use App\Repository\SubscriptionPlanRepository;
+use App\Repository\SubscriptionPlanTierRepository;
 use Doctrine\ORM\EntityManagerInterface;
 
 /**
  * P1-3 PR A — l'offre EFFECTIVE d'un club pour une saison, calculée à la LECTURE (pas de
- * cron). Grille des offres : specs/courantes/etat-des-lieux.md §1.11 (décision fermée
- * 2026-11-11 : Essentiel ≤ 20, Club ≤ 34, Grand club illimité). Règles :
+ * cron). Grille des offres : specs/courantes/etat-des-lieux.md §1.11 (Découverte, l'offre
+ * complète à trois paliers — 20, 34, illimité —, la Bêta). Règles :
  *   - l'offre d'une saison ne dépend que de SA ligne d'abonnement ({@see ClubSubscription},
  *     clé club + année de la saison lue) : aucune ligne, ligne Découverte ou ligne non réglée
  *     → Découverte ; régler une saison ne couvre aucune autre ;
+ *   - le plafond d'équipes d'une saison est celui du PALIER de sa ligne ({@see SubscriptionPlanTier}) ;
+ *     Découverte et la Bêta n'ont pas de palier, donc pas de plafond ;
  *   - club `isDemo` → droits pleins TOUJOURS (exempt de tout gate).
  *
  * Rend le socle de droits (DTO tableau) consommé par /api/me — l'ENFORCEMENT
@@ -31,14 +35,12 @@ final readonly class PlanEntitlements
 {
     private const string DECOUVERTE_CODE = 'decouverte';
 
-    /** L'échelle des offres PAYANTES, par cap d'équipes croissant — pour nommer le palier supérieur. */
-    private const array PAID_LADDER = ['essentiel', 'club', 'grand-club'];
-
     public function __construct(
         private SubscriptionPlanRepository $plans,
         private EntityManagerInterface $entityManager,
         private DemoRegime $demoRegime,
         private ClubSubscriptionRepository $subscriptions,
+        private SubscriptionPlanTierRepository $tiers,
     ) {}
 
     /**
@@ -69,6 +71,7 @@ final readonly class PlanEntitlements
      * @return array{
      *     planCode: string,
      *     planName: string,
+     *     tierCode: string|null,
      *     maxTeams: int|null,
      *     teamsUsed: int,
      *     creditsMax: int|null,
@@ -82,7 +85,7 @@ final readonly class PlanEntitlements
     public function forClub(Club $club, Season $season): array
     {
         $decouverte = $this->plans->findOneBy(['code' => self::DECOUVERTE_CODE]);
-        $effective = $this->effectivePlan($club, $season, $decouverte);
+        [$effective, $tier] = $this->effective($club, $season, $decouverte);
 
         // Découverte effective = le seul régime bridé. Un club démo n'est JAMAIS
         // bridé, quelle que soit son offre effective.
@@ -99,7 +102,8 @@ final readonly class PlanEntitlements
         return [
             'planCode' => $effective?->getCode() ?? self::DECOUVERTE_CODE,
             'planName' => $effective?->getName() ?? 'Découverte',
-            'maxTeams' => $this->unlimitedToNull($effective?->getMaxTeams() ?? 0),
+            'tierCode' => $tier?->getCode(),
+            'maxTeams' => $this->unlimitedToNull($tier?->getMaxTeams() ?? 0),
             'teamsUsed' => $this->teamsUsed($club, $season),
             'creditsMax' => $creditsMax,
             'creditsUsed' => $creditsUsed,
@@ -124,7 +128,7 @@ final readonly class PlanEntitlements
     public function outputBudget(Club $club, Season $season): array
     {
         $decouverte = $this->plans->findOneBy(['code' => self::DECOUVERTE_CODE]);
-        $effective = $this->effectivePlan($club, $season, $decouverte);
+        [$effective] = $this->effective($club, $season, $decouverte);
 
         // Même narrowing que forClub : $restricted vrai implique $effective non-null.
         $restricted = !$this->demoRegime->isUnlimited($club) && self::DECOUVERTE_CODE === $effective?->getCode();
@@ -139,8 +143,8 @@ final readonly class PlanEntitlements
     }
 
     /**
-     * Le cap d'ÉQUIPES de l'offre effective — null si aucun cap ne s'applique (Découverte,
-     * Bêta, Grand club, ou club démo). Centralise la règle des caps payants.
+     * Le plafond d'ÉQUIPES du palier de la saison — null si aucun plafond ne s'applique
+     * (Découverte, Bêta, palier 3, ou club démo). Centralise la règle des plafonds.
      */
     public function teamCap(Club $club, Season $season): ?int
     {
@@ -148,9 +152,9 @@ final readonly class PlanEntitlements
             return null;
         }
         $decouverte = $this->plans->findOneBy(['code' => self::DECOUVERTE_CODE]);
-        $effective = $this->effectivePlan($club, $season, $decouverte);
+        [, $tier] = $this->effective($club, $season, $decouverte);
 
-        return $this->unlimitedToNull($effective?->getMaxTeams() ?? 0);
+        return $this->unlimitedToNull($tier?->getMaxTeams() ?? 0);
     }
 
     /** Places d'équipes restantes avant le cap ; null si illimité (aucun cap). */
@@ -165,9 +169,8 @@ final readonly class PlanEntitlements
     }
 
     /**
-     * Message de refus si créer $additional équipe(s) de plus franchit le cap payant ; null si
-     * OK (ou aucun cap). Nomme l'offre courante ET le palier supérieur — « prends l'offre au
-     * niveau où tu es déjà ».
+     * Message de refus si créer $additional équipe(s) de plus franchit le plafond du palier ;
+     * null si OK (ou aucun plafond). Dit le plafond du palier ET celui du palier suivant.
      */
     public function teamCapExceededMessage(Club $club, Season $season, int $additional = 1): ?string
     {
@@ -175,24 +178,24 @@ final readonly class PlanEntitlements
             return null;
         }
         $decouverte = $this->plans->findOneBy(['code' => self::DECOUVERTE_CODE]);
-        $effective = $this->effectivePlan($club, $season, $decouverte);
-        $cap = $this->unlimitedToNull($effective?->getMaxTeams() ?? 0);
-        if (null === $cap || !$effective instanceof SubscriptionPlan) {
+        [, $tier] = $this->effective($club, $season, $decouverte);
+        $cap = $this->unlimitedToNull($tier?->getMaxTeams() ?? 0);
+        if (null === $cap || !$tier instanceof SubscriptionPlanTier) {
             return null;
         }
         if ($this->teamsUsed($club, $season) + $additional <= $cap) {
             return null;
         }
 
-        $next = $this->nextTier($effective->getCode());
-        if (!$next instanceof SubscriptionPlan) {
-            return \sprintf('Votre offre %s permet %d équipes. Contactez-nous pour en ajouter davantage.', $effective->getName(), $cap);
+        $next = $this->tiers->nextOf($tier);
+        if (!$next instanceof SubscriptionPlanTier) {
+            return \sprintf('Votre palier permet %d équipes.', $cap);
         }
         if (0 === $next->getMaxTeams()) {
-            return \sprintf('Votre offre %s permet %d équipes — l\'offre %s retire la limite.', $effective->getName(), $cap, $next->getName());
+            return \sprintf('Votre palier permet %d équipes — le palier suivant retire la limite.', $cap);
         }
 
-        return \sprintf('Votre offre %s permet %d équipes — l\'offre %s monte à %d.', $effective->getName(), $cap, $next->getName(), $next->getMaxTeams());
+        return \sprintf('Votre palier permet %d équipes — le palier suivant monte à %d.', $cap, $next->getMaxTeams());
     }
 
     /** Toutes les équipes du club dans la saison — inactives comprises (elles comptent au cap). */
@@ -202,35 +205,49 @@ final readonly class PlanEntitlements
             ->count(['clubId' => $club->getId(), 'seasonId' => $season->getId()]);
     }
 
-    /** L'offre payante immédiatement au-dessus de $code dans l'échelle ; null si déjà au sommet. */
-    private function nextTier(string $code): ?SubscriptionPlan
+    /**
+     * L'offre effective de la saison et son palier : Découverte (sans palier) si la ligne manque,
+     * est Découverte ou n'est pas réglée ; sinon l'offre de la ligne et son palier (null pour la Bêta).
+     *
+     * @return array{0: ?SubscriptionPlan, 1: ?SubscriptionPlanTier}
+     */
+    private function effective(Club $club, Season $season, ?SubscriptionPlan $decouverte): array
     {
-        $index = array_search($code, self::PAID_LADDER, true);
-        if (!\is_int($index) || !isset(self::PAID_LADDER[$index + 1])) {
-            return null;
-        }
-
-        return $this->plans->findOneBy(['code' => self::PAID_LADDER[$index + 1]]);
-    }
-
-    private function effectivePlan(Club $club, Season $season, ?SubscriptionPlan $decouverte): ?SubscriptionPlan
-    {
-        $line = $this->subscriptions->forSeasonYear($club->getId(), SeasonResolver::seasonYear($season->getStartDate()));
-        $plan = $line instanceof ClubSubscription ? $this->plans->find($line->getPlanId()) : null;
-        if (!$plan instanceof SubscriptionPlan || self::DECOUVERTE_CODE === $this->effectiveCodeOf($line)) {
-            return $decouverte;
-        }
-
-        return $plan;
+        return $this->readLine($this->subscriptions->forSeasonYear($club->getId(), SeasonResolver::seasonYear($season->getStartDate())))
+            ?? [$decouverte, null];
     }
 
     private function effectiveCodeOf(?ClubSubscription $line): string
     {
+        $read = $this->readLine($line);
+
+        return null === $read ? self::DECOUVERTE_CODE : $read[0]->getCode();
+    }
+
+    /**
+     * La lecture d'une ligne : son offre et son palier, ou null quand elle se lit Découverte — pas de
+     * ligne, offre introuvable, ligne Découverte ou non réglée, et (défaut FERMÉ) une offre à paliers
+     * dont la ligne n'a pas de palier lisible de CETTE offre : sans palier réel, jamais « sans plafond ».
+     * Une offre sans palier (Bêta) se lit sans palier.
+     *
+     * @return array{0: SubscriptionPlan, 1: ?SubscriptionPlanTier}|null
+     */
+    private function readLine(?ClubSubscription $line): ?array
+    {
         if (!$line instanceof ClubSubscription) {
-            return self::DECOUVERTE_CODE;
+            return null;
+        }
+        $plan = $this->plans->find($line->getPlanId());
+        if (!$plan instanceof SubscriptionPlan || self::DECOUVERTE_CODE === self::effectivePlanCode($plan->getCode(), $line->isPaid())) {
+            return null;
+        }
+        $tierId = $line->getTierId();
+        $tier = null === $tierId ? null : $this->tiers->find($tierId);
+        if ($tier instanceof SubscriptionPlanTier && $tier->getPlanId() === $plan->getId()) {
+            return [$plan, $tier];
         }
 
-        return self::effectivePlanCode($this->plans->find($line->getPlanId())?->getCode(), $line->isPaid());
+        return 0 === $this->tiers->count(['planId' => $plan->getId()]) ? [$plan, null] : null;
     }
 
     /** 0 en base = illimité → null côté lecture. */

@@ -35,7 +35,7 @@ final class Version20261122120000 extends AbstractMigration
 
     public function down(Schema $schema): void
     {
-        $this->throwIrreversibleMigration(
+        $this->throwIrreversibleMigrationException(
             'Les tables d\'étiquettes supprimées ne se recréent pas : les étiquettes se calculent à la lecture. Retour arrière : restaurer la sauvegarde d\'avant migration.',
         );
     }

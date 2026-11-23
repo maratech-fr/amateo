@@ -205,7 +205,7 @@ final class BcclSeeder
         // champs ci-dessus : une offre déjà posée par le support n'est pas écrasée.
         $seasonYear = SeasonResolver::seasonYear(new DateTimeImmutable);
         if (!$this->subscriptions->forSeasonYear($clubId, $seasonYear) instanceof ClubSubscription) {
-            $this->subscriptionWriter->record($clubId, $seasonYear, 'beta', SubscriptionOrigin::SEED);
+            $this->subscriptionWriter->record($clubId, $seasonYear, 'beta', null, SubscriptionOrigin::SEED);
         }
 
         // Default club logo (optional asset): store the bytes + point logoUrl at

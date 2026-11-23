@@ -22,7 +22,7 @@ use RuntimeException;
  * (décision 2, A).
  *
  * Décor DÉDIÉ ({@see SmallClubFixtureTrait}, sans génération) passé hors Découverte par le geste
- * support réel `app:clubs:set-plan --plan=essentiel --paid-season=next` : la bascule exige que la
+ * support réel `app:clubs:set-plan --plan=complete --tier=palier-1 --paid-season=next` : la bascule exige que la
  * saison suivante soit réglée (`SeasonTransitionService::transition`). Le club de démonstration
  * partagé n'est jamais touché. Le compte de chaque table est un POINTAGE SQL par saison (admin).
  * La bascule n'ouvre qu'au 1er mai : l'horloge de dev se fige dans la fenêtre
@@ -69,11 +69,11 @@ final class SeasonTransitionContext extends BaseContext
     /** @var array{status: int, json: array<mixed>} */
     private array $secondAttempt = ['status' => 0, 'json' => []];
 
-    #[Given('un petit club dont l\'offre Essentiel règle aussi la saison suivante')]
-    public function unPetitClubEssentielRegleLaSaisonSuivante(): void
+    #[Given('un petit club dont l\'offre complète règle aussi la saison suivante')]
+    public function unPetitClubDontLOffreCompleteRegleLaSaisonSuivante(): void
     {
         $this->buildSmallClub();
-        $this->runConsole(['php', 'bin/console', 'app:clubs:set-plan', '--club=' . $this->smallClubId, '--plan=essentiel', '--paid-season=next']);
+        $this->runConsole(['php', 'bin/console', 'app:clubs:set-plan', '--club=' . $this->smallClubId, '--plan=complete', '--tier=palier-1', '--paid-season=next']);
         $this->currentSeasonId = $this->dbalScalar(\sprintf('SELECT id AS behatval FROM season WHERE club_id=\'%s\'', $this->smallClubId), admin: true);
         if ('' === $this->currentSeasonId) {
             throw new RuntimeException('le petit club n\'a pas de saison en cours');

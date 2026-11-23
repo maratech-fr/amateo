@@ -333,10 +333,10 @@ final class CreditsContext extends BaseContext
         $this->assertRenderFiles($schedule, [basename($this->firstUrl)]);
     }
 
-    #[When('le club passe à l\'offre Essentiel, réglée pour la saison')]
-    public function leClubPasseAEssentiel(): void
+    #[When('le club passe à l\'offre complète au palier 1, réglée pour la saison')]
+    public function leClubPasseALOffreComplete(): void
     {
-        $this->pointOffer('essentiel', false);
+        $this->pointOffer('complete', false, 'palier-1');
     }
 
     #[When('le club passe à la bêta, réglée pour la saison')]
@@ -527,19 +527,20 @@ final class CreditsContext extends BaseContext
         return $bytes;
     }
 
-    private function pointOffer(?string $planCode, bool $isDemo): void
+    private function pointOffer(?string $planCode, bool $isDemo, ?string $tierCode = null): void
     {
         $start = $this->dbalScalar(\sprintf('SELECT MIN(start_date)::text AS behatval FROM season WHERE club_id=\'%s\'', $this->smallClubId), admin: true);
         $year = SeasonResolver::seasonYear(new DateTimeImmutable('' === $start ? 'today' : $start));
-        // La ligne d'abonnement de la saison du club, écrite par la connexion propriétaire (seule à
-        // pouvoir l'écrire) ; aucune ligne = Découverte.
+        // La ligne d'abonnement de la saison du club (et son palier), écrite par la connexion
+        // propriétaire (seule à pouvoir l'écrire) ; aucune ligne = Découverte.
         $this->dbalExec(\sprintf('DELETE FROM club_subscription WHERE club_id=\'%s\'', $this->smallClubId), admin: true);
         if (null !== $planCode) {
             $this->dbalExec(\sprintf(
-                'INSERT INTO club_subscription (id, club_id, season_year, plan_id, paid_at, origin, created_at, updated_at)'
-                . ' SELECT gen_random_uuid(), \'%s\', %d, id, now(), \'seed\', now(), now() FROM subscription_plan WHERE code=\'%s\'',
+                'INSERT INTO club_subscription (id, club_id, season_year, plan_id, tier_id, paid_at, origin, created_at, updated_at)'
+                . ' SELECT gen_random_uuid(), \'%s\', %d, p.id, %s, now(), \'seed\', now(), now() FROM subscription_plan p WHERE p.code=\'%s\'',
                 $this->smallClubId,
                 $year,
+                null === $tierCode ? 'NULL' : \sprintf('(SELECT t.id FROM subscription_plan_tier t WHERE t.code=\'%s\')', $tierCode),
                 $planCode,
             ), admin: true);
         }

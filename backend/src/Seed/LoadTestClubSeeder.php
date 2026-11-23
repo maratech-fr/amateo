@@ -194,7 +194,7 @@ final class LoadTestClubSeeder
         $manager->flush();
 
         // En Bêta, réglée pour la saison en cours, par le seul écrivain de l'abonnement.
-        $this->subscriptionWriter->record($club->getId(), SeasonResolver::seasonYear(new DateTimeImmutable), 'beta', SubscriptionOrigin::SEED);
+        $this->subscriptionWriter->record($club->getId(), SeasonResolver::seasonYear(new DateTimeImmutable), 'beta', null, SubscriptionOrigin::SEED);
 
         return $club;
     }

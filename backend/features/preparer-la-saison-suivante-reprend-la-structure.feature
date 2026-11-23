@@ -10,7 +10,7 @@ Fonctionnalité: Préparer la saison suivante reprend la structure du club
   saison la corrige dans l'autre, mais le dissocier de sa salle fédérale ne vaut que pour sa saison.
 
   Scénario: La saison suivante reprend la structure, une seule fois, sans toucher la saison en cours
-    Étant donné un petit club dont l'offre Essentiel règle aussi la saison suivante
+    Étant donné un petit club dont l'offre complète règle aussi la saison suivante
     Et nous sommes le 15 mai de la saison en cours
     Et une règle qui impose le « Gymnase Nord » à l'équipe « U13M1 »
     Et le « Gymnase Nord » est relié à sa salle fédérale, avec son adresse et sa position

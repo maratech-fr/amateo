@@ -35,15 +35,20 @@ readonly class ClubSubscriptionWriter
 {
     /**
      * Insertion ou mise à jour de la ligne (club, année) : réglée à l'instant, sauf Découverte. Ne
-     * touche aucune autre saison. Zéro ligne écrite = code d'offre inconnu.
+     * touche aucune autre saison. Le palier est exigé pour une offre qui en porte, refusé pour une
+     * offre qui n'en a pas (Découverte, Bêta). Zéro ligne écrite = code d'offre ou de palier inconnu,
+     * ou palier qui ne va pas avec l'offre.
      */
     protected const string UPSERT_SQL = <<<'SQL'
-        INSERT INTO club_subscription (id, club_id, season_year, plan_id, paid_at, origin, created_at, updated_at)
-        SELECT gen_random_uuid(), :clubId, :seasonYear, p.id, CASE WHEN p.code = 'decouverte' THEN NULL ELSE now() END, :origin, now(), now()
+        INSERT INTO club_subscription (id, club_id, season_year, plan_id, tier_id, paid_at, origin, created_at, updated_at)
+        SELECT gen_random_uuid(), :clubId, :seasonYear, p.id, t.id, CASE WHEN p.code = 'decouverte' THEN NULL ELSE now() END, :origin, now(), now()
         FROM subscription_plan p
+        LEFT JOIN subscription_plan_tier t ON t.plan_id = p.id AND t.code = CAST(:tierCode AS text)
         WHERE p.code = :planCode
+          AND (CAST(:tierCode AS text) IS NULL) = (t.id IS NULL)
+          AND (t.id IS NOT NULL OR NOT EXISTS (SELECT 1 FROM subscription_plan_tier x WHERE x.plan_id = p.id))
         ON CONFLICT (club_id, season_year) DO UPDATE
-        SET plan_id = EXCLUDED.plan_id, paid_at = EXCLUDED.paid_at, origin = EXCLUDED.origin, updated_at = now()
+        SET plan_id = EXCLUDED.plan_id, tier_id = EXCLUDED.tier_id, paid_at = EXCLUDED.paid_at, origin = EXCLUDED.origin, updated_at = now()
         SQL;
 
     /** La date simulée d'un club de démonstration qui en a une (null sinon) ; aucune ligne = club inconnu. */
@@ -56,16 +61,17 @@ readonly class ClubSubscriptionWriter
         protected ClockInterface $clock,
     ) {}
 
-    public function record(string $clubId, int $seasonYear, string $planCode, SubscriptionOrigin $origin): void
+    public function record(string $clubId, int $seasonYear, string $planCode, ?string $tierCode, SubscriptionOrigin $origin): void
     {
         $written = $this->upsert([
             'clubId' => $clubId,
             'seasonYear' => $seasonYear,
             'planCode' => $planCode,
+            'tierCode' => $tierCode,
             'origin' => $origin->value,
         ]);
         if (0 === $written) {
-            throw new InvalidArgumentException(\sprintf('Unknown offer code "%s".', $planCode));
+            throw new InvalidArgumentException(\sprintf('Unknown offer "%s" or tier "%s" for this offer.', $planCode, $tierCode ?? '(none)'));
         }
     }
 
@@ -94,7 +100,7 @@ readonly class ClubSubscriptionWriter
         return null === $pin ? DateTimeImmutable::createFromInterface($this->clock->now()) : new DateTimeImmutable($pin);
     }
 
-    /** @param array{clubId: string, seasonYear: int, planCode: string, origin: string} $parameters */
+    /** @param array{clubId: string, seasonYear: int, planCode: string, tierCode: ?string, origin: string} $parameters */
     protected function upsert(array $parameters): int
     {
         return (int) $this->owner()->executeStatement(self::UPSERT_SQL, $parameters);

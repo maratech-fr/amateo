@@ -76,6 +76,8 @@ final class ReadOnlyRoleTest extends KernelTestCase
         'shared_competition_deadline',
         'sport',
         'subscription_plan',
+        // Lot 8, PR 2 : les paliers de l'offre complète (sans club_id, donc sans RLS), lisibles à côté des offres.
+        'subscription_plan_tier',
     ];
 
     /**

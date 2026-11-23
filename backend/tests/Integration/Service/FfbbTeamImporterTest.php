@@ -128,13 +128,13 @@ final class FfbbTeamImporterTest extends KernelTestCase
     }
 
     /**
-     * Grille 20 / 34 / 35+ : un club VIDE en offre Club qui importe 36 engagements n'en crée que 34
-     * (le cap Club) — le reste est sauté en silence (décision fondateur : comportement inchangé).
+     * Un club VIDE au palier 2 de l'offre complète qui importe 36 engagements n'en crée que 34 (le
+     * plafond du palier) — le reste est sauté en silence (décision fondateur : comportement inchangé).
      */
-    public function testAClubOfferImportsUpToItsCapOf34(): void
+    public function testAPalier2ClubImportsUpToItsCapOf34(): void
     {
         $this->seedPriorityTiers();
-        $this->subscribeClub($this->club->getId(), SeasonResolver::seasonYear(new DateTimeImmutable), 'club');
+        $this->subscribeClub($this->club->getId(), SeasonResolver::seasonYear(new DateTimeImmutable), 'complete', 'palier-2');
 
         $engagements = [];
         for ($i = 1; $i <= 36; ++$i) {
@@ -142,7 +142,7 @@ final class FfbbTeamImporterTest extends KernelTestCase
                 'idCompetition' => ['id' => 'C-DMS', 'code' => 'DMS', 'nom' => 'Départementale masculine seniors'], 'idPoule' => ['id' => 'P-DMS', 'nom' => 'Poule A']];
         }
 
-        self::assertSame(34, $this->buildImporter($engagements)->importEngagedTeams($this->club), 'l\'offre Club importe jusqu\'à 34 équipes');
+        self::assertSame(34, $this->buildImporter($engagements)->importEngagedTeams($this->club), 'le palier 2 importe jusqu\'à 34 équipes');
         self::assertCount(34, $this->em->getRepository(Team::class)->findBy(['clubId' => $this->club->getId()]));
     }
 

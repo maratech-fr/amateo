@@ -216,8 +216,8 @@ final class PurgeCompletenessTest extends KernelTestCase
         [$club, $season] = $this->clubWithSeason('Abonnement');
         $writer = self::getContainer()->get(ClubSubscriptionWriter::class);
         \assert($writer instanceof ClubSubscriptionWriter);
-        $writer->record($club->getId(), 2025, 'beta', SubscriptionOrigin::SEED);
-        $writer->record($club->getId(), 2026, 'beta', SubscriptionOrigin::SEED);
+        $writer->record($club->getId(), 2025, 'beta', null, SubscriptionOrigin::SEED);
+        $writer->record($club->getId(), 2026, 'complete', 'palier-1', SubscriptionOrigin::SEED);
         $lines = static fn (): int => (int) self::getContainer()->get(EntityManagerInterface::class)->getConnection()->fetchOne(
             'SELECT COUNT(*) FROM club_subscription WHERE club_id = :club',
             ['club' => $club->getId()],

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Tests\Security;
 
+use App\Access\DemoRegime;
 use App\Entity\Club;
 use App\Entity\ClubUser;
 use App\Entity\Season;
@@ -15,6 +16,9 @@ use App\Entity\User;
 use App\Enum\ClubRole;
 use App\Enum\SeasonStatus;
 use App\Exception\ImportRejectedException;
+use App\Repository\ClubSubscriptionRepository;
+use App\Repository\SubscriptionPlanRepository;
+use App\Repository\SubscriptionPlanTierRepository;
 use App\Service\Basketball\FfbbExcelImporter;
 use App\Service\ManagementAccessGuard;
 use App\Service\PlanEntitlements;
@@ -23,7 +27,10 @@ use App\Tests\ChoosesPlanVersionTrait;
 use App\Tests\Support\SubscribesClub;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
+use Doctrine\DBAL\Connection;
+use Doctrine\ORM\EntityManager;
 use Doctrine\ORM\EntityManagerInterface;
+use Doctrine\Persistence\ManagerRegistry;
 use Lexik\Bundle\JWTAuthenticationBundle\Services\JWTTokenManagerInterface;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
@@ -48,10 +55,11 @@ use Symfony\Contracts\EventDispatcher\EventDispatcherInterface;
  *    solve à l'épuisement, décompte au SUCCÈS, pool PAR CLUB (partagé entre gestionnaires,
  *    isolé entre clubs — même exigence que P4-45), un refus AMONT ne brûle rien, et
  *    payant/bêta/démo ne sont JAMAIS bridés ;
- *  · auth & memberships / périmètre — les CAPS PAYANTS aux portes de création d'équipes :
- *    Découverte crée librement (aucun cap), Essentiel refuse au-delà de 20 et Club au-delà de 34
- *    en nommant le palier supérieur, Grand club n'a aucun cap (grille 20 / 34 / 35+), l'import
- *    Excel au-delà du cap est refusé avec décompte.
+ *  · auth & memberships / périmètre — le PLAFOND D'ÉQUIPES du palier de l'offre complète, aux
+ *    portes de création (lot 8, PR 2) : Découverte et Bêta n'ont pas de palier (aucun plafond),
+ *    le palier 1 refuse au-delà de 20 et le palier 2 au-delà de 34 en annonçant le palier suivant,
+ *    le palier 3 n'a aucun plafond ; les équipes désactivées comptent ; l'import Excel au-delà du
+ *    palier est refusé avec décompte.
  *
  * Plus l'invisibilité de la bêta (superadmin-only) jusqu'en GET item (finding revue sécu).
  *
@@ -304,7 +312,7 @@ final class PlanEntitlementsTest extends WebTestCase
     /** Hors mode restreint (offre payante), un placement SANS fenêtre reste libre (aucun 403). */
     public function testUnrestrictedAllowsPlacementWithoutWindow(): void
     {
-        $ctx = $this->seedClub('essentiel', credits: 0, settleSocle: true);
+        $ctx = $this->seedClub('complete', credits: 0, settleSocle: true, tierCode: 'palier-1');
 
         self::assertSame(200, $this->post($ctx['user'], '/api/fixtures/place'), 'une offre payante place sans fenêtre, sans porte crédit');
         self::assertSame(0, $this->creditsOf($ctx['club']->getId()), 'une offre non bridée ne décompte jamais');
@@ -346,8 +354,9 @@ final class PlanEntitlementsTest extends WebTestCase
         $decouverte = $this->seedClub(credits: 3);
         self::assertTrue($entitlements->outputBudget($decouverte['club'], $decouverte['season'])['restricted'], 'Découverte est le SEUL régime bridé');
 
-        foreach (['essentiel', 'club', 'grand-club', 'beta'] as $code) {
-            $paid = $this->seedClub($code, credits: 50);
+        foreach ([['complete', 'palier-1'], ['complete', 'palier-2'], ['complete', 'palier-3'], ['beta', null]] as [$code, $tier]) {
+            $paid = $this->seedClub($code, credits: 50, tierCode: $tier);
+            $code .= null === $tier ? '' : ' ' . $tier;
             self::assertFalse($entitlements->outputBudget($paid['club'], $paid['season'])['restricted'], \sprintf('l\'offre %s n\'est jamais bridée', $code));
             // Une sortie servie ne décompte pas une offre non bridée.
             $this->fireResponse($paid, 'export_xlsx', 200);
@@ -386,58 +395,142 @@ final class PlanEntitlementsTest extends WebTestCase
         self::assertSame(201, $status, 'Découverte n\'a AUCUN cap d\'équipes : la 25ᵉ passe');
     }
 
-    /** Essentiel (cap 20) : la 21ᵉ équipe est refusée en 422, message nommant le palier supérieur. */
-    public function testEssentielRefusesTeamBeyondCapWithNamedTier(): void
+    /**
+     * Lot 8, PR 2 — le plafond de création suit le PALIER de la ligne de la saison : au palier 1
+     * (20 équipes), la 21ᵉ est refusée en 422 et le message annonce le palier suivant (34). Les
+     * équipes désactivées comptent (décision Q2) : une des 20 équipes semées l'est.
+     */
+    public function testPalier1RefusesThe21stTeamAnnouncingTheNextTier(): void
     {
-        $ctx = $this->seedClub('essentiel', credits: 0, teamCount: 20);
+        $ctx = $this->seedClub('complete', credits: 0, teamCount: 20, tierCode: 'palier-1', inactiveTeams: 1);
 
         $status = $this->postJson($ctx['user'], '/api/teams', ['name' => 'T21', 'sportCategoryId' => $this->categoryId, 'priorityTierId' => 1]);
-        self::assertSame(422, $status, 'au-delà du cap Essentiel, la création est refusée');
-
-        $body = (string) $this->client->getResponse()->getContent();
-        self::assertStringContainsString('Essentiel', $body);
-        self::assertStringContainsString('Club', $body, 'le message doit nommer le palier supérieur');
+        self::assertSame(422, $status, 'au-delà du palier 1 (20 équipes, une désactivée comprise), la création est refusée');
         // Phrase lue sur le corps ré-encodé : le corps brut de test porte une trace dont les numéros
         // de ligne pourraient contenir « 34 » par hasard.
-        self::assertStringContainsString('l\'offre Club monte à 34.', $this->readableBody(), 'le message doit annoncer le cap du palier supérieur (Club = 34)');
+        self::assertStringContainsString('Votre palier permet 20 équipes — le palier suivant monte à 34.', $this->readableBody(), 'le refus dit le plafond du palier et celui du palier suivant');
     }
 
     /**
-     * Grille 20 / 34 / 35+ : l'offre Club tient 34 équipes (la 34ᵉ passe) et refuse la 35ᵉ en
-     * nommant Grand club, qui retire la limite.
+     * Palier 2 : il tient 34 équipes (la 34ᵉ passe) et refuse la 35ᵉ en annonçant que le palier
+     * suivant retire la limite.
      */
-    public function testClubRefusesThe35thTeamNamingGrandClub(): void
+    public function testPalier2RefusesThe35thTeamAnnouncingNoLimitAbove(): void
     {
-        $ctx = $this->seedClub('club', credits: 0, teamCount: 33);
+        $ctx = $this->seedClub('complete', credits: 0, teamCount: 33, tierCode: 'palier-2');
 
         $status = $this->postJson($ctx['user'], '/api/teams', ['name' => 'T34', 'sportCategoryId' => $this->categoryId, 'priorityTierId' => 1]);
-        self::assertSame(201, $status, 'l\'offre Club tient 34 équipes : la 34ᵉ passe');
+        self::assertSame(201, $status, 'le palier 2 tient 34 équipes : la 34ᵉ passe');
 
         $status = $this->postJson($ctx['user'], '/api/teams', ['name' => 'T35', 'sportCategoryId' => $this->categoryId, 'priorityTierId' => 1]);
-        self::assertSame(422, $status, 'au-delà de 34, l\'offre Club refuse la création');
-
-        $message = $this->readableBody();
-        self::assertStringContainsString('Votre offre Club permet 34 équipes', $message, 'le refus nomme l\'offre courante et son cap');
-        self::assertStringContainsString('Grand club retire la limite', $message, 'le refus nomme le palier supérieur, sans limite');
+        self::assertSame(422, $status, 'au-delà de 34, le palier 2 refuse la création');
+        self::assertStringContainsString('Votre palier permet 34 équipes — le palier suivant retire la limite.', $this->readableBody(), 'le refus dit le plafond du palier et que le suivant n\'a pas de limite');
     }
 
-    /** Grand club (à partir de 35) n'a AUCUN cap : la 51ᵉ équipe passe, là où l'ancien cap était 50. */
-    public function testGrandClubIsNeverCapped(): void
+    /**
+     * Le palier 3 n'a AUCUN plafond, et la Bêta n'a pas de palier : ni l'un ni l'autre ne
+     * plafonne (la 51ᵉ équipe passe). Témoin du même décor : le palier 1 plafonne à 20 — sans
+     * lui, un `teamCap` toujours nul passerait ce test.
+     */
+    public function testPalier3AndBetaAreNeverCapped(): void
     {
         $entitlements = self::getContainer()->get(PlanEntitlements::class);
         \assert($entitlements instanceof PlanEntitlements);
 
-        $ctx = $this->seedClub('grand-club', credits: 0, teamCount: 50);
-        self::assertNull($entitlements->teamCap($ctx['club'], $ctx['season']), 'Grand club est illimité : aucun cap');
+        $witness = $this->seedClub('complete', credits: 0, tierCode: 'palier-1');
+        self::assertSame(20, $entitlements->teamCap($witness['club'], $witness['season']), 'témoin : le palier 1 plafonne à 20');
 
-        $status = $this->postJson($ctx['user'], '/api/teams', ['name' => 'T51', 'sportCategoryId' => $this->categoryId, 'priorityTierId' => 1]);
-        self::assertSame(201, $status, 'Grand club crée sa 51ᵉ équipe sans refus');
+        foreach ([['complete', 'palier-3'], ['beta', null]] as [$code, $tier]) {
+            $ctx = $this->seedClub($code, credits: 0, teamCount: 50, tierCode: $tier);
+            self::assertNull($entitlements->teamCap($ctx['club'], $ctx['season']), \sprintf('%s %s : aucun plafond', $code, $tier ?? '(sans palier)'));
+
+            $status = $this->postJson($ctx['user'], '/api/teams', ['name' => 'T51', 'sportCategoryId' => $this->categoryId, 'priorityTierId' => 1]);
+            self::assertSame(201, $status, \sprintf('%s %s crée sa 51ᵉ équipe sans refus', $code, $tier ?? '(sans palier)'));
+        }
     }
 
-    /** Import Excel au-delà du cap : refus tout-ou-rien avec DÉCOMPTE, rien écrit. */
+    /**
+     * Lot 8, PR 2 (revue de sécurité) — défaut FERMÉ : une ligne réglée sur l'offre complète dont le
+     * palier manque (palier vide, ou palier introuvable) se lit Découverte — crédits bridés, bascule
+     * fermée, saison non réglée —, jamais « offre complète sans plafond ». Le palier 3 réel (0 = illimité)
+     * reste, lui, illimité et non bridé.
+     *
+     * La base refuse une telle ligne (`Integration/Service/ClubSubscriptionWriterTest::testTheDatabaseRefusesALineWhoseTierDoesNotBelongToItsOffer`) :
+     * ce test prouve la seconde ceinture, le code. La ligne est donc forgée sur la connexion
+     * propriétaire, ses contraintes neutralisées dans la transaction du test (CHECK retirés,
+     * déclencheurs et clés étrangères suspendus par `session_replication_role`), tout annulé à la fin ;
+     * `PlanEntitlements` y lit par un gestionnaire d'entités ouvert sur cette même connexion (la
+     * connexion applicative ne verrait pas la ligne non validée). Témoins, par le même montage : les
+     * paliers 1 et 3 se lisent (sans eux, « aucune ligne lue » passerait pour Découverte).
+     */
+    public function testATieredOfferLineWithoutItsTierReadsAsDecouverteNeverUnlimited(): void
+    {
+        $admin = self::getContainer()->get(ManagerRegistry::class)->getConnection('admin');
+        \assert($admin instanceof Connection);
+        $admin->beginTransaction();
+        try {
+            $admin->executeStatement('SET LOCAL lock_timeout = \'5s\'');
+            foreach ($admin->fetchFirstColumn('SELECT conname FROM pg_constraint WHERE conrelid = \'club_subscription\'::regclass AND contype = \'c\'') as $check) {
+                $admin->executeStatement(\sprintf('ALTER TABLE club_subscription DROP CONSTRAINT %s', $admin->quoteSingleIdentifier((string) $check)));
+            }
+            $admin->executeStatement('SET LOCAL session_replication_role = replica');
+
+            $adminEm = new EntityManager($admin, $this->em->getConfiguration());
+            $registry = $this->createStub(ManagerRegistry::class);
+            $registry->method('getManagerForClass')->willReturn($adminEm);
+            $plans = new SubscriptionPlanRepository($registry);
+            $entitlements = new PlanEntitlements($plans, $adminEm, new DemoRegime, new ClubSubscriptionRepository($registry), new SubscriptionPlanTierRepository($registry));
+
+            $decouverte = $plans->findOneBy(['code' => 'decouverte']);
+            self::assertInstanceOf(SubscriptionPlan::class, $decouverte);
+            self::assertGreaterThan(0, $decouverte->getMaxGenerations(), 'témoin : Découverte a un pool de crédits, donc une bride');
+
+            $forge = static function (string $tierSql) use ($admin, $adminEm): array {
+                $clubId = (string) $admin->fetchOne('SELECT gen_random_uuid()::text');
+                $suffix = bin2hex(random_bytes(4));
+                $admin->executeStatement(
+                    'INSERT INTO club (id, version, created_at, updated_at, name, slug, timezone, locale, onboarding_completed, generation_count_season, is_demo) VALUES (?, 1, now(), now(), ?, ?, \'Europe/Paris\', \'fr\', true, 0, false)',
+                    [$clubId, 'Sans palier ' . $suffix, 'sans-palier-' . $suffix],
+                );
+                $season = new Season()->setStartDate(new DateTimeImmutable('2030-09-01'));
+                $admin->executeStatement(
+                    'INSERT INTO club_subscription (id, club_id, season_year, plan_id, tier_id, paid_at, origin, created_at, updated_at)'
+                    . ' VALUES (gen_random_uuid(), ?, ?, (SELECT id FROM subscription_plan WHERE code = \'complete\'), ' . $tierSql . ', now(), \'support\', now(), now())',
+                    [$clubId, SeasonResolver::seasonYear($season->getStartDate())],
+                );
+                $club = $adminEm->find(Club::class, $clubId);
+                self::assertInstanceOf(Club::class, $club);
+
+                return [$club, $season];
+            };
+
+            // Témoins : les paliers réels se lisent — palier 1 plafonné à 20, palier 3 illimité et non bridé.
+            [$club, $season] = $forge('(SELECT id FROM subscription_plan_tier WHERE code = \'palier-1\')');
+            self::assertSame(20, $entitlements->teamCap($club, $season), 'témoin : la ligne forgée est lue, le palier 1 plafonne à 20');
+            [$club, $season] = $forge('(SELECT id FROM subscription_plan_tier WHERE code = \'palier-3\')');
+            $read = $entitlements->forClub($club, $season);
+            self::assertSame(['complete', 'palier-3', null], [$read['planCode'], $read['tierCode'], $read['maxTeams']], 'le palier 3 réel reste l\'offre complète, sans plafond');
+            self::assertFalse($entitlements->outputBudget($club, $season)['restricted'], 'le palier 3 réel n\'est pas bridé');
+
+            foreach (['palier vide' => 'NULL', 'palier introuvable' => 'gen_random_uuid()'] as $case => $tierSql) {
+                [$club, $season] = $forge($tierSql);
+                $read = $entitlements->forClub($club, $season);
+                self::assertSame('decouverte', $read['planCode'], $case . ' : la ligne se lit Découverte, jamais l\'offre complète');
+                self::assertNull($read['tierCode'], $case . ' : aucun palier lu');
+                self::assertSame($decouverte->getMaxGenerations(), $read['creditsMax'], $case . ' : les crédits sont ceux de Découverte, bornés');
+                self::assertFalse($read['seasonTransition'], $case . ' : la bascule reste fermée');
+                self::assertTrue($entitlements->outputBudget($club, $season)['restricted'], $case . ' : les sorties sont bridées comme en Découverte');
+                self::assertFalse($entitlements->isSeasonPaid($club->getId(), SeasonResolver::seasonYear($season->getStartDate())), $case . ' : la saison ne compte pas comme réglée');
+            }
+        } finally {
+            $admin->rollBack();
+        }
+    }
+
+    /** Import Excel au-delà du palier : refus tout-ou-rien avec DÉCOMPTE, rien écrit. */
     public function testExcelImportBeyondCapIsRefusedWithCount(): void
     {
-        $ctx = $this->seedClub('essentiel', credits: 0, teamCount: 19, withFfbb: true); // reste 1 place
+        $ctx = $this->seedClub('complete', credits: 0, teamCount: 19, withFfbb: true, tierCode: 'palier-1'); // reste 1 place
         $this->ensureActiveSport();
         $code = (string) $ctx['club']->getFfbbClubCode();
 
@@ -462,10 +555,10 @@ final class PlanEntitlementsTest extends WebTestCase
         self::assertSame(19, $this->teamCountOf($ctx['club']->getId(), $ctx['season']->getId()), 'rien n\'est écrit : l\'import est tout-ou-rien');
     }
 
-    /** Offre Club à 33/34 : un fichier de 3 équipes est refusé en annonçant la SEULE place restante. */
-    public function testClubExcelImportCountsAgainstTheCapOf34(): void
+    /** Palier 2 à 33/34 : un fichier de 3 équipes est refusé en annonçant la SEULE place restante sur le palier. */
+    public function testPalier2ExcelImportCountsAgainstTheCapOf34(): void
     {
-        $ctx = $this->seedClub('club', credits: 0, teamCount: 33, withFfbb: true); // reste 1 place sur 34
+        $ctx = $this->seedClub('complete', credits: 0, teamCount: 33, withFfbb: true, tierCode: 'palier-2'); // reste 1 place sur 34
         $this->ensureActiveSport();
         $code = (string) $ctx['club']->getFfbbClubCode();
 
@@ -480,11 +573,10 @@ final class PlanEntitlementsTest extends WebTestCase
 
         try {
             $importer->import($file, $ctx['club']->getId(), $ctx['season']->getId());
-            self::fail('un import qui franchit le cap Club (34) doit être refusé');
+            self::fail('un import qui franchit le palier 2 (34) doit être refusé');
         } catch (ImportRejectedException $e) {
             self::assertSame(422, $e->getStatusCode());
-            self::assertStringContainsString('3 équipe(s) à créer', $e->getMessage(), 'le décompte dit combien d\'équipes le fichier crée');
-            self::assertStringContainsString('1 place(s) restante(s)', $e->getMessage(), '33 équipes sur un cap de 34 : une place reste');
+            self::assertSame('3 équipe(s) à créer dans le fichier, 1 place(s) restante(s) sur votre palier. Retirez des lignes ou passez au palier supérieur.', $e->getMessage(), '33 équipes sur un palier de 34 : le décompte dit les équipes du fichier et la place restante sur le palier');
         }
 
         self::assertSame(33, $this->teamCountOf($ctx['club']->getId(), $ctx['season']->getId()), 'rien n\'est écrit : l\'import est tout-ou-rien');
@@ -502,7 +594,7 @@ final class PlanEntitlementsTest extends WebTestCase
         self::assertSame(404, $this->client->getResponse()->getStatusCode(), 'la bêta ne doit pas être servie par id');
 
         // Témoin : une offre publique reste bien lisible par id (le 404 est SPÉCIFIQUE à la bêta).
-        $this->client->request('GET', '/api/subscription_plans/' . $this->planByCode('essentiel')->getId(), [], [], $headers);
+        $this->client->request('GET', '/api/subscription_plans/' . $this->planByCode('complete')->getId(), [], [], $headers);
         self::assertSame(200, $this->client->getResponse()->getStatusCode(), 'une offre publique reste lisible par id');
     }
 
@@ -532,6 +624,8 @@ final class PlanEntitlementsTest extends WebTestCase
         bool $isDemo = false,
         bool $withFfbb = false,
         bool $settleSocle = false,
+        ?string $tierCode = null,
+        int $inactiveTeams = 0,
     ): array {
         $uid = uniqid('', true);
         $hasher = self::getContainer()->get('security.user_password_hasher');
@@ -578,12 +672,12 @@ final class PlanEntitlementsTest extends WebTestCase
         $this->em->flush();
 
         if (null !== $planCode) {
-            // Offre attribuée ET saison courante réglée → l'offre effective est bien la payante.
-            $this->subscribeClub($club->getId(), $year, $planCode);
+            // Offre (et palier) attribués ET saison courante réglée → l'offre effective est bien la payante.
+            $this->subscribeClub($club->getId(), $year, $planCode, $tierCode);
         }
 
         if ($teamCount > 0) {
-            $this->categoryId = $this->seedTeams($club->getId(), $season->getId(), $teamCount);
+            $this->categoryId = $this->seedTeams($club->getId(), $season->getId(), $teamCount, $inactiveTeams);
         }
 
         if ($settleSocle) {
@@ -596,7 +690,8 @@ final class PlanEntitlementsTest extends WebTestCase
         return ['user' => $user, 'club' => $club, 'season' => $season];
     }
 
-    private function seedTeams(string $clubId, string $seasonId, int $count): string
+    /** $inactive : combien des $count équipes sont désactivées (elles comptent au plafond, Q2). */
+    private function seedTeams(string $clubId, string $seasonId, int $count, int $inactive = 0): string
     {
         $sport = $this->ensureActiveSport();
         $category = (new SportCategory)
@@ -616,7 +711,7 @@ final class PlanEntitlementsTest extends WebTestCase
                 ->setPriorityTierId(1)
                 ->setName('Seed ' . $i)
                 ->setSessionsPerWeek(2)
-                ->setIsActive(true);
+                ->setIsActive($i >= $inactive);
             $this->em->persist($team);
         }
         $this->em->flush();

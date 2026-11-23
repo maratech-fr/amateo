@@ -157,7 +157,7 @@ final class PdfCreditIsTakenOnDeliveryTest extends KernelTestCase
      */
     public function testTheRenderIsWrittenUnderAnUnguessableTemporaryName(): void
     {
-        [$club, $season] = $this->seedClub(credits: 0, planCode: 'essentiel');
+        [$club, $season] = $this->seedClub(credits: 0, planCode: 'complete', tierCode: 'palier-1');
         $schedule = $this->seedSchedule($club->getId(), $season);
 
         $this->export($club->getId(), $schedule);
@@ -231,7 +231,7 @@ final class PdfCreditIsTakenOnDeliveryTest extends KernelTestCase
      */
     public function testTwoQueuedRequestsOnTwoScopesAreBothDeliveredForAPaidClub(): void
     {
-        [$club, $season, $venueId] = $this->seedClub(credits: 0, planCode: 'essentiel');
+        [$club, $season, $venueId] = $this->seedClub(credits: 0, planCode: 'complete', tierCode: 'palier-1');
         $schedule = $this->seedSchedule($club->getId(), $season);
 
         $first = $this->request($club->getId(), $schedule);
@@ -276,7 +276,7 @@ final class PdfCreditIsTakenOnDeliveryTest extends KernelTestCase
      */
     public function testALegacyMessageWithoutRequestIdIsNeverTakenForARedelivery(): void
     {
-        [$club, $season] = $this->seedClub(credits: 0, planCode: 'essentiel');
+        [$club, $season] = $this->seedClub(credits: 0, planCode: 'complete', tierCode: 'palier-1');
         $schedule = $this->seedSchedule($club->getId(), $season);
 
         $this->request($club->getId(), $schedule);
@@ -465,7 +465,7 @@ final class PdfCreditIsTakenOnDeliveryTest extends KernelTestCase
      *
      * @return array{0: Club, 1: Season, 2: string}
      */
-    private function seedClub(int $credits, ?string $planCode = null): array
+    private function seedClub(int $credits, ?string $planCode = null, ?string $tierCode = null): array
     {
         $uid = uniqid('', true);
         $club = new Club;
@@ -481,7 +481,7 @@ final class PdfCreditIsTakenOnDeliveryTest extends KernelTestCase
 
         $year = SeasonResolver::seasonYear(new DateTimeImmutable('today'));
         if (null !== $planCode) {
-            $this->subscribeClub($club->getId(), $year, $planCode);
+            $this->subscribeClub($club->getId(), $year, $planCode, $tierCode);
         }
 
         $this->scopeGucToClub($club->getId());

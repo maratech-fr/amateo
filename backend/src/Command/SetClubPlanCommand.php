@@ -4,8 +4,11 @@ declare(strict_types=1);
 
 namespace App\Command;
 
+use App\Entity\SubscriptionPlan;
+use App\Entity\SubscriptionPlanTier;
 use App\Enum\SubscriptionOrigin;
 use App\Repository\SubscriptionPlanRepository;
+use App\Repository\SubscriptionPlanTierRepository;
 use App\Service\ClubSubscriptionWriter;
 use DateTimeImmutable;
 use Symfony\Component\Console\Attribute\AsCommand;
@@ -18,8 +21,12 @@ use Symfony\Component\Uid\Uuid;
 
 /**
  * SA4 / P1-3 — le geste « Offre » du support : écrit la ligne d'abonnement de UNE saison du club
- * (offre par son CODE stable, `decouverte`, `essentiel`, `club`, `grand-club`, `beta`), par le seul
- * écrivain ({@see ClubSubscriptionWriter}, connexion propriétaire). Aucune autre saison ne bouge.
+ * (offre par son CODE stable, `decouverte`, `complete`, `beta`, et palier `palier-1`, `palier-2`,
+ * `palier-3` pour l'offre complète), par le seul écrivain ({@see ClubSubscriptionWriter}, connexion
+ * propriétaire). Aucune autre saison ne bouge.
+ *
+ * Le palier (`--tier`) est exigé pour une offre qui en porte (l'offre complète) et refusé pour les
+ * autres (Découverte, Bêta) — second rempart derrière le schéma du geste de la console.
  *
  * Une offre payante (Bêta comprise) exige `--paid-season` (`current`|`next`) et se règle à l'instant
  * pour cette saison. Découverte refuse `--paid-season` : elle s'écrit sur la saison en cours, non
@@ -41,6 +48,7 @@ final class SetClubPlanCommand extends Command
     public function __construct(
         private readonly ClubSubscriptionWriter $subscriptionWriter,
         private readonly SubscriptionPlanRepository $plans,
+        private readonly SubscriptionPlanTierRepository $tiers,
     ) {
         parent::__construct();
     }
@@ -48,7 +56,8 @@ final class SetClubPlanCommand extends Command
     protected function configure(): void
     {
         $this->addOption('club', null, InputOption::VALUE_REQUIRED, 'Target club id (required).');
-        $this->addOption('plan', null, InputOption::VALUE_REQUIRED, 'Offer code (decouverte|essentiel|club|grand-club|beta).');
+        $this->addOption('plan', null, InputOption::VALUE_REQUIRED, 'Offer code (decouverte|complete|beta).');
+        $this->addOption('tier', null, InputOption::VALUE_REQUIRED, 'Tier code of the offer (palier-1|palier-2|palier-3). Required for complete, forbidden with decouverte and beta.');
         $this->addOption('paid-season', null, InputOption::VALUE_REQUIRED, 'Season the offer is paid for (current|next). Required for a paid offer, forbidden with decouverte.');
     }
 
@@ -84,8 +93,21 @@ final class SetClubPlanCommand extends Command
 
             return Command::FAILURE;
         }
-        if (null === $this->plans->findOneBy(['code' => $planCode])) {
+        $plan = $this->plans->findOneBy(['code' => $planCode]);
+        if (!$plan instanceof SubscriptionPlan) {
             $io->error(\sprintf('Unknown offer code "%s".', $planCode));
+
+            return Command::FAILURE;
+        }
+        $tierCode = $input->getOption('tier');
+        $tierCodes = array_map(static fn (SubscriptionPlanTier $tier): string => $tier->getCode(), $this->tiers->findBy(['planId' => $plan->getId()]));
+        if ([] === $tierCodes && null !== $tierCode) {
+            $io->error(\sprintf('--tier is not allowed with the offer "%s" (it has no tier).', $planCode));
+
+            return Command::FAILURE;
+        }
+        if ([] !== $tierCodes && !\in_array($tierCode, $tierCodes, true)) {
+            $io->error(\sprintf('--tier is required with the offer "%s" (%s).', $planCode, implode('|', $tierCodes)));
 
             return Command::FAILURE;
         }
@@ -104,11 +126,12 @@ final class SetClubPlanCommand extends Command
         $years = $this->subscriptionWriter->seasonYears($clubId, $today);
         $year = 'next' === $paidSeason ? $years['next'] : $years['current'];
 
-        $this->subscriptionWriter->record($clubId, $year, $planCode, SubscriptionOrigin::SUPPORT);
+        $this->subscriptionWriter->record($clubId, $year, $planCode, $tierCode, SubscriptionOrigin::SUPPORT);
 
+        $offer = null === $tierCode ? $planCode : $planCode . ' / ' . $tierCode;
         $io->success(null === $paidSeason
-            ? \sprintf('Offer "%s" assigned to club %s for season %d-%d.', $planCode, $clubId, $year, $year + 1)
-            : \sprintf('Offer "%s" assigned to club %s — season %d-%d marked as paid.', $planCode, $clubId, $year, $year + 1));
+            ? \sprintf('Offer "%s" assigned to club %s for season %d-%d.', $offer, $clubId, $year, $year + 1)
+            : \sprintf('Offer "%s" assigned to club %s — season %d-%d marked as paid.', $offer, $clubId, $year, $year + 1));
 
         return Command::SUCCESS;
     }

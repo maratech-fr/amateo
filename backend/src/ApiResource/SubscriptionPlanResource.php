@@ -11,14 +11,16 @@ use App\Access\Audience;
 use App\Access\ClubResource;
 use App\Access\Module;
 use App\Entity\SubscriptionPlan;
+use App\Entity\SubscriptionPlanTier;
 use App\State\Provider\SubscriptionPlanStateProvider;
 use DateTimeImmutable;
 use Symfony\Component\Serializer\Attribute\Groups;
 
 // SEC-14: read-only over the tenant API. SubscriptionPlan is the GLOBAL offer catalogue
-// (code, maxTeams, maxGenerations — no amount anywhere, P1-3) — a write here would let any
-// club member falsify caps/quotas. Managed out-of-band (migration seed / super-admin
-// actions), never the tenant API. The `beta` offer is hidden from the collection (provider).
+// (code, maxGenerations, tiers with their team cap — no amount anywhere, P1-3) — a write here
+// would let any club member falsify caps/quotas. Managed out-of-band (migration seed /
+// super-admin actions), never the tenant API. The `beta` offer is hidden from the collection
+// (provider).
 #[ApiResource(shortName: 'SubscriptionPlan', operations: [
     new GetCollection,
     new Get,
@@ -46,9 +48,6 @@ class SubscriptionPlanResource
 
     // Convention 0 = illimité (P1-3).
     #[Groups(['read'])]
-    public int $maxTeams = 0;
-
-    #[Groups(['read'])]
     public int $maxVenues = 0;
 
     #[Groups(['read'])]
@@ -58,7 +57,17 @@ class SubscriptionPlanResource
     #[Groups(['read'])]
     public array $features = [];
 
-    public static function fromEntity(SubscriptionPlan $entity): self
+    /**
+     * Les paliers de l'offre, rangés par position ; vide pour une offre sans palier. Plafond
+     * d'équipes `maxTeams` (0 = illimité) ; le prix d'un palier n'est jamais servi.
+     *
+     * @var list<array{code: string, position: int, maxTeams: int}>
+     */
+    #[Groups(['read'])]
+    public array $tiers = [];
+
+    /** @param list<SubscriptionPlanTier> $tiers les paliers de l'offre, rangés par position */
+    public static function fromEntity(SubscriptionPlan $entity, array $tiers = []): self
     {
         $dto = new self;
         $dto->id = $entity->getId();
@@ -67,10 +76,14 @@ class SubscriptionPlanResource
         $dto->updatedAt = $entity->getUpdatedAt();
         $dto->code = $entity->getCode();
         $dto->name = $entity->getName();
-        $dto->maxTeams = $entity->getMaxTeams();
         $dto->maxVenues = $entity->getMaxVenues();
         $dto->maxGenerations = $entity->getMaxGenerations();
         $dto->features = $entity->getFeatures();
+        $dto->tiers = array_map(static fn (SubscriptionPlanTier $tier): array => [
+            'code' => $tier->getCode(),
+            'position' => $tier->getPosition(),
+            'maxTeams' => $tier->getMaxTeams(),
+        ], $tiers);
 
         return $dto;
     }

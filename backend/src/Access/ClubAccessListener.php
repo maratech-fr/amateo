@@ -151,7 +151,7 @@ final class ClubAccessListener implements EventSubscriberInterface
         if ($this->outputOf($declaration, $method) instanceof Output) {
             $budget = $this->budgetFor($request);
             if (null !== $budget && $budget['restricted'] && $budget['used'] >= $budget['max']) {
-                throw new AccessDeniedHttpException(\sprintf('Les %d générations gratuites de votre club sont utilisées — l\'offre Essentiel les rend illimitées.', $budget['max']));
+                throw new AccessDeniedHttpException(\sprintf('Les %d générations gratuites de votre club sont utilisées — l\'offre complète les rend illimitées.', $budget['max']));
             }
         }
     }

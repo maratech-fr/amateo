@@ -88,12 +88,12 @@ final class GenerationCreditIsPartOfTheResultTest extends KernelTestCase
         yield 'moteur en panne (500)' => [['detail' => 'boom'], 500];
     }
 
-    /** @return iterable<string, array{0: string|null, 1: bool}> */
+    /** @return iterable<string, array{0: string|null, 1: bool, 2: string|null}> */
     public static function neverRestricted(): iterable
     {
-        yield 'offre Essentiel réglée' => ['essentiel', false];
-        yield 'bêta réglée' => ['beta', false];
-        yield 'démonstration' => [null, true];
+        yield 'offre complète réglée, palier 1' => ['complete', false, 'palier-1'];
+        yield 'bêta réglée' => ['beta', false, null];
+        yield 'démonstration' => [null, true, null];
     }
 
     /** Une version prête a pris un crédit, celui du club du message ; le voisin n'a rien perdu. */
@@ -179,9 +179,9 @@ final class GenerationCreditIsPartOfTheResultTest extends KernelTestCase
 
     /** Une offre payante, la bêta et la démonstration ne sont jamais décomptées, même au succès. */
     #[DataProvider('neverRestricted')]
-    public function testAnUnrestrictedClubIsNeverCounted(?string $planCode, bool $isDemo): void
+    public function testAnUnrestrictedClubIsNeverCounted(?string $planCode, bool $isDemo, ?string $tierCode): void
     {
-        [$club, , $schedule] = $this->seedClubWithPendingSchedule(credits: 50, planCode: $planCode, isDemo: $isDemo);
+        [$club, , $schedule] = $this->seedClubWithPendingSchedule(credits: 50, planCode: $planCode, isDemo: $isDemo, tierCode: $tierCode);
 
         $this->runHandler($club->getId(), $schedule->getId(), $this->completed());
 
@@ -305,7 +305,7 @@ final class GenerationCreditIsPartOfTheResultTest extends KernelTestCase
      *
      * @return array{0: Club, 1: Season, 2: Schedule}
      */
-    private function seedClubWithPendingSchedule(int $credits, ?string $planCode = null, bool $isDemo = false, bool $onboardingCompleted = true): array
+    private function seedClubWithPendingSchedule(int $credits, ?string $planCode = null, bool $isDemo = false, bool $onboardingCompleted = true, ?string $tierCode = null): array
     {
         $uid = uniqid('', true);
         $club = new Club;
@@ -321,7 +321,7 @@ final class GenerationCreditIsPartOfTheResultTest extends KernelTestCase
 
         $year = SeasonResolver::seasonYear(new DateTimeImmutable('today'));
         if (null !== $planCode) {
-            $this->subscribeClub($club->getId(), $year, $planCode);
+            $this->subscribeClub($club->getId(), $year, $planCode, $tierCode);
         }
 
         $season = $this->seedSeason($club->getId(), $year);

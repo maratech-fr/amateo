@@ -46,11 +46,11 @@ final class AdminMonitoringClubsPlanTest extends KernelTestCase
         $year = SeasonResolver::seasonYear(new DateTimeImmutable('today'));
         $beta = $this->planId('beta');
 
-        // Bêta POSÉE mais saison NON réglée (paidSeasonYear null) → effective Découverte.
+        // Bêta POSÉE mais saison NON réglée → effective Découverte.
         $this->seedClub('unpaid', $beta, null, $year);
-        // Bêta POSÉE et saison réglée (paidSeasonYear = année-pivot) → effective Bêta.
+        // Bêta POSÉE et saison réglée → effective Bêta.
         $this->seedClub('paid', $beta, $year, $year);
-        // Aucune offre stockée → Découverte, plan null.
+        // Aucune ligne → Découverte, aucun abonnement servi.
         $this->seedClub('noplan', null, null, $year);
 
         $items = self::getContainer()->get(AdminMonitoringService::class)->clubs(1, 100, $this->tag)['items'];
@@ -62,18 +62,57 @@ final class AdminMonitoringClubsPlanTest extends KernelTestCase
         self::assertCount(3, $byName, 'les trois clubs semés doivent remonter');
 
         $unpaid = $byName[$this->tag . ' unpaid'];
-        self::assertSame('beta', $unpaid['plan']['code'], 'l\'offre STOCKÉE reste Bêta');
+        self::assertSame('beta', $unpaid['subscription']['planCode'], 'la ligne STOCKÉE reste Bêta');
+        self::assertNull($unpaid['subscription']['paidAt'], 'ligne non réglée');
         self::assertSame('decouverte', $unpaid['effectivePlan']['code'], 'l\'offre EFFECTIVE retombe sur Découverte (saison non réglée)');
-        self::assertNull($unpaid['paidSeasonYear']);
 
         $paid = $byName[$this->tag . ' paid'];
-        self::assertSame('beta', $paid['plan']['code']);
+        self::assertSame('beta', $paid['subscription']['planCode']);
+        self::assertIsString($paid['subscription']['paidAt'], 'ligne réglée : la date est servie');
         self::assertSame('beta', $paid['effectivePlan']['code'], 'saison réglée → l\'effective est bien Bêta');
-        self::assertSame($year, $paid['paidSeasonYear']);
 
         $noplan = $byName[$this->tag . ' noplan'];
-        self::assertNull($noplan['plan'], 'aucune offre stockée → plan null');
+        self::assertNull($noplan['subscription'], 'aucune ligne → aucun abonnement servi');
         self::assertSame('decouverte', $noplan['effectivePlan']['code']);
+    }
+
+    /**
+     * Lot 8, PR 2 — la ligne d'un club dans la console dit l'abonnement de la saison en cours (offre,
+     * palier, date et origine du règlement), celui de la saison suivante s'il a une ligne, et le
+     * nombre d'équipes que le PLAFOND compte : toutes les équipes de la saison en cours, désactivées
+     * comprises (décision Q2), pas celles d'une autre saison. `plan` et `paidSeasonYear` ne sont plus
+     * servis. Témoin : un club sans ligne de saison suivante la sert à null.
+     */
+    public function testClubRowServesBothSeasonsSubscriptionsAndTheTeamsTheCapCounts(): void
+    {
+        $year = SeasonResolver::seasonYear(new DateTimeImmutable('today'));
+        $complete = $this->planId('complete');
+        $clubId = $this->seedClub('tiered', $complete, $year, $year, 'palier-2');
+        $this->seedLine($clubId, $year + 1, $complete, 'palier-1', true);
+        $seasonId = $this->admin->fetchOne('SELECT id FROM season WHERE club_id = ?', [$clubId]);
+        \assert(\is_string($seasonId));
+        $this->seedTeam($clubId, $seasonId, true);
+        $this->seedTeam($clubId, $seasonId, true);
+        $this->seedTeam($clubId, $seasonId, false); // désactivée : compte au plafond
+        $this->seedTeam($clubId, null, true);       // autre saison : ne compte pas
+        $this->seedClub('single', $complete, $year, $year, 'palier-1');
+
+        $byName = array_column(self::getContainer()->get(AdminMonitoringService::class)->clubs(1, 100, $this->tag)['items'], null, 'name');
+        $tiered = $byName[$this->tag . ' tiered'];
+
+        self::assertArrayNotHasKey('plan', $tiered, '`plan` ne sert plus : la ligne de saison le remplace');
+        self::assertArrayNotHasKey('paidSeasonYear', $tiered, '`paidSeasonYear` ne sert plus');
+        self::assertSame(
+            ['seasonYear' => $year, 'planCode' => 'complete', 'planName' => 'Offre complète', 'tierCode' => 'palier-2', 'origin' => 'seed'],
+            $this->picked($tiered['subscription'], ['seasonYear', 'planCode', 'planName', 'tierCode', 'origin']),
+            'la saison en cours : offre, palier et origine',
+        );
+        self::assertIsString($tiered['subscription']['paidAt'], 'la date de règlement est servie');
+        self::assertSame(['seasonYear' => $year + 1, 'planCode' => 'complete', 'tierCode' => 'palier-1'], $this->picked($tiered['nextSubscription'], ['seasonYear', 'planCode', 'tierCode']), 'la saison suivante, réglée à part, a sa propre ligne');
+        self::assertSame(3, $tiered['teamsCounted'], 'trois équipes de la saison en cours, la désactivée comprise ; pas celle d\'une autre saison');
+
+        self::assertNull($byName[$this->tag . ' single']['nextSubscription'], 'témoin : sans ligne de saison suivante, rien n\'est servi');
+        self::assertSame(0, $byName[$this->tag . ' single']['teamsCounted'], 'témoin : un club sans équipe en compte zéro');
     }
 
     /**
@@ -287,6 +326,24 @@ final class AdminMonitoringClubsPlanTest extends KernelTestCase
         parent::tearDown();
     }
 
+    /**
+     * Les clés nommées, dans l'ordre donné : l'ordre de sérialisation n'est pas le contrat.
+     *
+     * @param array<string, mixed> $row
+     * @param list<string>         $keys
+     *
+     * @return array<string, mixed>
+     */
+    private function picked(array $row, array $keys): array
+    {
+        $out = [];
+        foreach ($keys as $key) {
+            $out[$key] = \array_key_exists($key, $row) ? $row[$key] : '(absent)';
+        }
+
+        return $out;
+    }
+
     private function planId(string $code): string
     {
         $id = $this->admin->fetchOne('SELECT id FROM subscription_plan WHERE code = :code', ['code' => $code]);
@@ -295,7 +352,7 @@ final class AdminMonitoringClubsPlanTest extends KernelTestCase
         return $id;
     }
 
-    private function seedClub(string $suffix, ?string $planId, ?int $paidSeasonYear, int $year): void
+    private function seedClub(string $suffix, ?string $planId, ?int $paidSeasonYear, int $year, ?string $tierCode = null): string
     {
         $clubId = $this->admin->fetchOne('SELECT gen_random_uuid()');
         \assert(\is_string($clubId));
@@ -313,15 +370,7 @@ final class AdminMonitoringClubsPlanTest extends KernelTestCase
         // L'offre posée = la ligne d'abonnement de la saison du club, réglée si l'année réglée la couvre
         // (une ligne non réglée ne s'écrit plus par l'écrivain : pointage direct sur la connexion propriétaire).
         if (null !== $planId) {
-            $this->admin->executeStatement(<<<'SQL'
-                INSERT INTO club_subscription (id, club_id, season_year, plan_id, paid_at, origin, created_at, updated_at)
-                VALUES (gen_random_uuid(), :club_id, :year, :plan_id, CASE WHEN :paid THEN NOW() END, 'seed', NOW(), NOW())
-                SQL, [
-                'club_id' => $clubId,
-                'year' => $year,
-                'plan_id' => $planId,
-                'paid' => null !== $paidSeasonYear && $paidSeasonYear >= $year,
-            ], ['paid' => ParameterType::BOOLEAN]);
+            $this->seedLine($clubId, $year, $planId, $tierCode, null !== $paidSeasonYear && $paidSeasonYear >= $year);
         }
 
         $this->admin->executeStatement(<<<'SQL'
@@ -333,6 +382,32 @@ final class AdminMonitoringClubsPlanTest extends KernelTestCase
             'start' => $year . '-08-01',
             'end' => ($year + 1) . '-07-15',
         ]);
+
+        return $clubId;
+    }
+
+    /** Une ligne d'abonnement (club, année), palier par son code ; pointage direct sur la connexion propriétaire. */
+    private function seedLine(string $clubId, int $year, string $planId, ?string $tierCode, bool $paid): void
+    {
+        $this->admin->executeStatement(<<<'SQL'
+            INSERT INTO club_subscription (id, club_id, season_year, plan_id, tier_id, paid_at, origin, created_at, updated_at)
+            VALUES (gen_random_uuid(), :club_id, :year, :plan_id, (SELECT id FROM subscription_plan_tier WHERE code = :tier), CASE WHEN :paid THEN NOW() END, 'seed', NOW(), NOW())
+            SQL, [
+            'club_id' => $clubId,
+            'year' => $year,
+            'plan_id' => $planId,
+            'tier' => $tierCode,
+            'paid' => $paid,
+        ], ['paid' => ParameterType::BOOLEAN]);
+    }
+
+    /** Une équipe en SQL brut (patron `ReadOnlyRoleTest`) ; $seasonId null = une autre saison (guid nu). */
+    private function seedTeam(string $clubId, ?string $seasonId, bool $isActive): void
+    {
+        $this->admin->executeStatement(<<<'SQL'
+            INSERT INTO team (id, version, created_at, updated_at, club_id, season_id, sport_category_id, priority_tier_id, name, sessions_per_week, is_active)
+            VALUES (gen_random_uuid(), 1, NOW(), NOW(), :club, COALESCE(CAST(:season AS uuid), gen_random_uuid()), gen_random_uuid(), 1, 'Équipe comptée', 1, :active)
+            SQL, ['club' => $clubId, 'season' => $seasonId, 'active' => $isActive], ['active' => ParameterType::BOOLEAN]);
     }
 
     private function service(DateTimeImmutable $now): AdminMonitoringService
