@@ -84,7 +84,7 @@ lu ni écrit. Une fonction déclarée se juge dans cet ordre, le premier refus g
 **démonstration** (403, texte en `detail` ; `thirdParty` depuis un club OU un compte de démonstration ; le texte est
 celui de la fonction : trois textes, mail aux coachs par défaut, « Un compte de démonstration ne
 peut pas inviter. » pour `ClubInvitationController`, « Ce compte de démonstration ne peut pas être
-modifié. » pour un geste de compte protégé) → **module fermé** (409) → **crédit** (403). Les lectures
+modifié. » pour un geste de compte protégé) → **module fermé** (409) → **palier** (403, `detail` = `PlanEntitlements::teamCapMessage()` : la saison de la requête compte plus d'équipes que son palier, sorties seulement) → **crédit** (403). Les lectures
 des drapeaux `isDemo` des gestes de club et de compte vivent dans `App\Access\DemoRegime`, maison
 unique : `isUnlimited(Club)` (aucune offre ne bride un club de démonstration — `PlanEntitlements`,
 `SeasonTransitionService`), `forbidsThirdPartySend(?Club, ?User)` (club OU compte ; club introuvable :

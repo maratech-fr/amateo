@@ -156,7 +156,7 @@ En-tête, de gauche à droite :
   un bug (`FeedbackDialog`), Confidentialité (`/confidentialite`), Se déconnecter.
 
 `<main aria-busy={navigating}>` (`navigating` dérivé de `useNavigation()`) rend
-`ReadonlySeasonBanner`, `SeasonTransitionBanner`, `CreditsBanner` puis `<Outlet />`. Aucun skip
+`ClubClosingBanner`, `ReadonlySeasonBanner`, `SeasonTransitionBanner`, `CreditsBanner`, `TeamCapBanner` (message serveur `me.club.entitlements.teamCapMessage`, jamais recalculé), `DeploymentNoticeBanner` puis `<Outlet />`. Aucun skip
 link n'est présent dans ce composant (grep `main-content`/`sr-only` sans résultat dans
 `AppLayout.tsx`).
 
