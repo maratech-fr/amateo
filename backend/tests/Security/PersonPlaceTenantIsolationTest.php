@@ -19,7 +19,8 @@ use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
  * les modifie pas, ne les efface pas ; un coach ne peut désigner que la fiche d'une personne de son
  * propre club, un gymnase que le lieu de son propre club ; une personne a au plus un rôle coach par
  * saison, un lieu au plus un gymnase par saison, et ni la fiche ni le lieu ne disparaissent sous la
- * ligne de saison qui les pointe.
+ * ligne de saison qui les pointe. PR 5 : un temps de trajet relie deux lieux du MÊME club (deux clés composées
+ * avec le club, ON DELETE CASCADE), un par couple, sous la RLS de `place_travel_time`.
  *
  * Prouvé en SQL brut sur la connexion de l'application (`amateo_app`, sous RLS, aucune couche
  * applicative) : la RLS de `person` et de `place`, les clés étrangères COMPOSÉES `(person_id, club_id)`
@@ -152,6 +153,66 @@ final class PersonPlaceTenantIsolationTest extends KernelTestCase
         self::assertSame([['local_columns' => 'place_id,club_id', 'referenced_columns' => 'id,club_id', 'on_delete' => 'r']], $keys, 'une seule clé venue → place : (place_id, club_id) → (id, club_id), ON DELETE RESTRICT');
     }
 
+    /** Lot 3, PR 5 (abus) : un temps de trajet ne relie jamais un lieu du club A à un lieu du club B, dans un sens comme dans l'autre. */
+    public function testATravelTimeCannotLinkThePlacesOfTwoClubs(): void
+    {
+        [, $placeB] = $this->placesOfBothClubs();
+        // Deux lieux du club A rangés de part et d'autre du lieu du club B : chaque couple ci-dessous est rangé
+        // « plus petit identifiant d'abord », le lieu étranger tombe tour à tour en second puis en premier.
+        $lowA = $this->insertPlace($this->clubA, '00000000-0000-4000-8000-' . substr(bin2hex(random_bytes(6)), 0, 12));
+        $highA = $this->insertPlace($this->clubA, 'ffffffff-0000-4000-8000-' . substr(bin2hex(random_bytes(6)), 0, 12));
+        $this->guc->setClubId($this->clubA);
+
+        self::assertSame('23503', $this->sqlStateOf(fn (): int => $this->insertTravelTime($this->clubA, $lowA, $placeB)), 'un temps du club A ne pointe jamais un lieu du club B en second (clé composée avec le club)');
+        self::assertSame('23503', $this->sqlStateOf(fn (): int => $this->insertTravelTime($this->clubA, $placeB, $highA)), 'ni en premier');
+        self::assertNull($this->sqlStateOf(fn (): int => $this->insertTravelTime($this->clubA, $lowA, $highA)), 'témoin : un temps relie deux lieux du club A');
+    }
+
+    /** Lot 3, PR 5 : le temps de trajet d'un club est invisible et intouchable par un autre ; il part avec son lieu. */
+    public function testAClubNeverReadsModifiesOrErasesTheTravelTimeOfAnotherClub(): void
+    {
+        [, $placeB] = $this->placesOfBothClubs();
+        [, $otherPlaceB] = $this->placesOfBothClubs();
+        $this->guc->setClubId($this->clubB);
+        $travelB = $this->uuid();
+        $this->insertTravelTime($this->clubB, $placeB, $otherPlaceB, $travelB);
+        $this->guc->setClubId($this->clubA);
+
+        self::assertSame(0, (int) $this->connection->fetchOne('SELECT COUNT(*) FROM place_travel_time WHERE id = ?', [$travelB]), 'le temps du club B est invisible au club A');
+        self::assertSame(0, $this->connection->executeStatement('UPDATE place_travel_time SET driving_minutes = 1 WHERE id = ?', [$travelB]), 'UPDATE d\'un temps d\'un autre club : zéro ligne');
+        self::assertSame(0, $this->connection->executeStatement('DELETE FROM place_travel_time WHERE id = ?', [$travelB]), 'DELETE d\'un temps d\'un autre club : zéro ligne');
+
+        $this->guc->setClubId($this->clubB);
+        self::assertSame(12, (int) $this->connection->fetchOne('SELECT driving_minutes FROM place_travel_time WHERE id = ?', [$travelB]), 'le temps du club B est intact');
+        $this->connection->executeStatement('DELETE FROM place WHERE id = ?', [$otherPlaceB]);
+        self::assertSame(0, (int) $this->connection->fetchOne('SELECT COUNT(*) FROM place_travel_time WHERE id = ?', [$travelB]), 'le temps part avec l\'un de ses lieux (ON DELETE CASCADE)');
+    }
+
+    /** La forme exacte des deux clés temps de trajet → lieu, et un seul temps par couple et par club. */
+    public function testTheTravelTimeToPlaceKeysAreCompositeWithTheClub(): void
+    {
+        $keys = $this->connection->fetchAllAssociative(<<<'SQL'
+            SELECT
+              (SELECT string_agg(a.attname, ',' ORDER BY k.ord) FROM unnest(c.conkey) WITH ORDINALITY k(attnum, ord) JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = k.attnum) AS local_columns,
+              (SELECT string_agg(a.attname, ',' ORDER BY k.ord) FROM unnest(c.confkey) WITH ORDINALITY k(attnum, ord) JOIN pg_attribute a ON a.attrelid = c.confrelid AND a.attnum = k.attnum) AS referenced_columns,
+              c.confdeltype AS on_delete
+            FROM pg_constraint c
+            WHERE c.contype = 'f' AND c.conrelid = 'public.place_travel_time'::regclass AND c.confrelid = 'public.place'::regclass
+            ORDER BY local_columns
+            SQL);
+
+        self::assertSame([
+            ['local_columns' => 'place_a_id,club_id', 'referenced_columns' => 'id,club_id', 'on_delete' => 'c'],
+            ['local_columns' => 'place_b_id,club_id', 'referenced_columns' => 'id,club_id', 'on_delete' => 'c'],
+        ], $keys, 'deux clés temps → lieu : (place_a_id, club_id) et (place_b_id, club_id) → (id, club_id), ON DELETE CASCADE');
+
+        [$placeA] = $this->placesOfBothClubs();
+        [$otherPlaceA] = $this->placesOfBothClubs();
+        $this->guc->setClubId($this->clubA);
+        $this->insertTravelTime($this->clubA, $placeA, $otherPlaceA);
+        self::assertSame('23505', $this->sqlStateOf(fn (): int => $this->insertTravelTime($this->clubA, $placeA, $otherPlaceA)), 'un seul temps par couple de lieux');
+    }
+
     protected function setUp(): void
     {
         self::bootKernel();
@@ -226,6 +287,32 @@ final class PersonPlaceTenantIsolationTest extends KernelTestCase
         return $this->connection->executeStatement(
             'INSERT INTO venue (id, version, created_at, updated_at, club_id, season_id, place_id, name, source, is_active) VALUES (?, 1, now(), now(), ?, ?, ?, \'Gymnase\', \'manual\', true)',
             [$this->uuid(), $clubId, $seasonId ?? $this->uuid(), $placeId],
+        );
+    }
+
+    /** Un lieu à l'identifiant choisi, posé sous le contexte de son club. */
+    private function insertPlace(string $clubId, string $id): string
+    {
+        $this->guc->setClubId($clubId);
+        $this->connection->executeStatement(
+            'INSERT INTO place (id, version, created_at, updated_at, club_id, address, latitude, longitude) VALUES (?, 1, now(), now(), ?, NULL, NULL, NULL)',
+            [$id, $clubId],
+        );
+        $this->guc->clear();
+
+        return $id;
+    }
+
+    /** Un temps de trajet entre deux lieux, couple rangé « plus petit identifiant de lieu d'abord » comme en base. */
+    private function insertTravelTime(string $clubId, string $placeA, string $placeB, ?string $id = null): int
+    {
+        if (strcmp($placeA, $placeB) > 0) {
+            [$placeA, $placeB] = [$placeB, $placeA];
+        }
+
+        return $this->connection->executeStatement(
+            'INSERT INTO place_travel_time (id, version, created_at, updated_at, club_id, place_a_id, place_b_id, driving_minutes, driving_source) VALUES (?, 1, now(), now(), ?, ?, ?, 12, \'MANUAL\')',
+            [$id ?? $this->uuid(), $clubId, $placeA, $placeB],
         );
     }
 

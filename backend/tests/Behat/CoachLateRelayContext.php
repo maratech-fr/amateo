@@ -50,7 +50,7 @@ final class CoachLateRelayContext extends BaseContext
     private array $apiCreated = [];
 
     /** @var array<string, list<string>> tables → ids insérés en direct à nettoyer. */
-    private array $dbRows = ['reservation' => [], 'venue_training_slot' => [], 'venue_travel_time' => [], 'team_coach' => []];
+    private array $dbRows = ['reservation' => [], 'venue_training_slot' => [], 'place_travel_time' => [], 'team_coach' => []];
 
     /** @var array{blockers: list<string>, warnings: list<string>} dernier récap obtenu. */
     private array $recap = ['blockers' => [], 'warnings' => []];
@@ -94,21 +94,23 @@ final class CoachLateRelayContext extends BaseContext
     #[Given('le trajet entre le Mont Blanc et le Louison Bobet est de 15 minutes')]
     public function leTrajetEstDeQuinzeMinutes(): void
     {
-        [$a, $b] = $this->montBlancId < $this->louisonBobetId ? [$this->montBlancId, $this->louisonBobetId] : [$this->louisonBobetId, $this->montBlancId];
+        // Lot 3, PR 5 : le temps de trajet vit au club, entre les LIEUX des deux gymnases (plus petit lieu d'abord).
+        $placeOf = fn (string $venueId): string => $this->dbalScalar(\sprintf('SELECT place_id AS behatval FROM venue WHERE id=\'%s\'', $venueId), admin: true);
+        $places = [$placeOf($this->montBlancId), $placeOf($this->louisonBobetId)];
+        sort($places, \SORT_STRING);
         $id = $this->uuid();
         $this->dbalExec(
             \sprintf(
-                'INSERT INTO venue_travel_time (id, version, created_at, updated_at, club_id, season_id, venue_a_id, venue_b_id, walking_minutes)'
-                . ' VALUES (\'%s\', 1, now(), now(), \'%s\', \'%s\', \'%s\', \'%s\', 15)',
+                'INSERT INTO place_travel_time (id, version, created_at, updated_at, club_id, place_a_id, place_b_id, walking_minutes)'
+                . ' VALUES (\'%s\', 1, now(), now(), \'%s\', \'%s\', \'%s\', 15)',
                 $id,
                 $this->clubId,
-                $this->seasonId,
-                $a,
-                $b,
+                $places[0],
+                $places[1],
             ),
             admin: true,
         );
-        $this->dbRows['venue_travel_time'][] = $id;
+        $this->dbRows['place_travel_time'][] = $id;
     }
 
     #[Given('Jules est adjoint disponible des SENIORS le mardi')]
@@ -169,7 +171,7 @@ final class CoachLateRelayContext extends BaseContext
         if ('' === $this->token) {
             return;
         }
-        foreach (['reservation', 'venue_training_slot', 'venue_travel_time', 'team_coach'] as $table) {
+        foreach (['reservation', 'venue_training_slot', 'place_travel_time', 'team_coach'] as $table) {
             foreach ($this->dbRows[$table] as $id) {
                 $this->dbalExec(\sprintf('DELETE FROM %s WHERE id=\'%s\'', $table, $id), admin: true);
             }

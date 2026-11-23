@@ -30,7 +30,6 @@ use App\Entity\Team;
 use App\Entity\TeamCoach;
 use App\Entity\Venue;
 use App\Entity\VenueTrainingSlot;
-use App\Entity\VenueTravelTime;
 use App\Enum\CalendarEntryKind;
 use App\Enum\CalendarEntryPeriodType;
 use App\Enum\ConstraintFamily;
@@ -58,6 +57,7 @@ use Doctrine\ORM\EntityManagerInterface;
 use PHPUnit\Framework\Attributes\Group;
 use ReflectionClass;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
+use Symfony\Component\Uid\Uuid;
 
 /**
  * NR BLOQUANT — CE QU'ON ANNONCE == CE QU'ON DÉTRUIT (axes §7.1 : planning lifecycle,
@@ -712,34 +712,42 @@ final class DeletionImpactParityTest extends KernelTestCase
         self::assertNotNull($this->em->getRepository(Constraint::class)->find($foreignRule), 'la règle d\'un autre club reste');
     }
 
-    public function testDeletingAVenueAnnouncesAndDeletesItsTravelTimes(): void
+    /**
+     * Lot 3, PR 5 : le temps de trajet vit au club, entre deux LIEUX ; supprimer le gymnase d'une saison ne l'annonce
+     * pas et ne l'emporte pas (annoncé == détruit, à zéro) — il part avec son lieu. Témoin : la règle qui vise le
+     * gymnase reste annoncée par la même réponse.
+     */
+    public function testDeletingAVenueNeitherAnnouncesNorDeletesTheTravelTimesOfItsPlace(): void
     {
         [$club, $season] = $this->seed();
         $venue = $this->venue($club, $season, 'Coubertin');
         $other = $this->venue($club, $season, 'Debarros');
         $third = $this->venue($club, $season, 'Gerland');
 
-        $this->travelTime($club, $season, $venue, $other);
-        $survivor = $this->travelTime($club, $season, $other, $third);
+        $ofItsPlace = $this->travelTime($club, $venue, $other);
+        $elsewhere = $this->travelTime($club, $other, $third);
+        $this->em->persist((new Constraint)->setClubId($club->getId())->setSeasonId($season->getId())
+            ->setName('Coubertin · au moins une séance')->setScope(ConstraintScope::FACILITY)->setScopeTargetId($venue->getId())
+            ->setFamily(ConstraintFamily::FACILITY)->setRuleType(ConstraintRuleType::PREFERRED)
+            ->setConfig(['minAtVenueCount' => 1])->setIsActive(true));
         $this->em->flush();
 
         $impact = self::getContainer()->get(DeletionImpactCounter::class)->forVenue($venue);
-        $announced = 0;
+        $aimed = array_values(array_filter($impact->lines, static fn (array $line): bool => 'venue_constraint' === $line['key']));
+        self::assertSame(1, $aimed[0]['count'] ?? 0, 'témoin : la règle qui vise le gymnase est annoncée');
         foreach ($impact->lines as $line) {
-            if (\in_array($line['key'], ['venue_travel_time_a', 'venue_travel_time_b'], true)) {
-                $announced += $line['count'];
-            }
+            self::assertStringNotContainsString('trajet', $line['one'] . ' ' . $line['many'], \sprintf('aucune ligne de trajet n\'est annoncée (servi : %s)', json_encode($impact->lines, \JSON_UNESCAPED_UNICODE)));
         }
-        self::assertSame(1, $announced, 'le barème de trajet du gymnase est annoncé (le couple avec l\'autre salle)');
 
         self::getContainer()->get(EntityCascadeDeleter::class)->purgeChildrenOfVenue($venue);
         $this->em->flush();
         $this->em->clear();
 
-        // Annoncé == détruit : la matrice du gymnase supprimé est partie…
-        self::assertSame(0, $this->countBy(VenueTravelTime::class, 'venueAId', $venue->getId()) + $this->countBy(VenueTravelTime::class, 'venueBId', $venue->getId()));
-        // …et le couple des DEUX autres salles survit intact.
-        self::assertNotNull($this->em->getRepository(VenueTravelTime::class)->find($survivor));
+        self::assertSame(
+            2,
+            (int) $this->em->getConnection()->fetchOne('SELECT COUNT(*) FROM place_travel_time WHERE id IN (?, ?)', [$ofItsPlace, $elsewhere]),
+            'les deux temps de trajet restent au club, celui du lieu du gymnase supprimé compris',
+        );
     }
 
     /**
@@ -992,16 +1000,17 @@ final class DeletionImpactParityTest extends KernelTestCase
         return $venue;
     }
 
-    /** A travel-time bracket between two venues (normalized couple) and its id. */
-    private function travelTime(Club $club, Season $season, Venue $x, Venue $y): string
+    /** Un temps de trajet au club entre les lieux de deux gymnases (couple rangé plus petit lieu d'abord), et son id. */
+    private function travelTime(Club $club, Venue $x, Venue $y): string
     {
-        [$lo, $hi] = strcasecmp($x->getId(), $y->getId()) > 0 ? [$y->getId(), $x->getId()] : [$x->getId(), $y->getId()];
-        $travel = (new VenueTravelTime)->setClubId($club->getId())->setSeasonId($season->getId())
-            ->setVenueAId($lo)->setVenueBId($hi)->setDrivingMinutes(12);
-        $this->em->persist($travel);
-        $this->em->flush();
+        [$lo, $hi] = strcmp($x->getPlaceId(), $y->getPlaceId()) > 0 ? [$y->getPlaceId(), $x->getPlaceId()] : [$x->getPlaceId(), $y->getPlaceId()];
+        $id = Uuid::v4()->toRfc4122();
+        $this->em->getConnection()->executeStatement(
+            'INSERT INTO place_travel_time (id, version, created_at, updated_at, club_id, place_a_id, place_b_id, driving_minutes, driving_source) VALUES (?, 1, now(), now(), ?, ?, ?, 12, \'MANUAL\')',
+            [$id, $club->getId(), $lo, $hi],
+        );
 
-        return $travel->getId();
+        return $id;
     }
 
     private function team(Club $club, Season $season, string $forcedVenueId): Team

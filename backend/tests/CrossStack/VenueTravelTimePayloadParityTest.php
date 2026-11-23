@@ -6,13 +6,13 @@ namespace App\Tests\CrossStack;
 
 use App\Entity\Club;
 use App\Entity\Coach;
+use App\Entity\Place;
 use App\Entity\Season;
 use App\Entity\User;
+use App\Entity\Venue;
 use App\Entity\VenueTravelRuleSetting;
-use App\Entity\VenueTravelTime;
 use App\Enum\SeasonStatus;
 use App\Enum\VenueTravelRuleIntensity;
-use App\Enum\VenueTravelTimeSource;
 use App\Service\ScheduleConstraintBuilder;
 use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\TenantGucTrait;
@@ -35,6 +35,10 @@ use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
  *    d'un coach DOIT voyager ;
  *  - une ligne d'un AUTRE club/saison ne fuit PAS ; un club SANS matrice émet [] ET n'active PAS la
  *    règle ET son payload est par ailleurs identique à avant (l'anti-régression).
+ *
+ * Lot 3, PR 5 : la ligne vit au club entre deux LIEUX ; n'en part que le couple dont les deux lieux ont un
+ * gymnase dans la saison demandée, nommé par ces gymnases. Jumeau : `Integration/EngineRequestReferenceTest`
+ * (références 9 et 10, la demande entière à l'octet, couple rangé à l'envers d'une saison à l'autre).
  */
 #[Group('phase1')]
 #[Group('integration')]
@@ -46,6 +50,9 @@ final class VenueTravelTimePayloadParityTest extends KernelTestCase
     private EntityManagerInterface $em;
 
     private ScheduleConstraintBuilder $builder;
+
+    /** @var array<string, Venue> gymnases du décor par identifiant */
+    private array $venues = [];
 
     /**
      * Sens 1 — le socle émet EXACTEMENT ses lignes stockées, TRIÉES par (venueAId, venueBId), et
@@ -196,6 +203,38 @@ final class VenueTravelTimePayloadParityTest extends KernelTestCase
     }
 
     /**
+     * Lot 3, PR 5 — le temps de trajet vit au club entre deux LIEUX, et survit à la suppression d'un gymnase : un temps
+     * dont un lieu n'a pas de gymnase dans la saison demandée n'est pas émis et n'active pas la règle (la demande reste
+     * celle d'avant, quand la suppression du gymnase emportait son barème). Témoin : le couple dont les deux lieux ont un
+     * gymnase cette saison, posé sur le même décor dans une seconde saison, est émis.
+     */
+    public function testATravelTimeWhosePlaceHasNoVenueThisSeasonIsNotEmitted(): void
+    {
+        [$club, $season] = $this->seed();
+        $a = $this->venueWithId($club, $season, 'aaaaaaaa-0000-4000-8000-00000000000e');
+        $b = $this->venueWithId($club, $season, 'bbbbbbbb-0000-4000-8000-00000000000e');
+        $this->em->flush();
+        // Un lieu du club sans gymnase cette saison : celui d'un gymnase supprimé, ou d'une autre saison.
+        $elsewhere = (new Place)->setClubId($club->getId());
+        $this->em->persist($elsewhere);
+        $this->travelTimeBetweenPlaces($club, $a->getPlaceId(), $elsewhere->getId(), 10, 20);
+
+        $payload = $this->builder->buildForClubSeason($club->getId(), $season->getId());
+
+        self::assertSame([], $payload['venueTravelTimes'], 'un temps dont un lieu n’a pas de gymnase dans la saison ne part pas au moteur');
+        self::assertArrayNotHasKey('travelTime', $payload['implicitRules'], 'et il n’active pas la règle à lui seul');
+
+        $this->travelTimeBetweenPlaces($club, $a->getPlaceId(), $b->getPlaceId(), 12, null);
+        self::getContainer()->get('cache.schedule')->clear();
+        $payload = $this->builder->buildForClubSeason($club->getId(), $season->getId());
+        self::assertSame(
+            [['venueAId' => $a->getId(), 'venueBId' => $b->getId(), 'drivingMinutes' => 12, 'walkingMinutes' => null]],
+            $payload['venueTravelTimes'],
+            'témoin : le couple des deux gymnases de la saison est émis, seul',
+        );
+    }
+
+    /**
      * Sens 2 — un club SANS matrice émet un bloc VIDE, N'active PAS la règle, et son payload est
      * par ailleurs INCHANGÉ (anti-régression : la fonctionnalité est silencieuse tant qu'on n'a
      * pas touché la matrice). Un builder qui activerait la règle par défaut échoue ici.
@@ -221,28 +260,40 @@ final class VenueTravelTimePayloadParityTest extends KernelTestCase
         $this->builder = self::getContainer()->get(ScheduleConstraintBuilder::class);
     }
 
-    private function travelTime(Club $club, Season $season, string $vA, string $vB, ?int $driving, ?int $walking): VenueTravelTime
+    /**
+     * Un temps de trajet saisi à la main entre deux gymnases de la saison (créés au besoin, chacun sur son lieu) :
+     * depuis le lot 3, PR 5, la ligne vit au club entre leurs deux LIEUX (`place_travel_time`), rangée plus petit
+     * identifiant de lieu d'abord.
+     */
+    private function travelTime(Club $club, Season $season, string $vA, string $vB, ?int $driving, ?int $walking): void
     {
-        // Normalise venueAId < venueBId comme le processor.
-        if (strcasecmp($vA, $vB) > 0) {
-            [$vA, $vB] = [$vB, $vA];
-        }
-        $row = new VenueTravelTime;
-        $row->setClubId($club->getId());
-        $row->setSeasonId($season->getId());
-        $row->setVenueAId($vA);
-        $row->setVenueBId($vB);
-        $row->setDrivingMinutes($driving);
-        $row->setWalkingMinutes($walking);
-        if (null !== $driving) {
-            $row->setDrivingSource(VenueTravelTimeSource::MANUAL);
-        }
-        if (null !== $walking) {
-            $row->setWalkingSource(VenueTravelTimeSource::MANUAL);
-        }
-        $this->em->persist($row);
+        $this->travelTimeBetweenPlaces($club, $this->venueWithId($club, $season, $vA)->getPlaceId(), $this->venueWithId($club, $season, $vB)->getPlaceId(), $driving, $walking);
+    }
 
-        return $row;
+    private function travelTimeBetweenPlaces(Club $club, string $placeA, string $placeB, ?int $driving, ?int $walking): void
+    {
+        $this->em->flush();
+        if (strcmp($placeA, $placeB) > 0) {
+            [$placeA, $placeB] = [$placeB, $placeA];
+        }
+        $this->em->getConnection()->executeStatement(
+            'INSERT INTO place_travel_time (id, version, created_at, updated_at, club_id, place_a_id, place_b_id, driving_minutes, walking_minutes, driving_source, walking_source)'
+            . ' VALUES (?, 1, now(), now(), ?, ?, ?, ?, ?, ?, ?)',
+            [$this->uuid(), $club->getId(), $placeA, $placeB, $driving, $walking, null === $driving ? null : 'MANUAL', null === $walking ? null : 'MANUAL'],
+        );
+    }
+
+    /** Le gymnase de la saison à cet identifiant, créé sur un lieu neuf au premier appel. */
+    private function venueWithId(Club $club, Season $season, string $id): Venue
+    {
+        if (!isset($this->venues[$id])) {
+            $place = (new Place)->setClubId($club->getId());
+            $this->em->persist($place);
+            $this->venues[$id] = new Venue($place)->setId($id)->setClubId($club->getId())->setSeasonId($season->getId())->setName('Gymnase ' . substr($id, 0, 4))->setSource('manual');
+            $this->em->persist($this->venues[$id]);
+        }
+
+        return $this->venues[$id];
     }
 
     private function travelRuleSetting(Club $club, Season $season, VenueTravelRuleIntensity $intensity, int $tolerance = 20, int $default = 20): VenueTravelRuleSetting

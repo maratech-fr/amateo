@@ -23,7 +23,6 @@ use App\Entity\TeamMatchHabit;
 use App\Entity\Venue;
 use App\Entity\VenueMatchWindow;
 use App\Entity\VenueTrainingSlot;
-use App\Entity\VenueTravelTime;
 use App\Enum\CoachGender;
 use App\Enum\ConstraintFamily;
 use App\Enum\ConstraintRuleType;
@@ -36,7 +35,6 @@ use App\Enum\SeasonStatus;
 use App\Enum\TeamCoachRole;
 use App\Enum\TeamLinkIntensity;
 use App\Enum\TeamLinkType;
-use App\Enum\VenueTravelTimeSource;
 use App\Service\ScheduleConstraintBuilder;
 use App\Service\SeasonAlreadyTransitionedException;
 use App\Service\SeasonResolver;
@@ -51,6 +49,7 @@ use Doctrine\ORM\EntityManagerInterface;
 use PHPUnit\Framework\Attributes\Group;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
+use Symfony\Component\Uid\Uuid;
 
 /**
  * Season transition copy NR (spec transition-de-saison §2-3): the ENTRIES of
@@ -158,16 +157,20 @@ final class SeasonTransitionServiceTest extends KernelTestCase
         // L'intensité côté entraînement suit la recopie (non-défaut : prouve le set).
         self::assertSame(TeamLinkIntensity::MANDATORY, $newTeamLink->getTrainingIntensity());
 
-        // P2-53 RMM-8 — le barème de trajet suit, remappé aux gymnases copiés, minutes ET
-        // source MANUAL préservées (falsifie l'oubli de setDriving*).
-        $newTravel = $this->em->getRepository(VenueTravelTime::class)->findOneBy(['seasonId' => $target->getId()]);
-        self::assertNotNull($newTravel);
-        $newVenueIds = [$newVenues[0]->getId(), $newVenues[1]->getId()];
-        self::assertContains($newTravel->getVenueAId(), $newVenueIds);
-        self::assertContains($newTravel->getVenueBId(), $newVenueIds);
-        self::assertLessThan(0, strcasecmp($newTravel->getVenueAId(), $newTravel->getVenueBId()));
-        self::assertSame(22, $newTravel->getDrivingMinutes());
-        self::assertSame(VenueTravelTimeSource::MANUAL, $newTravel->getDrivingSource());
+        // Lot 3, PR 5 — le temps de trajet vit au club, entre deux lieux : la saison suivante n'en reçoit
+        // AUCUNE copie, elle lit la même ligne, puisque ses gymnases copiés sont aux mêmes lieux ; minutes ET
+        // source MANUAL intactes.
+        $travels = $this->em->getConnection()->fetchAllAssociative(
+            'SELECT place_a_id::text AS place_a_id, place_b_id::text AS place_b_id, driving_minutes, driving_source FROM place_travel_time WHERE club_id = ?',
+            [$club->getId()],
+        );
+        $newPlaces = [$newVenues[0]->getPlaceId(), $newVenues[1]->getPlaceId()];
+        sort($newPlaces, \SORT_STRING);
+        self::assertSame(
+            [['place_a_id' => $newPlaces[0], 'place_b_id' => $newPlaces[1], 'driving_minutes' => 22, 'driving_source' => 'MANUAL']],
+            $travels,
+            'une seule ligne au club, entre les lieux que les gymnases copiés partagent, sans recopie',
+        );
 
         // Team: forcedVenueId remapped to the copied venue, name untouched.
         $newTeams = $this->em->getRepository(Team::class)->findBy(['seasonId' => $target->getId()], ['name' => 'ASC']);
@@ -573,17 +576,13 @@ final class SeasonTransitionServiceTest extends KernelTestCase
         $this->em->flush();
         $venueB = $this->venue($club, $season, 'Gym B');
 
-        // P2-53 RMM-8 — un barème de trajet A↔B, valeur MANUAL : la recopie N+1 doit le
-        // remapper aux gymnases copiés ET préserver sa valeur/source (sinon régression muette).
-        $travel = new VenueTravelTime;
-        $travel->setClubId($club->getId());
-        $travel->setSeasonId($season->getId());
-        [$loV, $hiV] = strcasecmp($venueA->getId(), $venueB->getId()) > 0 ? [$venueB->getId(), $venueA->getId()] : [$venueA->getId(), $venueB->getId()];
-        $travel->setVenueAId($loV);
-        $travel->setVenueBId($hiV);
-        $travel->setDrivingMinutes(22);
-        $travel->setDrivingSource(VenueTravelTimeSource::MANUAL);
-        $this->em->persist($travel);
+        // Un temps de trajet A↔B saisi à la main, au club entre les deux lieux (lot 3, PR 5) : la saison N+1
+        // doit le lire tel quel, sans copie (sinon régression muette).
+        [$loP, $hiP] = strcmp($venueA->getPlaceId(), $venueB->getPlaceId()) > 0 ? [$venueB->getPlaceId(), $venueA->getPlaceId()] : [$venueA->getPlaceId(), $venueB->getPlaceId()];
+        $this->em->getConnection()->executeStatement(
+            'INSERT INTO place_travel_time (id, version, created_at, updated_at, club_id, place_a_id, place_b_id, driving_minutes, driving_source) VALUES (?, 1, now(), now(), ?, ?, ?, 22, \'MANUAL\')',
+            [Uuid::v4()->toRfc4122(), $club->getId(), $loP, $hiP],
+        );
 
         $slot = new VenueTrainingSlot;
         $slot->setClubId($club->getId());

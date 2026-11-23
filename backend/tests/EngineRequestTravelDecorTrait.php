@@ -15,17 +15,16 @@ use App\Entity\Team;
 use App\Entity\TeamCoach;
 use App\Entity\Venue;
 use App\Entity\VenueTrainingSlot;
-use App\Entity\VenueTravelTime;
 use App\Enum\ConstraintFamily;
 use App\Enum\ConstraintRuleType;
 use App\Enum\ConstraintScope;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
 use App\Enum\TeamCoachRole;
-use App\Enum\VenueTravelTimeSource;
 use App\Service\SchedulePlanProvisioner;
 use DateTimeImmutable;
 use PHPUnit\Framework\Assert;
+use ReflectionProperty;
 
 /**
  * Ce que le lot des personnes et des lieux déplace, posé sur le décor des demandes au moteur : les temps de trajet
@@ -42,12 +41,21 @@ use PHPUnit\Framework\Assert;
  * rangé à l'envers d'une saison à l'autre (« plus petit identifiant de gymnase d'abord »). Mêmes couples, minutes
  * différentes ; deux équipes, deux coachs (salarié véhiculé, non véhiculé), une règle de coach.
  *
+ * Depuis le lot 3, PR 5, le temps de trajet vit au club entre deux LIEUX (`place_travel_time`). Sud et Est gardent
+ * leurs lieux d'une saison à l'autre (le couple Sud–Est, sans minutes, est UNE ligne servie aux deux saisons) ; Nord
+ * passe sur un lieu à lui, d'identifiant fixé le plus petit du décor : Nord–Sud de la saison suivante est rangé en base
+ * Nord d'abord, et doit partir au moteur Sud d'abord. Les deux références restent celles captées sur le code d'avant.
+ *
  * Consommé par `Integration/EngineRequestReferenceTest` (références 9 et 10) et
  * `Integration/Command/EngineRequestsRecordCommandTest`.
  */
 trait EngineRequestTravelDecorTrait
 {
     private const string ER_VENUE_EST = 'be0e0000-0000-4000-8000-000000000003';
+    /** Le plus grand identifiant de lieu du décor (les lieux de Nord et Sud de la saison en cours sont tirés au hasard). */
+    private const string ER_PLACE_EST = 'ffffffff-0000-4000-8000-000000000003';
+    /** Le plus petit : Nord–Sud de la saison suivante se range ainsi en base à l'inverse de ses gymnases. */
+    private const string ER_NEXT_PLACE_NORD = '00000000-0000-4000-8000-000000000022';
 
     private const string ER_NEXT_SEASON = '5ea50000-0000-4000-8000-000000000002';
     private const string ER_NEXT_VENUE_SUD = 'be0e0000-0000-4000-8000-000000000021';
@@ -63,7 +71,7 @@ trait EngineRequestTravelDecorTrait
     private function seedEngineRequestTravelOfCurrentSeason(): void
     {
         $em = $this->erEm();
-        $place = (new Place)->setClubId(self::ER_CLUB);
+        $place = $this->erPlace(self::ER_PLACE_EST);
         $em->persist($place);
         $em->persist(new Venue($place)->setId(self::ER_VENUE_EST)->setClubId(self::ER_CLUB)->setSeasonId(self::ER_SEASON)
             ->setName('Gymnase Est')->setCanSplit(false)->setSource('manual'));
@@ -72,9 +80,6 @@ trait EngineRequestTravelDecorTrait
                 ->setVenueId(self::ER_VENUE_EST)->setDayOfWeek($day)->setStartTime(new DateTimeImmutable($time))
                 ->setDurationMinutes(90)->setCapacity(1));
         }
-        $this->erTravelTime(1, self::ER_SEASON, self::ER_VENUE_NORD, self::ER_VENUE_SUD, 12, 30, VenueTravelTimeSource::MANUAL);
-        $this->erTravelTime(2, self::ER_SEASON, self::ER_VENUE_NORD, self::ER_VENUE_EST, 8, 20, VenueTravelTimeSource::AUTO);
-        $this->erTravelTime(3, self::ER_SEASON, self::ER_VENUE_SUD, self::ER_VENUE_EST, null, null, null);
 
         foreach ([[self::ER_COACH_A, true, true], [self::ER_COACH_B, false, false]] as [$coachId, $employee, $vehicled]) {
             $coach = $em->getRepository(Coach::class)->find($coachId);
@@ -82,6 +87,11 @@ trait EngineRequestTravelDecorTrait
             $coach->setIsEmployee($employee)->setIsVehicled($vehicled);
         }
         $em->flush();
+
+        $this->erTravelTime(1, $this->erPlaceOf(self::ER_VENUE_NORD), $this->erPlaceOf(self::ER_VENUE_SUD), 12, 30, 'MANUAL');
+        $this->erTravelTime(2, $this->erPlaceOf(self::ER_VENUE_NORD), self::ER_PLACE_EST, 8, 20, 'AUTO');
+        // Sud–Est vaut pour les deux saisons : la saison suivante reprend ces deux lieux.
+        $this->erTravelTime(3, $this->erPlaceOf(self::ER_VENUE_SUD), self::ER_PLACE_EST, null, null, null);
     }
 
     /**
@@ -99,13 +109,14 @@ trait EngineRequestTravelDecorTrait
         $provisioner->ensureSeasonPlan($season);
         $em->flush();
 
+        // Sud et Est restent aux lieux de la saison en cours ; Nord passe sur un lieu à lui (ses minutes diffèrent).
+        $nextNordPlace = $this->erPlace(self::ER_NEXT_PLACE_NORD);
+        $em->persist($nextNordPlace);
         foreach ([
-            [self::ER_NEXT_VENUE_SUD, 'Gymnase Sud', false],
-            [self::ER_NEXT_VENUE_NORD, 'Gymnase Nord', true],
-            [self::ER_NEXT_VENUE_EST, 'Gymnase Est', false],
-        ] as [$venueId, $name, $canSplit]) {
-            $place = (new Place)->setClubId(self::ER_CLUB);
-            $em->persist($place);
+            [self::ER_NEXT_VENUE_SUD, 'Gymnase Sud', false, $this->erPlaceEntityOf(self::ER_VENUE_SUD)],
+            [self::ER_NEXT_VENUE_NORD, 'Gymnase Nord', true, $nextNordPlace],
+            [self::ER_NEXT_VENUE_EST, 'Gymnase Est', false, $this->erPlaceEntityOf(self::ER_VENUE_EST)],
+        ] as [$venueId, $name, $canSplit, $place]) {
             $em->persist(new Venue($place)->setId($venueId)->setClubId(self::ER_CLUB)->setSeasonId(self::ER_NEXT_SEASON)
                 ->setName($name)->setCanSplit($canSplit)->setSource('manual'));
         }
@@ -141,11 +152,12 @@ trait EngineRequestTravelDecorTrait
             ->setName('Contrainte 21')->setScope(ConstraintScope::COACH)->setScopeTargetId(self::ER_NEXT_COACH_B)
             ->setFamily(ConstraintFamily::COACH_AVAILABILITY)->setRuleType(ConstraintRuleType::HARD)->setConfig(['unavailableDays' => [3]]));
 
-        // Mêmes couples que la saison en cours ; Nord–Sud s'y range Sud d'abord (21 < 22).
-        $this->erTravelTime(21, self::ER_NEXT_SEASON, self::ER_NEXT_VENUE_SUD, self::ER_NEXT_VENUE_NORD, 15, 35, VenueTravelTimeSource::MANUAL);
-        $this->erTravelTime(22, self::ER_NEXT_SEASON, self::ER_NEXT_VENUE_NORD, self::ER_NEXT_VENUE_EST, 9, 22, VenueTravelTimeSource::AUTO);
-        $this->erTravelTime(23, self::ER_NEXT_SEASON, self::ER_NEXT_VENUE_SUD, self::ER_NEXT_VENUE_EST, null, null, null);
         $em->flush();
+        // Les couples du lieu de Nord de cette saison. Nord–Sud est rangé lieu de Nord d'abord en base (le plus petit
+        // identifiant de lieu du décor), mais part au moteur Sud d'abord (gymnases 21 < 22) : le rangement de sortie
+        // suit les gymnases de la saison demandée, jamais les lieux. Sud–Est est celui de la saison en cours.
+        $this->erTravelTime(21, self::ER_NEXT_PLACE_NORD, $this->erPlaceOf(self::ER_VENUE_SUD), 15, 35, 'MANUAL');
+        $this->erTravelTime(22, self::ER_NEXT_PLACE_NORD, self::ER_PLACE_EST, 9, 22, 'AUTO');
 
         $planId = $provisioner->ensureSeasonPlanId(self::ER_NEXT_SEASON);
         Assert::assertIsString($planId);
@@ -180,14 +192,42 @@ trait EngineRequestTravelDecorTrait
     }
 
     /**
-     * Un couple, rangé par l'appelant (« plus petit identifiant de gymnase d'abord », comme le processeur de l'API).
+     * Un temps de trajet au club entre deux lieux (table `place_travel_time`, lot 3 PR 5), couple rangé « plus petit
+     * identifiant de LIEU d'abord » comme en base. Écrit en SQL sur la connexion du décor (RLS du club posée).
      */
-    private function erTravelTime(int $n, string $seasonId, string $venueAId, string $venueBId, ?int $driving, ?int $walking, ?VenueTravelTimeSource $source): void
+    private function erTravelTime(int $n, string $placeA, string $placeB, ?int $driving, ?int $walking, ?string $source): void
     {
-        Assert::assertLessThan(0, strcmp($venueAId, $venueBId), 'un couple se range plus petit identifiant d\'abord');
-        $this->erEm()->persist((new VenueTravelTime)->setId(self::erId('7a7e', $n))->setClubId(self::ER_CLUB)->setSeasonId($seasonId)
-            ->setVenueAId($venueAId)->setVenueBId($venueBId)
-            ->setDrivingMinutes($driving)->setWalkingMinutes($walking)
-            ->setDrivingSource(null === $driving ? null : $source)->setWalkingSource(null === $walking ? null : $source));
+        if (strcmp($placeA, $placeB) > 0) {
+            [$placeA, $placeB] = [$placeB, $placeA];
+        }
+        $this->erEm()->getConnection()->executeStatement(
+            'INSERT INTO place_travel_time (id, version, created_at, updated_at, club_id, place_a_id, place_b_id, driving_minutes, walking_minutes, driving_source, walking_source)'
+            . ' VALUES (?, 1, now(), now(), ?, ?, ?, ?, ?, ?, ?)',
+            [self::erId('7a7e', $n), self::ER_CLUB, $placeA, $placeB, $driving, $walking, null === $driving ? null : $source, null === $walking ? null : $source],
+        );
+    }
+
+    /** Un lieu du club à l'identifiant fixé : le rangement des couples en base ne dépend plus du hasard. */
+    private function erPlace(string $id): Place
+    {
+        $place = (new Place)->setClubId(self::ER_CLUB);
+        new ReflectionProperty(Place::class, 'id')->setValue($place, $id);
+
+        return $place;
+    }
+
+    private function erPlaceOf(string $venueId): string
+    {
+        return $this->erPlaceEntityOf($venueId)->getId();
+    }
+
+    private function erPlaceEntityOf(string $venueId): Place
+    {
+        $venue = $this->erEm()->getRepository(Venue::class)->find($venueId);
+        Assert::assertInstanceOf(Venue::class, $venue);
+        $place = $this->erEm()->find(Place::class, $venue->getPlaceId());
+        Assert::assertInstanceOf(Place::class, $place);
+
+        return $place;
     }
 }

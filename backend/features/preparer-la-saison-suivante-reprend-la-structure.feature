@@ -8,6 +8,8 @@ Fonctionnalité: Préparer la saison suivante reprend la structure du club
   une saison le corrige dans l'autre, mais le retirer d'une saison ne le retire pas de l'autre.
   Les gymnases des deux saisons sont aux mêmes lieux : corriger l'adresse d'un gymnase dans une
   saison la corrige dans l'autre, mais le dissocier de sa salle fédérale ne vaut que pour sa saison.
+  Le temps de trajet entre deux gymnases est celui de leurs lieux : le corriger dans une saison le
+  corrige dans l'autre.
 
   Scénario: La saison suivante reprend la structure, une seule fois, sans toucher la saison en cours
     Étant donné un petit club dont l'offre complète règle aussi la saison suivante
@@ -42,6 +44,10 @@ Fonctionnalité: Préparer la saison suivante reprend la structure du club
     Et les 3 gymnases de la saison suivante sont aux mêmes lieux
     Quand je corrige l'adresse du « Gymnase Nord » dans la saison suivante
     Alors le « Gymnase Nord » de la saison en cours a cette adresse
+    # Le temps de trajet entre deux lieux vit une fois, au club : il vaut pour toutes les saisons, sans recopie.
+    Et le temps de trajet entre le « Gymnase Nord » et le « Gymnase Sud » est le même dans les deux saisons
+    Quand je le corrige à 15 minutes en voiture dans la saison suivante
+    Alors il vaut 15 minutes en voiture dans la saison en cours
     # Dissocier ne vaut que pour la saison où on le fait : le gymnase y passe sur un lieu neuf, sans adresse.
     Quand je dissocie le « Gymnase Nord » de sa salle fédérale dans la saison suivante
     Alors le « Gymnase Nord » de la saison en cours garde son adresse et ses temps de trajet
