@@ -25,8 +25,8 @@ final readonly class SlotDeletionTarget extends DeletionTarget
         public string $venueId,
         public int $dayOfWeek,
         public DateTimeImmutable $startTime,
-        /** La COUCHE du créneau : `null` = la grille de saison, sinon le plan de période. */
-        public ?string $schedulePlanId,
+        /** La COUCHE du créneau : son plan (le plan de saison pour la grille du socle). */
+        public string $schedulePlanId,
     ) {
         parent::__construct($id, $clubId, $seasonId);
     }

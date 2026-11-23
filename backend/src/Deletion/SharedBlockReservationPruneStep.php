@@ -106,11 +106,11 @@ final readonly class SharedBlockReservationPruneStep implements CascadeStep
 
     /**
      * Réservations d'UNE portée (club + saison explicites — les filtres tenant sont désactivés
-     * pendant la cascade — et le plan du bloc : socle `null` vs période).
+     * pendant la cascade — et le plan du bloc : le plan de saison pour le socle, sinon la période).
      *
      * @return list<Reservation>
      */
-    private function reservationsInScope(EntityManagerInterface $entityManager, DeletionTarget $target, ?string $schedulePlanId): array
+    private function reservationsInScope(EntityManagerInterface $entityManager, DeletionTarget $target, string $schedulePlanId): array
     {
         $qb = $entityManager->getRepository(Reservation::class)->createQueryBuilder('r')
             ->where('r.clubId = :clubId')
@@ -118,11 +118,7 @@ final readonly class SharedBlockReservationPruneStep implements CascadeStep
             ->setParameter('clubId', $target->clubId)
             ->setParameter('seasonId', $target->seasonId);
 
-        if (null === $schedulePlanId) {
-            $qb->andWhere('r.schedulePlanId IS NULL');
-        } else {
-            $qb->andWhere('r.schedulePlanId = :planId')->setParameter('planId', $schedulePlanId);
-        }
+        $qb->andWhere('r.schedulePlanId = :planId')->setParameter('planId', $schedulePlanId);
 
         /** @var list<Reservation> $rows */
         $rows = $qb->getQuery()->getResult();

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Service;
 
+use App\Plans\SoclePlan;
 use App\Repository\CoachRepository;
 use App\Repository\ConstraintRepository;
 use App\Repository\TeamRepository;
@@ -39,6 +40,7 @@ final class GenerationComplexityGuard
         private readonly CoachRepository $coachRepository,
         private readonly VenueTrainingSlotRepository $venueTrainingSlotRepository,
         private readonly ConstraintRepository $constraintRepository,
+        private readonly SoclePlan $soclePlan,
     ) {}
 
     /**
@@ -85,9 +87,9 @@ final class GenerationComplexityGuard
             $this->teamRepository->count($scope),
             $this->venueRepository->count($scope),
             $this->coachRepository->count($scope),
-            // Base plan uses SEASONAL slots only — period slots (schedulePlanId set)
-            // must not inflate the base availability_slots cap.
-            $this->venueTrainingSlotRepository->count($scope + ['schedulePlanId' => null]),
+            // Base plan uses the season plan's slots only — period slots must not
+            // inflate the base availability_slots cap.
+            $this->venueTrainingSlotRepository->count($scope + ['schedulePlanId' => $this->soclePlan->idOf($seasonId)]),
             // Permanent constraints only — the exact set the base-plan payload carries.
             // ⚠️ Ancre DIFFÉRENTE de la ligne au-dessus, et c'est voulu : les contraintes
             // DATÉES restent sur la CalendarEntry (le FAIT), le radar de conflits les lit

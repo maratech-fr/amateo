@@ -6,7 +6,6 @@ namespace App\MessageHandler;
 
 use App\Entity\Club;
 use App\Entity\Schedule;
-use App\Entity\Season;
 use App\Enum\ScheduleDiagnosticSeverity;
 use App\Enum\ScheduleStatus;
 use App\Exception\EngineRequestNotComposable;
@@ -355,9 +354,6 @@ final class GenerateScheduleHandler
 
         // Persist the result BEFORE notifying: a COMPLETED solve must be durable
         // even if Mercure is momentarily down (publish is best-effort below).
-        // « socle ? » est déjà connu ici (`isSeasonPlan` de la demande composée) — on le passe pour
-        // éviter de re-lire le plan à la complétion (C4 / code-review).
-        //
         // Le crédit fait partie du résultat (décision fondateur Q16 a) : import des créneaux (son
         // flush devient une transaction imbriquée), statut et crédit s'écrivent dans UNE transaction
         // tenue sur la connexion (pas `wrapInTransaction`, qui fermerait l'EM sur une erreur du
@@ -369,7 +365,7 @@ final class GenerateScheduleHandler
         $connection->beginTransaction();
 
         try {
-            $this->applyEngineResult($schedule, $result, $composed->isSeasonPlan);
+            $this->applyEngineResult($schedule, $result);
             $this->metricsRecorder?->record($schedule, $result, $payloadBytes);
             $this->entityManager->flush();
             if (ScheduleStatus::COMPLETED === $schedule->getStatus()) {
@@ -425,7 +421,7 @@ final class GenerateScheduleHandler
     }
 
     /** @param array<string, mixed> $result */
-    private function applyEngineResult(Schedule $schedule, array $result, bool $isSeasonPlan): void
+    private function applyEngineResult(Schedule $schedule, array $result): void
     {
         $engineStatus = strtolower((string) ($result['status'] ?? 'failed'));
         $this->metricsMapper->apply($schedule, $result);
@@ -447,20 +443,13 @@ final class GenerateScheduleHandler
         $this->resultImporter->import($schedule, $result);
         $this->diagnosticsRecorder->record($schedule, $result);
         $schedule->setStatus(ScheduleStatus::COMPLETED);
-        // An overlay (period plan) must NEVER become the season baseline nor the
-        // season's loaded context (both are season-plan concepts). ADR-0002 C4 :
-        // « socle ? » = plan.type === SEASON, déjà résolu au début de generate()
-        // (`ComposedEngineRequest::isSeasonPlan`) et passé ici — zéro lecture de plan à la complétion.
-        if ($isSeasonPlan) {
-            $this->anchorSeasonToCompletedPlan($schedule);
-        } else {
-            // V1bis (planning lifecycle) — sur le patron de l'auto-★ saison : une PÉRIODE qui
-            // vient de se terminer DEVIENT la source des verrous de son plan. « Régénérer » repartira
-            // d'elle, et « Charger » une version plus ancienne la remplacera ensuite comme source. Pose
-            // immédiate (SQL brut hors UnitOfWork) : le plan n'est pas chargé ici et la ClubGenerationLock
-            // sérialise les écritures de génération du club.
-            $this->schedulePlanProvisioner->pointLockSource($schedule->getSchedulePlanId(), $schedule->getId());
-        }
+        // V1bis (planning lifecycle) — la version qui vient de se terminer DEVIENT la version chargée
+        // (l'étoile) de son plan, socle comme période : lot 4, un seul pointeur, sur le plan.
+        // « Régénérer » repartira d'elle, « Charger » une version plus ancienne la remplacera. Pose
+        // immédiate (SQL brut hors UnitOfWork, dans la transaction de l'appelant) : le plan n'est pas
+        // chargé ici et la ClubGenerationLock sérialise les écritures de génération du club.
+        // ADR-0002 inv. 2 : générer ne VALIDE pas (aucun pointage de `chosenScheduleId`).
+        $this->schedulePlanProvisioner->pointLockSource($schedule->getSchedulePlanId(), $schedule->getId());
         $this->completeOnboarding($schedule);
     }
 
@@ -471,31 +460,6 @@ final class GenerateScheduleHandler
         if ($club instanceof Club && !$club->getOnboardingCompleted()) {
             $club->setOnboardingCompleted(true);
         }
-    }
-
-    /**
-     * The first successful **season plan** of a season becomes its baseline (the
-     * "main" plan) automatically. Later generations do not steal it (re-designation
-     * is an explicit user action via POST /api/schedules/{id}/validate).
-     *
-     * UX-02: a period **overlay** (plan CLOSURE/HOLIDAY) must NEVER become the
-     * baseline — the baseline is the full season plan, an overlay is a bounded
-     * exception plan. The SOLE caller only enters here for a season plan (the
-     * `isSeasonPlan` bool resolved once at generate() start, no extra plan SELECT).
-     */
-    private function anchorSeasonToCompletedPlan(Schedule $schedule): void
-    {
-        $season = $this->entityManager->getRepository(Season::class)->find($schedule->getSeasonId());
-        if (!$season instanceof Season) {
-            return;
-        }
-        // ADR-0002 inv. 2 : AUCUN pointage automatique. Générer ne choisit pas —
-        // seul le gestionnaire choisit, en validant. (L'ancienne auto-baseline au
-        // 1er COMPLETED désignait un « calendrier de base » que personne n'avait
-        // choisi.) L'auto-★ RESTE (inv. 17) : chaque plan de saison COMPLETED EST
-        // le contexte fraîchement chargé — sa structure a nourri ce solve.
-        // « Charger cette version » la repointe ensuite.
-        $season->setLiveContextScheduleId($schedule->getId());
     }
 
     private function failSchedule(Schedule $schedule, string $type, string $message): void

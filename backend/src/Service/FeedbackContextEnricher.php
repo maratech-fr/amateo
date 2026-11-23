@@ -417,12 +417,8 @@ final readonly class FeedbackContextEnricher
      *
      * @return array{type: string, name: string, startDate: string, endDate: string}|null
      */
-    private function planSummary(?string $planId): ?array
+    private function planSummary(string $planId): ?array
     {
-        if (null === $planId) {
-            return null;
-        }
-
         $plan = $this->entityManager->getRepository(SchedulePlan::class)->find($planId);
         if (!$plan instanceof SchedulePlan) {
             return null;

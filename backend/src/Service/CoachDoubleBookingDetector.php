@@ -545,7 +545,7 @@ final class CoachDoubleBookingDetector
      *
      * @return list<list<string>>
      */
-    public function declaredGroups(string $clubId, string $seasonId, ?string $schedulePlanId): array
+    public function declaredGroups(string $clubId, string $seasonId, string $schedulePlanId): array
     {
         $groups = [];
         foreach ($this->entityManager->getRepository(SharedTrainingBlockTeam::class)->findBy(['clubId' => $clubId, 'seasonId' => $seasonId, 'schedulePlanId' => $schedulePlanId]) as $member) {
@@ -557,7 +557,7 @@ final class CoachDoubleBookingDetector
 
     /**
      * @param list<Reservation> $reservations le périmètre EXACT qui partira au solveur
-     *                                        (socle : `schedulePlanId IS NULL` ; période :
+     *                                        (socle : le plan de saison ; période :
      *                                        son plan, gymnases désactivés déjà retirés)
      * @param list<Constraint>  $constraints  le jeu de contraintes du récap (indispos coach) — sert
      *                                        à vérifier la disponibilité de l'adjoint (chantier H)
@@ -844,7 +844,7 @@ final class CoachDoubleBookingDetector
     }
 
     /**
-     * Le groupe déclaré du périmètre des réservations (socle si aucune).
+     * Le groupe déclaré du périmètre des réservations (leur plan).
      *
      * @param list<Reservation> $reservations
      *
@@ -852,7 +852,8 @@ final class CoachDoubleBookingDetector
      */
     private function groupsOf(array $reservations, string $clubId, string $seasonId): array
     {
-        return $this->declaredGroups($clubId, $seasonId, [] === $reservations ? null : $reservations[0]->getSchedulePlanId());
+        // Sans réservation, aucune paire à juger : aucun groupe à lire.
+        return [] === $reservations ? [] : $this->declaredGroups($clubId, $seasonId, $reservations[0]->getSchedulePlanId());
     }
 
     /**

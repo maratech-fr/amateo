@@ -16,6 +16,7 @@ use App\Entity\User;
 use App\Enum\ImplicitRuleIntensity;
 use App\Enum\ImplicitRuleKey;
 use App\Enum\SeasonStatus;
+use App\Plans\SoclePlan;
 use App\Service\SeasonResolver;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
@@ -192,6 +193,7 @@ final class TenantIsolationTest extends WebTestCase
         $setting = new ImplicitRuleSetting;
         $setting->setClubId($clubA->getId());
         $setting->setSeasonId($seasonA->getId());
+        $setting->setSchedulePlanId(self::getContainer()->get(SoclePlan::class)->idOf($seasonA->getId()));
         $setting->setRuleKey(ImplicitRuleKey::COACH_REST_DAY);
         $setting->setIntensity(ImplicitRuleIntensity::PREFERRED);
         $this->em->persist($setting);

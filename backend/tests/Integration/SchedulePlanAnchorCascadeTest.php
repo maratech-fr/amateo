@@ -93,7 +93,7 @@ final class SchedulePlanAnchorCascadeTest extends KernelTestCase
         $doomedRow = $this->insertAnchoredRow($table, $clubId, $seasonId, $doomedPlanId);
         $survivingRow = $this->insertAnchoredRow($table, $clubId, $seasonId, $survivingPlanId);
         // Ancre NOT NULL sur les trois `*PeriodOverride` : pas de ligne de base à tenir.
-        $baseRow = $this->anchorIsNullable($table) ? $this->insertAnchoredRow($table, $clubId, $seasonId, null) : null;
+        $baseRow = $this->anchorIsNullable($table) ? $this->insertAnchoredRow($table, $clubId, $seasonId, $survivingPlanId) : null;
 
         // Le geste réel : `deletePeriodPlan` supprime le plan en SQL brut.
         $this->connection->executeStatement('DELETE FROM schedule_plan WHERE id = ?', [$doomedPlanId]);

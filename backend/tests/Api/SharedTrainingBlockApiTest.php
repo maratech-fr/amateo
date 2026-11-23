@@ -19,6 +19,7 @@ use App\Entity\User;
 use App\Entity\Venue;
 use App\Enum\SchedulePlanType;
 use App\Enum\SeasonStatus;
+use App\Plans\SoclePlan;
 use App\Service\SeasonResolver;
 use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\TenantGucTrait;
@@ -65,7 +66,7 @@ final class SharedTrainingBlockApiTest extends WebTestCase
         self::assertNotNull($block);
         self::assertSame($club->getId(), $block->getClubId());
         self::assertSame($season->getId(), $block->getSeasonId());
-        self::assertNull($block->getSchedulePlanId());
+        self::assertSame(self::getContainer()->get(SoclePlan::class)->idOf($block->getSeasonId()), $block->getSchedulePlanId());
         self::assertCount(2, $this->em->getRepository(SharedTrainingBlockTeam::class)->findBy(['blockId' => $created['id']]));
     }
 
@@ -428,7 +429,7 @@ final class SharedTrainingBlockApiTest extends WebTestCase
         foreach ($teams as $team) {
             $reservation = (new Reservation)
                 ->setClubId($club->getId())
-                ->setSeasonId($season->getId())
+                ->setSeasonId($season->getId())->setSchedulePlanId(self::getContainer()->get(SoclePlan::class)->idOf($season->getId()))
                 ->setTeamId($team->getId())
                 ->setVenueId($venue->getId())
                 ->setDayOfWeek($dayOfWeek)

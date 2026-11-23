@@ -15,6 +15,7 @@ use App\Entity\Team;
 use App\Entity\User;
 use App\Entity\Venue;
 use App\Enum\SeasonStatus;
+use App\Plans\SoclePlan;
 use App\Service\ParcImport\ParcImportGate;
 use App\Service\SeasonResolver;
 use App\Tests\ChoosesPlanVersionTrait;
@@ -995,7 +996,7 @@ final class ParcImportAnalyzeTest extends WebTestCase
         foreach ([$a, $b] as $team) {
             foreach ([3, 4] as $day) {
                 $reservation = (new Reservation)
-                    ->setClubId($this->club->getId())->setSeasonId($this->season->getId())
+                    ->setClubId($this->club->getId())->setSeasonId($this->season->getId())->setSchedulePlanId(self::getContainer()->get(SoclePlan::class)->idOf($this->season->getId()))
                     ->setTeamId($team->getId())->setVenueId($venue->getId())->setDayOfWeek($day)
                     ->setStartTime(new DateTimeImmutable('1970-01-01 16:00:00'))->setDurationMinutes(90);
                 $this->em->persist($reservation);
@@ -1132,12 +1133,12 @@ final class ParcImportAnalyzeTest extends WebTestCase
         $this->scopeGucToClub($this->club->getId());
         $block = (new SharedTrainingBlock)
             ->setClubId($this->club->getId())->setSeasonId($this->season->getId())
-            ->setSchedulePlanId(null)->setCommonSessions($commonSessions)->setLabel('Groupe');
+            ->setSchedulePlanId(self::getContainer()->get(SoclePlan::class)->idOf($this->season->getId()))->setCommonSessions($commonSessions)->setLabel('Groupe');
         $this->em->persist($block);
         foreach ($teams as $team) {
             $member = (new SharedTrainingBlockTeam)
                 ->setClubId($this->club->getId())->setSeasonId($this->season->getId())
-                ->setSchedulePlanId(null)->setBlockId($block->getId())->setTeamId($team->getId());
+                ->setSchedulePlanId(self::getContainer()->get(SoclePlan::class)->idOf($this->season->getId()))->setBlockId($block->getId())->setTeamId($team->getId());
             $this->em->persist($member);
         }
         $this->em->flush();

@@ -6,10 +6,8 @@ namespace App\Deletion;
 
 use App\Entity\Reservation;
 use App\Entity\Schedule;
-use App\Entity\SchedulePlan;
 use App\Entity\ScheduleSlotTemplate;
 use App\Enum\LockLevel;
-use App\Enum\SchedulePlanType;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\QueryBuilder;
 use LogicException;
@@ -89,10 +87,7 @@ final readonly class SlotPinStep implements CascadeStep
         if (Reservation::class === $this->entityClass) {
             // La réservation porte son plan : borne EXACTE. Un créneau de saison n'emporte
             // que les réservations de base, un créneau de période que les siennes.
-            $qb->andWhere(null === $planId ? 'e.schedulePlanId IS NULL' : 'e.schedulePlanId = :planId');
-            if (null !== $planId) {
-                $qb->setParameter('planId', $planId);
-            }
+            $qb->andWhere('e.schedulePlanId = :planId')->setParameter('planId', $planId);
         } elseif (ScheduleSlotTemplate::class === $this->entityClass) {
             // Le verrou ne porte que sa VERSION, jamais un plan : on borne donc aux versions
             // de la COUCHE du créneau supprimé — celles de CE plan pour un créneau de période,
@@ -105,7 +100,7 @@ final readonly class SlotPinStep implements CascadeStep
             // offert mais son épinglage disparu, sans un mot.
             $scheduleIds = array_map(
                 static fn (Schedule $s): string => $s->getId(),
-                $entityManager->getRepository(Schedule::class)->findBy(['schedulePlanId' => $planId ?? $this->seasonPlanIds($entityManager, $target->seasonId)]),
+                $entityManager->getRepository(Schedule::class)->findBy(['schedulePlanId' => $planId]),
             );
             if ([] === $scheduleIds) {
                 return null;
@@ -117,20 +112,5 @@ final readonly class SlotPinStep implements CascadeStep
         }
 
         return $qb;
-    }
-
-    /**
-     * Les plans SOCLE de la saison — la couche d'un créneau saisonnier (`schedulePlanId` null).
-     * Une liste, pas un id : rien n'interdit en base d'en avoir plus d'un, et un `find` unique
-     * choisirait silencieusement.
-     *
-     * @return list<string>
-     */
-    private function seasonPlanIds(EntityManagerInterface $entityManager, string $seasonId): array
-    {
-        return array_map(
-            static fn (SchedulePlan $p): string => $p->getId(),
-            $entityManager->getRepository(SchedulePlan::class)->findBy(['seasonId' => $seasonId, 'type' => SchedulePlanType::SEASON]),
-        );
     }
 }

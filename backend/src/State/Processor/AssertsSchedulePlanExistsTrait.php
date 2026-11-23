@@ -13,13 +13,13 @@ use Symfony\Component\HttpKernel\Exception\UnprocessableEntityHttpException;
  * Refuse une ancre `schedulePlanId` qui ne désigne aucun plan (P4-30).
  *
  * Avant la FK, une ancre inventée créait une ligne ORPHELINE en silence :
- * jamais lue (`StructureSnapshotter` filtre `IS NULL`), jamais nettoyée. Depuis
+ * jamais lue, jamais nettoyée. Depuis
  * la FK, la même requête remonterait une
  * `ForeignKeyConstraintViolationException` — donc un **500** sur une saisie
  * simplement invalide. Ni l'un ni l'autre n'est acceptable : c'est un 422.
  *
- * `null` reste licite et signifie « ligne de base, partagée par la saison »
- * (inv. 6) — surtout ne pas le confondre avec une ancre absente.
+ * Le socle a son plan (lot 4) : l'appelant traduit d'abord le `null` de l'API en plan de
+ * saison (`SoclePlan::fromApi`), puis vérifie l'ancre ici.
  *
  * Le filtre tenant scope déjà la lecture au club courant : un plan d'un AUTRE
  * club est donc introuvable ici et se solde par le même 422, sans révéler qu'il
@@ -56,13 +56,9 @@ trait AssertsSchedulePlanExistsTrait
         }
     }
 
-    private function assertSchedulePlanExists(EntityManagerInterface $entityManager, ?string $schedulePlanId): void
+    private function assertSchedulePlanExists(EntityManagerInterface $entityManager, string $schedulePlanId): void
     {
-        if (null === $schedulePlanId) {
-            return;
-        }
-
-        // ABSENT (null) ≠ PRÉSENT-MAIS-VIDE. `Assert\Uuid` laisse passer la chaîne
+        // PRÉSENT-MAIS-VIDE. `Assert\Uuid` laisse passer la chaîne
         // vide (le validateur Symfony sort immédiatement dessus), et `find('')`
         // enverrait `WHERE id = ''` contre une PK `uuid` native → 22P02, soit
         // exactement le 500 que ce garde existe pour supprimer.

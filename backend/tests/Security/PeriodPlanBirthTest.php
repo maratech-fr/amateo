@@ -26,6 +26,7 @@ use App\Enum\ImplicitRuleKey;
 use App\Enum\SchedulePlanType;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
+use App\Plans\SoclePlan;
 use App\Service\ClosureSegmentation;
 use App\Service\ScheduleConstraintBuilder;
 use App\Service\SeasonResolver;
@@ -112,7 +113,7 @@ final class PeriodPlanBirthTest extends WebTestCase
         $this->scopeGucToClub($club->getId());
         $seasonSetting = (new ImplicitRuleSetting)
             ->setClubId($club->getId())
-            ->setSeasonId($season->getId())
+            ->setSeasonId($season->getId())->setSchedulePlanId(self::getContainer()->get(SoclePlan::class)->idOf($season->getId()))
             ->setRuleKey(ImplicitRuleKey::COACH_REST_DAY)
             ->setIntensity(ImplicitRuleIntensity::PREFERRED)
             ->setParams(['minRestDays' => 3]);
@@ -169,7 +170,7 @@ final class PeriodPlanBirthTest extends WebTestCase
         foreach ([ImplicitRuleKey::AGE_ASCENDING, ImplicitRuleKey::SALARIE_DISTRIBUTION] as $ruleKey) {
             $this->em->persist((new ImplicitRuleSetting)
                 ->setClubId($club->getId())
-                ->setSeasonId($season->getId())
+                ->setSeasonId($season->getId())->setSchedulePlanId(self::getContainer()->get(SoclePlan::class)->idOf($season->getId()))
                 ->setRuleKey($ruleKey)
                 ->setIntensity(ImplicitRuleIntensity::OFF));
         }
@@ -416,7 +417,7 @@ final class PeriodPlanBirthTest extends WebTestCase
         $this->scopeGucToClub($club->getId());
         self::assertCount(
             1,
-            $this->em->getRepository(SharedTrainingBlock::class)->findBy(['clubId' => $club->getId(), 'schedulePlanId' => null]),
+            $this->em->getRepository(SharedTrainingBlock::class)->findBy(['clubId' => $club->getId(), 'schedulePlanId' => self::getContainer()->get(SoclePlan::class)->idOf($season->getId())]),
             'le socle survit à la suppression de la période',
         );
     }
@@ -741,7 +742,7 @@ final class PeriodPlanBirthTest extends WebTestCase
             $slot->setStartTime(new DateTimeImmutable('18:00'));
             $slot->setDurationMinutes(90);
             $slot->setCapacity(1);
-            $slot->setSchedulePlanId($anchor);
+            $slot->setSchedulePlanId($anchor ?? self::getContainer()->get(SoclePlan::class)->idOf($season->getId()));
             $this->em->persist($slot);
         }
         $this->em->flush();
@@ -806,7 +807,7 @@ final class PeriodPlanBirthTest extends WebTestCase
         $seasonal->setDurationMinutes(90);
         $seasonal->setCapacity(2);
         $seasonal->setGroupLabel('CEC3');
-        $seasonal->setSchedulePlanId(null);
+        $seasonal->setSchedulePlanId(self::getContainer()->get(SoclePlan::class)->idOf($season->getId()));
         $this->em->persist($seasonal);
         $this->em->flush();
 
@@ -822,7 +823,7 @@ final class PeriodPlanBirthTest extends WebTestCase
         }
 
         // …et la grille de SAISON garde le sien : c'est elle qui possède le libellé.
-        $seasonalReread = $this->em->getRepository(VenueTrainingSlot::class)->findBy(['schedulePlanId' => null, 'venueId' => $venue->getId()]);
+        $seasonalReread = $this->em->getRepository(VenueTrainingSlot::class)->findBy(['schedulePlanId' => self::getContainer()->get(SoclePlan::class)->idOf($season->getId()), 'venueId' => $venue->getId()]);
         self::assertCount(1, $seasonalReread);
         self::assertSame('CEC3', $seasonalReread[0]->getGroupLabel(), 'le libellé reste dans la grille de saison');
     }
@@ -1307,14 +1308,14 @@ final class PeriodPlanBirthTest extends WebTestCase
         $block = (new SharedTrainingBlock)
             ->setClubId($club->getId())
             ->setSeasonId($season->getId())
-            ->setSchedulePlanId(null)
+            ->setSchedulePlanId(self::getContainer()->get(SoclePlan::class)->idOf($season->getId()))
             ->setCommonSessions($commonSessions);
         $this->em->persist($block);
         foreach ($teamIds as $teamId) {
             $member = (new SharedTrainingBlockTeam)
                 ->setClubId($club->getId())
                 ->setSeasonId($season->getId())
-                ->setSchedulePlanId(null)
+                ->setSchedulePlanId(self::getContainer()->get(SoclePlan::class)->idOf($season->getId()))
                 ->setBlockId($block->getId())
                 ->setTeamId($teamId);
             $this->em->persist($member);

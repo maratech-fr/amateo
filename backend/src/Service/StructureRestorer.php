@@ -20,6 +20,7 @@ use App\Entity\TenantOwnedInterface;
 use App\Entity\Venue;
 use App\Entity\VenueTrainingSlot;
 use App\Enum\ConstraintScope;
+use App\Plans\SoclePlan;
 use BackedEnum;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -44,6 +45,8 @@ final class StructureRestorer
 {
     use DisablesTenantFilters;
 
+    public const string OLD_FORMAT_PHOTO_MESSAGE = 'Cette version a été enregistrée dans un format que l\'application ne lit plus : elle ne peut pas être chargée.';
+
     /** Short family key → entity class (mirror of StructureSnapshotter::FAMILIES). */
     private const FAMILY_CLASS = [
         'SportCategory' => SportCategory::class,
@@ -61,6 +64,7 @@ final class StructureRestorer
         private readonly EntityManagerInterface $entityManager,
         private readonly RestoreFeasibility $restoreFeasibility,
         private readonly CoachWishCampaignTokenSync $coachWishTokenSync,
+        private readonly SoclePlan $soclePlan,
     ) {}
 
     /**
@@ -91,11 +95,13 @@ final class StructureRestorer
      */
     public function apply(string $clubId, string $seasonId, array $data): void
     {
+        $this->assertPhotoCarriesTheSeasonPlan($data);
+        $soclePlanId = $this->soclePlan->idOf($seasonId);
         $this->disableTenantFilters($this->entityManager);
         $data = $this->withoutCoachesWhosePersonIsGone($clubId, $data);
         $this->assertRestoreKeepsEngagedTeams($clubId, $seasonId, $data);
         $this->eraseStaffLinesOfCoachesAbsentFromPhoto($clubId, $seasonId, $data);
-        $this->wipeStructure($clubId, $seasonId);
+        $this->wipeStructure($clubId, $seasonId, $soclePlanId);
         // Bulk DQL DELETE removes the rows but leaves the (now-stale) objects in
         // the identity map — re-inserting the SAME ids would raise an identity
         // collision. Detach everything first.
@@ -122,12 +128,30 @@ final class StructureRestorer
         // A dated (calendar) constraint / overlay reservation created for an
         // entity that did NOT exist at the photo's moment now dangles (its
         // target is gone) — clean those ghosts, like the E1 cascade would.
-        $this->purgeDanglingCalendarRefs($clubId, $seasonId);
+        $this->purgeDanglingCalendarRefs($clubId, $seasonId, $soclePlanId);
 
         // Les coachs viennent d'être supprimés : la clé étrangère a emporté les jetons de collecte.
         // La règle du destinataire les recrée dans les collectes ouvertes (les anciens liens sont perdus).
         $this->coachWishTokenSync->syncSeason($clubId, $seasonId);
         $this->entityManager->flush();
+    }
+
+    /**
+     * Lot 4 : la grille et les réservations d'une photo portent le plan de saison (la migration du lot
+     * a converti les photos d'avant). Une ligne restée sans plan est une photo que la conversion a
+     * manquée : la charger écrirait une ligne sans plan. Refus AVANT tout effacement.
+     *
+     * @param array<string, list<array<string, mixed>>> $data
+     */
+    private function assertPhotoCarriesTheSeasonPlan(array $data): void
+    {
+        foreach (['VenueTrainingSlot', 'Reservation'] as $family) {
+            foreach ($data[$family] ?? [] as $row) {
+                if (!\is_string($row['schedulePlanId'] ?? null)) {
+                    throw new ConflictHttpException(self::OLD_FORMAT_PHOTO_MESSAGE);
+                }
+            }
+        }
     }
 
     /**
@@ -238,7 +262,7 @@ final class StructureRestorer
         }
     }
 
-    private function purgeDanglingCalendarRefs(string $clubId, string $seasonId): void
+    private function purgeDanglingCalendarRefs(string $clubId, string $seasonId, string $soclePlanId): void
     {
         $tenant = ['c' => $clubId, 's' => $seasonId];
 
@@ -254,9 +278,9 @@ final class StructureRestorer
 
         // A dated Reservation whose team or venue is gone.
         $this->deleteDangling(
-            'SELECT r.id FROM App\Entity\Reservation r WHERE r.clubId = :c AND r.seasonId = :s AND r.schedulePlanId IS NOT NULL AND ('
+            'SELECT r.id FROM App\Entity\Reservation r WHERE r.clubId = :c AND r.seasonId = :s AND r.schedulePlanId <> :socle AND ('
             . 'NOT EXISTS (SELECT 1 FROM App\Entity\Team t WHERE t.id = r.teamId) OR NOT EXISTS (SELECT 1 FROM App\Entity\Venue v WHERE v.id = r.venueId))',
-            $tenant,
+            $tenant + ['socle' => $soclePlanId],
             'DELETE App\Entity\Reservation r WHERE r.id IN (:ids)',
         );
 
@@ -275,8 +299,8 @@ final class StructureRestorer
             'DELETE App\Entity\ConstraintPeriodOverride o WHERE o.id IN (:ids)',
         );
         $this->deleteDangling(
-            'SELECT vts.id FROM App\Entity\VenueTrainingSlot vts WHERE vts.clubId = :c AND vts.seasonId = :s AND vts.schedulePlanId IS NOT NULL AND NOT EXISTS (SELECT 1 FROM App\Entity\Venue v WHERE v.id = vts.venueId)',
-            $tenant,
+            'SELECT vts.id FROM App\Entity\VenueTrainingSlot vts WHERE vts.clubId = :c AND vts.seasonId = :s AND vts.schedulePlanId <> :socle AND NOT EXISTS (SELECT 1 FROM App\Entity\Venue v WHERE v.id = vts.venueId)',
+            $tenant + ['socle' => $soclePlanId],
             'DELETE App\Entity\VenueTrainingSlot vts WHERE vts.id IN (:ids)',
         );
 
@@ -343,23 +367,26 @@ final class StructureRestorer
     }
 
     /** Delete the current permanent structure (NOT schedules, NOT the calendar). */
-    private function wipeStructure(string $clubId, string $seasonId): void
+    private function wipeStructure(string $clubId, string $seasonId, string $soclePlanId): void
     {
         $this->deleteFamily(TeamCoach::class, $clubId, $seasonId);
         $this->deleteFamily(CoachPlayerMembership::class, $clubId, $seasonId);
-        $this->deleteFamily(Reservation::class, $clubId, $seasonId, permanentOnly: true);
-        $this->deleteFamily(Constraint::class, $clubId, $seasonId, permanentOnly: true);
+        $this->deleteFamily(Reservation::class, $clubId, $seasonId, $soclePlanId);
+        $this->deleteFamily(Constraint::class, $clubId, $seasonId, $soclePlanId);
         $this->deleteFamily(Team::class, $clubId, $seasonId);
-        // permanentOnly: a period's own slots (schedulePlanId set) belong to the
+        // Structure partagée seulement : a period's own slots (its own plan) belong to the
         // calendar, not the base structure — a base-version restore must not wipe them.
-        $this->deleteFamily(VenueTrainingSlot::class, $clubId, $seasonId, permanentOnly: true);
+        $this->deleteFamily(VenueTrainingSlot::class, $clubId, $seasonId, $soclePlanId);
         $this->deleteFamily(Venue::class, $clubId, $seasonId);
         $this->deleteFamily(Coach::class, $clubId, $seasonId);
         $this->deleteFamily(SportCategory::class, $clubId, null);
     }
 
-    /** @param class-string $entityClass */
-    private function deleteFamily(string $entityClass, ?string $clubId, ?string $seasonId, bool $permanentOnly = false): void
+    /**
+     * @param class-string $entityClass
+     * @param string|null  $sharedOfSoclePlan le plan de saison quand seule la structure partagée part
+     */
+    private function deleteFamily(string $entityClass, ?string $clubId, ?string $seasonId, ?string $sharedOfSoclePlan = null): void
     {
         $qb = $this->entityManager->createQueryBuilder()->delete($entityClass, 'e');
         if (null !== $clubId) {
@@ -368,14 +395,20 @@ final class StructureRestorer
         if (null !== $seasonId) {
             $qb->andWhere('e.seasonId = :seasonId')->setParameter('seasonId', $seasonId);
         }
-        if ($permanentOnly) {
+        if (null !== $sharedOfSoclePlan) {
             // Ne toucher QUE la structure partagée : les lignes de période appartiennent au
             // calendrier (overlays / fermetures) et survivent. L'ancre diffère selon
             // l'entité depuis les lots C2-C3 (ADR-0002 inv. 5, correction du 2026-07-17) :
-            // créneaux et réservations = des RÉPONSES → ancrés au PLAN ; contraintes datées
+            // créneaux et réservations = des RÉPONSES → le plan de saison ; contraintes datées
             // = le FAIT → restées sur la CalendarEntry. La deviner ici la ferait diverger en
             // silence — on la nomme.
-            $qb->andWhere(\sprintf('e.%s IS NULL', StructureAnchor::of($entityClass)));
+            foreach (StructureAnchor::sharedStructureCriteria($entityClass, $sharedOfSoclePlan) as $field => $value) {
+                if (null === $value) {
+                    $qb->andWhere(\sprintf('e.%s IS NULL', $field));
+                } else {
+                    $qb->andWhere(\sprintf('e.%s = :shared', $field))->setParameter('shared', $value);
+                }
+            }
         }
         $qb->getQuery()->execute();
     }

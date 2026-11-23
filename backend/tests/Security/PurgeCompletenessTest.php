@@ -38,6 +38,7 @@ use App\Enum\SeasonStatus;
 use App\Enum\SubscriptionOrigin;
 use App\Enum\TeamCoachRole;
 use App\EventListener\CacheInvalidationListener;
+use App\Plans\SoclePlan;
 use App\Service\ClubSubscriptionWriter;
 use App\Service\ErasedClubPurger;
 use App\Service\OverlayManager;
@@ -212,7 +213,8 @@ final class PurgeCompletenessTest extends KernelTestCase
         $expected = [...$this->seasonPurgeTables(), 'season', ...$this->tablesOf($this->catalog()->purgedWithClub())];
         self::assertSame($this->sortedUnique($expected), $this->sortedUnique($executed));
 
-        self::assertSame(15, $deleted, 'le nombre rendu compte chaque ligne effacée');
+        // Lot 4 : le créneau du décor porte le plan de saison, né avec lui — une ligne de plus (16).
+        self::assertSame(16, $deleted, 'le nombre rendu compte chaque ligne effacée');
         $people = (int) self::getContainer()->get(EntityManagerInterface::class)->getConnection()->fetchOne(
             'SELECT COUNT(*) FROM person WHERE club_id = :club',
             ['club' => $club->getId()],
@@ -228,7 +230,7 @@ final class PurgeCompletenessTest extends KernelTestCase
             ['club' => $club->getId(), 'action' => AuditAction::CLUB_PURGED->value],
         );
         self::assertIsString($details, 'l\'effacement écrit son compte rendu');
-        self::assertSame(['rowsDeleted' => 15], json_decode($details, true, 512, \JSON_THROW_ON_ERROR));
+        self::assertSame(['rowsDeleted' => 16], json_decode($details, true, 512, \JSON_THROW_ON_ERROR));
     }
 
     /**
@@ -570,7 +572,7 @@ final class PurgeCompletenessTest extends KernelTestCase
 
         $em->persist((new TeamCoach)->setClubId($clubId)->setSeasonId($seasonId)->setTeamId($team->getId())
             ->setCoachId($coach->getId())->setRole(TeamCoachRole::MAIN));
-        $em->persist((new VenueTrainingSlot)->setClubId($clubId)->setSeasonId($seasonId)->setVenueId($venue->getId())
+        $em->persist((new VenueTrainingSlot)->setClubId($clubId)->setSeasonId($seasonId)->setSchedulePlanId(self::getContainer()->get(SoclePlan::class)->idOf($seasonId))->setVenueId($venue->getId())
             ->setDayOfWeek(1)->setStartTime(new DateTimeImmutable('18:00'))->setDurationMinutes(90)->setCapacity(1));
         $em->persist((new CoachWish)->setClubId($clubId)->setSeasonId($seasonId)->setCalendarEntryId($entry->getId())
             ->setWeekStart(new DateTimeImmutable('2026-04-06'))->setTeamId($team->getId())->setSlotsWanted(1));

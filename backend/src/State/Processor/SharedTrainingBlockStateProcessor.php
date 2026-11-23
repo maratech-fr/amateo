@@ -65,20 +65,19 @@ class SharedTrainingBlockStateProcessor extends AbstractStateProcessor
     {
         return $this->entityManager->wrapInTransaction(function () use ($input, $clubId, $seasonId): object {
             $resolvedSeasonId = $this->resolveSeasonId($clubId, $seasonId);
-            $planId = $input->schedulePlanId;
-
-            if (null !== $planId) {
-                $this->assertSchedulePlanExists($this->entityManager, $planId);
+            if (null === $resolvedSeasonId) {
+                $this->refuse('Aucune saison en cours : créez d\'abord la saison.');
             }
+            // Frontière de l'API : `null` = le socle, rangé sur le plan de saison (lot 4).
+            $planId = $this->soclePlanService()->fromApi($input->schedulePlanId, $resolvedSeasonId);
+            $this->assertSchedulePlanExists($this->entityManager, $planId);
             $this->assertBlockValid($clubId, $resolvedSeasonId, $planId, $input->teamIds, (int) $input->commonSessions, null);
 
             $block = new SharedTrainingBlock;
             if (null !== $clubId) {
                 $block->setClubId($clubId);
             }
-            if (null !== $resolvedSeasonId) {
-                $block->setSeasonId($resolvedSeasonId);
-            }
+            $block->setSeasonId($resolvedSeasonId);
             $block->setSchedulePlanId($planId);
             $block->setCommonSessions((int) $input->commonSessions);
             $block->setLabel($this->normalizedLabel($input->label));
@@ -102,7 +101,7 @@ class SharedTrainingBlockStateProcessor extends AbstractStateProcessor
     protected function createEntityFromInput(object $input): SharedTrainingBlock
     {
         $block = new SharedTrainingBlock;
-        $block->setSchedulePlanId($input->schedulePlanId);
+        $block->setSchedulePlanId($this->planFromApi($input->schedulePlanId));
         $block->setCommonSessions((int) $input->commonSessions);
 
         return $block;
@@ -145,7 +144,7 @@ class SharedTrainingBlockStateProcessor extends AbstractStateProcessor
         $planId = $entity->getSchedulePlanId();
         $clubId = $entity->getClubId();
         $seasonId = $entity->getSeasonId();
-        if (null !== $planId && null !== $clubId && [] !== $members) {
+        if (null !== $clubId && [] !== $members && !$this->soclePlanService()->isSeasonPlan($planId)) {
             $memberSet = [];
             foreach ($members as $member) {
                 $memberSet[$member->getTeamId()] = true;
@@ -172,7 +171,7 @@ class SharedTrainingBlockStateProcessor extends AbstractStateProcessor
         );
         sort($teamIds);
 
-        return SharedTrainingBlockResource::fromEntity($entity, $teamIds);
+        return SharedTrainingBlockResource::fromEntity($entity, $this->planToApi($entity->getSchedulePlanId(), $entity->getSeasonId()), $teamIds);
     }
 
     /** E12 — « Nom du groupe » : trim non vide, sinon null (la lecture retombe sur les équipes). */
@@ -207,7 +206,7 @@ class SharedTrainingBlockStateProcessor extends AbstractStateProcessor
     /**
      * @param list<string> $teamIds
      */
-    private function assertBlockValid(?string $clubId, ?string $seasonId, ?string $planId, array $teamIds, int $commonSessions, ?string $excludeBlockId): void
+    private function assertBlockValid(?string $clubId, ?string $seasonId, string $planId, array $teamIds, int $commonSessions, ?string $excludeBlockId): void
     {
         if (null === $clubId || null === $seasonId) {
             return; // contexte sans tenant (non-HTTP) : rien à vérifier contre la base
@@ -277,7 +276,7 @@ class SharedTrainingBlockStateProcessor extends AbstractStateProcessor
      *
      * @param list<string> $teamIds
      */
-    private function sameTeamSetAlreadyDeclared(string $clubId, string $seasonId, ?string $planId, array $teamIds, ?string $excludeBlockId): bool
+    private function sameTeamSetAlreadyDeclared(string $clubId, string $seasonId, string $planId, array $teamIds, ?string $excludeBlockId): bool
     {
         $wanted = $teamIds;
         sort($wanted);
@@ -289,11 +288,7 @@ class SharedTrainingBlockStateProcessor extends AbstractStateProcessor
             ->setParameter('clubId', $clubId)
             ->setParameter('seasonId', $seasonId);
 
-        if (null === $planId) {
-            $qb->andWhere('t.schedulePlanId IS NULL');
-        } else {
-            $qb->andWhere('t.schedulePlanId = :planId')->setParameter('planId', $planId);
-        }
+        $qb->andWhere('t.schedulePlanId = :planId')->setParameter('planId', $planId);
 
         if (null !== $excludeBlockId) {
             $qb->andWhere('t.blockId <> :excludeBlockId')->setParameter('excludeBlockId', $excludeBlockId);
@@ -320,7 +315,7 @@ class SharedTrainingBlockStateProcessor extends AbstractStateProcessor
     /**
      * @param list<string> $teamIds
      */
-    private function addMembers(SharedTrainingBlock $block, array $teamIds, ?string $clubId, ?string $seasonId, ?string $planId): void
+    private function addMembers(SharedTrainingBlock $block, array $teamIds, ?string $clubId, ?string $seasonId, string $planId): void
     {
         foreach ($teamIds as $teamId) {
             $member = new SharedTrainingBlockTeam;
@@ -344,7 +339,7 @@ class SharedTrainingBlockStateProcessor extends AbstractStateProcessor
      *
      * @param list<string> $teamIds
      */
-    private function syncMembership(SharedTrainingBlock $block, array $teamIds, ?string $clubId, ?string $seasonId, ?string $planId): void
+    private function syncMembership(SharedTrainingBlock $block, array $teamIds, ?string $clubId, ?string $seasonId, string $planId): void
     {
         $existing = $this->membershipRows($block->getId());
         $wanted = array_fill_keys($teamIds, true);

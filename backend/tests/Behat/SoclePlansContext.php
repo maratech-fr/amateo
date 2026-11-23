@@ -220,7 +220,7 @@ final class SoclePlansContext extends BaseContext
         // Seule la version chargée se valide. Le dépointage silencieux ci-dessus laisse des sœurs qu'un
         // vrai parcours n'a pas (valider les supprime) : on la désigne, en SQL pour la même raison.
         $this->dbalExec(
-            \sprintf('UPDATE season SET live_context_schedule_id=\'%s\' WHERE id=\'%s\'', $this->chosenAtEntry, $this->seasonId),
+            \sprintf('UPDATE schedule_plan SET lock_source_schedule_id=\'%s\' WHERE season_id=\'%s\' AND type=\'SEASON\'', $this->chosenAtEntry, $this->seasonId),
             admin: true,
         );
 

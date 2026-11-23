@@ -15,6 +15,7 @@ use App\Entity\VenueTrainingSlot;
 use App\Enum\CalendarEntryKind;
 use App\Enum\CalendarEntryPeriodType;
 use App\Enum\SeasonStatus;
+use App\Plans\SoclePlan;
 use App\Service\ScheduleConstraintBuilder;
 use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\ProvisionsPeriodPlanTrait;
@@ -213,7 +214,7 @@ final class MaxSessionsPerDayPayloadParityTest extends KernelTestCase
         $this->em->persist($venue);
         $this->em->flush();
         foreach ([[1, '09:00'], [1, '18:00'], [3, '09:00'], [3, '18:00']] as [$day, $start]) {
-            $this->em->persist((new VenueTrainingSlot)->setClubId($club->getId())->setSeasonId($season->getId())->setVenueId($venue->getId())
+            $this->em->persist((new VenueTrainingSlot)->setClubId($club->getId())->setSeasonId($season->getId())->setSchedulePlanId(self::getContainer()->get(SoclePlan::class)->idOf($season->getId()))->setVenueId($venue->getId())
                 ->setDayOfWeek($day)->setStartTime(new DateTimeImmutable($start))->setDurationMinutes(90)->setCapacity(2));
         }
         $this->em->flush();

@@ -23,7 +23,7 @@ use Doctrine\ORM\Mapping as ORM;
  *
  * Modèle arbitré par le fondateur le 2026-08-31 (amende le cadrage du 2026-08-25 — le bloc
  * remplace l'ancrage au créneau). Décisions figées :
- *  - fait de PLAN : ``schedulePlanId`` NULLABLE (NULL = socle saison, non-null = plan de période),
+ *  - fait de PLAN : ``schedulePlanId`` (le plan de saison pour le socle, un plan de période sinon),
  *    patron `Reservation`/`VenueTrainingSlot`. Copie socle→période à la NAISSANCE d'un plan de
  *    FERMETURE (CLOSURE) seulement — le gestionnaire hérite ce que le club mutualise, puis diverge
  *    (D10 affinée 2026-09-02, {@see SchedulePlanProvisioner::copySocleSharedBlocks}) ;
@@ -37,7 +37,7 @@ use Doctrine\ORM\Mapping as ORM;
  * Détail : docs/archive/plannings-bccl-2026-08-31.md §4 (cadrage d'origine `mutualisation-par-creneau.md`
  * supprimé à la clôture du lot, historique git avant 05d1f7bb).
  */
-#[Family(Level::SEASON)]
+#[Family(Level::PLAN)]
 #[ORM\Entity]
 #[ORM\Table(name: 'shared_training_block')]
 #[ORM\Index(name: 'idx_shared_training_block_club_season', columns: ['club_id', 'season_id'])]
@@ -67,10 +67,10 @@ class SharedTrainingBlock implements TenantOwnedInterface
     #[ORM\Column(type: 'guid')]
     private string $seasonId;
 
-    /** NULL = socle saison (base plan) ; non-null = plan de période (ADR-0002 inv. 5). */
-    #[ORM\Column(type: 'guid', nullable: true)]
+    /** Le plan de saison pour le socle, un plan de période sinon (ADR-0002 inv. 5). */
+    #[ORM\Column(type: 'guid')]
     #[RefersTo(SchedulePlan::class, OnDelete::DELETE)]
-    private ?string $schedulePlanId = null;
+    private string $schedulePlanId;
 
     /** Nombre de séances communes que le bloc POSSÈDE (≥ 1). Le bloc se comporte comme une équipe. */
     #[ORM\Column(type: 'integer')]
@@ -146,12 +146,12 @@ class SharedTrainingBlock implements TenantOwnedInterface
         return $this;
     }
 
-    public function getSchedulePlanId(): ?string
+    public function getSchedulePlanId(): string
     {
         return $this->schedulePlanId;
     }
 
-    public function setSchedulePlanId(?string $schedulePlanId): self
+    public function setSchedulePlanId(string $schedulePlanId): self
     {
         $this->schedulePlanId = $schedulePlanId;
 

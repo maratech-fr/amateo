@@ -8,6 +8,7 @@ use App\Entity\CalendarEntry;
 use App\Entity\PriorityTier;
 use App\Entity\ScheduleSlotTemplate;
 use App\Entity\Team;
+use App\Plans\SoclePlan;
 use Doctrine\ORM\EntityManagerInterface;
 
 /**
@@ -72,6 +73,7 @@ final readonly class SocleDeviationCalculator
         private EntityManagerInterface $entityManager,
         private PeriodConstraintSelector $periodConstraintSelector,
         private CoachDoubleBookingDetector $coachDoubleBookingDetector,
+        private SoclePlan $soclePlan,
     ) {}
 
     public function calculate(string $clubId, string $seasonId, string $schedulePlanId, CalendarEntry $entry, string $chosenSocleId, string $periodScheduleId): SocleDeviationResult
@@ -94,7 +96,7 @@ final readonly class SocleDeviationCalculator
 
         // « Commune avec » : socle = blocs de saison, toutes les séances ; période = blocs du plan,
         // partenaires en pause exclus.
-        $socleSharedWith = $this->sharedPartners($socleSlots, $this->coachDoubleBookingDetector->declaredGroups($clubId, $seasonId, null), []);
+        $socleSharedWith = $this->sharedPartners($socleSlots, $this->coachDoubleBookingDetector->declaredGroups($clubId, $seasonId, $this->soclePlan->idOf($seasonId)), []);
         $periodSharedWith = $this->sharedPartners($periodSlots, $this->coachDoubleBookingDetector->declaredGroups($clubId, $seasonId, $schedulePlanId), $deactivatedTeamIds);
 
         $socleByTeam = $this->groupByTeam($socleSlots, $deactivatedTeamIds);

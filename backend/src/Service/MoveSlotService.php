@@ -1051,10 +1051,11 @@ final class MoveSlotService
         }
 
         $period = !$this->schedulePlanProvisioner->isSeasonSchedule($schedule);
+        // Les réservations du plan de la version : de saison au socle, de la période sinon.
         $reservations = $this->entityManager->getRepository(Reservation::class)->findBy([
             'clubId' => $schedule->getClubId(),
             'seasonId' => $schedule->getSeasonId(),
-            'schedulePlanId' => $period ? $schedule->getSchedulePlanId() : null,
+            'schedulePlanId' => $schedule->getSchedulePlanId(),
         ]);
 
         $held = [];

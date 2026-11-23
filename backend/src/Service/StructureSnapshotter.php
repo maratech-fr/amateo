@@ -14,6 +14,7 @@ use App\Entity\Team;
 use App\Entity\TeamCoach;
 use App\Entity\Venue;
 use App\Entity\VenueTrainingSlot;
+use App\Plans\SoclePlan;
 use BackedEnum;
 use DateTimeImmutable;
 use DateTimeInterface;
@@ -46,7 +47,7 @@ final class StructureSnapshotter
     /**
      * The structural families of a (club, season). Dated constraints and
      * period-overlay reservations belong to the CALENDAR, not the structure —
-     * both are filtered to `calendarEntryId IS NULL`.
+     * see StructureAnchor::sharedStructureCriteria.
      */
     private const FAMILIES = [
         SportCategory::class,
@@ -62,6 +63,7 @@ final class StructureSnapshotter
 
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
+        private readonly SoclePlan $soclePlan,
     ) {}
 
     /**
@@ -119,10 +121,10 @@ final class StructureSnapshotter
             default => ['clubId' => $clubId, 'seasonId' => $seasonId],
         };
         // Only the PERMANENT structure — les lignes de période n'y entrent pas. L'ancre
-        // diffère selon l'entité (voir StructureAnchor, qui porte le pourquoi) ; dans tous
-        // les cas NULL = la structure partagée (inv. 6), et c'est elle qu'on photographie.
+        // diffère selon l'entité (voir StructureAnchor, qui porte le pourquoi) : la photo prend
+        // la grille et les réservations du plan de saison, les contraintes permanentes.
         if (StructureAnchor::isPeriodScoped($entityClass)) {
-            $criteria[StructureAnchor::of($entityClass)] = null;
+            $criteria += StructureAnchor::sharedStructureCriteria($entityClass, $this->soclePlan->idOf($seasonId));
         }
 
         return $this->entityManager->getRepository($entityClass)->findBy($criteria);

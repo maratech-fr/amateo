@@ -552,7 +552,7 @@ final class ParcImportContext extends BaseContext
                 . ' JOIN team t ON t.id=r.team_id JOIN venue v ON v.id=r.venue_id'
                 . ' WHERE r.club_id=\'%s\' AND t.name=\'%s\' AND v.name=\'%s\''
                 . ' AND r.day_of_week=1 AND EXTRACT(HOUR FROM r.start_time)=18 AND EXTRACT(MINUTE FROM r.start_time)=0'
-                . ' AND r.schedule_plan_id IS NULL',
+                . ' AND r.schedule_plan_id IN (SELECT id FROM schedule_plan WHERE type = \'SEASON\')',
                 $this->clubId,
                 self::TEAM_A,
                 self::VENUE,

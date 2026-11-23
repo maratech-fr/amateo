@@ -24,6 +24,7 @@ use App\Exception\EvictTargetLockedException;
 use App\Exception\EvictTargetMismatchException;
 use App\Exception\ScheduleGenerationInProgressException;
 use App\Exception\TeamAlreadyAtCaseException;
+use App\Plans\SoclePlan;
 use App\Service\ClubGenerationLock;
 use App\Service\EngineClient;
 use App\Service\MoveSlotService;
@@ -543,7 +544,7 @@ final class SlotMoveGroupVerdictTest extends KernelTestCase
         // Fenêtre CIBLE capacité 2 : les deux membres du bloc doivent y tenir ensemble.
         $window = (new VenueTrainingSlot)
             ->setClubId($clubId)
-            ->setSeasonId($seasonId)
+            ->setSeasonId($seasonId)->setSchedulePlanId(self::getContainer()->get(SoclePlan::class)->idOf($seasonId))
             ->setVenueId($venueIds[1])
             ->setDayOfWeek(4)
             ->setStartTime(DateTimeImmutable::createFromFormat('!H:i', '20:00'))
@@ -575,11 +576,11 @@ final class SlotMoveGroupVerdictTest extends KernelTestCase
         }
 
         // Le bloc {t1,t2} 1 séance commune, socle saison (schedulePlanId null, patron D10).
-        $block = (new SharedTrainingBlock)->setClubId($clubId)->setSeasonId($seasonId)->setSchedulePlanId(null)->setCommonSessions(1);
+        $block = (new SharedTrainingBlock)->setClubId($clubId)->setSeasonId($seasonId)->setSchedulePlanId(self::getContainer()->get(SoclePlan::class)->idOf($seasonId))->setCommonSessions(1);
         $this->em->persist($block);
         $this->em->flush();
         foreach ($teamIds as $teamId) {
-            $membership = (new SharedTrainingBlockTeam)->setClubId($clubId)->setSeasonId($seasonId)->setSchedulePlanId(null)->setBlockId($block->getId())->setTeamId($teamId);
+            $membership = (new SharedTrainingBlockTeam)->setClubId($clubId)->setSeasonId($seasonId)->setSchedulePlanId(self::getContainer()->get(SoclePlan::class)->idOf($seasonId))->setBlockId($block->getId())->setTeamId($teamId);
             $this->em->persist($membership);
         }
         $this->em->flush();

@@ -22,6 +22,7 @@ use App\Enum\ConstraintRuleType;
 use App\Enum\ConstraintScope;
 use App\Enum\SeasonStatus;
 use App\Enum\TeamCoachRole;
+use App\Plans\SoclePlan;
 use App\Service\CoachDoubleBookingDetector;
 use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\TenantGucTrait;
@@ -253,11 +254,11 @@ final class CoachDoubleBookingTest extends KernelTestCase
         $a = $this->reserve($ctx, $ctx['teamA'], $ctx['venue1'], 2, '17:00', 90);
         $b = $this->reserve($ctx, $ctx['teamB'], $ctx['venue1'], 2, '17:00', 90);
         // Même case : seul un groupe DÉCLARÉ prête ses coachs (décision fondateur 2026-10-30).
-        $block = (new SharedTrainingBlock)->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])->setSchedulePlanId(null)->setCommonSessions(1);
+        $block = (new SharedTrainingBlock)->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])->setSchedulePlanId(self::getContainer()->get(SoclePlan::class)->idOf($ctx['seasonId']))->setCommonSessions(1);
         $this->em->persist($block);
         $this->em->flush();
         foreach ([$ctx['teamA'], $ctx['teamB']] as $teamId) {
-            $this->em->persist((new SharedTrainingBlockTeam)->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])->setSchedulePlanId(null)->setBlockId($block->getId())->setTeamId($teamId));
+            $this->em->persist((new SharedTrainingBlockTeam)->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])->setSchedulePlanId(self::getContainer()->get(SoclePlan::class)->idOf($ctx['seasonId']))->setBlockId($block->getId())->setTeamId($teamId));
         }
         $this->em->flush();
         $maximeOff = $this->unavailability($ctx, ['unavailableDays' => [2]]); // Maxime (teamA) bloqué mardi
@@ -340,11 +341,11 @@ final class CoachDoubleBookingTest extends KernelTestCase
     public function testADeclaredGroupLendsItsCoaches(): void
     {
         ['ctx' => $ctx, 'reservations' => $reservations] = $this->seedSameCase();
-        $block = (new SharedTrainingBlock)->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])->setSchedulePlanId(null)->setCommonSessions(1);
+        $block = (new SharedTrainingBlock)->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])->setSchedulePlanId(self::getContainer()->get(SoclePlan::class)->idOf($ctx['seasonId']))->setCommonSessions(1);
         $this->em->persist($block);
         $this->em->flush();
         foreach ([$ctx['teamA'], $ctx['teamB']] as $teamId) {
-            $this->em->persist((new SharedTrainingBlockTeam)->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])->setSchedulePlanId(null)->setBlockId($block->getId())->setTeamId($teamId));
+            $this->em->persist((new SharedTrainingBlockTeam)->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])->setSchedulePlanId(self::getContainer()->get(SoclePlan::class)->idOf($ctx['seasonId']))->setBlockId($block->getId())->setTeamId($teamId));
         }
         $this->em->flush();
 
@@ -596,7 +597,7 @@ final class CoachDoubleBookingTest extends KernelTestCase
     {
         $reservation = (new Reservation)
             ->setClubId($ctx['clubId'])
-            ->setSeasonId($ctx['seasonId'])
+            ->setSeasonId($ctx['seasonId'])->setSchedulePlanId(self::getContainer()->get(SoclePlan::class)->idOf($ctx['seasonId']))
             ->setTeamId($teamId)
             ->setVenueId($venueId)
             ->setDayOfWeek($dayOfWeek)

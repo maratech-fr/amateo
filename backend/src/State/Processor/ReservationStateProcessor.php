@@ -169,15 +169,16 @@ class ReservationStateProcessor extends AbstractStateProcessor
             $entity->setCoachLateToleranceMinutes($input->coachLateToleranceMinutes);
         }
         $this->assertEndsWithinDay($input->startTime, $input->durationMinutes ?? 90);
-        $this->assertSchedulePlanExists($this->entityManager, $input->schedulePlanId);
-        $this->assertVenueOpen($input->schedulePlanId, $input->venueId, $input->dayOfWeek);
+        $planId = $this->planFromApi($input->schedulePlanId);
+        $this->assertSchedulePlanExists($this->entityManager, $planId);
+        $this->assertVenueOpen($planId, $input->venueId, $input->dayOfWeek);
 
         // P2-46 PR-2 — la garde symétrique de l'occupation exclusive : une réservation INDIVIDUELLE
         // est refusée si la case porte déjà un groupe COMPLET (règle b) ou si sa capacité est
         // dépassée (règle e).
-        $this->assertOccupancy($input);
+        $this->assertOccupancy($input, $planId);
 
-        $entity->setSchedulePlanId($input->schedulePlanId);
+        $entity->setSchedulePlanId($planId);
 
         return $entity;
     }
@@ -207,7 +208,7 @@ class ReservationStateProcessor extends AbstractStateProcessor
      */
     protected function mapEntityToOutput(object $entity): ReservationResource
     {
-        return ReservationResource::fromEntity($entity);
+        return ReservationResource::fromEntity($entity, $this->planToApi($entity->getSchedulePlanId(), $entity->getSeasonId()));
     }
 
     /**
@@ -239,7 +240,7 @@ class ReservationStateProcessor extends AbstractStateProcessor
      * `unservedReservationIds`). La logique et la copie sont la MAISON UNIQUE
      * {@see PlanVenueClosures::assertVenueOpenForPlan} — partagée avec le rail batch de mutualisation.
      */
-    private function assertVenueOpen(?string $schedulePlanId, ?string $venueId, ?int $dayOfWeek): void
+    private function assertVenueOpen(string $schedulePlanId, ?string $venueId, ?int $dayOfWeek): void
     {
         $this->planVenueClosures->assertVenueOpenForPlan($schedulePlanId, $venueId, $dayOfWeek);
     }
@@ -254,7 +255,7 @@ class ReservationStateProcessor extends AbstractStateProcessor
      * P2-60 — la règle (f) budget solo a besoin de la portée club+saison : on la relit de la requête
      * (le tenant/season résolus côté serveur), comme {@see AbstractStateProcessor::process}.
      */
-    private function assertOccupancy(ReservationInput $input): void
+    private function assertOccupancy(ReservationInput $input, string $planId): void
     {
         if (null === $input->venueId) {
             return;
@@ -279,7 +280,7 @@ class ReservationStateProcessor extends AbstractStateProcessor
                 $input->venueId,
                 $input->dayOfWeek,
                 $input->startTime,
-                $input->schedulePlanId,
+                $planId,
             );
 
             return;
@@ -290,7 +291,7 @@ class ReservationStateProcessor extends AbstractStateProcessor
             $input->venueId,
             $input->dayOfWeek,
             $input->startTime,
-            $input->schedulePlanId,
+            $planId,
             $clubId,
             $seasonId,
         );

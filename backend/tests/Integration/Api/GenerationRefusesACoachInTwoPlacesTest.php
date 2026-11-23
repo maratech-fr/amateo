@@ -26,6 +26,7 @@ use App\Enum\ConstraintScope;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
 use App\Enum\TeamCoachRole;
+use App\Plans\SoclePlan;
 use App\Tests\ChoosesPlanVersionTrait;
 use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\Security\CoachDoubleBookingTest;
@@ -262,16 +263,16 @@ final class GenerationRefusesACoachInTwoPlacesTest extends WebTestCase
 
         $reservationOfA = $this->em->getRepository(Reservation::class)->findOneBy(['teamId' => $seniorsA->getId()]);
         self::assertInstanceOf(Reservation::class, $reservationOfA);
-        $this->em->persist((new Reservation)->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])->setTeamId($seniorsC->getId())
+        $this->em->persist((new Reservation)->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])->setSchedulePlanId(self::getContainer()->get(SoclePlan::class)->idOf($ctx['seasonId']))->setTeamId($seniorsC->getId())
             ->setVenueId($reservationOfA->getVenueId())->setDayOfWeek(2)
             ->setStartTime(new DateTimeImmutable('18:00'))->setDurationMinutes(90));
 
         if ($declaredGroup) {
-            $block = (new SharedTrainingBlock)->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])->setSchedulePlanId(null)->setCommonSessions(1);
+            $block = (new SharedTrainingBlock)->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])->setSchedulePlanId(self::getContainer()->get(SoclePlan::class)->idOf($ctx['seasonId']))->setCommonSessions(1);
             $this->em->persist($block);
             $this->em->flush();
             foreach ([$seniorsA, $seniorsC] as $member) {
-                $this->em->persist((new SharedTrainingBlockTeam)->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])->setSchedulePlanId(null)->setBlockId($block->getId())->setTeamId($member->getId()));
+                $this->em->persist((new SharedTrainingBlockTeam)->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])->setSchedulePlanId(self::getContainer()->get(SoclePlan::class)->idOf($ctx['seasonId']))->setBlockId($block->getId())->setTeamId($member->getId()));
             }
         }
         $this->em->flush();
@@ -320,13 +321,13 @@ final class GenerationRefusesACoachInTwoPlacesTest extends WebTestCase
             $this->em->persist($team);
             $this->em->flush();
             $this->em->persist((new TeamCoach)->setClubId($clubId)->setSeasonId($seasonId)->setTeamId($team->getId())->setCoachId($coach->getId())->setRole(TeamCoachRole::MAIN));
-            $this->em->persist((new Reservation)->setClubId($clubId)->setSeasonId($seasonId)->setTeamId($team->getId())
+            $this->em->persist((new Reservation)->setClubId($clubId)->setSeasonId($seasonId)->setSchedulePlanId(self::getContainer()->get(SoclePlan::class)->idOf($seasonId))->setTeamId($team->getId())
                 ->setVenueId($venues[$sameVenue ? 0 : $index]->getId())->setDayOfWeek(2)
                 ->setStartTime(new DateTimeImmutable('18:00'))->setDurationMinutes(90));
         }
         // Une grille sous les réservations : sans elle, chacune serait orpheline et le refus viendrait d'ailleurs.
         foreach ($venues as $venue) {
-            $this->em->persist((new VenueTrainingSlot)->setClubId($clubId)->setSeasonId($seasonId)->setVenueId($venue->getId())
+            $this->em->persist((new VenueTrainingSlot)->setClubId($clubId)->setSeasonId($seasonId)->setSchedulePlanId(self::getContainer()->get(SoclePlan::class)->idOf($seasonId))->setVenueId($venue->getId())
                 ->setDayOfWeek(2)->setStartTime(new DateTimeImmutable('18:00'))->setDurationMinutes(90)->setCapacity(3));
         }
         $this->em->flush();

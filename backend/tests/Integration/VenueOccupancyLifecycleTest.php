@@ -13,6 +13,7 @@ use App\Entity\Venue;
 use App\Entity\VenueTrainingSlot;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
+use App\Plans\SoclePlan;
 use App\Service\PeriodPlanSiblingCopier;
 use App\Service\SchedulePlanProvisioner;
 use App\Service\SeasonDataPurger;
@@ -84,7 +85,7 @@ final class VenueOccupancyLifecycleTest extends WebTestCase
 
         [, $planId] = $this->periodPlan('Fermeture', 21);
 
-        $season = $this->rows('schedule_plan_id IS NULL');
+        $season = $this->rows('schedule_plan_id IN (SELECT id FROM schedule_plan WHERE type = \'SEASON\')');
         $copy = $this->rows('schedule_plan_id = \'' . $planId . '\'');
         self::assertCount(2, $season);
         self::assertSame($season, $copy, 'la période porte la copie exacte (club, saison, gymnase, jour, début, durée, motif) de chaque occupation de saison');
@@ -179,7 +180,7 @@ final class VenueOccupancyLifecycleTest extends WebTestCase
         $venue = $this->venue('Gymnase Barros');
         $this->postOccupancy($venue, 2, '14:00', 135, 'École');
         $this->periodPlan('Fermeture à venir', 21);
-        $before = $this->rowsWithIds('schedule_plan_id IS NULL');
+        $before = $this->rowsWithIds('schedule_plan_id IN (SELECT id FROM schedule_plan WHERE type = \'SEASON\')');
 
         $version = $this->seasonVersion();
         $this->em->flush();
@@ -188,7 +189,7 @@ final class VenueOccupancyLifecycleTest extends WebTestCase
             self::assertResponseIsSuccessful(\sprintf('décor : « %s » du planning de saison doit réussir', $gesture));
         }
 
-        self::assertSame($before, $this->rowsWithIds('schedule_plan_id IS NULL'), 'valider puis rouvrir le planning de saison ne touche aucune occupation de saison');
+        self::assertSame($before, $this->rowsWithIds('schedule_plan_id IN (SELECT id FROM schedule_plan WHERE type = \'SEASON\')'), 'valider puis rouvrir le planning de saison ne touche aucune occupation de saison');
     }
 
     /**
@@ -276,7 +277,7 @@ final class VenueOccupancyLifecycleTest extends WebTestCase
         $copiedVenue = (string) $this->em->getConnection()->fetchOne('SELECT id FROM venue WHERE season_id = :s AND name = :n', ['s' => $target->getId(), 'n' => $kept->getName()]);
         self::assertNotSame('', $copiedVenue, 'décor : le gymnase présent est copié vers la saison suivante');
         self::assertSame(
-            [[$copiedVenue, 2, '14:00', 135, 'École', null]],
+            [[$copiedVenue, 2, '14:00', 135, 'École', self::getContainer()->get(SoclePlan::class)->idOf($target->getId())]],
             array_map(static fn (array $r): array => [$r['venue_id'], (int) $r['day_of_week'], $r['start'], (int) $r['duration_minutes'], $r['label'], $r['schedule_plan_id']], $this->rawRows('season_id = \'' . $target->getId() . '\'')),
             'seule l\'occupation de saison d\'un gymnase copié passe à la saison suivante (ni la période, ni la dormante)',
         );
@@ -384,7 +385,7 @@ final class VenueOccupancyLifecycleTest extends WebTestCase
         $this->scopeGucToClub($this->club->getId());
         $slot = (new VenueTrainingSlot)->setClubId($this->club->getId())->setSeasonId($this->season->getId())
             ->setVenueId($venue->getId())->setDayOfWeek($day)->setStartTime(new DateTimeImmutable($start))
-            ->setDurationMinutes(90)->setCapacity(1)->setSchedulePlanId(null);
+            ->setDurationMinutes(90)->setCapacity(1)->setSchedulePlanId(self::getContainer()->get(SoclePlan::class)->idOf($this->season->getId()));
         $this->em->persist($slot);
         $this->em->flush();
 
@@ -526,7 +527,7 @@ final class VenueOccupancyLifecycleTest extends WebTestCase
      */
     private function shape(Venue $venue, ?string $planId): array
     {
-        $where = 'venue_id = \'' . $venue->getId() . '\' AND ' . (null === $planId ? 'schedule_plan_id IS NULL' : 'schedule_plan_id = \'' . $planId . '\'');
+        $where = 'venue_id = \'' . $venue->getId() . '\' AND ' . (null === $planId ? 'schedule_plan_id IN (SELECT id FROM schedule_plan WHERE type = \'SEASON\')' : 'schedule_plan_id = \'' . $planId . '\'');
 
         return array_map(static fn (array $r): array => [(int) $r['day_of_week'], $r['start'], (int) $r['duration_minutes'], $r['label']], $this->rawRows($where));
     }
@@ -571,7 +572,7 @@ final class VenueOccupancyLifecycleTest extends WebTestCase
     /** @return list<string> les identifiants des occupations d'une couche (saison si `$planId` est nul), en base */
     private function ids(?string $planId): array
     {
-        return array_map(static fn (array $r): string => (string) $r['id'], $this->rawRows(null === $planId ? 'schedule_plan_id IS NULL' : 'schedule_plan_id = \'' . $planId . '\''));
+        return array_map(static fn (array $r): string => (string) $r['id'], $this->rawRows(null === $planId ? 'schedule_plan_id IN (SELECT id FROM schedule_plan WHERE type = \'SEASON\')' : 'schedule_plan_id = \'' . $planId . '\''));
     }
 
     /**

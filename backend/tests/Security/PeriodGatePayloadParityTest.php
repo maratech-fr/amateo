@@ -29,6 +29,7 @@ use App\Enum\Gender;
 use App\Enum\SeasonStatus;
 use App\Enum\TeamLevel;
 use App\Enum\VenuePeriodMode;
+use App\Plans\SoclePlan;
 use App\Service\PeriodConstraintSelection;
 use App\Service\PeriodConstraintSelector;
 use App\Service\ScheduleConstraintBuilder;
@@ -527,6 +528,7 @@ final class PeriodGatePayloadParityTest extends WebTestCase
             $slot = new VenueTrainingSlot;
             $slot->setClubId($club->getId());
             $slot->setSeasonId($season->getId());
+            $slot->setSchedulePlanId(self::getContainer()->get(SoclePlan::class)->idOf($season->getId()));
             $slot->setVenueId($venue->getId());
             $slot->setDayOfWeek($day);
             $slot->setStartTime(new DateTimeImmutable('18:00'));
@@ -614,6 +616,7 @@ final class PeriodGatePayloadParityTest extends WebTestCase
             $slot = new VenueTrainingSlot;
             $slot->setClubId($club->getId());
             $slot->setSeasonId($season->getId());
+            $slot->setSchedulePlanId(self::getContainer()->get(SoclePlan::class)->idOf($season->getId()));
             $slot->setVenueId($venue->getId());
             $slot->setDayOfWeek($day);
             $slot->setStartTime(new DateTimeImmutable('18:00'));

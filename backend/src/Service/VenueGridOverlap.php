@@ -29,7 +29,7 @@ final readonly class VenueGridOverlap
      * Le premier élément heurté, créneaux d'abord, puis occupations ; null si la plage est libre.
      * `$exceptSlotId` / `$exceptOccupancyId` : l'élément qu'on modifie ne se heurte pas lui-même.
      */
-    public function firstConflict(string $venueId, int $dayOfWeek, int $startMinutes, int $durationMinutes, ?string $schedulePlanId, ?string $exceptSlotId = null, ?string $exceptOccupancyId = null): ?VenueGridConflict
+    public function firstConflict(string $venueId, int $dayOfWeek, int $startMinutes, int $durationMinutes, string $schedulePlanId, ?string $exceptSlotId = null, ?string $exceptOccupancyId = null): ?VenueGridConflict
     {
         $end = $startMinutes + $durationMinutes;
         $criteria = ['venueId' => $venueId, 'dayOfWeek' => $dayOfWeek, 'schedulePlanId' => $schedulePlanId];

@@ -134,7 +134,7 @@ final class TeamCaseOccupancyGuard
         }
         $schedule = $this->entityManager->getRepository(Schedule::class)->find($scheduleId);
 
-        return $this->effectiveTeamSessions->maxPerDay($team, $schedule instanceof Schedule ? $schedule->getSchedulePlanId() : null);
+        return $schedule instanceof Schedule ? $this->effectiveTeamSessions->maxPerDay($team, $schedule->getSchedulePlanId()) : $team->getMaxSessionsPerDay();
     }
 
     /**

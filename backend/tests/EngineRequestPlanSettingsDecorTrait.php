@@ -89,9 +89,11 @@ trait EngineRequestPlanSettingsDecorTrait
         $this->erSocleBlock(self::ER_BLOCK_SOCLE, 31);
         // Réservation libre (sans équipe) : elle retire une place à la case du Nord, lundi 19:30.
         $em->persist((new Reservation)->setId(self::erId('e5e0', 31))->setClubId(self::ER_CLUB)->setSeasonId(self::ER_SEASON)
-            ->setVenueId(self::ER_VENUE_NORD)->setDayOfWeek(1)->setStartTime(new DateTimeImmutable('19:30'))->setDurationMinutes(90));
+            ->setVenueId(self::ER_VENUE_NORD)->setDayOfWeek(1)->setStartTime(new DateTimeImmutable('19:30'))->setDurationMinutes(90)
+            ->setSchedulePlanId($this->erSeasonPlanId()));
         $em->persist((new VenueOccupancy)->setClubId(self::ER_CLUB)->setSeasonId(self::ER_SEASON)->setVenueId(self::ER_VENUE_SUD)
-            ->setDayOfWeek(4)->setStartTime(new DateTimeImmutable('19:30'))->setDurationMinutes(60)->setLabel('École'));
+            ->setDayOfWeek(4)->setStartTime(new DateTimeImmutable('19:30'))->setDurationMinutes(60)->setLabel('École')
+            ->setSchedulePlanId($this->erSeasonPlanId()));
         $this->erSeasonImplicitRule(31);
         $em->flush();
     }
@@ -174,10 +176,10 @@ trait EngineRequestPlanSettingsDecorTrait
     {
         $em = $this->erEm();
         $em->persist((new SharedTrainingBlock)->setId($blockId)->setClubId(self::ER_CLUB)->setSeasonId(self::ER_SEASON)
-            ->setCommonSessions(1)->setLabel('U15 + SM1'));
+            ->setCommonSessions(1)->setLabel('U15 + SM1')->setSchedulePlanId($this->erSeasonPlanId()));
         foreach ([[$n, self::ER_TEAM_U15], [$n + 1, self::ER_TEAM_SM1]] as [$m, $teamId]) {
             $em->persist((new SharedTrainingBlockTeam)->setId(self::erId('5b17', $m))->setClubId(self::ER_CLUB)->setSeasonId(self::ER_SEASON)
-                ->setBlockId($blockId)->setTeamId($teamId));
+                ->setBlockId($blockId)->setTeamId($teamId)->setSchedulePlanId($this->erSeasonPlanId()));
         }
         $em->flush();
     }
@@ -186,7 +188,8 @@ trait EngineRequestPlanSettingsDecorTrait
     private function erSeasonImplicitRule(int $n): void
     {
         $this->erEm()->persist((new ImplicitRuleSetting)->setId(self::erId('a1e5', $n))->setClubId(self::ER_CLUB)->setSeasonId(self::ER_SEASON)
-            ->setRuleKey(ImplicitRuleKey::MAX_CONSECUTIVE_DAYS)->setIntensity(ImplicitRuleIntensity::PREFERRED)->setParams(['maxConsecutiveDays' => 3]));
+            ->setRuleKey(ImplicitRuleKey::MAX_CONSECUTIVE_DAYS)->setIntensity(ImplicitRuleIntensity::PREFERRED)->setParams(['maxConsecutiveDays' => 3])
+            ->setSchedulePlanId($this->erSeasonPlanId()));
     }
 
     private function erTeamSetting(int $n, string $planId, string $teamId, bool $participates, ?int $sessions, ?int $maxPerDay): void

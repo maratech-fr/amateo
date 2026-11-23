@@ -24,6 +24,7 @@ use App\Entity\VenueTrainingSlot;
 use App\Entity\VenueTravelRuleSetting;
 use App\Enum\ConstraintScope;
 use App\Enum\SeasonStatus;
+use App\Plans\SoclePlan;
 use App\Structure\PersonDirectory;
 use App\Structure\PlaceDirectory;
 use DateTimeImmutable;
@@ -58,6 +59,7 @@ final class SeasonTransitionService
         private readonly PersonDirectory $personDirectory,
         private readonly PlaceDirectory $placeDirectory,
         private readonly PlanEntitlements $planEntitlements,
+        private readonly SoclePlan $soclePlan,
     ) {}
 
     /**
@@ -194,8 +196,10 @@ final class SeasonTransitionService
         $target->setTransitionData([]);
         $this->entityManager->persist($target);
 
-        // ADR-0002 Lot A: the copied season starts with its empty SEASON plan.
-        $this->schedulePlanProvisioner->ensureSeasonPlan($target);
+        // ADR-0002 Lot A: the copied season starts with its empty SEASON plan — lot 4 : il porte la
+        // structure partagée reprise (grille, occupations, règles de bien-être), comme celui de la source.
+        $targetPlanId = $this->schedulePlanProvisioner->ensureSeasonPlan($target)->getId();
+        $sourcePlanId = $this->soclePlan->idOf($sourceId);
 
         $venueMap = [];
         foreach ($this->rows(Venue::class, $clubId, $sourceId) as $venue) {
@@ -219,14 +223,12 @@ final class SeasonTransitionService
 
         $slots = 0;
         foreach ($this->rows(VenueTrainingSlot::class, $clubId, $sourceId) as $slot) {
-            // Seule la structure PARTAGÉE se transmet (ancre nulle, inv. 6). Un créneau
-            // PRÊTÉ appartient à un plan de la saison source — « la mairie me prête ce
-            // gymnase POUR cet ajustement d'octobre » n'a aucun sens en N+1, et la copie
-            // ne posant jamais l'ancre, il deviendrait un créneau SAISONNIER PERMANENT du
-            // club : le socle de la nouvelle saison hériterait d'un gymnase prêté une
-            // semaine. Planning plausible, et faux. (Défaut préexistant : la copie ne
-            // portait pas non plus l'ancien calendarEntryId.)
-            if (null !== $slot->getSchedulePlanId()) {
+            // Seule la structure PARTAGÉE se transmet (le plan de saison, inv. 6). Un créneau
+            // PRÊTÉ appartient à un plan de période de la saison source — « la mairie me prête
+            // ce gymnase POUR cet ajustement d'octobre » n'a aucun sens en N+1 : copié sur le
+            // plan de saison, il deviendrait un créneau SAISONNIER PERMANENT du club. Planning
+            // plausible, et faux.
+            if ($slot->getSchedulePlanId() !== $sourcePlanId) {
                 continue;
             }
             $newVenueId = $venueMap[$slot->getVenueId()] ?? null;
@@ -241,6 +243,7 @@ final class SeasonTransitionService
             $copy->setStartTime($slot->getStartTime());
             $copy->setDurationMinutes($slot->getDurationMinutes());
             $copy->setCapacity($slot->getCapacity());
+            $copy->setSchedulePlanId($targetPlanId);
             $this->entityManager->persist($copy);
             ++$slots;
         }
@@ -248,7 +251,7 @@ final class SeasonTransitionService
         // Les occupations de SAISON suivent les créneaux vers les gymnases copiés ; celles d'une
         // période restent à leur plan, une dormante (gymnase non copié) est ignorée. Sans contrôle.
         foreach ($this->rows(VenueOccupancy::class, $clubId, $sourceId) as $occupancy) {
-            if (null !== $occupancy->getSchedulePlanId()) {
+            if ($occupancy->getSchedulePlanId() !== $sourcePlanId) {
                 continue;
             }
             $newVenueId = $venueMap[$occupancy->getVenueId()] ?? null;
@@ -258,7 +261,8 @@ final class SeasonTransitionService
             $this->entityManager->persist(
                 (new VenueOccupancy)->setClubId($clubId)->setSeasonId($target->getId())->setVenueId($newVenueId)
                     ->setDayOfWeek($occupancy->getDayOfWeek())->setStartTime($occupancy->getStartTime())
-                    ->setDurationMinutes($occupancy->getDurationMinutes())->setLabel($occupancy->getLabel()),
+                    ->setDurationMinutes($occupancy->getDurationMinutes())->setLabel($occupancy->getLabel())
+                    ->setSchedulePlanId($targetPlanId),
             );
         }
 
@@ -523,17 +527,18 @@ final class SeasonTransitionService
             ++$constraints;
         }
 
-        // Réglages des règles implicites (bien-être) de la portée SAISON UNIQUEMENT (plan NULL) :
+        // Réglages des règles implicites (bien-être) de la portée SAISON UNIQUEMENT (le plan de saison) :
         // recopiés tels quels — aucune référence d'entité à remapper, une règle est un cran
         // d'intensité + un seuil. Une saison N+1 hérite donc des assouplissements décidés en N
         // (au lieu de repartir tout HARD). Les COPIES de période (plan non-NULL) sont exclues :
         // leurs plans N n'existent pas en N+1 (les entrées de calendrier ne sont pas recopiées) —
-        // les copier avec plan NULL en ferait de faux réglages de SAISON. La copie n'ancre donc
-        // jamais de plan (schedulePlanId reste NULL). Pas comptabilisé dans `$counts`.
-        foreach ($this->entityManager->getRepository(ImplicitRuleSetting::class)->findBy(['clubId' => $clubId, 'seasonId' => $sourceId, 'schedulePlanId' => null]) as $setting) {
+        // les copier sur le plan de saison en ferait de faux réglages de SAISON. La copie porte le
+        // plan de saison de la nouvelle saison. Pas comptabilisé dans `$counts`.
+        foreach ($this->entityManager->getRepository(ImplicitRuleSetting::class)->findBy(['clubId' => $clubId, 'seasonId' => $sourceId, 'schedulePlanId' => $sourcePlanId]) as $setting) {
             $copy = new ImplicitRuleSetting;
             $copy->setClubId($clubId);
             $copy->setSeasonId($target->getId());
+            $copy->setSchedulePlanId($targetPlanId);
             $copy->setRuleKey($setting->getRuleKey());
             $copy->setIntensity($setting->getIntensity());
             $copy->setParams($setting->getParams());

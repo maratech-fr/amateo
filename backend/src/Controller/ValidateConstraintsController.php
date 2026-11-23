@@ -11,6 +11,7 @@ use App\Entity\CalendarEntry;
 use App\Entity\Constraint;
 use App\Entity\Reservation;
 use App\Enum\CalendarEntryPeriodType;
+use App\Plans\SoclePlan;
 use App\Repository\CalendarEntryRepository;
 use App\Repository\ConstraintRepository;
 use App\Repository\TeamRepository;
@@ -66,6 +67,7 @@ final class ValidateConstraintsController extends AbstractController
         private readonly GenerationBlockersGuard $generationBlockersGuard,
         private readonly SecondSessionSameDayDetector $secondSessionSameDayDetector,
         private readonly ImplicitRuleResolver $implicitRuleResolver,
+        private readonly SoclePlan $soclePlan,
     ) {}
 
     #[Route('/api/constraints/validate', name: 'api_constraints_validate', methods: ['POST'])]
@@ -223,7 +225,7 @@ final class ValidateConstraintsController extends AbstractController
         $blockers = [
             // La même liste que les guichets `/generate`, `/regenerate` et `/fill` : une seule vérité.
             ...(null !== $capacityPayload
-                ? $this->generationBlockersGuard->blockersFor($capacityPayload, $reservations, $constraints, $selection instanceof PeriodConstraintSelection ? $selection->schedulePlanId : null)
+                ? $this->generationBlockersGuard->blockersFor($capacityPayload, $reservations, $constraints, $selection instanceof PeriodConstraintSelection ? $selection->schedulePlanId : $this->soclePlan->idOf($seasonId))
                 : [...$this->generationBlockersGuard->overBookedOnEntities($reservations, $clubId, $seasonId), ...$secondSession['blockers']]),
             ...array_map(
                 fn (array $conflict): string => $this->coachDoubleBookingDetector->describeForRecap($conflict),
@@ -251,7 +253,7 @@ final class ValidateConstraintsController extends AbstractController
         // Les règles du club réglées sur « Ignorée » pour CE plan : annoncées au Récap, jamais
         // comptées parmi les alertes. Une période sans plan n'envoie rien au solveur : rien à annoncer.
         $ignoredRules = null === $calendarEntryId
-            ? $this->implicitRuleResolver->ignoredRuleKeys($clubId, $seasonId, null)
+            ? $this->implicitRuleResolver->ignoredRuleKeys($clubId, $seasonId, $this->soclePlan->idOf($seasonId))
             : ($selection instanceof PeriodConstraintSelection ? $this->implicitRuleResolver->ignoredRuleKeys($clubId, $seasonId, $selection->schedulePlanId) : []);
 
         return $this->json(
@@ -428,7 +430,7 @@ final class ValidateConstraintsController extends AbstractController
     /**
      * Les réservations qui partiront RÉELLEMENT au solveur — le même périmètre que
      * `ScheduleConstraintBuilder`, jamais un autre : le socle ne lit que les siennes
-     * (`schedulePlanId IS NULL`) et une période que les siennes, gymnases désactivés
+     * (celles du plan de saison) et une période que les siennes, gymnases désactivés
      * retirés. Mélanger les deux inventerait des conflits entre mondes disjoints ;
      * bloquer sur une réservation qui ne part pas au solveur enfermerait le
      * gestionnaire sur un problème qui n'existe pas.
@@ -441,7 +443,7 @@ final class ValidateConstraintsController extends AbstractController
 
         if (null === $calendarEntryId) {
             return $repository->findBy(
-                ['clubId' => $clubId, 'seasonId' => $seasonId, 'schedulePlanId' => null],
+                ['clubId' => $clubId, 'seasonId' => $seasonId, 'schedulePlanId' => $this->soclePlan->idOf($seasonId)],
                 ['id' => 'ASC'],
             );
         }

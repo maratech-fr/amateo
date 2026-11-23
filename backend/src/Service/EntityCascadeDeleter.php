@@ -12,13 +12,11 @@ use App\Entity\Coach;
 use App\Entity\Constraint;
 use App\Entity\Reservation;
 use App\Entity\Schedule;
-use App\Entity\SchedulePlan;
 use App\Entity\ScheduleSlotTemplate;
 use App\Entity\Team;
 use App\Entity\Venue;
 use App\Entity\VenueTrainingSlot;
 use App\Enum\LockLevel;
-use App\Enum\SchedulePlanType;
 use Doctrine\ORM\EntityManagerInterface;
 
 /**
@@ -195,14 +193,11 @@ final class EntityCascadeDeleter
 
         $planId = $before->getSchedulePlanId();
         if (Reservation::class === $entityClass) {
-            $qb->andWhere(null === $planId ? 'e.schedulePlanId IS NULL' : 'e.schedulePlanId = :planId');
-            if (null !== $planId) {
-                $qb->setParameter('planId', $planId);
-            }
+            $qb->andWhere('e.schedulePlanId = :planId')->setParameter('planId', $planId);
         } elseif (ScheduleSlotTemplate::class === $entityClass) {
             $scheduleIds = array_map(
                 static fn (Schedule $s): string => $s->getId(),
-                $this->entityManager->getRepository(Schedule::class)->findBy(['schedulePlanId' => $planId ?? $this->seasonPlanIds($seasonId)]),
+                $this->entityManager->getRepository(Schedule::class)->findBy(['schedulePlanId' => $planId]),
             );
             if ([] === $scheduleIds) {
                 return;
@@ -213,21 +208,6 @@ final class EntityCascadeDeleter
             $qb->andWhere('e.lockLevel = :hard')->setParameter('hard', LockLevel::HARD);
         }
         $qb->getQuery()->execute();
-    }
-
-    /**
-     * Les plans SOCLE de la saison — la couche d'un créneau saisonnier (schedulePlanId
-     * null). Une liste, pas un id : rien n'interdit en base d'en avoir plus d'un, et un
-     * `find` unique choisirait silencieusement.
-     *
-     * @return list<string>
-     */
-    private function seasonPlanIds(string $seasonId): array
-    {
-        return array_map(
-            static fn (SchedulePlan $p): string => $p->getId(),
-            $this->entityManager->getRepository(SchedulePlan::class)->findBy(['seasonId' => $seasonId, 'type' => SchedulePlanType::SEASON]),
-        );
     }
 
     private function withoutTenantFilters(callable $work): void

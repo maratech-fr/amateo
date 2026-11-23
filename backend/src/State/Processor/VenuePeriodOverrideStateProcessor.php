@@ -71,8 +71,10 @@ class VenuePeriodOverrideStateProcessor extends AbstractStateProcessor
         // interroge la base avec l'id reçu, et un id vide sur une colonne `guid` remonterait
         // un 500 opaque au lieu du 422 attendu. La validation du DTO l'interdit aujourd'hui,
         // mais l'ordre rend l'invariant vrai par construction plutôt que par dépendance —
-        // relevé en revue sécurité (2026-08-18).
-        $this->assertSchedulePlanExists($this->entityManager, $input->schedulePlanId);
+        // relevé en revue sécurité (2026-08-18). Un plan absent est refusé par la validation du DTO.
+        if (null !== $input->schedulePlanId) {
+            $this->assertSchedulePlanExists($this->entityManager, $input->schedulePlanId);
+        }
 
         $output = $this->entityManager->wrapInTransaction(function () use ($input, $clubId, $seasonId): object {
             /** @var VenuePeriodOverrideResource $output */
@@ -177,7 +179,7 @@ class VenuePeriodOverrideStateProcessor extends AbstractStateProcessor
         // le retour à « hériter » recopierait les créneaux de saison PAR-DESSUS eux-mêmes.
         // Le planning principal n'est JAMAIS modifié par une période (invariant n°1) —
         // on le rend impossible ici plutôt que d'en dépendre côté UI.
-        if ($this->schedulePlanProvisioner->planIsSeason($input->schedulePlanId)) {
+        if (null !== $input->schedulePlanId && $this->schedulePlanProvisioner->planIsSeason($input->schedulePlanId)) {
             $this->refuse('Un mode de gymnase se règle sur une période, pas sur le planning de la saison.');
         }
 

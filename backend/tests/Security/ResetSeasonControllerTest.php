@@ -15,6 +15,7 @@ use App\Entity\VenueTrainingSlot;
 use App\Enum\CalendarEntryKind;
 use App\Enum\CalendarEntryPeriodType;
 use App\Enum\ScheduleStatus;
+use App\Plans\SoclePlan;
 use App\Tests\ChoosesPlanVersionTrait;
 use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\TenantGucTrait;
@@ -76,6 +77,7 @@ final class ResetSeasonControllerTest extends WebTestCase
         $slot = new VenueTrainingSlot;
         $slot->setClubId($clubId);
         $slot->setSeasonId($season->getId());
+        $slot->setSchedulePlanId(self::getContainer()->get(SoclePlan::class)->idOf($season->getId()));
         $slot->setVenueId($venue->getId());
         $slot->setDayOfWeek(2);
         $slot->setStartTime(new DateTimeImmutable('18:00'));

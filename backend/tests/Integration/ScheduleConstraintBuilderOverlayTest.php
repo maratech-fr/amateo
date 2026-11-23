@@ -35,6 +35,7 @@ use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
 use App\Enum\TeamCoachRole;
 use App\Enum\VenuePeriodMode;
+use App\Plans\SoclePlan;
 use App\Service\CoachWishTransferService;
 use App\Service\PeriodConstraintSelector;
 use App\Service\ScheduleConstraintBuilder;
@@ -1028,7 +1029,7 @@ final class ScheduleConstraintBuilderOverlayTest extends KernelTestCase
         $slot->setStartTime(new DateTimeImmutable('18:00'));
         $slot->setDurationMinutes(90);
         $slot->setCapacity(1);
-        $slot->setSchedulePlanId($schedulePlanId);
+        $slot->setSchedulePlanId($schedulePlanId ?? self::getContainer()->get(SoclePlan::class)->idOf($season->getId()));
         $this->em->persist($slot);
     }
 

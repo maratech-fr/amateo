@@ -26,7 +26,7 @@ class VenueTrainingSlotStateProvider extends AbstractStateProvider
      */
     protected function mapEntityToOutput(object $entity): VenueTrainingSlotResource
     {
-        return VenueTrainingSlotResource::fromEntity($entity);
+        return VenueTrainingSlotResource::fromEntity($entity, $this->planToApi($entity->getSchedulePlanId(), $entity->getSeasonId()));
     }
 
     /**
@@ -57,13 +57,13 @@ class VenueTrainingSlotStateProvider extends AbstractStateProvider
             }
 
             // Period-editable structure: ?schedulePlanId=<id> lists that period's own
-            // slots; ABSENT ⇒ SEASONAL only (schedulePlanId IS NULL) so the wizard's
+            // slots; ABSENT ⇒ SEASONAL only (the season plan, lot 4) so the wizard's
             // seasonal editor never shows a period's borrowed slots.
-            $schedulePlanId = $this->uuidQueryParam($request, 'schedulePlanId');
-            if (null !== $schedulePlanId) {
-                $qb->andWhere('e.schedulePlanId = :schedulePlanId')->setParameter('schedulePlanId', $schedulePlanId);
+            $readPlanId = $this->uuidQueryParam($request, 'schedulePlanId') ?? $this->soclePlanOfRead($clubId, $seasonId);
+            if (null === $readPlanId) {
+                $qb->andWhere('1 = 0'); // aucune saison : aucun socle à lire
             } else {
-                $qb->andWhere('e.schedulePlanId IS NULL');
+                $qb->andWhere('e.schedulePlanId = :schedulePlanId')->setParameter('schedulePlanId', $readPlanId);
             }
         }
 

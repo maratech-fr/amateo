@@ -16,6 +16,7 @@ use App\Enum\ConstraintFamily;
 use App\Enum\ConstraintRuleType;
 use App\Enum\ConstraintScope;
 use App\Enum\SeasonStatus;
+use App\Plans\SoclePlan;
 use App\Service\ScheduleConstraintBuilder;
 use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\TenantGucTrait;
@@ -198,7 +199,7 @@ final class SeasonSlotKeepSemanticsGateTest extends KernelTestCase
     private function trainingSlot(Club $club, Season $season, Venue $venue, int $day, string $start): void
     {
         $slot = (new VenueTrainingSlot)
-            ->setClubId($club->getId())->setSeasonId($season->getId())->setVenueId($venue->getId())
+            ->setClubId($club->getId())->setSeasonId($season->getId())->setSchedulePlanId(self::getContainer()->get(SoclePlan::class)->idOf($season->getId()))->setVenueId($venue->getId())
             ->setDayOfWeek($day)->setStartTime(new DateTimeImmutable($start))->setDurationMinutes(90)->setCapacity(1);
         $this->em->persist($slot);
     }

@@ -34,6 +34,7 @@ use App\Enum\FixtureStatus;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
 use App\Enum\TeamCoachRole;
+use App\Plans\SoclePlan;
 use App\Service\SchedulePlanProvisioner;
 use App\Service\StructureRestorer;
 use App\Service\StructureSnapshotter;
@@ -616,7 +617,7 @@ final class StructureRestorerTest extends KernelTestCase
         $sud = $this->newVenue($club->getId(), $season->getId(), 'Gymnase Sud');
         $this->em->flush();
         $this->placeOf($nord)->setAddress('12 rue du Nord, 69100 Villeurbanne')->setLatitude('45.7700000')->setLongitude('4.8800000');
-        $slot = (new VenueTrainingSlot)->setClubId($club->getId())->setSeasonId($season->getId())->setVenueId($nord->getId())
+        $slot = (new VenueTrainingSlot)->setClubId($club->getId())->setSeasonId($season->getId())->setSchedulePlanId(self::getContainer()->get(SoclePlan::class)->idOf($season->getId()))->setVenueId($nord->getId())
             ->setDayOfWeek(2)->setStartTime(new DateTimeImmutable('18:00'))->setDurationMinutes(90)->setCapacity(1);
         $this->em->persist($slot);
         $v1 = $this->makeSchedule($club, $season);

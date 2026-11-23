@@ -134,9 +134,7 @@ final class GenerationCreditIsPartOfTheResultTest extends KernelTestCase
         $this->scopeGucToClub($club->getId());
         $this->em->clear();
         self::assertInstanceOf(ScheduleSlotTemplate::class, $this->em->getRepository(ScheduleSlotTemplate::class)->find($sentinelId), 'les créneaux d\'avant survivent : l\'import est annulé avec le reste');
-        $reloadedSeason = $this->em->getRepository(Season::class)->find($season->getId());
-        self::assertInstanceOf(Season::class, $reloadedSeason);
-        self::assertNull($reloadedSeason->getLiveContextScheduleId(), 'la version perdue n\'est pas devenue le contexte chargé de la saison');
+        self::assertNull($this->em->getConnection()->fetchOne('SELECT lock_source_schedule_id FROM schedule_plan WHERE season_id = ? AND type = \'SEASON\'', [$season->getId()]), 'la version perdue n\'est pas devenue le contexte chargé de la saison');
         $reloadedClub = $this->em->getRepository(Club::class)->find($club->getId());
         self::assertInstanceOf(Club::class, $reloadedClub);
         self::assertFalse($reloadedClub->getOnboardingCompleted(), 'la version perdue ne clôt pas l\'accueil du club');

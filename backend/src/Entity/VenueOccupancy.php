@@ -21,12 +21,12 @@ use Doctrine\ORM\Mapping as ORM;
  * ⚠ Rien à voir avec `VenueWindowOccupancy` / `ReservationGroupOccupancy` (remplissage d'une
  * fenêtre par des séances) : homonymie de vocabulaire seulement.
  *
- * `schedulePlanId` nul = occupation de saison ; posé = la copie que porte un plan de période
- * (prise à sa naissance, comme la grille de créneaux — ADR-0002). Aucune clé étrangère sur
+ * `schedulePlanId` : le plan de saison pour une occupation du socle, un plan de période pour la copie
+ * qu'il porte (prise à sa naissance, comme la grille de créneaux — ADR-0002). Aucune clé étrangère sur
  * `venueId` : une occupation dont le gymnase est absent de la version chargée DORT (en base,
  * absente de la liste) et revient avec lui.
  */
-#[Family(Level::SEASON)]
+#[Family(Level::PLAN)]
 #[ORM\Entity(repositoryClass: VenueOccupancyRepository::class)]
 #[ORM\Table(name: 'venue_occupancy')]
 #[ORM\Index(name: 'idx_venue_occupancy_club_venue', columns: ['club_id', 'venue_id'])]
@@ -70,9 +70,9 @@ class VenueOccupancy implements TenantOwnedInterface
     #[ORM\Column(type: 'string', length: 40)]
     private string $label = '';
 
-    #[ORM\Column(type: 'guid', nullable: true)]
+    #[ORM\Column(type: 'guid')]
     #[RefersTo(SchedulePlan::class, OnDelete::DELETE)]
-    private ?string $schedulePlanId = null;
+    private string $schedulePlanId;
 
     public function __construct()
     {
@@ -192,12 +192,12 @@ class VenueOccupancy implements TenantOwnedInterface
         return $this;
     }
 
-    public function getSchedulePlanId(): ?string
+    public function getSchedulePlanId(): string
     {
         return $this->schedulePlanId;
     }
 
-    public function setSchedulePlanId(?string $schedulePlanId): self
+    public function setSchedulePlanId(string $schedulePlanId): self
     {
         $this->schedulePlanId = $schedulePlanId;
 

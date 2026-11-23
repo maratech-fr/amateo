@@ -28,6 +28,7 @@ use App\Enum\VenuePeriodMode;
 use App\Export\ExportReservedWindow;
 use App\Export\ScheduleExportData;
 use App\Export\ScheduleExportDataProvider;
+use App\Plans\SoclePlan;
 use App\Service\BrandAssets;
 use App\Service\PdfGenerator;
 use App\Service\ProductIdentity;
@@ -158,7 +159,7 @@ final class ScheduleExportOccupanciesTest extends WebTestCase
         $venue = $this->makeVenue('Réservé');
         $this->window($venue, 3, '18:00', null);
         $this->em->persist(
-            (new Reservation)->setClubId($this->club->getId())->setSeasonId($this->season->getId())
+            (new Reservation)->setClubId($this->club->getId())->setSeasonId($this->season->getId())->setSchedulePlanId(self::getContainer()->get(SoclePlan::class)->idOf($this->season->getId()))
                 ->setTeamId(null)->setLabel('Loto du club')->setVenueId($venue->getId())
                 ->setDayOfWeek(3)->setStartTime(new DateTimeImmutable('18:00'))->setDurationMinutes(90),
         );
@@ -450,7 +451,7 @@ final class ScheduleExportOccupanciesTest extends WebTestCase
         $slot = new VenueTrainingSlot;
         $slot->setClubId($this->club->getId());
         $slot->setSeasonId($this->season->getId());
-        $slot->setSchedulePlanId($planId);
+        $slot->setSchedulePlanId($planId ?? self::getContainer()->get(SoclePlan::class)->idOf($this->season->getId()));
         $slot->setVenueId($venue->getId());
         $slot->setDayOfWeek($day);
         $slot->setStartTime(new DateTimeImmutable($start));
@@ -488,7 +489,7 @@ final class ScheduleExportOccupanciesTest extends WebTestCase
         $this->em->getConnection()->executeStatement(
             'INSERT INTO venue_occupancy (id, version, created_at, updated_at, club_id, season_id, venue_id, day_of_week, start_time, duration_minutes, label, schedule_plan_id)'
             . ' VALUES (:id, 1, now(), now(), :club, :season, :venue, :day, :start, :duration, :label, :plan)',
-            ['id' => $this->uuid(), 'club' => $this->club->getId(), 'season' => $this->season->getId(), 'venue' => $venueId, 'day' => $day, 'start' => $start . ':00', 'duration' => $duration, 'label' => $label, 'plan' => $planId],
+            ['id' => $this->uuid(), 'club' => $this->club->getId(), 'season' => $this->season->getId(), 'venue' => $venueId, 'day' => $day, 'start' => $start . ':00', 'duration' => $duration, 'label' => $label, 'plan' => $planId ?? self::getContainer()->get(SoclePlan::class)->idOf($this->season->getId())],
         );
     }
 

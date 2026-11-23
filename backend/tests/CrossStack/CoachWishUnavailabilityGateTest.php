@@ -23,6 +23,7 @@ use App\Enum\CalendarEntryKind;
 use App\Enum\CalendarEntryPeriodType;
 use App\Enum\SeasonStatus;
 use App\Enum\TeamCoachRole;
+use App\Plans\SoclePlan;
 use App\Service\CoachWishTransferService;
 use App\Service\ScheduleConstraintBuilder;
 use App\Tests\CreatesPeopleAndPlacesTrait;
@@ -329,7 +330,7 @@ final class CoachWishUnavailabilityGateTest extends KernelTestCase
         $this->em->persist($block);
         $this->em->flush();
         foreach ([$a, $b] as $team) {
-            $this->em->persist((new SharedTrainingBlockTeam)->setClubId($this->club->getId())->setSeasonId($this->season->getId())
+            $this->em->persist((new SharedTrainingBlockTeam)->setClubId($this->club->getId())->setSeasonId($this->season->getId())->setSchedulePlanId(self::getContainer()->get(SoclePlan::class)->idOf($this->season->getId()))
                 ->setBlockId($block->getId())->setTeamId($team->getId()));
         }
         $this->em->flush();

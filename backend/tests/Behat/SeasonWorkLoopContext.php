@@ -166,7 +166,7 @@ final class SeasonWorkLoopContext extends BaseContext
                 . ' JOIN venue v ON v.id = sst.venue_id AND v.can_split = false'
                 . ' JOIN venue_training_slot vts ON vts.venue_id = sst.venue_id AND vts.day_of_week = sst.day_of_week'
                 . ' AND to_char(vts.start_time, \'HH24:MI\') = to_char(sst.start_time, \'HH24:MI\')'
-                . ' AND vts.schedule_plan_id IS NULL AND vts.club_id = \'%1$s\' AND vts.capacity = 1'
+                . ' AND vts.schedule_plan_id IN (SELECT id FROM schedule_plan WHERE type = \'SEASON\') AND vts.club_id = \'%1$s\' AND vts.capacity = 1'
                 . ' WHERE sst.schedule_id = \'%2$s\''
                 . ' AND (extract(hour from sst.start_time)::int * 60 + extract(minute from sst.start_time)::int + 90) <= 1440'
                 . ' AND NOT EXISTS ('
@@ -175,7 +175,7 @@ final class SeasonWorkLoopContext extends BaseContext
                 . ' AND to_char(g.start_time, \'HH24:MI\') = to_char(sst.start_time, \'HH24:MI\')'
                 . ' AND g.shared_training_block_id IS NOT NULL)'
                 . ' AND NOT EXISTS ('
-                . ' SELECT 1 FROM reservation res WHERE res.club_id = \'%1$s\' AND res.schedule_plan_id IS NULL'
+                . ' SELECT 1 FROM reservation res WHERE res.club_id = \'%1$s\' AND res.schedule_plan_id IN (SELECT id FROM schedule_plan WHERE type = \'SEASON\')'
                 . ' AND res.venue_id = sst.venue_id AND res.day_of_week = sst.day_of_week'
                 . ' AND to_char(res.start_time, \'HH24:MI\') = to_char(sst.start_time, \'HH24:MI\'))'
                 . ' ORDER BY sst.venue_id, sst.day_of_week, sst.start_time LIMIT 1',
@@ -318,12 +318,12 @@ final class SeasonWorkLoopContext extends BaseContext
             \sprintf(
                 'SELECT vts.venue_id || \'|\' || vts.day_of_week || \'|\' || to_char(vts.start_time, \'HH24:MI\') AS behatval'
                 . ' FROM venue_training_slot vts'
-                . ' WHERE vts.club_id=\'%3$s\' AND vts.schedule_plan_id IS NULL'
+                . ' WHERE vts.club_id=\'%3$s\' AND vts.schedule_plan_id IN (SELECT id FROM schedule_plan WHERE type = \'SEASON\')'
                 . ' AND NOT EXISTS (SELECT 1 FROM schedule_slot_template s WHERE s.schedule_id=\'%1$s\''
                 . ' AND s.venue_id=vts.venue_id AND s.day_of_week=vts.day_of_week AND s.start_time=vts.start_time)'
                 . ' AND EXISTS (SELECT 1 FROM schedule_slot_template o WHERE o.schedule_id=\'%1$s\' AND o.team_id=\'%2$s\''
                 . ' AND o.id <> \'%4$s\' AND o.day_of_week=vts.day_of_week AND o.day_of_week <> %5$d AND o.start_time <> vts.start_time)'
-                . ' AND NOT EXISTS (SELECT 1 FROM reservation r WHERE r.club_id=\'%3$s\' AND r.schedule_plan_id IS NULL'
+                . ' AND NOT EXISTS (SELECT 1 FROM reservation r WHERE r.club_id=\'%3$s\' AND r.schedule_plan_id IN (SELECT id FROM schedule_plan WHERE type = \'SEASON\')'
                 . ' AND r.venue_id=vts.venue_id AND r.day_of_week=vts.day_of_week AND r.start_time=vts.start_time)'
                 . ' AND NOT EXISTS (SELECT 1 FROM schedule_slot_template s'
                 . ' JOIN team t ON t.id = s.team_id JOIN sport_category c ON c.id = t.sport_category_id'
@@ -722,10 +722,10 @@ final class SeasonWorkLoopContext extends BaseContext
             \sprintf(
                 'SELECT vts.venue_id || \'|\' || vts.day_of_week || \'|\' || to_char(vts.start_time, \'HH24:MI\') AS behatval'
                 . ' FROM venue_training_slot vts'
-                . ' WHERE vts.club_id=\'%1$s\' AND vts.schedule_plan_id IS NULL AND vts.day_of_week NOT IN (%3$d, %4$d)'
+                . ' WHERE vts.club_id=\'%1$s\' AND vts.schedule_plan_id IN (SELECT id FROM schedule_plan WHERE type = \'SEASON\') AND vts.day_of_week NOT IN (%3$d, %4$d)'
                 . ' AND NOT EXISTS (SELECT 1 FROM schedule_slot_template s WHERE s.schedule_id=\'%2$s\''
                 . ' AND s.venue_id=vts.venue_id AND s.day_of_week=vts.day_of_week AND s.start_time=vts.start_time)'
-                . ' AND NOT EXISTS (SELECT 1 FROM reservation r WHERE r.club_id=\'%1$s\' AND r.schedule_plan_id IS NULL'
+                . ' AND NOT EXISTS (SELECT 1 FROM reservation r WHERE r.club_id=\'%1$s\' AND r.schedule_plan_id IN (SELECT id FROM schedule_plan WHERE type = \'SEASON\')'
                 . ' AND r.venue_id=vts.venue_id AND r.day_of_week=vts.day_of_week AND r.start_time=vts.start_time)'
                 . ' ORDER BY vts.day_of_week, vts.start_time, vts.venue_id LIMIT 1',
                 $this->smallClubId,
@@ -962,7 +962,7 @@ final class SeasonWorkLoopContext extends BaseContext
                 . ' FROM schedule_slot_template m'
                 . ' JOIN schedule_slot_template o ON o.schedule_id = m.schedule_id AND o.team_id = m.team_id'
                 . ' AND o.id <> m.id AND o.day_of_week <> m.day_of_week'
-                . ' JOIN venue_training_slot vts ON vts.club_id=\'%3$s\' AND vts.schedule_plan_id IS NULL'
+                . ' JOIN venue_training_slot vts ON vts.club_id=\'%3$s\' AND vts.schedule_plan_id IN (SELECT id FROM schedule_plan WHERE type = \'SEASON\')'
                 . ' AND vts.day_of_week = o.day_of_week AND vts.start_time <> o.start_time'
                 . ' WHERE m.schedule_id=\'%1$s\' AND m.team_id=\'%2$s\' AND m.lock_level=\'NONE\''
                 . ' AND NOT EXISTS (SELECT 1 FROM schedule_slot_template s WHERE s.schedule_id=\'%1$s\''
@@ -974,7 +974,7 @@ final class SeasonWorkLoopContext extends BaseContext
                 . ' AND s.venue_id=vts.venue_id AND s.day_of_week=vts.day_of_week'
                 . ' AND c.age_min IS NOT NULL AND mc.age_min IS NOT NULL'
                 . ' AND ((c.age_min < mc.age_min AND s.start_time > vts.start_time) OR (c.age_min > mc.age_min AND s.start_time < vts.start_time)))'
-                . ' AND NOT EXISTS (SELECT 1 FROM reservation r WHERE r.club_id=\'%3$s\' AND r.schedule_plan_id IS NULL'
+                . ' AND NOT EXISTS (SELECT 1 FROM reservation r WHERE r.club_id=\'%3$s\' AND r.schedule_plan_id IN (SELECT id FROM schedule_plan WHERE type = \'SEASON\')'
                 . ' AND r.venue_id=vts.venue_id AND r.day_of_week=vts.day_of_week AND r.start_time=vts.start_time)'
                 . ' ORDER BY (vts.venue_id = o.venue_id) DESC, vts.start_time DESC, m.id, vts.venue_id LIMIT 1',
                 $this->socleVersionId,

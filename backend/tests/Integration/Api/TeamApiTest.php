@@ -492,7 +492,7 @@ final class TeamApiTest extends WebTestCase
                 ->setTeamId($team->getId())->setVenueId($this->club->getId())->setDayOfWeek(1)->setStartTime(new DateTimeImmutable($start))->setDurationMinutes(90));
         }
         $this->em->flush();
-        $this->em->getConnection()->executeStatement('UPDATE season SET live_context_schedule_id = ? WHERE id = ?', [$schedule->getId(), $this->season->getId()]);
+        $this->em->getConnection()->executeStatement('UPDATE schedule_plan SET lock_source_schedule_id = ? WHERE season_id = ? AND type = \'SEASON\'', [$schedule->getId(), $this->season->getId()]);
 
         $this->putTeam($team, ['maxSessionsPerDay' => 1]);
 

@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace App\Structure;
 
 use App\Entity\Club;
+use App\Entity\Schedule;
+use App\Entity\SchedulePlan;
 use App\Entity\Season;
 use App\Entity\TransitionReminderLog;
 use App\Service\SeasonDataPurger;
@@ -24,6 +26,12 @@ final class FamilyCatalog
      * sous condition (rétention, effacement), jamais par la boucle par club.
      */
     private const string SEASON_PIVOT = Season::class;
+
+    /**
+     * Les versions d'un plan : de niveau plan, mais supprimées par leur propre chemin (artefacts,
+     * garde de génération en cours), jamais avec les réglages du plan.
+     */
+    private const string VERSIONS_OF_A_PLAN = Schedule::class;
 
     /** Niveaux dont les familles portent `clubId` + `seasonId` et suivent la purge de saison. */
     private const array SEASON_LEVELS = [Level::SEASON, Level::PLAN, Level::VERSION];
@@ -119,6 +127,30 @@ final class FamilyCatalog
         $this->assertEveryTenantFamilyIsAccountedFor();
 
         return $this->clubFamilies();
+    }
+
+    /**
+     * Ce que la suppression d'un plan emporte (lot 4) : les familles de niveau plan qui désignent leur
+     * plan (`#[RefersTo(SchedulePlan, DELETE)]`), chaque enfant avant le parent dont il meurt — les
+     * membres d'un groupe avant le groupe. Les versions n'y sont pas : elles partent par leur propre
+     * chemin, avec leurs artefacts ({@see VERSIONS_OF_A_PLAN}).
+     *
+     * @return list<class-string>
+     */
+    public function purgedWithPlan(): array
+    {
+        $carried = [];
+        foreach ($this->references() as $reference) {
+            if (SchedulePlan::class === $reference['refersTo']->family
+                && OnDelete::DELETE === $reference['refersTo']->onDelete
+                && Level::PLAN === $this->of($reference['class'])->level
+                && self::VERSIONS_OF_A_PLAN !== $reference['class']
+            ) {
+                $carried[] = $reference['class'];
+            }
+        }
+
+        return $this->childrenFirst(array_values(array_unique($carried)));
     }
 
     /**

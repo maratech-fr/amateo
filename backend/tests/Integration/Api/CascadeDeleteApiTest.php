@@ -39,6 +39,7 @@ use App\Enum\SchedulePlanType;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
 use App\Enum\TeamCoachRole;
+use App\Plans\SoclePlan;
 use App\Tests\ChoosesPlanVersionTrait;
 use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\TenantGucTrait;
@@ -173,7 +174,7 @@ final class CascadeDeleteApiTest extends WebTestCase
     {
         $venueId = '22222222-2222-4222-8222-222222222222';
         $slot = $this->persist((new VenueTrainingSlot)
-            ->setClubId($this->club->getId())->setSeasonId($this->season->getId())
+            ->setClubId($this->club->getId())->setSeasonId($this->season->getId())->setSchedulePlanId(self::getContainer()->get(SoclePlan::class)->idOf($this->season->getId()))
             ->setVenueId($venueId)->setDayOfWeek(3)->setStartTime(new DateTimeImmutable('18:00'))
             ->setDurationMinutes(90)->setCapacity(1));
         $reservationId = $this->persistReservation('11111111-1111-4111-8111-111111111111', $venueId, 3, '18:00');
@@ -202,7 +203,7 @@ final class CascadeDeleteApiTest extends WebTestCase
         // épinglage disparu, sans un mot. La borne de couche va donc dans les deux sens.
         $venueId = '22222222-2222-4222-8222-222222222222';
         $slot = $this->persist((new VenueTrainingSlot)
-            ->setClubId($this->club->getId())->setSeasonId($this->season->getId())
+            ->setClubId($this->club->getId())->setSeasonId($this->season->getId())->setSchedulePlanId(self::getContainer()->get(SoclePlan::class)->idOf($this->season->getId()))
             ->setVenueId($venueId)->setDayOfWeek(3)->setStartTime(new DateTimeImmutable('18:00'))
             ->setDurationMinutes(90)->setCapacity(1));
         $seasonPin = $this->persistHardTemplate('11111111-1111-4111-8111-111111111111', $venueId, 3, '18:00');
@@ -249,7 +250,7 @@ final class CascadeDeleteApiTest extends WebTestCase
         [$otherClub, $otherSeason] = $this->createOtherClub();
         $this->scopeGucToClub($otherClub->getId());
         $otherReservation = $this->persist((new Reservation)
-            ->setClubId($otherClub->getId())->setSeasonId($otherSeason->getId())
+            ->setClubId($otherClub->getId())->setSeasonId($otherSeason->getId())->setSchedulePlanId(self::getContainer()->get(SoclePlan::class)->idOf($otherSeason->getId()))
             ->setTeamId($team->getId()) // same teamId, different club
             ->setVenueId('22222222-2222-4222-8222-222222222222')
             ->setDayOfWeek(2)->setStartTime(new DateTimeImmutable('20:30'))->setDurationMinutes(120));
@@ -275,7 +276,7 @@ final class CascadeDeleteApiTest extends WebTestCase
     {
         $venue = $this->persistVenue('Gymnase Matéo');
         $slotId = $this->persist((new VenueTrainingSlot)
-            ->setClubId($this->club->getId())->setSeasonId($this->season->getId())
+            ->setClubId($this->club->getId())->setSeasonId($this->season->getId())->setSchedulePlanId(self::getContainer()->get(SoclePlan::class)->idOf($this->season->getId()))
             ->setVenueId($venue->getId())->setDayOfWeek(1)->setStartTime(new DateTimeImmutable('18:00'))
             ->setDurationMinutes(90)->setCapacity(1));
         $fixtureId = $this->persistHomeFixture($venue->getId(), FixtureStatus::PLACED);
@@ -301,7 +302,7 @@ final class CascadeDeleteApiTest extends WebTestCase
     {
         $venue = $this->persistVenue('Gymnase vide');
         $slotId = $this->persist((new VenueTrainingSlot)
-            ->setClubId($this->club->getId())->setSeasonId($this->season->getId())
+            ->setClubId($this->club->getId())->setSeasonId($this->season->getId())->setSchedulePlanId(self::getContainer()->get(SoclePlan::class)->idOf($this->season->getId()))
             ->setVenueId($venue->getId())->setDayOfWeek(2)->setStartTime(new DateTimeImmutable('19:00'))
             ->setDurationMinutes(90)->setCapacity(1));
         $reservationId = $this->persistReservation('11111111-1111-4111-8111-111111111111', $venue->getId(), 2, '19:00');
@@ -448,7 +449,7 @@ final class CascadeDeleteApiTest extends WebTestCase
     private function persistReservation(string $teamId, string $venueId, int $day, string $start): string
     {
         return $this->persist((new Reservation)
-            ->setClubId($this->club->getId())->setSeasonId($this->season->getId())
+            ->setClubId($this->club->getId())->setSeasonId($this->season->getId())->setSchedulePlanId(self::getContainer()->get(SoclePlan::class)->idOf($this->season->getId()))
             ->setTeamId($teamId)->setVenueId($venueId)->setDayOfWeek($day)
             ->setStartTime(new DateTimeImmutable($start))->setDurationMinutes(120));
     }

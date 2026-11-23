@@ -29,6 +29,7 @@ use App\Enum\ImplicitRuleKey;
 use App\Enum\SeasonStatus;
 use App\Enum\TeamCoachRole;
 use App\Enum\VenuePeriodMode;
+use App\Plans\SoclePlan;
 use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\ProvisionsPeriodPlanTrait;
 use App\Tests\TenantGucTrait;
@@ -992,6 +993,7 @@ final class ValidateConstraintsTest extends WebTestCase
         $setting = new ImplicitRuleSetting;
         $setting->setClubId($this->club->getId());
         $setting->setSeasonId($this->season->getId());
+        $setting->setSchedulePlanId(self::getContainer()->get(SoclePlan::class)->idOf($this->season->getId()));
         $setting->setRuleKey($ruleKey);
         $setting->setIntensity($intensity);
         $this->em->persist($setting);
@@ -1062,6 +1064,7 @@ final class ValidateConstraintsTest extends WebTestCase
         $slot = new VenueTrainingSlot;
         $slot->setClubId($this->club->getId());
         $slot->setSeasonId($this->season->getId());
+        $slot->setSchedulePlanId(self::getContainer()->get(SoclePlan::class)->idOf($this->season->getId()));
         $slot->setVenueId($venueId);
         $slot->setDayOfWeek($dayOfWeek);
         $slot->setStartTime(new DateTimeImmutable($start));
@@ -1131,6 +1134,7 @@ final class ValidateConstraintsTest extends WebTestCase
         $reservation = new Reservation;
         $reservation->setClubId($this->club->getId());
         $reservation->setSeasonId($this->season->getId());
+        $reservation->setSchedulePlanId(self::getContainer()->get(SoclePlan::class)->idOf($this->season->getId()));
         $reservation->setTeamId($teamId);
         $reservation->setVenueId($venueId);
         $reservation->setDayOfWeek($dayOfWeek);
@@ -1269,12 +1273,12 @@ final class ValidateConstraintsTest extends WebTestCase
         // Le créneau qui PORTE la réservation (sinon « ne correspond à aucun créneau » bloque pour
         // une autre raison que le dédoublement qu'on veut isoler).
         $slot = new VenueTrainingSlot;
-        $slot->setClubId($this->club->getId())->setSeasonId($this->season->getId());
+        $slot->setClubId($this->club->getId())->setSeasonId($this->season->getId())->setSchedulePlanId(self::getContainer()->get(SoclePlan::class)->idOf($this->season->getId()));
         $slot->setVenueId($venueId)->setDayOfWeek($dayOfWeek)->setStartTime(new DateTimeImmutable($start))->setDurationMinutes($duration)->setCapacity(1);
         $this->em->persist($slot);
 
         $reservation = new Reservation;
-        $reservation->setClubId($this->club->getId())->setSeasonId($this->season->getId());
+        $reservation->setClubId($this->club->getId())->setSeasonId($this->season->getId())->setSchedulePlanId(self::getContainer()->get(SoclePlan::class)->idOf($this->season->getId()));
         $reservation->setTeamId($teamId)->setVenueId($venueId)->setDayOfWeek($dayOfWeek)->setStartTime(new DateTimeImmutable($start))->setDurationMinutes($duration);
         $reservation->setCoachLateToleranceMinutes($tolerance);
         $this->em->persist($reservation);

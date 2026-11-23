@@ -24,6 +24,7 @@ use App\Enum\SeasonStatus;
 use App\Enum\VenueDayState;
 use App\Exception\EvictTargetMismatchException;
 use App\Exception\SlotUnavailableException;
+use App\Plans\SoclePlan;
 use App\Service\ClubGenerationLock;
 use App\Service\EngineClient;
 use App\Service\MoveSlotService;
@@ -524,7 +525,7 @@ final class SlotMoveGridParityTest extends KernelTestCase
             ->setStartTime(DateTimeImmutable::createFromFormat('!H:i', $startHi))
             ->setDurationMinutes($durationMinutes)
             ->setCapacity(1)
-            ->setSchedulePlanId($schedulePlanId);
+            ->setSchedulePlanId($schedulePlanId ?? self::getContainer()->get(SoclePlan::class)->idOf($seasonId));
         $this->em->persist($window);
         $this->em->flush();
     }

@@ -12,6 +12,7 @@ use App\Entity\SharedTrainingBlockTeam;
 use App\Entity\Team;
 use App\Entity\User;
 use App\Enum\SeasonStatus;
+use App\Plans\SoclePlan;
 use App\Tests\CreatesPeriodPlanTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
@@ -143,12 +144,12 @@ final class TeamSoloBudgetApiTest extends WebTestCase
     {
         $block = (new SharedTrainingBlock)
             ->setClubId($this->club->getId())->setSeasonId($this->season->getId())
-            ->setSchedulePlanId($planId)->setCommonSessions($commonSessions);
+            ->setSchedulePlanId($planId ?? self::getContainer()->get(SoclePlan::class)->idOf($this->season->getId()))->setCommonSessions($commonSessions);
         $this->em->persist($block);
         foreach ($teams as $team) {
             $member = (new SharedTrainingBlockTeam)
                 ->setClubId($this->club->getId())->setSeasonId($this->season->getId())
-                ->setSchedulePlanId($planId)->setBlockId($block->getId())->setTeamId($team->getId());
+                ->setSchedulePlanId($planId ?? self::getContainer()->get(SoclePlan::class)->idOf($this->season->getId()))->setBlockId($block->getId())->setTeamId($team->getId());
             $this->em->persist($member);
         }
         $this->em->flush();

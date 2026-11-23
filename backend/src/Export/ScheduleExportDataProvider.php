@@ -49,9 +49,10 @@ final class ScheduleExportDataProvider
 
         $clubId = $schedule->getClubId();
         $seasonId = $schedule->getSeasonId();
-        // La COUCHE de la version exportée (NULL = socle, l'id du plan = période) : lue UNE fois,
-        // elle borne les créneaux lus et pilote l'exclusion des gymnases fermés (lot B).
-        $layer = $this->slotLayerOf($schedule);
+        // La COUCHE de la version exportée (son plan : de saison pour le socle, de période sinon) : lue
+        // UNE fois, elle borne les créneaux lus et pilote l'exclusion des gymnases fermés (lot B).
+        $layer = $schedule->getSchedulePlanId();
+        $isPeriodLayer = !$this->schedulePlanProvisioner->isSeasonSchedule($schedule);
 
         $categoryNames = [];
         foreach ($this->entityManager->getRepository(SportCategory::class)->findBy(['clubId' => $clubId]) as $category) {
@@ -188,10 +189,10 @@ final class ScheduleExportDataProvider
         // à la main (masque OPEN) ne rend pas le gymnase fermé-total, ses vides subsistent donc.
         // ⚠ L'écran, lui, n'écarte à ce jour que les gymnases DÉSACTIVÉS
         // (`CalendarEntryConflictsController`) — l'export est donc un peu plus juste (il tient compte
-        // du fermé-total effectif). Le socle (layer NULL) n'a pas de fermeture datée et le mono-gymnase
+        // du fermé-total effectif). Le socle (plan de saison) n'a pas de fermeture datée et le mono-gymnase
         // (`$venueId`) garde sa grille entière : dans ces deux cas l'ensemble reste vide.
         $hiddenVenueIds = [];
-        if (null === $venueId && null !== $layer) {
+        if (null === $venueId && $isPeriodLayer) {
             $state = $this->planVenueClosures->effectiveStateForPlan($layer);
             $hiddenVenueIds = $state['disabledVenueIds'] + $state['fullyClosedVenueIds'];
         }
@@ -272,7 +273,7 @@ final class ScheduleExportDataProvider
      *
      * @return list<ExportReservedWindow>
      */
-    private function occupanciesOf(string $clubId, string $seasonId, ?string $layer, ?string $venueId, array $venues, array $usedVenues, array $hiddenVenueIds, array $blockers): array
+    private function occupanciesOf(string $clubId, string $seasonId, string $layer, ?string $venueId, array $venues, array $usedVenues, array $hiddenVenueIds, array $blockers): array
     {
         $criteria = ['clubId' => $clubId, 'seasonId' => $seasonId, 'schedulePlanId' => $layer];
         if (null !== $venueId) {
@@ -344,14 +345,5 @@ final class ScheduleExportDataProvider
         }
 
         return $byCase;
-    }
-
-    /**
-     * La couche de créneaux d'une version : NULL pour le socle (les créneaux de saison),
-     * l'id du plan pour une période (sa grille à elle).
-     */
-    private function slotLayerOf(Schedule $schedule): ?string
-    {
-        return $this->schedulePlanProvisioner->isSeasonSchedule($schedule) ? null : $schedule->getSchedulePlanId();
     }
 }

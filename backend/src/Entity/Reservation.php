@@ -16,8 +16,8 @@ use Doctrine\ORM\Mapping as ORM;
  * A manager pinning a team onto a precise availability slot (day + time + venue),
  * enforced as a HARD lock at solve time. Unlike ScheduleSlotTemplate (which ALSO
  * stores solve RESULTS keyed to an ephemeral schedule), a Reservation is durable
- * pre-generation intent, layered: `schedulePlanId` NULL = base
- * plan, set = a period overlay. The generation pipeline reads these into the
+ * pre-generation intent, layered: `schedulePlanId` = the season plan for the base,
+ * a period plan for an overlay. The generation pipeline reads these into the
  * engine's `slotTemplates` payload.
  *
  * Lot 4bis « créneau libre » — une réservation cible SOIT une équipe (`teamId`), SOIT
@@ -28,15 +28,12 @@ use Doctrine\ORM\Mapping as ORM;
  * créneau supprimé si 0). Il compte dans la CAPACITÉ (règle (e)), mais est ignoré du budget solo,
  * de la case bloc-complète, du double-booking coach, des doléances et des matchs.
  */
-#[Family(Level::SEASON)]
+#[Family(Level::PLAN)]
 #[ORM\Entity(repositoryClass: ReservationRepository::class)]
 #[ORM\Table(name: 'reservation')]
 #[ORM\Index(name: 'idx_reservation_club_season', columns: ['club_id', 'season_id'])]
 #[ORM\Index(name: 'idx_reservation_schedule_plan', columns: ['schedule_plan_id'])]
 #[ORM\Index(name: 'idx_reservation_team', columns: ['team_id'])]
-// Colonnes de l'unicité seulement — le NULLS NOT DISTINCT (qui fait collisionner deux
-// réservations de SOCLE, plan NULL, de la même équipe sur la même case) vit dans la migration :
-// Doctrine ne sait pas l'exprimer en attribut, et aucun gate schema:validate ne lit cet attribut.
 #[ORM\UniqueConstraint(name: 'uniq_reservation_case_team', columns: ['club_id', 'season_id', 'schedule_plan_id', 'venue_id', 'day_of_week', 'start_time', 'team_id'])]
 #[ORM\HasLifecycleCallbacks]
 class Reservation implements TenantOwnedInterface
@@ -63,12 +60,12 @@ class Reservation implements TenantOwnedInterface
 
     /**
      * ADR-0002 inv. 5 (lot C3) — la réservation s'accroche au PLAN : « je pose cette équipe
-     * DANS CE PLANNING » est une réponse. null = la réservation de base (structure PARTAGÉE,
-     * inv. 6), qui alimente la génération du socle.
+     * DANS CE PLANNING » est une réponse. Le plan de saison porte la réservation de base, qui
+     * alimente la génération du socle.
      */
-    #[ORM\Column(type: 'guid', nullable: true)]
+    #[ORM\Column(type: 'guid')]
     #[RefersTo(SchedulePlan::class, OnDelete::DELETE)]
-    private ?string $schedulePlanId = null;
+    private string $schedulePlanId;
 
     /**
      * null = créneau LIBRE (le `label` nomme alors l'occupation) ; sinon l'équipe épinglée.
@@ -175,12 +172,12 @@ class Reservation implements TenantOwnedInterface
         return $this;
     }
 
-    public function getSchedulePlanId(): ?string
+    public function getSchedulePlanId(): string
     {
         return $this->schedulePlanId;
     }
 
-    public function setSchedulePlanId(?string $schedulePlanId): self
+    public function setSchedulePlanId(string $schedulePlanId): self
     {
         $this->schedulePlanId = $schedulePlanId;
 

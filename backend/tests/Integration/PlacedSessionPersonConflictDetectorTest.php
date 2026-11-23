@@ -31,6 +31,7 @@ use App\Enum\LockOrigin;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
 use App\Enum\TeamCoachRole;
+use App\Plans\SoclePlan;
 use App\Service\CoachDoubleBookingDetector;
 use App\Service\PlacedSessionPersonConflictDetector;
 use App\Tests\ChoosesPlanVersionTrait;
@@ -750,11 +751,11 @@ final class PlacedSessionPersonConflictDetectorTest extends KernelTestCase
         $this->place($ctx, $ctx['teamA'], $ctx['gym1'], 2, '18:00', 90);
         $this->place($ctx, $ctx['teamB'], $ctx['gym1'], 2, '18:00', 90);
         if ($declared) {
-            $block = (new SharedTrainingBlock)->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])->setSchedulePlanId(null)->setCommonSessions(1);
+            $block = (new SharedTrainingBlock)->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])->setSchedulePlanId(self::getContainer()->get(SoclePlan::class)->idOf($ctx['seasonId']))->setCommonSessions(1);
             $this->em->persist($block);
             $this->em->flush();
             foreach ([$ctx['teamA'], $ctx['teamB']] as $teamId) {
-                $this->em->persist((new SharedTrainingBlockTeam)->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])->setSchedulePlanId(null)->setBlockId($block->getId())->setTeamId($teamId));
+                $this->em->persist((new SharedTrainingBlockTeam)->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])->setSchedulePlanId(self::getContainer()->get(SoclePlan::class)->idOf($ctx['seasonId']))->setBlockId($block->getId())->setTeamId($teamId));
             }
             $this->em->flush();
         }

@@ -70,14 +70,17 @@ class ReservationResource
     #[Groups(['read'])]
     public int $coachLateToleranceMinutes = 0;
 
-    public static function fromEntity(Reservation $entity): self
+    /**
+     * @param string|null $schedulePlanId le plan à la frontière de l'API : null pour le socle (jusqu'au lot 6)
+     */
+    public static function fromEntity(Reservation $entity, ?string $schedulePlanId): self
     {
         $dto = new self;
         $dto->id = $entity->getId();
         $dto->version = $entity->getVersion();
         $dto->createdAt = $entity->getCreatedAt();
         $dto->updatedAt = $entity->getUpdatedAt();
-        $dto->schedulePlanId = $entity->getSchedulePlanId();
+        $dto->schedulePlanId = $schedulePlanId;
         $dto->teamId = $entity->getTeamId();
         $dto->label = $entity->getLabel();
         $dto->venueId = $entity->getVenueId();

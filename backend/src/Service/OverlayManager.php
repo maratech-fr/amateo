@@ -6,21 +6,13 @@ namespace App\Service;
 
 use App\Entity\CalendarEntry;
 use App\Entity\ConstraintConflict;
-use App\Entity\ConstraintPeriodOverride;
-use App\Entity\ImplicitRuleSetting;
-use App\Entity\Reservation;
 use App\Entity\Schedule;
 use App\Entity\ScheduleDiagnostic;
 use App\Entity\ScheduleSlotTemplate;
 use App\Entity\ScheduleStructureSnapshot;
-use App\Entity\SharedTrainingBlock;
-use App\Entity\SharedTrainingBlockTeam;
-use App\Entity\TeamPeriodOverride;
-use App\Entity\VenueOccupancy;
-use App\Entity\VenuePeriodOverride;
-use App\Entity\VenueTrainingSlot;
 use App\Enum\ScheduleStatus;
 use App\Repository\CalendarEntryRepository;
+use App\Structure\FamilyCatalog;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\Clock\ClockInterface;
 use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
@@ -40,6 +32,7 @@ final class OverlayManager
         private readonly SchedulePlanProvisioner $schedulePlanProvisioner,
         private readonly CalendarEntryRepository $calendarEntryRepository,
         private readonly ClockInterface $clock,
+        private readonly FamilyCatalog $familyCatalog,
     ) {}
 
     /**
@@ -89,25 +82,24 @@ final class OverlayManager
             return;
         }
 
+        // Lot 4 : tout ce que le plan porte part d'abord par l'ORM — ses événements purgent le cache
+        // des demandes du club —, puis le plan ; la cascade en base n'est plus que le filet.
         $this->entityManager->wrapInTransaction(function () use ($entry, $planId): void {
-            $this->schedulePlanProvisioner->deletePeriodPlan($entry->getId());
             $this->purgePlanAnchoredSettings($planId);
             $this->entityManager->flush();
+            $this->schedulePlanProvisioner->deletePeriodPlan($entry->getId());
         });
     }
 
     /**
-     * Les réglages ancrés à un plan de période (inv. 5, lots C2-C3) : overrides
-     * d'équipes et de contraintes, créneaux du plan, réservations, modes gymnase, copie des
-     * règles implicites bien-être. Partagé par la suppression d'une période, la découpe en
-     * semaines (qui emporte le plan-bloc de la mère) et la reprise du socle. L'appelant flush.
+     * Les réglages ancrés à un plan de période (inv. 5, lots C2-C3) : tout ce que le catalogue des
+     * familles range avec le plan ({@see FamilyCatalog::purgedWithPlan}, les membres d'un groupe
+     * avant le groupe). Partagé par la suppression d'une période, la découpe en semaines (qui
+     * emporte le plan-bloc de la mère) et la reprise du socle. L'appelant flush.
      */
     public function purgePlanAnchoredSettings(string $schedulePlanId): void
     {
-        // P2-51 — SharedTrainingBlockTeam (membres) avant SharedTrainingBlock (parent) : les deux
-        // portent schedulePlanId (dénormalisé côté membre), la déclaration de période part avec le plan.
-        // ImplicitRuleSetting : la copie des 4 règles bien-être matérialisée à la naissance du plan.
-        foreach ([TeamPeriodOverride::class, ConstraintPeriodOverride::class, VenueTrainingSlot::class, Reservation::class, VenuePeriodOverride::class, SharedTrainingBlockTeam::class, SharedTrainingBlock::class, ImplicitRuleSetting::class, VenueOccupancy::class] as $class) {
+        foreach ($this->familyCatalog->purgedWithPlan() as $class) {
             foreach ($this->entityManager->getRepository($class)->findBy(['schedulePlanId' => $schedulePlanId]) as $row) {
                 $this->entityManager->remove($row);
             }

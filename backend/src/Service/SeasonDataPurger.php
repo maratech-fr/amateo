@@ -105,13 +105,11 @@ final class SeasonDataPurger
                 ->getQuery()
                 ->execute();
         } else {
-            // Keep the Season row but drop its loaded-context star: it names a
-            // schedule the purge just deleted. The plan's pointer goes with the
-            // plan rows above — a plan naming a deleted planning would keep the
-            // cockpit "unlocked" with nothing behind it.
+            // Keep the Season row. Its plan — and the loaded-context star the plan
+            // carries — went with the plan rows above: a plan naming a deleted
+            // planning would keep the cockpit "unlocked" with nothing behind it.
             $season = $this->entityManager->getRepository(Season::class)->find($seasonId);
             if ($season instanceof Season && $season->getClubId() === $clubId) {
-                $season->setLiveContextScheduleId(null);
                 // ADR-0002: the reset wiped the season's SchedulePlan above, but the
                 // season row survives — re-provision its empty SEASON plan so the
                 // invariant "a SEASON plan exists as soon as the season does" holds.

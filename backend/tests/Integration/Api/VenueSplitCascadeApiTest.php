@@ -14,6 +14,7 @@ use App\Entity\Venue;
 use App\Entity\VenueTrainingSlot;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
+use App\Plans\SoclePlan;
 use App\State\Processor\VenueStateProcessor;
 use App\Tests\ChoosesPlanVersionTrait;
 use App\Tests\CreatesPeopleAndPlacesTrait;
@@ -175,7 +176,7 @@ final class VenueSplitCascadeApiTest extends WebTestCase
             ->setStartTime(new DateTimeImmutable($start))
             ->setDurationMinutes(90)
             ->setCapacity($capacity)
-            ->setSchedulePlanId($schedulePlanId);
+            ->setSchedulePlanId($schedulePlanId ?? self::getContainer()->get(SoclePlan::class)->idOf($this->season->getId()));
         $slot->setGroupLabel($groupLabel);
         $this->em->persist($slot);
         $this->em->flush();
@@ -193,7 +194,7 @@ final class VenueSplitCascadeApiTest extends WebTestCase
             ->setDayOfWeek($day)
             ->setStartTime(new DateTimeImmutable($start))
             ->setDurationMinutes(90)
-            ->setSchedulePlanId($schedulePlanId);
+            ->setSchedulePlanId($schedulePlanId ?? self::getContainer()->get(SoclePlan::class)->idOf($this->season->getId()));
         $this->em->persist($reservation);
         $this->em->flush();
     }

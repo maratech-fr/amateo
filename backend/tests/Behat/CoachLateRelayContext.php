@@ -207,8 +207,8 @@ final class CoachLateRelayContext extends BaseContext
         $slotId = $this->uuid();
         $this->dbalExec(
             \sprintf(
-                'INSERT INTO venue_training_slot (id, version, created_at, updated_at, club_id, season_id, venue_id, day_of_week, start_time, duration_minutes, capacity)'
-                . ' VALUES (\'%s\', 1, now(), now(), \'%s\', \'%s\', \'%s\', 2, \'%s:00\', %d, 1)',
+                'INSERT INTO venue_training_slot (id, version, created_at, updated_at, club_id, season_id, schedule_plan_id, venue_id, day_of_week, start_time, duration_minutes, capacity)'
+                . ' VALUES (\'%1$s\', 1, now(), now(), \'%2$s\', \'%3$s\', (SELECT id FROM schedule_plan WHERE season_id = \'%3$s\' AND type = \'SEASON\'), \'%4$s\', 2, \'%5$s:00\', %6$d, 1)',
                 $slotId,
                 $this->clubId,
                 $this->seasonId,
@@ -224,7 +224,7 @@ final class CoachLateRelayContext extends BaseContext
         $this->dbalExec(
             \sprintf(
                 'INSERT INTO reservation (id, version, created_at, updated_at, club_id, season_id, schedule_plan_id, team_id, label, venue_id, day_of_week, start_time, duration_minutes, coach_late_tolerance_minutes)'
-                . ' VALUES (\'%s\', 1, now(), now(), \'%s\', \'%s\', NULL, \'%s\', NULL, \'%s\', 2, \'%s:00\', %d, 0)',
+                . ' VALUES (\'%1$s\', 1, now(), now(), \'%2$s\', \'%3$s\', (SELECT id FROM schedule_plan WHERE season_id = \'%3$s\' AND type = \'SEASON\'), \'%4$s\', NULL, \'%5$s\', 2, \'%6$s:00\', %7$d, 0)',
                 $resaId,
                 $this->clubId,
                 $this->seasonId,

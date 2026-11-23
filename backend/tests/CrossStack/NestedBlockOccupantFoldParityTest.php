@@ -11,6 +11,7 @@ use App\Entity\SharedTrainingBlockTeam;
 use App\Entity\Team;
 use App\Entity\User;
 use App\Enum\SeasonStatus;
+use App\Plans\SoclePlan;
 use App\Service\ReservationGroupOccupancy;
 use App\Service\ScheduleConstraintBuilder;
 use App\Tests\TenantGucTrait;
@@ -180,7 +181,7 @@ final class NestedBlockOccupantFoldParityTest extends KernelTestCase
         $block = new SharedTrainingBlock;
         $block->setClubId($club->getId());
         $block->setSeasonId($season->getId());
-        $block->setSchedulePlanId(null);
+        $block->setSchedulePlanId(self::getContainer()->get(SoclePlan::class)->idOf($season->getId()));
         $block->setCommonSessions($commonSessions);
         $this->em->persist($block);
 
@@ -188,7 +189,7 @@ final class NestedBlockOccupantFoldParityTest extends KernelTestCase
             $member = new SharedTrainingBlockTeam;
             $member->setClubId($club->getId());
             $member->setSeasonId($season->getId());
-            $member->setSchedulePlanId(null);
+            $member->setSchedulePlanId(self::getContainer()->get(SoclePlan::class)->idOf($season->getId()));
             $member->setBlockId($block->getId());
             $member->setTeamId($teamId);
             $this->em->persist($member);

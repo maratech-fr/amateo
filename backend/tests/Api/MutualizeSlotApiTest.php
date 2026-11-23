@@ -22,6 +22,7 @@ use App\Enum\LockLevel;
 use App\Enum\LockOrigin;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
+use App\Plans\SoclePlan;
 use App\Service\ClubGenerationLock;
 use App\Service\MutualizeSlotService;
 use App\Service\ReservationGroupOccupancy;
@@ -227,15 +228,15 @@ final class MutualizeSlotApiTest extends WebTestCase
         $this->em->clear();
         $this->scopeGucToClub($ctx['clubId']);
         // PORTÉE NULL : le bloc du socle n'est rattaché à aucun plan de période.
-        $block = $this->em->getRepository(SharedTrainingBlock::class)->findOneBy(['clubId' => $ctx['clubId'], 'schedulePlanId' => null]);
+        $block = $this->em->getRepository(SharedTrainingBlock::class)->findOneBy(['clubId' => $ctx['clubId'], 'schedulePlanId' => self::getContainer()->get(SoclePlan::class)->idOf($ctx['seasonId'])]);
         self::assertInstanceOf(SharedTrainingBlock::class, $block);
-        self::assertNull($block->getSchedulePlanId(), 'au socle, le bloc vit à portée NULL');
+        self::assertSame(self::getContainer()->get(SoclePlan::class)->idOf($block->getSeasonId()), $block->getSchedulePlanId(), 'au socle, le bloc vit à portée NULL');
         self::assertSame(1, $block->getCommonSessions());
         self::assertSame('Socle U11', $block->getLabel());
         $members = $this->em->getRepository(SharedTrainingBlockTeam::class)->findBy(['blockId' => $block->getId()]);
         self::assertCount(2, $members);
         foreach ($members as $member) {
-            self::assertNull($member->getSchedulePlanId(), 'les membres du bloc de socle vivent aussi à portée NULL');
+            self::assertSame(self::getContainer()->get(SoclePlan::class)->idOf($member->getSeasonId()), $member->getSchedulePlanId(), 'les membres du bloc de socle vivent aussi à portée NULL');
         }
 
         foreach ([$source->getId(), $joinerSlot->getId()] as $slotId) {
@@ -680,7 +681,7 @@ final class MutualizeSlotApiTest extends WebTestCase
         $this->scopeGucToClub($ctx['clubId']);
         $block = $this->em->getRepository(SharedTrainingBlock::class)->findOneBy(['clubId' => $ctx['clubId']]);
         self::assertInstanceOf(SharedTrainingBlock::class, $block);
-        self::assertNull($block->getSchedulePlanId(), 'au socle, le bloc vit à portée NULL');
+        self::assertSame(self::getContainer()->get(SoclePlan::class)->idOf($block->getSeasonId()), $block->getSchedulePlanId(), 'au socle, le bloc vit à portée NULL');
     }
 
     protected function setUp(): void
@@ -708,7 +709,7 @@ final class MutualizeSlotApiTest extends WebTestCase
     private function seedGroupAtCase(array $ctx, array $teamIds, array $case, int $commonSessions): array
     {
         $this->scopeGucToClub($ctx['clubId']);
-        $planId = $ctx['planId'] ?? null;
+        $planId = $ctx['planId'] ?? self::getContainer()->get(SoclePlan::class)->idOf($ctx['seasonId']);
         $block = (new SharedTrainingBlock)->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])->setSchedulePlanId($planId)->setCommonSessions($commonSessions);
         $this->em->persist($block);
         $this->em->flush();
@@ -885,13 +886,13 @@ final class MutualizeSlotApiTest extends WebTestCase
         $this->scopeGucToClub($ctx['clubId']);
         $reservation = (new Reservation)
             ->setClubId($ctx['clubId'])
-            ->setSeasonId($ctx['seasonId'])
+            ->setSeasonId($ctx['seasonId'])->setSchedulePlanId(self::getContainer()->get(SoclePlan::class)->idOf($ctx['seasonId']))
             ->setTeamId($teamId)
             ->setVenueId($case['venueId'])
             ->setDayOfWeek($case['dayOfWeek'])
             ->setStartTime(DateTimeImmutable::createFromFormat('!H:i', $case['startTime']))
             ->setDurationMinutes(90);
-        $reservation->setSchedulePlanId($ctx['planId'] ?? null);
+        $reservation->setSchedulePlanId($ctx['planId'] ?? self::getContainer()->get(SoclePlan::class)->idOf($ctx['seasonId']));
         $this->em->persist($reservation);
         $this->em->flush();
 
@@ -915,13 +916,13 @@ final class MutualizeSlotApiTest extends WebTestCase
         $this->scopeGucToClub($clubId);
         $window = (new VenueTrainingSlot)
             ->setClubId($clubId)
-            ->setSeasonId($seasonId)
+            ->setSeasonId($seasonId)->setSchedulePlanId(self::getContainer()->get(SoclePlan::class)->idOf($seasonId))
             ->setVenueId($venueId)
             ->setDayOfWeek($dayOfWeek)
             ->setStartTime(DateTimeImmutable::createFromFormat('!H:i', $startTime))
             ->setDurationMinutes(90)
             ->setCapacity($capacity);
-        $window->setSchedulePlanId($planId);
+        $window->setSchedulePlanId($planId ?? self::getContainer()->get(SoclePlan::class)->idOf($seasonId));
         $this->em->persist($window);
         $this->em->flush();
     }

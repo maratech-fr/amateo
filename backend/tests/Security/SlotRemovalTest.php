@@ -28,6 +28,7 @@ use App\Enum\LockLevel;
 use App\Enum\LockOrigin;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
+use App\Plans\SoclePlan;
 use App\Service\ClubGenerationLock;
 use App\Service\ScheduleConstraintBuilder;
 use App\Service\SchedulePlanProvisioner;
@@ -481,13 +482,13 @@ final class SlotRemovalTest extends WebTestCase
         $this->scopeGucToClub($clubId);
         $window = (new VenueTrainingSlot)
             ->setClubId($clubId)
-            ->setSeasonId($seasonId)
+            ->setSeasonId($seasonId)->setSchedulePlanId(self::getContainer()->get(SoclePlan::class)->idOf($seasonId))
             ->setVenueId($venueId)
             ->setDayOfWeek(2)
             ->setStartTime(DateTimeImmutable::createFromFormat('!H:i', '18:00'))
             ->setDurationMinutes(90)
             ->setCapacity(2);
-        $window->setSchedulePlanId($planId);
+        $window->setSchedulePlanId($planId ?? self::getContainer()->get(SoclePlan::class)->idOf($seasonId));
         $this->em->persist($window);
         $this->em->flush();
     }

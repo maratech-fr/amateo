@@ -30,6 +30,7 @@ use App\Enum\LockOrigin;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
 use App\Enum\TeamCoachRole;
+use App\Plans\SoclePlan;
 use App\Service\GenerationBlockersGuard;
 use App\Service\ScheduleConstraintBuilder;
 use App\Service\SchedulePlanProvisioner;
@@ -143,7 +144,7 @@ final class GenerationRefusesARecapBlockerTest extends WebTestCase
         $other = $this->newVenue($ctx['clubId'], $ctx['seasonId'], 'Gymnase Deux');
         $this->em->persist($other);
         $this->em->flush();
-        $this->em->persist((new VenueTrainingSlot)->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])->setVenueId($other->getId())
+        $this->em->persist((new VenueTrainingSlot)->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])->setSchedulePlanId(self::getContainer()->get(SoclePlan::class)->idOf($ctx['seasonId']))->setVenueId($other->getId())
             ->setDayOfWeek(2)->setStartTime(new DateTimeImmutable('18:30'))->setDurationMinutes(90)->setCapacity(2));
         $team = (new Team)->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])->setName('U13')->setSessionsPerWeek(2)
             ->setSportCategoryId('cccccccc-cccc-4ccc-8ccc-cccccccccccc')->setPriorityTierId(1);
@@ -151,7 +152,7 @@ final class GenerationRefusesARecapBlockerTest extends WebTestCase
         $this->em->persist($team);
         $this->em->flush();
         foreach ([[$ctx['venueId'], '18:00'], [$other->getId(), '18:30']] as [$venueId, $start]) {
-            $this->em->persist((new Reservation)->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])->setTeamId($team->getId())
+            $this->em->persist((new Reservation)->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])->setSchedulePlanId(self::getContainer()->get(SoclePlan::class)->idOf($ctx['seasonId']))->setTeamId($team->getId())
                 ->setVenueId($venueId)->setDayOfWeek(2)->setStartTime(new DateTimeImmutable($start))->setDurationMinutes(90));
         }
         $this->em->flush();
@@ -186,7 +187,7 @@ final class GenerationRefusesARecapBlockerTest extends WebTestCase
     public function testAnOrphanReservationRefusesRegeneration(): void
     {
         $ctx = $this->seedGroup(coachesAvailable: true);
-        $this->em->persist((new Reservation)->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])->setTeamId($ctx['teamA'])
+        $this->em->persist((new Reservation)->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])->setSchedulePlanId(self::getContainer()->get(SoclePlan::class)->idOf($ctx['seasonId']))->setTeamId($ctx['teamA'])
             ->setVenueId($ctx['venueId'])->setDayOfWeek(2)->setStartTime(new DateTimeImmutable('21:00'))->setDurationMinutes(90));
         $this->em->flush();
 
@@ -208,7 +209,7 @@ final class GenerationRefusesARecapBlockerTest extends WebTestCase
     public function testAReservationOnAVenueClosedAllThePeriodNamesTheClosure(): void
     {
         $ctx = $this->seedPeriod($this->seedGroup(coachesAvailable: true), planGroup: false);
-        $this->em->persist((new Reservation)->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])->setSchedulePlanId($ctx['planId'])
+        $this->em->persist((new Reservation)->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])->setSchedulePlanId($ctx['planId'] ?? self::getContainer()->get(SoclePlan::class)->idOf($ctx['seasonId']))
             ->setTeamId($ctx['teamA'])->setVenueId($ctx['venueId'])->setDayOfWeek(2)->setStartTime(new DateTimeImmutable('18:00'))->setDurationMinutes(90));
         $this->em->flush();
         $schedule = $this->em->getRepository(Schedule::class)->find($ctx['scheduleId']);
@@ -235,9 +236,9 @@ final class GenerationRefusesARecapBlockerTest extends WebTestCase
     public function testAFreeSlotOnTheLastPlaceOfACaseIsNotAnOrphan(): void
     {
         $ctx = $this->seedGroup(coachesAvailable: true);
-        $this->em->persist((new VenueTrainingSlot)->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])->setVenueId($ctx['venueId'])
+        $this->em->persist((new VenueTrainingSlot)->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])->setSchedulePlanId(self::getContainer()->get(SoclePlan::class)->idOf($ctx['seasonId']))->setVenueId($ctx['venueId'])
             ->setDayOfWeek(4)->setStartTime(new DateTimeImmutable('18:00'))->setDurationMinutes(90)->setCapacity(1));
-        $this->em->persist((new Reservation)->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])->setLabel('Loto du club')
+        $this->em->persist((new Reservation)->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])->setSchedulePlanId(self::getContainer()->get(SoclePlan::class)->idOf($ctx['seasonId']))->setLabel('Loto du club')
             ->setVenueId($ctx['venueId'])->setDayOfWeek(4)->setStartTime(new DateTimeImmutable('18:00'))->setDurationMinutes(90));
         $this->em->flush();
         $version = $this->version($ctx, ScheduleStatus::COMPLETED)->getId();
@@ -266,7 +267,7 @@ final class GenerationRefusesARecapBlockerTest extends WebTestCase
         $override->setSessionsPerWeek(1);
         $this->em->persist($override);
         foreach ([2, 3] as $day) {
-            $this->em->persist((new Reservation)->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])->setSchedulePlanId($ctx['planId'])->setTeamId($ctx['teamA'])
+            $this->em->persist((new Reservation)->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])->setSchedulePlanId($ctx['planId'] ?? self::getContainer()->get(SoclePlan::class)->idOf($ctx['seasonId']))->setTeamId($ctx['teamA'])
                 ->setVenueId($ctx['venueId'])->setDayOfWeek($day)->setStartTime(new DateTimeImmutable('18:00'))->setDurationMinutes(90));
         }
         $this->em->flush();
@@ -330,7 +331,7 @@ final class GenerationRefusesARecapBlockerTest extends WebTestCase
     public function testOverbookingStaysVisibleOnEntitiesWithoutAPayload(): void
     {
         $ctx = $this->seedGroup(coachesAvailable: true);
-        $reservations = array_map(fn (int $day): Reservation => (new Reservation)->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])->setTeamId($ctx['teamA'])
+        $reservations = array_map(fn (int $day): Reservation => (new Reservation)->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])->setSchedulePlanId(self::getContainer()->get(SoclePlan::class)->idOf($ctx['seasonId']))->setTeamId($ctx['teamA'])
             ->setVenueId($ctx['venueId'])->setDayOfWeek($day)->setStartTime(new DateTimeImmutable('18:00'))->setDurationMinutes(90), [2, 3]);
 
         $found = self::getContainer()->get(GenerationBlockersGuard::class)->overBookedOnEntities($reservations, $ctx['clubId'], $ctx['seasonId']);
@@ -621,7 +622,7 @@ final class GenerationRefusesARecapBlockerTest extends WebTestCase
         $this->em->persist($venue);
         $this->em->flush();
         foreach ([2, 3] as $day) {
-            $this->em->persist((new VenueTrainingSlot)->setClubId($clubId)->setSeasonId($seasonId)->setVenueId($venue->getId())
+            $this->em->persist((new VenueTrainingSlot)->setClubId($clubId)->setSeasonId($seasonId)->setSchedulePlanId(self::getContainer()->get(SoclePlan::class)->idOf($seasonId))->setVenueId($venue->getId())
                 ->setDayOfWeek($day)->setStartTime(new DateTimeImmutable('18:00'))->setDurationMinutes(90)->setCapacity(2));
         }
 
@@ -656,11 +657,11 @@ final class GenerationRefusesARecapBlockerTest extends WebTestCase
     /** @param list<string> $teamIds */
     private function declareGroup(string $clubId, string $seasonId, ?string $planId, array $teamIds): void
     {
-        $block = (new SharedTrainingBlock)->setClubId($clubId)->setSeasonId($seasonId)->setSchedulePlanId($planId)->setCommonSessions(1);
+        $block = (new SharedTrainingBlock)->setClubId($clubId)->setSeasonId($seasonId)->setSchedulePlanId($planId ?? self::getContainer()->get(SoclePlan::class)->idOf($seasonId))->setCommonSessions(1);
         $this->em->persist($block);
         $this->em->flush();
         foreach ($teamIds as $teamId) {
-            $this->em->persist((new SharedTrainingBlockTeam)->setClubId($clubId)->setSeasonId($seasonId)->setSchedulePlanId($planId)->setBlockId($block->getId())->setTeamId($teamId));
+            $this->em->persist((new SharedTrainingBlockTeam)->setClubId($clubId)->setSeasonId($seasonId)->setSchedulePlanId($planId ?? self::getContainer()->get(SoclePlan::class)->idOf($seasonId))->setBlockId($block->getId())->setTeamId($teamId));
         }
         $this->em->flush();
     }
@@ -743,7 +744,7 @@ final class GenerationRefusesARecapBlockerTest extends WebTestCase
             $this->em->remove($block);
         }
         foreach ([1, 4] as $day) {
-            $this->em->persist((new VenueTrainingSlot)->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])->setVenueId($ctx['venueId'])
+            $this->em->persist((new VenueTrainingSlot)->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])->setSchedulePlanId(self::getContainer()->get(SoclePlan::class)->idOf($ctx['seasonId']))->setVenueId($ctx['venueId'])
                 ->setDayOfWeek($day)->setStartTime(new DateTimeImmutable('18:00'))->setDurationMinutes(90)->setCapacity(2));
         }
         $this->em->getRepository(Team::class)->find($ctx['teamA'])?->setSessionsPerWeek($sessionsPerWeek);
@@ -759,7 +760,7 @@ final class GenerationRefusesARecapBlockerTest extends WebTestCase
      */
     private function reserve(array $ctx, string $teamId, int $day): void
     {
-        $reservation = (new Reservation)->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])->setVenueId($ctx['venueId'])
+        $reservation = (new Reservation)->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])->setSchedulePlanId(self::getContainer()->get(SoclePlan::class)->idOf($ctx['seasonId']))->setVenueId($ctx['venueId'])
             ->setDayOfWeek($day)->setStartTime(new DateTimeImmutable('18:00'))->setDurationMinutes(90)->setTeamId($teamId);
         $this->em->persist($reservation);
         $this->em->flush();

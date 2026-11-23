@@ -96,13 +96,9 @@ final class PlanVenueClosures
      * ET le rail batch de mutualisation ({@see GroupReservationController}) passent tous deux ici —
      * la copie du message et la logique de composition ne vivent qu'à un endroit.
      */
-    public function assertVenueOpenForPlan(?string $schedulePlanId, ?string $venueId, ?int $dayOfWeek): void
+    public function assertVenueOpenForPlan(string $schedulePlanId, ?string $venueId, ?int $dayOfWeek): void
     {
-        // Trois retours anticipés séparés (et non un `||` — que Rector réécrirait en `in_array`,
-        // perdant le narrowing non-null dont a besoin `effectiveStateForPlan(string)`).
-        if (null === $schedulePlanId) {
-            return;
-        }
+        // Le plan de saison n'a pas d'entrée de calendrier : son état effectif est vide, rien n'y est fermé.
         if (null === $venueId || null === $dayOfWeek) {
             return;
         }

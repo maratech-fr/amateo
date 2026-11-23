@@ -20,7 +20,7 @@ use Doctrine\ORM\Mapping as ORM;
  * blocs — l'unicité porte sur le couple ``(block_id, team_id)`` (pas de doublon DANS un bloc),
  * JAMAIS sur ``team_id`` seul (contrairement à la contrainte historique du modèle groupe).
  */
-#[Family(Level::SEASON)]
+#[Family(Level::PLAN)]
 #[ORM\Entity]
 #[ORM\Table(name: 'shared_training_block_team')]
 #[ORM\UniqueConstraint(name: 'uniq_shared_training_block_team', columns: ['block_id', 'team_id'])]
@@ -38,10 +38,10 @@ class SharedTrainingBlockTeam implements TenantOwnedInterface
     #[ORM\Column(type: 'guid')]
     private string $seasonId;
 
-    /** Dénormalisé du bloc : NULL = socle saison, non-null = plan de période (ADR-0002). */
-    #[ORM\Column(type: 'guid', nullable: true)]
+    /** Dénormalisé du bloc : le plan de saison pour le socle, un plan de période sinon (ADR-0002). */
+    #[ORM\Column(type: 'guid')]
     #[RefersTo(SchedulePlan::class, OnDelete::DELETE)]
-    private ?string $schedulePlanId = null;
+    private string $schedulePlanId;
 
     #[ORM\Column(type: 'guid')]
     #[RefersTo(SharedTrainingBlock::class, OnDelete::DELETE)]
@@ -92,12 +92,12 @@ class SharedTrainingBlockTeam implements TenantOwnedInterface
         return $this;
     }
 
-    public function getSchedulePlanId(): ?string
+    public function getSchedulePlanId(): string
     {
         return $this->schedulePlanId;
     }
 
-    public function setSchedulePlanId(?string $schedulePlanId): self
+    public function setSchedulePlanId(string $schedulePlanId): self
     {
         $this->schedulePlanId = $schedulePlanId;
 

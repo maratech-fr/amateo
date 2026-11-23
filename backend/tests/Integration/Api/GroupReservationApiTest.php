@@ -16,6 +16,7 @@ use App\Entity\User;
 use App\Entity\Venue;
 use App\Entity\VenueTrainingSlot;
 use App\Enum\SeasonStatus;
+use App\Plans\SoclePlan;
 use App\Service\ReservationGroupOccupancy;
 use App\Service\SeasonResolver;
 use App\Tests\ChoosesPlanVersionTrait;
@@ -329,7 +330,7 @@ final class GroupReservationApiTest extends WebTestCase
         // l'API (règle f). Sa réservation préalable est posée directement en base — c'est le plafond
         // par membre (d) du rail BLOC, et son atomicité, qu'on éprouve ici, pas le rail unitaire.
         $this->em->persist((new Reservation)
-            ->setClubId($this->club->getId())->setSeasonId($this->season->getId())
+            ->setClubId($this->club->getId())->setSeasonId($this->season->getId())->setSchedulePlanId(self::getContainer()->get(SoclePlan::class)->idOf($this->season->getId()))
             ->setTeamId($t1->getId())->setVenueId($venue->getId())
             ->setDayOfWeek(5)->setStartTime(new DateTimeImmutable('18:00'))->setDurationMinutes(90));
         $this->em->flush();
@@ -457,7 +458,7 @@ final class GroupReservationApiTest extends WebTestCase
                 2,
                 new DateTimeImmutable('18:00'),
                 90,
-                null,
+                self::getContainer()->get(SoclePlan::class)->idOf($this->season->getId()),
             );
         } catch (UnprocessableEntityHttpException $e) {
             $thrown = $e;
@@ -582,7 +583,7 @@ final class GroupReservationApiTest extends WebTestCase
         return (new Reservation)
             ->setClubId($this->club->getId())
             ->setSeasonId($this->season->getId())
-            ->setSchedulePlanId($planId)
+            ->setSchedulePlanId($planId ?? self::getContainer()->get(SoclePlan::class)->idOf($this->season->getId()))
             ->setTeamId($teamId)
             ->setVenueId($venueId)
             ->setDayOfWeek($dayOfWeek)
@@ -632,7 +633,7 @@ final class GroupReservationApiTest extends WebTestCase
             ->setClubId($this->club->getId())->setSeasonId($this->season->getId())
             ->setVenueId($venueId)->setDayOfWeek($dayOfWeek)
             ->setStartTime(new DateTimeImmutable($startTime))->setDurationMinutes(90)
-            ->setCapacity($capacity)->setSchedulePlanId($planId);
+            ->setCapacity($capacity)->setSchedulePlanId($planId ?? self::getContainer()->get(SoclePlan::class)->idOf($this->season->getId()));
         $this->em->persist($slot);
         $this->em->flush();
     }
@@ -655,12 +656,12 @@ final class GroupReservationApiTest extends WebTestCase
     {
         $block = (new SharedTrainingBlock)
             ->setClubId($club->getId())->setSeasonId($season->getId())
-            ->setSchedulePlanId($planId)->setCommonSessions($commonSessions);
+            ->setSchedulePlanId($planId ?? self::getContainer()->get(SoclePlan::class)->idOf($season->getId()))->setCommonSessions($commonSessions);
         $this->em->persist($block);
         foreach ($teams as $team) {
             $member = (new SharedTrainingBlockTeam)
                 ->setClubId($club->getId())->setSeasonId($season->getId())
-                ->setSchedulePlanId($planId)->setBlockId($block->getId())->setTeamId($team->getId());
+                ->setSchedulePlanId($planId ?? self::getContainer()->get(SoclePlan::class)->idOf($season->getId()))->setBlockId($block->getId())->setTeamId($team->getId());
             $this->em->persist($member);
         }
 
@@ -848,7 +849,7 @@ final class GroupReservationApiTest extends WebTestCase
             ->setParameter('v', $venueId)->setParameter('d', $dayOfWeek)
             ->setParameter('s', new DateTimeImmutable($startTime));
         if (null === $planId) {
-            $qb->andWhere('r.schedulePlanId IS NULL');
+            $qb->andWhere('r.schedulePlanId IN (SELECT sp.id FROM App\Entity\SchedulePlan sp WHERE sp.type = \'SEASON\')');
         } else {
             $qb->andWhere('r.schedulePlanId = :p')->setParameter('p', $planId);
         }

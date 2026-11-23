@@ -30,6 +30,7 @@ use App\Enum\FixtureUnplacedReason;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
 use App\Enum\TeamCoachRole;
+use App\Plans\SoclePlan;
 use App\Service\ClubPublicHolidays;
 use App\Service\MatchPlacementPayloadBuilder;
 use App\Service\SeasonResolver;
@@ -313,7 +314,7 @@ trait PlacementHoldingDecorTrait
         $block = new SharedTrainingBlock;
         $block->setClubId($this->club->getId());
         $block->setSeasonId($this->season->getId());
-        $block->setSchedulePlanId($planId);
+        $block->setSchedulePlanId($planId ?? static::getContainer()->get(SoclePlan::class)->idOf($this->season->getId()));
         $block->setCommonSessions(1);
         $this->em->persist($block);
         $this->em->flush();
@@ -321,7 +322,7 @@ trait PlacementHoldingDecorTrait
             $member = new SharedTrainingBlockTeam;
             $member->setClubId($this->club->getId());
             $member->setSeasonId($this->season->getId());
-            $member->setSchedulePlanId($planId);
+            $member->setSchedulePlanId($planId ?? static::getContainer()->get(SoclePlan::class)->idOf($this->season->getId()));
             $member->setBlockId($block->getId());
             $member->setTeamId($teamId);
             $this->em->persist($member);

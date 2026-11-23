@@ -190,7 +190,7 @@ trait EngineRequestDecorTrait
         ] as [$n, $venueId, $day, $time, $capacity]) {
             $em->persist((new VenueTrainingSlot)->setId(self::erId('a7a1', $n))->setClubId(self::ER_CLUB)->setSeasonId(self::ER_SEASON)
                 ->setVenueId($venueId)->setDayOfWeek($day)->setStartTime(new DateTimeImmutable($time))
-                ->setDurationMinutes(90)->setCapacity($capacity));
+                ->setDurationMinutes(90)->setCapacity($capacity)->setSchedulePlanId($this->erSeasonPlanId()));
         }
 
         foreach ([[self::ER_TEAM_U13, 'U13 F', 3], [self::ER_TEAM_U15, 'U15 M', 2], [self::ER_TEAM_SM1, 'SM1', 1]] as [$teamId, $name, $tier]) {
@@ -222,8 +222,8 @@ trait EngineRequestDecorTrait
         $this->erConstraint(3, ConstraintScope::TEAM, self::ER_TEAM_SM1, ConstraintFamily::FACILITY, ConstraintRuleType::PREFERRED, ['preferredVenueId' => self::ER_VENUE_NORD]);
         $this->erConstraint(4, ConstraintScope::COACH, self::ER_COACH_B, ConstraintFamily::COACH_AVAILABILITY, ConstraintRuleType::HARD, ['unavailableDays' => [5]]);
 
-        // Réservation de SOCLE (schedulePlanId null) : SM1 le mardi 18:00 au gymnase Sud.
-        $em->persist((new Reservation)->setId(self::erId('e5e0', 1))->setClubId(self::ER_CLUB)->setSeasonId(self::ER_SEASON)
+        // Réservation de SOCLE (le plan de saison) : SM1 le mardi 18:00 au gymnase Sud.
+        $em->persist((new Reservation)->setId(self::erId('e5e0', 1))->setClubId(self::ER_CLUB)->setSeasonId(self::ER_SEASON)->setSchedulePlanId($this->erSeasonPlanId())
             ->setTeamId(self::ER_TEAM_SM1)->setVenueId(self::ER_VENUE_SUD)->setDayOfWeek(2)
             ->setStartTime(new DateTimeImmutable('18:00'))->setDurationMinutes(90));
         $em->flush();
@@ -277,7 +277,7 @@ trait EngineRequestDecorTrait
         return $this->erVersion($scheduleId, self::ER_ENTRY, $status, $slots);
     }
 
-    /** Le socle pointé (« en vigueur ») ET chargé : `chosen_schedule_id` + `live_context_schedule_id`. */
+    /** Le socle pointé (« en vigueur ») ET chargé : `chosen_schedule_id` + `lock_source_schedule_id` du plan de saison. */
     private function chooseAndLoadSocle(string $scheduleId): void
     {
         $em = $this->erEm();
@@ -287,14 +287,10 @@ trait EngineRequestDecorTrait
         $this->loadSocle($scheduleId);
     }
 
-    /** « Charger » une version de socle : l'étoile de la saison. */
+    /** « Charger » une version de socle : l'étoile, sur le plan de saison (lot 4). */
     private function loadSocle(string $scheduleId): void
     {
-        $em = $this->erEm();
-        $season = $em->getRepository(Season::class)->find(self::ER_SEASON);
-        Assert::assertInstanceOf(Season::class, $season);
-        $season->setLiveContextScheduleId($scheduleId);
-        $em->flush();
+        static::getContainer()->get(SchedulePlanProvisioner::class)->pointLockSource($this->erSeasonPlanId(), $scheduleId);
     }
 
     /**

@@ -11,6 +11,7 @@ use App\Entity\Season;
 use App\Entity\User;
 use App\Entity\VenueTrainingSlot;
 use App\Enum\SeasonStatus;
+use App\Plans\SoclePlan;
 use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
@@ -123,12 +124,12 @@ final class SlotMoveCarriesReservationsTest extends WebTestCase
         $this->em->persist($venue);
         $this->em->flush();
 
-        $slot = (new VenueTrainingSlot)->setClubId($this->club->getId())->setSeasonId($this->season->getId())
+        $slot = (new VenueTrainingSlot)->setClubId($this->club->getId())->setSeasonId($this->season->getId())->setSchedulePlanId(self::getContainer()->get(SoclePlan::class)->idOf($this->season->getId()))
             ->setVenueId($venue->getId())->setDayOfWeek($dayOfWeek)
             ->setStartTime(new DateTimeImmutable($start))->setDurationMinutes(90)->setCapacity(1);
         $this->em->persist($slot);
 
-        $reservation = (new Reservation)->setClubId($this->club->getId())->setSeasonId($this->season->getId())
+        $reservation = (new Reservation)->setClubId($this->club->getId())->setSeasonId($this->season->getId())->setSchedulePlanId(self::getContainer()->get(SoclePlan::class)->idOf($this->season->getId()))
             ->setTeamId('11111111-1111-4111-8111-111111111111')->setVenueId($venue->getId())
             ->setDayOfWeek($dayOfWeek)->setStartTime(new DateTimeImmutable($start))->setDurationMinutes(90);
         $this->em->persist($reservation);

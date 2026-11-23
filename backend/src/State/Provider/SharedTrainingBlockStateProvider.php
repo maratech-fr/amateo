@@ -35,6 +35,7 @@ class SharedTrainingBlockStateProvider extends AbstractStateProvider
     {
         return SharedTrainingBlockResource::fromEntity(
             $entity,
+            $this->planToApi($entity->getSchedulePlanId(), $entity->getSeasonId()),
             $this->teamIdsOf($entity->getId()),
             $this->sessionsOfMany([$entity->getId()])[$entity->getId()] ?? [],
         );
@@ -75,8 +76,9 @@ class SharedTrainingBlockStateProvider extends AbstractStateProvider
         $sessionsByBlock = $this->sessionsOfMany($blockIds);
 
         return array_map(
-            static fn (SharedTrainingBlock $block): SharedTrainingBlockResource => SharedTrainingBlockResource::fromEntity(
+            fn (SharedTrainingBlock $block): SharedTrainingBlockResource => SharedTrainingBlockResource::fromEntity(
                 $block,
+                $this->planToApi($block->getSchedulePlanId(), $block->getSeasonId()),
                 $teamIdsByBlock[$block->getId()] ?? [],
                 $sessionsByBlock[$block->getId()] ?? [],
             ),
