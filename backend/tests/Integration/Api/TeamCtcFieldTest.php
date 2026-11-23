@@ -16,6 +16,8 @@ use App\Entity\User;
 use App\Enum\FixtureHomeAway;
 use App\Enum\FixtureStatus;
 use App\Enum\SeasonStatus;
+use App\Plans\PlanComposition;
+use App\Tests\SeasonPlanOf;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -349,6 +351,7 @@ final class TeamCtcFieldTest extends WebTestCase
         }
 
         $this->em->flush();
+        SeasonPlanOf::id(self::getContainer(), $this->season->getId());
     }
 
     private function createClub(string $name): Club
@@ -375,12 +378,13 @@ final class TeamCtcFieldTest extends WebTestCase
         $team->setSportCategoryId($this->sportCategory->getId());
         $team->setPriorityTierId($this->priorityTier->getId());
         $team->setName($name);
-        $team->setSessionsPerWeek(2);
         $team->setIsActive(true);
         $team->setIsCtc($isCtc);
         $team->setCtcPartner($ctcPartner);
 
         $this->em->persist($team);
+        $this->em->flush();
+        self::getContainer()->get(PlanComposition::class)->ensureLines($team->getSeasonId(), [$team->getId() => ['sessionsPerWeek' => 2]]);
         $this->em->flush();
 
         return $team;

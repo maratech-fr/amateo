@@ -6,16 +6,23 @@ namespace App\State\Processor;
 
 use App\ApiResource\TeamPeriodOverrideResource;
 use App\Dto\TeamPeriodOverrideInput;
-use App\Entity\TeamPeriodOverride;
+use App\Entity\PlanTeam;
+use App\Plans\PlanComposition;
+use App\Plans\SoclePlan;
 use App\Service\ManagementAccessGuard;
-use App\Service\SchedulePlanProvisioner;
 use App\Service\SeasonAccessGuard;
 use App\Service\SeasonResolver;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\HttpFoundation\RequestStack;
+use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
 /**
- * @extends AbstractStateProcessor<TeamPeriodOverride, TeamPeriodOverrideInput, TeamPeriodOverrideResource>
+ * Le réglage d'une équipe pour une période (lot 4, PR 3a) : chaque équipe a déjà sa ligne dans chaque plan de période.
+ * Publier le réglage d'un couple (plan, équipe) met sa ligne à jour, même réponse qu'une création ; `null` vaut la
+ * valeur du socle du moment. Supprimer rend à la ligne les valeurs du socle. Le plan et l'équipe doivent être du club :
+ * un couple sans ligne est refusé, rien n'est écrit. Le socle ne se règle jamais par cette route.
+ *
+ * @extends AbstractStateProcessor<PlanTeam, TeamPeriodOverrideInput, TeamPeriodOverrideResource>
  */
 class TeamPeriodOverrideStateProcessor extends AbstractStateProcessor
 {
@@ -27,89 +34,109 @@ class TeamPeriodOverrideStateProcessor extends AbstractStateProcessor
         SeasonResolver $seasonResolver,
         SeasonAccessGuard $seasonAccessGuard,
         ManagementAccessGuard $managementAccessGuard,
-        private readonly SchedulePlanProvisioner $schedulePlanProvisioner,
+        private readonly PlanComposition $planComposition,
+        private readonly SoclePlan $socle,
     ) {
         parent::__construct($entityManager, $requestStack, $seasonResolver, $seasonAccessGuard, $managementAccessGuard);
     }
 
     protected function getEntityClass(): string
     {
-        return TeamPeriodOverride::class;
+        return PlanTeam::class;
     }
 
     /**
-     * Le 1er override d'une période marque son PLAN comme configuré (garde de seed du
-     * wizard). Délégué à SchedulePlanProvisioner : le code en fait le SEUL point qui
-     * écrit des lignes `schedule_plan`, et son docblock porte le pourquoi du SQL brut.
-     *
-     * ATOMIQUE avec l'override, et écrit APRÈS lui : le flag ne doit pas pouvoir rester
-     * vrai sans qu'aucun override n'existe — le wizard cesserait alors de seeder une
-     * période pourtant vierge.
-     *
      * @param TeamPeriodOverrideInput $input
      */
     protected function processPost(object $input, ?string $clubId, ?string $seasonId): object
     {
-        return $this->entityManager->wrapInTransaction(function () use ($input, $clubId, $seasonId): object {
-            // P4-34 — filet de la COURSE (voir AssertsSchedulePlanExistsTrait) : le
-            // plan peut disparaître entre le contrôle d'existence et le flush ; la FK
-            // remonterait un 500 opaque là où le 422 est la bonne réponse.
-            $output = $this->rejectingConcurrentPlanDeletion(fn (): object => parent::processPost($input, $clubId, $seasonId));
-            if (null !== $input->schedulePlanId) {
-                $this->schedulePlanProvisioner->markPlanTeamSelectionInitialized($input->schedulePlanId);
-            }
-
-            return $output;
-        });
+        // P4-34 — filet de la COURSE (voir AssertsSchedulePlanExistsTrait) : le plan peut disparaître entre le contrôle
+        // d'existence et le flush ; la clé remonterait un 500 opaque là où le 422 est la bonne réponse.
+        return $this->rejectingConcurrentPlanDeletion(fn (): object => parent::processPost($input, $clubId, $seasonId));
     }
 
     /**
+     * Le couple (plan, équipe) a déjà sa ligne : la publier la met à jour.
+     *
      * @param TeamPeriodOverrideInput $input
      */
-    protected function createEntityFromInput(object $input): TeamPeriodOverride
+    protected function createEntityFromInput(object $input): PlanTeam
     {
-        // One override per (period, team) — the DB unique index would otherwise
-        // surface as a 500 on a double-submit; give a clean 422 instead (edit via PUT).
-        if (!\in_array(null, [$input->schedulePlanId, $input->teamId, $this->entityManager->getRepository(TeamPeriodOverride::class)->findOneBy(['schedulePlanId' => $input->schedulePlanId, 'teamId' => $input->teamId])], true)) {
-            $this->refuse('Cette équipe a déjà un réglage pour cette période — modifiez-le.');
+        if (null === $input->schedulePlanId || null === $input->teamId) {
+            $this->refuse('Le réglage d\'une équipe pour une période nomme la période et l\'équipe.');
         }
+        // P4-34 — l'ANCRE doit exister (et être du club : lue sous la RLS).
+        $this->assertSchedulePlanExists($this->entityManager, $input->schedulePlanId);
+        if ($this->socle->isSeasonPlan($input->schedulePlanId)) {
+            $this->refuse('Le planning de saison ne se règle pas comme une période : modifiez l\'équipe.');
+        }
+        $line = $this->entityManager->getRepository(PlanTeam::class)->findOneBy(['schedulePlanId' => $input->schedulePlanId, 'teamId' => $input->teamId]);
+        if (!$line instanceof PlanTeam) {
+            $this->refuse('Cette équipe n\'appartient pas à la saison de cette période.');
+        }
+        $this->writeInput($line, $input);
 
-        $entity = new TeamPeriodOverride;
-        if (null !== $input->schedulePlanId) {
-            // P4-34 — l'ANCRE doit exister : sans ce contrôle, un `schedulePlanId`
-            // inventé écrivait une ligne 201 rattachée à une période inexistante —
-            // invisible à l'écran, jamais lue par une génération, impossible à
-            // supprimer par l'UI. Même garde que `Reservation`/`VenueTrainingSlot` (P4-30).
-            $this->assertSchedulePlanExists($this->entityManager, $input->schedulePlanId);
-            $entity->setSchedulePlanId($input->schedulePlanId);
-        }
-        if (null !== $input->teamId) {
-            $entity->setTeamId($input->teamId);
-        }
-        $entity->setIsActive($input->isActive);
-        $entity->setSessionsPerWeek($input->sessionsPerWeek);
-        $entity->setMaxSessionsPerDay($input->maxSessionsPerDay);
-
-        return $entity;
+        return $line;
     }
 
     /**
-     * @param TeamPeriodOverride      $entity
+     * @param PlanTeam                $entity
      * @param TeamPeriodOverrideInput $input
      */
     protected function updateEntityFromInput(object $entity, object $input): void
     {
+        $this->assertPeriodLine($entity);
         // schedulePlanId + teamId identify the row — not remapped on edit.
-        $entity->setIsActive($input->isActive);
-        $entity->setSessionsPerWeek($input->sessionsPerWeek);
-        $entity->setMaxSessionsPerDay($input->maxSessionsPerDay);
+        $this->writeInput($entity, $input);
     }
 
     /**
-     * @param TeamPeriodOverride $entity
+     * Supprimer le réglage : la ligne reprend les valeurs du socle, elle ne disparaît pas (toute équipe a sa ligne).
+     *
+     * @param array<string, mixed> $uriVariables
+     */
+    protected function processDelete(array $uriVariables, ?string $clubId): void
+    {
+        $line = $this->entityManager->find(PlanTeam::class, $uriVariables['id'] ?? null);
+        if (!$line instanceof PlanTeam || (null !== $clubId && $line->getClubId() !== $clubId)) {
+            throw new NotFoundHttpException('Ressource introuvable.');
+        }
+        $this->assertPeriodLine($line);
+        $socle = $this->socleLineOf($line);
+        $line->setParticipating(true)
+            ->setSessionsPerWeek($socle->getSessionsPerWeek())
+            ->setMaxSessionsPerDay($socle->getMaxSessionsPerDay())
+            ->setSource(null);
+        $this->entityManager->flush();
+    }
+
+    /**
+     * @param PlanTeam $entity
      */
     protected function mapEntityToOutput(object $entity): TeamPeriodOverrideResource
     {
-        return TeamPeriodOverrideResource::fromEntity($entity);
+        return TeamPeriodOverrideResource::fromEntity($entity, $this->socleLineOf($entity));
+    }
+
+    /** Participe, séances, plafond : `null` = la valeur du socle du moment. */
+    private function writeInput(PlanTeam $line, TeamPeriodOverrideInput $input): void
+    {
+        $socle = $this->socleLineOf($line);
+        $line->setParticipating($input->isActive)
+            ->setSessionsPerWeek($input->sessionsPerWeek ?? $socle->getSessionsPerWeek())
+            ->setMaxSessionsPerDay($input->maxSessionsPerDay ?? $socle->getMaxSessionsPerDay());
+    }
+
+    /** Une ligne du socle n'est pas un réglage de période : introuvable par cette route. */
+    private function assertPeriodLine(PlanTeam $line): void
+    {
+        if ($this->socle->isSeasonPlan($line->getSchedulePlanId())) {
+            throw new NotFoundHttpException('Ressource introuvable.');
+        }
+    }
+
+    private function socleLineOf(PlanTeam $line): PlanTeam
+    {
+        return $this->planComposition->socleLinesOf([$line->getTeamId()])[$line->getTeamId()];
     }
 }

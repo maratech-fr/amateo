@@ -7,13 +7,14 @@ namespace App\Service;
 use App\Entity\Coach;
 use App\Entity\CoachWish;
 use App\Entity\Constraint;
+use App\Entity\PlanTeam;
 use App\Entity\Team;
 use App\Entity\TeamCoach;
-use App\Entity\TeamPeriodOverride;
 use App\Enum\ConstraintFamily;
 use App\Enum\ConstraintRuleType;
 use App\Enum\ConstraintScope;
 use App\Exception\ScheduleGenerationInProgressException;
+use App\Plans\PlanComposition;
 use App\Structure\PersonDirectory;
 use Doctrine\DBAL\Exception\ForeignKeyConstraintViolationException;
 use Doctrine\DBAL\LockMode;
@@ -28,9 +29,9 @@ use Symfony\Component\Uid\Uuid;
  * jamais la page publique à jeton, jamais automatique sur re-soumission (SEC §3bis).
  *
  * Ce qu'un transfert écrit, par doléance, DANS une transaction (tout-ou-rien) :
- *  - `slotsWanted > 0` → {@see TeamPeriodOverride} de la semaine : actif, `sessionsPerWeek`,
+ *  - `slotsWanted > 0` → la ligne de l'équipe dans le plan de la semaine ({@see PlanTeam}) : participe, séances,
  *    `source = coach_wish` (F — réactive une équipe hors périmètre, trace « via doléances ») ;
- *  - `slotsWanted = 0` → override `isActive = false` (décision 12) ;
+ *  - `slotsWanted = 0` → la ligne ne participe pas (décision 12) ;
  *  - `unavailableDays` → UNE contrainte DATÉE TEAM `forbiddenDays` HARD : l'équipe ne s'entraîne
  *    pas ces jours-là, pour l'équipe déclarante seule (aucune propagation à un groupe) ;
  *  - chaque ligne de `staffUnavailability` d'une personne du staff COURANT → UNE contrainte DATÉE
@@ -64,7 +65,7 @@ final class CoachWishTransferService
         private readonly EntityManagerInterface $entityManager,
         private readonly ClubGenerationLock $clubGenerationLock,
         private readonly SchedulePlanProvisioner $schedulePlanProvisioner,
-        private readonly PlanTeamSelectionSeeder $planTeamSelectionSeeder,
+        private readonly PlanComposition $planComposition,
         private readonly PersonDirectory $personDirectory,
     ) {}
 
@@ -181,14 +182,10 @@ final class CoachWishTransferService
         $seasonId = $wish->getSeasonId();
         $teamId = $wish->getTeamId();
 
-        // D-e — matérialiser le seed « Fanion + importantes » AVANT la 1re écriture d'override,
-        // sinon elle désarmerait le tri par défaut en silence. Les doléances n'existent que
-        // pour une période de VACANCES (holiday) : le seed de reprise (isClosure = false).
-        $this->planTeamSelectionSeeder->seed($planId, $clubId, $seasonId, false);
-
-        // Volume d'équipe de la semaine. slotsWanted > 0 : active + volume + provenance (F).
-        // slotsWanted = 0 : désactive l'équipe pour la semaine (décision 12).
-        $this->upsertOverride($planId, $teamId, $clubId, $seasonId, $wish->getSlotsWanted());
+        // Volume d'équipe de la semaine, sur sa ligne du plan (la pré-sélection « Fanion + importantes » est posée à la
+        // naissance du plan). slotsWanted > 0 : participe + volume + provenance (F). slotsWanted = 0 : ne participe pas
+        // la semaine (décision 12).
+        $this->writeTeamLine($planId, $teamId, $wish->getSlotsWanted());
 
         // Idempotence : on efface d'abord TOUTES les contraintes du précédent transfert de
         // cette doléance, puis on recrée le jeu courant (décision 7).
@@ -217,30 +214,20 @@ final class CoachWishTransferService
     }
 
     /**
-     * Override de période de la semaine (clé {schedulePlanId, teamId}) : créé s'il manque,
-     * relevé s'il existe (p.ex. désactivé par le seed — F réactive une Vétéran via doléances).
+     * La ligne de l'équipe dans le plan de la semaine (lot 4, PR 3a) : relevée si la pré-sélection l'avait écartée
+     * (F réactive une Vétéran via doléances), écartée pour la semaine sinon.
      */
-    private function upsertOverride(string $planId, string $teamId, string $clubId, string $seasonId, int $slotsWanted): void
+    private function writeTeamLine(string $planId, string $teamId, int $slotsWanted): void
     {
-        $override = $this->entityManager->getRepository(TeamPeriodOverride::class)
-            ->findOneBy(['schedulePlanId' => $planId, 'teamId' => $teamId]);
-        if (!$override instanceof TeamPeriodOverride) {
-            $override = (new TeamPeriodOverride)
-                ->setClubId($clubId)
-                ->setSeasonId($seasonId)
-                ->setSchedulePlanId($planId)
-                ->setTeamId($teamId);
-            $this->entityManager->persist($override);
-        }
-
+        $line = $this->planComposition->lineOf($planId, $teamId);
         if ($slotsWanted > 0) {
-            $override->setIsActive(true)->setSessionsPerWeek($slotsWanted);
+            $line->setParticipating(true)->setSessionsPerWeek($slotsWanted);
         } else {
-            // slotsWanted = 0 : l'équipe ne s'entraîne pas cette semaine ; le volume saison
-            // (null) est sans effet puisqu'inactive.
-            $override->setIsActive(false)->setSessionsPerWeek(null);
+            // slotsWanted = 0 : l'équipe ne s'entraîne pas cette semaine ; ses séances restent celles de la ligne,
+            // sans effet puisqu'elle ne participe pas.
+            $line->setParticipating(false);
         }
-        $override->setSource(self::SOURCE);
+        $line->setSource(self::SOURCE);
     }
 
     /** @param list<int> $days */

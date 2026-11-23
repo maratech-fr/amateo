@@ -9,6 +9,7 @@ use App\Entity\Coach;
 use App\Entity\CoachPlayerMembership;
 use App\Entity\Constraint;
 use App\Entity\PlaceTravelTime;
+use App\Entity\PlanTeam;
 use App\Entity\PriorityTier;
 use App\Entity\Reservation;
 use App\Entity\Schedule;
@@ -28,6 +29,7 @@ use App\Enum\ConstraintScope;
 use App\Enum\LockLevel;
 use App\Enum\LockOrigin;
 use App\Enum\VenueTravelRuleIntensity;
+use App\Plans\PlanComposition;
 use App\Plans\SoclePlan;
 use App\Repository\PlaceTravelTimeRepository;
 use App\Repository\VenueTrainingSlotRepository;
@@ -76,22 +78,6 @@ final class ScheduleConstraintBuilder
      * @var array<string, int>
      */
     private array $currentFreeSlotCountByCase = [];
-
-    /**
-     * Period-editable structure: teamId → period sessions-per-week override, set
-     * only during an overlay build (serializeTeam reads it, else the seasonal value).
-     *
-     * @var array<string, int>
-     */
-    private array $currentSessionOverrides = [];
-
-    /**
-     * teamId → séances max par jour surchargées pour la période, posé le temps d'un build de période
-     * (même cycle de vie que {@see $currentSessionOverrides}).
-     *
-     * @var array<string, int>
-     */
-    private array $currentMaxPerDayOverrides = [];
 
     /**
      * PR 6 (lot 8) — ids des équipes qui portent une contrainte « Garder ses créneaux de saison »
@@ -149,6 +135,9 @@ final class ScheduleConstraintBuilder
         private readonly PersonDirectory $personDirectory = new PersonDirectory,
         // Lot 4 : le plan de saison, qui porte les lignes du socle. Nullable pour le mode léger sans DB.
         private readonly ?SoclePlan $soclePlan = null,
+        // Lot 4, PR 3a : les équipes d'un plan (séances, plafond par jour), lues sur ses lignes. Nullable pour le mode
+        // léger sans DB, qui reçoit les lignes de l'appelant.
+        private readonly ?PlanComposition $planComposition = null,
     ) {}
 
     /**
@@ -289,11 +278,6 @@ final class ScheduleConstraintBuilder
         }
 
         $this->currentAvailabilitiesByVenue = $availabilitiesByVenue;
-        // The base plan has no period session overrides. Reset here (not just at the
-        // end of buildForOverlay) so a prior overlay build that threw mid-payload on
-        // the long-lived worker can never leak its overrides into a base generation.
-        $this->currentSessionOverrides = [];
-        $this->currentMaxPerDayOverrides = [];
         $this->currentSeasonSlotKeepTeamIds = [];
 
         $payload = $this->buildPayload(
@@ -324,6 +308,8 @@ final class ScheduleConstraintBuilder
             // nourrit socle et périodes. Triée à la sérialisation ; sa présence (≥1 ligne) active la
             // règle implicite `travelTime` (opt-in au premier geste).
             venueTravelTimes: $this->travelTimesOfSeason($clubId, $seasonId, $em),
+            // Les séances et le plafond de chaque équipe : sa ligne du socle.
+            teamLines: $this->teamLinesOf($soclePlanId),
         );
 
         $this->currentAvailabilitiesByVenue = [];
@@ -438,8 +424,6 @@ final class ScheduleConstraintBuilder
         $selection ??= $this->periodConstraintSelector->selectForPeriodPlan($clubId, $seasonId, $schedulePlanId, $entry, $clubSeasonTeams);
         $deactivatedTeamIds = $selection->deactivatedTeamIds;
         $disabledVenueIds = $selection->disabledVenueIds;
-        $this->currentSessionOverrides = $selection->sessionOverrides;
-        $this->currentMaxPerDayOverrides = $selection->maxPerDayOverrides;
         $constraints = $this->sortedById($selection->kept);
 
         // PR 6 (lot 8) — les équipes qui portent une contrainte « Garder ses créneaux de saison »
@@ -547,14 +531,14 @@ final class ScheduleConstraintBuilder
             // si legacy), jamais la portée saison directement : c'est ce que buildForClubSeason
             // fait, ici on porte la période.
             implicitRules: $this->implicitRuleResolver?->resolveForPlan($clubId, $seasonId, $schedulePlanId),
+            // Les séances et le plafond de chaque équipe : sa ligne dans CE plan, posée à sa naissance.
+            teamLines: $this->teamLinesOf($schedulePlanId),
         );
 
         $this->currentAvailabilitiesByVenue = [];
-        $this->currentSessionOverrides = [];
-        $this->currentMaxPerDayOverrides = [];
         // ⚠ Ne PAS réinitialiser `currentSeasonSlotKeepTeamIds` ici : il est posé plus haut (depuis la
         // sélection) et le handler le LIT APRÈS le retour de `buildForOverlay` pour greffer les keep.
-        // Les deux champs ci-dessus sont transients (consommés PENDANT buildPayload) ; celui-ci est un
+        // Le champ ci-dessus est transient (consommé PENDANT buildPayload) ; celui-ci est un
         // RÉSULTAT du build, exposé par `lastSeasonSlotKeepTeamIds()`.
 
         // P2-5 5b : les gymnases fermés sont retirés de l'availability day-précisément
@@ -640,6 +624,7 @@ final class ScheduleConstraintBuilder
      * @param array<ScheduleSlotTemplate>  $slotTemplates
      * @param array<PriorityTier>          $priorityTiers
      * @param array<Constraint>            $constraints
+     * @param array<string, PlanTeam>      $teamLines              la ligne de chaque équipe (séances, plafond), par équipe
      *
      * @return array<string, mixed>
      */
@@ -652,13 +637,11 @@ final class ScheduleConstraintBuilder
         array $slotTemplates = [],
         array $priorityTiers = [],
         array $constraints = [],
+        array $teamLines = [],
     ): array {
-        // In-memory (DB-free) builder: no preloaded availabilities, no period
-        // overrides. Reset both for symmetry with the DB entry points so a reused
-        // instance can never leak a stale map into serializeVenue/serializeTeam.
+        // In-memory (DB-free) builder: no preloaded availabilities. Reset for symmetry with the
+        // DB entry points so a reused instance can never leak a stale map into serializeVenue.
         $this->currentAvailabilitiesByVenue = [];
-        $this->currentSessionOverrides = [];
-        $this->currentMaxPerDayOverrides = [];
         $this->currentSeasonSlotKeepTeamIds = [];
 
         return $this->buildPayload(
@@ -678,6 +661,7 @@ final class ScheduleConstraintBuilder
             slotTemplates: $slotTemplates,
             priorityTiers: $priorityTiers,
             constraints: $constraints,
+            teamLines: $teamLines,
         );
     }
 
@@ -695,6 +679,7 @@ final class ScheduleConstraintBuilder
      * @param array<TeamLink>                                                       $teamLinks              lot PASSERELLES — club+season bridges (roster-filtered)
      * @param list<array{row: PlaceTravelTime, venueAId: string, venueBId: string}> $venueTravelTimes       P2-53 RMM-8 — temps de trajet servis pour la saison (PlaceTravelTimeRepository::forSeason)
      * @param array<string, array<string, mixed>>|null                              $implicitRules          le bloc bien-être d'un plan de période déjà résolu ; null = la portée saison
+     * @param array<string, PlanTeam>                                               $teamLines              la ligne de chaque équipe dans le plan construit (séances, plafond), par équipe
      *
      * @return array<string, mixed>
      */
@@ -715,6 +700,7 @@ final class ScheduleConstraintBuilder
         array $teamLinks = [],
         array $venueTravelTimes = [],
         ?array $implicitRules = null,
+        array $teamLines = [],
     ): array {
         $serializedConstraints = array_merge(
             $this->serializeTeamCoachConstraints($teamCoaches),
@@ -803,7 +789,7 @@ final class ScheduleConstraintBuilder
             'solverSeed' => $solverSeed,
             'solverTimeoutSeconds' => self::DEFAULT_SOLVER_TIMEOUT_SECONDS,
             'venues' => array_map($this->serializeVenue(...), $venues),
-            'teams' => array_map(fn (Team $team): array => $this->serializeTeam($team, $seasonId), $teams),
+            'teams' => array_map(fn (Team $team): array => $this->serializeTeam($team, $seasonId, $teamLines[$team->getId()] ?? throw new LogicException(\sprintf('L\'équipe %s n\'a pas de ligne dans le plan construit.', $team->getId()))), $teams),
             'coaches' => array_map($this->serializeCoach(...), $coaches),
             'constraints' => $serializedConstraints,
             'slotTemplates' => array_values($serializedSlots),
@@ -1099,6 +1085,20 @@ final class ScheduleConstraintBuilder
         $payload['slotTemplates'] = array_merge($existingSlots, $pins);
 
         return $payload;
+    }
+
+    /**
+     * Les lignes d'équipes d'un plan (lot 4, PR 3a) ; lève si une ligne manque.
+     *
+     * @return array<string, PlanTeam>
+     */
+    private function teamLinesOf(string $planId): array
+    {
+        if (!$this->planComposition instanceof PlanComposition) {
+            throw new LogicException('ScheduleConstraintBuilder requires the plan composition for club/season and period builds.');
+        }
+
+        return $this->planComposition->teamsOf($planId);
     }
 
     /** Le plan de saison, qui porte les lignes du socle (lot 4). */
@@ -1436,7 +1436,7 @@ final class ScheduleConstraintBuilder
     }
 
     /** @return array<string, mixed> */
-    private function serializeTeam(Team $team, string $seasonId): array
+    private function serializeTeam(Team $team, string $seasonId, PlanTeam $line): array
     {
         $sportCategory = null;
         if ($this->entityManager instanceof EntityManagerInterface) {
@@ -1450,7 +1450,7 @@ final class ScheduleConstraintBuilder
         // plus : ils ne servent qu'à éclater les règles de groupe (`TeamTagResolver`).
         // Contrat 1.10 — séances max par jour, émis SEULEMENT au-delà de 1 : un club resté partout à
         // 1 garde un payload (et une empreinte de structure) byte-identique à celui d'avant le champ.
-        $maxPerDay = $this->currentMaxPerDayOverrides[$team->getId()] ?? $team->getMaxSessionsPerDay();
+        $maxPerDay = $line->getMaxSessionsPerDay();
 
         // Contrat allégé (ENG-60) — catégorie, âge maximal, genre, niveau et lien de saison ne
         // partent plus : le solveur ne les lit pas. `ageMin` et le nom restent.
@@ -1459,7 +1459,7 @@ final class ScheduleConstraintBuilder
             'ageMin' => $sportCategory?->getAgeMin(),
             'priorityTierId' => $team->getPriorityTierId(),
             'name' => $team->getName(),
-            'sessionsPerWeek' => $this->currentSessionOverrides[$team->getId()] ?? $team->getSessionsPerWeek(),
+            'sessionsPerWeek' => $line->getSessionsPerWeek(),
             'matchDay' => $this->deriveMatchDay($team, $seasonId),
             'forcedVenueId' => $team->getForcedVenueId(),
             ...($maxPerDay > 1 ? ['maxSessionsPerDay' => $maxPerDay] : []),

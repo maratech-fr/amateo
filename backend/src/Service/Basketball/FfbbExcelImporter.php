@@ -11,6 +11,7 @@ use App\Entity\Sport;
 use App\Entity\Team;
 use App\Enum\Gender;
 use App\Exception\ImportRejectedException;
+use App\Plans\PlanComposition;
 use App\Service\PlanEntitlements;
 use App\Service\SportCategoryResolver;
 use Doctrine\ORM\EntityManagerInterface;
@@ -27,6 +28,7 @@ final class FfbbExcelImporter
         private readonly PlanEntitlements $planEntitlements,
         private readonly SportCategoryResolver $sportCategoryResolver,
         private readonly TeamCreationSuggester $suggester,
+        private readonly PlanComposition $planComposition,
     ) {}
 
     /**
@@ -162,7 +164,6 @@ final class FfbbExcelImporter
                 ->setGender($gender)
                 ->setIsCtc($isCtc)
                 ->setName($nom)
-                ->setSessionsPerWeek(self::DEFAULT_SESSIONS_PER_WEEK)
                 ->setIsActive(true);
 
             $toCreate[] = $team;
@@ -189,6 +190,12 @@ final class FfbbExcelImporter
         // une ligne ultérieure jetait (code club étranger → 422 avec la moitié du
         // fichier déjà en base). Il couvre aussi les catégories créées sans équipe.
         $this->entityManager->flush();
+        // Lot 4, PR 3a : chaque équipe créée reçoit sa ligne dans chaque plan de la saison, au socle avec ses séances.
+        $socleValues = [];
+        foreach ($toCreate as $team) {
+            $socleValues[$team->getId()] = ['sessionsPerWeek' => self::DEFAULT_SESSIONS_PER_WEEK];
+        }
+        $this->planComposition->ensureLines($seasonId, $socleValues);
 
         return ['created' => $created, 'skipped' => $skipped, 'errors' => $errors];
     }

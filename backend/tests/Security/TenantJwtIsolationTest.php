@@ -11,6 +11,7 @@ use App\Entity\Sport;
 use App\Entity\SportCategory;
 use App\Entity\Team;
 use App\Enum\SeasonStatus;
+use App\Plans\PlanComposition;
 use App\Tests\StartsFreshBrowserSession;
 use App\Tests\TenantGucTrait;
 use App\Tests\VerifiesRegistration;
@@ -140,9 +141,10 @@ final class TenantJwtIsolationTest extends WebTestCase
         $team->setSportCategoryId($category->getId());
         $team->setPriorityTierId($tier->getId());
         $team->setName('Club A Team');
-        $team->setSessionsPerWeek(2);
         $team->setIsActive(true);
         $this->em->persist($team);
+        $this->em->flush();
+        self::getContainer()->get(PlanComposition::class)->ensureLines($team->getSeasonId(), [$team->getId() => ['sessionsPerWeek' => 2]]);
         $this->em->flush();
 
         return $club;

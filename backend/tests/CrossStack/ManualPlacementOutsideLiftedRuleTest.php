@@ -25,6 +25,7 @@ use App\Enum\LockOrigin;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
 use App\Enum\TeamCoachRole;
+use App\Plans\PlanComposition;
 use App\Service\MoveSlotService;
 use App\Tests\ChoosesPlanVersionTrait;
 use App\Tests\CreatesPeopleAndPlacesTrait;
@@ -138,8 +139,10 @@ final class ManualPlacementOutsideLiftedRuleTest extends KernelTestCase
         $teams = [];
         foreach (['Seniors A', 'Cadets', 'Minimes'] as $name) {
             $team = (new Team)->setClubId($clubId)->setSeasonId($seasonId)->setSportCategoryId($category->getId())
-                ->setPriorityTierId($tier->getId())->setName($name)->setSessionsPerWeek(1);
+                ->setPriorityTierId($tier->getId())->setName($name);
             $this->em->persist($team);
+            $this->em->flush();
+            self::getContainer()->get(PlanComposition::class)->ensureLines($team->getSeasonId(), [$team->getId() => ['sessionsPerWeek' => 1]]);
             $coach = $this->newCoach($clubId, $seasonId, 'Coach', $name);
             $this->em->persist($coach);
             $this->em->flush();

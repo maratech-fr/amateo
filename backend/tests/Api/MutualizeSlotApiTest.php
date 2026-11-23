@@ -6,6 +6,7 @@ namespace App\Tests\Api;
 
 use App\Entity\Club;
 use App\Entity\ClubUser;
+use App\Entity\PlanTeam;
 use App\Entity\Reservation;
 use App\Entity\Schedule;
 use App\Entity\ScheduleSlotTemplate;
@@ -15,13 +16,13 @@ use App\Entity\SharedTrainingBlockTeam;
 use App\Entity\Sport;
 use App\Entity\SportCategory;
 use App\Entity\Team;
-use App\Entity\TeamPeriodOverride;
 use App\Entity\User;
 use App\Entity\VenueTrainingSlot;
 use App\Enum\LockLevel;
 use App\Enum\LockOrigin;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
+use App\Plans\PlanComposition;
 use App\Service\ClubGenerationLock;
 use App\Service\MutualizeSlotService;
 use App\Service\ReservationGroupOccupancy;
@@ -110,9 +111,9 @@ final class MutualizeSlotApiTest extends WebTestCase
 
         $this->em->clear();
         $this->scopeGucToClub($ctx['clubId']);
-        $override = $this->em->getRepository(TeamPeriodOverride::class)->findOneBy(['schedulePlanId' => $ctx['planId'], 'teamId' => $ctx['teams']['joiner']]);
-        self::assertInstanceOf(TeamPeriodOverride::class, $override);
-        self::assertTrue($override->isActive());
+        $override = $this->em->getRepository(PlanTeam::class)->findOneBy(['schedulePlanId' => $ctx['planId'], 'teamId' => $ctx['teams']['joiner']]);
+        self::assertInstanceOf(PlanTeam::class, $override);
+        self::assertTrue($override->isParticipating());
         self::assertSame(1, $override->getSessionsPerWeek());
         self::assertSame(MutualizeSlotService::OVERRIDE_SOURCE, $override->getSource());
 
@@ -268,7 +269,7 @@ final class MutualizeSlotApiTest extends WebTestCase
         self::assertResponseStatusCodeSame(422);
         self::assertStringContainsString('Au planning de saison, on ne peut pas mutualiser une équipe qui n\'a aucune séance', (string) ($this->responseData()['error'] ?? ''));
         self::assertCount(0, $this->em->getRepository(SharedTrainingBlock::class)->findBy(['clubId' => $ctx['clubId']]), 'rien n\'est écrit : aucun bloc, aucun override');
-        self::assertCount(0, $this->em->getRepository(TeamPeriodOverride::class)->findBy(['clubId' => $ctx['clubId']]));
+        self::assertCount(0, $this->em->getRepository(PlanTeam::class)->findBy(['clubId' => $ctx['clubId'], 'source' => MutualizeSlotService::OVERRIDE_SOURCE]));
     }
 
     /** Ancre d'un AUTRE club : le filtre tenant la rend invisible → 404. */
@@ -847,9 +848,10 @@ final class MutualizeSlotApiTest extends WebTestCase
             ->setSportCategoryId($ctx['categoryId'])
             ->setPriorityTierId($ctx['tierId'])
             ->setName($name)
-            ->setSessionsPerWeek($sessionsPerWeek)
             ->setIsActive($active);
         $this->em->persist($team);
+        $this->em->flush();
+        self::getContainer()->get(PlanComposition::class)->ensureLines($team->getSeasonId(), [$team->getId() => ['sessionsPerWeek' => $sessionsPerWeek]]);
         $this->em->flush();
 
         return $team->getId();

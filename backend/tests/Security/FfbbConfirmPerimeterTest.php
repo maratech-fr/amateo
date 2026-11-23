@@ -14,6 +14,7 @@ use App\Entity\Team;
 use App\Enum\CompetitionType;
 use App\Enum\FixtureHomeAway;
 use App\Enum\SeasonStatus;
+use App\Plans\PlanComposition;
 use App\Service\SeasonResolver;
 use App\Tests\ChoosesPlanVersionTrait;
 use App\Tests\Double\FfbbHttpClientStub;
@@ -240,9 +241,10 @@ final class FfbbConfirmPerimeterTest extends WebTestCase
         $team->setSportCategoryId($category->getId());
         $team->setPriorityTierId(3);
         $team->setName('SM-Test');
-        $team->setSessionsPerWeek(2);
         $team->setIsActive(true);
         $this->em->persist($team);
+        $this->em->flush();
+        self::getContainer()->get(PlanComposition::class)->ensureLines($team->getSeasonId(), [$team->getId() => ['sessionsPerWeek' => 2]]);
         $this->em->flush();
 
         return $team;

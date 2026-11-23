@@ -12,6 +12,7 @@ use App\Entity\SportCategory;
 use App\Entity\Team;
 use App\Entity\User;
 use App\Enum\SeasonStatus;
+use App\Plans\PlanComposition;
 use App\Service\SeasonResolver;
 use App\Tests\ChoosesPlanVersionTrait;
 use App\Tests\TenantGucTrait;
@@ -201,9 +202,10 @@ final class ImportFixturesAuthorizationTest extends WebTestCase
         $team->setSportCategoryId($category->getId());
         $team->setPriorityTierId(3);
         $team->setName('U13-1');
-        $team->setSessionsPerWeek(2);
         $team->setIsActive(true);
         $this->em->persist($team);
+        $this->em->flush();
+        self::getContainer()->get(PlanComposition::class)->ensureLines($team->getSeasonId(), [$team->getId() => ['sessionsPerWeek' => 2]]);
         $this->em->flush();
 
         return $team;

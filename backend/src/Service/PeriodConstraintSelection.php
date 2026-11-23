@@ -34,8 +34,8 @@ final readonly class PeriodConstraintSelection
      * @param array<string, array<int, true>>                      $effectiveClosedWeekdaysByVenue   jours ISO effectivement fermés par gymnase (incident × masque) — la
      *                                                                                               MAISON UNIQUE `PlanVenueClosures` compose, gate et payload la partagent
      * @param array<string, true>                                  $deactivatedTeamIds               équipes désactivées pour ce plan (sparse)
-     * @param array<string, int>                                   $sessionOverrides                 teamId → séances/semaine surchargées pour la période
-     * @param array<string, int>                                   $maxPerDayOverrides               teamId → séances max par jour surchargées pour la période
+     * @param array<string, int>                                   $sessionOverrides                 teamId → séances/semaine de la ligne de période qui diffèrent de celles du socle
+     * @param array<string, int>                                   $maxPerDayOverrides               teamId → plafond par jour de la ligne de période qui diffère de celui du socle
      */
     public function __construct(
         public string $schedulePlanId,

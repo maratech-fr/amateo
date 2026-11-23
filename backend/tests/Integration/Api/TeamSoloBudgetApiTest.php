@@ -12,6 +12,7 @@ use App\Entity\SharedTrainingBlockTeam;
 use App\Entity\Team;
 use App\Entity\User;
 use App\Enum\SeasonStatus;
+use App\Plans\PlanComposition;
 use App\Tests\CreatesPeriodPlanTrait;
 use App\Tests\SeasonPlanOf;
 use App\Tests\TenantGucTrait;
@@ -120,6 +121,7 @@ final class TeamSoloBudgetApiTest extends WebTestCase
             ->setStatus(SeasonStatus::ACTIVE);
         $this->em->persist($this->season);
         $this->em->flush();
+        SeasonPlanOf::id(self::getContainer(), $this->season->getId());
 
         $this->token = $container->get(JWTTokenManagerInterface::class)->create($this->user);
     }
@@ -129,9 +131,10 @@ final class TeamSoloBudgetApiTest extends WebTestCase
         $team = (new Team)
             ->setClubId($this->club->getId())->setSeasonId($this->season->getId())
             ->setSportCategoryId($this->uuid())->setPriorityTierId(3)
-            ->setName('T' . substr($this->uuid(), 0, 6))
-            ->setSessionsPerWeek($sessionsPerWeek)->setIsActive(true);
+            ->setName('T' . substr($this->uuid(), 0, 6))->setIsActive(true);
         $this->em->persist($team);
+        $this->em->flush();
+        self::getContainer()->get(PlanComposition::class)->ensureLines($team->getSeasonId(), [$team->getId() => ['sessionsPerWeek' => $sessionsPerWeek]]);
         $this->em->flush();
 
         return $team;

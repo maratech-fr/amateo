@@ -29,6 +29,7 @@ use App\Enum\ImplicitRuleKey;
 use App\Enum\SeasonStatus;
 use App\Enum\TeamCoachRole;
 use App\Enum\VenuePeriodMode;
+use App\Plans\PlanComposition;
 use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\ProvisionsPeriodPlanTrait;
 use App\Tests\SeasonPlanOf;
@@ -1208,8 +1209,10 @@ final class ValidateConstraintsTest extends WebTestCase
     {
         $team = new Team;
         $team->setClubId($this->club->getId())->setSeasonId($this->season->getId());
-        $team->setSportCategoryId($this->club->getId())->setPriorityTierId(3)->setName($name)->setSessionsPerWeek(2)->setIsActive(true);
+        $team->setSportCategoryId($this->club->getId())->setPriorityTierId(3)->setName($name)->setIsActive(true);
         $this->em->persist($team);
+        $this->em->flush();
+        self::getContainer()->get(PlanComposition::class)->ensureLines($team->getSeasonId());
         $this->em->flush();
 
         return $team->getId();
@@ -1403,9 +1406,10 @@ final class ValidateConstraintsTest extends WebTestCase
         $team->setSportCategoryId($this->club->getId()); // any guid — unused by the gate
         $team->setPriorityTierId(3);
         $team->setName('Test Team');
-        $team->setSessionsPerWeek($sessionsPerWeek);
         $team->setIsActive(true);
         $this->em->persist($team);
+        $this->em->flush();
+        self::getContainer()->get(PlanComposition::class)->ensureLines($team->getSeasonId(), [$team->getId() => ['sessionsPerWeek' => $sessionsPerWeek]]);
         $this->em->flush();
 
         return $team->getId();

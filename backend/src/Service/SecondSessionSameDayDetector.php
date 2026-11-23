@@ -10,6 +10,7 @@ use App\Entity\ScheduleSlotTemplate;
 use App\Entity\Team;
 use App\Entity\Venue;
 use App\Enum\LockLevel;
+use App\Plans\PlanComposition;
 use App\Support\WeeklySlot;
 use DateTimeImmutable;
 use DateTimeInterface;
@@ -46,6 +47,7 @@ final readonly class SecondSessionSameDayDetector
     public function __construct(
         private EntityManagerInterface $entityManager,
         private SchedulePlanProvisioner $schedulePlanProvisioner,
+        private PlanComposition $planComposition,
     ) {}
 
     /**
@@ -92,7 +94,8 @@ final readonly class SecondSessionSameDayDetector
             $locked = $lockedByTeamDay[$key] ?? [];
             [$teamId, $day] = explode('|', $key);
             $team = $this->entityManager->getRepository(Team::class)->find($teamId);
-            $cap = $team instanceof Team ? $team->getMaxSessionsPerDay() : 1;
+            // Le plafond de saison : la ligne de l'équipe au socle (lot 4, PR 3a).
+            $cap = $team instanceof Team ? $this->planComposition->socleLinesOf([$teamId])[$teamId]->getMaxSessionsPerDay() : 1;
 
             // Le chevauchement d'abord, à plafond ≥ 2 : une réservation qui chevauche une autre séance du jour.
             $overlapping = $cap >= 2 ? $this->overlappingReservedPlaces($reserved, $locked) : [];

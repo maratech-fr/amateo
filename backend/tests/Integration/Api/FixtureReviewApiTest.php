@@ -20,6 +20,7 @@ use App\Enum\FixtureReviewState;
 use App\Enum\FixtureStatus;
 use App\Enum\FixtureUnplacedReason;
 use App\Enum\SeasonStatus;
+use App\Plans\PlanComposition;
 use App\Service\SeasonResolver;
 use App\Tests\ChoosesPlanVersionTrait;
 use App\Tests\CreatesPeopleAndPlacesTrait;
@@ -1083,9 +1084,10 @@ final class FixtureReviewApiTest extends WebTestCase
         $team->setSportCategoryId($category->getId());
         $team->setPriorityTierId(3);
         $team->setName($name);
-        $team->setSessionsPerWeek(2);
         $team->setIsActive(true);
         $this->em->persist($team);
+        $this->em->flush();
+        self::getContainer()->get(PlanComposition::class)->ensureLines($team->getSeasonId(), [$team->getId() => ['sessionsPerWeek' => 2]]);
         $this->em->flush();
 
         return $team;

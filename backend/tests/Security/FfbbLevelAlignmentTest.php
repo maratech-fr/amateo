@@ -15,10 +15,12 @@ use App\Enum\CompetitionType;
 use App\Enum\FixtureHomeAway;
 use App\Enum\SeasonStatus;
 use App\Enum\TeamLevel;
+use App\Plans\PlanComposition;
 use App\Service\SeasonResolver;
 use App\Service\TeamTagService;
 use App\Tests\ChoosesPlanVersionTrait;
 use App\Tests\Double\FfbbHttpClientStub;
+use App\Tests\SeasonPlanOf;
 use App\Tests\TenantGucTrait;
 use App\Tests\VerifiesRegistration;
 use DateTimeImmutable;
@@ -285,6 +287,7 @@ final class FfbbLevelAlignmentTest extends WebTestCase
         $season->setTransitionData([]);
         $this->em->persist($season);
         $this->em->flush();
+        SeasonPlanOf::id(self::getContainer(), $season->getId());
         $this->settleSeasonPlan($season);
 
         return $season;
@@ -322,9 +325,10 @@ final class FfbbLevelAlignmentTest extends WebTestCase
         $team->setSportCategoryId($category->getId());
         $team->setPriorityTierId(3);
         $team->setName($categoryName . '-Test');
-        $team->setSessionsPerWeek(2);
         $team->setIsActive(true);
         $this->em->persist($team);
+        $this->em->flush();
+        self::getContainer()->get(PlanComposition::class)->ensureLines($team->getSeasonId(), [$team->getId() => ['sessionsPerWeek' => 2]]);
         $this->em->flush();
 
         return $team;

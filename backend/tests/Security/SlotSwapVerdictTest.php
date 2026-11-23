@@ -23,6 +23,7 @@ use App\Exception\EvictTargetLockedException;
 use App\Exception\ScheduleGenerationInProgressException;
 use App\Exception\SwapCrossScheduleException;
 use App\Exception\SwapWithSelfException;
+use App\Plans\PlanComposition;
 use App\Service\ClubGenerationLock;
 use App\Service\EngineClient;
 use App\Service\MoveSlotService;
@@ -472,9 +473,10 @@ final class SlotSwapVerdictTest extends KernelTestCase
             ->setSeasonId((string) $ctx['seasonId'])
             ->setSportCategoryId((string) $ctx['categoryId'])
             ->setPriorityTierId((int) $ctx['tierId'])
-            ->setName($name . ' ' . bin2hex(random_bytes(3)))
-            ->setSessionsPerWeek(1);
+            ->setName($name . ' ' . bin2hex(random_bytes(3)));
         $this->em->persist($team);
+        $this->em->flush();
+        self::getContainer()->get(PlanComposition::class)->ensureLines($team->getSeasonId(), [$team->getId() => ['sessionsPerWeek' => 1]]);
         $this->em->flush();
 
         return $team;

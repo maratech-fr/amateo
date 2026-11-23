@@ -142,20 +142,6 @@ class SchedulePlan implements TenantOwnedInterface
     #[ORM\Column(type: 'integer', options: ['default' => 0])]
     private int $lastVersionNumber = 0;
 
-    /**
-     * Period-editable structure (ADR-0002 inv. 5): has the manager configured this
-     * plan's team selection at least once? Distinguishes a FRESH plan (seed the
-     * Fanion-only default) from one set back to all-active (0 sparse overrides, NOT
-     * to be re-seeded). Set true on the first TeamPeriodOverride write; survives
-     * reload (unlike a client-side guard).
-     *
-     * Lot C: moved off CalendarEntry — it is a property of the RESPONSE (the plan),
-     * not of the FACT (the calendar event). Meaningless on SEASON plans, which have
-     * no period team-selection step; only CLOSURE/HOLIDAY ever flip it.
-     */
-    #[ORM\Column(type: 'boolean', options: ['default' => false])]
-    private bool $teamSelectionInitialized = false;
-
     public function __construct()
     {
         $this->id = $this->newUuid();
@@ -277,18 +263,6 @@ class SchedulePlan implements TenantOwnedInterface
     public function setCalendarEntryId(?string $calendarEntryId): self
     {
         $this->calendarEntryId = $calendarEntryId;
-
-        return $this;
-    }
-
-    public function isTeamSelectionInitialized(): bool
-    {
-        return $this->teamSelectionInitialized;
-    }
-
-    public function setTeamSelectionInitialized(bool $teamSelectionInitialized): self
-    {
-        $this->teamSelectionInitialized = $teamSelectionInitialized;
 
         return $this;
     }

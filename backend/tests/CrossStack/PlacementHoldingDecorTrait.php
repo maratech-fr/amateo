@@ -30,6 +30,7 @@ use App\Enum\FixtureUnplacedReason;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
 use App\Enum\TeamCoachRole;
+use App\Plans\PlanComposition;
 use App\Service\ClubPublicHolidays;
 use App\Service\MatchPlacementPayloadBuilder;
 use App\Service\SeasonResolver;
@@ -149,9 +150,10 @@ trait PlacementHoldingDecorTrait
         $team->setSportCategoryId($this->newUuid());
         $team->setPriorityTierId(3);
         $team->setName($name);
-        $team->setSessionsPerWeek(2);
         $team->setIsActive(true);
         $this->em->persist($team);
+        $this->em->flush();
+        static::getContainer()->get(PlanComposition::class)->ensureLines($team->getSeasonId(), [$team->getId() => ['sessionsPerWeek' => 2]]);
         $this->em->flush();
 
         return $team->getId();

@@ -26,6 +26,7 @@ use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
 use App\Message\GenerateScheduleMessage;
 use App\MessageHandler\GenerateScheduleHandler;
+use App\Plans\PlanComposition;
 use App\Service\ClubGenerationLock;
 use App\Service\DiagnosticMessageBuilder;
 use App\Service\EngineClient;
@@ -465,6 +466,8 @@ final class OverlayGenerationTest extends KernelTestCase
             $team->setSportCategoryId('cccccccc-cccc-4ccc-8ccc-cccccccccccc');
             $team->setPriorityTierId(1);
             $em->persist($team);
+            $em->flush();
+            self::getContainer()->get(PlanComposition::class)->ensureLines($team->getSeasonId());
         }
 
         $entry = new CalendarEntry;

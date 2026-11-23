@@ -28,6 +28,7 @@ use App\Enum\LockLevel;
 use App\Enum\LockOrigin;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
+use App\Plans\PlanComposition;
 use App\Service\ClubGenerationLock;
 use App\Service\ScheduleConstraintBuilder;
 use App\Service\SchedulePlanProvisioner;
@@ -442,9 +443,10 @@ final class SlotRemovalTest extends WebTestCase
             ->setSportCategoryId($ctx['categoryId'])
             ->setPriorityTierId($ctx['tierId'])
             ->setName($name)
-            ->setSessionsPerWeek($sessionsPerWeek)
             ->setIsActive(true);
         $this->em->persist($team);
+        $this->em->flush();
+        self::getContainer()->get(PlanComposition::class)->ensureLines($team->getSeasonId(), [$team->getId() => ['sessionsPerWeek' => $sessionsPerWeek]]);
         $this->em->flush();
 
         return $team->getId();

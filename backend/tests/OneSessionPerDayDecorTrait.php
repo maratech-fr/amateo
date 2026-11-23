@@ -24,7 +24,9 @@ use App\Enum\LockLevel;
 use App\Enum\LockOrigin;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
+use App\Plans\PlanComposition;
 use DateTimeImmutable;
+use Doctrine\ORM\EntityManagerInterface;
 
 /**
  * Le décor des tests « une séance par jour » : deux gymnases nommés (Armand, JDR), des cases le
@@ -120,10 +122,13 @@ trait OneSessionPerDayDecorTrait
     private function dailyCap(array $ctx, string $teamId, int $cap): void
     {
         $this->scopeGucToClub($ctx['clubId']);
-        $team = $this->em->getRepository(Team::class)->find($teamId);
-        self::assertInstanceOf(Team::class, $team);
-        $team->setMaxSessionsPerDay($cap);
-        $this->em->flush();
+        $composition = static::getContainer()->get(PlanComposition::class);
+        $composition->socleLinesOf([$teamId])[$teamId]->setMaxSessionsPerDay($cap);
+        // Lot 4, PR 3a : un plan de période garde le plafond de sa naissance ; le décor d'une période y porte le réglage.
+        if (null !== $ctx['planId']) {
+            $composition->lineOf($ctx['planId'], $teamId)->setMaxSessionsPerDay($cap);
+        }
+        static::getContainer()->get(EntityManagerInterface::class)->flush();
     }
 
     /**
@@ -200,9 +205,11 @@ trait OneSessionPerDayDecorTrait
 
         $teamIds = [];
         foreach (['U15', 'U18', 'U20'] as $name) {
-            $team = (new Team)->setClubId($clubId)->setSeasonId($seasonId)->setName($name)->setSessionsPerWeek(3)
+            $team = (new Team)->setClubId($clubId)->setSeasonId($seasonId)->setName($name)
                 ->setSportCategoryId('cccccccc-cccc-4ccc-8ccc-cccccccccccc')->setPriorityTierId(1);
             $this->em->persist($team);
+            $this->em->flush();
+            static::getContainer()->get(PlanComposition::class)->ensureLines($team->getSeasonId(), [$team->getId() => ['sessionsPerWeek' => 3]]);
             $this->em->flush();
             $teamIds[$name] = $team->getId();
         }

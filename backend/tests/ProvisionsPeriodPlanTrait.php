@@ -6,6 +6,7 @@ namespace App\Tests;
 
 use App\Entity\CalendarEntry;
 use App\Entity\Season;
+use App\Plans\PlanComposition;
 use App\Service\SchedulePlanProvisioner;
 use Doctrine\ORM\EntityManagerInterface;
 use PHPUnit\Framework\Assert;
@@ -32,6 +33,8 @@ trait ProvisionsPeriodPlanTrait
     {
         $em = static::getContainer()->get(EntityManagerInterface::class);
         $em->flush();
+        // Une saison naît avec son plan de saison : le plan de période y lit les équipes du socle (lot 4, PR 3a).
+        SeasonPlanOf::id(static::getContainer(), $entry->getSeasonId());
 
         $planId = static::getContainer()->get(SchedulePlanProvisioner::class)->provisionPeriodPlan($entry->getId());
         Assert::assertIsString($planId, 'la période doit porter un plan (type closure/holiday attendu — inv. 9)');
@@ -49,6 +52,9 @@ trait ProvisionsPeriodPlanTrait
         $planId = static::getContainer()->get(SchedulePlanProvisioner::class)->ensureSeasonPlanId($season->getId());
         $em->flush();
         Assert::assertIsString($planId, 'la saison doit porter un plan SEASON');
+        // Lot 4, PR 3a : les équipes écrites avant le plan de saison y reçoivent leur ligne (la porte ne touche aucune
+        // ligne existante).
+        static::getContainer()->get(PlanComposition::class)->ensureLines($season->getId());
 
         return $planId;
     }

@@ -14,7 +14,6 @@ use App\Entity\Season;
 use App\Entity\Sport;
 use App\Entity\SportCategory;
 use App\Entity\Team;
-use App\Entity\TeamPeriodOverride;
 use App\Entity\User;
 use App\Entity\Venue;
 use App\Entity\VenuePeriodOverride;
@@ -29,6 +28,7 @@ use App\Enum\Gender;
 use App\Enum\SeasonStatus;
 use App\Enum\TeamLevel;
 use App\Enum\VenuePeriodMode;
+use App\Plans\PlanComposition;
 use App\Service\PeriodConstraintSelection;
 use App\Service\PeriodConstraintSelector;
 use App\Service\ScheduleConstraintBuilder;
@@ -865,13 +865,8 @@ final class PeriodGatePayloadParityTest extends WebTestCase
         $planId = $this->planIdOf($entry);
 
         // Réglages de période : l'équipe en pause, le gymnase désactivé.
-        $teamOverride = new TeamPeriodOverride;
-        $teamOverride->setClubId($club->getId());
-        $teamOverride->setSeasonId($season->getId());
-        $teamOverride->setSchedulePlanId($planId);
-        $teamOverride->setTeamId($teamPaused->getId());
-        $teamOverride->setIsActive(false);
-        $this->em->persist($teamOverride);
+        $teamOverride = self::getContainer()->get(PlanComposition::class)->lineOf($planId, $teamPaused->getId());
+        $teamOverride->setParticipating(false);
 
         $venueOverride = new VenuePeriodOverride;
         $venueOverride->setClubId($club->getId());
@@ -933,9 +928,10 @@ final class PeriodGatePayloadParityTest extends WebTestCase
         $team->setSportCategoryId($category->getId());
         $team->setPriorityTierId(1);
         $team->setName($name);
-        $team->setSessionsPerWeek(2);
         $team->setIsActive(true);
         $this->em->persist($team);
+        $this->em->flush();
+        self::getContainer()->get(PlanComposition::class)->ensureLines($team->getSeasonId(), [$team->getId() => ['sessionsPerWeek' => 2]]);
         $this->em->flush();
 
         return $team;

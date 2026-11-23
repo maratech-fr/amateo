@@ -22,12 +22,12 @@ class TeamPeriodOverrideInput
     #[Groups(['write'])]
     public bool $isActive = true;
 
-    /** null = keep the team's seasonal sessionsPerWeek. */
+    /** null = la valeur de la saison (celle du socle au moment de l'écriture). */
     #[Assert\Range(min: 1, max: 7)]
     #[Groups(['write'])]
     public ?int $sessionsPerWeek = null;
 
-    /** null = keep the team's seasonal maxSessionsPerDay (remplacement complet : absent = null). */
+    /** null = la valeur de la saison (celle du socle au moment de l'écriture ; remplacement complet : absent = null). */
     #[Assert\Range(notInRangeMessage: 'Le nombre de séances par jour doit être compris entre 1 et 4.', min: 1, max: 4)]
     #[Groups(['write'])]
     public ?int $maxSessionsPerDay = null;

@@ -9,12 +9,12 @@ use App\Entity\ScheduleSlotTemplate;
 use App\Entity\SharedTrainingBlock;
 use App\Entity\SharedTrainingBlockTeam;
 use App\Entity\Team;
-use App\Entity\TeamPeriodOverride;
 use App\Entity\VenueTrainingSlot;
 use App\Enum\LockLevel;
 use App\Enum\LockOrigin;
 use App\Exception\MutualizationRefusedException;
 use App\Exception\ScheduleGenerationInProgressException;
+use App\Plans\PlanComposition;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
 use InvalidArgumentException;
@@ -69,6 +69,7 @@ final class MutualizeSlotService
         private readonly ScheduleProgressPublisher $progressPublisher,
         private readonly TeamCaseOccupancyGuard $teamCaseOccupancyGuard,
         private readonly ReservationGroupOccupancy $reservationGroupOccupancy,
+        private readonly PlanComposition $planComposition,
     ) {}
 
     /**
@@ -188,7 +189,7 @@ final class MutualizeSlotService
 
             $this->assertNewBlockFitsItsReservations($members, $planId);
 
-            // Activer les équipes à 0 séance (override de période : 1 séance, marquée « mutualisation »)
+            // Activer les équipes à 0 séance (leur ligne de période : 1 séance, marquée « mutualisation »)
             // AVANT la garde Σ, pour que leur volume effectif reflète le geste.
             foreach ($toActivate as $teamId) {
                 $this->activateTeamForPeriod($clubId, $seasonId, $planId, $isSocle, $teamId);
@@ -668,8 +669,8 @@ final class MutualizeSlotService
     }
 
     /**
-     * Active une équipe dans le plan de période : override isActive + 1 séance, marqué
-     * « mutualisation ». Crée l'override s'il manque, le relève s'il existe (p.ex. désactivé).
+     * Active une équipe dans le plan de période : sa ligne participe, 1 séance, marquée « mutualisation »
+     * (lot 4, PR 3a : toute équipe a sa ligne dans le plan).
      */
     private function activateTeamForPeriod(string $clubId, string $seasonId, string $planId, bool $isSocle, string $teamId): void
     {
@@ -680,17 +681,7 @@ final class MutualizeSlotService
             throw new MutualizationRefusedException('Au planning de saison, on ne peut pas mutualiser une équipe qui n\'a aucune séance : donnez-lui d\'abord des séances dans la saisie.');
         }
 
-        $override = $this->entityManager->getRepository(TeamPeriodOverride::class)
-            ->findOneBy(['schedulePlanId' => $planId, 'teamId' => $teamId]);
-        if (!$override instanceof TeamPeriodOverride) {
-            $override = (new TeamPeriodOverride)
-                ->setClubId($clubId)
-                ->setSeasonId($seasonId)
-                ->setSchedulePlanId($planId)
-                ->setTeamId($teamId);
-            $this->entityManager->persist($override);
-        }
-        $override->setIsActive(true)->setSessionsPerWeek(1)->setSource(self::OVERRIDE_SOURCE);
+        $this->planComposition->lineOf($planId, $teamId)->setParticipating(true)->setSessionsPerWeek(1)->setSource(self::OVERRIDE_SOURCE);
     }
 
     /**

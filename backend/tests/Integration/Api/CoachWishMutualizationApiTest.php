@@ -15,6 +15,7 @@ use App\Entity\User;
 use App\Enum\CalendarEntryKind;
 use App\Enum\CalendarEntryPeriodType;
 use App\Enum\SeasonStatus;
+use App\Plans\PlanComposition;
 use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
@@ -196,6 +197,8 @@ final class CoachWishMutualizationApiTest extends WebTestCase
         $team = (new Team)->setClubId($this->club->getId())->setSeasonId($this->season->getId())
             ->setSportCategoryId('11111111-1111-4111-8111-111111111111')->setPriorityTierId(1)->setName($name);
         $this->em->persist($team);
+        $this->em->flush();
+        self::getContainer()->get(PlanComposition::class)->ensureLines($team->getSeasonId());
         $this->em->flush();
 
         return $team;

@@ -15,7 +15,6 @@ use App\Entity\Season;
 use App\Entity\Sport;
 use App\Entity\SportCategory;
 use App\Entity\Team;
-use App\Entity\TeamPeriodOverride;
 use App\Entity\User;
 use App\Entity\Venue;
 use App\Entity\VenuePeriodOverride;
@@ -28,6 +27,7 @@ use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
 use App\Enum\VenueDayState;
 use App\Enum\VenuePeriodMode;
+use App\Plans\PlanComposition;
 use App\Service\PeriodPlanTranscriber;
 use App\Service\SchedulePlanProvisioner;
 use App\Tests\ChoosesPlanVersionTrait;
@@ -367,14 +367,9 @@ final class PeriodCopyBirthTest extends WebTestCase
 
     private function teamOverride(Club $club, Season $season, string $planId, Team $team, bool $active, ?int $sessionsPerWeek): void
     {
-        $override = new TeamPeriodOverride;
-        $override->setClubId($club->getId());
-        $override->setSeasonId($season->getId());
-        $override->setSchedulePlanId($planId);
-        $override->setTeamId($team->getId());
-        $override->setIsActive($active);
-        $override->setSessionsPerWeek($sessionsPerWeek);
-        $this->em->persist($override);
+        $override = self::getContainer()->get(PlanComposition::class)->lineOf($planId, $team->getId());
+        $override->setParticipating($active);
+        $override->setSessionsPerWeek($sessionsPerWeek ?? self::getContainer()->get(PlanComposition::class)->socleLinesOf([$team->getId()])[$team->getId()]->getSessionsPerWeek());
     }
 
     private function team(Club $club, Season $season, string $name): Team
@@ -385,9 +380,10 @@ final class PeriodCopyBirthTest extends WebTestCase
         $team->setSportCategoryId($this->category->getId());
         $team->setPriorityTierId(1);
         $team->setName($name . '-' . uniqid());
-        $team->setSessionsPerWeek(3);
         $team->setIsActive(true);
         $this->em->persist($team);
+        $this->em->flush();
+        self::getContainer()->get(PlanComposition::class)->ensureLines($team->getSeasonId(), [$team->getId() => ['sessionsPerWeek' => 3]]);
         $this->em->flush();
 
         return $team;

@@ -8,13 +8,13 @@ use App\Entity\Club;
 use App\Entity\ClubUser;
 use App\Entity\ConstraintPeriodOverride;
 use App\Entity\ImplicitRuleSetting;
+use App\Entity\PlanTeam;
 use App\Entity\Reservation;
 use App\Entity\Schedule;
 use App\Entity\ScheduleSlotTemplate;
 use App\Entity\Season;
 use App\Entity\SharedTrainingBlock;
 use App\Entity\SharedTrainingBlockTeam;
-use App\Entity\TeamPeriodOverride;
 use App\Entity\User;
 use App\Entity\Venue;
 use App\Entity\VenueOccupancy;
@@ -77,7 +77,7 @@ final class PeriodPlanSiblingCopyTest extends WebTestCase
      * @var list<class-string>
      */
     private const array ANCHORED_FAMILIES = [
-        TeamPeriodOverride::class,
+        PlanTeam::class,
         ConstraintPeriodOverride::class,
         VenueTrainingSlot::class,
         Reservation::class,
@@ -163,8 +163,8 @@ final class PeriodPlanSiblingCopyTest extends WebTestCase
         $sourcePlanId = $this->planIdOf($club, $sourceEntry);
         $this->seedPointedVersionWithLockedSlots($club, $season, $sourcePlanId, $venue->getId());
         $this->scopeGucToClub($club->getId());
-        $this->em->persist((new TeamPeriodOverride)->setClubId($club->getId())->setSeasonId($season->getId())->setSchedulePlanId($sourcePlanId)
-            ->setTeamId(self::TEAM_ID)->setIsActive(true)->setSessionsPerWeek(null)->setMaxSessionsPerDay(3));
+        $this->em->persist((new PlanTeam)->setClubId($club->getId())->setSeasonId($season->getId())->setSchedulePlanId($sourcePlanId)
+            ->setTeamId(self::TEAM_ID)->setParticipating(true)->setMaxSessionsPerDay(3));
         $this->em->flush();
         $targetEntry = $this->adaptedPeriod($user, 'Barros (plafond, après)', '2026-03-30', '2026-04-05');
         $targetPlanId = $this->planIdOf($club, $targetEntry);
@@ -173,8 +173,8 @@ final class PeriodPlanSiblingCopyTest extends WebTestCase
 
         $this->scopeGucToClub($club->getId());
         $this->em->clear();
-        $copied = $this->em->getRepository(TeamPeriodOverride::class)->findOneBy(['schedulePlanId' => $targetPlanId, 'teamId' => self::TEAM_ID]);
-        self::assertInstanceOf(TeamPeriodOverride::class, $copied);
+        $copied = $this->em->getRepository(PlanTeam::class)->findOneBy(['schedulePlanId' => $targetPlanId, 'teamId' => self::TEAM_ID]);
+        self::assertInstanceOf(PlanTeam::class, $copied);
         self::assertSame(3, $copied->getMaxSessionsPerDay());
     }
 
@@ -279,7 +279,7 @@ final class PeriodPlanSiblingCopyTest extends WebTestCase
         $clubId = $club->getId();
         $seasonId = $season->getId();
 
-        $this->em->persist((new TeamPeriodOverride)->setClubId($clubId)->setSeasonId($seasonId)->setSchedulePlanId($planId)->setTeamId(self::TEAM_ID)->setIsActive(false)->setSessionsPerWeek(null));
+        $this->em->persist((new PlanTeam)->setClubId($clubId)->setSeasonId($seasonId)->setSchedulePlanId($planId)->setTeamId(self::TEAM_ID)->setParticipating(false));
         $this->em->persist((new ConstraintPeriodOverride)->setClubId($clubId)->setSeasonId($seasonId)->setSchedulePlanId($planId)->setConstraintId(self::CONSTRAINT_ID)->setIsActive(false));
         $this->em->persist((new Reservation)->setClubId($clubId)->setSeasonId($seasonId)->setSchedulePlanId($planId)->setTeamId(self::TEAM_ID)->setVenueId($venueId)->setDayOfWeek(3)->setStartTime(new DateTimeImmutable('19:00'))->setDurationMinutes(90));
         $this->em->persist((new VenuePeriodOverride)->setClubId($clubId)->setSeasonId($seasonId)->setSchedulePlanId($planId)->setVenueId($venueId)->setMode(VenuePeriodMode::DISABLED));

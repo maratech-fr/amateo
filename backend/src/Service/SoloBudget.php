@@ -4,11 +4,13 @@ declare(strict_types=1);
 
 namespace App\Service;
 
+use App\Plans\PlanComposition;
+
 /**
  * P2-60 — le budget de réservation INDIVIDUELLE d'une équipe, sur UNE portée (socle ou plan de
  * période, jamais d'union — ADR-0002). Valeur pure calculée par {@see SoloReservationBudget} :
  *
- *  - {@see $effective} S(T) : séances hebdomadaires EFFECTIVES ({@see EffectiveTeamSessions},
+ *  - {@see $effective} S(T) : séances hebdomadaires EFFECTIVES ({@see PlanComposition},
  *    override de période inclus) ;
  *  - {@see $block} B(T) : Σ des séances communes des blocs de la portée contenant T ;
  *  - {@see $residual} R(T) = S(T) − B(T), jamais négatif (la garde centrale Σ≤S le garantit) : le

@@ -8,9 +8,10 @@ use App\Entity\CalendarEntry;
 use App\Entity\Constraint;
 use App\Entity\ConstraintPeriodOverride;
 use App\Entity\Team;
-use App\Entity\TeamPeriodOverride;
 use App\Enum\CalendarEntryPeriodType;
 use App\Enum\ConstraintScope;
+use App\Plans\PlanComposition;
+use App\Plans\SoclePlan;
 use App\Repository\ConstraintRepository;
 use App\Repository\TeamRepository;
 use Doctrine\ORM\EntityManagerInterface;
@@ -55,6 +56,8 @@ final class PeriodConstraintSelector
         private readonly PlanVenueClosures $planVenueClosures,
         private readonly LoggerInterface $logger,
         private readonly ConstraintConfigValidator $configValidator,
+        private readonly PlanComposition $planComposition,
+        private readonly SoclePlan $soclePlan,
     ) {}
 
     /**
@@ -80,18 +83,22 @@ final class PeriodConstraintSelector
             $overrides[$override->getConstraintId()] = $override->isActive();
         }
 
+        // Lot 4, PR 3a — les équipes du plan, lues sur ses lignes : écartée = la ligne ne participe pas ; séances et
+        // plafond « propres à la période » = ceux d'une ligne qui diffèrent de la ligne du socle.
         $deactivatedTeamIds = [];
         $sessionOverrides = [];
         $maxPerDayOverrides = [];
-        foreach ($this->entityManager->getRepository(TeamPeriodOverride::class)->findBy(['schedulePlanId' => $schedulePlanId]) as $teamOverride) {
-            if (!$teamOverride->isActive()) {
-                $deactivatedTeamIds[$teamOverride->getTeamId()] = true;
+        $socleLines = $this->planComposition->teamsOf($this->soclePlan->idOf($seasonId));
+        foreach ($this->planComposition->teamsOf($schedulePlanId) as $teamId => $line) {
+            if (!$line->isParticipating()) {
+                $deactivatedTeamIds[$teamId] = true;
             }
-            if (null !== $teamOverride->getSessionsPerWeek()) {
-                $sessionOverrides[$teamOverride->getTeamId()] = $teamOverride->getSessionsPerWeek();
+            $socle = $socleLines[$teamId] ?? null;
+            if (null === $socle || $line->getSessionsPerWeek() !== $socle->getSessionsPerWeek()) {
+                $sessionOverrides[$teamId] = $line->getSessionsPerWeek();
             }
-            if (null !== $teamOverride->getMaxSessionsPerDay()) {
-                $maxPerDayOverrides[$teamOverride->getTeamId()] = $teamOverride->getMaxSessionsPerDay();
+            if (null === $socle || $line->getMaxSessionsPerDay() !== $socle->getMaxSessionsPerDay()) {
+                $maxPerDayOverrides[$teamId] = $line->getMaxSessionsPerDay();
             }
         }
 

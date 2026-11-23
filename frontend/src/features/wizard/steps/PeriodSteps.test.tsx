@@ -76,8 +76,8 @@ const periodSlotsAnchor: { value: string | null } = { value: null };
 const periodSlotWriteAnchor: { value: string | null } = { value: null };
 const constraintOverridesAnchor: { value: string | null } = { value: null };
 const periodSlotsState = { failed: false, retry: vi.fn() };
-const planState: { data: { id: string; teamSelectionInitialized: boolean } | null | undefined; failed: boolean; retry: () => void } = {
-  data: { id: "plan-1", teamSelectionInitialized: false },
+const planState: { data: { id: string } | null | undefined; failed: boolean; retry: () => void } = {
+  data: { id: "plan-1" },
   failed: false,
   retry: vi.fn(),
 };
@@ -221,14 +221,12 @@ import { toast } from "@/shared/stores/toastStore";
 import { PeriodConstraints } from "./PeriodConstraints";
 import { PeriodTeams } from "./PeriodTeams";
 import { PeriodVenues } from "./PeriodVenues";
-import { resetPeriodSeed } from "./periodSeed";
 
 afterEach(() => {
   // Les vi.fn() ACCUMULENT leurs appels d'un test à l'autre : sans ça, un
   // `not.toHaveBeenCalled` voit l'appel d'un test précédent et échoue à tort (ou pire,
   // un `toHaveBeenCalled` passe grâce à lui).
   vi.clearAllMocks();
-  resetPeriodSeed();
   sharedBlocksState.data = [];
   teamLinksState.data = [];
   extraVenuesState.value = [];
@@ -264,7 +262,7 @@ afterEach(() => {
   clearGrid.mockClear();
   stbCreate.mockClear();
   entryState.data = { periodType: "closure" };
-    planState.data = { id: "plan-1", teamSelectionInitialized: false };
+    planState.data = { id: "plan-1" };
   teamsState.data = [T1, T2];
   tiersState.data = [{ id: 1, label: "S", name: "Fanion", color: null }, { id: 2, label: "A", name: "Importante", color: null }];
   createOverride.mockClear();
@@ -311,7 +309,7 @@ describe("PeriodTeams — default team selection (E3) + toggles", () => {
     entryState.data = { periodType: "holiday" };
     withThreeTiers();
     teamOverridesErrorState.value = true;
-    planState.data = { id: "plan-1", teamSelectionInitialized: false };
+    planState.data = { id: "plan-1" };
 
     render(<PeriodTeams calendarEntryId="fresh-holiday-overrides-ko" />);
 
@@ -327,7 +325,7 @@ describe("PeriodTeams — default team selection (E3) + toggles", () => {
     const user = userEvent.setup();
     entryState.data = { periodType: "holiday" };
     withThreeTiers();
-    planState.data = { id: "plan-1", teamSelectionInitialized: true }; // pas de seed
+    planState.data = { id: "plan-1" }; // pas de seed
 
     render(<PeriodTeams calendarEntryId="ramp-writes" />);
     await user.click(screen.getByRole("button", { name: "Fanion seul" }));
@@ -342,7 +340,7 @@ describe("PeriodTeams — default team selection (E3) + toggles", () => {
     const user = userEvent.setup();
     entryState.data = { periodType: "holiday" };
     withThreeTiers();
-    planState.data = { id: "plan-1", teamSelectionInitialized: true };
+    planState.data = { id: "plan-1" };
 
     render(<PeriodTeams calendarEntryId="ramp-noop" />);
     // « Tout le club » quand tout le monde est déjà au défaut saison : zéro écriture.
@@ -364,7 +362,7 @@ describe("PeriodTeams — default team selection (E3) + toggles", () => {
   it("does NOT seed a period already configured server-side (teamSelectionInitialized)", () => {
     entryState.data = { periodType: "holiday" };
     withThreeTiers();
-    planState.data = { id: "plan-1", teamSelectionInitialized: true }; // e.g. manager reset it to all-active, then reloaded
+    planState.data = { id: "plan-1" }; // e.g. manager reset it to all-active, then reloaded
     render(<PeriodTeams calendarEntryId="already-init" />);
     expect(createOverride).not.toHaveBeenCalled();
   });
@@ -1230,7 +1228,7 @@ describe("PeriodStructure — l'ancre des réglages (ADR-0002 inv. 5, lot C2)", 
     expect(screen.queryByRole("button", { name: "Lun 18:00" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Désactiver" })).toBeNull();
     expect(createSlot).not.toHaveBeenCalled();
-    planState.data = { id: "plan-1", teamSelectionInitialized: false };
+    planState.data = { id: "plan-1" };
   });
 
   // ── NR P4-20 / P4-1 — un écran qui échoue le DIT, et donne une issue ───────────
@@ -1253,7 +1251,7 @@ describe("PeriodStructure — l'ancre des réglages (ADR-0002 inv. 5, lot C2)", 
     expect(planState.retry).toHaveBeenCalled();
 
     planState.failed = false;
-    planState.data = { id: "plan-1", teamSelectionInitialized: false };
+    planState.data = { id: "plan-1" };
   });
 
   it("T1 — PeriodTeams et PeriodConstraints disent l'échec plutôt que d'offrir des gestes muets", () => {
@@ -1269,14 +1267,14 @@ describe("PeriodStructure — l'ancre des réglages (ADR-0002 inv. 5, lot C2)", 
     expect(screen.getByRole("alert")).toHaveTextContent(/ne seraient pas enregistrées/);
 
     planState.failed = false;
-    planState.data = { id: "plan-1", teamSelectionInitialized: false };
+    planState.data = { id: "plan-1" };
   });
 
   it("T2 — une ancre EN CACHE survit à un refetch raté : l'écran reste fonctionnel", () => {
     // react-query garde `data` et bascule `status` à error sur un refetch d'arrière-plan.
     // Basculer l'écran en erreur ici détruirait une vue qui marche (le bug de ma 1re
     // tentative) : tant qu'on a une ancre, on est en `period`, pas en `failed`.
-    planState.data = { id: "plan-1", teamSelectionInitialized: false };
+    planState.data = { id: "plan-1" };
     planState.failed = true;
 
     render(<PeriodVenues calendarEntryId="e1" />);
@@ -1317,7 +1315,7 @@ describe("PeriodStructure — l'ancre des réglages (ADR-0002 inv. 5, lot C2)", 
     expect(screen.getByText(/Chargement des équipes de la période/)).toBeInTheDocument();
     expect(toast.success).not.toHaveBeenCalledWith("Sélection appliquée");
     expect(createOverride).not.toHaveBeenCalled();
-    planState.data = { id: "plan-1", teamSelectionInitialized: false };
+    planState.data = { id: "plan-1" };
   });
 
   it("PeriodVenues écrit dès que le plan est résolu", async () => {

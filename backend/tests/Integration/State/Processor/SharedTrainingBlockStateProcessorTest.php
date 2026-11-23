@@ -14,10 +14,10 @@ use App\Entity\SchedulePlan;
 use App\Entity\Season;
 use App\Entity\SharedTrainingBlock;
 use App\Entity\Team;
-use App\Entity\TeamPeriodOverride;
 use App\Entity\User;
 use App\Enum\SchedulePlanType;
 use App\Enum\SeasonStatus;
+use App\Plans\PlanComposition;
 use App\Plans\SoclePlan;
 use App\Service\ManagementAccessGuard;
 use App\Service\ReservationGroupOccupancy;
@@ -289,9 +289,10 @@ final class SharedTrainingBlockStateProcessorTest extends KernelTestCase
             ->setSportCategoryId($this->uuid())
             ->setPriorityTierId(3)
             ->setName('T' . substr($this->uuid(), 0, 6))
-            ->setSessionsPerWeek($sessionsPerWeek)
             ->setIsActive(true);
         $this->em->persist($team);
+        $this->em->flush();
+        self::getContainer()->get(PlanComposition::class)->ensureLines($team->getSeasonId(), [$team->getId() => ['sessionsPerWeek' => $sessionsPerWeek]]);
 
         return $team;
     }
@@ -306,20 +307,18 @@ final class SharedTrainingBlockStateProcessorTest extends KernelTestCase
             ->setStartDate(new DateTimeImmutable('2025-10-20'))
             ->setEndDate(new DateTimeImmutable('2025-10-26'));
         $this->em->persist($plan);
+        $this->em->flush();
+        // Lot 4, PR 3a : un plan naît avec une ligne par équipe de sa saison (la porte, comme `provisionPeriodPlan`).
+        SeasonPlanOf::id(self::getContainer(), $plan->getSeasonId());
 
         return $plan;
     }
 
     private function overrideSessions(Club $club, Season $season, SchedulePlan $plan, Team $team, int $sessions): void
     {
-        $override = (new TeamPeriodOverride)
-            ->setClubId($club->getId())
-            ->setSeasonId($season->getId())
-            ->setSchedulePlanId($plan->getId())
-            ->setTeamId($team->getId())
-            ->setIsActive(true)
-            ->setSessionsPerWeek($sessions);
-        $this->em->persist($override);
+        $override = self::getContainer()->get(PlanComposition::class)->lineOf($plan->getId(), $team->getId());
+        $override->setParticipating(true);
+        $override->setSessionsPerWeek($sessions ?? self::getContainer()->get(PlanComposition::class)->socleLinesOf([$team->getId()])[$team->getId()]->getSessionsPerWeek());
     }
 
     /**

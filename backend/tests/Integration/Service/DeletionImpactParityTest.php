@@ -1065,7 +1065,7 @@ final class DeletionImpactParityTest extends KernelTestCase
         // une simple colonne guid — c'est précisément pourquoi la cascade existe), donc rien
         // n'exige qu'elle existe. Même idiome qu'`OrphanPinGuardTest`.
         $team = (new Team)->setClubId($club->getId())->setSeasonId($season->getId())->setName('U13 F1')
-            ->setSportCategoryId('99999999-9999-4999-8999-999999999999')->setPriorityTierId(1)->setSessionsPerWeek(1)
+            ->setSportCategoryId('99999999-9999-4999-8999-999999999999')->setPriorityTierId(1)
             ->setForcedVenueId($forcedVenueId);
         $this->em->persist($team);
         $this->em->flush();

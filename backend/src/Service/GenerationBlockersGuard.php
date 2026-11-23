@@ -13,6 +13,7 @@ use App\Entity\SharedTrainingBlockTeam;
 use App\Entity\Team;
 use App\Enum\LockLevel;
 use App\Enum\RecapPinWording;
+use App\Plans\PlanComposition;
 use App\Plans\SoclePlan;
 use App\Repository\ConstraintRepository;
 use App\Repository\TeamRepository;
@@ -45,6 +46,7 @@ final readonly class GenerationBlockersGuard
         private SecondSessionSameDayDetector $secondSessionSameDayDetector,
         private PlanVenueClosures $planVenueClosures,
         private SoclePlan $soclePlan,
+        private PlanComposition $planComposition,
     ) {}
 
     /**
@@ -144,8 +146,10 @@ final readonly class GenerationBlockersGuard
      */
     public function overBookedOnEntities(array $reservations, string $clubId, string $seasonId): array
     {
+        // Les séances de saison : la ligne de chaque équipe au socle (lot 4, PR 3a).
+        $socleLines = $this->planComposition->teamsOf($this->soclePlan->idOf($seasonId));
         $teams = array_map(
-            static fn (Team $team): array => ['id' => $team->getId(), 'name' => $team->getName(), 'sessionsPerWeek' => $team->getSessionsPerWeek()],
+            static fn (Team $team): array => ['id' => $team->getId(), 'name' => $team->getName(), 'sessionsPerWeek' => ($socleLines[$team->getId()] ?? null)?->getSessionsPerWeek() ?? 0],
             $this->teamRepository->findBy(['clubId' => $clubId, 'seasonId' => $seasonId]),
         );
 

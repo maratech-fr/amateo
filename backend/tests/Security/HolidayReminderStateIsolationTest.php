@@ -146,7 +146,7 @@ final class HolidayReminderStateIsolationTest extends KernelTestCase
         // (b) une racine HOLIDAY de B, chevauchante, qui porte une version.
         $admin->executeStatement($entry, [self::PLANNED_ROOT, self::CLUB_B, self::SEASON_B, 'Stage de Noël', '2026-12-21', '2026-12-27', 'active', 'holiday', null]);
         $admin->executeStatement(
-            'INSERT INTO schedule_plan (id, version, created_at, updated_at, club_id, season_id, type, name, start_date, end_date, last_version_number, team_selection_initialized, calendar_entry_id) VALUES (?, 1, now(), now(), ?, ?, \'HOLIDAY\', \'Stage de Noël\', \'2026-12-21\', \'2026-12-27\', 1, false, ?)',
+            'INSERT INTO schedule_plan (id, version, created_at, updated_at, club_id, season_id, type, name, start_date, end_date, last_version_number, calendar_entry_id) VALUES (?, 1, now(), now(), ?, ?, \'HOLIDAY\', \'Stage de Noël\', \'2026-12-21\', \'2026-12-27\', 1, ?)',
             [self::PLANNED_PLAN, self::CLUB_B, self::SEASON_B, self::PLANNED_ROOT],
         );
         $admin->executeStatement(

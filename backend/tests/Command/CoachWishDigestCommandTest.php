@@ -19,6 +19,7 @@ use App\Enum\CalendarEntryKind;
 use App\Enum\CalendarEntryPeriodType;
 use App\Enum\SeasonStatus;
 use App\Enum\TeamCoachRole;
+use App\Plans\PlanComposition;
 use App\Repository\ClubUserRepository;
 use App\Repository\CoachWishTokenRepository;
 use App\Service\ClubDay;
@@ -249,6 +250,8 @@ final class CoachWishDigestCommandTest extends KernelTestCase
         $team = (new Team)->setClubId($club->getId())->setSeasonId($season->getId())
             ->setSportCategoryId('11111111-1111-4111-8111-111111111111')->setPriorityTierId(1)->setName('SM1');
         $this->em->persist($team);
+        $this->em->flush();
+        self::getContainer()->get(PlanComposition::class)->ensureLines($team->getSeasonId());
         $this->em->flush();
 
         $campaign = (new CoachWishCampaign)->setClubId($club->getId())->setSeasonId($season->getId())

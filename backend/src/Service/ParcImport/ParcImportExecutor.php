@@ -18,6 +18,7 @@ use App\Entity\Team;
 use App\Entity\Venue;
 use App\Entity\VenueTrainingSlot;
 use App\Enum\Gender;
+use App\Plans\PlanComposition;
 use App\Plans\SoclePlan;
 use App\Service\Basketball\TeamCreationSuggester;
 use App\Service\Basketball\VenueAliasResolver;
@@ -161,6 +162,7 @@ final class ParcImportExecutor
         private readonly TeamCreationSuggester $suggester,
         private readonly VenueGridOverlap $gridOverlap,
         private readonly SoclePlan $soclePlan,
+        private readonly PlanComposition $planComposition,
     ) {}
 
     /**
@@ -316,9 +318,11 @@ final class ParcImportExecutor
                 $this->teamIdByEquipesIndex[$i] = $team->getId();
                 // Équipe appariée : SEUL le nombre de séances peut bouger, et seulement si la mise à
                 // jour a été acceptée (corrections.seances). Jamais le genre, la catégorie, le niveau.
+                // Lot 4, PR 3a : les séances sont celles de sa ligne au socle.
                 $sessions = $decision['corrections']['seances'] ?? null;
-                if (\is_int($sessions) && $sessions >= 1 && $sessions !== $team->getSessionsPerWeek()) {
-                    $team->setSessionsPerWeek($sessions);
+                $socleLine = $this->planComposition->lineOf($this->soclePlan->idOf($seasonId), $team->getId());
+                if (\is_int($sessions) && $sessions >= 1 && $sessions !== $socleLine->getSessionsPerWeek()) {
+                    $socleLine->setSessionsPerWeek($sessions);
                     $this->entityManager->flush();
                     ++$recap['misAJour'];
                 } else {
@@ -344,13 +348,14 @@ final class ParcImportExecutor
                 ->setSportCategoryId($this->categoryIdForCreatedTeam($entry, $club))
                 ->setPriorityTierId($tierId)
                 ->setName($nom)
-                ->setSessionsPerWeek($this->sessionsOf($entry, $decision))
                 ->setIsActive(true)
                 ->setGender($gender)
                 ->setIsCtc($isCtc)
                 ->setCtcPartner($ctcPartner);
             $this->entityManager->persist($team);
             $this->entityManager->flush();
+            // Sa ligne dans chaque plan de la saison : au socle, les séances lues dans le fichier.
+            $this->planComposition->ensureLines($seasonId, [$team->getId() => ['sessionsPerWeek' => $this->sessionsOf($entry, $decision)]]);
             $this->teamByName[$this->normalizer->normalize($nom)] = $team->getId();
             $this->teamIdByEquipesIndex[$i] = $team->getId();
             ++$recap['crees'];
@@ -758,14 +763,16 @@ final class ParcImportExecutor
             $max = max([0, ...$disjointByDay]);
             $firstDay = (int) array_search($max, $disjointByDay, true);
             $team = $this->ownedTeam($teamId, $club, $seasonId, 'reservations', 0);
-            $line = static fn (string $outcome, int $day, int $count): array => ['teamId' => $team->getId(), 'teamName' => $team->getName(), 'outcome' => $outcome, 'maxSessionsPerDay' => $team->getMaxSessionsPerDay(), 'day' => $day, 'count' => $count];
+            // Lot 4, PR 3a : le plafond par jour est celui de sa ligne au socle.
+            $socleLine = $this->planComposition->lineOf($this->soclePlan->idOf($seasonId), $team->getId());
+            $line = static fn (string $outcome, int $day, int $count): array => ['teamId' => $team->getId(), 'teamName' => $team->getName(), 'outcome' => $outcome, 'maxSessionsPerDay' => $socleLine->getMaxSessionsPerDay(), 'day' => $day, 'count' => $count];
             if ($max > self::MAX_SESSIONS_PER_DAY) {
-                if ($team->getMaxSessionsPerDay() < self::MAX_SESSIONS_PER_DAY) {
-                    $team->setMaxSessionsPerDay(self::MAX_SESSIONS_PER_DAY);
+                if ($socleLine->getMaxSessionsPerDay() < self::MAX_SESSIONS_PER_DAY) {
+                    $socleLine->setMaxSessionsPerDay(self::MAX_SESSIONS_PER_DAY);
                 }
                 $lines[] = $line('capped', $firstDay, $max);
-            } elseif ($max > $team->getMaxSessionsPerDay()) {
-                $team->setMaxSessionsPerDay($max);
+            } elseif ($max > $socleLine->getMaxSessionsPerDay()) {
+                $socleLine->setMaxSessionsPerDay($max);
                 $lines[] = $line('raised', $firstDay, $max);
             }
             foreach ($overlapDays as $day => $count) {

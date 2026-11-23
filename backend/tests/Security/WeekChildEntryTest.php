@@ -10,6 +10,7 @@ use App\Entity\Constraint;
 use App\Entity\Schedule;
 use App\Entity\SchedulePlan;
 use App\Entity\Season;
+use App\Entity\Team;
 use App\Entity\User;
 use App\Enum\ConstraintFamily;
 use App\Enum\ConstraintRuleType;
@@ -17,7 +18,9 @@ use App\Enum\ConstraintScope;
 use App\Enum\SchedulePlanType;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
+use App\Plans\PlanComposition;
 use App\Service\SeasonResolver;
+use App\Tests\SeasonPlanOf;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -83,12 +86,19 @@ final class WeekChildEntryTest extends WebTestCase
         $motherId = $this->postPeriod($user, 'holiday', 'Vacances bloc puis semaines', '2026-11-09', '2026-11-22');
         $motherPlanId = $this->adaptPeriod($user, $motherId);
 
-        // Un réglage ancré au plan-bloc (le gestionnaire avait commencé le chemin bloc).
+        // Un réglage ancré au plan-bloc (le gestionnaire avait commencé le chemin bloc), sur une vraie équipe de la saison
+        // (lot 4, PR 3a : le réglage est la ligne de l'équipe dans le plan).
+        $team = (new Team)->setClubId($club->getId())->setSeasonId((string) $this->planOf($club->getId(), $motherId)?->getSeasonId())
+            ->setSportCategoryId('33333333-3333-3333-3333-333333333333')->setPriorityTierId(1)->setName('SM1')->setIsActive(true);
+        $this->em->persist($team);
+        $this->em->flush();
+        self::getContainer()->get(PlanComposition::class)->ensureLines($team->getSeasonId());
+        $teamId = $team->getId();
         $this->client->request('POST', '/api/team_period_overrides', [], [], $this->authHeaders($user) + [
             'CONTENT_TYPE' => 'application/json',
         ], json_encode([
             'schedulePlanId' => $motherPlanId,
-            'teamId' => 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+            'teamId' => $teamId,
             'isActive' => false,
         ], \JSON_THROW_ON_ERROR));
         self::assertResponseStatusCodeSame(201);
@@ -101,7 +111,7 @@ final class WeekChildEntryTest extends WebTestCase
         self::assertInstanceOf(SchedulePlan::class, $this->planOf($club->getId(), $child1), 'le plan de la semaine est né');
         self::assertSame(
             0,
-            (int) $this->em->getConnection()->fetchOne('SELECT COUNT(*) FROM team_period_override WHERE schedule_plan_id = :pid', ['pid' => $motherPlanId]),
+            (int) $this->em->getConnection()->fetchOne('SELECT COUNT(*) FROM plan_team WHERE schedule_plan_id = :pid', ['pid' => $motherPlanId]),
             'les réglages ancrés au plan-bloc partent avec lui',
         );
 
@@ -520,6 +530,7 @@ final class WeekChildEntryTest extends WebTestCase
         $season->setTransitionData([]);
         $this->em->persist($season);
         $this->em->flush();
+        SeasonPlanOf::id(self::getContainer(), $season->getId());
 
         return [$user, $club, $season];
     }

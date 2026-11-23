@@ -7,10 +7,12 @@ namespace App\State\Processor;
 use App\ApiResource\TeamResource;
 use App\Dto\TeamInput;
 use App\Entity\Club;
+use App\Entity\PlanTeam;
 use App\Entity\Season;
 use App\Entity\Team;
 use App\Enum\Gender;
 use App\Enum\TeamLevel;
+use App\Plans\PlanComposition;
 use App\Service\ManagementAccessGuard;
 use App\Service\PlanEntitlements;
 use App\Service\SeasonAccessGuard;
@@ -26,6 +28,13 @@ use Symfony\Component\HttpKernel\Exception\UnprocessableEntityHttpException;
  */
 class TeamStateProcessor extends AbstractStateProcessor
 {
+    /**
+     * Les séances et le plafond saisis à la création, en attente de la ligne du socle (posée après l'écriture).
+     *
+     * @var array{sessionsPerWeek?: int, maxSessionsPerDay?: int}|null
+     */
+    private ?array $createdSocleValues = null;
+
     public function __construct(
         EntityManagerInterface $entityManager,
         RequestStack $requestStack,
@@ -35,6 +44,7 @@ class TeamStateProcessor extends AbstractStateProcessor
         private readonly TeamEngagementGuard $teamEngagementGuard,
         private readonly PlanEntitlements $planEntitlements,
         private readonly SocleGuard $socleGuard,
+        private readonly PlanComposition $planComposition,
     ) {
         parent::__construct($entityManager, $requestStack, $seasonResolver, $seasonAccessGuard, $managementAccessGuard);
     }
@@ -93,12 +103,9 @@ class TeamStateProcessor extends AbstractStateProcessor
             }
         }
         $entity->setLevel(null !== $input->level ? TeamLevel::tryFrom($input->level) : null);
-        if (null !== $input->sessionsPerWeek) {
-            $entity->setSessionsPerWeek($input->sessionsPerWeek);
-        }
-        if (null !== $input->maxSessionsPerDay) {
-            $entity->setMaxSessionsPerDay($input->maxSessionsPerDay);
-        }
+        // Les séances et le plafond saisis partent sur la ligne du socle, posée après l'écriture de l'équipe
+        // (afterPersist) ; ils ne vivent plus sur l'équipe.
+        $this->createdSocleValues = array_filter(['sessionsPerWeek' => $input->sessionsPerWeek, 'maxSessionsPerDay' => $input->maxSessionsPerDay], static fn (?int $value): bool => null !== $value);
         $entity->setMinSessionsOverride($input->minSessionsOverride);
         $entity->setMatchDay($input->matchDay);
         $entity->setForcedVenueId($input->forcedVenueId);
@@ -165,18 +172,20 @@ class TeamStateProcessor extends AbstractStateProcessor
             $entity->setLevel($newLevel);
         }
 
+        // Lot 4, PR 3a — séances et plafond par jour : la ligne de l'équipe au socle. Absent = on garde.
+        $socleLine = $this->socleLineOf($entity);
         if (null !== $input->sessionsPerWeek) {
-            $entity->setSessionsPerWeek($input->sessionsPerWeek);
+            $socleLine->setSessionsPerWeek($input->sessionsPerWeek);
         }
 
         // Séances par jour : absent = on garde. Sous planning de saison EN VIGUEUR, la valeur ne
         // change plus (le même verrou que l'écran pose sur le nombre de séances) ; un écho à
-        // l'identique passe, le plafond d'une PÉRIODE reste libre (surcharge de période).
-        if (null !== $input->maxSessionsPerDay && $input->maxSessionsPerDay !== $entity->getMaxSessionsPerDay()) {
+        // l'identique passe, le plafond d'une PÉRIODE reste libre (réglage de période).
+        if (null !== $input->maxSessionsPerDay && $input->maxSessionsPerDay !== $socleLine->getMaxSessionsPerDay()) {
             if ($this->socleGuard->isSeasonPlanChosen($entity->getSeasonId())) {
                 $this->refuse('Rouvrez le planning de saison pour modifier le nombre de séances.');
             }
-            $entity->setMaxSessionsPerDay($input->maxSessionsPerDay);
+            $socleLine->setMaxSessionsPerDay($input->maxSessionsPerDay);
         }
 
         // PUT PARTIEL : un champ ABSENT du payload garde sa valeur. Aucun client
@@ -216,11 +225,25 @@ class TeamStateProcessor extends AbstractStateProcessor
     }
 
     /**
+     * Lot 4, PR 3a — une équipe créée reçoit sa ligne dans chaque plan de sa saison, par la seule porte : au socle,
+     * les séances et le plafond saisis ; dans un plan de période, ceux du socle, cochée.
+     */
+    protected function afterPersist(object $entity): void
+    {
+        if (!$entity instanceof Team || null === $this->createdSocleValues) {
+            return;
+        }
+        $values = $this->createdSocleValues;
+        $this->createdSocleValues = null;
+        $this->planComposition->ensureLines($entity->getSeasonId(), [$entity->getId() => $values]);
+    }
+
+    /**
      * @param Team $entity
      */
     protected function mapEntityToOutput(object $entity): TeamResource
     {
-        $dto = TeamResource::fromEntity($entity);
+        $dto = TeamResource::fromEntity($entity, $this->socleLineOf($entity));
         // `fromEntity` laisse isEngaged à false : sans ça, un POST/PUT répondrait
         // « isEngaged: false » là où le GET de la même équipe répond true — le même
         // champ donnant deux réponses selon le verbe, donc deux vérités. Un client qui
@@ -229,6 +252,11 @@ class TeamStateProcessor extends AbstractStateProcessor
         $dto->isEngaged = $this->teamEngagementGuard->isEngaged($entity->getId());
 
         return $dto;
+    }
+
+    private function socleLineOf(Team $team): PlanTeam
+    {
+        return $this->planComposition->socleLinesOf([$team->getId()])[$team->getId()];
     }
 
     /**

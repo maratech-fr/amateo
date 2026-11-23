@@ -16,6 +16,7 @@ use App\Enum\CalendarEntryKind;
 use App\Enum\CalendarEntryPeriodType;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
+use App\Plans\PlanComposition;
 use App\Service\SchedulePlanProvisioner;
 use App\Service\SeasonResolver;
 use App\Tests\ChoosesPlanVersionTrait;
@@ -276,8 +277,11 @@ final class ClubActivityTraceTest extends WebTestCase
         $this->em->flush();
         $this->provisionSeasonPlan($season);
 
-        $this->em->persist((new Team)->setClubId($club->getId())->setSeasonId($season->getId())->setName('U15')
-            ->setSportCategoryId('cccccccc-cccc-4ccc-8ccc-cccccccccccc')->setPriorityTierId(1)->setSessionsPerWeek(1));
+        $team = (new Team)->setClubId($club->getId())->setSeasonId($season->getId())->setName('U15')
+            ->setSportCategoryId('cccccccc-cccc-4ccc-8ccc-cccccccccccc')->setPriorityTierId(1);
+        $this->em->persist($team);
+        $this->em->flush();
+        self::getContainer()->get(PlanComposition::class)->ensureLines($team->getSeasonId(), [$team->getId() => ['sessionsPerWeek' => 1]]);
         $venue = $this->newVenue($club->getId(), $season->getId(), 'G')->setCanSplit(false);
         $this->em->persist($venue);
         $this->em->flush();

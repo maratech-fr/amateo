@@ -16,6 +16,7 @@ use App\Entity\User;
 use App\Enum\ImplicitRuleIntensity;
 use App\Enum\ImplicitRuleKey;
 use App\Enum\SeasonStatus;
+use App\Plans\PlanComposition;
 use App\Service\SeasonResolver;
 use App\Tests\SeasonPlanOf;
 use App\Tests\TenantGucTrait;
@@ -317,9 +318,10 @@ final class TenantIsolationTest extends WebTestCase
         $team->setSportCategoryId($category->getId());
         $team->setPriorityTierId($tier->getId());
         $team->setName($name);
-        $team->setSessionsPerWeek(2);
         $team->setIsActive(true);
         $this->em->persist($team);
+        $this->em->flush();
+        self::getContainer()->get(PlanComposition::class)->ensureLines($team->getSeasonId(), [$team->getId() => ['sessionsPerWeek' => 2]]);
         $this->em->flush();
 
         return $team;

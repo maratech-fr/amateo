@@ -21,7 +21,9 @@ use App\Enum\CalendarEntryPeriodType;
 use App\Enum\SchedulePlanType;
 use App\Enum\SeasonStatus;
 use App\Enum\TeamCoachRole;
+use App\Plans\PlanComposition;
 use App\Tests\CreatesPeopleAndPlacesTrait;
+use App\Tests\SeasonPlanOf;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -468,6 +470,7 @@ final class CoachWishCampaignApiTest extends WebTestCase
         $this->coachA = $this->newCoach('Maxime', 'Durand');
         $this->coachB = $this->newCoach('Mara', 'Petit');
         $this->em->flush();
+        SeasonPlanOf::id(self::getContainer(), $this->season->getId());
 
         // coachA → teamA (MAIN) · coachB → teamB (MAIN).
         $this->em->persist((new TeamCoach)->setClubId($this->club->getId())->setSeasonId($this->season->getId())
@@ -626,6 +629,8 @@ final class CoachWishCampaignApiTest extends WebTestCase
         $team = (new Team)->setClubId($this->club->getId())->setSeasonId($this->season->getId())
             ->setSportCategoryId('11111111-1111-4111-8111-111111111111')->setPriorityTierId(1)->setName($name);
         $this->em->persist($team);
+        $this->em->flush();
+        self::getContainer()->get(PlanComposition::class)->ensureLines($team->getSeasonId());
 
         return $team;
     }

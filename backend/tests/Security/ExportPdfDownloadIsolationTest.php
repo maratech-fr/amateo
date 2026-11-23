@@ -14,6 +14,7 @@ use App\Entity\User;
 use App\Enum\FixtureHomeAway;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
+use App\Plans\PlanComposition;
 use App\Service\BrandAssets;
 use App\Service\PdfGenerator;
 use App\Service\ProductIdentity;
@@ -282,9 +283,10 @@ final class ExportPdfDownloadIsolationTest extends WebTestCase
             ->setSportCategoryId('11111111-1111-4111-8111-111111111111')
             ->setPriorityTierId(1)
             ->setName('U13 M1')
-            ->setSessionsPerWeek(2)
             ->setIsActive(true);
         $this->em->persist($team);
+        $this->em->flush();
+        self::getContainer()->get(PlanComposition::class)->ensureLines($team->getSeasonId(), [$team->getId() => ['sessionsPerWeek' => 2]]);
 
         $fixture = new Fixture;
         $fixture->setClubId($club->getId());

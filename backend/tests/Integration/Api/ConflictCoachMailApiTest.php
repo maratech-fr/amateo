@@ -19,6 +19,7 @@ use App\Entity\User;
 use App\Enum\FixtureHomeAway;
 use App\Enum\SeasonStatus;
 use App\Enum\TeamCoachRole;
+use App\Plans\PlanComposition;
 use App\Repository\ConflictMailReceiptRepository;
 use App\Service\ConflictCoachMailing;
 use App\Service\ConflictMailingLock;
@@ -1113,8 +1114,10 @@ final class ConflictCoachMailApiTest extends WebTestCase
         $this->em->persist($category);
 
         $team = new Team()->setClubId($this->club->getId())->setSeasonId($this->season->getId())
-            ->setSportCategoryId($category->getId())->setPriorityTierId(3)->setName($name)->setSessionsPerWeek(2)->setIsActive(true);
+            ->setSportCategoryId($category->getId())->setPriorityTierId(3)->setName($name)->setIsActive(true);
         $this->em->persist($team);
+        $this->em->flush();
+        self::getContainer()->get(PlanComposition::class)->ensureLines($team->getSeasonId(), [$team->getId() => ['sessionsPerWeek' => 2]]);
         $this->em->flush();
 
         return $team;

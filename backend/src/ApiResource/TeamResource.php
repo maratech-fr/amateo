@@ -17,6 +17,7 @@ use App\Access\Audience;
 use App\Access\ClubResource;
 use App\Access\Module;
 use App\Dto\TeamInput;
+use App\Entity\PlanTeam;
 use App\Entity\Team;
 use App\Enum\Gender;
 use App\Enum\TeamLevel;
@@ -110,7 +111,8 @@ class TeamResource
     #[Groups(['read'])]
     public ?string $ctcPartner = null;
 
-    public static function fromEntity(Team $entity): self
+    /** Lot 4, PR 3a : les séances et le plafond par jour se lisent sur la ligne de l'équipe au socle. */
+    public static function fromEntity(Team $entity, PlanTeam $socleLine): self
     {
         $dto = new self;
         $dto->id = $entity->getId();
@@ -123,8 +125,8 @@ class TeamResource
         $dto->name = $entity->getName();
         $dto->gender = $entity->getGender();
         $dto->level = $entity->getLevel();
-        $dto->sessionsPerWeek = $entity->getSessionsPerWeek();
-        $dto->maxSessionsPerDay = $entity->getMaxSessionsPerDay();
+        $dto->sessionsPerWeek = $socleLine->getSessionsPerWeek();
+        $dto->maxSessionsPerDay = $socleLine->getMaxSessionsPerDay();
         $dto->minSessionsOverride = $entity->getMinSessionsOverride();
         $dto->matchDay = $entity->getMatchDay();
         $dto->forcedVenueId = $entity->getForcedVenueId();

@@ -10,6 +10,7 @@ use App\Entity\CoachWishMutualization;
 use App\Entity\Competition;
 use App\Entity\Fixture;
 use App\Entity\MatchConstraint;
+use App\Entity\PlanTeam;
 use App\Entity\Reservation;
 use App\Entity\ScheduleDiagnostic;
 use App\Entity\ScheduleSlotTemplate;
@@ -17,12 +18,12 @@ use App\Entity\Team;
 use App\Entity\TeamCoach;
 use App\Entity\TeamLink;
 use App\Entity\TeamMatchHabit;
-use App\Entity\TeamPeriodOverride;
 use App\Entity\VenueMatchWindow;
 use App\Entity\VenueOccupancy;
 use App\Entity\VenuePeriodOverride;
 use App\Entity\VenueTrainingSlot;
 use App\Enum\ConstraintScope;
+use App\Plans\PlanComposition;
 
 /**
  * **La** liste de ce qu'emporte la suppression d'une équipe, d'un gymnase ou d'un coach.
@@ -72,7 +73,9 @@ final class CascadePlan
             // les matchs partiront avec l'équipe au lieu de pendre sur un team_id mort.
             new DeleteByFieldStep(Fixture::class, 'teamId', new ImpactLabel('team_fixture', 'match', 'matchs')),
             new DeleteByFieldStep(Competition::class, 'teamId', new ImpactLabel('team_competition', 'engagement en compétition', 'engagements en compétition')),
-            new DeleteByFieldStep(TeamPeriodOverride::class, 'teamId', new ImpactLabel('team_period_override', 'réglage de période', 'réglages de période')),
+            // Lot 4, PR 3a — les lignes de l'équipe dans chaque plan partent toutes, celle du socle comprise ; la fenêtre
+            // n'annonce que ses réglages de période, les lignes qui diffèrent du socle.
+            new DeleteByFieldStep(PlanTeam::class, 'teamId', new ImpactLabel('team_period_override', 'réglage de période', 'réglages de période'), countedWhen: PlanComposition::DIFFERS_FROM_SOCLE_DQL),
             // #10 — sans équipe, une doléance n'a plus de sens : elle part.
             new DeleteByFieldStep(CoachWish::class, 'teamId', new ImpactLabel('team_coach_wish', 'demande de coach', 'demandes de coach')),
             // #10 D2 — la demande de mutualisation DONT CETTE ÉQUIPE EST LE SUJET part avec elle.

@@ -26,6 +26,7 @@ use App\Enum\FixtureStatus;
 use App\Enum\FixtureUnplacedReason;
 use App\Enum\SeasonStatus;
 use App\Exception\ImportRejectedException;
+use App\Plans\PlanComposition;
 use App\Repository\FbiIngestionRepository;
 use App\Service\Basketball\VenueLabelNormalizer;
 use App\Service\FbiFixtureImporter;
@@ -3013,9 +3014,10 @@ final class FbiFixtureImporterTest extends KernelTestCase
         $team->setSportCategoryId($this->createCategoryId());
         $team->setPriorityTierId(3);
         $team->setName($name);
-        $team->setSessionsPerWeek(2);
         $team->setIsActive(true);
         $this->em->persist($team);
+        $this->em->flush();
+        self::getContainer()->get(PlanComposition::class)->ensureLines($team->getSeasonId(), [$team->getId() => ['sessionsPerWeek' => 2]]);
         $this->em->flush();
 
         return $team;

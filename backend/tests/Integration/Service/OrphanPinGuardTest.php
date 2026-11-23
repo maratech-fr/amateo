@@ -26,6 +26,7 @@ use App\Enum\LockLevel;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
 use App\Enum\VenuePeriodMode;
+use App\Plans\PlanComposition;
 use App\Service\OrphanPinGuard;
 use App\Service\SchedulePlanProvisioner;
 use App\Tests\ChoosesPlanVersionTrait;
@@ -555,9 +556,10 @@ final class OrphanPinGuardTest extends WebTestCase
             ->setSportCategoryId('99999999-9999-4999-8999-999999999999')
             ->setPriorityTierId(1)
             ->setName($name)
-            ->setSessionsPerWeek(1)
             ->setIsActive(true);
         $this->em->persist($team);
+        $this->em->flush();
+        self::getContainer()->get(PlanComposition::class)->ensureLines($team->getSeasonId(), [$team->getId() => ['sessionsPerWeek' => 1]]);
         $this->em->flush();
     }
 

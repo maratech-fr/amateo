@@ -9,6 +9,7 @@ use App\Entity\Reservation;
 use App\Entity\SharedTrainingBlock;
 use App\Entity\SharedTrainingBlockTeam;
 use App\Entity\Team;
+use App\Plans\PlanComposition;
 use App\State\Processor\SharedTrainingBlockStateProcessor;
 use Doctrine\ORM\EntityManagerInterface;
 
@@ -34,7 +35,7 @@ final class SoloReservationBudget
 {
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
-        private readonly EffectiveTeamSessions $effectiveTeamSessions,
+        private readonly PlanComposition $planComposition,
     ) {}
 
     /**
@@ -121,7 +122,8 @@ final class SoloReservationBudget
     private function budgetFor(Team $team, string $planId, array $blocks, array $reservations): SoloBudget
     {
         $teamId = $team->getId();
-        $effective = $this->effectiveTeamSessions->perWeek($team, $planId);
+        // Les séances de l'équipe dans CE plan : sa ligne (lot 4, PR 3a).
+        $effective = $this->planComposition->lineOf($planId, $teamId)->getSessionsPerWeek();
 
         $block = 0;
         $inBlock = false;

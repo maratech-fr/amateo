@@ -10,6 +10,7 @@ use App\Entity\SportCategory;
 use App\Entity\Team;
 use App\Enum\Gender;
 use App\Enum\TeamLevel;
+use App\Plans\PlanComposition;
 use App\Service\PlanEntitlements;
 use App\Service\SeasonResolver;
 use DateTimeImmutable;
@@ -57,6 +58,7 @@ final class FfbbTeamImporter
         private readonly LoggerInterface $logger,
         private readonly PlanEntitlements $planEntitlements,
         private readonly TeamCreationSuggester $suggester,
+        private readonly PlanComposition $planComposition,
     ) {}
 
     /**
@@ -144,7 +146,7 @@ final class FfbbTeamImporter
             $team->setLevel($entry['level']);
             $team->setPriorityTierId($suggestion['tierId']);
             $team->setTierOrder($order);
-            // sessionsPerWeek : défaut d'entité = 2 (décision fondateur 2026-08-04).
+            // Séances : la valeur par défaut de la ligne du socle, 2 (décision fondateur 2026-08-04).
             $this->entityManager->persist($team);
             ++$created;
         }
@@ -154,6 +156,8 @@ final class FfbbTeamImporter
             $club->setFfbbTeamsImportedAt(new DateTimeImmutable);
         }
         $this->entityManager->flush();
+        // Lot 4, PR 3a : chaque équipe créée reçoit sa ligne dans chaque plan de la saison.
+        $this->planComposition->ensureLines($season->getId());
 
         return $created;
     }

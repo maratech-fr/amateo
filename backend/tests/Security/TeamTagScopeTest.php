@@ -17,6 +17,7 @@ use App\Enum\ConstraintScope;
 use App\Enum\SeasonStatus;
 use App\Enum\TeamLevel;
 use App\EventListener\CacheInvalidationListener;
+use App\Plans\PlanComposition;
 use App\Service\ScheduleConstraintBuilder;
 use App\Service\TeamTagResolver;
 use App\Service\TenantDoctrineScope;
@@ -309,9 +310,10 @@ final class TeamTagScopeTest extends KernelTestCase
         $nextTeam->setSportCategoryId($this->teams['U11']->getSportCategoryId());
         $nextTeam->setPriorityTierId($this->priorityTier->getId());
         $nextTeam->setName('U11 saison suivante');
-        $nextTeam->setSessionsPerWeek(1);
         $nextTeam->setIsActive(true);
         $this->em->persist($nextTeam);
+        $this->em->flush();
+        self::getContainer()->get(PlanComposition::class)->ensureLines($nextTeam->getSeasonId(), [$nextTeam->getId() => ['sessionsPerWeek' => 1]]);
 
         $rule = new Constraint;
         $rule->setClubId($this->club->getId());
@@ -396,9 +398,10 @@ final class TeamTagScopeTest extends KernelTestCase
         $otherTeam->setSportCategoryId($otherCategory->getId());
         $otherTeam->setPriorityTierId($this->priorityTier->getId());
         $otherTeam->setName('U13 de l\'autre club');
-        $otherTeam->setSessionsPerWeek(1);
         $otherTeam->setIsActive(true);
         $this->em->persist($otherTeam);
+        $this->em->flush();
+        self::getContainer()->get(PlanComposition::class)->ensureLines($otherTeam->getSeasonId(), [$otherTeam->getId() => ['sessionsPerWeek' => 1]]);
         $this->em->flush();
 
         // Le processus sert d'abord l'autre club (un worker enchaîne les messages).
@@ -541,9 +544,10 @@ final class TeamTagScopeTest extends KernelTestCase
         if ($level instanceof TeamLevel) {
             $team->setLevel($level);
         }
-        $team->setSessionsPerWeek(1);
         $team->setIsActive(true);
         $this->em->persist($team);
+        $this->em->flush();
+        self::getContainer()->get(PlanComposition::class)->ensureLines($team->getSeasonId(), [$team->getId() => ['sessionsPerWeek' => 1]]);
         $this->em->flush();
 
         return $team;

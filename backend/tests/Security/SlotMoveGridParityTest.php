@@ -24,6 +24,7 @@ use App\Enum\SeasonStatus;
 use App\Enum\VenueDayState;
 use App\Exception\EvictTargetMismatchException;
 use App\Exception\SlotUnavailableException;
+use App\Plans\PlanComposition;
 use App\Service\ClubGenerationLock;
 use App\Service\EngineClient;
 use App\Service\MoveSlotService;
@@ -546,8 +547,10 @@ final class SlotMoveGridParityTest extends KernelTestCase
             $this->em->flush();
         }
 
-        $team = (new Team)->setClubId($clubId)->setSeasonId($seasonId)->setSportCategoryId($category->getId())->setPriorityTierId($tier->getId())->setName('U13')->setSessionsPerWeek(2);
+        $team = (new Team)->setClubId($clubId)->setSeasonId($seasonId)->setSportCategoryId($category->getId())->setPriorityTierId($tier->getId())->setName('U13');
         $this->em->persist($team);
+        $this->em->flush();
+        self::getContainer()->get(PlanComposition::class)->ensureLines($team->getSeasonId(), [$team->getId() => ['sessionsPerWeek' => 2]]);
         $this->em->flush();
 
         return $team;

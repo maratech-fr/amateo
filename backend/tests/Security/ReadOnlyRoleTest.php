@@ -39,8 +39,8 @@ final class ReadOnlyRoleTest extends KernelTestCase
     private const string CLUB_B = '22222222-2222-4222-8222-bbbbbbbbbbbb';
 
     /** Une équipe semée en SQL brut (étalon `team`, comme `RlsIsolationTest`) ; saison et catégorie sont des guids nus. */
-    private const string INSERT_TEAM_SQL = 'INSERT INTO team (id, version, created_at, updated_at, club_id, season_id, sport_category_id, priority_tier_id, name, sessions_per_week, is_active)'
-        . ' VALUES (gen_random_uuid(), 1, now(), now(), ?, gen_random_uuid(), gen_random_uuid(), 1, ?, 1, true)';
+    private const string INSERT_TEAM_SQL = 'INSERT INTO team (id, version, created_at, updated_at, club_id, season_id, sport_category_id, priority_tier_id, name, is_active)'
+        . ' VALUES (gen_random_uuid(), 1, now(), now(), ?, gen_random_uuid(), gen_random_uuid(), 1, ?, true)';
 
     /**
      * Même énumération des tables club_id que RlsIsolationTest / la migration :

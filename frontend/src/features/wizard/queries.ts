@@ -675,12 +675,8 @@ export function useCreateTeamPeriodOverride(schedulePlanId: string | null) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (body: wizardApi.TeamPeriodOverridePayload) => wizardApi.createTeamPeriodOverride(body),
-    // Return the invalidation promise so mutateAsync awaits the refetch — batch
-    // seed/ramp keep `busy` until the overrides list is fresh (no click on stale state).
-    // No plan refetch: the first override flips teamSelectionInitialized server-side,
-    // but in-session re-seed is already guarded by seededPeriods + a non-empty overrides
-    // list, and reload re-fetches the plan fresh — so mirroring the flip into cache on
-    // every create only buys N redundant refetches.
+    // Return the invalidation promise so mutateAsync awaits the refetch — a batch ramp
+    // keeps `busy` until the overrides list is fresh (no click on stale state).
     // P2-60 — un override de séances change S(T), donc R(T) : invalider aussi le budget solo.
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["wizard", "team_period_overrides", schedulePlanId] });

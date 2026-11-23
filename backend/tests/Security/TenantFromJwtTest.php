@@ -13,6 +13,8 @@ use App\Entity\SportCategory;
 use App\Entity\Team;
 use App\Entity\User;
 use App\Enum\SeasonStatus;
+use App\Plans\PlanComposition;
+use App\Tests\SeasonPlanOf;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -129,6 +131,7 @@ final class TenantFromJwtTest extends WebTestCase
         $this->em->persist($season);
 
         $this->em->flush();
+        SeasonPlanOf::id(self::getContainer(), $season->getId());
 
         return [$user, $club, $season];
     }
@@ -169,9 +172,10 @@ final class TenantFromJwtTest extends WebTestCase
         $team->setSportCategoryId($category->getId());
         $team->setPriorityTierId($tier->getId());
         $team->setName($name);
-        $team->setSessionsPerWeek(2);
         $team->setIsActive(true);
         $this->em->persist($team);
+        $this->em->flush();
+        self::getContainer()->get(PlanComposition::class)->ensureLines($team->getSeasonId(), [$team->getId() => ['sessionsPerWeek' => 2]]);
         $this->em->flush();
 
         return $team;

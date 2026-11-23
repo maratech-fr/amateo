@@ -20,6 +20,7 @@ use App\Enum\FixtureHomeAway;
 use App\Enum\FixturePlacementSource;
 use App\Enum\FixtureStatus;
 use App\Enum\SeasonStatus;
+use App\Plans\PlanComposition;
 use App\Service\MatchPlacementPayloadBuilder;
 use App\Service\SeasonResolver;
 use App\Tests\CreatesPeopleAndPlacesTrait;
@@ -494,9 +495,10 @@ final class MatchPlacementContractSchemaTest extends KernelTestCase
         $team->setSportCategoryId($category->getId());
         $team->setPriorityTierId(3);
         $team->setName('SF3');
-        $team->setSessionsPerWeek(2);
         $team->setIsActive(true);
         $em->persist($team);
+        $em->flush();
+        self::getContainer()->get(PlanComposition::class)->ensureLines($team->getSeasonId(), [$team->getId() => ['sessionsPerWeek' => 2]]);
 
         // La rencontre seedée est un match de CHAMPIONNAT (competitionId non nul) :
         // un amical ne va plus au solveur (P4-193), il sortirait du payload et

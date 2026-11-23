@@ -11,6 +11,7 @@ use App\Entity\Sport;
 use App\Entity\SportCategory;
 use App\Entity\Team;
 use App\Enum\SeasonStatus;
+use App\Plans\PlanComposition;
 use App\Service\TeamTagResolver;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
@@ -138,9 +139,10 @@ final class TeamTagResolverMemoResetTest extends KernelTestCase
         $this->team->setSportCategoryId($this->category->getId());
         $this->team->setPriorityTierId(1);
         $this->team->setName('U11 1');
-        $this->team->setSessionsPerWeek(1);
         $this->team->setIsActive(true);
         $this->em->persist($this->team);
+        $this->em->flush();
+        self::getContainer()->get(PlanComposition::class)->ensureLines($this->team->getSeasonId(), [$this->team->getId() => ['sessionsPerWeek' => 1]]);
         $this->em->flush();
         $this->resolver->reset();
     }

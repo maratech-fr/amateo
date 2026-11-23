@@ -134,7 +134,7 @@ final class TeamMatchDayIsoMigrationTest extends KernelTestCase
     {
         $id = $this->uuid();
         $this->admin->executeStatement(
-            'INSERT INTO team (id, created_at, updated_at, club_id, season_id, sport_category_id, priority_tier_id, name, sessions_per_week, is_active, match_day) VALUES (?, now(), now(), ?, ?, ?, 3, ?, 2, true, ?)',
+            'INSERT INTO team (id, created_at, updated_at, club_id, season_id, sport_category_id, priority_tier_id, name, is_active, match_day) VALUES (?, now(), now(), ?, ?, ?, 3, ?, true, ?)',
             [$id, $clubId, $seasonId, $this->uuid(), 'Équipe ' . $id, $matchDay],
         );
 

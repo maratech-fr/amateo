@@ -24,6 +24,7 @@ use App\Export\MatchesExportDataProvider;
 use App\Export\MatchesExportRow;
 use App\Export\MatchesExportTeamSection;
 use App\Export\MatchesExportWeekSection;
+use App\Plans\PlanComposition;
 use App\Repository\FixtureRepository;
 use App\Service\Basketball\VenueLabelNormalizer;
 use App\Service\Geo\IgnRoutingClient;
@@ -670,9 +671,10 @@ final class MatchesExportDataProviderTest extends KernelTestCase
             ->setPriorityTierId($tierId)
             ->setTierOrder($tierOrder)
             ->setName($name)
-            ->setSessionsPerWeek(2)
             ->setIsActive(true);
         $this->em->persist($team);
+        $this->em->flush();
+        self::getContainer()->get(PlanComposition::class)->ensureLines($team->getSeasonId(), [$team->getId() => ['sessionsPerWeek' => 2]]);
         $this->em->flush();
 
         return $team;

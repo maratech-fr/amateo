@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Tests\Unit\Service;
 
+use App\Entity\PlanTeam;
 use App\Entity\SportCategory;
 use App\Entity\Team;
 use App\Entity\TeamMatchHabit;
@@ -63,7 +64,8 @@ final class ScheduleConstraintBuilderAgeFieldsTest extends TestCase
                 ->setName('Loisir 1'),
         ];
 
-        $payload = $this->builder->build([], $teams, []);
+        // Les séances de chaque équipe : sa ligne dans le plan construit (lot 4, PR 3a).
+        $payload = $this->builder->build([], $teams, [], teamLines: ['team-u13' => (new PlanTeam)->setTeamId('team-u13')->setSessionsPerWeek(2), 'team-loisir' => (new PlanTeam)->setTeamId('team-loisir')->setSessionsPerWeek(2)]);
 
         self::assertCount(2, $payload['teams']);
 

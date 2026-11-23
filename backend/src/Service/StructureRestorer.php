@@ -10,6 +10,7 @@ use App\Entity\Coach;
 use App\Entity\CoachPlayerMembership;
 use App\Entity\Constraint;
 use App\Entity\Place;
+use App\Entity\PlanTeam;
 use App\Entity\Reservation;
 use App\Entity\Schedule;
 use App\Entity\ScheduleStructureSnapshot;
@@ -20,6 +21,7 @@ use App\Entity\TenantOwnedInterface;
 use App\Entity\Venue;
 use App\Entity\VenueTrainingSlot;
 use App\Enum\ConstraintScope;
+use App\Plans\PlanComposition;
 use App\Plans\SoclePlan;
 use BackedEnum;
 use DateTimeImmutable;
@@ -51,6 +53,7 @@ final class StructureRestorer
     private const FAMILY_CLASS = [
         'SportCategory' => SportCategory::class,
         'Team' => Team::class,
+        'PlanTeam' => PlanTeam::class,
         'Venue' => Venue::class,
         'VenueTrainingSlot' => VenueTrainingSlot::class,
         'Coach' => Coach::class,
@@ -65,6 +68,7 @@ final class StructureRestorer
         private readonly RestoreFeasibility $restoreFeasibility,
         private readonly CoachWishCampaignTokenSync $coachWishTokenSync,
         private readonly SoclePlan $soclePlan,
+        private readonly PlanComposition $planComposition,
     ) {}
 
     /**
@@ -109,6 +113,9 @@ final class StructureRestorer
         $data = $this->withVenuesOnAPlaceOfTheClub($clubId, $data);
 
         foreach (self::FAMILY_CLASS as $family => $entityClass) {
+            if (PlanTeam::class === $entityClass) {
+                continue; // les lignes d'équipes passent par la seule porte, après la réinsertion (ci-dessous)
+            }
             foreach ($data[$family] ?? [] as $rowData) {
                 $entity = $this->hydrate($entityClass, $rowData);
                 // Une photo PRISE AVANT qu'une famille devienne tenant ne porte pas
@@ -130,6 +137,11 @@ final class StructureRestorer
         // target is gone) — clean those ghosts, like the E1 cascade would.
         $this->purgeDanglingCalendarRefs($clubId, $seasonId, $soclePlanId);
 
+        // Lot 4, PR 3a — les équipes du socle reprennent les séances et le plafond de la photo sur leur ligne du plan de
+        // saison ; une équipe ramenée reçoit sa ligne dans chaque plan de période, aux valeurs de son socle. Les lignes
+        // de période existantes ne changent pas.
+        $this->planComposition->ensureLines($seasonId, $this->socleValuesOf($data));
+
         // Les coachs viennent d'être supprimés : la clé étrangère a emporté les jetons de collecte.
         // La règle du destinataire les recrée dans les collectes ouvertes (les anciens liens sont perdus).
         $this->coachWishTokenSync->syncSeason($clubId, $seasonId);
@@ -139,7 +151,9 @@ final class StructureRestorer
     /**
      * Lot 4 : la grille et les réservations d'une photo portent le plan de saison (la migration du lot
      * a converti les photos d'avant). Une ligne restée sans plan est une photo que la conversion a
-     * manquée : la charger écrirait une ligne sans plan. Refus AVANT tout effacement.
+     * manquée : la charger écrirait une ligne sans plan. PR 3a : de même, une photo dont les équipes
+     * portent encore leurs séances, ou qui n'a pas les lignes d'équipes du socle, laisserait le socle sans
+     * ses séances. Refus AVANT tout effacement.
      *
      * @param array<string, list<array<string, mixed>>> $data
      */
@@ -152,6 +166,39 @@ final class StructureRestorer
                 }
             }
         }
+        $teams = $data['Team'] ?? [];
+        foreach ($teams as $row) {
+            if (\array_key_exists('sessionsPerWeek', $row) || \array_key_exists('maxSessionsPerDay', $row)) {
+                throw new ConflictHttpException(self::OLD_FORMAT_PHOTO_MESSAGE);
+            }
+        }
+        if ([] !== $teams && !\array_key_exists('PlanTeam', $data)) {
+            throw new ConflictHttpException(self::OLD_FORMAT_PHOTO_MESSAGE);
+        }
+    }
+
+    /**
+     * Les séances et le plafond de chaque équipe de la photo, lus sur ses lignes du socle.
+     *
+     * @param array<string, list<array<string, mixed>>> $data
+     *
+     * @return array<string, array{sessionsPerWeek?: int, maxSessionsPerDay?: int}>
+     */
+    private function socleValuesOf(array $data): array
+    {
+        $values = [];
+        foreach ($data['PlanTeam'] ?? [] as $row) {
+            $teamId = $row['teamId'] ?? null;
+            if (!\is_string($teamId)) {
+                continue;
+            }
+            $values[$teamId] = array_filter([
+                'sessionsPerWeek' => \is_int($row['sessionsPerWeek'] ?? null) ? $row['sessionsPerWeek'] : null,
+                'maxSessionsPerDay' => \is_int($row['maxSessionsPerDay'] ?? null) ? $row['maxSessionsPerDay'] : null,
+            ], static fn (?int $value): bool => null !== $value);
+        }
+
+        return $values;
     }
 
     /**
@@ -284,13 +331,13 @@ final class StructureRestorer
             'DELETE App\Entity\Reservation r WHERE r.id IN (:ids)',
         );
 
-        // Period-editable structure: a period's team override / borrowed slot whose
+        // Period-editable structure: a period's team line / borrowed slot whose
         // target team/venue is gone after the restore — mirror the E1 cascade
         // (team/venue delete) on the restore path.
         $this->deleteDangling(
-            'SELECT o.id FROM App\Entity\TeamPeriodOverride o WHERE o.clubId = :c AND o.seasonId = :s AND NOT EXISTS (SELECT 1 FROM App\Entity\Team t WHERE t.id = o.teamId)',
+            'SELECT o.id FROM App\Entity\PlanTeam o WHERE o.clubId = :c AND o.seasonId = :s AND NOT EXISTS (SELECT 1 FROM App\Entity\Team t WHERE t.id = o.teamId)',
             $tenant,
-            'DELETE App\Entity\TeamPeriodOverride o WHERE o.id IN (:ids)',
+            'DELETE App\Entity\PlanTeam o WHERE o.id IN (:ids)',
         );
         // A period's constraint toggle whose permanent constraint is gone after the restore.
         $this->deleteDangling(
@@ -374,6 +421,8 @@ final class StructureRestorer
         $this->deleteFamily(Reservation::class, $clubId, $seasonId, $soclePlanId);
         $this->deleteFamily(Constraint::class, $clubId, $seasonId, $soclePlanId);
         $this->deleteFamily(Team::class, $clubId, $seasonId);
+        // Les lignes d'équipes du socle (le plan de saison) : la photo les rend ; celles des plans de période restent.
+        $this->deleteFamily(PlanTeam::class, $clubId, $seasonId, $soclePlanId);
         // Structure partagée seulement : a period's own slots (its own plan) belong to the
         // calendar, not the base structure — a base-version restore must not wipe them.
         $this->deleteFamily(VenueTrainingSlot::class, $clubId, $seasonId, $soclePlanId);

@@ -9,12 +9,12 @@ use App\Entity\Club;
 use App\Entity\ClubUser;
 use App\Entity\Season;
 use App\Entity\Team;
-use App\Entity\TeamPeriodOverride;
 use App\Entity\User;
 use App\Entity\VenueTrainingSlot;
 use App\Enum\CalendarEntryKind;
 use App\Enum\CalendarEntryPeriodType;
 use App\Enum\SeasonStatus;
+use App\Plans\PlanComposition;
 use App\Service\ScheduleConstraintBuilder;
 use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\ProvisionsPeriodPlanTrait;
@@ -78,7 +78,7 @@ final class MaxSessionsPerDayPayloadParityTest extends KernelTestCase
     {
         [$club, $season] = $this->seed();
         $two = $this->team($club, $season, 'SM1');
-        $two->setMaxSessionsPerDay(2);
+        self::getContainer()->get(PlanComposition::class)->socleLinesOf([$two->getId()])[$two->getId()]->setMaxSessionsPerDay(2);
         $one = $this->team($club, $season, 'U15');
         $this->em->flush();
 
@@ -94,11 +94,11 @@ final class MaxSessionsPerDayPayloadParityTest extends KernelTestCase
     {
         [$club, $season] = $this->seed();
         $overridden = $this->team($club, $season, 'SM1');
-        $overridden->setMaxSessionsPerDay(2);
+        self::getContainer()->get(PlanComposition::class)->socleLinesOf([$overridden->getId()])[$overridden->getId()]->setMaxSessionsPerDay(2);
         $inherited = $this->team($club, $season, 'SF1');
-        $inherited->setMaxSessionsPerDay(2);
+        self::getContainer()->get(PlanComposition::class)->socleLinesOf([$inherited->getId()])[$inherited->getId()]->setMaxSessionsPerDay(2);
         $loweredToOne = $this->team($club, $season, 'U15');
-        $loweredToOne->setMaxSessionsPerDay(2);
+        self::getContainer()->get(PlanComposition::class)->socleLinesOf([$loweredToOne->getId()])[$loweredToOne->getId()]->setMaxSessionsPerDay(2);
         $this->em->flush();
         $entry = $this->holidayPeriod($club, $season);
         $this->em->flush();
@@ -162,18 +162,17 @@ final class MaxSessionsPerDayPayloadParityTest extends KernelTestCase
     private function periodCap(Club $club, Season $season, string $planId, string $teamId, int $cap): void
     {
         $this->scopeGucToClub($club->getId());
-        $override = $this->em->getRepository(TeamPeriodOverride::class)->findOneBy(['schedulePlanId' => $planId, 'teamId' => $teamId])
-            ?? (new TeamPeriodOverride)->setClubId($club->getId())->setSeasonId($season->getId())->setSchedulePlanId($planId)
-                ->setTeamId($teamId)->setIsActive(true)->setSessionsPerWeek(null);
-        $override->setMaxSessionsPerDay($cap);
-        $this->em->persist($override);
+        unset($season);
+        self::getContainer()->get(PlanComposition::class)->lineOf($planId, $teamId)->setParticipating(true)->setMaxSessionsPerDay($cap);
     }
 
     private function team(Club $club, Season $season, string $name): Team
     {
         $team = (new Team)->setClubId($club->getId())->setSeasonId($season->getId())->setName($name)
-            ->setSportCategoryId(self::SPORT_CATEGORY_ID)->setPriorityTierId(1)->setSessionsPerWeek(2);
+            ->setSportCategoryId(self::SPORT_CATEGORY_ID)->setPriorityTierId(1);
         $this->em->persist($team);
+        $this->em->flush();
+        self::getContainer()->get(PlanComposition::class)->ensureLines($team->getSeasonId(), [$team->getId() => ['sessionsPerWeek' => 2]]);
 
         return $team;
     }

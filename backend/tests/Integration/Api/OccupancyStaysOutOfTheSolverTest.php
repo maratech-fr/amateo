@@ -23,6 +23,7 @@ use App\Enum\CalendarEntryStatus;
 use App\Enum\LockLevel;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
+use App\Plans\PlanComposition;
 use App\Service\ScheduleConstraintBuilder;
 use App\Service\SchedulePlanProvisioner;
 use App\Tests\ChoosesPlanVersionTrait;
@@ -303,9 +304,10 @@ final class OccupancyStaysOutOfTheSolverTest extends WebTestCase
         $team->setSportCategoryId($this->category->getId());
         $team->setPriorityTierId(1);
         $team->setName('U13-' . uniqid());
-        $team->setSessionsPerWeek(2);
         $team->setIsActive(true);
         $this->em->persist($team);
+        $this->em->flush();
+        self::getContainer()->get(PlanComposition::class)->ensureLines($team->getSeasonId(), [$team->getId() => ['sessionsPerWeek' => 2]]);
 
         $venue = $this->newVenue($club->getId(), $season->getId(), 'Gymnase-' . uniqid())->setCanSplit(false);
         $this->em->persist($venue);

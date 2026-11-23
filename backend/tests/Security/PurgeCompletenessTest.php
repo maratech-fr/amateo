@@ -13,6 +13,7 @@ use App\Entity\HolidayReminderLog;
 use App\Entity\ImplicitRuleSetting;
 use App\Entity\Person;
 use App\Entity\Place;
+use App\Entity\PlanTeam;
 use App\Entity\Reservation;
 use App\Entity\Season;
 use App\Entity\SharedTrainingBlock;
@@ -21,7 +22,6 @@ use App\Entity\Sport;
 use App\Entity\SportCategory;
 use App\Entity\Team;
 use App\Entity\TeamCoach;
-use App\Entity\TeamPeriodOverride;
 use App\Entity\TenantOwnedInterface;
 use App\Entity\VenueOccupancy;
 use App\Entity\VenuePeriodOverride;
@@ -93,7 +93,7 @@ final class PurgeCompletenessTest extends KernelTestCase
     /** Ce qu'un plan porte (lot 4, PR 2) : les six familles du socle devenu plan, les trois réglages de période. */
     private const array PLAN_FAMILIES = [
         VenueTrainingSlot::class, VenueOccupancy::class, Reservation::class, SharedTrainingBlockTeam::class, SharedTrainingBlock::class,
-        ImplicitRuleSetting::class, TeamPeriodOverride::class, VenuePeriodOverride::class, ConstraintPeriodOverride::class,
+        ImplicitRuleSetting::class, PlanTeam::class, VenuePeriodOverride::class, ConstraintPeriodOverride::class,
     ];
 
     /** Les listes que les purgeurs tenaient à la main avant la déclaration des familles. */
@@ -404,6 +404,8 @@ final class PurgeCompletenessTest extends KernelTestCase
             $em->persist($row);
         }
         $em->flush();
+        // Une saison naît avec son plan de saison : le plan de période y lit les équipes du socle (lot 4, PR 3a).
+        SeasonPlanOf::id(self::getContainer(), $seasonId);
         $planId = self::getContainer()->get(SchedulePlanProvisioner::class)->provisionPeriodPlan($entry->getId());
         self::assertIsString($planId);
 
@@ -419,7 +421,6 @@ final class PurgeCompletenessTest extends KernelTestCase
                 ->setDayOfWeek(2)->setStartTime(new DateTimeImmutable('18:00'))->setDurationMinutes(90)->setSchedulePlanId($planId),
             (new SharedTrainingBlockTeam)->setClubId($clubId)->setSeasonId($seasonId)->setSchedulePlanId($planId)->setBlockId($block->getId())->setTeamId($teamA->getId()),
             (new SharedTrainingBlockTeam)->setClubId($clubId)->setSeasonId($seasonId)->setSchedulePlanId($planId)->setBlockId($block->getId())->setTeamId($teamB->getId()),
-            (new TeamPeriodOverride)->setClubId($clubId)->setSeasonId($seasonId)->setSchedulePlanId($planId)->setTeamId($teamA->getId())->setIsActive(false),
             (new VenuePeriodOverride)->setClubId($clubId)->setSeasonId($seasonId)->setSchedulePlanId($planId)->setVenueId($venue->getId())->setDayOverrides(['1' => 'CLOSED']),
             (new ConstraintPeriodOverride)->setClubId($clubId)->setSeasonId($seasonId)->setSchedulePlanId($planId)->setConstraintId($constraint->getId())->setIsActive(false),
         ];
@@ -588,7 +589,7 @@ final class PurgeCompletenessTest extends KernelTestCase
     private function team(string $clubId, string $seasonId): Team
     {
         return (new Team)->setClubId($clubId)->setSeasonId($seasonId)->setName('U13 F1')
-            ->setSportCategoryId('99999999-9999-4999-8999-999999999999')->setPriorityTierId(1)->setSessionsPerWeek(1);
+            ->setSportCategoryId('99999999-9999-4999-8999-999999999999')->setPriorityTierId(1);
     }
 
     /**

@@ -7,6 +7,7 @@ namespace App\Service;
 use App\Entity\Coach;
 use App\Entity\CoachPlayerMembership;
 use App\Entity\Constraint;
+use App\Entity\PlanTeam;
 use App\Entity\Reservation;
 use App\Entity\Schedule;
 use App\Entity\SportCategory;
@@ -52,6 +53,8 @@ final class StructureSnapshotter
     private const FAMILIES = [
         SportCategory::class,
         Team::class,
+        // Lot 4, PR 3a : séances et plafond par jour de chaque équipe, sur sa ligne du plan de saison.
+        PlanTeam::class,
         Venue::class,
         VenueTrainingSlot::class,
         Coach::class,

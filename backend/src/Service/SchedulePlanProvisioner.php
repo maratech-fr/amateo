@@ -13,6 +13,7 @@ use App\Entity\SharedTrainingBlockTeam;
 use App\Enum\CalendarEntryStatus;
 use App\Enum\SchedulePlanType;
 use App\Enum\ScheduleStatus;
+use App\Plans\PlanComposition;
 use App\Repository\ImplicitRuleSettingRepository;
 use App\Support\FrenchDate;
 use DateTimeImmutable;
@@ -72,6 +73,7 @@ final class SchedulePlanProvisioner
         private readonly EntityManagerInterface $entityManager,
         private readonly ScheduleConstraintBuilder $constraintBuilder,
         private readonly ImplicitRuleSettingRepository $implicitRuleSettingRepository,
+        private readonly PlanComposition $planComposition,
     ) {}
 
     /**
@@ -697,28 +699,6 @@ final class SchedulePlanProvisioner
         });
     }
 
-    /**
-     * Marque un plan comme configuré, au 1er réglage d'équipes écrit — le wizard s'en sert
-     * pour ne seeder son défaut « Fanion seul » qu'une fois, et jamais après un retour
-     * « tout actif » (0 override épars). Idempotent (`= false` dans le WHERE), et sans
-     * effet si l'id ne désigne aucun plan.
-     *
-     * Vise le plan par son id depuis le lot C2 : les réglages y sont ancrés (inv. 5), plus
-     * besoin de passer par le déclencheur calendrier.
-     *
-     * SQL brut, comme toute écriture de plan ici : `season_filter` épingle les lectures ORM
-     * à la saison ACTIVE de la requête, or l'appelant reçoit l'id dans un corps de requête,
-     * sans garantie qu'il appartienne à cette saison. RLS scope le club.
-     */
-    public function markPlanTeamSelectionInitialized(string $schedulePlanId): void
-    {
-        $this->entityManager->getConnection()->executeStatement(
-            'UPDATE schedule_plan SET team_selection_initialized = true, updated_at = now(), version = version + 1 '
-            . 'WHERE id = :pid AND team_selection_initialized = false',
-            ['pid' => $schedulePlanId],
-        );
-    }
-
     /** Cette période porte-t-elle un plan ? Garde du 422 d'identité (voir plus haut). */
     public function periodPlanExists(string $calendarEntryId): bool
     {
@@ -809,22 +789,6 @@ final class SchedulePlanProvisioner
         }
 
         return ['planId' => (string) $row['plan_id'], 'entryId' => (string) $row['entry_id']];
-    }
-
-    /**
-     * Le plan a-t-il déjà vu sa sélection d'équipes initialisée ? (le drapeau que
-     * {@see markPlanTeamSelectionInitialized} pose à la 1re écriture d'override). Lu par le
-     * transfert pour matérialiser le seed « Fanion + importantes » AVANT sa 1re écriture (D-e)
-     * — sinon cette écriture désarmerait le seed en silence. SQL brut, comme ses voisines.
-     */
-    public function planTeamSelectionInitialized(string $schedulePlanId): bool
-    {
-        // Prédicat SQL (pas une lecture de colonne booléenne nue) : pdo_pgsql rend « t »/« f »
-        // qu'un `(bool)` interprète tous deux comme vrai — l'idiome maison est `SELECT 1 WHERE …`.
-        return (bool) $this->entityManager->getConnection()->fetchOne(
-            'SELECT 1 FROM schedule_plan WHERE id = :pid AND team_selection_initialized',
-            ['pid' => $schedulePlanId],
-        );
     }
 
     /**
@@ -1243,6 +1207,9 @@ final class SchedulePlanProvisioner
         // ou défaut). Copie TOTALE : un plan « tout au défaut » garde ses 4 lignes, donc reste
         // distinguable d'un plan legacy sans copie (dont la lecture retombe sur la saison).
         $this->implicitRuleSettingRepository->materializeForPlan((string) $plan->getClubId(), $plan->getSeasonId(), $plan->getId());
+        // Lot 4, PR 3a — le plan naît avec une ligne par équipe, aux séances du socle du moment ; sa nature dit qui est
+        // coché (des vacances : l'équipe fanion et les importantes).
+        $this->planComposition->ensureLines($plan->getSeasonId());
 
         return $plan->getId();
     }
@@ -1323,7 +1290,7 @@ final class SchedulePlanProvisioner
      *
      * Copie VERBATIM (patron {@see SharedTrainingBlockStateProcessor::addMembers}) : mêmes séances
      * communes, mêmes équipes membres, nouvel UUID par bloc/membre, dénormalisation club/saison/plan.
-     * La garde Σ n'est PAS rejouée — à la naissance aucun TeamPeriodOverride n'existe, le Σ socle
+     * La garde Σ n'est PAS rejouée — à la naissance chaque ligne d'équipe vaut celle du socle, le Σ socle
      * déjà validé vaut ; aucun filtrage au roster non plus — la divergence ultérieure (un membre
      * désactivé pour la période) est déjà gérée au payload par serializeSharedBlocks, qui abandonne
      * un bloc tombé sous 2 membres actifs.

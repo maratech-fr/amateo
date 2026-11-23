@@ -11,6 +11,7 @@ use App\Entity\SharedTrainingBlockTeam;
 use App\Entity\Team;
 use App\Entity\Venue;
 use App\Entity\VenueTrainingSlot;
+use App\Plans\PlanComposition;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\QueryBuilder;
@@ -33,7 +34,7 @@ use Symfony\Component\HttpKernel\Exception\UnprocessableEntityHttpException;
  *  (c) PLAFOND        — après écriture, le nombre de cases « bloc-complètes » d'un bloc reste
  *                       ≤ `commonSessions` (au-delà, `Σ b == commonSessions` est contradictoire → INFEASIBLE) ;
  *  (d) PLAFOND MEMBRE — chaque membre reste sous son `sessionsPerWeek` EFFECTIF
- *                       ({@see EffectiveTeamSessions}, override de période inclus) ;
+ *                       (la ligne de l'équipe dans le plan, {@see PlanComposition}) ;
  *  (e) CAPACITÉ       — une réservation individuelle ne dépasse pas la capacité du créneau, même
  *                       sémantique que le front (`capacity` sur gymnase divisible, sinon 1) — un
  *                       bloc complet compte pour UN occupant (cohérent avec l'exemption moteur) ;
@@ -61,7 +62,7 @@ final class ReservationGroupOccupancy
 
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
-        private readonly EffectiveTeamSessions $effectiveTeamSessions,
+        private readonly PlanComposition $planComposition,
         private readonly SoloReservationBudget $soloReservationBudget,
     ) {}
 
@@ -194,7 +195,7 @@ final class ReservationGroupOccupancy
             if (!$team instanceof Team) {
                 continue; // le contrôleur a résolu les membres sous le tenant ; défense de contrat.
             }
-            $ceiling = $this->effectiveTeamSessions->perWeek($team, $schedulePlanId);
+            $ceiling = $this->planComposition->lineOf($schedulePlanId, $teamId)->getSessionsPerWeek();
             if ($this->teamReservationCount($teamId, $schedulePlanId) + 1 > $ceiling) {
                 throw new UnprocessableEntityHttpException(\sprintf('L\'équipe « %s » atteint déjà son nombre de séances par semaine (%d) : cette séance mutualisée le dépasserait. Réduisez ses autres réservations, ou augmentez son nombre de séances.', $team->getName(), $ceiling));
             }

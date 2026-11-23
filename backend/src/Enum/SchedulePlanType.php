@@ -12,6 +12,11 @@ namespace App\Enum;
  */
 enum SchedulePlanType: string
 {
+    /** Les équipes cochées à la naissance du plan : des vacances reprennent avec l'équipe fanion et les importantes. */
+    public function defaultTeamSelection(): PlanTeamDefault
+    {
+        return self::HOLIDAY === $this ? PlanTeamDefault::FLAGSHIP_AND_IMPORTANT : PlanTeamDefault::ALL;
+    }
     case SEASON = 'SEASON';
     case CLOSURE = 'CLOSURE';
     case HOLIDAY = 'HOLIDAY';

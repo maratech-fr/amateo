@@ -13,6 +13,7 @@ use App\Entity\TeamMatchHabit;
 use App\Entity\Venue;
 use App\Enum\MatchWeek;
 use App\Enum\SeasonStatus;
+use App\Plans\PlanComposition;
 use App\Service\MatchPlacementPayloadBuilder;
 use App\Service\ScheduleConstraintBuilder;
 use App\Service\SeasonResolver;
@@ -225,9 +226,10 @@ final class HabitPayloadParityTest extends KernelTestCase
         $team->setSportCategoryId($this->uuid());
         $team->setPriorityTierId(3);
         $team->setName('T' . substr($this->uuid(), 0, 6));
-        $team->setSessionsPerWeek(2);
         $team->setIsActive(true);
         $this->em->persist($team);
+        $this->em->flush();
+        self::getContainer()->get(PlanComposition::class)->ensureLines($team->getSeasonId(), [$team->getId() => ['sessionsPerWeek' => 2]]);
 
         return $team;
     }

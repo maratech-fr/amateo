@@ -46,7 +46,7 @@ final class SchedulePlanAnchorCascadeTest extends KernelTestCase
         // base » (ancre nulle, partagée par la saison) n'existe pas pour eux, et
         // l'insérer échouerait — d'où le drapeau porté par le provider.
         yield 'venue_period_override' => ['venue_period_override'];
-        yield 'team_period_override' => ['team_period_override'];
+        yield 'plan_team' => ['plan_team'];
         yield 'constraint_period_override' => ['constraint_period_override'];
     }
 
@@ -125,8 +125,8 @@ final class SchedulePlanAnchorCascadeTest extends KernelTestCase
     {
         $this->connection->executeStatement(
             'INSERT INTO schedule_plan (id, version, created_at, updated_at, club_id, season_id, type, name,
-                start_date, end_date, last_version_number, team_selection_initialized)
-             VALUES (?, 1, NOW(), NOW(), ?, ?, ?, ?, NOW(), NOW(), 0, false)',
+                start_date, end_date, last_version_number)
+             VALUES (?, 1, NOW(), NOW(), ?, ?, ?, ?, NOW(), NOW(), 0)',
             [$id, $clubId, $seasonId, $type, 'Plan ' . substr($id, 0, 8)],
         );
     }
@@ -147,11 +147,11 @@ final class SchedulePlanAnchorCascadeTest extends KernelTestCase
             return $id;
         }
 
-        if ('team_period_override' === $table) {
+        if ('plan_team' === $table) {
             $this->connection->executeStatement(
-                'INSERT INTO team_period_override (id, version, created_at, updated_at, club_id, season_id,
-                    team_id, is_active, schedule_plan_id)
-                 VALUES (?, 1, NOW(), NOW(), ?, ?, ?, true, ?)',
+                'INSERT INTO plan_team (id, version, created_at, updated_at, club_id, season_id,
+                    team_id, participates, sessions_per_week, max_sessions_per_day, schedule_plan_id)
+                 VALUES (?, 1, NOW(), NOW(), ?, ?, ?, true, 2, 1, ?)',
                 [$id, $clubId, $seasonId, $this->uuid(), $planId],
             );
 

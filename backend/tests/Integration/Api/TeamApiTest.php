@@ -17,8 +17,10 @@ use App\Entity\User;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
 use App\Enum\TeamLevel;
+use App\Plans\PlanComposition;
 use App\Service\SchedulePlanProvisioner;
 use App\Tests\ChoosesPlanVersionTrait;
+use App\Tests\SeasonPlanOf;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -272,9 +274,10 @@ final class TeamApiTest extends WebTestCase
         $otherTeam->setSportCategoryId($otherSportCategory->getId());
         $otherTeam->setPriorityTierId($this->priorityTier->getId());
         $otherTeam->setName('Other Club Team');
-        $otherTeam->setSessionsPerWeek(2);
         $otherTeam->setIsActive(true);
         $this->em->persist($otherTeam);
+        $this->em->flush();
+        self::getContainer()->get(PlanComposition::class)->ensureLines($otherTeam->getSeasonId(), [$otherTeam->getId() => ['sessionsPerWeek' => 2]]);
         $this->em->flush();
 
         $ownTeam = $this->createTeam('Own Team');
@@ -414,7 +417,7 @@ final class TeamApiTest extends WebTestCase
         self::assertResponseStatusCodeSame(422);
         self::assertStringContainsString('Le nombre de séances par jour doit être compris entre 1 et 4.', $this->responseText());
         $this->em->clear();
-        self::assertSame(1, $this->em->getRepository(Team::class)->find($team->getId())?->getMaxSessionsPerDay());
+        self::assertSame(1, self::getContainer()->get(PlanComposition::class)->socleLinesOf([$team->getId()])[$team->getId()]->getMaxSessionsPerDay());
     }
 
     /** Une équipe créée sans le champ s'entraîne au plus une fois par jour ; avec le champ, la valeur est écrite et relue. */
@@ -573,6 +576,7 @@ final class TeamApiTest extends WebTestCase
         }
 
         $this->em->flush();
+        SeasonPlanOf::id(self::getContainer(), $this->season->getId());
     }
 
     private function createClub(string $name = 'Test Club'): Club
@@ -630,6 +634,7 @@ final class TeamApiTest extends WebTestCase
 
         $this->em->persist($season);
         $this->em->flush();
+        SeasonPlanOf::id(self::getContainer(), $season->getId());
 
         return $season;
     }
@@ -727,10 +732,11 @@ final class TeamApiTest extends WebTestCase
         $team->setSportCategoryId($this->sportCategory->getId());
         $team->setPriorityTierId($this->priorityTier->getId());
         $team->setName($name);
-        $team->setSessionsPerWeek(2);
         $team->setIsActive(true);
 
         $this->em->persist($team);
+        $this->em->flush();
+        self::getContainer()->get(PlanComposition::class)->ensureLines($team->getSeasonId(), [$team->getId() => ['sessionsPerWeek' => 2]]);
         $this->em->flush();
 
         return $team;

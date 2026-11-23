@@ -26,7 +26,7 @@ vi.mock("@/shared/session/queries", async (importOriginal) => ({
 vi.mock("@/features/cockpit/queries", () => ({
   usePeriodAnchor: () => ({ state: "period", planId: "plan-1" }),
   useCalendarEntry: () => ({ data: { id: "entry-1", periodType: "holiday" } }),
-  useSchedulePlanForEntry: () => ({ data: { id: "plan-1", teamSelectionInitialized: false }, isLoading: false }),
+  useSchedulePlanForEntry: () => ({ data: { id: "plan-1" }, isLoading: false }),
 }));
 vi.mock("@/features/matches/queries", () => ({ useTeamLinks: () => ({ data: [] }) }));
 vi.mock("../queries", () => ({
@@ -43,13 +43,11 @@ vi.mock("../queries", () => ({
   useDeleteConstraint: () => ({ mutate: vi.fn(), isPending: false }),
 }));
 
-import { resetPeriodSeed } from "./periodSeed";
 import { PeriodTeams } from "./PeriodTeams";
 
 beforeEach(() => {
   h.canManage = true;
   h.create.mockClear();
-  resetPeriodSeed();
 });
 
 describe("PeriodTeams — l'amorçage de la sélection n'est jamais déclenché par un Membre", () => {

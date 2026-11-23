@@ -16,6 +16,7 @@ use App\Entity\User;
 use App\Enum\Gender;
 use App\Enum\SeasonStatus;
 use App\Enum\TeamLevel;
+use App\Plans\PlanComposition;
 use App\Service\MatchPlacementPayloadBuilder;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
@@ -194,9 +195,10 @@ final class LeagueWindowsPayloadParityTest extends KernelTestCase
         $team->setName('T' . substr($this->uuid(), 0, 6));
         $team->setLevel(TeamLevel::REGIONAL);
         $team->setGender(Gender::M);
-        $team->setSessionsPerWeek(2);
         $team->setIsActive(true);
         $this->em->persist($team);
+        $this->em->flush();
+        self::getContainer()->get(PlanComposition::class)->ensureLines($team->getSeasonId(), [$team->getId() => ['sessionsPerWeek' => 2]]);
 
         return $team;
     }

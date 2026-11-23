@@ -15,6 +15,7 @@ use App\Entity\Team;
 use App\Entity\User;
 use App\Entity\Venue;
 use App\Enum\SeasonStatus;
+use App\Plans\PlanComposition;
 use App\Service\ParcImport\ParcImportGate;
 use App\Service\SeasonResolver;
 use App\Tests\ChoosesPlanVersionTrait;
@@ -319,8 +320,8 @@ final class ParcImportAnalyzeTest extends WebTestCase
     {
         $a = $this->makeTeam('U9M1');
         $b = $this->makeTeam('U11F2');
-        $a->setSessionsPerWeek(3);
-        $b->setSessionsPerWeek(3);
+        self::getContainer()->get(PlanComposition::class)->socleLinesOf([$a->getId()])[$a->getId()]->setSessionsPerWeek(3);
+        self::getContainer()->get(PlanComposition::class)->socleLinesOf([$b->getId()])[$b->getId()]->setSessionsPerWeek(3);
         $this->makeBlock([$a, $b], 1)->setLabel('Loisirs');
         $this->em->flush();
 
@@ -340,8 +341,8 @@ final class ParcImportAnalyzeTest extends WebTestCase
     {
         $a = $this->makeTeam('U9M1');
         $b = $this->makeTeam('U11F2');
-        $a->setSessionsPerWeek(3);
-        $b->setSessionsPerWeek(3);
+        self::getContainer()->get(PlanComposition::class)->socleLinesOf([$a->getId()])[$a->getId()]->setSessionsPerWeek(3);
+        self::getContainer()->get(PlanComposition::class)->socleLinesOf([$b->getId()])[$b->getId()]->setSessionsPerWeek(3);
         $this->makeBlock([$a, $b], 1)->setLabel(null);
         $this->em->flush();
 
@@ -988,8 +989,8 @@ final class ParcImportAnalyzeTest extends WebTestCase
     {
         $a = $this->makeTeam('U9M1');
         $b = $this->makeTeam('U11F2');
-        $a->setSessionsPerWeek(3);
-        $b->setSessionsPerWeek(3);
+        self::getContainer()->get(PlanComposition::class)->socleLinesOf([$a->getId()])[$a->getId()]->setSessionsPerWeek(3);
+        self::getContainer()->get(PlanComposition::class)->socleLinesOf([$b->getId()])[$b->getId()]->setSessionsPerWeek(3);
         $venue = $this->makeVenue('Gymnase Platane');
         $this->scopeGucToClub($this->club->getId());
         $reservation = null;
@@ -1031,8 +1032,8 @@ final class ParcImportAnalyzeTest extends WebTestCase
         // la garde de budget → la réservation est `aCreer`.
         $sm1 = $this->makeTeam('SM1');
         $sm2 = $this->makeTeam('SM2');
-        $sm1->setSessionsPerWeek(1);
-        $sm2->setSessionsPerWeek(1);
+        self::getContainer()->get(PlanComposition::class)->socleLinesOf([$sm1->getId()])[$sm1->getId()]->setSessionsPerWeek(1);
+        self::getContainer()->get(PlanComposition::class)->socleLinesOf([$sm2->getId()])[$sm2->getId()]->setSessionsPerWeek(1);
         $this->em->flush();
         $this->makeBlock([$sm1, $sm2], 1); // le bloc socle consomme l'unique séance de SM1
 
@@ -1252,8 +1253,10 @@ final class ParcImportAnalyzeTest extends WebTestCase
         $team = (new Team)
             ->setClubId($this->club->getId())->setSeasonId($this->season->getId())
             ->setSportCategoryId($this->uuid())->setPriorityTierId(3)
-            ->setName($name)->setSessionsPerWeek(2)->setIsActive(true);
+            ->setName($name)->setIsActive(true);
         $this->em->persist($team);
+        $this->em->flush();
+        self::getContainer()->get(PlanComposition::class)->ensureLines($team->getSeasonId(), [$team->getId() => ['sessionsPerWeek' => 2]]);
         $this->em->flush();
 
         return $team;
@@ -1324,8 +1327,10 @@ final class ParcImportAnalyzeTest extends WebTestCase
         $team = (new Team)
             ->setClubId($otherClub->getId())->setSeasonId($otherSeason->getId())
             ->setSportCategoryId($this->uuid())->setPriorityTierId(3)
-            ->setName($teamName)->setSessionsPerWeek(3)->setIsActive(true);
+            ->setName($teamName)->setIsActive(true);
         $this->em->persist($team);
+        $this->em->flush();
+        self::getContainer()->get(PlanComposition::class)->ensureLines($team->getSeasonId(), [$team->getId() => ['sessionsPerWeek' => 3]]);
         $this->em->flush();
 
         $this->scopeGucToClub($this->club->getId());

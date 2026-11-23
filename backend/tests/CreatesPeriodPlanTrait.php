@@ -38,6 +38,9 @@ trait CreatesPeriodPlanTrait
 
         $em->persist($plan);
         $em->flush();
+        // Lot 4, PR 3a : un plan naît avec une ligne par équipe de sa saison (la porte, comme `provisionPeriodPlan`).
+        SeasonPlanOf::id(static::getContainer(), $plan->getSeasonId());
+        $em->flush();
 
         return $plan->getId();
     }

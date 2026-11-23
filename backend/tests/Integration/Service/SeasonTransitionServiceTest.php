@@ -35,6 +35,7 @@ use App\Enum\SeasonStatus;
 use App\Enum\TeamCoachRole;
 use App\Enum\TeamLinkIntensity;
 use App\Enum\TeamLinkType;
+use App\Plans\PlanComposition;
 use App\Service\ScheduleConstraintBuilder;
 use App\Service\SeasonAlreadyTransitionedException;
 use App\Service\SeasonResolver;
@@ -363,14 +364,14 @@ final class SeasonTransitionServiceTest extends KernelTestCase
         [, $season] = $this->createClubGraph();
         $sm1 = $this->em->getRepository(Team::class)->findOneBy(['seasonId' => $season->getId(), 'name' => 'SM1']);
         self::assertInstanceOf(Team::class, $sm1);
-        $sm1->setMaxSessionsPerDay(2);
+        self::getContainer()->get(PlanComposition::class)->socleLinesOf([$sm1->getId()])[$sm1->getId()]->setMaxSessionsPerDay(2);
         $this->em->flush();
 
         $target = $this->service->transition($season, $this->inPreparationWindow());
 
         $copied = $this->em->getRepository(Team::class)->findOneBy(['seasonId' => $target->getId(), 'name' => 'SM1']);
         self::assertInstanceOf(Team::class, $copied);
-        self::assertSame(2, $copied->getMaxSessionsPerDay());
+        self::assertSame(2, self::getContainer()->get(PlanComposition::class)->socleLinesOf([$copied->getId()])[$copied->getId()]->getMaxSessionsPerDay());
     }
 
     /** PR 1b — une règle du club réglée sur « Ignorée » le reste à la saison suivante. */
@@ -847,10 +848,11 @@ final class SeasonTransitionServiceTest extends KernelTestCase
         $team->setSportCategoryId($categoryId);
         $team->setPriorityTierId($tierId);
         $team->setName($name);
-        $team->setSessionsPerWeek(2);
         $team->setForcedVenueId($forcedVenueId);
         $team->setIsActive(true);
         $this->em->persist($team);
+        $this->em->flush();
+        self::getContainer()->get(PlanComposition::class)->ensureLines($team->getSeasonId(), [$team->getId() => ['sessionsPerWeek' => 2]]);
         $this->em->flush();
 
         return $team;

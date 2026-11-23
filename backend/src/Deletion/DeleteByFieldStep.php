@@ -24,6 +24,11 @@ final readonly class DeleteByFieldStep implements CascadeStep
         private ?ImpactLabel $label,
         /** `false` pour une table scopée par la SAISON seule (pas de colonne club). */
         private bool $clubScoped = true,
+        /**
+         * Condition DQL (alias `e`) qui borne le COMPTE seulement : la fenêtre n'annonce que ces lignes-là, la
+         * suppression les emporte toutes. `null` = tout se compte.
+         */
+        private ?string $countedWhen = null,
     ) {}
 
     public function label(): ?ImpactLabel
@@ -34,8 +39,12 @@ final readonly class DeleteByFieldStep implements CascadeStep
     public function count(EntityManagerInterface $entityManager, DeletionTarget $target): int
     {
         $qb = $entityManager->createQueryBuilder()->select('COUNT(e.id)')->from($this->entityClass, 'e');
+        $this->scope($qb, $target);
+        if (null !== $this->countedWhen) {
+            $qb->andWhere($this->countedWhen);
+        }
 
-        return (int) $this->scope($qb, $target)->getQuery()->getSingleScalarResult();
+        return (int) $qb->getQuery()->getSingleScalarResult();
     }
 
     public function execute(EntityManagerInterface $entityManager, DeletionTarget $target): void

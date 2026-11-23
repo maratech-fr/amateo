@@ -2,9 +2,9 @@ import { Link2, X } from "lucide-react";
 
 import { Spinner } from "@/shared/components/ui/spinner";
 import { ConfirmDialog } from "@/shared/components/ui/confirm-dialog";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
-import { useCalendarEntry, usePeriodAnchor, useSchedulePlanForEntry } from "@/features/cockpit/queries";
+import { useCalendarEntry, usePeriodAnchor } from "@/features/cockpit/queries";
 import { useTeamLinks } from "@/features/matches/queries";
 import { INTENSITY_LABEL } from "@/features/matches/lib/teamLinkLabel";
 import { LoadErrorHint } from "@/shared/components/ui/load-error-hint";
@@ -37,24 +37,17 @@ import {
   useWizardTeams,
 } from "../queries";
 import { SectionCountTitle } from "./StructureSummary";
-import { claimPeriodSeed, periodSeedWasClaimed } from "./periodSeed";
-import { periodSeedKeptTeamIds } from "./periodSeedSelection";
 import { PeriodAnchorGate } from "./PeriodAnchorGate";
 import { DailyCapMarker } from "./TeamDailyCapPanel";
 import { TeamLinksModal } from "./TeamLinksModal";
 
-// In-session guard against re-seeding between firing the Fanion-only seed and the
-// plan query reflecting teamSelectionInitialized (the DURABLE, reload-proof signal).
-// Module-level so it survives a step remount (WizardLayout unmounts inactive steps).
-// Claimed ONCE and never un-claimed (un-claiming on a partial failure would re-run the
-// seed against a still-empty cache and double-write): a failed seed is best-effort, the
-// manager completes it with the "Fanion seul" ramp.
 /**
  * Period-editable teams (F1): the club roster is READ-ONLY (grouped by rank), but
  * each team can be toggled off for the period and given a period-specific number
- * of sessions. A sparse TeamPeriodOverride backs each change; the base plan and
- * the Team's seasonal fields are never touched. Default on a fresh period: only
- * the top tier (Fanion) trains — the resumption ramp starts there.
+ * of sessions. Each team has its line in the period's plan (served as a sparse override when it
+ * differs from the season); the season's values are never touched. The default selection of a
+ * holiday plan (Fanion + importantes) is laid by the SERVER when the plan is born: opening this
+ * step writes nothing.
  */
 export function PeriodTeams({ calendarEntryId }: { calendarEntryId: string }) {
   const anchor = usePeriodAnchor(calendarEntryId);
@@ -73,21 +66,16 @@ export function PeriodTeams({ calendarEntryId }: { calendarEntryId: string }) {
 function PeriodTeamsPanel({ calendarEntryId, schedulePlanId }: { calendarEntryId: string; schedulePlanId: string }) {
   const { data: teams = [] } = useWizardTeams();
   const { data: tiers = [] } = usePriorityTiers();
-  // Le TYPE de période gouverne le défaut d'équipes (E3) : reprise = Fanion + importantes,
-  // fermeture = tout le club (structure verrouillée). Lu comme PeriodConstraints le fait.
+  // Le TYPE de période : une fermeture garde tout le club (structure verrouillée). Lu comme PeriodConstraints le fait.
   const { data: entry } = useCalendarEntry(calendarEntryId);
   const isClosure = "closure" === entry?.periodType;
-  // Le PLAN entier est nécessaire ici (le garde de seed lit teamSelectionInitialized) ;
-  // `usePeriodAnchor` fournit l'ancre ET son état — ne pas re-dériver un `?? null` nu.
-  const { data: plan, isLoading: planLoading } = useSchedulePlanForEntry(calendarEntryId);
   const overridesQueryState = useTeamPeriodOverrides(schedulePlanId);
-  const { data: overrides = [], isLoading, refetch: retryOverrides } = overridesQueryState;
-  const overridesFailed = readFailed(overridesQueryState);
+  const { data: overrides = [], refetch: retryOverrides } = overridesQueryState;
   const create = useCreateTeamPeriodOverride(schedulePlanId);
   const update = useUpdateTeamPeriodOverride(schedulePlanId);
   const del = useDeleteTeamPeriodOverride(schedulePlanId);
   const [busy, setBusy] = useState(false);
-  // Un Membre lit la sélection : jamais d'amorçage (écriture au montage), aucun réglage.
+  // Un Membre lit la sélection : aucun réglage.
   const canManage = useCanManage();
   // P2-51 — le repère « mutualisée » DOIT figurer aussi en période, sinon il mentirait par
   // omission : les blocs de mutualisation de CETTE période (schedulePlanId derrière PeriodAnchorGate).
@@ -118,7 +106,6 @@ function PeriodTeamsPanel({ calendarEntryId, schedulePlanId }: { calendarEntryId
   };
 
   const groups = groupTeamsByTier(teams, tiers);
-  const topTierId = groups[0]?.tier?.id ?? null;
   const overrideOf = new Map<string, TeamPeriodOverride>(overrides.map((o) => [o.teamId, o]));
 
   const isActive = (t: Team): boolean => overrideOf.get(t.id)?.isActive ?? true;
@@ -155,56 +142,6 @@ function PeriodTeamsPanel({ calendarEntryId, schedulePlanId }: { calendarEntryId
   // Fire-and-forget for single edits (checkbox/session). Swallow the rejection: the
   // global MutationCache already toasts it — this only avoids an unhandledrejection.
   const upsert = (t: Team, patch: { isActive?: boolean; sessionsPerWeek?: number | null }) => void upsertAsync(t, patch)?.catch(() => {});
-
-  // Default team selection on a FRESH period (no overrides yet, not already seeded this
-  // session), ONCE — best-effort. The DEPTH depends on the period type (E3) :
-  //  - reprise (holiday) : Fanion + importantes reprennent (tiers S+A) ; le reste démarre
-  //    en pause, coché au fil de la montée en charge.
-  //  - fermeture (closure) : structure verrouillée → tout le club reste actif, rien n'est
-  //    désactivé d'office (le gestionnaire décoche à la main une équipe loisir au besoin).
-  // Controls stay disabled (busy) until the async writes settle so a first click can't
-  // race them. The key is claimed BEFORE firing and never un-claimed: un-claiming on a
-  // partial failure re-runs the effect against a still-empty override cache and
-  // double-writes the teams that already succeeded. On a failure the global toast
-  // informs; the manager applies a ramp preset to complete.
-  //
-  // The DURABLE signal is plan.teamSelectionInitialized (server-set on the first
-  // override, survives reload); seededPeriods only guards the in-session window
-  // between firing the seed and the plan query reflecting the flag. ADR-0002 lot C:
-  // the flag lives on the plan — the RESPONSE — not on the calendar event.
-  useEffect(() => {
-    // `false !== plan?.teamSelectionInitialized` bails on undefined AND on null:
-    // seed ONLY when the plan loaded and says explicitly "jamais configuré".
-    //
-    // Les cas de sortie sont voulus, et aucun n'est le cas nominal. `undefined` (plan OU
-    // entry) = fetch en erreur/en vol : ne pas seeder une période inconnue (elle pourrait
-    // être déjà configurée, son GET ayant simplement raté) — seeder à tort désactiverait
-    // des équipes que le gestionnaire vient d'activer, et sans le type on ne connaît pas la
-    // profondeur du seed. `null` (plan) = aucun plan : inatteignable pour une closure/holiday
-    // depuis que le geste est atomique (l'entrée et son plan naissent ensemble, ou pas du
-    // tout), et le mode période ne s'ouvre que sur ces deux types. Un null ici est donc une
-    // anomalie, pas un état neuf : ne rien faire est le choix conservateur.
-    // `overridesFailed` fait partie de la garde : sur une query en ERREUR, `overrides`
-    // vaut `[]` et `isLoading` est faux — le seed passait donc toutes ses conditions et
-    // désactivait la moitié du club EN ARRIÈRE-PLAN, pendant que l'écran affichait
-    // « Impossible de charger la sélection ». Le gestionnaire ne voyait rien, et
-    // retrouvait une sélection qu'il n'avait pas faite (ou générait sans le savoir).
-    if (!canManage || isLoading || overridesFailed || planLoading || undefined === entry || 0 === teams.length || overrides.length > 0 || null === topTierId || false !== plan?.teamSelectionInitialized || periodSeedWasClaimed(calendarEntryId)) {
-      return;
-    }
-    claimPeriodSeed(calendarEntryId);
-    // Le tri par défaut vit dans la MAISON UNIQUE partagée (D-e) : `periodSeedKeptTeamIds`,
-    // miroir de `PlanTeamSelectionSeeder::keptTeamIds` côté serveur (le transfert le matérialise).
-    // Fermeture → tout retenu (toDeactivate vide) ; reprise → S+A, repli sur le meilleur rang présent.
-    const keepIds = periodSeedKeptTeamIds(teams, tiers, isClosure);
-    const toDeactivate = teams.filter((t) => !keepIds.has(t.id));
-    if (0 === toDeactivate.length) {
-      return;
-    }
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- one-shot: gate the controls while the async default-selection writes settle
-    setBusy(true);
-    void Promise.allSettled(toDeactivate.map((t) => create.mutateAsync({ schedulePlanId: plan.id, teamId: t.id, isActive: false }))).finally(() => setBusy(false));
-  }, [canManage, isLoading, overridesFailed, planLoading, plan, entry, isClosure, teams, tiers, overrides, topTierId, calendarEntryId, create]);
 
   const toggle = (t: Team, value: boolean) => upsert(t, { isActive: value });
   const setSessions = (t: Team, raw: number) => {

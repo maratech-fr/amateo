@@ -15,6 +15,7 @@ use App\Entity\User;
 use App\Entity\Venue;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
+use App\Plans\PlanComposition;
 use App\Service\SchedulePlanProvisioner;
 use App\Service\SeasonResolver;
 use App\Tests\CreatesPeopleAndPlacesTrait;
@@ -237,8 +238,10 @@ final class SoclePlanApiFrontierTest extends WebTestCase
         $category = (new SportCategory)->setClubId($this->club->getId())->setSportId($sport->getId())->setName('U11-' . uniqid('', true));
         $this->em->persist($category);
         $team = (new Team)->setClubId($this->club->getId())->setSeasonId($this->season->getId())->setSportCategoryId($category->getId())
-            ->setPriorityTierId(3)->setName($name)->setSessionsPerWeek(2)->setIsActive(true);
+            ->setPriorityTierId(3)->setName($name)->setIsActive(true);
         $this->em->persist($team);
+        $this->em->flush();
+        self::getContainer()->get(PlanComposition::class)->ensureLines($team->getSeasonId(), [$team->getId() => ['sessionsPerWeek' => 2]]);
         $this->em->flush();
 
         return $team;

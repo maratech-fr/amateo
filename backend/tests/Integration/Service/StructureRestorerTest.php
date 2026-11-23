@@ -954,6 +954,7 @@ final class StructureRestorerTest extends KernelTestCase
             ->setStartDate(new DateTimeImmutable('2025-09-01'))->setEndDate(new DateTimeImmutable('2026-06-30'))->setStatus(SeasonStatus::ACTIVE);
         $this->em->persist($season);
         $this->em->flush();
+        SeasonPlanOf::id(self::getContainer(), $season->getId());
 
         return [$club, $season];
     }
@@ -962,7 +963,7 @@ final class StructureRestorerTest extends KernelTestCase
     {
         $team = (new Team)->setClubId($club->getId())->setSeasonId($season->getId())
             ->setSportCategoryId('33333333-3333-3333-3333-333333333333')->setPriorityTierId(1)
-            ->setName($name)->setSessionsPerWeek(1)->setIsActive(true);
+            ->setName($name)->setIsActive(true);
         $this->em->persist($team);
 
         return $team;

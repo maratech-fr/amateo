@@ -104,8 +104,6 @@ export interface SchedulePlan {
   startDate: string;
   calendarEntryId: string | null;
   chosenScheduleId: string | null;
-  /** Period-editable structure: has this plan's team selection been configured once (seed guard)? */
-  teamSelectionInitialized: boolean;
   /**
    * PR2 « Modifier les dates d'une fermeture » — 4 champs SERVIS par SchedulePlanResource (rail #1283).
    * Optionnels : seul un plan CLOSURE les porte, le front les LIT (règle d'or), il ne décide RIEN.

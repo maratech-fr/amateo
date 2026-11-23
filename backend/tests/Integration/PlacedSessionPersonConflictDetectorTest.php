@@ -31,6 +31,7 @@ use App\Enum\LockOrigin;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
 use App\Enum\TeamCoachRole;
+use App\Plans\PlanComposition;
 use App\Service\CoachDoubleBookingDetector;
 use App\Service\PlacedSessionPersonConflictDetector;
 use App\Tests\ChoosesPlanVersionTrait;
@@ -830,8 +831,10 @@ final class PlacedSessionPersonConflictDetectorTest extends KernelTestCase
 
         $teamIds = [];
         foreach (['U13F', 'U11M1'] as $name) {
-            $team = (new Team)->setClubId($clubId)->setSeasonId($seasonId)->setSportCategoryId($category->getId())->setPriorityTierId($tier->getId())->setName($name)->setSessionsPerWeek(2);
+            $team = (new Team)->setClubId($clubId)->setSeasonId($seasonId)->setSportCategoryId($category->getId())->setPriorityTierId($tier->getId())->setName($name);
             $this->em->persist($team);
+            $this->em->flush();
+            self::getContainer()->get(PlanComposition::class)->ensureLines($team->getSeasonId(), [$team->getId() => ['sessionsPerWeek' => 2]]);
             $this->em->flush();
             $teamIds[] = $team->getId();
         }
@@ -860,8 +863,10 @@ final class PlacedSessionPersonConflictDetectorTest extends KernelTestCase
     {
         $model = $this->em->getRepository(Team::class)->find($ctx['teamA']);
         self::assertInstanceOf(Team::class, $model);
-        $team = (new Team)->setClubId($model->getClubId())->setSeasonId($model->getSeasonId())->setSportCategoryId($model->getSportCategoryId())->setPriorityTierId($model->getPriorityTierId())->setName('SM1')->setSessionsPerWeek(2);
+        $team = (new Team)->setClubId($model->getClubId())->setSeasonId($model->getSeasonId())->setSportCategoryId($model->getSportCategoryId())->setPriorityTierId($model->getPriorityTierId())->setName('SM1');
         $this->em->persist($team);
+        $this->em->flush();
+        self::getContainer()->get(PlanComposition::class)->ensureLines($team->getSeasonId(), [$team->getId() => ['sessionsPerWeek' => 2]]);
         $this->em->flush();
 
         return $team->getId();

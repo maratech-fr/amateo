@@ -108,13 +108,21 @@ final class TeamCapContext extends BaseContext
             throw new RuntimeException(\sprintf('le club a déjà %d équipes : impossible d\'en compter %d dont %d désactivées ajoutées', $current, $count, (int) $inactive));
         }
         $this->dbalExec(\sprintf(
-            'INSERT INTO team (id, version, created_at, updated_at, club_id, season_id, sport_category_id, priority_tier_id, name, sessions_per_week, is_active)'
-            . ' SELECT gen_random_uuid(), 1, now(), now(), \'%1$s\', \'%2$s\', \'%3$s\', 5, \'Équipe ajoutée \' || g, 1, g > %4$d FROM generate_series(1, %5$d) AS g',
+            'INSERT INTO team (id, version, created_at, updated_at, club_id, season_id, sport_category_id, priority_tier_id, name, is_active)'
+            . ' SELECT gen_random_uuid(), 1, now(), now(), \'%1$s\', \'%2$s\', \'%3$s\', 5, \'Équipe ajoutée \' || g, g > %4$d FROM generate_series(1, %5$d) AS g',
             $this->smallClubId,
             $seasonId,
             $categoryId,
             (int) $inactive,
             $missing,
+        ), admin: true);
+        // Chaque équipe ajoutée a sa ligne dans chaque plan de la saison (lot 4, PR 3a) : 1 séance, 1 par jour.
+        $this->dbalExec(\sprintf(
+            'INSERT INTO plan_team (id, version, created_at, updated_at, club_id, season_id, schedule_plan_id, team_id, participates, sessions_per_week, max_sessions_per_day, source)'
+            . ' SELECT gen_random_uuid(), 1, now(), now(), t.club_id, t.season_id, p.id, t.id, true, 1, 1, NULL FROM team t JOIN schedule_plan p ON p.season_id = t.season_id'
+            . ' WHERE t.club_id = \'%1$s\' AND t.season_id = \'%2$s\' AND t.name LIKE \'Équipe ajoutée %%\'',
+            $this->smallClubId,
+            $seasonId,
         ), admin: true);
         $ids = $this->dbalScalar(\sprintf('SELECT string_agg(id::text, \',\' ORDER BY name) AS behatval FROM team WHERE club_id=\'%s\' AND name LIKE \'Équipe ajoutée %%\'', $this->smallClubId), admin: true);
         $this->addedTeamIds = '' === $ids ? [] : explode(',', $ids);

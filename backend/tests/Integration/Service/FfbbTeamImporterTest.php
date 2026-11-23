@@ -12,12 +12,14 @@ use App\Entity\SportCategory;
 use App\Entity\Team;
 use App\Enum\Gender;
 use App\Enum\SeasonStatus;
+use App\Plans\PlanComposition;
 use App\Service\Basketball\FfbbApiClient;
 use App\Service\Basketball\FfbbEngagementReader;
 use App\Service\Basketball\FfbbTeamImporter;
 use App\Service\Basketball\TeamCreationSuggester;
 use App\Service\PlanEntitlements;
 use App\Service\SeasonResolver;
+use App\Tests\SeasonPlanOf;
 use App\Tests\Support\SubscribesClub;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
@@ -76,7 +78,7 @@ final class FfbbTeamImporterTest extends KernelTestCase
         self::assertSame($this->tierIdForLabel('S'), $sm1->getPriorityTierId(), 'senior n°1 → rang S (règle FBI, jamais le niveau PN d\'office)');
         self::assertSame('NATIONAL', $sm1->getLevel()?->value, 'le level décodé est stocké');
         self::assertSame(Gender::M, $sm1->getGender(), 'genre structuré « Masculin » → M');
-        self::assertSame(2, $sm1->getSessionsPerWeek(), 'décision fondateur : 2 séances par défaut');
+        self::assertSame(2, self::getContainer()->get(PlanComposition::class)->socleLinesOf([$sm1->getId()])[$sm1->getId()]->getSessionsPerWeek(), 'décision fondateur : 2 séances par défaut');
 
         // U13M1 — jeune « RMU13 Brassage », structuré VIDE : tout vient du code (R/M/U13). Jeune n°1 → A.
         $u13 = $this->teamNamed('U13M1');
@@ -120,6 +122,8 @@ final class FfbbTeamImporterTest extends KernelTestCase
         $existing = (new Team)->setClubId($this->club->getId())->setSeasonId($this->seasonId())
             ->setSportCategoryId($this->categoryId('Senior'))->setName('Ma saisie')->setPriorityTierId(1);
         $this->em->persist($existing);
+        $this->em->flush();
+        self::getContainer()->get(PlanComposition::class)->ensureLines($existing->getSeasonId());
         $this->em->flush();
 
         self::assertSame(0, $this->buildImporter()->importEngagedTeams($this->club));
@@ -165,6 +169,7 @@ final class FfbbTeamImporterTest extends KernelTestCase
             ->setStatus(SeasonStatus::ACTIVE)->setTransitionData([]);
         $this->em->persist($season);
         $this->em->flush();
+        SeasonPlanOf::id(self::getContainer(), $season->getId());
 
         $sport = (new Sport)->setName('Basket ' . $uid)->setSlug('basket-' . $uid)->setIsActive(true);
         $this->em->persist($sport);
@@ -237,7 +242,7 @@ final class FfbbTeamImporterTest extends KernelTestCase
         $api = new FfbbApiClient($http);
         $reader = new FfbbEngagementReader($api);
 
-        return new FfbbTeamImporter($this->em, $reader, self::getContainer()->get(SeasonResolver::class), new NullLogger, self::getContainer()->get(PlanEntitlements::class), self::getContainer()->get(TeamCreationSuggester::class));
+        return new FfbbTeamImporter($this->em, $reader, self::getContainer()->get(SeasonResolver::class), new NullLogger, self::getContainer()->get(PlanEntitlements::class), self::getContainer()->get(TeamCreationSuggester::class), self::getContainer()->get(PlanComposition::class));
     }
 
     private function teamNamed(string $name): Team

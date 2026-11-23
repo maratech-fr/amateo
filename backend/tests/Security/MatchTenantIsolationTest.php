@@ -41,6 +41,7 @@ use App\Enum\OpponentVenueLinkSource;
 use App\Enum\SeasonStatus;
 use App\Enum\TeamCoachRole;
 use App\Enum\TeamLinkType;
+use App\Plans\PlanComposition;
 use App\Service\Basketball\VenueLabelNormalizer;
 use App\Service\Geo\IgnRoutingClient;
 use App\Service\Geo\TravelTimeCache;
@@ -1387,9 +1388,10 @@ final class MatchTenantIsolationTest extends WebTestCase
         $team->setSportCategoryId($category->getId());
         $team->setPriorityTierId(3);
         $team->setName($name);
-        $team->setSessionsPerWeek(2);
         $team->setIsActive(true);
         $this->em->persist($team);
+        $this->em->flush();
+        self::getContainer()->get(PlanComposition::class)->ensureLines($team->getSeasonId(), [$team->getId() => ['sessionsPerWeek' => 2]]);
         $this->em->flush();
 
         return $team;

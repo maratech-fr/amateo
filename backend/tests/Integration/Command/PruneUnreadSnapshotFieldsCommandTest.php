@@ -22,6 +22,7 @@ use App\Enum\ConstraintScope;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
 use App\Enum\TeamCoachRole;
+use App\Plans\PlanComposition;
 use App\Service\ClubGenerationLock;
 use App\Service\ScheduleConstraintBuilder;
 use App\Service\SchedulePlanProvisioner;
@@ -807,6 +808,8 @@ final class PruneUnreadSnapshotFieldsCommandTest extends KernelTestCase
         $team = (new Team)->setClubId($clubId)->setSeasonId($seasonId)->setName($name)
             ->setSportCategoryId(self::CATEGORY_ID)->setPriorityTierId(1);
         $this->em->persist($team);
+        $this->em->flush();
+        self::getContainer()->get(PlanComposition::class)->ensureLines($team->getSeasonId());
 
         return $team;
     }

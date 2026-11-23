@@ -23,6 +23,7 @@ use App\Enum\ConstraintRuleType;
 use App\Enum\ConstraintScope;
 use App\Enum\LockLevel;
 use App\Enum\SeasonStatus;
+use App\Plans\PlanComposition;
 use App\Tests\CreatesPeriodPlanTrait;
 use App\Tests\SeasonPlanOf;
 use App\Tests\TenantGucTrait;
@@ -655,9 +656,10 @@ final class ReservationApiTest extends WebTestCase
         $team = (new Team)
             ->setClubId($this->club->getId())->setSeasonId($this->season->getId())
             ->setSportCategoryId($this->makeUuid())->setPriorityTierId(3)
-            ->setName('T' . substr($this->makeUuid(), 0, 6))
-            ->setSessionsPerWeek($sessionsPerWeek)->setIsActive(true);
+            ->setName('T' . substr($this->makeUuid(), 0, 6))->setIsActive(true);
         $this->em->persist($team);
+        $this->em->flush();
+        self::getContainer()->get(PlanComposition::class)->ensureLines($team->getSeasonId(), [$team->getId() => ['sessionsPerWeek' => $sessionsPerWeek]]);
         $this->em->flush();
 
         return $team;

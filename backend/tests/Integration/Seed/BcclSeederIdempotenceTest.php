@@ -1247,13 +1247,12 @@ final class BcclSeederIdempotenceTest extends KernelTestCase
         // 1 CPO (« SM2 · au moins 1 à Matéo »), 0 VPO, 0 réservation. ---
         $assertPlanCarriesOverlay = function (string $planId): void {
             $plan = $this->connection->fetchAssociative(
-                'SELECT type, chosen_schedule_id, team_selection_initialized FROM schedule_plan WHERE id = ?',
+                'SELECT type, chosen_schedule_id FROM schedule_plan WHERE id = ?',
                 [$planId],
             );
             self::assertNotFalse($plan, 'l\'enfant porte son plan');
             self::assertSame('CLOSURE', (string) $plan['type'], 'le plan est de type CLOSURE');
             self::assertNotNull($plan['chosen_schedule_id'], 'le plan EST validé (il pointe une version)');
-            self::assertTrue((bool) $plan['team_selection_initialized'], 'la sélection d\'équipes est initialisée');
 
             $version = $this->connection->fetchAssociative(
                 'SELECT s.status, s.solver_version, '
@@ -1266,22 +1265,22 @@ final class BcclSeederIdempotenceTest extends KernelTestCase
             self::assertSame('seed-transcription', (string) $version['solver_version'], 'la provenance est la transcription du seed');
             self::assertSame(90, (int) $version['slot_count'], 'la transcription pose exactement 90 créneaux');
 
-            $totalTpo = (int) $this->connection->fetchOne('SELECT COUNT(*) FROM team_period_override WHERE schedule_plan_id = ?', [$planId]);
+            $totalTpo = (int) $this->connection->fetchOne('SELECT COUNT(*) FROM plan_team WHERE schedule_plan_id = ?', [$planId]);
             self::assertSame(50, $totalTpo, '50 lignes d\'équipe (49 actives + 1 décochée)');
-            $activeTpo = (int) $this->connection->fetchOne('SELECT COUNT(*) FROM team_period_override WHERE schedule_plan_id = ? AND is_active = true', [$planId]);
+            $activeTpo = (int) $this->connection->fetchOne('SELECT COUNT(*) FROM plan_team WHERE schedule_plan_id = ? AND participates = true', [$planId]);
             self::assertSame(49, $activeTpo, '49 équipes actives (celles qui figurent au planning)');
-            $spwSum = (int) $this->connection->fetchOne('SELECT COALESCE(SUM(sessions_per_week), 0) FROM team_period_override WHERE schedule_plan_id = ? AND is_active = true', [$planId]);
+            $spwSum = (int) $this->connection->fetchOne('SELECT COALESCE(SUM(sessions_per_week), 0) FROM plan_team WHERE schedule_plan_id = ? AND participates = true', [$planId]);
             self::assertSame(90, $spwSum, 'la somme des séances/semaine actives vaut 90');
 
             $inactiveTpo = array_map('strval', $this->connection->fetchFirstColumn(
-                'SELECT t.name FROM team_period_override o JOIN team t ON t.id = o.team_id '
-                . 'WHERE o.schedule_plan_id = ? AND o.is_active = false',
+                'SELECT t.name FROM plan_team o JOIN team t ON t.id = o.team_id '
+                . 'WHERE o.schedule_plan_id = ? AND o.participates = false',
                 [$planId],
             ));
             self::assertSame(['Training Individuel'], $inactiveTpo, '« Training Individuel » est la SEULE équipe décochée');
 
             $spwOf = fn (string $name): int => (int) $this->connection->fetchOne(
-                'SELECT o.sessions_per_week FROM team_period_override o JOIN team t ON t.id = o.team_id '
+                'SELECT o.sessions_per_week FROM plan_team o JOIN team t ON t.id = o.team_id '
                 . 'WHERE o.schedule_plan_id = ? AND t.name = ?',
                 [$planId, $name],
             );
@@ -1632,7 +1631,7 @@ final class BcclSeederIdempotenceTest extends KernelTestCase
             // normalisé) et les 8 blocs SOCLE (purge+recréation) entrent dans la mesure.
             'teamLinks' => $this->rowsIn('team_link'),
             'venuePeriodOverrides' => $this->rowsIn('venue_period_override'),
-            'teamPeriodOverrides' => $this->rowsIn('team_period_override'),
+            'teamPeriodOverrides' => $this->rowsIn('plan_team'),
             'constraintPeriodOverrides' => $this->rowsIn('constraint_period_override'),
             // Répartition WE des matchs (profil dev) : les 32 créneaux idéaux (find-or-create sur
             // (club, saison, équipe), tag de semaine réappliqué) et les 10 fenêtres d'accès

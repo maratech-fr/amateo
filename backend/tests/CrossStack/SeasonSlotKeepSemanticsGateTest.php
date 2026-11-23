@@ -16,6 +16,7 @@ use App\Enum\ConstraintFamily;
 use App\Enum\ConstraintRuleType;
 use App\Enum\ConstraintScope;
 use App\Enum\SeasonStatus;
+use App\Plans\PlanComposition;
 use App\Service\ScheduleConstraintBuilder;
 use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\SeasonPlanOf;
@@ -207,8 +208,10 @@ final class SeasonSlotKeepSemanticsGateTest extends KernelTestCase
     private function team(Club $club, Season $season, string $name): Team
     {
         $team = (new Team)->setClubId($club->getId())->setSeasonId($season->getId())->setName($name)
-            ->setSportCategoryId(self::SPORT_CATEGORY_ID)->setPriorityTierId(1)->setSessionsPerWeek(1);
+            ->setSportCategoryId(self::SPORT_CATEGORY_ID)->setPriorityTierId(1);
         $this->em->persist($team);
+        $this->em->flush();
+        self::getContainer()->get(PlanComposition::class)->ensureLines($team->getSeasonId(), [$team->getId() => ['sessionsPerWeek' => 1]]);
 
         return $team;
     }

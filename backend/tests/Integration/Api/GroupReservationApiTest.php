@@ -16,6 +16,7 @@ use App\Entity\User;
 use App\Entity\Venue;
 use App\Entity\VenueTrainingSlot;
 use App\Enum\SeasonStatus;
+use App\Plans\PlanComposition;
 use App\Service\ReservationGroupOccupancy;
 use App\Service\SeasonResolver;
 use App\Tests\ChoosesPlanVersionTrait;
@@ -605,9 +606,10 @@ final class GroupReservationApiTest extends WebTestCase
         $team = (new Team)
             ->setClubId($club->getId())->setSeasonId($season->getId())
             ->setSportCategoryId($this->uuid())->setPriorityTierId(3)
-            ->setName('T' . substr($this->uuid(), 0, 6))
-            ->setSessionsPerWeek($sessionsPerWeek)->setIsActive(true);
+            ->setName('T' . substr($this->uuid(), 0, 6))->setIsActive(true);
         $this->em->persist($team);
+        $this->em->flush();
+        self::getContainer()->get(PlanComposition::class)->ensureLines($team->getSeasonId(), [$team->getId() => ['sessionsPerWeek' => $sessionsPerWeek]]);
 
         return $team;
     }

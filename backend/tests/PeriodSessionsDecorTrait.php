@@ -17,13 +17,14 @@ use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
+use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 
 /**
  * Le décor des séances d'un plan de vacances (lot 4, PR 3a, ligne 17 du plan) : un planning de saison en vigueur où
  * SM1 a 2 séances et U15 3 — dont une ajoutée à la main au-delà de ses 2 séances de saison — et des vacances d'une
  * semaine pleine, nées après. Chaque équipe a sa ligne dans les deux plans (la porte `ensureLines`).
  *
- * @phpstan-require-extends \Symfony\Bundle\FrameworkBundle\Test\KernelTestCase
+ * @phpstan-require-extends KernelTestCase
  */
 trait PeriodSessionsDecorTrait
 {

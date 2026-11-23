@@ -15,6 +15,7 @@ use App\Entity\User;
 use App\Enum\CalendarEntryKind;
 use App\Enum\CalendarEntryPeriodType;
 use App\Enum\SeasonStatus;
+use App\Plans\PlanComposition;
 use App\Service\ScheduleConstraintBuilder;
 use App\Tests\ProvisionsPeriodPlanTrait;
 use App\Tests\SeasonPlanOf;
@@ -231,9 +232,10 @@ final class SharedBlockPayloadParityTest extends KernelTestCase
         $team->setSportCategoryId($this->uuid());
         $team->setPriorityTierId(3);
         $team->setName('T' . substr($this->uuid(), 0, 6));
-        $team->setSessionsPerWeek($sessionsPerWeek);
         $team->setIsActive(true);
         $this->em->persist($team);
+        $this->em->flush();
+        self::getContainer()->get(PlanComposition::class)->ensureLines($team->getSeasonId(), [$team->getId() => ['sessionsPerWeek' => $sessionsPerWeek]]);
 
         return $team;
     }

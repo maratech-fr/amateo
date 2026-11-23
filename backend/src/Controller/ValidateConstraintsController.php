@@ -11,10 +11,10 @@ use App\Entity\CalendarEntry;
 use App\Entity\Constraint;
 use App\Entity\Reservation;
 use App\Enum\CalendarEntryPeriodType;
+use App\Plans\PlanComposition;
 use App\Plans\SoclePlan;
 use App\Repository\CalendarEntryRepository;
 use App\Repository\ConstraintRepository;
-use App\Repository\TeamRepository;
 use App\Repository\VenueRepository;
 use App\Service\CoachDoubleBookingDetector;
 use App\Service\ConstraintValidationService;
@@ -54,7 +54,6 @@ final class ValidateConstraintsController extends AbstractController
         private readonly SeasonResolver $seasonResolver,
         private readonly ConstraintValidationService $validationService,
         private readonly RequestStack $requestStack,
-        private readonly TeamRepository $teamRepository,
         private readonly EntityManagerInterface $entityManager,
         private readonly SchedulePlanProvisioner $schedulePlanProvisioner,
         private readonly VenueRepository $venueRepository,
@@ -68,6 +67,7 @@ final class ValidateConstraintsController extends AbstractController
         private readonly SecondSessionSameDayDetector $secondSessionSameDayDetector,
         private readonly ImplicitRuleResolver $implicitRuleResolver,
         private readonly SoclePlan $soclePlan,
+        private readonly PlanComposition $planComposition,
     ) {}
 
     #[Route('/api/constraints/validate', name: 'api_constraints_validate', methods: ['POST'])]
@@ -108,8 +108,9 @@ final class ValidateConstraintsController extends AbstractController
         $teamSessions = [];
         $needsTeams = array_filter($constraints, static fn (Constraint $c): bool => isset($c->getConfig()['minAtVenueId']));
         if ([] !== $needsTeams) {
-            foreach ($this->teamRepository->findBy(['clubId' => $clubId, 'seasonId' => $seasonId]) as $team) {
-                $teamSessions[$team->getId()] = $team->getSessionsPerWeek();
+            // Les séances de saison : la ligne de chaque équipe au socle (lot 4, PR 3a).
+            foreach ($this->planComposition->teamsOf($this->soclePlan->idOf($seasonId)) as $teamId => $line) {
+                $teamSessions[$teamId] = $line->getSessionsPerWeek();
             }
         }
 

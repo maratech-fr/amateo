@@ -8,11 +8,9 @@ use App\Entity\CalendarEntry;
 use App\Entity\ConstraintPeriodOverride;
 use App\Entity\ImplicitRuleSetting;
 use App\Entity\Reservation;
-use App\Entity\SchedulePlan;
 use App\Entity\SharedTrainingBlock;
 use App\Entity\SharedTrainingBlockTeam;
 use App\Entity\Team;
-use App\Entity\TeamPeriodOverride;
 use App\Entity\VenueOccupancy;
 use App\Entity\VenuePeriodOverride;
 use App\Entity\VenueTrainingSlot;
@@ -25,6 +23,7 @@ use App\Enum\ConstraintScope;
 use App\Enum\ImplicitRuleIntensity;
 use App\Enum\ImplicitRuleKey;
 use App\Enum\VenuePeriodMode;
+use App\Plans\PlanComposition;
 use DateTimeImmutable;
 use PHPUnit\Framework\Assert;
 
@@ -76,14 +75,11 @@ trait EngineRequestPlanSettingsDecorTrait
     private function seedEngineRequestCompleteSocle(): void
     {
         $em = $this->erEm();
-        $u15 = $em->getRepository(Team::class)->find(self::ER_TEAM_U15);
-        $sm1 = $em->getRepository(Team::class)->find(self::ER_TEAM_SM1);
         $slot = $em->getRepository(VenueTrainingSlot::class)->find(self::erId('a7a1', 3));
-        Assert::assertInstanceOf(Team::class, $u15);
-        Assert::assertInstanceOf(Team::class, $sm1);
         Assert::assertInstanceOf(VenueTrainingSlot::class, $slot);
-        $u15->setSessionsPerWeek(3);
-        $sm1->setMaxSessionsPerDay(2);
+        $composition = static::getContainer()->get(PlanComposition::class);
+        $composition->lineOf($this->erSeasonPlanId(), self::ER_TEAM_U15)->setSessionsPerWeek(3);
+        $composition->lineOf($this->erSeasonPlanId(), self::ER_TEAM_SM1)->setMaxSessionsPerDay(2);
         $slot->setGroupLabel('Groupe U15 + SM1');
 
         $this->erSocleBlock(self::ER_BLOCK_SOCLE, 31);
@@ -120,9 +116,6 @@ trait EngineRequestPlanSettingsDecorTrait
 
         // Plan ancien : sans copie des règles de bien-être, il lit celles de la saison.
         $em->getConnection()->executeStatement('DELETE FROM implicit_rule_setting WHERE schedule_plan_id = :p', ['p' => $planId]);
-        $plan = $em->getRepository(SchedulePlan::class)->find($planId);
-        Assert::assertInstanceOf(SchedulePlan::class, $plan);
-        $plan->setTeamSelectionInitialized(true);
 
         $this->erTeamSetting(31, $planId, self::ER_TEAM_U13, false, null, null);
         $this->erTeamSetting(32, $planId, self::ER_TEAM_U15, true, 1, null);
@@ -192,10 +185,14 @@ trait EngineRequestPlanSettingsDecorTrait
             ->setSchedulePlanId($this->erSeasonPlanId()));
     }
 
+    /** Le réglage d'une équipe dans un plan de période : sa ligne ; `null` = la valeur du socle du moment. */
     private function erTeamSetting(int $n, string $planId, string $teamId, bool $participates, ?int $sessions, ?int $maxPerDay): void
     {
-        $this->erEm()->persist((new TeamPeriodOverride)->setId(self::erId('d7e0', $n))->setClubId(self::ER_CLUB)->setSeasonId(self::ER_SEASON)
-            ->setSchedulePlanId($planId)->setTeamId($teamId)->setIsActive($participates)->setSessionsPerWeek($sessions)->setMaxSessionsPerDay($maxPerDay));
+        unset($n);
+        $composition = static::getContainer()->get(PlanComposition::class);
+        $socle = $composition->lineOf($this->erSeasonPlanId(), $teamId);
+        $composition->lineOf($planId, $teamId)->setParticipating($participates)
+            ->setSessionsPerWeek($sessions ?? $socle->getSessionsPerWeek())->setMaxSessionsPerDay($maxPerDay ?? $socle->getMaxSessionsPerDay());
     }
 
     private function erRuleSetting(int $n, string $planId, string $constraintId, bool $applies): void
@@ -216,8 +213,9 @@ trait EngineRequestPlanSettingsDecorTrait
     {
         $em = $this->erEm();
         $em->persist((new Team)->setId($teamId)->setClubId(self::ER_CLUB)->setSeasonId(self::ER_SEASON)
-            ->setSportCategoryId(self::ER_CATEGORY)->setPriorityTierId(2)->setName($name)
-            ->setSessionsPerWeek(2)->setIsActive(true));
+            ->setSportCategoryId(self::ER_CATEGORY)->setPriorityTierId(2)->setName($name)->setIsActive(true));
         $em->flush();
+        // Comme une saisie : la porte pose ses lignes, 2 séances au socle, cochée dans chaque plan de période.
+        static::getContainer()->get(PlanComposition::class)->ensureLines(self::ER_SEASON);
     }
 }

@@ -22,6 +22,7 @@ use App\Enum\FixtureHomeAway;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
 use App\Exception\ImportRejectedException;
+use App\Plans\PlanComposition;
 use App\Repository\ClubSubscriptionRepository;
 use App\Repository\SubscriptionPlanRepository;
 use App\Repository\SubscriptionPlanTierRepository;
@@ -31,9 +32,11 @@ use App\Service\ManagementAccessGuard;
 use App\Service\PdfGenerator;
 use App\Service\PlanEntitlements;
 use App\Service\ProductIdentity;
+use App\Service\SchedulePlanProvisioner;
 use App\Service\SeasonResolver;
 use App\Service\SocleGuard;
 use App\Tests\ChoosesPlanVersionTrait;
+use App\Tests\SeasonPlanOf;
 use App\Tests\Support\SubscribesClub;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
@@ -747,6 +750,7 @@ final class PlanEntitlementsTest extends WebTestCase
             ->setTransitionData([]);
         $this->em->persist($seasonB);
         $this->em->flush();
+        SeasonPlanOf::id(self::getContainer(), $seasonB->getId());
         $this->subscribeClub($clubId, $year + 1, 'complete', 'palier-1');
         $this->seedTeams($clubId, $seasonB->getId(), 21);
         $this->settleSeasonPlan($seasonB);
@@ -886,6 +890,10 @@ final class PlanEntitlementsTest extends WebTestCase
         $season->setTransitionData([]);
         $this->em->persist($season);
         $this->em->flush();
+        // Une saison naît avec son plan de saison (lot 4) : ses équipes y ont leur ligne. L'entité est passée telle
+        // quelle — après une requête, le filtre de club du conteneur vise le club de cette requête.
+        self::getContainer()->get(SchedulePlanProvisioner::class)->ensureSeasonPlan($season);
+        self::getContainer()->get(EntityManagerInterface::class)->flush();
 
         if (null !== $planCode) {
             // Offre (et palier) attribués ET saison courante réglée → l'offre effective est bien la payante.
@@ -926,9 +934,10 @@ final class PlanEntitlementsTest extends WebTestCase
                 ->setSportCategoryId($category->getId())
                 ->setPriorityTierId(1)
                 ->setName('Seed ' . $i)
-                ->setSessionsPerWeek(2)
                 ->setIsActive($i >= $inactive);
             $this->em->persist($team);
+            $this->em->flush();
+            self::getContainer()->get(PlanComposition::class)->ensureLines($team->getSeasonId(), [$team->getId() => ['sessionsPerWeek' => 2]]);
         }
         $this->em->flush();
 
