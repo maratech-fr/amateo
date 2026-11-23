@@ -230,13 +230,13 @@ final class MutualizeSlotApiTest extends WebTestCase
         // PORTÉE NULL : le bloc du socle n'est rattaché à aucun plan de période.
         $block = $this->em->getRepository(SharedTrainingBlock::class)->findOneBy(['clubId' => $ctx['clubId'], 'schedulePlanId' => self::getContainer()->get(SoclePlan::class)->idOf($ctx['seasonId'])]);
         self::assertInstanceOf(SharedTrainingBlock::class, $block);
-        self::assertSame(self::getContainer()->get(SoclePlan::class)->idOf($block->getSeasonId()), $block->getSchedulePlanId(), 'au socle, le bloc vit à portée NULL');
+        self::assertSame(self::getContainer()->get(SoclePlan::class)->idOf($block->getSeasonId()), $block->getSchedulePlanId(), 'au socle, le bloc porte le plan de saison');
         self::assertSame(1, $block->getCommonSessions());
         self::assertSame('Socle U11', $block->getLabel());
         $members = $this->em->getRepository(SharedTrainingBlockTeam::class)->findBy(['blockId' => $block->getId()]);
         self::assertCount(2, $members);
         foreach ($members as $member) {
-            self::assertSame(self::getContainer()->get(SoclePlan::class)->idOf($member->getSeasonId()), $member->getSchedulePlanId(), 'les membres du bloc de socle vivent aussi à portée NULL');
+            self::assertSame(self::getContainer()->get(SoclePlan::class)->idOf($member->getSeasonId()), $member->getSchedulePlanId(), 'les membres du bloc de socle portent aussi le plan de saison');
         }
 
         foreach ([$source->getId(), $joinerSlot->getId()] as $slotId) {
@@ -600,7 +600,7 @@ final class MutualizeSlotApiTest extends WebTestCase
         self::assertResponseStatusCodeSame(403);
     }
 
-    /** Au SOCLE : équipe → équipe donne un bloc de portée NULL (comme les blocs de saison). */
+    /** Au SOCLE : équipe → équipe donne un bloc sur le plan de saison (comme les blocs de saison). */
     /**
      * Promesse fondateur 2026-10-30, chemin « mutualiser une séance » : créer un groupe à 1 séance commune
      * sur des équipes déjà réservées ensemble sur 2 cases sortirait en échec à la génération suivante.
@@ -681,7 +681,7 @@ final class MutualizeSlotApiTest extends WebTestCase
         $this->scopeGucToClub($ctx['clubId']);
         $block = $this->em->getRepository(SharedTrainingBlock::class)->findOneBy(['clubId' => $ctx['clubId']]);
         self::assertInstanceOf(SharedTrainingBlock::class, $block);
-        self::assertSame(self::getContainer()->get(SoclePlan::class)->idOf($block->getSeasonId()), $block->getSchedulePlanId(), 'au socle, le bloc vit à portée NULL');
+        self::assertSame(self::getContainer()->get(SoclePlan::class)->idOf($block->getSeasonId()), $block->getSchedulePlanId(), 'au socle, le bloc porte le plan de saison');
     }
 
     protected function setUp(): void

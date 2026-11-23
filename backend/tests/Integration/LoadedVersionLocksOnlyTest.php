@@ -127,15 +127,19 @@ final class LoadedVersionLocksOnlyTest extends WebTestCase
     /** Une étoile périmée (version en échec, ou disparue) retombe sur la dernière terminée. */
     public function testAStaleStarFallsBackToTheLatestCompleted(): void
     {
+        $older = $this->version();
         $latest = $this->version();
         $failed = $this->version(ScheduleStatus::FAILED);
 
         $this->star($failed);
         self::assertSame($latest->getId(), $this->loaded(), 'étoile sur une version en échec');
 
-        // Lot 4 : le pointeur du plan porte une clé vers la version — une version disparue le remet à nul.
-        $this->em->getConnection()->executeStatement('UPDATE schedule_plan SET lock_source_schedule_id = NULL WHERE season_id = ? AND type = \'SEASON\'', [$this->season->getId()]);
-        $this->em->flush();
+        // Lot 4 : l'étoile vit sur le plan, avec une clé vers la version (`ON DELETE SET NULL`) ; la version
+        // étoilée disparaît vraiment, et le chargement retombe sur la dernière terminée.
+        $this->star($older);
+        self::assertSame($older->getId(), $this->loaded(), 'témoin : l\'étoile sur une version terminée la charge');
+        $this->em->getConnection()->executeStatement('DELETE FROM schedule WHERE id = ?', [$older->getId()]);
+        self::assertNull($this->em->getConnection()->fetchOne('SELECT lock_source_schedule_id FROM schedule_plan WHERE season_id = ? AND type = \'SEASON\'', [$this->season->getId()]), 'la version disparue ne laisse pas d\'étoile pendante');
         self::assertSame($latest->getId(), $this->loaded(), 'étoile sur une version disparue');
     }
 

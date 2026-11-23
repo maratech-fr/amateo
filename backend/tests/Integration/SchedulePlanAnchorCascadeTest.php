@@ -17,17 +17,16 @@ use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
  * `Reservation.schedulePlanId` et `VenueTrainingSlot.schedulePlanId` étaient des
  * colonnes `guid` nues, sans FK : `deletePeriodPlan` fait un `DELETE FROM
  * schedule_plan` sec, donc chaque suppression laissait des lignes à l'ancre
- * pendante. Invisibles (`StructureSnapshotter` filtre `IS NULL`) mais éternelles.
+ * pendante, invisibles mais éternelles.
  *
- * Ce test tient les quatre bords qui comptent :
- *  1. la contrainte EXISTE et casse bien en CASCADE — Doctrine ignore ces FK
- *     (colonne nue), donc `migration-diff` propose de les DROPper ; sans cette
- *     assertion, un `migration-diff` committé sans relecture les ferait
- *     disparaître en silence et la dette reviendrait ;
+ * Ce test tient les bords qui comptent :
+ *  1. la contrainte EXISTE et casse bien en CASCADE, sur chaque table qui porte un plan (lot 4, PR 2 :
+ *     les six familles du socle et les trois réglages de période) — Doctrine ignore ces FK (colonne
+ *     nue), donc `migration-diff` propose de les DROPper ; sans cette assertion, un `migration-diff`
+ *     committé sans relecture les ferait disparaître en silence et la dette reviendrait ;
  *  2. la cascade emporte les lignes du plan supprimé ;
- *  3. les lignes de BASE (ancre NULL) survivent — c'est l'inverse du piège
- *     `ON DELETE SET NULL`, qui les aurait au contraire fabriquées ;
- *  4. les lignes d'un AUTRE plan survivent.
+ *  3. les lignes d'un AUTRE plan survivent — dont celles du socle, qui depuis le lot 4 portent le plan
+ *     de saison (le survivant ci-dessous) : c'est l'inverse du piège `ON DELETE SET NULL`.
  */
 #[Group('phase1')]
 final class SchedulePlanAnchorCascadeTest extends KernelTestCase
@@ -52,13 +51,28 @@ final class SchedulePlanAnchorCascadeTest extends KernelTestCase
     }
 
     /**
+     * Toutes les tables qui portent un plan : celles du cas de suppression, plus les quatre familles du
+     * socle qui reçoivent leur clé au lot 4 (PR 2).
+     *
+     * @return iterable<string, array{0: string}>
+     */
+    public static function plannedTableProvider(): iterable
+    {
+        yield from self::anchoredTableProvider();
+        yield 'venue_occupancy' => ['venue_occupancy'];
+        yield 'shared_training_block' => ['shared_training_block'];
+        yield 'shared_training_block_team' => ['shared_training_block_team'];
+        yield 'implicit_rule_setting' => ['implicit_rule_setting'];
+    }
+
+    /**
      * La contrainte est là ET son action est CASCADE (`confdeltype = 'c'`).
      *
      * Vérifier seulement l'existence laisserait passer un `NO ACTION`, qui
      * ferait ÉCHOUER la suppression d'un plan au lieu de nettoyer — une panne
      * fonctionnelle, pas une fuite de lignes.
      */
-    #[DataProvider('anchoredTableProvider')]
+    #[DataProvider('plannedTableProvider')]
     public function testTheForeignKeyExistsAndCascades(string $table): void
     {
         $deleteAction = $this->connection->fetchOne(
@@ -91,21 +105,14 @@ final class SchedulePlanAnchorCascadeTest extends KernelTestCase
         $this->insertPlan($survivingPlanId, $clubId, $seasonId, 'SEASON');
 
         $doomedRow = $this->insertAnchoredRow($table, $clubId, $seasonId, $doomedPlanId);
+        // Le survivant est le plan de saison : pour la grille et les réservations, c'est la ligne du socle.
         $survivingRow = $this->insertAnchoredRow($table, $clubId, $seasonId, $survivingPlanId);
-        // Ancre NOT NULL sur les trois `*PeriodOverride` : pas de ligne de base à tenir.
-        $baseRow = $this->anchorIsNullable($table) ? $this->insertAnchoredRow($table, $clubId, $seasonId, $survivingPlanId) : null;
 
         // Le geste réel : `deletePeriodPlan` supprime le plan en SQL brut.
         $this->connection->executeStatement('DELETE FROM schedule_plan WHERE id = ?', [$doomedPlanId]);
 
         self::assertFalse($this->rowExists($table, $doomedRow), 'La ligne du plan supprimé doit être emportée par la cascade.');
-        self::assertTrue($this->rowExists($table, $survivingRow), 'La ligne d’un AUTRE plan ne doit pas être touchée.');
-        if (null !== $baseRow) {
-            self::assertTrue(
-                $this->rowExists($table, $baseRow),
-                'La ligne de BASE (ancre NULL) doit survivre : NULL signifie « partagée par la saison », pas « orpheline ».',
-            );
-        }
+        self::assertTrue($this->rowExists($table, $survivingRow), 'La ligne d’un AUTRE plan — le socle compris — ne doit pas être touchée.');
     }
 
     protected function setUp(): void
@@ -124,14 +131,8 @@ final class SchedulePlanAnchorCascadeTest extends KernelTestCase
         );
     }
 
-    /** Les deux tables de P4-30 acceptent une ancre NULLE (« ligne de base ») ; les trois de P4-34, non. */
-    private function anchorIsNullable(string $table): bool
-    {
-        return \in_array($table, ['reservation', 'venue_training_slot'], true);
-    }
-
     /** @return string l'identifiant de la ligne insérée */
-    private function insertAnchoredRow(string $table, string $clubId, string $seasonId, ?string $planId): string
+    private function insertAnchoredRow(string $table, string $clubId, string $seasonId, string $planId): string
     {
         $id = $this->uuid();
 

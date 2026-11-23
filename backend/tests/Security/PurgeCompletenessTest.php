@@ -194,8 +194,9 @@ final class PurgeCompletenessTest extends KernelTestCase
     /**
      * L'effacement d'un club efface exactement, pour chaque saison, les familles de la purge de
      * saison et la ligne de saison, puis les familles que le catalogue efface avec le club ; son
-     * compte rendu `CLUB_PURGED` compte chaque ligne effacée (15 sur ce décor : 2 saisons, 8 lignes
-     * de saison dont une doléance purgée par son entrée de calendrier, 1 catégorie du club, 2 fiches
+     * compte rendu `CLUB_PURGED` compte chaque ligne effacée (16 sur ce décor : 2 saisons, 9 lignes
+     * de saison dont une doléance purgée par son entrée de calendrier et le plan de saison que porte le
+     * créneau depuis le lot 4, 1 catégorie du club, 2 fiches
      * de personne dont une sans rôle, gardée après la suppression de son coach, 2 lieux dont un sans
      * gymnase, gardé après la suppression du sien — lot 3, PR 4).
      */
