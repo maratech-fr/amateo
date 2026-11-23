@@ -6,8 +6,11 @@ namespace App\Tests\Security;
 
 use App\Repository\ClubUserRepository;
 use App\Service\TenantConnectionContext;
+use App\Structure\FamilyCatalog;
+use App\Structure\Level;
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Exception\DriverException;
+use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\Persistence\ManagerRegistry;
 use PHPUnit\Framework\Attributes\Group;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
@@ -53,6 +56,33 @@ final class RlsIsolationTest extends KernelTestCase
             WHERE a.attrelid = c.oid AND a.attname = 'club_id' AND NOT a.attisdropped
         )
         SQL;
+
+    /**
+     * Tables de plateforme que l'application ÉCRIT par le rôle applicatif, chacune avec son écrivain —
+     * exclues de la règle « référentiel de plateforme en lecture seule ». Toute autre table de
+     * plateforme est en lecture seule pour lui.
+     *
+     * @var array<string, string>
+     */
+    private const array PLATFORM_TABLES_WRITTEN_BY_THE_APPLICATION = [
+        'app_user' => 'comptes : inscription (RegisterService), connexion (LoginSuccessListener), effacement (AccountErasureService)',
+        'club_creation_request' => 'demandes de création de club (ClubApprovalService, ClubApprovalDigestCommand)',
+        'email_change_token' => 'changement d\'e-mail (EmailChangeVerifier)',
+        'email_verification_token' => 'vérification d\'e-mail (EmailVerifier)',
+        'reset_password_request' => 'mot de passe oublié (PasswordController, bundle reset-password)',
+        'ffbb_committee' => 'comités FFBB, upsert à la population d\'un club (FfbbClubPopulator)',
+        'ffbb_league' => 'ligues FFBB, upsert à la population d\'un club (FfbbClubPopulator)',
+        'opponent_directory' => 'annuaire partagé des adversaires, upsert (OpponentDirectoryEntryRepository)',
+        'opponent_venue_suggestion' => 'suggestions de salle partagées, upsert et compteurs (OpponentVenueSuggestionRepository)',
+        'shared_competition_deadline' => 'dates limites d\'engagement partagées (CompetitionEntryDeadlinesController)',
+        'sport' => 'sport créé au provisionnement d\'un club ou à l\'import du parc (ClubProvisioner, ParcImportExecutor)',
+        'public_holiday' => 'jours fériés importés (ImportPublicHolidaysCommand, HolidaySeeder)',
+        'school_holiday_period' => 'vacances scolaires importées (ImportSchoolHolidaysCommand, HolidaySeeder)',
+        'league_match_window' => 'fenêtres de matchs des ligues (SeedLeagueWindowsCommand)',
+        'release_note' => 'notes de version écrites par la console SA par l\'ORM (AdminReleaseNoteController)',
+        'scheduled_deployment' => 'déploiements programmés, avancés par la commande de tic (DeploymentTickCommand, ORM)',
+        'priority_tier' => 'les cinq rangs, qu\'aucune migration ne sème : les seeders (LoadTestClubSeeder, BcclSeeder) et les décors de test les créent par le rôle applicatif — à fermer quand une migration les sèmera',
+    ];
 
     private Connection $connection;
 
@@ -654,11 +684,64 @@ final class RlsIsolationTest extends KernelTestCase
         }
     }
 
+    /**
+     * Abus (lot 8, PR 2) : un référentiel de plateforme (`#[Family(Level::PLATFORM)]`, sans club_id,
+     * donc sans RLS) est lu par TOUS les clubs ; le rôle applicatif n'y écrit pas — ni INSERT, ni
+     * UPDATE, ni DELETE, ni TRUNCATE —, seul le propriétaire (migrations, support) l'écrit. Sinon une
+     * faille applicative (route oubliée, injection) réécrit l'offre ou le palier de tous les clubs
+     * d'un coup (un palier passé à 0 = illimité pour tous). Une table de plateforme que l'application
+     * écrit LÉGITIMEMENT est nommée dans {@see self::PLATFORM_TABLES_WRITTEN_BY_THE_APPLICATION} avec
+     * son écrivain ; toute autre, présente ou future, doit être en lecture seule.
+     *
+     * Sonde : `has_table_privilege` du rôle de la connexion runtime (current_user). Témoins : la liste
+     * nommée ne porte que des tables de plateforme existantes, et l'une d'elles (app_user) est bien vue
+     * inscriptible — la sonde distingue le droit de son absence.
+     */
+    public function testTheApplicationRoleNeverWritesAPlatformReferenceTable(): void
+    {
+        $em = self::getContainer()->get(EntityManagerInterface::class);
+        $catalog = self::getContainer()->get(FamilyCatalog::class);
+        $platformTables = [];
+        foreach ($catalog->all() as $class) {
+            if (Level::PLATFORM === $catalog->of($class)->level) {
+                $platformTables[] = $em->getClassMetadata($class)->getTableName();
+            }
+        }
+        sort($platformTables);
+        self::assertContains('subscription_plan_tier', $platformTables, 'témoin : les paliers sont un référentiel de plateforme');
+
+        $stale = array_diff(array_keys(self::PLATFORM_TABLES_WRITTEN_BY_THE_APPLICATION), $platformTables);
+        self::assertSame([], array_values($stale), 'exclusions nommées qui ne sont plus des tables de plateforme : à retirer');
+        self::assertTrue($this->currentRoleMay('app_user', 'INSERT'), 'témoin positif : la sonde voit le droit d\'écriture sur app_user');
+
+        $writable = [];
+        foreach ($platformTables as $table) {
+            if (isset(self::PLATFORM_TABLES_WRITTEN_BY_THE_APPLICATION[$table])) {
+                continue;
+            }
+            foreach (['INSERT', 'UPDATE', 'DELETE', 'TRUNCATE'] as $privilege) {
+                if ($this->currentRoleMay($table, $privilege)) {
+                    $writable[] = $table . ' : ' . $privilege;
+                }
+            }
+        }
+
+        self::assertSame([], $writable, "Le rôle applicatif peut écrire un référentiel de plateforme lu par tous les clubs :\n  - "
+            . implode("\n  - ", $writable)
+            . "\nRetirer le droit (REVOKE … FROM le rôle applicatif, migration) ; si l'application l'écrit légitimement, "
+            . 'nommer la table et son écrivain dans PLATFORM_TABLES_WRITTEN_BY_THE_APPLICATION.');
+    }
+
     protected function setUp(): void
     {
         self::bootKernel();
         $this->connection = self::getContainer()->get(Connection::class);
         $this->guc = self::getContainer()->get(TenantConnectionContext::class);
+    }
+
+    private function currentRoleMay(string $table, string $privilege): bool
+    {
+        return (bool) $this->connection->fetchOne('SELECT has_table_privilege(current_user, ?, ?)', ['public.' . $table, $privilege]);
     }
 
     /**

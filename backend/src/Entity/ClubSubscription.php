@@ -30,6 +30,7 @@ use Doctrine\ORM\Mapping as ORM;
 #[ORM\Table(name: 'club_subscription')]
 #[ORM\UniqueConstraint(name: 'uniq_club_subscription_season', columns: ['club_id', 'season_year'])]
 #[ORM\Index(name: 'idx_club_subscription_plan', columns: ['plan_id'])]
+#[ORM\Index(name: 'idx_club_subscription_tier', columns: ['tier_id'])]
 class ClubSubscription implements TenantOwnedInterface
 {
     #[ORM\Id]
@@ -45,6 +46,11 @@ class ClubSubscription implements TenantOwnedInterface
     #[ORM\Column(type: 'guid')]
     #[RefersTo(SubscriptionPlan::class, OnDelete::KEEP, 'référentiel de plateforme : une offre portée par une ligne ne se supprime pas (clé étrangère restreinte)')]
     private string $planId;
+
+    /** Le palier de l'offre payante ; null pour Découverte et la Bêta, qui n'en ont pas. */
+    #[ORM\Column(type: 'guid', nullable: true)]
+    #[RefersTo(SubscriptionPlanTier::class, OnDelete::KEEP, 'référentiel de plateforme : un palier porté par une ligne ne se supprime pas (clé étrangère restreinte)')]
+    private ?string $tierId = null;
 
     /** Null = non réglée (une ligne Découverte ne se règle pas). */
     #[ORM\Column(type: 'datetimetz_immutable', nullable: true)]
@@ -84,6 +90,11 @@ class ClubSubscription implements TenantOwnedInterface
     public function getPlanId(): string
     {
         return $this->planId;
+    }
+
+    public function getTierId(): ?string
+    {
+        return $this->tierId;
     }
 
     public function getPaidAt(): ?DateTimeImmutable

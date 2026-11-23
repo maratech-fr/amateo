@@ -6,6 +6,7 @@ namespace App\State\Provider;
 
 use App\ApiResource\SubscriptionPlanResource;
 use App\Entity\SubscriptionPlan;
+use App\Entity\SubscriptionPlanTier;
 use Doctrine\ORM\QueryBuilder;
 
 /**
@@ -47,6 +48,9 @@ class SubscriptionPlanStateProvider extends AbstractStateProvider
      */
     protected function mapEntityToOutput(object $entity): SubscriptionPlanResource
     {
-        return SubscriptionPlanResource::fromEntity($entity);
+        /** @var list<SubscriptionPlanTier> $tiers */
+        $tiers = $this->entityManager->getRepository(SubscriptionPlanTier::class)->findBy(['planId' => $entity->getId()], ['position' => 'ASC']);
+
+        return SubscriptionPlanResource::fromEntity($entity, $tiers);
     }
 }

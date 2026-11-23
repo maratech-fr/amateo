@@ -14,6 +14,7 @@ use App\Tests\Support\SubscribesClub;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
+use Lexik\Bundle\JWTAuthenticationBundle\Services\JWTTokenManagerInterface;
 use PHPUnit\Framework\Attributes\Group;
 use Symfony\Bundle\FrameworkBundle\Console\Application;
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
@@ -22,10 +23,11 @@ use Symfony\Component\Console\Tester\CommandTester;
 use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
 
 /**
- * P1-3 PR A — socle d'offres par statut. Garde le modèle (5 offres seedées, codes
- * uniques), l'exposition (bêta cachée, aucun montant), l'attribution superadmin
- * (la commande écrit la FK), l'offre EFFECTIVE calculée à la lecture (expiration →
- * Découverte ; démo → droits pleins) et le bloc `entitlements` de /api/me.
+ * P1-3 PR A, lot 8 PR 2 — socle d'offres. Garde le modèle (trois offres, l'offre complète et
+ * ses trois paliers), l'exposition (bêta cachée, paliers servis, aucun montant — ni sur l'offre
+ * ni sur le palier), l'attribution superadmin (la commande écrit l'offre et le palier), l'offre
+ * EFFECTIVE calculée à la lecture (expiration → Découverte ; démo → droits pleins) et le bloc
+ * `entitlements` de /api/me (palier compris).
  *
  * ⚠ Groupe phase1 mais PAS un step du gate `blocking-tests` (§4) : tourne dans
  * `backend-tests` (dossier entier). L'enforcement (débit crédits, cap équipes) est la
@@ -38,29 +40,43 @@ final class SubscriptionPlanAttributionTest extends WebTestCase
     use SubscribesClub;
     use TenantGucTrait;
 
-    private const string ESSENTIEL_ID = '00000000-0000-4000-8000-000000000002';
+    /** L'ancienne ligne Essentiel, devenue l'offre payante unique (lot 8, PR 2). */
+    private const string COMPLETE_ID = '00000000-0000-4000-8000-000000000002';
 
     private KernelBrowser $client;
 
     private EntityManagerInterface $em;
 
-    public function testTheFiveOffersAreSeededWithUniqueCodes(): void
+    /** Lot 8, PR 2 — trois offres (Découverte, l'offre complète, Bêta) ; l'offre complète porte trois paliers 20 / 34 / illimité. */
+    public function testThreeOffersAreSeededAndTheCompleteOfferCarriesThreeTiers(): void
     {
-        $rows = $this->em->getConnection()->fetchAllAssociative('SELECT code FROM subscription_plan ORDER BY code');
-        $codes = array_map(static fn (array $r): string => (string) $r['code'], $rows);
-
+        $connection = $this->em->getConnection();
         self::assertSame(
-            ['beta', 'club', 'decouverte', 'essentiel', 'grand-club'],
-            $codes,
-            'les 5 offres sont seedées avec des codes uniques — plus de palier « sans-limite »',
+            ['beta', 'complete', 'decouverte'],
+            array_map(strval(...), $connection->fetchFirstColumn('SELECT code FROM subscription_plan ORDER BY code')),
+            'trois offres : Club et Grand club sont devenus des paliers de l\'offre complète',
+        );
+        self::assertSame('Offre complète', $connection->fetchOne('SELECT name FROM subscription_plan WHERE id = ?', [self::COMPLETE_ID]), 'l\'ancienne ligne Essentiel porte l\'offre complète');
+
+        /** @var list<array{code: string, position: int|string, max_teams: int|string, plan_id: string}> $tiers */
+        $tiers = $connection->fetchAllAssociative('SELECT code, position, max_teams, plan_id::text AS plan_id FROM subscription_plan_tier ORDER BY position');
+        self::assertSame(
+            [
+                ['code' => 'palier-1', 'position' => 1, 'max_teams' => 20, 'plan_id' => self::COMPLETE_ID],
+                ['code' => 'palier-2', 'position' => 2, 'max_teams' => 34, 'plan_id' => self::COMPLETE_ID],
+                ['code' => 'palier-3', 'position' => 3, 'max_teams' => 0, 'plan_id' => self::COMPLETE_ID],
+            ],
+            array_map(static fn (array $tier): array => ['code' => $tier['code'], 'position' => (int) $tier['position'], 'max_teams' => (int) $tier['max_teams'], 'plan_id' => $tier['plan_id']], $tiers),
+            'trois paliers de l\'offre complète : 20, 34, illimité (0)',
         );
     }
 
     /**
-     * Le catalogue public sert la grille 20 / 34 / 35+ : Découverte, Essentiel ≤ 20, Club ≤ 34,
-     * Grand club illimité (0) — ni « sans-limite », ni la bêta.
+     * Le catalogue public sert Découverte et l'offre complète — jamais la bêta — ; chaque offre porte
+     * ses paliers (`code`, `position`, `maxTeams`), Découverte n'en a aucun, et l'offre ne sert plus
+     * de `maxTeams` (le plafond vit sur le palier).
      */
-    public function testThePublicCatalogueServesTheTwentyThirtyFourUnlimitedGrid(): void
+    public function testThePublicCatalogueServesTheTiersOfTheCompleteOffer(): void
     {
         [$user] = $this->seedClub();
         $this->client->loginUser($user);
@@ -68,16 +84,24 @@ final class SubscriptionPlanAttributionTest extends WebTestCase
         $this->client->request('GET', '/api/subscription_plans');
         self::assertResponseIsSuccessful();
 
-        $capByCode = [];
+        $tiersByCode = [];
         foreach (json_decode((string) $this->client->getResponse()->getContent(), true, 512, \JSON_THROW_ON_ERROR)['member'] as $row) {
-            $capByCode[(string) $row['code']] = (int) $row['maxTeams'];
+            self::assertArrayNotHasKey('maxTeams', $row, \sprintf('l\'offre %s ne sert plus de plafond : il vit sur le palier', (string) $row['code']));
+            $tiersByCode[(string) $row['code']] = $row['tiers'];
         }
-        ksort($capByCode);
+        ksort($tiersByCode);
 
         self::assertSame(
-            ['club' => 34, 'decouverte' => 0, 'essentiel' => 20, 'grand-club' => 0],
-            $capByCode,
-            'catalogue servi : Club 34, Grand club illimité (0), aucune carte « sans-limite » ni bêta',
+            [
+                'complete' => [
+                    ['code' => 'palier-1', 'position' => 1, 'maxTeams' => 20],
+                    ['code' => 'palier-2', 'position' => 2, 'maxTeams' => 34],
+                    ['code' => 'palier-3', 'position' => 3, 'maxTeams' => 0],
+                ],
+                'decouverte' => [],
+            ],
+            $tiersByCode,
+            'catalogue servi : Découverte sans palier, l\'offre complète et ses trois paliers dans l\'ordre, aucune bêta',
         );
     }
 
@@ -96,38 +120,58 @@ final class SubscriptionPlanAttributionTest extends WebTestCase
 
         self::assertNotContains('beta', $codes, 'l\'offre bêta est superadmin-only : jamais dans le catalogue public');
         self::assertContains('decouverte', $codes);
-        self::assertContains('essentiel', $codes);
+        self::assertContains('complete', $codes);
     }
 
+    /**
+     * Aucun montant n'est servi (P1-3), ni sur l'offre ni sur un palier : le prix d'un palier
+     * (`priceCents`, lot 8 PR 2) existe en base mais ne sort jamais de l'API — l'écran dit « Sur
+     * demande ». Témoin : la base porte bien la colonne, sinon son absence ne prouverait rien.
+     */
     public function testNoPriceFieldIsExposed(): void
     {
         [$user] = $this->seedClub();
         $this->client->loginUser($user);
+
+        self::assertNotFalse(
+            $this->em->getConnection()->fetchOne('SELECT 1 FROM information_schema.columns WHERE table_name = \'subscription_plan_tier\' AND column_name = \'price_cents\''),
+            'témoin : le prix d\'un palier a sa place en base',
+        );
 
         $this->client->request('GET', '/api/subscription_plans');
         self::assertResponseIsSuccessful();
 
         $member = json_decode((string) $this->client->getResponse()->getContent(), true, 512, \JSON_THROW_ON_ERROR)['member'];
         self::assertNotEmpty($member);
-        $first = $member[0];
-
-        self::assertArrayHasKey('code', $first);
-        self::assertArrayHasKey('maxTeams', $first);
-        self::assertArrayHasKey('maxGenerations', $first);
-        self::assertArrayNotHasKey('monthlyPrice', $first, 'aucun montant n\'est exposé (P1-3)');
-        self::assertArrayNotHasKey('annualPrice', $first);
+        $tierCount = 0;
+        foreach ($member as $offer) {
+            self::assertArrayHasKey('code', $offer);
+            self::assertArrayHasKey('maxGenerations', $offer);
+            self::assertArrayNotHasKey('monthlyPrice', $offer, 'aucun montant n\'est exposé (P1-3)');
+            self::assertArrayNotHasKey('annualPrice', $offer);
+            foreach ($offer['tiers'] as $tier) {
+                ++$tierCount;
+                self::assertSame(['code', 'maxTeams', 'position'], $this->sortedKeys($tier), \sprintf('le palier %s ne sert que code, position et plafond — jamais son prix', (string) $tier['code']));
+            }
+        }
+        self::assertSame(3, $tierCount, 'témoin : les trois paliers sont servis, la boucle a bien lu chacun');
     }
 
-    public function testSetPlanCommandWritesTheForeignKey(): void
+    /** Le geste « Offre » écrit l'offre ET le palier sur la ligne de la saison. */
+    public function testSetPlanCommandWritesTheOfferAndTheTier(): void
     {
         [, $club] = $this->seedClub();
         $clubId = $club->getId();
 
         $tester = new CommandTester(new Application(self::$kernel)->find('app:clubs:set-plan'));
-        $exit = $tester->execute(['--club' => $clubId, '--plan' => 'essentiel', '--paid-season' => 'current']);
+        $exit = $tester->execute(['--club' => $clubId, '--plan' => 'complete', '--tier' => 'palier-2', '--paid-season' => 'current']);
         self::assertSame(0, $exit, $tester->getDisplay());
 
-        self::assertSame(self::ESSENTIEL_ID, $this->em->getConnection()->fetchOne('SELECT plan_id::text FROM club_subscription WHERE club_id = ?', [$clubId]), 'l\'attribution écrit la FK offre');
+        self::assertSame(
+            ['plan_id' => self::COMPLETE_ID, 'tier' => 'palier-2'],
+            $this->em->getConnection()->fetchAssociative('SELECT l.plan_id::text AS plan_id, t.code AS tier FROM club_subscription l LEFT JOIN subscription_plan_tier t ON t.id = l.tier_id WHERE l.club_id = ?', [$clubId]),
+            'l\'attribution écrit l\'offre complète et son palier',
+        );
     }
 
     public function testExpiredPaidOfferFallsBackToDecouverte(): void
@@ -137,7 +181,7 @@ final class SubscriptionPlanAttributionTest extends WebTestCase
 
         $season = (new Season)->setStartDate(new DateTimeImmutable('2026-09-01'));
         [, $club] = $this->seedClub();
-        $this->subscribeClub($club->getId(), 2024, 'essentiel'); // < seasonYear(2026-09-01) = 2026 → périmé
+        $this->subscribeClub($club->getId(), 2024, 'complete', 'palier-1'); // < seasonYear(2026-09-01) = 2026 → périmé
 
         $result = $entitlements->forClub($club, $season);
 
@@ -177,19 +221,58 @@ final class SubscriptionPlanAttributionTest extends WebTestCase
         self::assertArrayHasKey('entitlements', $body['club']);
         $entitlements = $body['club']['entitlements'];
 
-        foreach (['planCode', 'planName', 'maxTeams', 'teamsUsed', 'creditsMax', 'creditsUsed', 'canGenerate', 'canPlaceMatches', 'canExportPdf', 'seasonTransition'] as $key) {
+        foreach (['planCode', 'planName', 'tierCode', 'maxTeams', 'teamsUsed', 'creditsMax', 'creditsUsed', 'canGenerate', 'canPlaceMatches', 'canExportPdf', 'seasonTransition'] as $key) {
             self::assertArrayHasKey($key, $entitlements, "entitlements.$key manque");
         }
 
-        // Club fraîchement seedé (aucune ligne d'abonnement) → offre Découverte par défaut.
+        // Club fraîchement seedé (aucune ligne d'abonnement) → offre Découverte par défaut, sans palier.
         self::assertSame('decouverte', $entitlements['planCode']);
+        self::assertNull($entitlements['tierCode'], 'Découverte n\'a pas de palier');
         self::assertSame(10, $entitlements['creditsMax']);
+    }
+
+    /**
+     * Lot 8, PR 2 — `/api/me` dit le palier de la saison lue (`tierCode`) et sert son plafond par le
+     * seul `maxTeams` existant ; la Bêta n'a pas de palier.
+     */
+    public function testApiMeServesTheTierOfTheSeasonAndItsCap(): void
+    {
+        foreach ([['complete', 'palier-2', 'Offre complète', 34], ['beta', null, 'Bêta', null]] as [$plan, $tier, $name, $cap]) {
+            [$user, $club] = $this->seedClub();
+            $this->subscribeClub($club->getId(), 2026, $plan, $tier);
+
+            // Deux identités dans le même test : `loginUser` ne tient que jusqu'à la première
+            // requête (le noyau se réinitialise entre deux requêtes) ; chaque identité porte donc
+            // son jeton en Bearer.
+            $this->client->request('GET', '/api/me', [], [], ['HTTP_AUTHORIZATION' => 'Bearer ' . self::getContainer()->get(JWTTokenManagerInterface::class)->create($user)]);
+            self::assertResponseIsSuccessful();
+            $entitlements = json_decode((string) $this->client->getResponse()->getContent(), true, 512, \JSON_THROW_ON_ERROR)['club']['entitlements'];
+
+            self::assertSame(
+                ['planCode' => $plan, 'planName' => $name, 'tierCode' => $tier, 'maxTeams' => $cap],
+                ['planCode' => $entitlements['planCode'], 'planName' => $entitlements['planName'], 'tierCode' => \array_key_exists('tierCode', $entitlements) ? $entitlements['tierCode'] : 'absent', 'maxTeams' => $entitlements['maxTeams']],
+                \sprintf('%s : offre, palier et plafond servis pour la saison lue', $plan),
+            );
+        }
     }
 
     protected function setUp(): void
     {
         $this->client = self::createClient();
         $this->em = self::getContainer()->get(EntityManagerInterface::class);
+    }
+
+    /**
+     * @param array<array-key, mixed> $row
+     *
+     * @return list<string>
+     */
+    private function sortedKeys(array $row): array
+    {
+        $keys = array_map(strval(...), array_keys($row));
+        sort($keys);
+
+        return $keys;
     }
 
     /** @return array{0: User, 1: Club} */

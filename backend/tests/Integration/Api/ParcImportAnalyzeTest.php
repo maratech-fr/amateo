@@ -1077,8 +1077,7 @@ final class ParcImportAnalyzeTest extends WebTestCase
 
         foreach ($body['sections']['equipes'] as $line) {
             if ('decoche' === $line['statut']) {
-                self::assertStringContainsString('Votre offre Club permet 34 équipes', (string) $line['raison'], 'la raison nomme le cap Club');
-                self::assertStringContainsString('Grand club retire la limite', (string) $line['raison'], 'la raison nomme le palier supérieur');
+                self::assertStringContainsString('Votre palier permet 34 équipes — le palier suivant retire la limite.', (string) $line['raison'], 'la raison dit le plafond du palier 2 et que le suivant n\'a pas de limite');
             }
         }
     }
@@ -1228,10 +1227,10 @@ final class ParcImportAnalyzeTest extends WebTestCase
         return [$response->getStatusCode(), \is_array($decoded) ? $decoded : []];
     }
 
-    /** Pose l'offre Club, réglée pour la saison du test (offre effective = Club). */
+    /** Pose l'offre complète au palier 2 (34 équipes), réglée pour la saison du test. */
     private function giveClubOffer(): void
     {
-        $this->subscribeClub($this->club->getId(), SeasonResolver::seasonYear($this->season->getStartDate()), 'club');
+        $this->subscribeClub($this->club->getId(), SeasonResolver::seasonYear($this->season->getStartDate()), 'complete', 'palier-2');
     }
 
     private function makeVenue(string $name): Venue

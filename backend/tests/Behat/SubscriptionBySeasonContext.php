@@ -17,7 +17,8 @@ use RuntimeException;
  * « Offre » du support (`app:clubs:set-plan`) ; régler la saison suivante ne touche pas la saison
  * en cours, repasser en Découverte ne retire pas la saison suivante réglée, un club jamais réglé
  * est en Découverte, un club de démonstration n'est jamais bridé ; le geste « Marquer la saison
- * suivante payée » n'existe plus.
+ * suivante payée » n'existe plus. Lot 8, PR 2 : l'offre payante unique se règle avec son palier, qui
+ * fixe le plafond d'équipes servi (les cas de plafond : `Security/PlanEntitlementsTest`).
  *
  * Décor JETABLE par scénario : un club inscrit par l'API ({@see SmallClubFixtureTrait::registerSmallClub})
  * et un planning en brouillon (aucun solve). Le geste du support est la VRAIE commande lancée par
@@ -69,6 +70,13 @@ final class SubscriptionBySeasonContext extends BaseContext
         $this->runConsole(['php', 'bin/console', 'app:clubs:set-plan', '--club=' . $this->smallClubId, '--plan=beta', '--paid-season=' . ('en cours' === $season ? 'current' : 'next')]);
     }
 
+    /** Lot 8, PR 2 : l'offre payante unique se règle avec son palier, par le même geste « Offre ». */
+    #[Given('/^le support règle l\'offre complète au palier (?P<position>[123]) pour la saison (?P<season>en cours|suivante seulement)$/u')]
+    public function leSupportRegleLOffreComplete(string $position, string $season): void
+    {
+        $this->runConsole(['php', 'bin/console', 'app:clubs:set-plan', '--club=' . $this->smallClubId, '--plan=complete', '--tier=palier-' . $position, '--paid-season=' . ('en cours' === $season ? 'current' : 'next')]);
+    }
+
     #[Given('le club passe en démonstration, sans aucun geste du support')]
     public function leClubPasseEnDemonstration(): void
     {
@@ -114,6 +122,21 @@ final class SubscriptionBySeasonContext extends BaseContext
         }
 
         throw new RuntimeException(\sprintf('crédits « %s » illisibles', $credits));
+    }
+
+    /**
+     * Le palier de la saison en cours et son plafond d'équipes, comme les lit l'écran (`tierCode`,
+     * `maxTeams` de `/api/me`) : sans palier (Découverte, Bêta, démonstration), aucun plafond.
+     */
+    #[Then('/^sur la saison en cours, (?:aucun palier, sans plafond d\'équipes|au palier (?P<position>[123]), (?:jusqu\'à (?P<max>\d+) équipes|sans plafond d\'équipes))$/u')]
+    public function surLaSaisonEnCoursLePalier(string $position = '', string $max = ''): void
+    {
+        $entitlements = $this->entitlements(null);
+        $expectedTier = '' === $position ? null : 'palier-' . $position;
+        $expectedCap = '' === $max ? null : (int) $max;
+        if (!\array_key_exists('tierCode', $entitlements) || $expectedTier !== $entitlements['tierCode'] || $expectedCap !== ($entitlements['maxTeams'] ?? null)) {
+            throw new RuntimeException(\sprintf('sur la saison en cours, palier %s et plafond %s attendus : %s', json_encode($expectedTier), json_encode($expectedCap), $this->encoded($entitlements)));
+        }
     }
 
     #[When('/^nous sommes le (?P<day>.+)$/u')]

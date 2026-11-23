@@ -30,21 +30,18 @@ class SubscriptionPlan
     #[ORM\Column(type: 'datetimetz_immutable')]
     private DateTimeImmutable $updatedAt;
 
-    // Stable attribution key (never displayed) : `decouverte`, `essentiel`, `club`,
-    // `grand-club`, `beta`. The superadmin set-plan action targets a
-    // plan by CODE, not by its (volatile) display name or UUID.
+    // Stable attribution key (never displayed) : `decouverte`, `complete`, `beta`. The
+    // superadmin set-plan action targets a plan by CODE, not by its (volatile) display
+    // name or UUID.
     #[ORM\Column(type: 'string', length: 60, unique: true)]
     private string $code;
 
     #[ORM\Column(type: 'string', length: 120)]
     private string $name;
 
-    // Convention across the three caps: 0 = ILLIMITÉ (P1-3). Découverte has no team
-    // cap (0); the paid tiers set maxTeams; maxGenerations is the Découverte output
-    // credit pool (10) and stays 0 = illimité on every paid/bêta tier.
-    #[ORM\Column(type: 'integer')]
-    private int $maxTeams;
-
+    // Convention: 0 = ILLIMITÉ (P1-3). The team cap lives on the tier of the paid offer
+    // (SubscriptionPlanTier); maxGenerations is the Découverte output credit pool (10)
+    // and stays 0 = illimité on the paid and bêta offers.
     #[ORM\Column(type: 'integer')]
     private int $maxVenues;
 
@@ -130,18 +127,6 @@ class SubscriptionPlan
     public function setName(string $name): self
     {
         $this->name = $name;
-
-        return $this;
-    }
-
-    public function getMaxTeams(): int
-    {
-        return $this->maxTeams;
-    }
-
-    public function setMaxTeams(int $maxTeams): self
-    {
-        $this->maxTeams = $maxTeams;
 
         return $this;
     }

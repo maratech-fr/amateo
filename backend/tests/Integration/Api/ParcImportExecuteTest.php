@@ -1756,8 +1756,7 @@ final class ParcImportExecuteTest extends WebTestCase
         );
         self::assertSame(422, $status, 'à 34/34, la 35ᵉ équipe est refusée');
         $message = (string) json_encode($body, \JSON_UNESCAPED_UNICODE);
-        self::assertStringContainsString('Votre offre Club permet 34 équipes', $message, 'le refus nomme le cap Club');
-        self::assertStringContainsString('Grand club retire la limite', $message, 'le refus nomme le palier supérieur');
+        self::assertStringContainsString('Votre palier permet 34 équipes — le palier suivant retire la limite.', $message, 'le refus dit le plafond du palier 2 et que le suivant n\'a pas de limite');
         $this->scopeGucToClub($this->club->getId());
         self::assertSame(34, $this->rowCount('team'), 'le refus n\'écrit rien');
     }
@@ -2297,10 +2296,10 @@ final class ParcImportExecuteTest extends WebTestCase
         return $container->get(JWTTokenManagerInterface::class)->create($viewer);
     }
 
-    /** Pose l'offre Club, réglée pour la saison du test (offre effective = Club). */
+    /** Pose l'offre complète au palier 2 (34 équipes), réglée pour la saison du test. */
     private function giveClubOffer(): void
     {
-        $this->subscribeClub($this->club->getId(), SeasonResolver::seasonYear($this->season->getStartDate()), 'club');
+        $this->subscribeClub($this->club->getId(), SeasonResolver::seasonYear($this->season->getStartDate()), 'complete', 'palier-2');
     }
 
     private function rowCount(string $table): int

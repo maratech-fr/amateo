@@ -137,15 +137,22 @@ réutilisent ni le firewall ni le JWT club :
   et retourne une liste paginée avec dates d'activité (`createdAt`, `lastActivityAt`, en
   RFC 3339 — `2026-11-10T23:30:00+00:00`), saison courante, volumétrie active
   de la saison et indicateurs solveur sur 30 jours. `limit` est borné à 100 et `query` à
-  100 caractères. **L'offre est rendue en DEUX vérités distinctes depuis A1 (2026-08-11)** :
-  `plan` (l'offre de la ligne d'abonnement de la saison courante — `{code, name}` ou null) et
+  100 caractères. **L'offre est rendue en deux vérités distinctes** :
+  `subscription` et `nextSubscription` (la ligne d'abonnement de la saison courante et celle de
+  la saison suivante, chacune `{seasonYear, planCode, planName, tierCode, paidAt, origin}` ou null
+  sans ligne ; « suivante » = l'année que la bascule créera, règle de `ClubSubscriptionWriter`) et
   `effectivePlan` (l'offre qui S'APPLIQUE, calculée par la même règle que `PlanEntitlements` :
   payante/bêta effective seulement si cette ligne est réglée, sinon Découverte ; club sans
-  saison → pivot sur l'horloge réelle). `paidSeasonYear` est la dernière année réglée,
-  toutes lignes du club confondues.
-  ⚑ L'ancien champ `planId` (uuid typé `number` côté front — doublement faux) est SUPPRIMÉ :
-  le badge console affiche l'effective, avec un sous-texte quand la stockée diverge
-  (« Bêta posée — saison non réglée »). Un club démo n'a AUCUN cas spécial ici : badge =
+  saison → pivot sur l'horloge réelle). `teamsCounted` est le nombre d'équipes que le plafond du
+  palier compte (toutes celles de la saison courante, désactivées comprises). `plan` et
+  `paidSeasonYear` ne sont plus servis.
+  ⚠ **Limite** : pour un club de démonstration à date simulée, `subscription` pivote sur sa saison
+  mais `nextSubscription` calcule « aujourd'hui » sur l'horloge RÉELLE
+  (`AdminMonitoringService`), donc peut différer de l'année que `set-plan --paid-season next`
+  écrit (qui pivote sur la date simulée).
+  ⚑ Le champ `planId` n'existe plus : le badge console affiche l'effective, et la ligne du club
+  dit l'offre de la saison en cours, son palier, le nombre d'équipes comptées, la date et l'origine
+  du règlement, puis la saison suivante si elle a une ligne. Un club démo n'a AUCUN cas spécial ici : badge =
   vérité comptable, le chip « Démo » porte déjà « droits pleins » (décision fondateur).
   **Stats par club (PR2)** : chaque élément porte aussi `members` (`{active, pending}` — `pending`
   = `is_active=false` et `deactivated_at` NULL), `onboarding` (`{completed, ffbbTeamsImportedAt,
@@ -348,10 +355,11 @@ courante — le club repart au wizard, la saison et le club survivent) et
 
 **Attribution d'offres (A3, 2026-08-11)** : une **seule** entrée `set-plan` (« Offre »)
 remplace les six `set-plan-*` figées. Son schéma d'arguments fermé porte `plan` (enum des
-codes d'offre — `decouverte`…`beta`, miroir de `SetClubPlanCommand`) et `paidSeason`
-(enum `current|next`, la saison réglée). Il n'existe pas d'action « marquer la saison suivante
-payée » : « Offre » avec `paidSeason=next` règle la saison suivante. Règle fondateur portée par le schéma, pas par
-un `if` du contrôleur : `paidSeason` est **requis** pour toute offre payante (Bêta
+codes d'offre — `decouverte`, `complete`, `beta`, miroir de `SetClubPlanCommand`), `tier` (enum
+`palier-1|palier-2|palier-3`) et `paidSeason` (enum `current|next`, la saison réglée). Il n'existe pas d'action « marquer la saison suivante
+payée » : « Offre » avec `paidSeason=next` règle la saison suivante. Règles portées par le schéma, pas par
+un `if` du contrôleur : `tier` est **requis** pour l'offre complète et **interdit** sur `decouverte`
+et `beta` (qui n'ont pas de palier ; gate sur `plan`, `AdminActionCatalog`) ; `paidSeason` est **requis** pour toute offre payante (Bêta
 comprise — une offre payante se règle toujours pour une saison) et **interdit** sur
 `decouverte` (rien à encaisser, écrite sur la saison en cours). La commande écrit la ligne
 d'abonnement de cette seule saison (`ClubSubscriptionWriter`, connexion propriétaire — pivot

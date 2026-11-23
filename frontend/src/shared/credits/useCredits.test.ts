@@ -7,6 +7,7 @@ import { deriveCredits } from "./useCredits";
 const base: ClubEntitlements = {
   planCode: "decouverte",
   planName: "Découverte",
+  tierCode: null,
   maxTeams: null,
   teamsUsed: 4,
   creditsMax: 10,

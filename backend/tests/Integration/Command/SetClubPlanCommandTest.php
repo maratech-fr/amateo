@@ -43,18 +43,43 @@ final class SetClubPlanCommandTest extends KernelTestCase
         self::assertNotSame(2028, (int) (new DateTimeImmutable)->format('Y'), 'garde-fou : le test perd son sens si le temps réel est déjà 2028');
         $clubId = $this->club(isDemo: true, simulatedToday: '2028-09-01');
 
-        self::assertSame(Command::SUCCESS, $this->tester->execute(['--club' => $clubId, '--plan' => 'essentiel', '--paid-season' => 'current']), $this->tester->getDisplay());
+        self::assertSame(Command::SUCCESS, $this->tester->execute(['--club' => $clubId, '--plan' => 'complete', '--tier' => 'palier-1', '--paid-season' => 'current']), $this->tester->getDisplay());
 
-        self::assertSame([['season_year' => 2028, 'plan' => 'essentiel', 'paid' => true, 'origin' => 'support']], $this->linesOf($clubId), 'current sur l\'horloge 2028 → la seule ligne 2028, réglée');
+        self::assertSame([['season_year' => 2028, 'plan' => 'complete', 'tier' => 'palier-1', 'paid' => true, 'origin' => 'support']], $this->linesOf($clubId), 'current sur l\'horloge 2028 → la seule ligne 2028, réglée');
     }
 
     public function testPaidSeasonNextTargetsTheFollowingSeason(): void
     {
         $clubId = $this->club(isDemo: true, simulatedToday: '2028-09-01');
 
-        self::assertSame(Command::SUCCESS, $this->tester->execute(['--club' => $clubId, '--plan' => 'club', '--paid-season' => 'next']), $this->tester->getDisplay());
+        self::assertSame(Command::SUCCESS, $this->tester->execute(['--club' => $clubId, '--plan' => 'complete', '--tier' => 'palier-2', '--paid-season' => 'next']), $this->tester->getDisplay());
 
-        self::assertSame([['season_year' => 2029, 'plan' => 'club', 'paid' => true, 'origin' => 'support']], $this->linesOf($clubId), 'next sur l\'horloge 2028 → la seule ligne 2029 : la saison en cours ne reçoit rien');
+        self::assertSame([['season_year' => 2029, 'plan' => 'complete', 'tier' => 'palier-2', 'paid' => true, 'origin' => 'support']], $this->linesOf($clubId), 'next sur l\'horloge 2028 → la seule ligne 2029 : la saison en cours ne reçoit rien');
+    }
+
+    /**
+     * Lot 8, PR 2 — le palier à la commande, second rempart derrière le schéma de la console
+     * (`AdminClubActionTest::testSetPlanValidatesTheClosedArgumentSchemaFailClosed`, qui garde le
+     * rail HTTP) : la commande se lance aussi à la main sur la connexion propriétaire. L'offre
+     * complète sans palier, un palier sur la Bêta ou sur Découverte, un palier inconnu : refusés,
+     * rien n'est écrit. Témoin : la Bêta sans palier s'écrit.
+     */
+    public function testTheTierIsRequiredForTheCompleteOfferAndRefusedElsewhere(): void
+    {
+        $clubId = $this->club(isDemo: false, seasonYears: [2026]);
+
+        foreach ([
+            'offre complète sans palier' => ['--plan' => 'complete', '--paid-season' => 'current'],
+            'palier sur la Bêta' => ['--plan' => 'beta', '--tier' => 'palier-1', '--paid-season' => 'current'],
+            'palier sur Découverte' => ['--plan' => 'decouverte', '--tier' => 'palier-1'],
+            'palier inconnu' => ['--plan' => 'complete', '--tier' => 'palier-4', '--paid-season' => 'current'],
+        ] as $case => $options) {
+            self::assertSame(Command::FAILURE, $this->tester->execute(['--club' => $clubId] + $options), $case . ' : refusé');
+            self::assertSame([], $this->linesOf($clubId), $case . ' : le refus n\'écrit aucune ligne');
+        }
+
+        self::assertSame(Command::SUCCESS, $this->tester->execute(['--club' => $clubId, '--plan' => 'beta', '--paid-season' => 'current']), $this->tester->getDisplay());
+        self::assertSame([['season_year' => 2026, 'plan' => 'beta', 'tier' => null, 'paid' => true, 'origin' => 'support']], $this->linesOf($clubId), 'témoin : la Bêta, sans palier, s\'écrit');
     }
 
     /**
@@ -87,7 +112,7 @@ final class SetClubPlanCommandTest extends KernelTestCase
     {
         $clubId = $this->club(isDemo: false, seasonYears: [2026]);
 
-        self::assertSame(Command::FAILURE, $this->tester->execute(['--club' => $clubId, '--plan' => 'club']));
+        self::assertSame(Command::FAILURE, $this->tester->execute(['--club' => $clubId, '--plan' => 'complete', '--tier' => 'palier-2']));
         self::assertSame([], $this->linesOf($clubId), 'sans --paid-season, aucune ligne : une offre payante se règle toujours pour une saison');
     }
 
@@ -131,18 +156,19 @@ final class SetClubPlanCommandTest extends KernelTestCase
         return $clubId;
     }
 
-    /** @return list<array{season_year: int, plan: string, paid: bool, origin: string}> */
+    /** @return list<array{season_year: int, plan: string, tier: ?string, paid: bool, origin: string}> */
     private function linesOf(string $clubId): array
     {
-        /** @var list<array{season_year: int|string, plan: string, paid: bool, origin: string}> $rows */
+        /** @var list<array{season_year: int|string, plan: string, tier: ?string, paid: bool, origin: string}> $rows */
         $rows = $this->admin->fetchAllAssociative(
-            'SELECT cs.season_year, p.code AS plan, (cs.paid_at IS NOT NULL) AS paid, cs.origin FROM club_subscription cs JOIN subscription_plan p ON p.id = cs.plan_id WHERE cs.club_id = ? ORDER BY cs.season_year',
+            'SELECT cs.season_year, p.code AS plan, t.code AS tier, (cs.paid_at IS NOT NULL) AS paid, cs.origin FROM club_subscription cs JOIN subscription_plan p ON p.id = cs.plan_id LEFT JOIN subscription_plan_tier t ON t.id = cs.tier_id WHERE cs.club_id = ? ORDER BY cs.season_year',
             [$clubId],
         );
 
         return array_map(static fn (array $row): array => [
             'season_year' => (int) $row['season_year'],
             'plan' => $row['plan'],
+            'tier' => $row['tier'],
             'paid' => (bool) $row['paid'],
             'origin' => $row['origin'],
         ], $rows);

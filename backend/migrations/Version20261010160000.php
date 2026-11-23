@@ -73,7 +73,7 @@ final class Version20261010160000 extends AbstractMigration
         // (`is_active = true`, même plan, même contrainte). Rien dans la ligne ne distingue
         // « posé par la migration » de « posé par un humain » — un DELETE en masse effacerait des
         // choix légitimes. On refuse donc d'annuler plutôt que de détruire une intention.
-        $this->throwIrreversibleMigration(
+        $this->throwIrreversibleMigrationException(
             'Les overrides « gardée » posés par cette migration sont indistinguables de ceux saisis à la main : les retirer effacerait des choix du gestionnaire. Rollback non supporté.',
         );
     }

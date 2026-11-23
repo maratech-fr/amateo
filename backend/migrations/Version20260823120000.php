@@ -95,6 +95,6 @@ final class Version20260823120000 extends AbstractMigration
         // née d'un `forcedDays` legacy d'une whitelist saisie directement — et remettre le sens
         // legacy « uniquement » sous la clé `forcedDays` la réinterpréterait sous la nouvelle
         // sémantique « au moins une ». On n'annule donc pas.
-        $this->throwIrreversibleMigration('ALIGN-09: legacy forcedDays→allowedDays transcription cannot be reversed (the original polarity is not recoverable).');
+        $this->throwIrreversibleMigrationException('ALIGN-09: legacy forcedDays→allowedDays transcription cannot be reversed (the original polarity is not recoverable).');
     }
 }

@@ -145,42 +145,76 @@ final class AdminClubActionTest extends WebTestCase
         self::assertArrayNotHasKey('set-plan-essentiel', $byKey, 'les entrées set-plan-* figées ont disparu');
         // Le schéma d'arguments est servi (les pickers du front en dérivent).
         $setPlan = $byKey['set-plan'];
-        self::assertSame('plan', $setPlan['arguments'][0]['key']);
-        self::assertTrue($setPlan['arguments'][0]['required']);
-        // Grille 20 / 34 / 35+ : cinq offres attribuables, plus de palier « sans-limite ».
+        $arguments = array_column($setPlan['arguments'], null, 'key');
+        self::assertSame('plan', $setPlan['arguments'][0]['key'], 'l\'offre, qui gouverne les deux autres arguments, vient en premier');
+        self::assertTrue($arguments['plan']['required']);
+        // Lot 8, PR 2 : trois offres attribuables — l'offre complète remplace Essentiel, Club et Grand club.
         self::assertSame(
-            ['decouverte', 'essentiel', 'club', 'grand-club', 'beta'],
-            array_column($setPlan['arguments'][0]['choices'], 'value'),
-            'le picker d\'offre sert exactement les 5 offres existantes',
+            ['decouverte', 'complete', 'beta'],
+            array_column($arguments['plan']['choices'], 'value'),
+            'le picker d\'offre sert exactement les 3 offres existantes',
         );
-        self::assertSame('paidSeason', $setPlan['arguments'][1]['key']);
-        self::assertSame(['argument' => 'plan', 'forbiddenValues' => ['decouverte']], $setPlan['arguments'][1]['gate']);
+        // Le palier : exigé pour l'offre complète, interdit sur Découverte et Bêta (qui n'ont pas de palier).
+        self::assertArrayHasKey('tier', $arguments, 'le geste « Offre » porte un sélecteur de palier');
+        self::assertSame(['palier-1', 'palier-2', 'palier-3'], array_column($arguments['tier']['choices'], 'value'), 'le picker de palier sert exactement les 3 paliers');
+        self::assertSame(['argument' => 'plan', 'forbiddenValues' => ['decouverte', 'beta']], $arguments['tier']['gate']);
+        self::assertSame(['argument' => 'plan', 'forbiddenValues' => ['decouverte']], $arguments['paidSeason']['gate']);
 
         // Chemin nominal : l'action part avec EXACTEMENT les arguments bornés + --club.
-        $this->postAction($clubId, 'set-plan', ['plan' => 'essentiel', 'paidSeason' => 'next'], $csrfToken);
+        $this->postAction($clubId, 'set-plan', ['plan' => 'complete', 'tier' => 'palier-2', 'paidSeason' => 'next'], $csrfToken);
         self::assertResponseIsSuccessful();
-        self::assertSame([[
-            'key' => 'action:set-plan',
-            'superAdminId' => $this->adminId,
-            'arguments' => ['--plan' => 'essentiel', '--paid-season' => 'next', '--club' => $clubId],
-        ]], $executor->calls);
+        self::assertCount(1, $executor->calls);
+        self::assertSame('action:set-plan', $executor->calls[0]['key']);
+        self::assertSame($this->adminId, $executor->calls[0]['superAdminId']);
+        self::assertSame(
+            ['--club' => $clubId, '--paid-season' => 'next', '--plan' => 'complete', '--tier' => 'palier-2'],
+            $this->sortedByKey($executor->calls[0]['arguments']),
+            'l\'offre complète part avec son palier et sa saison, rien d\'autre',
+        );
+
+        // La Bêta part SANS palier : elle n'en a pas.
+        $executor->reset();
+        $this->postAction($clubId, 'set-plan', ['plan' => 'beta', 'paidSeason' => 'current'], $csrfToken);
+        self::assertResponseIsSuccessful();
+        self::assertSame(['--club' => $clubId, '--paid-season' => 'current', '--plan' => 'beta'], $this->sortedByKey($executor->calls[0]['arguments'] ?? []), 'témoin : la Bêta sans palier passe le schéma');
+
+        // Abus de palier (lot 8, PR 2) → 400, rien exécuté. Chaque corps est par ailleurs complet :
+        // le SEUL défaut est le palier — interdit sur Découverte et Bêta, absent ou hors enum sur
+        // l'offre complète.
+        foreach ([
+            'palier sur Découverte' => ['plan' => 'decouverte', 'tier' => 'palier-1'],
+            'palier sur Bêta' => ['plan' => 'beta', 'tier' => 'palier-1', 'paidSeason' => 'current'],
+            'offre complète sans palier' => ['plan' => 'complete', 'paidSeason' => 'current'],
+            'palier hors enum' => ['plan' => 'complete', 'tier' => 'palier-4', 'paidSeason' => 'current'],
+        ] as $abuse => $body) {
+            $executor->reset();
+            $this->postAction($clubId, 'set-plan', $body, $csrfToken);
+            self::assertResponseStatusCodeSame(400, $abuse);
+            self::assertSame([], $executor->calls, $abuse . ' : rien n\'atteint l\'exécuteur');
+        }
+
+        // Une ancienne offre payante forgée est hors enum : même refus qu'une offre inventée.
+        $executor->reset();
+        $this->postAction($clubId, 'set-plan', ['plan' => 'essentiel', 'tier' => 'palier-1', 'paidSeason' => 'next'], $csrfToken);
+        self::assertResponseStatusCodeSame(400);
+        self::assertSame([], $executor->calls, 'un plan=essentiel forgé n\'atteint jamais l\'exécuteur');
 
         // Valeur hors enum → 400, rien exécuté. Le body est PAR AILLEURS complet (saison
         // fournie) : le SEUL défaut est l'enum du plan — ainsi la falsification (désactiver
         // `!$argument->allows($value)` dans AdminActionArgumentSchema) fait rougir CETTE ligne,
         // sans être sauvée par une autre garde (le « required » de paidSeason).
         $executor->reset();
-        $this->postAction($clubId, 'set-plan', ['plan' => 'platine', 'paidSeason' => 'next'], $csrfToken);
+        $this->postAction($clubId, 'set-plan', ['plan' => 'platine', 'tier' => 'palier-1', 'paidSeason' => 'next'], $csrfToken);
         self::assertResponseStatusCodeSame(400);
         self::assertSame([], $executor->calls);
 
         // L'ancien palier « sans-limite » est désormais hors enum : même refus qu'une offre inventée.
-        $this->postAction($clubId, 'set-plan', ['plan' => 'sans-limite', 'paidSeason' => 'next'], $csrfToken);
+        $this->postAction($clubId, 'set-plan', ['plan' => 'sans-limite', 'tier' => 'palier-1', 'paidSeason' => 'next'], $csrfToken);
         self::assertResponseStatusCodeSame(400);
         self::assertSame([], $executor->calls, 'un plan=sans-limite forgé n\'atteint jamais l\'exécuteur');
 
         // Clé inconnue → 400, rien exécuté.
-        $this->postAction($clubId, 'set-plan', ['plan' => 'essentiel', 'extra' => '--help'], $csrfToken);
+        $this->postAction($clubId, 'set-plan', ['plan' => 'complete', 'tier' => 'palier-1', 'paidSeason' => 'next', 'extra' => '--help'], $csrfToken);
         self::assertResponseStatusCodeSame(400);
         self::assertSame([], $executor->calls);
 
@@ -195,7 +229,7 @@ final class AdminClubActionTest extends WebTestCase
         self::assertSame([], $executor->calls);
 
         // Un body sur une action SANS schéma → 400 (l'allowlist reste totale).
-        $this->postAction($clubId, 'ffbb-resync', ['plan' => 'essentiel'], $csrfToken);
+        $this->postAction($clubId, 'ffbb-resync', ['plan' => 'complete'], $csrfToken);
         self::assertResponseStatusCodeSame(400);
         self::assertSame([], $executor->calls);
     }
@@ -317,6 +351,20 @@ final class AdminClubActionTest extends WebTestCase
             $this->admin()->executeStatement('DELETE FROM super_admin WHERE id = :id', ['id' => $this->adminId]);
         }
         parent::tearDown();
+    }
+
+    /**
+     * Les arguments CLI triés par option : l'ordre des options suit le schéma, que le test ne fige pas.
+     *
+     * @param array<array-key, mixed> $arguments
+     *
+     * @return array<array-key, mixed>
+     */
+    private function sortedByKey(array $arguments): array
+    {
+        ksort($arguments);
+
+        return $arguments;
     }
 
     /**

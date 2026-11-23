@@ -62,9 +62,9 @@ final class SeasonPreparationDateContext extends BaseContext
 
             return;
         }
-        $this->runConsole(['php', 'bin/console', 'app:clubs:set-plan', '--club=' . $this->smallClubId, '--plan=essentiel', '--paid-season=next']);
+        $this->runConsole(['php', 'bin/console', 'app:clubs:set-plan', '--club=' . $this->smallClubId, '--plan=complete', '--tier=palier-1', '--paid-season=next']);
         if (str_starts_with($kind, 'réel en retard')) {
-            $this->pointSubscriptionLine(SeasonResolver::seasonYear(new DateTimeImmutable('today')) + 2, 'essentiel');
+            $this->pointSubscriptionLine(SeasonResolver::seasonYear(new DateTimeImmutable('today')) + 2, 'complete', 'palier-1');
         }
     }
 
@@ -198,13 +198,14 @@ final class SeasonPreparationDateContext extends BaseContext
     }
 
     /** Pointage : une ligne d'abonnement réglée, écrite par la connexion propriétaire (seule à pouvoir l'écrire). */
-    private function pointSubscriptionLine(int $seasonYear, string $planCode): void
+    private function pointSubscriptionLine(int $seasonYear, string $planCode, ?string $tierCode = null): void
     {
         $this->dbalExec(\sprintf(
-            'INSERT INTO club_subscription (id, club_id, season_year, plan_id, paid_at, origin, created_at, updated_at)'
-            . ' SELECT gen_random_uuid(), \'%s\', %d, id, now(), \'support\', now(), now() FROM subscription_plan WHERE code=\'%s\'',
+            'INSERT INTO club_subscription (id, club_id, season_year, plan_id, tier_id, paid_at, origin, created_at, updated_at)'
+            . ' SELECT gen_random_uuid(), \'%s\', %d, p.id, %s, now(), \'support\', now(), now() FROM subscription_plan p WHERE p.code=\'%s\'',
             $this->smallClubId,
             $seasonYear,
+            null === $tierCode ? 'NULL' : \sprintf('(SELECT t.id FROM subscription_plan_tier t WHERE t.code=\'%s\')', $tierCode),
             $planCode,
         ), admin: true);
     }

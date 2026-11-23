@@ -8,93 +8,143 @@ use App\Tests\Security\PlanEntitlementsTest;
 use App\Tests\Security\SubscriptionPlanAttributionTest;
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Schema\Schema;
-use Doctrine\Migrations\Exception\AbortMigration;
+use Doctrine\Migrations\Exception\IrreversibleMigration;
 use Doctrine\Persistence\ManagerRegistry;
-use DoctrineMigrations\Version20261111120000;
+use DoctrineMigrations\Version20261124120000;
 use PHPUnit\Framework\Attributes\Group;
 use Psr\Log\NullLogger;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 
 /**
  * NR de migration (charte docs/testing/tests-par-parcours.md §2, obligatoire jusqu'à l'application
- * en prod) : le passage à la grille 20 / 34 / 35+ ne fait jamais retomber un club payant sur
- * Découverte. Un club de l'ancien palier « sans-limite » part sur Grand club (illimité) avec sa
- * saison réglée INTACTE ; sans Grand club en base, la migration refuse plutôt que de laisser la FK
- * (ON DELETE SET NULL) remettre ces clubs en Découverte en silence.
+ * en prod) : la fusion des trois offres payantes en UNE offre à trois paliers (lot 8, PR 2) laisse à
+ * chaque club le plafond d'équipes qu'il avait. Une ligne Essentiel (20) passe au palier 1, Club
+ * (34) au palier 2, Grand club (illimité) au palier 3, toutes sur l'offre complète ; la Bêta et
+ * Découverte restent sans palier ; saison, règlement et origine de chaque ligne ne bougent pas.
+ * L'offre complète est l'ancienne ligne Essentiel (même id) ; Club et Grand club disparaissent ;
+ * le plafond quitte l'offre pour le palier.
  *
- * - `up()` : Club passe à 34, Grand club à 0 (illimité), les clubs « sans-limite » sont déplacés
- *   vers Grand club AVANT la suppression de la ligne « sans-limite ».
- * - `down()` : réinsère « sans-limite », remet Club 30 et Grand club 50, ne redéplace aucun club.
+ * La migration est irréversible : l'état d'avant (cinq offres, plafond sur l'offre, aucune table
+ * de paliers, aucune colonne `tier_id`) est RECONSTRUIT dans une transaction de la connexion
+ * `admin` (celle des migrations), toujours annulée en `finally` (le DDL PostgreSQL est
+ * transactionnel). Remplace l'ancien NR de `Version20261111120000` (grille 20 / 34 / 35+), migration
+ * appliquée en production.
  *
- * On joue les requêtes de `getSql()` sur la connexion `admin` (celle des migrations) dans une
- * transaction ANNULÉE en `finally` (le DDL PostgreSQL est transactionnel). Chaque cas
- * commence par `down()` : il rend l'état d'avant la migration quel que soit l'état de la base de test.
- *
- * La RÈGLE vivante (caps servis, refus nommés) est prouvée par {@see PlanEntitlementsTest} et
- * {@see SubscriptionPlanAttributionTest} ; ce test ne garde que le run qui modifie les données.
+ * La RÈGLE vivante (le plafond de création suit le palier, paliers servis) est prouvée par
+ * {@see PlanEntitlementsTest} et {@see SubscriptionPlanAttributionTest} ; ce test ne garde que le
+ * run qui convertit les données.
  */
 #[Group('integration')]
 final class OfferTiersMigrationTest extends KernelTestCase
 {
+    private const string DECOUVERTE_PLAN = '00000000-0000-4000-8000-000000000001';
+    private const string ESSENTIEL_PLAN = '00000000-0000-4000-8000-000000000002';
     private const string CLUB_PLAN = '00000000-0000-4000-8000-000000000003';
     private const string GRAND_CLUB_PLAN = '00000000-0000-4000-8000-000000000004';
-    private const string SANS_LIMITE_PLAN = '00000000-0000-4000-8000-000000000005';
-    private const string ESSENTIEL_PLAN = '00000000-0000-4000-8000-000000000002';
+    private const string BETA_PLAN = '00000000-0000-4000-8000-000000000006';
 
-    private const string UNLIMITED_CLUB = 'a7a7a7a7-a7a7-4a7a-8a7a-a7a7a7a7a7a7';
-    private const string ESSENTIEL_CLUB = 'b8b8b8b8-b8b8-4b8b-8b8b-b8b8b8b8b8b8';
+    /** L'offre complète garde l'id de l'ancienne ligne Essentiel. */
+    private const string COMPLETE_PLAN = self::ESSENTIEL_PLAN;
+
+    /** Un club par offre d'avant : [id du club, offre d'avant, ligne réglée ?, palier attendu, plafond attendu]. */
+    private const array CLUBS = [
+        ['e1e1e1e1-e1e1-4e1e-8e1e-e1e1e1e1e1e1', self::ESSENTIEL_PLAN, true, 'palier-1', 20],
+        ['e2e2e2e2-e2e2-4e2e-8e2e-e2e2e2e2e2e2', self::CLUB_PLAN, true, 'palier-2', 34],
+        ['e3e3e3e3-e3e3-4e3e-8e3e-e3e3e3e3e3e3', self::GRAND_CLUB_PLAN, true, 'palier-3', 0],
+        ['e4e4e4e4-e4e4-4e4e-8e4e-e4e4e4e4e4e4', self::BETA_PLAN, true, null, null],
+        ['e5e5e5e5-e5e5-4e5e-8e5e-e5e5e5e5e5e5', self::DECOUVERTE_PLAN, false, null, null],
+    ];
 
     private Connection $admin;
 
-    public function testUpMovesSansLimiteClubsToGrandClubKeepingTheirPaidSeason(): void
+    /**
+     * Chaque ligne d'une offre payante passe à l'offre complète, au palier qui porte SON plafond
+     * d'avant (20, 34, illimité) ; Bêta et Découverte gardent leur offre, sans palier ; saison,
+     * règlement et origine intacts.
+     */
+    public function testEveryPaidLineMovesToTheTierThatKeepsItsTeamCap(): void
     {
         $this->inRolledBackTransaction(function (): void {
-            $this->play('down');
-            $this->insertClub(self::UNLIMITED_CLUB, self::SANS_LIMITE_PLAN, 2026);
-            $this->insertClub(self::ESSENTIEL_CLUB, self::ESSENTIEL_PLAN, 2026);
+            $before = [];
+            foreach (self::CLUBS as [$clubId, $planId, $paid]) {
+                $this->insertClubWithLine($clubId, $planId, $paid);
+                $before[$clubId] = $this->lineOf($clubId);
+                self::assertSame(
+                    [2026, $paid, 'conversion'],
+                    [$before[$clubId]['season_year'], $before[$clubId]['paid'], $before[$clubId]['origin']],
+                    'témoin : la ligne d\'avant est posée',
+                );
+            }
+            $capsBefore = [];
+            foreach ([self::ESSENTIEL_PLAN, self::CLUB_PLAN, self::GRAND_CLUB_PLAN] as $planId) {
+                $capsBefore[$planId] = (int) $this->admin->fetchOne('SELECT max_teams FROM subscription_plan WHERE id = ?', [$planId]);
+            }
+            self::assertSame([self::ESSENTIEL_PLAN => 20, self::CLUB_PLAN => 34, self::GRAND_CLUB_PLAN => 0], $capsBefore, 'témoin : la grille d\'avant est 20 / 34 / illimité');
 
-            $this->play('up');
+            $this->playUp();
 
-            self::assertSame(['plan_id' => self::GRAND_CLUB_PLAN, 'paid_season_year' => 2026], $this->planOf(self::UNLIMITED_CLUB), 'un club « sans-limite » passe Grand club, saison réglée intacte (jamais Découverte)');
-            self::assertSame(['plan_id' => self::ESSENTIEL_PLAN, 'paid_season_year' => 2026], $this->planOf(self::ESSENTIEL_CLUB), 'témoin : un club d\'une autre offre ne bouge pas');
-            self::assertFalse($this->planExists(self::SANS_LIMITE_PLAN), 'le palier « sans-limite » disparaît');
-            self::assertSame(34, $this->maxTeams(self::CLUB_PLAN), 'Club monte à 34 équipes');
-            self::assertSame(0, $this->maxTeams(self::GRAND_CLUB_PLAN), 'Grand club devient illimité (0)');
-        });
-    }
-
-    public function testUpRefusesWithoutGrandClubAndMovesNobody(): void
-    {
-        $this->inRolledBackTransaction(function (): void {
-            $this->play('down');
-            $this->insertClub(self::UNLIMITED_CLUB, self::SANS_LIMITE_PLAN, 2026);
-            $this->admin->executeStatement('DELETE FROM subscription_plan WHERE id = ?', [self::GRAND_CLUB_PLAN]);
-
-            try {
-                $this->play('up');
-                self::fail('sans Grand club, up() doit refuser (AbortMigration) plutôt que de remettre des clubs en Découverte');
-            } catch (AbortMigration) {
-                self::assertSame(['plan_id' => self::SANS_LIMITE_PLAN, 'paid_season_year' => 2026], $this->planOf(self::UNLIMITED_CLUB), 'refus AVANT tout déplacement : le club garde son offre');
-                self::assertTrue($this->planExists(self::SANS_LIMITE_PLAN), 'refus AVANT la suppression du palier');
+            foreach (self::CLUBS as [$clubId, $planId, , $tier, $cap]) {
+                $after = $this->lineWithTierOf($clubId);
+                $expectedPlan = null === $tier ? $planId : self::COMPLETE_PLAN;
+                self::assertSame(
+                    ['plan_id' => $expectedPlan, 'tier' => $tier, 'max_teams' => $cap],
+                    ['plan_id' => $after['plan_id'], 'tier' => $after['tier'], 'max_teams' => $after['max_teams']],
+                    \sprintf('club %s : offre et palier qui gardent son plafond d\'avant', $clubId),
+                );
+                self::assertSame(
+                    [$before[$clubId]['season_year'], $before[$clubId]['paid'], $before[$clubId]['paid_at'], $before[$clubId]['origin']],
+                    [$after['season_year'], $after['paid'], $after['paid_at'], $after['origin']],
+                    \sprintf('club %s : saison, règlement et origine intacts', $clubId),
+                );
             }
         });
     }
 
-    public function testDownRestoresSansLimiteAndOldCapsWithoutMovingClubsBack(): void
+    /**
+     * Le catalogue d'après : trois offres (Découverte, l'offre complète, Bêta), trois paliers de
+     * l'offre complète sans prix posé, et plus de plafond sur l'offre.
+     */
+    public function testTheCatalogueBecomesThreeOffersAndTheCompleteOfferThreeTiers(): void
     {
         $this->inRolledBackTransaction(function (): void {
-            $this->play('down');
-            $this->insertClub(self::UNLIMITED_CLUB, self::SANS_LIMITE_PLAN, 2026);
-            $this->play('up');
+            $this->playUp();
 
-            $this->play('down');
-
-            self::assertTrue($this->planExists(self::SANS_LIMITE_PLAN), 'down() réinsère le palier « sans-limite »');
-            self::assertSame(0, $this->maxTeams(self::SANS_LIMITE_PLAN), '« sans-limite » revient illimité');
-            self::assertSame(30, $this->maxTeams(self::CLUB_PLAN), 'Club revient à 30');
-            self::assertSame(50, $this->maxTeams(self::GRAND_CLUB_PLAN), 'Grand club revient à 50');
-            self::assertSame(['plan_id' => self::GRAND_CLUB_PLAN, 'paid_season_year' => 2026], $this->planOf(self::UNLIMITED_CLUB), 'down() ne redéplace aucun club');
+            self::assertSame(
+                [self::DECOUVERTE_PLAN => 'decouverte', self::COMPLETE_PLAN => 'complete', self::BETA_PLAN => 'beta'],
+                $this->admin->fetchAllKeyValue('SELECT id::text, code FROM subscription_plan ORDER BY id'),
+                'Club et Grand club disparaissent ; l\'ancienne ligne Essentiel devient l\'offre complète',
+            );
+            self::assertSame('Offre complète', $this->admin->fetchOne('SELECT name FROM subscription_plan WHERE id = ?', [self::COMPLETE_PLAN]));
+            self::assertSame(
+                [
+                    ['code' => 'palier-1', 'position' => 1, 'max_teams' => 20, 'price_cents' => null],
+                    ['code' => 'palier-2', 'position' => 2, 'max_teams' => 34, 'price_cents' => null],
+                    ['code' => 'palier-3', 'position' => 3, 'max_teams' => 0, 'price_cents' => null],
+                ],
+                array_map(
+                    static fn (array $row): array => ['code' => $row['code'], 'position' => (int) $row['position'], 'max_teams' => (int) $row['max_teams'], 'price_cents' => $row['price_cents']],
+                    $this->admin->fetchAllAssociative('SELECT code, position, max_teams, price_cents FROM subscription_plan_tier WHERE plan_id = ? ORDER BY position', [self::COMPLETE_PLAN]),
+                ),
+                'trois paliers de l\'offre complète, prix vide (posé à la main en production)',
+            );
+            self::assertSame([], $this->columns('subscription_plan', ['max_teams']), 'le plafond quitte l\'offre');
         });
+    }
+
+    /**
+     * La fusion ne se défait pas : `down()` refuse de jouer, sans planifier une seule requête (les
+     * offres Club et Grand club ne se recréent pas depuis les paliers ; le retour arrière est la
+     * sauvegarde d'avant migration).
+     */
+    public function testTheFusionIsIrreversible(): void
+    {
+        $migration = new Version20261124120000($this->admin, new NullLogger);
+        try {
+            $migration->down(new Schema);
+            self::fail('down() doit refuser : la fusion des offres est irréversible');
+        } catch (IrreversibleMigration) {
+        }
+        self::assertSame([], $migration->getSql(), 'le refus ne planifie aucune requête');
     }
 
     protected function setUp(): void
@@ -105,12 +155,12 @@ final class OfferTiersMigrationTest extends KernelTestCase
         $this->admin = $connection;
     }
 
-    /** Tout le test dans une transaction de la connexion admin, toujours annulée. */
+    /** Tout le cas dans une transaction de la connexion admin, toujours annulée ; l'état d'avant la migration d'abord. */
     private function inRolledBackTransaction(callable $scenario): void
     {
         $this->admin->beginTransaction();
         try {
-            $this->restoreClubSubscriptionFields();
+            $this->restorePreMigrationState();
             $scenario();
         } finally {
             $this->admin->rollBack();
@@ -118,62 +168,104 @@ final class OfferTiersMigrationTest extends KernelTestCase
     }
 
     /**
-     * Cette migration lit et écrit `club.plan_id` / `club.paid_season_year`, que la ligne d'abonnement
-     * par saison supprime ensuite (`Version20261123120000`) : sur une base à jour, on les rétablit
-     * dans la transaction annulée, sous leurs noms d'origine (`Version20260810120000`).
+     * L'état d'avant : aucune table de paliers, aucune colonne `tier_id` sur la ligne d'abonnement,
+     * le plafond sur l'offre, et les cinq offres de `Version20260810120000` / `Version20261111120000`
+     * (mêmes ids, codes, noms, plafonds 20 / 34 / illimité).
      */
-    private function restoreClubSubscriptionFields(): void
+    private function restorePreMigrationState(): void
     {
-        $present = $this->admin->fetchFirstColumn('SELECT column_name FROM information_schema.columns WHERE table_schema = \'public\' AND table_name = \'club\' AND column_name IN (\'plan_id\', \'paid_season_year\')');
-        if (!\in_array('plan_id', $present, true)) {
-            $this->admin->executeStatement('ALTER TABLE club ADD plan_id UUID DEFAULT NULL');
-            $this->admin->executeStatement('ALTER TABLE club ADD CONSTRAINT fk_club_plan FOREIGN KEY (plan_id) REFERENCES subscription_plan (id) ON DELETE SET NULL');
-            $this->admin->executeStatement('CREATE INDEX idx_club_plan_id ON club (plan_id)');
+        $this->admin->executeStatement('DROP TRIGGER IF EXISTS trg_club_subscription_tier_required ON club_subscription');
+        $this->admin->executeStatement('DROP FUNCTION IF EXISTS club_subscription_tier_required()');
+        $this->admin->executeStatement('DROP TABLE IF EXISTS subscription_plan_tier CASCADE');
+        if ([] !== $this->columns('club_subscription', ['tier_id'])) {
+            $this->admin->executeStatement('ALTER TABLE club_subscription DROP COLUMN tier_id');
         }
-        if (!\in_array('paid_season_year', $present, true)) {
-            $this->admin->executeStatement('ALTER TABLE club ADD paid_season_year INT DEFAULT NULL');
+        if ([] === $this->columns('subscription_plan', ['max_teams'])) {
+            $this->admin->executeStatement('ALTER TABLE subscription_plan ADD max_teams INT DEFAULT 0 NOT NULL');
+        }
+        foreach ([
+            [self::ESSENTIEL_PLAN, 'essentiel', 'Essentiel', 20],
+            [self::CLUB_PLAN, 'club', 'Club', 34],
+            [self::GRAND_CLUB_PLAN, 'grand-club', 'Grand club', 0],
+        ] as [$id, $code, $name, $maxTeams]) {
+            $this->admin->executeStatement(
+                'INSERT INTO subscription_plan (id, version, created_at, updated_at, code, name, max_teams, max_venues, max_generations, features)'
+                . ' VALUES (:id, 1, NOW(), NOW(), :code, :name, :maxTeams, 0, 0, \'[]\')'
+                . ' ON CONFLICT (id) DO UPDATE SET code = EXCLUDED.code, name = EXCLUDED.name, max_teams = EXCLUDED.max_teams',
+                ['id' => $id, 'code' => $code, 'name' => $name, 'maxTeams' => $maxTeams],
+            );
         }
     }
 
-    /** Une instance NEUVE par sens (getSql() cumule), TOUTES ses requêtes jouées sur la connexion admin. */
-    private function play(string $direction): void
+    /** Une instance NEUVE de la migration, TOUTES ses requêtes jouées sur la connexion admin. */
+    private function playUp(): void
     {
-        $migration = new Version20261111120000($this->admin, new NullLogger);
-        'up' === $direction ? $migration->up(new Schema) : $migration->down(new Schema);
+        $migration = new Version20261124120000($this->admin, new NullLogger);
+        $migration->up(new Schema);
         $queries = $migration->getSql();
-        self::assertNotEmpty($queries, \sprintf('%s() doit planifier ses requêtes par addSql', $direction));
+        self::assertNotEmpty($queries, 'up() doit planifier ses requêtes par addSql');
         foreach ($queries as $query) {
             $this->admin->executeStatement($query->getStatement(), $query->getParameters(), $query->getTypes());
         }
     }
 
-    private function insertClub(string $id, string $planId, int $paidSeasonYear): void
+    /** Un club et sa ligne d'abonnement 2026 sur l'offre d'avant ; réglée ou non. */
+    private function insertClubWithLine(string $clubId, string $planId, bool $paid): void
     {
         $this->admin->executeStatement(
-            'INSERT INTO club (id, version, created_at, updated_at, name, slug, timezone, locale, onboarding_completed, generation_count_season, is_demo, plan_id, paid_season_year) VALUES (?, 1, now(), now(), ?, ?, \'Europe/Paris\', \'fr\', true, 0, false, ?, ?)',
-            [$id, 'Offres ' . $id, 'offres-' . $id, $planId, $paidSeasonYear],
+            'INSERT INTO club (id, version, created_at, updated_at, name, slug, timezone, locale, onboarding_completed, generation_count_season, is_demo) VALUES (?, 1, now(), now(), ?, ?, \'Europe/Paris\', \'fr\', true, 0, false)',
+            [$clubId, 'Paliers ' . $clubId, 'paliers-' . $clubId],
+        );
+        $this->admin->executeStatement(
+            'INSERT INTO club_subscription (id, club_id, season_year, plan_id, paid_at, origin, created_at, updated_at)'
+            . ' VALUES (gen_random_uuid(), ?, 2026, ?, ' . ($paid ? '\'2026-05-12 10:00:00+00\'' : 'NULL') . ', \'conversion\', now(), now())',
+            [$clubId, $planId],
         );
     }
 
-    /** @return array<string, mixed> */
-    private function planOf(string $clubId): array
+    /** @return array{season_year: int, plan_id: string, paid: bool, paid_at: ?string, origin: string} */
+    private function lineOf(string $clubId): array
     {
-        $row = $this->admin->fetchAssociative('SELECT plan_id, paid_season_year FROM club WHERE id = ?', [$clubId]);
-        self::assertIsArray($row, 'club de test introuvable');
+        $row = $this->admin->fetchAssociative(
+            'SELECT season_year, plan_id::text AS plan_id, paid_at::text AS paid_at, origin FROM club_subscription WHERE club_id = ?',
+            [$clubId],
+        );
+        self::assertIsArray($row, \sprintf('ligne d\'abonnement du club %s introuvable', $clubId));
 
-        return $row;
+        return [
+            'season_year' => (int) $row['season_year'],
+            'plan_id' => (string) $row['plan_id'],
+            'paid' => null !== $row['paid_at'],
+            'paid_at' => null === $row['paid_at'] ? null : (string) $row['paid_at'],
+            'origin' => (string) $row['origin'],
+        ];
     }
 
-    private function planExists(string $planId): bool
+    /** @return array{season_year: int, plan_id: string, paid: bool, paid_at: ?string, origin: string, tier: ?string, max_teams: ?int} */
+    private function lineWithTierOf(string $clubId): array
     {
-        return false !== $this->admin->fetchOne('SELECT id FROM subscription_plan WHERE id = ?', [$planId]);
+        $tier = $this->admin->fetchAssociative(
+            'SELECT t.code, t.max_teams FROM club_subscription l LEFT JOIN subscription_plan_tier t ON t.id = l.tier_id WHERE l.club_id = ?',
+            [$clubId],
+        );
+        self::assertIsArray($tier, \sprintf('ligne d\'abonnement du club %s introuvable après la migration', $clubId));
+
+        return $this->lineOf($clubId) + [
+            'tier' => null === $tier['code'] ? null : (string) $tier['code'],
+            'max_teams' => null === $tier['max_teams'] ? null : (int) $tier['max_teams'],
+        ];
     }
 
-    private function maxTeams(string $planId): int
+    /**
+     * @param list<string> $names
+     *
+     * @return list<string> les colonnes présentes parmi $names
+     */
+    private function columns(string $table, array $names): array
     {
-        $value = $this->admin->fetchOne('SELECT max_teams FROM subscription_plan WHERE id = ?', [$planId]);
-        self::assertNotFalse($value, \sprintf('offre %s introuvable', $planId));
-
-        return (int) $value;
+        return array_map(strval(...), $this->admin->fetchFirstColumn(
+            'SELECT column_name FROM information_schema.columns WHERE table_schema = \'public\' AND table_name = ? AND column_name = ANY(?::text[])',
+            [$table, '{' . implode(',', $names) . '}'],
+        ));
     }
 }

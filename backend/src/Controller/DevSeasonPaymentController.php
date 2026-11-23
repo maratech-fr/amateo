@@ -57,7 +57,7 @@ final class DevSeasonPaymentController extends AbstractController
         }
 
         $nextYear = $this->subscriptionWriter->seasonYears($club->getId(), DateTimeImmutable::createFromInterface($this->clock->now()))['next'];
-        $this->subscriptionWriter->record($club->getId(), $nextYear, self::PLAN_CODE, SubscriptionOrigin::SUPPORT);
+        $this->subscriptionWriter->record($club->getId(), $nextYear, self::PLAN_CODE, null, SubscriptionOrigin::SUPPORT);
 
         return $this->json(['paidSeasonYear' => $nextYear]);
     }

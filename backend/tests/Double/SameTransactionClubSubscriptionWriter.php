@@ -45,7 +45,7 @@ final readonly class SameTransactionClubSubscriptionWriter extends ClubSubscript
         $this->ensureTheRecordFunctionExists($this->ownerParams(), (string) $this->application()->fetchOne('SELECT session_user'));
 
         return (int) $this->application()->fetchOne(
-            \sprintf('SELECT %s(CAST(:clubId AS uuid), CAST(:seasonYear AS integer), CAST(:planCode AS text), CAST(:origin AS text))', self::FUNCTION_NAME),
+            \sprintf('SELECT %s(CAST(:clubId AS uuid), CAST(:seasonYear AS integer), CAST(:planCode AS text), CAST(:tierCode AS text), CAST(:origin AS text))', self::FUNCTION_NAME),
             $parameters,
         );
     }
@@ -89,8 +89,8 @@ final readonly class SameTransactionClubSubscriptionWriter extends ClubSubscript
             return;
         }
         $upsert = str_replace(
-            [':clubId', ':seasonYear', ':planCode', ':origin'],
-            ['p_club_id', 'p_season_year', 'p_plan_code', 'p_origin'],
+            [':clubId', ':seasonYear', ':planCode', ':tierCode', ':origin'],
+            ['p_club_id', 'p_season_year', 'p_plan_code', 'p_tier_code', 'p_origin'],
             self::UPSERT_SQL,
         );
         $owner = DriverManager::getConnection(array_intersect_key($ownerParams, array_flip(['driver', 'host', 'port', 'user', 'password', 'dbname', 'charset', 'serverVersion'])));
@@ -99,15 +99,18 @@ final readonly class SameTransactionClubSubscriptionWriter extends ClubSubscript
             if (!str_ends_with($database, '_test')) {
                 throw new LogicException(\sprintf('Refus de créer la fonction %s : la base « %s » n\'est pas une base de test (suffixe « _test » attendu).', self::FUNCTION_NAME, $database));
             }
+            // Une signature différente ne remplace pas : elle crée une seconde fonction. L'ancienne
+            // (sans palier) part d'abord.
+            $owner->executeStatement(\sprintf('DROP FUNCTION IF EXISTS public.%s(uuid, integer, text, text)', self::FUNCTION_NAME));
             $owner->executeStatement(\sprintf(
-                'CREATE OR REPLACE FUNCTION public.%s(p_club_id uuid, p_season_year integer, p_plan_code text, p_origin text) RETURNS integer'
+                'CREATE OR REPLACE FUNCTION public.%s(p_club_id uuid, p_season_year integer, p_plan_code text, p_tier_code text, p_origin text) RETURNS integer'
                 . ' LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp'
                 . ' AS $fn$ DECLARE written integer; BEGIN %s; GET DIAGNOSTICS written = ROW_COUNT; RETURN written; END $fn$',
                 self::FUNCTION_NAME,
                 $upsert,
             ));
-            $owner->executeStatement(\sprintf('REVOKE ALL ON FUNCTION public.%s(uuid, integer, text, text) FROM PUBLIC', self::FUNCTION_NAME));
-            $owner->executeStatement(\sprintf('GRANT EXECUTE ON FUNCTION public.%s(uuid, integer, text, text) TO %s', self::FUNCTION_NAME, $appRole));
+            $owner->executeStatement(\sprintf('REVOKE ALL ON FUNCTION public.%s(uuid, integer, text, text, text) FROM PUBLIC', self::FUNCTION_NAME));
+            $owner->executeStatement(\sprintf('GRANT EXECUTE ON FUNCTION public.%s(uuid, integer, text, text, text) TO %s', self::FUNCTION_NAME, $appRole));
         } finally {
             $owner->close();
         }

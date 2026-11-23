@@ -176,7 +176,7 @@ final class FfbbExcelImporter
         if ($season instanceof Season) {
             $remaining = $this->planEntitlements->remainingTeamSlots($club, $season);
             if (null !== $remaining && \count($toCreate) > $remaining) {
-                throw ImportRejectedException::unprocessable(\sprintf('%d équipe(s) à créer dans le fichier, %d place(s) restante(s) sur votre offre. Retirez des lignes ou passez à l\'offre supérieure.', \count($toCreate), $remaining));
+                throw ImportRejectedException::unprocessable(\sprintf('%d équipe(s) à créer dans le fichier, %d place(s) restante(s) sur votre palier. Retirez des lignes ou passez au palier supérieur.', \count($toCreate), $remaining));
             }
         }
 

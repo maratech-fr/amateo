@@ -76,13 +76,25 @@ vi.mock("@/features/auth/queries", () => ({
 const ffbbImport = vi.fn();
 
 // Catalogue des offres (P1-3) — mutable pour piloter chargement/échec par test.
+// Lot 8, PR 2 : deux offres servies (la bêta est cachée du catalogue) ; l'offre complète porte ses
+// trois paliers, servis HORS ordre exprès — l'écran les range par `position`.
+const servedPlans = () => [
+  { id: "p-dec", code: "decouverte", name: "Découverte", maxVenues: 0, maxGenerations: 10, tiers: [] },
+  {
+    id: "p-cmp",
+    code: "complete",
+    name: "Offre complète",
+    maxVenues: 0,
+    maxGenerations: 0,
+    tiers: [
+      { code: "palier-3", position: 3, maxTeams: 0 },
+      { code: "palier-1", position: 1, maxTeams: 20 },
+      { code: "palier-2", position: 2, maxTeams: 34 },
+    ],
+  },
+];
 const plans: { data: unknown[] | undefined; isError: boolean } = {
-  data: [
-    { id: "p-dec", code: "decouverte", name: "Découverte", maxTeams: 0, maxVenues: 0, maxGenerations: 10 },
-    { id: "p-ess", code: "essentiel", name: "Essentiel", maxTeams: 20, maxVenues: 0, maxGenerations: 0 },
-    { id: "p-club", code: "club", name: "Club", maxTeams: 34, maxVenues: 0, maxGenerations: 0 },
-    { id: "p-gc", code: "grand-club", name: "Grand club", maxTeams: 0, maxVenues: 0, maxGenerations: 0 },
-  ],
+  data: servedPlans(),
   isError: false,
 };
 
@@ -123,13 +135,8 @@ describe("ClubPage", () => {
     venueStats.data = undefined;
     venueStats.isLoading = false;
     venueStats.isError = false;
-    // Le catalogue tel que l'API le sert (grille 20 / 34 / 35+) : Grand club illimité (0), plus de « sans-limite ».
-    plans.data = [
-      { id: "p-dec", code: "decouverte", name: "Découverte", maxTeams: 0, maxVenues: 0, maxGenerations: 10 },
-      { id: "p-ess", code: "essentiel", name: "Essentiel", maxTeams: 20, maxVenues: 0, maxGenerations: 0 },
-      { id: "p-club", code: "club", name: "Club", maxTeams: 34, maxVenues: 0, maxGenerations: 0 },
-      { id: "p-gc", code: "grand-club", name: "Grand club", maxTeams: 0, maxVenues: 0, maxGenerations: 0 },
-    ];
+    // Le catalogue tel que l'API le sert : Découverte, et l'offre complète avec ses trois paliers.
+    plans.data = servedPlans();
     plans.isError = false;
     updateShortName.mockClear();
   });
@@ -389,8 +396,14 @@ describe("ClubPage", () => {
 
   const withEntitlements = (entitlements: ClubEntitlements): Club => ({ ...baseClub, entitlements });
 
+  /**
+   * Lot 8, PR 2 — les paliers de l'offre complète, tels que le catalogue les sert : une liste
+   * nommée par l'offre (nom servi par l'API), une rangée par palier, rangées par `position`.
+   */
+  const tierRows = (): HTMLElement[] => within(screen.getByRole("list", { name: "Offre complète" })).getAllByRole("listitem");
+
   it("Offre (Découverte) : offre courante + solde de crédits + paliers « sur demande », aucun montant", () => {
-    me.data = { role: "admin", club: withEntitlements({ planCode: "decouverte", planName: "Découverte", maxTeams: null, teamsUsed: 6, creditsMax: 10, creditsUsed: 3, canGenerate: true, canPlaceMatches: true, canExportPdf: true, seasonTransition: false }) };
+    me.data = { role: "admin", club: withEntitlements({ planCode: "decouverte", planName: "Découverte", tierCode: null, maxTeams: null, teamsUsed: 6, creditsMax: 10, creditsUsed: 3, canGenerate: true, canPlaceMatches: true, canExportPdf: true, seasonTransition: false }) };
     render(<ClubPage />);
     // Section ouverte par défaut : le solde de crédits (10 - 3 = 7) s'affiche.
     expect(screen.getByText(/Crédits gratuits : 7\/10/)).toBeInTheDocument();
@@ -399,31 +412,62 @@ describe("ClubPage", () => {
     expect(screen.queryByText(/€|euro/i)).toBeNull();
     // Le gratuit n'a pas de tarif.
     expect(screen.getByText("Gratuit")).toBeInTheDocument();
+    // Lot 8, PR 2 : l'offre complète montre ses trois paliers ; aucun n'est celui d'un club en Découverte.
+    expect(tierRows()).toHaveLength(3);
+    for (const row of tierRows()) expect(within(row).queryByText(CLUB_TEXTS.yourOffer)).toBeNull();
   });
 
-  it("Offre (payant) : « X/Y équipes », AUCUN compteur de crédits", () => {
-    me.data = { role: "admin", club: withEntitlements({ planCode: "essentiel", planName: "Essentiel", maxTeams: 20, teamsUsed: 15, creditsMax: null, creditsUsed: 0, canGenerate: true, canPlaceMatches: true, canExportPdf: true, seasonTransition: true }) };
+  /**
+   * Lot 8, PR 2 — un club au palier 2 : la rangée de SON palier porte « Votre offre », pas les deux
+   * autres ; les rangées suivent la position servie (plafonds 20, puis 34, puis sans limite) ; le
+   * compteur dit les équipes comptées sur le plafond du palier. Payant : aucun compteur de crédits.
+   */
+  it("Offre (palier 2) : la rangée du palier du club est marquée, « 28/34 », aucun compteur de crédits", () => {
+    me.data = { role: "admin", club: withEntitlements({ planCode: "complete", planName: "Offre complète", tierCode: "palier-2", maxTeams: 34, teamsUsed: 28, creditsMax: null, creditsUsed: 0, canGenerate: true, canPlaceMatches: true, canExportPdf: true, seasonTransition: true }) };
     render(<ClubPage />);
-    expect(screen.getByText("15/20 équipes")).toBeInTheDocument();
+    const rows = tierRows();
+    expect(rows).toHaveLength(3);
+    // Rangées dans l'ordre des positions, malgré un catalogue servi dans le désordre.
+    expect(rows[0].textContent).toMatch(/\b20\b/);
+    // « de 21 à 34 » finit la plage : textContent la colle à « Sur demande » (pas de \b après 34).
+    expect(rows[1].textContent).toMatch(/\b34(?!\d)/);
+    expect(rows[2].textContent).not.toMatch(/\b(20|34)\b/);
+    // Seule la rangée du palier 2 est celle du club.
+    expect(within(rows[0]).queryByText(CLUB_TEXTS.yourOffer)).toBeNull();
+    expect(within(rows[1]).getByText(CLUB_TEXTS.yourOffer)).toBeInTheDocument();
+    expect(within(rows[2]).queryByText(CLUB_TEXTS.yourOffer)).toBeNull();
+    // Les équipes comptées sur le plafond du palier.
+    expect(screen.getByText(/28\/34/)).toBeInTheDocument();
     // Payant : jamais de mécanisme de crédits.
     expect(screen.queryByText(/Crédits gratuits/)).toBeNull();
-    // Le palier courant est mis en avant.
-    expect(screen.getAllByText("Votre offre").length).toBeGreaterThanOrEqual(1);
   });
 
-  /** Grand club (illimité, maxTeams servi à null) : aucun compteur « X/Y équipes », sa carte est l'offre courante. */
-  it("Offre (Grand club) : aucun compteur d'équipes, carte « Équipes illimitées » marquée comme l'offre du club", () => {
-    me.data = { role: "admin", club: withEntitlements({ planCode: "grand-club", planName: "Grand club", maxTeams: null, teamsUsed: 51, creditsMax: null, creditsUsed: 0, canGenerate: true, canPlaceMatches: true, canExportPdf: true, seasonTransition: true }) };
+  /** Palier 3 (sans plafond, `maxTeams` servi à null) : aucun compteur « X/Y », sa rangée est celle du club. */
+  it("Offre (palier 3) : aucun compteur d'équipes, la troisième rangée est celle du club", () => {
+    me.data = { role: "admin", club: withEntitlements({ planCode: "complete", planName: "Offre complète", tierCode: "palier-3", maxTeams: null, teamsUsed: 51, creditsMax: null, creditsUsed: 0, canGenerate: true, canPlaceMatches: true, canExportPdf: true, seasonTransition: true }) };
     render(<ClubPage />);
-    expect(screen.queryByText(/\d+\/\d* équipes/)).toBeNull();
-    const grandClubCard = screen.getByText("Équipes illimitées").parentElement as HTMLElement;
-    expect(within(grandClubCard).getByText(CLUB_TEXTS.yourOffer)).toBeInTheDocument();
+    // Les 51 équipes du club ne se comptent sur aucun plafond.
+    expect(screen.queryByText(/\b51\//)).toBeNull();
+    const rows = tierRows();
+    expect(within(rows[2]).getByText(CLUB_TEXTS.yourOffer)).toBeInTheDocument();
+    expect(within(rows[0]).queryByText(CLUB_TEXTS.yourOffer)).toBeNull();
+    expect(within(rows[1]).queryByText(CLUB_TEXTS.yourOffer)).toBeNull();
+  });
+
+  /** Bêta (cachée du catalogue, sans palier) : son nom se lit dans « Votre offre », aucune carte ni rangée n'est marquée. */
+  it("Offre (Bêta) : aucun palier marqué, aucune carte du catalogue marquée", () => {
+    me.data = { role: "admin", club: withEntitlements({ planCode: "beta", planName: "Bêta", tierCode: null, maxTeams: null, teamsUsed: 12, creditsMax: null, creditsUsed: 0, canGenerate: true, canPlaceMatches: true, canExportPdf: true, seasonTransition: true }) };
+    render(<ClubPage />);
+    expect(screen.getByText("Bêta")).toBeInTheDocument();
+    for (const row of tierRows()) expect(within(row).queryByText(CLUB_TEXTS.yourOffer)).toBeNull();
+    // Le seul « Votre offre » est l'intitulé du résumé : aucune carte du catalogue n'est celle du club.
+    expect(screen.getAllByText(CLUB_TEXTS.yourOffer)).toHaveLength(1);
   });
 
   it("Offre : le chargement ne crie pas « échec » (readState à trois états)", () => {
     plans.data = undefined;
     plans.isError = false;
-    me.data = { role: "admin", club: withEntitlements({ planCode: "decouverte", planName: "Découverte", maxTeams: null, teamsUsed: 0, creditsMax: 10, creditsUsed: 0, canGenerate: true, canPlaceMatches: true, canExportPdf: true, seasonTransition: false }) };
+    me.data = { role: "admin", club: withEntitlements({ planCode: "decouverte", planName: "Découverte", tierCode: null, maxTeams: null, teamsUsed: 0, creditsMax: 10, creditsUsed: 0, canGenerate: true, canPlaceMatches: true, canExportPdf: true, seasonTransition: false }) };
     render(<ClubPage />);
     expect(screen.getByText("Chargement des offres…")).toBeInTheDocument();
     expect(screen.queryByText(/n'ont pas pu être chargées/)).toBeNull();
@@ -434,10 +478,10 @@ describe("ClubPage", () => {
    * d'adhésion, Invitations et Membres restent réservés (tests voisins, inchangés).
    */
   it("Membre : l'Offre du club se lit", () => {
-    me.data = { role: "member", club: withEntitlements({ planCode: "essentiel", planName: "Essentiel", maxTeams: 20, teamsUsed: 15, creditsMax: null, creditsUsed: 0, canGenerate: true, canPlaceMatches: true, canExportPdf: true, seasonTransition: true }) };
+    me.data = { role: "member", club: withEntitlements({ planCode: "complete", planName: "Offre complète", tierCode: "palier-1", maxTeams: 20, teamsUsed: 15, creditsMax: null, creditsUsed: 0, canGenerate: true, canPlaceMatches: true, canExportPdf: true, seasonTransition: true }) };
     render(<ClubPage />);
     expect(screen.getByRole("button", { name: /^Offre$/ })).toBeInTheDocument();
-    expect(screen.getByText("15/20 équipes")).toBeInTheDocument();
+    expect(screen.getByText(/15\/20/)).toBeInTheDocument();
   });
 
   // --- P3-22 — stats d'utilisation des gymnases -----------------------------

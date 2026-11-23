@@ -31,10 +31,14 @@ use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
  */
 trait SubscribesClub
 {
-    private function subscribeClub(string $clubId, int $seasonYear, string $planCode): void
+    /**
+     * $tierCode : le palier de l'offre payante (`palier-1`, `palier-2`, `palier-3`), exigé pour
+     * `complete` ; null pour Découverte et Bêta, qui n'ont pas de palier (lot 8, PR 2).
+     */
+    private function subscribeClub(string $clubId, int $seasonYear, string $planCode, ?string $tierCode = null): void
     {
         $writer = static::getContainer()->get(ClubSubscriptionWriter::class);
         \assert($writer instanceof ClubSubscriptionWriter);
-        $writer->record($clubId, $seasonYear, $planCode, SubscriptionOrigin::SEED);
+        $writer->record($clubId, $seasonYear, $planCode, $tierCode, SubscriptionOrigin::SEED);
     }
 }

@@ -700,7 +700,7 @@ function ClubRow({ club, onActions }: { club: AdminClub; onActions: () => void }
       <tr className="align-top text-console-text hover:bg-white/[0.025]">
         <td className="px-5 py-5"><div className="flex items-start gap-3"><button type="button" aria-expanded={expanded} aria-label={ADMIN_DASHBOARD_TEXTS.clubToggleDetail(expanded, club.name)} onClick={() => setExpanded((value) => !value)} className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-md bg-white/[0.06] text-console-muted hover:bg-white/10">{expanded ? <ChevronDown className="size-4" aria-hidden="true" /> : <ChevronRight className="size-4" aria-hidden="true" />}</button><div><p className="font-medium text-white">{club.name}</p><p className="mt-1 text-xs text-console-text-faint">{club.ffbbClubCode ?? club.slug}</p>{club.isDemo ? <span className="mt-2 mr-2 inline-block rounded bg-console-demo-surface/20 px-1.5 py-0.5 text-xs font-medium text-console-demo">{ADMIN_DASHBOARD_TEXTS.clubDemo}</span> : null}{club.unsubscribed ? <span className="mt-2 inline-block text-xs font-medium text-console-warning">{ADMIN_DASHBOARD_TEXTS.clubUnsubscribed}</span> : null}{firstReason ? <p className="mt-2 flex items-center gap-1 text-xs font-medium text-console-warning"><AlertTriangle className="size-3 shrink-0" aria-hidden="true" />{firstReason}</p> : null}</div></div></td>
         <td className="px-4 py-5"><LastActivity iso={club.lastActivityAt} /><p className="mt-1 text-xs text-console-text-faint">{ADMIN_DASHBOARD_TEXTS.clubCreatedAt(formatDate(club.createdAt))}</p></td>
-        <td className="px-4 py-5"><p className="text-white">{club.effectivePlan.name}</p>{club.plan && club.plan.code !== club.effectivePlan.code ? <p className="mt-1 text-xs text-console-warning">{ADMIN_DASHBOARD_TEXTS.clubPlanDiverges(club.plan.name)}</p> : null}<p className="mt-1 text-xs text-console-text-faint">{ADMIN_DASHBOARD_TEXTS.clubGenerationCount(club.generationCountSeason)}{club.billingCycle ? ` · ${club.billingCycle}` : ""}</p></td>
+        <td className="px-4 py-5"><p className="text-white">{club.effectivePlan.name}</p><ClubSubscriptionLines club={club} /><p className="mt-1 text-xs text-console-text-faint">{ADMIN_DASHBOARD_TEXTS.clubGenerationCount(club.generationCountSeason)}{club.billingCycle ? ` · ${club.billingCycle}` : ""}</p></td>
         <td className="px-4 py-5"><p>{club.currentSeason?.name ?? ADMIN_DASHBOARD_TEXTS.clubNoSeason}</p><p className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-console-text-faint"><span className="flex items-center gap-1"><Users className="size-3" aria-hidden="true" />{ADMIN_DASHBOARD_TEXTS.clubTeamsCoaches(club.volumes.teams, club.volumes.coaches)}</span><span className="flex items-center gap-1"><MapPin className="size-3" aria-hidden="true" />{ADMIN_DASHBOARD_TEXTS.clubVenues(club.volumes.venues)}</span><span>{ADMIN_DASHBOARD_TEXTS.clubConstraints(club.volumes.constraints)}</span></p></td>
         <td className="px-4 py-5"><p><span className="font-medium text-white">{club.solver.generations}</span>{ADMIN_DASHBOARD_TEXTS.clubSolverSummary(formatRate(club.solver.infeasibleRate))}</p><p className="mt-1 text-xs text-console-text-faint">{ADMIN_DASHBOARD_TEXTS.clubSolverPercentiles(formatDuration(club.solver.p50WallTimeMs), formatDuration(club.solver.p95WallTimeMs))}</p>{club.solver.latestStatus ? <p className="mt-2 text-xs text-console-muted">{ADMIN_DASHBOARD_TEXTS.clubLatestStatus(club.solver.latestStatus)}</p> : null}</td>
         <td className="px-4 py-5">
@@ -710,6 +710,40 @@ function ClubRow({ club, onActions }: { club: AdminClub; onActions: () => void }
         </td>
       </tr>
       {expanded ? <ClubDetailRow club={club} /> : null}
+    </>
+  );
+}
+
+/**
+ * L'abonnement d'un club tel que le serveur le sert : la ligne de la saison en cours (offre,
+ * palier, équipes que le plafond compte, date et origine du règlement) et celle de la saison
+ * suivante quand elle existe.
+ */
+function ClubSubscriptionLines({ club }: { club: AdminClub }) {
+  const { subscription, nextSubscription } = club;
+  const teamsCounted = ADMIN_DASHBOARD_TEXTS.clubTeamsCounted(club.teamsCounted);
+  const tierLabel = (tierCode: string | null) => (null === tierCode ? null : ADMIN_DASHBOARD_TEXTS.clubTierLabel(tierCode));
+
+  return (
+    <>
+      <p className="mt-1 text-xs text-console-text">
+        {null === subscription ? teamsCounted : ADMIN_DASHBOARD_TEXTS.clubSubscriptionLine(subscription.planName, tierLabel(subscription.tierCode), teamsCounted)}
+      </p>
+      {null !== subscription ? (
+        <p className="mt-1 text-xs text-console-text-faint">
+          {null === subscription.paidAt ? ADMIN_DASHBOARD_TEXTS.clubSubscriptionUnpaid : ADMIN_DASHBOARD_TEXTS.clubSubscriptionPaid(formatDate(subscription.paidAt), subscription.origin)}
+        </p>
+      ) : null}
+      {null !== nextSubscription ? (
+        <p className="mt-1 text-xs text-console-text-faint">
+          {ADMIN_DASHBOARD_TEXTS.clubNextSubscription(
+            `${nextSubscription.seasonYear}-${nextSubscription.seasonYear + 1}`,
+            nextSubscription.planName,
+            tierLabel(nextSubscription.tierCode),
+            null !== nextSubscription.paidAt,
+          )}
+        </p>
+      ) : null}
     </>
   );
 }

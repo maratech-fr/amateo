@@ -139,7 +139,7 @@ final class Version20261122140000 extends AbstractMigration
 
     public function down(Schema $schema): void
     {
-        $this->throwIrreversibleMigration(
+        $this->throwIrreversibleMigrationException(
             'Les colonnes d\'identité de coach supprimées ne se recréent pas depuis les fiches sans risque. Retour arrière : restaurer la sauvegarde d\'avant migration.',
         );
     }

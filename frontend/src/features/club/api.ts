@@ -97,15 +97,22 @@ export async function downloadClubExport(): Promise<void> {
 /**
  * P1-3 §4bis pt 5 — catalogue public des offres (`GET /api/subscription_plans`).
  * SANS montant (décision fondateur : « sur demande » partout), la bêta ABSENTE
- * (masquée côté provider). Convention `maxTeams === 0` = illimité.
+ * (masquée côté provider). Le plafond d'équipes vit sur les paliers de l'offre payante
+ * (convention `maxTeams === 0` = illimité) ; Découverte n'a aucun palier.
  */
+export interface SubscriptionPlanTier {
+  code: string;
+  position: number;
+  maxTeams: number;
+}
+
 export interface SubscriptionPlan {
   id: string;
   code: string;
   name: string;
-  maxTeams: number;
   maxVenues: number;
   maxGenerations: number;
+  tiers: SubscriptionPlanTier[];
 }
 
 export const listSubscriptionPlans = (): Promise<SubscriptionPlan[]> => collection<SubscriptionPlan>("subscription_plans");
