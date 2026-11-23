@@ -52,23 +52,23 @@ Fonctionnalité: Un plan de période se génère en overlay, sur sa propre grill
     Alors la génération de la fermeture respecte « pas le vendredi »
 
   Plan du scénario: J'écarte une équipe des vacances, je lui donne une séance, puis je lui rends ses réglages de saison
-    Chaque génération des vacances suit le réglage du moment : écartée, l'équipe n'y joue pas ; une séance, elle en a
-    une ; ses réglages de saison rendus, elle retrouve ses deux séances, qu'elle tienne un créneau réservé dans les
-    vacances ou qu'elle s'y entraîne en groupe mutualisé.
+    Chaque génération des vacances suit le réglage du moment : écartée, l'équipe n'y joue pas, sauf la séance qu'elle
+    tient par un créneau réservé dans les vacances (la réservation gagne) ; une séance, elle en a une ; ses réglages de
+    saison rendus, elle retrouve ses deux séances, groupe mutualisé compris.
     Étant donné un petit club réaliste dont le planning de saison est en vigueur, et des vacances à venir
     Et <situation>
     Quand j'écarte les <équipe> des vacances
-    Alors les <équipe> n'ont aucune séance dans le planning des vacances
+    Alors les <équipe> ont <écartée> séance dans le planning des vacances
     Quand je donne 1 séance aux <équipe> pour les vacances
     Alors les <équipe> ont 1 séance dans le planning des vacances
     Quand je rends aux <équipe> leurs réglages de saison
     Alors les <équipe> ont leurs 2 séances dans le planning des vacances
 
     Exemples:
-      | équipe | situation                                                             |
-      | U17M1  | les U17M1 n'ont rien de particulier dans les vacances                 |
-      | U20M1  | les U20M1 ont un créneau réservé dans les vacances                    |
-      | SM1    | les SM1 s'entraînent en groupe mutualisé avec les SF1 dans les vacances |
+      | équipe | situation                                                               | écartée |
+      | U17M1  | les U17M1 n'ont rien de particulier dans les vacances                   | 0       |
+      | U20M1  | les U20M1 ont un créneau réservé dans les vacances                      | 1       |
+      | SM1    | les SM1 s'entraînent en groupe mutualisé avec les SF1 dans les vacances | 0       |
 
   Scénario: Un plan de vacances garde les séances qu'il avait à sa création quand celles du planning de saison changent
     Décision du fondateur (2026-11-22) : tant que le gestionnaire ne les change pas dans le plan de vacances, ses

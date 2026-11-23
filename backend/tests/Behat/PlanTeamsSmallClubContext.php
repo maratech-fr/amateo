@@ -134,8 +134,8 @@ final class PlanTeamsSmallClubContext extends BaseContext
     }
 
     /** Le compte des séances de l'équipe dans une version des vacances générée maintenant, sur les réglages du moment. */
-    #[Then('/^les (?P<team>\S+) (?:n\'ont aucune séance|ont (?:toujours |leurs )?(?P<count>\d+) séances?) dans le (?:planning|plan) des vacances$/u')]
-    public function lesSeancesDansLesVacances(string $team, string $count = '0'): void
+    #[Then('/^les (?P<team>\S+) ont (?:toujours |leurs )?(?P<count>\d+) séances? dans le planning des vacances$/u')]
+    public function lesSeancesDansLesVacances(string $team, string $count): void
     {
         $expected = (int) $count;
         $version = $this->generateSmallClubPeriodVersion($this->holidayPlanId);
