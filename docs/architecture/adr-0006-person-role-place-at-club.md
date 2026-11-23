@@ -1,7 +1,7 @@
 # ADR-0006 — Personne, rôle et lieu au club : l'identité vit une fois, au club ; la saison ne porte que le rôle
 
 - **Status**: accepted — Date: 2026-11-22 (lot conception, lot 3). Les moitiés « personne » et « lieu » sont en place ;
-  les temps de trajet entre deux lieux, décidés sur le même patron, ne le sont pas encore.
+  les temps de trajet entre deux lieux, sur le même patron, aussi.
 
 ## Contexte
 
@@ -43,8 +43,13 @@ ses copies. L'adresse et la position d'un gymnase, et le barème de trajet entre
    gymnases des autres saisons qui le pointent, ne bougent pas. Un lieu sans gymnase reste jusqu'à la purge de
    sa saison, puis `UnusedIdentitySweeper` le balaie ; l'effacement du club emporte tous les lieux
    (`#[Family(Level::CLUB)]`). « Charger » remet un gymnase supprimé sur son lieu, adresse comprise.
-7. **Le temps de trajet entre deux lieux** suivra le même patron (table au club, clés composées avec le club) :
-   pas encore livré, `venue_travel_time` reste par saison et par gymnase.
+7. **Le temps de trajet vit au club, entre deux lieux** (`place_travel_time`, `Entity/PlaceTravelTime.php`, même
+   patron : table au club, deux clés composées avec le club). Couple non ordonné, rangé « plus petit identifiant de
+   lieu d'abord » en base ; servi (moteur, API) pour la saison demandée, entre les lieux qui ont un gymnase cette
+   saison, nommé et rangé par les gymnases de cette saison (`PlaceTravelTimeRepository::forSeason`). Un temps partagé
+   entre saisons n'est jamais recopié ; l'écrire est refusé 409 si la saison de la requête est archivée.
+   « Dissocier » un gymnase reporte sur son lieu neuf des copies des couples de sa saison (vides s'il reste sans
+   position, avec leurs valeurs si une position arrive dans le même PUT) ; le lieu quitté garde les siens.
 
 ## Conséquences
 

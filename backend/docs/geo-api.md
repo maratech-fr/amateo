@@ -196,7 +196,7 @@ sites de test qui l'omettent ; le conteneur l'autowire en prod.
 **Seed one-shot** (migration `Version20260920120000`, avant l'armement RLS — les migrations tournent
 sous `amateo_owner`, qui contourne la RLS des tables sources) : rétro-alimente le cache depuis (1)
 `opponent_travel.travel_minutes` (siège ACTUEL du club → lieu adverse effectif, override sinon
-annuaire) et (2) `venue_travel_time` conduite/marche entre deux gymnases, **dans les deux sens** (le
+annuaire) et (2) `place_travel_time` conduite/marche entre deux gymnases, **dans les deux sens** (le
 cache est directionnel, la matrice non) — profils `car`/`pedestrian`. Les instructions SQL vivent
 dans `Version20260920120000::seedStatements()` (jouée une fois, en production ; elle lit les colonnes
 de position de `venue` d'avant le lot 3). Le cache reste alimenté par l'autofill de la matrice :
@@ -299,8 +299,8 @@ deleteAllFromOrigin`, avant le dispatch) plutôt que de les laisser mortes en ba
 
 ## 3. L'autofill de la matrice de trajet (`POST /api/venue-travel-times/autofill`)
 
-Le geste qui remplit la matrice `venue_travel_time` (barème voiture + mode NON VÉHICULÉ par couple
-de gymnases du club+saison, entité `App\Entity\VenueTravelTime`) sans que l'utilisateur ne
+Le geste qui remplit la matrice `place_travel_time` (barème voiture + mode NON VÉHICULÉ par couple
+de lieux du club, servi par les gymnases de la saison, entité `App\Entity\PlaceTravelTime`) sans que l'utilisateur ne
 renseigne les paires à la main. ⚠ **Le mode non véhiculé de la matrice est le VÉLO / la
 TROTTINETTE** (décision fondateur 2026-09-30, remplace la marche) — la colonne/le champ gardent
 leur nom technique `walking*`/`pedestrian` (contrat, entité, cache), seul le SENS change :
@@ -361,7 +361,7 @@ incapable de porter MANDATORY sans altérer les 5 règles de bien-être. Décisi
 - **`intensity`** — vocabulaire DÉDIÉ `App\Enum\VenueTravelRuleIntensity` (`OFF`/`PREFERRED`/
   `MANDATORY`) : **distinct** de `TeamLinkIntensity` (passerelles, PREFERRED/MANDATORY seulement),
   qui n'a aucun sens pour `OFF`. `OFF` (« Inactive ») ⇒ la règle **n'est pas émise** au solveur (le
-  payload devient byte-identique à un club sans matrice) — la matrice `venue_travel_time`, elle,
+  payload devient byte-identique à un club sans matrice) — la matrice `place_travel_time`, elle,
   reste **STOCKÉE**, elle n'est simplement pas envoyée.
 - **`toleranceMinutes`** (« battement toléré », défaut **20**, bornes 0-60 côté écran) — retranché
   du barème pour l'écart RÉELLEMENT exigé : `max(0, barème − toleranceMinutes)` (`required_gap`,

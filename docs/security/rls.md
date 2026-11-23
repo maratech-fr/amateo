@@ -108,6 +108,17 @@ par lieu et par saison. Gardé par `tests/Security/PersonPlaceTenantIsolationTes
 step bloquant). Deux lectures SQL brutes contournent l'ORM et portent donc le club en clause explicite :
 `UnusedIdentitySweeper` (balayage) et `VenueStateProcessor::afterPersist` (saisons où le lieu a un gymnase).
 
+## `place_travel_time` — le temps de trajet entre deux lieux, deux clés composées
+
+`place_travel_time` (le temps de trajet au club entre deux lieux, ADR-0006 ; `Version20261126120000`) suit le même
+motif que `place` : `ENABLE` + `FORCE`, `tenant_isolation FOR ALL TO amateo_app`, `admin_all` (`amateo_owner`) et
+`readonly_tenant` (`amateo_read`). Ses deux clés sont COMPOSÉES, posées à la main (invisibles de Doctrine : ne
+jamais committer le DROP que propose `migration-diff`) : `(place_a_id, club_id)` et `(place_b_id, club_id)` →
+`place (id, club_id)`, `ON DELETE CASCADE` (un temps part avec l'un de ses lieux). Une clé simple laisserait un
+temps du club A relier le lieu du club B (une vérification de clé étrangère ignore la RLS). Gardé par
+`tests/Security/PersonPlaceTenantIsolationTest.php` (step bloquant). La lecture servie pour une saison
+(`PlaceTravelTimeRepository::forSeason`) joint `venue` en SQL avec club et saison en clause explicite.
+
 ## Porte superadmin (supervision développeur)
 
 La porte admin (P5-7, `Version20260813130000`) est **portée par des policies, plus par le
