@@ -17,6 +17,7 @@ use App\Enum\CalendarEntryPeriodType;
 use App\Enum\ScheduleStatus;
 use App\Tests\ChoosesPlanVersionTrait;
 use App\Tests\CreatesPeopleAndPlacesTrait;
+use App\Tests\SeasonPlanOf;
 use App\Tests\TenantGucTrait;
 use App\Tests\VerifiesRegistration;
 use DateTimeImmutable;
@@ -76,6 +77,7 @@ final class ResetSeasonControllerTest extends WebTestCase
         $slot = new VenueTrainingSlot;
         $slot->setClubId($clubId);
         $slot->setSeasonId($season->getId());
+        $slot->setSchedulePlanId(SeasonPlanOf::id(self::getContainer(), $season->getId()));
         $slot->setVenueId($venue->getId());
         $slot->setDayOfWeek(2);
         $slot->setStartTime(new DateTimeImmutable('18:00'));

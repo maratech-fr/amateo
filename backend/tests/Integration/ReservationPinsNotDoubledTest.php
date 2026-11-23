@@ -39,6 +39,7 @@ use App\Service\StructureSnapshotter;
 use App\Service\TenantConnectionContext;
 use App\Tests\ChoosesPlanVersionTrait;
 use App\Tests\ProvisionsPeriodPlanTrait;
+use App\Tests\SeasonPlanOf;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -325,7 +326,8 @@ final class ReservationPinsNotDoubledTest extends KernelTestCase
         $this->scopeGucToClub($club->getId());
         $season = $this->em->getRepository(Season::class)->find($season->getId());
         self::assertInstanceOf(Season::class, $season);
-        $season->setLiveContextScheduleId($older->getId());
+        $this->em->flush();
+        $this->em->getConnection()->executeStatement('UPDATE schedule_plan SET lock_source_schedule_id = ? WHERE season_id = ? AND type = \'SEASON\'', [$older->getId(), $season->getId()]);
         $this->em->flush();
         $this->purgeCache($club, $season);
 
@@ -498,7 +500,7 @@ final class ReservationPinsNotDoubledTest extends KernelTestCase
         $reservation = (new Reservation)
             ->setClubId($club->getId())
             ->setSeasonId($season->getId())
-            ->setSchedulePlanId($schedulePlanId)
+            ->setSchedulePlanId($schedulePlanId ?? SeasonPlanOf::id(self::getContainer(), $season->getId()))
             ->setTeamId(self::TEAM_ID)
             ->setVenueId(self::VENUE_ID)
             ->setDayOfWeek(self::DAY)

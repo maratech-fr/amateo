@@ -7,6 +7,7 @@ namespace App\Service;
 use App\Entity\ImplicitRuleSetting;
 use App\Enum\ImplicitRuleIntensity;
 use App\Enum\ImplicitRuleKey;
+use App\Plans\SoclePlan;
 use App\Repository\ImplicitRuleSettingRepository;
 
 /**
@@ -26,6 +27,7 @@ final class ImplicitRuleResolver
 {
     public function __construct(
         private readonly ImplicitRuleSettingRepository $repository,
+        private readonly SoclePlan $soclePlan,
     ) {}
 
     /**
@@ -95,17 +97,19 @@ final class ImplicitRuleResolver
     }
 
     /**
-     * Le bloc RÉSOLU des 4 règles pour un club+saison : réglages stockés par-dessus les défauts.
+     * Le bloc RÉSOLU des 4 règles pour un club+saison : réglages stockés sur le plan de saison
+     * par-dessus les défauts.
      *
      * @return array<string, array<string, mixed>>
      */
     public function resolve(string $clubId, string $seasonId): array
     {
-        return $this->resolveFromIndexed($this->repository->findByClubSeasonIndexed($clubId, $seasonId));
+        return $this->resolveFromIndexed($this->repository->findByPlanIndexed($clubId, $seasonId, $this->soclePlan->idOf($seasonId)));
     }
 
     /**
-     * Le bloc RÉSOLU des 4 règles pour un PLAN de période (ADR-0002 inv. 5).
+     * Le bloc RÉSOLU des 4 règles pour un PLAN (ADR-0002 inv. 5) — le plan de saison y vaut la
+     * portée saison.
      *
      * Un plan né après la fonctionnalité porte ses 4 lignes (copie prise à la naissance) : on
      * les résout. Un plan LEGACY (aucune ligne) retombe sur la portée SAISON — repli VIVANT,
@@ -127,15 +131,14 @@ final class ImplicitRuleResolver
     /**
      * Les règles appliquées par défaut que le club a réglées sur « Ignorée » (OFF), dans l'ordre de
      * l'enum — ce que le Récap annonce. Une opt-in éteinte n'y figure jamais : l'être est son défaut.
-     * Même portée que le payload : un plan de période lit sa copie, à défaut la saison.
+     * Même portée que le payload : un plan de période lit sa copie, à défaut la saison ; le plan de
+     * saison lit la saison.
      *
      * @return list<string>
      */
-    public function ignoredRuleKeys(string $clubId, string $seasonId, ?string $schedulePlanId): array
+    public function ignoredRuleKeys(string $clubId, string $seasonId, string $schedulePlanId): array
     {
-        $resolved = null === $schedulePlanId
-            ? $this->resolve($clubId, $seasonId)
-            : $this->resolveForPlan($clubId, $seasonId, $schedulePlanId);
+        $resolved = $this->resolveForPlan($clubId, $seasonId, $schedulePlanId);
 
         $ignored = [];
         foreach ($resolved as $ruleKey => $entry) {

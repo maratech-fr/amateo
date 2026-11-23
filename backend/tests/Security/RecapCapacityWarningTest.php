@@ -26,6 +26,7 @@ use App\Enum\CalendarEntryStatus;
 use App\Enum\SeasonStatus;
 use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\ProvisionsPeriodPlanTrait;
+use App\Tests\SeasonPlanOf;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -381,7 +382,7 @@ final class RecapCapacityWarningTest extends WebTestCase
         // Toujours SAISONNIER : la grille d'une période est la COPIE que `planIdOf` prend à
         // la naissance du plan — en fabriquer une ici produirait un créneau que ce geste n'a
         // pas créé, donc un état impossible en production (revue #341).
-        $slot->setSchedulePlanId(null);
+        $slot->setSchedulePlanId(SeasonPlanOf::id(self::getContainer(), $season->getId()));
         $this->em->persist($slot);
         $this->em->flush();
     }
@@ -391,6 +392,7 @@ final class RecapCapacityWarningTest extends WebTestCase
         $reservation = new Reservation;
         $reservation->setClubId($club->getId());
         $reservation->setSeasonId($season->getId());
+        $reservation->setSchedulePlanId(SeasonPlanOf::id(self::getContainer(), $season->getId()));
         $reservation->setVenueId($venue->getId());
         $reservation->setTeamId($team->getId());
         $reservation->setDayOfWeek(1);
@@ -426,7 +428,7 @@ final class RecapCapacityWarningTest extends WebTestCase
         $block = new SharedTrainingBlock;
         $block->setClubId($club->getId());
         $block->setSeasonId($season->getId());
-        $block->setSchedulePlanId(null);
+        $block->setSchedulePlanId(SeasonPlanOf::id(self::getContainer(), $season->getId()));
         $block->setCommonSessions($commonSessions);
         $this->em->persist($block);
 
@@ -434,7 +436,7 @@ final class RecapCapacityWarningTest extends WebTestCase
             $member = new SharedTrainingBlockTeam;
             $member->setClubId($club->getId());
             $member->setSeasonId($season->getId());
-            $member->setSchedulePlanId(null);
+            $member->setSchedulePlanId(SeasonPlanOf::id(self::getContainer(), $season->getId()));
             $member->setBlockId($block->getId());
             $member->setTeamId($team->getId());
             $this->em->persist($member);

@@ -18,6 +18,7 @@ use App\Entity\Team;
 use App\Entity\Venue;
 use App\Entity\VenueTrainingSlot;
 use App\Enum\Gender;
+use App\Plans\SoclePlan;
 use App\Service\Basketball\TeamCreationSuggester;
 use App\Service\Basketball\VenueAliasResolver;
 use App\Service\Basketball\VenueLabelNormalizer;
@@ -91,6 +92,9 @@ final class ParcImportExecutor
     /** @var array<string, string> nom normalisé → venueId (créés dans ce run OU résolus) */
     private array $venueByName = [];
 
+    /** Le plan de saison de la saison importée, posé au début de chaque import. */
+    private string $soclePlanId;
+
     /** @var array<string, string> nom normalisé → teamId */
     private array $teamByName = [];
 
@@ -156,6 +160,7 @@ final class ParcImportExecutor
         private readonly TeamLabelMatcher $matcher,
         private readonly TeamCreationSuggester $suggester,
         private readonly VenueGridOverlap $gridOverlap,
+        private readonly SoclePlan $soclePlan,
     ) {}
 
     /**
@@ -166,6 +171,8 @@ final class ParcImportExecutor
      */
     public function import(Club $club, string $seasonId, array $parc, array $decisions): array
     {
+        // Le parc écrit le socle : chaque ligne porte le plan de saison (lot 4).
+        $this->soclePlanId = $this->soclePlan->idOf($seasonId);
         $this->venueByName = [];
         $this->teamByName = [];
         $this->teamIdByEquipesIndex = [];
@@ -421,7 +428,8 @@ final class ParcImportExecutor
                 ->setDayOfWeek($day)
                 ->setStartTime(new DateTimeImmutable($start))
                 ->setDurationMinutes($duration)
-                ->setCapacity(max(1, $capacity));
+                ->setCapacity(max(1, $capacity))
+                ->setSchedulePlanId($this->soclePlanId);
             $this->entityManager->persist($slot);
             $this->entityManager->flush();
             ++$recap['crees'];
@@ -499,7 +507,7 @@ final class ParcImportExecutor
             } else {
                 // Garde Σ séances communes ≤ séances d'un membre, rejouée depuis sa maison unique,
                 // AVANT toute écriture (un dépassement refuse l'import, rien n'est écrit).
-                foreach ($this->soloReservationBudget->forTeamsWithBlockSubstituted($teamIds, $club->getId(), $seasonId, null, null, $commonSessions) as $budget) {
+                foreach ($this->soloReservationBudget->forTeamsWithBlockSubstituted($teamIds, $club->getId(), $seasonId, $this->soclePlanId, null, $commonSessions) as $budget) {
                     if ($budget->block > $budget->effective) {
                         $this->fail('mutualisations', $i, 'Les séances communes de cette mutualisation dépassent les séances hebdomadaires d\'une des équipes.');
                     }
@@ -508,7 +516,7 @@ final class ParcImportExecutor
                 $block = (new SharedTrainingBlock)
                     ->setClubId($club->getId())
                     ->setSeasonId($seasonId)
-                    ->setSchedulePlanId(null)
+                    ->setSchedulePlanId($this->soclePlanId)
                     ->setCommonSessions($commonSessions)
                     // D8 — à la CRÉATION, le nom saisi l'emporte sur le groupe DÉRIVÉ de la case.
                     ->setLabel($this->blockLabel($decision['corrections'], $entry));
@@ -517,7 +525,7 @@ final class ParcImportExecutor
                     $member = (new SharedTrainingBlockTeam)
                         ->setClubId($club->getId())
                         ->setSeasonId($seasonId)
-                        ->setSchedulePlanId(null)
+                        ->setSchedulePlanId($this->soclePlanId)
                         ->setBlockId($block->getId())
                         ->setTeamId($teamId);
                     $this->entityManager->persist($member);
@@ -571,7 +579,7 @@ final class ParcImportExecutor
             // Déjà posée (rejeu) : aucun doublon. Mais ce retour saute le plafond de la garde ci-dessous :
             // un groupe à 1 séance sur des équipes déjà réservées ensemble sur deux cases est refusé ici
             // (décision fondateur 2026-10-30, l'import ne retire jamais une réservation en silence).
-            $reservedSessions = $this->reservationGroupOccupancy->groupCompleteCaseCount(array_fill_keys($teamIds, true), null);
+            $reservedSessions = $this->reservationGroupOccupancy->groupCompleteCaseCount(array_fill_keys($teamIds, true), $this->soclePlanId);
             if ($reservedSessions > $block->getCommonSessions()) {
                 $this->fail('mutualisations', $index, ReservationGroupOccupancy::belowReservedSessionsMessage($reservedSessions));
             }
@@ -580,7 +588,7 @@ final class ParcImportExecutor
         }
 
         try {
-            $this->reservationGroupOccupancy->assertBlockReservationAllowed($block, $teamIds, $venueId, $day, new DateTimeImmutable($start), null);
+            $this->reservationGroupOccupancy->assertBlockReservationAllowed($block, $teamIds, $venueId, $day, new DateTimeImmutable($start), $this->soclePlanId);
             $this->groupReservationWriter->writeBlockReservationsAtomically(
                 $club->getId(),
                 $seasonId,
@@ -589,7 +597,7 @@ final class ParcImportExecutor
                 $day,
                 new DateTimeImmutable($start),
                 $duration,
-                null,
+                $this->soclePlanId,
             );
         } catch (UnprocessableEntityHttpException $exception) {
             $this->fail('mutualisations', $index, $exception->getMessage());
@@ -673,7 +681,7 @@ final class ParcImportExecutor
                     $venueId,
                     $day,
                     new DateTimeImmutable($start),
-                    null,
+                    $this->soclePlanId,
                     $club->getId(),
                     $seasonId,
                     'import',
@@ -685,7 +693,7 @@ final class ParcImportExecutor
             $reservation = (new Reservation)
                 ->setClubId($club->getId())
                 ->setSeasonId($seasonId)
-                ->setSchedulePlanId(null)
+                ->setSchedulePlanId($this->soclePlanId)
                 ->setTeamId($teamId)
                 ->setVenueId($venueId)
                 ->setDayOfWeek($day)
@@ -1098,7 +1106,7 @@ final class ParcImportExecutor
         $rows = $this->entityManager->getRepository(VenueTrainingSlot::class)->findBy([
             'venueId' => $venueId,
             'dayOfWeek' => $day,
-            'schedulePlanId' => null,
+            'schedulePlanId' => $this->soclePlanId,
         ]);
         foreach ($rows as $slot) {
             if ($slot->getStartTime()->format('H:i') === $startHhmm) {
@@ -1116,7 +1124,7 @@ final class ParcImportExecutor
             return null;
         }
 
-        return $this->gridOverlap->firstConflict($venueId, $day, $start, $duration, null);
+        return $this->gridOverlap->firstConflict($venueId, $day, $start, $duration, $this->soclePlanId);
     }
 
     private function reservationExists(string $teamId, string $venueId, int $day, string $startHhmm): bool
@@ -1126,7 +1134,7 @@ final class ParcImportExecutor
             'teamId' => $teamId,
             'venueId' => $venueId,
             'dayOfWeek' => $day,
-            'schedulePlanId' => null,
+            'schedulePlanId' => $this->soclePlanId,
         ]);
         foreach ($rows as $reservation) {
             if ($reservation->getStartTime()->format('H:i') === $startHhmm) {
@@ -1146,7 +1154,7 @@ final class ParcImportExecutor
     private function existingBlockForTeams(string $clubId, string $seasonId, array $teamIds): ?SharedTrainingBlock
     {
         $blocks = $this->entityManager->getRepository(SharedTrainingBlock::class)
-            ->findBy(['clubId' => $clubId, 'seasonId' => $seasonId, 'schedulePlanId' => null]);
+            ->findBy(['clubId' => $clubId, 'seasonId' => $seasonId, 'schedulePlanId' => $this->soclePlanId]);
         $memberRepository = $this->entityManager->getRepository(SharedTrainingBlockTeam::class);
 
         foreach ($blocks as $block) {

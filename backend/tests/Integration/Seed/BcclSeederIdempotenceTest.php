@@ -16,6 +16,7 @@ use App\Service\ClosureSegmentation;
 use App\Service\HolidayWorkweekRule;
 use App\Service\PeriodWindowUniquenessGuard;
 use App\Service\SoloReservationBudget;
+use App\Tests\SeasonPlanOf;
 use DateTimeImmutable;
 use Doctrine\DBAL\Connection;
 use Doctrine\ORM\EntityManagerInterface;
@@ -590,7 +591,7 @@ final class BcclSeederIdempotenceTest extends KernelTestCase
         // celles des reprises sont portées par leur plan et vérifiées par leur propre test). ──
         $orphans = $this->connection->fetchAllAssociative(
             'SELECT r.team_id, r.venue_id, r.day_of_week, r.start_time FROM reservation r '
-            . 'WHERE r.club_id = ? AND r.schedule_plan_id IS NULL AND NOT EXISTS ( '
+            . 'WHERE r.club_id = ? AND r.schedule_plan_id IN (SELECT id FROM schedule_plan WHERE type = \'SEASON\') AND NOT EXISTS ( '
             . 'SELECT 1 FROM schedule_slot_template t '
             . 'JOIN schedule_plan sp ON sp.chosen_schedule_id = t.schedule_id '
             . 'WHERE sp.type = \'SEASON\' AND sp.club_id = r.club_id '
@@ -690,7 +691,7 @@ final class BcclSeederIdempotenceTest extends KernelTestCase
             . 'FROM shared_training_block b '
             . 'JOIN shared_training_block_team bt ON bt.block_id = b.id '
             . 'JOIN team t ON t.id = bt.team_id '
-            . 'WHERE b.club_id = ? AND b.schedule_plan_id IS NULL',
+            . 'WHERE b.club_id = ? AND b.schedule_plan_id IN (SELECT id FROM schedule_plan WHERE type = \'SEASON\')',
             [$club->getId()],
         );
         $blockSets = [];
@@ -709,7 +710,7 @@ final class BcclSeederIdempotenceTest extends KernelTestCase
             // (a) la case socle est en capacité 1 (plus de palliatif).
             $capacity = $this->connection->fetchOne(
                 'SELECT s.capacity FROM venue_training_slot s JOIN venue v ON v.id = s.venue_id '
-                . 'WHERE s.club_id = ? AND s.schedule_plan_id IS NULL AND v.name = ? '
+                . 'WHERE s.club_id = ? AND s.schedule_plan_id IN (SELECT id FROM schedule_plan WHERE type = \'SEASON\') AND v.name = ? '
                 . 'AND s.day_of_week = ? AND to_char(s.start_time, \'HH24:MI\') = ?',
                 [$club->getId(), $venueName, $day, $start],
             );
@@ -718,7 +719,7 @@ final class BcclSeederIdempotenceTest extends KernelTestCase
             // (b) l'ensemble RÉSERVÉ sur la case (plan NULL) est exactement les membres attendus.
             $reserved = $this->connection->fetchFirstColumn(
                 'SELECT t.name FROM reservation r JOIN team t ON t.id = r.team_id JOIN venue v ON v.id = r.venue_id '
-                . 'WHERE r.club_id = ? AND r.schedule_plan_id IS NULL AND v.name = ? '
+                . 'WHERE r.club_id = ? AND r.schedule_plan_id IN (SELECT id FROM schedule_plan WHERE type = \'SEASON\') AND v.name = ? '
                 . 'AND r.day_of_week = ? AND to_char(r.start_time, \'HH24:MI\') = ?',
                 [$club->getId(), $venueName, $day, $start],
             );
@@ -1552,7 +1553,7 @@ final class BcclSeederIdempotenceTest extends KernelTestCase
         $violations = [];
         foreach ($planIds as $planId) {
             $scope = null === $planId ? 'socle' : ('plan ' . $planId);
-            foreach ($budgetService->forScope($clubId, $seasonId, $planId) as $budget) {
+            foreach ($budgetService->forScope($clubId, $seasonId, $planId ?? SeasonPlanOf::id(self::getContainer(), $seasonId)) as $budget) {
                 if ($budget->individualUsed > $budget->residual) {
                     $violations[] = \sprintf(
                         '%s — %s : S=%d B=%d R=%d individualUsed=%d',

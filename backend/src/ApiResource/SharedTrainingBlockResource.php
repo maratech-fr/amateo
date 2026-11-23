@@ -75,17 +75,18 @@ class SharedTrainingBlockResource
     public array $sessions = [];
 
     /**
+     * @param string|null                      $schedulePlanId le plan à la frontière de l'API : null pour le socle (jusqu'au lot 6)
      * @param list<string>                     $teamIds
      * @param list<SharedTrainingBlockSession> $sessions
      */
-    public static function fromEntity(SharedTrainingBlock $entity, array $teamIds, array $sessions = []): self
+    public static function fromEntity(SharedTrainingBlock $entity, ?string $schedulePlanId, array $teamIds, array $sessions = []): self
     {
         $dto = new self;
         $dto->id = $entity->getId();
         $dto->version = $entity->getVersion();
         $dto->createdAt = $entity->getCreatedAt();
         $dto->updatedAt = $entity->getUpdatedAt();
-        $dto->schedulePlanId = $entity->getSchedulePlanId();
+        $dto->schedulePlanId = $schedulePlanId;
         $dto->teamIds = $teamIds;
         $dto->commonSessions = $entity->getCommonSessions();
         $dto->label = $entity->getLabel();

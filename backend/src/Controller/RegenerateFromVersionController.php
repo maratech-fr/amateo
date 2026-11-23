@@ -8,7 +8,6 @@ use App\Access\Audience;
 use App\Access\ClubFunction;
 use App\Access\Module;
 use App\Entity\Schedule;
-use App\Entity\Season;
 use App\Enum\ScheduleStatus;
 use App\Service\ScheduleCapabilityResolver;
 use App\Service\SchedulePlanProvisioner;
@@ -28,7 +27,7 @@ use Throwable;
 /**
  * planning-versions: LOAD a version's context ("Charger cette version"). Restore
  * that version's structure photo (D2) into the club's live structure and mark it
- * as the season's loaded context (★) — WITHOUT solving. The manager then works
+ * as its plan's loaded context (★) — WITHOUT solving. The manager then works
  * from that version's plan (already COMPLETED) and hits "Régénérer" to produce a
  * new version if wanted. The current structure is replaced (the client confirms
  * the impact first). Overlays and versions with no photo (pre-D2) are refused.
@@ -107,13 +106,14 @@ final class RegenerateFromVersionController extends AbstractController implement
         $clubId = $source->getClubId();
         $seasonId = $source->getSeasonId();
         $sourceId = $source->getId();
+        $planId = $source->getSchedulePlanId();
         $sourceStatus = $source->getStatus();
 
         // ATOMIC: the destructive restore + re-pointing the loaded context (★)
         // commit together. No solve is launched — the source version is already
         // COMPLETED, so its plan is shown as-is; "Régénérer" produces a new
         // version later if wanted.
-        $this->entityManager->wrapInTransaction(function () use ($clubId, $seasonId, $sourceId, $data): void {
+        $this->entityManager->wrapInTransaction(function () use ($clubId, $seasonId, $sourceId, $planId, $data): void {
             // P2-9bis (planning lifecycle) : défense en profondeur du socle en vigueur.
             // SOUS le verrou de plan-scope de la saison, AVANT le restore destructif : tant
             // que le plan SEASON pointe une version choisie, on refuse d'en charger une autre
@@ -121,13 +121,8 @@ final class RegenerateFromVersionController extends AbstractController implement
             $this->schedulePlanProvisioner->lockPlanScope(SchedulePlanProvisioner::seasonScopeKey($seasonId));
             $this->socleGuard->assertSeasonPlanNotChosen($seasonId);
             $this->structureRestorer->apply($clubId, $seasonId, $data);
-            // apply() clears the identity map — reload the season AFTER it to
-            // re-point the ★ (a pre-loaded instance would be detached).
-            $season = $this->entityManager->getRepository(Season::class)->find($seasonId);
-            if ($season instanceof Season) {
-                $season->setLiveContextScheduleId($sourceId);
-                $this->entityManager->flush();
-            }
+            // La ★ (version chargée) vit sur le plan de la version, le plan de saison (lot 4).
+            $this->schedulePlanProvisioner->pointLockSource($planId, $sourceId);
         });
 
         return $this->json(['id' => $sourceId, 'status' => $sourceStatus->value], Response::HTTP_OK);

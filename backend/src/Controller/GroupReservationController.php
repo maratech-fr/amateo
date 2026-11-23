@@ -10,6 +10,7 @@ use App\Access\Module;
 use App\Entity\Reservation;
 use App\Entity\SharedTrainingBlock;
 use App\Entity\SharedTrainingBlockTeam;
+use App\Plans\SoclePlan;
 use App\Service\PlanVenueClosures;
 use App\Service\ReservationGroupOccupancy;
 use App\State\Processor\AssertsSchedulePlanExistsTrait;
@@ -54,6 +55,7 @@ final class GroupReservationController extends AbstractController implements Sea
         private readonly EntityManagerInterface $entityManager,
         private readonly PlanVenueClosures $planVenueClosures,
         private readonly ReservationGroupOccupancy $reservationGroupOccupancy,
+        private readonly SoclePlan $soclePlan,
     ) {}
 
     /**
@@ -129,7 +131,8 @@ final class GroupReservationController extends AbstractController implements Sea
             return $this->json(['error' => 'Mutualisation introuvable.'], Response::HTTP_NOT_FOUND);
         }
 
-        return $this->reserveBlock($block, $venueId, $dayOfWeek, $startTime, $durationMinutes, $schedulePlanId);
+        // Frontière de l'API : `null` = le socle, rangé sur le plan de saison de la saison du bloc.
+        return $this->reserveBlock($block, $venueId, $dayOfWeek, $startTime, $durationMinutes, $this->soclePlan->fromApi(\is_string($schedulePlanId) ? $schedulePlanId : null, $block->getSeasonId()));
     }
 
     /**
@@ -159,7 +162,7 @@ final class GroupReservationController extends AbstractController implements Sea
         int $dayOfWeek,
         DateTimeImmutable $startTime,
         int $durationMinutes,
-        ?string $schedulePlanId,
+        string $schedulePlanId,
     ): array {
         try {
             return $this->rejectingConcurrentPlanDeletion(fn (): array => $this->entityManager->wrapInTransaction(
@@ -192,7 +195,7 @@ final class GroupReservationController extends AbstractController implements Sea
         int $dayOfWeek,
         DateTimeImmutable $startTime,
         int $durationMinutes,
-        ?string $schedulePlanId,
+        string $schedulePlanId,
     ): array {
         $created = [];
         foreach ($members as $teamId) {
@@ -218,9 +221,9 @@ final class GroupReservationController extends AbstractController implements Sea
      * ({@see ReservationGroupOccupancy::assertBlockReservationAllowed}), puis écriture ATOMIQUE
      * N-réservations/1-flush.
      */
-    private function reserveBlock(SharedTrainingBlock $block, string $venueId, int $dayOfWeek, DateTimeImmutable $startTime, int $durationMinutes, ?string $schedulePlanId): JsonResponse
+    private function reserveBlock(SharedTrainingBlock $block, string $venueId, int $dayOfWeek, DateTimeImmutable $startTime, int $durationMinutes, string $schedulePlanId): JsonResponse
     {
-        // PORTÉE : le bloc doit être celui de CE planning (socle null ↔ null, période ↔ même plan) —
+        // PORTÉE : le bloc doit être celui de CE planning (même plan, socle comme période) —
         // un bloc socle réservé en période produirait N verrous SANS son bloc `sharedBlocks` dans le
         // payload de période (faux diagnostic de sur-capacité).
         if ($block->getSchedulePlanId() !== $schedulePlanId) {

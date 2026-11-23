@@ -365,7 +365,7 @@ final class TrainingBlockContext extends BaseContext
     public function leBlocEstAPorteeSaison(): void
     {
         $atSeasonScope = (int) $this->dbalScalar(
-            \sprintf('SELECT COUNT(*) AS behatval FROM shared_training_block WHERE id=\'%s\' AND schedule_plan_id IS NULL', $this->periodBlockId),
+            \sprintf('SELECT COUNT(*) AS behatval FROM shared_training_block WHERE id=\'%s\' AND schedule_plan_id IN (SELECT id FROM schedule_plan WHERE type = \'SEASON\')', $this->periodBlockId),
             admin: true,
         );
         if (1 !== $atSeasonScope) {
@@ -665,7 +665,7 @@ final class TrainingBlockContext extends BaseContext
     {
         return (int) $this->dbalScalar(
             \sprintf(
-                'SELECT COUNT(*) AS behatval FROM reservation WHERE venue_id=\'%s\' AND day_of_week=%d AND start_time=\'%s\' AND schedule_plan_id IS NULL',
+                'SELECT COUNT(*) AS behatval FROM reservation WHERE venue_id=\'%s\' AND day_of_week=%d AND start_time=\'%s\' AND schedule_plan_id IN (SELECT id FROM schedule_plan WHERE type = \'SEASON\')',
                 $this->venueId,
                 self::DAY,
                 self::START_TIME,

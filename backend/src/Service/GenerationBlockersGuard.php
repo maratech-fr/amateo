@@ -13,6 +13,7 @@ use App\Entity\SharedTrainingBlockTeam;
 use App\Entity\Team;
 use App\Enum\LockLevel;
 use App\Enum\RecapPinWording;
+use App\Plans\SoclePlan;
 use App\Repository\ConstraintRepository;
 use App\Repository\TeamRepository;
 use Doctrine\ORM\EntityManagerInterface;
@@ -43,6 +44,7 @@ final readonly class GenerationBlockersGuard
         private TeamRepository $teamRepository,
         private SecondSessionSameDayDetector $secondSessionSameDayDetector,
         private PlanVenueClosures $planVenueClosures,
+        private SoclePlan $soclePlan,
     ) {}
 
     /**
@@ -59,7 +61,7 @@ final readonly class GenerationBlockersGuard
 
             if ($this->schedulePlanProvisioner->isSeasonSchedule($schedule)) {
                 $payload = $this->scheduleConstraintBuilder->buildForClubSeason($clubId, $seasonId);
-                $reservations = $repository->findBy(['clubId' => $clubId, 'seasonId' => $seasonId, 'schedulePlanId' => null], ['id' => 'ASC']);
+                $reservations = $repository->findBy(['clubId' => $clubId, 'seasonId' => $seasonId, 'schedulePlanId' => $schedule->getSchedulePlanId()], ['id' => 'ASC']);
                 $constraints = $this->constraintRepository->findPermanentByClubSeason($clubId, $seasonId);
             } else {
                 $planId = (string) $schedule->getSchedulePlanId();
@@ -84,9 +86,7 @@ final readonly class GenerationBlockersGuard
                 );
             }
 
-            $schedulePlanId = $this->schedulePlanProvisioner->isSeasonSchedule($schedule) ? null : (string) $schedule->getSchedulePlanId();
-
-            return $this->blockersFor($payload, $reservations, $constraints, $schedulePlanId, $fillSource instanceof Schedule)[0] ?? null;
+            return $this->blockersFor($payload, $reservations, $constraints, $schedule->getSchedulePlanId(), $fillSource instanceof Schedule)[0] ?? null;
         } catch (Throwable $exception) {
             $this->logger->error('Generation blockers skipped: payload build failed.', ['exception' => $exception]);
 
@@ -100,15 +100,15 @@ final readonly class GenerationBlockersGuard
      * @param array<string, mixed> $payload        le payload que le solveur recevra
      * @param list<Reservation>    $reservations   le périmètre EXACT qui partira au solveur
      * @param list<Constraint>     $constraints    le jeu en vigueur : sur une période, leur origine se cite dans le motif
-     * @param string|null          $schedulePlanId le plan de la période ; null = le socle
+     * @param string               $schedulePlanId le plan : de la période, ou le plan de saison pour le socle
      * @param bool                 $fill           comblement : les cases épinglées sont surtout les placements de la
      *                                             version source, déjà tous épinglés ; seules les réservations comptent
      *
      * @return list<string>
      */
-    public function blockersFor(array $payload, array $reservations, array $constraints, ?string $schedulePlanId, bool $fill = false): array
+    public function blockersFor(array $payload, array $reservations, array $constraints, string $schedulePlanId, bool $fill = false): array
     {
-        $forPeriod = null !== $schedulePlanId;
+        $forPeriod = !$this->soclePlan->isSeasonPlan($schedulePlanId);
         // « Héritée, désactivable pour cette période » n'a de sens que sur une période.
         $constraintOrigins = [];
         foreach ($forPeriod ? $constraints : [] as $constraint) {
@@ -129,7 +129,7 @@ final readonly class GenerationBlockersGuard
             // P4-44 — une réservation qui ne retombe sur AUCUN créneau de la grille. Sur le socle, le
             // moteur PLACERAIT la séance à l'horaire mort et rendrait `completed` : on le nomme ici.
             ...$this->orphanReservationBlockers($reservations, $payload),
-            ...$this->overBookedTeamBlockers($reservations, $payload, $schedulePlanId, !$fill),
+            ...$this->overBookedTeamBlockers($reservations, $payload, $schedulePlanId, $forPeriod, !$fill),
             // Une équipe ne s'entraîne qu'une fois par jour : la saison bloque, jamais une période ni le comblement.
             ...($forPeriod ? [] : $this->secondSessionSameDayDetector->detect($reservations)['blockers']),
         ];
@@ -149,7 +149,7 @@ final readonly class GenerationBlockersGuard
             $this->teamRepository->findBy(['clubId' => $clubId, 'seasonId' => $seasonId]),
         );
 
-        return $this->overBookedTeamBlockers($reservations, ['teams' => $teams], null, false);
+        return $this->overBookedTeamBlockers($reservations, ['teams' => $teams], $this->soclePlan->idOf($seasonId), false, false);
     }
 
     /**
@@ -259,12 +259,13 @@ final readonly class GenerationBlockersGuard
      *
      * @param list<Reservation>    $reservations   le périmètre EXACT qui partira au solveur
      * @param array<string, mixed> $payload
-     * @param string|null          $schedulePlanId la portée des groupes : le plan de la période ; null = le socle
+     * @param string               $schedulePlanId la portée des groupes : le plan de la période, ou de saison
+     * @param bool                 $forPeriod      la portée est une période
      * @param bool                 $countLocks     false au comblement et sans payload
      *
      * @return list<string>
      */
-    private function overBookedTeamBlockers(array $reservations, array $payload, ?string $schedulePlanId, bool $countLocks): array
+    private function overBookedTeamBlockers(array $reservations, array $payload, string $schedulePlanId, bool $forPeriod, bool $countLocks): array
     {
         $countByTeam = [];
         $reservedCases = [];
@@ -300,7 +301,7 @@ final readonly class GenerationBlockersGuard
                     $this->plural($sessions, 'séance', 'séances'),
                     $this->plural($reserved - $sessions, 'réservation', 'réservations'),
                 )
-                : $this->overLockedSentence((string) ($team['name'] ?? 'Cette équipe'), $reserved, $locked, $sessions, null !== $schedulePlanId);
+                : $this->overLockedSentence((string) ($team['name'] ?? 'Cette équipe'), $reserved, $locked, $sessions, $forPeriod);
         }
 
         return $blockers;
@@ -397,7 +398,7 @@ final readonly class GenerationBlockersGuard
      *
      * @return array<string, true>
      */
-    private function groupedTeamIds(array $payload, ?string $schedulePlanId): array
+    private function groupedTeamIds(array $payload, string $schedulePlanId): array
     {
         $clubId = (string) ($payload['clubId'] ?? '');
         $seasonId = (string) ($payload['seasonId'] ?? '');
@@ -467,7 +468,7 @@ final readonly class GenerationBlockersGuard
                 continue;
             }
             // Fermetures de gymnase (correction C) — le motif NOMME la fermeture quand c'en est une.
-            $closure = null !== $reservation->getSchedulePlanId() ? PlanVenueClosures::describeForVenue(array_values(array_filter($this->planVenueClosures->effectiveStateForPlan($reservation->getSchedulePlanId())['summaries'], static fn (array $summary): bool => \in_array($reservation->getDayOfWeek(), $summary['weekdays'], true))), $reservation->getVenueId()) : null;
+            $closure = !$this->soclePlan->isSeasonPlan($reservation->getSchedulePlanId()) ? PlanVenueClosures::describeForVenue(array_values(array_filter($this->planVenueClosures->effectiveStateForPlan($reservation->getSchedulePlanId())['summaries'], static fn (array $summary): bool => \in_array($reservation->getDayOfWeek(), $summary['weekdays'], true))), $reservation->getVenueId()) : null;
             $blockers[] = \sprintf(
                 null !== $closure ? 'La réservation de %s à %s le %s à %s tombe sur une fermeture du gymnase — ' . str_replace('%', '%%', $closure) . '. Retirez-la depuis le récapitulatif, ou ajustez la fermeture.' : 'La réservation de %s à %s le %s à %s ne correspond à aucun créneau : ce créneau a été déplacé ou supprimé. Retirez-la depuis le récapitulatif, ou recréez le créneau.',
                 $teamNames[$reservation->getTeamId()] ?? 'cette équipe',

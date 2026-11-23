@@ -7,7 +7,6 @@ namespace App\Service;
 use App\Entity\Reservation;
 use App\Entity\ScheduleSlotTemplate;
 use App\Enum\LockLevel;
-use App\Enum\SchedulePlanType;
 use App\State\Processor\ReservationStateProcessor;
 use Doctrine\ORM\EntityManagerInterface;
 
@@ -92,15 +91,9 @@ final class ReservationRemoval
      */
     private function scheduleIdsOfOtherPlans(Reservation $reservation): array
     {
-        $connection = $this->entityManager->getConnection();
-        $planId = $reservation->getSchedulePlanId() ?? $connection->fetchOne(
-            'SELECT id FROM schedule_plan WHERE season_id = :sid AND type = :season',
-            ['sid' => $reservation->getSeasonId(), 'season' => SchedulePlanType::SEASON->value],
-        );
-
-        return array_map(strval(...), $connection->fetchFirstColumn(
+        return array_map(strval(...), $this->entityManager->getConnection()->fetchFirstColumn(
             'SELECT s.id FROM schedule s JOIN schedule_plan p ON p.id = s.schedule_plan_id WHERE p.season_id = :sid AND p.id <> CAST(:pid AS uuid)',
-            ['sid' => $reservation->getSeasonId(), 'pid' => \is_string($planId) ? $planId : '00000000-0000-0000-0000-000000000000'],
+            ['sid' => $reservation->getSeasonId(), 'pid' => $reservation->getSchedulePlanId()],
         ));
     }
 }

@@ -23,6 +23,7 @@ use App\Enum\SeasonStatus;
 use App\Service\MatchPlacementPayloadBuilder;
 use App\Service\SeasonResolver;
 use App\Tests\CreatesPeopleAndPlacesTrait;
+use App\Tests\SeasonPlanOf;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -511,6 +512,7 @@ final class MatchPlacementContractSchemaTest extends KernelTestCase
         $venue = $this->newVenue($club->getId(), $season->getId(), 'Mateo');
         $em->persist($venue);
         $em->flush();
+        SeasonPlanOf::id(self::getContainer(), $season->getId());
 
         $window = new VenueMatchWindow;
         $window->setClubId($club->getId());

@@ -13,6 +13,7 @@ use App\Entity\User;
 use App\Enum\SeasonStatus;
 use App\Service\ReservationGroupOccupancy;
 use App\Service\ScheduleConstraintBuilder;
+use App\Tests\SeasonPlanOf;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -68,7 +69,7 @@ final class NestedBlockOccupantFoldParityTest extends KernelTestCase
         $occupantCount = new ReflectionMethod($occupancy, 'occupantCount');
         $occupantCount->setAccessible(true);
         $teamSet = [$t1->getId() => true, $t2->getId() => true, $t3->getId() => true];
-        $backendOccupants = $occupantCount->invoke($occupancy, $teamSet, null);
+        $backendOccupants = $occupantCount->invoke($occupancy, $teamSet, SeasonPlanOf::id(self::getContainer(), $season->getId()));
         self::assertSame(
             1,
             $backendOccupants,
@@ -180,7 +181,7 @@ final class NestedBlockOccupantFoldParityTest extends KernelTestCase
         $block = new SharedTrainingBlock;
         $block->setClubId($club->getId());
         $block->setSeasonId($season->getId());
-        $block->setSchedulePlanId(null);
+        $block->setSchedulePlanId(SeasonPlanOf::id(self::getContainer(), $season->getId()));
         $block->setCommonSessions($commonSessions);
         $this->em->persist($block);
 
@@ -188,7 +189,7 @@ final class NestedBlockOccupantFoldParityTest extends KernelTestCase
             $member = new SharedTrainingBlockTeam;
             $member->setClubId($club->getId());
             $member->setSeasonId($season->getId());
-            $member->setSchedulePlanId(null);
+            $member->setSchedulePlanId(SeasonPlanOf::id(self::getContainer(), $season->getId()));
             $member->setBlockId($block->getId());
             $member->setTeamId($teamId);
             $this->em->persist($member);

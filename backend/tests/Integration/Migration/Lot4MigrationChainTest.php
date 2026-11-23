@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Tests\Integration\Migration;
 
+use App\Service\ImplicitRuleResolver;
 use App\Tests\EngineRequestDecorTrait;
 use App\Tests\EngineRequestPlanSettingsDecorTrait;
 use App\Tests\EngineRequestRunnerTrait;
@@ -16,6 +17,7 @@ use Doctrine\DBAL\Tools\DsnParser;
 use LogicException;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
+use PHPUnit\Framework\Attributes\TestWith;
 use Symfony\Bundle\FrameworkBundle\Console\Application;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 use Symfony\Component\Console\Input\ArrayInput;
@@ -51,8 +53,23 @@ final class Lot4MigrationChainTest extends KernelTestCase
     use EngineRequestRunnerTrait;
     use EngineRequestTravelDecorTrait;
 
-    /** Les migrations du lot 4 que la chaîne joue, dans l'ordre. */
-    private const array LOT_MIGRATIONS = [];
+    /**
+     * Les migrations du lot 4 que la chaîne joue, dans l'ordre.
+     *
+     * PR 2 « le socle a son plan » : plan de saison créé s'il manque, posé sur les lignes à plan nul des six
+     * familles, `NOT NULL` et clé en cascade vers le plan, pointeur de version chargée recopié sur le plan puis
+     * `season.live_context_schedule_id` supprimée, photos converties, règles de bien-être des plans anciens
+     * matérialisées ; s'annule si un compte diffère ou si une ligne portait déjà le plan de saison.
+     */
+    private const array LOT_MIGRATIONS = ['DoctrineMigrations\Version20261127120000'];
+
+    /** Les six familles dont « plan nul » voulait dire « socle » avant le lot 4. */
+    private const array SOCLE_TABLES = ['venue_training_slot', 'venue_occupancy', 'reservation', 'shared_training_block', 'shared_training_block_team', 'implicit_rule_setting'];
+
+    /** Le club et la saison du décor des références (`EngineRequestDecorTrait`). */
+    private const string DECOR_CLUB = 'c10b0000-0000-4000-8000-000000000001';
+
+    private const string DECOR_SEASON = '5ea50000-0000-4000-8000-000000000001';
 
     private const string SCHEMA_FILE = __DIR__ . '/../../Fixtures/lot-4/schema-avant.sql';
 
@@ -184,6 +201,167 @@ final class Lot4MigrationChainTest extends KernelTestCase
         $this->assertReference($reference, $body);
     }
 
+    /**
+     * La conversion de la PR 2 : chaque ligne du socle des six familles reçoit le plan de saison de sa saison,
+     * une ligne de période garde son plan, aucune ligne n'est perdue ; la colonne devient obligatoire, avec une
+     * clé en cascade vers le plan ; le pointeur de version chargée du socle passe de la saison à son plan.
+     * Trois décors : le socle complet (occupation, groupe mutualisé), des vacances (pointeur posé), une
+     * fermeture (groupes de période).
+     */
+    #[TestWith(['socle-11-socle-complet'])]
+    #[TestWith(['periode-12-vacances-reglages'])]
+    #[TestWith(['periode-13-fermeture-reglages'])]
+    public function testTheConversionGivesEverySocleRowItsSeasonPlan(string $decor): void
+    {
+        $admin = self::ownerConnection(self::caseName());
+        $rowsBefore = [];
+        foreach (self::SOCLE_TABLES as $table) {
+            $rowsBefore[$table] = $this->planOfEachRow($admin, $table);
+        }
+        $pointerBefore = $admin->fetchOne('SELECT live_context_schedule_id FROM season WHERE id = ?', [self::DECOR_SEASON]);
+        self::assertNotSame([], $rowsBefore['venue_training_slot'], 'témoin : le décor a une grille de socle à convertir');
+
+        self::assertSame(self::LOT_MIGRATIONS, $this->migrate(), 'la chaîne joue exactement les migrations du lot');
+
+        $seasonPlan = $admin->fetchOne('SELECT id FROM schedule_plan WHERE season_id = ? AND type = ?', [self::DECOR_SEASON, 'SEASON']);
+        self::assertIsString($seasonPlan, 'la saison a son plan de saison');
+        foreach (self::SOCLE_TABLES as $table) {
+            $expected = array_map(static fn (?string $plan): string => $plan ?? $seasonPlan, $rowsBefore[$table]);
+            // Seules les lignes d'avant se comparent : la conversion en ajoute (règles de bien-être d'un plan ancien).
+            self::assertSame($expected, array_intersect_key($this->planOfEachRow($admin, $table), $expected), \sprintf('%s : chaque ligne du socle porte le plan de saison, chaque ligne de période garde le sien, aucune ne manque', $table));
+            self::assertSame('NO', $admin->fetchOne('SELECT is_nullable FROM information_schema.columns WHERE table_schema = \'public\' AND table_name = ? AND column_name = \'schedule_plan_id\'', [$table]), \sprintf('%s.schedule_plan_id est obligatoire', $table));
+            self::assertSame(1, (int) $admin->fetchOne(
+                'SELECT COUNT(*) FROM pg_constraint c JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = ANY (c.conkey)'
+                . ' WHERE c.contype = \'f\' AND c.conrelid = (\'public.\' || ?)::regclass AND c.confrelid = \'public.schedule_plan\'::regclass'
+                . ' AND a.attname = \'schedule_plan_id\' AND c.confdeltype = \'c\'',
+                [$table],
+            ), \sprintf('%s : une clé vers le plan, en cascade', $table));
+        }
+
+        self::assertFalse($this->columnExists($admin, 'season', 'live_context_schedule_id'), 'le pointeur de la saison est supprimé : un seul pointeur, sur le plan');
+        self::assertSame(false === $pointerBefore ? null : $pointerBefore, $admin->fetchOne('SELECT lock_source_schedule_id FROM schedule_plan WHERE id = ?', [$seasonPlan]), 'la version chargée du socle est recopiée sur son plan');
+        self::assertSame(1, (int) $admin->fetchOne(
+            'SELECT COUNT(*) FROM pg_index i WHERE i.indrelid = \'public.schedule_plan\'::regclass AND i.indisunique AND i.indpred IS NULL'
+            . ' AND (SELECT array_agg(a.attname::text ORDER BY a.attname) FROM pg_attribute a WHERE a.attrelid = i.indrelid AND a.attnum = ANY (i.indkey::int2[])) = ARRAY[\'club_id\', \'id\']',
+        ), 'schedule_plan porte l\'unicité (id, club_id) que les clés composées des tables à venir viseront');
+    }
+
+    /**
+     * Une saison sans plan de saison (née avant les plans) en reçoit un à la conversion, et sa grille le porte.
+     */
+    #[TestWith(['socle-11-socle-complet'])]
+    public function testTheConversionCreatesTheMissingSeasonPlan(string $decor): void
+    {
+        $admin = self::ownerConnection(self::caseName());
+        $orphanSeason = 'e1a50000-0000-4000-8000-000000000027';
+        $orphanSlot = 'e1a50000-0000-4000-8000-0000000005a7';
+        $admin->executeStatement(
+            'INSERT INTO season SELECT * FROM json_populate_record(NULL::season, (SELECT (row_to_json(s)::jsonb || jsonb_build_object(\'id\', ?::text, \'name\', \'2026-2027\', \'start_date\', \'2026-08-01\', \'end_date\', \'2027-07-15\', \'live_context_schedule_id\', NULL))::json FROM season s WHERE s.id = ?))',
+            [$orphanSeason, self::DECOR_SEASON],
+        );
+        $admin->executeStatement(
+            'INSERT INTO venue_training_slot SELECT * FROM json_populate_record(NULL::venue_training_slot, (SELECT (row_to_json(v)::jsonb || jsonb_build_object(\'id\', ?::text, \'season_id\', ?::text))::json FROM venue_training_slot v WHERE v.season_id = ? AND v.schedule_plan_id IS NULL LIMIT 1))',
+            [$orphanSlot, $orphanSeason, self::DECOR_SEASON],
+        );
+        self::assertSame(0, (int) $admin->fetchOne('SELECT COUNT(*) FROM schedule_plan WHERE season_id = ?', [$orphanSeason]), 'témoin : la saison ajoutée n\'a pas de plan');
+
+        self::assertSame(self::LOT_MIGRATIONS, $this->migrate(), 'la chaîne joue exactement les migrations du lot');
+
+        $plans = $admin->fetchAllAssociative('SELECT id, club_id, type FROM schedule_plan WHERE season_id = ?', [$orphanSeason]);
+        self::assertCount(1, $plans, 'la saison a un plan, un seul');
+        self::assertSame(['club_id' => self::DECOR_CLUB, 'type' => 'SEASON'], ['club_id' => $plans[0]['club_id'], 'type' => $plans[0]['type']], 'c\'est le plan de saison du club');
+        self::assertSame($plans[0]['id'], $admin->fetchOne('SELECT schedule_plan_id FROM venue_training_slot WHERE id = ?', [$orphanSlot]), 'la grille de cette saison porte ce plan');
+    }
+
+    /**
+     * Les photos des versions sont converties : une ligne de grille ou de réservation du socle (plan nul) porte
+     * le plan de saison, une ligne de période garde le sien, et rien d'autre de la photo ne change.
+     */
+    #[TestWith(['periode-12-vacances-reglages'])]
+    public function testTheConversionRewritesThePhotosOnTheSeasonPlan(string $decor): void
+    {
+        $admin = self::ownerConnection(self::caseName());
+        $periodPlan = $admin->fetchOne('SELECT id FROM schedule_plan WHERE season_id = ? AND type <> ?', [self::DECOR_SEASON, 'SEASON']);
+        self::assertIsString($periodPlan, 'témoin : le décor a un plan de période');
+        $photo = [
+            'Team' => [['id' => '7ea00000-0000-4000-8000-000000000001', 'name' => 'U13', 'sessionsPerWeek' => 2]],
+            'VenueTrainingSlot' => [
+                ['id' => 'f0700000-0000-4000-8000-000000000001', 'dayOfWeek' => 1, 'schedulePlanId' => null],
+                ['id' => 'f0700000-0000-4000-8000-000000000002', 'dayOfWeek' => 2, 'schedulePlanId' => $periodPlan],
+            ],
+            'Reservation' => [['id' => 'f0700000-0000-4000-8000-000000000003', 'teamId' => '7ea00000-0000-4000-8000-000000000001', 'schedulePlanId' => null]],
+        ];
+        $admin->executeStatement(
+            'INSERT INTO schedule_structure_snapshot (id, created_at, updated_at, club_id, season_id, schedule_id, data) VALUES (?, now(), now(), ?, ?, ?, ?)',
+            ['f0700000-0000-4000-8000-0000000000aa', self::DECOR_CLUB, self::DECOR_SEASON, '5c4e0000-0000-4000-8000-000000000001', json_encode($photo, \JSON_THROW_ON_ERROR)],
+        );
+
+        self::assertSame(self::LOT_MIGRATIONS, $this->migrate(), 'la chaîne joue exactement les migrations du lot');
+
+        $seasonPlan = $admin->fetchOne('SELECT id FROM schedule_plan WHERE season_id = ? AND type = ?', [self::DECOR_SEASON, 'SEASON']);
+        $converted = json_decode((string) $admin->fetchOne('SELECT data FROM schedule_structure_snapshot WHERE id = ?', ['f0700000-0000-4000-8000-0000000000aa']), true, 512, \JSON_THROW_ON_ERROR);
+        $expected = $photo;
+        $expected['VenueTrainingSlot'][0]['schedulePlanId'] = $seasonPlan;
+        $expected['Reservation'][0]['schedulePlanId'] = $seasonPlan;
+        // L'ordre des clés d'un objet JSON n'est pas une donnée (une réécriture par jsonb le change) : comparé trié.
+        self::assertIsArray($converted);
+        self::assertSame($this->sortedKeys($expected), $this->sortedKeys($converted), 'la photo porte le plan de saison sur ses lignes de socle, et rien d\'autre ne change');
+    }
+
+    /**
+     * Décision du fondateur (2026-11-22) : un plan de vacances né avant les copies de règles de bien-être les
+     * reçoit à la conversion, aux valeurs de la saison du moment, puis ne suit plus la saison.
+     */
+    #[TestWith(['periode-12-vacances-reglages'])]
+    public function testAnOldHolidayPlanKeepsTheWellBeingRulesItHadAtConversion(string $decor): void
+    {
+        $admin = self::ownerConnection(self::caseName());
+        $holidayPlan = $admin->fetchOne('SELECT id FROM schedule_plan WHERE season_id = ? AND type = ?', [self::DECOR_SEASON, 'HOLIDAY']);
+        self::assertIsString($holidayPlan);
+        self::assertSame(0, (int) $admin->fetchOne('SELECT COUNT(*) FROM implicit_rule_setting WHERE schedule_plan_id = ?', [$holidayPlan]), 'témoin : le plan de vacances n\'a aucune règle de bien-être à lui, il suit la saison');
+
+        self::assertSame(self::LOT_MIGRATIONS, $this->migrate(), 'la chaîne joue exactement les migrations du lot');
+
+        $this->scopeGucToClub(self::DECOR_CLUB);
+        $resolver = self::getContainer()->get(ImplicitRuleResolver::class);
+        $atConversion = $resolver->resolve(self::DECOR_CLUB, self::DECOR_SEASON);
+        self::assertSame($atConversion, $resolver->resolveForPlan(self::DECOR_CLUB, self::DECOR_SEASON, $holidayPlan), 'à la conversion, les vacances ont les règles de la saison');
+        self::assertGreaterThan(0, (int) $admin->fetchOne('SELECT COUNT(*) FROM implicit_rule_setting WHERE schedule_plan_id = ?', [$holidayPlan]), 'les règles sont écrites sur le plan de vacances');
+
+        $admin->executeStatement(
+            'UPDATE implicit_rule_setting SET intensity = CASE WHEN intensity = \'HARD\' THEN \'OFF\' ELSE \'HARD\' END'
+            . ' WHERE season_id = ? AND schedule_plan_id = (SELECT id FROM schedule_plan WHERE season_id = ? AND type = \'SEASON\')',
+            [self::DECOR_SEASON, self::DECOR_SEASON],
+        );
+        $this->erEm()->clear();
+        self::assertNotSame($atConversion, $resolver->resolve(self::DECOR_CLUB, self::DECOR_SEASON), 'témoin : les règles de la saison ont changé');
+        self::assertSame($atConversion, $resolver->resolveForPlan(self::DECOR_CLUB, self::DECOR_SEASON, $holidayPlan), 'les vacances gardent les règles qu\'elles avaient à la conversion');
+    }
+
+    /**
+     * Décor faussé : une ligne du socle porte déjà l'identifiant du plan de saison (la mesure 5 en attend
+     * zéro). La conversion s'annule : rien n'est migré, la base reste celle d'avant.
+     */
+    #[TestWith(['socle-11-socle-complet'])]
+    public function testTheConversionIsCancelledWhenASocleRowAlreadyCarriesTheSeasonPlan(string $decor): void
+    {
+        $admin = self::ownerConnection(self::caseName());
+        $admin->executeStatement(
+            'UPDATE venue_training_slot SET schedule_plan_id = (SELECT id FROM schedule_plan WHERE season_id = ? AND type = \'SEASON\')'
+            . ' WHERE id = (SELECT id FROM venue_training_slot WHERE season_id = ? AND schedule_plan_id IS NULL ORDER BY id LIMIT 1)',
+            [self::DECOR_SEASON, self::DECOR_SEASON],
+        );
+        $nullBefore = (int) $admin->fetchOne('SELECT COUNT(*) FROM venue_training_slot WHERE schedule_plan_id IS NULL');
+        self::assertGreaterThan(0, $nullBefore, 'témoin : il reste des lignes de socle à convertir');
+
+        [$code, $output] = $this->runMigrations();
+
+        self::assertNotSame(0, $code, 'la conversion refuse un décor où une ligne porte déjà le plan de saison : ' . $output);
+        self::assertSame([], array_values(array_intersect(self::LOT_MIGRATIONS, array_map(strval(...), $admin->fetchFirstColumn('SELECT version FROM doctrine_migration_versions')))), 'la migration n\'est pas enregistrée');
+        self::assertTrue($this->columnExists($admin, 'season', 'live_context_schedule_id'), 'le pointeur de la saison est toujours là');
+        self::assertSame($nullBefore, (int) $admin->fetchOne('SELECT COUNT(*) FROM venue_training_slot WHERE schedule_plan_id IS NULL'), 'aucune ligne n\'a été convertie');
+    }
+
     /** La base du cas (copie du modèle et décor de sa référence), puis le noyau branché sur elle. */
     protected function setUp(): void
     {
@@ -226,6 +404,36 @@ final class Lot4MigrationChainTest extends KernelTestCase
         parent::tearDown();
     }
 
+    /**
+     * @param array<mixed> $value
+     *
+     * @return array<mixed>
+     */
+    private function sortedKeys(array $value): array
+    {
+        if (!array_is_list($value)) {
+            ksort($value);
+        }
+
+        return array_map(fn (mixed $item): mixed => \is_array($item) ? $this->sortedKeys($item) : $item, $value);
+    }
+
+    /** @return array<string, ?string> le plan de chaque ligne, par identifiant */
+    private function planOfEachRow(Connection $admin, string $table): array
+    {
+        $plans = [];
+        foreach ($admin->fetchAllAssociative(\sprintf('SELECT id, schedule_plan_id FROM %s ORDER BY id', $table)) as $row) {
+            $plans[(string) $row['id']] = null === $row['schedule_plan_id'] ? null : (string) $row['schedule_plan_id'];
+        }
+
+        return $plans;
+    }
+
+    private function columnExists(Connection $admin, string $table, string $column): bool
+    {
+        return 1 === (int) $admin->fetchOne('SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = \'public\' AND table_name = ? AND column_name = ?', [$table, $column]);
+    }
+
     private function setVariable(string $name, string $value): void
     {
         $_SERVER[$name] = $value;
@@ -244,14 +452,26 @@ final class Lot4MigrationChainTest extends KernelTestCase
         self::assertSame(self::$caseDatabase, $connection->fetchOne('SELECT current_database()'), 'le noyau compose sur la base du cas, jamais sur la base de test');
         $before = $connection->fetchFirstColumn('SELECT version FROM doctrine_migration_versions');
 
-        $console = new Application(self::$kernel ?? throw new LogicException('noyau non démarré'));
-        $console->setAutoExit(false);
-        $output = new BufferedOutput;
-        $code = $console->run(new ArrayInput(['command' => 'doctrine:migrations:migrate', '--no-interaction' => true, '--allow-no-migration' => true]), $output);
-        self::assertSame(0, $code, 'les migrations se jouent sur le décor d\'avant le lot : ' . $output->fetch());
+        [$code, $output] = $this->runMigrations();
+        self::assertSame(0, $code, 'les migrations se jouent sur le décor d\'avant le lot : ' . $output);
 
         $after = $connection->fetchFirstColumn('SELECT version FROM doctrine_migration_versions ORDER BY version');
 
         return array_values(array_map(strval(...), array_diff($after, $before)));
+    }
+
+    /**
+     * `doctrine:migrations:migrate` sur la base du cas, sans conclure : rend le code retour et la sortie.
+     *
+     * @return array{0: int, 1: string}
+     */
+    private function runMigrations(): array
+    {
+        $console = new Application(self::$kernel ?? throw new LogicException('noyau non démarré'));
+        $console->setAutoExit(false);
+        $output = new BufferedOutput;
+        $code = $console->run(new ArrayInput(['command' => 'doctrine:migrations:migrate', '--no-interaction' => true, '--allow-no-migration' => true]), $output);
+
+        return [$code, $output->fetch()];
     }
 }

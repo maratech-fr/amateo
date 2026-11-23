@@ -20,6 +20,7 @@ use App\Service\ConflictRadarLoader;
 use App\Service\LeagueEnvelopeResolver;
 use App\Service\SeasonResolver;
 use App\Tests\Integration\Api\LeagueMatchWindowsApiTest;
+use App\Tests\SeasonPlanOf;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -150,6 +151,7 @@ final class ConflictRadarLeagueWindowTest extends WebTestCase
         $this->team->setIsActive(true);
         $this->em->persist($this->team);
         $this->em->flush();
+        SeasonPlanOf::id(self::getContainer(), $this->season->getId());
 
         $this->saturday = new DateTimeImmutable('today')->modify('next saturday')->format('Y-m-d');
     }

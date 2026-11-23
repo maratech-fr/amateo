@@ -51,6 +51,7 @@ use App\Service\SchedulePlanProvisioner;
 use App\Service\SeasonResolver;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
+use LogicException;
 use RuntimeException;
 use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
 
@@ -556,6 +557,9 @@ final class LoadTestClubSeeder
     {
         $starts = ['17:30', '19:00', '20:30'];
         $slots = [];
+        // La grille du socle porte le plan de saison (lot 4), déjà né plus haut.
+        $soclePlanId = $this->schedulePlanProvisioner->ensureSeasonPlanId($seasonId)
+            ?? throw new LogicException('La saison du club de charge n\'a pas de plan de saison.');
         foreach ($teams as $i => $team) {
             $venue = $venues[$i % \count($venues)];
             $day = ($i % 5) + 1; // lundi..vendredi
@@ -569,6 +573,7 @@ final class LoadTestClubSeeder
             $gridSlot->setStartTime(new DateTimeImmutable($start));
             $gridSlot->setDurationMinutes(90);
             $gridSlot->setCapacity(1);
+            $gridSlot->setSchedulePlanId($soclePlanId);
             $manager->persist($gridSlot);
 
             $slots[] = ['teamId' => $team['entity']->getId(), 'venueId' => $venue->getId(), 'day' => $day, 'start' => $start, 'duration' => 90];

@@ -264,9 +264,9 @@ final class SchedulePlanProvisioner
      * C'est aussi LA VERSION CHARGÉE : la seule qui se modifie ({@see VersionEditability}) et dont les
      * verrous partent au moteur, plan de saison comme plan de période.
      *
-     * V1bis — DEUX régimes, un seul foyer : le POINTEUR (`schedule_plan.lock_source_schedule_id` pour
-     * une période, posé par load-locks ; `season.live_context_schedule_id` pour la saison, posé par
-     * « Charger cette version » ; tous deux re-pointés à chaque nouvelle version COMPLETED) FAIT FOI
+     * V1bis — un seul foyer : le POINTEUR `schedule_plan.lock_source_schedule_id` (posé par load-locks
+     * pour une période, par « Charger cette version » pour le socle, re-pointé à chaque nouvelle
+     * version COMPLETED ; lot 4 : la saison n'a plus de pointeur à elle) FAIT FOI
      * s'il désigne une version EXISTANTE, COMPLETED et DU MÊME plan ; sinon (pointeur nul ou devenu
      * incohérent — version supprimée/échouée) on retombe sur la DERNIÈRE version COMPLETED du plan.
      * Ce repli garde le comportement V1 pour tout plan dont personne n'a « chargé » une version.
@@ -284,12 +284,11 @@ final class SchedulePlanProvisioner
         $connection = $this->entityManager->getConnection();
 
         // Le pointeur fait foi s'il reste cohérent (version existante, COMPLETED, du même plan).
-        // Plan de saison : c'est l'étoile de la saison, que « Charger » et chaque génération terminée
-        // déplacent. Plan de période : le pointeur du plan.
+        // Un seul pointeur, socle comme période (lot 4) : « Charger » et chaque génération terminée
+        // le déplacent.
         $pointer = $connection->fetchOne(
-            'SELECT CASE WHEN p.type = :season THEN s.live_context_schedule_id ELSE p.lock_source_schedule_id END '
-            . 'FROM schedule_plan p JOIN season s ON s.id = p.season_id WHERE p.id = :pid',
-            ['pid' => $schedulePlanId, 'season' => SchedulePlanType::SEASON->value],
+            'SELECT lock_source_schedule_id FROM schedule_plan WHERE id = :pid',
+            ['pid' => $schedulePlanId],
         );
         if (\is_string($pointer)) {
             $valid = $connection->fetchOne(
@@ -883,9 +882,9 @@ final class SchedulePlanProvisioner
      * SUPPRESSION : un schedule sans plan (donc `false` ici) doit pouvoir être purgé, pas
      * lever un 500 (ruling 2026-07-17 : purger la donnée). Un plan absent → false.
      */
-    public function planIsSeason(?string $planId): bool
+    public function planIsSeason(string $planId): bool
     {
-        return null !== $planId && SchedulePlanType::SEASON === ($this->fetchPlanRow($planId)['type'] ?? null);
+        return SchedulePlanType::SEASON === ($this->fetchPlanRow($planId)['type'] ?? null);
     }
 
     /**
@@ -1274,10 +1273,14 @@ final class SchedulePlanProvisioner
         // PeriodSlotCopyKeepsEveryColumnTest), mais le SELECT émet NULL plutôt que la valeur du
         // modèle — jamais la copie du libellé de saison. Couvre les deux appelants (naissance du
         // plan et reprise de la grille d'un gymnase), qui passent tous deux par ici.
+        $soclePlanId = $this->findSeasonPlanId($seasonId);
+        if (null === $soclePlanId) {
+            return; // une saison sans plan de saison n'a aucune grille de socle
+        }
         $sql = 'INSERT INTO venue_training_slot (id, version, created_at, updated_at, club_id, season_id, venue_id, day_of_week, start_time, duration_minutes, capacity, group_label, schedule_plan_id) '
             . 'SELECT gen_random_uuid(), 1, now(), now(), club_id, season_id, venue_id, day_of_week, start_time, duration_minutes, capacity, NULL, :planId '
-            . 'FROM venue_training_slot WHERE club_id = :clubId AND season_id = :seasonId AND schedule_plan_id IS NULL';
-        $params = ['planId' => $schedulePlanId, 'clubId' => $clubId, 'seasonId' => $seasonId];
+            . 'FROM venue_training_slot WHERE club_id = :clubId AND season_id = :seasonId AND schedule_plan_id = :soclePlanId';
+        $params = ['planId' => $schedulePlanId, 'clubId' => $clubId, 'seasonId' => $seasonId, 'soclePlanId' => $soclePlanId];
         if (null !== $venueId) {
             $sql .= ' AND venue_id = :venueId';
             $params['venueId'] = $venueId;
@@ -1295,11 +1298,15 @@ final class SchedulePlanProvisioner
      */
     private function copySeasonalOccupancyRows(string $schedulePlanId, string $clubId, string $seasonId, ?string $venueId): void
     {
+        $soclePlanId = $this->findSeasonPlanId($seasonId);
+        if (null === $soclePlanId) {
+            return; // une saison sans plan de saison n'a aucune occupation de socle
+        }
         $sql = 'INSERT INTO venue_occupancy (id, version, created_at, updated_at, club_id, season_id, venue_id, day_of_week, start_time, duration_minutes, label, schedule_plan_id) '
             . 'SELECT gen_random_uuid(), 1, now(), now(), o.club_id, o.season_id, o.venue_id, o.day_of_week, o.start_time, o.duration_minutes, o.label, :planId '
-            . 'FROM venue_occupancy o WHERE o.club_id = :clubId AND o.season_id = :seasonId AND o.schedule_plan_id IS NULL '
+            . 'FROM venue_occupancy o WHERE o.club_id = :clubId AND o.season_id = :seasonId AND o.schedule_plan_id = :soclePlanId '
             . 'AND EXISTS (SELECT 1 FROM venue v WHERE v.id = o.venue_id)';
-        $params = ['planId' => $schedulePlanId, 'clubId' => $clubId, 'seasonId' => $seasonId];
+        $params = ['planId' => $schedulePlanId, 'clubId' => $clubId, 'seasonId' => $seasonId, 'soclePlanId' => $soclePlanId];
         if (null !== $venueId) {
             $sql .= ' AND o.venue_id = :venueId';
             $params['venueId'] = $venueId;
@@ -1322,8 +1329,8 @@ final class SchedulePlanProvisioner
      * un bloc tombé sous 2 membres actifs.
      *
      * SQL brut en LECTURE : `season_filter` épingle les lectures ORM à la saison ACTIVE de la
-     * requête, or un plan peut naître pour une autre saison (transition). Socle = `schedule_plan_id
-     * IS NULL`, même club + saison. RLS scope le club ; les INSERTs (persist) ne sont jamais filtrés.
+     * requête, or un plan peut naître pour une autre saison (transition). Socle = le plan de saison,
+     * même club + saison. RLS scope le club ; les INSERTs (persist) ne sont jamais filtrés.
      * Volume ~8 blocs : boucle PHP pour mapper ancien→nouveau bloc côté membres.
      */
     private function copySocleSharedBlocks(SchedulePlan $plan): void
@@ -1331,19 +1338,23 @@ final class SchedulePlanProvisioner
         $clubId = (string) $plan->getClubId();
         $seasonId = $plan->getSeasonId();
         $planId = $plan->getId();
+        $soclePlanId = $this->findSeasonPlanId($seasonId);
+        if (null === $soclePlanId) {
+            return; // une saison sans plan de saison n'a aucun groupe de socle
+        }
 
         $connection = $this->entityManager->getConnection();
         $socleBlocks = $connection->fetchAllAssociative(
-            'SELECT id, common_sessions FROM shared_training_block WHERE club_id = :clubId AND season_id = :seasonId AND schedule_plan_id IS NULL',
-            ['clubId' => $clubId, 'seasonId' => $seasonId],
+            'SELECT id, common_sessions FROM shared_training_block WHERE club_id = :clubId AND season_id = :seasonId AND schedule_plan_id = :soclePlanId',
+            ['clubId' => $clubId, 'seasonId' => $seasonId, 'soclePlanId' => $soclePlanId],
         );
         if ([] === $socleBlocks) {
             return;
         }
 
         $socleMembers = $connection->fetchAllAssociative(
-            'SELECT block_id, team_id FROM shared_training_block_team WHERE club_id = :clubId AND season_id = :seasonId AND schedule_plan_id IS NULL',
-            ['clubId' => $clubId, 'seasonId' => $seasonId],
+            'SELECT block_id, team_id FROM shared_training_block_team WHERE club_id = :clubId AND season_id = :seasonId AND schedule_plan_id = :soclePlanId',
+            ['clubId' => $clubId, 'seasonId' => $seasonId, 'soclePlanId' => $soclePlanId],
         );
         $teamsBySocleBlock = [];
         foreach ($socleMembers as $member) {

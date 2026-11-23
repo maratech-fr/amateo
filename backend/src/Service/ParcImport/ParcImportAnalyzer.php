@@ -11,6 +11,7 @@ use App\Entity\SharedTrainingBlock;
 use App\Entity\SharedTrainingBlockTeam;
 use App\Entity\Team;
 use App\Entity\Venue;
+use App\Plans\SoclePlan;
 use App\Service\Basketball\TeamCreationSuggester;
 use App\Service\Basketball\VenueAliasResolver;
 use App\Service\Basketball\VenueLabelNormalizer;
@@ -61,6 +62,7 @@ final class ParcImportAnalyzer
         private readonly TeamLabelMatcher $matcher,
         private readonly TeamCreationSuggester $suggester,
         private readonly ReservationGroupOccupancy $reservationGroupOccupancy,
+        private readonly SoclePlan $soclePlan,
     ) {}
 
     /**
@@ -596,7 +598,8 @@ final class ParcImportAnalyzer
             // moins de séances communes que de cases réservées pour lui. `alerteCode` : c'est ce que la
             // grille lit pour bloquer l'import si la ligne est recochée.
             if ($allResolved && [] !== $teamIds) {
-                $reservedSessions = $this->reservationGroupOccupancy->groupCompleteCaseCount(array_fill_keys($teamIds, true), null);
+                // Sans saison, aucun socle : aucune case réservée.
+                $reservedSessions = '' !== $seasonId ? $this->reservationGroupOccupancy->groupCompleteCaseCount(array_fill_keys($teamIds, true), $this->soclePlan->idOf($seasonId)) : 0;
                 if ($reservedSessions > $commonSessions) {
                     $out[] = $this->line($i, $libelle, 'alerte', null, ReservationGroupOccupancy::belowReservedSessionsMessage($reservedSessions), $extra + ['alerteCode' => 'groupe_sous_reservations']);
 
@@ -644,7 +647,7 @@ final class ParcImportAnalyzer
     private function socleBlocks(string $clubId, string $seasonId): array
     {
         $blocks = $this->entityManager->getRepository(SharedTrainingBlock::class)
-            ->findBy(['clubId' => $clubId, 'seasonId' => $seasonId, 'schedulePlanId' => null]);
+            ->findBy(['clubId' => $clubId, 'seasonId' => $seasonId, 'schedulePlanId' => $this->soclePlan->idOf($seasonId)]);
         $memberRepository = $this->entityManager->getRepository(SharedTrainingBlockTeam::class);
 
         $out = [];
@@ -668,7 +671,7 @@ final class ParcImportAnalyzer
             $teamIds,
             $clubId,
             $seasonId,
-            null,
+            $this->soclePlan->idOf($seasonId),
             $matchedBlockId,
             $commonSessions,
         );
@@ -737,7 +740,7 @@ final class ParcImportAnalyzer
             if ('' !== $seasonId) {
                 $teamId = $this->resolveTeamId($equipeName);
                 if (null !== $teamId) {
-                    $budget = $this->soloReservationBudget->forTeam($teamId, $clubId, $seasonId, null);
+                    $budget = $this->soloReservationBudget->forTeam($teamId, $clubId, $seasonId, $this->soclePlan->idOf($seasonId));
                     if ($budget instanceof SoloBudget && $budget->inBlock && 0 === $budget->residual) {
                         $out[] = $this->line(
                             $i,
@@ -770,7 +773,7 @@ final class ParcImportAnalyzer
                 continue;
             }
 
-            if ($this->reservationAlreadyExists($ctx)) {
+            if ($this->reservationAlreadyExists($ctx, $seasonId)) {
                 $out[] = $this->line($i, $libelle, 'decoche', null, 'Réservation déjà présente dans le planning.', $extra);
 
                 continue;
@@ -926,9 +929,9 @@ final class ParcImportAnalyzer
     /**
      * @param array{teamId: string|null, venueId: string|null, day: int|null, startTime: string, caseKey: string|null} $ctx
      */
-    private function reservationAlreadyExists(array $ctx): bool
+    private function reservationAlreadyExists(array $ctx, string $seasonId): bool
     {
-        if (null === $ctx['teamId'] || null === $ctx['venueId'] || null === $ctx['day'] || '' === $ctx['startTime']) {
+        if ('' === $seasonId || null === $ctx['teamId'] || null === $ctx['venueId'] || null === $ctx['day'] || '' === $ctx['startTime']) {
             return false;
         }
 
@@ -937,7 +940,7 @@ final class ParcImportAnalyzer
             'teamId' => $ctx['teamId'],
             'venueId' => $ctx['venueId'],
             'dayOfWeek' => $ctx['day'],
-            'schedulePlanId' => null,
+            'schedulePlanId' => $this->soclePlan->idOf($seasonId),
         ]);
 
         foreach ($existing as $reservation) {

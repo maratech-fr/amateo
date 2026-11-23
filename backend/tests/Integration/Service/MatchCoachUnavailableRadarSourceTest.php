@@ -22,6 +22,7 @@ use App\Enum\TeamCoachRole;
 use App\Service\ConflictRadarLoader;
 use App\Service\MatchConflictDetector;
 use App\Tests\CreatesPeopleAndPlacesTrait;
+use App\Tests\SeasonPlanOf;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -152,6 +153,7 @@ final class MatchCoachUnavailableRadarSourceTest extends KernelTestCase
 
         $coach = $this->makeCoach($club, $season, 'Principal');
         $this->em->flush();
+        SeasonPlanOf::id(self::getContainer(), $season->getId());
 
         $teamId = $this->uuid();
         $this->linkCoach($club, $season, $teamId, $coach->getId(), TeamCoachRole::MAIN);

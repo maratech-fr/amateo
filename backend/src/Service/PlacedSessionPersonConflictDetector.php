@@ -17,6 +17,7 @@ use App\Entity\Team;
 use App\Entity\TeamCoach;
 use App\Entity\Venue;
 use App\Enum\TeamCoachRole;
+use App\Plans\SoclePlan;
 use App\Repository\ConstraintRepository;
 use App\Structure\PersonDirectory;
 use Doctrine\ORM\EntityManagerInterface;
@@ -70,6 +71,7 @@ final class PlacedSessionPersonConflictDetector
         private readonly PeriodConstraintSelector $periodConstraintSelector,
         private readonly CoachDoubleBookingDetector $coachDoubleBookingDetector,
         private readonly PersonDirectory $personDirectory,
+        private readonly SoclePlan $soclePlan,
     ) {}
 
     /**
@@ -146,7 +148,7 @@ final class PlacedSessionPersonConflictDetector
         $coachBookings = $this->coachBookings($slots, $sessionCoachesByTeam, $assistantsByTeam);
         // Les groupes déclarés du socle : seul le plan SEASON est scanné ici.
         $groups = [];
-        foreach ($this->entityManager->getRepository(SharedTrainingBlockTeam::class)->findBy($scope + ['schedulePlanId' => null]) as $member) {
+        foreach ($this->entityManager->getRepository(SharedTrainingBlockTeam::class)->findBy($scope + ['schedulePlanId' => $this->soclePlan->idOf($seasonId)]) as $member) {
             $groups[$member->getBlockId()][] = $member->getTeamId();
         }
         $unheld = $this->unheldSlots($slots, $sessionCoachesByTeam, $assistantsByTeam, $playersByTeam, $blockedByCoach, array_values($groups));
@@ -203,7 +205,7 @@ final class PlacedSessionPersonConflictDetector
 
         if ($this->schedulePlanProvisioner->isSeasonSchedule($schedule)) {
             $constraints = $this->constraintRepository->findPermanentByClubSeason($clubId, $seasonId);
-            $planId = null;
+            $planId = $schedule->getSchedulePlanId();
         } else {
             $planId = (string) $schedule->getSchedulePlanId();
             $entryId = $this->schedulePlanProvisioner->fetchPlanContext($planId)['calendarEntryId'] ?? null;

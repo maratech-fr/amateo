@@ -42,15 +42,15 @@ class ReservationStateProvider extends AbstractStateProvider
         }
 
         // Base/overlay layering (same as constraints): ?schedulePlanId=<id> lists a
-        // period overlay's reservations; without it, the base plan (schedulePlanId
-        // IS NULL) so the wizard's Réserver tab shows the permanent reservations.
+        // period overlay's reservations; without it, the base plan (the season plan,
+        // lot 4) so the wizard's Réserver tab shows the permanent reservations.
         $request = $this->requestStack->getCurrentRequest();
-        $schedulePlanId = $request instanceof Request ? $this->uuidQueryParam($request, 'schedulePlanId') : null;
-        if (null !== $schedulePlanId) {
-            $qb->andWhere('e.schedulePlanId = :schedulePlanId')
-               ->setParameter('schedulePlanId', $schedulePlanId);
+        $readPlanId = ($request instanceof Request ? $this->uuidQueryParam($request, 'schedulePlanId') : null) ?? $this->soclePlanOfRead($clubId);
+        if (null === $readPlanId) {
+            $qb->andWhere('1 = 0'); // aucune saison : aucun socle à lire
         } else {
-            $qb->andWhere('e.schedulePlanId IS NULL');
+            $qb->andWhere('e.schedulePlanId = :schedulePlanId')
+               ->setParameter('schedulePlanId', $readPlanId);
         }
 
         return array_map([$this, 'mapEntityToOutput'], $qb->getQuery()->getResult());
@@ -61,6 +61,6 @@ class ReservationStateProvider extends AbstractStateProvider
      */
     protected function mapEntityToOutput(object $entity): ReservationResource
     {
-        return ReservationResource::fromEntity($entity);
+        return ReservationResource::fromEntity($entity, $this->planToApi($entity->getSchedulePlanId(), $entity->getSeasonId()));
     }
 }

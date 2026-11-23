@@ -171,6 +171,24 @@ final class SeasonTransitionContext extends BaseContext
         }
     }
 
+    /** Lot 4, PR 2 : la grille reprise est rangée dans le planning de saison de la saison suivante, son seul. */
+    #[Then('la grille reprise est celle du planning de saison de la saison suivante')]
+    public function laGrilleRepriseEstCelleDuPlanningDeSaisonSuivante(): void
+    {
+        $plans = (int) $this->dbalScalar(\sprintf('SELECT COUNT(*) AS behatval FROM schedule_plan WHERE season_id=\'%s\' AND type=\'SEASON\'', $this->nextSeasonId), admin: true);
+        if (1 !== $plans) {
+            throw new RuntimeException(\sprintf('la saison suivante a %d planning(s) de saison (1 attendu)', $plans));
+        }
+        $slots = (int) $this->dbalScalar(\sprintf('SELECT COUNT(*) AS behatval FROM venue_training_slot WHERE season_id=\'%s\'', $this->nextSeasonId), admin: true);
+        $onTheSeasonPlan = (int) $this->dbalScalar(\sprintf(
+            'SELECT COUNT(*) AS behatval FROM venue_training_slot s JOIN schedule_plan p ON p.id = s.schedule_plan_id AND p.season_id = s.season_id AND p.type = \'SEASON\' WHERE s.season_id=\'%s\'',
+            $this->nextSeasonId,
+        ), admin: true);
+        if (0 === $slots || $onTheSeasonPlan !== $slots) {
+            throw new RuntimeException(\sprintf('%d des %d créneaux repris sont rangés dans le planning de saison de la saison suivante (tous attendus)', $onTheSeasonPlan, $slots));
+        }
+    }
+
     #[Then('la règle de la saison suivante impose le « Gymnase Nord » de la saison suivante, pas celui de la saison en cours')]
     public function laRegleNommeLeGymnaseDeLaSaisonSuivante(): void
     {

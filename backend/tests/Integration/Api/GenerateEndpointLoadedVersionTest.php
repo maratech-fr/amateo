@@ -16,6 +16,7 @@ use App\Enum\SeasonStatus;
 use App\Service\SeasonResolver;
 use App\Tests\ChoosesPlanVersionTrait;
 use App\Tests\CreatesPeopleAndPlacesTrait;
+use App\Tests\SeasonPlanOf;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -108,7 +109,7 @@ final class GenerateEndpointLoadedVersionTest extends WebTestCase
         $venue = $this->newVenue($this->club->getId(), $this->season->getId(), 'G')->setCanSplit(false);
         $this->em->persist($venue);
         $this->em->flush();
-        $this->em->persist((new VenueTrainingSlot)->setClubId($this->club->getId())->setSeasonId($this->season->getId())->setVenueId($venue->getId())
+        $this->em->persist((new VenueTrainingSlot)->setClubId($this->club->getId())->setSeasonId($this->season->getId())->setSchedulePlanId(SeasonPlanOf::id(self::getContainer(), $this->season->getId()))->setVenueId($venue->getId())
             ->setDayOfWeek(2)->setStartTime(new DateTimeImmutable('19:00'))->setDurationMinutes(90)->setCapacity(1));
         $this->em->flush();
 

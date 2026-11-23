@@ -42,6 +42,7 @@ use App\Service\SeasonTransitionService;
 use App\Structure\PersonDirectory;
 use App\Tests\ChoosesPlanVersionTrait;
 use App\Tests\CreatesPeopleAndPlacesTrait;
+use App\Tests\SeasonPlanOf;
 use App\Tests\Support\SubscribesClub;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
@@ -378,7 +379,7 @@ final class SeasonTransitionServiceTest extends KernelTestCase
         [$club, $season] = $this->createClubGraph();
         $this->em->persist((new ImplicitRuleSetting)
             ->setClubId($club->getId())
-            ->setSeasonId($season->getId())
+            ->setSeasonId($season->getId())->setSchedulePlanId(SeasonPlanOf::id(self::getContainer(), $season->getId()))
             ->setRuleKey(ImplicitRuleKey::AGE_ASCENDING)
             ->setIntensity(ImplicitRuleIntensity::OFF));
         $this->em->flush();
@@ -387,7 +388,7 @@ final class SeasonTransitionServiceTest extends KernelTestCase
 
         $copied = $this->em->getRepository(ImplicitRuleSetting::class)->findOneBy([
             'seasonId' => $target->getId(),
-            'schedulePlanId' => null,
+            'schedulePlanId' => SeasonPlanOf::id(self::getContainer(), $target->getId()),
             'ruleKey' => ImplicitRuleKey::AGE_ASCENDING,
         ]);
         self::assertInstanceOf(ImplicitRuleSetting::class, $copied, 'le réglage de la règle suit la saison suivante');
@@ -587,6 +588,7 @@ final class SeasonTransitionServiceTest extends KernelTestCase
         $slot = new VenueTrainingSlot;
         $slot->setClubId($club->getId());
         $slot->setSeasonId($season->getId());
+        $slot->setSchedulePlanId(SeasonPlanOf::id(self::getContainer(), $season->getId()));
         $slot->setVenueId($venueA->getId());
         $slot->setDayOfWeek(2);
         $slot->setStartTime(new DateTimeImmutable('18:00'));

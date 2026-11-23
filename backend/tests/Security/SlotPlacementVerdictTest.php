@@ -33,6 +33,7 @@ use App\Service\ScheduleProgressPublisher;
 use App\Service\TeamCaseOccupancyGuard;
 use App\Tests\ChoosesPlanVersionTrait;
 use App\Tests\CreatesPeopleAndPlacesTrait;
+use App\Tests\SeasonPlanOf;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -470,7 +471,7 @@ final class SlotPlacementVerdictTest extends WebTestCase
         // placement — le client ne peut pas l'imposer.
         $window = (new VenueTrainingSlot)
             ->setClubId($clubId)
-            ->setSeasonId($seasonId)
+            ->setSeasonId($seasonId)->setSchedulePlanId(SeasonPlanOf::id(self::getContainer(), $seasonId))
             ->setVenueId($venueIds[1])
             ->setDayOfWeek(4)
             ->setStartTime(DateTimeImmutable::createFromFormat('!H:i', '20:00'))

@@ -14,7 +14,7 @@ use Doctrine\ORM\EntityManagerInterface;
 
 /**
  * P2-60 — MAISON UNIQUE du résidu solo R(T) = S(T) − B(T) et du décompte des réservations
- * INDIVIDUELLES d'une équipe, par portée (socle `schedulePlanId = null` OU plan de période, jamais
+ * INDIVIDUELLES d'une équipe, par portée (socle — le plan de saison — OU plan de période, jamais
  * d'union — ADR-0002). Trois consommateurs en dépendent, et trois définitions qui divergeraient
  * laisseraient passer, ici ou là, un état que le solveur refuserait ensuite loin de sa cause :
  *
@@ -42,7 +42,7 @@ final class SoloReservationBudget
      * il n'y a alors aucun résidu à opposer (défense de contrat — le rail unitaire n'applique pas
      * sa garde solo dans ce cas, comme {@see ReservationGroupOccupancy} pour ses autres règles).
      */
-    public function forTeam(string $teamId, string $clubId, string $seasonId, ?string $planId): ?SoloBudget
+    public function forTeam(string $teamId, string $clubId, string $seasonId, string $planId): ?SoloBudget
     {
         $team = $this->entityManager->getRepository(Team::class)
             ->findOneBy(['id' => $teamId, 'clubId' => $clubId, 'seasonId' => $seasonId]);
@@ -63,7 +63,7 @@ final class SoloReservationBudget
      *
      * @return list<SoloBudget>
      */
-    public function forScope(string $clubId, string $seasonId, ?string $planId): array
+    public function forScope(string $clubId, string $seasonId, string $planId): array
     {
         $blocks = $this->blocksInScope($clubId, $seasonId, $planId);
         $reservations = $this->reservationsInScope($clubId, $seasonId, $planId);
@@ -89,7 +89,7 @@ final class SoloReservationBudget
         array $newMemberIds,
         string $clubId,
         string $seasonId,
-        ?string $planId,
+        string $planId,
         ?string $excludeBlockId,
         int $newCommonSessions,
     ): array {
@@ -118,7 +118,7 @@ final class SoloReservationBudget
      * @param list<array{blockId: string, commonSessions: int, members: array<string, true>}> $blocks
      * @param list<Reservation>                                                               $reservations
      */
-    private function budgetFor(Team $team, ?string $planId, array $blocks, array $reservations): SoloBudget
+    private function budgetFor(Team $team, string $planId, array $blocks, array $reservations): SoloBudget
     {
         $teamId = $team->getId();
         $effective = $this->effectiveTeamSessions->perWeek($team, $planId);
@@ -158,18 +158,14 @@ final class SoloReservationBudget
      *
      * @return list<array{blockId: string, commonSessions: int, members: array<string, true>}>
      */
-    private function blocksInScope(string $clubId, string $seasonId, ?string $planId): array
+    private function blocksInScope(string $clubId, string $seasonId, string $planId): array
     {
         $qb = $this->entityManager->getRepository(SharedTrainingBlock::class)->createQueryBuilder('b')
             ->where('b.clubId = :clubId')
             ->andWhere('b.seasonId = :seasonId')
             ->setParameter('clubId', $clubId)
             ->setParameter('seasonId', $seasonId);
-        if (null === $planId) {
-            $qb->andWhere('b.schedulePlanId IS NULL');
-        } else {
-            $qb->andWhere('b.schedulePlanId = :planId')->setParameter('planId', $planId);
-        }
+        $qb->andWhere('b.schedulePlanId = :planId')->setParameter('planId', $planId);
 
         /** @var list<SharedTrainingBlock> $blocks */
         $blocks = $qb->getQuery()->getResult();
@@ -192,18 +188,14 @@ final class SoloReservationBudget
      *
      * @return list<Reservation>
      */
-    private function reservationsInScope(string $clubId, string $seasonId, ?string $planId): array
+    private function reservationsInScope(string $clubId, string $seasonId, string $planId): array
     {
         $qb = $this->entityManager->getRepository(Reservation::class)->createQueryBuilder('r')
             ->where('r.clubId = :clubId')
             ->andWhere('r.seasonId = :seasonId')
             ->setParameter('clubId', $clubId)
             ->setParameter('seasonId', $seasonId);
-        if (null === $planId) {
-            $qb->andWhere('r.schedulePlanId IS NULL');
-        } else {
-            $qb->andWhere('r.schedulePlanId = :planId')->setParameter('planId', $planId);
-        }
+        $qb->andWhere('r.schedulePlanId = :planId')->setParameter('planId', $planId);
 
         /** @var list<Reservation> $rows */
         $rows = $qb->getQuery()->getResult();

@@ -34,7 +34,7 @@ final class CoachInTwoPlacesGuard
         $repository = $this->entityManager->getRepository(Reservation::class);
 
         if ($this->schedulePlanProvisioner->isSeasonSchedule($schedule)) {
-            $reservations = $repository->findBy(['clubId' => $clubId, 'seasonId' => $seasonId, 'schedulePlanId' => null], ['id' => 'ASC']);
+            $reservations = $repository->findBy(['clubId' => $clubId, 'seasonId' => $seasonId, 'schedulePlanId' => $schedule->getSchedulePlanId()], ['id' => 'ASC']);
             $constraints = $this->constraintRepository->findPermanentByClubSeason($clubId, $seasonId);
         } else {
             $planId = (string) $schedule->getSchedulePlanId();

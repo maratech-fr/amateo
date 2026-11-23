@@ -27,6 +27,7 @@ use App\Service\CoachWishTransferService;
 use App\Service\ScheduleConstraintBuilder;
 use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\ProvisionsPeriodPlanTrait;
+use App\Tests\SeasonPlanOf;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -329,7 +330,7 @@ final class CoachWishUnavailabilityGateTest extends KernelTestCase
         $this->em->persist($block);
         $this->em->flush();
         foreach ([$a, $b] as $team) {
-            $this->em->persist((new SharedTrainingBlockTeam)->setClubId($this->club->getId())->setSeasonId($this->season->getId())
+            $this->em->persist((new SharedTrainingBlockTeam)->setClubId($this->club->getId())->setSeasonId($this->season->getId())->setSchedulePlanId(SeasonPlanOf::id(self::getContainer(), $this->season->getId()))
                 ->setBlockId($block->getId())->setTeamId($team->getId()));
         }
         $this->em->flush();

@@ -39,6 +39,7 @@ use App\Service\ScheduleProgressPublisher;
 use App\Service\TeamCaseOccupancyGuard;
 use App\Tests\ChoosesPlanVersionTrait;
 use App\Tests\CreatesPeopleAndPlacesTrait;
+use App\Tests\SeasonPlanOf;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -802,7 +803,8 @@ final class SlotMoveVerdictTest extends KernelTestCase
         $this->em->persist($foreign);
         $season = $this->em->getRepository(Season::class)->find($ctx['seasonId']);
         self::assertInstanceOf(Season::class, $season);
-        $season->setLiveContextScheduleId($ctx['scheduleId']);
+        $this->em->flush();
+        $this->em->getConnection()->executeStatement('UPDATE schedule_plan SET lock_source_schedule_id = ? WHERE season_id = ? AND type = \'SEASON\'', [$ctx['scheduleId'], $season->getId()]);
         $this->em->flush();
         self::getContainer()->get('cache.schedule')->invalidateTags([ScheduleConstraintBuilder::cacheTag($ctx['clubId'])]);
 
@@ -903,11 +905,11 @@ final class SlotMoveVerdictTest extends KernelTestCase
     {
         $teamIds = ['88888888-8888-4888-8888-888888888881', '88888888-8888-4888-8888-888888888882'];
 
-        $block = (new SharedTrainingBlock)->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])->setSchedulePlanId(null)->setCommonSessions(1);
+        $block = (new SharedTrainingBlock)->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])->setSchedulePlanId(SeasonPlanOf::id(self::getContainer(), $ctx['seasonId']))->setCommonSessions(1);
         $this->em->persist($block);
         $this->em->flush();
         foreach ($teamIds as $teamId) {
-            $membership = (new SharedTrainingBlockTeam)->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])->setSchedulePlanId(null)->setBlockId($block->getId())->setTeamId($teamId);
+            $membership = (new SharedTrainingBlockTeam)->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])->setSchedulePlanId(SeasonPlanOf::id(self::getContainer(), $ctx['seasonId']))->setBlockId($block->getId())->setTeamId($teamId);
             $this->em->persist($membership);
         }
         $this->em->flush();
@@ -989,7 +991,7 @@ final class SlotMoveVerdictTest extends KernelTestCase
         // SlotUnavailableException avant le moteur — sans cette fenêtre, tout le test rougirait.
         $window = (new VenueTrainingSlot)
             ->setClubId($clubId)
-            ->setSeasonId($seasonId)
+            ->setSeasonId($seasonId)->setSchedulePlanId(SeasonPlanOf::id(self::getContainer(), $seasonId))
             ->setVenueId($venueIds[1])
             ->setDayOfWeek(4)
             ->setStartTime(DateTimeImmutable::createFromFormat('!H:i', '20:00'))

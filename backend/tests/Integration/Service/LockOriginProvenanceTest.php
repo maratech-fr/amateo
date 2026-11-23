@@ -22,6 +22,7 @@ use App\Service\ScheduleConstraintBuilder;
 use App\Service\ScheduleResultImporter;
 use App\Tests\ChoosesPlanVersionTrait;
 use App\Tests\ProvisionsPeriodPlanTrait;
+use App\Tests\SeasonPlanOf;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -292,7 +293,7 @@ final class LockOriginProvenanceTest extends KernelTestCase
         $reservation = (new Reservation)
             ->setClubId($club->getId())
             ->setSeasonId($season->getId())
-            ->setSchedulePlanId($schedulePlanId)
+            ->setSchedulePlanId($schedulePlanId ?? SeasonPlanOf::id(self::getContainer(), $season->getId()))
             ->setTeamId($teamId)
             ->setVenueId(self::VENUE)
             ->setDayOfWeek(2)

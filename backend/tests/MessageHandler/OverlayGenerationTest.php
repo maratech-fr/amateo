@@ -40,6 +40,7 @@ use App\Service\SolverMetricsMapper;
 use App\Service\StructureSnapshotter;
 use App\Service\TenantConnectionContext;
 use App\Tests\ProvisionsPeriodPlanTrait;
+use App\Tests\SeasonPlanOf;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -96,7 +97,7 @@ final class OverlayGenerationTest extends KernelTestCase
         $slot->setStartTime(new DateTimeImmutable('18:00'));
         $slot->setDurationMinutes(90);
         $slot->setCapacity(1);
-        $slot->setSchedulePlanId(null);
+        $slot->setSchedulePlanId(SeasonPlanOf::id(self::getContainer(), $season->getId()));
         $em->persist($slot);
         $em->flush();
 

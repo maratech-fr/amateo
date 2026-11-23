@@ -217,10 +217,9 @@ final class ScheduleResultImporter
 
     /**
      * Placement keys of the team Reservations of THIS schedule's plan — a season plan reads the
-     * season's reservations (`schedulePlanId` null), a period plan its own only. A reservation of
-     * another plan on the same placement does NOT make a lock RESERVATION. `planIsSeason` (not
-     * `isSeasonSchedule`, which throws when the plan row is gone) keeps the import alive: a plan
-     * deleted mid-solve reads as a period plan and the origin falls back to MANUAL/UNKNOWN.
+     * socle reservations it carries, a period plan its own only. A reservation of another plan on
+     * the same placement does NOT make a lock RESERVATION. A plan deleted mid-solve carries no
+     * reservation any more: the origin falls back to MANUAL/UNKNOWN.
      * Loaded once per import.
      *
      * @return array<string, true>
@@ -231,7 +230,7 @@ final class ScheduleResultImporter
         $reservations = $this->entityManager->getRepository(Reservation::class)->findBy([
             'clubId' => $schedule->getClubId(),
             'seasonId' => $schedule->getSeasonId(),
-            'schedulePlanId' => $this->schedulePlanProvisioner->planIsSeason($planId) ? null : $planId,
+            'schedulePlanId' => $planId,
         ]);
 
         $placements = [];

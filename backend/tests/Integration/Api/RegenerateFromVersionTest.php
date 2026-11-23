@@ -71,7 +71,8 @@ final class RegenerateFromVersionTest extends WebTestCase
 
         // A later version V2 is the current loaded context; the structure diverges (add a team).
         $v2 = $this->makeSchedule(ScheduleStatus::COMPLETED, null);
-        $this->season->setLiveContextScheduleId($v2->getId());
+        $this->em->flush();
+        $this->em->getConnection()->executeStatement('UPDATE schedule_plan SET lock_source_schedule_id = ? WHERE season_id = ? AND type = \'SEASON\'', [$v2->getId(), $this->season->getId()]);
         $this->persistTeam('SM2');
         $this->em->flush();
 
@@ -87,7 +88,7 @@ final class RegenerateFromVersionTest extends WebTestCase
         $schedules = $this->em->getRepository(Schedule::class)->findBy(['seasonId' => $this->season->getId(), 'schedulePlanId' => $seasonPlanId]);
         self::assertCount(2, $schedules, 'no new version — only V1 and V2 remain');
         // The ★ moved to V1 (the loaded context).
-        self::assertSame($v1->getId(), $this->em->getRepository(Season::class)->find($this->season->getId())?->getLiveContextScheduleId());
+        self::assertSame($v1->getId(), $this->em->getConnection()->fetchOne('SELECT lock_source_schedule_id FROM schedule_plan WHERE season_id = ? AND type = \'SEASON\'', [$this->season->getId()]));
     }
 
     public function testLoadVersionKeepsPeriodTrainingSlots(): void
@@ -378,7 +379,8 @@ final class RegenerateFromVersionTest extends WebTestCase
     {
         $live = $this->makeSchedule(ScheduleStatus::COMPLETED, null);
         $other = $this->makeSchedule(ScheduleStatus::COMPLETED, null);
-        $this->season->setLiveContextScheduleId($live->getId());
+        $this->em->flush();
+        $this->em->getConnection()->executeStatement('UPDATE schedule_plan SET lock_source_schedule_id = ? WHERE season_id = ? AND type = \'SEASON\'', [$live->getId(), $this->season->getId()]);
         $this->em->flush();
 
         $this->client->request('GET', "/api/schedules/{$live->getId()}", [], [], $this->headers());

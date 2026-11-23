@@ -15,7 +15,8 @@ use RuntimeException;
  * vit que par lui — séances, réservations, règles qui le VISENT (portée + cible), liens — et laisse
  * le reste du club tel quel ; la remise à zéro de la saison efface la structure et garde le club,
  * sa saison et son gestionnaire. Le temps de trajet entre deux lieux (lot 3, PR 5) n'est ni annoncé ni emporté par la
- * suppression d'un gymnase ; il part avec le lieu, à la remise à zéro.
+ * suppression d'un gymnase ; il part avec le lieu, à la remise à zéro. Supprimer une période emporte tout ce que
+ * son planning porte (lot 4, PR 2), et la grille du planning de saison reste.
  *
  * Décor DÉDIÉ et léger ({@see SmallClubFixtureTrait::registerSmallClub}, puis 3 équipes, 2 gymnases
  * de 6 créneaux, 2 coachs par l'API), une génération du socle (non validé). Les vérités sont des
@@ -39,6 +40,12 @@ final class DeletionCascadeContext extends BaseContext
 
     /** @var array<string, string> nom du gymnase → id de son lieu, relu juste avant sa suppression */
     private array $placeIds = [];
+
+    /** @var array<string, string> titre de la période → id de son entrée de calendrier */
+    private array $periodEntryIds = [];
+
+    /** @var array<string, string> titre de la période → id de son planning */
+    private array $periodPlanIds = [];
 
     #[Given('un petit club de trois équipes sans compétition, deux gymnases et deux coachs, dont le planning de saison est généré')]
     public function unPetitClubDeTroisEquipes(): void
@@ -349,6 +356,57 @@ final class DeletionCascadeContext extends BaseContext
             'lieu' => ['place', \sprintf('club_id=\'%s\'', $this->smallClubId)],
             'temps de trajet' => ['place_travel_time', \sprintf('club_id=\'%s\'', $this->smallClubId)],
         ], 'le club remis à zéro');
+    }
+
+    /**
+     * Lot 4, PR 2 : une fermeture adaptée (son plan naît avec la copie de la grille du « Gymnase Sud » et ses
+     * règles de bien-être), plus une réservation et un groupe mutualisé posés dans ce plan. Témoin : le plan porte
+     * bien chacune de ces lignes avant la suppression.
+     */
+    #[When('/^j\'adapte la fermeture « (?P<title>[^»]+) », avec une réservation et un groupe mutualisé à elle$/u')]
+    public function jAdapteLaFermeture(string $title): void
+    {
+        $start = date('Y-m-d', (int) strtotime('next monday +21 days'));
+        $this->periodEntryIds[$title] = $this->createdId($this->apiPost('calendar_entries', [
+            'kind' => 'period', 'periodType' => 'closure', 'title' => $title,
+            'startDate' => $start, 'endDate' => date('Y-m-d', (int) strtotime($start . ' +4 days')),
+        ], $this->smallClubToken), 'fermeture ' . $title);
+        $planId = $this->createdId($this->apiPost('schedule_plans', ['calendarEntryId' => $this->periodEntryIds[$title]], $this->smallClubToken), 'planning de ' . $title);
+        $this->periodPlanIds[$title] = $planId;
+        $this->createdId($this->apiPost('reservations', [
+            'teamId' => $this->smallClubTeamIds['U15M1'], 'venueId' => $this->smallClubVenueIds['Gymnase Sud'],
+            'dayOfWeek' => 4, 'startTime' => '18:00', 'durationMinutes' => 90, 'schedulePlanId' => $planId,
+        ], $this->smallClubToken), 'réservation de ' . $title);
+        $this->createdId($this->apiPost('shared_training_blocks', [
+            'schedulePlanId' => $planId, 'teamIds' => [$this->smallClubTeamIds['U15M1'], $this->smallClubTeamIds['SM1']], 'commonSessions' => 1,
+        ], $this->smallClubToken), 'groupe mutualisé de ' . $title);
+
+        foreach (['créneau' => 'venue_training_slot', 'réservation' => 'reservation', 'groupe' => 'shared_training_block', 'membre de groupe' => 'shared_training_block_team', 'règle de bien-être' => 'implicit_rule_setting'] as $label => $table) {
+            if (0 === $this->count($table, \sprintf('schedule_plan_id=\'%s\'', $planId))) {
+                throw new RuntimeException(\sprintf('décor : le planning de %s n\'a aucune ligne « %s » avant sa suppression', $title, $label));
+            }
+        }
+    }
+
+    #[When('/^je supprime la fermeture « (?P<title>[^»]+) »$/u')]
+    public function jeSupprimeLaFermeture(string $title): void
+    {
+        $this->assertDeleted($this->apiDelete(\sprintf('calendar_entries/%s', $this->periodEntryIds[$title]), $this->smallClubToken), 'la fermeture ' . $title);
+    }
+
+    #[Then('/^la fermeture « (?P<title>[^»]+) » n\'a plus ni planning, ni créneau, ni réservation, ni groupe, ni règle de bien-être$/u')]
+    public function laFermetureNAPlusRien(string $title): void
+    {
+        $plan = \sprintf('schedule_plan_id=\'%s\'', $this->periodPlanIds[$title]);
+        $this->assertNone([
+            'planning' => ['schedule_plan', \sprintf('id=\'%s\'', $this->periodPlanIds[$title])],
+            'créneau' => ['venue_training_slot', $plan],
+            'occupation' => ['venue_occupancy', $plan],
+            'réservation' => ['reservation', $plan],
+            'groupe' => ['shared_training_block', $plan],
+            'membre de groupe' => ['shared_training_block_team', $plan],
+            'règle de bien-être' => ['implicit_rule_setting', $plan],
+        ], 'la fermeture ' . $title . ' supprimée');
     }
 
     #[When('je remets la saison à zéro')]

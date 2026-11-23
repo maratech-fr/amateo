@@ -20,6 +20,7 @@ use App\Enum\TeamLinkType;
 use App\Service\ScheduleConstraintBuilder;
 use App\State\Processor\TeamLinkStateProcessor;
 use App\Tests\ProvisionsPeriodPlanTrait;
+use App\Tests\SeasonPlanOf;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -306,6 +307,7 @@ final class TeamLinkPayloadParityTest extends KernelTestCase
         $season->setStatus(SeasonStatus::ACTIVE);
         $this->em->persist($season);
         $this->em->flush();
+        SeasonPlanOf::id(self::getContainer(), $season->getId());
 
         return [$club, $season];
     }

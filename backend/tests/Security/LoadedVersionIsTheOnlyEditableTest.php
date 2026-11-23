@@ -91,7 +91,8 @@ final class LoadedVersionIsTheOnlyEditableTest extends WebTestCase
     {
         $older = $this->seasonVersion();
         $loaded = $this->seasonVersion();
-        $this->season->setLiveContextScheduleId($loaded->getId());
+        $this->em->flush();
+        $this->em->getConnection()->executeStatement('UPDATE schedule_plan SET lock_source_schedule_id = ? WHERE season_id = ? AND type = \'SEASON\'', [$loaded->getId(), $this->season->getId()]);
         $this->em->flush();
         [$s1, $s2] = $this->slotsOf($older);
         $before = $this->fingerprint();
@@ -126,7 +127,8 @@ final class LoadedVersionIsTheOnlyEditableTest extends WebTestCase
         $this->seasonVersion();
         $loaded = $this->seasonVersion();
         $older = $this->seasonVersion();
-        $this->season->setLiveContextScheduleId($loaded->getId());
+        $this->em->flush();
+        $this->em->getConnection()->executeStatement('UPDATE schedule_plan SET lock_source_schedule_id = ? WHERE season_id = ? AND type = \'SEASON\'', [$loaded->getId(), $this->season->getId()]);
         $this->em->flush();
         [$s1, $s2] = $this->slotsOf($loaded);
         self::assertNotSame($older->getId(), $loaded->getId());
@@ -270,7 +272,8 @@ final class LoadedVersionIsTheOnlyEditableTest extends WebTestCase
         $this->post('/api/schedule-slots/' . $slot->getId() . '/manual-edit/lock', ['lockLevel' => 'HARD']);
         self::assertResponseIsSuccessful();
 
-        $this->season->setLiveContextScheduleId($older->getId());
+        $this->em->flush();
+        $this->em->getConnection()->executeStatement('UPDATE schedule_plan SET lock_source_schedule_id = ? WHERE season_id = ? AND type = \'SEASON\'', [$older->getId(), $this->season->getId()]);
         $this->em->flush();
 
         $this->post('/api/schedule-slots/' . $slot->getId() . '/manual-edit/lock', ['lockLevel' => 'NONE']);

@@ -18,12 +18,14 @@ use App\Entity\TeamPeriodOverride;
 use App\Entity\User;
 use App\Enum\SchedulePlanType;
 use App\Enum\SeasonStatus;
+use App\Plans\SoclePlan;
 use App\Service\ManagementAccessGuard;
 use App\Service\ReservationGroupOccupancy;
 use App\Service\SeasonAccessGuard;
 use App\Service\SeasonResolver;
 use App\Service\SoloReservationBudget;
 use App\State\Processor\SharedTrainingBlockStateProcessor;
+use App\Tests\SeasonPlanOf;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -225,6 +227,7 @@ final class SharedTrainingBlockStateProcessorTest extends KernelTestCase
         // Dépendance #[Required] : câblée à la main puisque le processor est instancié hors conteneur.
         $this->processor->setSoloReservationBudget($container->get(SoloReservationBudget::class));
         $this->processor->setReservationGroupOccupancy($container->get(ReservationGroupOccupancy::class));
+        $this->processor->setSoclePlan($container->get(SoclePlan::class));
     }
 
     private function post(SharedTrainingBlockInput $input, Club $club, Season $season): SharedTrainingBlockResource
@@ -256,7 +259,7 @@ final class SharedTrainingBlockStateProcessorTest extends KernelTestCase
         $reservation = (new Reservation)
             ->setClubId($club->getId())
             ->setSeasonId($season->getId())
-            ->setSchedulePlanId($planId)
+            ->setSchedulePlanId($planId ?? SeasonPlanOf::id(self::getContainer(), $season->getId()))
             ->setTeamId($team->getId())
             ->setVenueId($this->uuid())
             ->setDayOfWeek($dayOfWeek)
@@ -367,6 +370,7 @@ final class SharedTrainingBlockStateProcessorTest extends KernelTestCase
             ->setStatus(SeasonStatus::ACTIVE);
         $this->em->persist($season);
         $this->em->flush();
+        SeasonPlanOf::id(self::getContainer(), $season->getId());
 
         return [$club, $season];
     }

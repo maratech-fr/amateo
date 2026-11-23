@@ -32,6 +32,12 @@ Fonctionnalité: Supprimer emporte ce qui en dépend, et rien d'autre
     Et le « Gymnase Sud » garde ses créneaux et ses séances
     # Le lieu du gymnase reste au club jusqu'à la purge de la saison : « Charger » une version d'avant le ramène avec son adresse.
     Et le lieu du « Gymnase Nord » existe toujours dans le club, avec son temps de trajet jusqu'au « Gymnase Sud »
+    # Une période emporte tout ce que son planning porte : la grille copiée à sa naissance, ses réservations,
+    # ses groupes mutualisés et leurs membres, ses règles de bien-être. La grille du planning de saison reste.
+    Quand j'adapte la fermeture « Travaux », avec une réservation et un groupe mutualisé à elle
+    Et je supprime la fermeture « Travaux »
+    Alors la fermeture « Travaux » n'a plus ni planning, ni créneau, ni réservation, ni groupe, ni règle de bien-être
+    Et le « Gymnase Sud » garde ses créneaux et ses séances
     Quand je remets la saison à zéro
     Alors la saison n'a plus ni équipe, ni coach, ni gymnase, ni créneau, ni règle, ni réservation, ni séance
     Et le club n'a plus aucune fiche de personne

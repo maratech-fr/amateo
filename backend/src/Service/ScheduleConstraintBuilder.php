@@ -28,6 +28,7 @@ use App\Enum\ConstraintScope;
 use App\Enum\LockLevel;
 use App\Enum\LockOrigin;
 use App\Enum\VenueTravelRuleIntensity;
+use App\Plans\SoclePlan;
 use App\Repository\PlaceTravelTimeRepository;
 use App\Repository\VenueTrainingSlotRepository;
 use App\Repository\VenueTravelRuleSettingRepository;
@@ -146,6 +147,8 @@ final class ScheduleConstraintBuilder
         private readonly ?SchedulePlanProvisioner $schedulePlanProvisioner = null,
         // L'identité des coachs (prénom, nom) se lit par la porte unique, mode léger compris.
         private readonly PersonDirectory $personDirectory = new PersonDirectory,
+        // Lot 4 : le plan de saison, qui porte les lignes du socle. Nullable pour le mode léger sans DB.
+        private readonly ?SoclePlan $soclePlan = null,
     ) {}
 
     /**
@@ -271,13 +274,15 @@ final class ScheduleConstraintBuilder
         // Base plan only: dated constraints (attached to a CalendarEntry period)
         // are excluded from generation. See specs/courantes/calendar-entry-modele-donnees.md §c.
         $constraints = $this->sortedById($em->getRepository(Constraint::class)->findPermanentByClubSeason($clubId, $seasonId));
+        // Lot 4 : le socle a son plan — grille, réservations et groupes du socle portent le plan de saison.
+        $soclePlanId = $this->soclePlanIdOf($seasonId);
 
         // Pre-load venue availabilities to avoid N+1 queries in serializeVenue().
-        // Base plan only: SEASONAL slots (calendarEntryId IS NULL) — a period's own
-        // slots (a gym lent for a window) must never leak into the base generation.
+        // Base plan only: the season plan's slots — a period's own slots (a gym lent
+        // for a window) must never leak into the base generation.
         $availabilitiesByVenue = [];
         if ($this->venueTrainingSlotRepository instanceof VenueTrainingSlotRepository) {
-            $rows = $this->venueTrainingSlotRepository->findBy(['clubId' => $clubId, 'seasonId' => $seasonId, 'schedulePlanId' => null], ['id' => 'ASC']);
+            $rows = $this->venueTrainingSlotRepository->findBy(['clubId' => $clubId, 'seasonId' => $seasonId, 'schedulePlanId' => $soclePlanId], ['id' => 'ASC']);
             foreach ($rows as $row) {
                 $availabilitiesByVenue[$row->getVenueId()][] = $row;
             }
@@ -305,11 +310,11 @@ final class ScheduleConstraintBuilder
             priorityTiers: $em->getRepository(PriorityTier::class)->findBy([], ['id' => 'ASC']),
             solverSeed: $solverSeed,
             constraints: $constraints,
-            // Base-plan reservations (schedulePlanId IS NULL) — durable HARD pins.
-            reservations: $em->getRepository(Reservation::class)->findBy(['clubId' => $clubId, 'seasonId' => $seasonId, 'schedulePlanId' => null], ['id' => 'ASC']),
-            // Base-plan mutualisation blocks (schedulePlanId IS NULL, P2-51). Un membre en pause
+            // Base-plan reservations (the season plan) — durable HARD pins.
+            reservations: $em->getRepository(Reservation::class)->findBy(['clubId' => $clubId, 'seasonId' => $seasonId, 'schedulePlanId' => $soclePlanId], ['id' => 'ASC']),
+            // Base-plan mutualisation blocks (the season plan, P2-51). Un membre en pause
             // est filtré au roster dans serializeSharedBlocks.
-            sharedBlocks: $em->getRepository(SharedTrainingBlock::class)->findBy(['clubId' => $clubId, 'seasonId' => $seasonId, 'schedulePlanId' => null], ['id' => 'ASC']),
+            sharedBlocks: $em->getRepository(SharedTrainingBlock::class)->findBy(['clubId' => $clubId, 'seasonId' => $seasonId, 'schedulePlanId' => $soclePlanId], ['id' => 'ASC']),
             // Passerelles (lot PASSERELLES) : STRUCTURE de club+saison (patron Team/Coach, PAS
             // ancré au plan) — la même déclaration nourrit socle et périodes. Filtrée au roster
             // dans serializeTeamLinks. Inerte en PR-1 (le moteur l'accepte, ne la consomme pas).
@@ -540,8 +545,8 @@ final class ScheduleConstraintBuilder
             venueTravelTimes: $this->travelTimesOfSeason($clubId, $seasonId, $em),
             // ADR-0002 inv. 5 — le bloc `implicitRules` résout la COPIE de CE plan (repli saison
             // si legacy), jamais la portée saison directement : c'est ce que buildForClubSeason
-            // (plan null) fait, ici on porte la période.
-            schedulePlanId: $schedulePlanId,
+            // fait, ici on porte la période.
+            implicitRules: $this->implicitRuleResolver?->resolveForPlan($clubId, $seasonId, $schedulePlanId),
         );
 
         $this->currentAvailabilitiesByVenue = [];
@@ -686,9 +691,10 @@ final class ScheduleConstraintBuilder
      * @param array<PriorityTier>                                                   $priorityTiers
      * @param array<Constraint>                                                     $constraints
      * @param array<Reservation>                                                    $reservations           persistent team→slot HARD pins (base/overlay)
-     * @param array<SharedTrainingBlock>                                            $sharedBlocks           P2-51 mutualisation blocks (base: plan NULL / period: = planId)
+     * @param array<SharedTrainingBlock>                                            $sharedBlocks           P2-51 mutualisation blocks (base: season plan / period: = planId)
      * @param array<TeamLink>                                                       $teamLinks              lot PASSERELLES — club+season bridges (roster-filtered)
      * @param list<array{row: PlaceTravelTime, venueAId: string, venueBId: string}> $venueTravelTimes       P2-53 RMM-8 — temps de trajet servis pour la saison (PlaceTravelTimeRepository::forSeason)
+     * @param array<string, array<string, mixed>>|null                              $implicitRules          le bloc bien-être d'un plan de période déjà résolu ; null = la portée saison
      *
      * @return array<string, mixed>
      */
@@ -708,7 +714,7 @@ final class ScheduleConstraintBuilder
         array $sharedBlocks = [],
         array $teamLinks = [],
         array $venueTravelTimes = [],
-        ?string $schedulePlanId = null,
+        ?array $implicitRules = null,
     ): array {
         $serializedConstraints = array_merge(
             $this->serializeTeamCoachConstraints($teamCoaches),
@@ -750,15 +756,13 @@ final class ScheduleConstraintBuilder
         );
 
         // Règles implicites « bien-être » (contrat 2.7) : le bloc RÉSOLU des 4 clés, réglages
-        // stockés par-dessus les défauts. PORTÉE (ADR-0002 inv. 5) : un build de PÉRIODE
-        // (`schedulePlanId` non-null) résout la COPIE du plan (`resolveForPlan`, repli saison si
-        // le plan est legacy) ; un build de BASE (null) résout la portée saison (`resolve`). Sans
+        // stockés par-dessus les défauts. PORTÉE (ADR-0002 inv. 5) : un build de PÉRIODE passe le
+        // bloc résolu sur la COPIE du plan (`resolveForPlan`, repli saison si le plan est legacy) ;
+        // un build de BASE n'en passe pas et résout la portée saison (`resolve`). Sans
         // résolveur (mode léger sans DB) ou sans club/saison → défauts (tout HARD), payload
         // d'absence de PR 1.
-        $implicitRules = ($this->implicitRuleResolver instanceof ImplicitRuleResolver && '' !== $clubId && '' !== $seasonId)
-            ? (null !== $schedulePlanId
-                ? $this->implicitRuleResolver->resolveForPlan($clubId, $seasonId, $schedulePlanId)
-                : $this->implicitRuleResolver->resolve($clubId, $seasonId))
+        $implicitRules ??= ($this->implicitRuleResolver instanceof ImplicitRuleResolver && '' !== $clubId && '' !== $seasonId)
+            ? $this->implicitRuleResolver->resolve($clubId, $seasonId)
             : ImplicitRuleResolver::defaults();
 
         // P2-53 RMM-8 PR-2 — la règle implicite `travelTime` naît OPT-IN : elle n'est émise ACTIVE
@@ -1095,6 +1099,16 @@ final class ScheduleConstraintBuilder
         $payload['slotTemplates'] = array_merge($existingSlots, $pins);
 
         return $payload;
+    }
+
+    /** Le plan de saison, qui porte les lignes du socle (lot 4). */
+    private function soclePlanIdOf(string $seasonId): string
+    {
+        if (!$this->soclePlan instanceof SoclePlan) {
+            throw new LogicException('ScheduleConstraintBuilder requires the season plan (SoclePlan) for club/season builds.');
+        }
+
+        return $this->soclePlan->idOf($seasonId);
     }
 
     /**

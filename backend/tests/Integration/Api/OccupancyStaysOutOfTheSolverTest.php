@@ -28,6 +28,7 @@ use App\Service\SchedulePlanProvisioner;
 use App\Tests\ChoosesPlanVersionTrait;
 use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\ProvisionsPeriodPlanTrait;
+use App\Tests\SeasonPlanOf;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -314,7 +315,7 @@ final class OccupancyStaysOutOfTheSolverTest extends WebTestCase
             ->setClubId($club->getId())->setSeasonId($season->getId())
             ->setVenueId($venue->getId())->setDayOfWeek(1)
             ->setStartTime(new DateTimeImmutable('18:00'))->setDurationMinutes(90)
-            ->setCapacity(1)->setSchedulePlanId(null));
+            ->setCapacity(1)->setSchedulePlanId(SeasonPlanOf::id(self::getContainer(), $season->getId())));
         $this->em->flush();
 
         return [$user, $club, $season, $venue, $team];

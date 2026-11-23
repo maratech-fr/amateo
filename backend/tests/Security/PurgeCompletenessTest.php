@@ -7,35 +7,56 @@ namespace App\Tests\Security;
 use App\Entity\CalendarEntry;
 use App\Entity\Club;
 use App\Entity\CoachWish;
+use App\Entity\Constraint;
+use App\Entity\ConstraintPeriodOverride;
 use App\Entity\HolidayReminderLog;
+use App\Entity\ImplicitRuleSetting;
 use App\Entity\Person;
 use App\Entity\Place;
+use App\Entity\Reservation;
 use App\Entity\Season;
+use App\Entity\SharedTrainingBlock;
+use App\Entity\SharedTrainingBlockTeam;
 use App\Entity\Sport;
 use App\Entity\SportCategory;
 use App\Entity\Team;
 use App\Entity\TeamCoach;
+use App\Entity\TeamPeriodOverride;
 use App\Entity\TenantOwnedInterface;
+use App\Entity\VenueOccupancy;
+use App\Entity\VenuePeriodOverride;
 use App\Entity\VenueTrainingSlot;
 use App\Enum\AuditAction;
 use App\Enum\CalendarEntryKind;
 use App\Enum\CalendarEntryPeriodType;
+use App\Enum\ConstraintFamily;
+use App\Enum\ConstraintRuleType;
+use App\Enum\ConstraintScope;
+use App\Enum\ImplicitRuleIntensity;
+use App\Enum\ImplicitRuleKey;
 use App\Enum\SeasonStatus;
 use App\Enum\SubscriptionOrigin;
 use App\Enum\TeamCoachRole;
+use App\EventListener\CacheInvalidationListener;
 use App\Service\ClubSubscriptionWriter;
 use App\Service\ErasedClubPurger;
+use App\Service\OverlayManager;
+use App\Service\ScheduleConstraintBuilder;
+use App\Service\SchedulePlanProvisioner;
 use App\Service\SeasonDataPurger;
 use App\Structure\Family;
 use App\Structure\FamilyCatalog;
+use App\Structure\Level;
 use App\Tests\CapturesDeletedTablesTrait;
 use App\Tests\CreatesPeopleAndPlacesTrait;
+use App\Tests\SeasonPlanOf;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
 use PHPUnit\Framework\Attributes\Group;
 use ReflectionClass;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
+use Symfony\Component\Cache\Adapter\TagAwareAdapterInterface;
 
 /**
  * BCK-24 — la purge de saison (rétention / reset) ET l'effacement RGPD d'un club
@@ -68,6 +89,12 @@ final class PurgeCompletenessTest extends KernelTestCase
      * au club), elle n'entre pas dans `FamilyCatalog::purgedWithSeason()` (`SeasonDataPurger::purge`).
      */
     private const string PURGED_BY_SEASON_ALONE = HolidayReminderLog::class;
+
+    /** Ce qu'un plan porte (lot 4, PR 2) : les six familles du socle devenu plan, les trois réglages de période. */
+    private const array PLAN_FAMILIES = [
+        VenueTrainingSlot::class, VenueOccupancy::class, Reservation::class, SharedTrainingBlockTeam::class, SharedTrainingBlock::class,
+        ImplicitRuleSetting::class, TeamPeriodOverride::class, VenuePeriodOverride::class, ConstraintPeriodOverride::class,
+    ];
 
     /** Les listes que les purgeurs tenaient à la main avant la déclaration des familles. */
     private const array RETIRED_LISTS = [
@@ -167,8 +194,9 @@ final class PurgeCompletenessTest extends KernelTestCase
     /**
      * L'effacement d'un club efface exactement, pour chaque saison, les familles de la purge de
      * saison et la ligne de saison, puis les familles que le catalogue efface avec le club ; son
-     * compte rendu `CLUB_PURGED` compte chaque ligne effacée (15 sur ce décor : 2 saisons, 8 lignes
-     * de saison dont une doléance purgée par son entrée de calendrier, 1 catégorie du club, 2 fiches
+     * compte rendu `CLUB_PURGED` compte chaque ligne effacée (16 sur ce décor : 2 saisons, 9 lignes
+     * de saison dont une doléance purgée par son entrée de calendrier et le plan de saison que porte le
+     * créneau depuis le lot 4, 1 catégorie du club, 2 fiches
      * de personne dont une sans rôle, gardée après la suppression de son coach, 2 lieux dont un sans
      * gymnase, gardé après la suppression du sien — lot 3, PR 4).
      */
@@ -186,7 +214,8 @@ final class PurgeCompletenessTest extends KernelTestCase
         $expected = [...$this->seasonPurgeTables(), 'season', ...$this->tablesOf($this->catalog()->purgedWithClub())];
         self::assertSame($this->sortedUnique($expected), $this->sortedUnique($executed));
 
-        self::assertSame(15, $deleted, 'le nombre rendu compte chaque ligne effacée');
+        // Lot 4 : le créneau du décor porte le plan de saison, né avec lui — une ligne de plus (16).
+        self::assertSame(16, $deleted, 'le nombre rendu compte chaque ligne effacée');
         $people = (int) self::getContainer()->get(EntityManagerInterface::class)->getConnection()->fetchOne(
             'SELECT COUNT(*) FROM person WHERE club_id = :club',
             ['club' => $club->getId()],
@@ -202,7 +231,7 @@ final class PurgeCompletenessTest extends KernelTestCase
             ['club' => $club->getId(), 'action' => AuditAction::CLUB_PURGED->value],
         );
         self::assertIsString($details, 'l\'effacement écrit son compte rendu');
-        self::assertSame(['rowsDeleted' => 15], json_decode($details, true, 512, \JSON_THROW_ON_ERROR));
+        self::assertSame(['rowsDeleted' => 16], json_decode($details, true, 512, \JSON_THROW_ON_ERROR));
     }
 
     /**
@@ -270,9 +299,143 @@ final class PurgeCompletenessTest extends KernelTestCase
         self::assertSame([], $left, "L'effacement du club laisse des lignes de saison dont la saison n'existe plus :\n  - " . implode("\n  - ", $left));
     }
 
+    /**
+     * Lot 4, PR 2 : tout ce qu'un plan porte est déclaré au niveau du plan — les six familles dont « plan nul »
+     * voulait dire « socle », et les trois réglages de période — et le catalogue les range parmi ce que la
+     * suppression d'un plan emporte, les membres d'un groupe avant le groupe. Une famille de plan oubliée
+     * survivrait à son plan, ou ne serait emportée que par la cascade en base, sans purger le cache des demandes.
+     */
+    public function testWhatAPlanCarriesIsDeclaredAndPurgedWithThePlan(): void
+    {
+        $catalog = $this->catalog();
+        $purged = $catalog->purgedWithPlan();
+
+        foreach (self::PLAN_FAMILIES as $class) {
+            self::assertSame(Level::PLAN, $catalog->of($class)->level, \sprintf('%s est une famille du plan', $class));
+            self::assertContains($class, $purged, \sprintf('%s part avec son plan', $class));
+        }
+        foreach ($purged as $class) {
+            self::assertSame(Level::PLAN, $catalog->of($class)->level, \sprintf('%s n\'est emportée avec le plan que parce qu\'elle est du plan', $class));
+        }
+        self::assertLessThan(
+            array_search(SharedTrainingBlock::class, $purged, true),
+            array_search(SharedTrainingBlockTeam::class, $purged, true),
+            'les membres d\'un groupe partent avant le groupe',
+        );
+    }
+
+    /**
+     * Lot 4, PR 2 : supprimer une période emporte, par l'ORM et avant le plan lui-même, chaque ligne que son plan
+     * porte ; la cascade en base n'est plus que le filet. Après, plus aucune ligne de la base ne nomme ce plan.
+     */
+    public function testDeletingAPeriodRemovesEveryRowOfItsPlanByTheOrmBeforeThePlan(): void
+    {
+        [$entry, $planId] = $this->closureWithARowInEveryPlanFamily();
+
+        $executed = $this->deletedTablesDuring(fn () => self::getContainer()->get(OverlayManager::class)->deletePeriodPlanForEntry($entry, force: true));
+
+        $planDeletion = array_search('schedule_plan', $executed, true);
+        self::assertIsInt($planDeletion, 'le plan est supprimé');
+        foreach ($this->tablesOf(self::PLAN_FAMILIES) as $table) {
+            $rowDeletion = array_search($table, $executed, true);
+            self::assertIsInt($rowDeletion, \sprintf('%s : ses lignes sont supprimées par l\'ORM, pas laissées à la cascade', $table));
+            self::assertLessThan($planDeletion, $rowDeletion, \sprintf('%s : ses lignes partent avant le plan', $table));
+        }
+
+        $connection = self::getContainer()->get(EntityManagerInterface::class)->getConnection();
+        $left = [];
+        foreach ($connection->fetchFirstColumn('SELECT table_name FROM information_schema.columns WHERE table_schema = \'public\' AND column_name = \'schedule_plan_id\' ORDER BY table_name') as $table) {
+            $count = (int) $connection->fetchOne(\sprintf('SELECT COUNT(*) FROM %s WHERE schedule_plan_id = ?', $connection->quoteIdentifier((string) $table)), [$planId]);
+            if ($count > 0) {
+                $left[] = \sprintf('%s (%d)', $table, $count);
+            }
+        }
+        self::assertSame([], $left, "Ces lignes nomment encore le plan supprimé :\n  - " . implode("\n  - ", $left));
+    }
+
+    /**
+     * Lot 4, PR 2 : supprimer une période purge le cache des demandes du club — la suppression passe par l'ORM,
+     * dont les événements vident le cache ; une suppression laissée à la seule cascade en base ne le viderait pas.
+     */
+    public function testDeletingAPeriodPurgesTheRequestCacheOfItsClub(): void
+    {
+        [$entry, , $clubId] = $this->closureWithARowInEveryPlanFamily();
+        $pool = self::getContainer()->get('cache.schedule');
+        self::assertInstanceOf(TagAwareAdapterInterface::class, $pool);
+        $probe = $pool->getItem('lot4-sonde-' . md5($clubId));
+        $probe->set(['demande' => 'en cache']);
+        $probe->tag([ScheduleConstraintBuilder::cacheTag($clubId)]);
+        $pool->save($probe);
+        self::assertTrue($pool->getItem('lot4-sonde-' . md5($clubId))->isHit(), 'témoin : la demande est en cache');
+
+        self::getContainer()->get(OverlayManager::class)->deletePeriodPlanForEntry($entry, force: true);
+        self::getContainer()->get(CacheInvalidationListener::class)->flushInvalidations();
+
+        self::assertFalse($pool->getItem('lot4-sonde-' . md5($clubId))->isHit(), 'la suppression de la période a purgé le cache des demandes du club');
+    }
+
     protected function setUp(): void
     {
         self::bootKernel();
+    }
+
+    /**
+     * Une fermeture et son plan, né par le provisioner, puis une ligne de chaque famille du plan : créneau,
+     * occupation, réservation, groupe mutualisé et ses deux membres, règle de bien-être, réglages d'équipe, de
+     * gymnase et de règle.
+     *
+     * @return array{0: CalendarEntry, 1: string, 2: string}
+     */
+    private function closureWithARowInEveryPlanFamily(): array
+    {
+        [$club, $season] = $this->clubWithSeason('Plan');
+        $em = self::getContainer()->get(EntityManagerInterface::class);
+        $clubId = $club->getId();
+        $seasonId = $season->getId();
+        $teamA = $this->team($clubId, $seasonId);
+        $teamB = $this->team($clubId, $seasonId)->setName('U13 F2');
+        $venue = $this->newVenue($clubId, $seasonId, 'Gymnase Nord');
+        $constraint = (new Constraint)->setClubId($clubId)->setSeasonId($seasonId)->setName('Pas le vendredi')->setScope(ConstraintScope::CLUB)
+            ->setFamily(ConstraintFamily::DAY)->setRuleType(ConstraintRuleType::HARD)->setConfig(['forbiddenDays' => [5]]);
+        $entry = (new CalendarEntry)->setClubId($clubId)->setSeasonId($seasonId)->setKind(CalendarEntryKind::PERIOD)
+            ->setPeriodType(CalendarEntryPeriodType::CLOSURE)->setTitle('Travaux')
+            ->setStartDate(new DateTimeImmutable('2026-02-09'))->setEndDate(new DateTimeImmutable('2026-02-13'));
+        foreach ([$teamA, $teamB, $venue, $constraint, $entry] as $row) {
+            $em->persist($row);
+        }
+        $em->flush();
+        $planId = self::getContainer()->get(SchedulePlanProvisioner::class)->provisionPeriodPlan($entry->getId());
+        self::assertIsString($planId);
+
+        $block = (new SharedTrainingBlock)->setClubId($clubId)->setSeasonId($seasonId)->setSchedulePlanId($planId)->setCommonSessions(1);
+        $em->persist($block);
+        $em->flush();
+        $rows = [
+            (new VenueTrainingSlot)->setClubId($clubId)->setSeasonId($seasonId)->setVenueId($venue->getId())->setDayOfWeek(1)
+                ->setStartTime(new DateTimeImmutable('18:00'))->setDurationMinutes(90)->setCapacity(1)->setSchedulePlanId($planId),
+            (new VenueOccupancy)->setClubId($clubId)->setSeasonId($seasonId)->setVenueId($venue->getId())->setDayOfWeek(3)
+                ->setStartTime(new DateTimeImmutable('14:00'))->setDurationMinutes(60)->setLabel('École')->setSchedulePlanId($planId),
+            (new Reservation)->setClubId($clubId)->setSeasonId($seasonId)->setTeamId($teamA->getId())->setVenueId($venue->getId())
+                ->setDayOfWeek(2)->setStartTime(new DateTimeImmutable('18:00'))->setDurationMinutes(90)->setSchedulePlanId($planId),
+            (new SharedTrainingBlockTeam)->setClubId($clubId)->setSeasonId($seasonId)->setSchedulePlanId($planId)->setBlockId($block->getId())->setTeamId($teamA->getId()),
+            (new SharedTrainingBlockTeam)->setClubId($clubId)->setSeasonId($seasonId)->setSchedulePlanId($planId)->setBlockId($block->getId())->setTeamId($teamB->getId()),
+            (new TeamPeriodOverride)->setClubId($clubId)->setSeasonId($seasonId)->setSchedulePlanId($planId)->setTeamId($teamA->getId())->setIsActive(false),
+            (new VenuePeriodOverride)->setClubId($clubId)->setSeasonId($seasonId)->setSchedulePlanId($planId)->setVenueId($venue->getId())->setDayOverrides(['1' => 'CLOSED']),
+            (new ConstraintPeriodOverride)->setClubId($clubId)->setSeasonId($seasonId)->setSchedulePlanId($planId)->setConstraintId($constraint->getId())->setIsActive(false),
+        ];
+        if (0 === $em->getRepository(ImplicitRuleSetting::class)->count(['schedulePlanId' => $planId])) {
+            $rows[] = (new ImplicitRuleSetting)->setClubId($clubId)->setSeasonId($seasonId)->setSchedulePlanId($planId)
+                ->setRuleKey(ImplicitRuleKey::COACH_REST_DAY)->setIntensity(ImplicitRuleIntensity::PREFERRED);
+        }
+        foreach ($rows as $row) {
+            $em->persist($row);
+        }
+        $em->flush();
+        $em->clear();
+        $reloaded = $em->getRepository(CalendarEntry::class)->find($entry->getId());
+        self::assertInstanceOf(CalendarEntry::class, $reloaded);
+
+        return [$reloaded, $planId, $clubId];
     }
 
     /**
@@ -410,7 +573,7 @@ final class PurgeCompletenessTest extends KernelTestCase
 
         $em->persist((new TeamCoach)->setClubId($clubId)->setSeasonId($seasonId)->setTeamId($team->getId())
             ->setCoachId($coach->getId())->setRole(TeamCoachRole::MAIN));
-        $em->persist((new VenueTrainingSlot)->setClubId($clubId)->setSeasonId($seasonId)->setVenueId($venue->getId())
+        $em->persist((new VenueTrainingSlot)->setClubId($clubId)->setSeasonId($seasonId)->setSchedulePlanId(SeasonPlanOf::id(self::getContainer(), $seasonId))->setVenueId($venue->getId())
             ->setDayOfWeek(1)->setStartTime(new DateTimeImmutable('18:00'))->setDurationMinutes(90)->setCapacity(1));
         $em->persist((new CoachWish)->setClubId($clubId)->setSeasonId($seasonId)->setCalendarEntryId($entry->getId())
             ->setWeekStart(new DateTimeImmutable('2026-04-06'))->setTeamId($team->getId())->setSlotsWanted(1));

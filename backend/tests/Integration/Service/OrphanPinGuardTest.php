@@ -31,6 +31,7 @@ use App\Service\SchedulePlanProvisioner;
 use App\Tests\ChoosesPlanVersionTrait;
 use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\ProvisionsPeriodPlanTrait;
+use App\Tests\SeasonPlanOf;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -456,7 +457,7 @@ final class OrphanPinGuardTest extends WebTestCase
         $this->venue = $this->newVenue($this->club->getId(), $this->season->getId(), 'Halle Coubertin')->setIsActive(true);
         $this->em->persist($this->venue);
         // Grille de SAISON : un seul créneau, mardi 18:00 — la période en héritera.
-        $this->em->persist((new VenueTrainingSlot)->setClubId($this->club->getId())->setSeasonId($this->season->getId())
+        $this->em->persist((new VenueTrainingSlot)->setClubId($this->club->getId())->setSeasonId($this->season->getId())->setSchedulePlanId(SeasonPlanOf::id(self::getContainer(), $this->season->getId()))
             ->setVenueId($this->venue->getId())->setDayOfWeek(2)
             ->setStartTime(new DateTimeImmutable('18:00'))->setDurationMinutes(90)->setCapacity(1));
         $this->em->flush();

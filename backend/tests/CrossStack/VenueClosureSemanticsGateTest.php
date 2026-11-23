@@ -24,6 +24,7 @@ use App\Enum\SeasonStatus;
 use App\Service\MatchPlacementPayloadBuilder;
 use App\Service\PlanVenueClosures;
 use App\Tests\CreatesPeopleAndPlacesTrait;
+use App\Tests\SeasonPlanOf;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -315,6 +316,7 @@ final class VenueClosureSemanticsGateTest extends KernelTestCase
         $season->setStatus(SeasonStatus::ACTIVE);
         $this->em->persist($season);
         $this->em->flush();
+        SeasonPlanOf::id(self::getContainer(), $season->getId());
 
         return [$club, $season];
     }

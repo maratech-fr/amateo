@@ -37,6 +37,7 @@ use App\Service\ScheduleResultImporter;
 use App\Tests\ChoosesPlanVersionTrait;
 use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\ProvisionsPeriodPlanTrait;
+use App\Tests\SeasonPlanOf;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -161,7 +162,7 @@ final class SchedulePlanStructureHashTest extends WebTestCase
         $this->socleSlot($socle, $team, $venue, 1, '18:00')
             ->setLockLevel(LockLevel::HARD)->setLockOrigin(LockOrigin::RESERVATION)->setCoachLateToleranceMinutes(10);
         $this->em->persist((new Reservation)
-            ->setClubId($club->getId())->setSeasonId($season->getId())->setSchedulePlanId(null)
+            ->setClubId($club->getId())->setSeasonId($season->getId())->setSchedulePlanId(SeasonPlanOf::id(self::getContainer(), $season->getId()))
             ->setTeamId($team->getId())->setVenueId($venue->getId())
             ->setDayOfWeek(1)->setStartTime(new DateTimeImmutable('18:00'))->setDurationMinutes(90)
             ->setCoachLateToleranceMinutes(10));
@@ -294,7 +295,7 @@ final class SchedulePlanStructureHashTest extends WebTestCase
             ->setClubId($club->getId())->setSeasonId($season->getId())
             ->setVenueId($venue->getId())->setDayOfWeek(4)
             ->setStartTime(new DateTimeImmutable('20:00'))->setDurationMinutes(90)
-            ->setCapacity(1)->setSchedulePlanId(null);
+            ->setCapacity(1)->setSchedulePlanId(SeasonPlanOf::id(self::getContainer(), $season->getId()));
         $this->em->persist($slot);
         $this->em->flush();
         $this->invalidateSeasonCache($club, $season);

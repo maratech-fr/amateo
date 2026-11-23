@@ -12,6 +12,7 @@ use App\Enum\SeasonStatus;
 use App\Tests\ChoosesPlanVersionTrait;
 use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\CreatesPeriodPlanTrait;
+use App\Tests\SeasonPlanOf;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -503,8 +504,8 @@ final class VenueOccupancyApiTest extends WebTestCase
         $id = \sprintf('%08x-%04x-4%03x-%04x-%012x', random_int(0, 0xFFFFFFFF), random_int(0, 0xFFFF), random_int(0, 0xFFF), random_int(0x8000, 0xBFFF), random_int(0, 0xFFFFFFFFFFFF));
         $this->em->getConnection()->executeStatement(
             'INSERT INTO venue_occupancy (id, version, created_at, updated_at, club_id, season_id, venue_id, day_of_week, start_time, duration_minutes, label, schedule_plan_id)'
-            . ' VALUES (:id, 1, now(), now(), :club, :season, :venue, :day, :start, :duration, :label, NULL)',
-            ['id' => $id, 'club' => $this->club->getId(), 'season' => $this->season->getId(), 'venue' => $venueId, 'day' => $day, 'start' => $start . ':00', 'duration' => $duration, 'label' => $label],
+            . ' VALUES (:id, 1, now(), now(), :club, :season, :venue, :day, :start, :duration, :label, :plan)',
+            ['id' => $id, 'club' => $this->club->getId(), 'season' => $this->season->getId(), 'venue' => $venueId, 'day' => $day, 'start' => $start . ':00', 'duration' => $duration, 'label' => $label, 'plan' => SeasonPlanOf::id(self::getContainer(), $this->season->getId())],
         );
 
         return $id;

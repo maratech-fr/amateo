@@ -8,8 +8,6 @@ use App\Enum\SeasonStatus;
 use App\Repository\SeasonRepository;
 use App\Structure\Family;
 use App\Structure\Level;
-use App\Structure\OnDelete;
-use App\Structure\RefersTo;
 use DateTimeImmutable;
 use Doctrine\ORM\Mapping as ORM;
 
@@ -51,17 +49,6 @@ class Season implements TenantOwnedInterface
 
     #[ORM\Column(type: 'string', length: 2048, nullable: true)]
     private ?string $exportPdfUrl = null;
-
-    /**
-     * planning-versions: the version whose structure is the CURRENTLY LOADED
-     * context (★). Set to the generated version on every COMPLETED season plan,
-     * and re-pointed to the source version by "Charger cette version" (which
-     * reloads that version's context without solving). Distinct from the
-     * baseline: this tracks "what am I working on now", not "the main plan".
-     */
-    #[ORM\Column(type: 'guid', nullable: true)]
-    #[RefersTo(Schedule::class, OnDelete::CLEAR)]
-    private ?string $liveContextScheduleId = null;
 
     /** @var array<string, mixed> */
     #[ORM\Column(type: 'json')]
@@ -190,18 +177,6 @@ class Season implements TenantOwnedInterface
     public function setExportPdfUrl(?string $exportPdfUrl): self
     {
         $this->exportPdfUrl = $exportPdfUrl;
-
-        return $this;
-    }
-
-    public function getLiveContextScheduleId(): ?string
-    {
-        return $this->liveContextScheduleId;
-    }
-
-    public function setLiveContextScheduleId(?string $liveContextScheduleId): self
-    {
-        $this->liveContextScheduleId = $liveContextScheduleId;
 
         return $this;
     }

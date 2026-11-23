@@ -25,6 +25,7 @@ use App\Tests\ChoosesPlanVersionTrait;
 use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\CrossStack\ParcImportReservationSemanticsGateTest;
 use App\Tests\Integration\Service\FfbbExcelImporterTest;
+use App\Tests\SeasonPlanOf;
 use App\Tests\Support\SubscribesClub;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
@@ -504,7 +505,7 @@ final class ParcImportExecuteTest extends WebTestCase
         foreach ([$a, $b] as $team) {
             foreach ([3, 4] as $day) {
                 $this->em->persist((new Reservation)
-                    ->setClubId($this->club->getId())->setSeasonId($this->season->getId())
+                    ->setClubId($this->club->getId())->setSeasonId($this->season->getId())->setSchedulePlanId(SeasonPlanOf::id(self::getContainer(), $this->season->getId()))
                     ->setTeamId($team->getId())->setVenueId($venue->getId())->setDayOfWeek($day)
                     ->setStartTime(new DateTimeImmutable('1970-01-01 16:00:00'))->setDurationMinutes(90));
             }
@@ -1635,7 +1636,7 @@ final class ParcImportExecuteTest extends WebTestCase
         $venue = $this->makeVenue('Salle à la main');
         foreach (['09:00', '12:00'] as $start) {
             $this->makeSlot($venue->getId(), 1, $start);
-            $this->em->persist((new Reservation)->setClubId($this->club->getId())->setSeasonId($this->season->getId())->setTeamId($team->getId())
+            $this->em->persist((new Reservation)->setClubId($this->club->getId())->setSeasonId($this->season->getId())->setSchedulePlanId(SeasonPlanOf::id(self::getContainer(), $this->season->getId()))->setTeamId($team->getId())
                 ->setVenueId($venue->getId())->setDayOfWeek(1)->setStartTime(new DateTimeImmutable($start))->setDurationMinutes(90));
         }
         $this->em->flush();
@@ -2037,7 +2038,7 @@ final class ParcImportExecuteTest extends WebTestCase
     {
         $this->scopeGucToClub($this->club->getId());
         $slot = (new VenueTrainingSlot)
-            ->setClubId($this->club->getId())->setSeasonId($this->season->getId())->setVenueId($venueId)
+            ->setClubId($this->club->getId())->setSeasonId($this->season->getId())->setSchedulePlanId(SeasonPlanOf::id(self::getContainer(), $this->season->getId()))->setVenueId($venueId)
             ->setDayOfWeek($day)->setStartTime(new DateTimeImmutable($start))->setDurationMinutes(90)->setCapacity($capacity);
         $this->em->persist($slot);
         $this->em->flush();
@@ -2145,12 +2146,12 @@ final class ParcImportExecuteTest extends WebTestCase
         $this->scopeGucToClub($this->club->getId());
         $block = (new SharedTrainingBlock)
             ->setClubId($this->club->getId())->setSeasonId($this->season->getId())
-            ->setSchedulePlanId(null)->setCommonSessions($commonSessions)->setLabel($label);
+            ->setSchedulePlanId(SeasonPlanOf::id(self::getContainer(), $this->season->getId()))->setCommonSessions($commonSessions)->setLabel($label);
         $this->em->persist($block);
         foreach ($teams as $team) {
             $this->em->persist((new SharedTrainingBlockTeam)
                 ->setClubId($this->club->getId())->setSeasonId($this->season->getId())
-                ->setSchedulePlanId(null)->setBlockId($block->getId())->setTeamId($team->getId()));
+                ->setSchedulePlanId(SeasonPlanOf::id(self::getContainer(), $this->season->getId()))->setBlockId($block->getId())->setTeamId($team->getId()));
         }
         $this->em->flush();
         $this->em->getConnection()->executeStatement(
@@ -2268,7 +2269,7 @@ final class ParcImportExecuteTest extends WebTestCase
 
         $block = (new SharedTrainingBlock)
             ->setClubId($otherClub->getId())->setSeasonId($otherSeason->getId())
-            ->setSchedulePlanId(null)->setCommonSessions(1)->setLabel($label);
+            ->setSchedulePlanId(SeasonPlanOf::id(self::getContainer(), $otherSeason->getId()))->setCommonSessions(1)->setLabel($label);
         $this->em->persist($block);
         $this->em->flush();
         $this->scopeGucToClub($this->club->getId());

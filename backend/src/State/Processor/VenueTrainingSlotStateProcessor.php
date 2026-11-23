@@ -116,10 +116,11 @@ class VenueTrainingSlotStateProcessor extends AbstractStateProcessor
     protected function createEntityFromInput(object $input): VenueTrainingSlot
     {
         $entity = new VenueTrainingSlot;
-        // Period slot (schedulePlanId set) vs seasonal (null) — set only on create;
+        // Period slot vs seasonal (the season plan, `null` at the API) — set only on create;
         // a slot never migrates between the seasonal and a period layer.
-        $this->assertSchedulePlanExists($this->entityManager, $input->schedulePlanId);
-        $entity->setSchedulePlanId($input->schedulePlanId);
+        $planId = $this->planFromApi($input->schedulePlanId);
+        $this->assertSchedulePlanExists($this->entityManager, $planId);
+        $entity->setSchedulePlanId($planId);
         if (null !== $input->venueId) {
             $entity->setVenueId($input->venueId);
         }
@@ -186,7 +187,7 @@ class VenueTrainingSlotStateProcessor extends AbstractStateProcessor
      */
     protected function mapEntityToOutput(object $entity): VenueTrainingSlotResource
     {
-        return VenueTrainingSlotResource::fromEntity($entity);
+        return VenueTrainingSlotResource::fromEntity($entity, $this->planToApi($entity->getSchedulePlanId(), $entity->getSeasonId()));
     }
 
     /**
@@ -258,15 +259,15 @@ class VenueTrainingSlotStateProcessor extends AbstractStateProcessor
     /**
      * Le libellé de groupe (« CEC3 ») appartient au planning de SAISON : c'est là qu'une
      * mutualisation se nomme, et la période hérite de son modèle sans libellé propre (la copie
-     * l'émet NULL, SchedulePlanProvisioner::copySeasonalSlotRows). Un créneau rattaché à un
-     * plan (schedulePlanId non null = créneau de période) ne peut donc pas en porter un — ni à la
+     * l'émet NULL, SchedulePlanProvisioner::copySeasonalSlotRows). Un créneau d'un plan de
+     * période (c'est la nature du plan qui le dit, lot 4) ne peut donc pas en porter un — ni à la
      * création ni à l'édition. On refuse plutôt que d'accepter un libellé que l'écran et l'export
      * montreraient pour une période sans que personne l'ait voulu. Vérifié AVANT la garde de
      * capacité (validateGroupLabel) pour que le motif renvoyé soit bien celui-ci.
      */
     private function validateGroupLabelBelongsToSeason(VenueTrainingSlot $entity): void
     {
-        if (null !== $entity->getSchedulePlanId() && null !== $entity->getGroupLabel()) {
+        if (null !== $entity->getGroupLabel() && !$this->soclePlanService()->isSeasonPlan($entity->getSchedulePlanId())) {
             $this->refuse('Le libellé de groupe appartient au planning de saison.');
         }
     }

@@ -10,12 +10,13 @@ use App\Entity\Schedule;
 use App\Entity\SchedulePlan;
 use App\Entity\SharedTrainingBlockTeam;
 use App\Enum\CalendarEntryPeriodType;
+use App\Plans\SoclePlan;
 use Doctrine\ORM\EntityManagerInterface;
 
 /**
  * Ce que le plan de chaque version dit de qui peut tenir une séance : ses indisponibilités
  * d'entraînement (saison : les permanentes ; période : le jeu que la génération reçoit) et ses
- * groupes déclarés (saison : sans plan ; période : ceux du plan, jamais un mélange). Lu par le radar
+ * groupes déclarés (saison : ceux du plan de saison ; période : ceux du plan, jamais un mélange). Lu par le radar
  * et par le payload de placement : les deux jugent une séance sur les mêmes données.
  */
 final class PlanHoldingInputs
@@ -23,6 +24,7 @@ final class PlanHoldingInputs
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
         private readonly PeriodConstraintSelector $periodConstraintSelector,
+        private readonly SoclePlan $soclePlan,
     ) {}
 
     /**
@@ -38,9 +40,10 @@ final class PlanHoldingInputs
 
         $teamsByPlanBlock = [];
         foreach ($this->entityManager->getRepository(SharedTrainingBlockTeam::class)->findBy([]) as $member) {
-            $teamsByPlanBlock[$member->getSchedulePlanId() ?? ''][$member->getBlockId()][] = $member->getTeamId();
+            $teamsByPlanBlock[$member->getSchedulePlanId()][$member->getBlockId()][] = $member->getTeamId();
         }
         $permanent = $this->entityManager->getRepository(Constraint::class)->findPermanentByClubSeason($clubId, $seasonId);
+        $soclePlanId = $this->soclePlan->idOf($seasonId);
 
         $blocked = [];
         $groups = [];
@@ -58,7 +61,7 @@ final class PlanHoldingInputs
                 $groups[$scheduleId] = array_values($teamsByPlanBlock[$planId] ?? []);
             } else {
                 $blocked[$scheduleId] = CoachDoubleBookingDetector::blockedIntervalsByCoach($permanent);
-                $groups[$scheduleId] = array_values($teamsByPlanBlock[''] ?? []);
+                $groups[$scheduleId] = array_values($teamsByPlanBlock[$soclePlanId] ?? []);
             }
         }
 

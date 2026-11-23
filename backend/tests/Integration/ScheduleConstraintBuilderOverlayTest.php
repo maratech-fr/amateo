@@ -41,6 +41,7 @@ use App\Service\ScheduleConstraintBuilder;
 use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\CrossStack\CoachWishUnavailabilityGateTest;
 use App\Tests\ProvisionsPeriodPlanTrait;
+use App\Tests\SeasonPlanOf;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -753,6 +754,7 @@ final class ScheduleConstraintBuilderOverlayTest extends KernelTestCase
         $seasonB->setStatus(SeasonStatus::ACTIVE);
         $this->em->persist($seasonB);
         $this->em->flush();
+        SeasonPlanOf::id(self::getContainer(), $seasonB->getId());
         $this->team($club, $seasonB, 'U11');
         $this->team($club, $seasonB, 'U13');
         $this->em->flush();
@@ -1028,7 +1030,7 @@ final class ScheduleConstraintBuilderOverlayTest extends KernelTestCase
         $slot->setStartTime(new DateTimeImmutable('18:00'));
         $slot->setDurationMinutes(90);
         $slot->setCapacity(1);
-        $slot->setSchedulePlanId($schedulePlanId);
+        $slot->setSchedulePlanId($schedulePlanId ?? SeasonPlanOf::id(self::getContainer(), $season->getId()));
         $this->em->persist($slot);
     }
 
@@ -1288,6 +1290,7 @@ final class ScheduleConstraintBuilderOverlayTest extends KernelTestCase
         $this->em->persist($season);
 
         $this->em->flush();
+        SeasonPlanOf::id(self::getContainer(), $season->getId());
 
         return [$club, $season];
     }

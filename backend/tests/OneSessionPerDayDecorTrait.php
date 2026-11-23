@@ -103,7 +103,7 @@ trait OneSessionPerDayDecorTrait
      */
     private function reservation(array $ctx, ?string $teamId, string $venueId, int $day, string $start): string
     {
-        $reservation = (new Reservation)->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])->setSchedulePlanId($ctx['planId'])
+        $reservation = (new Reservation)->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])->setSchedulePlanId($ctx['planId'] ?? SeasonPlanOf::id(static::getContainer(), $ctx['seasonId']))
             ->setTeamId($teamId)->setVenueId($venueId)->setDayOfWeek($day)
             ->setStartTime(new DateTimeImmutable($start))->setDurationMinutes(90);
         $this->em->persist($reservation);
@@ -134,7 +134,7 @@ trait OneSessionPerDayDecorTrait
     private function extraWindow(array $ctx, string $venueId, int $day, string $start, int $durationMinutes = 90): void
     {
         $this->scopeGucToClub($ctx['clubId']);
-        $this->em->persist((new VenueTrainingSlot)->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])->setVenueId($venueId)->setSchedulePlanId($ctx['planId'])
+        $this->em->persist((new VenueTrainingSlot)->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])->setVenueId($venueId)->setSchedulePlanId($ctx['planId'] ?? SeasonPlanOf::id(static::getContainer(), $ctx['seasonId']))
             ->setDayOfWeek($day)->setStartTime(new DateTimeImmutable($start))->setDurationMinutes($durationMinutes)->setCapacity(3));
         $this->em->flush();
     }
@@ -147,11 +147,11 @@ trait OneSessionPerDayDecorTrait
      */
     private function group(array $ctx, array $teamIds, int $commonSessions = 1): string
     {
-        $block = (new SharedTrainingBlock)->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])->setSchedulePlanId($ctx['planId'])->setCommonSessions($commonSessions);
+        $block = (new SharedTrainingBlock)->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])->setSchedulePlanId($ctx['planId'] ?? SeasonPlanOf::id(static::getContainer(), $ctx['seasonId']))->setCommonSessions($commonSessions);
         $this->em->persist($block);
         $this->em->flush();
         foreach ($teamIds as $teamId) {
-            $this->em->persist((new SharedTrainingBlockTeam)->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])->setSchedulePlanId($ctx['planId'])->setBlockId($block->getId())->setTeamId($teamId));
+            $this->em->persist((new SharedTrainingBlockTeam)->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])->setSchedulePlanId($ctx['planId'] ?? SeasonPlanOf::id(static::getContainer(), $ctx['seasonId']))->setBlockId($block->getId())->setTeamId($teamId));
         }
         $this->em->flush();
 
@@ -194,7 +194,7 @@ trait OneSessionPerDayDecorTrait
             ['Armand', 3, '18:00'],
         ];
         foreach ($windows as [$name, $day, $start]) {
-            $this->em->persist((new VenueTrainingSlot)->setClubId($clubId)->setSeasonId($seasonId)->setVenueId($venueIds[$name])
+            $this->em->persist((new VenueTrainingSlot)->setClubId($clubId)->setSeasonId($seasonId)->setSchedulePlanId(SeasonPlanOf::id(static::getContainer(), $seasonId))->setVenueId($venueIds[$name])
                 ->setDayOfWeek($day)->setStartTime(new DateTimeImmutable($start))->setDurationMinutes(90)->setCapacity(3));
         }
 

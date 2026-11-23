@@ -30,6 +30,7 @@ use App\Export\ExportEmptyWindow;
 use App\Export\ScheduleExportDataProvider;
 use App\Tests\ChoosesPlanVersionTrait;
 use App\Tests\CreatesPeopleAndPlacesTrait;
+use App\Tests\SeasonPlanOf;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -66,6 +67,7 @@ final class ScheduleExportEmptySlotsTest extends KernelTestCase
         $slot = new VenueTrainingSlot;
         $slot->setClubId($club->getId());
         $slot->setSeasonId($season->getId());
+        $slot->setSchedulePlanId(SeasonPlanOf::id(self::getContainer(), $season->getId()));
         $slot->setVenueId($venue->getId());
         $slot->setDayOfWeek(3);
         $slot->setStartTime(new DateTimeImmutable('18:00'));
@@ -196,6 +198,7 @@ final class ScheduleExportEmptySlotsTest extends KernelTestCase
         $window = new VenueTrainingSlot;
         $window->setClubId($club->getId());
         $window->setSeasonId($season->getId());
+        $window->setSchedulePlanId(SeasonPlanOf::id(self::getContainer(), $season->getId()));
         $window->setVenueId($venue->getId());
         $window->setDayOfWeek(3);
         $window->setStartTime(new DateTimeImmutable('18:00'));
@@ -219,7 +222,7 @@ final class ScheduleExportEmptySlotsTest extends KernelTestCase
         $block = new SharedTrainingBlock;
         $block->setClubId($club->getId());
         $block->setSeasonId($season->getId());
-        $block->setSchedulePlanId(null);
+        $block->setSchedulePlanId(SeasonPlanOf::id(self::getContainer(), $season->getId()));
         $block->setCommonSessions(1);
         $block->setLabel('Baby U7-U9');
         $this->em->persist($block);
@@ -227,7 +230,7 @@ final class ScheduleExportEmptySlotsTest extends KernelTestCase
             $member = new SharedTrainingBlockTeam;
             $member->setClubId($club->getId());
             $member->setSeasonId($season->getId());
-            $member->setSchedulePlanId(null);
+            $member->setSchedulePlanId(SeasonPlanOf::id(self::getContainer(), $season->getId()));
             $member->setBlockId($block->getId());
             $member->setTeamId($teamId);
             $this->em->persist($member);
@@ -271,6 +274,7 @@ final class ScheduleExportEmptySlotsTest extends KernelTestCase
         $retailored = new VenueTrainingSlot;
         $retailored->setClubId($club->getId());
         $retailored->setSeasonId($season->getId());
+        $retailored->setSchedulePlanId(SeasonPlanOf::id(self::getContainer(), $season->getId()));
         $retailored->setVenueId($venue->getId());
         $retailored->setDayOfWeek(3);
         $retailored->setStartTime(new DateTimeImmutable('17:30'));
@@ -500,6 +504,7 @@ final class ScheduleExportEmptySlotsTest extends KernelTestCase
         $slot = new VenueTrainingSlot;
         $slot->setClubId($club->getId());
         $slot->setSeasonId($season->getId());
+        $slot->setSchedulePlanId(SeasonPlanOf::id(self::getContainer(), $season->getId()));
         $slot->setVenueId($venue->getId());
         $slot->setDayOfWeek($day);
         $slot->setStartTime(new DateTimeImmutable($start));
@@ -549,7 +554,7 @@ final class ScheduleExportEmptySlotsTest extends KernelTestCase
         $slot = new VenueTrainingSlot;
         $slot->setClubId($club->getId());
         $slot->setSeasonId($season->getId());
-        $slot->setSchedulePlanId($planId);
+        $slot->setSchedulePlanId($planId ?? SeasonPlanOf::id(self::getContainer(), $season->getId()));
         $slot->setVenueId($venue->getId());
         $slot->setDayOfWeek($day);
         $slot->setStartTime(new DateTimeImmutable($start));

@@ -43,7 +43,7 @@ use Symfony\Component\HttpKernel\Exception\UnprocessableEntityHttpException;
  *                       que le moteur rendrait INFEASIBLE — on l'interdit à la source. Une
  *                       réservation qui COMPLÈTE une case bloc n'est pas individuelle (exemptée).
  *
- * La PORTÉE (socle `null` vs plan de période) borne toutes les lectures : deux mondes distincts,
+ * La PORTÉE (le plan : de saison pour le socle, ou de période) borne toutes les lectures : deux mondes distincts,
  * jamais d'union (le filtre tenant Doctrine ajoute le club + la saison courants).
  *
  * P2-51 PR-7 — le {@see SharedTrainingBlock} est la SEULE notion de mutualisation (le modèle groupe
@@ -172,7 +172,7 @@ final class ReservationGroupOccupancy
         string $venueId,
         int $dayOfWeek,
         DateTimeImmutable $startTime,
-        ?string $schedulePlanId,
+        string $schedulePlanId,
     ): void {
         // (a) EXCLUSIVITÉ — le créneau visé doit être VIDE de toute autre réservation.
         if ([] !== $this->reservationsOnCase($venueId, $dayOfWeek, $startTime, $schedulePlanId)) {
@@ -212,7 +212,7 @@ final class ReservationGroupOccupancy
         string $venueId,
         int $dayOfWeek,
         DateTimeImmutable $startTime,
-        ?string $schedulePlanId,
+        string $schedulePlanId,
         ?string $clubId = null,
         ?string $seasonId = null,
         string $actionContext = 'planning',
@@ -250,7 +250,7 @@ final class ReservationGroupOccupancy
         string $venueId,
         int $dayOfWeek,
         DateTimeImmutable $startTime,
-        ?string $schedulePlanId,
+        string $schedulePlanId,
     ): void {
         $freeSlots = $this->freeSlotCountOnCase($venueId, $dayOfWeek, $startTime, $schedulePlanId);
         // Décision fondateur « un max par case » : un seul créneau libre par case, quelle que soit
@@ -277,7 +277,7 @@ final class ReservationGroupOccupancy
      * on rend TOUTES les réservations de cette case (les membres du bloc), `$reservation` comprise ;
      * sinon `[]` : la réservation est INDIVIDUELLE, elle se supprime seule.
      *
-     * La portée du plan de `$reservation` (socle `null` vs période) borne toutes les lectures — le
+     * La portée du plan de `$reservation` (socle ou période) borne toutes les lectures — le
      * filtre tenant Doctrine ajoute le club + la saison courants, comme {@see assertIndividualReservationAllowed}.
      *
      * @return list<Reservation>
@@ -312,7 +312,7 @@ final class ReservationGroupOccupancy
      *
      * @param array<string, true> $memberSet
      */
-    public function groupCompleteCaseCount(array $memberSet, ?string $schedulePlanId): int
+    public function groupCompleteCaseCount(array $memberSet, string $schedulePlanId): int
     {
         $cases = [];
         foreach (self::reservationsOnGroupCompleteCases($this->reservationsInScope($schedulePlanId), $memberSet) as $reservation) {
@@ -325,7 +325,7 @@ final class ReservationGroupOccupancy
     /**
      * Lot 4bis — combien de créneaux LIBRES (réservations sans équipe) occupent déjà la case.
      */
-    private function freeSlotCountOnCase(string $venueId, int $dayOfWeek, DateTimeImmutable $startTime, ?string $schedulePlanId): int
+    private function freeSlotCountOnCase(string $venueId, int $dayOfWeek, DateTimeImmutable $startTime, string $schedulePlanId): int
     {
         $count = 0;
         foreach ($this->reservationsOnCase($venueId, $dayOfWeek, $startTime, $schedulePlanId) as $reservation) {
@@ -353,7 +353,7 @@ final class ReservationGroupOccupancy
      *
      * @param array<string, true> $finalSet
      */
-    private function assertSoloBudgetAllows(string $teamId, array $finalSet, ?string $schedulePlanId, ?string $clubId, ?string $seasonId, string $actionContext = 'planning'): void
+    private function assertSoloBudgetAllows(string $teamId, array $finalSet, string $schedulePlanId, ?string $clubId, ?string $seasonId, string $actionContext = 'planning'): void
     {
         if (null === $clubId || null === $seasonId) {
             return; // hors portée club+saison (non-HTTP) : rien à opposer.
@@ -382,7 +382,7 @@ final class ReservationGroupOccupancy
      * séances, ou ignorez cette réservation. », ailleurs « Augmentez son nombre de séances dans sa
      * fiche. ». Plus jamais « s'entraîne uniquement en groupe » ni « réservez le groupe ». Noms, pas d'ids.
      */
-    private function soloOnlyBlockMessage(string $teamId, ?string $schedulePlanId, int $sessions, string $actionContext): string
+    private function soloOnlyBlockMessage(string $teamId, string $schedulePlanId, int $sessions, string $actionContext): string
     {
         $groups = [];
         foreach ($this->blockMemberSetsInScope($schedulePlanId) as $memberSet) {
@@ -431,7 +431,7 @@ final class ReservationGroupOccupancy
      *
      * @return list<Reservation>
      */
-    private function reservationsOnCase(string $venueId, int $dayOfWeek, DateTimeImmutable $startTime, ?string $schedulePlanId): array
+    private function reservationsOnCase(string $venueId, int $dayOfWeek, DateTimeImmutable $startTime, string $schedulePlanId): array
     {
         $qb = $this->entityManager->getRepository(Reservation::class)->createQueryBuilder('r')
             ->where('r.venueId = :venueId')
@@ -452,7 +452,7 @@ final class ReservationGroupOccupancy
      *
      * @return array<string, true>
      */
-    private function reservedTeamSetOnCase(string $venueId, int $dayOfWeek, DateTimeImmutable $startTime, ?string $schedulePlanId): array
+    private function reservedTeamSetOnCase(string $venueId, int $dayOfWeek, DateTimeImmutable $startTime, string $schedulePlanId): array
     {
         $set = [];
         foreach ($this->reservationsOnCase($venueId, $dayOfWeek, $startTime, $schedulePlanId) as $reservation) {
@@ -472,7 +472,7 @@ final class ReservationGroupOccupancy
      *
      * @param array<string, true> $teamSet
      */
-    private function occupantCount(array $teamSet, ?string $schedulePlanId): int
+    private function occupantCount(array $teamSet, string $schedulePlanId): int
     {
         $accountedFor = [];
         $groupCount = 0;
@@ -534,7 +534,7 @@ final class ReservationGroupOccupancy
      * Capacité EFFECTIVE de la case : `capacity` du créneau sur un gymnase divisible, sinon 1
      * (`effectiveSlotCapacity`, `reservationSlots.ts`). Aucun créneau correspondant → 1 (défaut sûr).
      */
-    private function effectiveSlotCapacity(string $venueId, int $dayOfWeek, DateTimeImmutable $startTime, ?string $schedulePlanId): int
+    private function effectiveSlotCapacity(string $venueId, int $dayOfWeek, DateTimeImmutable $startTime, string $schedulePlanId): int
     {
         $venue = $this->entityManager->getRepository(Venue::class)->findOneBy(['id' => $venueId]);
         if (!$venue instanceof Venue || !$venue->getCanSplit()) {
@@ -545,7 +545,7 @@ final class ReservationGroupOccupancy
         return $slot instanceof VenueTrainingSlot ? $slot->getCapacity() : 1;
     }
 
-    private function slotOnCase(string $venueId, int $dayOfWeek, DateTimeImmutable $startTime, ?string $schedulePlanId): ?VenueTrainingSlot
+    private function slotOnCase(string $venueId, int $dayOfWeek, DateTimeImmutable $startTime, string $schedulePlanId): ?VenueTrainingSlot
     {
         $qb = $this->entityManager->getRepository(VenueTrainingSlot::class)->createQueryBuilder('s')
             ->where('s.venueId = :venueId')
@@ -571,7 +571,7 @@ final class ReservationGroupOccupancy
      *
      * @return list<Reservation>
      */
-    private function reservationsInScope(?string $schedulePlanId): array
+    private function reservationsInScope(string $schedulePlanId): array
     {
         $qb = $this->entityManager->getRepository(Reservation::class)->createQueryBuilder('r');
         $this->scopePlan($qb, 'r', $schedulePlanId);
@@ -591,7 +591,7 @@ final class ReservationGroupOccupancy
      *
      * @return array<string, array<string, true>> blockId => memberSet
      */
-    private function blockMemberSetsInScope(?string $schedulePlanId): array
+    private function blockMemberSetsInScope(string $schedulePlanId): array
     {
         $qb = $this->entityManager->getRepository(SharedTrainingBlock::class)->createQueryBuilder('b');
         $this->scopePlan($qb, 'b', $schedulePlanId);
@@ -619,12 +619,12 @@ final class ReservationGroupOccupancy
      *
      * @param array<string, true> $reservedSet
      */
-    private function reservedSetMatchesABlock(array $reservedSet, ?string $schedulePlanId): bool
+    private function reservedSetMatchesABlock(array $reservedSet, string $schedulePlanId): bool
     {
         return null !== self::matchingBlock($reservedSet, $this->blockMemberSetsInScope($schedulePlanId));
     }
 
-    private function teamReservationCount(string $teamId, ?string $schedulePlanId): int
+    private function teamReservationCount(string $teamId, string $schedulePlanId): int
     {
         $qb = $this->entityManager->getRepository(Reservation::class)->createQueryBuilder('r')
             ->select('COUNT(r.id)')
@@ -636,16 +636,11 @@ final class ReservationGroupOccupancy
     }
 
     /**
-     * Borne une requête à la portée du plan : socle (`schedulePlanId IS NULL`) et période
-     * (`= :planId`) sont deux mondes distincts, jamais d'union (ADR-0002).
+     * Borne une requête à la portée du plan : socle (le plan de saison) et période sont deux
+     * mondes distincts, jamais d'union (ADR-0002).
      */
-    private function scopePlan(QueryBuilder $qb, string $alias, ?string $schedulePlanId): void
+    private function scopePlan(QueryBuilder $qb, string $alias, string $schedulePlanId): void
     {
-        if (null === $schedulePlanId) {
-            $qb->andWhere($alias . '.schedulePlanId IS NULL');
-
-            return;
-        }
         $qb->andWhere($alias . '.schedulePlanId = :planId')->setParameter('planId', $schedulePlanId);
     }
 }

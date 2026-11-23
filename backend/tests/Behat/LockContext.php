@@ -139,7 +139,7 @@ final class LockContext extends BaseContext
         // La version d'entrée doit être la version CHARGÉE, seule modifiable. Pointeur posé en SQL pour
         // la même raison que ci-dessus (« Charger » écraserait la structure du club de démonstration).
         $this->dbalExec(
-            \sprintf('UPDATE season SET live_context_schedule_id=\'%s\' WHERE id=(SELECT season_id FROM schedule WHERE id=\'%s\')', $this->socleVersionId, $this->socleVersionId),
+            \sprintf('UPDATE schedule_plan SET lock_source_schedule_id=\'%s\' WHERE id=(SELECT schedule_plan_id FROM schedule WHERE id=\'%s\')', $this->socleVersionId, $this->socleVersionId),
             admin: true,
         );
     }

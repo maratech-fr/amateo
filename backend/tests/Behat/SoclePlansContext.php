@@ -59,6 +59,14 @@ final class SoclePlansContext extends BaseContext
     /** Entrée de la période dont on tente l'ouverture sans socle (scénario refus). */
     private string $refusedEntryId = '';
 
+    /** Vacances à venir adaptées sur la grille du socle (scénario des deux grilles). */
+    private string $holidayEntryId = '';
+
+    private string $holidayPlanId = '';
+
+    /** Créneau ajouté à la grille du socle par le scénario, retiré en fin. */
+    private string $addedSocleSlotId = '';
+
     private int $refusedStatus = 0;
 
     private string $refusedError = '';
@@ -212,7 +220,7 @@ final class SoclePlansContext extends BaseContext
         // Seule la version chargée se valide. Le dépointage silencieux ci-dessus laisse des sœurs qu'un
         // vrai parcours n'a pas (valider les supprime) : on la désigne, en SQL pour la même raison.
         $this->dbalExec(
-            \sprintf('UPDATE season SET live_context_schedule_id=\'%s\' WHERE id=\'%s\'', $this->chosenAtEntry, $this->seasonId),
+            \sprintf('UPDATE schedule_plan SET lock_source_schedule_id=\'%s\' WHERE season_id=\'%s\' AND type=\'SEASON\'', $this->chosenAtEntry, $this->seasonId),
             admin: true,
         );
 
@@ -276,6 +284,67 @@ final class SoclePlansContext extends BaseContext
         );
         if ('0' !== $wishes) {
             throw new RuntimeException('les doléances des vacances à venir auraient dû disparaître avec la collecte');
+        }
+    }
+
+    #[Given('des vacances à venir, adaptées sur la grille du planning de saison')]
+    public function desVacancesAVenirAdaptees(): void
+    {
+        // Fenêtre au-delà de celles des autres scénarios (+105, +112, +126 jours).
+        $start = date('Y-m-d', (int) strtotime('next monday +140 days'));
+        $end = date('Y-m-d', (int) strtotime($start . ' +6 days'));
+        $entry = $this->apiPost('calendar_entries', [
+            'kind' => 'period',
+            'periodType' => 'holiday',
+            'title' => 'Vacances à venir (fonctionnel grilles)',
+            'startDate' => $start,
+            'endDate' => $end,
+        ], $this->token);
+        $this->holidayEntryId = $this->idOf($entry, 'vacances à venir');
+
+        $plan = $this->apiPost('schedule_plans', ['calendarEntryId' => $this->holidayEntryId], $this->token);
+        $this->holidayPlanId = $this->idOf($plan, 'planning des vacances à venir');
+    }
+
+    #[Then('la grille des vacances est celle du planning de saison')]
+    public function laGrilleDesVacancesEstCelleDuSocle(): void
+    {
+        $socle = $this->gridOf('');
+        if ([] === $socle) {
+            throw new RuntimeException('la grille du planning de saison est vide — la base est-elle seedée ?');
+        }
+        $holiday = $this->gridOf($this->holidayPlanId);
+        if ($socle !== $holiday) {
+            throw new RuntimeException(\sprintf('la grille des vacances (%d créneaux) devrait être la copie de celle du planning de saison (%d créneaux)', \count($holiday), \count($socle)));
+        }
+    }
+
+    #[Then('modifier la grille du planning de saison ne change pas la grille des vacances')]
+    public function modifierLaGrilleDuSocleNeChangePasLesVacances(): void
+    {
+        $holidayBefore = $this->gridOf($this->holidayPlanId);
+        $venueId = explode('|', $holidayBefore[0])[0];
+
+        // Un créneau de saison neuf, le dimanche à 7 h : hors de toute grille seedée.
+        $slot = $this->apiPost('venue_training_slots', [
+            'venueId' => $venueId,
+            'dayOfWeek' => 7,
+            'startTime' => '07:00',
+            'durationMinutes' => 60,
+            'capacity' => 1,
+        ], $this->token);
+        if (201 !== $slot['status']) {
+            throw new RuntimeException(\sprintf('ajouter un créneau à la grille du planning de saison a répondu %d (201 attendu)', $slot['status']));
+        }
+        $this->addedSocleSlotId = $this->idOf($slot, 'créneau de saison');
+
+        $added = \sprintf('%s|7|07:00|60|1', $venueId);
+        $socle = $this->gridOf('');
+        if (!\in_array($added, $socle, true)) {
+            throw new RuntimeException(\sprintf('le créneau ajouté (%s) devrait figurer dans la grille du planning de saison (%d créneaux lus)', $added, \count($socle)));
+        }
+        if ($holidayBefore !== $this->gridOf($this->holidayPlanId)) {
+            throw new RuntimeException('ajouter un créneau au planning de saison a changé la grille des vacances — chacun devrait garder la sienne');
         }
     }
 
@@ -349,6 +418,10 @@ final class SoclePlansContext extends BaseContext
             }
         }
 
+        if ('' !== $this->addedSocleSlotId) {
+            $this->apiDelete(\sprintf('venue_training_slots/%s', $this->addedSocleSlotId), $this->token);
+        }
+
         // La collecte des vacances à venir : purgée par la bascule en cas de succès, retirée
         // ici défensivement si le scénario s'est arrêté avant (DELETE tolérant).
         if ('' !== $this->collecteWishId) {
@@ -360,7 +433,7 @@ final class SoclePlansContext extends BaseContext
 
         // Le planning de période à venir : son entrée survit à la bascule (l'entrée n'est jamais
         // détruite), on la retire ; DELETE tolérant si elle a déjà disparu.
-        foreach ([$this->futureEntryId, $this->refusedEntryId, $this->collecteEntryId] as $entryId) {
+        foreach ([$this->futureEntryId, $this->refusedEntryId, $this->collecteEntryId, $this->holidayEntryId] as $entryId) {
             if ('' !== $entryId) {
                 $this->apiDelete(\sprintf('calendar_entries/%s', $entryId), $this->token);
             }
@@ -373,6 +446,37 @@ final class SoclePlansContext extends BaseContext
         if ('' !== $this->startedEntryId) {
             $this->dbalExec(\sprintf('DELETE FROM calendar_entry WHERE id=\'%s\'', $this->startedEntryId), admin: true);
         }
+    }
+
+    /**
+     * La grille d'un plan lue par l'API, toutes pages : `gymnase|jour|heure|durée|capacité`, triée. `''` = la
+     * liste par défaut, celle du planning de saison.
+     *
+     * @return list<string>
+     */
+    private function gridOf(string $planId): array
+    {
+        $query = '' === $planId ? 'venue_training_slots?' : \sprintf('venue_training_slots?schedulePlanId=%s&', $planId);
+        $grid = [];
+        for ($page = 1; $page <= 50; ++$page) {
+            $response = $this->apiGet($query . 'page=' . $page, $this->token);
+            if (200 !== $response['status']) {
+                throw new RuntimeException(\sprintf('lire la grille a répondu %d (200 attendu)', $response['status']));
+            }
+            $members = $response['json']['member'] ?? [];
+            $members = array_values(array_filter(\is_array($members) ? $members : [], 'is_array'));
+            foreach ($members as $slot) {
+                $start = \is_string($slot['startTime'] ?? null) ? $slot['startTime'] : '';
+                $grid[] = \sprintf('%s|%s|%s|%s|%s', \is_string($slot['venueId'] ?? null) ? $slot['venueId'] : '', \is_int($slot['dayOfWeek'] ?? null) ? $slot['dayOfWeek'] : '', 1 === preg_match('/T?(\d{2}:\d{2})/', $start, $m) ? $m[1] : $start, \is_int($slot['durationMinutes'] ?? null) ? $slot['durationMinutes'] : '', \is_int($slot['capacity'] ?? null) ? $slot['capacity'] : '');
+            }
+            // Jusqu'à la page vide : `totalItems` de cette liste ne compte que la page (30 lus, 82 en base).
+            if ([] === $members) {
+                break;
+            }
+        }
+        sort($grid);
+
+        return $grid;
     }
 
     private function freshestCompletedSeasonVersion(): string

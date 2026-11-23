@@ -10,7 +10,6 @@ use App\Access\Module;
 use App\Entity\CalendarEntry;
 use App\Entity\Fixture;
 use App\Entity\Schedule;
-use App\Entity\Season;
 use App\Enum\ScheduleStatus;
 use App\Service\FixtureVenueLossMarker;
 use App\Service\FutureHolidayCollectePurger;
@@ -166,8 +165,6 @@ final class ValidateScheduleController extends AbstractController implements Sea
                 $siblings[] = $sibling;
             }
 
-            $season = $this->entityManager->getRepository(Season::class)->find($schedule->getSeasonId());
-
             // Garde destructive (même idiome que ReopenScheduleController) : choisir une
             // AUTRE version déplace le calendrier de base, ce qui invalide les plans
             // secondaires bâtis sur l'ancien socle. Clé sur le POINTEUR — la seule
@@ -230,10 +227,12 @@ final class ValidateScheduleController extends AbstractController implements Sea
             // La ★ (photo chargée) peut être posée sur une sœur qu'on s'apprête à
             // supprimer : la repointer sur la version choisie, dont la photo devient
             // la vérité (inv. 17 — la ★ reste, c'est l'auto-POINTEUR qui est mort).
-            if ($season instanceof Season && null !== $season->getLiveContextScheduleId()) {
+            // Lot 4 : la ★ du socle vit sur son plan.
+            if (null === $entryId) {
+                $loadedId = $this->schedulePlanProvisioner->lockSourceScheduleIdOfPlan($planId);
                 foreach ($siblings as $sibling) {
-                    if ($sibling->getId() === $season->getLiveContextScheduleId()) {
-                        $season->setLiveContextScheduleId($schedule->getId());
+                    if ($sibling->getId() === $loadedId) {
+                        $this->schedulePlanProvisioner->pointLockSource($planId, $schedule->getId());
                         break;
                     }
                 }

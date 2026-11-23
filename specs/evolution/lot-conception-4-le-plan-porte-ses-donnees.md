@@ -1,7 +1,7 @@
 # Lot 4 · Le plan porte ses données : plan d'exécution
 
 **Statut : version finale (v3 sur 4, après deux passes de `smith`). Plan validé par le fondateur le 2026-11-22 avec sa
-décision (§10) et l'écart E1 (§3.7). PR 1 livrée (le filet, écarts ci-dessous) ; les PR suivantes restent à faire, une fois les mesures
+décision (§10) et l'écart E1 (§3.7). PR 1 (le filet) et PR 2 (le socle a son plan) livrées, écarts ci-dessous ; les PR suivantes restent à faire, une fois les mesures
 de `link` (§6) faites.** Voie **Full**. Branche cible : `lot/conception` (une PR ouverte à la fois ; « Lot Gate » seul :
 `docs/ops/ci-runner.md` § Branche de lot ; avant chaque merge : `make -C backend tests-complete` + features et specs de la
 zone sur la stack d'épreuve). Exécutant : `neo`, après les rouges de `tank`. Cadrage : la conception validée en tient lieu
@@ -150,9 +150,17 @@ Ordre 1 → 2 → 3a → 3b → 4 → 5. Raison : chaque conversion prouvée seu
 - Première mesure des plafonds (`make ci-mesure PART=origin/lot/conception`).
 - Tests : lignes 1 à 3. `/security-review` : non.
 
-### PR 2 · « Le socle a son plan »
+### PR 2 · « Le socle a son plan » — livrée
 - Migration : plan de saison manquant créé ; plan de saison posé sur les lignes à plan nul ; NOT NULL ; clé en cascade ajoutée aux trois tables qui ne l'ont pas ; pointeur recopié puis colonne supprimée ; photos converties ; s'annule si un compte diffère ou si une unicité est violée. Règles de bien-être d'un plan ancien : matérialisées (décision du §10).
 - Code : `SoclePlan` ; tous les sites que rend le balayage, dont `MoveSlotService.php:1057`, `ScheduleResultImporter.php:234`, `GenerationBlockersGuard.php:87`, `MutualizeSlotService.php:109`, `:334`, `StructureRestorer.php:170`, `:191`, `:294`, `VenueTrainingSlotStateProcessor.php:269`, `StructureAnchor`, `StructureSnapshotter.php:128-130` ; les quatre écrivains du pointeur, `ScheduleStateProvider.php:88`, `SecondSessionSameDayDetector.php:77` ; `SeasonTransitionService`, `ParcImportExecutor`/`Analyzer`, seeds ; niveaux `#[Family]` à `Level::PLAN` ; `OverlayManager.php:105-115` lu sur le catalogue ; le fil-piège.
+- **Écarts au plan, tels que livrés** :
+  - `SoclePlan::idOf` **lève sans repli** si la saison n'a pas de plan de saison (cas impossible, `CLAUDE.md` §6) : une lecture ne crée ni ne verrouille rien. Contrat validé.
+  - Les décors de test qui écrivent une saison à la main lui font **naître son plan de saison** (`tests/SeasonPlanOf`, outil de test ; `ProvisionsPeriodPlanTrait`), comme le feraient la naissance d'un club ou « Préparer la saison suivante » ; le code de l'application ne le fait nulle part.
+  - Le balayage `NoNullPlanBranchTest` fait foi des sites corrigés (la liste du plan n'était qu'indicative). Exceptions nommées dans le test : `Plans/SoclePlan.php`, `ApiResource/` et `Dto/` pour la seule déclaration nullable (E2, jusqu'au lot 6), `Entity/Schedule.php` pour le seul `IS NOT NULL` de l'index partiel des versions.
+  - La purge par l'ORM (`OverlayManager::purgePlanAnchoredSettings`) lit `FamilyCatalog::purgedWithPlan()` ; elle passe avant `deletePeriodPlan`, la cascade en base reste le filet. Un scénario Behat de purge (`supprimer-emporte-ce-qui-en-depend.feature`) le prouve : supprimer une fermeture emporte grille, réservations, groupes et règles de bien-être, et laisse la grille du plan de saison.
+  - « Charger » une version dont la photo porte une grille ou une réservation sans plan est refusé **409 avant tout effacement** (`StructureRestorer::OLD_FORMAT_PHOTO_MESSAGE`).
+  - La migration `Version20261127120000` est **irréversible** (aucun `down()`) et fige les règles de bien-être des plans de période anciens (décision du §10).
+  - Le gate : `NoNullPlanBranchTest` et `LoadedVersionPointerTest` sont dans le step `Blocking suite` de `ci.yml` et dans `docs/testing/blocking-tests.md` ; `Lot4MigrationChainTest` joue désormais cette migration.
 - Tests : lignes 4 à 11. `/security-review` : oui.
 
 ### PR 3a · « Les équipes d'un plan »

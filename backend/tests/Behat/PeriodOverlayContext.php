@@ -592,7 +592,7 @@ final class PeriodOverlayContext extends BaseContext
             \sprintf(
                 'SELECT s.venue_id AS behatval FROM venue_training_slot s'
                 . ' JOIN schedule_plan p ON p.club_id = s.club_id AND p.season_id = s.season_id AND p.type = \'SEASON\''
-                . ' WHERE s.club_id = \'%s\' AND s.schedule_plan_id IS NULL ORDER BY s.venue_id LIMIT 1',
+                . ' WHERE s.club_id = \'%s\' AND s.schedule_plan_id IN (SELECT id FROM schedule_plan WHERE type = \'SEASON\') ORDER BY s.venue_id LIMIT 1',
                 $this->clubId,
             ),
             admin: true,

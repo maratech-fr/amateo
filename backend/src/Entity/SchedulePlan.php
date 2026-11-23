@@ -43,6 +43,8 @@ use Doctrine\ORM\Mapping as ORM;
 #[ORM\Table(name: 'schedule_plan')]
 #[ORM\Index(name: 'idx_schedule_plan_club_season', columns: ['club_id', 'season_id'])]
 #[ORM\Index(name: 'idx_schedule_plan_lock_source', columns: ['lock_source_schedule_id'])]
+// Cible des clés composées (plan, club) des tables du plan à venir : un plan ne se désigne que dans son club.
+#[ORM\UniqueConstraint(name: 'uniq_schedule_plan_id_club', columns: ['id', 'club_id'])]
 // At most one SEASON plan per season (the base plan is unique).
 #[ORM\UniqueConstraint(name: 'uniq_schedule_plan_season_base', columns: ['season_id'], options: ['where' => '(type = \'SEASON\')'])]
 // At most one plan per period entry (a period has one plan, many versions).
@@ -95,8 +97,9 @@ class SchedulePlan implements TenantOwnedInterface
     /**
      * V1bis — le POINTEUR de la version dont les verrous HARD sont la SOURCE des données
      * « en cours » du plan (ce dont « Régénérer » repart). Posé par « Charger » (endpoint
-     * load-locks) et re-pointé à chaque nouvelle version COMPLETED (générer devient la
-     * source). null = aucun pointeur → repli sur la dernière version COMPLETED. Lu UNIQUEMENT
+     * load-locks, ou « Charger cette version » pour le socle) et re-pointé à chaque nouvelle
+     * version COMPLETED (générer devient la source). Seul pointeur de version chargée depuis le
+     * lot 4 : socle comme période (l'étoile). null = aucun pointeur → repli sur la dernière version COMPLETED. Lu UNIQUEMENT
      * par la maison unique {@see SchedulePlanProvisioner::lockSourceScheduleIdOfPlan}
      * (SEASON comme PÉRIODE). FK ON DELETE SET NULL : supprimer la version pointée relâche le
      * pointeur, le repli reprend la main.

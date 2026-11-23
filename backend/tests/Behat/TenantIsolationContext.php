@@ -364,6 +364,18 @@ final class TenantIsolationContext extends BaseContext
             ),
             admin: true,
         );
+        // Une saison naît avec son plan de saison (lot 4) : le socle de l'autre club se lit sur lui.
+        $this->dbalExec(
+            \sprintf(
+                'INSERT INTO schedule_plan (id, version, created_at, updated_at, club_id, season_id, type, name, start_date, end_date, last_version_number, team_selection_initialized)'
+                . ' VALUES (gen_random_uuid(), 1, now(), now(), \'%s\', \'%s\', \'SEASON\', \'Planning de la saison fonctionnelle\', \'%s\', \'%s\', 0, false)',
+                $this->clubIdB,
+                $this->seasonIdB,
+                $seasonStart,
+                $seasonEnd,
+            ),
+            admin: true,
+        );
         $this->insertUser($this->userIdB, $email);
         $this->insertMembership($this->userIdB, $this->clubIdB, 'admin');
         $this->tokenB = $this->mintToken($email);
@@ -376,7 +388,7 @@ final class TenantIsolationContext extends BaseContext
             \sprintf(
                 'SELECT s.venue_id AS behatval FROM venue_training_slot s'
                 . ' JOIN schedule_plan p ON p.club_id = s.club_id AND p.season_id = s.season_id AND p.type = \'SEASON\''
-                . ' WHERE s.club_id = \'%s\' AND s.schedule_plan_id IS NULL ORDER BY s.venue_id LIMIT 1',
+                . ' WHERE s.club_id = \'%s\' AND s.schedule_plan_id IN (SELECT id FROM schedule_plan WHERE type = \'SEASON\') ORDER BY s.venue_id LIMIT 1',
                 $this->clubIdA,
             ),
             admin: true,

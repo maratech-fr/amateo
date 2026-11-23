@@ -23,6 +23,7 @@ use App\Enum\SeasonStatus;
 use App\Enum\TeamCoachRole;
 use App\Service\SeasonResolver;
 use App\Tests\CreatesPeopleAndPlacesTrait;
+use App\Tests\SeasonPlanOf;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\DBAL\Connection;
@@ -564,6 +565,7 @@ final class MatchVisitDeltaParityTest extends WebTestCase
         $season->setTransitionData([]);
         $this->em->persist($season);
         $this->em->flush();
+        SeasonPlanOf::id(self::getContainer(), $season->getId());
 
         return [$club, $season, $user];
     }
@@ -615,6 +617,7 @@ final class MatchVisitDeltaParityTest extends WebTestCase
         $season->setTransitionData([]);
         $this->em->persist($season);
         $this->em->flush();
+        SeasonPlanOf::id(self::getContainer(), $season->getId());
 
         return $season;
     }
@@ -790,6 +793,11 @@ final class MatchVisitDeltaParityTest extends WebTestCase
     private function seasonPlan(Club $club, Season $season): SchedulePlan
     {
         $this->scopeGucToClub($club->getId());
+        // Lot 4 : une lecture du socle peut avoir déjà fait naître le plan de saison (un seul par saison).
+        $existing = $this->em->getRepository(SchedulePlan::class)->findOneBy(['seasonId' => $season->getId(), 'type' => SchedulePlanType::SEASON]);
+        if ($existing instanceof SchedulePlan) {
+            return $existing;
+        }
         $plan = new SchedulePlan;
         $plan->setClubId($club->getId());
         $plan->setSeasonId($season->getId());

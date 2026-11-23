@@ -1449,6 +1449,15 @@ jobs:
           # exactement les migrations du lot qu'elle nomme. Sans ce gate, une migration du lot qui
           # convertirait mal un réglage de période changerait la demande en passant le Lot Gate.
           FILES="$FILES tests/Integration/Migration/Lot4MigrationChainTest.php"
+          # NR d'axe PLANNING LIFECYCLE (lot conception 4, PR 2) — la version chargée du socle vit sur son
+          # plan de saison, un seul pointeur : elle suit « Charger » et chaque génération terminée, et décide
+          # seule de la version modifiable. Sans ce gate, un écrivain resté sur l'ancien pointeur laisserait
+          # l'étoile du socle en arrière et la retouche viserait la mauvaise version.
+          FILES="$FILES tests/Integration/Service/LoadedVersionPointerTest.php"
+          # NR d'axe GENERATION PIPELINE (lot conception 4, PR 2) — aucune branche « plan nul » ne reste dans
+          # backend/src : une colonne obligatoire cherchée à nul rend une liste vide, sans erreur, et la
+          # demande au moteur perd la grille ou les verrous du socle en restant plausible.
+          FILES="$FILES tests/Architecture/NoNullPlanBranchTest.php"
           docker compose exec -T -e APP_ENV=test php-fpm sh -c "cd /app/backend && php -d memory_limit=1G vendor/bin/phpunit --group phase1 $FILES"
 
       # Axe tenant isolation (GO fondateur 2026-10-30, incident d'un club pilote, PR A import du parc) — la

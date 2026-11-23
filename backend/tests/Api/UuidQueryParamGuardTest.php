@@ -10,6 +10,7 @@ use App\Entity\Season;
 use App\Entity\User;
 use App\Enum\SeasonStatus;
 use App\Service\SeasonResolver;
+use App\Tests\SeasonPlanOf;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -152,6 +153,7 @@ final class UuidQueryParamGuardTest extends WebTestCase
         $season->setTransitionData([]);
         $this->em->persist($season);
         $this->em->flush();
+        SeasonPlanOf::id(self::getContainer(), $season->getId());
 
         return self::getContainer()->get(JWTTokenManagerInterface::class)->create($user);
     }

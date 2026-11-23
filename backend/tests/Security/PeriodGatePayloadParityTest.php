@@ -34,6 +34,7 @@ use App\Service\PeriodConstraintSelector;
 use App\Service\ScheduleConstraintBuilder;
 use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\ProvisionsPeriodPlanTrait;
+use App\Tests\SeasonPlanOf;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -527,6 +528,7 @@ final class PeriodGatePayloadParityTest extends WebTestCase
             $slot = new VenueTrainingSlot;
             $slot->setClubId($club->getId());
             $slot->setSeasonId($season->getId());
+            $slot->setSchedulePlanId(SeasonPlanOf::id(self::getContainer(), $season->getId()));
             $slot->setVenueId($venue->getId());
             $slot->setDayOfWeek($day);
             $slot->setStartTime(new DateTimeImmutable('18:00'));
@@ -614,6 +616,7 @@ final class PeriodGatePayloadParityTest extends WebTestCase
             $slot = new VenueTrainingSlot;
             $slot->setClubId($club->getId());
             $slot->setSeasonId($season->getId());
+            $slot->setSchedulePlanId(SeasonPlanOf::id(self::getContainer(), $season->getId()));
             $slot->setVenueId($venue->getId());
             $slot->setDayOfWeek($day);
             $slot->setStartTime(new DateTimeImmutable('18:00'));

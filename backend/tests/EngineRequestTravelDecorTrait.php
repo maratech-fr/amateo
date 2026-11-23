@@ -78,7 +78,7 @@ trait EngineRequestTravelDecorTrait
         foreach ([[7, 2, '19:30'], [8, 5, '18:00']] as [$n, $day, $time]) {
             $em->persist((new VenueTrainingSlot)->setId(self::erId('a7a1', $n))->setClubId(self::ER_CLUB)->setSeasonId(self::ER_SEASON)
                 ->setVenueId(self::ER_VENUE_EST)->setDayOfWeek($day)->setStartTime(new DateTimeImmutable($time))
-                ->setDurationMinutes(90)->setCapacity(1));
+                ->setDurationMinutes(90)->setCapacity(1)->setSchedulePlanId($this->erSeasonPlanId()));
         }
 
         foreach ([[self::ER_COACH_A, true, true], [self::ER_COACH_B, false, false]] as [$coachId, $employee, $vehicled]) {
@@ -106,7 +106,7 @@ trait EngineRequestTravelDecorTrait
         $em->persist($season);
         $em->flush();
         $provisioner = static::getContainer()->get(SchedulePlanProvisioner::class);
-        $provisioner->ensureSeasonPlan($season);
+        $nextSeasonPlanId = $provisioner->ensureSeasonPlan($season)->getId();
         $em->flush();
 
         // Sud et Est restent aux lieux de la saison en cours ; Nord passe sur un lieu à lui (ses minutes diffèrent).
@@ -128,7 +128,7 @@ trait EngineRequestTravelDecorTrait
         ] as [$n, $venueId, $day, $time, $capacity]) {
             $em->persist((new VenueTrainingSlot)->setId(self::erId('a7a1', $n))->setClubId(self::ER_CLUB)->setSeasonId(self::ER_NEXT_SEASON)
                 ->setVenueId($venueId)->setDayOfWeek($day)->setStartTime(new DateTimeImmutable($time))
-                ->setDurationMinutes(90)->setCapacity($capacity));
+                ->setDurationMinutes(90)->setCapacity($capacity)->setSchedulePlanId($nextSeasonPlanId));
         }
         foreach ([[self::ER_NEXT_TEAM_U13, 'U13 F', 3], [self::ER_NEXT_TEAM_SM1, 'SM1', 1]] as [$teamId, $name, $tier]) {
             $em->persist((new Team)->setId($teamId)->setClubId(self::ER_CLUB)->setSeasonId(self::ER_NEXT_SEASON)

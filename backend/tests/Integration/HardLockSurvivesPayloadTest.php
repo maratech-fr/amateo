@@ -120,7 +120,8 @@ final class HardLockSurvivesPayloadTest extends KernelTestCase
         $provisioner->linkSchedule($other);
         $this->hardLockedSlot($loaded, $loadedTeam, self::VENUE_ID, self::LOCK_DAY);
         $this->hardLockedSlot($other, $otherTeam, self::VENUE_ID, self::LOCK_DAY + 1);
-        $season->setLiveContextScheduleId($loaded->getId());
+        $this->em->flush();
+        $this->em->getConnection()->executeStatement('UPDATE schedule_plan SET lock_source_schedule_id = ? WHERE season_id = ? AND type = \'SEASON\'', [$loaded->getId(), $season->getId()]);
         $this->em->flush();
         self::getContainer()->get('cache.schedule')->invalidateTags([ScheduleConstraintBuilder::cacheTag($club->getId())]);
 

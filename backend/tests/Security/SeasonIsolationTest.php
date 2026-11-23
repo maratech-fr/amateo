@@ -13,6 +13,7 @@ use App\Enum\SeasonStatus;
 use App\EventListener\TenantFilterListener;
 use App\Service\SeasonResolver;
 use App\Tests\CreatesPeopleAndPlacesTrait;
+use App\Tests\SeasonPlanOf;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -277,6 +278,8 @@ final class SeasonIsolationTest extends WebTestCase
         $season->setStatus(SeasonStatus::ACTIVE);
         $season->setTransitionData([]);
         $this->em->persist($season);
+        $this->em->flush();
+        SeasonPlanOf::id(self::getContainer(), $season->getId());
 
         return $season;
     }

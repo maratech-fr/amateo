@@ -12,6 +12,7 @@ use ApiPlatform\Validator\Exception\ValidationException;
 use App\Entity\TenantOwnedInterface;
 use App\Entity\User;
 use App\Enum\AuditAction;
+use App\Plans\SoclePlan;
 use App\Service\AuditTrail;
 use App\Service\EntityCascadeDeleter;
 use App\Service\ManagementAccessGuard;
@@ -22,6 +23,7 @@ use Doctrine\DBAL\LockMode;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\OptimisticLockException;
 use Error;
+use LogicException;
 use ReflectionClass;
 use Symfony\Bundle\SecurityBundle\Security;
 use Symfony\Component\HttpFoundation\RequestStack;
@@ -52,6 +54,9 @@ abstract class AbstractStateProcessor implements ProcessorInterface
 
     protected ?Security $actorSecurity = null;
 
+    /** Le plan de saison qui porte le socle (lot 4) — set via #[Required]. */
+    protected ?SoclePlan $soclePlan = null;
+
     public function __construct(
         protected readonly EntityManagerInterface $entityManager,
         protected readonly RequestStack $requestStack,
@@ -76,6 +81,12 @@ abstract class AbstractStateProcessor implements ProcessorInterface
     public function setActorSecurity(Security $actorSecurity): void
     {
         $this->actorSecurity = $actorSecurity;
+    }
+
+    #[Required]
+    public function setSoclePlan(SoclePlan $soclePlan): void
+    {
+        $this->soclePlan = $soclePlan;
     }
 
     public function process(mixed $data, Operation $operation, array $uriVariables = [], array $context = []): mixed
@@ -114,6 +125,38 @@ abstract class AbstractStateProcessor implements ProcessorInterface
         }
 
         return $data;
+    }
+
+    /**
+     * Frontière de l'API (lot 4, jusqu'au lot 6) : le plan qu'une écriture désigne. `null` = le socle,
+     * rangé sur le plan de saison de la saison de la requête.
+     */
+    protected function planFromApi(?string $requested): string
+    {
+        if (null !== $requested) {
+            return $requested;
+        }
+
+        $request = $this->requestStack->getCurrentRequest();
+        $clubId = $request?->attributes->get('_club_id');
+        $seasonId = $request?->attributes->get('_season_id') ?? $request?->headers->get('X-Season-Id');
+        $resolved = $this->resolveSeasonId(\is_string($clubId) ? $clubId : null, \is_string($seasonId) ? $seasonId : null);
+        if (null === $resolved) {
+            $this->refuse('Aucune saison en cours : créez d\'abord la saison.');
+        }
+
+        return $this->soclePlanService()->idOf($resolved);
+    }
+
+    /** Frontière de l'API : une ligne du socle se lit encore `schedulePlanId: null`. */
+    protected function planToApi(string $planId, string $seasonId): ?string
+    {
+        return $this->soclePlanService()->toApi($planId, $seasonId);
+    }
+
+    protected function soclePlanService(): SoclePlan
+    {
+        return $this->soclePlan ?? throw new LogicException('SoclePlan non câblé : setSoclePlan() est requis.');
     }
 
     /**

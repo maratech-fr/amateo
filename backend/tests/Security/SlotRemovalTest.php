@@ -34,6 +34,7 @@ use App\Service\SchedulePlanProvisioner;
 use App\Tests\ChoosesPlanVersionTrait;
 use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\CreatesPeriodPlanTrait;
+use App\Tests\SeasonPlanOf;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -481,13 +482,13 @@ final class SlotRemovalTest extends WebTestCase
         $this->scopeGucToClub($clubId);
         $window = (new VenueTrainingSlot)
             ->setClubId($clubId)
-            ->setSeasonId($seasonId)
+            ->setSeasonId($seasonId)->setSchedulePlanId(SeasonPlanOf::id(self::getContainer(), $seasonId))
             ->setVenueId($venueId)
             ->setDayOfWeek(2)
             ->setStartTime(DateTimeImmutable::createFromFormat('!H:i', '18:00'))
             ->setDurationMinutes(90)
             ->setCapacity(2);
-        $window->setSchedulePlanId($planId);
+        $window->setSchedulePlanId($planId ?? SeasonPlanOf::id(self::getContainer(), $seasonId));
         $this->em->persist($window);
         $this->em->flush();
     }

@@ -75,10 +75,11 @@ class VenueOccupancyStateProcessor extends AbstractStateProcessor
     protected function createEntityFromInput(object $input): VenueOccupancy
     {
         $entity = new VenueOccupancy;
-        // Saison (null) ou grille d'un plan de période — posé à la création seulement : une
-        // occupation ne migre jamais d'une couche à l'autre.
-        $this->assertSchedulePlanExists($this->entityManager, $input->schedulePlanId);
-        $entity->setSchedulePlanId($input->schedulePlanId);
+        // Saison (le plan de saison, `null` à l'API) ou grille d'un plan de période — posé à la
+        // création seulement : une occupation ne migre jamais d'une couche à l'autre.
+        $planId = $this->planFromApi($input->schedulePlanId);
+        $this->assertSchedulePlanExists($this->entityManager, $planId);
+        $entity->setSchedulePlanId($planId);
         $this->applyInput($entity, $input);
 
         return $entity;
@@ -98,7 +99,7 @@ class VenueOccupancyStateProcessor extends AbstractStateProcessor
      */
     protected function mapEntityToOutput(object $entity): VenueOccupancyResource
     {
-        return VenueOccupancyResource::fromEntity($entity);
+        return VenueOccupancyResource::fromEntity($entity, $this->planToApi($entity->getSchedulePlanId(), $entity->getSeasonId()));
     }
 
     private function applyInput(VenueOccupancy $entity, VenueOccupancyInput $input): void

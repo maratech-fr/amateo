@@ -17,6 +17,7 @@ use App\Enum\CalendarEntryPeriodType;
 use App\Enum\SeasonStatus;
 use App\Service\ScheduleConstraintBuilder;
 use App\Tests\ProvisionsPeriodPlanTrait;
+use App\Tests\SeasonPlanOf;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -259,7 +260,7 @@ final class SharedBlockPayloadParityTest extends KernelTestCase
         $block = new SharedTrainingBlock;
         $block->setClubId($club->getId());
         $block->setSeasonId($season->getId());
-        $block->setSchedulePlanId($planId);
+        $block->setSchedulePlanId($planId ?? SeasonPlanOf::id(self::getContainer(), $season->getId()));
         $block->setCommonSessions($commonSessions);
         $this->em->persist($block);
 
@@ -267,7 +268,7 @@ final class SharedBlockPayloadParityTest extends KernelTestCase
             $member = new SharedTrainingBlockTeam;
             $member->setClubId($club->getId());
             $member->setSeasonId($season->getId());
-            $member->setSchedulePlanId($planId);
+            $member->setSchedulePlanId($planId ?? SeasonPlanOf::id(self::getContainer(), $season->getId()));
             $member->setBlockId($block->getId());
             $member->setTeamId($teamId);
             $this->em->persist($member);
@@ -342,6 +343,7 @@ final class SharedBlockPayloadParityTest extends KernelTestCase
         $season->setStatus(SeasonStatus::ACTIVE);
         $this->em->persist($season);
         $this->em->flush();
+        SeasonPlanOf::id(self::getContainer(), $season->getId());
 
         return [$club, $season];
     }

@@ -12,7 +12,7 @@ use App\Structure\RefersTo;
 use DateTimeImmutable;
 use Doctrine\ORM\Mapping as ORM;
 
-#[Family(Level::SEASON)]
+#[Family(Level::PLAN)]
 #[ORM\Entity(repositoryClass: VenueTrainingSlotRepository::class)]
 #[ORM\Table(name: 'venue_training_slot')]
 #[ORM\Index(name: 'idx_venue_training_slot_club_venue', columns: ['club_id', 'venue_id'])]
@@ -62,22 +62,20 @@ class VenueTrainingSlot implements TenantOwnedInterface
      * (garde côté processeur). null = créneau ordinaire sans libellé.
      *
      * SAISON SEULEMENT (décision fondateur 2026-10-11) : le libellé appartient au planning de
-     * saison. Un créneau rattaché à un plan (schedulePlanId non null = créneau de période) ne le
-     * porte jamais — la copie prise à la naissance du plan l'émet NULL, et le processeur refuse
+     * saison. Un créneau d'un plan de période ne le
+     * porte jamais (c'est la nature du plan qui décide) — la copie prise à la naissance du plan l'émet NULL, et le processeur refuse
      * de l'y poser. null constant sur toute la grille de période.
      */
     #[ORM\Column(type: 'string', length: 40, nullable: true)]
     private ?string $groupLabel = null;
 
     /**
-     * ADR-0002 inv. 5 (lot C3) — le créneau PRÊTÉ s'accroche au PLAN : « la mairie me prête
-     * ce gymnase POUR CET AJUSTEMENT » est une réponse, pas un fait. null = le créneau
-     * saisonnier permanent (structure PARTAGÉE, inv. 6 — surtout pas rattaché au plan
-     * SEASON : la structure n'est pas un réglage de période).
+     * Le plan qui porte le créneau : le plan de saison pour la grille du socle, un plan de période
+     * pour sa copie (lot 4 : le socle a son plan, plus de « plan nul »).
      */
-    #[ORM\Column(type: 'guid', nullable: true)]
+    #[ORM\Column(type: 'guid')]
     #[RefersTo(SchedulePlan::class, OnDelete::DELETE)]
-    private ?string $schedulePlanId = null;
+    private string $schedulePlanId;
 
     public function __construct()
     {
@@ -230,12 +228,12 @@ class VenueTrainingSlot implements TenantOwnedInterface
         return $this;
     }
 
-    public function getSchedulePlanId(): ?string
+    public function getSchedulePlanId(): string
     {
         return $this->schedulePlanId;
     }
 
-    public function setSchedulePlanId(?string $schedulePlanId): self
+    public function setSchedulePlanId(string $schedulePlanId): self
     {
         $this->schedulePlanId = $schedulePlanId;
 

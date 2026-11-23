@@ -51,6 +51,7 @@ use App\Structure\OnDelete;
 use App\Tests\ChoosesPlanVersionTrait;
 use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\RealForeignKeysTrait;
+use App\Tests\SeasonPlanOf;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -198,9 +199,9 @@ final class DeletionImpactParityTest extends KernelTestCase
         $team = $this->team($club, $season, forcedVenueId: $venue->getId());
         $schedule = $this->schedule($club, $season);
 
-        $this->em->persist((new VenueTrainingSlot)->setClubId($club->getId())->setSeasonId($season->getId())
+        $this->em->persist((new VenueTrainingSlot)->setClubId($club->getId())->setSeasonId($season->getId())->setSchedulePlanId(SeasonPlanOf::id(self::getContainer(), $season->getId()))
             ->setVenueId($venue->getId())->setDayOfWeek(1)->setStartTime(new DateTimeImmutable('18:00'))->setDurationMinutes(90)->setCapacity(1));
-        $this->em->persist((new Reservation)->setClubId($club->getId())->setSeasonId($season->getId())
+        $this->em->persist((new Reservation)->setClubId($club->getId())->setSeasonId($season->getId())->setSchedulePlanId(SeasonPlanOf::id(self::getContainer(), $season->getId()))
             ->setTeamId($team->getId())->setVenueId($venue->getId())->setDayOfWeek(1)->setStartTime(new DateTimeImmutable('18:00'))->setDurationMinutes(90));
         $this->em->persist((new ScheduleSlotTemplate)->setClubId($club->getId())->setSeasonId($season->getId())
             ->setScheduleId($schedule->getId())->setTeamId($team->getId())->setVenueId($venue->getId())
@@ -210,7 +211,7 @@ final class DeletionImpactParityTest extends KernelTestCase
         // Le cas « gymnase AVEC match » (désormais REFUSÉ, jamais détruit) vit dans
         // {@see self::testAVenueCarryingAMatchIsBlockedAndValidationStaysTheOnlyUnplacer}.
         // Un créneau du même club dans un AUTRE gymnase : il ne doit ni être compté ni partir.
-        $this->em->persist((new VenueTrainingSlot)->setClubId($club->getId())->setSeasonId($season->getId())
+        $this->em->persist((new VenueTrainingSlot)->setClubId($club->getId())->setSeasonId($season->getId())->setSchedulePlanId(SeasonPlanOf::id(self::getContainer(), $season->getId()))
             ->setVenueId($other->getId())->setDayOfWeek(2)->setStartTime(new DateTimeImmutable('19:00'))->setDurationMinutes(90)->setCapacity(1));
         $this->em->flush();
 
@@ -247,12 +248,12 @@ final class DeletionImpactParityTest extends KernelTestCase
         $schedule = $this->schedule($club, $season);
         $at = new DateTimeImmutable('18:00');
 
-        $slot = (new VenueTrainingSlot)->setClubId($club->getId())->setSeasonId($season->getId())
+        $slot = (new VenueTrainingSlot)->setClubId($club->getId())->setSeasonId($season->getId())->setSchedulePlanId(SeasonPlanOf::id(self::getContainer(), $season->getId()))
             ->setVenueId($venue->getId())->setDayOfWeek(1)->setStartTime($at)->setDurationMinutes(90)->setCapacity(1);
         $this->em->persist($slot);
         // Les DEUX faces d'un même épinglage : la réservation ET le verrou HARD qu'elle a
         // matérialisé. C'est le second que l'écran n'annonçait pas.
-        $this->em->persist((new Reservation)->setClubId($club->getId())->setSeasonId($season->getId())
+        $this->em->persist((new Reservation)->setClubId($club->getId())->setSeasonId($season->getId())->setSchedulePlanId(SeasonPlanOf::id(self::getContainer(), $season->getId()))
             ->setTeamId($team->getId())->setVenueId($venue->getId())->setDayOfWeek(1)->setStartTime($at)->setDurationMinutes(90));
         $this->em->persist((new ScheduleSlotTemplate)->setClubId($club->getId())->setSeasonId($season->getId())
             ->setScheduleId($schedule->getId())->setTeamId($team->getId())->setVenueId($venue->getId())
@@ -951,7 +952,7 @@ final class DeletionImpactParityTest extends KernelTestCase
     private function countBaseReservations(string $venueId): int
     {
         return (int) $this->em->createQueryBuilder()->select('COUNT(e.id)')->from(Reservation::class, 'e')
-            ->where('e.venueId = :v')->andWhere('e.schedulePlanId IS NULL')
+            ->where('e.venueId = :v')->andWhere('e.schedulePlanId IN (SELECT sp.id FROM App\Entity\SchedulePlan sp WHERE sp.type = \'SEASON\')')
             ->setParameter('v', $venueId)
             ->getQuery()->getSingleScalarResult();
     }
@@ -1043,7 +1044,7 @@ final class DeletionImpactParityTest extends KernelTestCase
     /** Une réservation de socle et son id (pour la retrouver après le clear de l'EM). */
     private function reservation(Club $club, Season $season, Team $team, Venue $venue, int $day, string $at): string
     {
-        $reservation = (new Reservation)->setClubId($club->getId())->setSeasonId($season->getId())
+        $reservation = (new Reservation)->setClubId($club->getId())->setSeasonId($season->getId())->setSchedulePlanId(SeasonPlanOf::id(self::getContainer(), $season->getId()))
             ->setTeamId($team->getId())->setVenueId($venue->getId())->setDayOfWeek($day)
             ->setStartTime(new DateTimeImmutable($at))->setDurationMinutes(90);
         $this->em->persist($reservation);
@@ -1054,13 +1055,13 @@ final class DeletionImpactParityTest extends KernelTestCase
     /** Un bloc de mutualisation et ses membres. @param list<Team> $teams */
     private function sharedBlock(Club $club, Season $season, array $teams): string
     {
-        $block = (new SharedTrainingBlock)->setClubId($club->getId())->setSeasonId($season->getId())
+        $block = (new SharedTrainingBlock)->setClubId($club->getId())->setSeasonId($season->getId())->setSchedulePlanId(SeasonPlanOf::id(self::getContainer(), $season->getId()))
             ->setCommonSessions(1);
         $this->em->persist($block);
         $this->em->flush();
 
         foreach ($teams as $team) {
-            $this->em->persist((new SharedTrainingBlockTeam)->setClubId($club->getId())->setSeasonId($season->getId())
+            $this->em->persist((new SharedTrainingBlockTeam)->setClubId($club->getId())->setSeasonId($season->getId())->setSchedulePlanId(SeasonPlanOf::id(self::getContainer(), $season->getId()))
                 ->setBlockId($block->getId())->setTeamId($team->getId()));
         }
         $this->em->flush();

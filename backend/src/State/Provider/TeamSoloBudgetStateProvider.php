@@ -8,6 +8,7 @@ use ApiPlatform\Metadata\Operation;
 use ApiPlatform\State\ProviderInterface;
 use App\ApiResource\TeamSoloBudgetResource;
 use App\Entity\SchedulePlan;
+use App\Plans\SoclePlan;
 use App\Service\SeasonResolver;
 use App\Service\SoloBudget;
 use App\Service\SoloReservationBudget;
@@ -38,6 +39,7 @@ final class TeamSoloBudgetStateProvider implements ProviderInterface
         private readonly EntityManagerInterface $entityManager,
         private readonly SoloReservationBudget $soloReservationBudget,
         private readonly SeasonResolver $seasonResolver,
+        private readonly SoclePlan $soclePlan,
     ) {}
 
     /**
@@ -64,17 +66,19 @@ final class TeamSoloBudgetStateProvider implements ProviderInterface
             return [];
         }
 
-        $planId = $this->uuidQueryParam($request, 'schedulePlanId');
-        if (null !== $planId) {
-            $plan = $this->entityManager->getRepository(SchedulePlan::class)->find($planId);
+        $requestedPlanId = $this->uuidQueryParam($request, 'schedulePlanId');
+        if (null !== $requestedPlanId) {
+            $plan = $this->entityManager->getRepository(SchedulePlan::class)->find($requestedPlanId);
             if (!$plan instanceof SchedulePlan || $plan->getClubId() !== $clubId) {
                 throw new UnprocessableEntityHttpException('Ce planning n\'existe plus — rechargez la page.');
             }
         }
 
+        // Frontière de l'API : sans plan demandé, le socle (le plan de saison) ; la sortie garde le
+        // plan tel qu'il a été demandé (`null` pour le socle).
         return array_map(
-            static fn (SoloBudget $budget): TeamSoloBudgetResource => TeamSoloBudgetResource::from($budget, $planId),
-            $this->soloReservationBudget->forScope($clubId, $seasonId, $planId),
+            static fn (SoloBudget $budget): TeamSoloBudgetResource => TeamSoloBudgetResource::from($budget, $requestedPlanId),
+            $this->soloReservationBudget->forScope($clubId, $seasonId, $this->soclePlan->fromApi($requestedPlanId, $seasonId)),
         );
     }
 

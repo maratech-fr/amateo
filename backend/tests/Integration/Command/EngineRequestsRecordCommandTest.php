@@ -31,6 +31,7 @@ use App\Service\SchedulePlanProvisioner;
 use App\Tests\EngineRequestDecorTrait;
 use App\Tests\EngineRequestGroupRulesDecorTrait;
 use App\Tests\EngineRequestTravelDecorTrait;
+use App\Tests\SeasonPlanOf;
 use DateTimeImmutable;
 use FilesystemIterator;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -903,7 +904,7 @@ final class EngineRequestsRecordCommandTest extends KernelTestCase
         $em->persist($place);
         $em->persist(new Venue($place)->setId(self::B_VENUE)->setClubId(self::B_CLUB)->setSeasonId(self::B_SEASON)
             ->setName('Gymnase B')->setCanSplit(false)->setSource('manual'));
-        $em->persist((new VenueTrainingSlot)->setId(self::erId('a7a1', 9))->setClubId(self::B_CLUB)->setSeasonId(self::B_SEASON)
+        $em->persist((new VenueTrainingSlot)->setId(self::erId('a7a1', 9))->setClubId(self::B_CLUB)->setSeasonId(self::B_SEASON)->setSchedulePlanId(SeasonPlanOf::id(self::getContainer(), self::B_SEASON))
             ->setVenueId(self::B_VENUE)->setDayOfWeek(2)->setStartTime(new DateTimeImmutable('18:00'))
             ->setDurationMinutes(90)->setCapacity(1));
         $em->persist((new Team)->setId(self::B_TEAM)->setClubId(self::B_CLUB)->setSeasonId(self::B_SEASON)
@@ -927,7 +928,8 @@ final class EngineRequestsRecordCommandTest extends KernelTestCase
         self::assertTrue($provisioner->choose($socle), 'le socle de B doit pouvoir être pointé');
         $seasonB = $em->getRepository(Season::class)->find(self::B_SEASON);
         self::assertInstanceOf(Season::class, $seasonB);
-        $seasonB->setLiveContextScheduleId(self::B_SOCLE);
+        $em->flush();
+        $em->getConnection()->executeStatement('UPDATE schedule_plan SET lock_source_schedule_id = ? WHERE season_id = ? AND type = \'SEASON\'', [self::B_SOCLE, $seasonB->getId()]);
 
         $em->persist((new Competition)->setId(self::erId('c0e9', 9))->setClubId(self::B_CLUB)->setSeasonId(self::B_SEASON)
             ->setTeamId(self::B_TEAM)->setName('Championnat B')->setCompetitionType(CompetitionType::CHAMPIONSHIP));
@@ -972,7 +974,8 @@ final class EngineRequestsRecordCommandTest extends KernelTestCase
         $em->persist($version);
         $provisioner->linkSchedule($version);
         $em->flush();
-        $season->setLiveContextScheduleId(self::ER_SEASON_2_V1);
+        $em->flush();
+        $em->getConnection()->executeStatement('UPDATE schedule_plan SET lock_source_schedule_id = ? WHERE season_id = ? AND type = \'SEASON\'', [self::ER_SEASON_2_V1, $season->getId()]);
         $em->flush();
 
         return $planId;

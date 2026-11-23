@@ -29,6 +29,7 @@ use App\Service\SchedulePlanProvisioner;
 use App\Tests\ChoosesPlanVersionTrait;
 use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\CreatesPeriodPlanTrait;
+use App\Tests\SeasonPlanOf;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -227,15 +228,15 @@ final class MutualizeSlotApiTest extends WebTestCase
         $this->em->clear();
         $this->scopeGucToClub($ctx['clubId']);
         // PORTÉE NULL : le bloc du socle n'est rattaché à aucun plan de période.
-        $block = $this->em->getRepository(SharedTrainingBlock::class)->findOneBy(['clubId' => $ctx['clubId'], 'schedulePlanId' => null]);
+        $block = $this->em->getRepository(SharedTrainingBlock::class)->findOneBy(['clubId' => $ctx['clubId'], 'schedulePlanId' => SeasonPlanOf::id(self::getContainer(), $ctx['seasonId'])]);
         self::assertInstanceOf(SharedTrainingBlock::class, $block);
-        self::assertNull($block->getSchedulePlanId(), 'au socle, le bloc vit à portée NULL');
+        self::assertSame(SeasonPlanOf::id(self::getContainer(), $block->getSeasonId()), $block->getSchedulePlanId(), 'au socle, le bloc porte le plan de saison');
         self::assertSame(1, $block->getCommonSessions());
         self::assertSame('Socle U11', $block->getLabel());
         $members = $this->em->getRepository(SharedTrainingBlockTeam::class)->findBy(['blockId' => $block->getId()]);
         self::assertCount(2, $members);
         foreach ($members as $member) {
-            self::assertNull($member->getSchedulePlanId(), 'les membres du bloc de socle vivent aussi à portée NULL');
+            self::assertSame(SeasonPlanOf::id(self::getContainer(), $member->getSeasonId()), $member->getSchedulePlanId(), 'les membres du bloc de socle portent aussi le plan de saison');
         }
 
         foreach ([$source->getId(), $joinerSlot->getId()] as $slotId) {
@@ -599,7 +600,7 @@ final class MutualizeSlotApiTest extends WebTestCase
         self::assertResponseStatusCodeSame(403);
     }
 
-    /** Au SOCLE : équipe → équipe donne un bloc de portée NULL (comme les blocs de saison). */
+    /** Au SOCLE : équipe → équipe donne un bloc sur le plan de saison (comme les blocs de saison). */
     /**
      * Promesse fondateur 2026-10-30, chemin « mutualiser une séance » : créer un groupe à 1 séance commune
      * sur des équipes déjà réservées ensemble sur 2 cases sortirait en échec à la génération suivante.
@@ -680,7 +681,7 @@ final class MutualizeSlotApiTest extends WebTestCase
         $this->scopeGucToClub($ctx['clubId']);
         $block = $this->em->getRepository(SharedTrainingBlock::class)->findOneBy(['clubId' => $ctx['clubId']]);
         self::assertInstanceOf(SharedTrainingBlock::class, $block);
-        self::assertNull($block->getSchedulePlanId(), 'au socle, le bloc vit à portée NULL');
+        self::assertSame(SeasonPlanOf::id(self::getContainer(), $block->getSeasonId()), $block->getSchedulePlanId(), 'au socle, le bloc porte le plan de saison');
     }
 
     protected function setUp(): void
@@ -708,7 +709,7 @@ final class MutualizeSlotApiTest extends WebTestCase
     private function seedGroupAtCase(array $ctx, array $teamIds, array $case, int $commonSessions): array
     {
         $this->scopeGucToClub($ctx['clubId']);
-        $planId = $ctx['planId'] ?? null;
+        $planId = $ctx['planId'] ?? SeasonPlanOf::id(self::getContainer(), $ctx['seasonId']);
         $block = (new SharedTrainingBlock)->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])->setSchedulePlanId($planId)->setCommonSessions($commonSessions);
         $this->em->persist($block);
         $this->em->flush();
@@ -885,13 +886,13 @@ final class MutualizeSlotApiTest extends WebTestCase
         $this->scopeGucToClub($ctx['clubId']);
         $reservation = (new Reservation)
             ->setClubId($ctx['clubId'])
-            ->setSeasonId($ctx['seasonId'])
+            ->setSeasonId($ctx['seasonId'])->setSchedulePlanId(SeasonPlanOf::id(self::getContainer(), $ctx['seasonId']))
             ->setTeamId($teamId)
             ->setVenueId($case['venueId'])
             ->setDayOfWeek($case['dayOfWeek'])
             ->setStartTime(DateTimeImmutable::createFromFormat('!H:i', $case['startTime']))
             ->setDurationMinutes(90);
-        $reservation->setSchedulePlanId($ctx['planId'] ?? null);
+        $reservation->setSchedulePlanId($ctx['planId'] ?? SeasonPlanOf::id(self::getContainer(), $ctx['seasonId']));
         $this->em->persist($reservation);
         $this->em->flush();
 
@@ -915,13 +916,13 @@ final class MutualizeSlotApiTest extends WebTestCase
         $this->scopeGucToClub($clubId);
         $window = (new VenueTrainingSlot)
             ->setClubId($clubId)
-            ->setSeasonId($seasonId)
+            ->setSeasonId($seasonId)->setSchedulePlanId(SeasonPlanOf::id(self::getContainer(), $seasonId))
             ->setVenueId($venueId)
             ->setDayOfWeek($dayOfWeek)
             ->setStartTime(DateTimeImmutable::createFromFormat('!H:i', $startTime))
             ->setDurationMinutes(90)
             ->setCapacity($capacity);
-        $window->setSchedulePlanId($planId);
+        $window->setSchedulePlanId($planId ?? SeasonPlanOf::id(self::getContainer(), $seasonId));
         $this->em->persist($window);
         $this->em->flush();
     }

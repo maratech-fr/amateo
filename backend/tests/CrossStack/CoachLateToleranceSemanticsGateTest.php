@@ -19,6 +19,7 @@ use App\Enum\SeasonStatus;
 use App\Enum\TeamCoachRole;
 use App\Service\ScheduleConstraintBuilder;
 use App\Tests\CreatesPeopleAndPlacesTrait;
+use App\Tests\SeasonPlanOf;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -235,7 +236,7 @@ final class CoachLateToleranceSemanticsGateTest extends KernelTestCase
 
         // Réservation HARD de l'équipe B (mardi 20:00-21:30 au gymnase 2), porteuse de la tolérance.
         $reservation = (new Reservation)
-            ->setClubId($club->getId())->setSeasonId($season->getId())
+            ->setClubId($club->getId())->setSeasonId($season->getId())->setSchedulePlanId(SeasonPlanOf::id(self::getContainer(), $season->getId()))
             ->setTeamId($teamB->getId())->setVenueId($gym2->getId())
             ->setDayOfWeek(2)->setStartTime(new DateTimeImmutable('20:00'))->setDurationMinutes(90)
             ->setCoachLateToleranceMinutes($tolerance);
@@ -256,7 +257,7 @@ final class CoachLateToleranceSemanticsGateTest extends KernelTestCase
     private function trainingSlot(Club $club, Season $season, Venue $venue, int $day, string $start): void
     {
         $slot = (new VenueTrainingSlot)
-            ->setClubId($club->getId())->setSeasonId($season->getId())->setVenueId($venue->getId())
+            ->setClubId($club->getId())->setSeasonId($season->getId())->setSchedulePlanId(SeasonPlanOf::id(self::getContainer(), $season->getId()))->setVenueId($venue->getId())
             ->setDayOfWeek($day)->setStartTime(new DateTimeImmutable($start))->setDurationMinutes(90)->setCapacity(1);
         $this->em->persist($slot);
     }

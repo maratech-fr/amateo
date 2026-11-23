@@ -9,6 +9,7 @@ use ApiPlatform\Metadata\Operation;
 use ApiPlatform\State\ProviderInterface;
 use App\ApiResource\ImplicitRuleSettingResource;
 use App\Enum\ImplicitRuleKey;
+use App\Plans\SoclePlan;
 use App\Repository\ImplicitRuleSettingRepository;
 use App\Service\ImplicitRuleResolver;
 use App\Service\SeasonResolver;
@@ -29,6 +30,7 @@ final class ImplicitRuleSettingStateProvider implements ProviderInterface
         private readonly ImplicitRuleResolver $resolver,
         private readonly ImplicitRuleSettingRepository $repository,
         private readonly SeasonResolver $seasonResolver,
+        private readonly SoclePlan $soclePlan,
     ) {}
 
     public function provide(Operation $operation, array $uriVariables = [], array $context = []): object|array|null
@@ -39,13 +41,13 @@ final class ImplicitRuleSettingStateProvider implements ProviderInterface
         }
 
         // ADR-0002 inv. 5 — la PORTÉE : `?schedulePlanId=` cible un plan de période (sa copie),
-        // son absence la portée SAISON. Un uuid mal formé rend 400 (jamais un 500 de cast pg).
+        // son absence la portée SAISON, rangée sur le plan de saison. Un uuid mal formé rend 400
+        // (jamais un 500 de cast pg).
         $request = $this->requestStack->getCurrentRequest();
-        $schedulePlanId = $request instanceof Request ? $this->uuidQueryParam($request, 'schedulePlanId') : null;
+        $planId = $this->soclePlan->fromApi($request instanceof Request ? $this->uuidQueryParam($request, 'schedulePlanId') : null, $seasonId);
 
-        [$resolved, $stored] = null === $schedulePlanId
-            ? [$this->resolver->resolve($clubId, $seasonId), $this->repository->findByClubSeasonIndexed($clubId, $seasonId)]
-            : [$this->resolver->resolveForPlan($clubId, $seasonId, $schedulePlanId), $this->repository->findByPlanIndexed($clubId, $seasonId, $schedulePlanId)];
+        $resolved = $this->resolver->resolveForPlan($clubId, $seasonId, $planId);
+        $stored = $this->repository->findByPlanIndexed($clubId, $seasonId, $planId);
 
         if ($operation instanceof CollectionOperationInterface) {
             $out = [];

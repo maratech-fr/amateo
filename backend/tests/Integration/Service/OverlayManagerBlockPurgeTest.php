@@ -5,11 +5,14 @@ declare(strict_types=1);
 namespace App\Tests\Integration\Service;
 
 use App\Entity\Club;
+use App\Entity\SchedulePlan;
 use App\Entity\Season;
 use App\Entity\SharedTrainingBlock;
 use App\Entity\SharedTrainingBlockTeam;
+use App\Enum\SchedulePlanType;
 use App\Enum\SeasonStatus;
 use App\Service\OverlayManager;
+use App\Tests\SeasonPlanOf;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -32,6 +35,10 @@ final class OverlayManagerBlockPurgeTest extends KernelTestCase
     {
         [$club, $season] = $this->seed();
         $planId = $this->uuid();
+        // Lot 4 : un groupe désigne son plan par une clé étrangère — le plan de période existe.
+        $this->em->persist((new SchedulePlan)->setId($planId)->setClubId($club->getId())->setSeasonId($season->getId())
+            ->setType(SchedulePlanType::CLOSURE)->setName('Période')->setStartDate($season->getStartDate())->setEndDate($season->getEndDate()));
+        $this->em->flush();
 
         $periodBlock = $this->block($club, $season, $planId);
         $baseBlock = $this->block($club, $season, null);
@@ -59,11 +66,11 @@ final class OverlayManagerBlockPurgeTest extends KernelTestCase
     private function block(Club $club, Season $season, ?string $planId): string
     {
         $block = (new SharedTrainingBlock)->setClubId($club->getId())->setSeasonId($season->getId())
-            ->setSchedulePlanId($planId)->setCommonSessions(1);
+            ->setSchedulePlanId($planId ?? SeasonPlanOf::id(self::getContainer(), $season->getId()))->setCommonSessions(1);
         $this->em->persist($block);
         foreach ([$this->uuid(), $this->uuid()] as $teamId) {
             $this->em->persist((new SharedTrainingBlockTeam)->setClubId($club->getId())->setSeasonId($season->getId())
-                ->setSchedulePlanId($planId)->setBlockId($block->getId())->setTeamId($teamId));
+                ->setSchedulePlanId($planId ?? SeasonPlanOf::id(self::getContainer(), $season->getId()))->setBlockId($block->getId())->setTeamId($teamId));
         }
 
         return $block->getId();

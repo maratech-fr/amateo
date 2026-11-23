@@ -21,6 +21,7 @@ use App\Service\ParcImport\ParcImportExecutor;
 use App\Service\ScheduleConstraintBuilder;
 use App\Service\SecondSessionSameDayDetector;
 use App\Tests\CreatesPeopleAndPlacesTrait;
+use App\Tests\SeasonPlanOf;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -108,9 +109,9 @@ final class ParcImportReservationSemanticsGateTest extends KernelTestCase
 
         // L'import a posé une réservation HARD du SOCLE (schedulePlanId null) sur la case lundi 18:00.
         $this->scopeGucToClub($club->getId());
-        $reservation = $this->reservationOf($team->getId(), $venue->getId(), 1, '18:00');
+        $reservation = $this->reservationOf($season, $team->getId(), $venue->getId(), 1, '18:00');
         self::assertInstanceOf(Reservation::class, $reservation, 'l\'import doit écrire la réservation cochée');
-        self::assertNull($reservation->getSchedulePlanId(), 'la réservation importée est un verrou HARD du socle');
+        self::assertSame(SeasonPlanOf::id(self::getContainer(), $reservation->getSeasonId()), $reservation->getSchedulePlanId(), 'la réservation importée est un verrou HARD du socle');
 
         // AVEC la réservation importée : le verrou HARD pose la séance le LUNDI, malgré la préférence mercredi.
         $kept = $this->solve($this->build($club, $season));
@@ -150,7 +151,7 @@ final class ParcImportReservationSemanticsGateTest extends KernelTestCase
         $this->scopeGucToClub($club->getId());
         $this->em->clear();
         self::assertSame(2, $this->em->getRepository(Team::class)->find($team->getId())?->getMaxSessionsPerDay(), 'l\'import relève le plafond');
-        $reservations = $this->em->getRepository(Reservation::class)->findBy(['teamId' => $team->getId(), 'schedulePlanId' => null]);
+        $reservations = $this->em->getRepository(Reservation::class)->findBy(['teamId' => $team->getId(), 'schedulePlanId' => SeasonPlanOf::id(self::getContainer(), $season->getId())]);
         self::assertCount(2, $reservations);
         self::assertSame([], self::getContainer()->get(SecondSessionSameDayDetector::class)->detect($reservations)['blockers'], 'le Récap ne bloque plus');
 
@@ -191,14 +192,14 @@ final class ParcImportReservationSemanticsGateTest extends KernelTestCase
         return $this->builder->buildForClubSeason($club->getId(), $season->getId());
     }
 
-    private function reservationOf(string $teamId, string $venueId, int $day, string $start): ?Reservation
+    private function reservationOf(Season $season, string $teamId, string $venueId, int $day, string $start): ?Reservation
     {
         /** @var list<Reservation> $rows */
         $rows = $this->em->getRepository(Reservation::class)->findBy([
             'teamId' => $teamId,
             'venueId' => $venueId,
             'dayOfWeek' => $day,
-            'schedulePlanId' => null,
+            'schedulePlanId' => SeasonPlanOf::id(self::getContainer(), $season->getId()),
         ]);
         foreach ($rows as $reservation) {
             if ($reservation->getStartTime()->format('H:i') === $start) {
@@ -265,7 +266,7 @@ final class ParcImportReservationSemanticsGateTest extends KernelTestCase
     private function trainingSlot(Club $club, Season $season, Venue $venue, int $day, string $start): void
     {
         $slot = (new VenueTrainingSlot)
-            ->setClubId($club->getId())->setSeasonId($season->getId())->setVenueId($venue->getId())
+            ->setClubId($club->getId())->setSeasonId($season->getId())->setSchedulePlanId(SeasonPlanOf::id(self::getContainer(), $season->getId()))->setVenueId($venue->getId())
             ->setDayOfWeek($day)->setStartTime(new DateTimeImmutable($start))->setDurationMinutes(90)->setCapacity(1);
         $this->em->persist($slot);
     }

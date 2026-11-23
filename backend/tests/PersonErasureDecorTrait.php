@@ -295,7 +295,7 @@ trait PersonErasureDecorTrait
         $em->persist($venue);
         $em->flush();
         foreach ([1, 2, 3, 4] as $day) {
-            $em->persist((new VenueTrainingSlot)->setClubId($club->getId())->setSeasonId($season->getId())->setVenueId($venue->getId())
+            $em->persist((new VenueTrainingSlot)->setClubId($club->getId())->setSeasonId($season->getId())->setSchedulePlanId(SeasonPlanOf::id(static::getContainer(), $season->getId()))->setVenueId($venue->getId())
                 ->setDayOfWeek($day)->setStartTime(new DateTimeImmutable('18:00'))->setDurationMinutes(90)->setCapacity(1));
         }
         $em->flush();

@@ -586,6 +586,7 @@ final class BcclSeeder
             $slot->setStartTime(new DateTimeImmutable($startTime));
             $slot->setDurationMinutes($duration);
             $slot->setCapacity($capacity);
+            $slot->setSchedulePlanId($this->soclePlanOf($season));
             $manager->persist($slot);
         }
         $manager->flush();
@@ -1314,12 +1315,14 @@ final class BcclSeeder
             $existingSetting = $manager->getRepository(ImplicitRuleSetting::class)->findOneBy([
                 'clubId' => $club->getId(),
                 'seasonId' => $season->getId(),
+                'schedulePlanId' => $this->soclePlanOf($season),
                 'ruleKey' => $ruleKey,
             ]);
             if (!$existingSetting instanceof ImplicitRuleSetting) {
                 $setting = new ImplicitRuleSetting;
                 $setting->setClubId($club->getId());
                 $setting->setSeasonId($season->getId());
+                $setting->setSchedulePlanId($this->soclePlanOf($season));
                 $setting->setRuleKey($ruleKey);
                 $setting->setIntensity(ImplicitRuleIntensity::PREFERRED);
                 $manager->persist($setting);
@@ -1342,7 +1345,7 @@ final class BcclSeeder
                 $reservation = new Reservation;
                 $reservation->setClubId($club->getId());
                 $reservation->setSeasonId($season->getId());
-                $reservation->setSchedulePlanId(null); // réservation de BASE (structure partagée, inv. 6)
+                $reservation->setSchedulePlanId($this->soclePlanOf($season)); // réservation de BASE (le plan de saison, inv. 6)
                 $reservation->setTeamId($slotData['team']->getId());
                 $reservation->setVenueId($venues[$slotData['venue']]->getId());
                 $reservation->setDayOfWeek($slotData['day']);
@@ -1677,7 +1680,7 @@ final class BcclSeeder
         $manager->flush();
 
         // --- 8 mutualisations SOCLE : purge des blocs de socle puis recréation. ---
-        foreach ($manager->getRepository(SharedTrainingBlock::class)->findBy(['clubId' => $clubId, 'seasonId' => $season->getId(), 'schedulePlanId' => null]) as $existingBlock) {
+        foreach ($manager->getRepository(SharedTrainingBlock::class)->findBy(['clubId' => $clubId, 'seasonId' => $season->getId(), 'schedulePlanId' => $this->soclePlanOf($season)]) as $existingBlock) {
             foreach ($manager->getRepository(SharedTrainingBlockTeam::class)->findBy(['blockId' => $existingBlock->getId()]) as $existingMember) {
                 $manager->remove($existingMember);
             }
@@ -1700,14 +1703,14 @@ final class BcclSeeder
             $block = new SharedTrainingBlock;
             $block->setClubId($clubId);
             $block->setSeasonId($season->getId());
-            $block->setSchedulePlanId(null);
+            $block->setSchedulePlanId($this->soclePlanOf($season));
             $block->setCommonSessions(1);
             $manager->persist($block);
             foreach ($members as $teamName) {
                 $member = new SharedTrainingBlockTeam;
                 $member->setClubId($clubId);
                 $member->setSeasonId($season->getId());
-                $member->setSchedulePlanId(null);
+                $member->setSchedulePlanId($this->soclePlanOf($season));
                 $member->setBlockId($block->getId());
                 $member->setTeamId($teams[$teamName]->getId());
                 $manager->persist($member);
@@ -3155,5 +3158,11 @@ final class BcclSeeder
         $this->logoStorage->store($clubId, $bytes);
         $club->setLogoUrl(LogoUrl::build($clubId, $bytes));
         $manager->flush();
+    }
+
+    /** Le plan de saison, qui porte les lignes du socle (lot 4) — créé s'il manque, idempotent. */
+    private function soclePlanOf(Season $season): string
+    {
+        return $this->schedulePlanProvisioner->ensureSeasonPlan($season)->getId();
     }
 }

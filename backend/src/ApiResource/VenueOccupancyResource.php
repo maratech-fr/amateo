@@ -69,7 +69,10 @@ class VenueOccupancyResource
     #[Groups(['read'])]
     public ?string $schedulePlanId = null;
 
-    public static function fromEntity(VenueOccupancy $entity): self
+    /**
+     * @param string|null $schedulePlanId le plan à la frontière de l'API : null pour le socle (jusqu'au lot 6)
+     */
+    public static function fromEntity(VenueOccupancy $entity, ?string $schedulePlanId): self
     {
         $dto = new self;
         $dto->id = $entity->getId();
@@ -81,7 +84,7 @@ class VenueOccupancyResource
         $dto->startTime = $entity->getStartTime();
         $dto->durationMinutes = $entity->getDurationMinutes();
         $dto->label = $entity->getLabel();
-        $dto->schedulePlanId = $entity->getSchedulePlanId();
+        $dto->schedulePlanId = $schedulePlanId;
 
         return $dto;
     }

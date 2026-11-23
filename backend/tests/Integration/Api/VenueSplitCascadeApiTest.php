@@ -18,6 +18,7 @@ use App\State\Processor\VenueStateProcessor;
 use App\Tests\ChoosesPlanVersionTrait;
 use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\CreatesPeriodPlanTrait;
+use App\Tests\SeasonPlanOf;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -175,7 +176,7 @@ final class VenueSplitCascadeApiTest extends WebTestCase
             ->setStartTime(new DateTimeImmutable($start))
             ->setDurationMinutes(90)
             ->setCapacity($capacity)
-            ->setSchedulePlanId($schedulePlanId);
+            ->setSchedulePlanId($schedulePlanId ?? SeasonPlanOf::id(self::getContainer(), $this->season->getId()));
         $slot->setGroupLabel($groupLabel);
         $this->em->persist($slot);
         $this->em->flush();
@@ -193,7 +194,7 @@ final class VenueSplitCascadeApiTest extends WebTestCase
             ->setDayOfWeek($day)
             ->setStartTime(new DateTimeImmutable($start))
             ->setDurationMinutes(90)
-            ->setSchedulePlanId($schedulePlanId);
+            ->setSchedulePlanId($schedulePlanId ?? SeasonPlanOf::id(self::getContainer(), $this->season->getId()));
         $this->em->persist($reservation);
         $this->em->flush();
     }

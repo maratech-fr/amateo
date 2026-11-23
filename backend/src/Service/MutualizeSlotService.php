@@ -96,20 +96,18 @@ final class MutualizeSlotService
         // « Mutualiser… » est disponible au planning de SAISON comme sur un plan de période — le
         // socle se comporte comme la saison (décision fondateur 2026-10-13). La PORTÉE du geste suit
         // l'écran : au socle, le bloc et tout ce qu'il scope (grille de gymnase, budget Σ, unicité de
-        // l'ensemble d'équipes) vivent à portée NULL — exactement comme les blocs de saison que
+        // l'ensemble d'équipes) vivent sur le plan de saison — exactement comme les blocs de saison que
         // `SchedulePlanProvisioner::copySocleSharedBlocks` recopie vers les fermetures. Sur un plan de
-        // période, la portée est ce plan. ⚠ `Schedule::getSchedulePlanId()` d'un socle rend l'id du
-        // plan SEASON (non-null) — c'est précisément ce qu'on NE veut PAS écrire dans le bloc : au
-        // socle on force `null`. Seule l'ACTIVATION d'une équipe à 0 séance reste propre à la période
+        // période, la portée est ce plan : dans les deux cas, le plan de la version. Seule l'ACTIVATION d'une équipe à 0 séance reste propre à la période
         // (refus nommé au socle, cf. activateTeamForPeriod).
         $isSocle = $this->schedulePlanProvisioner->isSeasonSchedule($schedule);
 
         $clubId = $anchor->getClubId();
         $seasonId = $anchor->getSeasonId();
-        $planId = $isSocle ? null : $schedule->getSchedulePlanId();
+        $planId = $schedule->getSchedulePlanId();
         $normalizedLabel = null === $label || '' === trim($label) ? null : trim($label);
 
-        return $this->entityManager->wrapInTransaction(function () use ($anchor, $schedule, $clubId, $seasonId, $planId, $teamIds, $replacedSlotIds, $normalizedLabel): array {
+        return $this->entityManager->wrapInTransaction(function () use ($anchor, $schedule, $clubId, $seasonId, $planId, $isSocle, $teamIds, $replacedSlotIds, $normalizedLabel): array {
             $members = $this->normalizeMembers($teamIds, $anchor->getTeamId());
             if (\count($members) < 2) {
                 throw new MutualizationRefusedException('Un bloc de mutualisation compte au moins 2 équipes.');
@@ -193,7 +191,7 @@ final class MutualizeSlotService
             // Activer les équipes à 0 séance (override de période : 1 séance, marquée « mutualisation »)
             // AVANT la garde Σ, pour que leur volume effectif reflète le geste.
             foreach ($toActivate as $teamId) {
-                $this->activateTeamForPeriod($clubId, $seasonId, $planId, $teamId);
+                $this->activateTeamForPeriod($clubId, $seasonId, $planId, $isSocle, $teamId);
             }
             $this->entityManager->flush();
 
@@ -327,11 +325,10 @@ final class MutualizeSlotService
             throw new ScheduleGenerationInProgressException;
         }
 
-        // Portée du bloc = l'écran (NULL au socle, le plan de période sinon — patron mutualize()).
-        $isSocle = $this->schedulePlanProvisioner->isSeasonSchedule($schedule);
+        // Portée du bloc = l'écran : le plan de la version (de saison au socle — patron mutualize()).
         $clubId = $source->getClubId();
         $seasonId = $source->getSeasonId();
-        $planId = $isSocle ? null : $schedule->getSchedulePlanId();
+        $planId = $schedule->getSchedulePlanId();
         $normalizedLabel = null === $label || '' === trim($label) ? null : trim($label);
 
         $sourceBlockId = $source->getSharedTrainingBlockId();
@@ -631,7 +628,7 @@ final class MutualizeSlotService
      *
      * @param list<string> $members
      */
-    private function assertCaseHasRoom(Schedule $schedule, array $members, string $venueId, int $dayOfWeek, DateTimeImmutable $startTime, ?string $planId, string $clubId, string $seasonId): void
+    private function assertCaseHasRoom(Schedule $schedule, array $members, string $venueId, int $dayOfWeek, DateTimeImmutable $startTime, string $planId, string $clubId, string $seasonId): void
     {
         $memberSet = array_fill_keys($members, true);
         $slotsAtCase = $this->entityManager->getRepository(ScheduleSlotTemplate::class)->findBy([
@@ -656,7 +653,7 @@ final class MutualizeSlotService
     }
 
     /** La capacité de la fenêtre de gymnase à la case, dans la COUCHE du plan de période (sa grille). */
-    private function caseCapacity(string $clubId, string $seasonId, ?string $planId, string $venueId, int $dayOfWeek, DateTimeImmutable $startTime): int
+    private function caseCapacity(string $clubId, string $seasonId, string $planId, string $venueId, int $dayOfWeek, DateTimeImmutable $startTime): int
     {
         $window = $this->entityManager->getRepository(VenueTrainingSlot::class)->findOneBy([
             'clubId' => $clubId,
@@ -674,10 +671,10 @@ final class MutualizeSlotService
      * Active une équipe dans le plan de période : override isActive + 1 séance, marqué
      * « mutualisation ». Crée l'override s'il manque, le relève s'il existe (p.ex. désactivé).
      */
-    private function activateTeamForPeriod(string $clubId, string $seasonId, ?string $planId, string $teamId): void
+    private function activateTeamForPeriod(string $clubId, string $seasonId, string $planId, bool $isSocle, string $teamId): void
     {
-        if (null === $planId) {
-            // Au socle (planId NULL), il n'y a pas d'override de période pour donner une séance à une
+        if ($isSocle) {
+            // Au socle, il n'y a pas d'override de période pour donner une séance à une
             // équipe qui n'en a aucune : on REFUSE (l'UI ne propose déjà pas ces équipes au socle, ce
             // refus est le filet). Activer une équipe à 0 séance reste propre aux plans de période.
             throw new MutualizationRefusedException('Au planning de saison, on ne peut pas mutualiser une équipe qui n\'a aucune séance : donnez-lui d\'abord des séances dans la saisie.');
@@ -701,7 +698,7 @@ final class MutualizeSlotService
      *
      * @param list<string> $members
      */
-    private function assertSumWithinBudget(array $members, string $clubId, string $seasonId, ?string $planId): void
+    private function assertSumWithinBudget(array $members, string $clubId, string $seasonId, string $planId): void
     {
         $budgets = $this->soloReservationBudget->forTeamsWithBlockSubstituted($members, $clubId, $seasonId, $planId, null, 1);
         foreach ($budgets as $budget) {
@@ -731,7 +728,7 @@ final class MutualizeSlotService
      *
      * @param list<string> $teamIds
      */
-    private function sameTeamSetAlreadyDeclared(string $clubId, string $seasonId, ?string $planId, array $teamIds): bool
+    private function sameTeamSetAlreadyDeclared(string $clubId, string $seasonId, string $planId, array $teamIds): bool
     {
         return null !== $this->findBlockIdWithExactTeamSet($clubId, $seasonId, $planId, $teamIds);
     }
@@ -743,7 +740,7 @@ final class MutualizeSlotService
      *
      * @param list<string> $teamIds
      */
-    private function findBlockIdWithExactTeamSet(string $clubId, string $seasonId, ?string $planId, array $teamIds): ?string
+    private function findBlockIdWithExactTeamSet(string $clubId, string $seasonId, string $planId, array $teamIds): ?string
     {
         $wanted = $teamIds;
         sort($wanted);
@@ -755,11 +752,7 @@ final class MutualizeSlotService
             ->setParameter('clubId', $clubId)
             ->setParameter('seasonId', $seasonId);
 
-        if (null === $planId) {
-            $qb->andWhere('t.schedulePlanId IS NULL');
-        } else {
-            $qb->andWhere('t.schedulePlanId = :planId')->setParameter('planId', $planId);
-        }
+        $qb->andWhere('t.schedulePlanId = :planId')->setParameter('planId', $planId);
 
         /** @var list<array{blockId: string, teamId: string}> $rows */
         $rows = $qb->getQuery()->getScalarResult();
@@ -785,7 +778,7 @@ final class MutualizeSlotService
      *
      * @param list<string> $members
      */
-    private function assertNewBlockFitsItsReservations(array $members, ?string $planId): void
+    private function assertNewBlockFitsItsReservations(array $members, string $planId): void
     {
         $reservedSessions = $this->reservationGroupOccupancy->groupCompleteCaseCount(array_fill_keys($members, true), $planId);
         if ($reservedSessions > 1) {

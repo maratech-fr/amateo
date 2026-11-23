@@ -122,7 +122,8 @@ final class RegenerateTest extends WebTestCase
     {
         $loaded = $this->seedSchedule(ScheduleStatus::COMPLETED);
         $viewed = $this->seedSchedule(ScheduleStatus::COMPLETED);
-        $this->season->setLiveContextScheduleId($loaded->getId());
+        $this->em->flush();
+        $this->em->getConnection()->executeStatement('UPDATE schedule_plan SET lock_source_schedule_id = ? WHERE season_id = ? AND type = \'SEASON\'', [$loaded->getId(), $this->season->getId()]);
         $this->em->flush();
 
         $this->post($viewed->getId());
@@ -152,7 +153,8 @@ final class RegenerateTest extends WebTestCase
         $this->seedSchedule(ScheduleStatus::COMPLETED);
         $loaded = $this->seedSchedule(ScheduleStatus::COMPLETED);
         $this->seedSchedule(ScheduleStatus::PENDING);
-        $this->season->setLiveContextScheduleId($loaded->getId());
+        $this->em->flush();
+        $this->em->getConnection()->executeStatement('UPDATE schedule_plan SET lock_source_schedule_id = ? WHERE season_id = ? AND type = \'SEASON\'', [$loaded->getId(), $this->season->getId()]);
         $this->em->flush();
 
         $this->client->request('GET', '/api/schedules/' . $loaded->getId(), [], [], ['HTTP_AUTHORIZATION' => 'Bearer ' . $this->token, 'HTTP_ACCEPT' => 'application/json']);
@@ -169,7 +171,8 @@ final class RegenerateTest extends WebTestCase
     {
         $latest = $this->seedSchedule(ScheduleStatus::COMPLETED);
         $loaded = $this->seedSchedule(ScheduleStatus::COMPLETED);
-        $this->season->setLiveContextScheduleId($loaded->getId());
+        $this->em->flush();
+        $this->em->getConnection()->executeStatement('UPDATE schedule_plan SET lock_source_schedule_id = ? WHERE season_id = ? AND type = \'SEASON\'', [$loaded->getId(), $this->season->getId()]);
         $this->em->flush();
 
         $this->client->request('DELETE', '/api/schedules/' . $loaded->getId(), [], [], ['HTTP_AUTHORIZATION' => 'Bearer ' . $this->token]);

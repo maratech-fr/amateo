@@ -26,8 +26,9 @@ use LogicException;
  *   fondateur 2026-07-17 ; l'invariant 5 de l'ADR a été corrigé, il se contredisait avec la
  *   section « Rôle de CalendarEntry »).
  *
- * Dans les deux cas, **NULL = la structure PARTAGÉE** (inv. 6) : c'est ce qu'on
- * photographie et ce que le socle génère. (Ce n'est PAS un critère de transition de
+ * La structure PARTAGÉE (inv. 6), celle qu'on photographie et que le socle génère : pour une
+ * RÉPONSE, la ligne du plan de saison (lot 4 : le socle a son plan) ; pour un FAIT, la
+ * contrainte sans entrée de calendrier (permanente). (Ce n'est PAS un critère de transition de
  * saison : `SeasonTransitionService` copie les créneaux de base mais pas les
  * réservations — un choix qui lui appartient, sans lien avec l'ancre.)
  *
@@ -52,7 +53,8 @@ final class StructureAnchor
     }
 
     /**
-     * Le champ qui porte l'appartenance à une période, pour cette entité.
+     * Le critère qui borne cette entité à la structure PARTAGÉE : `[champ => valeur]`, la valeur
+     * nulle ne valant que pour l'entrée de calendrier d'une contrainte permanente.
      *
      * `match` EXHAUSTIF, sans branche par défaut : une entité inconnue lève, elle ne se voit
      * pas attribuer une ancre au hasard. C'est le point du refactor — un `else` qui retombe
@@ -62,12 +64,14 @@ final class StructureAnchor
      * entité que diverger en silence.
      *
      * @param class-string $entityClass
+     *
+     * @return array<string, string|null>
      */
-    public static function of(string $entityClass): string
+    public static function sharedStructureCriteria(string $entityClass, string $seasonPlanId): array
     {
         return match ($entityClass) {
-            Reservation::class, VenueTrainingSlot::class => 'schedulePlanId',
-            Constraint::class => 'calendarEntryId',
+            Reservation::class, VenueTrainingSlot::class => ['schedulePlanId' => $seasonPlanId],
+            Constraint::class => ['calendarEntryId' => null],
             default => throw new LogicException(\sprintf('Aucune ancre de période connue pour %s — déclarez-la ici (schedulePlanId si la ligne est une RÉPONSE, calendarEntryId si elle décrit le FAIT).', $entityClass)),
         };
     }

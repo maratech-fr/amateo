@@ -51,8 +51,8 @@
 > Vocabulaire du pattern « Plan » ([ADR-0002](architecture/adr-0002-pattern-plan.md))
 > — **il fait foi pour parler du produit et décrit le code**. Termes **bannis** :
 > *baseline*, *planningName*, `overlayScheduleId`, statuts *VALIDATED*/*ARCHIVED* — ils
-> n'existent plus nulle part. Le champ `liveContextScheduleId` (la ★) survit **par
-> décision** (inv. 17) — voir « ★ / photo chargée » ci-dessous.
+> n'existent plus nulle part. La ★ survit **par
+> décision** (inv. 17), rangée sur le plan (`lock_source_schedule_id`) — voir « ★ / photo chargée » ci-dessous.
 
 | Terme | Définition |
 |-------|------------|
@@ -60,7 +60,7 @@
 | **Version** (`Schedule`) | Une résolution du solveur d'un plan : « V3 ». Jamais nommée par l'humain. Cycle : `DRAFT → PENDING → GENERATING → COMPLETED \| FAILED`. |
 | **Version choisie** | Celle que **pointe** le plan (`chosenScheduleId`) = « validée ». **Valider = pointer**, et **les autres versions sont supprimées**. « Validé » n'est pas un statut : ça se dérive du pointeur, et de rien d'autre (`Schedule.isChosen` le dit par version). |
 | **Espace de travail** | Plan au **pointeur null** : on génère/compare des versions, on choisira. Rouvrir y ramène. **Aucun pointage automatique** — seul le gestionnaire pointe. |
-| **★ / photo chargée** | La version dont la photo de structure est chargée dans le wizard (`liveContextScheduleId`). **Ce n'est PAS le pointeur du plan** : elle suit chaque génération COMPLETED du socle. C'est l'auto-*pointeur* qui est mort, pas la ★ (inv. 17). |
+| **★ / photo chargée** | La version dont la photo de structure est chargée dans le wizard (`schedule_plan.lock_source_schedule_id` du plan de saison). **Ce n'est PAS le pointeur du plan** : elle suit chaque génération COMPLETED du socle. C'est l'auto-*pointeur* qui est mort, pas la ★ (inv. 17). |
 | **Version chargée** (ADR-0002, amendement 2026-11-03) | Dans un plan, la seule version qui se **modifie**, se **valide** et part au moteur : la source des verrous (`SchedulePlanProvisioner::lockSourceScheduleIdOfPlan`), pour un plan de saison comme de période. Les autres versions se consultent ; toute retouche ou validation d'une autre est refusée en 409 `not_loaded_version` (« Chargez cette version… »). Verdict unique : `App\Service\VersionEditability` ; la version en vigueur a son propre motif `chosen_version` (le geste est « Rouvrir »). Ne pas confondre avec le pointeur du plan (la version choisie) |
 | **Planning de période** (alias : plan secondaire, calendrier secondaire) | Plan `CLOSURE`/`HOLIDAY` borné à une période du cockpit — vacances, fermeture. Exige que le plan `SEASON` soit **pointé**. Ne remplace pas le planning de saison. |
 | **Segment** (P2-41) | La fenêtre d'un enfant de période (`CalendarEntry.parentEntryId`) : un bloc de semaines calendaires **pleines et contiguës** (lundi→dimanche, clamp saison admis aux deux bords), inclus dans les semaines qui couvrent la mère. **La semaine simple est le segment de taille 1** (rétro-compatible, aucun nouveau concept). Un segment naît avec SON plan comme n'importe quel enfant (rail 1 entrée = 1 plan) et reste soumis aux mêmes garde-fous — anti-chevauchement entre segments frères, garde d'unicité de fenêtre 409 `window_already_planned` (P2-38). Livré des deux côtés : API (`CalendarEntryStateProcessor::assertValidWeekChild`) et écran — le picker (`WeekPickerDialog`) propose des segments précochés aux ruptures géométriques de l'offre. **Pour une VACANCE, ces segments restent scindables/fusionnables à la main** (liberté P2-41 intacte) ; **pour une FERMETURE (`closure`), leur nombre et leurs bornes sont désormais IMPOSÉS** — v. **Début / Milieu / Fin** ci-dessous. Détail : [ADR-0002](architecture/adr-0002-pattern-plan.md) (lot P2-41, amendé 2026-09-05). |

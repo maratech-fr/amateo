@@ -35,7 +35,7 @@ class VenueOccupancyStateProvider extends AbstractStateProvider
      */
     protected function mapEntityToOutput(object $entity): VenueOccupancyResource
     {
-        return VenueOccupancyResource::fromEntity($entity);
+        return VenueOccupancyResource::fromEntity($entity, $this->planToApi($entity->getSchedulePlanId(), $entity->getSeasonId()));
     }
 
     /**
@@ -55,20 +55,22 @@ class VenueOccupancyStateProvider extends AbstractStateProvider
         }
 
         $request = $this->requestStack->getCurrentRequest();
-        $schedulePlanId = null;
+        $requestedPlanId = null;
         if ($request instanceof Request) {
             $venueId = $this->uuidQueryParam($request, 'venueId');
             if (null !== $venueId) {
                 $qb->andWhere('e.venueId = :venueId')->setParameter('venueId', $venueId);
             }
-            $schedulePlanId = $this->uuidQueryParam($request, 'schedulePlanId');
+            $requestedPlanId = $this->uuidQueryParam($request, 'schedulePlanId');
         }
 
-        // Absent ⇒ la grille de SAISON seule : l'écran de saison ne montre jamais les copies d'une période.
-        if (null !== $schedulePlanId) {
-            $qb->andWhere('e.schedulePlanId = :schedulePlanId')->setParameter('schedulePlanId', $schedulePlanId);
+        // Absent ⇒ la grille de SAISON seule (le plan de saison) : l'écran de saison ne montre jamais les
+        // copies d'une période.
+        $readPlanId = $requestedPlanId ?? $this->soclePlanOfRead($clubId);
+        if (null === $readPlanId) {
+            $qb->andWhere('1 = 0'); // aucune saison : aucun socle à lire
         } else {
-            $qb->andWhere('e.schedulePlanId IS NULL');
+            $qb->andWhere('e.schedulePlanId = :schedulePlanId')->setParameter('schedulePlanId', $readPlanId);
         }
 
         // Ordre total déterministe (l'identifiant départage) : sans lui, la pagination par décalage est instable.

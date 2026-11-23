@@ -20,6 +20,7 @@ use App\EventListener\CacheInvalidationListener;
 use App\Service\ScheduleConstraintBuilder;
 use App\Service\TeamTagResolver;
 use App\Service\TenantDoctrineScope;
+use App\Tests\SeasonPlanOf;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -300,6 +301,7 @@ final class TeamTagScopeTest extends KernelTestCase
         $next->setStatus(SeasonStatus::DRAFT);
         $this->em->persist($next);
         $this->em->flush();
+        SeasonPlanOf::id(self::getContainer(), $next->getId());
 
         $nextTeam = new Team;
         $nextTeam->setClubId($this->club->getId());
@@ -387,6 +389,7 @@ final class TeamTagScopeTest extends KernelTestCase
         $otherCategory->setSortOrder(0);
         $this->em->persist($otherCategory);
         $this->em->flush();
+        SeasonPlanOf::id(self::getContainer(), $otherSeason->getId());
         $otherTeam = new Team;
         $otherTeam->setClubId($other->getId());
         $otherTeam->setSeasonId($otherSeason->getId());
@@ -463,6 +466,7 @@ final class TeamTagScopeTest extends KernelTestCase
             $this->em->persist($this->priorityTier);
         }
         $this->em->flush();
+        SeasonPlanOf::id(self::getContainer(), $this->season->getId());
 
         // Les âges sont ceux du VRAI catalogue (`Service\Basketball\CategoryCatalog`) — un
         // jeu inventé testerait une frontière qui n'existe nulle part. « Baby basket » et

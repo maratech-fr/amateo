@@ -19,6 +19,7 @@ use App\Service\SchedulePlanProvisioner;
 use App\Tests\ChoosesPlanVersionTrait;
 use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\CreatesPeriodPlanTrait;
+use App\Tests\SeasonPlanOf;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -367,6 +368,7 @@ final class GridLockAuditTest extends WebTestCase
             ->setStartDate(new DateTimeImmutable('2025-09-01'))->setEndDate(new DateTimeImmutable('2026-06-30'))->setStatus(SeasonStatus::ACTIVE);
         $this->em->persist($this->season);
         $this->em->flush();
+        SeasonPlanOf::id(self::getContainer(), $this->season->getId());
 
         $this->token = $container->get(JWTTokenManagerInterface::class)->create($this->manager);
     }
