@@ -1443,6 +1443,12 @@ jobs:
           # l'octet contre tests/Fixtures/engine-requests/. Le Lot Gate ne joue que cette suite : sans ce
           # gate, une PR de lot qui changerait la demande en silence passerait tous ses checks.
           FILES="$FILES tests/Integration/EngineRequestReferenceTest.php"
+          # NR d'axe GENERATION PIPELINE (lot conception 4, PR 1) — le décor des quinze demandes de
+          # référence, écrit en SQL dans le schéma figé d'avant le lot 4, donne les mêmes demandes une
+          # fois toutes les migrations jouées, sur une base dédiée par référence ; la chaîne joue
+          # exactement les migrations du lot qu'elle nomme. Sans ce gate, une migration du lot qui
+          # convertirait mal un réglage de période changerait la demande en passant le Lot Gate.
+          FILES="$FILES tests/Integration/Migration/Lot4MigrationChainTest.php"
           docker compose exec -T -e APP_ENV=test php-fpm sh -c "cd /app/backend && php -d memory_limit=1G vendor/bin/phpunit --group phase1 $FILES"
 
       # Axe tenant isolation (GO fondateur 2026-10-30, incident d'un club pilote, PR A import du parc) — la

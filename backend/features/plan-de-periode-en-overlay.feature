@@ -43,6 +43,14 @@ Fonctionnalité: Un plan de période se génère en overlay, sur sa propre grill
     Quand je reprends la grille du planning de saison pour ce gymnase
     Alors la période porte de nouveau l'occupation de la saison
 
+  Scénario: Une règle de saison ajoutée après la naissance d'une fermeture entre dans sa génération
+    Le plan de la fermeture est né avant la règle : elle y entre quand même, comme dans le planning de saison.
+    Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur
+    Et une fermeture déjà créée
+    Quand j'ajoute la règle de saison « pas le vendredi »
+    Et je génère une version de la fermeture
+    Alors la génération de la fermeture respecte « pas le vendredi »
+
   Scénario: Je re-date l'incident découpé : l'aperçu m'annonce ce qui change, je confirme
     Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur
     Et une fermeture à venir découpée en trois semaines-segments, chacune avec son plan
