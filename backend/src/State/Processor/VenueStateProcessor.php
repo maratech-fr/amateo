@@ -8,9 +8,9 @@ use App\ApiResource\VenueResource;
 use App\Dto\VenueInput;
 use App\Entity\Fixture;
 use App\Entity\Place;
+use App\Entity\PlaceTravelTime;
 use App\Entity\Venue;
 use App\Entity\VenueTrainingSlot;
-use App\Entity\VenueTravelTime;
 use App\Enum\TravelComputeScope;
 use App\Message\ComputeTravelTimesMessage;
 use App\Service\ManagementAccessGuard;
@@ -139,7 +139,9 @@ class VenueStateProcessor extends AbstractStateProcessor
         // vient de créer : seul le nom reste. Il passe sur un lieu NEUF, sans adresse : le lieu qu'il
         // quitte, et les gymnases des autres saisons qui le pointent, ne bougent pas (décision 2 du
         // lot 3, A). Une valeur fournie dans le même PUT l'emporte, juste après.
+        $leftPlace = null;
         if ('' === $input->externalRef) {
+            $leftPlace = $place;
             $place = (new Place)->setClubId($entity->getClubId());
             $this->entityManager->persist($place);
             $entity->moveToPlace($place);
@@ -167,10 +169,11 @@ class VenueStateProcessor extends AbstractStateProcessor
         if ($coordsChanged && null !== $newLatitude && null !== $newLongitude) {
             $this->pendingTravelRecompute = [$entity->getClubId(), $place->getId()];
         }
-        // Une dissociation qui laisse le gymnase sans position efface ses temps de trajet, saisies à la
-        // main comprises. Une position fournie dans le même PUT suit le chemin ci-dessus.
-        if ('' === $input->externalRef && (null === $newLatitude || null === $newLongitude)) {
-            $this->blankTravelTimesOf($entity);
+        // Une dissociation qui laisse le gymnase sans position efface ses temps de trajet dans sa saison,
+        // saisies à la main comprises ; une position fournie dans le même PUT les garde et suit le chemin
+        // ci-dessus. Le lieu quitté garde les siens, pour les autres saisons.
+        if ($leftPlace instanceof Place) {
+            $this->carryTravelTimes($entity, $leftPlace, $place, null !== $newLatitude && null !== $newLongitude);
         }
         if (null !== $input->source) {
             $entity->setSource($input->source);
@@ -233,7 +236,10 @@ class VenueStateProcessor extends AbstractStateProcessor
         $seasonIds = $this->entityManager->getConnection()->fetchFirstColumn(
             'SELECT DISTINCT v.season_id FROM venue v'
             . ' WHERE v.club_id = :c AND v.place_id = :p'
-            . ' AND EXISTS (SELECT 1 FROM venue_travel_time t WHERE t.club_id = :c AND t.season_id = v.season_id)'
+            . ' AND EXISTS (SELECT 1 FROM place_travel_time t'
+            . ' JOIN venue va ON va.place_id = t.place_a_id AND va.club_id = t.club_id AND va.season_id = v.season_id'
+            . ' JOIN venue vb ON vb.place_id = t.place_b_id AND vb.club_id = t.club_id AND vb.season_id = v.season_id'
+            . ' WHERE t.club_id = :c)'
             . ' ORDER BY v.season_id',
             ['c' => $clubId, 'p' => $placeId],
         );
@@ -261,16 +267,29 @@ class VenueStateProcessor extends AbstractStateProcessor
     }
 
     /**
-     * Vide les lignes de matrice du gymnase sans les supprimer : {@see afterPersist} ne recalcule que si
-     * le club a au moins une ligne (opt-in), et « Annuler » ou une nouvelle adresse doivent recalculer
-     * même quand ce gymnase portait les seules lignes du club. L'autofill remplit une ligne vidée comme
-     * une colonne jamais renseignée (`VenueTravelTimeAutofillService::autofill`).
+     * Un gymnase dissocié passe sur un lieu neuf : les temps de trajet que sa saison servait depuis le
+     * lieu quitté sont reportés sur le nouveau lieu, mêmes couples, vidés quand le gymnase reste sans
+     * position. Le lieu quitté garde ses temps (les autres saisons qui le pointent les lisent). Une ligne
+     * vidée garde la matrice de la saison : {@see afterPersist} ne recalcule que si la saison sert au
+     * moins une ligne (opt-in), et « Annuler » ou une nouvelle adresse doivent recalculer même quand ce
+     * gymnase portait les seules lignes de la saison. L'autofill remplit une ligne vidée comme une
+     * colonne jamais renseignée (`VenueTravelTimeAutofillService::autofill`).
      */
-    private function blankTravelTimesOf(Venue $venue): void
+    private function carryTravelTimes(Venue $venue, Place $leftPlace, Place $newPlace, bool $keepValues): void
     {
-        $repository = $this->entityManager->getRepository(VenueTravelTime::class);
-        foreach ([...$repository->findBy(['venueAId' => $venue->getId()]), ...$repository->findBy(['venueBId' => $venue->getId()])] as $row) {
-            $row->setDrivingMinutes(null)->setDrivingSource(null)->setWalkingMinutes(null)->setWalkingSource(null);
+        $repository = $this->entityManager->getRepository(PlaceTravelTime::class);
+        foreach ($repository->forSeason($venue->getClubId(), $venue->getSeasonId()) as $served) {
+            $row = $served['row'];
+            if ($venue->getId() !== $served['venueAId'] && $venue->getId() !== $served['venueBId']) {
+                continue;
+            }
+            $otherPlace = $row->getPlaceAId() === $leftPlace->getId() ? $row->getPlaceBId() : $row->getPlaceAId();
+            $carried = PlaceTravelTime::between($venue->getClubId(), $newPlace->getId(), $otherPlace);
+            if ($keepValues) {
+                $carried->setDrivingMinutes($row->getDrivingMinutes())->setDrivingSource($row->getDrivingSource())
+                    ->setWalkingMinutes($row->getWalkingMinutes())->setWalkingSource($row->getWalkingSource());
+            }
+            $this->entityManager->persist($carried);
         }
     }
 

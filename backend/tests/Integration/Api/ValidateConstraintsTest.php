@@ -10,6 +10,7 @@ use App\Entity\ClubUser;
 use App\Entity\Coach;
 use App\Entity\Constraint;
 use App\Entity\ImplicitRuleSetting;
+use App\Entity\PlaceTravelTime;
 use App\Entity\Reservation;
 use App\Entity\Season;
 use App\Entity\Team;
@@ -18,7 +19,6 @@ use App\Entity\User;
 use App\Entity\Venue;
 use App\Entity\VenuePeriodOverride;
 use App\Entity\VenueTrainingSlot;
-use App\Entity\VenueTravelTime;
 use App\Enum\CalendarEntryKind;
 use App\Enum\CalendarEntryPeriodType;
 use App\Enum\ConstraintFamily;
@@ -1255,9 +1255,11 @@ final class ValidateConstraintsTest extends WebTestCase
 
     private function travel(string $venueIdA, string $venueIdB, int $walkingMinutes): void
     {
-        $row = new VenueTravelTime;
-        $row->setClubId($this->club->getId())->setSeasonId($this->season->getId());
-        $row->setVenueAId($venueIdA)->setVenueBId($venueIdB)->setWalkingMinutes($walkingMinutes);
+        $venueA = $this->em->find(Venue::class, $venueIdA);
+        $venueB = $this->em->find(Venue::class, $venueIdB);
+        self::assertInstanceOf(Venue::class, $venueA);
+        self::assertInstanceOf(Venue::class, $venueB);
+        $row = PlaceTravelTime::between($this->club->getId(), $venueA->getPlaceId(), $venueB->getPlaceId())->setWalkingMinutes($walkingMinutes);
         $this->em->persist($row);
         $this->em->flush();
     }

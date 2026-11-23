@@ -6,11 +6,18 @@ namespace App\State\Provider;
 
 use ApiPlatform\Metadata\Operation;
 use App\ApiResource\VenueTravelTimeResource;
-use App\Entity\VenueTravelTime;
+use App\Entity\PlaceTravelTime;
+use App\Repository\PlaceTravelTimeRepository;
+use LogicException;
 use Symfony\Component\HttpFoundation\Request;
 
 /**
- * @extends AbstractStateProvider<VenueTravelTime, VenueTravelTimeResource>
+ * Les temps de trajet du club servis pour une saison : le temps vit au club entre deux lieux, chaque
+ * saison le sert nommé par SES gymnases, rangé selon eux ({@see PlaceTravelTimeRepository::forSeason}).
+ * Un temps dont un lieu n'a pas de gymnase dans la saison n'y paraît pas (ni en liste, ni en lecture).
+ * La saison servie est celle de la requête (`X-Season-Id`, ou la saison courante), ou `?seasonId=`.
+ *
+ * @extends AbstractStateProvider<PlaceTravelTime, VenueTravelTimeResource>
  */
 class VenueTravelTimeStateProvider extends AbstractStateProvider
 {
@@ -18,15 +25,21 @@ class VenueTravelTimeStateProvider extends AbstractStateProvider
 
     protected function getEntityClass(): string
     {
-        return VenueTravelTime::class;
+        return PlaceTravelTime::class;
     }
 
     /**
-     * @param VenueTravelTime $entity
+     * @param PlaceTravelTime $entity
      */
     protected function mapEntityToOutput(object $entity): VenueTravelTimeResource
     {
-        return VenueTravelTimeResource::fromEntity($entity);
+        foreach ($this->served($entity->getClubId()) as $served) {
+            if ($served['row']->getId() === $entity->getId()) {
+                return VenueTravelTimeResource::fromEntity($entity, $served['venueAId'], $served['venueBId']);
+            }
+        }
+
+        throw new LogicException('Ce temps de trajet n\'est pas servi dans la saison demandée.');
     }
 
     /**
@@ -36,36 +49,57 @@ class VenueTravelTimeStateProvider extends AbstractStateProvider
      */
     protected function provideCollection(Operation $operation, array $context, ?string $clubId): array
     {
-        $qb = $this->entityManager->createQueryBuilder()
-            ->select('e')
-            ->from(VenueTravelTime::class, 'e');
-
-        if (null !== $clubId) {
-            $qb->andWhere('e.clubId = :clubId')->setParameter('clubId', $clubId);
+        if (null === $clubId) {
+            return [];
         }
 
         $request = $this->requestStack->getCurrentRequest();
-        if ($request instanceof Request) {
-            $seasonId = $this->uuidQueryParam($request, 'seasonId');
-            if (null !== $seasonId) {
-                $qb->andWhere('e.seasonId = :seasonId')->setParameter('seasonId', $seasonId);
+        // A travel time is symmetric: ?venueId= matches EITHER side.
+        $venueId = $request instanceof Request ? $this->uuidQueryParam($request, 'venueId') : null;
+        $outputs = [];
+        foreach ($this->served($clubId) as $served) {
+            if (null !== $venueId && $venueId !== $served['venueAId'] && $venueId !== $served['venueBId']) {
+                continue;
             }
-            // A travel-time bracket is symmetric: ?venueId= matches EITHER side.
-            $venueId = $this->uuidQueryParam($request, 'venueId');
-            if (null !== $venueId) {
-                $qb->andWhere('e.venueAId = :venueId OR e.venueBId = :venueId')->setParameter('venueId', $venueId);
-            }
+            $outputs[] = VenueTravelTimeResource::fromEntity($served['row'], $served['venueAId'], $served['venueBId']);
         }
-
-        // UUID PK tiebreaker for stable offset pagination (TeamLink idiom).
-        $qb->orderBy('e.createdAt', 'ASC')->addOrderBy('e.id', 'ASC');
 
         if ($this->pagination->isEnabled($operation, $context)) {
-            $offset = $this->pagination->getOffset($operation, $context);
-            $limit = $this->pagination->getLimit($operation, $context);
-            $qb->setFirstResult($offset)->setMaxResults($limit);
+            return \array_slice($outputs, $this->pagination->getOffset($operation, $context), $this->pagination->getLimit($operation, $context));
         }
 
-        return array_map([$this, 'mapEntityToOutput'], $qb->getQuery()->getResult());
+        return $outputs;
+    }
+
+    /**
+     * @param array<string, mixed> $uriVariables
+     */
+    protected function provideItem(array $uriVariables, ?string $clubId): ?VenueTravelTimeResource
+    {
+        $id = $uriVariables['id'] ?? null;
+        if (!\is_string($id) || '' === $id || null === $clubId) {
+            return null;
+        }
+
+        foreach ($this->served($clubId) as $served) {
+            if ($served['row']->getId() === $id) {
+                return VenueTravelTimeResource::fromEntity($served['row'], $served['venueAId'], $served['venueBId']);
+            }
+        }
+
+        return null;
+    }
+
+    /** @return list<array{row: PlaceTravelTime, venueAId: string, venueBId: string}> */
+    private function served(string $clubId): array
+    {
+        $request = $this->requestStack->getCurrentRequest();
+        $seasonId = $request instanceof Request ? ($this->uuidQueryParam($request, 'seasonId') ?? $request->attributes->get('_season_id')) : null;
+        if (!\is_string($seasonId) || '' === $seasonId) {
+            return [];
+        }
+        $repository = $this->entityManager->getRepository(PlaceTravelTime::class);
+
+        return $repository->forSeason($clubId, $seasonId);
     }
 }

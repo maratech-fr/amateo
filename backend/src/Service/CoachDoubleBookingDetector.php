@@ -7,12 +7,12 @@ namespace App\Service;
 use App\Entity\Coach;
 use App\Entity\CoachPlayerMembership;
 use App\Entity\Constraint;
+use App\Entity\PlaceTravelTime;
 use App\Entity\Reservation;
 use App\Entity\SharedTrainingBlockTeam;
 use App\Entity\Team;
 use App\Entity\TeamCoach;
 use App\Entity\Venue;
-use App\Entity\VenueTravelTime;
 use App\Enum\ConstraintFamily;
 use App\Enum\TeamCoachRole;
 use App\Structure\PersonDirectory;
@@ -1151,10 +1151,10 @@ final class CoachDoubleBookingDetector
      */
     private function travelMatrix(string $clubId, string $seasonId): array
     {
+        $repository = $this->entityManager->getRepository(PlaceTravelTime::class);
         $matrix = [];
-        foreach ($this->entityManager->getRepository(VenueTravelTime::class)->findBy(['clubId' => $clubId, 'seasonId' => $seasonId]) as $row) {
-            [$a, $b] = $row->getVenueAId() < $row->getVenueBId() ? [$row->getVenueAId(), $row->getVenueBId()] : [$row->getVenueBId(), $row->getVenueAId()];
-            $matrix[$a . '|' . $b] = ['driving' => $row->getDrivingMinutes(), 'walking' => $row->getWalkingMinutes()];
+        foreach ($repository->forSeason($clubId, $seasonId) as $served) {
+            $matrix[$served['venueAId'] . '|' . $served['venueBId']] = ['driving' => $served['row']->getDrivingMinutes(), 'walking' => $served['row']->getWalkingMinutes()];
         }
 
         return $matrix;

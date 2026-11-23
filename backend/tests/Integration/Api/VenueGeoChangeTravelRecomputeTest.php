@@ -7,10 +7,10 @@ namespace App\Tests\Integration\Api;
 use App\Entity\Club;
 use App\Entity\ClubUser;
 use App\Entity\Place;
+use App\Entity\PlaceTravelTime;
 use App\Entity\Season;
 use App\Entity\User;
 use App\Entity\Venue;
-use App\Entity\VenueTravelTime;
 use App\Enum\SeasonStatus;
 use App\Enum\TravelComputeScope;
 use App\Message\ComputeTravelTimesMessage;
@@ -149,13 +149,25 @@ final class VenueGeoChangeTravelRecomputeTest extends WebTestCase
 
     private function matrixRow(Club $club, Season $season, string $vA, string $vB): void
     {
-        if (strcasecmp($vA, $vB) > 0) {
-            [$vA, $vB] = [$vB, $vA];
-        }
-        $row = new VenueTravelTime;
-        $row->setClubId($club->getId())->setSeasonId($season->getId())->setVenueAId($vA)->setVenueBId($vB);
+        $this->scopeGucToClub($club->getId());
+        $row = PlaceTravelTime::between($club->getId(), $this->placeIdOf($club, $season, $vA), $this->placeIdOf($club, $season, $vB));
         $this->em->persist($row);
         $this->em->flush();
+    }
+
+    /** Le lieu du gymnase de la saison à cet identifiant, créé sur un lieu neuf s'il n'existe pas encore. */
+    private function placeIdOf(Club $club, Season $season, string $venueId): string
+    {
+        $venue = $this->em->find(Venue::class, $venueId);
+        if (!$venue instanceof Venue) {
+            $place = (new Place)->setClubId($club->getId());
+            $this->em->persist($place);
+            $venue = new Venue($place)->setId($venueId)->setClubId($club->getId())->setSeasonId($season->getId())->setName('Gymnase ' . substr($venueId, 0, 8))->setSource('manual');
+            $this->em->persist($venue);
+            $this->em->flush();
+        }
+
+        return $venue->getPlaceId();
     }
 
     /** Une autre saison du club, décalée de `$shift`, dont un gymnase est l'usage du même lieu. */

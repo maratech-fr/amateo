@@ -22,7 +22,6 @@ use App\Entity\VenueMatchWindow;
 use App\Entity\VenueOccupancy;
 use App\Entity\VenueTrainingSlot;
 use App\Entity\VenueTravelRuleSetting;
-use App\Entity\VenueTravelTime;
 use App\Enum\ConstraintScope;
 use App\Enum\SeasonStatus;
 use App\Structure\PersonDirectory;
@@ -486,30 +485,8 @@ final class SeasonTransitionService
             $this->entityManager->persist($copy);
         }
 
-        // P2-53 RMM-8 — la matrice de trajet suit la saison (remap gymnase). Un
-        // gymnase non remappé casse le couple → non recopié. Les minutes ET leurs
-        // sources (dont le MANUAL, la donnée terrain à préserver) sont transcrites.
-        foreach ($this->rows(VenueTravelTime::class, $clubId, $sourceId) as $travel) {
-            $venueAId = $venueMap[$travel->getVenueAId()] ?? null;
-            $venueBId = $venueMap[$travel->getVenueBId()] ?? null;
-            if (null === $venueAId || null === $venueBId) {
-                continue;
-            }
-            // The remapped uuids are new → re-normalize the couple invariant.
-            if (strcasecmp($venueAId, $venueBId) > 0) {
-                [$venueAId, $venueBId] = [$venueBId, $venueAId];
-            }
-            $copy = new VenueTravelTime;
-            $copy->setClubId($clubId);
-            $copy->setSeasonId($target->getId());
-            $copy->setVenueAId($venueAId);
-            $copy->setVenueBId($venueBId);
-            $copy->setDrivingMinutes($travel->getDrivingMinutes());
-            $copy->setWalkingMinutes($travel->getWalkingMinutes());
-            $copy->setDrivingSource($travel->getDrivingSource());
-            $copy->setWalkingSource($travel->getWalkingSource());
-            $this->entityManager->persist($copy);
-        }
+        // Les temps de trajet vivent au club entre deux lieux (lot 3, PR 5) : les gymnases copiés
+        // pointent les mêmes lieux, la saison suivante lit les mêmes temps, rien n'est recopié.
 
         $maps = ['venues' => $venueMap, 'coaches' => $coachMap, 'teams' => $teamMap];
         $constraints = 0;

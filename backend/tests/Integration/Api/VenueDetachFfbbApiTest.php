@@ -6,12 +6,14 @@ namespace App\Tests\Integration\Api;
 
 use App\Entity\Club;
 use App\Entity\ClubUser;
+use App\Entity\Place;
+use App\Entity\PlaceTravelTime;
 use App\Entity\Season;
 use App\Entity\User;
 use App\Entity\Venue;
-use App\Entity\VenueTravelTime;
 use App\Enum\SeasonStatus;
 use App\Enum\VenueTravelTimeSource;
+use App\Repository\PlaceTravelTimeRepository;
 use App\Service\SeasonResolver;
 use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\TenantGucTrait;
@@ -215,30 +217,50 @@ final class VenueDetachFfbbApiTest extends WebTestCase
 
     private function matrixRow(Club $club, Season $season, string $venueA, string $venueB, VenueTravelTimeSource $source): void
     {
-        if (strcasecmp($venueA, $venueB) > 0) {
-            [$venueA, $venueB] = [$venueB, $venueA];
-        }
         $this->scopeGucToClub($club->getId());
-        $row = new VenueTravelTime;
-        $row->setClubId($club->getId())->setSeasonId($season->getId())->setVenueAId($venueA)->setVenueBId($venueB);
+        $row = PlaceTravelTime::between($club->getId(), $this->placeIdOf($club, $season, $venueA), $this->placeIdOf($club, $season, $venueB));
         $row->setDrivingMinutes(12)->setDrivingSource($source)->setWalkingMinutes(40)->setWalkingSource($source);
         $this->em->persist($row);
         $this->em->flush();
     }
 
+    /** Le lieu du gymnase de la saison à cet identifiant, créé sur un lieu neuf s'il n'existe pas encore. */
+    private function placeIdOf(Club $club, Season $season, string $venueId): string
+    {
+        $venue = $this->em->find(Venue::class, $venueId);
+        if (!$venue instanceof Venue) {
+            $place = (new Place)->setClubId($club->getId());
+            $this->em->persist($place);
+            $venue = new Venue($place)->setId($venueId)->setClubId($club->getId())->setSeasonId($season->getId())->setName('Gymnase ' . substr($venueId, 0, 8))->setSource('manual');
+            $this->em->persist($venue);
+            $this->em->flush();
+        }
+
+        return $venue->getPlaceId();
+    }
+
     /**
-     * Les lignes de ce gymnase qui portent encore un temps : effacer peut supprimer la ligne ou la
-     * vider, seul compte qu'aucun temps ni aucune origine ne survive.
+     * Les temps que la saison du gymnase lui sert et qui portent encore un temps : effacer peut supprimer
+     * la ligne ou la vider, seul compte qu'aucun temps ni aucune origine ne survive.
      *
-     * @return list<VenueTravelTime>
+     * @return list<PlaceTravelTime>
      */
     private function timesOf(string $venueId): array
     {
-        $repository = $this->em->getRepository(VenueTravelTime::class);
+        $venue = $this->em->find(Venue::class, $venueId);
+        self::assertInstanceOf(Venue::class, $venue);
+        $repository = $this->em->getRepository(PlaceTravelTime::class);
+        self::assertInstanceOf(PlaceTravelTimeRepository::class, $repository);
+        $rows = [];
+        foreach ($repository->forSeason($venue->getClubId(), $venue->getSeasonId()) as $served) {
+            if (\in_array($venueId, [$served['venueAId'], $served['venueBId']], true)) {
+                $rows[] = $served['row'];
+            }
+        }
 
         return array_values(array_filter(
-            [...$repository->findBy(['venueAId' => $venueId]), ...$repository->findBy(['venueBId' => $venueId])],
-            static fn (VenueTravelTime $row): bool => null !== $row->getDrivingMinutes() || null !== $row->getWalkingMinutes() || $row->getDrivingSource() instanceof VenueTravelTimeSource || $row->getWalkingSource() instanceof VenueTravelTimeSource,
+            $rows,
+            static fn (PlaceTravelTime $row): bool => null !== $row->getDrivingMinutes() || null !== $row->getWalkingMinutes() || $row->getDrivingSource() instanceof VenueTravelTimeSource || $row->getWalkingSource() instanceof VenueTravelTimeSource,
         ));
     }
 

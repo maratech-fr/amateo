@@ -7,6 +7,7 @@ namespace App\Tests\CrossStack;
 use App\Entity\Club;
 use App\Entity\ClubUser;
 use App\Entity\Coach;
+use App\Entity\PlaceTravelTime;
 use App\Entity\Reservation;
 use App\Entity\Season;
 use App\Entity\Team;
@@ -14,7 +15,6 @@ use App\Entity\TeamCoach;
 use App\Entity\User;
 use App\Entity\Venue;
 use App\Entity\VenueTrainingSlot;
-use App\Entity\VenueTravelTime;
 use App\Enum\SeasonStatus;
 use App\Enum\TeamCoachRole;
 use App\Service\ScheduleConstraintBuilder;
@@ -288,10 +288,11 @@ final class CoachLateToleranceSemanticsGateTest extends KernelTestCase
 
     private function travelTime(Club $club, Season $season, string $venueIdA, string $venueIdB, int $walkingMinutes): void
     {
-        [$a, $b] = $venueIdA < $venueIdB ? [$venueIdA, $venueIdB] : [$venueIdB, $venueIdA];
-        $row = (new VenueTravelTime)
-            ->setClubId($club->getId())->setSeasonId($season->getId())
-            ->setVenueAId($a)->setVenueBId($b)->setWalkingMinutes($walkingMinutes);
+        $venueA = $this->em->find(Venue::class, $venueIdA);
+        $venueB = $this->em->find(Venue::class, $venueIdB);
+        self::assertInstanceOf(Venue::class, $venueA);
+        self::assertInstanceOf(Venue::class, $venueB);
+        $row = PlaceTravelTime::between($club->getId(), $venueA->getPlaceId(), $venueB->getPlaceId())->setWalkingMinutes($walkingMinutes);
         $this->em->persist($row);
     }
 

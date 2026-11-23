@@ -9,6 +9,7 @@ use App\Entity\Club;
 use App\Entity\Coach;
 use App\Entity\CoachPlayerMembership;
 use App\Entity\Constraint;
+use App\Entity\PlaceTravelTime;
 use App\Entity\PriorityTier;
 use App\Entity\Schedule;
 use App\Entity\ScheduleSlotTemplate;
@@ -19,7 +20,7 @@ use App\Entity\Sport;
 use App\Entity\SportCategory;
 use App\Entity\Team;
 use App\Entity\TeamCoach;
-use App\Entity\VenueTravelTime;
+use App\Entity\Venue;
 use App\Enum\CalendarEntryKind;
 use App\Enum\CalendarEntryPeriodType;
 use App\Enum\ConstraintFamily;
@@ -937,10 +938,11 @@ final class PlacedSessionPersonConflictDetectorTest extends KernelTestCase
      */
     private function travel(array $ctx, string $venueIdA, string $venueIdB, int $walkingMinutes): void
     {
-        [$a, $b] = $venueIdA < $venueIdB ? [$venueIdA, $venueIdB] : [$venueIdB, $venueIdA];
-        $row = (new VenueTravelTime)
-            ->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])
-            ->setVenueAId($a)->setVenueBId($b)->setWalkingMinutes($walkingMinutes);
+        $venueA = $this->em->find(Venue::class, $venueIdA);
+        $venueB = $this->em->find(Venue::class, $venueIdB);
+        self::assertInstanceOf(Venue::class, $venueA);
+        self::assertInstanceOf(Venue::class, $venueB);
+        $row = PlaceTravelTime::between($ctx['clubId'], $venueA->getPlaceId(), $venueB->getPlaceId())->setWalkingMinutes($walkingMinutes);
         $this->em->persist($row);
         $this->em->flush();
     }

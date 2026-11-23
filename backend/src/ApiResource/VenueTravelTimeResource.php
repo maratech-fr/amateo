@@ -15,7 +15,7 @@ use App\Access\Audience;
 use App\Access\ClubResource;
 use App\Access\Module;
 use App\Dto\VenueTravelTimeInput;
-use App\Entity\VenueTravelTime;
+use App\Entity\PlaceTravelTime;
 use App\State\Processor\VenueTravelTimeStateProcessor;
 use App\State\Provider\VenueTravelTimeStateProvider;
 use DateTimeImmutable;
@@ -65,15 +65,19 @@ class VenueTravelTimeResource
     #[Groups(['read'])]
     public ?string $walkingSource = null;
 
-    public static function fromEntity(VenueTravelTime $entity): self
+    /**
+     * Le temps au club entre deux lieux, nommé par les gymnases de la saison servie (rangés par
+     * l'appelant, plus petit identifiant d'abord).
+     */
+    public static function fromEntity(PlaceTravelTime $entity, string $venueAId, string $venueBId): self
     {
         $dto = new self;
         $dto->id = $entity->getId();
         $dto->version = $entity->getVersion();
         $dto->createdAt = $entity->getCreatedAt();
         $dto->updatedAt = $entity->getUpdatedAt();
-        $dto->venueAId = $entity->getVenueAId();
-        $dto->venueBId = $entity->getVenueBId();
+        $dto->venueAId = $venueAId;
+        $dto->venueBId = $venueBId;
         $dto->drivingMinutes = $entity->getDrivingMinutes();
         $dto->walkingMinutes = $entity->getWalkingMinutes();
         $dto->drivingSource = $entity->getDrivingSource()?->value;

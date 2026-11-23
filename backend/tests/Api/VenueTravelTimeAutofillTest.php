@@ -6,10 +6,10 @@ namespace App\Tests\Api;
 
 use App\Entity\Club;
 use App\Entity\ClubUser;
+use App\Entity\PlaceTravelTime;
 use App\Entity\Season;
 use App\Entity\User;
 use App\Entity\Venue;
-use App\Entity\VenueTravelTime;
 use App\Enum\SeasonStatus;
 use App\Enum\VenueTravelTimeSource;
 use App\Service\Geo\IgnRoutingClient;
@@ -56,9 +56,7 @@ final class VenueTravelTimeAutofillTest extends WebTestCase
 
         // Une valeur MANUAL POSÉE d'avance sur la voiture du couple A–B, walking laissé nul.
         [$lo, $hi] = $this->normalize($a->getId(), $b->getId());
-        $manual = (new VenueTravelTime)
-            ->setClubId($club->getId())->setSeasonId($season->getId())
-            ->setVenueAId($lo)->setVenueBId($hi)
+        $manual = PlaceTravelTime::between($club->getId(), $a->getPlaceId(), $b->getPlaceId())
             ->setDrivingMinutes(15)->setDrivingSource(VenueTravelTimeSource::MANUAL);
         $this->em->persist($manual);
         $this->em->flush();
@@ -229,20 +227,26 @@ final class VenueTravelTimeAutofillTest extends WebTestCase
         return strcasecmp($x, $y) > 0 ? [$y, $x] : [$x, $y];
     }
 
-    private function travelRow(Club $club, string $lo, string $hi): VenueTravelTime
+    private function travelRow(Club $club, string $lo, string $hi): PlaceTravelTime
     {
         $row = $this->travelRowOrNull($club, $lo, $hi);
-        self::assertInstanceOf(VenueTravelTime::class, $row);
+        self::assertInstanceOf(PlaceTravelTime::class, $row);
 
         return $row;
     }
 
-    private function travelRowOrNull(Club $club, string $lo, string $hi): ?VenueTravelTime
+    /** Le temps au club entre les lieux des deux gymnases (lot 3, PR 5). */
+    private function travelRowOrNull(Club $club, string $lo, string $hi): ?PlaceTravelTime
     {
         $this->scopeGucToClub($club->getId());
         $this->em->clear();
+        $venueA = $this->em->find(Venue::class, $lo);
+        $venueB = $this->em->find(Venue::class, $hi);
+        self::assertInstanceOf(Venue::class, $venueA);
+        self::assertInstanceOf(Venue::class, $venueB);
+        $couple = PlaceTravelTime::between($club->getId(), $venueA->getPlaceId(), $venueB->getPlaceId());
 
-        return $this->em->getRepository(VenueTravelTime::class)->findOneBy(['venueAId' => $lo, 'venueBId' => $hi]);
+        return $this->em->getRepository(PlaceTravelTime::class)->findOneBy(['placeAId' => $couple->getPlaceAId(), 'placeBId' => $couple->getPlaceBId()]);
     }
 
     private function geoVenue(Club $club, Season $season, string $name, ?string $latitude, ?string $longitude): Venue
