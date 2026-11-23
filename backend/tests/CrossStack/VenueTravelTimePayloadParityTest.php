@@ -214,10 +214,13 @@ final class VenueTravelTimePayloadParityTest extends KernelTestCase
         $a = $this->venueWithId($club, $season, 'aaaaaaaa-0000-4000-8000-00000000000e');
         $b = $this->venueWithId($club, $season, 'bbbbbbbb-0000-4000-8000-00000000000e');
         $this->em->flush();
-        // Un lieu du club sans gymnase cette saison : celui d'un gymnase supprimé, ou d'une autre saison.
-        $elsewhere = (new Place)->setClubId($club->getId());
-        $this->em->persist($elsewhere);
-        $this->travelTimeBetweenPlaces($club, $a->getPlaceId(), $elsewhere->getId(), 10, 20);
+        // Un lieu du club sans gymnase cette saison, mais avec un gymnase dans une autre saison du club.
+        $otherSeason = (new Season)->setClubId($club->getId())->setName('2026-2027')
+            ->setStartDate(new DateTimeImmutable('2026-09-01'))->setEndDate(new DateTimeImmutable('2027-06-30'))->setStatus(SeasonStatus::DRAFT);
+        $this->em->persist($otherSeason);
+        $elsewhere = $this->venueWithId($club, $otherSeason, 'cccccccc-0000-4000-8000-00000000000e');
+        $this->em->flush();
+        $this->travelTimeBetweenPlaces($club, $a->getPlaceId(), $elsewhere->getPlaceId(), 10, 20);
 
         $payload = $this->builder->buildForClubSeason($club->getId(), $season->getId());
 

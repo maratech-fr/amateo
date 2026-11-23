@@ -129,6 +129,32 @@ final class VenueDetachFfbbApiTest extends WebTestCase
         self::assertCount(1, $this->timesOf($other), 'le couple des deux autres gymnases garde son temps');
     }
 
+    /**
+     * Lot 3, PR 5 : dissocier en fournissant une position dans le même PUT (le toast « Annuler » d'une association)
+     * passe le gymnase sur un lieu neuf ; ses temps de trajet de la saison l'y suivent, minutes et origine comprises,
+     * saisie à la main comprise. Jumeau : {@see testDetachErasesOnlyTheTravelTimesOfThatVenueWithoutRecomputing}
+     * (sans position, les temps ne suivent pas).
+     */
+    public function testDetachWithAPositionInTheSamePutKeepsTheTravelTimesOfThatVenue(): void
+    {
+        [$user, $club, $season] = $this->seed();
+        $venueId = $this->createAnchoredVenue($user);
+        $other = 'bbbbbbbb-0000-4000-8000-000000000006';
+        $this->matrixRow($club, $season, $venueId, $other, VenueTravelTimeSource::MANUAL);
+
+        $this->put($user, $venueId, ['name' => 'Gymnase G', 'externalRef' => '', 'address' => '2 rue Basse', 'latitude' => '45.1000000', 'longitude' => '4.1000000']);
+
+        $this->scopeGucToClub($club->getId());
+        $this->em->clear();
+        $times = $this->timesOf($venueId);
+        self::assertCount(1, $times, 'le temps du gymnase le suit sur son lieu neuf');
+        self::assertSame(
+            [12, VenueTravelTimeSource::MANUAL, 40, VenueTravelTimeSource::MANUAL],
+            [$times[0]->getDrivingMinutes(), $times[0]->getDrivingSource(), $times[0]->getWalkingMinutes(), $times[0]->getWalkingSource()],
+            'minutes et origine intactes, la saisie à la main comprise',
+        );
+    }
+
     public function testRenamingKeepsTheTravelTimes(): void
     {
         [$user, $club, $season] = $this->seed();

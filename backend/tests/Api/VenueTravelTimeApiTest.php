@@ -18,6 +18,7 @@ use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
 use Lexik\Bundle\JWTAuthenticationBundle\Services\JWTTokenManagerInterface;
 use PHPUnit\Framework\Attributes\Group;
+use ReflectionProperty;
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 
@@ -139,8 +140,12 @@ final class VenueTravelTimeApiTest extends WebTestCase
     {
         [$club, $user, $current] = $this->createClubUser('a');
         $next = $this->addSeason($club, 1);
-        [$placeNord, $placeSud, $placeEst] = [$this->place($club), $this->place($club), $this->place($club)];
-        // Saison en cours : Nord < Sud. Saison suivante : mêmes lieux, mais Sud < Nord (le couple s'y range à l'envers).
+        // Lieu de Nord < lieu de Sud, fixés : en base le couple se range Nord d'abord, quoi qu'il arrive.
+        $placeNord = $this->place($club, '00000000-0000-4000-8000-' . substr(bin2hex(random_bytes(6)), 0, 12));
+        $placeSud = $this->place($club, 'ffffffff-0000-4000-8000-' . substr(bin2hex(random_bytes(6)), 0, 12));
+        $placeEst = $this->place($club);
+        // Saison en cours : Nord < Sud. Saison suivante : mêmes lieux, mais Sud < Nord (le couple s'y range à l'envers
+        // de son rangement en base : seul un rangement par les gymnases de la saison le sert Sud d'abord).
         [$lo, $hi] = $this->orderedIds();
         $nord = $this->venueOn($placeNord, $club, $current, $lo, 'Nord');
         $sud = $this->venueOn($placeSud, $club, $current, $hi, 'Sud');
@@ -226,10 +231,14 @@ final class VenueTravelTimeApiTest extends WebTestCase
         return $season;
     }
 
-    private function place(Club $club): Place
+    /** Un lieu du club, à l'identifiant choisi quand le rangement du couple en base doit être fixé. */
+    private function place(Club $club, ?string $id = null): Place
     {
         $this->scopeGucToClub($club->getId());
         $place = (new Place)->setClubId($club->getId());
+        if (null !== $id) {
+            new ReflectionProperty(Place::class, 'id')->setValue($place, $id);
+        }
         $this->em->persist($place);
         $this->em->flush();
 
