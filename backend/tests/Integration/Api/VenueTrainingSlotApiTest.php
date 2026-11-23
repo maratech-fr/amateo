@@ -11,11 +11,11 @@ use App\Entity\User;
 use App\Entity\Venue;
 use App\Entity\VenueTrainingSlot;
 use App\Enum\SeasonStatus;
-use App\Plans\SoclePlan;
 use App\Service\SchedulePlanProvisioner;
 use App\Service\TenantConnectionContext;
 use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\CreatesPeriodPlanTrait;
+use App\Tests\SeasonPlanOf;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -204,7 +204,7 @@ final class VenueTrainingSlotApiTest extends WebTestCase
             for ($i = 0; $i < 35; ++$i) {
                 $slot = (new VenueTrainingSlot)
                     ->setClubId($this->club->getId())
-                    ->setSeasonId($this->season->getId())->setSchedulePlanId(self::getContainer()->get(SoclePlan::class)->idOf($this->season->getId()))
+                    ->setSeasonId($this->season->getId())->setSchedulePlanId(SeasonPlanOf::id(self::getContainer(), $this->season->getId()))
                     ->setVenueId($venue->getId())
                     ->setDayOfWeek(1)
                     ->setStartTime(new DateTimeImmutable('18:00'))
@@ -509,6 +509,7 @@ final class VenueTrainingSlotApiTest extends WebTestCase
 
         $this->em->persist($season);
         $this->em->flush();
+        SeasonPlanOf::id(self::getContainer(), $season->getId());
 
         return $season;
     }

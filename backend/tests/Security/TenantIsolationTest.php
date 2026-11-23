@@ -16,8 +16,8 @@ use App\Entity\User;
 use App\Enum\ImplicitRuleIntensity;
 use App\Enum\ImplicitRuleKey;
 use App\Enum\SeasonStatus;
-use App\Plans\SoclePlan;
 use App\Service\SeasonResolver;
+use App\Tests\SeasonPlanOf;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -178,6 +178,7 @@ final class TenantIsolationTest extends WebTestCase
         $seasonB->setTransitionData([]);
         $this->em->persist($seasonB);
         $this->em->flush();
+        SeasonPlanOf::id(self::getContainer(), $seasonB->getId());
 
         // Club A assouplit coachRestDay (écrit directement sous le contexte tenant du club A).
         $this->scopeGucToClub($clubA->getId());
@@ -190,10 +191,11 @@ final class TenantIsolationTest extends WebTestCase
         $seasonA->setTransitionData([]);
         $this->em->persist($seasonA);
         $this->em->flush();
+        SeasonPlanOf::id(self::getContainer(), $seasonA->getId());
         $setting = new ImplicitRuleSetting;
         $setting->setClubId($clubA->getId());
         $setting->setSeasonId($seasonA->getId());
-        $setting->setSchedulePlanId(self::getContainer()->get(SoclePlan::class)->idOf($seasonA->getId()));
+        $setting->setSchedulePlanId(SeasonPlanOf::id(self::getContainer(), $seasonA->getId()));
         $setting->setRuleKey(ImplicitRuleKey::COACH_REST_DAY);
         $setting->setIntensity(ImplicitRuleIntensity::PREFERRED);
         $this->em->persist($setting);
@@ -286,6 +288,7 @@ final class TenantIsolationTest extends WebTestCase
         $sport->setIsActive(true);
         $this->em->persist($sport);
         $this->em->flush();
+        SeasonPlanOf::id(self::getContainer(), $season->getId());
 
         $category = new SportCategory;
         $category->setClubId($club->getId());

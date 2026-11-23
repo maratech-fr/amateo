@@ -25,6 +25,7 @@ use App\Service\SeasonAccessGuard;
 use App\Service\SeasonResolver;
 use App\Service\SoloReservationBudget;
 use App\State\Processor\SharedTrainingBlockStateProcessor;
+use App\Tests\SeasonPlanOf;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -258,7 +259,7 @@ final class SharedTrainingBlockStateProcessorTest extends KernelTestCase
         $reservation = (new Reservation)
             ->setClubId($club->getId())
             ->setSeasonId($season->getId())
-            ->setSchedulePlanId($planId ?? self::getContainer()->get(SoclePlan::class)->idOf($season->getId()))
+            ->setSchedulePlanId($planId ?? SeasonPlanOf::id(self::getContainer(), $season->getId()))
             ->setTeamId($team->getId())
             ->setVenueId($this->uuid())
             ->setDayOfWeek($dayOfWeek)
@@ -369,6 +370,7 @@ final class SharedTrainingBlockStateProcessorTest extends KernelTestCase
             ->setStatus(SeasonStatus::ACTIVE);
         $this->em->persist($season);
         $this->em->flush();
+        SeasonPlanOf::id(self::getContainer(), $season->getId());
 
         return [$club, $season];
     }

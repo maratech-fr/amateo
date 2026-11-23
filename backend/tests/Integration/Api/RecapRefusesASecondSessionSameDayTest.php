@@ -9,8 +9,8 @@ use App\Entity\Schedule;
 use App\Entity\VenueTrainingSlot;
 use App\Enum\LockLevel;
 use App\Enum\ScheduleStatus;
-use App\Plans\SoclePlan;
 use App\Tests\OneSessionPerDayDecorTrait;
+use App\Tests\SeasonPlanOf;
 use App\Tests\Security\OneSessionPerDayGesturesTest;
 use App\Tests\Unit\Service\PreSolvePreventionWarningsTest;
 use DateTimeImmutable;
@@ -121,7 +121,7 @@ final class RecapRefusesASecondSessionSameDayTest extends WebTestCase
     public function testThreeCasesAskToRemoveTwo(): void
     {
         $ctx = $this->seasonDecor();
-        $this->em->persist((new VenueTrainingSlot)->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])->setSchedulePlanId(self::getContainer()->get(SoclePlan::class)->idOf($ctx['seasonId']))->setVenueId($ctx['armand'])
+        $this->em->persist((new VenueTrainingSlot)->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])->setSchedulePlanId(SeasonPlanOf::id(self::getContainer(), $ctx['seasonId']))->setVenueId($ctx['armand'])
             ->setDayOfWeek(self::TUESDAY)->setStartTime(new DateTimeImmutable('10:00'))->setDurationMinutes(90)->setCapacity(3));
         $this->em->flush();
         $ids = [
@@ -193,7 +193,7 @@ final class RecapRefusesASecondSessionSameDayTest extends WebTestCase
     {
         $ctx = $this->seasonDecor();
         foreach ([[$ctx['armand'], '18:00'], [$ctx['jdr'], '20:30']] as [$venueId, $start]) {
-            $this->em->persist((new Reservation)->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])->setSchedulePlanId(self::getContainer()->get(SoclePlan::class)->idOf($ctx['seasonId']))->setLabel('Loto du club')
+            $this->em->persist((new Reservation)->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])->setSchedulePlanId(SeasonPlanOf::id(self::getContainer(), $ctx['seasonId']))->setLabel('Loto du club')
                 ->setVenueId($venueId)->setDayOfWeek(self::TUESDAY)->setStartTime(new DateTimeImmutable($start))->setDurationMinutes(90));
         }
         $this->em->flush();
@@ -755,7 +755,7 @@ final class RecapRefusesASecondSessionSameDayTest extends WebTestCase
     private function window(array $ctx, string $venueId, int $day, string $start, ?string $planId = null): void
     {
         $this->scopeGucToClub($ctx['clubId']);
-        $this->em->persist((new VenueTrainingSlot)->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])->setVenueId($venueId)->setSchedulePlanId($planId ?? self::getContainer()->get(SoclePlan::class)->idOf($ctx['seasonId']))
+        $this->em->persist((new VenueTrainingSlot)->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])->setVenueId($venueId)->setSchedulePlanId($planId ?? SeasonPlanOf::id(self::getContainer(), $ctx['seasonId']))
             ->setDayOfWeek($day)->setStartTime(new DateTimeImmutable($start))->setDurationMinutes(90)->setCapacity(3));
         $this->em->flush();
     }

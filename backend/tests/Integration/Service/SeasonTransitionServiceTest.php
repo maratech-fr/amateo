@@ -35,7 +35,6 @@ use App\Enum\SeasonStatus;
 use App\Enum\TeamCoachRole;
 use App\Enum\TeamLinkIntensity;
 use App\Enum\TeamLinkType;
-use App\Plans\SoclePlan;
 use App\Service\ScheduleConstraintBuilder;
 use App\Service\SeasonAlreadyTransitionedException;
 use App\Service\SeasonResolver;
@@ -43,6 +42,7 @@ use App\Service\SeasonTransitionService;
 use App\Structure\PersonDirectory;
 use App\Tests\ChoosesPlanVersionTrait;
 use App\Tests\CreatesPeopleAndPlacesTrait;
+use App\Tests\SeasonPlanOf;
 use App\Tests\Support\SubscribesClub;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
@@ -379,7 +379,7 @@ final class SeasonTransitionServiceTest extends KernelTestCase
         [$club, $season] = $this->createClubGraph();
         $this->em->persist((new ImplicitRuleSetting)
             ->setClubId($club->getId())
-            ->setSeasonId($season->getId())->setSchedulePlanId(self::getContainer()->get(SoclePlan::class)->idOf($season->getId()))
+            ->setSeasonId($season->getId())->setSchedulePlanId(SeasonPlanOf::id(self::getContainer(), $season->getId()))
             ->setRuleKey(ImplicitRuleKey::AGE_ASCENDING)
             ->setIntensity(ImplicitRuleIntensity::OFF));
         $this->em->flush();
@@ -388,7 +388,7 @@ final class SeasonTransitionServiceTest extends KernelTestCase
 
         $copied = $this->em->getRepository(ImplicitRuleSetting::class)->findOneBy([
             'seasonId' => $target->getId(),
-            'schedulePlanId' => self::getContainer()->get(SoclePlan::class)->idOf($target->getId()),
+            'schedulePlanId' => SeasonPlanOf::id(self::getContainer(), $target->getId()),
             'ruleKey' => ImplicitRuleKey::AGE_ASCENDING,
         ]);
         self::assertInstanceOf(ImplicitRuleSetting::class, $copied, 'le réglage de la règle suit la saison suivante');
@@ -588,7 +588,7 @@ final class SeasonTransitionServiceTest extends KernelTestCase
         $slot = new VenueTrainingSlot;
         $slot->setClubId($club->getId());
         $slot->setSeasonId($season->getId());
-        $slot->setSchedulePlanId(self::getContainer()->get(SoclePlan::class)->idOf($season->getId()));
+        $slot->setSchedulePlanId(SeasonPlanOf::id(self::getContainer(), $season->getId()));
         $slot->setVenueId($venueA->getId());
         $slot->setDayOfWeek(2);
         $slot->setStartTime(new DateTimeImmutable('18:00'));

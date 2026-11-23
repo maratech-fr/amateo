@@ -22,7 +22,6 @@ use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
 use App\Message\GenerateScheduleMessage;
 use App\MessageHandler\GenerateScheduleHandler;
-use App\Plans\SoclePlan;
 use App\Service\ClubGenerationLock;
 use App\Service\DiagnosticMessageBuilder;
 use App\Service\EngineClient;
@@ -40,6 +39,7 @@ use App\Service\StructureSnapshotter;
 use App\Service\TenantConnectionContext;
 use App\Tests\ChoosesPlanVersionTrait;
 use App\Tests\CreatesPeopleAndPlacesTrait;
+use App\Tests\SeasonPlanOf;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -150,7 +150,7 @@ final class LoadedVersionLocksOnlyTest extends WebTestCase
         $draft = $this->version(ScheduleStatus::DRAFT);
         $this->slot($draft, $team, $this->venueA, self::THU, '19:00', LockLevel::HARD);
         $reservation = (new Reservation)->setClubId($this->club->getId())->setSeasonId($this->season->getId())
-            ->setSchedulePlanId(self::getContainer()->get(SoclePlan::class)->idOf($this->season->getId()))->setTeamId($team->getId())->setVenueId($this->venueC)
+            ->setSchedulePlanId(SeasonPlanOf::id(self::getContainer(), $this->season->getId()))->setTeamId($team->getId())->setVenueId($this->venueC)
             ->setDayOfWeek(self::TUE)->setStartTime(new DateTimeImmutable('19:00'))->setDurationMinutes(90);
         $this->em->persist($reservation);
         $this->em->flush();
@@ -568,7 +568,7 @@ final class LoadedVersionLocksOnlyTest extends WebTestCase
         $this->em->persist($venue);
         $this->em->flush();
         foreach ($windows as [$day, $time]) {
-            $this->em->persist((new VenueTrainingSlot)->setClubId($this->club->getId())->setSeasonId($this->season->getId())->setSchedulePlanId(self::getContainer()->get(SoclePlan::class)->idOf($this->season->getId()))->setVenueId($venue->getId())
+            $this->em->persist((new VenueTrainingSlot)->setClubId($this->club->getId())->setSeasonId($this->season->getId())->setSchedulePlanId(SeasonPlanOf::id(self::getContainer(), $this->season->getId()))->setVenueId($venue->getId())
                 ->setDayOfWeek($day)->setStartTime(new DateTimeImmutable($time))->setDurationMinutes(90)->setCapacity(1));
         }
 

@@ -23,10 +23,10 @@ use App\Enum\CalendarEntryPeriodType;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
 use App\Enum\VenuePeriodMode;
-use App\Plans\SoclePlan;
 use App\Service\SchedulePlanProvisioner;
 use App\Tests\ChoosesPlanVersionTrait;
 use App\Tests\CreatesPeopleAndPlacesTrait;
+use App\Tests\SeasonPlanOf;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -584,7 +584,7 @@ final class ValidateScheduleTest extends WebTestCase
         $slot->setStartTime(new DateTimeImmutable('18:00'));
         $slot->setDurationMinutes(90);
         $slot->setCapacity(1);
-        $slot->setSchedulePlanId($schedulePlanId ?? self::getContainer()->get(SoclePlan::class)->idOf($season->getId()));
+        $slot->setSchedulePlanId($schedulePlanId ?? SeasonPlanOf::id(self::getContainer(), $season->getId()));
         $this->em->persist($slot);
 
         return $slot->getId();

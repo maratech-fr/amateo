@@ -27,12 +27,12 @@ use App\Enum\LockOrigin;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
 use App\Enum\VenuePeriodMode;
-use App\Plans\SoclePlan;
 use App\Service\OverlayManager;
 use App\Service\PeriodPlanSiblingCopier;
 use App\Service\SchedulePlanProvisioner;
 use App\Tests\ChoosesPlanVersionTrait;
 use App\Tests\CreatesPeopleAndPlacesTrait;
+use App\Tests\SeasonPlanOf;
 use App\Tests\Security\PeriodCopyBirthTest;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
@@ -312,7 +312,7 @@ final class PeriodPlanSiblingCopyTest extends WebTestCase
             ->setStartTime(new DateTimeImmutable('17:30'))
             ->setDurationMinutes(90)
             ->setCapacity(1)
-            ->setSchedulePlanId(self::getContainer()->get(SoclePlan::class)->idOf($season->getId()));
+            ->setSchedulePlanId(SeasonPlanOf::id(self::getContainer(), $season->getId()));
         $this->em->persist($slot);
         $this->em->flush();
 
@@ -331,7 +331,7 @@ final class PeriodPlanSiblingCopyTest extends WebTestCase
         $this->em->getConnection()->executeStatement(
             'INSERT INTO venue_occupancy (id, version, created_at, updated_at, club_id, season_id, venue_id, day_of_week, start_time, duration_minutes, label, schedule_plan_id)'
             . ' VALUES (:id, 1, now(), now(), :club, :season, :venue, :day, :start, 120, :label, :plan)',
-            ['id' => Uuid::v4()->toRfc4122(), 'club' => $club->getId(), 'season' => $season->getId(), 'venue' => $venueId, 'day' => $day, 'start' => $start, 'label' => $label, 'plan' => $planId ?? self::getContainer()->get(SoclePlan::class)->idOf($season->getId())],
+            ['id' => Uuid::v4()->toRfc4122(), 'club' => $club->getId(), 'season' => $season->getId(), 'venue' => $venueId, 'day' => $day, 'start' => $start, 'label' => $label, 'plan' => $planId ?? SeasonPlanOf::id(self::getContainer(), $season->getId())],
         );
     }
 

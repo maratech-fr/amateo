@@ -11,8 +11,8 @@ use App\Entity\SharedTrainingBlock;
 use App\Entity\SharedTrainingBlockTeam;
 use App\Enum\SchedulePlanType;
 use App\Enum\SeasonStatus;
-use App\Plans\SoclePlan;
 use App\Service\OverlayManager;
+use App\Tests\SeasonPlanOf;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -66,11 +66,11 @@ final class OverlayManagerBlockPurgeTest extends KernelTestCase
     private function block(Club $club, Season $season, ?string $planId): string
     {
         $block = (new SharedTrainingBlock)->setClubId($club->getId())->setSeasonId($season->getId())
-            ->setSchedulePlanId($planId ?? self::getContainer()->get(SoclePlan::class)->idOf($season->getId()))->setCommonSessions(1);
+            ->setSchedulePlanId($planId ?? SeasonPlanOf::id(self::getContainer(), $season->getId()))->setCommonSessions(1);
         $this->em->persist($block);
         foreach ([$this->uuid(), $this->uuid()] as $teamId) {
             $this->em->persist((new SharedTrainingBlockTeam)->setClubId($club->getId())->setSeasonId($season->getId())
-                ->setSchedulePlanId($planId ?? self::getContainer()->get(SoclePlan::class)->idOf($season->getId()))->setBlockId($block->getId())->setTeamId($teamId));
+                ->setSchedulePlanId($planId ?? SeasonPlanOf::id(self::getContainer(), $season->getId()))->setBlockId($block->getId())->setTeamId($teamId));
         }
 
         return $block->getId();

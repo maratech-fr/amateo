@@ -15,10 +15,10 @@ use App\Enum\CalendarEntryPeriodType;
 use App\Enum\ImplicitRuleIntensity;
 use App\Enum\ImplicitRuleKey;
 use App\Enum\SeasonStatus;
-use App\Plans\SoclePlan;
 use App\Service\ImplicitRuleResolver;
 use App\Service\ScheduleConstraintBuilder;
 use App\Tests\ProvisionsPeriodPlanTrait;
+use App\Tests\SeasonPlanOf;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -111,7 +111,7 @@ final class ImplicitRulePayloadParityTest extends KernelTestCase
         $seasonRow = $this->em->getRepository(ImplicitRuleSetting::class)->findOneBy([
             'clubId' => $club->getId(),
             'seasonId' => $season->getId(),
-            'schedulePlanId' => self::getContainer()->get(SoclePlan::class)->idOf($season->getId()),
+            'schedulePlanId' => SeasonPlanOf::id(self::getContainer(), $season->getId()),
             'ruleKey' => ImplicitRuleKey::MAX_CONSECUTIVE_SESSIONS,
         ]);
         self::assertInstanceOf(ImplicitRuleSetting::class, $seasonRow);
@@ -335,7 +335,7 @@ final class ImplicitRulePayloadParityTest extends KernelTestCase
         $setting = new ImplicitRuleSetting;
         $setting->setClubId($club->getId());
         $setting->setSeasonId($season->getId());
-        $setting->setSchedulePlanId(self::getContainer()->get(SoclePlan::class)->idOf($season->getId()));
+        $setting->setSchedulePlanId(SeasonPlanOf::id(self::getContainer(), $season->getId()));
         $setting->setRuleKey($ruleKey);
         $setting->setIntensity($intensity);
         $setting->setParams($params);
@@ -399,6 +399,7 @@ final class ImplicitRulePayloadParityTest extends KernelTestCase
         $season->setStatus(SeasonStatus::ACTIVE);
         $this->em->persist($season);
         $this->em->flush();
+        SeasonPlanOf::id(self::getContainer(), $season->getId());
 
         return [$club, $season];
     }

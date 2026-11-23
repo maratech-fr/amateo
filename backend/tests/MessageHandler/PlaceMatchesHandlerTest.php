@@ -36,6 +36,7 @@ use App\Service\RequestIdContext;
 use App\Service\SeasonResolver;
 use App\Service\TenantConnectionContext;
 use App\Tests\CreatesPeopleAndPlacesTrait;
+use App\Tests\SeasonPlanOf;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\DBAL\Connection;
@@ -421,6 +422,7 @@ final class PlaceMatchesHandlerTest extends WebTestCase
         $season->setTransitionData([]);
         $this->em->persist($season);
         $this->em->flush();
+        SeasonPlanOf::id(self::getContainer(), $season->getId());
 
         $sport = $this->em->getRepository(Sport::class)->findOneBy(['isActive' => true]);
         if (null === $sport) {

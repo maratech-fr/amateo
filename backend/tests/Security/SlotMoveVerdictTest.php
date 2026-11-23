@@ -28,7 +28,6 @@ use App\Exception\EvictTargetMismatchException;
 use App\Exception\ScheduleGenerationInProgressException;
 use App\Exception\SlotUnavailableException;
 use App\Exception\TeamAlreadyAtCaseException;
-use App\Plans\SoclePlan;
 use App\Service\ClubGenerationLock;
 use App\Service\EngineClient;
 use App\Service\MoveSlotService;
@@ -40,6 +39,7 @@ use App\Service\ScheduleProgressPublisher;
 use App\Service\TeamCaseOccupancyGuard;
 use App\Tests\ChoosesPlanVersionTrait;
 use App\Tests\CreatesPeopleAndPlacesTrait;
+use App\Tests\SeasonPlanOf;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -905,11 +905,11 @@ final class SlotMoveVerdictTest extends KernelTestCase
     {
         $teamIds = ['88888888-8888-4888-8888-888888888881', '88888888-8888-4888-8888-888888888882'];
 
-        $block = (new SharedTrainingBlock)->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])->setSchedulePlanId(self::getContainer()->get(SoclePlan::class)->idOf($ctx['seasonId']))->setCommonSessions(1);
+        $block = (new SharedTrainingBlock)->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])->setSchedulePlanId(SeasonPlanOf::id(self::getContainer(), $ctx['seasonId']))->setCommonSessions(1);
         $this->em->persist($block);
         $this->em->flush();
         foreach ($teamIds as $teamId) {
-            $membership = (new SharedTrainingBlockTeam)->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])->setSchedulePlanId(self::getContainer()->get(SoclePlan::class)->idOf($ctx['seasonId']))->setBlockId($block->getId())->setTeamId($teamId);
+            $membership = (new SharedTrainingBlockTeam)->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])->setSchedulePlanId(SeasonPlanOf::id(self::getContainer(), $ctx['seasonId']))->setBlockId($block->getId())->setTeamId($teamId);
             $this->em->persist($membership);
         }
         $this->em->flush();
@@ -991,7 +991,7 @@ final class SlotMoveVerdictTest extends KernelTestCase
         // SlotUnavailableException avant le moteur — sans cette fenêtre, tout le test rougirait.
         $window = (new VenueTrainingSlot)
             ->setClubId($clubId)
-            ->setSeasonId($seasonId)->setSchedulePlanId(self::getContainer()->get(SoclePlan::class)->idOf($seasonId))
+            ->setSeasonId($seasonId)->setSchedulePlanId(SeasonPlanOf::id(self::getContainer(), $seasonId))
             ->setVenueId($venueIds[1])
             ->setDayOfWeek(4)
             ->setStartTime(DateTimeImmutable::createFromFormat('!H:i', '20:00'))

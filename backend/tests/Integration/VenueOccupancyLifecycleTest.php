@@ -13,7 +13,6 @@ use App\Entity\Venue;
 use App\Entity\VenueTrainingSlot;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
-use App\Plans\SoclePlan;
 use App\Service\PeriodPlanSiblingCopier;
 use App\Service\SchedulePlanProvisioner;
 use App\Service\SeasonDataPurger;
@@ -23,6 +22,7 @@ use App\Service\StructureRestorer;
 use App\Service\StructureSnapshotter;
 use App\Tests\ChoosesPlanVersionTrait;
 use App\Tests\CreatesPeopleAndPlacesTrait;
+use App\Tests\SeasonPlanOf;
 use App\Tests\Support\SubscribesClub;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
@@ -277,7 +277,7 @@ final class VenueOccupancyLifecycleTest extends WebTestCase
         $copiedVenue = (string) $this->em->getConnection()->fetchOne('SELECT id FROM venue WHERE season_id = :s AND name = :n', ['s' => $target->getId(), 'n' => $kept->getName()]);
         self::assertNotSame('', $copiedVenue, 'décor : le gymnase présent est copié vers la saison suivante');
         self::assertSame(
-            [[$copiedVenue, 2, '14:00', 135, 'École', self::getContainer()->get(SoclePlan::class)->idOf($target->getId())]],
+            [[$copiedVenue, 2, '14:00', 135, 'École', SeasonPlanOf::id(self::getContainer(), $target->getId())]],
             array_map(static fn (array $r): array => [$r['venue_id'], (int) $r['day_of_week'], $r['start'], (int) $r['duration_minutes'], $r['label'], $r['schedule_plan_id']], $this->rawRows('season_id = \'' . $target->getId() . '\'')),
             'seule l\'occupation de saison d\'un gymnase copié passe à la saison suivante (ni la période, ni la dormante)',
         );
@@ -385,7 +385,7 @@ final class VenueOccupancyLifecycleTest extends WebTestCase
         $this->scopeGucToClub($this->club->getId());
         $slot = (new VenueTrainingSlot)->setClubId($this->club->getId())->setSeasonId($this->season->getId())
             ->setVenueId($venue->getId())->setDayOfWeek($day)->setStartTime(new DateTimeImmutable($start))
-            ->setDurationMinutes(90)->setCapacity(1)->setSchedulePlanId(self::getContainer()->get(SoclePlan::class)->idOf($this->season->getId()));
+            ->setDurationMinutes(90)->setCapacity(1)->setSchedulePlanId(SeasonPlanOf::id(self::getContainer(), $this->season->getId()));
         $this->em->persist($slot);
         $this->em->flush();
 

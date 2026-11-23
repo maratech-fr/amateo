@@ -17,6 +17,7 @@ use App\Service\MatchPlacementPayloadBuilder;
 use App\Service\ScheduleConstraintBuilder;
 use App\Service\SeasonResolver;
 use App\Tests\CreatesPeopleAndPlacesTrait;
+use App\Tests\SeasonPlanOf;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -308,6 +309,7 @@ final class HabitPayloadParityTest extends KernelTestCase
         $category->setName('U13-' . $uid);
         $this->em->persist($category);
         $this->em->flush();
+        SeasonPlanOf::id(self::getContainer(), $season->getId());
 
         return [$club, $season];
     }

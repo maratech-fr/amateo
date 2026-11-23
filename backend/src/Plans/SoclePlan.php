@@ -5,10 +5,8 @@ declare(strict_types=1);
 namespace App\Plans;
 
 use App\Enum\SchedulePlanType;
-use App\Service\SchedulePlanProvisioner;
 use Doctrine\ORM\EntityManagerInterface;
 use LogicException;
-use Symfony\Component\DependencyInjection\Attribute\Autowire;
 
 /**
  * Le socle a son plan (lot 4, PR 2) : chaque ligne de planning du socle — grille, occupations,
@@ -30,14 +28,10 @@ final class SoclePlan
 
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
-        // Paresseux : le provisioner dépend du constructeur de demandes, qui lit le plan du socle.
-        #[Autowire(lazy: true)]
-        private readonly SchedulePlanProvisioner $schedulePlanProvisioner,
     ) {}
 
     /**
-     * Le plan de saison d'une saison. Une saison née avant les plans (donnée de test, saison écrite à
-     * la main) le reçoit ici, comme à la conversion ; lève si la saison n'existe pas.
+     * Le plan de saison d'une saison ; lève s'il manque (une saison naît avec lui).
      */
     public function idOf(string $seasonId): string
     {
@@ -49,8 +43,9 @@ final class SoclePlan
             return $id;
         }
 
-        return $this->schedulePlanProvisioner->ensureSeasonPlanId($seasonId)
-            ?? throw new LogicException(\sprintf('La saison %s n\'existe pas : elle n\'a pas de plan de saison.', $seasonId));
+        // Cas impossible (CLAUDE.md §6) : une saison naît avec son plan de saison, la conversion du lot 4
+        // l'a donné aux anciennes. Jamais de repli : une lecture ne crée rien et ne verrouille rien.
+        throw new LogicException(\sprintf('La saison %s n\'a pas de plan de saison.', $seasonId));
     }
 
     /** Ce plan est-il le plan de saison (le socle) ? Un plan inconnu ne l'est pas. */

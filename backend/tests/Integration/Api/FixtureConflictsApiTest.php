@@ -27,6 +27,7 @@ use App\Enum\SeasonStatus;
 use App\Enum\TeamCoachRole;
 use App\Service\SeasonResolver;
 use App\Tests\CreatesPeopleAndPlacesTrait;
+use App\Tests\SeasonPlanOf;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
@@ -621,6 +622,7 @@ final class FixtureConflictsApiTest extends WebTestCase
         $coach = $this->newCoach($club->getId(), $season->getId(), 'Coach', $suffix);
         $this->em->persist($coach);
         $this->em->flush();
+        SeasonPlanOf::id(self::getContainer(), $season->getId());
 
         $team1 = $this->uuid($suffix, 1);
         $team2 = $this->uuid($suffix, 2);
@@ -750,6 +752,7 @@ final class FixtureConflictsApiTest extends WebTestCase
         $coach = $this->newCoach($club->getId(), $season->getId(), 'Coach', $suffix);
         $this->em->persist($coach);
         $this->em->flush();
+        SeasonPlanOf::id(self::getContainer(), $season->getId());
 
         $team1 = $this->uuid($suffix, 1);
         $team2 = $this->uuid($suffix, 2);
@@ -837,6 +840,7 @@ final class FixtureConflictsApiTest extends WebTestCase
         $venue = $this->newVenue($club->getId(), $season->getId(), 'Gymnase Coubertin');
         $this->em->persist($venue);
         $this->em->flush();
+        SeasonPlanOf::id(self::getContainer(), $season->getId());
 
         $f1 = $this->homeFixtureAtVenue($club, $season, $this->uuid($suffix, 1), '16:00', $venue->getId());
         $f2 = $this->homeFixtureAtVenue($club, $season, $this->uuid($suffix, 2), '16:30', $venue->getId());

@@ -28,12 +28,12 @@ use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
 use App\Enum\VenueDayState;
 use App\Enum\VenuePeriodMode;
-use App\Plans\SoclePlan;
 use App\Service\PeriodPlanTranscriber;
 use App\Service\SchedulePlanProvisioner;
 use App\Tests\ChoosesPlanVersionTrait;
 use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\ProvisionsPeriodPlanTrait;
+use App\Tests\SeasonPlanOf;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -1174,10 +1174,10 @@ final class SocleDeviationParityTest extends WebTestCase
     private function block(Club $club, Season $season, ?string $planId, array $teams): void
     {
         $this->scopeGucToClub($club->getId());
-        $block = (new SharedTrainingBlock)->setClubId($club->getId())->setSeasonId($season->getId())->setSchedulePlanId($planId ?? self::getContainer()->get(SoclePlan::class)->idOf($season->getId()))->setCommonSessions(1);
+        $block = (new SharedTrainingBlock)->setClubId($club->getId())->setSeasonId($season->getId())->setSchedulePlanId($planId ?? SeasonPlanOf::id(self::getContainer(), $season->getId()))->setCommonSessions(1);
         $this->em->persist($block);
         foreach ($teams as $team) {
-            $this->em->persist((new SharedTrainingBlockTeam)->setClubId($club->getId())->setSeasonId($season->getId())->setSchedulePlanId($planId ?? self::getContainer()->get(SoclePlan::class)->idOf($season->getId()))->setBlockId($block->getId())->setTeamId($team->getId()));
+            $this->em->persist((new SharedTrainingBlockTeam)->setClubId($club->getId())->setSeasonId($season->getId())->setSchedulePlanId($planId ?? SeasonPlanOf::id(self::getContainer(), $season->getId()))->setBlockId($block->getId())->setTeamId($team->getId()));
         }
         $this->em->flush();
     }

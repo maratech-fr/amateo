@@ -12,9 +12,9 @@ use App\Entity\User;
 use App\Enum\ImplicitRuleIntensity;
 use App\Enum\ImplicitRuleKey;
 use App\Enum\SeasonStatus;
-use App\Plans\SoclePlan;
 use App\Service\SeasonResolver;
 use App\Tests\CrossStack\ImplicitRulePayloadParityTest;
+use App\Tests\SeasonPlanOf;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -225,7 +225,7 @@ final class ImplicitRuleSettingApiTest extends WebTestCase
         $stored = new ImplicitRuleSetting;
         $stored->setClubId($club->getId());
         $stored->setSeasonId($season->getId());
-        $stored->setSchedulePlanId(self::getContainer()->get(SoclePlan::class)->idOf($season->getId()));
+        $stored->setSchedulePlanId(SeasonPlanOf::id(self::getContainer(), $season->getId()));
         $stored->setRuleKey(ImplicitRuleKey::SALARIE_DISTRIBUTION);
         $stored->setIntensity(ImplicitRuleIntensity::HARD);
         $this->em->persist($stored);
@@ -351,6 +351,7 @@ final class ImplicitRuleSettingApiTest extends WebTestCase
         $season->setTransitionData([]);
         $this->em->persist($season);
         $this->em->flush();
+        SeasonPlanOf::id(self::getContainer(), $season->getId());
 
         return [$user, $club, $season];
     }

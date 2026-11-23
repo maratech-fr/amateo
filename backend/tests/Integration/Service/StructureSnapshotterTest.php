@@ -19,11 +19,11 @@ use App\Enum\ConstraintScope;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
 use App\Enum\TeamCoachRole;
-use App\Plans\SoclePlan;
 use App\Service\StructureSnapshotter;
 use App\Tests\ChoosesPlanVersionTrait;
 use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\CreatesPeriodPlanTrait;
+use App\Tests\SeasonPlanOf;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -68,10 +68,10 @@ final class StructureSnapshotterTest extends KernelTestCase
             ->setTeamId('11111111-1111-4111-8111-111111111111')->setVenueId('22222222-2222-4222-8222-222222222222')
             ->setDayOfWeek(2)->setStartTime(new DateTimeImmutable('18:00'))->setDurationMinutes(90)
             ->setSchedulePlanId($overlayPlanId);
-        $baseReservation = (new Reservation)->setClubId($club->getId())->setSeasonId($season->getId())->setSchedulePlanId(self::getContainer()->get(SoclePlan::class)->idOf($season->getId()))
+        $baseReservation = (new Reservation)->setClubId($club->getId())->setSeasonId($season->getId())->setSchedulePlanId(SeasonPlanOf::id(self::getContainer(), $season->getId()))
             ->setTeamId('11111111-1111-4111-8111-111111111111')->setVenueId('22222222-2222-4222-8222-222222222222')
             ->setDayOfWeek(4)->setStartTime(new DateTimeImmutable('20:30'))->setDurationMinutes(120);
-        $slot = (new VenueTrainingSlot)->setClubId($club->getId())->setSeasonId($season->getId())->setSchedulePlanId(self::getContainer()->get(SoclePlan::class)->idOf($season->getId()))
+        $slot = (new VenueTrainingSlot)->setClubId($club->getId())->setSeasonId($season->getId())->setSchedulePlanId(SeasonPlanOf::id(self::getContainer(), $season->getId()))
             ->setVenueId('22222222-2222-4222-8222-222222222222')->setDayOfWeek(2)
             ->setStartTime(new DateTimeImmutable('18:00'))->setDurationMinutes(90)->setCapacity(1);
         $coach = $this->newCoach($club->getId(), $season->getId(), 'Jean', 'Coach');

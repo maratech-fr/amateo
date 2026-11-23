@@ -14,6 +14,7 @@ use App\Enum\CompetitionType;
 use App\Enum\FixtureHomeAway;
 use App\Enum\FixtureStatus;
 use App\Enum\SeasonStatus;
+use App\Service\SchedulePlanProvisioner;
 use App\Service\SeasonResolver;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
@@ -634,6 +635,9 @@ final class EntryDeadlineShareTest extends WebTestCase
         $season->setTransitionData([]);
         $this->em->persist($season);
         $this->em->flush();
+        // Le plan de saison du décor, posé sur l'entité (la saison d'un club né après une requête n'est pas relue).
+        self::getContainer()->get(SchedulePlanProvisioner::class)->ensureSeasonPlan($season);
+        $this->em->flush();
 
         return [$club, $season, $user];
     }
@@ -650,6 +654,9 @@ final class EntryDeadlineShareTest extends WebTestCase
         $season->setStatus(SeasonStatus::ARCHIVED);
         $season->setTransitionData([]);
         $this->em->persist($season);
+        $this->em->flush();
+        // Le plan de saison du décor, posé sur l'entité (la saison d'un club né après une requête n'est pas relue).
+        self::getContainer()->get(SchedulePlanProvisioner::class)->ensureSeasonPlan($season);
         $this->em->flush();
 
         return $season;

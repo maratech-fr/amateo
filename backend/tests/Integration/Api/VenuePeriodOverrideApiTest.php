@@ -24,10 +24,10 @@ use App\Enum\ConstraintScope;
 use App\Enum\LockLevel;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
-use App\Plans\SoclePlan;
 use App\Service\SchedulePlanProvisioner;
 use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\ProvisionsPeriodPlanTrait;
+use App\Tests\SeasonPlanOf;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -180,7 +180,7 @@ final class VenuePeriodOverrideApiTest extends WebTestCase
         // au MÊME gymnase/jour/heure que le créneau de période qu'on va supprimer.
         $seasonPin = (new Reservation)
             ->setClubId($this->club->getId())->setSeasonId($this->season->getId())
-            ->setSchedulePlanId(self::getContainer()->get(SoclePlan::class)->idOf($this->season->getId()))
+            ->setSchedulePlanId(SeasonPlanOf::id(self::getContainer(), $this->season->getId()))
             ->setTeamId('22222222-2222-4222-8222-222222222222')
             ->setVenueId($this->venueA->getId())
             ->setDayOfWeek($slot->getDayOfWeek())->setStartTime($slot->getStartTime())->setDurationMinutes(90);
@@ -506,7 +506,7 @@ final class VenuePeriodOverrideApiTest extends WebTestCase
         // …et la grille de SAISON garde son libellé : c'est elle qui le possède.
         $this->em->clear();
         $seasonal = $this->em->getRepository(VenueTrainingSlot::class)->findBy([
-            'schedulePlanId' => self::getContainer()->get(SoclePlan::class)->idOf($this->season->getId()), 'venueId' => $this->venueA->getId(), 'dayOfWeek' => 6,
+            'schedulePlanId' => SeasonPlanOf::id(self::getContainer(), $this->season->getId()), 'venueId' => $this->venueA->getId(), 'dayOfWeek' => 6,
         ]);
         self::assertCount(1, $seasonal);
         self::assertSame('CEC3', $seasonal[0]->getGroupLabel(), 'le libellé reste dans la grille de saison');
@@ -794,7 +794,7 @@ final class VenuePeriodOverrideApiTest extends WebTestCase
 
     private function seasonSlot(Venue $venue, int $dayOfWeek, string $startTime): VenueTrainingSlot
     {
-        $slot = (new VenueTrainingSlot)->setClubId($this->club->getId())->setSeasonId($this->season->getId())->setSchedulePlanId(self::getContainer()->get(SoclePlan::class)->idOf($this->season->getId()))
+        $slot = (new VenueTrainingSlot)->setClubId($this->club->getId())->setSeasonId($this->season->getId())->setSchedulePlanId(SeasonPlanOf::id(self::getContainer(), $this->season->getId()))
             ->setVenueId($venue->getId())->setDayOfWeek($dayOfWeek)
             ->setStartTime(new DateTimeImmutable($startTime))->setDurationMinutes(90)->setCapacity(1);
         $this->em->persist($slot);
@@ -864,7 +864,7 @@ final class VenuePeriodOverrideApiTest extends WebTestCase
     {
         $this->em->clear();
 
-        return \count($this->em->getRepository(VenueTrainingSlot::class)->findBy(['schedulePlanId' => self::getContainer()->get(SoclePlan::class)->idOf($this->season->getId())]));
+        return \count($this->em->getRepository(VenueTrainingSlot::class)->findBy(['schedulePlanId' => SeasonPlanOf::id(self::getContainer(), $this->season->getId())]));
     }
 
     /** @return list<string> */
@@ -873,7 +873,7 @@ final class VenuePeriodOverrideApiTest extends WebTestCase
         $this->em->clear();
 
         return $this->keys($this->em->getRepository(VenueTrainingSlot::class)
-            ->findBy(['schedulePlanId' => self::getContainer()->get(SoclePlan::class)->idOf($this->season->getId()), 'venueId' => $venue->getId()]));
+            ->findBy(['schedulePlanId' => SeasonPlanOf::id(self::getContainer(), $this->season->getId()), 'venueId' => $venue->getId()]));
     }
 
     /** @return list<string> */

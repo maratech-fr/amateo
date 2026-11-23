@@ -31,6 +31,7 @@ use App\Service\SeasonResolver;
 use App\Tests\BuildsServiceWithDoublesTrait;
 use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\PlacementLockProbeTrait;
+use App\Tests\SeasonPlanOf;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -496,6 +497,7 @@ final class RedeliveredPlacementTest extends KernelTestCase
         $season->setTransitionData([]);
         $this->em->persist($season);
         $this->em->flush();
+        SeasonPlanOf::id(self::getContainer(), $season->getId());
 
         $sport = $this->em->getRepository(Sport::class)->findOneBy(['isActive' => true]);
         if (null === $sport) {

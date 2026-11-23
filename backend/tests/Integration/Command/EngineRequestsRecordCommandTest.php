@@ -24,7 +24,6 @@ use App\Enum\LockLevel;
 use App\Enum\LockOrigin;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
-use App\Plans\SoclePlan;
 use App\Service\EngineRequestFingerprint;
 use App\Service\EngineRequestRecorder;
 use App\Service\ScheduleConstraintBuilder;
@@ -32,6 +31,7 @@ use App\Service\SchedulePlanProvisioner;
 use App\Tests\EngineRequestDecorTrait;
 use App\Tests\EngineRequestGroupRulesDecorTrait;
 use App\Tests\EngineRequestTravelDecorTrait;
+use App\Tests\SeasonPlanOf;
 use DateTimeImmutable;
 use FilesystemIterator;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -904,7 +904,7 @@ final class EngineRequestsRecordCommandTest extends KernelTestCase
         $em->persist($place);
         $em->persist(new Venue($place)->setId(self::B_VENUE)->setClubId(self::B_CLUB)->setSeasonId(self::B_SEASON)
             ->setName('Gymnase B')->setCanSplit(false)->setSource('manual'));
-        $em->persist((new VenueTrainingSlot)->setId(self::erId('a7a1', 9))->setClubId(self::B_CLUB)->setSeasonId(self::B_SEASON)->setSchedulePlanId(self::getContainer()->get(SoclePlan::class)->idOf(self::B_SEASON))
+        $em->persist((new VenueTrainingSlot)->setId(self::erId('a7a1', 9))->setClubId(self::B_CLUB)->setSeasonId(self::B_SEASON)->setSchedulePlanId(SeasonPlanOf::id(self::getContainer(), self::B_SEASON))
             ->setVenueId(self::B_VENUE)->setDayOfWeek(2)->setStartTime(new DateTimeImmutable('18:00'))
             ->setDurationMinutes(90)->setCapacity(1));
         $em->persist((new Team)->setId(self::B_TEAM)->setClubId(self::B_CLUB)->setSeasonId(self::B_SEASON)

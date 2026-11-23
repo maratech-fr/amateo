@@ -25,10 +25,10 @@ use App\Enum\LockOrigin;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
 use App\Enum\TeamCoachRole;
-use App\Plans\SoclePlan;
 use App\Service\MoveSlotService;
 use App\Tests\ChoosesPlanVersionTrait;
 use App\Tests\CreatesPeopleAndPlacesTrait;
+use App\Tests\SeasonPlanOf;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -118,7 +118,7 @@ final class ManualPlacementOutsideLiftedRuleTest extends KernelTestCase
         $this->em->persist($venue);
         $this->em->flush();
         foreach ([[self::MONDAY, '18:00'], [self::MONDAY, '19:30'], [self::FRIDAY, '18:00']] as [$day, $start]) {
-            $this->em->persist((new VenueTrainingSlot)->setClubId($clubId)->setSeasonId($seasonId)->setSchedulePlanId(self::getContainer()->get(SoclePlan::class)->idOf($seasonId))->setVenueId($venue->getId())
+            $this->em->persist((new VenueTrainingSlot)->setClubId($clubId)->setSeasonId($seasonId)->setSchedulePlanId(SeasonPlanOf::id(self::getContainer(), $seasonId))->setVenueId($venue->getId())
                 ->setDayOfWeek($day)->setStartTime(new DateTimeImmutable('1970-01-01 ' . $start))->setDurationMinutes(90)->setCapacity(1));
         }
 
@@ -150,7 +150,7 @@ final class ManualPlacementOutsideLiftedRuleTest extends KernelTestCase
         $this->em->persist((new Constraint)->setClubId($clubId)->setSeasonId($seasonId)->setName('Vendredi imposé')
             ->setScope(ConstraintScope::TEAM)->setScopeTargetId($teams['Seniors A'])->setFamily(ConstraintFamily::DAY)
             ->setRuleType(ConstraintRuleType::HARD)->setConfig(['forcedDays' => [self::FRIDAY]])->setIsActive(true));
-        $this->em->persist((new Reservation)->setClubId($clubId)->setSeasonId($seasonId)->setSchedulePlanId(self::getContainer()->get(SoclePlan::class)->idOf($seasonId))->setTeamId($teams['Cadets'])->setVenueId($venue->getId())
+        $this->em->persist((new Reservation)->setClubId($clubId)->setSeasonId($seasonId)->setSchedulePlanId(SeasonPlanOf::id(self::getContainer(), $seasonId))->setTeamId($teams['Cadets'])->setVenueId($venue->getId())
             ->setDayOfWeek(self::FRIDAY)->setStartTime(new DateTimeImmutable('1970-01-01 18:00'))->setDurationMinutes(90));
 
         $schedule = (new Schedule)->setClubId($clubId)->setSeasonId($seasonId)->setName('V1')->setStatus(ScheduleStatus::COMPLETED);

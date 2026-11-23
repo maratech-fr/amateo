@@ -23,8 +23,8 @@ use App\Enum\ConstraintRuleType;
 use App\Enum\ConstraintScope;
 use App\Enum\LockLevel;
 use App\Enum\SeasonStatus;
-use App\Plans\SoclePlan;
 use App\Tests\CreatesPeriodPlanTrait;
+use App\Tests\SeasonPlanOf;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -81,7 +81,7 @@ final class ReservationApiTest extends WebTestCase
         // pin — else findBaseSlotTemplates re-injects it forever.
         $start = new DateTimeImmutable('20:30');
         $reservation = (new Reservation)
-            ->setClubId($this->club->getId())->setSeasonId($this->season->getId())->setSchedulePlanId(self::getContainer()->get(SoclePlan::class)->idOf($this->season->getId()))
+            ->setClubId($this->club->getId())->setSeasonId($this->season->getId())->setSchedulePlanId(SeasonPlanOf::id(self::getContainer(), $this->season->getId()))
             ->setTeamId('11111111-1111-4111-8111-111111111111')
             ->setVenueId('22222222-2222-4222-8222-222222222222')
             ->setDayOfWeek(2)->setStartTime($start)->setDurationMinutes(120);
@@ -397,7 +397,7 @@ final class ReservationApiTest extends WebTestCase
     {
         // Un créneau LIBRE (teamId null) n'a pas de coach à faire arriver en retard : 422.
         $free = (new Reservation)
-            ->setClubId($this->club->getId())->setSeasonId($this->season->getId())->setSchedulePlanId(self::getContainer()->get(SoclePlan::class)->idOf($this->season->getId()))
+            ->setClubId($this->club->getId())->setSeasonId($this->season->getId())->setSchedulePlanId(SeasonPlanOf::id(self::getContainer(), $this->season->getId()))
             ->setTeamId(null)->setLabel('Loto du club')
             ->setVenueId(self::VENUE)->setDayOfWeek(2)->setStartTime(new DateTimeImmutable('20:30'))->setDurationMinutes(90);
         $this->em->persist($free);
@@ -474,6 +474,7 @@ final class ReservationApiTest extends WebTestCase
         $this->season->setStatus(SeasonStatus::ACTIVE);
         $this->em->persist($this->season);
         $this->em->flush();
+        SeasonPlanOf::id(self::getContainer(), $this->season->getId());
 
         $this->token = $container->get(JWTTokenManagerInterface::class)->create($this->user);
     }
@@ -481,7 +482,7 @@ final class ReservationApiTest extends WebTestCase
     private function makeTeamReservation(): Reservation
     {
         $reservation = (new Reservation)
-            ->setClubId($this->club->getId())->setSeasonId($this->season->getId())->setSchedulePlanId(self::getContainer()->get(SoclePlan::class)->idOf($this->season->getId()))
+            ->setClubId($this->club->getId())->setSeasonId($this->season->getId())->setSchedulePlanId(SeasonPlanOf::id(self::getContainer(), $this->season->getId()))
             ->setTeamId('11111111-1111-4111-8111-111111111111')
             ->setVenueId(self::VENUE)->setDayOfWeek(2)->setStartTime(new DateTimeImmutable('20:30'))->setDurationMinutes(90);
         $this->em->persist($reservation);
@@ -503,11 +504,12 @@ final class ReservationApiTest extends WebTestCase
         $season->setStartDate(new DateTimeImmutable('2025-09-01'))->setEndDate(new DateTimeImmutable('2026-06-30'))->setStatus(SeasonStatus::ACTIVE);
         $this->em->persist($season);
         $reservation = (new Reservation)
-            ->setClubId($other->getId())->setSeasonId($season->getId())->setSchedulePlanId(self::getContainer()->get(SoclePlan::class)->idOf($season->getId()))
+            ->setClubId($other->getId())->setSeasonId($season->getId())->setSchedulePlanId(SeasonPlanOf::id(self::getContainer(), $season->getId()))
             ->setTeamId('11111111-1111-4111-8111-111111111111')
             ->setVenueId(self::VENUE)->setDayOfWeek(2)->setStartTime(new DateTimeImmutable('20:30'))->setDurationMinutes(90);
         $this->em->persist($reservation);
         $this->em->flush();
+        SeasonPlanOf::id(self::getContainer(), $season->getId());
         // Restaure la portée tenant du test (le client rejoue le JWT de ce club).
         $this->scopeGucToClub($this->club->getId());
 
@@ -668,12 +670,12 @@ final class ReservationApiTest extends WebTestCase
     {
         $block = (new SharedTrainingBlock)
             ->setClubId($this->club->getId())->setSeasonId($this->season->getId())
-            ->setSchedulePlanId($planId ?? self::getContainer()->get(SoclePlan::class)->idOf($this->season->getId()))->setCommonSessions($commonSessions);
+            ->setSchedulePlanId($planId ?? SeasonPlanOf::id(self::getContainer(), $this->season->getId()))->setCommonSessions($commonSessions);
         $this->em->persist($block);
         foreach ($teams as $team) {
             $member = (new SharedTrainingBlockTeam)
                 ->setClubId($this->club->getId())->setSeasonId($this->season->getId())
-                ->setSchedulePlanId($planId ?? self::getContainer()->get(SoclePlan::class)->idOf($this->season->getId()))->setBlockId($block->getId())->setTeamId($team->getId());
+                ->setSchedulePlanId($planId ?? SeasonPlanOf::id(self::getContainer(), $this->season->getId()))->setBlockId($block->getId())->setTeamId($team->getId());
             $this->em->persist($member);
         }
         $this->em->flush();
@@ -685,7 +687,7 @@ final class ReservationApiTest extends WebTestCase
             ->setClubId($this->club->getId())->setSeasonId($this->season->getId())
             ->setTeamId($teamId)->setVenueId(self::VENUE)
             ->setDayOfWeek($dayOfWeek)->setStartTime(new DateTimeImmutable($startTime))
-            ->setDurationMinutes(90)->setSchedulePlanId($schedulePlanId ?? self::getContainer()->get(SoclePlan::class)->idOf($this->season->getId()));
+            ->setDurationMinutes(90)->setSchedulePlanId($schedulePlanId ?? SeasonPlanOf::id(self::getContainer(), $this->season->getId()));
         $this->em->persist($reservation);
         $this->em->flush();
 

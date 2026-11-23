@@ -19,9 +19,9 @@ use App\Entity\User;
 use App\Entity\Venue;
 use App\Enum\SchedulePlanType;
 use App\Enum\SeasonStatus;
-use App\Plans\SoclePlan;
 use App\Service\SeasonResolver;
 use App\Tests\CreatesPeopleAndPlacesTrait;
+use App\Tests\SeasonPlanOf;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -66,7 +66,7 @@ final class SharedTrainingBlockApiTest extends WebTestCase
         self::assertNotNull($block);
         self::assertSame($club->getId(), $block->getClubId());
         self::assertSame($season->getId(), $block->getSeasonId());
-        self::assertSame(self::getContainer()->get(SoclePlan::class)->idOf($block->getSeasonId()), $block->getSchedulePlanId());
+        self::assertSame(SeasonPlanOf::id(self::getContainer(), $block->getSeasonId()), $block->getSchedulePlanId());
         self::assertCount(2, $this->em->getRepository(SharedTrainingBlockTeam::class)->findBy(['blockId' => $created['id']]));
     }
 
@@ -429,7 +429,7 @@ final class SharedTrainingBlockApiTest extends WebTestCase
         foreach ($teams as $team) {
             $reservation = (new Reservation)
                 ->setClubId($club->getId())
-                ->setSeasonId($season->getId())->setSchedulePlanId(self::getContainer()->get(SoclePlan::class)->idOf($season->getId()))
+                ->setSeasonId($season->getId())->setSchedulePlanId(SeasonPlanOf::id(self::getContainer(), $season->getId()))
                 ->setTeamId($team->getId())
                 ->setVenueId($venue->getId())
                 ->setDayOfWeek($dayOfWeek)
@@ -586,6 +586,7 @@ final class SharedTrainingBlockApiTest extends WebTestCase
         $season->setTransitionData([]);
         $this->em->persist($season);
         $this->em->flush();
+        SeasonPlanOf::id(self::getContainer(), $season->getId());
 
         return [$club, $user, $season];
     }

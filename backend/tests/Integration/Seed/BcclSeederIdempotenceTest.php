@@ -7,7 +7,6 @@ namespace App\Tests\Integration\Seed;
 use App\Entity\Club;
 use App\Entity\OpponentVenueLink;
 use App\Enum\OpponentVenueLinkSource;
-use App\Plans\SoclePlan;
 use App\Repository\SchoolHolidayPeriodRepository;
 use App\Seed\BcclSeeder;
 use App\Seed\BcclSeedIdentities;
@@ -17,6 +16,7 @@ use App\Service\ClosureSegmentation;
 use App\Service\HolidayWorkweekRule;
 use App\Service\PeriodWindowUniquenessGuard;
 use App\Service\SoloReservationBudget;
+use App\Tests\SeasonPlanOf;
 use DateTimeImmutable;
 use Doctrine\DBAL\Connection;
 use Doctrine\ORM\EntityManagerInterface;
@@ -1553,7 +1553,7 @@ final class BcclSeederIdempotenceTest extends KernelTestCase
         $violations = [];
         foreach ($planIds as $planId) {
             $scope = null === $planId ? 'socle' : ('plan ' . $planId);
-            foreach ($budgetService->forScope($clubId, $seasonId, $planId ?? self::getContainer()->get(SoclePlan::class)->idOf($seasonId)) as $budget) {
+            foreach ($budgetService->forScope($clubId, $seasonId, $planId ?? SeasonPlanOf::id(self::getContainer(), $seasonId)) as $budget) {
                 if ($budget->individualUsed > $budget->residual) {
                     $violations[] = \sprintf(
                         '%s — %s : S=%d B=%d R=%d individualUsed=%d',

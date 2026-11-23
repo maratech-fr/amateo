@@ -15,6 +15,7 @@ use App\Enum\SeasonStatus;
 use App\Enum\VenueTravelRuleIntensity;
 use App\Service\ScheduleConstraintBuilder;
 use App\Tests\CreatesPeopleAndPlacesTrait;
+use App\Tests\SeasonPlanOf;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -220,6 +221,7 @@ final class VenueTravelTimePayloadParityTest extends KernelTestCase
         $this->em->persist($otherSeason);
         $elsewhere = $this->venueWithId($club, $otherSeason, 'cccccccc-0000-4000-8000-00000000000e');
         $this->em->flush();
+        SeasonPlanOf::id(self::getContainer(), $otherSeason->getId());
         $this->travelTimeBetweenPlaces($club, $a->getPlaceId(), $elsewhere->getPlaceId(), 10, 20);
 
         $payload = $this->builder->buildForClubSeason($club->getId(), $season->getId());
@@ -365,6 +367,7 @@ final class VenueTravelTimePayloadParityTest extends KernelTestCase
         $season->setStatus(SeasonStatus::ACTIVE);
         $this->em->persist($season);
         $this->em->flush();
+        SeasonPlanOf::id(self::getContainer(), $season->getId());
 
         return [$club, $season];
     }

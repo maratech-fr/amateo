@@ -24,7 +24,6 @@ use App\Enum\LockLevel;
 use App\Enum\LockOrigin;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
-use App\Plans\SoclePlan;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
 use Lexik\Bundle\JWTAuthenticationBundle\Services\JWTTokenManagerInterface;
@@ -127,7 +126,7 @@ trait ClosurePinDecorTrait
 
         // Grille de SAISON — la période en prend COPIE à la naissance de son plan (ADR-0002).
         foreach ([[$mistral, 2, '18:00'], [$mistral, 2, '19:30'], [$mistral, 4, '18:00'], [$brel, 2, '18:00']] as [$venue, $day, $time]) {
-            $em->persist((new VenueTrainingSlot)->setClubId($club->getId())->setSeasonId($season->getId())->setSchedulePlanId(static::getContainer()->get(SoclePlan::class)->idOf($season->getId()))
+            $em->persist((new VenueTrainingSlot)->setClubId($club->getId())->setSeasonId($season->getId())->setSchedulePlanId(SeasonPlanOf::id(static::getContainer(), $season->getId()))
                 ->setVenueId($venue->getId())->setDayOfWeek($day)
                 ->setStartTime(new DateTimeImmutable($time))->setDurationMinutes(90)->setCapacity(1));
         }

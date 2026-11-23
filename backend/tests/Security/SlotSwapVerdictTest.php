@@ -23,7 +23,6 @@ use App\Exception\EvictTargetLockedException;
 use App\Exception\ScheduleGenerationInProgressException;
 use App\Exception\SwapCrossScheduleException;
 use App\Exception\SwapWithSelfException;
-use App\Plans\SoclePlan;
 use App\Service\ClubGenerationLock;
 use App\Service\EngineClient;
 use App\Service\MoveSlotService;
@@ -35,6 +34,7 @@ use App\Service\ScheduleProgressPublisher;
 use App\Service\TeamCaseOccupancyGuard;
 use App\Tests\ChoosesPlanVersionTrait;
 use App\Tests\CreatesPeopleAndPlacesTrait;
+use App\Tests\SeasonPlanOf;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -424,7 +424,7 @@ final class SlotSwapVerdictTest extends KernelTestCase
         foreach ([[$venueIds[0], 2, '18:00'], [$venueIds[1], 4, '20:00']] as [$venueId, $day, $start]) {
             $window = (new VenueTrainingSlot)
                 ->setClubId($clubId)
-                ->setSeasonId($seasonId)->setSchedulePlanId(self::getContainer()->get(SoclePlan::class)->idOf($seasonId))
+                ->setSeasonId($seasonId)->setSchedulePlanId(SeasonPlanOf::id(self::getContainer(), $seasonId))
                 ->setVenueId($venueId)
                 ->setDayOfWeek($day)
                 ->setStartTime(DateTimeImmutable::createFromFormat('!H:i', $start))
@@ -517,11 +517,11 @@ final class SlotSwapVerdictTest extends KernelTestCase
     private function makeBlock(array $ctx, array $teamIds): SharedTrainingBlock
     {
         $this->scopeGucToClub((string) $ctx['clubId']);
-        $block = (new SharedTrainingBlock)->setClubId((string) $ctx['clubId'])->setSeasonId((string) $ctx['seasonId'])->setSchedulePlanId(self::getContainer()->get(SoclePlan::class)->idOf((string) $ctx['seasonId']))->setCommonSessions(1);
+        $block = (new SharedTrainingBlock)->setClubId((string) $ctx['clubId'])->setSeasonId((string) $ctx['seasonId'])->setSchedulePlanId(SeasonPlanOf::id(self::getContainer(), (string) $ctx['seasonId']))->setCommonSessions(1);
         $this->em->persist($block);
         $this->em->flush();
         foreach ($teamIds as $teamId) {
-            $membership = (new SharedTrainingBlockTeam)->setClubId((string) $ctx['clubId'])->setSeasonId((string) $ctx['seasonId'])->setSchedulePlanId(self::getContainer()->get(SoclePlan::class)->idOf((string) $ctx['seasonId']))->setBlockId($block->getId())->setTeamId($teamId);
+            $membership = (new SharedTrainingBlockTeam)->setClubId((string) $ctx['clubId'])->setSeasonId((string) $ctx['seasonId'])->setSchedulePlanId(SeasonPlanOf::id(self::getContainer(), (string) $ctx['seasonId']))->setBlockId($block->getId())->setTeamId($teamId);
             $this->em->persist($membership);
         }
         $this->em->flush();

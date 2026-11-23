@@ -18,6 +18,7 @@ use App\Enum\SeasonStatus;
 use App\Service\SchedulePlanProvisioner;
 use App\Service\SeasonResolver;
 use App\Tests\CreatesPeopleAndPlacesTrait;
+use App\Tests\SeasonPlanOf;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -134,6 +135,7 @@ final class SoclePlanApiFrontierTest extends WebTestCase
             ->setStatus(SeasonStatus::ACTIVE)->setTransitionData([]);
         $this->em->persist($this->season);
         $this->em->flush();
+        SeasonPlanOf::id(self::getContainer(), $this->season->getId());
 
         $this->teamA = $this->createTeam('U11F1');
         $this->teamB = $this->createTeam('U11F2');

@@ -11,6 +11,7 @@ use App\Entity\Season;
 use App\Entity\User;
 use App\Enum\SeasonStatus;
 use App\Service\SeasonResolver;
+use App\Tests\SeasonPlanOf;
 use App\Tests\Support\SubscribesClub;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
@@ -244,6 +245,8 @@ final class SeasonTransitionApiTest extends WebTestCase
         $season->setStatus(SeasonStatus::ACTIVE);
         $season->setTransitionData([]);
         $this->em->persist($season);
+        $this->em->flush();
+        SeasonPlanOf::id(self::getContainer(), $season->getId());
 
         return $season;
     }

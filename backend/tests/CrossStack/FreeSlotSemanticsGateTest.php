@@ -13,9 +13,9 @@ use App\Entity\User;
 use App\Entity\Venue;
 use App\Entity\VenueTrainingSlot;
 use App\Enum\SeasonStatus;
-use App\Plans\SoclePlan;
 use App\Service\ScheduleConstraintBuilder;
 use App\Tests\CreatesPeopleAndPlacesTrait;
+use App\Tests\SeasonPlanOf;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -147,7 +147,7 @@ final class FreeSlotSemanticsGateTest extends KernelTestCase
     private function trainingSlot(Club $club, Season $season, Venue $venue, int $day, string $start): void
     {
         $slot = (new VenueTrainingSlot)
-            ->setClubId($club->getId())->setSeasonId($season->getId())->setSchedulePlanId(self::getContainer()->get(SoclePlan::class)->idOf($season->getId()))->setVenueId($venue->getId())
+            ->setClubId($club->getId())->setSeasonId($season->getId())->setSchedulePlanId(SeasonPlanOf::id(self::getContainer(), $season->getId()))->setVenueId($venue->getId())
             ->setDayOfWeek($day)->setStartTime(new DateTimeImmutable($start))->setDurationMinutes(90)->setCapacity(1);
         $this->em->persist($slot);
     }
@@ -164,7 +164,7 @@ final class FreeSlotSemanticsGateTest extends KernelTestCase
     private function freeSlot(Club $club, Season $season, Venue $venue, int $day, string $start, string $label): Reservation
     {
         $reservation = (new Reservation)
-            ->setClubId($club->getId())->setSeasonId($season->getId())->setSchedulePlanId(self::getContainer()->get(SoclePlan::class)->idOf($season->getId()))->setTeamId(null)->setLabel($label)
+            ->setClubId($club->getId())->setSeasonId($season->getId())->setSchedulePlanId(SeasonPlanOf::id(self::getContainer(), $season->getId()))->setTeamId(null)->setLabel($label)
             ->setVenueId($venue->getId())->setDayOfWeek($day)->setStartTime(new DateTimeImmutable($start))->setDurationMinutes(90);
         $this->em->persist($reservation);
 

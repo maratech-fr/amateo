@@ -31,7 +31,6 @@ use App\Enum\ScheduleDiagnosticSeverity;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
 use App\Enum\TeamCoachRole;
-use App\Plans\SoclePlan;
 use App\Service\CoachWishCampaignTokenSync;
 use App\Service\FeedbackContextEnricher;
 use App\Service\PdfGenerator;
@@ -296,7 +295,7 @@ trait PersonErasureDecorTrait
         $em->persist($venue);
         $em->flush();
         foreach ([1, 2, 3, 4] as $day) {
-            $em->persist((new VenueTrainingSlot)->setClubId($club->getId())->setSeasonId($season->getId())->setSchedulePlanId(static::getContainer()->get(SoclePlan::class)->idOf($season->getId()))->setVenueId($venue->getId())
+            $em->persist((new VenueTrainingSlot)->setClubId($club->getId())->setSeasonId($season->getId())->setSchedulePlanId(SeasonPlanOf::id(static::getContainer(), $season->getId()))->setVenueId($venue->getId())
                 ->setDayOfWeek($day)->setStartTime(new DateTimeImmutable('18:00'))->setDurationMinutes(90)->setCapacity(1));
         }
         $em->flush();

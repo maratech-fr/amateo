@@ -28,13 +28,13 @@ use App\Enum\LockLevel;
 use App\Enum\LockOrigin;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
-use App\Plans\SoclePlan;
 use App\Service\ClubGenerationLock;
 use App\Service\ScheduleConstraintBuilder;
 use App\Service\SchedulePlanProvisioner;
 use App\Tests\ChoosesPlanVersionTrait;
 use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\CreatesPeriodPlanTrait;
+use App\Tests\SeasonPlanOf;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -482,13 +482,13 @@ final class SlotRemovalTest extends WebTestCase
         $this->scopeGucToClub($clubId);
         $window = (new VenueTrainingSlot)
             ->setClubId($clubId)
-            ->setSeasonId($seasonId)->setSchedulePlanId(self::getContainer()->get(SoclePlan::class)->idOf($seasonId))
+            ->setSeasonId($seasonId)->setSchedulePlanId(SeasonPlanOf::id(self::getContainer(), $seasonId))
             ->setVenueId($venueId)
             ->setDayOfWeek(2)
             ->setStartTime(DateTimeImmutable::createFromFormat('!H:i', '18:00'))
             ->setDurationMinutes(90)
             ->setCapacity(2);
-        $window->setSchedulePlanId($planId ?? self::getContainer()->get(SoclePlan::class)->idOf($seasonId));
+        $window->setSchedulePlanId($planId ?? SeasonPlanOf::id(self::getContainer(), $seasonId));
         $this->em->persist($window);
         $this->em->flush();
     }

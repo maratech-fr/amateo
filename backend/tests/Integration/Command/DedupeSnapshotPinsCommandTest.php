@@ -19,12 +19,12 @@ use App\Enum\CalendarEntryPeriodType;
 use App\Enum\LockLevel;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
-use App\Plans\SoclePlan;
 use App\Service\ScheduleConstraintBuilder;
 use App\Service\SchedulePlanProvisioner;
 use App\Tests\ChoosesPlanVersionTrait;
 use App\Tests\Integration\ReservationPinsNotDoubledTest;
 use App\Tests\ProvisionsPeriodPlanTrait;
+use App\Tests\SeasonPlanOf;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -436,7 +436,7 @@ final class DedupeSnapshotPinsCommandTest extends KernelTestCase
 
         // La réservation durable dont le template HARD/RESERVATION est né à l'import.
         $reservation = (new Reservation)->setClubId($club->getId())->setSeasonId($season->getId())
-            ->setSchedulePlanId(self::getContainer()->get(SoclePlan::class)->idOf($season->getId()))->setTeamId(self::TEAM_ID)->setVenueId(self::VENUE_ID)
+            ->setSchedulePlanId(SeasonPlanOf::id(self::getContainer(), $season->getId()))->setTeamId(self::TEAM_ID)->setVenueId(self::VENUE_ID)
             ->setDayOfWeek(2)->setStartTime(new DateTimeImmutable('18:00'))->setDurationMinutes(90);
         $this->em->persist($reservation);
         $this->em->flush();

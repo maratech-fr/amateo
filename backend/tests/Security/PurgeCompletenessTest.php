@@ -38,7 +38,6 @@ use App\Enum\SeasonStatus;
 use App\Enum\SubscriptionOrigin;
 use App\Enum\TeamCoachRole;
 use App\EventListener\CacheInvalidationListener;
-use App\Plans\SoclePlan;
 use App\Service\ClubSubscriptionWriter;
 use App\Service\ErasedClubPurger;
 use App\Service\OverlayManager;
@@ -50,6 +49,7 @@ use App\Structure\FamilyCatalog;
 use App\Structure\Level;
 use App\Tests\CapturesDeletedTablesTrait;
 use App\Tests\CreatesPeopleAndPlacesTrait;
+use App\Tests\SeasonPlanOf;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -573,7 +573,7 @@ final class PurgeCompletenessTest extends KernelTestCase
 
         $em->persist((new TeamCoach)->setClubId($clubId)->setSeasonId($seasonId)->setTeamId($team->getId())
             ->setCoachId($coach->getId())->setRole(TeamCoachRole::MAIN));
-        $em->persist((new VenueTrainingSlot)->setClubId($clubId)->setSeasonId($seasonId)->setSchedulePlanId(self::getContainer()->get(SoclePlan::class)->idOf($seasonId))->setVenueId($venue->getId())
+        $em->persist((new VenueTrainingSlot)->setClubId($clubId)->setSeasonId($seasonId)->setSchedulePlanId(SeasonPlanOf::id(self::getContainer(), $seasonId))->setVenueId($venue->getId())
             ->setDayOfWeek(1)->setStartTime(new DateTimeImmutable('18:00'))->setDurationMinutes(90)->setCapacity(1));
         $em->persist((new CoachWish)->setClubId($clubId)->setSeasonId($seasonId)->setCalendarEntryId($entry->getId())
             ->setWeekStart(new DateTimeImmutable('2026-04-06'))->setTeamId($team->getId())->setSlotsWanted(1));
