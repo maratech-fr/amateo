@@ -227,7 +227,8 @@ final class Lot4MigrationChainTest extends KernelTestCase
         self::assertIsString($seasonPlan, 'la saison a son plan de saison');
         foreach (self::SOCLE_TABLES as $table) {
             $expected = array_map(static fn (?string $plan): string => $plan ?? $seasonPlan, $rowsBefore[$table]);
-            self::assertSame($expected, $this->planOfEachRow($admin, $table), \sprintf('%s : chaque ligne du socle porte le plan de saison, chaque ligne de période garde le sien, aucune ne manque', $table));
+            // Seules les lignes d'avant se comparent : la conversion en ajoute (règles de bien-être d'un plan ancien).
+            self::assertSame($expected, array_intersect_key($this->planOfEachRow($admin, $table), $expected), \sprintf('%s : chaque ligne du socle porte le plan de saison, chaque ligne de période garde le sien, aucune ne manque', $table));
             self::assertSame('NO', $admin->fetchOne('SELECT is_nullable FROM information_schema.columns WHERE table_schema = \'public\' AND table_name = ? AND column_name = \'schedule_plan_id\'', [$table]), \sprintf('%s.schedule_plan_id est obligatoire', $table));
             self::assertSame(1, (int) $admin->fetchOne(
                 'SELECT COUNT(*) FROM pg_constraint c JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = ANY (c.conkey)'
@@ -302,7 +303,9 @@ final class Lot4MigrationChainTest extends KernelTestCase
         $expected = $photo;
         $expected['VenueTrainingSlot'][0]['schedulePlanId'] = $seasonPlan;
         $expected['Reservation'][0]['schedulePlanId'] = $seasonPlan;
-        self::assertSame($expected, $converted, 'la photo porte le plan de saison sur ses lignes de socle, et rien d\'autre ne change');
+        // L'ordre des clés d'un objet JSON n'est pas une donnée (une réécriture par jsonb le change) : comparé trié.
+        self::assertIsArray($converted);
+        self::assertSame($this->sortedKeys($expected), $this->sortedKeys($converted), 'la photo porte le plan de saison sur ses lignes de socle, et rien d\'autre ne change');
     }
 
     /**
@@ -399,6 +402,20 @@ final class Lot4MigrationChainTest extends KernelTestCase
         $server->executeStatement(\sprintf('DROP DATABASE IF EXISTS %s WITH (FORCE)', self::caseName()));
         $server->close();
         parent::tearDown();
+    }
+
+    /**
+     * @param array<mixed> $value
+     *
+     * @return array<mixed>
+     */
+    private function sortedKeys(array $value): array
+    {
+        if (!array_is_list($value)) {
+            ksort($value);
+        }
+
+        return array_map(fn (mixed $item): mixed => \is_array($item) ? $this->sortedKeys($item) : $item, $value);
     }
 
     /** @return array<string, ?string> le plan de chaque ligne, par identifiant */
