@@ -51,6 +51,33 @@ Fonctionnalité: Un plan de période se génère en overlay, sur sa propre grill
     Et je génère une version de la fermeture
     Alors la génération de la fermeture respecte « pas le vendredi »
 
+  Plan du scénario: J'écarte une équipe des vacances, je lui donne une séance, puis je lui rends ses réglages de saison
+    Chaque génération des vacances suit le réglage du moment : écartée, l'équipe n'y joue pas ; une séance, elle en a
+    une ; ses réglages de saison rendus, elle retrouve ses deux séances, qu'elle tienne un créneau réservé dans les
+    vacances ou qu'elle s'y entraîne en groupe mutualisé.
+    Étant donné un petit club réaliste dont le planning de saison est en vigueur, et des vacances à venir
+    Et <situation>
+    Quand j'écarte les <équipe> des vacances
+    Alors les <équipe> n'ont aucune séance dans le planning des vacances
+    Quand je donne 1 séance aux <équipe> pour les vacances
+    Alors les <équipe> ont 1 séance dans le planning des vacances
+    Quand je rends aux <équipe> leurs réglages de saison
+    Alors les <équipe> ont leurs 2 séances dans le planning des vacances
+
+    Exemples:
+      | équipe | situation                                                             |
+      | U17M1  | les U17M1 n'ont rien de particulier dans les vacances                 |
+      | U20M1  | les U20M1 ont un créneau réservé dans les vacances                    |
+      | SM1    | les SM1 s'entraînent en groupe mutualisé avec les SF1 dans les vacances |
+
+  Scénario: Un plan de vacances garde les séances qu'il avait à sa création quand celles du planning de saison changent
+    Décision du fondateur (2026-11-22) : tant que le gestionnaire ne les change pas dans le plan de vacances, ses
+    séances ne suivent plus le planning de saison ; l'équipe y apparaît alors avec un réglage propre.
+    Étant donné un petit club réaliste dont le planning de saison est en vigueur, et des vacances à venir
+    Quand les SM1 passent à 3 séances dans le planning de saison
+    Alors les SM1 ont toujours 2 séances dans le planning des vacances
+    Et les SM1 y figurent parmi les équipes au réglage propre, avec 2 séances
+
   Scénario: Je re-date l'incident découpé : l'aperçu m'annonce ce qui change, je confirme
     Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur
     Et une fermeture à venir découpée en trois semaines-segments, chacune avec son plan
