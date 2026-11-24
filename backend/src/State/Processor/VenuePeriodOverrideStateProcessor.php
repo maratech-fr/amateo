@@ -175,6 +175,10 @@ class VenuePeriodOverrideStateProcessor extends AbstractStateProcessor
                 $this->venuePeriodGrid->resetFromSeason($line->getSchedulePlanId(), $line->getVenueId());
             }
         });
+
+        // RGPD — retirer un réglage de gymnase de période reste une suppression tracée (patron du parent).
+        $actor = $this->actorSecurity?->getUser();
+        $this->auditTrail?->record(AuditAction::ENTITY_DELETED, $actor instanceof User ? $actor->getId() : null, $clubId, 'VenuePeriodOverride', $line->getId());
     }
 
     /**
