@@ -45,11 +45,29 @@ Fonctionnalité: Un plan de période se génère en overlay, sur sa propre grill
 
   Scénario: Une règle de saison ajoutée après la naissance d'une fermeture entre dans sa génération
     Le plan de la fermeture est né avant la règle : elle y entre quand même, comme dans le planning de saison.
+    Décochée puis recochée pour la fermeture, elle revient au défaut de la fermeture, qui l'applique.
     Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur
     Et une fermeture déjà créée
     Quand j'ajoute la règle de saison « pas le vendredi »
+    Et je décoche puis je recoche « pas le vendredi » pour la fermeture
     Et je génère une version de la fermeture
     Alors la génération de la fermeture respecte « pas le vendredi »
+
+  Plan du scénario: Une règle de saison s'applique à une période selon sa nature et ma coche
+    Une fermeture applique toute règle de saison, des vacances seulement celles de tout le club ; ma décoche
+    l'emporte sur ce défaut. Le plan de la période est né avant la règle.
+    Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur
+    Et <période>
+    Quand j'ajoute la règle de saison « pas le vendredi » <portée>
+    Et <geste>
+    Et je génère une version de la période
+    Alors la génération de la période <verdict> « pas le vendredi »
+
+    Exemples:
+      | période                  | portée                        | geste                                            | verdict  |
+      | une fermeture déjà créée | pour une équipe de la période | je décoche « pas le vendredi » pour la période   | ignore   |
+      | des vacances déjà créées | pour une équipe de la période | je laisse les règles de la période à leur défaut | ignore   |
+      | des vacances déjà créées | pour tout le club             | je laisse les règles de la période à leur défaut | respecte |
 
   Plan du scénario: J'écarte une équipe des vacances, je lui donne une séance, puis je lui rends ses réglages de saison
     Chaque génération des vacances suit le réglage du moment : écartée, l'équipe n'y joue pas, sauf la séance qu'elle

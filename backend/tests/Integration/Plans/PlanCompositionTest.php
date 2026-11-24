@@ -16,6 +16,7 @@ use App\Enum\CalendarEntryKind;
 use App\Enum\CalendarEntryPeriodType;
 use App\Enum\SeasonStatus;
 use App\Plans\PlanComposition;
+use App\Tests\ComposesPlanConstraintsTrait;
 use App\Tests\ComposesPlanTeamsTrait;
 use App\Tests\ComposesPlanVenuesTrait;
 use App\Tests\CreatesPeopleAndPlacesTrait;
@@ -45,10 +46,15 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
  * Lot 4, PR 3b (ligne 26 du plan) : même promesse pour les gymnases d'un plan de période — une ligne par (plan de
  * période, gymnase), aucune au plan de saison, posée par la même porte ; les cinq créateurs de gymnase (API,
  * « Préparer la saison suivante », import du parc, deux seeds) l'appellent.
+ *
+ * Lot 4, PR 4 (ligne 33 du plan) : même promesse pour les règles appliquées par une période — une ligne par (plan de
+ * période, contrainte permanente), au défaut de la nature (fermeture : tout ; vacances : les règles de tout le club),
+ * aucune au plan de saison ni pour une contrainte datée ; les créateurs de règles permanentes appellent la porte.
  */
 #[Group('integration')]
 final class PlanCompositionTest extends WebTestCase
 {
+    use ComposesPlanConstraintsTrait;
     use ComposesPlanTeamsTrait;
     use ComposesPlanVenuesTrait;
     use CreatesPeopleAndPlacesTrait;
@@ -73,6 +79,17 @@ final class PlanCompositionTest extends WebTestCase
         'Service/Basketball/FfbbExcelImporter.php',
         'Seed/BcclSeeder.php',
         'Seed/LoadTestClubSeeder.php',
+    ];
+
+    /**
+     * Les quatre fichiers qui créent une règle permanente aujourd'hui (§2 du plan : API, graine d'accueil, « Préparer
+     * la saison suivante », seed) : le balayage doit les voir, témoin.
+     */
+    private const array KNOWN_RULE_CREATORS = [
+        'State/Processor/ConstraintStateProcessor.php',
+        'Service/DefaultConstraintSeeder.php',
+        'Service/SeasonTransitionService.php',
+        'Seed/BcclSeeder.php',
     ];
 
     private KernelBrowser $client;
@@ -288,6 +305,94 @@ final class PlanCompositionTest extends WebTestCase
         self::assertSame([], array_keys(array_filter($creators, static fn (bool $callsTheDoor): bool => !$callsTheDoor)), 'chaque créateur de gymnase pose les lignes manquantes par la porte');
     }
 
+    /**
+     * Lot 4, PR 4 (ligne 33 du plan) : le gestionnaire crée des règles de saison alors qu'une fermeture et des vacances
+     * ont déjà leur plan. Chaque règle permanente a sa ligne dans chaque plan de période, au défaut de la nature : une
+     * fermeture applique tout ; des vacances n'appliquent que les règles de tout le club. Aucune ligne au plan de saison,
+     * aucune pour une règle datée (elle appartient à sa période).
+     */
+    public function testAPermanentRuleCreatedByTheManagerGetsItsLineInEveryPeriodPlan(): void
+    {
+        [, $closure] = $this->periodEntryAndPlan(CalendarEntryPeriodType::CLOSURE, '2025-11-03', '2025-11-09');
+        [$holidayEntry, $holiday] = $this->periodEntryAndPlan(CalendarEntryPeriodType::HOLIDAY, '2025-12-22', '2025-12-28');
+        $sm1 = $this->team('SM1', 1);
+        $this->layTeamLines($this->season->getId());
+
+        $teamRule = $this->postRule(['name' => 'SM1 · pas le vendredi', 'scope' => 'TEAM', 'scopeTargetId' => $sm1]);
+        $clubRule = $this->postRule(['name' => 'Toutes les équipes · pas le dimanche', 'scope' => 'CLUB', 'config' => ['forbiddenDays' => [7]]]);
+        $datedRule = $this->postRule(['name' => 'SM1 · pas le mardi pendant les vacances', 'scope' => 'TEAM', 'scopeTargetId' => $sm1, 'config' => ['forbiddenDays' => [2]], 'calendarEntryId' => $holidayEntry]);
+
+        self::assertTrue($this->ruleLineRow($closure, $teamRule), 'une fermeture applique la règle d\'équipe');
+        self::assertFalse($this->ruleLineRow($holiday, $teamRule), 'des vacances ne l\'appliquent pas par défaut');
+        self::assertTrue($this->ruleLineRow($closure, $clubRule), 'une fermeture applique la règle de club');
+        self::assertTrue($this->ruleLineRow($holiday, $clubRule), 'des vacances aussi');
+        self::assertNull($this->ruleLineRow($this->seasonPlan(), $teamRule), 'aucune ligne au plan de saison');
+        self::assertSame(2, $this->ruleLineCountOf($teamRule), 'une ligne par plan de période, ni plus ni moins');
+        self::assertSame(2, $this->ruleLineCountOf($clubRule));
+        self::assertSame(0, $this->ruleLineCountOf($datedRule), 'une règle datée n\'a aucune ligne');
+    }
+
+    /**
+     * Lot 4, PR 4 : un plan de période né après les règles reçoit leurs lignes au défaut de sa nature ; rappeler la porte
+     * ne change aucune coche existante, ni celle que le gestionnaire a posée contre le défaut ; une règle créée depuis
+     * reçoit les siennes, et seulement elle.
+     */
+    public function testCallingTheDoorAgainChangesNoExistingRuleLine(): void
+    {
+        $sm1 = $this->team('SM1', 1);
+        $this->layTeamLines($this->season->getId());
+        $teamRule = $this->postRule(['name' => 'SM1 · pas le vendredi', 'scope' => 'TEAM', 'scopeTargetId' => $sm1]);
+        $holiday = $this->periodPlan(CalendarEntryPeriodType::HOLIDAY, '2025-12-22', '2025-12-28');
+        self::assertFalse($this->ruleLineRow($holiday, $teamRule), 'témoin : née après la règle, les vacances ont sa ligne, au défaut');
+        $this->setRuleLine($holiday, $teamRule, true);
+        $before = $this->allRuleLines();
+
+        $this->layRuleLines($this->season->getId());
+        self::assertSame($before, $this->allRuleLines(), 'la porte rappelée ne change rien, ligne pour ligne');
+
+        $clubRule = $this->postRule(['name' => 'Toutes les équipes · pas le dimanche', 'scope' => 'CLUB', 'config' => ['forbiddenDays' => [7]]]);
+        $after = $this->allRuleLines();
+        self::assertSame($before, array_intersect_key($after, $before), 'la coche des vacances sur la règle d\'équipe reste');
+        self::assertCount(2, $after, 'la règle de club, créée depuis, reçoit sa ligne');
+        self::assertTrue($this->ruleLineRow($holiday, $clubRule));
+    }
+
+    /** Lot 4, PR 4 : lire un plan de période dont une règle permanente n'a pas de ligne lève, jamais un défaut silencieux. */
+    public function testReadingAPlanWhereARuleLineIsMissingFailsLoudly(): void
+    {
+        $holiday = $this->periodPlan(CalendarEntryPeriodType::HOLIDAY, '2025-12-22', '2025-12-28');
+        $clubRule = $this->postRule(['name' => 'Toutes les équipes · pas le dimanche', 'scope' => 'CLUB', 'config' => ['forbiddenDays' => [7]]]);
+        $composition = self::getContainer()->get(PlanComposition::class);
+        self::assertArrayHasKey($clubRule, $composition->constraintsOf($holiday), 'témoin : la ligne existe et se lit');
+        self::assertSame([], $composition->constraintsOf($this->seasonPlan()), 'le plan de saison ne porte aucune ligne de règle');
+        $this->em->getConnection()->executeStatement('DELETE FROM plan_constraint WHERE schedule_plan_id = ? AND constraint_id = ?', [$holiday, $clubRule]);
+        $this->em->clear();
+
+        $this->expectException(LogicException::class);
+        $composition->constraintsOf($holiday);
+    }
+
+    /**
+     * Lot 4, PR 4 — balayage : chaque fichier de `src/` qui construit une contrainte (`new Constraint`, lu au jeton)
+     * appelle la porte `ensureLines`. Témoin : le balayage voit les quatre créateurs de règles permanentes connus.
+     * Exception nommée : le transfert des doléances, qui ne crée que des contraintes datées (pendues à l'entrée de la
+     * semaine), sans ligne dans aucun plan.
+     */
+    public function testEveryPermanentRuleCreatorCallsTheDoor(): void
+    {
+        $datedOnly = ['Service/CoachWishTransferService.php'];
+        $creators = $this->filesBuilding('Constraint');
+
+        foreach (self::KNOWN_RULE_CREATORS as $known) {
+            self::assertArrayHasKey($known, $creators, \sprintf('témoin : le balayage voit le créateur %s', $known));
+        }
+        foreach ($datedOnly as $exempt) {
+            self::assertArrayHasKey($exempt, $creators, \sprintf('l\'exception %s crée toujours une contrainte : sinon elle se retire de la liste', $exempt));
+            unset($creators[$exempt]);
+        }
+        self::assertSame([], array_keys(array_filter($creators, static fn (bool $callsTheDoor): bool => !$callsTheDoor)), 'chaque créateur de règle permanente pose les lignes manquantes par la porte');
+    }
+
     protected function setUp(): void
     {
         $this->client = self::createClient();
@@ -336,6 +441,94 @@ final class PlanCompositionTest extends WebTestCase
         $this->em->persist($entry);
 
         return $this->planIdOf($entry);
+    }
+
+    /**
+     * Une période et son plan, nés du geste ; rend l'entrée de calendrier et le plan.
+     *
+     * @return array{0: string, 1: string}
+     */
+    private function periodEntryAndPlan(CalendarEntryPeriodType $type, string $start, string $end): array
+    {
+        $entry = (new CalendarEntry)->setClubId($this->club->getId())->setSeasonId($this->season->getId())
+            ->setKind(CalendarEntryKind::PERIOD)->setPeriodType($type)->setTitle($type->value . ' ' . $start)
+            ->setStartDate(new DateTimeImmutable($start))->setEndDate(new DateTimeImmutable($end));
+        $this->em->persist($entry);
+
+        return [$entry->getId(), $this->planIdOf($entry)];
+    }
+
+    /**
+     * Le geste du gestionnaire : une règle « jour interdit » créée par l'API ; rend son identifiant.
+     *
+     * @param array<string, mixed> $body
+     */
+    private function postRule(array $body): string
+    {
+        $this->client->request('POST', '/api/constraints', [], [], $this->headers(), json_encode($body + [
+            'family' => 'DAY',
+            'ruleType' => 'HARD',
+            'config' => ['forbiddenDays' => [5]],
+            'isActive' => true,
+        ], \JSON_THROW_ON_ERROR));
+        self::assertResponseStatusCodeSame(201, (string) $this->client->getResponse()->getContent());
+        $id = json_decode((string) $this->client->getResponse()->getContent(), true, 512, \JSON_THROW_ON_ERROR)['id'] ?? null;
+        self::assertIsString($id);
+
+        return $id;
+    }
+
+    /** @return array<string, array<string, mixed>> chaque ligne de règle de la saison, colonne par colonne, par identifiant */
+    private function allRuleLines(): array
+    {
+        $lines = [];
+        foreach ($this->em->getConnection()->fetchAllAssociative('SELECT * FROM plan_constraint WHERE season_id = ? ORDER BY id', [$this->season->getId()]) as $row) {
+            $lines[(string) $row['id']] = $row;
+        }
+
+        return $lines;
+    }
+
+    /**
+     * Les fichiers de `src/` qui construisent la classe nommée (`new <Classe>`, lu au jeton : un commentaire ou une
+     * chaîne qui le cite ne compte pas), et s'ils appellent la porte `ensureLines`.
+     *
+     * @return array<string, bool>
+     */
+    private function filesBuilding(string $class): array
+    {
+        $src = \dirname(__DIR__, 3) . '/src/';
+        $creators = [];
+        foreach (new RecursiveIteratorIterator(new RecursiveDirectoryIterator($src)) as $file) {
+            if (!$file instanceof SplFileInfo || 'php' !== $file->getExtension()) {
+                continue;
+            }
+            $tokens = array_values(array_filter(
+                token_get_all((string) file_get_contents($file->getPathname())),
+                static fn (array|string $token): bool => !\is_array($token) || !\in_array($token[0], [\T_WHITESPACE, \T_COMMENT, \T_DOC_COMMENT], true),
+            ));
+            $builds = false;
+            $callsTheDoor = false;
+            foreach ($tokens as $i => $token) {
+                if (!\is_array($token)) {
+                    continue;
+                }
+                $next = $tokens[$i + 1] ?? null;
+                if (\T_NEW === $token[0] && \is_array($next) && \in_array($next[0], [\T_STRING, \T_NAME_QUALIFIED, \T_NAME_FULLY_QUALIFIED], true)
+                    && $class === substr((string) strrchr('\\' . $next[1], '\\'), 1)) {
+                    $builds = true;
+                }
+                if (\T_STRING === $token[0] && 'ensureLines' === $token[1] && '(' === $next) {
+                    $callsTheDoor = true;
+                }
+            }
+            if ($builds) {
+                $creators[substr($file->getPathname(), \strlen($src))] = $callsTheDoor;
+            }
+        }
+        ksort($creators);
+
+        return $creators;
     }
 
     /** Une équipe écrite à la main (décor), sans ses lignes : le test appelle la porte lui-même. */

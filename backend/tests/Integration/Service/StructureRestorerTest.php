@@ -12,7 +12,6 @@ use App\Entity\CoachWish;
 use App\Entity\CoachWishCampaign;
 use App\Entity\CoachWishToken;
 use App\Entity\Constraint;
-use App\Entity\ConstraintPeriodOverride;
 use App\Entity\Fixture;
 use App\Entity\ImplicitRuleSetting;
 use App\Entity\Person;
@@ -40,6 +39,7 @@ use App\Service\StructureRestorer;
 use App\Service\StructureSnapshotter;
 use App\Structure\PersonDirectory;
 use App\Structure\PlaceDirectory;
+use App\Tests\ComposesPlanConstraintsTrait;
 use App\Tests\ComposesPlanTeamsTrait;
 use App\Tests\ComposesPlanVenuesTrait;
 use App\Tests\CreatesPeopleAndPlacesTrait;
@@ -62,6 +62,7 @@ use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
 #[Group('integration')]
 final class StructureRestorerTest extends KernelTestCase
 {
+    use ComposesPlanConstraintsTrait;
     use ComposesPlanTeamsTrait;
     use ComposesPlanVenuesTrait;
     use CreatesPeopleAndPlacesTrait;
@@ -181,35 +182,91 @@ final class StructureRestorerTest extends KernelTestCase
         self::assertNotNull($this->em->getRepository(CalendarEntry::class)->find($entry->getId()));
     }
 
-    public function testRestorePurgesConstraintPeriodOverrideWhosePermanentConstraintIsGone(): void
+    /**
+     * Lot 4, PR 4 (ligne 33 du plan) : une règle de saison créée après la photo, retirée par « Charger », perd ses lignes
+     * dans chaque plan de période, coche du gestionnaire comprise — aucune ligne ne survit à sa règle ; l'entrée de
+     * calendrier reste.
+     */
+    public function testARuleRemovedByLoadingLosesItsLinesInEveryPeriodPlan(): void
     {
         [$club, $season] = $this->seedClubSeason();
-        // Photo A: no permanent constraint. Capture on V1.
         $v1 = $this->makeSchedule($club, $season);
         $this->em->flush();
         $this->snapshotter->store($v1, $this->snapshotter->serialize($club->getId(), $season->getId()));
-
-        // Later: a permanent constraint, a closure period, and an override disabling it.
         $entry = (new CalendarEntry)->setClubId($club->getId())->setSeasonId($season->getId())
             ->setKind(CalendarEntryKind::PERIOD)->setPeriodType(CalendarEntryPeriodType::CLOSURE)->setTitle('Fermeture')
             ->setStartDate(new DateTimeImmutable('2026-02-01'))->setEndDate(new DateTimeImmutable('2026-02-15'));
         $this->em->persist($entry);
-        $permanent = (new Constraint)->setClubId($club->getId())->setSeasonId($season->getId())
-            ->setName('Perm')->setScope(ConstraintScope::CLUB)->setFamily(ConstraintFamily::TIME)->setRuleType(ConstraintRuleType::HARD)->setConfig([]);
-        $this->em->persist($permanent);
-        $this->em->flush();
-        $override = (new ConstraintPeriodOverride)->setClubId($club->getId())->setSeasonId($season->getId())
-            ->setSchedulePlanId($this->planIdOf($entry))->setConstraintId($permanent->getId())->setIsActive(false);
-        $this->em->persist($override);
-        $this->em->flush();
-        $overrideId = $override->getId();
+        $closurePlan = $this->planIdOf($entry);
+        $ruleId = $this->persistClubRule($club, $season, 'Créée depuis')->getId();
+        $this->layRuleLines($season->getId());
+        $this->setRuleLine($closurePlan, $ruleId, false);
+        self::assertSame(1, $this->ruleLineCountOf($ruleId), 'témoin : une ligne (décochée) dans la fermeture');
 
-        // Restore V1 (permanent constraint gone) → the override that referenced it is a
-        // ghost and gets purged; the calendar entry itself stays.
         $this->restorer->apply($club->getId(), $season->getId(), $this->restorer->readSnapshot($v1));
         $this->em->clear();
-        self::assertNull($this->em->getRepository(ConstraintPeriodOverride::class)->find($overrideId), 'an override whose permanent constraint is now absent is purged');
+
+        self::assertNull($this->em->getRepository(Constraint::class)->find($ruleId), 'la photo ne porte pas la règle');
+        self::assertSame(0, $this->ruleLineCountOf($ruleId), 'ses lignes partent avec elle');
         self::assertNotNull($this->em->getRepository(CalendarEntry::class)->find($entry->getId()));
+    }
+
+    /**
+     * Lot 4, PR 4 (ligne 33) : « Charger » une version du socle ne change aucune coche de règle d'un plan de période —
+     * règle d'équipe cochée et règle de club décochée dans les vacances restent telles que le gestionnaire les a posées,
+     * règles présentes dans la photo (effacées puis réinsérées) comprises.
+     */
+    public function testLoadingTheSocleChangesNoRuleSettingOfAPeriodPlan(): void
+    {
+        [$club, $season] = $this->seedClubSeason();
+        $team = $this->persistTeam($club, $season, 'SM1');
+        $this->em->flush();
+        $teamRule = (new Constraint)->setClubId($club->getId())->setSeasonId($season->getId())->setName('SM1 · pas le vendredi')
+            ->setScope(ConstraintScope::TEAM)->setScopeTargetId($team->getId())->setFamily(ConstraintFamily::DAY)
+            ->setRuleType(ConstraintRuleType::HARD)->setConfig(['forbiddenDays' => [5]]);
+        $this->em->persist($teamRule);
+        $clubRule = $this->persistClubRule($club, $season, 'Pas le dimanche');
+        $v1 = $this->makeSchedule($club, $season);
+        $this->em->flush();
+        $this->snapshotter->store($v1, $this->snapshotter->serialize($club->getId(), $season->getId()));
+        $holidayPlan = $this->planIdOf($this->persistHoliday($club, $season));
+        $this->setRuleLine($holidayPlan, $teamRule->getId(), true);
+        $this->setRuleLine($holidayPlan, $clubRule->getId(), false);
+        $before = [$this->ruleLineRow($holidayPlan, $teamRule->getId()), $this->ruleLineRow($holidayPlan, $clubRule->getId())];
+        self::assertSame([true, false], $before, 'témoin : les vacances cochent la règle d\'équipe et décochent celle du club, contre le défaut');
+
+        $this->restorer->apply($club->getId(), $season->getId(), $this->restorer->readSnapshot($v1));
+        $this->em->clear();
+
+        self::assertSame($before, [$this->ruleLineRow($holidayPlan, $teamRule->getId()), $this->ruleLineRow($holidayPlan, $clubRule->getId())], 'aucune coche des vacances n\'a changé');
+        self::assertSame(2, $this->ruleLineCountOf($teamRule->getId()) + $this->ruleLineCountOf($clubRule->getId()), 'une ligne par règle, ni doublée ni perdue');
+    }
+
+    /**
+     * Lot 4, PR 4 (ligne 33) : une règle de saison supprimée depuis la photo, ramenée par « Charger », retrouve sa ligne
+     * dans chaque plan de période, au défaut de la nature (une règle de club s'applique dans des vacances) ; aucune au
+     * plan de saison.
+     */
+    public function testARuleBroughtBackByLoadingGetsItsLineInEveryPeriodPlan(): void
+    {
+        [$club, $season] = $this->seedClubSeason();
+        $ruleId = $this->persistClubRule($club, $season, 'Pas le dimanche')->getId();
+        $v1 = $this->makeSchedule($club, $season);
+        $this->em->flush();
+        $this->snapshotter->store($v1, $this->snapshotter->serialize($club->getId(), $season->getId()));
+        $holidayPlan = $this->planIdOf($this->persistHoliday($club, $season));
+        self::assertSame(1, $this->ruleLineCountOf($ruleId), 'témoin : la règle a sa ligne dans les vacances');
+        $this->em->getConnection()->executeStatement('DELETE FROM plan_constraint WHERE constraint_id = ?', [$ruleId]);
+        $this->em->getConnection()->executeStatement('DELETE FROM "constraint" WHERE id = ?', [$ruleId]);
+        $this->em->clear();
+        self::assertSame(0, $this->ruleLineCountOf($ruleId), 'témoin : supprimée, elle n\'a plus aucune ligne');
+
+        $this->restorer->apply($club->getId(), $season->getId(), $this->restorer->readSnapshot($v1));
+        $this->em->clear();
+
+        self::assertNotNull($this->em->getRepository(Constraint::class)->find($ruleId), 'la photo ramène la règle');
+        self::assertTrue($this->ruleLineRow($holidayPlan, $ruleId), 'ramenée, elle a sa ligne dans les vacances, au défaut d\'une règle de club');
+        self::assertSame(1, $this->ruleLineCountOf($ruleId), 'une ligne dans les vacances, aucune au plan de saison');
     }
 
     /**
@@ -1051,6 +1108,18 @@ final class StructureRestorerTest extends KernelTestCase
         $this->em->persist($team);
 
         return $team;
+    }
+
+    /** Une règle de saison de tout le club (« jour interdit »), écrite à la main : le test appelle la porte s'il le faut. */
+    private function persistClubRule(Club $club, Season $season, string $name): Constraint
+    {
+        $rule = (new Constraint)->setClubId($club->getId())->setSeasonId($season->getId())->setName($name)
+            ->setScope(ConstraintScope::CLUB)->setFamily(ConstraintFamily::DAY)->setRuleType(ConstraintRuleType::HARD)
+            ->setConfig(['forbiddenDays' => [7]]);
+        $this->em->persist($rule);
+        $this->em->flush();
+
+        return $rule;
     }
 
     private function persistCoach(Club $club, Season $season, string $firstName): Coach

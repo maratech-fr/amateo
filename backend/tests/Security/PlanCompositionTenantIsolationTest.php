@@ -13,6 +13,7 @@ use App\Entity\User;
 use App\Enum\CalendarEntryKind;
 use App\Enum\CalendarEntryPeriodType;
 use App\Enum\SeasonStatus;
+use App\Tests\ComposesPlanConstraintsTrait;
 use App\Tests\ComposesPlanTeamsTrait;
 use App\Tests\ComposesPlanVenuesTrait;
 use App\Tests\CreatesPeopleAndPlacesTrait;
@@ -42,9 +43,14 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
  * Lot 4, PR 3b (ligne 27 du plan) : même frontière pour les gymnases d'un plan de période — un plan d'un club ne
  * reçoit jamais le réglage d'un gymnase d'un autre club, un gymnase d'un club n'atteint jamais le plan d'un autre.
  *
+ * Lot 4, PR 4 (ligne 33 du plan) : même frontière pour les règles appliquées par un plan de période
+ * (`/api/constraint_period_overrides`) — un plan d'un club ne coche jamais la règle d'un autre club, une règle d'un club
+ * n'atteint jamais le plan d'un autre, et les coches d'un autre club ne se lisent pas.
+ *
  * Jumeaux cités : la structure des tables (unicité, clé composée en cascade, RLS forcée) à la conversion,
  * {@see Lot4MigrationChainTest::testTheConversionGivesEveryTeamALineInEveryPlan},
- * {@see Lot4MigrationChainTest::testTheConversionGivesEveryVenueALineInEveryPeriodPlan} ; la RLS de toute table à `club_id`,
+ * {@see Lot4MigrationChainTest::testTheConversionGivesEveryVenueALineInEveryPeriodPlan},
+ * {@see Lot4MigrationChainTest::testTheConversionGivesEveryPermanentRuleALineInEveryPeriodPlan} ; la RLS de toute table à `club_id`,
  * {@see RlsIsolationTest::testEveryClubIdTableIsUnderForcedRls}.
  *
  * Bloquant : step `Blocking suite` de `ci.yml` et `docs/testing/blocking-tests.md`.
@@ -53,6 +59,7 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 #[Group('integration')]
 final class PlanCompositionTenantIsolationTest extends WebTestCase
 {
+    use ComposesPlanConstraintsTrait;
     use ComposesPlanTeamsTrait;
     use ComposesPlanVenuesTrait;
     use CreatesPeopleAndPlacesTrait;
@@ -130,6 +137,37 @@ final class PlanCompositionTenantIsolationTest extends WebTestCase
         self::assertSame($bBefore, $this->venueLinesOfClub($this->b), 'les réglages de gymnase du club B sont intacts');
     }
 
+    /**
+     * Abus (lot 4, PR 4, ligne 33 du plan) : le gestionnaire du club A coche ou décoche, dans son plan de vacances, la
+     * règle du club B, puis sa propre règle dans le plan du club B. Les deux sont refusés, aucune ligne n'est écrite, et
+     * les coches du club B restent intactes ; les coches du club B ne se lisent pas depuis le club A.
+     */
+    public function testAPlanOfOneClubNeverTakesTheRuleOfAnotherNorReachesIt(): void
+    {
+        $aRule = $this->clubRuleOf($this->a);
+        $bRule = $this->clubRuleOf($this->b);
+        // Le club B décoche sa règle de club pour ses vacances : un réglage à protéger.
+        $this->scopeGucToClub($this->b['club']->getId());
+        $this->setRuleLine($this->b['holiday'], $bRule, false);
+        $bBefore = self::getContainer()->get(Connection::class)->fetchAllAssociative('SELECT * FROM plan_constraint WHERE club_id = ? ORDER BY id', [$this->b['club']->getId()]);
+        $this->clearGuc();
+        self::assertNotSame([], $bBefore, 'témoin : le club B a ses lignes de règle');
+
+        $this->post($this->a, ['schedulePlanId' => $this->a['holiday'], 'constraintId' => $bRule, 'isActive' => true], 'constraint_period_overrides');
+        self::assertContains($this->client->getResponse()->getStatusCode(), [404, 422], 'la règle d\'un autre club est refusée : ' . $this->client->getResponse()->getContent());
+        $this->post($this->a, ['schedulePlanId' => $this->b['holiday'], 'constraintId' => $aRule, 'isActive' => false], 'constraint_period_overrides');
+        self::assertContains($this->client->getResponse()->getStatusCode(), [404, 422], 'le plan d\'un autre club est refusé : ' . $this->client->getResponse()->getContent());
+
+        self::assertSame(0, $this->countUnscoped('SELECT COUNT(*) FROM plan_constraint WHERE schedule_plan_id = ? AND constraint_id = ?', [$this->a['holiday'], $bRule]), 'aucune ligne du plan A ne porte la règle B');
+        self::assertSame(0, $this->countUnscoped('SELECT COUNT(*) FROM plan_constraint WHERE schedule_plan_id = ? AND constraint_id = ?', [$this->b['holiday'], $aRule]), 'aucune ligne du plan B ne porte la règle A');
+        $this->scopeGucToClub($this->b['club']->getId());
+        self::assertSame($bBefore, self::getContainer()->get(Connection::class)->fetchAllAssociative('SELECT * FROM plan_constraint WHERE club_id = ? ORDER BY id', [$this->b['club']->getId()]), 'les coches du club B sont intactes');
+        $this->clearGuc();
+
+        $this->client->request('GET', '/api/constraint_period_overrides?schedulePlanId=' . $this->b['holiday'], [], [], $this->headers($this->a));
+        self::assertSame([], json_decode((string) $this->client->getResponse()->getContent(), true)['member'] ?? [], 'aucune coche du club B ne sort vers le club A');
+    }
+
     /** En base, sous la RLS : une ligne d'un autre club est invisible et intouchable ; la clé composée refuse un plan étranger. */
     public function testTheDatabaseKeepsEveryLineInsideItsClub(): void
     {
@@ -195,6 +233,29 @@ final class PlanCompositionTenantIsolationTest extends WebTestCase
         $this->layTeamLines($season->getId());
 
         return ['club' => $club, 'user' => $user, 'season' => $season, 'holiday' => $holiday, 'team' => $team->getId(), 'venue' => $venue->getId()];
+    }
+
+    /**
+     * Une règle de saison de tout le club, créée par le geste du gestionnaire de ce club (elle reçoit sa ligne dans ses
+     * vacances) ; rend son identifiant.
+     *
+     * @param array{club: Club, user: User, season: Season, holiday: string, team: string, venue: string} $of
+     */
+    private function clubRuleOf(array $of): string
+    {
+        $this->client->request('POST', '/api/constraints', [], [], $this->headers($of), json_encode([
+            'name' => 'Toutes les équipes · pas le dimanche',
+            'scope' => 'CLUB',
+            'family' => 'DAY',
+            'ruleType' => 'HARD',
+            'config' => ['forbiddenDays' => [7]],
+            'isActive' => true,
+        ], \JSON_THROW_ON_ERROR));
+        self::assertResponseStatusCodeSame(201, (string) $this->client->getResponse()->getContent());
+        $id = json_decode((string) $this->client->getResponse()->getContent(), true, 512, \JSON_THROW_ON_ERROR)['id'] ?? null;
+        self::assertIsString($id);
+
+        return $id;
     }
 
     /**

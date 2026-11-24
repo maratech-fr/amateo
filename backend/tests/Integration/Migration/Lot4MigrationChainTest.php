@@ -67,8 +67,26 @@ final class Lot4MigrationChainTest extends KernelTestCase
      *
      * PR 3b « les gymnases d'une période » : une ligne `plan_venue` par (plan de période, gymnase), aucune au plan de
      * saison ; supprime `venue_period_override` ; s'annule si `lignes ≠ gymnases × plans de période`.
+     *
+     * PR 4 « les règles appliquées » : une ligne `plan_constraint` par (plan de période, contrainte permanente), aucune
+     * au plan de saison ni pour une contrainte datée ; supprime `constraint_period_override` ; s'annule si
+     * `lignes ≠ contraintes permanentes × plans de période`.
      */
-    private const array LOT_MIGRATIONS = ['DoctrineMigrations\Version20261127120000', 'DoctrineMigrations\Version20261128120000', 'DoctrineMigrations\Version20261129120000'];
+    private const array LOT_MIGRATIONS = ['DoctrineMigrations\Version20261127120000', 'DoctrineMigrations\Version20261128120000', 'DoctrineMigrations\Version20261129120000', 'DoctrineMigrations\Version20261130120000'];
+
+    /**
+     * Les contraintes permanentes du décor des références 12 et 13 (`EngineRequestDecorTrait`,
+     * `EngineRequestPlanSettingsDecorTrait`) : quatre de base (trois d'équipe, une de coach), puis une de club (12) ou
+     * une d'équipe créée après la naissance de la fermeture (13).
+     */
+    private const array DECOR_RULES = [
+        'équipe 1' => 'c0570000-0000-4000-8000-000000000001',
+        'équipe 2' => 'c0570000-0000-4000-8000-000000000002',
+        'équipe 3' => 'c0570000-0000-4000-8000-000000000003',
+        'coach 4' => 'c0570000-0000-4000-8000-000000000004',
+        'club 31' => 'c0570000-0000-4000-8000-000000000031',
+        'équipe 42' => 'c0570000-0000-4000-8000-000000000042',
+    ];
 
     /** Les gymnases du décor des références 12 et 13 (`EngineRequestDecorTrait`). */
     private const array DECOR_VENUES = [
@@ -561,6 +579,97 @@ final class Lot4MigrationChainTest extends KernelTestCase
     }
 
     /**
+     * Lot 4, PR 4 (ligne 29 du plan) : la conversion donne une ligne `plan_constraint` à chaque couple (plan de période,
+     * contrainte permanente) de la saison, aucune au plan de saison ni pour une contrainte datée. Une coche de période
+     * devient la valeur de sa ligne ; sans coche, la ligne vaut le défaut de la nature (fermeture : tout s'applique ;
+     * vacances : seules les règles de club). Une coche dont la contrainte n'existe plus ne donne aucune ligne. La table
+     * d'exception disparaît ; la table neuve porte son unicité, sa clé composée en cascade vers le plan, aucune clé vers
+     * la contrainte, et sa RLS.
+     *
+     * Décor 12 (vacances) : la règle d'équipe 2 cochée, la règle de club 31 décochée ; la règle datée 32 sans ligne.
+     * Décor 13 (fermeture) : la règle d'équipe 1 décochée ; la règle d'équipe 42 créée après la naissance de la
+     * fermeture s'applique ; la fermeture datée 41 sans ligne. Le test ajoute une coche orpheline.
+     */
+    #[TestWith(['periode-12-vacances-reglages'])]
+    #[TestWith(['periode-13-fermeture-reglages'])]
+    public function testTheConversionGivesEveryPermanentRuleALineInEveryPeriodPlan(string $decor): void
+    {
+        $admin = self::ownerConnection(self::caseName());
+        $seasonPlan = (string) $admin->fetchOne('SELECT id FROM schedule_plan WHERE season_id = ? AND type = ?', [self::DECOR_SEASON, 'SEASON']);
+        $periodPlan = (string) $admin->fetchOne('SELECT id FROM schedule_plan WHERE season_id = ? AND type <> ?', [self::DECOR_SEASON, 'SEASON']);
+        self::assertNotSame('', $periodPlan, 'témoin : le décor a un plan de période');
+        self::assertSame(1, (int) $admin->fetchOne('SELECT COUNT(*) FROM schedule_plan WHERE season_id = ? AND type <> ?', [self::DECOR_SEASON, 'SEASON']), 'témoin : un seul plan de période');
+        $permanent = array_map(strval(...), $admin->fetchFirstColumn('SELECT id FROM "constraint" WHERE season_id = ? AND calendar_entry_id IS NULL ORDER BY id', [self::DECOR_SEASON]));
+        $dated = array_map(strval(...), $admin->fetchFirstColumn('SELECT id FROM "constraint" WHERE season_id = ? AND calendar_entry_id IS NOT NULL ORDER BY id', [self::DECOR_SEASON]));
+        self::assertNotSame([], $dated, 'témoin : le décor a une contrainte datée, qui ne doit recevoir aucune ligne');
+        $orphan = 'dc000000-0000-4000-8000-0000000000ff';
+        $admin->executeStatement(
+            'INSERT INTO constraint_period_override SELECT * FROM json_populate_record(NULL::constraint_period_override, (SELECT (row_to_json(o)::jsonb || jsonb_build_object(\'id\', ?::text, \'constraint_id\', ?::text))::json FROM constraint_period_override o WHERE o.schedule_plan_id = ? LIMIT 1))',
+            [$orphan, 'c0570000-0000-4000-8000-0000000000ff', $periodPlan],
+        );
+        self::assertSame(1, (int) $admin->fetchOne('SELECT COUNT(*) FROM constraint_period_override WHERE id = ?', [$orphan]), 'témoin : une coche orpheline, dont la contrainte n\'existe pas');
+
+        self::assertSame(self::LOT_MIGRATIONS, $this->migrate(), 'la chaîne joue exactement les migrations du lot');
+
+        $rules = self::DECOR_RULES;
+        $expected = match ($decor) {
+            'periode-12-vacances-reglages' => [
+                $rules['équipe 1'] => false, $rules['équipe 2'] => true, $rules['équipe 3'] => false, $rules['coach 4'] => false, $rules['club 31'] => false,
+            ],
+            default => [
+                $rules['équipe 1'] => false, $rules['équipe 2'] => true, $rules['équipe 3'] => true, $rules['coach 4'] => true, $rules['équipe 42'] => true,
+            ],
+        };
+        ksort($expected);
+        self::assertSame(array_keys($expected), $permanent, 'témoin : les contraintes permanentes du décor');
+        self::assertSame($expected, $this->ruleLinesOf($admin, $periodPlan), 'chaque coche devient sa ligne, le reste vaut le défaut de la nature');
+        self::assertSame([], $this->ruleLinesOf($admin, $seasonPlan), 'aucune ligne de règle au plan de saison');
+        self::assertSame(\count($permanent), (int) $admin->fetchOne('SELECT COUNT(*) FROM plan_constraint WHERE season_id = ?', [self::DECOR_SEASON]), 'une ligne par (plan de période, contrainte permanente), ni plus ni moins : ni datée, ni orpheline');
+        self::assertSame(0, (int) $admin->fetchOne(
+            'SELECT COUNT(*) FROM plan_constraint l JOIN schedule_plan p ON p.id = l.schedule_plan_id WHERE l.club_id <> p.club_id OR l.season_id <> p.season_id',
+        ), 'chaque ligne porte le club et la saison de son plan');
+
+        self::assertNull($admin->fetchOne('SELECT to_regclass(\'public.constraint_period_override\')'), 'la table d\'exception est supprimée');
+        self::assertSame('NO', $admin->fetchOne('SELECT is_nullable FROM information_schema.columns WHERE table_schema = \'public\' AND table_name = \'plan_constraint\' AND column_name = \'applies\''), 'plan_constraint.applies est obligatoire');
+        self::assertSame(1, (int) $admin->fetchOne(
+            'SELECT COUNT(*) FROM pg_index i WHERE i.indrelid = \'public.plan_constraint\'::regclass AND i.indisunique AND i.indpred IS NULL'
+            . ' AND (SELECT array_agg(a.attname::text ORDER BY a.attname) FROM pg_attribute a WHERE a.attrelid = i.indrelid AND a.attnum = ANY (i.indkey::int2[])) = ARRAY[\'constraint_id\', \'schedule_plan_id\']',
+        ), 'une ligne par couple (plan, contrainte)');
+        self::assertSame(1, (int) $admin->fetchOne(
+            'SELECT COUNT(*) FROM pg_constraint c WHERE c.contype = \'f\' AND c.conrelid = \'public.plan_constraint\'::regclass'
+            . ' AND c.confrelid = \'public.schedule_plan\'::regclass AND c.confdeltype = \'c\''
+            . ' AND (SELECT array_agg(a.attname::text ORDER BY a.attname) FROM pg_attribute a WHERE a.attrelid = c.conrelid AND a.attnum = ANY (c.conkey)) = ARRAY[\'club_id\', \'schedule_plan_id\']',
+        ), 'une clé composée (plan, club) vers le plan, en cascade : une ligne ne désigne jamais le plan d\'un autre club');
+        self::assertSame(0, (int) $admin->fetchOne('SELECT COUNT(*) FROM pg_constraint c WHERE c.contype = \'f\' AND c.conrelid = \'public.plan_constraint\'::regclass AND c.confrelid = \'public."constraint"\'::regclass'), 'pas de clé vers la contrainte : « Charger » efface puis réinsère les contraintes permanentes (E6)');
+        self::assertSame(1, (int) $admin->fetchOne('SELECT COUNT(*) FROM pg_class WHERE oid = \'public.plan_constraint\'::regclass AND relrowsecurity AND relforcerowsecurity'), 'la RLS est active et forcée');
+    }
+
+    /**
+     * Lot 4, PR 4, décor faussé : deux coches pour le même couple (plan, contrainte) — l'unicité retirée exprès —
+     * donneraient deux lignes, ou une au hasard. La conversion s'annule : la table d'exception reste, aucune ligne n'est
+     * écrite, la migration n'est pas enregistrée.
+     */
+    #[TestWith(['periode-12-vacances-reglages'])]
+    public function testTheRuleConversionIsCancelledWhenTheCountWouldDiffer(string $decor): void
+    {
+        $admin = self::ownerConnection(self::caseName());
+        $admin->executeStatement('DROP INDEX uniq_constraint_period_override');
+        $admin->executeStatement(
+            'INSERT INTO constraint_period_override SELECT * FROM json_populate_record(NULL::constraint_period_override, (SELECT (row_to_json(o)::jsonb || jsonb_build_object(\'id\', ?::text, \'is_active\', NOT o.is_active))::json FROM constraint_period_override o WHERE o.constraint_id = ?))',
+            ['dc000000-0000-4000-8000-0000000000dd', self::DECOR_RULES['club 31']],
+        );
+        self::assertSame(2, (int) $admin->fetchOne('SELECT COUNT(*) FROM constraint_period_override WHERE constraint_id = ?', [self::DECOR_RULES['club 31']]), 'témoin : deux coches pour le même couple');
+
+        [$code, $output] = $this->runMigrations();
+
+        self::assertNotSame(0, $code, 'la conversion refuse un décor qui donnerait un autre compte que contraintes permanentes × plans de période : ' . $output);
+        $recorded = array_map(strval(...), $admin->fetchFirstColumn('SELECT version FROM doctrine_migration_versions'));
+        self::assertNotContains('DoctrineMigrations\Version20261130120000', $recorded, 'la migration n\'est pas enregistrée');
+        self::assertNotNull($admin->fetchOne('SELECT to_regclass(\'public.constraint_period_override\')'), 'la table d\'exception est toujours là');
+        self::assertNull($admin->fetchOne('SELECT to_regclass(\'public.plan_constraint\')'), 'aucune ligne n\'est écrite');
+    }
+
+    /**
      * Décision du fondateur (2026-11-22) : un plan de vacances né avant les copies de règles de bien-être les
      * reçoit à la conversion, aux valeurs de la saison du moment, puis ne suit plus la saison.
      */
@@ -718,6 +827,17 @@ final class Lot4MigrationChainTest extends KernelTestCase
                 ksort($mask);
             }
             $lines[(string) $row['venue_id']] = [(bool) $row['participates'], (bool) $row['closure_lifted'], \is_array($mask) && [] !== $mask ? $mask : null];
+        }
+
+        return $lines;
+    }
+
+    /** @return array<string, bool> « s'applique », par contrainte, trié par identifiant */
+    private function ruleLinesOf(Connection $admin, string $planId): array
+    {
+        $lines = [];
+        foreach ($admin->fetchAllAssociative('SELECT constraint_id, applies FROM plan_constraint WHERE schedule_plan_id = ? ORDER BY constraint_id', [$planId]) as $row) {
+            $lines[(string) $row['constraint_id']] = (bool) $row['applies'];
         }
 
         return $lines;

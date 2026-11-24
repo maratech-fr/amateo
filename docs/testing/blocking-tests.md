@@ -438,7 +438,9 @@ reprise champ par champ, un plan de vacances jamais ouvert pré-sélectionné s'
 d'exception, colonnes de l'équipe et drapeau supprimés, photos converties, et annulation si le compte diffère ;
 PR 3b : une ligne `plan_venue` par (plan de période, gymnase), aucune au plan de saison, chaque réglage de
 gymnase repris champ par champ [hors service, grille ressaisie devenue fermeture levée, masque], table
-d'exception supprimée, et annulation si le compte diffère) ·
+d'exception supprimée, et annulation si le compte diffère ; PR 4 : une ligne `plan_constraint` par (plan de
+période, contrainte permanente), aucune au plan de saison ni pour une datée ni pour une coche orpheline, chaque
+coche reprise, sinon le défaut de la nature, table d'exception supprimée, et annulation si le compte diffère) ·
 `Integration/Service/LoadedVersionPointerTest` (axe *planning lifecycle*, lot conception 4 PR 2 — la version
 chargée du socle est rangée sur son plan de saison, un seul pointeur pour tous les plans : « Charger » et une
 génération terminée la déplacent, et seule la version que le plan pointe se modifie [409
@@ -453,8 +455,14 @@ les équipes d'un plan ne traversent jamais la frontière d'un club : `/api/team
 ou le plan d'un autre club sans rien écrire, les réglages d'un autre club ne se lisent pas ; en base, `plan_team`
 est sous RLS [lignes d'un autre club invisibles, ni modifiées ni effacées] et sa clé composée (plan, club) refuse
 une ligne vers le plan d'un autre club ; PR 3b : `/api/venue_period_overrides` refuse de même le gymnase ou le
-plan d'un autre club sans rien écrire. Chute attendue si la route cherche l'équipe, le gymnase ou le plan hors
-du club, ou si la clé vers le plan perd le club) ·
+plan d'un autre club sans rien écrire ; PR 4 : `/api/constraint_period_overrides` refuse de même la règle ou le
+plan d'un autre club sans rien écrire, et les coches d'un autre club ne se lisent pas. Chute attendue si la route
+cherche l'équipe, le gymnase, la règle ou le plan hors du club, ou si la clé vers le plan perd le club) ·
+`Api/ConstraintScopeChangeTest` (axe *constraint semantics*, lot conception 4 PR 4 — changer la portée d'une
+règle de saison change ce que les plans de période existants appliquent : élargie à tout le club, elle entre dans
+des vacances où elle restait au défaut ; restreinte à une équipe, elle en sort ; une coche posée par le gestionnaire
+contre le défaut ne bouge pas ; prouvé sur la ligne du plan et sur la sélection qui part au moteur. Chute attendue
+si une ligne de règle restée au défaut ne suit plus la portée) ·
 `Integration/Api/ParcImportExecuteTest` (axe *tenant isolation*, GO fondateur 2026-10-30 — incident
 d'un club pilote, PR A import du parc : la redéfinition de la composition d'une séance commune par le canal
 `corrections.equipes` [liste ≥ 2 d'UUID d'équipe DU CLUB, ou `import:<index>` vers une ligne Équipes
