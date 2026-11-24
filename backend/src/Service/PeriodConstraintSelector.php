@@ -6,7 +6,6 @@ namespace App\Service;
 
 use App\Entity\CalendarEntry;
 use App\Entity\Constraint;
-use App\Entity\ConstraintPeriodOverride;
 use App\Entity\Team;
 use App\Enum\CalendarEntryPeriodType;
 use App\Enum\ConstraintScope;
@@ -14,7 +13,6 @@ use App\Plans\PlanComposition;
 use App\Plans\SoclePlan;
 use App\Repository\ConstraintRepository;
 use App\Repository\TeamRepository;
-use Doctrine\ORM\EntityManagerInterface;
 use LogicException;
 use Psr\Log\LoggerInterface;
 
@@ -49,7 +47,6 @@ final class PeriodConstraintSelector
     private const TAG_DROP_INERT = 'drop_inert';
 
     public function __construct(
-        private readonly EntityManagerInterface $entityManager,
         private readonly ConstraintRepository $constraintRepository,
         private readonly TeamRepository $teamRepository,
         private readonly TeamTagResolver $tagResolver,
@@ -78,10 +75,9 @@ final class PeriodConstraintSelector
         /** @var list<Constraint> $dated */
         $dated = $this->constraintRepository->findBy(['calendarEntryId' => $entry->datedConstraintSourceIds(), 'clubId' => $clubId]);
 
-        $overrides = [];
-        foreach ($this->entityManager->getRepository(ConstraintPeriodOverride::class)->findBy(['schedulePlanId' => $schedulePlanId]) as $override) {
-            $overrides[$override->getConstraintId()] = $override->isActive();
-        }
+        // Lot 4, PR 4 — les règles de saison appliquées par le plan, lues sur ses lignes (une par contrainte permanente,
+        // au défaut de la nature tant que le gestionnaire ne l'a pas cochée ou décochée) ; une ligne manquante lève.
+        $ruleLines = $this->planComposition->constraintsOf($schedulePlanId);
 
         // Lot 4, PR 3a — les équipes du plan, lues sur ses lignes : écartée = la ligne ne participe pas ; séances et
         // plafond « propres à la période » = ceux d'une ligne qui diffèrent de la ligne du socle.
@@ -119,18 +115,15 @@ final class PeriodConstraintSelector
             }
         }
 
-        // Fermeture : TOUT hérité par défaut. Vacances (reprise) : les contraintes de saison de
-        // portée ÉQUIPE, COACH et GYMNASE (scope TEAM/COACH/FACILITY) sont OFF par défaut — la
-        // période a sa propre vie (sa grille, les coachs réellement présents) et traîner les
-        // réglages de saison la cassait (décision fondateur 2026-10-10). Seul le scope CLUB reste
-        // hérité. Un override explicite dévie du défaut dans les deux sens. (Les FACILITY étaient
-        // DÉJÀ droppées hors fermeture ; TEAM/COACH les rejoignent.) Les STRUCTURES — blocs de
-        // mutualisation, liens coach↔équipe, coach↔joueur, passerelles — passent hors de ce
-        // sélecteur (elles ne sont pas des `Constraint`) et ne changent donc pas.
+        // Une règle de saison part si la ligne du plan dit qu'elle s'applique. Le défaut d'une ligne vient de la nature
+        // du plan (`SchedulePlanType::keepsSocleConstraintByDefault`) : fermeture, tout ; vacances (reprise), seules les
+        // règles de tout le club (décision fondateur 2026-10-10) ; la coche du gestionnaire dévie du défaut dans les deux
+        // sens. Les STRUCTURES — blocs de mutualisation, liens coach↔équipe, coach↔joueur, passerelles — passent hors de
+        // ce sélecteur (elles ne sont pas des `Constraint`) et ne changent donc pas.
         $permanent = [];
         foreach ($this->constraintRepository->findPermanentByClubSeason($clubId, $seasonId) as $constraint) {
-            $keepByDefault = CalendarEntryPeriodType::CLOSURE === $periodType || ConstraintScope::CLUB === $constraint->getScope();
-            if (\array_key_exists($constraint->getId(), $overrides) ? $overrides[$constraint->getId()] : $keepByDefault) {
+            $line = $ruleLines[$constraint->getId()] ?? throw new LogicException(\sprintf('La contrainte %s n\'a pas de ligne dans le plan %s.', $constraint->getId(), $schedulePlanId));
+            if ($line->applies()) {
                 $permanent[] = $constraint;
             }
         }

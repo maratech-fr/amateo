@@ -259,10 +259,10 @@ final class BcclSeederIdempotenceTest extends KernelTestCase
             }
 
             $deactivated17 = array_map('strval', $this->connection->fetchFirstColumn(
-                'SELECT c.name FROM constraint_period_override o '
+                'SELECT c.name FROM plan_constraint o '
                 . 'JOIN "constraint" c ON c.id = o.constraint_id '
                 . 'JOIN schedule_plan sp ON sp.id = o.schedule_plan_id '
-                . 'WHERE sp.club_id = ? AND sp.name = ? AND o.is_active = false',
+                . 'WHERE sp.club_id = ? AND sp.name = ? AND o.applies = false',
                 [$clubId, 'Reprise du 17 août'],
             ));
             foreach (['Synth 11 Nom · indispo jeudi', 'Synth 06 Nom · indispo vendredi'] as $expected) {
@@ -854,10 +854,10 @@ final class BcclSeederIdempotenceTest extends KernelTestCase
         }
 
         $deactivated = $this->connection->fetchFirstColumn(
-            'SELECT c.name FROM constraint_period_override o '
+            'SELECT c.name FROM plan_constraint o '
             . 'JOIN "constraint" c ON c.id = o.constraint_id '
             . 'JOIN schedule_plan sp ON sp.id = o.schedule_plan_id '
-            . 'WHERE sp.club_id = ? AND sp.name = ? AND o.is_active = false '
+            . 'WHERE sp.club_id = ? AND sp.name = ? AND o.applies = false '
             . 'AND c.name IN (\'Coach 11 · indispo jeudi\', \'Coach 06 · indispo vendredi\', \'SM2 · pas vendredi\') '
             . 'ORDER BY c.name',
             [$club->getId(), 'Reprise du 17 août'],
@@ -1003,8 +1003,8 @@ final class BcclSeederIdempotenceTest extends KernelTestCase
             . 'AND c.scope = \'TEAM\' AND c.rule_type = \'HARD\' '
             . 'AND c.family IN (\'DAY\', \'TIME\') '
             // Une règle DÉCOCHÉE pour ce plan (isActive=false) n'est pas exigée.
-            . 'AND NOT EXISTS (SELECT 1 FROM constraint_period_override o '
-            . 'WHERE o.schedule_plan_id = p.id AND o.constraint_id = c.id AND o.is_active = false)',
+            . 'AND NOT EXISTS (SELECT 1 FROM plan_constraint o '
+            . 'WHERE o.schedule_plan_id = p.id AND o.constraint_id = c.id AND o.applies = false)',
         );
         self::assertNotSame([], $rows, 'le seed doit produire des règles dures d\'équipe ET des semaines de reprise transcrites — sinon ce test ne garde rien');
 
@@ -1288,12 +1288,12 @@ final class BcclSeederIdempotenceTest extends KernelTestCase
             self::assertSame(2, $spwOf('Basket Santé'), 'Basket Santé s\'entraîne 2 fois (mer annexe, sam JDR)');
 
             $deactivated = $this->connection->fetchFirstColumn(
-                'SELECT c.name FROM constraint_period_override o JOIN "constraint" c ON c.id = o.constraint_id '
-                . 'WHERE o.schedule_plan_id = ? AND o.is_active = false',
+                'SELECT c.name FROM plan_constraint o JOIN "constraint" c ON c.id = o.constraint_id '
+                . 'WHERE o.schedule_plan_id = ? AND o.applies = false',
                 [$planId],
             );
             self::assertSame(['SM2 · au moins 1 à Matéo'], array_map('strval', $deactivated), '« SM2 · au moins 1 à Matéo » est la seule contrainte décochée');
-            $totalCpo = (int) $this->connection->fetchOne('SELECT COUNT(*) FROM constraint_period_override WHERE schedule_plan_id = ?', [$planId]);
+            $totalCpo = (int) $this->connection->fetchOne('SELECT COUNT(*) FROM plan_constraint WHERE schedule_plan_id = ? AND applies = false', [$planId]);
             self::assertSame(1, $totalCpo, 'aucun autre override de contrainte');
 
             $vpo = (int) $this->connection->fetchOne('SELECT COUNT(*) FROM plan_venue WHERE schedule_plan_id = ? AND (participates = false OR closure_lifted OR day_overrides IS NOT NULL)', [$planId]);
@@ -1632,7 +1632,7 @@ final class BcclSeederIdempotenceTest extends KernelTestCase
             'teamLinks' => $this->rowsIn('team_link'),
             'venuePeriodOverrides' => $this->rowsIn('plan_venue'),
             'teamPeriodOverrides' => $this->rowsIn('plan_team'),
-            'constraintPeriodOverrides' => $this->rowsIn('constraint_period_override'),
+            'constraintPeriodOverrides' => $this->rowsIn('plan_constraint'),
             // Répartition WE des matchs (profil dev) : les 32 créneaux idéaux (find-or-create sur
             // (club, saison, équipe), tag de semaine réappliqué) et les 10 fenêtres d'accès
             // (purge+recréation) entrent dans la mesure — deux runs = mêmes comptes.

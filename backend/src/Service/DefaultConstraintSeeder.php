@@ -10,6 +10,7 @@ use App\Entity\Season;
 use App\Enum\ConstraintFamily;
 use App\Enum\ConstraintRuleType;
 use App\Enum\ConstraintScope;
+use App\Plans\PlanComposition;
 use Doctrine\ORM\EntityManagerInterface;
 
 /**
@@ -42,6 +43,7 @@ final class DefaultConstraintSeeder
 
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
+        private readonly PlanComposition $planComposition,
     ) {}
 
     public function seed(Club $club, Season $season): void
@@ -69,5 +71,9 @@ final class DefaultConstraintSeeder
             $constraint->setSortOrder($order);
             $this->entityManager->persist($constraint);
         }
+
+        // Lot 4, PR 4 — une règle permanente a sa ligne dans chaque plan de période de sa saison (aucun à la naissance
+        // d'un club : la porte écrit ce qui attend, puis ne pose rien). Seule porte, comme pour tout créateur de règle.
+        $this->planComposition->ensureLines($season->getId());
     }
 }

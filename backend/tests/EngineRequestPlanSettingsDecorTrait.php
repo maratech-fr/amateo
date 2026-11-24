@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace App\Tests;
 
 use App\Entity\CalendarEntry;
-use App\Entity\ConstraintPeriodOverride;
 use App\Entity\ImplicitRuleSetting;
 use App\Entity\Reservation;
 use App\Entity\SharedTrainingBlock;
@@ -194,10 +193,11 @@ trait EngineRequestPlanSettingsDecorTrait
             ->setSessionsPerWeek($sessions ?? $socle->getSessionsPerWeek())->setMaxSessionsPerDay($maxPerDay ?? $socle->getMaxSessionsPerDay());
     }
 
+    /** La coche d'une règle permanente dans un plan de période : sa ligne (lot 4, PR 4). */
     private function erRuleSetting(int $n, string $planId, string $constraintId, bool $applies): void
     {
-        $this->erEm()->persist((new ConstraintPeriodOverride)->setId(self::erId('dc00', $n))->setClubId(self::ER_CLUB)->setSeasonId(self::ER_SEASON)
-            ->setSchedulePlanId($planId)->setConstraintId($constraintId)->setIsActive($applies));
+        unset($n);
+        static::getContainer()->get(PlanComposition::class)->constraintsOf($planId)[$constraintId]->setApplies($applies);
     }
 
     /**

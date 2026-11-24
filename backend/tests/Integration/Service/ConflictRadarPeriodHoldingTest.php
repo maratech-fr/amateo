@@ -7,7 +7,6 @@ namespace App\Tests\Integration\Service;
 use App\Entity\CalendarEntry;
 use App\Entity\Club;
 use App\Entity\Constraint;
-use App\Entity\ConstraintPeriodOverride;
 use App\Entity\Fixture;
 use App\Entity\Schedule;
 use App\Entity\SchedulePlan;
@@ -26,6 +25,7 @@ use App\Enum\FixtureHomeAway;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
 use App\Enum\TeamCoachRole;
+use App\Plans\PlanComposition;
 use App\Service\ConflictRadarLoader;
 use App\Service\SeasonResolver;
 use App\Tests\ProvisionsPeriodPlanTrait;
@@ -84,13 +84,9 @@ final class ConflictRadarPeriodHoldingTest extends WebTestCase
         $inPeriod = $this->homeMatch($this->periodFriday);
         $ordinary = $this->homeMatch($this->ordinaryFriday);
 
-        $override = new ConstraintPeriodOverride;
-        $override->setClubId($this->club->getId());
-        $override->setSeasonId($this->season->getId());
-        $override->setSchedulePlanId($this->periodPlanId);
-        $override->setConstraintId($unavailability);
-        $override->setIsActive(false);
-        $this->em->persist($override);
+        $composition = self::getContainer()->get(PlanComposition::class);
+        $composition->ensureLines($this->season->getId());
+        $composition->constraintsOf($this->periodPlanId)[$unavailability]->setApplies(false);
         $this->em->flush();
 
         $radar = $this->radar();

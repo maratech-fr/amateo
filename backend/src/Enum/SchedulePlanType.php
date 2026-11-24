@@ -17,6 +17,23 @@ enum SchedulePlanType: string
     {
         return self::HOLIDAY === $this ? PlanTeamDefault::FLAGSHIP_AND_IMPORTANT : PlanTeamDefault::ALL;
     }
+
+    /**
+     * Une règle de saison s'applique-t-elle par défaut à un plan de cette nature ? Une fermeture applique tout ; des
+     * vacances (reprise) n'appliquent que les règles de tout le club — la période a sa propre vie, sa grille, les coachs
+     * réellement présents (décision fondateur 2026-10-10). Le plan de saison applique tout. Défaut écrit sur la ligne
+     * par `PlanComposition::ensureLines`, réécrit au changement de portée.
+     */
+    public function keepsSocleConstraintByDefault(ConstraintScope $scope): bool
+    {
+        return self::HOLIDAY !== $this || ConstraintScope::CLUB === $scope;
+    }
+
+    /** Un plan de fermeture naît avec une copie des groupes mutualisés du socle ; des vacances n'en copient aucun. */
+    public function copiesSharedBlocksAtBirth(): bool
+    {
+        return self::CLOSURE === $this;
+    }
     case SEASON = 'SEASON';
     case CLOSURE = 'CLOSURE';
     case HOLIDAY = 'HOLIDAY';

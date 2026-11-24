@@ -5,11 +5,11 @@ declare(strict_types=1);
 namespace App\Tests\CrossStack;
 
 use App\Entity\CalendarEntry;
-use App\Entity\ConstraintPeriodOverride;
 use App\Enum\CalendarEntryKind;
 use App\Enum\CalendarEntryPeriodType;
 use App\Enum\CalendarEntryStatus;
 use App\Enum\TeamCoachRole;
+use App\Plans\PlanComposition;
 use PHPUnit\Framework\Attributes\Group;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 
@@ -292,13 +292,10 @@ final class TrainingOccupancyHoldingParityTest extends KernelTestCase
         $this->homeToPlace($u18);
         $this->homeToPlace($u18, $inPeriod);
 
-        $override = new ConstraintPeriodOverride;
-        $override->setClubId($this->club->getId());
-        $override->setSeasonId($this->season->getId());
-        $override->setSchedulePlanId($planId);
-        $override->setConstraintId($this->wizardUnavailable(self::EMMA));
-        $override->setIsActive(false);
-        $this->em->persist($override);
+        $composition = self::getContainer()->get(PlanComposition::class);
+        $unavailable = $this->wizardUnavailable(self::EMMA);
+        $composition->ensureLines($this->season->getId());
+        $composition->constraintsOf($planId)[$unavailable]->setApplies(false);
         $this->em->flush();
 
         $payload = $this->payload();

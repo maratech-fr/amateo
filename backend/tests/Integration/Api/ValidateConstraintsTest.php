@@ -1347,6 +1347,7 @@ final class ValidateConstraintsTest extends WebTestCase
         $constraint->setIsActive(true);
         $this->em->persist($constraint);
         $this->em->flush();
+        self::getContainer()->get(PlanComposition::class)->ensureLines($this->season->getId());
     }
 
     /**

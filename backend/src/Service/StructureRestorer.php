@@ -140,7 +140,7 @@ final class StructureRestorer
         // Lot 4, PR 3a — les équipes du socle reprennent les séances et le plafond de la photo sur leur ligne du plan de
         // saison ; une équipe ramenée reçoit sa ligne dans chaque plan de période, aux valeurs de son socle. Les lignes
         // de période existantes ne changent pas. PR 3b : un gymnase ramené reçoit sa ligne dans chaque plan de période,
-        // au défaut.
+        // au défaut. PR 4 : de même pour une règle permanente ramenée, au défaut de la nature ; aucune coche ne change.
         $this->planComposition->ensureLines($seasonId, $this->socleValuesOf($data));
 
         // Les coachs viennent d'être supprimés : la clé étrangère a emporté les jetons de collecte.
@@ -346,11 +346,12 @@ final class StructureRestorer
             $tenant,
             'DELETE App\Entity\PlanVenue o WHERE o.id IN (:ids)',
         );
-        // A period's constraint toggle whose permanent constraint is gone after the restore.
+        // Lot 4, PR 4 — a period's rule line whose permanent constraint is gone after the restore (or no longer
+        // permanent): the line leaves with its rule, the manager's setting included.
         $this->deleteDangling(
-            'SELECT o.id FROM App\Entity\ConstraintPeriodOverride o WHERE o.clubId = :c AND o.seasonId = :s AND NOT EXISTS (SELECT 1 FROM App\Entity\Constraint co WHERE co.id = o.constraintId)',
+            'SELECT o.id FROM App\Entity\PlanConstraint o WHERE o.clubId = :c AND o.seasonId = :s AND NOT EXISTS (SELECT 1 FROM App\Entity\Constraint co WHERE co.id = o.constraintId AND co.calendarEntryId IS NULL)',
             $tenant,
-            'DELETE App\Entity\ConstraintPeriodOverride o WHERE o.id IN (:ids)',
+            'DELETE App\Entity\PlanConstraint o WHERE o.id IN (:ids)',
         );
         $this->deleteDangling(
             'SELECT vts.id FROM App\Entity\VenueTrainingSlot vts WHERE vts.clubId = :c AND vts.seasonId = :s AND vts.schedulePlanId <> :socle AND NOT EXISTS (SELECT 1 FROM App\Entity\Venue v WHERE v.id = vts.venueId)',

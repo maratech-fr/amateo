@@ -47,7 +47,7 @@ final class SchedulePlanAnchorCascadeTest extends KernelTestCase
         // l'insérer échouerait — d'où le drapeau porté par le provider.
         yield 'plan_venue' => ['plan_venue'];
         yield 'plan_team' => ['plan_team'];
-        yield 'constraint_period_override' => ['constraint_period_override'];
+        yield 'plan_constraint' => ['plan_constraint'];
     }
 
     /**
@@ -158,10 +158,10 @@ final class SchedulePlanAnchorCascadeTest extends KernelTestCase
             return $id;
         }
 
-        if ('constraint_period_override' === $table) {
+        if ('plan_constraint' === $table) {
             $this->connection->executeStatement(
-                'INSERT INTO constraint_period_override (id, version, created_at, updated_at, club_id, season_id,
-                    constraint_id, is_active, schedule_plan_id)
+                'INSERT INTO plan_constraint (id, version, created_at, updated_at, club_id, season_id,
+                    constraint_id, applies, schedule_plan_id)
                  VALUES (?, 1, NOW(), NOW(), ?, ?, ?, true, ?)',
                 [$id, $clubId, $seasonId, $this->uuid(), $planId],
             );

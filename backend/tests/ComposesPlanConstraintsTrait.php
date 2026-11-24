@@ -29,12 +29,13 @@ trait ComposesPlanConstraintsTrait
     /** « S'applique » relu en base pour une règle dans un plan, ou `null` si la ligne manque. */
     private function ruleLineRow(string $planId, string $constraintId): ?bool
     {
-        $applies = static::getContainer()->get(EntityManagerInterface::class)->getConnection()->fetchOne(
+        // `fetchOne` rend `false` pour une ligne absente ET pour `applies = false` : la colonne vient en liste.
+        $applies = static::getContainer()->get(EntityManagerInterface::class)->getConnection()->fetchFirstColumn(
             'SELECT applies FROM plan_constraint WHERE schedule_plan_id = ? AND constraint_id = ?',
             [$planId, $constraintId],
         );
 
-        return false === $applies ? null : (bool) $applies;
+        return [] === $applies ? null : (bool) $applies[0];
     }
 
     /** Le décor coche ou décoche une règle dans un plan, comme le gestionnaire ; la ligne doit exister. */

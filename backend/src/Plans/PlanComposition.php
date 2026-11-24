@@ -4,22 +4,27 @@ declare(strict_types=1);
 
 namespace App\Plans;
 
+use App\Entity\Constraint;
+use App\Entity\PlanConstraint;
 use App\Entity\PlanTeam;
 use App\Entity\PlanVenue;
 use App\Entity\PriorityTier;
 use App\Entity\Team;
+use App\Enum\ConstraintScope;
 use App\Enum\PlanTeamDefault;
 use App\Enum\SchedulePlanType;
 use App\Service\PlanTeamSelectionSeeder;
+use Doctrine\DBAL\ArrayParameterType;
 use Doctrine\ORM\EntityManagerInterface;
 use LogicException;
 
 /**
  * Les équipes d'un plan (lot 4, PR 3a) : toute équipe a sa ligne dans chaque plan de sa saison, socle compris
  * ({@see PlanTeam}). Les gymnases d'une période (PR 3b) : tout gymnase a sa ligne dans chaque plan de période de sa
- * saison, aucune au plan de saison ({@see PlanVenue}). Cette classe est la seule porte qui pose les lignes
- * ({@see ensureLines}) et la seule qui dit qu'une ligne de période « diffère du socle » (équipes) ou « du défaut »
- * (gymnases).
+ * saison, aucune au plan de saison ({@see PlanVenue}). Les règles appliquées par une période (PR 4) : toute contrainte
+ * permanente a sa ligne dans chaque plan de période de sa saison, aucune au plan de saison ni pour une datée
+ * ({@see PlanConstraint}). Cette classe est la seule porte qui pose les lignes ({@see ensureLines}) et la seule qui dit
+ * qu'une ligne de période « diffère du socle » (équipes) ou « du défaut » (gymnases, règles).
  *
  * Lire un plan où une ligne manque lève : jamais un défaut silencieux.
  *
@@ -58,6 +63,8 @@ final class PlanComposition
      * - Ligne de période : les séances et le plafond du socle du moment ; elle participe, sauf à la naissance du plan
      *   (aucune ligne encore) où la nature dit qui est coché ({@see SchedulePlanType::defaultTeamSelection}).
      * - Ligne de gymnase, dans chaque plan de période seulement : participe, fermeture non levée, sans masque.
+     * - Ligne de règle, dans chaque plan de période seulement et pour chaque contrainte permanente : le défaut de la
+     *   nature du plan pour la portée de la règle ({@see SchedulePlanType::keepsSocleConstraintByDefault}).
      *
      * @param array<string, array{sessionsPerWeek?: int, maxSessionsPerDay?: int}> $socleValues par équipe : ce que le créateur a saisi
      */
@@ -75,6 +82,7 @@ final class PlanComposition
             return;
         }
         $wrote = $this->ensureVenueLines($seasonId, $plans);
+        $wrote = $this->ensureRuleLines($seasonId, $plans) || $wrote;
         /** @var list<array{id: string, club_id: string, priority_tier_id: int|string}> $teams */
         $teams = $connection->fetchAllAssociative('SELECT id, club_id, priority_tier_id FROM team WHERE season_id = :s ORDER BY id', ['s' => $seasonId]);
         if ([] === $teams) {
@@ -188,6 +196,112 @@ final class PlanComposition
         }
 
         return $lines;
+    }
+
+    /**
+     * Les lignes de règle d'un plan de période, par contrainte ; lève si une contrainte permanente de la saison du plan
+     * n'a pas la sienne. Vide pour le plan de saison, qui n'en porte pas.
+     *
+     * @return array<string, PlanConstraint>
+     */
+    public function constraintsOf(string $planId): array
+    {
+        $plan = $this->entityManager->getConnection()->fetchAssociative('SELECT season_id, type FROM schedule_plan WHERE id = :p', ['p' => $planId]);
+        if (false === $plan) {
+            throw new LogicException(\sprintf('Le plan %s n\'existe pas.', $planId));
+        }
+        if (SchedulePlanType::SEASON->value === $plan['type']) {
+            return [];
+        }
+
+        $lines = [];
+        foreach ($this->entityManager->getRepository(PlanConstraint::class)->findBy(['schedulePlanId' => $planId]) as $line) {
+            $lines[$line->getConstraintId()] = $line;
+        }
+        foreach (array_keys($this->permanentConstraintsOfSeason((string) $plan['season_id'])) as $constraintId) {
+            if (!isset($lines[$constraintId])) {
+                throw new LogicException(\sprintf('La contrainte %s n\'a pas de ligne dans le plan %s.', $constraintId, $planId));
+            }
+        }
+
+        return $lines;
+    }
+
+    /**
+     * Le défaut d'une ligne de règle : la nature de son plan, pour la portée actuelle de sa contrainte.
+     */
+    public function ruleDefaultOf(PlanConstraint $line): bool
+    {
+        $type = $this->planTypesOf([$line->getSchedulePlanId()])[$line->getSchedulePlanId()] ?? throw new LogicException(\sprintf('Le plan %s n\'existe pas.', $line->getSchedulePlanId()));
+        $scope = $this->scopesOf([$line->getConstraintId()])[$line->getConstraintId()] ?? throw new LogicException(\sprintf('La contrainte %s n\'existe pas.', $line->getConstraintId()));
+
+        return $type->keepsSocleConstraintByDefault($scope);
+    }
+
+    /**
+     * Parmi ces lignes de règle, celles qui diffèrent du défaut de leur plan (le réglage propre d'une période). Une
+     * ligne dont la contrainte n'existe plus n'est pas un réglage.
+     *
+     * @param list<PlanConstraint> $lines
+     *
+     * @return list<PlanConstraint>
+     */
+    public function ruleLinesDifferingFromDefault(array $lines): array
+    {
+        $types = $this->planTypesOf(array_map(static fn (PlanConstraint $line): string => $line->getSchedulePlanId(), $lines));
+        $scopes = $this->scopesOf(array_map(static fn (PlanConstraint $line): string => $line->getConstraintId(), $lines));
+
+        return array_values(array_filter($lines, static function (PlanConstraint $line) use ($types, $scopes): bool {
+            $type = $types[$line->getSchedulePlanId()] ?? null;
+            $scope = $scopes[$line->getConstraintId()] ?? null;
+
+            return $type instanceof SchedulePlanType && $scope instanceof ConstraintScope && $line->applies() !== $type->keepsSocleConstraintByDefault($scope);
+        }));
+    }
+
+    /**
+     * Les lignes d'une règle, dans chaque plan de période, qui diffèrent du défaut de leur plan pour la portée donnée
+     * (la portée d'avant un changement, quand elle change dans la même écriture).
+     *
+     * @return list<PlanConstraint>
+     */
+    public function ruleLinesOfConstraintDifferingFromDefault(string $constraintId, ConstraintScope $scope): array
+    {
+        $lines = $this->entityManager->getRepository(PlanConstraint::class)->findBy(['constraintId' => $constraintId]);
+        $types = $this->planTypesOf(array_map(static fn (PlanConstraint $line): string => $line->getSchedulePlanId(), $lines));
+
+        return array_values(array_filter($lines, static fn (PlanConstraint $line): bool => isset($types[$line->getSchedulePlanId()])
+            && $line->applies() !== $types[$line->getSchedulePlanId()]->keepsSocleConstraintByDefault($scope)));
+    }
+
+    /**
+     * La portée d'une règle permanente vient de changer : chacune de ses lignes restée égale au défaut de l'ancienne
+     * portée passe au défaut de la nouvelle ; une ligne que le gestionnaire a cochée ou décochée contre le défaut n'est
+     * pas touchée. C'est ce qui garde le comportement d'avant les lignes, où le défaut se recalculait à chaque lecture.
+     * Ne flush pas.
+     */
+    public function onScopeChanged(Constraint $constraint, ConstraintScope $previous): void
+    {
+        $scope = $constraint->getScope();
+        if ($previous === $scope || null !== $constraint->getCalendarEntryId()) {
+            return;
+        }
+        $lines = $this->entityManager->getRepository(PlanConstraint::class)->findBy(['constraintId' => $constraint->getId()]);
+        $types = $this->planTypesOf(array_map(static fn (PlanConstraint $line): string => $line->getSchedulePlanId(), $lines));
+        foreach ($lines as $line) {
+            $type = $types[$line->getSchedulePlanId()] ?? null;
+            if ($type instanceof SchedulePlanType && $line->applies() === $type->keepsSocleConstraintByDefault($previous)) {
+                $line->setApplies($type->keepsSocleConstraintByDefault($scope));
+            }
+        }
+    }
+
+    /** Retire les lignes d'une règle de chaque plan de période (elle devient datée). Ne flush pas. */
+    public function removeRuleLines(string $constraintId): void
+    {
+        foreach ($this->entityManager->getRepository(PlanConstraint::class)->findBy(['constraintId' => $constraintId]) as $line) {
+            $this->entityManager->remove($line);
+        }
     }
 
     /** La ligne d'une équipe dans un plan ; lève si elle manque. */
@@ -305,6 +419,100 @@ final class PlanComposition
         }
 
         return $wrote;
+    }
+
+    /**
+     * Pose, dans chaque plan de période de la saison, la ligne de chaque contrainte permanente qui n'en a pas, au défaut
+     * de la nature du plan pour la portée de la règle. Ne flush pas.
+     *
+     * @param list<array{id: string, type: string, club_id: string}> $plans
+     *
+     * @return bool vrai si une ligne a été posée
+     */
+    private function ensureRuleLines(string $seasonId, array $plans): bool
+    {
+        $constraints = $this->permanentConstraintsOfSeason($seasonId);
+        if ([] === $constraints) {
+            return false;
+        }
+        $existing = [];
+        foreach ($this->entityManager->getConnection()->fetchAllAssociative('SELECT schedule_plan_id, constraint_id FROM plan_constraint WHERE season_id = :s', ['s' => $seasonId]) as $row) {
+            $existing[(string) $row['schedule_plan_id']][(string) $row['constraint_id']] = true;
+        }
+
+        $wrote = false;
+        foreach ($plans as $plan) {
+            $type = SchedulePlanType::from((string) $plan['type']);
+            if (SchedulePlanType::SEASON === $type) {
+                continue;
+            }
+            foreach ($constraints as $constraintId => $scope) {
+                if (isset($existing[(string) $plan['id']][$constraintId])) {
+                    continue;
+                }
+                $this->entityManager->persist((new PlanConstraint)
+                    ->setClubId((string) $plan['club_id'])
+                    ->setSeasonId($seasonId)
+                    ->setSchedulePlanId((string) $plan['id'])
+                    ->setConstraintId($constraintId)
+                    ->setApplies($type->keepsSocleConstraintByDefault($scope)));
+                $wrote = true;
+            }
+        }
+
+        return $wrote;
+    }
+
+    /**
+     * Les contraintes permanentes (sans entrée de calendrier) d'une saison, avec leur portée, lues hors du
+     * `season_filter`.
+     *
+     * @return array<string, ConstraintScope>
+     */
+    private function permanentConstraintsOfSeason(string $seasonId): array
+    {
+        $constraints = [];
+        foreach ($this->entityManager->getConnection()->fetchAllAssociative('SELECT id, scope FROM "constraint" WHERE season_id = :s AND calendar_entry_id IS NULL ORDER BY id', ['s' => $seasonId]) as $row) {
+            $constraints[(string) $row['id']] = ConstraintScope::from((string) $row['scope']);
+        }
+
+        return $constraints;
+    }
+
+    /**
+     * @param list<string> $planIds
+     *
+     * @return array<string, SchedulePlanType>
+     */
+    private function planTypesOf(array $planIds): array
+    {
+        if ([] === $planIds) {
+            return [];
+        }
+        $types = [];
+        foreach ($this->entityManager->getConnection()->fetchAllAssociative('SELECT id, type FROM schedule_plan WHERE id IN (:ids)', ['ids' => array_values(array_unique($planIds))], ['ids' => ArrayParameterType::STRING]) as $row) {
+            $types[(string) $row['id']] = SchedulePlanType::from((string) $row['type']);
+        }
+
+        return $types;
+    }
+
+    /**
+     * @param list<string> $constraintIds
+     *
+     * @return array<string, ConstraintScope>
+     */
+    private function scopesOf(array $constraintIds): array
+    {
+        if ([] === $constraintIds) {
+            return [];
+        }
+        $scopes = [];
+        foreach ($this->entityManager->getConnection()->fetchAllAssociative('SELECT id, scope FROM "constraint" WHERE id IN (:ids)', ['ids' => array_values(array_unique($constraintIds))], ['ids' => ArrayParameterType::STRING]) as $row) {
+            $scopes[(string) $row['id']] = ConstraintScope::from((string) $row['scope']);
+        }
+
+        return $scopes;
     }
 
     private function persistLine(string $clubId, string $seasonId, string $planId, string $teamId, bool $participates, int $sessionsPerWeek, int $maxSessionsPerDay): void

@@ -16,9 +16,9 @@ use App\Entity\Club;
 use App\Entity\Coach;
 use App\Entity\CoachWish;
 use App\Entity\Constraint;
-use App\Entity\ConstraintPeriodOverride;
 use App\Entity\Fixture;
 use App\Entity\MatchConstraint;
+use App\Entity\PlanConstraint;
 use App\Entity\Reservation;
 use App\Entity\Schedule;
 use App\Entity\SchedulePlan;
@@ -43,6 +43,7 @@ use App\Enum\SchedulePlanType;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
 use App\Enum\TeamCoachRole;
+use App\Plans\PlanComposition;
 use App\Service\EntityCascadeDeleter;
 use App\Service\FixtureVenueLossMarker;
 use App\Service\OrphanedFixtureFinder;
@@ -740,9 +741,9 @@ final class DeletionImpactParityTest extends KernelTestCase
             ->setStartDate(new DateTimeImmutable('2026-02-16'))->setEndDate(new DateTimeImmutable('2026-02-28'));
         $this->em->persist($periodPlan);
         $this->em->flush();
-        $override = (new ConstraintPeriodOverride)->setClubId($club->getId())->setSeasonId($season->getId())
-            ->setSchedulePlanId($periodPlan->getId())->setConstraintId($named)->setIsActive(false);
-        $this->em->persist($override);
+        $composition = self::getContainer()->get(PlanComposition::class);
+        $composition->ensureLines($season->getId());
+        $override = $composition->constraintsOf($periodPlan->getId())[$named]->setApplies(false);
         $this->em->flush();
 
         $impact = self::getContainer()->get(DeletionImpactCounter::class)->forVenue($venue);
@@ -758,7 +759,7 @@ final class DeletionImpactParityTest extends KernelTestCase
         $this->em->clear();
 
         self::assertNull($this->em->getRepository(Constraint::class)->find($named), 'la règle qui nomme le gymnase part avec lui');
-        self::assertNull($this->em->getRepository(ConstraintPeriodOverride::class)->find($override->getId()), 'sa bascule de période part avec elle');
+        self::assertNull($this->em->getRepository(PlanConstraint::class)->find($override->getId()), 'sa bascule de période part avec elle');
         self::assertNotNull($this->em->getRepository(Constraint::class)->find($elsewhere), 'une règle qui nomme un autre gymnase reste');
         self::assertNull($this->em->getRepository(Constraint::class)->find($aimed->getId()), 'la règle qui vise le gymnase part aussi');
     }

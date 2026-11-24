@@ -8,7 +8,7 @@ use App\Entity\CalendarEntry;
 use App\Entity\Club;
 use App\Entity\ClubUser;
 use App\Entity\Constraint;
-use App\Entity\ConstraintPeriodOverride;
+use App\Entity\PlanConstraint;
 use App\Entity\Schedule;
 use App\Entity\SchedulePlan;
 use App\Entity\ScheduleSlotTemplate;
@@ -315,7 +315,7 @@ final class CalendarEntryApiTest extends WebTestCase
         self::assertResponseStatusCodeSame(204);
 
         $this->em->clear();
-        self::assertNull($this->em->getRepository(ConstraintPeriodOverride::class)->find($overrideId), 'a period constraint override must not survive its period');
+        self::assertNull($this->em->getRepository(PlanConstraint::class)->find($overrideId), 'a period constraint override must not survive its period');
     }
 
     /**

@@ -5,21 +5,21 @@ declare(strict_types=1);
 namespace App\Deletion;
 
 use App\Entity\Constraint;
-use App\Entity\ConstraintPeriodOverride;
+use App\Entity\PlanConstraint;
 use App\Enum\ConstraintScope;
 use Doctrine\ORM\EntityManagerInterface;
 
 /**
  * Les contraintes qui VISENT l'entité supprimée (portée `TEAM`/`FACILITY`/`COACH` pointant
- * son id), et les bascules de période posées dessus.
+ * son id), et leurs lignes de règle dans les plans de période.
  *
- * ⚠ L'ordre compte et il est repris tel quel de l'implémentation historique : les
- * `ConstraintPeriodOverride` partent AVANT leurs contraintes, sinon elles pendent sur un
+ * ⚠ L'ordre compte et il est repris tel quel de l'implémentation historique : les lignes
+ * `PlanConstraint` partent AVANT leurs contraintes, sinon elles pendent sur un
  * `constraintId` mort (même contrat « aucun orphelin » que
  * `ConstraintStateProcessor::cascadeBeforeDelete`).
  *
- * Le COMPTE annoncé est celui des contraintes — pas celui des bascules : c'est la règle que
- * le gestionnaire a écrite et qu'il reconnaîtra, la bascule n'est qu'un réglage qui la suit.
+ * Le COMPTE annoncé est celui des contraintes — pas celui des lignes : c'est la règle que
+ * le gestionnaire a écrite et qu'il reconnaîtra, la ligne n'est qu'un réglage qui la suit.
  */
 final readonly class ScopedConstraintStep implements CascadeStep
 {
@@ -69,7 +69,7 @@ final readonly class ScopedConstraintStep implements CascadeStep
 
         if ([] !== $constraintIds) {
             $entityManager->createQueryBuilder()
-                ->delete(ConstraintPeriodOverride::class, 'o')
+                ->delete(PlanConstraint::class, 'o')
                 ->where('o.constraintId IN (:ids)')
                 ->setParameter('ids', $constraintIds)
                 ->getQuery()

@@ -31809,7 +31809,7 @@
             },
             "ConstraintPeriodOverride": {
                 "type": "object",
-                "description": "Period-editable structure: a sparse per-(period, constraint) toggle \u2014 the permanent\nconstraint is disabled for the period. No row = the constraint applies as usual. The\noverlay build reads these; the base plan is never touched.",
+                "description": "La coche d'une r\u00e8gle de saison pour une p\u00e9riode : la ligne de la r\u00e8gle dans le plan de p\u00e9riode, vue de l'\u00e9cran comme\nun r\u00e9glage \u00e9pars. La liste ne rend que les lignes qui diff\u00e8rent du d\u00e9faut de la nature du plan (fermeture : toute\nr\u00e8gle s'applique ; vacances : seules les r\u00e8gles de tout le club). Publier la coche d'un couple (p\u00e9riode, r\u00e8gle) met\nsa ligne \u00e0 jour ; la supprimer la rend au d\u00e9faut. Le planning principal reste intact.",
                 "properties": {
                     "id": {
                         "default": "",
@@ -31843,7 +31843,7 @@
             },
             "ConstraintPeriodOverride.ConstraintPeriodOverrideInput": {
                 "type": "object",
-                "description": "Period-editable structure: a sparse per-(period, constraint) toggle \u2014 the permanent\nconstraint is disabled for the period. No row = the constraint applies as usual. The\noverlay build reads these; the base plan is never touched.",
+                "description": "La coche d'une r\u00e8gle de saison pour une p\u00e9riode : la ligne de la r\u00e8gle dans le plan de p\u00e9riode, vue de l'\u00e9cran comme\nun r\u00e9glage \u00e9pars. La liste ne rend que les lignes qui diff\u00e8rent du d\u00e9faut de la nature du plan (fermeture : toute\nr\u00e8gle s'applique ; vacances : seules les r\u00e8gles de tout le club). Publier la coche d'un couple (p\u00e9riode, r\u00e8gle) met\nsa ligne \u00e0 jour ; la supprimer la rend au d\u00e9faut. Le planning principal reste intact.",
                 "required": [
                     "schedulePlanId",
                     "constraintId"
@@ -31878,7 +31878,7 @@
             },
             "ConstraintPeriodOverride.html": {
                 "type": "object",
-                "description": "Period-editable structure: a sparse per-(period, constraint) toggle \u2014 the permanent\nconstraint is disabled for the period. No row = the constraint applies as usual. The\noverlay build reads these; the base plan is never touched.",
+                "description": "La coche d'une r\u00e8gle de saison pour une p\u00e9riode : la ligne de la r\u00e8gle dans le plan de p\u00e9riode, vue de l'\u00e9cran comme\nun r\u00e9glage \u00e9pars. La liste ne rend que les lignes qui diff\u00e8rent du d\u00e9faut de la nature du plan (fermeture : toute\nr\u00e8gle s'applique ; vacances : seules les r\u00e8gles de tout le club). Publier la coche d'un couple (p\u00e9riode, r\u00e8gle) met\nsa ligne \u00e0 jour ; la supprimer la rend au d\u00e9faut. Le planning principal reste intact.",
                 "properties": {
                     "id": {
                         "default": "",
@@ -31949,7 +31949,7 @@
                         }
                     }
                 ],
-                "description": "Period-editable structure: a sparse per-(period, constraint) toggle \u2014 the permanent\nconstraint is disabled for the period. No row = the constraint applies as usual. The\noverlay build reads these; the base plan is never touched."
+                "description": "La coche d'une r\u00e8gle de saison pour une p\u00e9riode : la ligne de la r\u00e8gle dans le plan de p\u00e9riode, vue de l'\u00e9cran comme\nun r\u00e9glage \u00e9pars. La liste ne rend que les lignes qui diff\u00e8rent du d\u00e9faut de la nature du plan (fermeture : toute\nr\u00e8gle s'applique ; vacances : seules les r\u00e8gles de tout le club). Publier la coche d'un couple (p\u00e9riode, r\u00e8gle) met\nsa ligne \u00e0 jour ; la supprimer la rend au d\u00e9faut. Le planning principal reste intact."
             },
             "ConstraintViolation": {
                 "type": "object",
@@ -40153,7 +40153,7 @@
         },
         {
             "name": "ConstraintPeriodOverride",
-            "description": "Period-editable structure: a sparse per-(period, constraint) toggle \u2014 the permanent\nconstraint is disabled for the period. No row = the constraint applies as usual. The\noverlay build reads these; the base plan is never touched."
+            "description": "La coche d'une r\u00e8gle de saison pour une p\u00e9riode : la ligne de la r\u00e8gle dans le plan de p\u00e9riode, vue de l'\u00e9cran comme\nun r\u00e9glage \u00e9pars. La liste ne rend que les lignes qui diff\u00e8rent du d\u00e9faut de la nature du plan (fermeture : toute\nr\u00e8gle s'applique ; vacances : seules les r\u00e8gles de tout le club). Publier la coche d'un couple (p\u00e9riode, r\u00e8gle) met\nsa ligne \u00e0 jour ; la supprimer la rend au d\u00e9faut. Le planning principal reste intact."
         },
         {
             "name": "Constraint",
