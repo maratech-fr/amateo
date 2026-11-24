@@ -1443,6 +1443,13 @@ jobs:
           # l'octet contre tests/Fixtures/engine-requests/. Le Lot Gate ne joue que cette suite : sans ce
           # gate, une PR de lot qui changerait la demande en silence passerait tous ses checks.
           FILES="$FILES tests/Integration/EngineRequestReferenceTest.php"
+          # NR d'axes CONSTRAINT SEMANTICS + GENERATION PIPELINE (lot conception 5, PR 2) — chaque clé de la
+          # demande au moteur a une source, libre, froide ou à chaud, et s'y tient : une clé libre (nom,
+          # adjoint, salarié, véhiculé, jours maximum, trajet) ne périme rien et n'entre pas dans la copie
+          # d'une version ; une clé froide entre dans l'empreinte et dans la copie ; une clé à chaud dans
+          # l'empreinte seule. Sans ce gate, une clé neuve sans source, ou un nom qui périmerait le planning,
+          # passerait tous les checks requis.
+          FILES="$FILES tests/Integration/EngineRequestKeySourcesTest.php"
           # NR d'axe GENERATION PIPELINE (lot conception 4, PR 1) — le décor des quinze demandes de
           # référence, écrit en SQL dans le schéma figé d'avant le lot 4, donne les mêmes demandes une
           # fois toutes les migrations jouées, sur une base dédiée par référence ; la chaîne joue

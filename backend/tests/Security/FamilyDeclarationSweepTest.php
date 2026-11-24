@@ -11,6 +11,10 @@ use App\Entity\CoachWishMutualization;
 use App\Entity\ConstraintConflict;
 use App\Entity\ImplicitRuleSetting;
 use App\Entity\PeriodReminderLog;
+use App\Entity\PlanConstraint;
+use App\Entity\PlanTeam;
+use App\Entity\PlanVenue;
+use App\Entity\Reservation;
 use App\Entity\Schedule;
 use App\Entity\SharedTrainingBlock;
 use App\Entity\SharedTrainingBlockTeam;
@@ -267,6 +271,71 @@ final class FamilyDeclarationSweepTest extends KernelTestCase
         ], $copied, 'FamilyCatalog::copiedAtPlanBirth() rend les cinq familles que la naissance d\'un plan copie.');
     }
 
+    /**
+     * Lot 5, PR 2 (ligne 5 du plan) — « ce qu'une version copie se déclare sur la famille » : toute famille de niveau
+     * saison ou plan dit si elle est froide (`cold: Family::ALL` ou la liste de ses champs froids) ou libre
+     * (`cold: []`) ; une famille qui ne dit rien rougit ici. Les familles du plan que le §3.1 du plan du lot 5 range
+     * dans le froid (séances et participation, grille, réservations, règles de bien-être, groupes et leurs membres,
+     * gymnases et règles d'une période) le sont, figées nommément ; les occupations, elles, sont libres. Angle jumeau,
+     * cité : `Integration/Plans/PlanStatesTest` (ce que la copie d'une version porte réellement).
+     */
+    public function testEverySeasonAndPlanFamilyDeclaresWhetherItIsColdOrFree(): void
+    {
+        // Témoin : le contrôle voit une famille de niveau saison ou plan qui ne dit rien, et ignore les autres niveaux.
+        self::assertSame(['Muette plan', 'Muette saison'], $this->familiesSilentOn('cold', [
+            'Muette plan' => new Family(Level::PLAN),
+            'Muette saison' => new Family(Level::SEASON),
+            'Version' => new Family(Level::VERSION),
+            'Club' => new Family(Level::CLUB),
+            'Libre' => new Family(Level::PLAN, cold: []),
+        ]));
+
+        $silent = $this->familiesSilentOn('cold', $this->declaredFamilies());
+        self::assertSame([], $silent, \sprintf(
+            "Ces familles de niveau saison ou plan ne disent pas si elles sont froides ou libres (#[Family(…, cold: …)]) :\n  - %s",
+            implode("\n  - ", $silent),
+        ));
+
+        $coldPlanFamilies = [];
+        foreach ($this->declaredFamilies() as $class => $family) {
+            if (Level::PLAN === $family->level && [] !== $family->cold && null !== $family->cold) {
+                $coldPlanFamilies[] = $class;
+            }
+        }
+        sort($coldPlanFamilies);
+        self::assertSame([
+            ImplicitRuleSetting::class,
+            PlanConstraint::class,
+            PlanTeam::class,
+            PlanVenue::class,
+            Reservation::class,
+            SharedTrainingBlock::class,
+            SharedTrainingBlockTeam::class,
+            VenueTrainingSlot::class,
+        ], $coldPlanFamilies, 'les familles froides du plan sont celles du §3.1 ; les occupations sont libres, les versions ne se copient pas elles-mêmes');
+    }
+
+    /**
+     * Lot 5, PR 2 (ligne 5 du plan) — « ce que la saison suivante reprend se déclare sur la famille » : toute famille de
+     * niveau saison ou plan dit si « Préparer la saison suivante » la reprend (`copiedToNextSeason`) ; une famille qui
+     * ne le dit pas rougit ici. La reprise elle-même, lue sur ce catalogue, est la PR 7 du lot.
+     */
+    public function testEverySeasonAndPlanFamilyDeclaresWhetherTheNextSeasonTakesItOver(): void
+    {
+        // Témoin : le contrôle voit une famille de niveau saison ou plan qui ne dit rien, et ignore les autres niveaux.
+        self::assertSame(['Muette'], $this->familiesSilentOn('copiedToNextSeason', [
+            'Muette' => new Family(Level::SEASON, cold: []),
+            'Dite' => new Family(Level::PLAN, cold: [], copiedToNextSeason: false),
+            'Version' => new Family(Level::VERSION),
+        ]));
+
+        $silent = $this->familiesSilentOn('copiedToNextSeason', $this->declaredFamilies());
+        self::assertSame([], $silent, \sprintf(
+            "Ces familles de niveau saison ou plan ne disent pas si la saison suivante les reprend (#[Family(…, copiedToNextSeason: …)]) :\n  - %s",
+            implode("\n  - ", $silent),
+        ));
+    }
+
     public function testAnUndeclaredClassIsRefusedLoudly(): void
     {
         // Le catalogue d'abord : une erreur du conteneur est aussi une LogicException.
@@ -342,6 +411,41 @@ final class FamilyDeclarationSweepTest extends KernelTestCase
         }
 
         return $silent;
+    }
+
+    /**
+     * Les familles de niveau saison ou plan dont la déclaration laisse le paramètre donné à null.
+     *
+     * @param 'cold'|'copiedToNextSeason' $parameter
+     * @param array<string, Family>       $families
+     *
+     * @return list<string>
+     */
+    private function familiesSilentOn(string $parameter, array $families): array
+    {
+        $silent = [];
+        foreach ($families as $class => $family) {
+            if (\in_array($family->level, [Level::SEASON, Level::PLAN], true) && null === $family->{$parameter}) {
+                $silent[] = $class;
+            }
+        }
+        sort($silent);
+
+        return $silent;
+    }
+
+    /** @return array<class-string, Family> la déclaration de chaque entité Doctrine qui en porte une */
+    private function declaredFamilies(): array
+    {
+        $declared = [];
+        foreach ($this->entityClasses() as $class) {
+            $attributes = new ReflectionClass($class)->getAttributes(Family::class);
+            if ([] !== $attributes) {
+                $declared[$class] = $attributes[0]->newInstance();
+            }
+        }
+
+        return $declared;
     }
 
     /** @return array<string, list<string>> enfant => familles dont il meurt (DELETE) */

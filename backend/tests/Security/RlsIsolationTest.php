@@ -4,10 +4,16 @@ declare(strict_types=1);
 
 namespace App\Tests\Security;
 
+use App\Entity\Schedule;
+use App\Entity\Season;
+use App\Enum\ScheduleStatus;
+use App\Enum\SeasonStatus;
 use App\Repository\ClubUserRepository;
 use App\Service\TenantConnectionContext;
 use App\Structure\FamilyCatalog;
 use App\Structure\Level;
+use App\Tests\SeasonPlanOf;
+use DateTimeImmutable;
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Exception\DriverException;
 use Doctrine\ORM\EntityManagerInterface;
@@ -435,6 +441,38 @@ final class RlsIsolationTest extends KernelTestCase
 
         $this->guc->setClubId(self::CLUB_A);
         self::assertSame(1, (int) $this->connection->fetchOne('SELECT count(*) FROM club_mailbox_message'), 'la ligne de A est intacte');
+    }
+
+    /**
+     * Lot 5, PR 2 (ligne 10 du plan, axe *tenant isolation*) — la copie du froid d'une version (`schedule_state`) est
+     * une table tenant comme les autres : sous le contexte d'un autre club elle rend 0 ligne, un UPDATE ou un DELETE
+     * venu de lui n'en touche aucune, une copie qui se dit d'un autre club est refusée. Prouvé en SQL brut sur la
+     * connexion de l'application, aucune couche applicative ; la liste des colonnes est le contrat du §5.
+     */
+    public function testAVersionCopyIsInvisibleToAnotherClub(): void
+    {
+        $this->seedTwoClubsWithOneTeamEach();
+        $this->guc->setClubId(self::CLUB_A);
+        $em = self::getContainer()->get(EntityManagerInterface::class);
+        $season = (new Season)->setClubId(self::CLUB_A)->setName('2025-2026')->setStartDate(new DateTimeImmutable('2025-09-01'))
+            ->setEndDate(new DateTimeImmutable('2026-06-30'))->setStatus(SeasonStatus::ACTIVE);
+        $em->persist($season);
+        $em->flush();
+        $version = (new Schedule)->setClubId(self::CLUB_A)->setSeasonId($season->getId())->setName('V1')->setStatus(ScheduleStatus::COMPLETED)
+            ->setSchedulePlanId(SeasonPlanOf::id(self::getContainer(), $season->getId()));
+        $em->persist($version);
+        $em->flush();
+        $insert = 'INSERT INTO schedule_state (id, created_at, updated_at, club_id, season_id, schedule_id, data) VALUES (gen_random_uuid(), now(), now(), ?, ?, ?, ?)';
+        $this->connection->executeStatement($insert, [self::CLUB_A, $season->getId(), $version->getId(), '{"PlanTeam": []}']);
+
+        $this->guc->setClubId(self::CLUB_B);
+        self::assertSame(0, (int) $this->connection->fetchOne('SELECT count(*) FROM schedule_state'), 'le club B ne voit jamais la copie du club A');
+        self::assertSame(0, $this->connection->executeStatement('UPDATE schedule_state SET data = \'{}\' WHERE club_id = ?', [self::CLUB_A]), 'UPDATE venu d\'un autre club : zéro ligne');
+        self::assertSame(0, $this->connection->executeStatement('DELETE FROM schedule_state WHERE club_id = ?', [self::CLUB_A]), 'DELETE venu d\'un autre club : zéro ligne');
+        self::assertNotSame('', $this->sqlStateOf($this->connection, $insert, [self::CLUB_A, $season->getId(), $version->getId(), '{}']), 'une copie écrite sous le contexte de B au nom de A est refusée');
+
+        $this->guc->setClubId(self::CLUB_A);
+        self::assertSame(['{"PlanTeam": []}'], $this->connection->fetchFirstColumn('SELECT data::text FROM schedule_state'), 'la copie du club A est intacte');
     }
 
     public function testCrossTenantUpdateAndDeleteAffectZeroRows(): void

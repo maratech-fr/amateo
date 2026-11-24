@@ -425,6 +425,12 @@ groupe datée d'un plan de période, temps de trajet, puis ce que le lot 4 range
 plan de vacances et plan de fermeture réglés, verdict `/validate-assignments` d'un déplacement dans le socle
 et dans une période, puis le filet des matchs du lot 7 : deux équipes dans une division, amicaux, suivi fédéral, coupes, puis le filet du lot 5 : socle de la saison suivante née par le vrai geste depuis un socle complet en vigueur, placement avec une équipe créée après la validation]. Chute attendue si une règle de groupe vise d'autres équipes, si le jour de match émis
 change ou si un réglage de période n'entre plus dans la demande ; le Lot Gate ne joue que cette suite) ·
+`Integration/EngineRequestKeySourcesTest` (axes *constraint semantics* + *generation pipeline*, lot
+conception 5 PR 2 — chaque clé des demandes de référence 11, 12, 13 et 5 a une source écrite dans le
+test, libre, froide ou à chaud : une clé libre ne change pas l'empreinte et son champ n'est pas déclaré
+froid, une clé froide change l'empreinte et son champ est déclaré froid, une clé à chaud change
+l'empreinte seule ; un adjoint et un temps de trajet sont libres. Chute attendue si une clé neuve n'a pas
+de source, si un nom périme le planning ou si un champ froid sort de la copie) ·
 `Integration/Migration/Lot4MigrationChainTest` (axe *generation pipeline*, lot conception 4 PR 1 — le décor
 des quinze références, écrit en SQL dans le schéma figé d'avant le lot 4 [`tests/Fixtures/lot-4/`], chargé
 dans une base dédiée par référence, donne les mêmes demandes une fois toutes les migrations jouées ; la

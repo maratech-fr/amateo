@@ -10,9 +10,11 @@ Fonctionnalité: La boucle de travail du gestionnaire tient à la régénératio
   respecte, et un verrou est souverain. Une séance que tient une réservation de gymnase ne se
   déplace pas depuis le planning : le refus dit de retirer d'abord la réservation, rien ne bouge.
   Sur un petit club réaliste (palier 60 s).
-  Après la régénération, seule une donnée qui peut déplacer une séance fait dire « périmé » au
-  planning : une couleur ou un niveau que rien ne vise ne le périme pas, une séance de plus ou un
-  nom le périment, et le geste inverse efface toujours le signal.
+  Après la régénération, seule une donnée froide ou à chaud fait dire « périmé » au planning : une
+  couleur ou un niveau que rien ne vise ne le périme pas ; un nom, un libellé, un adjoint, la case
+  salarié, le véhiculé, les jours maximum d'un coach et un temps de trajet sont libres et ne le
+  périment pas ; une séance de plus, un créneau de grille ou un coach-joueur le périment, et le geste
+  inverse efface toujours le signal.
 
   Scénario: Je contrains, je réserve, je verrouille, je régénère : tout tient
     Étant donné un petit club réaliste dont le planning de saison est en vigueur, puis rouvert pour y retravailler
@@ -39,11 +41,25 @@ Fonctionnalité: La boucle de travail du gestionnaire tient à la régénératio
     Quand je la retire
     Alors il ne l'est plus
     Quand je renomme l'équipe Loisir
-    Alors il est signalé périmé
-    Quand je lui rends son nom
-    Alors il ne l'est plus
-    Quand je renomme une contrainte puis lui rends son nom
     Alors il ne l'est toujours pas
+    Quand je renomme une contrainte
+    Alors il ne l'est toujours pas
+    Quand je renomme la réservation de SF1
+    Alors il ne l'est toujours pas
+    Quand j'ajoute Sacha comme adjoint de SF1
+    Alors il ne l'est toujours pas
+    Quand je coche salarié et véhiculé pour Dominique et lui fixe 3 jours au plus
+    Alors il ne l'est toujours pas
+    Quand je saisis puis corrige le trajet entre le Gymnase Nord et le Gymnase Sud
+    Alors il ne l'est toujours pas
+    Quand j'ajoute un créneau au Gymnase Sud le vendredi
+    Alors il est signalé périmé
+    Quand je retire ce créneau
+    Alors il ne l'est plus
+    Quand Alex joue aussi en SM1
+    Alors il est signalé périmé
+    Quand Alex ne joue plus en SM1
+    Alors il ne l'est plus
     Quand je remets « Les jeunes avant les grands » sur Obligatoire
     Alors le récapitulatif ne l'annonce plus comme ignorée
     Quand j'essaie de régler la présence d'un salarié sur Obligatoire

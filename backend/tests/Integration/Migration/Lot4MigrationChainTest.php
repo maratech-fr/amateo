@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Tests\Integration\Migration;
 
+use App\Plans\PlanStates;
 use App\Service\ImplicitRuleResolver;
 use App\Tests\EngineRequestDecorTrait;
 use App\Tests\EngineRequestPlanSettingsDecorTrait;
@@ -71,8 +72,12 @@ final class Lot4MigrationChainTest extends KernelTestCase
      * PR 4 « les règles appliquées » : une ligne `plan_constraint` par (plan de période, contrainte permanente), aucune
      * au plan de saison ni pour une contrainte datée ; supprime `constraint_period_override` ; s'annule si
      * `lignes ≠ contraintes permanentes × plans de période`.
+     *
+     * Lot 5, PR 2 « une version copie tout le froid » : table `schedule_state` (une copie par version, clé en cascade
+     * vers la version, RLS forcée) ; elle ne copie rien elle-même — la capture est la commande de conversion
+     * (`app:plans:capture-version-states`), jouée par la procédure manuelle du lot.
      */
-    private const array LOT_MIGRATIONS = ['DoctrineMigrations\Version20261127120000', 'DoctrineMigrations\Version20261128120000', 'DoctrineMigrations\Version20261129120000', 'DoctrineMigrations\Version20261130120000'];
+    private const array LOT_MIGRATIONS = ['DoctrineMigrations\Version20261127120000', 'DoctrineMigrations\Version20261128120000', 'DoctrineMigrations\Version20261129120000', 'DoctrineMigrations\Version20261130120000', 'DoctrineMigrations\Version20261201120000'];
 
     /**
      * Les contraintes permanentes du décor des références 12 et 13 (`EngineRequestDecorTrait`,
@@ -670,6 +675,47 @@ final class Lot4MigrationChainTest extends KernelTestCase
     }
 
     /**
+     * Lot 5, PR 2 (ligne 9 du plan, §6) : après toutes les migrations, la table des copies existe sur son contrat (une
+     * copie par version, clé en cascade vers la version, RLS forcée) et la migration n'a rien copié ; la commande de
+     * conversion donne alors à chaque version validée ou chargée une copie — autant de copies que de versions validées
+     * ou chargées — égale à l'état vivant de son plan, si bien qu'aucun plan n'est « en attente » ; `--check` rend 0.
+     */
+    #[TestWith(['socle-11-socle-complet'])]
+    #[TestWith(['periode-12-vacances-reglages'])]
+    public function testTheConversionGivesEveryKeptVersionItsCopy(string $decor): void
+    {
+        $admin = self::ownerConnection(self::caseName());
+        $keptSql = 'SELECT DISTINCT v FROM (SELECT chosen_schedule_id AS v FROM schedule_plan UNION SELECT lock_source_schedule_id FROM schedule_plan) k WHERE v IS NOT NULL ORDER BY v';
+
+        self::assertSame(self::LOT_MIGRATIONS, $this->migrate(), 'la chaîne joue exactement les migrations du lot');
+
+        self::assertSame(1, (int) $admin->fetchOne('SELECT COUNT(*) FROM pg_class WHERE oid = \'public.schedule_state\'::regclass AND relrowsecurity AND relforcerowsecurity'), 'la RLS est active et forcée');
+        self::assertSame(1, (int) $admin->fetchOne(
+            'SELECT COUNT(*) FROM pg_constraint c JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = ANY (c.conkey)'
+            . ' WHERE c.contype = \'f\' AND c.conrelid = \'public.schedule_state\'::regclass AND c.confrelid = \'public.schedule\'::regclass'
+            . ' AND a.attname = \'schedule_id\' AND c.confdeltype = \'c\'',
+        ), 'une clé vers la version, en cascade : la copie part avec sa version');
+        self::assertSame(1, (int) $admin->fetchOne(
+            'SELECT COUNT(*) FROM pg_index i WHERE i.indrelid = \'public.schedule_state\'::regclass AND i.indisunique AND i.indpred IS NULL'
+            . ' AND (SELECT array_agg(a.attname::text) FROM pg_attribute a WHERE a.attrelid = i.indrelid AND a.attnum = ANY (i.indkey::int2[])) = ARRAY[\'schedule_id\']',
+        ), 'une copie par version');
+        self::assertSame(0, (int) $admin->fetchOne('SELECT COUNT(*) FROM schedule_state'), 'la migration ne copie rien : la capture est l\'étape suivante de la procédure');
+        $kept = array_map(strval(...), $admin->fetchFirstColumn($keptSql));
+        self::assertNotSame([], $kept, 'témoin : le décor a une version validée ou chargée');
+
+        self::assertSame(0, $this->console(['command' => 'app:plans:capture-version-states']), 'la capture réussit');
+
+        self::assertSame($kept, array_map(strval(...), $admin->fetchFirstColumn('SELECT schedule_id FROM schedule_state ORDER BY schedule_id')), 'autant de copies que de versions validées ou chargées, une chacune');
+        $this->scopeGucToClub(self::ER_CLUB);
+        $states = self::getContainer()->get(PlanStates::class);
+        foreach ($kept as $versionId) {
+            $planId = (string) $admin->fetchOne('SELECT schedule_plan_id FROM schedule WHERE id = ?', [$versionId]);
+            self::assertTrue($states->of($versionId)->changesTo($states->capture($planId))->isEmpty(), 'la copie est l\'état vivant : aucun plan n\'est « en attente » après la conversion');
+        }
+        self::assertSame(0, $this->console(['command' => 'app:plans:capture-version-states', '--check' => true]), '--check rend 0 après la capture');
+    }
+
+    /**
      * Décision du fondateur (2026-11-22) : un plan de vacances né avant les copies de règles de bien-être les
      * reçoit à la conversion, aux valeurs de la saison du moment, puis ne suit plus la saison.
      */
@@ -763,6 +809,15 @@ final class Lot4MigrationChainTest extends KernelTestCase
         $server->executeStatement(\sprintf('DROP DATABASE IF EXISTS %s WITH (FORCE)', self::caseName()));
         $server->close();
         parent::tearDown();
+    }
+
+    /** @param array<string, mixed> $input */
+    private function console(array $input): int
+    {
+        $console = new Application(self::$kernel ?? throw new LogicException('noyau non démarré'));
+        $console->setAutoExit(false);
+
+        return $console->run(new ArrayInput([...$input, '--no-interaction' => true]), new BufferedOutput);
     }
 
     /**

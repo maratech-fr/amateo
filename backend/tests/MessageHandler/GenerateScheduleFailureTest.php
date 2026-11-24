@@ -32,6 +32,9 @@ use App\Service\TenantConnectionContext;
 use App\Tests\CrossStack\EngineFailureTypeMirrorTest;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
+use Doctrine\DBAL\Connection;
+use Doctrine\DBAL\DriverManager;
+use Doctrine\DBAL\Tools\DsnParser;
 use Doctrine\ORM\EntityManagerInterface;
 use PHPUnit\Framework\Attributes\Group;
 use RuntimeException;
@@ -49,6 +52,29 @@ use Symfony\Component\Mercure\Update;
 final class GenerateScheduleFailureTest extends KernelTestCase
 {
     use TenantGucTrait;
+
+    /** Le préfixe de slug du seul club dont la copie est refusée par le déclencheur de test. */
+    private const string COPY_FAILS_SLUG = 'copie-impossible';
+
+    public static function tearDownAfterClass(): void
+    {
+        $owner = self::ownerConnection();
+        if (\is_string($owner->fetchOne('SELECT to_regclass(\'public.schedule_state\')::text'))) {
+            $owner->executeStatement('DROP TRIGGER IF EXISTS test_copy_fails ON schedule_state');
+        }
+        $owner->executeStatement('DROP FUNCTION IF EXISTS test_copy_fails()');
+        $owner->close();
+        parent::tearDownAfterClass();
+    }
+
+    /** La connexion du propriétaire du schéma (poser un déclencheur exige d'être propriétaire de la table). */
+    private static function ownerConnection(): Connection
+    {
+        $url = $_SERVER['DATABASE_ADMIN_URL'] ?? $_ENV['DATABASE_ADMIN_URL'] ?? getenv('DATABASE_ADMIN_URL');
+        self::assertIsString($url, 'DATABASE_ADMIN_URL doit être posée');
+
+        return DriverManager::getConnection(new DsnParser(['postgresql' => 'pdo_pgsql', 'postgres' => 'pdo_pgsql'])->parse($url));
+    }
 
     /**
      * Mercure is best-effort: a valid COMPLETED solve must survive a publish
@@ -359,6 +385,49 @@ final class GenerateScheduleFailureTest extends KernelTestCase
         self::assertArrayHasKey('previousAssignments', $graft, 'la greffe persistée porte previousAssignments, PAS le snapshot');
         self::assertArrayNotHasKey('previousAssignments', $reloaded->getSnapshotData(), 'la greffe n\'entre jamais dans le snapshot gelé');
         self::assertEquals($body, $reloaded->engineInput(), 'le corps moteur == engineInput() (snapshot + greffe) rechargé');
+    }
+
+    /**
+     * Lot 5, PR 2 (ligne 6 du plan, axe *generation pipeline*) — écrire la copie du froid d'une version est BLOQUANT :
+     * si elle ne s'écrit pas, la génération échoue, sans crédit, au message générique, et la version ne garde ni statut
+     * « terminée » ni copie. Avant le lot, l'écriture de la photo était avalée (`GenerateScheduleHandler.php:388-396`).
+     *
+     * La panne est une vraie erreur de PostgreSQL : un déclencheur posé par le propriétaire sur `schedule_state` refuse
+     * toute écriture d'une copie pour un club dont le slug commence par {@see self::COPY_FAILS_SLUG} (ce club seul ;
+     * retiré en fin de classe). Une écriture en « insérer ou mettre à jour » est refusée de même.
+     */
+    public function testAGenerationWhoseCopyCannotBeWrittenFailsWithoutCredit(): void
+    {
+        self::ownerConnection()->executeStatement(
+            'CREATE OR REPLACE FUNCTION test_copy_fails() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN'
+            . ' IF EXISTS (SELECT 1 FROM club WHERE id = NEW.club_id AND slug LIKE \'' . self::COPY_FAILS_SLUG . '%\') THEN'
+            . ' RAISE EXCEPTION \'copie impossible (simulée)\'; END IF; RETURN NEW; END $$;'
+            . ' DROP TRIGGER IF EXISTS test_copy_fails ON schedule_state;'
+            . ' CREATE TRIGGER test_copy_fails BEFORE INSERT OR UPDATE ON schedule_state FOR EACH ROW EXECUTE FUNCTION test_copy_fails();',
+        );
+        [$em, $club, $schedule] = $this->seedScheduleReadyToGenerate(self::COPY_FAILS_SLUG);
+        $scheduleId = $schedule->getId();
+        $hub = $this->createMock(HubInterface::class);
+        $hub->method('publish')->willReturn('id');
+        $completed = json_encode(['status' => 'completed', 'score' => 0, 'slots' => [], 'diagnostics' => []], \JSON_THROW_ON_ERROR);
+
+        $this->runHandler($em, $club->getId(), $scheduleId, new MockHttpClient(new MockResponse($completed, ['http_code' => 200])), $hub);
+
+        $this->scopeGucToClub($club->getId());
+        $em->clear();
+        $reloaded = $em->getRepository(Schedule::class)->find($scheduleId);
+        self::assertInstanceOf(Schedule::class, $reloaded);
+        self::assertSame(ScheduleStatus::FAILED, $reloaded->getStatus(), 'sans sa copie, une version n\'est jamais « terminée »');
+        self::assertSame(0, (int) $em->getConnection()->fetchOne('SELECT output_credits_used FROM club WHERE id = ?', [$club->getId()]), 'aucun crédit pris');
+        self::assertSame(0, (int) $em->getConnection()->fetchOne('SELECT COUNT(*) FROM schedule_state WHERE schedule_id = ?', [$scheduleId]), 'aucune copie ne reste');
+        $types = array_map(
+            static fn (ScheduleDiagnostic $diagnostic): string => $diagnostic->getType(),
+            $em->getRepository(ScheduleDiagnostic::class)->findBy(['scheduleId' => $scheduleId]),
+        );
+        self::assertContains('internal_error', $types, 'l\'échec porte le diagnostic générique');
+        foreach ($em->getRepository(ScheduleDiagnostic::class)->findBy(['scheduleId' => $scheduleId]) as $diagnostic) {
+            self::assertStringNotContainsString('simulée', $diagnostic->getMessage(), 'le détail SQL ne fuit jamais dans le diagnostic');
+        }
     }
 
     /** @return array<string, mixed> le corps RÉELLEMENT envoyé au moteur (décodé) */

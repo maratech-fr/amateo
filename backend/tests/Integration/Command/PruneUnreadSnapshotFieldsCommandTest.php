@@ -159,6 +159,26 @@ final class PruneUnreadSnapshotFieldsCommandTest extends KernelTestCase
         }
     }
 
+    /**
+     * Lot 5, PR 2 (ligne 9 du plan, étape 4 de la conversion) : l'empreinte ne porte plus les clés libres. Une version
+     * d'avant le lot, dont le seul écart à l'état du jour est un nom (l'équipe renommée depuis), n'est plus périmée
+     * après la commande : l'empreinte recalculée depuis son snapshot, avec la recette du jour, vaut l'empreinte courante.
+     */
+    public function testAVersionWhoseOnlyChangeIsAFreeKeyIsNoLongerStale(): void
+    {
+        $f = $this->seedClub();
+        $snapshot = $this->freshPayload($f);
+        $f['scheduleId'] = $this->version($f, $snapshot, hash('sha256', 'empreinte de la recette d\'avant le lot 5'));
+        $this->scopeGucToClub($f['clubId']);
+        $this->em->getConnection()->executeStatement('UPDATE team SET name = ? WHERE club_id = ? AND name = ?', ['Seniors Alpha', $f['clubId'], 'Seniors A']);
+
+        $this->runCommand()->assertCommandIsSuccessful();
+
+        $version = $this->reload($f);
+        self::assertSame('Seniors A', $version->getSnapshotData()['teams'][0]['name'] ?? null, 'témoin : le snapshot garde le nom d\'avant');
+        self::assertSame($this->currentHash($f), $version->getSnapshotHash(), 'un nom changé depuis ne périme pas la version réalignée');
+    }
+
     /** Une structure vraiment changée depuis la génération reste périmée : on ne recopie jamais l'empreinte courante. */
     public function testAVersionWhoseStructureReallyChangedStaysStale(): void
     {
