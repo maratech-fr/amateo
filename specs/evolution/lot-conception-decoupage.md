@@ -1,7 +1,7 @@
 # Lot conception : découpage en lots de travail
 
 **Statut : découpage validé par le fondateur le 2026-11-20 (ordre, premier lot de côté, cadrage).
-Le lot 0 est livré en trois PR ; le lot 2 est livré sur `lot/conception`, non déployé ; les lots 1, 2, 3, 4 et 8 ont
+Le lot 0 est livré en trois PR ; le lot 2 est livré sur `lot/conception`, non déployé ; les lots 1, 2, 3, 4, 5, 7 et 8 ont
 chacun leur plan écrit, validé en version finale (voir §6). Déploiement unique (fondateur, 2026-11-21) : tout le lot
 conception part en une seule mise en production, à la fin, depuis `lot/conception`.** Ce document dit **quoi dans quel ordre** ; le **comment**
 de chaque lot est le travail de son plan (`morpheus`, puis `smith`).
@@ -243,6 +243,16 @@ peuvent avancer dans un espace de travail à part pendant qu'un lot principal at
 
 ### Lot 5 · Le socle froid
 
+- **Plan d'exécution** : [`lot-conception-5-le-socle-froid.md`](lot-conception-5-le-socle-froid.md) (version finale, plan écrit et
+  validé par le fondateur le 2026-11-24 avec ses décisions 1 à 8, §10 du plan ; sept PR). Ordre d'exécution : PR 1 à 3, puis le
+  lot 7, puis PR 4 à 7.
+- **Écarts à cette fiche (validés avec le plan)**
+  - E1 : contraintes permanentes, passerelles, règle de trajet et coach principal restent rangés à la saison, déclarés « froid du socle » (lot 9 pour les déplacer).
+  - E2 : les clés étrangères vers équipe et gymnase passent au lot 6 ; aucune clé vers `constraint` tant que E1 dure.
+  - E3 : deux mesures (« périmé ? » et « qu'est-ce qui change ? »), tenues par une garde « une clé de la demande, une source ».
+  - E4 : les plans de période gardent « Rouvrir » dans ce lot ; la règle du socle leur vient avec le Wizard du lot 6.
+  - E5 : « Charger » remet aussi le froid porté par les équipes et les gymnases existants (rang, catégorie, niveau, « divisible », gymnase imposé), ce qui revient sur la cible §15.
+  - E6 : le geste « Valider ces modifications » est le seul qui écrit la version en vigueur (coach de ses séances, entrée figée, empreinte) : exception nommée à « seule la version chargée se modifie ».
 - **Contenu**
   - L'état de travail et la version en vigueur ; une version = la copie complète du froid ;
     l'empreinte ne porte que sur le froid (§4, §5, §14).
@@ -280,7 +290,7 @@ peuvent avancer dans un espace de travail à part pendant qu'un lot principal at
 ### Lot 7 · Les matchs
 
 - **Plan d'exécution** : [`lot-conception-7-les-matchs.md`](lot-conception-7-les-matchs.md) (version finale, validée par
-  le fondateur le 2026-11-23 avec ses décisions Q1 à Q10, §13 du plan ; neuf PR). S'exécute après le lot 4. PR 1 livrée (le filet).
+  le fondateur le 2026-11-23 avec ses décisions Q1 à Q10, §13 du plan ; neuf PR). S'exécute après le lot 4 et après les PR 1 à 3 du lot 5 (« Charger » en une définition, sans photo de structure : la Q10 du plan du lot 7 devient sans objet, ses PR 3b et 4a ne touchent plus `StructureRestorer` ni `RestoreFeasibility`, son E3 pointe le lot 6). PR 1 livrée (le filet).
 - **Écarts à cette fiche (validés avec le plan)** : une compétition ne porte aucune règle propre (jours, heures, durée) :
   la seule règle par nature est la borne des coupes, 08:00 à 21:00, en constante (E1 du plan, reprise en ligne de
   roadmap après le lot conception) ; une division neuve jouée par deux équipes donne une compétition par équipe, et la
@@ -300,7 +310,7 @@ peuvent avancer dans un espace de travail à part pendant qu'un lot principal at
 - **Supprime** : la nature relue dans les libellés (six endroits), le cas « match sans
   compétition », les listes de types de conflit recopiées.
 - **Dépend de** : lot 1. Indépendant des lots 3 à 6 pour le code ; **s'exécute après le lot 4** (décision du fondateur,
-  2026-11-23).
+  2026-11-23) **et après les PR 1 à 3 du lot 5** (décision du fondateur, 2026-11-24).
 - **Preuve** : demande de placement au moteur identique, hors les deux exceptions ci-dessus ; scénarios d'import et de
   placement.
 
@@ -374,11 +384,12 @@ peuvent avancer dans un espace de travail à part pendant qu'un lot principal at
 Ce document porte la fiche de chaque lot (contenu, ce qu'il supprime, dépendances, preuve).
 **Le lot 0 est livré en trois PR** (compositeur, scénarios, enregistreur) la mesure du PDF restant
 une procédure à jouer ([`lot-conception-filet.md`](lot-conception-filet.md) §8) ; **le lot 2 est livré sur `lot/conception`, non déployé** (deux rôles ; le 1er mai côté serveur ; les déclarations d'accès ; le contrôle central ; les crédits à l'obtention ; le module matchs qui porte le socle et le régime de démonstration déclaré une fois) ; **le lot 1 est livré sur `lot/conception`, non déployé** (PR 1 à 5 : purge du cache au déploiement ; créneau de semaine ; étiquettes calculées à la lecture ; familles déclarées et purges qui les lisent ; constats tranchés) ; **le lot 3
-est livré sur `lot/conception`, non déployé** (PR 1, 2a, 2b, 3, 4 et 5 : « L'entrée du lot » : tables d'étiquettes supprimées, époque du schéma dans la clé du cache ; une seule porte de lecture de l'identité ; la personne au club ; effacer une personne par `app:people:erase` ; le lieu au club ; les temps de trajet au club) ; **le lot 4 est livré sur `lot/conception`, non déployé** (plan validé le 2026-11-22 ; six PR : le filet, quinze références de demande au moteur et la chaîne de conversion sur base dédiée ; le socle a son plan de saison ; les équipes d'un plan, une ligne par plan et par équipe ; les gymnases d'une période ; les règles appliquées et la nature sur le plan ; un constructeur de la demande au moteur et une copie de naissance) ; **le lot 8 a livré ses trois PR** (une ligne d'abonnement par club et par saison ; une offre payante, trois paliers ; au-dessus du palier, plus de sorties) : il s'est exécuté après la PR 1 du lot 3, pour ne pas ouvrir deux PR sur `SeasonTransitionService.php`, `ErasedClubPurger.php`, l'état des lieux et ce fichier. **Le lot 7 est en cours** (plan validé le 2026-11-23 ; PR 1 et 2 livrées sur `lot/conception`, non déployées : le filet des matchs, références 16 à 19 et vues des matchs enregistrées ; une seule liste des types de conflit) : il s'exécute après le lot 4, livré. Les plans des lots 1, 2, 3, 4, 7 et 8 sont dans
+est livré sur `lot/conception`, non déployé** (PR 1, 2a, 2b, 3, 4 et 5 : « L'entrée du lot » : tables d'étiquettes supprimées, époque du schéma dans la clé du cache ; une seule porte de lecture de l'identité ; la personne au club ; effacer une personne par `app:people:erase` ; le lieu au club ; les temps de trajet au club) ; **le lot 4 est livré sur `lot/conception`, non déployé** (plan validé le 2026-11-22 ; six PR : le filet, quinze références de demande au moteur et la chaîne de conversion sur base dédiée ; le socle a son plan de saison ; les équipes d'un plan, une ligne par plan et par équipe ; les gymnases d'une période ; les règles appliquées et la nature sur le plan ; un constructeur de la demande au moteur et une copie de naissance) ; **le lot 8 a livré ses trois PR** (une ligne d'abonnement par club et par saison ; une offre payante, trois paliers ; au-dessus du palier, plus de sorties) : il s'est exécuté après la PR 1 du lot 3, pour ne pas ouvrir deux PR sur `SeasonTransitionService.php`, `ErasedClubPurger.php`, l'état des lieux et ce fichier. **Le lot 7 est en cours** (plan validé le 2026-11-23 ; PR 1 et 2 livrées sur `lot/conception`, non déployées : le filet des matchs, références 16 à 19 et vues des matchs enregistrées ; une seule liste des types de conflit) : il s'exécute après le lot 4, livré, et après les PR 1 à 3 du lot 5. **Le lot 5 est planifié** (plan écrit et validé le 2026-11-24 ; sept PR : PR 1 à 3, puis le lot 7, puis PR 4 à 7 ; rien n'est construit). Les plans des lots 1, 2, 3, 4, 5, 7 et 8 sont dans
 [`lot-conception-1-declarations-communes.md`](lot-conception-1-declarations-communes.md),
 [`lot-conception-2-droits-modules-credits.md`](lot-conception-2-droits-modules-credits.md),
 [`lot-conception-3-personnes-et-lieux.md`](lot-conception-3-personnes-et-lieux.md),
 [`lot-conception-4-le-plan-porte-ses-donnees.md`](lot-conception-4-le-plan-porte-ses-donnees.md),
+[`lot-conception-5-le-socle-froid.md`](lot-conception-5-le-socle-froid.md),
 [`lot-conception-7-les-matchs.md`](lot-conception-7-les-matchs.md) et
 [`lot-conception-8-abonnement.md`](lot-conception-8-abonnement.md) ; les autres lots n'ont pas de
 plan écrit. Un plan s'écrit lot par lot, dans un fichier à lui (`specs/evolution/`), et se valide en entier avant tout
