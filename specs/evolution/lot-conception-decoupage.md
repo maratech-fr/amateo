@@ -225,7 +225,7 @@ peuvent avancer dans un espace de travail à part pendant qu'un lot principal at
   plafond par jour, règles de bien-être), tant que le gestionnaire ne le change pas dans ce plan ; à l'écran, les équipes
   dont le socle a changé depuis y apparaissent avec un réglage propre : seul changement visible du lot, hors information
   (la pré-sélection des équipes d'un plan de vacances se fait à sa création).
-- **Livré** : PR 1 (le filet), PR 2 (le socle a son plan de saison) et PR 3a (les équipes d'un plan) ; restent les PR 3b, 4 et 5.
+- **Livré** : PR 1 (le filet), PR 2 (le socle a son plan de saison), PR 3a (les équipes d'un plan) et PR 3b (les gymnases d'une période) ; restent les PR 4 et 5.
 - **Contenu**
   - Le socle devient un plan comme les autres : grille, occupations, réservations, mutualisations,
     réglages des règles, contraintes, passerelles, règle de trajet, composition (participation,

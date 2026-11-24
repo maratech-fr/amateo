@@ -131,6 +131,19 @@ RLS). **Aucune clé vers `team`** : « Charger » efface puis réinsère les éq
 la cascade applicative (`CascadePlan`). Gardé par `tests/Security/PlanCompositionTenantIsolationTest.php` (step
 bloquant).
 
+## `plan_venue` — les gymnases d'un plan de période, une clé composée vers le plan
+
+`plan_venue` (une ligne par (plan de période, gymnase), aucune pour le plan de saison : participation, effet de
+fermeture levé, masque de jours ; `Version20261129120000`) suit le même motif : `ENABLE` + `FORCE`, `tenant_isolation
+FOR ALL TO amateo_app`, `admin_all` (`amateo_owner`) et `readonly_tenant` (`amateo_read`). Sa clé vers le plan est
+COMPOSÉE, posée à la main (invisible de Doctrine : ne jamais committer le DROP que propose `migration-diff`) :
+`(schedule_plan_id, club_id)` → `schedule_plan (id, club_id)`, `ON DELETE CASCADE`. **Aucune clé vers `venue`** :
+« Charger » efface puis réinsère les gymnases ; la suppression d'un gymnase passe par la cascade applicative
+(`CascadePlan`). La route `/api/venue_period_overrides` refuse de la même façon (422, identique pour un gymnase
+inexistant et un gymnase d'un autre club) un couple sans ligne dans le club. Gardé par
+`tests/Security/PlanCompositionTenantIsolationTest.php` (step bloquant). La table remplace `venue_period_override`
+(supprimée).
+
 ## Porte superadmin (supervision développeur)
 
 La porte admin (P5-7, `Version20260813130000`) est **portée par des policies, plus par le

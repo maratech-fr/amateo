@@ -1,7 +1,7 @@
 # Lot 4 · Le plan porte ses données : plan d'exécution
 
 **Statut : version finale (v3 sur 4, après deux passes de `smith`). Plan validé par le fondateur le 2026-11-22 avec sa
-décision (§10) et l'écart E1 (§3.7). PR 1 (le filet), PR 2 (le socle a son plan) et PR 3a (les équipes d'un plan) livrées, écarts ci-dessous ; les PR suivantes restent à faire, une fois les mesures
+décision (§10) et l'écart E1 (§3.7). PR 1 (le filet), PR 2 (le socle a son plan), PR 3a (les équipes d'un plan) et PR 3b (les gymnases d'une période) livrées, écarts ci-dessous ; les PR suivantes restent à faire, une fois les mesures
 de `link` (§6) faites.** Voie **Full**. Branche cible : `lot/conception` (une PR ouverte à la fois ; « Lot Gate » seul :
 `docs/ops/ci-runner.md` § Branche de lot ; avant chaque merge : `make -C backend tests-complete` + features et specs de la
 zone sur la stack d'épreuve). Exécutant : `neo`, après les rouges de `tank`. Cadrage : la conception validée en tient lieu
@@ -180,9 +180,20 @@ Ordre 1 → 2 → 3a → 3b → 4 → 5. Raison : chaque conversion prouvée seu
   - Le gate : `PlanCompositionTenantIsolationTest` est dans le step `Blocking suite` de `ci.yml` et dans `docs/testing/blocking-tests.md` ; `Lot4MigrationChainTest` joue désormais cette migration.
 - Tests : lignes 12 à 23. `/security-review` : oui.
 
-### PR 3b · « Les gymnases d'une période »
+### PR 3b · « Les gymnases d'une période » — livrée
 - Migration : `plan_venue`, une ligne par (plan de période, gymnase) ; supprime `venue_period_override`.
 - Code : `PlanVenueClosures`, `ClosurePinRemover.php:370`, `VenueClosureImpact.php:361`, `VenuePeriodGridActionController`, les cinq créateurs, route d'exception, `CascadePlan.php:108`, restauration.
+- **Écarts au plan, tels que livrés** :
+  - Le §3.3 est **amendé** : `PlanComposition::venuesOf` lève sur une ligne manquante, mais les lecteurs de production (`PlanVenueClosures`, la route, le compte de la fenêtre de suppression) ne lisent que les lignes qui diffèrent du défaut (`PlanComposition::VENUE_DIFFERS_FROM_DEFAULT_DQL`) ; une ligne de gymnase absente vaut exactement le défaut (participe, fermeture non levée, sans masque). **Limite écrite** : aucun comportement ne change.
+  - Une ligne « ne participe pas » ET « fermeture levée » se traduit en DISABLED (`PlanVenue::mode()`) : état inatteignable par l'API et par la migration.
+  - `POST /api/venue_period_overrides` met à jour la ligne du couple (plan, gymnase) ; un mode n'agit sur la grille que s'il change ; `DELETE` remet la ligne au défaut (204) ; `GET` rend les lignes qui diffèrent du défaut.
+  - La trace d'audit `entity.deleted` est rétablie sur le `DELETE` de la route gymnase **et** sur celui de la route équipe (régression de la PR 3a corrigée ici) ; types `VenuePeriodOverride` et `TeamPeriodOverride`.
+  - `ParcImportExecutor` pose aussi les lignes de gymnase après la boucle des gymnases (test dédié dans `ParcImportExecuteTest`).
+  - Avant le lot, un gestionnaire pouvait écrire un réglage pour le gymnase d'un autre club : impact réel nul (la ligne restait inerte dans son club). Fermé par le modèle : 422 identique pour un gymnase inexistant et pour celui d'un autre club.
+  - La protection contre un réglage vers une autre saison repose sur le filtre de saison (testé pour les gymnases et les équipes) ; la vérification de club de `processDelete` est intestable seule (RLS et filtre la cachent).
+  - La migration `Version20261129120000` est **irréversible** (aucun `down()`).
+  - Le temps Behat, mesuré en local, dépasse le plafond de 950 s : à mesurer en CI (`make ci-mesure PART=origin/lot/conception`).
+  - Le gate : `PlanCompositionTenantIsolationTest` (cas gymnase) est dans le step `Blocking suite` de `ci.yml` et dans `docs/testing/blocking-tests.md` ; `Lot4MigrationChainTest` joue désormais cette migration.
 - Tests : lignes 24 à 28. `/security-review` : oui.
 
 ### PR 4 · « Les règles appliquées, la nature sur le plan »
