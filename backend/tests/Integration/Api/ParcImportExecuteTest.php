@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Tests\Integration\Api;
 
+use App\Entity\CalendarEntry;
 use App\Entity\Club;
 use App\Entity\ClubUser;
 use App\Entity\Place;
@@ -16,15 +17,19 @@ use App\Entity\Team;
 use App\Entity\User;
 use App\Entity\Venue;
 use App\Entity\VenueTrainingSlot;
+use App\Enum\CalendarEntryKind;
+use App\Enum\CalendarEntryPeriodType;
 use App\Enum\Gender;
 use App\Enum\SeasonStatus;
 use App\Plans\PlanComposition;
 use App\Service\ParcImport\ParcImportGate;
 use App\Service\ParcImport\TeamNameInterpreter;
+use App\Service\SchedulePlanProvisioner;
 use App\Service\SeasonResolver;
 use App\Tests\ChoosesPlanVersionTrait;
 use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\CrossStack\ParcImportReservationSemanticsGateTest;
+use App\Tests\Integration\Plans\PlanCompositionTest;
 use App\Tests\Integration\Service\FfbbExcelImporterTest;
 use App\Tests\SeasonPlanOf;
 use App\Tests\Support\SubscribesClub;
@@ -189,6 +194,40 @@ final class ParcImportExecuteTest extends WebTestCase
         self::assertSame(75, $slot->getDurationMinutes(), 'la durée de la case est transportée au créneau');
         self::assertSame(1, $slot->getDayOfWeek());
         self::assertSame('18:00', $slot->getStartTime()->format('H:i'));
+    }
+
+    /**
+     * Lot 4, PR 3b (ligne 26 du plan) : un import qui ne crée qu'un gymnase — l'équipe de la case existe déjà — lui
+     * pose sa ligne dans chaque plan de période de la saison. C'est le seul cas où aucune équipe créée n'appelle la
+     * porte des lignes après lui ; le balayage {@see PlanCompositionTest::testEveryVenueCreatorCallsTheDoor} voit
+     * l'appel, pas qu'il est atteint.
+     */
+    public function testAVenueCreatedAloneByTheImportGetsItsLineInEveryPeriodPlan(): void
+    {
+        $this->makeTeam('SM1', sessionsPerWeek: 2);
+        $this->scopeGucToClub($this->club->getId());
+        $entry = (new CalendarEntry)->setClubId($this->club->getId())->setSeasonId($this->season->getId())
+            ->setKind(CalendarEntryKind::PERIOD)->setPeriodType(CalendarEntryPeriodType::HOLIDAY)->setTitle('Noël')
+            ->setStartDate(new DateTimeImmutable('2026-12-21'))->setEndDate(new DateTimeImmutable('2026-12-27'));
+        $this->em->persist($entry);
+        $this->em->flush();
+        $holiday = self::getContainer()->get(SchedulePlanProvisioner::class)->provisionPeriodPlan($entry->getId());
+        self::assertIsString($holiday);
+        $teamsBefore = $this->rowCount('team');
+
+        $parc = $this->parcWithCases([
+            ['gymnase' => 'Palais Neuf', 'jour' => 1, 'debut' => '18:00', 'duree' => 90, 'equipes' => ['SM1']],
+        ]);
+        [$status] = $this->import($parc, [['section' => 'gymnases', 'index' => 0, 'coche' => true]]);
+        self::assertSame(200, $status);
+
+        self::assertSame($teamsBefore, $this->rowCount('team'), 'témoin : aucune équipe créée');
+        $venue = $this->em->getRepository(Venue::class)->findOneBy(['clubId' => $this->club->getId(), 'name' => 'Palais Neuf']);
+        self::assertInstanceOf(Venue::class, $venue, 'le gymnase dérivé est créé');
+        self::assertSame(1, (int) $this->em->getConnection()->fetchOne(
+            'SELECT COUNT(*) FROM plan_venue WHERE schedule_plan_id = ? AND venue_id = ? AND participates AND NOT closure_lifted AND day_overrides IS NULL',
+            [$holiday, $venue->getId()],
+        ), 'le gymnase créé a sa ligne au défaut dans les vacances');
     }
 
     public function testUncheckedDerivedLineIsNotWritten(): void
