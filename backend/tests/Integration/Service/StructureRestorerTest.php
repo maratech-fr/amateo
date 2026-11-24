@@ -41,6 +41,7 @@ use App\Service\StructureSnapshotter;
 use App\Structure\PersonDirectory;
 use App\Structure\PlaceDirectory;
 use App\Tests\ComposesPlanTeamsTrait;
+use App\Tests\ComposesPlanVenuesTrait;
 use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\ProvisionsPeriodPlanTrait;
 use App\Tests\SeasonPlanOf;
@@ -62,6 +63,7 @@ use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
 final class StructureRestorerTest extends KernelTestCase
 {
     use ComposesPlanTeamsTrait;
+    use ComposesPlanVenuesTrait;
     use CreatesPeopleAndPlacesTrait;
     use ProvisionsPeriodPlanTrait;
 
@@ -515,6 +517,88 @@ final class StructureRestorerTest extends KernelTestCase
 
         self::assertNull($this->em->getRepository(Team::class)->find($teamId), 'la photo ne porte pas l\'équipe');
         self::assertSame(0, $this->lineCountOf($teamId), 'ses lignes partent avec elle, celle des vacances comprise');
+    }
+
+    /**
+     * Lot 4, PR 3b (ligne 26 du plan) : « Charger » une version du socle ne change aucun réglage de gymnase d'un plan de
+     * période — hors service, fermeture levée et masque restent tels que le gestionnaire les a posés, gymnase présent
+     * dans la photo (effacé puis réinséré) compris.
+     */
+    public function testLoadingTheSocleChangesNoVenueSettingOfAPeriodPlan(): void
+    {
+        [$club, $season] = $this->seedClubSeason();
+        $nord = $this->newVenue($club->getId(), $season->getId(), 'Gymnase Nord');
+        $sud = $this->newVenue($club->getId(), $season->getId(), 'Gymnase Sud');
+        $v1 = $this->makeSchedule($club, $season);
+        $this->em->flush();
+        $this->snapshotter->store($v1, $this->snapshotter->serialize($club->getId(), $season->getId()));
+        $holidayPlan = $this->planIdOf($this->persistHoliday($club, $season));
+        $this->venueLine($holidayPlan, $nord->getId())->setParticipating(false)->setDayOverrides([6 => 'CLOSED']);
+        $this->venueLine($holidayPlan, $sud->getId())->setClosureLifted(true)->setDayOverrides([3 => 'OPEN']);
+        $this->em->flush();
+        $before = [$this->venueLineRow($holidayPlan, $nord->getId()), $this->venueLineRow($holidayPlan, $sud->getId())];
+        self::assertSame([
+            ['participates' => false, 'closureLifted' => false, 'dayOverrides' => [6 => 'CLOSED']],
+            ['participates' => true, 'closureLifted' => true, 'dayOverrides' => [3 => 'OPEN']],
+        ], $before, 'témoin : les vacances ont deux réglages de gymnase');
+
+        $this->restorer->apply($club->getId(), $season->getId(), $this->restorer->readSnapshot($v1));
+        $this->em->clear();
+
+        self::assertSame($before, [$this->venueLineRow($holidayPlan, $nord->getId()), $this->venueLineRow($holidayPlan, $sud->getId())], 'aucun réglage de gymnase des vacances n\'a changé');
+        self::assertSame(2, $this->venueLineCountOf($nord->getId()) + $this->venueLineCountOf($sud->getId()), 'une ligne par gymnase, ni doublée ni perdue');
+    }
+
+    /**
+     * Lot 4, PR 3b (ligne 26) : un gymnase supprimé depuis la photo, ramené par « Charger », retrouve sa ligne dans chaque
+     * plan de période, au défaut (participe, sans fermeture levée ni masque) ; aucune au plan de saison.
+     */
+    public function testAVenueBroughtBackByLoadingGetsItsLineInEveryPeriodPlan(): void
+    {
+        [$club, $season] = $this->seedClubSeason();
+        $nord = $this->newVenue($club->getId(), $season->getId(), 'Gymnase Nord');
+        $v1 = $this->makeSchedule($club, $season);
+        $this->em->flush();
+        $venueId = $nord->getId();
+        $this->snapshotter->store($v1, $this->snapshotter->serialize($club->getId(), $season->getId()));
+        $holidayPlan = $this->planIdOf($this->persistHoliday($club, $season));
+        self::assertSame(1, $this->venueLineCountOf($venueId), 'témoin : le gymnase a sa ligne dans les vacances');
+        self::getContainer()->get(EntityCascadeDeleter::class)->purgeChildrenOfVenue($nord);
+        $this->em->remove($nord);
+        $this->em->flush();
+        self::assertSame(0, $this->venueLineCountOf($venueId), 'témoin : supprimé, il n\'a plus aucune ligne');
+
+        $this->restorer->apply($club->getId(), $season->getId(), $this->restorer->readSnapshot($v1));
+        $this->em->clear();
+
+        self::assertSame(['participates' => true, 'closureLifted' => false, 'dayOverrides' => null], $this->venueLineRow($holidayPlan, $venueId), 'ramené, il a sa ligne dans les vacances, au défaut');
+        self::assertSame(1, $this->venueLineCountOf($venueId), 'une ligne dans les vacances, aucune au plan de saison');
+    }
+
+    /**
+     * Lot 4, PR 3b (ligne 26) : un gymnase créé après la photo, retiré par « Charger », perd ses lignes dans chaque plan
+     * de période, réglage du gestionnaire compris — aucune ligne ne survit à son gymnase.
+     */
+    public function testAVenueRemovedByLoadingLosesItsLinesInEveryPeriodPlan(): void
+    {
+        [$club, $season] = $this->seedClubSeason();
+        $v1 = $this->makeSchedule($club, $season);
+        $this->em->flush();
+        $this->snapshotter->store($v1, $this->snapshotter->serialize($club->getId(), $season->getId()));
+        $holidayPlan = $this->planIdOf($this->persistHoliday($club, $season));
+        $added = $this->newVenue($club->getId(), $season->getId(), 'Créé depuis');
+        $this->em->flush();
+        $venueId = $added->getId();
+        $this->layVenueLines($season->getId());
+        $this->venueLine($holidayPlan, $venueId)->setParticipating(false);
+        $this->em->flush();
+        self::assertSame(1, $this->venueLineCountOf($venueId), 'témoin : une ligne (réglée) dans les vacances');
+
+        $this->restorer->apply($club->getId(), $season->getId(), $this->restorer->readSnapshot($v1));
+        $this->em->clear();
+
+        self::assertNull($this->em->getRepository(Venue::class)->find($venueId), 'la photo ne porte pas le gymnase');
+        self::assertSame(0, $this->venueLineCountOf($venueId), 'ses lignes partent avec lui');
     }
 
     /**

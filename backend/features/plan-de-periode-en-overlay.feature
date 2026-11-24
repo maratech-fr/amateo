@@ -78,6 +78,15 @@ Fonctionnalité: Un plan de période se génère en overlay, sur sa propre grill
     Alors les SM1 ont toujours 2 séances dans le planning des vacances
     Et les SM1 y figurent parmi les équipes au réglage propre, avec 2 séances
 
+  Scénario: Je mets un gymnase hors service pour les vacances, puis je le remets en service avec sa grille
+    Hors service, le gymnase ne sert pas la génération des vacances et garde sa grille ; remis en service, il la
+    retrouve telle quelle et ne figure plus parmi les réglages des vacances.
+    Étant donné un petit club réaliste dont le planning de saison est en vigueur, et des vacances à venir
+    Quand je mets le Gymnase Nord hors service pour les vacances
+    Alors aucune séance des vacances ne se tient au Gymnase Nord
+    Quand je remets le Gymnase Nord en service pour les vacances
+    Alors le Gymnase Nord a retrouvé sa grille des vacances et ne figure plus parmi les réglages des vacances
+
   Scénario: Je re-date l'incident découpé : l'aperçu m'annonce ce qui change, je confirme
     Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur
     Et une fermeture à venir découpée en trois semaines-segments, chacune avec son plan

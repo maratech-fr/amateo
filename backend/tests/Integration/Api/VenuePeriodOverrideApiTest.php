@@ -25,6 +25,8 @@ use App\Enum\LockLevel;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
 use App\Service\SchedulePlanProvisioner;
+use App\Tests\Api\PeriodSettingUpsertTest;
+use App\Tests\ComposesPlanVenuesTrait;
 use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\ProvisionsPeriodPlanTrait;
 use App\Tests\SeasonPlanOf;
@@ -47,13 +49,17 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
  *
  * Ce que ces cas prouvent : POST d'un mode vide la grille du gymnase pour cette période
  * (et emporte les épinglages qu'elle portait), DELETE = retour à « hériter » et RECOPIE le
- * modèle de saison, le doublon rend un 422 propre, et rien de tout cela ne franchit la
- * frontière du club.
+ * modèle de saison, et rien de tout cela ne franchit la frontière du club.
+ *
+ * Lot 4, PR 3b : chaque gymnase a sa ligne dans chaque plan de période ; DELETE la rend au
+ * défaut au lieu de l'effacer. Publier deux fois le même réglage le met à jour (le 422 du
+ * doublon a disparu) : {@see PeriodSettingUpsertTest::testPublishingTheSameVenueSettingTwiceUpdatesIt}.
  */
 #[Group('phase1')]
 #[Group('integration')]
 final class VenuePeriodOverrideApiTest extends WebTestCase
 {
+    use ComposesPlanVenuesTrait;
     use CreatesPeopleAndPlacesTrait;
     use ProvisionsPeriodPlanTrait;
     use TenantGucTrait;
@@ -198,19 +204,6 @@ final class VenuePeriodOverrideApiTest extends WebTestCase
         );
     }
 
-    public function testDuplicateOverrideIsRejectedWithValidationNotServerError(): void
-    {
-        $this->post(['schedulePlanId' => $this->planId, 'venueId' => $this->venueA->getId(), 'mode' => 'BLANK']);
-        self::assertResponseStatusCodeSame(201);
-
-        // Un second POST sur le même (période, gymnase) → 422 propre, pas un 500 remonté
-        // de l'index unique. L'édition passe par PUT.
-        $this->post(['schedulePlanId' => $this->planId, 'venueId' => $this->venueA->getId(), 'mode' => 'DISABLED']);
-        self::assertResponseStatusCodeSame(422);
-        // P4-126 — le motif voyage jusque dans le corps (un 422 muet rendrait `violations: []`).
-        self::assertStringContainsString('Ce gymnase a déjà un réglage pour cette période — modifiez-le.', (string) $this->client->getResponse()->getContent());
-    }
-
     // ── Indispo INFORMATIVE (fondateur 2026-08-18) : le verrou P2-37 D2 SAUTE ──
     // Un gymnase entièrement fermé par une indisponibilité déclarée redevient PILOTABLE :
     // la coche du plan fait foi. Ces trois cas gardaient l'inverse (refus 422) — ils s'inversent.
@@ -253,10 +246,10 @@ final class VenuePeriodOverrideApiTest extends WebTestCase
         $this->client->request('DELETE', '/api/venue_period_overrides/' . $created['id'], [], [], $this->headers());
         self::assertResponseStatusCodeSame(204);
 
-        $this->em->clear();
-        self::assertNull(
-            $this->em->getRepository(VenuePeriodOverride::class)->find($created['id']),
-            'l’override est bien supprimé : le retour à « hériter » n’est plus verrouillé',
+        self::assertSame(
+            ['participates' => true, 'closureLifted' => false, 'dayOverrides' => null],
+            $this->venueLineRow($this->planId, $this->venueA->getId()),
+            'la ligne reprend le défaut : le retour à « hériter » n’est plus verrouillé',
         );
     }
 
@@ -301,7 +294,8 @@ final class VenuePeriodOverrideApiTest extends WebTestCase
 
     public function testDeleteReturnsToInheritAndPurgesBothModeAndMask(): void
     {
-        // DELETE = retour complet au défaut : mode ET masque disparaissent (sparse : pas de ligne).
+        // DELETE = retour complet au défaut : mode ET masque disparaissent, la ligne reste (lot 4, PR 3b : chaque gymnase
+        // a sa ligne dans chaque plan de période), et la liste ne la rend plus.
         $created = $this->post([
             'schedulePlanId' => $this->planId,
             'venueId' => $this->venueA->getId(),
@@ -313,8 +307,12 @@ final class VenuePeriodOverrideApiTest extends WebTestCase
         $this->client->request('DELETE', '/api/venue_period_overrides/' . $created['id'], [], [], $this->headers());
         self::assertResponseStatusCodeSame(204);
 
-        $this->em->clear();
-        self::assertNull($this->em->getRepository(VenuePeriodOverride::class)->find($created['id']), 'la ligne — mode ET masque — a disparu');
+        self::assertSame(
+            ['participates' => true, 'closureLifted' => false, 'dayOverrides' => null],
+            $this->venueLineRow($this->planId, $this->venueA->getId()),
+            'la ligne reprend le défaut — mode ET masque effacés',
+        );
+        self::assertCount(0, $this->getCollection('?schedulePlanId=' . $this->planId . '&venueId=' . $this->venueA->getId()), 'une ligne au défaut n’est pas un réglage : la liste ne la rend pas');
     }
 
     public function testAPartialClosureStillLetsTheVenueBeConfigured(): void

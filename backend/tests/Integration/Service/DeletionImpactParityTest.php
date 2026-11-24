@@ -51,6 +51,7 @@ use App\Structure\FamilyCatalog;
 use App\Structure\OnDelete;
 use App\Tests\ChoosesPlanVersionTrait;
 use App\Tests\ComposesPlanTeamsTrait;
+use App\Tests\ComposesPlanVenuesTrait;
 use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\RealForeignKeysTrait;
 use App\Tests\SeasonPlanOf;
@@ -90,6 +91,7 @@ final class DeletionImpactParityTest extends KernelTestCase
 {
     use ChoosesPlanVersionTrait;
     use ComposesPlanTeamsTrait;
+    use ComposesPlanVenuesTrait;
     use CreatesPeopleAndPlacesTrait;
     use RealForeignKeysTrait;
     use TenantGucTrait;
@@ -355,6 +357,47 @@ final class DeletionImpactParityTest extends KernelTestCase
 
         self::assertSame(0, $this->lineCountOf($doomed->getId()), 'toutes ses lignes partent, celle du socle comprise');
         self::assertSame(3, $this->lineCountOf($other->getId()), 'les lignes d\'une autre équipe restent');
+    }
+
+    /**
+     * Lot 4, PR 3b (ligne 27 du plan) : la fenêtre de suppression d'un gymnase n'annonce que ses réglages de période qui
+     * diffèrent du défaut — hors service, fermeture levée, masque de jours, oui ; laissé au défaut dans la quatrième
+     * période, non — et la suppression emporte toutes ses lignes, sans toucher celles d'un autre gymnase.
+     */
+    public function testDeletingAVenueAnnouncesOnlyThePeriodSettingsThatDifferFromTheDefaultAndDeletesEveryLine(): void
+    {
+        [$club, $season] = $this->seed();
+        $doomed = $this->venue($club, $season, 'Matéo');
+        $other = $this->venue($club, $season, 'Debarros');
+        $provisioner = self::getContainer()->get(SchedulePlanProvisioner::class);
+        $plans = [];
+        foreach ([['holiday', CalendarEntryPeriodType::HOLIDAY, '2025-12-22', '2025-12-28'], ['closure', CalendarEntryPeriodType::CLOSURE, '2025-11-03', '2025-11-09'], ['winter', CalendarEntryPeriodType::HOLIDAY, '2026-02-16', '2026-02-22'], ['spring', CalendarEntryPeriodType::HOLIDAY, '2026-04-13', '2026-04-19']] as [$key, $type, $start, $end]) {
+            $entry = (new CalendarEntry)->setClubId($club->getId())->setSeasonId($season->getId())->setKind(CalendarEntryKind::PERIOD)
+                ->setPeriodType($type)->setTitle($key)->setStartDate(new DateTimeImmutable($start))->setEndDate(new DateTimeImmutable($end));
+            $this->em->persist($entry);
+            $this->em->flush();
+            $plans[$key] = (string) $provisioner->provisionPeriodPlan($entry->getId());
+        }
+        $this->venueLine($plans['holiday'], $doomed->getId())->setParticipating(false);
+        $this->venueLine($plans['closure'], $doomed->getId())->setClosureLifted(true);
+        $this->venueLine($plans['winter'], $doomed->getId())->setDayOverrides([3 => 'CLOSED']);
+        $this->venueLine($plans['holiday'], $other->getId())->setParticipating(false);
+        $this->em->flush();
+        self::assertSame(4, $this->venueLineCountOf($doomed->getId()), 'témoin : une ligne par période, aucune au plan de saison');
+
+        $impact = self::getContainer()->get(DeletionImpactCounter::class)->forVenue($doomed);
+        $announced = [];
+        foreach ($impact->lines as $line) {
+            $announced[$line['key']] = $line['count'];
+        }
+        self::assertSame(3, $announced['venue_period_override'] ?? 0, 'seuls les réglages qui diffèrent du défaut sont annoncés : « 3 réglages de période »');
+
+        self::getContainer()->get(EntityCascadeDeleter::class)->purgeChildrenOfVenue($doomed);
+        $this->em->flush();
+        $this->em->clear();
+
+        self::assertSame(0, $this->venueLineCountOf($doomed->getId()), 'toutes ses lignes partent, celle laissée au défaut comprise');
+        self::assertSame(4, $this->venueLineCountOf($other->getId()), 'les lignes d\'un autre gymnase restent');
     }
 
     public function testDeletingATeamKillsEveryBlockItBelongsToEntirely(): void

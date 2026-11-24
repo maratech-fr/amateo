@@ -10,10 +10,13 @@ use App\Entity\ClubUser;
 use App\Entity\Season;
 use App\Entity\Team;
 use App\Entity\User;
+use App\Entity\VenueTrainingSlot;
 use App\Enum\CalendarEntryKind;
 use App\Enum\CalendarEntryPeriodType;
 use App\Enum\SeasonStatus;
 use App\Tests\ComposesPlanTeamsTrait;
+use App\Tests\ComposesPlanVenuesTrait;
+use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\ProvisionsPeriodPlanTrait;
 use App\Tests\SeasonPlanOf;
 use App\Tests\TenantGucTrait;
@@ -30,12 +33,17 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
  * de réponse, sans erreur — l'écran ne sait pas si une ligne « existe », il publie ce que le gestionnaire a réglé.
  * La liste rend une seule ligne pour le couple.
  *
- * Les cas « gymnase » (PR 3b) et « règle » (PR 4) rejoindront ce fichier.
+ * Lot 4, PR 3b (ligne 28 du plan) : même règle pour le réglage d'un gymnase ; le republier sans changer son mode ne
+ * rejoue pas l'effet de ce mode sur la grille de la période.
+ *
+ * Le cas « règle » (PR 4) rejoindra ce fichier.
  */
 #[Group('integration')]
 final class PeriodSettingUpsertTest extends WebTestCase
 {
     use ComposesPlanTeamsTrait;
+    use ComposesPlanVenuesTrait;
+    use CreatesPeopleAndPlacesTrait;
     use ProvisionsPeriodPlanTrait;
     use TenantGucTrait;
 
@@ -50,6 +58,41 @@ final class PeriodSettingUpsertTest extends WebTestCase
     private string $holiday;
 
     private string $teamId;
+
+    private string $venueId;
+
+    private string $clubId;
+
+    /**
+     * Le gymnase a sa ligne dans les vacances : publier deux fois son réglage la met à jour, même code de réponse, une
+     * seule ligne listée. Republier le même mode (une grille ressaisie, « VIERGE ») ne revide pas la grille que le
+     * gestionnaire vient d'y saisir.
+     */
+    public function testPublishingTheSameVenueSettingTwiceUpdatesIt(): void
+    {
+        $this->client->request('GET', '/api/venue_period_overrides?schedulePlanId=' . $this->holiday, [], [], $this->headers());
+        self::assertResponseIsSuccessful();
+        self::assertSame([], json_decode((string) $this->client->getResponse()->getContent(), true)['member'] ?? null, 'avant toute publication, aucun réglage de gymnase listé : la ligne au défaut n\'en est pas un');
+
+        $first = $this->publishTo('venue_period_overrides', ['schedulePlanId' => $this->holiday, 'venueId' => $this->venueId, 'mode' => 'BLANK']);
+        $handTyped = (new VenueTrainingSlot)->setClubId($this->clubId)->setSeasonId($this->season->getId())->setSchedulePlanId($this->holiday)
+            ->setVenueId($this->venueId)->setDayOfWeek(3)->setStartTime(new DateTimeImmutable('10:00'))->setDurationMinutes(90)->setCapacity(1);
+        $this->em->persist($handTyped);
+        $this->em->flush();
+        $second = $this->publishTo('venue_period_overrides', ['schedulePlanId' => $this->holiday, 'venueId' => $this->venueId, 'mode' => 'BLANK', 'dayOverrides' => ['6' => 'CLOSED']]);
+
+        self::assertSame($first, $second, 'la seconde publication répond comme la première, sans erreur');
+        self::assertSame(['participates' => true, 'closureLifted' => true, 'dayOverrides' => [6 => 'CLOSED']], $this->venueLineRow($this->holiday, $this->venueId), 'la ligne porte le dernier réglage publié');
+        self::assertSame(1, (int) $this->em->getConnection()->fetchOne('SELECT COUNT(*) FROM venue_training_slot WHERE schedule_plan_id = ? AND venue_id = ?', [$this->holiday, $this->venueId]), 'le même mode republié ne revide pas la grille saisie à la main');
+
+        $this->client->request('GET', '/api/venue_period_overrides?schedulePlanId=' . $this->holiday, [], [], $this->headers());
+        self::assertResponseIsSuccessful();
+        $members = json_decode((string) $this->client->getResponse()->getContent(), true)['member'] ?? [];
+        self::assertIsArray($members);
+        $mine = array_values(array_filter($members, fn (mixed $m): bool => \is_array($m) && $this->venueId === ($m['venueId'] ?? null)));
+        self::assertCount(1, $mine, 'une seule ligne pour le couple (plan, gymnase)');
+        self::assertSame(['BLANK', ['6' => 'CLOSED']], [$mine[0]['mode'] ?? null, $mine[0]['dayOverrides'] ?? null]);
+    }
 
     public function testPublishingTheSameTeamSettingTwiceUpdatesIt(): void
     {
@@ -100,6 +143,10 @@ final class PeriodSettingUpsertTest extends WebTestCase
         $this->em->flush();
         $this->teamId = $team->getId();
         $this->setSocleTeam($this->season->getId(), $this->teamId, 2);
+        $this->clubId = $club->getId();
+        $venue = $this->newVenue($club->getId(), $this->season->getId(), 'Gymnase Nord');
+        $this->em->flush();
+        $this->venueId = $venue->getId();
         $entry = (new CalendarEntry)->setClubId($club->getId())->setSeasonId($this->season->getId())
             ->setKind(CalendarEntryKind::PERIOD)->setPeriodType(CalendarEntryPeriodType::HOLIDAY)->setTitle('Noël')
             ->setStartDate(new DateTimeImmutable('2025-12-22'))->setEndDate(new DateTimeImmutable('2025-12-28'));
@@ -115,7 +162,17 @@ final class PeriodSettingUpsertTest extends WebTestCase
      */
     private function publish(array $body): int
     {
-        $this->client->request('POST', '/api/team_period_overrides', [], [], $this->headers(), json_encode($body, \JSON_THROW_ON_ERROR));
+        return $this->publishTo('team_period_overrides', $body);
+    }
+
+    /**
+     * @param array<string, mixed> $body
+     *
+     * @return int le code de réponse
+     */
+    private function publishTo(string $route, array $body): int
+    {
+        $this->client->request('POST', '/api/' . $route, [], [], $this->headers(), json_encode($body, \JSON_THROW_ON_ERROR));
         $code = $this->client->getResponse()->getStatusCode();
         self::assertContains($code, [200, 201], 'la publication réussit : ' . $this->client->getResponse()->getContent());
 

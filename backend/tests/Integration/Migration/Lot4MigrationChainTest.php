@@ -64,8 +64,17 @@ final class Lot4MigrationChainTest extends KernelTestCase
      * PR 3a « les équipes d'un plan » : une ligne `plan_team` par (plan, équipe), socle compris ; supprime
      * `team_period_override`, `team.sessions_per_week`, `team.max_sessions_per_day` et
      * `schedule_plan.team_selection_initialized` ; photos converties ; s'annule si `lignes ≠ équipes × plans`.
+     *
+     * PR 3b « les gymnases d'une période » : une ligne `plan_venue` par (plan de période, gymnase), aucune au plan de
+     * saison ; supprime `venue_period_override` ; s'annule si `lignes ≠ gymnases × plans de période`.
      */
-    private const array LOT_MIGRATIONS = ['DoctrineMigrations\Version20261127120000', 'DoctrineMigrations\Version20261128120000'];
+    private const array LOT_MIGRATIONS = ['DoctrineMigrations\Version20261127120000', 'DoctrineMigrations\Version20261128120000', 'DoctrineMigrations\Version20261129120000'];
+
+    /** Les gymnases du décor des références 12 et 13 (`EngineRequestDecorTrait`). */
+    private const array DECOR_VENUES = [
+        'Gymnase Nord' => 'be0e0000-0000-4000-8000-000000000001',
+        'Gymnase Sud' => 'be0e0000-0000-4000-8000-000000000002',
+    ];
 
     /** Les équipes du décor des références 12 et 13, par nom (`EngineRequestDecorTrait`). */
     private const array DECOR_TEAMS = [
@@ -465,6 +474,93 @@ final class Lot4MigrationChainTest extends KernelTestCase
     }
 
     /**
+     * Lot 4, PR 3b (ligne 24 du plan) : la conversion donne une ligne `plan_venue` à chaque couple (plan de période,
+     * gymnase) de la saison, aucune au plan de saison. Sans réglage, la ligne vaut le défaut (participe, fermeture non
+     * levée, sans masque) ; « hors service » devient « ne participe pas », masque dormant conservé ; « grille
+     * ressaisie » devient « effet de fermeture levé » ; le masque passe tel quel. La table d'exception disparaît ; la
+     * table neuve porte son unicité, sa clé composée en cascade vers le plan, aucune clé vers le gymnase, et sa RLS.
+     *
+     * Décor 12 (vacances) : Gymnase Sud hors service, Gymnase Nord fermé le mercredi par le masque. Décor 13
+     * (fermeture) : Gymnase Nord à grille ressaisie ; le test y ajoute le Gymnase Sud hors service avec un masque
+     * (samedi ouvert), dormant.
+     */
+    #[TestWith(['periode-12-vacances-reglages'])]
+    #[TestWith(['periode-13-fermeture-reglages'])]
+    public function testTheConversionGivesEveryVenueALineInEveryPeriodPlan(string $decor): void
+    {
+        $admin = self::ownerConnection(self::caseName());
+        $seasonPlan = (string) $admin->fetchOne('SELECT id FROM schedule_plan WHERE season_id = ? AND type = ?', [self::DECOR_SEASON, 'SEASON']);
+        $periodPlan = (string) $admin->fetchOne('SELECT id FROM schedule_plan WHERE season_id = ? AND type <> ?', [self::DECOR_SEASON, 'SEASON']);
+        self::assertNotSame('', $periodPlan, 'témoin : le décor a un plan de période');
+        $nord = self::DECOR_VENUES['Gymnase Nord'];
+        $sud = self::DECOR_VENUES['Gymnase Sud'];
+        if ('periode-13-fermeture-reglages' === $decor) {
+            $admin->executeStatement(
+                'INSERT INTO venue_period_override (id, version, created_at, updated_at, club_id, season_id, schedule_plan_id, venue_id, mode, day_overrides)'
+                . ' VALUES (?, 1, now(), now(), ?, ?, ?, ?, \'DISABLED\', \'{"6":"OPEN"}\')',
+                ['dbe00000-0000-4000-8000-0000000000d1', self::DECOR_CLUB, self::DECOR_SEASON, $periodPlan, $sud],
+            );
+        }
+        self::assertSame(array_values(self::DECOR_VENUES), array_map(strval(...), $admin->fetchFirstColumn('SELECT id FROM venue WHERE season_id = ? ORDER BY id', [self::DECOR_SEASON])), 'témoin : les deux gymnases du décor');
+        self::assertSame(2, (int) $admin->fetchOne('SELECT COUNT(*) FROM venue_period_override WHERE schedule_plan_id = ?', [$periodPlan]), 'témoin : deux réglages de gymnase à convertir');
+
+        self::assertSame(self::LOT_MIGRATIONS, $this->migrate(), 'la chaîne joue exactement les migrations du lot');
+
+        $expected = match ($decor) {
+            'periode-12-vacances-reglages' => [$nord => [true, false, [3 => 'CLOSED']], $sud => [false, false, null]],
+            default => [$nord => [true, true, null], $sud => [false, false, [6 => 'OPEN']]],
+        };
+        self::assertSame($expected, $this->venueLinesOf($admin, $periodPlan), 'chaque réglage de gymnase devient sa ligne, champ par champ');
+        self::assertSame([], $this->venueLinesOf($admin, $seasonPlan), 'aucune ligne de gymnase au plan de saison');
+        self::assertSame(2, (int) $admin->fetchOne('SELECT COUNT(*) FROM plan_venue WHERE season_id = ?', [self::DECOR_SEASON]), 'une ligne par (plan de période, gymnase), ni plus ni moins');
+        self::assertSame(0, (int) $admin->fetchOne(
+            'SELECT COUNT(*) FROM plan_venue l JOIN schedule_plan p ON p.id = l.schedule_plan_id WHERE l.club_id <> p.club_id OR l.season_id <> p.season_id',
+        ), 'chaque ligne porte le club et la saison de son plan');
+
+        self::assertNull($admin->fetchOne('SELECT to_regclass(\'public.venue_period_override\')'), 'la table d\'exception est supprimée');
+        foreach (['participates', 'closure_lifted'] as $column) {
+            self::assertSame('NO', $admin->fetchOne('SELECT is_nullable FROM information_schema.columns WHERE table_schema = \'public\' AND table_name = \'plan_venue\' AND column_name = ?', [$column]), \sprintf('plan_venue.%s est obligatoire', $column));
+        }
+        self::assertSame('false', $admin->fetchOne('SELECT column_default FROM information_schema.columns WHERE table_schema = \'public\' AND table_name = \'plan_venue\' AND column_name = \'closure_lifted\''), 'l\'effet de fermeture n\'est pas levé par défaut');
+        self::assertSame(1, (int) $admin->fetchOne(
+            'SELECT COUNT(*) FROM pg_index i WHERE i.indrelid = \'public.plan_venue\'::regclass AND i.indisunique AND i.indpred IS NULL'
+            . ' AND (SELECT array_agg(a.attname::text ORDER BY a.attname) FROM pg_attribute a WHERE a.attrelid = i.indrelid AND a.attnum = ANY (i.indkey::int2[])) = ARRAY[\'schedule_plan_id\', \'venue_id\']',
+        ), 'une ligne par couple (plan, gymnase)');
+        self::assertSame(1, (int) $admin->fetchOne(
+            'SELECT COUNT(*) FROM pg_constraint c WHERE c.contype = \'f\' AND c.conrelid = \'public.plan_venue\'::regclass'
+            . ' AND c.confrelid = \'public.schedule_plan\'::regclass AND c.confdeltype = \'c\''
+            . ' AND (SELECT array_agg(a.attname::text ORDER BY a.attname) FROM pg_attribute a WHERE a.attrelid = c.conrelid AND a.attnum = ANY (c.conkey)) = ARRAY[\'club_id\', \'schedule_plan_id\']',
+        ), 'une clé composée (plan, club) vers le plan, en cascade : une ligne ne désigne jamais le plan d\'un autre club');
+        self::assertSame(0, (int) $admin->fetchOne('SELECT COUNT(*) FROM pg_constraint c WHERE c.contype = \'f\' AND c.conrelid = \'public.plan_venue\'::regclass AND c.confrelid = \'public.venue\'::regclass'), 'pas de clé vers le gymnase : « Charger » efface puis réinsère les gymnases (E6)');
+        self::assertSame(1, (int) $admin->fetchOne('SELECT COUNT(*) FROM pg_class WHERE oid = \'public.plan_venue\'::regclass AND relrowsecurity AND relforcerowsecurity'), 'la RLS est active et forcée');
+    }
+
+    /**
+     * Lot 4, PR 3b, décor faussé : deux réglages pour le même couple (plan, gymnase) — l'unicité retirée exprès —
+     * donneraient deux lignes, ou une au hasard. La conversion s'annule : la table d'exception reste, aucune ligne
+     * n'est écrite, la migration n'est pas enregistrée.
+     */
+    #[TestWith(['periode-12-vacances-reglages'])]
+    public function testTheVenueConversionIsCancelledWhenTheCountWouldDiffer(string $decor): void
+    {
+        $admin = self::ownerConnection(self::caseName());
+        $admin->executeStatement('DROP INDEX uniq_venue_period_override');
+        $admin->executeStatement(
+            'INSERT INTO venue_period_override SELECT * FROM json_populate_record(NULL::venue_period_override, (SELECT (row_to_json(o)::jsonb || jsonb_build_object(\'id\', ?::text, \'mode\', \'BLANK\', \'day_overrides\', NULL))::json FROM venue_period_override o WHERE o.venue_id = ?))',
+            ['dbe00000-0000-4000-8000-0000000000dd', self::DECOR_VENUES['Gymnase Nord']],
+        );
+        self::assertSame(2, (int) $admin->fetchOne('SELECT COUNT(*) FROM venue_period_override WHERE venue_id = ?', [self::DECOR_VENUES['Gymnase Nord']]), 'témoin : deux réglages pour le même couple');
+
+        [$code, $output] = $this->runMigrations();
+
+        self::assertNotSame(0, $code, 'la conversion refuse un décor qui donnerait un autre compte que gymnases × plans de période : ' . $output);
+        $recorded = array_map(strval(...), $admin->fetchFirstColumn('SELECT version FROM doctrine_migration_versions'));
+        self::assertNotContains('DoctrineMigrations\Version20261129120000', $recorded, 'la migration n\'est pas enregistrée');
+        self::assertNotNull($admin->fetchOne('SELECT to_regclass(\'public.venue_period_override\')'), 'la table d\'exception est toujours là');
+        self::assertNull($admin->fetchOne('SELECT to_regclass(\'public.plan_venue\')'), 'aucune ligne n\'est écrite');
+    }
+
+    /**
      * Décision du fondateur (2026-11-22) : un plan de vacances né avant les copies de règles de bien-être les
      * reçoit à la conversion, aux valeurs de la saison du moment, puis ne suit plus la saison.
      */
@@ -607,6 +703,21 @@ final class Lot4MigrationChainTest extends KernelTestCase
         $lines = [];
         foreach ($admin->fetchAllAssociative('SELECT team_id, participates, sessions_per_week, max_sessions_per_day, source FROM plan_team WHERE schedule_plan_id = ? ORDER BY team_id', [$planId]) as $row) {
             $lines[(string) $row['team_id']] = [(bool) $row['participates'], (int) $row['sessions_per_week'], (int) $row['max_sessions_per_day'], null === $row['source'] ? null : (string) $row['source']];
+        }
+
+        return $lines;
+    }
+
+    /** @return array<string, array{0: bool, 1: bool, 2: array<int, string>|null}> participe, fermeture levée, masque trié, par gymnase */
+    private function venueLinesOf(Connection $admin, string $planId): array
+    {
+        $lines = [];
+        foreach ($admin->fetchAllAssociative('SELECT venue_id, participates, closure_lifted, day_overrides FROM plan_venue WHERE schedule_plan_id = ? ORDER BY venue_id', [$planId]) as $row) {
+            $mask = null === $row['day_overrides'] ? null : json_decode((string) $row['day_overrides'], true, 512, \JSON_THROW_ON_ERROR);
+            if (\is_array($mask)) {
+                ksort($mask);
+            }
+            $lines[(string) $row['venue_id']] = [(bool) $row['participates'], (bool) $row['closure_lifted'], \is_array($mask) && [] !== $mask ? $mask : null];
         }
 
         return $lines;
