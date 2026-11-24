@@ -16,6 +16,7 @@ use App\Enum\CompetitionType;
 use App\Enum\FixtureHomeAway;
 use App\Enum\SeasonStatus;
 use App\Enum\TeamLevel;
+use App\Plans\PlanComposition;
 use App\Service\ConflictRadarLoader;
 use App\Service\LeagueEnvelopeResolver;
 use App\Service\SeasonResolver;
@@ -147,9 +148,10 @@ final class ConflictRadarLeagueWindowTest extends WebTestCase
         $this->team->setPriorityTierId(3);
         $this->team->setName('U17M1');
         $this->team->setLevel(TeamLevel::REGIONAL);
-        $this->team->setSessionsPerWeek(2);
         $this->team->setIsActive(true);
         $this->em->persist($this->team);
+        $this->em->flush();
+        self::getContainer()->get(PlanComposition::class)->ensureLines($this->team->getSeasonId(), [$this->team->getId() => ['sessionsPerWeek' => 2]]);
         $this->em->flush();
         SeasonPlanOf::id(self::getContainer(), $this->season->getId());
 

@@ -16,12 +16,12 @@ use App\Entity\Constraint;
 use App\Entity\Season;
 use App\Entity\Team;
 use App\Entity\TeamCoach;
-use App\Entity\TeamPeriodOverride;
 use App\Entity\User;
 use App\Enum\CalendarEntryKind;
 use App\Enum\CalendarEntryPeriodType;
 use App\Enum\SeasonStatus;
 use App\Enum\TeamCoachRole;
+use App\Plans\PlanComposition;
 use App\Service\CoachWishTransferService;
 use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\TenantGucTrait;
@@ -706,6 +706,7 @@ final class PublicCoachWishTest extends WebTestCase
         // §8.4 — le SEUL chemin d'écriture non authentifié (page à jeton) ne crée JAMAIS d'objet de
         // plan : une soumission publique ne pose que des SOUHAITS. Aucun override, aucune contrainte
         // de transfert, même quand elle porte volume + indisponibilités + jours souhaités.
+        $linesBefore = $this->teamLines();
         $this->client->request('POST', '/api/coach-wishes/public/' . $this->token, [], [], ['CONTENT_TYPE' => 'application/json'], json_encode([
             'submissions' => [['teamId' => $this->team->getId(), 'weekStart' => '2026-02-16', 'slotsWanted' => 3, 'unavailableDays' => [4], 'wishedDays' => [1], 'comment' => 'x']],
         ], \JSON_THROW_ON_ERROR));
@@ -713,7 +714,7 @@ final class PublicCoachWishTest extends WebTestCase
 
         $this->em->clear();
         $this->scopeGucToClub($this->club->getId());
-        self::assertSame([], $this->em->getRepository(TeamPeriodOverride::class)->findBy(['teamId' => $this->team->getId()]), 'une soumission publique ne crée aucun override de plan');
+        self::assertSame($linesBefore, $this->teamLines(), 'une soumission publique ne touche aucune ligne de plan de l\'équipe');
         self::assertSame([], $this->em->getRepository(Constraint::class)->findBy(['source' => CoachWishTransferService::SOURCE]), 'une soumission publique ne crée aucune contrainte de plan');
     }
 
@@ -721,7 +722,8 @@ final class PublicCoachWishTest extends WebTestCase
     {
         // §8.4 — inclure une équipe au plan est un geste GESTIONNAIRE (le transfert) : la page
         // publique ne le peut pas. Même pour une équipe de SON périmètre, une soumission n'active
-        // rien au plan (aucun TeamPeriodOverride) — seul « Transférer au planning » le fait.
+        // rien au plan (aucune ligne de plan ne bouge) — seul « Transférer au planning » le fait.
+        $linesBefore = $this->teamLines();
         $this->client->request('POST', '/api/coach-wishes/public/' . $this->token, [], [], ['CONTENT_TYPE' => 'application/json'], json_encode([
             'submissions' => [['teamId' => $this->team->getId(), 'weekStart' => '2026-02-16', 'slotsWanted' => 2, 'unavailableDays' => [], 'comment' => null]],
         ], \JSON_THROW_ON_ERROR));
@@ -729,7 +731,7 @@ final class PublicCoachWishTest extends WebTestCase
 
         $this->em->clear();
         $this->scopeGucToClub($this->club->getId());
-        self::assertNull($this->em->getRepository(TeamPeriodOverride::class)->findOneBy(['teamId' => $this->team->getId()]), 'la page publique n\'inclut jamais une équipe au plan');
+        self::assertSame($linesBefore, $this->teamLines(), 'la page publique n\'inclut jamais une équipe au plan');
     }
 
     protected function setUp(): void
@@ -775,6 +777,16 @@ final class PublicCoachWishTest extends WebTestCase
         $this->em->persist($tokenEntity);
         $this->em->flush();
         $this->token = $tokenEntity->getToken();
+    }
+
+    /**
+     * Les lignes de l'équipe dans chaque plan (lot 4, PR 3a), colonne par colonne.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function teamLines(): array
+    {
+        return $this->em->getConnection()->fetchAllAssociative('SELECT * FROM plan_team WHERE team_id = ? ORDER BY id', [$this->team->getId()]);
     }
 
     /** @param list<array<string, mixed>> $lines */
@@ -841,6 +853,8 @@ final class PublicCoachWishTest extends WebTestCase
         $team = (new Team)->setClubId($this->club->getId())->setSeasonId($this->season->getId())
             ->setSportCategoryId('11111111-1111-4111-8111-111111111111')->setPriorityTierId(1)->setName($name);
         $this->em->persist($team);
+        $this->em->flush();
+        self::getContainer()->get(PlanComposition::class)->ensureLines($team->getSeasonId());
         $this->em->flush();
 
         return $team;
@@ -916,6 +930,8 @@ final class PublicCoachWishTest extends WebTestCase
         $team = (new Team)->setClubId($club->getId())->setSeasonId($season->getId())
             ->setSportCategoryId('22222222-2222-4222-8222-222222222222')->setPriorityTierId(1)->setName('Intrus');
         $this->em->persist($team);
+        $this->em->flush();
+        self::getContainer()->get(PlanComposition::class)->ensureLines($team->getSeasonId());
         $this->em->flush();
         $this->scopeGucToClub($this->club->getId());
 

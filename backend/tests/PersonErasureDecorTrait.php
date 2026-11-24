@@ -31,6 +31,7 @@ use App\Enum\ScheduleDiagnosticSeverity;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
 use App\Enum\TeamCoachRole;
+use App\Plans\PlanComposition;
 use App\Service\CoachWishCampaignTokenSync;
 use App\Service\FeedbackContextEnricher;
 use App\Service\PdfGenerator;
@@ -308,8 +309,10 @@ trait PersonErasureDecorTrait
         $em = static::getContainer()->get(EntityManagerInterface::class);
         $team = (new Team)->setClubId($club->getId())->setSeasonId($season->getId())
             ->setSportCategoryId('33333333-3333-3333-3333-333333333333')->setPriorityTierId(1)
-            ->setName($name)->setSessionsPerWeek(1)->setIsActive(true);
+            ->setName($name)->setIsActive(true);
         $em->persist($team);
+        $em->flush();
+        static::getContainer()->get(PlanComposition::class)->ensureLines($team->getSeasonId(), [$team->getId() => ['sessionsPerWeek' => 1]]);
         $em->flush();
 
         return $team;

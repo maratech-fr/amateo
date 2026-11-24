@@ -17,6 +17,7 @@ use App\Enum\CalendarEntryKind;
 use App\Enum\CalendarEntryPeriodType;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
+use App\Plans\PlanComposition;
 use App\Service\SchedulePlanProvisioner;
 use App\Service\StructureSnapshotter;
 use App\Storage\FeedbackScreenshotStorage;
@@ -108,6 +109,8 @@ final class RgpdExportTest extends WebTestCase
             ->setPeriodType(CalendarEntryPeriodType::HOLIDAY)->setTitle('Pâques')
             ->setStartDate(new DateTimeImmutable('2026-04-06'))->setEndDate(new DateTimeImmutable('2026-04-19'));
         $em->persist($team);
+        $em->flush();
+        self::getContainer()->get(PlanComposition::class)->ensureLines($team->getSeasonId());
         $em->persist($coach);
         $em->persist($entry);
         $em->flush();
@@ -286,6 +289,8 @@ final class RgpdExportTest extends WebTestCase
             ->setPeriodType(CalendarEntryPeriodType::HOLIDAY)->setTitle('Pâques')
             ->setStartDate(new DateTimeImmutable('2026-04-06'))->setEndDate(new DateTimeImmutable('2026-04-19'));
         $em->persist($team);
+        $em->flush();
+        self::getContainer()->get(PlanComposition::class)->ensureLines($team->getSeasonId());
         $em->persist($entry);
         $em->flush();
         $wish = (new CoachWish)->setClubId($clubId)->setSeasonId($seasonId)->setCalendarEntryId($entry->getId())

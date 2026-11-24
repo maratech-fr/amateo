@@ -9,6 +9,7 @@ use App\Entity\Season;
 use App\Entity\Sport;
 use App\Entity\SportCategory;
 use App\Entity\Team;
+use App\Plans\PlanComposition;
 use App\Tests\ChoosesPlanVersionTrait;
 use App\Tests\TenantGucTrait;
 use App\Tests\VerifiesRegistration;
@@ -205,9 +206,10 @@ final class ImportErrorMessageLeakTest extends WebTestCase
         $team->setSportCategoryId($category->getId());
         $team->setPriorityTierId(3);
         $team->setName('U13-1');
-        $team->setSessionsPerWeek(2);
         $team->setIsActive(true);
         $this->em->persist($team);
+        $this->em->flush();
+        self::getContainer()->get(PlanComposition::class)->ensureLines($team->getSeasonId(), [$team->getId() => ['sessionsPerWeek' => 2]]);
 
         // Sans code FFBB, l'import s'arrête sur un refus MÉTIER en amont du parseur :
         // le test vérifierait alors l'absence de fuite sur une réponse qui n'a jamais

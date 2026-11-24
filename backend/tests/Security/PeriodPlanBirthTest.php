@@ -15,6 +15,7 @@ use App\Entity\SchedulePlan;
 use App\Entity\Season;
 use App\Entity\SharedTrainingBlock;
 use App\Entity\SharedTrainingBlockTeam;
+use App\Entity\Team;
 use App\Entity\User;
 use App\Entity\Venue;
 use App\Entity\VenueTrainingSlot;
@@ -26,6 +27,7 @@ use App\Enum\ImplicitRuleKey;
 use App\Enum\SchedulePlanType;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
+use App\Plans\PlanComposition;
 use App\Service\ClosureSegmentation;
 use App\Service\ScheduleConstraintBuilder;
 use App\Service\SeasonResolver;
@@ -93,7 +95,6 @@ final class PeriodPlanBirthTest extends WebTestCase
         $plan = $this->planOf($club->getId(), $entryId);
         self::assertInstanceOf(SchedulePlan::class, $plan, 'Le geste « Adapter » doit créer le plan de la période.');
         self::assertSame(SchedulePlanType::HOLIDAY, $plan->getType());
-        self::assertFalse($plan->isTeamSelectionInitialized(), 'Un plan neuf n’est pas encore configuré (garde de seed).');
         self::assertSame(0, $this->scheduleCount($club->getId()), 'Aucune génération ne doit être nécessaire.');
     }
 
@@ -689,9 +690,14 @@ final class PeriodPlanBirthTest extends WebTestCase
         self::assertInstanceOf(SchedulePlan::class, $planA);
         self::assertInstanceOf(SchedulePlan::class, $planB);
 
-        // teamId opaque : le sujet est le cloisonnement par plan, pas l'équipe (l'API ne
-        // valide pas son existence — même parti pris que TeamPeriodOverrideApiTest).
-        $teamId = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
+        // Une vraie équipe de la saison : le sujet est le cloisonnement par plan, mais un réglage de période est la
+        // ligne de l'équipe dans le plan (lot 4, PR 3a), que la création de l'équipe pose dans chaque plan.
+        $team = (new Team)->setClubId($club->getId())->setSeasonId((string) $this->planOf($club->getId(), $entryA)?->getSeasonId())
+            ->setSportCategoryId('33333333-3333-3333-3333-333333333333')->setPriorityTierId(1)->setName('SM1')->setIsActive(true);
+        $this->em->persist($team);
+        $this->em->flush();
+        self::getContainer()->get(PlanComposition::class)->ensureLines($team->getSeasonId());
+        $teamId = $team->getId();
         $this->client->request('POST', '/api/team_period_overrides', [], [], $this->authHeaders($user) + [
             'CONTENT_TYPE' => 'application/json',
         ], json_encode([
@@ -1417,6 +1423,7 @@ final class PeriodPlanBirthTest extends WebTestCase
         $season->setTransitionData([]);
         $this->em->persist($season);
         $this->em->flush();
+        SeasonPlanOf::id(self::getContainer(), $season->getId());
 
         return [$user, $club, $season];
     }

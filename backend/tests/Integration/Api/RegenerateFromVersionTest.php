@@ -9,11 +9,11 @@ use App\Entity\Club;
 use App\Entity\ClubUser;
 use App\Entity\Fixture;
 use App\Entity\Place;
+use App\Entity\PlanTeam;
 use App\Entity\Schedule;
 use App\Entity\SchedulePlan;
 use App\Entity\Season;
 use App\Entity\Team;
-use App\Entity\TeamPeriodOverride;
 use App\Entity\User;
 use App\Entity\Venue;
 use App\Entity\VenueTrainingSlot;
@@ -25,11 +25,13 @@ use App\Enum\SchedulePlanType;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
 use App\Enum\TeamLevel;
+use App\Plans\PlanComposition;
 use App\Service\SchedulePlanProvisioner;
 use App\Service\StructureSnapshotter;
 use App\Tests\ChoosesPlanVersionTrait;
 use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\CreatesPeriodPlanTrait;
+use App\Tests\SeasonPlanOf;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -132,11 +134,8 @@ final class RegenerateFromVersionTest extends WebTestCase
 
         // A team added AFTER the snapshot, with a period override on it.
         $sm2 = $this->persistTeam('SM2');
-        $override = (new TeamPeriodOverride)
-            ->setClubId($this->club->getId())->setSeasonId($this->season->getId())
-            ->setSchedulePlanId($this->periodPlanId())
-            ->setTeamId($sm2->getId())->setIsActive(false);
-        $this->em->persist($override);
+        $override = self::getContainer()->get(PlanComposition::class)->lineOf($this->periodPlanId(), $sm2->getId());
+        $override->setParticipating(false);
         $this->em->flush();
 
         $this->client->request('POST', "/api/schedules/{$v1->getId()}/regenerate-from", [], [], $this->headers());
@@ -144,7 +143,7 @@ final class RegenerateFromVersionTest extends WebTestCase
 
         // Restore removed SM2 (not in the snapshot) → its override is a ghost → purged.
         $this->em->clear();
-        self::assertCount(0, $this->em->getRepository(TeamPeriodOverride::class)->findBy(['teamId' => $sm2->getId()]), 'a dangling period override is purged on restore');
+        self::assertCount(0, $this->em->getRepository(PlanTeam::class)->findBy(['teamId' => $sm2->getId()]), 'a dangling period line is purged on restore');
     }
 
     public function testLoadVersionIsRefusedWhenItWouldRemoveAnEngagedTeam(): void
@@ -520,8 +519,10 @@ final class RegenerateFromVersionTest extends WebTestCase
     {
         $team = (new Team)->setClubId($this->club->getId())->setSeasonId($this->season->getId())
             ->setSportCategoryId('33333333-3333-3333-3333-333333333333')->setPriorityTierId(1)
-            ->setName($name)->setSessionsPerWeek(1)->setIsActive(true);
+            ->setName($name)->setIsActive(true);
         $this->em->persist($team);
+        $this->em->flush();
+        self::getContainer()->get(PlanComposition::class)->ensureLines($team->getSeasonId(), [$team->getId() => ['sessionsPerWeek' => 1]]);
 
         return $team;
     }
@@ -550,6 +551,9 @@ final class RegenerateFromVersionTest extends WebTestCase
             ->setType(SchedulePlanType::HOLIDAY)->setName('Période de test')
             ->setStartDate(new DateTimeImmutable('2026-02-15'))->setEndDate(new DateTimeImmutable('2026-02-28'));
         $this->em->persist($plan);
+        $this->em->flush();
+        // Lot 4, PR 3a : un plan naît avec une ligne par équipe de sa saison (la porte, comme `provisionPeriodPlan`).
+        SeasonPlanOf::id(self::getContainer(), $plan->getSeasonId());
         $this->em->flush();
 
         return $plan->getId();

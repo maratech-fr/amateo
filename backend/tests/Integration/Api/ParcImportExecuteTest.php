@@ -18,6 +18,7 @@ use App\Entity\Venue;
 use App\Entity\VenueTrainingSlot;
 use App\Enum\Gender;
 use App\Enum\SeasonStatus;
+use App\Plans\PlanComposition;
 use App\Service\ParcImport\ParcImportGate;
 use App\Service\ParcImport\TeamNameInterpreter;
 use App\Service\SeasonResolver;
@@ -233,7 +234,7 @@ final class ParcImportExecuteTest extends WebTestCase
 
         $team = $this->em->getRepository(Team::class)->findOneBy(['clubId' => $this->club->getId(), 'name' => 'SM1']);
         self::assertInstanceOf(Team::class, $team);
-        self::assertSame(3, $team->getSessionsPerWeek(), 'l\'équipe créée porte le nombre de séances corrigé (3), jamais le défaut');
+        self::assertSame(3, self::getContainer()->get(PlanComposition::class)->socleLinesOf([$team->getId()])[$team->getId()]->getSessionsPerWeek(), 'l\'équipe créée porte le nombre de séances corrigé (3), jamais le défaut');
     }
 
     // ───────────────────────── PR2 (D9) — rang/genre/entente d'une équipe CRÉÉE (corrections) ─────────────────────────
@@ -317,7 +318,7 @@ final class ParcImportExecuteTest extends WebTestCase
         self::assertInstanceOf(Team::class, $reloaded);
         self::assertNull($reloaded->getCtcPartner(), 'appariée : le club partenaire ne bouge PAS (corrections.ctcPartner ignorée)');
         self::assertFalse($reloaded->getIsCtc(), 'appariée : l\'entente ne bouge PAS (corrections.ctc ignorée)');
-        self::assertSame(3, $reloaded->getSessionsPerWeek(), 'SEULES les séances bougent sur une appariée');
+        self::assertSame(3, self::getContainer()->get(PlanComposition::class)->socleLinesOf([$reloaded->getId()])[$reloaded->getId()]->getSessionsPerWeek(), 'SEULES les séances bougent sur une appariée');
     }
 
     public function testACreatedTeamWithoutAKnownGenderIsRefusedNamingTheLineWritingNothing(): void
@@ -366,7 +367,7 @@ final class ParcImportExecuteTest extends WebTestCase
         self::assertSame(3, $reloaded->getPriorityTierId(), 'appariée : le rang ne bouge PAS (corrections.tierId ignorée)');
         self::assertNull($reloaded->getGender(), 'appariée : le genre ne bouge PAS (corrections.genre ignorée)');
         self::assertFalse($reloaded->getIsCtc(), 'appariée : l\'entente ne bouge PAS (corrections.ctc ignorée)');
-        self::assertSame(4, $reloaded->getSessionsPerWeek(), 'SEULES les séances bougent sur une appariée');
+        self::assertSame(4, self::getContainer()->get(PlanComposition::class)->socleLinesOf([$reloaded->getId()])[$reloaded->getId()]->getSessionsPerWeek(), 'SEULES les séances bougent sur une appariée');
     }
 
     public function testACreatedTeamWithAForgedTierIdIsRefusedBeforePersist(): void
@@ -1066,7 +1067,7 @@ final class ParcImportExecuteTest extends WebTestCase
         $this->em->clear();
         $reloaded = $this->em->getRepository(Team::class)->find($armand->getId());
         self::assertInstanceOf(Team::class, $reloaded);
-        self::assertSame(3, $reloaded->getSessionsPerWeek(), 'seules les séances de l\'équipe choisie bougent');
+        self::assertSame(3, self::getContainer()->get(PlanComposition::class)->socleLinesOf([$reloaded->getId()])[$reloaded->getId()]->getSessionsPerWeek(), 'seules les séances de l\'équipe choisie bougent');
     }
 
     public function testACibleIdFromAnotherClubOnAnAmbiguousTeamLineIsRefusedWritingNothing(): void
@@ -1518,8 +1519,8 @@ final class ParcImportExecuteTest extends WebTestCase
         $sm2 = $this->em->getRepository(Team::class)->findOneBy(['clubId' => $this->club->getId(), 'name' => 'SM2']);
         self::assertInstanceOf(Team::class, $sm1);
         self::assertInstanceOf(Team::class, $sm2);
-        self::assertSame(2, $sm1->getSessionsPerWeek(), 'SM1 recomptée : 1 individuelle + 1 commune');
-        self::assertSame(2, $sm2->getSessionsPerWeek(), 'SM2 recomptée : 2 séances');
+        self::assertSame(2, self::getContainer()->get(PlanComposition::class)->socleLinesOf([$sm1->getId()])[$sm1->getId()]->getSessionsPerWeek(), 'SM1 recomptée : 1 individuelle + 1 commune');
+        self::assertSame(2, self::getContainer()->get(PlanComposition::class)->socleLinesOf([$sm2->getId()])[$sm2->getId()]->getSessionsPerWeek(), 'SM2 recomptée : 2 séances');
     }
 
     public function testHandCorrectedSessionsSurviveTheRecompute(): void
@@ -1551,7 +1552,7 @@ final class ParcImportExecuteTest extends WebTestCase
 
         $sm1 = $this->em->getRepository(Team::class)->findOneBy(['clubId' => $this->club->getId(), 'name' => 'SM1']);
         self::assertInstanceOf(Team::class, $sm1);
-        self::assertSame(5, $sm1->getSessionsPerWeek(), 'la valeur corrigée à la main (5) n\'est jamais écrasée par le recompte');
+        self::assertSame(5, self::getContainer()->get(PlanComposition::class)->socleLinesOf([$sm1->getId()])[$sm1->getId()]->getSessionsPerWeek(), 'la valeur corrigée à la main (5) n\'est jamais écrasée par le recompte');
     }
 
     /** L'import relève le plafond d'après les cases de l'équipe et le dit, ligne par ligne, dans `dailyCaps`. */
@@ -1608,7 +1609,7 @@ final class ParcImportExecuteTest extends WebTestCase
     public function testAnAppariedTeamIsRaisedButNeverLowered(): void
     {
         $three = $this->makeTeam('SM1', sessionsPerWeek: 4);
-        $three->setMaxSessionsPerDay(3);
+        self::getContainer()->get(PlanComposition::class)->socleLinesOf([$three->getId()])[$three->getId()]->setMaxSessionsPerDay(3);
         $this->makeTeam('SM2', sessionsPerWeek: 4);
         $this->em->flush();
 
@@ -1701,11 +1702,15 @@ final class ParcImportExecuteTest extends WebTestCase
             ->setStatus(SeasonStatus::ARCHIVED)->setTransitionData([]);
         $this->em->persist($previousSeason);
         $this->em->flush();
+        SeasonPlanOf::id(self::getContainer(), $previousSeason->getId());
+        SeasonPlanOf::id(self::getContainer(), $previousSeason->getId());
         $oldTeam = (new Team)
             ->setClubId($this->club->getId())->setSeasonId($previousSeason->getId())
             ->setSportCategoryId($this->uuid())->setPriorityTierId(3)
-            ->setName('SM1')->setSessionsPerWeek(2)->setIsActive(true);
+            ->setName('SM1')->setIsActive(true);
         $this->em->persist($oldTeam);
+        $this->em->flush();
+        self::getContainer()->get(PlanComposition::class)->ensureLines($oldTeam->getSeasonId(), [$oldTeam->getId() => ['sessionsPerWeek' => 2]]);
         $this->em->flush();
         $oldTeamId = $oldTeam->getId();
         $teamsBefore = $this->rowCount('team');
@@ -1732,8 +1737,8 @@ final class ParcImportExecuteTest extends WebTestCase
         $this->em->clear();
         $reloaded = $this->em->getRepository(Team::class)->find($oldTeamId);
         self::assertInstanceOf(Team::class, $reloaded);
-        self::assertSame(1, $reloaded->getMaxSessionsPerDay(), 'l\'équipe de l\'autre saison n\'est pas relevée');
-        self::assertSame(2, $reloaded->getSessionsPerWeek(), 'ni ses séances');
+        self::assertSame(1, self::getContainer()->get(PlanComposition::class)->socleValuesOfSeason($reloaded->getSeasonId())[$reloaded->getId()]['maxSessionsPerDay'] ?? null, 'l\'équipe de l\'autre saison n\'est pas relevée');
+        self::assertSame(2, self::getContainer()->get(PlanComposition::class)->socleValuesOfSeason($reloaded->getSeasonId())[$reloaded->getId()]['sessionsPerWeek'] ?? null, 'ni ses séances');
     }
 
     // ───────────────────────── Cap payant (grille 20 / 34 / 35+) ─────────────────────────
@@ -1803,6 +1808,7 @@ final class ParcImportExecuteTest extends WebTestCase
             ->setStatus(SeasonStatus::ACTIVE)->setTransitionData([]);
         $this->em->persist($this->season);
         $this->em->flush();
+        SeasonPlanOf::id(self::getContainer(), $this->season->getId());
 
         $this->provisionSeasonPlan($this->season);
 
@@ -1994,7 +2000,7 @@ final class ParcImportExecuteTest extends WebTestCase
         $team = $this->em->getRepository(Team::class)->findOneBy(['clubId' => $this->club->getId(), 'name' => $teamName]);
         self::assertInstanceOf(Team::class, $team, $teamName . ' existe');
 
-        return $team->getMaxSessionsPerDay();
+        return self::getContainer()->get(PlanComposition::class)->socleLinesOf([$team->getId()])[$team->getId()]->getMaxSessionsPerDay();
     }
 
     /** @param array{teamId: string, clubId: string} $foreign */
@@ -2002,7 +2008,7 @@ final class ParcImportExecuteTest extends WebTestCase
     {
         // Lecture SQL sous le GUC de l'autre club : le filtre Doctrine reste réglé sur le club de la dernière requête.
         $this->scopeGucToClub($foreign['clubId']);
-        $cap = $this->em->getConnection()->fetchOne('SELECT max_sessions_per_day FROM team WHERE id = ?', [$foreign['teamId']]);
+        $cap = $this->em->getConnection()->fetchOne('SELECT l.max_sessions_per_day FROM plan_team l JOIN schedule_plan p ON p.id = l.schedule_plan_id AND p.type = \'SEASON\' WHERE l.team_id = ?', [$foreign['teamId']]);
         $this->scopeGucToClub($this->club->getId());
         self::assertNotFalse($cap, 'l\'équipe de l\'autre club existe toujours');
 
@@ -2050,8 +2056,10 @@ final class ParcImportExecuteTest extends WebTestCase
         $team = (new Team)
             ->setClubId($this->club->getId())->setSeasonId($this->season->getId())
             ->setSportCategoryId($this->uuid())->setPriorityTierId(3)
-            ->setName($name)->setSessionsPerWeek($sessionsPerWeek)->setIsActive(true);
+            ->setName($name)->setIsActive(true);
         $this->em->persist($team);
+        $this->em->flush();
+        self::getContainer()->get(PlanComposition::class)->ensureLines($team->getSeasonId(), [$team->getId() => ['sessionsPerWeek' => $sessionsPerWeek]]);
         $this->em->flush();
 
         return $team;
@@ -2078,6 +2086,7 @@ final class ParcImportExecuteTest extends WebTestCase
             ->setStatus(SeasonStatus::ACTIVE)->setTransitionData([]);
         $this->em->persist($otherSeason);
         $this->em->flush();
+        SeasonPlanOf::id(self::getContainer(), $otherSeason->getId());
 
         $venue = $this->newVenue($otherClub->getId(), $otherSeason->getId(), $venueName)->setIsActive(true);
         $this->em->persist($venue);
@@ -2109,12 +2118,15 @@ final class ParcImportExecuteTest extends WebTestCase
             ->setStatus(SeasonStatus::ACTIVE)->setTransitionData([]);
         $this->em->persist($otherSeason);
         $this->em->flush();
+        SeasonPlanOf::id(self::getContainer(), $otherSeason->getId());
 
         $team = (new Team)
             ->setClubId($otherClub->getId())->setSeasonId($otherSeason->getId())
             ->setSportCategoryId($this->uuid())->setPriorityTierId(3)
-            ->setName($teamName)->setSessionsPerWeek(2)->setIsActive(true);
+            ->setName($teamName)->setIsActive(true);
         $this->em->persist($team);
+        $this->em->flush();
+        self::getContainer()->get(PlanComposition::class)->ensureLines($team->getSeasonId(), [$team->getId() => ['sessionsPerWeek' => 2]]);
         $this->em->flush();
 
         $this->scopeGucToClub($this->club->getId());
@@ -2239,6 +2251,7 @@ final class ParcImportExecuteTest extends WebTestCase
             ->setStatus(SeasonStatus::ACTIVE)->setTransitionData([]);
         $this->em->persist($otherSeason);
         $this->em->flush();
+        SeasonPlanOf::id(self::getContainer(), $otherSeason->getId());
         $seasonId = $otherSeason->getId();
         $this->scopeGucToClub($this->club->getId());
 
@@ -2266,6 +2279,7 @@ final class ParcImportExecuteTest extends WebTestCase
             ->setStatus(SeasonStatus::ACTIVE)->setTransitionData([]);
         $this->em->persist($otherSeason);
         $this->em->flush();
+        SeasonPlanOf::id(self::getContainer(), $otherSeason->getId());
 
         $block = (new SharedTrainingBlock)
             ->setClubId($otherClub->getId())->setSeasonId($otherSeason->getId())

@@ -21,6 +21,7 @@ use App\Enum\FixturePlacementSource;
 use App\Enum\FixtureStatus;
 use App\Enum\FixtureUnplacedReason;
 use App\Enum\SeasonStatus;
+use App\Plans\PlanComposition;
 use App\Service\FbiFixtureImporter;
 use App\Service\MatchPlacementPayloadBuilder;
 use App\Service\SeasonResolver;
@@ -640,9 +641,10 @@ final class LeagueReadAutoValidationTest extends WebTestCase
         $team->setSportCategoryId($category->getId());
         $team->setPriorityTierId(3);
         $team->setName('U15');
-        $team->setSessionsPerWeek(2);
         $team->setIsActive(true);
         $this->em->persist($team);
+        $this->em->flush();
+        self::getContainer()->get(PlanComposition::class)->ensureLines($team->getSeasonId(), [$team->getId() => ['sessionsPerWeek' => 2]]);
         $this->em->flush();
 
         return $team;

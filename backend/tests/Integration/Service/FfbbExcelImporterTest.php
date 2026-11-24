@@ -13,6 +13,7 @@ use App\Entity\Team;
 use App\Enum\Gender;
 use App\Enum\SeasonStatus;
 use App\Exception\ImportRejectedException;
+use App\Plans\PlanComposition;
 use App\Service\Basketball\FfbbExcelImporter;
 use App\Service\Basketball\TeamCreationSuggester;
 use App\Service\PlanEntitlements;
@@ -89,6 +90,8 @@ final class FfbbExcelImporterTest extends KernelTestCase
         $existing = (new Team)->setClubId($this->club->getId())->setSeasonId($this->seasonId)
             ->setSportCategoryId($this->categoryId('Seniors'))->setName('SM1')->setPriorityTierId(1);
         $this->em->persist($existing);
+        $this->em->flush();
+        self::getContainer()->get(PlanComposition::class)->ensureLines($existing->getSeasonId());
         $this->em->flush();
 
         $result = $this->importer()->import($this->xlsx([
@@ -170,6 +173,8 @@ final class FfbbExcelImporterTest extends KernelTestCase
         $existing = (new Team)->setClubId($this->club->getId())->setSeasonId($this->seasonId)
             ->setSportCategoryId($this->categoryId('Seniors'))->setName('SF1')->setPriorityTierId(1);
         $this->em->persist($existing);
+        $this->em->flush();
+        self::getContainer()->get(PlanComposition::class)->ensureLines($existing->getSeasonId());
         $this->em->flush();
 
         $result = $this->importer()->analyze($this->xlsx([
@@ -504,6 +509,7 @@ final class FfbbExcelImporterTest extends KernelTestCase
             self::getContainer()->get(PlanEntitlements::class),
             self::getContainer()->get(SportCategoryResolver::class),
             self::getContainer()->get(TeamCreationSuggester::class),
+            self::getContainer()->get(PlanComposition::class),
         );
     }
 

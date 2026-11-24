@@ -35032,11 +35032,6 @@
                             "null"
                         ]
                     },
-                    "teamSelectionInitialized": {
-                        "description": "La s\u00e9lection d'\u00e9quipes de ce plan a-t-elle d\u00e9j\u00e0 \u00e9t\u00e9 configur\u00e9e au moins une fois ?\nToujours faux sur un plan SEASON, qui n'a pas cette \u00e9tape.",
-                        "default": false,
-                        "type": "boolean"
-                    },
                     "windowEditable": {
                         "description": "La fen\u00eatre de cette fermeture est-elle modifiable (geste \u00ab Modifier les dates \u00bb) ?",
                         "default": false,
@@ -35184,11 +35179,6 @@
                             "null"
                         ]
                     },
-                    "teamSelectionInitialized": {
-                        "description": "La s\u00e9lection d'\u00e9quipes de ce plan a-t-elle d\u00e9j\u00e0 \u00e9t\u00e9 configur\u00e9e au moins une fois ?\nToujours faux sur un plan SEASON, qui n'a pas cette \u00e9tape.",
-                        "default": false,
-                        "type": "boolean"
-                    },
                     "windowEditable": {
                         "description": "La fen\u00eatre de cette fermeture est-elle modifiable (geste \u00ab Modifier les dates \u00bb) ?",
                         "default": false,
@@ -35308,11 +35298,6 @@
                                     "string",
                                     "null"
                                 ]
-                            },
-                            "teamSelectionInitialized": {
-                                "description": "La s\u00e9lection d'\u00e9quipes de ce plan a-t-elle d\u00e9j\u00e0 \u00e9t\u00e9 configur\u00e9e au moins une fois ?\nToujours faux sur un plan SEASON, qui n'a pas cette \u00e9tape.",
-                                "default": false,
-                                "type": "boolean"
                             },
                             "windowEditable": {
                                 "description": "La fen\u00eatre de cette fermeture est-elle modifiable (geste \u00ab Modifier les dates \u00bb) ?",
@@ -37754,7 +37739,7 @@
             },
             "TeamPeriodOverride": {
                 "type": "object",
-                "description": "Period-editable structure: a sparse per-(period, team) override \u2014 the team is\noff for the period, or trains a different number of sessions. No row = seasonal\ndefaults. The overlay build reads these; the base plan is never touched.",
+                "description": "Le r\u00e9glage d'une \u00e9quipe pour une p\u00e9riode : la ligne de l'\u00e9quipe dans le plan de p\u00e9riode, vue de l'\u00e9cran comme un\nr\u00e9glage \u00e9pars. La liste ne rend que les lignes qui diff\u00e8rent de la saison ou qu'un geste nomm\u00e9 a pos\u00e9es ; `null` en\nsortie = la valeur de la saison. Publier le r\u00e9glage d'un couple (plan, \u00e9quipe) met sa ligne \u00e0 jour ; le supprimer rend\n\u00e0 la ligne les valeurs de la saison. La saison ne se r\u00e8gle jamais par cette route.",
                 "properties": {
                     "id": {
                         "default": "",
@@ -37797,7 +37782,7 @@
                         ]
                     },
                     "source": {
-                        "description": "Lot 9 \u2014 l'origine de cet override quand il a \u00e9t\u00e9 pos\u00e9 par un geste nomm\u00e9 (``mutualisation``\npour une \u00e9quipe activ\u00e9e par la mutualisation d'une case) ; NULL pour un r\u00e9glage ordinaire du\nwizard. Le planning l'AFFICHE (pastille \u00ab via mutualisation \u00bb), il ne d\u00e9cide rien avec.",
+                        "description": "Lot 9 \u2014 l'origine de ce r\u00e9glage quand il a \u00e9t\u00e9 pos\u00e9 par un geste nomm\u00e9 (``mutualisation``\npour une \u00e9quipe activ\u00e9e par la mutualisation d'une case) ; NULL pour un r\u00e9glage ordinaire du\nwizard. Le planning l'AFFICHE (pastille \u00ab via mutualisation \u00bb), il ne d\u00e9cide rien avec.",
                         "type": [
                             "string",
                             "null"
@@ -37807,7 +37792,7 @@
             },
             "TeamPeriodOverride.TeamPeriodOverrideInput": {
                 "type": "object",
-                "description": "Period-editable structure: a sparse per-(period, team) override \u2014 the team is\noff for the period, or trains a different number of sessions. No row = seasonal\ndefaults. The overlay build reads these; the base plan is never touched.",
+                "description": "Le r\u00e9glage d'une \u00e9quipe pour une p\u00e9riode : la ligne de l'\u00e9quipe dans le plan de p\u00e9riode, vue de l'\u00e9cran comme un\nr\u00e9glage \u00e9pars. La liste ne rend que les lignes qui diff\u00e8rent de la saison ou qu'un geste nomm\u00e9 a pos\u00e9es ; `null` en\nsortie = la valeur de la saison. Publier le r\u00e9glage d'un couple (plan, \u00e9quipe) met sa ligne \u00e0 jour ; le supprimer rend\n\u00e0 la ligne les valeurs de la saison. La saison ne se r\u00e8gle jamais par cette route.",
                 "required": [
                     "schedulePlanId",
                     "teamId"
@@ -37840,7 +37825,7 @@
                     "sessionsPerWeek": {
                         "minimum": 1,
                         "maximum": 7,
-                        "description": "null = keep the team's seasonal sessionsPerWeek.",
+                        "description": "null = la valeur de la saison (celle du socle au moment de l'\u00e9criture).",
                         "type": [
                             "integer",
                             "null"
@@ -37849,7 +37834,7 @@
                     "maxSessionsPerDay": {
                         "minimum": 1,
                         "maximum": 4,
-                        "description": "null = keep the team's seasonal maxSessionsPerDay (remplacement complet : absent = null).",
+                        "description": "null = la valeur de la saison (celle du socle au moment de l'\u00e9criture ; remplacement complet : absent = null).",
                         "type": [
                             "integer",
                             "null"
@@ -37859,7 +37844,7 @@
             },
             "TeamPeriodOverride.html": {
                 "type": "object",
-                "description": "Period-editable structure: a sparse per-(period, team) override \u2014 the team is\noff for the period, or trains a different number of sessions. No row = seasonal\ndefaults. The overlay build reads these; the base plan is never touched.",
+                "description": "Le r\u00e9glage d'une \u00e9quipe pour une p\u00e9riode : la ligne de l'\u00e9quipe dans le plan de p\u00e9riode, vue de l'\u00e9cran comme un\nr\u00e9glage \u00e9pars. La liste ne rend que les lignes qui diff\u00e8rent de la saison ou qu'un geste nomm\u00e9 a pos\u00e9es ; `null` en\nsortie = la valeur de la saison. Publier le r\u00e9glage d'un couple (plan, \u00e9quipe) met sa ligne \u00e0 jour ; le supprimer rend\n\u00e0 la ligne les valeurs de la saison. La saison ne se r\u00e8gle jamais par cette route.",
                 "properties": {
                     "id": {
                         "default": "",
@@ -37902,7 +37887,7 @@
                         ]
                     },
                     "source": {
-                        "description": "Lot 9 \u2014 l'origine de cet override quand il a \u00e9t\u00e9 pos\u00e9 par un geste nomm\u00e9 (``mutualisation``\npour une \u00e9quipe activ\u00e9e par la mutualisation d'une case) ; NULL pour un r\u00e9glage ordinaire du\nwizard. Le planning l'AFFICHE (pastille \u00ab via mutualisation \u00bb), il ne d\u00e9cide rien avec.",
+                        "description": "Lot 9 \u2014 l'origine de ce r\u00e9glage quand il a \u00e9t\u00e9 pos\u00e9 par un geste nomm\u00e9 (``mutualisation``\npour une \u00e9quipe activ\u00e9e par la mutualisation d'une case) ; NULL pour un r\u00e9glage ordinaire du\nwizard. Le planning l'AFFICHE (pastille \u00ab via mutualisation \u00bb), il ne d\u00e9cide rien avec.",
                         "type": [
                             "string",
                             "null"
@@ -37959,7 +37944,7 @@
                                 ]
                             },
                             "source": {
-                                "description": "Lot 9 \u2014 l'origine de cet override quand il a \u00e9t\u00e9 pos\u00e9 par un geste nomm\u00e9 (``mutualisation``\npour une \u00e9quipe activ\u00e9e par la mutualisation d'une case) ; NULL pour un r\u00e9glage ordinaire du\nwizard. Le planning l'AFFICHE (pastille \u00ab via mutualisation \u00bb), il ne d\u00e9cide rien avec.",
+                                "description": "Lot 9 \u2014 l'origine de ce r\u00e9glage quand il a \u00e9t\u00e9 pos\u00e9 par un geste nomm\u00e9 (``mutualisation``\npour une \u00e9quipe activ\u00e9e par la mutualisation d'une case) ; NULL pour un r\u00e9glage ordinaire du\nwizard. Le planning l'AFFICHE (pastille \u00ab via mutualisation \u00bb), il ne d\u00e9cide rien avec.",
                                 "type": [
                                     "string",
                                     "null"
@@ -37968,7 +37953,7 @@
                         }
                     }
                 ],
-                "description": "Period-editable structure: a sparse per-(period, team) override \u2014 the team is\noff for the period, or trains a different number of sessions. No row = seasonal\ndefaults. The overlay build reads these; the base plan is never touched."
+                "description": "Le r\u00e9glage d'une \u00e9quipe pour une p\u00e9riode : la ligne de l'\u00e9quipe dans le plan de p\u00e9riode, vue de l'\u00e9cran comme un\nr\u00e9glage \u00e9pars. La liste ne rend que les lignes qui diff\u00e8rent de la saison ou qu'un geste nomm\u00e9 a pos\u00e9es ; `null` en\nsortie = la valeur de la saison. Publier le r\u00e9glage d'un couple (plan, \u00e9quipe) met sa ligne \u00e0 jour ; le supprimer rend\n\u00e0 la ligne les valeurs de la saison. La saison ne se r\u00e8gle jamais par cette route."
             },
             "TeamSoloBudget": {
                 "type": "object",
@@ -40244,7 +40229,7 @@
         },
         {
             "name": "TeamPeriodOverride",
-            "description": "Period-editable structure: a sparse per-(period, team) override \u2014 the team is\noff for the period, or trains a different number of sessions. No row = seasonal\ndefaults. The overlay build reads these; the base plan is never touched."
+            "description": "Le r\u00e9glage d'une \u00e9quipe pour une p\u00e9riode : la ligne de l'\u00e9quipe dans le plan de p\u00e9riode, vue de l'\u00e9cran comme un\nr\u00e9glage \u00e9pars. La liste ne rend que les lignes qui diff\u00e8rent de la saison ou qu'un geste nomm\u00e9 a pos\u00e9es ; `null` en\nsortie = la valeur de la saison. Publier le r\u00e9glage d'un couple (plan, \u00e9quipe) met sa ligne \u00e0 jour ; le supprimer rend\n\u00e0 la ligne les valeurs de la saison. La saison ne se r\u00e8gle jamais par cette route."
         },
         {
             "name": "Team",

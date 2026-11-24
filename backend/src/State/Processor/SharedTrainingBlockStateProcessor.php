@@ -10,6 +10,7 @@ use App\Entity\Reservation;
 use App\Entity\SharedTrainingBlock;
 use App\Entity\SharedTrainingBlockTeam;
 use App\Entity\Team;
+use App\Plans\PlanComposition;
 use App\Service\ReservationGroupOccupancy;
 use App\Service\SoloReservationBudget;
 use Symfony\Contracts\Service\Attribute\Required;
@@ -23,7 +24,7 @@ use Symfony\Contracts\Service\Attribute\Required;
  *  - une équipe INACTIVE (une équipe qui ne s'entraîne pas ne se mutualise pas) ;
  *  - la GARDE CENTRALE : pour chaque équipe, Σ des ``commonSessions`` de ses blocs de MÊME
  *    portée (le bloc écrit compris) > ses séances/semaine EFFECTIVES
- *    ({@see EffectiveTeamSessions}, override de période inclus) ;
+ *    (sa ligne dans le plan, {@see PlanComposition}) ;
  *  - un bloc portant EXACTEMENT le même ensemble d'équipes existe déjà pour cette portée
  *    (deux blocs identiques sèmeraient la confusion).
  *

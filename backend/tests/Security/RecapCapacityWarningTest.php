@@ -16,7 +16,6 @@ use App\Entity\SharedTrainingBlockTeam;
 use App\Entity\Sport;
 use App\Entity\SportCategory;
 use App\Entity\Team;
-use App\Entity\TeamPeriodOverride;
 use App\Entity\User;
 use App\Entity\Venue;
 use App\Entity\VenueTrainingSlot;
@@ -24,6 +23,7 @@ use App\Enum\CalendarEntryKind;
 use App\Enum\CalendarEntryPeriodType;
 use App\Enum\CalendarEntryStatus;
 use App\Enum\SeasonStatus;
+use App\Plans\PlanComposition;
 use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\ProvisionsPeriodPlanTrait;
 use App\Tests\SeasonPlanOf;
@@ -217,14 +217,9 @@ final class RecapCapacityWarningTest extends WebTestCase
 
         // La période : l'équipe passe à 2 séances ; sa grille possédée est la COPIE de la
         // saison (2 créneaux à capacité 1), prise par provisionPeriodPlan à la naissance.
-        $override = new TeamPeriodOverride;
-        $override->setClubId($club->getId());
-        $override->setSeasonId($season->getId());
-        $override->setSchedulePlanId($planId);
-        $override->setTeamId($team->getId());
-        $override->setIsActive(true);
+        $override = self::getContainer()->get(PlanComposition::class)->lineOf($planId, $team->getId());
+        $override->setParticipating(true);
         $override->setSessionsPerWeek(2);
-        $this->em->persist($override);
         $this->em->flush();
 
         $body = $this->validate($user, $club, $entry->getId());
@@ -315,6 +310,7 @@ final class RecapCapacityWarningTest extends WebTestCase
         $sport->setIsActive(true);
         $this->em->persist($sport);
         $this->em->flush();
+        SeasonPlanOf::id(self::getContainer(), $season->getId());
 
         $category = new SportCategory;
         $category->setClubId($club->getId());
@@ -349,9 +345,10 @@ final class RecapCapacityWarningTest extends WebTestCase
         $team->setSportCategoryId($this->category->getId());
         $team->setPriorityTierId(1);
         $team->setName('Équipe ' . uniqid());
-        $team->setSessionsPerWeek($sessionsPerWeek);
         $team->setIsActive(true);
         $this->em->persist($team);
+        $this->em->flush();
+        self::getContainer()->get(PlanComposition::class)->ensureLines($team->getSeasonId(), [$team->getId() => ['sessionsPerWeek' => $sessionsPerWeek]]);
         $this->em->flush();
 
         return $team;

@@ -42,7 +42,7 @@ const entry = (over: Record<string, unknown> = {}) => ({
 
 let entriesData: ReturnType<typeof entry>[] = [];
 let venueClosuresData: { id: string; venueId: string; title: string; startDate: string; endDate: string; calendarEntryId: string }[] = [];
-let plansData: { id: string; type: string; name: string; startDate: string; calendarEntryId: string | null; chosenScheduleId: string | null; teamSelectionInitialized: boolean }[] = [];
+let plansData: { id: string; type: string; name: string; startDate: string; calendarEntryId: string | null; chosenScheduleId: string | null }[] = [];
 let schedulesData: { id: string; schedulePlanId: string; status: string }[] = [];
 let entryImpactData: Record<string, unknown> | undefined;
 const deleteMutate = vi.fn();
@@ -145,7 +145,7 @@ describe("VenueClosureCard — un gymnase qui ferme = un seul fait (C1, C8)", ()
 
   it("plan de période VALIDÉ (2 versions) : la confirmation dit qu'il part aussi", async () => {
     const user = userEvent.setup();
-    plansData = [{ id: "pl-e1", type: "CLOSURE", name: "Plan", startDate: FUTURE, calendarEntryId: "e1", chosenScheduleId: "s1", teamSelectionInitialized: true }];
+    plansData = [{ id: "pl-e1", type: "CLOSURE", name: "Plan", startDate: FUTURE, calendarEntryId: "e1", chosenScheduleId: "s1" }];
     schedulesData = [
       { id: "s1", schedulePlanId: "pl-e1", status: "COMPLETED" },
       { id: "s2", schedulePlanId: "pl-e1", status: "COMPLETED" },
@@ -157,7 +157,7 @@ describe("VenueClosureCard — un gymnase qui ferme = un seul fait (C1, C8)", ()
 
   it("plan de période EN COURS (1 version, rien de pointé) : la confirmation le dit", async () => {
     const user = userEvent.setup();
-    plansData = [{ id: "pl-e1", type: "CLOSURE", name: "Plan", startDate: FUTURE, calendarEntryId: "e1", chosenScheduleId: null, teamSelectionInitialized: true }];
+    plansData = [{ id: "pl-e1", type: "CLOSURE", name: "Plan", startDate: FUTURE, calendarEntryId: "e1", chosenScheduleId: null }];
     schedulesData = [{ id: "s1", schedulePlanId: "pl-e1", status: "COMPLETED" }];
     renderWithProviders(<VenueClosureCard />);
     await user.click(deleteButton());

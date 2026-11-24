@@ -10,6 +10,7 @@ use App\Entity\Coach;
 use App\Entity\Constraint;
 use App\Entity\Person;
 use App\Entity\Place;
+use App\Entity\PlanTeam;
 use App\Entity\Schedule;
 use App\Entity\ScheduleDiagnostic;
 use App\Entity\Team;
@@ -377,7 +378,6 @@ final class ContractSchemaTest extends TestCase
             ->setSportCategoryId('sport-category-1')
             ->setPriorityTierId(1)
             ->setName('Team 1')
-            ->setSessionsPerWeek(2)
             ->setIsActive(true);
 
         $constraint = (new Constraint)
@@ -399,6 +399,8 @@ final class ContractSchemaTest extends TestCase
             coaches: [$coach],
             teamCoaches: $teamCoaches,
             constraints: [$constraint],
+            // Les séances de l'équipe : sa ligne dans le plan construit (lot 4, PR 3a).
+            teamLines: ['team-1' => (new PlanTeam)->setTeamId('team-1')->setSessionsPerWeek(2)],
         );
     }
 

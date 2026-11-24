@@ -20,6 +20,7 @@ use App\Enum\CalendarEntryPeriodType;
 use App\Enum\SeasonStatus;
 use App\Enum\TeamCoachRole;
 use App\Mail\EmailTemplateRenderer;
+use App\Plans\PlanComposition;
 use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\TenantGucTrait;
 use App\Tests\Unit\Mail\EmailTemplateRendererTest;
@@ -194,6 +195,8 @@ final class CoachWishSendAbuseTest extends WebTestCase
         $otherTeam = (new Team)->setClubId($other->getId())->setSeasonId($otherSeason->getId())
             ->setSportCategoryId('22222222-2222-4222-8222-222222222222')->setPriorityTierId(1)->setName('Autre');
         $this->em->persist($otherTeam);
+        $this->em->flush();
+        self::getContainer()->get(PlanComposition::class)->ensureLines($otherTeam->getSeasonId());
         $otherCoach = $this->newCoach($other->getId(), $otherSeason->getId(), 'Autre', 'Coach');
         $this->em->persist($otherCoach);
         $this->em->flush();
@@ -240,6 +243,8 @@ final class CoachWishSendAbuseTest extends WebTestCase
         $team = (new Team)->setClubId($this->club->getId())->setSeasonId($this->season->getId())
             ->setSportCategoryId('11111111-1111-4111-8111-111111111111')->setPriorityTierId(1)->setName('SM1');
         $this->em->persist($team);
+        $this->em->flush();
+        self::getContainer()->get(PlanComposition::class)->ensureLines($team->getSeasonId());
         $this->coach = $this->newCoach($this->club->getId(), $this->season->getId(), 'Maxime', 'Durand');
         $this->personOf($this->coach)->setEmail('maxime@test.com');
         $this->em->persist($this->coach);
@@ -331,6 +336,8 @@ final class CoachWishSendAbuseTest extends WebTestCase
         $team = (new Team)->setClubId($this->club->getId())->setSeasonId($this->season->getId())
             ->setSportCategoryId('11111111-1111-4111-8111-111111111111')->setPriorityTierId(1)->setName('SF1');
         $this->em->persist($team);
+        $this->em->flush();
+        self::getContainer()->get(PlanComposition::class)->ensureLines($team->getSeasonId());
         $person = (new Person)->setClubId($this->club->getId())->setFirstName('Nadia')->setLastName('Bernard')->setEmail('nadia@test.com');
         $this->em->persist($person);
         $coach = new Coach($person)->setClubId($this->club->getId())->setSeasonId($this->season->getId());

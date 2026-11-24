@@ -11,6 +11,7 @@ use App\Entity\Season;
 use App\Entity\Team;
 use App\Entity\User;
 use App\Enum\SeasonStatus;
+use App\Plans\PlanComposition;
 use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
@@ -81,6 +82,8 @@ final class TeamCoachValidationTest extends WebTestCase
             ->setSportCategoryId('11111111-1111-4111-8111-111111111111')->setPriorityTierId(1)->setName('SM1');
         $coach = $this->newCoach($this->club->getId(), $season->getId(), 'Karim', 'Benali');
         $this->em->persist($team);
+        $this->em->flush();
+        self::getContainer()->get(PlanComposition::class)->ensureLines($team->getSeasonId());
         $this->em->persist($coach);
         $this->em->flush();
 

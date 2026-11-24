@@ -19,6 +19,7 @@ use App\Entity\User;
 use App\Entity\Venue;
 use App\Enum\SchedulePlanType;
 use App\Enum\SeasonStatus;
+use App\Plans\PlanComposition;
 use App\Service\SeasonResolver;
 use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\SeasonPlanOf;
@@ -452,6 +453,9 @@ final class SharedTrainingBlockApiTest extends WebTestCase
             ->setEndDate(new DateTimeImmutable('2025-10-26'));
         $this->em->persist($plan);
         $this->em->flush();
+        // Lot 4, PR 3a : un plan naît avec une ligne par équipe de sa saison (la porte, comme `provisionPeriodPlan`).
+        SeasonPlanOf::id(self::getContainer(), $plan->getSeasonId());
+        $this->em->flush();
 
         return $plan;
     }
@@ -480,9 +484,10 @@ final class SharedTrainingBlockApiTest extends WebTestCase
         $team->setSportCategoryId($category->getId());
         $team->setPriorityTierId(3);
         $team->setName($name);
-        $team->setSessionsPerWeek($sessionsPerWeek);
         $team->setIsActive(true);
         $this->em->persist($team);
+        $this->em->flush();
+        self::getContainer()->get(PlanComposition::class)->ensureLines($team->getSeasonId(), [$team->getId() => ['sessionsPerWeek' => $sessionsPerWeek]]);
         $this->em->flush();
 
         return $team;

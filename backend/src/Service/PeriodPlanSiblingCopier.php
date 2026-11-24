@@ -7,12 +7,12 @@ namespace App\Service;
 use App\Entity\CalendarEntry;
 use App\Entity\ConstraintPeriodOverride;
 use App\Entity\ImplicitRuleSetting;
+use App\Entity\PlanTeam;
 use App\Entity\Reservation;
 use App\Entity\Schedule;
 use App\Entity\ScheduleSlotTemplate;
 use App\Entity\SharedTrainingBlock;
 use App\Entity\SharedTrainingBlockTeam;
-use App\Entity\TeamPeriodOverride;
 use App\Entity\VenueOccupancy;
 use App\Entity\VenuePeriodOverride;
 use App\Entity\VenueTrainingSlot;
@@ -170,10 +170,11 @@ final class PeriodPlanSiblingCopier
      */
     private function copyAnchoredFamilies(string $src, string $dst, string $clubId, string $seasonId): void
     {
-        foreach ($this->entityManager->getRepository(TeamPeriodOverride::class)->findBy(['schedulePlanId' => $src]) as $row) {
+        // Les équipes du plan (lot 4, PR 3a) : la cible reprend chaque ligne de la source, ses lignes de naissance purgées.
+        foreach ($this->entityManager->getRepository(PlanTeam::class)->findBy(['schedulePlanId' => $src]) as $row) {
             $this->entityManager->persist(
-                (new TeamPeriodOverride)->setClubId($clubId)->setSeasonId($seasonId)->setSchedulePlanId($dst)
-                    ->setTeamId($row->getTeamId())->setIsActive($row->isActive())->setSessionsPerWeek($row->getSessionsPerWeek())->setMaxSessionsPerDay($row->getMaxSessionsPerDay())->setSource($row->getSource()),
+                (new PlanTeam)->setClubId($clubId)->setSeasonId($seasonId)->setSchedulePlanId($dst)
+                    ->setTeamId($row->getTeamId())->setParticipating($row->isParticipating())->setSessionsPerWeek($row->getSessionsPerWeek())->setMaxSessionsPerDay($row->getMaxSessionsPerDay())->setSource($row->getSource()),
             );
         }
         foreach ($this->entityManager->getRepository(ConstraintPeriodOverride::class)->findBy(['schedulePlanId' => $src]) as $row) {

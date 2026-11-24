@@ -11,12 +11,12 @@ use App\Entity\ClubUser;
 use App\Entity\Coach;
 use App\Entity\CoachWish;
 use App\Entity\Constraint;
+use App\Entity\PlanTeam;
 use App\Entity\Season;
 use App\Entity\SharedTrainingBlock;
 use App\Entity\SharedTrainingBlockTeam;
 use App\Entity\Team;
 use App\Entity\TeamCoach;
-use App\Entity\TeamPeriodOverride;
 use App\Entity\User;
 use App\Enum\CalendarEntryKind;
 use App\Enum\CalendarEntryPeriodType;
@@ -25,6 +25,7 @@ use App\Enum\ConstraintRuleType;
 use App\Enum\ConstraintScope;
 use App\Enum\SeasonStatus;
 use App\Enum\TeamCoachRole;
+use App\Plans\PlanComposition;
 use App\Service\ClubGenerationLock;
 use App\Service\CoachWishTransferService;
 use App\Tests\CreatesPeopleAndPlacesTrait;
@@ -91,8 +92,8 @@ final class CoachWishTransferTest extends WebTestCase
         self::assertSame(0, $recap['ignored']);
 
         $override = $this->overrideFor($this->teamS->getId());
-        self::assertInstanceOf(TeamPeriodOverride::class, $override);
-        self::assertTrue($override->isActive());
+        self::assertInstanceOf(PlanTeam::class, $override);
+        self::assertTrue($override->isParticipating());
         self::assertSame(3, $override->getSessionsPerWeek());
         self::assertSame(CoachWishTransferService::SOURCE, $override->getSource(), 'provenance « via doléances »');
 
@@ -120,11 +121,11 @@ final class CoachWishTransferTest extends WebTestCase
         $recap = $this->transfer([$picked->getId()]);
         self::assertSame(1, $recap['converted']);
 
-        self::assertInstanceOf(TeamPeriodOverride::class, $this->overrideFor($this->teamS->getId()));
+        self::assertInstanceOf(PlanTeam::class, $this->overrideFor($this->teamS->getId()));
         self::assertFalse($this->reload($skipped)->isDone(), 'la doléance non cochée reste à traiter');
         // Son override NE porte PAS la provenance doléances (le seed a pu la désactiver, source nulle).
         $skippedOverride = $this->overrideFor($teamB->getId());
-        if ($skippedOverride instanceof TeamPeriodOverride) {
+        if ($skippedOverride instanceof PlanTeam) {
             self::assertNotSame(CoachWishTransferService::SOURCE, $skippedOverride->getSource());
         }
     }
@@ -136,8 +137,8 @@ final class CoachWishTransferTest extends WebTestCase
         $this->transfer([$wish->getId()]);
 
         $override = $this->overrideFor($this->teamS->getId());
-        self::assertInstanceOf(TeamPeriodOverride::class, $override);
-        self::assertFalse($override->isActive(), 'décision 12 — aucun créneau souhaité = équipe désactivée');
+        self::assertInstanceOf(PlanTeam::class, $override);
+        self::assertFalse($override->isParticipating(), 'décision 12 — aucun créneau souhaité = équipe désactivée');
         self::assertSame(CoachWishTransferService::SOURCE, $override->getSource());
     }
 
@@ -371,8 +372,8 @@ final class CoachWishTransferTest extends WebTestCase
 
         // Le plan n'a PAS bougé : override toujours là, contrainte TOUJOURS sur [4] (pas [6]).
         $override = $this->overrideFor($this->teamS->getId());
-        self::assertInstanceOf(TeamPeriodOverride::class, $override);
-        self::assertTrue($override->isActive());
+        self::assertInstanceOf(PlanTeam::class, $override);
+        self::assertTrue($override->isParticipating());
         self::assertSame(CoachWishTransferService::SOURCE, $override->getSource());
         self::assertSame(['unavailableDays' => [4]], $this->transferConstraintsFor($wish->getId())[0]->getConfig(), 'la re-soumission ne re-synchronise jamais le plan');
         self::assertFalse($this->reload($wish)->isDone(), 'la re-soumission remet « à traiter »');
@@ -427,10 +428,8 @@ final class CoachWishTransferTest extends WebTestCase
         // rang bas activée par mutualisation (source=mutualisation, isActive=true) sur un plan NON
         // initialisé doit rester active après un transfert (qui déclenche le seed serveur, D-e).
         $mutualized = $this->team('Loisirs', 5); // rang bas → le seed la désactiverait s'il osait
-        $override = (new TeamPeriodOverride)->setClubId($this->club->getId())->setSeasonId($this->season->getId())
-            ->setSchedulePlanId($this->planId)->setTeamId($mutualized->getId())->setIsActive(true)->setSessionsPerWeek(1)
-            ->setSource('mutualisation');
-        $this->em->persist($override);
+        self::getContainer()->get(PlanComposition::class)->lineOf($this->planId, $mutualized->getId())
+            ->setParticipating(true)->setSessionsPerWeek(1)->setSource('mutualisation');
         $this->em->flush();
 
         // Un transfert d'une AUTRE équipe déclenche le seed (plan non initialisé) : il ne touche pas Loisirs.
@@ -438,8 +437,8 @@ final class CoachWishTransferTest extends WebTestCase
         $this->transfer([$wish->getId()]);
 
         $survivor = $this->overrideFor($mutualized->getId());
-        self::assertInstanceOf(TeamPeriodOverride::class, $survivor);
-        self::assertTrue($survivor->isActive(), 'l\'activation par mutualisation survit au seed du transfert');
+        self::assertInstanceOf(PlanTeam::class, $survivor);
+        self::assertTrue($survivor->isParticipating(), 'l\'activation par mutualisation survit au seed du transfert');
         self::assertSame('mutualisation', $survivor->getSource(), 'le seed n\'a pas réécrit la provenance');
     }
 
@@ -453,12 +452,9 @@ final class CoachWishTransferTest extends WebTestCase
         $this->transfer([$wish->getId()]);
 
         $override = $this->overrideFor($veteran->getId());
-        self::assertInstanceOf(TeamPeriodOverride::class, $override);
-        self::assertTrue($override->isActive());
+        self::assertInstanceOf(PlanTeam::class, $override);
+        self::assertTrue($override->isParticipating());
         self::assertSame(CoachWishTransferService::SOURCE, $override->getSource());
-        // D-e — le seed S+A a été matérialisé côté serveur AVANT la 1re écriture : le plan
-        // porte désormais le drapeau d'initialisation (sinon un 2e geste ré-seederait).
-        self::assertTrue($this->planInitialized(), 'le seed serveur a marqué le plan initialisé (D-e)');
     }
 
     public function testForeignClubWishIsNeverConverted(): void
@@ -473,7 +469,7 @@ final class CoachWishTransferTest extends WebTestCase
         $this->em->clear();
         $this->scopeGucToClub($this->club->getId());
         self::assertNull(
-            $this->em->getRepository(TeamPeriodOverride::class)->findOneBy(['schedulePlanId' => $otherPlanId, 'teamId' => $otherTeamId]),
+            $this->em->getRepository(PlanTeam::class)->findOneBy(['schedulePlanId' => $otherPlanId, 'teamId' => $otherTeamId]),
             'aucun override écrit dans le plan de l\'autre club',
         );
     }
@@ -582,6 +578,8 @@ final class CoachWishTransferTest extends WebTestCase
             ->setSportCategoryId('11111111-1111-4111-8111-111111111111')->setPriorityTierId($tierId)->setName($name);
         $this->em->persist($team);
         $this->em->flush();
+        self::getContainer()->get(PlanComposition::class)->ensureLines($team->getSeasonId());
+        $this->em->flush();
 
         return $team;
     }
@@ -640,9 +638,16 @@ final class CoachWishTransferTest extends WebTestCase
         return $body;
     }
 
-    private function overrideFor(string $teamId): ?TeamPeriodOverride
+    /** Le réglage écrit pour l'équipe dans le plan : sa ligne, quand elle diffère du socle ou porte une origine (lot 4, PR 3a). */
+    private function overrideFor(string $teamId): ?PlanTeam
     {
-        return $this->em->getRepository(TeamPeriodOverride::class)->findOneBy(['schedulePlanId' => $this->planId, 'teamId' => $teamId]);
+        $line = $this->em->getRepository(PlanTeam::class)->findOneBy(['schedulePlanId' => $this->planId, 'teamId' => $teamId]);
+        if (!$line instanceof PlanTeam) {
+            return null;
+        }
+        $differing = self::getContainer()->get(PlanComposition::class)->teamLinesDifferingFromSocle($this->planId);
+
+        return isset($differing[$teamId]) || null !== $line->getSource() ? $line : null;
     }
 
     /** @return list<Constraint> */
@@ -652,14 +657,6 @@ final class CoachWishTransferTest extends WebTestCase
             'source' => CoachWishTransferService::SOURCE,
             'sourceOccurrenceId' => $wishId,
         ]);
-    }
-
-    private function planInitialized(): bool
-    {
-        return (bool) $this->em->getConnection()->fetchOne(
-            'SELECT 1 FROM schedule_plan WHERE id = :pid AND team_selection_initialized',
-            ['pid' => $this->planId],
-        );
     }
 
     private function reload(CoachWish $wish): CoachWish
@@ -699,6 +696,8 @@ final class CoachWishTransferTest extends WebTestCase
         $otherTeam = (new Team)->setClubId($otherClub->getId())->setSeasonId($otherSeason->getId())
             ->setSportCategoryId('11111111-1111-4111-8111-111111111111')->setPriorityTierId(1)->setName('X1');
         $this->em->persist($otherTeam);
+        $this->em->flush();
+        self::getContainer()->get(PlanComposition::class)->ensureLines($otherTeam->getSeasonId());
         $otherMother = (new CalendarEntry)->setClubId($otherClub->getId())->setSeasonId($otherSeason->getId())
             ->setKind(CalendarEntryKind::PERIOD)->setPeriodType(CalendarEntryPeriodType::HOLIDAY)->setTitle('V')
             ->setStartDate(new DateTimeImmutable('2026-02-16'))->setEndDate(new DateTimeImmutable('2026-03-01'));

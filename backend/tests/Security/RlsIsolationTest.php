@@ -34,8 +34,8 @@ final class RlsIsolationTest extends KernelTestCase
      * `tenant_isolation` est le canon, et ses lignes portent les preuves de comportement). Saison et
      * catégorie sont des guids nus, sans clé étrangère : un guid neuf suffit.
      */
-    private const string INSERT_TEAM_SQL = 'INSERT INTO team (id, version, created_at, updated_at, club_id, season_id, sport_category_id, priority_tier_id, name, sessions_per_week, is_active)'
-        . ' VALUES (gen_random_uuid(), 1, now(), now(), ?, gen_random_uuid(), gen_random_uuid(), 1, ?, 1, true)';
+    private const string INSERT_TEAM_SQL = 'INSERT INTO team (id, version, created_at, updated_at, club_id, season_id, sport_category_id, priority_tier_id, name, is_active)'
+        . ' VALUES (gen_random_uuid(), 1, now(), now(), ?, gen_random_uuid(), gen_random_uuid(), 1, ?, true)';
 
     /**
      * SQL prédicat identifiant les tables portant une colonne club_id, PARTAGÉ par

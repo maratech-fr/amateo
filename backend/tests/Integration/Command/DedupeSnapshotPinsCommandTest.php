@@ -19,6 +19,7 @@ use App\Enum\CalendarEntryPeriodType;
 use App\Enum\LockLevel;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
+use App\Plans\PlanComposition;
 use App\Service\ScheduleConstraintBuilder;
 use App\Service\SchedulePlanProvisioner;
 use App\Tests\ChoosesPlanVersionTrait;
@@ -391,6 +392,8 @@ final class DedupeSnapshotPinsCommandTest extends KernelTestCase
             ->setSportCategoryId('cccccccc-cccc-4ccc-8ccc-cccccccccccc')->setPriorityTierId(1);
         $team->setId($id);
         $this->em->persist($team);
+        $this->em->flush();
+        self::getContainer()->get(PlanComposition::class)->ensureLines($team->getSeasonId());
     }
 
     /** @param array{clubId: string, seasonId: string, scheduleId: string} $f */

@@ -20,6 +20,7 @@ use App\Enum\ConstraintRuleType;
 use App\Enum\ConstraintScope;
 use App\Enum\Gender;
 use App\Enum\SeasonStatus;
+use App\Plans\PlanComposition;
 use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\CreatesPeriodPlanTrait;
 use App\Tests\TenantGucTrait;
@@ -731,9 +732,10 @@ final class ConstraintApiTest extends WebTestCase
         $team->setPriorityTierId(1);
         $team->setName($name);
         $team->setGender($gender);
-        $team->setSessionsPerWeek(1);
         $team->setIsActive(true);
         $this->em->persist($team);
+        $this->em->flush();
+        self::getContainer()->get(PlanComposition::class)->ensureLines($team->getSeasonId(), [$team->getId() => ['sessionsPerWeek' => 1]]);
         $this->em->flush();
 
         return $team;

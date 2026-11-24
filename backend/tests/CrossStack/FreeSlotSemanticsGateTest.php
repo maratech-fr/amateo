@@ -13,6 +13,7 @@ use App\Entity\User;
 use App\Entity\Venue;
 use App\Entity\VenueTrainingSlot;
 use App\Enum\SeasonStatus;
+use App\Plans\PlanComposition;
 use App\Service\ScheduleConstraintBuilder;
 use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\SeasonPlanOf;
@@ -155,8 +156,10 @@ final class FreeSlotSemanticsGateTest extends KernelTestCase
     private function team(Club $club, Season $season, string $name): Team
     {
         $team = (new Team)->setClubId($club->getId())->setSeasonId($season->getId())->setName($name)
-            ->setSportCategoryId('99999999-9999-4999-8999-999999999999')->setPriorityTierId(1)->setSessionsPerWeek(1);
+            ->setSportCategoryId('99999999-9999-4999-8999-999999999999')->setPriorityTierId(1);
         $this->em->persist($team);
+        $this->em->flush();
+        self::getContainer()->get(PlanComposition::class)->ensureLines($team->getSeasonId(), [$team->getId() => ['sessionsPerWeek' => 1]]);
 
         return $team;
     }

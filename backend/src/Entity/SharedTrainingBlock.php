@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Entity;
 
-use App\Service\EffectiveTeamSessions;
+use App\Plans\PlanComposition;
 use App\Service\SchedulePlanProvisioner;
 use App\Structure\Family;
 use App\Structure\Level;
@@ -31,7 +31,7 @@ use Doctrine\ORM\Mapping as ORM;
  *  - multi-appartenance PERMISE : une équipe peut être membre de PLUSIEURS blocs (pas d'unicité
  *    un-bloc-par-équipe) — c'est LA capacité qui manquait au modèle groupe ;
  *  - garde centrale (côté processor) : pour chaque équipe, Σ des ``commonSessions`` de ses blocs
- *    de MÊME portée ≤ ses séances/semaine effectives ({@see EffectiveTeamSessions}) ;
+ *    de MÊME portée ≤ ses séances/semaine effectives (sa ligne dans le plan, {@see PlanComposition}) ;
  *  - meurt ENTIER : supprimer une équipe membre détruit tous ses blocs (patron du prune group).
  *
  * Détail : docs/archive/plannings-bccl-2026-08-31.md §4 (cadrage d'origine `mutualisation-par-creneau.md`

@@ -8,6 +8,7 @@ use ApiPlatform\Metadata\Operation;
 use ApiPlatform\State\Pagination\Pagination;
 use App\ApiResource\TeamResource;
 use App\Entity\Team;
+use App\Plans\PlanComposition;
 use App\Service\TeamEngagementGuard;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\QueryBuilder;
@@ -26,6 +27,7 @@ class TeamStateProvider extends AbstractStateProvider
         RequestStack $requestStack,
         Pagination $pagination,
         private readonly TeamEngagementGuard $teamEngagementGuard,
+        private readonly PlanComposition $planComposition,
     ) {
         parent::__construct($entityManager, $requestStack, $pagination);
     }
@@ -102,6 +104,6 @@ class TeamStateProvider extends AbstractStateProvider
      */
     protected function mapEntityToOutput(object $entity): TeamResource
     {
-        return TeamResource::fromEntity($entity);
+        return TeamResource::fromEntity($entity, $this->planComposition->socleLinesOf([$entity->getId()])[$entity->getId()]);
     }
 }

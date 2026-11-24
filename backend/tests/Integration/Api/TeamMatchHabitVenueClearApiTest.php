@@ -10,6 +10,7 @@ use App\Entity\Season;
 use App\Entity\Team;
 use App\Entity\User;
 use App\Enum\SeasonStatus;
+use App\Plans\PlanComposition;
 use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
@@ -136,9 +137,10 @@ final class TeamMatchHabitVenueClearApiTest extends WebTestCase
             ->setSportCategoryId($this->uuid())
             ->setPriorityTierId(3)
             ->setName('T' . substr($this->uuid(), 0, 6))
-            ->setSessionsPerWeek(2)
             ->setIsActive(true);
         $this->em->persist($team);
+        $this->em->flush();
+        self::getContainer()->get(PlanComposition::class)->ensureLines($team->getSeasonId(), [$team->getId() => ['sessionsPerWeek' => 2]]);
         $this->em->flush();
 
         return (string) $team->getId();

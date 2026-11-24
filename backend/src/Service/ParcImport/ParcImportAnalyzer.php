@@ -11,6 +11,7 @@ use App\Entity\SharedTrainingBlock;
 use App\Entity\SharedTrainingBlockTeam;
 use App\Entity\Team;
 use App\Entity\Venue;
+use App\Plans\PlanComposition;
 use App\Plans\SoclePlan;
 use App\Service\Basketball\TeamCreationSuggester;
 use App\Service\Basketball\VenueAliasResolver;
@@ -63,6 +64,7 @@ final class ParcImportAnalyzer
         private readonly TeamCreationSuggester $suggester,
         private readonly ReservationGroupOccupancy $reservationGroupOccupancy,
         private readonly SoclePlan $soclePlan,
+        private readonly PlanComposition $planComposition,
     ) {}
 
     /**
@@ -394,7 +396,8 @@ final class ParcImportAnalyzer
             if ('apparie' === $statut && null !== $cibleId && isset($byId[$cibleId])) {
                 // P4-366 — le champ « Séances » éditable + `seancesActuelles` suffisent à l'écran : le
                 // champ `miseAJour` (ancienne case « 2 → 1 ») est retiré.
-                $extra['seancesActuelles'] = $byId[$cibleId]->getSessionsPerWeek();
+                // Lot 4, PR 3a : les séances actuelles sont celles de sa ligne au socle.
+                $extra['seancesActuelles'] = $this->planComposition->socleLinesOf([$cibleId])[$cibleId]->getSessionsPerWeek();
             }
             // Refonte PR2 (D9) — CHAQUE ligne équipe (quel que soit son statut d'appariement : apparié /
             // suggéré / ambigu / à créer) porte les SUGGESTIONS de la règle FBI unique

@@ -24,6 +24,7 @@ use App\Enum\LockLevel;
 use App\Enum\LockOrigin;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
+use App\Plans\PlanComposition;
 use App\Service\EngineRequestFingerprint;
 use App\Service\EngineRequestRecorder;
 use App\Service\ScheduleConstraintBuilder;
@@ -414,7 +415,7 @@ final class EngineRequestsRecordCommandTest extends KernelTestCase
         self::assertStringContainsString('teams[' . self::ER_TEAM_U13 . "].sessionsPerWeek\t2\n", $first);
 
         // Écriture SQL brute : aucun listener Doctrine ne purge le cache rempli par le 1er enregistrement.
-        $this->erEm()->getConnection()->executeStatement('UPDATE team SET sessions_per_week = 3 WHERE id = ?', [self::ER_TEAM_U13]);
+        $this->erEm()->getConnection()->executeStatement('UPDATE plan_team l SET sessions_per_week = 3 FROM schedule_plan p WHERE p.id = l.schedule_plan_id AND p.type = \'SEASON\' AND l.team_id = ?', [self::ER_TEAM_U13]);
         $second = $this->clubFiles($this->recordOk([self::ER_CLUB]), self::ER_CLUB)[$regenerate] ?? '';
 
         self::assertStringContainsString('teams[' . self::ER_TEAM_U13 . "].sessionsPerWeek\t3\n", $second, 'l\'UPDATE brut se voit : le cache a été purgé avant de composer');
@@ -680,9 +681,7 @@ final class EngineRequestsRecordCommandTest extends KernelTestCase
     public function setSessionsPerWeek(string $teamId, int $sessions): void
     {
         $this->scopeGucToClub(self::ER_CLUB);
-        $team = $this->erEm()->getRepository(Team::class)->find($teamId);
-        self::assertInstanceOf(Team::class, $team);
-        $team->setSessionsPerWeek($sessions);
+        self::getContainer()->get(PlanComposition::class)->socleLinesOf([$teamId])[$teamId]->setSessionsPerWeek($sessions);
         $this->erEm()->flush();
     }
 
@@ -690,9 +689,9 @@ final class EngineRequestsRecordCommandTest extends KernelTestCase
     {
         $this->scopeGucToClub(self::ER_CLUB);
         $this->erEm()->persist((new Team)->setId(self::ER_TEAM_U17)->setClubId(self::ER_CLUB)->setSeasonId(self::ER_SEASON)
-            ->setSportCategoryId(self::ER_CATEGORY)->setPriorityTierId(2)->setName('U17 M')
-            ->setSessionsPerWeek(2)->setIsActive(true));
+            ->setSportCategoryId(self::ER_CATEGORY)->setPriorityTierId(2)->setName('U17 M')->setIsActive(true));
         $this->erEm()->flush();
+        self::getContainer()->get(PlanComposition::class)->ensureLines(self::ER_SEASON);
     }
 
     public function removeTeamU17(): void
@@ -908,9 +907,9 @@ final class EngineRequestsRecordCommandTest extends KernelTestCase
             ->setVenueId(self::B_VENUE)->setDayOfWeek(2)->setStartTime(new DateTimeImmutable('18:00'))
             ->setDurationMinutes(90)->setCapacity(1));
         $em->persist((new Team)->setId(self::B_TEAM)->setClubId(self::B_CLUB)->setSeasonId(self::B_SEASON)
-            ->setSportCategoryId(self::B_CATEGORY)->setPriorityTierId(1)->setName(self::B_TEAM_NAME)
-            ->setSessionsPerWeek(1)->setIsActive(true));
+            ->setSportCategoryId(self::B_CATEGORY)->setPriorityTierId(1)->setName(self::B_TEAM_NAME)->setIsActive(true));
         $em->flush();
+        self::getContainer()->get(PlanComposition::class)->ensureLines(self::B_SEASON, [self::B_TEAM => ['sessionsPerWeek' => 1]]);
 
         $planId = $provisioner->ensureSeasonPlanId(self::B_SEASON);
         self::assertIsString($planId);

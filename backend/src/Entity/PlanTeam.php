@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Entity;
 
+use App\Plans\PlanComposition;
 use App\Structure\Family;
 use App\Structure\Level;
 use App\Structure\OnDelete;
@@ -12,19 +13,27 @@ use DateTimeImmutable;
 use Doctrine\ORM\Mapping as ORM;
 
 /**
- * Period-editable structure: a SPARSE override of a team's participation for one
- * period (CalendarEntry). A row exists ONLY when the manager changed the team for
- * that period — no row means "seasonal defaults apply". Used by the overlay build
- * to drop deactivated teams and override sessions-per-week; the base plan (and the
- * Team's seasonal fields) are never touched.
+ * Les équipes d'un plan (lot 4, PR 3a) : une ligne par (plan, équipe), socle compris. Elle dit si l'équipe participe
+ * au plan, ses séances par semaine et son plafond par jour. La ligne du plan de saison porte les valeurs du socle ;
+ * celle d'un plan de période naît aux valeurs du socle du moment et ne les relit jamais ensuite (décision du
+ * fondateur du 2026-11-22 : un plan garde ce qu'il avait à sa naissance).
+ *
+ * Les lignes ne se posent que par {@see PlanComposition::ensureLines}. Pas de clé vers l'équipe : « Charger » efface
+ * puis réinsère les équipes ; la suppression d'une équipe passe par la cascade (`CascadePlan`).
  */
 #[Family(Level::PLAN)]
 #[ORM\Entity]
-#[ORM\Table(name: 'team_period_override')]
-#[ORM\UniqueConstraint(name: 'uniq_team_period_override', columns: ['schedule_plan_id', 'team_id'])]
-#[ORM\Index(name: 'idx_team_period_override_plan', columns: ['schedule_plan_id'])]
-class TeamPeriodOverride implements TenantOwnedInterface
+#[ORM\Table(name: 'plan_team')]
+#[ORM\UniqueConstraint(name: 'uniq_plan_team', columns: ['schedule_plan_id', 'team_id'])]
+#[ORM\Index(name: 'idx_plan_team_season', columns: ['season_id'])]
+#[ORM\Index(name: 'idx_plan_team_team', columns: ['team_id'])]
+class PlanTeam implements TenantOwnedInterface
 {
+    /** Les valeurs d'une ligne du socle posée sans valeur saisie (celles qu'une équipe avait par défaut). */
+    public const int DEFAULT_SESSIONS_PER_WEEK = 2;
+
+    public const int DEFAULT_MAX_SESSIONS_PER_DAY = 1;
+
     #[ORM\Id]
     #[ORM\Column(type: 'guid')]
     private string $id;
@@ -44,13 +53,6 @@ class TeamPeriodOverride implements TenantOwnedInterface
     #[ORM\Column(type: 'guid')]
     private string $seasonId;
 
-    /**
-     * ADR-0002 inv. 5 — les réglages de période s'accrochent au PLAN, pas au déclencheur
-     * calendrier. Aujourd'hui un plan par période (uniq_schedule_plan_calendar_entry), donc
-     * l'ancre revient au même ; c'est le découpage hebdomadaire (types-de-planning E1) qui
-     * la rend nécessaire : 2 semaines ⇒ 2 plans ⇒ 2 jeux de réglages sur le MÊME déclencheur,
-     * que `calendarEntryId` ne saurait pas distinguer.
-     */
     #[ORM\Column(type: 'guid')]
     #[RefersTo(SchedulePlan::class, OnDelete::DELETE)]
     private string $schedulePlanId;
@@ -59,23 +61,19 @@ class TeamPeriodOverride implements TenantOwnedInterface
     #[RefersTo(Team::class, OnDelete::DELETE)]
     private string $teamId;
 
-    /** false = the team does NOT train during this period. */
-    #[ORM\Column(type: 'boolean', options: ['default' => true])]
-    private bool $isActive = true;
+    #[ORM\Column(type: 'boolean')]
+    private bool $participates = true;
 
-    /** null = keep the team's seasonal sessionsPerWeek; set = the period-specific volume. */
-    #[ORM\Column(type: 'integer', nullable: true)]
-    private ?int $sessionsPerWeek = null;
+    #[ORM\Column(type: 'integer')]
+    private int $sessionsPerWeek = self::DEFAULT_SESSIONS_PER_WEEK;
 
-    /** null = keep the team's seasonal maxSessionsPerDay; set = the period-specific daily cap (1..4). */
-    #[ORM\Column(type: 'smallint', nullable: true)]
-    private ?int $maxSessionsPerDay = null;
+    /** Séances au plus le même jour (1 à 4). */
+    #[ORM\Column(type: 'smallint')]
+    private int $maxSessionsPerDay = self::DEFAULT_MAX_SESSIONS_PER_DAY;
 
     /**
-     * Generic ORIGIN marker for an override NOT entered by hand by the manager. null = a
-     * manager-entered override (the historical default). A producer stamps its own value — e.g.
-     * 'mutualisation' when a mutualize gesture activates a zero-session team so it can join a
-     * shared block. Several rails may reuse this column with their own marker.
+     * L'origine d'un réglage posé par un geste nommé (« mutualisation » quand la mutualisation d'une case active une
+     * équipe) ; null pour un réglage du gestionnaire. L'écran l'affiche, il ne décide rien avec.
      */
     #[ORM\Column(type: 'string', length: 30, nullable: true)]
     private ?string $source = null;
@@ -91,13 +89,6 @@ class TeamPeriodOverride implements TenantOwnedInterface
     public function getId(): string
     {
         return $this->id;
-    }
-
-    public function setId(string $id): self
-    {
-        $this->id = $id;
-
-        return $this;
     }
 
     public function getVersion(): int
@@ -120,7 +111,7 @@ class TeamPeriodOverride implements TenantOwnedInterface
         return $this->clubId;
     }
 
-    public function setClubId(string $clubId): self
+    public function setClubId(string $clubId): static
     {
         $this->clubId = $clubId;
 
@@ -132,7 +123,7 @@ class TeamPeriodOverride implements TenantOwnedInterface
         return $this->seasonId;
     }
 
-    public function setSeasonId(string $seasonId): self
+    public function setSeasonId(string $seasonId): static
     {
         $this->seasonId = $seasonId;
 
@@ -144,7 +135,7 @@ class TeamPeriodOverride implements TenantOwnedInterface
         return $this->schedulePlanId;
     }
 
-    public function setSchedulePlanId(string $schedulePlanId): self
+    public function setSchedulePlanId(string $schedulePlanId): static
     {
         $this->schedulePlanId = $schedulePlanId;
 
@@ -156,43 +147,43 @@ class TeamPeriodOverride implements TenantOwnedInterface
         return $this->teamId;
     }
 
-    public function setTeamId(string $teamId): self
+    public function setTeamId(string $teamId): static
     {
         $this->teamId = $teamId;
 
         return $this;
     }
 
-    public function isActive(): bool
+    public function isParticipating(): bool
     {
-        return $this->isActive;
+        return $this->participates;
     }
 
-    public function setIsActive(bool $isActive): self
+    public function setParticipating(bool $participates): static
     {
-        $this->isActive = $isActive;
+        $this->participates = $participates;
 
         return $this;
     }
 
-    public function getSessionsPerWeek(): ?int
+    public function getSessionsPerWeek(): int
     {
         return $this->sessionsPerWeek;
     }
 
-    public function setSessionsPerWeek(?int $sessionsPerWeek): self
+    public function setSessionsPerWeek(int $sessionsPerWeek): static
     {
         $this->sessionsPerWeek = $sessionsPerWeek;
 
         return $this;
     }
 
-    public function getMaxSessionsPerDay(): ?int
+    public function getMaxSessionsPerDay(): int
     {
         return $this->maxSessionsPerDay;
     }
 
-    public function setMaxSessionsPerDay(?int $maxSessionsPerDay): self
+    public function setMaxSessionsPerDay(int $maxSessionsPerDay): static
     {
         $this->maxSessionsPerDay = $maxSessionsPerDay;
 
@@ -204,11 +195,19 @@ class TeamPeriodOverride implements TenantOwnedInterface
         return $this->source;
     }
 
-    public function setSource(?string $source): self
+    public function setSource(?string $source): static
     {
         $this->source = $source;
 
         return $this;
+    }
+
+    /** La ligne vaut-elle celle du socle donnée (participe, mêmes séances, même plafond) ? */
+    public function sameAs(self $socle): bool
+    {
+        return $this->participates
+            && $this->sessionsPerWeek === $socle->sessionsPerWeek
+            && $this->maxSessionsPerDay === $socle->maxSessionsPerDay;
     }
 
     private function newUuid(): string

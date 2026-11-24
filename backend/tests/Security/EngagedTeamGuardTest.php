@@ -18,8 +18,10 @@ use App\Enum\FixtureStatus;
 use App\Enum\FixtureUnplacedReason;
 use App\Enum\SeasonStatus;
 use App\Enum\TeamLevel;
+use App\Plans\PlanComposition;
 use App\Service\FixtureVenueLossMarker;
 use App\Tests\CreatesPeopleAndPlacesTrait;
+use App\Tests\SeasonPlanOf;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -494,6 +496,7 @@ final class EngagedTeamGuardTest extends WebTestCase
         }
 
         $this->em->flush();
+        SeasonPlanOf::id(self::getContainer(), $this->season->getId());
     }
 
     private function createClub(string $name = 'Test Club'): Club
@@ -551,6 +554,7 @@ final class EngagedTeamGuardTest extends WebTestCase
 
         $this->em->persist($season);
         $this->em->flush();
+        SeasonPlanOf::id(self::getContainer(), $season->getId());
 
         return $season;
     }
@@ -652,10 +656,11 @@ final class EngagedTeamGuardTest extends WebTestCase
         $team->setSportCategoryId($this->sportCategory->getId());
         $team->setPriorityTierId($this->priorityTier->getId());
         $team->setName($name);
-        $team->setSessionsPerWeek(2);
         $team->setIsActive(true);
 
         $this->em->persist($team);
+        $this->em->flush();
+        self::getContainer()->get(PlanComposition::class)->ensureLines($team->getSeasonId(), [$team->getId() => ['sessionsPerWeek' => 2]]);
         $this->em->flush();
 
         return $team;

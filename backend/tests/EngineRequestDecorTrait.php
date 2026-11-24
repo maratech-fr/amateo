@@ -48,6 +48,7 @@ use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
 use App\Enum\TeamCoachRole;
 use App\Enum\TeamLinkType;
+use App\Plans\PlanComposition;
 use App\Service\ScheduleConstraintBuilder;
 use App\Service\SchedulePlanProvisioner;
 use DateTimeImmutable;
@@ -195,8 +196,7 @@ trait EngineRequestDecorTrait
 
         foreach ([[self::ER_TEAM_U13, 'U13 F', 3], [self::ER_TEAM_U15, 'U15 M', 2], [self::ER_TEAM_SM1, 'SM1', 1]] as [$teamId, $name, $tier]) {
             $em->persist((new Team)->setId($teamId)->setClubId(self::ER_CLUB)->setSeasonId(self::ER_SEASON)
-                ->setSportCategoryId(self::ER_CATEGORY)->setPriorityTierId($tier)->setName($name)
-                ->setSessionsPerWeek(2)->setIsActive(true));
+                ->setSportCategoryId(self::ER_CATEGORY)->setPriorityTierId($tier)->setName($name)->setIsActive(true));
         }
 
         $alix = (new Person)->setClubId(self::ER_CLUB)->setFirstName('Alix')->setLastName('Entraîneur');
@@ -206,6 +206,8 @@ trait EngineRequestDecorTrait
         $em->persist(new Coach($alix)->setId(self::ER_COACH_A)->setClubId(self::ER_CLUB)->setSeasonId(self::ER_SEASON));
         $em->persist(new Coach($bao)->setId(self::ER_COACH_B)->setClubId(self::ER_CLUB)->setSeasonId(self::ER_SEASON));
         $em->flush();
+        // Chaque équipe a sa ligne dans le plan de saison : 2 séances, 1 par jour.
+        static::getContainer()->get(PlanComposition::class)->ensureLines(self::ER_SEASON);
 
         foreach ([[1, self::ER_TEAM_U13, self::ER_COACH_A], [2, self::ER_TEAM_U15, self::ER_COACH_A], [3, self::ER_TEAM_SM1, self::ER_COACH_B]] as [$n, $teamId, $coachId]) {
             $em->persist((new TeamCoach)->setId(self::erId('7c0a', $n))->setClubId(self::ER_CLUB)->setSeasonId(self::ER_SEASON)

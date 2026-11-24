@@ -43,6 +43,7 @@ use App\Enum\SubscriptionOrigin;
 use App\Enum\TeamCoachRole;
 use App\Enum\TeamLevel;
 use App\Enum\TeamLinkType;
+use App\Plans\PlanComposition;
 use App\Service\Basketball\CategoryCatalog;
 use App\Service\ClubLeagueWindowSeeder;
 use App\Service\ClubSubscriptionWriter;
@@ -116,6 +117,7 @@ final class LoadTestClubSeeder
         private readonly SchedulePlanProvisioner $schedulePlanProvisioner,
         private readonly ClubLeagueWindowSeeder $clubLeagueWindowSeeder,
         private readonly ClubSubscriptionWriter $subscriptionWriter,
+        private readonly PlanComposition $planComposition,
     ) {}
 
     /**
@@ -393,6 +395,7 @@ final class LoadTestClubSeeder
         $tierOrders = [];
         $teams = [];
 
+        $createdSessions = [];
         for ($i = 0; $i < $size->teamCount(); ++$i) {
             [$catName, $isYouth, $level, $tier, $sessions, $code] = self::TEAM_TEMPLATES[$i % $templateCount];
             $gender = 0 === intdiv($i, $templateCount) % 2 ? Gender::M : Gender::F;
@@ -412,10 +415,10 @@ final class LoadTestClubSeeder
                 $team->setPriorityTierId($tier);
                 $team->setLevel($level);
                 $team->setGender($gender);
-                $team->setSessionsPerWeek($sessions);
                 $team->setTierOrder($tierOrders[$tier]);
                 $team->setIsActive(true);
                 $manager->persist($team);
+                $createdSessions[$team->getId()] = ['sessionsPerWeek' => $sessions];
             }
 
             // ~2/3 des équipes reçoivent (habitude de match) ; le reste ne joue qu'à l'extérieur.
@@ -429,6 +432,9 @@ final class LoadTestClubSeeder
                 'idealVenueIndex' => $i % $size->venueCount(),
             ];
         }
+
+        // Lot 4, PR 3a : chaque équipe créée reçoit sa ligne dans chaque plan de la saison, au socle avec ses séances.
+        $this->planComposition->ensureLines($seasonId, $createdSessions);
 
         return $teams;
     }

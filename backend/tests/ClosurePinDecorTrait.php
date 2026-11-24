@@ -24,6 +24,7 @@ use App\Enum\LockLevel;
 use App\Enum\LockOrigin;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
+use App\Plans\PlanComposition;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
 use Lexik\Bundle\JWTAuthenticationBundle\Services\JWTTokenManagerInterface;
@@ -177,8 +178,9 @@ trait ClosurePinDecorTrait
     {
         $team = (new Team)->setClubId($club->getId())->setSeasonId($season->getId())
             ->setSportCategoryId('99999999-9999-4999-8999-999999999999')->setPriorityTierId($tier)
-            ->setName($name)->setSessionsPerWeek(2)->setIsActive(true);
+            ->setName($name)->setIsActive(true);
         static::getContainer()->get(EntityManagerInterface::class)->persist($team);
+        static::getContainer()->get(PlanComposition::class)->ensureLines($team->getSeasonId(), [$team->getId() => ['sessionsPerWeek' => 2]]);
 
         return $team->getId();
     }

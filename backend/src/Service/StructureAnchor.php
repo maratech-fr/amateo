@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Service;
 
 use App\Entity\Constraint;
+use App\Entity\PlanTeam;
 use App\Entity\Reservation;
 use App\Entity\VenueTrainingSlot;
 use LogicException;
@@ -49,7 +50,7 @@ final class StructureAnchor
      */
     public static function isPeriodScoped(string $entityClass): bool
     {
-        return \in_array($entityClass, [Constraint::class, Reservation::class, VenueTrainingSlot::class], true);
+        return \in_array($entityClass, [Constraint::class, PlanTeam::class, Reservation::class, VenueTrainingSlot::class], true);
     }
 
     /**
@@ -70,7 +71,8 @@ final class StructureAnchor
     public static function sharedStructureCriteria(string $entityClass, string $seasonPlanId): array
     {
         return match ($entityClass) {
-            Reservation::class, VenueTrainingSlot::class => ['schedulePlanId' => $seasonPlanId],
+            // Lot 4, PR 3a : les équipes du socle sont les lignes du plan de saison.
+            PlanTeam::class, Reservation::class, VenueTrainingSlot::class => ['schedulePlanId' => $seasonPlanId],
             Constraint::class => ['calendarEntryId' => null],
             default => throw new LogicException(\sprintf('Aucune ancre de période connue pour %s — déclarez-la ici (schedulePlanId si la ligne est une RÉPONSE, calendarEntryId si elle décrit le FAIT).', $entityClass)),
         };

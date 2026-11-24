@@ -469,7 +469,7 @@ describe("PlanningPage (integration)", () => {
     vi.mocked(listSchedules).mockResolvedValue([
       { id: SID, name: "Version de période", status: "COMPLETED", score: null, createdAt: "2026-01-01T00:00:00Z", updatedAt: "2026-01-01T00:00:00Z", planType: "HOLIDAY", schedulePlanId: "ete-plan" },
     ]);
-    plansState.plans = [{ id: "ete-plan", type: "HOLIDAY", name: "Reprise d'été S1", startDate: "2026-08-17", calendarEntryId: "e-ete", chosenScheduleId: null, teamSelectionInitialized: true }];
+    plansState.plans = [{ id: "ete-plan", type: "HOLIDAY", name: "Reprise d'été S1", startDate: "2026-08-17", calendarEntryId: "e-ete", chosenScheduleId: null }];
     usePlanningStore.setState({ selectedScheduleId: SID });
     renderWithProviders(<PlanningPage />);
 
@@ -498,7 +498,7 @@ describe("PlanningPage (integration)", () => {
         capabilities: { canDelete: true, canValidate: false, canRegenerateFrom: false, canLoadLocks: true, versionsDeletedOnValidate: 0, overlaysDroppedOnValidate: 0 },
       },
     ]);
-    plansState.plans = [{ id: "ete-plan", type: "HOLIDAY", name: "Reprise d'été S1", startDate: "2026-08-17", calendarEntryId: "e-ete", chosenScheduleId: null, teamSelectionInitialized: true }];
+    plansState.plans = [{ id: "ete-plan", type: "HOLIDAY", name: "Reprise d'été S1", startDate: "2026-08-17", calendarEntryId: "e-ete", chosenScheduleId: null }];
     usePlanningStore.setState({ selectedScheduleId: SID });
     renderWithProviders(<PlanningPage />);
 
@@ -672,7 +672,7 @@ describe("PlanningPage (integration)", () => {
     vi.mocked(listSchedules).mockResolvedValue([
       { id: SID, name: "Période", status: "COMPLETED", score: null, createdAt: "2026-01-01T00:00:00Z", updatedAt: "2026-01-01T00:00:00Z", planType: "HOLIDAY", schedulePlanId: "ete-plan" },
     ]);
-    plansState.plans = [{ id: "ete-plan", type: "HOLIDAY", name: "Été", startDate: "2026-08-17", calendarEntryId: "e", chosenScheduleId: null, teamSelectionInitialized: true }];
+    plansState.plans = [{ id: "ete-plan", type: "HOLIDAY", name: "Été", startDate: "2026-08-17", calendarEntryId: "e", chosenScheduleId: null }];
     // La séance par défaut (slot-1) est placée dans venue-1, que l'on désactive ensuite.
     conflictsState.data = makeConflicts({ disabledVenueIds: ["venue-1"] });
     usePlanningStore.setState({ selectedScheduleId: SID, viewMode: "gymnase" });
@@ -723,7 +723,7 @@ describe("PlanningPage (integration)", () => {
     vi.mocked(listSchedules).mockResolvedValue([
       { id: SID, name: "Période", status: "FAILED", score: null, createdAt: "2026-01-01T00:00:00Z", updatedAt: "2026-01-01T00:00:00Z", planType: "HOLIDAY", schedulePlanId: "ete-plan" },
     ]);
-    plansState.plans = [{ id: "ete-plan", type: "HOLIDAY", name: "Été", startDate: "2026-08-17", calendarEntryId: "e", chosenScheduleId: null, teamSelectionInitialized: true }];
+    plansState.plans = [{ id: "ete-plan", type: "HOLIDAY", name: "Été", startDate: "2026-08-17", calendarEntryId: "e", chosenScheduleId: null }];
     vi.mocked(getSlots).mockResolvedValue([]);
     conflictsState.data = makeConflicts({ disabledVenueIds: ["venue-1"] });
     reservationsState.rows = [
@@ -740,7 +740,7 @@ describe("PlanningPage (integration)", () => {
     vi.mocked(listSchedules).mockResolvedValue([
       { id: SID, name: "Période", status: "COMPLETED", score: null, createdAt: "2026-01-01T00:00:00Z", updatedAt: "2026-01-01T00:00:00Z", planType: "HOLIDAY", schedulePlanId: "ete-plan" },
     ]);
-    plansState.plans = [{ id: "ete-plan", type: "HOLIDAY", name: "Été", startDate: "2026-08-17", calendarEntryId: "e", chosenScheduleId: null, teamSelectionInitialized: true }];
+    plansState.plans = [{ id: "ete-plan", type: "HOLIDAY", name: "Été", startDate: "2026-08-17", calendarEntryId: "e", chosenScheduleId: null }];
     // DEUX gymnases : sans un gymnase qui RESTE, la grille est vide et l'assertion
     // négative passerait pour la mauvaise raison (rien ne s'affiche).
     vi.mocked(getVenues).mockResolvedValue([
@@ -831,7 +831,7 @@ describe("PlanningPage (integration)", () => {
   it("greys « Régénérer » on a PERIOD plan whose structure hash equals the snapshot (no SEASON guard)", async () => {
     vi.mocked(listSchedules).mockResolvedValue([{ id: "ov-1", name: "Ajustement", status: "COMPLETED", score: 10, createdAt: "2026-09-10T00:00:00Z", updatedAt: "2026-09-10T00:00:00Z", planType: "CLOSURE", schedulePlanId: "ete-plan", snapshotHash: "SAME" }]);
     vi.mocked(getStructureHash).mockResolvedValue({ currentStructureHash: "SAME" });
-    plansState.plans = [{ id: "ete-plan", type: "CLOSURE", name: "Ajustement gymnase", startDate: "2026-09-07", calendarEntryId: "e-ete", chosenScheduleId: null, teamSelectionInitialized: true }];
+    plansState.plans = [{ id: "ete-plan", type: "CLOSURE", name: "Ajustement gymnase", startDate: "2026-09-07", calendarEntryId: "e-ete", chosenScheduleId: null }];
     renderWithProviders(<PlanningPage embedded scopePlanId="ete-plan" />);
 
     const regen = await screen.findByRole("button", { name: /Régénérer/i });
@@ -856,7 +856,7 @@ describe("PlanningPage (integration)", () => {
     const renderVersion = async (over: { snapshotHash: string; manuallyEditedSinceGeneration: boolean }) => {
       vi.mocked(listSchedules).mockResolvedValue([version(over)] as never);
       vi.mocked(getStructureHash).mockResolvedValue({ currentStructureHash: "SAME" });
-      plansState.plans = [{ id: "ete-plan", type: "CLOSURE", name: "Ajustement gymnase", startDate: "2026-09-07", calendarEntryId: "e-ete", chosenScheduleId: null, teamSelectionInitialized: true }];
+      plansState.plans = [{ id: "ete-plan", type: "CLOSURE", name: "Ajustement gymnase", startDate: "2026-09-07", calendarEntryId: "e-ete", chosenScheduleId: null }];
       renderWithProviders(<PlanningPage embedded scopePlanId="ete-plan" />);
       await screen.findByRole("button", { name: /Régénérer/i });
     };
@@ -891,7 +891,7 @@ describe("PlanningPage (integration)", () => {
     vi.mocked(listSchedules).mockResolvedValue([
       { id: "ov-src", name: "Ajustement", status: "COMPLETED", score: 10, createdAt: "2026-09-12T00:00:00Z", updatedAt: "2026-09-12T00:00:00Z", planType: "CLOSURE", schedulePlanId: "ete-plan", isLockSource: true, hardLockCount: 2 },
     ]);
-    plansState.plans = [{ id: "ete-plan", type: "CLOSURE", name: "Ajustement gymnase", startDate: "2026-09-07", calendarEntryId: "e-ete", chosenScheduleId: null, teamSelectionInitialized: true }];
+    plansState.plans = [{ id: "ete-plan", type: "CLOSURE", name: "Ajustement gymnase", startDate: "2026-09-07", calendarEntryId: "e-ete", chosenScheduleId: null }];
     renderWithProviders(<PlanningPage embedded scopePlanId="ete-plan" />);
 
     await user.click(await screen.findByRole("button", { name: /^Régénérer/i }));
@@ -909,7 +909,7 @@ describe("PlanningPage (integration)", () => {
       { id: "ov-old", name: "Ajustement", status: "COMPLETED", score: 10, createdAt: "2026-09-10T00:00:00Z", updatedAt: "2026-09-10T00:00:00Z", planType: "CLOSURE", schedulePlanId: "ete-plan", isLockSource: false, hardLockCount: 0 },
       { id: "ov-src", name: "Ajustement", status: "COMPLETED", score: 12, createdAt: "2026-09-12T00:00:00Z", updatedAt: "2026-09-12T00:00:00Z", planType: "CLOSURE", schedulePlanId: "ete-plan", isLockSource: true, hardLockCount: 3 },
     ]);
-    plansState.plans = [{ id: "ete-plan", type: "CLOSURE", name: "Ajustement gymnase", startDate: "2026-09-07", calendarEntryId: "e-ete", chosenScheduleId: null, teamSelectionInitialized: true }];
+    plansState.plans = [{ id: "ete-plan", type: "CLOSURE", name: "Ajustement gymnase", startDate: "2026-09-07", calendarEntryId: "e-ete", chosenScheduleId: null }];
     // On REGARDE la version la plus ancienne (non source) — posée avant le rendu.
     usePlanningStore.setState({ selectedScheduleId: "ov-old" });
     renderWithProviders(<PlanningPage embedded scopePlanId="ete-plan" />);
@@ -1142,7 +1142,7 @@ describe("PlanningPage (integration)", () => {
     vi.mocked(listSchedules).mockResolvedValue([
       { id: SID, name: "Période", status: "COMPLETED", score: null, createdAt: "2026-01-01T00:00:00Z", updatedAt: "2026-01-01T00:00:00Z", planType: "HOLIDAY", schedulePlanId: "ete-plan" },
     ]);
-    plansState.plans = [{ id: "ete-plan", type: "HOLIDAY", name: "Été", startDate: "2026-08-17", calendarEntryId: "e", chosenScheduleId: null, teamSelectionInitialized: true }];
+    plansState.plans = [{ id: "ete-plan", type: "HOLIDAY", name: "Été", startDate: "2026-08-17", calendarEntryId: "e", chosenScheduleId: null }];
     // venue-1 est fermé le MARDI (jour ISO 2) — la fenêtre ts-2 (mardi 19:00) tombe dessus.
     conflictsState.data = makeConflicts({ effectiveClosedWeekdays: { "venue-1": { "2": "default-incident" } } });
     usePlanningStore.setState({ selectedScheduleId: SID, viewMode: "gymnase" });
@@ -1247,7 +1247,7 @@ describe("PlanningPage (integration)", () => {
       useWizardStore.getState().exitPeriodMode();
       const overlayValidated: Schedule[] = [{ id: "ov-1", name: "Ajustement", status: "COMPLETED", score: null, createdAt: "2026-09-10T00:00:00Z", updatedAt: "2026-09-10T00:00:00Z", planType: "CLOSURE", schedulePlanId: "ete-plan", isChosen: true }];
       vi.mocked(listSchedules).mockResolvedValue(overlayValidated);
-      plansState.plans = [{ id: "ete-plan", type: "CLOSURE", name: "Ajustement gymnase", startDate: "2026-09-07", calendarEntryId: "e-ete", chosenScheduleId: "ov-1", teamSelectionInitialized: true }];
+      plansState.plans = [{ id: "ete-plan", type: "CLOSURE", name: "Ajustement gymnase", startDate: "2026-09-07", calendarEntryId: "e-ete", chosenScheduleId: "ov-1" }];
       vi.mocked(reopenSchedule).mockResolvedValueOnce({});
       renderWithProviders(<PlanningPage scopePlanId="ete-plan" />); // Nouveau contrat : Rouvrir vit sur /planning autonome
 
@@ -1609,7 +1609,7 @@ describe("PlanningPage (integration)", () => {
       vi.mocked(listSchedules).mockResolvedValue([
         { id: SID, name: "Reprise été V1", status: "COMPLETED", score: null, createdAt: "2026-01-01T00:00:00Z", updatedAt: "2026-01-01T00:00:00Z", planType: "HOLIDAY", schedulePlanId: "ete-plan" },
       ]);
-      plansState.plans = [{ id: "ete-plan", type: "HOLIDAY", name: "Reprise d'été", startDate: "2026-08-17", calendarEntryId: "e-ete", chosenScheduleId: null, teamSelectionInitialized: true }];
+      plansState.plans = [{ id: "ete-plan", type: "HOLIDAY", name: "Reprise d'été", startDate: "2026-08-17", calendarEntryId: "e-ete", chosenScheduleId: null }];
       // U11 attend 2 séances, n'en a qu'une (slot-1) → 1 à replacer : le prédicat SERVI de la dérive.
       vi.mocked(getTeams).mockResolvedValue([{ id: "team-1", name: "U11", sportCategoryId: "cat-1", priorityTierId: 1, tierOrder: 0, sessionsPerWeek: 2 }]);
       vi.mocked(fillSchedule).mockResolvedValue({ id: "sched-fill" });
@@ -1637,7 +1637,7 @@ describe("PlanningPage (integration)", () => {
       vi.mocked(listSchedules).mockResolvedValue([
         { id: SID, name: "Reprise été V1", status: "COMPLETED", score: null, createdAt: "2026-01-01T00:00:00Z", updatedAt: "2026-01-01T00:00:00Z", planType: "HOLIDAY", schedulePlanId: "ete-plan" },
       ]);
-      plansState.plans = [{ id: "ete-plan", type: "HOLIDAY", name: "Reprise d'été", startDate: "2026-08-17", calendarEntryId: "e-ete", chosenScheduleId: null, teamSelectionInitialized: true }];
+      plansState.plans = [{ id: "ete-plan", type: "HOLIDAY", name: "Reprise d'été", startDate: "2026-08-17", calendarEntryId: "e-ete", chosenScheduleId: null }];
       // U11 attend 1 séance et l'a (slot-1 par défaut) → aucune à replacer → rien à combler.
       vi.mocked(getTeams).mockResolvedValue([{ id: "team-1", name: "U11", sportCategoryId: "cat-1", priorityTierId: 1, tierOrder: 0, sessionsPerWeek: 1 }]);
       usePlanningStore.setState({ selectedScheduleId: SID });
@@ -2149,7 +2149,7 @@ describe("PlanningPage (integration)", () => {
 describe("PlanningPage — portée période (embedded + scopePlanId)", () => {
   const seasonV = (id: string, over: Partial<Schedule> = {}): Schedule => ({ id, name: "Planning A", status: "COMPLETED", score: null, createdAt: "2026-01-01T00:00:00Z", updatedAt: "2026-01-01T00:00:00Z", planType: "SEASON", schedulePlanId: "season-plan", ...over });
   const overlayV = (id: string, createdAt: string, over: Partial<Schedule> = {}): Schedule => ({ id, name: "Ajustement", status: "COMPLETED", score: null, createdAt, updatedAt: createdAt, planType: "CLOSURE", schedulePlanId: "ete-plan", ...over });
-  const etePlan: SchedulePlan = { id: "ete-plan", type: "CLOSURE", name: "Ajustement gymnase", startDate: "2026-09-07", calendarEntryId: "e-ete", chosenScheduleId: null, teamSelectionInitialized: true };
+  const etePlan: SchedulePlan = { id: "ete-plan", type: "CLOSURE", name: "Ajustement gymnase", startDate: "2026-09-07", calendarEntryId: "e-ete", chosenScheduleId: null };
 
   it("une sélection de SAISON périmée dans le planningStore ne survit PAS — atterrit dans la période, titre = période, sans badge « saison »", async () => {
     vi.mocked(listSchedules).mockResolvedValue([
@@ -2210,7 +2210,7 @@ describe("PlanningPage — portée période (embedded + scopePlanId)", () => {
 describe("PlanningPage — atterrissage EMBARQUÉ = version la plus récente, pas le pointeur", () => {
   const seasonV = (id: string, createdAt: string, over: Partial<Schedule> = {}): Schedule => ({ id, name: "Planning A", status: "COMPLETED", score: null, createdAt, updatedAt: createdAt, planType: "SEASON", schedulePlanId: "season-plan", ...over });
   const overlayV = (id: string, createdAt: string, over: Partial<Schedule> = {}): Schedule => ({ id, name: "Ajustement", status: "COMPLETED", score: null, createdAt, updatedAt: createdAt, planType: "CLOSURE", schedulePlanId: "ete-plan", ...over });
-  const etePlan: SchedulePlan = { id: "ete-plan", type: "CLOSURE", name: "Ajustement gymnase", startDate: "2026-09-07", calendarEntryId: "e-ete", chosenScheduleId: null, teamSelectionInitialized: true };
+  const etePlan: SchedulePlan = { id: "ete-plan", type: "CLOSURE", name: "Ajustement gymnase", startDate: "2026-09-07", calendarEntryId: "e-ete", chosenScheduleId: null };
 
   it("SAISON embarquée : une V1 POINTÉE plus ancienne cède la place à la V2 plus récente", async () => {
     // RED avant le fix : l'embarqué saison atterrissait via `pickLandingScheduleId` (pointeur
@@ -2585,7 +2585,7 @@ describe("PlanningPage — compteur de carence (P2-44 PR-4)", () => {
 describe("PlanningPage — écran de génération dès qu'une version EN PORTÉE est en vol (lot C)", () => {
   const seasonV = (id: string, status: Schedule["status"], createdAt: string): Schedule => ({ id, name: "Planning A", status, score: null, createdAt, updatedAt: createdAt, planType: "SEASON", schedulePlanId: "season-plan" });
   const overlayV = (id: string, status: Schedule["status"], createdAt: string): Schedule => ({ id, name: "Fermeture", status, score: null, createdAt, updatedAt: createdAt, planType: "CLOSURE", schedulePlanId: "plan-p" });
-  const closurePlan: SchedulePlan = { id: "plan-p", type: "CLOSURE", name: "Fermeture", startDate: "2026-09-10", calendarEntryId: "e-p", chosenScheduleId: null, teamSelectionInitialized: true };
+  const closurePlan: SchedulePlan = { id: "plan-p", type: "CLOSURE", name: "Fermeture", startDate: "2026-09-10", calendarEntryId: "e-p", chosenScheduleId: null };
 
   // DÉCISION FONDATEUR 2026-08-21 (assumée) : pendant une régénération de saison, sélectionner
   // manuellement une ancienne version COMPLETED montre malgré tout l'écran d'attente jusqu'à la
@@ -3088,7 +3088,6 @@ describe("PlanningPage — geste « Modifier les dates » d'une fermeture (PR2)"
     windowLockedReason: null,
     calendarEntryId: "e-clo",
     chosenScheduleId: "ov-1",
-    teamSelectionInitialized: true,
   } as unknown as SchedulePlan;
   const closureVersion = (over: Partial<Schedule> = {}): Schedule => ({
     id: "ov-1", name: CLO_TITLE, status: "COMPLETED", score: 10, createdAt: "2026-11-05T00:00:00Z", updatedAt: "2026-11-05T00:00:00Z", planType: "CLOSURE", schedulePlanId: "clo-plan", isChosen: true, ...over,
@@ -3108,7 +3107,7 @@ describe("PlanningPage — geste « Modifier les dates » d'une fermeture (PR2)"
     // seul le garde de TYPE (displayedClosurePlan ne retient qu'un plan CLOSURE) doit l'écarter. Sans
     // ce plan en state, displayedClosurePlan restait null quoi qu'il arrive et le test était vacuum
     // (falsifié : filtre de type retiré, test resté VERT) — il ne prouvait pas la discrimination.
-    plansState.plans = [{ id: "plan-1", type: "SEASON", name: "Planning A", startDate: "2025-09-01", calendarEntryId: null, chosenScheduleId: null, teamSelectionInitialized: true, windowEditable: true, windowLockedReason: null }];
+    plansState.plans = [{ id: "plan-1", type: "SEASON", name: "Planning A", startDate: "2025-09-01", calendarEntryId: null, chosenScheduleId: null, windowEditable: true, windowLockedReason: null }];
     renderWithProviders(<PlanningPage />); // défaut = workVersion SEASON
     await screen.findByText("U11");
     expect(screen.queryByRole("button", { name: /^Modifier les dates/i })).not.toBeInTheDocument();
@@ -3176,7 +3175,7 @@ describe("PlanningPage — le dialogue de validation nomme ce qui manque", () =>
 
   it("nomme aussi le manque d'un gymnase masqué pour la période", async () => {
     vi.mocked(listSchedules).mockResolvedValue([{ ...workVersion[0], name: "Période", planType: "HOLIDAY", schedulePlanId: "ete-plan" }]);
-    plansState.plans = [{ id: "ete-plan", type: "HOLIDAY", name: "Été", startDate: "2026-08-17", calendarEntryId: "e", chosenScheduleId: null, teamSelectionInitialized: true }];
+    plansState.plans = [{ id: "ete-plan", type: "HOLIDAY", name: "Été", startDate: "2026-08-17", calendarEntryId: "e", chosenScheduleId: null }];
     conflictsState.data = makeConflicts({ disabledVenueIds: ["venue-2"] });
     vi.mocked(getDiagnostics).mockResolvedValue([blocked("venue-2")]);
 
@@ -3256,7 +3255,7 @@ describe("PlanningPage — « Combler automatiquement » porte le solde de créd
     vi.mocked(listSchedules).mockResolvedValue([
       { id: SID, name: "Reprise été V1", status: "COMPLETED", score: null, createdAt: "2026-01-01T00:00:00Z", updatedAt: "2026-01-01T00:00:00Z", planType: "HOLIDAY", schedulePlanId: "ete-plan" },
     ]);
-    plansState.plans = [{ id: "ete-plan", type: "HOLIDAY", name: "Reprise d'été", startDate: "2026-08-17", calendarEntryId: "e-ete", chosenScheduleId: null, teamSelectionInitialized: true }];
+    plansState.plans = [{ id: "ete-plan", type: "HOLIDAY", name: "Reprise d'été", startDate: "2026-08-17", calendarEntryId: "e-ete", chosenScheduleId: null }];
     vi.mocked(getTeams).mockResolvedValue([{ id: "team-1", name: "U11", sportCategoryId: "cat-1", priorityTierId: 1, tierOrder: 0, sessionsPerWeek: 2 }]);
     vi.mocked(fillSchedule).mockResolvedValue({ id: "sched-fill" });
     usePlanningStore.setState({ selectedScheduleId: SID, viewMode: "gymnase" });
@@ -3332,7 +3331,7 @@ describe("PlanningPage — comblement refusé par un blocage", () => {
     vi.mocked(listSchedules).mockResolvedValue([
       { id: SID, name: "Reprise été V1", status: "COMPLETED", score: null, createdAt: "2026-01-01T00:00:00Z", updatedAt: "2026-01-01T00:00:00Z", planType: "HOLIDAY", schedulePlanId: "ete-plan" },
     ]);
-    plansState.plans = [{ id: "ete-plan", type: "HOLIDAY", name: "Reprise d'été", startDate: "2026-08-17", calendarEntryId: "e-ete", chosenScheduleId: null, teamSelectionInitialized: true }];
+    plansState.plans = [{ id: "ete-plan", type: "HOLIDAY", name: "Reprise d'été", startDate: "2026-08-17", calendarEntryId: "e-ete", chosenScheduleId: null }];
     vi.mocked(getTeams).mockResolvedValue([{ id: "team-1", name: "U11", sportCategoryId: "cat-1", priorityTierId: 1, tierOrder: 0, sessionsPerWeek: 2 }]);
     usePlanningStore.setState({ selectedScheduleId: SID, viewMode: "gymnase" });
     useToastStore.setState({ toasts: [] });
@@ -3530,7 +3529,7 @@ describe("PlanningPage — version chargée", () => {
   // « Combler » dérive une version : il suit la règle des autres gestes. Jumeau serveur :
   // LoadedVersionIsTheOnlyEditableTest::testFillingAPeriodVersionOtherThanTheSourceIsRefused.
   const periodAdrift = () => {
-    plansState.plans = [{ id: "ete-plan", type: "HOLIDAY", name: "Reprise d'été", startDate: "2026-08-17", calendarEntryId: "e-ete", chosenScheduleId: null, teamSelectionInitialized: true }];
+    plansState.plans = [{ id: "ete-plan", type: "HOLIDAY", name: "Reprise d'été", startDate: "2026-08-17", calendarEntryId: "e-ete", chosenScheduleId: null }];
     vi.mocked(getTeams).mockResolvedValue([{ id: "team-1", name: "U11", sportCategoryId: "cat-1", priorityTierId: 1, tierOrder: 0, sessionsPerWeek: 2 }]);
     vi.mocked(fillSchedule).mockClear();
     vi.mocked(fillSchedule).mockResolvedValue({ id: "sched-fill" });
@@ -3734,7 +3733,7 @@ describe("PlanningPage — version chargée", () => {
       const period = (id: string, createdAt: string, extra: Record<string, unknown>) => version(id, createdAt, { planType: "CLOSURE", schedulePlanId: "ete-plan", ...extra } as Partial<Schedule>);
       const openSource = async () => {
         vi.mocked(listSchedules).mockResolvedValue([period("p1", "2026-01-01T00:00:00Z", { isLockSource: true, manuallyEditedSinceGeneration: true, capabilities: LOADED_CAPS })]);
-        plansState.plans = [{ id: "ete-plan", type: "CLOSURE", name: "Ajustement gymnase", startDate: "2026-09-07", calendarEntryId: "e-ete", chosenScheduleId: null, teamSelectionInitialized: true }];
+        plansState.plans = [{ id: "ete-plan", type: "CLOSURE", name: "Ajustement gymnase", startDate: "2026-09-07", calendarEntryId: "e-ete", chosenScheduleId: null }];
         usePlanningStore.setState({ selectedScheduleId: "p1" });
         renderWithProviders(<PlanningPage embedded scopePlanId="ete-plan" />);
         await screen.findByText("U11");

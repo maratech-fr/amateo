@@ -15,6 +15,7 @@ use App\Entity\Team;
 use App\Enum\AdminJobSource;
 use App\Enum\AdminJobStatus;
 use App\Enum\SeasonStatus;
+use App\Plans\PlanComposition;
 use App\Security\TotpService;
 use App\Tests\Double\RecordingAdminJobExecutor;
 use App\Tests\TenantGucTrait;
@@ -295,8 +296,10 @@ final class AdminClubActionTest extends WebTestCase
         $em = self::getContainer()->get(EntityManagerInterface::class);
         $team = (new Team)->setClubId($clubId)->setSeasonId($seasonId)
             ->setSportCategoryId('33333333-3333-3333-3333-333333333333')->setPriorityTierId(1)
-            ->setName('SM1')->setSessionsPerWeek(1)->setIsActive(true);
+            ->setName('SM1')->setIsActive(true);
         $em->persist($team);
+        $em->flush();
+        self::getContainer()->get(PlanComposition::class)->ensureLines($team->getSeasonId(), [$team->getId() => ['sessionsPerWeek' => 1]]);
         $em->flush();
         $teamId = $team->getId();
 

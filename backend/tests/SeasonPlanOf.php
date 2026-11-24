@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Tests;
 
+use App\Plans\PlanComposition;
 use App\Service\SchedulePlanProvisioner;
 use Doctrine\ORM\EntityManagerInterface;
 use PHPUnit\Framework\Assert;
@@ -28,6 +29,11 @@ final class SeasonPlanOf
         $em = $container->get(EntityManagerInterface::class);
         Assert::assertInstanceOf(EntityManagerInterface::class, $em);
         $em->flush();
+        // Lot 4, PR 3a : les équipes que le décor a écrites avant le plan de saison y reçoivent leur ligne, comme si
+        // la saison était née avec son plan (la porte ne touche aucune ligne existante).
+        $composition = $container->get(PlanComposition::class);
+        Assert::assertInstanceOf(PlanComposition::class, $composition);
+        $composition->ensureLines($seasonId);
 
         return $planId;
     }

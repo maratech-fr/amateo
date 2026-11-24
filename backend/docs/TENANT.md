@@ -128,6 +128,11 @@ services:
   `(place_b_id, club_id)` → `place (id, club_id)`, so a travel time can never link the places of two clubs. Served
   per season by `PlaceTravelTimeRepository::forSeason` (raw SQL with club and season in an explicit clause).
   Guarded by `PersonPlaceTenantIsolationTest`; detail: `docs/security/rls.md` § `place_travel_time`.
+- **The teams of a plan live on `plan_team`.** A plain tenant table (`Entity/PlanTeam.php`, filter + RLS) with a
+  COMPOSITE foreign key `(schedule_plan_id, club_id)` → `schedule_plan (id, club_id)`, so a line can never point at
+  another club's plan; no key to `team` (the lines are written only by `PlanComposition::ensureLines`). The exception
+  route `/api/team_period_overrides` refuses another club's team or plan without writing anything. Guarded by
+  `PlanCompositionTenantIsolationTest`; detail: `docs/security/rls.md` § `plan_team`.
 - **Role layer on top of the membership (P1-1):** the role is decided **centrally**. Every `^/api/`
   route declares its module and audience (`#[ClubFunction]`, `#[ClubResource]`, `#[AccountFunction]`,
   `src/Access/`) and `ClubAccessListener` (`kernel.request`, **priority 4**, main request only;

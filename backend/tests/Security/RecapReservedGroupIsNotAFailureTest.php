@@ -34,6 +34,7 @@ use App\Enum\LockOrigin;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
 use App\Enum\TeamCoachRole;
+use App\Plans\PlanComposition;
 use App\Tests\ChoosesPlanVersionTrait;
 use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\ProvisionsPeriodPlanTrait;
@@ -253,9 +254,10 @@ final class RecapReservedGroupIsNotAFailureTest extends WebTestCase
         $team->setSportCategoryId($category->getId());
         $team->setPriorityTierId(1);
         $team->setName($name);
-        $team->setSessionsPerWeek(1);
         $team->setIsActive(true);
         $this->em->persist($team);
+        $this->em->flush();
+        self::getContainer()->get(PlanComposition::class)->ensureLines($team->getSeasonId(), [$team->getId() => ['sessionsPerWeek' => 1]]);
         $this->em->flush();
 
         return $team;

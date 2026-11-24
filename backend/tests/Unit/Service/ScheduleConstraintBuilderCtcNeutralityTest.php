@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Tests\Unit\Service;
 
+use App\Entity\PlanTeam;
 use App\Entity\SportCategory;
 use App\Entity\Team;
 use App\Entity\TeamMatchHabit;
@@ -55,7 +56,6 @@ final class ScheduleConstraintBuilderCtcNeutralityTest extends TestCase
             ->setSportCategoryId('sport-category-u15f')
             ->setPriorityTierId(2)
             ->setName('U15F Entente')
-            ->setSessionsPerWeek(2)
             ->setIsCtc(true)
             ->setCtcPartner('AS Voisine');
 
@@ -66,12 +66,13 @@ final class ScheduleConstraintBuilderCtcNeutralityTest extends TestCase
             ->setSportCategoryId('sport-category-u15f')
             ->setPriorityTierId(2)
             ->setName('U15F Entente')
-            ->setSessionsPerWeek(2)
             ->setIsCtc(false)
             ->setCtcPartner(null);
 
-        $withCtc = $this->builder->build([], [$ctc], []);
-        $withoutCtc = $this->builder->build([], [$plain], []);
+        // Les séances de l'équipe : sa ligne dans le plan construit (lot 4, PR 3a).
+        $lines = ['team-ctc' => (new PlanTeam)->setTeamId('team-ctc')->setSessionsPerWeek(2)];
+        $withCtc = $this->builder->build([], [$ctc], [], teamLines: $lines);
+        $withoutCtc = $this->builder->build([], [$plain], [], teamLines: $lines);
 
         // Le payload d'équipe n'a jamais entendu parler de la CTC : aucun champ `isCtc`/`ctcPartner`.
         self::assertArrayNotHasKey('isCtc', $withCtc['teams'][0], 'isCtc ne doit pas franchir serializeTeam');

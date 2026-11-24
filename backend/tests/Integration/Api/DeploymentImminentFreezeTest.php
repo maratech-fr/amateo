@@ -23,6 +23,7 @@ use App\Enum\CompetitionType;
 use App\Enum\FixtureHomeAway;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
+use App\Plans\PlanComposition;
 use App\Service\SeasonResolver;
 use App\Tests\ChoosesPlanVersionTrait;
 use App\Tests\CreatesPeopleAndPlacesTrait;
@@ -309,8 +310,10 @@ final class DeploymentImminentFreezeTest extends WebTestCase
         $category = (new SportCategory)->setClubId($this->club->getId())->setSportId($sport->getId())->setName('U15-' . uniqid('', true));
         $this->em->persist($category);
         $team = (new Team)->setClubId($this->club->getId())->setSeasonId($this->season->getId())->setSportCategoryId($category->getId())
-            ->setPriorityTierId(3)->setName('U15')->setSessionsPerWeek(2)->setIsActive(true);
+            ->setPriorityTierId(3)->setName('U15')->setIsActive(true);
         $this->em->persist($team);
+        $this->em->flush();
+        self::getContainer()->get(PlanComposition::class)->ensureLines($team->getSeasonId(), [$team->getId() => ['sessionsPerWeek' => 2]]);
         $venue = $this->newVenue($this->club->getId(), $this->season->getId(), 'Gymnase gel');
         $this->em->persist($venue);
         $competition = (new Competition)->setClubId($this->club->getId())->setSeasonId($this->season->getId())->setTeamId($team->getId())

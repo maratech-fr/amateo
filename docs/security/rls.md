@@ -119,6 +119,18 @@ temps du club A relier le lieu du club B (une vérification de clé étrangère 
 `tests/Security/PersonPlaceTenantIsolationTest.php` (step bloquant). La lecture servie pour une saison
 (`PlaceTravelTimeRepository::forSeason`) joint `venue` en SQL avec club et saison en clause explicite.
 
+## `plan_team` — les équipes d'un plan, une clé composée vers le plan
+
+`plan_team` (une ligne par (plan, équipe), socle compris : participation, séances par semaine, plafond par jour,
+origine ; `Version20261128120000`) suit le motif normal : `ENABLE` + `FORCE`, `tenant_isolation FOR ALL TO
+amateo_app`, `admin_all` (`amateo_owner`) et `readonly_tenant` (`amateo_read`). Sa clé vers le plan est COMPOSÉE,
+posée à la main (invisible de Doctrine : ne jamais committer le DROP que propose `migration-diff`) :
+`(schedule_plan_id, club_id)` → `schedule_plan (id, club_id)`, `ON DELETE CASCADE` (une ligne part avec son plan).
+Une clé simple laisserait une ligne du club A désigner le plan du club B (une vérification de clé étrangère ignore la
+RLS). **Aucune clé vers `team`** : « Charger » efface puis réinsère les équipes ; la suppression d'une équipe passe par
+la cascade applicative (`CascadePlan`). Gardé par `tests/Security/PlanCompositionTenantIsolationTest.php` (step
+bloquant).
+
 ## Porte superadmin (supervision développeur)
 
 La porte admin (P5-7, `Version20260813130000`) est **portée par des policies, plus par le

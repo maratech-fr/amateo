@@ -17,6 +17,7 @@ use App\Enum\ConstraintFamily;
 use App\Enum\ConstraintRuleType;
 use App\Enum\ConstraintScope;
 use App\Enum\SeasonStatus;
+use App\Plans\PlanComposition;
 use App\Service\ParcImport\ParcImportExecutor;
 use App\Service\ScheduleConstraintBuilder;
 use App\Service\SecondSessionSameDayDetector;
@@ -131,7 +132,8 @@ final class ParcImportReservationSemanticsGateTest extends KernelTestCase
         $this->trainingSlot($club, $season, $venue, 1, '09:00');
         $this->trainingSlot($club, $season, $venue, 1, '18:00');
         $this->trainingSlot($club, $season, $venue, 3, '18:00');
-        $team = $this->team($club, $season, 'SM1')->setSessionsPerWeek(2);
+        $team = $this->team($club, $season, 'SM1');
+        self::getContainer()->get(PlanComposition::class)->socleLinesOf([$team->getId()])[$team->getId()]->setSessionsPerWeek(2);
         $this->em->flush();
 
         $parc = [
@@ -150,7 +152,7 @@ final class ParcImportReservationSemanticsGateTest extends KernelTestCase
 
         $this->scopeGucToClub($club->getId());
         $this->em->clear();
-        self::assertSame(2, $this->em->getRepository(Team::class)->find($team->getId())?->getMaxSessionsPerDay(), 'l\'import relève le plafond');
+        self::assertSame(2, self::getContainer()->get(PlanComposition::class)->socleLinesOf([$team->getId()])[$team->getId()]->getMaxSessionsPerDay(), 'l\'import relève le plafond');
         $reservations = $this->em->getRepository(Reservation::class)->findBy(['teamId' => $team->getId(), 'schedulePlanId' => SeasonPlanOf::id(self::getContainer(), $season->getId())]);
         self::assertCount(2, $reservations);
         self::assertSame([], self::getContainer()->get(SecondSessionSameDayDetector::class)->detect($reservations)['blockers'], 'le Récap ne bloque plus');
@@ -274,8 +276,10 @@ final class ParcImportReservationSemanticsGateTest extends KernelTestCase
     private function team(Club $club, Season $season, string $name): Team
     {
         $team = (new Team)->setClubId($club->getId())->setSeasonId($season->getId())->setName($name)
-            ->setSportCategoryId(self::SPORT_CATEGORY_ID)->setPriorityTierId(1)->setSessionsPerWeek(1);
+            ->setSportCategoryId(self::SPORT_CATEGORY_ID)->setPriorityTierId(1);
         $this->em->persist($team);
+        $this->em->flush();
+        self::getContainer()->get(PlanComposition::class)->ensureLines($team->getSeasonId(), [$team->getId() => ['sessionsPerWeek' => 1]]);
 
         return $team;
     }

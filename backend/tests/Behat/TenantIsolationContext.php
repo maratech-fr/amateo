@@ -367,8 +367,8 @@ final class TenantIsolationContext extends BaseContext
         // Une saison naît avec son plan de saison (lot 4) : le socle de l'autre club se lit sur lui.
         $this->dbalExec(
             \sprintf(
-                'INSERT INTO schedule_plan (id, version, created_at, updated_at, club_id, season_id, type, name, start_date, end_date, last_version_number, team_selection_initialized)'
-                . ' VALUES (gen_random_uuid(), 1, now(), now(), \'%s\', \'%s\', \'SEASON\', \'Planning de la saison fonctionnelle\', \'%s\', \'%s\', 0, false)',
+                'INSERT INTO schedule_plan (id, version, created_at, updated_at, club_id, season_id, type, name, start_date, end_date, last_version_number)'
+                . ' VALUES (gen_random_uuid(), 1, now(), now(), \'%s\', \'%s\', \'SEASON\', \'Planning de la saison fonctionnelle\', \'%s\', \'%s\', 0)',
                 $this->clubIdB,
                 $this->seasonIdB,
                 $seasonStart,

@@ -17,6 +17,7 @@ use App\Enum\CalendarEntryPeriodType;
 use App\Enum\LockLevel;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
+use App\Plans\PlanComposition;
 use App\Service\SchedulePlanProvisioner;
 use App\Service\SeasonResolver;
 use App\Tests\ChoosesPlanVersionTrait;
@@ -529,8 +530,10 @@ final class LoadedVersionIsTheOnlyEditableTest extends WebTestCase
     private function team(string $name): Team
     {
         $team = (new Team)->setClubId($this->club->getId())->setSeasonId($this->season->getId())->setName($name)
-            ->setSportCategoryId('cccccccc-cccc-4ccc-8ccc-cccccccccccc')->setPriorityTierId(1)->setSessionsPerWeek(1);
+            ->setSportCategoryId('cccccccc-cccc-4ccc-8ccc-cccccccccccc')->setPriorityTierId(1);
         $this->em->persist($team);
+        $this->em->flush();
+        self::getContainer()->get(PlanComposition::class)->ensureLines($team->getSeasonId(), [$team->getId() => ['sessionsPerWeek' => 1]]);
 
         return $team;
     }

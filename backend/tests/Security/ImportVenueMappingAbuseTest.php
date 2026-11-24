@@ -17,6 +17,7 @@ use App\Enum\FixtureHomeAway;
 use App\Enum\FixtureStatus;
 use App\Enum\SeasonStatus;
 use App\Exception\ImportRejectedException;
+use App\Plans\PlanComposition;
 use App\Service\Fbi\FbiDeviationService;
 use App\Service\FbiFixtureImporter;
 use App\Service\SeasonResolver;
@@ -560,9 +561,10 @@ final class ImportVenueMappingAbuseTest extends WebTestCase
         $team->setSportCategoryId($category->getId());
         $team->setPriorityTierId(3);
         $team->setName('U13-1');
-        $team->setSessionsPerWeek(2);
         $team->setIsActive(true);
         $this->em->persist($team);
+        $this->em->flush();
+        self::getContainer()->get(PlanComposition::class)->ensureLines($team->getSeasonId(), [$team->getId() => ['sessionsPerWeek' => 2]]);
         $this->em->flush();
 
         return $team;

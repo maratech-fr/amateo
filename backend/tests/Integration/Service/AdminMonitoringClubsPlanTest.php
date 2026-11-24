@@ -405,8 +405,8 @@ final class AdminMonitoringClubsPlanTest extends KernelTestCase
     private function seedTeam(string $clubId, ?string $seasonId, bool $isActive): void
     {
         $this->admin->executeStatement(<<<'SQL'
-            INSERT INTO team (id, version, created_at, updated_at, club_id, season_id, sport_category_id, priority_tier_id, name, sessions_per_week, is_active)
-            VALUES (gen_random_uuid(), 1, NOW(), NOW(), :club, COALESCE(CAST(:season AS uuid), gen_random_uuid()), gen_random_uuid(), 1, 'Équipe comptée', 1, :active)
+            INSERT INTO team (id, version, created_at, updated_at, club_id, season_id, sport_category_id, priority_tier_id, name, is_active)
+            VALUES (gen_random_uuid(), 1, NOW(), NOW(), :club, COALESCE(CAST(:season AS uuid), gen_random_uuid()), gen_random_uuid(), 1, 'Équipe comptée', :active)
             SQL, ['club' => $clubId, 'season' => $seasonId, 'active' => $isActive], ['active' => ParameterType::BOOLEAN]);
     }
 

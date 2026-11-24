@@ -60,8 +60,20 @@ final class Lot4MigrationChainTest extends KernelTestCase
      * familles, `NOT NULL` et clé en cascade vers le plan, pointeur de version chargée recopié sur le plan puis
      * `season.live_context_schedule_id` supprimée, photos converties, règles de bien-être des plans anciens
      * matérialisées ; s'annule si un compte diffère ou si une ligne portait déjà le plan de saison.
+     *
+     * PR 3a « les équipes d'un plan » : une ligne `plan_team` par (plan, équipe), socle compris ; supprime
+     * `team_period_override`, `team.sessions_per_week`, `team.max_sessions_per_day` et
+     * `schedule_plan.team_selection_initialized` ; photos converties ; s'annule si `lignes ≠ équipes × plans`.
      */
-    private const array LOT_MIGRATIONS = ['DoctrineMigrations\Version20261127120000'];
+    private const array LOT_MIGRATIONS = ['DoctrineMigrations\Version20261127120000', 'DoctrineMigrations\Version20261128120000'];
+
+    /** Les équipes du décor des références 12 et 13, par nom (`EngineRequestDecorTrait`). */
+    private const array DECOR_TEAMS = [
+        'U13 F' => '7ea00000-0000-4000-8000-000000000001',
+        'U15 M' => '7ea00000-0000-4000-8000-000000000002',
+        'SM1' => '7ea00000-0000-4000-8000-000000000003',
+        'U17 M' => '7ea00000-0000-4000-8000-000000000031',
+    ];
 
     /** Les six familles dont « plan nul » voulait dire « socle » avant le lot 4. */
     private const array SOCLE_TABLES = ['venue_training_slot', 'venue_occupancy', 'reservation', 'shared_training_block', 'shared_training_block_team', 'implicit_rule_setting'];
@@ -304,8 +316,152 @@ final class Lot4MigrationChainTest extends KernelTestCase
         $expected['VenueTrainingSlot'][0]['schedulePlanId'] = $seasonPlan;
         $expected['Reservation'][0]['schedulePlanId'] = $seasonPlan;
         // L'ordre des clés d'un objet JSON n'est pas une donnée (une réécriture par jsonb le change) : comparé trié.
+        // La famille `Team` est convertie à son tour par la PR 3a (testTheConversionMovesThePhotoTeamSettingsOntoTheSoclePlan).
         self::assertIsArray($converted);
+        unset($expected['Team'], $converted['Team'], $converted['PlanTeam']);
         self::assertSame($this->sortedKeys($expected), $this->sortedKeys($converted), 'la photo porte le plan de saison sur ses lignes de socle, et rien d\'autre ne change');
+    }
+
+    /**
+     * Lot 4, PR 3a (ligne 13 du plan) : la conversion donne une ligne `plan_team` à chaque couple (plan, équipe) de la
+     * saison, socle compris. Le socle reçoit les valeurs de l'équipe ; un plan de période reçoit son exception si elle
+     * existe, champ par champ, sinon la valeur du socle du jour. Table d'exception, colonnes de l'équipe et drapeau de
+     * pré-sélection disparaissent ; la table porte son unicité, sa clé composée en cascade vers le plan et sa RLS.
+     *
+     * Ligne 20 du plan, deux plans de vacances de plus dans le décor, jamais ouverts (drapeau à faux) : celui qui a déjà
+     * une version garde toutes ses équipes, pour ne pas changer un planning déjà fait ; celui qui n'en a aucune reçoit la
+     * pré-sélection (les deux premiers rangs : SM1 rang 1, U15 M et U17 M rang 2 ; U13 F, rang 3, écartée).
+     */
+    #[TestWith(['periode-12-vacances-reglages'])]
+    public function testTheConversionGivesEveryTeamALineInEveryPlan(string $decor): void
+    {
+        $admin = self::ownerConnection(self::caseName());
+        $seasonPlan = (string) $admin->fetchOne('SELECT id FROM schedule_plan WHERE season_id = ? AND type = ?', [self::DECOR_SEASON, 'SEASON']);
+        $openedHoliday = (string) $admin->fetchOne('SELECT id FROM schedule_plan WHERE season_id = ? AND type = ? AND team_selection_initialized', [self::DECOR_SEASON, 'HOLIDAY']);
+        self::assertNotSame('', $openedHoliday, 'témoin : le décor a un plan de vacances déjà ouvert');
+        [$withVersion, $withoutVersion] = $this->addTwoNeverOpenedHolidayPlans($admin, $openedHoliday);
+        // Le référentiel des rangs, tel qu'en production (S, A, B, C, D) : le schéma figé l'a vide.
+        $admin->executeStatement(
+            'INSERT INTO priority_tier (id, version, created_at, updated_at, label, name, color, or_tools_weight, default_min_sessions)'
+            . ' VALUES (1, 1, now(), now(), \'S\', \'Elite\', \'#FFD700\', 10000, 3), (2, 1, now(), now(), \'A\', \'Régional+\', \'#C0C0C0\', 1000, 2),'
+            . ' (3, 1, now(), now(), \'B\', \'Régional\', \'#CD7F32\', 100, 2), (4, 1, now(), now(), \'C\', \'Départemental\', \'#3498DB\', 10, 2),'
+            . ' (5, 1, now(), now(), \'D\', \'Loisir\', \'#95A5A6\', 1, 1) ON CONFLICT (id) DO NOTHING',
+        );
+        $teams = $admin->fetchAllAssociativeIndexed('SELECT id, sessions_per_week, max_sessions_per_day FROM team WHERE season_id = ? ORDER BY id', [self::DECOR_SEASON]);
+        self::assertSame(array_values(self::DECOR_TEAMS), array_keys($teams), 'témoin : les quatre équipes du décor');
+        $plans = (int) $admin->fetchOne('SELECT COUNT(*) FROM schedule_plan WHERE season_id = ?', [self::DECOR_SEASON]);
+        self::assertSame(4, $plans, 'témoin : socle, vacances ouvertes, et les deux plans jamais ouverts');
+
+        self::assertSame(self::LOT_MIGRATIONS, $this->migrate(), 'la chaîne joue exactement les migrations du lot');
+
+        self::assertSame(\count($teams) * $plans, (int) $admin->fetchOne('SELECT COUNT(*) FROM plan_team WHERE season_id = ?', [self::DECOR_SEASON]), 'une ligne par (plan, équipe), ni plus ni moins');
+        self::assertSame(0, (int) $admin->fetchOne(
+            'SELECT COUNT(*) FROM plan_team l JOIN schedule_plan p ON p.id = l.schedule_plan_id WHERE l.club_id <> p.club_id OR l.season_id <> p.season_id',
+        ), 'chaque ligne porte le club et la saison de son plan');
+
+        $socle = [];
+        foreach ($teams as $id => $team) {
+            $socle[$id] = [true, (int) $team['sessions_per_week'], (int) $team['max_sessions_per_day'], null];
+        }
+        self::assertSame($socle, $this->linesOf($admin, $seasonPlan), 'le socle reçoit les séances et le plafond de chaque équipe');
+
+        $u13f = self::DECOR_TEAMS['U13 F'];
+        $u15m = self::DECOR_TEAMS['U15 M'];
+        $sm1 = self::DECOR_TEAMS['SM1'];
+        $opened = $socle;
+        $opened[$u13f][0] = false;   // exception : écartée, séances et plafond nuls → ceux du socle du jour
+        $opened[$u15m][1] = 1;       // exception : 1 séance
+        $opened[$sm1][2] = 2;        // exception : plafond 2
+        self::assertSame($opened, $this->linesOf($admin, $openedHoliday), 'le plan de vacances ouvert garde ses exceptions champ par champ, le reste vaut le socle du jour (U17 M, créée après la naissance, participe)');
+
+        self::assertSame($socle, $this->linesOf($admin, $withVersion), 'un plan de vacances jamais ouvert qui a déjà une version garde toutes ses équipes');
+
+        $preselected = $socle;
+        $preselected[$u13f][0] = false;
+        self::assertSame($preselected, $this->linesOf($admin, $withoutVersion), 'un plan de vacances jamais ouvert, sans version, reçoit la pré-sélection : les deux premiers rangs');
+
+        self::assertNull($admin->fetchOne('SELECT to_regclass(\'public.team_period_override\')'), 'la table d\'exception est supprimée');
+        self::assertFalse($this->columnExists($admin, 'team', 'sessions_per_week'), 'les séances quittent l\'équipe');
+        self::assertFalse($this->columnExists($admin, 'team', 'max_sessions_per_day'), 'le plafond quitte l\'équipe');
+        self::assertFalse($this->columnExists($admin, 'schedule_plan', 'team_selection_initialized'), 'le drapeau de pré-sélection est supprimé');
+        foreach (['participates', 'sessions_per_week', 'max_sessions_per_day'] as $column) {
+            self::assertSame('NO', $admin->fetchOne('SELECT is_nullable FROM information_schema.columns WHERE table_schema = \'public\' AND table_name = \'plan_team\' AND column_name = ?', [$column]), \sprintf('plan_team.%s est obligatoire', $column));
+        }
+        self::assertSame(1, (int) $admin->fetchOne(
+            'SELECT COUNT(*) FROM pg_index i WHERE i.indrelid = \'public.plan_team\'::regclass AND i.indisunique AND i.indpred IS NULL'
+            . ' AND (SELECT array_agg(a.attname::text ORDER BY a.attname) FROM pg_attribute a WHERE a.attrelid = i.indrelid AND a.attnum = ANY (i.indkey::int2[])) = ARRAY[\'schedule_plan_id\', \'team_id\']',
+        ), 'une ligne par couple (plan, équipe)');
+        self::assertSame(1, (int) $admin->fetchOne(
+            'SELECT COUNT(*) FROM pg_constraint c WHERE c.contype = \'f\' AND c.conrelid = \'public.plan_team\'::regclass'
+            . ' AND c.confrelid = \'public.schedule_plan\'::regclass AND c.confdeltype = \'c\''
+            . ' AND (SELECT array_agg(a.attname::text ORDER BY a.attname) FROM pg_attribute a WHERE a.attrelid = c.conrelid AND a.attnum = ANY (c.conkey)) = ARRAY[\'club_id\', \'schedule_plan_id\']',
+        ), 'une clé composée (plan, club) vers le plan, en cascade : une ligne ne désigne jamais le plan d\'un autre club');
+        self::assertSame(0, (int) $admin->fetchOne('SELECT COUNT(*) FROM pg_constraint c WHERE c.contype = \'f\' AND c.conrelid = \'public.plan_team\'::regclass AND c.confrelid = \'public.team\'::regclass'), 'pas de clé vers l\'équipe : « Charger » efface puis réinsère les équipes (E6)');
+        self::assertSame(1, (int) $admin->fetchOne('SELECT COUNT(*) FROM pg_class WHERE oid = \'public.plan_team\'::regclass AND relrowsecurity AND relforcerowsecurity'), 'la RLS est active et forcée');
+    }
+
+    /**
+     * Lot 4, PR 3a : les photos des versions sont converties. Les séances et le plafond quittent les lignes `Team` pour une
+     * ligne `PlanTeam` du plan de saison par équipe ; une photo prise avant que le plafond existe donne 1, comme son
+     * chargement le donnait.
+     */
+    #[TestWith(['periode-12-vacances-reglages'])]
+    public function testTheConversionMovesThePhotoTeamSettingsOntoTheSoclePlan(string $decor): void
+    {
+        $admin = self::ownerConnection(self::caseName());
+        $u13 = self::DECOR_TEAMS['U13 F'];
+        $sm1 = self::DECOR_TEAMS['SM1'];
+        $photo = [
+            'Team' => [
+                ['id' => $u13, 'name' => 'U13 F', 'sessionsPerWeek' => 3, 'maxSessionsPerDay' => 2],
+                ['id' => $sm1, 'name' => 'SM1', 'sessionsPerWeek' => 2],
+            ],
+        ];
+        $admin->executeStatement(
+            'INSERT INTO schedule_structure_snapshot (id, created_at, updated_at, club_id, season_id, schedule_id, data) VALUES (?, now(), now(), ?, ?, ?, ?)',
+            ['f0700000-0000-4000-8000-0000000000ab', self::DECOR_CLUB, self::DECOR_SEASON, '5c4e0000-0000-4000-8000-000000000001', json_encode($photo, \JSON_THROW_ON_ERROR)],
+        );
+
+        self::assertSame(self::LOT_MIGRATIONS, $this->migrate(), 'la chaîne joue exactement les migrations du lot');
+
+        $seasonPlan = $admin->fetchOne('SELECT id FROM schedule_plan WHERE season_id = ? AND type = ?', [self::DECOR_SEASON, 'SEASON']);
+        $converted = json_decode((string) $admin->fetchOne('SELECT data FROM schedule_structure_snapshot WHERE id = ?', ['f0700000-0000-4000-8000-0000000000ab']), true, 512, \JSON_THROW_ON_ERROR);
+        self::assertIsArray($converted);
+        self::assertSame([['id' => $u13, 'name' => 'U13 F'], ['id' => $sm1, 'name' => 'SM1']], $converted['Team'] ?? null, 'les lignes d\'équipe perdent séances et plafond, rien d\'autre');
+        $lines = [];
+        foreach ($converted['PlanTeam'] ?? [] as $line) {
+            self::assertIsArray($line);
+            $lines[(string) $line['teamId']] = [$line['schedulePlanId'] ?? null, $line['sessionsPerWeek'] ?? null, $line['maxSessionsPerDay'] ?? null];
+        }
+        ksort($lines);
+        self::assertSame([$u13 => [$seasonPlan, 3, 2], $sm1 => [$seasonPlan, 2, 1]], $lines, 'une ligne du plan de saison par équipe de la photo, plafond 1 quand la photo ne le portait pas');
+    }
+
+    /**
+     * Lot 4, PR 3a, décor faussé : deux exceptions pour le même couple (plan, équipe) — l'unicité retirée exprès —
+     * donneraient deux lignes, ou une au hasard. La conversion s'annule : la table d'exception et les colonnes de
+     * l'équipe restent, aucune ligne n'est écrite, la migration n'est pas enregistrée.
+     */
+    #[TestWith(['periode-12-vacances-reglages'])]
+    public function testTheTeamConversionIsCancelledWhenTheCountWouldDiffer(string $decor): void
+    {
+        $admin = self::ownerConnection(self::caseName());
+        $admin->executeStatement('DROP INDEX uniq_team_period_override');
+        $admin->executeStatement(
+            'INSERT INTO team_period_override SELECT * FROM json_populate_record(NULL::team_period_override, (SELECT (row_to_json(o)::jsonb || jsonb_build_object(\'id\', ?::text, \'sessions_per_week\', 3))::json FROM team_period_override o WHERE o.team_id = ?))',
+            ['d7e00000-0000-4000-8000-0000000000dd', self::DECOR_TEAMS['U15 M']],
+        );
+        self::assertSame(2, (int) $admin->fetchOne('SELECT COUNT(*) FROM team_period_override WHERE team_id = ?', [self::DECOR_TEAMS['U15 M']]), 'témoin : deux exceptions pour le même couple');
+
+        [$code, $output] = $this->runMigrations();
+
+        self::assertNotSame(0, $code, 'la conversion refuse un décor qui donnerait un autre compte que équipes × plans : ' . $output);
+        $recorded = array_map(strval(...), $admin->fetchFirstColumn('SELECT version FROM doctrine_migration_versions'));
+        self::assertNotContains('DoctrineMigrations\Version20261128120000', $recorded, 'la migration n\'est pas enregistrée');
+        self::assertNotNull($admin->fetchOne('SELECT to_regclass(\'public.team_period_override\')'), 'la table d\'exception est toujours là');
+        self::assertTrue($this->columnExists($admin, 'team', 'sessions_per_week'), 'les séances sont toujours sur l\'équipe');
+        self::assertTrue($this->columnExists($admin, 'schedule_plan', 'team_selection_initialized'), 'le drapeau est toujours là');
+        self::assertNull($admin->fetchOne('SELECT to_regclass(\'public.plan_team\')'), 'aucune ligne n\'est écrite');
     }
 
     /**
@@ -416,6 +572,44 @@ final class Lot4MigrationChainTest extends KernelTestCase
         }
 
         return array_map(fn (mixed $item): mixed => \is_array($item) ? $this->sortedKeys($item) : $item, $value);
+    }
+
+    /**
+     * Deux plans de vacances jamais ouverts (drapeau à faux), copiés de celui du décor sans son entrée de calendrier :
+     * le premier reçoit une version, le second aucune.
+     *
+     * @return array{0: string, 1: string}
+     */
+    private function addTwoNeverOpenedHolidayPlans(Connection $admin, string $model): array
+    {
+        $withVersion = 'e1a50000-0000-4000-8000-0000000000a1';
+        $withoutVersion = 'e1a50000-0000-4000-8000-0000000000a2';
+        foreach ([$withVersion => 'Vacances jamais ouvertes, avec version', $withoutVersion => 'Vacances jamais ouvertes, sans version'] as $id => $name) {
+            $admin->executeStatement(
+                'INSERT INTO schedule_plan SELECT * FROM json_populate_record(NULL::schedule_plan, (SELECT (row_to_json(p)::jsonb || jsonb_build_object(\'id\', ?::text, \'name\', ?::text, \'calendar_entry_id\', NULL, \'chosen_schedule_id\', NULL, \'team_selection_initialized\', false, \'last_version_number\', 0))::json FROM schedule_plan p WHERE p.id = ?))',
+                [$id, $name, $model],
+            );
+        }
+        $admin->executeStatement(
+            'INSERT INTO schedule SELECT * FROM json_populate_record(NULL::schedule, (SELECT (row_to_json(s)::jsonb || jsonb_build_object(\'id\', ?::text, \'schedule_plan_id\', ?::text, \'version_number\', 1))::json FROM schedule s WHERE s.schedule_plan_id = ? LIMIT 1))',
+            ['5c4e0000-0000-4000-8000-0000000000a1', $withVersion, $model],
+        );
+        $admin->executeStatement('UPDATE schedule_plan SET last_version_number = 1 WHERE id = ?', [$withVersion]);
+        self::assertSame(1, (int) $admin->fetchOne('SELECT COUNT(*) FROM schedule WHERE schedule_plan_id = ?', [$withVersion]), 'témoin : le premier a une version');
+        self::assertSame(0, (int) $admin->fetchOne('SELECT COUNT(*) FROM schedule WHERE schedule_plan_id = ?', [$withoutVersion]), 'témoin : le second n\'en a aucune');
+
+        return [$withVersion, $withoutVersion];
+    }
+
+    /** @return array<string, array{0: bool, 1: int, 2: int, 3: ?string}> participe, séances, plafond, origine, par équipe */
+    private function linesOf(Connection $admin, string $planId): array
+    {
+        $lines = [];
+        foreach ($admin->fetchAllAssociative('SELECT team_id, participates, sessions_per_week, max_sessions_per_day, source FROM plan_team WHERE schedule_plan_id = ? ORDER BY team_id', [$planId]) as $row) {
+            $lines[(string) $row['team_id']] = [(bool) $row['participates'], (int) $row['sessions_per_week'], (int) $row['max_sessions_per_day'], null === $row['source'] ? null : (string) $row['source']];
+        }
+
+        return $lines;
     }
 
     /** @return array<string, ?string> le plan de chaque ligne, par identifiant */

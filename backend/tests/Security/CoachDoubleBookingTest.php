@@ -22,6 +22,7 @@ use App\Enum\ConstraintRuleType;
 use App\Enum\ConstraintScope;
 use App\Enum\SeasonStatus;
 use App\Enum\TeamCoachRole;
+use App\Plans\PlanComposition;
 use App\Service\CoachDoubleBookingDetector;
 use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\SeasonPlanOf;
@@ -468,9 +469,10 @@ final class CoachDoubleBookingTest extends KernelTestCase
                 ->setSeasonId($seasonId)
                 ->setSportCategoryId($category->getId())
                 ->setPriorityTierId($tier->getId())
-                ->setName($name)
-                ->setSessionsPerWeek(2);
+                ->setName($name);
             $this->em->persist($team);
+            $this->em->flush();
+            self::getContainer()->get(PlanComposition::class)->ensureLines($team->getSeasonId(), [$team->getId() => ['sessionsPerWeek' => 2]]);
             $this->em->flush();
             $teamIds[] = $team->getId();
         }
@@ -554,9 +556,10 @@ final class CoachDoubleBookingTest extends KernelTestCase
             ->setSeasonId($model->getSeasonId())
             ->setSportCategoryId($model->getSportCategoryId())
             ->setPriorityTierId($model->getPriorityTierId())
-            ->setName($name)
-            ->setSessionsPerWeek(2);
+            ->setName($name);
         $this->em->persist($team);
+        $this->em->flush();
+        self::getContainer()->get(PlanComposition::class)->ensureLines($team->getSeasonId(), [$team->getId() => ['sessionsPerWeek' => 2]]);
         $this->em->flush();
 
         return $team->getId();

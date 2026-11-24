@@ -16,16 +16,17 @@ use App\Access\Audience;
 use App\Access\ClubResource;
 use App\Access\Module;
 use App\Dto\TeamPeriodOverrideInput;
-use App\Entity\TeamPeriodOverride;
+use App\Entity\PlanTeam;
 use App\State\Processor\TeamPeriodOverrideStateProcessor;
 use App\State\Provider\TeamPeriodOverrideStateProvider;
 use DateTimeImmutable;
 use Symfony\Component\Serializer\Attribute\Groups;
 
 /**
- * Period-editable structure: a sparse per-(period, team) override — the team is
- * off for the period, or trains a different number of sessions. No row = seasonal
- * defaults. The overlay build reads these; the base plan is never touched.
+ * Le réglage d'une équipe pour une période : la ligne de l'équipe dans le plan de période, vue de l'écran comme un
+ * réglage épars. La liste ne rend que les lignes qui diffèrent de la saison ou qu'un geste nommé a posées ; `null` en
+ * sortie = la valeur de la saison. Publier le réglage d'un couple (plan, équipe) met sa ligne à jour ; le supprimer rend
+ * à la ligne les valeurs de la saison. La saison ne se règle jamais par cette route.
  */
 #[ApiResource(shortName: 'TeamPeriodOverride', operations: [
     new GetCollection,
@@ -66,14 +67,15 @@ class TeamPeriodOverrideResource
     public ?int $maxSessionsPerDay = null;
 
     /**
-     * Lot 9 — l'origine de cet override quand il a été posé par un geste nommé (``mutualisation``
+     * Lot 9 — l'origine de ce réglage quand il a été posé par un geste nommé (``mutualisation``
      * pour une équipe activée par la mutualisation d'une case) ; NULL pour un réglage ordinaire du
      * wizard. Le planning l'AFFICHE (pastille « via mutualisation »), il ne décide rien avec.
      */
     #[Groups(['read'])]
     public ?string $source = null;
 
-    public static function fromEntity(TeamPeriodOverride $entity): self
+    /** La ligne de période, lue contre la ligne du socle de la même équipe : une valeur égale au socle sort `null`. */
+    public static function fromEntity(PlanTeam $entity, PlanTeam $socleLine): self
     {
         $dto = new self;
         $dto->id = $entity->getId();
@@ -82,9 +84,9 @@ class TeamPeriodOverrideResource
         $dto->updatedAt = $entity->getUpdatedAt();
         $dto->schedulePlanId = $entity->getSchedulePlanId();
         $dto->teamId = $entity->getTeamId();
-        $dto->isActive = $entity->isActive();
-        $dto->sessionsPerWeek = $entity->getSessionsPerWeek();
-        $dto->maxSessionsPerDay = $entity->getMaxSessionsPerDay();
+        $dto->isActive = $entity->isParticipating();
+        $dto->sessionsPerWeek = $entity->getSessionsPerWeek() === $socleLine->getSessionsPerWeek() ? null : $entity->getSessionsPerWeek();
+        $dto->maxSessionsPerDay = $entity->getMaxSessionsPerDay() === $socleLine->getMaxSessionsPerDay() ? null : $entity->getMaxSessionsPerDay();
         $dto->source = $entity->getSource();
 
         return $dto;

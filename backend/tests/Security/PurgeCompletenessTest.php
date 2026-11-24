@@ -13,6 +13,7 @@ use App\Entity\HolidayReminderLog;
 use App\Entity\ImplicitRuleSetting;
 use App\Entity\Person;
 use App\Entity\Place;
+use App\Entity\PlanTeam;
 use App\Entity\Reservation;
 use App\Entity\Season;
 use App\Entity\SharedTrainingBlock;
@@ -21,7 +22,6 @@ use App\Entity\Sport;
 use App\Entity\SportCategory;
 use App\Entity\Team;
 use App\Entity\TeamCoach;
-use App\Entity\TeamPeriodOverride;
 use App\Entity\TenantOwnedInterface;
 use App\Entity\VenueOccupancy;
 use App\Entity\VenuePeriodOverride;
@@ -93,7 +93,7 @@ final class PurgeCompletenessTest extends KernelTestCase
     /** Ce qu'un plan porte (lot 4, PR 2) : les six familles du socle devenu plan, les trois réglages de période. */
     private const array PLAN_FAMILIES = [
         VenueTrainingSlot::class, VenueOccupancy::class, Reservation::class, SharedTrainingBlockTeam::class, SharedTrainingBlock::class,
-        ImplicitRuleSetting::class, TeamPeriodOverride::class, VenuePeriodOverride::class, ConstraintPeriodOverride::class,
+        ImplicitRuleSetting::class, PlanTeam::class, VenuePeriodOverride::class, ConstraintPeriodOverride::class,
     ];
 
     /** Les listes que les purgeurs tenaient à la main avant la déclaration des familles. */
@@ -194,9 +194,9 @@ final class PurgeCompletenessTest extends KernelTestCase
     /**
      * L'effacement d'un club efface exactement, pour chaque saison, les familles de la purge de
      * saison et la ligne de saison, puis les familles que le catalogue efface avec le club ; son
-     * compte rendu `CLUB_PURGED` compte chaque ligne effacée (16 sur ce décor : 2 saisons, 9 lignes
+     * compte rendu `CLUB_PURGED` compte chaque ligne effacée (17 sur ce décor : 2 saisons, 10 lignes
      * de saison dont une doléance purgée par son entrée de calendrier et le plan de saison que porte le
-     * créneau depuis le lot 4, 1 catégorie du club, 2 fiches
+     * créneau depuis le lot 4 et la ligne de l'équipe dans ce plan, 1 catégorie du club, 2 fiches
      * de personne dont une sans rôle, gardée après la suppression de son coach, 2 lieux dont un sans
      * gymnase, gardé après la suppression du sien — lot 3, PR 4).
      */
@@ -214,8 +214,9 @@ final class PurgeCompletenessTest extends KernelTestCase
         $expected = [...$this->seasonPurgeTables(), 'season', ...$this->tablesOf($this->catalog()->purgedWithClub())];
         self::assertSame($this->sortedUnique($expected), $this->sortedUnique($executed));
 
-        // Lot 4 : le créneau du décor porte le plan de saison, né avec lui — une ligne de plus (16).
-        self::assertSame(16, $deleted, 'le nombre rendu compte chaque ligne effacée');
+        // Lot 4 : le créneau du décor porte le plan de saison, né avec lui — une ligne de plus (16) ; PR 3a : l'équipe du
+        // décor a sa ligne dans ce plan — une de plus (17).
+        self::assertSame(17, $deleted, 'le nombre rendu compte chaque ligne effacée');
         $people = (int) self::getContainer()->get(EntityManagerInterface::class)->getConnection()->fetchOne(
             'SELECT COUNT(*) FROM person WHERE club_id = :club',
             ['club' => $club->getId()],
@@ -231,7 +232,7 @@ final class PurgeCompletenessTest extends KernelTestCase
             ['club' => $club->getId(), 'action' => AuditAction::CLUB_PURGED->value],
         );
         self::assertIsString($details, 'l\'effacement écrit son compte rendu');
-        self::assertSame(['rowsDeleted' => 16], json_decode($details, true, 512, \JSON_THROW_ON_ERROR));
+        self::assertSame(['rowsDeleted' => 17], json_decode($details, true, 512, \JSON_THROW_ON_ERROR));
     }
 
     /**
@@ -404,6 +405,8 @@ final class PurgeCompletenessTest extends KernelTestCase
             $em->persist($row);
         }
         $em->flush();
+        // Une saison naît avec son plan de saison : le plan de période y lit les équipes du socle (lot 4, PR 3a).
+        SeasonPlanOf::id(self::getContainer(), $seasonId);
         $planId = self::getContainer()->get(SchedulePlanProvisioner::class)->provisionPeriodPlan($entry->getId());
         self::assertIsString($planId);
 
@@ -419,7 +422,6 @@ final class PurgeCompletenessTest extends KernelTestCase
                 ->setDayOfWeek(2)->setStartTime(new DateTimeImmutable('18:00'))->setDurationMinutes(90)->setSchedulePlanId($planId),
             (new SharedTrainingBlockTeam)->setClubId($clubId)->setSeasonId($seasonId)->setSchedulePlanId($planId)->setBlockId($block->getId())->setTeamId($teamA->getId()),
             (new SharedTrainingBlockTeam)->setClubId($clubId)->setSeasonId($seasonId)->setSchedulePlanId($planId)->setBlockId($block->getId())->setTeamId($teamB->getId()),
-            (new TeamPeriodOverride)->setClubId($clubId)->setSeasonId($seasonId)->setSchedulePlanId($planId)->setTeamId($teamA->getId())->setIsActive(false),
             (new VenuePeriodOverride)->setClubId($clubId)->setSeasonId($seasonId)->setSchedulePlanId($planId)->setVenueId($venue->getId())->setDayOverrides(['1' => 'CLOSED']),
             (new ConstraintPeriodOverride)->setClubId($clubId)->setSeasonId($seasonId)->setSchedulePlanId($planId)->setConstraintId($constraint->getId())->setIsActive(false),
         ];
@@ -588,7 +590,7 @@ final class PurgeCompletenessTest extends KernelTestCase
     private function team(string $clubId, string $seasonId): Team
     {
         return (new Team)->setClubId($clubId)->setSeasonId($seasonId)->setName('U13 F1')
-            ->setSportCategoryId('99999999-9999-4999-8999-999999999999')->setPriorityTierId(1)->setSessionsPerWeek(1);
+            ->setSportCategoryId('99999999-9999-4999-8999-999999999999')->setPriorityTierId(1);
     }
 
     /**

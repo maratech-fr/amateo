@@ -13,6 +13,7 @@ use App\Entity\User;
 use App\Entity\VenueTrainingSlot;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
+use App\Plans\PlanComposition;
 use App\Service\SeasonResolver;
 use App\Tests\ChoosesPlanVersionTrait;
 use App\Tests\CreatesPeopleAndPlacesTrait;
@@ -104,8 +105,11 @@ final class GenerateEndpointLoadedVersionTest extends WebTestCase
         $this->em->flush();
         $this->provisionSeasonPlan($this->season);
 
-        $this->em->persist((new Team)->setClubId($this->club->getId())->setSeasonId($this->season->getId())->setName('U15')
-            ->setSportCategoryId('cccccccc-cccc-4ccc-8ccc-cccccccccccc')->setPriorityTierId(1)->setSessionsPerWeek(1));
+        $team = (new Team)->setClubId($this->club->getId())->setSeasonId($this->season->getId())->setName('U15')
+            ->setSportCategoryId('cccccccc-cccc-4ccc-8ccc-cccccccccccc')->setPriorityTierId(1);
+        $this->em->persist($team);
+        $this->em->flush();
+        self::getContainer()->get(PlanComposition::class)->ensureLines($team->getSeasonId(), [$team->getId() => ['sessionsPerWeek' => 1]]);
         $venue = $this->newVenue($this->club->getId(), $this->season->getId(), 'G')->setCanSplit(false);
         $this->em->persist($venue);
         $this->em->flush();

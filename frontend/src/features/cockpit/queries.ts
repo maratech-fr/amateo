@@ -57,14 +57,8 @@ export function useCalendarEntry(id: string | null) {
 /**
  * Le plan d'une période (ADR-0002 lot C). Il naît avec le geste « ajuster cette
  * période », donc il est là dès que l'entrée existe — inutile d'attendre une
- * génération. Porte les réglages de la période (inv. 5), dont le garde de seed
- * `teamSelectionInitialized`.
- *
- * Le flag `teamSelectionInitialized` bascule côté SERVEUR au 1er override, sans
- * mutation directe sur le plan : aucune invalidation ne le rafraîchit (les mutations
- * d'override n'invalident que ["wizard", "team_period_overrides", …]). Ce qui protège
- * le seed d'un double déclenchement, c'est le garde `periodSeedWasClaimed` — pas cette
- * clé. Ne pas retirer ce garde en croyant qu'un refetch prend le relais.
+ * génération. Porte les réglages de la période (inv. 5) ; la pré-sélection de ses
+ * équipes naît avec lui, côté serveur (lot 4, PR 3a).
  */
 export function useSchedulePlanForEntry(calendarEntryId: string | null) {
   return useQuery({

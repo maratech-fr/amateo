@@ -13,6 +13,7 @@ use App\Entity\SportCategory;
 use App\Entity\Team;
 use App\Entity\User;
 use App\Enum\SeasonStatus;
+use App\Plans\PlanComposition;
 use App\Service\SeasonResolver;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
@@ -144,9 +145,10 @@ final class TeamTagAssignmentReadIsolationTest extends WebTestCase
         $team->setSportCategoryId($category->getId());
         $team->setPriorityTierId(1);
         $team->setName('U13 ' . $suffix);
-        $team->setSessionsPerWeek(1);
         $team->setIsActive(true);
         $this->em->persist($team);
+        $this->em->flush();
+        self::getContainer()->get(PlanComposition::class)->ensureLines($team->getSeasonId(), [$team->getId() => ['sessionsPerWeek' => 1]]);
         $this->em->flush();
 
         return [$club, $season, $user, $team];

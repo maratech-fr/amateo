@@ -13,6 +13,7 @@ use App\Entity\Team;
 use App\Entity\TeamCoach;
 use App\Enum\SeasonStatus;
 use App\Enum\TeamCoachRole;
+use App\Plans\PlanComposition;
 use App\Service\MatchConflictDetector;
 use App\Service\MatchPlacementPayloadBuilder;
 use App\Service\SeasonResolver;
@@ -165,9 +166,10 @@ final class PlayersPayloadParityTest extends KernelTestCase
         $team->setSportCategoryId($this->uuid());
         $team->setPriorityTierId(3);
         $team->setName('T' . substr($this->uuid(), 0, 6));
-        $team->setSessionsPerWeek(2);
         $team->setIsActive(true);
         $this->em->persist($team);
+        $this->em->flush();
+        self::getContainer()->get(PlanComposition::class)->ensureLines($team->getSeasonId(), [$team->getId() => ['sessionsPerWeek' => 2]]);
 
         return $team;
     }

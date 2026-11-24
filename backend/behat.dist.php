@@ -34,6 +34,7 @@ use App\Tests\Behat\PeriodLockSmallClubContext;
 use App\Tests\Behat\PeriodOverlayContext;
 use App\Tests\Behat\PersonErasureContext;
 use App\Tests\Behat\PlacedPersonConflictContext;
+use App\Tests\Behat\PlanTeamsSmallClubContext;
 use App\Tests\Behat\SeasonGenerationContext;
 use App\Tests\Behat\SeasonPreparationDateContext;
 use App\Tests\Behat\SeasonTransitionContext;
@@ -114,7 +115,7 @@ return (new Config)
             ->withSuite(
                 new Suite('overlay')
                     ->withPaths('%paths.base%/features/plan-de-periode-en-overlay.feature')
-                    ->withContexts(PeriodOverlayContext::class, ClosurePinsSmallClubContext::class),
+                    ->withContexts(PeriodOverlayContext::class, ClosurePinsSmallClubContext::class, PlanTeamsSmallClubContext::class),
             )
             ->withSuite(
                 new Suite('voeux')

@@ -18,7 +18,6 @@ use App\Entity\ScheduleSlotTemplate;
 use App\Entity\Season;
 use App\Entity\Team;
 use App\Entity\TeamCoach;
-use App\Entity\TeamPeriodOverride;
 use App\Entity\User;
 use App\Entity\Venue;
 use App\Entity\VenuePeriodOverride;
@@ -35,6 +34,7 @@ use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
 use App\Enum\TeamCoachRole;
 use App\Enum\VenuePeriodMode;
+use App\Plans\PlanComposition;
 use App\Service\CoachWishTransferService;
 use App\Service\PeriodConstraintSelector;
 use App\Service\ScheduleConstraintBuilder;
@@ -962,14 +962,9 @@ final class ScheduleConstraintBuilderOverlayTest extends KernelTestCase
 
     private function teamOverride(Club $club, Season $season, CalendarEntry $entry, Team $team, bool $isActive, ?int $sessions): void
     {
-        $o = new TeamPeriodOverride;
-        $o->setClubId($club->getId());
-        $o->setSeasonId($season->getId());
-        $o->setSchedulePlanId($this->planIdOf($entry));
-        $o->setTeamId($team->getId());
-        $o->setIsActive($isActive);
-        $o->setSessionsPerWeek($sessions);
-        $this->em->persist($o);
+        $o = self::getContainer()->get(PlanComposition::class)->lineOf($this->planIdOf($entry), $team->getId());
+        $o->setParticipating($isActive);
+        $o->setSessionsPerWeek($sessions ?? self::getContainer()->get(PlanComposition::class)->socleLinesOf([$team->getId()])[$team->getId()]->getSessionsPerWeek());
     }
 
     private function venue(Club $club, Season $season, string $id, string $name): Venue
@@ -1151,6 +1146,8 @@ final class ScheduleConstraintBuilderOverlayTest extends KernelTestCase
         $team->setSportCategoryId('cccccccc-cccc-4ccc-8ccc-cccccccccccc');
         $team->setPriorityTierId(1);
         $this->em->persist($team);
+        $this->em->flush();
+        self::getContainer()->get(PlanComposition::class)->ensureLines($team->getSeasonId());
 
         return $team;
     }

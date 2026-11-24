@@ -31,6 +31,7 @@ use App\Enum\LockOrigin;
 use App\Enum\SchedulePlanType;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
+use App\Plans\PlanComposition;
 use App\Service\ScheduleConstraintBuilder;
 use App\Service\SchedulePlanProvisioner;
 use App\Service\ScheduleResultImporter;
@@ -471,9 +472,10 @@ final class SchedulePlanStructureHashTest extends WebTestCase
         $team->setSportCategoryId($this->category->getId());
         $team->setPriorityTierId(1);
         $team->setName($name . '-' . uniqid());
-        $team->setSessionsPerWeek(2);
         $team->setIsActive(true);
         $this->em->persist($team);
+        $this->em->flush();
+        self::getContainer()->get(PlanComposition::class)->ensureLines($team->getSeasonId(), [$team->getId() => ['sessionsPerWeek' => 2]]);
         $this->em->flush();
 
         return $team;

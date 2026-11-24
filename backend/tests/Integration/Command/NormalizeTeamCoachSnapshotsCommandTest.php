@@ -17,6 +17,7 @@ use App\Enum\CalendarEntryPeriodType;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
 use App\Enum\TeamCoachRole;
+use App\Plans\PlanComposition;
 use App\Service\ClubGenerationLock;
 use App\Service\ScheduleConstraintBuilder;
 use App\Service\SchedulePlanProvisioner;
@@ -566,6 +567,8 @@ final class NormalizeTeamCoachSnapshotsCommandTest extends KernelTestCase
         $team = (new Team)->setClubId($clubId)->setSeasonId($seasonId)->setName($name)
             ->setSportCategoryId('cccccccc-cccc-4ccc-8ccc-cccccccccccc')->setPriorityTierId(1);
         $this->em->persist($team);
+        $this->em->flush();
+        self::getContainer()->get(PlanComposition::class)->ensureLines($team->getSeasonId());
 
         return $team;
     }

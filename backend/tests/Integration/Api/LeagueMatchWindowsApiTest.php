@@ -14,6 +14,7 @@ use App\Entity\Team;
 use App\Entity\User;
 use App\Enum\SeasonStatus;
 use App\Enum\TeamLevel;
+use App\Plans\PlanComposition;
 use App\Service\ClubLeagueWindowSeeder;
 use App\Service\LeagueResolver;
 use App\Service\SeasonResolver;
@@ -141,10 +142,11 @@ final class LeagueMatchWindowsApiTest extends WebTestCase
         $team->setSportCategoryId($category->getId());
         $team->setPriorityTierId(3);
         $team->setName('Équipe ' . $categoryName);
-        $team->setSessionsPerWeek(2);
         $team->setIsActive(true);
         $team->setLevel($level);
         $this->em->persist($team);
+        $this->em->flush();
+        self::getContainer()->get(PlanComposition::class)->ensureLines($team->getSeasonId(), [$team->getId() => ['sessionsPerWeek' => 2]]);
         $this->em->flush();
 
         return $team->getId();

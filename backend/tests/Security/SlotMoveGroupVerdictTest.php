@@ -24,6 +24,7 @@ use App\Exception\EvictTargetLockedException;
 use App\Exception\EvictTargetMismatchException;
 use App\Exception\ScheduleGenerationInProgressException;
 use App\Exception\TeamAlreadyAtCaseException;
+use App\Plans\PlanComposition;
 use App\Service\ClubGenerationLock;
 use App\Service\EngineClient;
 use App\Service\MoveSlotService;
@@ -569,8 +570,10 @@ final class SlotMoveGroupVerdictTest extends KernelTestCase
 
         $teamIds = [];
         foreach (['U13F1', 'U13F2'] as $name) {
-            $team = (new Team)->setClubId($clubId)->setSeasonId($seasonId)->setSportCategoryId($category->getId())->setPriorityTierId($tier->getId())->setName($name)->setSessionsPerWeek(2);
+            $team = (new Team)->setClubId($clubId)->setSeasonId($seasonId)->setSportCategoryId($category->getId())->setPriorityTierId($tier->getId())->setName($name);
             $this->em->persist($team);
+            $this->em->flush();
+            self::getContainer()->get(PlanComposition::class)->ensureLines($team->getSeasonId(), [$team->getId() => ['sessionsPerWeek' => 2]]);
             $this->em->flush();
             $teamIds[] = $team->getId();
         }
@@ -629,9 +632,10 @@ final class SlotMoveGroupVerdictTest extends KernelTestCase
             ->setSeasonId((string) $ctx['seasonId'])
             ->setSportCategoryId((string) $ctx['categoryId'])
             ->setPriorityTierId((int) $ctx['tierId'])
-            ->setName('Occupant ' . bin2hex(random_bytes(3)))
-            ->setSessionsPerWeek(1);
+            ->setName('Occupant ' . bin2hex(random_bytes(3)));
         $this->em->persist($team);
+        $this->em->flush();
+        self::getContainer()->get(PlanComposition::class)->ensureLines($team->getSeasonId(), [$team->getId() => ['sessionsPerWeek' => 1]]);
         $this->em->flush();
 
         $slot = (new ScheduleSlotTemplate)

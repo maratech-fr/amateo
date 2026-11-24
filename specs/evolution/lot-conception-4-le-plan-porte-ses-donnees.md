@@ -1,7 +1,7 @@
 # Lot 4 · Le plan porte ses données : plan d'exécution
 
 **Statut : version finale (v3 sur 4, après deux passes de `smith`). Plan validé par le fondateur le 2026-11-22 avec sa
-décision (§10) et l'écart E1 (§3.7). PR 1 (le filet) et PR 2 (le socle a son plan) livrées, écarts ci-dessous ; les PR suivantes restent à faire, une fois les mesures
+décision (§10) et l'écart E1 (§3.7). PR 1 (le filet), PR 2 (le socle a son plan) et PR 3a (les équipes d'un plan) livrées, écarts ci-dessous ; les PR suivantes restent à faire, une fois les mesures
 de `link` (§6) faites.** Voie **Full**. Branche cible : `lot/conception` (une PR ouverte à la fois ; « Lot Gate » seul :
 `docs/ops/ci-runner.md` § Branche de lot ; avant chaque merge : `make -C backend tests-complete` + features et specs de la
 zone sur la stack d'épreuve). Exécutant : `neo`, après les rouges de `tank`. Cadrage : la conception validée en tient lieu
@@ -163,11 +163,21 @@ Ordre 1 → 2 → 3a → 3b → 4 → 5. Raison : chaque conversion prouvée seu
   - Le gate : `NoNullPlanBranchTest` et `LoadedVersionPointerTest` sont dans le step `Blocking suite` de `ci.yml` et dans `docs/testing/blocking-tests.md` ; `Lot4MigrationChainTest` joue désormais cette migration.
 - Tests : lignes 4 à 11. `/security-review` : oui.
 
-### PR 3a · « Les équipes d'un plan »
+### PR 3a · « Les équipes d'un plan » — livrée
 - Migration : `plan_team` avec RLS ; socle = valeurs de l'équipe ; période = exception si elle existe, sinon valeur du socle du jour ; un plan de vacances jamais ouvert et **sans aucune version** reçoit la pré-sélection ; photos converties ; supprime `team_period_override`, les deux colonnes de `team`, le drapeau ; s'annule si `lignes ≠ équipes × plans`.
 - Code : `PlanComposition`, les sept créateurs, `PeriodConstraintSelector.php:83-96`, `PeriodPlanTranscriber.php:258-275`, `SocleDeviationCalculator.php:283`, `MutualizeSlotService`, `CoachWishTransferService`, `TeamStateProcessor`, `TeamResource`, route d'exception, `CascadePlan.php:79`, photo et restauration, naissance d'un plan (pré-sélection posée par le serveur).
 - Écran : `PeriodTeams.tsx` (retrait du semis), `periodSeedSelection.ts` (supprimé), `wizard/queries.ts`, `cockpit/api.ts`, `cockpit/queries.ts`. `periodSeedSelection.parity.*` et `PeriodSeedSelectionMirrorParityTest` supprimés par `tank`.
 - **Documents dans cette PR** : amendement de l'ADR-0002 et corollaire de `CLAUDE.md` §6 (les réglages d'équipes d'une période sont figés à sa naissance).
+- **Écarts au plan, tels que livrés** :
+  - `GET /api/team_period_overrides` rend les lignes qui diffèrent du socle **et** celles qui portent une origine (`source`, par exemple une doléance transférée à la valeur du socle) ; la fenêtre de suppression d'une équipe ne compte que celles qui diffèrent.
+  - `PlanComposition::ensureLines(string $seasonId, array $socleValues = [])` : le paramètre optionnel fait naître les lignes d'une équipe créée avec ses valeurs (séances, plafond) à ces valeurs, dans le socle puis dans chaque plan de période.
+  - `PlanTeamSelectionSeeder` est réduit à la règle pure `keptTeamIds` (plus d'écriture, plus de drapeau) ; `ensureLines` la lit pour la pré-sélection de naissance.
+  - Un plan de vacances fait à la main dans un décor de test reçoit lui aussi la pré-sélection (il naît sans ligne).
+  - `tank` : balayage de tous les créateurs d'équipe (ligne 21) ; ligne 14, variante « réservée » : une équipe écartée garde la séance que tient une réservation de la période (« la réservation gagne », comportement existant, constaté et écrit tel quel).
+  - Tests retirés avec leur filet nommé : les tests d'amorçage de `PeriodSteps.test.tsx` et `PeriodTeams.member.test.tsx`, `periodSeedSelection.parity.test.ts` / `PeriodSeedSelectionMirrorParityTest` (le semis écran et son miroir n'existent plus) ont pour filet `PlanBirthTeamDefaultTest` (serveur) et le test de l'écran qui n'écrit rien à l'ouverture.
+  - La migration `Version20261128120000` est **irréversible** (aucun `down()`).
+  - Le temps Behat dépasse l'estimation du §6 : à mesurer en CI (`make ci-mesure PART=origin/lot/conception`).
+  - Le gate : `PlanCompositionTenantIsolationTest` est dans le step `Blocking suite` de `ci.yml` et dans `docs/testing/blocking-tests.md` ; `Lot4MigrationChainTest` joue désormais cette migration.
 - Tests : lignes 12 à 23. `/security-review` : oui.
 
 ### PR 3b · « Les gymnases d'une période »
@@ -208,12 +218,13 @@ App\Tests\Doctrine\NullPlanTripwireMiddleware                                   
 //   participates bool NOT NULL, sessions_per_week int NOT NULL, max_sessions_per_day smallint NOT NULL, source varchar(30) NULL
 //   UNIQUE (schedule_plan_id, team_id) ; (schedule_plan_id, club_id) -> schedule_plan (id, club_id) ON DELETE CASCADE ; RLS
 App\Entity\PlanTeam implements TenantOwnedInterface                               // #[Family(Level::PLAN)]
-App\Plans\PlanComposition::ensureLines(string $seasonId): void                    // pose les lignes manquantes, ne touche aucune ligne existante
+App\Plans\PlanComposition::ensureLines(string $seasonId, array $socleValues = []): void   // pose les lignes manquantes, ne touche aucune ligne existante ; $socleValues = valeurs saisies par le créateur d'une équipe
 App\Plans\PlanComposition::teamsOf(string $planId): array<string, PlanTeam>       // clé = teamId ; lève si une équipe de la saison n'a pas de ligne
 App\Plans\PlanComposition::teamLinesDifferingFromSocle(string $planId): array<string, PlanTeam>
 SchedulePlanType::defaultTeamSelection(): App\Enum\PlanTeamDefault               // ALL | FLAGSHIP_AND_IMPORTANT
+App\Service\PlanTeamSelectionSeeder::keptTeamIds(array $teams, array $tiers, bool $isClosure): array   // règle pure, seul reste de la classe
 // /api/teams : mêmes champs sessionsPerWeek, maxSessionsPerDay, lus et écrits sur la ligne du socle
-// /api/team_period_overrides : mêmes routes et champs ; GET ne rend que les lignes qui diffèrent du socle ;
+// /api/team_period_overrides : mêmes routes et champs ; GET rend les lignes qui diffèrent du socle ou qui portent une origine (`source`) ;
 //   POST sur un couple = mise à jour de sa ligne, même code de réponse ; DELETE = la ligne reprend les valeurs du socle
 // GET /api/schedule_plans/{id} : teamSelectionInitialized disparaît
 

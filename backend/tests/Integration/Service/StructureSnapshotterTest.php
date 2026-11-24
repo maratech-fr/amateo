@@ -19,6 +19,7 @@ use App\Enum\ConstraintScope;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
 use App\Enum\TeamCoachRole;
+use App\Plans\PlanComposition;
 use App\Service\StructureSnapshotter;
 use App\Tests\ChoosesPlanVersionTrait;
 use App\Tests\CreatesPeopleAndPlacesTrait;
@@ -54,7 +55,7 @@ final class StructureSnapshotterTest extends KernelTestCase
         [$club, $season] = $this->seedClubSeason();
         $team = (new Team)->setClubId($club->getId())->setSeasonId($season->getId())
             ->setSportCategoryId('33333333-3333-3333-3333-333333333333')->setPriorityTierId(2)
-            ->setName('SM1')->setSessionsPerWeek(3)->setIsActive(true);
+            ->setName('SM1')->setIsActive(true);
         $venue = $this->newVenue($club->getId(), $season->getId(), 'Gymnase A');
         $permanent = (new Constraint)->setClubId($club->getId())->setSeasonId($season->getId())
             ->setName('SM1 mardi')->setScope(ConstraintScope::TEAM)->setScopeTargetId('11111111-1111-4111-8111-111111111111')
@@ -79,6 +80,7 @@ final class StructureSnapshotterTest extends KernelTestCase
             $this->em->persist($e);
         }
         $this->em->flush();
+        self::getContainer()->get(PlanComposition::class)->ensureLines($team->getSeasonId(), [$team->getId() => ['sessionsPerWeek' => 3]]);
         $link = (new TeamCoach)->setClubId($club->getId())->setSeasonId($season->getId())
             ->setTeamId($team->getId())->setCoachId($coach->getId())
             ->setRole(TeamCoachRole::MAIN);
@@ -95,7 +97,7 @@ final class StructureSnapshotterTest extends KernelTestCase
         // Faithful rows: scalar columns, enums as values, dates as ATOM strings.
         self::assertCount(1, $data['Team']);
         self::assertSame('SM1', $data['Team'][0]['name']);
-        self::assertSame(3, $data['Team'][0]['sessionsPerWeek']);
+        self::assertSame(3, $data['PlanTeam'][0]['sessionsPerWeek'] ?? null, 'lot 4, PR 3a : les séances sont sur la ligne du plan de saison');
         self::assertSame(2, $data['Team'][0]['priorityTierId']);
         self::assertCount(1, $data['Venue']);
         self::assertSame('Gymnase A', $data['Venue'][0]['name']);
@@ -130,8 +132,10 @@ final class StructureSnapshotterTest extends KernelTestCase
         $schedule = $this->makeSchedule($club, $season);
         $team = (new Team)->setClubId($club->getId())->setSeasonId($season->getId())
             ->setSportCategoryId('33333333-3333-3333-3333-333333333333')->setPriorityTierId(1)
-            ->setName('Avant')->setSessionsPerWeek(1)->setIsActive(true);
+            ->setName('Avant')->setIsActive(true);
         $this->em->persist($team);
+        $this->em->flush();
+        self::getContainer()->get(PlanComposition::class)->ensureLines($team->getSeasonId(), [$team->getId() => ['sessionsPerWeek' => 1]]);
         $this->em->flush();
 
         $this->snapshotter->store($schedule, $this->snapshotter->serialize($club->getId(), $season->getId()));

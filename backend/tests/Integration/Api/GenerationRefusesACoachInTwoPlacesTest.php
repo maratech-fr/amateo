@@ -26,6 +26,7 @@ use App\Enum\ConstraintScope;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
 use App\Enum\TeamCoachRole;
+use App\Plans\PlanComposition;
 use App\Tests\ChoosesPlanVersionTrait;
 use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\SeasonPlanOf;
@@ -255,9 +256,11 @@ final class GenerationRefusesACoachInTwoPlacesTest extends WebTestCase
         $repository = $this->em->getRepository(Team::class);
         $seniorsA = $repository->findOneBy(['seasonId' => $ctx['seasonId'], 'name' => 'Seniors A']);
         self::assertInstanceOf(Team::class, $seniorsA);
-        $seniorsC = (new Team)->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])->setName('Seniors C')->setSessionsPerWeek(1)
+        $seniorsC = (new Team)->setClubId($ctx['clubId'])->setSeasonId($ctx['seasonId'])->setName('Seniors C')
             ->setSportCategoryId('cccccccc-cccc-4ccc-8ccc-cccccccccccc')->setPriorityTierId(1);
         $this->em->persist($seniorsC);
+        $this->em->flush();
+        self::getContainer()->get(PlanComposition::class)->ensureLines($seniorsC->getSeasonId(), [$seniorsC->getId() => ['sessionsPerWeek' => 1]]);
         $this->em->flush();
         $this->addMainCoach($ctx, 'Bea', 'Seniors C');
 
@@ -316,9 +319,11 @@ final class GenerationRefusesACoachInTwoPlacesTest extends WebTestCase
         $this->em->flush();
 
         foreach (['Seniors A', 'Seniors B'] as $index => $name) {
-            $team = (new Team)->setClubId($clubId)->setSeasonId($seasonId)->setName($name)->setSessionsPerWeek(1)
+            $team = (new Team)->setClubId($clubId)->setSeasonId($seasonId)->setName($name)
                 ->setSportCategoryId('cccccccc-cccc-4ccc-8ccc-cccccccccccc')->setPriorityTierId(1);
             $this->em->persist($team);
+            $this->em->flush();
+            self::getContainer()->get(PlanComposition::class)->ensureLines($team->getSeasonId(), [$team->getId() => ['sessionsPerWeek' => 1]]);
             $this->em->flush();
             $this->em->persist((new TeamCoach)->setClubId($clubId)->setSeasonId($seasonId)->setTeamId($team->getId())->setCoachId($coach->getId())->setRole(TeamCoachRole::MAIN));
             $this->em->persist((new Reservation)->setClubId($clubId)->setSeasonId($seasonId)->setSchedulePlanId(SeasonPlanOf::id(self::getContainer(), $seasonId))->setTeamId($team->getId())

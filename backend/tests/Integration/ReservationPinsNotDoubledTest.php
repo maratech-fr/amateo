@@ -23,6 +23,7 @@ use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
 use App\Message\GenerateScheduleMessage;
 use App\MessageHandler\GenerateScheduleHandler;
+use App\Plans\PlanComposition;
 use App\Service\ClubGenerationLock;
 use App\Service\DiagnosticMessageBuilder;
 use App\Service\EngineClient;
@@ -419,6 +420,8 @@ final class ReservationPinsNotDoubledTest extends KernelTestCase
             ->setSportCategoryId('cccccccc-cccc-4ccc-8ccc-cccccccccccc')->setPriorityTierId(1);
         $free->setId(self::FREE_TEAM_ID);
         $this->em->persist($free);
+        $this->em->flush();
+        self::getContainer()->get(PlanComposition::class)->ensureLines($free->getSeasonId());
         $this->venue($club, $season);
         $this->reservation($club, $season, $schedulePlanId);
     }
@@ -515,6 +518,8 @@ final class ReservationPinsNotDoubledTest extends KernelTestCase
             ->setSportCategoryId('cccccccc-cccc-4ccc-8ccc-cccccccccccc')->setPriorityTierId(1);
         $team->setId(self::TEAM_ID);
         $this->em->persist($team);
+        $this->em->flush();
+        self::getContainer()->get(PlanComposition::class)->ensureLines($team->getSeasonId());
     }
 
     private function venue(Club $club, Season $season): void

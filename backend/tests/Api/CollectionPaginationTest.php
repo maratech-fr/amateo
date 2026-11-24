@@ -7,6 +7,7 @@ namespace App\Tests\Api;
 use App\Entity\Season;
 use App\Entity\SportCategory;
 use App\Entity\Team;
+use App\Plans\PlanComposition;
 use App\Service\TenantConnectionContext;
 use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\VerifiesRegistration;
@@ -89,9 +90,10 @@ final class CollectionPaginationTest extends WebTestCase
         $team->setSportCategoryId($category->getId());
         $team->setPriorityTierId(1);
         $team->setName($name);
-        $team->setSessionsPerWeek(2);
         $team->setIsActive($isActive);
         $em->persist($team);
+        $em->flush();
+        self::getContainer()->get(PlanComposition::class)->ensureLines($team->getSeasonId(), [$team->getId() => ['sessionsPerWeek' => 2]]);
         $em->flush();
     }
 

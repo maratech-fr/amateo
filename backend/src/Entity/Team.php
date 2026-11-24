@@ -70,16 +70,7 @@ class Team implements TenantOwnedInterface
     #[ORM\Column(type: 'string', length: 20, nullable: true)]
     private ?string $size = null;
 
-    #[ORM\Column(type: 'smallint')]
-    private int $sessionsPerWeek = 2;
-
-    /**
-     * Séances au plus le même jour (1 à 4). Le défaut vit sur la PROPRIÉTÉ, jamais dans le
-     * constructeur : une équipe instanciée sans constructeur (photo de structure antérieure au
-     * champ) garde 1.
-     */
-    #[ORM\Column(type: 'smallint', options: ['default' => 1])]
-    private int $maxSessionsPerDay = 1;
+    // Les séances et le plafond par jour vivent sur la ligne de l'équipe dans chaque plan ({@see PlanTeam}).
 
     #[ORM\Column(type: 'smallint', nullable: true)]
     private ?int $minSessionsOverride = null;
@@ -268,30 +259,6 @@ class Team implements TenantOwnedInterface
     public function setSize(?string $size): self
     {
         $this->size = $size;
-
-        return $this;
-    }
-
-    public function getSessionsPerWeek(): int
-    {
-        return $this->sessionsPerWeek;
-    }
-
-    public function setSessionsPerWeek(int $sessionsPerWeek): self
-    {
-        $this->sessionsPerWeek = $sessionsPerWeek;
-
-        return $this;
-    }
-
-    public function getMaxSessionsPerDay(): int
-    {
-        return $this->maxSessionsPerDay;
-    }
-
-    public function setMaxSessionsPerDay(int $maxSessionsPerDay): self
-    {
-        $this->maxSessionsPerDay = $maxSessionsPerDay;
 
         return $this;
     }

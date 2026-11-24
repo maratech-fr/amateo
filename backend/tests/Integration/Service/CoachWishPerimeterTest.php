@@ -16,6 +16,7 @@ use App\Enum\CalendarEntryKind;
 use App\Enum\CalendarEntryPeriodType;
 use App\Enum\SeasonStatus;
 use App\Enum\TeamCoachRole;
+use App\Plans\PlanComposition;
 use App\Service\CoachWishPerimeter;
 use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\TenantGucTrait;
@@ -125,6 +126,8 @@ final class CoachWishPerimeterTest extends KernelTestCase
             ->setSportCategoryId('11111111-1111-4111-8111-111111111111')->setPriorityTierId(1)->setName('U15');
         $this->em->persist($other);
         $this->em->flush();
+        self::getContainer()->get(PlanComposition::class)->ensureLines($other->getSeasonId());
+        $this->em->flush();
         $nora = $this->coach('Nora');
 
         $campaign = $this->campaign([$this->team->getId(), $other->getId()]);
@@ -160,6 +163,8 @@ final class CoachWishPerimeterTest extends KernelTestCase
         $this->team = (new Team)->setClubId($this->club->getId())->setSeasonId($this->season->getId())
             ->setSportCategoryId('11111111-1111-4111-8111-111111111111')->setPriorityTierId(1)->setName('U11M1');
         $this->em->persist($this->team);
+        $this->em->flush();
+        self::getContainer()->get(PlanComposition::class)->ensureLines($this->team->getSeasonId());
         $this->em->flush();
     }
 

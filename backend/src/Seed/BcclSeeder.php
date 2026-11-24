@@ -31,7 +31,6 @@ use App\Entity\Team;
 use App\Entity\TeamCoach;
 use App\Entity\TeamLink;
 use App\Entity\TeamMatchHabit;
-use App\Entity\TeamPeriodOverride;
 use App\Entity\User;
 use App\Entity\Venue;
 use App\Entity\VenueMatchWindow;
@@ -60,6 +59,7 @@ use App\Enum\TeamCoachRole;
 use App\Enum\TeamLevel;
 use App\Enum\TeamLinkType;
 use App\Enum\VenuePeriodMode;
+use App\Plans\PlanComposition;
 use App\Repository\ClubSubscriptionRepository;
 use App\Repository\SchoolHolidayPeriodRepository;
 use App\Service\Basketball\CategoryCatalog;
@@ -118,6 +118,7 @@ final class BcclSeeder
         private readonly PlaceDirectory $placeDirectory,
         private readonly ClubSubscriptionWriter $subscriptionWriter,
         private readonly ClubSubscriptionRepository $subscriptions,
+        private readonly PlanComposition $planComposition,
     ) {}
 
     public function run(EntityManagerInterface $manager, BcclSeedProfile $profile): Club
@@ -669,6 +670,7 @@ final class BcclSeeder
             'Section J.Macé' => 16, 'Training Individuel' => 17, 'U18F Fays' => 18, 'U18M Fays' => 19, 'Veterans' => 20,
         ];
 
+        $createdSessions = [];
         foreach ($newTeamsData as $teamData) {
             // Clé garantie exhaustive : PHPStan échoue si une équipe n'a pas de rang.
             $tierOrder = $tierOrderByName[$teamData['name']];
@@ -690,14 +692,16 @@ final class BcclSeeder
                 $team->setName($teamData['name']);
                 $team->setLevel($teamData['level']);
                 $team->setGender($teamData['gender']);
-                $team->setSessionsPerWeek($teamData['sessionsPerWeek']);
                 $team->setTierOrder($tierOrder);
                 $team->setIsActive(true);
                 $manager->persist($team);
                 $teams[$teamData['name']] = $team;
+                $createdSessions[$team->getId()] = ['sessionsPerWeek' => $teamData['sessionsPerWeek']];
             }
         }
         $manager->flush();
+        // Lot 4, PR 3a : chaque équipe créée reçoit sa ligne dans chaque plan de la saison, au socle avec ses séances.
+        $this->planComposition->ensureLines($season->getId(), $createdSessions);
 
         // Extract typed team references for PHPStan level 8
         /** @var array<string, Team> $teams */
@@ -2153,32 +2157,22 @@ final class BcclSeeder
         }
         $manager->flush();
 
-        // --- Équipes : hors semaine → isActive=false ; en semaine → isActive=true +
-        // sessionsPerWeek recalé (find-or-create). Puis le plan est marqué « sélection
-        // d'équipes initialisée » pour que le wizard ne re-seede pas son défaut. ---
+        // --- Équipes : hors semaine → ne participe pas ; en semaine → participe, séances
+        // recalées sur sa ligne du plan. ---
         $sessionsPerTeam = [];
         foreach ($week['sessions'] as [$teamName]) {
             $sessionsPerTeam[$teamName] = ($sessionsPerTeam[$teamName] ?? 0) + 1;
         }
         foreach ($teams as $teamName => $team) {
             $isActive = isset($sessionsPerTeam[$teamName]);
-            $teamOverride = $manager->getRepository(TeamPeriodOverride::class)->findOneBy([
-                'schedulePlanId' => $planId,
-                'teamId' => $team->getId(),
-            ]);
-            if (!$teamOverride instanceof TeamPeriodOverride) {
-                $teamOverride = new TeamPeriodOverride;
-                $teamOverride->setClubId($clubId);
-                $teamOverride->setSeasonId($season->getId());
-                $teamOverride->setSchedulePlanId($planId);
-                $teamOverride->setTeamId($team->getId());
-                $manager->persist($teamOverride);
+            // Lot 4, PR 3a : la ligne de l'équipe dans le plan, posée à sa naissance.
+            $line = $this->planComposition->lineOf($planId, $team->getId());
+            $line->setParticipating($isActive);
+            if ($isActive) {
+                $line->setSessionsPerWeek($sessionsPerTeam[$teamName]);
             }
-            $teamOverride->setIsActive($isActive);
-            $teamOverride->setSessionsPerWeek($isActive ? $sessionsPerTeam[$teamName] : null);
         }
         $manager->flush();
-        $this->schedulePlanProvisioner->markPlanTeamSelectionInitialized($planId);
 
         // --- Mutualisation : blocs {équipes, commonSessions} ANCRÉS au plan. Purge + recréation
         // (les membres n'ont pas de clé naturelle par-composition, purger est le plus sûr). La
@@ -2599,33 +2593,23 @@ final class BcclSeeder
         }
         $manager->flush();
 
-        // --- Réglages d'équipes (find-or-create par (plan, équipe)) : chaque équipe qui figure au
-        // planning est active à son nombre de séances DÉRIVÉ ; les autres (ici « Training
-        // Individuel » seule) sont décochées. 50 lignes = 49 actives + 1. Plan marqué « sélection
-        // initialisée » (le wizard ne re-seede pas son défaut par-dessus). ---
+        // --- Réglages d'équipes (la ligne de chaque équipe dans le plan) : chaque équipe qui figure au
+        // planning participe à son nombre de séances DÉRIVÉ ; les autres (ici « Training
+        // Individuel » seule) sont décochées. ---
         $sessionsPerTeam = [];
         foreach ($planning['sessions'] as [$teamName]) {
             $sessionsPerTeam[$teamName] = ($sessionsPerTeam[$teamName] ?? 0) + 1;
         }
         foreach ($teams as $teamName => $team) {
             $isActive = isset($sessionsPerTeam[$teamName]);
-            $teamOverride = $manager->getRepository(TeamPeriodOverride::class)->findOneBy([
-                'schedulePlanId' => $planId,
-                'teamId' => $team->getId(),
-            ]);
-            if (!$teamOverride instanceof TeamPeriodOverride) {
-                $teamOverride = new TeamPeriodOverride;
-                $teamOverride->setClubId($clubId);
-                $teamOverride->setSeasonId($season->getId());
-                $teamOverride->setSchedulePlanId($planId);
-                $teamOverride->setTeamId($team->getId());
-                $manager->persist($teamOverride);
+            // Lot 4, PR 3a : la ligne de l'équipe dans le plan, posée à sa naissance.
+            $line = $this->planComposition->lineOf($planId, $team->getId());
+            $line->setParticipating($isActive);
+            if ($isActive) {
+                $line->setSessionsPerWeek($sessionsPerTeam[$teamName]);
             }
-            $teamOverride->setIsActive($isActive);
-            $teamOverride->setSessionsPerWeek($isActive ? $sessionsPerTeam[$teamName] : null);
         }
         $manager->flush();
-        $this->schedulePlanProvisioner->markPlanTeamSelectionInitialized($planId);
 
         // --- Mutualisation : le plan a hérité les 8 blocs SOCLE (D10bis) à sa naissance ; le
         // gestionnaire les garde TOUS À L'IDENTIQUE et en AJOUTE 5, soit les 13 ensembles réels.

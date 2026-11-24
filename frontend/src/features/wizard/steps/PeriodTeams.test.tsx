@@ -18,6 +18,9 @@ import { TEAMS_TEXTS } from "../texts/teams";
 
 const h = vi.hoisted(() => ({
   overrides: [] as unknown[],
+  plan: { id: "plan-1", teamSelectionInitialized: true } as Record<string, unknown>,
+  teams: [] as unknown[],
+  tiers: [{ id: 1, label: "S", name: "Fanion", color: null }] as unknown[],
   rerender: { fn: () => {} },
   update: vi.fn(),
   create: vi.fn(),
@@ -36,14 +39,14 @@ vi.mock("@/shared/session/queries", async (importOriginal) => ({
 vi.mock("@/features/cockpit/queries", () => ({
   usePeriodAnchor: () => ({ state: "period", planId: "plan-1" }),
   useCalendarEntry: () => ({ data: { id: "entry-1", periodType: "holiday" } }),
-  useSchedulePlanForEntry: () => ({ data: { id: "plan-1", teamSelectionInitialized: true }, isLoading: false }),
+  useSchedulePlanForEntry: () => ({ data: h.plan, isLoading: false }),
 }));
 vi.mock("@/features/matches/queries", () => ({ useTeamLinks: () => ({ data: [] }) }));
 vi.mock("../queries", async () => {
   const { useReducer } = await vi.importActual<typeof import("react")>("react");
   return {
-    useWizardTeams: () => ({ data: [u15] }),
-    usePriorityTiers: () => ({ data: [{ id: 1, label: "S", name: "Fanion", color: null }] }),
+    useWizardTeams: () => ({ data: h.teams }),
+    usePriorityTiers: () => ({ data: h.tiers }),
     // Comme le vrai hook : la liste se relit après une écriture (le double se re-rend sur demande).
     useTeamPeriodOverrides: () => {
       const [, rerender] = useReducer((n: number) => n + 1, 0);
@@ -76,6 +79,9 @@ function lastBody(): Record<string, unknown> | undefined {
 
 beforeEach(() => {
   h.overrides = [capOverride(true)];
+  h.plan = { id: "plan-1", teamSelectionInitialized: true };
+  h.teams = [u15];
+  h.tiers = [{ id: 1, label: "S", name: "Fanion", color: null }];
   for (const fn of [h.update, h.create, h.del]) {
     fn.mockReset();
     fn.mockImplementation(() => Promise.resolve({}));
@@ -103,5 +109,35 @@ describe("PeriodTeams — le plafond de période survit à décocher / recocher"
     act(() => h.rerender.fn());
     expect(markerShown(3)).toBe(true);
     expect(markerShown(2)).toBe(false);
+  });
+});
+
+/**
+ * PROMESSE (lot 4, PR 3a, ligne 19 du plan) : la pré-sélection des équipes d'un plan de vacances est posée par le
+ * serveur à la naissance du plan ; ouvrir l'étape Équipes n'écrit plus rien, même sur un plan jamais ouvert, sans
+ * aucun réglage, où une équipe de rang D ne serait pas pré-sélectionnée. Jumeau serveur, cité :
+ * `backend/tests/Integration/Plans/PlanBirthTeamDefaultTest.php` (la pré-sélection à la naissance).
+ */
+describe("PeriodTeams — ouvrir l'étape Équipes d'un plan de vacances n'écrit rien", () => {
+  it("un plan jamais ouvert, sans réglage, avec une équipe de rang D : aucune écriture à l'ouverture", async () => {
+    h.overrides = [];
+    // Le plan tel que le serveur décrivait un plan jamais ouvert avant le lot : l'écran ne s'en sert plus pour semer.
+    h.plan = { id: "plan-1", teamSelectionInitialized: false };
+    h.teams = [u15, { ...u15, id: "t2", name: "Loisir", priorityTierId: 5 } as Team];
+    h.tiers = [
+      { id: 1, label: "S", name: "Fanion", color: null },
+      { id: 2, label: "A", name: "Importantes", color: null },
+      { id: 5, label: "D", name: "Loisir", color: null },
+    ];
+
+    renderWithProviders(<PeriodTeams calendarEntryId="entry-1" />);
+
+    expect(await screen.findAllByRole("checkbox")).not.toHaveLength(0);
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(h.create).not.toHaveBeenCalled();
+    expect(h.update).not.toHaveBeenCalled();
+    expect(h.del).not.toHaveBeenCalled();
   });
 });

@@ -24,6 +24,7 @@ use App\Entity\VenueTrainingSlot;
 use App\Entity\VenueTravelRuleSetting;
 use App\Enum\ConstraintScope;
 use App\Enum\SeasonStatus;
+use App\Plans\PlanComposition;
 use App\Plans\SoclePlan;
 use App\Structure\PersonDirectory;
 use App\Structure\PlaceDirectory;
@@ -60,6 +61,7 @@ final class SeasonTransitionService
         private readonly PlaceDirectory $placeDirectory,
         private readonly PlanEntitlements $planEntitlements,
         private readonly SoclePlan $soclePlan,
+        private readonly PlanComposition $planComposition,
     ) {}
 
     /**
@@ -307,6 +309,10 @@ final class SeasonTransitionService
         }
 
         $teamMap = [];
+        // Lot 4, PR 3a — les séances et le plafond de chaque équipe : sa ligne au socle de la source, reprise sur la ligne
+        // du socle de la nouvelle saison (posée à la fin, par la seule porte).
+        $sourceSocleValues = $this->planComposition->socleValuesOfSeason($sourceId);
+        $socleValues = [];
         foreach ($this->rows(Team::class, $clubId, $sourceId) as $team) {
             $copy = new Team;
             $copy->setClubId($clubId);
@@ -320,8 +326,6 @@ final class SeasonTransitionService
             $copy->setLevel($team->getLevel());
             $copy->setGender($team->getGender());
             $copy->setSize($team->getSize());
-            $copy->setSessionsPerWeek($team->getSessionsPerWeek());
-            $copy->setMaxSessionsPerDay($team->getMaxSessionsPerDay());
             $copy->setMinSessionsOverride($team->getMinSessionsOverride());
             $copy->setMatchDay($team->getMatchDay());
             $forcedVenueId = $team->getForcedVenueId();
@@ -329,6 +333,9 @@ final class SeasonTransitionService
             $copy->setIsActive($team->getIsActive());
             $this->entityManager->persist($copy);
             $teamMap[$team->getId()] = $copy->getId();
+            if (isset($sourceSocleValues[$team->getId()])) {
+                $socleValues[$copy->getId()] = $sourceSocleValues[$team->getId()];
+            }
         }
 
         $teamCoaches = 0;
@@ -583,6 +590,7 @@ final class SeasonTransitionService
         // Nothing stores them, and the closed catalogue has no custom tag.
 
         $this->entityManager->flush();
+        $this->planComposition->ensureLines($target->getId(), $socleValues);
 
         return $target;
     }

@@ -10,13 +10,13 @@ use App\Entity\ClubUser;
 use App\Entity\Season;
 use App\Entity\Team;
 use App\Entity\TeamLink;
-use App\Entity\TeamPeriodOverride;
 use App\Entity\User;
 use App\Enum\CalendarEntryKind;
 use App\Enum\CalendarEntryPeriodType;
 use App\Enum\SeasonStatus;
 use App\Enum\TeamLinkIntensity;
 use App\Enum\TeamLinkType;
+use App\Plans\PlanComposition;
 use App\Service\ScheduleConstraintBuilder;
 use App\State\Processor\TeamLinkStateProcessor;
 use App\Tests\ProvisionsPeriodPlanTrait;
@@ -202,9 +202,10 @@ final class TeamLinkPayloadParityTest extends KernelTestCase
         $team->setSportCategoryId($this->uuid());
         $team->setPriorityTierId(3);
         $team->setName('T' . substr($this->uuid(), 0, 6));
-        $team->setSessionsPerWeek(2);
         $team->setIsActive(true);
         $this->em->persist($team);
+        $this->em->flush();
+        self::getContainer()->get(PlanComposition::class)->ensureLines($team->getSeasonId(), [$team->getId() => ['sessionsPerWeek' => 2]]);
 
         return $team;
     }
@@ -231,14 +232,9 @@ final class TeamLinkPayloadParityTest extends KernelTestCase
 
     private function deactivateForPeriod(Club $club, Season $season, string $planId, Team $team): void
     {
-        $override = new TeamPeriodOverride;
-        $override->setClubId($club->getId());
-        $override->setSeasonId($season->getId());
-        $override->setSchedulePlanId($planId);
-        $override->setTeamId($team->getId());
-        $override->setIsActive(false);
-        $override->setSessionsPerWeek(null);
-        $this->em->persist($override);
+        $override = self::getContainer()->get(PlanComposition::class)->lineOf($planId, $team->getId());
+        $override->setParticipating(false);
+        $override->setSessionsPerWeek(self::getContainer()->get(PlanComposition::class)->socleLinesOf([$team->getId()])[$team->getId()]->getSessionsPerWeek());
     }
 
     private function holidayPeriod(Club $club, Season $season): CalendarEntry

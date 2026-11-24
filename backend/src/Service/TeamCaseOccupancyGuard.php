@@ -10,6 +10,7 @@ use App\Entity\Team;
 use App\Entity\Venue;
 use App\Exception\TeamAlreadyAtCaseException;
 use App\Exception\TeamAlreadyTrainsThatDayException;
+use App\Plans\PlanComposition;
 use App\Support\WeeklySlot;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -30,8 +31,8 @@ use Doctrine\ORM\EntityManagerInterface;
  * explicite et NOMMÉ avant d'y toucher.
  *
  * Seconde question, posée APRÈS celle de la case : « cette équipe peut-elle encore s'entraîner ce JOUR-LÀ, à
- * cette heure ? » Le plafond de séances par jour de l'équipe (1 par défaut, valeur EFFECTIVE du plan du
- * planning, {@see EffectiveTeamSessions::maxPerDay}) borne le nombre de séances du jour ; à plafond 1, une
+ * cette heure ? » Le plafond de séances par jour de l'équipe (1 par défaut, sa ligne dans le plan du
+ * planning, {@see PlanComposition}) borne le nombre de séances du jour ; à plafond 1, une
  * autre séance ce jour-là suffit à refuser, chevauchement ou non. À plafond ≥ 2, le chevauchement avec une
  * autre de ses séances du jour est refusé d'abord (intervalles demi-ouverts : deux séances collées ne se
  * chevauchent pas), puis le plafond atteint. L'écart entre deux séances n'est jamais contrôlé ici. Une séance
@@ -42,13 +43,13 @@ final class TeamCaseOccupancyGuard
     /** @var array<int, string> ISO-8601 : 1 = lundi (jamais d'identifiant interne dans un texte lu par un humain). */
     public const array DAY_LABELS = [1 => 'lundi', 2 => 'mardi', 3 => 'mercredi', 4 => 'jeudi', 5 => 'vendredi', 6 => 'samedi', 7 => 'dimanche'];
 
-    private readonly EffectiveTeamSessions $effectiveTeamSessions;
+    private readonly PlanComposition $planComposition;
 
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
-        ?EffectiveTeamSessions $effectiveTeamSessions = null,
+        ?PlanComposition $planComposition = null,
     ) {
-        $this->effectiveTeamSessions = $effectiveTeamSessions ?? new EffectiveTeamSessions($entityManager);
+        $this->planComposition = $planComposition ?? new PlanComposition($entityManager);
     }
 
     /**
@@ -125,7 +126,7 @@ final class TeamCaseOccupancyGuard
         return \count($others) >= $this->dailyCap($scheduleId, $teamId) ? ($others[0] ?? null) : null;
     }
 
-    /** Le plafond de séances par jour de l'équipe, pour le plan du planning (surcharge de période comprise). */
+    /** Le plafond de séances par jour de l'équipe, pour le plan du planning : sa ligne dans ce plan. */
     public function dailyCap(string $scheduleId, string $teamId): int
     {
         $team = $this->entityManager->getRepository(Team::class)->find($teamId);
@@ -133,8 +134,11 @@ final class TeamCaseOccupancyGuard
             return 1;
         }
         $schedule = $this->entityManager->getRepository(Schedule::class)->find($scheduleId);
+        $planId = $schedule instanceof Schedule ? $schedule->getSchedulePlanId() : null;
 
-        return $schedule instanceof Schedule ? $this->effectiveTeamSessions->maxPerDay($team, $schedule->getSchedulePlanId()) : $team->getMaxSessionsPerDay();
+        return null === $planId
+            ? $this->planComposition->socleLinesOf([$teamId])[$teamId]->getMaxSessionsPerDay()
+            : $this->planComposition->lineOf($planId, $teamId)->getMaxSessionsPerDay();
     }
 
     /**

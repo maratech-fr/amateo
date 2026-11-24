@@ -22,6 +22,7 @@ use App\Enum\MatchPlacementRunStatus;
 use App\Enum\SeasonStatus;
 use App\Message\PlaceMatchesMessage;
 use App\MessageHandler\PlaceMatchesHandler;
+use App\Plans\PlanComposition;
 use App\Service\EngineClient;
 use App\Service\MatchPlacementProgressPublisher;
 use App\Service\OutputCreditLedger;
@@ -329,9 +330,10 @@ final class PlacementCreditIsPartOfTheResultTest extends KernelTestCase
         $team->setSportCategoryId($category->getId());
         $team->setPriorityTierId(3);
         $team->setName('SF3');
-        $team->setSessionsPerWeek(2);
         $team->setIsActive(true);
         $this->em->persist($team);
+        $this->em->flush();
+        self::getContainer()->get(PlanComposition::class)->ensureLines($team->getSeasonId(), [$team->getId() => ['sessionsPerWeek' => 2]]);
 
         $venue = $this->newVenue($club->getId(), $season->getId(), 'Mateo');
         $this->em->persist($venue);

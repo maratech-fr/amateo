@@ -20,6 +20,7 @@ use App\Entity\Venue;
 use App\Enum\CalendarEntryKind;
 use App\Enum\CalendarEntryPeriodType;
 use App\Enum\SeasonStatus;
+use App\Plans\PlanComposition;
 use App\Service\SeasonResolver;
 use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\TenantGucTrait;
@@ -250,9 +251,10 @@ final class PurgeSeasonsCommandTest extends KernelTestCase
         $team->setSportCategoryId('00000000-0000-4000-8000-0000000000c1');
         $team->setPriorityTierId(1);
         $team->setName('Vieille équipe');
-        $team->setSessionsPerWeek(2);
         $team->setIsActive(true);
         $this->em->persist($team);
+        $this->em->flush();
+        self::getContainer()->get(PlanComposition::class)->ensureLines($team->getSeasonId(), [$team->getId() => ['sessionsPerWeek' => 2]]);
         $this->em->flush();
 
         // #10 — une doléance coach dans la saison N-2, ancrée à une entrée vacances : la
