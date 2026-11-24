@@ -41,8 +41,9 @@ use Symfony\Component\Uid\Uuid;
  * à la main, pour chaque famille que le catalogue déclare copiée
  * (`FamilyDeclarationSweepTest::testEveryPlanFamilyDeclaresWhetherItIsCopiedAtPlanBirth`).
  *
- * Non affirmé, question ouverte : le nom d'un groupe mutualisé. La naissance d'avant le lot ne le copie pas, la copie
- * d'un plan sœur le copie ; une copie unique choisira l'un ou l'autre.
+ * Limite héritée, figée ici : la naissance ne copie pas le nom d'un groupe mutualisé (« Groupe U15 » naît sans nom),
+ * alors que la copie d'un plan sœur le copie (`Integration/Api/PeriodPlanSiblingCopyTest::
+ * testTheSiblingPlanCarriesTheSourceSettingsInEveryPlanFamily`). La changer est une décision, qui passe par ce test.
  */
 #[Group('integration')]
 final class PlanBirthTest extends KernelTestCase
@@ -79,7 +80,7 @@ final class PlanBirthTest extends KernelTestCase
             'la grille du socle, créneau par créneau, sans le libellé de groupe « CEC3 »',
         );
         self::assertSame([[$this->venueNord, 2, '14:00', 'École']], $this->occupanciesOf($closure), 'les occupations d\'un gymnase présent, jamais la dormante');
-        self::assertSame([[2, [self::TEAM_A, self::TEAM_B]]], $this->blocksOf($closure), 'le groupe du socle et ses deux membres, rattachés au groupe copié');
+        self::assertSame([[2, null, [self::TEAM_A, self::TEAM_B]]], $this->blocksOf($closure), 'le groupe du socle et ses deux membres, rattachés au groupe copié, sans son nom (limite héritée)');
         $this->assertWellbeingRulesCopied($closure);
         self::assertSame(0, $this->rowCount(Reservation::class, $closure), 'une réservation du socle ne naît jamais dans un plan');
     }
@@ -225,16 +226,16 @@ final class PlanBirthTest extends KernelTestCase
         );
     }
 
-    /** @return list<array{0: int, 1: list<string>}> séances communes, équipes membres rattachées au groupe copié (le nom du groupe : question ouverte, voir le docblock de la classe) */
+    /** @return list<array{0: int, 1: ?string, 2: list<string>}> séances communes, nom, équipes membres rattachées au groupe copié */
     private function blocksOf(string $planId): array
     {
         $blocks = [];
-        foreach ($this->rows('SELECT id, common_sessions FROM shared_training_block WHERE schedule_plan_id = ? ORDER BY common_sessions', $planId) as $row) {
+        foreach ($this->rows('SELECT id, common_sessions, label FROM shared_training_block WHERE schedule_plan_id = ? ORDER BY common_sessions', $planId) as $row) {
             $members = array_map(
                 static fn (array $member): string => (string) $member['team_id'],
                 $this->rows('SELECT team_id FROM shared_training_block_team WHERE schedule_plan_id = ? AND block_id = ? ORDER BY team_id', $planId, (string) $row['id']),
             );
-            $blocks[] = [(int) $row['common_sessions'], $members];
+            $blocks[] = [(int) $row['common_sessions'], null === $row['label'] ? null : (string) $row['label'], $members];
         }
 
         return $blocks;

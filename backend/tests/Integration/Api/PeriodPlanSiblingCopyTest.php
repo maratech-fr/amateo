@@ -315,7 +315,8 @@ final class PeriodPlanSiblingCopyTest extends WebTestCase
         self::getContainer()->get(PlanComposition::class)->ensureLines($seasonId);
         self::getContainer()->get(PlanComposition::class)->venuesOf($planId)[$venueId]->setParticipating(false);
 
-        $block = (new SharedTrainingBlock)->setClubId($clubId)->setSeasonId($seasonId)->setSchedulePlanId($planId)->setCommonSessions(1);
+        // Un groupe NOMMÉ : la copie sœur reprend son nom (la naissance, elle, ne le copie pas : `Integration/Plans/PlanBirthTest`).
+        $block = (new SharedTrainingBlock)->setClubId($clubId)->setSeasonId($seasonId)->setSchedulePlanId($planId)->setCommonSessions(1)->setLabel('Groupe Barros');
         $this->em->persist($block);
         $this->em->flush();
         $this->em->persist((new SharedTrainingBlockTeam)->setClubId($clubId)->setSeasonId($seasonId)->setSchedulePlanId($planId)->setBlockId($block->getId())->setTeamId(self::TEAM_ID));
