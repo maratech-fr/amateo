@@ -130,6 +130,45 @@ final class PeriodSettingUpsertTest extends WebTestCase
         self::assertSame($before, $this->em->getConnection()->fetchAssociative('SELECT * FROM plan_venue WHERE schedule_plan_id = ? AND venue_id = ?', [$pastHoliday, $pastVenue->getId()]), 'la ligne de la saison passée n\'a pas bougé, sa saison comprise');
     }
 
+    /**
+     * Abus, jumeau du cas gymnase pour le réglage d'équipe (lot 4, PR 3a) : publié sous la saison de la requête, il ne
+     * touche jamais le plan d'une AUTRE saison du club (la saison passée, en lecture seule) : refusé, et la ligne de
+     * l'autre saison garde sa saison et ses valeurs.
+     */
+    public function testATeamSettingNeverReachesThePlanOfAnotherSeason(): void
+    {
+        $past = (new Season)->setClubId($this->clubId)->setName('2024-2025')
+            ->setStartDate(new DateTimeImmutable('2024-09-01'))->setEndDate(new DateTimeImmutable('2025-06-30'))
+            ->setStatus(SeasonStatus::ARCHIVED)->setTransitionData([]);
+        $this->em->persist($past);
+        $this->em->flush();
+        SeasonPlanOf::id(self::getContainer(), $past->getId());
+        $pastTeam = (new Team)->setClubId($this->clubId)->setSeasonId($past->getId())->setSportCategoryId('33333333-3333-3333-3333-333333333333')
+            ->setPriorityTierId(1)->setName('SM1')->setIsActive(true);
+        $this->em->persist($pastTeam);
+        $this->em->flush();
+        $entry = (new CalendarEntry)->setClubId($this->clubId)->setSeasonId($past->getId())
+            ->setKind(CalendarEntryKind::PERIOD)->setPeriodType(CalendarEntryPeriodType::HOLIDAY)->setTitle('Noël passé')
+            ->setStartDate(new DateTimeImmutable('2024-12-23'))->setEndDate(new DateTimeImmutable('2024-12-29'));
+        $this->em->persist($entry);
+        $pastHoliday = $this->planIdOf($entry);
+        $this->layTeamLines($past->getId());
+        $before = $this->em->getConnection()->fetchAssociative('SELECT * FROM plan_team WHERE schedule_plan_id = ? AND team_id = ?', [$pastHoliday, $pastTeam->getId()]);
+        self::assertIsArray($before, 'témoin : l\'équipe de la saison passée a sa ligne dans ses vacances');
+        self::assertSame($past->getId(), $before['season_id']);
+
+        // La requête porte la saison en cours (`X-Season-Id`), le corps vise le plan de la saison passée.
+        $this->client->request('POST', '/api/team_period_overrides', [], [], $this->headers(), json_encode([
+            'schedulePlanId' => $pastHoliday,
+            'teamId' => $pastTeam->getId(),
+            'isActive' => false,
+            'sessionsPerWeek' => 1,
+        ], \JSON_THROW_ON_ERROR));
+
+        self::assertContains($this->client->getResponse()->getStatusCode(), [404, 409, 422], 'le plan d\'une autre saison est refusé : ' . $this->client->getResponse()->getContent());
+        self::assertSame($before, $this->em->getConnection()->fetchAssociative('SELECT * FROM plan_team WHERE schedule_plan_id = ? AND team_id = ?', [$pastHoliday, $pastTeam->getId()]), 'la ligne de la saison passée n\'a pas bougé, sa saison comprise');
+    }
+
     public function testPublishingTheSameTeamSettingTwiceUpdatesIt(): void
     {
         // Une ligne égale au socle, sans origine, n'est pas un réglage : la liste ne la rend pas (§5 du plan).
