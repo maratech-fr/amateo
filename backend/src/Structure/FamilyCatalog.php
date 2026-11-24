@@ -192,8 +192,9 @@ final class FamilyCatalog
 
     /**
      * Ce que la copie d'une version d'un plan de cette nature emporte (lot 5) : les familles froides de niveau
-     * plan, et pour le plan de saison en plus les familles froides du socle (`ofSocle`). Une famille libre
-     * (`cold: []`) n'y est jamais.
+     * plan, les familles froides de niveau saison que la demande de tout plan lit en direct (la règle de trajet :
+     * `ofSocle: false`), et pour le plan de saison en plus les familles froides du socle (`ofSocle`). Une famille
+     * libre (`cold: []`) n'y est jamais.
      *
      * @return list<class-string>
      */
@@ -204,7 +205,8 @@ final class FamilyCatalog
             if (null === $family->cold || [] === $family->cold) {
                 continue;
             }
-            if (Level::PLAN === $family->level || (SchedulePlanType::SEASON === $type && Level::SEASON === $family->level && $family->ofSocle)) {
+            if (Level::PLAN === $family->level
+                || (Level::SEASON === $family->level && (!$family->ofSocle || SchedulePlanType::SEASON === $type))) {
                 $cold[] = $class;
             }
         }

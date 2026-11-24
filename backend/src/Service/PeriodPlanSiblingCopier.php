@@ -118,16 +118,18 @@ final class PeriodPlanSiblingCopier
             // Snapshot APRÈS la pose des verrous (patron transcription) : cette version est désormais
             // la source des verrous du plan, donc `buildForPlan` greffe ses HARD en forme
             // canonique — exactement ce que `structureHashOfPlan` recalculera (« Régénérer » honnête).
+            // Lot 5 : la version née porte la copie du froid de son plan (celui de la cible), dans la transaction ;
+            // l'empreinte prend la règle de trajet de cette copie.
+            $state = $this->planStates->capture($targetPlanId);
             $entry = $this->entityManager->getRepository(CalendarEntry::class)->find($targetEntryId);
             if ($entry instanceof CalendarEntry) {
                 $payload = $this->constraintBuilder->buildForPlan($targetPlanId);
                 $version->setSnapshotData($payload);
-                $version->setSnapshotHash(ScheduleConstraintBuilder::structureHash($payload));
+                $version->setSnapshotHash(ScheduleConstraintBuilder::fingerprint($payload, $this->planStates->travelRuleIn($state)));
             }
             $version->setManuallyEditedSinceGeneration(false);
             $this->entityManager->flush();
-            // Lot 5 : la version née porte la copie du froid de son plan (celui de la cible), dans la transaction.
-            $this->planStates->store($version, $this->planStates->capture($targetPlanId));
+            $this->planStates->store($version, $state);
 
             // Validée d'office (pointée) + source des verrous = la V1 née (patron auto-★).
             $this->schedulePlanProvisioner->choose($version);

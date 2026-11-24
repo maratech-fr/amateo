@@ -28,7 +28,7 @@ use Doctrine\ORM\Mapping as ORM;
  * quelque chose. Le payload d'un club qui n'a rien réglé applique les défauts sans ligne.
  * Recopiée à la bascule de saison (`SeasonTransitionService`), comme la matrice qu'elle gouverne.
  */
-#[Family(Level::SEASON, cold: Family::ALL, ofSocle: true, copiedToNextSeason: true)]
+#[Family(Level::SEASON, cold: Family::ALL, copiedToNextSeason: true)]
 #[ORM\Entity(repositoryClass: VenueTravelRuleSettingRepository::class)]
 #[ORM\Table(name: 'venue_travel_rule_setting')]
 #[ORM\UniqueConstraint(name: 'uniq_venue_travel_rule_club_season', columns: ['club_id', 'season_id'])]

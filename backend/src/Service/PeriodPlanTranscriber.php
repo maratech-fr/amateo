@@ -236,13 +236,15 @@ final class PeriodPlanTranscriber
         // SES propres HARD en forme canonique — exactement ce que `structureHashOfPlan` recalculera.
         // Hacher AVANT les aurait exclus, et « Régénérer » se serait allumé dès la transcription.
         $payload = $this->constraintBuilder->buildForPlan($schedulePlanId, selection: $selection);
+        // Lot 5 : la version née porte la copie du froid de son plan, dans la même transaction ; l'empreinte prend
+        // la règle de trajet de cette copie.
+        $state = $this->planStates->capture($schedulePlanId);
         $schedule->setSnapshotData($payload);
-        $schedule->setSnapshotHash(ScheduleConstraintBuilder::structureHash($payload));
+        $schedule->setSnapshotHash(ScheduleConstraintBuilder::fingerprint($payload, $this->planStates->travelRuleIn($state)));
         // Miroir de ScheduleResultImporter : une version fraîchement transcrite n'est pas périmée.
         $schedule->setManuallyEditedSinceGeneration(false);
         $this->entityManager->flush();
-        // Lot 5 : la version née porte la copie du froid de son plan, dans la même transaction.
-        $this->planStates->store($schedule, $this->planStates->capture($schedulePlanId));
+        $this->planStates->store($schedule, $state);
 
         return new PeriodTranscriptionResult($schedule->getId(), $schedule->getVersionNumber(), $copied, $toReplace);
     }

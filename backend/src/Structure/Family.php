@@ -24,7 +24,8 @@ use Attribute;
  * {@see self::ALL} = tous ses champs hors identité et métadonnées, ou la liste de ses champs froids.
  * `coldRows` : le filtre des lignes froides (champ => valeur ; null = « vide »), ex. les seules lignes de
  * coach principal, les seules contraintes permanentes. `ofSocle` : famille de niveau saison dont le froid
- * appartient au socle (copié avec les versions du plan de saison seul). `copiedToNextSeason` : « Préparer
+ * appartient au socle (copié avec les versions du plan de saison seul) ; une famille froide de niveau saison
+ * sans `ofSocle` est lue par la demande de tout plan et copiée avec toute version. `copiedToNextSeason` : « Préparer
  * la saison suivante » la reprend. `cold` et `copiedToNextSeason` sont obligatoires aux niveaux saison et
  * plan : le balayage refuse une famille qui ne les dit pas.
  */

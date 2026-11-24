@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace App\Plans;
 
 use App\Entity\Schedule;
+use App\Entity\VenueTravelRuleSetting;
 use App\Enum\SchedulePlanType;
+use App\Service\ScheduleConstraintBuilder;
 use App\Structure\Family;
 use App\Structure\FamilyCatalog;
 use App\Structure\Level;
@@ -93,6 +95,45 @@ final class PlanStates
 
         /* @var array<string, array<string, array<string, mixed>>> $decoded */
         return new PlanState($decoded);
+    }
+
+    /**
+     * La règle de trajet que porte la copie (ses défauts si la saison n'en réglait aucune), dans la forme de
+     * {@see ScheduleConstraintBuilder::fingerprint}. Lève si la copie ne porte pas la famille.
+     *
+     * @return array{defaultMinutes: int, intensity: string, toleranceMinutes: int}
+     */
+    public function travelRuleIn(PlanState $state): array
+    {
+        $families = $state->toArray();
+        $key = $this->familyKey(VenueTravelRuleSetting::class);
+        if (!\array_key_exists($key, $families)) {
+            throw new LogicException('La copie ne porte pas la règle de trajet.');
+        }
+        $rows = array_values($families[$key]);
+        if ([] === $rows) {
+            return ScheduleConstraintBuilder::travelRuleValues(new VenueTravelRuleSetting);
+        }
+
+        return [
+            'defaultMinutes' => (int) $rows[0]['defaultMinutes'],
+            'intensity' => (string) $rows[0]['intensity'],
+            'toleranceMinutes' => (int) $rows[0]['toleranceMinutes'],
+        ];
+    }
+
+    /**
+     * La règle de trajet qu'a vue la version, lue dans sa copie du froid ; null si la version n'a pas de copie
+     * (version échouée, ou ni validée ni chargée née avant le lot) : {@see ScheduleConstraintBuilder::fingerprint}
+     * la compte alors aux défauts.
+     *
+     * @return array{defaultMinutes: int, intensity: string, toleranceMinutes: int}|null
+     */
+    public function travelRuleOfVersion(string $scheduleId): ?array
+    {
+        $exists = $this->entityManager->getConnection()->fetchOne('SELECT 1 FROM schedule_state WHERE schedule_id = ?', [$scheduleId]);
+
+        return false === $exists ? null : $this->travelRuleIn($this->of($scheduleId));
     }
 
     /**

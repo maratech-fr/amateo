@@ -182,6 +182,50 @@ final class ScheduleConstraintBuilder
     }
 
     /**
+     * L'EMPREINTE d'un plan ou d'une version, point d'entrée unique (lot 5) : {@see self::structureHash} de la demande
+     * (sans ses clés libres), combinée à la règle de trajet (froide) lue à part — la demande ne la porte que si une
+     * matrice (libre) est saisie. Le `snapshotHash` d'une version et le signal « périmé » du plan sortent d'ici.
+     *
+     * La règle vaut ses défauts quand rien n'est réglé ; aux défauts, l'empreinte est celle de la demande seule (une
+     * empreinte d'avant le lot reste valable pour un club qui n'a jamais réglé la règle). `null` : règle inconnue,
+     * celle d'une version sans copie du froid (version échouée, ou ni validée ni chargée née avant le lot) — elle
+     * compte comme les défauts.
+     *
+     * @param array<mixed>                                                              $payload
+     * @param array{defaultMinutes: int, intensity: string, toleranceMinutes: int}|null $travelRule
+     */
+    public static function fingerprint(array $payload, ?array $travelRule): string
+    {
+        $hash = self::structureHash($payload);
+        if (null === $travelRule) {
+            return $hash;
+        }
+        $rule = [
+            'defaultMinutes' => $travelRule['defaultMinutes'],
+            'intensity' => $travelRule['intensity'],
+            'toleranceMinutes' => $travelRule['toleranceMinutes'],
+        ];
+
+        return $rule === self::travelRuleValues(new VenueTravelRuleSetting)
+            ? $hash
+            : hash('sha256', $hash . '|travelRule|' . json_encode($rule, \JSON_THROW_ON_ERROR));
+    }
+
+    /**
+     * Les valeurs froides d'une règle de trajet, dans la forme que lit {@see self::fingerprint}.
+     *
+     * @return array{defaultMinutes: int, intensity: string, toleranceMinutes: int}
+     */
+    public static function travelRuleValues(VenueTravelRuleSetting $setting): array
+    {
+        return [
+            'defaultMinutes' => $setting->getDefaultMinutes(),
+            'intensity' => $setting->getIntensity()->value,
+            'toleranceMinutes' => $setting->getToleranceMinutes(),
+        ];
+    }
+
+    /**
      * L'empreinte de STRUCTURE d'un payload, maison unique : le `snapshotHash` d'une version et le
      * signal « structure modifiée » du plan doivent sortir de la même recette.
      *
@@ -271,6 +315,16 @@ final class ScheduleConstraintBuilder
     private static function formatNullableTime(?DateTimeInterface $time): ?string
     {
         return $time?->format('H:i:s');
+    }
+
+    /**
+     * La règle de trajet de la saison, lue en direct (ses défauts si rien n'est réglé).
+     *
+     * @return array{defaultMinutes: int, intensity: string, toleranceMinutes: int}
+     */
+    public function travelRuleOf(string $clubId, string $seasonId): array
+    {
+        return self::travelRuleValues($this->resolveTravelRuleSetting($clubId, $seasonId));
     }
 
     /**

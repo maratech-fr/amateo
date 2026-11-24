@@ -251,6 +251,11 @@ final class GenerateScheduleHandler
         $snapshot = $composed->snapshot;
         $scheduleInput = $composed->input;
 
+        // Lot 5 — la copie du froid du plan, lue MAINTENANT avec l'entrée figée (le plan peut changer pendant le
+        // solve), socle comme période. L'empreinte prend la règle de trajet qu'elle porte. Son écriture, plus bas,
+        // est BLOQUANTE.
+        $planState = $this->planStates->capture($schedule->getSchedulePlanId());
+
         // P5-10 — la taille du payload (métrique de capacité). Le hash, lui, passe par la maison unique
         // de l'empreinte, qui ignore les séances NONE.
         $encodedSnapshot = json_encode($snapshot, \JSON_THROW_ON_ERROR);
@@ -261,7 +266,7 @@ final class GenerateScheduleHandler
             ->setSolveStartedAt(new DateTimeImmutable)
             ->setSolverTimeoutSeconds($message->getTimeoutSeconds())
             ->setSnapshotData($snapshot)
-            ->setSnapshotHash(ScheduleConstraintBuilder::structureHash($snapshot));
+            ->setSnapshotHash(ScheduleConstraintBuilder::fingerprint($snapshot, $this->planStates->travelRuleIn($planState)));
 
         // Geste 2 — figer la GREFFE de convergence pour que `Schedule::engineInput()` reste
         // fidèle à ce qui PART au moteur, sans jamais toucher au hash. Extraction par DIFFÉRENCE
@@ -294,10 +299,6 @@ final class GenerateScheduleHandler
                 ]);
             }
         }
-
-        // Lot 5 — la copie du froid du plan, lue MAINTENANT (cohérente avec l'entrée figée : le plan peut changer
-        // pendant le solve), socle comme période. Son écriture, plus bas, est BLOQUANTE.
-        $planState = $this->planStates->capture($schedule->getSchedulePlanId());
 
         $lotDir = null;
         if ($this->devReportWriter instanceof DevScheduleReportWriter) {

@@ -962,11 +962,16 @@ final class SchedulePlanProvisioner
     public function structureHashOfPlan(string $planId): ?string
     {
         try {
-            if (null === $this->fetchPlanContext($planId)) {
+            $context = $this->fetchPlanContext($planId);
+            if (null === $context) {
                 return null;
             }
 
-            return ScheduleConstraintBuilder::structureHash($this->constraintBuilder->buildForPlan($planId));
+            // Lot 5 : la règle de trajet (froide) est lue en direct, matrice saisie ou non.
+            return ScheduleConstraintBuilder::fingerprint(
+                $this->constraintBuilder->buildForPlan($planId),
+                $this->constraintBuilder->travelRuleOf($context['clubId'], $context['seasonId']),
+            );
         } catch (Throwable) {
             return null;
         }
