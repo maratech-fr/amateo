@@ -52,6 +52,21 @@ Fonctionnalité: Une rencontre importée dit si elle est traitée
     Alors le dépôt est refusé et le message dit la date d'export du fichier
     Et aucune rencontre n'est importée
 
+  Scénario: Deux équipes du club dans une même division gardent chacune leurs matchs, au dépôt comme au re-dépôt
+    Le fichier porte la division deux fois, sous deux libellés d'équipe du club (« - 1 » et « - 2 ») :
+    chaque libellé est apparié à son équipe. La division donne aujourd'hui deux compétitions de même
+    nom, une par équipe, et chaque match reste à l'équipe de son libellé. Le re-dépôt du même fichier,
+    sans aucune correspondance, retrouve chaque équipe par son libellé et n'ajoute rien.
+    Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur
+    Et une équipe jetable et un gymnase jetable « GYM BEHAT »
+    Et une seconde équipe jetable du club
+    Quand je dépose un fichier FBI où une division porte les deux équipes du club, chacune appariée à son libellé
+    Alors la division a donné deux compétitions de même nom, une par équipe
+    Et chaque équipe porte le seul match de son libellé, dans sa propre compétition
+    Quand je re-dépose ce fichier aux deux équipes, sans aucune correspondance
+    Alors la division a donné deux compétitions de même nom, une par équipe
+    Et chaque équipe porte le seul match de son libellé, dans sa propre compétition
+
   Scénario: Un match à l'extérieur naît déjà traité
     Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur
     Et une équipe jetable et un gymnase jetable « GYM BEHAT »

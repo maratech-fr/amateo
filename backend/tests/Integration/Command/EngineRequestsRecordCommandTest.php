@@ -20,6 +20,8 @@ use App\Entity\VenueMatchWindow;
 use App\Entity\VenueTrainingSlot;
 use App\Enum\CompetitionType;
 use App\Enum\FixtureHomeAway;
+use App\Enum\FixturePlacementSource;
+use App\Enum\FixtureStatus;
 use App\Enum\LockLevel;
 use App\Enum\LockOrigin;
 use App\Enum\ScheduleStatus;
@@ -60,6 +62,9 @@ use Symfony\Contracts\Cache\TagAwareCacheInterface;
  * Arbre écrit sous `--out=<dossier>` :
  *   - `requests/club-<clubId>/<clé>` : un fichier par demande, au format d'empreintes
  *     ({@see EngineRequestFingerprint}, prouvé par `Unit/Service/EngineRequestFingerprintTest`) ;
+ *   - `views/club-<clubId>/fixtures.json` et `conflicts.json` (lot 7) : ce que servent `GET /api/fixtures`
+ *     et `GET /api/fixtures/conflicts`, sans balayage ni écriture, sans nom en clair (contenu prouvé
+ *     par `Integration/Matches/MatchViewRecorderTest`) ;
  *   - `manifest.json`, HORS de l'arbre comparé : `{"clubs": [{"clubId", "requests": [clés],
  *     "skipped": [{"scope", "reason"}]}]}`.
  *
@@ -113,8 +118,11 @@ final class EngineRequestsRecordCommandTest extends KernelTestCase
     private const array TRACE_TABLES = [
         'club', 'season', 'schedule', 'schedule_plan', 'schedule_slot_template', 'schedule_diagnostic',
         'schedule_structure_snapshot', 'calendar_entry', 'reservation', 'team', '"constraint"', 'fixture',
-        'match_placement_run', 'audit_log',
+        'match_placement_run', 'audit_log', 'competition', 'conflict_resolution', 'conflict_mailing',
     ];
+
+    /** Les vues des matchs enregistrées par club, sous `views/club-<id>/` (lot 7). */
+    private const array VIEW_FILES = ['fixtures.json', 'conflicts.json'];
 
     /** @var list<string> */
     private array $outDirs = [];
@@ -196,6 +204,30 @@ final class EngineRequestsRecordCommandTest extends KernelTestCase
     }
 
     /** @return iterable<string, array{callable(string): void}> */
+    /**
+     * Des gestes sur les matchs, leur inverse, les vues qui doivent les voir, et si la demande au moteur
+     * les voit aussi.
+     *
+     * @return iterable<string, array{callable, callable, list<string>, bool}>
+     */
+    public static function viewGestures(): iterable
+    {
+        // Le libellé adverse ne part jamais au moteur : seule la vue des matchs le voit.
+        yield 'le libellé adverse d\'un extérieur change' => [
+            static function (self $t): void { $t->setOpponentLabel(self::erId('f1c7', 3), 'Adversaire 3 bis'); },
+            static function (self $t): void { $t->setOpponentLabel(self::erId('f1c7', 3), 'Adversaire 3'); },
+            ['fixtures.json'],
+            false,
+        ];
+        // U15 posée à la main au gymnase Sud, qui lui est interdit : le match change et un conflit naît.
+        yield 'un domicile posé dans un gymnase interdit à son équipe' => [
+            static function (self $t): void { $t->setFixturePlacement(self::erId('f1c7', 2), self::ER_VENUE_SUD, '14:00'); },
+            static function (self $t): void { $t->setFixturePlacement(self::erId('f1c7', 2), null, null); },
+            ['fixtures.json', 'conflicts.json'],
+            true,
+        ];
+    }
+
     public static function unusableOutFolders(): iterable
     {
         yield 'dossier non vide (reste d\'un enregistrement)' => [static function (string $out): void {
@@ -351,6 +383,11 @@ final class EngineRequestsRecordCommandTest extends KernelTestCase
         );
     }
 
+    /**
+     * Deux enregistrements de la même base sont identiques, vues des matchs comprises (lot 7 :
+     * `views/club-<id>/fixtures.json` et `conflicts.json`, ce que servent `GET /api/fixtures` et
+     * `GET /api/fixtures/conflicts`), et aucun n'écrit une ligne, ni balayage ni statut de traitement.
+     */
     public function testTwoRecordingsAreIdenticalAndLeaveNoTrace(): void
     {
         $this->seedReachableDecor();
@@ -360,6 +397,9 @@ final class EngineRequestsRecordCommandTest extends KernelTestCase
         $second = $this->allFiles($this->recordOk([self::ER_CLUB]));
 
         self::assertNotSame([], $first);
+        foreach (self::VIEW_FILES as $view) {
+            self::assertArrayHasKey('views/club-' . self::ER_CLUB . '/' . $view, $first, 'la vue ' . $view . ' du club est enregistrée');
+        }
         self::assertSame($first, $second, 'deux enregistrements de la même base sont identiques à l\'octet');
         // Une entité laissée dans l'unité de travail par l'outil serait écrite par ce flush.
         $this->erEm()->flush();
@@ -459,12 +499,106 @@ final class EngineRequestsRecordCommandTest extends KernelTestCase
 
         $files = $this->allFiles($this->recordOk([self::ER_CLUB]));
         self::assertArrayHasKey('manifest.json', $files, 'le manifeste est écrit à la racine, hors de requests/');
+        // Les vues des matchs (lot 7) portent libellés adverses et noms de compétition : elles aussi
+        // passent sous ce balayage, qui ne prouverait rien sans elles.
+        foreach (self::VIEW_FILES as $view) {
+            self::assertArrayHasKey('views/club-' . self::ER_CLUB . '/' . $view, $files, 'la vue ' . $view . ' est écrite');
+        }
 
         foreach ($files as $path => $content) {
             foreach (['U13 F', 'U15 M', 'SM1', 'Alix', 'Bao', 'Entraîneur', 'Gymnase Nord', 'Gymnase Sud', 'Club de référence', 'Adversaire 1', 'Contrainte 1', 'Fermeture du gymnase Sud', 'Championnat 1'] as $name) {
                 self::assertStringNotContainsString($name, $content, \sprintf('%s : « %s » écrit en clair', $path, $name));
             }
         }
+    }
+
+    /**
+     * Les vues des matchs voient ce que la demande au moteur ne voit pas (lot 7 : le risque d'une
+     * migration est aussi à l'import et au radar) : un geste sur un match change la vue qui le porte,
+     * et le geste inverse rend l'enregistrement d'avant à l'octet.
+     *
+     * @param callable(self): void $gesture
+     * @param callable(self): void $inverse
+     * @param list<string>         $changedViews
+     */
+    #[DataProvider('viewGestures')]
+    public function testAGestureOnAMatchShowsInTheViewsAndItsInverseRestoresThem(callable $gesture, callable $inverse, array $changedViews, bool $requestsSeeIt): void
+    {
+        $this->seedReachableDecor();
+        $before = $this->allFiles($this->recordOk([self::ER_CLUB]));
+
+        $gesture($this);
+        $after = $this->allFiles($this->recordOk([self::ER_CLUB]));
+
+        foreach ($changedViews as $view) {
+            $path = 'views/club-' . self::ER_CLUB . '/' . $view;
+            self::assertArrayHasKey($path, $before, 'la vue ' . $view . ' est enregistrée');
+            self::assertArrayHasKey($path, $after, 'la vue ' . $view . ' est enregistrée');
+            self::assertNotSame($before[$path], $after[$path], 'le geste se voit dans la vue ' . $view);
+        }
+        $requests = static fn (array $files): array => array_filter($files, static fn (string $path): bool => str_starts_with($path, 'requests/'), \ARRAY_FILTER_USE_KEY);
+        self::assertSame(!$requestsSeeIt, $requests($before) === $requests($after), $requestsSeeIt ? 'la demande au moteur voit aussi ce geste' : 'la demande au moteur ne voit pas ce geste : seules les vues le portent');
+
+        $inverse($this);
+        self::assertSame($before, $this->allFiles($this->recordOk([self::ER_CLUB])), 'le geste inverse rend l\'enregistrement d\'avant, vues comprises');
+    }
+
+    /**
+     * Lire les vues ne balaie rien : un amical passé, placé et jamais saisi — qu'une lecture de
+     * l'accueil des matchs par un gestionnaire ferait passer « validé » — reste tel quel, et aucune
+     * table n'est écrite.
+     */
+    public function testRecordingTheViewsNeverSweepsAPastFriendly(): void
+    {
+        $this->seedReachableDecor();
+        $this->scopeGucToClub(self::ER_CLUB);
+        $friendly = (new Fixture)->setId(self::erId('f1c7', 51));
+        $friendly->setClubId(self::ER_CLUB);
+        $friendly->setSeasonId(self::ER_SEASON);
+        $friendly->setTeamId(self::ER_TEAM_U15);
+        $friendly->setCompetitionId(null);
+        $friendly->setMatchDate(new DateTimeImmutable('2025-12-13'));
+        $friendly->setHomeAway(FixtureHomeAway::HOME);
+        $friendly->setOpponentLabel('Adversaire 51');
+        $friendly->setVenueId(self::ER_VENUE_NORD);
+        $friendly->setKickoffTime(new DateTimeImmutable('15:00'));
+        $friendly->setStatus(FixtureStatus::PLACED, new DateTimeImmutable('2025-12-01T10:00:00+00:00'));
+        $friendly->setPlacementSource(FixturePlacementSource::MANUAL);
+        $this->erEm()->persist($friendly);
+        $this->erEm()->flush();
+        $before = $this->traceDigest();
+
+        $files = $this->allFiles($this->recordOk([self::ER_CLUB]));
+
+        self::assertArrayHasKey('views/club-' . self::ER_CLUB . '/fixtures.json', $files, 'la vue des matchs est enregistrée');
+        $this->erEm()->flush();
+        self::assertSame($before, $this->traceDigest(), 'enregistrer les vues n\'écrit rien, ni balayage des amicaux passés');
+        self::assertSame('PLACED', $this->erEm()->getConnection()->fetchOne('SELECT status FROM fixture WHERE id = ?', [self::erId('f1c7', 51)]), 'l\'amical passé reste « placé »');
+    }
+
+    /**
+     * Les vues d'un club ne portent rien d'un autre (isolation entre clubs : le radar et la liste des
+     * matchs se lisent sous la sécurité par club), et l'ordre des clubs ne les change pas.
+     */
+    public function testTheViewsOfOneClubNeverCarryAnotherClub(): void
+    {
+        $this->seedSocleInForce();
+        $this->seedEngineRequestMatches();
+        $this->seedClubB();
+
+        $aAlone = $this->viewFiles($this->recordOk([self::ER_CLUB]), self::ER_CLUB);
+        $bAlone = $this->viewFiles($this->recordOk([self::B_CLUB]), self::B_CLUB);
+        $bothOut = $this->recordOk([self::B_CLUB, self::ER_CLUB]);
+
+        self::assertSame(self::VIEW_FILES, array_keys($aAlone), 'A a ses deux vues');
+        self::assertSame(self::VIEW_FILES, array_keys($bAlone), 'B a ses deux vues');
+        // Témoins : chaque club voit ses propres matchs — une vue vide serait « isolée » sans rien prouver.
+        self::assertStringContainsString(self::erId('f1c7', 1), $aAlone['fixtures.json'], 'A voit son match');
+        self::assertStringContainsString(self::B_FIXTURE, $bAlone['fixtures.json'], 'B voit son match');
+        $this->assertNothingOf(['club B' => [self::B_CLUB, self::B_SEASON, self::B_TEAM, self::B_VENUE, self::B_FIXTURE, hash('sha256', self::B_TEAM_NAME), hash('sha256', 'Adversaire B')]], $aAlone);
+        $this->assertNothingOf(['club A' => [self::ER_CLUB, self::ER_SEASON, self::ER_TEAM_U13, self::ER_VENUE_NORD, self::erId('f1c7', 1), hash('sha256', 'Adversaire 1')]], $bAlone);
+        self::assertSame($aAlone, $this->viewFiles($bothOut, self::ER_CLUB), 'A enregistré après B = A seul');
+        self::assertSame($bAlone, $this->viewFiles($bothOut, self::B_CLUB), 'B enregistré avant A = B seul');
     }
 
     #[DataProvider('invalidClubs')]
@@ -720,6 +854,23 @@ final class EngineRequestsRecordCommandTest extends KernelTestCase
         self::assertInstanceOf(Fixture::class, $fixture);
         $this->erEm()->remove($fixture);
         $this->erEm()->flush();
+    }
+
+    /** Écriture brute, comme une migration : le libellé adverse d'un match. */
+    public function setOpponentLabel(string $fixtureId, string $label): void
+    {
+        $this->scopeGucToClub(self::ER_CLUB);
+        $this->erEm()->getConnection()->executeStatement('UPDATE fixture SET opponent_label = ? WHERE id = ?', [$label, $fixtureId]);
+    }
+
+    /** Écriture brute : un domicile posé à la main (gymnase et heure) ou rendu « à placer » (null, null). */
+    public function setFixturePlacement(string $fixtureId, ?string $venueId, ?string $kickoff): void
+    {
+        $this->scopeGucToClub(self::ER_CLUB);
+        $this->erEm()->getConnection()->executeStatement(
+            'UPDATE fixture SET venue_id = ?, kickoff_time = ?, status = ?, placement_source = ? WHERE id = ?',
+            [$venueId, $kickoff, null === $venueId ? 'UNPLACED' : 'PLACED', null === $venueId ? null : 'MANUAL', $fixtureId],
+        );
     }
 
     /** Recrée le match 2 du décor (`seedEngineRequestMatches`), à l'identique. */
@@ -1129,6 +1280,21 @@ final class EngineRequestsRecordCommandTest extends KernelTestCase
         }
 
         self::fail('le manifeste ne cite pas le club ' . $clubId);
+    }
+
+    /** @return array<string, string> fichier de vue → contenu, pour un club, dans l'ordre de `VIEW_FILES` */
+    private function viewFiles(string $out, string $clubId): array
+    {
+        $files = $this->allFiles($out);
+        $views = [];
+        foreach (self::VIEW_FILES as $view) {
+            $path = 'views/club-' . $clubId . '/' . $view;
+            if (\array_key_exists($path, $files)) {
+                $views[$view] = $files[$path];
+            }
+        }
+
+        return $views;
     }
 
     /** @return array<mixed> */

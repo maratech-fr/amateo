@@ -11,7 +11,11 @@ use Behat\Step\Then;
 use Behat\Step\When;
 use DateTimeImmutable;
 use DateTimeZone;
+use PhpOffice\PhpSpreadsheet\Spreadsheet;
+use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 use RuntimeException;
+use Symfony\Component\Mime\Part\DataPart;
+use Symfony\Component\Mime\Part\Multipart\FormDataPart;
 
 /**
  * Placement des matchs de bout en bout, sur la stack qui tourne.
@@ -34,6 +38,13 @@ final class MatchPlacementContext extends BaseContext
     private const int POLL_INTERVAL_SECONDS = 2;
 
     private const int TIMEOUT_SECONDS = 650;
+
+    /** Une division fédérale au libellé amical (lot 7, filet des matchs) et le numéro de son domicile. */
+    private const string AMICAL_PNF = 'Amical PNF';
+
+    private const string AMICAL_PNF_REF = 'BMP-7001';
+
+    private const string AMICAL_PNF_SALLE = 'SALLE BEHAT AMICAL';
 
     private string $token = '';
 
@@ -788,6 +799,66 @@ final class MatchPlacementContext extends BaseContext
         }
 
         throw new RuntimeException('le radar n\'a pas signalé le conflit de personne attendu entre le domicile et l\'extérieur du coach partagé');
+    }
+
+    #[When('je dépose un fichier FBI où la division « Amical PNF » porte un domicile de la première équipe le samedi dans ce gymnase, sans heure')]
+    public function jeDeposeUnDomicileAmicalPnf(): void
+    {
+        $club = $this->apiGet('me', $this->token)['json']['club'] ?? null;
+        $clubName = \is_array($club) ? ($club['name'] ?? null) : null;
+        if (!\is_string($clubName) || '' === $clubName) {
+            throw new RuntimeException('le nom du club de démonstration est introuvable');
+        }
+        $spreadsheet = new Spreadsheet;
+        $spreadsheet->getActiveSheet()->fromArray([
+            ['Division', 'N° de match ', 'Equipe 1', 'Equipe 2', 'Date de rencontre', 'Heure', 'Salle'],
+            [self::AMICAL_PNF, self::AMICAL_PNF_REF, $clubName, 'Adversaire amical', date('d/m/Y', (int) strtotime($this->saturday)), '', self::AMICAL_PNF_SALLE],
+        ], null, 'A1');
+        $path = tempnam(sys_get_temp_dir(), 'bmp') . '.xlsx';
+        new Xlsx($spreadsheet)->save($path);
+        // « Pas de salle appariée, pas d'import » : la salle du domicile est appariée au gymnase jetable.
+        $form = new FormDataPart([
+            'file' => DataPart::fromPath($path),
+            'mappings' => json_encode([['division' => self::AMICAL_PNF, 'teamId' => $this->teamId]], \JSON_THROW_ON_ERROR),
+            'venueMappings' => json_encode([['label' => self::AMICAL_PNF_SALLE, 'venueId' => $this->venueId]], \JSON_THROW_ON_ERROR),
+        ]);
+        $response = $this->client->request('POST', 'fixtures/import', [
+            'headers' => array_merge(['Authorization' => 'Bearer ' . $this->token], $form->getPreparedHeaders()->toArray()),
+            'body' => $form->bodyToIterable(),
+        ]);
+        $status = $response->getStatusCode();
+        @unlink($path);
+        if (200 !== $status) {
+            throw new RuntimeException(\sprintf('le dépôt « Amical PNF » a répondu %d (200 attendu) : %s', $status, $response->getContent(false)));
+        }
+        $id = $this->dbalScalar(\sprintf('SELECT id AS behatval FROM fixture WHERE club_id=\'%s\' AND external_ref=\'%s\' LIMIT 1', $this->clubId, self::AMICAL_PNF_REF), admin: true);
+        if ('' === $id) {
+            throw new RuntimeException('le domicile « Amical PNF » est introuvable après le dépôt');
+        }
+        // Lu par « je lance le placement des matchs », supprimé au nettoyage.
+        $this->fxSat = $id;
+    }
+
+    #[Then('la compétition « Amical PNF » est rangée en championnat')]
+    public function laCompetitionAmicalPnfEstUnChampionnat(): void
+    {
+        $type = $this->dbalScalar(
+            \sprintf('SELECT competition_type AS behatval FROM competition WHERE club_id=\'%s\' AND team_id=\'%s\' AND name=\'%s\'', $this->clubId, $this->teamId, self::AMICAL_PNF),
+            admin: true,
+        );
+        if ('CHAMPIONSHIP' !== $type) {
+            throw new RuntimeException(\sprintf('la compétition « %s » est rangée « %s » au lieu de championnat', self::AMICAL_PNF, $type));
+        }
+    }
+
+    #[Then('le domicile « Amical PNF » est placé par le solveur')]
+    public function leDomicileAmicalPnfEstPlaceParLeSolveur(): void
+    {
+        $status = $this->satFixture['status'] ?? null;
+        $source = $this->satFixture['placementSource'] ?? null;
+        if ('PLACED' !== $status || 'SOLVER' !== $source) {
+            throw new RuntimeException(\sprintf('le domicile « Amical PNF » devrait être placé par le solveur (statut « %s », source « %s »)', \is_string($status) ? $status : 'inconnu', \is_string($source) ? $source : 'inconnue'));
+        }
     }
 
     #[Given('un amical à domicile le samedi sur ce gymnase, sans créneau posé')]

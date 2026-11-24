@@ -377,6 +377,29 @@ final class ConflictTruthContext extends BaseContext
         );
     }
 
+    #[Given('une rencontre de coupe à domicile un mercredi, coup d\'envoi à 20h00')]
+    public function uneRencontreDeCoupeUnMercredi(): void
+    {
+        // Lot 7, filet des matchs : la coupe obéit aujourd'hui à la fenêtre de ligue de son équipe.
+        // L'équipe n'en a que le samedi : un mercredi n'a aucune fenêtre, tout coup d'envoi en sort.
+        $this->cupCompetitionId = $this->idOf(
+            $this->apiPost('competitions', ['teamId' => $this->teamId, 'name' => 'Coupe du Rhône (vérité conflits)', 'competitionType' => 'CUP'], $this->token),
+            'compétition coupe',
+        );
+        $wednesday = new DateTimeImmutable($this->cupSaturday)->modify('+4 days')->format('Y-m-d');
+        $this->cupFixtureId = $this->idOf(
+            $this->apiPost('fixtures', [
+                'teamId' => $this->teamId,
+                'matchDate' => $wednesday,
+                'homeAway' => 'HOME',
+                'opponentLabel' => 'Adversaire coupe du mercredi',
+                'competitionId' => $this->cupCompetitionId,
+                'kickoffTime' => '20:00',
+            ], $this->token),
+            'rencontre de coupe du mercredi',
+        );
+    }
+
     #[Given('une rencontre à domicile un jour férié, cadrée par une fenêtre de ligue que son coup d\'envoi viole un jour ordinaire')]
     public function uneRencontreADomicileUnJourFerie(): void
     {

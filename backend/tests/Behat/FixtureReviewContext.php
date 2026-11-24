@@ -41,7 +41,15 @@ final class FixtureReviewContext extends BaseContext
 
     private const string VENUE_NAME = 'GYM BEHAT';
 
+    /** La division jouée par deux équipes du club (lot 7, filet des matchs). */
+    private const string DUO_DIVISION = 'BEHAT REVIEW DUO';
+
+    /** Les numéros de match des deux équipes de la division : « - 1 » puis « - 2 ». */
+    private const array DUO_REFS = ['BHR-3001', 'BHR-3002'];
+
     private string $token = '';
+
+    private string $duoTeamId = '';
 
     private string $clubId = '';
 
@@ -152,6 +160,60 @@ final class FixtureReviewContext extends BaseContext
             $this->apiPost('fixtures', ['teamId' => $this->teamId, 'matchDate' => $this->matchDate, 'homeAway' => 'AWAY', 'opponentLabel' => 'Témoin absent'], $this->token),
             'rencontre-témoin',
         );
+    }
+
+    #[Given('une seconde équipe jetable du club')]
+    public function uneSecondeEquipeJetable(): void
+    {
+        $categories = $this->apiGet('sport_categories', $this->token);
+        $category = $this->members($categories['json'])[0]['id'] ?? null;
+        if (!\is_string($category) || '' === $category) {
+            throw new RuntimeException('aucune catégorie sportive pour bâtir la seconde équipe jetable');
+        }
+        $this->duoTeamId = $this->createdId($this->apiPost('teams', ['name' => 'Review Jetable 2', 'sportCategoryId' => $category, 'priorityTierId' => 1], $this->token), 'seconde équipe');
+    }
+
+    #[When('je dépose un fichier FBI où une division porte les deux équipes du club, chacune appariée à son libellé')]
+    public function jeDeposeUneDivisionADeuxEquipes(): void
+    {
+        $this->depositDuo([
+            ['division' => self::DUO_DIVISION, 'fbiTeamLabel' => $this->clubName . ' - 1', 'teamId' => $this->teamId],
+            ['division' => self::DUO_DIVISION, 'fbiTeamLabel' => $this->clubName . ' - 2', 'teamId' => $this->duoTeamId],
+        ]);
+    }
+
+    #[When('je re-dépose ce fichier aux deux équipes, sans aucune correspondance')]
+    public function jeReDeposeLaDivisionADeuxEquipes(): void
+    {
+        $this->depositDuo(null);
+    }
+
+    #[Then('la division a donné deux compétitions de même nom, une par équipe')]
+    public function laDivisionADonneDeuxCompetitions(): void
+    {
+        $teams = $this->dbalScalar(
+            \sprintf('SELECT string_agg(team_id::text, \',\' ORDER BY team_id) AS behatval FROM competition WHERE club_id=\'%s\' AND name=\'%s\'', $this->clubId, self::DUO_DIVISION),
+            admin: true,
+        );
+        $expected = [$this->teamId, $this->duoTeamId];
+        sort($expected);
+        if (implode(',', $expected) !== $teams) {
+            throw new RuntimeException(\sprintf('compétitions « %s » portées par [%s] au lieu d\'une par équipe [%s]', self::DUO_DIVISION, $teams, implode(',', $expected)));
+        }
+    }
+
+    #[Then('chaque équipe porte le seul match de son libellé, dans sa propre compétition')]
+    public function chaqueEquipePorteSonMatch(): void
+    {
+        foreach ([self::DUO_REFS[0] => $this->teamId, self::DUO_REFS[1] => $this->duoTeamId] as $ref => $teamId) {
+            $row = $this->dbalScalar(
+                \sprintf('SELECT COUNT(*) || \'|\' || COALESCE(MIN(f.team_id::text), \'\') || \'|\' || COALESCE(MIN(c.team_id::text), \'\') AS behatval FROM fixture f LEFT JOIN competition c ON c.id = f.competition_id WHERE f.club_id=\'%s\' AND f.external_ref=\'%s\'', $this->clubId, $ref),
+                admin: true,
+            );
+            if (\sprintf('1|%s|%s', $teamId, $teamId) !== $row) {
+                throw new RuntimeException(\sprintf('le match %s devrait exister une fois, à l\'équipe %s et dans sa compétition (compte|équipe|équipe de la compétition = %s)', $ref, $teamId, $row));
+            }
+        }
     }
 
     #[Given('un accès match le samedi sur « GYM BEHAT »')]
@@ -630,6 +692,15 @@ final class FixtureReviewContext extends BaseContext
                 $this->apiDelete(\sprintf('fixtures/%s', $id), $this->token);
             }
         }
+        if ('' !== $this->duoTeamId) {
+            foreach (self::DUO_REFS as $ref) {
+                $id = $this->dbalScalar(\sprintf('SELECT id AS behatval FROM fixture WHERE club_id=\'%s\' AND external_ref=\'%s\' LIMIT 1', $this->clubId, $ref), admin: true);
+                if ('' !== $id) {
+                    $this->apiDelete(\sprintf('fixtures/%s', $id), $this->token);
+                }
+            }
+            $this->apiDelete(\sprintf('teams/%s', $this->duoTeamId), $this->token);
+        }
         // La compétition part avec l'équipe (cascade teams → competitions) : les matchs
         // ayant été supprimés juste au-dessus, l'équipe n'est plus engagée et se supprime.
         if ('' !== $this->matchWindowId) {
@@ -767,6 +838,42 @@ final class FixtureReviewContext extends BaseContext
         }
         $report = json_decode($response->getContent(false), true);
         $this->lastReport = \is_array($report) ? $report : [];
+    }
+
+    /**
+     * Dépose, comme le dialog, une division jouée par DEUX équipes du club : un extérieur pour
+     * « <club> - 1 » et un pour « <club> - 2 », le même samedi. `$mappings` null = re-dépôt sans
+     * correspondance (les libellés mémorisés au premier dépôt doivent suffire).
+     *
+     * @param list<array{division: string, fbiTeamLabel: string, teamId: string}>|null $mappings
+     */
+    private function depositDuo(?array $mappings): void
+    {
+        $date = date('d/m/Y', (int) strtotime($this->matchDate));
+        $path = $this->writeXlsx([
+            [self::DUO_DIVISION, self::DUO_REFS[0], 'Adversaire Duo Un', $this->clubName . ' - 1', $date, '15:30', 'Salle Duo Un'],
+            [self::DUO_DIVISION, self::DUO_REFS[1], 'Adversaire Duo Deux', $this->clubName . ' - 2', $date, '17:30', 'Salle Duo Deux'],
+        ]);
+        $parts = ['file' => DataPart::fromPath($path)];
+        if (null !== $mappings) {
+            $parts['mappings'] = json_encode($mappings, \JSON_THROW_ON_ERROR);
+        }
+        $form = new FormDataPart($parts);
+        $response = $this->client->request('POST', 'fixtures/import', [
+            'headers' => array_merge(['Authorization' => 'Bearer ' . $this->token], $form->getPreparedHeaders()->toArray()),
+            'body' => $form->bodyToIterable(),
+        ]);
+        $status = $response->getStatusCode();
+        @unlink($path);
+        if (200 !== $status) {
+            throw new RuntimeException(\sprintf('le dépôt de la division à deux équipes a répondu %d (200 attendu) : %s', $status, $response->getContent(false)));
+        }
+        $report = json_decode($response->getContent(false), true);
+        $this->lastReport = \is_array($report) ? $report : [];
+        $unmapped = $this->lastReport['unmappedDivisions'] ?? [];
+        if (\is_array($unmapped) && [] !== $unmapped) {
+            throw new RuntimeException(\sprintf('la division est revenue « à faire correspondre » : %s', json_encode($unmapped)));
+        }
     }
 
     /**

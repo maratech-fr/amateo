@@ -423,7 +423,7 @@ brouillon et régénéré, période sur place et comblée, placement club entier
 groupe sous leurs trois formes avec le jour de match enregistré d'une équipe sans habitude, règle de
 groupe datée d'un plan de période, temps de trajet, puis ce que le lot 4 range dans le plan [socle complet,
 plan de vacances et plan de fermeture réglés, verdict `/validate-assignments` d'un déplacement dans le socle
-et dans une période]. Chute attendue si une règle de groupe vise d'autres équipes, si le jour de match émis
+et dans une période, puis le filet des matchs du lot 7 : deux équipes dans une division, amicaux, suivi fédéral, coupes]. Chute attendue si une règle de groupe vise d'autres équipes, si le jour de match émis
 change ou si un réglage de période n'entre plus dans la demande ; le Lot Gate ne joue que cette suite) ·
 `Integration/Migration/Lot4MigrationChainTest` (axe *generation pipeline*, lot conception 4 PR 1 — le décor
 des quinze références, écrit en SQL dans le schéma figé d'avant le lot 4 [`tests/Fixtures/lot-4/`], chargé

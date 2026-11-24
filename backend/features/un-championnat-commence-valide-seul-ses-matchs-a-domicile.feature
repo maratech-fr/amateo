@@ -66,3 +66,16 @@ Fonctionnalité: Un championnat commencé valide seul ses matchs à domicile
     Et un gestionnaire ouvre la vue « validé ligue »
     Alors l'amical passé est « validé ligue »
     Et aucune rencontre n'est validable « validé ligue »
+
+  Scénario: Un amical posé à la main est « à saisir » dans FBI, puis se valide seul une fois passé
+    Un amical créé à la main, sans compétition, puis placé compte aujourd'hui parmi les matchs à
+    saisir dans FBI comme un domicile de championnat ; une fois sa date passée, la lecture d'un
+    gestionnaire le fait passer « validé ligue » et il quitte ce compte.
+    Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur
+    Et une équipe jetable et un gymnase jetable « GYM BEHAT »
+    Quand je pose à la main un amical à domicile à « GYM BEHAT », sans compétition
+    Alors l'amical posé à la main compte parmi les matchs à saisir dans FBI
+    Quand la date de l'amical posé à la main est révolue
+    Et un gestionnaire ouvre la vue « validé ligue »
+    Alors l'amical posé à la main est « validé ligue »
+    Et il ne compte plus parmi les matchs à saisir dans FBI
