@@ -109,7 +109,7 @@ final class StalePeriodPlanRegenerationTest extends WebTestCase
         $entry = $this->em->getRepository(CalendarEntry::class)->find($d['holidayEntryId']);
         self::assertInstanceOf(CalendarEntry::class, $entry);
         $payload = self::getContainer()->get(ScheduleConstraintBuilder::class)
-            ->buildForPeriodPlan($d['club']->getId(), $d['season']->getId(), (string) $d['holidayPlanId'], $entry);
+            ->buildForPlan((string) $d['holidayPlanId']);
 
         $hard = [];
         foreach (\is_array($payload['slotTemplates'] ?? null) ? $payload['slotTemplates'] : [] as $slot) {

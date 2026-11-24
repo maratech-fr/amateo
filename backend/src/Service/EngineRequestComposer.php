@@ -55,8 +55,8 @@ final readonly class EngineRequestComposer
         }
 
         $scheduleInput = $overlayEntry instanceof CalendarEntry
-            ? $this->constraintBuilder->buildForOverlay($schedule, $overlayEntry)
-            : $this->buildFrozenSnapshot($schedule, $sourceId);
+            ? $this->constraintBuilder->buildForPlan($schedule->getSchedulePlanId(), $schedule->getSolverSeed(), $schedule->getId())
+            : $this->constraintBuilder->buildForPlan($schedule->getSchedulePlanId(), versionId: $sourceId);
 
         // P2-44 PR-3 (comblement) — solve PARTIEL : les placements de la version SOURCE de la
         // période sont épinglés HARD dans le payload (jamais persistés en base), seuls les trous
@@ -100,7 +100,7 @@ final readonly class EngineRequestComposer
             // placements de la version pointée du socle (jour+heure+gymnase) — le moteur garde alors
             // leur créneau de saison (préférence très forte). Comme `previousAssignments` : APRÈS le
             // hash (convergence, pas structure). Les équipes « garder » sont lues de la sélection déjà
-            // résolue par `buildForOverlay` (zéro requête de plus). Aucune SEASON_SLOTS, ou plan SEASON
+            // résolue par `buildForPlan` (zéro requête de plus). Aucune SEASON_SLOTS, ou plan SEASON
             // (socle lui-même, jamais de keep) ⇒ clé absente, chemin byte-identique.
             if ($overlayEntry instanceof CalendarEntry) {
                 $keepTeamIds = $this->constraintBuilder->lastSeasonSlotKeepTeamIds();
@@ -133,16 +133,6 @@ final readonly class EngineRequestComposer
         $schedule = $this->entityManager->getRepository(Schedule::class)->find($scheduleId);
 
         return $schedule instanceof Schedule ? $schedule : null;
-    }
-
-    /** @return array<string, mixed> */
-    private function buildFrozenSnapshot(Schedule $schedule, ?string $lockVersionId): array
-    {
-        return $this->constraintBuilder->buildForClubSeason(
-            $schedule->getClubId(),
-            $schedule->getSeasonId(),
-            lockVersionId: $lockVersionId,
-        );
     }
 
     /**

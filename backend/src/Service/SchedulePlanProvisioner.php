@@ -8,11 +8,10 @@ use App\Entity\CalendarEntry;
 use App\Entity\Schedule;
 use App\Entity\SchedulePlan;
 use App\Entity\Season;
-use App\Entity\SharedTrainingBlock;
-use App\Entity\SharedTrainingBlockTeam;
 use App\Enum\CalendarEntryStatus;
 use App\Enum\SchedulePlanType;
 use App\Enum\ScheduleStatus;
+use App\Plans\PlanBirth;
 use App\Plans\PlanComposition;
 use App\Repository\ImplicitRuleSettingRepository;
 use App\Support\FrenchDate;
@@ -72,6 +71,7 @@ final class SchedulePlanProvisioner
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
         private readonly ScheduleConstraintBuilder $constraintBuilder,
+        private readonly PlanBirth $planBirth,
         private readonly ImplicitRuleSettingRepository $implicitRuleSettingRepository,
         private readonly PlanComposition $planComposition,
     ) {}
@@ -273,7 +273,7 @@ final class SchedulePlanProvisioner
      * incohérent — version supprimée/échouée) on retombe sur la DERNIÈRE version COMPLETED du plan.
      * Ce repli garde le comportement V1 pour tout plan dont personne n'a « chargé » une version.
      *
-     * Consommée par {@see ScheduleConstraintBuilder::buildForPeriodPlan} (greffe canonique),
+     * Consommée par {@see ScheduleConstraintBuilder::buildForPlan} (greffe canonique),
      * {@see ScheduleResultImporter} (origine MANUAL d'un verrou réimporté), {@see OrphanPinGuard}
      * (verrous effectifs) et le batch `isLockSource` du provider : une seule définition de « quelle
      * version porte les verrous du plan ».
@@ -935,40 +935,6 @@ final class SchedulePlanProvisioner
     }
 
     /**
-     * Recopie le modèle de saison pour UN gymnase — le retour au défaut « hériter » d'un
-     * gymnase déjà retouché (VenuePeriodOverrideStateProcessor). L'appelant a vidé la
-     * grille du gymnase juste avant : sans quoi la copie doublerait les créneaux.
-     */
-    public function copySeasonalSlotsForVenue(string $schedulePlanId, string $venueId): void
-    {
-        $row = $this->entityManager->getConnection()->fetchAssociative(
-            'SELECT club_id, season_id FROM schedule_plan WHERE id = :pid',
-            ['pid' => $schedulePlanId],
-        );
-        if (false === $row) {
-            return;
-        }
-        $this->copySeasonalSlotRows($schedulePlanId, (string) $row['club_id'], (string) $row['season_id'], $venueId);
-    }
-
-    /**
-     * Recopie les occupations de saison d'UN gymnase dans la grille d'un plan de période — le
-     * pendant de {@see copySeasonalSlotsForVenue} pour « Reprendre la grille » (VenuePeriodGrid).
-     * L'appelant a vidé les occupations du gymnase pour ce plan juste avant.
-     */
-    public function copySeasonalOccupanciesForVenue(string $schedulePlanId, string $venueId): void
-    {
-        $row = $this->entityManager->getConnection()->fetchAssociative(
-            'SELECT club_id, season_id FROM schedule_plan WHERE id = :pid',
-            ['pid' => $schedulePlanId],
-        );
-        if (false === $row) {
-            return;
-        }
-        $this->copySeasonalOccupancyRows($schedulePlanId, (string) $row['club_id'], (string) $row['season_id'], $venueId);
-    }
-
-    /**
      * Le repère daté d'une fenêtre, en clair — SOURCE UNIQUE réutilisée par la garde d'unicité
      * de fenêtre (P2-38 : nommer la fenêtre du plan déjà en place dans le 409). Délègue au même
      * {@see windowSuffix} que les noms de plan, pour que « du 20 octobre au 2 novembre » se lise
@@ -983,13 +949,10 @@ final class SchedulePlanProvisioner
      * L'empreinte de la structure COURANTE d'un plan, PAR PLAN — SEASON comme PÉRIODE. C'est le
      * signal « structure modifiée » : il DOIT valoir exactement le `snapshotHash` qu'une version
      * fraîchement née pose, sinon il ment en permanence.
-     *  - SEASON  → {@see ScheduleConstraintBuilder::buildForClubSeason}, la MÊME recette que
-     *    le rail de génération (qui hache l'entrée du solveur AVANT d'y greffer le placement
-     *    précédent, terme de convergence — jamais une donnée de structure) ;
-     *  - PÉRIODE → {@see ScheduleConstraintBuilder::buildForPeriodPlan} avec la MÊME
-     *    dérivation (entrée de calendrier, sélection de période) que le rail qui pose
-     *    `snapshotHash` ({@see PeriodPlanTranscriber}). Le builder recalcule la sélection
-     *    à l'identique quand on ne la lui passe pas : même source, jamais un second calcul.
+     * Même recette que le rail de génération ({@see ScheduleConstraintBuilder::buildForPlan}), qui
+     * hache l'entrée du solveur AVANT d'y greffer le placement précédent (terme de convergence, jamais
+     * une donnée de structure) ; pour une période, même dérivation (entrée de calendrier, sélection de
+     * période) que le rail qui pose `snapshotHash` ({@see PeriodPlanTranscriber}).
      *
      * Portée par plan (ADR-0002) : la grille d'une période est une COPIE prise à la naissance,
      * donc modifier la grille SAISON ne bouge pas le hash d'une période.
@@ -999,35 +962,11 @@ final class SchedulePlanProvisioner
     public function structureHashOfPlan(string $planId): ?string
     {
         try {
-            $context = $this->fetchPlanContext($planId);
-            if (null === $context) {
-                return null;
-            }
-            if (SchedulePlanType::SEASON === $context['type']) {
-                // Même recette que le rail de génération : le payload solveur de la saison, haché
-                // AVANT toute greffe de convergence (jamais une donnée de structure).
-                $payload = $this->constraintBuilder->buildForClubSeason($context['clubId'], $context['seasonId']);
-
-                return ScheduleConstraintBuilder::structureHash($payload);
-            }
-
-            $entryId = $context['calendarEntryId'];
-            if (null === $entryId) {
-                return null; // inv. 9 : un plan de période a toujours une entrée — défense.
-            }
-            $entry = $this->entityManager->getRepository(CalendarEntry::class)->find($entryId);
-            if (!$entry instanceof CalendarEntry) {
+            if (null === $this->fetchPlanContext($planId)) {
                 return null;
             }
 
-            $payload = $this->constraintBuilder->buildForPeriodPlan(
-                $context['clubId'],
-                $context['seasonId'],
-                $planId,
-                $entry,
-            );
-
-            return ScheduleConstraintBuilder::structureHash($payload);
+            return ScheduleConstraintBuilder::structureHash($this->constraintBuilder->buildForPlan($planId));
         } catch (Throwable) {
             return null;
         }
@@ -1195,158 +1134,23 @@ final class SchedulePlanProvisioner
             ->setCalendarEntryId($calendarEntryId);
         $this->entityManager->persist($plan);
         $this->entityManager->flush(); // l'id du plan doit exister avant les copies ci-dessous
-        $this->copySeasonalSlots($plan);
-        // La grille de la période comprend ses occupations : copiées après les créneaux, sans contrôle.
-        $this->copySeasonalOccupancyRows($plan->getId(), (string) $plan->getClubId(), $plan->getSeasonId(), null);
-        // D10 affinée (décision fondateur 2026-09-02) — un plan de FERMETURE hérite des blocs de
-        // mutualisation du socle à sa naissance ; un plan de vacances (HOLIDAY) ne copie RIEN.
-        if ($type->copiesSharedBlocksAtBirth()) {
-            $this->copySocleSharedBlocks($plan);
+        // #8 (décision fondateur 2026-07-24) — une période possède sa grille : elle naît avec une copie de celle du
+        // plan de saison, puis ne lit que la sienne. La copie de naissance : grille, occupations, groupes mutualisés
+        // pour une fermeture (D10 affinée, 2026-09-02), règles de bien-être ; jamais les réservations.
+        $soclePlanId = $this->findSeasonPlanId($plan->getSeasonId());
+        if (null !== $soclePlanId) {
+            $this->planBirth->copy($soclePlanId, $plan->getId());
+        } else {
+            // Comportement d'avant le lot, conservé : une saison sans plan de saison n'a ni grille, ni occupation, ni
+            // groupe à copier ; le plan reçoit seulement ses règles de bien-être, au défaut.
+            $this->implicitRuleSettingRepository->materializeForPlan((string) $plan->getClubId(), $plan->getSeasonId(), $plan->getId());
         }
-        // ADR-0002 inv. 5 — le plan reçoit AUSSI sa copie des 4 règles bien-être (valeur saison
-        // ou défaut). Copie TOTALE : un plan « tout au défaut » garde ses 4 lignes, donc reste
-        // distinguable d'un plan legacy sans copie (dont la lecture retombe sur la saison).
-        $this->implicitRuleSettingRepository->materializeForPlan((string) $plan->getClubId(), $plan->getSeasonId(), $plan->getId());
         // Lot 4, PR 3a — le plan naît avec une ligne par équipe, aux séances du socle du moment ; sa nature dit qui est
         // coché (des vacances : l'équipe fanion et les importantes). PR 4 : une ligne par règle permanente, au défaut de sa
         // nature.
         $this->planComposition->ensureLines($plan->getSeasonId());
 
         return $plan->getId();
-    }
-
-    /**
-     * #8 (décision fondateur 2026-07-24) — UNE PÉRIODE POSSÈDE SA GRILLE.
-     *
-     * À sa naissance, le plan reçoit une COPIE des créneaux de saison de chaque gymnase.
-     * Ensuite la période ne lit QUE ses propres créneaux : jamais d'union avec ceux de la
-     * saison. C'est ce qui rend le modèle simple — un gymnase n'a jamais deux jeux de
-     * créneaux dans une même période, donc rien ne peut se chevaucher entre couches, ni
-     * rendre un verrou ambigu (deux créneaux au même horaire, l'un « de saison » et
-     * l'autre « prêté »). Modifier la grille de la période ne touche jamais la saison.
-     *
-     * SQL brut : `season_filter` épingle les lectures ORM à la saison ACTIVE de la requête,
-     * or un plan peut naître pour une autre saison (transition). RLS scope le club.
-     */
-    private function copySeasonalSlots(SchedulePlan $plan): void
-    {
-        $this->copySeasonalSlotRows($plan->getId(), (string) $plan->getClubId(), $plan->getSeasonId(), null);
-    }
-
-    /** @param string|null $venueId null = tous les gymnases */
-    private function copySeasonalSlotRows(string $schedulePlanId, string $clubId, string $seasonId, ?string $venueId): void
-    {
-        // Le libellé de groupe appartient au planning de saison : une période naît SANS libellé.
-        // La colonne `group_label` reste dans l'INSERT (sa place dans la copie est surveillée par
-        // PeriodSlotCopyKeepsEveryColumnTest), mais le SELECT émet NULL plutôt que la valeur du
-        // modèle — jamais la copie du libellé de saison. Couvre les deux appelants (naissance du
-        // plan et reprise de la grille d'un gymnase), qui passent tous deux par ici.
-        $soclePlanId = $this->findSeasonPlanId($seasonId);
-        if (null === $soclePlanId) {
-            return; // une saison sans plan de saison n'a aucune grille de socle
-        }
-        $sql = 'INSERT INTO venue_training_slot (id, version, created_at, updated_at, club_id, season_id, venue_id, day_of_week, start_time, duration_minutes, capacity, group_label, schedule_plan_id) '
-            . 'SELECT gen_random_uuid(), 1, now(), now(), club_id, season_id, venue_id, day_of_week, start_time, duration_minutes, capacity, NULL, :planId '
-            . 'FROM venue_training_slot WHERE club_id = :clubId AND season_id = :seasonId AND schedule_plan_id = :soclePlanId';
-        $params = ['planId' => $schedulePlanId, 'clubId' => $clubId, 'seasonId' => $seasonId, 'soclePlanId' => $soclePlanId];
-        if (null !== $venueId) {
-            $sql .= ' AND venue_id = :venueId';
-            $params['venueId'] = $venueId;
-        }
-        $this->entityManager->getConnection()->executeStatement($sql, $params);
-    }
-
-    /**
-     * La copie des occupations de saison dans la grille d'un plan de période, telles quelles et sans
-     * contrôle de chevauchement (un chevauchement de la saison est copié). Seules les occupations dont
-     * le gymnase EXISTE sont copiées : une occupation dormante (gymnase absent de la version chargée)
-     * reste en saison et revient avec son gymnase.
-     *
-     * @param string|null $venueId null = tous les gymnases
-     */
-    private function copySeasonalOccupancyRows(string $schedulePlanId, string $clubId, string $seasonId, ?string $venueId): void
-    {
-        $soclePlanId = $this->findSeasonPlanId($seasonId);
-        if (null === $soclePlanId) {
-            return; // une saison sans plan de saison n'a aucune occupation de socle
-        }
-        $sql = 'INSERT INTO venue_occupancy (id, version, created_at, updated_at, club_id, season_id, venue_id, day_of_week, start_time, duration_minutes, label, schedule_plan_id) '
-            . 'SELECT gen_random_uuid(), 1, now(), now(), o.club_id, o.season_id, o.venue_id, o.day_of_week, o.start_time, o.duration_minutes, o.label, :planId '
-            . 'FROM venue_occupancy o WHERE o.club_id = :clubId AND o.season_id = :seasonId AND o.schedule_plan_id = :soclePlanId '
-            . 'AND EXISTS (SELECT 1 FROM venue v WHERE v.id = o.venue_id)';
-        $params = ['planId' => $schedulePlanId, 'clubId' => $clubId, 'seasonId' => $seasonId, 'soclePlanId' => $soclePlanId];
-        if (null !== $venueId) {
-            $sql .= ' AND o.venue_id = :venueId';
-            $params['venueId'] = $venueId;
-        }
-        $this->entityManager->getConnection()->executeStatement($sql, $params);
-    }
-
-    /**
-     * D10 affinée (décision fondateur 2026-09-02) — un plan de FERMETURE (CLOSURE) NAÎT avec une
-     * COPIE des blocs de mutualisation du socle : le gestionnaire qui ajuste une fermeture doit
-     * VOIR ce que le club mutualise habituellement, hérité tel quel, pour le retoucher. Un plan de
-     * vacances (HOLIDAY) ne copie rien (gardé par l'appelant). Instantané : la copie diverge ensuite
-     * librement du socle, dans les deux sens (patron « la période possède sa grille », copySeasonalSlots).
-     *
-     * Copie VERBATIM (patron {@see SharedTrainingBlockStateProcessor::addMembers}) : mêmes séances
-     * communes, mêmes équipes membres, nouvel UUID par bloc/membre, dénormalisation club/saison/plan.
-     * La garde Σ n'est PAS rejouée — à la naissance chaque ligne d'équipe vaut celle du socle, le Σ socle
-     * déjà validé vaut ; aucun filtrage au roster non plus — la divergence ultérieure (un membre
-     * désactivé pour la période) est déjà gérée au payload par serializeSharedBlocks, qui abandonne
-     * un bloc tombé sous 2 membres actifs.
-     *
-     * SQL brut en LECTURE : `season_filter` épingle les lectures ORM à la saison ACTIVE de la
-     * requête, or un plan peut naître pour une autre saison (transition). Socle = le plan de saison,
-     * même club + saison. RLS scope le club ; les INSERTs (persist) ne sont jamais filtrés.
-     * Volume ~8 blocs : boucle PHP pour mapper ancien→nouveau bloc côté membres.
-     */
-    private function copySocleSharedBlocks(SchedulePlan $plan): void
-    {
-        $clubId = (string) $plan->getClubId();
-        $seasonId = $plan->getSeasonId();
-        $planId = $plan->getId();
-        $soclePlanId = $this->findSeasonPlanId($seasonId);
-        if (null === $soclePlanId) {
-            return; // une saison sans plan de saison n'a aucun groupe de socle
-        }
-
-        $connection = $this->entityManager->getConnection();
-        $socleBlocks = $connection->fetchAllAssociative(
-            'SELECT id, common_sessions FROM shared_training_block WHERE club_id = :clubId AND season_id = :seasonId AND schedule_plan_id = :soclePlanId',
-            ['clubId' => $clubId, 'seasonId' => $seasonId, 'soclePlanId' => $soclePlanId],
-        );
-        if ([] === $socleBlocks) {
-            return;
-        }
-
-        $socleMembers = $connection->fetchAllAssociative(
-            'SELECT block_id, team_id FROM shared_training_block_team WHERE club_id = :clubId AND season_id = :seasonId AND schedule_plan_id = :soclePlanId',
-            ['clubId' => $clubId, 'seasonId' => $seasonId, 'soclePlanId' => $soclePlanId],
-        );
-        $teamsBySocleBlock = [];
-        foreach ($socleMembers as $member) {
-            $teamsBySocleBlock[(string) $member['block_id']][] = (string) $member['team_id'];
-        }
-
-        foreach ($socleBlocks as $socleBlock) {
-            $copy = (new SharedTrainingBlock)
-                ->setClubId($clubId)
-                ->setSeasonId($seasonId)
-                ->setSchedulePlanId($planId)
-                ->setCommonSessions((int) $socleBlock['common_sessions']);
-            $this->entityManager->persist($copy);
-
-            foreach ($teamsBySocleBlock[(string) $socleBlock['id']] ?? [] as $teamId) {
-                $memberCopy = (new SharedTrainingBlockTeam)
-                    ->setClubId($clubId)
-                    ->setSeasonId($seasonId)
-                    ->setSchedulePlanId($planId)
-                    ->setBlockId($copy->getId())
-                    ->setTeamId($teamId);
-                $this->entityManager->persist($memberCopy);
-            }
-        }
     }
 
     private function findSeasonPlanId(string $seasonId): ?string

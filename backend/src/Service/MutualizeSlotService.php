@@ -98,7 +98,7 @@ final class MutualizeSlotService
         // socle se comporte comme la saison (décision fondateur 2026-10-13). La PORTÉE du geste suit
         // l'écran : au socle, le bloc et tout ce qu'il scope (grille de gymnase, budget Σ, unicité de
         // l'ensemble d'équipes) vivent sur le plan de saison — exactement comme les blocs de saison que
-        // `SchedulePlanProvisioner::copySocleSharedBlocks` recopie vers les fermetures. Sur un plan de
+        // `PlanBirth::copy` recopie vers les fermetures. Sur un plan de
         // période, la portée est ce plan : dans les deux cas, le plan de la version. Seule l'ACTIVATION d'une équipe à 0 séance reste propre à la période
         // (refus nommé au socle, cf. activateTeamForPeriod).
         $isSocle = $this->schedulePlanProvisioner->isSeasonSchedule($schedule);

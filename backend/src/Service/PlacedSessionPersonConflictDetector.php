@@ -213,7 +213,7 @@ final class PlacedSessionPersonConflictDetector
             if (!$entry instanceof CalendarEntry) {
                 return [];
             }
-            $constraints = $this->periodConstraintSelector->selectForPeriodPlan($clubId, $seasonId, $planId, $entry)->kept;
+            $constraints = $this->periodConstraintSelector->selectForPlan($planId)->kept;
         }
 
         $scope = ['clubId' => $clubId, 'seasonId' => $seasonId];

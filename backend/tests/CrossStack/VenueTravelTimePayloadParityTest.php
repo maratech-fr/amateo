@@ -13,6 +13,7 @@ use App\Entity\Venue;
 use App\Entity\VenueTravelRuleSetting;
 use App\Enum\SeasonStatus;
 use App\Enum\VenueTravelRuleIntensity;
+use App\Plans\SoclePlan;
 use App\Service\ScheduleConstraintBuilder;
 use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\SeasonPlanOf;
@@ -70,7 +71,7 @@ final class VenueTravelTimePayloadParityTest extends KernelTestCase
         $this->travelTime($club, $season, $vAaa, $vBbb, null, 25);
         $this->em->flush();
 
-        $payload = $this->builder->buildForClubSeason($club->getId(), $season->getId());
+        $payload = $this->builder->buildForPlan(self::getContainer()->get(SoclePlan::class)->idOf($season->getId()));
 
         self::assertSame(
             [
@@ -100,7 +101,7 @@ final class VenueTravelTimePayloadParityTest extends KernelTestCase
         $this->travelRuleSetting($club, $season, VenueTravelRuleIntensity::MANDATORY);
         $this->em->flush();
 
-        $payload = $this->builder->buildForClubSeason($club->getId(), $season->getId());
+        $payload = $this->builder->buildForPlan(self::getContainer()->get(SoclePlan::class)->idOf($season->getId()));
 
         self::assertSame(
             ['intensity' => 'MANDATORY', 'defaultMinutes' => 20, 'toleranceMinutes' => 20],
@@ -122,7 +123,7 @@ final class VenueTravelTimePayloadParityTest extends KernelTestCase
         $this->travelRuleSetting($club, $season, VenueTravelRuleIntensity::PREFERRED);
         $this->em->flush();
 
-        $payload = $this->builder->buildForClubSeason($club->getId(), $season->getId());
+        $payload = $this->builder->buildForPlan(self::getContainer()->get(SoclePlan::class)->idOf($season->getId()));
 
         self::assertSame(
             ['intensity' => 'PREFERRED', 'defaultMinutes' => 20, 'toleranceMinutes' => 20],
@@ -143,7 +144,7 @@ final class VenueTravelTimePayloadParityTest extends KernelTestCase
         $this->travelRuleSetting($club, $season, VenueTravelRuleIntensity::MANDATORY, tolerance: 15, default: 30);
         $this->em->flush();
 
-        $payload = $this->builder->buildForClubSeason($club->getId(), $season->getId());
+        $payload = $this->builder->buildForPlan(self::getContainer()->get(SoclePlan::class)->idOf($season->getId()));
 
         self::assertSame(
             ['intensity' => 'MANDATORY', 'defaultMinutes' => 30, 'toleranceMinutes' => 15],
@@ -164,7 +165,7 @@ final class VenueTravelTimePayloadParityTest extends KernelTestCase
         $this->travelRuleSetting($club, $season, VenueTravelRuleIntensity::OFF);
         $this->em->flush();
 
-        $payload = $this->builder->buildForClubSeason($club->getId(), $season->getId());
+        $payload = $this->builder->buildForPlan(self::getContainer()->get(SoclePlan::class)->idOf($season->getId()));
 
         self::assertSame([], $payload['venueTravelTimes'], 'OFF ⇒ la matrice n’est pas émise (payload d’un club sans matrice)');
         self::assertArrayNotHasKey('travelTime', $payload['implicitRules'], 'OFF ⇒ la règle n’est pas émise');
@@ -179,7 +180,7 @@ final class VenueTravelTimePayloadParityTest extends KernelTestCase
         $this->coach($club, $season, vehicled: true);
         $this->em->flush();
 
-        $payload = $this->builder->buildForClubSeason($club->getId(), $season->getId());
+        $payload = $this->builder->buildForPlan(self::getContainer()->get(SoclePlan::class)->idOf($season->getId()));
 
         self::assertArrayHasKey('isVehicled', $payload['coaches'][0]);
         self::assertTrue($payload['coaches'][0]['isVehicled'], 'un coach véhiculé émet isVehicled=true');
@@ -197,7 +198,7 @@ final class VenueTravelTimePayloadParityTest extends KernelTestCase
 
         // Repositionne le GUC sur le club observé (le dernier seed l'avait porté sur `other`).
         $this->scopeGucToClub($club->getId());
-        $payload = $this->builder->buildForClubSeason($club->getId(), $season->getId());
+        $payload = $this->builder->buildForPlan(self::getContainer()->get(SoclePlan::class)->idOf($season->getId()));
 
         self::assertSame([], $payload['venueTravelTimes'], 'la matrice d’un autre club ne fuit pas');
         self::assertArrayNotHasKey('travelTime', $payload['implicitRules'], 'la règle reste inactive sans matrice PROPRE');
@@ -224,14 +225,14 @@ final class VenueTravelTimePayloadParityTest extends KernelTestCase
         SeasonPlanOf::id(self::getContainer(), $otherSeason->getId());
         $this->travelTimeBetweenPlaces($club, $a->getPlaceId(), $elsewhere->getPlaceId(), 10, 20);
 
-        $payload = $this->builder->buildForClubSeason($club->getId(), $season->getId());
+        $payload = $this->builder->buildForPlan(self::getContainer()->get(SoclePlan::class)->idOf($season->getId()));
 
         self::assertSame([], $payload['venueTravelTimes'], 'un temps dont un lieu n’a pas de gymnase dans la saison ne part pas au moteur');
         self::assertArrayNotHasKey('travelTime', $payload['implicitRules'], 'et il n’active pas la règle à lui seul');
 
         $this->travelTimeBetweenPlaces($club, $a->getPlaceId(), $b->getPlaceId(), 12, null);
         self::getContainer()->get('cache.schedule')->clear();
-        $payload = $this->builder->buildForClubSeason($club->getId(), $season->getId());
+        $payload = $this->builder->buildForPlan(self::getContainer()->get(SoclePlan::class)->idOf($season->getId()));
         self::assertSame(
             [['venueAId' => $a->getId(), 'venueBId' => $b->getId(), 'drivingMinutes' => 12, 'walkingMinutes' => null]],
             $payload['venueTravelTimes'],
@@ -248,7 +249,7 @@ final class VenueTravelTimePayloadParityTest extends KernelTestCase
     {
         [$club, $season] = $this->seed();
 
-        $payload = $this->builder->buildForClubSeason($club->getId(), $season->getId());
+        $payload = $this->builder->buildForPlan(self::getContainer()->get(SoclePlan::class)->idOf($season->getId()));
 
         self::assertSame([], $payload['venueTravelTimes'], 'aucune matrice ⇒ bloc vide (byte-identique côté moteur)');
         self::assertArrayNotHasKey(

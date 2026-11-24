@@ -23,7 +23,7 @@ use Symfony\Component\HttpKernel\Exception\UnprocessableEntityHttpException;
  * SEASON — le planning de saison à l'identique, MOINS ce qui ne passe plus pour cette période —
  * au lieu d'un solve complet qui redistribuerait tout. C'est l'industrialisation, côté produit,
  * du patron de transcription du seed (`BcclSeeder::pointPeriodPlanAtReprise`) : version COMPLETED
- * sans solveur, `linkSchedule` pour la numéroter, snapshot par `buildForPeriodPlan`, 3 marqueurs
+ * sans solveur, `linkSchedule` pour la numéroter, snapshot par `buildForPlan`, 3 marqueurs
  * de péremption à false. Le seed n'est PAS refactoré : ce service copie son patron, il ne l'appelle
  * pas.
  *
@@ -138,7 +138,7 @@ final class PeriodPlanTranscriber
     {
         // La sélection de période EXISTANTE : le filtre partagé (gate + payload). Calculée UNE fois,
         // passée au builder pour le snapshot (cohérence + économie).
-        $selection = $this->periodConstraintSelector->selectForPeriodPlan($clubId, $seasonId, $schedulePlanId, $entry);
+        $selection = $this->periodConstraintSelector->selectForPlan($schedulePlanId);
         $deactivatedTeamIds = $selection->deactivatedTeamIds;
         $disabledVenueIds = $selection->disabledVenueIds;
         $closedWeekdaysByVenue = $selection->effectiveClosedWeekdaysByVenue;
@@ -230,10 +230,10 @@ final class PeriodPlanTranscriber
 
         // Snapshot APRÈS la pose des verrous (V1 « les verrous survivent à Régénérer ») : cette
         // version COMPLETED est désormais la SOURCE des verrous de son plan ({@see
-        // SchedulePlanProvisioner::lockSourceScheduleIdOfPlan}), donc `buildForPeriodPlan` greffe
+        // SchedulePlanProvisioner::lockSourceScheduleIdOfPlan}), donc `buildForPlan` greffe
         // SES propres HARD en forme canonique — exactement ce que `structureHashOfPlan` recalculera.
         // Hacher AVANT les aurait exclus, et « Régénérer » se serait allumé dès la transcription.
-        $payload = $this->constraintBuilder->buildForPeriodPlan($clubId, $seasonId, $schedulePlanId, $entry, selection: $selection);
+        $payload = $this->constraintBuilder->buildForPlan($schedulePlanId, selection: $selection);
         $schedule->setSnapshotData($payload);
         $schedule->setSnapshotHash(ScheduleConstraintBuilder::structureHash($payload));
         // Miroir de ScheduleResultImporter : une version fraîchement transcrite n'est pas périmée.

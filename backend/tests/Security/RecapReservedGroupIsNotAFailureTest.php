@@ -50,7 +50,7 @@ use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
 
 /**
  * Le Récap d'un plan de PÉRIODE ne crie pas à l'échec pour un groupe entièrement réservé (axe constraint
- * semantics), à travers le vrai `POST /api/constraints/validate` et le vrai `buildForPeriodPlan` : le membre
+ * semantics), à travers le vrai `POST /api/constraints/validate` et le vrai `buildForPlan` : le membre
  * A est épinglé par une réservation PROPRE à la période, le membre B par un verrou HÉRITÉ de la version
  * source du plan. Un test au payload écrit à la main ne verrait pas ces deux chemins (patron
  * {@see RecapCapacityWarningTest}). Jumeau de l'algèbre : `Unit/Service/PreSolvePreventionWarningsTest`.

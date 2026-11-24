@@ -9,6 +9,7 @@ use App\Entity\Schedule;
 use App\Entity\SchedulePlan;
 use App\Entity\Season;
 use App\Entity\TransitionReminderLog;
+use App\Plans\PlanBirth;
 use App\Service\SeasonDataPurger;
 use Doctrine\ORM\EntityManagerInterface;
 use LogicException;
@@ -151,6 +152,41 @@ final class FamilyCatalog
         }
 
         return $this->childrenFirst(array_values(array_unique($carried)));
+    }
+
+    /**
+     * Ce qu'un plan reçoit à sa naissance (lot 4) : les familles de niveau plan déclarées
+     * `copiedAtPlanBirth: true`, que {@see PlanBirth::copy} recopie depuis le plan de saison.
+     *
+     * @return list<class-string>
+     */
+    public function copiedAtPlanBirth(): array
+    {
+        $copied = [];
+        foreach ($this->families() as $class => $family) {
+            if (Level::PLAN === $family->level && true === $family->copiedAtPlanBirth) {
+                $copied[] = $class;
+            }
+        }
+
+        return $copied;
+    }
+
+    /**
+     * Les familles de niveau plan qu'un plan porte, versions exceptées (elles se copient à part).
+     *
+     * @return list<class-string>
+     */
+    public function carriedByPlan(): array
+    {
+        $carried = [];
+        foreach ($this->families() as $class => $family) {
+            if (Level::PLAN === $family->level && self::VERSIONS_OF_A_PLAN !== $class) {
+                $carried[] = $class;
+            }
+        }
+
+        return $carried;
     }
 
     /**

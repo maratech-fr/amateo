@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace App\Tests\Integration;
 
 use App\Entity\VenueTrainingSlot;
-use App\Service\SchedulePlanProvisioner;
+use App\Plans\PlanBirth;
 use Doctrine\ORM\EntityManagerInterface;
 use PHPUnit\Framework\Attributes\Group;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
@@ -13,7 +13,7 @@ use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 /**
  * D-16 — la copie des créneaux d'une période énumère ses colonnes À LA MAIN.
  *
- * `SchedulePlanProvisioner::copySeasonalSlotRows()` fait un `INSERT … SELECT` qui liste douze
+ * `PlanBirth::copy()` fait un `INSERT … SELECT` qui liste douze
  * colonnes. Une période « possède » sa grille : ces lignes sont une COPIE du modèle de saison
  * prise à la naissance du plan (#8). Ajouter demain une colonne **nullable** à
  * `venue_training_slot` — un libellé, un drapeau, une durée d'échauffement — et l'oublier ici :
@@ -31,7 +31,7 @@ use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 #[Group('phase1')]
 final class PeriodSlotCopyKeepsEveryColumnTest extends KernelTestCase
 {
-    private const string PROVISIONER_SOURCE = __DIR__ . '/../../src/Service/SchedulePlanProvisioner.php';
+    private const string PROVISIONER_SOURCE = __DIR__ . '/../../src/Plans/PlanBirth.php';
 
     /**
      * Colonnes volontairement absentes de la copie, avec leur raison.
@@ -112,8 +112,8 @@ final class PeriodSlotCopyKeepsEveryColumnTest extends KernelTestCase
     public function testTheProvisionerStillOwnsTheCopy(): void
     {
         self::assertTrue(
-            class_exists(SchedulePlanProvisioner::class),
-            'SchedulePlanProvisioner a disparu — ce test surveille sa requête de copie.',
+            class_exists(PlanBirth::class),
+            'PlanBirth a disparu — ce test surveille sa requête de copie.',
         );
     }
 
@@ -126,7 +126,7 @@ final class PeriodSlotCopyKeepsEveryColumnTest extends KernelTestCase
     private function insertedColumns(): array
     {
         $source = file_get_contents(self::PROVISIONER_SOURCE);
-        self::assertIsString($source, 'SchedulePlanProvisioner est illisible.');
+        self::assertIsString($source, 'PlanBirth est illisible.');
 
         $found = preg_match('/INSERT INTO venue_training_slot \(([^)]+)\)/', $source, $matches);
         self::assertSame(1, $found, 'L\'INSERT de copie a disparu ou changé de forme — ce test doit suivre, pas se taire.');
@@ -148,10 +148,10 @@ final class PeriodSlotCopyKeepsEveryColumnTest extends KernelTestCase
     private function selectExpressionByColumn(): array
     {
         $source = file_get_contents(self::PROVISIONER_SOURCE);
-        self::assertIsString($source, 'SchedulePlanProvisioner est illisible.');
+        self::assertIsString($source, 'PlanBirth est illisible.');
 
         // Un seul motif, ancré sur l'INSERT INTO venue_training_slot, pour apparier la liste de
-        // colonnes et les expressions du SELECT de CE bloc — le provisioner contient d'autres
+        // colonnes et les expressions du SELECT de CE bloc — la copie contient d'autres
         // SELECT (sur schedule_plan, calendar_entry) qu'il ne faut pas confondre avec celui-ci.
         $found = preg_match(
             '/INSERT INTO venue_training_slot \(([^)]+)\)\s*\'\s*\.\s*\'SELECT (.+?)\s*\'\s*\.\s*\'FROM venue_training_slot/s',

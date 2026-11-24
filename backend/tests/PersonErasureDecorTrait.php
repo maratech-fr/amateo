@@ -32,6 +32,7 @@ use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
 use App\Enum\TeamCoachRole;
 use App\Plans\PlanComposition;
+use App\Plans\SoclePlan;
 use App\Service\CoachWishCampaignTokenSync;
 use App\Service\FeedbackContextEnricher;
 use App\Service\PdfGenerator;
@@ -352,7 +353,7 @@ trait PersonErasureDecorTrait
         \assert($cache instanceof TagAwareCacheInterface);
         $cache->invalidateTags([ScheduleConstraintBuilder::cacheTag($clubId)]);
 
-        return static::getContainer()->get(ScheduleConstraintBuilder::class)->buildForClubSeason($clubId, $seasonId);
+        return static::getContainer()->get(ScheduleConstraintBuilder::class)->buildForPlan(self::getContainer()->get(SoclePlan::class)->idOf($seasonId));
     }
 
     private function erasureSession(Club $club, Season $season, Schedule $schedule, Team $team, Venue $venue, Coach $coach, int $day): void

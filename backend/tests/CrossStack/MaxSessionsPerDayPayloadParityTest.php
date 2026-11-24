@@ -15,6 +15,7 @@ use App\Enum\CalendarEntryKind;
 use App\Enum\CalendarEntryPeriodType;
 use App\Enum\SeasonStatus;
 use App\Plans\PlanComposition;
+use App\Plans\SoclePlan;
 use App\Service\ScheduleConstraintBuilder;
 use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\ProvisionsPeriodPlanTrait;
@@ -108,7 +109,7 @@ final class MaxSessionsPerDayPayloadParityTest extends KernelTestCase
         $this->em->flush();
         $this->scheduleCache?->clear();
 
-        $payload = $this->builder->buildForPeriodPlan($club->getId(), $season->getId(), $planId, $entry);
+        $payload = $this->builder->buildForPlan($planId);
 
         self::assertSame(3, $this->teamOf($payload, $overridden->getId())['maxSessionsPerDay'] ?? null, 'la période l\'emporte');
         self::assertSame(2, $this->teamOf($payload, $inherited->getId())['maxSessionsPerDay'] ?? null, 'null = la saison');
@@ -129,7 +130,7 @@ final class MaxSessionsPerDayPayloadParityTest extends KernelTestCase
     {
         $this->scheduleCache?->clear();
 
-        return $this->builder->buildForClubSeason($club->getId(), $season->getId());
+        return $this->builder->buildForPlan(self::getContainer()->get(SoclePlan::class)->idOf($season->getId()));
     }
 
     /**

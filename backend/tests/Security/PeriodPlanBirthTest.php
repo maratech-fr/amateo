@@ -28,6 +28,7 @@ use App\Enum\SchedulePlanType;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
 use App\Plans\PlanComposition;
+use App\Plans\SoclePlan;
 use App\Service\ClosureSegmentation;
 use App\Service\ScheduleConstraintBuilder;
 use App\Service\SeasonResolver;
@@ -762,12 +763,12 @@ final class PeriodPlanBirthTest extends WebTestCase
         // Le payload de BASE est la vraie assertion : il ne voit que l'ancre nulle.
         $builder = self::getContainer()->get(ScheduleConstraintBuilder::class);
         self::assertInstanceOf(ScheduleConstraintBuilder::class, $builder);
-        // `buildForClubSeason` sert d'abord le pool `cache.schedule` : les fixtures
+        // `buildForPlan` sert d'abord le pool `cache.schedule` : les fixtures
         // ci-dessus sont écrites hors requête, donc sans invalidation. Sans ce purge,
         // un hit rendrait l'assertion creuse — verte quoi qu'il arrive. Ne pas
         // dépendre du fait que l'env de test mappe ce pool sur un adaptateur array.
         self::getContainer()->get('cache.schedule')->invalidateTags([ScheduleConstraintBuilder::cacheTag($club->getId())]);
-        $payload = $builder->buildForClubSeason($club->getId(), $season->getId());
+        $payload = $builder->buildForPlan(self::getContainer()->get(SoclePlan::class)->idOf($season->getId()));
 
         $slots = [];
         foreach ($payload['venues'] ?? [] as $venue) {
@@ -791,7 +792,7 @@ final class PeriodPlanBirthTest extends WebTestCase
      * sans libellé propre, pendant que la grille de saison garde le sien.
      *
      * Falsification : remettre `group_label` (au lieu de NULL) dans le SELECT de
-     * SchedulePlanProvisioner::copySeasonalSlotRows rougit ici — le créneau copié porterait « CEC3 ».
+     * PlanBirth::copy rougit ici — le créneau copié porterait « CEC3 ».
      */
     public function testPeriodBornFromASeasonCarriesNoGroupLabelOnItsCopiedSlots(): void
     {

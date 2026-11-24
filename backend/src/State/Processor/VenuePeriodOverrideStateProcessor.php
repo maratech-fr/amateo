@@ -300,7 +300,7 @@ class VenuePeriodOverrideStateProcessor extends AbstractStateProcessor
         // DÉSACTIVÉ CONSERVE LA GRILLE, il ne la SERT pas (décision fondateur
         // 2026-07-24) : le gestionnaire voit à l'écran ce qu'il a désactivé, et le
         // gymnase est simplement absent du payload envoyé à l'engine
-        // (ScheduleConstraintBuilder::buildForOverlay). Réactiver rend la grille telle
+        // (ScheduleConstraintBuilder::buildForPlan). Réactiver rend la grille telle
         // quelle — désactiver ne doit pas coûter la saisie qu'on avait faite.
         // VIERGE, lui, vide bel et bien : c'est ce qu'on lui demande.
         if (VenuePeriodMode::BLANK->value === $output->mode) {

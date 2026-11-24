@@ -9,10 +9,16 @@ use App\Entity\CoachWish;
 use App\Entity\CoachWishCampaign;
 use App\Entity\CoachWishMutualization;
 use App\Entity\ConstraintConflict;
+use App\Entity\ImplicitRuleSetting;
 use App\Entity\PeriodReminderLog;
 use App\Entity\Schedule;
+use App\Entity\SharedTrainingBlock;
+use App\Entity\SharedTrainingBlockTeam;
+use App\Entity\VenueOccupancy;
+use App\Entity\VenueTrainingSlot;
 use App\Structure\Family;
 use App\Structure\FamilyCatalog;
+use App\Structure\Level;
 use App\Structure\OnDelete;
 use App\Structure\RefersTo;
 use Doctrine\DBAL\Types\Types;
@@ -223,6 +229,44 @@ final class FamilyDeclarationSweepTest extends KernelTestCase
         self::assertSame($expected, $actual);
     }
 
+    /**
+     * Lot 4, PR 5 — « ce qu'un plan reçoit à sa naissance se déclare sur la famille » : toute famille de niveau plan
+     * dit si `PlanBirth::copy` la recopie (`copiedAtPlanBirth`), une famille qui ne le dit pas rougit ici, et le
+     * catalogue rend exactement les cinq familles copiées, figées nommément (grille, occupations, groupes et leurs
+     * membres, règles de bien-être ; jamais les réservations, les lignes de composition posées par
+     * `PlanComposition::ensureLines`, ni les versions). En ajouter ou en retirer une change ce que copie la naissance
+     * d'un plan, et se décide en changeant cette liste. Angle jumeau, cité : `Integration/Plans/PlanBirthTest` (ce
+     * que la copie écrit réellement).
+     */
+    public function testEveryPlanFamilyDeclaresWhetherItIsCopiedAtPlanBirth(): void
+    {
+        // Témoin : le contrôle voit une famille de niveau plan qui ne dit rien.
+        self::assertSame(['Muette'], $this->planFamiliesSilentOnBirthCopy(['Muette' => new Family(Level::PLAN), 'Saison' => new Family(Level::SEASON)]));
+
+        $declared = [];
+        foreach ($this->entityClasses() as $class) {
+            $attributes = new ReflectionClass($class)->getAttributes(Family::class);
+            if ([] !== $attributes) {
+                $declared[$class] = $attributes[0]->newInstance();
+            }
+        }
+        $silent = $this->planFamiliesSilentOnBirthCopy($declared);
+        self::assertSame([], $silent, \sprintf(
+            "Ces familles de niveau plan ne disent pas si la naissance d'un plan les copie (#[Family(Level::PLAN, copiedAtPlanBirth: …)]) :\n  - %s",
+            implode("\n  - ", $silent),
+        ));
+
+        $copied = $this->catalog()->copiedAtPlanBirth();
+        sort($copied);
+        self::assertSame([
+            ImplicitRuleSetting::class,
+            SharedTrainingBlock::class,
+            SharedTrainingBlockTeam::class,
+            VenueOccupancy::class,
+            VenueTrainingSlot::class,
+        ], $copied, 'FamilyCatalog::copiedAtPlanBirth() rend les cinq familles que la naissance d\'un plan copie.');
+    }
+
     public function testAnUndeclaredClassIsRefusedLoudly(): void
     {
         // Le catalogue d'abord : une erreur du conteneur est aussi une LogicException.
@@ -279,6 +323,25 @@ final class FamilyDeclarationSweepTest extends KernelTestCase
         }
 
         return null;
+    }
+
+    /**
+     * Les familles de niveau plan dont la déclaration ne dit pas si la naissance d'un plan les copie.
+     *
+     * @param array<string, Family> $families
+     *
+     * @return list<string>
+     */
+    private function planFamiliesSilentOnBirthCopy(array $families): array
+    {
+        $silent = [];
+        foreach ($families as $class => $family) {
+            if (Level::PLAN === $family->level && null === $family->copiedAtPlanBirth) {
+                $silent[] = $class;
+            }
+        }
+
+        return $silent;
     }
 
     /** @return array<string, list<string>> enfant => familles dont il meurt (DELETE) */

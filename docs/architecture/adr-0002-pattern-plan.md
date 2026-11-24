@@ -180,8 +180,8 @@ Schedule (= Version)                    ← existant, recentré
    **Une période POSSÈDE sa grille de gymnases et ses 4 règles de bien-être — copie, jamais
    union.** Le `VenueTrainingSlot` scopé période n'est pas une liste de « créneaux prêtés » qui
    s'ajoutent à ceux de la saison : à la naissance du plan, TOUTE la grille de saison de chaque
-   gymnase est **COPIÉE** en créneaux du plan (`SchedulePlanProvisioner::copySeasonalSlots`) —
-   `ScheduleConstraintBuilder::buildForOverlay` ne lit QUE les créneaux du plan, jamais d'union
+   gymnase est **COPIÉE** en créneaux du plan (`App\Plans\PlanBirth::copy`) —
+   `ScheduleConstraintBuilder::buildForPlan` ne lit QUE les créneaux du plan, jamais d'union
    saison ∪ période, un gymnase n'a jamais deux jeux de créneaux dans une même période. Un
    réglage par (plan, gymnase), la ligne `PlanVenue` (`mode` `DISABLED`\|`BLANK`\|hériter ;
    ligne au défaut = hériter), agit sur cette copie : DÉSACTIVÉ conserve la grille mais sort le
@@ -330,7 +330,7 @@ modèle — ils ne correspondent plus à une section de ce document (l'historiqu
     (amendement, lot verrous V1/V1bis, 2026-10-10) : une version NUE — celle que crée « Régénérer »
     sur un plan de PÉRIODE — n'a aucun `slotTemplates` propre ; sans greffe, ses verrous HARD ne
     voyageaient qu'en `previousAssignments` (terme SOFT de convergence, `backend/docs/schedule-generation-guide.md`
-    §10) et pouvaient se perdre. `ScheduleConstraintBuilder::buildForPeriodPlan` greffe donc les HARD de la version
+    §10) et pouvaient se perdre. `ScheduleConstraintBuilder::buildForPlan` (branche période) greffe donc les HARD de la version
     **SOURCE** du plan sur le payload déjà sérialisé, en forme CANONIQUE (`id` dérivé du placement
     `team:venue:jour:HH:MM`, jamais de l'id de ligne — pour que le hash de structure reste STABLE
     d'une régénération à l'autre), dédupliqués par placement (slotTemplates propres et réservations

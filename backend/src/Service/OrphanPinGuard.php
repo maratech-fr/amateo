@@ -140,7 +140,7 @@ final class OrphanPinGuard
 
         // Les créneaux RÉELLEMENT SERVIS à la période, par (gymnase, jour, heure) — c'est
         // ce qu'un épinglage désigne : ni un verrou ni une réservation ne cite l'id du
-        // créneau. On applique le MÊME retrait des jours fermés que buildForOverlay, via
+        // créneau. On applique le MÊME retrait des jours fermés que buildForPlan, via
         // l'ÉTAT EFFECTIF de la MAISON UNIQUE (incident × masque manuel) : sans lui, un verrou
         // posé un jour effectivement fermé passerait le garde-fou et la séance serait perdue
         // en silence — ce que ce garde existe pour empêcher (revue #8).
@@ -158,7 +158,7 @@ final class OrphanPinGuard
             }
         }
         // Un gymnase DÉSACTIVÉ ne sert pas : ses créneaux existent encore en base (le mode
-        // conserve la grille) mais buildForOverlay les retire du payload, avec les épinglages
+        // conserve la grille) mais buildForPlan les retire du payload, avec les épinglages
         // qui s'y trouvent — les compter disponibles ici laisserait passer un verrou que le
         // solveur ne verrait jamais (revue #8, round 4).
         //
@@ -185,7 +185,7 @@ final class OrphanPinGuard
         // P3-20 (décision fondateur 2026-08-06) — un épinglage sur un gymnase DÉSACTIVÉ
         // ne bloque PLUS. Le mode conserve tout (grille, réservations, verrous) pour que
         // réactiver rende la saisie ; l'écran les masque ; et le solveur ne les verra
-        // jamais puisque `buildForOverlay` retire le gymnase du payload. Refuser la
+        // jamais puisque `buildForPlan` retire le gymnase du payload. Refuser la
         // génération ici enfermait donc le gestionnaire sur un épinglage devenu
         // INVISIBLE, nommant un gymnase que l'écran ne montre plus — le geste de
         // désactivation fabriquait lui-même l'impasse (P3-20, revue #342).

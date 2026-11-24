@@ -34,6 +34,7 @@ use App\Enum\SeasonStatus;
 use App\Enum\TeamCoachRole;
 use App\Enum\VenuePeriodMode;
 use App\Plans\PlanComposition;
+use App\Plans\SoclePlan;
 use App\Service\CoachWishTransferService;
 use App\Service\PeriodConstraintSelector;
 use App\Service\ScheduleConstraintBuilder;
@@ -90,7 +91,7 @@ final class ScheduleConstraintBuilderOverlayTest extends KernelTestCase
         $this->venueSlot($club, $season, self::VENUE_CLOSED, null, 4); // jeudi
         $this->em->flush();
 
-        $payload = $this->builder->buildForOverlay($schedule, $entry);
+        $payload = $this->builder->buildForPlan($schedule->getSchedulePlanId(), $schedule->getSolverSeed(), $schedule->getId());
 
         // Plus AUCUN forbiddenVenueId (mécanisme supprimé).
         $forbidden = array_filter($payload['constraints'], static fn (array $c): bool => isset($c['config']['forbiddenVenueId']));
@@ -162,7 +163,7 @@ final class ScheduleConstraintBuilderOverlayTest extends KernelTestCase
         // ne charge que les datées de l'entrée du plan) : elle retire des créneaux SANS ajouter
         // le moindre warning au gate. Les trois sources de warning de sélection sont vides.
         $selection = self::getContainer()->get(PeriodConstraintSelector::class)
-            ->selectForPeriodPlan($club->getId(), $season->getId(), $this->planIdOf($entryB), $entryB);
+            ->selectForPlan($this->planIdOf($entryB));
         self::assertSame([], $selection->droppedForDisabledVenue, 'aucun warning « gymnase fermé » (R5)');
         self::assertSame([], $selection->partiallyAppliedForDisabledVenue, 'aucun warning « appliquée partiellement » (R5)');
         self::assertSame([], $selection->droppedForInertTag, 'aucun warning « tag inerte » (R5)');
@@ -208,7 +209,7 @@ final class ScheduleConstraintBuilderOverlayTest extends KernelTestCase
         $this->venueSlot($club, $season, self::VENUE_CLOSED, null, 2);
         $this->em->flush();
 
-        $names = array_map(static fn (array $c): string => $c['name'] ?? '', $this->builder->buildForOverlay($schedule, $entry)['constraints']);
+        $names = array_map(static fn (array $c): string => $c['name'] ?? '', $this->builder->buildForPlan($schedule->getSchedulePlanId(), $schedule->getSolverSeed(), $schedule->getId())['constraints']);
         self::assertContains('Contrainte permanente', $names, 'a CLUB permanent is inherited in a reprise');
         self::assertSame([], $this->closedVenueWeekdays($schedule, $entry), 'le gym fermé n’a plus de créneau côté reprise');
     }
@@ -225,7 +226,7 @@ final class ScheduleConstraintBuilderOverlayTest extends KernelTestCase
         $pool = self::getContainer()->get('cache.schedule');
         $pool->invalidateTags([ScheduleConstraintBuilder::cacheTag($club->getId())]);
 
-        $this->builder->buildForOverlay($schedule, $entry);
+        $this->builder->buildForPlan($schedule->getSchedulePlanId(), $schedule->getSolverSeed(), $schedule->getId());
 
         self::assertFalse(
             $pool->getItem(ScheduleConstraintBuilder::cacheKey($club->getId(), $season->getId(), null))->isHit(),
@@ -248,7 +249,7 @@ final class ScheduleConstraintBuilderOverlayTest extends KernelTestCase
         $base->setStatus(ScheduleStatus::COMPLETED);
         $this->em->flush();
 
-        $payload = $this->builder->buildForClubSeason($club->getId(), $season->getId());
+        $payload = $this->builder->buildForPlan(self::getContainer()->get(SoclePlan::class)->idOf($season->getId()));
 
         $venues = array_map(static fn (array $s): string => $s['venueId'], $payload['slotTemplates']);
         self::assertContains($baseVenue, $venues, 'base slots feed the base build');
@@ -265,7 +266,7 @@ final class ScheduleConstraintBuilderOverlayTest extends KernelTestCase
         $schedule = $this->overlaySchedule($club, $season, $entry);
         $this->em->flush();
 
-        $ids = array_map(static fn (array $t): string => $t['id'], $this->builder->buildForOverlay($schedule, $entry)['teams']);
+        $ids = array_map(static fn (array $t): string => $t['id'], $this->builder->buildForPlan($schedule->getSchedulePlanId(), $schedule->getSolverSeed(), $schedule->getId())['teams']);
 
         self::assertContains($teamA->getId(), $ids, 'an active team is placed');
         self::assertNotContains($teamB->getId(), $ids, 'a team deactivated for the period gets no sessions');
@@ -280,7 +281,7 @@ final class ScheduleConstraintBuilderOverlayTest extends KernelTestCase
         $schedule = $this->overlaySchedule($club, $season, $entry);
         $this->em->flush();
 
-        $teams = $this->builder->buildForOverlay($schedule, $entry)['teams'];
+        $teams = $this->builder->buildForPlan($schedule->getSchedulePlanId(), $schedule->getSolverSeed(), $schedule->getId())['teams'];
         $serialized = array_values(array_filter($teams, static fn (array $t): bool => $t['id'] === $team->getId()))[0];
 
         self::assertSame(1, $serialized['sessionsPerWeek'], 'the period override replaces the seasonal volume');
@@ -299,12 +300,12 @@ final class ScheduleConstraintBuilderOverlayTest extends KernelTestCase
         $this->em->flush();
 
         // Overlay build: seasonal ∪ period (additive).
-        $overlayVenues = $this->venuesBySlotCount($this->builder->buildForOverlay($schedule, $entry)['venues']);
+        $overlayVenues = $this->venuesBySlotCount($this->builder->buildForPlan($schedule->getSchedulePlanId(), $schedule->getSolverSeed(), $schedule->getId())['venues']);
         self::assertSame(1, $overlayVenues[$seasonalVenue->getId()], 'seasonal slot kept in the overlay');
         self::assertSame(1, $overlayVenues[$cityVenue->getId()], 'the city-lent period slot is added');
 
         // Base build: the period slot must NOT leak in.
-        $baseVenues = $this->venuesBySlotCount($this->builder->buildForClubSeason($club->getId(), $season->getId())['venues']);
+        $baseVenues = $this->venuesBySlotCount($this->builder->buildForPlan(self::getContainer()->get(SoclePlan::class)->idOf($season->getId()))['venues']);
         self::assertSame(1, $baseVenues[$seasonalVenue->getId()], 'seasonal slot feeds the base');
         self::assertSame(0, $baseVenues[$cityVenue->getId()], 'period slot never leaks into the base plan');
     }
@@ -319,9 +320,9 @@ final class ScheduleConstraintBuilderOverlayTest extends KernelTestCase
         $this->em->flush();
 
         // Overlay build sets the session-override map on the shared builder instance…
-        $this->builder->buildForOverlay($schedule, $entry);
+        $this->builder->buildForPlan($schedule->getSchedulePlanId(), $schedule->getSolverSeed(), $schedule->getId());
         // …a later base build on the SAME instance must NOT inherit it.
-        $baseTeams = $this->builder->buildForClubSeason($club->getId(), $season->getId())['teams'];
+        $baseTeams = $this->builder->buildForPlan(self::getContainer()->get(SoclePlan::class)->idOf($season->getId()))['teams'];
         $serialized = array_values(array_filter($baseTeams, static fn (array $t): bool => $t['id'] === $team->getId()))[0];
 
         self::assertSame(2, $serialized['sessionsPerWeek'], 'the base plan keeps the seasonal volume — no override leak');
@@ -346,11 +347,11 @@ final class ScheduleConstraintBuilderOverlayTest extends KernelTestCase
         $this->venueSlot($club, $season, $venue->getId(), null, 4);
         $this->em->flush();
 
-        $counts = $this->venuesBySlotCount($this->builder->buildForOverlay($schedule, $entry)['venues']);
+        $counts = $this->venuesBySlotCount($this->builder->buildForPlan($schedule->getSchedulePlanId(), $schedule->getSolverSeed(), $schedule->getId())['venues']);
         self::assertSame(1, $counts[$venue->getId()], 'la période porte la copie prise à sa naissance, et rien d’autre');
 
         // Le planning principal garde ses deux créneaux : la copie ne lui a rien pris.
-        $base = $this->venuesBySlotCount($this->builder->buildForClubSeason($club->getId(), $season->getId())['venues']);
+        $base = $this->venuesBySlotCount($this->builder->buildForPlan(self::getContainer()->get(SoclePlan::class)->idOf($season->getId()))['venues']);
         self::assertSame(2, $base[$venue->getId()], 'le planning principal n’est jamais modifié');
     }
 
@@ -384,7 +385,7 @@ final class ScheduleConstraintBuilderOverlayTest extends KernelTestCase
         $this->venueMode($club, $season, $entry, $off->getId(), VenuePeriodMode::DISABLED);
         $this->em->flush();
 
-        $payload = $this->builder->buildForOverlay($schedule, $entry);
+        $payload = $this->builder->buildForPlan($schedule->getSchedulePlanId(), $schedule->getSolverSeed(), $schedule->getId());
         $venueIds = array_map(static fn (array $v): string => $v['id'], $payload['venues']);
 
         self::assertContains($kept->getId(), $venueIds, 'un gymnase normal reste dans le payload');
@@ -423,7 +424,7 @@ final class ScheduleConstraintBuilderOverlayTest extends KernelTestCase
         $this->venueOverride($club, $season, $entry, self::VENUE_CLOSED, VenuePeriodMode::DISABLED, [1 => 'OPEN']);
         $this->em->flush();
 
-        $venueIds = array_map(static fn (array $v): string => $v['id'], $this->builder->buildForOverlay($schedule, $entry)['venues']);
+        $venueIds = array_map(static fn (array $v): string => $v['id'], $this->builder->buildForPlan($schedule->getSchedulePlanId(), $schedule->getSolverSeed(), $schedule->getId())['venues']);
         self::assertNotContains(self::VENUE_CLOSED, $venueIds, 'un gymnase désactivé sort du payload — son masque OPEN ne le ressuscite pas');
     }
 
@@ -469,7 +470,7 @@ final class ScheduleConstraintBuilderOverlayTest extends KernelTestCase
         $this->em->flush();
         $overrideId = $override->getId();
 
-        $this->builder->buildForOverlay($schedule, $entry);
+        $this->builder->buildForPlan($schedule->getSchedulePlanId(), $schedule->getSolverSeed(), $schedule->getId());
 
         $this->em->clear();
         self::assertSame([6 => 'CLOSED'], $this->em->getRepository(PlanVenue::class)->find($overrideId)?->getDayOverrides(), 'le masque dormant survit intact à un build (lecture seule)');
@@ -486,11 +487,11 @@ final class ScheduleConstraintBuilderOverlayTest extends KernelTestCase
         $this->em->flush();
 
         // Base plan still carries the permanent constraint (sparse diff — base untouched)…
-        $baseNames = array_map(static fn (array $c): string => $c['name'] ?? '', $this->builder->buildForClubSeason($club->getId(), $season->getId())['constraints']);
+        $baseNames = array_map(static fn (array $c): string => $c['name'] ?? '', $this->builder->buildForPlan(self::getContainer()->get(SoclePlan::class)->idOf($season->getId()))['constraints']);
         self::assertContains('Contrainte permanente', $baseNames, 'the base plan keeps the constraint');
 
         // …but the overlay drops the constraint the manager disabled for the period.
-        $overlayNames = array_map(static fn (array $c): string => $c['name'] ?? '', $this->builder->buildForOverlay($schedule, $entry)['constraints']);
+        $overlayNames = array_map(static fn (array $c): string => $c['name'] ?? '', $this->builder->buildForPlan($schedule->getSchedulePlanId(), $schedule->getSolverSeed(), $schedule->getId())['constraints']);
         self::assertNotContains('Contrainte permanente', $overlayNames, 'a constraint disabled for the period is not honored in the overlay');
     }
 
@@ -504,7 +505,7 @@ final class ScheduleConstraintBuilderOverlayTest extends KernelTestCase
         $schedule = $this->overlaySchedule($club, $season, $entry);
         $this->em->flush();
 
-        $overlayNames = array_map(static fn (array $c): string => $c['name'] ?? '', $this->builder->buildForOverlay($schedule, $entry)['constraints']);
+        $overlayNames = array_map(static fn (array $c): string => $c['name'] ?? '', $this->builder->buildForPlan($schedule->getSchedulePlanId(), $schedule->getSolverSeed(), $schedule->getId())['constraints']);
         self::assertContains('Contrainte permanente', $overlayNames, 'only isActive=false drops the constraint');
     }
 
@@ -526,7 +527,7 @@ final class ScheduleConstraintBuilderOverlayTest extends KernelTestCase
         $schedule = $this->overlaySchedule($club, $season, $entry);
         $this->em->flush();
 
-        $names = array_map(static fn (array $c): string => $c['name'] ?? '', $this->builder->buildForOverlay($schedule, $entry)['constraints']);
+        $names = array_map(static fn (array $c): string => $c['name'] ?? '', $this->builder->buildForPlan($schedule->getSchedulePlanId(), $schedule->getSolverSeed(), $schedule->getId())['constraints']);
         self::assertContains('Club perm', $names, 'CLUB reste hérité par défaut en vacances');
         self::assertNotContains('Team active perm', $names, 'une contrainte d\'ÉQUIPE est OFF par défaut en vacances, même si l\'équipe reprend (PR C)');
         self::assertNotContains('Team paused perm', $names, 'une contrainte d\'équipe en pause reste hors payload de toute façon');
@@ -560,7 +561,7 @@ final class ScheduleConstraintBuilderOverlayTest extends KernelTestCase
 
         self::getContainer()->get(CoachWishTransferService::class)->transfer($club->getId(), $season->getId(), [$wish->getId()]);
 
-        $byName = array_column($this->builder->buildForPeriodPlan($club->getId(), $season->getId(), $planId, $entry)['constraints'], null, 'name');
+        $byName = array_column($this->builder->buildForPlan($planId)['constraints'], null, 'name');
         self::assertSame(['unavailableDays' => [4]], $byName['Indisponibilité de Karim Benali (doléances U15)']['config'] ?? null);
         self::assertSame(['forbiddenDays' => [5]], $byName['Jours interdits U15 (doléances)']['config'] ?? null);
     }
@@ -584,7 +585,7 @@ final class ScheduleConstraintBuilderOverlayTest extends KernelTestCase
         $schedule = $this->overlaySchedule($club, $season, $entry);
         $this->em->flush();
 
-        $names = array_map(static fn (array $c): string => $c['name'] ?? '', $this->builder->buildForOverlay($schedule, $entry)['constraints']);
+        $names = array_map(static fn (array $c): string => $c['name'] ?? '', $this->builder->buildForPlan($schedule->getSchedulePlanId(), $schedule->getSolverSeed(), $schedule->getId())['constraints']);
         self::assertNotContains('Club perm', $names, 'an explicit isActive=false drops a CLUB kept by default');
         self::assertContains('Team perm', $names, 'an explicit isActive=true brings back a TEAM off by default (PR C)');
         self::assertContains('Coach perm', $names, 'an explicit isActive=true brings back a COACH off by default (PR C)');
@@ -602,7 +603,7 @@ final class ScheduleConstraintBuilderOverlayTest extends KernelTestCase
         $schedule = $this->overlaySchedule($club, $season, $entry);
         $this->em->flush();
 
-        $names = array_map(static fn (array $c): string => $c['name'] ?? '', $this->builder->buildForOverlay($schedule, $entry)['constraints']);
+        $names = array_map(static fn (array $c): string => $c['name'] ?? '', $this->builder->buildForPlan($schedule->getSchedulePlanId(), $schedule->getSolverSeed(), $schedule->getId())['constraints']);
         self::assertNotContains('Paused team perm', $names, 'a TEAM constraint targeting a paused team never ships (no ghost teamId), even if explicitly kept');
     }
 
@@ -630,7 +631,7 @@ final class ScheduleConstraintBuilderOverlayTest extends KernelTestCase
 
         // Build PRÉ-GÉNÉRATION (scheduleId null = la version nue n'a rien de propre) : le HARD de la
         // source est hérité, le NONE non.
-        $slots = $this->builder->buildForPeriodPlan($club->getId(), $season->getId(), $planId, $entry)['slotTemplates'];
+        $slots = $this->builder->buildForPlan($planId)['slotTemplates'];
 
         self::assertCount(1, $slots, 'seul le verrou HARD de la source est hérité (le NONE ne revient pas)');
         self::assertSame(LockLevel::HARD->value, $slots[0]['lockLevel']);
@@ -661,7 +662,7 @@ final class ScheduleConstraintBuilderOverlayTest extends KernelTestCase
         $this->planReservation($club, $season, $planId, $team->getId(), self::VENUE_OPEN, 2, '18:00');
         $this->em->flush();
 
-        $slots = $this->builder->buildForPeriodPlan($club->getId(), $season->getId(), $planId, $entry)['slotTemplates'];
+        $slots = $this->builder->buildForPlan($planId)['slotTemplates'];
 
         $atPlacement = array_values(array_filter(
             $slots,
@@ -671,13 +672,15 @@ final class ScheduleConstraintBuilderOverlayTest extends KernelTestCase
     }
 
     /**
-     * P2-9ter NR-2 — le chemin scalaire et `buildForOverlay` sont UNE SEULE source.
+     * P2-9ter NR-2, réécrit au lot 4 PR 5 — avant toute génération, la demande d'un plan de période est celle de sa
+     * version, verrous de version mis à part : c'est ce qui rend le récap calculable sans version.
      *
-     * C'est la garantie qui manquait : trois tentatives ont recopié à la main ce que le
-     * builder calcule, et ont divergé. Si quelqu'un ajoute un filtre d'un seul côté (ou
-     * en oublie un en déplaçant le corps), l'égalité stricte le dit.
+     * La moitié « le chemin scalaire égale `buildForOverlay` » est retirée : `buildForOverlay` et `buildForPeriodPlan`
+     * n'existent plus, `buildForPlan` est le seul chemin (deux appels identiques ne prouvaient plus rien). Filet de la
+     * promesse « une seule source de la demande » : `Integration/EngineRequestReferenceTest` (références 12 et 13,
+     * périodes, générées par le handler réel et comparées à l'octet).
      */
-    public function testScalarPathMatchesBuildForOverlay(): void
+    public function testBeforeGenerationOnlyTheVersionLocksDistinguishThePeriodRequest(): void
     {
         [$club, $season] = $this->seed();
         $active = $this->team($club, $season, 'SM1');
@@ -690,53 +693,38 @@ final class ScheduleConstraintBuilderOverlayTest extends KernelTestCase
         $this->venueSlot($club, $season, self::VENUE_CLOSED, null, 2);
         // Un gymnase ACTIF, pour y poser le verrou de version. ⚠ Le poser sur
         // VENUE_CLOSED (désactivé juste au-dessus) le ferait filtrer par
-        // `disabledVenueIds` : les deux `slotTemplates` seraient vides et l'assertion du
-        // court-circuit `scheduleId null` serait satisfaite POUR UNE AUTRE RAISON.
+        // `disabledVenueIds` : les deux `slotTemplates` seraient vides et la comparaison
+        // serait satisfaite POUR UNE AUTRE RAISON.
         $this->venue($club, $season, self::VENUE_OPEN, 'Gym actif');
         $this->venueSlot($club, $season, self::VENUE_OPEN, null, 2);
         $schedule = $this->overlaySchedule($club, $season, $entry);
         $this->slot($schedule, self::VENUE_OPEN);
         $this->em->flush();
 
-        $viaSchedule = $this->builder->buildForOverlay($schedule, $entry);
-        $viaScalars = $this->builder->buildForPeriodPlan(
-            $schedule->getClubId(),
-            $schedule->getSeasonId(),
-            $this->planIdOf($entry),
-            $entry,
-            $schedule->getSolverSeed(),
-            $schedule->getId(),
-        );
-        self::assertSame($viaSchedule, $viaScalars, 'un seul chemin de calcul : l’adaptateur ne doit rien ajouter');
-        self::assertNotSame([], $viaScalars['teams'] ?? [], 'garde : le seed doit produire un payload non vide');
-        self::assertContains($active->getId(), array_map(static fn (array $t): string => $t['id'], $viaScalars['teams']));
+        $withVersion = $this->builder->buildForPlan($this->planIdOf($entry), $schedule->getSolverSeed(), $schedule->getId());
+        self::assertNotSame([], $withVersion['teams'] ?? [], 'garde : le seed doit produire un payload non vide');
+        self::assertContains($active->getId(), array_map(static fn (array $t): string => $t['id'], $withVersion['teams']));
 
         // Avant génération : aucun `Schedule`, donc aucun ScheduleSlotTemplate — et TOUT
         // le reste du payload est identique. C'est ce qui rend le récap calculable.
-        $preGeneration = $this->builder->buildForPeriodPlan(
-            $schedule->getClubId(),
-            $schedule->getSeasonId(),
-            $this->planIdOf($entry),
-            $entry,
-            $schedule->getSolverSeed(),
-        );
+        $preGeneration = $this->builder->buildForPlan($this->planIdOf($entry), $schedule->getSolverSeed());
         // Garde réelle : le verrou DOIT survivre au filtre gymnases quand on passe un
         // scheduleId. C'est CETTE assertion qui a du mordant — la poser sur un gymnase
         // désactivé (première version de ce test) donnait deux tableaux vides et une
         // comparaison satisfaite pour une tout autre raison.
-        self::assertCount(1, $viaScalars['slotTemplates'] ?? [], 'le verrou de version doit survivre au filtre gymnases');
+        self::assertCount(1, $withVersion['slotTemplates'] ?? [], 'le verrou de version doit survivre au filtre gymnases');
         // Celle-ci DOCUMENTE le mode pré-génération sans pouvoir tomber : `scheduleId`
         // étant NOT NULL sur l'entité, la requête rendrait `[]` même sans court-circuit.
         self::assertSame([], $preGeneration['slotTemplates'] ?? null, 'pas de version ⇒ pas de verrou de version');
 
-        unset($viaScalars['slotTemplates'], $preGeneration['slotTemplates']);
-        self::assertSame($viaScalars, $preGeneration, 'seuls les slotTemplates distinguent le mode pré-génération');
+        unset($withVersion['slotTemplates'], $preGeneration['slotTemplates']);
+        self::assertSame($withVersion, $preGeneration, 'seuls les slotTemplates distinguent le mode pré-génération');
     }
 
     /**
      * P2-9ter NR-3 — le cache du payload est scopé PAR SAISON.
      *
-     * La clé ne portait que le `clubId` alors que `buildForClubSeason` reçoit un
+     * La clé ne portait que le `clubId` alors que `buildForPlan` reçoit un
      * `seasonId` : un club à deux saisons se voyait resservir le payload de l'autre.
      */
     public function testCacheIsScopedPerSeason(): void
@@ -762,8 +750,8 @@ final class ScheduleConstraintBuilderOverlayTest extends KernelTestCase
         $pool->invalidateTags([ScheduleConstraintBuilder::cacheTag($club->getId())]);
         $pool->invalidateTags([ScheduleConstraintBuilder::cacheTag($club->getId())]);
 
-        $payloadA = $this->builder->buildForClubSeason($club->getId(), $seasonA->getId());
-        $payloadB = $this->builder->buildForClubSeason($club->getId(), $seasonB->getId());
+        $payloadA = $this->builder->buildForPlan(self::getContainer()->get(SoclePlan::class)->idOf($seasonA->getId()));
+        $payloadB = $this->builder->buildForPlan(self::getContainer()->get(SoclePlan::class)->idOf($seasonB->getId()));
 
         self::assertSame($seasonA->getId(), $payloadA['seasonId'] ?? null);
         self::assertSame($seasonB->getId(), $payloadB['seasonId'] ?? null, 'la 2e saison ne doit pas resservir le payload de la 1re');
@@ -809,7 +797,7 @@ final class ScheduleConstraintBuilderOverlayTest extends KernelTestCase
         $schedule = $this->overlaySchedule($club, $season, $entry);
         $this->em->flush();
 
-        $rows = $this->builder->buildForOverlay($schedule, $entry)['constraints'];
+        $rows = $this->builder->buildForPlan($schedule->getSchedulePlanId(), $schedule->getSolverSeed(), $schedule->getId())['constraints'];
         $targets = array_map(static fn (array $r): string => $r['scopeTargetId'] ?? '', $rows);
         self::assertContains($active->getId(), $targets, 'the tag rule ships for the active team');
         self::assertNotContains($paused->getId(), $targets, 'the tag-expanded row for a paused team is dropped (no ghost teamId)');
@@ -825,7 +813,7 @@ final class ScheduleConstraintBuilderOverlayTest extends KernelTestCase
         $this->em->flush();
 
         // Fermeture unchanged: the smart default is reprise-only; closure keeps all permanents.
-        $names = array_map(static fn (array $c): string => $c['name'] ?? '', $this->builder->buildForOverlay($schedule, $entry)['constraints']);
+        $names = array_map(static fn (array $c): string => $c['name'] ?? '', $this->builder->buildForPlan($schedule->getSchedulePlanId(), $schedule->getSolverSeed(), $schedule->getId())['constraints']);
         self::assertContains('Facility perm', $names, 'a closure keeps all permanent constraints by default (B3+F2 unchanged)');
     }
 
@@ -859,9 +847,9 @@ final class ScheduleConstraintBuilderOverlayTest extends KernelTestCase
         $this->datedClubTimeConstraint($club, $season, $mother, 'Fait de la mère');
         $this->em->flush();
 
-        $namesA = $this->payloadConstraintNames($this->builder->buildForPeriodPlan($club->getId(), $season->getId(), $this->planIdOf($entryA), $entryA));
-        $namesB = $this->payloadConstraintNames($this->builder->buildForPeriodPlan($club->getId(), $season->getId(), $this->planIdOf($entryB), $entryB));
-        $namesMother = $this->payloadConstraintNames($this->builder->buildForPeriodPlan($club->getId(), $season->getId(), $this->planIdOf($mother), $mother));
+        $namesA = $this->payloadConstraintNames($this->builder->buildForPlan($this->planIdOf($entryA)));
+        $namesB = $this->payloadConstraintNames($this->builder->buildForPlan($this->planIdOf($entryB)));
+        $namesMother = $this->payloadConstraintNames($this->builder->buildForPlan($this->planIdOf($mother)));
 
         // Plan de A : sa genèse + le fait de la mère.
         self::assertContains('Genèse semaine A', $namesA, 'la genèse pendue à A part dans le payload de A');
@@ -1023,7 +1011,7 @@ final class ScheduleConstraintBuilderOverlayTest extends KernelTestCase
     /** Créneaux (jours ISO) du gymnase VENUE_CLOSED effectivement présents dans le payload overlay. */
     private function closedVenueWeekdays(Schedule $schedule, CalendarEntry $entry): array
     {
-        $payload = $this->builder->buildForOverlay($schedule, $entry);
+        $payload = $this->builder->buildForPlan($schedule->getSchedulePlanId(), $schedule->getSolverSeed(), $schedule->getId());
         foreach ($payload['venues'] as $venue) {
             if (self::VENUE_CLOSED === $venue['id']) {
                 return array_map(static fn (array $s): int => $s['dayOfWeek'], $venue['trainingSlots']);
@@ -1221,12 +1209,12 @@ final class ScheduleConstraintBuilderOverlayTest extends KernelTestCase
         $schedule->setName('Overlay');
         $schedule->setStatus(ScheduleStatus::DRAFT);
         // ⚠ Graine NON DÉFAUT, délibérément. `Schedule::$solverSeed` vaut 42, exactement
-        // la valeur par défaut de `buildForPeriodPlan` : avec elle, un adaptateur qui
+        // la valeur par défaut de `buildForPlan` : avec elle, un adaptateur qui
         // OUBLIERAIT de passer la graine produirait le même payload et le test de parité
         // resterait vert. 4242 rend cet oubli visible.
         $schedule->setSolverSeed(4242);
         // Toute version est liée à son plan en prod (linkSchedule, au POST) : un overlay au
-        // plan de sa période, une version de BASE au plan SEASON (le socle). buildForOverlay
+        // plan de sa période, une version de BASE au plan SEASON (le socle). buildForPlan
         // l'exige (C2) et findBaseSlotTemplates ne prend QUE les versions du plan SEASON (C4).
         $schedule->setSchedulePlanId($entry instanceof CalendarEntry ? $this->planIdOf($entry) : $this->seasonPlanIdOf($season));
         $this->em->persist($schedule);

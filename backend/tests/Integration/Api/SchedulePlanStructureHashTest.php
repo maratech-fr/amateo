@@ -32,6 +32,7 @@ use App\Enum\SchedulePlanType;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
 use App\Plans\PlanComposition;
+use App\Plans\SoclePlan;
 use App\Service\ScheduleConstraintBuilder;
 use App\Service\SchedulePlanProvisioner;
 use App\Service\ScheduleResultImporter;
@@ -65,9 +66,9 @@ use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
  *
  * Références de recette (citées, pas devinées) :
  *  - SEASON : `GenerateScheduleHandler` hache l'entrée du solveur AVANT les greffes de convergence
- *    (`buildFrozenSnapshot` = `ScheduleConstraintBuilder::buildForClubSeason`) ;
+ *    (`buildFrozenSnapshot` = `ScheduleConstraintBuilder::buildForPlan`) ;
  *  - PÉRIODE : `PeriodPlanTranscriber::copyFromSocle` pose
- *    `snapshotHash = sha256(json_encode(buildForPeriodPlan(...)))`.
+ *    `snapshotHash = sha256(json_encode(buildForPlan(...)))`.
  */
 #[Group('phase1')]
 #[Group('integration')]
@@ -95,7 +96,7 @@ final class SchedulePlanStructureHashTest extends WebTestCase
         $this->team($club, $season, 'U11');
         $this->venue($club, $season, 'Gym');
 
-        // Le rail de génération pose `snapshotHash = sha256(json_encode(buildForClubSeason(...)))`
+        // Le rail de génération pose `snapshotHash = sha256(json_encode(buildForPlan(...)))`
         // (hash AVANT les greffes de convergence) — on reproduit CETTE recette sur une version.
         $version = $this->seasonVersionWithRailSnapshot($club, $season);
 
@@ -142,7 +143,7 @@ final class SchedulePlanStructureHashTest extends WebTestCase
      * (a bis) V1 — LE test du lot « les verrous d'une période survivent à Régénérer » : APRÈS une
      * régénération qui fait survivre les verrous, le hash servi == le snapshotHash de la NOUVELLE
      * version. On rejoue le mécanisme réel : le snapshot de la V+1 NUE est haché comme le fait
-     * `GenerateScheduleHandler` (`buildForOverlay` sur la version nue, qui GREFFE les HARD de la
+     * `GenerateScheduleHandler` (`buildForPlan` sur la version nue, qui GREFFE les HARD de la
      * version SOURCE), puis le moteur RÉÉMET ces HARD à l'identique (round-trip gardé par le contrat
      * moteur) → `import` → la V+1 porte les mêmes HARD et devient la nouvelle source. Si la forme
      * canonique ne tenait pas, le hash servi (source = V+1) divergerait du snapshot figé (source = V)
@@ -206,11 +207,11 @@ final class SchedulePlanStructureHashTest extends WebTestCase
         self::assertNotSame([], $engineSlots, 'garde : la V1 transcrite doit porter au moins un verrou HARD');
 
         // V+1 NUE (comme « Régénérer » la crée) : son snapshot est haché comme le handler le fait —
-        // `buildForOverlay` sur la version nue, qui hérite les HARD de la source (V1).
+        // `buildForPlan` sur la version nue, qui hérite les HARD de la source (V1).
         $v2 = (new Schedule)->setClubId($club->getId())->setSeasonId($season->getId())->setName('V2')->setStatus(ScheduleStatus::GENERATING);
         $this->linkSeededSchedule($v2, $entry->getId());
         $this->em->flush();
-        $payload = $builder->buildForOverlay($v2, $entryFresh);
+        $payload = $builder->buildForPlan($v2->getSchedulePlanId(), $v2->getSolverSeed(), $v2->getId());
         $v2->setSnapshotData($payload);
         $v2->setSnapshotHash(ScheduleConstraintBuilder::structureHash($payload));
         self::assertNotSame([], $payload['slotTemplates'] ?? [], 'garde : les HARD de V1 doivent être hérités dans l’entrée du solve de V2');
@@ -389,7 +390,7 @@ final class SchedulePlanStructureHashTest extends WebTestCase
     private function seasonVersionWithRailSnapshot(Club $club, Season $season): Schedule
     {
         $builder = self::getContainer()->get(ScheduleConstraintBuilder::class);
-        $payload = $builder->buildForClubSeason($club->getId(), $season->getId());
+        $payload = $builder->buildForPlan(self::getContainer()->get(SoclePlan::class)->idOf($season->getId()));
         $hash = ScheduleConstraintBuilder::structureHash($payload);
 
         $schedule = (new Schedule)

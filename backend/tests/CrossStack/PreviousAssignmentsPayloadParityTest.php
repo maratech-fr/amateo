@@ -18,6 +18,7 @@ use App\Enum\SeasonStatus;
 use App\Message\GenerateScheduleMessage;
 use App\MessageHandler\GenerateScheduleHandler;
 use App\Plans\PlanComposition;
+use App\Plans\SoclePlan;
 use App\Service\ClubGenerationLock;
 use App\Service\DiagnosticMessageBuilder;
 use App\Service\EngineClient;
@@ -125,7 +126,7 @@ final class PreviousAssignmentsPayloadParityTest extends KernelTestCase
         // structure recalculée est identique à celle gelée.
         self::getContainer()->get('cache.schedule')->invalidateTags([ScheduleConstraintBuilder::cacheTag($club->getId())]);
         // Le moteur simulé n'a rien réimporté : on compare à la version de départ, celle d'où vient le verrou.
-        $currentStructureHash = ScheduleConstraintBuilder::structureHash($this->builder->buildForClubSeason($club->getId(), $season->getId(), lockVersionId: $source->getId()));
+        $currentStructureHash = ScheduleConstraintBuilder::structureHash($this->builder->buildForPlan(self::getContainer()->get(SoclePlan::class)->idOf($season->getId()), versionId: $source->getId()));
         self::assertSame(
             $currentStructureHash,
             $reloaded->getSnapshotHash(),

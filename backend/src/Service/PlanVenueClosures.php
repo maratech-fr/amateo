@@ -24,7 +24,7 @@ use Symfony\Component\HttpKernel\Exception\UnprocessableEntityHttpException;
  * Une indisponibilité de gymnase est une contrainte datée `venue_closed` portée par une entrée
  * de calendrier (ADR-0002 inv. 5 : la datée décrit le FAIT, elle reste au calendrier). Quatre
  * consommateurs en dérivent la même chose et doivent le faire de LA MÊME façon :
- *  - `ScheduleConstraintBuilder::buildForPeriodPlan` (le payload : le gymnase perd ses créneaux
+ *  - `ScheduleConstraintBuilder::buildForPlan` (le payload : le gymnase perd ses créneaux
  *    les jours fermés) ;
  *  - `OrphanPinGuard` (fermé-total = gymnase inerte, à SKIPPER ; jour fermé partiel = bloquant) ;
  *  - `VenuePeriodOverrideStateProcessor` (pas de mode sur un gymnase fermé-total) ;

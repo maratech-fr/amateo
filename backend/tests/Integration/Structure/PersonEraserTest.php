@@ -24,6 +24,7 @@ use App\Enum\ConstraintRuleType;
 use App\Enum\ConstraintScope;
 use App\Enum\ScheduleDiagnosticSeverity;
 use App\Enum\TeamCoachRole;
+use App\Plans\SoclePlan;
 use App\Service\ClubGenerationLock;
 use App\Service\MatchPlacementLock;
 use App\Service\ScheduleConstraintBuilder;
@@ -416,7 +417,7 @@ final class PersonEraserTest extends KernelTestCase
 
         $this->erase();
 
-        $payload = self::getContainer()->get(ScheduleConstraintBuilder::class)->buildForClubSeason($this->decor['club'], $this->decor['current']);
+        $payload = self::getContainer()->get(ScheduleConstraintBuilder::class)->buildForPlan(self::getContainer()->get(SoclePlan::class)->idOf($this->decor['current']));
         self::assertNull($this->entryById($payload['coaches'] ?? [], $this->decor['coach']), 'la demande suivante ne la porte plus');
         self::assertStringNotContainsString($this->decor['lastName'], (string) json_encode($payload, \JSON_UNESCAPED_UNICODE), 'ni son nom');
     }

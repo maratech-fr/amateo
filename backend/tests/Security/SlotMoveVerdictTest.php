@@ -29,6 +29,7 @@ use App\Exception\ScheduleGenerationInProgressException;
 use App\Exception\SlotUnavailableException;
 use App\Exception\TeamAlreadyAtCaseException;
 use App\Plans\PlanComposition;
+use App\Plans\SoclePlan;
 use App\Service\ClubGenerationLock;
 use App\Service\EngineClient;
 use App\Service\MoveSlotService;
@@ -953,6 +954,7 @@ final class SlotMoveVerdictTest extends KernelTestCase
             new NullLogger,
             new TeamCaseOccupancyGuard($this->em),
             $container->get(PeriodConstraintSelector::class),
+            $container->get(SoclePlan::class),
         );
     }
 
@@ -987,7 +989,7 @@ final class SlotMoveVerdictTest extends KernelTestCase
         }
 
         // La fenêtre de gymnase de DESTINATION de tous les déplacements du test : venue2, jeudi (4),
-        // 20:00 (schedulePlanId null = grille de saison, ce que charge buildForClubSeason). Depuis
+        // 20:00 (schedulePlanId null = grille de saison, ce que charge buildForPlan). Depuis
         // la garde précoce de move(), un déplacement vers un triplet SANS fenêtre lève
         // SlotUnavailableException avant le moteur — sans cette fenêtre, tout le test rougirait.
         $window = (new VenueTrainingSlot)

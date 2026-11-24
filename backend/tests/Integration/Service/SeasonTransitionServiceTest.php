@@ -36,6 +36,7 @@ use App\Enum\TeamCoachRole;
 use App\Enum\TeamLinkIntensity;
 use App\Enum\TeamLinkType;
 use App\Plans\PlanComposition;
+use App\Plans\SoclePlan;
 use App\Service\ScheduleConstraintBuilder;
 use App\Service\SeasonAlreadyTransitionedException;
 use App\Service\SeasonResolver;
@@ -440,7 +441,7 @@ final class SeasonTransitionServiceTest extends KernelTestCase
         $target = $this->service->transition($season, $this->inPreparationWindow());
 
         $builder = self::getContainer()->get(ScheduleConstraintBuilder::class);
-        $payload = $builder->buildForClubSeason($club->getId(), $target->getId());
+        $payload = $builder->buildForPlan(self::getContainer()->get(SoclePlan::class)->idOf($target->getId()));
 
         $newCoach = $this->copiedCoach($target, $refs['anna']);
         $newTeams = $this->em->getRepository(Team::class)->findBy(['seasonId' => $target->getId()], ['name' => 'ASC']);

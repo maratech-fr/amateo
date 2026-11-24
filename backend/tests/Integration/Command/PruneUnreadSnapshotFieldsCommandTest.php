@@ -23,6 +23,7 @@ use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
 use App\Enum\TeamCoachRole;
 use App\Plans\PlanComposition;
+use App\Plans\SoclePlan;
 use App\Service\ClubGenerationLock;
 use App\Service\ScheduleConstraintBuilder;
 use App\Service\SchedulePlanProvisioner;
@@ -507,7 +508,7 @@ final class PruneUnreadSnapshotFieldsCommandTest extends KernelTestCase
         $this->primedClubs[] = $f['clubId'];
         self::assertTrue($this->cachePool()->hasItem($previousKey), 'témoin : l\'envoi de l\'ancien code est en cache');
 
-        $payload = self::getContainer()->get(ScheduleConstraintBuilder::class)->buildForClubSeason($f['clubId'], $f['seasonId']);
+        $payload = self::getContainer()->get(ScheduleConstraintBuilder::class)->buildForPlan(self::getContainer()->get(SoclePlan::class)->idOf($f['seasonId']));
 
         foreach (self::LEGACY_KEYS as $object => $keys) {
             foreach ($payload[$object] as $row) {
@@ -648,7 +649,7 @@ final class PruneUnreadSnapshotFieldsCommandTest extends KernelTestCase
         $this->scopeGucToClub($f['clubId']);
         $this->cachePool()->invalidateTags([ScheduleConstraintBuilder::cacheTag($f['clubId'])]);
         $this->primedClubs[] = $f['clubId'];
-        $payload = self::getContainer()->get(ScheduleConstraintBuilder::class)->buildForClubSeason($f['clubId'], $f['seasonId']);
+        $payload = self::getContainer()->get(ScheduleConstraintBuilder::class)->buildForPlan(self::getContainer()->get(SoclePlan::class)->idOf($f['seasonId']));
         $this->cachePool()->invalidateTags([ScheduleConstraintBuilder::cacheTag($f['clubId'])]);
 
         return $payload;
@@ -728,7 +729,7 @@ final class PruneUnreadSnapshotFieldsCommandTest extends KernelTestCase
             ->setStartDate(new DateTimeImmutable('2025-12-20'))->setEndDate(new DateTimeImmutable('2026-01-04'));
         $this->em->persist($entry);
         $planId = $this->planIdOf($entry);
-        $payload = self::getContainer()->get(ScheduleConstraintBuilder::class)->buildForPeriodPlan($f['clubId'], $f['seasonId'], $planId, $entry);
+        $payload = self::getContainer()->get(ScheduleConstraintBuilder::class)->buildForPlan($planId);
         $snapshot = $this->legacySnapshot($payload);
         $schedule = (new Schedule)->setClubId($f['clubId'])->setSeasonId($f['seasonId'])
             ->setName('Période')->setStatus(ScheduleStatus::COMPLETED)

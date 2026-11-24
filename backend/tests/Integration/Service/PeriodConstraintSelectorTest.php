@@ -32,7 +32,7 @@ use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
  * contrainte de CLUB reste héritée. Un override EXPLICITE dévie du défaut dans les deux sens. Une
  * FERMETURE, elle, hérite de TOUT.
  *
- * Niveau : Integration — `selectForPeriodPlan` lit les contraintes, les overrides et l'état
+ * Niveau : Integration — `selectForPlan` lit les contraintes, les overrides et l'état
  * effectif des gymnases via Doctrine (aucune version pure sans base possible).
  *
  * Filet CITÉ — désormais SEUL — du scénario 2 de l'ancienne `la-semaine-de-reprise.feature`
@@ -159,7 +159,7 @@ final class PeriodConstraintSelectorTest extends KernelTestCase
     private function keptIds(Club $club, Season $season, string $planId, CalendarEntry $entry): array
     {
         $selection = self::getContainer()->get(PeriodConstraintSelector::class)
-            ->selectForPeriodPlan($club->getId(), $season->getId(), $planId, $entry);
+            ->selectForPlan($planId);
 
         return array_map(static fn (Constraint $c): string => $c->getId(), $selection->kept);
     }

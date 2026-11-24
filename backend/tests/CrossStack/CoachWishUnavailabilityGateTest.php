@@ -40,7 +40,7 @@ use Symfony\Contracts\HttpClient\Exception\TransportExceptionInterface;
 /**
  * NR BLOQUANT (axe §7.1 « constraint semantics ») : une disponibilité saisie dans une doléance puis
  * TRANSFÉRÉE est honorée par le VRAI moteur. Chaîne complète : doléance → vrai
- * `CoachWishTransferService` → vrai `ScheduleConstraintBuilder::buildForPeriodPlan` → vrai `/generate`.
+ * `CoachWishTransferService` → vrai `ScheduleConstraintBuilder::buildForPlan` → vrai `/generate`.
  *
  * Cinq variantes, sur le plan de période d'une semaine de vacances :
  *  (1) LIBRE — Karim absent jeudi : Emma tient la séance, placée jeudi ; les deux absents : pas de jeudi ;
@@ -380,7 +380,7 @@ final class CoachWishUnavailabilityGateTest extends KernelTestCase
     private function build(): array
     {
         return self::getContainer()->get(ScheduleConstraintBuilder::class)
-            ->buildForPeriodPlan($this->club->getId(), $this->season->getId(), $this->planId, $this->entry);
+            ->buildForPlan($this->planId);
     }
 
     /**

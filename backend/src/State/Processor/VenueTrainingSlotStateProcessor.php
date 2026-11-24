@@ -259,7 +259,7 @@ class VenueTrainingSlotStateProcessor extends AbstractStateProcessor
     /**
      * Le libellé de groupe (« CEC3 ») appartient au planning de SAISON : c'est là qu'une
      * mutualisation se nomme, et la période hérite de son modèle sans libellé propre (la copie
-     * l'émet NULL, SchedulePlanProvisioner::copySeasonalSlotRows). Un créneau d'un plan de
+     * l'émet NULL, PlanBirth::copy). Un créneau d'un plan de
      * période (c'est la nature du plan qui le dit, lot 4) ne peut donc pas en porter un — ni à la
      * création ni à l'édition. On refuse plutôt que d'accepter un libellé que l'écran et l'export
      * montreraient pour une période sans que personne l'ait voulu. Vérifié AVANT la garde de

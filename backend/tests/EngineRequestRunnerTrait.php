@@ -12,6 +12,7 @@ use App\Message\GenerateScheduleMessage;
 use App\Message\PlaceMatchesMessage;
 use App\MessageHandler\GenerateScheduleHandler;
 use App\MessageHandler\PlaceMatchesHandler;
+use App\Plans\SoclePlan;
 use App\Service\ClubGenerationLock;
 use App\Service\DiagnosticMessageBuilder;
 use App\Service\EngineClient;
@@ -258,6 +259,7 @@ trait EngineRequestRunnerTrait
             new NullLogger,
             new TeamCaseOccupancyGuard($em),
             $container->get(PeriodConstraintSelector::class),
+            $container->get(SoclePlan::class),
         );
 
         $slot = $em->getRepository(ScheduleSlotTemplate::class)->find($slotId);

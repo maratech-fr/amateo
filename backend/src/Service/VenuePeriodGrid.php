@@ -6,6 +6,7 @@ namespace App\Service;
 
 use App\Entity\VenueOccupancy;
 use App\Entity\VenueTrainingSlot;
+use App\Plans\PlanBirth;
 use Doctrine\ORM\EntityManagerInterface;
 
 /**
@@ -31,6 +32,7 @@ final class VenuePeriodGrid
         private readonly EntityManagerInterface $entityManager,
         private readonly EntityCascadeDeleter $cascadeDeleter,
         private readonly SchedulePlanProvisioner $schedulePlanProvisioner,
+        private readonly PlanBirth $planBirth,
     ) {}
 
     /**
@@ -77,8 +79,13 @@ final class VenuePeriodGrid
     {
         $this->entityManager->wrapInTransaction(function () use ($schedulePlanId, $venueId): void {
             $this->clear($schedulePlanId, $venueId);
-            $this->schedulePlanProvisioner->copySeasonalSlotsForVenue($schedulePlanId, $venueId);
-            $this->schedulePlanProvisioner->copySeasonalOccupanciesForVenue($schedulePlanId, $venueId);
+            $context = $this->schedulePlanProvisioner->fetchPlanContext($schedulePlanId);
+            $soclePlanId = null === $context ? null : $this->schedulePlanProvisioner->seasonPlanPayload($context['seasonId'])['id'] ?? null;
+            if (null === $soclePlanId) {
+                return; // plan disparu, ou saison sans plan de saison : aucune grille à reprendre
+            }
+            // La copie de naissance, bornée à ce gymnase : sa grille et ses occupations.
+            $this->planBirth->copy($soclePlanId, $schedulePlanId, $venueId);
         });
     }
 }

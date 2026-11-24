@@ -1894,7 +1894,7 @@ final class BcclSeeder
         // Snapshot = la STRUCTURE courante (même recette que GenerateScheduleHandler et
         // structureHashOfPlan), pour que « Régénérer » soit honnêtement grisé (structure
         // inchangée depuis la « génération »).
-        $payload = $this->constraintBuilder->buildForClubSeason($clubId, $season->getId());
+        $payload = $this->constraintBuilder->buildForPlan($seasonPlanId);
         $schedule->setSnapshotData($payload);
         $schedule->setSnapshotHash(ScheduleConstraintBuilder::structureHash($payload));
         $schedule->setStatus(ScheduleStatus::COMPLETED);
@@ -2297,7 +2297,7 @@ final class BcclSeeder
     /**
      * Le plan de PÉRIODE pointe une version COMPLETED transcrivant la semaine de reprise,
      * sans solveur — miroir période de {@see pointSeasonPlanAtRealSchedule}. Snapshot par
-     * {@see ScheduleConstraintBuilder::buildForPeriodPlan} (overrides du plan compris), verrous
+     * {@see ScheduleConstraintBuilder::buildForPlan} (overrides du plan compris), verrous
      * dérivés des réservations (toutes coïncident ⇒ HARD/RESERVATION), 3 marqueurs de péremption
      * remis à zéro. Idempotent (find-or-create de la version par plan+provenance ; les créneaux
      * de la version sont réinsérés après la purge club/saison de la section slot-templates).
@@ -2364,9 +2364,9 @@ final class BcclSeeder
 
         // Snapshot APRÈS la pose des verrous (V1 « les verrous survivent à Régénérer ») : cette
         // version est la SOURCE des verrous de son plan ({@see SchedulePlanProvisioner::
-        // lockSourceScheduleIdOfPlan}), donc `buildForPeriodPlan` greffe SES HARD en forme canonique
+        // lockSourceScheduleIdOfPlan}), donc `buildForPlan` greffe SES HARD en forme canonique
         // — exactement ce que `structureHashOfPlan` recalculera (« Régénérer » honnêtement grisé).
-        $payload = $this->constraintBuilder->buildForPeriodPlan($clubId, $season->getId(), $planId, $child);
+        $payload = $this->constraintBuilder->buildForPlan($planId);
         $schedule->setSnapshotData($payload);
         $schedule->setSnapshotHash(ScheduleConstraintBuilder::structureHash($payload));
         // Miroir de ScheduleResultImporter : une version fraîchement transcrite n'est pas retouchée à la main.

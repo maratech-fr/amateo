@@ -160,7 +160,7 @@ Aucun endpoint, champ de payload moteur ou sujet Mercure nouveau, dans aucune de
 | Verrou au lancement [D] | les trois guichets par `applyLock` | payload saison, greffe période, `OrphanPinGuard`, import, `ClosurePinRemover`, `TeamReservedSlots` | refus d'accès et d'état | refus de contenu, puis moteur |
 | Verrou contre une règle ajoutée depuis [D] | T1 | moteur | — | « la réservation gagne » |
 | Empreinte du plan [D] | T1 | bandeau (`staleness.ts:37-38`) | — | texte inchangé |
-| Cache purgé dans la requête [D] | les trois guichets | `buildForClubSeason`, le worker | commit | — |
+| Cache purgé dans la requête [D] | les trois guichets | `buildForPlan` (plan de saison), le worker | commit | — |
 | Geste refusé si génération en file [D] | `MoveSlotService` | écran (`useRetouchGestures.ts:516-519`) | `lockPlanScope` | refus plus large que le verrou |
 | `Reservation` retirée au déplacement [D] | `MovedReservationRelease` | Récap, étape Réservations, payload, import, photo, budget | 409 puis confirmation, ou essai puis dialogue | toast, trace |
 | Origine MANUAL après ce déplacement [D] | `MovedReservationRelease` | fiche, `TeamReservedSlots` | — | — |

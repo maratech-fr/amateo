@@ -5,18 +5,10 @@ declare(strict_types=1);
 namespace App\Service;
 
 use App\Entity\CalendarEntry;
-use App\Entity\ImplicitRuleSetting;
-use App\Entity\PlanConstraint;
-use App\Entity\PlanTeam;
-use App\Entity\PlanVenue;
-use App\Entity\Reservation;
 use App\Entity\Schedule;
 use App\Entity\ScheduleSlotTemplate;
-use App\Entity\SharedTrainingBlock;
-use App\Entity\SharedTrainingBlockTeam;
-use App\Entity\VenueOccupancy;
-use App\Entity\VenueTrainingSlot;
 use App\Enum\ScheduleStatus;
+use App\Plans\PlanBirth;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
 use Symfony\Component\HttpKernel\Exception\UnprocessableEntityHttpException;
@@ -32,8 +24,8 @@ use Symfony\Component\HttpKernel\Exception\UnprocessableEntityHttpException;
  * « même planning » = copie.
  *
  * Patron {@see PeriodPlanTranscriber} (copie SANS solve), mais la source est un plan de PÉRIODE
- * sœur (pas le socle) et la copie emporte EN PLUS les 9 familles ancrées-plan
- * ({@see OverlayManager::purgePlanAnchoredSettings}), car la sœur n'hérite pas de la saison : elle
+ * sœur (pas le socle) et la copie emporte EN PLUS toutes les familles que le plan porte
+ * ({@see PlanBirth::copyAll}), car la sœur n'hérite pas de la saison : elle
  * reprend la grille et les réglages du PLAN source, pas ceux du socle. La V1 née est COMPLETED
  * (jamais un solve), pointée (validée d'office), source de verrous posée, et porte un MARQUEUR de
  * provenance distinct ({@see self::COPY_MARKER}) — aucune colonne neuve.
@@ -54,6 +46,7 @@ final class PeriodPlanSiblingCopier
         private readonly SchedulePlanProvisioner $schedulePlanProvisioner,
         private readonly OverlayManager $overlayManager,
         private readonly ScheduleConstraintBuilder $constraintBuilder,
+        private readonly PlanBirth $planBirth,
     ) {}
 
     /**
@@ -103,7 +96,7 @@ final class PeriodPlanSiblingCopier
             // saison — sinon la grille se doublerait et divergerait du milieu).
             $this->overlayManager->purgePlanAnchoredSettings($targetPlanId);
             $this->entityManager->flush();
-            $this->copyAnchoredFamilies($sourcePlanId, $targetPlanId, $clubId, $seasonId);
+            $this->planBirth->copyAll($sourcePlanId, $targetPlanId);
             $this->entityManager->flush();
 
             // La V1 copiée : COMPLETED (sans solve), numérotée, marqueur de provenance dédié.
@@ -121,11 +114,11 @@ final class PeriodPlanSiblingCopier
             $this->entityManager->flush();
 
             // Snapshot APRÈS la pose des verrous (patron transcription) : cette version est désormais
-            // la source des verrous du plan, donc `buildForPeriodPlan` greffe ses HARD en forme
+            // la source des verrous du plan, donc `buildForPlan` greffe ses HARD en forme
             // canonique — exactement ce que `structureHashOfPlan` recalculera (« Régénérer » honnête).
             $entry = $this->entityManager->getRepository(CalendarEntry::class)->find($targetEntryId);
             if ($entry instanceof CalendarEntry) {
-                $payload = $this->constraintBuilder->buildForPeriodPlan($clubId, $seasonId, $targetPlanId, $entry);
+                $payload = $this->constraintBuilder->buildForPlan($targetPlanId);
                 $version->setSnapshotData($payload);
                 $version->setSnapshotHash(ScheduleConstraintBuilder::structureHash($payload));
             }
@@ -159,87 +152,6 @@ final class PeriodPlanSiblingCopier
                 ->setLockLevel($slot->getLockLevel())
                 ->setLockOrigin($slot->getLockOrigin());
             $this->entityManager->persist($copy);
-        }
-    }
-
-    /**
-     * Copie les 9 familles ancrées-plan ({@see OverlayManager::purgePlanAnchoredSettings}) du plan
-     * source vers le plan cible — nouvel UUID par ligne, dénormalisation club/saison/plan. Les blocs
-     * de mutualisation remappent leurs membres sur le bloc copié (patron {@see
-     * SchedulePlanProvisioner::copySocleSharedBlocks}). L'appelant flush.
-     */
-    private function copyAnchoredFamilies(string $src, string $dst, string $clubId, string $seasonId): void
-    {
-        // Les équipes du plan (lot 4, PR 3a) : la cible reprend chaque ligne de la source, ses lignes de naissance purgées.
-        foreach ($this->entityManager->getRepository(PlanTeam::class)->findBy(['schedulePlanId' => $src]) as $row) {
-            $this->entityManager->persist(
-                (new PlanTeam)->setClubId($clubId)->setSeasonId($seasonId)->setSchedulePlanId($dst)
-                    ->setTeamId($row->getTeamId())->setParticipating($row->isParticipating())->setSessionsPerWeek($row->getSessionsPerWeek())->setMaxSessionsPerDay($row->getMaxSessionsPerDay())->setSource($row->getSource()),
-            );
-        }
-        // Les règles du plan (lot 4, PR 4) : la cible reprend chaque ligne de la source, ses lignes de naissance purgées
-        // (une copie sœur relie deux tronçons d'une même fermeture : même nature, même défaut).
-        foreach ($this->entityManager->getRepository(PlanConstraint::class)->findBy(['schedulePlanId' => $src]) as $row) {
-            $this->entityManager->persist(
-                (new PlanConstraint)->setClubId($clubId)->setSeasonId($seasonId)->setSchedulePlanId($dst)
-                    ->setConstraintId($row->getConstraintId())->setApplies($row->applies()),
-            );
-        }
-        foreach ($this->entityManager->getRepository(VenueTrainingSlot::class)->findBy(['schedulePlanId' => $src]) as $row) {
-            $this->entityManager->persist(
-                (new VenueTrainingSlot)->setClubId($clubId)->setSeasonId($seasonId)->setSchedulePlanId($dst)
-                    ->setVenueId($row->getVenueId())->setDayOfWeek($row->getDayOfWeek())->setStartTime($row->getStartTime())
-                    ->setDurationMinutes($row->getDurationMinutes())->setCapacity($row->getCapacity())->setGroupLabel($row->getGroupLabel()),
-            );
-        }
-        foreach ($this->entityManager->getRepository(Reservation::class)->findBy(['schedulePlanId' => $src]) as $row) {
-            $this->entityManager->persist(
-                (new Reservation)->setClubId($clubId)->setSeasonId($seasonId)->setSchedulePlanId($dst)
-                    ->setTeamId($row->getTeamId())->setLabel($row->getLabel())->setVenueId($row->getVenueId())
-                    ->setDayOfWeek($row->getDayOfWeek())->setStartTime($row->getStartTime())->setDurationMinutes($row->getDurationMinutes())
-                    ->setCoachLateToleranceMinutes($row->getCoachLateToleranceMinutes()),
-            );
-        }
-        // Les gymnases du plan (lot 4, PR 3b) : la cible reprend chaque ligne de la source, ses lignes de naissance purgées.
-        foreach ($this->entityManager->getRepository(PlanVenue::class)->findBy(['schedulePlanId' => $src]) as $row) {
-            $this->entityManager->persist(
-                (new PlanVenue)->setClubId($clubId)->setSeasonId($seasonId)->setSchedulePlanId($dst)
-                    ->setVenueId($row->getVenueId())->setParticipating($row->isParticipating())->setClosureLifted($row->isClosureLifted())->setDayOverrides($row->getDayOverrides()),
-            );
-        }
-
-        // Blocs de mutualisation : copier le parent puis ses membres sur le bloc copié (remap d'id).
-        $blockMap = [];
-        foreach ($this->entityManager->getRepository(SharedTrainingBlock::class)->findBy(['schedulePlanId' => $src]) as $block) {
-            $copy = (new SharedTrainingBlock)->setClubId($clubId)->setSeasonId($seasonId)->setSchedulePlanId($dst)
-                ->setCommonSessions($block->getCommonSessions())->setLabel($block->getLabel());
-            $this->entityManager->persist($copy);
-            $blockMap[$block->getId()] = $copy->getId();
-        }
-        foreach ($this->entityManager->getRepository(SharedTrainingBlockTeam::class)->findBy(['schedulePlanId' => $src]) as $member) {
-            $newBlockId = $blockMap[$member->getBlockId()] ?? null;
-            if (null === $newBlockId) {
-                continue;
-            }
-            $this->entityManager->persist(
-                (new SharedTrainingBlockTeam)->setClubId($clubId)->setSeasonId($seasonId)->setSchedulePlanId($dst)
-                    ->setBlockId($newBlockId)->setTeamId($member->getTeamId()),
-            );
-        }
-
-        foreach ($this->entityManager->getRepository(ImplicitRuleSetting::class)->findBy(['schedulePlanId' => $src]) as $row) {
-            $this->entityManager->persist(
-                (new ImplicitRuleSetting)->setClubId($clubId)->setSeasonId($seasonId)->setSchedulePlanId($dst)
-                    ->setRuleKey($row->getRuleKey())->setIntensity($row->getIntensity())->setParams($row->getParams()),
-            );
-        }
-
-        foreach ($this->entityManager->getRepository(VenueOccupancy::class)->findBy(['schedulePlanId' => $src]) as $row) {
-            $this->entityManager->persist(
-                (new VenueOccupancy)->setClubId($clubId)->setSeasonId($seasonId)->setSchedulePlanId($dst)
-                    ->setVenueId($row->getVenueId())->setDayOfWeek($row->getDayOfWeek())->setStartTime($row->getStartTime())
-                    ->setDurationMinutes($row->getDurationMinutes())->setLabel($row->getLabel()),
-            );
         }
     }
 }

@@ -25,6 +25,7 @@ use App\Enum\LockOrigin;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
 use App\Plans\PlanComposition;
+use App\Plans\SoclePlan;
 use App\Service\EngineRequestFingerprint;
 use App\Service\EngineRequestRecorder;
 use App\Service\ScheduleConstraintBuilder;
@@ -404,7 +405,7 @@ final class EngineRequestsRecordCommandTest extends KernelTestCase
         $this->primeSocleCache($primed);
         self::assertSame(
             $primed,
-            self::getContainer()->get(ScheduleConstraintBuilder::class)->buildForClubSeason(self::ER_CLUB, self::ER_SEASON, lockVersionId: self::ER_SOCLE_V1),
+            self::getContainer()->get(ScheduleConstraintBuilder::class)->buildForPlan(self::getContainer()->get(SoclePlan::class)->idOf(self::ER_SEASON), versionId: self::ER_SOCLE_V1),
             'sans purge, le constructeur sert la valeur amorcée',
         );
 
@@ -603,7 +604,7 @@ final class EngineRequestsRecordCommandTest extends KernelTestCase
         self::assertFalse($this->scheduleCachePool()->getItem($lastKey)->isHit(), 'la dernière demande composée du club ne reste pas dans le cache');
 
         // Témoin : cette clé est celle que le constructeur remplit.
-        self::getContainer()->get(ScheduleConstraintBuilder::class)->buildForClubSeason(self::ER_CLUB, self::ER_SEASON_2, lockVersionId: self::ER_SEASON_2_V1);
+        self::getContainer()->get(ScheduleConstraintBuilder::class)->buildForPlan(self::getContainer()->get(SoclePlan::class)->idOf(self::ER_SEASON_2), versionId: self::ER_SEASON_2_V1);
         self::assertTrue($this->scheduleCachePool()->getItem($lastKey)->isHit(), 'témoin : un build direct remplit la clé vérifiée');
         $this->purgeEngineRequestCache();
     }

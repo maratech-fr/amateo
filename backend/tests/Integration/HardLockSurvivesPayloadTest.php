@@ -22,6 +22,7 @@ use App\Enum\LockOrigin;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
 use App\Plans\PlanComposition;
+use App\Plans\SoclePlan;
 use App\Service\ScheduleConstraintBuilder;
 use App\Service\SchedulePlanProvisioner;
 use App\Tests\ProvisionsPeriodPlanTrait;
@@ -40,7 +41,7 @@ use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
  * (re)génération TRANSPORTE le verrou jusqu'au moteur : la relocalisation qu'un observateur avait
  * cru voir ne pouvait venir que d'un payload arrivant SANS le verrou.
  *
- * Ce test garde la composition du payload par `ScheduleConstraintBuilder::buildForClubSeason` (le
+ * Ce test garde la composition du payload par `ScheduleConstraintBuilder::buildForPlan` (le
  * chemin d'une génération de socle) : face à un créneau verrouillé HARD ET une règle de jours HARD
  * qui le CONTREDIT, LES DEUX voyagent — le créneau sort avec `lockLevel: HARD`, la règle sort dans
  * les `constraints`. Le builder n'arbitre pas, ne dégrade pas le verrou, ne retire pas la règle en
@@ -80,7 +81,7 @@ final class HardLockSurvivesPayloadTest extends KernelTestCase
         // creux (vert sans jamais reconstruire le payload avec le verrou et la règle).
         self::getContainer()->get('cache.schedule')->invalidateTags([ScheduleConstraintBuilder::cacheTag($club->getId())]);
 
-        $payload = $this->builder->buildForClubSeason($club->getId(), $season->getId());
+        $payload = $this->builder->buildForPlan(self::getContainer()->get(SoclePlan::class)->idOf($season->getId()));
 
         // (1) Le verrou VOYAGE — le créneau de l'équipe sort avec lockLevel HARD. C'est CE fait qui
         // garantit que le moteur le fixera hors solveur : un lockLevel dégradé en amont, et le
@@ -126,7 +127,7 @@ final class HardLockSurvivesPayloadTest extends KernelTestCase
         $this->em->flush();
         self::getContainer()->get('cache.schedule')->invalidateTags([ScheduleConstraintBuilder::cacheTag($club->getId())]);
 
-        $payload = $this->builder->buildForClubSeason($club->getId(), $season->getId());
+        $payload = $this->builder->buildForPlan(self::getContainer()->get(SoclePlan::class)->idOf($season->getId()));
 
         $teams = array_map(static fn (array $s): mixed => $s['teamId'] ?? null, $this->rows($payload, 'slotTemplates'));
         self::assertSame([$loadedTeam->getId()], $teams);

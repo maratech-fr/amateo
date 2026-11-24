@@ -24,6 +24,7 @@ use App\Entity\VenueMatchWindow;
 use App\Entity\VenueTrainingSlot;
 use App\Enum\LockLevel;
 use App\Enum\ScheduleStatus;
+use App\Plans\SoclePlan;
 use App\Service\MatchPlacementPayloadBuilder;
 use App\Service\ScheduleConstraintBuilder;
 use App\Service\SchedulePlanProvisioner;
@@ -38,7 +39,7 @@ use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
  * VACUUM FULL changeraient alors la demande, donc peut-être le planning, sans qu'aucune donnée ait
  * changé.
  *
- * Le test compose les trois demandes (socle `buildForClubSeason`, période `buildForPeriodPlan`,
+ * Le test compose les trois demandes (socle et période par `buildForPlan`,
  * placement `MatchPlacementPayloadBuilder::build`), RÉÉCRIT À L'IDENTIQUE les lignes du club de
  * chaque table que lisent les constructeurs, puis recompose : les trois demandes doivent être
  * identiques (assertSame, ordre des listes compris). Le cache du socle est purgé avant chaque
@@ -105,8 +106,8 @@ final class EngineRequestOrderIsStableTest extends KernelTestCase
             array_keys(array_filter(['socle' => $before['socle'] !== $after['socle'], 'periode' => $before['periode'] !== $after['periode'], 'placement' => $before['placement'] !== $after['placement']])),
             'demandes changées par le seul ordre physique des lignes',
         );
-        self::assertSame($before['socle'], $after['socle'], 'demande du socle (buildForClubSeason) : l\'ordre physique des lignes a changé la demande');
-        self::assertSame($before['periode'], $after['periode'], 'demande de la période (buildForPeriodPlan) : l\'ordre physique des lignes a changé la demande');
+        self::assertSame($before['socle'], $after['socle'], 'demande du socle (buildForPlan) : l\'ordre physique des lignes a changé la demande');
+        self::assertSame($before['periode'], $after['periode'], 'demande de la période (buildForPlan) : l\'ordre physique des lignes a changé la demande');
         self::assertSame($before['placement'], $after['placement'], 'demande de placement (MatchPlacementPayloadBuilder::build) : l\'ordre physique des lignes a changé la demande');
     }
 
@@ -148,13 +149,13 @@ final class EngineRequestOrderIsStableTest extends KernelTestCase
         $builder = self::getContainer()->get(ScheduleConstraintBuilder::class);
 
         $this->purgeEngineRequestCache();
-        $socle = $builder->buildForClubSeason(self::ER_CLUB, self::ER_SEASON);
+        $socle = $builder->buildForPlan(self::getContainer()->get(SoclePlan::class)->idOf(self::ER_SEASON));
 
         $entry = $em->getRepository(CalendarEntry::class)->find(self::ER_ENTRY);
         self::assertInstanceOf(CalendarEntry::class, $entry);
         $periodPlanId = self::getContainer()->get(SchedulePlanProvisioner::class)->periodPlanId(self::ER_ENTRY);
         self::assertIsString($periodPlanId);
-        $periode = $builder->buildForPeriodPlan(self::ER_CLUB, self::ER_SEASON, $periodPlanId, $entry, scheduleId: self::ER_PERIOD_P1);
+        $periode = $builder->buildForPlan($periodPlanId, versionId: self::ER_PERIOD_P1);
 
         $club = $em->getRepository(Club::class)->find(self::ER_CLUB);
         self::assertInstanceOf(Club::class, $club);

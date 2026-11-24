@@ -14,6 +14,7 @@ use App\Entity\Venue;
 use App\Enum\MatchWeek;
 use App\Enum\SeasonStatus;
 use App\Plans\PlanComposition;
+use App\Plans\SoclePlan;
 use App\Service\MatchPlacementPayloadBuilder;
 use App\Service\ScheduleConstraintBuilder;
 use App\Service\SeasonResolver;
@@ -200,7 +201,7 @@ final class HabitPayloadParityTest extends KernelTestCase
      */
     private function generatePayload(Club $club, Season $season): array
     {
-        return $this->generateBuilder->buildForClubSeason($club->getId(), $season->getId());
+        return $this->generateBuilder->buildForPlan(self::getContainer()->get(SoclePlan::class)->idOf($season->getId()));
     }
 
     /**

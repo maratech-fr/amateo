@@ -574,7 +574,7 @@ final class BcclSeederIdempotenceTest extends KernelTestCase
         // drapeau posé par un listener (supprimé), elle se dérive de l'empreinte de structure
         // (le `snapshotHash` de la version pointée ⇄ la structure courante, servie par
         // SchedulePlanStructureHashController). Le seed pose le snapshot de structure sur la
-        // version pointée (`buildForClubSeason`), donc son `snapshot_hash` est renseigné — base
+        // version pointée (`buildForPlan`), donc son `snapshot_hash` est renseigné — base
         // cohérente, « Régénérer » honnêtement grisé.
         $snapshotHash = $this->connection->fetchOne(
             'SELECT s.snapshot_hash FROM schedule_plan sp JOIN schedule s ON s.id = sp.chosen_schedule_id '

@@ -10,14 +10,14 @@ use App\Entity\Constraint;
  * P2-14 — le résultat de LA sélection : quelles contraintes (entités) partent au solveur
  * pour un plan de période, et pourquoi les autres n'y partent pas. Produit par
  * {@see PeriodConstraintSelector}, consommé par les DEUX côtés qui répondaient chacun à
- * cette question dans leur coin : le payload (`ScheduleConstraintBuilder::buildForPeriodPlan`)
+ * cette question dans leur coin : le payload (`ScheduleConstraintBuilder::buildForPlan`)
  * et le gate pré-solve (`ValidateConstraintsController`).
  *
  * Les cartes annexes (gymnases désactivés, équipes en pause, séances surchargées) sont
  * exposées parce que le payload en a besoin pour filtrer créneaux/équipes/réservations —
  * les recharger à côté referait exactement le doublon que cette classe supprime.
  */
-final readonly class PeriodConstraintSelection
+final readonly class PlanSelection
 {
     /**
      * @param list<Constraint>                                     $kept                             les entités qui partent au solveur — LE jeu que le gate valide

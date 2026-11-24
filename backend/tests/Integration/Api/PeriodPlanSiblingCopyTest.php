@@ -30,6 +30,8 @@ use App\Plans\PlanComposition;
 use App\Service\OverlayManager;
 use App\Service\PeriodPlanSiblingCopier;
 use App\Service\SchedulePlanProvisioner;
+use App\Structure\FamilyCatalog;
+use App\Structure\Level;
 use App\Tests\ChoosesPlanVersionTrait;
 use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\SeasonPlanOf;
@@ -151,6 +153,34 @@ final class PeriodPlanSiblingCopyTest extends WebTestCase
 
         // ── La grille servie au plan cible est celle du PLAN SOURCE (jamais celle de la saison). ──
         self::assertSame($sourceGridDays, $this->gridDaysOf($club, $targetPlanId), 'la copie reprend la grille du PLAN source');
+    }
+
+    /**
+     * Lot 4, PR 5 (ligne 38 du plan) — copier un plan de période vers un autre donne les mêmes réglages : pour CHAQUE
+     * famille de niveau plan que déclare le catalogue (versions exceptées, copiées à part), les lignes du plan sœur
+     * égalent celles de la source, valeur par valeur (identifiants, horodatage et plan mis à part ; un membre de groupe
+     * se compare par le groupe qu'il désigne). Une famille de plan ajoutée et oubliée par la copie rougit ici, sans
+     * liste à tenir. Le compte par famille reste gardé par {@see testPointedSourceIsCopiedWholesaleIntoTheSiblingPlan}.
+     */
+    public function testTheSiblingPlanCarriesTheSourceSettingsInEveryPlanFamily(): void
+    {
+        [$user, $club, $season] = $this->createClubWithSeason();
+        $venue = $this->venue($club, $season);
+        $this->seedSeasonGridSlot($club, $season, $venue->getId());
+        $sourceEntry = $this->adaptedPeriod($user, 'Barros (réglages)', '2026-03-02', '2026-03-15');
+        $sourcePlanId = $this->planIdOf($club, $sourceEntry);
+        $this->seedPointedVersionWithLockedSlots($club, $season, $sourcePlanId, $venue->getId());
+        $this->seedAnchoredFamilies($club, $season, $sourcePlanId, $venue->getId());
+        $targetEntry = $this->adaptedPeriod($user, 'Barros (réglages, après)', '2026-03-30', '2026-04-05');
+        $targetPlanId = $this->planIdOf($club, $targetEntry);
+
+        self::getContainer()->get(PeriodPlanSiblingCopier::class)->copyInto($sourcePlanId, $targetEntry);
+
+        $source = $this->settingsOf($club, $sourcePlanId);
+        foreach ($source as $table => $rows) {
+            self::assertNotSame([], $rows, \sprintf('témoin : le plan source porte des lignes de %s (sinon l\'égalité serait creuse)', $table));
+        }
+        self::assertSame($source, $this->settingsOf($club, $targetPlanId), 'le plan sœur porte les mêmes réglages que la source, famille par famille');
     }
 
     /** Le plafond de séances par jour réglé pour la période source suit dans le plan sœur : la copie reprend la VALEUR. */
@@ -285,7 +315,8 @@ final class PeriodPlanSiblingCopyTest extends WebTestCase
         self::getContainer()->get(PlanComposition::class)->ensureLines($seasonId);
         self::getContainer()->get(PlanComposition::class)->venuesOf($planId)[$venueId]->setParticipating(false);
 
-        $block = (new SharedTrainingBlock)->setClubId($clubId)->setSeasonId($seasonId)->setSchedulePlanId($planId)->setCommonSessions(1);
+        // Un groupe NOMMÉ : la copie sœur reprend son nom (la naissance, elle, ne le copie pas : `Integration/Plans/PlanBirthTest`).
+        $block = (new SharedTrainingBlock)->setClubId($clubId)->setSeasonId($seasonId)->setSchedulePlanId($planId)->setCommonSessions(1)->setLabel('Groupe Barros');
         $this->em->persist($block);
         $this->em->flush();
         $this->em->persist((new SharedTrainingBlockTeam)->setClubId($clubId)->setSeasonId($seasonId)->setSchedulePlanId($planId)->setBlockId($block->getId())->setTeamId(self::TEAM_ID));
@@ -334,6 +365,55 @@ final class PeriodPlanSiblingCopyTest extends WebTestCase
             . ' VALUES (:id, 1, now(), now(), :club, :season, :venue, :day, :start, 120, :label, :plan)',
             ['id' => Uuid::v4()->toRfc4122(), 'club' => $club->getId(), 'season' => $season->getId(), 'venue' => $venueId, 'day' => $day, 'start' => $start, 'label' => $label, 'plan' => $planId ?? SeasonPlanOf::id(self::getContainer(), $season->getId())],
         );
+    }
+
+    /**
+     * Les lignes de chaque famille de niveau plan (catalogue, versions exceptées) portées par un plan, par table, triées
+     * et sans ce qui change à la copie (identifiant, version, horodatage, plan). Une colonne qui désigne une ligne du
+     * même plan (le groupe d'un membre) est remplacée par la ligne désignée.
+     *
+     * @return array<string, list<string>>
+     */
+    private function settingsOf(Club $club, string $planId): array
+    {
+        $this->scopeGucToClub($club->getId());
+        $this->em->clear();
+        $catalog = self::getContainer()->get(FamilyCatalog::class);
+        $rowsByTable = [];
+        foreach ($catalog->all() as $class) {
+            if (Level::PLAN !== $catalog->of($class)->level || Schedule::class === $class) {
+                continue;
+            }
+            $table = $this->em->getClassMetadata($class)->getTableName();
+            $rowsByTable[$table] = $this->em->getConnection()->fetchAllAssociative(
+                \sprintf('SELECT * FROM %s WHERE schedule_plan_id = :pid', $table),
+                ['pid' => $planId],
+            );
+        }
+        ksort($rowsByTable);
+
+        $own = static fn (array $row): array => array_diff_key($row, array_flip(['id', 'version', 'created_at', 'updated_at', 'schedule_plan_id']));
+        $byId = [];
+        foreach ($rowsByTable as $table => $rows) {
+            foreach ($rows as $row) {
+                $byId[(string) $row['id']] = $table . json_encode($own($row), \JSON_THROW_ON_ERROR);
+            }
+        }
+
+        $settings = [];
+        foreach ($rowsByTable as $table => $rows) {
+            $lines = array_map(
+                static fn (array $row): string => json_encode(array_map(
+                    static fn (mixed $value): mixed => \is_string($value) && isset($byId[$value]) ? $byId[$value] : $value,
+                    $own($row),
+                ), \JSON_THROW_ON_ERROR),
+                $rows,
+            );
+            sort($lines);
+            $settings[$table] = $lines;
+        }
+
+        return $settings;
     }
 
     /** @param class-string $family */

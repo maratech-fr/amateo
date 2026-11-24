@@ -21,8 +21,8 @@ use App\Service\ConstraintValidationService;
 use App\Service\GenerationBlockersGuard;
 use App\Service\ImplicitRuleResolver;
 use App\Service\PayloadCapacityMirror;
-use App\Service\PeriodConstraintSelection;
 use App\Service\PeriodConstraintSelector;
+use App\Service\PlanSelection;
 use App\Service\PreSolvePreventionWarnings;
 use App\Service\ScheduleConstraintBuilder;
 use App\Service\SchedulePlanProvisioner;
@@ -144,9 +144,8 @@ final class ValidateConstraintsController extends AbstractController
         );
 
         // P2-9 PR A — LE VOLET CAPACITÉ, dans les deux sens (décision fondateur 2026-07-31).
-        // Les nombres viennent du PAYLOAD que le solveur recevra (`buildForClubSeason` /
-        // `buildForPeriodPlan`, en lecture seule depuis P2-9ter) — JAMAIS d'un recalcul à la
-        // main : trois tentatives sont mortes exactement là-dessus, dont une en perdant des
+        // Les nombres viennent du PAYLOAD que le solveur recevra (`buildForPlan`, en lecture
+        // seule depuis P2-9ter) — JAMAIS d'un recalcul à la main : trois tentatives sont mortes exactement là-dessus, dont une en perdant des
         // données. Une période sans plan (non génératrice, ou antérieure au lot C1) n'a pas
         // de payload : rien à mesurer.
         // ⚠ Le build ne doit JAMAIS faire tomber le récap : c'est l'écran où le gestionnaire
@@ -160,13 +159,13 @@ final class ValidateConstraintsController extends AbstractController
         try {
             $capacityPayload = null;
             if (null !== $calendarEntryId) {
-                if ($selection instanceof PeriodConstraintSelection) {
+                if ($selection instanceof PlanSelection) {
                     // La sélection est déjà calculée pour les warnings : on la PASSE au
                     // builder plutôt que de la lui faire recalculer (revue #341).
-                    $capacityPayload = $this->scheduleConstraintBuilder->buildForPeriodPlan($clubId, $seasonId, $selection->schedulePlanId, $calendarEntry, selection: $selection);
+                    $capacityPayload = $this->scheduleConstraintBuilder->buildForPlan($selection->schedulePlanId, selection: $selection);
                 }
             } else {
-                $capacityPayload = $this->scheduleConstraintBuilder->buildForClubSeason($clubId, $seasonId);
+                $capacityPayload = $this->scheduleConstraintBuilder->buildForPlan($this->soclePlan->idOf($seasonId));
             }
             if (null !== $capacityPayload) {
                 $warnings = [
@@ -226,7 +225,7 @@ final class ValidateConstraintsController extends AbstractController
         $blockers = [
             // La même liste que les guichets `/generate`, `/regenerate` et `/fill` : une seule vérité.
             ...(null !== $capacityPayload
-                ? $this->generationBlockersGuard->blockersFor($capacityPayload, $reservations, $constraints, $selection instanceof PeriodConstraintSelection ? $selection->schedulePlanId : $this->soclePlan->idOf($seasonId))
+                ? $this->generationBlockersGuard->blockersFor($capacityPayload, $reservations, $constraints, $selection instanceof PlanSelection ? $selection->schedulePlanId : $this->soclePlan->idOf($seasonId))
                 : [...$this->generationBlockersGuard->overBookedOnEntities($reservations, $clubId, $seasonId), ...$secondSession['blockers']]),
             ...array_map(
                 fn (array $conflict): string => $this->coachDoubleBookingDetector->describeForRecap($conflict),
@@ -255,7 +254,7 @@ final class ValidateConstraintsController extends AbstractController
         // comptées parmi les alertes. Une période sans plan n'envoie rien au solveur : rien à annoncer.
         $ignoredRules = null === $calendarEntryId
             ? $this->implicitRuleResolver->ignoredRuleKeys($clubId, $seasonId, $this->soclePlan->idOf($seasonId))
-            : ($selection instanceof PeriodConstraintSelection ? $this->implicitRuleResolver->ignoredRuleKeys($clubId, $seasonId, $selection->schedulePlanId) : []);
+            : ($selection instanceof PlanSelection ? $this->implicitRuleResolver->ignoredRuleKeys($clubId, $seasonId, $selection->schedulePlanId) : []);
 
         return $this->json(
             ['valid' => $valid, 'errors' => $errors, 'conflicts' => $conflicts, 'warnings' => $warnings, 'blockers' => $blockers, 'doubledReservationIds' => $secondSession['reservationIds'], 'overlappingReservationIds' => $secondSession['overlappingReservationIds'], 'ignoredRules' => $ignoredRules, 'notices' => $this->coachDoubleBookingDetector->detectHoldNotices($reservations, $constraints, $clubId, $seasonId), 'capacity' => $capacity],
@@ -365,7 +364,7 @@ final class ValidateConstraintsController extends AbstractController
     }
 
     /**
-     * @return array{constraints: list<Constraint>, warnings: list<string>, selection: PeriodConstraintSelection|null}
+     * @return array{constraints: list<Constraint>, warnings: list<string>, selection: PlanSelection|null}
      */
     private function constraintsForPeriod(string $clubId, string $seasonId, CalendarEntry $calendarEntry): array
     {
@@ -389,7 +388,7 @@ final class ValidateConstraintsController extends AbstractController
             return $datedOnly();
         }
 
-        $selection = $this->periodConstraintSelector->selectForPeriodPlan($clubId, $seasonId, $schedulePlanId, $calendarEntry);
+        $selection = $this->periodConstraintSelector->selectForPlan($schedulePlanId);
 
         // Une contrainte sortie pour gymnase désactivé ne partira pas au solveur : elle
         // sort donc aussi du gate (sinon le récap valide un jeu que le payload n'aura
@@ -438,7 +437,7 @@ final class ValidateConstraintsController extends AbstractController
      *
      * @return list<Reservation>
      */
-    private function reservationsInScope(string $clubId, string $seasonId, ?string $calendarEntryId, ?PeriodConstraintSelection $selection): array
+    private function reservationsInScope(string $clubId, string $seasonId, ?string $calendarEntryId, ?PlanSelection $selection): array
     {
         $repository = $this->entityManager->getRepository(Reservation::class);
 
@@ -452,7 +451,7 @@ final class ValidateConstraintsController extends AbstractController
         // P2-14 : le plan et ses gymnases désactivés viennent de la SÉLECTION déjà
         // calculée — les re-résoudre ici était la 2e copie du même filtre. Pas de
         // sélection (période sans plan, ou non génératrice) : rien ne partira au solveur.
-        if (!$selection instanceof PeriodConstraintSelection) {
+        if (!$selection instanceof PlanSelection) {
             return [];
         }
 

@@ -42,7 +42,7 @@ use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
  * La spec l'exige ainsi — « le calcul en isolation ne suffit pas : un test qui
  * alimente lui-même la valeur qu'il prétend vérifier ne garde rien ».
  *
- * Les nombres viennent du PAYLOAD (`buildForClubSeason` / `buildForPeriodPlan`),
+ * Les nombres viennent du PAYLOAD (`buildForPlan`),
  * jamais d'un recalcul à la main — trois tentatives sont mortes là-dessus. Le cas
  * période le PROUVE : la demande y est modifiée par une surcharge de séances
  * (`TeamPeriodOverride`) et l'offre par la grille POSSÉDÉE par le plan — deux
@@ -416,7 +416,7 @@ final class RecapCapacityWarningTest extends WebTestCase
 
     /**
      * Un bloc de mutualisation {équipes} avec ses séances communes, ancré au SOCLE
-     * (`schedulePlanId = null`) — ce que `buildForClubSeason` lit pour le payload de saison.
+     * (`schedulePlanId = null`) — ce que `buildForPlan` lit pour le payload de saison.
      *
      * @param list<Team> $teams
      */

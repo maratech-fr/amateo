@@ -14,6 +14,7 @@ use App\Entity\Venue;
 use App\Entity\VenueTrainingSlot;
 use App\Enum\SeasonStatus;
 use App\Plans\PlanComposition;
+use App\Plans\SoclePlan;
 use App\Service\ScheduleConstraintBuilder;
 use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\SeasonPlanOf;
@@ -100,7 +101,7 @@ final class FreeSlotSemanticsGateTest extends KernelTestCase
     {
         $this->scheduleCache?->clear();
 
-        return $this->builder->buildForClubSeason($club->getId(), $season->getId());
+        return $this->builder->buildForPlan(self::getContainer()->get(SoclePlan::class)->idOf($season->getId()));
     }
 
     /**

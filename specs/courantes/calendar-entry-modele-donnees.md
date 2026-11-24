@@ -106,7 +106,7 @@ Ni l'une ni l'autre : **la période est PROPRIÉTAIRE.**
 - **Contraintes permanentes** : c'est là, et seulement là, que `periodType` porte encore une
   sémantique d'héritage. `closure` → toutes gardées (le gestionnaire décoche) ; `holiday` →
   seul le scope CLUB reste hérité par défaut (TEAM/COACH/FACILITY désactivées, décision
-  fondateur 2026-10-10, `PeriodConstraintSelector::selectForPeriodPlan`). Une ligne `PlanConstraint` par règle permanente porte le défaut de la nature du plan ; seule une ligne qui **diffère** du défaut est un réglage (ressource `ConstraintPeriodOverride`).
+  fondateur 2026-10-10, `PeriodConstraintSelector::selectForPlan`). Une ligne `PlanConstraint` par règle permanente porte le défaut de la nature du plan ; seule une ligne qui **diffère** du défaut est un réglage (ressource `ConstraintPeriodOverride`).
 - **Contraintes datées** : portées par la `CalendarEntry` — le **fait** (« Barros fermé ») par
   la mère, la **genèse** d'une semaine par son entrée-enfant (modèle FAIT/GENÈSE, §c) ; jamais
   décochables par plan.

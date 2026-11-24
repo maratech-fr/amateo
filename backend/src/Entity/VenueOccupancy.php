@@ -26,7 +26,7 @@ use Doctrine\ORM\Mapping as ORM;
  * `venueId` : une occupation dont le gymnase est absent de la version chargée DORT (en base,
  * absente de la liste) et revient avec lui.
  */
-#[Family(Level::PLAN)]
+#[Family(Level::PLAN, copiedAtPlanBirth: true)]
 #[ORM\Entity(repositoryClass: VenueOccupancyRepository::class)]
 #[ORM\Table(name: 'venue_occupancy')]
 #[ORM\Index(name: 'idx_venue_occupancy_club_venue', columns: ['club_id', 'venue_id'])]

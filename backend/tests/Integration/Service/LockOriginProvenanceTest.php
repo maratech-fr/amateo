@@ -17,6 +17,7 @@ use App\Enum\LockLevel;
 use App\Enum\LockOrigin;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
+use App\Plans\SoclePlan;
 use App\Service\ManualEditService;
 use App\Service\ScheduleConstraintBuilder;
 use App\Service\ScheduleResultImporter;
@@ -216,7 +217,7 @@ final class LockOriginProvenanceTest extends KernelTestCase
         if ('season' === $versionPlan && $loadedVersionCarriesManual) {
             // Le HARD que le moteur renvoie est bien l'épingle de la version chargée, partie au moteur.
             $pins = array_filter(
-                self::getContainer()->get(ScheduleConstraintBuilder::class)->buildForClubSeason($club->getId(), $season->getId())['slotTemplates'] ?? [],
+                self::getContainer()->get(ScheduleConstraintBuilder::class)->buildForPlan(self::getContainer()->get(SoclePlan::class)->idOf($season->getId()))['slotTemplates'] ?? [],
                 static fn (mixed $pin): bool => \is_array($pin) && self::TEAM === ($pin['teamId'] ?? null) && 'HARD' === ($pin['lockLevel'] ?? null),
             );
             self::assertCount(1, $pins, 'décor : la séance verrouillée de la version chargée part au moteur en épingle HARD');

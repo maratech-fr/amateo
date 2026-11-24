@@ -62,7 +62,7 @@ final readonly class GenerationBlockersGuard
             $repository = $this->entityManager->getRepository(Reservation::class);
 
             if ($this->schedulePlanProvisioner->isSeasonSchedule($schedule)) {
-                $payload = $this->scheduleConstraintBuilder->buildForClubSeason($clubId, $seasonId);
+                $payload = $this->scheduleConstraintBuilder->buildForPlan($schedule->getSchedulePlanId());
                 $reservations = $repository->findBy(['clubId' => $clubId, 'seasonId' => $seasonId, 'schedulePlanId' => $schedule->getSchedulePlanId()], ['id' => 'ASC']);
                 $constraints = $this->constraintRepository->findPermanentByClubSeason($clubId, $seasonId);
             } else {
@@ -72,8 +72,8 @@ final readonly class GenerationBlockersGuard
                 if (!$entry instanceof CalendarEntry) {
                     return null;
                 }
-                $selection = $this->periodConstraintSelector->selectForPeriodPlan($clubId, $seasonId, $planId, $entry);
-                $payload = $this->scheduleConstraintBuilder->buildForPeriodPlan($clubId, $seasonId, $planId, $entry, selection: $selection);
+                $selection = $this->periodConstraintSelector->selectForPlan($planId);
+                $payload = $this->scheduleConstraintBuilder->buildForPlan($planId, selection: $selection);
                 $constraints = $selection->kept;
                 $reservations = array_values(array_filter(
                     $repository->findBy(['schedulePlanId' => $planId], ['id' => 'ASC']),

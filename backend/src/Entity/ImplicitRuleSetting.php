@@ -28,7 +28,7 @@ use Doctrine\ORM\Mapping as ORM;
  * (`ImplicitRuleResolver` : `resolve` pour la saison, `resolveForPlan` pour un plan). Unicité
  * (club, saison, plan, règle).
  */
-#[Family(Level::PLAN)]
+#[Family(Level::PLAN, copiedAtPlanBirth: true)]
 #[ORM\Entity(repositoryClass: ImplicitRuleSettingRepository::class)]
 #[ORM\Table(name: 'implicit_rule_setting')]
 #[ORM\UniqueConstraint(name: 'uniq_implicit_rule_club_season_plan_key', columns: ['club_id', 'season_id', 'schedule_plan_id', 'rule_key'])]

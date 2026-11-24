@@ -43,7 +43,7 @@ final class CoachInTwoPlacesGuard
             if (!$entry instanceof CalendarEntry) {
                 return null;
             }
-            $selection = $this->periodConstraintSelector->selectForPeriodPlan($clubId, $seasonId, $planId, $entry);
+            $selection = $this->periodConstraintSelector->selectForPlan($planId);
             $constraints = $selection->kept;
             $reservations = array_values(array_filter(
                 $repository->findBy(['schedulePlanId' => $planId], ['id' => 'ASC']),
