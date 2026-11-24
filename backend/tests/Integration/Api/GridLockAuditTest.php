@@ -6,12 +6,16 @@ namespace App\Tests\Integration\Api;
 
 use App\Entity\Club;
 use App\Entity\ClubUser;
+use App\Entity\Constraint;
 use App\Entity\Schedule;
 use App\Entity\ScheduleSlotTemplate;
 use App\Entity\Season;
 use App\Entity\Team;
 use App\Entity\User;
 use App\Entity\Venue;
+use App\Enum\ConstraintFamily;
+use App\Enum\ConstraintRuleType;
+use App\Enum\ConstraintScope;
 use App\Enum\LockLevel;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
@@ -359,6 +363,43 @@ final class GridLockAuditTest extends WebTestCase
         self::assertSame($this->club->getId(), $deleted[0]['club_id'], 'club tracé');
         self::assertSame([], $this->details($deleted[0]), 'aucun details, donc aucune donnée personnelle');
         self::assertCount(0, $this->auditRowsFor('grid.changed', $settingId), 'aucune trace grid.changed pour un réglage d\'équipe');
+    }
+
+    /**
+     * Jumeau des cas gymnase et équipe, pour la coche d'une règle de période (lot 4, PR 4, la ligne reprend le défaut
+     * de la nature au lieu de disparaître) : retirer la coche reste tracé comme avant le lot — UNE ligne
+     * `entity.deleted`, type 'ConstraintPeriodOverride', l'id du réglage, l'acteur et le club, sans `details` et sans
+     * `grid.changed`.
+     */
+    public function testRemovingARulePeriodSettingStaysTrackedByEntityDeleted(): void
+    {
+        $planId = $this->createPeriodPlan($this->club->getId(), $this->season->getId());
+        $this->scopeGucToClub($this->club->getId());
+        $rule = (new Constraint)->setClubId($this->club->getId())->setSeasonId($this->season->getId())->setName('Pas le dimanche')
+            ->setScope(ConstraintScope::CLUB)->setFamily(ConstraintFamily::DAY)->setRuleType(ConstraintRuleType::HARD)->setConfig(['forbiddenDays' => [7]]);
+        $this->em->persist($rule);
+        $this->em->flush();
+        self::getContainer()->get(PlanComposition::class)->ensureLines($this->season->getId());
+        $this->em->flush();
+
+        $this->client->request('POST', '/api/constraint_period_overrides', [], [], $this->headers(), json_encode([
+            'schedulePlanId' => $planId,
+            'constraintId' => $rule->getId(),
+            'isActive' => false,
+        ], \JSON_THROW_ON_ERROR));
+        self::assertContains($this->client->getResponse()->getStatusCode(), [200, 201], (string) $this->client->getResponse()->getContent());
+        $settingId = $this->decode()['id'];
+
+        $this->client->request('DELETE', '/api/constraint_period_overrides/' . $settingId, [], [], $this->headers());
+        self::assertResponseStatusCodeSame(204);
+
+        $deleted = $this->auditRowsFor('entity.deleted', $settingId);
+        self::assertCount(1, $deleted, 'retirer la coche de la règle laisse UNE trace entity.deleted');
+        self::assertSame('ConstraintPeriodOverride', $deleted[0]['entity_type']);
+        self::assertSame($this->manager->getId(), $deleted[0]['actor_user_id'], 'acteur tracé');
+        self::assertSame($this->club->getId(), $deleted[0]['club_id'], 'club tracé');
+        self::assertSame([], $this->details($deleted[0]), 'aucun details, donc aucune donnée personnelle');
+        self::assertCount(0, $this->auditRowsFor('grid.changed', $settingId), 'aucune trace grid.changed pour la coche d\'une règle');
     }
 
     /**
