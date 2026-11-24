@@ -29,6 +29,7 @@ use App\Exception\SwapCrossScheduleException;
 use App\Exception\SwapWithSelfException;
 use App\Exception\TeamAlreadyAtCaseException;
 use App\Exception\TeamAlreadyTrainsThatDayException;
+use App\Plans\SoclePlan;
 use App\Support\WeeklySlot;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -94,6 +95,7 @@ final class MoveSlotService
         private readonly LoggerInterface $logger,
         private readonly TeamCaseOccupancyGuard $teamCaseOccupancyGuard,
         private readonly PeriodConstraintSelector $periodConstraintSelector,
+        private readonly SoclePlan $soclePlan,
     ) {}
 
     /**
@@ -148,7 +150,7 @@ final class MoveSlotService
         //        La durée d'une séance ne VOYAGE donc JAMAIS avec l'équipe déplacée — elle est celle
         //        de la FENÊTRE de destination (venueId + dayOfWeek + startTime), lue dans le payload
         //        du moteur. Aucune fenêtre à ce triplet — cible inexistante OU jour fermé, la grille
-        //        de `buildForOverlay`/`buildForClubSeason` excluant DÉJÀ les deux (jour fermé, gymnase
+        //        de `buildForPlan` excluant DÉJÀ les deux (jour fermé, gymnase
         //        désactivé), saison comme période — le créneau n'existe pas : on tranche AVANT le
         //        moteur, y compris en dryRun (un essai doit refuser vite).
         $durationMinutes = $this->resolveWindowDurationMinutes($payload, $venueId, $dayOfWeek, $startTime);
@@ -1106,12 +1108,7 @@ final class MoveSlotService
             return [];
         }
 
-        $selection = $this->periodConstraintSelector->selectForPeriodPlan(
-            $schedule->getClubId(),
-            $schedule->getSeasonId(),
-            $schedule->getSchedulePlanId(),
-            $overlayEntry,
-        );
+        $selection = $this->periodConstraintSelector->selectForPlan($schedule->getSchedulePlanId());
 
         $removedSet = array_fill_keys($removedTeamIds, true);
         $teamRepository = $this->entityManager->getRepository(Team::class);
@@ -1414,8 +1411,8 @@ final class MoveSlotService
             : $this->entityManager->getRepository(CalendarEntry::class)->find($overlayEntryId);
 
         $payload = $overlayEntry instanceof CalendarEntry
-            ? $this->constraintBuilder->buildForOverlay($schedule, $overlayEntry)
-            : $this->constraintBuilder->buildForClubSeason($schedule->getClubId(), $schedule->getSeasonId());
+            ? $this->constraintBuilder->buildForPlan($schedule->getSchedulePlanId(), $schedule->getSolverSeed(), $schedule->getId())
+            : $this->constraintBuilder->buildForPlan($this->soclePlan->idOf($schedule->getSeasonId()));
 
         $currentSlotTemplates = \is_array($payload['slotTemplates'] ?? null) ? $payload['slotTemplates'] : [];
         $payload['slotTemplates'] = $this->baselineWithoutSiblings($currentSlotTemplates, $schedule, $excludedIds);

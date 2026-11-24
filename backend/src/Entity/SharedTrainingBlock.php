@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace App\Entity;
 
+use App\Plans\PlanBirth;
 use App\Plans\PlanComposition;
-use App\Service\SchedulePlanProvisioner;
 use App\Structure\Family;
 use App\Structure\Level;
 use App\Structure\OnDelete;
@@ -26,7 +26,7 @@ use Doctrine\ORM\Mapping as ORM;
  *  - fait de PLAN : ``schedulePlanId`` (le plan de saison pour le socle, un plan de période sinon),
  *    patron `Reservation`/`VenueTrainingSlot`. Copie socle→période à la NAISSANCE d'un plan de
  *    FERMETURE (CLOSURE) seulement — le gestionnaire hérite ce que le club mutualise, puis diverge
- *    (D10 affinée 2026-09-02, {@see SchedulePlanProvisioner::copySocleSharedBlocks}) ;
+ *    (D10 affinée 2026-09-02, {@see PlanBirth::copy}) ;
  *    un plan de vacances (HOLIDAY) ne copie JAMAIS ;
  *  - multi-appartenance PERMISE : une équipe peut être membre de PLUSIEURS blocs (pas d'unicité
  *    un-bloc-par-équipe) — c'est LA capacité qui manquait au modèle groupe ;
@@ -37,7 +37,7 @@ use Doctrine\ORM\Mapping as ORM;
  * Détail : docs/archive/plannings-bccl-2026-08-31.md §4 (cadrage d'origine `mutualisation-par-creneau.md`
  * supprimé à la clôture du lot, historique git avant 05d1f7bb).
  */
-#[Family(Level::PLAN)]
+#[Family(Level::PLAN, copiedAtPlanBirth: true)]
 #[ORM\Entity]
 #[ORM\Table(name: 'shared_training_block')]
 #[ORM\Index(name: 'idx_shared_training_block_club_season', columns: ['club_id', 'season_id'])]

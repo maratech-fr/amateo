@@ -24,6 +24,7 @@ use App\Enum\SeasonStatus;
 use App\Message\GenerateScheduleMessage;
 use App\MessageHandler\GenerateScheduleHandler;
 use App\Plans\PlanComposition;
+use App\Plans\SoclePlan;
 use App\Service\ClubGenerationLock;
 use App\Service\DiagnosticMessageBuilder;
 use App\Service\EngineClient;
@@ -68,7 +69,7 @@ use Symfony\Component\Mercure\HubInterface;
  *
  * Ce fichier épingle les quatre falsifications :
  *   - base : la réservation figure UNE fois, pas deux, après import → ROUGE avant la correction ;
- *   - période : idem sur `buildForPeriodPlan` (prouve que le saut vit dans `buildPayload`, partagé,
+ *   - période : idem sur `buildForPlan` (prouve que le saut vit dans `buildPayload`, partagé,
  *     et non dans le seul `findBaseSlotTemplates`) → ROUGE avant la correction ;
  *   - empreinte : `structureHashOfPlan` juste après un import == celle d'avant → ROUGE avant ;
  *   - sur-filtrage : un HARD UNKNOWN sans réservation à l'origine RESTE au payload (le MANUAL, lui,
@@ -126,7 +127,7 @@ final class ReservationPinsNotDoubledTest extends KernelTestCase
         $this->em->flush();
 
         $this->purgeCache($club, $season);
-        $payload = $this->builder->buildForClubSeason($club->getId(), $season->getId());
+        $payload = $this->builder->buildForPlan(self::getContainer()->get(SoclePlan::class)->idOf($season->getId()));
 
         self::assertCount(
             1,
@@ -157,13 +158,7 @@ final class ReservationPinsNotDoubledTest extends KernelTestCase
         $this->importedReservationPin($overlay);
         $this->em->flush();
 
-        $payload = $this->builder->buildForPeriodPlan(
-            $club->getId(),
-            $season->getId(),
-            $planId,
-            $entry,
-            scheduleId: $overlay->getId(),
-        );
+        $payload = $this->builder->buildForPlan($planId, versionId: $overlay->getId());
 
         self::assertCount(
             1,
@@ -249,7 +244,7 @@ final class ReservationPinsNotDoubledTest extends KernelTestCase
         $this->em->flush();
 
         $this->purgeCache($club, $season);
-        $payload = $this->builder->buildForClubSeason($club->getId(), $season->getId());
+        $payload = $this->builder->buildForPlan(self::getContainer()->get(SoclePlan::class)->idOf($season->getId()));
 
         self::assertCount(
             1,
@@ -332,7 +327,7 @@ final class ReservationPinsNotDoubledTest extends KernelTestCase
         $this->em->flush();
         $this->purgeCache($club, $season);
 
-        $payload = $this->builder->buildForClubSeason($club->getId(), $season->getId());
+        $payload = $this->builder->buildForPlan(self::getContainer()->get(SoclePlan::class)->idOf($season->getId()));
 
         self::assertCount(1, $this->pinsAtReservationPlacement($payload));
         $olderRow = $this->em->getRepository(Schedule::class)->find($older->getId());

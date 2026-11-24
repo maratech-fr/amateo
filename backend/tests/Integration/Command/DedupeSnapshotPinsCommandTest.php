@@ -20,6 +20,7 @@ use App\Enum\LockLevel;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
 use App\Plans\PlanComposition;
+use App\Plans\SoclePlan;
 use App\Service\ScheduleConstraintBuilder;
 use App\Service\SchedulePlanProvisioner;
 use App\Tests\ChoosesPlanVersionTrait;
@@ -370,7 +371,7 @@ final class DedupeSnapshotPinsCommandTest extends KernelTestCase
 
         $f = ['clubId' => $club->getId(), 'seasonId' => $season->getId(), 'planId' => $planId];
         $this->purgeCache($f);
-        $snapshot = self::getContainer()->get(ScheduleConstraintBuilder::class)->buildForClubSeason($club->getId(), $season->getId());
+        $snapshot = self::getContainer()->get(ScheduleConstraintBuilder::class)->buildForPlan(self::getContainer()->get(SoclePlan::class)->idOf($season->getId()));
         self::assertContains('NONE', array_column($snapshot['slotTemplates'], 'lockLevel'), 'témoin : le snapshot d\'avant le correctif compte la séance du solveur');
         if (null !== $contractVersion) {
             $snapshot['version'] = $contractVersion;

@@ -27,8 +27,8 @@ use App\Enum\Gender;
 use App\Enum\SeasonStatus;
 use App\Enum\TeamLevel;
 use App\Plans\PlanComposition;
-use App\Service\PeriodConstraintSelection;
 use App\Service\PeriodConstraintSelector;
+use App\Service\PlanSelection;
 use App\Service\ScheduleConstraintBuilder;
 use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\ProvisionsPeriodPlanTrait;
@@ -85,7 +85,7 @@ final class PeriodGatePayloadParityTest extends WebTestCase
         //    de lignes « interdit hors tag » — sans ligne par équipe non plus, elle sort ; comme
         //    sa clé secondaire nomme le gymnase désactivé, elle sort AVEC cette raison.
         $selection = self::getContainer()->get(PeriodConstraintSelector::class)
-            ->selectForPeriodPlan($club->getId(), $season->getId(), $planId, $entry);
+            ->selectForPlan($planId);
         $keptIds = array_map(static fn (Constraint $c): string => $c->getId(), $selection->kept);
         sort($keptIds);
         $expectedKept = [$ids['teamOk'], $ids['datedOk']];
@@ -108,7 +108,7 @@ final class PeriodGatePayloadParityTest extends WebTestCase
         //    retenue produit au moins une ligne. C'est l'invariant que les deux copies
         //    manuelles ne pouvaient que promettre.
         $payload = self::getContainer()->get(ScheduleConstraintBuilder::class)
-            ->buildForPeriodPlan($club->getId(), $season->getId(), $planId, $entry);
+            ->buildForPlan($planId);
         $payloadRootIds = [];
         foreach ($payload['constraints'] as $row) {
             self::assertIsArray($row);
@@ -176,7 +176,7 @@ final class PeriodGatePayloadParityTest extends WebTestCase
 
         // 1) Le gate (sélecteur) retient la contrainte : elle vise encore une équipe.
         $selection = self::getContainer()->get(PeriodConstraintSelector::class)
-            ->selectForPeriodPlan($club->getId(), $season->getId(), $planId, $entry);
+            ->selectForPlan($planId);
         self::assertSame(
             [$constraintId],
             array_map(static fn (Constraint $c): string => $c->getId(), $selection->kept),
@@ -186,7 +186,7 @@ final class PeriodGatePayloadParityTest extends WebTestCase
         // 2) Le payload (builder) sérialise EXACTEMENT l'équipe de l'intersection moins
         //    l'exclusion — et AUCUNE clé de tag ne part au moteur.
         $payload = self::getContainer()->get(ScheduleConstraintBuilder::class)
-            ->buildForPeriodPlan($club->getId(), $season->getId(), $planId, $entry);
+            ->buildForPlan($planId);
         $teamRows = array_values(array_filter(
             $payload['constraints'],
             static fn (mixed $row): bool => \is_array($row) && str_starts_with((string) $row['id'], $constraintId . ':'),
@@ -217,7 +217,7 @@ final class PeriodGatePayloadParityTest extends WebTestCase
 
         // 1) La SÉLECTION (source unique gate ↔ payload) porte l'état effectif : mer + sam.
         $selection = self::getContainer()->get(PeriodConstraintSelector::class)
-            ->selectForPeriodPlan($club->getId(), $season->getId(), $planId, $entry);
+            ->selectForPlan($planId);
         $effective = array_keys($selection->effectiveClosedWeekdaysByVenue[$venue->getId()] ?? []);
         sort($effective);
         self::assertSame([3, 6], $effective, 'la sélection retire mer (incident) + sam (masque) et EUX SEULS');
@@ -233,7 +233,7 @@ final class PeriodGatePayloadParityTest extends WebTestCase
         $this->em->flush();
 
         $selection = self::getContainer()->get(PeriodConstraintSelector::class)
-            ->selectForPeriodPlan($club->getId(), $season->getId(), $planId, $entry);
+            ->selectForPlan($planId);
         self::assertSame([], array_keys($selection->effectiveClosedWeekdaysByVenue[$venue->getId()] ?? []), 'mercredi rouvert OPEN annule l’incident, plus aucun jour fermé');
         self::assertSame([1, 3, 6], $this->payloadWeekdaysOf($club, $season, $planId, $entry, $venue->getId()), 'les trois créneaux reviennent au payload');
     }
@@ -289,7 +289,7 @@ final class PeriodGatePayloadParityTest extends WebTestCase
         [$club, $season, $child, $planId, $genesisId, $factId] = $this->seedGenesisUnionScenario();
 
         $selection = self::getContainer()->get(PeriodConstraintSelector::class)
-            ->selectForPeriodPlan($club->getId(), $season->getId(), $planId, $child);
+            ->selectForPlan($planId);
         $keptIds = array_map(static fn (Constraint $c): string => $c->getId(), $selection->kept);
         sort($keptIds);
         $expected = [$genesisId, $factId];
@@ -297,7 +297,7 @@ final class PeriodGatePayloadParityTest extends WebTestCase
         self::assertSame($expected, $keptIds, 'la sélection retient l\'union genèse (enfant) + fait (mère)');
 
         $payload = self::getContainer()->get(ScheduleConstraintBuilder::class)
-            ->buildForPeriodPlan($club->getId(), $season->getId(), $planId, $child);
+            ->buildForPlan($planId);
         $payloadRootIds = [];
         foreach ($payload['constraints'] as $row) {
             self::assertIsArray($row);
@@ -326,7 +326,7 @@ final class PeriodGatePayloadParityTest extends WebTestCase
 
         self::assertSame(
             [$ids['club']],
-            $this->keptIds($selector->selectForPeriodPlan($club->getId(), $season->getId(), $planId, $entry)),
+            $this->keptIds($selector->selectForPlan($planId)),
             'en vacances, seul le scope CLUB est hérité par défaut — TEAM et COACH sont désactivées',
         );
 
@@ -339,7 +339,7 @@ final class PeriodGatePayloadParityTest extends WebTestCase
         sort($expected);
         self::assertSame(
             $expected,
-            $this->keptIds($selector->selectForPeriodPlan($club->getId(), $season->getId(), $planId, $entry)),
+            $this->keptIds($selector->selectForPlan($planId)),
             'un override isActive=true ramène une TEAM/COACH désactivée par défaut',
         );
     }
@@ -356,7 +356,7 @@ final class PeriodGatePayloadParityTest extends WebTestCase
         sort($expected);
         self::assertSame(
             $expected,
-            $this->keptIds(self::getContainer()->get(PeriodConstraintSelector::class)->selectForPeriodPlan($club->getId(), $season->getId(), $planId, $entry)),
+            $this->keptIds(self::getContainer()->get(PeriodConstraintSelector::class)->selectForPlan($planId)),
             'une fermeture hérite TOUTES les permanentes par défaut (CLOSURE inchangée)',
         );
     }
@@ -476,7 +476,7 @@ final class PeriodGatePayloadParityTest extends WebTestCase
     private function payloadWeekdaysOf(Club $club, Season $season, string $planId, CalendarEntry $entry, string $venueId): array
     {
         $payload = self::getContainer()->get(ScheduleConstraintBuilder::class)
-            ->buildForPeriodPlan($club->getId(), $season->getId(), $planId, $entry);
+            ->buildForPlan($planId);
         $days = [];
         foreach ($payload['venues'] as $venue) {
             if ($venue['id'] === $venueId) {
@@ -969,7 +969,7 @@ final class PeriodGatePayloadParityTest extends WebTestCase
      *
      * @return list<string>
      */
-    private function keptIds(PeriodConstraintSelection $selection): array
+    private function keptIds(PlanSelection $selection): array
     {
         $ids = array_map(static fn (Constraint $c): string => $c->getId(), $selection->kept);
         sort($ids);

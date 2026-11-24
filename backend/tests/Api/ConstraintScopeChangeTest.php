@@ -213,7 +213,7 @@ final class ConstraintScopeChangeTest extends WebTestCase
         $this->scopeGucToClub($this->clubId);
         $entry = $this->em->getRepository(CalendarEntry::class)->find($this->entryOf[$planId]);
         self::assertInstanceOf(CalendarEntry::class, $entry);
-        $selection = self::getContainer()->get(PeriodConstraintSelector::class)->selectForPeriodPlan($this->clubId, $this->season->getId(), $planId, $entry);
+        $selection = self::getContainer()->get(PeriodConstraintSelector::class)->selectForPlan($planId);
         foreach ($selection->kept as $constraint) {
             if ($ruleId === $constraint->getId()) {
                 return true;

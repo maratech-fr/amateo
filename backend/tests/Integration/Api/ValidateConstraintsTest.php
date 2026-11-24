@@ -573,7 +573,7 @@ final class ValidateConstraintsTest extends WebTestCase
 
     /**
      * #8 — le même filtre s’applique aux contraintes DATÉES de la période. Ne filtrer que
-     * les permanentes recréerait la désynchronisation gate/payload (buildForOverlay filtre
+     * les permanentes recréerait la désynchronisation gate/payload (buildForPlan filtre
      * les deux). Ici le gymnase est nommé par la CONFIG (`minAtVenueId`).
      */
     public function testDatedConstraintNamingADisabledVenueIsWarnedAndDropped(): void
@@ -1058,7 +1058,7 @@ final class ValidateConstraintsTest extends WebTestCase
         return $venue->getId();
     }
 
-    /** Un créneau SAISONNIER (schedulePlanId null) — celui que `buildForClubSeason` sérialise. */
+    /** Un créneau SAISONNIER (schedulePlanId null) — celui que `buildForPlan` sérialise. */
     private function trainingSlot(string $venueId, int $dayOfWeek, string $start): void
     {
         $slot = new VenueTrainingSlot;

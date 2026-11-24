@@ -29,6 +29,7 @@ use App\Enum\LockOrigin;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
 use App\Plans\PlanComposition;
+use App\Plans\SoclePlan;
 use App\Service\ClubGenerationLock;
 use App\Service\ScheduleConstraintBuilder;
 use App\Service\SchedulePlanProvisioner;
@@ -117,7 +118,7 @@ final class SlotRemovalTest extends WebTestCase
 
     /**
      * LOCK-SOURCE (falsification) — une séance HARD d'une version de SOCLE est greffée comme épingle
-     * dans le payload de génération (`buildForClubSeason`). Après retrait, elle N'Y EST PLUS : la
+     * dans le payload de génération (`buildForPlan`). Après retrait, elle N'Y EST PLUS : la
      * prochaine génération ne la figera plus. Un retrait qui n'écrirait pas (no-op) laisserait
      * l'épingle au payload — cette assertion le ferait rougir.
      */
@@ -126,7 +127,7 @@ final class SlotRemovalTest extends WebTestCase
         $ctx = $this->seedSeason('c');
         $slot = $this->placeSlot($ctx, $ctx['teamId'], LockLevel::HARD);
 
-        $before = self::getContainer()->get(ScheduleConstraintBuilder::class)->buildForClubSeason($ctx['clubId'], $ctx['seasonId']);
+        $before = self::getContainer()->get(ScheduleConstraintBuilder::class)->buildForPlan(self::getContainer()->get(SoclePlan::class)->idOf($ctx['seasonId']));
         self::assertTrue($this->payloadHasHardPin($before, $slot->getId()), 'le payload greffe bien l\'épingle HARD avant le retrait');
 
         $this->client->request('POST', '/api/schedule-slots/' . $slot->getId() . '/remove', [], [], $this->managerHeaders($ctx), '{}');
@@ -134,7 +135,7 @@ final class SlotRemovalTest extends WebTestCase
 
         $this->em->clear();
         $this->scopeGucToClub($ctx['clubId']);
-        $after = self::getContainer()->get(ScheduleConstraintBuilder::class)->buildForClubSeason($ctx['clubId'], $ctx['seasonId']);
+        $after = self::getContainer()->get(ScheduleConstraintBuilder::class)->buildForPlan(self::getContainer()->get(SoclePlan::class)->idOf($ctx['seasonId']));
         self::assertFalse($this->payloadHasHardPin($after, $slot->getId()), 'après retrait, l\'épingle HARD a disparu du payload');
     }
 

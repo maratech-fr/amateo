@@ -15,6 +15,7 @@ use App\Enum\CalendarEntryPeriodType;
 use App\Enum\ImplicitRuleIntensity;
 use App\Enum\ImplicitRuleKey;
 use App\Enum\SeasonStatus;
+use App\Plans\SoclePlan;
 use App\Service\ImplicitRuleResolver;
 use App\Service\ScheduleConstraintBuilder;
 use App\Tests\ProvisionsPeriodPlanTrait;
@@ -72,7 +73,7 @@ final class ImplicitRulePayloadParityTest extends KernelTestCase
         $this->store($club, $season, ImplicitRuleKey::SALARIE_DISTRIBUTION, ImplicitRuleIntensity::PREFERRED, null);
         $this->em->flush();
 
-        $payload = $this->builder->buildForClubSeason($club->getId(), $season->getId());
+        $payload = $this->builder->buildForPlan(self::getContainer()->get(SoclePlan::class)->idOf($season->getId()));
 
         // Parité stricte : le payload émet EXACTEMENT ce que le résolveur résout — maison unique.
         self::assertSame(
@@ -120,7 +121,7 @@ final class ImplicitRulePayloadParityTest extends KernelTestCase
         $this->em->flush();
         $this->em->clear();
 
-        $payload = $this->builder->buildForPeriodPlan($club->getId(), $season->getId(), $planId, $entry);
+        $payload = $this->builder->buildForPlan($planId);
 
         // Le payload de période garde la COPIE de naissance…
         self::assertSame(['intensity' => 'PREFERRED', 'maxConsecutive' => 5], $payload['implicitRules']['maxConsecutiveSessions']);
@@ -157,7 +158,7 @@ final class ImplicitRulePayloadParityTest extends KernelTestCase
         $this->em->flush();
         $this->em->clear();
 
-        $payload = $this->builder->buildForPeriodPlan($club->getId(), $season->getId(), $planId, $entry);
+        $payload = $this->builder->buildForPlan($planId);
 
         self::assertSame(
             $this->resolver->resolve($club->getId(), $season->getId()),
@@ -175,7 +176,7 @@ final class ImplicitRulePayloadParityTest extends KernelTestCase
     {
         [$club, $season] = $this->seed();
 
-        $payload = $this->builder->buildForClubSeason($club->getId(), $season->getId());
+        $payload = $this->builder->buildForPlan(self::getContainer()->get(SoclePlan::class)->idOf($season->getId()));
 
         self::assertSame(ImplicitRuleResolver::defaults(), $payload['implicitRules']);
         // PR 1b — l'empreinte d'un club qui n'ignore aucune règle ne bouge pas : le bloc reste celui
@@ -213,7 +214,7 @@ final class ImplicitRulePayloadParityTest extends KernelTestCase
             'ageAscending' => ['intensity' => 'OFF'],
         ];
 
-        $seasonPayload = $this->builder->buildForClubSeason($club->getId(), $season->getId());
+        $seasonPayload = $this->builder->buildForPlan(self::getContainer()->get(SoclePlan::class)->idOf($season->getId()));
         self::assertSame($expected, $seasonPayload['implicitRules'], 'saison : chaque règle historique ignorée part en OFF explicite');
         self::assertSame($this->resolver->resolve($club->getId(), $season->getId()), $seasonPayload['implicitRules']);
 
@@ -221,7 +222,7 @@ final class ImplicitRulePayloadParityTest extends KernelTestCase
         $entry = $this->holidayPeriod($club, $season);
         $planId = $this->planIdOf($entry);
         $this->em->clear();
-        $periodPayload = $this->builder->buildForPeriodPlan($club->getId(), $season->getId(), $planId, $entry);
+        $periodPayload = $this->builder->buildForPlan($planId);
         self::assertSame($expected, $periodPayload['implicitRules'], 'période : la copie de naissance émet les mêmes OFF explicites');
     }
 
@@ -237,7 +238,7 @@ final class ImplicitRulePayloadParityTest extends KernelTestCase
         $this->store($club, $season, ImplicitRuleKey::SALARIE_DISTRIBUTION, ImplicitRuleIntensity::HARD, null);
         $this->em->flush();
 
-        $payload = $this->builder->buildForClubSeason($club->getId(), $season->getId());
+        $payload = $this->builder->buildForPlan(self::getContainer()->get(SoclePlan::class)->idOf($season->getId()));
 
         self::assertSame(['intensity' => 'HARD'], $payload['implicitRules']['salarieDistribution']);
     }
@@ -274,7 +275,7 @@ final class ImplicitRulePayloadParityTest extends KernelTestCase
         self::assertInstanceOf(ImplicitRuleSetting::class, $planRow);
         self::assertSame(ImplicitRuleIntensity::OFF, $planRow->getIntensity(), 'précondition : le plan d\'un club neuf matérialise l\'opt-in à OFF');
 
-        $payload = $this->builder->buildForPeriodPlan($club->getId(), $season->getId(), $planId, $entry);
+        $payload = $this->builder->buildForPlan($planId);
 
         self::assertArrayNotHasKey(
             'maxConsecutiveDays',
@@ -306,7 +307,7 @@ final class ImplicitRulePayloadParityTest extends KernelTestCase
         $this->store($club, $season, ImplicitRuleKey::MAX_CONSECUTIVE_DAYS, ImplicitRuleIntensity::OFF, null);
         $this->em->flush();
 
-        $payload = $this->builder->buildForClubSeason($club->getId(), $season->getId());
+        $payload = $this->builder->buildForPlan(self::getContainer()->get(SoclePlan::class)->idOf($season->getId()));
 
         self::assertArrayNotHasKey(
             'maxConsecutiveDays',

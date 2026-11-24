@@ -16,6 +16,7 @@ use App\Enum\CalendarEntryKind;
 use App\Enum\CalendarEntryPeriodType;
 use App\Enum\SeasonStatus;
 use App\Plans\PlanComposition;
+use App\Plans\SoclePlan;
 use App\Service\ScheduleConstraintBuilder;
 use App\Tests\ProvisionsPeriodPlanTrait;
 use App\Tests\SeasonPlanOf;
@@ -66,7 +67,7 @@ final class SharedBlockPayloadParityTest extends KernelTestCase
         $this->block($club, $season, $planId, [$t1, $t3], 2);
         $this->em->flush();
 
-        $payload = $this->builder->buildForClubSeason($club->getId(), $season->getId());
+        $payload = $this->builder->buildForPlan(self::getContainer()->get(SoclePlan::class)->idOf($season->getId()));
 
         // Sens 1 — le bloc socle stocké est REFLÉTÉ exactement (un builder émettant [] échoue).
         self::assertSame(
@@ -102,7 +103,7 @@ final class SharedBlockPayloadParityTest extends KernelTestCase
         $periodBlock = $this->block($club, $season, $planId, [$t1, $t2], 2);
         $this->em->flush();
 
-        $payload = $this->builder->buildForPeriodPlan($club->getId(), $season->getId(), $planId, $entry);
+        $payload = $this->builder->buildForPlan($planId);
 
         self::assertSame(
             [[
@@ -120,7 +121,7 @@ final class SharedBlockPayloadParityTest extends KernelTestCase
      * à <2 membres actifs est ABANDONNÉ. Ici la « pause » est simulée par un membre dont le teamId
      * n'est pas dans le roster club+saison — c'est EXACTEMENT le prédicat que serializeSharedBlocks
      * teste (`isset($rosterIds[teamId])`), déclenché en production par une équipe désactivée pour
-     * la période (PeriodConstraintSelection::deactivatedTeamIds retirant l'équipe du roster).
+     * la période (PlanSelection::deactivatedTeamIds retirant l'équipe du roster).
      */
     public function testMemberOutOfRosterIsFilteredAndSubTwoBlockIsDropped(): void
     {
@@ -139,7 +140,7 @@ final class SharedBlockPayloadParityTest extends KernelTestCase
         $this->blockOfIds($club, $season, null, [$t3->getId(), $absentTeamId], 1);
         $this->em->flush();
 
-        $payload = $this->builder->buildForClubSeason($club->getId(), $season->getId());
+        $payload = $this->builder->buildForPlan(self::getContainer()->get(SoclePlan::class)->idOf($season->getId()));
 
         self::assertSame(
             [[
@@ -175,7 +176,7 @@ final class SharedBlockPayloadParityTest extends KernelTestCase
         $socleBlock = $this->block($club, $season, null, [$t1, $t2], 1);
         $this->em->flush();
 
-        $basePayload = $this->builder->buildForClubSeason($club->getId(), $season->getId());
+        $basePayload = $this->builder->buildForPlan(self::getContainer()->get(SoclePlan::class)->idOf($season->getId()));
         self::assertSame(
             [[
                 'id' => $socleBlock->getId(),
@@ -187,7 +188,7 @@ final class SharedBlockPayloadParityTest extends KernelTestCase
         );
 
         // La même période sœur n'émet PAS le bloc socle (il n'est pas de SA portée).
-        $periodPayload = $this->builder->buildForPeriodPlan($club->getId(), $season->getId(), $periodPlanId, $entry);
+        $periodPayload = $this->builder->buildForPlan($periodPlanId);
         self::assertSame([], $periodPayload['sharedBlocks'], 'un bloc de socle ne fuit pas dans le build d\'une période sœur');
     }
 
@@ -200,7 +201,7 @@ final class SharedBlockPayloadParityTest extends KernelTestCase
         $this->team($club, $season, 2);
         $this->em->flush();
 
-        $payload = $this->builder->buildForClubSeason($club->getId(), $season->getId());
+        $payload = $this->builder->buildForPlan(self::getContainer()->get(SoclePlan::class)->idOf($season->getId()));
 
         self::assertSame([], $payload['sharedBlocks']);
     }

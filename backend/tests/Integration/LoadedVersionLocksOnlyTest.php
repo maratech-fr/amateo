@@ -23,6 +23,7 @@ use App\Enum\SeasonStatus;
 use App\Message\GenerateScheduleMessage;
 use App\MessageHandler\GenerateScheduleHandler;
 use App\Plans\PlanComposition;
+use App\Plans\SoclePlan;
 use App\Service\ClubGenerationLock;
 use App\Service\DiagnosticMessageBuilder;
 use App\Service\EngineClient;
@@ -69,7 +70,7 @@ use Symfony\Component\Mercure\HubInterface;
  * Contrat attendu de l'implémentation :
  *  - `SchedulePlanProvisioner::lockSourceScheduleIdOfPlan` : plan SEASON = `Season.liveContextScheduleId`
  *    si la version existe, est COMPLETED et du plan ; sinon la dernière COMPLETED ; sinon null ;
- *  - `buildForClubSeason(..., ?string $lockVersionId = null)` : null = la résolution ci-dessus ;
+ *  - `buildForPlan(..., ?string $versionId = null)` : null = la résolution ci-dessus ;
  *  - `cacheKey($clubId, $seasonId, ?string $lockVersionId)` : trois arguments obligatoires ;
  *  - 202 de regenerate : `{id, status, sourceScheduleId}` ; `sourceScheduleId` = la version chargée.
  */
@@ -204,8 +205,8 @@ final class LoadedVersionLocksOnlyTest extends WebTestCase
         $this->purge();
 
         $builder = self::getContainer()->get(ScheduleConstraintBuilder::class);
-        $byDefault = $builder->buildForClubSeason($this->club->getId(), $this->season->getId());
-        $explicit = $builder->buildForClubSeason($this->club->getId(), $this->season->getId(), lockVersionId: $v1->getId());
+        $byDefault = $builder->buildForPlan(self::getContainer()->get(SoclePlan::class)->idOf($this->season->getId()));
+        $explicit = $builder->buildForPlan(self::getContainer()->get(SoclePlan::class)->idOf($this->season->getId()), versionId: $v1->getId());
 
         self::assertSame([$this->place($t2, $this->venueA, self::THU, '19:00')], $this->hardPins($byDefault));
         self::assertSame([$this->place($t1, $this->venueA, self::MON, '19:00')], $this->hardPins($explicit));
@@ -391,7 +392,7 @@ final class LoadedVersionLocksOnlyTest extends WebTestCase
     {
         $this->purge();
 
-        return self::getContainer()->get(ScheduleConstraintBuilder::class)->buildForClubSeason($this->club->getId(), $this->season->getId());
+        return self::getContainer()->get(ScheduleConstraintBuilder::class)->buildForPlan(self::getContainer()->get(SoclePlan::class)->idOf($this->season->getId()));
     }
 
     private function purge(): void

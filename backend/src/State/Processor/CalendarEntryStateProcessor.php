@@ -41,7 +41,7 @@ use Symfony\Component\HttpKernel\Exception\UnprocessableEntityHttpException;
  * Palier A: writing a dated Constraint (Constraint.calendarEntryId) never touches
  * the BASE generation payload — dated constraints are excluded by
  * ConstraintRepository::findPermanentByClubSeason. Palier B: overlay generation
- * reads dated constraints via ScheduleConstraintBuilder::buildForOverlay, which
+ * reads dated constraints via ScheduleConstraintBuilder::buildForPlan, which
  * BYPASSES the schedule-input cache entirely, so no invalidation is needed here.
  */
 class CalendarEntryStateProcessor extends AbstractStateProcessor
@@ -100,7 +100,7 @@ class CalendarEntryStateProcessor extends AbstractStateProcessor
         // A period carrying a generated overlay cannot change identity: the overlay
         // was built for THIS kind/periodType/window. Mutating any of them would leave
         // the overlay semantically wrong (or crash the next regeneration in
-        // buildForOverlay). Title/status/isDisruptive edits stay allowed.
+        // buildForPlan). Title/status/isDisruptive edits stay allowed.
         //
         // La garde porte sur « cette période a-t-elle un PLAN, ou des SEMAINES ? »
         // (amendement ADR-0002 2026-07-24 : le plan naît du geste d'ADAPTER, plus de la
@@ -526,7 +526,7 @@ class CalendarEntryStateProcessor extends AbstractStateProcessor
      * suffixe de fenêtre du titre puis, s'il coïncidait, le nom du plan. La péremption « à régénérer »
      * se dérive de l'empreinte de structure servie par plan — rien à écrire ici ; elle ne diverge que
      * si le re-datage change réellement le payload (une contrainte datée qui entre ou sort via
-     * `PeriodConstraintSelection`), pas du simple déplacement de la fenêtre.
+     * `PlanSelection`), pas du simple déplacement de la fenêtre.
      *
      * @param array{clubId: string, seasonId: string, entryId: string, oldTitle: string, oldStart: DateTimeImmutable, oldEnd: DateTimeImmutable, newStart: DateTimeImmutable, newEnd: DateTimeImmutable} $redate
      */
@@ -759,7 +759,7 @@ class CalendarEntryStateProcessor extends AbstractStateProcessor
         // Club ET saison (comme ScheduleStateProcessor) : le find() est season-filtré,
         // mais l'identity-map peut surfacer une ligne d'une AUTRE saison (N-1 archivée)
         // — un enfant rattaché à une mère de saison A hériterait des datées de A,
-        // que le season_filter de buildForOverlay dropperait ensuite en silence
+        // que le season_filter de buildForPlan dropperait ensuite en silence
         // (le gymnase fermé serait ignoré au solve). Défense §7.1 (revue #262 round 3).
         if (!$parent instanceof CalendarEntry
             || (null !== $clubId && $parent->getClubId() !== $clubId)

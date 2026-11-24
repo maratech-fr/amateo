@@ -18,6 +18,7 @@ use App\Enum\SeasonStatus;
 use App\Enum\TeamLevel;
 use App\EventListener\CacheInvalidationListener;
 use App\Plans\PlanComposition;
+use App\Plans\SoclePlan;
 use App\Service\ScheduleConstraintBuilder;
 use App\Service\TeamTagResolver;
 use App\Service\TenantDoctrineScope;
@@ -327,7 +328,7 @@ final class TeamTagScopeTest extends KernelTestCase
         $this->em->flush();
 
         $builder = self::getContainer()->get(ScheduleConstraintBuilder::class);
-        $before = $builder->buildForClubSeason($this->club->getId(), $next->getId());
+        $before = $builder->buildForPlan(self::getContainer()->get(SoclePlan::class)->idOf($next->getId()));
         self::assertNotContains($nextTeam->getId(), $this->ruleTargets($before, $rule->getId()), 'témoin : U11, l\'équipe n\'est pas visée par la règle des U13');
 
         $scope = self::getContainer()->get(TenantDoctrineScope::class);
@@ -346,7 +347,7 @@ final class TeamTagScopeTest extends KernelTestCase
         self::assertContains($nextTeam->getId(), $this->resolver->tagTeamIds('U13', $next->getId(), $this->club->getId()), 'la saison suivante suit la catégorie modifiée');
         self::assertNotContains($nextTeam->getId(), $this->resolver->tagTeamIds('U11', $next->getId(), $this->club->getId()), 'et quitte l\'ancien groupe');
 
-        $after = $builder->buildForClubSeason($this->club->getId(), $next->getId());
+        $after = $builder->buildForPlan(self::getContainer()->get(SoclePlan::class)->idOf($next->getId()));
         self::assertContains($nextTeam->getId(), $this->ruleTargets($after, $rule->getId()), 'la règle des U13 vise désormais l\'équipe de la saison suivante');
         self::assertNotSame(
             ScheduleConstraintBuilder::structureHash($before),

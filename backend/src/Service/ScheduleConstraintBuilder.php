@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\Service;
 
-use App\Entity\CalendarEntry;
 use App\Entity\Coach;
 use App\Entity\CoachPlayerMembership;
 use App\Entity\Constraint;
@@ -12,7 +11,6 @@ use App\Entity\PlaceTravelTime;
 use App\Entity\PlanTeam;
 use App\Entity\PriorityTier;
 use App\Entity\Reservation;
-use App\Entity\Schedule;
 use App\Entity\ScheduleSlotTemplate;
 use App\Entity\SharedTrainingBlock;
 use App\Entity\SharedTrainingBlockTeam;
@@ -28,6 +26,7 @@ use App\Enum\ConstraintFamily;
 use App\Enum\ConstraintScope;
 use App\Enum\LockLevel;
 use App\Enum\LockOrigin;
+use App\Enum\SchedulePlanType;
 use App\Enum\VenueTravelRuleIntensity;
 use App\Plans\PlanComposition;
 use App\Plans\SoclePlan;
@@ -82,8 +81,8 @@ final class ScheduleConstraintBuilder
     /**
      * PR 6 (lot 8) — ids des équipes qui portent une contrainte « Garder ses créneaux de saison »
      * ACTIVE pour le plan de période en cours de construction. Positionné par
-     * `buildForPeriodPlan` depuis la sélection déjà résolue (zéro requête de plus), lu par le
-     * handler JUSTE APRÈS `buildForOverlay` pour greffer les placements de socle en keep. Vide
+     * `buildForPlan` (période) depuis la sélection déjà résolue (zéro requête de plus), lu par le
+     * handler JUSTE APRÈS `buildForPlan` pour greffer les placements de socle en keep. Vide
      * hors build d'overlay (réinitialisé par les autres chemins) : chemin byte-identique.
      *
      * @var list<string>
@@ -125,7 +124,7 @@ final class ScheduleConstraintBuilder
         private readonly ?VenueTravelRuleSettingRepository $travelRuleSettingRepository = null,
         // V1 « les verrous d'une période survivent à Régénérer » — résout la version SOURCE des
         // verrous d'un plan (maison unique) pour en greffer les HARD en forme canonique sur le
-        // payload de période (buildForPeriodPlan). LAZY : SchedulePlanProvisioner injecte CE builder,
+        // payload de période (buildForPlan). LAZY : SchedulePlanProvisioner injecte CE builder,
         // le rendre eager boucle le conteneur ; le proxy ne s'instancie qu'au premier appel overlay.
         // Nullable pour le même mode léger sans DB que les deps ci-dessus (le chemin `build()` en
         // mémoire ne connaît aucun plan) — un build de période sans lui n'hérite d'aucun verrou.
@@ -141,7 +140,7 @@ final class ScheduleConstraintBuilder
     ) {}
 
     /**
-     * P2-9ter — la clé porte la SAISON : `buildForClubSeason` en reçoit une, et sans elle
+     * P2-9ter — la clé porte la SAISON : `buildForPlan` (socle) en reçoit une, et sans elle
      * un club à deux saisons se voyait resservir le payload de l'autre. Elle porte aussi la VERSION
      * dont le payload reprend les séances : obligatoire, un appelant qui l'oublie ne compile pas au lieu
      * de lire le payload d'une autre version. Elle porte enfin la version du CONTRAT : un payload mis en
@@ -235,382 +234,39 @@ final class ScheduleConstraintBuilder
     }
 
     /**
-     * Le payload de saison reprend les séances d'UNE version : la version chargée, ou celle que
-     * `$lockVersionId` nomme (la source explicite d'une régénération).
+     * LA demande au moteur d'un plan, socle comme période (lot 4) : la nature du plan décide d'où
+     * viennent les verrous (limite écrite du lot).
+     *
+     * - plan de saison : les séances d'UNE version, la version chargée, ou celle que `$versionId` nomme
+     *   (la source explicite d'une régénération) ; mise en cache ;
+     * - plan de période : les séances propres de la version `$versionId` (null = avant génération : aucune),
+     *   plus les verrous HARD de la version source du plan ; la sélection de période (`$selection`) est
+     *   réutilisée quand l'appelant la tient déjà, recalculée sinon.
      *
      * @return array<string, mixed>
      */
-    public function buildForClubSeason(string $clubId, string $seasonId, int $solverSeed = self::DEFAULT_SOLVER_SEED, ?EntityManagerInterface $entityManager = null, ?string $lockVersionId = null): array
+    public function buildForPlan(string $planId, int $solverSeed = self::DEFAULT_SOLVER_SEED, ?string $versionId = null, ?PlanSelection $selection = null): array
     {
-        $em = $entityManager ?? $this->entityManager;
-        if (!$em instanceof EntityManagerInterface) {
-            throw new LogicException('ScheduleConstraintBuilder requires Doctrine for club/season builds.');
-        }
-
-        $lockVersionId ??= $this->schedulePlanProvisioner?->loadedVersionIdOfSeason($seasonId);
-
-        $cacheItem = null;
-        if ($this->scheduleCachePool instanceof CacheItemPoolInterface) {
-            $cacheItem = $this->scheduleCachePool->getItem(self::cacheKey($clubId, $seasonId, $lockVersionId));
-            if ($cacheItem->isHit()) {
-                $cached = $cacheItem->get();
-                if (\is_array($cached)) {
-                    return $cached;
-                }
-            }
-        }
-
-        // Base plan only: dated constraints (attached to a CalendarEntry period)
-        // are excluded from generation. See specs/courantes/calendar-entry-modele-donnees.md §c.
-        $constraints = $this->sortedById($em->getRepository(Constraint::class)->findPermanentByClubSeason($clubId, $seasonId));
-        // Lot 4 : le socle a son plan — grille, réservations et groupes du socle portent le plan de saison.
-        $soclePlanId = $this->soclePlanIdOf($seasonId);
-
-        // Pre-load venue availabilities to avoid N+1 queries in serializeVenue().
-        // Base plan only: the season plan's slots — a period's own slots (a gym lent
-        // for a window) must never leak into the base generation.
-        $availabilitiesByVenue = [];
-        if ($this->venueTrainingSlotRepository instanceof VenueTrainingSlotRepository) {
-            $rows = $this->venueTrainingSlotRepository->findBy(['clubId' => $clubId, 'seasonId' => $seasonId, 'schedulePlanId' => $soclePlanId], ['id' => 'ASC']);
-            foreach ($rows as $row) {
-                $availabilitiesByVenue[$row->getVenueId()][] = $row;
-            }
-        }
-
-        $this->currentAvailabilitiesByVenue = $availabilitiesByVenue;
-        $this->currentSeasonSlotKeepTeamIds = [];
-
-        $payload = $this->buildPayload(
-            clubId: $clubId,
-            seasonId: $seasonId,
-            venues: $this->findByClubSeason(Venue::class, $clubId, $seasonId, $em),
-            teams: $this->findByClubSeason(Team::class, $clubId, $seasonId, $em),
-            coaches: $this->findByClubSeason(Coach::class, $clubId, $seasonId, $em),
-            teamCoaches: $this->findByClubSeason(TeamCoach::class, $clubId, $seasonId, $em),
-            coachPlayerMemberships: $this->findByClubSeason(CoachPlayerMembership::class, $clubId, $seasonId, $em),
-            // Les séances de la SEULE version chargée : ni celles d'un overlay (palier B), ni celles
-            // d'une version sœur, dont un verrou retiré ou déplacé reviendrait sinon.
-            slotTemplates: null === $lockVersionId ? [] : $this->findSlotTemplatesOfVersion($lockVersionId, $em),
-            priorityTiers: $em->getRepository(PriorityTier::class)->findBy([], ['id' => 'ASC']),
-            solverSeed: $solverSeed,
-            constraints: $constraints,
-            // Base-plan reservations (the season plan) — durable HARD pins.
-            reservations: $em->getRepository(Reservation::class)->findBy(['clubId' => $clubId, 'seasonId' => $seasonId, 'schedulePlanId' => $soclePlanId], ['id' => 'ASC']),
-            // Base-plan mutualisation blocks (the season plan, P2-51). Un membre en pause
-            // est filtré au roster dans serializeSharedBlocks.
-            sharedBlocks: $em->getRepository(SharedTrainingBlock::class)->findBy(['clubId' => $clubId, 'seasonId' => $seasonId, 'schedulePlanId' => $soclePlanId], ['id' => 'ASC']),
-            // Passerelles (lot PASSERELLES) : STRUCTURE de club+saison (patron Team/Coach, PAS
-            // ancré au plan) — la même déclaration nourrit socle et périodes. Filtrée au roster
-            // dans serializeTeamLinks. Inerte en PR-1 (le moteur l'accepte, ne la consomme pas).
-            teamLinks: $em->getRepository(TeamLink::class)->findBy(['clubId' => $clubId, 'seasonId' => $seasonId], ['id' => 'ASC']),
-            // P2-53 RMM-8 — matrice de trajet : temps au club entre deux lieux (lot 3, PR 5), servis
-            // pour la saison (les deux lieux y ont un gymnase), nommés par ses gymnases ; la même
-            // nourrit socle et périodes. Triée à la sérialisation ; sa présence (≥1 ligne) active la
-            // règle implicite `travelTime` (opt-in au premier geste).
-            venueTravelTimes: $this->travelTimesOfSeason($clubId, $seasonId, $em),
-            // Les séances et le plafond de chaque équipe : sa ligne du socle.
-            teamLines: $this->teamLinesOf($soclePlanId),
-        );
-
-        $this->currentAvailabilitiesByVenue = [];
-
-        if ($cacheItem instanceof CacheItemInterface) {
-            $cacheItem->set($payload);
-            $cacheItem->expiresAfter(self::CACHE_TTL_SECONDS);
-            // Taguer par CLUB : c'est le tag, et non la clé, que le listener invalide.
-            // ⚠ La garde porte sur le POOL, pas sur l'item : `CacheItem::tag()` lève une
-            // LogicException si l'item ne vient pas d'un pool tag-aware, et son drapeau
-            // `isTaggable` est protected — un `instanceof ItemInterface` ne dirait rien.
-            if ($this->scheduleCachePool instanceof TagAwareAdapterInterface && $cacheItem instanceof ItemInterface) {
-                $cacheItem->tag(self::cacheTag($clubId));
-            }
-            $this->scheduleCachePool->save($cacheItem);
-        }
-
-        return $payload;
-    }
-
-    /**
-     * Build the engine payload for a period OVERLAY (palier B). BYPASSES the
-     * schedule-input cache (overlays are rare; the base key stays clean).
-     *
-     * - closure (fermeture): ALL permanent constraints kept by default (minus those
-     *   explicitly disabled) + dated.
-     * - holiday (reprise): permanent constraints inherited with a SMART default that
-     *   follows the team selection (inheritedPermanents, reprise predicate) + dated.
-     *
-     * A dated `config.type=venue_closed` entry produces NO constraint at all: since
-     * P2-5 5b the closed venue simply LOSES its training slots on the weekdays it is
-     * actually closed (VenueClosureDays, incident ∩ window). No slot ⇒ no variable ⇒
-     * the solver cannot place there that day, and stays free the other days. The old
-     * per-team `forbiddenVenueId` expansion is GONE — the engine's forbidden_assignments
-     * is day-blind, so it closed the venue for the WHOLE week.
-     *
-     * In both, a permanent/dated TEAM-scoped constraint whose team was deactivated for
-     * the period is dropped (its team is absent from the payload — no ghost teamId).
-     *
-     * slotTemplates are scoped to THIS overlay schedule (its own locks), not the
-     * base plan's — the base build (buildForClubSeason) is untouched.
-     *
-     * @return array<string, mixed>
-     */
-    public function buildForOverlay(Schedule $schedule, CalendarEntry $entry): array
-    {
-        // Adaptateur STRICT sur le chemin scalaire — aucune logique ici. Le `Schedule`
-        // n'apportait que ces cinq scalaires ; les extraire est ce qui rend le payload
-        // d'une période calculable AVANT toute génération (P2-9ter).
-        return $this->buildForPeriodPlan(
-            $schedule->getClubId(),
-            $schedule->getSeasonId(),
-            // ADR-0002 inv. 5 — les réglages de période (coches équipes/contraintes,
-            // créneaux prêtés) s'ancrent au PLAN. Le plan est non-nullable (lot D) : une
-            // version a toujours le sien.
-            $schedule->getSchedulePlanId(),
-            $entry,
-            $schedule->getSolverSeed(),
-            $schedule->getId(),
-        );
-    }
-
-    /**
-     * Le payload d'une période à partir de ses SEULS scalaires — aucun `Schedule` requis.
-     *
-     * Chemin de calcul UNIQUE de l'overlay : `buildForOverlay` n'en est qu'un adaptateur.
-     * C'est ce qui permet à un appelant PRÉ-GÉNÉRATION (le récap) d'obtenir les nombres
-     * exacts du solveur au lieu de les recalculer à la main — les trois tentatives qui
-     * ont recopié cette logique ont toutes divergé (P2-9ter).
-     *
-     * `$scheduleId` null = avant génération : aucun `ScheduleSlotTemplate` n'existe encore,
-     * et c'est SÉMANTIQUEMENT JUSTE — les verrous durables sont les `Reservation`, portées
-     * par le `schedulePlanId`, qui sont lues dans les deux cas.
-     *
-     * @return array<string, mixed>
-     */
-    public function buildForPeriodPlan(
-        string $clubId,
-        string $seasonId,
-        string $schedulePlanId,
-        CalendarEntry $entry,
-        int $solverSeed = self::DEFAULT_SOLVER_SEED,
-        ?string $scheduleId = null,
-        ?PeriodConstraintSelection $selection = null,
-    ): array {
         $em = $this->entityManager;
         if (!$em instanceof EntityManagerInterface) {
-            throw new LogicException('ScheduleConstraintBuilder requires Doctrine for overlay builds.');
+            throw new LogicException('ScheduleConstraintBuilder requires Doctrine for plan builds.');
         }
-
-        if (!$this->periodConstraintSelector instanceof PeriodConstraintSelector) {
-            throw new LogicException('ScheduleConstraintBuilder requires the period constraint selector for overlay builds.');
+        $plan = $em->getConnection()->fetchAssociative('SELECT club_id, season_id, type FROM schedule_plan WHERE id = :pid', ['pid' => $planId]);
+        if (false === $plan) {
+            throw new LogicException(\sprintf('Le plan %s n\'existe pas.', $planId));
         }
+        $clubId = (string) $plan['club_id'];
+        $seasonId = (string) $plan['season_id'];
 
-        // P2-14 — LA sélection (quelles entités partent au solveur, pourquoi les autres
-        // non) est calculée par la source UNIQUE partagée avec le gate pré-solve. Ce qui
-        // suit ne fait plus que SÉRIALISER cette sélection ; les post-filtres sur lignes
-        // sérialisées plus bas restent en défense en profondeur (ils attrapent les
-        // expansions par équipe, invisibles au niveau entité).
-        // Les équipes servent DEUX fois (la sélection dérive ses actives, le payload les
-        // sérialise) : une seule requête, passée à la sélection (revue #340 round 1).
-        $clubSeasonTeams = array_values($this->findByClubSeason(Team::class, $clubId, $seasonId, $em));
-        // Sélection RÉUTILISÉE quand l'appelant la tient déjà (le gate pré-solve la calcule
-        // pour ses warnings) : la recalculer coûtait ~7 requêtes par ouverture de récap pour
-        // une valeur en main (revue #341).
-        // Une sélection fournie DOIT être celle de ce plan : sinon on mélangerait deux
-        // périodes en silence (revue #341 round 2). Une incohérence ici est une faute de
-        // programmation, pas une donnée douteuse — on lève.
-        if ($selection instanceof PeriodConstraintSelection && $selection->schedulePlanId !== $schedulePlanId) {
-            throw new LogicException('The provided period selection belongs to another schedule plan.');
-        }
-        $selection ??= $this->periodConstraintSelector->selectForPeriodPlan($clubId, $seasonId, $schedulePlanId, $entry, $clubSeasonTeams);
-        $deactivatedTeamIds = $selection->deactivatedTeamIds;
-        $disabledVenueIds = $selection->disabledVenueIds;
-        $constraints = $this->sortedById($selection->kept);
-
-        // PR 6 (lot 8) — les équipes qui portent une contrainte « Garder ses créneaux de saison »
-        // ACTIVE pour ce plan, extraites de la sélection déjà calculée (pas de requête de plus). Le
-        // handler les lit après `buildForOverlay` pour greffer les placements de socle en keep. La
-        // famille SEASON_SLOTS est filtrée du payload moteur (serializeUnifiedConstraints) : ici on
-        // n'en garde que la CIBLE (l'équipe), jamais la contrainte elle-même.
-        $keepTeamIds = [];
-        foreach ($constraints as $constraint) {
-            if (ConstraintFamily::SEASON_SLOTS === $constraint->getFamily() && $constraint->getIsActive()) {
-                $targetId = $constraint->getScopeTargetId();
-                if (null !== $targetId) {
-                    $keepTeamIds[$targetId] = true;
-                }
+        if (SchedulePlanType::SEASON === SchedulePlanType::from((string) $plan['type'])) {
+            if ($selection instanceof PlanSelection) {
+                throw new LogicException('A period selection cannot be applied to a season plan build.');
             }
-        }
-        $this->currentSeasonSlotKeepTeamIds = array_keys($keepTeamIds);
 
-        // P2-5 5b / P2-38 / indispo informative — granularité JOUR des fermetures : les jours de
-        // semaine EFFECTIVEMENT fermés par gymnase (incident × masque manuel), portés par la
-        // SÉLECTION. La composition vit dans la MAISON UNIQUE `PlanVenueClosures`, TRANSVERSALE
-        // (toutes entrées confondues) : le gate et le garde partagent la même — sinon payload,
-        // récap et OrphanPinGuard diraient trois choses des mêmes fermetures. Pas de créneau ⇒ pas
-        // de variable ⇒ le solveur ne peut pas placer là ; il PEUT les autres jours (dont ceux
-        // rouverts OPEN par le gestionnaire, l'incident étant désormais informatif).
-        $closedWeekdaysByVenue = $selection->effectiveClosedWeekdaysByVenue;
-
-        // La grille de la PÉRIODE, et elle seule — aucune union avec les créneaux de
-        // saison. C'est ce qui rend le modèle sûr : un gymnase n'a jamais deux jeux de
-        // créneaux dans une période, donc rien ne peut se chevaucher entre couches ni
-        // rendre un verrou ambigu (deux créneaux au même horaire, l'un « de saison »
-        // l'autre « de période »). P2-5 5b : un gymnase fermé perd ses créneaux sur ses
-        // jours FERMÉS uniquement (day-précis) — le reste passe.
-        $availabilitiesByVenue = [];
-        if ($this->venueTrainingSlotRepository instanceof VenueTrainingSlotRepository) {
-            foreach ($this->venueTrainingSlotRepository->findBy(['schedulePlanId' => $schedulePlanId], ['id' => 'ASC']) as $row) {
-                $rowVenueId = $row->getVenueId();
-                if (isset($disabledVenueIds[$rowVenueId])) {
-                    continue; // gymnase désactivé : il ne sert pas cette période
-                }
-                if (isset($closedWeekdaysByVenue[$rowVenueId][$row->getDayOfWeek()])) {
-                    continue; // gymnase fermé ce jour-là : créneau retiré du payload
-                }
-                $availabilitiesByVenue[$rowVenueId][] = $row;
-            }
-        }
-        $this->currentAvailabilitiesByVenue = $availabilitiesByVenue;
-
-        // Deactivated teams (computed by the selection) are dropped from the payload.
-        $teams = array_values(array_filter(
-            $clubSeasonTeams,
-            static fn (Team $team): bool => !isset($deactivatedTeamIds[$team->getId()]),
-        ));
-
-        $payload = $this->buildPayload(
-            clubId: $clubId,
-            seasonId: $seasonId,
-            // Un gymnase DÉSACTIVÉ sort du payload : l'y laisser avec 0 créneau serait
-            // inoffensif pour le solveur, mais toute contrainte le nommant deviendrait un
-            // id fantôme (cf. post-filtre plus bas) — on le retire à la source.
-            venues: array_values(array_filter(
-                $this->findByClubSeason(Venue::class, $clubId, $seasonId, $em),
-                static fn (Venue $venue): bool => !isset($disabledVenueIds[$venue->getId()]),
-            )),
-            teams: $teams,
-            coaches: $this->findByClubSeason(Coach::class, $clubId, $seasonId, $em),
-            teamCoaches: $this->findByClubSeason(TeamCoach::class, $clubId, $seasonId, $em),
-            coachPlayerMemberships: $this->findByClubSeason(CoachPlayerMembership::class, $clubId, $seasonId, $em),
-            // Overlay's OWN slot templates (its work-loop locks), not the base plan's.
-            // Filtre défensif : un verrou sur un gymnase désactivé pointerait un gymnase
-            // absent du payload. Un verrou ORPHELIN (plus aucun créneau à cet horaire) est,
-            // lui, une ERREUR annoncée AVANT la génération (GenerateScheduleController) —
-            // on ne l'escamote pas en silence.
-            // ⚠ Court-circuit d'INTENTION et d'économie, pas une branche de comportement :
-            // `scheduleId` est NOT NULL sur l'entité, donc `findBy(['scheduleId' => null])`
-            // rendrait `[]` de toute façon. Le retirer ne changerait aucun résultat — il
-            // évite une requête inutile à chaque appel pré-génération et dit au lecteur
-            // que « pas de version » n'est pas un cas dégradé. Aucun test ne peut donc le
-            // faire tomber : ne pas en écrire un qui prétendrait le contraire.
-            slotTemplates: null === $scheduleId ? [] : array_values(array_filter(
-                $em->getRepository(ScheduleSlotTemplate::class)->findBy(['scheduleId' => $scheduleId], ['id' => 'ASC']),
-                static fn (ScheduleSlotTemplate $template): bool => !isset($disabledVenueIds[$template->getVenueId()]),
-            )),
-            priorityTiers: $em->getRepository(PriorityTier::class)->findBy([], ['id' => 'ASC']),
-            solverSeed: $solverSeed,
-            constraints: $constraints,
-            // Overlay reservations: this period's own pins (base ones don't leak in,
-            // mirroring how HOLIDAY overlays use only dated constraints).
-            reservations: array_values(array_filter(
-                $em->getRepository(Reservation::class)->findBy(['schedulePlanId' => $schedulePlanId], ['id' => 'ASC']),
-                static fn (Reservation $reservation): bool => !isset($disabledVenueIds[$reservation->getVenueId()]),
-            )),
-            // Period mutualisation blocks: this plan's own (schedulePlanId = planId, P2-51). Un
-            // membre désactivé pour la période est filtré au roster dans serializeSharedBlocks.
-            sharedBlocks: $em->getRepository(SharedTrainingBlock::class)->findBy(['schedulePlanId' => $schedulePlanId], ['id' => 'ASC']),
-            // Passerelles : STRUCTURE de club+saison (patron Team/Coach) — mêmes lignes que le
-            // socle, jamais des copies ancrées au plan. Le roster de période filtre : une équipe
-            // désactivée pour la période sort du payload, son lien est abandonné (serializeTeamLinks).
-            teamLinks: $em->getRepository(TeamLink::class)->findBy(['clubId' => $clubId, 'seasonId' => $seasonId], ['id' => 'ASC']),
-            // P2-53 RMM-8 — matrice de trajet : STRUCTURE de club+saison, mêmes lignes que le
-            // socle (jamais une copie ancrée au plan) — le trajet entre deux gymnases ne change
-            // pas parce qu'on est en période. Sa présence active `travelTime` (opt-in).
-            venueTravelTimes: $this->travelTimesOfSeason($clubId, $seasonId, $em),
-            // ADR-0002 inv. 5 — le bloc `implicitRules` résout la COPIE de CE plan (repli saison
-            // si legacy), jamais la portée saison directement : c'est ce que buildForClubSeason
-            // fait, ici on porte la période.
-            implicitRules: $this->implicitRuleResolver?->resolveForPlan($clubId, $seasonId, $schedulePlanId),
-            // Les séances et le plafond de chaque équipe : sa ligne dans CE plan, posée à sa naissance.
-            teamLines: $this->teamLinesOf($schedulePlanId),
-        );
-
-        $this->currentAvailabilitiesByVenue = [];
-        // ⚠ Ne PAS réinitialiser `currentSeasonSlotKeepTeamIds` ici : il est posé plus haut (depuis la
-        // sélection) et le handler le LIT APRÈS le retour de `buildForOverlay` pour greffer les keep.
-        // Le champ ci-dessus est transient (consommé PENDANT buildPayload) ; celui-ci est un
-        // RÉSULTAT du build, exposé par `lastSeasonSlotKeepTeamIds()`.
-
-        // P2-5 5b : les gymnases fermés sont retirés de l'availability day-précisément
-        // (ci-dessus) — le forbid tous-jours `expandClosedVenues` est supprimé (l'engine
-        // forbidden_assignments était day-blind, il fermait le gymnase TOUTE la semaine
-        // même si l'incident n'en couvrait qu'une partie).
-
-        // Drop any SERIALIZED TEAM row targeting a team deactivated for the period — an
-        // original TEAM constraint, OR a CLUB/tag constraint expanded per-team during
-        // serialization (serializeConstraintRow emits scope=TEAM + scopeTargetId=teamId).
-        // The team is absent from the payload roster, so a ghost teamId here could turn the
-        // solve INFEASIBLE. Filtering the serialized payload (not the entity list) catches
-        // the CLUB+targetTag expansion the entity-level scope check would miss.
-        if ([] !== $deactivatedTeamIds) {
-            $payload['constraints'] = array_values(array_filter(
-                $payload['constraints'],
-                static fn (mixed $row): bool => !\is_array($row)
-                    || ConstraintScope::TEAM->value !== ($row['scope'] ?? null)
-                    || !isset($deactivatedTeamIds[(string) ($row['scopeTargetId'] ?? '')]),
-            ));
+            return $this->buildForSocle($em, $clubId, $seasonId, $solverSeed, $versionId);
         }
 
-        // Miroir du filtre équipes, côté GYMNASES : une contrainte qui nomme un gymnase
-        // absent du payload est un id fantôme. Le gestionnaire en est AVERTI au récap
-        // (ValidateConstraintsController) — ignorer sans le dire était le défaut de #285.
-        // Les clés qui nomment un gymnase sont celles du validateur (`uuidKeys()`), liste
-        // unique partagée avec le sélecteur de période : le récap et le solveur voient le
-        // MÊME jeu de contraintes.
-        if ([] !== $disabledVenueIds) {
-            $venueKeys = new ConstraintConfigValidator()->uuidKeys();
-            $payload['constraints'] = array_values(array_filter(
-                $payload['constraints'],
-                static function (mixed $row) use ($disabledVenueIds, $venueKeys): bool {
-                    if (!\is_array($row)) {
-                        return true;
-                    }
-                    if (ConstraintScope::FACILITY->value === ($row['scope'] ?? null)
-                        && isset($disabledVenueIds[(string) ($row['scopeTargetId'] ?? '')])) {
-                        return false;
-                    }
-                    $config = \is_array($row['config'] ?? null) ? $row['config'] : [];
-                    foreach ($venueKeys as $venueKey) {
-                        if (isset($disabledVenueIds[(string) ($config[$venueKey] ?? '')])) {
-                            return false;
-                        }
-                    }
-
-                    return true;
-                },
-            ));
-        }
-
-        // V1 — LES VERROUS D'UNE PÉRIODE SURVIVENT À « RÉGÉNÉRER ». Une version NUE (celle que crée
-        // « Régénérer ») n'a aucun slotTemplate propre : sans cette greffe les verrous HARD ne
-        // partaient qu'en `previousAssignments` (SOFT, convergence) et revenaient NONE. On greffe
-        // donc les HARD de la version SOURCE du plan (maison unique) comme épingles, en forme
-        // CANONIQUE pour que le hash de structure soit STABLE d'une génération à l'autre :
-        //  - `id` DÉRIVÉ DU PLACEMENT (team:venue:jour:HH:MM), jamais l'id de ligne (scopé par
-        //    version, il divergerait entre la source V et la version V+1 et ferait clignoter le
-        //    bandeau « à régénérer ») ;
-        //  - `pendingConstraintSuggestion` à null, tri par placement — déterministe.
-        // Dédupliqué par PLACEMENT, le PROPRE gagnant : les slotTemplates propres (gate sur une
-        // version existante) et les réservations déjà dans le payload priment ; un verrou repassé
-        // NONE ne revient pas (il n'est plus HARD dans la source). Source absente (1re génération)
-        // ou aucun HARD ⇒ payload byte-identique à avant V1 — rien n'est appendé.
-        $payload['slotTemplates'] = $this->appendInheritedCanonicalHardSlots(
-            \is_array($payload['slotTemplates'] ?? null) ? $payload['slotTemplates'] : [],
-            $schedulePlanId,
-            $disabledVenueIds,
-        );
-
-        return $payload;
+        return $this->buildForPeriod($em, $clubId, $seasonId, $planId, $solverSeed, $versionId, $selection);
     }
 
     /**
@@ -818,7 +474,7 @@ final class ScheduleConstraintBuilder
      * CONVERGER une régénération vers son placement précédent, en départageant les ex æquo
      * exacts de score, jamais en arbitrant) sur un payload DÉJÀ construit.
      *
-     * ⚠ Ce bloc n'entre PAS dans le payload construit/caché par `buildForClubSeason`
+     * ⚠ Ce bloc n'entre PAS dans le payload construit/caché par `buildForPlan`
      * (`buildPayload`) : le payload y est caché par club+saison, sa clé ne connaît pas la
      * version source. Le handler l'injecte donc APRÈS coup — et, décision B, APRÈS le hash
      * de snapshot : le précédent est une préférence de CONVERGENCE, pas une donnée de
@@ -928,7 +584,7 @@ final class ScheduleConstraintBuilder
 
     /**
      * Les ids des équipes qui portent une contrainte « Garder ses créneaux de saison » ACTIVE pour
-     * le DERNIER plan de période construit (`buildForPeriodPlan`/`buildForOverlay`). Le handler les
+     * le DERNIER plan de période construit (`buildForPlan`). Le handler les
      * lit juste après le build pour greffer les keep. Vide hors build d'overlay.
      *
      * @return list<string>
@@ -1027,11 +683,11 @@ final class ScheduleConstraintBuilder
      * comblement n'a besoin d'AUCUN changement moteur : le solveur place le RESTE des séances par
      * équipe (`sessionsPerWeek` du payload) une fois les épingles honorées.
      *
-     * Deux garde-fous, mêmes doctrines que `buildForPeriodPlan` :
+     * Deux garde-fous, mêmes doctrines que `buildForPlan` :
      *  - FILTRÉ au roster du payload (équipes + gymnases) : une source qui nomme une entité hors
      *    sélection de période serait un id fantôme rendant le solve INFEASIBLE ;
      *  - DÉDUPLIQUÉ par placement (équipe, gymnase, jour, heure) contre les épingles DÉJÀ
-     *    présentes — les `Reservation` du plan sortent en HARD depuis `buildForOverlay`, et la
+     *    présentes — les `Reservation` du plan sortent en HARD depuis `buildForPlan`, et la
      *    copie transcrite reprend ces mêmes placements : sans dédup, l'équipe se retrouverait
      *    avec DEUX épingles pour UNE séance (compte de séances faussé / sur-contrainte).
      *
@@ -1088,6 +744,339 @@ final class ScheduleConstraintBuilder
     }
 
     /**
+     * Le payload de saison reprend les séances d'UNE version : la version chargée, ou celle que
+     * `$lockVersionId` nomme (la source explicite d'une régénération).
+     *
+     * @return array<string, mixed>
+     */
+    private function buildForSocle(EntityManagerInterface $em, string $clubId, string $seasonId, int $solverSeed, ?string $lockVersionId): array
+    {
+        $lockVersionId ??= $this->schedulePlanProvisioner?->loadedVersionIdOfSeason($seasonId);
+
+        $cacheItem = null;
+        if ($this->scheduleCachePool instanceof CacheItemPoolInterface) {
+            $cacheItem = $this->scheduleCachePool->getItem(self::cacheKey($clubId, $seasonId, $lockVersionId));
+            if ($cacheItem->isHit()) {
+                $cached = $cacheItem->get();
+                if (\is_array($cached)) {
+                    return $cached;
+                }
+            }
+        }
+
+        // Base plan only: dated constraints (attached to a CalendarEntry period)
+        // are excluded from generation. See specs/courantes/calendar-entry-modele-donnees.md §c.
+        $constraints = $this->sortedById($em->getRepository(Constraint::class)->findPermanentByClubSeason($clubId, $seasonId));
+        // Lot 4 : le socle a son plan — grille, réservations et groupes du socle portent le plan de saison.
+        $soclePlanId = $this->soclePlanIdOf($seasonId);
+
+        // Pre-load venue availabilities to avoid N+1 queries in serializeVenue().
+        // Base plan only: the season plan's slots — a period's own slots (a gym lent
+        // for a window) must never leak into the base generation.
+        $availabilitiesByVenue = [];
+        if ($this->venueTrainingSlotRepository instanceof VenueTrainingSlotRepository) {
+            $rows = $this->venueTrainingSlotRepository->findBy(['clubId' => $clubId, 'seasonId' => $seasonId, 'schedulePlanId' => $soclePlanId], ['id' => 'ASC']);
+            foreach ($rows as $row) {
+                $availabilitiesByVenue[$row->getVenueId()][] = $row;
+            }
+        }
+
+        $this->currentAvailabilitiesByVenue = $availabilitiesByVenue;
+        $this->currentSeasonSlotKeepTeamIds = [];
+
+        $payload = $this->buildPayload(
+            clubId: $clubId,
+            seasonId: $seasonId,
+            venues: $this->findByClubSeason(Venue::class, $clubId, $seasonId, $em),
+            teams: $this->findByClubSeason(Team::class, $clubId, $seasonId, $em),
+            coaches: $this->findByClubSeason(Coach::class, $clubId, $seasonId, $em),
+            teamCoaches: $this->findByClubSeason(TeamCoach::class, $clubId, $seasonId, $em),
+            coachPlayerMemberships: $this->findByClubSeason(CoachPlayerMembership::class, $clubId, $seasonId, $em),
+            // Les séances de la SEULE version chargée : ni celles d'un overlay (palier B), ni celles
+            // d'une version sœur, dont un verrou retiré ou déplacé reviendrait sinon.
+            slotTemplates: null === $lockVersionId ? [] : $this->findSlotTemplatesOfVersion($lockVersionId, $em),
+            priorityTiers: $em->getRepository(PriorityTier::class)->findBy([], ['id' => 'ASC']),
+            solverSeed: $solverSeed,
+            constraints: $constraints,
+            // Base-plan reservations (the season plan) — durable HARD pins.
+            reservations: $em->getRepository(Reservation::class)->findBy(['clubId' => $clubId, 'seasonId' => $seasonId, 'schedulePlanId' => $soclePlanId], ['id' => 'ASC']),
+            // Base-plan mutualisation blocks (the season plan, P2-51). Un membre en pause
+            // est filtré au roster dans serializeSharedBlocks.
+            sharedBlocks: $em->getRepository(SharedTrainingBlock::class)->findBy(['clubId' => $clubId, 'seasonId' => $seasonId, 'schedulePlanId' => $soclePlanId], ['id' => 'ASC']),
+            // Passerelles (lot PASSERELLES) : STRUCTURE de club+saison (patron Team/Coach, PAS
+            // ancré au plan) — la même déclaration nourrit socle et périodes. Filtrée au roster
+            // dans serializeTeamLinks. Inerte en PR-1 (le moteur l'accepte, ne la consomme pas).
+            teamLinks: $em->getRepository(TeamLink::class)->findBy(['clubId' => $clubId, 'seasonId' => $seasonId], ['id' => 'ASC']),
+            // P2-53 RMM-8 — matrice de trajet : temps au club entre deux lieux (lot 3, PR 5), servis
+            // pour la saison (les deux lieux y ont un gymnase), nommés par ses gymnases ; la même
+            // nourrit socle et périodes. Triée à la sérialisation ; sa présence (≥1 ligne) active la
+            // règle implicite `travelTime` (opt-in au premier geste).
+            venueTravelTimes: $this->travelTimesOfSeason($clubId, $seasonId, $em),
+            // Les séances et le plafond de chaque équipe : sa ligne du socle.
+            teamLines: $this->teamLinesOf($soclePlanId),
+        );
+
+        $this->currentAvailabilitiesByVenue = [];
+
+        if ($cacheItem instanceof CacheItemInterface) {
+            $cacheItem->set($payload);
+            $cacheItem->expiresAfter(self::CACHE_TTL_SECONDS);
+            // Taguer par CLUB : c'est le tag, et non la clé, que le listener invalide.
+            // ⚠ La garde porte sur le POOL, pas sur l'item : `CacheItem::tag()` lève une
+            // LogicException si l'item ne vient pas d'un pool tag-aware, et son drapeau
+            // `isTaggable` est protected — un `instanceof ItemInterface` ne dirait rien.
+            if ($this->scheduleCachePool instanceof TagAwareAdapterInterface && $cacheItem instanceof ItemInterface) {
+                $cacheItem->tag(self::cacheTag($clubId));
+            }
+            $this->scheduleCachePool->save($cacheItem);
+        }
+
+        return $payload;
+    }
+
+    /**
+     * Le payload d'une période (palier B), hors cache (les périodes sont rares ; la clé du socle reste
+     * propre), à partir de ses SEULS scalaires — calculable AVANT toute génération (P2-9ter).
+     *
+     * - fermeture : toutes les règles de saison par défaut (moins celles décochées) + les datées ;
+     * - vacances (reprise) : les règles de saison selon le défaut de la nature, + les datées.
+     *
+     * Une entrée datée `config.type=venue_closed` ne produit AUCUNE contrainte : depuis P2-5 5b le
+     * gymnase fermé PERD ses créneaux les jours de semaine effectivement fermés (incident ∩ fenêtre).
+     * Pas de créneau ⇒ pas de variable ⇒ le solveur ne peut pas placer là ce jour-là.
+     *
+     * Une contrainte d'ÉQUIPE dont l'équipe est écartée de la période est abandonnée (son équipe est
+     * absente du payload — aucun teamId fantôme).
+     *
+     * `$scheduleId` null = avant génération : aucun `ScheduleSlotTemplate` n'existe encore, et c'est
+     * SÉMANTIQUEMENT JUSTE — les verrous durables sont les `Reservation`, portées par le
+     * `schedulePlanId`, qui sont lues dans les deux cas.
+     *
+     * @return array<string, mixed>
+     */
+    private function buildForPeriod(
+        EntityManagerInterface $em,
+        string $clubId,
+        string $seasonId,
+        string $schedulePlanId,
+        int $solverSeed,
+        ?string $scheduleId,
+        ?PlanSelection $selection,
+    ): array {
+        if (!$this->periodConstraintSelector instanceof PeriodConstraintSelector) {
+            throw new LogicException('ScheduleConstraintBuilder requires the period constraint selector for overlay builds.');
+        }
+
+        // P2-14 — LA sélection (quelles entités partent au solveur, pourquoi les autres
+        // non) est calculée par la source UNIQUE partagée avec le gate pré-solve. Ce qui
+        // suit ne fait plus que SÉRIALISER cette sélection ; les post-filtres sur lignes
+        // sérialisées plus bas restent en défense en profondeur (ils attrapent les
+        // expansions par équipe, invisibles au niveau entité).
+        // Les équipes servent DEUX fois (la sélection dérive ses actives, le payload les
+        // sérialise) : une seule requête, passée à la sélection (revue #340 round 1).
+        $clubSeasonTeams = array_values($this->findByClubSeason(Team::class, $clubId, $seasonId, $em));
+        // Sélection RÉUTILISÉE quand l'appelant la tient déjà (le gate pré-solve la calcule
+        // pour ses warnings) : la recalculer coûtait ~7 requêtes par ouverture de récap pour
+        // une valeur en main (revue #341).
+        // Une sélection fournie DOIT être celle de ce plan : sinon on mélangerait deux
+        // périodes en silence (revue #341 round 2). Une incohérence ici est une faute de
+        // programmation, pas une donnée douteuse — on lève.
+        if ($selection instanceof PlanSelection && $selection->schedulePlanId !== $schedulePlanId) {
+            throw new LogicException('The provided period selection belongs to another schedule plan.');
+        }
+        $selection ??= $this->periodConstraintSelector->selectForPlan($schedulePlanId, $clubSeasonTeams);
+        $deactivatedTeamIds = $selection->deactivatedTeamIds;
+        $disabledVenueIds = $selection->disabledVenueIds;
+        $constraints = $this->sortedById($selection->kept);
+
+        // PR 6 (lot 8) — les équipes qui portent une contrainte « Garder ses créneaux de saison »
+        // ACTIVE pour ce plan, extraites de la sélection déjà calculée (pas de requête de plus). Le
+        // handler les lit après `buildForPlan` pour greffer les placements de socle en keep. La
+        // famille SEASON_SLOTS est filtrée du payload moteur (serializeUnifiedConstraints) : ici on
+        // n'en garde que la CIBLE (l'équipe), jamais la contrainte elle-même.
+        $keepTeamIds = [];
+        foreach ($constraints as $constraint) {
+            if (ConstraintFamily::SEASON_SLOTS === $constraint->getFamily() && $constraint->getIsActive()) {
+                $targetId = $constraint->getScopeTargetId();
+                if (null !== $targetId) {
+                    $keepTeamIds[$targetId] = true;
+                }
+            }
+        }
+        $this->currentSeasonSlotKeepTeamIds = array_keys($keepTeamIds);
+
+        // P2-5 5b / P2-38 / indispo informative — granularité JOUR des fermetures : les jours de
+        // semaine EFFECTIVEMENT fermés par gymnase (incident × masque manuel), portés par la
+        // SÉLECTION. La composition vit dans la MAISON UNIQUE `PlanVenueClosures`, TRANSVERSALE
+        // (toutes entrées confondues) : le gate et le garde partagent la même — sinon payload,
+        // récap et OrphanPinGuard diraient trois choses des mêmes fermetures. Pas de créneau ⇒ pas
+        // de variable ⇒ le solveur ne peut pas placer là ; il PEUT les autres jours (dont ceux
+        // rouverts OPEN par le gestionnaire, l'incident étant désormais informatif).
+        $closedWeekdaysByVenue = $selection->effectiveClosedWeekdaysByVenue;
+
+        // La grille de la PÉRIODE, et elle seule — aucune union avec les créneaux de
+        // saison. C'est ce qui rend le modèle sûr : un gymnase n'a jamais deux jeux de
+        // créneaux dans une période, donc rien ne peut se chevaucher entre couches ni
+        // rendre un verrou ambigu (deux créneaux au même horaire, l'un « de saison »
+        // l'autre « de période »). P2-5 5b : un gymnase fermé perd ses créneaux sur ses
+        // jours FERMÉS uniquement (day-précis) — le reste passe.
+        $availabilitiesByVenue = [];
+        if ($this->venueTrainingSlotRepository instanceof VenueTrainingSlotRepository) {
+            foreach ($this->venueTrainingSlotRepository->findBy(['schedulePlanId' => $schedulePlanId], ['id' => 'ASC']) as $row) {
+                $rowVenueId = $row->getVenueId();
+                if (isset($disabledVenueIds[$rowVenueId])) {
+                    continue; // gymnase désactivé : il ne sert pas cette période
+                }
+                if (isset($closedWeekdaysByVenue[$rowVenueId][$row->getDayOfWeek()])) {
+                    continue; // gymnase fermé ce jour-là : créneau retiré du payload
+                }
+                $availabilitiesByVenue[$rowVenueId][] = $row;
+            }
+        }
+        $this->currentAvailabilitiesByVenue = $availabilitiesByVenue;
+
+        // Deactivated teams (computed by the selection) are dropped from the payload.
+        $teams = array_values(array_filter(
+            $clubSeasonTeams,
+            static fn (Team $team): bool => !isset($deactivatedTeamIds[$team->getId()]),
+        ));
+
+        $payload = $this->buildPayload(
+            clubId: $clubId,
+            seasonId: $seasonId,
+            // Un gymnase DÉSACTIVÉ sort du payload : l'y laisser avec 0 créneau serait
+            // inoffensif pour le solveur, mais toute contrainte le nommant deviendrait un
+            // id fantôme (cf. post-filtre plus bas) — on le retire à la source.
+            venues: array_values(array_filter(
+                $this->findByClubSeason(Venue::class, $clubId, $seasonId, $em),
+                static fn (Venue $venue): bool => !isset($disabledVenueIds[$venue->getId()]),
+            )),
+            teams: $teams,
+            coaches: $this->findByClubSeason(Coach::class, $clubId, $seasonId, $em),
+            teamCoaches: $this->findByClubSeason(TeamCoach::class, $clubId, $seasonId, $em),
+            coachPlayerMemberships: $this->findByClubSeason(CoachPlayerMembership::class, $clubId, $seasonId, $em),
+            // Overlay's OWN slot templates (its work-loop locks), not the base plan's.
+            // Filtre défensif : un verrou sur un gymnase désactivé pointerait un gymnase
+            // absent du payload. Un verrou ORPHELIN (plus aucun créneau à cet horaire) est,
+            // lui, une ERREUR annoncée AVANT la génération (GenerateScheduleController) —
+            // on ne l'escamote pas en silence.
+            // ⚠ Court-circuit d'INTENTION et d'économie, pas une branche de comportement :
+            // `scheduleId` est NOT NULL sur l'entité, donc `findBy(['scheduleId' => null])`
+            // rendrait `[]` de toute façon. Le retirer ne changerait aucun résultat — il
+            // évite une requête inutile à chaque appel pré-génération et dit au lecteur
+            // que « pas de version » n'est pas un cas dégradé. Aucun test ne peut donc le
+            // faire tomber : ne pas en écrire un qui prétendrait le contraire.
+            slotTemplates: null === $scheduleId ? [] : array_values(array_filter(
+                $em->getRepository(ScheduleSlotTemplate::class)->findBy(['scheduleId' => $scheduleId], ['id' => 'ASC']),
+                static fn (ScheduleSlotTemplate $template): bool => !isset($disabledVenueIds[$template->getVenueId()]),
+            )),
+            priorityTiers: $em->getRepository(PriorityTier::class)->findBy([], ['id' => 'ASC']),
+            solverSeed: $solverSeed,
+            constraints: $constraints,
+            // Overlay reservations: this period's own pins (base ones don't leak in,
+            // mirroring how HOLIDAY overlays use only dated constraints).
+            reservations: array_values(array_filter(
+                $em->getRepository(Reservation::class)->findBy(['schedulePlanId' => $schedulePlanId], ['id' => 'ASC']),
+                static fn (Reservation $reservation): bool => !isset($disabledVenueIds[$reservation->getVenueId()]),
+            )),
+            // Period mutualisation blocks: this plan's own (schedulePlanId = planId, P2-51). Un
+            // membre désactivé pour la période est filtré au roster dans serializeSharedBlocks.
+            sharedBlocks: $em->getRepository(SharedTrainingBlock::class)->findBy(['schedulePlanId' => $schedulePlanId], ['id' => 'ASC']),
+            // Passerelles : STRUCTURE de club+saison (patron Team/Coach) — mêmes lignes que le
+            // socle, jamais des copies ancrées au plan. Le roster de période filtre : une équipe
+            // désactivée pour la période sort du payload, son lien est abandonné (serializeTeamLinks).
+            teamLinks: $em->getRepository(TeamLink::class)->findBy(['clubId' => $clubId, 'seasonId' => $seasonId], ['id' => 'ASC']),
+            // P2-53 RMM-8 — matrice de trajet : STRUCTURE de club+saison, mêmes lignes que le
+            // socle (jamais une copie ancrée au plan) — le trajet entre deux gymnases ne change
+            // pas parce qu'on est en période. Sa présence active `travelTime` (opt-in).
+            venueTravelTimes: $this->travelTimesOfSeason($clubId, $seasonId, $em),
+            // ADR-0002 inv. 5 — le bloc `implicitRules` résout la COPIE de CE plan (repli saison
+            // si legacy), jamais la portée saison directement : c'est ce que le socle
+            // fait, ici on porte la période.
+            implicitRules: $this->implicitRuleResolver?->resolveForPlan($clubId, $seasonId, $schedulePlanId),
+            // Les séances et le plafond de chaque équipe : sa ligne dans CE plan, posée à sa naissance.
+            teamLines: $this->teamLinesOf($schedulePlanId),
+        );
+
+        $this->currentAvailabilitiesByVenue = [];
+        // ⚠ Ne PAS réinitialiser `currentSeasonSlotKeepTeamIds` ici : il est posé plus haut (depuis la
+        // sélection) et le handler le LIT APRÈS le retour de `buildForPlan` pour greffer les keep.
+        // Le champ ci-dessus est transient (consommé PENDANT buildPayload) ; celui-ci est un
+        // RÉSULTAT du build, exposé par `lastSeasonSlotKeepTeamIds()`.
+
+        // P2-5 5b : les gymnases fermés sont retirés de l'availability day-précisément
+        // (ci-dessus) — le forbid tous-jours `expandClosedVenues` est supprimé (l'engine
+        // forbidden_assignments était day-blind, il fermait le gymnase TOUTE la semaine
+        // même si l'incident n'en couvrait qu'une partie).
+
+        // Drop any SERIALIZED TEAM row targeting a team deactivated for the period — an
+        // original TEAM constraint, OR a CLUB/tag constraint expanded per-team during
+        // serialization (serializeConstraintRow emits scope=TEAM + scopeTargetId=teamId).
+        // The team is absent from the payload roster, so a ghost teamId here could turn the
+        // solve INFEASIBLE. Filtering the serialized payload (not the entity list) catches
+        // the CLUB+targetTag expansion the entity-level scope check would miss.
+        if ([] !== $deactivatedTeamIds) {
+            $payload['constraints'] = array_values(array_filter(
+                $payload['constraints'],
+                static fn (mixed $row): bool => !\is_array($row)
+                    || ConstraintScope::TEAM->value !== ($row['scope'] ?? null)
+                    || !isset($deactivatedTeamIds[(string) ($row['scopeTargetId'] ?? '')]),
+            ));
+        }
+
+        // Miroir du filtre équipes, côté GYMNASES : une contrainte qui nomme un gymnase
+        // absent du payload est un id fantôme. Le gestionnaire en est AVERTI au récap
+        // (ValidateConstraintsController) — ignorer sans le dire était le défaut de #285.
+        // Les clés qui nomment un gymnase sont celles du validateur (`uuidKeys()`), liste
+        // unique partagée avec le sélecteur de période : le récap et le solveur voient le
+        // MÊME jeu de contraintes.
+        if ([] !== $disabledVenueIds) {
+            $venueKeys = new ConstraintConfigValidator()->uuidKeys();
+            $payload['constraints'] = array_values(array_filter(
+                $payload['constraints'],
+                static function (mixed $row) use ($disabledVenueIds, $venueKeys): bool {
+                    if (!\is_array($row)) {
+                        return true;
+                    }
+                    if (ConstraintScope::FACILITY->value === ($row['scope'] ?? null)
+                        && isset($disabledVenueIds[(string) ($row['scopeTargetId'] ?? '')])) {
+                        return false;
+                    }
+                    $config = \is_array($row['config'] ?? null) ? $row['config'] : [];
+                    foreach ($venueKeys as $venueKey) {
+                        if (isset($disabledVenueIds[(string) ($config[$venueKey] ?? '')])) {
+                            return false;
+                        }
+                    }
+
+                    return true;
+                },
+            ));
+        }
+
+        // V1 — LES VERROUS D'UNE PÉRIODE SURVIVENT À « RÉGÉNÉRER ». Une version NUE (celle que crée
+        // « Régénérer ») n'a aucun slotTemplate propre : sans cette greffe les verrous HARD ne
+        // partaient qu'en `previousAssignments` (SOFT, convergence) et revenaient NONE. On greffe
+        // donc les HARD de la version SOURCE du plan (maison unique) comme épingles, en forme
+        // CANONIQUE pour que le hash de structure soit STABLE d'une génération à l'autre :
+        //  - `id` DÉRIVÉ DU PLACEMENT (team:venue:jour:HH:MM), jamais l'id de ligne (scopé par
+        //    version, il divergerait entre la source V et la version V+1 et ferait clignoter le
+        //    bandeau « à régénérer ») ;
+        //  - `pendingConstraintSuggestion` à null, tri par placement — déterministe.
+        // Dédupliqué par PLACEMENT, le PROPRE gagnant : les slotTemplates propres (gate sur une
+        // version existante) et les réservations déjà dans le payload priment ; un verrou repassé
+        // NONE ne revient pas (il n'est plus HARD dans la source). Source absente (1re génération)
+        // ou aucun HARD ⇒ payload byte-identique à avant V1 — rien n'est appendé.
+        $payload['slotTemplates'] = $this->appendInheritedCanonicalHardSlots(
+            \is_array($payload['slotTemplates'] ?? null) ? $payload['slotTemplates'] : [],
+            $schedulePlanId,
+            $disabledVenueIds,
+        );
+
+        return $payload;
+    }
+
+    /**
      * Les lignes d'équipes d'un plan (lot 4, PR 3a) ; lève si une ligne manque.
      *
      * @return array<string, PlanTeam>
@@ -1115,7 +1104,7 @@ final class ScheduleConstraintBuilder
      * Greffe les verrous HARD HÉRITÉS de la version SOURCE du plan ({@see SchedulePlanProvisioner::
      * lockSourceScheduleIdOfPlan}) sur les slotTemplates DÉJÀ sérialisés, en forme CANONIQUE et
      * dédupliqués par placement (les existants — propres + réservations — gagnent). Voir le POURQUOI
-     * au seul site d'appel (buildForPeriodPlan). Sans résolveur (mode sans DB) ou sans source → rend
+     * au seul site d'appel (buildForPlan, période). Sans résolveur (mode sans DB) ou sans source → rend
      * la liste telle quelle.
      *
      * @param array<mixed>        $existing         slotTemplates déjà dans le payload (propres ∪ réservations)

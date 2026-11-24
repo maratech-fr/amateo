@@ -18,6 +18,7 @@ use App\Enum\ConstraintRuleType;
 use App\Enum\ConstraintScope;
 use App\Enum\SeasonStatus;
 use App\Plans\PlanComposition;
+use App\Plans\SoclePlan;
 use App\Service\ParcImport\ParcImportExecutor;
 use App\Service\ScheduleConstraintBuilder;
 use App\Service\SecondSessionSameDayDetector;
@@ -191,7 +192,7 @@ final class ParcImportReservationSemanticsGateTest extends KernelTestCase
     {
         $this->scheduleCache?->clear();
 
-        return $this->builder->buildForClubSeason($club->getId(), $season->getId());
+        return $this->builder->buildForPlan(self::getContainer()->get(SoclePlan::class)->idOf($season->getId()));
     }
 
     private function reservationOf(Season $season, string $teamId, string $venueId, int $day, string $start): ?Reservation

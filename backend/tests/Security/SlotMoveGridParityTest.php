@@ -24,6 +24,7 @@ use App\Enum\VenueDayState;
 use App\Exception\EvictTargetMismatchException;
 use App\Exception\SlotUnavailableException;
 use App\Plans\PlanComposition;
+use App\Plans\SoclePlan;
 use App\Service\ClubGenerationLock;
 use App\Service\EngineClient;
 use App\Service\MoveSlotService;
@@ -338,6 +339,7 @@ final class SlotMoveGridParityTest extends KernelTestCase
             new NullLogger,
             new TeamCaseOccupancyGuard($this->em),
             $container->get(PeriodConstraintSelector::class),
+            $container->get(SoclePlan::class),
         );
     }
 
@@ -367,7 +369,7 @@ final class SlotMoveGridParityTest extends KernelTestCase
     /**
      * Un club/saison SEASON, un planning terminé NON pointé (donc éditable), une source (U13,
      * mardi 18h, `sourceDuration`) sur venue1, et UNE fenêtre de gymnase à venue2 / jeudi(4) /
-     * 20:00 de `windowDuration` (schedulePlanId null = grille de saison lue par buildForClubSeason).
+     * 20:00 de `windowDuration` (schedulePlanId null = grille de saison lue par buildForPlan).
      *
      * @return array{clubId: string, seasonId: string, scheduleId: string, venue1: string, venue2: string, slot: ScheduleSlotTemplate}
      */

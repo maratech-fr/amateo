@@ -57,7 +57,7 @@ final class PlanHoldingInputs
             $entry = null !== $entryId ? $this->entityManager->getRepository(CalendarEntry::class)->find($entryId) : null;
 
             if ($entry instanceof CalendarEntry && \in_array($entry->getPeriodType(), [CalendarEntryPeriodType::CLOSURE, CalendarEntryPeriodType::HOLIDAY], true)) {
-                $blocked[$scheduleId] = CoachDoubleBookingDetector::blockedIntervalsByCoach($this->periodConstraintSelector->selectForPeriodPlan($clubId, $seasonId, $planId, $entry)->kept);
+                $blocked[$scheduleId] = CoachDoubleBookingDetector::blockedIntervalsByCoach($this->periodConstraintSelector->selectForPlan($planId)->kept);
                 $groups[$scheduleId] = array_values($teamsByPlanBlock[$planId] ?? []);
             } else {
                 $blocked[$scheduleId] = CoachDoubleBookingDetector::blockedIntervalsByCoach($permanent);

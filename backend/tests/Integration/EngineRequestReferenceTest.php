@@ -7,6 +7,7 @@ namespace App\Tests\Integration;
 use App\Entity\Schedule;
 use App\Enum\LockLevel;
 use App\Enum\ScheduleStatus;
+use App\Plans\SoclePlan;
 use App\Service\ScheduleConstraintBuilder;
 use App\Service\SchedulePlanProvisioner;
 use App\Tests\EngineRequestDecorTrait;
@@ -356,7 +357,7 @@ final class EngineRequestReferenceTest extends KernelTestCase
         $this->primeSocleCache($primed);
         self::assertSame(
             $primed,
-            self::getContainer()->get(ScheduleConstraintBuilder::class)->buildForClubSeason(self::ER_CLUB, self::ER_SEASON),
+            self::getContainer()->get(ScheduleConstraintBuilder::class)->buildForPlan(self::getContainer()->get(SoclePlan::class)->idOf(self::ER_SEASON)),
             'sans purge, le constructeur sert la valeur amorcée : la purge est nécessaire',
         );
 

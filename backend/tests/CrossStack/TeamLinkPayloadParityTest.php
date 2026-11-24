@@ -17,6 +17,7 @@ use App\Enum\SeasonStatus;
 use App\Enum\TeamLinkIntensity;
 use App\Enum\TeamLinkType;
 use App\Plans\PlanComposition;
+use App\Plans\SoclePlan;
 use App\Service\ScheduleConstraintBuilder;
 use App\State\Processor\TeamLinkStateProcessor;
 use App\Tests\ProvisionsPeriodPlanTrait;
@@ -84,7 +85,7 @@ final class TeamLinkPayloadParityTest extends KernelTestCase
         $link = $this->teamLink($club, $season, $t1, $t2, TeamLinkIntensity::MANDATORY);
         $this->em->flush();
 
-        $payload = $this->builder->buildForClubSeason($club->getId(), $season->getId());
+        $payload = $this->builder->buildForPlan(self::getContainer()->get(SoclePlan::class)->idOf($season->getId()));
 
         self::assertSame(
             [[
@@ -114,7 +115,7 @@ final class TeamLinkPayloadParityTest extends KernelTestCase
         $planId = $this->planIdOf($entry);
         $this->em->flush();
 
-        $payload = $this->builder->buildForPeriodPlan($club->getId(), $season->getId(), $planId, $entry);
+        $payload = $this->builder->buildForPlan($planId);
 
         self::assertSame(
             [[
@@ -150,7 +151,7 @@ final class TeamLinkPayloadParityTest extends KernelTestCase
         $this->deactivateForPeriod($club, $season, $planId, $t3);
         $this->em->flush();
 
-        $payload = $this->builder->buildForPeriodPlan($club->getId(), $season->getId(), $planId, $entry);
+        $payload = $this->builder->buildForPlan($planId);
 
         // La passerelle {t1,t2} survit, EXACTEMENT ; {t1,t3} est absente.
         self::assertSame(
@@ -182,7 +183,7 @@ final class TeamLinkPayloadParityTest extends KernelTestCase
         $this->team($club, $season);
         $this->em->flush();
 
-        $payload = $this->builder->buildForClubSeason($club->getId(), $season->getId());
+        $payload = $this->builder->buildForPlan(self::getContainer()->get(SoclePlan::class)->idOf($season->getId()));
 
         self::assertSame([], $payload['teamLinks']);
     }

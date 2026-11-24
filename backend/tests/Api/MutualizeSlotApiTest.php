@@ -210,7 +210,7 @@ final class MutualizeSlotApiTest extends WebTestCase
     /**
      * Lot 2 (2026-10-13) — le socle est AUTORISÉ : l'ancre est une séance d'un planning de SAISON,
      * deux équipes DÉJÀ placées. Le bloc (et ses membres) naît à PORTÉE NULL — comme les blocs de
-     * saison que `copySocleSharedBlocks` recopie ensuite vers les fermetures —, séances co-localisées
+     * saison que `PlanBirth::copy` recopie ensuite vers les fermetures —, séances co-localisées
      * HARD/MANUAL et liées au bloc, exactement comme sur un plan de période.
      */
     public function testMutualizesAtSeasonBasePlanWithNullScope(): void

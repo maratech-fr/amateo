@@ -30,6 +30,7 @@ use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
 use App\Enum\TeamCoachRole;
 use App\Plans\PlanComposition;
+use App\Plans\SoclePlan;
 use App\Service\GenerationBlockersGuard;
 use App\Service\ScheduleConstraintBuilder;
 use App\Service\SchedulePlanProvisioner;
@@ -247,7 +248,7 @@ final class GenerationRefusesARecapBlockerTest extends WebTestCase
         $this->post($ctx, $version, 'regenerate');
         self::assertResponseStatusCodeSame(202);
 
-        $payload = self::getContainer()->get(ScheduleConstraintBuilder::class)->buildForClubSeason($ctx['clubId'], $ctx['seasonId']);
+        $payload = self::getContainer()->get(ScheduleConstraintBuilder::class)->buildForPlan(self::getContainer()->get(SoclePlan::class)->idOf($ctx['seasonId']));
         $days = array_column($payload['venues'][0]['trainingSlots'], 'dayOfWeek');
         self::assertNotContains(4, $days, 'la case reste occupée : le solveur ne peut rien y poser');
     }
@@ -814,9 +815,9 @@ final class GenerationRefusesARecapBlockerTest extends WebTestCase
         if (isset($ctx['planId'])) {
             $entry = $this->em->getRepository(CalendarEntry::class)->find($this->entryIdOf($ctx['planId']));
             self::assertInstanceOf(CalendarEntry::class, $entry);
-            $payload = $builder->buildForPeriodPlan($ctx['clubId'], $ctx['seasonId'], $ctx['planId'], $entry);
+            $payload = $builder->buildForPlan($ctx['planId']);
         } else {
-            $payload = $builder->buildForClubSeason($ctx['clubId'], $ctx['seasonId']);
+            $payload = $builder->buildForPlan(self::getContainer()->get(SoclePlan::class)->idOf($ctx['seasonId']));
         }
         $pins = array_filter(
             $payload['slotTemplates'] ?? [],

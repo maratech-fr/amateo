@@ -12,7 +12,7 @@ use App\Structure\RefersTo;
 use DateTimeImmutable;
 use Doctrine\ORM\Mapping as ORM;
 
-#[Family(Level::PLAN)]
+#[Family(Level::PLAN, copiedAtPlanBirth: true)]
 #[ORM\Entity(repositoryClass: VenueTrainingSlotRepository::class)]
 #[ORM\Table(name: 'venue_training_slot')]
 #[ORM\Index(name: 'idx_venue_training_slot_club_venue', columns: ['club_id', 'venue_id'])]

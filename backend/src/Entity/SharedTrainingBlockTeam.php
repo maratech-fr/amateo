@@ -20,7 +20,7 @@ use Doctrine\ORM\Mapping as ORM;
  * blocs — l'unicité porte sur le couple ``(block_id, team_id)`` (pas de doublon DANS un bloc),
  * JAMAIS sur ``team_id`` seul (contrairement à la contrainte historique du modèle groupe).
  */
-#[Family(Level::PLAN)]
+#[Family(Level::PLAN, copiedAtPlanBirth: true)]
 #[ORM\Entity]
 #[ORM\Table(name: 'shared_training_block_team')]
 #[ORM\UniqueConstraint(name: 'uniq_shared_training_block_team', columns: ['block_id', 'team_id'])]

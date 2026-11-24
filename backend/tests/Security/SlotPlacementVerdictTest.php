@@ -23,6 +23,7 @@ use App\Exception\ScheduleGenerationInProgressException;
 use App\Exception\SlotUnavailableException;
 use App\Exception\TeamAlreadyAtCaseException;
 use App\Plans\PlanComposition;
+use App\Plans\SoclePlan;
 use App\Service\ClubGenerationLock;
 use App\Service\EngineClient;
 use App\Service\MoveSlotService;
@@ -422,6 +423,7 @@ final class SlotPlacementVerdictTest extends WebTestCase
             new NullLogger,
             new TeamCaseOccupancyGuard($this->em),
             $container->get(PeriodConstraintSelector::class),
+            $container->get(SoclePlan::class),
         );
     }
 
@@ -468,7 +470,7 @@ final class SlotPlacementVerdictTest extends WebTestCase
         }
 
         // La fenêtre de gymnase cible : venue2, jour 4, 20:00, 90 min (schedulePlanId null = plan de
-        // base, exactement ce que `buildForClubSeason` charge). C'est ELLE qui fixe la durée d'un
+        // base, exactement ce que `buildForPlan` charge). C'est ELLE qui fixe la durée d'un
         // placement — le client ne peut pas l'imposer.
         $window = (new VenueTrainingSlot)
             ->setClubId($clubId)

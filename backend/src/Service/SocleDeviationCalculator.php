@@ -37,7 +37,7 @@ use Doctrine\ORM\EntityManagerInterface;
  * il apparie dans l'ordre de la semaine. C'est la règle, assumée.
  *
  * ── La RAISON d'une non-replacée vient de la sélection EXISTANTE, jamais d'un second calcul ─────
- * Dérivée de {@see PeriodConstraintSelector::selectForPeriodPlan}, MÊME précédence que le transcriber
+ * Dérivée de {@see PeriodConstraintSelector::selectForPlan}, MÊME précédence que le transcriber
  * ({@see PeriodPlanTranscriber} l. 195-210) : `team_reduced` (les dernières de la semaine, plafonné
  * à count(socle) − sessionOverrides[team]) > `venue_disabled` > `venue_closed` > NULL quand la
  * sélection n'explique pas l'absence (suppression manuelle, solve qui n'a pas replacé). Un NULL
@@ -80,7 +80,7 @@ final readonly class SocleDeviationCalculator
     {
         // La sélection de période EXISTANTE : le filtre partagé (gate + payload + transcription).
         // On en dérive uniquement la RAISON d'une absence — jamais un second calcul de règle.
-        $selection = $this->periodConstraintSelector->selectForPeriodPlan($clubId, $seasonId, $schedulePlanId, $entry);
+        $selection = $this->periodConstraintSelector->selectForPlan($schedulePlanId);
         $deactivatedTeamIds = $selection->deactivatedTeamIds;
         $disabledVenueIds = $selection->disabledVenueIds;
         $closedWeekdaysByVenue = $selection->effectiveClosedWeekdaysByVenue;

@@ -622,8 +622,8 @@ final class PeriodOverlayContext extends BaseContext
         }
 
         // P4-266 — un re-datage qui ne fait PAS entrer/sortir de contrainte datée ne change rien au
-        // payload /generate (buildForPeriodPlan ne dépend des dates de l'entrée QUE via
-        // PeriodConstraintSelection : contraintes datées retenues, fermetures effectives, équipes
+        // payload /generate (buildForPlan ne dépend des dates de l'entrée QUE via
+        // PlanSelection : contraintes datées retenues, fermetures effectives, équipes
         // désactivées). L'empreinte servie reste donc égale au snapshotHash FIGÉ de la version, et au
         // hash relevé AVANT le re-datage : le planning n'est PAS signalé à régénérer (règle fondateur
         // « si ça ne change rien au planning, pas de bandeau »).

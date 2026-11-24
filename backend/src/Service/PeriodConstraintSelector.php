@@ -13,13 +13,14 @@ use App\Plans\PlanComposition;
 use App\Plans\SoclePlan;
 use App\Repository\ConstraintRepository;
 use App\Repository\TeamRepository;
+use Doctrine\ORM\EntityManagerInterface;
 use LogicException;
 use Psr\Log\LoggerInterface;
 
 /**
  * P2-14 — LA source unique de « quelles contraintes partent au solveur pour cette
  * période ». Avant, la réponse vivait en DEUX exemplaires entretenus à la main :
- * `ScheduleConstraintBuilder::buildForPeriodPlan` (le payload) et
+ * `ScheduleConstraintBuilder::buildForPlan` (le payload) et
  * `ValidateConstraintsController::constraintsForPeriod` (le gate pré-solve) — dont les
  * commentaires assumaient l'aveu (« miroir EXACT du filtre gymnases »). Deux endroits
  * qui répondent à la même question, c'est le motif qui a produit 40 défauts en 4 rounds
@@ -55,15 +56,32 @@ final class PeriodConstraintSelector
         private readonly ConstraintConfigValidator $configValidator,
         private readonly PlanComposition $planComposition,
         private readonly SoclePlan $soclePlan,
+        private readonly EntityManagerInterface $entityManager,
     ) {}
 
     /**
+     * La sélection d'un plan de période, lue sur le plan : son club, sa saison et son entrée de calendrier.
+     *
      * @param list<Team>|null $clubSeasonTeams les équipes du club/saison si l'appelant
      *                                         les a DÉJÀ chargées (le builder les charge
      *                                         pour le payload) — évite une requête doublon
      */
-    public function selectForPeriodPlan(string $clubId, string $seasonId, string $schedulePlanId, CalendarEntry $entry, ?array $clubSeasonTeams = null): PeriodConstraintSelection
+    public function selectForPlan(string $schedulePlanId, ?array $clubSeasonTeams = null): PlanSelection
     {
+        $plan = $this->entityManager->getConnection()->fetchAssociative(
+            'SELECT club_id, season_id, calendar_entry_id FROM schedule_plan WHERE id = :pid',
+            ['pid' => $schedulePlanId],
+        );
+        if (false === $plan || null === $plan['calendar_entry_id']) {
+            throw new LogicException(\sprintf('Le plan %s n\'a pas d\'entrée de calendrier.', $schedulePlanId));
+        }
+        $clubId = (string) $plan['club_id'];
+        $seasonId = (string) $plan['season_id'];
+        $entry = $this->entityManager->getRepository(CalendarEntry::class)->find((string) $plan['calendar_entry_id']);
+        if (!$entry instanceof CalendarEntry) {
+            throw new LogicException(\sprintf('L\'entrée de calendrier du plan %s est introuvable.', $schedulePlanId));
+        }
+
         $periodType = $entry->getPeriodType();
         if (!\in_array($periodType, [CalendarEntryPeriodType::CLOSURE, CalendarEntryPeriodType::HOLIDAY], true)) {
             throw new LogicException('Period constraint selection supports only closure and holiday periods.');
@@ -193,7 +211,7 @@ final class PeriodConstraintSelector
             $kept[] = $constraint;
         }
 
-        return new PeriodConstraintSelection(
+        return new PlanSelection(
             schedulePlanId: $schedulePlanId,
             kept: $kept,
             droppedForDisabledVenue: $droppedForDisabledVenue,

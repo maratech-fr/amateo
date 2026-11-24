@@ -25,6 +25,7 @@ use App\Exception\EvictTargetMismatchException;
 use App\Exception\ScheduleGenerationInProgressException;
 use App\Exception\TeamAlreadyAtCaseException;
 use App\Plans\PlanComposition;
+use App\Plans\SoclePlan;
 use App\Service\ClubGenerationLock;
 use App\Service\EngineClient;
 use App\Service\MoveSlotService;
@@ -508,6 +509,7 @@ final class SlotMoveGroupVerdictTest extends KernelTestCase
             new NullLogger,
             new TeamCaseOccupancyGuard($this->em),
             $container->get(PeriodConstraintSelector::class),
+            $container->get(SoclePlan::class),
         );
     }
 
