@@ -212,10 +212,10 @@ final class ConflictTypeListParityTest extends KernelTestCase
     {
         /** @var array<string, mixed> $snapshot */
         $snapshot = json_decode($this->read(self::SNAPSHOT), true, 512, \JSON_THROW_ON_ERROR);
+        /** @var array<string, mixed>|null $schema */
         $schema = $snapshot['paths'][self::CONFLICTS_PATH]['get']['responses']['200']['content']['application/json']['schema'] ?? null;
         self::assertIsArray($schema, 'Le snapshot ne documente plus GET /api/fixtures/conflicts.');
 
-        /** @var array<string, mixed> $schema */
         return $schema;
     }
 
