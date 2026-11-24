@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Enum;
 
+use App\Matches\ConflictType;
+
 /**
  * Le statut de TRAITEMENT qu'un gestionnaire pose sur un conflit du radar
  * (P4-207). Le conflit lui-même reste toujours rendu ; ce statut ne fait que
@@ -24,31 +26,25 @@ enum ConflictResolutionStatus: string
     private const array BASE = [self::DEROGATION_REQUESTED, self::RESOLVED_INTERNALLY, self::NO_SOLUTION_YET];
 
     /**
-     * Les statuts EN PLUS de la base, par famille de conflit ({@see App\Enum} côté
-     * `ConflictType` du contrat). Les deux statuts de personne restent en outre
-     * conditionnés à un côté PLAYER (garde du contrôleur, message dédié) ; ici la
-     * table dit seulement quels statuts sont CONCEVABLES pour la famille.
-     *
-     * @var array<string, list<self>>
-     */
-    private const array FAMILY_EXTRA = [
-        'MATCH_MATCH' => [self::COACHES_NOT_PLAYING, self::PLAYS_NOT_COACHING],
-        'MATCH_TRAINING' => [self::COACHES_NOT_PLAYING, self::PLAYS_NOT_COACHING],
-        'COMPETITION_INCOMPLETE' => [self::IMPORT_MISSING_MATCHES],
-        'VENUE_OVERLAP' => [self::FBI_ERROR, self::MATCH_TO_MOVE],
-    ];
-
-    /**
      * Les statuts de traitement qu'un gestionnaire peut poser sur un conflit de cette
      * FAMILLE : les trois de base, plus les statuts propres à la famille. Le serveur
      * refuse tout statut hors de cette table (le front masque le geste voué au refus,
-     * mais le serveur reste souverain).
+     * mais le serveur reste souverain). Les deux statuts de personne restent en outre
+     * conditionnés à un côté PLAYER (garde du contrôleur, message dédié) ; ici la
+     * table dit seulement quels statuts sont CONCEVABLES pour la famille.
      *
      * @return list<self>
      */
-    public static function casesForFamily(string $conflictType): array
+    public static function casesForFamily(ConflictType $type): array
     {
-        return [...self::BASE, ...(self::FAMILY_EXTRA[$conflictType] ?? [])];
+        $extra = match ($type) {
+            ConflictType::MATCH_MATCH, ConflictType::MATCH_TRAINING => [self::COACHES_NOT_PLAYING, self::PLAYS_NOT_COACHING],
+            ConflictType::COMPETITION_INCOMPLETE => [self::IMPORT_MISSING_MATCHES],
+            ConflictType::VENUE_OVERLAP => [self::FBI_ERROR, self::MATCH_TO_MOVE],
+            default => [],
+        };
+
+        return [...self::BASE, ...$extra];
     }
 
     case DEROGATION_REQUESTED = 'DEROGATION_REQUESTED';

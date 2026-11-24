@@ -7,6 +7,7 @@ namespace App\Service\Conflicts;
 use App\Entity\Fixture;
 use App\Entity\LeagueWindowInterface;
 use App\Enum\FixtureHomeAway;
+use App\Matches\ConflictType;
 use App\Service\MatchConflictDetector;
 use DateTimeImmutable;
 
@@ -69,7 +70,7 @@ final class RuleWindowConflicts
                 continue;
             }
             $conflicts[] = [
-                'type' => 'LEAGUE_WINDOW_VIOLATION',
+                'type' => ConflictType::LEAGUE_WINDOW_VIOLATION->value,
                 'severity' => 2,
                 'windows' => $windowArrays,
                 'fixture' => ConflictMoments::bareFixtureView($fixture),
@@ -129,7 +130,7 @@ final class RuleWindowConflicts
                 continue;
             }
             $conflicts[] = [
-                'type' => 'CLUB_RULE_VIOLATION',
+                'type' => ConflictType::CLUB_RULE_VIOLATION->value,
                 'severity' => 3,
                 'rules' => $violated,
                 'fixture' => ConflictMoments::bareFixtureView($fixture),

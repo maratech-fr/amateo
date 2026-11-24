@@ -9,6 +9,7 @@ use App\Entity\ScheduleSlotTemplate;
 use App\Entity\VenueMatchWindow;
 use App\Enum\FixtureHomeAway;
 use App\Enum\FixtureStatus;
+use App\Matches\ConflictType;
 use App\Service\ConflictRadarLoader;
 use App\Service\EffectiveScheduleResolver;
 use App\Service\MatchConflictDetector;
@@ -60,7 +61,7 @@ final class VenueConflicts
                     continue;
                 }
                 $conflicts[] = [
-                    'type' => 'VENUE_OVERLAP',
+                    'type' => ConflictType::VENUE_OVERLAP->value,
                     'severity' => 1,
                     'venueId' => $left['fixture']->getVenueId(),
                     'start' => ConflictMoments::maxMoment($left['venueWindow']['start'], $right['venueWindow']['start'])->format(ConflictMoments::WALL_CLOCK_FORMAT),
@@ -110,7 +111,7 @@ final class VenueConflicts
                 continue;
             }
             $conflicts[] = [
-                'type' => 'TEAM_VENUE_FORBIDDEN',
+                'type' => ConflictType::TEAM_VENUE_FORBIDDEN->value,
                 'severity' => 3,
                 'venueId' => $venueId,
                 'fixture' => ConflictMoments::bareFixtureView($fixture),
@@ -160,7 +161,7 @@ final class VenueConflicts
             $applicable = MatchConflictDetector::applicableWindows($venueId, $date, $isHoliday, $windowArrays);
             usort($applicable, static fn (array $a, array $b): int => $a['startTime'] <=> $b['startTime']);
             $conflicts[] = [
-                'type' => 'ACCESS_WINDOW_LOST',
+                'type' => ConflictType::ACCESS_WINDOW_LOST->value,
                 'severity' => 4,
                 'venueId' => $venueId,
                 'fixture' => ConflictMoments::bareFixtureView($fixture),
@@ -235,7 +236,7 @@ final class VenueConflicts
             }
             usort($trainings, static fn (array $a, array $b): int => [$a['start'], $a['teamId']] <=> [$b['start'], $b['teamId']]);
             $conflicts[] = [
-                'type' => 'VENUE_TRAINING_OVERLAP',
+                'type' => ConflictType::VENUE_TRAINING_OVERLAP->value,
                 'severity' => 5,
                 'venueId' => $venueId,
                 'fixture' => ConflictMoments::bareFixtureView($fixture),
@@ -286,7 +287,7 @@ final class VenueConflicts
                     continue;
                 }
                 $conflicts[] = [
-                    'type' => 'VENUE_UNAVAILABLE',
+                    'type' => ConflictType::VENUE_UNAVAILABLE->value,
                     'severity' => 4,
                     'venueId' => $venueId,
                     'unavailabilityId' => $unavailability['sourceId'],

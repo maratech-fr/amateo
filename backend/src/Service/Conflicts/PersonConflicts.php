@@ -8,6 +8,7 @@ use App\Entity\Fixture;
 use App\Entity\ScheduleSlotTemplate;
 use App\Enum\ConflictPersonRole;
 use App\Enum\FixtureHomeAway;
+use App\Matches\ConflictType;
 use App\Service\EffectiveScheduleResolver;
 use App\Service\MatchConflictDetector;
 use DateInterval;
@@ -131,7 +132,7 @@ final class PersonConflicts
                         continue;
                     }
                     $line = [
-                        'type' => 'MATCH_MATCH',
+                        'type' => ConflictType::MATCH_MATCH->value,
                         'coachRole' => $this->aggregateRole($leftRole, $rightRole)->value,
                         'coachId' => $personId,
                         'start' => $overlapStart->format(ConflictMoments::WALL_CLOCK_FORMAT),
@@ -257,7 +258,7 @@ final class PersonConflicts
                             continue;
                         }
                         $line = [
-                            'type' => 'MATCH_TRAINING',
+                            'type' => ConflictType::MATCH_TRAINING->value,
                             'coachRole' => $this->aggregateRole($matchRole, $trainingRole)->value,
                             'coachId' => $personId,
                             'start' => ConflictMoments::maxMoment($matchWindow['start'], $trainingWindow['start'])->format(ConflictMoments::WALL_CLOCK_FORMAT),
@@ -359,7 +360,7 @@ final class PersonConflicts
 
                     $key = $personId . '|' . $fixture->getId();
                     $line = [
-                        'type' => 'MATCH_COACH_UNAVAILABLE',
+                        'type' => ConflictType::MATCH_COACH_UNAVAILABLE->value,
                         'coachId' => $personId,
                         'coachRole' => ConflictPersonRole::MAIN->value,
                         'fixture' => ConflictMoments::fixtureView($view, ConflictPersonRole::MAIN),
