@@ -7,6 +7,7 @@ namespace App\Tests\Integration\Seed;
 use App\Entity\Club;
 use App\Entity\OpponentVenueLink;
 use App\Enum\OpponentVenueLinkSource;
+use App\Plans\PlanStates;
 use App\Repository\SchoolHolidayPeriodRepository;
 use App\Seed\BcclSeeder;
 use App\Seed\BcclSeedIdentities;
@@ -101,6 +102,7 @@ final class BcclSeederIdempotenceTest extends KernelTestCase
         $genesisRefs = $this->repriseGenesisRefs($club);
         $this->assertRepriseGenesisConstraintsHangOnTheirChildWeek($genesisRefs);
         $this->assertMateoIncidentPlansCarryTheReconstructedGrid($club);
+        $this->assertEveryCompletedVersionCarriesItsCopy($club);
 
         $this->seeder->run($this->em, BcclSeedProfile::dev());
         self::assertTrue($this->em->isOpen(), 'le second passage garde l\'EntityManager ouvert');
@@ -115,6 +117,7 @@ final class BcclSeederIdempotenceTest extends KernelTestCase
             [$club->getId(), 'Matéo indisponible (travaux)%'],
         );
         self::assertSame(0, $staleEntries, 'l\'ancien incident ne ressuscite pas au second run');
+        $this->assertEveryCompletedVersionCarriesItsCopy($club);
     }
 
     /**
@@ -508,6 +511,36 @@ final class BcclSeederIdempotenceTest extends KernelTestCase
             $this->connection->rollBack();
         }
         parent::tearDown();
+    }
+
+    /**
+     * Lot 5, PR 2 (ligne 6 du plan) — toute version terminée porte la copie du froid de son plan, graines comprises : le
+     * socle transcrit et chaque version de période terminée du club semé ont leur copie, une seule, et la copie est
+     * l'état du plan au moment du seed (aucun plan « en attente » sur une base fraîche). Jumeau, cité :
+     * `Integration/Plans/PlanStatesTest` (les naissances de l'application) ; la graine de charge :
+     * `Integration/Seed/LoadTestClubSeederCopyTest`.
+     */
+    private function assertEveryCompletedVersionCarriesItsCopy(Club $club): void
+    {
+        $versions = $this->connection->fetchAllAssociative(
+            'SELECT s.id, s.schedule_plan_id, (SELECT COUNT(*) FROM schedule_state c WHERE c.schedule_id = s.id) AS copies'
+            . ' FROM schedule s WHERE s.club_id = ? AND s.status = \'COMPLETED\' ORDER BY s.id',
+            [$club->getId()],
+        );
+        self::assertNotSame([], $versions, 'témoin : le seed dev pose des versions terminées');
+        $without = array_values(array_map(
+            static fn (array $row): string => (string) $row['id'],
+            array_filter($versions, static fn (array $row): bool => 1 !== (int) $row['copies']),
+        ));
+        self::assertSame([], $without, 'chaque version terminée semée porte une copie, une seule');
+
+        $states = self::getContainer()->get(PlanStates::class);
+        foreach ($versions as $row) {
+            self::assertTrue(
+                $states->of((string) $row['id'])->changesTo($states->capture((string) $row['schedule_plan_id']))->isEmpty(),
+                \sprintf('la copie de la version semée %s est l\'état de son plan : rien « en attente » sur une base fraîche', $row['id']),
+            );
+        }
     }
 
     /**

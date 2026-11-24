@@ -58,6 +58,12 @@ final class GenerateScheduleFailureTest extends KernelTestCase
     /** Le préfixe de slug du seul club dont la copie est refusée par le déclencheur de test. */
     private const string COPY_FAILS_SLUG = 'copie-impossible';
 
+    public static function tearDownAfterClass(): void
+    {
+        self::dropTheTrigger();
+        parent::tearDownAfterClass();
+    }
+
     /**
      * Retire le déclencheur de test. `DROP TRIGGER` veut un verrou exclusif sur `schedule_state` : la transaction du
      * test (DAMA, ouverte jusqu'au début du test suivant) en tient un dès qu'elle a lu ou écrit la table, et le DROP
@@ -429,12 +435,6 @@ final class GenerateScheduleFailureTest extends KernelTestCase
         } finally {
             self::dropTheTrigger();
         }
-    }
-
-    public static function tearDownAfterClass(): void
-    {
-        self::dropTheTrigger();
-        parent::tearDownAfterClass();
     }
 
     private function assertACopyFailureFailsTheGenerationWithoutCredit(): void
