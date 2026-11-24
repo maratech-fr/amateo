@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Service;
 
+use App\Matches\ConflictType;
 use InvalidArgumentException;
 
 /**
@@ -35,17 +36,22 @@ final class ConflictFingerprinter
      */
     public function fingerprint(array $conflict): string
     {
-        $type = $this->str($conflict, 'type');
+        $raw = $this->str($conflict, 'type');
+        $family = ConflictType::tryFrom($raw);
+        if (!$family instanceof ConflictType) {
+            throw new InvalidArgumentException(\sprintf('Type de conflit inconnu pour l\'empreinte : « %s ».', $raw));
+        }
+        $type = $family->value;
 
-        return match ($type) {
+        return match ($family) {
             // Coach + les deux fixtures (triées) : change de nature dès que l'une
             // des deux fixtures change (A↔B devient A↔C).
-            'MATCH_MATCH' => \sprintf('%s:%s:%s', $type, $this->str($conflict, 'coachId'), $this->pair(
+            ConflictType::MATCH_MATCH => \sprintf('%s:%s:%s', $type, $this->str($conflict, 'coachId'), $this->pair(
                 $this->nestedStr($conflict, 'left', 'fixtureId'),
                 $this->nestedStr($conflict, 'right', 'fixtureId'),
             )),
             // Coach + la fixture + le créneau d'entraînement.
-            'MATCH_TRAINING' => \sprintf(
+            ConflictType::MATCH_TRAINING => \sprintf(
                 '%s:%s:%s:%s',
                 $type,
                 $this->str($conflict, 'coachId'),
@@ -53,7 +59,7 @@ final class ConflictFingerprinter
                 $this->nestedStr($conflict, 'training', 'slotTemplateId'),
             ),
             // Le gymnase + les deux fixtures (triées).
-            'VENUE_OVERLAP' => \sprintf('%s:%s:%s', $type, $this->str($conflict, 'venueId'), $this->pair(
+            ConflictType::VENUE_OVERLAP => \sprintf('%s:%s:%s', $type, $this->str($conflict, 'venueId'), $this->pair(
                 $this->nestedStr($conflict, 'left', 'fixtureId'),
                 $this->nestedStr($conflict, 'right', 'fixtureId'),
             )),
@@ -70,13 +76,13 @@ final class ConflictFingerprinter
             // gymnase interdit » — le gymnase EST fixé sur la fixture de toute façon).
             // VENUE_TRAINING_OVERLAP : une seule fixture porte le signal ; la liste des séances
             // est EXCLUE de l'identité (une séance de plus ne crée pas un « Nouveau » conflit).
-            'LEAGUE_WINDOW_VIOLATION', 'CLUB_RULE_VIOLATION', 'TEAM_VENUE_FORBIDDEN', 'ACCESS_WINDOW_LOST', 'VENUE_TRAINING_OVERLAP', 'AWAY_NO_FOOTPRINT', 'FRIENDLY_ON_MATCH_SLOT' => \sprintf(
+            ConflictType::LEAGUE_WINDOW_VIOLATION, ConflictType::CLUB_RULE_VIOLATION, ConflictType::TEAM_VENUE_FORBIDDEN, ConflictType::ACCESS_WINDOW_LOST, ConflictType::VENUE_TRAINING_OVERLAP, ConflictType::AWAY_NO_FOOTPRINT, ConflictType::FRIENDLY_ON_MATCH_SLOT => \sprintf(
                 '%s:%s',
                 $type,
                 $this->nestedStr($conflict, 'fixture', 'fixtureId'),
             ),
             // La fixture + l'indisponibilité qui la frappe.
-            'VENUE_UNAVAILABLE' => \sprintf(
+            ConflictType::VENUE_UNAVAILABLE => \sprintf(
                 '%s:%s:%s',
                 $type,
                 $this->nestedStr($conflict, 'fixture', 'fixtureId'),
@@ -84,17 +90,16 @@ final class ConflictFingerprinter
             ),
             // Chantier H — le coach indisponible + la rencontre qu'il manque. La SÉVÉRITÉ est
             // EXCLUE de l'identité (le relief d'un adjoint ne crée pas un « Nouveau » conflit).
-            'MATCH_COACH_UNAVAILABLE' => \sprintf(
+            ConflictType::MATCH_COACH_UNAVAILABLE => \sprintf(
                 '%s:%s:%s',
                 $type,
                 $this->str($conflict, 'coachId'),
                 $this->nestedStr($conflict, 'fixture', 'fixtureId'),
             ),
             // La compétition SEULE — jamais imported/expected (chaque import les bouge).
-            'COMPETITION_INCOMPLETE' => \sprintf('%s:%s', $type, $this->str($conflict, 'competitionId')),
+            ConflictType::COMPETITION_INCOMPLETE => \sprintf('%s:%s', $type, $this->str($conflict, 'competitionId')),
             // L'ÉQUIPE seule porte le litige (P4-288) : son niveau n'est pas renseigné.
-            'TEAM_LEVEL_MISSING' => \sprintf('%s:%s', $type, $this->str($conflict, 'teamId')),
-            default => throw new InvalidArgumentException(\sprintf('Type de conflit inconnu pour l\'empreinte : « %s ».', $type)),
+            ConflictType::TEAM_LEVEL_MISSING => \sprintf('%s:%s', $type, $this->str($conflict, 'teamId')),
         };
     }
 

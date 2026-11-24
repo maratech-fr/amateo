@@ -207,7 +207,7 @@ Routines par famille gardées ; liste lue sur le catalogue ; balayage qui refuse
 
 ## 4. Découpage : sept PR
 
-Ordre d'exécution décidé (décision 5) : **PR 1 à 3, puis le lot 7 (sa PR 1, le filet, est déjà livrée ; ses huit autres PR), puis PR 4 à 7.**
+Ordre d'exécution décidé (décision 5) : **PR 1 à 3, puis le lot 7 (ses PR 1 et 2, le filet et la liste des types de conflit, sont déjà livrées ; ses sept autres PR), puis PR 4 à 7.**
 
 ### PR 1 · « Le filet du lot 5 » (aucun comportement ne change)
 - Références captées sur le code d'avant : `socle-20-saison-suivante-socle-complet.json`, `placement-21-equipe-creee-apres-validation.json`.
@@ -571,7 +571,7 @@ MoveSlotService::verdictFor(Schedule $version, array $candidateSlotIds): array{v
 | 1 | PR 1 · Le filet | Références 20 et 21, un scénario de chargement, mesure des plafonds | Une référence 1 à 15 qui bouge ; les cas 20 et 21 non figés |
 | 2 | PR 2 · Le froid se déclare | Déclaration froid, libre, saison suivante ; copie d'état à chaque version ; empreinte sans le libre ; commande de conversion | Une famille non déclarée ; une clé de la demande sans source ; une version terminée sans copie ; une génération qui réussit alors que la copie échoue ; `--check` à 0 avec une copie manquante |
 | 3 | PR 3 · Charger, une définition | Une route de chargement pour tout plan ; photo, restauration et seconde définition supprimées ; plan du lot 7 repointé | Une équipe, un gymnase, un coach ou une catégorie créé ou supprimé par un chargement ; une ligne d'un autre plan écrite ; un groupe dissous qui revient ; le niveau d'une équipe engagée changé ; la trace d'audit absente ; une ancienne route encore servie |
-| — | Lot 7 (PR 1 livrée, huit autres) | Les matchs | Hors de ce plan |
+| — | Lot 7 (PR 1 et 2 livrées, sept autres) | Les matchs | Hors de ce plan |
 | 4 | PR 4 · La porte, lecture inchangée | Tous les lecteurs de l'en vigueur passent par `InForce` | Une demande qui change d'un octet ; un lecteur nommé qui lit encore le pointeur ou une famille froide en direct |
 | 5 | PR 5 · Retravailler, la porte lit la copie | « Retravailler » à la place de « Rouvrir » pour le socle ; Wizard déverrouillé ; état « en attente » ; lignes de période propagées à la validation | Un champ froid modifié sans valider qui change une demande de période ou de placement ; un plan de période ou une doléance supprimés par « Retravailler » ; la version en vigueur modifiable ; une copie de travail née périmée sans rien en attente ; « Rouvrir » encore accepté sur un plan de saison ; le plafond Behat |
 | 6 | PR 6 · Valider dit ce qui change | Liste de ce qui change ; suppression par le froid seul ; doléances conservées ; « Valider ces modifications » sans régénérer, avec contrôle d'incohérences | Un plan de période supprimé alors qu'aucun froid n'a changé ; un verrou seul annoncé comme changement ; une séance déplacée absente de la liste ; une doléance purgée ; une incohérence tue, ou qui bloque ; une séance qui change de place, de jour, d'heure, de gymnase ou de verrou par le geste ; le geste qui écrit autre chose que le coach des séances, l'entrée figée et l'empreinte ; une copie de travail périmée juste après le geste ; une demande de contrôle de plus de 50 séances ; un refus du moteur qui remonte en erreur ; la référence 22 non figée ; `ValidateAssignmentsContractSchemaTest` rouge |
