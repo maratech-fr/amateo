@@ -777,8 +777,16 @@ final class SeasonWorkLoopContext extends BaseContext
         }
     }
 
-    #[Then('il ne l\'est plus')]
+    /** Lot 5, PR 2 (ligne 7 du plan) : une donnée libre a changé, rien ne périme le planning. */
     #[Then('il ne l\'est toujours pas')]
+    public function ilNeLEstToujoursPas(): void
+    {
+        if ($this->planIsStale()) {
+            throw new RuntimeException('le planning est signalé périmé alors que seule une donnée libre a changé : elle ne doit entrer ni dans l\'empreinte ni dans la copie');
+        }
+    }
+
+    #[Then('il ne l\'est plus')]
     public function ilNeLEstPlus(): void
     {
         if ($this->planIsStale()) {
