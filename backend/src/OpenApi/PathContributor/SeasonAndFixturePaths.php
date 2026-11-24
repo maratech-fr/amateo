@@ -8,6 +8,7 @@ use ApiPlatform\OpenApi\Model\Operation;
 use ApiPlatform\OpenApi\Model\PathItem;
 use ApiPlatform\OpenApi\Model\Paths;
 use ApiPlatform\OpenApi\Model\Response;
+use App\Matches\ConflictType;
 use App\OpenApi\CustomPathContributor;
 use App\OpenApi\OpenApiSchemas;
 use ArrayObject;
@@ -148,7 +149,7 @@ final readonly class SeasonAndFixturePaths implements CustomPathContributor
                         'clubId' => ['type' => 'string'],
                         'seasonId' => ['type' => 'string', 'nullable' => true],
                         'conflicts' => ['type' => 'array', 'items' => ['type' => 'object', 'properties' => [
-                            'type' => ['type' => 'string', 'enum' => ['VENUE_OVERLAP', 'LEAGUE_WINDOW_VIOLATION', 'CLUB_RULE_VIOLATION', 'TEAM_VENUE_FORBIDDEN', 'MATCH_MATCH', 'MATCH_TRAINING', 'VENUE_UNAVAILABLE', 'ACCESS_WINDOW_LOST', 'VENUE_TRAINING_OVERLAP', 'COMPETITION_INCOMPLETE', 'AWAY_NO_FOOTPRINT', 'FRIENDLY_ON_MATCH_SLOT']],
+                            'type' => ['type' => 'string', 'enum' => ConflictType::values()],
                             'coachId' => ['type' => 'string', 'description' => 'The double-booked person (a coach or a player) — MATCH_MATCH / MATCH_TRAINING'],
                             'coachRole' => ['type' => 'string', 'enum' => ['MAIN', 'ASSISTANT', 'PLAYER'], 'description' => 'Aggregate role of the person: MAIN when every side is MAIN, ASSISTANT as soon as one side is ASSISTANT, PLAYER otherwise'],
                             'start' => ['type' => 'string', 'format' => 'date-time', 'description' => 'Overlap segment start'],
@@ -197,7 +198,7 @@ final readonly class SeasonAndFixturePaths implements CustomPathContributor
                             ]],
                         ]]],
                         'held' => ['type' => 'array', 'description' => 'The lines another coach holds on that date: same shape as a conflict, with no severity, fingerprint or resolution, outside the counters and the visit delta', 'items' => ['type' => 'object', 'properties' => [
-                            'type' => ['type' => 'string', 'enum' => ['MATCH_MATCH', 'MATCH_TRAINING', 'MATCH_COACH_UNAVAILABLE']],
+                            'type' => ['type' => 'string', 'enum' => [ConflictType::MATCH_MATCH->value, ConflictType::MATCH_TRAINING->value, ConflictType::MATCH_COACH_UNAVAILABLE->value]],
                             'coachId' => ['type' => 'string', 'description' => 'The person this line is about'],
                             'heldBy' => ['type' => 'string', 'description' => 'The coach who holds the other side on that date'],
                             'heldSide' => ['type' => 'string', 'enum' => ['training', 'match', 'left', 'right'], 'description' => 'The side that coach holds'],

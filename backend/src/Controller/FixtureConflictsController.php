@@ -15,6 +15,7 @@ use App\Entity\Season;
 use App\Entity\User;
 use App\Enum\ConflictResolutionStatus;
 use App\Enum\FbiCorrectionField;
+use App\Matches\ConflictType;
 use App\Repository\ConflictMailingRepository;
 use App\Repository\ConflictResolutionRepository;
 use App\Service\ClubDay;
@@ -157,11 +158,11 @@ final class FixtureConflictsController extends AbstractController
             return $this->json(['error' => 'Ce conflit n\'existe plus dans le radar actuel.'], Response::HTTP_UNPROCESSABLE_ENTITY);
         }
 
-        $conflictType = \is_string($conflict['type'] ?? null) ? $conflict['type'] : '';
+        $conflictType = ConflictType::tryFrom(\is_string($conflict['type'] ?? null) ? $conflict['type'] : '');
 
         // Chaque famille a sa table de statuts (les 3 de base + les siens). Un statut hors
         // de cette table est refusé — le front masque le geste, mais le serveur est souverain.
-        if (!\in_array($status, ConflictResolutionStatus::casesForFamily($conflictType), true)) {
+        if (!$conflictType instanceof ConflictType || !\in_array($status, ConflictResolutionStatus::casesForFamily($conflictType), true)) {
             return $this->json(['error' => 'Ce statut de traitement ne s\'applique pas à cette famille de conflit.'], Response::HTTP_UNPROCESSABLE_ENTITY);
         }
 

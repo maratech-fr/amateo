@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Tests\Unit\Enum;
 
 use App\Enum\ConflictResolutionStatus;
+use App\Matches\ConflictType;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
 use ValueError;
@@ -43,35 +44,34 @@ final class ConflictResolutionStatusTest extends TestCase
         $base = [ConflictResolutionStatus::DEROGATION_REQUESTED, ConflictResolutionStatus::RESOLVED_INTERNALLY, ConflictResolutionStatus::NO_SOLUTION_YET];
 
         // Une famille sans statut propre → les trois de base, exactement.
-        self::assertSame($base, ConflictResolutionStatus::casesForFamily('LEAGUE_WINDOW_VIOLATION'));
-        self::assertSame($base, ConflictResolutionStatus::casesForFamily('UNKNOWN_FAMILY'));
+        self::assertSame($base, ConflictResolutionStatus::casesForFamily(ConflictType::LEAGUE_WINDOW_VIOLATION));
 
         // Collision de gymnase → base + erreur FBI + match à déplacer.
         self::assertSame(
             [...$base, ConflictResolutionStatus::FBI_ERROR, ConflictResolutionStatus::MATCH_TO_MOVE],
-            ConflictResolutionStatus::casesForFamily('VENUE_OVERLAP'),
+            ConflictResolutionStatus::casesForFamily(ConflictType::VENUE_OVERLAP),
         );
 
         // Calendrier incomplet → base + importer les matchs manquants.
         self::assertSame(
             [...$base, ConflictResolutionStatus::IMPORT_MISSING_MATCHES],
-            ConflictResolutionStatus::casesForFamily('COMPETITION_INCOMPLETE'),
+            ConflictResolutionStatus::casesForFamily(ConflictType::COMPETITION_INCOMPLETE),
         );
 
         // Personne en double → base + les deux statuts « joue/coache » (le côté PLAYER
         // reste vérifié par le contrôleur, pas ici).
         self::assertSame(
             [...$base, ConflictResolutionStatus::COACHES_NOT_PLAYING, ConflictResolutionStatus::PLAYS_NOT_COACHING],
-            ConflictResolutionStatus::casesForFamily('MATCH_MATCH'),
+            ConflictResolutionStatus::casesForFamily(ConflictType::MATCH_MATCH),
         );
         self::assertSame(
             [...$base, ConflictResolutionStatus::COACHES_NOT_PLAYING, ConflictResolutionStatus::PLAYS_NOT_COACHING],
-            ConflictResolutionStatus::casesForFamily('MATCH_TRAINING'),
+            ConflictResolutionStatus::casesForFamily(ConflictType::MATCH_TRAINING),
         );
 
         // Un statut propre à une famille n'est JAMAIS proposé ailleurs (souveraineté serveur).
-        self::assertNotContains(ConflictResolutionStatus::FBI_ERROR, ConflictResolutionStatus::casesForFamily('MATCH_MATCH'));
-        self::assertNotContains(ConflictResolutionStatus::IMPORT_MISSING_MATCHES, ConflictResolutionStatus::casesForFamily('VENUE_OVERLAP'));
+        self::assertNotContains(ConflictResolutionStatus::FBI_ERROR, ConflictResolutionStatus::casesForFamily(ConflictType::MATCH_MATCH));
+        self::assertNotContains(ConflictResolutionStatus::IMPORT_MISSING_MATCHES, ConflictResolutionStatus::casesForFamily(ConflictType::VENUE_OVERLAP));
     }
 
     public function testFromValidValue(): void

@@ -15,6 +15,7 @@ use App\Entity\VenueMatchWindow;
 use App\Enum\ConflictPersonRole;
 use App\Enum\FixtureHomeAway;
 use App\Enum\TeamLevel;
+use App\Matches\ConflictType;
 use App\Service\Conflicts\ConflictMoments;
 use App\Service\Conflicts\DayHoldings;
 use App\Service\Conflicts\PersonConflicts;
@@ -660,7 +661,7 @@ final class MatchConflictDetector
             }
             $seen[$teamId] = true;
             $items[] = [
-                'type' => 'TEAM_LEVEL_MISSING',
+                'type' => ConflictType::TEAM_LEVEL_MISSING->value,
                 'severity' => 7,
                 'teamId' => $teamId,
             ];
@@ -748,7 +749,7 @@ final class MatchConflictDetector
             }
 
             $conflict = [
-                'type' => 'FRIENDLY_ON_MATCH_SLOT',
+                'type' => ConflictType::FRIENDLY_ON_MATCH_SLOT->value,
                 'severity' => 5,
                 'reasons' => $reasons,
                 'fixture' => ConflictMoments::bareFixtureView($fixture),
@@ -857,7 +858,7 @@ final class MatchConflictDetector
             }
 
             $items[] = [
-                'type' => 'COMPETITION_INCOMPLETE',
+                'type' => ConflictType::COMPETITION_INCOMPLETE->value,
                 'severity' => $severity,
                 'reason' => $reason,
                 'competitionId' => $competition->getId(),
@@ -903,7 +904,7 @@ final class MatchConflictDetector
                 continue;
             }
             $items[] = [
-                'type' => 'AWAY_NO_FOOTPRINT',
+                'type' => ConflictType::AWAY_NO_FOOTPRINT->value,
                 'severity' => 7,
                 'fixture' => ConflictMoments::bareFixtureView($fixture),
             ];

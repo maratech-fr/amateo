@@ -138,6 +138,11 @@ final class FrontRederivationRegistryTest extends TestCase
             'backendTruth' => 'App\\Service\\VenueWindowOccupancy::windowIsFilled (décide la case « vide » de l\'export PDF/XLSX)',
             'parityTest' => 'EmptySlotOverlapMirrorParityTest.php',
         ],
+        'features/matches/lib/conflictLabels.ts' => [
+            'decides' => 'la liste des familles de conflit offertes en chips (`CONFLICT_FAMILIES`, une clé par type de l\'union `ConflictType` de api/conflicts.ts) — un type inconnu de l\'écran n\'aurait ni libellé ni filtre',
+            'backendTruth' => 'App\\Matches\\ConflictType (lot 7, PR 2)',
+            'parityTest' => 'ConflictTypeListParityTest.php',
+        ],
     ];
 
     /**
