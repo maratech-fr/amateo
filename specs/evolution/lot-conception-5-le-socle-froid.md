@@ -1,12 +1,12 @@
 # Lot 5 · Le socle froid : plan d'exécution
 
-**Statut : version finale (v4 sur 4, après trois passes de `smith`). Plan validé par le fondateur le 2026-11-24 avec ses décisions 1 à 8 (§10) et les écarts E1 à E6. Aucune PR livrée. L'exécution suit l'ordre du §4 : PR 1 à 3, puis le lot 7, puis PR 4 à 7.** Voie **Full**. Branche cible `lot/conception`, une PR ouverte à la fois, « Lot Gate » seul ; avant chaque merge : `make -C backend tests-complete` et les features et specs de la zone sur la stack d'épreuve. Exécutant de chaque PR : `neo`, après les rouges de `tank`.
+**Statut : version finale (v4 sur 4, après trois passes de `smith`). Plan validé par le fondateur le 2026-11-24 avec ses décisions 1 à 8 (§10) et les écarts E1 à E6. PR 1 livrée (« Écarts au plan, tels que livrés (PR 1) », §4). L'exécution suit l'ordre du §4 : PR 1 à 3, puis le lot 7, puis PR 4 à 7.** Voie **Full**. Branche cible `lot/conception`, une PR ouverte à la fois, « Lot Gate » seul ; avant chaque merge : `make -C backend tests-complete` et les features et specs de la zone sur la stack d'épreuve. Exécutant de chaque PR : `neo`, après les rouges de `tank`.
 
 **Limite à dire d'entrée** : la PR 5 concentre la porte sur la copie, « Retravailler », l'écran, la propagation des lignes de période et environ 49 fichiers de test, alors que le plafond Behat (950 s) est déjà dépassé en local. **Un dépassement est probable** ; relever le plafond exige la ligne datée du fondateur dans le corps de la PR.
 
 **Cadrage** : la conception validée en tient lieu ([`lot-conception-decoupage.md`](lot-conception-decoupage.md) §5, décision 3). La fiche du lot est dans [`lot-conception-decoupage.md`](lot-conception-decoupage.md) § Lot 5 ; ce fichier dit **comment**. Cible : [`conception-cible.md`](conception-cible.md) §4, §5, §12 à §17, §19, §28.
 
-**Ce que ce plan suppose** : lot 4 livré sur `lot/conception` (tête `2c1251fbf`, qui porte aussi la PR 1 du lot 7). Les `fichier:ligne` datent du 2026-11-24, **à relire à l'ouverture de chaque PR**.
+**Ce que ce plan suppose** : lot 4 livré sur `lot/conception` (tête `2c1251fbf` à l'écriture, qui portait aussi la PR 1 du lot 7 ; la base a avancé depuis). Les `fichier:ligne` datent du 2026-11-24, **à relire à l'ouverture de chaque PR**.
 
 **Écarts à la cible et aux plans voisins, validés avec ce plan** :
 - E1 : contraintes permanentes, passerelles, règle de trajet et coach principal restent rangés à la saison, déclarés « froid du socle » (lot 9 pour les déplacer).
@@ -35,7 +35,7 @@
 
 **La photo et « Charger » du socle**
 - Dix familles listées à la main, catégories du club comprises : `Service/StructureSnapshotter.php:53-65`, `:121-125`.
-- Seul un plan de saison reçoit une photo (`MessageHandler/GenerateScheduleHandler.php:285-287`) ; son écriture n'échoue jamais la génération (`:388-396`).
+- Seul un plan de saison reçoit une photo (`MessageHandler/GenerateScheduleHandler.php:284-287`) ; son écriture n'échoue jamais la génération (`:388-396`).
 - « Charger » efface puis réinsère : `Service/StructureRestorer.php:425-440`, dont catégories (`:439`), équipes (`:431`), gymnases (`:437`), coachs (`:438`).
 - Non restaurés : passerelles, règle de trajet, bien-être, mutualisations, occupations.
 - Après réinsertion : élagage des lignes de période orphelines (`:313-380`), `ensureLines` (`:144`), jetons de collecte recréés (`:148`).
@@ -94,7 +94,7 @@
 
 **Déclaration** : `Structure/Family.php:23-31` ne dit ni froid, ni libre, ni saison suivante.
 
-**Filet existant** : références 1 à 15 du lot 4 ; 16 à 19 captées par la PR 1 du lot 7 ; chaîne `tests/Integration/Migration/Lot4MigrationChainTest.php:75` ; 49 fichiers de test pointent une version validée à la main (23 contextes Behat, `tests/ChoosesPlanVersionTrait.php`) ; plafonds 1000, 950, 635, 230 s.
+**Filet existant** : références 1 à 15 du lot 4 ; 16 à 19 captées par la PR 1 du lot 7 ; 20 et 21 par la PR 1 du lot 5 ; chaîne `tests/Integration/Migration/Lot4MigrationChainTest.php:75` ; 49 fichiers de test pointent une version validée à la main (23 contextes Behat, `tests/ChoosesPlanVersionTrait.php`) ; plafonds 1000, 950, 635, 230 s.
 
 ## 3. Conception : cinq réponses par objet
 
@@ -214,6 +214,15 @@ Ordre d'exécution décidé (décision 5) : **PR 1 à 3, puis le lot 7 (ses PR 1
 - Feature neuve `charger-une-version-ramene-son-etat.feature`, un scénario sur ce qui revient déjà.
 - Mesure des plafonds.
 - Tests pour `tank` : lignes 1 à 4. `/security-review` : non.
+
+**Écarts au plan, tels que livrés (PR 1)**
+- (a) Références 20 et 21 (`tests/EngineRequestSocleNetDecorTrait.php`, `EngineRequestReferenceTest`, bloquant d'office), captées sur le code d'avant, vertes, falsifiées dans les deux sens. 20 `socle-20-saison-suivante-socle-complet` : le vrai `SeasonTransitionService::transition` au 2026-05-04, saison 2026 réglée en beta. 21 `placement-21-equipe-creee-apres-validation` : une équipe U17 créée après la validation, avec son coach principal, un match à domicile à placer et un extérieur. Les numéros 20 et 21 étaient libres (le lot 7 a pris 16 à 19).
+- (b) Outillage : `fixTransitionIds` (dans le décor) remplace les identifiants aléatoires nés de la bascule (`random_bytes`) par des identifiants fixes, puis reclasse la passerelle (l'invariant « équipe A < équipe B » dépendait des identifiants : la référence passait une fois sur deux). **Limite** : ce remplacement ne tient que parce qu'aucune clé étrangère ne vise une équipe, un gymnase, un coach ou une contrainte. Le lot 6 en posera ; le remplacement échouera alors bruyamment et devra être revu.
+- (c) Feature neuve `charger-une-version-ramene-son-etat.feature` (suite Behat `charger-une-version`, `LoadVersionContext`) : charger la version 1 rend la grille, les réservations, les règles **et les séances par équipe** (étape ajoutée par rapport à l'énoncé du plan). L'étape « je charge la version 1 » appelle aujourd'hui `POST /api/schedules/{id}/regenerate-from` ; la PR 3 la passe sur `POST /api/schedules/{id}/load` (adaptation mécanique).
+- (d) Ligne 4 du tableau (toutes les demandes après toutes les migrations) : `Lot4MigrationChainTest` reste inchangé et ne couvre PAS 20 et 21 : leur décor ne s'écrit pas dans le schéma d'avant le lot 4, comme 16 à 19 au lot 7.
+- (e) À venir. Version pointée à la main (PR 5) : 20 et 21 en dépendent (`seedSocleVersion`/`chooseAndLoadSocle`, puis `seedSocleInForce`) et recevront une copie comme les 49 fichiers de la limite 11. PR 7 : la référence 20 change de ses seules réservations (elles entreront en `slotTemplates` de la saison suivante). Tests `CrossStack` : `EngineFailureTypeMirrorTest` (groupe `contract`) peut rougir en PR 2 si la copie fait échouer la génération sous un type nouveau ; `ManualPlacementOutsideLiftedRuleTest` (`contract`) casse en PR 5 (`ChoosesPlanVersionTrait`) ; `SocleReferencePayloadParityTest:36,318` et `PreviousAssignmentsPayloadParityTest:34,320` (`phase1`) instancient `StructureSnapshotter` et casseront en PR 3.
+- (f) Repères du plan décalés, corrigés : `GenerateScheduleHandler.php:284-287` (et non 285-287) ; « tête `2c1251fbf` » du préambule : la base a avancé.
+- (g) Plafonds : la PR ajoute environ 23 s en Behat et moins de 2 s en backend. Médianes CI relevées : backend 560 s sur 1000, Behat 774 s sur 950, e2e 492 s sur 635, frontend 135 s sur 230, engine 30 s sur 60. Le quota de minutes hébergées dépasse le seuil de réserve : le geste `CI_RUNS_ON_VERDICT` est au fondateur, jamais à un agent ; mesure à relire par `make ci-mesure`.
 
 ### PR 2 · « Le froid se déclare, une version copie tout le froid »
 - Migration : table `schedule_state`, RLS, clé vers `schedule` en cascade.

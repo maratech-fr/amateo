@@ -245,7 +245,7 @@ peuvent avancer dans un espace de travail à part pendant qu'un lot principal at
 
 - **Plan d'exécution** : [`lot-conception-5-le-socle-froid.md`](lot-conception-5-le-socle-froid.md) (version finale, plan écrit et
   validé par le fondateur le 2026-11-24 avec ses décisions 1 à 8, §10 du plan ; sept PR). Ordre d'exécution : PR 1 à 3, puis le
-  lot 7, puis PR 4 à 7.
+  lot 7, puis PR 4 à 7. **Statut : PR 1 livrée** (le filet : références 20 et 21, scénario de « Charger » ; écarts dans §4 du plan).
 - **Écarts à cette fiche (validés avec le plan)**
   - E1 : contraintes permanentes, passerelles, règle de trajet et coach principal restent rangés à la saison, déclarés « froid du socle » (lot 9 pour les déplacer).
   - E2 : les clés étrangères vers équipe et gymnase passent au lot 6 ; aucune clé vers `constraint` tant que E1 dure.

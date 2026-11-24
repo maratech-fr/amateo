@@ -23,6 +23,7 @@ use App\Tests\Behat\FbiErrorLedgerContext;
 use App\Tests\Behat\FixtureReviewContext;
 use App\Tests\Behat\InvitationContext;
 use App\Tests\Behat\LeagueValidationContext;
+use App\Tests\Behat\LoadVersionContext;
 use App\Tests\Behat\LockContext;
 use App\Tests\Behat\MatchesAwaitSocleContext;
 use App\Tests\Behat\MatchPlacementContext;
@@ -314,5 +315,10 @@ return (new Config)
                 new Suite('matchs-apres-socle')
                     ->withPaths('%paths.base%/features/les-matchs-attendent-le-planning-de-saison.feature')
                     ->withContexts(MatchesAwaitSocleContext::class),
+            )
+            ->withSuite(
+                new Suite('charger-une-version')
+                    ->withPaths('%paths.base%/features/charger-une-version-ramene-son-etat.feature')
+                    ->withContexts(LoadVersionContext::class),
             ),
     );

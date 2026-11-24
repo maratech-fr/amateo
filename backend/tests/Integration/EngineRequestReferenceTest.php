@@ -15,6 +15,7 @@ use App\Tests\EngineRequestGroupRulesDecorTrait;
 use App\Tests\EngineRequestMatchesNetDecorTrait;
 use App\Tests\EngineRequestPlanSettingsDecorTrait;
 use App\Tests\EngineRequestRunnerTrait;
+use App\Tests\EngineRequestSocleNetDecorTrait;
 use App\Tests\EngineRequestTravelDecorTrait;
 use App\Tests\Integration\Migration\Lot4MigrationChainTest;
 use PHPUnit\Framework\Attributes\Group;
@@ -46,7 +47,10 @@ use Symfony\Contracts\Cache\TagAwareCacheInterface;
  *      dans une période (`/validate-assignments`) ;
  *  16 à 19. le filet des matchs du lot 7 (`EngineRequestMatchesNetDecorTrait`) : deux équipes dans une
  *      division, les amicaux, les stades du suivi fédéral, les coupes. Chaque cas vérifie d'abord ses
- *      témoins de décor en base : un témoin absent fait échouer le test.
+ *      témoins de décor en base : un témoin absent fait échouer le test ;
+ *  20 et 21. le filet du lot 5 (`EngineRequestSocleNetDecorTrait`) : le socle de la saison suivante née par
+ *      le vrai geste depuis un socle complet en vigueur, et le placement quand une équipe créée après la
+ *      validation porte un match. Témoins de décor lus en base, comme 16 à 19.
  *
  * Jumeau de conversion : {@see Lot4MigrationChainTest} compare aux MÊMES fichiers les demandes composées
  * sur ce décor écrit en SQL dans le schéma d'avant le lot 4, une fois toutes les migrations jouées.
@@ -55,9 +59,9 @@ use Symfony\Contracts\Cache\TagAwareCacheInterface;
  * d'une branche de lot ne joue que la suite bloquante. Le groupe `phase1` est requis : le step lance
  * `phpunit --group phase1 <fichiers>`, un fichier listé sans ce groupe n'y jouerait aucun test.
  *
- * Aux cas de génération (1 à 4, 7 à 13), la demande se recoupe avec ce qui est écrit en base : l'empreinte
+ * Aux cas de génération (1 à 4, 7 à 13, 20), la demande se recoupe avec ce qui est écrit en base : l'empreinte
  * `snapshotHash` vaut `structureHash(snapshotData)`, les clés de la greffe `payloadGraft` sont
- * exactement celles attendues, et le corps reçu vaut `engineInput()` relu en base. Aux cas 1 à 3 et 7 à 13,
+ * exactement celles attendues, et le corps reçu vaut `engineInput()` relu en base. Aux cas 1 à 3, 7 à 13 et 20,
  * `snapshotHash` vaut aussi `structureHashOfPlan(plan)` (le signal « structure modifiée » ne ment pas
  * sur une version fraîche). Au cas 4 (comblement), la relation constatée est AUSSI l'égalité, mais par
  * un autre chemin : les épingles du comblement (tout le placé de la version source, en HARD) sont
@@ -91,6 +95,7 @@ final class EngineRequestReferenceTest extends KernelTestCase
     use EngineRequestMatchesNetDecorTrait;
     use EngineRequestPlanSettingsDecorTrait;
     use EngineRequestRunnerTrait;
+    use EngineRequestSocleNetDecorTrait;
     use EngineRequestTravelDecorTrait;
 
     public function testSocleFirstGenerationOfADraft(): void
@@ -401,6 +406,38 @@ final class EngineRequestReferenceTest extends KernelTestCase
         self::assertSame([6], $days[self::ER_TEAM_U13] ?? null, 'témoin 19 : U13 F a une fenêtre de ligue le samedi seulement');
         self::assertSame([], $days[self::ER_TEAM_U15] ?? null, 'témoin 19 : U15 M n\'a aucune fenêtre de ligue');
         $this->assertReference('placement-19-coupes', $body);
+    }
+
+    /**
+     * Le socle de la saison suivante, née par le vrai geste depuis un socle complet en vigueur : aucune
+     * mutualisation ne suit la saison, les trajets si.
+     */
+    public function testNextSeasonSocleAfterTheTransitionOfACompleteSocle(): void
+    {
+        $version = $this->seedEngineRequestTransitionedSocle();
+
+        $run = $this->runGeneration($version->getId());
+
+        self::assertSame(self::ER_TRANSITION_SEASON, $run['body']['seasonId'] ?? null, 'la demande est celle de la saison née de la bascule');
+        self::assertSame([], $this->blockRows($run['body']), 'aucun groupe mutualisé ne suit la saison');
+        self::assertNotSame([], $this->travelRows($run['body']), 'les temps de trajet suivent la saison');
+        $this->assertReference('socle-20-saison-suivante-socle-complet', $run['body']);
+        $this->assertGenerationCoherence($run['body'], $run['schedule'], null);
+        $this->assertSnapshotMatchesPlanStructure($run['schedule']);
+    }
+
+    /** Le placement des matchs quand une équipe créée après la validation du socle, avec son coach, porte un domicile. */
+    public function testPlacementWithATeamCreatedAfterTheValidation(): void
+    {
+        $this->seedSocleInForce();
+        $this->seedEngineRequestMatches();
+        $this->seedEngineRequestTeamCreatedAfterValidation();
+        $this->assertTeamCreatedAfterValidationWitnesses();
+
+        $body = $this->runPlacement(null);
+
+        self::assertContains(self::ER_TEAM_U17_AFTER_VALIDATION, array_column(\is_array($body['teams'] ?? null) ? $body['teams'] : [], 'id'), 'témoin 21 : U17 F, créée après la validation, part au moteur');
+        $this->assertReference('placement-21-equipe-creee-apres-validation', $body);
     }
 
     /**
