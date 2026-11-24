@@ -73,7 +73,7 @@ class ConstraintStateProcessor extends AbstractStateProcessor
      */
     protected function afterPersist(object $entity): void
     {
-        if (null !== $this->scopeBeforeWrite) {
+        if ($this->scopeBeforeWrite instanceof ConstraintScope) {
             $this->planComposition->onScopeChanged($entity, $this->scopeBeforeWrite);
             $this->scopeBeforeWrite = null;
             $this->entityManager->flush();
