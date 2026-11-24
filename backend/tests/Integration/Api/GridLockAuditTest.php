@@ -9,11 +9,13 @@ use App\Entity\ClubUser;
 use App\Entity\Schedule;
 use App\Entity\ScheduleSlotTemplate;
 use App\Entity\Season;
+use App\Entity\Team;
 use App\Entity\User;
 use App\Entity\Venue;
 use App\Enum\LockLevel;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
+use App\Plans\PlanComposition;
 use App\Service\ClubGenerationLock;
 use App\Service\SchedulePlanProvisioner;
 use App\Tests\ChoosesPlanVersionTrait;
@@ -320,6 +322,43 @@ final class GridLockAuditTest extends WebTestCase
             self::assertStringNotContainsString($personal, $json, 'aucune donnée personnelle dans details');
         }
         self::assertCount(1, $this->auditRowsFor('grid.changed', $settingId), 'une seule trace grid.changed — celle de la pose (le DELETE n\'en ajoute pas)');
+    }
+
+    /**
+     * Jumeau du cas gymnase, pour le réglage d'équipe de période (lot 4, PR 3a, la ligne reprend les valeurs du socle
+     * au lieu de disparaître) : retirer le réglage reste tracé comme avant le lot — UNE ligne `entity.deleted`, type
+     * 'TeamPeriodOverride', l'id du réglage, l'acteur et le club, sans `details` et sans `grid.changed`.
+     */
+    public function testRemovingATeamPeriodSettingStaysTrackedByEntityDeleted(): void
+    {
+        $planId = $this->createPeriodPlan($this->club->getId(), $this->season->getId());
+        $this->scopeGucToClub($this->club->getId());
+        $team = (new Team)->setClubId($this->club->getId())->setSeasonId($this->season->getId())->setSportCategoryId('33333333-3333-3333-3333-333333333333')
+            ->setPriorityTierId(1)->setName('SM1')->setIsActive(true);
+        $this->em->persist($team);
+        $this->em->flush();
+        self::getContainer()->get(PlanComposition::class)->ensureLines($this->season->getId());
+        $this->em->flush();
+
+        $this->client->request('POST', '/api/team_period_overrides', [], [], $this->headers(), json_encode([
+            'schedulePlanId' => $planId,
+            'teamId' => $team->getId(),
+            'isActive' => false,
+            'sessionsPerWeek' => null,
+        ], \JSON_THROW_ON_ERROR));
+        self::assertContains($this->client->getResponse()->getStatusCode(), [200, 201], (string) $this->client->getResponse()->getContent());
+        $settingId = $this->decode()['id'];
+
+        $this->client->request('DELETE', '/api/team_period_overrides/' . $settingId, [], [], $this->headers());
+        self::assertResponseStatusCodeSame(204);
+
+        $deleted = $this->auditRowsFor('entity.deleted', $settingId);
+        self::assertCount(1, $deleted, 'retirer le réglage d\'équipe laisse UNE trace entity.deleted');
+        self::assertSame('TeamPeriodOverride', $deleted[0]['entity_type']);
+        self::assertSame($this->manager->getId(), $deleted[0]['actor_user_id'], 'acteur tracé');
+        self::assertSame($this->club->getId(), $deleted[0]['club_id'], 'club tracé');
+        self::assertSame([], $this->details($deleted[0]), 'aucun details, donc aucune donnée personnelle');
+        self::assertCount(0, $this->auditRowsFor('grid.changed', $settingId), 'aucune trace grid.changed pour un réglage d\'équipe');
     }
 
     /**
