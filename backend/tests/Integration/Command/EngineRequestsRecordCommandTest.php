@@ -592,6 +592,9 @@ final class EngineRequestsRecordCommandTest extends KernelTestCase
 
         self::assertSame(self::VIEW_FILES, array_keys($aAlone), 'A a ses deux vues');
         self::assertSame(self::VIEW_FILES, array_keys($bAlone), 'B a ses deux vues');
+        // Témoins : chaque club voit ses propres matchs — une vue vide serait « isolée » sans rien prouver.
+        self::assertStringContainsString(self::erId('f1c7', 1), $aAlone['fixtures.json'], 'A voit son match');
+        self::assertStringContainsString(self::B_FIXTURE, $bAlone['fixtures.json'], 'B voit son match');
         $this->assertNothingOf(['club B' => [self::B_CLUB, self::B_SEASON, self::B_TEAM, self::B_VENUE, self::B_FIXTURE, hash('sha256', self::B_TEAM_NAME), hash('sha256', 'Adversaire B')]], $aAlone);
         $this->assertNothingOf(['club A' => [self::ER_CLUB, self::ER_SEASON, self::ER_TEAM_U13, self::ER_VENUE_NORD, self::erId('f1c7', 1), hash('sha256', 'Adversaire 1')]], $bAlone);
         self::assertSame($aAlone, $this->viewFiles($bothOut, self::ER_CLUB), 'A enregistré après B = A seul');
