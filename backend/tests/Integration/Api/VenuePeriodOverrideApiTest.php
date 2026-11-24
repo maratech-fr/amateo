@@ -8,7 +8,6 @@ use App\Entity\CalendarEntry;
 use App\Entity\Club;
 use App\Entity\ClubUser;
 use App\Entity\Constraint;
-use App\Entity\PlanVenue;
 use App\Entity\Reservation;
 use App\Entity\Schedule;
 use App\Entity\ScheduleSlotTemplate;
@@ -638,7 +637,12 @@ final class VenuePeriodOverrideApiTest extends WebTestCase
 
         $this->scopeGucToClub($this->club->getId());
         self::assertSame(0, $this->countPeriodSlots($this->venueA), 'la tentative de l’intrus n’a rien recopié chez le voisin');
-        self::assertNotNull($this->em->getRepository(PlanVenue::class)->find($created['id']));
+        // Lot 4, PR 3b : la ligne ne disparaît plus (un DELETE la remet au défaut) — c'est son réglage qui doit tenir.
+        self::assertSame(
+            ['participates' => true, 'closureLifted' => true, 'dayOverrides' => null],
+            $this->venueLineRow($this->planId, $this->venueA->getId()),
+            'la tentative de l’intrus n’a rien changé : le gymnase du voisin garde sa grille ressaisie (mode VIERGE)',
+        );
     }
 
     #[DataProvider('gridActionRoutes')]
