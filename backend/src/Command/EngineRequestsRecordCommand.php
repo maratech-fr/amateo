@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace App\Command;
 
+use App\Matches\MatchViewRecorder;
 use App\Service\EngineRequestFingerprint;
 use App\Service\EngineRequestRecorder;
+use App\Service\SeasonResolver;
 use App\Service\TenantConnectionContext;
 use Doctrine\DBAL\Connection;
 use RuntimeException;
@@ -22,8 +24,14 @@ use Symfony\Component\DependencyInjection\Attribute\Autowire;
  * format d'empreintes ({@see EngineRequestFingerprint}) : enregistrer avant une migration, migrer,
  * enregistrer après, `diff -r <avant>/requests <après>/requests`.
  *
- * Arbre : `<out>/requests/club-<id>/<clé>` (un fichier par demande) et `<out>/manifest.json`, hors de
- * l'arbre comparé : `{"clubs": [{"clubId", "requests": [clés], "skipped": [{"scope", "reason"}]}]}`.
+ * Arbre : `<out>/requests/club-<id>/<clé>` (un fichier par demande), `<out>/views/club-<id>/fixtures.json`
+ * et `conflicts.json` (les vues des matchs de la saison courante du club, {@see MatchViewRecorder}), et
+ * `<out>/manifest.json`, hors de l'arbre comparé : `{"clubs": [{"clubId", "requests": [clés], "skipped":
+ * [{"scope", "reason"}]}]}`.
+ *
+ * Les vues portent l'extension `.json` mais leur contenu est rendu au même format d'empreintes que les
+ * demandes, pas en JSON : les matchs portent des libellés adverses et des noms de gymnase, qui ne
+ * s'écrivent jamais en clair. Un club sans saison a deux vues vides.
  *
  * Sorties : 0 ; 1 une demande atteignable n'a pas pu être composée (nommée) ; 2 `--club` n'est pas un
  * UUID, ou `--out` n'est pas un dossier absent ou vide, ou est un lien symbolique ; 3 la sécurité par club n'est pas effective sur la
@@ -47,6 +55,8 @@ final class EngineRequestsRecordCommand extends Command
 
     public function __construct(
         private readonly EngineRequestRecorder $recorder,
+        private readonly MatchViewRecorder $matchViewRecorder,
+        private readonly SeasonResolver $seasonResolver,
         private readonly TenantConnectionContext $tenantConnectionContext,
         private readonly Connection $connection,
         #[Autowire(param: 'kernel.environment')]
@@ -133,6 +143,9 @@ final class EngineRequestsRecordCommand extends Command
             foreach ($recorded['requests'] as $key => $request) {
                 $this->write($clubDir . '/' . $key, EngineRequestFingerprint::render($request));
             }
+            $views = $this->viewsOfClub($clubId);
+            $this->write($out . '/views/club-' . $clubId . '/fixtures.json', EngineRequestFingerprint::render($views['fixtures']));
+            $this->write($out . '/views/club-' . $clubId . '/conflicts.json', EngineRequestFingerprint::render($views['conflicts']));
             $keys = array_keys($recorded['requests']);
             sort($keys, \SORT_STRING);
             $manifest[] = ['clubId' => $clubId, 'requests' => $keys, 'skipped' => $recorded['skipped']];
@@ -151,6 +164,24 @@ final class EngineRequestsRecordCommand extends Command
         $io->success(\sprintf('Enregistré sous %s.', $out));
 
         return Command::SUCCESS;
+    }
+
+    /**
+     * Les vues des matchs de la saison courante du club, celle que sert l'API sans saison choisie.
+     *
+     * @return array{fixtures: list<array<string, mixed>>, conflicts: list<array<string, mixed>>}
+     */
+    private function viewsOfClub(string $clubId): array
+    {
+        // La saison se lit sous la RLS : le club est posé le temps de la lire, puis relâché.
+        $this->tenantConnectionContext->setClubId($clubId);
+        try {
+            $seasonId = $this->seasonResolver->currentSeason($clubId)?->getId();
+        } finally {
+            $this->tenantConnectionContext->clear();
+        }
+
+        return null === $seasonId ? ['fixtures' => [], 'conflicts' => []] : $this->matchViewRecorder->record($clubId, $seasonId);
     }
 
     /** @return list<string> */
