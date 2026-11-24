@@ -63,8 +63,11 @@ Une demande = un fichier de texte. Une ligne par feuille, `<chemin>\t<valeur>`, 
 
 ```
 <out>/requests/club-<id>/<clé>      un fichier par demande
+<out>/views/club-<id>/fixtures.json et conflicts.json   les vues des matchs (lot 7), saison courante
 <out>/manifest.json                 hors de l'arbre comparé
 ```
+
+Les vues des matchs (`App\Matches\MatchViewRecorder`) portent l'extension `.json` mais sont rendues au format d'empreintes (§3). Elles ne couvrent QUE la saison courante du club, alors que les demandes parcourent toutes les saisons ; comparer : `diff -r <avant>/views <apres>/views`.
 
 `manifest.json` : par club, la liste triée des clés enregistrées et les `skipped` (`scope`, `reason`).
 Comparer : `diff -r <avant>/requests <apres>/requests`.

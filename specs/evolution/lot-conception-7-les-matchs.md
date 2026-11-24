@@ -1,7 +1,7 @@
 # Lot 7 · Les matchs : plan d'exécution
 
 **Statut : version finale (v4 sur 4, après deux passes de `smith`). Plan validé par le fondateur le 2026-11-23 avec ses
-décisions Q1 à Q10 (§13). Aucune PR livrée ; le lot 7 s'exécute après le lot 4.** Voie **Full**. Branche cible : `lot/conception` (seul « Lot Gate » y joue). Avant chaque merge : `/validation-runner`, `make -C backend tests-complete`, features et specs de la zone sur la stack d'épreuve. Exécutant : `neo`, après les rouges de `tank`. Pas d'`oracle` (`lot-conception-decoupage.md` §5.3). La fiche du lot est dans [`lot-conception-decoupage.md`](lot-conception-decoupage.md) § Lot 7 ; ce fichier dit **comment**.
+décisions Q1 à Q10 (§13). PR 1 (le filet) livrée sur `lot/conception`, non déployée ; le lot 7 s'exécute après le lot 4, désormais livré.** Voie **Full**. Branche cible : `lot/conception` (seul « Lot Gate » y joue). Avant chaque merge : `/validation-runner`, `make -C backend tests-complete`, features et specs de la zone sur la stack d'épreuve. Exécutant : `neo`, après les rouges de `tank`. Pas d'`oracle` (`lot-conception-decoupage.md` §5.3). La fiche du lot est dans [`lot-conception-decoupage.md`](lot-conception-decoupage.md) § Lot 7 ; ce fichier dit **comment**.
 
 **Les quatre dernières décisions (§13)** : Q7, les coupes ne sont plus proposées au système par « Placer » ; Q8, une compétition par équipe pour une division neuve ; Q9, un match connu de la fédération ne se range pas en amical à la main ; Q10, « Charger » refuse tant qu'une équipe disparue porte un match, amical compris.
 
@@ -9,7 +9,7 @@ Les `fichier:ligne` marqués « relu 11-23 » ont été relus le 2026-11-23 sur 
 
 ## 0. Ce qui est livré, et l'ordre d'exécution
 
-- Lots 0, 1, 2, 3 et 8 livrés sur `lot/conception`, non déployés. Lot 4 : planifié, aucune PR (`lot-conception-decoupage.md` §6).
+- Lots 0, 1, 2, 3, 4 et 8 livrés sur `lot/conception`, non déployés. Lot 7 : PR 1 livrée (§4, « Écarts au plan, tels que livrés »), les huit autres à faire.
 - **Ordre décidé (Q4) : après le lot 4.** Lot 4 (PR 1 à 5) → lot 7 (neuf PR). Le code peut s'écrire en worktree entre-temps.
 - Une seule PR ouverte à la fois sur `lot/conception` ; déploiement unique à la fin.
 
@@ -71,8 +71,8 @@ Chemins relatifs à `backend/src/` sauf mention.
 | C23 | Les purges suivent les déclarations ; une colonne peut porter plusieurs `#[RefersTo]` | `Structure/FamilyCatalog.php:66-80`, `:244-250` |
 | C24 | Précédent du lot 3 : clé composée avec `club_id`, conversion sans fusion | `migrations/Version20261122140000.php:14`, `:20-23`, `:61` |
 | C25 | Une saison naît à deux endroits, plus deux seeders | `Service/ClubProvisioner.php:96` ; `Service/SeasonTransitionService.php:187` ; `Seed/BcclSeeder.php:329` ; `Seed/LoadTestClubSeeder.php:284` |
-| C26 | Trou du filet : les deux références de placement ont des fenêtres de ligue vides ; aucune ne couvre un amical, une coupe, un match saisi ou validé, ni deux équipes dans une division | `tests/Fixtures/engine-requests/placement-5-club-entier.json`, `placement-6-fenetre.json` ; `tests/EngineRequestDecorTrait.php:319-324` |
-| C27 | Deux équipes dans une division n'ont qu'un test d'intégration | `backend/features/placement-des-matchs.feature:196` ; `tests/Integration/Service/FbiFixtureImporterTest.php:188` |
+| C26 | Trou du filet : les deux références de placement ont des fenêtres de ligue vides ; aucune ne couvre un amical, une coupe, un match saisi ou validé, ni deux équipes dans une division | `tests/Fixtures/engine-requests/placement-5-club-entier.json`, `placement-6-fenetre.json` ; `tests/EngineRequestDecorTrait.php:344-346` (fenêtre de ligue de catégorie « U13 » : vide, la catégorie du décor ne porte pas ce nom) |
+| C27 | Deux équipes dans une division n'ont qu'un test d'intégration | `backend/features/placement-des-matchs.feature:196` (le scénario de l'amical ; aucun scénario Behat ne couvrait deux équipes dans une division avant la PR 1, qui ajoute `une-rencontre-importee-dit-si-elle-est-traitee.feature:55`) ; `tests/Integration/Service/FbiFixtureImporterTest.php:191` |
 | C28 | Les gardes d'axe sont déjà au step bloquant, `EngagedTeamGuardTest` et `FfbbConfirmPerimeterTest` compris | `.github/workflows/ci.yml:682`, `:695`, `:721`, `:771`, `:775`, `:1339`, `:1351`, `:1445` ; `docs/testing/blocking-tests.md:136`, `:148`, `:157`, `:190`, `:191`, `:328`, `:330`, `:418` (relus 11-23) |
 | C29 | L'écran lit une compétition par équipe ; le formulaire grise l'équipe en modification et laisse changer la date | `frontend/src/features/matches/FixtureFormDialog.tsx:37`, `:76`, `:86`, `:103-111` (relu 11-23) |
 | C30 | `POST /api/competitions` pose `teamId` sans vérifier qu'il est du club. Ni `PUT` ni `DELETE` n'existent sur une compétition | `State/Processor/CompetitionStateProcessor.php:30-32` ; `ApiResource/CompetitionResource.php:26-32` (relus 11-23) |
@@ -86,7 +86,7 @@ Chemins relatifs à `backend/src/` sauf mention.
 | C38 | Lecteurs d'écran de l'équipe d'une compétition | `CalendarPage.tsx:527` ; `lib/exportRange.ts:10`, `:46` ; `EntryDeadlinesEditor.tsx:54`, `:158`, `:167` ; `lib/phaseView.ts:13-15`, `:28`, `:47-59`, `:69`, `:93` ; `lib/loopSteps.ts:133` |
 | C39 | Le radar charge les compétitions ; « compétition incomplète » lit journées, adversaires et équipe sur la compétition | `Service/ConflictRadarLoader.php:174-196` ; `MatchConflictDetector.php:817-872` (relu 11-23) |
 | C40 | Le moteur : une équipe **qui a des fenêtres de ligue** mais aucune ce jour-là n'a aucun coup d'envoi légal, motif « Les fenêtres de la ligue ne croisent aucune fenêtre d'accès ce jour-là. » ; une équipe **sans aucune fenêtre de ligue** est placée dans les seuls accès du gymnase, à toute heure qu'ils permettent | `engine/app/solver/match_placement/candidates.py:33-34`, `:88-92`, `:117-118` ; `reasons.py:8` (relus 11-23) |
-| C41 | L'outil de preuve enregistre les demandes par club | `Command/EngineRequestsRecordCommand.php:36`, `:132` |
+| C41 | L'outil de preuve enregistre les demandes par club | `Command/EngineRequestsRecordCommand.php:35-38`, `:131` |
 | C42 | Précédent d'écriture immédiate qui absorbe une course d'unicité | `Repository/OpponentDirectoryEntryRepository.php:49-73` |
 | C43 | Un test bloquant affirme aujourd'hui le contraire de Q3 : « un amical créé via l'API FFBB engage l'équipe » | `tests/Security/EngagedTeamGuardTest.php:113-135` (relu 11-23) |
 | C44 | Supprimer un match est libre, importé ou non : le périmètre engagé protège d'une cascade, pas d'un gestionnaire qui supprime ses matchs un par un | `ApiResource/FixtureResource.php:35` ; `FixtureStateProcessor.php:238-241` (relus 11-23) |
@@ -167,6 +167,16 @@ Ordre : 1, 2, 3a, 3b, 4a, 4b, 5, 6a, 6b. **Raison de la scission 4a / 4b** : la 
 - Les quatre références passent par le handler réel. **Chaque référence vérifie d'abord ses témoins de décor en base** (16 : deux équipes portent un match d'une compétition de même nom ; 17 : un match d'une « Amical PNF » et un amical sans compétition ; 18 : un domicile validé sans gymnase, un extérieur saisi ; 19 : un domicile de coupe non placé un mercredi pour chacune des deux équipes, un posé par le système). Un témoin absent fait ÉCHOUER le test.
 - Preuve du filet : une différence introduite exprès fait rougir chacune.
 - Outil : deux enregistrements successifs sont identiques et aucune ligne n'est écrite.
+
+**Écarts au plan, tels que livrés (PR 1)**
+- (a) Quatre références de plus, 16 à 19 : deux équipes dans une division, amicaux, suivi fédéral, coupes (`tests/EngineRequestMatchesNetDecorTrait.php`, `EngineRequestReferenceTest`, bloquant d'office).
+- (b) L'outil de preuve : `App\Matches\MatchViewRecorder::record(clubId, seasonId)` ; `app:engine-requests:record` écrit `views/club-<id>/fixtures.json` et `conflicts.json`. `fixtures` = `GET /api/fixtures` (même provider, même sérialisation), toutes les pages sans pagination, triées par `id` ; `conflicts` triés par empreinte, champ `resolution` compris, lignes `held` exclues. Le contenu est RENDU par `EngineRequestFingerprint::render` (sans nom en clair : `sha256:…`) malgré l'extension `.json`. Le recorder pose lui-même le club et ses filtres, relâche dans un `finally`, n'écrit rien et ne balaie aucun amical passé. Commande console seulement, refusée en production.
+- (c) **Limite écrite** : les vues ne portent QUE la saison courante du club (`SeasonResolver::currentSeason`), alors que les demandes au moteur parcourent toutes les saisons. Condition ajoutée aux mesures de la copie de production (§9, mesure 22) : attendu 0, arrêt sinon.
+- (d) La forme de `resolution` est recopiée de `FixtureConflictsController::resolutionView` (privée) ; gardée par un test de parité, note comprise (`Integration/Matches/MatchViewRecorderTest`).
+- (e) Les quatre scénarios Behat de la PR 1 décrivent le comportement ACTUEL ; ils seront retournés aux PR 3b, 4a, 4b et 6b.
+- (f) Pas de chaîne de conversion `Lot7` : le décor des références 16 à 19 dans le schéma d'avant le lot 7 ne se capture que maintenant, avant la PR 3b. **Décision ouverte, à prendre avant la PR 3b** : veut-on prouver la conversion à l'octet comme au lot 4 (`Lot4MigrationChainTest`) ?
+- (g) Repères périmés du plan, corrigés au §2 : C26, C27, C41.
+- (h) Décors qui casseront, à réécrire dans la PR concernée. PR 3b : `PlacementHoldingDecorTrait:222-281` (utilisé par `DayMatchesPayloadParityTest`, `TrainingOccupancyHoldingParityTest`, `MatchPlacementSemanticsGateTest`), `MatchPlacementContractSchemaTest:506-540`, `VenueClosureSemanticsGateTest:234` (son `competitionId` forgé ne pointe sur aucune ligne). PR 4a : `MatchPlacementContractSchemaTest:222`, `LeagueEnvelopeMirrorParityTest:21`. Hors CrossStack : `EngineRequestDecorTrait:307`, `EngineRequestMatchesNetDecorTrait` (`netCompetition`), `EngineRequestsRecordCommandTest::seedClubB` et `restoreFixture2`.
 
 ### PR 2 · « Une seule liste des types de conflit » (`neo`, backend et un fichier d'écran)
 
@@ -558,6 +568,7 @@ Trois migrations irréversibles (PR 3b, 4a, 6b). Chacune écrit son décompte, r
 - 19 · Lignes d'une même équipe dont les noms ne diffèrent que par la casse ou les accents (attendu 0).
 - 20 · Libellé FBI stocké ou non sur les 4 lignes du club C.
 - 21 · Entrées ouvertes « à corriger dans FBI » portées par un match amical.
+- 22 · Clubs portant des matchs dans plus d'une saison (attendu 0 ; sinon arrêt : les vues enregistrées ne portent que la saison courante, il faut alors des vues par saison sous `views/club-<id>/season-<s>/`, voir §4 PR 1).
 
 ## 10. Checklist de cadrage
 
