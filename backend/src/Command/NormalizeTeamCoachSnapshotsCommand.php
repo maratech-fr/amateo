@@ -6,6 +6,7 @@ namespace App\Command;
 
 use App\Entity\Club;
 use App\Entity\Schedule;
+use App\Plans\PlanStates;
 use App\Service\ClubGenerationLock;
 use App\Service\ScheduleConstraintBuilder;
 use App\Service\TenantConnectionContext;
@@ -54,6 +55,7 @@ final class NormalizeTeamCoachSnapshotsCommand extends Command
         private readonly ClubGenerationLock $generationLock,
         #[Autowire(service: 'cache.schedule')]
         private readonly TagAwareAdapterInterface $scheduleCachePool,
+        private readonly PlanStates $planStates,
     ) {
         parent::__construct();
     }
@@ -175,7 +177,8 @@ final class NormalizeTeamCoachSnapshotsCommand extends Command
         if (!$dryRun) {
             $snapshot['constraints'] = $constraints;
             $schedule->setSnapshotData($snapshot);
-            $schedule->setSnapshotHash(ScheduleConstraintBuilder::structureHash($snapshot));
+            // Lot 5 : l'empreinte recalculée garde la règle de trajet que la version a vue (sa copie du froid).
+            $schedule->setSnapshotHash(ScheduleConstraintBuilder::fingerprint($snapshot, $this->planStates->travelRuleOfVersion($schedule->getId())));
             $this->entityManager->flush();
         }
 
