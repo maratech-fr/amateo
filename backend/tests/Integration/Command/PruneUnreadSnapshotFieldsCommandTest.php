@@ -14,6 +14,7 @@ use App\Entity\Season;
 use App\Entity\Team;
 use App\Entity\TeamCoach;
 use App\Entity\Venue;
+use App\Entity\VenueTravelRuleSetting;
 use App\Enum\CalendarEntryKind;
 use App\Enum\CalendarEntryPeriodType;
 use App\Enum\ConstraintFamily;
@@ -22,7 +23,9 @@ use App\Enum\ConstraintScope;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
 use App\Enum\TeamCoachRole;
+use App\Enum\VenueTravelRuleIntensity;
 use App\Plans\PlanComposition;
+use App\Plans\PlanStates;
 use App\Plans\SoclePlan;
 use App\Service\ClubGenerationLock;
 use App\Service\ScheduleConstraintBuilder;
@@ -177,6 +180,26 @@ final class PruneUnreadSnapshotFieldsCommandTest extends KernelTestCase
         $version = $this->reload($f);
         self::assertSame('Seniors A', $version->getSnapshotData()['teams'][0]['name'] ?? null, 'témoin : le snapshot garde le nom d\'avant');
         self::assertSame($this->currentHash($f), $version->getSnapshotHash(), 'un nom changé depuis ne périme pas la version réalignée');
+    }
+
+    /**
+     * Lot 5, PR 2 — le réalignement garde la règle de trajet que la version a vue (sa copie du froid) : un club à règle
+     * NON par défaut, structure inchangée, n'est pas périmé après la commande. Sinon, rejouer la commande à la livraison
+     * ferait paraître périmé tout planning d'un club qui a réglé sa règle de trajet.
+     */
+    public function testAVersionWithANonDefaultTravelRuleStaysAlignedAfterTheCommand(): void
+    {
+        $f = $this->seedClub();
+        $this->scopeGucToClub($f['clubId']);
+        $this->em->persist((new VenueTravelRuleSetting)->setClubId($f['clubId'])->setSeasonId($f['seasonId'])
+            ->setIntensity(VenueTravelRuleIntensity::MANDATORY)->setToleranceMinutes(35));
+        $this->em->flush();
+        $f['scheduleId'] = $this->version($f, $this->freshPayload($f), hash('sha256', 'empreinte de la recette d\'avant le lot 5'));
+        $this->storeACopyOf($f);
+
+        $this->runCommand()->assertCommandIsSuccessful();
+
+        self::assertSame($this->currentHash($f), $this->reload($f)->getSnapshotHash(), 'règle de trajet non par défaut, structure inchangée : la version réalignée n\'est pas périmée');
     }
 
     /** Une structure vraiment changée depuis la génération reste périmée : on ne recopie jamais l'empreinte courante. */
@@ -563,6 +586,16 @@ final class PruneUnreadSnapshotFieldsCommandTest extends KernelTestCase
             $this->cachePool()->invalidateTags([ScheduleConstraintBuilder::cacheTag($clubId)]);
         }
         parent::tearDown();
+    }
+
+    /** @param array{clubId: string, seasonId: string, planId: string, scheduleId: string} $f la copie du froid de la version, prise sur l'état du plan */
+    private function storeACopyOf(array $f): void
+    {
+        $version = $this->reload($f);
+        $states = self::getContainer()->get(PlanStates::class);
+        $states->store($version, $states->capture($f['planId']));
+        $this->em->flush();
+        self::assertNotNull($states->travelRuleOfVersion($f['scheduleId']), 'témoin : la copie porte la règle de trajet');
     }
 
     private function lockRead(string $clubId): bool

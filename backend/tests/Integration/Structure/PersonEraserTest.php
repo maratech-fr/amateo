@@ -19,11 +19,14 @@ use App\Entity\ScheduleSlotTemplate;
 use App\Entity\ScheduleStructureSnapshot;
 use App\Entity\Season;
 use App\Entity\TeamCoach;
+use App\Entity\VenueTravelRuleSetting;
 use App\Enum\ConstraintFamily;
 use App\Enum\ConstraintRuleType;
 use App\Enum\ConstraintScope;
 use App\Enum\ScheduleDiagnosticSeverity;
 use App\Enum\TeamCoachRole;
+use App\Enum\VenueTravelRuleIntensity;
+use App\Plans\PlanStates;
 use App\Plans\SoclePlan;
 use App\Service\ClubGenerationLock;
 use App\Service\MatchPlacementLock;
@@ -125,6 +128,35 @@ final class PersonEraserTest extends KernelTestCase
         self::assertSame(PersonEraser::PLACEHOLDER . ' · indispo lundi', $rule['name'] ?? null, 'le nom de sa règle dit « Personne supprimée » à la place du sien');
         $dominique = $this->entryById($v1->getSnapshotData()['coaches'] ?? [], $this->decor['dominique']);
         self::assertSame(['Dominique', 'Martin'], [$dominique['firstName'] ?? null, $dominique['lastName'] ?? null], 'la fiche d\'un autre coach ne change pas');
+    }
+
+    /**
+     * Lot 5, PR 2 — l'empreinte réécrite par l'effacement garde la règle de trajet que la version a vue (sa copie du
+     * froid) : avec une règle NON par défaut, elle vaut `fingerprint(demande réécrite, règle de la copie)`, jamais la
+     * seule empreinte de la demande. Sinon, effacer une personne ferait paraître périmé tout planning d'un club qui a
+     * réglé sa règle de trajet.
+     */
+    public function testTheRewrittenFingerprintKeepsANonDefaultTravelRuleOfTheVersion(): void
+    {
+        $this->seedErasureDecor();
+        $this->scopeGucToClub($this->decor['club']);
+        $this->em->persist((new VenueTravelRuleSetting)->setClubId($this->decor['club'])->setSeasonId($this->decor['current'])
+            ->setIntensity(VenueTravelRuleIntensity::MANDATORY)->setToleranceMinutes(35));
+        $this->em->flush();
+        $v1 = $this->em->find(Schedule::class, $this->decor['v1']);
+        self::assertInstanceOf(Schedule::class, $v1);
+        $states = self::getContainer()->get(PlanStates::class);
+        $states->store($v1, $states->capture($v1->getSchedulePlanId()));
+        $this->em->flush();
+
+        $this->erase();
+
+        $v1 = $this->em->find(Schedule::class, $this->decor['v1']);
+        self::assertInstanceOf(Schedule::class, $v1);
+        $rule = $states->travelRuleOfVersion($v1->getId());
+        self::assertNotNull($rule, 'témoin : la copie de la version porte sa règle de trajet');
+        self::assertNotSame(ScheduleConstraintBuilder::structureHash($v1->getSnapshotData()), ScheduleConstraintBuilder::fingerprint($v1->getSnapshotData(), $rule), 'témoin : la règle n\'est pas celle par défaut, elle compte dans l\'empreinte');
+        self::assertSame(ScheduleConstraintBuilder::fingerprint($v1->getSnapshotData(), $rule), $v1->getSnapshotHash(), 'l\'empreinte réécrite garde la règle de trajet de la version');
     }
 
     /**

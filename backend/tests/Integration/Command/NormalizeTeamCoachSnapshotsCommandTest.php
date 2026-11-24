@@ -12,12 +12,15 @@ use App\Entity\Schedule;
 use App\Entity\Season;
 use App\Entity\Team;
 use App\Entity\TeamCoach;
+use App\Entity\VenueTravelRuleSetting;
 use App\Enum\CalendarEntryKind;
 use App\Enum\CalendarEntryPeriodType;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
 use App\Enum\TeamCoachRole;
+use App\Enum\VenueTravelRuleIntensity;
 use App\Plans\PlanComposition;
+use App\Plans\PlanStates;
 use App\Plans\SoclePlan;
 use App\Service\ClubGenerationLock;
 use App\Service\ScheduleConstraintBuilder;
@@ -109,6 +112,28 @@ final class NormalizeTeamCoachSnapshotsCommandTest extends KernelTestCase
         $version = $this->reload($f);
         self::assertSame(ScheduleConstraintBuilder::structureHash($version->getSnapshotData()), $version->getSnapshotHash(), 'empreinte recalculée depuis le snapshot');
         self::assertSame($this->currentHash($f), $version->getSnapshotHash(), 'structure inchangée : plus de bannière « vos données ont changé »');
+    }
+
+    /**
+     * Lot 5, PR 2 — le réalignement passe par le point d'entrée unique de l'empreinte, avec la règle de trajet que la
+     * version a vue (sa copie du froid) : un club à règle NON par défaut, structure inchangée, n'est pas périmé après la
+     * commande. Avec la seule empreinte de la demande, rejouer la commande ferait paraître périmés ses plannings.
+     */
+    public function testAVersionWithANonDefaultTravelRuleIsNotStaleAfterTheCommand(): void
+    {
+        $f = $this->seedLegacyVersion();
+        $this->scopeGucToClub($f['clubId']);
+        $this->em->persist((new VenueTravelRuleSetting)->setClubId($f['clubId'])->setSeasonId($f['seasonId'])
+            ->setIntensity(VenueTravelRuleIntensity::MANDATORY)->setToleranceMinutes(35));
+        $this->em->flush();
+        $states = self::getContainer()->get(PlanStates::class);
+        $states->store($this->reload($f), $states->capture($f['planId']));
+        $this->em->flush();
+        self::assertNotNull($states->travelRuleOfVersion($f['scheduleId']), 'témoin : la copie porte la règle de trajet');
+
+        $this->runCommand()->assertCommandIsSuccessful();
+
+        self::assertSame($this->currentHash($f), $this->reload($f)->getSnapshotHash(), 'règle de trajet non par défaut, structure inchangée : la version normalisée n\'est pas périmée');
     }
 
     /** Variante période : un plan de période suit la même règle que le socle. */
