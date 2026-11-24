@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Entity;
 
+use App\Enum\SchedulePlanType;
+use App\Plans\PlanComposition;
 use App\Structure\Family;
 use App\Structure\Level;
 use App\Structure\OnDelete;
@@ -12,18 +14,22 @@ use DateTimeImmutable;
 use Doctrine\ORM\Mapping as ORM;
 
 /**
- * Period-editable structure: a SPARSE override that DISABLES a permanent constraint
- * for one CLOSURE period (CalendarEntry). A row exists ONLY when the manager turned a
- * constraint off for that period — no row means "the permanent constraint applies as
- * usual". Used by the overlay build to drop deactivated constraints; the base plan
- * (and the Constraint's own isActive) are never touched.
+ * Les règles appliquées par un plan de période (lot 4, PR 4) : une ligne par (plan de période, contrainte permanente de
+ * sa saison), aucune au plan de saison ni pour une contrainte datée (elle appartient à sa période). `applies` dit si la
+ * règle de saison part au moteur avec la demande de cette période.
+ *
+ * Le défaut se lit sur la nature du plan et la portée de la règle ({@see SchedulePlanType::keepsSocleConstraintByDefault}) ;
+ * une ligne égale au défaut n'est pas un réglage. Les lignes ne se posent que par {@see PlanComposition::ensureLines} ;
+ * changer la portée d'une règle réécrit celles restées au défaut ({@see PlanComposition::onScopeChanged}). Pas de clé
+ * vers la contrainte : « Charger » efface puis réinsère les contraintes permanentes.
  */
 #[Family(Level::PLAN)]
 #[ORM\Entity]
-#[ORM\Table(name: 'constraint_period_override')]
-#[ORM\UniqueConstraint(name: 'uniq_constraint_period_override', columns: ['schedule_plan_id', 'constraint_id'])]
-#[ORM\Index(name: 'idx_constraint_period_override_plan', columns: ['schedule_plan_id'])]
-class ConstraintPeriodOverride implements TenantOwnedInterface
+#[ORM\Table(name: 'plan_constraint')]
+#[ORM\UniqueConstraint(name: 'uniq_plan_constraint', columns: ['schedule_plan_id', 'constraint_id'])]
+#[ORM\Index(name: 'idx_plan_constraint_season', columns: ['season_id'])]
+#[ORM\Index(name: 'idx_plan_constraint_constraint', columns: ['constraint_id'])]
+class PlanConstraint implements TenantOwnedInterface
 {
     #[ORM\Id]
     #[ORM\Column(type: 'guid')]
@@ -44,13 +50,6 @@ class ConstraintPeriodOverride implements TenantOwnedInterface
     #[ORM\Column(type: 'guid')]
     private string $seasonId;
 
-    /**
-     * ADR-0002 inv. 5 — les réglages de période s'accrochent au PLAN, pas au déclencheur
-     * calendrier. Aujourd'hui un plan par période (uniq_schedule_plan_calendar_entry), donc
-     * l'ancre revient au même ; c'est le découpage hebdomadaire (types-de-planning E1) qui
-     * la rend nécessaire : 2 semaines ⇒ 2 plans ⇒ 2 jeux de réglages sur le MÊME déclencheur,
-     * que `calendarEntryId` ne saurait pas distinguer.
-     */
     #[ORM\Column(type: 'guid')]
     #[RefersTo(SchedulePlan::class, OnDelete::DELETE)]
     private string $schedulePlanId;
@@ -59,9 +58,9 @@ class ConstraintPeriodOverride implements TenantOwnedInterface
     #[RefersTo(Constraint::class, OnDelete::DELETE)]
     private string $constraintId;
 
-    /** false = the constraint does NOT apply during this period. */
-    #[ORM\Column(type: 'boolean', options: ['default' => true])]
-    private bool $isActive = true;
+    /** Faux = la règle de saison ne s'applique pas pendant cette période. */
+    #[ORM\Column(type: 'boolean')]
+    private bool $applies = true;
 
     public function __construct()
     {
@@ -74,13 +73,6 @@ class ConstraintPeriodOverride implements TenantOwnedInterface
     public function getId(): string
     {
         return $this->id;
-    }
-
-    public function setId(string $id): self
-    {
-        $this->id = $id;
-
-        return $this;
     }
 
     public function getVersion(): int
@@ -103,7 +95,7 @@ class ConstraintPeriodOverride implements TenantOwnedInterface
         return $this->clubId;
     }
 
-    public function setClubId(string $clubId): self
+    public function setClubId(string $clubId): static
     {
         $this->clubId = $clubId;
 
@@ -115,7 +107,7 @@ class ConstraintPeriodOverride implements TenantOwnedInterface
         return $this->seasonId;
     }
 
-    public function setSeasonId(string $seasonId): self
+    public function setSeasonId(string $seasonId): static
     {
         $this->seasonId = $seasonId;
 
@@ -127,7 +119,7 @@ class ConstraintPeriodOverride implements TenantOwnedInterface
         return $this->schedulePlanId;
     }
 
-    public function setSchedulePlanId(string $schedulePlanId): self
+    public function setSchedulePlanId(string $schedulePlanId): static
     {
         $this->schedulePlanId = $schedulePlanId;
 
@@ -139,21 +131,21 @@ class ConstraintPeriodOverride implements TenantOwnedInterface
         return $this->constraintId;
     }
 
-    public function setConstraintId(string $constraintId): self
+    public function setConstraintId(string $constraintId): static
     {
         $this->constraintId = $constraintId;
 
         return $this;
     }
 
-    public function isActive(): bool
+    public function applies(): bool
     {
-        return $this->isActive;
+        return $this->applies;
     }
 
-    public function setIsActive(bool $isActive): self
+    public function setApplies(bool $applies): static
     {
-        $this->isActive = $isActive;
+        $this->applies = $applies;
 
         return $this;
     }

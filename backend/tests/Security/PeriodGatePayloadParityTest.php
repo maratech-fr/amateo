@@ -8,7 +8,6 @@ use App\Entity\CalendarEntry;
 use App\Entity\Club;
 use App\Entity\ClubUser;
 use App\Entity\Constraint;
-use App\Entity\ConstraintPeriodOverride;
 use App\Entity\PlanVenue;
 use App\Entity\PriorityTier;
 use App\Entity\Season;
@@ -951,6 +950,9 @@ final class PeriodGatePayloadParityTest extends WebTestCase
         $constraint->setSortOrder(0);
         $constraint->setCalendarEntryId($calendarEntryId);
         $this->em->persist($constraint);
+        if (null === $calendarEntryId) {
+            self::getContainer()->get(PlanComposition::class)->ensureLines($season->getId());
+        }
 
         return $constraint;
     }
@@ -958,13 +960,8 @@ final class PeriodGatePayloadParityTest extends WebTestCase
     /** Pose un override « gardée » (isActive=true) sur un plan pour une contrainte donnée. */
     private function keepOverride(Club $club, Season $season, string $planId, string $constraintId): void
     {
-        $override = new ConstraintPeriodOverride;
-        $override->setClubId($club->getId());
-        $override->setSeasonId($season->getId());
-        $override->setSchedulePlanId($planId);
-        $override->setConstraintId($constraintId);
-        $override->setIsActive(true);
-        $this->em->persist($override);
+        unset($club, $season);
+        self::getContainer()->get(PlanComposition::class)->constraintsOf($planId)[$constraintId]->setApplies(true);
     }
 
     /**

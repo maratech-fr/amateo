@@ -10,7 +10,6 @@ use App\Entity\ClubUser;
 use App\Entity\Coach;
 use App\Entity\CoachWish;
 use App\Entity\Constraint;
-use App\Entity\ConstraintPeriodOverride;
 use App\Entity\Place;
 use App\Entity\PlanVenue;
 use App\Entity\Reservation;
@@ -1154,19 +1153,18 @@ final class ScheduleConstraintBuilderOverlayTest extends KernelTestCase
         $c->setFamily(ConstraintFamily::TIME);
         $c->setRuleType(ConstraintRuleType::HARD);
         $this->em->persist($c);
+        self::getContainer()->get(PlanComposition::class)->ensureLines($season->getId());
 
         return $c;
     }
 
     private function constraintOverride(Club $club, Season $season, CalendarEntry $entry, Constraint $constraint, bool $isActive): void
     {
-        $o = new ConstraintPeriodOverride;
-        $o->setClubId($club->getId());
-        $o->setSeasonId($season->getId());
-        $o->setSchedulePlanId($this->planIdOf($entry));
-        $o->setConstraintId($constraint->getId());
-        $o->setIsActive($isActive);
-        $this->em->persist($o);
+        unset($club);
+        $planId = $this->planIdOf($entry);
+        $composition = self::getContainer()->get(PlanComposition::class);
+        $composition->ensureLines($season->getId());
+        $composition->constraintsOf($planId)[$constraint->getId()]->setApplies($isActive);
     }
 
     private function permanentScoped(Club $club, Season $season, ConstraintScope $scope, ?string $targetId, string $name): Constraint
@@ -1181,6 +1179,7 @@ final class ScheduleConstraintBuilderOverlayTest extends KernelTestCase
         $c->setRuleType(ConstraintRuleType::HARD);
         $c->setConfig([]);
         $this->em->persist($c);
+        self::getContainer()->get(PlanComposition::class)->ensureLines($season->getId());
 
         return $c;
     }

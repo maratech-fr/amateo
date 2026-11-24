@@ -1465,6 +1465,12 @@ jobs:
           # (`/api/venue_period_overrides`). Sans ce gate, un identifiant forgé ferait entrer l'équipe ou le gymnase
           # d'un club dans le plan d'un autre en passant le Lot Gate.
           FILES="$FILES tests/Security/PlanCompositionTenantIsolationTest.php"
+          # NR d'axe CONSTRAINT SEMANTICS (lot conception 4, PR 4) — changer la portée d'une règle de saison change ce
+          # que les plans de période existants appliquent : élargie à tout le club, elle entre dans des vacances où elle
+          # restait au défaut ; restreinte à une équipe, elle en sort ; une coche posée par le gestionnaire contre le
+          # défaut ne bouge pas. Sans ce gate, une ligne de règle figée à la naissance du plan laisserait la règle
+          # élargie hors de la demande au moteur, en silence, en passant le Lot Gate.
+          FILES="$FILES tests/Api/ConstraintScopeChangeTest.php"
           docker compose exec -T -e APP_ENV=test php-fpm sh -c "cd /app/backend && php -d memory_limit=1G vendor/bin/phpunit --group phase1 $FILES"
 
       # Axe tenant isolation (GO fondateur 2026-10-30, incident d'un club pilote, PR A import du parc) — la

@@ -20,7 +20,7 @@ use Doctrine\ORM\EntityManagerInterface;
  * Une contrainte qui VISE déjà ce gymnase (portée FACILITY) reste à `ScopedConstraintStep` :
  * exclue ici, elle n'est ni comptée deux fois ni annoncée sous deux libellés.
  *
- * ⚠ Même ordre que `ScopedConstraintStep` : les `ConstraintPeriodOverride` partent AVANT leurs
+ * ⚠ Même ordre que `ScopedConstraintStep` : les lignes de règle des plans partent AVANT leurs
  * contraintes, sinon elles pendent sur un `constraintId` mort. Le compte annoncé est celui des
  * contraintes.
  *
@@ -58,7 +58,7 @@ final readonly class VenueConfigConstraintStep implements CascadeStep
         }
 
         $connection->executeStatement(
-            'DELETE FROM constraint_period_override WHERE constraint_id IN (:ids)',
+            'DELETE FROM plan_constraint WHERE constraint_id IN (:ids)',
             ['ids' => $constraintIds],
             ['ids' => ArrayParameterType::STRING],
         );

@@ -16,16 +16,17 @@ use App\Access\Audience;
 use App\Access\ClubResource;
 use App\Access\Module;
 use App\Dto\ConstraintPeriodOverrideInput;
-use App\Entity\ConstraintPeriodOverride;
+use App\Entity\PlanConstraint;
 use App\State\Processor\ConstraintPeriodOverrideStateProcessor;
 use App\State\Provider\ConstraintPeriodOverrideStateProvider;
 use DateTimeImmutable;
 use Symfony\Component\Serializer\Attribute\Groups;
 
 /**
- * Period-editable structure: a sparse per-(period, constraint) toggle — the permanent
- * constraint is disabled for the period. No row = the constraint applies as usual. The
- * overlay build reads these; the base plan is never touched.
+ * La coche d'une règle de saison pour une période : la ligne de la règle dans le plan de période, vue de l'écran comme
+ * un réglage épars. La liste ne rend que les lignes qui diffèrent du défaut de la nature du plan (fermeture : toute
+ * règle s'applique ; vacances : seules les règles de tout le club). Publier la coche d'un couple (période, règle) met
+ * sa ligne à jour ; la supprimer la rend au défaut. Le planning principal reste intact.
  */
 #[ApiResource(shortName: 'ConstraintPeriodOverride', operations: [
     new GetCollection,
@@ -59,7 +60,7 @@ class ConstraintPeriodOverrideResource
     #[Groups(['read'])]
     public bool $isActive = true;
 
-    public static function fromEntity(ConstraintPeriodOverride $entity): self
+    public static function fromEntity(PlanConstraint $entity): self
     {
         $dto = new self;
         $dto->id = $entity->getId();
@@ -68,7 +69,7 @@ class ConstraintPeriodOverrideResource
         $dto->updatedAt = $entity->getUpdatedAt();
         $dto->schedulePlanId = $entity->getSchedulePlanId();
         $dto->constraintId = $entity->getConstraintId();
-        $dto->isActive = $entity->isActive();
+        $dto->isActive = $entity->applies();
 
         return $dto;
     }

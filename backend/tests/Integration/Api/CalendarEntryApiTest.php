@@ -8,7 +8,7 @@ use App\Entity\CalendarEntry;
 use App\Entity\Club;
 use App\Entity\ClubUser;
 use App\Entity\Constraint;
-use App\Entity\ConstraintPeriodOverride;
+use App\Entity\PlanConstraint;
 use App\Entity\Schedule;
 use App\Entity\SchedulePlan;
 use App\Entity\ScheduleSlotTemplate;
@@ -315,50 +315,7 @@ final class CalendarEntryApiTest extends WebTestCase
         self::assertResponseStatusCodeSame(204);
 
         $this->em->clear();
-        self::assertNull($this->em->getRepository(ConstraintPeriodOverride::class)->find($overrideId), 'a period constraint override must not survive its period');
-    }
-
-    /**
-     * P4-126 — le doublon d'override de période rend un 422 PARLANT : le motif voyage jusque
-     * dans le corps que le front lit (un `new ValidationException('chaîne')` nu l'aurait laissé
-     * vide). On réutilise les fixtures période de cette classe (entrée → contrainte → plan).
-     */
-    public function testDuplicateConstraintPeriodOverrideCarriesFrenchViolation(): void
-    {
-        [$user, $club] = $this->seed('CE13c');
-
-        $this->post($user, $club, ['kind' => 'period', 'title' => 'Fermeture', 'startDate' => '2026-05-04', 'endDate' => '2026-05-10', 'periodType' => 'closure']);
-        $entryId = json_decode((string) $this->client->getResponse()->getContent(), true)['id'];
-
-        $this->client->request('POST', '/api/constraints', [], [], [
-            ...$this->authHeaders($user, $club),
-            'CONTENT_TYPE' => 'application/ld+json',
-        ], json_encode(['name' => 'Perm', 'scope' => 'CLUB', 'family' => 'TIME', 'ruleType' => 'HARD'], \JSON_THROW_ON_ERROR));
-        self::assertResponseStatusCodeSame(201);
-        $constraintId = json_decode((string) $this->client->getResponse()->getContent(), true)['id'];
-
-        $this->client->request('POST', '/api/schedule_plans', [], [], [
-            ...$this->authHeaders($user, $club),
-            'CONTENT_TYPE' => 'application/ld+json',
-        ], json_encode(['calendarEntryId' => $entryId], \JSON_THROW_ON_ERROR));
-        self::assertResponseStatusCodeSame(201);
-        $planId = self::getContainer()->get(SchedulePlanProvisioner::class)->periodPlanId($entryId);
-        self::assertIsString($planId);
-
-        $payload = json_encode(['schedulePlanId' => $planId, 'constraintId' => $constraintId, 'isActive' => false], \JSON_THROW_ON_ERROR);
-        $this->client->request('POST', '/api/constraint_period_overrides', [], [], [
-            ...$this->authHeaders($user, $club),
-            'CONTENT_TYPE' => 'application/ld+json',
-        ], $payload);
-        self::assertResponseStatusCodeSame(201);
-
-        // Second réglage sur le même (période, contrainte) → 422 propre et PARLANT.
-        $this->client->request('POST', '/api/constraint_period_overrides', [], [], [
-            ...$this->authHeaders($user, $club),
-            'CONTENT_TYPE' => 'application/ld+json',
-        ], $payload);
-        self::assertResponseStatusCodeSame(422);
-        self::assertStringContainsString('Cette contrainte a déjà un réglage pour cette période — modifiez-le.', (string) $this->client->getResponse()->getContent());
+        self::assertNull($this->em->getRepository(PlanConstraint::class)->find($overrideId), 'a period constraint override must not survive its period');
     }
 
     /**

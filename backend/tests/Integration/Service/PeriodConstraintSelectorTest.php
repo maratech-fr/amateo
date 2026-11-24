@@ -7,7 +7,6 @@ namespace App\Tests\Integration\Service;
 use App\Entity\CalendarEntry;
 use App\Entity\Club;
 use App\Entity\Constraint;
-use App\Entity\ConstraintPeriodOverride;
 use App\Entity\Season;
 use App\Enum\CalendarEntryKind;
 use App\Enum\CalendarEntryPeriodType;
@@ -16,6 +15,7 @@ use App\Enum\ConstraintFamily;
 use App\Enum\ConstraintRuleType;
 use App\Enum\ConstraintScope;
 use App\Enum\SeasonStatus;
+use App\Plans\PlanComposition;
 use App\Service\PeriodConstraintSelector;
 use App\Tests\ProvisionsPeriodPlanTrait;
 use App\Tests\TenantGucTrait;
@@ -232,18 +232,14 @@ final class PeriodConstraintSelectorTest extends KernelTestCase
         $c->setSortOrder(0);
         $c->setCalendarEntryId(null);
         $this->em->persist($c);
+        self::getContainer()->get(PlanComposition::class)->ensureLines($season->getId());
 
         return $c->getId();
     }
 
     private function override(Club $club, Season $season, string $planId, string $constraintId, bool $isActive): void
     {
-        $override = new ConstraintPeriodOverride;
-        $override->setClubId($club->getId());
-        $override->setSeasonId($season->getId());
-        $override->setSchedulePlanId($planId);
-        $override->setConstraintId($constraintId);
-        $override->setIsActive($isActive);
-        $this->em->persist($override);
+        unset($club, $season);
+        self::getContainer()->get(PlanComposition::class)->constraintsOf($planId)[$constraintId]->setApplies($isActive);
     }
 }

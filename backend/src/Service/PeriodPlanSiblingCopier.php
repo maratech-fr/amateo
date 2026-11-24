@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace App\Service;
 
 use App\Entity\CalendarEntry;
-use App\Entity\ConstraintPeriodOverride;
 use App\Entity\ImplicitRuleSetting;
+use App\Entity\PlanConstraint;
 use App\Entity\PlanTeam;
 use App\Entity\PlanVenue;
 use App\Entity\Reservation;
@@ -177,10 +177,12 @@ final class PeriodPlanSiblingCopier
                     ->setTeamId($row->getTeamId())->setParticipating($row->isParticipating())->setSessionsPerWeek($row->getSessionsPerWeek())->setMaxSessionsPerDay($row->getMaxSessionsPerDay())->setSource($row->getSource()),
             );
         }
-        foreach ($this->entityManager->getRepository(ConstraintPeriodOverride::class)->findBy(['schedulePlanId' => $src]) as $row) {
+        // Les règles du plan (lot 4, PR 4) : la cible reprend chaque ligne de la source, ses lignes de naissance purgées
+        // (une copie sœur relie deux tronçons d'une même fermeture : même nature, même défaut).
+        foreach ($this->entityManager->getRepository(PlanConstraint::class)->findBy(['schedulePlanId' => $src]) as $row) {
             $this->entityManager->persist(
-                (new ConstraintPeriodOverride)->setClubId($clubId)->setSeasonId($seasonId)->setSchedulePlanId($dst)
-                    ->setConstraintId($row->getConstraintId())->setIsActive($row->isActive()),
+                (new PlanConstraint)->setClubId($clubId)->setSeasonId($seasonId)->setSchedulePlanId($dst)
+                    ->setConstraintId($row->getConstraintId())->setApplies($row->applies()),
             );
         }
         foreach ($this->entityManager->getRepository(VenueTrainingSlot::class)->findBy(['schedulePlanId' => $src]) as $row) {

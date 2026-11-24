@@ -8,11 +8,11 @@ use App\Entity\CalendarEntry;
 use App\Entity\Club;
 use App\Entity\CoachWish;
 use App\Entity\Constraint;
-use App\Entity\ConstraintPeriodOverride;
 use App\Entity\HolidayReminderLog;
 use App\Entity\ImplicitRuleSetting;
 use App\Entity\Person;
 use App\Entity\Place;
+use App\Entity\PlanConstraint;
 use App\Entity\PlanTeam;
 use App\Entity\PlanVenue;
 use App\Entity\Reservation;
@@ -94,7 +94,7 @@ final class PurgeCompletenessTest extends KernelTestCase
     /** Ce qu'un plan porte (lot 4, PR 2) : les six familles du socle devenu plan, les trois réglages de période. */
     private const array PLAN_FAMILIES = [
         VenueTrainingSlot::class, VenueOccupancy::class, Reservation::class, SharedTrainingBlockTeam::class, SharedTrainingBlock::class,
-        ImplicitRuleSetting::class, PlanTeam::class, PlanVenue::class, ConstraintPeriodOverride::class,
+        ImplicitRuleSetting::class, PlanTeam::class, PlanVenue::class, PlanConstraint::class,
     ];
 
     /** Les listes que les purgeurs tenaient à la main avant la déclaration des familles. */
@@ -424,7 +424,7 @@ final class PurgeCompletenessTest extends KernelTestCase
             (new SharedTrainingBlockTeam)->setClubId($clubId)->setSeasonId($seasonId)->setSchedulePlanId($planId)->setBlockId($block->getId())->setTeamId($teamA->getId()),
             (new SharedTrainingBlockTeam)->setClubId($clubId)->setSeasonId($seasonId)->setSchedulePlanId($planId)->setBlockId($block->getId())->setTeamId($teamB->getId()),
             self::getContainer()->get(PlanComposition::class)->venuesOf($planId)[$venue->getId()]->setDayOverrides(['1' => 'CLOSED']),
-            (new ConstraintPeriodOverride)->setClubId($clubId)->setSeasonId($seasonId)->setSchedulePlanId($planId)->setConstraintId($constraint->getId())->setIsActive(false),
+            self::getContainer()->get(PlanComposition::class)->constraintsOf($planId)[$constraint->getId()]->setApplies(false),
         ];
         if (0 === $em->getRepository(ImplicitRuleSetting::class)->count(['schedulePlanId' => $planId])) {
             $rows[] = (new ImplicitRuleSetting)->setClubId($clubId)->setSeasonId($seasonId)->setSchedulePlanId($planId)

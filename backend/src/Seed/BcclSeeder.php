@@ -11,13 +11,13 @@ use App\Entity\ClubUser;
 use App\Entity\Coach;
 use App\Entity\CoachPlayerMembership;
 use App\Entity\Constraint;
-use App\Entity\ConstraintPeriodOverride;
 use App\Entity\ImplicitRuleSetting;
 use App\Entity\OpponentDirectoryEntry;
 use App\Entity\OpponentVenueLink;
 use App\Entity\OpponentVenueSuggestion;
 use App\Entity\Person;
 use App\Entity\Place;
+use App\Entity\PlanConstraint;
 use App\Entity\PriorityTier;
 use App\Entity\Reservation;
 use App\Entity\Schedule;
@@ -1239,6 +1239,9 @@ final class BcclSeeder
         }
 
         $manager->flush();
+        // Lot 4, PR 4 — chaque règle permanente a sa ligne dans chaque plan de période déjà né (seed en append), au
+        // défaut de sa nature ; les plans nés ensuite reçoivent les leurs à leur naissance.
+        $this->planComposition->ensureLines($season->getId());
 
         // ============================================================
         // SECTION 10 — ADDITIONAL SLOT TEMPLATES
@@ -2194,10 +2197,11 @@ final class BcclSeeder
         $manager->flush();
 
         // --- Contraintes de saison contredites par le réel de la semaine : décochées PAR PLAN
-        // (ConstraintPeriodOverride isActive=false ; la saison reste intacte). Le nom fait la
+        // (ligne de règle du plan, applies=false ; la saison reste intacte). Le nom fait la
         // clé — une contrainte introuvable LÈVE (un décochage qui ne vise rien serait muet). Une
         // indisponibilité COACH se désigne par sa clé + son jour, jamais par un libellé littéral :
         // son nom se dérive de l'entité (libellé neutre ou identité injectée). ---
+        $this->planComposition->ensureLines($season->getId());
         foreach ($week['deactivatedConstraints'] as $deactivated) {
             $constraintName = \is_string($deactivated)
                 ? $deactivated
@@ -2206,19 +2210,7 @@ final class BcclSeeder
             if (!$constraint instanceof Constraint) {
                 throw new RuntimeException(\sprintf('Reprise « %s » : contrainte de saison « %s » introuvable (renommée ?) — le décochage ne vise rien.', $week['title'], $constraintName));
             }
-            $constraintOverride = $manager->getRepository(ConstraintPeriodOverride::class)->findOneBy([
-                'schedulePlanId' => $planId,
-                'constraintId' => $constraint->getId(),
-            ]);
-            if (!$constraintOverride instanceof ConstraintPeriodOverride) {
-                $constraintOverride = new ConstraintPeriodOverride;
-                $constraintOverride->setClubId($clubId);
-                $constraintOverride->setSeasonId($season->getId());
-                $constraintOverride->setSchedulePlanId($planId);
-                $constraintOverride->setConstraintId($constraint->getId());
-                $manager->persist($constraintOverride);
-            }
-            $constraintOverride->setIsActive(false);
+            $this->ruleLineOf($manager, $planId, $constraint)->setApplies(false);
         }
         $manager->flush();
 
@@ -2638,19 +2630,8 @@ final class BcclSeeder
         if (!$constraint instanceof Constraint) {
             throw new RuntimeException(\sprintf('Incident Matéo : contrainte de saison « %s » introuvable (renommée ?) — le décochage ne vise rien.', $sm2AtMateo));
         }
-        $constraintOverride = $manager->getRepository(ConstraintPeriodOverride::class)->findOneBy([
-            'schedulePlanId' => $planId,
-            'constraintId' => $constraint->getId(),
-        ]);
-        if (!$constraintOverride instanceof ConstraintPeriodOverride) {
-            $constraintOverride = new ConstraintPeriodOverride;
-            $constraintOverride->setClubId($clubId);
-            $constraintOverride->setSeasonId($season->getId());
-            $constraintOverride->setSchedulePlanId($planId);
-            $constraintOverride->setConstraintId($constraint->getId());
-            $manager->persist($constraintOverride);
-        }
-        $constraintOverride->setIsActive(false);
+        $this->planComposition->ensureLines($season->getId());
+        $this->ruleLineOf($manager, $planId, $constraint)->setApplies(false);
         $manager->flush();
 
         // --- ZÉRO réservation : purge de toute réservation résiduelle du plan, aucune insertion.
@@ -3080,6 +3061,14 @@ final class BcclSeeder
                 ],
             ],
         ];
+    }
+
+    /** La ligne d'une règle permanente dans un plan de période, posée par la porte ; lève si elle manque. */
+    private function ruleLineOf(EntityManagerInterface $manager, string $planId, Constraint $constraint): PlanConstraint
+    {
+        $line = $manager->getRepository(PlanConstraint::class)->findOneBy(['schedulePlanId' => $planId, 'constraintId' => $constraint->getId()]);
+
+        return $line instanceof PlanConstraint ? $line : throw new RuntimeException(\sprintf('La règle « %s » n\'a pas de ligne dans le plan %s — le décochage ne vise rien.', $constraint->getName(), $planId));
     }
 
     /** Jour ISO en toutes lettres, comme `dayLabelLong` du front. */

@@ -85,7 +85,7 @@ final class FrontRederivationRegistryTest extends TestCase
         ],
         'features/wizard/steps/PeriodConstraints.tsx' => [
             'decides' => 'défaut par scope (fermeture : tout gardé ; vacances : seul CLUB hérité, TEAM/COACH/FACILITY OFF) + masquage CLUB+tag sans équipe active',
-            'backendTruth' => 'App\\Service\\PeriodConstraintSelector::selectForPeriodPlan (keepByDefault)',
+            'backendTruth' => 'App\\Enum\\SchedulePlanType::keepsSocleConstraintByDefault (défaut écrit sur la ligne par PlanComposition::ensureLines)',
             'parityTest' => 'TagTeamIdsMirrorParityTest.php',
         ],
         'features/wizard/lib/coachDoubleBooking.ts' => [

@@ -1200,7 +1200,7 @@ final class SchedulePlanProvisioner
         $this->copySeasonalOccupancyRows($plan->getId(), (string) $plan->getClubId(), $plan->getSeasonId(), null);
         // D10 affinée (décision fondateur 2026-09-02) — un plan de FERMETURE hérite des blocs de
         // mutualisation du socle à sa naissance ; un plan de vacances (HOLIDAY) ne copie RIEN.
-        if (SchedulePlanType::CLOSURE === $type) {
+        if ($type->copiesSharedBlocksAtBirth()) {
             $this->copySocleSharedBlocks($plan);
         }
         // ADR-0002 inv. 5 — le plan reçoit AUSSI sa copie des 4 règles bien-être (valeur saison
@@ -1208,7 +1208,8 @@ final class SchedulePlanProvisioner
         // distinguable d'un plan legacy sans copie (dont la lecture retombe sur la saison).
         $this->implicitRuleSettingRepository->materializeForPlan((string) $plan->getClubId(), $plan->getSeasonId(), $plan->getId());
         // Lot 4, PR 3a — le plan naît avec une ligne par équipe, aux séances du socle du moment ; sa nature dit qui est
-        // coché (des vacances : l'équipe fanion et les importantes).
+        // coché (des vacances : l'équipe fanion et les importantes). PR 4 : une ligne par règle permanente, au défaut de sa
+        // nature.
         $this->planComposition->ensureLines($plan->getSeasonId());
 
         return $plan->getId();

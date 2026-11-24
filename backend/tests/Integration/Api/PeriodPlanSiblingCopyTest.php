@@ -6,8 +6,8 @@ namespace App\Tests\Integration\Api;
 
 use App\Entity\Club;
 use App\Entity\ClubUser;
-use App\Entity\ConstraintPeriodOverride;
 use App\Entity\ImplicitRuleSetting;
+use App\Entity\PlanConstraint;
 use App\Entity\PlanTeam;
 use App\Entity\PlanVenue;
 use App\Entity\Reservation;
@@ -78,7 +78,7 @@ final class PeriodPlanSiblingCopyTest extends WebTestCase
      */
     private const array ANCHORED_FAMILIES = [
         PlanTeam::class,
-        ConstraintPeriodOverride::class,
+        PlanConstraint::class,
         VenueTrainingSlot::class,
         Reservation::class,
         PlanVenue::class,
@@ -280,7 +280,7 @@ final class PeriodPlanSiblingCopyTest extends WebTestCase
         $seasonId = $season->getId();
 
         $this->em->persist((new PlanTeam)->setClubId($clubId)->setSeasonId($seasonId)->setSchedulePlanId($planId)->setTeamId(self::TEAM_ID)->setParticipating(false));
-        $this->em->persist((new ConstraintPeriodOverride)->setClubId($clubId)->setSeasonId($seasonId)->setSchedulePlanId($planId)->setConstraintId(self::CONSTRAINT_ID)->setIsActive(false));
+        $this->em->persist((new PlanConstraint)->setClubId($clubId)->setSeasonId($seasonId)->setSchedulePlanId($planId)->setConstraintId(self::CONSTRAINT_ID)->setApplies(false));
         $this->em->persist((new Reservation)->setClubId($clubId)->setSeasonId($seasonId)->setSchedulePlanId($planId)->setTeamId(self::TEAM_ID)->setVenueId($venueId)->setDayOfWeek(3)->setStartTime(new DateTimeImmutable('19:00'))->setDurationMinutes(90));
         self::getContainer()->get(PlanComposition::class)->ensureLines($seasonId);
         self::getContainer()->get(PlanComposition::class)->venuesOf($planId)[$venueId]->setParticipating(false);

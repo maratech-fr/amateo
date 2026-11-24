@@ -7,12 +7,12 @@ namespace App\State\Processor;
 use App\ApiResource\ConstraintResource;
 use App\Dto\ConstraintInput;
 use App\Entity\Constraint;
-use App\Entity\ConstraintPeriodOverride;
 use App\Entity\Team;
 use App\Entity\Venue;
 use App\Enum\ConstraintFamily;
 use App\Enum\ConstraintRuleType;
 use App\Enum\ConstraintScope;
+use App\Plans\PlanComposition;
 use App\Service\ClosurePinRemover;
 use App\Service\ConstraintConfigValidator;
 use App\Service\ManagementAccessGuard;
@@ -30,6 +30,12 @@ use Symfony\Component\HttpKernel\Exception\UnprocessableEntityHttpException;
  */
 class ConstraintStateProcessor extends AbstractStateProcessor
 {
+    /** La portée d'une règle avant le PUT en cours, quand il la change ; lue par {@see afterPersist}. */
+    private ?ConstraintScope $scopeBeforeWrite = null;
+
+    /** Vrai quand l'écriture en cours crée la règle (POST) ; lu par {@see afterPersist}. */
+    private bool $createdByThisWrite = false;
+
     public function __construct(
         EntityManagerInterface $entityManager,
         RequestStack $requestStack,
@@ -41,6 +47,7 @@ class ConstraintStateProcessor extends AbstractStateProcessor
         private readonly ClosurePinRemover $closurePinRemover,
         private readonly SchedulePlanProvisioner $schedulePlanProvisioner,
         private readonly TeamTagService $tagService,
+        private readonly PlanComposition $planComposition,
     ) {
         parent::__construct($entityManager, $requestStack, $seasonResolver, $seasonAccessGuard, $managementAccessGuard);
     }
@@ -55,6 +62,27 @@ class ConstraintStateProcessor extends AbstractStateProcessor
     // vivait ici était INOPÉRANT (0 ligne touchée). Et il n'a plus d'objet : le nom du plan de
     // période naît désormais du TITRE de son entrée de calendrier (décision fondateur 2026-08-23),
     // il n'y a plus de nom générique à recaler quand le gymnase devient connu.
+
+    /**
+     * Lot 4, PR 4 — une règle permanente a sa ligne dans chaque plan de période de sa saison, au défaut de la nature :
+     * la porte pose celles qui manquent (rejouable, ne touche aucune ligne existante). Une règle datée n'en a aucune.
+     * Une portée élargie ou restreinte par cette écriture change ce que les périodes appliquent par défaut, comme quand
+     * le défaut se recalculait à chaque lecture ; une coche posée contre le défaut ne bouge pas.
+     *
+     * @param Constraint $entity
+     */
+    protected function afterPersist(object $entity): void
+    {
+        if ($this->scopeBeforeWrite instanceof ConstraintScope) {
+            $this->planComposition->onScopeChanged($entity, $this->scopeBeforeWrite);
+            $this->scopeBeforeWrite = null;
+            $this->entityManager->flush();
+        }
+        if ($this->createdByThisWrite && null === $entity->getCalendarEntryId()) {
+            $this->planComposition->ensureLines($entity->getSeasonId());
+        }
+        $this->createdByThisWrite = false;
+    }
 
     /**
      * « Enregistrer une fermeture vaut geste » (chantier « Fermetures de gymnase », C3bis) — le POST
@@ -92,6 +120,7 @@ class ConstraintStateProcessor extends AbstractStateProcessor
      */
     protected function createEntityFromInput(object $input): Constraint
     {
+        $this->createdByThisWrite = true;
         $entity = new Constraint;
         $entity->setName($input->name ?? '');
         $entity->setDescription($input->description);
@@ -126,6 +155,8 @@ class ConstraintStateProcessor extends AbstractStateProcessor
         // modifie depuis le calendrier, où le retrait s'annonce puis s'applique.
         $attachedClosure = $this->isVenueClosed($entity) && null !== $entity->getCalendarEntryId();
         $closureBefore = $attachedClosure ? $this->closureIdentity($entity) : null;
+        // Lot 4, PR 4 — la portée d'avant : les lignes de période restées à son défaut suivent la nouvelle (ci-dessous).
+        $previousScope = $entity->getScope();
         if (null !== $input->name) {
             $entity->setName($input->name);
         }
@@ -168,13 +199,15 @@ class ConstraintStateProcessor extends AbstractStateProcessor
         }
         if (null !== $input->calendarEntryId) {
             // P2-59 — garde SYMÉTRIQUE de ConstraintPeriodOverrideStateProcessor (revue #814).
-            // L'ordre inverse la contournait : créer un décochage (ConstraintPeriodOverride) sur
-            // une contrainte PERMANENTE, PUIS la dater, laissait un override orphelin sur une
-            // datée. Une datée n'est jamais décochée (modèle FAIT/GENÈSE) : on refuse de la dater
-            // tant qu'elle porte un décochage.
-            if ($this->entityManager->getRepository(ConstraintPeriodOverride::class)->count(['constraintId' => $entity->getId()]) > 0) {
+            // L'ordre inverse la contournait : décocher une contrainte PERMANENTE pour une période,
+            // PUIS la dater, laissait une coche orpheline sur une datée. Une datée n'est jamais
+            // décochée (modèle FAIT/GENÈSE) : on refuse de la dater tant qu'une période l'applique
+            // autrement que le défaut de sa nature (lot 4, PR 4 : ligne qui diffère du défaut, lue
+            // avec la portée d'avant cette écriture) ; sinon ses lignes de période partent.
+            if ([] !== $this->planComposition->ruleLinesOfConstraintDifferingFromDefault($entity->getId(), $previousScope)) {
                 $this->refuse('Cette contrainte a des décochages par plan : retirez-les avant de la dater.');
             }
+            $this->planComposition->removeRuleLines($entity->getId());
             $entity->setCalendarEntryId($input->calendarEntryId);
         }
         if (null !== $input->isActive) {
@@ -188,6 +221,8 @@ class ConstraintStateProcessor extends AbstractStateProcessor
             $this->refuse('Modifiez la fermeture depuis le calendrier.');
         }
         $this->assertClosedVenueBelongsToTheClub($entity);
+        // La portée d'avant, pour réécrire après l'écriture les lignes de période restées à son défaut (afterPersist).
+        $this->scopeBeforeWrite = $previousScope !== $entity->getScope() ? $previousScope : null;
     }
 
     /**
@@ -203,11 +238,9 @@ class ConstraintStateProcessor extends AbstractStateProcessor
      */
     protected function cascadeBeforeDelete(object $entity): void
     {
-        // A period may have disabled this permanent constraint for its window; those
-        // toggles are keyed on constraintId and would orphan on a bare delete.
-        foreach ($this->entityManager->getRepository(ConstraintPeriodOverride::class)->findBy(['constraintId' => $entity->getId()]) as $override) {
-            $this->entityManager->remove($override);
-        }
+        // A permanent constraint has a line in every period plan (lot 4, PR 4); the lines
+        // are keyed on constraintId and would orphan on a bare delete.
+        $this->planComposition->removeRuleLines($entity->getId());
     }
 
     private function isVenueClosed(Constraint $entity): bool

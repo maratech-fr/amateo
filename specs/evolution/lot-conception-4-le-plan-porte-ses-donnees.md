@@ -1,8 +1,7 @@
 # Lot 4 · Le plan porte ses données : plan d'exécution
 
 **Statut : version finale (v3 sur 4, après deux passes de `smith`). Plan validé par le fondateur le 2026-11-22 avec sa
-décision (§10) et l'écart E1 (§3.7). PR 1 (le filet), PR 2 (le socle a son plan), PR 3a (les équipes d'un plan) et PR 3b (les gymnases d'une période) livrées, écarts ci-dessous ; les PR suivantes restent à faire, une fois les mesures
-de `link` (§6) faites.** Voie **Full**. Branche cible : `lot/conception` (une PR ouverte à la fois ; « Lot Gate » seul :
+décision (§10) et l'écart E1 (§3.7). PR 1 (le filet), PR 2 (le socle a son plan), PR 3a (les équipes d'un plan), PR 3b (les gymnases d'une période) et PR 4 (les règles appliquées, la nature sur le plan) livrées, écarts ci-dessous ; la PR 5 reste à faire.** Voie **Full**. Branche cible : `lot/conception` (une PR ouverte à la fois ; « Lot Gate » seul :
 `docs/ops/ci-runner.md` § Branche de lot ; avant chaque merge : `make -C backend tests-complete` + features et specs de la
 zone sur la stack d'épreuve). Exécutant : `neo`, après les rouges de `tank`. Cadrage : la conception validée en tient lieu
 (cible §3, §11, §12, §13, §27 de [`conception-cible.md`](conception-cible.md)). La fiche du lot est dans
@@ -196,9 +195,20 @@ Ordre 1 → 2 → 3a → 3b → 4 → 5. Raison : chaque conversion prouvée seu
   - Le gate : `PlanCompositionTenantIsolationTest` (cas gymnase) est dans le step `Blocking suite` de `ci.yml` et dans `docs/testing/blocking-tests.md` ; `Lot4MigrationChainTest` joue désormais cette migration.
 - Tests : lignes 24 à 28. `/security-review` : oui.
 
-### PR 4 · « Les règles appliquées, la nature sur le plan »
+### PR 4 · « Les règles appliquées, la nature sur le plan » — livrée
 - Migration : `plan_constraint`, une ligne par (plan de période, contrainte permanente) = exception sinon défaut actuel ; supprime `constraint_period_override`.
 - Code : réponses de nature sur `SchedulePlanType` ; `PeriodConstraintSelector` ; les créateurs de contraintes permanentes ; `ConstraintStateProcessor` (portée `:136`, datation `:175`) ; `Deletion/ScopedConstraintStep`, `VenueConfigConstraintStep` ; route d'exception ; restauration ; tri des douze lecteurs de `getPeriodType()`.
+- **Écarts au plan, tels que livrés** :
+  - La migration `Version20261130120000` est **irréversible** (aucun `down()`). Table `plan_constraint` : clé composée `(schedule_plan_id, club_id)` vers le plan en cascade, **aucune clé vers `constraint`** (« Charger » efface puis réinsère les règles permanentes), RLS forcée. Une coche dont la contrainte n'existe plus (ou est datée) ne donne aucune ligne. Le comptage « lignes = règles permanentes × plans de période » est vérifié AVANT la pose de l'unicité (plan, règle).
+  - `PlanComposition::constraintsOf` rend `[]` pour le plan de saison et lève sur une règle permanente sans ligne ; `ensureLines` pose aussi les lignes de règle, au défaut de la nature du plan.
+  - Route `/api/constraint_period_overrides` (nom de ressource conservé) : `POST` met à jour la ligne du couple (plan, règle) et rend 201 les deux fois ; `GET` rend les lignes qui diffèrent du défaut ; `DELETE` remet la ligne au défaut (204) avec la trace `entity.deleted` (type `ConstraintPeriodOverride`) ; `PUT /{id}` conservé.
+  - Dater une règle permanente : 422 « Cette contrainte a des décochages par plan : retirez-les avant de la dater. » si une de ses lignes diffère du défaut ; sinon ses lignes partent.
+  - Changer la portée d'une règle (`PlanComposition::onScopeChanged`) : les lignes restées égales à l'ancien défaut passent au nouveau. **Limite écrite** : une ligne posée explicitement par l'API à la valeur du défaut est indiscernable après conversion et suivra un élargissement de portée ; l'écran n'en écrit jamais (mesure 4 de `link`, à la copie n° 2).
+  - Le `PUT` d'une règle n'appelle plus `ensureLines` (création seulement) ; la copie sœur recopie les lignes telles quelles ; `DefaultConstraintSeeder::seed` flushe via `ensureLines`.
+  - Réponses de nature : `SchedulePlanType::keepsSocleConstraintByDefault(ConstraintScope)` et `copiesSharedBlocksAtBirth()`.
+  - `Api/ConstraintScopeChangeTest` entre au step `Blocking suite` de `ci.yml` et dans `docs/testing/blocking-tests.md` (axe *constraint semantics*).
+  - Le temps Behat, mesuré en local, dépasse le plafond de 950 s : à mesurer en CI (`make ci-mesure PART=origin/lot/conception`) ; le relever exige la ligne datée du fondateur.
+  - `Lot4MigrationChainTest` : les deux gardes de la migration (comptage, puis unicité) se suivent, le cas faussé ne dit pas laquelle parle. Un test devenu faux (le doublon 422 d'un second POST) est retiré, remplacé par `PeriodSettingUpsertTest` (publier met à jour).
 - Tests : lignes 29 à 34. `/security-review` : oui.
 
 ### PR 5 · « Un constructeur, une copie de naissance »

@@ -98,6 +98,12 @@ final class PeriodOverlayContext extends BaseContext
 
     private string $fridayRuleTeamId = '';
 
+    /** Vrai si la règle « pas le vendredi » vise tout le club (lot 4, PR 4). */
+    private bool $fridayRuleForTheClub = false;
+
+    /** L'identifiant de la décoche de « pas le vendredi » dans la période, rendu par sa publication. */
+    private string $fridayRuleSettingId = '';
+
     /** Jour et début où la copie de la période a été déplacée. */
     private int $movedDay = 0;
 
@@ -191,6 +197,144 @@ final class PeriodOverlayContext extends BaseContext
         $this->entryId = $this->createClosurePeriod($this->holidayFreeMonday(49, 7), 'Fermeture née avant la règle');
         $plan = $this->apiPost('schedule_plans', ['calendarEntryId' => $this->entryId], $this->token);
         $this->redatePlanId = $this->idOf($plan, 'plan de période');
+    }
+
+    /** Des vacances et leur plan, nés par les gestes du gestionnaire (créer la période, puis l'adapter). */
+    #[Given('des vacances déjà créées')]
+    public function desVacancesDejaCreees(): void
+    {
+        $start = date('Y-m-d', (int) strtotime($this->holidayFreeMonday(77, 7)));
+        $entry = $this->apiPost('calendar_entries', [
+            'kind' => 'period',
+            'periodType' => 'holiday',
+            'title' => 'Vacances nées avant la règle',
+            'startDate' => $start,
+            'endDate' => date('Y-m-d', (int) strtotime($start . ' +4 days')),
+        ], $this->token);
+        $this->entryId = $this->idOf($entry, 'période de vacances');
+        $plan = $this->apiPost('schedule_plans', ['calendarEntryId' => $this->entryId], $this->token);
+        $this->redatePlanId = $this->idOf($plan, 'plan de période');
+    }
+
+    /**
+     * Lot 4, PR 4 : une règle de SAISON « pas le vendredi », posée après la naissance du plan de période — pour une équipe
+     * qui joue la période et s'entraîne dans le socle (le vendredi de préférence), ou pour tout le club.
+     */
+    #[When('/^j\'ajoute la règle de saison « pas le vendredi » (?P<portee>pour une équipe de la période|pour tout le club)$/u')]
+    public function jAjouteLaRegleDeSaisonPasLeVendrediAvecSaPortee(string $portee): void
+    {
+        $forTheClub = 'pour tout le club' === $portee;
+        $this->fridayRuleTeamId = $this->dbalScalar(
+            \sprintf(
+                'SELECT t.team_id AS behatval FROM schedule_slot_template t JOIN schedule_plan p ON p.chosen_schedule_id = t.schedule_id'
+                . ' JOIN plan_team l ON l.team_id = t.team_id AND l.schedule_plan_id = \'%s\' AND l.participates'
+                . ' WHERE p.club_id=\'%s\' AND p.type=\'SEASON\' AND t.team_id IS NOT NULL ORDER BY (t.day_of_week = 5) DESC, t.id LIMIT 1',
+                $this->redatePlanId,
+                $this->clubId,
+            ),
+            admin: true,
+        );
+        if ('' === $this->fridayRuleTeamId) {
+            throw new RuntimeException('aucune équipe de la période ne s\'entraîne dans le planning de saison en vigueur — la base est-elle seedée ?');
+        }
+
+        $created = $this->apiPost('constraints', [
+            'name' => 'Pas le vendredi (règle de saison posée après la période)',
+            'scope' => $forTheClub ? 'CLUB' : 'TEAM',
+            'scopeTargetId' => $forTheClub ? null : $this->fridayRuleTeamId,
+            'family' => 'DAY',
+            'ruleType' => 'HARD',
+            'config' => ['forbiddenDays' => [5]],
+            'isActive' => true,
+        ], $this->token);
+        $this->fridayRuleId = $this->idOf($created, 'règle « pas le vendredi »');
+        $this->fridayRuleForTheClub = $forTheClub;
+    }
+
+    /** Le geste de l'étape Règles de la période : décocher la règle pour ce plan. */
+    #[When('je décoche « pas le vendredi » pour la période')]
+    public function jeDecochePasLeVendredi(): void
+    {
+        $published = $this->apiPost('constraint_period_overrides', [
+            'schedulePlanId' => $this->redatePlanId,
+            'constraintId' => $this->fridayRuleIdOrFail(),
+            'isActive' => false,
+        ], $this->token);
+        $this->fridayRuleSettingId = $this->idOf($published, 'décoche de « pas le vendredi »');
+    }
+
+    /** Lot 4, PR 4 : décocher la règle pour la fermeture, puis la recocher — la coche revient au défaut de la fermeture. */
+    #[When('je décoche puis je recoche « pas le vendredi » pour la fermeture')]
+    public function jeDecochePuisJeRecochePasLeVendredi(): void
+    {
+        $this->jeDecochePasLeVendredi();
+        $deleted = $this->apiDelete(\sprintf('constraint_period_overrides/%s', $this->fridayRuleSettingId), $this->token);
+        if (204 !== $deleted['status']) {
+            throw new RuntimeException(\sprintf('recocher « pas le vendredi » a été refusé (HTTP %d)', $deleted['status']));
+        }
+    }
+
+    /** Aucun geste : l'étape Règles de la période ne liste aucun réglage pour la règle, elle suit le défaut de la nature. */
+    #[When('je laisse les règles de la période à leur défaut')]
+    public function jeLaisseLesReglesAuDefaut(): void
+    {
+        $listed = $this->apiGet(\sprintf('constraint_period_overrides?schedulePlanId=%s', $this->redatePlanId), $this->token);
+        if (200 !== $listed['status']) {
+            throw new RuntimeException(\sprintf('la liste des réglages de règle de la période a été refusée (HTTP %d)', $listed['status']));
+        }
+        foreach (\is_array($listed['json']['member'] ?? null) ? $listed['json']['member'] : [] as $member) {
+            if (\is_array($member) && $this->fridayRuleIdOrFail() === ($member['constraintId'] ?? null)) {
+                throw new RuntimeException(\sprintf('la règle a déjà un réglage dans la période : %s', json_encode($member, \JSON_UNESCAPED_UNICODE)));
+            }
+        }
+    }
+
+    #[When('je génère une version de la période')]
+    public function jeGenereUneVersionDeLaPeriode(): void
+    {
+        $this->jeGenereUneVersionDeLaFermeture();
+    }
+
+    /**
+     * Lot 4, PR 4 : la version de la période, générée maintenant. « respecte » : la règle part au moteur avec la demande
+     * (lue dans la demande enregistrée de la version) et aucune séance visée n'a lieu le vendredi, l'équipe (ou le club)
+     * en ayant au moins une. « ignore » : la règle ne part pas au moteur ; témoin : la version n'est pas vide.
+     */
+    #[Then('/^la génération de la période (?P<verdict>respecte|ignore) « pas le vendredi »$/u')]
+    public function laGenerationDeLaPeriodeRespecteOuIgnore(string $verdict): void
+    {
+        if ('COMPLETED' !== $this->overlayStatus) {
+            throw new RuntimeException(\sprintf('la génération de la période n\'a pas abouti (statut « %s »)', $this->overlayStatus));
+        }
+        $sent = '1' === $this->dbalScalar(
+            \sprintf('SELECT count(*) AS behatval FROM schedule WHERE id=\'%s\' AND snapshot_data::text LIKE \'%%%s%%\'', $this->redateVersionId, $this->fridayRuleIdOrFail()),
+            admin: true,
+        );
+        $sessions = $this->dbalScalar(
+            \sprintf(
+                'SELECT count(*) || \'|\' || count(*) FILTER (WHERE day_of_week = 5) AS behatval FROM schedule_slot_template WHERE schedule_id=\'%s\'%s',
+                $this->redateVersionId,
+                $this->fridayRuleForTheClub ? ' AND team_id IS NOT NULL' : \sprintf(' AND team_id=\'%s\'', $this->fridayRuleTeamId),
+            ),
+            admin: true,
+        );
+        [$total, $friday] = array_map(intval(...), explode('|', $sessions) + [1 => '0']);
+        if (0 === $total) {
+            throw new RuntimeException('les équipes visées n\'ont aucune séance dans la période : le témoin ne prouve rien');
+        }
+        if ('ignore' === $verdict) {
+            if ($sent) {
+                throw new RuntimeException('la règle « pas le vendredi » est partie au moteur avec la demande de la période');
+            }
+
+            return;
+        }
+        if (!$sent) {
+            throw new RuntimeException('la règle « pas le vendredi » n\'est pas partie au moteur avec la demande de la période');
+        }
+        if (0 !== $friday) {
+            throw new RuntimeException(\sprintf('%d séance(s) visée(s) le vendredi dans la période', $friday));
+        }
     }
 
     /** Une règle de SAISON (sans période) : pas le vendredi, pour une équipe qui s'y entraîne dans le socle. */
@@ -809,6 +953,15 @@ final class PeriodOverlayContext extends BaseContext
         } while (time() < $deadline);
 
         throw new RuntimeException(\sprintf('la génération n\'a pas abouti dans le délai imparti (dernier statut « %s »)', \is_string($status) ? $status : 'inconnu'));
+    }
+
+    private function fridayRuleIdOrFail(): string
+    {
+        if ('' === $this->fridayRuleId) {
+            throw new RuntimeException('aucune règle « pas le vendredi » : le scénario l\'ajoute d\'abord');
+        }
+
+        return $this->fridayRuleId;
     }
 
     /**

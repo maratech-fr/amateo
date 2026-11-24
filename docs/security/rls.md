@@ -144,6 +144,18 @@ inexistant et un gymnase d'un autre club) un couple sans ligne dans le club. Gar
 `tests/Security/PlanCompositionTenantIsolationTest.php` (step bloquant). La table remplace `venue_period_override`
 (supprimée).
 
+## `plan_constraint` — les règles appliquées par un plan de période, une clé composée vers le plan
+
+`plan_constraint` (une ligne par (plan de période, règle permanente de la saison), aucune pour le plan de saison ni
+pour une règle datée : « s'applique » ; `Version20261130120000`) suit le même motif : `ENABLE` + `FORCE`,
+`tenant_isolation FOR ALL TO amateo_app`, `admin_all` (`amateo_owner`) et `readonly_tenant` (`amateo_read`). Sa clé
+vers le plan est COMPOSÉE, posée à la main (invisible de Doctrine : ne jamais committer le DROP que propose
+`migration-diff`) : `(schedule_plan_id, club_id)` → `schedule_plan (id, club_id)`, `ON DELETE CASCADE`. **Aucune clé
+vers `constraint`** : « Charger » efface puis réinsère les règles permanentes. La route
+`/api/constraint_period_overrides` refuse de la même façon la règle ou le plan d'un autre club. Gardé par
+`tests/Security/PlanCompositionTenantIsolationTest.php` (step bloquant). La table remplace
+`constraint_period_override` (supprimée).
+
 ## Porte superadmin (supervision développeur)
 
 La porte admin (P5-7, `Version20260813130000`) est **portée par des policies, plus par le

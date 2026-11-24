@@ -4,10 +4,10 @@ declare(strict_types=1);
 
 namespace App\Tests\Integration\Api;
 
+use App\Entity\CalendarEntry;
 use App\Entity\Club;
 use App\Entity\ClubUser;
 use App\Entity\Constraint;
-use App\Entity\ConstraintPeriodOverride;
 use App\Entity\PriorityTier;
 use App\Entity\Season;
 use App\Entity\Sport;
@@ -15,17 +15,21 @@ use App\Entity\SportCategory;
 use App\Entity\Team;
 use App\Entity\User;
 use App\Entity\Venue;
+use App\Enum\CalendarEntryKind;
+use App\Enum\CalendarEntryPeriodType;
 use App\Enum\ConstraintFamily;
 use App\Enum\ConstraintRuleType;
 use App\Enum\ConstraintScope;
 use App\Enum\Gender;
 use App\Enum\SeasonStatus;
 use App\Plans\PlanComposition;
+use App\Tests\ComposesPlanConstraintsTrait;
 use App\Tests\CreatesPeopleAndPlacesTrait;
-use App\Tests\CreatesPeriodPlanTrait;
+use App\Tests\ProvisionsPeriodPlanTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
+use Lexik\Bundle\JWTAuthenticationBundle\Services\JWTTokenManagerInterface;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
@@ -35,8 +39,9 @@ use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
 #[Group('integration')]
 final class ConstraintApiTest extends WebTestCase
 {
+    use ComposesPlanConstraintsTrait;
     use CreatesPeopleAndPlacesTrait;
-    use CreatesPeriodPlanTrait;
+    use ProvisionsPeriodPlanTrait;
     use TenantGucTrait;
 
     private KernelBrowser $client;
@@ -515,66 +520,46 @@ final class ConstraintApiTest extends WebTestCase
     }
 
     /**
-     * P2-59 (revue sécurité #814) — garde SYMÉTRIQUE : l'interdiction de décocher une datée est
-     * contournable par l'ORDRE (décocher une PERMANENTE puis la dater). On la ferme dans le
-     * chemin UPDATE : dater une contrainte qui porte ≥1 décochage par plan est refusé (422),
-     * sinon le décochage devient orphelin sur une datée — état que le modèle FAIT/GENÈSE proscrit.
+     * Dater une contrainte (lot 4, PR 4, ligne 31 du plan ; P2-59, revue sécurité #814) : refusé, même texte, tant
+     * qu'une période l'applique autrement que le défaut de sa nature — la coche d'une période deviendrait orpheline sur
+     * une datée, état que le modèle FAIT/GENÈSE proscrit. Ici le gestionnaire l'a décochée pour une fermeture ; la règle
+     * reste permanente et sa coche reste.
      */
-    public function testDatingAConstraintThatHasPeriodOverridesIsRefused(): void
+    public function testDatingIsRefusedWhileAPeriodSetsTheRuleAgainstItsDefault(): void
     {
-        $client = $this->client;
-        $client->loginUser($this->user);
+        $ruleId = $this->postClubRule('Permanente décochée');
+        $closure = $this->periodPlanOf(CalendarEntryPeriodType::CLOSURE, '2026-02-02', '2026-02-08');
+        $this->publishRuleSetting($closure, $ruleId, false);
+        self::assertFalse($this->ruleLineRow($closure, $ruleId), 'témoin : la fermeture décoche la règle, contre le défaut');
 
-        $constraint = $this->createConstraint('Permanente décochée', 'CLUB');
-        $planId = $this->createPeriodPlan($this->club->getId(), $this->season->getId());
-        $this->em->persist((new ConstraintPeriodOverride)
-            ->setClubId($this->club->getId())
-            ->setSeasonId($this->season->getId())
-            ->setSchedulePlanId($planId)
-            ->setConstraintId($constraint->getId())
-            ->setIsActive(false));
-        $this->em->flush();
+        $this->dateRule($ruleId, 'Permanente décochée');
 
-        $client->request('PUT', \sprintf('/api/constraints/%s', $constraint->getId()), [], [], [
-            'CONTENT_TYPE' => 'application/ld+json',
-        ], json_encode([
-            'name' => 'Permanente décochée',
-            'scope' => 'CLUB',
-            'family' => 'DAY',
-            'ruleType' => 'HARD',
-            'config' => ['forbiddenDays' => [6]],
-            'calendarEntryId' => '22222222-2222-4222-8222-222222222222',
-        ], \JSON_THROW_ON_ERROR));
-
-        self::assertSame(422, $client->getResponse()->getStatusCode(), 'dater une contrainte qui porte un décochage par plan doit être refusé — sinon l\'override reste orpheline sur une datée.');
-        self::assertStringContainsString('décochages', (string) $client->getResponse()->getContent(), 'le message doit dire au gestionnaire de retirer les décochages avant de dater.');
+        self::assertSame(422, $this->client->getResponse()->getStatusCode(), 'dater une règle qu\'une période applique autrement que le défaut est refusé');
+        $body = json_decode((string) $this->client->getResponse()->getContent(), true);
+        self::assertSame('Cette contrainte a des décochages par plan : retirez-les avant de la dater.', \is_array($body) ? ($body['violations'][0]['message'] ?? null) : null, 'même texte qu\'avant le lot');
+        self::assertFalse($this->ruleLineRow($closure, $ruleId), 'la coche de la fermeture reste');
+        self::assertNull($this->em->getConnection()->fetchOne('SELECT calendar_entry_id FROM "constraint" WHERE id = ?', [$ruleId]), 'la règle reste permanente');
     }
 
     /**
-     * P2-59 — cas NOMINAL : dater une contrainte SANS aucun décochage passe (200) et pose bien
-     * le calendarEntryId. La garde ne freine que l'état contradictoire (datée + décochée).
+     * Dater une contrainte (lot 4, PR 4, ligne 31 du plan) : permis quand aucune période ne l'applique autrement que le
+     * défaut de sa nature — une coche publiée égale au défaut n'est pas un écart ; ses lignes disparaissent de chaque
+     * plan de période, une datée n'en porte aucune.
      */
-    public function testDatingAConstraintWithoutOverridesIsAccepted(): void
+    public function testDatingIsAcceptedWhenNoPeriodDeviatesAndItsLinesLeave(): void
     {
-        $client = $this->client;
-        $client->loginUser($this->user);
+        $ruleId = $this->postClubRule('Permanente à dater');
+        $closure = $this->periodPlanOf(CalendarEntryPeriodType::CLOSURE, '2026-02-02', '2026-02-08');
+        $holiday = $this->periodPlanOf(CalendarEntryPeriodType::HOLIDAY, '2026-04-06', '2026-04-12');
+        $this->publishRuleSetting($holiday, $ruleId, true);
+        self::assertSame([true, true], [$this->ruleLineRow($closure, $ruleId), $this->ruleLineRow($holiday, $ruleId)], 'témoin : les deux périodes appliquent la règle de club, leur défaut');
 
-        $constraint = $this->createConstraint('Permanente à dater', 'CLUB');
+        $this->dateRule($ruleId, 'Permanente à dater');
 
-        $client->request('PUT', \sprintf('/api/constraints/%s', $constraint->getId()), [], [], [
-            'CONTENT_TYPE' => 'application/ld+json',
-        ], json_encode([
-            'name' => 'Permanente à dater',
-            'scope' => 'CLUB',
-            'family' => 'DAY',
-            'ruleType' => 'HARD',
-            'config' => ['forbiddenDays' => [6]],
-            'calendarEntryId' => '22222222-2222-4222-8222-222222222222',
-        ], \JSON_THROW_ON_ERROR));
-
-        self::assertResponseIsSuccessful();
-        $data = json_decode((string) $client->getResponse()->getContent(), true);
-        self::assertSame('22222222-2222-4222-8222-222222222222', $data['calendarEntryId']);
+        self::assertResponseIsSuccessful((string) $this->client->getResponse()->getContent());
+        $data = json_decode((string) $this->client->getResponse()->getContent(), true);
+        self::assertSame('22222222-2222-4222-8222-222222222222', $data['calendarEntryId'] ?? null);
+        self::assertSame(0, $this->ruleLineCountOf($ruleId), 'datée, la règle n\'a plus aucune ligne de période');
     }
 
     public function testDeleteConstraint(): void
@@ -768,6 +753,72 @@ final class ConstraintApiTest extends WebTestCase
         $this->em->flush();
 
         return $constraint;
+    }
+
+    /**
+     * Le gestionnaire, par son JWT : l'identité tient sur plusieurs requêtes, entre lesquelles le test écrit son décor.
+     *
+     * @return array<string, string>
+     */
+    private function bearer(): array
+    {
+        return [
+            'HTTP_AUTHORIZATION' => 'Bearer ' . self::getContainer()->get(JWTTokenManagerInterface::class)->create($this->user),
+            'HTTP_X-Season-Id' => $this->season->getId(),
+            'CONTENT_TYPE' => 'application/ld+json',
+        ];
+    }
+
+    /** Une règle de saison de tout le club, créée par le geste du gestionnaire ; rend son identifiant. */
+    private function postClubRule(string $name): string
+    {
+        $this->client->request('POST', '/api/constraints', [], [], $this->bearer(), json_encode([
+            'name' => $name,
+            'scope' => 'CLUB',
+            'family' => 'DAY',
+            'ruleType' => 'HARD',
+            'config' => ['forbiddenDays' => [6]],
+        ], \JSON_THROW_ON_ERROR));
+        self::assertResponseStatusCodeSame(201, (string) $this->client->getResponse()->getContent());
+        $id = json_decode((string) $this->client->getResponse()->getContent(), true)['id'] ?? null;
+        self::assertIsString($id);
+
+        return $id;
+    }
+
+    /** Une période et son plan, nés du geste ; rend le plan. */
+    private function periodPlanOf(CalendarEntryPeriodType $type, string $start, string $end): string
+    {
+        $entry = (new CalendarEntry)->setClubId($this->club->getId())->setSeasonId($this->season->getId())
+            ->setKind(CalendarEntryKind::PERIOD)->setPeriodType($type)->setTitle($type->value . ' ' . $start)
+            ->setStartDate(new DateTimeImmutable($start))->setEndDate(new DateTimeImmutable($end));
+        $this->em->persist($entry);
+
+        return $this->planIdOf($entry);
+    }
+
+    /** Le geste de l'étape Règles d'une période : cocher ou décocher la règle pour ce plan. */
+    private function publishRuleSetting(string $planId, string $ruleId, bool $applies): void
+    {
+        $this->client->request('POST', '/api/constraint_period_overrides', [], [], $this->bearer(), json_encode([
+            'schedulePlanId' => $planId,
+            'constraintId' => $ruleId,
+            'isActive' => $applies,
+        ], \JSON_THROW_ON_ERROR));
+        self::assertContains($this->client->getResponse()->getStatusCode(), [200, 201], 'la coche se publie : ' . $this->client->getResponse()->getContent());
+    }
+
+    /** Le geste « dater » : rattacher la règle à une entrée de calendrier. */
+    private function dateRule(string $ruleId, string $name): void
+    {
+        $this->client->request('PUT', \sprintf('/api/constraints/%s', $ruleId), [], [], $this->bearer(), json_encode([
+            'name' => $name,
+            'scope' => 'CLUB',
+            'family' => 'DAY',
+            'ruleType' => 'HARD',
+            'config' => ['forbiddenDays' => [6]],
+            'calendarEntryId' => '22222222-2222-4222-8222-222222222222',
+        ], \JSON_THROW_ON_ERROR));
     }
 
     private function createConstraint(string $name, string $scope): Constraint

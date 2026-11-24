@@ -689,7 +689,7 @@ différents** :
 > **Structure éditable PAR PÉRIODE (F1) :** le mode période n'est plus « lecture seule ». Le
 > roster/les gymnases restent **hérités** (non ré-éditables comme entités), mais on peut
 > **surcharger la participation pour la fenêtre** — équipe **on/off** + **séances** — via un DIFF
-> sparse scopé **`schedulePlanId`** (`PlanTeam` — servi par la route `team_period_overrides` —, `ConstraintPeriodOverride` ; le socle
+> sparse scopé **`schedulePlanId`** (`PlanTeam` — servi par la route `team_period_overrides` —, `PlanConstraint` — servi par la route `constraint_period_overrides` ; le socle
 > n'est jamais touché). Les **créneaux** ne sont **pas** un diff : la période **possède sa grille**
 > (copie des créneaux de saison à la naissance du plan — voir la ligne Gymnases ci-dessous).
 > Modèle : [`../../docs/architecture/adr-0002-pattern-plan.md`](../../docs/architecture/adr-0002-pattern-plan.md) inv. 5.

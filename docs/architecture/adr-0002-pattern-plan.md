@@ -163,7 +163,7 @@ Schedule (= Version)                    ← existant, recentré
 5. **Les réglages de période s'accrochent au Plan** (pas au déclencheur calendrier) :
    composition d'équipes (une ligne `PlanTeam` par équipe : participation, séances, plafond par
    jour, figées à la naissance du plan), contraintes gardées/enlevées
-   (`ConstraintPeriodOverride`), sa grille de gymnases (`VenueTrainingSlot` scopé période —
+   (une ligne `PlanConstraint` par règle permanente, servie par la ressource `ConstraintPeriodOverride`), sa grille de gymnases (`VenueTrainingSlot` scopé période —
    une COPIE du modèle de saison, cf. plus bas dans ce même invariant, #8) et ses modes de
    gymnase (`PlanVenue`, une ligne par gymnase dans chaque plan de période, servie par la ressource
    `VenuePeriodOverride`),

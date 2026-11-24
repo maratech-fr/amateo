@@ -128,7 +128,7 @@ function PeriodConstraintsPanel({
   const tagResolutionReady = !needsTagResolution || (!tagsLoading && !tagAssignmentsLoading && !tagsError && !tagAssignmentsError);
   // ⚠️ MIROIR DÉCLARÉ (régime 2, P4-88). Deux branchements sur les valeurs d'un enum de
   // contrainte, reflétant le serveur :
-  //  - `defaultKept` (scope) reflète `PeriodConstraintSelector::keepByDefault` — fermeture :
+  //  - `defaultKept` (scope) reflète `SchedulePlanType::keepsSocleConstraintByDefault` — fermeture :
   //    tout gardé ; vacances : seul le scope CLUB est hérité, TEAM/COACH/FACILITY sont OFF ;
   //  - `hidden` (CLUB ciblant un/des tag(s), sans AUCUNE équipe active résolue) reflète
   //    l'expansion du payload — P2-29 : « (∩ targetTags) − (∪ excludeTags) » sur les équipes
