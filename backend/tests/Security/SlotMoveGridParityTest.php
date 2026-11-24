@@ -13,7 +13,6 @@ use App\Entity\Season;
 use App\Entity\Sport;
 use App\Entity\SportCategory;
 use App\Entity\Team;
-use App\Entity\VenuePeriodOverride;
 use App\Entity\VenueTrainingSlot;
 use App\Enum\CalendarEntryKind;
 use App\Enum\CalendarEntryPeriodType;
@@ -471,13 +470,9 @@ final class SlotMoveGridParityTest extends KernelTestCase
 
         // Masque manuel : jeudi(4) FERMÉ pour la période, ancré au plan (grain JOUR, la maison
         // unique `PlanVenueClosures` le compose). Le vendredi(5), absent du masque, reste ouvert.
-        $override = (new VenuePeriodOverride)
-            ->setClubId($clubId)
-            ->setSeasonId($seasonId)
-            ->setSchedulePlanId($planId)
-            ->setVenueId($venueIds[1])
-            ->setDayOverrides([4 => VenueDayState::CLOSED->value]);
-        $this->em->persist($override);
+        $composition = self::getContainer()->get(PlanComposition::class);
+        $composition->ensureLines($seasonId);
+        $composition->venuesOf($planId)[$venueIds[1]]->setDayOverrides([4 => VenueDayState::CLOSED->value]);
         $this->em->flush();
 
         $slot = (new ScheduleSlotTemplate)

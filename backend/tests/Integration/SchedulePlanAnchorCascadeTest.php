@@ -45,7 +45,7 @@ final class SchedulePlanAnchorCascadeTest extends KernelTestCase
         // P4-34 — les trois jumeaux. Leur ancre est NOT NULL : le cas « ligne de
         // base » (ancre nulle, partagée par la saison) n'existe pas pour eux, et
         // l'insérer échouerait — d'où le drapeau porté par le provider.
-        yield 'venue_period_override' => ['venue_period_override'];
+        yield 'plan_venue' => ['plan_venue'];
         yield 'plan_team' => ['plan_team'];
         yield 'constraint_period_override' => ['constraint_period_override'];
     }
@@ -136,12 +136,12 @@ final class SchedulePlanAnchorCascadeTest extends KernelTestCase
     {
         $id = $this->uuid();
 
-        if ('venue_period_override' === $table) {
+        if ('plan_venue' === $table) {
             $this->connection->executeStatement(
-                'INSERT INTO venue_period_override (id, version, created_at, updated_at, club_id, season_id,
-                    schedule_plan_id, venue_id, mode)
-                 VALUES (?, 1, NOW(), NOW(), ?, ?, ?, ?, ?)',
-                [$id, $clubId, $seasonId, $planId, $this->uuid(), 'DISABLED'],
+                'INSERT INTO plan_venue (id, version, created_at, updated_at, club_id, season_id,
+                    schedule_plan_id, venue_id, participates)
+                 VALUES (?, 1, NOW(), NOW(), ?, ?, ?, ?, false)',
+                [$id, $clubId, $seasonId, $planId, $this->uuid()],
             );
 
             return $id;

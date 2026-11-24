@@ -139,7 +139,8 @@ final class StructureRestorer
 
         // Lot 4, PR 3a — les équipes du socle reprennent les séances et le plafond de la photo sur leur ligne du plan de
         // saison ; une équipe ramenée reçoit sa ligne dans chaque plan de période, aux valeurs de son socle. Les lignes
-        // de période existantes ne changent pas.
+        // de période existantes ne changent pas. PR 3b : un gymnase ramené reçoit sa ligne dans chaque plan de période,
+        // au défaut.
         $this->planComposition->ensureLines($seasonId, $this->socleValuesOf($data));
 
         // Les coachs viennent d'être supprimés : la clé étrangère a emporté les jetons de collecte.
@@ -338,6 +339,12 @@ final class StructureRestorer
             'SELECT o.id FROM App\Entity\PlanTeam o WHERE o.clubId = :c AND o.seasonId = :s AND NOT EXISTS (SELECT 1 FROM App\Entity\Team t WHERE t.id = o.teamId)',
             $tenant,
             'DELETE App\Entity\PlanTeam o WHERE o.id IN (:ids)',
+        );
+        // Lot 4, PR 3b — a period's venue line whose venue is gone after the restore.
+        $this->deleteDangling(
+            'SELECT o.id FROM App\Entity\PlanVenue o WHERE o.clubId = :c AND o.seasonId = :s AND NOT EXISTS (SELECT 1 FROM App\Entity\Venue v WHERE v.id = o.venueId)',
+            $tenant,
+            'DELETE App\Entity\PlanVenue o WHERE o.id IN (:ids)',
         );
         // A period's constraint toggle whose permanent constraint is gone after the restore.
         $this->deleteDangling(

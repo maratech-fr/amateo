@@ -8,13 +8,13 @@ use App\Entity\CalendarEntry;
 use App\Entity\Club;
 use App\Entity\ClubUser;
 use App\Entity\Constraint;
+use App\Entity\PlanVenue;
 use App\Entity\Reservation;
 use App\Entity\Schedule;
 use App\Entity\ScheduleSlotTemplate;
 use App\Entity\Season;
 use App\Entity\User;
 use App\Entity\Venue;
-use App\Entity\VenuePeriodOverride;
 use App\Entity\VenueTrainingSlot;
 use App\Enum\CalendarEntryKind;
 use App\Enum\CalendarEntryPeriodType;
@@ -638,7 +638,7 @@ final class VenuePeriodOverrideApiTest extends WebTestCase
 
         $this->scopeGucToClub($this->club->getId());
         self::assertSame(0, $this->countPeriodSlots($this->venueA), 'la tentative de l’intrus n’a rien recopié chez le voisin');
-        self::assertNotNull($this->em->getRepository(VenuePeriodOverride::class)->find($created['id']));
+        self::assertNotNull($this->em->getRepository(PlanVenue::class)->find($created['id']));
     }
 
     #[DataProvider('gridActionRoutes')]

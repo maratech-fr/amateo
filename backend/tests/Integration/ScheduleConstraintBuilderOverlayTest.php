@@ -12,6 +12,7 @@ use App\Entity\CoachWish;
 use App\Entity\Constraint;
 use App\Entity\ConstraintPeriodOverride;
 use App\Entity\Place;
+use App\Entity\PlanVenue;
 use App\Entity\Reservation;
 use App\Entity\Schedule;
 use App\Entity\ScheduleSlotTemplate;
@@ -20,7 +21,6 @@ use App\Entity\Team;
 use App\Entity\TeamCoach;
 use App\Entity\User;
 use App\Entity\Venue;
-use App\Entity\VenuePeriodOverride;
 use App\Entity\VenueTrainingSlot;
 use App\Enum\CalendarEntryKind;
 use App\Enum\CalendarEntryPeriodType;
@@ -473,7 +473,7 @@ final class ScheduleConstraintBuilderOverlayTest extends KernelTestCase
         $this->builder->buildForOverlay($schedule, $entry);
 
         $this->em->clear();
-        self::assertSame([6 => 'CLOSED'], $this->em->getRepository(VenuePeriodOverride::class)->find($overrideId)?->getDayOverrides(), 'le masque dormant survit intact à un build (lecture seule)');
+        self::assertSame([6 => 'CLOSED'], $this->em->getRepository(PlanVenue::class)->find($overrideId)?->getDayOverrides(), 'le masque dormant survit intact à un build (lecture seule)');
     }
 
     public function testOverlayDropsConstraintDisabledForPeriod(): void
@@ -987,13 +987,7 @@ final class ScheduleConstraintBuilderOverlayTest extends KernelTestCase
     /** #8 — mode d'un gymnase POUR la période (sparse : pas de ligne = hériter). */
     private function venueMode(Club $club, Season $season, CalendarEntry $entry, string $venueId, VenuePeriodMode $mode): void
     {
-        $o = new VenuePeriodOverride;
-        $o->setClubId($club->getId());
-        $o->setSeasonId($season->getId());
-        $o->setSchedulePlanId($this->planIdOf($entry));
-        $o->setVenueId($venueId);
-        $o->setMode($mode);
-        $this->em->persist($o);
+        $this->venueOverride($club, $season, $entry, $venueId, $mode, null);
     }
 
     /**
@@ -1001,18 +995,16 @@ final class ScheduleConstraintBuilderOverlayTest extends KernelTestCase
      *
      * @param array<int, string>|null $dayOverrides
      */
-    private function venueOverride(Club $club, Season $season, CalendarEntry $entry, string $venueId, ?VenuePeriodMode $mode, ?array $dayOverrides): VenuePeriodOverride
+    private function venueOverride(Club $club, Season $season, CalendarEntry $entry, string $venueId, ?VenuePeriodMode $mode, ?array $dayOverrides): PlanVenue
     {
-        $o = new VenuePeriodOverride;
-        $o->setClubId($club->getId());
-        $o->setSeasonId($season->getId());
-        $o->setSchedulePlanId($this->planIdOf($entry));
-        $o->setVenueId($venueId);
-        $o->setMode($mode);
-        $o->setDayOverrides($dayOverrides);
-        $this->em->persist($o);
+        unset($club);
+        // Lot 4, PR 3b : la ligne du gymnase dans le plan de période, posée par la porte.
+        $planId = $this->planIdOf($entry);
+        $composition = self::getContainer()->get(PlanComposition::class);
+        $composition->ensureLines($season->getId());
 
-        return $o;
+        return $composition->venuesOf($planId)[$venueId]
+            ->setParticipating(VenuePeriodMode::DISABLED !== $mode)->setClosureLifted(VenuePeriodMode::BLANK === $mode)->setDayOverrides($dayOverrides);
     }
 
     private function venueSlot(Club $club, Season $season, string $venueId, ?string $schedulePlanId, int $dayOfWeek = 1): void

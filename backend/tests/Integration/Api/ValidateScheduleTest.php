@@ -12,17 +12,17 @@ use App\Entity\CoachWish;
 use App\Entity\CoachWishCampaign;
 use App\Entity\CoachWishMutualization;
 use App\Entity\CoachWishToken;
+use App\Entity\PlanVenue;
 use App\Entity\Schedule;
 use App\Entity\Season;
 use App\Entity\SolverMetric;
 use App\Entity\User;
-use App\Entity\VenuePeriodOverride;
 use App\Entity\VenueTrainingSlot;
 use App\Enum\CalendarEntryKind;
 use App\Enum\CalendarEntryPeriodType;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
-use App\Enum\VenuePeriodMode;
+use App\Plans\PlanComposition;
 use App\Service\SchedulePlanProvisioner;
 use App\Tests\ChoosesPlanVersionTrait;
 use App\Tests\CreatesPeopleAndPlacesTrait;
@@ -308,13 +308,7 @@ final class ValidateScheduleTest extends WebTestCase
         // Le geste « Adapter » : le plan naît AVEC sa grille, sans aucune version.
         $planId = self::getContainer()->get(SchedulePlanProvisioner::class)->provisionPeriodPlan($entry->getId());
         self::assertNotNull($planId);
-        $mode = new VenuePeriodOverride;
-        $mode->setClubId($club->getId());
-        $mode->setSeasonId($season->getId());
-        $mode->setSchedulePlanId($planId);
-        $mode->setVenueId($venue->getId());
-        $mode->setMode(VenuePeriodMode::DISABLED);
-        $this->em->persist($mode);
+        self::getContainer()->get(PlanComposition::class)->venuesOf($planId)[$venue->getId()]->setParticipating(false);
         $this->em->flush();
         $this->em->clear();
         self::assertCount(1, $this->em->getRepository(VenueTrainingSlot::class)->findBy(['schedulePlanId' => $planId]), 'la période est née avec sa copie de la grille de saison');
@@ -339,7 +333,7 @@ final class ValidateScheduleTest extends WebTestCase
         $provisioner = self::getContainer()->get(SchedulePlanProvisioner::class);
         self::assertNull($provisioner->periodPlanId($entry->getId()), 'le PLAN de la période est détruit, pas seulement ses versions');
         self::assertSame([], $this->em->getRepository(VenueTrainingSlot::class)->findBy(['schedulePlanId' => $planId]), 'sa grille copiée part avec lui');
-        self::assertSame([], $this->em->getRepository(VenuePeriodOverride::class)->findBy(['schedulePlanId' => $planId]), 'ses réglages de gymnase aussi');
+        self::assertSame([], $this->em->getRepository(PlanVenue::class)->findBy(['schedulePlanId' => $planId]), 'ses réglages de gymnase aussi');
         // Ce qui SURVIT : le modèle de saison (la base, qu'on vient justement de changer)
         // et l'entrée au calendrier — la période retombe « à traiter », à refaire.
         self::assertNotNull($this->em->getRepository(VenueTrainingSlot::class)->find($seasonal), 'le créneau de SAISON est intact');

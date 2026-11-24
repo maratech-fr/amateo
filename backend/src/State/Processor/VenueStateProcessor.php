@@ -13,6 +13,7 @@ use App\Entity\Venue;
 use App\Entity\VenueTrainingSlot;
 use App\Enum\TravelComputeScope;
 use App\Message\ComputeTravelTimesMessage;
+use App\Plans\PlanComposition;
 use App\Service\ManagementAccessGuard;
 use App\Service\SeasonAccessGuard;
 use App\Service\SeasonResolver;
@@ -50,6 +51,7 @@ class VenueStateProcessor extends AbstractStateProcessor
         SeasonAccessGuard $seasonAccessGuard,
         ManagementAccessGuard $managementAccessGuard,
         private readonly PlaceDirectory $placeDirectory,
+        private readonly PlanComposition $planComposition,
     ) {
         parent::__construct($entityManager, $requestStack, $seasonResolver, $seasonAccessGuard, $managementAccessGuard);
     }
@@ -59,6 +61,23 @@ class VenueStateProcessor extends AbstractStateProcessor
     {
         $this->messageBus = $messageBus;
         $this->travelComputeLock = $travelComputeLock;
+    }
+
+    /**
+     * Lot 4, PR 3b — un gymnase créé reçoit sa ligne dans chaque plan de période de sa saison, par la seule porte :
+     * participe, fermeture non levée, sans masque.
+     *
+     * @param VenueInput $input
+     */
+    protected function processPost(object $input, ?string $clubId, ?string $seasonId): object
+    {
+        $output = parent::processPost($input, $clubId, $seasonId);
+        $resolvedSeasonId = $this->resolveSeasonId($clubId, $seasonId);
+        if (null !== $resolvedSeasonId) {
+            $this->planComposition->ensureLines($resolvedSeasonId);
+        }
+
+        return $output;
     }
 
     protected function getEntityClass(): string

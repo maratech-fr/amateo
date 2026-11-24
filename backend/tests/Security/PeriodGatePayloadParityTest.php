@@ -9,6 +9,7 @@ use App\Entity\Club;
 use App\Entity\ClubUser;
 use App\Entity\Constraint;
 use App\Entity\ConstraintPeriodOverride;
+use App\Entity\PlanVenue;
 use App\Entity\PriorityTier;
 use App\Entity\Season;
 use App\Entity\Sport;
@@ -16,7 +17,6 @@ use App\Entity\SportCategory;
 use App\Entity\Team;
 use App\Entity\User;
 use App\Entity\Venue;
-use App\Entity\VenuePeriodOverride;
 use App\Entity\VenueTrainingSlot;
 use App\Enum\CalendarEntryKind;
 use App\Enum\CalendarEntryPeriodType;
@@ -27,7 +27,6 @@ use App\Enum\ConstraintScope;
 use App\Enum\Gender;
 use App\Enum\SeasonStatus;
 use App\Enum\TeamLevel;
-use App\Enum\VenuePeriodMode;
 use App\Plans\PlanComposition;
 use App\Service\PeriodConstraintSelection;
 use App\Service\PeriodConstraintSelector;
@@ -229,8 +228,8 @@ final class PeriodGatePayloadParityTest extends WebTestCase
 
         // 3) FALSIFICATION : masque {mercredi: OPEN} → les créneaux du mercredi reviennent des
         //    deux côtés ; seul le lundi et le mercredi restent (le samedi n'est plus masqué).
-        $override = $this->em->getRepository(VenuePeriodOverride::class)->findOneBy(['schedulePlanId' => $planId, 'venueId' => $venue->getId()]);
-        self::assertInstanceOf(VenuePeriodOverride::class, $override);
+        $override = $this->em->getRepository(PlanVenue::class)->findOneBy(['schedulePlanId' => $planId, 'venueId' => $venue->getId()]);
+        self::assertInstanceOf(PlanVenue::class, $override);
         $override->setDayOverrides([3 => 'OPEN']);
         $this->em->flush();
 
@@ -552,13 +551,7 @@ final class PeriodGatePayloadParityTest extends WebTestCase
 
         $planId = $this->planIdOf($entry); // copie la grille de saison sur le plan
 
-        $override = new VenuePeriodOverride;
-        $override->setClubId($club->getId());
-        $override->setSeasonId($season->getId());
-        $override->setSchedulePlanId($planId);
-        $override->setVenueId($venue->getId());
-        $override->setDayOverrides($dayOverrides);
-        $this->em->persist($override);
+        self::getContainer()->get(PlanComposition::class)->venuesOf($planId)[$venue->getId()]->setDayOverrides($dayOverrides);
         $this->em->flush();
 
         return [$club, $season, $venue, $entry, $planId];
@@ -868,13 +861,7 @@ final class PeriodGatePayloadParityTest extends WebTestCase
         $teamOverride = self::getContainer()->get(PlanComposition::class)->lineOf($planId, $teamPaused->getId());
         $teamOverride->setParticipating(false);
 
-        $venueOverride = new VenuePeriodOverride;
-        $venueOverride->setClubId($club->getId());
-        $venueOverride->setSeasonId($season->getId());
-        $venueOverride->setSchedulePlanId($planId);
-        $venueOverride->setVenueId($venueDisabled->getId());
-        $venueOverride->setMode(VenuePeriodMode::DISABLED);
-        $this->em->persist($venueOverride);
+        self::getContainer()->get(PlanComposition::class)->venuesOf($planId)[$venueDisabled->getId()]->setParticipating(false);
         $this->em->flush();
 
         $ids = [

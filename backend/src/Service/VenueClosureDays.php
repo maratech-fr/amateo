@@ -237,7 +237,7 @@ final class VenueClosureDays
      * P4-300 — l'INTERVALLE BRUT de chaque fermeture `venue_closed`, SANS clip : les dates du
      * `config` si elles sont valides, sinon la fenêtre de REPLI legacy (l'entrée porteuse). C'est
      * le FAIT brut que les MATCHS consomment (décision fondateur D1) — aucune intersection avec
-     * une fenêtre de plan, aucune composition `VenuePeriodOverride` (un jour rouvert dans un plan
+     * une fenêtre de plan, aucune composition `PlanVenue` (un jour rouvert dans un plan
      * d'entraînement NE rouvre PAS la salle aux matchs). Une fermeture entièrement hors de toute
      * saison reste émise telle quelle : c'est l'appelant (match à une date) qui tranche l'inclusion.
      *

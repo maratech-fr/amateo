@@ -8,6 +8,7 @@ use App\Entity\CalendarEntry;
 use App\Entity\Club;
 use App\Entity\ClubUser;
 use App\Entity\Constraint;
+use App\Entity\PlanVenue;
 use App\Entity\Reservation;
 use App\Entity\ScheduleSlotTemplate;
 use App\Entity\Season;
@@ -15,7 +16,6 @@ use App\Entity\SharedTrainingBlock;
 use App\Entity\SharedTrainingBlockTeam;
 use App\Entity\Team;
 use App\Entity\User;
-use App\Entity\VenuePeriodOverride;
 use App\Enum\CalendarEntryKind;
 use App\Enum\CalendarEntryPeriodType;
 use App\Enum\ConstraintFamily;
@@ -574,7 +574,7 @@ final class ReservationApiTest extends WebTestCase
      */
     private function mask(string $schedulePlanId, array $dayOverrides): void
     {
-        $override = (new VenuePeriodOverride)
+        $override = (new PlanVenue)
             ->setClubId($this->club->getId())->setSeasonId($this->season->getId())
             ->setSchedulePlanId($schedulePlanId)->setVenueId(self::VENUE)
             ->setDayOverrides($dayOverrides);

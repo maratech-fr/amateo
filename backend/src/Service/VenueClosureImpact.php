@@ -7,18 +7,17 @@ namespace App\Service;
 use App\Entity\Club;
 use App\Entity\Constraint;
 use App\Entity\Fixture;
+use App\Entity\PlanVenue;
 use App\Entity\PriorityTier;
 use App\Entity\Schedule;
 use App\Entity\ScheduleSlotTemplate;
 use App\Entity\Season;
 use App\Entity\Team;
 use App\Entity\Venue;
-use App\Entity\VenuePeriodOverride;
 use App\Enum\AuditAction;
 use App\Enum\FixtureHomeAway;
 use App\Enum\FixtureStatus;
 use App\Enum\ScheduleStatus;
-use App\Enum\VenuePeriodMode;
 use DateInterval;
 use DatePeriod;
 use DateTimeImmutable;
@@ -356,9 +355,9 @@ final class VenueClosureImpact
 
     private function venueDisabled(string $planId, string $venueId): bool
     {
-        $override = $this->entityManager->getRepository(VenuePeriodOverride::class)->findOneBy(['schedulePlanId' => $planId, 'venueId' => $venueId]);
+        $override = $this->entityManager->getRepository(PlanVenue::class)->findOneBy(['schedulePlanId' => $planId, 'venueId' => $venueId]);
 
-        return $override instanceof VenuePeriodOverride && VenuePeriodMode::DISABLED === $override->getMode();
+        return $override instanceof PlanVenue && !$override->isParticipating();
     }
 
     /**

@@ -8,13 +8,13 @@ use App\Entity\CalendarEntry;
 use App\Entity\ConstraintPeriodOverride;
 use App\Entity\ImplicitRuleSetting;
 use App\Entity\PlanTeam;
+use App\Entity\PlanVenue;
 use App\Entity\Reservation;
 use App\Entity\Schedule;
 use App\Entity\ScheduleSlotTemplate;
 use App\Entity\SharedTrainingBlock;
 use App\Entity\SharedTrainingBlockTeam;
 use App\Entity\VenueOccupancy;
-use App\Entity\VenuePeriodOverride;
 use App\Entity\VenueTrainingSlot;
 use App\Enum\ScheduleStatus;
 use Doctrine\ORM\EntityManagerInterface;
@@ -198,10 +198,11 @@ final class PeriodPlanSiblingCopier
                     ->setCoachLateToleranceMinutes($row->getCoachLateToleranceMinutes()),
             );
         }
-        foreach ($this->entityManager->getRepository(VenuePeriodOverride::class)->findBy(['schedulePlanId' => $src]) as $row) {
+        // Les gymnases du plan (lot 4, PR 3b) : la cible reprend chaque ligne de la source, ses lignes de naissance purgées.
+        foreach ($this->entityManager->getRepository(PlanVenue::class)->findBy(['schedulePlanId' => $src]) as $row) {
             $this->entityManager->persist(
-                (new VenuePeriodOverride)->setClubId($clubId)->setSeasonId($seasonId)->setSchedulePlanId($dst)
-                    ->setVenueId($row->getVenueId())->setMode($row->getMode())->setDayOverrides($row->getDayOverrides()),
+                (new PlanVenue)->setClubId($clubId)->setSeasonId($seasonId)->setSchedulePlanId($dst)
+                    ->setVenueId($row->getVenueId())->setParticipating($row->isParticipating())->setClosureLifted($row->isClosureLifted())->setDayOverrides($row->getDayOverrides()),
             );
         }
 

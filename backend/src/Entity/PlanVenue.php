@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Entity;
 
 use App\Enum\VenuePeriodMode;
+use App\Plans\PlanComposition;
 use App\Structure\Family;
 use App\Structure\Level;
 use App\Structure\OnDelete;
@@ -13,30 +14,28 @@ use DateTimeImmutable;
 use Doctrine\ORM\Mapping as ORM;
 
 /**
- * Réglage SPARSE d'un gymnase POUR UNE PÉRIODE. Une ligne existe UNIQUEMENT quand le
- * dirigeant a changé le comportement du gymnase sur cette période — pas de ligne =
- * INHERIT, le gymnase garde ses créneaux de saison.
+ * Les gymnases d'un plan de période (lot 4, PR 3b) : une ligne par (plan de période, gymnase), aucune pour le plan de
+ * saison. Trois réglages indépendants :
  *
- * Deux réglages INDÉPENDANTS y cohabitent, tous deux facultatifs (au moins l'un présent) :
+ *  - `participates` : faux = le gymnase ne sert pas cette période (« hors service ») ; ses créneaux restent, il sort de
+ *    la demande au moteur et des sélecteurs ;
+ *  - `closureLifted` : vrai = la grille a été ressaisie, l'effet d'une fermeture déclarée est levé (l'incident devient
+ *    informatif, les sept jours sont ouverts) ;
+ *  - `dayOverrides` : masque de jours SPARSE, jour ISO (1..7) → OPEN|CLOSED, qui s'ajoute au défaut jour par jour
+ *    ({@see App\Service\PlanVenueClosures}, la maison unique de la composition). Hors service, il reste DORMANT
+ *    (conservé, sans effet).
  *
- *  - `mode` (NULLABLE) : DISABLED = le gymnase ne sert pas du tout cette période ;
- *    BLANK = on repart d'une grille vierge (les créneaux de saison sont ignorés, seuls
- *    les créneaux prêtés du plan restent) ; NULL = hériter (une ligne peut n'exister QUE
- *    pour son masque, sans imposer de mode).
- *  - `dayOverrides` (masque manuel tri-état, SPARSE) : map jour ISO (1..7) → OPEN|CLOSED,
- *    un jour absent hérite du défaut vivant (dérivé de l'indisponibilité déclarée). Il
- *    s'AJOUTE au défaut jour par jour ({@see App\Service\PlanVenueClosures}, la maison
- *    unique de la composition) : le mode DISABLED le rend DORMANT (conservé, sans effet).
- *
- * Dans tous les cas le planning principal n'est JAMAIS modifié : c'est l'overlay de
- * période qui lit ces lignes, la structure saisonnière reste intacte.
+ * La ligne au défaut (participe, fermeture non levée, sans masque) n'est pas un réglage. Les lignes ne se posent que par
+ * {@see PlanComposition::ensureLines}. Pas de clé vers le gymnase : « Charger » efface puis réinsère les gymnases ; la
+ * suppression d'un gymnase passe par la cascade (`CascadePlan`).
  */
 #[Family(Level::PLAN)]
 #[ORM\Entity]
-#[ORM\Table(name: 'venue_period_override')]
-#[ORM\UniqueConstraint(name: 'uniq_venue_period_override', columns: ['schedule_plan_id', 'venue_id'])]
-#[ORM\Index(name: 'idx_venue_period_override_plan', columns: ['schedule_plan_id'])]
-class VenuePeriodOverride implements TenantOwnedInterface
+#[ORM\Table(name: 'plan_venue')]
+#[ORM\UniqueConstraint(name: 'uniq_plan_venue', columns: ['schedule_plan_id', 'venue_id'])]
+#[ORM\Index(name: 'idx_plan_venue_season', columns: ['season_id'])]
+#[ORM\Index(name: 'idx_plan_venue_venue', columns: ['venue_id'])]
+class PlanVenue implements TenantOwnedInterface
 {
     #[ORM\Id]
     #[ORM\Column(type: 'guid')]
@@ -57,13 +56,6 @@ class VenuePeriodOverride implements TenantOwnedInterface
     #[ORM\Column(type: 'guid')]
     private string $seasonId;
 
-    /**
-     * ADR-0002 inv. 5 — les réglages de période s'accrochent au PLAN, pas au déclencheur
-     * calendrier. Aujourd'hui un plan par période (uniq_schedule_plan_calendar_entry), donc
-     * l'ancre revient au même ; c'est le découpage hebdomadaire (types-de-planning E1) qui
-     * la rend nécessaire : 2 semaines ⇒ 2 plans ⇒ 2 jeux de réglages sur le MÊME déclencheur,
-     * que `calendarEntryId` ne saurait pas distinguer.
-     */
     #[ORM\Column(type: 'guid')]
     #[RefersTo(SchedulePlan::class, OnDelete::DELETE)]
     private string $schedulePlanId;
@@ -72,11 +64,14 @@ class VenuePeriodOverride implements TenantOwnedInterface
     #[RefersTo(Venue::class, OnDelete::DELETE)]
     private string $venueId;
 
-    #[ORM\Column(length: 16, nullable: true, enumType: VenuePeriodMode::class)]
-    private ?VenuePeriodMode $mode = null;
+    #[ORM\Column(type: 'boolean')]
+    private bool $participates = true;
+
+    #[ORM\Column(type: 'boolean', options: ['default' => false])]
+    private bool $closureLifted = false;
 
     /**
-     * Masque manuel SPARSE : jour ISO (1..7) → OPEN|CLOSED. NULL/[] = aucun jour forcé.
+     * Masque manuel SPARSE : jour ISO (1..7) → OPEN|CLOSED. NULL = aucun jour forcé.
      * Colonne JSON inscriptible = surface d'injection : la validation forte des clés (1..7)
      * et des valeurs (OPEN|CLOSED) vit dans {@see App\Dto\VenuePeriodOverrideInput}.
      *
@@ -96,13 +91,6 @@ class VenuePeriodOverride implements TenantOwnedInterface
     public function getId(): string
     {
         return $this->id;
-    }
-
-    public function setId(string $id): self
-    {
-        $this->id = $id;
-
-        return $this;
     }
 
     public function getVersion(): int
@@ -125,7 +113,7 @@ class VenuePeriodOverride implements TenantOwnedInterface
         return $this->clubId;
     }
 
-    public function setClubId(string $clubId): self
+    public function setClubId(string $clubId): static
     {
         $this->clubId = $clubId;
 
@@ -137,7 +125,7 @@ class VenuePeriodOverride implements TenantOwnedInterface
         return $this->seasonId;
     }
 
-    public function setSeasonId(string $seasonId): self
+    public function setSeasonId(string $seasonId): static
     {
         $this->seasonId = $seasonId;
 
@@ -149,7 +137,7 @@ class VenuePeriodOverride implements TenantOwnedInterface
         return $this->schedulePlanId;
     }
 
-    public function setSchedulePlanId(string $schedulePlanId): self
+    public function setSchedulePlanId(string $schedulePlanId): static
     {
         $this->schedulePlanId = $schedulePlanId;
 
@@ -161,21 +149,33 @@ class VenuePeriodOverride implements TenantOwnedInterface
         return $this->venueId;
     }
 
-    public function setVenueId(string $venueId): self
+    public function setVenueId(string $venueId): static
     {
         $this->venueId = $venueId;
 
         return $this;
     }
 
-    public function getMode(): ?VenuePeriodMode
+    public function isParticipating(): bool
     {
-        return $this->mode;
+        return $this->participates;
     }
 
-    public function setMode(?VenuePeriodMode $mode): self
+    public function setParticipating(bool $participates): static
     {
-        $this->mode = $mode;
+        $this->participates = $participates;
+
+        return $this;
+    }
+
+    public function isClosureLifted(): bool
+    {
+        return $this->closureLifted;
+    }
+
+    public function setClosureLifted(bool $closureLifted): static
+    {
+        $this->closureLifted = $closureLifted;
 
         return $this;
     }
@@ -191,11 +191,24 @@ class VenuePeriodOverride implements TenantOwnedInterface
     /**
      * @param array<int|string, string>|null $dayOverrides
      */
-    public function setDayOverrides(?array $dayOverrides): self
+    public function setDayOverrides(?array $dayOverrides): static
     {
         $this->dayOverrides = $dayOverrides;
 
         return $this;
+    }
+
+    /**
+     * Le mode que l'écran lit : hors service l'emporte (une fermeture levée y est sans effet, comme le masque) ; sinon
+     * « grille ressaisie » quand l'effet de fermeture est levé ; sinon aucun mode (le gymnase suit le défaut).
+     */
+    public function mode(): ?VenuePeriodMode
+    {
+        return match (true) {
+            !$this->participates => VenuePeriodMode::DISABLED,
+            $this->closureLifted => VenuePeriodMode::BLANK,
+            default => null,
+        };
     }
 
     private function newUuid(): string

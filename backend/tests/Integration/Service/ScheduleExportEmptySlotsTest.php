@@ -8,6 +8,7 @@ use App\Entity\CalendarEntry;
 use App\Entity\Club;
 use App\Entity\ClubUser;
 use App\Entity\Constraint;
+use App\Entity\PlanVenue;
 use App\Entity\Schedule;
 use App\Entity\ScheduleSlotTemplate;
 use App\Entity\Season;
@@ -15,7 +16,6 @@ use App\Entity\SharedTrainingBlock;
 use App\Entity\SharedTrainingBlockTeam;
 use App\Entity\User;
 use App\Entity\Venue;
-use App\Entity\VenuePeriodOverride;
 use App\Entity\VenueTrainingSlot;
 use App\Enum\CalendarEntryKind;
 use App\Enum\CalendarEntryPeriodType;
@@ -25,9 +25,9 @@ use App\Enum\ConstraintScope;
 use App\Enum\LockLevel;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
-use App\Enum\VenuePeriodMode;
 use App\Export\ExportEmptyWindow;
 use App\Export\ScheduleExportDataProvider;
+use App\Plans\PlanComposition;
 use App\Tests\ChoosesPlanVersionTrait;
 use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\SeasonPlanOf;
@@ -582,23 +582,24 @@ final class ScheduleExportEmptySlotsTest extends KernelTestCase
     /** Désactive un gymnase pour le plan (mode DISABLED). */
     private function disableVenue(Club $club, Season $season, string $planId, Venue $venue): void
     {
-        $this->em->persist(
-            (new VenuePeriodOverride)
-                ->setClubId($club->getId())->setSeasonId($season->getId())
-                ->setSchedulePlanId($planId)->setVenueId($venue->getId())
-                ->setMode(VenuePeriodMode::DISABLED)->setDayOverrides(null),
-        );
+        unset($club);
+        $this->venueLineOf($season, $planId, $venue)->setParticipating(false)->setDayOverrides(null);
     }
 
     /** Rouvre un jour à la main (masque OPEN), sans mode — l'incident redevient informatif ce jour-là. */
     private function reopenDay(Club $club, Season $season, string $planId, Venue $venue, int $day): void
     {
-        $this->em->persist(
-            (new VenuePeriodOverride)
-                ->setClubId($club->getId())->setSeasonId($season->getId())
-                ->setSchedulePlanId($planId)->setVenueId($venue->getId())
-                ->setMode(null)->setDayOverrides([$day => 'OPEN']),
-        );
+        unset($club);
+        $this->venueLineOf($season, $planId, $venue)->setDayOverrides([$day => 'OPEN']);
+    }
+
+    /** La ligne du gymnase dans le plan de période (lot 4, PR 3b), posée par la porte. */
+    private function venueLineOf(Season $season, string $planId, Venue $venue): PlanVenue
+    {
+        $composition = self::getContainer()->get(PlanComposition::class);
+        $composition->ensureLines($season->getId());
+
+        return $composition->venuesOf($planId)[$venue->getId()];
     }
 
     /** Une fermeture datée `venue_closed` portée par l'entrée, pour un gymnase. */

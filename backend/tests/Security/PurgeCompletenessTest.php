@@ -14,6 +14,7 @@ use App\Entity\ImplicitRuleSetting;
 use App\Entity\Person;
 use App\Entity\Place;
 use App\Entity\PlanTeam;
+use App\Entity\PlanVenue;
 use App\Entity\Reservation;
 use App\Entity\Season;
 use App\Entity\SharedTrainingBlock;
@@ -24,7 +25,6 @@ use App\Entity\Team;
 use App\Entity\TeamCoach;
 use App\Entity\TenantOwnedInterface;
 use App\Entity\VenueOccupancy;
-use App\Entity\VenuePeriodOverride;
 use App\Entity\VenueTrainingSlot;
 use App\Enum\AuditAction;
 use App\Enum\CalendarEntryKind;
@@ -38,6 +38,7 @@ use App\Enum\SeasonStatus;
 use App\Enum\SubscriptionOrigin;
 use App\Enum\TeamCoachRole;
 use App\EventListener\CacheInvalidationListener;
+use App\Plans\PlanComposition;
 use App\Service\ClubSubscriptionWriter;
 use App\Service\ErasedClubPurger;
 use App\Service\OverlayManager;
@@ -93,7 +94,7 @@ final class PurgeCompletenessTest extends KernelTestCase
     /** Ce qu'un plan porte (lot 4, PR 2) : les six familles du socle devenu plan, les trois réglages de période. */
     private const array PLAN_FAMILIES = [
         VenueTrainingSlot::class, VenueOccupancy::class, Reservation::class, SharedTrainingBlockTeam::class, SharedTrainingBlock::class,
-        ImplicitRuleSetting::class, PlanTeam::class, VenuePeriodOverride::class, ConstraintPeriodOverride::class,
+        ImplicitRuleSetting::class, PlanTeam::class, PlanVenue::class, ConstraintPeriodOverride::class,
     ];
 
     /** Les listes que les purgeurs tenaient à la main avant la déclaration des familles. */
@@ -422,7 +423,7 @@ final class PurgeCompletenessTest extends KernelTestCase
                 ->setDayOfWeek(2)->setStartTime(new DateTimeImmutable('18:00'))->setDurationMinutes(90)->setSchedulePlanId($planId),
             (new SharedTrainingBlockTeam)->setClubId($clubId)->setSeasonId($seasonId)->setSchedulePlanId($planId)->setBlockId($block->getId())->setTeamId($teamA->getId()),
             (new SharedTrainingBlockTeam)->setClubId($clubId)->setSeasonId($seasonId)->setSchedulePlanId($planId)->setBlockId($block->getId())->setTeamId($teamB->getId()),
-            (new VenuePeriodOverride)->setClubId($clubId)->setSeasonId($seasonId)->setSchedulePlanId($planId)->setVenueId($venue->getId())->setDayOverrides(['1' => 'CLOSED']),
+            self::getContainer()->get(PlanComposition::class)->venuesOf($planId)[$venue->getId()]->setDayOverrides(['1' => 'CLOSED']),
             (new ConstraintPeriodOverride)->setClubId($clubId)->setSeasonId($seasonId)->setSchedulePlanId($planId)->setConstraintId($constraint->getId())->setIsActive(false),
         ];
         if (0 === $em->getRepository(ImplicitRuleSetting::class)->count(['schedulePlanId' => $planId])) {

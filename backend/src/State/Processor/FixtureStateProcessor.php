@@ -260,7 +260,7 @@ class FixtureStateProcessor extends AbstractStateProcessor
      *  1. couvert par une indisponibilité à sa date → refus TOUJOURS (amical compris) ;
      *  1bis. couvert par une FERMETURE du calendrier (`venue_closed`) à sa date → refus TOUJOURS
      *     (amical compris, P4-300 D4). Le FAIT brut (config, repli legacy) vient de la maison
-     *     unique `PlanVenueClosures`, jamais de la composition `VenuePeriodOverride` ;
+     *     unique `PlanVenueClosures`, jamais de la composition `PlanVenue` ;
      *  2. de COMPÉTITION (competitionId non null), quand le club déclare ≥ 1 ligne d'accès
      *     NON datée, et seulement à une vraie pose ($checkAccess) : aucune plage applicable à
      *     cette date (ouvertures datées ∪ férié ou jour de semaine) ou coup d'envoi hors de ces

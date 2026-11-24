@@ -34,7 +34,6 @@ use App\Entity\TeamMatchHabit;
 use App\Entity\User;
 use App\Entity\Venue;
 use App\Entity\VenueMatchWindow;
-use App\Entity\VenuePeriodOverride;
 use App\Entity\VenueTrainingSlot;
 use App\Enum\CalendarEntryKind;
 use App\Enum\CalendarEntryPeriodType;
@@ -58,7 +57,6 @@ use App\Enum\SubscriptionOrigin;
 use App\Enum\TeamCoachRole;
 use App\Enum\TeamLevel;
 use App\Enum\TeamLinkType;
-use App\Enum\VenuePeriodMode;
 use App\Plans\PlanComposition;
 use App\Repository\ClubSubscriptionRepository;
 use App\Repository\SchoolHolidayPeriodRepository;
@@ -2136,24 +2134,14 @@ final class BcclSeeder
         }
         $manager->flush();
 
-        // --- Gymnases hors semaine : VenuePeriodOverride mode=DISABLED (find-or-create). ---
+        // --- Gymnases hors semaine : ne participent pas (lot 4, PR 3b : la ligne du gymnase dans le plan, posée à sa
+        // naissance). ---
+        $venueLines = $this->planComposition->venuesOf($planId);
         foreach ($venues as $venueVar => $venue) {
             if (\in_array($venueVar, $week['activeVenues'], true)) {
                 continue;
             }
-            $override = $manager->getRepository(VenuePeriodOverride::class)->findOneBy([
-                'schedulePlanId' => $planId,
-                'venueId' => $venue->getId(),
-            ]);
-            if (!$override instanceof VenuePeriodOverride) {
-                $override = new VenuePeriodOverride;
-                $override->setClubId($clubId);
-                $override->setSeasonId($season->getId());
-                $override->setSchedulePlanId($planId);
-                $override->setVenueId($venue->getId());
-                $manager->persist($override);
-            }
-            $override->setMode(VenuePeriodMode::DISABLED);
+            $venueLines[$venue->getId()]->setParticipating(false);
         }
         $manager->flush();
 
@@ -2410,7 +2398,7 @@ final class BcclSeeder
      * deletePeriodPlanForEntry} : versions + grille + overrides + blocs hérités + réglages bien-être,
      * que la seule cascade FK laisserait derrière). Le reste est find-or-create / purge-recréation
      * (idempotent). La fermeture de Matéo agit par l'ÉTAT EFFECTIF (la datée `venue_closed`), jamais
-     * par un VenuePeriodOverride.
+     * par un réglage de gymnase de la période (PlanVenue).
      *
      * @param array<string, Team>  $teams
      * @param array<string, Venue> $venues
@@ -2541,7 +2529,7 @@ final class BcclSeeder
             $this->transcribeMateoOverlayOntoPlan($manager, $season, $clubId, $planId, $child, $planning, $teams, $venues, $mateo);
         }
 
-        // VenuePeriodOverride : AUCUN, délibérément. Le défaut vivant dérive la fermeture de Matéo
+        // Réglage de gymnase (PlanVenue) : AUCUN, délibérément. Le défaut vivant dérive la fermeture de Matéo
         // depuis la datée `venue_closed` de l'incident (VenueClosureDays) — poser un override
         // serait doubler le mécanisme.
     }

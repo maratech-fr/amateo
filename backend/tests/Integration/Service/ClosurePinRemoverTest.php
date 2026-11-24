@@ -5,12 +5,11 @@ declare(strict_types=1);
 namespace App\Tests\Integration\Service;
 
 use App\Entity\Schedule;
-use App\Entity\VenuePeriodOverride;
 use App\Enum\LockLevel;
 use App\Enum\LockOrigin;
 use App\Enum\ScheduleStatus;
-use App\Enum\VenuePeriodMode;
 use App\Exception\ScheduleGenerationInProgressException;
+use App\Plans\PlanComposition;
 use App\Service\ClosurePinRemover;
 use App\Service\ClubGenerationLock;
 use App\Service\SchedulePlanProvisioner;
@@ -89,8 +88,9 @@ final class ClosurePinRemoverTest extends WebTestCase
     {
         $d = $this->seedClosurePinDecor('CPD');
         $clubId = $d['club']->getId();
-        $this->em->persist((new VenuePeriodOverride)->setClubId($clubId)->setSeasonId($d['season']->getId())
-            ->setSchedulePlanId($d['holidayPlanId'])->setVenueId($d['mistral'])->setMode(VenuePeriodMode::DISABLED));
+        $composition = self::getContainer()->get(PlanComposition::class);
+        $composition->ensureLines($d['season']->getId());
+        $composition->venuesOf($d['holidayPlanId'])[$d['mistral']]->setParticipating(false);
         $this->em->flush();
         $dates = [$d['closedTuesday'] => true];
 

@@ -39301,7 +39301,7 @@
             },
             "VenuePeriodOverride": {
                 "type": "object",
-                "description": "R\u00e9glage sparse par (p\u00e9riode, gymnase) : un `mode` FACULTATIF \u2014 DISABLED (le gymnase ne\nsert pas) ou BLANK (grille vierge, les cr\u00e9neaux de saison sont ignor\u00e9s) \u2014 et/ou un masque\nmanuel `dayOverrides` (jour ISO \u2192 OPEN|CLOSED) qui s'ajoute au d\u00e9faut de l'indisponibilit\u00e9.\nPas de ligne = INHERIT, le d\u00e9faut. L'overlay de p\u00e9riode lit ces lignes ; le planning\nprincipal reste intact.",
+                "description": "Le r\u00e9glage d'un gymnase pour une p\u00e9riode : la ligne du gymnase dans le plan de p\u00e9riode, vue\nde l'\u00e9cran comme un r\u00e9glage \u00e9pars \u2014 un `mode` FACULTATIF, DISABLED (le gymnase ne sert pas)\nou BLANK (grille ressaisie, l'effet d'une fermeture est lev\u00e9), et/ou un masque manuel\n`dayOverrides` (jour ISO \u2192 OPEN|CLOSED) qui s'ajoute au d\u00e9faut de l'indisponibilit\u00e9. La liste\nne rend que les lignes qui diff\u00e8rent du d\u00e9faut. Publier le r\u00e9glage d'un couple (p\u00e9riode,\ngymnase) met sa ligne \u00e0 jour ; le supprimer la rend au d\u00e9faut (INHERIT). L'overlay de p\u00e9riode\nlit ces lignes ; le planning principal reste intact.",
                 "properties": {
                     "id": {
                         "default": "",
@@ -39347,7 +39347,7 @@
             },
             "VenuePeriodOverride.VenuePeriodOverrideInput": {
                 "type": "object",
-                "description": "R\u00e9glage sparse par (p\u00e9riode, gymnase) : un `mode` FACULTATIF \u2014 DISABLED (le gymnase ne\nsert pas) ou BLANK (grille vierge, les cr\u00e9neaux de saison sont ignor\u00e9s) \u2014 et/ou un masque\nmanuel `dayOverrides` (jour ISO \u2192 OPEN|CLOSED) qui s'ajoute au d\u00e9faut de l'indisponibilit\u00e9.\nPas de ligne = INHERIT, le d\u00e9faut. L'overlay de p\u00e9riode lit ces lignes ; le planning\nprincipal reste intact.",
+                "description": "Le r\u00e9glage d'un gymnase pour une p\u00e9riode : la ligne du gymnase dans le plan de p\u00e9riode, vue\nde l'\u00e9cran comme un r\u00e9glage \u00e9pars \u2014 un `mode` FACULTATIF, DISABLED (le gymnase ne sert pas)\nou BLANK (grille ressaisie, l'effet d'une fermeture est lev\u00e9), et/ou un masque manuel\n`dayOverrides` (jour ISO \u2192 OPEN|CLOSED) qui s'ajoute au d\u00e9faut de l'indisponibilit\u00e9. La liste\nne rend que les lignes qui diff\u00e8rent du d\u00e9faut. Publier le r\u00e9glage d'un couple (p\u00e9riode,\ngymnase) met sa ligne \u00e0 jour ; le supprimer la rend au d\u00e9faut (INHERIT). L'overlay de p\u00e9riode\nlit ces lignes ; le planning principal reste intact.",
                 "required": [
                     "schedulePlanId",
                     "venueId"
@@ -39378,7 +39378,7 @@
                             "DISABLED",
                             "BLANK"
                         ],
-                        "description": "Le mode est FACULTATIF (une ligne peut n'exister que pour son masque) : plus de\n`NotBlank`. INHERIT n'est pas une valeur accept\u00e9e \u2014 c'est le d\u00e9faut, mat\u00e9rialis\u00e9 par\nl'ABSENCE de ligne (DELETE pour y revenir), ou ici par un `mode` nul.",
+                        "description": "Le mode est FACULTATIF (une ligne peut n'exister que pour son masque) : plus de\n`NotBlank`. INHERIT n'est pas une valeur accept\u00e9e \u2014 c'est le d\u00e9faut (DELETE pour y\nrevenir), ou ici un `mode` nul.",
                         "type": [
                             "string",
                             "null"
@@ -39401,7 +39401,7 @@
             },
             "VenuePeriodOverride.html": {
                 "type": "object",
-                "description": "R\u00e9glage sparse par (p\u00e9riode, gymnase) : un `mode` FACULTATIF \u2014 DISABLED (le gymnase ne\nsert pas) ou BLANK (grille vierge, les cr\u00e9neaux de saison sont ignor\u00e9s) \u2014 et/ou un masque\nmanuel `dayOverrides` (jour ISO \u2192 OPEN|CLOSED) qui s'ajoute au d\u00e9faut de l'indisponibilit\u00e9.\nPas de ligne = INHERIT, le d\u00e9faut. L'overlay de p\u00e9riode lit ces lignes ; le planning\nprincipal reste intact.",
+                "description": "Le r\u00e9glage d'un gymnase pour une p\u00e9riode : la ligne du gymnase dans le plan de p\u00e9riode, vue\nde l'\u00e9cran comme un r\u00e9glage \u00e9pars \u2014 un `mode` FACULTATIF, DISABLED (le gymnase ne sert pas)\nou BLANK (grille ressaisie, l'effet d'une fermeture est lev\u00e9), et/ou un masque manuel\n`dayOverrides` (jour ISO \u2192 OPEN|CLOSED) qui s'ajoute au d\u00e9faut de l'indisponibilit\u00e9. La liste\nne rend que les lignes qui diff\u00e8rent du d\u00e9faut. Publier le r\u00e9glage d'un couple (p\u00e9riode,\ngymnase) met sa ligne \u00e0 jour ; le supprimer la rend au d\u00e9faut (INHERIT). L'overlay de p\u00e9riode\nlit ces lignes ; le planning principal reste intact.",
                 "properties": {
                     "id": {
                         "default": "",
@@ -39496,7 +39496,7 @@
                         }
                     }
                 ],
-                "description": "R\u00e9glage sparse par (p\u00e9riode, gymnase) : un `mode` FACULTATIF \u2014 DISABLED (le gymnase ne\nsert pas) ou BLANK (grille vierge, les cr\u00e9neaux de saison sont ignor\u00e9s) \u2014 et/ou un masque\nmanuel `dayOverrides` (jour ISO \u2192 OPEN|CLOSED) qui s'ajoute au d\u00e9faut de l'indisponibilit\u00e9.\nPas de ligne = INHERIT, le d\u00e9faut. L'overlay de p\u00e9riode lit ces lignes ; le planning\nprincipal reste intact."
+                "description": "Le r\u00e9glage d'un gymnase pour une p\u00e9riode : la ligne du gymnase dans le plan de p\u00e9riode, vue\nde l'\u00e9cran comme un r\u00e9glage \u00e9pars \u2014 un `mode` FACULTATIF, DISABLED (le gymnase ne sert pas)\nou BLANK (grille ressaisie, l'effet d'une fermeture est lev\u00e9), et/ou un masque manuel\n`dayOverrides` (jour ISO \u2192 OPEN|CLOSED) qui s'ajoute au d\u00e9faut de l'indisponibilit\u00e9. La liste\nne rend que les lignes qui diff\u00e8rent du d\u00e9faut. Publier le r\u00e9glage d'un couple (p\u00e9riode,\ngymnase) met sa ligne \u00e0 jour ; le supprimer la rend au d\u00e9faut (INHERIT). L'overlay de p\u00e9riode\nlit ces lignes ; le planning principal reste intact."
             },
             "VenueTrainingSlot": {
                 "type": "object",
@@ -40265,7 +40265,7 @@
         },
         {
             "name": "VenuePeriodOverride",
-            "description": "R\u00e9glage sparse par (p\u00e9riode, gymnase) : un `mode` FACULTATIF \u2014 DISABLED (le gymnase ne\nsert pas) ou BLANK (grille vierge, les cr\u00e9neaux de saison sont ignor\u00e9s) \u2014 et/ou un masque\nmanuel `dayOverrides` (jour ISO \u2192 OPEN|CLOSED) qui s'ajoute au d\u00e9faut de l'indisponibilit\u00e9.\nPas de ligne = INHERIT, le d\u00e9faut. L'overlay de p\u00e9riode lit ces lignes ; le planning\nprincipal reste intact."
+            "description": "Le r\u00e9glage d'un gymnase pour une p\u00e9riode : la ligne du gymnase dans le plan de p\u00e9riode, vue\nde l'\u00e9cran comme un r\u00e9glage \u00e9pars \u2014 un `mode` FACULTATIF, DISABLED (le gymnase ne sert pas)\nou BLANK (grille ressaisie, l'effet d'une fermeture est lev\u00e9), et/ou un masque manuel\n`dayOverrides` (jour ISO \u2192 OPEN|CLOSED) qui s'ajoute au d\u00e9faut de l'indisponibilit\u00e9. La liste\nne rend que les lignes qui diff\u00e8rent du d\u00e9faut. Publier le r\u00e9glage d'un couple (p\u00e9riode,\ngymnase) met sa ligne \u00e0 jour ; le supprimer la rend au d\u00e9faut (INHERIT). L'overlay de p\u00e9riode\nlit ces lignes ; le planning principal reste intact."
         },
         {
             "name": "Venue",

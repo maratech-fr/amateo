@@ -280,6 +280,10 @@ final class ParcImportExecutor
             $this->venueByName[$this->normalizer->normalize($nom)] = $venue->getId();
             ++$recap['crees'];
         }
+        // Lot 4, PR 3b — chaque gymnase créé reçoit sa ligne dans chaque plan de période de la saison.
+        if ($recap['crees'] > 0) {
+            $this->planComposition->ensureLines($seasonId);
+        }
 
         return $recap;
     }
