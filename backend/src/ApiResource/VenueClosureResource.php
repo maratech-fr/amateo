@@ -19,7 +19,7 @@ use Symfony\Component\Serializer\Attribute\Groups;
  */
 // Détail interne (hors texte sérialisé) : fait brut lu via `PlanVenueClosures::closureIntervals`
 // (dates du `config`, repli legacy = fenêtre de l'entrée porteuse), jamais la composition
-// `VenuePeriodOverride` ; miroité par le front pour griser un gymnase fermé (P4-300).
+// `PlanVenue` ; miroité par le front pour griser un gymnase fermé (P4-300).
 #[ApiResource(shortName: 'VenueClosure', operations: [
     new GetCollection,
 ], paginationEnabled: false, provider: VenueClosureStateProvider::class)]

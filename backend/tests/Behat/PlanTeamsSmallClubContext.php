@@ -21,8 +21,14 @@ use RuntimeException;
  * Les équipes visées sont des deux premiers rangs (SM1, SF1, U20M1, U17M1) : elles jouent les vacances avant comme
  * après la pré-sélection posée à la naissance du plan.
  *
+ * Les gymnases d'un plan de vacances (lot 4, PR 3b, ligne 25 du plan) : le gestionnaire met un gymnase hors service pour
+ * les vacances, la génération ne l'utilise pas ; il le remet en service, le gymnase retrouve sa grille telle quelle et
+ * ne figure plus parmi les réglages des vacances.
+ *
  * Jumeaux PHPUnit cités : la publication d'un réglage (`Api/PeriodSettingUpsertTest`), la pré-sélection à la naissance
- * (`Integration/Plans/PlanBirthTeamDefaultTest`), la transcription (`Integration/Service/PeriodPlanTranscriberTest`).
+ * (`Integration/Plans/PlanBirthTeamDefaultTest`), la transcription (`Integration/Service/PeriodPlanTranscriberTest`) ;
+ * le gymnase hors de la demande au moteur (`Integration/ScheduleConstraintBuilderOverlayTest::testDisabledVenueLeavesThePayloadEntirely`), la grille gardée hors service
+ * (`Integration/Api/VenuePeriodOverrideApiTest::testDisabledKeepsTheVenuesGridInsteadOfEmptyingIt`).
  */
 final class PlanTeamsSmallClubContext extends BaseContext
 {
@@ -32,6 +38,12 @@ final class PlanTeamsSmallClubContext extends BaseContext
 
     /** L'identifiant du réglage de l'équipe visée dans les vacances, rendu par sa première publication. */
     private string $settingId = '';
+
+    /** L'identifiant du réglage du gymnase mis hors service, rendu par sa publication. */
+    private string $venueSettingId = '';
+
+    /** Le nombre de créneaux du gymnase dans la grille des vacances, avant de le mettre hors service. */
+    private int $venueGridBefore = -1;
 
     #[Given('un petit club réaliste dont le planning de saison est en vigueur, et des vacances à venir')]
     public function unPetitClubAvecDesVacancesAVenir(): void
@@ -197,6 +209,81 @@ final class PlanTeamsSmallClubContext extends BaseContext
         throw new RuntimeException(\sprintf('les %s ne figurent pas parmi les réglages propres des vacances (%d listé(s))', $team, \count($members)));
     }
 
+    /** Le geste de l'étape Gymnases des vacances : mettre le gymnase hors service pour la période. */
+    #[When('/^je mets le (?P<venue>Gymnase \S+) hors service pour les vacances$/u')]
+    public function jeMetsHorsService(string $venue): void
+    {
+        $this->venueGridBefore = $this->holidayGridCountOf($venue);
+        if ($this->venueGridBefore <= 0) {
+            throw new RuntimeException(\sprintf('témoin : le %s doit avoir des créneaux dans la grille des vacances', $venue));
+        }
+        $published = $this->apiPost('venue_period_overrides', [
+            'schedulePlanId' => $this->holidayPlanId,
+            'venueId' => $this->venueId($venue),
+            'mode' => 'DISABLED',
+        ], $this->smallClubToken);
+        if (!\in_array($published['status'], [200, 201], true)) {
+            throw new RuntimeException(\sprintf('mettre le gymnase hors service a été refusé (HTTP %d) — %s', $published['status'], json_encode($published['json'], \JSON_UNESCAPED_UNICODE)));
+        }
+        $this->venueSettingId = $this->smallClubStringField($published['json'], 'id');
+    }
+
+    /** Une version des vacances générée maintenant : aucune séance au gymnase hors service, d'autres ailleurs. */
+    #[Then('/^aucune séance des vacances ne se tient au (?P<venue>Gymnase \S+)$/u')]
+    public function aucuneSeanceAuGymnase(string $venue): void
+    {
+        $version = $this->generateSmallClubPeriodVersion($this->holidayPlanId);
+        fwrite(\STDERR, \sprintf("\n[PlanVenues] génération des vacances %s en %.1fs\n", $version['status'], $this->smallClubLastSolveSeconds));
+        if ('COMPLETED' !== $version['status']) {
+            throw new RuntimeException(\sprintf('la génération des vacances n\'a pas abouti (statut « %s »)', $version['status']));
+        }
+        $total = (int) $this->dbalScalar(\sprintf('SELECT COUNT(*) AS behatval FROM schedule_slot_template WHERE schedule_id=\'%s\'', $version['id']), admin: true);
+        if (0 === $total) {
+            throw new RuntimeException('la version des vacances est vide : « aucune séance au gymnase » ne prouverait rien');
+        }
+        $atVenue = (int) $this->dbalScalar(\sprintf(
+            'SELECT COUNT(*) AS behatval FROM schedule_slot_template WHERE schedule_id=\'%s\' AND venue_id=\'%s\'',
+            $version['id'],
+            $this->venueId($venue),
+        ), admin: true);
+        if (0 !== $atVenue) {
+            throw new RuntimeException(\sprintf('%d séance(s) des vacances au %s, hors service', $atVenue, $venue));
+        }
+    }
+
+    /** Le geste « remettre en service » : le réglage du gymnase est retiré, sa ligne reprend le défaut. */
+    #[When('/^je remets le (?P<venue>Gymnase \S+) en service pour les vacances$/u')]
+    public function jeRemetsEnService(string $venue): void
+    {
+        $this->venueId($venue);
+        if ('' === $this->venueSettingId) {
+            throw new RuntimeException('aucun réglage du gymnase dans les vacances : le scénario le met d\'abord hors service');
+        }
+        $deleted = $this->apiDelete(\sprintf('venue_period_overrides/%s', $this->venueSettingId), $this->smallClubToken);
+        if (204 !== $deleted['status']) {
+            throw new RuntimeException(\sprintf('remettre le gymnase en service a été refusé (HTTP %d)', $deleted['status']));
+        }
+    }
+
+    /** La grille du gymnase dans les vacances est celle d'avant, et l'étape Gymnases ne le liste plus parmi les réglages. */
+    #[Then('/^le (?P<venue>Gymnase \S+) a retrouvé sa grille des vacances et ne figure plus parmi les réglages des vacances$/u')]
+    public function aRetrouveSaGrille(string $venue): void
+    {
+        $grid = $this->holidayGridCountOf($venue);
+        if ($this->venueGridBefore !== $grid) {
+            throw new RuntimeException(\sprintf('le %s a %d créneau(x) dans la grille des vacances, %d avant de le mettre hors service', $venue, $grid, $this->venueGridBefore));
+        }
+        $listed = $this->apiGet(\sprintf('venue_period_overrides?schedulePlanId=%s', $this->holidayPlanId), $this->smallClubToken);
+        if (200 !== $listed['status']) {
+            throw new RuntimeException(\sprintf('la liste des réglages de gymnase des vacances a été refusée (HTTP %d)', $listed['status']));
+        }
+        foreach (\is_array($listed['json']['member'] ?? null) ? $listed['json']['member'] : [] as $member) {
+            if (\is_array($member) && $this->venueId($venue) === ($member['venueId'] ?? null)) {
+                throw new RuntimeException(\sprintf('le %s figure encore parmi les réglages des vacances : %s', $venue, json_encode($member, \JSON_UNESCAPED_UNICODE)));
+            }
+        }
+    }
+
     #[AfterScenario]
     public function nettoyer(): void
     {
@@ -206,6 +293,21 @@ final class PlanTeamsSmallClubContext extends BaseContext
     private function teamId(string $team): string
     {
         return $this->smallClubTeamIds[$team] ?? throw new RuntimeException(\sprintf('aucune équipe « %s » dans le petit club', $team));
+    }
+
+    private function venueId(string $venue): string
+    {
+        return $this->smallClubVenueIds[$venue] ?? throw new RuntimeException(\sprintf('aucun gymnase « %s » dans le petit club', $venue));
+    }
+
+    /** Les créneaux du gymnase dans la grille propre des vacances (copiée de la saison à la naissance du plan). */
+    private function holidayGridCountOf(string $venue): int
+    {
+        return (int) $this->dbalScalar(\sprintf(
+            'SELECT COUNT(*) AS behatval FROM venue_training_slot WHERE schedule_plan_id=\'%s\' AND venue_id=\'%s\'',
+            $this->holidayPlanId,
+            $this->venueId($venue),
+        ), admin: true);
     }
 
     private function settingIdOrFail(): string

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Plans;
 
 use App\Entity\PlanTeam;
+use App\Entity\PlanVenue;
 use App\Entity\PriorityTier;
 use App\Entity\Team;
 use App\Enum\PlanTeamDefault;
@@ -15,8 +16,10 @@ use LogicException;
 
 /**
  * Les équipes d'un plan (lot 4, PR 3a) : toute équipe a sa ligne dans chaque plan de sa saison, socle compris
- * ({@see PlanTeam}). Cette classe est la seule porte qui pose les lignes ({@see ensureLines}) et la seule qui dit
- * qu'une ligne de période « diffère du socle ».
+ * ({@see PlanTeam}). Les gymnases d'une période (PR 3b) : tout gymnase a sa ligne dans chaque plan de période de sa
+ * saison, aucune au plan de saison ({@see PlanVenue}). Cette classe est la seule porte qui pose les lignes
+ * ({@see ensureLines}) et la seule qui dit qu'une ligne de période « diffère du socle » (équipes) ou « du défaut »
+ * (gymnases).
  *
  * Lire un plan où une ligne manque lève : jamais un défaut silencieux.
  *
@@ -35,6 +38,13 @@ final class PlanComposition
         . ' AND socleLine.schedulePlanId <> e.schedulePlanId'
         . ' AND (e.participates = false OR e.sessionsPerWeek <> socleLine.sessionsPerWeek OR e.maxSessionsPerDay <> socleLine.maxSessionsPerDay))';
 
+    /**
+     * DQL : la ligne de gymnase `e` diffère du défaut — le gymnase ne participe pas, l'effet de fermeture est levé, ou
+     * un masque de jours est posé. Maison unique de la règle, lue par la route des réglages de gymnase et par la
+     * cascade de suppression d'un gymnase (le compte de la fenêtre).
+     */
+    public const string VENUE_DIFFERS_FROM_DEFAULT_DQL = '(e.participates = false OR e.closureLifted = true OR e.dayOverrides IS NOT NULL)';
+
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
     ) {}
@@ -47,6 +57,7 @@ final class PlanComposition
      *   défaut d'une équipe ({@see PlanTeam::DEFAULT_SESSIONS_PER_WEEK}).
      * - Ligne de période : les séances et le plafond du socle du moment ; elle participe, sauf à la naissance du plan
      *   (aucune ligne encore) où la nature dit qui est coché ({@see SchedulePlanType::defaultTeamSelection}).
+     * - Ligne de gymnase, dans chaque plan de période seulement : participe, fermeture non levée, sans masque.
      *
      * @param array<string, array{sessionsPerWeek?: int, maxSessionsPerDay?: int}> $socleValues par équipe : ce que le créateur a saisi
      */
@@ -60,9 +71,17 @@ final class PlanComposition
             'SELECT id, type, club_id FROM schedule_plan WHERE season_id = :s ORDER BY (type = :season) DESC, id',
             ['s' => $seasonId, 'season' => SchedulePlanType::SEASON->value],
         );
+        if ([] === $plans) {
+            return;
+        }
+        $wrote = $this->ensureVenueLines($seasonId, $plans);
         /** @var list<array{id: string, club_id: string, priority_tier_id: int|string}> $teams */
         $teams = $connection->fetchAllAssociative('SELECT id, club_id, priority_tier_id FROM team WHERE season_id = :s ORDER BY id', ['s' => $seasonId]);
-        if ([] === $plans || [] === $teams) {
+        if ([] === $teams) {
+            if ($wrote) {
+                $this->entityManager->flush();
+            }
+
             return;
         }
 
@@ -73,7 +92,6 @@ final class PlanComposition
         }
 
         $socle = null;
-        $wrote = false;
         foreach ($plans as $plan) {
             $planId = (string) $plan['id'];
             $type = SchedulePlanType::from((string) $plan['type']);
@@ -137,6 +155,35 @@ final class PlanComposition
         foreach ($this->entityManager->getConnection()->fetchFirstColumn('SELECT id FROM team WHERE season_id = :s', ['s' => $seasonId]) as $teamId) {
             if (!isset($lines[(string) $teamId])) {
                 throw new LogicException(\sprintf('L\'équipe %s n\'a pas de ligne dans le plan %s.', (string) $teamId, $planId));
+            }
+        }
+
+        return $lines;
+    }
+
+    /**
+     * Les lignes de gymnase d'un plan de période, par gymnase ; lève si un gymnase de la saison du plan n'a pas la
+     * sienne. Vide pour le plan de saison, qui n'en porte pas.
+     *
+     * @return array<string, PlanVenue>
+     */
+    public function venuesOf(string $planId): array
+    {
+        $plan = $this->entityManager->getConnection()->fetchAssociative('SELECT season_id, type FROM schedule_plan WHERE id = :p', ['p' => $planId]);
+        if (false === $plan) {
+            throw new LogicException(\sprintf('Le plan %s n\'existe pas.', $planId));
+        }
+        if (SchedulePlanType::SEASON->value === $plan['type']) {
+            return [];
+        }
+
+        $lines = [];
+        foreach ($this->entityManager->getRepository(PlanVenue::class)->findBy(['schedulePlanId' => $planId]) as $line) {
+            $lines[$line->getVenueId()] = $line;
+        }
+        foreach ($this->entityManager->getConnection()->fetchFirstColumn('SELECT id FROM venue WHERE season_id = :s', ['s' => $plan['season_id']]) as $venueId) {
+            if (!isset($lines[(string) $venueId])) {
+                throw new LogicException(\sprintf('Le gymnase %s n\'a pas de ligne dans le plan %s.', (string) $venueId, $planId));
             }
         }
 
@@ -218,6 +265,46 @@ final class PlanComposition
         }
 
         return $lines;
+    }
+
+    /**
+     * Pose, dans chaque plan de période de la saison, la ligne au défaut de chaque gymnase qui n'en a pas. Ne flush pas.
+     *
+     * @param list<array{id: string, type: string, club_id: string}> $plans
+     *
+     * @return bool vrai si une ligne a été posée
+     */
+    private function ensureVenueLines(string $seasonId, array $plans): bool
+    {
+        $connection = $this->entityManager->getConnection();
+        $venues = $connection->fetchFirstColumn('SELECT id FROM venue WHERE season_id = :s ORDER BY id', ['s' => $seasonId]);
+        if ([] === $venues) {
+            return false;
+        }
+        $existing = [];
+        foreach ($connection->fetchAllAssociative('SELECT schedule_plan_id, venue_id FROM plan_venue WHERE season_id = :s', ['s' => $seasonId]) as $row) {
+            $existing[(string) $row['schedule_plan_id']][(string) $row['venue_id']] = true;
+        }
+
+        $wrote = false;
+        foreach ($plans as $plan) {
+            if (SchedulePlanType::SEASON->value === $plan['type']) {
+                continue;
+            }
+            foreach ($venues as $venueId) {
+                if (isset($existing[(string) $plan['id']][(string) $venueId])) {
+                    continue;
+                }
+                $this->entityManager->persist((new PlanVenue)
+                    ->setClubId((string) $plan['club_id'])
+                    ->setSeasonId($seasonId)
+                    ->setSchedulePlanId((string) $plan['id'])
+                    ->setVenueId((string) $venueId));
+                $wrote = true;
+            }
+        }
+
+        return $wrote;
     }
 
     private function persistLine(string $clubId, string $seasonId, string $planId, string $teamId, bool $participates, int $sessionsPerWeek, int $maxSessionsPerDay): void

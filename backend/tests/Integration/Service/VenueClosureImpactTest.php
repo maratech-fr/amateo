@@ -7,7 +7,6 @@ namespace App\Tests\Integration\Service;
 use App\Entity\CalendarEntry;
 use App\Entity\Constraint;
 use App\Entity\Fixture;
-use App\Entity\VenuePeriodOverride;
 use App\Enum\CalendarEntryKind;
 use App\Enum\CalendarEntryPeriodType;
 use App\Enum\CalendarEntryStatus;
@@ -16,7 +15,7 @@ use App\Enum\ConstraintRuleType;
 use App\Enum\ConstraintScope;
 use App\Enum\FixtureHomeAway;
 use App\Enum\FixtureStatus;
-use App\Enum\VenuePeriodMode;
+use App\Plans\PlanComposition;
 use App\Service\ClosurePinRemover;
 use App\Service\SchedulePlanProvisioner;
 use App\Service\VenueClosureImpact;
@@ -139,8 +138,9 @@ final class VenueClosureImpactTest extends WebTestCase
         $d = $this->seedClosurePinDecor('VCF');
         $closureEntryId = $this->savedClosure($d);
         $this->regenerateHolidayWithoutMistralTuesday($d, versionBornAfterClosure: true);
-        $this->em->persist((new VenuePeriodOverride)->setClubId($d['club']->getId())->setSeasonId($d['season']->getId())
-            ->setSchedulePlanId($d['holidayPlanId'])->setVenueId($d['mistral'])->setMode(VenuePeriodMode::DISABLED));
+        $composition = self::getContainer()->get(PlanComposition::class);
+        $composition->ensureLines($d['season']->getId());
+        $composition->venuesOf($d['holidayPlanId'])[$d['mistral']]->setParticipating(false);
         $this->em->flush();
 
         self::assertFalse($this->holidayLine($d, $closureEntryId)['regeneratedWithout']);

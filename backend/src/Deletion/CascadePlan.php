@@ -11,6 +11,7 @@ use App\Entity\Competition;
 use App\Entity\Fixture;
 use App\Entity\MatchConstraint;
 use App\Entity\PlanTeam;
+use App\Entity\PlanVenue;
 use App\Entity\Reservation;
 use App\Entity\ScheduleDiagnostic;
 use App\Entity\ScheduleSlotTemplate;
@@ -20,7 +21,6 @@ use App\Entity\TeamLink;
 use App\Entity\TeamMatchHabit;
 use App\Entity\VenueMatchWindow;
 use App\Entity\VenueOccupancy;
-use App\Entity\VenuePeriodOverride;
 use App\Entity\VenueTrainingSlot;
 use App\Enum\ConstraintScope;
 use App\Plans\PlanComposition;
@@ -104,7 +104,9 @@ final class CascadePlan
             // venueId = ce gymnase ; les règles CLUB portent un venueId nul, jamais
             // touchées ici). Sans elle, l'interdiction pendrait sur un gymnase mort.
             new DeleteByFieldStep(MatchConstraint::class, 'venueId', new ImpactLabel('venue_forbidden_team', 'interdiction de gymnase', 'interdictions de gymnase')),
-            new DeleteByFieldStep(VenuePeriodOverride::class, 'venueId', new ImpactLabel('venue_period_override', 'réglage de période', 'réglages de période')),
+            // Lot 4, PR 3b — les lignes du gymnase dans chaque plan de période partent toutes ; la fenêtre n'annonce que ses
+            // réglages de période, les lignes qui diffèrent du défaut.
+            new DeleteByFieldStep(PlanVenue::class, 'venueId', new ImpactLabel('venue_period_override', 'réglage de période', 'réglages de période'), countedWhen: PlanComposition::VENUE_DIFFERS_FROM_DEFAULT_DQL),
             new DeleteByFieldStep(Reservation::class, 'venueId', new ImpactLabel('venue_reservation', 'réservation d\'équipe', 'réservations d\'équipe')),
             new DeleteByFieldStep(ScheduleSlotTemplate::class, 'venueId', new ImpactLabel('venue_slot_template', 'séance placée dans vos plannings', 'séances placées dans vos plannings')),
             new DeleteByFieldStep(ScheduleDiagnostic::class, 'venueId', null),

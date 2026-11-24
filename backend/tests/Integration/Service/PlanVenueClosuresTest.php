@@ -8,9 +8,9 @@ use App\Entity\CalendarEntry;
 use App\Entity\Club;
 use App\Entity\ClubUser;
 use App\Entity\Constraint;
+use App\Entity\PlanVenue;
 use App\Entity\Season;
 use App\Entity\User;
-use App\Entity\VenuePeriodOverride;
 use App\Enum\CalendarEntryKind;
 use App\Enum\CalendarEntryPeriodType;
 use App\Enum\ConstraintFamily;
@@ -235,7 +235,7 @@ final class PlanVenueClosuresTest extends KernelTestCase
 
         // Le masque reste STOCKÉ : la réactivation le rendra tel quel.
         $this->em->clear();
-        self::assertSame([6 => 'CLOSED'], $this->em->getRepository(VenuePeriodOverride::class)->find($overrideId)?->getDayOverrides());
+        self::assertSame([6 => 'CLOSED'], $this->em->getRepository(PlanVenue::class)->find($overrideId)?->getDayOverrides());
     }
 
     public function testBlankIgnoresTheIncidentButKeepsTheMask(): void
@@ -281,12 +281,13 @@ final class PlanVenueClosuresTest extends KernelTestCase
      *
      * @param array<int, string> $dayOverrides
      */
-    private function override(Club $club, Season $season, string $schedulePlanId, ?VenuePeriodMode $mode, array $dayOverrides): VenuePeriodOverride
+    private function override(Club $club, Season $season, string $schedulePlanId, ?VenuePeriodMode $mode, array $dayOverrides): PlanVenue
     {
-        $override = (new VenuePeriodOverride)
+        $override = (new PlanVenue)
             ->setClubId($club->getId())->setSeasonId($season->getId())
             ->setSchedulePlanId($schedulePlanId)->setVenueId(self::VENUE)
-            ->setMode($mode)->setDayOverrides([] === $dayOverrides ? null : $dayOverrides);
+            ->setParticipating(VenuePeriodMode::DISABLED !== $mode)->setClosureLifted(VenuePeriodMode::BLANK === $mode)
+            ->setDayOverrides([] === $dayOverrides ? null : $dayOverrides);
         $this->em->persist($override);
 
         return $override;

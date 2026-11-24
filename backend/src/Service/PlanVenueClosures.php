@@ -6,9 +6,10 @@ namespace App\Service;
 
 use App\Entity\CalendarEntry;
 use App\Entity\Constraint;
-use App\Entity\VenuePeriodOverride;
+use App\Entity\PlanVenue;
 use App\Enum\VenueDayState;
 use App\Enum\VenuePeriodMode;
+use App\Plans\PlanComposition;
 use App\Repository\ConstraintRepository;
 use App\State\Processor\FixtureStateProcessor;
 use DateInterval;
@@ -41,7 +42,7 @@ use Symfony\Component\HttpKernel\Exception\UnprocessableEntityHttpException;
  *
  * Indispo INFORMATIVE (décision fondateur 2026-08-18) — l'indisponibilité déclarée ne FERME plus
  * d'autorité : elle PRÉ-REMPLIT le défaut, et le réglage du plan décide. {@see effectiveStateForPlan}
- * COMPOSE l'incident (le défaut vivant) avec les réglages de `VenuePeriodOverride` (mode + masque
+ * COMPOSE l'incident (le défaut vivant) avec les réglages de `PlanVenue` (mode + masque
  * jour) et rend l'ÉTAT EFFECTIF que tous les consommateurs partagent : le payload
  * (`ScheduleConstraintBuilder`), le gate (`PeriodConstraintSelector`), le garde (`OrphanPinGuard`),
  * la garde de réservation (`ReservationStateProcessor`) et le radar (`CalendarEntryConflictsController`).
@@ -146,7 +147,7 @@ final class PlanVenueClosures
      * P4-300 — le FAIT BRUT des fermetures d'un club+saison, pour les MATCHS : un intervalle par
      * fermeture `venue_closed` ({@see VenueClosureDays::rawIntervals}), lu dans le `config` de la
      * contrainte (repli legacy = fenêtre de l'entrée porteuse), SANS clip ni composition
-     * `VenuePeriodOverride` (décision fondateur D1 — un jour rouvert dans un plan d'entraînement NE
+     * `PlanVenue` (décision fondateur D1 — un jour rouvert dans un plan d'entraînement NE
      * rouvre PAS la salle aux matchs). C'est la MAISON UNIQUE des trois consommateurs matchs : le
      * payload de placement ({@see MatchPlacementPayloadBuilder}), le radar ({@see ConflictRadarLoader})
      * et le refus serveur ({@see FixtureStateProcessor}), ainsi que l'endpoint
@@ -169,7 +170,7 @@ final class PlanVenueClosures
     /**
      * Fermetures de gymnase (C2) — l'UNION de toutes les fermetures déclarées du club+saison, date
      * par date et gymnase par gymnase, en FAIT BRUT (mêmes intervalles que {@see closureIntervals} :
-     * config, repli legacy = fenêtre de l'entrée porteuse ; aucune composition `VenuePeriodOverride`
+     * config, repli legacy = fenêtre de l'entrée porteuse ; aucune composition `PlanVenue`
      * — la réouverture d'un plan se retranche chez le lecteur, {@see EffectiveScheduleResolver}).
      *
      * `$ignoredEntryId` écarte la FAMILLE de l'entrée interrogée — même prédicat que
@@ -223,10 +224,10 @@ final class PlanVenueClosures
             return [];
         }
         $reopened = [];
-        foreach ($this->entityManager->getRepository(VenuePeriodOverride::class)->findBy(['schedulePlanId' => array_values(array_unique($planIds))]) as $override) {
+        foreach ($this->venueSettingsOf(array_values(array_unique($planIds))) as $override) {
             $planId = $override->getSchedulePlanId();
             $venueId = $override->getVenueId();
-            if (VenuePeriodMode::BLANK === $override->getMode()) {
+            if (VenuePeriodMode::BLANK === $override->mode()) {
                 foreach (range(1, 7) as $day) {
                     $reopened[$planId][$venueId][$day] = true;
                 }
@@ -293,7 +294,7 @@ final class PlanVenueClosures
 
     /**
      * L'ÉTAT EFFECTIF d'un plan de période : l'incident (le défaut vivant) COMPOSÉ avec les
-     * réglages de `VenuePeriodOverride` (mode + masque jour). C'est la maison unique que tous
+     * réglages de `PlanVenue` (mode + masque jour). C'est la maison unique que tous
      * les consommateurs partagent — aucun ne redérive la composition.
      *
      * Le plan SEASON (ou introuvable) n'a pas de fenêtre datée → tout est vide (R1).
@@ -347,11 +348,11 @@ final class PlanVenueClosures
         $disabledVenueIds = [];
         $modeByVenue = [];
         $maskByVenue = [];
-        foreach ($this->entityManager->getRepository(VenuePeriodOverride::class)->findBy(['schedulePlanId' => $schedulePlanId]) as $override) {
+        foreach ($this->venueSettingsOf([$schedulePlanId]) as $override) {
             $venueId = $override->getVenueId();
-            $modeByVenue[$venueId] = $override->getMode();
+            $modeByVenue[$venueId] = $override->mode();
             $maskByVenue[$venueId] = $override->getDayOverrides() ?? [];
-            if (VenuePeriodMode::DISABLED === $override->getMode()) {
+            if (VenuePeriodMode::DISABLED === $override->mode()) {
                 $disabledVenueIds[$venueId] = true;
             }
         }
@@ -401,6 +402,23 @@ final class PlanVenueClosures
             'fullyClosedVenueIds' => $fullyClosedVenueIds,
             'summaries' => $incident['summaries'],
         ];
+    }
+
+    /**
+     * Les réglages de gymnase de ces plans : leurs lignes qui diffèrent du défaut (une ligne au défaut ne compose rien).
+     *
+     * @param list<string> $planIds
+     *
+     * @return list<PlanVenue>
+     */
+    private function venueSettingsOf(array $planIds): array
+    {
+        /** @var list<PlanVenue> $settings */
+        $settings = $this->entityManager->createQuery('SELECT e FROM App\Entity\PlanVenue e WHERE e.schedulePlanId IN (:plans) AND ' . PlanComposition::VENUE_DIFFERS_FROM_DEFAULT_DQL)
+            ->setParameter('plans', $planIds)
+            ->getResult();
+
+        return $settings;
     }
 
     /**

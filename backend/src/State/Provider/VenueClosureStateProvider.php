@@ -15,7 +15,7 @@ use Symfony\Component\HttpFoundation\RequestStack;
 /**
  * P4-300 — sert {@see VenueClosureResource} en GetCollection : les fermetures `venue_closed`
  * du club+saison courants, lues comme FAIT brut via {@see PlanVenueClosures::closureIntervals}
- * (config, repli legacy — jamais la composition `VenuePeriodOverride`). Club résolu depuis
+ * (config, repli legacy — jamais la composition `PlanVenue`). Club résolu depuis
  * l'attribut `_club_id` posé par le listener tenant (comme {@see ClubLeagueWindowStateProvider}),
  * saison depuis `_season_id` (repli en-tête puis saison courante). Pagination désactivée : la
  * collection est bornée au club+saison. Un autre club ne voit rien (closureIntervals filtre par

@@ -14,6 +14,8 @@ use App\Enum\CalendarEntryKind;
 use App\Enum\CalendarEntryPeriodType;
 use App\Enum\SeasonStatus;
 use App\Tests\ComposesPlanTeamsTrait;
+use App\Tests\ComposesPlanVenuesTrait;
+use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\Integration\Migration\Lot4MigrationChainTest;
 use App\Tests\ProvisionsPeriodPlanTrait;
 use App\Tests\SeasonPlanOf;
@@ -37,8 +39,12 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
  * d'un autre club est invisible et intouchable, et la clé composée (plan, club) refuse une ligne dont le plan est
  * celui d'un autre club — une clé simple vers le plan ne verrait pas la RLS. dama annule chaque test.
  *
- * Jumeaux cités : la structure de la table (unicité, clé composée en cascade, RLS forcée) à la conversion,
- * {@see Lot4MigrationChainTest::testTheConversionGivesEveryTeamALineInEveryPlan} ; la RLS de toute table à `club_id`,
+ * Lot 4, PR 3b (ligne 27 du plan) : même frontière pour les gymnases d'un plan de période — un plan d'un club ne
+ * reçoit jamais le réglage d'un gymnase d'un autre club, un gymnase d'un club n'atteint jamais le plan d'un autre.
+ *
+ * Jumeaux cités : la structure des tables (unicité, clé composée en cascade, RLS forcée) à la conversion,
+ * {@see Lot4MigrationChainTest::testTheConversionGivesEveryTeamALineInEveryPlan},
+ * {@see Lot4MigrationChainTest::testTheConversionGivesEveryVenueALineInEveryPeriodPlan} ; la RLS de toute table à `club_id`,
  * {@see RlsIsolationTest::testEveryClubIdTableIsUnderForcedRls}.
  *
  * Bloquant : step `Blocking suite` de `ci.yml` et `docs/testing/blocking-tests.md`.
@@ -48,6 +54,8 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 final class PlanCompositionTenantIsolationTest extends WebTestCase
 {
     use ComposesPlanTeamsTrait;
+    use ComposesPlanVenuesTrait;
+    use CreatesPeopleAndPlacesTrait;
     use ProvisionsPeriodPlanTrait;
     use TenantGucTrait;
 
@@ -55,10 +63,10 @@ final class PlanCompositionTenantIsolationTest extends WebTestCase
 
     private EntityManagerInterface $em;
 
-    /** @var array{club: Club, user: User, season: Season, holiday: string, team: string} */
+    /** @var array{club: Club, user: User, season: Season, holiday: string, team: string, venue: string} */
     private array $a;
 
-    /** @var array{club: Club, user: User, season: Season, holiday: string, team: string} */
+    /** @var array{club: Club, user: User, season: Season, holiday: string, team: string, venue: string} */
     private array $b;
 
     /** Abus : le gestionnaire du club A règle, dans son plan de vacances, l'équipe du club B. Refusé, rien n'est écrit. */
@@ -98,6 +106,30 @@ final class PlanCompositionTenantIsolationTest extends WebTestCase
         self::assertCount(1, \is_array($own) ? $own : [], 'témoin : le club B lit son réglage (son équipe écartée des vacances)');
     }
 
+    /**
+     * Abus (lot 4, PR 3b, ligne 27 du plan) : le gestionnaire du club A règle, dans son plan de vacances, le gymnase du
+     * club B, puis son propre gymnase dans le plan du club B. Les deux sont refusés, aucune ligne n'est écrite, et les
+     * réglages de gymnase du club B restent intacts.
+     */
+    public function testAPlanOfOneClubNeverTakesTheVenueOfAnotherNorReachesIt(): void
+    {
+        // Le club B met son gymnase hors service pour ses vacances : un réglage à protéger.
+        $this->scopeGucToClub($this->b['club']->getId());
+        $this->venueLine($this->b['holiday'], $this->b['venue'])->setParticipating(false);
+        $this->em->flush();
+        $this->clearGuc();
+        $bBefore = $this->venueLinesOfClub($this->b);
+
+        $this->post($this->a, ['schedulePlanId' => $this->a['holiday'], 'venueId' => $this->b['venue'], 'mode' => 'DISABLED'], 'venue_period_overrides');
+        self::assertContains($this->client->getResponse()->getStatusCode(), [404, 422], 'le gymnase d\'un autre club est refusé : ' . $this->client->getResponse()->getContent());
+        $this->post($this->a, ['schedulePlanId' => $this->b['holiday'], 'venueId' => $this->a['venue'], 'mode' => 'DISABLED'], 'venue_period_overrides');
+        self::assertContains($this->client->getResponse()->getStatusCode(), [404, 422], 'le plan d\'un autre club est refusé : ' . $this->client->getResponse()->getContent());
+
+        self::assertSame(0, $this->countUnscoped('SELECT COUNT(*) FROM plan_venue WHERE schedule_plan_id = ? AND venue_id = ?', [$this->a['holiday'], $this->b['venue']]), 'aucune ligne du plan A ne porte le gymnase B');
+        self::assertSame(0, $this->countUnscoped('SELECT COUNT(*) FROM plan_venue WHERE schedule_plan_id = ? AND venue_id = ?', [$this->b['holiday'], $this->a['venue']]), 'aucune ligne du plan B ne porte le gymnase A');
+        self::assertSame($bBefore, $this->venueLinesOfClub($this->b), 'les réglages de gymnase du club B sont intacts');
+    }
+
     /** En base, sous la RLS : une ligne d'un autre club est invisible et intouchable ; la clé composée refuse un plan étranger. */
     public function testTheDatabaseKeepsEveryLineInsideItsClub(): void
     {
@@ -127,7 +159,7 @@ final class PlanCompositionTenantIsolationTest extends WebTestCase
         $this->clearGuc();
     }
 
-    /** @return array{club: Club, user: User, season: Season, holiday: string, team: string} */
+    /** @return array{club: Club, user: User, season: Season, holiday: string, team: string, venue: string} */
     private function seedClub(string $tag): array
     {
         $uid = uniqid('', true);
@@ -153,6 +185,8 @@ final class PlanCompositionTenantIsolationTest extends WebTestCase
         $this->em->persist($team);
         $this->em->flush();
         $this->setSocleTeam($season->getId(), $team->getId(), 2);
+        $venue = $this->newVenue($club->getId(), $season->getId(), 'Gymnase ' . $tag);
+        $this->em->flush();
         $entry = (new CalendarEntry)->setClubId($club->getId())->setSeasonId($season->getId())
             ->setKind(CalendarEntryKind::PERIOD)->setPeriodType(CalendarEntryPeriodType::HOLIDAY)->setTitle('Noël ' . $tag)
             ->setStartDate(new DateTimeImmutable('2025-12-22'))->setEndDate(new DateTimeImmutable('2025-12-28'));
@@ -160,20 +194,37 @@ final class PlanCompositionTenantIsolationTest extends WebTestCase
         $holiday = $this->planIdOf($entry);
         $this->layTeamLines($season->getId());
 
-        return ['club' => $club, 'user' => $user, 'season' => $season, 'holiday' => $holiday, 'team' => $team->getId()];
+        return ['club' => $club, 'user' => $user, 'season' => $season, 'holiday' => $holiday, 'team' => $team->getId(), 'venue' => $venue->getId()];
     }
 
     /**
-     * @param array{club: Club, user: User, season: Season, holiday: string, team: string} $as
-     * @param array<string, mixed>                                                         $body
+     * @param array{club: Club, user: User, season: Season, holiday: string, team: string, venue: string} $as
+     * @param array<string, mixed>                                                                        $body
      */
-    private function post(array $as, array $body): void
+    private function post(array $as, array $body, string $route = 'team_period_overrides'): void
     {
-        $this->client->request('POST', '/api/team_period_overrides', [], [], $this->headers($as), json_encode($body, \JSON_THROW_ON_ERROR));
+        $this->client->request('POST', '/api/' . $route, [], [], $this->headers($as), json_encode($body, \JSON_THROW_ON_ERROR));
     }
 
     /**
-     * @param array{club: Club, user: User, season: Season, holiday: string, team: string} $as
+     * Les lignes de gymnase d'un club, colonne par colonne, lues sous son propre contexte.
+     *
+     * @param array{club: Club, user: User, season: Season, holiday: string, team: string, venue: string} $of
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function venueLinesOfClub(array $of): array
+    {
+        $this->scopeGucToClub($of['club']->getId());
+        $rows = self::getContainer()->get(Connection::class)->fetchAllAssociative('SELECT * FROM plan_venue WHERE club_id = ? ORDER BY id', [$of['club']->getId()]);
+        $this->clearGuc();
+        self::assertNotSame([], $rows, 'témoin : le club a ses lignes de gymnase');
+
+        return $rows;
+    }
+
+    /**
+     * @param array{club: Club, user: User, season: Season, holiday: string, team: string, venue: string} $as
      *
      * @return array<string, string>
      */
@@ -190,7 +241,7 @@ final class PlanCompositionTenantIsolationTest extends WebTestCase
     /**
      * Les lignes d'un club, colonne par colonne, lues sous son propre contexte.
      *
-     * @param array{club: Club, user: User, season: Season, holiday: string, team: string} $of
+     * @param array{club: Club, user: User, season: Season, holiday: string, team: string, venue: string} $of
      *
      * @return list<array<string, mixed>>
      */
@@ -225,7 +276,7 @@ final class PlanCompositionTenantIsolationTest extends WebTestCase
     /**
      * SQLSTATE du refus d'une ligne du club `$as` vers `$planId`, jouée dans un point de sauvegarde annulé, ou null si elle passe.
      *
-     * @param array{club: Club, user: User, season: Season, holiday: string, team: string} $as
+     * @param array{club: Club, user: User, season: Season, holiday: string, team: string, venue: string} $as
      */
     private function sqlStateOf(Connection $connection, array $as, string $planId): ?string
     {

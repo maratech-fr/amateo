@@ -17,7 +17,6 @@ use App\Entity\Team;
 use App\Entity\TeamCoach;
 use App\Entity\User;
 use App\Entity\Venue;
-use App\Entity\VenuePeriodOverride;
 use App\Entity\VenueTrainingSlot;
 use App\Enum\CalendarEntryKind;
 use App\Enum\CalendarEntryPeriodType;
@@ -28,7 +27,6 @@ use App\Enum\ImplicitRuleIntensity;
 use App\Enum\ImplicitRuleKey;
 use App\Enum\SeasonStatus;
 use App\Enum\TeamCoachRole;
-use App\Enum\VenuePeriodMode;
 use App\Plans\PlanComposition;
 use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\ProvisionsPeriodPlanTrait;
@@ -1323,13 +1321,10 @@ final class ValidateConstraintsTest extends WebTestCase
     /** Le geste « ce gymnase ne sert pas cette période » (réglage sparse ancré au plan). */
     private function disableVenueForPeriod(string $schedulePlanId, string $venueId): void
     {
-        $override = new VenuePeriodOverride;
-        $override->setClubId($this->club->getId());
-        $override->setSeasonId($this->season->getId());
-        $override->setSchedulePlanId($schedulePlanId);
-        $override->setVenueId($venueId);
-        $override->setMode(VenuePeriodMode::DISABLED);
-        $this->em->persist($override);
+        // Lot 4, PR 3b : la ligne du gymnase dans le plan de période, posée par la porte.
+        $composition = self::getContainer()->get(PlanComposition::class);
+        $composition->ensureLines($this->season->getId());
+        $composition->venuesOf($schedulePlanId)[$venueId]->setParticipating(false);
         $this->em->flush();
     }
 

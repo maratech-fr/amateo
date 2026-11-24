@@ -7,6 +7,8 @@ namespace App\State\Processor;
 use App\ApiResource\TeamPeriodOverrideResource;
 use App\Dto\TeamPeriodOverrideInput;
 use App\Entity\PlanTeam;
+use App\Entity\User;
+use App\Enum\AuditAction;
 use App\Plans\PlanComposition;
 use App\Plans\SoclePlan;
 use App\Service\ManagementAccessGuard;
@@ -108,6 +110,10 @@ class TeamPeriodOverrideStateProcessor extends AbstractStateProcessor
             ->setMaxSessionsPerDay($socle->getMaxSessionsPerDay())
             ->setSource(null);
         $this->entityManager->flush();
+
+        // RGPD — retirer un réglage d'équipe de période reste une suppression tracée (patron du parent).
+        $actor = $this->actorSecurity?->getUser();
+        $this->auditTrail?->record(AuditAction::ENTITY_DELETED, $actor instanceof User ? $actor->getId() : null, $clubId, 'TeamPeriodOverride', $line->getId());
     }
 
     /**

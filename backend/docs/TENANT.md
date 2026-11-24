@@ -133,6 +133,11 @@ services:
   another club's plan; no key to `team` (the lines are written only by `PlanComposition::ensureLines`). The exception
   route `/api/team_period_overrides` refuses another club's team or plan without writing anything. Guarded by
   `PlanCompositionTenantIsolationTest`; detail: `docs/security/rls.md` § `plan_team`.
+- **The venues of a period plan live on `plan_venue`.** Same pattern: a plain tenant table (`Entity/PlanVenue.php`,
+  filter + RLS), COMPOSITE foreign key `(schedule_plan_id, club_id)` → `schedule_plan (id, club_id)`, no key to `venue`
+  (lines written only by `PlanComposition::ensureLines`). The exception route `/api/venue_period_overrides` refuses
+  another club's venue or plan without writing anything (same 422 as an unknown venue). Guarded by
+  `PlanCompositionTenantIsolationTest`; detail: `docs/security/rls.md` § `plan_venue`.
 - **Role layer on top of the membership (P1-1):** the role is decided **centrally**. Every `^/api/`
   route declares its module and audience (`#[ClubFunction]`, `#[ClubResource]`, `#[AccountFunction]`,
   `src/Access/`) and `ClubAccessListener` (`kernel.request`, **priority 4**, main request only;

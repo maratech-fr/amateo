@@ -1461,8 +1461,9 @@ jobs:
           # NR d'axe TENANT ISOLATION + test d'abus (lot conception 4, PR 3a) — les équipes d'un plan ne traversent
           # jamais la frontière d'un club : la route d'exception refuse l'équipe ou le plan d'un autre club sans rien
           # écrire, les réglages d'un autre club ne se lisent pas, et en base `plan_team` est sous RLS avec une clé
-          # composée (plan, club). Sans ce gate, un identifiant forgé ferait entrer l'équipe d'un club dans le plan
-          # d'un autre en passant le Lot Gate.
+          # composée (plan, club). PR 3b : même frontière pour les gymnases d'un plan de période
+          # (`/api/venue_period_overrides`). Sans ce gate, un identifiant forgé ferait entrer l'équipe ou le gymnase
+          # d'un club dans le plan d'un autre en passant le Lot Gate.
           FILES="$FILES tests/Security/PlanCompositionTenantIsolationTest.php"
           docker compose exec -T -e APP_ENV=test php-fpm sh -c "cd /app/backend && php -d memory_limit=1G vendor/bin/phpunit --group phase1 $FILES"
 

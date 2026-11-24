@@ -24,8 +24,8 @@ class VenuePeriodOverrideInput
 
     /**
      * Le mode est FACULTATIF (une ligne peut n'exister que pour son masque) : plus de
-     * `NotBlank`. INHERIT n'est pas une valeur acceptée — c'est le défaut, matérialisé par
-     * l'ABSENCE de ligne (DELETE pour y revenir), ou ici par un `mode` nul.
+     * `NotBlank`. INHERIT n'est pas une valeur acceptée — c'est le défaut (DELETE pour y
+     * revenir), ou ici un `mode` nul.
      */
     #[Assert\Choice(callback: [VenuePeriodMode::class, 'values'], message: 'Mode invalide : seuls DISABLED et BLANK se stockent. INHERIT est le défaut — supprimez l\'override pour y revenir.')]
     #[Groups(['write'])]

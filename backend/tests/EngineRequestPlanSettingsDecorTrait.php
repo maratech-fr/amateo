@@ -12,7 +12,6 @@ use App\Entity\SharedTrainingBlock;
 use App\Entity\SharedTrainingBlockTeam;
 use App\Entity\Team;
 use App\Entity\VenueOccupancy;
-use App\Entity\VenuePeriodOverride;
 use App\Entity\VenueTrainingSlot;
 use App\Enum\CalendarEntryKind;
 use App\Enum\CalendarEntryPeriodType;
@@ -201,11 +200,16 @@ trait EngineRequestPlanSettingsDecorTrait
             ->setSchedulePlanId($planId)->setConstraintId($constraintId)->setIsActive($applies));
     }
 
-    /** @param array<int, string>|null $dayOverrides */
+    /**
+     * Le réglage d'un gymnase dans un plan de période : sa ligne (lot 4, PR 3b).
+     *
+     * @param array<int, string>|null $dayOverrides
+     */
     private function erVenueSetting(int $n, string $planId, string $venueId, ?VenuePeriodMode $mode, ?array $dayOverrides): void
     {
-        $this->erEm()->persist((new VenuePeriodOverride)->setId(self::erId('dbe0', $n))->setClubId(self::ER_CLUB)->setSeasonId(self::ER_SEASON)
-            ->setSchedulePlanId($planId)->setVenueId($venueId)->setMode($mode)->setDayOverrides($dayOverrides));
+        unset($n);
+        static::getContainer()->get(PlanComposition::class)->venuesOf($planId)[$venueId]
+            ->setParticipating(VenuePeriodMode::DISABLED !== $mode)->setClosureLifted(VenuePeriodMode::BLANK === $mode)->setDayOverrides($dayOverrides);
     }
 
     /** Une équipe créée après la naissance du plan de période, comme une saisie. */

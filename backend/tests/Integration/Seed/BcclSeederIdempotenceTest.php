@@ -1177,7 +1177,7 @@ final class BcclSeederIdempotenceTest extends KernelTestCase
      *    une version COMPLETED (`seed-transcription`) transcrivant le planning d'overlay, 90 créneaux ;
      *  - ses réglages : 50 TeamPeriodOverride (49 équipes actives à leur nombre de séances DÉRIVÉ,
      *    Σ = 90 ; « Training Individuel » seule décochée), 1 ConstraintPeriodOverride (« SM2 · au
-     *    moins 1 à Matéo » décochée), 0 VenuePeriodOverride (la fermeture agit par l'état effectif),
+     *    moins 1 à Matéo » décochée), 0 réglage de gymnase (la fermeture agit par l'état effectif),
      *    0 réservation ;
      *  - l'ANCIEN incident « (travaux) » a DISPARU (pas de coexistence sur base vivante).
      *
@@ -1296,8 +1296,8 @@ final class BcclSeederIdempotenceTest extends KernelTestCase
             $totalCpo = (int) $this->connection->fetchOne('SELECT COUNT(*) FROM constraint_period_override WHERE schedule_plan_id = ?', [$planId]);
             self::assertSame(1, $totalCpo, 'aucun autre override de contrainte');
 
-            $vpo = (int) $this->connection->fetchOne('SELECT COUNT(*) FROM venue_period_override WHERE schedule_plan_id = ?', [$planId]);
-            self::assertSame(0, $vpo, 'aucun VenuePeriodOverride : la fermeture agit par l\'état effectif');
+            $vpo = (int) $this->connection->fetchOne('SELECT COUNT(*) FROM plan_venue WHERE schedule_plan_id = ? AND (participates = false OR closure_lifted OR day_overrides IS NOT NULL)', [$planId]);
+            self::assertSame(0, $vpo, 'aucun réglage de gymnase (ligne qui diffère du défaut) : la fermeture agit par l\'état effectif');
 
             $reservations = (int) $this->connection->fetchOne('SELECT COUNT(*) FROM reservation WHERE schedule_plan_id = ?', [$planId]);
             self::assertSame(0, $reservations, 'ZÉRO réservation : les fanions viendront d\'un exercice ultérieur');
@@ -1630,7 +1630,7 @@ final class BcclSeederIdempotenceTest extends KernelTestCase
             // P5-23/P2-51 (recalage 2026-09-01) : les 10 passerelles (find-or-create couple
             // normalisé) et les 8 blocs SOCLE (purge+recréation) entrent dans la mesure.
             'teamLinks' => $this->rowsIn('team_link'),
-            'venuePeriodOverrides' => $this->rowsIn('venue_period_override'),
+            'venuePeriodOverrides' => $this->rowsIn('plan_venue'),
             'teamPeriodOverrides' => $this->rowsIn('plan_team'),
             'constraintPeriodOverrides' => $this->rowsIn('constraint_period_override'),
             // Répartition WE des matchs (profil dev) : les 32 créneaux idéaux (find-or-create sur

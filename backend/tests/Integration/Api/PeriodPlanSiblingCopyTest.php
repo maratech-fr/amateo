@@ -9,6 +9,7 @@ use App\Entity\ClubUser;
 use App\Entity\ConstraintPeriodOverride;
 use App\Entity\ImplicitRuleSetting;
 use App\Entity\PlanTeam;
+use App\Entity\PlanVenue;
 use App\Entity\Reservation;
 use App\Entity\Schedule;
 use App\Entity\ScheduleSlotTemplate;
@@ -18,7 +19,6 @@ use App\Entity\SharedTrainingBlockTeam;
 use App\Entity\User;
 use App\Entity\Venue;
 use App\Entity\VenueOccupancy;
-use App\Entity\VenuePeriodOverride;
 use App\Entity\VenueTrainingSlot;
 use App\Enum\ImplicitRuleIntensity;
 use App\Enum\ImplicitRuleKey;
@@ -26,7 +26,7 @@ use App\Enum\LockLevel;
 use App\Enum\LockOrigin;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
-use App\Enum\VenuePeriodMode;
+use App\Plans\PlanComposition;
 use App\Service\OverlayManager;
 use App\Service\PeriodPlanSiblingCopier;
 use App\Service\SchedulePlanProvisioner;
@@ -81,7 +81,7 @@ final class PeriodPlanSiblingCopyTest extends WebTestCase
         ConstraintPeriodOverride::class,
         VenueTrainingSlot::class,
         Reservation::class,
-        VenuePeriodOverride::class,
+        PlanVenue::class,
         SharedTrainingBlock::class,
         SharedTrainingBlockTeam::class,
         ImplicitRuleSetting::class,
@@ -282,7 +282,8 @@ final class PeriodPlanSiblingCopyTest extends WebTestCase
         $this->em->persist((new PlanTeam)->setClubId($clubId)->setSeasonId($seasonId)->setSchedulePlanId($planId)->setTeamId(self::TEAM_ID)->setParticipating(false));
         $this->em->persist((new ConstraintPeriodOverride)->setClubId($clubId)->setSeasonId($seasonId)->setSchedulePlanId($planId)->setConstraintId(self::CONSTRAINT_ID)->setIsActive(false));
         $this->em->persist((new Reservation)->setClubId($clubId)->setSeasonId($seasonId)->setSchedulePlanId($planId)->setTeamId(self::TEAM_ID)->setVenueId($venueId)->setDayOfWeek(3)->setStartTime(new DateTimeImmutable('19:00'))->setDurationMinutes(90));
-        $this->em->persist((new VenuePeriodOverride)->setClubId($clubId)->setSeasonId($seasonId)->setSchedulePlanId($planId)->setVenueId($venueId)->setMode(VenuePeriodMode::DISABLED));
+        self::getContainer()->get(PlanComposition::class)->ensureLines($seasonId);
+        self::getContainer()->get(PlanComposition::class)->venuesOf($planId)[$venueId]->setParticipating(false);
 
         $block = (new SharedTrainingBlock)->setClubId($clubId)->setSeasonId($seasonId)->setSchedulePlanId($planId)->setCommonSessions(1);
         $this->em->persist($block);

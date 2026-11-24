@@ -14,7 +14,6 @@ use App\Entity\ScheduleSlotTemplate;
 use App\Entity\Season;
 use App\Entity\User;
 use App\Entity\Venue;
-use App\Entity\VenuePeriodOverride;
 use App\Entity\VenueTrainingSlot;
 use App\Enum\CalendarEntryKind;
 use App\Enum\CalendarEntryPeriodType;
@@ -24,10 +23,10 @@ use App\Enum\ConstraintScope;
 use App\Enum\LockLevel;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
-use App\Enum\VenuePeriodMode;
 use App\Export\ExportReservedWindow;
 use App\Export\ScheduleExportData;
 use App\Export\ScheduleExportDataProvider;
+use App\Plans\PlanComposition;
 use App\Service\BrandAssets;
 use App\Service\PdfGenerator;
 use App\Service\ProductIdentity;
@@ -179,12 +178,9 @@ final class ScheduleExportOccupanciesTest extends WebTestCase
         $this->placeSession($version, $open, 3, '20:00');
         $this->occupancy($disabled, 2, '14:00', 135, 'École', $planId);
         $this->occupancy($open, 2, '14:00', 135, 'Mairie', $planId);
-        $this->em->persist(
-            (new VenuePeriodOverride)
-                ->setClubId($this->club->getId())->setSeasonId($this->season->getId())
-                ->setSchedulePlanId($planId)->setVenueId($disabled->getId())
-                ->setMode(VenuePeriodMode::DISABLED)->setDayOverrides(null),
-        );
+        $composition = self::getContainer()->get(PlanComposition::class);
+        $composition->ensureLines($this->season->getId());
+        $composition->venuesOf($planId)[$disabled->getId()]->setParticipating(false)->setDayOverrides(null);
         $this->em->flush();
 
         $data = $this->provider->load($version, null, true);
@@ -225,12 +221,9 @@ final class ScheduleExportOccupanciesTest extends WebTestCase
         [$version, $planId] = $this->periodVersion('2026-05-04', '2026-05-10');
         $disabled = $this->makeVenue('Désactivé');
         $this->occupancy($disabled, 2, '14:00', 135, 'École', $planId);
-        $this->em->persist(
-            (new VenuePeriodOverride)
-                ->setClubId($this->club->getId())->setSeasonId($this->season->getId())
-                ->setSchedulePlanId($planId)->setVenueId($disabled->getId())
-                ->setMode(VenuePeriodMode::DISABLED)->setDayOverrides(null),
-        );
+        $composition = self::getContainer()->get(PlanComposition::class);
+        $composition->ensureLines($this->season->getId());
+        $composition->venuesOf($planId)[$disabled->getId()]->setParticipating(false)->setDayOverrides(null);
         $this->em->flush();
 
         self::assertSame(['École'], $this->labels($this->provider->load($version, $disabled->getId(), true)));

@@ -4,15 +4,14 @@ declare(strict_types=1);
 
 namespace App\Service;
 
+use App\Entity\PlanVenue;
 use App\Entity\Reservation;
 use App\Entity\ScheduleSlotTemplate;
 use App\Entity\Team;
 use App\Entity\User;
 use App\Entity\Venue;
-use App\Entity\VenuePeriodOverride;
 use App\Enum\AuditAction;
 use App\Enum\LockLevel;
-use App\Enum\VenuePeriodMode;
 use App\Exception\ScheduleGenerationInProgressException;
 use App\State\Processor\CalendarEntryStateProcessor;
 use App\State\Processor\ConstraintStateProcessor;
@@ -366,8 +365,8 @@ final class ClosurePinRemover
      */
     private function withoutReopenedWeekdays(string $planId, string $venueId, array $weekdays): array
     {
-        $override = $this->entityManager->getRepository(VenuePeriodOverride::class)->findOneBy(['schedulePlanId' => $planId, 'venueId' => $venueId]);
-        if ($override instanceof VenuePeriodOverride && VenuePeriodMode::DISABLED === $override->getMode()) {
+        $override = $this->entityManager->getRepository(PlanVenue::class)->findOneBy(['schedulePlanId' => $planId, 'venueId' => $venueId]);
+        if ($override instanceof PlanVenue && !$override->isParticipating()) {
             return [];
         }
         foreach (array_keys($this->planVenueClosures->reopenedWeekdaysByPlans([$planId])[$planId][$venueId] ?? []) as $day) {

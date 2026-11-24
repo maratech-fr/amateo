@@ -165,7 +165,8 @@ Schedule (= Version)                    ← existant, recentré
    jour, figées à la naissance du plan), contraintes gardées/enlevées
    (`ConstraintPeriodOverride`), sa grille de gymnases (`VenueTrainingSlot` scopé période —
    une COPIE du modèle de saison, cf. plus bas dans ce même invariant, #8) et ses modes de
-   gymnase (`VenuePeriodOverride`),
+   gymnase (`PlanVenue`, une ligne par gymnase dans chaque plan de période, servie par la ressource
+   `VenuePeriodOverride`),
    réservations →
    **re-keyés `calendarEntryId` → `planId`**. Chaque plan-semaine a SES réglages.
 
@@ -182,8 +183,8 @@ Schedule (= Version)                    ← existant, recentré
    gymnase est **COPIÉE** en créneaux du plan (`SchedulePlanProvisioner::copySeasonalSlots`) —
    `ScheduleConstraintBuilder::buildForOverlay` ne lit QUE les créneaux du plan, jamais d'union
    saison ∪ période, un gymnase n'a jamais deux jeux de créneaux dans une même période. Un
-   réglage sparse par (plan, gymnase), `VenuePeriodOverride` (`mode` `DISABLED`\|`BLANK`\|hériter,
-   pas de ligne = hériter), agit sur cette copie : DÉSACTIVÉ conserve la grille mais sort le
+   réglage par (plan, gymnase), la ligne `PlanVenue` (`mode` `DISABLED`\|`BLANK`\|hériter ;
+   ligne au défaut = hériter), agit sur cette copie : DÉSACTIVÉ conserve la grille mais sort le
    gymnase du payload engine ; VIERGE la vide ; `DELETE` (retour à hériter) la revide puis la
    RECOPIE depuis le modèle de saison. Un épinglage (verrou HARD ou réservation) qui ne retombe
    plus sur aucun créneau de cette grille **bloque la génération en 422**, nommant le gymnase et
@@ -293,7 +294,7 @@ modèle — ils ne correspondent plus à une section de ce document (l'historiqu
     (`CalendarEntryRepository::findWithPlanNotStarted`) → avertissement proportionné
     (« supprime N plannings ») puis **suppression totale** : les versions, le **PLAN
     lui-même**, et tous les réglages qui s'y ancrent (grille copiée, réservations, modes
-    gymnase `VenuePeriodOverride`, overrides d'équipes et de contraintes) —
+    gymnase `PlanVenue`, overrides d'équipes et de contraintes) —
     `OverlayManager::deletePeriodPlanForEntry`. L'**entrée de calendrier survit** : la
     période retombe « à traiter » au radar, à refaire. Une période **déjà commencée** (passée
     ou en cours) n'est **jamais** détruite — annoncée aux coachs et à moitié jouée, elle finit

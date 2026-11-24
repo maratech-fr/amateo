@@ -17,6 +17,8 @@ use App\Enum\CalendarEntryPeriodType;
 use App\Enum\SeasonStatus;
 use App\Plans\PlanComposition;
 use App\Tests\ComposesPlanTeamsTrait;
+use App\Tests\ComposesPlanVenuesTrait;
+use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\ProvisionsPeriodPlanTrait;
 use App\Tests\SeasonPlanOf;
 use App\Tests\TenantGucTrait;
@@ -39,13 +41,28 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
  * Les sept créateurs (API, « Préparer la saison suivante », import du parc, deux imports FFBB, deux seeds) sont
  * prouvés par un balayage de `src/` : un `new Team` sans appel à la porte rougit. Le premier, le geste du
  * gestionnaire, l'est aussi par l'API.
+ *
+ * Lot 4, PR 3b (ligne 26 du plan) : même promesse pour les gymnases d'un plan de période — une ligne par (plan de
+ * période, gymnase), aucune au plan de saison, posée par la même porte ; les cinq créateurs de gymnase (API,
+ * « Préparer la saison suivante », import du parc, deux seeds) l'appellent.
  */
 #[Group('integration')]
 final class PlanCompositionTest extends WebTestCase
 {
     use ComposesPlanTeamsTrait;
+    use ComposesPlanVenuesTrait;
+    use CreatesPeopleAndPlacesTrait;
     use ProvisionsPeriodPlanTrait;
     use TenantGucTrait;
+
+    /** Les cinq fichiers qui créent un gymnase aujourd'hui (§2 du plan) : le balayage doit les voir, témoin. */
+    private const array KNOWN_VENUE_CREATORS = [
+        'State/Processor/VenueStateProcessor.php',
+        'Service/SeasonTransitionService.php',
+        'Service/ParcImport/ParcImportExecutor.php',
+        'Seed/BcclSeeder.php',
+        'Seed/LoadTestClubSeeder.php',
+    ];
 
     /** Les sept fichiers qui créent une équipe aujourd'hui (§2 du plan) : le balayage doit les voir, témoin. */
     private const array KNOWN_TEAM_CREATORS = [
@@ -164,6 +181,113 @@ final class PlanCompositionTest extends WebTestCase
         self::assertSame([], array_keys(array_filter($creators, static fn (bool $callsTheDoor): bool => !$callsTheDoor)), 'chaque créateur d\'équipe pose les lignes manquantes par la porte');
     }
 
+    /**
+     * Lot 4, PR 3b : le gestionnaire crée un gymnase alors qu'une fermeture et des vacances ont déjà leur plan. Il a sa
+     * ligne dans chaque plan de période, qui participe, sans fermeture levée ni masque ; aucune au plan de saison.
+     */
+    public function testAVenueCreatedByTheManagerGetsItsLineInEveryPeriodPlan(): void
+    {
+        $closure = $this->periodPlan(CalendarEntryPeriodType::CLOSURE, '2025-11-03', '2025-11-09');
+        $holiday = $this->periodPlan(CalendarEntryPeriodType::HOLIDAY, '2025-12-22', '2025-12-28');
+
+        $this->client->request('POST', '/api/venues', [], [], $this->headers(), json_encode(['name' => 'Gymnase Est', 'source' => 'manual'], \JSON_THROW_ON_ERROR));
+        self::assertResponseStatusCodeSame(201, (string) $this->client->getResponse()->getContent());
+        $venueId = json_decode((string) $this->client->getResponse()->getContent(), true, 512, \JSON_THROW_ON_ERROR)['id'] ?? null;
+        self::assertIsString($venueId);
+
+        $expected = ['participates' => true, 'closureLifted' => false, 'dayOverrides' => null];
+        self::assertSame($expected, $this->venueLineRow($closure, $venueId), 'la fermeture reçoit la ligne du gymnase, au défaut');
+        self::assertSame($expected, $this->venueLineRow($holiday, $venueId), 'les vacances aussi');
+        self::assertNull($this->venueLineRow($this->seasonPlan(), $venueId), 'aucune ligne au plan de saison');
+        self::assertSame(2, $this->venueLineCountOf($venueId), 'une ligne par plan de période, ni plus ni moins');
+    }
+
+    /**
+     * Lot 4, PR 3b : rappeler la porte ne touche aucune ligne de gymnase existante, ni celle que le gestionnaire a
+     * réglée (hors service, fermeture levée, masque) ; un gymnase créé depuis reçoit les siennes, et seulement lui.
+     */
+    public function testCallingTheDoorAgainChangesNoExistingVenueLine(): void
+    {
+        $holiday = $this->periodPlan(CalendarEntryPeriodType::HOLIDAY, '2025-12-22', '2025-12-28');
+        $nord = $this->newVenue($this->club->getId(), $this->season->getId(), 'Gymnase Nord');
+        $this->em->flush();
+        $this->layVenueLines($this->season->getId());
+        $this->venueLine($holiday, $nord->getId())->setParticipating(false)->setClosureLifted(true)->setDayOverrides([3 => 'CLOSED']);
+        $this->em->flush();
+        $before = $this->allVenueLines();
+        self::assertCount(1, $before, 'témoin : les vacances ont la ligne du Gymnase Nord');
+
+        $this->layVenueLines($this->season->getId());
+        self::assertSame($before, $this->allVenueLines(), 'la porte rappelée ne change rien, ligne pour ligne');
+
+        $sud = $this->newVenue($this->club->getId(), $this->season->getId(), 'Gymnase Sud');
+        $this->em->flush();
+        $this->layVenueLines($this->season->getId());
+        $after = $this->allVenueLines();
+        self::assertSame($before, array_intersect_key($after, $before), 'la ligne du Gymnase Nord reste identique');
+        self::assertCount(2, $after, 'le Gymnase Sud, créé depuis, reçoit sa ligne');
+        self::assertSame(['participates' => true, 'closureLifted' => false, 'dayOverrides' => null], $this->venueLineRow($holiday, $sud->getId()));
+    }
+
+    /** Lot 4, PR 3b : lire un plan de période dont un gymnase de la saison n'a pas de ligne lève, jamais un défaut silencieux. */
+    public function testReadingAPlanWhereAVenueLineIsMissingFailsLoudly(): void
+    {
+        $holiday = $this->periodPlan(CalendarEntryPeriodType::HOLIDAY, '2025-12-22', '2025-12-28');
+        $nord = $this->newVenue($this->club->getId(), $this->season->getId(), 'Gymnase Nord');
+        $this->em->flush();
+        $this->layVenueLines($this->season->getId());
+        self::assertNotNull($this->venueLineRow($holiday, $nord->getId()), 'témoin : la ligne existe');
+        $this->em->getConnection()->executeStatement('DELETE FROM plan_venue WHERE schedule_plan_id = ? AND venue_id = ?', [$holiday, $nord->getId()]);
+        $this->em->clear();
+
+        $this->expectException(LogicException::class);
+        self::getContainer()->get(PlanComposition::class)->venuesOf($holiday);
+    }
+
+    /**
+     * Lot 4, PR 3b — balayage : chaque fichier de `src/` qui construit un gymnase (`new Venue`, lu au jeton : un
+     * commentaire ou une chaîne qui le cite ne compte pas) appelle la porte `ensureLines`. Témoin : le balayage voit
+     * les cinq créateurs connus.
+     */
+    public function testEveryVenueCreatorCallsTheDoor(): void
+    {
+        $src = \dirname(__DIR__, 3) . '/src/';
+        $creators = [];
+        foreach (new RecursiveIteratorIterator(new RecursiveDirectoryIterator($src)) as $file) {
+            if (!$file instanceof SplFileInfo || 'php' !== $file->getExtension()) {
+                continue;
+            }
+            $tokens = array_values(array_filter(
+                token_get_all((string) file_get_contents($file->getPathname())),
+                static fn (array|string $token): bool => !\is_array($token) || !\in_array($token[0], [\T_WHITESPACE, \T_COMMENT, \T_DOC_COMMENT], true),
+            ));
+            $buildsAVenue = false;
+            $callsTheDoor = false;
+            foreach ($tokens as $i => $token) {
+                if (!\is_array($token)) {
+                    continue;
+                }
+                $next = $tokens[$i + 1] ?? null;
+                if (\T_NEW === $token[0] && \is_array($next) && \in_array($next[0], [\T_STRING, \T_NAME_QUALIFIED, \T_NAME_FULLY_QUALIFIED], true)
+                    && 'Venue' === substr((string) strrchr('\\' . $next[1], '\\'), 1)) {
+                    $buildsAVenue = true;
+                }
+                if (\T_STRING === $token[0] && 'ensureLines' === $token[1] && '(' === $next) {
+                    $callsTheDoor = true;
+                }
+            }
+            if ($buildsAVenue) {
+                $creators[substr($file->getPathname(), \strlen($src))] = $callsTheDoor;
+            }
+        }
+        ksort($creators);
+
+        foreach (self::KNOWN_VENUE_CREATORS as $known) {
+            self::assertArrayHasKey($known, $creators, \sprintf('témoin : le balayage voit le créateur %s', $known));
+        }
+        self::assertSame([], array_keys(array_filter($creators, static fn (bool $callsTheDoor): bool => !$callsTheDoor)), 'chaque créateur de gymnase pose les lignes manquantes par la porte');
+    }
+
     protected function setUp(): void
     {
         $this->client = self::createClient();
@@ -230,6 +354,17 @@ final class PlanCompositionTest extends WebTestCase
     {
         $lines = [];
         foreach ($this->em->getConnection()->fetchAllAssociative('SELECT * FROM plan_team WHERE season_id = ? ORDER BY id', [$this->season->getId()]) as $row) {
+            $lines[(string) $row['id']] = $row;
+        }
+
+        return $lines;
+    }
+
+    /** @return array<string, array<string, mixed>> chaque ligne de gymnase de la saison, colonne par colonne, par identifiant */
+    private function allVenueLines(): array
+    {
+        $lines = [];
+        foreach ($this->em->getConnection()->fetchAllAssociative('SELECT * FROM plan_venue WHERE season_id = ? ORDER BY id', [$this->season->getId()]) as $row) {
             $lines[(string) $row['id']] = $row;
         }
 

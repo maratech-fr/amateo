@@ -8,11 +8,11 @@ use App\Entity\CalendarEntry;
 use App\Entity\Club;
 use App\Entity\ClubUser;
 use App\Entity\Constraint;
+use App\Entity\PlanVenue;
 use App\Entity\Schedule;
 use App\Entity\ScheduleSlotTemplate;
 use App\Entity\Season;
 use App\Entity\User;
-use App\Entity\VenuePeriodOverride;
 use App\Enum\CalendarEntryKind;
 use App\Enum\CalendarEntryPeriodType;
 use App\Enum\CalendarEntryStatus;
@@ -289,7 +289,7 @@ final class CalendarEntryConflictsTest extends WebTestCase
         $entry = $this->closureWithIncident($club, $season, self::VENUE_X, '2026-05-04', '2026-05-10', '2026-05-06', '2026-05-06');
         $planId = $this->planIdOf($entry); // provisionne le plan de la période
         // Masque : le samedi (jour 6) est décoché à la main.
-        $override = (new VenuePeriodOverride)
+        $override = (new PlanVenue)
             ->setClubId($club->getId())->setSeasonId($season->getId())
             ->setSchedulePlanId($planId)->setVenueId(self::VENUE_X)
             ->setDayOverrides([6 => 'CLOSED']);

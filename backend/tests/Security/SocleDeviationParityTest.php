@@ -7,6 +7,7 @@ namespace App\Tests\Security;
 use App\Entity\CalendarEntry;
 use App\Entity\Club;
 use App\Entity\ClubUser;
+use App\Entity\PlanVenue;
 use App\Entity\PriorityTier;
 use App\Entity\Schedule;
 use App\Entity\ScheduleSlotTemplate;
@@ -18,7 +19,6 @@ use App\Entity\SportCategory;
 use App\Entity\Team;
 use App\Entity\User;
 use App\Entity\Venue;
-use App\Entity\VenuePeriodOverride;
 use App\Enum\CalendarEntryKind;
 use App\Enum\CalendarEntryPeriodType;
 use App\Enum\CalendarEntryStatus;
@@ -26,7 +26,6 @@ use App\Enum\LockLevel;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
 use App\Enum\VenueDayState;
-use App\Enum\VenuePeriodMode;
 use App\Plans\PlanComposition;
 use App\Service\PeriodPlanTranscriber;
 use App\Service\SchedulePlanProvisioner;
@@ -1081,25 +1080,23 @@ final class SocleDeviationParityTest extends WebTestCase
 
     private function venueDayClosed(Club $club, Season $season, string $planId, Venue $venue, int $day): void
     {
-        $override = new VenuePeriodOverride;
-        $override->setClubId($club->getId());
-        $override->setSeasonId($season->getId());
-        $override->setSchedulePlanId($planId);
-        $override->setVenueId($venue->getId());
-        $override->setMode(null);
-        $override->setDayOverrides([$day => VenueDayState::CLOSED->value]);
-        $this->em->persist($override);
+        unset($club);
+        $this->venueLineOf($season, $planId, $venue)->setDayOverrides([$day => VenueDayState::CLOSED->value]);
     }
 
     private function venueDisabled(Club $club, Season $season, string $planId, Venue $venue): void
     {
-        $override = new VenuePeriodOverride;
-        $override->setClubId($club->getId());
-        $override->setSeasonId($season->getId());
-        $override->setSchedulePlanId($planId);
-        $override->setVenueId($venue->getId());
-        $override->setMode(VenuePeriodMode::DISABLED);
-        $this->em->persist($override);
+        unset($club);
+        $this->venueLineOf($season, $planId, $venue)->setParticipating(false);
+    }
+
+    /** La ligne du gymnase dans le plan de période (lot 4, PR 3b), posée par la porte. */
+    private function venueLineOf(Season $season, string $planId, Venue $venue): PlanVenue
+    {
+        $composition = self::getContainer()->get(PlanComposition::class);
+        $composition->ensureLines($season->getId());
+
+        return $composition->venuesOf($planId)[$venue->getId()];
     }
 
     private function teamOverride(Club $club, Season $season, string $planId, Team $team, bool $active, ?int $sessionsPerWeek): void

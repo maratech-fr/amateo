@@ -254,7 +254,7 @@ final class MatchPlacementPayloadBuilder
         // matchs (décision fondateur D1/D2) : on FUSIONNE son intervalle brut dans le MÊME bloc
         // `venues[].unavailabilities` que l'engine lit déjà — contrat 1.2 inchangé, zéro code
         // moteur. Le fait brut vient de `PlanVenueClosures` (config, repli legacy), jamais de la
-        // composition `VenuePeriodOverride`. Pas de saison sélectionnée = aucune fermeture à lire.
+        // composition `PlanVenue`. Pas de saison sélectionnée = aucune fermeture à lire.
         if (null !== $seasonId) {
             foreach ($this->planVenueClosures->closureIntervals($club->getId(), $seasonId) as $closure) {
                 $unavailabilitiesByVenue[$closure['venueId']][] = [

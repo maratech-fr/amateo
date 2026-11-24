@@ -8,6 +8,7 @@ use App\Entity\CalendarEntry;
 use App\Entity\Club;
 use App\Entity\ClubUser;
 use App\Entity\Constraint;
+use App\Entity\PlanVenue;
 use App\Entity\Reservation;
 use App\Entity\Schedule;
 use App\Entity\ScheduleSlotTemplate;
@@ -15,7 +16,6 @@ use App\Entity\Season;
 use App\Entity\Team;
 use App\Entity\User;
 use App\Entity\Venue;
-use App\Entity\VenuePeriodOverride;
 use App\Entity\VenueTrainingSlot;
 use App\Enum\CalendarEntryKind;
 use App\Enum\CalendarEntryPeriodType;
@@ -25,7 +25,6 @@ use App\Enum\ConstraintScope;
 use App\Enum\LockLevel;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
-use App\Enum\VenuePeriodMode;
 use App\Plans\PlanComposition;
 use App\Service\OrphanPinGuard;
 use App\Service\SchedulePlanProvisioner;
@@ -175,13 +174,7 @@ final class OrphanPinGuardTest extends WebTestCase
     public function testAPinOnADisabledVenueNoLongerBlocksTheGeneration(): void
     {
         $this->em->persist($this->slotTemplate(2, '18:00', LockLevel::HARD)); // le créneau que la période possède
-        $override = new VenuePeriodOverride;
-        $override->setClubId($this->club->getId());
-        $override->setSeasonId($this->season->getId());
-        $override->setSchedulePlanId((string) $this->overlay->getSchedulePlanId());
-        $override->setVenueId($this->venue->getId());
-        $override->setMode(VenuePeriodMode::DISABLED);
-        $this->em->persist($override);
+        $this->venueLine((string) $this->overlay->getSchedulePlanId())->setParticipating(false);
         $this->em->flush();
 
         self::assertNull(
@@ -528,11 +521,16 @@ final class OrphanPinGuardTest extends WebTestCase
      */
     private function mask(array $dayOverrides): void
     {
-        $override = (new VenuePeriodOverride)
-            ->setClubId($this->club->getId())->setSeasonId($this->season->getId())
-            ->setSchedulePlanId($this->planId)->setVenueId($this->venue->getId())
-            ->setDayOverrides($dayOverrides);
-        $this->em->persist($override);
+        $this->venueLine($this->planId)->setDayOverrides($dayOverrides);
+    }
+
+    /** La ligne du gymnase de ce fichier dans un plan de période (lot 4, PR 3b), posée par la porte. */
+    private function venueLine(string $planId): PlanVenue
+    {
+        $composition = self::getContainer()->get(PlanComposition::class);
+        $composition->ensureLines($this->season->getId());
+
+        return $composition->venuesOf($planId)[$this->venue->getId()];
     }
 
     /** Une AUTRE entrée de période du club/saison, porteuse d'une fermeture transversale. */

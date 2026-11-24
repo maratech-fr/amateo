@@ -10,7 +10,6 @@ use App\Entity\Constraint;
 use App\Entity\Schedule;
 use App\Entity\Season;
 use App\Entity\Venue;
-use App\Entity\VenuePeriodOverride;
 use App\Enum\CalendarEntryKind;
 use App\Enum\CalendarEntryPeriodType;
 use App\Enum\ConstraintFamily;
@@ -18,6 +17,7 @@ use App\Enum\ConstraintRuleType;
 use App\Enum\ConstraintScope;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
+use App\Plans\PlanComposition;
 use App\Service\TrainingCalendarContext;
 use App\Tests\ChoosesPlanVersionTrait;
 use App\Tests\CreatesPeopleAndPlacesTrait;
@@ -82,8 +82,8 @@ final class TrainingCalendarContextTest extends KernelTestCase
             ->setName('V1')->setStatus(ScheduleStatus::COMPLETED);
         $this->linkSeededSchedule($version, $holiday->getId());
         $this->choosePlanVersion($version);
-        $this->em->persist((new VenuePeriodOverride)->setClubId($this->club->getId())->setSeasonId($this->season->getId())
-            ->setSchedulePlanId($planId)->setVenueId($this->mistral->getId())->setDayOverrides([2 => 'OPEN']));
+        self::getContainer()->get(PlanComposition::class)->ensureLines($this->season->getId());
+        self::getContainer()->get(PlanComposition::class)->venuesOf($planId)[$this->mistral->getId()]->setDayOverrides([2 => 'OPEN']);
         $this->em->flush();
 
         $periods = $this->context->load($this->season->getId())['activePeriods'];

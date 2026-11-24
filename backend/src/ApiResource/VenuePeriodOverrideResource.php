@@ -16,18 +16,20 @@ use App\Access\Audience;
 use App\Access\ClubResource;
 use App\Access\Module;
 use App\Dto\VenuePeriodOverrideInput;
-use App\Entity\VenuePeriodOverride;
+use App\Entity\PlanVenue;
 use App\State\Processor\VenuePeriodOverrideStateProcessor;
 use App\State\Provider\VenuePeriodOverrideStateProvider;
 use DateTimeImmutable;
 use Symfony\Component\Serializer\Attribute\Groups;
 
 /**
- * Réglage sparse par (période, gymnase) : un `mode` FACULTATIF — DISABLED (le gymnase ne
- * sert pas) ou BLANK (grille vierge, les créneaux de saison sont ignorés) — et/ou un masque
- * manuel `dayOverrides` (jour ISO → OPEN|CLOSED) qui s'ajoute au défaut de l'indisponibilité.
- * Pas de ligne = INHERIT, le défaut. L'overlay de période lit ces lignes ; le planning
- * principal reste intact.
+ * Le réglage d'un gymnase pour une période : la ligne du gymnase dans le plan de période, vue
+ * de l'écran comme un réglage épars — un `mode` FACULTATIF, DISABLED (le gymnase ne sert pas)
+ * ou BLANK (grille ressaisie, l'effet d'une fermeture est levé), et/ou un masque manuel
+ * `dayOverrides` (jour ISO → OPEN|CLOSED) qui s'ajoute au défaut de l'indisponibilité. La liste
+ * ne rend que les lignes qui diffèrent du défaut. Publier le réglage d'un couple (période,
+ * gymnase) met sa ligne à jour ; le supprimer la rend au défaut (INHERIT). L'overlay de période
+ * lit ces lignes ; le planning principal reste intact.
  */
 #[ApiResource(shortName: 'VenuePeriodOverride', operations: [
     new GetCollection,
@@ -91,7 +93,7 @@ class VenuePeriodOverrideResource
     #[Groups(['read'])]
     public ?array $dayOverrides = null;
 
-    public static function fromEntity(VenuePeriodOverride $entity): self
+    public static function fromEntity(PlanVenue $entity): self
     {
         $dto = new self;
         $dto->id = $entity->getId();
@@ -100,7 +102,7 @@ class VenuePeriodOverrideResource
         $dto->updatedAt = $entity->getUpdatedAt();
         $dto->schedulePlanId = $entity->getSchedulePlanId();
         $dto->venueId = $entity->getVenueId();
-        $dto->mode = $entity->getMode()?->value;
+        $dto->mode = $entity->mode()?->value;
         $dto->dayOverrides = $entity->getDayOverrides();
 
         return $dto;

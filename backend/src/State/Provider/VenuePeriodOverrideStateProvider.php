@@ -6,11 +6,15 @@ namespace App\State\Provider;
 
 use ApiPlatform\Metadata\Operation;
 use App\ApiResource\VenuePeriodOverrideResource;
-use App\Entity\VenuePeriodOverride;
+use App\Entity\PlanVenue;
+use App\Plans\PlanComposition;
 use Symfony\Component\HttpFoundation\Request;
 
 /**
- * @extends AbstractStateProvider<VenuePeriodOverride, VenuePeriodOverrideResource>
+ * Les réglages de gymnases d'une période : les lignes d'un plan de période qui diffèrent du défaut (lot 4, PR 3b). Une
+ * ligne au défaut n'est pas un réglage, la liste ne la rend pas.
+ *
+ * @extends AbstractStateProvider<PlanVenue, VenuePeriodOverrideResource>
  */
 class VenuePeriodOverrideStateProvider extends AbstractStateProvider
 {
@@ -18,11 +22,11 @@ class VenuePeriodOverrideStateProvider extends AbstractStateProvider
 
     protected function getEntityClass(): string
     {
-        return VenuePeriodOverride::class;
+        return PlanVenue::class;
     }
 
     /**
-     * @param VenuePeriodOverride $entity
+     * @param PlanVenue $entity
      */
     protected function mapEntityToOutput(object $entity): VenuePeriodOverrideResource
     {
@@ -38,7 +42,8 @@ class VenuePeriodOverrideStateProvider extends AbstractStateProvider
     {
         $qb = $this->entityManager->createQueryBuilder()
             ->select('e')
-            ->from(VenuePeriodOverride::class, 'e');
+            ->from(PlanVenue::class, 'e')
+            ->andWhere(PlanComposition::VENUE_DIFFERS_FROM_DEFAULT_DQL);
 
         if (null !== $clubId) {
             $qb->andWhere('e.clubId = :clubId')->setParameter('clubId', $clubId);
