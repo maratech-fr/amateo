@@ -672,13 +672,15 @@ final class ScheduleConstraintBuilderOverlayTest extends KernelTestCase
     }
 
     /**
-     * P2-9ter NR-2 — le chemin scalaire et `buildForPlan` sont UNE SEULE source.
+     * P2-9ter NR-2, réécrit au lot 4 PR 5 — avant toute génération, la demande d'un plan de période est celle de sa
+     * version, verrous de version mis à part : c'est ce qui rend le récap calculable sans version.
      *
-     * C'est la garantie qui manquait : trois tentatives ont recopié à la main ce que le
-     * builder calcule, et ont divergé. Si quelqu'un ajoute un filtre d'un seul côté (ou
-     * en oublie un en déplaçant le corps), l'égalité stricte le dit.
+     * La moitié « le chemin scalaire égale `buildForOverlay` » est retirée : `buildForOverlay` et `buildForPeriodPlan`
+     * n'existent plus, `buildForPlan` est le seul chemin (deux appels identiques ne prouvaient plus rien). Filet de la
+     * promesse « une seule source de la demande » : `Integration/EngineRequestReferenceTest` (références 12 et 13,
+     * périodes, générées par le handler réel et comparées à l'octet).
      */
-    public function testScalarPathMatchesBuildForOverlay(): void
+    public function testBeforeGenerationOnlyTheVersionLocksDistinguishThePeriodRequest(): void
     {
         [$club, $season] = $this->seed();
         $active = $this->team($club, $season, 'SM1');
@@ -691,19 +693,17 @@ final class ScheduleConstraintBuilderOverlayTest extends KernelTestCase
         $this->venueSlot($club, $season, self::VENUE_CLOSED, null, 2);
         // Un gymnase ACTIF, pour y poser le verrou de version. ⚠ Le poser sur
         // VENUE_CLOSED (désactivé juste au-dessus) le ferait filtrer par
-        // `disabledVenueIds` : les deux `slotTemplates` seraient vides et l'assertion du
-        // court-circuit `scheduleId null` serait satisfaite POUR UNE AUTRE RAISON.
+        // `disabledVenueIds` : les deux `slotTemplates` seraient vides et la comparaison
+        // serait satisfaite POUR UNE AUTRE RAISON.
         $this->venue($club, $season, self::VENUE_OPEN, 'Gym actif');
         $this->venueSlot($club, $season, self::VENUE_OPEN, null, 2);
         $schedule = $this->overlaySchedule($club, $season, $entry);
         $this->slot($schedule, self::VENUE_OPEN);
         $this->em->flush();
 
-        $viaSchedule = $this->builder->buildForPlan($schedule->getSchedulePlanId(), $schedule->getSolverSeed(), $schedule->getId());
-        $viaScalars = $this->builder->buildForPlan($this->planIdOf($entry), $schedule->getSolverSeed(), $schedule->getId());
-        self::assertSame($viaSchedule, $viaScalars, 'un seul chemin de calcul : l’adaptateur ne doit rien ajouter');
-        self::assertNotSame([], $viaScalars['teams'] ?? [], 'garde : le seed doit produire un payload non vide');
-        self::assertContains($active->getId(), array_map(static fn (array $t): string => $t['id'], $viaScalars['teams']));
+        $withVersion = $this->builder->buildForPlan($this->planIdOf($entry), $schedule->getSolverSeed(), $schedule->getId());
+        self::assertNotSame([], $withVersion['teams'] ?? [], 'garde : le seed doit produire un payload non vide');
+        self::assertContains($active->getId(), array_map(static fn (array $t): string => $t['id'], $withVersion['teams']));
 
         // Avant génération : aucun `Schedule`, donc aucun ScheduleSlotTemplate — et TOUT
         // le reste du payload est identique. C'est ce qui rend le récap calculable.
@@ -712,13 +712,13 @@ final class ScheduleConstraintBuilderOverlayTest extends KernelTestCase
         // scheduleId. C'est CETTE assertion qui a du mordant — la poser sur un gymnase
         // désactivé (première version de ce test) donnait deux tableaux vides et une
         // comparaison satisfaite pour une tout autre raison.
-        self::assertCount(1, $viaScalars['slotTemplates'] ?? [], 'le verrou de version doit survivre au filtre gymnases');
+        self::assertCount(1, $withVersion['slotTemplates'] ?? [], 'le verrou de version doit survivre au filtre gymnases');
         // Celle-ci DOCUMENTE le mode pré-génération sans pouvoir tomber : `scheduleId`
         // étant NOT NULL sur l'entité, la requête rendrait `[]` même sans court-circuit.
         self::assertSame([], $preGeneration['slotTemplates'] ?? null, 'pas de version ⇒ pas de verrou de version');
 
-        unset($viaScalars['slotTemplates'], $preGeneration['slotTemplates']);
-        self::assertSame($viaScalars, $preGeneration, 'seuls les slotTemplates distinguent le mode pré-génération');
+        unset($withVersion['slotTemplates'], $preGeneration['slotTemplates']);
+        self::assertSame($withVersion, $preGeneration, 'seuls les slotTemplates distinguent le mode pré-génération');
     }
 
     /**
