@@ -175,7 +175,7 @@ C'est une contrainte très forte. Dans la pratique, le BCCL pourrait la déclare
 
 Une fermeture de salle ne se saisit **pas** comme une contrainte à la main (il n'existe pas de clé `closedDay` : une telle config serait rejetée par la validation, qui exige `forcedVenueId`, `forbiddenVenueId`, `preferredVenueId` ou `minAtVenueId`). Elle se déclare dans le **cockpit**, via une entrée de calendrier de type `venue_closed` portant la salle et la période concernées.
 
-Au moment de construire le payload d'overlay, `ScheduleConstraintBuilder::buildForOverlay` calcule (via `VenueClosureDays`) les **jours de semaine où chaque gymnase est réellement fermé** — l'intersection de l'incident et de la fenêtre du plan — puis **retire du payload les créneaux du gymnase sur ces jours-là**. Aucune contrainte n'est produite.
+Au moment de construire le payload d'overlay, `ScheduleConstraintBuilder::buildForPlan` (branche période) calcule (via `VenueClosureDays`) les **jours de semaine où chaque gymnase est réellement fermé** — l'intersection de l'incident et de la fenêtre du plan — puis **retire du payload les créneaux du gymnase sur ces jours-là**. Aucune contrainte n'est produite.
 
 Le raisonnement est celui du solveur : **pas de créneau ⇒ pas de variable ⇒ le solveur ne peut rien y placer** ce jour-là, mais il conserve toute liberté **les autres jours**. La sémantique « salle fermée » est portée par la structure du payload, plus par une contrainte.
 

@@ -1,7 +1,7 @@
 # Lot 4 · Le plan porte ses données : plan d'exécution
 
 **Statut : version finale (v3 sur 4, après deux passes de `smith`). Plan validé par le fondateur le 2026-11-22 avec sa
-décision (§10) et l'écart E1 (§3.7). PR 1 (le filet), PR 2 (le socle a son plan), PR 3a (les équipes d'un plan), PR 3b (les gymnases d'une période) et PR 4 (les règles appliquées, la nature sur le plan) livrées, écarts ci-dessous ; la PR 5 reste à faire.** Voie **Full**. Branche cible : `lot/conception` (une PR ouverte à la fois ; « Lot Gate » seul :
+décision (§10) et l'écart E1 (§3.7). PR 1 (le filet), PR 2 (le socle a son plan), PR 3a (les équipes d'un plan), PR 3b (les gymnases d'une période), PR 4 (les règles appliquées, la nature sur le plan) et PR 5 (un constructeur, une copie de naissance) livrées, écarts ci-dessous : le lot 4 est livré sur `lot/conception`, non déployé.** Voie **Full**. Branche cible : `lot/conception` (une PR ouverte à la fois ; « Lot Gate » seul :
 `docs/ops/ci-runner.md` § Branche de lot ; avant chaque merge : `make -C backend tests-complete` + features et specs de la
 zone sur la stack d'épreuve). Exécutant : `neo`, après les rouges de `tank`. Cadrage : la conception validée en tient lieu
 (cible §3, §11, §12, §13, §27 de [`conception-cible.md`](conception-cible.md)). La fiche du lot est dans
@@ -211,8 +211,17 @@ Ordre 1 → 2 → 3a → 3b → 4 → 5. Raison : chaque conversion prouvée seu
   - `Lot4MigrationChainTest` : les deux gardes de la migration (comptage, puis unicité) se suivent, le cas faussé ne dit pas laquelle parle. Un test devenu faux (le doublon 422 d'un second POST) est retiré, remplacé par `PeriodSettingUpsertTest` (publier met à jour).
 - Tests : lignes 29 à 34. `/security-review` : oui.
 
-### PR 5 · « Un constructeur, une copie de naissance »
-- `buildForPlan`, `selectForPlan`, `PlanBirth::copy` ; suppression des trois anciens constructeurs, des quatre routines de copie, de `PeriodPlanSiblingCopier::copyAnchoredFamilies`. Aucune migration. Reste des documents (§12).
+### PR 5 · « Un constructeur, une copie de naissance » — livrée
+- `buildForPlan`, `selectForPlan`, `PlanBirth::copy` ; suppression des trois anciens constructeurs, des quatre routines de copie, de `PeriodPlanSiblingCopier::copyAnchoredFamilies`. Aucune migration.
+- **Écarts au plan, tels que livrés** :
+  - `App\Plans\PlanBirth` a deux entrées. `copy` : la naissance d'un plan de période et « Reprendre la grille » d'un gymnase (borné au gymnase : sa grille et ses occupations), lue sur le catalogue (`FamilyCatalog::copiedAtPlanBirth`). `copyAll` : la copie d'un plan sœur, toutes les familles de niveau plan que le plan porte (`FamilyCatalog::carriedByPlan`, versions exceptées), nom de groupe et libellé de grille compris. `Family::copiedAtPlanBirth` est déclaré `true` sur `ImplicitRuleSetting`, `SharedTrainingBlock`, `SharedTrainingBlockTeam`, `VenueOccupancy`, `VenueTrainingSlot`, `false` sur `PlanConstraint`, `PlanTeam`, `PlanVenue`, `Reservation`, `Schedule` ; une famille déclarée copiée sans routine dans `PlanBirth` lève. `FamilyDeclarationSweepTest` garde la déclaration de chaque famille de niveau plan.
+  - Constructeur unique `ScheduleConstraintBuilder::buildForPlan` : la nature du plan choisit `buildForSocle` (avec cache) ou `buildForPeriod` ; `PeriodConstraintSelector::selectForPlan` ; `PeriodConstraintSelection` renommée `PlanSelection`. `buildForClubSeason`, `buildForPeriodPlan` et `buildForOverlay` sont supprimés.
+  - **Limite héritée, écrite et gardée par deux tests** : la naissance d'une fermeture ne copie pas le nom d'un groupe mutualisé, la copie sœur le copie (`Integration/Plans/PlanBirthTest::testAClosureIsBornWithGridOccupanciesSharedBlocksAndWellbeingRules`, `Integration/Api/PeriodPlanSiblingCopyTest::testTheSiblingPlanCarriesTheSourceSettingsInEveryPlanFamily`). L'unifier est une décision qui passe par ces deux tests.
+  - **Limite** : la naissance d'un plan sur une saison SANS plan de saison reste tolérée (`SchedulePlanProvisioner` ne fait alors que `materializeForPlan` ; `VenuePeriodGrid::resetFromSeason` ne fait rien), car des tests créent une période sans plan de saison dans leur décor. La fermer (poser `SeasonPlanOf::id` dans ces décors, puis lever dans `PlanBirth`, comme aux PR 2 et 3a) est un travail mécanique à part, non décidé.
+  - `ScheduleConstraintBuilderOverlayTest::testScalarPathMatchesBuildForOverlay` est réécrit en `testBeforeGenerationOnlyTheVersionLocksDistinguishThePeriodRequest` (il n'y a plus deux chemins à comparer). Le filet « une seule source de la demande » est `EngineRequestReferenceTest`, références 12 et 13.
+  - `PeriodSlotCopyKeepsEveryColumnTest` lit désormais le source de `PlanBirth`.
+  - Aucune migration, aucun scénario Behat neuf. `Integration/Plans/PlanBirthTest` n'est pas au step `Blocking suite` ; `FamilyDeclarationSweepTest`, déjà bloquant, est étendu (`docs/testing/blocking-tests.md`).
+  - Le temps Behat, mesuré en local, dépasse le plafond de 950 s : à mesurer en CI (`make ci-mesure PART=origin/lot/conception`) ; le relever exige la ligne datée du fondateur.
 - Tests : lignes 35 à 38. `/security-review` : à confirmer à l'ouverture.
 
 ## 5. Contrats nouveaux

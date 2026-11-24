@@ -73,7 +73,7 @@ pointée ; autre club ou inconnu = 404) alors que `conflicts` et `relays` resten
 Candidats = principaux de l'équipe et des partenaires de groupe figés sur la même case
 (`CoachDoubleBookingDetector::sessionsWithoutAnyCoachAtStart`) ; un adjoint n'est jamais candidat, un coach
 nommé périmé est ignoré, une équipe sans principal ne déclenche rien. Les indisponibilités lues sont celles de
-la saison (plan SEASON) ou celles retenues pour la période (`selectForPeriodPlan(...)->kept`) : une absence
+la saison (plan SEASON) ou celles retenues pour la période (`selectForPlan(...)->kept`) : une absence
 datée d'un autre moment n'alerte pas. Rendu : `PlacedAbsencesNotice` (`planning/PlacedAbsencesNotice.tsx`, ton
 `warning`, « Une séance sans coach » / « N séances sans coach »), dès qu'une version est affichée, via `usePlacedConflicts(scheduleId)` (clé `["training","placed-conflicts", scheduleId ?? "season"]`,
 invalidée par préfixe après un déplacement).
@@ -123,7 +123,7 @@ conflits d'entraînement ».
 Sur un plan de **PÉRIODE**, « Régénérer » crée une version NUE (aucun `ScheduleSlotTemplate`
 propre) ; sans mécanisme dédié, ses verrous HARD se perdaient. Elle repart désormais TOUJOURS des
 **données en cours** du plan — la version **SOURCE**, dont les verrous HARD sont greffés par
-`ScheduleConstraintBuilder::buildForPeriodPlan` (maison de résolution :
+`ScheduleConstraintBuilder::buildForPlan` (maison de résolution :
 `SchedulePlanProvisioner::lockSourceScheduleIdOfPlan`, SEASON comme PÉRIODE) :
 
 | Action | Endpoint | Effet | Garde |
@@ -240,8 +240,8 @@ verdict) : les neuf guichets de retouche, la validation et « Combler » refusen
 409 codé `not_loaded_version` (la version en vigueur garde `chosen_version`) ; `canEdit` /
 `editBlockedReason` exposent ce même verdict. Même règle pour un plan de période : sa version source
 (`lockSourceScheduleIdOfPlan`). Les autres versions se consultent. Côté génération de saison, seule la
-chargée part au moteur et compte pour les verrous (`ScheduleConstraintBuilder::buildForClubSeason`,
-`lockVersionId`) ; `POST /regenerate` repart toujours de la chargée et répond 202 avec
+chargée part au moteur et compte pour les verrous (`ScheduleConstraintBuilder::buildForPlan`,
+`versionId`) ; `POST /regenerate` repart toujours de la chargée et répond 202 avec
 `sourceScheduleId` ; `POST /generate` sur une version de saison déjà `COMPLETED` → 409 (« Régénérer »
 en crée une nouvelle) ; si la version de départ a disparu avant le solve, l'échec est typé
 `source_version_missing`. `regenerateFromBlockedReason` dit, mot pour mot, pourquoi « Charger » est

@@ -48,7 +48,7 @@ filtre que le gate pré-solve et le payload, jamais un second calcul) :
 C'est l'**industrialisation, côté produit**, d'un patron qui existait déjà comme geste manuel de
 seed (`BcclSeeder::pointPeriodPlanAtReprise`) : version `COMPLETED` sans passer par l'engine,
 numérotée par `SchedulePlanProvisioner::linkSchedule`, snapshot posé par
-`ScheduleConstraintBuilder::buildForPeriodPlan` — le seed n'est pas refactoré pour appeler ce
+`ScheduleConstraintBuilder::buildForPlan` — le seed n'est pas refactoré pour appeler ce
 service, le service copie son patron. Implémentation : `App\Service\PeriodPlanTranscriber`
 (`backend/src/Service/PeriodPlanTranscriber.php`), route
 `POST /api/schedule_plans/{id}/transcribe-from-socle` (`App\Controller\TranscribePeriodPlanController`).

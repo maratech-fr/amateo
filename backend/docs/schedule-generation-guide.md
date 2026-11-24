@@ -681,7 +681,7 @@ avec en plus une **proximité** de poids 9 dans le placement lui-même : une rè
 prime, le confort interne cède, ADR-0001) —
 **après** avoir figé `snapshotData`/`snapshotHash`, jamais avant :
 
-1. Le payload est construit et **caché** par club+saison (`ScheduleConstraintBuilder::buildForClubSeason`/`buildForPeriodPlan`) et son hash (`snapshotHash`, comparé à l'empreinte de structure servie par `GET /api/schedule_plans/{id}/structure-hash` pour griser « Régénérer » et afficher le bandeau « à régénérer » — P4-266) est calculé.
+1. Le payload est construit par `ScheduleConstraintBuilder::buildForPlan` (le plan de saison est **caché** par club+saison, une période jamais) et son hash (`snapshotHash`, comparé à l'empreinte de structure servie par `GET /api/schedule_plans/{id}/structure-hash` pour griser « Régénérer » et afficher le bandeau « à régénérer » — P4-266) est calculé.
 2. **Ensuite seulement**, `EngineRequestComposer::resolvePreviousAssignmentSlots()` retrouve la source : la version explicitement **regardée** (`GenerateScheduleMessage::sourceScheduleId`, posé par `RegenerateController` — « Régénérer » depuis une version précise) sinon la dernière version `COMPLETED` du **même** plan (`/generate` initial, qui ne connaît pas de source), sinon rien (première génération). La source est toujours de la même lignée que `schedule.schedulePlanId` (ADR-0002 — jamais le socle sous un overlay).
 3. `ScheduleConstraintBuilder::withPreviousAssignments()` sérialise les créneaux de la source (`{teamId, venueId, dayOfWeek, startTime}`, HARD compris — un créneau HARD n'a pas de variable côté solveur, le terme de stabilité le saute sans double paiement) et les ajoute au payload **déjà construit**, sans toucher `snapshotData`/`snapshotHash`.
 
@@ -696,13 +696,13 @@ chaque régénération, dé-grisant le bouton « Régénérer » en permanence e
 
 Le précédent ci-dessus est une préférence SOFT : un verrou HARD (épingle de work-loop) est une
 AUTRE mécanique, qui ne passe PAS par `previousAssignments`. Sur un plan de **SAISON**,
-`ScheduleConstraintBuilder::buildForClubSeason` lit ses `ScheduleSlotTemplate` par club+saison
-(`findBaseSlotTemplates`, pas par version) — les verrous HARD de saison survivent donc à
-« Régénérer » sans mécanisme dédié. Sur un plan de **PÉRIODE**, les `ScheduleSlotTemplate` sont
+`ScheduleConstraintBuilder::buildForPlan` lit les `ScheduleSlotTemplate` d'UNE version (la version
+chargée, ou celle que `versionId` nomme : la source explicite d'une régénération) — pas de greffe dédiée
+au socle. Sur un plan de **PÉRIODE**, les `ScheduleSlotTemplate` sont
 scopés PAR VERSION ; une version créée par « Régénérer » est **NUE** (aucun slotTemplate propre),
 donc sans greffe explicite ses verrous HARD se perdaient.
 
-`ScheduleConstraintBuilder::buildForPeriodPlan` greffe donc les verrous HARD de la version
+`ScheduleConstraintBuilder::buildForPlan` (branche période) greffe donc les verrous HARD de la version
 **SOURCE** du plan (`SchedulePlanProvisioner::lockSourceScheduleIdOfPlan` — maison unique) sur les
 `slotTemplates` déjà sérialisés, en forme **CANONIQUE** : `id` dérivé du placement
 (`team:venue:jour:HH:MM`, jamais l'id de ligne — sinon il diverge d'une version à l'autre et fait

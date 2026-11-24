@@ -17,8 +17,8 @@ fichier/classe interne (`frontend/src/features/wizard/steps/SharedTrainingBlockP
   bloc qui vit à `NULL` — la grille de gymnase qu'il scope, le budget Σ, l'unicité de son ensemble
   d'équipes — exactement comme les blocs de saison existants.
 - **Copie socle → période** : un plan de **FERMETURE** (`CLOSURE`) hérite, À SA NAISSANCE, de tous
-  les blocs du socle (`SchedulePlanProvisioner::copySocleSharedBlocks`,
-  `backend/src/Service/SchedulePlanProvisioner.php:1031-1035`). Un plan de **VACANCES** (`HOLIDAY`)
+  les blocs du socle (`App\Plans\PlanBirth::copy`, selon `SchedulePlanType::copiesSharedBlocksAtBirth`),
+  sans le nom du groupe : le plan sœur, lui, copie le nom (`PlanBirth::copyAll`). Un plan de **VACANCES** (`HOLIDAY`)
   ne copie **jamais** rien — le gestionnaire mutualise une vacance à la main si besoin.
 - **Multi-appartenance** : une équipe peut être membre de **plusieurs** blocs à la fois (pas
   d'unicité un-bloc-par-équipe) — la garde qui borne le cumul n'est PAS un refus « déjà dans un
