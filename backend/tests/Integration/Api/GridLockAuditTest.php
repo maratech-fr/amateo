@@ -290,6 +290,39 @@ final class GridLockAuditTest extends WebTestCase
     }
 
     /**
+     * Promesse 4, réglage de gymnase de période (lot 4, PR 3b) : retirer le réglage (DELETE, la ligne reprend le
+     * défaut au lieu de disparaître) reste tracé comme avant le lot — UNE ligne `entity.deleted`, type
+     * 'VenuePeriodOverride', l'id du réglage, l'acteur et le club, sans doublon `grid.changed` et sans donnée
+     * personnelle.
+     */
+    public function testRemovingAVenuePeriodSettingStaysTrackedByEntityDeleted(): void
+    {
+        $venue = $this->createVenue();
+        $planId = $this->createPeriodPlan($this->club->getId(), $this->season->getId());
+        $this->client->request('POST', '/api/venue_period_overrides', [], [], $this->headers(), json_encode([
+            'schedulePlanId' => $planId,
+            'venueId' => $venue->getId(),
+            'mode' => 'DISABLED',
+        ], \JSON_THROW_ON_ERROR));
+        self::assertResponseStatusCodeSame(201);
+        $settingId = $this->decode()['id'];
+
+        $this->client->request('DELETE', '/api/venue_period_overrides/' . $settingId, [], [], $this->headers());
+        self::assertResponseStatusCodeSame(204);
+
+        $deleted = $this->auditRowsFor('entity.deleted', $settingId);
+        self::assertCount(1, $deleted, 'retirer le réglage laisse UNE trace entity.deleted');
+        self::assertSame('VenuePeriodOverride', $deleted[0]['entity_type']);
+        self::assertSame($this->manager->getId(), $deleted[0]['actor_user_id'], 'acteur tracé');
+        self::assertSame($this->club->getId(), $deleted[0]['club_id'], 'club tracé');
+        $json = (string) $deleted[0]['details'];
+        foreach ([$this->manager->getFirstName(), $this->manager->getLastName(), explode('@', $this->manager->getEmail())[0]] as $personal) {
+            self::assertStringNotContainsString($personal, $json, 'aucune donnée personnelle dans details');
+        }
+        self::assertCount(1, $this->auditRowsFor('grid.changed', $settingId), 'une seule trace grid.changed — celle de la pose (le DELETE n\'en ajoute pas)');
+    }
+
+    /**
      * Promesse 5 (transversal) — aucun nom ni e-mail ne voyage dans `details` : ids/niveaux seuls.
      */
     public function testAuditDetailsNeverCarryNamesOrEmails(): void
