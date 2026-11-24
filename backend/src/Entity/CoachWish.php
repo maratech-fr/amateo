@@ -29,7 +29,7 @@ use Doctrine\ORM\Mapping as ORM;
  * `coachId` est NULLABLE : supprimer un coach DÉ-ATTRIBUE sa doléance (l'info d'équipe
  * reste utile au plan) plutôt que de la détruire.
  */
-#[Family(Level::SEASON)]
+#[Family(Level::SEASON, cold: [], copiedToNextSeason: false)]
 #[ORM\Entity]
 #[ORM\Table(name: 'coach_wish')]
 #[ORM\UniqueConstraint(name: 'uniq_coach_wish', columns: ['calendar_entry_id', 'team_id', 'week_start'])]

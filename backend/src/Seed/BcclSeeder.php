@@ -58,6 +58,7 @@ use App\Enum\TeamCoachRole;
 use App\Enum\TeamLevel;
 use App\Enum\TeamLinkType;
 use App\Plans\PlanComposition;
+use App\Plans\PlanStates;
 use App\Repository\ClubSubscriptionRepository;
 use App\Repository\SchoolHolidayPeriodRepository;
 use App\Service\Basketball\CategoryCatalog;
@@ -117,6 +118,7 @@ final class BcclSeeder
         private readonly ClubSubscriptionWriter $subscriptionWriter,
         private readonly ClubSubscriptionRepository $subscriptions,
         private readonly PlanComposition $planComposition,
+        private readonly PlanStates $planStates,
     ) {}
 
     public function run(EntityManagerInterface $manager, BcclSeedProfile $profile): Club
@@ -1899,6 +1901,8 @@ final class BcclSeeder
         $schedule->setSnapshotHash(ScheduleConstraintBuilder::structureHash($payload));
         $schedule->setStatus(ScheduleStatus::COMPLETED);
         $manager->flush();
+        // Lot 5 : toute version terminée porte la copie du froid de son plan, prise avec son entrée figée.
+        $this->planStates->store($schedule, $this->planStates->capture($seasonPlanId));
 
         // VALIDER = POINTER (primitive de l'app) : le plan SEASON nomme cette version sa choisie.
         $this->schedulePlanProvisioner->choose($schedule);
@@ -2372,6 +2376,8 @@ final class BcclSeeder
         // Miroir de ScheduleResultImporter : une version fraîchement transcrite n'est pas retouchée à la main.
         $schedule->setManuallyEditedSinceGeneration(false);
         $manager->flush();
+        // Lot 5 : toute version terminée porte la copie du froid de son plan, prise avec son entrée figée.
+        $this->planStates->store($schedule, $this->planStates->capture($planId));
 
         // VALIDER = POINTER : le plan de période nomme cette version sa choisie.
         $this->schedulePlanProvisioner->choose($schedule);

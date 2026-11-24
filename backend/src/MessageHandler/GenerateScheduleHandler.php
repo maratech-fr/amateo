@@ -11,6 +11,7 @@ use App\Enum\ScheduleStatus;
 use App\Exception\EngineRequestNotComposable;
 use App\Exception\EngineRequestRejectedException;
 use App\Message\GenerateScheduleMessage;
+use App\Plans\PlanStates;
 use App\Service\ClubGenerationLock;
 use App\Service\DevScheduleReportWriter;
 use App\Service\EngineClient;
@@ -80,6 +81,7 @@ final class GenerateScheduleHandler
         private StructureSnapshotter $structureSnapshotter,
         private SchedulePlanProvisioner $schedulePlanProvisioner,
         private OutputCreditLedger $creditLedger,
+        private PlanStates $planStates,
         private ?LoggerInterface $logger = null,
         private ?DevScheduleReportWriter $devReportWriter = null,
         private ?SolverMetricsRecorder $metricsRecorder = null,
@@ -293,6 +295,10 @@ final class GenerateScheduleHandler
             }
         }
 
+        // Lot 5 — la copie du froid du plan, lue MAINTENANT (cohérente avec l'entrée figée : le plan peut changer
+        // pendant le solve), socle comme période. Son écriture, plus bas, est BLOQUANTE.
+        $planState = $this->planStates->capture($schedule->getSchedulePlanId());
+
         $lotDir = null;
         if ($this->devReportWriter instanceof DevScheduleReportWriter) {
             try {
@@ -360,7 +366,9 @@ final class GenerateScheduleHandler
         // registre : le FAILED du filet doit encore pouvoir s'écrire). Une erreur du registre annule
         // tout — la version finit « échouée », sans crédit. Un flush ORM en échec ferme l'EM : la
         // version reste « en cours » jusqu'au rattrapage, comme avant. Photo de structure et Mercure
-        // restent APRÈS le commit, hors transaction.
+        // restent APRÈS le commit, hors transaction. Lot 5 : la copie du froid s'écrit DANS la
+        // transaction — sans elle, une version n'est jamais « terminée » : l'échec annule tout, sans
+        // crédit, et le filet pose « échouée » au message générique.
         $connection = $this->entityManager->getConnection();
         $connection->beginTransaction();
 
@@ -369,6 +377,7 @@ final class GenerateScheduleHandler
             $this->metricsRecorder?->record($schedule, $result, $payloadBytes);
             $this->entityManager->flush();
             if (ScheduleStatus::COMPLETED === $schedule->getStatus()) {
+                $this->planStates->store($schedule, $planState);
                 $this->creditLedger->settle($message->getClubId(), $schedule->getSeasonId());
             }
             $connection->commit();

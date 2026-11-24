@@ -31,7 +31,7 @@ use Doctrine\ORM\Mapping as ORM;
  * d'un run déjà terminé, et l'événement Mercure `/clubs/{clubId}/placement` le réveille
  * à la bascule terminale.
  */
-#[Family(Level::SEASON)]
+#[Family(Level::SEASON, cold: [], copiedToNextSeason: false)]
 #[ORM\Entity(repositoryClass: MatchPlacementRunRepository::class)]
 #[ORM\Table(name: 'match_placement_run')]
 #[ORM\Index(name: 'idx_match_placement_run_club_season', columns: ['club_id', 'season_id'])]

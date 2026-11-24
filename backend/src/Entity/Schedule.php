@@ -13,7 +13,7 @@ use App\Structure\RefersTo;
 use DateTimeImmutable;
 use Doctrine\ORM\Mapping as ORM;
 
-#[Family(Level::PLAN, copiedAtPlanBirth: false)]
+#[Family(Level::PLAN, copiedAtPlanBirth: false, cold: [], copiedToNextSeason: false)]
 #[ORM\Entity(repositoryClass: ScheduleRepository::class)]
 #[ORM\Table(name: 'schedule')]
 #[ORM\Index(name: 'idx_schedule_club_season', columns: ['club_id', 'season_id'])]

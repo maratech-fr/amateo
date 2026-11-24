@@ -28,7 +28,7 @@ use Doctrine\ORM\Mapping as ORM;
  * Écrite seulement quand au moins un mail a été enfilé, par upsert SQL
  * ({@see ConflictMailingRepository::upsert}) ; purgée avec la saison ({@see SeasonDataPurger}).
  */
-#[Family(Level::SEASON)]
+#[Family(Level::SEASON, cold: [], copiedToNextSeason: false)]
 #[ORM\Entity(repositoryClass: ConflictMailingRepository::class)]
 #[ORM\Table(name: 'conflict_mailing')]
 #[ORM\UniqueConstraint(name: 'uniq_conflict_mailing_club_season', columns: ['club_id', 'season_id'])]

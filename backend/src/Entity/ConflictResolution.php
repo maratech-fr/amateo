@@ -31,7 +31,7 @@ use Doctrine\ORM\Mapping as ORM;
  * Un couple (club, saison, empreinte) = une ligne (unique). Patron structurel des
  * entités tenant season-scoped du module (uuid, version, timestamps, RLS).
  */
-#[Family(Level::SEASON)]
+#[Family(Level::SEASON, cold: [], copiedToNextSeason: false)]
 #[ORM\Entity(repositoryClass: ConflictResolutionRepository::class)]
 #[ORM\Table(name: 'conflict_resolution')]
 #[ORM\UniqueConstraint(name: 'uniq_conflict_resolution_fingerprint', columns: ['club_id', 'season_id', 'fingerprint'])]

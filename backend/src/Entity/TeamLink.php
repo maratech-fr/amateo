@@ -27,7 +27,7 @@ use Doctrine\ORM\Mapping as ORM;
  * Cross-module by design (neutral name): matches consume it first, the
  * training solver later (vision). Copied on season transition.
  */
-#[Family(Level::SEASON)]
+#[Family(Level::SEASON, cold: Family::ALL, ofSocle: true, copiedToNextSeason: true)]
 #[ORM\Entity(repositoryClass: TeamLinkRepository::class)]
 #[ORM\Table(name: 'team_link')]
 #[ORM\UniqueConstraint(name: 'uniq_team_link_couple', columns: ['club_id', 'season_id', 'team_a_id', 'team_b_id'])]

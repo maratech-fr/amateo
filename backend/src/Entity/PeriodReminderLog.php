@@ -19,7 +19,7 @@ use Doctrine\ORM\Mapping as ORM;
  * school_holiday_period reference table). Lets a missed daily run catch up
  * (window match) without ever re-sending the same milestone.
  */
-#[Family(Level::SEASON)]
+#[Family(Level::SEASON, cold: [], copiedToNextSeason: false)]
 #[ORM\Entity(repositoryClass: PeriodReminderLogRepository::class)]
 #[ORM\Table(name: 'period_reminder_log')]
 #[ORM\UniqueConstraint(name: 'uniq_period_reminder', columns: ['calendar_entry_id', 'threshold'])]

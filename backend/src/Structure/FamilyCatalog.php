@@ -9,6 +9,7 @@ use App\Entity\Schedule;
 use App\Entity\SchedulePlan;
 use App\Entity\Season;
 use App\Entity\TransitionReminderLog;
+use App\Enum\SchedulePlanType;
 use App\Plans\PlanBirth;
 use App\Service\SeasonDataPurger;
 use Doctrine\ORM\EntityManagerInterface;
@@ -187,6 +188,45 @@ final class FamilyCatalog
         }
 
         return $carried;
+    }
+
+    /**
+     * Ce que la copie d'une version d'un plan de cette nature emporte (lot 5) : les familles froides de niveau
+     * plan, et pour le plan de saison en plus les familles froides du socle (`ofSocle`). Une famille libre
+     * (`cold: []`) n'y est jamais.
+     *
+     * @return list<class-string>
+     */
+    public function coldOf(SchedulePlanType $type): array
+    {
+        $cold = [];
+        foreach ($this->families() as $class => $family) {
+            if (null === $family->cold || [] === $family->cold) {
+                continue;
+            }
+            if (Level::PLAN === $family->level || (SchedulePlanType::SEASON === $type && Level::SEASON === $family->level && $family->ofSocle)) {
+                $cold[] = $class;
+            }
+        }
+
+        return $cold;
+    }
+
+    /**
+     * Ce que « Préparer la saison suivante » reprend (lot 5) : les familles déclarées `copiedToNextSeason: true`.
+     *
+     * @return list<class-string>
+     */
+    public function copiedToNextSeason(): array
+    {
+        $copied = [];
+        foreach ($this->families() as $class => $family) {
+            if (true === $family->copiedToNextSeason) {
+                $copied[] = $class;
+            }
+        }
+
+        return $copied;
     }
 
     /**

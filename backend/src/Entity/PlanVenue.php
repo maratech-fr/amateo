@@ -29,7 +29,7 @@ use Doctrine\ORM\Mapping as ORM;
  * {@see PlanComposition::ensureLines}. Pas de clé vers le gymnase : « Charger » efface puis réinsère les gymnases ; la
  * suppression d'un gymnase passe par la cascade (`CascadePlan`).
  */
-#[Family(Level::PLAN, copiedAtPlanBirth: false)]
+#[Family(Level::PLAN, copiedAtPlanBirth: false, cold: Family::ALL, copiedToNextSeason: false)]
 #[ORM\Entity]
 #[ORM\Table(name: 'plan_venue')]
 #[ORM\UniqueConstraint(name: 'uniq_plan_venue', columns: ['schedule_plan_id', 'venue_id'])]

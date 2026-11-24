@@ -22,6 +22,7 @@ use App\Enum\SeasonStatus;
 use App\Message\GenerateScheduleMessage;
 use App\MessageHandler\GenerateScheduleHandler;
 use App\Plans\PlanComposition;
+use App\Plans\PlanStates;
 use App\Service\ClubGenerationLock;
 use App\Service\DiagnosticMessageBuilder;
 use App\Service\EngineClient;
@@ -318,6 +319,7 @@ final class SocleReferencePayloadParityTest extends KernelTestCase
             $container->get(StructureSnapshotter::class),
             $container->get(SchedulePlanProvisioner::class),
             $container->get(OutputCreditLedger::class),
+            $container->get(PlanStates::class),
         );
 
         $handler(new GenerateScheduleMessage(

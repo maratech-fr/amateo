@@ -12,6 +12,7 @@ use App\Enum\LockLevel;
 use App\Enum\LockOrigin;
 use App\Enum\SchedulePlanType;
 use App\Enum\ScheduleStatus;
+use App\Plans\PlanStates;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
 use Symfony\Component\HttpKernel\Exception\UnprocessableEntityHttpException;
@@ -80,6 +81,7 @@ final class PeriodPlanTranscriber
         private readonly ScheduleConstraintBuilder $constraintBuilder,
         private readonly SchedulePlanProvisioner $schedulePlanProvisioner,
         private readonly PeriodConstraintSelector $periodConstraintSelector,
+        private readonly PlanStates $planStates,
     ) {}
 
     /**
@@ -239,6 +241,8 @@ final class PeriodPlanTranscriber
         // Miroir de ScheduleResultImporter : une version fraîchement transcrite n'est pas périmée.
         $schedule->setManuallyEditedSinceGeneration(false);
         $this->entityManager->flush();
+        // Lot 5 : la version née porte la copie du froid de son plan, dans la même transaction.
+        $this->planStates->store($schedule, $this->planStates->capture($schedulePlanId));
 
         return new PeriodTranscriptionResult($schedule->getId(), $schedule->getVersionNumber(), $copied, $toReplace);
     }

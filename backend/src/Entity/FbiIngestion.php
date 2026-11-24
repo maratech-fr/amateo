@@ -30,7 +30,7 @@ use Doctrine\ORM\Mapping as ORM;
  * La trace des écarts, elle, vit désormais SUR la rencontre ({@see Fixture} :
  * `pendingDeviations`), plus sur le dépôt (PR-3a D7).
  */
-#[Family(Level::SEASON)]
+#[Family(Level::SEASON, cold: [], copiedToNextSeason: false)]
 #[ORM\Entity(repositoryClass: FbiIngestionRepository::class)]
 #[ORM\Table(name: 'fbi_ingestion')]
 #[ORM\Index(name: 'idx_fbi_ingestion_club_season', columns: ['club_id', 'season_id'])]

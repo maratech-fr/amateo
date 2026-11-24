@@ -27,6 +27,7 @@ use App\Enum\ConstraintScope;
 use App\Enum\LockLevel;
 use App\Enum\LockOrigin;
 use App\Enum\SchedulePlanType;
+use App\Enum\TeamCoachRole;
 use App\Enum\VenueTravelRuleIntensity;
 use App\Plans\PlanComposition;
 use App\Plans\SoclePlan;
@@ -64,6 +65,19 @@ final class ScheduleConstraintBuilder
      * the maximum a manager can be made to wait, not a fixed solve time.
      */
     private const DEFAULT_SOLVER_TIMEOUT_SECONDS = 650;
+
+    /**
+     * Les clés LIBRES de la demande, par liste (lot 5) : hors de l'empreinte ({@see self::structureHash}). Les
+     * lignes d'adjoint et les temps de trajet, libres aussi, s'y retirent à part.
+     *
+     * @var array<string, list<string>>
+     */
+    private const array FREE_KEYS = [
+        'venues' => ['name'],
+        'teams' => ['name'],
+        'coaches' => ['firstName', 'lastName', 'isEmployee', 'isVehicled', 'maxDaysOverride'],
+        'constraints' => ['name'],
+    ];
 
     /** @var array<string, array<VenueTrainingSlot>> */
     private array $currentAvailabilitiesByVenue = [];
@@ -181,13 +195,39 @@ final class ScheduleConstraintBuilder
      * des ids neufs), ni l'ordre des lignes, et le même placement répété compte une fois. Les contraintes
      * sont triées par id (puis par contenu) : l'ordre lu en base n'est pas de la structure. Changer cette
      * recette impose de réaligner les versions existantes : `app:schedule:prune-unread-snapshot-fields`
-     * (allègement du contrat, tri des contraintes), `app:schedule:dedupe-snapshot-pins` (épingles).
+     * (allègement du contrat, tri des contraintes, clés libres), `app:schedule:dedupe-snapshot-pins` (épingles).
+     *
+     * Elle ignore enfin les clés LIBRES (lot 5, {@see self::FREE_KEYS}) : un nom, une case salarié, le véhiculé,
+     * les jours maximum d'un coach, un adjoint (ligne `TEAM_COACH` de rôle `ASSISTANT`), les temps de trajet — et
+     * avec eux le bloc `implicitRules.travelTime`, émis seulement quand une matrice existe. Les changer ne périme
+     * rien ; la demande, elle, les porte toujours.
      *
      * @param array<mixed> $payload
      */
     public static function structureHash(array $payload): string
     {
-        unset($payload['version']);
+        unset($payload['version'], $payload['venueTravelTimes']);
+        // La règle de trajet ne part qu'avec une matrice saisie (libre) : sa présence suit le libre, elle sort aussi.
+        if (\is_array($payload['implicitRules'] ?? null)) {
+            unset($payload['implicitRules']['travelTime']);
+        }
+        foreach (self::FREE_KEYS as $list => $keys) {
+            if (!\is_array($payload[$list] ?? null)) {
+                continue;
+            }
+            foreach ($payload[$list] as $index => $row) {
+                if (\is_array($row)) {
+                    $payload[$list][$index] = array_diff_key($row, array_flip($keys));
+                }
+            }
+        }
+        if (\is_array($payload['constraints'] ?? null)) {
+            $payload['constraints'] = array_values(array_filter(
+                $payload['constraints'],
+                static fn (mixed $line): bool => !(\is_array($line) && 'TEAM_COACH' === ($line['type'] ?? null)
+                    && \is_array($line['metadata'] ?? null) && TeamCoachRole::ASSISTANT->value === ($line['metadata']['role'] ?? null)),
+            ));
+        }
         if (\is_array($payload['slotTemplates'] ?? null)) {
             $pins = array_values(array_filter(
                 $payload['slotTemplates'],

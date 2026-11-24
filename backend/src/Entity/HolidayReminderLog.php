@@ -19,7 +19,7 @@ use Doctrine\ORM\Mapping as ORM;
  * transition_reminder_log). Written by {@see HolidayReminderLogRepository::markSent} with
  * INSERT … ON CONFLICT DO NOTHING, never persist+flush; purged with the season.
  */
-#[Family(Level::SEASON)]
+#[Family(Level::SEASON, cold: [], copiedToNextSeason: false)]
 #[ORM\Entity(repositoryClass: HolidayReminderLogRepository::class)]
 #[ORM\Table(name: 'holiday_reminder_log')]
 #[ORM\UniqueConstraint(name: 'uniq_holiday_reminder', columns: ['season_id', 'school_holiday_id', 'threshold'])]

@@ -29,7 +29,7 @@ use Doctrine\ORM\Mapping as ORM;
  * @phpstan-type PendingDeviation array{field: 'date'|'kickoff'|'venue', appValue: string|null, sourceValue: string|null, channel: 'FBI_XLSX'|'FFBB_API', seenAt: string, autoApplied: bool, appliedAt?: string|null}
  * @phpstan-type FbiEcho array{field: string, value: string, at: string}
  */
-#[Family(Level::SEASON)]
+#[Family(Level::SEASON, cold: [], copiedToNextSeason: false)]
 #[ORM\Entity(repositoryClass: FixtureRepository::class)]
 #[ORM\Table(name: 'fixture')]
 #[ORM\Index(name: 'idx_fixture_club_season', columns: ['club_id', 'season_id'])]

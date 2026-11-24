@@ -9,6 +9,7 @@ use App\Entity\Schedule;
 use App\Entity\ScheduleSlotTemplate;
 use App\Enum\ScheduleStatus;
 use App\Plans\PlanBirth;
+use App\Plans\PlanStates;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
 use Symfony\Component\HttpKernel\Exception\UnprocessableEntityHttpException;
@@ -47,6 +48,7 @@ final class PeriodPlanSiblingCopier
         private readonly OverlayManager $overlayManager,
         private readonly ScheduleConstraintBuilder $constraintBuilder,
         private readonly PlanBirth $planBirth,
+        private readonly PlanStates $planStates,
     ) {}
 
     /**
@@ -124,6 +126,8 @@ final class PeriodPlanSiblingCopier
             }
             $version->setManuallyEditedSinceGeneration(false);
             $this->entityManager->flush();
+            // Lot 5 : la version née porte la copie du froid de son plan (celui de la cible), dans la transaction.
+            $this->planStates->store($version, $this->planStates->capture($targetPlanId));
 
             // Validée d'office (pointée) + source des verrous = la V1 née (patron auto-★).
             $this->schedulePlanProvisioner->choose($version);

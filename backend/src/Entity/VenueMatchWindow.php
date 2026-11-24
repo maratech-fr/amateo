@@ -26,7 +26,7 @@ use Doctrine\ORM\Mapping as ORM;
  * fact of one day, never copied, and it does not make a club « adopt » the
  * access windows ({@see MatchConflictDetector::hasWeeklyAccess}).
  */
-#[Family(Level::SEASON)]
+#[Family(Level::SEASON, cold: [], copiedToNextSeason: true)]
 #[ORM\Entity(repositoryClass: VenueMatchWindowRepository::class)]
 #[ORM\Table(name: 'venue_match_window')]
 #[ORM\Index(name: 'idx_venue_match_window_club_season', columns: ['club_id', 'season_id'])]

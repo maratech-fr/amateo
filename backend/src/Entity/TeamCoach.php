@@ -13,7 +13,7 @@ use App\Structure\RefersTo;
 use DateTimeImmutable;
 use Doctrine\ORM\Mapping as ORM;
 
-#[Family(Level::SEASON)]
+#[Family(Level::SEASON, cold: ['teamId', 'coachId', 'role'], coldRows: ['role' => 'MAIN'], ofSocle: true, copiedToNextSeason: true)]
 #[ORM\Entity(repositoryClass: TeamCoachRepository::class)]
 #[ORM\Table(name: 'team_coach')]
 #[ORM\Index(name: 'idx_team_coach_club_season', columns: ['club_id', 'season_id'])]

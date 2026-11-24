@@ -31,7 +31,7 @@ use Doctrine\ORM\Mapping as ORM;
  * nettoyée de ce tableau (il n'a aucune intégrité référentielle, aucun effet solveur) — elle
  * est simplement ignorée à l'affichage, qui résout les ids en noms depuis les équipes vivantes.
  */
-#[Family(Level::SEASON)]
+#[Family(Level::SEASON, cold: [], copiedToNextSeason: false)]
 #[ORM\Entity]
 #[ORM\Table(name: 'coach_wish_mutualization')]
 #[ORM\UniqueConstraint(name: 'uniq_coach_wish_mutualization', columns: ['calendar_entry_id', 'team_id'])]

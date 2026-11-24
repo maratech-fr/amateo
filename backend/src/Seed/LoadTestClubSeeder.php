@@ -44,6 +44,7 @@ use App\Enum\TeamCoachRole;
 use App\Enum\TeamLevel;
 use App\Enum\TeamLinkType;
 use App\Plans\PlanComposition;
+use App\Plans\PlanStates;
 use App\Service\Basketball\CategoryCatalog;
 use App\Service\ClubLeagueWindowSeeder;
 use App\Service\ClubSubscriptionWriter;
@@ -118,6 +119,7 @@ final class LoadTestClubSeeder
         private readonly ClubLeagueWindowSeeder $clubLeagueWindowSeeder,
         private readonly ClubSubscriptionWriter $subscriptionWriter,
         private readonly PlanComposition $planComposition,
+        private readonly PlanStates $planStates,
     ) {}
 
     /**
@@ -633,6 +635,8 @@ final class LoadTestClubSeeder
         $schedule->setSnapshotHash(ScheduleConstraintBuilder::structureHash($snapshot));
         $schedule->setStatus(ScheduleStatus::COMPLETED);
         $manager->flush();
+        // Lot 5 : toute version terminée porte la copie du froid de son plan.
+        $this->planStates->store($schedule, $this->planStates->capture($seasonPlanId));
 
         $this->schedulePlanProvisioner->choose($schedule);
 

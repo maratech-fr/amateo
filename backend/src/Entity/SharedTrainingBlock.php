@@ -37,7 +37,7 @@ use Doctrine\ORM\Mapping as ORM;
  * Détail : docs/archive/plannings-bccl-2026-08-31.md §4 (cadrage d'origine `mutualisation-par-creneau.md`
  * supprimé à la clôture du lot, historique git avant 05d1f7bb).
  */
-#[Family(Level::PLAN, copiedAtPlanBirth: true)]
+#[Family(Level::PLAN, copiedAtPlanBirth: true, cold: ['commonSessions'], copiedToNextSeason: false)]
 #[ORM\Entity]
 #[ORM\Table(name: 'shared_training_block')]
 #[ORM\Index(name: 'idx_shared_training_block_club_season', columns: ['club_id', 'season_id'])]
