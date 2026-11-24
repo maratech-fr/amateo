@@ -1,16 +1,16 @@
 # Lot 7 · Les matchs : plan d'exécution
 
 **Statut : version finale (v4 sur 4, après deux passes de `smith`). Plan validé par le fondateur le 2026-11-23 avec ses
-décisions Q1 à Q10 (§13). PR 1 (le filet) livrée sur `lot/conception`, non déployée ; le lot 7 s'exécute après le lot 4, désormais livré.** Voie **Full**. Branche cible : `lot/conception` (seul « Lot Gate » y joue). Avant chaque merge : `/validation-runner`, `make -C backend tests-complete`, features et specs de la zone sur la stack d'épreuve. Exécutant : `neo`, après les rouges de `tank`. Pas d'`oracle` (`lot-conception-decoupage.md` §5.3). La fiche du lot est dans [`lot-conception-decoupage.md`](lot-conception-decoupage.md) § Lot 7 ; ce fichier dit **comment**.
+décisions Q1 à Q10 (§13). PR 1 (le filet) livrée sur `lot/conception`, non déployée ; le lot 7 s'exécute après le lot 4, désormais livré, et après les PR 1 à 3 du lot 5. Amendé le 2026-11-24 avec le plan du lot 5 : la Q10 est sans objet (§13), les PR 3b et 4a ne touchent plus `StructureRestorer` ni `RestoreFeasibility`, l'E3 pointe le lot 6.** Voie **Full**. Branche cible : `lot/conception` (seul « Lot Gate » y joue). Avant chaque merge : `/validation-runner`, `make -C backend tests-complete`, features et specs de la zone sur la stack d'épreuve. Exécutant : `neo`, après les rouges de `tank`. Pas d'`oracle` (`lot-conception-decoupage.md` §5.3). La fiche du lot est dans [`lot-conception-decoupage.md`](lot-conception-decoupage.md) § Lot 7 ; ce fichier dit **comment**.
 
-**Les quatre dernières décisions (§13)** : Q7, les coupes ne sont plus proposées au système par « Placer » ; Q8, une compétition par équipe pour une division neuve ; Q9, un match connu de la fédération ne se range pas en amical à la main ; Q10, « Charger » refuse tant qu'une équipe disparue porte un match, amical compris.
+**Les quatre dernières décisions (§13)** : Q7, les coupes ne sont plus proposées au système par « Placer » ; Q8, une compétition par équipe pour une division neuve ; Q9, un match connu de la fédération ne se range pas en amical à la main ; Q10, sans objet depuis le plan du lot 5 : « Charger » ne supprime plus d'équipe, il n'a donc plus de match à protéger.
 
 Les `fichier:ligne` marqués « relu 11-23 » ont été relus le 2026-11-23 sur `lot/conception` (tête `47f578ea7`). Les autres viennent de la v2 et **sont à relire à l'ouverture de chaque PR**. `grep` fait foi.
 
 ## 0. Ce qui est livré, et l'ordre d'exécution
 
 - Lots 0, 1, 2, 3, 4 et 8 livrés sur `lot/conception`, non déployés. Lot 7 : PR 1 livrée (§4, « Écarts au plan, tels que livrés »), les huit autres à faire.
-- **Ordre décidé (Q4) : après le lot 4.** Lot 4 (PR 1 à 5) → lot 7 (neuf PR). Le code peut s'écrire en worktree entre-temps.
+- **Ordre décidé (Q4, amendé le 2026-11-24) : après le lot 4, et après les PR 1 à 3 du lot 5** (qui supprime la photo de structure et le restaurateur, et fait de « Charger » un geste qui ne détruit rien : [`lot-conception-5-le-socle-froid.md`](lot-conception-5-le-socle-froid.md) §4). Lot 4 (PR 1 à 5) → lot 5 (PR 1 à 3) → lot 7 (neuf PR, la PR 1 est livrée) → lot 5 (PR 4 à 7). Le code peut s'écrire en worktree entre-temps.
 - Une seule PR ouverte à la fois sur `lot/conception` ; déploiement unique à la fin.
 
 | PR du lot 7 | Fichiers partagés avec | Contrainte |
@@ -18,8 +18,8 @@ Les `fichier:ligne` marqués « relu 11-23 » ont été relus le 2026-11-23 sur 
 | 1 (filet) | Lot 4 PR 1 : `tests/Integration/EngineRequestReferenceTest.php`, `tests/EngineRequestDecorTrait.php` ; lot 0 : `Command/EngineRequestsRecordCommand.php` | Jamais préparée sur la PR 1 du lot 4 sans rebase |
 | 2 (types de conflit) | Aucun | Libre |
 | 3a (porte) | `Seed/LoadTestClubSeeder.php` | Après la PR 5 du lot 3 |
-| 3b (structure) | `Deletion/CascadePlan.php`, `Service/StructureRestorer.php`, seeders, `tests/Security/{RlsIsolationTest,ReadOnlyRoleTest,PurgeCompletenessTest}.php`, `docs/security/rls.md` | Après la PR 5 du lot 3 |
-| 4a (nature, amical, périmètre engagé) | `Export/MatchesExportDataProvider.php`, `Service/SeasonTransitionService.php`, `Service/ClubProvisioner.php`, `Service/StructureRestorer.php`, `Deletion/CascadePlan.php`, seeders | Après la PR 4 du lot 3 et la PR 3 du lot 8 |
+| 3b (structure) | `Deletion/CascadePlan.php`, seeders, `tests/Security/{RlsIsolationTest,ReadOnlyRoleTest,PurgeCompletenessTest}.php`, `docs/security/rls.md` | Après la PR 5 du lot 3 |
+| 4a (nature, amical, périmètre engagé) | `Export/MatchesExportDataProvider.php`, `Service/SeasonTransitionService.php`, `Service/ClubProvisioner.php`, `Deletion/CascadePlan.php`, seeders | Après la PR 4 du lot 3 et la PR 3 du lot 8 |
 | 4b (coupes) | Aucun fichier des autres lots | Après 4a |
 | 5 (bandeau de ligue) | Aucun | Libre |
 | 6a, 6b (suivi fédéral) | Seeders ; 6b : les trois tests de sécurité et `rls.md` | Après la PR 5 du lot 3 |
@@ -38,7 +38,7 @@ Les `fichier:ligne` marqués « relu 11-23 » ont été relus le 2026-11-23 sur 
 8. La liste des types de conflit existe une fois, côté serveur.
 9. La demande de placement est identique, sauf deux exceptions à la règle 4 : les amicaux (décidée, Q6) et les coupes (décidée, Q7).
 
-**Quatre points tranchés le 2026-11-23 (§13)** : « Placer » ne propose plus les coupes au système (Q7) ; une division neuve jouée par deux équipes fait une compétition par équipe (Q8) ; un match connu de la fédération ne se range pas en amical à la main (Q9) ; « Charger » refuse tant qu'une équipe disparue porte un match, amical compris (Q10).
+**Quatre points tranchés le 2026-11-23 (§13)** : « Placer » ne propose plus les coupes au système (Q7) ; une division neuve jouée par deux équipes fait une compétition par équipe (Q8) ; un match connu de la fédération ne se range pas en amical à la main (Q9) ; la Q10 (« Charger » refuse tant qu'une équipe disparue porte un match) est sans objet depuis le plan du lot 5.
 
 ## 2. Constats vérifiés dans le code
 
@@ -66,8 +66,8 @@ Chemins relatifs à `backend/src/` sauf mention.
 | C18 | Le statut du match mélange placement et suivi fédéral ; dix sites l'écrivent | Relevé de la v1, non relu le 11-23 : à relire par `neo` avant la PR 6a |
 | C19 | Le suivi et l'identité fédérale vivent sur la ligne du match | `Entity/Fixture.php:43`, `:48`, `:106-128`, `:179-180`, `:204-205`, `:217-218` |
 | C20 | Un amical posé à la main et placé figure dans « à saisir dans FBI », puis passe « validé » une fois passé | `frontend/src/features/matches/FbiEntryList.tsx:106` ; `FriendlyAutoValidator.php:67-84` (relu 11-23) |
-| C21 | Une équipe est engagée dès qu'elle porte un match, quel qu'il soit. Six lecteurs : refus de suppression, refus de changement de niveau, champ `isEngaged` (deux sites), décompte de suppression, faisabilité de « Charger » | `Service/TeamEngagementGuard.php:48-54`, `:78-81` ; `State/Processor/TeamStateProcessor.php:63`, `:160`, `:229` ; `State/Provider/TeamStateProvider.php:56` ; `Deletion/DeletionImpactCounter.php:46` ; `Service/RestoreFeasibility.php:90` (relus 11-23) |
-| C22 | « Charger » efface puis réinsère les équipes, balaie les compétitions dont l'équipe a disparu, **suppose qu'une équipe balayée n'a aucun match**, et tient pour principe que l'exploration ne détruit pas. Supprimer une équipe emporte matchs puis compétitions | `Service/StructureRestorer.php:96`, `:283-300` ; `Deletion/CascadePlan.php:69-75` (relus 11-23) |
+| C21 | Une équipe est engagée dès qu'elle porte un match, quel qu'il soit. Six lecteurs : refus de suppression, refus de changement de niveau, champ `isEngaged` (deux sites), décompte de suppression, faisabilité de « Charger » (lecteur supprimé avec `RestoreFeasibility` par la PR 3 du lot 5 ; le refus de « Charger » sur un changement de niveau d'une équipe engagée y est réécrit, à relire à la PR 4a) | `Service/TeamEngagementGuard.php:48-54`, `:78-81` ; `State/Processor/TeamStateProcessor.php:63`, `:160`, `:229` ; `State/Provider/TeamStateProvider.php:56` ; `Deletion/DeletionImpactCounter.php:46` ; `Service/RestoreFeasibility.php:90` (relus 11-23 ; supprimé par la PR 3 du lot 5) |
+| C22 | Jusqu'à la PR 3 du lot 5, « Charger » efface puis réinsère les équipes, balaie les compétitions dont l'équipe a disparu, **suppose qu'une équipe balayée n'a aucun match**, et tient pour principe que l'exploration ne détruit pas. Supprimer une équipe emporte matchs puis compétitions | `Service/StructureRestorer.php:96`, `:283-300` ; `Deletion/CascadePlan.php:69-75` (relus 11-23). La PR 3 du lot 5, qui précède ce lot, supprime `StructureRestorer` : « Charger » ne crée ni ne supprime plus d'équipe, aucun match n'est menacé |
 | C23 | Les purges suivent les déclarations ; une colonne peut porter plusieurs `#[RefersTo]` | `Structure/FamilyCatalog.php:66-80`, `:244-250` |
 | C24 | Précédent du lot 3 : clé composée avec `club_id`, conversion sans fusion | `migrations/Version20261122140000.php:14`, `:20-23`, `:61` |
 | C25 | Une saison naît à deux endroits, plus deux seeders | `Service/ClubProvisioner.php:96` ; `Service/SeasonTransitionService.php:187` ; `Seed/BcclSeeder.php:329` ; `Seed/LoadTestClubSeeder.php:284` |
@@ -132,7 +132,7 @@ Chemins relatifs à `backend/src/` sauf mention.
 |---|---|---|---|---|
 | E1 | Une compétition porte ses jours, heures, durée, échauffement | Rien n'est stocké ni saisi (Q1, c). Seule règle par nature livrée : la borne des coupes, en constante | Le moteur lit ces règles par équipe (C13). 50 équipes sur 60 jouent au moins deux compétitions non amicales (6 au plus) | Ligne de roadmap après le lot conception |
 | E2 | Niveau et phase en champs | Non créés | Aucun lecteur | Avec E1 |
-| E3 | Vraies clés étrangères partout | Aucune vers l'équipe | « Charger » efface et réinsère les équipes (C22) | Lot 5 |
+| E3 | Vraies clés étrangères partout | Aucune vers l'équipe | « Charger » efface et réinsère les équipes (C22) | Lot 6 (le lot 5 ne pose aucune clé vers l'équipe ni le gymnase) |
 | E4 | Suivi fédéral entièrement séparé | L'identité fédérale reste sur le match | Les deux index d'unicité portent l'équipe (C19) | Aucune |
 | E5 | Le mot « nature » | Le champ garde le nom `competitionType` | Renommer touche 37 fichiers de test et l'API | Aucune |
 | E6 | L'écran lit la liste des types | L'union TypeScript reste, tenue par un test de parité | TypeScript exige la liste à la compilation | Aucune |
@@ -209,7 +209,7 @@ Ordre : 1, 2, 3a, 3b, 4a, 4b, 5, 6a, 6b. **Raison de la scission 4a / 4b** : la 
 - **Re-dépôt** (fin de C34) : parmi les engagements des compétitions de ce nom, (1) un seul engagement et une seule étiquette dans le fichier : il est pris ; (2) sinon celui dont le libellé FBI est celui de la ligne ; (3) aucun : la division est rendue « à faire correspondre ».
 - **Le nom ne fait jamais entrer une équipe dans une compétition existante** : une division connue par son nom mais pas pour cette équipe donne une compétition neuve pour l'équipe, comme aujourd'hui.
 - Appariement : références sur la compétition, poule et journées sur l'engagement. La résorption des jumelles (C10) est inchangée. Canal API : inchangé dans ses trois étapes ; l'étape 2 compare par le nom normalisé et garde son refus.
-- Suppression d'une équipe et « Charger » : l'engagement part ; une compétition sans engagement ni match est supprimée.
+- Suppression d'une équipe (« Charger » ne supprime plus d'équipe depuis la PR 3 du lot 5) : l'engagement part ; une compétition sans engagement ni match est supprimée.
 - Purge : `Fixture::$competitionId` déclare aussi `#[RefersTo(Engagement::class, OnDelete::DELETE)]`.
 - Ordre d'écriture : compétition, engagement, match, dans l'ordre des `persist` (C36) ; suppressions en lot dans l'ordre inverse.
 
@@ -256,19 +256,19 @@ Ordre : 1, 2, 3a, 3b, 4a, 4b, 5, 6a, 6b. **Raison de la scission 4a / 4b** : la 
 - `CompetitionType` gagne `FRIENDLY`. Un classifieur, appelé par l'import par fichier, l'appariement et le canal API, **à la création d'une compétition seulement**.
 - **Une compétition existante ne devient jamais amicale, et une compétition amicale ne change jamais de nature** (C56). À l'appariement, la nature déduite du nom fédéral ne se repose plus que de championnat vers coupe ou brassage, comme aujourd'hui ; jamais vers ou depuis « amical ». À l'import, une division « Amical … » proposée sur une compétition non amicale voit la proposition ignorée : elle suit son propre libellé.
 - **Conversion (Q2)**, seule exception, faite une fois par la migration : les 5 « Amical … » deviennent amicales ; les 5 coupes rangées en championnat deviennent coupes. Aucune n'a de journées attendues ni d'alerte ouverte ; leurs règles changent à la PR 4b.
-- Chaque saison a sa compétition « Amicaux » : créée à l'inscription, à la préparation de la saison suivante, par les seeders, et à la demande si elle manque (C37). Elle n'est jamais supprimée par `pruneEmpty`, par la suppression d'une équipe ni par « Charger ». Elle accepte plusieurs engagements ; elle n'apparaît ni dans l'éditeur d'échéances ni dans le sélecteur de phase.
+- Chaque saison a sa compétition « Amicaux » : créée à l'inscription, à la préparation de la saison suivante, par les seeders, et à la demande si elle manque (C37). Elle n'est jamais supprimée par `pruneEmpty`, ni par la suppression d'une équipe. Elle accepte plusieurs engagements ; elle n'apparaît ni dans l'éditeur d'échéances ni dans le sélecteur de phase.
 - `fixture.competition_id` devient obligatoire. **À la création**, une compétition absente, nulle ou vide range le match dans « Amicaux » ; **en modification**, seule une chaîne vide explicite le fait, une compétition absente ou nulle laisse le match où il est (C55). L'engagement de l'équipe dans « Amicaux » est créé au passage, par écriture immédiate (C42).
 - Un amical de la fédération entre dans la compétition amicale de son libellé (« AMICAL PNM »), jamais dans « Amicaux ».
 - Les lecteurs de C7 lisent la nature par une seule porte. **Exception décidée à la règle 4 (Q6)** : un match d'une compétition amicale n'est plus confié au moteur, n'est plus jugé contre les fenêtres de ligue, les règles du club ni les accès match, et est signalé « amical sur un créneau de match ».
 - **Périmètre engagé (Q3)** : une équipe est engagée dès qu'**il existe un match dont la compétition n'est pas amicale**. Un match dont la compétition est introuvable engage : le doute protège. Une équipe qui n'a que des amicaux, de la fédération ou non, se supprime et change de niveau.
 - **Sort de l'amical déjà posé sur une équipe qui n'a que cela** : l'équipe devient supprimable. La confirmation annonce ses matchs (« 1 match », « N matchs », `CascadePlan.php:74`). **Elle n'annonce pas son engagement dans une compétition amicale** : la ligne « engagement en compétition » ne compte que les engagements dans une compétition non amicale. La suppression emporte les matchs, **leurs entrées « à corriger dans FBI »** (C57) et l'engagement ; « Amicaux » reste.
 - **Garde contre le contournement (Q9, décidée : un match connu de la fédération ne se range pas en amical à la main)** : un match qui porte un numéro FBI ou un identifiant de rencontre fédéral, ou qui est déjà saisi ou validé, **ne peut pas changer de compétition vers une compétition amicale** (422). Renvoyer la compétition qu'il a déjà n'est jamais refusé : placer à la main un amical de la fédération passe (C54).
-- **« Charger » (Q10, décidée : il refuse)** : voir ci-dessous.
+- **« Charger » (Q10, sans objet)** : voir ci-dessous.
 - Le refus « équipe non engagée » de la PR 3b ne vaut plus que pour une compétition non amicale.
 
-**Fichiers sortis de la liste interdite** : `Service/TeamEngagementGuard.php` (Q3 change la règle, écrite à cet endroit seul) ; `Service/RestoreFeasibility.php` (Q10). Les autres lecteurs de la garde (C21) ne sont pas modifiés.
+**Fichier sorti de la liste interdite** : `Service/TeamEngagementGuard.php` (Q3 change la règle, écrite à cet endroit seul). Les autres lecteurs de la garde (C21) ne sont pas modifiés ; `RestoreFeasibility` n'existe plus à cette PR (lot 5, PR 3).
 
-**« Charger » (Q10)** : « Charger » refuse toute version antérieure à une équipe qui porte un match, amical compris, comme aujourd'hui. `RestoreFeasibility` lit « porte un match » pour l'équipe disparue, et « engagée » pour le changement de niveau. `StructureRestorer` ne détruit aucun match : explorer une version ne détruit rien.
+**« Charger » (Q10, sans objet)** : le plan du lot 5 remplace la photo de structure et son restaurateur (PR 3, avant ce lot) : « Charger » ne crée ni ne supprime d'équipe, d'où aucun match laissé sans équipe. Cette PR ne touche ni `StructureRestorer` ni `RestoreFeasibility`, qui n'existent plus.
 
 **Contrats**
 - `enum CompetitionType { CHAMPIONSHIP, CUP, BRASSAGE, FRIENDLY }` ; `CompetitionType::isFriendly(): bool`.
@@ -295,8 +295,6 @@ Ordre : 1, 2, 3a, 3b, 4a, 4b, 5, 6a, 6b. **Raison de la scission 4a / 4b** : la 
 | Match fédéral, ou déjà saisi, qu'on veut passer en amical | « Ce match est connu de la fédération : il reste dans sa compétition. » |
 | Suppression et niveau d'une équipe engagée (`TeamStateProcessor.php:65`, `:162`) | Inchangés |
 | Confirmation de suppression, équipe qui n'a que des amicaux | « 1 match » / « {n} matchs » ; aucune ligne « engagement en compétition » |
-| « Charger », une équipe disparue qui porte un match (remplace `RestoreFeasibility.php:123`) | « Cette version est antérieure à {équipe}, qui porte déjà des matchs : la charger la supprimerait et laisserait ses matchs sans équipe. » |
-| « Charger », plusieurs équipes disparues qui portent des matchs | « Cette version est antérieure à {équipes}, qui portent déjà des matchs : la charger les supprimerait et laisserait leurs matchs sans équipe. » |
 | Export PDF, mention | « (amical) », inchangée |
 
 **Section tests pour `tank`**
@@ -316,7 +314,6 @@ Ordre : 1, 2, 3a, 3b, 4a, 4b, 5, 6a, 6b. **Raison de la scission 4a / 4b** : la 
   - **placer à la main un amical de la fédération en renvoyant sa compétition rend 200** : le test qui attrape une garde trop large.
 - **Abus par reclassement** : `FfbbConfirmPerimeterTest` (bloquant, `ci.yml:775`), un cas : apparier une compétition de championnat qui porte des matchs à une ligne fédérale « Amical … » ne change pas sa nature, l'équipe reste engagée ; `FbiFixtureImporterTest`, un cas : une division « Amical PNF » proposée sur une compétition de championnat ne la renomme ni ne la reclasse.
 - Cascade : `DeletionImpactParityTest` adapté (étape silencieuse nommée) ; un test d'intégration : supprimer une équipe qui n'a que des amicaux ne laisse aucune entrée « à corriger dans FBI », et le compte « à corriger » retombe.
-- « Charger » : test d'intégration du restaurateur. version antérieure à une équipe qui n'a que des amicaux, refusée avec le texte neuf, aucun match détruit ; version antérieure à une équipe en championnat, refusée.
 - `PUT` sans `competitionId` sur un match de championnat : le match reste en championnat (`FixtureApiTest`).
 - NR sens des contraintes : la fenêtre de ligue borne un match de championnat et pas un amical de la fédération (ligne 13).
 - Abus : `competitionId` d'un autre club (`MatchTenantIsolationTest`) ; match posé dans une compétition non amicale d'une autre équipe (`FixtureApiTest`, rejoué).
@@ -455,7 +452,7 @@ Ordre : 1, 2, 3a, 3b, 4a, 4b, 5, 6a, 6b. **Raison de la scission 4a / 4b** : la 
 | 18 | 4a | Championnat, coupe, brassage engagent, même non placés ; un match sans compétition retrouvable engage | `EngagedTeamGuardTest` |
 | 19 | 4a | Un match connu de la fédération ne change pas de compétition vers une amicale ; le renvoyer tel quel passe | `EngagedTeamGuardTest` (abus) |
 | 20 | 4a | Une compétition existante ne devient jamais amicale, par l'appariement ni par l'import | `FfbbConfirmPerimeterTest`, `FbiFixtureImporterTest` (abus) |
-| 21 | 4a | « Charger » une version antérieure à une équipe qui n'a que des amicaux : refusé, aucun match détruit (Q10) | Test d'intégration du restaurateur |
+| 21 | 4a | (retirée : sans objet depuis le plan du lot 5, « Charger » ne détruit plus de match) | — |
 | 22 | 4b | Coupe : mercredi 20:00 rien ; samedi 21:30 et dimanche 07:45 « coupe hors horaires » ; samedi → dimanche rien ; championnat mercredi toujours « hors fenêtre ligue » | Le scénario 4, retourné, Exemples |
 | 23 | 4b | Une coupe hors accès match du gymnase reste refusée | `FixtureApiTest` ; `les-conflits-d-un-match-disent-la-verite.feature:112`, rejoué |
 | 24 | 4b | Un « hors fenêtre ligue » traité sur une coupe disparaît ; le conflit neuf naît « à traiter » | `un-conflit-traite-reste-visible-mais-decompte.feature`, étape |
@@ -482,10 +479,9 @@ Ordre : 1, 2, 3a, 3b, 4a, 4b, 5, 6a, 6b. **Raison de la scission 4a / 4b** : la 
 | Le re-dépôt choisit par l'étiquette (3b) | `resolveDivision` | `FbiFixtureImporter.php:164`, `:347`, `:1226`, `:1628` | — | Division non résolue → « à faire correspondre » (`:355-357`) |
 | La nature décide de l'amical (4a) | Classifieur, à la création ; migration | `MatchPlacementPayloadBuilder.php:466` ; radar (`RuleWindowConflicts.php:54`, `:110`, `VenueConflicts.php:105`, `MatchConflictDetector.php:705-717`) ; `FixtureStateProcessor.php:307` ; `FriendlyAutoValidator.php:67` ; `LeagueValidationOutlook.php:292`, `:372` ; `EntryDeadlineOutlook.php:223-225` ; `MatchesExportDataProvider.php:81` ; écran par `fixture.competitionType` : `PlacementPanel.tsx:179`, `CalendarPage.tsx:314`, `consultFilter.ts:54`, `lib/matchAccess.ts:153-198` | Refus du changement vers une amicale (Q9) | Le moteur ne reçoit jamais un amical à placer |
 | Une compétition existante ne change pas vers ou depuis « amical » (4a) | `CompetitionClassifier::reclassOf` | `FfbbEngagementsController.php:478-483`, `:495-506` ; `FbiFixtureImporter.php:1706-1711` | — | Le périmètre engagé et la demande de placement ne bougent pas par un reclassement |
-| « Amicaux » existe et survit (4a) | `FriendlyCompetitions` ; naissances de saison (C25) | Formulaire de match ; `pruneEmpty` ; `CascadePlan.php:74-75` ; `StructureRestorer.php:290-300` ; remise à zéro (C37) ; éditeur d'échéances et sélecteur de phase (exclue) | — | Unique partiel ; exclusion de `pruneEmpty` |
-| Seul le non-amical engage (4a) | `TeamEngagementGuard.php:48-54`, `:72-91` | Suppression (`TeamStateProcessor.php:63`), niveau (`:160`), `isEngaged` servi (`:229`, `TeamStateProvider.php:56`) lu par `wizard/steps/TeamsStep.tsx:113`, `:932` ; décompte (`DeletionImpactCounter.php:46`) ; « Charger » (`RestoreFeasibility.php:90`, `StructureRestorer.php:96`) | Rôle gestionnaire | La cascade emporte matchs amicaux, entrées de registre et engagement |
+| « Amicaux » existe et survit (4a) | `FriendlyCompetitions` ; naissances de saison (C25) | Formulaire de match ; `pruneEmpty` ; `CascadePlan.php:74-75` ; remise à zéro (C37) ; éditeur d'échéances et sélecteur de phase (exclue) | — | Unique partiel ; exclusion de `pruneEmpty` |
+| Seul le non-amical engage (4a) | `TeamEngagementGuard.php:48-54`, `:72-91` | Suppression (`TeamStateProcessor.php:63`), niveau (`:160`), `isEngaged` servi (`:229`, `TeamStateProvider.php:56`) lu par `wizard/steps/TeamsStep.tsx:113`, `:932` ; décompte (`DeletionImpactCounter.php:46`) | Rôle gestionnaire | La cascade emporte matchs amicaux, entrées de registre et engagement |
 | La cascade d'équipe supprime des matchs pour de bon (4a) | `CascadePlan.php:74` (étape des matchs), précédée de `TeamFixtureCorrectionStep` | Registre « à corriger dans FBI » : `FbiCorrectionController.php:59` ; compte `EntryDeadlineOutlook.php:168` ; suivi fédéral après la PR 6b (clé `ON DELETE CASCADE`) ; `FamilyCatalog` par `FbiCorrection.php:70` | Garde du périmètre engagé | `PurgeCompletenessTest`, `FamilyDeclarationSweepTest` |
-| « Charger » et l'équipe qui n'a que des amicaux (4a, Q10) | `StructureRestorer.php:92-98` | `RestoreFeasibility.php:37-66`, `:77-93`, `:99-128` | Refus (inchangé) | Refus, texte neuf ; aucun match détruit |
 | La coupe n'a plus de fenêtre de ligue, elle a 08:00–21:00 (4b) | `CupKickoffRule` (constante) | Radar (`RuleWindowConflicts.php:54`) ; empreinte (`ConflictFingerprinter.php:73`) ; écran : `lib/envelope.ts:62-96`, `PlacementPanel.tsx:86-109`, `CalendarPage.tsx:311-323`, `WeekWorkbench.tsx:194`, `ConflictLine.tsx:63`, `:147`, `lib/diagnostic.ts:37-41`, `lib/conflictLabels.ts:21` | Aucune : la pose n'est pas refusée | Radar ; statuts de traitement par empreinte (`FixtureConflictsController.php:85-98`) ; l'import garde la main sur la date (C58) |
 | Une coupe n'est plus confiée au système (4b, Q7) | — | `MatchPlacementPayloadBuilder.php:466-474`, `:221`, `:533` ; `MatchPlacementResultApplier.php:58-66` ; `PlaceMatchesController.php:177` | — | Le moteur ne reçoit jamais une coupe à placer |
 | Le stade d'un match se calcule (6b) | `FederalFollowUp` | `MatchPlacementPayloadBuilder.php:468-474`, `:497-499` ; `MatchPlacementResultApplier.php:58-66` ; `FixtureResource.php:245` ; `FbiEntryList.tsx:106` ; `lib/loopSteps.ts:133` ; `EntryDeadlineOutlook.php:158-163` ; `FriendlyAutoValidator` ; `LeagueValidationOutlook.php:229-233` ; `PlaceMatchesController.php:117-124` ; `FixtureStateProcessor.php:199-205` ; l'import (`FbiFixtureImporter.php:1432`) | Rôle, saison écrivable | Refus 422 |
@@ -500,7 +496,7 @@ Ordre : 1, 2, 3a, 3b, 4a, 4b, 5, 6a, 6b. **Raison de la scission 4a / 4b** : la 
 3. **Poser un amical à la main.** Matchs › Calendrier, « Ajouter un match » (`FixtureFormDialog.tsx:103-111`) : « Amicaux » en premier, puis les compétitions de l'équipe. Une fois placé : « Placé », absent de « à saisir dans FBI » (PR 6b). Geste inverse : modifier le match et choisir un championnat de l'équipe. Le retour vers « Amicaux » est accepté pour un match créé à la main et non saisi ; refusé pour un match importé ou déjà saisi : « Ce match est connu de la fédération : il reste dans sa compétition. »
 4. **Placer à la main un amical de la fédération** (« AMICAL PNM »). Le gestionnaire choisit gymnase et heure ; l'écran renvoie la compétition du match (C54) ; la pose passe, parce que la compétition ne change pas.
 5. **Supprimer une équipe qui n'a que des amicaux.** Wizard › Équipes : le bouton n'est plus désactivé (`TeamsStep.tsx:113`) ; la confirmation annonce « 1 match », sans ligne d'engagement ; la suppression emporte le match et ce qu'il restait à corriger dans FBI pour lui. Variante : l'équipe porte aussi un match de coupe non placé : refus, « Cette équipe joue en compétition : ses matchs sont engagés auprès de la fédération. Elle ne peut plus être supprimée. » Geste inverse : aucun.
-6. **« Charger » une version d'avant cette équipe.** La version n'est pas chargeable (Q10), « Cette version est antérieure à U11-3, qui porte déjà des matchs : la charger la supprimerait et laisserait ses matchs sans équipe. » ; pour charger, le gestionnaire supprime d'abord l'amical ou l'équipe.
+6. **« Charger » une version d'avant cette équipe.** Plus de refus (ex-Q10) : depuis le lot 5, « Charger » ne supprime pas l'équipe ; elle garde sa ligne et ses matchs.
 7. **Lancer le placement avec un « Amical PNF » non placé.** « Placer » (`PlaceMatchesController.php:102`) : il n'est pas proposé au système ; placé à la main hors créneau il affiche « Amical hors créneau match — placement libre. » (`lib/matchAccess.ts:180`). Variante : déjà posé par le système, il reste où il est.
 8. **Une coupe tirée un samedi.** Le panneau dit « Coupe : samedi ou dimanche au choix, coup d'envoi entre 08:00 et 21:00. » Pour la jouer le dimanche : « Modifier le match », champ Date (`FixtureFormDialog.tsx:86`), puis gymnase et heure. À 21:30 : « Coupe : coup d'envoi hors 08:00–21:00. », la pose passe, l'onglet Conflits affiche « Coupe hors horaires ». Geste inverse : remettre la date au samedi, ou « à placer ». Variante : le gymnase n'a pas d'accès match ce jour-là : refus, comme aujourd'hui. **Variante, le dépôt suivant** : si le fichier FBI porte encore le samedi, la coupe non placée revient au samedi (« re-programmé du … au … ») ; placée, l'écart de date est proposé à trancher, sauf dans la semaine du match, où le fichier s'applique d'office. Le gestionnaire garde donc son dimanche en le saisissant dans FBI, ou en gardant la valeur de l'application à l'écart. La date que FBI exporte pour une coupe de week-end n'est pas vérifiée.
 9. **Une coupe tirée un mercredi.** Le panneau dit « Coupe : date imposée, coup d'envoi entre 08:00 et 21:00. » ; à 20:00, aucun conflit. « Placer » ne la propose pas (Q7) : le gestionnaire choisit gymnase et heure à la main.
@@ -562,7 +558,7 @@ Trois migrations irréversibles (PR 3b, 4a, 6b). Chacune écrit son décompte, r
 - 7 · Matchs sans compétition, par statut (attendu 0).
 - 8 · Compétitions sans aucune trace fédérale qui portent des matchs saisis ou validés. Si l'une des 5 « Amical … » est dans ce cas, ses extérieurs validés repasseraient « à placer » à la PR 6b : arrêt et retour au fondateur.
 - 11 · `SELECT league, COUNT(*) FROM league_match_window GROUP BY league`, et la ligue de chaque club.
-- 16 · Équipes dont tous les matchs sont amicaux : celles que Q3 rend supprimables, et que le refus de « Charger » (Q10) concerne.
+- 16 · Équipes dont tous les matchs sont amicaux : celles que Q3 rend supprimables.
 - 17 · Domiciles de coupe non placés ou posés par le système, passés et futurs, par club, les 5 coupes reclassées comprises, en distinguant les équipes avec et sans fenêtre de ligue : le chiffre de Q7.
 - 18 · Statuts de traitement posés sur un « hors fenêtre ligue » d'un match de coupe.
 - 19 · Lignes d'une même équipe dont les noms ne diffèrent que par la casse ou les accents (attendu 0).
@@ -573,7 +569,7 @@ Trois migrations irréversibles (PR 3b, 4a, 6b). Chacune écrit son décompte, r
 ## 10. Checklist de cadrage
 
 - **Zones** : backend, frontend. **Engine : aucun fichier.** Landing, system-pages : aucun.
-- **Autorisés** : `backend/src/{Matches,Entity,Enum,Repository,Service,Service/Basketball,Service/Fbi,Service/Conflicts,Controller,Controller/Basketball,ApiResource,Dto,State,Export,Deletion,OpenApi,Seed}`, `backend/src/Command/EngineRequestsRecordCommand.php`, `backend/src/Service/TeamEngagementGuard.php` (PR 4a seulement), `backend/src/Service/RestoreFeasibility.php` (PR 4a), `backend/migrations`, `backend/tests`, `backend/features`, `frontend/src/features/matches`, `frontend/tests/e2e/matches.spec.ts`.
+- **Autorisés** : `backend/src/{Matches,Entity,Enum,Repository,Service,Service/Basketball,Service/Fbi,Service/Conflicts,Controller,Controller/Basketball,ApiResource,Dto,State,Export,Deletion,OpenApi,Seed}`, `backend/src/Command/EngineRequestsRecordCommand.php`, `backend/src/Service/TeamEngagementGuard.php` (PR 4a seulement), `backend/migrations`, `backend/tests`, `backend/features`, `frontend/src/features/matches`, `frontend/tests/e2e/matches.spec.ts`.
 - **Interdits** : `engine/`, `engine/CONTRACT_VERSION`, `Service/EngineClient.php`, `Service/EngineRequestComposer.php`, `Service/ScheduleConstraintBuilder.php`, `MessageHandler/PlaceMatchesHandler.php`, `Service/MatchPlacementLock.php`, `EventListener/TenantFilterListener.php`, `Doctrine/Filter/`, `Access/`, `security.yaml`, `State/Processor/TeamStateProcessor.php`, `Service/Fbi/FbiArrivalReview.php` et la règle de date de l'import (`FbiFixtureImporter.php:1428-1485`), le Wizard (`TeamsStep.tsx` lit `isEngaged`, non modifié), `landing/`. Aucune route nouvelle.
 - **Axes §7.1** : isolation entre clubs (3b, 6b) ; **périmètre engagé (3b, 4a : la règle change)** ; contrat backend-moteur et chaîne de génération (3a à 6b ; demande modifiée à 4a et à 4b) ; sens des contraintes (4a, 4b). NR nommés par PR, tous dans des tests déjà au step bloquant (C28). **Aucun step `ci.yml` neuf** ; les lignes `blocking-tests.md:190` et `:191` sont réécrites à la PR 4a.
 - **Contre-revue** : `smith` est passé sur la v1 et sur la v3 ; cette v4 intègre ses deux verdicts, puis les décisions du fondateur du 2026-11-23. Plafond atteint : pas de v5.
@@ -651,9 +647,9 @@ Trois migrations irréversibles (PR 3b, 4a, 6b). Chacune écrit son décompte, r
 | Q7 · « Placer » et les coupes | **Non** : « Placer » ne propose plus les coupes au système ; le fondateur place les coupes à la main ; une coupe déjà placée par le système ne bouge pas. Deuxième exception chiffrée à la règle 4, à côté de Q6 | PR 4b, E10 |
 | Q8 · Division neuve jouée par deux équipes | **Deux** : une compétition par équipe, comme aujourd'hui, distinguées par le libellé FBI ; la table des engagements est créée dans tous les cas | PR 3b, E11 |
 | Q9 · Match de la fédération rangé en amical à la main | **Non** : « Ce match est connu de la fédération : il reste dans sa compétition. » La garde ne vise que le changement de compétition vers une amicale ; renvoyer la compétition qu'il a déjà passe | PR 4a |
-| Q10 · « Charger » et une équipe qui n'a que des amicaux | **Non** : « Charger » continue de refuser tant qu'une équipe disparue porte un match, amical compris : « Cette version est antérieure à U11-3, qui porte déjà des matchs : la charger la supprimerait et laisserait ses matchs sans équipe. » (nom de l'équipe réelle) | PR 4a |
+| Q10 · « Charger » et une équipe qui n'a que des amicaux | **Sans objet** depuis le plan du lot 5 (2026-11-24) : « Charger » ne supprime plus d'équipe ; il n'y a plus de refus à écrire ni de texte neuf | — |
 
-**Ce que chaque décision écarte.** Q7 : le système ne connaît pas la règle des coupes (fenêtres de ligue de l'équipe appliquées ; une équipe sans fenêtre de ligue reçoit une coupe de semaine placée après 21:00, aussitôt signalée) et la lui apprendre exigerait de changer ce qu'il reçoit. Q8 : réunir deux équipes sur le seul libellé d'une division neuve ne gagnait qu'une ligne d'échéance de saisie, pour trois écrans changés, un identifiant de conflit réécrit et une règle de renommage. Q9 : la garde ferme le rangement à la main et le reclassement d'une compétition entière, pas la suppression d'un match, qui reste libre comme aujourd'hui (C44) : elle vise l'erreur, pas la volonté. Q10 : explorer une version ne doit rien détruire.
+**Ce que chaque décision écarte.** Q7 : le système ne connaît pas la règle des coupes (fenêtres de ligue de l'équipe appliquées ; une équipe sans fenêtre de ligue reçoit une coupe de semaine placée après 21:00, aussitôt signalée) et la lui apprendre exigerait de changer ce qu'il reçoit. Q8 : réunir deux équipes sur le seul libellé d'une division neuve ne gagnait qu'une ligne d'échéance de saisie, pour trois écrans changés, un identifiant de conflit réécrit et une règle de renommage. Q9 : la garde ferme le rangement à la main et le reclassement d'une compétition entière, pas la suppression d'un match, qui reste libre comme aujourd'hui (C44) : elle vise l'erreur, pas la volonté. Q10 : sans objet, le lot 5 fait de « Charger » un geste qui ne crée ni ne supprime d'équipe.
 
 ## 14. Fichiers clés
 
@@ -667,7 +663,7 @@ Chemins absolus sous `/home/marabou/projects/scheduler/`.
 - `backend/src/Service/MatchPlacementPayloadBuilder.php`, `MatchPlacementResultApplier.php`
 - `backend/src/Service/ConflictRadarLoader.php`, `MatchConflictDetector.php`, `ConflictFingerprinter.php`
 - `backend/src/Service/Conflicts/RuleWindowConflicts.php`, `VenueConflicts.php`
-- `backend/src/Service/TeamEngagementGuard.php`, `RestoreFeasibility.php`, `StructureRestorer.php`, `SeasonDataPurger.php`
+- `backend/src/Service/TeamEngagementGuard.php`, `SeasonDataPurger.php`
 - `backend/src/Service/FbiCorrectionLedger.php`, `EntryDeadlineOutlook.php`, `FriendlyAutoValidator.php`, `LeagueValidationOutlook.php`, `LeagueResolver.php`
 - `backend/src/Deletion/CascadePlan.php`, `CascadeStep.php`, `DeleteByFieldStep.php`, `DeletionImpactCounter.php`, `backend/src/Structure/FamilyCatalog.php`
 - `backend/src/State/Processor/FixtureStateProcessor.php`, `CompetitionStateProcessor.php`, `TeamStateProcessor.php` (lu, non modifié)
