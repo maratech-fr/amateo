@@ -77,6 +77,12 @@ final class LeagueValidationContext extends BaseContext
     /** Combien la dernière lecture gestionnaire a fait passer « validé ligue » (`swept`). */
     private int $lastSwept = -1;
 
+    /** L'amical posé à la main, sans compétition (lot 7, filet des matchs). */
+    private string $manualFriendlyId = '';
+
+    /** Le compte « à saisir dans FBI » du club avant que l'amical soit posé. */
+    private int $toEnterBefore = -1;
+
     #[Given('le club de démonstration, connecté, dont le planning de saison est en vigueur')]
     public function leClubConnecte(): void
     {
@@ -215,6 +221,61 @@ final class LeagueValidationContext extends BaseContext
         $this->assertStatusOf(self::REF_AMICAL, 'VALIDATED');
     }
 
+    #[When('je pose à la main un amical à domicile à « GYM BEHAT », sans compétition')]
+    public function jePoseUnAmicalALaMain(): void
+    {
+        // La lecture de l'accueil par un gestionnaire balaie d'abord : le compte relu ensuite est stable.
+        $this->toEnterBefore = $this->toEnterCount();
+        $created = $this->apiPost('fixtures', ['teamId' => $this->teamId, 'matchDate' => $this->matchDate, 'homeAway' => 'HOME', 'opponentLabel' => 'Amical posé à la main'], $this->token);
+        $this->manualFriendlyId = $this->createdId($created, 'amical');
+        $placed = $this->apiPut(\sprintf('fixtures/%s', $this->manualFriendlyId), [
+            'teamId' => $this->teamId,
+            'matchDate' => $this->matchDate,
+            'homeAway' => 'HOME',
+            'opponentLabel' => 'Amical posé à la main',
+            'venueId' => $this->venueId,
+            'kickoffTime' => '15:30',
+            'status' => 'PLACED',
+        ], $this->token);
+        if (200 !== $placed['status'] || 'PLACED' !== ($placed['json']['status'] ?? null)) {
+            throw new RuntimeException(\sprintf('poser l\'amical à la main a répondu %d, statut « %s »', $placed['status'], (string) ($placed['json']['status'] ?? '')));
+        }
+    }
+
+    #[Then('l\'amical posé à la main compte parmi les matchs à saisir dans FBI')]
+    public function lAmicalComptePourASaisir(): void
+    {
+        $toEnter = $this->toEnterCount();
+        if ($this->toEnterBefore + 1 !== $toEnter) {
+            throw new RuntimeException(\sprintf('« à saisir dans FBI » vaut %d après la pose, %d attendu (%d avant)', $toEnter, $this->toEnterBefore + 1, $this->toEnterBefore));
+        }
+    }
+
+    #[When('la date de l\'amical posé à la main est révolue')]
+    public function laDateDeLAmicalEstRevolue(): void
+    {
+        // Pointage : le temps passe, le match est joué.
+        $this->dbalExec(\sprintf('UPDATE fixture SET match_date=\'%s\' WHERE id=\'%s\'', self::PAST_DATE, $this->manualFriendlyId), admin: true);
+    }
+
+    #[Then('l\'amical posé à la main est « validé ligue »')]
+    public function lAmicalPoseALaMainEstValide(): void
+    {
+        $status = $this->apiGet(\sprintf('fixtures/%s', $this->manualFriendlyId), $this->token)['json']['status'] ?? null;
+        if ('VALIDATED' !== $status) {
+            throw new RuntimeException(\sprintf('l\'amical posé à la main est « %s » au lieu de « validé ligue »', \is_string($status) ? $status : 'inconnu'));
+        }
+    }
+
+    #[Then('il ne compte plus parmi les matchs à saisir dans FBI')]
+    public function ilNeComptePlusPourASaisir(): void
+    {
+        $toEnter = $this->toEnterCount();
+        if ($this->toEnterBefore !== $toEnter) {
+            throw new RuntimeException(\sprintf('« à saisir dans FBI » vaut %d, %d attendu une fois l\'amical validé', $toEnter, $this->toEnterBefore));
+        }
+    }
+
     #[Given('l\'échéance de saisie du championnat est déjà passée')]
     public function lEcheanceDejaPassee(): void
     {
@@ -298,6 +359,9 @@ final class LeagueValidationContext extends BaseContext
                 $this->apiDelete(\sprintf('fixtures/%s', $id), $this->token);
             }
         }
+        if ('' !== $this->manualFriendlyId) {
+            $this->apiDelete(\sprintf('fixtures/%s', $this->manualFriendlyId), $this->token);
+        }
         // Les deux compétitions (championnat + amical) sont portées par la même équipe
         // jetable : elles partent avec elle (cascade teams → competitions), les matchs
         // ayant été supprimés juste au-dessus (l'équipe n'est alors plus engagée).
@@ -316,6 +380,18 @@ final class LeagueValidationContext extends BaseContext
                 admin: true,
             );
         }
+    }
+
+    /** Le compte « à saisir dans FBI » du club, lu comme l'accueil des matchs le lit. */
+    private function toEnterCount(): int
+    {
+        $result = $this->apiGet('matches/deadline-outlook', $this->token);
+        $toEnter = $result['json']['fbiTodo']['toEnter'] ?? null;
+        if (200 !== $result['status'] || !\is_int($toEnter)) {
+            throw new RuntimeException(\sprintf('l\'accueil des matchs a répondu %d sans compte « à saisir »', $result['status']));
+        }
+
+        return $toEnter;
     }
 
     private function setDeadline(string $date): void

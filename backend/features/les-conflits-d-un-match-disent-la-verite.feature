@@ -120,6 +120,16 @@ Fonctionnalité: Les conflits d'un match disent la vérité
     Quand je demande les conflits des matchs
     Alors le radar signale la coupe hors fenêtre de ligue, et jamais comme un amical sur créneau
 
+  Scénario: Une coupe à domicile un mercredi, jour sans fenêtre de ligue, est signalée hors fenêtre de ligue
+    La coupe obéit aujourd'hui à l'enveloppe de ligue de son équipe, comme un championnat : l'équipe
+    n'a de fenêtre que le samedi, un coup d'envoi un mercredi soir en sort.
+    Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur
+    Et une équipe, un coach et un gymnase jetables
+    Et une fenêtre de ligue étroite le samedi matin cadre cette équipe
+    Et une rencontre de coupe à domicile un mercredi, coup d'envoi à 20h00
+    Quand je demande les conflits des matchs
+    Alors le radar signale la coupe hors fenêtre de ligue, et jamais comme un amical sur créneau
+
   Scénario: Un entraînement dans le gymnase du match est signalé, le match reste placé
     Le radar lit le planning EFFECTIF ce jour-là : la séance d'une autre équipe au même gymnase, sur la
     plage du match, se signale sans rien déplacer ; la gravité reste celle d'une information.

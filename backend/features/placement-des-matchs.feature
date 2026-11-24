@@ -201,3 +201,14 @@ Fonctionnalité: Le placement des matchs honore les fenêtres d'accès et nomme 
     Quand je lance le placement des matchs
     Alors l'amical n'est jamais proposé au solveur et reste sans créneau
     Et je peux le placer à la main hors de la fenêtre d'accès match
+
+  Scénario: Une compétition « Amical PNF » importée est confiée au solveur comme un championnat
+    L'import range aujourd'hui une division au libellé amical en championnat : son domicile non
+    placé part au solveur comme tout match de compétition, et le solveur le place.
+    Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur
+    Et deux équipes et un gymnase jetables
+    Et une fenêtre d'accès le samedi de 14h00 à 18h00 sur ce gymnase
+    Quand je dépose un fichier FBI où la division « Amical PNF » porte un domicile de la première équipe le samedi dans ce gymnase, sans heure
+    Alors la compétition « Amical PNF » est rangée en championnat
+    Quand je lance le placement des matchs
+    Alors le domicile « Amical PNF » est placé par le solveur

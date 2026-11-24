@@ -12,6 +12,7 @@ use App\Service\ScheduleConstraintBuilder;
 use App\Service\SchedulePlanProvisioner;
 use App\Tests\EngineRequestDecorTrait;
 use App\Tests\EngineRequestGroupRulesDecorTrait;
+use App\Tests\EngineRequestMatchesNetDecorTrait;
 use App\Tests\EngineRequestPlanSettingsDecorTrait;
 use App\Tests\EngineRequestRunnerTrait;
 use App\Tests\EngineRequestTravelDecorTrait;
@@ -42,7 +43,10 @@ use Symfony\Contracts\Cache\TagAwareCacheInterface;
  *  10. période générée sur place, aux temps de trajet de la saison en cours ;
  *  11 à 15. ce que le lot 4 range dans le plan (`EngineRequestPlanSettingsDecorTrait`) : le socle complet,
  *      un plan de vacances et un plan de fermeture réglés, le verdict d'un déplacement dans le socle et
- *      dans une période (`/validate-assignments`).
+ *      dans une période (`/validate-assignments`) ;
+ *  16 à 19. le filet des matchs du lot 7 (`EngineRequestMatchesNetDecorTrait`) : deux équipes dans une
+ *      division, les amicaux, les stades du suivi fédéral, les coupes. Chaque cas vérifie d'abord ses
+ *      témoins de décor en base : un témoin absent fait échouer le test.
  *
  * Jumeau de conversion : {@see Lot4MigrationChainTest} compare aux MÊMES fichiers les demandes composées
  * sur ce décor écrit en SQL dans le schéma d'avant le lot 4, une fois toutes les migrations jouées.
@@ -84,6 +88,7 @@ final class EngineRequestReferenceTest extends KernelTestCase
 {
     use EngineRequestDecorTrait;
     use EngineRequestGroupRulesDecorTrait;
+    use EngineRequestMatchesNetDecorTrait;
     use EngineRequestPlanSettingsDecorTrait;
     use EngineRequestRunnerTrait;
     use EngineRequestTravelDecorTrait;
@@ -342,6 +347,60 @@ final class EngineRequestReferenceTest extends KernelTestCase
         $body = $this->runMoveValidation(self::erId('5107', 12), [1, '18:00', self::ER_VENUE_NORD]);
 
         $this->assertReference('validation-15-deplacement-periode', $body);
+    }
+
+    /** Deux équipes dans la même division : chacune son domicile à placer, une seule résout la fenêtre de ligue du samedi. */
+    public function testPlacementWithTwoTeamsInOneDivision(): void
+    {
+        $this->seedSocleInForce();
+        $this->seedEngineRequestMatches();
+        $this->seedMatchesNetTwoTeamsOneDivision();
+        $this->assertMatchesNetTwoTeamsOneDivisionWitnesses();
+
+        $body = $this->runPlacement(null);
+
+        $days = $this->leagueWindowDaysByTeam($body);
+        self::assertSame([6], $days[self::ER_TEAM_U13] ?? null, 'témoin 16 : U13 F résout la fenêtre de ligue du samedi');
+        self::assertSame([], $days[self::ER_NET_TEAM_U13_F2] ?? null, 'témoin 16 : U13 F2 ne résout aucune fenêtre');
+        $this->assertReference('placement-16-deux-equipes-une-division', $body);
+    }
+
+    /** Les amicaux : sans compétition (ancre ou absent) et dans une compétition « Amical … » rangée en championnat. */
+    public function testPlacementWithFriendlies(): void
+    {
+        $this->seedSocleInForce();
+        $this->seedEngineRequestMatches();
+        $this->seedMatchesNetFriendlies();
+        $this->assertMatchesNetFriendliesWitnesses();
+
+        $this->assertReference('placement-17-amicaux', $this->runPlacement(null));
+    }
+
+    /** Les stades du suivi fédéral : saisi, validé, avec ou sans gymnase, domicile et extérieur, et un domicile importé posé. */
+    public function testPlacementWithTheFederalTrackingStages(): void
+    {
+        $this->seedSocleInForce();
+        $this->seedEngineRequestMatches();
+        $this->seedMatchesNetFederalTracking();
+        $this->assertMatchesNetFederalTrackingWitnesses();
+
+        $this->assertReference('placement-18-suivi-federal', $this->runPlacement(null));
+    }
+
+    /** Les coupes, pour une équipe à fenêtre de ligue le samedi seulement et pour une équipe sans aucune fenêtre. */
+    public function testPlacementWithCups(): void
+    {
+        $this->seedSocleInForce();
+        $this->seedEngineRequestMatches();
+        $this->seedMatchesNetCups();
+        $this->assertMatchesNetCupsWitnesses();
+
+        $body = $this->runPlacement(null);
+
+        $days = $this->leagueWindowDaysByTeam($body);
+        self::assertSame([6], $days[self::ER_TEAM_U13] ?? null, 'témoin 19 : U13 F a une fenêtre de ligue le samedi seulement');
+        self::assertSame([], $days[self::ER_TEAM_U15] ?? null, 'témoin 19 : U15 M n\'a aucune fenêtre de ligue');
+        $this->assertReference('placement-19-coupes', $body);
     }
 
     /**
