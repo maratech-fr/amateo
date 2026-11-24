@@ -674,7 +674,11 @@ final class SeasonWorkLoopContext extends BaseContext
     #[When('je renomme la réservation de SF1')]
     public function jeRenommeLaReservationDeSf1(): void
     {
-        $renamed = $this->apiPatch(\sprintf('reservations/%s', $this->sf1ReservationId), ['label' => 'Créneau de SF1, renommé'], $this->smallClubToken);
+        $current = $this->apiGet(\sprintf('reservations/%s', $this->sf1ReservationId), $this->smallClubToken);
+        if (200 !== $current['status']) {
+            throw new RuntimeException(\sprintf('lecture de la réservation de SF1 refusée (HTTP %d)', $current['status']));
+        }
+        $renamed = $this->apiPatch(\sprintf('reservations/%s', $this->sf1ReservationId), [...$current['json'], 'label' => 'Créneau de SF1, renommé'], $this->smallClubToken);
         if (200 !== $renamed['status']) {
             throw new RuntimeException(\sprintf('renommer la réservation de SF1 a répondu %d (200 attendu) : %s', $renamed['status'], $this->encoded($renamed['json'])));
         }
