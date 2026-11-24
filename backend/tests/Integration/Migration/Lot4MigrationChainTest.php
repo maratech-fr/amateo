@@ -679,8 +679,11 @@ final class Lot4MigrationChainTest extends KernelTestCase
      * copie par version, clé en cascade vers la version, RLS forcée) et la migration n'a rien copié ; la commande de
      * conversion donne alors à chaque version validée ou chargée une copie — autant de copies que de versions validées
      * ou chargées — égale à l'état vivant de son plan, si bien qu'aucun plan n'est « en attente » ; `--check` rend 0.
+     *
+     * Décor 12 seul : c'est le décor figé qui porte une version validée (le socle) avec des plans de période ; le décor
+     * 11 n'en porte aucune (pointeurs nuls) et `decor-avant.sql` ne se recapture jamais. La version chargée sans être
+     * validée est prouvée par `Integration/Command/CaptureVersionStatesCommandTest`.
      */
-    #[TestWith(['socle-11-socle-complet'])]
     #[TestWith(['periode-12-vacances-reglages'])]
     public function testTheConversionGivesEveryKeptVersionItsCopy(string $decor): void
     {

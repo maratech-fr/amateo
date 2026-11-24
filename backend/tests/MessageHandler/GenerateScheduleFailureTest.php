@@ -32,6 +32,7 @@ use App\Service\StructureSnapshotter;
 use App\Service\TenantConnectionContext;
 use App\Tests\CrossStack\EngineFailureTypeMirrorTest;
 use App\Tests\TenantGucTrait;
+use DAMA\DoctrineTestBundle\PHPUnit\PHPUnitExtension;
 use DateTimeImmutable;
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\DriverManager;
@@ -57,15 +58,32 @@ final class GenerateScheduleFailureTest extends KernelTestCase
     /** Le préfixe de slug du seul club dont la copie est refusée par le déclencheur de test. */
     private const string COPY_FAILS_SLUG = 'copie-impossible';
 
-    public static function tearDownAfterClass(): void
+    /**
+     * Retire le déclencheur de test. `DROP TRIGGER` veut un verrou exclusif sur `schedule_state` : la transaction du
+     * test (DAMA, ouverte jusqu'au début du test suivant) en tient un dès qu'elle a lu ou écrit la table, et le DROP
+     * attendrait jusqu'au délai d'inactivité, qui tuerait la connexion de test et ferait tomber tous les tests suivants
+     * du processus. On annule donc d'abord cette transaction, on retire, puis on en rouvre une pour DAMA. Le catalogue
+     * se lit sans verrou sur la table : rien à faire si le déclencheur n'existe pas.
+     */
+    private static function dropTheTrigger(): void
     {
         $owner = self::ownerConnection();
-        if (\is_string($owner->fetchOne('SELECT to_regclass(\'public.schedule_state\')::text'))) {
-            $owner->executeStatement('DROP TRIGGER IF EXISTS test_copy_fails ON schedule_state');
+        try {
+            if (false === $owner->fetchOne('SELECT 1 FROM pg_trigger WHERE tgname = \'test_copy_fails\'') && false === $owner->fetchOne('SELECT 1 FROM pg_proc WHERE proname = \'test_copy_fails\'')) {
+                return;
+            }
+            PHPUnitExtension::rollBack();
+            try {
+                if (false !== $owner->fetchOne('SELECT 1 FROM pg_trigger WHERE tgname = \'test_copy_fails\'')) {
+                    $owner->executeStatement('DROP TRIGGER IF EXISTS test_copy_fails ON schedule_state');
+                }
+                $owner->executeStatement('DROP FUNCTION IF EXISTS test_copy_fails()');
+            } finally {
+                PHPUnitExtension::beginTransaction();
+            }
+        } finally {
+            $owner->close();
         }
-        $owner->executeStatement('DROP FUNCTION IF EXISTS test_copy_fails()');
-        $owner->close();
-        parent::tearDownAfterClass();
     }
 
     /** La connexion du propriétaire du schéma (poser un déclencheur exige d'être propriétaire de la table). */
@@ -406,6 +424,21 @@ final class GenerateScheduleFailureTest extends KernelTestCase
             . ' DROP TRIGGER IF EXISTS test_copy_fails ON schedule_state;'
             . ' CREATE TRIGGER test_copy_fails BEFORE INSERT OR UPDATE ON schedule_state FOR EACH ROW EXECUTE FUNCTION test_copy_fails();',
         );
+        try {
+            $this->assertACopyFailureFailsTheGenerationWithoutCredit();
+        } finally {
+            self::dropTheTrigger();
+        }
+    }
+
+    public static function tearDownAfterClass(): void
+    {
+        self::dropTheTrigger();
+        parent::tearDownAfterClass();
+    }
+
+    private function assertACopyFailureFailsTheGenerationWithoutCredit(): void
+    {
         [$em, $club, $schedule] = $this->seedScheduleReadyToGenerate(self::COPY_FAILS_SLUG);
         $scheduleId = $schedule->getId();
         $hub = $this->createMock(HubInterface::class);
