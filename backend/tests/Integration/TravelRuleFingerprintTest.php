@@ -69,6 +69,9 @@ final class TravelRuleFingerprintTest extends KernelTestCase
         $this->em->flush();
         $mandatory = $this->fingerprint();
 
+        // L'empreinte vide l'EntityManager : la règle se relit avant d'être changée.
+        $rule = $this->em->find(VenueTravelRuleSetting::class, $rule->getId());
+        self::assertInstanceOf(VenueTravelRuleSetting::class, $rule);
         $rule->setIntensity(VenueTravelRuleIntensity::PREFERRED);
         $this->em->flush();
         $preferred = $this->fingerprint();
