@@ -1450,6 +1450,12 @@ jobs:
           # l'empreinte seule. Sans ce gate, une clé neuve sans source, ou un nom qui périmerait le planning,
           # passerait tous les checks requis.
           FILES="$FILES tests/Integration/EngineRequestKeySourcesTest.php"
+          # NR d'axes CONSTRAINT SEMANTICS + PLANNING LIFECYCLE (lot conception 5, PR 2) — l'empreinte du
+          # plan, qui décide si un planning est « périmé », suit la règle de trajet (froide : intensité,
+          # tolérance, temps par défaut), matrice saisie ou non, et ignore le temps de trajet (libre), le
+          # premier saisi compris. Sans ce gate, changer la règle ne périmerait rien, ou saisir un premier
+          # temps périmerait tout, en passant tous les checks requis.
+          FILES="$FILES tests/Integration/TravelRuleFingerprintTest.php"
           # NR d'axe GENERATION PIPELINE (lot conception 4, PR 1) — le décor des quinze demandes de
           # référence, écrit en SQL dans le schéma figé d'avant le lot 4, donne les mêmes demandes une
           # fois toutes les migrations jouées, sur une base dédiée par référence ; la chaîne joue

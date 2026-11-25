@@ -431,6 +431,11 @@ test, libre, froide ou à chaud : une clé libre ne change pas l'empreinte et so
 froid, une clé froide change l'empreinte et son champ est déclaré froid, une clé à chaud change
 l'empreinte seule ; un adjoint et un temps de trajet sont libres. Chute attendue si une clé neuve n'a pas
 de source, si un nom périme le planning ou si un champ froid sort de la copie) ·
+`Integration/TravelRuleFingerprintTest` (axes *constraint semantics* + *planning lifecycle*, lot conception 5
+PR 2 — l'empreinte du plan que l'écran compare pour dire « périmé » suit la règle de trajet, froide : passer
+d'obligatoire à souhaitée, ou changer la tolérance, la change, matrice saisie ou non ; elle ignore le temps de
+trajet, libre : le premier saisi puis corrigé ne la change pas. Chute attendue si la règle sort de l'empreinte
+ou si la présence de la matrice y entre) ·
 `Integration/Migration/Lot4MigrationChainTest` (axe *generation pipeline*, lot conception 4 PR 1 — le décor
 des quinze références, écrit en SQL dans le schéma figé d'avant le lot 4 [`tests/Fixtures/lot-4/`], chargé
 dans une base dédiée par référence, donne les mêmes demandes une fois toutes les migrations jouées ; la
