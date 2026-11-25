@@ -143,6 +143,10 @@ services:
   `schedule_plan (id, club_id)`, no key to `constraint` (lines written only by `PlanComposition::ensureLines`). The
   exception route `/api/constraint_period_overrides` refuses another club's rule or plan without writing anything.
   Guarded by `PlanCompositionTenantIsolationTest`; detail: `docs/security/rls.md` § `plan_constraint`.
+- **The cold copy of a version lives on `schedule_state`.** A plain tenant table (`Entity/ScheduleState.php`, filter +
+  RLS), one row per finished version, simple foreign key to `schedule (id)` `ON DELETE CASCADE`; written only by
+  `PlanStates::store` (generation result, period transcription, sibling copy, seeds). No route, no free-text name.
+  Guarded by `RlsIsolationTest` and `PurgeCompletenessTest`; detail: `docs/security/rls.md` § `schedule_state`.
 - **Role layer on top of the membership (P1-1):** the role is decided **centrally**. Every `^/api/`
   route declares its module and audience (`#[ClubFunction]`, `#[ClubResource]`, `#[AccountFunction]`,
   `src/Access/`) and `ClubAccessListener` (`kernel.request`, **priority 4**, main request only;
