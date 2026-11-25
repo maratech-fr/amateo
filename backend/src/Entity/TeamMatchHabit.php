@@ -30,7 +30,7 @@ use Doctrine\ORM\Mapping as ORM;
  * yet), and the away-kickoff estimation that feeds the conflict radar.
  * Copied on season transition (habits renew with the season, `week` carried).
  */
-#[Family(Level::SEASON)]
+#[Family(Level::SEASON, cold: [], copiedToNextSeason: true)]
 #[ORM\Entity(repositoryClass: TeamMatchHabitRepository::class)]
 #[ORM\Table(name: 'team_match_habit')]
 #[ORM\UniqueConstraint(name: 'uniq_team_match_habit_team', columns: ['club_id', 'season_id', 'team_id'])]

@@ -20,7 +20,7 @@ use Doctrine\ORM\Mapping as ORM;
  * elles, restent ancrées à la période et SURVIVENT à la suppression de la campagne :
  * annuler une collecte n'efface pas la todo-list.
  */
-#[Family(Level::SEASON)]
+#[Family(Level::SEASON, cold: [], copiedToNextSeason: false)]
 #[ORM\Entity]
 #[ORM\Table(name: 'coach_wish_campaign')]
 #[ORM\UniqueConstraint(name: 'uniq_coach_wish_campaign_entry', columns: ['calendar_entry_id'])]

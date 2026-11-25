@@ -19,7 +19,7 @@ use Doctrine\ORM\Mapping as ORM;
  * adresse et sa position vivent sur le lieu au club ({@see Place}) que `placeId` désigne, et se lisent
  * par {@see PlaceDirectory}, jamais ici. Un lieu a au plus un gymnase par saison (`uniq_venue_season_place`).
  */
-#[Family(Level::SEASON)]
+#[Family(Level::SEASON, cold: ['canSplit', 'isActive'], ofSocle: true, copiedToNextSeason: true)]
 #[ORM\Entity(repositoryClass: VenueRepository::class)]
 #[ORM\Table(name: 'venue')]
 #[ORM\Index(name: 'idx_venue_club_season', columns: ['club_id', 'season_id'])]

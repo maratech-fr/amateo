@@ -7,6 +7,7 @@ namespace App\Command;
 use App\Entity\Club;
 use App\Entity\Schedule;
 use App\Enum\ScheduleStatus;
+use App\Plans\PlanStates;
 use App\Service\ClubGenerationLock;
 use App\Service\ScheduleConstraintBuilder;
 use App\Service\TenantConnectionContext;
@@ -73,6 +74,7 @@ final class PruneUnreadSnapshotFieldsCommand extends Command
         private readonly ClubGenerationLock $generationLock,
         #[Autowire(service: 'cache.schedule')]
         private readonly TagAwareAdapterInterface $scheduleCachePool,
+        private readonly PlanStates $planStates,
     ) {
         parent::__construct();
     }
@@ -215,7 +217,8 @@ final class PruneUnreadSnapshotFieldsCommand extends Command
                 }
             }
         }
-        $hash = ScheduleConstraintBuilder::structureHash($prunedSnapshot);
+        // Lot 5 : l'empreinte recalculée garde la règle de trajet que la version a vue (sa copie du froid).
+        $hash = ScheduleConstraintBuilder::fingerprint($prunedSnapshot, $this->planStates->travelRuleOfVersion($schedule->getId()));
         if ($prunedSnapshot === $snapshot && $hash === $schedule->getSnapshotHash()) {
             return false;
         }

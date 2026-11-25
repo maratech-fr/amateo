@@ -14,6 +14,7 @@ use App\Entity\ScheduleStructureSnapshot;
 use App\Entity\Season;
 use App\Enum\AuditAction;
 use App\Enum\ConstraintScope;
+use App\Plans\PlanStates;
 use App\Service\AuditTrail;
 use App\Service\ClubGenerationLock;
 use App\Service\CoachWishCampaignTokenSync;
@@ -77,6 +78,7 @@ final class PersonEraser
         private readonly TagAwareCacheInterface $scheduleCache,
         private readonly ClubGenerationLock $generationLock,
         private readonly MatchPlacementLock $placementLock,
+        private readonly PlanStates $planStates,
     ) {}
 
     /**
@@ -225,7 +227,9 @@ final class PersonEraser
             /** @var array<string, mixed>|null $newGraft */
             $newGraft = null === $graft ? null : $this->scrub($graft, $byId, $namePattern, $herRules, []);
             if ($snapshot !== $schedule->getSnapshotData() || $newGraft !== $graft) {
-                $schedule->setSnapshotData($snapshot)->setPayloadGraft($newGraft)->setSnapshotHash(ScheduleConstraintBuilder::structureHash($snapshot));
+                // Lot 5 : l'empreinte réalignée garde la règle de trajet que la version a vue (sa copie du froid).
+                $schedule->setSnapshotData($snapshot)->setPayloadGraft($newGraft)
+                    ->setSnapshotHash(ScheduleConstraintBuilder::fingerprint($snapshot, $this->planStates->travelRuleOfVersion($schedule->getId())));
                 ++$rewrittenSchedules;
             }
             if (null !== $schedule->getPdfExportUrl() || 'completed' === $schedule->getPdfExportStatus() || null !== $schedule->getPdfExportRequestId()) {

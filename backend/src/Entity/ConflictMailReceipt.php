@@ -25,7 +25,7 @@ use Doctrine\ORM\Mapping as ORM;
  * ({@see ConflictMailReceiptRepository}) dans la même transaction que la mémoire
  * {@see ConflictMailing} ; purgée avec la saison ({@see SeasonDataPurger}).
  */
-#[Family(Level::SEASON)]
+#[Family(Level::SEASON, cold: [], copiedToNextSeason: false)]
 #[ORM\Entity(repositoryClass: ConflictMailReceiptRepository::class)]
 #[ORM\Table(name: 'conflict_mail_receipt')]
 #[ORM\UniqueConstraint(name: 'uniq_conflict_mail_receipt', columns: ['club_id', 'season_id', 'fingerprint', 'coach_id'])]

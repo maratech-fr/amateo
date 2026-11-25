@@ -27,6 +27,7 @@ use App\Enum\ConstraintScope;
 use App\Enum\LockLevel;
 use App\Enum\LockOrigin;
 use App\Enum\SchedulePlanType;
+use App\Enum\TeamCoachRole;
 use App\Enum\VenueTravelRuleIntensity;
 use App\Plans\PlanComposition;
 use App\Plans\SoclePlan;
@@ -64,6 +65,19 @@ final class ScheduleConstraintBuilder
      * the maximum a manager can be made to wait, not a fixed solve time.
      */
     private const DEFAULT_SOLVER_TIMEOUT_SECONDS = 650;
+
+    /**
+     * Les clés LIBRES de la demande, par liste (lot 5) : hors de l'empreinte ({@see self::structureHash}). Les
+     * lignes d'adjoint et les temps de trajet, libres aussi, s'y retirent à part.
+     *
+     * @var array<string, list<string>>
+     */
+    private const array FREE_KEYS = [
+        'venues' => ['name'],
+        'teams' => ['name'],
+        'coaches' => ['firstName', 'lastName', 'isEmployee', 'isVehicled', 'maxDaysOverride'],
+        'constraints' => ['name'],
+    ];
 
     /** @var array<string, array<VenueTrainingSlot>> */
     private array $currentAvailabilitiesByVenue = [];
@@ -168,6 +182,50 @@ final class ScheduleConstraintBuilder
     }
 
     /**
+     * L'EMPREINTE d'un plan ou d'une version, point d'entrée unique (lot 5) : {@see self::structureHash} de la demande
+     * (sans ses clés libres), combinée à la règle de trajet (froide) lue à part — la demande ne la porte que si une
+     * matrice (libre) est saisie. Le `snapshotHash` d'une version et le signal « périmé » du plan sortent d'ici.
+     *
+     * La règle vaut ses défauts quand rien n'est réglé ; aux défauts, l'empreinte est celle de la demande seule (une
+     * empreinte d'avant le lot reste valable pour un club qui n'a jamais réglé la règle). `null` : règle inconnue,
+     * celle d'une version sans copie du froid (version échouée, ou ni validée ni chargée née avant le lot) — elle
+     * compte comme les défauts.
+     *
+     * @param array<mixed>                                                              $payload
+     * @param array{defaultMinutes: int, intensity: string, toleranceMinutes: int}|null $travelRule
+     */
+    public static function fingerprint(array $payload, ?array $travelRule): string
+    {
+        $hash = self::structureHash($payload);
+        if (null === $travelRule) {
+            return $hash;
+        }
+        $rule = [
+            'defaultMinutes' => $travelRule['defaultMinutes'],
+            'intensity' => $travelRule['intensity'],
+            'toleranceMinutes' => $travelRule['toleranceMinutes'],
+        ];
+
+        return $rule === self::travelRuleValues(new VenueTravelRuleSetting)
+            ? $hash
+            : hash('sha256', $hash . '|travelRule|' . json_encode($rule, \JSON_THROW_ON_ERROR));
+    }
+
+    /**
+     * Les valeurs froides d'une règle de trajet, dans la forme que lit {@see self::fingerprint}.
+     *
+     * @return array{defaultMinutes: int, intensity: string, toleranceMinutes: int}
+     */
+    public static function travelRuleValues(VenueTravelRuleSetting $setting): array
+    {
+        return [
+            'defaultMinutes' => $setting->getDefaultMinutes(),
+            'intensity' => $setting->getIntensity()->value,
+            'toleranceMinutes' => $setting->getToleranceMinutes(),
+        ];
+    }
+
+    /**
      * L'empreinte de STRUCTURE d'un payload, maison unique : le `snapshotHash` d'une version et le
      * signal « structure modifiée » du plan doivent sortir de la même recette.
      *
@@ -181,13 +239,39 @@ final class ScheduleConstraintBuilder
      * des ids neufs), ni l'ordre des lignes, et le même placement répété compte une fois. Les contraintes
      * sont triées par id (puis par contenu) : l'ordre lu en base n'est pas de la structure. Changer cette
      * recette impose de réaligner les versions existantes : `app:schedule:prune-unread-snapshot-fields`
-     * (allègement du contrat, tri des contraintes), `app:schedule:dedupe-snapshot-pins` (épingles).
+     * (allègement du contrat, tri des contraintes, clés libres), `app:schedule:dedupe-snapshot-pins` (épingles).
+     *
+     * Elle ignore enfin les clés LIBRES (lot 5, {@see self::FREE_KEYS}) : un nom, une case salarié, le véhiculé,
+     * les jours maximum d'un coach, un adjoint (ligne `TEAM_COACH` de rôle `ASSISTANT`), les temps de trajet — et
+     * avec eux le bloc `implicitRules.travelTime`, émis seulement quand une matrice existe. Les changer ne périme
+     * rien ; la demande, elle, les porte toujours.
      *
      * @param array<mixed> $payload
      */
     public static function structureHash(array $payload): string
     {
-        unset($payload['version']);
+        unset($payload['version'], $payload['venueTravelTimes']);
+        // La règle de trajet ne part qu'avec une matrice saisie (libre) : sa présence suit le libre, elle sort aussi.
+        if (\is_array($payload['implicitRules'] ?? null)) {
+            unset($payload['implicitRules']['travelTime']);
+        }
+        foreach (self::FREE_KEYS as $list => $keys) {
+            if (!\is_array($payload[$list] ?? null)) {
+                continue;
+            }
+            foreach ($payload[$list] as $index => $row) {
+                if (\is_array($row)) {
+                    $payload[$list][$index] = array_diff_key($row, array_flip($keys));
+                }
+            }
+        }
+        if (\is_array($payload['constraints'] ?? null)) {
+            $payload['constraints'] = array_values(array_filter(
+                $payload['constraints'],
+                static fn (mixed $line): bool => !(\is_array($line) && 'TEAM_COACH' === ($line['type'] ?? null)
+                    && \is_array($line['metadata'] ?? null) && TeamCoachRole::ASSISTANT->value === ($line['metadata']['role'] ?? null)),
+            ));
+        }
         if (\is_array($payload['slotTemplates'] ?? null)) {
             $pins = array_values(array_filter(
                 $payload['slotTemplates'],
@@ -231,6 +315,16 @@ final class ScheduleConstraintBuilder
     private static function formatNullableTime(?DateTimeInterface $time): ?string
     {
         return $time?->format('H:i:s');
+    }
+
+    /**
+     * La règle de trajet de la saison, lue en direct (ses défauts si rien n'est réglé).
+     *
+     * @return array{defaultMinutes: int, intensity: string, toleranceMinutes: int}
+     */
+    public function travelRuleOf(string $clubId, string $seasonId): array
+    {
+        return self::travelRuleValues($this->resolveTravelRuleSetting($clubId, $seasonId));
     }
 
     /**

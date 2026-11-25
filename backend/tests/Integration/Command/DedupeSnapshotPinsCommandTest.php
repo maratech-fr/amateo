@@ -14,12 +14,15 @@ use App\Entity\ScheduleSlotTemplate;
 use App\Entity\Season;
 use App\Entity\Team;
 use App\Entity\Venue;
+use App\Entity\VenueTravelRuleSetting;
 use App\Enum\CalendarEntryKind;
 use App\Enum\CalendarEntryPeriodType;
 use App\Enum\LockLevel;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
+use App\Enum\VenueTravelRuleIntensity;
 use App\Plans\PlanComposition;
+use App\Plans\PlanStates;
 use App\Plans\SoclePlan;
 use App\Service\ScheduleConstraintBuilder;
 use App\Service\SchedulePlanProvisioner;
@@ -152,6 +155,35 @@ final class DedupeSnapshotPinsCommandTest extends KernelTestCase
         self::assertNotNull($doubled);
         self::assertCount(3, $doubled->getSnapshotData()['slotTemplates'], 'en dry-run le snapshot doublé n’est pas nettoyé');
         self::assertSame($f['doubledHash'], $doubled->getSnapshotHash(), 'en dry-run le hash n’est pas recalculé');
+    }
+
+    /**
+     * Lot 5, PR 2 — le recalcul passe par le point d'entrée unique de l'empreinte, avec la règle de trajet que la
+     * version a vue (sa copie du froid) : un club à règle NON par défaut, structure inchangée, n'est pas périmé après la
+     * commande. Avec la seule empreinte de la demande, rejouer la commande ferait paraître périmés ses plannings.
+     */
+    public function testAVersionWithANonDefaultTravelRuleIsNotStaleAfterTheCommand(): void
+    {
+        $f = $this->seedLegacyVersion();
+        $this->scopeGucToClub($f['clubId']);
+        $this->em->persist((new VenueTravelRuleSetting)->setClubId($f['clubId'])->setSeasonId($f['seasonId'])
+            ->setIntensity(VenueTravelRuleIntensity::MANDATORY)->setToleranceMinutes(35));
+        $this->em->flush();
+        $states = self::getContainer()->get(PlanStates::class);
+        $states->store($this->reloadLegacy($f), $states->capture($f['planId']));
+        $this->em->flush();
+        self::assertNotNull($states->travelRuleOfVersion($f['scheduleId']), 'témoin : la copie porte la règle de trajet');
+
+        $this->runCommand([])->assertCommandIsSuccessful();
+
+        // La commande rend le contexte du club en fin de passe : la version se relit d'abord, ce qui le remet.
+        $rehashed = $this->reloadLegacy($f)->getSnapshotHash();
+        $this->purgeCache($f);
+        self::assertSame(
+            self::getContainer()->get(SchedulePlanProvisioner::class)->structureHashOfPlan($f['planId']),
+            $rehashed,
+            'règle de trajet non par défaut, structure inchangée : la version recalculée n\'est pas périmée',
+        );
     }
 
     /** Une version d'avant le correctif, structure inchangée, n'est plus vue comme périmée après passage. */

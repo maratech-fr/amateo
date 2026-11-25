@@ -35,6 +35,11 @@ use RuntimeException;
  * (Les régénérations de PLAN DE PÉRIODE — :47/:57/:69 — et les edges :21/:40 restent dans
  * `un-verrou`, promesses distinctes du cycle de vie des plans de période, sans filet plus bas.)
  *
+ * Après la régénération, « périmé » suit la source de chaque donnée (lot 5, PR 2, ligne 7 du plan) : un nom, un libellé,
+ * un adjoint, la case salarié, le véhiculé, les jours maximum d'un coach et un temps de trajet sont libres et ne
+ * périment rien ; une séance de plus, un créneau de grille, un coach-joueur le périment (cas nombreux, clé par clé :
+ * `Integration/EngineRequestKeySourcesTest`).
+ *
  * Second scénario, sans solve de plus que le socle : une séance verrouillée compte comme une séance de l'équipe, une
  * fois seulement quand elle est posée sur sa propre réservation (cas nombreux, saison, période, groupe, comblement :
  * `GenerationRefusesARecapBlockerTest`).
@@ -97,6 +102,15 @@ final class SeasonWorkLoopContext extends BaseContext
     private int $sf1HeldDay = 0;
 
     private string $sf1HeldStart = '';
+
+    /** La réservation de SF1 à la case de sa séance (son libellé est libre). */
+    private string $sf1ReservationId = '';
+
+    /** Le créneau de grille ajouté puis retiré (froid). */
+    private string $addedGridSlotId = '';
+
+    /** Alex coach-joueur en SM1, ajouté puis retiré (froid). */
+    private string $coachPlayerMembershipId = '';
 
     /** La séance de SF1 tenue par sa réservation dans la version régénérée (celle qu'on essaie de déplacer). */
     private string $sf1HeldSlotId = '';
@@ -287,6 +301,7 @@ final class SeasonWorkLoopContext extends BaseContext
         if (!\in_array($created['status'], [200, 201], true)) {
             throw new RuntimeException(\sprintf('la réservation de SF1 à la case de sa séance a répondu %d (201 attendu) : %s', $created['status'], $this->encoded($created['json'])));
         }
+        $this->sf1ReservationId = $this->smallClubStringField($created['json'], 'id');
     }
 
     /**
@@ -639,31 +654,123 @@ final class SeasonWorkLoopContext extends BaseContext
         $this->putBack('teams', $this->smallClubTeamIds['Loisir'], ['name' => 'Loisir Adultes']);
     }
 
-    #[When('je lui rends son nom')]
-    public function jeLuiRendsSonNom(): void
-    {
-        $this->putBack('teams', $this->smallClubTeamIds['Loisir'], ['name' => 'Loisir']);
-    }
-
     /**
-     * Un nom de contrainte modifié périme le planning, et lui rendre son nom efface le signal.
-     * Ne prouve PAS que l'ordre des contraintes lu en base reste hors de l'empreinte (la contrainte
-     * renommée reste la dernière en base, son ordre ne bouge pas) : ce filet-là est
+     * Lot 5, PR 2 (ligne 7 du plan) — un nom de contrainte est libre : le changer ne périme pas le planning. Ne prouve
+     * PAS que l'ordre des contraintes lu en base reste hors de l'empreinte : ce filet-là est
      * `PruneUnreadSnapshotFieldsCommandTest::testAVersionWithConstraintsInAnotherOrderGetsTheSortedHash`.
      */
-    #[When('je renomme une contrainte puis lui rends son nom')]
-    public function jeRenommeUneContraintePuisLuiRendsSonNom(): void
+    #[When('je renomme une contrainte')]
+    public function jeRenommeUneContrainte(): void
     {
         $original = $this->apiGet(\sprintf('constraints/%s', $this->sm1ConstraintId), $this->smallClubToken);
         $name = $original['json']['name'] ?? null;
         if (!\is_string($name) || '' === $name) {
-            throw new RuntimeException('la contrainte SM1 n\'a pas de nom à rétablir');
+            throw new RuntimeException('la contrainte SM1 n\'a pas de nom');
         }
         $this->putBack('constraints', $this->sm1ConstraintId, ['name' => $name . ' (renommée)']);
-        if (!$this->planIsStale()) {
-            throw new RuntimeException('témoin : renommer une contrainte devrait périmer le planning (le nom fait partie de l\'envoi)');
+    }
+
+    /** Un libellé de réservation est libre (lot 5, ligne 7). */
+    #[When('je renomme la réservation de SF1')]
+    public function jeRenommeLaReservationDeSf1(): void
+    {
+        $current = $this->apiGet(\sprintf('reservations/%s', $this->sf1ReservationId), $this->smallClubToken);
+        if (200 !== $current['status']) {
+            throw new RuntimeException(\sprintf('lecture de la réservation de SF1 refusée (HTTP %d)', $current['status']));
         }
-        $this->putBack('constraints', $this->sm1ConstraintId, ['name' => $name]);
+        $renamed = $this->apiPatch(\sprintf('reservations/%s', $this->sf1ReservationId), [...$current['json'], 'label' => 'Créneau de SF1, renommé'], $this->smallClubToken);
+        if (200 !== $renamed['status']) {
+            throw new RuntimeException(\sprintf('renommer la réservation de SF1 a répondu %d (200 attendu) : %s', $renamed['status'], $this->encoded($renamed['json'])));
+        }
+    }
+
+    /** Un adjoint est libre (lot 5, ligne 7) ; le coach principal, lui, est froid. */
+    #[When('j\'ajoute Sacha comme adjoint de SF1')]
+    public function jAjouteSachaCommeAdjointDeSf1(): void
+    {
+        $added = $this->apiPost('team_coaches', [
+            'teamId' => $this->smallClubTeamIds['SF1'],
+            'coachId' => $this->smallClubCoachIds['Sacha'],
+            'role' => 'ASSISTANT',
+        ], $this->smallClubToken);
+        if (!\in_array($added['status'], [200, 201], true)) {
+            throw new RuntimeException(\sprintf('ajouter un adjoint à SF1 a répondu %d (201 attendu) : %s', $added['status'], $this->encoded($added['json'])));
+        }
+    }
+
+    /** Case salarié, véhiculé et jours maximum d'un coach : libres (lot 5, ligne 7, décision 6). */
+    #[When('je coche salarié et véhiculé pour Dominique et lui fixe 3 jours au plus')]
+    public function jeCocheSalarieEtVehiculePourDominique(): void
+    {
+        $this->putBack('coaches', $this->smallClubCoachIds['Dominique'], ['isEmployee' => true, 'isVehicled' => true, 'maxDaysOverride' => 3]);
+    }
+
+    /** Un temps de trajet est libre (lot 5, ligne 7) : le saisir, puis le corriger. */
+    #[When('je saisis puis corrige le trajet entre le Gymnase Nord et le Gymnase Sud')]
+    public function jeSaisisPuisCorrigeLeTrajet(): void
+    {
+        $pair = ['venueAId' => $this->smallClubVenueIds['Gymnase Nord'], 'venueBId' => $this->smallClubVenueIds['Gymnase Sud']];
+        $created = $this->apiPost('venue_travel_times', [...$pair, 'drivingMinutes' => 10], $this->smallClubToken);
+        $id = $created['json']['id'] ?? null;
+        if (201 !== $created['status'] || !\is_string($id)) {
+            throw new RuntimeException(\sprintf('saisir le trajet Nord – Sud a répondu %d (201 attendu) : %s', $created['status'], $this->encoded($created['json'])));
+        }
+        $corrected = $this->apiPut(\sprintf('venue_travel_times/%s', $id), [
+            'venueAId' => $created['json']['venueAId'] ?? $pair['venueAId'],
+            'venueBId' => $created['json']['venueBId'] ?? $pair['venueBId'],
+            'drivingMinutes' => 25,
+        ], $this->smallClubToken);
+        if (200 !== $corrected['status']) {
+            throw new RuntimeException(\sprintf('corriger le trajet Nord – Sud a répondu %d (200 attendu) : %s', $corrected['status'], $this->encoded($corrected['json'])));
+        }
+    }
+
+    /** Un créneau de grille est froid (lot 5, ligne 7). */
+    #[When('j\'ajoute un créneau au Gymnase Sud le vendredi')]
+    public function jAjouteUnCreneauAuGymnaseSudLeVendredi(): void
+    {
+        $created = $this->apiPost('venue_training_slots', [
+            'venueId' => $this->smallClubVenueIds['Gymnase Sud'],
+            'dayOfWeek' => 5,
+            'startTime' => '18:00',
+            'durationMinutes' => 90,
+            'capacity' => 1,
+        ], $this->smallClubToken);
+        $id = $created['json']['id'] ?? null;
+        if (!\in_array($created['status'], [200, 201], true) || !\is_string($id)) {
+            throw new RuntimeException(\sprintf('ajouter un créneau au Gymnase Sud a répondu %d (201 attendu) : %s', $created['status'], $this->encoded($created['json'])));
+        }
+        $this->addedGridSlotId = $id;
+    }
+
+    #[When('je retire ce créneau')]
+    public function jeRetireCeCreneau(): void
+    {
+        $removed = $this->apiDelete(\sprintf('venue_training_slots/%s', $this->addedGridSlotId), $this->smallClubToken);
+        if (204 !== $removed['status']) {
+            throw new RuntimeException(\sprintf('retirer le créneau ajouté a répondu %d (204 attendu)', $removed['status']));
+        }
+    }
+
+    /** Un coach-joueur est froid (lot 5, ligne 7, décision 7). */
+    #[When('Alex joue aussi en SM1')]
+    public function alexJoueAussiEnSm1(): void
+    {
+        $created = $this->apiPost('coach_player_memberships', ['coachId' => $this->smallClubCoachIds['Alex'], 'teamId' => $this->smallClubTeamIds['SM1'], 'isActive' => true], $this->smallClubToken);
+        $id = $created['json']['id'] ?? null;
+        if (!\in_array($created['status'], [200, 201], true) || !\is_string($id)) {
+            throw new RuntimeException(\sprintf('faire jouer Alex en SM1 a répondu %d (201 attendu) : %s', $created['status'], $this->encoded($created['json'])));
+        }
+        $this->coachPlayerMembershipId = $id;
+    }
+
+    #[When('Alex ne joue plus en SM1')]
+    public function alexNeJouePlusEnSm1(): void
+    {
+        $removed = $this->apiDelete(\sprintf('coach_player_memberships/%s', $this->coachPlayerMembershipId), $this->smallClubToken);
+        if (204 !== $removed['status']) {
+            throw new RuntimeException(\sprintf('retirer Alex de SM1 a répondu %d (204 attendu)', $removed['status']));
+        }
     }
 
     #[Then('il est signalé périmé')]
@@ -674,8 +781,16 @@ final class SeasonWorkLoopContext extends BaseContext
         }
     }
 
-    #[Then('il ne l\'est plus')]
+    /** Lot 5, PR 2 (ligne 7 du plan) : une donnée libre a changé, rien ne périme le planning. */
     #[Then('il ne l\'est toujours pas')]
+    public function ilNeLEstToujoursPas(): void
+    {
+        if ($this->planIsStale()) {
+            throw new RuntimeException('le planning est signalé périmé alors que seule une donnée libre a changé : elle ne doit entrer ni dans l\'empreinte ni dans la copie');
+        }
+    }
+
+    #[Then('il ne l\'est plus')]
     public function ilNeLEstPlus(): void
     {
         if ($this->planIsStale()) {

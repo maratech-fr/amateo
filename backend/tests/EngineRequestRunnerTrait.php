@@ -12,6 +12,7 @@ use App\Message\GenerateScheduleMessage;
 use App\Message\PlaceMatchesMessage;
 use App\MessageHandler\GenerateScheduleHandler;
 use App\MessageHandler\PlaceMatchesHandler;
+use App\Plans\PlanStates;
 use App\Plans\SoclePlan;
 use App\Service\ClubGenerationLock;
 use App\Service\DiagnosticMessageBuilder;
@@ -136,6 +137,7 @@ trait EngineRequestRunnerTrait
             $container->get(StructureSnapshotter::class),
             $container->get(SchedulePlanProvisioner::class),
             $container->get(OutputCreditLedger::class),
+            $container->get(PlanStates::class),
         );
         $handler(new GenerateScheduleMessage(
             scheduleId: $scheduleId,

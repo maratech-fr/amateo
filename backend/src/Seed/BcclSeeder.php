@@ -58,6 +58,7 @@ use App\Enum\TeamCoachRole;
 use App\Enum\TeamLevel;
 use App\Enum\TeamLinkType;
 use App\Plans\PlanComposition;
+use App\Plans\PlanStates;
 use App\Repository\ClubSubscriptionRepository;
 use App\Repository\SchoolHolidayPeriodRepository;
 use App\Service\Basketball\CategoryCatalog;
@@ -117,6 +118,7 @@ final class BcclSeeder
         private readonly ClubSubscriptionWriter $subscriptionWriter,
         private readonly ClubSubscriptionRepository $subscriptions,
         private readonly PlanComposition $planComposition,
+        private readonly PlanStates $planStates,
     ) {}
 
     public function run(EntityManagerInterface $manager, BcclSeedProfile $profile): Club
@@ -1895,10 +1897,14 @@ final class BcclSeeder
         // structureHashOfPlan), pour que « Régénérer » soit honnêtement grisé (structure
         // inchangée depuis la « génération »).
         $payload = $this->constraintBuilder->buildForPlan($seasonPlanId);
+        // Lot 5 : toute version terminée porte la copie du froid de son plan, prise avec son entrée figée ;
+        // l'empreinte prend la règle de trajet de cette copie.
+        $state = $this->planStates->capture($seasonPlanId);
         $schedule->setSnapshotData($payload);
-        $schedule->setSnapshotHash(ScheduleConstraintBuilder::structureHash($payload));
+        $schedule->setSnapshotHash(ScheduleConstraintBuilder::fingerprint($payload, $this->planStates->travelRuleIn($state)));
         $schedule->setStatus(ScheduleStatus::COMPLETED);
         $manager->flush();
+        $this->planStates->store($schedule, $state);
 
         // VALIDER = POINTER (primitive de l'app) : le plan SEASON nomme cette version sa choisie.
         $this->schedulePlanProvisioner->choose($schedule);
@@ -2367,11 +2373,15 @@ final class BcclSeeder
         // lockSourceScheduleIdOfPlan}), donc `buildForPlan` greffe SES HARD en forme canonique
         // — exactement ce que `structureHashOfPlan` recalculera (« Régénérer » honnêtement grisé).
         $payload = $this->constraintBuilder->buildForPlan($planId);
+        // Lot 5 : toute version terminée porte la copie du froid de son plan, prise avec son entrée figée ;
+        // l'empreinte prend la règle de trajet de cette copie.
+        $state = $this->planStates->capture($planId);
         $schedule->setSnapshotData($payload);
-        $schedule->setSnapshotHash(ScheduleConstraintBuilder::structureHash($payload));
+        $schedule->setSnapshotHash(ScheduleConstraintBuilder::fingerprint($payload, $this->planStates->travelRuleIn($state)));
         // Miroir de ScheduleResultImporter : une version fraîchement transcrite n'est pas retouchée à la main.
         $schedule->setManuallyEditedSinceGeneration(false);
         $manager->flush();
+        $this->planStates->store($schedule, $state);
 
         // VALIDER = POINTER : le plan de période nomme cette version sa choisie.
         $this->schedulePlanProvisioner->choose($schedule);

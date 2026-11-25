@@ -24,7 +24,7 @@ use Doctrine\ORM\Mapping as ORM;
  * version is the plan's chosenScheduleId, no longer a pointer on the entry.
  * See specs/courantes/calendar-entry-modele-donnees.md.
  */
-#[Family(Level::SEASON)]
+#[Family(Level::SEASON, cold: [], copiedToNextSeason: false)]
 #[ORM\Entity(repositoryClass: CalendarEntryRepository::class)]
 #[ORM\Table(name: 'calendar_entry')]
 #[ORM\Index(name: 'idx_calendar_entry_club_season', columns: ['club_id', 'season_id'])]

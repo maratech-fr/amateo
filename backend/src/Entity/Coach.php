@@ -19,7 +19,7 @@ use Doctrine\ORM\Mapping as ORM;
  * {@see Person} que `personId` désigne, et se lit par {@see PersonDirectory}, jamais ici.
  * Une personne a au plus un rôle coach par saison (`uniq_coach_season_person`).
  */
-#[Family(Level::SEASON)]
+#[Family(Level::SEASON, cold: [], copiedToNextSeason: true)]
 #[ORM\Entity(repositoryClass: CoachRepository::class)]
 #[ORM\Table(name: 'coach')]
 #[ORM\Index(name: 'idx_coach_club_season', columns: ['club_id', 'season_id'])]

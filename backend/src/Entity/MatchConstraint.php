@@ -38,7 +38,7 @@ use Doctrine\ORM\Mapping as ORM;
  * peut s'interdire plusieurs gymnases), et deux règles club peuvent se recouvrir sans
  * être un doublon.
  */
-#[Family(Level::SEASON)]
+#[Family(Level::SEASON, cold: [], copiedToNextSeason: true)]
 #[ORM\Entity(repositoryClass: MatchConstraintRepository::class)]
 #[ORM\Table(name: 'match_constraint')]
 #[ORM\Index(name: 'idx_match_constraint_club_season', columns: ['club_id', 'season_id'])]

@@ -35,7 +35,7 @@ use Doctrine\ORM\Mapping as ORM;
  * AUCUNE trace exploitable (la décision ne s'écrivait que comme un retrait d'écart) —
  * le registre ne se peuple donc que par les arbitrages À VENIR, jamais rétroactivement.
  */
-#[Family(Level::SEASON)]
+#[Family(Level::SEASON, cold: [], copiedToNextSeason: false)]
 #[ORM\Entity(repositoryClass: FbiCorrectionRepository::class)]
 #[ORM\Table(name: 'fbi_correction')]
 // Une seule entrée OUVERTE par (club, saison, rencontre, champ) — un re-dépôt du même

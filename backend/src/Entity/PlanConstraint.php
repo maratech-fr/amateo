@@ -23,7 +23,7 @@ use Doctrine\ORM\Mapping as ORM;
  * changer la portée d'une règle réécrit celles restées au défaut ({@see PlanComposition::onScopeChanged}). Pas de clé
  * vers la contrainte : « Charger » efface puis réinsère les contraintes permanentes.
  */
-#[Family(Level::PLAN, copiedAtPlanBirth: false)]
+#[Family(Level::PLAN, copiedAtPlanBirth: false, cold: Family::ALL, copiedToNextSeason: false)]
 #[ORM\Entity]
 #[ORM\Table(name: 'plan_constraint')]
 #[ORM\UniqueConstraint(name: 'uniq_plan_constraint', columns: ['schedule_plan_id', 'constraint_id'])]

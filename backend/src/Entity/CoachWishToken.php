@@ -26,7 +26,7 @@ use Doctrine\ORM\Mapping as ORM;
  * requête publique n'a pas de JWT). La table est sous RLS HYBRIDE (SELECT ouvert pour le
  * lookup pré-GUC, écritures tenant — cf. la migration).
  */
-#[Family(Level::SEASON, keptAtSeasonPurge: 'part par la FK ON DELETE CASCADE de sa campagne (jamais supprimé directement)', keptAtErasure: 'part par la FK ON DELETE CASCADE de sa campagne (supprimée avec chaque saison par SeasonDataPurger)')]
+#[Family(Level::SEASON, keptAtSeasonPurge: 'part par la FK ON DELETE CASCADE de sa campagne (jamais supprimé directement)', keptAtErasure: 'part par la FK ON DELETE CASCADE de sa campagne (supprimée avec chaque saison par SeasonDataPurger)', cold: [], copiedToNextSeason: false)]
 #[ORM\Entity]
 #[ORM\Table(name: 'coach_wish_token')]
 #[ORM\UniqueConstraint(name: 'uniq_coach_wish_token_value', columns: ['token'])]

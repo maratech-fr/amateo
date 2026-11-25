@@ -21,7 +21,7 @@ use Doctrine\ORM\Mapping as ORM;
  * Les lignes ne se posent que par {@see PlanComposition::ensureLines}. Pas de clé vers l'équipe : « Charger » efface
  * puis réinsère les équipes ; la suppression d'une équipe passe par la cascade (`CascadePlan`).
  */
-#[Family(Level::PLAN, copiedAtPlanBirth: false)]
+#[Family(Level::PLAN, copiedAtPlanBirth: false, cold: ['teamId', 'participates', 'sessionsPerWeek', 'maxSessionsPerDay'], copiedToNextSeason: true)]
 #[ORM\Entity]
 #[ORM\Table(name: 'plan_team')]
 #[ORM\UniqueConstraint(name: 'uniq_plan_team', columns: ['schedule_plan_id', 'team_id'])]

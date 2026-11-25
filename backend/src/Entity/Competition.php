@@ -19,7 +19,7 @@ use Doctrine\ORM\Mapping as ORM;
  * Season-scoped, tenant-owned. Friendly matches carry no competition (a Fixture
  * with a null competitionId).
  */
-#[Family(Level::SEASON)]
+#[Family(Level::SEASON, cold: [], copiedToNextSeason: false)]
 #[ORM\Entity(repositoryClass: CompetitionRepository::class)]
 #[ORM\Table(name: 'competition')]
 #[ORM\Index(name: 'idx_competition_club_season', columns: ['club_id', 'season_id'])]

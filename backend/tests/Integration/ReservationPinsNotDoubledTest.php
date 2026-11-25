@@ -24,6 +24,7 @@ use App\Enum\SeasonStatus;
 use App\Message\GenerateScheduleMessage;
 use App\MessageHandler\GenerateScheduleHandler;
 use App\Plans\PlanComposition;
+use App\Plans\PlanStates;
 use App\Plans\SoclePlan;
 use App\Service\ClubGenerationLock;
 use App\Service\DiagnosticMessageBuilder;
@@ -400,6 +401,7 @@ final class ReservationPinsNotDoubledTest extends KernelTestCase
             $container->get(StructureSnapshotter::class),
             $this->provisioner,
             $container->get(OutputCreditLedger::class),
+            $container->get(PlanStates::class),
             null,
             null,
             $container->get(SolverMetricsRecorder::class),

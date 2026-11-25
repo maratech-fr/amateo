@@ -16,6 +16,7 @@ use App\Entity\PlanConstraint;
 use App\Entity\PlanTeam;
 use App\Entity\PlanVenue;
 use App\Entity\Reservation;
+use App\Entity\Schedule;
 use App\Entity\Season;
 use App\Entity\SharedTrainingBlock;
 use App\Entity\SharedTrainingBlockTeam;
@@ -34,6 +35,7 @@ use App\Enum\ConstraintRuleType;
 use App\Enum\ConstraintScope;
 use App\Enum\ImplicitRuleIntensity;
 use App\Enum\ImplicitRuleKey;
+use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
 use App\Enum\SubscriptionOrigin;
 use App\Enum\TeamCoachRole;
@@ -263,6 +265,35 @@ final class PurgeCompletenessTest extends KernelTestCase
     }
 
     /**
+     * Lot 5, PR 2 (ligne 10 du plan, RGPD) — la copie du froid d'une version part avec elle : supprimer la version
+     * l'emporte (clé en cascade), purger la saison l'emporte, effacer le club l'emporte. Angle : l'EFFET en base, sous
+     * le contexte du club (le rôle applicatif ne supprime une ligne que sous son club, RLS).
+     */
+    public function testAVersionCopyLeavesWithItsVersionItsSeasonAndItsClub(): void
+    {
+        [$club, $season] = $this->clubWithSeason('Copie');
+        $em = self::getContainer()->get(EntityManagerInterface::class);
+        $copies = static fn (): int => (int) $em->getConnection()->fetchOne('SELECT COUNT(*) FROM schedule_state WHERE club_id = :club', ['club' => $club->getId()]);
+        $first = $this->versionWithACopy($club, $season, 'V1');
+        $this->versionWithACopy($club, $season, 'V2');
+        self::assertSame(2, $copies(), 'témoin : deux versions, deux copies');
+
+        $em->getConnection()->executeStatement('DELETE FROM schedule WHERE id = ?', [$first]);
+        self::assertSame(1, $copies(), 'supprimer une version emporte sa copie');
+
+        self::getContainer()->get(SeasonDataPurger::class)->purge($club->getId(), $season->getId());
+        self::assertSame(0, $copies(), 'la purge de la saison emporte les copies de ses versions');
+
+        $next = $this->season($club, 2026);
+        $em->flush();
+        $this->versionWithACopy($club, $next, 'V1');
+        self::assertSame(1, $copies(), 'témoin : une copie dans une autre saison');
+        self::getContainer()->get(ErasedClubPurger::class)->purge($club);
+        $this->scopeGucToClub($club->getId());
+        self::assertSame(0, $copies(), 'l\'effacement du club emporte toutes ses copies');
+    }
+
+    /**
      * L'effacement emporte aussi les lignes de saison dont la saison n'existe plus : `season_id` n'a
      * aucune clé étrangère, un coach (et son équipe, leur lien) d'une saison disparue n'est vu par
      * aucune purge de saison. Sans cela, la fiche de personne qu'il pointe ne s'efface pas (clé
@@ -379,6 +410,25 @@ final class PurgeCompletenessTest extends KernelTestCase
     protected function setUp(): void
     {
         self::bootKernel();
+    }
+
+    /** Une version terminée du plan de saison, et sa copie écrite en SQL sur les colonnes du contrat (§5). */
+    private function versionWithACopy(Club $club, Season $season, string $name): string
+    {
+        $em = self::getContainer()->get(EntityManagerInterface::class);
+        $this->scopeGucToClub($club->getId());
+        $version = (new Schedule)->setClubId($club->getId())->setSeasonId($season->getId())->setName($name)
+            ->setStatus(ScheduleStatus::COMPLETED)->setSchedulePlanId(SeasonPlanOf::id(self::getContainer(), $season->getId()));
+        $em->persist($version);
+        $em->flush();
+        self::getContainer()->get(SchedulePlanProvisioner::class)->linkSchedule($version);
+        $em->flush();
+        $em->getConnection()->executeStatement(
+            'INSERT INTO schedule_state (id, created_at, updated_at, club_id, season_id, schedule_id, data) VALUES (gen_random_uuid(), now(), now(), ?, ?, ?, ?)',
+            [$club->getId(), $season->getId(), $version->getId(), '{}'],
+        );
+
+        return $version->getId();
     }
 
     /**

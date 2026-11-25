@@ -7,6 +7,7 @@ namespace App\Tests\Integration;
 use App\Entity\Schedule;
 use App\Enum\LockLevel;
 use App\Enum\ScheduleStatus;
+use App\Plans\PlanStates;
 use App\Plans\SoclePlan;
 use App\Service\ScheduleConstraintBuilder;
 use App\Service\SchedulePlanProvisioner;
@@ -60,7 +61,7 @@ use Symfony\Contracts\Cache\TagAwareCacheInterface;
  * `phpunit --group phase1 <fichiers>`, un fichier listé sans ce groupe n'y jouerait aucun test.
  *
  * Aux cas de génération (1 à 4, 7 à 13, 20), la demande se recoupe avec ce qui est écrit en base : l'empreinte
- * `snapshotHash` vaut `structureHash(snapshotData)`, les clés de la greffe `payloadGraft` sont
+ * `snapshotHash` vaut `fingerprint(snapshotData, règle de trajet de la copie)`, les clés de la greffe `payloadGraft` sont
  * exactement celles attendues, et le corps reçu vaut `engineInput()` relu en base. Aux cas 1 à 3, 7 à 13 et 20,
  * `snapshotHash` vaut aussi `structureHashOfPlan(plan)` (le signal « structure modifiée » ne ment pas
  * sur une version fraîche). Au cas 4 (comblement), la relation constatée est AUSSI l'égalité, mais par
@@ -494,7 +495,13 @@ final class EngineRequestReferenceTest extends KernelTestCase
      */
     private function assertGenerationCoherence(array $body, Schedule $schedule, ?array $graftKeys): void
     {
-        self::assertSame(ScheduleConstraintBuilder::structureHash($schedule->getSnapshotData()), $schedule->getSnapshotHash(), 'snapshotHash = structureHash(snapshotData)');
+        // Lot 5 : l'empreinte est le point d'entrée unique, la demande figée et la règle de trajet de la copie de la version.
+        $travelRule = self::getContainer()->get(PlanStates::class)->travelRuleOfVersion($schedule->getId());
+        self::assertSame(
+            ScheduleConstraintBuilder::fingerprint($schedule->getSnapshotData(), $travelRule),
+            $schedule->getSnapshotHash(),
+            'snapshotHash = fingerprint(snapshotData, règle de trajet de la copie de la version)',
+        );
         $graft = $schedule->getPayloadGraft();
         self::assertSame($graftKeys, null === $graft ? null : array_keys($graft), 'clés de la greffe payloadGraft');
         self::assertSame($schedule->engineInput(), $body, 'le corps reçu par le moteur = engineInput() relu en base');

@@ -7,6 +7,7 @@ namespace App\Command;
 use App\Entity\Club;
 use App\Entity\Reservation;
 use App\Entity\Schedule;
+use App\Plans\PlanStates;
 use App\Service\ScheduleConstraintBuilder;
 use App\Service\TenantConnectionContext;
 use Doctrine\ORM\EntityManagerInterface;
@@ -47,6 +48,7 @@ final class DedupeSnapshotPinsCommand extends Command
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
         private readonly TenantConnectionContext $tenantConnectionContext,
+        private readonly PlanStates $planStates,
     ) {
         parent::__construct();
     }
@@ -165,7 +167,8 @@ final class DedupeSnapshotPinsCommand extends Command
                 \ARRAY_FILTER_USE_BOTH,
             ));
         }
-        $hash = ScheduleConstraintBuilder::structureHash($snapshot);
+        // Lot 5 : l'empreinte recalculée garde la règle de trajet que la version a vue (sa copie du froid).
+        $hash = ScheduleConstraintBuilder::fingerprint($snapshot, $this->planStates->travelRuleOfVersion($schedule->getId()));
         if ([] === $drop && $hash === $schedule->getSnapshotHash()) {
             return false;
         }

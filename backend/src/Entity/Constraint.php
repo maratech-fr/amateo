@@ -15,7 +15,7 @@ use App\Structure\RefersTo;
 use DateTimeImmutable;
 use Doctrine\ORM\Mapping as ORM;
 
-#[Family(Level::SEASON)]
+#[Family(Level::SEASON, cold: ['scope', 'scopeTargetId', 'family', 'ruleType', 'config', 'isActive'], coldRows: ['calendarEntryId' => null], ofSocle: true, copiedToNextSeason: true)]
 #[ORM\Entity(repositoryClass: ConstraintRepository::class)]
 #[ORM\Table(name: '`constraint`')]
 #[ORM\Index(name: 'idx_constraint_club_season', columns: ['club_id', 'season_id'])]

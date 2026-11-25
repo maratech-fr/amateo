@@ -156,6 +156,16 @@ vers `constraint`** : « Charger » efface puis réinsère les règles permanent
 `tests/Security/PlanCompositionTenantIsolationTest.php` (step bloquant). La table remplace
 `constraint_period_override` (supprimée).
 
+## `schedule_state` — la copie du froid d'une version, une clé vers la version
+
+`schedule_state` (une ligne par version terminée : les valeurs froides de son plan, en JSON ; `Version20261201120000`)
+suit le motif normal : `ENABLE` + `FORCE`, `tenant_isolation FOR ALL TO amateo_app`, `admin_all` (`amateo_owner`) et
+`readonly_tenant` (`amateo_read`). Sa clé vers `schedule (id)` est **simple** (unique sur `schedule_id`), `ON DELETE
+CASCADE` : la copie part avec sa version. Le `club_id` de la ligne est posé par `PlanStates::store`, jamais par un
+client ; aucune route n'expose la table. **Aucune donnée libre** : des identifiants de coach (`TeamCoach.coachId`,
+`CoachPlayerMembership.coachId` et `position`), pas de nom. Gardé par `tests/Security/RlsIsolationTest.php` et
+`tests/Security/PurgeCompletenessTest.php`.
+
 ## Porte superadmin (supervision développeur)
 
 La porte admin (P5-7, `Version20260813130000`) est **portée par des policies, plus par le

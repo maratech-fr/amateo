@@ -38,7 +38,7 @@ use Doctrine\ORM\Mapping as ORM;
  * same question (Season.baselineScheduleId, VALIDATED/ARCHIVED statuses) are
  * gone — two truths is what made them diverge.
  */
-#[Family(Level::SEASON)]
+#[Family(Level::SEASON, cold: [], copiedToNextSeason: false)]
 #[ORM\Entity]
 #[ORM\Table(name: 'schedule_plan')]
 #[ORM\Index(name: 'idx_schedule_plan_club_season', columns: ['club_id', 'season_id'])]

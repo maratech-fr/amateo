@@ -32,7 +32,7 @@ use Doctrine\ORM\Mapping as ORM;
  * elle est SUPPRIMÉE au DELETE de compte (AccountErasureService), et exportée dans
  * la portabilité RGPD (horodatages = donnée personnelle).
  */
-#[Family(Level::SEASON)]
+#[Family(Level::SEASON, cold: [], copiedToNextSeason: false)]
 #[ORM\Entity(repositoryClass: MatchModuleVisitRepository::class)]
 #[ORM\Table(name: 'match_module_visit')]
 #[ORM\UniqueConstraint(name: 'uniq_match_module_visit_scope', columns: ['club_id', 'season_id', 'user_id'])]
