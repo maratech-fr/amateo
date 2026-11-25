@@ -176,10 +176,12 @@ final class DedupeSnapshotPinsCommandTest extends KernelTestCase
 
         $this->runCommand([])->assertCommandIsSuccessful();
 
+        // La commande rend le contexte du club en fin de passe : la version se relit d'abord, ce qui le remet.
+        $rehashed = $this->reloadLegacy($f)->getSnapshotHash();
         $this->purgeCache($f);
         self::assertSame(
             self::getContainer()->get(SchedulePlanProvisioner::class)->structureHashOfPlan($f['planId']),
-            $this->reloadLegacy($f)->getSnapshotHash(),
+            $rehashed,
             'règle de trajet non par défaut, structure inchangée : la version recalculée n\'est pas périmée',
         );
     }
