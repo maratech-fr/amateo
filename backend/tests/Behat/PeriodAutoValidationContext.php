@@ -59,7 +59,7 @@ final class PeriodAutoValidationContext extends BaseContext
         }
         $this->otherVersionId = $generated['id'];
 
-        $loaded = $this->apiPost(\sprintf('schedules/%s/load-locks', $this->loadedVersionId), [], $this->smallClubToken);
+        $loaded = $this->apiPost(\sprintf('schedules/%s/load', $this->loadedVersionId), [], $this->smallClubToken);
         if (200 !== $loaded['status']) {
             throw new RuntimeException(\sprintf('« Charger » la première version a répondu %d (200 attendu)', $loaded['status']));
         }

@@ -15,6 +15,7 @@ Fonctionnalité: Effacer une personne efface tout ce qui vient d'elle
     Et je signale le planning généré
     Quand le support efface la personne « Camille Durand »
     Alors plus aucune colonne de la base ne contient son nom, son mail, son téléphone ni son commentaire
+    Et aucune copie d'une version ne garde l'identifiant de son rôle
     Et ses séances restent, sans coach
     Et la collecte ouverte désigne le coach suivant
 

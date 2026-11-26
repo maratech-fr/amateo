@@ -52,6 +52,9 @@ final class PersonErasureContext extends BaseContext
 
     private bool $demo = false;
 
+    /** L'identifiant du rôle de coach de la personne effacée. */
+    private string $erasedCoachId = '';
+
     /** L'équipe qu'elle partage et le coach qui la partage avec elle : le « coach suivant » de la collecte. */
     private string $sharedTeam = '';
 
@@ -198,6 +201,10 @@ final class PersonErasureContext extends BaseContext
         if ([] !== $missing) {
             throw new RuntimeException(\sprintf('décor : avant l\'effacement, le balayage ne trouve pas %s dans %s (trouvé : %s)', $coach, implode(', ', $missing), implode(', ', $before)));
         }
+        $this->erasedCoachId = $this->smallClubCoachIds[$coach];
+        if (0 === $this->copiesCitingErasedCoach()) {
+            throw new RuntimeException(\sprintf('décor : avant l\'effacement, aucune copie de version ne cite le rôle de %s', $coach));
+        }
 
         $this->runConsole(['php', 'bin/console', 'app:people:erase', '--club=' . $this->smallClubId, '--coach=' . $this->smallClubCoachIds[$coach]]);
     }
@@ -208,6 +215,16 @@ final class PersonErasureContext extends BaseContext
         $left = $this->traces();
         if ('' !== $left) {
             throw new RuntimeException(\sprintf('après l\'effacement, la personne est encore dans : %s', $left));
+        }
+    }
+
+    /** Lot conception 5, PR 3 (ligne 20 du plan) : la copie du froid d'une version ne garde pas l'identifiant de son rôle. */
+    #[Then('aucune copie d\'une version ne garde l\'identifiant de son rôle')]
+    public function aucuneCopieNeGardeSonRole(): void
+    {
+        $left = $this->copiesCitingErasedCoach();
+        if (0 !== $left) {
+            throw new RuntimeException(\sprintf('après l\'effacement, %d copie(s) de version citent encore son rôle', $left));
         }
     }
 
@@ -254,6 +271,12 @@ final class PersonErasureContext extends BaseContext
     public function nettoyer(): void
     {
         $this->teardownSmallClub();
+    }
+
+    /** Les copies d'état des versions du club qui citent l'identifiant du rôle effacé (connexion d'administration). */
+    private function copiesCitingErasedCoach(): int
+    {
+        return (int) $this->dbalScalar(\sprintf('SELECT COUNT(*) AS behatval FROM schedule_state WHERE club_id = \'%s\' AND data::text LIKE \'%%%s%%\'', $this->smallClubId, $this->erasedCoachId), admin: true);
     }
 
     /** Colonnes de toute la base (connexion d'administration) qui contiennent encore nom, mail, téléphone ou commentaire. */
