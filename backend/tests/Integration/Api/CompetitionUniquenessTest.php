@@ -4,61 +4,136 @@ declare(strict_types=1);
 
 namespace App\Tests\Integration\Api;
 
+use App\Entity\Club;
+use App\Entity\ClubUser;
+use App\Entity\Season;
+use App\Entity\Sport;
+use App\Entity\SportCategory;
+use App\Entity\Team;
+use App\Entity\User;
+use App\Enum\SeasonStatus;
+use App\Service\SeasonResolver;
+use App\Tests\ChoosesPlanVersionTrait;
 use App\Tests\TenantGucTrait;
-use Doctrine\DBAL\Connection;
-use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
+use DateTimeImmutable;
+use Doctrine\ORM\EntityManagerInterface;
+use Lexik\Bundle\JWTAuthenticationBundle\Services\JWTTokenManagerInterface;
 use PHPUnit\Framework\Attributes\Group;
-use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
+use PHPUnit\Framework\Attributes\TestWith;
+use Symfony\Bundle\FrameworkBundle\KernelBrowser;
+use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 
 /**
- * P4-67 — NR de l'unicité qui rend la résolution d'import déterministe :
- * deux « DF2 » pour la MÊME équipe sont refusés par la BASE (le résolveur
- * d'import prenait candidates[0], arbitraire). Deux équipes en DF2 restent
- * légitimes — y compris appariées à la MÊME compétition FFBB (deux U11 dans
- * une même division : le cas multiLabel de l'importeur).
+ * Promesse : une équipe n'a jamais deux compétitions de même nom — la résolution d'import en dépend (P4-67 : le
+ * résolveur prenait la première). Depuis la PR 3b du lot 7, ce n'est plus la base qui le garantit (aucune unicité sur
+ * le nom d'une compétition, plan §11) mais la porte unique, par UNE comparaison normalisée : `POST /api/competitions`
+ * refuse 422 une seconde compétition de ce nom pour l'équipe, à la casse et aux accents près. Deux équipes en « DF2 »
+ * restent légitimes (deux équipes du club dans une division, Q8).
+ *
+ * Jumeau : l'import passe par la même porte (`FbiFixtureImporterTest::
+ * testAMappedDivisionWhoseNameDiffersOnlyByCaseReusesTheTeamsCompetition`).
  */
 #[Group('integration')]
-final class CompetitionUniquenessTest extends KernelTestCase
+final class CompetitionUniquenessTest extends WebTestCase
 {
+    use ChoosesPlanVersionTrait;
     use TenantGucTrait;
 
-    private const CLUB = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa67';
-    private const SEASON = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbb67';
-    private const TEAM_A = 'cccccccc-cccc-4ccc-8ccc-cccccccccc67';
-    private const TEAM_B = 'dddddddd-dddd-4ddd-8ddd-dddddddddd67';
+    private KernelBrowser $client;
 
-    private Connection $connection;
+    private EntityManagerInterface $em;
 
-    public function testSameTeamSameNameIsRejectedByTheDatabase(): void
+    private Club $club;
+
+    private Season $season;
+
+    private User $user;
+
+    #[TestWith(['DF2', 'DF2'])]
+    #[TestWith(['DF2', 'df2'])]
+    #[TestWith(['REGIONALE 2', 'Régionale 2'])]
+    public function testASecondCompetitionOfTheSameNameForATeamIsRefusedAtTheDoor(string $first, string $twin): void
     {
-        $this->insertCompetition(self::TEAM_A, 'DF2');
-        $this->expectException(UniqueConstraintViolationException::class);
-        $this->insertCompetition(self::TEAM_A, 'DF2');
+        $team = $this->persistTeam('U15 A');
+        $this->postCompetition($team, $first);
+        self::assertResponseStatusCodeSame(201);
+
+        $this->postCompetition($team, $twin);
+
+        self::assertResponseStatusCodeSame(422);
+        self::assertStringStartsWith('L\'équipe U15 A a déjà une compétition « ', (string) ($this->responseData()['violations'][0]['message'] ?? ''));
+        self::assertSame(1, (int) $this->em->getConnection()->fetchOne('SELECT COUNT(*) FROM engagement WHERE team_id = ?', [$team]), 'aucune seconde compétition pour l\'équipe');
     }
 
-    public function testTwoTeamsMaySharePetitionNameAndFfbbRef(): void
+    public function testTwoTeamsMayShareACompetitionName(): void
     {
-        // Le contre-exemple qui a failli être interdit : même nom ET même réf
-        // FFBB sur deux équipes — légitime (deux équipes du club dans la même
-        // division). Aucune contrainte ne doit s'y opposer.
-        $this->insertCompetition(self::TEAM_A, 'DFU11-2', '900000000000042');
-        $this->insertCompetition(self::TEAM_B, 'DFU11-2', '900000000000042');
-        self::assertSame(2, (int) $this->connection->fetchOne('SELECT count(*) FROM competition WHERE club_id = ?', [self::CLUB]));
+        $teamA = $this->persistTeam('U11 A');
+        $teamB = $this->persistTeam('U11 B');
+
+        $this->postCompetition($teamA, 'DFU11-2');
+        self::assertResponseStatusCodeSame(201);
+        $this->postCompetition($teamB, 'DFU11-2');
+        self::assertResponseStatusCodeSame(201, 'deux équipes du club dans une même division : deux compétitions de même nom, légitimes');
+
+        self::assertSame(2, (int) $this->em->getConnection()->fetchOne('SELECT COUNT(*) FROM competition WHERE club_id = ? AND name = ?', [$this->club->getId(), 'DFU11-2']));
     }
 
     protected function setUp(): void
     {
-        self::bootKernel();
-        $this->connection = self::getContainer()->get(Connection::class);
-        $this->scopeGucToClub(self::CLUB);
+        $this->client = self::createClient();
+        $this->em = self::getContainer()->get(EntityManagerInterface::class);
+        $uid = uniqid('', true);
+        $this->club = (new Club)->setName('Club unicité')->setSlug('club-unicite-' . $uid)->setTimezone('Europe/Paris')->setLocale('fr')
+            ->setOnboardingCompleted(true)->setFfbbClubCode('ARA' . strtoupper(substr(md5($uid), 0, 10)));
+        $this->em->persist($this->club);
+        $hasher = self::getContainer()->get('security.user_password_hasher');
+        $this->user = (new User)->setEmail('unicite' . $uid . '@test.com')->setFirstName('U')->setLastName('Nicité');
+        $this->user->setPasswordHash($hasher->hashPassword($this->user, 'pass'));
+        $this->em->persist($this->user);
+        $this->em->flush();
+        $this->scopeGucToClub($this->club->getId());
+        $this->em->persist((new ClubUser)->setClubId($this->club->getId())->setUserId($this->user->getId())->setRole('admin')->setIsActive(true));
+        $year = SeasonResolver::seasonYear(new DateTimeImmutable('today'));
+        $this->season = (new Season)->setClubId($this->club->getId())->setName((string) $year)->setStartDate(new DateTimeImmutable($year . '-08-01'))
+            ->setEndDate(new DateTimeImmutable(($year + 1) . '-07-15'))->setStatus(SeasonStatus::ACTIVE)->setTransitionData([]);
+        $this->em->persist($this->season);
+        $this->em->flush();
+        $this->settleSeasonPlan($this->season);
     }
 
-    private function insertCompetition(string $teamId, string $name, ?string $ffbbId = null): void
+    private function postCompetition(string $teamId, string $name): void
     {
-        $this->connection->executeStatement(
-            'INSERT INTO competition (id, version, created_at, updated_at, club_id, season_id, team_id, name, competition_type, ffbb_competition_id)
-             VALUES (gen_random_uuid(), 1, now(), now(), ?, ?, ?, ?, ?, ?)',
-            [self::CLUB, self::SEASON, $teamId, $name, 'CHAMPIONSHIP', $ffbbId],
-        );
+        $token = self::getContainer()->get(JWTTokenManagerInterface::class)->create($this->user);
+        $this->client->request('POST', '/api/competitions', [], [], ['HTTP_AUTHORIZATION' => 'Bearer ' . $token, 'CONTENT_TYPE' => 'application/json'], json_encode([
+            'name' => $name, 'competitionType' => 'CHAMPIONSHIP', 'teamId' => $teamId,
+        ], \JSON_THROW_ON_ERROR));
+    }
+
+    private function persistTeam(string $name): string
+    {
+        $this->scopeGucToClub($this->club->getId());
+        $sport = $this->em->getRepository(Sport::class)->findOneBy(['isActive' => true]);
+        if (null === $sport) {
+            $uid = uniqid('', true);
+            $sport = (new Sport)->setName('Basket ' . $uid)->setSlug('basket-' . $uid)->setIsActive(true);
+            $this->em->persist($sport);
+        }
+        $category = (new SportCategory)->setClubId($this->club->getId())->setSportId($sport->getId())->setName($name . ' ' . uniqid('', true));
+        $this->em->persist($category);
+        $team = (new Team)->setClubId($this->club->getId())->setSeasonId($this->season->getId())->setSportCategoryId($category->getId())
+            ->setPriorityTierId(3)->setName($name)->setIsActive(true);
+        $this->em->persist($team);
+        $this->em->flush();
+
+        return $team->getId();
+    }
+
+    /** @return array<string, mixed> */
+    private function responseData(): array
+    {
+        /** @var array<string, mixed> $data */
+        $data = json_decode((string) $this->client->getResponse()->getContent(), true, 512, \JSON_THROW_ON_ERROR);
+
+        return $data;
     }
 }
