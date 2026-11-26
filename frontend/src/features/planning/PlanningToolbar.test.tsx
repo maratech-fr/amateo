@@ -288,7 +288,7 @@ describe("PlanningToolbar — schedule lifecycle (N3)", () => {
 
   it("V1bis — le clic sur « Charger » (période) déclenche onLoad", async () => {
     const user = userEvent.setup();
-    const onLoadLocks = vi.fn();
+    const onLoad = vi.fn();
     render(
       <PlanningToolbar
         schedules={[schedule("COMPLETED", { planType: "HOLIDAY", schedulePlanId: "period-plan", capabilities: { canLoad: true } })]}
@@ -300,14 +300,14 @@ describe("PlanningToolbar — schedule lifecycle (N3)", () => {
         onValidate={noop}
         onReopen={noop}
         onDelete={noop}
-        onLoad={onLoadLocks}
+        onLoad={onLoad}
         isGenerating={false}
         actionBusy={false}
         embedded
       />,
     );
     await user.click(screen.getByRole("button", { name: /charger cette version/i }));
-    expect(onLoadLocks).toHaveBeenCalledTimes(1);
+    expect(onLoad).toHaveBeenCalledTimes(1);
   });
 
   it("hides Supprimer on the version in force — whether the SEASON plan points at it or its own plan does", () => {
