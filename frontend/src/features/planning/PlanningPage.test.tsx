@@ -11,7 +11,7 @@ import { useToastStore } from "@/shared/stores/toastStore";
 import { renderWithProviders, visibleTextOccurrences } from "@/test/utils";
 
 import { stalenessMessage } from "./lib/staleness";
-import { createOverlayVersion, EngineTimeoutError, EngineVerificationInterruptedError, fillSchedule, GenerationInProgressError, getDiagnostics, getPlacedConflicts, getSlots, getSocleDeviation, getStructureHash, getTeams, getTrainingSlots, getVenues, listSchedules, loadLocks, lockSlot, moveSlot, MoveRejectedError, OverlaysExistError, placeSlot, removeSlot, reopenSchedule, SlotEditError, TargetLockedError, validateSchedule } from "./api";
+import { createOverlayVersion, EngineTimeoutError, EngineVerificationInterruptedError, fillSchedule, GenerationInProgressError, getDiagnostics, getPlacedConflicts, getSlots, getSocleDeviation, getStructureHash, getTeams, getTrainingSlots, getVenues, listSchedules, loadLocks, loadVersion, lockSlot, moveSlot, MoveRejectedError, OverlaysExistError, placeSlot, removeSlot, reopenSchedule, SlotEditError, TargetLockedError, validateSchedule } from "./api";
 import { regenerate } from "./api";
 import type { Schedule } from "./api";
 import { PlanningPage } from "./PlanningPage";
@@ -174,6 +174,8 @@ vi.mock("./api", () => {
   createOverlayVersion: vi.fn(() => Promise.resolve({ id: "ov-new" })),
   // V1bis — « Charger » les verrous d'une version de période (pose le pointeur, ne génère pas).
   loadLocks: vi.fn(() => Promise.resolve({ id: SID })),
+  // Lot conception 5, PR 3 — « Charger » : une seule route pour tout plan.
+  loadVersion: vi.fn(() => Promise.resolve({ id: SID, status: "COMPLETED" })),
   validateSchedule: vi.fn(),
   STATUS_LABELS: { DRAFT: "Brouillon", PENDING: "En attente", GENERATING: "Génération…", COMPLETED: "Terminé", FAILED: "Échec" },
   // P4-119 c bis : EvictConfirmDialog lit cette constante de `./api` pour AFFICHER la borne
@@ -511,6 +513,37 @@ describe("PlanningPage (integration)", () => {
 
     await userEvent.click(screen.getByRole("button", { name: "Charger" }));
     expect(vi.mocked(loadLocks)).toHaveBeenCalledWith(SID);
+  });
+
+  // Lot conception 5, PR 3 (ligne 16 du plan, décision 3 du fondateur) — charger une version alors que des
+  // réglages ont changé depuis la génération de la version chargée : le dialogue prévient qu'ils seront
+  // perdus, puis charge. Sans réglage en attente, il ne prévient pas. « En attente » = l'empreinte servie
+  // diffère de celle de la version CHARGÉE (★), pas de celle qu'on regarde.
+  it.each([
+    { currentStructureHash: "H2-modifiée", warns: true },
+    { currentStructureHash: "H2", warns: false },
+  ])("charger une version : prévient que les réglages non générés seront perdus ($warns), puis charge", async ({ currentStructureHash, warns }) => {
+    vi.mocked(loadVersion).mockClear();
+    vi.mocked(listSchedules).mockResolvedValue([
+      { id: "v1", name: "Planning A", status: "COMPLETED", score: 10, createdAt: "2026-01-01T00:00:00Z", updatedAt: "2026-01-01T00:00:00Z", planType: "SEASON", schedulePlanId: "season-plan", snapshotHash: "H1", isLiveContext: false, capabilities: { canDelete: true, canValidate: false, canLoad: true, loadBlockedReason: null, versionsDeletedOnValidate: 0, overlaysDroppedOnValidate: 0 } },
+      { id: "v2", name: "Planning A", status: "COMPLETED", score: 11, createdAt: "2026-01-02T00:00:00Z", updatedAt: "2026-01-02T00:00:00Z", planType: "SEASON", schedulePlanId: "season-plan", snapshotHash: "H2", isLiveContext: true, capabilities: { canDelete: true, canValidate: true, canLoad: false, loadBlockedReason: null, versionsDeletedOnValidate: 0, overlaysDroppedOnValidate: 0 } },
+    ] as Schedule[]);
+    vi.mocked(getStructureHash).mockResolvedValue({ currentStructureHash });
+    usePlanningStore.setState({ selectedScheduleId: "v1" });
+    const user = userEvent.setup();
+    renderWithProviders(<PlanningPage />);
+
+    await user.click(await screen.findByRole("button", { name: PLANNING_TEXTS.loadVersion }));
+
+    const dialog = await screen.findByRole("dialog", { name: PLANNING_TEXTS.loadVersionTitle });
+    expect(within(dialog).getByText(PLANNING_TEXTS.loadVersionDescription, { exact: false })).toBeInTheDocument();
+    if (warns) {
+      expect(within(dialog).getByText(PLANNING_TEXTS.loadVersionUnsavedLost, { exact: false })).toBeInTheDocument();
+    } else {
+      expect(within(dialog).queryByText(PLANNING_TEXTS.loadVersionUnsavedLost, { exact: false })).not.toBeInTheDocument();
+    }
+    await user.click(within(dialog).getByRole("button", { name: PLANNING_TEXTS.load }));
+    expect(vi.mocked(loadVersion)).toHaveBeenCalledWith("v1");
   });
 
   it("renomme bien le plan de SAISON quand c'est lui qui est affiché", async () => {
