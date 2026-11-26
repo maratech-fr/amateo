@@ -31,6 +31,7 @@ use App\Repository\FbiIngestionRepository;
 use App\Service\Basketball\VenueLabelNormalizer;
 use App\Service\FbiFixtureImporter;
 use App\Service\SeasonResolver;
+use App\Tests\CreatesCompetitionsTrait;
 use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\TenantGucTrait;
 use DateTimeImmutable;
@@ -53,6 +54,7 @@ use Throwable;
 #[Group('integration')]
 final class FbiFixtureImporterTest extends KernelTestCase
 {
+    use CreatesCompetitionsTrait;
     use CreatesPeopleAndPlacesTrait;
     use TenantGucTrait;
 
@@ -218,6 +220,129 @@ final class FbiFixtureImporterTest extends KernelTestCase
         foreach ($again['divisions'] as $division) {
             self::assertNotNull($division['teamId']);
         }
+    }
+
+    // ── Un dépôt range chaque match sous la bonne équipe (lot 7, PR 3b, ligne 6 du plan) ──────
+    // Logique à cas nommée par le plan (résolution d'une division par ses engagements) ; le scénario
+    // `une-rencontre-importee-dit-si-elle-est-traitee.feature` (deux équipes dans une division) prouve
+    // la promesse de bout en bout.
+
+    /**
+     * Une division neuve jouée par deux équipes donne deux compétitions de même nom, chacune avec l'engagement de son
+     * équipe et son libellé (Q8) ; le re-dépôt du même fichier, sans correspondance, n'ajoute rien.
+     */
+    public function testANewDivisionPlayedByTwoTeamsGivesOneCompetitionPerTeamAndARedepositAddsNothing(): void
+    {
+        $teamTwo = $this->createTeam('U13-2');
+        $rows = [
+            ['D2', 'A1', 'BC TESTVILLE - 1', 'AS X', '03/10/2026', '', ''],
+            ['D2', 'A2', 'BC TESTVILLE - 2', 'AS Y', '03/10/2026', '', ''],
+        ];
+
+        $first = $this->importMapped($rows, [
+            ['division' => 'D2', 'fbiTeamLabel' => 'BC TESTVILLE - 1', 'teamId' => $this->team->getId()],
+            ['division' => 'D2', 'fbiTeamLabel' => 'BC TESTVILLE - 2', 'teamId' => $teamTwo->getId()],
+        ]);
+
+        self::assertSame(2, $first['created']);
+        $engagements = $this->engagementsNamed('D2');
+        $expected = [[$this->team->getId(), 'BC TESTVILLE - 1'], [$teamTwo->getId(), 'BC TESTVILLE - 2']];
+        $actual = array_values($engagements);
+        usort($expected, static fn (array $a, array $b): int => strcmp((string) $a[0], (string) $b[0]));
+        usort($actual, static fn (array $a, array $b): int => strcmp((string) $a[0], (string) $b[0]));
+        self::assertSame($expected, $actual, 'deux compétitions « D2 », un engagement chacune, celui de son équipe et de son libellé');
+        self::assertSame($this->competitionOfTeamNamed($this->team->getId(), 'D2'), $this->fixtureCompetitionAndTeam('A1'), 'le match du libellé « - 1 » est à sa compétition');
+        self::assertSame($this->competitionOfTeamNamed($teamTwo->getId(), 'D2'), $this->fixtureCompetitionAndTeam('A2'), 'le match du libellé « - 2 » est à sa compétition');
+        $counts = $this->matchesCounts();
+
+        $again = $this->importMapped($rows, []);
+
+        self::assertSame(0, $again['created'], 'le re-dépôt ne crée rien');
+        self::assertSame([], $again['unmappedDivisions'], 'chaque libellé retrouve son engagement sans correspondance');
+        self::assertSame($counts, $this->matchesCounts(), 'ni compétition, ni engagement, ni match de plus');
+    }
+
+    /**
+     * Re-dépôt d'un fichier qui ne porte qu'un des deux libellés d'une division jouée par deux engagements de même
+     * nom : l'étiquette de la ligne décide (fin de C34, jamais « la première compétition de ce nom »).
+     */
+    public function testARedepositCarryingOneLabelOfTwoEngagementsGoesToTheEngagementOfThatLabel(): void
+    {
+        $teamTwo = $this->createTeam('U13-2');
+        $this->importMapped([
+            ['D2', 'A1', 'BC TESTVILLE - 1', 'AS X', '03/10/2026', '', ''],
+            ['D2', 'A2', 'BC TESTVILLE - 2', 'AS Y', '03/10/2026', '', ''],
+        ], [
+            ['division' => 'D2', 'fbiTeamLabel' => 'BC TESTVILLE - 1', 'teamId' => $this->team->getId()],
+            ['division' => 'D2', 'fbiTeamLabel' => 'BC TESTVILLE - 2', 'teamId' => $teamTwo->getId()],
+        ]);
+
+        $result = $this->importMapped([
+            ['D2', 'A2', 'BC TESTVILLE - 2', 'AS Y', '03/10/2026', '', ''],
+            ['D2', 'A3', 'BC TESTVILLE - 2', 'AS Z', '10/10/2026', '', ''],
+        ], []);
+
+        self::assertSame(1, $result['created'], 'seul le match neuf est créé');
+        self::assertSame([], $result['unmappedDivisions']);
+        self::assertSame($this->competitionOfTeamNamed($teamTwo->getId(), 'D2'), $this->fixtureCompetitionAndTeam('A3'), 'le match neuf du libellé « - 2 » va à l\'engagement de ce libellé, jamais à la première compétition « D2 »');
+        self::assertSame($this->competitionOfTeamNamed($this->team->getId(), 'D2'), $this->fixtureCompetitionAndTeam('A1'), 'le match de l\'autre équipe, absent du fichier, est intact');
+    }
+
+    /**
+     * Deux engagements de même nom sans libellé stocké (données anciennes) : un fichier à une seule étiquette ne sait
+     * pas dire laquelle des deux équipes il porte — la division revient « à faire correspondre », rien n'est créé.
+     */
+    public function testARedepositCarryingOneLabelOfTwoLabelLessEngagementsIsToBeMatched(): void
+    {
+        $teamTwo = $this->createTeam('U13-2');
+        $this->competitionFor($this->team->getId(), 'D2');
+        $this->competitionFor($teamTwo->getId(), 'D2');
+        $counts = $this->matchesCounts();
+
+        $result = $this->importMapped([['D2', 'A3', 'BC TESTVILLE - 2', 'AS Z', '10/10/2026', '', '']], []);
+
+        self::assertSame(0, $result['created'], 'aucun match n\'est rangé au hasard');
+        self::assertSame(['D2'], array_column($result['unmappedDivisions'], 'name'), 'la division est rendue « à faire correspondre »');
+        self::assertSame($counts, $this->matchesCounts(), 'rien n\'est écrit');
+    }
+
+    /**
+     * Le nom ne fait jamais entrer une équipe dans une compétition existante : une division connue pour une autre
+     * équipe donne, à la correspondance, une compétition neuve pour l'équipe choisie, et le match y va ; la compétition
+     * de l'autre équipe garde son seul engagement.
+     */
+    public function testADivisionKnownForAnotherTeamGivesANewCompetitionForTheMappedTeam(): void
+    {
+        $teamTwo = $this->createTeam('U13-2');
+        $existing = $this->competitionFor($this->team->getId(), 'D3');
+
+        $result = $this->importMapped([['D3', 'B1', 'BC TESTVILLE - 1', 'AS X', '03/10/2026', '', '']], [
+            ['division' => 'D3', 'fbiTeamLabel' => null, 'teamId' => $teamTwo->getId()],
+        ]);
+
+        self::assertSame(1, $result['created']);
+        $mine = $this->competitionOfTeamNamed($teamTwo->getId(), 'D3');
+        self::assertNotSame($existing->getId(), $mine[0], 'une compétition neuve pour l\'équipe choisie');
+        self::assertSame($mine, $this->fixtureCompetitionAndTeam('B1'), 'le match est à l\'équipe choisie, dans sa compétition');
+        self::assertSame([$existing->getId() => [$this->team->getId(), null]], array_intersect_key($this->engagementsNamed('D3'), [$existing->getId() => true]), 'la compétition de l\'autre équipe garde son seul engagement');
+        self::assertSame(0, (int) $this->em->getConnection()->fetchOne('SELECT COUNT(*) FROM fixture WHERE competition_id = ?', [$existing->getId()]), 'aucun match n\'entre dans la compétition de l\'autre équipe');
+    }
+
+    /**
+     * Une seule comparaison de noms, normalisée (fin de C33, §12 du plan) : une division « d2 » mise en correspondance
+     * avec une équipe qui a déjà « D2 » réutilise sa compétition, jamais une seconde.
+     */
+    public function testAMappedDivisionWhoseNameDiffersOnlyByCaseReusesTheTeamsCompetition(): void
+    {
+        $existing = $this->competitionFor($this->team->getId(), 'D2');
+
+        $result = $this->importMapped([['d2', 'C1', 'BC TESTVILLE - 1', 'AS X', '03/10/2026', '', '']], [
+            ['division' => 'd2', 'fbiTeamLabel' => null, 'teamId' => $this->team->getId()],
+        ]);
+
+        self::assertSame(1, $result['created']);
+        self::assertSame([$existing->getId(), $this->team->getId()], $this->fixtureCompetitionAndTeam('C1'), 'le match va à la compétition existante de l\'équipe');
+        self::assertSame(1, (int) $this->em->getConnection()->fetchOne('SELECT COUNT(*) FROM engagement WHERE team_id = ?', [$this->team->getId()]), 'aucune seconde compétition pour l\'équipe');
     }
 
     // ── Poule guard + completeness + suggestion (P1-4 PR F2) ─────────────────
@@ -2933,6 +3058,52 @@ final class FbiFixtureImporterTest extends KernelTestCase
         // shared, not rolled back).
         self::getContainer()->get(DevClockStore::class)->set(null);
         parent::tearDown();
+    }
+
+    /**
+     * Les engagements des compétitions de ce nom exact, par compétition : [équipe, libellé FBI].
+     *
+     * @return array<string, array{0: string, 1: ?string}>
+     */
+    private function engagementsNamed(string $name): array
+    {
+        $rows = [];
+        foreach ($this->em->getConnection()->fetchAllAssociative('SELECT e.competition_id, e.team_id, e.fbi_team_label FROM engagement e JOIN competition c ON c.id = e.competition_id WHERE c.name = ? ORDER BY e.competition_id, e.team_id', [$name]) as $row) {
+            self::assertArrayNotHasKey((string) $row['competition_id'], $rows, 'une compétition de division n\'a qu\'un engagement (Q8)');
+            $rows[(string) $row['competition_id']] = [(string) $row['team_id'], null === $row['fbi_team_label'] ? null : (string) $row['fbi_team_label']];
+        }
+
+        return $rows;
+    }
+
+    /** @return array{0: string, 1: string} la seule compétition de ce nom où l'équipe est engagée, et l'équipe */
+    private function competitionOfTeamNamed(string $teamId, string $name): array
+    {
+        $ids = $this->em->getConnection()->fetchFirstColumn('SELECT c.id FROM competition c JOIN engagement e ON e.competition_id = c.id WHERE e.team_id = ? AND c.name = ?', [$teamId, $name]);
+        self::assertCount(1, $ids, \sprintf('l\'équipe est engagée dans une seule compétition « %s »', $name));
+
+        return [(string) $ids[0], $teamId];
+    }
+
+    /** @return array{0: string, 1: string} la compétition et l'équipe du match de ce numéro */
+    private function fixtureCompetitionAndTeam(string $externalRef): array
+    {
+        $row = $this->em->getConnection()->fetchAssociative('SELECT competition_id, team_id FROM fixture WHERE external_ref = ?', [$externalRef]);
+        self::assertIsArray($row, \sprintf('le match %s existe', $externalRef));
+
+        return [(string) $row['competition_id'], (string) $row['team_id']];
+    }
+
+    /** @return array{competitions: int, engagements: int, fixtures: int} */
+    private function matchesCounts(): array
+    {
+        $connection = $this->em->getConnection();
+
+        return [
+            'competitions' => (int) $connection->fetchOne('SELECT COUNT(*) FROM competition'),
+            'engagements' => (int) $connection->fetchOne('SELECT COUNT(*) FROM engagement'),
+            'fixtures' => (int) $connection->fetchOne('SELECT COUNT(*) FROM fixture'),
+        ];
     }
 
     private function pinClock(DateTimeImmutable $at): void
