@@ -47,6 +47,9 @@ final class FixtureReviewContext extends BaseContext
     /** Les numéros de match des deux équipes de la division : « - 1 » puis « - 2 ». */
     private const array DUO_REFS = ['BHR-3001', 'BHR-3002'];
 
+    /** Le match de plus de la seconde équipe, apporté par le re-dépôt qui ne porte qu'elle (lot 7, PR 3b). */
+    private const string DUO_EXTRA_REF = 'BHR-3003';
+
     private string $token = '';
 
     private string $duoTeamId = '';
@@ -188,17 +191,18 @@ final class FixtureReviewContext extends BaseContext
         $this->depositDuo(null);
     }
 
+    /** Lot 7, PR 3b : deux compétitions distinctes de ce nom, chacune portant UN engagement, celui de son équipe (Q8). */
     #[Then('la division a donné deux compétitions de même nom, une par équipe')]
     public function laDivisionADonneDeuxCompetitions(): void
     {
         $teams = $this->dbalScalar(
-            \sprintf('SELECT string_agg(team_id::text, \',\' ORDER BY team_id) AS behatval FROM competition WHERE club_id=\'%s\' AND name=\'%s\'', $this->clubId, self::DUO_DIVISION),
+            \sprintf('SELECT COUNT(DISTINCT c.id) || \'|\' || COUNT(e.id) || \'|\' || COALESCE(string_agg(e.team_id::text, \',\' ORDER BY e.team_id), \'\') AS behatval FROM competition c LEFT JOIN engagement e ON e.competition_id = c.id WHERE c.club_id=\'%s\' AND c.name=\'%s\'', $this->clubId, self::DUO_DIVISION),
             admin: true,
         );
         $expected = [$this->teamId, $this->duoTeamId];
         sort($expected);
-        if (implode(',', $expected) !== $teams) {
-            throw new RuntimeException(\sprintf('compétitions « %s » portées par [%s] au lieu d\'une par équipe [%s]', self::DUO_DIVISION, $teams, implode(',', $expected)));
+        if ('2|2|' . implode(',', $expected) !== $teams) {
+            throw new RuntimeException(\sprintf('compétitions « %s » (compétitions|engagements|équipes = %s) au lieu de deux, une par équipe [%s]', self::DUO_DIVISION, $teams, implode(',', $expected)));
         }
     }
 
@@ -206,13 +210,40 @@ final class FixtureReviewContext extends BaseContext
     public function chaqueEquipePorteSonMatch(): void
     {
         foreach ([self::DUO_REFS[0] => $this->teamId, self::DUO_REFS[1] => $this->duoTeamId] as $ref => $teamId) {
-            $row = $this->dbalScalar(
-                \sprintf('SELECT COUNT(*) || \'|\' || COALESCE(MIN(f.team_id::text), \'\') || \'|\' || COALESCE(MIN(c.team_id::text), \'\') AS behatval FROM fixture f LEFT JOIN competition c ON c.id = f.competition_id WHERE f.club_id=\'%s\' AND f.external_ref=\'%s\'', $this->clubId, $ref),
-                admin: true,
-            );
-            if (\sprintf('1|%s|%s', $teamId, $teamId) !== $row) {
-                throw new RuntimeException(\sprintf('le match %s devrait exister une fois, à l\'équipe %s et dans sa compétition (compte|équipe|équipe de la compétition = %s)', $ref, $teamId, $row));
-            }
+            $this->assertDuoMatchOf($ref, $teamId);
+        }
+    }
+
+    /**
+     * Lot 7, PR 3b (fin de C34) : le fichier ne porte qu'une des deux équipes de la division, avec un match de plus ;
+     * le libellé de la ligne désigne l'engagement, jamais « la première compétition de ce nom ».
+     */
+    #[When('je re-dépose, sans aucune correspondance, un fichier de cette division qui ne porte que la seconde équipe, avec un match de plus')]
+    public function jeReDeposeLaSecondeEquipeSeule(): void
+    {
+        $date = date('d/m/Y', (int) strtotime($this->matchDate));
+        $later = date('d/m/Y', (int) strtotime($this->matchDate . ' +7 days'));
+        $this->depositDuo(null, [
+            [self::DUO_DIVISION, self::DUO_REFS[1], 'Adversaire Duo Deux', $this->clubName . ' - 2', $date, '17:30', 'Salle Duo Deux'],
+            [self::DUO_DIVISION, self::DUO_EXTRA_REF, 'Adversaire Duo Trois', $this->clubName . ' - 2', $later, '17:30', 'Salle Duo Trois'],
+        ]);
+    }
+
+    #[Then('le match de plus est à la seconde équipe, dans sa propre compétition')]
+    public function leMatchDePlusEstALaSecondeEquipe(): void
+    {
+        $this->assertDuoMatchOf(self::DUO_EXTRA_REF, $this->duoTeamId);
+    }
+
+    /** Le match de ce numéro existe une fois, à cette équipe, dans une compétition où cette équipe est engagée. */
+    private function assertDuoMatchOf(string $ref, string $teamId): void
+    {
+        $row = $this->dbalScalar(
+            \sprintf('SELECT COUNT(*) || \'|\' || COALESCE(MIN(f.team_id::text), \'\') || \'|\' || COALESCE(MIN(e.team_id::text), \'\') AS behatval FROM fixture f LEFT JOIN engagement e ON e.competition_id = f.competition_id AND e.team_id = f.team_id WHERE f.club_id=\'%s\' AND f.external_ref=\'%s\'', $this->clubId, $ref),
+            admin: true,
+        );
+        if (\sprintf('1|%s|%s', $teamId, $teamId) !== $row) {
+            throw new RuntimeException(\sprintf('le match %s devrait exister une fois, à l\'équipe %s et dans une compétition où elle est engagée (compte|équipe|engagement = %s)', $ref, $teamId, $row));
         }
     }
 
@@ -693,7 +724,7 @@ final class FixtureReviewContext extends BaseContext
             }
         }
         if ('' !== $this->duoTeamId) {
-            foreach (self::DUO_REFS as $ref) {
+            foreach ([...self::DUO_REFS, self::DUO_EXTRA_REF] as $ref) {
                 $id = $this->dbalScalar(\sprintf('SELECT id AS behatval FROM fixture WHERE club_id=\'%s\' AND external_ref=\'%s\' LIMIT 1', $this->clubId, $ref), admin: true);
                 if ('' !== $id) {
                     $this->apiDelete(\sprintf('fixtures/%s', $id), $this->token);
@@ -846,11 +877,12 @@ final class FixtureReviewContext extends BaseContext
      * correspondance (les libellés mémorisés au premier dépôt doivent suffire).
      *
      * @param list<array{division: string, fbiTeamLabel: string, teamId: string}>|null $mappings
+     * @param list<list<string>>|null                                                 $rows     null = les deux équipes, un extérieur chacune
      */
-    private function depositDuo(?array $mappings): void
+    private function depositDuo(?array $mappings, ?array $rows = null): void
     {
         $date = date('d/m/Y', (int) strtotime($this->matchDate));
-        $path = $this->writeXlsx([
+        $path = $this->writeXlsx($rows ?? [
             [self::DUO_DIVISION, self::DUO_REFS[0], 'Adversaire Duo Un', $this->clubName . ' - 1', $date, '15:30', 'Salle Duo Un'],
             [self::DUO_DIVISION, self::DUO_REFS[1], 'Adversaire Duo Deux', $this->clubName . ' - 2', $date, '17:30', 'Salle Duo Deux'],
         ]);

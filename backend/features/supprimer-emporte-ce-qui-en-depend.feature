@@ -15,8 +15,13 @@ Fonctionnalité: Supprimer emporte ce qui en dépend, et rien d'autre
     Et le coach « Camille », qui entraîne « U13M1 » et « U15M1 », a une indisponibilité
     Et l'équipe « U15M1 » a une règle qui lui impose le « Gymnase Nord »
     Et le trajet entre le « Gymnase Nord » et le « Gymnase Sud » est saisi à 12 minutes en voiture
+    Et l'équipe « U13M1 » est engagée dans « Championnat U13 », sans aucun match
+    Et l'équipe « SM1 » est engagée dans « Championnat SM1 », sans aucun match
     Quand je supprime l'équipe « U13M1 »
     Alors l'équipe « U13M1 » n'a plus ni séance, ni réservation, ni règle, ni lien de coach
+    # Une équipe sans match se supprime : son engagement part, et sa compétition, vidée et sans match, avec lui.
+    Et sa compétition « Championnat U13 », vidée, a disparu avec son engagement
+    Et « SM1 » reste engagée dans « Championnat SM1 »
     Et « Camille » entraîne toujours « U15M1 », et les séances des autres équipes sont intactes
     Quand je supprime le coach « Camille »
     Alors « Camille » n'a plus ni lien d'équipe, ni indisponibilité
