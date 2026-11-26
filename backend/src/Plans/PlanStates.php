@@ -586,7 +586,7 @@ final class PlanStates
         if ([] === $ids) {
             return [];
         }
-        [$table, $conditions, $parameters] = $this->tenantScope($class, $plan, Level::PLAN === $family->level ? $planId : null);
+        [$table, $conditions, $parameters] = $this->tenantScope($class, $plan, ...(Level::PLAN === $family->level ? [$planId] : []));
         $conditions[] = 'id IN (' . implode(', ', array_fill(0, \count($ids), '?')) . ')';
         $found = $this->entityManager->getConnection()->fetchFirstColumn(\sprintf('SELECT id FROM %s WHERE %s', $table, implode(' AND ', $conditions)), [...$parameters, ...$ids]);
 
@@ -594,22 +594,27 @@ final class PlanStates
     }
 
     /**
-     * La table de la famille et ses conditions de club, de saison (famille de saison) et de plan (si donné).
+     * La table de la famille et ses conditions de club, de saison (famille de saison) et de plan (famille de plan,
+     * quand on le donne).
      *
      * @param class-string                                            $class
      * @param array{club_id: string, season_id: string, type: string} $plan
      *
      * @return array{0: string, 1: list<string>, 2: list<string>}
      */
-    private function tenantScope(string $class, array $plan, ?string $planId = null): array
+    private function tenantScope(string $class, array $plan, string ...$planIds): array
     {
         $metadata = $this->entityManager->getClassMetadata($class);
         $platform = $this->entityManager->getConnection()->getDatabasePlatform();
         $quote = $this->entityManager->getConfiguration()->getQuoteStrategy();
         $conditions = ['1 = 1'];
         $parameters = [];
-        foreach (['clubId' => $plan['club_id'], 'seasonId' => $plan['season_id'], 'schedulePlanId' => $planId] as $field => $value) {
-            if (null !== $value && $metadata->hasField($field)) {
+        $scope = [['clubId', $plan['club_id']], ['seasonId', $plan['season_id']]];
+        foreach ($planIds as $planId) {
+            $scope[] = ['schedulePlanId', $planId];
+        }
+        foreach ($scope as [$field, $value]) {
+            if ($metadata->hasField($field)) {
                 $conditions[] = $quote->getColumnName($field, $metadata, $platform) . ' = ?';
                 $parameters[] = $value;
             }
@@ -648,7 +653,7 @@ final class PlanStates
             $parameters[] = new DateTimeImmutable;
             $types[] = Type::getType((string) $metadata->getTypeOfField('updatedAt'));
         }
-        [, $conditions, $scope] = $this->tenantScope($class, $plan, Level::PLAN === $family->level ? $planId : null);
+        [, $conditions, $scope] = $this->tenantScope($class, $plan, ...(Level::PLAN === $family->level ? [$planId] : []));
         $conditions[] = $quote->getColumnName('id', $metadata, $platform) . ' = ?';
         foreach ([...$scope, $rowId] as $value) {
             $parameters[] = $value;
