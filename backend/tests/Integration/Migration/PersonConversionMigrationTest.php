@@ -139,7 +139,7 @@ final class PersonConversionMigrationTest extends KernelTestCase
     /**
      * La ligne d'un coach qui n'existe plus sort de la photo AVEC ses liens d'équipe et de joueur et
      * ses règles de portée coach : sinon « Charger » cette version réinsérerait des liens vers un coach
-     * absent. Jumeau, cité : `Service/StructureRestorerTest::testLoadingNeverReinsertsLinksOrRulesOfACoachAbsentFromThePhoto`
+     * absent. Jumeau, cité : `Plans/LoadVersionTest::testATeamVenueOrCoachDeletedSinceDoesNotComeBackNorItsLines`
      * (le filet du chargement, pour toute photo) ; ici la photo nettoyée à la source.
      */
     public function testPhotosDropTheLinksAndRulesOfACoachThatNoLongerExists(): void

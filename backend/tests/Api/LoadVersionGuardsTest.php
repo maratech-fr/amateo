@@ -32,18 +32,25 @@ final class LoadVersionGuardsTest extends WebTestCase
 
     private EntityManagerInterface $em;
 
-    /** Une version terminée, avec copie, rien en vol : la capacité l'offre et le geste aboutit. */
+    /**
+     * Une version terminée, avec copie, rien en vol : la capacité l'offre et le geste aboutit ; l'étoile servie
+     * (`isLiveContext`) passe de l'ancienne version chargée à celle-ci (reprend `RegenerateFromVersionTest::testScheduleApiExposesIsLiveContext`).
+     */
     public function testALoadableVersionIsOfferedAndLoads(): void
     {
         $this->loadTeam('SM1');
         $v1 = $this->loadVersionOf($this->soclePlanId);
-        $this->makeLoaded($this->loadVersionOf($this->soclePlanId));
+        $v2 = $this->loadVersionOf($this->soclePlanId);
+        $this->makeLoaded($v2);
+        self::assertTrue($this->served($v2->getId())['isLiveContext'] ?? null, 'témoin : l\'étoile est sur la version 2');
 
         self::assertTrue($this->capabilitiesOf($v1->getId())['canLoad'] ?? null, 'la capacité offre « Charger »');
         $this->loadVersion($v1->getId());
 
         $this->assertLoadAccepted('charger une version terminée');
         self::assertSame(['id' => $v1->getId(), 'status' => 'COMPLETED'], array_intersect_key($this->loadResponse(), ['id' => 1, 'status' => 1]));
+        self::assertTrue($this->served($v1->getId())['isLiveContext'] ?? null, 'l\'étoile servie passe sur la version chargée');
+        self::assertFalse($this->served($v2->getId())['isLiveContext'] ?? null, 'et quitte l\'ancienne');
     }
 
     /** La version d'un autre club répond le même 404, octet pour octet, qu'une version qui n'existe pas. */
@@ -159,12 +166,19 @@ final class LoadVersionGuardsTest extends WebTestCase
         }
     }
 
-    /** @return array<string, mixed> */
-    private function capabilitiesOf(string $versionId): array
+    /** @return array<string, mixed> la version telle que l'API la sert */
+    private function served(string $versionId): array
     {
         $this->client->request('GET', '/api/schedules/' . $versionId, [], [], ['HTTP_AUTHORIZATION' => 'Bearer ' . $this->managerToken, 'HTTP_ACCEPT' => 'application/ld+json']);
         self::assertResponseIsSuccessful();
-        $capabilities = $this->loadResponse()['capabilities'] ?? null;
+
+        return $this->loadResponse();
+    }
+
+    /** @return array<string, mixed> */
+    private function capabilitiesOf(string $versionId): array
+    {
+        $capabilities = $this->served($versionId)['capabilities'] ?? null;
         self::assertIsArray($capabilities, 'la version porte ses capacités');
 
         return $capabilities;

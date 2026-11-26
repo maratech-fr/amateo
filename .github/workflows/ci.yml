@@ -886,11 +886,10 @@ jobs:
           # suppression des anciens blocs — le test COMPTE les lignes (aucune emportée). Promu bloquant
           # (lot 2) : un dépôt de mutualisation corrompu effacerait des séances en silence.
           FILES="$FILES tests/Api/MutualizeSlotApiTest.php"
-          # Axes planning lifecycle + tenant isolation : « Charger » une version de saison remplace la
-          # structure du club sans passer par la suppression d'un coach. La ligne d'absence d'un coach
-          # absent de la photo doit partir (elle sort sinon dans l'export RGPD), celle d'un coach
-          # présent reste, et l'effacement ne franchit ni le club ni la saison.
-          FILES="$FILES tests/Integration/Service/StructureRestorerTest.php"
+          # Axe tenant isolation, export RGPD : un coach supprimé sort de l'export du club ; « Charger »
+          # (lot conception 5 PR 3) ne retire aucun coach ni aucune ligne d'absence, du club chargé comme
+          # d'un autre club au même identifiant ; l'effacement ne franchit ni le club ni la saison.
+          # (« Charger » lui-même : tests/Integration/Plans/LoadVersionTest.php, plus bas.)
           FILES="$FILES tests/Security/RgpdExportTest.php"
           # P2-9ter — le fichier portait déjà #[Group('phase1')] sans qu'AUCUN step de CE job
           # ne le lance : il tournait bien, mais dans la suite complète `backend-tests` (qui exécute
@@ -961,8 +960,8 @@ jobs:
           # P2-8 PR A (axe planning lifecycle) : PARITÉ capacité affichée == verdict du refus.
           # Le bloc `capabilities` sérialisé sur chaque Schedule est calculé par le MÊME code que
           # les gardes d'écriture (ScheduleCapabilityResolver) — canDelete/canValidate/
-          # canRegenerateFrom et les deux compteurs annoncent EXACTEMENT ce que DELETE/validate/
-          # regenerate-from FONT. Sans ce gate, une dérive serveur↔serveur (capacité ≠ refus)
+          # canLoad et les deux compteurs annoncent EXACTEMENT ce que DELETE/validate/
+          # load FONT. Sans ce gate, une dérive serveur↔serveur (capacité ≠ refus)
           # passerait, et le front (PR B) afficherait un bouton que le serveur rejette.
           FILES="$FILES tests/Security/ScheduleCapabilityParityTest.php"
           # DOC-3, tranché le 2026-08-11 (option (a) : en faire un step). Le fichier se

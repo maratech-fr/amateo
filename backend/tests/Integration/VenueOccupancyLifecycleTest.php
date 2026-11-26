@@ -38,22 +38,23 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
  * Une occupation nomme un moment où le gymnase n'est pas au club. Elle vit dans la grille, comme
  * un créneau : la saison porte les siennes, chaque plan de période sa COPIE prise à la naissance
  * (ADR-0002, grille possédée par la période). D'où les promesses gardées ici, un test par geste :
- * naissance du plan (copie fidèle, gymnase dormant exclu), « Reprendre » et « Vider » (limités au
- * gymnase visé), copie vers un plan frère (exactement les occupations du plan source), suppression
- * du plan (cascade, saison intacte), valider puis rouvrir le planning de saison (saison intacte),
- * charger une version (AUCUNE occupation supprimée — celles d'un gymnase absent dorment et
- * reviennent avec lui), passage de saison (la saison se copie, la période non, la dormante est
- * ignorée), purge de saison, suppression d'un gymnase (et son compte d'impact).
+ * naissance du plan (copie fidèle), « Reprendre » et « Vider » (limités au gymnase visé), copie
+ * vers un plan frère (exactement les occupations du plan source), suppression du plan (cascade,
+ * saison intacte), valider puis rouvrir le planning de saison (saison intacte), charger une version
+ * (AUCUNE occupation supprimée : l'occupation est libre, hors de la copie d'une version), passage de
+ * saison (la saison se copie, la période non), purge de saison, suppression d'un gymnase (et son
+ * compte d'impact). Depuis le lot 5 (PR 3), « Charger » ne supprime plus aucun gymnase : une
+ * occupation « dormante » (gymnase absent) n'a plus de geste qui la fasse naître.
  *
  * Préparation par l'API là où le geste existe (pose, déplacement, naissance du plan, « Reprendre »,
- * « Vider », validation, suppression) ; services pour les gestes sans route directe dans un test
- * (copie sœur, chargement d'une photo, passage de saison, purge) ; SQL pour le pointage.
+ * « Vider », validation, suppression, « Charger ») ; services pour les gestes sans route directe dans
+ * un test (copie sœur, copie d'une version, passage de saison, purge) ; SQL pour le pointage.
  *
  * Falsifications à jouer (elles doivent rougir le cas nommé) :
  *  - retirer `VenueOccupancy::class` de `OverlayManager::purgePlanAnchoredSettings` → le plan
  *    frère porte en plus la copie de saison née avec lui : {@see testSiblingCopyCarriesExactlyTheSourcePlanOccupancies} rougit ;
- *  - ajouter une suppression d'occupations dans `StructureRestorer` (p. ex. dans `wipeStructure`
- *    ou dans le ménage des références pendantes) → {@see testLoadingAVersionDeletesNoOccupancy} rougit.
+ *  - déclarer `VenueOccupancy` froide du plan (la copie d'une version la porterait et « Charger »
+ *    la remettrait) → {@see testLoadingAVersionDeletesNoOccupancy} rougit.
  */
 #[Group('phase1')]
 #[Group('integration')]
@@ -192,7 +193,7 @@ final class VenueOccupancyLifecycleTest extends WebTestCase
     }
 
     /**
-     * Charger une version ne supprime aucune occupation : ni celles d'un gymnase absent de la
+     * Charger une version ne supprime aucune occupation : ni celles d'un gymnase créé après la
      * version (saison et période), ni celle qu'un créneau revenu avec la version recouvre.
      */
     public function testLoadingAVersionDeletesNoOccupancy(): void
@@ -221,49 +222,17 @@ final class VenueOccupancyLifecycleTest extends WebTestCase
     }
 
     /**
-     * Une occupation dont le gymnase est absent de la version chargée DORT : absente de la liste,
-     * non copiée à la naissance d'un plan — et revient avec son gymnase.
+     * Le passage de saison copie les occupations de saison vers les gymnases copiés, jamais celles des périodes
+     * (ni la copie de saison née avec le plan de période, ni une occupation posée sur la période seule).
      */
-    public function testADormantOccupancyIsHiddenNotCopiedAndComesBackWithItsVenue(): void
-    {
-        $this->seedClub();
-        $kept = $this->venue('Gymnase gardé');
-        $this->postOccupancy($kept, 2, '14:00', 135, 'École');
-        $withoutAbsent = $this->photo();
-        $absent = $this->venue('Gymnase absent');
-        $absentId = $absent->getId();
-        $this->postOccupancy($absent, 4, '10:00', 60, 'Mairie');
-        [, $earlierPlanId] = $this->periodPlan('Fermeture déjà née', 21);
-        $withAbsent = $this->photo();
-
-        $this->load($withoutAbsent);
-
-        self::assertSame([], $this->listIds($absentId, null), 'la dormante de saison est absente de la liste');
-        self::assertSame([], $this->listIds($absentId, $earlierPlanId), 'la dormante de période est absente de la liste');
-        self::assertCount(1, $this->listIds($kept->getId(), null), 'témoin : l\'occupation d\'un gymnase présent reste listée');
-
-        [, $newPlanId] = $this->periodPlan('Fermeture née après', 35);
-        self::assertSame([], $this->rows('schedule_plan_id = \'' . $newPlanId . '\' AND venue_id = \'' . $absentId . '\''), 'une dormante n\'est pas copiée à la naissance d\'un plan');
-        self::assertCount(1, $this->rows('schedule_plan_id = \'' . $newPlanId . '\' AND venue_id = \'' . $kept->getId() . '\''), 'témoin : celle d\'un gymnase présent est copiée');
-
-        $this->load($withAbsent);
-
-        self::assertCount(1, $this->listIds($absentId, null), 'la dormante de saison revient avec son gymnase');
-        self::assertCount(1, $this->listIds($absentId, $earlierPlanId), 'la dormante de période revient avec son gymnase');
-    }
-
-    /** Le passage de saison copie les occupations de saison vers les gymnases copiés ; ni celles des périodes, ni une dormante. */
     public function testSeasonTransitionCopiesSeasonOccupanciesOnly(): void
     {
         $this->seedClub();
         $kept = $this->venue('Gymnase gardé');
         $this->postOccupancy($kept, 2, '14:00', 135, 'École');
-        $withoutAbsent = $this->photo();
-        $absent = $this->venue('Gymnase absent');
-        $this->postOccupancy($absent, 4, '10:00', 60, 'Mairie');
         [, $planId] = $this->periodPlan('Fermeture', 21);
         $this->postOccupancy($kept, 3, '09:00', 60, 'Brocante', $planId);
-        $this->load($withoutAbsent);
+        self::assertCount(3, $this->rows('TRUE'), 'décor : l\'occupation de saison, sa copie de période et celle posée sur la période');
 
         $this->scopeGucToClub($this->club->getId());
         $season = $this->em->getRepository(Season::class)->find($this->season->getId());
@@ -278,7 +247,7 @@ final class VenueOccupancyLifecycleTest extends WebTestCase
         self::assertSame(
             [[$copiedVenue, 2, '14:00', 135, 'École', SeasonPlanOf::id(self::getContainer(), $target->getId())]],
             array_map(static fn (array $r): array => [$r['venue_id'], (int) $r['day_of_week'], $r['start'], (int) $r['duration_minutes'], $r['label'], $r['schedule_plan_id']], $this->rawRows('season_id = \'' . $target->getId() . '\'')),
-            'seule l\'occupation de saison d\'un gymnase copié passe à la saison suivante (ni la période, ni la dormante)',
+            'seule l\'occupation de saison d\'un gymnase copié passe à la saison suivante (ni la copie de période, ni celle posée sur la période)',
         );
     }
 

@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace App\Tests\Integration\Plans;
 
+use App\Entity\CalendarEntry;
+use App\Entity\CoachWishCampaign;
+use App\Entity\CoachWishToken;
 use App\Entity\Reservation;
 use App\Entity\Schedule;
 use App\Entity\ScheduleSlotTemplate;
@@ -11,6 +14,8 @@ use App\Entity\SharedTrainingBlock;
 use App\Entity\SharedTrainingBlockTeam;
 use App\Entity\Team;
 use App\Entity\VenueTrainingSlot;
+use App\Enum\CalendarEntryKind;
+use App\Enum\CalendarEntryPeriodType;
 use App\Enum\LockLevel;
 use App\Enum\LockOrigin;
 use App\Enum\TeamLevel;
@@ -28,7 +33,9 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
  * des gymnases existants (rang, catégorie, niveau, « divisible ») sans créer ni supprimer d'équipe, de gymnase, de
  * coach ou de catégorie ; il refuse sans rien écrire si une équipe engagée changerait de niveau ; une référence
  * disparue depuis (équipe, gymnase, coach, catégorie) ne revient pas et ne laisse rien « en attente » ; il ne touche
- * aucun autre plan. Une retouche de planning met la copie de la version chargée à jour pour ses seules lignes.
+ * aucun autre plan. Une règle qu'il retire emporte ses lignes de période, une règle qu'il ramène en reçoit une au
+ * défaut ; un coach principal qu'il remet redevient destinataire de la collecte ouverte. Une retouche de planning met
+ * la copie de la version chargée à jour pour ses seules lignes.
  *
  * Décor : {@see LoadsVersionDecorTrait} — les versions portent la copie prise par le vrai `PlanStates::capture`,
  * le geste est la route `POST /api/schedules/{id}/load`. Lecture en SQL sous le contexte du club.
@@ -161,20 +168,27 @@ final class LoadVersionTest extends WebTestCase
     }
 
     /**
-     * Ligne 15 : charger le socle laisse intactes les lignes de règle et d'équipe d'un plan de période commencé, même
-     * quand la règle et les séances du socle changent.
+     * Ligne 15 : charger le socle laisse intactes les lignes de règle et d'équipe et la grille d'un plan de période
+     * commencé, même quand la règle et les séances du socle changent (la grille de période reprend
+     * `RegenerateFromVersionTest::testLoadVersionKeepsPeriodTrainingSlots`).
      */
     public function testLoadingTheSocleLeavesTheLinesOfAStartedPeriod(): void
     {
         $sm1 = $this->loadTeam('SM1', sessions: 2);
         $rule = $this->loadTeamRule($sm1, '19:00');
         $started = $this->loadPeriodPlan('Fermeture de novembre', '2026-11-02', '2026-12-13');
+        $nord = $this->loadVenue('Gymnase Nord');
+        $this->scopeGucToClub($this->clubId);
+        $this->em->persist((new VenueTrainingSlot)->setClubId($this->clubId)->setSeasonId($this->seasonId)->setSchedulePlanId($started)
+            ->setVenueId($nord->getId())->setDayOfWeek(3)->setStartTime(new DateTimeImmutable('17:00'))->setDurationMinutes(90)->setCapacity(1));
+        $this->em->flush();
         $this->em->getConnection()->executeStatement('UPDATE plan_team SET sessions_per_week = 1, max_sessions_per_day = 1 WHERE schedule_plan_id = ? AND team_id = ?', [$started, $sm1->getId()]);
         $this->em->getConnection()->executeStatement('UPDATE plan_constraint SET applies = false WHERE schedule_plan_id = ? AND constraint_id = ?', [$started, $rule->getId()]);
         $v1 = $this->loadVersionOf($this->soclePlanId);
         $this->em->getConnection()->executeStatement('UPDATE "constraint" SET config = ? WHERE id = ?', ['{"minStartTime":"20:00"}', $rule->getId()]);
         $this->em->getConnection()->executeStatement('UPDATE plan_team SET sessions_per_week = 3 WHERE schedule_plan_id = ? AND team_id = ?', [$this->soclePlanId, $sm1->getId()]);
         $before = $this->periodLines($started);
+        self::assertStringNotContainsString('aucun créneau', $before, 'témoin : la période commencée a sa grille');
         $v2 = $this->loadVersionOf($this->soclePlanId);
         $this->makeLoaded($v2);
 
@@ -182,7 +196,7 @@ final class LoadVersionTest extends WebTestCase
 
         $this->assertLoadAccepted('charger le socle');
         self::assertSame(2, (int) $this->loadScalar('SELECT sessions_per_week FROM plan_team WHERE schedule_plan_id = ? AND team_id = ?', [$this->soclePlanId, $sm1->getId()]), 'témoin : le socle a bien été chargé');
-        self::assertSame($before, $this->periodLines($started), 'les lignes d\'équipe et de règle de la période commencée ne bougent pas');
+        self::assertSame($before, $this->periodLines($started), 'les lignes d\'équipe et de règle et la grille de la période commencée ne bougent pas');
     }
 
     /** Ligne 15 : une règle désactivée dans le plan de Noël le reste après « charger la version 1, puis revenir ». */
@@ -234,6 +248,91 @@ final class LoadVersionTest extends WebTestCase
         self::assertSame(1, (int) $this->loadScalar('SELECT sessions_per_week FROM plan_team WHERE schedule_plan_id = ? AND team_id = ?', [$noel, $sm1->getId()]), 'le plan des vacances revient à sa version 1');
         self::assertSame($socle, $this->socleRows($sm1->getId(), $rule->getId()), 'le socle ne bouge pas : règle, séances par équipe, règle de trajet');
         self::assertSame($p1->getId(), $this->loadedOf($noel), 'l\'étoile des vacances passe sur la version chargée');
+    }
+
+    /**
+     * Une règle créée après la version, retirée par « Charger », perd ses lignes dans chaque plan de période, coche du
+     * gestionnaire comprise : aucune ligne ne survit à sa règle (sinon la composition de la période lève). Reprend la
+     * promesse de l'ancien `StructureRestorerTest::testARuleRemovedByLoadingLosesItsLinesInEveryPeriodPlan`.
+     */
+    public function testARuleCreatedSinceLeavesWithItsLinesInEveryPeriodPlan(): void
+    {
+        $sm1 = $this->loadTeam('SM1');
+        $noel = $this->loadPeriodPlan('Noël', '2026-12-21', '2027-01-03');
+        $v1 = $this->loadVersionOf($this->soclePlanId);
+        $rule = $this->loadTeamRule($sm1, '19:00');
+        $this->em->getConnection()->executeStatement('UPDATE plan_constraint SET applies = false WHERE schedule_plan_id = ? AND constraint_id = ?', [$noel, $rule->getId()]);
+        self::assertSame(1, (int) $this->loadScalar('SELECT COUNT(*) FROM plan_constraint WHERE constraint_id = ?', [$rule->getId()]), 'témoin : la règle a sa ligne (décochée) dans Noël');
+        $v2 = $this->loadVersionOf($this->soclePlanId);
+        $this->makeLoaded($v2);
+
+        $this->loadVersion($v1->getId());
+
+        $this->assertLoadAccepted('charger une version antérieure à la règle');
+        self::assertSame(0, (int) $this->loadScalar('SELECT COUNT(*) FROM "constraint" WHERE id = ?', [$rule->getId()]), 'la règle absente de la version 1 est retirée');
+        self::assertSame(0, (int) $this->loadScalar('SELECT COUNT(*) FROM plan_constraint WHERE constraint_id = ?', [$rule->getId()]), 'ses lignes partent avec elle, dans chaque plan');
+    }
+
+    /**
+     * Une règle de la version, supprimée depuis, ramenée par « Charger », retrouve sa ligne dans chaque plan de période,
+     * au défaut ; aucune au plan de saison (plan, §3.4 : PR 3 seulement). Reprend la promesse de l'ancien
+     * `StructureRestorerTest::testARuleBroughtBackByLoadingGetsItsLineInEveryPeriodPlan`.
+     */
+    public function testARuleBroughtBackByLoadingGetsItsLineInEveryPeriodPlan(): void
+    {
+        $sm1 = $this->loadTeam('SM1');
+        $rule = $this->loadTeamRule($sm1, '19:00');
+        $noel = $this->loadPeriodPlan('Noël', '2026-12-21', '2027-01-03');
+        $v1 = $this->loadVersionOf($this->soclePlanId);
+        $this->em->getConnection()->executeStatement('DELETE FROM plan_constraint WHERE constraint_id = ?', [$rule->getId()]);
+        $this->em->getConnection()->executeStatement('DELETE FROM "constraint" WHERE id = ?', [$rule->getId()]);
+        $v2 = $this->loadVersionOf($this->soclePlanId);
+        $this->makeLoaded($v2);
+
+        $this->loadVersion($v1->getId());
+
+        $this->assertLoadAccepted('charger une version qui porte une règle supprimée depuis');
+        self::assertSame(1, (int) $this->loadScalar('SELECT COUNT(*) FROM "constraint" WHERE id = ?', [$rule->getId()]), 'témoin : la règle revient avec la version 1');
+        self::assertSame(1, (int) $this->loadScalar('SELECT COUNT(*) FROM plan_constraint WHERE constraint_id = ? AND schedule_plan_id = ?', [$rule->getId(), $noel]), 'ramenée, elle a sa ligne dans Noël');
+        self::assertSame(1, (int) $this->loadScalar('SELECT COUNT(*) FROM plan_constraint WHERE constraint_id = ?', [$rule->getId()]), 'une seule ligne : aucune au plan de saison');
+    }
+
+    /**
+     * Un coach principal remis par « Charger » redevient le destinataire de la collecte de doléances ouverte : son jeton
+     * porte l'équipe, celui du coach remplacé ne la porte plus (la règle de toute écriture d'un lien de coach). Reprend
+     * la promesse de l'ancien `StructureRestorerTest::testLoadingRecreatesTheRecipientsTokenAndKeepsTheMark`.
+     */
+    public function testAMainCoachPutBackByLoadingBecomesTheRecipientOfTheOpenCollection(): void
+    {
+        $u11 = $this->loadTeam('U11');
+        $julie = $this->newCoach($this->clubId, $this->seasonId, 'Julie', 'Petit');
+        $maxime = $this->newCoach($this->clubId, $this->seasonId, 'Maxime', 'Durand');
+        $this->em->flush();
+        $mainCoach = 'INSERT INTO team_coach (id, created_at, updated_at, club_id, season_id, team_id, coach_id, role) VALUES (gen_random_uuid(), now(), now(), ?, ?, ?, ?, \'MAIN\')';
+        $this->em->getConnection()->executeStatement($mainCoach, [$this->clubId, $this->seasonId, $u11->getId(), $julie->getId()]);
+        $v1 = $this->loadVersionOf($this->soclePlanId);
+        $this->em->getConnection()->executeStatement('DELETE FROM team_coach WHERE coach_id = ?', [$julie->getId()]);
+        $this->em->getConnection()->executeStatement($mainCoach, [$this->clubId, $this->seasonId, $u11->getId(), $maxime->getId()]);
+        $this->scopeGucToClub($this->clubId);
+        $entry = (new CalendarEntry)->setClubId($this->clubId)->setSeasonId($this->seasonId)->setKind(CalendarEntryKind::PERIOD)
+            ->setPeriodType(CalendarEntryPeriodType::HOLIDAY)->setTitle('Pâques')
+            ->setStartDate(new DateTimeImmutable('2027-04-05'))->setEndDate(new DateTimeImmutable('2027-04-18'));
+        $this->em->persist($entry);
+        $campaign = (new CoachWishCampaign)->setClubId($this->clubId)->setSeasonId($this->seasonId)->setCalendarEntryId($entry->getId())
+            ->setDeadline(new DateTimeImmutable('2030-01-01'))->setWeeks(['2027-04-05'])->setTeamIds([$u11->getId()]);
+        $this->em->persist($campaign);
+        $this->em->persist((new CoachWishToken)->setCampaignId($campaign->getId())->setCoachId($maxime->getId())->setClubId($this->clubId)->setTeamIds([$u11->getId()]));
+        $this->em->flush();
+        $campaignId = $campaign->getId();
+        $v2 = $this->loadVersionOf($this->soclePlanId);
+        $this->makeLoaded($v2);
+
+        $this->loadVersion($v1->getId());
+
+        $this->assertLoadAccepted('charger la version où Julie est coach principale');
+        $tokenTeams = 'SELECT team_ids::text FROM coach_wish_token WHERE campaign_id = ? AND coach_id = ?';
+        self::assertSame([$u11->getId()], json_decode((string) $this->loadScalar($tokenTeams, [$campaignId, $julie->getId()]), true), 'Julie, remise coach principale, reçoit le jeton de l\'équipe');
+        self::assertSame([], json_decode((string) $this->loadScalar($tokenTeams, [$campaignId, $maxime->getId()]), true), 'le jeton de Maxime ne porte plus l\'équipe');
     }
 
     /**
@@ -422,12 +521,13 @@ final class LoadVersionTest extends WebTestCase
         self::assertTrue($changes->isEmpty(), 'rien n\'est « en attente » après le chargement : ' . json_encode($changes->lines()));
     }
 
-    /** Les lignes d'équipe et de règle d'un plan, en texte trié. */
+    /** Les lignes d'équipe et de règle d'un plan, et sa grille, en texte trié. */
     private function periodLines(string $planId): string
     {
         return (string) $this->loadScalar(
             'SELECT (SELECT string_agg(team_id::text || \' \' || participates || \' \' || sessions_per_week || \' \' || max_sessions_per_day, \' ; \' ORDER BY team_id) FROM plan_team WHERE schedule_plan_id = :p)'
-            . ' || \' | \' || (SELECT string_agg(constraint_id::text || \' \' || applies, \' ; \' ORDER BY constraint_id) FROM plan_constraint WHERE schedule_plan_id = :p)',
+            . ' || \' | \' || (SELECT string_agg(constraint_id::text || \' \' || applies, \' ; \' ORDER BY constraint_id) FROM plan_constraint WHERE schedule_plan_id = :p)'
+            . ' || \' | \' || COALESCE((SELECT string_agg(id::text || \' \' || venue_id || \' \' || day_of_week || \' \' || start_time, \' ; \' ORDER BY id) FROM venue_training_slot WHERE schedule_plan_id = :p), \'aucun créneau\')',
             ['p' => $planId],
         );
     }

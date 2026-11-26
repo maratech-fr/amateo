@@ -486,10 +486,10 @@ describe("PlanningPage (integration)", () => {
     expect(renameSpy).toHaveBeenCalledWith({ planId: "ete-plan", name: "Reprise d'été S2" });
   });
 
-  // V1bis — « Charger » pour une version de PÉRIODE : le bouton offert par le serveur
-  // (capabilities.canLoad) ouvre une confirmation qui NOMME la version et dit l'effet,
-  // puis charge (loadVersion) sans générer.
-  it("charge les verrous d'une version de période : confirmation nommée puis pose du pointeur", async () => {
+  // Promesse : « Charger » une version de PÉRIODE passe par la même route et le même dialogue qu'en saison —
+  // le bouton offert par le serveur (capabilities.canLoad) ouvre la confirmation qui dit l'effet, puis
+  // charge (loadVersion) sans générer. Jumeau saison, avec l'avertissement : le cas qui suit.
+  it("charge une version de période : la confirmation dit l'effet, puis la version se charge", async () => {
     vi.mocked(listSchedules).mockResolvedValue([
       {
         id: SID, name: "Version de période", status: "COMPLETED", score: null,
@@ -507,7 +507,7 @@ describe("PlanningPage (integration)", () => {
     // Lot 5, PR 3 : une seule définition de « Charger », un seul dialogue — il dit l'effet, période comme saison.
     expect(await screen.findByText(PLANNING_TEXTS.loadVersionDescription)).toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole("button", { name: "Charger" }));
+    await userEvent.click(screen.getByRole("button", { name: PLANNING_TEXTS.load }));
     expect(vi.mocked(loadVersion)).toHaveBeenCalledWith(SID);
   });
 

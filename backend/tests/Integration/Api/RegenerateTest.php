@@ -28,7 +28,7 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
  * creates a NEW linear version (a new Schedule row) instead of overwriting the
  * source in place, and leaves the source version untouched. HARD locks survive
  * via the generation payload (findBaseSlotTemplates re-pins every base version's
- * HARD slots) — the controller copies nothing. Guards mirror RegenerateFromVersion.
+ * HARD slots) — the controller copies nothing.
  */
 #[Group('phase1')]
 final class RegenerateTest extends WebTestCase

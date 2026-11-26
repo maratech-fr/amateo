@@ -19,8 +19,9 @@ use RuntimeException;
  * Décor : le petit club de {@see SmallClubFixtureTrait}, inscrit et saisi par l'API. Avant la version 1,
  * SF1 se réserve une case et une règle interdit à SM1 de s'entraîner avant 19h00. Entre les deux
  * versions, par les gestes de l'API : un créneau du vendredi est ouvert au Gymnase Centre et réservé à
- * SM1, la réservation de SF1 est retirée, la règle de SM1 passe à 19h30, une règle interdit le lundi aux
- * U15M1, Loisir prend une séance de plus. Deux solves réels (palier 60 s).
+ * SM1, la règle de SM1 passe à 19h30, une règle interdit le lundi aux U15M1, Loisir prend une séance de
+ * plus. Après la version 2, la réservation de SF1 est retirée : retouche de la version chargée (la 2), elle
+ * ne sort que de la copie de la 2 ; « Charger » la 1 la ramène. Deux solves réels (palier 60 s).
  *
  * Lecture : un pointage SQL du plan de saison du club, sur le CONTENU (noms, jours, heures) et jamais sur
  * les identifiants — un chargement qui met à jour les lignes présentes au lieu de les réinsérer tient la
@@ -83,13 +84,15 @@ final class LoadVersionContext extends BaseContext
             'capacity' => 1,
         ], $this->smallClubToken);
         $this->expectStatus($slot, [200, 201], 'l\'ouverture du créneau du vendredi');
-        $removed = $this->apiDelete(\sprintf('reservations/%s', $sf1Reservation), $this->smallClubToken);
-        $this->expectStatus($removed, [200, 204], 'le retrait de la réservation de SF1');
         $this->reserve('SM1', 'Gymnase Centre', 5, '18:00');
         $this->putBack('constraints', $this->rulePreferenceId, ['config' => ['minStartTime' => '19:30']]);
         $this->addRule('U15M1 pas le lundi', 'U15M1', 'DAY', ['forbiddenDays' => [1]]);
         $this->putBack('teams', $this->smallClubTeamIds['Loisir'], ['sessionsPerWeek' => $this->smallClubTeamPlan()['Loisir']['sessionsPerWeek'] + 1]);
         $this->generateSmallClubSeason();
+        // Retirée APRÈS la version 2 : une retouche de la version chargée (la 2) met à jour SA copie, jamais celle
+        // de la version 1 (plan, ligne 21). Retirée avant, elle sortirait aussi de la copie de la version 1.
+        $removed = $this->apiDelete(\sprintf('reservations/%s', $sf1Reservation), $this->smallClubToken);
+        $this->expectStatus($removed, [200, 204], 'le retrait de la réservation de SF1');
 
         $now = $this->planState();
         foreach (self::FAMILIES as $family) {
