@@ -1,7 +1,7 @@
 # Lot 7 · Les matchs : plan d'exécution
 
 **Statut : version finale (v4 sur 4, après deux passes de `smith`). Plan validé par le fondateur le 2026-11-23 avec ses
-décisions Q1 à Q10 (§13). PR 1 (le filet) et PR 2 (une seule liste des types de conflit) livrées sur `lot/conception`, non déployées ; le lot 7 s'exécute après le lot 4, désormais livré, et après les PR 1 à 3 du lot 5. Amendé le 2026-11-24 avec le plan du lot 5 : la Q10 est sans objet (§13), les PR 3b et 4a ne touchent plus `StructureRestorer` ni `RestoreFeasibility`, l'E3 pointe le lot 6.** Voie **Full**. Branche cible : `lot/conception` (seul « Lot Gate » y joue). Avant chaque merge : `/validation-runner`, `make -C backend tests-complete`, features et specs de la zone sur la stack d'épreuve. Exécutant : `neo`, après les rouges de `tank`. Pas d'`oracle` (`lot-conception-decoupage.md` §5.3). La fiche du lot est dans [`lot-conception-decoupage.md`](lot-conception-decoupage.md) § Lot 7 ; ce fichier dit **comment**.
+décisions Q1 à Q10 (§13). PR 1 (le filet), PR 2 (une seule liste des types de conflit) et PR 3a (une seule porte pour lire l'équipe d'une compétition, livrée le 2026-11-26) livrées sur `lot/conception`, non déployées ; le lot 7 s'exécute après le lot 4, désormais livré, et après les PR 1 à 3 du lot 5. Amendé le 2026-11-24 avec le plan du lot 5 : la Q10 est sans objet (§13), les PR 3b et 4a ne touchent plus `StructureRestorer` ni `RestoreFeasibility`, l'E3 pointe le lot 6.** Voie **Full**. Branche cible : `lot/conception` (seul « Lot Gate » y joue). Avant chaque merge : `/validation-runner`, `make -C backend tests-complete`, features et specs de la zone sur la stack d'épreuve. Exécutant : `neo`, après les rouges de `tank`. Pas d'`oracle` (`lot-conception-decoupage.md` §5.3). La fiche du lot est dans [`lot-conception-decoupage.md`](lot-conception-decoupage.md) § Lot 7 ; ce fichier dit **comment**.
 
 **Les quatre dernières décisions (§13)** : Q7, les coupes ne sont plus proposées au système par « Placer » ; Q8, une compétition par équipe pour une division neuve ; Q9, un match connu de la fédération ne se range pas en amical à la main ; Q10, sans objet depuis le plan du lot 5 : « Charger » ne supprime plus d'équipe, il n'a donc plus de match à protéger.
 
@@ -9,7 +9,7 @@ Les `fichier:ligne` marqués « relu 11-23 » ont été relus le 2026-11-23 sur 
 
 ## 0. Ce qui est livré, et l'ordre d'exécution
 
-- Lots 0, 1, 2, 3, 4 et 8 livrés sur `lot/conception`, non déployés. Lot 7 : PR 1 et 2 livrées (§4, « Écarts au plan, tels que livrés »), les sept autres à faire.
+- Lots 0, 1, 2, 3, 4 et 8 livrés sur `lot/conception`, non déployés. Lot 7 : PR 1, 2 et 3a livrées (§4, « Écarts au plan, tels que livrés »), les six autres à faire.
 - **Ordre décidé (Q4, amendé le 2026-11-24) : après le lot 4, et après les PR 1 à 3 du lot 5** (qui supprime la photo de structure et le restaurateur, et fait de « Charger » un geste qui ne détruit rien : [`lot-conception-5-le-socle-froid.md`](lot-conception-5-le-socle-froid.md) §4). Lot 4 (PR 1 à 5) → lot 5 (PR 1 à 3) → lot 7 (neuf PR, les PR 1 et 2 sont livrées) → lot 5 (PR 4 à 7). Le code peut s'écrire en worktree entre-temps.
 - Une seule PR ouverte à la fois sur `lot/conception` ; déploiement unique à la fin.
 
@@ -204,6 +204,15 @@ Ordre : 1, 2, 3a, 3b, 4a, 4b, 5, 6a, 6b. **Raison de la scission 4a / 4b** : la 
 - Écran : `engagementsOf(competition: Competition): CompetitionEngagement[]` dans `api/competitions.ts` (un élément, bâti sur `teamId`) ; `CompetitionEngagement { teamId: string; fbiTeamLabel: string | null; ffbbPouleId: string | null; ffbbPouleName: string | null; expectedMatchdays: number | null }`. Les lecteurs de C38 et `FixtureFormDialog.tsx:37` passent par elle.
 
 **Section tests pour `tank`** : aucun test neuf. Références 5, 6, 16 à 19 à l'octet ; scénarios de la PR 1, `une-rencontre-importee-dit-si-elle-est-traitee`, `FfbbConfirmPerimeterTest`, `FbiFixtureImporterTest`, `phaseView.test.ts` rejoués inchangés.
+
+**PR 3a livrée le 2026-11-26** sur `lot/conception`, non déployée.
+
+**Écarts au plan, tels que livrés (PR 3a)**
+- (1) `CompetitionRegistry` est construit à la main dans `MatchConflictDetectorTest` : le détecteur reçoit la porte en 4e paramètre à valeur par défaut (`new CompetitionRegistry`) et le gestionnaire d'entités de la porte est nullable ; sans lui, seule `competitionsOf` lève une `LogicException`. Ce défaut et ce nullable sont un échafaudage de test : à retirer à la PR 3b, qui adapte le test.
+- (2) Divergence théorique, `FbiFixtureImporter.php:~1714` : la recherche par nom exact passe par `FbiMappingGuards::exactNameCompetitionOf`, et le renommage compare le nom en mémoire au lieu d'un `findOneBy` en base. La différence n'existe que si deux mappings d'une même équipe se suivent dans une même importation, l'un renommant la compétition, l'autre portant l'ancien nom. Aucun test ne joue ce cas.
+- (3) Lecteurs restés en place, parce qu'ils liront des colonnes supprimées à la PR 3b et seront réécrits avec elle : `FbiFixtureImporter.php:195`, `:381`, `:474`, `:1239` ; `FbiMappingGuards.php:187`, `:219`, `:293` ; `FfbbRencontreReconciler.php:449` ; `FfbbEngagementsController.php:391` ; `LoadTestClubSeeder.php:759` ; `ConflictRadarLoader.php:174-196` ; `LeagueEnvelopeResolver` ; les échéances.
+- (4) `loopSteps.ts:133` : le repère du plan est périmé, rien à déplacer.
+- (5) Écran : les fichiers qui lisent l'engagement importent `engagementsOf` directement depuis `./api/competitions`, pas depuis le barrel `./api`, parce que des `vi.mock('./api')` de tests existants remplaceraient le barrel entier.
 
 ### PR 3b · « Compétition et engagement séparés, une ligne pour une ligne » (`neo`, backend et écrans)
 
