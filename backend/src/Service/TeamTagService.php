@@ -17,10 +17,8 @@ use Doctrine\ORM\EntityManagerInterface;
  * LUS À L'INSTANT. Rien ne s'enregistre (lot conception 1, PR 3) : modifier une catégorie
  * déplace ses équipes dans toutes les saisons, sans écriture.
  *
- * ⚠ Limite (jusqu'au lot 5) : charger une version remet les catégories du club dans l'état de
- * cette version — une durée de match modifiée depuis revient à sa valeur d'alors, et une
- * catégorie créée depuis par un import disparaît. Les équipes qui la portaient n'ont alors plus
- * de groupe d'âge, sans message (`StructureRestorer` efface et réinsère les catégories).
+ * Charger une version ne crée ni ne supprime de catégorie et ne touche pas leur durée de match
+ * (lot 5) : seule la catégorie portée par une équipe revient, si elle existe encore.
  */
 final class TeamTagService
 {

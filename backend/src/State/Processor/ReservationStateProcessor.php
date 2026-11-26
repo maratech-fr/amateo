@@ -9,11 +9,14 @@ use App\Controller\GroupReservationController;
 use App\Dto\ReservationInput;
 use App\Dto\ReservationToleranceInput;
 use App\Entity\Reservation;
+use App\Entity\Schedule;
 use App\Entity\User;
 use App\Enum\AuditAction;
+use App\Plans\PlanStates;
 use App\Service\PlanVenueClosures;
 use App\Service\ReservationGroupOccupancy;
 use App\Service\ReservationRemoval;
+use App\Service\SchedulePlanProvisioner;
 use App\Support\WeeklySlot;
 use DateTimeImmutable;
 use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
@@ -32,6 +35,17 @@ class ReservationStateProcessor extends AbstractStateProcessor
     private ReservationGroupOccupancy $reservationGroupOccupancy;
 
     private ReservationRemoval $reservationRemoval;
+
+    private PlanStates $planStates;
+
+    private SchedulePlanProvisioner $schedulePlanProvisioner;
+
+    #[Required]
+    public function setPlanStates(PlanStates $planStates, SchedulePlanProvisioner $schedulePlanProvisioner): void
+    {
+        $this->planStates = $planStates;
+        $this->schedulePlanProvisioner = $schedulePlanProvisioner;
+    }
 
     #[Required]
     public function setPlanVenueClosures(PlanVenueClosures $planVenueClosures): void
@@ -83,8 +97,17 @@ class ReservationStateProcessor extends AbstractStateProcessor
         // tolèrent.
         // Case bloc-complète + purge des verrous matérialisés (bornée au plan de la réservation) :
         // MAISON UNIQUE partagée avec le retrait d'une fermeture ({@see ReservationRemoval}).
+        $planId = $reservation->getSchedulePlanId();
         $toRemove = $this->reservationRemoval->remove($reservation);
         $this->entityManager->flush();
+
+        // Lot 5 : retirer une réservation défait son épinglage dans les versions de son plan ; la copie de la version
+        // chargée en perd la ligne (une réservation SAISIE, elle, n'entre dans la copie qu'à la génération).
+        $loadedId = $this->schedulePlanProvisioner->lockSourceScheduleIdOfPlan($planId);
+        $loaded = null === $loadedId ? null : $this->entityManager->find(Schedule::class, $loadedId);
+        if ($loaded instanceof Schedule) {
+            $this->planStates->syncRows($loaded, Reservation::class, array_map(static fn (Reservation $gone): string => $gone->getId(), $toRemove));
+        }
 
         // Ce override court-circuite parent::processDelete → il doit émettre lui-même la trace RGPD
         // (revue PR-4 : angle mort du choke point) — une par réservation effectivement supprimée.

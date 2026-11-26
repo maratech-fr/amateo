@@ -96,8 +96,8 @@ class SchedulePlan implements TenantOwnedInterface
 
     /**
      * V1bis — le POINTEUR de la version dont les verrous HARD sont la SOURCE des données
-     * « en cours » du plan (ce dont « Régénérer » repart). Posé par « Charger » (endpoint
-     * load-locks, ou « Charger cette version » pour le socle) et re-pointé à chaque nouvelle
+     * « en cours » du plan (ce dont « Régénérer » repart). Posé par « Charger » (`POST
+     * /api/schedules/{id}/load`, tout plan) et re-pointé à chaque nouvelle
      * version COMPLETED (générer devient la source). Seul pointeur de version chargée depuis le
      * lot 4 : socle comme période (l'étoile). null = aucun pointeur → repli sur la dernière version COMPLETED. Lu UNIQUEMENT
      * par la maison unique {@see SchedulePlanProvisioner::lockSourceScheduleIdOfPlan}

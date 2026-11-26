@@ -22,11 +22,11 @@ use App\Controller\ImportController;
 use App\Controller\ImportFixturesAnalyzeController;
 use App\Controller\ImportFixturesController;
 use App\Controller\ImportTeamsAnalyzeController;
+use App\Controller\LoadVersionController;
 use App\Controller\ParcImportAnalyzeController;
 use App\Controller\ParcImportExecuteController;
 use App\Controller\PlaceMatchesController;
 use App\Controller\RegenerateController;
-use App\Controller\RegenerateFromVersionController;
 use App\Controller\VenuePeriodGridActionController;
 use App\Entity\Club;
 use App\Entity\Season;
@@ -325,10 +325,10 @@ final class AccessDeclarationSweepTest extends WebTestCase
             'Controller\DeletionImpactController', 'Controller\ExportPdfController', 'Controller\ExportPdfDownloadController',
             'Controller\ExportXlsxController', 'Controller\FillPeriodPlanController', 'Controller\GenerateScheduleController',
             'Controller\GeocodeController', 'Controller\GroupReservationController', 'Controller\ImportController',
-            'Controller\ImportTeamsAnalyzeController', 'Controller\LoadLocksController', 'Controller\ManualEditController',
+            'Controller\ImportTeamsAnalyzeController', 'Controller\LoadVersionController', 'Controller\ManualEditController',
             'Controller\ParcImportAnalyzeController', 'Controller\ParcImportExecuteController', 'Controller\PlannedWindowsController',
             'Controller\PublicHolidaysController', 'Controller\RedatePreviewController', 'Controller\RegenerateController',
-            'Controller\RegenerateFromVersionController', 'Controller\ReopenScheduleController', 'Controller\ReorderTeamsController',
+            'Controller\ReopenScheduleController', 'Controller\ReorderTeamsController',
             'Controller\SchedulePlanAlertSeenController', 'Controller\SchedulePlanStructureHashController',
             'Controller\SchoolHolidaysController', 'Controller\SocleDeviationController', 'Controller\TrainingPlacedConflictsController',
             'Controller\TranscribePeriodPlanController', 'Controller\ValidateConstraintsController', 'Controller\ValidateImpactController',
@@ -499,7 +499,7 @@ final class AccessDeclarationSweepTest extends WebTestCase
 
         self::assertSame([], $wrong, "Sorties mal placées :\n  - " . implode("\n  - ", $wrong));
         self::assertSame($expected, $declared, 'les fonctions qui produisent une sortie, et la sortie de chacune');
-        self::assertArrayNotHasKey(RegenerateFromVersionController::class, $declared, '« Charger une version » ne lance aucun calcul : ce n\'est pas une sortie');
+        self::assertArrayNotHasKey(LoadVersionController::class, $declared, '« Charger une version » ne lance aucun calcul : ce n\'est pas une sortie');
     }
 
     public function testEveryApiRouteFallsInExactlyOneFamily(): void

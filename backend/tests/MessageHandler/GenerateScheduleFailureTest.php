@@ -28,7 +28,6 @@ use App\Service\ScheduleProgressPublisher;
 use App\Service\ScheduleResultImporter;
 use App\Service\SolverMetricsMapper;
 use App\Service\SolverMetricsRecorder;
-use App\Service\StructureSnapshotter;
 use App\Service\TenantConnectionContext;
 use App\Tests\CrossStack\EngineFailureTypeMirrorTest;
 use App\Tests\TenantGucTrait;
@@ -490,7 +489,6 @@ final class GenerateScheduleFailureTest extends KernelTestCase
             new SolverMetricsMapper,
             $container->get(ClubGenerationLock::class),
             $container->get(TenantConnectionContext::class),
-            $container->get(StructureSnapshotter::class),
             $container->get(SchedulePlanProvisioner::class),
             $container->get(OutputCreditLedger::class),
             $container->get(PlanStates::class),
@@ -576,7 +574,6 @@ final class GenerateScheduleFailureTest extends KernelTestCase
             new SolverMetricsMapper,
             $container->get(ClubGenerationLock::class),
             $container->get(TenantConnectionContext::class),
-            $container->get(StructureSnapshotter::class),
             $container->get(SchedulePlanProvisioner::class),
             $container->get(OutputCreditLedger::class),
             $container->get(PlanStates::class),

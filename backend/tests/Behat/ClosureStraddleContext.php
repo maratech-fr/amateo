@@ -294,7 +294,7 @@ final class ClosureStraddleContext extends BaseContext
             $entriesSubquery,
         );
         $schedulesSubquery = \sprintf('(SELECT id FROM schedule WHERE club_id=\'%s\' AND schedule_plan_id IN %s)', $this->clubId, $plansSubquery);
-        foreach (['schedule_slot_template', 'schedule_diagnostic', 'constraint_conflict', 'schedule_structure_snapshot'] as $table) {
+        foreach (['schedule_slot_template', 'schedule_diagnostic', 'constraint_conflict'] as $table) {
             $this->dbalExec(\sprintf('DELETE FROM %s WHERE schedule_id IN %s', $table, $schedulesSubquery), admin: true);
         }
         $this->dbalExec(\sprintf('UPDATE schedule_plan SET chosen_schedule_id=NULL WHERE id IN %s', $plansSubquery), admin: true);

@@ -17,13 +17,12 @@ use Symfony\Component\Serializer\Attribute\Groups;
  *                       version chargée d'où repart une génération en cours)
  *  - canValidate     ⇄ ValidateScheduleController (terminée, aucune sœur en vol, version chargée ; la
  *                       version CHOISIE reste validable — re-pointage no-op accepté)
- *  - canRegenerateFrom ⇄ RegenerateFromVersionController (socle terminé non-choisi, aucune génération
- *                       en cours dans la saison, restauration possible : photo présente, équipes
- *                       engagées intactes) ; regenerateFromBlockedReason dit le motif, mot pour mot
+ *  - canLoad         ⇄ LoadVersionController (« Charger », tout plan) : version terminée, plan non validé,
+ *                       aucune génération en cours dans la saison, chargeable (LoadFeasibility : copie
+ *                       présente, niveau des équipes engagées intact) ET pas DÉJÀ la version chargée (le
+ *                       geste ne changerait rien — on ne l'offre pas) ; loadBlockedReason dit le motif d'une
+ *                       version terminée qui ne se charge pas, mot pour mot le `error` du refus
  *  - canEdit         ⇄ les neuf guichets de retouche (VersionEditability) ; editBlockedReason dit le code
- *  - canLoadLocks    ⇄ LoadLocksController (V1bis, « Charger » pour une période) : version de PÉRIODE
- *                       terminée, plan non validé, aucune génération en cours ET pas DÉJÀ la source
- *                       des verrous (le geste serait un no-op — on ne l'offre pas)
  *
  * Et deux compteurs, lus au même endroit que les gardes, pour que le front annonce
  * l'effet avant le clic :
@@ -39,9 +38,7 @@ final class ScheduleCapabilities
         #[Groups(['read'])]
         public bool $canValidate,
         #[Groups(['read'])]
-        public bool $canRegenerateFrom,
-        #[Groups(['read'])]
-        public bool $canLoadLocks,
+        public bool $canLoad,
         #[Groups(['read'])]
         public int $versionsDeletedOnValidate,
         #[Groups(['read'])]
@@ -51,6 +48,6 @@ final class ScheduleCapabilities
         #[Groups(['read'])]
         public ?string $editBlockedReason = null,
         #[Groups(['read'])]
-        public ?string $regenerateFromBlockedReason = null,
+        public ?string $loadBlockedReason = null,
     ) {}
 }

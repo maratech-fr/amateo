@@ -30,7 +30,7 @@ use Symfony\Component\RateLimiter\RateLimiterFactory;
  * ⚠ **Le seau se lit sur la sortie DÉCLARÉE de la fonction** (`ClubFunction::$output`), jamais sur
  * une liste de routes : toute fonction qui déclare un solve (`/generate`, `/regenerate`, `/fill` —
  * le work-loop passe par les deux dernières) puise dans le cap de génération, et une sortie
- * déclarée demain ne peut pas y échapper. « Charger une version » (`/regenerate-from`) ne lance
+ * déclarée demain ne peut pas y échapper. « Charger une version » (`/load`) ne lance
  * aucun calcul : elle ne déclare pas de sortie et n'entame pas le cap.
  *
  * ⚠ L'export **tableur** a son seau (`schedule_xlsx_export`, 10/h comme le PDF du planning) : il se

@@ -22,7 +22,7 @@ const noop = () => {};
 // par le bloc `capabilities` SERVEUR, plus par un calcul client. Défaut = une version de
 // travail terminée « ordinaire » ; chaque test surcharge le champ qui porte son scénario.
 // `capabilities: null` force l'absence (réponse d'écriture / cache périmé → fail-closed).
-const DEFAULT_CAPS: ScheduleCapabilities = { canDelete: false, canValidate: true, canRegenerateFrom: true, canLoadLocks: false, versionsDeletedOnValidate: 0, overlaysDroppedOnValidate: 0 };
+const DEFAULT_CAPS: ScheduleCapabilities = { canDelete: false, canValidate: true, canLoad: true, versionsDeletedOnValidate: 0, overlaysDroppedOnValidate: 0 };
 type ScheduleOver = Partial<Omit<Schedule, "capabilities">> & { capabilities?: Partial<ScheduleCapabilities> | null };
 
 const schedule = (status: Schedule["status"], over: ScheduleOver = {}): Schedule => {
@@ -59,8 +59,7 @@ function renderToolbar(
       onValidate={noop}
       onReopen={noop}
       onDelete={noop}
-      onRegenerateFrom={noop}
-      onLoadLocks={noop}
+      onLoad={noop}
       disableRegenerate={disableRegenerate}
       outputCredits={outputCredits}
       isGenerating={false}
@@ -114,8 +113,7 @@ describe("PlanningToolbar — 4e vue « Par jour » (P2-33)", () => {
         onValidate={noop}
         onReopen={noop}
         onDelete={noop}
-        onRegenerateFrom={noop}
-        onLoadLocks={noop}
+        onLoad={noop}
         isGenerating={false}
         actionBusy={false}
         embedded
@@ -254,8 +252,7 @@ describe("PlanningToolbar — schedule lifecycle (N3)", () => {
         onValidate={noop}
         onReopen={noop}
         onDelete={noop}
-        onRegenerateFrom={noop}
-        onLoadLocks={noop}
+        onLoad={noop}
         isGenerating={false}
         actionBusy
         embedded
@@ -272,29 +269,29 @@ describe("PlanningToolbar — schedule lifecycle (N3)", () => {
     expect(screen.getByRole("button", { name: "Régénérer" })).toBeDisabled();
   });
 
-  it("hides « Charger cette version » on a pre-D2 version with no structure photo (server: canRegenerateFrom:false)", () => {
-    renderToolbar(schedule("COMPLETED", { hasStructurePhoto: false, capabilities: { canRegenerateFrom: false } }));
+  it("hides « Charger cette version » on a pre-D2 version with no structure photo (server: canLoad:false)", () => {
+    renderToolbar(schedule("COMPLETED", { hasStructurePhoto: false, capabilities: { canLoad: false } }));
     expect(screen.queryByRole("button", { name: /charger cette version/i })).not.toBeInTheDocument();
   });
 
-  it("V1bis — offre « Charger cette version » sur une version de PÉRIODE quand le serveur l'autorise (canLoadLocks)", () => {
+  it("V1bis — offre « Charger cette version » sur une version de PÉRIODE quand le serveur l'autorise (canLoad)", () => {
     // Une version d'overlay (plan de période) terminée, non source, plan non validé : le serveur
-    // dit canLoadLocks:true, et le socle n'a pas lieu d'être (canRegenerateFrom:false, période-only).
-    renderToolbar(schedule("COMPLETED", { planType: "HOLIDAY", schedulePlanId: "period-plan", capabilities: { canRegenerateFrom: false, canLoadLocks: true } }));
+    // dit canLoad:true.
+    renderToolbar(schedule("COMPLETED", { planType: "HOLIDAY", schedulePlanId: "period-plan", capabilities: { canLoad: true } }));
     expect(screen.getByRole("button", { name: /charger cette version/i })).toBeEnabled();
   });
 
-  it("V1bis — cacher « Charger » sur une version de période quand elle est DÉJÀ la source (canLoadLocks:false)", () => {
-    renderToolbar(schedule("COMPLETED", { planType: "HOLIDAY", schedulePlanId: "period-plan", capabilities: { canRegenerateFrom: false, canLoadLocks: false } }));
+  it("V1bis — cacher « Charger » sur une version de période quand elle est DÉJÀ la source (canLoad:false)", () => {
+    renderToolbar(schedule("COMPLETED", { planType: "HOLIDAY", schedulePlanId: "period-plan", capabilities: { canLoad: false } }));
     expect(screen.queryByRole("button", { name: /charger cette version/i })).not.toBeInTheDocument();
   });
 
-  it("V1bis — le clic sur « Charger » (période) déclenche onLoadLocks", async () => {
+  it("V1bis — le clic sur « Charger » (période) déclenche onLoad", async () => {
     const user = userEvent.setup();
     const onLoadLocks = vi.fn();
     render(
       <PlanningToolbar
-        schedules={[schedule("COMPLETED", { planType: "HOLIDAY", schedulePlanId: "period-plan", capabilities: { canRegenerateFrom: false, canLoadLocks: true } })]}
+        schedules={[schedule("COMPLETED", { planType: "HOLIDAY", schedulePlanId: "period-plan", capabilities: { canLoad: true } })]}
         selectedScheduleId="s1"
         onSelectSchedule={noop}
         viewMode="gymnase"
@@ -303,8 +300,7 @@ describe("PlanningToolbar — schedule lifecycle (N3)", () => {
         onValidate={noop}
         onReopen={noop}
         onDelete={noop}
-        onRegenerateFrom={noop}
-        onLoadLocks={onLoadLocks}
+        onLoad={onLoadLocks}
         isGenerating={false}
         actionBusy={false}
         embedded
@@ -447,7 +443,7 @@ describe("PlanningToolbar — version chargée", () => {
   });
 
   it.each(["Cette version n'a pas de photo.", "Cette version est antérieure à SM2.", "Cette version a été générée quand SM1 avait un autre niveau."])("« Charger » est grisé et dit le motif du serveur : %s", (reason) => {
-    renderToolbar([older({ capabilities: { canRegenerateFrom: false, regenerateFromBlockedReason: reason } as Partial<ScheduleCapabilities> }), loaded()]);
+    renderToolbar([older({ capabilities: { canLoad: false, loadBlockedReason: reason } as Partial<ScheduleCapabilities> }), loaded()]);
     const load = screen.getByRole("button", { name: /Charger cette version/ });
     expect(load).toHaveAttribute("aria-disabled", "true");
     expect(load).toHaveAttribute("title", reason);
@@ -457,7 +453,7 @@ describe("PlanningToolbar — version chargée", () => {
   // comptent pas (visibleTextOccurrences). Une seule ligne pour toute la barre, pas un texte par bouton.
   describe("le motif en clair", () => {
     const REASON = "Cette version n'a pas de photo.";
-    const unloadable = () => older({ capabilities: { canValidate: false, canEdit: false, editBlockedReason: "not_loaded_version", canRegenerateFrom: false, regenerateFromBlockedReason: REASON } as Partial<ScheduleCapabilities> });
+    const unloadable = () => older({ capabilities: { canValidate: false, canEdit: false, editBlockedReason: "not_loaded_version", canLoad: false, loadBlockedReason: REASON } as Partial<ScheduleCapabilities> });
 
     it("version non chargée : une ligne visible dit pourquoi la barre est grisée", () => {
       renderToolbar([older(), loaded()]);
@@ -468,7 +464,7 @@ describe("PlanningToolbar — version chargée", () => {
       const period = { planType: "HOLIDAY", schedulePlanId: "ete-plan", isLiveContext: false } as const;
       renderToolbar(
         [
-          schedule("COMPLETED", { id: "p1", createdAt: "2026-01-01T09:00:00+00:00", ...period, capabilities: { canValidate: false, canRegenerateFrom: false, canLoadLocks: true, canEdit: false, editBlockedReason: "not_loaded_version" } as Partial<ScheduleCapabilities> }),
+          schedule("COMPLETED", { id: "p1", createdAt: "2026-01-01T09:00:00+00:00", ...period, capabilities: { canValidate: false, canLoad: true, canEdit: false, editBlockedReason: "not_loaded_version" } as Partial<ScheduleCapabilities> }),
           schedule("COMPLETED", { id: "p2", createdAt: "2026-02-01T09:00:00+00:00", ...period, isLockSource: true, capabilities: { canEdit: true, editBlockedReason: null } as Partial<ScheduleCapabilities> }),
         ],
         { selectedScheduleId: "p1" },
@@ -497,7 +493,7 @@ describe("PlanningToolbar — version chargée", () => {
     });
 
     it("version non terminée : aucune ligne, il n'y a rien à charger", () => {
-      renderToolbar([schedule("FAILED", { id: "s3", createdAt: "2026-03-01T09:00:00+00:00", isLiveContext: false, capabilities: { canValidate: false, canRegenerateFrom: false, canEdit: false, editBlockedReason: "not_loaded_version" } as Partial<ScheduleCapabilities> }), loaded()], { selectedScheduleId: "s3" });
+      renderToolbar([schedule("FAILED", { id: "s3", createdAt: "2026-03-01T09:00:00+00:00", isLiveContext: false, capabilities: { canValidate: false, canLoad: false, canEdit: false, editBlockedReason: "not_loaded_version" } as Partial<ScheduleCapabilities> }), loaded()], { selectedScheduleId: "s3" });
       expect(visibleTextOccurrences(PLANNING_TEXTS.notLoadedToolbarLine)).toHaveLength(0);
     });
 
@@ -521,7 +517,7 @@ describe("PlanningToolbar — Membre (consultation)", () => {
 
   it("lit, change de vue et exporte, sans aucun geste de cycle de vie", () => {
     session.canManage = false;
-    renderToolbar(schedule("COMPLETED", { capabilities: { canDelete: true, canValidate: true, canLoadLocks: true } }), { slots: true });
+    renderToolbar(schedule("COMPLETED", { capabilities: { canDelete: true, canValidate: true, canLoad: true } }), { slots: true });
     expect(screen.getByRole("button", { name: "Par gymnase" })).toBeInTheDocument();
     expect(screen.getByText("EXPORT")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Régénérer/ })).not.toBeInTheDocument();

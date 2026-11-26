@@ -225,6 +225,8 @@ final class PersonConversionMigrationTest extends KernelTestCase
             . 'ADD COLUMN IF NOT EXISTS phone VARCHAR(40) DEFAULT NULL, '
             . 'ADD COLUMN IF NOT EXISTS gender VARCHAR(12) DEFAULT \'UNSPECIFIED\' NOT NULL',
         );
+        // La table des photos de structure, supprimée au lot 5 (PR 3), existait avant cette conversion.
+        $this->admin->executeStatement('CREATE TABLE IF NOT EXISTS schedule_structure_snapshot (id UUID NOT NULL, created_at TIMESTAMP(0) WITH TIME ZONE NOT NULL, updated_at TIMESTAMP(0) WITH TIME ZONE NOT NULL, club_id UUID NOT NULL, season_id UUID NOT NULL, schedule_id UUID NOT NULL, data JSON NOT NULL, PRIMARY KEY (id))');
     }
 
     /** Une instance NEUVE, toutes ses requêtes jouées sur la connexion admin, puis `postUp()`. */

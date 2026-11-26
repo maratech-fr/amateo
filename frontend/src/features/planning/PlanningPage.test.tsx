@@ -11,7 +11,7 @@ import { useToastStore } from "@/shared/stores/toastStore";
 import { renderWithProviders, visibleTextOccurrences } from "@/test/utils";
 
 import { stalenessMessage } from "./lib/staleness";
-import { createOverlayVersion, EngineTimeoutError, EngineVerificationInterruptedError, fillSchedule, GenerationInProgressError, getDiagnostics, getPlacedConflicts, getSlots, getSocleDeviation, getStructureHash, getTeams, getTrainingSlots, getVenues, listSchedules, loadLocks, loadVersion, lockSlot, moveSlot, MoveRejectedError, OverlaysExistError, placeSlot, removeSlot, reopenSchedule, SlotEditError, TargetLockedError, validateSchedule } from "./api";
+import { createOverlayVersion, EngineTimeoutError, EngineVerificationInterruptedError, fillSchedule, GenerationInProgressError, getDiagnostics, getPlacedConflicts, getSlots, getSocleDeviation, getStructureHash, getTeams, getTrainingSlots, getVenues, listSchedules, loadVersion, lockSlot, moveSlot, MoveRejectedError, OverlaysExistError, placeSlot, removeSlot, reopenSchedule, SlotEditError, TargetLockedError, validateSchedule } from "./api";
 import { regenerate } from "./api";
 import type { Schedule } from "./api";
 import { PlanningPage } from "./PlanningPage";
@@ -172,8 +172,6 @@ vi.mock("./api", () => {
   regenerate: vi.fn(() => Promise.resolve({ id: "regen-new", status: "PENDING", sourceScheduleId: "v2" })),
   // V1 — « Régénérer » un overlay crée une nouvelle version puis la génère (useRegenerateOverlay).
   createOverlayVersion: vi.fn(() => Promise.resolve({ id: "ov-new" })),
-  // V1bis — « Charger » les verrous d'une version de période (pose le pointeur, ne génère pas).
-  loadLocks: vi.fn(() => Promise.resolve({ id: SID })),
   // Lot conception 5, PR 3 — « Charger » : une seule route pour tout plan.
   loadVersion: vi.fn(() => Promise.resolve({ id: SID, status: "COMPLETED" })),
   validateSchedule: vi.fn(),
@@ -294,7 +292,7 @@ vi.mock("@/features/auth/queries", () => ({
 
 // P2-8 : la toolbar lit les gestes (Valider…) du bloc `capabilities` serveur, plus d'un
 // calcul client — une version de travail terminée « ordinaire » est validable.
-const workVersion: Schedule[] = [{ id: SID, name: "Planning A", status: "COMPLETED", score: 9051, createdAt: "2026-01-01T00:00:00Z", updatedAt: "2026-01-01T00:00:00Z", planType: "SEASON", schedulePlanId: "season-plan", capabilities: { canDelete: false, canValidate: true, canRegenerateFrom: false, canLoadLocks: false, versionsDeletedOnValidate: 0, overlaysDroppedOnValidate: 0 } }];
+const workVersion: Schedule[] = [{ id: SID, name: "Planning A", status: "COMPLETED", score: 9051, createdAt: "2026-01-01T00:00:00Z", updatedAt: "2026-01-01T00:00:00Z", planType: "SEASON", schedulePlanId: "season-plan", capabilities: { canDelete: false, canValidate: true, canLoad: false, versionsDeletedOnValidate: 0, overlaysDroppedOnValidate: 0 } }];
 
 beforeEach(() => {
   meState.chosenScheduleId = null;
@@ -489,15 +487,15 @@ describe("PlanningPage (integration)", () => {
   });
 
   // V1bis — « Charger » pour une version de PÉRIODE : le bouton offert par le serveur
-  // (capabilities.canLoadLocks) ouvre une confirmation qui NOMME la version et dit l'effet,
-  // puis pose le pointeur (loadLocks) sans générer.
+  // (capabilities.canLoad) ouvre une confirmation qui NOMME la version et dit l'effet,
+  // puis charge (loadVersion) sans générer.
   it("charge les verrous d'une version de période : confirmation nommée puis pose du pointeur", async () => {
     vi.mocked(listSchedules).mockResolvedValue([
       {
         id: SID, name: "Version de période", status: "COMPLETED", score: null,
         createdAt: "2026-01-01T00:00:00Z", updatedAt: "2026-01-01T00:00:00Z",
         planType: "HOLIDAY", schedulePlanId: "ete-plan", isChosen: false,
-        capabilities: { canDelete: true, canValidate: false, canRegenerateFrom: false, canLoadLocks: true, versionsDeletedOnValidate: 0, overlaysDroppedOnValidate: 0 },
+        capabilities: { canDelete: true, canValidate: false, canLoad: true, versionsDeletedOnValidate: 0, overlaysDroppedOnValidate: 0 },
       },
     ]);
     plansState.plans = [{ id: "ete-plan", type: "HOLIDAY", name: "Reprise d'été S1", startDate: "2026-08-17", calendarEntryId: "e-ete", chosenScheduleId: null }];
@@ -506,13 +504,11 @@ describe("PlanningPage (integration)", () => {
 
     await userEvent.click(await screen.findByRole("button", { name: /charger cette version/i }));
 
-    // La confirmation NOMME la version (le libellé V1 — … d'une version seule) et dit l'effet,
-    // mot pour mot de la décision fondateur. On épingle l'effet (stable) et la mention de la version.
-    const confirmText = await screen.findByText(/deviendront les données en cours : la prochaine régénération repartira d'eux\./);
-    expect(confirmText).toHaveTextContent(/Les verrous de la version V1/);
+    // Lot 5, PR 3 : une seule définition de « Charger », un seul dialogue — il dit l'effet, période comme saison.
+    expect(await screen.findByText(PLANNING_TEXTS.loadVersionDescription)).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole("button", { name: "Charger" }));
-    expect(vi.mocked(loadLocks)).toHaveBeenCalledWith(SID);
+    expect(vi.mocked(loadVersion)).toHaveBeenCalledWith(SID);
   });
 
   // Lot conception 5, PR 3 (ligne 16 du plan, décision 3 du fondateur) — charger une version alors que des
@@ -3422,7 +3418,7 @@ describe("PlanningPage — comblement refusé par un blocage", () => {
 // Plan « version chargée » : une version non chargée se consulte, ne se modifie pas. Le serveur décide
 // (`capabilities.canEdit`), la page affiche ; capacité absente = aucun motif, le serveur refusera seul.
 describe("PlanningPage — version chargée", () => {
-  const CAPS = { canDelete: false, canValidate: true, canRegenerateFrom: true, canLoadLocks: false, versionsDeletedOnValidate: 0, overlaysDroppedOnValidate: 0 };
+  const CAPS = { canDelete: false, canValidate: true, canLoad: true, versionsDeletedOnValidate: 0, overlaysDroppedOnValidate: 0 };
   const LOADED_CAPS = { ...CAPS, canEdit: true, editBlockedReason: null };
   const NOT_LOADED_CAPS = { ...CAPS, canValidate: false, canEdit: false, editBlockedReason: "not_loaded_version" };
   const version = (id: string, createdAt: string, extra: Partial<Schedule> = {}): Schedule => ({ id, name: "Planning A", status: "COMPLETED", score: null, createdAt, updatedAt: createdAt, planType: "SEASON", schedulePlanId: "season-plan", ...extra });
@@ -3446,7 +3442,7 @@ describe("PlanningPage — version chargée", () => {
   });
 
   it("version impossible à charger : la bannière dit le motif réel servi par le serveur", async () => {
-    await open([older({ capabilities: { ...NOT_LOADED_CAPS, canRegenerateFrom: false, regenerateFromBlockedReason: "Pas de photo." } } as Partial<Schedule>), loaded()], "v1");
+    await open([older({ capabilities: { ...NOT_LOADED_CAPS, canLoad: false, loadBlockedReason: "Pas de photo." } } as Partial<Schedule>), loaded()], "v1");
     const banner = PLANNING_TEXTS.notLoadedBanner("V1", "V2", false, "Pas de photo.");
     expect(banner).toContain("Pas de photo.");
     expect(screen.getByText(banner)).toBeInTheDocument();
@@ -3455,7 +3451,7 @@ describe("PlanningPage — version chargée", () => {
   // Règle du fondateur : un geste grisé dit son motif en clair, sans survol. `title` et `sr-only` ne
   // comptent pas (visibleTextOccurrences). Une seule ligne par zone : la barre, puis la fiche.
   describe("le motif en clair", () => {
-    const unloadable = () => older({ capabilities: { ...NOT_LOADED_CAPS, canRegenerateFrom: false, regenerateFromBlockedReason: "Pas de photo." } } as Partial<Schedule>);
+    const unloadable = () => older({ capabilities: { ...NOT_LOADED_CAPS, canLoad: false, loadBlockedReason: "Pas de photo." } } as Partial<Schedule>);
 
     it("version non chargée : la barre et la fiche disent chacune pourquoi leurs gestes sont grisés", async () => {
       const user = userEvent.setup();
@@ -3501,7 +3497,7 @@ describe("PlanningPage — version chargée", () => {
   // Plan de période : même bannière neutre qu'en saison, plus de « version antérieure ». Le mot suit
   // le titre de la page, « (V2 source) ».
   describe("version non source d'une période", () => {
-    const NOT_SOURCE_CAPS = { ...NOT_LOADED_CAPS, canRegenerateFrom: false, canLoadLocks: true };
+    const NOT_SOURCE_CAPS = { ...NOT_LOADED_CAPS, canLoad: true };
     const period = (id: string, createdAt: string, extra: Record<string, unknown>) => version(id, createdAt, { planType: "CLOSURE", schedulePlanId: "ete-plan", ...extra } as Partial<Schedule>);
     const openPeriod = async (selected: string) => {
       vi.mocked(listSchedules).mockResolvedValue([
@@ -3648,17 +3644,17 @@ describe("PlanningPage — version chargée", () => {
 
   describe("Régénérer depuis une autre version que la chargée", () => {
     it.each([
-      [{ hardLockCount: 2, canRegenerateFrom: true }],
-      [{ hardLockCount: 0, canRegenerateFrom: true }],
-      [{ hardLockCount: 2, canRegenerateFrom: false }],
-      [{ hardLockCount: 0, canRegenerateFrom: false }],
-    ])("le dialogue dit la version de départ : %j", async ({ hardLockCount, canRegenerateFrom }) => {
+      [{ hardLockCount: 2, canLoad: true }],
+      [{ hardLockCount: 0, canLoad: true }],
+      [{ hardLockCount: 2, canLoad: false }],
+      [{ hardLockCount: 0, canLoad: false }],
+    ])("le dialogue dit la version de départ : %j", async ({ hardLockCount, canLoad }) => {
       const user = userEvent.setup();
-      await open([older({ hardLockCount, capabilities: { ...NOT_LOADED_CAPS, canRegenerateFrom } } as Partial<Schedule>), loaded({ hardLockCount: 3, snapshotHash: "x" })], "v1");
+      await open([older({ hardLockCount, capabilities: { ...NOT_LOADED_CAPS, canLoad } } as Partial<Schedule>), loaded({ hardLockCount: 3, snapshotHash: "x" })], "v1");
 
       await user.click(screen.getByRole("button", { name: /^Régénérer/ }));
 
-      expect(await screen.findByText(PLANNING_TEXTS.regenerateFromLoadedDescription({ viewed: "V1", loaded: "V2", lockCount: 3, viewedHasLocks: hardLockCount > 0, canLoad: canRegenerateFrom }))).toBeInTheDocument();
+      expect(await screen.findByText(PLANNING_TEXTS.regenerateFromLoadedDescription({ viewed: "V1", loaded: "V2", lockCount: 3, viewedHasLocks: hardLockCount > 0, canLoad }))).toBeInTheDocument();
       expect(vi.mocked(regenerate)).not.toHaveBeenCalled();
     });
 
@@ -3803,6 +3799,6 @@ describe("PlanningPage — version chargée", () => {
 
     await user.click(screen.getByRole("button", { name: /Charger cette version/ }));
 
-    expect(await screen.findByText(PLANNING_TEXTS.loadVersionDescriptionGeneric)).toBeInTheDocument();
+    expect(await screen.findByText(PLANNING_TEXTS.loadVersionDescription)).toBeInTheDocument();
   });
 });

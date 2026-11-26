@@ -381,6 +381,30 @@ final class LoadVersionTest extends WebTestCase
         self::assertSame(0, (int) $this->loadScalar('SELECT COUNT(*) FROM reservation WHERE id = ?', [$reservationId]), '« Charger » remet l\'état de la version : la saisie non générée est perdue');
     }
 
+    /**
+     * Abus (cascade) : retirer un groupe absent de la copie ne supprime aucune séance d'une autre version — la place
+     * d'une séance appartient à sa version. Charger la version 1 (sans groupe) depuis la version 2 (un groupe et ses
+     * séances liées) laisse les séances de la version 2 à leur place ; elles perdent seulement leur lien de groupe.
+     */
+    public function testRemovingAGroupAbsentFromTheCopyLeavesTheSessionsOfAnotherVersion(): void
+    {
+        [$v1, $placedA, $placedB] = $this->placedSeason();
+        $v2 = $this->loadVersionOf($this->soclePlanId);
+        $group = $this->groupAtCase($v2->getId(), [$placedA->getTeamId(), $placedB->getTeamId()]);
+        $states = self::getContainer()->get(PlanStates::class);
+        $states->store($v2, $states->capture($this->soclePlanId));
+        $this->makeLoaded($v2);
+        $sessionsOfV2 = 'SELECT COUNT(*) FROM schedule_slot_template WHERE schedule_id = ?';
+        self::assertSame(2, (int) $this->loadScalar($sessionsOfV2 . ' AND shared_training_block_id = ?', [$v2->getId(), $group['block']]), 'témoin : la version 2 porte les deux séances du groupe');
+
+        $this->loadVersion($v1->getId());
+
+        $this->assertLoadAccepted('charger la version 1, sans groupe');
+        self::assertSame(0, (int) $this->loadScalar('SELECT COUNT(*) FROM shared_training_block WHERE id = ?', [$group['block']]), 'témoin : le groupe absent de la version 1 est retiré');
+        self::assertSame(2, (int) $this->loadScalar($sessionsOfV2, [$v2->getId()]), 'les séances de la version 2 restent');
+        self::assertSame(2, (int) $this->loadScalar($sessionsOfV2 . ' AND shared_training_block_id IS NULL AND day_of_week = 2 AND lock_level = ?', [$v2->getId(), LockLevel::HARD->value]), 'à leur place et verrouillées, sans lien de groupe');
+    }
+
     protected function setUp(): void
     {
         $this->client = self::createClient();

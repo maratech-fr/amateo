@@ -53,7 +53,7 @@ import { buildClubView } from "./lib/clubView";
 import { ClubViewTable } from "./ClubViewTable";
 import { availableResourceGroups, buildGrid, DAYS, type Lookups, slotGroupKey } from "./lib/grid";
 import { PlanningToolbar } from "./PlanningToolbar";
-import { useCategories, useCoachPlayers, useCoaches, useConstraints, useDeleteSchedule, useDiagnostics, useFillSchedule, useLoadLocks, useMutualizeSlot, usePlacedConflicts, useRegenerate, useRegenerateFromVersion, useRegenerateOverlay, useSchedules, useSlots, useSocleDeviation, useStructureHash, useTeamCoaches, useTeams, useTrainingSlots, useVenueOccupancies, useVenues } from "./queries";
+import { useCategories, useCoachPlayers, useCoaches, useConstraints, useDeleteSchedule, useDiagnostics, useFillSchedule, useLoadVersion, useMutualizeSlot, usePlacedConflicts, useRegenerate, useRegenerateOverlay, useSchedules, useSlots, useSocleDeviation, useStructureHash, useTeamCoaches, useTeams, useTrainingSlots, useVenueOccupancies, useVenues } from "./queries";
 import { blocksForSlot } from "./lib/blockSession";
 import { ResourceFilter } from "./ResourceFilter";
 import { SlotDetail } from "./SlotDetail";
@@ -288,18 +288,14 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
   const regenerateOverlayMutation = useRegenerateOverlay();
   const fillMutation = useFillSchedule();
   const deleteMutation = useDeleteSchedule();
-  const regenerateFromMutation = useRegenerateFromVersion();
-  const [regenerateFromOpen, setRegenerateFromOpen] = useState(false);
+  // « Charger cette version », tout plan : une confirmation, puis le serveur remet les réglages du plan.
+  const loadMutation = useLoadVersion();
+  const [loadConfirmOpen, setLoadConfirmOpen] = useState(false);
   // Régénérer en regardant une autre version que la chargée : on dit d'où ça repart avant de lancer.
   const [seasonRegenConfirm, setSeasonRegenConfirm] = useState<{ scheduleId: string; viewed: string; loaded: string; lockCount: number; viewedHasLocks: boolean; canLoad: boolean; loadedEdited: boolean } | null>(null);
   // D1 — la version de DÉPART d'une régénération (saison : la chargée ; période : la source) a été
   // modifiée à la main : on prévient avant de lancer. Confirmer rejoue l'appel direct, sans rien de plus.
   const [editedRegenConfirm, setEditedRegenConfirm] = useState<{ label: string; launch: { scheduleId: string } | { planId: string } } | null>(null);
-  // V1bis — « Charger » les verrous d'une version de PÉRIODE (pose le pointeur, ne génère pas). La
-  // confirmation nomme la version et dit l'effet. `isLockSource` bascule ⇒ la liste des versions est
-  // invalidée par la mutation.
-  const loadLocksMutation = useLoadLocks();
-  const [loadLocksConfirm, setLoadLocksConfirm] = useState<{ scheduleId: string; label: string } | null>(null);
   // V1 — « Régénérer » un overlay repart TOUJOURS des données EN COURS (la version SOURCE des
   // verrous). Quand on régénère en regardant une AUTRE version que la source, on confirme (patron
   // « Charger ») : les champs figent le libellé des deux versions et le nombre de verrous de la source.
@@ -370,7 +366,7 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
   // Distinct de « lecture seule » : une version non chargée n'est pas le calendrier en vigueur, et
   // elle garde ses diagnostics. Le serveur décide ; capacité absente = aucun motif, il refusera seul.
   const notLoaded = false === selectedSchedule?.capabilities?.canEdit && "not_loaded_version" === selectedSchedule.capabilities.editBlockedReason;
-  const loadBlockedReason = selectedSchedule?.capabilities?.regenerateFromBlockedReason ?? null;
+  const loadBlockedReason = selectedSchedule?.capabilities?.loadBlockedReason ?? null;
   // Impossible à charger : ne pas demander de la charger, dire le motif du serveur.
   const gesturesBlockedReason = !notLoaded ? null : null !== loadBlockedReason ? PLANNING_TEXTS.cannotLoadLine(loadBlockedReason) : PLANNING_TEXTS.gesturesBlockedNotLoaded;
   const loadedVersion = loadedVersionOf(schedules, selectedSchedule);
@@ -396,10 +392,12 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
   const regenerateReference = "COMPLETED" === selectedSchedule?.status ? (loadedVersion ?? selectedSchedule) : selectedSchedule;
   const regenerateDisabled =
     null !== currentStructureHash && null !== regenerateReference && regenerateReference.snapshotHash === currentStructureHash && true !== regenerateReference.manuallyEditedSinceGeneration;
-  // regenerateFromMutation.isPending: "Charger cette version" no longer creates a
-  // PENDING schedule (nothing sets isGenerating), so its own restore must disable
-  // the action here — else a second click double-runs the destructive restore.
-  const actionBusy = validateMutation.isPending || reopenMutation.isPending || deleteMutation.isPending || regenerateFromMutation.isPending || loadLocksMutation.isPending;
+  // Décision 3 du fondateur (lot 5) : des réglages changés depuis la génération de la version CHARGÉE
+  // (l'empreinte servie diffère de la sienne) sont perdus au chargement ; le dialogue le dit.
+  const unsavedSettingsLost = null !== currentStructureHash && undefined !== loadedVersion && loadedVersion.snapshotHash !== currentStructureHash;
+  // loadMutation.isPending: "Charger cette version" creates no PENDING schedule (nothing sets
+  // isGenerating), so its own call must disable the action here — else a second click double-runs it.
+  const actionBusy = validateMutation.isPending || reopenMutation.isPending || deleteMutation.isPending || loadMutation.isPending;
 
   // When a running generation finishes, pull the fresh slots + diagnostics.
   const prevStatus = useRef<string | null>(null);
@@ -937,7 +935,7 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
           (aucune écriture, aucune redirection). Muet pendant une génération (showGenerationWaiting).
           role="status" : il apparaît de façon asynchrone au changement de version, annoncé poliment. */}
       {!showGenerationWaiting && showNotLoadedBanner && undefined !== loadedVersion && null !== loadedLabel && null !== selectedSchedule ? (
-        <NoticeBanner tone="muted" role="status" className="mb-4" message={isSeasonPlanType(selectedSchedule.planType) ? PLANNING_TEXTS.notLoadedBanner(versionLabelOf(schedules, selectedSchedule.id) ?? selectedSchedule.name, loadedLabel, true === selectedSchedule.capabilities?.canRegenerateFrom, loadBlockedReason) : PLANNING_TEXTS.notSourceBanner(versionLabelOf(schedules, selectedSchedule.id) ?? selectedSchedule.name, loadedLabel, true === selectedSchedule.capabilities?.canLoadLocks)}>
+        <NoticeBanner tone="muted" role="status" className="mb-4" message={isSeasonPlanType(selectedSchedule.planType) ? PLANNING_TEXTS.notLoadedBanner(versionLabelOf(schedules, selectedSchedule.id) ?? selectedSchedule.name, loadedLabel, true === selectedSchedule.capabilities?.canLoad, loadBlockedReason) : PLANNING_TEXTS.notSourceBanner(versionLabelOf(schedules, selectedSchedule.id) ?? selectedSchedule.name, loadedLabel, true === selectedSchedule.capabilities?.canLoad)}>
           <Button
             size="sm"
             variant="outline"
@@ -1022,7 +1020,7 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
                       loaded: loadedLabel,
                       lockCount: loadedVersion.hardLockCount ?? 0,
                       viewedHasLocks: (selectedSchedule.hardLockCount ?? 0) > 0,
-                      canLoad: true === selectedSchedule.capabilities?.canRegenerateFrom,
+                      canLoad: true === selectedSchedule.capabilities?.canLoad,
                       loadedEdited: departureEdited,
                     });
                     return;
@@ -1059,14 +1057,7 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
               onValidate={() => setValidateOpen(true)}
               onReopen={() => reopen()}
               onDelete={() => validScheduleId && deleteMutation.mutate(validScheduleId)}
-              onRegenerateFrom={() => setRegenerateFromOpen(true)}
-              onLoadLocks={() => {
-                if (null === selectedSchedule || null === selectedSchedule.schedulePlanId) {
-                  return;
-                }
-                const label = overlayVersionLabels(schedules, selectedSchedule.schedulePlanId).get(selectedSchedule.id) ?? selectedSchedule.name;
-                setLoadLocksConfirm({ scheduleId: selectedSchedule.id, label });
-              }}
+              onLoad={() => setLoadConfirmOpen(true)}
               embedded={embedded}
               rightSlot={
                 null !== validScheduleId && !showGenerationWaiting && slots.length > 0 ? (
@@ -1672,27 +1663,26 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
         onCancel={() => setValidateOverlayCount(null)}
       />
 
+      {/* « Charger cette version », tout plan : les réglages du plan reviennent à ceux de la version. Il ne
+          détruit que des réglages non générés : le dialogue le dit, et ne se dit destructif que dans ce cas. */}
       <ConfirmDialog
-        open={regenerateFromOpen}
+        open={loadConfirmOpen}
         title={PLANNING_TEXTS.loadVersionTitle}
         description={
-          "number" === typeof selectedSchedule?.generatedTeamCount ? (
-            <>
-              La structure actuelle ({teams.length} équipe{teams.length > 1 ? "s" : ""}) sera remplacée par celle de cette version ({selectedSchedule.generatedTeamCount} équipe{selectedSchedule.generatedTeamCount > 1 ? "s" : ""}) et son planning s'affichera. Les données de structure actuelles seront écrasées ; vous pourrez ensuite « Régénérer » pour créer une nouvelle version.
-            </>
-          ) : (
-            PLANNING_TEXTS.loadVersionDescriptionGeneric
-          )
+          <>
+            <p>{PLANNING_TEXTS.loadVersionDescription}</p>
+            {unsavedSettingsLost ? <p className="mt-2">{PLANNING_TEXTS.loadVersionUnsavedLost}</p> : null}
+          </>
         }
         confirmLabel={PLANNING_TEXTS.load}
-        destructive
+        destructive={unsavedSettingsLost}
         onConfirm={() => {
           if (null !== validScheduleId) {
-            regenerateFromMutation.mutate(validScheduleId, { onSuccess: (created) => setSelectedScheduleId(created.id) });
+            loadMutation.mutate(validScheduleId, { onSuccess: (loaded) => setSelectedScheduleId(loaded.id) });
           }
-          setRegenerateFromOpen(false);
+          setLoadConfirmOpen(false);
         }}
-        onCancel={() => setRegenerateFromOpen(false)}
+        onCancel={() => setLoadConfirmOpen(false)}
       />
 
       {/* Régénérer en regardant une AUTRE version que la chargée : une nouvelle version naît depuis la
@@ -1776,32 +1766,6 @@ export function PlanningPage({ embedded = false, scopePlanId = null, calendarEnt
           regenerateOverlayMutation.mutate(launch.planId, { onSuccess: (created: { id: string }) => setSelectedScheduleId(created.id) });
         }}
         onCancel={() => setEditedRegenConfirm(null)}
-      />
-
-      {/* V1bis — « Charger » les verrous d'une version de PÉRIODE : pose le pointeur (les données en
-          cours deviennent celles de cette version), sans générer. NON destructif — aucune version
-          n'est détruite (destructive={false} EXPLICITE, le défaut du composant étant true). */}
-      <ConfirmDialog
-        open={null !== loadLocksConfirm}
-        title={PLANNING_TEXTS.loadVersionTitle}
-        destructive={false}
-        description={
-          null === loadLocksConfirm ? null : (
-            <>
-              Les verrous de la version {loadLocksConfirm.label} deviendront les données en cours : la prochaine régénération repartira d'eux.
-            </>
-          )
-        }
-        confirmLabel={PLANNING_TEXTS.load}
-        onConfirm={() => {
-          if (null === loadLocksConfirm) {
-            return;
-          }
-          const scheduleId = loadLocksConfirm.scheduleId;
-          setLoadLocksConfirm(null);
-          loadLocksMutation.mutate(scheduleId);
-        }}
-        onCancel={() => setLoadLocksConfirm(null)}
       />
 
       {/* P2-44 (PR-2) — « Comparer avec la saison » : consultation lecture seule du socle pointé. */}

@@ -52,7 +52,7 @@ final class PersonErasureLeavesNoTraceTest extends KernelTestCase
         $this->seedErasureDecor(demo: true);
         $before = explode(', ', $this->tracesSeenByClub($this->decor['club'], $this->erasedPersonNeedles()));
         foreach (['person.last_name', 'person.email', 'person.phone', 'coach_wish.comment', 'constraint.name', 'schedule.snapshot_data',
-            'schedule_structure_snapshot.data', 'schedule_diagnostic.message', 'feedback.context', 'club_mailbox_message.body_text',
+            'schedule_diagnostic.message', 'feedback.context', 'club_mailbox_message.body_text',
             'club_mailbox_message.subject', 'club_mailbox_message.to_address'] as $column) {
             self::assertContains($column, $before, 'témoin : le balayage trouve sa trace dans ' . $column . ' avant l\'effacement');
         }

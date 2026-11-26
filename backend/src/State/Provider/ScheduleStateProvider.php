@@ -10,7 +10,7 @@ use App\ApiResource\ScheduleResource;
 use App\Entity\Schedule;
 use App\Entity\SchedulePlan;
 use App\Entity\ScheduleSlotTemplate;
-use App\Entity\ScheduleStructureSnapshot;
+use App\Entity\ScheduleState;
 use App\Enum\LockLevel;
 use App\Enum\LockOrigin;
 use App\Enum\SchedulePlanType;
@@ -35,12 +35,12 @@ class ScheduleStateProvider extends AbstractStateProvider
     }
 
     /**
-     * Enrich the mapped DTO(s) with `hasStructurePhoto` (D3 gating), `isLiveContext`
+     * Enrich the mapped DTO(s) with `hasStructurePhoto` (la version porte une copie de son état : « Charger » la lit), `isLiveContext`
      * (★), `isChosen` (ADR-0002: its plan points at it), `planType` (ADR-0002 C4:
      * SEASON = socle vs overlay) and the P2-8 `capabilities` block (permissions computed
      * server-side by the SAME code as the write guards) — all in BATCH, so a per-DTO
      * lookup never N+1s the schedules collection. All lookups are tenant-scoped by the
-     * Doctrine tenant_filter (ScheduleStructureSnapshot / Season / SchedulePlan / Schedule
+     * Doctrine tenant_filter (ScheduleState / Season / SchedulePlan / Schedule
      * each own a club_id), so they never cross clubs.
      */
     public function provide(Operation $operation, array $uriVariables = [], array $context = []): object|array|null
@@ -64,7 +64,7 @@ class ScheduleStateProvider extends AbstractStateProvider
             return $result;
         }
 
-        $withPhoto = $this->scheduleIdsWithPhoto($ids);
+        $withCopy = $this->scheduleIdsWithCopy($ids);
         $chosen = $this->chosenScheduleIds($ids);
         $planType = $this->planTypeByScheduleId($ids);
         $loadedByPlan = $this->loadedVersionByPlan(array_keys($planIds));
@@ -77,11 +77,11 @@ class ScheduleStateProvider extends AbstractStateProvider
             $this->entityManager->getRepository(Schedule::class)->findBy(['id' => $ids]),
             $chosen,
             $planType,
-            $withPhoto,
+            $withCopy,
             $loadedByPlan,
         );
         foreach ($dtos as $dto) {
-            $dto->hasStructurePhoto = isset($withPhoto[$dto->id]);
+            $dto->hasStructurePhoto = isset($withCopy[$dto->id]);
             $dto->isChosen = isset($chosen[$dto->id]);
             $dto->planType = $planType[$dto->id] ?? null;
             // La ★ est la version chargée, avec son repli : jamais une étoile absente ou périmée.
@@ -110,11 +110,11 @@ class ScheduleStateProvider extends AbstractStateProvider
     /**
      * @param list<string> $scheduleIds
      *
-     * @return array<string, true> set of schedule ids that own a structure photo
+     * @return array<string, true> set of schedule ids that own a copy of their state (lot 5)
      */
-    private function scheduleIdsWithPhoto(array $scheduleIds): array
+    private function scheduleIdsWithCopy(array $scheduleIds): array
     {
-        return $this->idSetFromColumn(ScheduleStructureSnapshot::class, 'scheduleId', $scheduleIds);
+        return $this->idSetFromColumn(ScheduleState::class, 'scheduleId', $scheduleIds);
     }
 
     /**

@@ -19,7 +19,6 @@ use App\Enum\ScheduleStatus;
 use App\Plans\PlanComposition;
 use App\Plans\PlanStates;
 use App\Service\SchedulePlanProvisioner;
-use App\Service\StructureSnapshotter;
 use App\Storage\FeedbackScreenshotStorage;
 use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\ProvisionsPeriodPlanTrait;
@@ -235,8 +234,6 @@ final class RgpdExportTest extends WebTestCase
         $em->persist($version);
         self::getContainer()->get(SchedulePlanProvisioner::class)->linkSchedule($version);
         $em->flush();
-        $snapshotter = self::getContainer()->get(StructureSnapshotter::class);
-        $snapshotter->store($version, $snapshotter->serialize($clubId, $seasonId));
         $states = self::getContainer()->get(PlanStates::class);
         $states->store($version, $states->capture($version->getSchedulePlanId()));
         $karim = $this->newCoach($clubId, $seasonId, 'Karim', 'Test');

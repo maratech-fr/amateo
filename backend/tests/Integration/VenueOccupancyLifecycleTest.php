@@ -13,13 +13,12 @@ use App\Entity\Venue;
 use App\Entity\VenueTrainingSlot;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
+use App\Plans\PlanStates;
 use App\Service\PeriodPlanSiblingCopier;
 use App\Service\SchedulePlanProvisioner;
 use App\Service\SeasonDataPurger;
 use App\Service\SeasonResolver;
 use App\Service\SeasonTransitionService;
-use App\Service\StructureRestorer;
-use App\Service\StructureSnapshotter;
 use App\Tests\ChoosesPlanVersionTrait;
 use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\SeasonPlanOf;
@@ -468,24 +467,22 @@ final class VenueOccupancyLifecycleTest extends WebTestCase
         return $version;
     }
 
-    /** La photo de la structure actuelle, posée sur une version neuve de saison (le geste « charger » la relira). */
+    /** La copie du froid du plan de saison, posée sur une version neuve de saison (le geste « charger » la relira). */
     private function photo(): Schedule
     {
         $version = $this->seasonVersion();
         $this->em->flush();
-        $snapshotter = self::getContainer()->get(StructureSnapshotter::class);
-        $snapshotter->store($version, $snapshotter->serialize($this->club->getId(), $this->season->getId()));
-        $this->em->flush();
+        $states = self::getContainer()->get(PlanStates::class);
+        $states->store($version, $states->capture($version->getSchedulePlanId()));
 
         return $version;
     }
 
-    /** « Charger » une version : la structure de saison est remplacée par sa photo. */
+    /** « Charger » une version, par la route : l'état de travail du plan de saison est remis d'après sa copie. */
     private function load(Schedule $version): void
     {
-        $this->scopeGucToClub($this->club->getId());
-        $restorer = self::getContainer()->get(StructureRestorer::class);
-        $restorer->apply($this->club->getId(), $this->season->getId(), $restorer->readSnapshot($version));
+        $this->client->request('POST', '/api/schedules/' . $version->getId() . '/load', [], [], $this->headers() + ['CONTENT_TYPE' => 'application/json'], '{}');
+        self::assertResponseIsSuccessful((string) $this->client->getResponse()->getContent());
         $this->em->clear();
     }
 

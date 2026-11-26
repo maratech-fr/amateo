@@ -34,9 +34,8 @@ interface PlanningToolbarProps {
   onValidate: () => void;
   onReopen: () => void;
   onDelete: () => void;
-  onRegenerateFrom: () => void;
-  /** V1bis — « Charger » les verrous d'une version de PÉRIODE comme données en cours. */
-  onLoadLocks: () => void;
+  /** « Charger cette version », tout plan : la page confirme puis charge. */
+  onLoad: () => void;
   disableRegenerate?: boolean;
   /** P1-3 §4bis pt 2 — solde de crédits sur « Régénérer » (Découverte bridée) ;
    *  null = offre non bridée (payant/bêta/démo) : ni suffixe, ni blocage. La page
@@ -81,8 +80,7 @@ export function PlanningToolbar({
   onValidate,
   onReopen,
   onDelete,
-  onRegenerateFrom,
-  onLoadLocks,
+  onLoad,
   disableRegenerate = false,
   outputCredits = null,
   isGenerating,
@@ -138,20 +136,17 @@ export function PlanningToolbar({
   // refuse la validation entière tant qu'une sœur solve). `isChosen` reste un choix
   // d'UI (la version en vigueur montre « Rouvrir », pas « Valider » — geste no-op).
   const canValidate = true === selected?.capabilities?.canValidate;
-  const canRegenerateFrom = true === selected?.capabilities?.canRegenerateFrom;
-  // V1bis — « Charger » les verrous d'une version de PÉRIODE : le serveur décide (version de période
-  // terminée, plan non validé, rien en cours, pas déjà la source). Fail-closed comme ses sœurs.
-  const canLoadLocks = true === selected?.capabilities?.canLoadLocks;
-  // Reloading the version that IS the live context (★) is a no-op when its
-  // snapshot already matches the current club structure — keep the button
-  // visible but greyed with a reason, so the state reads as deliberate. The
-  // page computes the actual comparison (snapshot hash vs current structure hash).
+  // « Charger cette version », tout plan : le serveur décide (terminée, plan non validé, rien en cours,
+  // chargeable, pas déjà la version chargée). Fail-closed comme ses sœurs.
+  const canLoad = true === selected?.capabilities?.canLoad;
+  // Recharger la version qui EST la chargée (★) ne changerait rien : le bouton reste visible, grisé avec
+  // son motif, pour que l'état se lise comme voulu.
   const isLiveContext = null !== selected && isSeasonPlanType(selected.planType) && selected.id === seasonLiveId;
   // Une version non chargée se consulte : « Valider » reste visible, grisé avec son motif, au lieu
   // de disparaître sans explication. Le serveur décide, capacité absente = aucun motif.
   const validateNeedsLoad = "COMPLETED" === selected?.status && "not_loaded_version" === selected.capabilities?.editBlockedReason;
   // Pourquoi « Charger » est impossible : le texte même du refus du serveur.
-  const loadBlockedReason = isLiveContext ? null : (selected?.capabilities?.regenerateFromBlockedReason ?? null);
+  const loadBlockedReason = isLiveContext ? null : (selected?.capabilities?.loadBlockedReason ?? null);
   // Le motif en clair, sans survol : une ligne pour tous les gestes grisés de la barre.
   const notLoadedLine = !validateNeedsLoad ? null : null !== loadBlockedReason ? PLANNING_TEXTS.cannotLoadLine(loadBlockedReason) : PLANNING_TEXTS.notLoadedToolbarLine;
   // D'où repartira « Régénérer » quand on regarde une autre version que la chargée.
@@ -267,31 +262,15 @@ export function PlanningToolbar({
             <span className="text-xs text-muted-foreground">{null !== loadedLabel ? PLANNING_TEXTS.regenerateKeepsLoadedLocks(loadedLabel) : PLANNING_TEXTS.regenerateKeepsLocks}</span>
           </>
         )}
-        {canManage && (canRegenerateFrom || null !== loadBlockedReason) ? (
+        {canManage && (canLoad || null !== loadBlockedReason) ? (
           <Button
             size="sm"
             variant="ghost"
             disabled={actionBusy || isGenerating || isLiveContext || null !== loadBlockedReason}
             disabledReason={loadBlockedReason ?? undefined}
-            onClick={onRegenerateFrom}
+            onClick={onLoad}
             // Grisé pour un motif, le bouton pose ce motif en `title` : ne pas le recouvrir.
             {...(null === loadBlockedReason ? { title: isLiveContext ? PLANNING_TEXTS.loadVersionAlreadyCurrent : PLANNING_TEXTS.loadVersionHint } : {})}
-          >
-            <History className="size-4" />
-            {PLANNING_TEXTS.loadVersion}
-          </Button>
-        ) : null}
-        {/* V1bis — « Charger » pour une PÉRIODE : même libellé, même ton (ghost + History) que le
-            « Charger cette version » de la saison ci-dessus, mais il POSE les verrous de cette
-            version comme données en cours (il ne restaure aucune structure). Mutuellement exclusif :
-            canRegenerateFrom est socle-only, canLoadLocks est période-only. */}
-        {canManage && canLoadLocks ? (
-          <Button
-            size="sm"
-            variant="ghost"
-            disabled={actionBusy || isGenerating}
-            onClick={onLoadLocks}
-            title={PLANNING_TEXTS.loadLocksHint}
           >
             <History className="size-4" />
             {PLANNING_TEXTS.loadVersion}

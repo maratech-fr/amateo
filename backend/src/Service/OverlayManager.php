@@ -9,7 +9,6 @@ use App\Entity\ConstraintConflict;
 use App\Entity\Schedule;
 use App\Entity\ScheduleDiagnostic;
 use App\Entity\ScheduleSlotTemplate;
-use App\Entity\ScheduleStructureSnapshot;
 use App\Enum\ScheduleStatus;
 use App\Repository\CalendarEntryRepository;
 use App\Structure\FamilyCatalog;
@@ -222,9 +221,6 @@ final class OverlayManager
         }
         foreach ($this->entityManager->getRepository(ConstraintConflict::class)->findBy(['scheduleId' => $scheduleId]) as $conflict) {
             $this->entityManager->remove($conflict);
-        }
-        foreach ($this->entityManager->getRepository(ScheduleStructureSnapshot::class)->findBy(['scheduleId' => $scheduleId]) as $snapshot) {
-            $this->entityManager->remove($snapshot);
         }
         // Les métriques du solveur (SolverMetric) ne sont VOLONTAIREMENT pas purgées :
         // télémétrie append-only (décision fondateur 2026-07-18) — l'historique des

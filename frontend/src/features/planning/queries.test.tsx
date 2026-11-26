@@ -26,7 +26,7 @@ import {
   usePlacedConflicts,
   usePlaceSlot,
   useRegenerate,
-  useRegenerateFromVersion,
+  useLoadVersion,
   useRegenerateOverlay,
   useReopenSchedule,
   useScheduleExport,
@@ -88,7 +88,7 @@ vi.mock("./api", async (importOriginal) => {
     validateSchedule: vi.fn().mockResolvedValue({}),
     reopenSchedule: vi.fn().mockResolvedValue({}),
     deleteSchedule: vi.fn().mockResolvedValue(undefined),
-    regenerateFromVersion: vi.fn().mockResolvedValue({ id: "sched-loaded" }),
+    loadVersion: vi.fn().mockResolvedValue({ id: "sched-loaded", status: "COMPLETED" }),
     regenerate: vi.fn().mockResolvedValue({ id: "sched-v2" }),
     createOverlayVersion: vi.fn().mockResolvedValue({ id: "overlay-1" }),
     fillSchedule: vi.fn().mockResolvedValue({ id: "sched-fill" }),
@@ -522,7 +522,7 @@ describe("planning queries — valider/rouvrir : le jeu d'invalidation du cycle 
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe("planning queries — régénérations", () => {
-  it("useRegenerateFromVersion → schedules + teams/venues/coaches/categories refetchent (clés dynamiques, effet réel) ; wizard/priority_tiers espionnés", async () => {
+  it("useLoadVersion → schedules + teams/venues/coaches/categories refetchent (clés dynamiques, effet réel) ; wizard/priority_tiers espionnés", async () => {
     const client = makeClient();
     const spy = vi.spyOn(client, "invalidateQueries");
     const { result } = renderHook(
@@ -532,7 +532,7 @@ describe("planning queries — régénérations", () => {
         venues: useVenues(),
         coaches: useCoaches(),
         categories: useCategories(),
-        reload: useRegenerateFromVersion(),
+        reload: useLoadVersion(),
       }),
       { wrapper: wrapperFor(client) },
     );

@@ -144,8 +144,8 @@ class TeamStateProcessor extends AbstractStateProcessor
         // remettre en cause auprès de la fédération.
         //
         // Le niveau se saisit AVANT de générer : il alimente le tag NIVEAU, donc les
-        // contraintes du solveur, donc la photo de structure de la version. Le laisser
-        // bouger après ferait diverger la photo (qui l'a figé) et la base — deux vérités
+        // contraintes du solveur, donc la copie du froid de la version. Le laisser
+        // bouger après ferait diverger la copie (qui l'a figé) et la base — deux vérités
         // sur la même chose, et « Charger cette version » ramènerait silencieusement
         // l'ancienne. Le figer VRAIMENT rend cette divergence impossible.
         //

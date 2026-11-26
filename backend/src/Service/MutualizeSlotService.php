@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Service;
 
+use App\Entity\PlanTeam;
 use App\Entity\Schedule;
 use App\Entity\ScheduleSlotTemplate;
 use App\Entity\SharedTrainingBlock;
@@ -15,6 +16,7 @@ use App\Enum\LockOrigin;
 use App\Exception\MutualizationRefusedException;
 use App\Exception\ScheduleGenerationInProgressException;
 use App\Plans\PlanComposition;
+use App\Plans\PlanStates;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
 use InvalidArgumentException;
@@ -70,6 +72,7 @@ final class MutualizeSlotService
         private readonly TeamCaseOccupancyGuard $teamCaseOccupancyGuard,
         private readonly ReservationGroupOccupancy $reservationGroupOccupancy,
         private readonly PlanComposition $planComposition,
+        private readonly PlanStates $planStates,
     ) {}
 
     /**
@@ -191,8 +194,9 @@ final class MutualizeSlotService
 
             // Activer les équipes à 0 séance (leur ligne de période : 1 séance, marquée « mutualisation »)
             // AVANT la garde Σ, pour que leur volume effectif reflète le geste.
+            $activatedLineIds = [];
             foreach ($toActivate as $teamId) {
-                $this->activateTeamForPeriod($clubId, $seasonId, $planId, $isSocle, $teamId);
+                $activatedLineIds[] = $this->activateTeamForPeriod($clubId, $seasonId, $planId, $isSocle, $teamId);
             }
             $this->entityManager->flush();
 
@@ -209,6 +213,7 @@ final class MutualizeSlotService
             $block->setCommonSessions(1);
             $block->setLabel($normalizedLabel);
             $this->entityManager->persist($block);
+            $memberIds = [];
             foreach ($members as $teamId) {
                 $member = new SharedTrainingBlockTeam;
                 $member->setClubId($clubId);
@@ -217,6 +222,7 @@ final class MutualizeSlotService
                 $member->setBlockId($block->getId());
                 $member->setTeamId($teamId);
                 $this->entityManager->persist($member);
+                $memberIds[] = $member->getId();
             }
             // Le bloc doit EXISTER en base avant que les séances le référencent : la colonne
             // `shared_training_block_id` porte une FK et Doctrine n'ordonne pas l'INSERT du bloc
@@ -255,6 +261,11 @@ final class MutualizeSlotService
 
             $schedule->setManuallyEditedSinceGeneration(true);
             $this->entityManager->flush();
+
+            // Lot 5 : la copie de la version retouchée (la version chargée) suit les lignes du plan que le geste a écrites.
+            $this->planStates->syncRows($schedule, SharedTrainingBlock::class, [$block->getId()]);
+            $this->planStates->syncRows($schedule, SharedTrainingBlockTeam::class, $memberIds);
+            $this->planStates->syncRows($schedule, PlanTeam::class, $activatedLineIds);
 
             // Les autres gestionnaires voient le planning bouger (best-effort, comme la génération).
             $this->progressPublisher->publishSafely($schedule, []);
@@ -447,6 +458,7 @@ final class MutualizeSlotService
         return $this->entityManager->wrapInTransaction(function () use ($schedule, $clubId, $seasonId, $planId, $members, $normalizedLabel, $sourceSlots, $targetSlots, $sourceBlockId, $targetBlockId, $venueId, $dayOfWeek, $startTime, $durationMinutes, $freedSourceCase): array {
             // D = le bloc existant portant EXACTEMENT C (+1 séance commune) OU un bloc neuf (1 séance).
             $existingBlockId = $this->findBlockIdWithExactTeamSet($clubId, $seasonId, $planId, $members);
+            $touchedMemberIds = [];
             if (null !== $existingBlockId) {
                 $block = $this->entityManager->getRepository(SharedTrainingBlock::class)->find($existingBlockId);
                 if (!$block instanceof SharedTrainingBlock) {
@@ -460,6 +472,7 @@ final class MutualizeSlotService
                 foreach ($members as $teamId) {
                     $member = (new SharedTrainingBlockTeam)->setClubId($clubId)->setSeasonId($seasonId)->setSchedulePlanId($planId)->setBlockId($block->getId())->setTeamId($teamId);
                     $this->entityManager->persist($member);
+                    $touchedMemberIds[] = $member->getId();
                 }
             }
             // Le bloc doit EXISTER en base avant que les séances le référencent (FK, patron mutualize()).
@@ -482,6 +495,7 @@ final class MutualizeSlotService
             // Les anciens blocs perdent 1 séance commune ; tombés à 0, ils meurent (leurs séances de
             // CETTE case sont déjà reliées à D, la cascade ne les emporte pas).
             $removedBlockIds = [];
+            $touchedBlockIds = [$block->getId()];
             foreach ([$sourceBlockId, $targetBlockId] as $oldBlockId) {
                 if (null === $oldBlockId || $oldBlockId === $block->getId()) {
                     continue;
@@ -491,8 +505,10 @@ final class MutualizeSlotService
                     continue;
                 }
                 $old->setCommonSessions($old->getCommonSessions() - 1);
+                $touchedBlockIds[] = $old->getId();
                 if ($old->getCommonSessions() <= 0) {
                     foreach ($this->entityManager->getRepository(SharedTrainingBlockTeam::class)->findBy(['blockId' => $old->getId()]) as $row) {
+                        $touchedMemberIds[] = $row->getId();
                         $this->entityManager->remove($row);
                     }
                     $this->entityManager->remove($old);
@@ -502,6 +518,10 @@ final class MutualizeSlotService
 
             $schedule->setManuallyEditedSinceGeneration(true);
             $this->entityManager->flush();
+
+            // Lot 5 : la copie de la version retouchée suit les groupes créés, modifiés ou dissous, et leurs équipes.
+            $this->planStates->syncRows($schedule, SharedTrainingBlock::class, $touchedBlockIds);
+            $this->planStates->syncRows($schedule, SharedTrainingBlockTeam::class, $touchedMemberIds);
 
             // Les autres gestionnaires voient le planning bouger (best-effort, comme la génération).
             $this->progressPublisher->publishSafely($schedule, []);
@@ -672,7 +692,7 @@ final class MutualizeSlotService
      * Active une équipe dans le plan de période : sa ligne participe, 1 séance, marquée « mutualisation »
      * (lot 4, PR 3a : toute équipe a sa ligne dans le plan).
      */
-    private function activateTeamForPeriod(string $clubId, string $seasonId, string $planId, bool $isSocle, string $teamId): void
+    private function activateTeamForPeriod(string $clubId, string $seasonId, string $planId, bool $isSocle, string $teamId): string
     {
         if ($isSocle) {
             // Au socle, il n'y a pas d'override de période pour donner une séance à une
@@ -681,7 +701,7 @@ final class MutualizeSlotService
             throw new MutualizationRefusedException('Au planning de saison, on ne peut pas mutualiser une équipe qui n\'a aucune séance : donnez-lui d\'abord des séances dans la saisie.');
         }
 
-        $this->planComposition->lineOf($planId, $teamId)->setParticipating(true)->setSessionsPerWeek(1)->setSource(self::OVERRIDE_SOURCE);
+        return $this->planComposition->lineOf($planId, $teamId)->setParticipating(true)->setSessionsPerWeek(1)->setSource(self::OVERRIDE_SOURCE)->getId();
     }
 
     /**

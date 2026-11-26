@@ -250,6 +250,25 @@ final class FamilyCatalog
         return $found;
     }
 
+    /**
+     * Les colonnes de la famille donnée qui désignent une autre famille (une colonne polymorphe en porte plusieurs).
+     *
+     * @param class-string|string $entityClass
+     *
+     * @return list<array{field: string, family: class-string, onDelete: OnDelete}>
+     */
+    public function referencesFrom(string $entityClass): array
+    {
+        $found = [];
+        foreach ($this->references() as $reference) {
+            if ($reference['class'] === $entityClass) {
+                $found[] = ['field' => $reference['field'], 'family' => $reference['refersTo']->family, 'onDelete' => $reference['refersTo']->onDelete];
+            }
+        }
+
+        return $found;
+    }
+
     /** @return list<class-string> */
     private function seasonFamilies(): array
     {

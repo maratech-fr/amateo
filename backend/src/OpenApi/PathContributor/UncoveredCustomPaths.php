@@ -129,27 +129,16 @@ final readonly class UncoveredCustomPaths implements CustomPathContributor
                 ],
                 summary: 'Regenerate this version in place',
             )),
-            '/api/schedules/{id}/regenerate-from' => new PathItem(post: new Operation(
-                operationId: 'postApiScheduleRegenerateFrom',
+            '/api/schedules/{id}/load' => new PathItem(post: new Operation(
+                operationId: 'postApiScheduleLoad',
                 tags: ['Schedules'],
                 responses: [
-                    '202' => new Response('New version queued from the source version structure'),
-                    '401' => $unauthorized,
-                    '409' => new Response('Version in force, or a generation is already running'),
-                    '429' => new Response('Club generation quota reached'),
-                ],
-                summary: 'Create a new version from an existing one and regenerate it',
-            )),
-            '/api/schedules/{id}/load-locks' => new PathItem(post: new Operation(
-                operationId: 'postApiScheduleLoadLocks',
-                tags: ['Schedules'],
-                responses: [
-                    '200' => new Response('This period version is now the source of its plan locks — the next regeneration restarts from them. Does NOT generate.'),
+                    '200' => new Response('The plan settings are back to those of this version, which is now the loaded version of its plan (body: id, status). Does NOT generate.'),
                     '401' => $unauthorized,
                     '404' => $notFound,
-                    '409' => new Response('Not a period version, version not completed, the period plan is validated (reopen first), or a generation is running for the club (body carries code=generation_in_progress)'),
+                    '409' => new Response('Version not completed, a generation is running (code=generation_in_progress), the plan is validated (reopen first), or the version cannot be loaded (code=load_blocked, error names the reason)'),
                 ],
-                summary: 'Load a period version locks as the plan current data (sets the pointer, no solve)',
+                summary: 'Load a version: put the plan settings back to those of this version (no solve)',
             )),
             '/api/schedules/{id}/fill' => new PathItem(post: new Operation(
                 operationId: 'postApiScheduleFill',
