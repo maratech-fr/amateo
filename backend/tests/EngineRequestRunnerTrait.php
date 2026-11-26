@@ -57,7 +57,9 @@ use Symfony\Component\Mercure\HubInterface;
  * Capture du décor en SQL (`LOT4_DECOR_CAPTURE=1`, une fois, sur le code d'avant le lot 4) : au
  * moment où un rail va composer, les lignes que le test vient d'écrire sont relevées (colonne système
  * `xmin` postérieure au début de la transaction du test) et rangées, à la comparaison, dans la section
- * de leur référence de `tests/Fixtures/lot-4/decor-avant.sql`.
+ * de leur référence de `tests/Fixtures/lot-4/decor-avant.sql`. Même geste pour le lot 7
+ * (`LOT7_DECOR_CAPTURE=1`, une fois, sur le code d'avant la PR 3b du lot 7, références 16 à 19) :
+ * `tests/Fixtures/lot-7/decor-avant.sql`, lu par `Integration/Migration/Lot7MigrationChainTest`.
  *
  * S'emploie AVEC `EngineRequestDecorTrait` (identifiants du décor, horloge, cache).
  */
@@ -67,6 +69,8 @@ trait EngineRequestRunnerTrait
 
     private const string LOT4_DECOR_FILE = __DIR__ . '/Fixtures/lot-4/decor-avant.sql';
 
+    private const string LOT7_DECOR_FILE = __DIR__ . '/Fixtures/lot-7/decor-avant.sql';
+
     /** Le verdict que le moteur simulé rend à un déplacement : accepté. */
     private const string ER_VALIDATE_ACCEPT = '{"valid":true,"violations":[],"metrics":{"solver_version":"cp-sat","nb_variables":0,"nb_constraints":0,"wall_time_ms":0}}';
 
@@ -74,11 +78,11 @@ trait EngineRequestRunnerTrait
     private ?string $pendingDecorCapture = null;
 
     /** @return array<string, string> nom de la référence → SQL de sa section */
-    private static function readDecorSections(): array
+    private static function readDecorSections(string $file = self::LOT4_DECOR_FILE): array
     {
         $sections = [];
         $current = null;
-        foreach (explode("\n", (string) file_get_contents(self::LOT4_DECOR_FILE)) as $line) {
+        foreach (explode("\n", (string) file_get_contents($file)) as $line) {
             if (str_starts_with($line, '-- @reference ')) {
                 $current = substr($line, \strlen('-- @reference '));
                 $sections[$current] = '';
@@ -307,7 +311,7 @@ trait EngineRequestRunnerTrait
      */
     private function captureDecorIfAsked(): void
     {
-        if ('1' !== getenv('LOT4_DECOR_CAPTURE')) {
+        if (null === self::decorCaptureTarget()) {
             return;
         }
         $connection = $this->erEm()->getConnection();
@@ -334,19 +338,35 @@ trait EngineRequestRunnerTrait
         $this->pendingDecorCapture = implode("\n", $lines);
     }
 
+    /** Le fichier de décor que la capture demandée remplit, ou null sans capture. */
+    private static function decorCaptureTarget(): ?string
+    {
+        return match (true) {
+            '1' === getenv('LOT4_DECOR_CAPTURE') => self::LOT4_DECOR_FILE,
+            '1' === getenv('LOT7_DECOR_CAPTURE') => self::LOT7_DECOR_FILE,
+            default => null,
+        };
+    }
+
     /** Range (ou remplace) la section d'une référence dans `decor-avant.sql`, sections triées par nom. */
     private function writeDecorSection(string $name, string $sql): void
     {
-        $sections = is_file(self::LOT4_DECOR_FILE) ? self::readDecorSections() : [];
+        $file = self::decorCaptureTarget();
+        Assert::assertIsString($file, 'une section de décor ne s\'écrit que sous une capture demandée');
+        $sections = is_file($file) ? self::readDecorSections($file) : [];
         $sections[$name] = $sql;
         ksort($sections);
 
-        $out = "-- Décor des quinze demandes de référence, écrit dans le schéma d'avant le lot 4 (schema-avant.sql).\n"
-            . "-- Une section par référence de tests/Fixtures/engine-requests/, chargée seule dans une base neuve.\n"
-            . "-- Capturé une fois (LOT4_DECOR_CAPTURE=1) sur le code d'avant le lot 4 ; ne se recapture jamais.\n";
+        $out = self::LOT4_DECOR_FILE === $file
+            ? "-- Décor des quinze demandes de référence, écrit dans le schéma d'avant le lot 4 (schema-avant.sql).\n"
+                . "-- Une section par référence de tests/Fixtures/engine-requests/, chargée seule dans une base neuve.\n"
+                . "-- Capturé une fois (LOT4_DECOR_CAPTURE=1) sur le code d'avant le lot 4 ; ne se recapture jamais.\n"
+            : "-- Décor des références 16 à 19, écrit dans le schéma d'avant la PR 3b du lot 7 (schema-avant.sql).\n"
+                . "-- Une section par référence de tests/Fixtures/engine-requests/, chargée seule dans une base neuve.\n"
+                . "-- Capturé une fois (LOT7_DECOR_CAPTURE=1) sur le code d'avant la PR 3b du lot 7 ; ne se recapture jamais.\n";
         foreach ($sections as $section => $body) {
             $out .= "\n-- @reference " . $section . "\n" . $body . "\n";
         }
-        file_put_contents(self::LOT4_DECOR_FILE, $out);
+        file_put_contents($file, $out);
     }
 }
