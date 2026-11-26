@@ -212,10 +212,12 @@ final class ScheduleCapabilityParityTest extends WebTestCase
         self::assertResponseStatusCodeSame(200);
     }
 
-    /** Version de saison terminée sans copie : canLoad false, load → 409. */
+    /** Version de saison terminée sans copie, une autre chargée : canLoad false, load → 409. */
     public function testCanLoadFalseWithoutCopyMatchesController(): void
     {
         $version = $this->seedSeasonVersion(ScheduleStatus::COMPLETED);
+        // La dernière terminée est la chargée : sans elle, « déjà chargée » suffirait à éteindre canLoad.
+        $this->storeCopy($this->seedSeasonVersion(ScheduleStatus::COMPLETED));
 
         self::assertFalse($this->capabilitiesOf($version->getId())['canLoad']);
 
