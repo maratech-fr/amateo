@@ -1,4 +1,5 @@
 import type { Competition, Conflict, Fixture, Team } from "../api";
+import { engagementsOf } from "../api/competitions";
 import { weekendKeyOf } from "./weekendGrid";
 
 /**
@@ -25,7 +26,7 @@ export function listPhases(competitions: Competition[], teams: Team[]): PhaseOpt
   const teamName = new Map(teams.map((t) => [t.id, t.name]));
   return competitions
     .filter(isPairedCompetition)
-    .map((competition) => ({ competitionId: competition.id, label: `${competition.name} — ${teamName.get(competition.teamId) ?? "Équipe ?"}` }))
+    .map((competition) => ({ competitionId: competition.id, label: `${competition.name} — ${teamName.get(engagementsOf(competition)[0]?.teamId ?? "") ?? "Équipe ?"}` }))
     .sort((a, b) => a.label.localeCompare(b.label, "fr"));
 }
 
@@ -70,7 +71,7 @@ export function phaseCompleteness(competition: Competition, fixtures: Fixture[],
   if (undefined !== incomplete && undefined !== incomplete.imported && undefined !== incomplete.expected) {
     return { imported: incomplete.imported, expected: incomplete.expected };
   }
-  return { imported: fixtures.length, expected: competition.expectedMatchdays ?? null };
+  return { imported: fixtures.length, expected: engagementsOf(competition)[0]?.expectedMatchdays ?? null };
 }
 
 /**

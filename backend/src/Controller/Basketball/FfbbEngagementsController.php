@@ -14,6 +14,7 @@ use App\Entity\Season;
 use App\Entity\Team;
 use App\Enum\CompetitionType;
 use App\Enum\TeamLevel;
+use App\Matches\CompetitionRegistry;
 use App\Repository\ClubRepository;
 use App\Service\Basketball\EngagementLevelDeducer;
 use App\Service\Basketball\FbiDivisionSignature;
@@ -71,6 +72,7 @@ final class FfbbEngagementsController extends AbstractController
         private readonly FbiDivisionSignature $divisionSignature,
         private readonly EngagementLevelDeducer $levelDeducer,
         private readonly TeamTagService $teamTagService,
+        private readonly CompetitionRegistry $competitionRegistry,
     ) {}
 
     #[Route('/api/ffbb/engagements', name: 'api_ffbb_engagements', methods: ['GET'])]
@@ -299,11 +301,10 @@ final class FfbbEngagementsController extends AbstractController
                     continue;
                 }
                 $other->setFfbbCompetitionId(null);
-                $other->setFfbbPouleId(null);
-                $other->setFfbbPouleName(null);
                 $other->setFfbbCompetitionName(null);
-                $other->setExpectedMatchdays(null);
-                $other->setFfbbPouleOpponents(null);
+                foreach ($this->competitionRegistry->engagementsOf($other) as $engagement) {
+                    $this->competitionRegistry->writePoule($other, $engagement->teamId, null, null, null, null);
+                }
                 if (!$this->competitionHasFixtures($other->getId())) {
                     $this->entityManager->remove($other);
                     unset($competitions[$index]);
@@ -312,18 +313,20 @@ final class FfbbEngagementsController extends AbstractController
             $competitions = array_values($competitions);
 
             $competition->setFfbbCompetitionId($row['ffbbCompetitionId']);
-            $competition->setFfbbPouleId($row['ffbbPouleId']);
-            $competition->setFfbbPouleName($row['pouleName']);
             $competition->setFfbbCompetitionName($row['competitionName']);
             // P4-195 — une coupe n'a pas de complétude « 2×(N−1) » : le détecteur
             // resterait sur « 1 / 68 » (mesuré, Coupe du Rhône). Journées null si le
             // type EFFECTIF (après inférence ci-dessus) est CUP, sinon 2×(N−1).
-            $competition->setExpectedMatchdays(
+            $this->competitionRegistry->writePoule(
+                $competition,
+                $teamId,
+                $row['ffbbPouleId'],
+                $row['pouleName'],
+                $row['pouleOpponents'],
                 CompetitionType::CUP === $competition->getCompetitionType()
                     ? null
                     : FfbbEngagementReader::expectedMatchdays($row['pouleSize']),
             );
-            $competition->setFfbbPouleOpponents($row['pouleOpponents']);
             $confirmed[] = ['competitionId' => $competition->getId(), 'teamId' => $teamId, 'ffbbCompetitionId' => $row['ffbbCompetitionId']];
 
             // Niveau jeune déduit (D1/D3) : un engagement éligible nourrit l'arbitrage de
@@ -476,7 +479,7 @@ final class FfbbEngagementsController extends AbstractController
     {
         if (null !== $competitionId) {
             $byId = $this->entityManager->getRepository(Competition::class)->findOneBy(['id' => $competitionId]);
-            if ($byId instanceof Competition && $byId->getTeamId() === $teamId) {
+            if ($byId instanceof Competition && $this->competitionRegistry->isEngaged($byId, $teamId)) {
                 $inferredType = $this->inferCompetitionType($canonicalName);
                 if ($inferredType instanceof CompetitionType) {
                     $byId->setCompetitionType($inferredType);
@@ -494,7 +497,7 @@ final class FfbbEngagementsController extends AbstractController
     {
         $inferredType = $this->inferCompetitionType($canonicalName);
         foreach ($competitions as $competition) {
-            if ($competition->getTeamId() === $teamId
+            if ($this->competitionRegistry->isEngaged($competition, $teamId)
                 && ($competition->getFfbbCompetitionName() === $canonicalName || $this->normalize($competition->getName()) === $this->normalize($canonicalName))
             ) {
                 // P4-195 — sur une compétition RÉUTILISÉE dont le NOM infère
@@ -513,9 +516,9 @@ final class FfbbEngagementsController extends AbstractController
         $competition = new Competition;
         $competition->setClubId($clubId);
         $competition->setSeasonId($seasonId);
-        $competition->setTeamId($teamId);
         $competition->setName($canonicalName);
         $competition->setCompetitionType($inferredType ?? CompetitionType::CHAMPIONSHIP);
+        $this->competitionRegistry->engage($competition, $teamId);
         $this->entityManager->persist($competition);
         $competitions[] = $competition;
 

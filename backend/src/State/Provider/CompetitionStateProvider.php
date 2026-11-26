@@ -7,6 +7,7 @@ namespace App\State\Provider;
 use ApiPlatform\State\Pagination\Pagination;
 use App\ApiResource\CompetitionResource;
 use App\Entity\Competition;
+use App\Matches\CompetitionRegistry;
 use App\Repository\SharedCompetitionDeadlineRepository;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\QueryBuilder;
@@ -22,6 +23,7 @@ class CompetitionStateProvider extends AbstractStateProvider
         RequestStack $requestStack,
         Pagination $pagination,
         private readonly SharedCompetitionDeadlineRepository $sharedDeadlineRepository,
+        private readonly CompetitionRegistry $competitionRegistry,
     ) {
         parent::__construct($entityManager, $requestStack, $pagination);
     }
@@ -58,6 +60,6 @@ class CompetitionStateProvider extends AbstractStateProvider
             ? $this->sharedDeadlineRepository->findOneByFfbbCompetitionId($ffbbCompetitionId)
             : null;
 
-        return CompetitionResource::fromEntity($entity, $shared);
+        return CompetitionResource::fromEntity($entity, $this->competitionRegistry->engagementsOf($entity), $shared);
     }
 }

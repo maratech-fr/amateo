@@ -15,6 +15,7 @@ use App\Entity\VenueMatchWindow;
 use App\Enum\ConflictPersonRole;
 use App\Enum\FixtureHomeAway;
 use App\Enum\TeamLevel;
+use App\Matches\CompetitionRegistry;
 use App\Matches\ConflictType;
 use App\Service\Conflicts\ConflictMoments;
 use App\Service\Conflicts\DayHoldings;
@@ -185,6 +186,7 @@ final class MatchConflictDetector
         private readonly MatchFootprint $footprint,
         private readonly EffectiveScheduleResolver $effectiveScheduleResolver,
         private readonly AwayKickoffEstimator $awayKickoffEstimator,
+        private readonly CompetitionRegistry $competitionRegistry = new CompetitionRegistry,
     ) {
         $this->venueConflicts = new VenueConflicts($this->effectiveScheduleResolver);
         $this->ruleWindowConflicts = new RuleWindowConflicts;
@@ -828,48 +830,50 @@ final class MatchConflictDetector
         $today = $clubToday?->format('Y-m-d');
         $items = [];
         foreach ($competitions as $competition) {
-            $expected = $competition->getExpectedMatchdays();
-            if (null === $expected) {
-                continue; // pas d'appariement (ou coupe) → aucune base de cohérence
-            }
-            $exempts = 0;
-            foreach ($competition->getFfbbPouleOpponents() ?? [] as $opponentName) {
-                if (false !== stripos($opponentName, 'exempt')) {
-                    ++$exempts;
+            foreach ($this->competitionRegistry->engagementsOf($competition) as $engagement) {
+                $expected = $engagement->expectedMatchdays;
+                if (null === $expected) {
+                    continue; // pas d'appariement (ou coupe) → aucune base de cohérence
                 }
-            }
-            $adv = intdiv($expected, 2) - $exempts;
-            if ($adv < 1) {
-                continue;
-            }
-            $n = $countByCompetition[$competition->getId()] ?? 0;
-            if (0 === $n || $n === $adv || $n === 2 * $adv) {
-                continue; // phase pas sortie, aller simple ou aller-retour : cohérent
-            }
+                $exempts = 0;
+                foreach ($engagement->ffbbPouleOpponents ?? [] as $opponentName) {
+                    if (false !== stripos($opponentName, 'exempt')) {
+                        ++$exempts;
+                    }
+                }
+                $adv = intdiv($expected, 2) - $exempts;
+                if ($adv < 1) {
+                    continue;
+                }
+                $n = $countByCompetition[$competition->getId()] ?? 0;
+                if (0 === $n || $n === $adv || $n === 2 * $adv) {
+                    continue; // phase pas sortie, aller simple ou aller-retour : cohérent
+                }
 
-            if ($n > 2 * $adv) {
-                $reason = 'OVER';
-                $severity = 6;
-            } else {
-                $deadline = $deadlineByCompetition[$competition->getId()] ?? null;
-                $passed = $deadline instanceof DateTimeImmutable && null !== $today && $deadline->format('Y-m-d') < $today;
-                $reason = $passed ? 'INCOHERENT' : 'PENDING';
-                $severity = $passed ? 6 : 7;
-            }
+                if ($n > 2 * $adv) {
+                    $reason = 'OVER';
+                    $severity = 6;
+                } else {
+                    $deadline = $deadlineByCompetition[$competition->getId()] ?? null;
+                    $passed = $deadline instanceof DateTimeImmutable && null !== $today && $deadline->format('Y-m-d') < $today;
+                    $reason = $passed ? 'INCOHERENT' : 'PENDING';
+                    $severity = $passed ? 6 : 7;
+                }
 
-            $items[] = [
-                'type' => ConflictType::COMPETITION_INCOMPLETE->value,
-                'severity' => $severity,
-                'reason' => $reason,
-                'competitionId' => $competition->getId(),
-                'competitionName' => $competition->getName(),
-                'teamId' => $competition->getTeamId(),
-                'imported' => $n,
-                // `expected` = la cible ALLER-RETOUR, adversaires réels exclus des exempts
-                // (2×adv) : le front dérive l'aller simple (adv = expected/2) et compose le
-                // message FR par `reason`. Corrige l'ancienne valeur qui comptait les exempts.
-                'expected' => 2 * $adv,
-            ];
+                $items[] = [
+                    'type' => ConflictType::COMPETITION_INCOMPLETE->value,
+                    'severity' => $severity,
+                    'reason' => $reason,
+                    'competitionId' => $competition->getId(),
+                    'competitionName' => $competition->getName(),
+                    'teamId' => $engagement->teamId,
+                    'imported' => $n,
+                    // `expected` = la cible ALLER-RETOUR, adversaires réels exclus des exempts
+                    // (2×adv) : le front dérive l'aller simple (adv = expected/2) et compose le
+                    // message FR par `reason`. Corrige l'ancienne valeur qui comptait les exempts.
+                    'expected' => 2 * $adv,
+                ];
+            }
         }
 
         return $items;

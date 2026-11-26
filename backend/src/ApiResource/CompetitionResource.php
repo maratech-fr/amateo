@@ -17,10 +17,13 @@ use App\Access\Module;
 use App\Dto\CompetitionInput;
 use App\Entity\Competition;
 use App\Entity\SharedCompetitionDeadline;
+use App\Matches\CompetitionRegistry;
+use App\Matches\EngagementView;
 use App\Service\CompetitionDeadlineResolver;
 use App\State\Processor\CompetitionStateProcessor;
 use App\State\Provider\CompetitionStateProvider;
 use DateTimeImmutable;
+use LogicException;
 use Symfony\Component\Serializer\Attribute\Groups;
 
 // PUT/DELETE retirés (nettoyage API) : non appelés par le front. Supprimer une équipe
@@ -110,25 +113,29 @@ class CompetitionResource
     #[Groups(['read'])]
     public ?string $deadlineSource = null;
 
-    public static function fromEntity(Competition $entity, ?SharedCompetitionDeadline $shared = null): self
+    /**
+     * @param list<EngagementView> $engagements the competition's engagements ({@see CompetitionRegistry::engagementsOf}) — one today
+     */
+    public static function fromEntity(Competition $entity, array $engagements, ?SharedCompetitionDeadline $shared = null): self
     {
+        $engagement = $engagements[0] ?? throw new LogicException('Compétition sans équipe engagée.');
         $dto = new self;
         $dto->id = $entity->getId();
         $dto->version = $entity->getVersion();
         $dto->createdAt = $entity->getCreatedAt();
         $dto->updatedAt = $entity->getUpdatedAt();
-        $dto->teamId = $entity->getTeamId();
+        $dto->teamId = $engagement->teamId;
         $dto->seasonId = $entity->getSeasonId();
         $dto->name = $entity->getName();
         $dto->competitionType = $entity->getCompetitionType()->value;
         $dto->startDate = $entity->getStartDate()?->format('Y-m-d');
         $dto->endDate = $entity->getEndDate()?->format('Y-m-d');
-        $dto->fbiTeamLabel = $entity->getFbiTeamLabel();
+        $dto->fbiTeamLabel = $engagement->fbiTeamLabel;
         $dto->ffbbCompetitionId = $entity->getFfbbCompetitionId();
-        $dto->ffbbPouleId = $entity->getFfbbPouleId();
-        $dto->ffbbPouleName = $entity->getFfbbPouleName();
+        $dto->ffbbPouleId = $engagement->ffbbPouleId;
+        $dto->ffbbPouleName = $engagement->ffbbPouleName;
         $dto->ffbbCompetitionName = $entity->getFfbbCompetitionName();
-        $dto->expectedMatchdays = $entity->getExpectedMatchdays();
+        $dto->expectedMatchdays = $engagement->expectedMatchdays;
 
         $dto->entryDeadline = $entity->getEntryDeadline()?->format('Y-m-d');
         // « club gagne, sinon le défaut communautaire » — la règle vit en maison unique
