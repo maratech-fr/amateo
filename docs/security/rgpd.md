@@ -114,8 +114,8 @@ Le nom, le mail, le téléphone et le genre d'un coach vivent sur `person`, une 
   joue tout dans une transaction, sous le contexte du club, toutes saisons du club (lecture seule comprise,
   décision 5A). Ce qui est **effacé** : la fiche `person` et ses rôles `coach` (cascade de suppression
   d'un coach), le commentaire de ses doléances, ses jetons de collecte (resynchronisés), ses diagnostics qui
-  portent l'identifiant d'un de ses rôles, sa ligne, ses liens d'équipe et ses règles dans les photos de
-  versions (`schedule_structure_snapshot`), les messages de la boîte d'un club de démonstration qui lui sont
+  portent l'identifiant d'un de ses rôles, ses liens de coach principal, de joueur et ses règles dans les copies du
+  froid des versions (`schedule_state`), les messages de la boîte d'un club de démonstration qui lui sont
   adressés (`ClubMailboxMessage`), les PDF stockés des versions du club (`PdfGenerator::deleteRendersOf`)
   et l'adresse de rendu remise à vide sur la version et la saison, le cache des demandes du club
   (`cache.schedule`). Les séances restent, sans coach.
@@ -154,8 +154,8 @@ pourtant la même vie que la fiche :
 - **Conservation** : supprimer un gymnase garde son lieu (« Charger » une version d'avant le ramène dessus,
   adresse comprise). `UnusedIdentitySweeper::sweep($clubId)` supprime aussi les lieux sans aucun `venue`, aux
   trois mêmes appelants que les fiches (`ResetSeasonController`, `ResetClubSeasonCommand`, `PurgeSeasonsCommand`) ;
-  sa lecture SQL porte le club en clause explicite. Un lieu balayé ne se retrouve pas : « Charger » une version qui
-  le désigne encore recrée le gymnase sur un lieu neuf sans adresse (`StructureRestorer`).
+  sa lecture SQL porte le club en clause explicite. Un lieu balayé ne se retrouve pas : « Charger » ne crée ni ne supprime
+  aucun gymnase (`PlanStates::restore`) : une version qui le désignait n'en recrée pas.
 - **Effacement du club** : `Place` est de niveau club (`FamilyCatalog::purgedWithClub()`), `ErasedClubPurger` le
   compte comme toute ligne effacée ; le gymnase d'une saison disparue part avant son lieu (clé `RESTRICT`),
   par la même purge des lignes de saison orphelines que pour les coachs. Gardé par

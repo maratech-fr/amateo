@@ -522,19 +522,17 @@ déjà partie d'un groupe de mutualisation. »).
   version n'est pas encore **choisie** (`isChosen=false` ⇒ `isReadOnly=false`, §0) l'offrent de la
   même façon.
 
-### 6.7 quater « Régénérer » un overlay repart des données en cours ; « Charger » pour une période (lot verrous V1/V1bis)
+### 6.7 quater « Régénérer » un overlay repart des données en cours ; « Charger » (lot verrous V1/V1bis, lot conception 5)
 
-`PlanningToolbar` expose un second bouton **« Charger cette version »** (icône `History`, même ton
-que celui du socle, §3.1 de [`planning-lifecycle-validated.md`](../../specs/courantes/planning-lifecycle-validated.md)) quand
-`selected.capabilities.canLoadLocks` est vrai — un plan de **PÉRIODE** non validé, une version
-**terminée**, rien en cours, qui n'est **pas déjà** la source des verrous de son plan (sinon le
-geste ne changerait rien, il n'est pas offert). Les deux boutons « Charger cette version » sont
-mutuellement exclusifs (`canRegenerateFrom` est socle-only, `canLoadLocks` est période-only — ils
-ne peuvent jamais s'afficher ensemble sur la même version). Le clic ouvre une `ConfirmDialog` **NON
-destructive** (`destructive={false}` explicite — aucune version n'est détruite) : « Les verrous de
-la version {n} deviendront les données en cours : la prochaine régénération repartira d'eux. »
-Confirmé, `POST /api/schedules/{id}/load-locks` (`useLoadLocks`) pose le pointeur serveur, sans
-générer, et invalide la liste des versions.
+`PlanningToolbar` expose **« Charger cette version »** (icône `History`, §3.1 de [`planning-lifecycle-validated.md`](../../specs/courantes/planning-lifecycle-validated.md)) quand
+`selected.capabilities.canLoad` est vrai — une version **terminée**, rien en cours dans la saison, plan non validé,
+version chargeable, et qui n'est **pas déjà** la version chargée de son plan (le geste ne changerait rien : il n'est pas
+offert) ; la même capacité pour le socle et pour une période. Version non chargeable : `loadBlockedReason` en dit le
+motif. Le clic ouvre une `ConfirmDialog` **NON destructive** (`destructive={false}`) dont le texte (`texts.ts`,
+`loadVersionDescription`) annonce que les réglages du planning reviennent à ceux de la version sans créer ni supprimer
+équipe, gymnase ou coach, et — s'il y a des modifications non générées — `loadVersionUnsavedLost` ; il ne nomme plus la
+version. Confirmé, `POST /api/schedules/{id}/load` (`useLoadVersion`) rend l'état de travail, pose le pointeur serveur,
+sans générer, et invalide la liste des versions ainsi que les équipes, gymnases, coachs et catégories.
 
 « Régénérer » un overlay (bouton principal) repart TOUJOURS de la version **source** des verrous de
 son plan (`isLockSource`). Si le gestionnaire regarde (`selectedSchedule`) une AUTRE version que la

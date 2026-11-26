@@ -10,11 +10,11 @@ Valider le planning valide aussi un périmètre : les équipes qui font de la co
 = porte au moins un `Fixture`, quel qu'en soit le statut (l'import crée tout en `UNPLACED` —
 filtrer sur le statut serait inerte au moment précis où la garde doit mordre). Sur une équipe
 engagée : suppression → **409** ; changement de `Team.level` par le **PUT générique** → **409, sans
-exception sur ce chemin** (le niveau alimente la photo de structure d'une version validée) ;
+exception sur ce chemin** (le niveau est repris par la copie d'état d'une version) ;
 nom/créneaux/gymnase/`isActive`/`priorityTierId` restent libres. La règle vit à un seul endroit
-(`TeamEngagementGuard`, `TeamResource.isEngaged`) ; les purges de masse et le restore de structure
-la contournent par construction — `StructureRestorer::assertRestoreKeepsEngagedTeams` refuse en 409
-le chargement d'une version qui ne contiendrait pas une équipe engagée (avec son niveau).
+(`TeamEngagementGuard`, `TeamResource.isEngaged`) ; les purges de masse la contournent par
+construction ; « Charger » ne supprime aucune équipe, et `LoadFeasibility` refuse en 409 `load_blocked` le
+chargement d'une version dont la copie rendrait à une équipe engagée un autre niveau.
 
 **Exception nommée, un seul chemin** : le confirm d'appariement FFBB
 (`POST /api/ffbb/engagements/confirm`) peut écrire `Team.level` sur une équipe engagée — « le niveau

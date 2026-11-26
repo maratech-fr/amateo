@@ -1,6 +1,6 @@
 # Lot 5 · Le socle froid : plan d'exécution
 
-**Statut : version finale (v4 sur 4, après trois passes de `smith`). Plan validé par le fondateur le 2026-11-24 avec ses décisions 1 à 8 (§10) et les écarts E1 à E6. PR 1 et PR 2 livrées (« Écarts au plan, tels que livrés », §4). L'exécution suit l'ordre du §4 : PR 1 à 3, puis le lot 7, puis PR 4 à 7.** Voie **Full**. Branche cible `lot/conception`, une PR ouverte à la fois, « Lot Gate » seul ; avant chaque merge : `make -C backend tests-complete` et les features et specs de la zone sur la stack d'épreuve. Exécutant de chaque PR : `neo`, après les rouges de `tank`.
+**Statut : version finale (v4 sur 4, après trois passes de `smith`). Plan validé par le fondateur le 2026-11-24 avec ses décisions 1 à 8 (§10) et les écarts E1 à E6. PR 1 à PR 3 livrées (« Écarts au plan, tels que livrés », §4). L'exécution suit l'ordre du §4 : PR 1 à 3, puis le lot 7, puis PR 4 à 7.** Voie **Full**. Branche cible `lot/conception`, une PR ouverte à la fois, « Lot Gate » seul ; avant chaque merge : `make -C backend tests-complete` et les features et specs de la zone sur la stack d'épreuve. Exécutant de chaque PR : `neo`, après les rouges de `tank`.
 
 **Limite à dire d'entrée** : la PR 5 concentre la porte sur la copie, « Retravailler », l'écran, la propagation des lignes de période et environ 49 fichiers de test, alors que le plafond Behat (950 s) est déjà dépassé en local. **Un dépassement est probable** ; relever le plafond exige la ligne datée du fondateur dans le corps de la PR.
 
@@ -249,6 +249,15 @@ Ordre d'exécution décidé (décision 5) : **PR 1 à 3, puis le lot 7 (ses PR 1
 - Écran : `PlanningToolbar.tsx`, `PlanningPage.tsx`, `planning/api.ts`, `queries.ts`, `texts.ts`.
 - Document : le plan du lot 7 est déjà amendé (sa Q10 sans objet, ses PR 3b et 4a ne touchent plus `StructureRestorer` ni `RestoreFeasibility`, son E3 pointe le lot 6) ; la PR vérifie qu'aucun texte du lot 7 ne cite encore ces deux classes.
 - Tests : lignes 11 à 21. `/security-review` : oui.
+
+**Livrée le 2026-11-26 (PR 3), sur `lot/conception`, non déployée.** Écarts au plan, tels que livrés :
+- (a) `canLoad` est **faux sur la version déjà chargée** du plan (le geste ne changerait rien) ; il est vrai pour tout plan non validé, version terminée, aucune génération en cours dans la saison, version chargeable (`App\Plans\LoadFeasibility`, qui remplace `RestoreFeasibility` : copie présente, niveau des équipes engagées intact). `loadBlockedReason` rend le même texte que le 409 `load_blocked`.
+- (b) Quand « Charger » change un lien de coach principal, les destinataires des collectes ouvertes sont **resynchronisés** (`CoachWishCampaignTokenSync::syncSeason`), les jetons ne sont pas recréés.
+- (c) La clé étrangère du groupe n'est **pas** passée en `SET NULL` : le lien de groupe est vidé par `PlanStates::restore` sur les séances de **toutes** les versions de la saison (la séance d'un groupe retiré reste à sa place, sans son lien).
+- (d) Les noms des règles réinsérées sont ceux de `PlanStates::RULE_NAMES`.
+- (e) Le dialogue « Charger » ne nomme plus la version (`texts.ts`, `loadVersionDescription`, `loadVersionUnsavedLost`).
+- (f) Migration `Version20261202120000`, irréversible (retour arrière = la sauvegarde d'avant migration) ; `LoadVersionTest` et `PlanStateTenantIsolationTest` sont bloquants (`blocking-tests.md`). L'effacement d'une personne (`PersonEraser`) retire ses identifiants des copies du froid (limite (i) de la PR 2 levée).
+- (g) Limites relevées par la revue de sécurité, faible gravité : le contrôle « génération en cours » de `LoadVersionController` est lu hors du verrou de saison (fenêtre théorique) ; `NoNullPlanBranchTest` scrute encore `StructureAnchor`, supprimée ; plafond frontend `act-warnings-ceiling.json` à 23 pour 27.
 
 ### PR 4 · « La porte, lecture inchangée » (aucun comportement ne change)
 - `App\Plans\InForce` existe et rend les lignes de travail. Passent par elle : `ConflictRadarLoader`, `MatchPlacementPayloadBuilder`, `PlacedSessionPersonConflictDetector`, la demande d'une période, `PeriodConstraintSelector`, `PlanBirth`, `PlanComposition::ensureLines`, les sept lectures du pointeur.
