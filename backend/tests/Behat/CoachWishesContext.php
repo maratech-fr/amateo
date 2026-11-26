@@ -54,7 +54,6 @@ final class CoachWishesContext extends BaseContext
 
     private int $transferConverted = 0;
 
-
     #[Given('le club de démonstration et son gestionnaire connecté')]
     public function leClubEtSonGestionnaireConnecte(): void
     {

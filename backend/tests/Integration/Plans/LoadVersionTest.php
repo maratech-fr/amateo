@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Tests\Integration\Plans;
 
 use App\Entity\Reservation;
+use App\Entity\Schedule;
 use App\Entity\ScheduleSlotTemplate;
 use App\Entity\SharedTrainingBlock;
 use App\Entity\SharedTrainingBlockTeam;
@@ -441,7 +442,7 @@ final class LoadVersionTest extends WebTestCase
      * Le socle d'un planning retouchable : un gymnase et sa fenêtre du mardi 18 h, deux (ou trois) équipes placées
      * dans la version chargée, la copie de la version prise.
      *
-     * @return array{0: \App\Entity\Schedule, 1: ScheduleSlotTemplate, 2: ScheduleSlotTemplate, 3?: ScheduleSlotTemplate}
+     * @return array{0: Schedule, 1: ScheduleSlotTemplate, 2: ScheduleSlotTemplate, 3?: ScheduleSlotTemplate}
      */
     private function placedSeason(bool $withThirdTeam = false): array
     {

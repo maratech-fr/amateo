@@ -29,7 +29,6 @@ use App\Plans\PlanComposition;
 use App\Plans\PlanStates;
 use App\Service\SchedulePlanProvisioner;
 use DateTimeImmutable;
-use Doctrine\ORM\EntityManagerInterface;
 use Lexik\Bundle\JWTAuthenticationBundle\Services\JWTTokenManagerInterface;
 use PHPUnit\Framework\Assert;
 

@@ -38,7 +38,7 @@ final class PlanStateTenantIsolationTest extends WebTestCase
         // Le club B, sa saison, son équipe, sa règle, sa ligne d'équipe.
         $this->seedLoadClub('club-b');
         $clubB = $this->clubId;
-        $theirTeam = $this->loadTeam('SM1 de B', level: TeamLevel::REGIONAL, tier: 1, sessions: 2);
+        $theirTeam = $this->loadTeam('SM1 de B', tier: 1, level: TeamLevel::REGIONAL, sessions: 2);
         $theirRule = $this->loadTeamRule($theirTeam, '19:00');
         $theirPlan = $this->soclePlanId;
         $theirLine = (string) $this->loadScalar('SELECT id FROM plan_team WHERE schedule_plan_id = ? AND team_id = ?', [$theirPlan, $theirTeam->getId()]);
