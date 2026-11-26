@@ -7,6 +7,7 @@ namespace App\Service\Fbi;
 use App\Entity\Competition;
 use App\Entity\Fixture;
 use App\Enum\FixtureHomeAway;
+use App\Matches\CompetitionRegistry;
 use App\Service\Basketball\FbiDivisionSignature;
 use App\Service\Basketball\VenueLabelNormalizer;
 use DateTimeImmutable;
@@ -26,6 +27,7 @@ final class FbiMappingGuards
         private readonly EntityManagerInterface $entityManager,
         private readonly VenueLabelNormalizer $labelNormalizer,
         private readonly FbiDivisionSignature $divisionSignature,
+        private readonly CompetitionRegistry $competitionRegistry,
     ) {}
 
     /**
@@ -66,11 +68,11 @@ final class FbiMappingGuards
             $mappingCompetitionId = $mapping['competitionId'] ?? null;
             if (null !== $mappingCompetitionId) {
                 $byId = $competitionRepository->findOneBy(['id' => $mappingCompetitionId]);
-                if ($byId instanceof Competition && $byId->getTeamId() === $mapping['teamId']) {
+                if ($byId instanceof Competition && $this->competitionRegistry->isEngaged($byId, $mapping['teamId'])) {
                     $target = $byId;
                 }
             }
-            $target ??= $competitionRepository->findOneBy(['teamId' => $mapping['teamId'], 'name' => mb_substr(trim($mapping['division']), 0, 180)]);
+            $target ??= $this->exactNameCompetitionOf($mapping['teamId'], mb_substr(trim($mapping['division']), 0, 180));
 
             $guard = null !== $group && $target instanceof Competition ? $this->pouleGuard($target, $group['rows'], $group['name']) : null;
             if (null !== $guard && $guard['blocking']) {
@@ -118,7 +120,7 @@ final class FbiMappingGuards
                 continue;
             }
             $target = $competitionRepository->findOneBy(['id' => $mappingCompetitionId]);
-            if (!$target instanceof Competition || $target->getTeamId() !== $mapping['teamId']) {
+            if (!$target instanceof Competition || !$this->competitionRegistry->isEngaged($target, $mapping['teamId'])) {
                 // Id forgé/étranger : l'import crée le PROPRE championnat du club courant,
                 // rien à greffer — jamais une porte cross-tenant (isolation prouvée ailleurs).
                 $survivors[] = $mapping;
@@ -300,6 +302,21 @@ final class FbiMappingGuards
 
             return $matches[0];
         };
+    }
+
+    /**
+     * La compétition de l'équipe portant EXACTEMENT ce nom (comparaison exacte, jamais
+     * normalisée) : la recherche de la garde et de {@see FbiFixtureImporter::persistMappings}.
+     */
+    public function exactNameCompetitionOf(string $teamId, string $name): ?Competition
+    {
+        foreach ($this->competitionRegistry->competitionsOf($teamId) as $competition) {
+            if ($competition->getName() === $name) {
+                return $competition;
+            }
+        }
+
+        return null;
     }
 
     /**

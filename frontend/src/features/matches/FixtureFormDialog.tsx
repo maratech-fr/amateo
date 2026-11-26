@@ -7,6 +7,7 @@ import { Select } from "@/shared/components/ui/select";
 import { TeamSelect } from "@/shared/components/ui/team-select";
 
 import type { Competition, Fixture, HomeAway, PriorityTier, Team } from "./api";
+import { engagementsOf } from "./api/competitions";
 import { useCreateFixture, useUpdateFixture } from "./queries";
 
 interface FixtureFormDialogProps {
@@ -34,7 +35,7 @@ export function FixtureFormDialog({ teams, tiers, competitions, fixture = null, 
 
   const valid = "" !== teamId && "" !== matchDate && "" !== opponentLabel.trim();
   const busy = createFixture.isPending || updateFixture.isPending;
-  const teamCompetitions = competitions.filter((c) => c.teamId === teamId);
+  const teamCompetitions = competitions.filter((c) => engagementsOf(c).some((engagement) => engagement.teamId === teamId));
 
   const submit = (): void => {
     if (!valid) {

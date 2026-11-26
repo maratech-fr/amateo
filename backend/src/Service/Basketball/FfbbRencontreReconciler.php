@@ -13,6 +13,7 @@ use App\Enum\CompetitionType;
 use App\Enum\FbiIngestionSource;
 use App\Enum\FixtureHomeAway;
 use App\Enum\FixtureStatus;
+use App\Matches\CompetitionRegistry;
 use App\Service\FbiFixtureImporter;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -50,6 +51,7 @@ final class FfbbRencontreReconciler
         private readonly FbiFixtureImporter $importer,
         private readonly EntityManagerInterface $entityManager,
         private readonly ClockInterface $clock,
+        private readonly CompetitionRegistry $competitionRegistry,
     ) {}
 
     /**
@@ -249,10 +251,10 @@ final class FfbbRencontreReconciler
      * id for this team is skipped; the partial unique index catches a concurrent
      * create (surfaced as a clean 409 by the controller).
      *
-     * @param list<array{rencontreId: string, teamId: string}>                                                                                                                                                                                                                                                     $creations
-     * @param array<string, array<string, mixed>>                                                                                                                                                                                                                                                                  $rowsByRencontreId
-     * @param array{fixturesByRencontreId: array<string, Fixture>, teamById: array<string, Team>, teamByFfbbCompetitionId: array<string, list<string>>, competitionByFfbbId: array<string, list<Competition>>, competitionsByTeam: array<string, list<Competition>>, fixturesByTeam: array<string, list<Fixture>>} $context
-     * @param array<string, Competition>                                                                                                                                                                                                                                                                           $createdByKey
+     * @param list<array{rencontreId: string, teamId: string}>                                                                                                                                                                                               $creations
+     * @param array<string, array<string, mixed>>                                                                                                                                                                                                            $rowsByRencontreId
+     * @param array{fixturesByRencontreId: array<string, Fixture>, teamById: array<string, Team>, teamByFfbbCompetitionId: array<string, list<string>>, competitionByFfbbId: array<string, list<Competition>>, fixturesByTeam: array<string, list<Fixture>>} $context
+     * @param array<string, Competition>                                                                                                                                                                                                                     $createdByKey
      */
     private function applyCreations(array $creations, array $rowsByRencontreId, array $context, string $clubId, string $seasonId, array &$createdByKey, ?Club $club, DateTimeImmutable $now): int
     {
@@ -288,9 +290,9 @@ final class FfbbRencontreReconciler
     }
 
     /**
-     * @param array<string, mixed>                                                                                                                                                                                                                                                                                 $row
-     * @param array{fixturesByRencontreId: array<string, Fixture>, teamById: array<string, Team>, teamByFfbbCompetitionId: array<string, list<string>>, competitionByFfbbId: array<string, list<Competition>>, competitionsByTeam: array<string, list<Competition>>, fixturesByTeam: array<string, list<Fixture>>} $context
-     * @param array<string, Competition>                                                                                                                                                                                                                                                                           $createdByKey
+     * @param array<string, mixed>                                                                                                                                                                                                                           $row
+     * @param array{fixturesByRencontreId: array<string, Fixture>, teamById: array<string, Team>, teamByFfbbCompetitionId: array<string, list<string>>, competitionByFfbbId: array<string, list<Competition>>, fixturesByTeam: array<string, list<Fixture>>} $context
+     * @param array<string, Competition>                                                                                                                                                                                                                     $createdByKey
      */
     private function newFixture(array $row, string $teamId, string $clubId, string $seasonId, array $context, array &$createdByKey, ?Club $club, DateTimeImmutable $now): Fixture
     {
@@ -334,9 +336,9 @@ final class FfbbRencontreReconciler
      * suggestedTeamId|null] — the suggestion (tier-1 team) pre-fills the creatable
      * select when no fixture matched.
      *
-     * @param array<string, mixed>                                                                                                                                                                                                                                                                                 $row
-     * @param array{fixturesByRencontreId: array<string, Fixture>, teamById: array<string, Team>, teamByFfbbCompetitionId: array<string, list<string>>, competitionByFfbbId: array<string, list<Competition>>, competitionsByTeam: array<string, list<Competition>>, fixturesByTeam: array<string, list<Fixture>>} $context
-     * @param array<string, true>                                                                                                                                                                                                                                                                                  $consumed
+     * @param array<string, mixed>                                                                                                                                                                                                                           $row
+     * @param array{fixturesByRencontreId: array<string, Fixture>, teamById: array<string, Team>, teamByFfbbCompetitionId: array<string, list<string>>, competitionByFfbbId: array<string, list<Competition>>, fixturesByTeam: array<string, list<Fixture>>} $context
+     * @param array<string, true>                                                                                                                                                                                                                            $consumed
      *
      * @return array{0: Fixture|null, 1: string|null}
      */
@@ -417,10 +419,10 @@ final class FfbbRencontreReconciler
     /**
      * The matching indexes, all tenant+season scoped by the Doctrine filters. The
      * ffbbId indexes are LISTS (« last wins » was a bug when two teams share one
-     * cup, P4-194 R4); `competitionsByTeam` holds ALL of a team's competitions —
-     * the re-adopt fallback (refs cleared by a re-pairing) matches by exact name.
+     * cup, P4-194 R4). The re-adopt fallback (refs cleared by a re-pairing) reads a
+     * team's competitions through {@see CompetitionRegistry::competitionsOf}.
      *
-     * @return array{fixturesByRencontreId: array<string, Fixture>, teamById: array<string, Team>, teamByFfbbCompetitionId: array<string, list<string>>, competitionByFfbbId: array<string, list<Competition>>, competitionsByTeam: array<string, list<Competition>>, fixturesByTeam: array<string, list<Fixture>>}
+     * @return array{fixturesByRencontreId: array<string, Fixture>, teamById: array<string, Team>, teamByFfbbCompetitionId: array<string, list<string>>, competitionByFfbbId: array<string, list<Competition>>, fixturesByTeam: array<string, list<Fixture>>}
      */
     private function matchingContext(): array
     {
@@ -441,9 +443,7 @@ final class FfbbRencontreReconciler
 
         $teamByFfbbCompetitionId = [];
         $competitionByFfbbId = [];
-        $competitionsByTeam = [];
         foreach ($this->entityManager->getRepository(Competition::class)->findAll() as $competition) {
-            $competitionsByTeam[$competition->getTeamId()][] = $competition;
             $ffbbId = $competition->getFfbbCompetitionId();
             if (null !== $ffbbId) {
                 $teamByFfbbCompetitionId[$ffbbId][] = $competition->getTeamId();
@@ -456,7 +456,6 @@ final class FfbbRencontreReconciler
             'teamById' => $teamById,
             'teamByFfbbCompetitionId' => $teamByFfbbCompetitionId,
             'competitionByFfbbId' => $competitionByFfbbId,
-            'competitionsByTeam' => $competitionsByTeam,
             'fixturesByTeam' => $fixturesByTeam,
         ];
     }
@@ -473,9 +472,9 @@ final class FfbbRencontreReconciler
      * posed, expectedMatchdays null. Never poule/opponents/matchdays — the pairing
      * confirm owns those.
      *
-     * @param array<string, mixed>                                                                                                                                                                                                                                                                                 $row
-     * @param array{fixturesByRencontreId: array<string, Fixture>, teamById: array<string, Team>, teamByFfbbCompetitionId: array<string, list<string>>, competitionByFfbbId: array<string, list<Competition>>, competitionsByTeam: array<string, list<Competition>>, fixturesByTeam: array<string, list<Fixture>>} $context
-     * @param array<string, Competition>                                                                                                                                                                                                                                                                           $createdByKey
+     * @param array<string, mixed>                                                                                                                                                                                                                           $row
+     * @param array{fixturesByRencontreId: array<string, Fixture>, teamById: array<string, Team>, teamByFfbbCompetitionId: array<string, list<string>>, competitionByFfbbId: array<string, list<Competition>>, fixturesByTeam: array<string, list<Fixture>>} $context
+     * @param array<string, Competition>                                                                                                                                                                                                                     $createdByKey
      */
     private function resolveOrCreateCompetition(array $row, string $teamId, string $clubId, string $seasonId, array $context, array &$createdByKey): ?Competition
     {
@@ -497,7 +496,7 @@ final class FfbbRencontreReconciler
             return $createdByKey[$key];
         }
         foreach ($context['competitionByFfbbId'][$competitionFfbbId] ?? [] as $competition) {
-            if ($competition->getTeamId() === $teamId) {
+            if ($this->competitionRegistry->isEngaged($competition, $teamId)) {
                 return $createdByKey[$key] = $competition;
             }
         }
@@ -505,7 +504,7 @@ final class FfbbRencontreReconciler
         // (2) — repli (teamId, name exact) : ré-adopte une compétition dont un
         // réappariement a effacé les refs, sinon uniq_competition_team_name saute.
         $name = mb_substr($competitionName, 0, 180);
-        foreach ($context['competitionsByTeam'][$teamId] ?? [] as $competition) {
+        foreach ($this->competitionRegistry->competitionsOf($teamId) as $competition) {
             if ($competition->getName() !== $name) {
                 continue;
             }
@@ -528,9 +527,9 @@ final class FfbbRencontreReconciler
         $competition = new Competition;
         $competition->setClubId($clubId);
         $competition->setSeasonId($seasonId);
-        $competition->setTeamId($teamId);
         $competition->setName($name);
         $competition->setCompetitionType(CompetitionType::CUP);
+        $this->competitionRegistry->engage($competition, $teamId);
         $competition->setFfbbCompetitionId($competitionFfbbId);
         $this->entityManager->persist($competition);
 

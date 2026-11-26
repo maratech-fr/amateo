@@ -25,6 +25,29 @@ export interface Competition {
   deadlineSource?: "club" | "community" | null;
 }
 
+/** L'engagement d'une équipe dans une compétition : son libellé FBI, sa poule, ses journées attendues. */
+export interface CompetitionEngagement {
+  teamId: string;
+  fbiTeamLabel: string | null;
+  ffbbPouleId: string | null;
+  ffbbPouleName: string | null;
+  expectedMatchdays: number | null;
+}
+
+/**
+ * La seule porte de l'écran vers l'équipe d'une compétition. Une compétition sert
+ * aujourd'hui une seule équipe : la liste a un élément, bâti sur `teamId`.
+ */
+export const engagementsOf = (competition: Competition): CompetitionEngagement[] => [
+  {
+    teamId: competition.teamId,
+    fbiTeamLabel: competition.fbiTeamLabel ?? null,
+    ffbbPouleId: competition.ffbbPouleId ?? null,
+    ffbbPouleName: competition.ffbbPouleName ?? null,
+    expectedMatchdays: competition.expectedMatchdays ?? null,
+  },
+];
+
 export interface LeagueWindow {
   id: string;
   league: string;

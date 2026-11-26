@@ -20,6 +20,7 @@ use App\Enum\FixtureReviewState;
 use App\Enum\FixtureStatus;
 use App\Enum\FixtureUnplacedReason;
 use App\Exception\ImportRejectedException;
+use App\Matches\CompetitionRegistry;
 use App\Service\Basketball\FfbbRencontreReconciler;
 use App\Service\Basketball\VenueAliasResolver;
 use App\Service\Basketball\VenueExternalLabelAttacher;
@@ -119,6 +120,7 @@ final class FbiFixtureImporter
         private readonly LeagueValidationOutlook $leagueValidationOutlook,
         private readonly VenueExternalLabelAttacher $venueLabelAttacher,
         private readonly VenueAliasResolver $venueAliasResolver,
+        private readonly CompetitionRegistry $competitionRegistry,
     ) {}
 
     /**
@@ -1703,7 +1705,7 @@ final class FbiFixtureImporter
                 $byId = $competitionRepository->findOneBy(['id' => $mappingCompetitionId]);
                 // Honoured ONLY for the same team the manager chose — a drifted
                 // suggestion must not hijack another team's pairing.
-                if ($byId instanceof Competition && $byId->getTeamId() === $team->getId()) {
+                if ($byId instanceof Competition && $this->competitionRegistry->isEngaged($byId, $team->getId())) {
                     $existing = $byId;
                     if ($existing->getName() !== $name) {
                         $existing->setName($name);
@@ -1711,14 +1713,14 @@ final class FbiFixtureImporter
                     }
                 }
             }
-            $existing ??= $competitionRepository->findOneBy(['teamId' => $team->getId(), 'name' => $name]);
+            $existing ??= $this->mappingGuards->exactNameCompetitionOf($team->getId(), $name);
             if ($existing instanceof Competition) {
                 // The manager's LATEST choice wins: only refreshing a null label
                 // would leave a drifted FBI label permanently unresolvable — the
                 // manager re-maps, the import still reports the division
                 // unmapped, forever (label mismatch loop).
-                if (null !== $label && $existing->getFbiTeamLabel() !== $label) {
-                    $existing->setFbiTeamLabel($label);
+                if (null !== $label && $this->competitionRegistry->engagementOf($existing, $team->getId())?->fbiTeamLabel !== $label) {
+                    $this->competitionRegistry->writeFbiTeamLabel($existing, $team->getId(), $label);
                     $dirty = true;
                 }
                 continue;
@@ -1727,12 +1729,11 @@ final class FbiFixtureImporter
             $competition = new Competition;
             $competition->setClubId($club->getId());
             $competition->setSeasonId($team->getSeasonId());
-            $competition->setTeamId($team->getId());
             $competition->setName($name);
             $competition->setCompetitionType(
                 str_contains($this->normalizeLabel($name), 'brassage') ? CompetitionType::BRASSAGE : CompetitionType::CHAMPIONSHIP,
             );
-            $competition->setFbiTeamLabel($label);
+            $this->competitionRegistry->engage($competition, $team->getId(), $label);
             $this->entityManager->persist($competition);
             $dirty = true;
         }
@@ -1770,9 +1771,11 @@ final class FbiFixtureImporter
                 return $candidates[0];
             }
             foreach ($candidates as $candidate) {
-                $candidateLabel = $candidate->getFbiTeamLabel();
-                if (null !== $candidateLabel && $this->normalizeLabel($candidateLabel) === $labelKey) {
-                    return $candidate;
+                foreach ($this->competitionRegistry->engagementsOf($candidate) as $engagement) {
+                    $candidateLabel = $engagement->fbiTeamLabel;
+                    if (null !== $candidateLabel && $this->normalizeLabel($candidateLabel) === $labelKey) {
+                        return $candidate;
+                    }
                 }
             }
 

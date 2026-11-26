@@ -19,6 +19,7 @@ import { useMe, useWorkingSeason } from "@/shared/session/queries";
 import { toast } from "@/shared/stores/toastStore";
 
 import type { Category, Coach, Competition, Conflict, Fixture, PlaceMatchesResult, PlacementRunResult, Team, Venue } from "./api";
+import { engagementsOf } from "./api/competitions";
 import { CalendarControls } from "./CalendarControls";
 import { ExportMatchesDialog } from "./ExportMatchesDialog";
 import { FbiEntryList } from "./FbiEntryList";
@@ -520,11 +521,12 @@ export function CalendarPage() {
   const competitionsFailed = readFailed(competitions);
 
   // La fenêtre d'export s'ouvre sur ce que le gestionnaire regarde.
+  const phaseTeamId = undefined !== activePhaseCompetition ? engagementsOf(activePhaseCompetition)[0]?.teamId : undefined;
   const exportDefaults = defaultExportRange({
     temporality: consultTemporality,
     activeWeekend,
     activeMonth,
-    phase: isPhase && undefined !== activePhaseCompetition ? { teamId: activePhaseCompetition.teamId, ...phaseDateBounds(allFixtures, activePhaseCompetition.id) } : null,
+    phase: isPhase && undefined !== activePhaseCompetition && undefined !== phaseTeamId ? { teamId: phaseTeamId, ...phaseDateBounds(allFixtures, activePhaseCompetition.id) } : null,
     filterTeamId: "equipe" === filterMode && 1 === filterIds.length ? filterIds[0] : null,
     today,
   });

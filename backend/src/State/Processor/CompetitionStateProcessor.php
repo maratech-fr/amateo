@@ -8,14 +8,31 @@ use App\ApiResource\CompetitionResource;
 use App\Dto\CompetitionInput;
 use App\Entity\Competition;
 use App\Enum\CompetitionType;
+use App\Matches\CompetitionRegistry;
+use App\Service\ManagementAccessGuard;
+use App\Service\SeasonAccessGuard;
+use App\Service\SeasonResolver;
 use DateTimeImmutable;
+use Doctrine\ORM\EntityManagerInterface;
 use LogicException;
+use Symfony\Component\HttpFoundation\RequestStack;
 
 /**
  * @extends AbstractStateProcessor<Competition, CompetitionInput, CompetitionResource>
  */
 class CompetitionStateProcessor extends AbstractStateProcessor
 {
+    public function __construct(
+        EntityManagerInterface $entityManager,
+        RequestStack $requestStack,
+        SeasonResolver $seasonResolver,
+        SeasonAccessGuard $seasonAccessGuard,
+        ManagementAccessGuard $managementAccessGuard,
+        private readonly CompetitionRegistry $competitionRegistry,
+    ) {
+        parent::__construct($entityManager, $requestStack, $seasonResolver, $seasonAccessGuard, $managementAccessGuard);
+    }
+
     protected function getEntityClass(): string
     {
         return Competition::class;
@@ -28,7 +45,7 @@ class CompetitionStateProcessor extends AbstractStateProcessor
     {
         $entity = new Competition;
         if (null !== $input->teamId) {
-            $entity->setTeamId($input->teamId);
+            $this->competitionRegistry->engage($entity, $input->teamId);
         }
         if (null !== $input->name) {
             $entity->setName($input->name);
@@ -56,7 +73,7 @@ class CompetitionStateProcessor extends AbstractStateProcessor
      */
     protected function mapEntityToOutput(object $entity): CompetitionResource
     {
-        return CompetitionResource::fromEntity($entity);
+        return CompetitionResource::fromEntity($entity, $this->competitionRegistry->engagementsOf($entity));
     }
 
     private function parseDate(?string $value): ?DateTimeImmutable

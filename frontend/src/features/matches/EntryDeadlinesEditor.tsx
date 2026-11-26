@@ -13,6 +13,7 @@ import { ManagerOnly } from "@/shared/session/ManagerOnly";
 import { useCanManage } from "@/shared/session/queries";
 
 import type { Competition } from "./api";
+import { engagementsOf } from "./api/competitions";
 import { frShortDate } from "./lib/deadlineLabel";
 import { useSetEntryDeadlines } from "./queries";
 import { MATCHES_ENTRY_DEADLINES_TEXTS as TEXTS } from "./texts/entryDeadlines";
@@ -47,11 +48,11 @@ export function EntryDeadlinesEditor<T extends TeamLike>({ competitions, teams }
 
   const teamName = useMemo(() => {
     const map = new Map(teams.map((t) => [t.id, t.name]));
-    return (id: string): string => map.get(id) ?? TEXTS.teamFallback;
+    return (competition: Competition): string => map.get(engagementsOf(competition)[0]?.teamId ?? "") ?? TEXTS.teamFallback;
   }, [teams]);
 
   const rows = useMemo(
-    () => [...competitions].sort((a, b) => teamName(a.teamId).localeCompare(teamName(b.teamId)) || a.name.localeCompare(b.name)),
+    () => [...competitions].sort((a, b) => teamName(a).localeCompare(teamName(b)) || a.name.localeCompare(b.name)),
     [competitions, teamName],
   );
 
@@ -155,7 +156,7 @@ export function EntryDeadlinesEditor<T extends TeamLike>({ competitions, teams }
                   {canManage ? (
                   <input
                     type="checkbox"
-                    aria-label={TEXTS.rowAria(c.name, teamName(c.teamId))}
+                    aria-label={TEXTS.rowAria(c.name, teamName(c))}
                     className="size-4 shrink-0"
                     checked={checked.has(c.id)}
                     onChange={() => toggle(c.id)}
@@ -164,7 +165,7 @@ export function EntryDeadlinesEditor<T extends TeamLike>({ competitions, teams }
                   <span className="min-w-0">
                     <span className="block truncate font-medium">{c.name}</span>
                     <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground">
-                      <span>{teamName(c.teamId)}</span>
+                      <span>{teamName(c)}</span>
                       {null !== (c.ffbbCompetitionId ?? null) ? (
                         <StatusPill variant="accent" icon={<Users className="size-3 text-accent" aria-hidden />}>
                           {TEXTS.sharedPill}
