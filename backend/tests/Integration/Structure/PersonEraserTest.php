@@ -16,7 +16,6 @@ use App\Entity\Person;
 use App\Entity\Schedule;
 use App\Entity\ScheduleDiagnostic;
 use App\Entity\ScheduleSlotTemplate;
-use App\Entity\ScheduleStructureSnapshot;
 use App\Entity\Season;
 use App\Entity\TeamCoach;
 use App\Entity\VenueTravelRuleSetting;
@@ -31,7 +30,6 @@ use App\Plans\SoclePlan;
 use App\Service\ClubGenerationLock;
 use App\Service\MatchPlacementLock;
 use App\Service\ScheduleConstraintBuilder;
-use App\Service\StructureSnapshotter;
 use App\Structure\PersonEraser;
 use App\Tests\Integration\Command\ErasePersonCommandTest;
 use App\Tests\PersonErasureDecorTrait;
@@ -375,12 +373,14 @@ final class PersonEraserTest extends KernelTestCase
     }
 
     /**
-     * Étape 5 : la photo d'une version (ce que « Charger » réinsère) perd sa ligne de coach, ses liens
-     * d'équipe, ses liens de joueur et ses règles ; les lignes d'un autre coach restent. Vu sur la
-     * photo elle-même : « Charger » filtre aussi les personnes disparues, le balayage et
-     * {@see PersonErasureLeavesNoTraceTest} ne voient donc pas une ligne d'identifiants oubliée.
+     * Étape 5 : la copie du froid d'une version (ce que « Charger » remet) perd, famille par famille, ses liens de
+     * coach principal, ses liens de joueur et ses règles ; les lignes d'un autre coach restent. Vu sur la copie
+     * elle-même : « Charger » filtre aussi les personnes disparues, le balayage ne verrait donc pas une famille
+     * oubliée. Angle jumeau, cité : {@see PersonErasureLeavesNoTraceTest::testTheErasureRemovesHerIdentifiersFromEveryVersionCopy}
+     * (aucune copie, toutes saisons, ne cite plus l'un de ses rôles) — ce cas-ci prouve chaque famille, lien de joueur
+     * compris, que le décor commun ne porte pas.
      */
-    public function testThePhotoOfAVersionNoLongerHoldsHerRowHerLinksOrHerRules(): void
+    public function testTheCopyOfAVersionNoLongerHoldsHerLinksOrHerRules(): void
     {
         $this->seedErasureDecor();
         $this->scopeGucToClub($this->decor['club']);
@@ -389,18 +389,22 @@ final class PersonEraserTest extends KernelTestCase
                 ->setCoachId($coachId)->setTeamId($this->decor['sm1'])->setPosition('meneur'));
         }
         $this->em->flush();
-        $snapshotter = self::getContainer()->get(StructureSnapshotter::class);
+        $states = self::getContainer()->get(PlanStates::class);
         $v1 = $this->em->find(Schedule::class, $this->decor['v1']);
         self::assertInstanceOf(Schedule::class, $v1);
-        $snapshotter->store($v1, $snapshotter->serialize($this->decor['club'], $this->decor['current']));
+        $states->store($v1, $states->capture((string) $v1->getSchedulePlanId()));
         $this->em->clear();
-        $before = $this->photoRowsOf($this->decor['coach']);
-        self::assertSame(['Coach' => 1, 'TeamCoach' => 2, 'CoachPlayerMembership' => 1, 'Constraint' => 1], $before, 'témoin : la photo porte sa ligne, ses deux liens d\'équipe, son lien de joueur et sa règle');
+        $hers = $this->copyRowsOf($this->decor['coach']);
+        $dominiques = $this->copyRowsOf($this->decor['dominique']);
+        foreach (['TeamCoach' => $hers, 'CoachPlayerMembership' => $hers, 'Constraint' => $hers] as $family => $rows) {
+            self::assertGreaterThan(0, $rows[$family], 'témoin : la copie porte sa ligne ' . $family);
+        }
+        self::assertGreaterThan(0, $dominiques['TeamCoach'] + $dominiques['CoachPlayerMembership'], 'témoin : la copie porte les liens de Dominique');
 
         $this->erase();
 
-        self::assertSame(['Coach' => 0, 'TeamCoach' => 0, 'CoachPlayerMembership' => 0, 'Constraint' => 0], $this->photoRowsOf($this->decor['coach']), 'plus rien d\'elle dans la photo');
-        self::assertSame(['Coach' => 1, 'TeamCoach' => 2, 'CoachPlayerMembership' => 1, 'Constraint' => 0], $this->photoRowsOf($this->decor['dominique']), 'les lignes d\'un autre coach restent');
+        self::assertSame(['TeamCoach' => 0, 'CoachPlayerMembership' => 0, 'Constraint' => 0], $this->copyRowsOf($this->decor['coach']), 'plus rien d\'elle dans la copie');
+        self::assertSame($dominiques, $this->copyRowsOf($this->decor['dominique']), 'les lignes d\'un autre coach restent');
     }
 
     /**
@@ -753,18 +757,15 @@ final class PersonEraserTest extends KernelTestCase
         $this->em->flush();
     }
 
-    /** @return array{Coach: int, TeamCoach: int, CoachPlayerMembership: int, Constraint: int} lignes de la photo de la version en cours qui désignent ce coach */
-    private function photoRowsOf(string $coachId): array
+    /** @return array{TeamCoach: int, CoachPlayerMembership: int, Constraint: int} lignes de la copie de la version en cours qui désignent ce coach */
+    private function copyRowsOf(string $coachId): array
     {
         $this->scopeGucToClub($this->decor['club']);
-        $photo = $this->em->getRepository(ScheduleStructureSnapshot::class)->findOneBy(['scheduleId' => $this->decor['v1']]);
-        self::assertInstanceOf(ScheduleStructureSnapshot::class, $photo);
-        $data = $photo->getData();
+        $data = self::getContainer()->get(PlanStates::class)->of($this->decor['v1'])->toArray();
         $this->em->clear();
         $count = static fn (string $family, callable $match): int => \count(array_filter($data[$family] ?? [], $match));
 
         return [
-            'Coach' => $count('Coach', static fn (array $row): bool => ($row['id'] ?? null) === $coachId),
             'TeamCoach' => $count('TeamCoach', static fn (array $row): bool => ($row['coachId'] ?? null) === $coachId),
             'CoachPlayerMembership' => $count('CoachPlayerMembership', static fn (array $row): bool => ($row['coachId'] ?? null) === $coachId),
             'Constraint' => $count('Constraint', static fn (array $row): bool => ($row['scopeTargetId'] ?? null) === $coachId),

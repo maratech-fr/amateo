@@ -227,7 +227,7 @@ framework:
         # qu'il a trois gestionnaires — c'est le club qui consomme, pas la personne.
         #
         # 5/h couvre les TROIS routes qui déclenchent un solve (generate, regenerate,
-        # regenerate-from) : ne capper que la première aurait laissé le work-loop, donc
+        # fill) : ne capper que la première aurait laissé le work-loop, donc
         # l'usage réel, hors de la borne. Un solve tient jusqu'à 600 s de CPU ; 5/h laisse
         # largement de quoi ajuster un planning dans une session de travail.
         schedule_generation:

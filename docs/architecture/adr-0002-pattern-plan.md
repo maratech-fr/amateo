@@ -63,7 +63,7 @@ Schedule (= Version)                    ← existant, recentré
    `SchedulePlanProvisioner::chosenOfSeasonPlan` répond non-null, sous le verrou de plan-scope
    de la saison et dans la transaction de création (NR `Security/SeasonVersionUniquenessTest`).
    Sur les trois portes agissant sur une version de saison déjà existante — `generate`,
-   `regenerate`, `regenerate-from` — `SocleGuard::assertSeasonPlanNotChosen` (miroir de
+   `regenerate`, `load` — `SocleGuard::assertSeasonPlanNotChosen` (miroir de
    `assertSeasonPlanChosen`, inv. 13) pose la même garde en défense en profondeur, sous le même
    verrou et la même transaction ; `Security/SeasonPlanInForceTest` épingle la propriété qui la
    rend redondante en pratique (`ValidateScheduleController` supprime déjà toutes les sœurs à la
@@ -339,9 +339,9 @@ modèle — ils ne correspondent plus à une section de ce document (l'historiqu
     pointeur `schedule_plan.lock_source_schedule_id` s'il désigne une version COMPLETED existante
     du même plan, sinon sa dernière version COMPLETED. Ce pointeur est le seul de version chargée, socle comme période ; il se pose de deux
     façons : automatiquement (chaque version qui vient de COMPLETED devient la source) ou par
-    « Charger » (période : `POST /api/schedules/{id}/load-locks`, réservé à un plan **non validé** ;
-    socle : « Charger cette version », `RegenerateFromVersionController`, qui restaure en plus la
-    structure d'une photo). Régénérer en REGARDANT une autre
+    « Charger » (tout plan : `POST /api/schedules/{id}/load`, `LoadVersionController`, réservé à un plan **non
+    validé** ; il remet d'abord l'état de travail du plan d'après la copie de la version,
+    `PlanStates::restore`). Régénérer en REGARDANT une autre
     version que la source ne change pas la source retenue — le front confirme avant (« vous
     regardez la version N, les données en cours sont celles de la version M… »). `ScheduleResource`
     expose `isLockSource`/`hardLockCount` ; `OrphanPinGuard` et `ScheduleResultImporter` (origine
@@ -378,7 +378,7 @@ correspondance pour relire du code ou des specs antérieurs.
   fidèlement (Plan créé par saison, pointeur depuis l'ex-baseline validée, nom depuis
   l'ex-planningName) ; les overlays existants peuvent être reconstruits.
 - **Tests & fixtures à adapter** : `ValidateScheduleTest`, `ScheduleLifecycleGuardTest`,
-  `ScheduleReadOnlyGuardTest`, `RegenerateTest`, `RegenerateFromVersionTest`, les fixtures
+  `ScheduleReadOnlyGuardTest`, `RegenerateTest`, `LoadVersionTest`, les fixtures
   d'import/démo (seed d'un Plan par saison) et le smoke-solveur (create → generate → poll
   passe par le Plan) ; blocking-tests inchangés sur le fond (tenant/season isolation).
 - **Engine : zéro impact** — le contrat backend↔engine (payload, `CONTRACT_VERSION`) ne

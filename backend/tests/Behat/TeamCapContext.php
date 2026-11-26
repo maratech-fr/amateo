@@ -286,18 +286,19 @@ final class TeamCapContext extends BaseContext
     #[When('je charge la version générée à 21 équipes')]
     public function jeChargeLaVersion(): void
     {
-        $this->lastResponse = $this->apiPost(\sprintf('schedules/%s/regenerate-from', $this->versionId), [], $this->smallClubToken);
+        $this->lastResponse = $this->apiPost(\sprintf('schedules/%s/load', $this->versionId), [], $this->smallClubToken);
     }
 
-    #[Then('le chargement est accepté et le club compte 21 équipes')]
-    public function leChargementEstAccepte(): void
+    /** Lot conception 5, PR 3 : « Charger » ne ramène pas une équipe supprimée depuis la version. */
+    #[Then('/^le chargement est accepté et le club compte toujours (?P<count>\d+) équipes$/u')]
+    public function leChargementEstAccepte(string $count): void
     {
         if (200 !== $this->lastResponse['status']) {
             throw new RuntimeException(\sprintf('charger une version reste ouvert : attendu 200, reçu %d — %s', $this->lastResponse['status'], $this->encoded($this->lastResponse['json'])));
         }
         $used = $this->entitlements()['teamsUsed'] ?? null;
-        if (21 !== $used) {
-            throw new RuntimeException(\sprintf('la version chargée rend ses 21 équipes : /api/me en compte %s', json_encode($used)));
+        if ((int) $count !== $used) {
+            throw new RuntimeException(\sprintf('charger ne ramène pas l\'équipe supprimée : %s équipes attendues, /api/me en compte %s', $count, json_encode($used)));
         }
     }
 

@@ -132,9 +132,9 @@ page` : voir la puce dédiée.
   gestionnaire en train de taper sa première équipe — flake e2e sur QUATRE PR (#684/#687/#689/#694)
   avant que le trace Playwright la nomme (2026-08-22, NR : `WhatsNewModal.test`, voile monté en
   vrai). Le critère de la famille : si la mutation peut partir SANS interaction, elle s'exempte.
-  ⚠ **`useRegenerateFromVersion` n'en fait PAS partie** et ne doit pas y entrer : `/regenerate-from`
-  ne lance **aucun solve** (`RegenerateFromVersionController.php:102-104`, 200 synchrone), c'est un
-  restore **destructif** — le voile est exactement la protection anti-double-clic qu'il réclame.
+  ⚠ **`useLoadVersion` n'en fait PAS partie** et ne doit pas y entrer : `/load`
+  ne lance **aucun solve** (`LoadVersionController`, 200 synchrone), c'est un
+  restore qui réécrit l'état de travail du plan — le voile est exactement la protection anti-double-clic qu'il réclame.
 - **Deux régimes de sortie.** Contextes courts : au-delà de 10 s on prévient **et on relâche** (une
   panne réseau ne doit pas rendre l'app inutilisable jusqu'au F5). Contexte long : **jamais de
   relâche au chrono** — relâcher autoriserait un second déplacement par-dessus le premier ; la

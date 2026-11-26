@@ -32,7 +32,6 @@ use App\Service\SchedulePlanProvisioner;
 use App\Service\ScheduleProgressPublisher;
 use App\Service\ScheduleResultImporter;
 use App\Service\SolverMetricsMapper;
-use App\Service\StructureSnapshotter;
 use App\Service\TenantConnectionContext;
 use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\ProvisionsPeriodPlanTrait;
@@ -318,7 +317,6 @@ final class PreviousAssignmentsPayloadParityTest extends KernelTestCase
             new SolverMetricsMapper,
             $container->get(ClubGenerationLock::class),
             $container->get(TenantConnectionContext::class),
-            $container->get(StructureSnapshotter::class),
             $container->get(SchedulePlanProvisioner::class),
             $container->get(OutputCreditLedger::class),
             $container->get(PlanStates::class),

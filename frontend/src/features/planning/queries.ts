@@ -660,41 +660,23 @@ export function useDeleteSchedule() {
 }
 
 /**
- * planning-versions "Charger cette version": reload a version's context (restore
- * its structure, re-point the ★) WITHOUT solving — no new version is created, the
- * source version's plan is shown as-is. Returns the loaded version's id so the
- * caller selects it.
+ * « Charger cette version », tout plan : les réglages du plan reviennent à ceux de la version, qui
+ * devient la version chargée (★), SANS générer. Les réglages des équipes et des gymnases ont pu bouger
+ * (rang, catégorie, niveau, gymnase imposé, « divisible ») : on rafraîchit la liste des versions et
+ * chaque famille de référence en cache (Wizard compris, staleTime 300 s). Le motif d'un refus serveur
+ * (409/404) est toasté plutôt qu'un échec anonyme.
  */
-export function useRegenerateFromVersion() {
+export function useLoadVersion() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => planningApi.regenerateFromVersion(id),
+    mutationFn: (id: string) => planningApi.loadVersion(id),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["schedules"] });
-      // The restore replaced the WHOLE structure — refresh every cached family
-      // (wizard + the planning reference lists, all staleTime 300 s).
       void queryClient.invalidateQueries({ queryKey: ["wizard"] });
       for (const key of ["teams", "venues", "coaches", "categories", "priority_tiers"]) {
         void queryClient.invalidateQueries({ queryKey: [key] });
       }
     },
-    // Surface the backend's reason (409: "pas de photo de structure", or a
-    // generation in flight) instead of a generic flash.
-    onError: (error) => void errorMessage(error).then((message) => toast.error(message)),
-  });
-}
-
-/**
- * V1bis — « Charger » pour une version de PÉRIODE : pose ses verrous comme les données EN COURS
- * de son plan (le serveur pose le pointeur), SANS générer. `isLockSource` bascule sur la version
- * chargée → on rafraîchit la liste des versions. Le motif d'un refus serveur (409/404) est toasté
- * plutôt qu'un échec anonyme, comme ses sœurs de régénération.
- */
-export function useLoadLocks() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (id: string) => planningApi.loadLocks(id),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["schedules"] }),
     onError: (error) => void errorMessage(error).then((message) => toast.error(message)),
   });
 }

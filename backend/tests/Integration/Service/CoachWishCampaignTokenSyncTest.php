@@ -30,7 +30,8 @@ use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
  * qui liste ses équipes ; un adjoint n'en a jamais ; une équipe GAGNÉE par un destinataire déjà servi
  * le repasse « à envoyer » ; une équipe perdue ne remet rien à zéro ; une campagne à date passée n'est
  * jamais touchée ; rejouer la règle ne change rien. Les chemins qui l'appellent (lien, coach, sélecteur,
- * « Charger ») sont prouvés côté API : CoachWishCampaignApiTest, CoachWishCampaignActionsTest, StructureRestorerTest.
+ * « Charger ») sont prouvés côté API : CoachWishCampaignApiTest, CoachWishCampaignActionsTest,
+ * Plans/LoadVersionTest::testAMainCoachPutBackByLoadingBecomesTheRecipientOfTheOpenCollection.
  */
 #[Group('phase1')]
 #[Group('integration')]

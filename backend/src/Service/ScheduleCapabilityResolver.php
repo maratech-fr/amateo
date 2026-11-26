@@ -9,6 +9,7 @@ use App\Entity\Schedule;
 use App\Entity\SchedulePlan;
 use App\Enum\SchedulePlanType;
 use App\Enum\ScheduleStatus;
+use App\Plans\LoadFeasibility;
 use Doctrine\DBAL\ArrayParameterType;
 use Doctrine\ORM\EntityManagerInterface;
 
@@ -21,7 +22,7 @@ use Doctrine\ORM\EntityManagerInterface;
  *
  * Les prédicats unitaires ci-dessous sont ceux que déléguaient auparavant, chacun de son
  * côté, ScheduleStateProcessor::processDelete, ValidateScheduleController et
- * RegenerateFromVersionController — extraits ICI sans changer leur logique. Le batch
+ * LoadVersionController — extraits ICI sans changer leur logique. Le batch
  * {@see forSchedules} les reproduit en AGRÉGATS (un GROUP BY par plan, un appel par saison)
  * pour ne jamais N+1 la collection ; le test de parité épingle l'équivalence.
  */
@@ -34,7 +35,7 @@ final class ScheduleCapabilityResolver
         private readonly EntityManagerInterface $entityManager,
         private readonly SchedulePlanProvisioner $schedulePlanProvisioner,
         private readonly OverlayManager $overlayManager,
-        private readonly RestoreFeasibility $restoreFeasibility,
+        private readonly LoadFeasibility $loadFeasibility,
     ) {}
 
     /** Une version en cours de solve (PENDING/GENERATING) — ni supprimable, ni « sœur » validable. */
@@ -105,20 +106,20 @@ final class ScheduleCapabilityResolver
     /**
      * Le bloc `capabilities` de chaque version, en BATCH — ZÉRO N+1. Reçoit du provider les
      * ensembles qu'il calcule déjà pour les autres champs du DTO (choisi / type de plan /
-     * photo), puis n'ajoute qu'UN GROUP BY (schedule_plan_id, status) sur les plans présents
+     * copie d'état), puis n'ajoute qu'UN GROUP BY (schedule_plan_id, status) sur les plans présents
      * et UN appel par saison (générations en cours + périodes invalidées). Les verdicts
      * reproduisent EXACTEMENT les prédicats unitaires ci-dessus.
      *
      * @param list<Schedule>        $schedules
      * @param array<string, true>   $chosenIds    ids des versions que leur plan pointe
      * @param array<string, string> $planTypeById scheduleId => type de plan (SEASON|CLOSURE|HOLIDAY)
-     * @param array<string, true>   $withPhoto    ids des versions portant une photo de structure
+     * @param array<string, true>   $withCopy     ids des versions portant une copie de leur état
      * @param array<string, string> $loadedByPlan planId => version chargée du plan (maison {@see
      *                                            SchedulePlanProvisioner::lockSourceScheduleIdOfPlan})
      *
      * @return array<string, ScheduleCapabilities> scheduleId => capacités
      */
-    public function forSchedules(array $schedules, array $chosenIds, array $planTypeById, array $withPhoto, array $loadedByPlan = []): array
+    public function forSchedules(array $schedules, array $chosenIds, array $planTypeById, array $withCopy, array $loadedByPlan = []): array
     {
         if ([] === $schedules) {
             return [];
@@ -129,19 +130,19 @@ final class ScheduleCapabilityResolver
             $planIds[$schedule->getSchedulePlanId()] = true;
         }
         $planStats = $this->planStats(array_keys($planIds));
-        // V1bis — les plans VALIDÉS (chosen_schedule_id non-null) du lot : « Charger » (load-locks)
-        // est refusé sur un plan validé (rouvrir d'abord), donc canLoadLocks le lit par plan.
+        // Les plans VALIDÉS (chosen_schedule_id non-null) du lot : « Charger » est refusé sur un plan validé
+        // (rouvrir d'abord), donc canLoad le lit par plan.
         $validatedPlanIds = $this->validatedPlanIds(array_keys($planIds));
 
-        // Motif pour lequel une version de saison terminée ne se charge pas : une fois pour tout le lot.
-        $restoreReasons = $this->restoreFeasibility->blockedReasons(
+        // Motif pour lequel une version terminée non choisie ne se charge pas : une fois pour tout le lot.
+        $loadReasons = $this->loadFeasibility->blockedReasons(
             array_values(array_filter(
                 $schedules,
                 static fn (Schedule $s): bool => ScheduleStatus::COMPLETED === $s->getStatus()
-                    && SchedulePlanType::SEASON->value === ($planTypeById[$s->getId()] ?? null)
+                    && null !== ($planTypeById[$s->getId()] ?? null)
                     && !isset($chosenIds[$s->getId()]),
             )),
-            $withPhoto,
+            $withCopy,
         );
 
         $seasonInFlight = []; // seasonId => bool, résolu une fois par saison
@@ -178,32 +179,29 @@ final class ScheduleCapabilityResolver
                 $overlaysDropped = $seasonOverlays[$seasonId];
             }
 
-            // V1bis — « Charger » pour une PÉRIODE (load-locks) : version de période (plan non-SEASON,
-            // jamais une version anomale sans plan) TERMINÉE, plan NON validé, aucune génération en
-            // cours dans la saison, ET pas DÉJÀ la source (sinon le geste ne changerait rien — on ne
-            // l'offre pas). Miroir des gardes de LoadLocksController (la génération en cours y est lue
-            // sur la ClubGenerationLock Redis ; ici son miroir base PENDING/GENERATING de la saison).
-            $isPeriod = !$isSeason && null !== ($planTypeById[$id] ?? null);
+            // « Charger » (tout plan) : version d'un plan (jamais une version anomale sans plan) TERMINÉE, plan
+            // NON validé, aucune génération en cours dans la saison, chargeable (copie présente, niveau des
+            // équipes engagées intact), ET pas DÉJÀ la version chargée (sinon le geste ne changerait rien — on
+            // ne l'offre pas). Miroir des gardes de LoadVersionController.
+            $hasPlan = null !== ($planTypeById[$id] ?? null);
             $planValidated = isset($validatedPlanIds[$schedule->getSchedulePlanId()]);
 
             $loadedId = $loadedByPlan[$schedule->getSchedulePlanId()] ?? null;
             $editBlockedReason = VersionEditability::verdict($id, $isChosen, $loadedId);
             $isLoaded = $loadedId === $id;
-            $restoreReason = $restoreReasons[$id] ?? null;
+            $loadReason = $loadReasons[$id] ?? null;
 
             $capabilities[$id] = new ScheduleCapabilities(
                 canDelete: !$isChosen && !$isInFlight && !$isLastFinishedSeasonVersion
                     && !($isSeason && $isLoaded && $hasInFlightSibling),
                 canValidate: $isCompleted && !$hasInFlightSibling && VersionEditability::NOT_LOADED !== $editBlockedReason,
-                canRegenerateFrom: $isSeason && $isCompleted && !$isChosen
-                    && !$seasonInFlight[$seasonId] && null === $restoreReason,
-                canLoadLocks: $isPeriod && $isCompleted && !$planValidated
-                    && !$seasonInFlight[$seasonId] && !$isLoaded,
+                canLoad: $hasPlan && $isCompleted && !$planValidated
+                    && !$seasonInFlight[$seasonId] && null === $loadReason && !$isLoaded,
                 versionsDeletedOnValidate: max(0, $stats['total'] - 1),
                 overlaysDroppedOnValidate: $overlaysDropped,
                 canEdit: null === $editBlockedReason,
                 editBlockedReason: $editBlockedReason,
-                regenerateFromBlockedReason: $restoreReason,
+                loadBlockedReason: $loadReason,
             );
         }
 

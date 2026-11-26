@@ -714,8 +714,8 @@ La version SOURCE d'un plan (SEASON comme PÉRIODE) est le pointeur
 `schedule_plan.lock_source_schedule_id` s'il désigne une version `COMPLETED` existante du même
 plan, sinon sa dernière version `COMPLETED`. Le pointeur se pose de deux façons : automatiquement
 (`GenerateScheduleHandler` re-pointe sur chaque version qui vient de `COMPLETED` — hors plan
-SEASON, qui n'utilise pas ce pointeur) ou par « Charger » (`POST /api/schedules/{id}/load-locks`,
-`LoadLocksController`, réservé à un plan de PÉRIODE non validé). « Régénérer » repart donc
+SEASON, qui n'utilise pas ce pointeur) ou par « Charger » (`POST /api/schedules/{id}/load`,
+`LoadVersionController`, tout plan non validé). « Régénérer » repart donc
 TOUJOURS de cette source ; si le gestionnaire regarde une AUTRE version, le front confirme avant
 (`PlanningPage.tsx`).
 

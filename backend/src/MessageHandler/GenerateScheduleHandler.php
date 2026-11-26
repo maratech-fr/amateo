@@ -24,7 +24,6 @@ use App\Service\ScheduleProgressPublisher;
 use App\Service\ScheduleResultImporter;
 use App\Service\SolverMetricsMapper;
 use App\Service\SolverMetricsRecorder;
-use App\Service\StructureSnapshotter;
 use App\Service\TenantConnectionContext;
 use DateTimeImmutable;
 use Doctrine\ORM\EntityManagerInterface;
@@ -78,7 +77,6 @@ final class GenerateScheduleHandler
         private SolverMetricsMapper $metricsMapper,
         private ClubGenerationLock $clubGenerationLock,
         private TenantConnectionContext $tenantConnectionContext,
-        private StructureSnapshotter $structureSnapshotter,
         private SchedulePlanProvisioner $schedulePlanProvisioner,
         private OutputCreditLedger $creditLedger,
         private PlanStates $planStates,
@@ -282,24 +280,6 @@ final class GenerateScheduleHandler
         $this->diagnosticsRecorder->purgePrevious($schedule);
         $this->entityManager->flush();
 
-        // planning-versions D2 (phase 1/2): serialize the structure NOW — pure
-        // read, consistent with the payload just frozen (the wizard could be
-        // edited during the ~650 s solve). Season plans only (the D3 restore is
-        // season-scoped; overlays get their own tier later). Non-fatal: a read
-        // failure cannot poison the EntityManager, nothing is written yet.
-        $structureData = null;
-        if ($composed->isSeasonPlan) {
-            // plan SEASON (le socle) : la photo D2 est saison-scopée.
-            try {
-                $structureData = $this->structureSnapshotter->serialize($schedule->getClubId(), $schedule->getSeasonId());
-            } catch (Throwable $e) {
-                $this->logger?->warning('Structure snapshot serialization failed (generation continues)', [
-                    'scheduleId' => $schedule->getId(),
-                    'error' => $e->getMessage(),
-                ]);
-            }
-        }
-
         $lotDir = null;
         if ($this->devReportWriter instanceof DevScheduleReportWriter) {
             try {
@@ -366,8 +346,8 @@ final class GenerateScheduleHandler
         // tenue sur la connexion (pas `wrapInTransaction`, qui fermerait l'EM sur une erreur du
         // registre : le FAILED du filet doit encore pouvoir s'écrire). Une erreur du registre annule
         // tout — la version finit « échouée », sans crédit. Un flush ORM en échec ferme l'EM : la
-        // version reste « en cours » jusqu'au rattrapage, comme avant. Photo de structure et Mercure
-        // restent APRÈS le commit, hors transaction. Lot 5 : la copie du froid s'écrit DANS la
+        // version reste « en cours » jusqu'au rattrapage, comme avant. Mercure
+        // reste APRÈS le commit, hors transaction. Lot 5 : la copie du froid s'écrit DANS la
         // transaction — sans elle, une version n'est jamais « terminée » : l'échec annule tout, sans
         // crédit, et le filet pose « échouée » au message générique.
         $connection = $this->entityManager->getConnection();
@@ -388,22 +368,6 @@ final class GenerateScheduleHandler
             }
 
             throw $exception;
-        }
-
-        // planning-versions D2 (phase 2/2): store the photo ONLY on a COMPLETED
-        // plan — a FAILED regeneration must never overwrite the photo of the
-        // still-visible previous plan. Direct DBAL upsert (no UnitOfWork): a
-        // failure here cannot close the EM, and a concurrent duplicate resolves
-        // via ON CONFLICT. Non-fatal by construction.
-        if (null !== $structureData && ScheduleStatus::COMPLETED === $schedule->getStatus()) {
-            try {
-                $this->structureSnapshotter->store($schedule, $structureData);
-            } catch (Throwable $e) {
-                $this->logger?->warning('Structure snapshot store failed (plan already persisted)', [
-                    'scheduleId' => $schedule->getId(),
-                    'error' => $e->getMessage(),
-                ]);
-            }
         }
 
         $this->progressPublisher->publishSafely($schedule, $result);

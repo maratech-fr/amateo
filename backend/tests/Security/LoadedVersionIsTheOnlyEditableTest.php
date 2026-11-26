@@ -18,6 +18,7 @@ use App\Enum\LockLevel;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
 use App\Plans\PlanComposition;
+use App\Plans\PlanStates;
 use App\Service\SchedulePlanProvisioner;
 use App\Service\SeasonResolver;
 use App\Tests\ChoosesPlanVersionTrait;
@@ -47,7 +48,7 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
  *    pour la valider. », et `capabilities.canValidate` à false ;
  *  - POST fill sur une version de période autre que la source : même 409, aucune version créée ;
  *  - période : la « chargée » est la source des verrous (`lockSourceScheduleIdOfPlan`), « Charger »
- *    (load-locks) reste gratuit.
+ *    (`POST /api/schedules/{id}/load`) reste gratuit.
  *
  * « Acceptée » signifie ici : la garde laisse passer. Le verdict moteur ou la validation du corps
  * peuvent répondre autre chose, c'est prouvé par les tests de chaque guichet.
@@ -181,7 +182,7 @@ final class LoadedVersionIsTheOnlyEditableTest extends WebTestCase
         $older = $this->periodVersion($entry);
         $source = $this->periodVersion($entry);
 
-        $this->client->request('POST', '/api/schedules/' . $older->getId() . '/load-locks', [], [], $this->headers());
+        $this->client->request('POST', '/api/schedules/' . $older->getId() . '/load', [], [], $this->headers());
         self::assertResponseIsSuccessful();
 
         [$o1, $o2] = $this->slotsOf($older);
@@ -346,7 +347,7 @@ final class LoadedVersionIsTheOnlyEditableTest extends WebTestCase
         $older = $this->periodVersion($entry);
         $source = $this->periodVersion($entry);
 
-        $this->client->request('POST', '/api/schedules/' . $older->getId() . '/load-locks', [], [], $this->headers());
+        $this->client->request('POST', '/api/schedules/' . $older->getId() . '/load', [], [], $this->headers());
         self::assertResponseIsSuccessful();
 
         $this->post('/api/schedules/' . $source->getId() . '/fill', []);
@@ -486,6 +487,9 @@ final class LoadedVersionIsTheOnlyEditableTest extends WebTestCase
         $this->linkSeededSchedule($schedule, $entry->getId());
         $this->em->flush();
         $this->seedSlots($schedule);
+        // Lot 5 : une version terminée porte la copie du froid de son plan ; « Charger » la lit.
+        $states = self::getContainer()->get(PlanStates::class);
+        $states->store($schedule, $states->capture($schedule->getSchedulePlanId()));
 
         return $schedule;
     }

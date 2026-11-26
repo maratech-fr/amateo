@@ -223,8 +223,7 @@ jamais touchés) ·
 `Integration/Api/GenerationRefusesACoachInTwoPlacesTest` (axe generation pipeline : un coach seul à deux endroits en même temps refuse la génération sur les guichets, sans passer par le récap ; témoin : même gymnase, la génération part ; cas « deux coachs » : un second coach qui tient la séance laisse partir la génération, un coach seul est refusé ; cas « groupe » : une séance commune DÉCLARÉE relaie et la génération part, la même case sans groupe ne prête aucun coach) ·
 `Integration/Api/GenerationRefusesARecapBlockerTest` (axes generation pipeline + constraint semantics : ce que le Récap dit bloquant, `/generate`, `/regenerate` et `/fill` le refusent aussi, 422 `blocker: true`, motif du Récap tel quel, rien en file ; orphelin sur regenerate, sur-réservation au volume de période, séances verrouillées comptées avec les réservations (une case posée sur sa propre réservation compte une fois ; une équipe de groupe garde les seules réservations ; `/generate` et `/regenerate` comptent les verrous, le comblement seulement les réservations), épingles du comblement ; témoins : mêmes décors sains, 202 ; un build qui lève laisse le moteur trancher) ·
 `Integration/Command/DedupeSnapshotPinsCommandTest` (axe generation pipeline : la commande obligatoire après déploiement répare les snapshots doublés et recalcule l'empreinte, y compris sous un ancien contrat) ·
-`Integration/Service/StructureRestorerTest` (axes *planning lifecycle* + *tenant isolation* : « Charger » rend la structure de la version ; la ligne d'absence d'un coach absent de la photo part, un coach présent garde la sienne, un coach ramené plus tard revient sans elle ; lot conception 3 PR 4 : un gymnase supprimé revient sur son lieu, adresse et position comprises) ·
-`Security/RgpdExportTest` (axe *tenant isolation*, export : portabilité du compte et du club ; un coach supprimé ou retiré par « Charger » sort de l'export ; l'effacement ne touche ni un autre club au même identifiant ni une autre saison) ·
+`Security/RgpdExportTest` (axe *tenant isolation*, export : portabilité du compte et du club ; un coach supprimé sort de l'export ; « Charger » ne retire aucun coach ni aucune ligne d'absence, du club chargé comme d'un autre club au même identifiant) ·
 `Integration/Command/NormalizeTeamCoachSnapshotsCommandTest` (axe *planning lifecycle* : après le retrait de « coach obligatoire », la commande réaligne une fois les empreintes depuis les snapshots, sur le socle et les périodes : aucun faux « périmé », une structure vraiment changée reste périmée. Elle saute et signale un club en génération en relisant le verrou avant chaque version, n'écrit que si une clé a été retirée, purge le cache avant et après mais jamais en essai à blanc, nomme une version en échec, et se rejoue sans effet) ·
 `Integration/Command/PruneUnreadSnapshotFieldsCommandTest` (axes *planning lifecycle*, *generation pipeline* et *tenant isolation* : après l'allègement du contrat moteur, la commande lancée par la mise en prod retire du snapshot les seuls champs que le moteur ne lit pas et recalcule l'empreinte, contraintes triées, sur le socle, les périodes et les versions de comblement : aucun faux « périmé », une structure vraiment changée reste périmée. Le décor ancien vient d'une liste de clés écrite dans le test, jamais de la constante de la commande. Une version en cours ou un brouillon n'est jamais touché, même sans verrou ; un club en génération est sauté et signalé, une version en échec nommée, l'échéance `--max-seconds` arrête entre deux versions, le résumé sort en `[OK]` seulement quand tout est fait ; chaque club n'est lu et écrit que sous son contexte, relâché après un échec ou l'échéance ; un envoi mis en cache par le code d'avant n'est jamais resservi) ·
 `Integration/LoadedVersionLocksOnlyTest` (axes generation pipeline + planning lifecycle : seuls les verrous de la version chargée partent au moteur — un verrou retiré ne revient pas d'une version antérieure, un déplacement ne laisse pas repartir l'ancienne case, consulter une autre version ne pèse rien ; régénérer repart de la chargée et le dit ; le worker échoue si la source d'un plan de saison a disparu) ·
@@ -412,7 +411,7 @@ l'envoi au moteur) ·
 occupations suivent la vie des grilles : copie à la naissance d'un plan de période, « Reprendre » et
 « Vider » limités au gymnase visé, copie vers un plan frère sans doublon [purge des réglages ancrés],
 cascade à la suppression du plan, saison intacte à la validation/réouverture du socle et au
-chargement d'une version, dormantes avec leur gymnase, passage de saison, purge de saison, impact de
+chargement d'une version, passage de saison, purge de saison, impact de
 suppression d'un gymnase. Chute attendue si l'occupation sort de la purge des réglages ancrés [cas
 plan frère] ou si le chargement d'une version les efface) ·
 `Integration/EngineRequestReferenceTest` (axes *generation pipeline* + *backend↔engine contract*, lot
@@ -436,6 +435,18 @@ PR 2 — l'empreinte du plan que l'écran compare pour dire « périmé » suit 
 d'obligatoire à souhaitée, ou changer la tolérance, la change, matrice saisie ou non ; elle ignore le temps de
 trajet, libre : le premier saisi puis corrigé ne la change pas. Chute attendue si la règle sort de l'empreinte
 ou si la présence de la matrice y entre) ·
+`Integration/Plans/LoadVersionTest` (axes *planning lifecycle* + *périmètre engagé*, lot conception 5 PR 3 —
+« Charger » remet l'état de travail de son plan d'après la copie de la version : rang, catégorie, niveau d'une
+équipe existante et « divisible » d'un gymnase reviennent, aucune équipe, aucun gymnase, aucun coach ni aucune
+catégorie ne naît ni ne part, un gymnase imposé, une catégorie, une équipe, un gymnase ou un coach supprimés depuis
+ne reviennent pas et ne laissent rien en attente, une équipe créée depuis garde sa ligne ; charger le socle laisse
+les lignes d'une période, charger une période laisse le socle ; refus sans rien écrire si une équipe engagée
+changerait de niveau ; une retouche de planning tient la copie de la version chargée à jour, ligne par ligne.
+Chute attendue si un chargement ramène une suppression, écrit dans un autre plan ou change le niveau d'une équipe
+engagée) ·
+`Security/PlanStateTenantIsolationTest` (axe *tenant isolation*, test d'abus, lot conception 5 PR 3 — une copie
+d'état qui cite l'équipe, la règle ou la ligne d'un autre club n'écrit rien chez lui et ne fait naître aucune ligne
+qui le désigne. Chute attendue si « Charger » écrit une ligne désignée par identifiant sans vérifier son club) ·
 `Integration/Migration/Lot4MigrationChainTest` (axe *generation pipeline*, lot conception 4 PR 1 — le décor
 des quinze références, écrit en SQL dans le schéma figé d'avant le lot 4 [`tests/Fixtures/lot-4/`], chargé
 dans une base dédiée par référence, donne les mêmes demandes une fois toutes les migrations jouées ; la

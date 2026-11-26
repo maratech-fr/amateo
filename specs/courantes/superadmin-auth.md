@@ -116,7 +116,7 @@ les primitives TOTP et le fail-closed audit ont leurs tests unitaires.
   en file de toute génération (`/generate`, `/regenerate`, `/fill` —
   `ClubActivityTrace::markGeneration`, dans la transaction du guichet, après ses gardes : une
   génération refusée ne marque pas), à l'horloge réelle, compte exclu compris ; « Charger une
-  version » (`/regenerate-from`, aucun solve) n'est pas une génération. La rétention six mois,
+  version » (`/load`, aucun solve) n'est pas une génération. La rétention six mois,
   le partitionnement mensuel et la purge sont reportés au lot d'exploitation dédié.
 
 ## Supervision read-only SA2 — API parc et solveur

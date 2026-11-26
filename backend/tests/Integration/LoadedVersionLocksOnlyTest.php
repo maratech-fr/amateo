@@ -38,7 +38,6 @@ use App\Service\ScheduleResultImporter;
 use App\Service\SeasonResolver;
 use App\Service\SolverMetricsMapper;
 use App\Service\SolverMetricsRecorder;
-use App\Service\StructureSnapshotter;
 use App\Service\TenantConnectionContext;
 use App\Tests\ChoosesPlanVersionTrait;
 use App\Tests\CreatesPeopleAndPlacesTrait;
@@ -508,7 +507,6 @@ final class LoadedVersionLocksOnlyTest extends WebTestCase
             new SolverMetricsMapper,
             $container->get(ClubGenerationLock::class),
             $container->get(TenantConnectionContext::class),
-            $container->get(StructureSnapshotter::class),
             $container->get(SchedulePlanProvisioner::class),
             $container->get(OutputCreditLedger::class),
             $container->get(PlanStates::class),

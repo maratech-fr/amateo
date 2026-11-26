@@ -266,8 +266,8 @@ final class SchedulePlanProvisioner
      * C'est aussi LA VERSION CHARGÉE : la seule qui se modifie ({@see VersionEditability}) et dont les
      * verrous partent au moteur, plan de saison comme plan de période.
      *
-     * V1bis — un seul foyer : le POINTEUR `schedule_plan.lock_source_schedule_id` (posé par load-locks
-     * pour une période, par « Charger cette version » pour le socle, re-pointé à chaque nouvelle
+     * V1bis — un seul foyer : le POINTEUR `schedule_plan.lock_source_schedule_id` (posé par « Charger »
+     * pour tout plan, re-pointé à chaque nouvelle
      * version COMPLETED ; lot 4 : la saison n'a plus de pointeur à elle) FAIT FOI
      * s'il désigne une version EXISTANTE, COMPLETED et DU MÊME plan ; sinon (pointeur nul ou devenu
      * incohérent — version supprimée/échouée) on retombe sur la DERNIÈRE version COMPLETED du plan.
@@ -325,10 +325,10 @@ final class SchedulePlanProvisioner
 
     /**
      * V1bis — POSE le pointeur de source des verrous d'un plan sur `$scheduleId` : « Charger »
-     * (load-locks) le pose sur la version choisie par le gestionnaire ; la complétion d'une
+     * (`POST /api/schedules/{id}/load`) le pose sur la version choisie par le gestionnaire ; la complétion d'une
      * génération le re-pointe sur la version fraîchement terminée (générer devient la source,
      * patron de l'auto-★ saison). SQL brut, comme {@see choose} : le plan n'est pas chargé dans
-     * l'UnitOfWork sur ces chemins (worker de génération, contrôleur load-locks). On ne touche PAS
+     * l'UnitOfWork sur ces chemins (worker de génération, contrôleur de « Charger »). On ne touche PAS
      * `version` (l'optimistic-lock de SchedulePlan) : le pointeur n'est lu que par la maison
      * ci-dessus, aucun lecteur n'en dérive un état de concurrence. RLS scope le club.
      */
@@ -343,7 +343,7 @@ final class SchedulePlanProvisioner
     /**
      * La version CHOISIE (« le pointeur », = « validé ») d'un plan DONNÉ PAR SON ID — SEASON comme
      * PÉRIODE. null = espace de travail (plan non validé). Sœur par-id de {@see chosenOfPeriodPlan}
-     * (par entrée de calendrier) : le contrôleur load-locks n'a que le planId de la version.
+     * (par entrée de calendrier) : le contrôleur de « Charger » n'a que le planId de la version.
      * SQL brut, filter-free ; RLS scope le club.
      */
     public function chosenScheduleIdOfPlan(string $schedulePlanId): ?string

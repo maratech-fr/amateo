@@ -38,7 +38,6 @@ use App\Service\ScheduleProgressPublisher;
 use App\Service\ScheduleResultImporter;
 use App\Service\SolverMetricsMapper;
 use App\Service\SolverMetricsRecorder;
-use App\Service\StructureSnapshotter;
 use App\Service\TenantConnectionContext;
 use App\Tests\ChoosesPlanVersionTrait;
 use App\Tests\ProvisionsPeriodPlanTrait;
@@ -398,7 +397,6 @@ final class ReservationPinsNotDoubledTest extends KernelTestCase
             new SolverMetricsMapper,
             $container->get(ClubGenerationLock::class),
             $container->get(TenantConnectionContext::class),
-            $container->get(StructureSnapshotter::class),
             $this->provisioner,
             $container->get(OutputCreditLedger::class),
             $container->get(PlanStates::class),

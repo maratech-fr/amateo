@@ -6,16 +6,15 @@ namespace App\Tests\Security;
 
 use App\Controller\GenerateScheduleController;
 use App\Controller\RegenerateController;
-use App\Controller\RegenerateFromVersionController;
 use App\Controller\ValidateScheduleController;
 use App\Entity\Club;
 use App\Entity\ClubUser;
 use App\Entity\Schedule;
-use App\Entity\ScheduleStructureSnapshot;
 use App\Entity\Season;
 use App\Entity\User;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
+use App\Plans\PlanStates;
 use App\Service\SchedulePlanProvisioner;
 use App\Service\SeasonResolver;
 use App\Service\SocleGuard;
@@ -47,13 +46,13 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
  * de la saison (une garde qui lit hors verrou n'est qu'un TOCTOU) :
  *   - {@see GenerateScheduleController}
  *   - {@see RegenerateController}
- *   - {@see RegenerateFromVersionController}
+ *   - la route `POST /api/schedules/{id}/load` (« Charger », lot conception 5 PR 3)
  *
  * Les états sont construits À LA MAIN (une version pointée + une sœur COMPLETED seedée par
  * la couche entité) pour que ce soit BIEN la nouvelle assertion qui morde, jamais une garde
  * antérieure (statut, isSeasonSchedule, isChosen, version en vol) — d'où l'assertion sur le
- * message « est en vigueur ». La sœur reçoit une photo de structure pour que
- * regenerate-from franchisse readSnapshot et atteigne l'assertion.
+ * message « est en vigueur ». La sœur reçoit la copie du froid de son plan pour que
+ * « Charger » franchisse la lecture de la copie et atteigne l'assertion.
  *
  * PREUVE DE CHUTE (obligatoire, faite le 2026-07-31) : les trois assertions
  * `assertSeasonPlanNotChosen` ont été COMMENTÉES dans les trois contrôleurs, puis ce test
@@ -125,12 +124,12 @@ final class SeasonPlanInForceTest extends WebTestCase
         self::assertStringContainsString('est en vigueur', (string) $this->client->getResponse()->getContent());
     }
 
-    /** Porte regenerate-from — socle pointé + sœur COMPLETED (avec photo) : charger la sœur → 409 « est en vigueur ». */
-    public function testRegeneratingFromASiblingWhileTheSocleIsInForceIsRefused(): void
+    /** Porte « Charger » — socle pointé + sœur COMPLETED (avec copie) : charger la sœur → 409 « est en vigueur » (jusqu'à la PR 5). */
+    public function testLoadingASiblingWhileTheSocleIsInForceIsRefused(): void
     {
         $sibling = $this->seedChosenSocleAndSibling();
 
-        $this->request('POST', '/api/schedules/' . $sibling->getId() . '/regenerate-from');
+        $this->request('POST', '/api/schedules/' . $sibling->getId() . '/load');
 
         self::assertResponseStatusCodeSame(409);
         self::assertStringContainsString('est en vigueur', (string) $this->client->getResponse()->getContent());
@@ -156,13 +155,13 @@ final class SeasonPlanInForceTest extends WebTestCase
         self::assertResponseStatusCodeSame(202, 'sans socle pointé, la régénération nominale survit');
     }
 
-    /** Non-régression : rien de pointé → regenerate-from passe (200). */
-    public function testRegeneratingFromAWorkspaceVersionStillWorks(): void
+    /** Non-régression : rien de pointé → « Charger » passe (200). */
+    public function testLoadingAWorkspaceVersionStillWorks(): void
     {
         $version = $this->seedSeasonVersion(ScheduleStatus::COMPLETED);
         $this->seedSnapshot($version);
 
-        $this->request('POST', '/api/schedules/' . $version->getId() . '/regenerate-from');
+        $this->request('POST', '/api/schedules/' . $version->getId() . '/load');
 
         self::assertResponseStatusCodeSame(200, 'sans socle pointé, le chargement d’une version nominal survit');
     }
@@ -221,7 +220,7 @@ final class SeasonPlanInForceTest extends WebTestCase
     {
         $this->settleSeasonPlan($this->season); // le plan SEASON pointe une version = en vigueur
         $sibling = $this->seedSeasonVersion(ScheduleStatus::COMPLETED);
-        $this->seedSnapshot($sibling); // pour que regenerate-from franchisse readSnapshot
+        $this->seedSnapshot($sibling); // pour que « Charger » franchisse la lecture de la copie
 
         return $sibling;
     }
@@ -241,16 +240,11 @@ final class SeasonPlanInForceTest extends WebTestCase
         return $schedule;
     }
 
-    /** Une photo de structure (vide) pour que regenerate-from ne 409 pas sur readSnapshot. */
+    /** La copie du froid de son plan, comme toute version terminée, pour que « Charger » ne 409 pas faute de copie. */
     private function seedSnapshot(Schedule $schedule): void
     {
-        $snapshot = (new ScheduleStructureSnapshot)
-            ->setClubId($this->club->getId())
-            ->setSeasonId($schedule->getSeasonId())
-            ->setScheduleId($schedule->getId())
-            ->setData([]);
-        $this->em->persist($snapshot);
-        $this->em->flush();
+        $states = self::getContainer()->get(PlanStates::class);
+        $states->store($schedule, $states->capture($schedule->getSchedulePlanId()));
     }
 
     private function seasonPlanId(): string

@@ -13,7 +13,6 @@ use App\Entity\CoachWishCampaign;
 use App\Entity\CoachWishToken;
 use App\Entity\Person;
 use App\Entity\Place;
-use App\Entity\ScheduleStructureSnapshot;
 use App\Entity\Season;
 use App\Entity\Team;
 use App\Entity\Venue;
@@ -86,8 +85,6 @@ final class PurgeSeasonsCommandTest extends KernelTestCase
         self::assertNull($this->em->getRepository(CoachWish::class)->find($this->oldWishId));
         self::assertNull($this->em->getRepository(CoachWishCampaign::class)->find($this->oldCampaignId), 'la campagne de collecte N-2 est purgée');
         self::assertNull($this->em->getRepository(CoachWishToken::class)->find($this->oldTokenId), 'son token part par la FK CASCADE');
-        // planning-versions D2: the structure photos die with their season.
-        self::assertCount(0, $this->em->getRepository(ScheduleStructureSnapshot::class)->findBy(['seasonId' => $old->getId()]));
         // Amendement 2026-09-20 : les APPARIEMENTS de gymnase sont club-scoped (sans saison) —
         // une purge de SAISON ne les touche jamais (ils survivent au changement de saison). Le
         // décrément P4-209(b) du compteur partagé a suivi ce grain et vit désormais à

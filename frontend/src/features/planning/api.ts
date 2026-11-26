@@ -83,24 +83,22 @@ export type SchedulePlanType = "SEASON" | "CLOSURE" | "HOLIDAY";
  * un geste ne s'offre que sur `=== true`, jamais par défaut permissif.
  *  - canDelete         : supprimer cette version (choisie / en vol / seule terminée de saison → false)
  *  - canValidate       : la valider (terminée, aucune sœur en vol ; la choisie reste validable — no-op)
- *  - canRegenerateFrom : recharger sa structure (socle terminé non-choisi, rien en cours, photo présente)
- *  - canLoadLocks      : V1bis — « Charger » pour une PÉRIODE : poser ses verrous comme données en cours
- *                        (période terminée, plan non validé, rien en cours, pas déjà la source)
+ *  - canLoad           : « Charger » cette version, tout plan (terminée, plan non validé, rien en cours,
+ *                        chargeable, pas déjà la version chargée)
  *  - versionsDeletedOnValidate : nb de sœurs supprimées si l'on valide (annoncé avant le clic)
  *  - overlaysDroppedOnValidate : nb de plannings de période détruits si l'on valide (= count du 409 overlays_exist)
  */
 export interface ScheduleCapabilities {
   canDelete: boolean;
   canValidate: boolean;
-  canRegenerateFrom: boolean;
-  canLoadLocks: boolean;
+  canLoad: boolean;
   versionsDeletedOnValidate: number;
   overlaysDroppedOnValidate: number;
   /** Absent d'un cache antérieur : aucun motif n'est alors inventé, le serveur refusera seul. */
   canEdit?: boolean;
   editBlockedReason?: string | null;
   /** Pourquoi cette version ne se charge pas, mot pour mot le refus du serveur. */
-  regenerateFromBlockedReason?: string | null;
+  loadBlockedReason?: string | null;
 }
 // isSeasonPlanType vit dans ./lib/versions (module PUR, jamais mocké) : le définir ici,
 // où plusieurs tests posent un vi.mock("./api") manuel, le rendait indéfini sous le mock.
@@ -1178,17 +1176,12 @@ export async function reopenSchedule(id: string, opts?: { confirmDeleteOverlays?
 export const deleteSchedule = (id: string): Promise<void> => api.delete(`schedules/${id}`).then(() => undefined);
 
 /**
- * planning-versions D3: restore this version's structure photo and queue a
- * fresh generation → a new linear version. Returns the new schedule id.
+ * « Charger cette version », tout plan : le serveur remet les réglages du plan comme à la génération de
+ * cette version et en fait la version chargée. Ne génère PAS — la prochaine « Régénérer » repartira
+ * d'elle, ses verrous compris. Un refus (409 : non terminée, génération en cours, plan validé, version
+ * qui ne se charge pas ; 404 : autre club) remonte tel quel.
  */
-export const regenerateFromVersion = (id: string): Promise<{ id: string }> => api.post(`schedules/${id}/regenerate-from`).json();
-
-/**
- * V1bis — « Charger » pour un plan de PÉRIODE : pose les verrous de cette version comme les
- * données EN COURS de son plan (le serveur pose le pointeur). Ne génère PAS — la prochaine
- * « Régénérer » repartira de ces verrous. Un refus (409 : non-période / non terminée / plan validé /
- * génération en cours ; 404 : autre club) remonte tel quel. */
-export const loadLocks = (id: string): Promise<{ id: string }> => api.post(`schedules/${id}/load-locks`).json();
+export const loadVersion = (id: string): Promise<{ id: string; status: string }> => api.post(`schedules/${id}/load`).json();
 /** planning-versions: the plain "Régénérer" creates a NEW linear version (V2…)
  *  from the current structure, carrying the version's HARD-locked slots. */
 export const regenerate = (id: string): Promise<{ id: string; status: string; sourceScheduleId: string | null }> => api.post(`schedules/${id}/regenerate`).json();

@@ -21,7 +21,6 @@ use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
 use App\Plans\PlanComposition;
 use App\Service\ClubGenerationLock;
-use App\Service\SchedulePlanProvisioner;
 use App\Tests\ChoosesPlanVersionTrait;
 use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\CreatesPeriodPlanTrait;
@@ -44,8 +43,8 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
  *  2. créer/éditer un créneau de grille (VenueTrainingSlotStateProcessor) ou un réglage de
  *     période (VenuePeriodOverrideStateProcessor) écrit `grid.changed` avec ids + jour/heures
  *     (ou mode) avant/après ;
- *  3. « Charger » (POST load-locks → SchedulePlanProvisioner::pointLockSource) écrit UN SEUL
- *     événement agrégé portant un COMPTEUR — jamais N lignes (une par verrou chargé) ;
+ *  3. (« Charger » écrit UN SEUL événement agrégé portant un compteur : depuis le lot conception 5 PR 3, la
+ *     seule route de chargement, socle comme période, est prouvée par `Integration/Api/LoadVersionAuditTest`) ;
  *  4. supprimer un créneau de grille reste tracé par l'`entity.deleted` existant du
  *     choke-point AbstractStateProcessor::processDelete, SANS doublon `grid.changed` ;
  *  5. transversal : aucun nom ni e-mail ne voyage dans `details` (ids/niveaux/compteurs seuls).
@@ -68,8 +67,6 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
  *   - grid.changed (foyer VenuePeriodOverrideStateProcessor POST/PUT) : entity_type
  *     'VenuePeriodOverride', entity_id = id du réglage ; details = { "venueId", "schedulePlanId",
  *     "before": null|<mode>, "after": null|<mode> } ;
- *   - lock.changed AGRÉGÉ (chemin « Charger ») : EXACTEMENT une ligne, entity_id = id de la version
- *     chargée ; details = { "count": <int = nb de créneaux HARD de la version chargée>, … } ;
  *   - processDelete d'un VenueTrainingSlot : garder `entity.deleted` (choke-point existant), ne
  *     PAS émettre `grid.changed`.
  * Un écart MÉCANIQUE de nom de clé (ex. `after` → `to`) est adapté par 💊 NEO (option A), jamais
@@ -242,36 +239,6 @@ final class GridLockAuditTest extends WebTestCase
         self::assertNotNull($changeRow, 'une des deux traces porte le mode avant changement');
         self::assertSame('BLANK', $changeRow['before'] ?? null, 'mode AVANT');
         self::assertSame('DISABLED', $changeRow['after'] ?? null, 'mode APRÈS');
-    }
-
-    /**
-     * Promesse 3 — « Charger » une version écrit UN SEUL événement agrégé portant un compteur,
-     * jamais une ligne par verrou chargé.
-     */
-    public function testLoadingLocksRecordsASingleAggregatedEventWithACounter(): void
-    {
-        $planId = $this->createPeriodPlan($this->club->getId(), $this->season->getId());
-        // v1 porte DEUX verrous HARD ; v2 (dernière COMPLETED) est la source par défaut.
-        $v1 = $this->periodVersion($planId, ScheduleStatus::COMPLETED);
-        $this->createSlot($v1, 1, '18:00', lockLevel: LockLevel::HARD);
-        $this->createSlot($v1, 2, '20:00', lockLevel: LockLevel::HARD);
-        $v2 = $this->periodVersion($planId, ScheduleStatus::COMPLETED);
-        $this->em->flush();
-
-        $this->client->request('POST', "/api/schedules/{$v1->getId()}/load-locks", [], [], $this->headers());
-        self::assertResponseStatusCodeSame(200, 'v1 n\'est pas la source (v2 l\'est) → « Charger » agit');
-
-        $rows = $this->auditRows('lock.changed');
-        self::assertCount(1, $rows, '« Charger » n\'écrit JAMAIS une ligne par verrou — un seul événement agrégé');
-        self::assertSame($v1->getId(), $rows[0]['entity_id'], 'l\'événement désigne la version chargée');
-
-        $details = $this->details($rows[0]);
-        self::assertSame(2, $details['count'] ?? null, 'le compteur = nombre de verrous HARD de la version chargée');
-
-        // Garde-fou de non-régression du sujet : la maison unique renvoie bien v1 comme source.
-        $this->scopeGucToClub($this->club->getId());
-        self::assertSame($v1->getId(), $this->provisioner()->lockSourceScheduleIdOfPlan($planId));
-        $this->clearGuc();
     }
 
     /**
@@ -486,11 +453,6 @@ final class GridLockAuditTest extends WebTestCase
         $this->token = $container->get(JWTTokenManagerInterface::class)->create($this->manager);
     }
 
-    private function provisioner(): SchedulePlanProvisioner
-    {
-        return self::getContainer()->get(SchedulePlanProvisioner::class);
-    }
-
     private function createSchedule(ScheduleStatus $status): Schedule
     {
         $schedule = (new Schedule)->setClubId($this->club->getId())->setSeasonId($this->season->getId())
@@ -499,16 +461,6 @@ final class GridLockAuditTest extends WebTestCase
         // persiste et numérote (plan AVANT persist).
         $this->linkSeededSchedule($schedule);
         $this->em->flush();
-
-        return $schedule;
-    }
-
-    private function periodVersion(string $planId, ScheduleStatus $status): Schedule
-    {
-        $schedule = (new Schedule)->setClubId($this->club->getId())->setSeasonId($this->season->getId())
-            ->setName('V')->setStatus($status)->setSchedulePlanId($planId);
-        $this->em->persist($schedule);
-        $this->provisioner()->linkSchedule($schedule);
 
         return $schedule;
     }

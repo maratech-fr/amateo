@@ -117,7 +117,7 @@ final class EngineRequestsRecordCommandTest extends KernelTestCase
     /** Tables qu'un enregistrement ne doit jamais toucher (lues sous la RLS du club du décor). */
     private const array TRACE_TABLES = [
         'club', 'season', 'schedule', 'schedule_plan', 'schedule_slot_template', 'schedule_diagnostic',
-        'schedule_structure_snapshot', 'calendar_entry', 'reservation', 'team', '"constraint"', 'fixture',
+        'calendar_entry', 'reservation', 'team', '"constraint"', 'fixture',
         'match_placement_run', 'audit_log', 'competition', 'conflict_resolution', 'conflict_mailing',
     ];
 

@@ -151,10 +151,9 @@ class ScheduleResource
     public ?int $generatedTeamCount = null;
 
     /**
-     * planning-versions D3: does this version carry a restorable structure photo
-     * (ScheduleStructureSnapshot, D2)? Only then can "Charger cette version"
-     * succeed — a plan generated before D2 has a solver payload (so
-     * generatedTeamCount is set) but no photo, and must not offer the action.
+     * Does this version carry a copy of its plan's state? Only then can "Charger
+     * cette version" succeed — a version born before versions kept their state
+     * has a solver payload (so generatedTeamCount is set) but no copy.
      * Set by ScheduleStateProvider (batched); false on the bare fromEntity path.
      */
     #[Groups(['read'])]

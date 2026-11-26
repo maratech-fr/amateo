@@ -21710,15 +21710,15 @@
                 "summary": "Fill the sessions to relocate on a period version (partial solve, placed sessions kept)"
             }
         },
-        "/api/schedules/{id}/load-locks": {
+        "/api/schedules/{id}/load": {
             "post": {
-                "operationId": "postApiScheduleLoadLocks",
+                "operationId": "postApiScheduleLoad",
                 "tags": [
                     "Schedules"
                 ],
                 "responses": {
                     "200": {
-                        "description": "This period version is now the source of its plan locks \u2014 the next regeneration restarts from them. Does NOT generate."
+                        "description": "The plan settings are back to those of this version, which is now the loaded version of its plan (body: id, status). Does NOT generate."
                     },
                     "401": {
                         "description": "Unauthorized"
@@ -21727,10 +21727,10 @@
                         "description": "Resource not found"
                     },
                     "409": {
-                        "description": "Not a period version, version not completed, the period plan is validated (reopen first), or a generation is running for the club (body carries code=generation_in_progress)"
+                        "description": "Version not completed, a generation is running (code=generation_in_progress), the plan is validated (reopen first), or the version cannot be loaded (code=load_blocked, error names the reason)"
                     }
                 },
-                "summary": "Load a period version locks as the plan current data (sets the pointer, no solve)"
+                "summary": "Load a version: put the plan settings back to those of this version (no solve)"
             }
         },
         "/api/schedules/{id}/regenerate": {
@@ -21754,29 +21754,6 @@
                     }
                 },
                 "summary": "Regenerate this version in place"
-            }
-        },
-        "/api/schedules/{id}/regenerate-from": {
-            "post": {
-                "operationId": "postApiScheduleRegenerateFrom",
-                "tags": [
-                    "Schedules"
-                ],
-                "responses": {
-                    "202": {
-                        "description": "New version queued from the source version structure"
-                    },
-                    "401": {
-                        "description": "Unauthorized"
-                    },
-                    "409": {
-                        "description": "Version in force, or a generation is already running"
-                    },
-                    "429": {
-                        "description": "Club generation quota reached"
-                    }
-                },
-                "summary": "Create a new version from an existing one and regenerate it"
             }
         },
         "/api/schedules/{id}/reopen": {
@@ -34105,7 +34082,7 @@
                         ]
                     },
                     "hasStructurePhoto": {
-                        "description": "planning-versions D3: does this version carry a restorable structure photo\n(ScheduleStructureSnapshot, D2)? Only then can \"Charger cette version\"\nsucceed \u2014 a plan generated before D2 has a solver payload (so\ngeneratedTeamCount is set) but no photo, and must not offer the action.",
+                        "description": "Does this version carry a copy of its plan's state? Only then can \"Charger\ncette version\" succeed \u2014 a version born before versions kept their state\nhas a solver payload (so generatedTeamCount is set) but no copy.",
                         "default": false,
                         "type": "boolean"
                     },
@@ -34331,7 +34308,7 @@
                         ]
                     },
                     "hasStructurePhoto": {
-                        "description": "planning-versions D3: does this version carry a restorable structure photo\n(ScheduleStructureSnapshot, D2)? Only then can \"Charger cette version\"\nsucceed \u2014 a plan generated before D2 has a solver payload (so\ngeneratedTeamCount is set) but no photo, and must not offer the action.",
+                        "description": "Does this version carry a copy of its plan's state? Only then can \"Charger\ncette version\" succeed \u2014 a version born before versions kept their state\nhas a solver payload (so generatedTeamCount is set) but no copy.",
                         "default": false,
                         "type": "boolean"
                     },
@@ -34516,7 +34493,7 @@
                                 ]
                             },
                             "hasStructurePhoto": {
-                                "description": "planning-versions D3: does this version carry a restorable structure photo\n(ScheduleStructureSnapshot, D2)? Only then can \"Charger cette version\"\nsucceed \u2014 a plan generated before D2 has a solver payload (so\ngeneratedTeamCount is set) but no photo, and must not offer the action.",
+                                "description": "Does this version carry a copy of its plan's state? Only then can \"Charger\ncette version\" succeed \u2014 a version born before versions kept their state\nhas a solver payload (so generatedTeamCount is set) but no copy.",
                                 "default": false,
                                 "type": "boolean"
                             },
@@ -34564,10 +34541,7 @@
                     "canValidate": {
                         "type": "boolean"
                     },
-                    "canRegenerateFrom": {
-                        "type": "boolean"
-                    },
-                    "canLoadLocks": {
+                    "canLoad": {
                         "type": "boolean"
                     },
                     "versionsDeletedOnValidate": {
@@ -34585,7 +34559,7 @@
                             "null"
                         ]
                     },
-                    "regenerateFromBlockedReason": {
+                    "loadBlockedReason": {
                         "type": [
                             "string",
                             "null"
@@ -34602,10 +34576,7 @@
                     "canValidate": {
                         "type": "boolean"
                     },
-                    "canRegenerateFrom": {
-                        "type": "boolean"
-                    },
-                    "canLoadLocks": {
+                    "canLoad": {
                         "type": "boolean"
                     },
                     "versionsDeletedOnValidate": {
@@ -34623,7 +34594,7 @@
                             "null"
                         ]
                     },
-                    "regenerateFromBlockedReason": {
+                    "loadBlockedReason": {
                         "type": [
                             "string",
                             "null"
@@ -34640,10 +34611,7 @@
                     "canValidate": {
                         "type": "boolean"
                     },
-                    "canRegenerateFrom": {
-                        "type": "boolean"
-                    },
-                    "canLoadLocks": {
+                    "canLoad": {
                         "type": "boolean"
                     },
                     "versionsDeletedOnValidate": {
@@ -34661,7 +34629,7 @@
                             "null"
                         ]
                     },
-                    "regenerateFromBlockedReason": {
+                    "loadBlockedReason": {
                         "type": [
                             "string",
                             "null"

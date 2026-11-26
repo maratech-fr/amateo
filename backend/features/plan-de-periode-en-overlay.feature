@@ -105,6 +105,16 @@ Fonctionnalité: Un plan de période se génère en overlay, sur sa propre grill
     Quand je remets le Gymnase Nord en service pour les vacances
     Alors le Gymnase Nord a retrouvé sa grille des vacances et ne figure plus parmi les réglages des vacances
 
+  Scénario: Charger une version des vacances remet ses équipes écartées, ses séances propres, sa grille et ses verrous
+    « Charger » vaut pour une période comme pour la saison : les réglages du plan des vacances reviennent à ceux de
+    la version, et la prochaine régénération repart de ses verrous.
+    Étant donné un petit club réaliste dont le planning de saison est en vigueur, et des vacances à venir
+    Et une version 1 des vacances où les SF1 sont écartées, les U17M1 ont 1 séance, le Gymnase Sud est hors service et deux séances sont verrouillées
+    Et une version 2 des vacances générée après avoir rendu aux SF1 et aux U17M1 leurs réglages de saison, remis le Gymnase Sud en service et retiré un créneau du Gymnase Nord
+    Quand je charge la version 1 des vacances
+    Alors les équipes, la grille et les gymnases des vacances sont ceux de la version 1
+    Et les verrous de la version 1 sont ceux d'où repartira la prochaine régénération
+
   Scénario: Je re-date l'incident découpé : l'aperçu m'annonce ce qui change, je confirme
     Étant donné le club de démonstration, connecté, dont le planning de saison est en vigueur
     Et une fermeture à venir découpée en trois semaines-segments, chacune avec son plan

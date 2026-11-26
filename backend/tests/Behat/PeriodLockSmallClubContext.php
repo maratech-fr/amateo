@@ -170,12 +170,13 @@ final class PeriodLockSmallClubContext extends BaseContext
         $this->lockedCells = $this->lockFreeSmallClubSessions($this->sourceVersionId, 2);
     }
 
-    #[When('je charge les verrous de cette version du petit club')]
+    /** « Charger » (lot conception 5, PR 3) : la route unique remet les réglages du plan et fait de ses verrous la source. */
+    #[When('je charge cette version du petit club')]
     public function jeChargeLesVerrous(): void
     {
-        $loaded = $this->apiPost(\sprintf('schedules/%s/load-locks', $this->sourceVersionId), [], $this->smallClubToken);
+        $loaded = $this->apiPost(\sprintf('schedules/%s/load', $this->sourceVersionId), [], $this->smallClubToken);
         if (200 !== $loaded['status']) {
-            throw new RuntimeException(\sprintf('« Charger » les verrous a répondu %d (200 attendu)', $loaded['status']));
+            throw new RuntimeException(\sprintf('« Charger » la version a répondu %d (200 attendu) — %s', $loaded['status'], json_encode($loaded['json'], \JSON_UNESCAPED_UNICODE)));
         }
     }
 

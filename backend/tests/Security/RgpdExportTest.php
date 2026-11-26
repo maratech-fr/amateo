@@ -16,10 +16,9 @@ use App\Entity\User;
 use App\Enum\CalendarEntryKind;
 use App\Enum\CalendarEntryPeriodType;
 use App\Enum\ScheduleStatus;
-use App\Enum\SeasonStatus;
 use App\Plans\PlanComposition;
+use App\Plans\PlanStates;
 use App\Service\SchedulePlanProvisioner;
-use App\Service\StructureSnapshotter;
 use App\Storage\FeedbackScreenshotStorage;
 use App\Tests\CreatesPeopleAndPlacesTrait;
 use App\Tests\ProvisionsPeriodPlanTrait;
@@ -131,29 +130,14 @@ final class RgpdExportTest extends WebTestCase
     }
 
     /**
-     * Charger une version sans Karim le sort de l'export RGPD : l'identifiant y est avant le
-     * chargement (témoin), plus après. Angle unitaire : `Integration/Service/StructureRestorerTest`.
+     * Lot conception 5, PR 3 : « Charger » ne retire plus aucun coach (§3.4 du plan), donc n'efface aucune ligne
+     * d'absence — ni du club chargé, ni d'un autre club au même identifiant, ni d'une autre saison. Karim, arrivé après
+     * la version, reste dans la doléance et dans l'export. Remplace les trois cas « charger retire un coach », règle
+     * retirée par la PR 3 ; l'export sans un coach supprimé reste prouvé par le cas qui précède.
      */
-    public function testLoadingAVersionWithoutACoachRemovesHimFromTheClubExport(): void
+    public function testLoadingNeverRemovesACoachNorAnyOfHisStaffLines(): void
     {
         [$token, $clubId, $seasonId, $versionId, $karimId] = $this->seedLoadableVersionAndKarim('EXPL');
-        $this->seedWish($clubId, $seasonId, $karimId, 'U15');
-
-        $this->client->request('GET', '/api/club/export', [], [], ['HTTP_AUTHORIZATION' => 'Bearer ' . $token]);
-        self::assertResponseIsSuccessful();
-        self::assertStringContainsString($karimId, (string) $this->client->getResponse()->getContent(), 'témoin : l\'export porte Karim avant le chargement');
-
-        $this->load($token, $seasonId, $versionId);
-
-        $this->client->request('GET', '/api/club/export', [], [], ['HTTP_AUTHORIZATION' => 'Bearer ' . $token]);
-        self::assertResponseIsSuccessful();
-        self::assertStringNotContainsString($karimId, (string) $this->client->getResponse()->getContent(), 'l\'export ne porte plus l\'identifiant d\'un coach retiré par un chargement');
-    }
-
-    /** Abus (tenant) : le chargement d'un club n'efface jamais la ligne d'un AUTRE club portant le même identifiant de coach. */
-    public function testLoadingNeverErasesAStaffLineOfAnotherClub(): void
-    {
-        [$token, $clubId, $seasonId, $versionId, $karimId] = $this->seedLoadableVersionAndKarim('EXPM');
         $ownWish = $this->seedWish($clubId, $seasonId, $karimId, 'U15');
         [, $otherUser] = $this->registerVerified('EXPN');
         $otherClub = $this->clubIdOf($otherUser);
@@ -161,28 +145,11 @@ final class RgpdExportTest extends WebTestCase
 
         $this->load($token, $seasonId, $versionId);
 
-        self::assertStringNotContainsString($karimId, $this->staffLinesOf($clubId, $ownWish), 'la ligne du club chargé part');
-        self::assertStringContainsString($karimId, $this->staffLinesOf($otherClub, $otherWish), 'celle de l\'autre club reste');
-    }
-
-    /** Abus (saison) : charger une version de saison n'efface jamais la ligne d'une AUTRE saison du club. */
-    public function testLoadingNeverErasesAStaffLineOfAnotherSeason(): void
-    {
-        [$token, $clubId, $seasonId, $versionId, $karimId] = $this->seedLoadableVersionAndKarim('EXPO');
-        $ownWish = $this->seedWish($clubId, $seasonId, $karimId, 'U15');
-        $this->scopeGucToClub($clubId);
-        $other = (new Season)->setClubId($clubId)->setName('Saison voisine')->setStatus(SeasonStatus::DRAFT)
-            ->setStartDate(new DateTimeImmutable('2030-09-01'))->setEndDate(new DateTimeImmutable('2031-06-30'));
-        $this->em()->persist($other);
-        $this->em()->flush();
-        $otherSeasonId = $other->getId();
-        $this->em()->clear();
-        $otherWish = $this->seedWish($clubId, $otherSeasonId, $karimId, 'U17');
-
-        $this->load($token, $seasonId, $versionId);
-
-        self::assertStringNotContainsString($karimId, $this->staffLinesOf($clubId, $ownWish), 'la ligne de la saison chargée part');
-        self::assertStringContainsString($karimId, $this->staffLinesOf($clubId, $otherWish), 'celle de l\'autre saison reste');
+        self::assertStringContainsString($karimId, $this->staffLinesOf($clubId, $ownWish), 'la ligne d\'absence du club chargé reste');
+        self::assertStringContainsString($karimId, $this->staffLinesOf($otherClub, $otherWish), 'celle de l\'autre club aussi');
+        $this->client->request('GET', '/api/club/export', [], [], ['HTTP_AUTHORIZATION' => 'Bearer ' . $token]);
+        self::assertResponseIsSuccessful();
+        self::assertStringContainsString($karimId, (string) $this->client->getResponse()->getContent(), 'Karim, coach du club, reste dans son export');
     }
 
     public function testClubExportRequiresAManagementRole(): void
@@ -267,8 +234,8 @@ final class RgpdExportTest extends WebTestCase
         $em->persist($version);
         self::getContainer()->get(SchedulePlanProvisioner::class)->linkSchedule($version);
         $em->flush();
-        $snapshotter = self::getContainer()->get(StructureSnapshotter::class);
-        $snapshotter->store($version, $snapshotter->serialize($clubId, $seasonId));
+        $states = self::getContainer()->get(PlanStates::class);
+        $states->store($version, $states->capture($version->getSchedulePlanId()));
         $karim = $this->newCoach($clubId, $seasonId, 'Karim', 'Test');
         $em->persist($karim);
         $em->flush();
@@ -307,7 +274,7 @@ final class RgpdExportTest extends WebTestCase
 
     private function load(string $token, string $seasonId, string $versionId): void
     {
-        $this->client->request('POST', '/api/schedules/' . $versionId . '/regenerate-from', [], [], ['HTTP_AUTHORIZATION' => 'Bearer ' . $token, 'HTTP_X-Season-Id' => $seasonId]);
+        $this->client->request('POST', '/api/schedules/' . $versionId . '/load', [], [], ['HTTP_AUTHORIZATION' => 'Bearer ' . $token, 'HTTP_X-Season-Id' => $seasonId]);
         self::assertResponseIsSuccessful();
     }
 

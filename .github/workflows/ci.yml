@@ -886,11 +886,10 @@ jobs:
           # suppression des anciens blocs — le test COMPTE les lignes (aucune emportée). Promu bloquant
           # (lot 2) : un dépôt de mutualisation corrompu effacerait des séances en silence.
           FILES="$FILES tests/Api/MutualizeSlotApiTest.php"
-          # Axes planning lifecycle + tenant isolation : « Charger » une version de saison remplace la
-          # structure du club sans passer par la suppression d'un coach. La ligne d'absence d'un coach
-          # absent de la photo doit partir (elle sort sinon dans l'export RGPD), celle d'un coach
-          # présent reste, et l'effacement ne franchit ni le club ni la saison.
-          FILES="$FILES tests/Integration/Service/StructureRestorerTest.php"
+          # Axe tenant isolation, export RGPD : un coach supprimé sort de l'export du club ; « Charger »
+          # (lot conception 5 PR 3) ne retire aucun coach ni aucune ligne d'absence, du club chargé comme
+          # d'un autre club au même identifiant ; l'effacement ne franchit ni le club ni la saison.
+          # (« Charger » lui-même : tests/Integration/Plans/LoadVersionTest.php, plus bas.)
           FILES="$FILES tests/Security/RgpdExportTest.php"
           # P2-9ter — le fichier portait déjà #[Group('phase1')] sans qu'AUCUN step de CE job
           # ne le lance : il tournait bien, mais dans la suite complète `backend-tests` (qui exécute
@@ -961,8 +960,8 @@ jobs:
           # P2-8 PR A (axe planning lifecycle) : PARITÉ capacité affichée == verdict du refus.
           # Le bloc `capabilities` sérialisé sur chaque Schedule est calculé par le MÊME code que
           # les gardes d'écriture (ScheduleCapabilityResolver) — canDelete/canValidate/
-          # canRegenerateFrom et les deux compteurs annoncent EXACTEMENT ce que DELETE/validate/
-          # regenerate-from FONT. Sans ce gate, une dérive serveur↔serveur (capacité ≠ refus)
+          # canLoad et les deux compteurs annoncent EXACTEMENT ce que DELETE/validate/
+          # load FONT. Sans ce gate, une dérive serveur↔serveur (capacité ≠ refus)
           # passerait, et le front (PR B) afficherait un bouton que le serveur rejette.
           FILES="$FILES tests/Security/ScheduleCapabilityParityTest.php"
           # DOC-3, tranché le 2026-08-11 (option (a) : en faire un step). Le fichier se
@@ -1456,6 +1455,16 @@ jobs:
           # premier saisi compris. Sans ce gate, changer la règle ne périmerait rien, ou saisir un premier
           # temps périmerait tout, en passant tous les checks requis.
           FILES="$FILES tests/Integration/TravelRuleFingerprintTest.php"
+          # NR d'axes PLANNING LIFECYCLE + PÉRIMÈTRE ENGAGÉ (lot conception 5, PR 3) — « Charger » remet l'état de travail
+          # de SON plan d'après la copie de la version : le froid des équipes et gymnases existants revient, aucune
+          # équipe, aucun gymnase, aucun coach, aucune catégorie ne naît ni ne part, une référence disparue ne revient
+          # pas, aucun autre plan n'est touché ; refus sans rien écrire si une équipe engagée changerait de niveau ; une
+          # retouche de planning tient la copie de la version chargée à jour. Sans ce gate, un chargement qui ramène une
+          # équipe supprimée ou réécrit un plan de période passerait le Lot Gate.
+          FILES="$FILES tests/Integration/Plans/LoadVersionTest.php"
+          # NR d'axe TENANT ISOLATION + test d'abus (lot conception 5, PR 3) — une copie d'état qui cite l'équipe, la
+          # règle ou la ligne d'un autre club n'écrit rien chez lui et ne fait naître aucune ligne qui le désigne.
+          FILES="$FILES tests/Security/PlanStateTenantIsolationTest.php"
           # NR d'axe GENERATION PIPELINE (lot conception 4, PR 1) — le décor des quinze demandes de
           # référence, écrit en SQL dans le schéma figé d'avant le lot 4, donne les mêmes demandes une
           # fois toutes les migrations jouées, sur une base dédiée par référence ; la chaîne joue

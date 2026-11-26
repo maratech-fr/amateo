@@ -46,7 +46,9 @@ export const PLANNING_TEXTS = {
   unlockReservedDescription:
     "Ce créneau vient d'une réservation de gymnase. En le déverrouillant, la prochaine génération pourra le déplacer ou le libérer — vérifiez auprès du gymnase avant de continuer.",
   loadVersionTitle: "Charger cette version ?",
-  loadVersionDescriptionGeneric: "La structure actuelle sera remplacée par celle de cette version et son planning s'affichera. Vous pourrez ensuite « Régénérer » pour créer une nouvelle version.",
+  loadVersionDescription:
+    "Les réglages du planning reviennent à ceux de cette version, et son planning s'affiche. Aucune équipe, aucun gymnase, aucun coach n'est créé ni supprimé ; leurs noms et leurs contacts ne changent pas.",
+  loadVersionUnsavedLost: "Vos modifications non générées seront perdues.",
   // Version chargée : une version non chargée se consulte, ne se modifie pas.
   notLoadedBanner: (viewed: string, loaded: string, canLoad: boolean, reason?: string | null): string =>
     canLoad
@@ -110,8 +112,7 @@ export const PLANNING_TEXTS = {
   regenerateKeepsLocks: "Vos créneaux verrouillés sont conservés à la régénération.",
   loadVersion: "Charger cette version",
   loadVersionAlreadyCurrent: "Déjà le contexte courant — rien à recharger (utilisez « Régénérer »)",
-  loadVersionHint: "Recharge la structure de cette version (sans régénérer) et affiche son planning",
-  loadLocksHint: "Fait des verrous de cette version les données en cours : la prochaine régénération repartira d'eux",
+  loadVersionHint: "Remet les réglages du planning comme à la génération de cette version, sans régénérer",
   // SlotDetail
   closeLabel: "Fermer",
   fixConstraintLink: "Corriger cette contrainte",

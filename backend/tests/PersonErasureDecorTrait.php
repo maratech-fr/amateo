@@ -32,6 +32,7 @@ use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
 use App\Enum\TeamCoachRole;
 use App\Plans\PlanComposition;
+use App\Plans\PlanStates;
 use App\Plans\SoclePlan;
 use App\Service\CoachWishCampaignTokenSync;
 use App\Service\FeedbackContextEnricher;
@@ -39,7 +40,6 @@ use App\Service\PdfGenerator;
 use App\Service\ScheduleConstraintBuilder;
 use App\Service\SchedulePlanProvisioner;
 use App\Service\SeasonResolver;
-use App\Service\StructureSnapshotter;
 use App\Tests\Integration\Command\ErasePersonCommandTest;
 use App\Tests\Integration\Structure\PersonEraserTest;
 use App\Tests\Security\PersonErasureLeavesNoTraceTest;
@@ -340,8 +340,11 @@ trait PersonErasureDecorTrait
         $payload = $this->freshEngineRequest($club->getId(), $season->getId());
         $schedule->setSnapshotData($payload)->setSnapshotHash(ScheduleConstraintBuilder::structureHash($payload));
         $em->flush();
-        $snapshotter = static::getContainer()->get(StructureSnapshotter::class);
-        $snapshotter->store($schedule, $snapshotter->serialize($club->getId(), $season->getId()));
+        // Lot 5 : toute version terminée porte la copie du froid de son plan (ses coachs principaux par identifiant).
+        if (ScheduleStatus::COMPLETED === $status) {
+            $states = static::getContainer()->get(PlanStates::class);
+            $states->store($schedule, $states->capture($schedule->getSchedulePlanId()));
+        }
 
         return $schedule;
     }

@@ -8,7 +8,6 @@ use App\Entity\CalendarEntry;
 use App\Entity\Club;
 use App\Entity\ClubUser;
 use App\Entity\Schedule;
-use App\Entity\ScheduleStructureSnapshot;
 use App\Entity\Season;
 use App\Entity\User;
 use App\Enum\CalendarEntryKind;
@@ -16,6 +15,7 @@ use App\Enum\CalendarEntryPeriodType;
 use App\Enum\CalendarEntryStatus;
 use App\Enum\ScheduleStatus;
 use App\Enum\SeasonStatus;
+use App\Plans\PlanStates;
 use App\Service\ScheduleCapabilityResolver;
 use App\Service\SeasonResolver;
 use App\Tests\ChoosesPlanVersionTrait;
@@ -35,21 +35,21 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
  * par {@see ScheduleCapabilityResolver} — le MÊME code que les gardes
  * d'écriture. Ce test épingle qu'il ne peut pas DÉRIVER du verdict réel : pour une matrice
  * d'états (socle choisi · sœur COMPLETED · sœur en vol · dernière terminée de saison ·
- * version sans photo · version d'overlay), la capacité LUE annonce EXACTEMENT ce que le
+ * version sans copie · version d'overlay), la capacité LUE annonce EXACTEMENT ce que le
  * garde FAIT.
  *
  *  - canDelete:false        ⇒ DELETE → 409 ; canDelete:true ⇒ DELETE passe (overlay compris) ;
  *  - canValidate            ⇒ cohérent avec ValidateScheduleController (COMPLETED, aucune sœur en vol) ;
  *  - overlaysDroppedOnValidate>0 ⇒ validate SANS flag → 409 `overlays_exist`, count IDENTIQUE ;
  *  - versionsDeletedOnValidate   == nombre de sœurs réellement supprimées après validation ;
- *  - canRegenerateFrom      == accepte/refuse de RegenerateFromVersionController (restore sans solve).
+ *  - canLoad                == accepte/refuse de LoadVersionController (« Charger », tout plan, lot conception 5 PR 3).
  *
  * Décision fondateur D2 (2026-08-10) : le serveur accepte DÉJÀ de supprimer une version
  * d'overlay non-choisie ; on ne DURCIT PAS ce chemin. `canDelete:true` pour un overlay
  * reflète donc le VRAI verdict — zéro nouveau refus HTTP dans cette PR.
  *
  * Les états sont construits À LA MAIN (couche entité + provisioning de plan), et chaque
- * cas destructif (DELETE / validate qui supprime / regenerate-from qui restaure) vit dans
+ * cas destructif (DELETE / validate qui supprime / load qui remet l'état) vit dans
  * SA propre méthode sur des fixtures fraîches (setUp par test) — l'ordre ne peut pas
  * fausser un autre cas.
  */
@@ -195,40 +195,33 @@ final class ScheduleCapabilityParityTest extends WebTestCase
         self::assertSame($dropped, $body['count'] ?? null, 'le count du 409 == overlaysDroppedOnValidate');
     }
 
-    // ---- canRegenerateFrom ⇄ RegenerateFromVersionController ----------------------------
+    // ---- canLoad ⇄ LoadVersionController ------------------------------------------------
+    // Angle de ce test : la parité capacité ⇄ verdict, au gate bloquant. Les gardes de la route, une par une, et leur
+    // motif : jumeau cité `Api/LoadVersionGuardsTest` (non bloquant).
 
-    /** Socle terminé non-choisi avec photo, rien en vol : canRegenerateFrom true, regenerate-from → 200. */
-    public function testCanRegenerateFromTrueMatchesController(): void
+    /** Version de saison terminée avec sa copie, une autre chargée, rien en vol : canLoad true, load → 200. */
+    public function testCanLoadTrueMatchesController(): void
     {
         $version = $this->seedSeasonVersion(ScheduleStatus::COMPLETED);
-        $this->seedSnapshot($version);
+        $this->storeCopy($version);
+        $this->seedSeasonVersion(ScheduleStatus::COMPLETED); // la dernière terminée : la version chargée
 
-        self::assertTrue($this->capabilitiesOf($version->getId())['canRegenerateFrom']);
+        self::assertTrue($this->capabilitiesOf($version->getId())['canLoad']);
 
-        $this->request('POST', '/api/schedules/' . $version->getId() . '/regenerate-from');
+        $this->request('POST', '/api/schedules/' . $version->getId() . '/load');
         self::assertResponseStatusCodeSame(200);
     }
 
-    /** Overlay : canRegenerateFrom false (pas un socle), regenerate-from → 409. */
-    public function testCanRegenerateFromFalseForOverlayMatchesController(): void
-    {
-        $overlay = $this->seedOverlayVersion(ScheduleStatus::COMPLETED);
-        $this->seedSnapshot($overlay); // même avec une photo, un overlay est refusé
-
-        self::assertFalse($this->capabilitiesOf($overlay->getId())['canRegenerateFrom']);
-
-        $this->request('POST', '/api/schedules/' . $overlay->getId() . '/regenerate-from');
-        self::assertResponseStatusCodeSame(409);
-    }
-
-    /** Socle sans photo : canRegenerateFrom false (readSnapshot refuse), regenerate-from → 409. */
-    public function testCanRegenerateFromFalseWithoutPhotoMatchesController(): void
+    /** Version de saison terminée sans copie, une autre chargée : canLoad false, load → 409. */
+    public function testCanLoadFalseWithoutCopyMatchesController(): void
     {
         $version = $this->seedSeasonVersion(ScheduleStatus::COMPLETED);
+        // La dernière terminée est la chargée : sans elle, « déjà chargée » suffirait à éteindre canLoad.
+        $this->storeCopy($this->seedSeasonVersion(ScheduleStatus::COMPLETED));
 
-        self::assertFalse($this->capabilitiesOf($version->getId())['canRegenerateFrom']);
+        self::assertFalse($this->capabilitiesOf($version->getId())['canLoad']);
 
-        $this->request('POST', '/api/schedules/' . $version->getId() . '/regenerate-from');
+        $this->request('POST', '/api/schedules/' . $version->getId() . '/load');
         self::assertResponseStatusCodeSame(409);
     }
 
@@ -341,21 +334,17 @@ final class ScheduleCapabilityParityTest extends WebTestCase
         $this->planIdOf($entry); // rejoue le geste : la période reçoit son plan
     }
 
-    /** Une photo de structure (vide) pour que regenerate-from franchisse readSnapshot. */
-    private function seedSnapshot(Schedule $schedule): void
+    /** La copie du froid de son plan, prise par le vrai `PlanStates::capture`, comme à la naissance d'une version. */
+    private function storeCopy(Schedule $schedule): void
     {
-        $this->em->persist((new ScheduleStructureSnapshot)
-            ->setClubId($this->club->getId())
-            ->setSeasonId($schedule->getSeasonId())
-            ->setScheduleId($schedule->getId())
-            ->setData([]));
-        $this->em->flush();
+        $states = self::getContainer()->get(PlanStates::class);
+        $states->store($schedule, $states->capture((string) $schedule->getSchedulePlanId()));
     }
 
     /**
      * Le bloc `capabilities` lu sur GET /api/schedules/{id}.
      *
-     * @return array{canDelete: bool, canValidate: bool, canRegenerateFrom: bool, versionsDeletedOnValidate: int, overlaysDroppedOnValidate: int}
+     * @return array{canDelete: bool, canValidate: bool, canLoad: bool, versionsDeletedOnValidate: int, overlaysDroppedOnValidate: int}
      */
     private function capabilitiesOf(string $scheduleId): array
     {
@@ -366,7 +355,7 @@ final class ScheduleCapabilityParityTest extends WebTestCase
         $capabilities = $body['capabilities'];
         self::assertIsArray($capabilities, 'capabilities doit être un objet sérialisé, pas null (chemin provider)');
 
-        /* @var array{canDelete: bool, canValidate: bool, canRegenerateFrom: bool, versionsDeletedOnValidate: int, overlaysDroppedOnValidate: int} $capabilities */
+        /* @var array{canDelete: bool, canValidate: bool, canLoad: bool, versionsDeletedOnValidate: int, overlaysDroppedOnValidate: int} $capabilities */
         return $capabilities;
     }
 

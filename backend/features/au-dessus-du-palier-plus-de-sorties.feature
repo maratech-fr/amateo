@@ -37,22 +37,22 @@ Fonctionnalité: Au-dessus du palier, plus de sorties
       | générer le planning             |
       | exporter le planning en tableur |
 
-  Scénario: Supprimer une équipe sans match rouvre les sorties ; charger une version de 21 équipes est accepté, puis les sorties sont refusées
+  Scénario: Charger reste ouvert au-dessus du palier ; supprimer une équipe sans match rouvre les sorties, et charger la version de 21 équipes ne la ramène pas
     Étant donné le petit club, avec 21 équipes, et une version de son planning de saison générée sans être validée
     Quand le support règle l'offre complète au palier 1 pour la saison en cours
     Alors le club est prévenu : « Votre club compte 21 équipes, votre palier en permet 20. Les générations, le placement des matchs et les exports sont suspendus : supprimez des équipes qui n'ont pas de match, ou changez de palier. »
+    Et charger cette version m'est toujours ouvert
     Quand je supprime une équipe qui n'a pas de match
     Alors le club n'est plus prévenu
     Et aucune de ces sorties ne m'est plus refusée pour le palier :
       | sortie                          |
       | exporter le planning en tableur |
     Quand je charge la version générée à 21 équipes
-    Alors le chargement est accepté et le club compte 21 équipes
-    Et le club est prévenu : « Votre club compte 21 équipes, votre palier en permet 20. Les générations, le placement des matchs et les exports sont suspendus : supprimez des équipes qui n'ont pas de match, ou changez de palier. »
-    Et chacune de ces sorties m'est refusée (403) avec ce message :
+    Alors le chargement est accepté et le club compte toujours 20 équipes
+    Et le club n'est plus prévenu
+    Et aucune de ces sorties ne m'est plus refusée pour le palier :
       | sortie                          |
       | exporter le planning en tableur |
-    Et charger cette version m'est toujours ouvert
 
   Plan du scénario: Avec 21 équipes, un club sans palier plafonné n'est jamais concerné
     Étant donné un club inscrit par l'API, avec 21 équipes et un planning de saison en brouillon

@@ -286,6 +286,23 @@ final class SeasonReadonlyTest extends WebTestCase
     }
 
     /**
+     * Lot conception 5, PR 3 (ligne 17 du plan) — « Charger » une version d'une saison archivée, sans header : refusé,
+     * 409 « archived » nommé, comme `/fill`. Charger réécrit l'état de travail du plan : jamais sur une saison close.
+     */
+    public function testLoadOnArchivedScheduleWithoutHeaderIs409Archived(): void
+    {
+        [$user, $club, $seasons] = $this->createClubWithThreeSeasons();
+        [$past] = $seasons;
+        $schedule = $this->createScheduleInSeason($club, $past);
+
+        $this->client->request('POST', '/api/schedules/' . $schedule->getId() . '/load', [], [], $this->authHeaders($user) + [
+            'CONTENT_TYPE' => 'application/json',
+        ], '{}');
+        self::assertResponseStatusCodeSame(409);
+        self::assertSame('Cette saison est archivée — elle est en lecture seule.', json_decode((string) $this->client->getResponse()->getContent(), true)['detail'] ?? null);
+    }
+
+    /**
      * SEC-13 — la dérivation ne SUR-verrouille pas le futur : la même action (clear-grid)
      * sur un plan de période d'une saison N+1 (brouillon, writable), sans header, ne rend
      * PAS le 409 « archived ». C'est le flux légitime d'écriture hors saison courante.

@@ -10,10 +10,10 @@ use App\Entity\Feedback;
 use App\Entity\Person;
 use App\Entity\Schedule;
 use App\Entity\ScheduleDiagnostic;
-use App\Entity\ScheduleStructureSnapshot;
 use App\Entity\Season;
 use App\Enum\AuditAction;
 use App\Enum\ConstraintScope;
+use App\Plans\PlanState;
 use App\Plans\PlanStates;
 use App\Service\AuditTrail;
 use App\Service\ClubGenerationLock;
@@ -269,12 +269,15 @@ final class PersonEraser
             }
         }
 
-        // 5. Les photos des versions : sa ligne, ses liens d'équipe et de joueur, ses règles.
-        foreach ($this->entityManager->getRepository(ScheduleStructureSnapshot::class)->findBy(['clubId' => $clubId]) as $photo) {
-            $data = $photo->getData();
+        // 5. Les copies du froid des versions (toutes saisons) : ses liens de coach principal et de joueur, ses règles.
+        foreach ($this->entityManager->getRepository(Schedule::class)->findBy(['clubId' => $clubId]) as $schedule) {
+            if (!$this->planStates->has($schedule->getId())) {
+                continue;
+            }
+            $data = $this->planStates->of($schedule->getId())->toArray();
             $stripped = $this->withoutHerRows($data, $byId);
             if ($stripped !== $data) {
-                $photo->setData($stripped);
+                $this->planStates->store($schedule, new PlanState($stripped));
             }
         }
 
@@ -465,22 +468,23 @@ final class PersonEraser
     }
 
     /**
-     * @param array<string, list<array<string, mixed>>> $data
-     * @param array<string, true>                       $coachIds
+     * Une copie du froid sans ce qui la désigne par l'un de ses rôles (rien de libre n'y est : ni nom, ni contact).
      *
-     * @return array<string, list<array<string, mixed>>>
+     * @param array<string, array<string, array<string, mixed>>> $data
+     * @param array<string, true>                                $coachIds
+     *
+     * @return array<string, array<string, array<string, mixed>>>
      */
     private function withoutHerRows(array $data, array $coachIds): array
     {
         $keep = [
-            'Coach' => static fn (array $row): bool => !isset($coachIds[(string) ($row['id'] ?? '')]),
             'TeamCoach' => static fn (array $row): bool => !isset($coachIds[(string) ($row['coachId'] ?? '')]),
             'CoachPlayerMembership' => static fn (array $row): bool => !isset($coachIds[(string) ($row['coachId'] ?? '')]),
             'Constraint' => static fn (array $row): bool => ConstraintScope::COACH->value !== ($row['scope'] ?? null) || !isset($coachIds[(string) ($row['scopeTargetId'] ?? '')]),
         ];
         foreach ($keep as $family => $filter) {
             if (isset($data[$family])) {
-                $data[$family] = array_values(array_filter($data[$family], $filter));
+                $data[$family] = array_filter($data[$family], $filter);
             }
         }
 
