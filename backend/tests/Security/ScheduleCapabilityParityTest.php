@@ -199,15 +199,16 @@ final class ScheduleCapabilityParityTest extends WebTestCase
     // Angle de ce test : la parité capacité ⇄ verdict, au gate bloquant. Les gardes de la route, une par une, et leur
     // motif : jumeau cité `Api/LoadVersionGuardsTest` (non bloquant).
 
-    /** Version de période terminée avec sa copie : canLoad true, load → 200 (une seule définition, tout plan). */
-    public function testCanLoadTrueForAPeriodVersionMatchesController(): void
+    /** Version de saison terminée avec sa copie, une autre chargée, rien en vol : canLoad true, load → 200. */
+    public function testCanLoadTrueMatchesController(): void
     {
-        $overlay = $this->seedOverlayVersion(ScheduleStatus::COMPLETED);
-        $this->storeCopy($overlay);
+        $version = $this->seedSeasonVersion(ScheduleStatus::COMPLETED);
+        $this->storeCopy($version);
+        $this->seedSeasonVersion(ScheduleStatus::COMPLETED); // la dernière terminée : la version chargée
 
-        self::assertTrue($this->capabilitiesOf($overlay->getId())['canLoad']);
+        self::assertTrue($this->capabilitiesOf($version->getId())['canLoad']);
 
-        $this->request('POST', '/api/schedules/' . $overlay->getId() . '/load');
+        $this->request('POST', '/api/schedules/' . $version->getId() . '/load');
         self::assertResponseStatusCodeSame(200);
     }
 
