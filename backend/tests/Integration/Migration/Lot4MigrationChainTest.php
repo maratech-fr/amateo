@@ -76,8 +76,11 @@ final class Lot4MigrationChainTest extends KernelTestCase
      * Lot 5, PR 2 « une version copie tout le froid » : table `schedule_state` (une copie par version, clé en cascade
      * vers la version, RLS forcée) ; elle ne copie rien elle-même — la capture est la commande de conversion
      * (`app:plans:capture-version-states`), jouée par la procédure manuelle du lot.
+     *
+     * Lot 5, PR 3 « Charger : une seule définition » : suppression de la table des photos `schedule_structure_snapshot`,
+     * sans retour (testTheChainDropsThePhotoTable).
      */
-    private const array LOT_MIGRATIONS = ['DoctrineMigrations\Version20261127120000', 'DoctrineMigrations\Version20261128120000', 'DoctrineMigrations\Version20261129120000', 'DoctrineMigrations\Version20261130120000', 'DoctrineMigrations\Version20261201120000'];
+    private const array LOT_MIGRATIONS = ['DoctrineMigrations\Version20261127120000', 'DoctrineMigrations\Version20261128120000', 'DoctrineMigrations\Version20261129120000', 'DoctrineMigrations\Version20261130120000', 'DoctrineMigrations\Version20261201120000', 'DoctrineMigrations\Version20261202120000'];
 
     /**
      * Les contraintes permanentes du décor des références 12 et 13 (`EngineRequestDecorTrait`,
@@ -318,40 +321,24 @@ final class Lot4MigrationChainTest extends KernelTestCase
     }
 
     /**
-     * Les photos des versions sont converties : une ligne de grille ou de réservation du socle (plan nul) porte
-     * le plan de saison, une ligne de période garde le sien, et rien d'autre de la photo ne change.
+     * Lot 5, PR 3 (ligne 19 du plan) : la chaîne supprime la table des photos de structure, sans retour (aucun
+     * `down()`), même quand elle porte des photos — la copie d'état (`schedule_state`) l'a remplacée. Les deux
+     * conversions de photos des PR 2 et 3a ne sont plus vérifiées ici : leur résultat part avec la table, dans la
+     * même mise en production, et rien ne le lit plus.
      */
     #[TestWith(['periode-12-vacances-reglages'])]
-    public function testTheConversionRewritesThePhotosOnTheSeasonPlan(string $decor): void
+    public function testTheChainDropsThePhotoTable(string $decor): void
     {
         $admin = self::ownerConnection(self::caseName());
-        $periodPlan = $admin->fetchOne('SELECT id FROM schedule_plan WHERE season_id = ? AND type <> ?', [self::DECOR_SEASON, 'SEASON']);
-        self::assertIsString($periodPlan, 'témoin : le décor a un plan de période');
-        $photo = [
-            'Team' => [['id' => '7ea00000-0000-4000-8000-000000000001', 'name' => 'U13', 'sessionsPerWeek' => 2]],
-            'VenueTrainingSlot' => [
-                ['id' => 'f0700000-0000-4000-8000-000000000001', 'dayOfWeek' => 1, 'schedulePlanId' => null],
-                ['id' => 'f0700000-0000-4000-8000-000000000002', 'dayOfWeek' => 2, 'schedulePlanId' => $periodPlan],
-            ],
-            'Reservation' => [['id' => 'f0700000-0000-4000-8000-000000000003', 'teamId' => '7ea00000-0000-4000-8000-000000000001', 'schedulePlanId' => null]],
-        ];
         $admin->executeStatement(
             'INSERT INTO schedule_structure_snapshot (id, created_at, updated_at, club_id, season_id, schedule_id, data) VALUES (?, now(), now(), ?, ?, ?, ?)',
-            ['f0700000-0000-4000-8000-0000000000aa', self::DECOR_CLUB, self::DECOR_SEASON, '5c4e0000-0000-4000-8000-000000000001', json_encode($photo, \JSON_THROW_ON_ERROR)],
+            ['f0700000-0000-4000-8000-0000000000aa', self::DECOR_CLUB, self::DECOR_SEASON, '5c4e0000-0000-4000-8000-000000000001', json_encode(['Team' => []], \JSON_THROW_ON_ERROR)],
         );
+        self::assertSame(1, (int) $admin->fetchOne('SELECT COUNT(*) FROM schedule_structure_snapshot'), 'témoin : avant la chaîne, la table porte une photo');
 
         self::assertSame(self::LOT_MIGRATIONS, $this->migrate(), 'la chaîne joue exactement les migrations du lot');
 
-        $seasonPlan = $admin->fetchOne('SELECT id FROM schedule_plan WHERE season_id = ? AND type = ?', [self::DECOR_SEASON, 'SEASON']);
-        $converted = json_decode((string) $admin->fetchOne('SELECT data FROM schedule_structure_snapshot WHERE id = ?', ['f0700000-0000-4000-8000-0000000000aa']), true, 512, \JSON_THROW_ON_ERROR);
-        $expected = $photo;
-        $expected['VenueTrainingSlot'][0]['schedulePlanId'] = $seasonPlan;
-        $expected['Reservation'][0]['schedulePlanId'] = $seasonPlan;
-        // L'ordre des clés d'un objet JSON n'est pas une donnée (une réécriture par jsonb le change) : comparé trié.
-        // La famille `Team` est convertie à son tour par la PR 3a (testTheConversionMovesThePhotoTeamSettingsOntoTheSoclePlan).
-        self::assertIsArray($converted);
-        unset($expected['Team'], $converted['Team'], $converted['PlanTeam']);
-        self::assertSame($this->sortedKeys($expected), $this->sortedKeys($converted), 'la photo porte le plan de saison sur ses lignes de socle, et rien d\'autre ne change');
+        self::assertNull($admin->fetchOne('SELECT to_regclass(\'public.schedule_structure_snapshot\')'), 'la table des photos n\'existe plus');
     }
 
     /**
@@ -430,43 +417,6 @@ final class Lot4MigrationChainTest extends KernelTestCase
         ), 'une clé composée (plan, club) vers le plan, en cascade : une ligne ne désigne jamais le plan d\'un autre club');
         self::assertSame(0, (int) $admin->fetchOne('SELECT COUNT(*) FROM pg_constraint c WHERE c.contype = \'f\' AND c.conrelid = \'public.plan_team\'::regclass AND c.confrelid = \'public.team\'::regclass'), 'pas de clé vers l\'équipe : « Charger » efface puis réinsère les équipes (E6)');
         self::assertSame(1, (int) $admin->fetchOne('SELECT COUNT(*) FROM pg_class WHERE oid = \'public.plan_team\'::regclass AND relrowsecurity AND relforcerowsecurity'), 'la RLS est active et forcée');
-    }
-
-    /**
-     * Lot 4, PR 3a : les photos des versions sont converties. Les séances et le plafond quittent les lignes `Team` pour une
-     * ligne `PlanTeam` du plan de saison par équipe ; une photo prise avant que le plafond existe donne 1, comme son
-     * chargement le donnait.
-     */
-    #[TestWith(['periode-12-vacances-reglages'])]
-    public function testTheConversionMovesThePhotoTeamSettingsOntoTheSoclePlan(string $decor): void
-    {
-        $admin = self::ownerConnection(self::caseName());
-        $u13 = self::DECOR_TEAMS['U13 F'];
-        $sm1 = self::DECOR_TEAMS['SM1'];
-        $photo = [
-            'Team' => [
-                ['id' => $u13, 'name' => 'U13 F', 'sessionsPerWeek' => 3, 'maxSessionsPerDay' => 2],
-                ['id' => $sm1, 'name' => 'SM1', 'sessionsPerWeek' => 2],
-            ],
-        ];
-        $admin->executeStatement(
-            'INSERT INTO schedule_structure_snapshot (id, created_at, updated_at, club_id, season_id, schedule_id, data) VALUES (?, now(), now(), ?, ?, ?, ?)',
-            ['f0700000-0000-4000-8000-0000000000ab', self::DECOR_CLUB, self::DECOR_SEASON, '5c4e0000-0000-4000-8000-000000000001', json_encode($photo, \JSON_THROW_ON_ERROR)],
-        );
-
-        self::assertSame(self::LOT_MIGRATIONS, $this->migrate(), 'la chaîne joue exactement les migrations du lot');
-
-        $seasonPlan = $admin->fetchOne('SELECT id FROM schedule_plan WHERE season_id = ? AND type = ?', [self::DECOR_SEASON, 'SEASON']);
-        $converted = json_decode((string) $admin->fetchOne('SELECT data FROM schedule_structure_snapshot WHERE id = ?', ['f0700000-0000-4000-8000-0000000000ab']), true, 512, \JSON_THROW_ON_ERROR);
-        self::assertIsArray($converted);
-        self::assertSame([['id' => $u13, 'name' => 'U13 F'], ['id' => $sm1, 'name' => 'SM1']], $converted['Team'] ?? null, 'les lignes d\'équipe perdent séances et plafond, rien d\'autre');
-        $lines = [];
-        foreach ($converted['PlanTeam'] ?? [] as $line) {
-            self::assertIsArray($line);
-            $lines[(string) $line['teamId']] = [$line['schedulePlanId'] ?? null, $line['sessionsPerWeek'] ?? null, $line['maxSessionsPerDay'] ?? null];
-        }
-        ksort($lines);
-        self::assertSame([$u13 => [$seasonPlan, 3, 2], $sm1 => [$seasonPlan, 2, 1]], $lines, 'une ligne du plan de saison par équipe de la photo, plafond 1 quand la photo ne le portait pas');
     }
 
     /**
@@ -821,20 +771,6 @@ final class Lot4MigrationChainTest extends KernelTestCase
         $console->setAutoExit(false);
 
         return $console->run(new ArrayInput([...$input, '--no-interaction' => true]), new BufferedOutput);
-    }
-
-    /**
-     * @param array<mixed> $value
-     *
-     * @return array<mixed>
-     */
-    private function sortedKeys(array $value): array
-    {
-        if (!array_is_list($value)) {
-            ksort($value);
-        }
-
-        return array_map(fn (mixed $item): mixed => \is_array($item) ? $this->sortedKeys($item) : $item, $value);
     }
 
     /**

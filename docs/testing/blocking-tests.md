@@ -436,6 +436,18 @@ PR 2 — l'empreinte du plan que l'écran compare pour dire « périmé » suit 
 d'obligatoire à souhaitée, ou changer la tolérance, la change, matrice saisie ou non ; elle ignore le temps de
 trajet, libre : le premier saisi puis corrigé ne la change pas. Chute attendue si la règle sort de l'empreinte
 ou si la présence de la matrice y entre) ·
+`Integration/Plans/LoadVersionTest` (axes *planning lifecycle* + *périmètre engagé*, lot conception 5 PR 3 —
+« Charger » remet l'état de travail de son plan d'après la copie de la version : rang, catégorie, niveau d'une
+équipe existante et « divisible » d'un gymnase reviennent, aucune équipe, aucun gymnase, aucun coach ni aucune
+catégorie ne naît ni ne part, un gymnase imposé, une catégorie, une équipe, un gymnase ou un coach supprimés depuis
+ne reviennent pas et ne laissent rien en attente, une équipe créée depuis garde sa ligne ; charger le socle laisse
+les lignes d'une période, charger une période laisse le socle ; refus sans rien écrire si une équipe engagée
+changerait de niveau ; une retouche de planning tient la copie de la version chargée à jour, ligne par ligne.
+Chute attendue si un chargement ramène une suppression, écrit dans un autre plan ou change le niveau d'une équipe
+engagée) ·
+`Security/PlanStateTenantIsolationTest` (axe *tenant isolation*, test d'abus, lot conception 5 PR 3 — une copie
+d'état qui cite l'équipe, la règle ou la ligne d'un autre club n'écrit rien chez lui et ne fait naître aucune ligne
+qui le désigne. Chute attendue si « Charger » écrit une ligne désignée par identifiant sans vérifier son club) ·
 `Integration/Migration/Lot4MigrationChainTest` (axe *generation pipeline*, lot conception 4 PR 1 — le décor
 des quinze références, écrit en SQL dans le schéma figé d'avant le lot 4 [`tests/Fixtures/lot-4/`], chargé
 dans une base dédiée par référence, donne les mêmes demandes une fois toutes les migrations jouées ; la

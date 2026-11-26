@@ -15,7 +15,7 @@ use App\Enum\ConstraintFamily;
 use App\Enum\ConstraintRuleType;
 use App\Enum\ConstraintScope;
 use App\Enum\ScheduleDiagnosticSeverity;
-use App\Service\StructureRestorer;
+use App\Plans\PlanStates;
 use App\Structure\PersonEraser;
 use App\Tests\Integration\Structure\PersonEraserTest;
 use App\Tests\PersonErasureDecorTrait;
@@ -70,6 +70,26 @@ final class PersonErasureLeavesNoTraceTest extends KernelTestCase
         self::assertContains('feedback.context', $other, 'le signalement d\'un autre club qui la cite reste tel quel');
     }
 
+    /**
+     * Lot conception 5, PR 3 (ligne 20 du plan) : l'effacement retire ses identifiants de rôle de la copie du froid de
+     * chaque version du club, toutes saisons — lien de coach principal, règle à sa portée —, et laisse ceux des autres
+     * coachs. Avant l'effacement, les copies les portent (témoin : sans lui, un zéro ne prouverait rien).
+     */
+    public function testTheErasureRemovesHerIdentifiersFromEveryVersionCopy(): void
+    {
+        $this->seedErasureDecor();
+        $herRoles = [$this->decor['coach'], $this->decor['coachPast']];
+        self::assertSame(2, $this->copiesCiting($herRoles), 'témoin : les copies des versions de la saison en cours et de la saison passée citent ses rôles');
+        self::assertSame(1, $this->copiesCiting([$this->decor['dominique']]), 'témoin : la copie de la saison en cours cite Dominique');
+
+        $this->scopeGucToClub($this->decor['club']);
+        self::getContainer()->get(PersonEraser::class)->erase($this->decor['club'], $this->decor['person']);
+        $this->em->clear();
+
+        self::assertSame(0, $this->copiesCiting($herRoles), 'aucune copie ne garde l\'identifiant de l\'un de ses rôles');
+        self::assertSame(1, $this->copiesCiting([$this->decor['dominique']]), 'la copie garde le coach qui reste');
+    }
+
     /** « Charger » une version générée avant l'effacement ne ramène ni sa ligne de coach, ni ses liens, ni ses règles, ni son nom (abus). */
     public function testLoadingAVersionFromBeforeTheErasureBringsBackNeitherHerRoleNorHerName(): void
     {
@@ -79,10 +99,10 @@ final class PersonErasureLeavesNoTraceTest extends KernelTestCase
         $this->em->clear();
 
         $this->scopeGucToClub($this->decor['club']);
-        $restorer = self::getContainer()->get(StructureRestorer::class);
         $v1 = $this->em->find(Schedule::class, $this->decor['v1']);
         self::assertNotNull($v1);
-        $restorer->apply($this->decor['club'], $this->decor['current'], $restorer->readSnapshot($v1));
+        $states = self::getContainer()->get(PlanStates::class);
+        $states->restore($v1->getSchedulePlanId(), $states->of($v1->getId()));
         $this->em->clear();
 
         $this->scopeGucToClub($this->decor['club']);
@@ -230,6 +250,21 @@ final class PersonErasureLeavesNoTraceTest extends KernelTestCase
     {
         $this->removeErasureDecorFiles();
         parent::tearDown();
+    }
+
+    /**
+     * Le nombre de copies d'état des versions du club qui citent l'un de ces identifiants, lu sous son contexte.
+     *
+     * @param list<string> $ids
+     */
+    private function copiesCiting(array $ids): int
+    {
+        $this->scopeGucToClub($this->decor['club']);
+
+        return (int) $this->em->getConnection()->fetchOne(
+            'SELECT COUNT(*) FROM schedule_state WHERE club_id = ? AND (' . implode(' OR ', array_fill(0, \count($ids), 'data::text LIKE ?')) . ')',
+            [$this->decor['club'], ...array_map(static fn (string $id): string => '%' . $id . '%', $ids)],
+        );
     }
 
     /** Une indisponibilité de portée coach, visant ce rôle ; rend son identifiant. */

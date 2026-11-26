@@ -1456,6 +1456,16 @@ jobs:
           # premier saisi compris. Sans ce gate, changer la règle ne périmerait rien, ou saisir un premier
           # temps périmerait tout, en passant tous les checks requis.
           FILES="$FILES tests/Integration/TravelRuleFingerprintTest.php"
+          # NR d'axes PLANNING LIFECYCLE + PÉRIMÈTRE ENGAGÉ (lot conception 5, PR 3) — « Charger » remet l'état de travail
+          # de SON plan d'après la copie de la version : le froid des équipes et gymnases existants revient, aucune
+          # équipe, aucun gymnase, aucun coach, aucune catégorie ne naît ni ne part, une référence disparue ne revient
+          # pas, aucun autre plan n'est touché ; refus sans rien écrire si une équipe engagée changerait de niveau ; une
+          # retouche de planning tient la copie de la version chargée à jour. Sans ce gate, un chargement qui ramène une
+          # équipe supprimée ou réécrit un plan de période passerait le Lot Gate.
+          FILES="$FILES tests/Integration/Plans/LoadVersionTest.php"
+          # NR d'axe TENANT ISOLATION + test d'abus (lot conception 5, PR 3) — une copie d'état qui cite l'équipe, la
+          # règle ou la ligne d'un autre club n'écrit rien chez lui et ne fait naître aucune ligne qui le désigne.
+          FILES="$FILES tests/Security/PlanStateTenantIsolationTest.php"
           # NR d'axe GENERATION PIPELINE (lot conception 4, PR 1) — le décor des quinze demandes de
           # référence, écrit en SQL dans le schéma figé d'avant le lot 4, donne les mêmes demandes une
           # fois toutes les migrations jouées, sur une base dédiée par référence ; la chaîne joue
