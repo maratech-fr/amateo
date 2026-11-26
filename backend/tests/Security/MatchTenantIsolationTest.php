@@ -160,10 +160,10 @@ final class MatchTenantIsolationTest extends WebTestCase
         $competitionA = $this->competitionFor($teamA->getId(), 'Championnat A');
         $connection = $this->em->getConnection();
 
-        self::assertSame('23503', $this->sqlStateOf(fn (): int => $this->insertEngagement($clubA, $seasonA, $competitionB->getId(), $teamA->getId())), 'un engagement du club A ne désigne jamais la compétition du club B');
-        self::assertNull($this->sqlStateOf(fn (): int => $this->insertEngagement($clubA, $seasonA, $competitionA->getId(), $secondTeamA->getId())), 'témoin : un engagement sur la compétition du club passe');
+        self::assertSame('23503', $this->sqlStateOf(fn (): int|string => $this->insertEngagement($clubA, $seasonA, $competitionB->getId(), $teamA->getId())), 'un engagement du club A ne désigne jamais la compétition du club B');
+        self::assertNull($this->sqlStateOf(fn (): int|string => $this->insertEngagement($clubA, $seasonA, $competitionA->getId(), $secondTeamA->getId())), 'témoin : un engagement sur la compétition du club passe');
         $this->scopeGucToClub($clubA->getId());
-        self::assertSame('23503', $this->sqlStateOf(static fn (): int => $connection->executeStatement(
+        self::assertSame('23503', $this->sqlStateOf(static fn (): int|string => $connection->executeStatement(
             'INSERT INTO fixture (id, version, created_at, updated_at, club_id, season_id, team_id, competition_id, match_date, home_away, opponent_label, status, review_state)'
             . ' VALUES (gen_random_uuid(), 1, now(), now(), ?, ?, ?, ?, \'2026-10-04\', \'AWAY\', \'Adversaire\', \'UNPLACED\', \'NEW\')',
             [$clubA->getId(), $seasonA->getId(), $teamB->getId(), $competitionB->getId()],
@@ -1647,7 +1647,7 @@ final class MatchTenantIsolationTest extends WebTestCase
     }
 
     /** Un engagement écrit en SQL brut, sous la RLS du club posé : seule la base peut alors refuser. */
-    private function insertEngagement(Club $club, Season $season, string $competitionId, string $teamId): int
+    private function insertEngagement(Club $club, Season $season, string $competitionId, string $teamId): int|string
     {
         $this->scopeGucToClub($club->getId());
 

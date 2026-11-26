@@ -235,18 +235,6 @@ final class FixtureReviewContext extends BaseContext
         $this->assertDuoMatchOf(self::DUO_EXTRA_REF, $this->duoTeamId);
     }
 
-    /** Le match de ce numéro existe une fois, à cette équipe, dans une compétition où cette équipe est engagée. */
-    private function assertDuoMatchOf(string $ref, string $teamId): void
-    {
-        $row = $this->dbalScalar(
-            \sprintf('SELECT COUNT(*) || \'|\' || COALESCE(MIN(f.team_id::text), \'\') || \'|\' || COALESCE(MIN(e.team_id::text), \'\') AS behatval FROM fixture f LEFT JOIN engagement e ON e.competition_id = f.competition_id AND e.team_id = f.team_id WHERE f.club_id=\'%s\' AND f.external_ref=\'%s\'', $this->clubId, $ref),
-            admin: true,
-        );
-        if (\sprintf('1|%s|%s', $teamId, $teamId) !== $row) {
-            throw new RuntimeException(\sprintf('le match %s devrait exister une fois, à l\'équipe %s et dans une compétition où elle est engagée (compte|équipe|engagement = %s)', $ref, $teamId, $row));
-        }
-    }
-
     #[Given('un accès match le samedi sur « GYM BEHAT »')]
     public function unAccesMatchSurGymBehat(): void
     {
@@ -751,6 +739,18 @@ final class FixtureReviewContext extends BaseContext
         }
     }
 
+    /** Le match de ce numéro existe une fois, à cette équipe, dans une compétition où cette équipe est engagée. */
+    private function assertDuoMatchOf(string $ref, string $teamId): void
+    {
+        $row = $this->dbalScalar(
+            \sprintf('SELECT COUNT(*) || \'|\' || COALESCE(MIN(f.team_id::text), \'\') || \'|\' || COALESCE(MIN(e.team_id::text), \'\') AS behatval FROM fixture f LEFT JOIN engagement e ON e.competition_id = f.competition_id AND e.team_id = f.team_id WHERE f.club_id=\'%s\' AND f.external_ref=\'%s\'', $this->clubId, $ref),
+            admin: true,
+        );
+        if (\sprintf('1|%s|%s', $teamId, $teamId) !== $row) {
+            throw new RuntimeException(\sprintf('le match %s devrait exister une fois, à l\'équipe %s et dans une compétition où elle est engagée (compte|équipe|engagement = %s)', $ref, $teamId, $row));
+        }
+    }
+
     /**
      * Joue un geste « marquer comme vu » et garde sa réponse ({reviewed, skipped}).
      *
@@ -877,7 +877,7 @@ final class FixtureReviewContext extends BaseContext
      * correspondance (les libellés mémorisés au premier dépôt doivent suffire).
      *
      * @param list<array{division: string, fbiTeamLabel: string, teamId: string}>|null $mappings
-     * @param list<list<string>>|null                                                 $rows     null = les deux équipes, un extérieur chacune
+     * @param list<list<string>>|null                                                  $rows     null = les deux équipes, un extérieur chacune
      */
     private function depositDuo(?array $mappings, ?array $rows = null): void
     {

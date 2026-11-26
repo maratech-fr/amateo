@@ -98,6 +98,16 @@ trait EngineRequestRunnerTrait
         return $sections;
     }
 
+    /** Le fichier de décor que la capture demandée remplit, ou null sans capture. */
+    private static function decorCaptureTarget(): ?string
+    {
+        return match (true) {
+            '1' === getenv('LOT4_DECOR_CAPTURE') => self::LOT4_DECOR_FILE,
+            '1' === getenv('LOT7_DECOR_CAPTURE') => self::LOT7_DECOR_FILE,
+            default => null,
+        };
+    }
+
     /**
      * Le handler de génération réel, avec un `EngineClient` réel sur un moteur simulé qui capture le
      * corps reçu et renvoie, comme le vrai, les verrous HARD reçus.
@@ -336,16 +346,6 @@ trait EngineRequestRunnerTrait
         }
         Assert::assertNotSame([], $lines, 'la capture du décor doit relever au moins une ligne');
         $this->pendingDecorCapture = implode("\n", $lines);
-    }
-
-    /** Le fichier de décor que la capture demandée remplit, ou null sans capture. */
-    private static function decorCaptureTarget(): ?string
-    {
-        return match (true) {
-            '1' === getenv('LOT4_DECOR_CAPTURE') => self::LOT4_DECOR_FILE,
-            '1' === getenv('LOT7_DECOR_CAPTURE') => self::LOT7_DECOR_FILE,
-            default => null,
-        };
     }
 
     /** Range (ou remplace) la section d'une référence dans `decor-avant.sql`, sections triées par nom. */

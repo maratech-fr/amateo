@@ -53,29 +53,6 @@ trait FrozenSchemaDatabaseTrait
         $server->close();
     }
 
-    /** La base du cas (copie du modèle et section de décor nommée), puis le noyau branché sur elle. */
-    private function setUpFrozenCase(string $section): void
-    {
-        $sections = self::frozenDecorSections();
-        Assert::assertArrayHasKey($section, $sections, \sprintf('%s n\'a pas de section %s', basename(self::FROZEN_DECOR_FILE), $section));
-
-        $server = self::frozenOwnerConnection('postgres');
-        $server->executeStatement(\sprintf('DROP DATABASE IF EXISTS %s WITH (FORCE)', self::frozenCaseName()));
-        $server->executeStatement(\sprintf('CREATE DATABASE %s TEMPLATE %s', self::frozenCaseName(), self::frozenTemplateName()));
-        $server->close();
-
-        $case = self::frozenOwnerConnection(self::frozenCaseName());
-        $case->executeStatement("SET session_replication_role = replica;\n" . $sections[$section] . "\nSET session_replication_role = DEFAULT;");
-        $case->close();
-
-        self::ensureKernelShutdown();
-        foreach (self::FROZEN_DATABASE_VARIABLES as $variable) {
-            $this->frozenTestUrls[$variable] = self::frozenVariable($variable);
-            self::frozenSetVariable($variable, self::frozenWithDatabase($this->frozenTestUrls[$variable], self::frozenCaseName()));
-        }
-        self::bootKernel();
-    }
-
     /** @return array<string, string> nom de section (`-- @reference <nom>`) → son SQL */
     private static function frozenDecorSections(): array
     {
@@ -97,41 +74,10 @@ trait FrozenSchemaDatabaseTrait
         return $sections;
     }
 
-    private function tearDownFrozenCase(): void
-    {
-        self::ensureKernelShutdown();
-        foreach ($this->frozenTestUrls as $variable => $url) {
-            self::frozenSetVariable($variable, $url);
-        }
-        $this->frozenTestUrls = [];
-        $server = self::frozenOwnerConnection('postgres');
-        $server->executeStatement(\sprintf('DROP DATABASE IF EXISTS %s WITH (FORCE)', self::frozenCaseName()));
-        $server->close();
-    }
-
     /** La connexion propriétaire (hors RLS applicative) sur la base du cas. */
     private static function frozenCaseConnection(): Connection
     {
         return self::frozenOwnerConnection(self::frozenCaseName());
-    }
-
-    /**
-     * `doctrine:migrations:migrate` sur la base du cas, sans conclure : code retour, sortie, versions jouées.
-     *
-     * @return array{0: int, 1: string, 2: list<string>}
-     */
-    private function runFrozenMigrations(): array
-    {
-        $admin = self::frozenCaseConnection();
-        $before = array_map(strval(...), $admin->fetchFirstColumn('SELECT version FROM doctrine_migration_versions'));
-        $console = new Application(self::$kernel ?? throw new LogicException('noyau non démarré'));
-        $console->setAutoExit(false);
-        $output = new BufferedOutput;
-        $code = $console->run(new ArrayInput(['command' => 'doctrine:migrations:migrate', '--no-interaction' => true, '--allow-no-migration' => true]), $output);
-        $after = array_map(strval(...), $admin->fetchFirstColumn('SELECT version FROM doctrine_migration_versions ORDER BY version'));
-        $admin->close();
-
-        return [$code, $output->fetch(), array_values(array_diff($after, $before))];
     }
 
     private static function frozenColumnExists(Connection $admin, string $table, string $column): bool
@@ -190,5 +136,59 @@ trait FrozenSchemaDatabaseTrait
         $_SERVER[$name] = $value;
         $_ENV[$name] = $value;
         putenv($name . '=' . $value);
+    }
+
+    /** La base du cas (copie du modèle et section de décor nommée), puis le noyau branché sur elle. */
+    private function setUpFrozenCase(string $section): void
+    {
+        $sections = self::frozenDecorSections();
+        Assert::assertArrayHasKey($section, $sections, \sprintf('%s n\'a pas de section %s', basename(self::FROZEN_DECOR_FILE), $section));
+
+        $server = self::frozenOwnerConnection('postgres');
+        $server->executeStatement(\sprintf('DROP DATABASE IF EXISTS %s WITH (FORCE)', self::frozenCaseName()));
+        $server->executeStatement(\sprintf('CREATE DATABASE %s TEMPLATE %s', self::frozenCaseName(), self::frozenTemplateName()));
+        $server->close();
+
+        $case = self::frozenOwnerConnection(self::frozenCaseName());
+        $case->executeStatement("SET session_replication_role = replica;\n" . $sections[$section] . "\nSET session_replication_role = DEFAULT;");
+        $case->close();
+
+        self::ensureKernelShutdown();
+        foreach (self::FROZEN_DATABASE_VARIABLES as $variable) {
+            $this->frozenTestUrls[$variable] = self::frozenVariable($variable);
+            self::frozenSetVariable($variable, self::frozenWithDatabase($this->frozenTestUrls[$variable], self::frozenCaseName()));
+        }
+        self::bootKernel();
+    }
+
+    private function tearDownFrozenCase(): void
+    {
+        self::ensureKernelShutdown();
+        foreach ($this->frozenTestUrls as $variable => $url) {
+            self::frozenSetVariable($variable, $url);
+        }
+        $this->frozenTestUrls = [];
+        $server = self::frozenOwnerConnection('postgres');
+        $server->executeStatement(\sprintf('DROP DATABASE IF EXISTS %s WITH (FORCE)', self::frozenCaseName()));
+        $server->close();
+    }
+
+    /**
+     * `doctrine:migrations:migrate` sur la base du cas, sans conclure : code retour, sortie, versions jouées.
+     *
+     * @return array{0: int, 1: string, 2: list<string>}
+     */
+    private function runFrozenMigrations(): array
+    {
+        $admin = self::frozenCaseConnection();
+        $before = array_map(strval(...), $admin->fetchFirstColumn('SELECT version FROM doctrine_migration_versions'));
+        $console = new Application(self::$kernel ?? throw new LogicException('noyau non démarré'));
+        $console->setAutoExit(false);
+        $output = new BufferedOutput;
+        $code = $console->run(new ArrayInput(['command' => 'doctrine:migrations:migrate', '--no-interaction' => true, '--allow-no-migration' => true]), $output);
+        $after = array_map(strval(...), $admin->fetchFirstColumn('SELECT version FROM doctrine_migration_versions ORDER BY version'));
+        $admin->close();
+
+        return [$code, $output->fetch(), array_values(array_diff($after, $before))];
     }
 }
