@@ -17,6 +17,7 @@ use App\Entity\Venue;
 use App\Enum\FixtureStatus;
 use App\Plans\PlanComposition;
 use App\Tests\ChoosesPlanVersionTrait;
+use App\Tests\CreatesCompetitionsTrait;
 use App\Tests\TenantGucTrait;
 use App\Tests\VerifiesRegistration;
 use App\Tests\WritesFbiExports;
@@ -40,6 +41,7 @@ use ZipArchive;
 final class ImportFixturesApiTest extends WebTestCase
 {
     use ChoosesPlanVersionTrait;
+    use CreatesCompetitionsTrait;
     use TenantGucTrait;
     use VerifiesRegistration;
     use WritesFbiExports;
@@ -277,6 +279,36 @@ final class ImportFixturesApiTest extends WebTestCase
 
         $this->client->request('DELETE', '/api/teams/' . $teamId, [], [], ['HTTP_AUTHORIZATION' => 'Bearer ' . $token]);
         self::assertResponseStatusCodeSame(409, 'an engaged team must refuse deletion');
+    }
+
+    /**
+     * Abus (lot 7, PR 3b) : une correspondance qui propose, pour une équipe, la compétition d'une AUTRE équipe du club
+     * n'y fait jamais entrer l'équipe — la compétition proposée n'est ni renommée ni engagée une seconde fois, aucun
+     * match n'y entre ; l'import range le match dans une compétition où l'équipe choisie est engagée.
+     */
+    public function testAMappingOntoAnotherTeamsCompetitionNeverEngagesTheTeamThere(): void
+    {
+        [$token, $clubName, $teamId] = $this->registerWithTeam();
+        $this->client->request('GET', '/api/me', [], [], ['HTTP_AUTHORIZATION' => 'Bearer ' . $token]);
+        $clubId = (string) $this->responseData()['club']['id'];
+        $otherTeam = $this->secondTeam($clubId);
+        $this->scopeGucToClub($clubId);
+        $foreign = $this->competitionFor($otherTeam, 'Ancien nom');
+
+        $this->upload('/api/fixtures/import', $token, $this->xlsx([
+            ['DX', 'X1', 'AS Voisins', strtoupper($clubName) . ' - 1', '03/10/2026', '15:30', ''],
+        ]), ['mappings' => json_encode([['division' => 'DX', 'teamId' => $teamId, 'competitionId' => $foreign->getId()]], \JSON_THROW_ON_ERROR)]);
+
+        self::assertResponseStatusCodeSame(200);
+        self::assertSame(1, $this->responseData()['created']);
+        $this->scopeGucToClub($clubId);
+        $connection = $this->em->getConnection();
+        self::assertSame('Ancien nom', $connection->fetchOne('SELECT name FROM competition WHERE id = ?', [$foreign->getId()]), 'la compétition de l\'autre équipe n\'est pas renommée');
+        self::assertSame([$otherTeam], $connection->fetchFirstColumn('SELECT team_id FROM engagement WHERE competition_id = ?', [$foreign->getId()]), 'elle garde son seul engagement');
+        $imported = $connection->fetchAssociative('SELECT f.competition_id, e.team_id FROM fixture f JOIN engagement e ON e.competition_id = f.competition_id AND e.team_id = f.team_id WHERE f.external_ref = ?', ['X1']);
+        self::assertIsArray($imported, 'le match importé désigne un engagement de son équipe');
+        self::assertSame($teamId, $imported['team_id']);
+        self::assertNotSame($foreign->getId(), $imported['competition_id'], 'jamais la compétition de l\'autre équipe');
     }
 
     public function testImportResponseCarriesTheLeagueValidatedCount(): void
@@ -545,6 +577,25 @@ final class ImportFixturesApiTest extends WebTestCase
         $this->em->flush();
 
         return $venue->getId();
+    }
+
+    /** Une seconde équipe du club, dans la saison semée par l'inscription. */
+    private function secondTeam(string $clubId): string
+    {
+        $this->scopeGucToClub($clubId);
+        $season = $this->em->getRepository(Season::class)->findOneBy(['clubId' => $clubId]);
+        self::assertNotNull($season);
+        $sport = $this->em->getRepository(Sport::class)->findOneBy(['isActive' => true]);
+        self::assertNotNull($sport);
+        $category = (new SportCategory)->setClubId($clubId)->setSportId($sport->getId())->setName('U15-' . uniqid('', true));
+        $this->em->persist($category);
+        $team = (new Team)->setClubId($clubId)->setSeasonId($season->getId())->setSportCategoryId($category->getId())->setPriorityTierId(3)->setName('U15-1')->setIsActive(true);
+        $this->em->persist($team);
+        $this->em->flush();
+        self::getContainer()->get(PlanComposition::class)->ensureLines($team->getSeasonId(), [$team->getId() => ['sessionsPerWeek' => 2]]);
+        $this->em->flush();
+
+        return $team->getId();
     }
 
     /** Places the imported fixture (PLACED + a venue id) and returns its id. */
